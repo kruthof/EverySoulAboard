@@ -58,9 +58,10 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
   `401c9b96aff338a7`; the slice tick-3000 golden is `d1710ab6a1fe50ce`.
-- Play: `~/.dotnet/dotnet run --project hosts/web` → http://localhost:8323 ·
-  the P2 8-crew slice: `... --project hosts/web -- --ship slice` (also `hosts/tui`) ·
-  terminal: `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
+- Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
+  + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
+  The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
+  `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
 - Live LLM: a plain repo-root `.env` (`claude_key` / `openai_key`) auto-routes web-host
   dialogue to a live backend; the env-gated smoke (zero CI surface, spends cents) is
   `... --project hosts/scenario -- llm-smoke --backend all` (results in `docs/SMOKE-P2.md`).

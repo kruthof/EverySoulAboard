@@ -1,4 +1,4 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete, tag suggestion `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-21, P2 complete, tag `v2-talking-ship`)
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -17,7 +17,7 @@ still authoritative in `legacy/TDD.md` + `legacy/TUI.md` where not superseded.
   and the phase-exit proof (`P2ExitTests`) that ties it all together. Suite:
   **524 dotnet tests + 115 node render tests**, all green via `./ci.sh` (exit 0).
   The two **human** exit bars remain open on Garvin (see the end): the 60-minute
-  unscripted playtest and the blind screenshot A/B. Tag `v2-talking-ship` when they land.
+  unscripted playtest and the blind screenshot A/B. The tag marks the automated milestone (v0/v1 convention); the playtest + A/B verdicts append here when they land.
 
 Every P2 work package went through the per-package **independent Opus gate** (below);
 `(Opus-gated PASS)` in `git log v1-foundations..HEAD` marks each one.
@@ -115,11 +115,12 @@ Every P2 work package went through the per-package **independent Opus gate** (be
 
 ```bash
 ./ci.sh                                     # the full gate — run before/after anything (exit 0)
-~/.dotnet/dotnet run --project hosts/web    # PLAY: http://localhost:8323 (proven skin)
-~/.dotnet/dotnet run --project hosts/web -- --ship slice          # the P2 8-crew slice
-# Structured client (WebGL2 executor via ?exec=webgl2, UI/lighting/dialogue/MOSS):
-~/.dotnet/dotnet run --project hosts/web -- --port 8330   # terminal 1
+# PLAY (the game: dialogue UI, lighting, portraits, MOSS IDE — two terminals):
+~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice   # terminal 1
 python3 client/serve.py                                   # terminal 2 → http://localhost:8331
+#   (click a crew member, press T to talk; ?exec=webgl2 for the GL executor)
+# The page the HOST itself serves (:8323 default) is the LEGACY reference skin —
+# no dialogue UI, no T key; it fooled a playtest once, so the host prints this at boot.
 ~/.dotnet/dotnet run --project hosts/tui -- --play               # terminal skin
 ~/.dotnet/dotnet run --project hosts/tui -- --dump --days 1 --metrics   # agent/CI eyes
 ~/.dotnet/dotnet run --project hosts/tui -- --dump --ship slice  # dump the slice
