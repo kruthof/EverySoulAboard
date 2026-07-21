@@ -141,6 +141,8 @@ namespace Perilune.Llm.Providers
                 providers[name] = new ProviderConfig(key, baseUrl);
             }
 
+            dialogue = AutoRouteDialogue(dialogue, providers, flat);
+
             decimal budget = 0.50m;
             string budgetStr = Get(flat, "budget.usd_per_hour");
             if (!string.IsNullOrEmpty(budgetStr)
@@ -167,6 +169,26 @@ namespace Perilune.Llm.Providers
             string dotEnv = (dotEnvPath != null && File.Exists(dotEnvPath)) ? File.ReadAllText(dotEnvPath) : null;
             string toml = (tomlPath != null && File.Exists(tomlPath)) ? File.ReadAllText(tomlPath) : null;
             return Parse(env, dotEnv, toml);
+        }
+
+        /// <summary>
+        /// "Keys just work": when NO dialogue.backend is configured in any source, a present
+        /// provider key auto-selects the live backend (anthropic first, then openai) with the
+        /// dialogue-lane default model. Explicit configuration always wins — set
+        /// dialogue.backend = "template" (or PERILUNE_LLM_DIALOGUE_BACKEND=template) to force
+        /// offline even with keys on disk. Ollama is never auto-selected (it needs a local
+        /// server the settings can't verify); route it explicitly.
+        /// </summary>
+        private static RouteConfig AutoRouteDialogue(RouteConfig configured,
+            IReadOnlyDictionary<string, ProviderConfig> providers, IReadOnlyDictionary<string, string> flat)
+        {
+            if (Get(flat, "dialogue.backend") != null) return configured; // explicit wins, always
+            string model = Get(flat, "dialogue.model");
+            if (providers["anthropic"].HasKey)
+                return new RouteConfig("anthropic", model ?? "claude-haiku-4-5-20251001");
+            if (providers["openai"].HasKey)
+                return new RouteConfig("openai", model ?? "gpt-4o-mini");
+            return configured;
         }
 
         // ------------------------------------------------------------------
