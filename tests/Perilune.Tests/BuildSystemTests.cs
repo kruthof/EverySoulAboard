@@ -14,11 +14,9 @@ namespace Perilune.Tests
     /// the ConstructionCompletedEvent contract, zero-alloc steady state, twin determinism
     /// and the build.def consumption tripwire.
     ///
-    /// BuildSystem is NOT in SystemStack.CreateDefault (its spine registration is a
-    /// pending contract request), so these tests build an augmented stack — the default
-    /// stack plus a BuildSystem — exactly as the integrator's registration will produce.
-    /// JobSystem resolves the BuildSystem from sim.Systems, so the build path only lights
-    /// up when one is present.
+    /// BuildSystem is spine-registered in SystemStack.CreateDefault; these tests resolve
+    /// the stack's own instance. JobSystem resolves the BuildSystem from sim.Systems, so
+    /// the build path only lights up when one is present.
     /// </summary>
     public class BuildSystemTests
     {
