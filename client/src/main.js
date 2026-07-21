@@ -165,6 +165,7 @@ function onMessage(m) {
     // P2 panels (C5 live): dialogue / citizen / terminal / LLM status.
     case 'chat': Hud.renderChat(m); break;
     case 'citizen': Hud.renderCitizen(m); break;
+    case 'device': Hud.renderDevice(m); break;
     case 'moss': Hud.renderMoss(m); break;
     case 'llmstatus': Hud.renderLlmStatus(m); break;
     default: break;
@@ -183,6 +184,8 @@ document.getElementById('b-move').onclick = () => session.send(Cmd.move());
 // P2 conversation wiring: the dialogue input box sends `say`, closing (× / Esc) sends `bye`.
 Hud.onDialogueSend((sid, text) => session.send(Cmd.say(sid, text)));
 Hud.onDialogueClose((sid) => session.send(Cmd.bye(sid)));
+// P2 MOSS terminal wiring: the drawer's open/install/refresh gestures send `moss {op,tid,text?}`.
+Hud.onTerminalOp((op, tid, text) => session.send(Cmd.moss(op, tid, text)));
 
 inputDispose = installInput({
   canvas, camera, session, getFrame: () => frame, draw, toggleSprites,

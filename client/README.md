@@ -73,7 +73,8 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
   routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
-  resolver + silhouette fallback), `panels.js` (DOM-only dialogue/citizen/terminal shells).
+  resolver + silhouette fallback), **`terminal-model.js`** (PURE MOSS-IDE state machine), `panels.js`
+  + `panel-base.js` + `terminal.js` (DOM-only dialogue/citizen/terminal shells).
 - `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop);
   `makeExecutor(canvas)` genuinely selects the backend from `?exec=canvas2d|webgl2` (default
   `canvas2d`). `webgl2` builds the real `WebGL2Executor` when WebGL2 is available; on a
@@ -193,12 +194,20 @@ strip chip (backend · degraded · $ /hr):
 - **`portraits.js`** — `resolvePortrait(citizen, registry)` maps a `portrait` key to an image, or —
   when the key is unknown/absent (no art yet) — a MANDATORY procedural silhouette (initials over a
   hue hashed deterministically from `cid`). Never throws.
-- **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus): the dialogue window
-  (transcript + streaming indicator + live input box → `say`, close → `bye`), the citizen card
-  (portrait/name/role/mood/traits), and the MOSS terminal drawer (placeholder — the editor/
-  diagnostics land in C6). `#panels` stays empty (view unchanged) until the first chat/citizen/moss
-  message. `selectedCrewCid(frame)` (`wire/messages.js`, PURE) resolves the T-key's target from the
-  crew tuple `[x,y,pv,cid]`.
+- **`terminal-model.js`** — a PURE state machine for the MOSS terminal IDE: the editor lifecycle
+  (`viewing`/`dirty`/`compiling`/`installed`/`error`), diagnostic normalize + sort/merge (by line,
+  col, severity; exact dups collapse), gutter-marker geometry from 1-based (line,col), and a bounded
+  audit ring. `reduceMoss(state, msg)` folds source/diag/audit/rterror, ignoring other-tid messages.
+- **`terminal.js`** — the DOM drawer over that model: a source textarea with a synced line-number
+  gutter + diagnostic markers, a diagnostics list, an audit pane (⟳ = `moss audit`), an Install
+  button (`moss set`), and a runtime-error banner. Opens on a `device {kind:"terminal"}` message
+  (which fires `moss open`); switches its bound `tid` when a different terminal is selected.
+- **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus) over the shared
+  `panel-base.js` chrome: the dialogue window (transcript + streaming indicator + live input box →
+  `say`, close → `bye`), the citizen card (portrait/name/role/mood/traits), and the MOSS terminal
+  drawer (routed to `terminal.js`). `#panels` stays empty (view unchanged) until the first
+  chat/citizen/device/moss message. `selectedCrewCid(frame)` (`wire/messages.js`, PURE) resolves the
+  T-key's target from the crew tuple `[x,y,pv,cid]`.
 
 Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/`MossMsg`/
 `LlmStatusMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss/renderLlmStatus`
@@ -250,6 +259,10 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   `selectedCrewCid` resolver (the T-key target), the full live flow (fixture replay of
   `session_live.jsonl` with interleaved citizen + llmstatus), a mid-session reconnect that resets
   cleanly without wedging, flaky-link tolerance, and interleaved live sessions.
+- `test/terminal.test.js` — C6 MOSS IDE model: the editor state machine (viewing→dirty→compiling→
+  installed / error), diag normalize + sort/merge, gutter-marker layout math, the audit ring cap,
+  unknown-tid / absent-terminal safety + non-mutation, and a real-wire fixture replay
+  (`moss_session.jsonl`: source → multi-error diag → audit → rterror).
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

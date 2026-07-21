@@ -96,16 +96,20 @@ function panels() {
     _panels = new PanelManager();
     _panels.onSend = (sid, text) => onSendHandler(sid, text);
     _panels.onBye = (sid) => onByeHandler(sid);
+    _panels.onMoss = (op, tid, text) => onMossHandler(op, tid, text);
   }
   return _panels;
 }
 
 let onSendHandler = () => {};
 let onByeHandler = () => {};
+let onMossHandler = () => {};
 /** Register a handler for the dialogue input box → `say {sid,text}`. */
 export function onDialogueSend(fn) { onSendHandler = fn || (() => {}); }
 /** Register a handler for a dialogue closing → `bye {sid}`. */
 export function onDialogueClose(fn) { onByeHandler = fn || (() => {}); }
+/** Register a handler for a terminal gesture → `moss {op,tid,text?}`. */
+export function onTerminalOp(fn) { onMossHandler = fn || (() => {}); }
 /** Close the active dialogue (Esc key) — fires the bye handler. No-op when none is open. */
 export function closeActiveDialogue() { if (_panels) _panels.closeActiveDialogue(); }
 
@@ -127,9 +131,15 @@ export function renderCitizen(m) {
   panels().citizen(m, PORTRAIT_REGISTRY);
 }
 
-/** Open/refresh the MOSS terminal drawer. @param {import('../wire/messages.js').MossMsg} m */
+/** A device was selected: open its panel. v0 opens the MOSS terminal drawer for a terminal (which
+ *  fires a `moss open` to fetch its source). @param {import('../wire/messages.js').DeviceMsg} m */
+export function renderDevice(m) {
+  if (m && m.kind === 'terminal') panels().openTerminal(m.tid);
+}
+
+/** Route a MOSS terminal event to the open drawer. @param {import('../wire/messages.js').MossMsg} m */
 export function renderMoss(m) {
-  panels().terminal(m);
+  panels().mossEvent(m);
 }
 
 /** Reflect the LLM backend status in the strip chip: backend name, degraded flag, cost/hr.
