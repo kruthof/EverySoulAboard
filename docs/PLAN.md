@@ -110,6 +110,21 @@ Tauri packaging (macOS, then Windows), performance hardening (binary wire frames
 profiling demands), save-migration soak, difficulty/accessibility, store page assets
 from the art pipeline, external playtests, localization scaffolding decision.
 
+### Extension candidate (recorded 2026-07-21, not scheduled): PERILUNE Cloud
+The game runs in the cloud; subscribers play via desktop app or browser; an iOS/Android
+companion app lets them **chat with their citizens** away from the ship. The architecture
+already fits — headless sim, hosts own IO, semantic JSON wire over WebSocket, sid-keyed
+async conversations, content-keyed static portraits; a mobile chat-only client is exactly
+the `talk/say/bye` + `chat`/`citizen` wire surface, no map renderer needed. Design rules
+current work must honor so this stays cheap (all zero-cost now): no localhost assumptions
+in the client (WS URL from page host; loopback is WebHost policy); CostMeter
+instance-scoped and attributable (per subscriber later); keys host-owned, never on the
+wire; sid/cid semantics never assume a single connected client (broadcast is already
+multi-socket); `line`-authoritative streaming keeps flaky-network/reconnect safe; MEMS
+persistence makes cloud sessions resumable. Business shape: subscription absorbs metered
+LLM cost (the <$0.50/hr default becomes per-subscriber margin); the degradation chain
+(live→Template) doubles as the free-tier/offline story.
+
 ---
 
 ## The 10 workstreams (parallel lanes)
