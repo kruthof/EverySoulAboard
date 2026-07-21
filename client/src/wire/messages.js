@@ -71,7 +71,48 @@
  * @property {string} [text]
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg} WireMsg */
+/**
+ * Per-deck lighting plane (W2). The host RLE-compresses one deck's LightState grid row-major as
+ * [state, count] pairs (WireFormat.Light); the client expands to a flat w*h byte plane. States are
+ * the append-only LightState bytes (0 Unknown/fog · 1 Dead · 2 Emergency · 3 Brownout · 4 Powered).
+ * @typedef {Object} LightMsg
+ * @property {'light'} type
+ * @property {number} deck @property {number} w @property {number} h
+ * @property {[number,number][]} rle   run-length pairs [state, count], row-major
+ */
+
+/**
+ * A `device` selection payload (W3): the interactable the player clicked. v0 carries the
+ * MOSS-addressable terminal id so the client can open its program panel (C6).
+ * @typedef {Object} DeviceMsg
+ * @property {'device'} type @property {string} kind @property {string} [tid]
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg} WireMsg */
+
+/**
+ * Expand a decoded `light` message's RLE runs into a flat row-major LightState plane of length
+ * w*h. Tolerant: a short/over-long run list is clamped to w*h, and a null/garbage message yields
+ * null (the caller then composes with no lighting). Never throws.
+ * @param {LightMsg|null} msg
+ * @returns {Uint8Array|null}
+ */
+export function decodeLightPlane(msg) {
+  if (!msg || msg.type !== 'light' || !Array.isArray(msg.rle)) return null;
+  const total = (msg.w | 0) * (msg.h | 0);
+  if (total <= 0) return new Uint8Array(0);
+  const plane = new Uint8Array(total); // defaults to 0 (Unknown) for any tiles the runs don't cover
+  let i = 0;
+  for (const run of msg.rle) {
+    if (!Array.isArray(run) || run.length < 2) continue;
+    const state = run[0] & 0xff;
+    let count = run[1] | 0;
+    if (count < 0) count = 0;
+    for (let k = 0; k < count && i < total; k++) plane[i++] = state;
+    if (i >= total) break;
+  }
+  return plane;
+}
 
 /**
  * Decode one wire line. Returns the parsed message or null on garbage.

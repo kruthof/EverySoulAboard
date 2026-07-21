@@ -10,6 +10,7 @@ import { chooseBackend, parseFrozenTime } from './render/exec-select.js';
 import { clampCam } from './render/camera.js';
 import { SpriteAssets, spriteMeta, SPRITE_TILE } from './render/sprites.js';
 import { WireSession, Cmd } from './wire/session.js';
+import { decodeLightPlane } from './wire/messages.js';
 import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 
@@ -68,6 +69,11 @@ function fallbackToCanvas2D() {
 
 let frame = null;
 let spriteMode = true;
+// Latest decoded lighting plane per deck (light messages arrive out-of-band from frames). The
+// current deck's plane is fed to composeScene; a deck we haven't received lighting for composes
+// with none (byte-identical to the no-lights path).
+const lightPlanes = new Map();
+const currentLights = () => (frame ? lightPlanes.get(frame.deck) || null : null);
 const sprites = new SpriteAssets(() => { camera.placed = false; layout(); draw(); });
 
 // Camera descriptor (see render/camera.js). tile follows the active skin's tile size.
@@ -100,7 +106,7 @@ function layout() {
 // ---- render: pure compose → thin execute ----
 function draw() {
   if (!frame) return;
-  const list = composeScene(frame, camera, spriteMeta);
+  const list = composeScene(frame, camera, spriteMeta, currentLights());
   executor.execute(list, ctx, {
     camera, sprites, spriteMode,
     timeSec: FROZEN_T != null ? FROZEN_T : (typeof performance !== 'undefined' ? performance.now() : 0) / 1000,
@@ -143,6 +149,11 @@ function onMessage(m) {
       Hud.setChip('s-deck', m.deck); Hud.setChip('s-lens', m.lens);
       Hud.reflectLens(m.lens);
       break;
+    case 'light': {
+      const plane = decodeLightPlane(m);
+      if (plane) { lightPlanes.set(m.deck, plane); if (frame && frame.deck === m.deck) draw(); }
+      break;
+    }
     case 'metrics': Hud.renderMetrics(m); break;
     case 'log': Hud.renderLog(m.lines); break;
     case 'legend': Hud.renderLegend(m.lines); break;

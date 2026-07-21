@@ -3,10 +3,15 @@
 // the exact (frame, camera) fed to composeScene.
 
 import {
-  loadBootFrame, cameras, deriveLensFrame, deriveSelectionFrame, firstFloorTile, cameraOn,
+  loadBootFrame, cameras, deriveLensFrame, deriveSelectionFrame, deriveLightPlane,
+  firstFloorTile, cameraOn,
 } from './helpers.js';
 
-/** @returns {{name:string, frame:any, camera:any}[]} */
+/**
+ * The golden case registry. A case may carry an optional `lights` plane (the decoded LightState
+ * grid); cases without it compose exactly as before (byte-identical no-lights path).
+ * @returns {{name:string, frame:any, camera:any, lights?:Uint8Array}[]}
+ */
 export function goldenCases() {
   const boot = loadBootFrame();
   const cam = cameras(boot);
@@ -24,5 +29,8 @@ export function goldenCases() {
     { name: 'lens_temperature', frame: lensFrame, camera: cam.zoomed },
     // Selection active — the trailing reticle op, camera centred so the tile is visible.
     { name: 'selection', frame: selFrame, camera: cameraOn(selFrame, selTile.x, selTile.y, 1.5) },
+    // C4: lighting composited — a light plane over the mid-ship subset. Dead/Brownout overlays
+    // land on explored tiles (below any wash), and the fog gate drops the light claimed on fog.
+    { name: 'boot_lit', frame: boot, camera: cam.zoomed, lights: deriveLightPlane(boot) },
   ];
 }

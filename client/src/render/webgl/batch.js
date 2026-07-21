@@ -14,7 +14,7 @@
 // A RenderPass is { name, ops }. Every op carries a `kind` discriminator plus integer x,y:
 //   terrain  { kind:'hull'|'void'|'floor'|'debris'|'wall'|'wall_vert', x, y }
 //   entity   { kind:'entity', x, y, sprite, turns, tint, alpha, glyph, pv, overlay }
-//   light    { kind:'light', x, y, ... }                        (passthrough of op:'light')
+//   light    { kind:'light', x, y, state }                      (LightState byte; multiply pass)
 //   overlay  { kind:'wash', x, y, bg } | { kind:'cursor', x, y } | { kind:'reticle', x, y, phase }
 //
 // `sprite` is the atlas key the GL executor should sample, or null when the glyph is drawn
@@ -127,14 +127,8 @@ function entitySprite(o) {
   }
 }
 
-/** Passthrough shape for a future op:'light' DrawOp. Kept permissive: copies known fields. */
+/** An op:'light' DrawOp → the light pass. Carries the LightState byte; the executor maps it to a
+ *  multiply overlay via the palette (webgl2 light pass). Pure passthrough — no clock, no colour. */
 function lightQuad(o) {
-  return {
-    kind: 'light',
-    x: o.x,
-    y: o.y,
-    radius: o.radius,
-    intensity: o.intensity,
-    color: o.color,
-  };
+  return { kind: 'light', x: o.x, y: o.y, state: o.state };
 }

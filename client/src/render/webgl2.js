@@ -24,7 +24,7 @@ import {
   CELL, collectCellKeys, atlasSignature, resolveTerrain, resolveEntity, resolveOverlay,
 } from './rasterplan.js';
 import { transform } from './camera.js';
-import { C, FG } from './palette.js';
+import { C, FG, litOverlay } from './palette.js';
 import * as P from './procedural.js';
 
 /** '#rrggbb' or 'rgb[a](...)' → [r,g,b,a] in 0..1. */
@@ -144,11 +144,25 @@ export class WebGL2Executor {
       gl.drawFlat(new Float32Array(lock), W, H); // amber lands on top of its door (same tile)
     }
 
-    // ---- light: reserved. Empty today → nothing drawn, but the multiply slot is wired for C4. ----
+    // ---- light: per-tile overlay folded into a multiply (dst *= M). The palette gives each
+    //      LightState an over-blend rgba (canvas skin); here we convert (C over dst @ alpha) into
+    //      the equivalent multiply factor M = (1-a) + C*a, pushed as a flat quad with alpha 1 so
+    //      the DST_COLOR,ONE_MINUS_SRC_ALPHA blend resolves to dst*M. Powered/Unknown paint
+    //      nothing (no palette entry), so a fully-lit deck draws zero light quads. ----
     if (light.ops.length) {
-      gl.setBlendMultiply(true);
-      // C4: build + draw the light quads here.
-      gl.setBlendMultiply(false);
+      const mul = [];
+      for (const o of light.ops) {
+        const rgba = litOverlay(o.state);
+        if (!rgba) continue;
+        const c = parseColor(rgba), a = c[3];
+        const X = o.x * T * s + ox, Y = o.y * T * s + oy;
+        pushFlat(mul, X, Y, D, [(1 - a) + c[0] * a, (1 - a) + c[1] * a, (1 - a) + c[2] * a, 1]);
+      }
+      if (mul.length) {
+        gl.setBlendMultiply(true);
+        gl.drawFlat(new Float32Array(mul), W, H);
+        gl.setBlendMultiply(false);
+      }
     }
 
     // ---- overlay: lens wash (flat) then cursor/reticle (cells) ----

@@ -95,7 +95,7 @@ data, never a clock read), so they are golden-tested with no GPU.
 |------------|-------------------------------------------|----------|
 | `terrain`  | hull/void/floor/debris/wall               | `{kind, x, y}` — `kind` (incl. `wall`/`wall_vert`) doubles as the atlas/fill key |
 | `entities` | entity                                    | `{kind:'entity', x, y, sprite, turns, tint, alpha, glyph, pv, overlay}` — `sprite`=atlas key or `null` (procedural); `turns`=facing transform |
-| `light`    | *(reserved)* op:`light`                   | empty until the sim emits lighting DrawOps; the pass slot always exists |
+| `light`    | op:`light`                                | `{kind:'light', x, y, state}` — per-tile LightState overlay (multiply pass); empty when the deck carries no lighting |
 | `overlay`  | wash / cursor / reticle                   | `{kind:'wash'|'cursor'|'reticle', …}`; reticle carries `phase` from `timeSec` |
 
 Pass order is fixed (`terrain < entities < light < overlay`) and within a pass ops keep the
@@ -107,8 +107,9 @@ view) it rasterizes the procedural painters (`procedural.js`) AND the loaded spr
 (`sprites.js`) into ONE canvas-backed atlas at `packAtlas` placements and uploads it once via
 `gl.js`. Per frame it walks the passes into interleaved quad batches: flat hull/void + textured
 base tiles (terrain), atlas sprite or baked procedural cell with facing carried as a UV rotation
-and dim as alpha (entities), the reserved **multiply-blend light slot** (empty today — renders
-nothing, but wired so C4's lighting lands cleanly), and the lens wash + cursor/reticle overlay.
+and dim as alpha (entities), the **multiply-blend light pass** (each `state` byte becomes a
+`dst *= M` darken/tint from `palette.LIGHT`, empty when the deck is fully lit), and the lens wash
++ cursor/reticle overlay (lens reads OVER lighting).
 Which cell each op needs is decided by the PURE `rasterplan.js` (unit-tested); `gl.js` and
 `webgl2.js` are the only DOM/GPU code and are covered by the parity harness below, not node.
 
@@ -155,8 +156,8 @@ Against a live host (`~/.dotnet/dotnet run --project hosts/web -- --port 8330` +
 ### DisplayList op vocabulary (`composeScene` output)
 
 Flat, deterministically-ordered, integer tile coordinates. Tiles are emitted row-major within
-the camera cull window; each tile emits `[base, entity?, wash?, cursor?]`; a single `reticle`
-(if the selected tile is visible) is appended last — reproducing Client.html's draw order.
+the camera cull window; each tile emits `[base, entity?, light?, wash?, cursor?]`; a single
+`reticle` (if the selected tile is visible) is appended last — reproducing Client.html's draw order.
 
 | op        | fields                                   | meaning |
 |-----------|------------------------------------------|---------|
@@ -166,12 +167,14 @@ the camera cull window; each tile emits `[base, entity?, wash?, cursor?]`; a sin
 | `debris`  | x, y                                     | rubble base tile |
 | `wall`    | x, y, vert, face                         | wall: panel when `face`, else hull mass; `vert`=rotated run |
 | `entity`  | x, y, g, fg, dim, role, turns, pv        | device/citizen/item/door on a floor base (`role`/`turns` drive facing sprites, `pv`=pawn variant) |
+| `light`   | x, y, state                              | per-tile LightState overlay (`palette.LIGHT`); below the wash, above entities; only visible states (Dead/Emergency/Brownout) emit |
 | `wash`    | x, y, bg                                 | translucent lens tint (`bg`=lens color id) |
 | `cursor`  | x, y                                     | hover cursor (ATTR_INVERSE) |
 | `reticle` | x, y                                     | selected-crew reticle (drawn last; the executor animates it) |
 
-The **fog gate is first**: an unexplored tile emits *only* a `hull` op (no wash, no cursor) —
-the load-bearing invariant, asserted in `test/scene.test.js`.
+The **fog gate is first**: an unexplored tile emits *only* a `hull` op (no wash, no cursor, no
+`light` — the decoded plane is never trusted to gate itself) — the load-bearing invariant,
+asserted in `test/scene.test.js` + `test/lighting.test.js`.
 
 ## P2 panels: dialogue, citizen card, terminal drawer (`src/ui/`)
 
@@ -230,6 +233,10 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   line-overrides-deltas byte-exact, end-without-line, zero-delta, two interleaved sids, non-
   mutation) and the portrait resolver (deterministic hue, unknown-key silhouette safety). Replays
   the hand-written wire fixtures in `test/fixtures/*.jsonl` end-to-end.
+- `test/lighting.test.js` — C4 lighting: the palette contract, the compose fog gate over an
+  untrusted plane (a light claimed on fog is dropped), the RLE plane decode round-trip + tolerance,
+  no-lights byte-compat, the light-op ordering invariant (after entity, before wash), and
+  canvas2d↔batch routing parity of the overlay.
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

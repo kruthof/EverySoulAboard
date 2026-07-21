@@ -16,7 +16,7 @@ import { PASS_GOLDEN_DIR, composePassGolden } from '../test/helpers.js';
 mkdirSync(PASS_GOLDEN_DIR, { recursive: true });
 for (const c of goldenCases()) {
   const out = join(PASS_GOLDEN_DIR, c.name + '.json');
-  const text = composePassGolden(c.frame, c.camera);
+  const text = composePassGolden(c.frame, c.camera, c.lights);
   writeFileSync(out, text, 'utf8');
   console.log(`wrote passes/${c.name}.json`);
 }

@@ -3,7 +3,7 @@
 // fallback, wall-face/hull-mass, crew variants, facing-aware rotation, lens wash, hover cursor,
 // selection reticle. Implements the Executor shape in executor.js.
 
-import { C, FG, WASH, HULL } from './palette.js';
+import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
 import * as P from './procedural.js';
@@ -40,6 +40,7 @@ export class Canvas2DExecutor {
         case 'debris': this._debris(ctx, T, px, py, useSpr, sprites); break;
         case 'wall': this._wall(ctx, T, px, py, o, useSpr, sprites); break;
         case 'entity': this._entity(ctx, T, px, py, o, useSpr, sprites); break;
+        case 'light': { const c = litOverlay(o.state); if (c) { ctx.fillStyle = c; ctx.fillRect(px, py, T, T); } break; }
         case 'wash': ctx.fillStyle = WASH[o.bg]; ctx.fillRect(px, py, T, T); break;
         case 'cursor': P.paintCursor(ctx, T, px, py); break;
         case 'reticle': P.paintSelection(ctx, T, px, py, timeSec); break;

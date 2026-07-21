@@ -30,6 +30,25 @@ WASH[C.LensCold] = 'rgba(58,180,240,.20)'; WASH[C.LensHot] = 'rgba(255,109,74,.2
 export const ATTR_INVERSE = 1;
 export const ATTR_DIM = 2;
 
+// Per-tile lighting overlay, keyed by the wire's LightState byte (sim/Sim.Glyph LightMapper):
+//   0 Unknown  — fog, never reaches here (compose fog-gates); no overlay
+//   1 Dead     — explored, no functioning light: a heavy near-black overlay
+//   2 Emergency— reserved emergency lighting: a red tint
+//   3 Brownout — a shed (browned-out) network: an amber tint
+//   4 Powered  — lit normally: transparent / no-op (absent from the table)
+// A state with no table entry paints nothing (Powered + Unknown are deliberately absent), so a
+// fully-lit deck adds zero light ops and renders byte-identically to the no-lights path. Canvas2D
+// fills this rgba as a translucent over-blend; the WebGL2 light pass folds it into a multiply.
+export const LIGHT = [];
+LIGHT[1] = 'rgba(6,5,14,.72)';     // Dead — near-black
+LIGHT[2] = 'rgba(224,48,64,.30)';  // Emergency — red
+LIGHT[3] = 'rgba(255,168,54,.20)'; // Brownout — amber
+
+/** The lighting overlay rgba for a LightState byte, or undefined when the state paints nothing. */
+export function litOverlay(state) {
+  return LIGHT[state];
+}
+
 // Solid ship body: deep hull AND unexplored fog render as this one dark mass, so the hull
 // is a consistent solid the crew's movement never "reveals" tile by tile. Space beyond the
 // hull stays the near-black canvas fill (FG[Unknown]), keeping the ship silhouette crisp.

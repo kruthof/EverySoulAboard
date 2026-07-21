@@ -33,7 +33,7 @@ function deepFreeze(v) {
 // ---- RenderPass goldens (one per fixture case) ----
 for (const c of goldenCases()) {
   test(`render-pass golden: ${c.name}`, () => {
-    const produced = composePassGolden(c.frame, c.camera);
+    const produced = composePassGolden(c.frame, c.camera, c.lights);
     const goldenPath = join(PASS_GOLDEN_DIR, c.name + '.json');
     let golden;
     try {
@@ -94,18 +94,19 @@ test('wall face/vert maps to the right terrain kind; deep hull walls fold to hul
   }
 });
 
-// ---- future light pass ----
-test('op:light DrawOps flow into the light pass (empty until the sim emits them)', () => {
+// ---- light pass (C4) ----
+test('op:light DrawOps flow into the light pass (empty until the frame carries lighting)', () => {
   const boot = loadBootFrame();
+  // No lights plane → the light pass exists but is empty (backward compat with the no-lights path).
   const emptyLight = buildPasses(composeScene(boot, cameras(boot).full, ASSETS), { timeSec: 0 })[2];
   assert.deepEqual(emptyLight, { name: 'light', ops: [] });
-  // Synthetic forward-compat op:'light' — the batcher must route it, not drop it.
+  // A compose op:'light' carries its LightState byte; the batcher routes it, carrying state through.
   const withLight = buildPasses(
-    [{ op: 'floor', x: 0, y: 0 }, { op: 'light', x: 1, y: 2, radius: 3, intensity: 0.7, color: 4 }],
+    [{ op: 'floor', x: 0, y: 0 }, { op: 'light', x: 1, y: 2, state: 3 }],
     { timeSec: 0 },
   );
   assert.equal(withLight[0].ops.length, 1, 'floor → terrain');
-  assert.deepEqual(withLight[2].ops, [{ kind: 'light', x: 1, y: 2, radius: 3, intensity: 0.7, color: 4 }]);
+  assert.deepEqual(withLight[2].ops, [{ kind: 'light', x: 1, y: 2, state: 3 }]);
 });
 
 // ---- reticle phase is data derived from timeSec (not a clock read) ----
