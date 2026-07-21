@@ -251,6 +251,44 @@ namespace Perilune.Sim
             public float MaxOpinion;
             /// <summary>SocialSystem clamp floor. Current: −100.</summary>
             public float MinOpinion;
+
+            // --- Relationship-type hysteresis thresholds (S1). Classification enters a
+            // type at the ENTER opinion and only leaves at the EXIT opinion (nearer zero),
+            // so a type never flickers on a jittering opinion. Eight independent knobs. ---
+            /// <summary>SocialSystem — opinion at/above which None→Friend. Current: 30.</summary>
+            public float FriendEnterOpinion;
+            /// <summary>SocialSystem — opinion below which Friend→None. Current: 20.</summary>
+            public float FriendExitOpinion;
+            /// <summary>SocialSystem — opinion at/above which →CloseFriend. Current: 60.</summary>
+            public float CloseFriendEnterOpinion;
+            /// <summary>SocialSystem — opinion below which CloseFriend→Friend. Current: 45.</summary>
+            public float CloseFriendExitOpinion;
+            /// <summary>SocialSystem — opinion at/below which None→Rival. Current: −30.</summary>
+            public float RivalEnterOpinion;
+            /// <summary>SocialSystem — opinion above which Rival→None. Current: −20.</summary>
+            public float RivalExitOpinion;
+            /// <summary>SocialSystem — opinion at/below which →Enemy. Current: −60.</summary>
+            public float EnemyEnterOpinion;
+            /// <summary>SocialSystem — opinion above which Enemy→Rival. Current: −45.</summary>
+            public float EnemyExitOpinion;
+
+            // --- Argument / bond generation (S1). Each co-located pair rolls once per
+            // pass against these rates when its gate is open; a fire applies the delta
+            // through the single Nudge entry point and publishes the event. ---
+            /// <summary>SocialSystem — per-pass argument probability when the gate is open. Current: 0.05.</summary>
+            public float ArgumentChancePerPass;
+            /// <summary>SocialSystem — per-pass bond probability when the gate is open. Current: 0.02.</summary>
+            public float BondChancePerPass;
+            /// <summary>SocialSystem — argument gate: min mood in the pair must be below this. Current: 0.</summary>
+            public float ArgumentMoodThreshold;
+            /// <summary>SocialSystem — argument gate: from→to opinion must be at/below this. Current: −20.</summary>
+            public float ArgumentOpinionCeiling;
+            /// <summary>SocialSystem — bond gate: from→to opinion must be at/above this. Current: 20.</summary>
+            public float BondOpinionFloor;
+            /// <summary>SocialSystem — opinion delta (both directions) applied on an argument. Current: −8.</summary>
+            public float ArgumentOpinionDelta;
+            /// <summary>SocialSystem — opinion delta (both directions) applied on a bond. Current: 5.</summary>
+            public float BondOpinionDelta;
         }
 
         /// <summary>NavSystem space-layer tuning (1 Hz pass; Dt interval-paired). Chart
@@ -402,6 +440,23 @@ namespace Perilune.Sim
                     DecayPerHour = 0.1f,
                     MaxOpinion = 100f,
                     MinOpinion = -100f,
+
+                    FriendEnterOpinion = 30f,
+                    FriendExitOpinion = 20f,
+                    CloseFriendEnterOpinion = 60f,
+                    CloseFriendExitOpinion = 45f,
+                    RivalEnterOpinion = -30f,
+                    RivalExitOpinion = -20f,
+                    EnemyEnterOpinion = -60f,
+                    EnemyExitOpinion = -45f,
+
+                    ArgumentChancePerPass = 0.05f,
+                    BondChancePerPass = 0.02f,
+                    ArgumentMoodThreshold = 0f,
+                    ArgumentOpinionCeiling = -20f,
+                    BondOpinionFloor = 20f,
+                    ArgumentOpinionDelta = -8f,
+                    BondOpinionDelta = 5f,
                 },
 
                 Nav = new NavDefs
@@ -433,8 +488,8 @@ namespace Perilune.Sim
         /// order (floats/doubles via their exact bits, so formatting never matters —
         /// only the numeric value). Order: RadiatorRejectKW → each machine row (8 fields)
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
-        /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields).
-        /// Appending a field
+        /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
+        /// → Social S1 tunables (15 fields, appended). Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -536,6 +591,25 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Nav.TransitSpeedMmPerS);
             h = XxHash64.Combine(h, Nav.TelescopeSnrThreshold);
             h = XxHash64.Combine(h, Nav.TelescopeReferenceRangeMm);
+
+            // Social S1 relationship-type + argument/bond tunables, APPENDED here (after
+            // the original Social(4)/Nav(5) folds, before the rules fold) so every prior
+            // checksum stays byte-comparable.
+            h = XxHash64.Combine(h, Social.FriendEnterOpinion);
+            h = XxHash64.Combine(h, Social.FriendExitOpinion);
+            h = XxHash64.Combine(h, Social.CloseFriendEnterOpinion);
+            h = XxHash64.Combine(h, Social.CloseFriendExitOpinion);
+            h = XxHash64.Combine(h, Social.RivalEnterOpinion);
+            h = XxHash64.Combine(h, Social.RivalExitOpinion);
+            h = XxHash64.Combine(h, Social.EnemyEnterOpinion);
+            h = XxHash64.Combine(h, Social.EnemyExitOpinion);
+            h = XxHash64.Combine(h, Social.ArgumentChancePerPass);
+            h = XxHash64.Combine(h, Social.BondChancePerPass);
+            h = XxHash64.Combine(h, Social.ArgumentMoodThreshold);
+            h = XxHash64.Combine(h, Social.ArgumentOpinionCeiling);
+            h = XxHash64.Combine(h, Social.BondOpinionFloor);
+            h = XxHash64.Combine(h, Social.ArgumentOpinionDelta);
+            h = XxHash64.Combine(h, Social.BondOpinionDelta);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

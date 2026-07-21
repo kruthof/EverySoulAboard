@@ -14,3 +14,27 @@ familiarize_per_hour = 2     # opinion points/hour, both directions, while shari
 decay_per_hour       = 0.1   # points/hour every opinion relaxes toward 0
 max_opinion          = 100   # clamp ceiling
 min_opinion          = -100  # clamp floor
+
+# --- Relationship-type hysteresis (S1) --------------------------------------
+# Each type enters at its ENTER opinion and only leaves at its EXIT opinion
+# (nearer zero), so a jittering opinion never flickers the type. Publishes a
+# RelationshipChangedEvent on every transition.
+friend_enter_opinion        = 30    # None -> Friend at/above this
+friend_exit_opinion         = 20    # Friend -> None below this
+close_friend_enter_opinion  = 60    # -> CloseFriend at/above this
+close_friend_exit_opinion   = 45    # CloseFriend -> Friend below this
+rival_enter_opinion         = -30   # None -> Rival at/below this
+rival_exit_opinion          = -20   # Rival -> None above this
+enemy_enter_opinion         = -60   # -> Enemy at/below this
+enemy_exit_opinion          = -45   # Enemy -> Rival above this
+
+# --- Argument / bond generation (S1) ----------------------------------------
+# A co-located pair rolls once per pass when its gate is open; a fire applies
+# the delta through the single Nudge clamp and publishes ArgumentEvent/BondEvent.
+argument_chance_per_pass = 0.05  # per-pass argument probability (gate open)
+bond_chance_per_pass     = 0.02  # per-pass bond probability (gate open)
+argument_mood_threshold  = 0     # argument gate: min mood in the pair below this
+argument_opinion_ceiling = -20   # argument gate: from->to opinion at/below this
+bond_opinion_floor       = 20    # bond gate: from->to opinion at/above this
+argument_opinion_delta   = -8    # opinion delta (both ways) on an argument
+bond_opinion_delta       = 5     # opinion delta (both ways) on a bond

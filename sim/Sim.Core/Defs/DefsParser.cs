@@ -283,6 +283,21 @@ namespace Perilune.Sim
                 case "decay_per_hour": if (F(v, k, loc, p, out var b)) d.Social.DecayPerHour = b; return true;
                 case "max_opinion": if (F(v, k, loc, p, out var c)) d.Social.MaxOpinion = c; return true;
                 case "min_opinion": if (F(v, k, loc, p, out var e)) d.Social.MinOpinion = e; return true;
+                case "friend_enter_opinion": if (F(v, k, loc, p, out var f)) d.Social.FriendEnterOpinion = f; return true;
+                case "friend_exit_opinion": if (F(v, k, loc, p, out var g)) d.Social.FriendExitOpinion = g; return true;
+                case "close_friend_enter_opinion": if (F(v, k, loc, p, out var h)) d.Social.CloseFriendEnterOpinion = h; return true;
+                case "close_friend_exit_opinion": if (F(v, k, loc, p, out var i)) d.Social.CloseFriendExitOpinion = i; return true;
+                case "rival_enter_opinion": if (F(v, k, loc, p, out var j)) d.Social.RivalEnterOpinion = j; return true;
+                case "rival_exit_opinion": if (F(v, k, loc, p, out var l)) d.Social.RivalExitOpinion = l; return true;
+                case "enemy_enter_opinion": if (F(v, k, loc, p, out var m)) d.Social.EnemyEnterOpinion = m; return true;
+                case "enemy_exit_opinion": if (F(v, k, loc, p, out var n)) d.Social.EnemyExitOpinion = n; return true;
+                case "argument_chance_per_pass": if (F(v, k, loc, p, out var o)) d.Social.ArgumentChancePerPass = o; return true;
+                case "bond_chance_per_pass": if (F(v, k, loc, p, out var q)) d.Social.BondChancePerPass = q; return true;
+                case "argument_mood_threshold": if (F(v, k, loc, p, out var r)) d.Social.ArgumentMoodThreshold = r; return true;
+                case "argument_opinion_ceiling": if (F(v, k, loc, p, out var s)) d.Social.ArgumentOpinionCeiling = s; return true;
+                case "bond_opinion_floor": if (F(v, k, loc, p, out var t)) d.Social.BondOpinionFloor = t; return true;
+                case "argument_opinion_delta": if (F(v, k, loc, p, out var u)) d.Social.ArgumentOpinionDelta = u; return true;
+                case "bond_opinion_delta": if (F(v, k, loc, p, out var w)) d.Social.BondOpinionDelta = w; return true;
                 default: return false;
             }
         }
