@@ -143,11 +143,39 @@ shape structurally:
   channels, a modding community gets the identical toolkit for free — RimWorld's
   actual retention engine.
 
+## Art ambition: strictly better than RimWorld, on a narrower surface
+
+RimWorld's visual bar is low — small static top-down sprites, flat lighting, almost no
+animation. We intend to beat it decisively, and the way we can afford to is *focus*:
+every art dollar goes to one controlled surface (ship interiors, the crew, space seen
+through sensors and windows) instead of being spread across biomes, terrain, flora and
+fauna we don't need. The fidelity bar, concretely (targets owned by WS-ART/WS-CLIENT
+in `PLAN.md`):
+
+- **Native 128 px tiles** (double RimWorld's density; the shipped cyberpunk set is
+  already 128) with per-asset scale grounding, facings, and per-crew stable variants.
+- **Light is simulation.** Dynamic per-room lighting driven by the power sim — powered,
+  brownout-amber, emergency-red, dead-dark; emissive machine states; breach and vacuum
+  read visually. The art direction and the power system are the same feature.
+- **Motion**: crew walk/carry/work cycles, machine animation states, door pressure
+  hiss, atmosphere particles (venting fog, drifting dust), a living ship — not a
+  diorama of statues.
+- **Portraits** as identity anchors (persona-conditioned generation; portraits carry
+  emotional connection in a colony sim — invest there, not in facial animation).
+- **Cohesion enforced by pipeline, not discipline**: spritegen's palette-lock /
+  hue-harmonisation, seam metrics, and regression contact sheets keep every asset —
+  including future DLC packs — in one style by construction.
+- **The screenshot test** (P2 exit): one unstaged frame of the slice ship must read
+  *obviously* better than a RimWorld frame — density, lighting, mood. If it doesn't,
+  WS-ART/WS-CLIENT stop feature work until it does.
+
 ## What we are explicitly NOT building
 
-- Planetfall colony-building (we'd be RimWorld with extra steps and worse art).
+- Planetfall colony-building — not an ambition limit but a focus decision: competing
+  with a decade of RimWorld's biome/creature content breadth would dilute exactly the
+  art and sim budget we're concentrating to *beat* it on fidelity per screen.
 - A 3D presentation. Dead. The glyph→skin projection is the presentation architecture;
-  the web (sprite) skin is the shipping face, RimWorld-fidelity 2D.
+  the web (sprite) skin is the shipping face — 2D at better-than-RimWorld fidelity.
 - LLM-as-simulation. The LLM never decides facts, owns state, or rolls outcomes.
 - Multiplayer, consoles, mobile. Desktop (macOS first, Windows at beta) via a packaged
   web client; browser dev-mode forever.

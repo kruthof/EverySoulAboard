@@ -76,7 +76,9 @@ One authored ship, ~8 crew, no combat. Success = the VISION feel-test moments ex
 - Chronicle v1: day entries rendered from HistorySystem; a death produces a eulogy
   referencing real shared memories.
 - Client: inspector panels, dialogue window, citizen cards, portraits (art pipeline),
-  RimWorld-grade readability at two zoom levels.
+  readability at two zoom levels, first sim-driven lighting pass — and the
+  **screenshot test** (VISION.md "Art ambition"): one unstaged slice frame must read
+  obviously better than RimWorld or WS-ART/WS-CLIENT halt feature work until it does.
 - Director v0: tension curve computed; one lever (Lien sortie window from legacy
   campaign OR life-support stress via designer rules) modulated within visible bounds.
 - MOSS terminal IDE in-client (editor + diagnostics + audit log).
@@ -166,11 +168,13 @@ parity port of the canvas skin + golden render tests. P2: the slice UI. Never bl
 on sim lanes: builds against recorded wire fixtures.
 
 **WS-ART — Pipeline & content art** (`art/spritegen/`, sprite specs in packs)
-Pipeline evolution: portraits (persona-conditioned prompts), tileset variants,
-palette/theming per pack, contact-sheet curation UX, style-lock regression shots.
-P1: portrait pipeline v0 + one full ship tileset refresh. P2: slice art complete
-(crew portraits, furniture, lenses). Produces sprite sets consumed by WS-CLIENT
-via the SPRITEGEN integration contract (never hand-edited).
+Owns the VISION.md fidelity bar jointly with WS-CLIENT: 128 px density, animation
+frame sets/state variants, portraits (persona-conditioned prompts), palette/theming
+per pack, contact-sheet curation UX, style-lock regression shots, seam metrics.
+P1: portrait pipeline v0 + one full ship tileset refresh + first animation-state
+sprite sets (machine on/off/broken, pawn walk frames). P2: slice art complete —
+and passes the screenshot test. Produces sprite sets consumed by WS-CLIENT via the
+SPRITEGEN integration contract (never hand-edited).
 
 **WS-MOSS — Automation & terminals** (`sim/Sim.Dsl/`)
 v1 language (`on event:`, variables, script messaging), controller-module gating,

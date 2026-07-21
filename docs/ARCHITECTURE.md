@@ -75,8 +75,10 @@ GlyphBuffer: W×H (glyph, semantic fg/bg, attr) + side-channels (crew variants, 
 
 The wire carries **semantic ids only** — the client owns every pixel, so art direction
 changes (or a DLC restyle) never touch the sim or the wire. The client grows from the
-proven vanilla-canvas skin toward RimWorld fidelity in stages: layered WebGL sprite
-renderer (floor/wall/furniture/pawn/overlay layers, per-tile facing/variants), HTML/CSS
+proven vanilla-canvas skin *past* RimWorld fidelity in stages (the concrete bar lives
+in VISION.md "Art ambition"): layered WebGL sprite renderer (floor/wall/furniture/
+pawn/overlay layers, per-tile facing/variants), a sim-driven dynamic lighting pass
+(power states, emissives, breach effects), animation states, HTML/CSS
 for all UI chrome (inspector panels, dialogue window, terminal IDE, chronicle reader —
 a huge velocity advantage over engine-native UI), packaged with Tauri for desktop at
 beta. Wire format may gain a binary frame encoding when profiling demands it; the

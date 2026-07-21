@@ -1,7 +1,8 @@
 # PERILUNE
 
 A colony simulation aboard the drifting ship **MSV Perilune** — Dwarf-Fortress-deep
-systems, RimWorld-grade presentation, and a crew of people you can actually talk to:
+systems, 2D presentation aiming decisively past RimWorld's fidelity, and a crew of
+people you can actually talk to:
 LLM-performed, simulation-adjudicated, remembered forever in the ship's chronicle.
 
 - **Vision & differentiation:** [docs/VISION.md](docs/VISION.md)
