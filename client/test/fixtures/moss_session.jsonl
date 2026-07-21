@@ -1,0 +1,4 @@
+{"type":"moss","ev":"source","tid":"t1","text":"when power < 0.3 do\n  alert crew\nend","hash":2882343476}
+{"type":"moss","ev":"diag","tid":"t1","ok":false,"diags":[[2,3,"error","unknown verb 'alert'"],[1,1,"warning","rule has no cooldown"],[2,3,"error","unknown verb 'alert'"]]}
+{"type":"moss","ev":"audit","tid":"t1","lines":[[1200,"rule installed"],[1500,"rule matched: power 0.28"]]}
+{"type":"moss","ev":"rterror","tid":"t1","text":"runtime: verb 'alert' is not bound"}

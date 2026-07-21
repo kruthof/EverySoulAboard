@@ -14,6 +14,7 @@ import {
   resolveTerrain, resolveEntity, resolveOverlay, collectCellKeys, atlasSignature, CELL, LOCK_TINT,
 } from '../src/render/rasterplan.js';
 import { chooseBackend, parseFrozenTime } from '../src/render/exec-select.js';
+import { C } from '../src/render/palette.js';
 
 function deepFreeze(v) {
   if (v && typeof v === 'object' && !Object.isFrozen(v)) {
@@ -124,4 +125,49 @@ test('atlasSignature changes with sprite mode, is stable per input, and never mu
 
 test('CELL is the sprite tile resolution (1:1 sprite cells)', () => {
   assert.equal(CELL, 128);
+});
+
+// ---- C7 animation variants: walk frames + device states thread through rasterplan ----
+
+const crewQuad = (x, y, sprite = 'pawn') => ({ kind: 'entity', x, y, sprite, glyph: 64, tint: 5, alpha: 1 });
+const devQuad = (sprite, tint, alpha) => ({ kind: 'entity', x: 1, y: 1, sprite, glyph: 70, tint, alpha });
+
+test('resolveEntity samples a walk-frame cell for a walking pawn (by timeSec), base otherwise', () => {
+  const frames = { pawn: ['a', 'b'] };
+  const motion = { '2,2': { walking: true } };
+  assert.equal(resolveEntity(crewQuad(2, 2), true, { frames, motion, timeSec: 0 }).cell, 'spr:pawn#w0');
+  assert.equal(resolveEntity(crewQuad(2, 2), true, { frames, motion, timeSec: 1 / 6 }).cell, 'spr:pawn#w1');
+  // standing pawn (no motion entry) → base cell; and no opts at all → base (backward compat)
+  assert.equal(resolveEntity(crewQuad(2, 2), true, { frames, motion: {}, timeSec: 0 }).cell, 'spr:pawn');
+  assert.equal(resolveEntity(crewQuad(2, 2), true).cell, 'spr:pawn');
+});
+
+test('resolveEntity samples a device state variant from colour/dim when the art exists, else base', () => {
+  const states = { scrubber: { broken: 'x', off: 'y' } };
+  assert.equal(resolveEntity(devQuad('scrubber', C.Broken, 1), true, { states }).cell, 'spr:scrubber#broken');
+  assert.equal(resolveEntity(devQuad('scrubber', C.DeviceDim, 0.7), true, { states }).cell, 'spr:scrubber#off');
+  assert.equal(resolveEntity(devQuad('scrubber', C.Device, 1), true, { states }).cell, 'spr:scrubber');
+  // a role absent from the states map → base (absence-tolerant)
+  assert.equal(resolveEntity(devQuad('solar', C.Broken, 1), true, { states }).cell, 'spr:solar');
+});
+
+test('collectCellKeys bakes EVERY walk frame for a walking pawn so the atlas is timeSec-stable', () => {
+  const frames = { pawn: ['a', 'b'] };
+  const passes = buildPasses([{ op: 'entity', x: 2, y: 2, g: 64, fg: 5, dim: false, role: null, turns: 0, pv: 0 }], {});
+  const walking = { frames, motion: { '2,2': { walking: true } }, timeSec: 0 };
+  const keys = collectCellKeys(passes, true, walking);
+  assert.ok(keys.includes('spr:pawn#w0') && keys.includes('spr:pawn#w1'), 'both frames baked');
+  // the atlas signature is identical across timeSec (all frames present, only the sample changes)…
+  assert.equal(atlasSignature(passes, true, { ...walking, timeSec: 0 }),
+    atlasSignature(passes, true, { ...walking, timeSec: 5 }));
+  // …but differs from the standing case (a different cell set → a rebuild when walking begins)
+  assert.notEqual(atlasSignature(passes, true, walking), atlasSignature(passes, true, {}));
+});
+
+test('static scenes are unaffected: no motion/maps → the same cell set as before (goldens stable)', () => {
+  const boot = loadBootFrame();
+  const passes = buildPasses(composeScene(boot, cameras(boot).full, ASSETS), { timeSec: 0 });
+  // collectCellKeys with empty C7 opts must equal the legacy two-arg call.
+  assert.deepEqual(collectCellKeys(passes, true, {}), collectCellKeys(passes, true));
+  assert.equal(atlasSignature(passes, true, {}), atlasSignature(passes, true));
 });

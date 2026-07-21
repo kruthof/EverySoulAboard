@@ -7,7 +7,8 @@
 //
 // A "cell key" is a stable string naming a rasterized atlas tile:
 //   terrain:{floor|wall|wall_vert|debris}   base terrain (sprite image OR procedural painter)
-//   spr:{name}                              a loaded sprite image (sprite mode)
+//   spr:{name}                              a loaded sprite image (sprite mode); {name} may be a C7
+//                                           animation variant: {role}#broken/#off, {pawn}#w{frame}
 //   proc:{glyphCode}:{colorId}              a procedural entity glyph baked at its effective colour
 //   overlay:{cursor|reticle}                the vector hover cursor / selection reticle art
 // hull/void terrain and the lens wash are flat fills — no cell, just a colour.
@@ -18,6 +19,9 @@
 // toggle, or a new glyph/colour scrolls into view) — and not every frame.
 
 import { C, FG, HULL, WASH } from './palette.js';
+import { deviceSpriteKey, pawnSpriteKey, pawnFrameKeys } from './motion.js';
+
+const G_CITIZEN = 64; // '@'
 
 /** Atlas cell raster resolution (px). Matches the sprite tile so sprite cells are 1:1. */
 export const CELL = 128;
@@ -43,20 +47,40 @@ export function resolveTerrain(op) {
 }
 
 /**
+ * The sprite key an entity samples in sprite mode, honouring C7 animation variants when the caller
+ * supplies the art maps + motion: a walking pawn cycles its SPRITE_FRAMES (by `timeSec`), a device
+ * picks its SPRITE_STATES broken/off variant from its colour/dim. Absent maps → the base key.
+ * @param {{sprite:string, glyph:number, tint:number, alpha?:number, x?:number, y?:number}} op
+ * @param {{motion?:Object, timeSec?:number, states?:Object, frames?:Object}} opts
+ * @returns {string}
+ */
+function spriteVariant(op, opts) {
+  const base = op.sprite;
+  if (op.glyph === G_CITIZEN && opts.frames) {
+    const entry = opts.motion && opts.motion[op.x + ',' + op.y];
+    return pawnSpriteKey(base, !!(entry && entry.walking), opts.timeSec || 0, opts.frames);
+  }
+  if (opts.states) return deviceSpriteKey(base, op.tint, op.alpha != null && op.alpha < 1, opts.states);
+  return base;
+}
+
+/**
  * Resolve an entity op (from batch.js) to a textured quad spec. In sprite mode a resolved sprite
  * key samples the sprite cell (with facing `turns` + a locked-door overlay); otherwise — no sprite
  * for this glyph, or sprites off/not loaded — it samples a procedural cell keyed by glyph+colour
  * (the effective colour already folds dim → DeviceDim, via batch.js `tint`). Alpha carries the
- * dim (0.7) fade so cells stay colour-baked but un-faded, exactly like canvas2d.
- * @param {{sprite:(string|null),turns?:number,tint:number,alpha?:number,glyph:number,overlay?:(string|null)}} op
+ * dim (0.7) fade so cells stay colour-baked but un-faded, exactly like canvas2d. `opts` (optional,
+ * C7) threads the animation maps + motion so a walking pawn / broken device samples its variant.
+ * @param {{sprite:(string|null),turns?:number,tint:number,alpha?:number,glyph:number,overlay?:(string|null),x?:number,y?:number}} op
  * @param {boolean} useSpr
+ * @param {{motion?:Object, timeSec?:number, states?:Object, frames?:Object}} [opts]
  * @returns {{cell:string,alpha:number,turns:number,overlay:(string|null)}}
  */
-export function resolveEntity(op, useSpr) {
+export function resolveEntity(op, useSpr, opts = {}) {
   const alpha = op.alpha == null ? 1 : op.alpha;
   if (useSpr && op.sprite) {
     return {
-      cell: 'spr:' + op.sprite,
+      cell: 'spr:' + spriteVariant(op, opts),
       alpha,
       turns: op.turns || 0,
       overlay: op.overlay === 'lock-tint' ? LOCK_TINT : null,
@@ -90,13 +114,24 @@ export function resolveOverlay(op) {
  * @param {boolean} useSpr
  * @returns {string[]}
  */
-export function collectCellKeys(passes, useSpr) {
+export function collectCellKeys(passes, useSpr, opts = {}) {
   const keys = new Set();
   for (const p of passes) {
     for (const o of p.ops) {
+      if (p.name === 'entities') {
+        // A walking pawn bakes ALL its walk frames into the atlas so the atlas stays stable as
+        // timeSec advances (only the SAMPLED frame changes per-frame, never the atlas contents).
+        if (useSpr && o.sprite && o.glyph === G_CITIZEN && opts.frames &&
+            opts.motion && opts.motion[o.x + ',' + o.y] && opts.motion[o.x + ',' + o.y].walking) {
+          for (const k of pawnFrameKeys(o.sprite, opts.frames)) keys.add('spr:' + k);
+          continue;
+        }
+        const spec = resolveEntity(o, useSpr, opts);
+        if (spec.cell) keys.add(spec.cell);
+        continue;
+      }
       let spec = null;
       if (p.name === 'terrain') spec = resolveTerrain(o);
-      else if (p.name === 'entities') spec = resolveEntity(o, useSpr);
       else if (p.name === 'overlay') spec = resolveOverlay(o);
       if (spec && spec.cell) keys.add(spec.cell);
     }
@@ -112,6 +147,6 @@ export function collectCellKeys(passes, useSpr) {
  * @param {boolean} useSpr
  * @returns {string}
  */
-export function atlasSignature(passes, useSpr) {
-  return (useSpr ? 's' : 'p') + '|' + collectCellKeys(passes, useSpr).join(',');
+export function atlasSignature(passes, useSpr, opts = {}) {
+  return (useSpr ? 's' : 'p') + '|' + collectCellKeys(passes, useSpr, opts).join(',');
 }

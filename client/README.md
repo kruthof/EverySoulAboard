@@ -56,8 +56,9 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
 - `src/wire/` — `messages.js` (typed decode) + `session.js` (WebSocket + `Cmd` constructors).
 - `src/render/` — `palette.js` (GlyphColor→RGB), `camera.js` (transform/cull/zoom/pan, pure),
   `glyphs.js` (neighbour + facing logic, pure), **`compose.js`** (the pure core),
-  `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime),
-  `canvas2d.js` (the Canvas2D executor), `executor.js` (the two-backend interface + contract).
+  `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime + C7 animation
+  variants), `motion.js` (pure animation runtime), `canvas2d.js` (the Canvas2D executor),
+  `executor.js` (the two-backend interface + contract).
 - `src/render/webgl/` — the WebGL2 backend's **pure** halves plus the thin GL layer: `batch.js`
   (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js` (`packAtlas` — sprite-atlas
   placement + UV math) are No-DOM/No-GL and golden-tested; `gl.js` is the ONLY GPU-touching module
@@ -70,10 +71,16 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
   `buildPasses` into batched quads through `gl.js`. Same `.execute(list, ctx, opts)` shape as
   Canvas2D. DOM/GPU glue only — every decision is in the pure modules above.
 - `src/render/exec-select.js` — **pure** backend + `?t=` time-freeze selection (unit-tested).
+- `src/render/motion.js` — **pure** C7 animation runtime: per-cid tracking across frames
+  (`trackMotion` — walk vs teleport/deck/fog-reveal/despawn), the deterministic walk-cycle frame
+  index + sub-tile interpolation (`walkFrameIndex`/`walkOffset` — `timeSec`/`progress` as inputs),
+  and the absence-tolerant sprite-variant selectors (`deviceSpriteKey`/`pawnSpriteKey`). Both
+  executors consume it; compose stays time-free, so a fixed `timeSec` is fully deterministic.
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
   routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
-  resolver + silhouette fallback), `panels.js` (DOM-only dialogue/citizen/terminal shells).
+  resolver + silhouette fallback), **`terminal-model.js`** (PURE MOSS-IDE state machine), `panels.js`
+  + `panel-base.js` + `terminal.js` (DOM-only dialogue/citizen/terminal shells).
 - `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop);
   `makeExecutor(canvas)` genuinely selects the backend from `?exec=canvas2d|webgl2` (default
   `canvas2d`). `webgl2` builds the real `WebGL2Executor` when WebGL2 is available; on a
@@ -95,7 +102,7 @@ data, never a clock read), so they are golden-tested with no GPU.
 |------------|-------------------------------------------|----------|
 | `terrain`  | hull/void/floor/debris/wall               | `{kind, x, y}` — `kind` (incl. `wall`/`wall_vert`) doubles as the atlas/fill key |
 | `entities` | entity                                    | `{kind:'entity', x, y, sprite, turns, tint, alpha, glyph, pv, overlay}` — `sprite`=atlas key or `null` (procedural); `turns`=facing transform |
-| `light`    | *(reserved)* op:`light`                   | empty until the sim emits lighting DrawOps; the pass slot always exists |
+| `light`    | op:`light`                                | `{kind:'light', x, y, state}` — per-tile LightState overlay (multiply pass); empty when the deck carries no lighting |
 | `overlay`  | wash / cursor / reticle                   | `{kind:'wash'|'cursor'|'reticle', …}`; reticle carries `phase` from `timeSec` |
 
 Pass order is fixed (`terrain < entities < light < overlay`) and within a pass ops keep the
@@ -107,8 +114,9 @@ view) it rasterizes the procedural painters (`procedural.js`) AND the loaded spr
 (`sprites.js`) into ONE canvas-backed atlas at `packAtlas` placements and uploads it once via
 `gl.js`. Per frame it walks the passes into interleaved quad batches: flat hull/void + textured
 base tiles (terrain), atlas sprite or baked procedural cell with facing carried as a UV rotation
-and dim as alpha (entities), the reserved **multiply-blend light slot** (empty today — renders
-nothing, but wired so C4's lighting lands cleanly), and the lens wash + cursor/reticle overlay.
+and dim as alpha (entities), the **multiply-blend light pass** (each `state` byte becomes a
+`dst *= M` darken/tint from `palette.LIGHT`, empty when the deck is fully lit), and the lens wash
++ cursor/reticle overlay (lens reads OVER lighting).
 Which cell each op needs is decided by the PURE `rasterplan.js` (unit-tested); `gl.js` and
 `webgl2.js` are the only DOM/GPU code and are covered by the parity harness below, not node.
 
@@ -155,8 +163,8 @@ Against a live host (`~/.dotnet/dotnet run --project hosts/web -- --port 8330` +
 ### DisplayList op vocabulary (`composeScene` output)
 
 Flat, deterministically-ordered, integer tile coordinates. Tiles are emitted row-major within
-the camera cull window; each tile emits `[base, entity?, wash?, cursor?]`; a single `reticle`
-(if the selected tile is visible) is appended last — reproducing Client.html's draw order.
+the camera cull window; each tile emits `[base, entity?, light?, wash?, cursor?]`; a single
+`reticle` (if the selected tile is visible) is appended last — reproducing Client.html's draw order.
 
 | op        | fields                                   | meaning |
 |-----------|------------------------------------------|---------|
@@ -166,17 +174,23 @@ the camera cull window; each tile emits `[base, entity?, wash?, cursor?]`; a sin
 | `debris`  | x, y                                     | rubble base tile |
 | `wall`    | x, y, vert, face                         | wall: panel when `face`, else hull mass; `vert`=rotated run |
 | `entity`  | x, y, g, fg, dim, role, turns, pv        | device/citizen/item/door on a floor base (`role`/`turns` drive facing sprites, `pv`=pawn variant) |
+| `light`   | x, y, state                              | per-tile LightState overlay (`palette.LIGHT`); below the wash, above entities; only visible states (Dead/Emergency/Brownout) emit |
 | `wash`    | x, y, bg                                 | translucent lens tint (`bg`=lens color id) |
 | `cursor`  | x, y                                     | hover cursor (ATTR_INVERSE) |
 | `reticle` | x, y                                     | selected-crew reticle (drawn last; the executor animates it) |
 
-The **fog gate is first**: an unexplored tile emits *only* a `hull` op (no wash, no cursor) —
-the load-bearing invariant, asserted in `test/scene.test.js`.
+The **fog gate is first**: an unexplored tile emits *only* a `hull` op (no wash, no cursor, no
+`light` — the decoded plane is never trusted to gate itself) — the load-bearing invariant,
+asserted in `test/scene.test.js` + `test/lighting.test.js`.
 
 ## P2 panels: dialogue, citizen card, terminal drawer (`src/ui/`)
 
 The slice UI is built as **pure view-models + DOM shells**, so the logic is testable without a
-browser and the host can land the wire later (the client is already wired to consume it):
+browser. As of C5 the dialogue is **live**: <kbd>T</kbd> (or <kbd>Enter</kbd> on a selected crew)
+sends `talk {cid}`, the input box sends `say {sid,text}`, and closing the window (× or <kbd>Esc</kbd>)
+sends `bye {sid}`. Citizen cards resolve their portrait through the generated registry glue
+(`assets/portraits-registry.js` → silhouette fallback), and an `llmstatus` message drives a small
+strip chip (backend · degraded · $ /hr):
 
 - **`chat.js`** — a PURE reducer over the `chat` wire events (`start`/`delta`/`line`/`effect`/`end`,
   keyed by `sid`). The transcript is built ONLY from `line` + `effect` events, so **a client that
@@ -186,13 +200,26 @@ browser and the host can land the wire later (the client is already wired to con
 - **`portraits.js`** — `resolvePortrait(citizen, registry)` maps a `portrait` key to an image, or —
   when the key is unknown/absent (no art yet) — a MANDATORY procedural silhouette (initials over a
   hue hashed deterministically from `cid`). Never throws.
-- **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus): the dialogue window
-  (transcript + streaming indicator + input-box shell), the citizen card (portrait/name/role/mood/
-  traits), and the MOSS terminal drawer (placeholder — the editor/diagnostics land in a later
-  package). `#panels` stays empty (view unchanged) until the first chat/citizen/moss message.
+- **`terminal-model.js`** — a PURE state machine for the MOSS terminal IDE: the editor lifecycle
+  (`viewing`/`dirty`/`compiling`/`installed`/`error`), diagnostic normalize + sort/merge (by line,
+  col, severity; exact dups collapse), gutter-marker geometry from 1-based (line,col), and a bounded
+  audit ring. `reduceMoss(state, msg)` folds source/diag/audit/rterror, ignoring other-tid messages.
+- **`terminal.js`** — the DOM drawer over that model: a source textarea with a synced line-number
+  gutter + diagnostic markers, a diagnostics list, an audit pane (⟳ = `moss audit`), an Install
+  button (`moss set`), and a runtime-error banner. Opens on a `device {kind:"terminal"}` message
+  (which fires `moss open`); switches its bound `tid` when a different terminal is selected.
+- **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus) over the shared
+  `panel-base.js` chrome: the dialogue window (transcript + streaming indicator + live input box →
+  `say`, close → `bye`), the citizen card (portrait/name/role/mood/traits), and the MOSS terminal
+  drawer (routed to `terminal.js`). `#panels` stays empty (view unchanged) until the first
+  chat/citizen/device/moss message. `selectedCrewCid(frame)` (`wire/messages.js`, PURE) resolves the
+  T-key's target from the crew tuple `[x,y,pv,cid]`.
 
-Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/
-`MossMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss`.
+Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/`MossMsg`/
+`LlmStatusMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss/renderLlmStatus`
+and wires `talk`/`say`/`bye` to the session. **L6 host note:** the live conversation server (`talk`→
+stream→`bye`) lands in a parallel spine lane; C5 is built + tested against fixtures (`test/fixtures/
+session_live.jsonl`). When L6 is on main, record a real `TemplateBackend` session into a fixture.
 
 ## Sprites (single source of truth = spritegen)
 
@@ -230,6 +257,23 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   line-overrides-deltas byte-exact, end-without-line, zero-delta, two interleaved sids, non-
   mutation) and the portrait resolver (deterministic hue, unknown-key silhouette safety). Replays
   the hand-written wire fixtures in `test/fixtures/*.jsonl` end-to-end.
+- `test/lighting.test.js` — C4 lighting: the palette contract, the compose fog gate over an
+  untrusted plane (a light claimed on fog is dropped), the RLE plane decode round-trip + tolerance,
+  no-lights byte-compat, the light-op ordering invariant (after entity, before wash), and
+  canvas2d↔batch routing parity of the overlay.
+- `test/dialogue.test.js` — C5 dialogue-live: the talk/say/bye/moss command constructors, the
+  `selectedCrewCid` resolver (the T-key target), the full live flow (fixture replay of
+  `session_live.jsonl` with interleaved citizen + llmstatus), a mid-session reconnect that resets
+  cleanly without wedging, flaky-link tolerance, and interleaved live sessions.
+- `test/terminal.test.js` — C6 MOSS IDE model: the editor state machine (viewing→dirty→compiling→
+  installed / error), diag normalize + sort/merge, gutter-marker layout math, the audit ring cap,
+  unknown-tid / absent-terminal safety + non-mutation, and a real-wire fixture replay
+  (`moss_session.jsonl`: source → multi-error diag → audit → rterror).
+- `test/motion.test.js` — C7 motion: the reset matrix (teleport/deck/fog/despawn/standing vs a real
+  one-tile walk), non-mutation, deterministic `walkFrameIndex` + `walkOffset` interpolation, and the
+  absence-tolerant device/pawn variant selectors. `test/webgl2.test.js` is extended: walking pawns
+  resolve a walk-frame cell, devices resolve broken/off cells, the atlas bakes every walk frame
+  (timeSec-stable signature), and static scenes stay byte-identical to the pre-C7 cell set.
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

@@ -14,15 +14,17 @@
 //   { op:'debris',  x, y }                              rubble base tile
 //   { op:'wall',    x, y, vert, face }                  wall: panel when face, else hull mass
 //   { op:'entity',  x, y, g, fg, dim, role, turns, pv } device/citizen/item/door on a floor base
+//   { op:'light',   x, y, state }                       per-tile lighting overlay (LightState byte)
 //   { op:'wash',    x, y, bg }                          translucent lens tint (bg = lens color id)
 //   { op:'cursor',  x, y }                              hover cursor (ATTR_INVERSE)
 //   { op:'reticle', x, y }                              selected-crew reticle (drawn last, animated)
 //
 // Ordering: tiles are emitted row-major within the camera cull window; each tile emits its
-// ops as [base, entity?, wash?, cursor?]; the single reticle (if the selected tile is visible)
-// is appended last. This reproduces Client.html's draw order exactly.
+// ops as [base, entity?, light?, wash?, cursor?]; the single reticle (if the selected tile is
+// visible) is appended last. This reproduces Client.html's draw order exactly. The light overlay
+// sits BELOW the lens wash (the wash reads over lighting) but above terrain/entities.
 
-import { C, ATTR_INVERSE, ATTR_DIM, hasWash } from './palette.js';
+import { C, ATTR_INVERSE, ATTR_DIM, hasWash, litOverlay } from './palette.js';
 import { cullRange } from './camera.js';
 import {
   SPRITE_FOR_GLYPH, spriteTurns, wallVertFace,
@@ -36,9 +38,12 @@ import {
  * @param {{w:number,h:number,cells:number[][],sel?:number[],crew?:number[][]}} frame
  * @param {Camera} camera
  * @param {{facing?:object,noRotate?:string[]}} [assets] sprite facing metadata (from sprites.g.js)
+ * @param {Uint8Array|number[]|null} [lights] decoded per-tile LightState plane (row-major, length
+ *   w*h) for THIS frame's deck, or null/absent for the no-lights path (byte-identical to before).
+ *   NEVER trusted for fog: a light op is only emitted on a tile the frame itself shows as explored.
  * @returns {DrawOp[]}
  */
-export function composeScene(frame, camera, assets = {}) {
+export function composeScene(frame, camera, assets = {}, lights = null) {
   /** @type {DrawOp[]} */
   const ops = [];
   if (!frame) return ops;
@@ -73,6 +78,14 @@ export function composeScene(frame, camera, assets = {}) {
       } else {
         ops.push({ op: 'floor', x, y }); // device/citizen/item/door sit on a floor base
         ops.push(entityOp(frame, x, y, g, fg, attr, crewVariant, facing, noRotate));
+      }
+
+      // --- lighting overlay (fog-gated by construction: only explored, non-void tiles reach
+      //     here, the two early-outs above having consumed fog + known-void). The plane is never
+      //     trusted to gate itself; a claim of light on an unexplored tile can't survive to here. ---
+      if (lights) {
+        const state = lights[y * w + x];
+        if (litOverlay(state)) ops.push({ op: 'light', x, y, state });
       }
 
       // --- lens wash then cursor (both skipped by the fog/void early-outs above) ---

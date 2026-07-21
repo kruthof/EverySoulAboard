@@ -8,8 +8,10 @@ import { Canvas2DExecutor } from './render/canvas2d.js';
 import { WebGL2Executor } from './render/webgl2.js';
 import { chooseBackend, parseFrozenTime } from './render/exec-select.js';
 import { clampCam } from './render/camera.js';
+import { initMotion, trackMotion, motionByTile } from './render/motion.js';
 import { SpriteAssets, spriteMeta, SPRITE_TILE } from './render/sprites.js';
 import { WireSession, Cmd } from './wire/session.js';
+import { decodeLightPlane } from './wire/messages.js';
 import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 
@@ -61,13 +63,40 @@ function fallbackToCanvas2D() {
   ctx = canvas.getContext('2d');
   executor = new Canvas2DExecutor();
   camera.placed = false;
-  inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+  inputDispose = installInput({
+    canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+    onEscape: () => Hud.closeActiveDialogue(),
+  });
   swapping = false;
   layout(); draw();
 }
 
 let frame = null;
 let spriteMode = true;
+// Latest decoded lighting plane per deck (light messages arrive out-of-band from frames). The
+// current deck's plane is fed to composeScene; a deck we haven't received lighting for composes
+// with none (byte-identical to the no-lights path).
+const lightPlanes = new Map();
+const currentLights = () => (frame ? lightPlanes.get(frame.deck) || null : null);
+
+// C7 motion: per-cid tracking across frames → walking/facing/interpolation, fed to the executors as
+// data (compose stays time-free). WALK_MS is how long a one-tile slide takes; the walk-progress is
+// derived from wall time since the latest frame landed (frozen to 1 for deterministic screenshots).
+const WALK_MS = 130;
+let motion = initMotion();
+let lastFrameMs = 0;
+function walkProgress() {
+  if (FROZEN_T != null) return 1;
+  const now = (typeof performance !== 'undefined' ? performance.now() : 0);
+  return Math.max(0, Math.min(1, (now - lastFrameMs) / WALK_MS));
+}
+function anyWalking() {
+  if (FROZEN_T != null || !motion) return false;
+  const now = (typeof performance !== 'undefined' ? performance.now() : 0);
+  if (now - lastFrameMs >= WALK_MS) return false; // the slide finished; nothing to animate
+  for (const cid in motion.byCid) if (motion.byCid[cid].walking) return true;
+  return false;
+}
 const sprites = new SpriteAssets(() => { camera.placed = false; layout(); draw(); });
 
 // Camera descriptor (see render/camera.js). tile follows the active skin's tile size.
@@ -100,23 +129,25 @@ function layout() {
 // ---- render: pure compose → thin execute ----
 function draw() {
   if (!frame) return;
-  const list = composeScene(frame, camera, spriteMeta);
+  const list = composeScene(frame, camera, spriteMeta, currentLights());
   executor.execute(list, ctx, {
     camera, sprites, spriteMode,
     timeSec: FROZEN_T != null ? FROZEN_T : (typeof performance !== 'undefined' ? performance.now() : 0) / 1000,
+    motion: motionByTile(motion),
+    walkProgress: walkProgress(),
   });
 }
 
-// ---- selection reticle: redraw ~30fps ONLY while a crew is selected, so the pulse breathes
-//      even on pause; the loop stops itself when nothing is selected. ----
-let selAnim = 0, lastSel = 0;
-// When time is frozen (?t=), the reticle pulse is fixed, so the breathing loop would just redraw
-// the same pixels — skip it (keeps screenshots to a single deterministic frame).
-function startSelAnim() { if (FROZEN_T == null && frame && frame.sel && !selAnim) selAnim = requestAnimationFrame(selLoop); }
-function selLoop(ts) {
-  if (!frame || !frame.sel) { selAnim = 0; return; }
-  if (ts - lastSel >= 33) { lastSel = ts; draw(); }
-  selAnim = requestAnimationFrame(selLoop);
+// ---- animation loop: redraw ~30fps while a crew is selected (the reticle breathes even on pause)
+//      OR while a crew is mid-walk (the pawn slides + its walk cycle advances). The loop stops
+//      itself the moment neither is true. Frozen time (?t=) never animates (deterministic frames). ----
+let anim = 0, lastAnim = 0;
+function animActive() { return FROZEN_T == null && ((frame && frame.sel) || anyWalking()); }
+function startAnim() { if (animActive() && !anim) anim = requestAnimationFrame(animLoop); }
+function animLoop(ts) {
+  if (!animActive()) { anim = 0; return; }
+  if (ts - lastAnim >= 33) { lastAnim = ts; draw(); }
+  anim = requestAnimationFrame(animLoop);
 }
 
 // ---- sprite toggle (P): keep the on-screen scale steady across the tile-size change ----
@@ -137,21 +168,30 @@ const session = new WireSession(onMessage, (connected) => {
 function onMessage(m) {
   switch (m.type) {
     case 'frame':
+      motion = trackMotion(motion, m);
+      lastFrameMs = (typeof performance !== 'undefined' ? performance.now() : 0);
       frame = m;
-      startSelAnim();
+      startAnim();
       layout(); draw();
       Hud.setChip('s-deck', m.deck); Hud.setChip('s-lens', m.lens);
       Hud.reflectLens(m.lens);
       break;
+    case 'light': {
+      const plane = decodeLightPlane(m);
+      if (plane) { lightPlanes.set(m.deck, plane); if (frame && frame.deck === m.deck) draw(); }
+      break;
+    }
     case 'metrics': Hud.renderMetrics(m); break;
     case 'log': Hud.renderLog(m.lines); break;
     case 'legend': Hud.renderLegend(m.lines); break;
     case 'inspect': Hud.renderInspect(m.lines); break;
     case 'status': Hud.renderStatus(m); break;
-    // P2 panels (host lands these later; the client is ready): dialogue / citizen / terminal.
+    // P2 panels (C5 live): dialogue / citizen / terminal / LLM status.
     case 'chat': Hud.renderChat(m); break;
     case 'citizen': Hud.renderCitizen(m); break;
+    case 'device': Hud.renderDevice(m); break;
     case 'moss': Hud.renderMoss(m); break;
+    case 'llmstatus': Hud.renderLlmStatus(m); break;
     default: break;
   }
 }
@@ -165,7 +205,16 @@ document.getElementById('b-deckup').onclick = () => session.send(Cmd.deck(1));
 document.getElementById('b-deckdown').onclick = () => session.send(Cmd.deck(-1));
 document.getElementById('b-move').onclick = () => session.send(Cmd.move());
 
-inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+// P2 conversation wiring: the dialogue input box sends `say`, closing (× / Esc) sends `bye`.
+Hud.onDialogueSend((sid, text) => session.send(Cmd.say(sid, text)));
+Hud.onDialogueClose((sid) => session.send(Cmd.bye(sid)));
+// P2 MOSS terminal wiring: the drawer's open/install/refresh gestures send `moss {op,tid,text?}`.
+Hud.onTerminalOp((op, tid, text) => session.send(Cmd.moss(op, tid, text)));
+
+inputDispose = installInput({
+  canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+  onEscape: () => Hud.closeActiveDialogue(),
+});
 window.addEventListener('resize', () => { layout(); draw(); });
 
 session.connect();

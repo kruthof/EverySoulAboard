@@ -16,7 +16,7 @@ const KNOWN_OPS = new Set(['hull', 'void', 'floor', 'debris', 'wall', 'entity', 
 
 for (const c of goldenCases()) {
   test(`golden display list: ${c.name}`, () => {
-    const produced = composeGolden(c.frame, c.camera);
+    const produced = composeGolden(c.frame, c.camera, c.lights);
     const goldenPath = join(GOLDEN_DIR, c.name + '.json');
     let golden;
     try {

@@ -16,7 +16,7 @@ import { GOLDEN_DIR, composeGolden } from '../test/helpers.js';
 mkdirSync(GOLDEN_DIR, { recursive: true });
 for (const c of goldenCases()) {
   const out = join(GOLDEN_DIR, c.name + '.json');
-  const text = composeGolden(c.frame, c.camera);
+  const text = composeGolden(c.frame, c.camera, c.lights);
   writeFileSync(out, text, 'utf8');
   const ops = text.split('\n').length - 3; // minus '[', ']' and trailing blank
   console.log(`wrote ${c.name}.json  (${ops} ops)`);

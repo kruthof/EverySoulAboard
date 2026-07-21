@@ -1,27 +1,27 @@
 // Panel framework — the floating UI shells that sit over the canvas: the dialogue window, the
-// citizen card, and the (placeholder) MOSS terminal drawer. DOM-ONLY: this owns element creation,
-// open/close, and z-order focus; all the CONTENT logic is pure and lives elsewhere (chat.js
-// reassembles transcripts, portraits.js resolves faces). Browser-only — never imported by the
-// node tests. Nothing here touches the sim or the wire directly.
+// citizen card, and the MOSS terminal drawer. DOM-ONLY: this owns element creation, open/close, and
+// z-order focus; all the CONTENT logic is pure and lives elsewhere (chat.js reassembles transcripts,
+// portraits.js resolves faces, terminal-model.js runs the IDE state machine). Browser-only — never
+// imported by the node tests. Nothing here touches the sim or the wire directly (callbacks only:
+// onSend→say, onBye→bye, onMoss→moss open/set/audit).
 
 import { portraitElement, resolvePortrait } from './portraits.js';
-
-let zTop = 40; // rising z-index handed out on focus (panels float above the .app chrome)
-
-function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text != null) n.textContent = text;
-  return n;
-}
+import { Panel, el } from './panel-base.js';
+import { TerminalDrawer } from './terminal.js';
 
 export class PanelManager {
   constructor() {
     /** @type {Map<string, Panel>} */
     this.panels = new Map();
     this._root = null;
-    /** @type {(sid:string, text:string)=>void} */
+    /** @type {(sid:string, text:string)=>void} the dialogue input box → `say {sid,text}`. */
     this.onSend = () => {};
+    /** @type {(sid:string)=>void} a dialogue closing (× or Esc) → `bye {sid}`. */
+    this.onBye = () => {};
+    /** @type {(op:string, tid:string, text?:string)=>void} a terminal gesture → a `moss` wire op. */
+    this.onMoss = () => {};
+    /** The sid of the most-recently focused/opened dialogue — Esc closes this one. */
+    this.activeDialogueSid = null;
   }
 
   root() {
@@ -52,13 +52,30 @@ export class PanelManager {
     if (p) { p.el.remove(); this.panels.delete(key); }
   }
 
-  /** Open or update the dialogue window for a chat session (keyed by sid). */
+  /** Open or update the dialogue window for a chat session (keyed by sid). Closing it (× or Esc)
+   *  fires onBye(sid) so the wire sends `bye`, then removes the panel. */
   dialogue(model) {
     if (!model) return;
     const key = 'chat:' + model.sid;
-    const p = this._panel(key, () => new DialoguePanel(model.sid, () => this.close(key), this.onSend));
+    const closeAndBye = () => { this.closeDialogue(model.sid); };
+    const p = this._panel(key, () => new DialoguePanel(model.sid, closeAndBye, this.onSend));
+    this.activeDialogueSid = model.sid;
     p.render(model);
     return p;
+  }
+
+  /** Close a dialogue by sid, firing the bye hook. Safe if the panel is already gone. */
+  closeDialogue(sid) {
+    const key = 'chat:' + sid;
+    if (!this.panels.has(key)) return;
+    this.close(key);
+    if (this.activeDialogueSid === sid) this.activeDialogueSid = null;
+    this.onBye(sid);
+  }
+
+  /** Close the most-recently active dialogue (Esc). No-op when none is open. */
+  closeActiveDialogue() {
+    if (this.activeDialogueSid != null) this.closeDialogue(this.activeDialogueSid);
   }
 
   /** Open or update a citizen inspector card (keyed by cid). */
@@ -70,35 +87,26 @@ export class PanelManager {
     return p;
   }
 
-  /** Open or update the MOSS terminal drawer (placeholder shell; single instance). */
-  terminal(moss) {
-    const p = this._panel('terminal', () => new TerminalDrawer(() => this.close('terminal')));
-    p.render(moss);
+  /** Open the MOSS terminal drawer for a device's terminal id (single instance). Switches the
+   *  bound tid when a different terminal is selected; fires a `moss open` so the host sends source. */
+  openTerminal(tid) {
+    if (tid == null) return;
+    const id = String(tid);
+    const existed = this.panels.has('terminal');
+    const p = this._panel('terminal', () => new TerminalDrawer(id, () => this.close('terminal'), this.onMoss));
+    if (existed && p.tid !== id) p.switchTo(id);
+    this.onMoss('open', id);
     return p;
   }
-}
 
-// ---- base panel chrome ----
-
-class Panel {
-  /** @param {string} title @param {string} cls @param {() => void} onClose */
-  constructor(title, cls, onClose) {
-    this.el = el('div', 'panel ' + cls);
-    const bar = el('div', 'panel-bar');
-    this.titleEl = el('span', 'panel-title', title);
-    const x = el('button', 'panel-x', '×');
-    x.title = 'Close';
-    x.addEventListener('click', (e) => { e.stopPropagation(); onClose(); });
-    bar.appendChild(this.titleEl);
-    bar.appendChild(x);
-    this.body = el('div', 'panel-body');
-    this.el.appendChild(bar);
-    this.el.appendChild(this.body);
+  /** Route a decoded `moss` wire message to the open terminal drawer (ignored if none / other tid). */
+  mossEvent(moss) {
+    const p = this.panels.get('terminal');
+    if (p) p.applyMoss(moss);
   }
-
-  focus() { this.el.style.zIndex = String(++zTop); }
-  setTitle(t) { this.titleEl.textContent = t; }
 }
+
+// The base Panel chrome + `el` live in panel-base.js (shared with terminal.js, no import cycle).
 
 // ---- dialogue window: transcript + streaming preview + input box ----
 
@@ -182,24 +190,4 @@ class CitizenCard extends Panel {
   }
 }
 
-// ---- MOSS terminal drawer: placeholder shell (a later package fills in the editor/diagnostics) ----
-
-class TerminalDrawer extends Panel {
-  constructor(onClose) {
-    super('MOSS Terminal', 'panel-terminal', onClose);
-    this.note = el('div', 'term-note', 'Terminal IDE shell — editor, diagnostics and audit log land in a later package.');
-    this.diags = el('div', 'term-diags');
-    this.body.appendChild(this.note);
-    this.body.appendChild(this.diags);
-  }
-
-  render(moss) {
-    // For now, surface compile diagnostics if any arrive (contract: [line,col,sev,msg], 1-based).
-    const rows = (moss && moss.ev === 'diag' && Array.isArray(moss.diags)) ? moss.diags : [];
-    this.diags.replaceChildren(...rows.map(([line, col, sev, msg]) => {
-      const r = el('div', 'term-diag sev' + sev);
-      r.textContent = `${line}:${col}  ${msg}`;
-      return r;
-    }));
-  }
-}
+// The MOSS terminal drawer is the real IDE now (ui/terminal.js), imported at the top.

@@ -3,9 +3,11 @@
 // fallback, wall-face/hull-mass, crew variants, facing-aware rotation, lens wash, hover cursor,
 // selection reticle. Implements the Executor shape in executor.js.
 
-import { C, FG, WASH, HULL } from './palette.js';
+import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
+import { deviceSpriteKey, pawnSpriteKey, walkOffset } from './motion.js';
+import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
 export class Canvas2DExecutor {
@@ -20,6 +22,8 @@ export class Canvas2DExecutor {
     const sprites = opts.sprites || null;
     const useSpr = sprites ? sprites.usable(opts.spriteMode) : false;
     const timeSec = opts.timeSec || 0;
+    // C7 animation context: per-tile motion, walk-cycle time, and the interpolation progress.
+    const anim = { motion: opts.motion || null, timeSec, walkProgress: opts.walkProgress == null ? 1 : opts.walkProgress };
 
     // full clear + deep-fog field behind everything
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -39,7 +43,8 @@ export class Canvas2DExecutor {
         case 'floor': this._floor(ctx, T, px, py, useSpr, sprites); break;
         case 'debris': this._debris(ctx, T, px, py, useSpr, sprites); break;
         case 'wall': this._wall(ctx, T, px, py, o, useSpr, sprites); break;
-        case 'entity': this._entity(ctx, T, px, py, o, useSpr, sprites); break;
+        case 'entity': this._entity(ctx, T, px, py, o, useSpr, sprites, anim); break;
+        case 'light': { const c = litOverlay(o.state); if (c) { ctx.fillStyle = c; ctx.fillRect(px, py, T, T); } break; }
         case 'wash': ctx.fillStyle = WASH[o.bg]; ctx.fillRect(px, py, T, T); break;
         case 'cursor': P.paintCursor(ctx, T, px, py); break;
         case 'reticle': P.paintSelection(ctx, T, px, py, timeSec); break;
@@ -55,6 +60,15 @@ export class Canvas2DExecutor {
     ctx.imageSmoothingEnabled = false;
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.drawImage(sprites.get(name), px, py, T, T);
+    ctx.restore();
+  }
+
+  /** Draw an already-resolved image (used for animation variants). */
+  _sprImg(ctx, T, img, px, py, alpha) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (alpha !== undefined) ctx.globalAlpha = alpha;
+    ctx.drawImage(img, px, py, T, T);
     ctx.restore();
   }
 
@@ -92,7 +106,7 @@ export class Canvas2DExecutor {
     P.paintWall(ctx, T, px, py);
   }
 
-  _entity(ctx, T, px, py, o, useSpr, sprites) {
+  _entity(ctx, T, px, py, o, useSpr, sprites, anim = {}) {
     const dim = o.dim;
     const col = dim ? FG[C.DeviceDim] : FG[o.fg];
     const cx = px + T / 2, cy = py + T / 2, r = T * 0.34;
@@ -102,7 +116,11 @@ export class Canvas2DExecutor {
     const ch = String.fromCharCode(o.g);
     const role = o.role;
     if (role && useSpr && sprites.get(role)) {
-      this._sprTurned(ctx, sprites, T, role, o.turns, px, py, dim ? 0.7 : 1);
+      // C7 device state: a broken/off variant when the art exists (else the base role sprite).
+      const key = deviceSpriteKey(role, o.fg, dim, SPRITE_STATES);
+      const variant = key !== role ? sprites.decoded(key) : null;
+      if (variant) this._sprImg(ctx, T, variant, px, py, dim ? 0.7 : 1);
+      else this._sprTurned(ctx, sprites, T, role, o.turns, px, py, dim ? 0.7 : 1);
       ctx.restore();
       return;
     }
@@ -111,7 +129,15 @@ export class Canvas2DExecutor {
         if (useSpr && o.fg === C.Crew) {
           const v = o.pv || 0;
           const pr = (PAWN_ROLES[v] && sprites.get(PAWN_ROLES[v])) ? PAWN_ROLES[v] : 'pawn';
-          this._spr(ctx, sprites, T, pr, px, py, dim ? 0.7 : 1); break;
+          // C7 walk: cycle SPRITE_FRAMES while walking + slide from the previous tile.
+          const entry = anim.motion && anim.motion[o.x + ',' + o.y];
+          const key = pawnSpriteKey(pr, !!(entry && entry.walking), anim.timeSec || 0, SPRITE_FRAMES);
+          const frameImg = key !== pr ? sprites.decoded(key) : null;
+          const off = entry && entry.walking ? walkOffset(entry, anim.walkProgress == null ? 1 : anim.walkProgress) : { ox: 0, oy: 0 };
+          const dx = off.ox * T, dy = off.oy * T;
+          if (frameImg) this._sprImg(ctx, T, frameImg, px + dx, py + dy, dim ? 0.7 : 1);
+          else this._spr(ctx, sprites, T, pr, px + dx, py + dy, dim ? 0.7 : 1);
+          break;
         }
         P.paintPawn(ctx, cx, cy, r, col); break;
       case '&': P.paintCorpse(ctx, cx, cy, r); break;
@@ -132,7 +158,13 @@ export class Canvas2DExecutor {
       case 'O': P.paintTank(ctx, cx, cy, r); break;
       case '=': P.paintRadiator(ctx, T, px, py, col); break;
       case 'T':
-        if (useSpr) { this._spr(ctx, sprites, T, 'terminal', px, py, dim ? 0.7 : 1); break; }
+        if (useSpr) {
+          const key = deviceSpriteKey('terminal', o.fg, dim, SPRITE_STATES);
+          const variant = key !== 'terminal' ? sprites.decoded(key) : null;
+          if (variant) this._sprImg(ctx, T, variant, px, py, dim ? 0.7 : 1);
+          else this._spr(ctx, sprites, T, 'terminal', px, py, dim ? 0.7 : 1);
+          break;
+        }
         P.paintTerminal(ctx, T, px, py, col); break;
       case 'G': P.paintSolar(ctx, T, px, py, col); break;
       case 'B': P.paintBattery(ctx, T, px, py, col); break;

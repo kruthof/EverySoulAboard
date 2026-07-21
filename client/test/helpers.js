@@ -67,6 +67,26 @@ export function deriveLensFrame(frame) {
   return f;
 }
 
+/**
+ * Synthetic lighting plane for a frame: a flat row-major LightState byte array (length w*h).
+ * Explored non-fog / non-void tiles alternate Dead(1) / Brownout(3) by parity so the golden
+ * exercises both the near-black and amber overlays; fog + void tiles stay Unknown(0) so the
+ * fog gate has something to drop (a light claimed on unexplored space that must never render).
+ */
+export function deriveLightPlane(frame) {
+  const plane = new Uint8Array(frame.w * frame.h);
+  for (let i = 0; i < frame.cells.length; i++) {
+    const cell = frame.cells[i];
+    const fog = cell[0] === 32 && cell[1] === C.Unknown;
+    const voidTile = cell[0] === 32 && cell[1] === C.Void;
+    if (fog) { plane[i] = 1; continue; } // deliberately CLAIM light on fog — compose must drop it
+    if (voidTile) { plane[i] = 0; continue; }
+    const x = i % frame.w, y = (i / frame.w) | 0;
+    plane[i] = (x + y) % 2 === 0 ? 1 : 3; // Dead / Brownout checker over explored tiles
+  }
+  return plane;
+}
+
 /** Synthetic selection frame: selects (and lists as crew) the first floor tile. */
 export function deriveSelectionFrame(frame) {
   const f = JSON.parse(JSON.stringify(frame));
@@ -86,9 +106,10 @@ export function serialize(ops) {
   return '[\n' + ops.map((o) => JSON.stringify(o)).join(',\n') + '\n]\n';
 }
 
-/** Compose + serialize in one step (the golden production path). */
-export function composeGolden(frame, camera) {
-  return serialize(composeScene(frame, camera, ASSETS));
+/** Compose + serialize in one step (the golden production path). `lights` is optional — absent for
+ *  every no-lights case, so those goldens stay byte-identical to the pre-lighting output. */
+export function composeGolden(frame, camera, lights = null) {
+  return serialize(composeScene(frame, camera, ASSETS, lights));
 }
 
 export const PASS_GOLDEN_DIR = join(here, 'golden', 'passes');
@@ -97,8 +118,8 @@ export const PASS_GOLDEN_DIR = join(here, 'golden', 'passes');
  * The WebGL RenderPass golden path: compose → buildPasses. timeSec is fixed (0) so the reticle
  * phase is stable; buildPasses is pure so this is byte-for-byte reproducible.
  */
-export function composePasses(frame, camera, opts = { timeSec: 0 }) {
-  return buildPasses(composeScene(frame, camera, ASSETS), opts);
+export function composePasses(frame, camera, opts = { timeSec: 0 }, lights = null) {
+  return buildPasses(composeScene(frame, camera, ASSETS, lights), opts);
 }
 
 /**
@@ -114,6 +135,6 @@ export function serializePasses(passes) {
 }
 
 /** Compose → buildPasses → serialize in one step (the pass-golden production path). */
-export function composePassGolden(frame, camera) {
-  return serializePasses(composePasses(frame, camera, { timeSec: 0 }));
+export function composePassGolden(frame, camera, lights = null) {
+  return serializePasses(composePasses(frame, camera, { timeSec: 0 }, lights));
 }
