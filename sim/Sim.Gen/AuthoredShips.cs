@@ -203,6 +203,409 @@ namespace Perilune.Gen
             return plan;
         }
 
+        // =====================================================================
+        // P2 "The Talking Ship" slice — PeriluneSlice()
+        // =====================================================================
+        // The emotional-engine proof ship: the same proven 64×20×2 envelope as
+        // Perilune() (reused verbatim — Perilune() returns a fresh plan each call,
+        // so mutating the copy never perturbs the pinned goldens that boot the
+        // 2-crew original), re-crewed with EIGHT authored citizens and given the
+        // extra matter budget eight mouths need over an unattended voyage. The crew
+        // personas + secrets + relationship web live in SliceCrew(); the hosts weave
+        // them onto the built sim through PopulateSlice() (minds are host-owned, not
+        // hashed — only the seeded opinions ride StateHash, deterministically).
+
+        /// <summary>The slice's own ship seed — a DISTINCT identity from Perilune()
+        /// (20260718) so the portrait pipeline keys (pk_fnv1a32(seed, citizenId)) never
+        /// collide with the 2-crew reference. This is the seed the ART lane conditions on.</summary>
+        public const ulong SliceSeed = 20260721UL;
+
+        public static ShipPlan PeriluneSlice()
+        {
+            // Start from Perilune()'s proven envelope: geometry, rooms, doors, power,
+            // water/air loops, pressurization, goals and the life-support watch all come
+            // across intact. We only re-crew and re-stock for eight.
+            var plan = Perilune();
+            plan.Name = "MSV Perilune (slice)";
+            plan.Seed = SliceSeed;
+
+            // -------------------------------------------------------------- crew (8)
+            // The recapture crew wakes in the recirculated corridors — always breathable
+            // (the upper-deck scrubber/vent pair runs from tick 0) and central to the
+            // ladders, so every citizen can reach food (storage, deck 0) and water
+            // (lifesupport + hydro tanks). AutoWander=TRUE (unlike Perilune's HoldPosition
+            // pair): eight crew who only move on need would all reach thirst at the same
+            // moment and pile onto the single nearest water tile, breathing one small room
+            // down to hypoxia together (a real deadlock seen in testing). Wandering
+            // desynchronises them — they disperse across the ship between needs, so no room
+            // ever holds all eight. Names/order here are the persona-match key in SliceCrew().
+            plan.Citizens.Clear();
+            var starts = new (string name, Int3 pos)[]
+            {
+                ("Amara Okonkwo", new Int3(20, 9, 1)),
+                ("Priya Raghavan", new Int3(24, 9, 1)),
+                ("Dmitri Volkov",  new Int3(28, 9, 1)),
+                ("Salif Camara",   new Int3(32, 9, 1)),
+                ("Nadia Hassan",   new Int3(36, 9, 1)),
+                ("Tomas Ferreira", new Int3(20, 9, 0)),
+                ("Grace Oyelaran", new Int3(24, 9, 0)),
+                ("Wei Chen",       new Int3(28, 9, 0)),
+            };
+            foreach (var (name, pos) in starts)
+                plan.Citizens.Add(new CitizenSpec { Name = name, Pos = pos, AutoWander = true, RevealsFog = true, HoldPosition = false });
+
+            // Pressurise the bridge for the slice. On Perilune it starts in vacuum (the
+            // "restore the bridge" goal), harmless because that crew never wanders; but the
+            // slice's wandering crew WOULD path through the (traversable) bridge door into
+            // vacuum and asphyxiate. The bridge is gas-tight (sealed hull + the one door), so
+            // starting it pressurised makes the whole reachable ship breathable — no vacuum
+            // deathtrap for a wandering crew. (The pressurise-bridge goal simply reads as met.)
+            if (!plan.PressurizedAnchors.Contains("bridge"))
+                plan.PressurizedAnchors.Add("bridge");
+
+            // ------------------------------------------------- matter for eight (M2)
+            // Eight crew drink, eat and breathe four times the two-crew reference. The
+            // balance is authored into the SLICE'S device/stock mix (never a global .def
+            // change — those fold into boot state and would move the pinned 2-crew hash):
+            //   * more stored water + a primed greywater pool so the reclaimer has a
+            //     buffer to cycle through the multi-day run;
+            //   * a fuller pantry (grow beds already produce, but a starting stock keeps
+            //     nobody starving before the first harvest);
+            //   * a second upper-corridor scrubber so CO2 scrubbing covers eight, not
+            //     three-per-scrubber-times-the-old-count.
+            AddSliceMatter(plan);
+
+            return plan;
+        }
+
+        /// <summary>The extra device/stock mix that carries eight crew across an unattended
+        /// voyage — authored onto the slice plan only (hash-neutral for Perilune()). Split out
+        /// so the M2 balance is one readable block. Everything here reuses proven, on-network
+        /// positions: existing tanks are topped up (guaranteed on their fluid network), the
+        /// pantry rides the existing ration stack's tile (guaranteed on open floor), and the
+        /// scrubber lands on a recirculated corridor tile with a conduit already beneath it.</summary>
+        private static void AddSliceMatter(ShipPlan plan)
+        {
+            // Water: fill both loops' tanks to capacity (500 L each) — no new tiles, so no
+            // in-wall / off-network risk. The greywater reserve the reclaimers cycle is primed
+            // in PopulateSlice (ShipPlan has no wastewater field).
+            SetTankLiters(plan, "tank_main", 500f);
+            SetTankLiters(plan, "tank_hydro", 500f);
+
+            // Pantry: eight crew eat ~0.36 hunger/potato; a full opening stock bridges the gap
+            // to the first grow-bed harvest. Ride the emergency-ration tile (known open floor).
+            AddPotatoesAtRations(plan, extra: 24);
+
+            // Air: a second upper-corridor scrubber so CO2 removal scales to eight. (33,9) and
+            // (34,9) already hold the recirculator pair; (31,10) is the twin corridor row, an
+            // open '.' tile with a conduit tray beneath it (AddConduits covers every corridor
+            // tile), so it powers immediately.
+            Dev(plan, DeviceKind.Scrubber, 31, 10, 1, "scrubber_corr_up_b");
+
+            // Heat: the fabrication bay ships WITHOUT a radiator (RoomOutfitter.Fabrication
+            // lays only the fabricator + a light). The 2-crew Perilune never runs the fab shop
+            // (its crew are HoldPosition and never craft), so it never overheats. Eight working
+            // crew DO craft — the dig→regolith→recycle→fabricate loop keeps the fabricator
+            // powered, and its 2.5 kW waste heat cooks the sealed bay to ~55 °C (heat-stroke
+            // country) with nothing to reject it. A single radiator on an open fab-room floor
+            // tile (a conduit tray is already beneath it) holds the bay in the safe band. This
+            // is the M2 death that authoring — not a global .def change — has to solve.
+            Dev(plan, DeviceKind.Radiator, 25, 6, 0, "radiator_fab");
+        }
+
+        /// <summary>Set a named tank's StoredLiters in place (struct-in-list ⇒ mutate by index).</summary>
+        private static void SetTankLiters(ShipPlan plan, string name, float liters)
+        {
+            for (int i = 0; i < plan.Devices.Count; i++)
+            {
+                if (plan.Devices[i].Name != name) continue;
+                var d = plan.Devices[i];
+                d.StoredLiters = liters;
+                plan.Devices[i] = d;
+                return;
+            }
+        }
+
+        /// <summary>Add a potato stack co-located with the authored emergency rations (a tile
+        /// already proven to be open storage floor) — no coordinate guessing.</summary>
+        private static void AddPotatoesAtRations(ShipPlan plan, int extra)
+        {
+            for (int i = 0; i < plan.Items.Count; i++)
+            {
+                if (plan.Items[i].Kind != ItemKind.Potato) continue;
+                var pos = plan.Items[i].Pos;
+                plan.Items.Add(new ItemSpec { Kind = ItemKind.Potato, Count = extra, Pos = pos, Label = "slice pantry" });
+                return;
+            }
+        }
+
+        // ------------------------------------------------------- slice crew personas
+
+        /// <summary>The eight authored slice personas, in the same order as PeriluneSlice()'s
+        /// crew — name-matched onto the built citizens at boot. Every secret is backed by a
+        /// real fact; every relationship is a directed opinion seeded into the social graph.
+        /// Pure authored data (no sim, no RNG): the hosts consume it through PopulateSlice().</summary>
+        public static AuthoredPersona[] SliceCrew()
+        {
+            return new[]
+            {
+                new AuthoredPersona
+                {
+                    Name = "Amara Okonkwo", RolePreRaid = "hydroponics engineer", RoleNow = "life-support lead",
+                    Traits = new[] { "meticulous", "gentle", "unbending" },
+                    Values = new[] { "no one eats alone", "never waste air" },
+                    Fears = new[] { "the water running out", "sealed hatches with someone behind them" },
+                    SpeechStyle = "quiet, chooses words like spare parts",
+                    RaidBackstory =
+                        "Amara ran the grow bays when the Lien boarded, and she kept the irrigation loop alive by " +
+                        "hand while the pressure alarms screamed. She got three seedling trays sealed before the " +
+                        "aft section vented. She has not slept a full night since.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I hid a week of seed stock and dried rations off the manifest before the raid — nobody logged it.",
+                            FactText = "Amara Okonkwo cached seed stock and dried rations behind the hydroponics bay, unlogged, before the raid.",
+                            FactMarker = new Int3(60, 3, 0), RevealDifficulty = 0.55f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Nadia Hassan",   Opinion = 65f, Note = "closest friend aboard; they keep each other standing" },
+                        new AuthoredRelationship { Toward = "Priya Raghavan", Opinion = 40f, Note = "her apprentice — she is teaching Priya the loops" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Priya Raghavan", RolePreRaid = "botanist", RoleNow = "hydroponics apprentice",
+                    Traits = new[] { "restless", "garrulous", "devout" },
+                    Values = new[] { "protect the young ones", "finish what you seal" },
+                    Fears = new[] { "being forgotten out here", "the dark between airlocks" },
+                    SpeechStyle = "rapid-fire, jokes when nervous",
+                    RaidBackstory =
+                        "Priya was two months into her apprenticeship under Amara when the raiders came. She hid in a " +
+                        "service tray under the grow deck and listened to boots on the plating for an hour. She came " +
+                        "out convinced she owes the crew a life.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I froze in the tray and never opened the hatch for someone pounding on it. I don't know if they got out.",
+                            FactText = "During the raid Priya Raghavan stayed hidden and did not open a hatch for someone trapped on the other side.",
+                            RevealDifficulty = 0.7f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Amara Okonkwo", Opinion = 62f, Note = "her mentor; she would follow Amara into vacuum" },
+                        new AuthoredRelationship { Toward = "Grace Oyelaran", Opinion = 30f, Note = "bunk-side friend" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Dmitri Volkov", RolePreRaid = "reactor technician", RoleNow = "reactor watch",
+                    Traits = new[] { "stoic", "sardonic", "haunted" },
+                    Values = new[] { "the ship comes first", "keep the ledger balanced" },
+                    Fears = new[] { "the reactor going quiet", "dying in vacuum" },
+                    SpeechStyle = "short sentences, technical jargon, avoids eye contact",
+                    RaidBackstory =
+                        "Dmitri held the reactor at idle through the boarding so the Lien could not scram it and take the " +
+                        "ship dark. He watched the escape pods leave without him from the reactor blister. He has not " +
+                        "forgiven the ones who ran.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I launched an escape pod empty during the raid — to make the Lien think we had already fled.",
+                            FactText = "Dmitri Volkov launched one of the escape pods empty during the raid as a decoy.",
+                            RevealDifficulty = 0.6f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Salif Camara",   Opinion = -40f, Note = "blames Salif's welds for the aft breach; they snipe constantly" },
+                        new AuthoredRelationship { Toward = "Tomas Ferreira", Opinion = 40f, Note = "the one man he trusts on the bridge" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Salif Camara", RolePreRaid = "hull welder", RoleNow = "damage control",
+                    Traits = new[] { "wry", "superstitious", "unbending" },
+                    Values = new[] { "finish what you seal", "loyalty above rules" },
+                    Fears = new[] { "the Lien returning", "sleeping through an alarm" },
+                    SpeechStyle = "clipped deck-slang, softens around food",
+                    RaidBackstory =
+                        "Salif welded the forward bulkhead shut under fire to buy the bridge crew ten minutes. The seam " +
+                        "held; the deck behind it did not. Dmitri has never let him forget which welds failed.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "The aft seam that failed — I knew it was under-spec when I passed it. We had no time and no rod.",
+                            FactText = "Salif Camara signed off the aft bulkhead seam knowing it was under-specification before it failed in the raid.",
+                            FactMarker = new Int3(58, 9, 0), RevealDifficulty = 0.65f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Dmitri Volkov", Opinion = -40f, Note = "the reactor tech who blames him for the breach" },
+                        new AuthoredRelationship { Toward = "Nadia Hassan",  Opinion = 25f, Note = "she stitched his burns; he owes her" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Nadia Hassan", RolePreRaid = "medtech", RoleNow = "ship's medic",
+                    Traits = new[] { "gentle", "stoic", "meticulous" },
+                    Values = new[] { "protect the young ones", "truth even when it stings" },
+                    Fears = new[] { "sealed hatches with someone behind them", "being forgotten out here" },
+                    SpeechStyle = "slow and formal, old freighter courtesies",
+                    RaidBackstory =
+                        "Nadia triaged the wounded in the mess while the fighting moved aft. She lost two on the table and " +
+                        "saved five. She keeps the crew standing now, and she keeps their secrets.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "One of the raid dead was still breathing when I called it. I couldn't save them and I needed the table.",
+                            FactText = "Nadia Hassan declared a raid casualty dead while they were still alive, to free the surgical table.",
+                            RevealDifficulty = 0.75f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Amara Okonkwo", Opinion = 65f, Note = "her closest friend; the two of them hold the ship's morale" },
+                        new AuthoredRelationship { Toward = "Salif Camara",  Opinion = 32f, Note = "her most frequent patient; fond of him" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Tomas Ferreira", RolePreRaid = "navigator", RoleNow = "helm watch",
+                    Traits = new[] { "wry", "restless", "cowardly" },
+                    Values = new[] { "keep the ledger balanced", "the ship comes first" },
+                    Fears = new[] { "the Lien returning", "the dark between airlocks" },
+                    SpeechStyle = "long pauses, then everything at once",
+                    RaidBackstory =
+                        "Tomas plotted the drift that hid the Perilune in the debris field after the raiders left. It is the " +
+                        "only reason they were not caught. He has been jittery at the helm ever since.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "The navigation core the Lien took — I gave them the access key to save my own skin.",
+                            FactText = "Tomas Ferreira surrendered the navigation-core access key to the Lien boarding party under threat.",
+                            RevealDifficulty = 0.8f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Dmitri Volkov", Opinion = 40f, Note = "the reactor watch he stands beside" },
+                        new AuthoredRelationship { Toward = "Wei Chen",      Opinion = 38f, Note = "shares the long quiet watches with Wei" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Grace Oyelaran", RolePreRaid = "quartermaster", RoleNow = "stores & logistics",
+                    Traits = new[] { "garrulous", "meticulous", "devout" },
+                    Values = new[] { "keep the ledger balanced", "no one eats alone" },
+                    Fears = new[] { "the water running out", "the reactor going quiet" },
+                    SpeechStyle = "clipped deck-slang, softens around food",
+                    RaidBackstory =
+                        "Grace was counting the last of the seed stock when the lights went red. She dragged two crates of " +
+                        "rations through smoke to the mess before the corridor sealed. The ship eats today because of her.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "The cargo-two manifest was falsified before we ever left port. I signed it because I was told to.",
+                            FactText = "The manifest for cargo hold two was falsified before the Perilune left port, and Grace Oyelaran signed it knowingly.",
+                            RevealDifficulty = 0.6f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Wei Chen",       Opinion = 35f, Note = "her closest friend on the crew" },
+                        new AuthoredRelationship { Toward = "Priya Raghavan", Opinion = 30f, Note = "looks out for the youngest aboard" },
+                    },
+                },
+                new AuthoredPersona
+                {
+                    Name = "Wei Chen", RolePreRaid = "comms officer", RoleNow = "comms & sensors",
+                    Traits = new[] { "sardonic", "superstitious", "restless" },
+                    Values = new[] { "truth even when it stings", "loyalty above rules" },
+                    Fears = new[] { "being forgotten out here", "the Lien returning" },
+                    SpeechStyle = "rapid-fire, jokes when nervous",
+                    RaidBackstory =
+                        "Wei kept the distress loop running on a dead battery long after anyone could hear it. No one ever " +
+                        "answered. He still checks the band every watch, out of habit or hope.",
+                    Secrets = new[]
+                    {
+                        new AuthoredSecret
+                        {
+                            SecretText = "I heard a Lien boarding-captain's voice on our own channel during the raid. Someone aboard was talking to them.",
+                            FactText = "During the raid Wei Chen intercepted a Lien boarding captain communicating with someone aboard the Perilune on a crew channel.",
+                            RevealDifficulty = 0.85f,
+                        },
+                    },
+                    Relationships = new[]
+                    {
+                        new AuthoredRelationship { Toward = "Grace Oyelaran", Opinion = 35f, Note = "his closest friend on the crew" },
+                        new AuthoredRelationship { Toward = "Tomas Ferreira", Opinion = 38f, Note = "the navigator he shares watches with" },
+                    },
+                },
+            };
+        }
+
+        /// <summary>
+        /// Finish the slice boot: build the authored minds (personas + fact-backed secrets)
+        /// for every citizen by name, seed the relationship web into the social graph, and
+        /// prime the greywater reserve. The hosts (and the golden test) call this once, right
+        /// after <see cref="ShipPlanBuilder"/> builds the sim and before the first tick, so the
+        /// slice always boots identically. Minds are host-owned (unhashed); the seeded opinions
+        /// are canonical sim state and ride StateHash deterministically. RNG-free.
+        /// </summary>
+        public static void PopulateSlice(Simulation sim, MindState minds, FactRegistry facts, SocialSystem social)
+        {
+            var crew = SliceCrew();
+
+            // 1. Minds, matched to citizens by name.
+            for (int i = 0; i < crew.Length; i++)
+            {
+                var citizen = FindCitizen(sim, crew[i].Name);
+                if (citizen == null) continue; // a plan/roster mismatch is a no-op, never a throw
+                PersonaGenerator.CreateAuthoredMind(sim, minds, facts, citizen, crew[i]);
+            }
+
+            // 2. Relationship web, seeded deterministically into the social graph (before the
+            //    first pass classifies the tiers). Notes also land on the persona sheet.
+            var defs = sim.Defs.Social;
+            for (int i = 0; i < crew.Length; i++)
+            {
+                var from = FindCitizen(sim, crew[i].Name);
+                if (from == null) continue;
+                var rels = crew[i].Relationships ?? System.Array.Empty<AuthoredRelationship>();
+                for (int r = 0; r < rels.Length; r++)
+                {
+                    var to = FindCitizen(sim, rels[r].Toward);
+                    if (to == null || to.Id == from.Id) continue;
+                    social?.Nudge(from.Id, to.Id, rels[r].Opinion, defs);
+                    if (!string.IsNullOrEmpty(rels[r].Note) && minds.Minds.TryGet(from.Id, out var mind) && mind.Persona != null)
+                        mind.Persona.RelationshipNotes[to.Id] = rels[r].Note;
+                }
+            }
+
+            // 3. Greywater buffer: the reclaimer needs a pool to cycle. Seeded here because
+            //    ShipPlan has no wastewater field (matches ScenarioRunner's approach).
+            sim.WastewaterLiters += 400f;
+        }
+
+        private static Citizen FindCitizen(Simulation sim, string name)
+        {
+            var items = sim.Citizens.Items;
+            for (int i = 0; i < items.Count; i++)
+                if (items[i].Name == name) return items[i];
+            return null;
+        }
+
         // ------------------------------------------------------------ small helpers
 
         private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name) =>

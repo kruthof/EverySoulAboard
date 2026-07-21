@@ -32,14 +32,15 @@ namespace Perilune.Tui
             public string OutFile;         // write to a file instead of the console
             public string LayoutPath;      // override layout discovery
             public string DataDir;         // override SimDefs (tuning) discovery
+            public ShipChoice Ship = ShipChoice.Perilune; // --ship slice ⇒ the P2 8-crew slice
         }
 
         /// <summary>Run a dump to <paramref name="output"/>. Returns a process exit code
         /// (always 0 today — the dump is a report, not a determinism gate).</summary>
         public static int Run(Options opt, TextWriter output)
         {
-            ulong seed = opt.Seed ?? SimHost.DefaultSeed;
-            var host = SimHost.Build(seed, opt.LayoutPath, opt.DataDir);
+            ulong seed = opt.Seed ?? SimHost.DefaultSeedFor(opt.Ship);
+            var host = SimHost.Build(seed, opt.LayoutPath, opt.DataDir, opt.Ship);
             var sim = host.Sim;
 
             long totalTicks = opt.Days.HasValue
@@ -177,6 +178,7 @@ namespace Perilune.Tui
                     case "--out": opt.OutFile = Next(args, ref i); break;
                     case "--layout": opt.LayoutPath = Next(args, ref i); break;
                     case "--data": opt.DataDir = Next(args, ref i); break;
+                    case "--ship": opt.Ship = ParseShip(Next(args, ref i), err); break;
                     case "--dump": break; // mode selector, handled by Program
                     case "--play": break; // interactive selector, handled by Program
                     default:
@@ -201,6 +203,19 @@ namespace Perilune.Tui
             if (s != null && long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return v;
             err.WriteLine($"warning: bad value for {flag}: '{s}'");
             return null;
+        }
+
+        private static ShipChoice ParseShip(string s, TextWriter err)
+        {
+            switch (s)
+            {
+                case null:
+                case "perilune": return ShipChoice.Perilune;
+                case "slice": return ShipChoice.Slice;
+                default:
+                    err.WriteLine($"warning: bad --ship '{s}' (expected perilune|slice)");
+                    return ShipChoice.Perilune;
+            }
         }
 
         private static int ParseDeck(string s, TextWriter err)

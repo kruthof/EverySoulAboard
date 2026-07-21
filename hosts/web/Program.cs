@@ -10,7 +10,7 @@ namespace Perilune.Web
     /// skin and Unity boot), start the fixed-tick GameSession, and serve the flat-2D web
     /// client + WebSocket on localhost.
     ///
-    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR]
+    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR] [--ship perilune|slice]
     ///
     /// Single global game: every browser tab that connects steers the same ship. Ctrl+C stops
     /// the server cleanly (the sim thread and all sockets are torn down).
@@ -22,6 +22,7 @@ namespace Perilune.Web
             int port = 8323;
             ulong? seed = null;
             string layout = null, data = null;
+            var ship = ShipChoice.Perilune;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -31,11 +32,12 @@ namespace Perilune.Web
                     case "--seed": if (i + 1 < args.Length && ulong.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong s)) seed = s; break;
                     case "--layout": if (i + 1 < args.Length) layout = args[++i]; break;
                     case "--data": if (i + 1 < args.Length) data = args[++i]; break;
+                    case "--ship": if (i + 1 < args.Length && args[++i] == "slice") ship = ShipChoice.Slice; break;
                     default: break;
                 }
             }
 
-            var host = SimHost.Build(seed ?? SimHost.DefaultSeed, layout, data);
+            var host = SimHost.Build(seed ?? SimHost.DefaultSeedFor(ship), layout, data, ship);
             var web = new WebHost(port);
             var session = new GameSession(host, web.Broadcast);
 

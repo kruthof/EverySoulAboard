@@ -32,6 +32,47 @@ namespace Perilune.Sim
         public Dictionary<uint, string> RelationshipNotes = new Dictionary<uint, string>(); // v1: filled by social sim
     }
 
+    /// <summary>One authored secret (the P2 slice crew): the prose the citizen may reveal,
+    /// plus the REAL <see cref="ShipFact"/> to register for it. Fact-first, exactly like
+    /// <see cref="PersonaGenerator.CreateMind"/> — the reveal path only ever surfaces facts
+    /// that exist in the <see cref="FactRegistry"/>, so an authored secret without a backing
+    /// fact is unrepresentable.</summary>
+    public sealed class AuthoredSecret
+    {
+        public string SecretText = "";     // what the citizen says when they reveal it
+        public string FactText = "";       // the canonical ShipFact registered for it
+        public Int3? FactMarker;           // optional world tile the fact points at (a cache, a hatch…)
+        public float RevealDifficulty = 0.5f; // 0..1, checked against trust by the dialogue layer
+    }
+
+    /// <summary>One authored relationship edge: how this citizen feels about another, keyed by
+    /// NAME (resolved to a citizen id at boot). Seeded deterministically into the
+    /// <see cref="SocialSystem"/> before the first tick — no RNG, no co-location warm-up.</summary>
+    public struct AuthoredRelationship
+    {
+        public string Toward;   // the other citizen's Name
+        public float Opinion;   // seeded directed opinion (the SocialSystem clamp applies)
+        public string Note;     // optional RelationshipNote prose (LLM prompt colour)
+    }
+
+    /// <summary>A fully hand-authored persona (the P2 "Talking Ship" slice crew). Same shape
+    /// <see cref="PersonaGenerator.CreateMind"/> produces from its pools, but every field is
+    /// authored rather than rolled — so building it is RNG-free and reproducible, and the
+    /// hosts can construct minds for authored crew with the same call pattern as the generator.</summary>
+    public sealed class AuthoredPersona
+    {
+        public string Name = "";
+        public string RolePreRaid = "";
+        public string RoleNow = "general crew";
+        public string[] Traits = System.Array.Empty<string>();       // 3
+        public string[] Values = System.Array.Empty<string>();       // 2
+        public string[] Fears = System.Array.Empty<string>();        // 2
+        public string SpeechStyle = "";
+        public string RaidBackstory = "";                            // 2-4 sentences
+        public AuthoredSecret[] Secrets = System.Array.Empty<AuthoredSecret>();
+        public AuthoredRelationship[] Relationships = System.Array.Empty<AuthoredRelationship>();
+    }
+
     /// <summary>
     /// v0 deterministic persona pass (LLM_CITIZENS.md §2, §12): seeded template
     /// pools, one RNG stream forked per citizen id (Fork never advances sim.Rng,
@@ -172,6 +213,56 @@ namespace Perilune.Sim
 
             mind.Persona = sheet;
             mind.KnownFactIds.Add(fact.Id);
+            return mind;
+        }
+
+        /// <summary>
+        /// Build the mind for one AUTHORED citizen (the P2 slice) from an explicit
+        /// <see cref="AuthoredPersona"/> — the authored counterpart to <see cref="CreateMind"/>,
+        /// same call pattern and same fact-first contract, but RNG-FREE: it never forks or
+        /// advances <c>sim.Rng</c>, so authored crew add nothing to the hashed sim trajectory
+        /// and the call site need not be RNG-ordered. Each secret's backing <see cref="ShipFact"/>
+        /// is registered in <paramref name="facts"/> and added to the mind's known-fact ids, so
+        /// <see cref="CapabilityComputer"/> can later offer a <c>RevealInfo</c> for it. Relationship
+        /// seeding is a separate boot step (it needs every citizen's id first).
+        /// </summary>
+        public static CitizenMind CreateAuthoredMind(Simulation sim, MindState minds, FactRegistry facts,
+                                                     Citizen citizen, AuthoredPersona spec)
+        {
+            var mind = minds.Minds.GetOrCreate(citizen.Id);
+
+            var sheet = new PersonaSheet
+            {
+                CitizenId = citizen.Id,
+                Name = string.IsNullOrEmpty(spec.Name) ? citizen.Name : spec.Name,
+                RolePreRaid = spec.RolePreRaid ?? "",
+                RoleNow = string.IsNullOrEmpty(spec.RoleNow) ? "general crew" : spec.RoleNow,
+                Traits = (string[])(spec.Traits ?? System.Array.Empty<string>()).Clone(),
+                Values = (string[])(spec.Values ?? System.Array.Empty<string>()).Clone(),
+                Fears = (string[])(spec.Fears ?? System.Array.Empty<string>()).Clone(),
+                SpeechStyle = spec.SpeechStyle ?? "",
+                RaidBackstory = spec.RaidBackstory ?? "",
+            };
+
+            // Secrets are sim facts first: register the backing fact, then wire the reveal record
+            // and mark the mind as knowing it (the reveal_info enum domain).
+            var authored = spec.Secrets ?? System.Array.Empty<AuthoredSecret>();
+            var secrets = new SecretRecord[authored.Length];
+            for (int i = 0; i < authored.Length; i++)
+            {
+                var a = authored[i];
+                var fact = facts.Add(a.FactText, a.FactMarker);
+                secrets[i] = new SecretRecord
+                {
+                    FactId = fact.Id,
+                    Text = a.SecretText,
+                    RevealDifficulty = a.RevealDifficulty,
+                };
+                mind.KnownFactIds.Add(fact.Id);
+            }
+            sheet.Secrets = secrets;
+
+            mind.Persona = sheet;
             return mind;
         }
 

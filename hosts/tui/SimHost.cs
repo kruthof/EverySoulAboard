@@ -6,6 +6,11 @@ using Perilune.Sim;
 
 namespace Perilune.Tui
 {
+    /// <summary>Which authored ship the hosts boot. Default is the shipping 2-crew Perilune
+    /// (the pinned-golden / CI path); <see cref="Slice"/> is the P2 "Talking Ship" 8-crew
+    /// vertical slice, selected with <c>--ship slice</c> and never seen by CI.</summary>
+    public enum ShipChoice { Perilune, Slice }
+
     /// <summary>
     /// The headless boot of the shipping ship — the terminal/web skins' equivalent of
     /// Game.View/Bootstrap.BuildAuthoredSim. It assembles the SAME sim Unity assembles,
@@ -35,10 +40,12 @@ namespace Perilune.Tui
         // memory and the event log through these exactly as Bootstrap does.
         public HistorySystem History { get; private set; }
         public GoalSystem Goals { get; private set; }
+        public SocialSystem Social { get; private set; }
         public MindState Minds { get; private set; }
         public FactRegistry Facts { get; private set; }
         public PendingEffectBuffer Effects { get; private set; }
 
+        public ShipChoice Ship { get; private set; }
         public ulong Seed { get; private set; }
         public string LayoutPath { get; private set; }       // resolved file, or null when none loaded
         public string LayoutChecksum { get; private set; }   // stable hash of the layout text, or "none"
@@ -63,6 +70,14 @@ namespace Perilune.Tui
         /// Unity boots with. DumpMode falls back to it when no --seed is given.</summary>
         public static ulong DefaultSeed => AuthoredShips.Perilune().Seed;
 
+        /// <summary>The slice's default seed (a DISTINCT identity from Perilune) — the seed the
+        /// portrait pipeline conditions on. Hosts fall back to it for <c>--ship slice</c>.</summary>
+        public static ulong SliceSeed => AuthoredShips.SliceSeed;
+
+        /// <summary>The default seed for a given ship choice (so a host with no --seed boots the
+        /// right identity per ship).</summary>
+        public static ulong DefaultSeedFor(ShipChoice ship) => ship == ShipChoice.Slice ? SliceSeed : DefaultSeed;
+
         /// <summary>
         /// Build the shipping sim. <paramref name="layoutPath"/> overrides layout
         /// discovery, <paramref name="dataDir"/> overrides SimDefs discovery; when null,
@@ -70,15 +85,16 @@ namespace Perilune.Tui
         /// unreadable/malformed layout or defs file is a warning (recorded in
         /// <see cref="LayoutProblems"/> / <see cref="DefsProblems"/>), never a hard failure.
         /// </summary>
-        public static SimHost Build(ulong seed, string layoutPath = null, string dataDir = null)
+        public static SimHost Build(ulong seed, string layoutPath = null, string dataDir = null,
+                                    ShipChoice ship = ShipChoice.Perilune)
         {
-            var host = new SimHost { Seed = seed };
+            var host = new SimHost { Seed = seed, Ship = ship };
             var problems = new List<string>();
 
             var registry = new DeviceRegistry();
             var moss = new ScriptRuntime(registry);
 
-            var plan = AuthoredShips.Perilune();
+            var plan = ship == ShipChoice.Slice ? AuthoredShips.PeriluneSlice() : AuthoredShips.Perilune();
             plan.Seed = seed;
 
             // Data-driven tuning (step mirrored from Bootstrap.LoadDefs / ScenarioRunner):
@@ -91,9 +107,16 @@ namespace Perilune.Tui
             host.DefsChecksum = defs.Checksum;
 
             // Layout overrides (step 4 of Bootstrap.BuildAuthoredSim). Discovery is
-            // resilient: absent file ⇒ authored positions stand, with a warning.
-            string resolved = layoutPath ?? ResolveLayoutPath();
-            if (resolved != null && File.Exists(resolved))
+            // resilient: absent file ⇒ authored positions stand, with a warning. The
+            // DeviceLayout.json is a hand-tuned artefact of the SHIPPING Perilune (it yaws
+            // that ship's doors); the slice ships its own authored positions and never takes
+            // the overlay, so its canonical boot needs no file at all.
+            string resolved = ship == ShipChoice.Slice ? null : (layoutPath ?? ResolveLayoutPath());
+            if (ship == ShipChoice.Slice)
+            {
+                host.LayoutChecksum = "none"; // authored slice positions; no overlay
+            }
+            else if (resolved != null && File.Exists(resolved))
             {
                 string text;
                 try { text = File.ReadAllText(resolved); }
@@ -119,7 +142,12 @@ namespace Perilune.Tui
             var sim = ShipPlanBuilder.Build(plan, host.MakeSystems(moss, RulesLoader.CreateSystem(defs, registry)), defs);
 
             FogReveal.RevealReachable(sim);
-            // (Unity-only: GenerateMinds — skipped; see class summary.)
+            // Minds: the shipping Perilune skips GenerateMinds (Unity-only; determinism-safe
+            // because PersonaGenerator forks its RNG). The slice, by contrast, IS the LLM/talk
+            // proof — it needs its authored crew's minds, secrets and seeded relationships woven
+            // on deterministically here (RNG-free; only the seeded opinions touch StateHash).
+            if (ship == ShipChoice.Slice)
+                AuthoredShips.PopulateSlice(sim, host.Minds, host.Facts, host.Social);
             MossBindings.RegisterAdapters(sim, registry);
             MossBindings.ApplyScripts(sim, moss);
 
@@ -150,6 +178,7 @@ namespace Perilune.Tui
             {
                 if (systems[i] is HistorySystem history) History = history;
                 if (systems[i] is GoalSystem goals) Goals = goals;
+                if (systems[i] is SocialSystem social) Social = social;
             }
             return systems;
         }
