@@ -547,7 +547,7 @@ namespace Perilune.Sim
                     WeightDeath = 0.5f,
                     AlarmDecayPerPeriod = 0.9f,
                     DeathDecayPerPeriod = 0.95f,
-                    MaxWearPressure = 2f,
+                    MaxWearPressure = 1.35f,
                     LeverTargetTension = 0.35f,
                     LeverStep = 0.1f,
                     PeriodTicks = 100,

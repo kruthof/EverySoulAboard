@@ -19,6 +19,9 @@ namespace Perilune.Sim
     {
         public static ISimSystem[] CreateDefault(ISimSystem mossRuntime, ISimSystem designerRules = null)
         {
+            // Hoisted: MachineWear consumes the Director's WearPressure lever, but the
+            // Director TICKS late (after Goal, before History) — one instance, two slots.
+            var director = new DirectorSystem();
             var stack = new List<ISimSystem>(16)
             {
                 new AtmosphereSystem(),
@@ -30,7 +33,7 @@ namespace Perilune.Sim
                 new JobSystem(),
                 new SustenanceSystem(),
                 new CraftingSystem(),
-                new MachineWearSystem(),
+                new MachineWearSystem(director),
                 new MaintenanceSystem(),
                 new BuildSystem(),         // passive; completions applied after job progress this tick
                 new HydroponicsSystem(),
@@ -38,6 +41,7 @@ namespace Perilune.Sim
                 new SocialSystem(),        // after Needs: positions and deaths settled this tick
                 new ExplorationSystem(),
                 new GoalSystem(),
+                director,                  // tension curve reads the settled day; lever feeds MachineWear next tick
                 new HistorySystem(),
             };
             if (designerRules != null) stack.Add(designerRules); // rules act, then player scripts

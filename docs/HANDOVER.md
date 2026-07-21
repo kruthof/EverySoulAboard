@@ -60,7 +60,7 @@ python3 client/serve.py                                    # terminal 2 → http
   intentionally moves the reference hash. In the SAME commit: regenerate the
   tick-3000 golden (`UPDATE_GOLDEN=1 ... --filter Tick3000`), update the pinned hash
   in `ci.sh` + `CLAUDE.md` + auto-memory, and say why. Happened twice in P1
-  (Social, Nav) — current pin `ec16281d9f78d886` (P2: Social relationship types + History folds).
+  (Social, Nav) — current pin `26907c23d7e48a5c` (P2: Social relationship types + History folds).
 - **Def-field ritual:** one commit = CreateDefault value + parser key + checksum fold
   (append before the rules fold) + shipped `.def` verbatim + a consumption-tripwire
   test. `social.def`/`nav.def` are clean examples.
