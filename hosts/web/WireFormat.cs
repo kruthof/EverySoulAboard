@@ -26,6 +26,8 @@ namespace Perilune.Web
     ///   chat    {"type":"chat","sid":..,"ev":"start|delta|line|effect|end", ...per-ev fields}
     ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":".."}
     ///   device  {"type":"device","kind":"terminal","tid":".."}
+    ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
+    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4},..]}
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
     /// </summary>
@@ -200,6 +202,55 @@ namespace Perilune.Web
             sb.Append(']');
             sb.Append(",\"portrait\":"); AppendString(sb, portrait ?? "");
             return sb.Append('}').ToString();
+        }
+
+        /// <summary>
+        /// One crew member's row in the roster channel — identity + wellbeing + whereabouts,
+        /// so the client can render a crew-watch list without clicking each pawn. The player
+        /// always knows their own crew: the roster is NOT fog-gated (positions of living crew
+        /// are ship's-intercom knowledge), unlike the frame crew tuple which stays projection-
+        /// gated. All strings may be empty; Morale is 0..1.
+        /// </summary>
+        public readonly struct RosterEntry
+        {
+            public readonly uint Cid;
+            public readonly string Name, Role, Mood, Task, Portrait;
+            public readonly float Morale;
+            public readonly int Deck, X, Y;
+
+            public RosterEntry(uint cid, string name, string role, string mood, string task,
+                               string portrait, float morale, int deck, int x, int y)
+            {
+                Cid = cid; Name = name; Role = role; Mood = mood; Task = task;
+                Portrait = portrait; Morale = morale; Deck = deck; X = x; Y = y;
+            }
+        }
+
+        /// <summary>Serialize the crew roster (see <see cref="RosterEntry"/>). A cached state
+        /// channel like frame/metrics: rebuilt each render, deduped by the session.</summary>
+        public static string Roster(IReadOnlyList<RosterEntry> crew)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"type\":\"roster\",\"crew\":[");
+            if (crew != null)
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    var e = crew[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append("{\"cid\":").Append(e.Cid.ToString(Ic));
+                    sb.Append(",\"name\":"); AppendString(sb, e.Name ?? "");
+                    sb.Append(",\"role\":"); AppendString(sb, e.Role ?? "");
+                    sb.Append(",\"mood\":"); AppendString(sb, e.Mood ?? "");
+                    sb.Append(",\"morale\":").Append(Num(e.Morale));
+                    sb.Append(",\"task\":"); AppendString(sb, e.Task ?? "");
+                    sb.Append(",\"portrait\":"); AppendString(sb, e.Portrait ?? "");
+                    sb.Append(",\"deck\":").Append(e.Deck.ToString(Ic));
+                    sb.Append(",\"x\":").Append(e.X.ToString(Ic));
+                    sb.Append(",\"y\":").Append(e.Y.ToString(Ic));
+                    sb.Append('}');
+                }
+            sb.Append("]}");
+            return sb.ToString();
         }
 
         /// <summary>An interactable device the player selected — v0 carries the MOSS-addressable

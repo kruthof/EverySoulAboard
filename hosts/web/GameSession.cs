@@ -140,7 +140,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -221,6 +221,7 @@ namespace Perilune.Web
                 case CmdKind.Lens: return SetLens(cmd.Name);
                 case CmdKind.Speed: ChangeSpeed(cmd.I); return true;
                 case CmdKind.Pause: TogglePause(); return true;
+                case CmdKind.Build: HandleBuild(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
@@ -274,6 +275,37 @@ namespace Perilune.Web
             }
         }
 
+        /// <summary>
+        /// The build/refit bridge (P2 M1 over the wire). Kind "wall"/"door" designates at the
+        /// clicked tile on the CURRENT deck; "cancel" removes a pending designation there.
+        /// Everything goes through the ordinary inbox as a <see cref="DesignateBuildCommand"/>,
+        /// so legality (occupied tile, already walled, staging cap …) is decided by
+        /// BuildSystem.CanDesignate deterministically at the next tick boundary — an illegal
+        /// designation is a silent sim no-op, and the status line only promises the attempt.
+        /// </summary>
+        private void HandleBuild(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
+            switch (cmd.Name)
+            {
+                case "wall":
+                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall));
+                    _status = "designate wall";
+                    break;
+                case "door":
+                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Door));
+                    _status = "designate door";
+                    break;
+                case "cancel":
+                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall, on: false));
+                    _status = "cancel designation";
+                    break;
+                default:
+                    break; // unknown kind — ignored
+            }
+        }
+
         /// <summary>The current program text for a terminal: the last text SET this session
         /// (reflects unsaved edits) else the canonical saved source in sim.Scripts, else "".</summary>
         private string CurrentMossSource(string tid)
@@ -307,6 +339,10 @@ namespace Perilune.Web
 
         /// <summary>Test-only hook: run the per-render runtime-error poll.</summary>
         internal void PollRuntimeErrorsForTest() => PollRuntimeErrors();
+
+        /// <summary>Test-only hook: run one full Render pass (primes every cached channel and
+        /// broadcasts to the test sink) without starting the sim thread.</summary>
+        internal void RenderForTest() => Render(0.0, force: true);
 
         // Conversation-runtime test hooks: block until the in-flight turn lands, drain the chat
         // outbox to the broadcast sink (Render does this live), dispatch any queued say, and read
@@ -439,6 +475,7 @@ namespace Perilune.Web
             Send("log", WireFormat.Log(BuildLog()), force);
             Send("inspect", WireFormat.Inspect(InspectorModel.Build(_sim, cursor, _selected)), force);
             Send("status", WireFormat.Status(_status, SpeedLabel[_speedIndex], _speedIndex == 0), force);
+            Send("roster", WireFormat.Roster(BuildRoster()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -509,8 +546,67 @@ namespace Perilune.Web
         }
 
         /// <summary>Stable per-citizen portrait/sprite variant (keeps a crew member's face steady
-        /// across frames). Mirrored in the frame crew tuple's <c>pv</c> element.</summary>
-        private static int Portrait(uint id) => (int)(id % 3);
+        /// across frames). Mirrored in the frame crew tuple's <c>pv</c> element. Named crew whose
+        /// authored gender is known map to a matching pawn sprite (0 = androgynous `pawn`,
+        /// 1 = male `pawn_b`, 2 = female `pawn_c`); everyone else keeps the id-stable rotation.
+        /// View-only host logic — the sim carries no appearance state (yet), so this table is
+        /// the web skin's knowledge, exactly like the id%3 fallback it refines.</summary>
+        private int Portrait(uint id)
+        {
+            if (_sim.Citizens.TryGet(id, out var c) && c.Name != null &&
+                SliceVariant.TryGetValue(c.Name, out int v)) return v;
+            return (int)(id % 3);
+        }
+
+        /// <summary>Pawn-sprite variants for the authored slice crew, by gender as written in
+        /// their AuthoredShips backstories (F → pawn_c, M → pawn_b / pawn).</summary>
+        private static readonly Dictionary<string, int> SliceVariant = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["Amara Okonkwo"] = 2, ["Priya Raghavan"] = 2, ["Nadia Hassan"] = 2, ["Grace Oyelaran"] = 2,
+            ["Dmitri Volkov"] = 1, ["Salif Camara"] = 1, ["Tomas Ferreira"] = 1, ["Wei Chen"] = 0,
+        };
+
+        /// <summary>One roster row per LIVING crew member — identity (persona role/mood),
+        /// wellbeing (morale), whereabouts (deck + tile) and current task. Deliberately not
+        /// fog-gated: the player always knows their own crew (ship's intercom), unlike the
+        /// frame crew tuple which stays projection-gated.</summary>
+        private List<WireFormat.RosterEntry> BuildRoster()
+        {
+            var citizens = _sim.Citizens.Items;
+            var rows = new List<WireFormat.RosterEntry>(citizens.Count);
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead) continue;
+                string role = "", mood = "", portrait = "";
+                if (_host.Minds != null && _host.Minds.Minds.TryGet(c.Id, out var mind))
+                {
+                    mood = mind.ActiveEmotion(_sim.TickCount);
+                    if (mind.Persona != null)
+                    {
+                        role = string.IsNullOrEmpty(mind.Persona.RoleNow) ? mind.Persona.RolePreRaid : mind.Persona.RoleNow;
+                        portrait = Perilune.Tools.PersonaDump.PersonaKey(_host.Seed, c.Id);
+                    }
+                }
+                rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
+                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y));
+            }
+            return rows;
+        }
+
+        /// <summary>A short human label for what a crew member is doing right now.</summary>
+        private static string TaskLabel(Citizen c) => c.JobKind switch
+        {
+            JobKind.Dig => "digging",
+            JobKind.HaulPickup or JobKind.HaulDeliver => "hauling",
+            JobKind.Eat => "eating",
+            JobKind.Drink => "drinking",
+            JobKind.Craft => "crafting",
+            JobKind.Maintain => "servicing a machine",
+            JobKind.HaulToBuild => "hauling build materials",
+            JobKind.Build => "building",
+            _ => c.HasPath ? "walking" : "idle",
+        };
 
         private IReadOnlyList<string> BuildLog()
         {
@@ -574,7 +670,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -619,6 +715,9 @@ namespace Perilune.Web
                     case "lens": return new WebCommand(CmdKind.Lens, name: Str(json, "name"));
                     case "speed": return new WebCommand(CmdKind.Speed, i: Int(json, "delta"));
                     case "pause": return new WebCommand(CmdKind.Pause);
+                    // {"cmd":"build","kind":"wall|door|cancel","x":..,"y":..} — designate/cancel
+                    // a build at a tile on the current deck (see GameSession.HandleBuild).
+                    case "build": return new WebCommand(CmdKind.Build, Int(json, "x"), Int(json, "y"), name: Str(json, "kind"));
                     default: return default;
                 }
             }
