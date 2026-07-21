@@ -79,6 +79,7 @@ namespace Perilune.Sim
         public ExplorationDefs Exploration;
         public SocialDefs Social;
         public NavDefs Nav;
+        public BuildDefs Build;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
         /// <see cref="ComputeChecksum"/>. Recomputed by CreateDefault and by the parser;
@@ -308,6 +309,25 @@ namespace Perilune.Sim
             public float TelescopeReferenceRangeMm;
         }
 
+        /// <summary>BuildSystem (WS-MATTER) build/refit costs. Material is always Regolith
+        /// in v0; these tune how much of it each build kind wants and how long it takes to
+        /// raise, plus a concurrency guard on the number of open designations. Construct
+        /// times are whole ticks (10 Hz), so they are interval-agnostic and safe as defs.</summary>
+        public sealed class BuildDefs
+        {
+            /// <summary>BuildSystem — Regolith units a Wall designation stages before it builds. Current: 2.</summary>
+            public int WallMaterial;
+            /// <summary>BuildSystem — work ticks to raise a Wall once materialed (6 s at 10 Hz). Current: 60.</summary>
+            public int WallConstructTicks;
+            /// <summary>BuildSystem — Regolith units a Door designation stages before it builds. Current: 1.</summary>
+            public int DoorMaterial;
+            /// <summary>BuildSystem — work ticks to hang a Door once materialed (4 s at 10 Hz). Current: 40.</summary>
+            public int DoorConstructTicks;
+            /// <summary>BuildSystem — cap on concurrent pending designations; a designate past it
+            /// is a deterministic no-op (a runaway/queue guard, not a per-site buffer). Current: 64.</summary>
+            public int MaxStaged;
+        }
+
         /// <summary>Fresh graph holding today's constants verbatim. The parser always starts
         /// from a fresh copy of this; <see cref="Default"/> is frozen and never mutated.</summary>
         public static SimDefs CreateDefault()
@@ -467,6 +487,15 @@ namespace Perilune.Sim
                     TelescopeSnrThreshold = 1f,
                     TelescopeReferenceRangeMm = 400f,
                 },
+
+                Build = new BuildDefs
+                {
+                    WallMaterial = 2,
+                    WallConstructTicks = 60,
+                    DoorMaterial = 1,
+                    DoorConstructTicks = 40,
+                    MaxStaged = 64,
+                },
             };
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
@@ -489,7 +518,8 @@ namespace Perilune.Sim
         /// only the numeric value). Order: RadiatorRejectKW → each machine row (8 fields)
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
-        /// → Social S1 tunables (15 fields, appended). Appending a field
+        /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended).
+        /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -610,6 +640,14 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Social.BondOpinionFloor);
             h = XxHash64.Combine(h, Social.ArgumentOpinionDelta);
             h = XxHash64.Combine(h, Social.BondOpinionDelta);
+
+            // Build (WS-MATTER M1) costs, APPENDED after Social S1 and before the rules
+            // fold so every prior checksum stays byte-comparable.
+            h = XxHash64.Combine(h, (ulong)(uint)Build.WallMaterial);
+            h = XxHash64.Combine(h, (ulong)(uint)Build.WallConstructTicks);
+            h = XxHash64.Combine(h, (ulong)(uint)Build.DoorMaterial);
+            h = XxHash64.Combine(h, (ulong)(uint)Build.DoorConstructTicks);
+            h = XxHash64.Combine(h, (ulong)(uint)Build.MaxStaged);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).
