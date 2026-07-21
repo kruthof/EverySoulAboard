@@ -78,6 +78,7 @@ namespace Perilune.Sim
         public CitizenDefs Citizen;
         public ExplorationDefs Exploration;
         public SocialDefs Social;
+        public NavDefs Nav;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
         /// <see cref="ComputeChecksum"/>. Recomputed by CreateDefault and by the parser;
@@ -252,6 +253,23 @@ namespace Perilune.Sim
             public float MinOpinion;
         }
 
+        /// <summary>NavSystem space-layer tuning (1 Hz pass; Dt interval-paired). Chart
+        /// units are megameters (Mm); the linear-drift/no-orbital-mechanics model is the
+        /// flagged honest simplification.</summary>
+        public sealed class NavDefs
+        {
+            /// <summary>NavSystem — ship delta-v budget at start, m/s. Current: 1000.</summary>
+            public float InitialDeltaVMps;
+            /// <summary>NavSystem — flat delta-v cost per burn, m/s. Current: 100.</summary>
+            public float BurnCostMps;
+            /// <summary>NavSystem — transit speed toward a target, Mm/s. Current: 0.5.</summary>
+            public float TransitSpeedMmPerS;
+            /// <summary>NavSystem — detection when snr = emission × (ref_range/dist)² clears this. Current: 1.</summary>
+            public float TelescopeSnrThreshold;
+            /// <summary>NavSystem — range (Mm) at which a unit-emission contact is exactly at threshold. Current: 400.</summary>
+            public float TelescopeReferenceRangeMm;
+        }
+
         /// <summary>Fresh graph holding today's constants verbatim. The parser always starts
         /// from a fresh copy of this; <see cref="Default"/> is frozen and never mutated.</summary>
         public static SimDefs CreateDefault()
@@ -290,6 +308,7 @@ namespace Perilune.Sim
                     /* Locker          */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* Desk            */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* PlantPot        */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
+                    /* Telescope       */ new MachineDef(0.4f,  0f, PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs
@@ -384,6 +403,15 @@ namespace Perilune.Sim
                     MaxOpinion = 100f,
                     MinOpinion = -100f,
                 },
+
+                Nav = new NavDefs
+                {
+                    InitialDeltaVMps = 1000f,
+                    BurnCostMps = 100f,
+                    TransitSpeedMmPerS = 0.5f,
+                    TelescopeSnrThreshold = 1f,
+                    TelescopeReferenceRangeMm = 400f,
+                },
             };
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
@@ -405,7 +433,8 @@ namespace Perilune.Sim
         /// order (floats/doubles via their exact bits, so formatting never matters —
         /// only the numeric value). Order: RadiatorRejectKW → each machine row (8 fields)
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
-        /// → Exploration → each recipe (6 fields) → Social (4 fields). Appending a field
+        /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields).
+        /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -501,6 +530,12 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Social.DecayPerHour);
             h = XxHash64.Combine(h, Social.MaxOpinion);
             h = XxHash64.Combine(h, Social.MinOpinion);
+
+            h = XxHash64.Combine(h, Nav.InitialDeltaVMps);
+            h = XxHash64.Combine(h, Nav.BurnCostMps);
+            h = XxHash64.Combine(h, Nav.TransitSpeedMmPerS);
+            h = XxHash64.Combine(h, Nav.TelescopeSnrThreshold);
+            h = XxHash64.Combine(h, Nav.TelescopeReferenceRangeMm);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

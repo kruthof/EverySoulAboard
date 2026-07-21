@@ -23,6 +23,7 @@ namespace Perilune.Sim
             {
                 new AtmosphereSystem(),
                 new PowerSystem(),
+                new NavSystem(),           // after Power: telescope Powered flags are fresh this tick
                 new ThermalSystem(),
                 new WaterSystem(),
                 new CitizenSystem(),

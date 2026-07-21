@@ -42,7 +42,7 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   runs the full gate). Golden rewrite only when intended:
   `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `03cd62cf695edb06` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `35bf7a69023f88a8` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit).
 - Play: `~/.dotnet/dotnet run --project hosts/web` → http://localhost:8323 ·
   terminal: `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.

@@ -28,6 +28,8 @@ namespace Perilune.Sim
         Locker = 22,     // personal wardrobe (cabins)
         Desk = 23,       // personal desk (cabins)
         PlantPot = 24,   // decorative plant (cabins, commons, observatory)
+        // Sensors (space layer, WS-NAV).
+        Telescope = 25,  // resolves space contacts by SNR while powered (NavSystem)
     }
 
     /// <summary>Brownout shed order: lowest tier is shed first (TDD §3.7).</summary>

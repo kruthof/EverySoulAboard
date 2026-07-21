@@ -61,6 +61,7 @@ namespace Perilune.Sim
             /* Locker          */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* Desk            */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* PlantPot        */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
+            /* Telescope       */ new(0.4f,  0f,  PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];

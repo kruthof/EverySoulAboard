@@ -1,0 +1,18 @@
+# =============================================================================
+# nav.def — space-layer tuning: delta-v, transit, telescope detection (NavSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 1 s pass Dt is interval-paired (structural) and NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# Chart units are megameters (Mm). Detection: a contact is resolved when
+# snr = emission * (telescope_reference_range_mm / distance)^2 clears the
+# threshold, and only while a powered, operational Telescope exists.
+
+[nav]
+initial_delta_v_mps          = 1000  # m/s — ship delta-v budget at start
+burn_cost_mps                = 100   # m/s — flat cost per burn
+transit_speed_mm_per_s       = 0.5   # Mm/s — closing speed after a burn
+telescope_snr_threshold      = 1     # unitless detection threshold
+telescope_reference_range_mm = 400   # Mm — unit-emission contact is at threshold here

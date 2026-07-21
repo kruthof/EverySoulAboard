@@ -24,7 +24,7 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Machines, Recipes, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Machines, Recipes, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
 
@@ -122,6 +122,7 @@ namespace Perilune.Sim
                 case "citizen": return Section.Citizen;
                 case "exploration": return Section.Exploration;
                 case "social": return Section.Social;
+                case "nav": return Section.Nav;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
                 default:
@@ -147,6 +148,7 @@ namespace Perilune.Sim
                 case Section.Citizen: known = CitizenKey(d, key, val, loc, p); break;
                 case Section.Exploration: known = ExplorationKey(d, key, val, loc, p); break;
                 case Section.Social: known = SocialKey(d, key, val, loc, p); break;
+                case Section.Nav: known = NavKey(d, key, val, loc, p); break;
                 default: known = false; break;
             }
             if (!known) p.Add(loc + ": unknown key '" + key + "' — ignored");
@@ -281,6 +283,19 @@ namespace Perilune.Sim
                 case "decay_per_hour": if (F(v, k, loc, p, out var b)) d.Social.DecayPerHour = b; return true;
                 case "max_opinion": if (F(v, k, loc, p, out var c)) d.Social.MaxOpinion = c; return true;
                 case "min_opinion": if (F(v, k, loc, p, out var e)) d.Social.MinOpinion = e; return true;
+                default: return false;
+            }
+        }
+
+        private static bool NavKey(SimDefs d, string k, string v, string loc, List<string> p)
+        {
+            switch (k)
+            {
+                case "initial_delta_v_mps": if (F(v, k, loc, p, out var a)) d.Nav.InitialDeltaVMps = a; return true;
+                case "burn_cost_mps": if (F(v, k, loc, p, out var b)) d.Nav.BurnCostMps = b; return true;
+                case "transit_speed_mm_per_s": if (F(v, k, loc, p, out var c)) d.Nav.TransitSpeedMmPerS = c; return true;
+                case "telescope_snr_threshold": if (F(v, k, loc, p, out var e)) d.Nav.TelescopeSnrThreshold = e; return true;
+                case "telescope_reference_range_mm": if (F(v, k, loc, p, out var f)) d.Nav.TelescopeReferenceRangeMm = f; return true;
                 default: return false;
             }
         }

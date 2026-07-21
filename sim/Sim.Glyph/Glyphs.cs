@@ -59,6 +59,7 @@ namespace Perilune.Glyph
             DeviceKind.Locker => 'L',
             DeviceKind.Desk => 'D',
             DeviceKind.PlantPot => 'P',
+            DeviceKind.Telescope => 'x',
             _ => '?',
         };
 
