@@ -3,7 +3,12 @@ using System.Collections.Generic;
 
 namespace Perilune.Llm
 {
-    /// <summary>One line of a conversation transcript.</summary>
+    /// <summary>
+    /// One line of a conversation transcript — a role/text pair the
+    /// <see cref="Providers.PromptBuilder"/> renders. Role is carried by
+    /// <see cref="Speaker"/>: <see cref="ChatSession.PlayerSpeaker"/> marks the player
+    /// (untrusted, quarantined when rendered), any other value is the speaking citizen.
+    /// </summary>
     public readonly struct TranscriptLine
     {
         /// <summary>ChatSession.PlayerSpeaker for the player, else the citizen's name.</summary>
@@ -15,6 +20,9 @@ namespace Perilune.Llm
             Speaker = speaker ?? string.Empty;
             Text = text ?? string.Empty;
         }
+
+        /// <summary>True iff this is a player turn (rendered inside the quarantine delimiters).</summary>
+        public bool IsPlayer => Speaker == ChatSession.PlayerSpeaker;
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Perilune.Llm
 {
@@ -111,17 +112,18 @@ namespace Perilune.Llm
     /// logic is 100% backend-blind — every backend speaks in ChatResult and the
     /// same whitelisted ProposedEffects.
     ///
-    /// v0 is synchronous because the only backend is the in-process template
-    /// matcher. The planned upgrade path (LLM_CITIZENS.md §8) is:
+    /// The canonical shape is the streaming one (LLM_CITIZENS.md §8):
     ///
     ///     IAsyncEnumerable&lt;ChatDelta&gt; SendAsync(ConversationRequest req, string utterance, CancellationToken ct);
     ///     BackendCapabilities Caps { get; }   // MaxEffects, SupportsStreaming, SupportsTools...
     ///     // ChatDelta = TextDelta | EffectProposed(ProposedEffect) | TurnComplete(usage) | BackendError
     ///
-    /// When SendAsync lands, Respond becomes trivially wrappable: a sync backend
-    /// yields one TextDelta with the full reply, one EffectProposed per effect,
-    /// then TurnComplete. Callers should therefore treat ChatResult as "the fully
-    /// accumulated turn" and not depend on Respond being cheap or local.
+    /// A synchronous backend (template today) is trivially wrappable: derive from
+    /// <see cref="SyncChatBackend"/>, which implements <see cref="SendAsync"/> over a
+    /// sync <see cref="Respond"/> — one TextDelta with the full reply, one EffectProposed
+    /// per effect, then TurnComplete (zero usage). <see cref="Respond"/> stays on the
+    /// interface as the "fully accumulated turn" convenience the sync <c>Converse</c> path
+    /// and <see cref="ChatSession"/> use; callers must not depend on it being cheap or local.
     /// </summary>
     public interface IChatBackend
     {
@@ -139,5 +141,18 @@ namespace Perilune.Llm
         /// kind+target appear in request.CapabilitySummary.
         /// </summary>
         ChatResult Respond(ConversationRequest request, string playerUtterance);
+
+        /// <summary>
+        /// Stream one citizen turn as a sequence of <see cref="ChatDelta"/>: zero or more
+        /// <see cref="TextDelta"/>, zero or more <see cref="EffectProposed"/>, then exactly
+        /// one terminal delta (<see cref="TurnComplete"/> or <see cref="BackendError"/>).
+        /// Same guarantees as <see cref="Respond"/> (deterministic per input for the offline
+        /// backends, never throws on player text, whitelist-only effects) plus: honours
+        /// <paramref name="ct"/> promptly and, when cancelled, leaves the caller able to
+        /// abandon the turn with no dispatched effects. The runtime dispatches nothing until
+        /// the stream reaches <see cref="TurnComplete"/>.
+        /// </summary>
+        System.Collections.Generic.IAsyncEnumerable<ChatDelta> SendAsync(
+            ConversationRequest req, string utterance, CancellationToken ct);
     }
 }

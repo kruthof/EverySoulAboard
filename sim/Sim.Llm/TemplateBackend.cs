@@ -30,7 +30,7 @@ namespace Perilune.Llm
     /// (the whitelist contract); this backend doubles as the ground-truth harness
     /// for the effect pipeline and the runtime failover target (§10).
     /// </summary>
-    public sealed class TemplateBackend : IChatBackend
+    public sealed class TemplateBackend : SyncChatBackend
     {
         // ------------------------------------------------------------------
         // Intent classification
@@ -273,10 +273,10 @@ namespace Perilune.Llm
         /// conservative per-turn effect cap. As the runtime degradation target (§10)
         /// its cap matches the small-model manifest ceiling.
         /// </summary>
-        public BackendCapabilities Caps =>
+        public override BackendCapabilities Caps =>
             new BackendCapabilities("template", supportsStreaming: false, supportsTools: false, maxEffects: 4);
 
-        public ChatResult Respond(ConversationRequest request, string playerUtterance)
+        public override ChatResult Respond(ConversationRequest request, string playerUtterance)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             string utterance = playerUtterance ?? string.Empty;
