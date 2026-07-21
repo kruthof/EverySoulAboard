@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Threading;
 using Perilune.Llm;
@@ -44,10 +45,10 @@ namespace Perilune.Web
             var host = SimHost.Build(seed ?? SimHost.DefaultSeedFor(ship), layout, data, ship);
             var web = new WebHost(port);
 
-            // L6: resolve the LLM config (env > .env > toml — env only here, the offline default),
-            // build the dialogue backend chain (a live provider when a key is present, else the
-            // offline template), and hand it to the conversation runtime with real host timestamps.
-            var settings = LlmSettings.LoadFromEnvironment();
+            // L6: resolve the LLM config (env > repo-root .env > repo-root llm.toml), build the
+            // dialogue backend chain (a live provider when a key is present, else the offline
+            // template), and hand it to the conversation runtime with real host timestamps.
+            var settings = LlmSettings.LoadFromEnvironment(RepoFile(".env"), RepoFile("llm.toml"));
             var conv = new ConversationHub(host, web.Broadcast,
                 BuildDialogueChain(settings, out string backendName),
                 () => DateTime.UtcNow, settings.BudgetPerHourUsd, settings.Prices);
@@ -78,6 +79,19 @@ namespace Perilune.Web
         /// the chain can never fail. Host-owned IO boundary: the HttpClientHandler for a live
         /// provider is created here, never in the sockets-free ConversationHub.
         /// </summary>
+        /// <summary>Resolve a file next to the repo root (walk up from the binary to the checkout —
+        /// the dir holding both content/ and hosts/, the same marker walk WebHost uses for
+        /// Client.html). Falls back to a cwd-relative name outside a checkout; the settings
+        /// loader File.Exists-guards either way. Hosts own file IO.</summary>
+        private static string RepoFile(string name)
+        {
+            for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+                if (Directory.Exists(Path.Combine(dir.FullName, "content")) &&
+                    Directory.Exists(Path.Combine(dir.FullName, "hosts")))
+                    return Path.Combine(dir.FullName, name);
+            return name;
+        }
+
         private static IReadOnlyList<IChatBackend> BuildDialogueChain(LlmSettings settings, out string backendName)
         {
             string backend = settings.EffectiveBackend(settings.Dialogue);

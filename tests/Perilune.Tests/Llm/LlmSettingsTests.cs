@@ -173,5 +173,50 @@ namespace Perilune.Tests.Llm
             LlmSettings s = LlmSettings.Parse(null, "unrelated_key=nope\n", "[dialogue]\nbackend = \"anthropic\"\n");
             Assert.That(s.EffectiveBackend(s.Dialogue), Is.EqualTo("template"), "unknown names stay ignored; key-absent => template");
         }
+
+        // ------------------------------------------------------------ dialogue auto-route
+
+        [Test]
+        public void KeyAlone_AutoRoutesDialogueToAnthropic_WithHaikuDefault()
+        {
+            LlmSettings s = LlmSettings.Parse(null, "claude_key=sk-ant-x\n", null);
+            Assert.That(s.Dialogue.Backend, Is.EqualTo("anthropic"), "a bare key selects the live backend");
+            Assert.That(s.Dialogue.Model, Is.EqualTo("claude-haiku-4-5-20251001"), "dialogue-lane default model");
+            Assert.That(s.EffectiveBackend(s.Dialogue), Is.EqualTo("anthropic"));
+        }
+
+        [Test]
+        public void OpenAiKeyAlone_AutoRoutesDialogue_AnthropicPreferredWhenBoth()
+        {
+            LlmSettings only = LlmSettings.Parse(null, "openai_key=sk-oai-x\n", null);
+            Assert.That(only.Dialogue.Backend, Is.EqualTo("openai"));
+            Assert.That(only.Dialogue.Model, Is.EqualTo("gpt-4o-mini"));
+
+            LlmSettings both = LlmSettings.Parse(null, "openai_key=sk-oai-x\nclaude_key=sk-ant-x\n", null);
+            Assert.That(both.Dialogue.Backend, Is.EqualTo("anthropic"), "anthropic preferred when both keys present");
+        }
+
+        [Test]
+        public void ExplicitBackend_AlwaysBeatsAutoRoute()
+        {
+            LlmSettings forced = LlmSettings.Parse(null, "claude_key=sk-ant-x\nPERILUNE_LLM_DIALOGUE_BACKEND=template\n", null);
+            Assert.That(forced.Dialogue.Backend, Is.EqualTo("template"), "explicit template wins over a present key");
+            Assert.That(forced.EffectiveBackend(forced.Dialogue), Is.EqualTo("template"));
+        }
+
+        [Test]
+        public void ConfiguredModel_SurvivesAutoRoute()
+        {
+            LlmSettings s = LlmSettings.Parse(null, "claude_key=sk-ant-x\nPERILUNE_LLM_DIALOGUE_MODEL=claude-opus-4-8\n", null);
+            Assert.That(s.Dialogue.Backend, Is.EqualTo("anthropic"));
+            Assert.That(s.Dialogue.Model, Is.EqualTo("claude-opus-4-8"), "an explicit model rides the auto-routed backend");
+        }
+
+        [Test]
+        public void NoKeysNoConfig_StaysTemplate()
+        {
+            LlmSettings s = LlmSettings.Parse(null, null, null);
+            Assert.That(s.Dialogue.Backend, Is.EqualTo("template"));
+        }
     }
 }
