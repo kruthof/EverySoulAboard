@@ -85,27 +85,47 @@ namespace Perilune.Tools
         /// <summary><c>gen --seed N [--validate] [--days D] [--data DIR]</c>: build a procedural
         /// ship variant from the seed and (with --validate) run the V1–V7 gate suite. Exit 0 when
         /// all gates pass, 1 on any gate failure.</summary>
-        /// <summary><c>dump-personas [--seed N] [--crew C] [--out FILE] [--data DIR]</c>: boot a
-        /// seeded procedural ship, generate each citizen's persona (the host's one-per-citizen
-        /// worldgen call), and emit the deterministic JSON array the portrait pipeline
-        /// (art/spritegen) consumes. Same arguments ⇒ byte-identical output.</summary>
+        /// <summary><c>dump-personas [--ship perilune|slice] [--seed N] [--crew C] [--out FILE] [--data DIR]</c>:
+        /// boot a ship, generate each citizen's persona, and emit the deterministic JSON array the
+        /// portrait pipeline (art/spritegen) consumes. <c>--ship perilune</c> (default) boots a
+        /// seeded PROCEDURAL ship (the host's one-per-citizen worldgen call). <c>--ship slice</c>
+        /// boots the AUTHORED P2 "Talking Ship" 8-crew slice (AuthoredShips.PeriluneSlice +
+        /// PopulateSlice), the same crew the terminal/web hosts boot with <c>--ship slice</c>, and
+        /// defaults --seed to the slice's own identity (AuthoredShips.SliceSeed) so the pk_ keys
+        /// match the ship-lane roster. Read-only boot + print — no sim ticks, no file writes beyond
+        /// --out. Same arguments ⇒ byte-identical output (the W4 portrait handoff contract).</summary>
         private static int RunDumpPersonas(string[] args)
         {
-            ulong seed = ArgULong(args, "--seed", 7UL);
+            bool slice = ArgString(args, "--ship", "perilune") == "slice";
+            ulong seed = ArgULong(args, "--seed", slice ? AuthoredShips.SliceSeed : 7UL);
             int crew = ArgInt(args, "--crew", 8);
             string outPath = ArgString(args, "--out", null);
             string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
             var defs = LoadDefs(dataDir, out _, out _, out _);
 
-            var recipe = ShipRecipe.FromSeed(seed);
-            recipe.CrewCount = crew;
-            var host = GenSimHost.Build(ProceduralShips.Generate(recipe), defs);
+            GenSimHost host;
+            if (slice)
+            {
+                // The authored slice: same plan the hosts boot with --ship slice. GenSimHost builds
+                // the sim from the plan; PopulateSlice weaves the authored minds/secrets (and, with a
+                // SocialSystem, the seeded relationships — null here since the persona dump reads only
+                // the authored persona sheet, never the social graph). RNG-free ⇒ byte-deterministic.
+                host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs);
+                AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
+            }
+            else
+            {
+                var recipe = ShipRecipe.FromSeed(seed);
+                recipe.CrewCount = crew;
+                host = GenSimHost.Build(ProceduralShips.Generate(recipe), defs);
+            }
 
             string json = PersonaDump.Render(seed, host.Sim, host.Minds, host.Facts);
             if (outPath != null)
             {
                 File.WriteAllText(outPath, json);
-                Console.WriteLine($"dump-personas: {host.Sim.Citizens.Items.Count} personas (seed {seed}) -> {outPath}");
+                Console.WriteLine($"dump-personas: {host.Sim.Citizens.Items.Count} personas " +
+                                  $"({(slice ? "slice" : "procedural")}, seed {seed}) -> {outPath}");
             }
             else
             {

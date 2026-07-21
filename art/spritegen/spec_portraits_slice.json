@@ -1,0 +1,17 @@
+{
+  "name": "cyberpunk80s-portraits-slice",
+  "mode": "portrait",
+  "personas": "personas_slice_authored.json",
+  "portrait_px": 256,
+  "api_image_size": "1K",
+  "hue_centers_deg": [
+    187,
+    320,
+    268,
+    35,
+    130
+  ],
+  "hue_pull": 0.4,
+  "harmonize_sat_min": 0.28,
+  "style_block": "Character portrait bust for a retro-futuristic 1980s cyberpunk space colony sim, matching companion 128px sprite set. A single crew member from the chest up, head and shoulders, at a slight 3/4 angle, the face filling roughly 60 percent of the frame, looking a little toward the viewer. Detailed flat-shaded 2D painted game art, crisp edges, warm expressive human face, emotionally readable, NOT photorealistic, no blur. Shared palette language with the ship set: cool near-black blue-grey and graphite behind the subject, brushed chrome and dark anodized trim on the collar, restrained neon rim light in hot magenta / pink and electric cyan, deep violet shadows, a small warm amber highlight, subtle 1980s synthwave mood. Absolutely no green surfaces or green lighting. Plain solid dark background (near-black cool blue-grey), soft neon rim light separating the subject from it. One person only, centered, shoulders squared to the frame. No text, no watermark, no logo, no border, no drop shadow."
+}

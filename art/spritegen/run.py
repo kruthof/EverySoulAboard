@@ -589,16 +589,35 @@ def stage_portrait_process(spec):
     print(f"process: {len(images)} portraits -> {spec['_work'] / 'processed'}")
 
 
+def _existing_manifest():
+    """Prior manifest entries (key -> file) whose PNG still exists on disk. The manifest is
+    APPEND-ONLY across specs (A2 procedural personas + A3 authored slice crew coexist): a spec
+    integrate keeps every already-committed portrait and only adds/refreshes its own keys, so a
+    citizen art built under an earlier spec is never orphaned by a later one."""
+    out = {}
+    if PORTRAITS_MANIFEST.exists():
+        import re
+        for m in re.finditer(r'"(pk_[0-9a-f]+)":\s*\{\s*file:\s*"([^"]+)"', PORTRAITS_MANIFEST.read_text()):
+            key, f = m.group(1), m.group(2)
+            if (REPO / "client/assets" / f).exists():
+                out[key] = f
+    return out
+
+
 def stage_portrait_integrate(spec):
     proc = spec["_work"] / "processed"
     PORTRAITS_DIR.mkdir(parents=True, exist_ok=True)
-    manifest = []  # (key, file) in persona order
+    # Seed with the prior manifest (append-only) so other specs' portraits survive this run.
+    manifest = list(_existing_manifest().items())
+    have = {k for k, _ in manifest}
     for u in portrait_units(spec):
         src = proc / f"{u['uid']}.png"
         if not src.exists():
             continue
         Image.open(src).save(PORTRAITS_DIR / f"{u['uid']}.png", "PNG", optimize=True)
-        manifest.append((u["uid"], f"portraits/{u['uid']}.png"))
+        if u["uid"] not in have:  # this spec's own keys are refreshed on disk but appended once
+            manifest.append((u["uid"], f"portraits/{u['uid']}.png"))
+            have.add(u["uid"])
     lines = [
         "// @ts-nocheck",
         "// GENERATED — do not edit. Produced by art/spritegen/run.py (portrait mode) from the",

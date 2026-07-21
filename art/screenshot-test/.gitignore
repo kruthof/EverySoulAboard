@@ -1,0 +1,7 @@
+# Regenerated every `slice-shot.mjs` run (the sim drifts — see PROTOCOL.md). Track only the
+# committed baselines: accepted.png (style anchor) + renderstats.json (CI coverage input).
+candidate.png
+candidate_far.png
+ab_sheet.png
+# You drop your own reference in; we never ship one (no asset rights / no source).
+reference-rimworld.png

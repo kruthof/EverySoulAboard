@@ -24,4 +24,11 @@ printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
 printf '%s\n' "$OUT" | grep -q "26907c23d7e48a5c" || { echo "FAIL: reference hash changed (expected 26907c23d7e48a5c) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
+echo "== screenshot-test metrics (advisory) =="
+if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then
+  python3 art/spritegen/metrics.py art/screenshot-test/accepted.png --accepted art/screenshot-test/accepted.png --renderstats art/screenshot-test/renderstats.json || true
+else
+  echo "python3 or committed accepted.png absent — skipped (advisory)"
+fi
+
 echo "== OK =="

@@ -92,6 +92,7 @@ export class WebGL2Executor {
     this.gl.onLost = () => { if (this.onContextLost) this.onContextLost(); };
     this._sig = null;              // current atlas signature
     this._uv = {};                 // cell key → UV rect
+    this._statsLoggedAt = 0;       // wall-clock throttle for the advisory [perilune-stats] line
     this._atlasCanvas = document.createElement('canvas');
     console.info('[perilune] backend=webgl2 (WebGL2Executor active)');
   }
@@ -126,6 +127,15 @@ export class WebGL2Executor {
 
     const [terrain, entities, light, overlay] = passes;
 
+    // Advisory render counters (art/spritegen/metrics.py sprite-coverage gate reads these off
+    // window.__renderStats). Pure instrumentation — never influences a draw.
+    const stats = {
+      backend: 'webgl2', useSpr,
+      terrainTex: 0, terrainFlat: 0,
+      entities: 0, entitySprite: 0, entityProc: 0,
+      lightQuads: 0,
+    };
+
     // ---- terrain: flat hull/void + textured base tiles ----
     {
       const flat = [], tex = [];
@@ -133,8 +143,8 @@ export class WebGL2Executor {
         const spec = resolveTerrain(o);
         if (!spec) continue;
         const X = o.x * T * s + ox, Y = o.y * T * s + oy;
-        if (spec.flat) pushFlat(flat, X, Y, D, premul(parseColor(spec.color)));
-        else pushTex(tex, X, Y, D, this._uv[spec.cell], 1, 0);
+        if (spec.flat) { stats.terrainFlat++; pushFlat(flat, X, Y, D, premul(parseColor(spec.color))); }
+        else { stats.terrainTex++; pushTex(tex, X, Y, D, this._uv[spec.cell], 1, 0); }
       }
       gl.drawFlat(new Float32Array(flat), W, H);
       gl.drawTextured(new Float32Array(tex), W, H);
@@ -145,6 +155,8 @@ export class WebGL2Executor {
       const tex = [], lock = [];
       for (const o of entities.ops) {
         const spec = resolveEntity(o, useSpr, raster);
+        stats.entities++;
+        if (spec.cell && spec.cell.startsWith('spr:')) stats.entitySprite++; else stats.entityProc++;
         // Walking pawns slide from their previous tile toward the current one (sub-tile offset).
         const entry = raster.motion && raster.motion[o.x + ',' + o.y];
         const off = entry && entry.walking ? walkOffset(entry, walkProgress) : { ox: 0, oy: 0 };
@@ -166,6 +178,7 @@ export class WebGL2Executor {
       for (const o of light.ops) {
         const rgba = litOverlay(o.state);
         if (!rgba) continue;
+        stats.lightQuads++;
         const c = parseColor(rgba), a = c[3];
         const X = o.x * T * s + ox, Y = o.y * T * s + oy;
         pushFlat(mul, X, Y, D, [(1 - a) + c[0] * a, (1 - a) + c[1] * a, (1 - a) + c[2] * a, 1]);
@@ -189,6 +202,19 @@ export class WebGL2Executor {
       }
       gl.drawFlat(new Float32Array(flat), W, H);
       gl.drawTextured(new Float32Array(tex), W, H);
+    }
+
+    // Publish the frame's counters for the advisory screenshot-test harness (browser only).
+    stats.spriteCoverage = stats.entities ? stats.entitySprite / stats.entities : 0;
+    if (typeof window !== 'undefined') window.__renderStats = stats;
+    // Also emit to the console (throttled, wall-clock) so a headless-Chrome shot harness can
+    // scrape the last line off stderr — the same channel it reads the `backend=` line from
+    // (window.* is not otherwise reachable without CDP). Costs one log line per ~500ms.
+    const now = (typeof Date !== 'undefined') ? Date.now() : 0;
+    if (now - this._statsLoggedAt >= 500 && typeof btoa !== 'undefined') {
+      this._statsLoggedAt = now;
+      // base64 so the JSON's quotes/braces survive headless-Chrome's console-line escaping intact.
+      console.info('[perilune-stats] ' + btoa(JSON.stringify(stats)));
     }
   }
 
