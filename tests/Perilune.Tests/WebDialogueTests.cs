@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using Perilune.Sim;
 using Perilune.Web;
 using NUnit.Framework;
 
@@ -95,6 +97,38 @@ namespace Perilune.Tests
             string s = WireFormat.Citizen(1, "O\"Neil\n", "r", "m", new[] { "wry\"" }, "p");
             StringAssert.Contains("\"name\":\"O\\\"Neil\\n\"", s);
             StringAssert.Contains("\"traits\":[\"wry\\\"\"]", s);
+        }
+
+        // ---------------------------------------------------------------- llmstatus / chronicle (L6)
+
+        [Test]
+        public void LlmStatus_Serializes_All_Fields_InvariantCulture()
+        {
+            Assert.AreEqual(
+                "{\"type\":\"llmstatus\",\"backend\":\"anthropic\",\"degraded\":true," +
+                "\"costPerHour\":1.25,\"inflight\":2,\"queued\":3}",
+                WireFormat.LlmStatus("anthropic", degraded: true, costPerHour: 1.25m, inflight: 2, queued: 3));
+        }
+
+        [Test]
+        public void Chronicle_Serializes_Days_With_Headline_And_Lines()
+        {
+            var days = new List<ChronicleDay>
+            {
+                new ChronicleDay(0, "Day 0 - Boot", new[] { "[Note] a", "[Alarm] \"b\"" }),
+                new ChronicleDay(1, "Day 1 - Death", new[] { "[Death] c" }),
+            };
+            Assert.AreEqual(
+                "{\"type\":\"chron\",\"days\":[" +
+                "{\"day\":0,\"headline\":\"Day 0 - Boot\",\"lines\":[\"[Note] a\",\"[Alarm] \\\"b\\\"\"]}," +
+                "{\"day\":1,\"headline\":\"Day 1 - Death\",\"lines\":[\"[Death] c\"]}]}",
+                WireFormat.Chronicle(days));
+        }
+
+        [Test]
+        public void Chronicle_Empty_Is_Empty_Day_List()
+        {
+            Assert.AreEqual("{\"type\":\"chron\",\"days\":[]}", WireFormat.Chronicle(new List<ChronicleDay>()));
         }
 
         // ---------------------------------------------------------------- device

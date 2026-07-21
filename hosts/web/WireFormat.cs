@@ -212,6 +212,64 @@ namespace Perilune.Web
             return sb.Append('}').ToString();
         }
 
+        // ------------------------------------------------------------------- llm status (L6)
+
+        /// <summary>
+        /// The live conversation-runtime status strip (L6): which backend is answering,
+        /// whether it is degraded (running on the offline fallback), the rolling hourly cost
+        /// (InvariantCulture, never locale-comma), and the dispatch queue depths (turns in
+        /// flight + says waiting behind an in-flight turn). Broadcast periodically from
+        /// Render(); a cheap, unconditional strip the client shows in the HUD.
+        ///   {"type":"llmstatus","backend":"template","degraded":false,"costPerHour":0,"inflight":0,"queued":0}
+        /// </summary>
+        public static string LlmStatus(string backend, bool degraded, decimal costPerHour, int inflight, int queued)
+        {
+            var sb = new StringBuilder(96);
+            sb.Append("{\"type\":\"llmstatus\",\"backend\":");
+            AppendString(sb, backend ?? "");
+            sb.Append(",\"degraded\":").Append(degraded ? "true" : "false");
+            sb.Append(",\"costPerHour\":").Append(NumDecimal(costPerHour));
+            sb.Append(",\"inflight\":").Append(inflight.ToString(Ic));
+            sb.Append(",\"queued\":").Append(queued.ToString(Ic));
+            return sb.Append('}').ToString();
+        }
+
+        // ------------------------------------------------------------------- chronicle (L6)
+
+        /// <summary>
+        /// The ship's log over the wire (L6): Chronicle.Render output as a day list. Each day
+        /// carries its index, the display headline (LLM prose override when present, else the
+        /// deterministic template headline), and every rendered line for that day.
+        ///   {"type":"chron","days":[{"day":0,"headline":"..","lines":["..",".."]},..]}
+        /// Sent on demand (a `chron` command) or when a day boundary rolls over.
+        /// </summary>
+        public static string Chronicle(IReadOnlyList<ChronicleDay> days)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"type\":\"chron\",\"days\":[");
+            if (days != null)
+            {
+                for (int d = 0; d < days.Count; d++)
+                {
+                    if (d > 0) sb.Append(',');
+                    var day = days[d];
+                    sb.Append("{\"day\":").Append(day.Day.ToString(Ic));
+                    sb.Append(",\"headline\":"); AppendString(sb, day.Display ?? "");
+                    sb.Append(",\"lines\":[");
+                    var lines = day.Lines;
+                    if (lines != null)
+                        for (int i = 0; i < lines.Count; i++)
+                        {
+                            if (i > 0) sb.Append(',');
+                            AppendString(sb, lines[i]);
+                        }
+                    sb.Append("]}");
+                }
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         // ------------------------------------------------------------------- light (W2)
 
         /// <summary>Serialize one deck's per-tile light grid (from LightMapper) as run-length
@@ -358,6 +416,10 @@ namespace Perilune.Web
             if (double.IsNaN(value) || double.IsInfinity(value)) return "0";
             return value.ToString("0.####", Ic);
         }
+
+        /// <summary>Fixed-shape InvariantCulture decimal (money, up to 4 places, trimmed) — the
+        /// same byte-stable discipline as <see cref="Num"/> but exact for cost accounting.</summary>
+        private static string NumDecimal(decimal value) => value.ToString("0.####", Ic);
 
         /// <summary>Append a JSON-escaped string literal (quotes included).</summary>
         private static void AppendString(StringBuilder sb, string s)
