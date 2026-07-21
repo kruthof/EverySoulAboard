@@ -103,6 +103,10 @@ namespace Perilune.Sim
         // just under Argument/Bond.
         private static int Severity(byte kind) => (HistoryKind)kind switch
         {
+            // A eulogy outranks the bare death line it accompanies: on a death day the
+            // friend's words ARE the headline (N5). No prior day carries a Eulogy entry,
+            // so this only ever reshapes death days (append-only in effect).
+            HistoryKind.Eulogy => 8,
             HistoryKind.Death => 7,
             HistoryKind.ConstructionCompleted => 6,
             HistoryKind.Brownout => 5,
@@ -124,6 +128,7 @@ namespace Perilune.Sim
         private static string Label(byte kind) => (HistoryKind)kind switch
         {
             HistoryKind.Alarm => "Alarm",
+            HistoryKind.Eulogy => "Eulogy",
             HistoryKind.Death => "Death",
             HistoryKind.Goal => "Objective",
             HistoryKind.Brownout => "Power",

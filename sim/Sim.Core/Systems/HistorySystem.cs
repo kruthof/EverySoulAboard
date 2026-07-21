@@ -18,6 +18,7 @@ namespace Perilune.Sim
         Argument = 6,
         Bond = 7,
         ConstructionCompleted = 8,
+        Eulogy = 9,                // a closest-friend eulogy on a death (EulogySystem, N5)
     }
 
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
@@ -87,15 +88,14 @@ namespace Perilune.Sim
             foreach (var alarm in sim.Events.Read<AlarmRaisedEvent>())
                 Add(tick, $"{alarm.SourceId}: {alarm.Message}", HistoryKind.Alarm);
 
-            // Keep the CitizenId (previously discarded) and name the crew member when the
-            // sim can still resolve them. NOTE: NeedsSystem.Kill removes the citizen from
-            // the store the same tick it publishes CitizenDiedEvent, and HistorySystem
-            // reads events one tick later — so in the live death path the lookup misses and
-            // the text falls back to "A crew member". The id (SubjectA) is always retained.
-            // A CitizenDiedEvent that carried the name would let the text name the dead too;
-            // filed as a contract request (SimEvents.cs is not this lane's write path).
+            // Keep the CitizenId (previously discarded) and name the crew member. NeedsSystem.Kill
+            // removes the citizen from the store the same tick it publishes CitizenDiedEvent, and
+            // HistorySystem reads events one tick later — so in the live death path the id lookup
+            // misses. The event now CARRIES the name (P2 wave-2 contract), so the text names the
+            // dead from CitizenDiedEvent.Name when the lookup misses; a null/empty name still
+            // degrades to the neutral "A crew member" line. The id (SubjectA) is always retained.
             foreach (var death in sim.Events.Read<CitizenDiedEvent>())
-                Add(tick, DeathText(sim, death.CitizenId), HistoryKind.Death, death.CitizenId);
+                Add(tick, DeathText(sim, death.CitizenId, death.Name), HistoryKind.Death, death.CitizenId);
 
             foreach (var goal in sim.Events.Read<GoalCompletedEvent>())
                 Add(tick, $"Objective complete: {goal.Text}", HistoryKind.Goal);
@@ -130,16 +130,33 @@ namespace Perilune.Sim
                 ? c.Name
                 : "A crew member";
 
-        private static string DeathText(Simulation sim, uint id)
-            => id != 0 && sim.Citizens.TryGet(id, out var c) && !string.IsNullOrEmpty(c.Name)
-                ? $"{c.Name} has died."
-                : "A crew member has died.";
+        /// <summary>
+        /// Names the dead: the still-resolvable citizen name first, then the name the
+        /// event carried (the live same-tick-removal path), then the neutral fallback.
+        /// </summary>
+        private static string DeathText(Simulation sim, uint id, string eventName)
+        {
+            if (id != 0 && sim.Citizens.TryGet(id, out var c) && !string.IsNullOrEmpty(c.Name))
+                return $"{c.Name} has died.";
+            if (!string.IsNullOrEmpty(eventName))
+                return $"{eventName} has died.";
+            return "A crew member has died.";
+        }
 
         private void Add(long tick, string text, HistoryKind kind, uint subjectA = 0, uint subjectB = 0)
         {
             if (Entries.Count >= MaxEntries) Entries.RemoveAt(0);
             Entries.Add(new HistoryEntry(tick, text, (byte)kind, subjectA, subjectB));
         }
+
+        /// <summary>
+        /// Append a categorised entry through the same capped buffer the event ingestion
+        /// uses. Public so the eulogy renderer (<see cref="EulogySystem"/>, host-registered
+        /// after this system) can write its Eulogy entry into the ship's history — and thus
+        /// the Chronicle — the same tick it reads the death.
+        /// </summary>
+        public void Record(long tick, string text, HistoryKind kind, uint subjectA = 0, uint subjectB = 0)
+            => Add(tick, text, kind, subjectA, subjectB);
 
         public void CaptureState(System.IO.BinaryWriter writer)
         {

@@ -65,7 +65,26 @@ namespace Perilune.Tests
             var e = h.Entries[0];
             Assert.That(e.Kind, Is.EqualTo((byte)HistoryKind.Death));
             Assert.That(e.SubjectA, Is.EqualTo(ghostId));
-            Assert.That(e.Text, Is.EqualTo("A crew member has died."));
+            Assert.That(e.Text, Is.EqualTo("A crew member has died."),
+                "null/empty event Name still degrades to the neutral line");
+        }
+
+        [Test]
+        public void DeathOfRemovedCitizenNamesTheDeadFromTheEventName()
+        {
+            // The live path: the citizen is gone from the store, but CitizenDiedEvent now
+            // carries the name — so history NAMES the dead even when the id lookup misses.
+            var sim = NewSim();
+            var h = new HistorySystem();
+            const uint ghostId = 77;
+
+            sim.Events.Publish(new CitizenDiedEvent { CitizenId = ghostId, Pos = new Int3(1, 1, 0), Name = "Reyes" });
+            Deliver(sim, h);
+
+            var e = h.Entries[0];
+            Assert.That(e.Kind, Is.EqualTo((byte)HistoryKind.Death));
+            Assert.That(e.SubjectA, Is.EqualTo(ghostId));
+            Assert.That(e.Text, Is.EqualTo("Reyes has died."));
         }
 
         [Test]

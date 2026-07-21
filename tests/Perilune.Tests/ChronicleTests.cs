@@ -163,6 +163,26 @@ namespace Perilune.Tests
             Assert.That(days[0].Headline, Is.EqualTo("Day 0 — " + expectedText));
         }
 
+        [Test]
+        public void EulogyOutranksTheDeathLineForTheHeadline()
+        {
+            // On a death day both the bare death line and the friend's eulogy are present;
+            // the eulogy (severity 8) becomes the headline (N5), and both render as lines.
+            var days = Chronicle.Render(new List<HistoryEntry>
+            {
+                E(20, "Vega has died.", HistoryKind.Death, 7),
+                E(21, "Bo spoke for Vega. \"Grew closer to Vega.\"", HistoryKind.Eulogy, 7, 9),
+            });
+
+            Assert.That(days.Count, Is.EqualTo(1));
+            Assert.That(days[0].Headline, Is.EqualTo("Day 0 — Bo spoke for Vega. \"Grew closer to Vega.\""));
+            Assert.That(days[0].Lines, Is.EqualTo(new[]
+            {
+                "[Death] Vega has died.",
+                "[Eulogy] Bo spoke for Vega. \"Grew closer to Vega.\"",
+            }));
+        }
+
         // ------------------------------------------------------------------ determinism
 
         [Test]
