@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PERILUNE</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <div class="strip">
+    <div class="brand">PERILUNE <small>DERELICT SURVEY</small></div>
+    <div class="chip">DAY <b id="s-day">–</b></div>
+    <div class="chip" id="s-speedchip"><span id="s-runstate" class="run-dot"></span> <b id="s-speed">1x</b></div>
+    <div class="chip">DECK <b id="s-deck">0</b></div>
+    <div class="chip">LENS <b id="s-lens">none</b></div>
+    <div class="msg" id="s-msg"></div>
+  </div>
+
+  <div class="mid">
+    <div class="stage">
+      <canvas id="c" width="1664" height="520"></canvas>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h3>Ship Systems</h3>
+        <div id="metrics"></div>
+      </div>
+
+      <div class="card">
+        <h3>Controls</h3>
+        <div class="controls" style="margin-bottom:8px">
+          <button id="b-pause">⏸ Pause</button>
+          <button id="b-slower">– Speed</button>
+          <button id="b-faster">Speed +</button>
+        </div>
+        <div class="controls" style="margin-bottom:8px">
+          <button id="b-deckdown">▼ Deck</button>
+          <button id="b-deckup">▲ Deck</button>
+          <button id="b-move">↦ Move crew</button>
+        </div>
+        <div class="lens-row" id="lensbtns"></div>
+        <div class="hint">
+          <kbd>WASD</kbd> pan · <kbd>↑↓←→</kbd> cursor · <kbd>R</kbd>/<kbd>F</kbd> deck<br>
+          <kbd>1–7</kbd> lens · <kbd>space</kbd> pause · <kbd>+</kbd>/<kbd>−</kbd> speed · <kbd>m</kbd> move<br>
+          <kbd>P</kbd> sprite toggle · scroll = zoom · drag = pan · click = select/toggle · shift-click = move
+        </div>
+      </div>
+
+      <div class="card" id="legendcard" style="display:none">
+        <h3>Lens Legend</h3>
+        <div id="legend" class="mono"></div>
+      </div>
+
+      <div class="card">
+        <h3>Inspector</h3>
+        <div id="inspect" class="mono"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="log">
+    <h3>Event Log</h3>
+    <div id="log"></div>
+  </div>
+</div>
+<div class="disconnected" id="disc">connection lost — is the server still running?</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

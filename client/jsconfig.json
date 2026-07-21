@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "checkJs": true,
+    "noEmit": true,
+    "allowJs": true,
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js", "test/**/*.js", "tools/**/*.mjs"],
+  "exclude": ["node_modules", "assets/sprites.g.js"]
+}
