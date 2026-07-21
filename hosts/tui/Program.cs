@@ -11,6 +11,7 @@ namespace Perilune.Tui
     ///     PeriluneTui --dump [--seed N] [--ticks N | --days D] [--every M]
     ///                 [--deck 0|1|all] [--lens …] [--cursor x,y]
     ///                 [--colors] [--metrics] [--out FILE] [--layout PATH] [--data DIR]
+    ///                 [--ship perilune|slice]
     ///
     ///   --play  … interactive DF-style terminal client (raw ANSI, alt-screen).
     ///
@@ -42,8 +43,8 @@ namespace Perilune.Tui
                 return 2;
             }
 
-            ulong seed = opt.Seed ?? SimHost.DefaultSeed;
-            var host = SimHost.Build(seed, opt.LayoutPath, opt.DataDir);
+            ulong seed = opt.Seed ?? SimHost.DefaultSeedFor(opt.Ship);
+            var host = SimHost.Build(seed, opt.LayoutPath, opt.DataDir, opt.Ship);
             var term = new AnsiTerminal();
             new GameLoop(term, host).Run();
             return 0;
