@@ -90,7 +90,8 @@ One authored ship, ~8 crew, no combat. Success = the VISION feel-test moments ex
 **Exit:** a 60-minute unscripted playtest where a tester names a crew member when
 retelling it — **still open on Garvin** (the human exit bar). All automated gates green
 (524 dotnet + 115 node); LLM cost meter <$0.50/hr defaults verified on the live smoke.
-Tag `v2-talking-ship` when the playtest + blind A/B land.
+Tagged `v2-talking-ship` (the automated milestone, like v0/v1); the playtest + blind
+A/B verdicts append to HANDOVER when they land.
 
 ### P3 — The Voyage (differentiation proof)
 - Nav/sensors full loop: survey → contact → burn → rendezvous.
