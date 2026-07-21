@@ -39,11 +39,15 @@ const sha = (v) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 // Snapshot of main's pre-existing values (computed from `git show main:...sprites.g.js`).
 // If the base art is ever intentionally re-generated these move — and that must be a
 // deliberate, explained commit, never a silent side effect of the animation schema.
+// SPRITE_URIS moved 2026-07-21: spec_cyberpunk80s_v2 regenerated the three pawn idles
+// (level three-quarter-profile gaze — playtest finding: the v1 pawns stared up into the
+// camera) and their walk frames (two v1 frames shipped an unkeyed white matte). All
+// non-pawn art is byte-identical to v1 (same processed files, same work-dir lineage).
 const MAIN = {
   SPRITE_TILE: 128,
   SPRITE_FACING: '257c2899dd5cdb836f1c2b1069833ffe2f1a13598401b3ba26da27bea392de8f',
   SPRITE_NO_ROTATE: 'eb1ba4e6cb5b1e9aa0e1feb1d153cace2d1071b80fc560d2f25d0f1547b2761f',
-  SPRITE_URIS: '5ba8d52c441a5930628343140f62f45962582362595c35b292ece2d6a18fac47',
+  SPRITE_URIS: '7f9305d1e45aa7d2f045a1888d606c75fbcb76de4bad8f1238f2176750dcac2d',
 };
 
 const isPngDataUri = (s) => typeof s === 'string' && s.startsWith('data:image/png;base64,') && s.length > 64;

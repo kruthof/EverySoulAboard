@@ -497,15 +497,20 @@ def load_personas(spec):
 def portrait_prompt(spec, persona):
     """Weave a portrait prompt from persona fields the art may safely see. The backstory
     hint (spoilery specifics) is deliberately NOT consulted — only role, traits, fears as
-    mood, and speech style as bearing."""
+    mood, speech style as bearing, and (when the fixture provides one) an explicit
+    `appearance` line. Appearance is load-bearing: without it the image model drifts to a
+    default (male, white, style-of-the-day) face — the A3 defect where authored women got
+    male busts. Fixtures for authored crew should always carry it."""
     block = spec["style_block"].strip()
     role = persona.get("rolePreRaid") or persona.get("role") or "crew member"
     traits = ", ".join(persona.get("traits", [])[:3])
     fears = persona.get("fears", [])
     speech = (persona.get("speechStyle") or "").strip()
+    appearance = (persona.get("appearance") or "").strip()
     parts = [
         block,
         f"Subject: a {role} of the ship's crew.",
+        f"Appearance (must match exactly): {appearance}." if appearance else "",
         f"Character read: {traits}." if traits else "",
         f"Bearing and expression: {speech}." if speech else "",
         f"A quiet weight behind the eyes — someone who carries {fears[0]}." if fears else "",
