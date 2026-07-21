@@ -101,6 +101,14 @@ export function installInput(opts) {
 
   window.addEventListener('keydown', (e) => {
     const k = e.key;
+    // Typing isolation: while focus is in any text-entry element (the dialogue say box,
+    // the MOSS terminal textarea, ...), game shortcuts must not fire and must not
+    // preventDefault the character away. Escape is the one deliberate exception — it
+    // closes the focused panel even mid-typing (and inserts nothing anyway).
+    if (isTextEntryTarget(e.target)) {
+      if (k === 'Escape') onEscape();
+      return;
+    }
     if (k === 'P' || k === 'p') { toggleSprites(); return; }
     if (k === 'Escape') { onEscape(); }
     else if (k === 't' || k === 'T') { talkSelected(); }
@@ -128,4 +136,17 @@ export function installInput(opts) {
 
   // Remove every listener installed above (canvas + window) in one call.
   return () => ac.abort();
+}
+
+/**
+ * True when a keydown's target is a text-entry surface — game shortcuts must stand
+ * down. Pure and duck-typed (tagName/isContentEditable) so it is node-testable
+ * without a DOM. Exported for tests.
+ * @param {any} target
+ */
+export function isTextEntryTarget(target) {
+  if (!target) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return target.isContentEditable === true;
 }
