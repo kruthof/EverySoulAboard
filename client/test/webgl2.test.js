@@ -1,0 +1,127 @@
+// WebGL2 executor's PURE halves: the rasterization plan (rasterplan.js) and the backend/time
+// selection logic (exec-select.js). Both are data-in/data-out — no DOM, no GL — so they are unit-
+// testable here. The GL layer (gl.js) and the executor's DOM/GPU glue (webgl2.js) are DOM-touching
+// and deliberately thin; they are exercised by the manual parity harness (client/tools/shot.mjs),
+// not node. We reuse the same boot fixture + cameras the DisplayList/RenderPass goldens use.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { loadBootFrame, cameras, ASSETS } from './helpers.js';
+import { composeScene } from '../src/render/compose.js';
+import { buildPasses } from '../src/render/webgl/batch.js';
+import {
+  resolveTerrain, resolveEntity, resolveOverlay, collectCellKeys, atlasSignature, CELL, LOCK_TINT,
+} from '../src/render/rasterplan.js';
+import { chooseBackend, parseFrozenTime } from '../src/render/exec-select.js';
+
+function deepFreeze(v) {
+  if (v && typeof v === 'object' && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    for (const k of Object.keys(v)) deepFreeze(v[k]);
+  }
+  return v;
+}
+/** A minimal URLSearchParams-like reader for exec-select tests. */
+const search = (obj) => ({ get: (k) => (k in obj ? obj[k] : null) });
+
+// ---- exec-select: backend choice ----
+test('chooseBackend honours ?exec=webgl2 only when WebGL2 is available', () => {
+  assert.equal(chooseBackend(search({ exec: 'webgl2' }), { webgl2Available: true }), 'webgl2');
+  assert.equal(chooseBackend(search({ exec: 'webgl2' }), { webgl2Available: false }), 'canvas2d');
+  assert.equal(chooseBackend(search({ exec: 'webgl2' }), {}), 'canvas2d');
+  assert.equal(chooseBackend(search({ exec: 'canvas2d' }), { webgl2Available: true }), 'canvas2d');
+  assert.equal(chooseBackend(search({}), { webgl2Available: true }), 'canvas2d'); // default
+  assert.equal(chooseBackend(search({ exec: 'nonsense' }), { webgl2Available: true }), 'canvas2d');
+});
+
+// ---- exec-select: time freeze ----
+test('parseFrozenTime reads a finite ?t=, else null', () => {
+  assert.equal(parseFrozenTime(search({ t: '0' })), 0);
+  assert.equal(parseFrozenTime(search({ t: '1.5' })), 1.5);
+  assert.equal(parseFrozenTime(search({ t: '-2' })), -2);
+  assert.equal(parseFrozenTime(search({})), null);
+  assert.equal(parseFrozenTime(search({ t: '' })), null);
+  assert.equal(parseFrozenTime(search({ t: 'abc' })), null);
+});
+
+// ---- terrain resolution ----
+test('resolveTerrain: hull/void are flat fills; base tiles are atlas cells', () => {
+  assert.deepEqual(resolveTerrain({ kind: 'hull', x: 0, y: 0 }), { flat: true, color: '#161122' });
+  assert.equal(resolveTerrain({ kind: 'void', x: 0, y: 0 }).flat, true);
+  assert.deepEqual(resolveTerrain({ kind: 'floor', x: 0, y: 0 }), { cell: 'terrain:floor' });
+  assert.deepEqual(resolveTerrain({ kind: 'wall', x: 0, y: 0 }), { cell: 'terrain:wall' });
+  assert.deepEqual(resolveTerrain({ kind: 'wall_vert', x: 0, y: 0 }), { cell: 'terrain:wall_vert' });
+  assert.deepEqual(resolveTerrain({ kind: 'debris', x: 0, y: 0 }), { cell: 'terrain:debris' });
+  assert.equal(resolveTerrain({ kind: 'mystery', x: 0, y: 0 }), null);
+});
+
+// ---- entity resolution: sprite mode vs procedural mode ----
+test('resolveEntity in sprite mode picks the sprite cell, carries facing + dim + lock overlay', () => {
+  const solar = { kind: 'entity', x: 1, y: 1, sprite: 'solar', turns: 2, tint: 9, alpha: 0.7, glyph: 71, overlay: null };
+  assert.deepEqual(resolveEntity(solar, true), { cell: 'spr:solar', alpha: 0.7, turns: 2, overlay: null });
+  const locked = { kind: 'entity', x: 3, y: 3, sprite: 'door', turns: 0, tint: 11, alpha: 1, glyph: 88, overlay: 'lock-tint' };
+  assert.deepEqual(resolveEntity(locked, true), { cell: 'spr:door', alpha: 1, turns: 0, overlay: LOCK_TINT });
+});
+
+test('resolveEntity in procedural mode bakes glyph+colour into a proc cell (no facing, no overlay)', () => {
+  // Same solar op, but sprites off/not-ready → procedural cell keyed by glyph+effective colour.
+  const solar = { kind: 'entity', x: 1, y: 1, sprite: 'solar', turns: 2, tint: 8, alpha: 1, glyph: 71, overlay: null };
+  assert.deepEqual(resolveEntity(solar, false), { cell: 'proc:71:8', alpha: 1, turns: 0, overlay: null });
+  // A glyph with no sprite is procedural even in sprite mode; dim folds into tint(9)+alpha(0.7).
+  const item = { kind: 'entity', x: 4, y: 4, sprite: null, turns: 0, tint: 9, alpha: 0.7, glyph: 44, overlay: null };
+  assert.deepEqual(resolveEntity(item, true), { cell: 'proc:44:9', alpha: 0.7, turns: 0, overlay: null });
+});
+
+// ---- overlay resolution ----
+test('resolveOverlay: wash is flat; cursor/reticle are cells; reticle alpha tracks phase', () => {
+  assert.deepEqual(resolveOverlay({ kind: 'wash', x: 0, y: 0, bg: 19 }), { flat: true, color: 'rgba(255,176,46,.20)' });
+  assert.deepEqual(resolveOverlay({ kind: 'cursor', x: 0, y: 0 }), { cell: 'overlay:cursor', alpha: 1, turns: 0 });
+  const r0 = resolveOverlay({ kind: 'reticle', x: 0, y: 0, phase: 0 });
+  const r1 = resolveOverlay({ kind: 'reticle', x: 0, y: 0, phase: 1 });
+  assert.equal(r0.cell, 'overlay:reticle');
+  assert.ok(r1.alpha > r0.alpha, 'brighter at pulse peak');
+  assert.ok(r0.alpha >= 0 && r1.alpha <= 1, 'alpha stays in [0,1]');
+});
+
+// ---- cell collection over the real boot frame ----
+test('collectCellKeys over the boot frame: sprite mode yields sprite+terrain cells, sorted', () => {
+  const boot = loadBootFrame();
+  const passes = buildPasses(composeScene(boot, cameras(boot).full, ASSETS), { timeSec: 0 });
+  const keys = collectCellKeys(passes, true);
+  assert.ok(keys.length > 0);
+  assert.deepEqual(keys, [...keys].sort(), 'keys are sorted (deterministic atlas layout)');
+  assert.ok(keys.includes('terrain:floor'), 'expected a floor cell');
+  assert.ok(keys.some((k) => k.startsWith('spr:')), 'sprite mode uses sprite cells');
+  // Spriteless glyphs (loose items, an open door) legitimately stay procedural even in sprite
+  // mode — exactly as canvas2d falls through to a vector painter for them.
+  for (const k of keys.filter((x) => x.startsWith('proc:'))) {
+    const ch = String.fromCharCode(+k.split(':')[1]);
+    assert.ok(',fso/'.includes(ch), `unexpected proc glyph '${ch}' in sprite mode`);
+  }
+});
+
+test('collectCellKeys in procedural mode yields proc + terrain cells, never sprite cells', () => {
+  const boot = loadBootFrame();
+  const passes = buildPasses(composeScene(boot, cameras(boot).full, ASSETS), { timeSec: 0 });
+  const keys = collectCellKeys(passes, false);
+  assert.ok(!keys.some((k) => k.startsWith('spr:')), 'procedural mode never samples sprite cells');
+  assert.ok(keys.some((k) => k.startsWith('proc:')), 'procedural entity cells present');
+  assert.ok(keys.includes('terrain:floor'));
+});
+
+// ---- atlas signature: rebuild trigger ----
+test('atlasSignature changes with sprite mode, is stable per input, and never mutates', () => {
+  const boot = loadBootFrame();
+  const passes = buildPasses(composeScene(boot, cameras(boot).full, ASSETS), { timeSec: 0 });
+  deepFreeze(passes);
+  const s = atlasSignature(passes, true);
+  const p = atlasSignature(passes, false);
+  assert.notEqual(s, p, 'sprite vs procedural atlases differ');
+  assert.equal(atlasSignature(passes, true), s, 'stable for identical input');
+  assert.ok(s.startsWith('s|') && p.startsWith('p|'), 'mode is the leading tag');
+});
+
+test('CELL is the sprite tile resolution (1:1 sprite cells)', () => {
+  assert.equal(CELL, 128);
+});

@@ -5,6 +5,8 @@
 
 import { composeScene } from './render/compose.js';
 import { Canvas2DExecutor } from './render/canvas2d.js';
+import { WebGL2Executor } from './render/webgl2.js';
+import { chooseBackend, parseFrozenTime } from './render/exec-select.js';
 import { clampCam } from './render/camera.js';
 import { SpriteAssets, spriteMeta, SPRITE_TILE } from './render/sprites.js';
 import { WireSession, Cmd } from './wire/session.js';
@@ -12,22 +14,56 @@ import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 
 const PROC_TILE = 26;
-const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
-const ctx = canvas.getContext('2d');
-const executor = makeExecutor(canvas);
+const params = new URLSearchParams(location.search);
+// `?t=<sec>` freezes the reticle pulse (and any future time effect) so screenshots are byte-stable
+// across executors; null → live wall clock. Used by the parity harness (client/tools/shot.mjs).
+const FROZEN_T = parseFrozenTime(params);
 
-// Pick the render backend from `?exec=canvas2d|webgl2`. The WebGL2 executor (webgl/batch.js +
-// webgl/atlas.js do the pure work; the GL upload layer lands in a later package) slots in here
-// without touching main's draw loop — both backends implement the executor.js shape and consume
-// the same DisplayList + ExecuteOpts. Until it exists, both modes resolve to Canvas2D.
+let canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
+let ctx = null;            // 2D context — set only on the Canvas2D path (a canvas is one context type)
+let executor = makeExecutor(canvas);
+let inputDispose = null;   // teardown for the current input listeners (see installInput)
+
+// Pick + build the render backend from `?exec=canvas2d|webgl2`. WebGL2 is genuinely selected when
+// requested AND supported; construction can still fail (no GL, driver quirk) → we catch and fall
+// back to Canvas2D silently. Both backends implement the executor.js shape and consume the same
+// DisplayList + ExecuteOpts, so main's draw loop is backend-agnostic. A mid-session context loss
+// calls onContextLost → fallbackToCanvas2D(), swapping the executor without crashing the loop.
 function makeExecutor(cnv) {
-  const want = new URLSearchParams(location.search).get('exec') || 'canvas2d';
-  if (want === 'webgl2') {
-    // TODO(webgl2): return new WebGL2Executor(cnv) once render/webgl/gl-executor.js exists.
-    console.info('[perilune] exec=webgl2 requested; GL executor not built yet — using canvas2d.');
-    return new Canvas2DExecutor();
+  const available = typeof WebGL2RenderingContext !== 'undefined';
+  if (chooseBackend(params, { webgl2Available: available }) === 'webgl2') {
+    try {
+      const ex = new WebGL2Executor(cnv);
+      ex.onContextLost = () => fallbackToCanvas2D();
+      ctx = null;
+      return ex;
+    } catch (e) {
+      console.info('[perilune] backend=canvas2d (webgl2 init failed: ' + (e && e.message) + ')');
+    }
   }
+  ctx = cnv.getContext('2d');
+  console.info('[perilune] backend=canvas2d');
   return new Canvas2DExecutor();
+}
+
+// Silent mid-session fallback: a lost WebGL2 context can't hand its canvas back as 2D (a canvas is
+// bound to one context type), so we replace the canvas element with a fresh clone, take a 2D
+// context on it, rebind input, and redraw. The frame loop keeps running throughout.
+let swapping = false;
+function fallbackToCanvas2D() {
+  if (swapping || executor instanceof Canvas2DExecutor) return;
+  swapping = true;
+  console.info('[perilune] webgl2 context lost — falling back to canvas2d');
+  if (inputDispose) inputDispose();
+  const fresh = /** @type {HTMLCanvasElement} */ (canvas.cloneNode(false));
+  canvas.replaceWith(fresh);
+  canvas = fresh;
+  ctx = canvas.getContext('2d');
+  executor = new Canvas2DExecutor();
+  camera.placed = false;
+  inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+  swapping = false;
+  layout(); draw();
 }
 
 let frame = null;
@@ -67,14 +103,16 @@ function draw() {
   const list = composeScene(frame, camera, spriteMeta);
   executor.execute(list, ctx, {
     camera, sprites, spriteMode,
-    timeSec: (typeof performance !== 'undefined' ? performance.now() : 0) / 1000,
+    timeSec: FROZEN_T != null ? FROZEN_T : (typeof performance !== 'undefined' ? performance.now() : 0) / 1000,
   });
 }
 
 // ---- selection reticle: redraw ~30fps ONLY while a crew is selected, so the pulse breathes
 //      even on pause; the loop stops itself when nothing is selected. ----
 let selAnim = 0, lastSel = 0;
-function startSelAnim() { if (frame && frame.sel && !selAnim) selAnim = requestAnimationFrame(selLoop); }
+// When time is frozen (?t=), the reticle pulse is fixed, so the breathing loop would just redraw
+// the same pixels — skip it (keeps screenshots to a single deterministic frame).
+function startSelAnim() { if (FROZEN_T == null && frame && frame.sel && !selAnim) selAnim = requestAnimationFrame(selLoop); }
 function selLoop(ts) {
   if (!frame || !frame.sel) { selAnim = 0; return; }
   if (ts - lastSel >= 33) { lastSel = ts; draw(); }
@@ -127,7 +165,7 @@ document.getElementById('b-deckup').onclick = () => session.send(Cmd.deck(1));
 document.getElementById('b-deckdown').onclick = () => session.send(Cmd.deck(-1));
 document.getElementById('b-move').onclick = () => session.send(Cmd.move());
 
-installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
 window.addEventListener('resize', () => { layout(); draw(); });
 
 session.connect();
