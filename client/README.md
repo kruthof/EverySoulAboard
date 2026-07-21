@@ -58,21 +58,34 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
   `glyphs.js` (neighbour + facing logic, pure), **`compose.js`** (the pure core),
   `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime),
   `canvas2d.js` (the Canvas2D executor), `executor.js` (the two-backend interface + contract).
-- `src/render/webgl/` — the WebGL2 backend's **pure** halves (the GL upload/draw layer lands in a
-  later package): `batch.js` (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js`
-  (`packAtlas` — sprite-atlas placement + UV math). No DOM, no GL, golden-tested.
+- `src/render/webgl/` — the WebGL2 backend's **pure** halves plus the thin GL layer: `batch.js`
+  (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js` (`packAtlas` — sprite-atlas
+  placement + UV math) are No-DOM/No-GL and golden-tested; `gl.js` is the ONLY GPU-touching module
+  (context, two shader programs, one VAO+VBO, atlas texture, premultiplied blending, context-loss).
+- `src/render/rasterplan.js` — **pure** decision layer for the GL executor: which atlas cell each
+  RenderPass op needs (sprite image vs baked procedural cell), its tint/alpha/facing, and the
+  atlas signature that triggers a rebuild. Unit-tested (no DOM).
+- `src/render/webgl2.js` — the `WebGL2Executor`: rasterizes procedural painters + sprite images
+  into one canvas-backed atlas (via `rasterplan` + `atlas.js`), uploads once, and per frame walks
+  `buildPasses` into batched quads through `gl.js`. Same `.execute(list, ctx, opts)` shape as
+  Canvas2D. DOM/GPU glue only — every decision is in the pure modules above.
+- `src/render/exec-select.js` — **pure** backend + `?t=` time-freeze selection (unit-tested).
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
   routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
   resolver + silhouette fallback), `panels.js` (DOM-only dialogue/citizen/terminal shells).
 - `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop);
-  `makeExecutor(canvas)` selects the backend from `?exec=canvas2d|webgl2` (default `canvas2d`
-  until the GL executor exists; `webgl2` currently resolves to Canvas2D).
+  `makeExecutor(canvas)` genuinely selects the backend from `?exec=canvas2d|webgl2` (default
+  `canvas2d`). `webgl2` builds the real `WebGL2Executor` when WebGL2 is available; on a
+  construction failure OR a mid-session `webglcontextlost` it falls back to Canvas2D silently
+  (a lost GL canvas can't hand itself back as 2D, so the canvas element is swapped for a fresh
+  clone and input is rebound — the frame loop never crashes). `?t=<sec>` freezes the reticle
+  pulse for deterministic screenshots (see the parity harness).
 - `assets/sprites.g.js` — **generated** (see below).
 
 ### WebGL2 backend (pure batcher + atlas)
 
-The WebGL2 executor will draw the same DisplayList as Canvas2D, but first groups it into **four
+The WebGL2 executor draws the same DisplayList as Canvas2D, but first groups it into **four
 ordered RenderPasses** via `buildPasses(list, {timeSec})` (`src/render/webgl/batch.js`) and packs
 the sprite set with `packAtlas(sizes, opts)` (`src/render/webgl/atlas.js`). Both are pure and
 deterministic (`timeSec` is an input — the selection-reticle pulse phase is derived from it as
@@ -87,6 +100,57 @@ data, never a clock read), so they are golden-tested with no GPU.
 
 Pass order is fixed (`terrain < entities < light < overlay`) and within a pass ops keep the
 DisplayList order, so GL overdraw matches the canvas skin exactly.
+
+The **executor itself** (`src/render/webgl2.js`) turns those passes into pixels: at startup (and
+whenever the atlas signature changes — a `P` sprite toggle, or a new glyph/colour scrolling into
+view) it rasterizes the procedural painters (`procedural.js`) AND the loaded sprite images
+(`sprites.js`) into ONE canvas-backed atlas at `packAtlas` placements and uploads it once via
+`gl.js`. Per frame it walks the passes into interleaved quad batches: flat hull/void + textured
+base tiles (terrain), atlas sprite or baked procedural cell with facing carried as a UV rotation
+and dim as alpha (entities), the reserved **multiply-blend light slot** (empty today — renders
+nothing, but wired so C4's lighting lands cleanly), and the lens wash + cursor/reticle overlay.
+Which cell each op needs is decided by the PURE `rasterplan.js` (unit-tested); `gl.js` and
+`webgl2.js` are the only DOM/GPU code and are covered by the parity harness below, not node.
+
+### Render-parity harness (`client/tools/`)
+
+Canvas2D is the proven reference; the WebGL2 backend must reproduce it. `client/tools/shot.mjs`
+boots the sim host (`hosts/web` on :8332) + the static client (`serve.py` on :8333), then drives
+headless Chrome (`chrome --headless --screenshot`, the `art/spritegen/run.py stage_shot` pattern)
+against a frozen scene — `?exec=…&cx=…&cy=…&zoom=…&t=0` — for **both executors at two zooms**, and
+diffs each pair with `client/tools/imgdiff.py` (Pillow, already a spritegen dep):
+
+```sh
+node client/tools/shot.mjs                 # → PNGs + diff in client/tools/.shots/ (git-ignored)
+# knobs: --out DIR --host-port N --client-port N --cx N --cy N --zoom "36,90"
+# env:   CHROME=/path/to/Chrome  DOTNET=~/.dotnet/dotnet
+python3 client/tools/imgdiff.py A.png B.png [--tol 40] [--bar 0.90]   # standalone diff
+```
+
+**Parity is intentionally not pixel-perfect.** The GL path rasterizes the *same* painters/sprites
+but then samples them through nearest-magnify + mipmapped-minify under premultiplied-alpha blending,
+so antialiased edges and zoomed-out (minified) tiles differ by a few levels. The tolerance: a pixel
+"matches" when its max per-channel diff ≤ **40/255**; the parity **bar is ≥ 90% matching pixels**.
+Structural elements — tile positions, sprite/cell choice, facing, and colours within tolerance —
+must match; the near-zoom shot (upscaled, crisp NEAREST) matches more tightly than the far-zoom
+shot (downscaled, where GL mipmaps soften vs the canvas skin's nearest sampling). If headless
+Chrome or a GPU/SwiftShader context is unavailable, the harness still runs by hand — it prints the
+active backend it captured per shot (grep of `[perilune] backend=…`); if `webgl2` silently fell
+back to Canvas2D the two PNGs will be identical (diff ~0), which is the tell that GL never engaged.
+
+### Manual parity + context-loss checklist
+
+Against a live host (`~/.dotnet/dotnet run --project hosts/web -- --port 8330` + `serve.py`):
+
+1. Open `?exec=canvas2d` and `?exec=webgl2` side by side — terrain, sprites, facing, lens wash,
+   hover cursor and the selection reticle should read the same (colours within tolerance).
+2. Press `P` in the `webgl2` tab — the atlas rebuilds for procedural mode; the vector skin should
+   match the Canvas2D procedural skin.
+3. Zoom in (scroll up) — GL magnify stays crisp (NEAREST); zoom out — tiles stay readable (mipmaps).
+4. **Context-loss drill.** In the `webgl2` tab's devtools console:
+   `document.querySelector('#c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()`
+   — the client logs `webgl2 context lost — falling back to canvas2d`, swaps the canvas element,
+   rebinds input, and keeps rendering as Canvas2D. Pan/zoom/select must still work (no dead frame).
 
 ### DisplayList op vocabulary (`composeScene` output)
 
@@ -158,6 +222,10 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   fixture cases), pass ordering + per-pass vocabulary, the light-pass slot, determinism under
   deep-frozen inputs, entity resolution parity with the canvas skin, and atlas non-overlap /
   in-bounds UVs / order-independent packing.
+- `test/webgl2.test.js` — the GL executor's PURE halves: the rasterization plan (`rasterplan.js` —
+  terrain/entity/overlay → cell key or flat, sprite-vs-procedural per mode, dim/facing/lock, the
+  atlas signature) over the boot fixture, and backend/time selection (`exec-select.js`). The GL
+  layer + executor DOM/GPU glue are covered by the parity harness above, not node.
 - `test/ui.test.js` — the P2 panel cores: the chat reassembler (out-of-order/dup/dropped seq,
   line-overrides-deltas byte-exact, end-without-line, zero-delta, two interleaved sids, non-
   mutation) and the portrait resolver (deterministic hue, unknown-key silhouette safety). Replays

@@ -19,6 +19,12 @@ import { LENSES } from '../ui/hud.js';
  */
 export function installInput(opts) {
   const { canvas, camera, session, getFrame, draw, toggleSprites } = opts;
+  // All listeners are bound to this controller's signal so a single dispose() (returned below)
+  // removes every one at once — canvas AND window. main.js calls it before swapping the canvas
+  // element on a WebGL→Canvas2D fallback, so the fresh canvas gets a clean set of handlers with
+  // no duplicate window listeners.
+  const ac = new AbortController();
+  const signal = ac.signal;
   let cursorTile = { x: -1, y: -1 };
   const cur = { x: 32, y: 10 };  // arrow-key inspection cursor
 
@@ -35,11 +41,11 @@ export function installInput(opts) {
     const { px, py } = canvasPoint(e);
     zoomAt(camera, frame, px, py, e.deltaY < 0 ? 1.25 : 0.8);
     draw();
-  }, { passive: false });
+  }, { passive: false, signal });
 
   // --- drag = pan; a press that never travels is a click (select / shift-move) ---
   let press = null;
-  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) press = { x: e.clientX, y: e.clientY, moved: false }; });
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) press = { x: e.clientX, y: e.clientY, moved: false }; }, { signal });
   window.addEventListener('mouseup', (e) => {
     const frame = getFrame();
     if (press && !press.moved && frame) {
@@ -51,7 +57,7 @@ export function installInput(opts) {
       }
     }
     press = null; canvas.parentElement.classList.remove('panning');
-  });
+  }, { signal });
   canvas.addEventListener('mousemove', (e) => {
     const frame = getFrame();
     if (press) {
@@ -70,7 +76,7 @@ export function installInput(opts) {
     const t = tileFromPoint(camera, px, py);
     if (t.x < 0 || t.y < 0 || t.x >= frame.w || t.y >= frame.h) return;
     if (t.x !== cursorTile.x || t.y !== cursorTile.y) { cursorTile = t; session.send(Cmd.cursor(t.x, t.y)); }
-  });
+  }, { signal });
 
   // --- keyboard ---
   function moveCur(dx, dy) {
@@ -101,5 +107,8 @@ export function installInput(opts) {
     else if (k === 'Enter') session.send(Cmd.click(cur.x, cur.y));
     else return;
     e.preventDefault();
-  });
+  }, { signal });
+
+  // Remove every listener installed above (canvas + window) in one call.
+  return () => ac.abort();
 }
