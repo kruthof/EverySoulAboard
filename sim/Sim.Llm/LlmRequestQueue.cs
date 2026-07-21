@@ -77,5 +77,39 @@ namespace Perilune.Llm
             request = null;
             return false;
         }
+
+        /// <summary>
+        /// Dequeue the next FOREGROUND request only — Dialogue (P0) before Summary (P1) — leaving
+        /// Background untouched. The dispatcher's foreground worker uses this so a flood of
+        /// background jobs never sits ahead of a live dialogue turn (doc §10 concurrency).
+        /// </summary>
+        public bool TryDequeueForeground(out LlmRequest request)
+        {
+            for (int lane = 0; lane <= (int)LlmPriority.Summary; lane++)
+            {
+                if (_lanes[lane].Count > 0)
+                {
+                    request = _lanes[lane].Dequeue();
+                    Count--;
+                    return true;
+                }
+            }
+            request = null;
+            return false;
+        }
+
+        /// <summary>Dequeue the next BACKGROUND (P2) request only — the dispatcher's background worker
+        /// lane, which never contends with foreground work.</summary>
+        public bool TryDequeueBackground(out LlmRequest request)
+        {
+            if (_lanes[(int)LlmPriority.Background].Count > 0)
+            {
+                request = _lanes[(int)LlmPriority.Background].Dequeue();
+                Count--;
+                return true;
+            }
+            request = null;
+            return false;
+        }
     }
 }
