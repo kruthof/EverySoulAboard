@@ -36,6 +36,7 @@
 #   [wear]          machine wear + maintenance (MachineWear/MaintenanceSystem)
 #   [citizen]       movement cadence (CitizenSystem)
 #   [exploration]   fog-reveal radius (ExplorationSystem)
+#   [director]      tension weights + the wear_pressure lever (DirectorSystem)
 #   [machines]      radiator_reject_kw scalar + one row per DeviceKind:
 #                     NAME draw gen tier blocks heat wear maint fail
 #   [recipes]       one row per crafting DeviceKind:

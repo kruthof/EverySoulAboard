@@ -24,7 +24,7 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Machines, Recipes, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Director, Machines, Recipes, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
 
@@ -124,6 +124,7 @@ namespace Perilune.Sim
                 case "social": return Section.Social;
                 case "nav": return Section.Nav;
                 case "build": return Section.Build;
+                case "director": return Section.Director;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
                 default:
@@ -151,6 +152,7 @@ namespace Perilune.Sim
                 case Section.Social: known = SocialKey(d, key, val, loc, p); break;
                 case Section.Nav: known = NavKey(d, key, val, loc, p); break;
                 case Section.Build: known = BuildKey(d, key, val, loc, p); break;
+                case Section.Director: known = DirectorKey(d, key, val, loc, p); break;
                 default: known = false; break;
             }
             if (!known) p.Add(loc + ": unknown key '" + key + "' — ignored");
@@ -326,6 +328,26 @@ namespace Perilune.Sim
                 case "door_material": if (I(v, k, loc, p, out var c)) d.Build.DoorMaterial = c; return true;
                 case "door_construct_ticks": if (I(v, k, loc, p, out var e)) d.Build.DoorConstructTicks = e; return true;
                 case "max_staged": if (I(v, k, loc, p, out var f)) d.Build.MaxStaged = f; return true;
+                default: return false;
+            }
+        }
+
+        private static bool DirectorKey(SimDefs d, string k, string v, string loc, List<string> p)
+        {
+            switch (k)
+            {
+                case "weight_morale_deficit": if (F(v, k, loc, p, out var a)) d.Director.WeightMoraleDeficit = a; return true;
+                case "weight_water_deficit": if (F(v, k, loc, p, out var b)) d.Director.WeightWaterDeficit = b; return true;
+                case "weight_food_deficit": if (F(v, k, loc, p, out var c)) d.Director.WeightFoodDeficit = c; return true;
+                case "weight_power_deficit": if (F(v, k, loc, p, out var e)) d.Director.WeightPowerDeficit = e; return true;
+                case "weight_alarm": if (F(v, k, loc, p, out var f)) d.Director.WeightAlarm = f; return true;
+                case "weight_death": if (F(v, k, loc, p, out var g)) d.Director.WeightDeath = g; return true;
+                case "alarm_decay_per_period": if (F(v, k, loc, p, out var h)) d.Director.AlarmDecayPerPeriod = h; return true;
+                case "death_decay_per_period": if (F(v, k, loc, p, out var i)) d.Director.DeathDecayPerPeriod = i; return true;
+                case "max_wear_pressure": if (F(v, k, loc, p, out var j)) d.Director.MaxWearPressure = j; return true;
+                case "lever_target_tension": if (F(v, k, loc, p, out var l)) d.Director.LeverTargetTension = l; return true;
+                case "lever_step": if (F(v, k, loc, p, out var m)) d.Director.LeverStep = m; return true;
+                case "period_ticks": if (I(v, k, loc, p, out var n)) d.Director.PeriodTicks = n; return true;
                 default: return false;
             }
         }
