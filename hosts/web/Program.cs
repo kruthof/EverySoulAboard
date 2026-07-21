@@ -59,6 +59,8 @@ namespace Perilune.Web
 
             Console.Error.WriteLine($"PeriluneWeb: http://localhost:{port}/  (seed {host.Seed}, defs {host.DefsChecksum:x16})");
             Console.Error.WriteLine($"  client: {web.ClientHtmlPath}");
+            Console.Error.WriteLine($"  NOTE: the page at :{port} is the LEGACY skin (no dialogue/LLM UI).");
+            Console.Error.WriteLine($"        The game: run `python3 client/serve.py` and open http://localhost:8331/?port={port}");
             Console.Error.WriteLine($"  dialogue backend: {backendName}");
             Console.Error.WriteLine("  Ctrl+C to stop.");
 
