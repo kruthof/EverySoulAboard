@@ -6,6 +6,8 @@ web/TUI skins, MOSS automation DSL, LLM-driven crew (multi-provider, offline-cap
 AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirely).
 
 ## Read first
+- **`docs/HANDOVER.md`** — current state, what's landed, the rituals (hash-move,
+  def-field, worktree lanes), backlog, and what's next. Read before touching code.
 - **`docs/VISION.md`** — what we're building and why it isn't RimWorld.
 - **`docs/ARCHITECTURE.md`** — module map, invariants, LLM runtime, content packs.
 - **`docs/PLAN.md`** — phases, the 10 parallel workstreams, conflict rules. Find your
@@ -13,6 +15,12 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 - `docs/legacy/` — the moonbase-era design docs (GDD, TDD, LLM_CITIZENS, MOSS_SPEC,
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
+
+## Status snapshot (2026-07-21)
+P0 + P1 complete (`v1-foundations`): social graph, space layer (nav/sensors),
+offline LLM conversation runtime, content packs, shipgen gates V1-V7 + seeded
+variants, structured client with display-list golden tests. 247 dotnet + 17 node
+tests green. Next: P2 "The Talking Ship" slice (PLAN.md).
 
 ## Layout
 `sim/` (Sim.Core, Sim.Dsl, Sim.Gen, Sim.Glyph, Sim.Llm, Sim.Content — all headless) ·
