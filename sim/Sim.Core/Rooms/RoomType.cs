@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Semantic room classification, carried on <see cref="RoomAnchor"/> (saved,

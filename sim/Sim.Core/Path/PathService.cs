@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Grid A*, 4-directional plus ladder z-links. Synchronous and preallocated —

@@ -1,7 +1,7 @@
 using System;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// The single path from a <see cref="ShipPlan"/> to a running

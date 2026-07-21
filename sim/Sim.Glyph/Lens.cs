@@ -1,4 +1,4 @@
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// A read-only overlay selector: which room/device metric recolours the map. None is

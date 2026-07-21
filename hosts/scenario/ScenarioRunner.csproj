@@ -10,7 +10,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>ScenarioRunner</AssemblyName>
-    <RootNamespace>Moonbase.Tools</RootNamespace>
+    <RootNamespace>Perilune.Tools</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
     public readonly struct HistoryEntry

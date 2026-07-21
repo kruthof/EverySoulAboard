@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
-using Moonbase.Sim;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>Regression for the live de-DE bug: under a comma-decimal locale,
     /// <c>float.Parse("0.5")</c> yields 5. The parser must pin InvariantCulture so

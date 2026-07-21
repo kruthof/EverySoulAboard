@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Hand-rolled reader for the <c>.def</c> tuning format (repo culture: MOSS lexer,

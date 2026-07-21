@@ -1,6 +1,6 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// IScriptable adapters bridging MOSS to sim entities. Reads are immediate

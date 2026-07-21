@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace Moonbase.Tui.Terminal
+namespace Perilune.Tui.Terminal
 {
     /// <summary>
     /// The real console behind <see cref="ITerminal"/>: alt-screen (ESC[?1049h/l), hidden

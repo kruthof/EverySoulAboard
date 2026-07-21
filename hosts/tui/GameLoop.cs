@@ -4,13 +4,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Threading;
-using Moonbase.Dsl;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui.Terminal;
-using Moonbase.Tui.Ui;
+using Perilune.Dsl;
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui.Terminal;
+using Perilune.Tui.Ui;
 
-namespace Moonbase.Tui
+namespace Perilune.Tui
 {
     /// <summary>
     /// The interactive DF-style client: one thread that reads keys, advances the sim on a

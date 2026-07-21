@@ -1,8 +1,8 @@
 using System;
-using Moonbase.Glyph;
+using Perilune.Glyph;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>Boundary-value coverage of every lens ramp — one assert per documented edge.</summary>
     public class LensRampTests

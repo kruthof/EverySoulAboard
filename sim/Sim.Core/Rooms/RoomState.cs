@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// One lumped atmosphere node. Room 0 is the vacuum sink (moles pinned to zero).

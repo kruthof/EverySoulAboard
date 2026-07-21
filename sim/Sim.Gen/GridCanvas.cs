@@ -1,4 +1,4 @@
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// A mutable per-deck character raster in the AsciiWorld charset. Authored

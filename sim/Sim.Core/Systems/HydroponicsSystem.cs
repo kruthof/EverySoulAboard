@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// M3 food vertical (GDD §4.5 v0): grow beds turn power (LED light) + water +

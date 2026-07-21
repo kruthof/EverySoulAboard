@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// Deterministic text serialisation of a GlyphBuffer. ToText is the human/agent view

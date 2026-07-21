@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Moonbase.Gen;
-using Moonbase.Sim;
+using Perilune.Gen;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The RoomDresser furnishes rooms by rule, never by hand — these pin the rules'

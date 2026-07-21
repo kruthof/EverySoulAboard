@@ -9,7 +9,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <RootNamespace>Moonbase.Tests</RootNamespace>
+    <RootNamespace>Perilune.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

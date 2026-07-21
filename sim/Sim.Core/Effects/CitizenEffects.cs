@@ -10,7 +10,7 @@ namespace System.Runtime.CompilerServices
     internal static class IsExternalInit { }
 }
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// The v0 whitelisted effect vocabulary (LLM_CITIZENS.md §5, §12) — the ONLY

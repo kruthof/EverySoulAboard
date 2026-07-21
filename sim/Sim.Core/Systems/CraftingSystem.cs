@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// M3 crafting v0 (GDD §4.7): standing bills, no UI. Every powered workstation

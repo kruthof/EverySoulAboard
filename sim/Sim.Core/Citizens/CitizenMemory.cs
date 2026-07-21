@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// One episodic memory (LLM_CITIZENS.md §3). v0 simplification: a single Tag

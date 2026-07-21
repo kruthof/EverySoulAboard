@@ -2,11 +2,11 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Tui;
+using Perilune.Glyph;
+using Perilune.Tui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// Golden fixtures of the SHIPPING ship, rendered through the exact helper the

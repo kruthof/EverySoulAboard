@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Fog of war v0 (GDD 4.14): tiles start unexplored; living citizens reveal their

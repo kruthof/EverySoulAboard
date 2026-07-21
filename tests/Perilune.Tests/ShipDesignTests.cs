@@ -1,8 +1,8 @@
-using Moonbase.Sim;
-using Moonbase.Tui;
+using Perilune.Sim;
+using Perilune.Tui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// Fast .NET mirror of the Unity-side day-one survival gate: an UNTOUCHED

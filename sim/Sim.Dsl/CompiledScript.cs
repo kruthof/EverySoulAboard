@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// The output of <see cref="MossCompiler.Compile"/>: the program's AST split

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using Moonbase.Glyph;
-using Moonbase.Sim;
+using Perilune.Glyph;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The vocabulary is the single source of truth for glyphs; these guard it against a

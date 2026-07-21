@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Sim-side validation for every effect, no exceptions (LLM_CITIZENS.md §5):

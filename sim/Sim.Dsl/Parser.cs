@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// Recursive-descent parser for MOSS v0. Recovers from errors (skip to end
@@ -137,7 +137,7 @@ namespace Moonbase.Dsl
                 _i++;
                 double seconds = dt.Number *
                     (dt.Unit == MossUnit.Seconds ? 1.0 : dt.Unit == MossUnit.Minutes ? 60.0 : 3600.0);
-                ticks = (long)Math.Round(seconds * Moonbase.Sim.Simulation.TicksPerSecond);
+                ticks = (long)Math.Round(seconds * Perilune.Sim.Simulation.TicksPerSecond);
                 if (ticks <= 0) Error(dt, "duration must be at least one tick");
                 else ok = true;
             }

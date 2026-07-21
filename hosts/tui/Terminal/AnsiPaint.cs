@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
-using Moonbase.Glyph;
+using Perilune.Glyph;
 
-namespace Moonbase.Tui.Terminal
+namespace Perilune.Tui.Terminal
 {
     /// <summary>
     /// The terminal skin's colour authority and frame differ — PURE (string in, string

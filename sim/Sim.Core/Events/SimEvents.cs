@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>A tile's floor/wall/flags changed — view marks the containing chunk dirty.</summary>
     public struct TileChangedEvent : ISimEvent

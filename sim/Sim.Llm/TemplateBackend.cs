@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Llm
+namespace Perilune.Llm
 {
     /// <summary>
     /// Player-utterance intents recognized by the offline template backend

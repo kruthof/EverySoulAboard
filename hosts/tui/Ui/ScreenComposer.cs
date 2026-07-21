@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Globalization;
-using Moonbase.Glyph;
-using Moonbase.Sim;
+using Perilune.Glyph;
+using Perilune.Sim;
 
-namespace Moonbase.Tui.Ui
+namespace Perilune.Tui.Ui
 {
     /// <summary>
     /// Everything the composer needs for one frame, gathered by GameLoop. Pure data — no

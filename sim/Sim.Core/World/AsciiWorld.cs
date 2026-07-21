@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Builds a World from ASCII maps — used by tests (SimHarness) and by authored

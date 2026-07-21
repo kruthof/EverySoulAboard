@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Tui.Terminal
+namespace Perilune.Tui.Terminal
 {
     /// <summary>
     /// The semantic result of a keypress — the ONLY thing GameLoop switches on, so the

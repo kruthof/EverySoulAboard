@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Moonbase.Web
+namespace Perilune.Web
 {
     /// <summary>
     /// The tiny local host: an <see cref="HttpListener"/> (wildcard-bound for macOS

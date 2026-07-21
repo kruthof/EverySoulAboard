@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Deterministic RNG (xoshiro256**). All sim randomness flows through named streams

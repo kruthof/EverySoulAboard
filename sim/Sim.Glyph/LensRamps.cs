@@ -1,4 +1,4 @@
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// Quantised threshold ramps: a room/device metric → a semantic overlay colour.

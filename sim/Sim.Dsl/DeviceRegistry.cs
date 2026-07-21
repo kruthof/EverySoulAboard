@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// Anything MOSS can read from or command: rooms, valves, doors, pumps, ...

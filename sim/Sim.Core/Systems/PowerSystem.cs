@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Power networks + priority-tier brownouts (TDD §3.7). A network is a connected

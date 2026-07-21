@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Dsl;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The DEFS save chapter (FourCC 'DEFS' v1): payload is the ulong checksum of the

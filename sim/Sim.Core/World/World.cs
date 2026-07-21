@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>The spatial truth: a stack of z-levels. All mutation goes through setters that keep Flags coherent.</summary>
     public sealed class World

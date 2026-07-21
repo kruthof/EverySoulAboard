@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// Host-side loader for designer rules (SimDefs/rules/*.moss). Lives here so Unity's

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Hand-authored device positions for a SPECIFIC ship: Garvin arranges the

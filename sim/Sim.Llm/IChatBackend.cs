@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Llm
+namespace Perilune.Llm
 {
     /// <summary>
     /// The effect kinds a conversation backend may propose (v0 subset of the

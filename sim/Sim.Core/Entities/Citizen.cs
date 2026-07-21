@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     public sealed class Citizen : IEntity
     {

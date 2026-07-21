@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>The checksum folds VALUES, not formatting: comments, whitespace and
     /// table-row order never change it; a single value edit always does.</summary>

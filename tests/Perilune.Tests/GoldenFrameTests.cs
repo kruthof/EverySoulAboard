@@ -2,11 +2,11 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Sim;
+using Perilune.Glyph;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// Golden frames of the shared mini-scenario: the annotated (glyph+fg+bg+attr) text

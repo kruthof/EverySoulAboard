@@ -3,13 +3,13 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui;   // SimHost
-using Moonbase.Web;   // WireFormat
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui;   // SimHost
+using Perilune.Web;   // WireFormat
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The web skin's wire contract, asserted on the PURE serializer (WireFormat) — no sockets,

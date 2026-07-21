@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// The human-readable band key for each <see cref="Lens"/>, mirroring the thresholds in

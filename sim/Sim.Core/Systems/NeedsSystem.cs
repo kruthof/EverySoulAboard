@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Citizen needs v0 (GDD 4.8): breathing environment can kill; hunger/fatigue

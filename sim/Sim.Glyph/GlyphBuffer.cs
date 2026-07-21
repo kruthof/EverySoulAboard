@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// A W×H grid of cells in one flat row-major array (index = y*Width + x), the render

@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Dsl;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// DesignerRuleSystem (B5): ship-wide rules authored as MOSS in <c>SimDefs.Rules</c>,

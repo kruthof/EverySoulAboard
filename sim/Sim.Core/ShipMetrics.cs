@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>The systems-sidebar readout (concept UI): 0..1 fractions + CO2 ppm.</summary>
     public struct ShipMetricsSnapshot

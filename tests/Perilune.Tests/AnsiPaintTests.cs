@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using Moonbase.Glyph;
-using Moonbase.Tui.Terminal;
+using Perilune.Glyph;
+using Perilune.Tui.Terminal;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The frame differ is pure (prev,next)→ANSI, so its two guarantees are unit-testable

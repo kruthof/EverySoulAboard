@@ -1,6 +1,6 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// THE glyph vocabulary — the single source of truth for which character stands for

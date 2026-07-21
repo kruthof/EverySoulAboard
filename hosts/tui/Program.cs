@@ -1,8 +1,8 @@
 using System;
 using System.IO;
-using Moonbase.Tui.Terminal;
+using Perilune.Tui.Terminal;
 
-namespace Moonbase.Tui
+namespace Perilune.Tui
 {
     /// <summary>
     /// PeriluneTui entry point. Two modes:

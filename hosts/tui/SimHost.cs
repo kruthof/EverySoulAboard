@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Dsl;
-using Moonbase.Gen;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Gen;
+using Perilune.Sim;
 
-namespace Moonbase.Tui
+namespace Perilune.Tui
 {
     /// <summary>
     /// The headless boot of the shipping ship — the terminal/web skins' equivalent of

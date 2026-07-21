@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Tui;
+using Perilune.Tui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The hand-rolled DeviceLayout.json reader must parse the REAL repo file cleanly
@@ -57,7 +57,7 @@ namespace Moonbase.Tests
             // the module's contract is: report a problem, never throw, never brick boot.
             const string json = "{ \"entries\": [ { \"name\": \"\\uZZZZ\", \"x\": 0, \"y\": 0, \"z\": 0 } ] }";
             List<string> problems = null;
-            List<Moonbase.Gen.DeviceLayout.Entry> entries = null;
+            List<Perilune.Gen.DeviceLayout.Entry> entries = null;
             Assert.DoesNotThrow(() => entries = DeviceLayoutFile.Parse(json, out problems));
             Assert.That(problems, Is.Not.Empty, "the bad \\u escape is reported as a problem");
             Assert.That(entries, Is.Empty);

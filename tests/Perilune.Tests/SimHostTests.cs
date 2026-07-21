@@ -1,13 +1,13 @@
 using System.IO;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui;
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
-    /// The headless boot (Moonbase.Tui.SimHost) must reproduce the shipping ship Unity
+    /// The headless boot (Perilune.Tui.SimHost) must reproduce the shipping ship Unity
     /// boots: right dimensions, deterministic across twin builds, and the exact boot fog
     /// (the sealed observatory — and Reyes inside it — stay dark until reached).
     /// </summary>

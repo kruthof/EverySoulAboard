@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Llm
+namespace Perilune.Llm
 {
     /// <summary>One line of a conversation transcript.</summary>
     public readonly struct TranscriptLine

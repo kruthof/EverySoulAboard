@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// M3 water vertical (GDD §4.4): fluid networks + reclaimer refill at 2 Hz.

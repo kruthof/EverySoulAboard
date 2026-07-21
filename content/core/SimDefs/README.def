@@ -6,7 +6,7 @@
 #   - Unity:          Game.View/Bootstrap.LoadDefs
 #   - headless tools: tools/ScenarioRunner (and later PeriluneTui) --data
 # Sim.Core itself never touches the filesystem: the host reads the text and
-# hands (name, text) pairs to Moonbase.Sim.DefsParser.Parse.
+# hands (name, text) pairs to Perilune.Sim.DefsParser.Parse.
 #
 # This file is comment-only, so it parses with ZERO problems and changes nothing
 # — it documents the format and seeds the directory. Delete it freely.

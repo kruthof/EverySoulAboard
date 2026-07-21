@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>A secret backed by a real <see cref="ShipFact"/> — the LLM can only reveal facts that exist.</summary>
     public sealed class SecretRecord

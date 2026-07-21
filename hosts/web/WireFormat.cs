@@ -1,10 +1,10 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Sim;
+using Perilune.Glyph;
+using Perilune.Sim;
 
-namespace Moonbase.Web
+namespace Perilune.Web
 {
     /// <summary>
     /// The web skin's wire authority — PURE (state in, compact-JSON string out; no sockets,

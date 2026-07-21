@@ -2,12 +2,12 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui.Ui;
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui.Ui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// Layout goldens built from a FIXED, hand-authored <see cref="HudModel"/> — a synthetic

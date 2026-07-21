@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// A complete declarative starting ship — tiles, rooms, devices, crew, items,

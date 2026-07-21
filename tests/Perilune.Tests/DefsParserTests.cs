@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>Fail-soft contract for <see cref="DefsParser"/>: every malformed line
     /// keeps the default and records a problem; the graph is always usable.</summary>

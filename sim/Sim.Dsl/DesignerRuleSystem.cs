@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// The DESIGNER-RULE sim system (B5): a SECOND MOSS interpreter instance running

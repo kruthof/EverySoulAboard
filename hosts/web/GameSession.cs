@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui;       // SimHost
-using Moonbase.Tui.Ui;    // InspectorModel
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui;       // SimHost
+using Perilune.Tui.Ui;    // InspectorModel
 
-namespace Moonbase.Web
+namespace Perilune.Web
 {
     /// <summary>
     /// The single global game behind the web skin. One sim thread owns the Simulation and

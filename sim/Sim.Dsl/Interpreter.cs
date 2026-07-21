@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     internal static class MossLimits
     {

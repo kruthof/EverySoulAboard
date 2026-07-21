@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// M1 citizen behavior: follow the current path tile-by-tile; when idle, wander

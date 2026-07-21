@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Globalization;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Tui.Ui
+namespace Perilune.Tui.Ui
 {
     /// <summary>
     /// Pure "what's under the cursor" reader — turns sim + cursor into the inspector's

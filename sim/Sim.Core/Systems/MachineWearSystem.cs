@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Machine wear (SIMULATION_ARCHITECTURE: machines never fail randomly — failure

@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>Tile coordinate: x/y within a z-level, z = level index.</summary>
     public readonly struct Int3 : IEquatable<Int3>

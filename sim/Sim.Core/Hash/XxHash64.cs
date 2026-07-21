@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// xxHash64 over byte spans. Used for the determinism canary (Simulation.StateHash):

@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// The MOSS sim system: holds one compiled program per terminal and runs

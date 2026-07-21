@@ -1,7 +1,7 @@
-using Moonbase.Dsl;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Sim;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// A compact, deterministic two-room ship section shared by the mapper and golden

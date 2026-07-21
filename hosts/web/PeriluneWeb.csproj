@@ -13,7 +13,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>PeriluneWeb</AssemblyName>
-    <RootNamespace>Moonbase.Web</RootNamespace>
+    <RootNamespace>Perilune.Web</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,4 +1,4 @@
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     // AST nodes are allocated at compile time only; the interpreter walks them
     // without allocating. All classes are internal — the public surface is

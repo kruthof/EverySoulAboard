@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     public enum DslKind : byte { Number, Bool, Str }
 

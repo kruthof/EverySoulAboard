@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// M3 self-serve needs (GDD §4.8): idle citizens seek water tanks and ground

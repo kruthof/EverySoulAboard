@@ -1,7 +1,7 @@
 using System;
 using System.Text;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// The data-driven tuning graph: every sim CONSTANT that a designer may want to

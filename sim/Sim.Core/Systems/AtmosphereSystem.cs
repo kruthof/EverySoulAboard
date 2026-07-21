@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Lumped per-room gas simulation at 5 Hz (TDD §3.6). Flow happens only across

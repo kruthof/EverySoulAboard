@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>Open/close/lock/unlock a door (from UI, MOSS, or LLM effects).</summary>
     public sealed class SetDoorStateCommand : ISimCommand

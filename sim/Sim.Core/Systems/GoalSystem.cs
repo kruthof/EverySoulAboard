@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>How a goal decides it is complete (data, not code — goals are saved).</summary>
     public enum GoalKind : byte

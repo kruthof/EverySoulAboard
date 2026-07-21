@@ -1,7 +1,7 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>Spot-checks that <see cref="SimDefs.CreateDefault"/> reproduces today's
     /// constants. Assertions reference the REAL public consts wherever they are public,

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// THE projection: a read-only, allocation-free snapshot of one z-level of a

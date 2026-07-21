@@ -1,8 +1,8 @@
-using Moonbase.Dsl;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>Proves the dotnet test host compiles the sim sources and can tick.</summary>
     public class SmokeTests

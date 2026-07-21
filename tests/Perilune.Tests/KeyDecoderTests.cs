@@ -1,8 +1,8 @@
 using System;
-using Moonbase.Tui.Terminal;
+using Perilune.Tui.Terminal;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The key map is pure and the client's only input contract, so it gets a full table

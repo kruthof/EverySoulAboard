@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// Data definition for a machine kind (SIMULATION_ARCHITECTURE: "everything data

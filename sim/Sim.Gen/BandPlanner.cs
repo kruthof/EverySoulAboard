@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Carves a band of rooms along one side of a corridor — the geometry half of

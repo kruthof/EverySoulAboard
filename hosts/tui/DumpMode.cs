@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Sim;
+using Perilune.Glyph;
+using Perilune.Sim;
 
-namespace Moonbase.Tui
+namespace Perilune.Tui
 {
     /// <summary>
     /// The <c>--dump</c> command: boot the shipping ship, run it flat-out for a

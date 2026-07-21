@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Rule-driven room furnishing — the "dressing" half of the ship generator.

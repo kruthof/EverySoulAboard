@@ -12,7 +12,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>PeriluneTui</AssemblyName>
-    <RootNamespace>Moonbase.Tui</RootNamespace>
+    <RootNamespace>Perilune.Tui</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

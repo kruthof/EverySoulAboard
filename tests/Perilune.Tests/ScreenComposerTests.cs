@@ -2,13 +2,13 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Moonbase.Glyph;
-using Moonbase.Sim;
-using Moonbase.Tui;
-using Moonbase.Tui.Ui;
+using Perilune.Glyph;
+using Perilune.Sim;
+using Perilune.Tui;
+using Perilune.Tui.Ui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// Golden full-screen compositions of the shipping boot. The map comes from the exact

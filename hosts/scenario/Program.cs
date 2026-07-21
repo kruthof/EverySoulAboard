@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using Moonbase.Dsl;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Sim;
 
-namespace Moonbase.Tools
+namespace Perilune.Tools
 {
     /// <summary>
     /// Headless scenario harness: builds a small ship section, runs the full system

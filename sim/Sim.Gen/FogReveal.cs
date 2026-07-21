@@ -1,6 +1,6 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Boot-time fog seed, shared by every host (Unity view and headless clients).

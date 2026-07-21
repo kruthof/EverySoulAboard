@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// One character cell: the glyph plus its semantic foreground/background colour ids

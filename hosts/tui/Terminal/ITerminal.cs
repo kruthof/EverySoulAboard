@@ -1,10 +1,10 @@
 using System;
 
-namespace Moonbase.Tui.Terminal
+namespace Perilune.Tui.Terminal
 {
     /// <summary>
     /// The terminal seam. Everything the interactive client needs from the outside world
-    /// is behind this interface so <see cref="Moonbase.Tui.GameLoop"/> can be driven by a
+    /// is behind this interface so <see cref="Perilune.Tui.GameLoop"/> can be driven by a
     /// real console (<see cref="AnsiTerminal"/>) or, in principle, a fake — though the
     /// pure UI (ScreenComposer / InspectorModel / KeyDecoder / AnsiPaint) is what the tests
     /// actually assert on, so no fake terminal ships. Resize is discovered by polling

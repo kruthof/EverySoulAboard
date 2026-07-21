@@ -1,9 +1,9 @@
-using Moonbase.Dsl;
-using Moonbase.Sim;
-using Moonbase.Tui;
+using Perilune.Dsl;
+using Perilune.Sim;
+using Perilune.Tui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// The MOSS pane's apply contract, exercised WITHOUT a terminal or $EDITOR (those live in

@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>
     /// A simulation system ticked at a fixed cadence. Systems run in the explicit

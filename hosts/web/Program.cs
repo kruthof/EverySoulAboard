@@ -1,9 +1,9 @@
 using System;
 using System.Globalization;
 using System.Threading;
-using Moonbase.Tui; // SimHost
+using Perilune.Tui; // SimHost
 
-namespace Moonbase.Web
+namespace Perilune.Web
 {
     /// <summary>
     /// PeriluneWeb entry point: boot the shipping sim (SimHost — the same one the terminal

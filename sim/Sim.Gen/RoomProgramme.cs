@@ -1,6 +1,6 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Per-room-type footprint targets — the size half of the ship designer. A

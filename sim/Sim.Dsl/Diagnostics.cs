@@ -1,4 +1,4 @@
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     public enum DiagnosticSeverity : byte { Error, Warning }
 

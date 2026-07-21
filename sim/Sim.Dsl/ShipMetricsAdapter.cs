@@ -1,6 +1,6 @@
-using Moonbase.Sim;
+using Perilune.Sim;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>
     /// The <c>ship</c> metrics namespace (B5): a READ-ONLY MOSS device exposing the

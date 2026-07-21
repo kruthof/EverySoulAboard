@@ -1,10 +1,10 @@
 using System.Collections.Generic;
-using Moonbase.Sim;
-using Moonbase.Tui;
-using Moonbase.Tui.Ui;
+using Perilune.Sim;
+using Perilune.Tui;
+using Perilune.Tui.Ui;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// InspectorModel is the pure "what's under the cursor" reader. These pin the shape of

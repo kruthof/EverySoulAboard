@@ -1,7 +1,7 @@
-using Moonbase.Sim;
-using Rect = Moonbase.Gen.BandPlanner.Rect;
+using Perilune.Sim;
+using Rect = Perilune.Gen.BandPlanner.Rect;
 
-namespace Moonbase.Gen
+namespace Perilune.Gen
 {
     /// <summary>
     /// Places each room type's working devices by rule inside its planned rect —

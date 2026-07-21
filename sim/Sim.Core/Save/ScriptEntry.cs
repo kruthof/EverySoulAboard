@@ -1,4 +1,4 @@
-namespace Moonbase.Sim
+namespace Perilune.Sim
 {
     /// <summary>A terminal's MOSS program source — sim state, saved in the DSLS chapter.</summary>
     public readonly struct ScriptEntry

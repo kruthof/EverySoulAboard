@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moonbase.Dsl
+namespace Perilune.Dsl
 {
     /// <summary>Front door of the MOSS compiler. Never throws — all problems land in Diagnostics.</summary>
     public static class MossCompiler

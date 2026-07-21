@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Globalization;
-using Moonbase.Gen;
-using Moonbase.Sim;
+using Perilune.Gen;
+using Perilune.Sim;
 
-namespace Moonbase.Tui
+namespace Perilune.Tui
 {
     /// <summary>
     /// Hand-rolled reader for Resources/DeviceLayout.json — the Sim.Core assemblies

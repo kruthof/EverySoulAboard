@@ -1,10 +1,10 @@
 using System.Collections.Generic;
-using Moonbase.Dsl;
-using Moonbase.Gen;
-using Moonbase.Sim;
+using Perilune.Dsl;
+using Perilune.Gen;
+using Perilune.Sim;
 using NUnit.Framework;
 
-namespace Moonbase.Tests
+namespace Perilune.Tests
 {
     /// <summary>
     /// B2 plumbing: the optional <c>SimDefs</c> ctor param and its pass-throughs

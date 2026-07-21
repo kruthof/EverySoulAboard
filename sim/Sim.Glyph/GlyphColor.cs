@@ -1,6 +1,6 @@
 using System;
 
-namespace Moonbase.Glyph
+namespace Perilune.Glyph
 {
     /// <summary>
     /// A semantic colour id — never an RGB value. The map layer emits these; the skin
