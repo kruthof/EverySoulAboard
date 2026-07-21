@@ -92,5 +92,7 @@ namespace Perilune.Sim
         Drink = 5,       // en route to a water tank (SustenanceSystem)
         Craft = 6,       // working a bill at a workstation (CraftingSystem)
         Maintain = 7,    // servicing a worn machine (MaintenanceSystem)
+        HaulToBuild = 8, // carrying materials to a build designation (BuildSystem)
+        Build = 9,       // constructing at a build designation (BuildSystem)
     }
 }
