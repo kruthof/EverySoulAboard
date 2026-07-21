@@ -9,8 +9,10 @@ namespace Perilune.Tests
     /// Memory rules enrichment (WS-NARRATIVE N2): the MemorySystem rule table turns the
     /// wave-1 social/promise events into episodic memories for the citizens involved,
     /// the conversation-summary API writes a template recap, dead citizens are skipped,
-    /// the cap/eviction protects high-importance memories, and — because mind state is
-    /// deliberately unhashed — none of it touches Simulation.StateHash.
+    /// and the cap/eviction protects high-importance memories. Mind state only enters
+    /// Simulation.StateHash when the MemorySystem is registered in the sim's system array
+    /// (N3's MEMS fold); the tests below drive an UNregistered MemorySystem, so those runs
+    /// stay hash-neutral — the round-trip + fold coverage lives in MemorySystemPersistenceTests.
     /// </summary>
     public class MemoryRulesTests
     {
@@ -186,8 +188,10 @@ namespace Perilune.Tests
         {
             // Isolate memory from history: a stack with ONLY the MemorySystem (no
             // HistorySystem, which N1 makes hash these same events). simA gets a social
-            // event + a promise + a conversation summary; simB gets none. Mind state is
-            // unhashed, so the two must stay hash-identical even though A's minds diverge.
+            // event + a promise + a conversation summary; simB gets none. The MemorySystem
+            // here is driven manually, NOT registered in either sim's system array, so its
+            // MEMS fold never enters StateHash — the two stay hash-identical even though A's
+            // minds diverge. (Registered-fold coverage is in MemorySystemPersistenceTests.)
             var simA = new Simulation(AsciiWorld.Build(OneRoom), 7, new ISimSystem[0]);
             var simB = new Simulation(AsciiWorld.Build(OneRoom), 7, new ISimSystem[0]);
             var a1 = simA.AddCitizen("Ada", new Int3(1, 1, 0)); var a2 = simA.AddCitizen("Bo", new Int3(2, 1, 0));
