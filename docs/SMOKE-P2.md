@@ -59,7 +59,7 @@ providers; neither model chose to encode a `RevealInfo` effect this run.
 
 1. **cache_read never grows — the prefix is below the cacheable minimum.** The `PromptBuilder` sets
    two `cache_control: ephemeral` breakpoints (global-system, per-conversation persona), but the slice's
-   assembled prefix is only ~970 input tokens on Haiku. Haiku 4.5's minimum cacheable prefix is **4096
+   assembled prefix is only ~970 input tokens on Haiku. Haiku 4.5's minimum cacheable prefix is **2048
    tokens**, so the breakpoints silently never engage: `cache_creation_input_tokens` and
    `cache_read_input_tokens` are **0 on all three turns**. This is not a bug in the adapter — the
    Anthropic Messages API accepts the breakpoints and just doesn't cache a sub-minimum prefix. The
