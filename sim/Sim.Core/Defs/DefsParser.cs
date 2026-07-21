@@ -24,7 +24,7 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Machines, Recipes, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Machines, Recipes, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
 
@@ -123,6 +123,7 @@ namespace Perilune.Sim
                 case "exploration": return Section.Exploration;
                 case "social": return Section.Social;
                 case "nav": return Section.Nav;
+                case "build": return Section.Build;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
                 default:
@@ -149,6 +150,7 @@ namespace Perilune.Sim
                 case Section.Exploration: known = ExplorationKey(d, key, val, loc, p); break;
                 case Section.Social: known = SocialKey(d, key, val, loc, p); break;
                 case Section.Nav: known = NavKey(d, key, val, loc, p); break;
+                case Section.Build: known = BuildKey(d, key, val, loc, p); break;
                 default: known = false; break;
             }
             if (!known) p.Add(loc + ": unknown key '" + key + "' — ignored");
@@ -311,6 +313,19 @@ namespace Perilune.Sim
                 case "transit_speed_mm_per_s": if (F(v, k, loc, p, out var c)) d.Nav.TransitSpeedMmPerS = c; return true;
                 case "telescope_snr_threshold": if (F(v, k, loc, p, out var e)) d.Nav.TelescopeSnrThreshold = e; return true;
                 case "telescope_reference_range_mm": if (F(v, k, loc, p, out var f)) d.Nav.TelescopeReferenceRangeMm = f; return true;
+                default: return false;
+            }
+        }
+
+        private static bool BuildKey(SimDefs d, string k, string v, string loc, List<string> p)
+        {
+            switch (k)
+            {
+                case "wall_material": if (I(v, k, loc, p, out var a)) d.Build.WallMaterial = a; return true;
+                case "wall_construct_ticks": if (I(v, k, loc, p, out var b)) d.Build.WallConstructTicks = b; return true;
+                case "door_material": if (I(v, k, loc, p, out var c)) d.Build.DoorMaterial = c; return true;
+                case "door_construct_ticks": if (I(v, k, loc, p, out var e)) d.Build.DoorConstructTicks = e; return true;
+                case "max_staged": if (I(v, k, loc, p, out var f)) d.Build.MaxStaged = f; return true;
                 default: return false;
             }
         }
