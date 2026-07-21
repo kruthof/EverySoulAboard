@@ -69,22 +69,28 @@ a citizen forms an opinion, a telescope detects a comet, a template-backend conv
 yields a validated `RevealInfo`, and twin-run hashes match. That one test exercises six
 workstreams' contracts.
 
-### P2 — Vertical slice: "The Talking Ship" (the emotional-engine proof)
+### P2 — Vertical slice: "The Talking Ship" (the emotional-engine proof) — DONE (automated side)
 One authored ship, ~8 crew, no combat. Success = the VISION feel-test moments exist:
-- Live LLM dialogue (Anthropic + one OpenAI-compat + Ollama) with streaming, memories,
-  promises kept/broken, capability manifests.
-- Chronicle v1: day entries rendered from HistorySystem; a death produces a eulogy
-  referencing real shared memories.
-- Client: inspector panels, dialogue window, citizen cards, portraits (art pipeline),
-  readability at two zoom levels, first sim-driven lighting pass — and the
-  **screenshot test** (VISION.md "Art ambition"): one unstaged slice frame must read
-  obviously better than RimWorld or WS-ART/WS-CLIENT halt feature work until it does.
-- Director v0: tension curve computed; one lever (Lien sortie window from legacy
-  campaign OR life-support stress via designer rules) modulated within visible bounds.
-- MOSS terminal IDE in-client (editor + diagnostics + audit log).
+- [x] Live LLM dialogue (Anthropic + one OpenAI-compat + Ollama) with streaming, memories,
+  capability manifests. (Promises: `PromiseBrokenEvent` publisher stub landed; memory writes
+  wire it, no P2 gameplay loop. Effect *elicitation* — models emitting `RevealInfo` rather
+  than discussing secrets in prose — is unsolved and owed before the human playtest; see
+  `SMOKE-P2.md` and `HANDOVER.md` backlog.)
+- [x] Chronicle v1: day entries rendered from HistorySystem; a death produces a eulogy
+  referencing real shared (verbatim, whole-word-matched) memories.
+- [x] Client: dialogue window, citizen cards, portraits (16-entry manifest), readability at
+  two zoom levels, sim-driven lighting pass, MOSS terminal IDE — and the **screenshot test**
+  (VISION.md "Art ambition") rig with advisory metrics passing (coverage 86.9% / lighting
+  2.80× / style-lock 0.0000). The blind 3-viewer A/B verdict is the remaining human bar.
+- [x] Director v0: tension curve computed and **registered**; one lever (MachineWear
+  `WearPressure` via designer rules) modulated within a visible, gentled (1.35) bound.
+- [x] MOSS terminal IDE in-client (editor + diagnostics + audit log). Note: `dryrun` is
+  wire-reserved only — the evaluator is **cut from P2** (WS-MOSS below), reserved for later.
 
 **Exit:** a 60-minute unscripted playtest where a tester names a crew member when
-retelling it. (Plus: all automated gates, LLM cost meter shows <$0.50/hr defaults.)
+retelling it — **still open on Garvin** (the human exit bar). All automated gates green
+(524 dotnet + 115 node); LLM cost meter <$0.50/hr defaults verified on the live smoke.
+Tag `v2-talking-ship` when the playtest + blind A/B land.
 
 ### P3 — The Voyage (differentiation proof)
 - Nav/sensors full loop: survey → contact → burn → rendezvous.
@@ -142,6 +148,10 @@ Skills/XP, teaching/apprenticeship, knowledge artifacts (documents as items), ag
 succession. Produces: knowledge records consumed by conversation manifests ("knows
 about") and by WS-NARRATIVE. P1: skills v0 + knowledge record type. P2: teaching +
 documentation items; death deletes unshared knowledge (the grief mechanic).
+**Cut from P2 (approved deferral, 2026-07-21):** the WS-PEOPLE P2 body did not ship in
+the slice — the emotional-engine proof used memory/eulogy grief (WS-NARRATIVE), not the
+knowledge-loss grief mechanic. The teaching/documentation/knowledge-death work is deferred;
+**P4 (Knowledge/teaching/succession) is unchanged** and remains its home.
 
 **WS-MATTER — Machines, economy, construction, cascade depth** (`sim/Sim.Core/Systems/`
 matter systems, `content/core/SimDefs/`)
@@ -199,7 +209,9 @@ SPRITEGEN integration contract (never hand-edited).
 v1 language (`on event:`, variables, script messaging), controller-module gating,
 compute-as-resource, audit/dry-run tooling, designer-rule content, `nav./sensors./
 ship.` namespace growth (with WS-NAV). P1: `on event:` + dry-run. P2: terminal IDE
-backend contract for the client (compile diagnostics over the wire).
+backend contract for the client (compile diagnostics over the wire). **P2 delivered the
+terminal-IDE wire (source/diag/audit/rterror over `ScriptRuntime`); the `dryrun` op is
+wire-reserved only — the dry-run evaluator was cut from P2 and remains unbuilt.**
 
 **WS-CONTENT — Packs, saves, DLC substrate** (`sim/Sim.Content/`, `content/`)
 Pack manifest/discovery/merge, load-order determinism, checksum folding, save-manifest
