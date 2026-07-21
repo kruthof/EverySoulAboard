@@ -119,6 +119,36 @@ namespace Perilune.Tests
                 "an unshared memory (no name, no shared tick) is never quoted");
         }
 
+        [Test]
+        public void NameMatchingIsWholeWord_PrefixNamesDoNotCrossAttribute()
+        {
+            // Gate finding (N5 review): dead "Ada" must not claim memories about "Adam".
+            var sim = NewSim();
+            var friend = sim.AddCitizen("Bo", new Int3(1, 1, 0));
+            var dead = sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.Citizens.Remove(dead.Id);
+
+            var minds = new MindState();
+            var social = new SocialSystem();
+            var history = new HistorySystem();
+            social.Nudge(friend.Id, dead.Id, 55f, Defs.Social);
+
+            Remember(minds, friend.Id, 100, "Ada fixed the pump.", 0.6f);              // whole word — quoted
+            Remember(minds, friend.Id, 110, "Adam volunteered for the EVA.", 0.9f);    // prefix — never quoted
+            Remember(minds, friend.Id, 120, "The radar swept the belt.", 0.9f);        // embedded — never quoted
+
+            var eulogy = new EulogySystem(minds, social, history);
+            sim.Events.Publish(new CitizenDiedEvent { CitizenId = dead.Id, Name = "Ada" });
+            Deliver(sim, eulogy);
+
+            var lines = eulogy.Last.MemoryLines;
+            Assert.That(lines, Does.Contain("Ada fixed the pump."));
+            Assert.That(lines, Does.Not.Contain("Adam volunteered for the EVA."),
+                "a prefix-similar name must not cross-attribute");
+            Assert.That(lines, Does.Not.Contain("The radar swept the belt."),
+                "an embedded substring must not cross-attribute");
+        }
+
         // ------------------------------------------------------------ no-friend fallback
 
         [Test]

@@ -188,13 +188,14 @@ namespace Perilune.Sim
             }
 
             bool hasName = !string.IsNullOrEmpty(deadName);
+            // (word-boundary match below: "Ada" must not claim memories about "Adam" —
+            // gate finding from the N5 review; substring alone cross-attributed prefixes)
             var candidates = new List<MemoryEntry>();
             var episodic = friendMind.Memory.Episodic;
             for (int i = 0; i < episodic.Count; i++)
             {
                 var m = episodic[i];
-                bool namesDead = hasName && m.Text != null &&
-                                 m.Text.IndexOf(deadName, System.StringComparison.Ordinal) >= 0;
+                bool namesDead = hasName && ContainsWholeName(m.Text, deadName);
                 bool coExperienced = deadTicks != null && deadTicks.Contains(m.Tick);
                 if (namesDead || coExperienced) candidates.Add(m);
             }
@@ -213,6 +214,24 @@ namespace Perilune.Sim
         }
 
         /// <summary>Friend's voice; quotes the real shared lines verbatim, or names the silence.</summary>
+        /// <summary>Ordinal whole-word occurrence: the name must not be flanked by letters or
+        /// digits ("Ada" matches "Ada fixed the pump", never "Adam" or "radar").</summary>
+        private static bool ContainsWholeName(string text, string name)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            int start = 0;
+            while (true)
+            {
+                int i = text.IndexOf(name, start, System.StringComparison.Ordinal);
+                if (i < 0) return false;
+                bool leftOk = i == 0 || !char.IsLetterOrDigit(text[i - 1]);
+                int end = i + name.Length;
+                bool rightOk = end >= text.Length || !char.IsLetterOrDigit(text[end]);
+                if (leftOk && rightOk) return true;
+                start = i + 1;
+            }
+        }
+
         private static string RenderEulogy(string friendName, string deadName, List<string> lines)
         {
             if (lines.Count == 0)

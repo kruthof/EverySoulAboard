@@ -169,17 +169,18 @@ namespace Perilune.Tui
             Effects = new PendingEffectBuffer();
 
             var stack = SystemStack.CreateDefault(moss, designerRules);
-            var systems = new ISimSystem[stack.Length + 2];
+            for (int i = 0; i < stack.Length; i++)
+            {
+                if (stack[i] is HistorySystem history) History = history;
+                if (stack[i] is GoalSystem goals) Goals = goals;
+                if (stack[i] is SocialSystem social) Social = social;
+            }
+
+            var systems = new ISimSystem[stack.Length + 3];
             systems[0] = new EffectPump(Effects, Minds, Facts); // MUST run first
             for (int i = 0; i < stack.Length; i++) systems[i + 1] = stack[i];
-            systems[systems.Length - 1] = new MemorySystem(Minds, Facts); // after the event publishers; facts persist in its SYSS chapter
-
-            for (int i = 0; i < systems.Length; i++)
-            {
-                if (systems[i] is HistorySystem history) History = history;
-                if (systems[i] is GoalSystem goals) Goals = goals;
-                if (systems[i] is SocialSystem social) Social = social;
-            }
+            systems[systems.Length - 2] = new MemorySystem(Minds, Facts); // after the event publishers; facts persist in its SYSS chapter
+            systems[systems.Length - 1] = new EulogySystem(Minds, Social, History); // after memory: eulogies quote settled minds
             return systems;
         }
 

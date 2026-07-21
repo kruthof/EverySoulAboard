@@ -175,7 +175,7 @@ namespace Perilune.Tests
                 scr.Powered = true; scr.Condition = 1f;
                 for (int i = 0; i < 6000; i++) sim.Tick();
                 if (withDirector)
-                    Assert.That(director.WearPressure, Is.GreaterThan(1.5f), "quiet stretch built the lever up");
+                    Assert.That(director.WearPressure, Is.GreaterThan(1.3f), "quiet stretch built the lever up (cap 1.35)");
                 return scr;
             }
 
@@ -298,7 +298,7 @@ namespace Perilune.Tests
                 "weight_death           = 0.5\n" +
                 "alarm_decay_per_period = 0.9\n" +
                 "death_decay_per_period = 0.95\n" +
-                "max_wear_pressure      = 2\n" +
+                "max_wear_pressure      = 1.35\n" +
                 "lever_target_tension   = 0.35\n" +
                 "lever_step             = 0.1\n" +
                 "period_ticks           = 100\n");

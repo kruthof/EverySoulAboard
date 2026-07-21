@@ -66,10 +66,19 @@ namespace Perilune.Gen
             var effects = new PendingEffectBuffer();
 
             var stack = SystemStack.CreateDefault(moss, designerRules);
-            var systems = new ISimSystem[stack.Length + 2];
+            SocialSystem social = null;
+            HistorySystem history = null;
+            for (int i = 0; i < stack.Length; i++)
+            {
+                if (stack[i] is SocialSystem s) social = s;
+                if (stack[i] is HistorySystem h) history = h;
+            }
+
+            var systems = new ISimSystem[stack.Length + 3];
             systems[0] = new EffectPump(effects, minds, facts); // MUST run first
             for (int i = 0; i < stack.Length; i++) systems[i + 1] = stack[i];
-            systems[systems.Length - 1] = new MemorySystem(minds, facts); // after the event publishers; facts persist in its SYSS chapter
+            systems[systems.Length - 2] = new MemorySystem(minds, facts); // after the event publishers; facts persist in its SYSS chapter
+            systems[systems.Length - 1] = new EulogySystem(minds, social, history); // after memory: eulogies quote settled minds
             return systems;
         }
     }
