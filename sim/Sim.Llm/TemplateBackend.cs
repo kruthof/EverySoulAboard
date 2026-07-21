@@ -267,6 +267,15 @@ namespace Perilune.Llm
         // IChatBackend
         // ------------------------------------------------------------------
 
+        /// <summary>
+        /// Offline, in-process: no streaming, no native tool schema (it reads the
+        /// capability manifest directly — the JSON-envelope-equivalent path), and a
+        /// conservative per-turn effect cap. As the runtime degradation target (§10)
+        /// its cap matches the small-model manifest ceiling.
+        /// </summary>
+        public BackendCapabilities Caps =>
+            new BackendCapabilities("template", supportsStreaming: false, supportsTools: false, maxEffects: 4);
+
         public ChatResult Respond(ConversationRequest request, string playerUtterance)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));

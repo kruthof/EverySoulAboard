@@ -126,6 +126,13 @@ namespace Perilune.Llm
     public interface IChatBackend
     {
         /// <summary>
+        /// What this backend can do (streaming, native tools, per-turn effect cap).
+        /// The runtime reads it to shape the request and enforce the effect cap; it is
+        /// stable across the vendor adapters that will implement this interface.
+        /// </summary>
+        BackendCapabilities Caps { get; }
+
+        /// <summary>
         /// Produce the citizen's reply to one player utterance. Must be
         /// deterministic for identical (request, utterance) inputs, must never
         /// throw on arbitrary player text, and must only propose effects whose
