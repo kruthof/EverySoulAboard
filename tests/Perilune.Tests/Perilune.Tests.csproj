@@ -39,6 +39,9 @@
          WebCommand.Parse and the message-building helpers are unit-tested directly. -->
     <Compile Include="../../hosts/web/WireFormat.cs" />
     <Compile Include="../../hosts/web/GameSession.cs" />
+    <!-- L6: the conversation runtime (sockets-free) — GameSession delegates talk/say/bye to it,
+         so the headless host needs it to compile and to drive the offline dialogue tests. -->
+    <Compile Include="../../hosts/web/ConversationHub.cs" />
     <!-- W4: the pure persona→JSON renderer behind `dump-personas` (Program.cs owns the IO). -->
     <Compile Include="../../hosts/scenario/PersonaDump.cs" />
   </ItemGroup>

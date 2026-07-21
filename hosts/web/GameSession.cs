@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Threading;
 using Perilune.Dsl;       // ScriptRuntime, MossCompiler, Diagnostic
 using Perilune.Glyph;
+using Perilune.Llm;       // IChatBackend, TemplateBackend, ConversationHub deps
 using Perilune.Sim;
 using Perilune.Tui;       // SimHost
 using Perilune.Tui.Ui;    // InspectorModel
@@ -69,7 +70,21 @@ namespace Perilune.Web
         private Thread _thread;
         private volatile bool _running;
 
+        // Conversation runtime (L6): the talking half. Broadcasts chat/llmstatus/chron through
+        // the same socket fan-out; PrepareTurn stays on this sim thread (see ConversationHub).
+        private readonly ConversationHub _conv;
+        private double _llmStatusAtWall = double.NegativeInfinity;
+        private int _lastChronDay = int.MinValue;
+        private bool _simThreadCaptured;
+
         public GameSession(SimHost host, Action<string> broadcast)
+            : this(host, broadcast, null) { }
+
+        /// <param name="conv">The conversation runtime. Null ⇒ a default offline
+        /// (TemplateBackend-only) hub, so a bare GameSession still converses without any
+        /// provider config; Program builds a settings-driven hub, tests inject a fake backend +
+        /// clock.</param>
+        internal GameSession(SimHost host, Action<string> broadcast, ConversationHub conv)
         {
             _host = host;
             _sim = host.Sim;
@@ -78,6 +93,27 @@ namespace Perilune.Web
             _light = new byte[_sim.World.Width * _sim.World.Height];
             _cursor = new Int3(_sim.World.Width / 2, _sim.World.Height / 2, 0);
             _metrics = ShipMetrics.Compute(_sim);
+
+            // Worldgen persona pass — SimHost boots UnityEngine-free and skips GenerateMinds, so
+            // do it here (once). PersonaGenerator forks its own RNG and never advances sim.Rng, so
+            // the sim trajectory and every StateHash are untouched. This fills each citizen's card
+            // (role/traits/portrait) and gives conversations a persona + a revealable secret.
+            GeneratePersonas();
+
+            _conv = conv ?? new ConversationHub(host, broadcast,
+                new IChatBackend[] { new TemplateBackend() }, null, 0m, null);
+        }
+
+        private void GeneratePersonas()
+        {
+            if (_host.Minds == null || _host.Facts == null) return;
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (!_host.Minds.Minds.TryGet(c.Id, out var mind) || mind.Persona == null)
+                    PersonaGenerator.CreateMind(_sim, _host.Minds, _host.Facts, c);
+            }
         }
 
         public void Start()
@@ -119,6 +155,9 @@ namespace Perilune.Web
             double acc = 0.0;
             double lastRender = double.NegativeInfinity;
 
+            // This is the sim thread — arm the conversation-runtime affinity tripwires.
+            CaptureSimThread();
+
             // Prime the caches so the very first connection has a full frame immediately.
             Render(clock.Elapsed.TotalSeconds, force: true);
 
@@ -129,6 +168,7 @@ namespace Perilune.Web
                 last = now;
 
                 bool viewChanged = DrainCommands();
+                _conv.PumpPending(); // dispatch any say queued behind a completed turn
 
                 bool ticked = false;
                 int tps = SpeedTps[_speedIndex];
@@ -146,7 +186,7 @@ namespace Perilune.Web
                 }
                 else acc = 0.0;
 
-                if ((ticked || viewChanged || _viewDirty) && now - lastRender >= RenderSeconds)
+                if ((ticked || viewChanged || _viewDirty || _conv.HasPending) && now - lastRender >= RenderSeconds)
                 {
                     Render(now, force: false);
                     _viewDirty = false;
@@ -171,6 +211,7 @@ namespace Perilune.Web
         /// they never mutate sim state here.</summary>
         private bool Apply(WebCommand cmd)
         {
+            CaptureSimThread(); // first command drain on this thread arms the affinity tripwires
             switch (cmd.Kind)
             {
                 case CmdKind.Cursor: return SetCursor(cmd.X, cmd.Y);
@@ -180,9 +221,10 @@ namespace Perilune.Web
                 case CmdKind.Lens: return SetLens(cmd.Name);
                 case CmdKind.Speed: ChangeSpeed(cmd.I); return true;
                 case CmdKind.Pause: TogglePause(); return true;
-                case CmdKind.Talk: TalkTo(cmd.Cid); return false;
-                case CmdKind.Say: return false;   // no live conversation yet — unknown sid ⇒ no-op
-                case CmdKind.Bye: return false;   // no live conversation yet — unknown sid ⇒ no-op
+                case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
+                case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
+                case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
+                case CmdKind.Chron: Emit(_conv.ChroniclePayload()); return false;
                 case CmdKind.Moss: HandleMoss(cmd); return false;
                 default: return false;
             }
@@ -266,13 +308,14 @@ namespace Perilune.Web
         /// <summary>Test-only hook: run the per-render runtime-error poll.</summary>
         internal void PollRuntimeErrorsForTest() => PollRuntimeErrors();
 
-        /// <summary>Open a conversation with a crew member. The LLM/dialogue host wiring lands
-        /// in a later package; until then every talk closes immediately with reason
-        /// "unavailable" (which still exercises the chat serializer end-to-end).</summary>
-        private void TalkTo(uint cid)
-        {
-            Emit(WireFormat.ChatEnd((int)cid, "unavailable"));
-        }
+        // Conversation-runtime test hooks: block until the in-flight turn lands, drain the chat
+        // outbox to the broadcast sink (Render does this live), dispatch any queued say, and read
+        // the llmstatus / chronicle payloads — all on the calling (test = sim) thread.
+        internal bool ConvWaitIdle(int ms = 4000) => _conv.WaitIdle(ms);
+        internal void ConvFlush() => _conv.Flush();
+        internal void ConvPumpPending() => _conv.PumpPending();
+        internal string ConvStatusPayload() => _conv.StatusPayload();
+        internal string ConvChroniclePayload() => _conv.ChroniclePayload();
 
         private bool SetCursor(int x, int y)
         {
@@ -399,6 +442,30 @@ namespace Perilune.Web
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
+
+            // Conversation runtime (L6): drain queued chat events (start/delta/line/effect/end),
+            // push llmstatus about once a second, and send the chronicle when the day rolls over.
+            _conv.Flush();
+            if (force || nowWall - _llmStatusAtWall >= 1.0)
+            {
+                Emit(_conv.StatusPayload());
+                _llmStatusAtWall = nowWall;
+            }
+            int day = (int)(_sim.TickCount / SimClockUtil.TicksPerDay);
+            if (day != _lastChronDay)
+            {
+                _lastChronDay = day;
+                Emit(_conv.ChroniclePayload());
+            }
+        }
+
+        /// <summary>Arm the conversation-runtime thread-affinity tripwires on first use from the
+        /// owning thread (the sim loop, or a test's drive thread). Idempotent.</summary>
+        private void CaptureSimThread()
+        {
+            if (_simThreadCaptured) return;
+            _simThreadCaptured = true;
+            _conv.CaptureSimThread();
         }
 
         /// <summary>Cache the payload and broadcast it — but only when it changed (or on a
@@ -418,10 +485,12 @@ namespace Perilune.Web
         /// action, fanned out to every tab (single-session design).</summary>
         private void Emit(string json) => _broadcast(json);
 
-        /// <summary>The crew identity card. Role/traits come from the mind persona when the host
-        /// generated one; the web host currently skips persona generation (SimHost drops
-        /// GenerateMinds for determinism), so in practice this emits name-only with empty
-        /// traits and portrait "" until a persona pass is wired in.</summary>
+        /// <summary>The crew identity card. Role/traits/mood come from the mind persona the boot
+        /// pass (GeneratePersonas) generated. The portrait is the ship-and-citizen-keyed
+        /// <see cref="PersonaDump.PersonaKey"/> (the art pipeline's filename identity), computed
+        /// AS COMPUTED for THIS ship's seed — the committed portrait fixtures were baked for the
+        /// slice ship (seed 7), whose citizen ids/seed differ, so these keys generally miss and
+        /// the client falls back to a procedural silhouette until slice-ship portraits exist.</summary>
         private string BuildCitizenMessage(Citizen citizen)
         {
             string role = "", mood = "", portrait = "";
@@ -433,7 +502,7 @@ namespace Perilune.Web
                 {
                     role = string.IsNullOrEmpty(mind.Persona.RoleNow) ? mind.Persona.RolePreRaid : mind.Persona.RoleNow;
                     traits = mind.Persona.Traits;
-                    portrait = Portrait(citizen.Id).ToString(CultureInfo.InvariantCulture);
+                    portrait = Perilune.Tools.PersonaDump.PersonaKey(_host.Seed, citizen.Id);
                 }
             }
             return WireFormat.Citizen(citizen.Id, Name(citizen), role, mood, traits, portrait);
@@ -505,7 +574,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Moss }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -561,6 +630,7 @@ namespace Perilune.Web
                 case "talk": return new WebCommand(CmdKind.Talk, cid: (uint)Int(json, "cid"));
                 case "say": return new WebCommand(CmdKind.Say, sid: Int(json, "sid"), text: Str(json, "text"));
                 case "bye": return new WebCommand(CmdKind.Bye, sid: Int(json, "sid"));
+                case "chron": return new WebCommand(CmdKind.Chron);
                 case "moss": return new WebCommand(CmdKind.Moss, op: Str(json, "op"), tid: Str(json, "tid"), text: Str(json, "text"));
                 default: return default;
             }

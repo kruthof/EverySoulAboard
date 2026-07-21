@@ -21,12 +21,18 @@
     <Compile Include="../../sim/Sim.Dsl/**/*.cs" />
     <Compile Include="../../sim/Sim.Gen/**/*.cs" />
     <Compile Include="../../sim/Sim.Glyph/**/*.cs" />
+    <!-- L6: the conversation runtime (provider-agnostic, offline-capable) lives here. The web
+         host is the first shipping host to talk, so it pulls Sim.Llm into its assembly. -->
+    <Compile Include="../../sim/Sim.Llm/**/*.cs" />
     <!-- Reuse the terminal skin's host-neutral pieces verbatim (no Console/raw-mode deps):
          SimHost boots the authored sim exactly as Unity does; DeviceLayoutFile is its JSON
          reader; InspectorModel turns cursor→text. Shared, never duplicated. -->
     <Compile Include="../tui/SimHost.cs" />
     <Compile Include="../tui/DeviceLayoutFile.cs" />
     <Compile Include="../tui/Ui/InspectorModel.cs" />
+    <!-- L6: reuse the persona→portrait-key logic (the art pipeline's filename identity) so the
+         citizen card's portrait key matches the client's registry scheme exactly. -->
+    <Compile Include="../scenario/PersonaDump.cs" />
   </ItemGroup>
 
   <!-- The single-page client is served as a file (edit it without rebuilding). -->
