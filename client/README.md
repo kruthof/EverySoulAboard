@@ -56,8 +56,9 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
 - `src/wire/` — `messages.js` (typed decode) + `session.js` (WebSocket + `Cmd` constructors).
 - `src/render/` — `palette.js` (GlyphColor→RGB), `camera.js` (transform/cull/zoom/pan, pure),
   `glyphs.js` (neighbour + facing logic, pure), **`compose.js`** (the pure core),
-  `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime),
-  `canvas2d.js` (the Canvas2D executor), `executor.js` (the two-backend interface + contract).
+  `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime + C7 animation
+  variants), `motion.js` (pure animation runtime), `canvas2d.js` (the Canvas2D executor),
+  `executor.js` (the two-backend interface + contract).
 - `src/render/webgl/` — the WebGL2 backend's **pure** halves plus the thin GL layer: `batch.js`
   (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js` (`packAtlas` — sprite-atlas
   placement + UV math) are No-DOM/No-GL and golden-tested; `gl.js` is the ONLY GPU-touching module
@@ -70,6 +71,11 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
   `buildPasses` into batched quads through `gl.js`. Same `.execute(list, ctx, opts)` shape as
   Canvas2D. DOM/GPU glue only — every decision is in the pure modules above.
 - `src/render/exec-select.js` — **pure** backend + `?t=` time-freeze selection (unit-tested).
+- `src/render/motion.js` — **pure** C7 animation runtime: per-cid tracking across frames
+  (`trackMotion` — walk vs teleport/deck/fog-reveal/despawn), the deterministic walk-cycle frame
+  index + sub-tile interpolation (`walkFrameIndex`/`walkOffset` — `timeSec`/`progress` as inputs),
+  and the absence-tolerant sprite-variant selectors (`deviceSpriteKey`/`pawnSpriteKey`). Both
+  executors consume it; compose stays time-free, so a fixed `timeSec` is fully deterministic.
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
   routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
@@ -263,6 +269,11 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   installed / error), diag normalize + sort/merge, gutter-marker layout math, the audit ring cap,
   unknown-tid / absent-terminal safety + non-mutation, and a real-wire fixture replay
   (`moss_session.jsonl`: source → multi-error diag → audit → rterror).
+- `test/motion.test.js` — C7 motion: the reset matrix (teleport/deck/fog/despawn/standing vs a real
+  one-tile walk), non-mutation, deterministic `walkFrameIndex` + `walkOffset` interpolation, and the
+  absence-tolerant device/pawn variant selectors. `test/webgl2.test.js` is extended: walking pawns
+  resolve a walk-frame cell, devices resolve broken/off cells, the atlas bakes every walk frame
+  (timeSec-stable signature), and static scenes stay byte-identical to the pre-C7 cell set.
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

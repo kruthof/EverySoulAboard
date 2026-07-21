@@ -25,6 +25,8 @@ import {
 } from './rasterplan.js';
 import { transform } from './camera.js';
 import { C, FG, litOverlay } from './palette.js';
+import { walkOffset, baseSpriteKey } from './motion.js';
+import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
 /** '#rrggbb' or 'rgb[a](...)' → [r,g,b,a] in 0..1. */
@@ -108,8 +110,15 @@ export class WebGL2Executor {
     const useSpr = sprites ? sprites.usable(opts.spriteMode) : false;
     const timeSec = opts.timeSec || 0;
 
+    // C7 animation inputs — motion (tile→entry), the art maps, and the walk interpolation progress.
+    const raster = {
+      motion: opts.motion || null, timeSec,
+      states: useSpr ? SPRITE_STATES : null, frames: useSpr ? SPRITE_FRAMES : null,
+    };
+    const walkProgress = opts.walkProgress == null ? 1 : opts.walkProgress;
+
     const passes = buildPasses(list, { timeSec });
-    this._ensureAtlas(passes, useSpr, sprites);
+    this._ensureAtlas(passes, useSpr, sprites, raster);
 
     const { s, ox, oy } = transform(cam);
     const W = cam.viewW, H = cam.viewH, D = T * s;
@@ -135,8 +144,11 @@ export class WebGL2Executor {
     {
       const tex = [], lock = [];
       for (const o of entities.ops) {
-        const spec = resolveEntity(o, useSpr);
-        const X = o.x * T * s + ox, Y = o.y * T * s + oy;
+        const spec = resolveEntity(o, useSpr, raster);
+        // Walking pawns slide from their previous tile toward the current one (sub-tile offset).
+        const entry = raster.motion && raster.motion[o.x + ',' + o.y];
+        const off = entry && entry.walking ? walkOffset(entry, walkProgress) : { ox: 0, oy: 0 };
+        const X = (o.x + off.ox) * T * s + ox, Y = (o.y + off.oy) * T * s + oy;
         pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
         if (spec.overlay) pushFlat(lock, X, Y, D, premul(parseColor(spec.overlay)));
       }
@@ -182,10 +194,10 @@ export class WebGL2Executor {
 
   // -------------------------------------------------------------- atlas (rebuilt on signature change)
 
-  _ensureAtlas(passes, useSpr, sprites) {
-    const sig = atlasSignature(passes, useSpr);
+  _ensureAtlas(passes, useSpr, sprites, raster = {}) {
+    const sig = atlasSignature(passes, useSpr, raster);
     if (sig === this._sig) return;
-    const keys = collectCellKeys(passes, useSpr);
+    const keys = collectCellKeys(passes, useSpr, raster);
     const atlas = packAtlas(keys.map((k) => ({ name: k, w: CELL, h: CELL })));
 
     const cv = this._atlasCanvas;
@@ -210,7 +222,10 @@ export class WebGL2Executor {
   _paintCell(g, key, sprites, useSpr, px, py) {
     const T = CELL;
     if (key.startsWith('spr:')) {
-      const img = sprites && sprites.get(key.slice(4));
+      // Variant art (walk frame / broken / off) may be absent or still decoding → fall back to the
+      // base role image, matching canvas2d's absence-tolerance.
+      const name = key.slice(4);
+      const img = sprites && (sprites.decoded(name) || sprites.decoded(baseSpriteKey(name)));
       if (img) g.drawImage(img, px, py, T, T);
       return;
     }
