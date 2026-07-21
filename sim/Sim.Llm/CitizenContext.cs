@@ -41,7 +41,7 @@ namespace Perilune.Llm
             req.CitizenName = persona != null && !string.IsNullOrEmpty(persona.Name) ? persona.Name : citizen.Name;
             req.PersonaBlock = RenderPersona(persona, req.CitizenName);
             req.Mood = mind.AffinityToPlayer;
-            req.RelationshipSummary = RenderRelationship(mind);
+            req.RelationshipSummary = RenderRelationship(mind, sim, citizenId);
 
             if (persona != null && persona.Traits != null)
             {
@@ -123,7 +123,22 @@ namespace Perilune.Llm
             return sb.ToString();
         }
 
-        private static string RenderRelationship(CitizenMind mind)
+        /// <summary>
+        /// The relationship line the prompt renders: the player-standing one-liner first,
+        /// then the citizen's crew relations drawn from the live <see cref="SocialSystem"/>
+        /// opinion graph ("wary of you; close friend of Reyes; rival of Vega"). Crew
+        /// relations are a PURE read of the sim-canonical, (From,To)-sorted edge list, so
+        /// the whole string is deterministic and — crucially for prompt-cache friendliness —
+        /// byte-stable turn-over-turn while the edges do not change.
+        /// </summary>
+        private static string RenderRelationship(CitizenMind mind, Simulation sim, uint citizenId)
+        {
+            string standing = RenderPlayerStanding(mind);
+            string crew = RenderCrewRelations(FindSocial(sim), sim, citizenId);
+            return crew.Length == 0 ? standing : standing + "; " + crew;
+        }
+
+        private static string RenderPlayerStanding(CitizenMind mind)
         {
             float a = mind.AffinityToPlayer;
             // v0 one-liner; WS-SOCIAL enriches with reasons (owes you / resents you) later.
@@ -132,6 +147,59 @@ namespace Perilune.Llm
             if (a < 15f) return "neutral toward you";
             if (a < 50f) return "warming to you";
             return "loyal to you";
+        }
+
+        /// <summary>
+        /// Render this citizen's classified crew relations ("close friend of Okafor; rival
+        /// of Reyes") from the <see cref="SocialSystem"/> edge list, or "" when there are
+        /// none. Only OUTGOING edges (From == citizenId) that have settled into a named
+        /// <see cref="RelationType"/> tier are shown, in the edge list's canonical
+        /// (From,To)-sorted order — so the string is a deterministic function of the graph.
+        /// A relation whose target is dead or unnamed is EXCLUDED: the dead do not appear on
+        /// the roster, and an id with no name would render "friend of " with a hole in it.
+        /// Internal so the ordering / dead-exclusion / stability contract can be asserted
+        /// directly against a hand-built graph without a full conversation.
+        /// </summary>
+        internal static string RenderCrewRelations(SocialSystem social, Simulation sim, uint citizenId)
+        {
+            if (social == null || sim == null) return string.Empty;
+            var sb = new StringBuilder();
+            var edges = social.Edges;
+            for (int i = 0; i < edges.Count; i++)
+            {
+                var edge = edges[i];
+                if (edge.From != citizenId) continue;
+                string tier = TierPhrase((RelationType)edge.Rel);
+                if (tier == null) continue; // None / unclassified — not a spoken relation
+                if (!sim.Citizens.TryGet(edge.To, out var other) || other.Dead) continue; // dead excluded
+                if (string.IsNullOrEmpty(other.Name)) continue; // can't name them → skip
+                if (sb.Length > 0) sb.Append("; ");
+                sb.Append(tier).Append(' ').Append(other.Name);
+            }
+            return sb.ToString();
+        }
+
+        private static string TierPhrase(RelationType rel)
+        {
+            switch (rel)
+            {
+                case RelationType.CloseFriend: return "close friend of";
+                case RelationType.Friend: return "friend of";
+                case RelationType.Rival: return "rival of";
+                case RelationType.Enemy: return "enemy of";
+                default: return null;
+            }
+        }
+
+        /// <summary>Locate the sim's <see cref="SocialSystem"/> (the opinion graph owner), or
+        /// null if this sim was built without one. A pure read of the fixed system array.</summary>
+        private static SocialSystem FindSocial(Simulation sim)
+        {
+            if (sim == null) return null;
+            var systems = sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+                if (systems[i] is SocialSystem social) return social;
+            return null;
         }
     }
 }
