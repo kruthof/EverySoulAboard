@@ -89,3 +89,35 @@ dotnet run --project hosts/scenario -- llm-smoke --backend all
 # or a single backend:
 dotnet run --project hosts/scenario -- llm-smoke --backend anthropic
 ```
+
+---
+
+## Follow-up run — 2026-07-21 (post prompt-style rework)
+
+**Why:** the playtest-feedback round rewrote `GlobalSystemBlock` (plain first-person spoken
+lines, simple English, no stage directions, and an explicit "a reveal/agreement/goodbye must
+ALSO call `propose_effect`" instruction). This run validates it live. Three runs total this
+session (~$0.015): `--backend all`, then two `--backend anthropic` samples.
+
+**Headline: the effect-elicitation gap (finding "models don't structure the reveal" above) is
+CLOSED on Anthropic.** On the ask-about-secret turn Haiku 4.5 now proposes
+`RevealInfo(target=1)` + `SetDisposition(+0.2)` — both accepted and dispatched
+manifest-bound — and proposes `EndConversation` on the goodbye turn. The spoken lines came
+out plain and short ("I'm awake. That's what matters. The grow bays need checking. …
+I've been thawing them slow so the seals don't crack.").
+
+Residuals, honestly noted:
+
+1. **Occasional first-person action narration.** One sampled turn opened with "I look at you
+   steady and quiet for a moment." before the (excellent) spoken reveal. A stricter wording
+   variant ("if a listener could not HEAR it, leave it out") was sampled once and did WORSE —
+   it produced a fully out-of-character planning line ("The player is gracefully ending the
+   conversation. Amara would accept this…") — so the shipped wording stands and further prompt
+   iteration needs multi-sample evaluation, not single smokes. Haiku-class variance is real.
+2. **gpt-4o-mini still proposes no effects** and flatly denies the secret ("I don't have
+   anything hidden from you. I swear it.") — in-character and plain, but no reveal, no tool
+   call. The elicitation win is provider-dependent; OpenAI-side prompt work remains open.
+3. **cache_read still flat at 0** — unchanged; the prefix is still under Haiku's 2048-token
+   cacheable minimum (finding 1 above stands).
+
+Cost meter across the session's runs stayed ~$0.005/run; budget cap untouched.
