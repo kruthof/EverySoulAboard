@@ -70,7 +70,7 @@ Every P2 work package went through the per-package **independent Opus gate** (be
    (Designate/Cancel on the ordinary inbox): designate → haul materials → construct/deconstruct
    **walls and doors**, with material conservation, reflood honesty on independent geometry, and
    job-board bit-purity when the system is absent all gate-proven.
-9. **Relationship types** (`S1`) — `RelationType` enum (None / Friend / CloseFriend / Rival),
+9. **Relationship types** (`S1`) — `RelationType` enum (None / Friend / CloseFriend / Rival / Enemy),
    a hysteresis classifier, and deterministic argument/bond rolls off a contained forked stream;
    `SOCL` v2. Memory writes for argument/bond/relationship/promise + a conversation summary (`N2`).
 10. **The authored slice** (`AuthoredShips.PeriluneSlice()` + `PopulateSlice`, `SliceSeed = 20260721`)
