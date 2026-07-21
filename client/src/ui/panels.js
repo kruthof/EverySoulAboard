@@ -20,8 +20,12 @@ export class PanelManager {
     /** @type {Map<string, Panel>} */
     this.panels = new Map();
     this._root = null;
-    /** @type {(sid:string, text:string)=>void} */
+    /** @type {(sid:string, text:string)=>void} the dialogue input box → `say {sid,text}`. */
     this.onSend = () => {};
+    /** @type {(sid:string)=>void} a dialogue closing (× or Esc) → `bye {sid}`. */
+    this.onBye = () => {};
+    /** The sid of the most-recently focused/opened dialogue — Esc closes this one. */
+    this.activeDialogueSid = null;
   }
 
   root() {
@@ -52,13 +56,30 @@ export class PanelManager {
     if (p) { p.el.remove(); this.panels.delete(key); }
   }
 
-  /** Open or update the dialogue window for a chat session (keyed by sid). */
+  /** Open or update the dialogue window for a chat session (keyed by sid). Closing it (× or Esc)
+   *  fires onBye(sid) so the wire sends `bye`, then removes the panel. */
   dialogue(model) {
     if (!model) return;
     const key = 'chat:' + model.sid;
-    const p = this._panel(key, () => new DialoguePanel(model.sid, () => this.close(key), this.onSend));
+    const closeAndBye = () => { this.closeDialogue(model.sid); };
+    const p = this._panel(key, () => new DialoguePanel(model.sid, closeAndBye, this.onSend));
+    this.activeDialogueSid = model.sid;
     p.render(model);
     return p;
+  }
+
+  /** Close a dialogue by sid, firing the bye hook. Safe if the panel is already gone. */
+  closeDialogue(sid) {
+    const key = 'chat:' + sid;
+    if (!this.panels.has(key)) return;
+    this.close(key);
+    if (this.activeDialogueSid === sid) this.activeDialogueSid = null;
+    this.onBye(sid);
+  }
+
+  /** Close the most-recently active dialogue (Esc). No-op when none is open. */
+  closeActiveDialogue() {
+    if (this.activeDialogueSid != null) this.closeDialogue(this.activeDialogueSid);
   }
 
   /** Open or update a citizen inspector card (keyed by cid). */

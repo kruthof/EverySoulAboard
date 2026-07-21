@@ -62,13 +62,27 @@
  */
 
 /**
- * MOSS terminal channel (P2). `diag` carries compile diagnostics as [line, col, sev, msg] tuples,
- * 1-based. Other `ev`s (source/audit/rterror) fill in with the terminal IDE package.
+ * MOSS terminal channel (P2/W3). Server → client events (WireFormat.Moss*):
+ *   source  {tid, text, hash}                    the installed program's source + its FNV-1a32 hash
+ *   diag    {tid, ok, diags:[[line,col,sev,msg]]} compile diagnostics (line/col 1-based; sev string)
+ *   audit   {tid, lines:[[tick,text]]}            the runtime audit ring
+ *   rterror {tid, text}                           a runtime error to surface as a banner
  * @typedef {Object} MossMsg
  * @property {'moss'} type
  * @property {'source'|'diag'|'audit'|'rterror'} ev
- * @property {[number,number,number,string][]} [diags]
+ * @property {string} [tid] @property {boolean} [ok] @property {number} [hash]
+ * @property {[number,number,string,string][]} [diags]
+ * @property {[number,string][]} [lines]
  * @property {string} [text]
+ */
+
+/**
+ * LLM backend status chip (P2). Forward-compat with L6's dispatcher surface (DispatcherStatus +
+ * CostMeter): the active backend name, whether the breaker has tripped (degraded → fallback), and
+ * the rolling cost-per-hour estimate in USD. Rendered as a small strip chip; absent → no chip.
+ * @typedef {Object} LlmStatusMsg
+ * @property {'llmstatus'} type
+ * @property {string} [backend] @property {boolean} [degraded] @property {number} [costPerHour]
  */
 
 /**
@@ -88,7 +102,23 @@
  * @property {'device'} type @property {string} kind @property {string} [tid]
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg} WireMsg */
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg} WireMsg */
+
+/**
+ * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is
+ * selected. The crew tuple is [x, y, pv, cid] (append-only; cid is the 4th element) — a frame from
+ * an older host without the cid element yields null (can't address them), never a throw. PURE.
+ * @param {{sel?:number[], crew?:number[][]}|null} frame
+ * @returns {number|null}
+ */
+export function selectedCrewCid(frame) {
+  if (!frame || !Array.isArray(frame.sel) || !Array.isArray(frame.crew)) return null;
+  const sx = frame.sel[0], sy = frame.sel[1];
+  for (const c of frame.crew) {
+    if (Array.isArray(c) && c[0] === sx && c[1] === sy) return c.length > 3 ? c[3] : null;
+  }
+  return null;
+}
 
 /**
  * Expand a decoded `light` message's RLE runs into a flat row-major LightState plane of length

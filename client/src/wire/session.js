@@ -44,6 +44,9 @@ export class WireSession {
 }
 
 // --- command constructors (the full protocol GameSession understands) ---
+// Two families share the wire (WebCommand.Parse): the original VIEW commands keyed by "cmd", and
+// the P2 conversation/MOSS commands keyed by "type" (talk/say/bye/moss). The key difference is
+// deliberate — the host reader dispatches on whichever is present.
 export const Cmd = {
   cursor: (x, y) => ({ cmd: 'cursor', x, y }),
   click: (x, y) => ({ cmd: 'click', x, y }),
@@ -52,4 +55,10 @@ export const Cmd = {
   lens: (name) => ({ cmd: 'lens', name }),
   speed: (delta) => ({ cmd: 'speed', delta }),
   pause: () => ({ cmd: 'pause' }),
+  // P2 conversation: open a talk with a crew member (by cid), stream a player line, or close.
+  talk: (cid) => ({ type: 'talk', cid }),
+  say: (sid, text) => ({ type: 'say', sid, text }),
+  bye: (sid) => ({ type: 'bye', sid }),
+  // P2 MOSS terminal ops (C6): open/set/audit a program by terminal id.
+  moss: (op, tid, text) => (text === undefined ? { type: 'moss', op, tid } : { type: 'moss', op, tid, text }),
 };

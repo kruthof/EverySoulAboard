@@ -1,0 +1,13 @@
+{"type":"citizen","cid":7,"name":"Kort Vael","role":"Engineer","mood":"tense","traits":["stoic","night owl"],"portrait":"pk_8244d4ab"}
+{"type":"llmstatus","backend":"template","degraded":false,"costPerHour":0}
+{"type":"chat","sid":3,"ev":"start","cid":7,"name":"Kort Vael"}
+{"type":"chat","sid":3,"ev":"delta","seq":0,"text":"The "}
+{"type":"chat","sid":3,"ev":"delta","seq":1,"text":"pumps "}
+{"type":"chat","sid":3,"ev":"delta","seq":2,"text":"are holding."}
+{"type":"chat","sid":3,"ev":"line","who":"Kort Vael","text":"The pumps are holding. For now."}
+{"type":"chat","sid":3,"ev":"effect","text":"Kort notes your concern (trust +1)"}
+{"type":"llmstatus","backend":"anthropic","degraded":true,"costPerHour":1.42}
+{"type":"chat","sid":3,"ev":"delta","seq":0,"text":"I'll "}
+{"type":"chat","sid":3,"ev":"delta","seq":1,"text":"keep watch."}
+{"type":"chat","sid":3,"ev":"line","who":"Kort Vael","text":"I'll keep watch. Go rest."}
+{"type":"chat","sid":3,"ev":"end","reason":"complete"}

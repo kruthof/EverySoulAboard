@@ -1,10 +1,12 @@
 // Input map — camera-aware mouse + keyboard, a faithful port of the handlers in
 // hosts/web/Client.html. Mouse: wheel zoom (anchored on the cursor tile), drag pan, click
 // select/toggle, shift-click move, hover cursor. Keyboard: WASD pan, arrows/hjkl cursor,
-// R/F deck, 1–7 lens, space pause, +/− speed, m move, Enter click, P sprite toggle.
+// R/F deck, 1–7 lens, space pause, +/− speed, m move, Enter click, P sprite toggle. P2 (C5):
+// T (or Enter on a selected crew) opens a talk with them; Esc closes the active dialogue (bye).
 
 import { tileFromPoint, zoomAt, panPixels, panByStep } from '../render/camera.js';
 import { Cmd } from '../wire/session.js';
+import { selectedCrewCid } from '../wire/messages.js';
 import { LENSES } from '../ui/hud.js';
 
 /**
@@ -15,10 +17,21 @@ import { LENSES } from '../ui/hud.js';
  *   getFrame: () => any,
  *   draw: () => void,
  *   toggleSprites: () => void,
+ *   onEscape?: () => void,
  * }} opts
  */
 export function installInput(opts) {
   const { canvas, camera, session, getFrame, draw, toggleSprites } = opts;
+  const onEscape = opts.onEscape || (() => {});
+
+  // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
+  // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
+  // a no-op, so the key never sends a malformed talk.
+  function talkSelected() {
+    const cid = selectedCrewCid(getFrame());
+    if (cid != null) { session.send(Cmd.talk(cid)); return true; }
+    return false;
+  }
   // All listeners are bound to this controller's signal so a single dispose() (returned below)
   // removes every one at once — canvas AND window. main.js calls it before swapping the canvas
   // element on a WebGL→Canvas2D fallback, so the fresh canvas gets a clean set of handlers with
@@ -89,7 +102,9 @@ export function installInput(opts) {
   window.addEventListener('keydown', (e) => {
     const k = e.key;
     if (k === 'P' || k === 'p') { toggleSprites(); return; }
-    if (k === 'w' || k === 'W') pan(0, -1);
+    if (k === 'Escape') { onEscape(); }
+    else if (k === 't' || k === 'T') { talkSelected(); }
+    else if (k === 'w' || k === 'W') pan(0, -1);
     else if (k === 's' || k === 'S') pan(0, 1);
     else if (k === 'a' || k === 'A') pan(-1, 0);
     else if (k === 'd' || k === 'D') pan(1, 0);
@@ -104,7 +119,9 @@ export function installInput(opts) {
     else if (k === '+' || k === '=') session.send(Cmd.speed(1));
     else if (k === '-' || k === '_') session.send(Cmd.speed(-1));
     else if (k === 'm' || k === 'M') session.send(Cmd.move());
-    else if (k === 'Enter') session.send(Cmd.click(cur.x, cur.y));
+    // Enter opens a talk when a crew is already selected (click-selected + Enter), else it acts
+    // as a keyboard "click" at the inspection cursor (device toggle / select).
+    else if (k === 'Enter') { if (!talkSelected()) session.send(Cmd.click(cur.x, cur.y)); }
     else return;
     e.preventDefault();
   }, { signal });

@@ -35,6 +35,8 @@ body{
   font-variant-numeric:tabular-nums;
 }
 .chip b{color:var(--text); font-weight:600}
+.chip.degraded{border-color:var(--bad); color:var(--bad)}
+.chip.degraded b{color:var(--bad)}
 .strip .msg{margin-left:auto; color:var(--neon); font-size:12px; min-height:16px; letter-spacing:.3px}
 .paused-dot{width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 8px var(--warn)}
 .run-dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good)}

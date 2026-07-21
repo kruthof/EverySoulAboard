@@ -62,7 +62,10 @@ function fallbackToCanvas2D() {
   ctx = canvas.getContext('2d');
   executor = new Canvas2DExecutor();
   camera.placed = false;
-  inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+  inputDispose = installInput({
+    canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+    onEscape: () => Hud.closeActiveDialogue(),
+  });
   swapping = false;
   layout(); draw();
 }
@@ -159,10 +162,11 @@ function onMessage(m) {
     case 'legend': Hud.renderLegend(m.lines); break;
     case 'inspect': Hud.renderInspect(m.lines); break;
     case 'status': Hud.renderStatus(m); break;
-    // P2 panels (host lands these later; the client is ready): dialogue / citizen / terminal.
+    // P2 panels (C5 live): dialogue / citizen / terminal / LLM status.
     case 'chat': Hud.renderChat(m); break;
     case 'citizen': Hud.renderCitizen(m); break;
     case 'moss': Hud.renderMoss(m); break;
+    case 'llmstatus': Hud.renderLlmStatus(m); break;
     default: break;
   }
 }
@@ -176,7 +180,14 @@ document.getElementById('b-deckup').onclick = () => session.send(Cmd.deck(1));
 document.getElementById('b-deckdown').onclick = () => session.send(Cmd.deck(-1));
 document.getElementById('b-move').onclick = () => session.send(Cmd.move());
 
-inputDispose = installInput({ canvas, camera, session, getFrame: () => frame, draw, toggleSprites });
+// P2 conversation wiring: the dialogue input box sends `say`, closing (× / Esc) sends `bye`.
+Hud.onDialogueSend((sid, text) => session.send(Cmd.say(sid, text)));
+Hud.onDialogueClose((sid) => session.send(Cmd.bye(sid)));
+
+inputDispose = installInput({
+  canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+  onEscape: () => Hud.closeActiveDialogue(),
+});
 window.addEventListener('resize', () => { layout(); draw(); });
 
 session.connect();

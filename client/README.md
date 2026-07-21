@@ -179,7 +179,11 @@ asserted in `test/scene.test.js` + `test/lighting.test.js`.
 ## P2 panels: dialogue, citizen card, terminal drawer (`src/ui/`)
 
 The slice UI is built as **pure view-models + DOM shells**, so the logic is testable without a
-browser and the host can land the wire later (the client is already wired to consume it):
+browser. As of C5 the dialogue is **live**: <kbd>T</kbd> (or <kbd>Enter</kbd> on a selected crew)
+sends `talk {cid}`, the input box sends `say {sid,text}`, and closing the window (× or <kbd>Esc</kbd>)
+sends `bye {sid}`. Citizen cards resolve their portrait through the generated registry glue
+(`assets/portraits-registry.js` → silhouette fallback), and an `llmstatus` message drives a small
+strip chip (backend · degraded · $ /hr):
 
 - **`chat.js`** — a PURE reducer over the `chat` wire events (`start`/`delta`/`line`/`effect`/`end`,
   keyed by `sid`). The transcript is built ONLY from `line` + `effect` events, so **a client that
@@ -190,12 +194,17 @@ browser and the host can land the wire later (the client is already wired to con
   when the key is unknown/absent (no art yet) — a MANDATORY procedural silhouette (initials over a
   hue hashed deterministically from `cid`). Never throws.
 - **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus): the dialogue window
-  (transcript + streaming indicator + input-box shell), the citizen card (portrait/name/role/mood/
-  traits), and the MOSS terminal drawer (placeholder — the editor/diagnostics land in a later
-  package). `#panels` stays empty (view unchanged) until the first chat/citizen/moss message.
+  (transcript + streaming indicator + live input box → `say`, close → `bye`), the citizen card
+  (portrait/name/role/mood/traits), and the MOSS terminal drawer (placeholder — the editor/
+  diagnostics land in C6). `#panels` stays empty (view unchanged) until the first chat/citizen/moss
+  message. `selectedCrewCid(frame)` (`wire/messages.js`, PURE) resolves the T-key's target from the
+  crew tuple `[x,y,pv,cid]`.
 
-Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/
-`MossMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss`.
+Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/`MossMsg`/
+`LlmStatusMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss/renderLlmStatus`
+and wires `talk`/`say`/`bye` to the session. **L6 host note:** the live conversation server (`talk`→
+stream→`bye`) lands in a parallel spine lane; C5 is built + tested against fixtures (`test/fixtures/
+session_live.jsonl`). When L6 is on main, record a real `TemplateBackend` session into a fixture.
 
 ## Sprites (single source of truth = spritegen)
 
@@ -237,6 +246,10 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   untrusted plane (a light claimed on fog is dropped), the RLE plane decode round-trip + tolerance,
   no-lights byte-compat, the light-op ordering invariant (after entity, before wash), and
   canvas2d↔batch routing parity of the overlay.
+- `test/dialogue.test.js` — C5 dialogue-live: the talk/say/bye/moss command constructors, the
+  `selectedCrewCid` resolver (the T-key target), the full live flow (fixture replay of
+  `session_live.jsonl` with interleaved citizen + llmstatus), a mid-session reconnect that resets
+  cleanly without wedging, flaky-link tolerance, and interleaved live sessions.
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

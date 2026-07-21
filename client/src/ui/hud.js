@@ -5,6 +5,7 @@
 
 import { PanelManager } from './panels.js';
 import { initChatState, reduceChat, getSession, sessionModel } from './chat.js';
+import { portraitRegistry } from '../../assets/portraits-registry.js';
 
 const METRIC_DEFS = [
   ['power', 'Power'], ['oxygen', 'Oxygen'], ['water', 'Water'], ['food', 'Food'],
@@ -86,25 +87,32 @@ export function buildLensButtons(onLens) {
 
 let _panels = null;
 let _chat = initChatState();
-/** Portrait key → image src. Empty until the art pipeline (WS-ART) ships portraits. */
-const PORTRAIT_REGISTRY = {};
+/** Portrait key → resolvable image URL, from the generated manifest via the registry glue. A
+ *  citizen whose key is absent keeps the procedural silhouette fallback (portraits.js). */
+const PORTRAIT_REGISTRY = portraitRegistry;
 
 function panels() {
   if (!_panels) {
     _panels = new PanelManager();
-    // onSend is wired to a no-op until the dialogue `say` command exists server-side (the send
-    // box is a shell); main.js may override _panels.onSend once the wire supports it.
     _panels.onSend = (sid, text) => onSendHandler(sid, text);
+    _panels.onBye = (sid) => onByeHandler(sid);
   }
   return _panels;
 }
 
 let onSendHandler = () => {};
-/** Register a handler for the dialogue input box (dialogue send command lands later). */
+let onByeHandler = () => {};
+/** Register a handler for the dialogue input box → `say {sid,text}`. */
 export function onDialogueSend(fn) { onSendHandler = fn || (() => {}); }
+/** Register a handler for a dialogue closing → `bye {sid}`. */
+export function onDialogueClose(fn) { onByeHandler = fn || (() => {}); }
+/** Close the active dialogue (Esc key) — fires the bye handler. No-op when none is open. */
+export function closeActiveDialogue() { if (_panels) _panels.closeActiveDialogue(); }
 
 /**
  * Route a decoded `chat` wire message through the pure reassembler and update its dialogue window.
+ * Binds the full stream (start/delta/line/effect/end) — the reducer keys by sid, so interleaved
+ * conversations and a mid-session reconnect (a fresh `start` for a live sid) both stay correct.
  * @param {import('../wire/messages.js').ChatMsg} m
  */
 export function renderChat(m) {
@@ -113,7 +121,8 @@ export function renderChat(m) {
   if (model) panels().dialogue(model);
 }
 
-/** Open/refresh a citizen inspector card. @param {import('../wire/messages.js').CitizenMsg} m */
+/** Open/refresh a citizen inspector card with its portrait (registry → silhouette fallback).
+ *  @param {import('../wire/messages.js').CitizenMsg} m */
 export function renderCitizen(m) {
   panels().citizen(m, PORTRAIT_REGISTRY);
 }
@@ -121,4 +130,17 @@ export function renderCitizen(m) {
 /** Open/refresh the MOSS terminal drawer. @param {import('../wire/messages.js').MossMsg} m */
 export function renderMoss(m) {
   panels().terminal(m);
+}
+
+/** Reflect the LLM backend status in the strip chip: backend name, degraded flag, cost/hr.
+ *  Hidden until the first llmstatus message arrives. @param {import('../wire/messages.js').LlmStatusMsg} m */
+export function renderLlmStatus(m) {
+  const chip = $('s-llmchip');
+  if (!chip) return;
+  chip.style.display = '';
+  const backend = m.backend || '—';
+  const cost = typeof m.costPerHour === 'number' && isFinite(m.costPerHour)
+    ? ' · $' + m.costPerHour.toFixed(2) + '/h' : '';
+  $('s-llm').textContent = backend + (m.degraded ? ' (degraded)' : '') + cost;
+  chip.classList.toggle('degraded', !!m.degraded);
 }
