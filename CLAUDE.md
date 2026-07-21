@@ -23,9 +23,12 @@ runtime + three adapters (Anthropic/OpenAI-compat/Ollama) with `.env` auto-route
 ConversationHub talking web host, MEMS-persisted crew minds, Chronicle + verbatim
 eulogy, registered Director (gentled 1.35 lever), build/refit walls+doors, relationship
 types, the 8-crew authored slice (`--ship slice`), a ~99%-parity WebGL2 client with
-lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **524 dotnet + 115 node tests
+lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **530 dotnet + 125 node tests
 green** via `./ci.sh`. Live-provider smoke on record ($0.0045, `docs/SMOKE-P2.md`).
-Next: P3 "The Voyage" (PLAN.md).
+A post-tag playtest-feedback round landed 2026-07-21 (sprite matte/hysteresis/click
+fixes, plain-first-person dialogue prompt, regenerated pawn idles + slice portraits,
+`roster`/`build` wire) — see HANDOVER "Playtest-feedback round". Next up: the client UI
+rebuild to `docs/design/perilune-game-ui.dc.html`, then P3 "The Voyage" (PLAN.md).
 
 ## Layout
 `sim/` (Sim.Core, Sim.Dsl, Sim.Gen, Sim.Glyph, Sim.Llm, Sim.Content — all headless) ·

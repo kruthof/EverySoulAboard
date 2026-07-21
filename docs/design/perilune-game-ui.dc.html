@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<!--
+  IMPORTED DESIGN MOCKUP — the target look for the client UI rebuild (P2.1 "The Console").
+  Source: Garvin's claude.ai/design project "Perilune UI design concepts"
+  (project cb4b6b0f-fb4b-4f84-8bf6-bdc14a967fdf, file "Perilune Game UI.dc.html"),
+  imported 2026-07-21 via the claude_design MCP. This is a *.dc.html component (Design
+  Component runtime: sc-for loops, {{bindings}}, a DCLogic class at the bottom holds the
+  mock state/data) — it does NOT run standalone, read it as an annotated spec:
+
+    · 1920×1000 console layout, Space Mono, warm near-black palette (#12100d bg, #cf7a33 /
+      #e8934a amber-orange accents, #b3aa9c text, 1px #2b241c hairline borders)
+    · top bar: ship name · deck label · DAY/time · pause chip · speed chip · blinking caution chip
+    · left 250px: CREW WATCH list — initials avatar, SURNAME, role, 3px morale bar; click = select
+    · center: the deck view (in the real client: the canvas) with crew markers + room overlays
+      driven by the active lens (tint per grade, value badge per room)
+    · right 310px: READOUT — selected crew name/role/room, trait chips, "> current task",
+      a remembered memory, then [T] OPEN CHANNEL — TALK / [M] MOVE ORDER / [B] BIOGRAPHY buttons
+    · bottom 170px: menu tabs (BUILD live: wall/door/bunk/…/DEMOLISH palette, click deck to
+      place ghost designations) · LENS SELECT row (NONE/PRES/O₂/CO₂/TEMP/PWR) · SENSOR LOG (last 3)
+    · hotkey line: B BUILD · X DEMOLISH · ESC CANCEL · 1–6 LENS · SPACE PAUSE
+
+  Wire support already landed for this (see HANDOVER): the `roster` channel feeds the crew
+  watch + readout, {"cmd":"build"} feeds the BUILD palette, metrics.dayFrac feeds the clock.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+<link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/_ds_bundle.css">
+<link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/styles.css">
+<script src="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/_ds_bundle.js"></script>
+<style>body{margin:0;background:#0c0a08}a{color:#e8934a}a:hover{color:#f2b563}@keyframes plnBlink{0%,60%{opacity:1}70%,100%{opacity:.25}}</style>
+</helmet>
+<div data-screen-label="Main sim view" style="width:1920px;height:1000px;margin:0 auto;display:flex;flex-direction:column;font-family:'Space Mono',monospace;color:#b3aa9c;background:#12100d;">
+  <div style="height:46px;display:flex;align-items:center;gap:22px;padding:0 20px;border-bottom:1px solid #2b241c;background:#161310;font-size:11px;letter-spacing:.1em;box-sizing:border-box;">
+    <span style="color:#cf7a33;font-weight:700;">MSV PERILUNE</span>
+    <span style="color:#57503f;">DECK 2 — HABITATION &amp; DRIVE</span>
+    <span style="margin-left:auto;">DAY 212 · 06:41</span>
+    <span onClick="{{togglePauseD}}" style="cursor:pointer;border:1px solid #3a332a;padding:3px 10px;border-radius:3px;color:{{pauseColD}};">{{pauseLabelD}}</span>
+    <span style="border:1px solid #3a332a;padding:3px 10px;border-radius:3px;">1×</span>
+    <span style="padding:3px 12px;border-radius:3px;background:{{cautionBgA}};color:{{cautionFgA}};font-weight:700;animation:plnBlink 1.6s infinite;">{{cautionLabel}}</span>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;">
+    <div style="width:250px;border-right:1px solid #2b241c;padding:14px;display:flex;flex-direction:column;gap:8px;background:#14110e;box-sizing:border-box;">
+      <div style="font-size:10px;letter-spacing:.18em;color:#57503f;">CREW WATCH — 6 SOULS</div>
+      <sc-for list="{{crewD}}" as="c" hint-placeholder-count="6">
+        <div onClick="{{c.on}}" style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid {{c.bdA}};border-radius:4px;background:{{c.bgA}};cursor:pointer;">
+          <div style="width:34px;height:34px;border-radius:3px;background:{{c.hue}};color:#12100d;font:700 12px 'Space Mono',monospace;display:flex;align-items:center;justify-content:center;flex:none;">{{c.initials}}</div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:11px;color:#e8dcc9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{c.surname}}</div>
+            <div style="font-size:9px;color:#8c8377;text-transform:uppercase;letter-spacing:.08em;">{{c.role}}</div>
+            <div style="height:3px;background:#2b241c;border-radius:2px;margin-top:4px;"><div style="height:3px;border-radius:2px;width:{{c.moraleW}};background:{{c.moraleC}};"></div></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;background:#0c0a08;position:relative;">
+      <div onClick="{{mapClickD}}" style="position:relative;width:1300px;height:561px;background:url('assets/ship-cozy.png') 0 0 / 100% 100% no-repeat #0c0a08;cursor:crosshair;box-shadow:0 0 0 1px #2b241c;">
+        <sc-for list="{{roomsD}}" as="r" hint-placeholder-count="9">
+          <div style="position:absolute;left:{{r.l}}px;top:{{r.t}}px;width:{{r.w}}px;height:{{r.h}}px;background:{{r.fill}};border:{{r.border}};box-sizing:border-box;pointer-events:none;">
+            <div style="display:{{r.vd}};font-size:9.5px;letter-spacing:.12em;color:rgba(255,244,230,.6);padding:4px 6px;">{{r.name}}</div>
+            <div style="display:{{r.vd}};position:absolute;right:4px;bottom:4px;font-size:10.5px;color:{{r.vc}};background:rgba(0,0,0,.55);padding:2px 6px;border-radius:3px;">{{r.val}}</div>
+          </div>
+        </sc-for>
+        <sc-for list="{{ghostsD}}" as="g" hint-placeholder-count="0">
+          <div onClick="{{g.on}}" title="queued — click with DEMOLISH to remove" style="position:absolute;left:{{g.x}}px;top:{{g.y}}px;width:26px;height:26px;box-sizing:border-box;border:1.5px dashed #f2b563;background:rgba(207,122,51,.22);color:#f2b563;font-size:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;">{{g.label}}</div>
+        </sc-for>
+        <sc-for list="{{markersD}}" as="m" hint-placeholder-count="6">
+          <div onClick="{{m.on}}" title="{{m.name}}" style="position:absolute;left:{{m.x}}px;top:{{m.y}}px;width:26px;height:26px;border-radius:50%;background:{{m.hue}};border:2px solid {{m.ring}};color:#12100d;font:700 10px 'Space Mono',monospace;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;">{{m.initials}}</div>
+        </sc-for>
+        <div style="position:absolute;left:0;bottom:-26px;font-size:9.5px;letter-spacing:.14em;color:#57503f;pointer-events:none;">LIVE SPRITE FEED · CLICK DECK TO PLACE · <span style="color:#e8934a;">{{placedCountD}}</span></div>
+      </div>
+    </div>
+    <div style="width:310px;border-left:1px solid #2b241c;padding:16px;background:#14110e;display:flex;flex-direction:column;gap:10px;font-size:11px;box-sizing:border-box;">
+      <div style="font-size:10px;letter-spacing:.18em;color:#57503f;">READOUT</div>
+      <div style="color:#cf7a33;font-size:13px;font-weight:700;">{{selD.name}}</div>
+      <div style="color:#8c8377;text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;">{{selD.role}} · {{selD.room}}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <sc-for list="{{selD.traits}}" as="t" hint-placeholder-count="3"><span style="border:1px solid #3a332a;border-radius:3px;padding:2px 7px;font-size:9.5px;color:#b3aa9c;">{{t}}</span></sc-for>
+      </div>
+      <div style="border-top:1px dashed #2b241c;padding-top:10px;color:#e8dcc9;">&gt; {{selD.task}}</div>
+      <div style="color:#8c8377;font-size:10.5px;line-height:1.6;">{{selD.mem}}</div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px;">
+        <div style="border:1px solid #cf7a33;color:#f2b563;text-align:center;padding:7px;border-radius:3px;cursor:pointer;" style-hover="background:#2a2013;">[T] OPEN CHANNEL — TALK</div>
+        <div style="border:1px solid #3a332a;text-align:center;padding:7px;border-radius:3px;cursor:pointer;">[M] MOVE ORDER</div>
+        <div style="border:1px solid #3a332a;text-align:center;padding:7px;border-radius:3px;cursor:pointer;">[B] BIOGRAPHY</div>
+      </div>
+    </div>
+  </div>
+  <div style="height:170px;border-top:1px solid #2b241c;background:#161310;display:flex;align-items:stretch;box-sizing:border-box;">
+    <div style="flex:1;padding:14px 20px;border-right:1px solid #2b241c;display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;gap:8px;">
+        <sc-for list="{{menuTabsD}}" as="m" hint-placeholder-count="8">
+          <div onClick="{{m.on}}" style="padding:9px 16px;border-radius:3px;font-size:11px;letter-spacing:.08em;cursor:pointer;background:{{m.bg}};color:{{m.fg}};border:1px solid {{m.bd}};">{{m.label}}</div>
+        </sc-for>
+      </div>
+      <div style="display:{{paletteDd}};gap:8px;align-items:center;">
+        <span style="font-size:10px;letter-spacing:.18em;color:#57503f;flex:none;">PLACE ▸</span>
+        <sc-for list="{{buildItemsD}}" as="b" hint-placeholder-count="8">
+          <div onClick="{{b.on}}" style="padding:8px 14px;border-radius:3px;font-size:10.5px;cursor:pointer;background:{{b.bg}};color:{{b.fg}};border:1px solid {{b.bd}};">{{b.label}}</div>
+        </sc-for>
+      </div>
+      <div style="display:{{menuMsgDd}};font-size:10.5px;color:#57503f;letter-spacing:.04em;padding:8px 0;">{{menuMsgD}}</div>
+      <div style="font-size:9.5px;color:#57503f;letter-spacing:.06em;margin-top:auto;">B BUILD · X DEMOLISH · ESC CANCEL · CLICK DECK = PLACE · 1–6 LENS · SPACE PAUSE</div>
+    </div>
+    <div style="width:440px;padding:14px 20px;border-right:1px solid #2b241c;box-sizing:border-box;">
+      <div style="font-size:10px;letter-spacing:.18em;color:#57503f;margin-bottom:10px;">LENS SELECT</div>
+      <div style="display:flex;gap:8px;">
+        <sc-for list="{{lensBtnsD}}" as="b" hint-placeholder-count="6">
+          <div onClick="{{b.on}}" style="flex:1;text-align:center;padding:10px 6px;border-radius:3px;font-size:11px;cursor:pointer;background:{{b.bg}};color:{{b.fg}};border:1px solid {{b.bd}};">{{b.label}}</div>
+        </sc-for>
+      </div>
+      <div style="margin-top:12px;font-size:9.5px;color:#57503f;letter-spacing:.06em;">1–6 LENS · ATMOSPHERICS &amp; POWER</div>
+    </div>
+    <div style="width:400px;padding:14px 20px;font-size:10.5px;line-height:1.7;color:#8c8377;box-sizing:border-box;">
+      <div style="font-size:10px;letter-spacing:.18em;color:#57503f;margin-bottom:8px;">SENSOR LOG — LAST 3</div>
+      <div><span style="color:#e8934a;">06:38</span> co2.quarters 740 ppm ↑ (scrubber #2 at 61%)</div>
+      <div><span style="color:#8c8377;">06:12</span> nav.contact K-114 reacquired, SNR 8.2</div>
+      <div><span style="color:#8c8377;">05:50</span> reactor.pump P-2 bearing temp +2.1 K</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1920, &quot;height&quot;: 1000}, &quot;crisis&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Scenario&quot;}, &quot;defaultLens&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;none&quot;, &quot;pressure&quot;, &quot;oxygen&quot;, &quot;co2&quot;, &quot;temp&quot;, &quot;power&quot;], &quot;default&quot;: &quot;none&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Scenario&quot;}}">
+class Component extends DCLogic {
+  state = { lensD: null, selD: 'dmitri', menuD: 'build', toolD: 'wall', placedD: [], pausedD: false };
+
+  get data() {
+    if (this._d) return this._d;
+    const roomsD = [
+      { id:'hydro', name:'HYDROPONICS', l:60,t:114,w:237,h:104, pres:101,o2:21.3,co2:480,temp:22,power:2 },
+      { id:'mess', name:'MESS HALL', l:321,t:114,w:211,h:104, pres:101,o2:20.7,co2:610,temp:23,power:2 },
+      { id:'galley', name:'GALLEY', l:558,t:140,w:155,h:78, pres:100,o2:20.8,co2:520,temp:21,power:2 },
+      { id:'med', name:'MED BAY', l:740,t:140,w:156,h:78, pres:99,o2:20.4,co2:740,temp:24,power:1 },
+      { id:'corr', name:'SPINE CORRIDOR', l:60,t:245,w:1240,h:48, pres:98,o2:20.5,co2:560,temp:20,power:2 },
+      { id:'lifesup', name:'LIFE SUPPORT', l:60,t:323,w:211,h:126, pres:101,o2:20.9,co2:430,temp:19,power:2 },
+      { id:'quarters', name:'QUARTERS', l:295,t:323,w:154,h:126, pres:99,o2:20.4,co2:740,temp:24,power:1 },
+      { id:'hold', name:'MAIN HOLD', l:480,t:323,w:155,h:126, pres:97,o2:20.2,co2:650,temp:17,power:1 },
+      { id:'reactor', name:'REACTOR', l:661,t:323,w:211,h:126, pres:101,o2:20.6,co2:500,temp:41,power:2 },
+    ];
+    const crew = [
+      { id:'dmitri', name:'Dmitri Volkov', surname:'VOLKOV', role:'Reactor watch', initials:'DV', hue:'#cf7a33', morale:60, room:'Reactor', task:'Inspecting coolant pump P-2', traits:['stoic','sardonic','haunted'], mem:'Remembers: the brownout on Day 148 — he was the only one on watch.', x:740, y:370 },
+      { id:'amara', name:'Amara Okoye', surname:'OKOYE', role:'Quartermaster', initials:'AO', hue:'#5aa77f', morale:82, room:'Mess hall', task:"Writing the day's chronicle entry", traits:['warm','meticulous','stubborn'], mem:'Remembers: naming the mess hall after the vote on Day 91.', x:400, y:150 },
+      { id:'reyes', name:'Reyes Calderón', surname:'CALDERÓN', role:'Engineer', initials:'RC', hue:'#c25a3f', morale:71, room:'Life support', task:'Patching CO₂ scrubber #2', traits:['restless','inventive'], mem:"Remembers: Halvorsen teaching him her airlock script, line by line.", x:140, y:370 },
+      { id:'sana', name:'Sana Qadir', surname:'QADIR', role:'Medic', initials:'SQ', hue:'#e8934a', morale:55, room:'Med bay', task:'Inventorying med stores', traits:['gentle','insomniac'], mem:'Remembers: losing Halvorsen on the table, Day 209.', x:790, y:168 },
+      { id:'teo', name:'Teo Brandt', surname:'BRANDT', role:'Hydroponicist', initials:'TB', hue:'#b5652a', morale:77, room:'Hydroponics', task:'Thinning the barley trays', traits:['cheerful','homesick'], mem:'Remembers: the first barley harvest, Day 205. Everyone clapped.', x:150, y:150 },
+      { id:'wren', name:'Wren Ashby', surname:'ASHBY', role:'Apprentice', initials:'WA', hue:'#8c8377', morale:64, room:'Main hold', task:"Reading Halvorsen's dead scripts", traits:['curious','anxious'], mem:'Remembers: her first EVA — Volkov held the tether the whole time.', x:540, y:370 },
+    ];
+    this._d = { roomsD, crew };
+    return this._d;
+  }
+
+  grade(r, lens) {
+    if (lens === 'pressure') return r.pres >= 95 ? 'g' : r.pres >= 60 ? 'w' : 'b';
+    if (lens === 'oxygen') return r.o2 >= 20 ? 'g' : r.o2 >= 17 ? 'w' : 'b';
+    if (lens === 'co2') return r.co2 < 600 ? 'g' : r.co2 <= 1000 ? 'w' : 'b';
+    if (lens === 'temp') return (r.temp >= 17 && r.temp <= 26) ? 'g' : (r.temp >= 5 && r.temp <= 35) ? 'w' : 'b';
+    return 'g';
+  }
+
+  roomViewD(r, lens) {
+    const tints = { g:'rgba(90,167,127,.24)', w:'rgba(207,122,51,.30)', b:'rgba(194,90,63,.38)' };
+    const vcols = { g:'#7fc79f', w:'#e8934a', b:'#e07a5f' };
+    if (!lens || lens === 'none') return { ...r, fill:'transparent', border:'none', vd:'none', val:'', vc:'#8c8377' };
+    const border = '1px solid rgba(255,244,230,.14)';
+    if (lens === 'power') {
+      const fill = ['rgba(10,8,6,.55)','rgba(207,122,51,.16)','rgba(232,147,74,.24)'][r.power];
+      return { ...r, fill, border, vd:'inline-block', val:['DEAD','BROWNOUT','NOMINAL'][r.power], vc:['#8c8377','#b5652a','#e8934a'][r.power] };
+    }
+    const g = this.grade(r, lens);
+    const val = lens === 'pressure' ? r.pres + ' kPa' : lens === 'oxygen' ? r.o2.toFixed(1) + '%' : lens === 'co2' ? r.co2 + ' ppm' : r.temp + '°C';
+    return { ...r, fill: tints[g], border, vd:'inline-block', val, vc: vcols[g] };
+  }
+
+  renderVals() {
+    const { roomsD, crew } = this.data;
+    const p = this.props;
+    const crisis = p.crisis ?? false;
+    const lensD = this.state.lensD ?? p.defaultLens ?? 'none';
+    const lenses = [ ['none','NONE'], ['pressure','PRES'], ['oxygen','O₂'], ['co2','CO₂'], ['temp','TEMP'], ['power','PWR'] ];
+    const moraleC = m => m >= 75 ? '#5aa77f' : m >= 50 ? '#cf7a33' : '#c25a3f';
+    const selD = crew.find(c => c.id === this.state.selD) || crew[0];
+    const enrich = c => ({ ...c, moraleW: c.morale + '%', moraleC: moraleC(c.morale) });
+    const tools = [ ['wall','WALL'], ['door','DOOR'], ['bunk','BUNK'], ['console','CONSOLE'], ['scrub','SCRUBBER'], ['tray','HYDRO TRAY'], ['light','LIGHT'], ['demo','⌫ DEMOLISH'] ];
+    const toolAbbr = { wall:'WA', door:'DO', bunk:'BU', console:'CO', scrub:'SC', tray:'TR', light:'LI' };
+    const menuTabs = [ ['build','BUILD'], ['refit','REFIT'], ['orders','ORDERS'], ['crew','CREW'], ['ship','SHIP'], ['moss','MOSS'], ['nav','NAV'], ['log','CHRONICLE'] ];
+    return {
+      roomsD: roomsD.map(r => this.roomViewD(r, lensD)),
+      markersD: crew.map(c => ({ ...c, ring: c.id === selD.id ? '#fefbf6' : 'rgba(0,0,0,.5)', on: () => this.setState({ selD: c.id }) })),
+      selD: enrich(selD),
+      crewD: crew.map(c => ({ ...enrich(c), on: () => this.setState({ selD: c.id }), bdA: c.id === selD.id ? '#cf7a33' : '#2e2820', bgA: c.id === selD.id ? '#221b12' : 'transparent' })),
+      lensBtnsD: lenses.map(([k, label]) => ({ label, on: () => this.setState({ lensD: k }), ...(k === lensD ? { bg:'#3a2a12', fg:'#f2b563', bd:'#cf7a33' } : { bg:'#1a1611', fg:'#8c8377', bd:'#3a332a' }) })),
+      menuTabsD: menuTabs.map(([k, label]) => ({ label, on: () => this.setState({ menuD: k }), bg: k === this.state.menuD ? '#3a2a12' : '#1a1611', fg: k === this.state.menuD ? '#f2b563' : '#8c8377', bd: k === this.state.menuD ? '#cf7a33' : '#3a332a' })),
+      buildItemsD: tools.map(([k, label]) => ({ label, on: () => this.setState({ toolD: k }), bg: k === this.state.toolD ? (k==='demo' ? '#3a1a10' : '#3a2a12') : 'transparent', fg: k === this.state.toolD ? (k==='demo' ? '#e07a5f' : '#f2b563') : '#8c8377', bd: k === this.state.toolD ? (k==='demo' ? '#a53a25' : '#cf7a33') : '#2b241c' })),
+      paletteDd: this.state.menuD === 'build' ? 'flex' : 'none',
+      menuMsgDd: this.state.menuD === 'build' ? 'none' : 'block',
+      menuMsgD: menuTabs.find(([k]) => k === this.state.menuD)[1] + ' — not wired in this mockup. BUILD is live: pick an item, click the deck to place; DEMOLISH removes placements.',
+      placedCountD: this.state.placedD.length + ' QUEUED',
+      ghostsD: this.state.placedD.map((pl, i) => ({ x: pl.x, y: pl.y, label: toolAbbr[pl.t] || '?', on: (e) => { e.stopPropagation(); if (this.state.toolD === 'demo') this.setState(s => ({ placedD: s.placedD.filter((_, j) => j !== i) })); } })),
+      mapClickD: (e) => {
+        const t = this.state.toolD;
+        if (!t || t === 'demo') return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const g = 26;
+        const x = Math.max(0, Math.min(1274, Math.floor((e.clientX - rect.left) * (1300 / rect.width) / g) * g));
+        const y = Math.max(0, Math.min(535, Math.floor((e.clientY - rect.top) * (561 / rect.height) / g) * g));
+        this.setState(s => ({ placedD: [...s.placedD, { x, y, t }] }));
+      },
+      pauseLabelD: this.state.pausedD ? '► RUN' : '‖ HOLD', pauseColD: this.state.pausedD ? '#e8934a' : '#8c8377',
+      togglePauseD: () => this.setState(s => ({ pausedD: !s.pausedD })),
+      cautionLabel: crisis ? 'MASTER CAUTION' : 'CAUTION · CO₂',
+      cautionBgA: crisis ? '#a53a25' : '#3a2a12', cautionFgA: crisis ? '#fefbf6' : '#e8934a',
+    };
+  }
+}
+</script>
+</body>
+</html>

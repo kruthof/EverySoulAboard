@@ -1,4 +1,4 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest-feedback round, tag `v2-talking-ship`)
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -110,6 +110,76 @@ Every P2 work package went through the per-package **independent Opus gate** (be
     determinism, and offline cost **$0**. Mutation-probed (it catches neutered
     eulogy/MEMS/Director) and it reproduces the documented pre-existing save-reload thermal
     ULP drift on base. 88 ms. This is the P2 contract — keep it green.
+
+## Playtest-feedback round (2026-07-21, after the tag) — what landed
+
+Garvin played the slice and filed six findings. Five are FIXED on main; the sixth (the
+full UI redesign) is deliberately deferred to a fresh session — see "Next session" below.
+
+1. **Pawns blinked white / flip-flopped walking↔standing.** Root causes, both fixed:
+   (a) two v1 walk frames shipped an opaque white matte (the model ignored the green
+   screen, the key pass missed). Fixed at the source (art regenerated, below) AND with a
+   runtime safety net — `client/src/render/matte.js`, a pure border-flood scrub run once
+   at sprite load (`SpriteAssets._scrub`), node-tested. (b) a pathing pawn often steps
+   only every 2nd–3rd wire frame, so `walking` flickered. `motion.js` now carries
+   `sinceStep` + `WALK_HOLD_FRAMES` hysteresis (`isAnimWalking`) — the walk SPRITE holds
+   across small gaps while the slide stays step-gated.
+2. **LLM dialogue read like stage direction.** `PromptBuilder.GlobalSystemBlock` now
+   demands: first person, plain simple English, ONLY the spoken words (no *leans
+   forward*, no narration, no quotes) — and explicitly says a reveal/agreement/goodbye
+   must ALSO call `propose_effect` ("saying it without the tool call does nothing"),
+   which is the first swing at the known effect-elicitation gap. NOT yet validated
+   against live providers — run `llm-smoke` before the playtest and check both the tone
+   and whether `propose_effect` now fires.
+3. **Walking crew were hard to click.** `crewTileNear` in `client/src/input/controls.js`
+   snaps a canvas click to the nearest crew member's CURRENT tile when the click lands
+   within ~0.7 tile of either slide endpoint (mid-walk bodies count). Node-tested.
+4. **Standing pawns stared up into the camera.** That gaze was literally in the v1 spec
+   prompts. `spec_cyberpunk80s_v2.json` (new spec per the art invariant; work dir
+   `work/cyberpunk80s-128-v2` cloned from v1 so ONLY the 9 pawn units regenerated)
+   redoes the three idles as level three-quarter-profile gazes in the walk-frame
+   perspective, and regenerates the walk frames with hard green-screen wording. The
+   sprites.g.test.js SPRITE_URIS pin moved deliberately (explained in the test file).
+   Advisory note: the slice-shot lighting-range metric now reads 2.34× (bar 2.5×, WARN,
+   advisory-only) — the new pawn luma shifted the auto-picked blocks; `accepted.png` was
+   NOT re-accepted (still PASSes style-lock at 0.1254 ≤ 0.20) — re-accepting is the
+   human A/B ritual's call.
+5. **Female crew had male busts (Grace was a bearded white man).** The portrait prompts
+   never carried appearance, so the model drifted. `run.py portrait_prompt` now weaves an
+   explicit `appearance` line; `personas_slice_authored.json` gained appearance fields
+   (gender/ethnicity/age grounded in each backstory's pronouns and name);
+   `spec_portraits_slice_v2.json` regenerates all 8 slice busts in ONE consistent painted
+   style. Same pk_ keys → same files refreshed; manifest untouched (append-only proven by
+   the existing portraits tests). Host side, `GameSession.Portrait()` now maps the 8
+   authored crew to gender-matching pawn variants (F → `pawn_c`, M → `pawn_b`/`pawn`)
+   via a name-keyed view table (`SliceVariant`) — sim carries no appearance state (a
+   possible future def/persona field, noted, not built).
+6. **UI "very basic": no movable chats, no build UI, no sensors** → the redesign, next
+   session (below). Its WIRE groundwork already landed here, tested
+   (`WebRosterBuildTests`): a `roster` channel (per living crew: cid/name/role/mood/
+   morale/task/portrait/deck/x/y — deliberately not fog-gated, own-crew intercom
+   knowledge; in `Snapshot()` catch-up) and `{"cmd":"build","kind":"wall|door|cancel",
+   "x","y"}` → `DesignateBuildCommand` on the current deck (legality stays sim-side in
+   `CanDesignate`, tick-boundary applied).
+
+Suite after this round: **530 dotnet + 125 node** via `./ci.sh`. Scenario/tick-3000/slice
+hashes unmoved (no sim state was added; verify pins in `ci.sh` still match).
+
+## Next session: the UI rebuild ("Perilune Game UI" design)
+
+Garvin supplied a target design — imported to
+**`docs/design/perilune-game-ui.dc.html`** (annotated; read its header comment first).
+Warm Space Mono console: top status bar (ship/deck/day/time/pause/speed/caution chip) ·
+left CREW WATCH sidebar (avatars, surname, role, morale bar — feed from the new `roster`
+channel; clicking a row should select without hunting pawns) · center = the existing
+canvas (keep executors/input untouched) · right READOUT panel (selected crew, traits,
+task, memory + [T] TALK / [M] MOVE / [B] BIO) · bottom bar (BUILD/REFIT/…/CHRONICLE
+tabs — BUILD palette is live via the new build command; LENS SELECT row; SENSOR LOG).
+Also wanted: movable/draggable chat panels (panel-base.js has no drag yet). Rebuild
+`client/index.html` + `styles.css` + `ui/hud.js` around this; the wire needs nothing new
+for v1 of it. Keep the node ui tests honest (`ui.test.js` etc. pin DOM ids). The design's
+static deck mock is replaced by the real canvas; room-overlay lenses on the canvas
+already exist host-side.
 
 ## Running / testing the game
 
