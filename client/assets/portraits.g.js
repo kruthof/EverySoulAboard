@@ -14,4 +14,12 @@ export const PORTRAITS = {
   "pk_90ef7696": { file: "portraits/pk_90ef7696.png" },
   "pk_1e381ff9": { file: "portraits/pk_1e381ff9.png" },
   "pk_f4fc2b48": { file: "portraits/pk_f4fc2b48.png" },
+  "pk_4a48938e": { file: "portraits/pk_4a48938e.png" },
+  "pk_7c4eede7": { file: "portraits/pk_7c4eede7.png" },
+  "pk_ae554840": { file: "portraits/pk_ae554840.png" },
+  "pk_d7913cf1": { file: "portraits/pk_d7913cf1.png" },
+  "pk_0c5b885a": { file: "portraits/pk_0c5b885a.png" },
+  "pk_3e61e2b3": { file: "portraits/pk_3e61e2b3.png" },
+  "pk_70683d0c": { file: "portraits/pk_70683d0c.png" },
+  "pk_99a431bd": { file: "portraits/pk_99a431bd.png" },
 };
