@@ -100,7 +100,7 @@ namespace Perilune.Sim
             citizen.ClearPath();
             var corpse = sim.AddItem(ItemKind.Corpse, 1, citizen.Pos);
             corpse.Label = citizen.Name;
-            sim.Events.Publish(new CitizenDiedEvent { CitizenId = citizen.Id, Pos = citizen.Pos });
+            sim.Events.Publish(new CitizenDiedEvent { CitizenId = citizen.Id, Pos = citizen.Pos, Name = citizen.Name });
             sim.Events.Publish(new AlarmRaisedEvent { SourceId = citizen.Name, Message = "CITIZEN DOWN — asphyxiation" });
             sim.Citizens.Remove(citizen.Id);
         }

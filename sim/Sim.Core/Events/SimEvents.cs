@@ -35,6 +35,12 @@ namespace Perilune.Sim
     {
         public uint CitizenId;
         public Int3 Pos;
+
+        /// <summary>Appended (P2 wave-2 contract): NeedsSystem removes the citizen from the
+        /// store the same tick it publishes, so consumers reading one tick later (history,
+        /// eulogy) can no longer resolve the name by id — the event carries it instead.
+        /// Transient event data; never hashed or saved.</summary>
+        public string Name;
     }
 
     /// <summary>An authored objective completed (GoalSystem); HistorySystem logs it.</summary>
@@ -77,6 +83,17 @@ namespace Perilune.Sim
         public uint A;
         public uint B;
         public Int3 Pos;
+    }
+
+    /// <summary>
+    /// An agreed task (AgreeTask effect) was dropped unfinished — job cancelled, citizen
+    /// died, or target invalidated before completion (P2 wave-2 contract; publisher lands
+    /// with the promise-watcher package). Feeds the broken-promise grudge memory.
+    /// </summary>
+    public struct PromiseBrokenEvent : ISimEvent
+    {
+        public uint CitizenId;
+        public Int3 JobTarget;
     }
 
     /// <summary>A designated build (wall/door/device) finished constructing (BuildSystem).</summary>
