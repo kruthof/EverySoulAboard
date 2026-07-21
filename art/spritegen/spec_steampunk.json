@@ -1,0 +1,141 @@
+{
+  "name": "steampunk-128",
+  "tile_px": 128,
+  "style": "hd",
+  "api_image_size": "1K",
+  "hue_centers_deg": [
+    30,
+    15,
+    170,
+    100
+  ],
+  "hue_pull": 0.6,
+  "harmonize_sat_min": 0.18,
+  "key_color": [
+    255,
+    0,
+    255
+  ],
+  "key_tolerance": 70,
+  "style_block": "Top-down 2D game sprite for a steampunk airship/ironclad vessel colony sim, RimWorld-like readability. Detailed flat-shaded 2D game art, crisp edges, slight 3/4 top-down view on raised objects, NOT photorealistic, no blur. Shared material family: dark riveted iron plate (near-black warm greys), aged brass and copper fittings, verdigris patina accents (muted teal-green), warm amber lamp glow, dark oiled wood trim. Light source top-left, strong readable silhouette, subtle darker edge outline, consistent painterly flat shading. No text, no watermark, no drop shadow, object centered, plain solid background.",
+  "assets": [
+    {
+      "name": "anchor_floor",
+      "role": "floor",
+      "tileable": true,
+      "prompt": "Seamless repeating TEXTURE SWATCH, top-down orthographic, filling 100 percent of the canvas \u2014 this is a material sample, not an object: dark riveted iron deck plating of a steam vessel, matte, subtle plate seams, small brass rivets at plate corners, gentle wear, very low contrast, completely uniform ambient light, no lamps, no vignette, no frame, no border. Edges must continue the pattern so it tiles perfectly in all directions."
+    },
+    {
+      "name": "anchor_wall",
+      "role": "wall",
+      "tileable": true,
+      "prompt": "Seamless horizontally-repeating TEXTURE SWATCH filling 100 percent of the canvas \u2014 a material sample, not an object: heavy riveted iron hull wall panels of an ironclad steamship, one horizontal aged-brass trim rail running across the middle, faint verdigris streaks, darker and higher contrast than a deck floor, uniform light, no vignette, no frame, no border, no background. Left and right edges must continue the pattern for perfect horizontal tiling."
+    },
+    {
+      "name": "anchor_door",
+      "role": "door",
+      "prompt": "Closed heavy bulkhead door set in a wall opening, round-cornered iron slab with a brass porthole window, exposed hinge straps and a small pressure-wheel latch, faint warm amber glow through the porthole. Fills the square image."
+    },
+    {
+      "name": "anchor_pawn",
+      "role": "pawn",
+      "keyed": true,
+      "prompt": "Crew member seen from above, rounded silhouette in a leather-and-canvas engineer's coat with brass goggles resting on the head, small warm lamp glint on the shoulder, readable at a distance. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame."
+    },
+    {
+      "name": "anchor_growbed",
+      "role": "growbed",
+      "keyed": true,
+      "prompt": "Greenhouse planter of a steam vessel, low copper-framed trough with rows of green seedlings under a small glass cloche and a brass irrigation pipe, verdigris details, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 85 percent of the frame."
+    },
+    {
+      "name": "anchor_terminal",
+      "role": "terminal",
+      "keyed": true,
+      "prompt": "Ship control station, small cast-iron pedestal console with brass analog gauges, valve levers and one round amber-glowing dial face, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame."
+    },
+    {
+      "name": "anchor_scrubber",
+      "role": "scrubber",
+      "prompt": "Air scrubber machine of a steam vessel: squat cast-iron cylinder with a large brass-ringed circular vent fan on top, small copper pipes at the base, verdigris streaks, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_watertank",
+      "role": "watertank",
+      "prompt": "Riveted copper water boiler tank, round top-down cylinder with brass band, a small round glass water gauge on top and a valve wheel, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_radiator",
+      "role": "radiator",
+      "prompt": "Heat radiator of a steam vessel: row of parallel dark iron cooling fins in a brass frame, faint warm shimmer, viewed from above, long and low. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_solar",
+      "role": "solar",
+      "prompt": "Steampunk sun-collector panel: brass-framed grid of small glass mirror cells with copper piping at one edge, viewed from above, flat rectangular device. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_battery",
+      "role": "battery",
+      "prompt": "Galvanic accumulator bank: wooden crate holding rows of glass jars with copper terminals and small arcs of amber glow, brass fittings, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_vent",
+      "role": "vent",
+      "prompt": "Deck air vent: small round iron grate with radial brass louvres set flush into the floor, slight verdigris, viewed from above, flat. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_light",
+      "role": "light",
+      "prompt": "Deck lamp: small brass oil lantern on a short pedestal with a warm amber glass globe, gentle glow, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_ladder",
+      "role": "ladder",
+      "prompt": "Deck ladder hatch: open square iron hatch in the floor with a brass ladder descending, safety rail, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_reclaimer",
+      "role": "reclaimer",
+      "prompt": "Water reclaimer machine: compact iron still with a copper condensation coil wrapped around a boiler, small drip tank, brass valves, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_fabricator",
+      "role": "fabricator",
+      "prompt": "Fabricator machine: heavy workbench-sized iron machine with a brass flywheel, drive belt, and a small anvil surface, tools hanging on the side, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_machineshop",
+      "role": "machineshop",
+      "prompt": "Machine shop station: iron lathe with brass gears and a hand crank on a workbench, scattered small tools, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_recycler",
+      "role": "recycler",
+      "prompt": "Salvage recycler: large iron hopper with toothed crusher rollers visible at the top and a brass chute at the side, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_corpse",
+      "role": "corpse",
+      "prompt": "Fallen crew member seen from above, slumped face-down figure in an engineer's coat, muted desaturated colors, respectful and non-graphic, readable silhouette. Centered on a plain solid magenta background (#FF00FF), object fills about 80 percent of the frame.",
+      "keyed": true
+    },
+    {
+      "name": "anchor_debris",
+      "role": "debris",
+      "prompt": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas \u2014 a material sample, not an object: dense pile of collapsed iron wreckage, twisted plates, broken pipes and rubble on a dark deck, matte, no vignette, no frame, tiles in all directions."
+    }
+  ]
+}

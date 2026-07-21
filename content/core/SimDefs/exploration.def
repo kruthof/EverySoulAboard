@@ -1,0 +1,10 @@
+# =============================================================================
+# exploration.def — fog-reveal reach (ExplorationSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical.
+# Delete or omit any line to fall back to the compiled default.
+
+[exploration]
+radius = 8    # Chebyshev reveal radius in tiles (~one compartment)

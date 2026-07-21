@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless proof of the guiding principle (docs/SIMULATION_ARCHITECTURE.md):
+       the simulation runs without Unity. Compiles the sim assemblies' sources
+       directly; Unity remains the source of truth for shipping builds. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>ScenarioRunner</AssemblyName>
+    <RootNamespace>Moonbase.Tools</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../sim/Sim.Core/**/*.cs" />
+    <Compile Include="../../sim/Sim.Dsl/**/*.cs" />
+    <Compile Include="../../sim/Sim.Gen/**/*.cs" />
+  </ItemGroup>
+
+</Project>

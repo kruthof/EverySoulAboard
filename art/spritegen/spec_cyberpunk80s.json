@@ -1,0 +1,245 @@
+{
+  "name": "cyberpunk80s-128",
+  "tile_px": 128,
+  "style": "hd",
+  "api_image_size": "1K",
+  "hue_centers_deg": [
+    187,
+    320,
+    268,
+    35,
+    130
+  ],
+  "hue_pull": 0.55,
+  "harmonize_sat_min": 0.18,
+  "key_color": [
+    0,
+    255,
+    0
+  ],
+  "key_tolerance": 70,
+  "style_block": "Top-down 2D game sprite for a retro-futuristic 1980s cyberpunk space vessel colony sim, RimWorld-like readability. Detailed flat-shaded 2D game art, crisp edges, slight 3/4 top-down view on raised objects, NOT photorealistic, no blur. Shared material family: matte gunmetal and graphite panels (cool near-black blue-greys), brushed chrome and dark anodized trim, neon accents in hot pink / magenta and electric cyan, deep violet shadows, small warm amber CRT screens, subtle 1980s synthwave mood. Avoid green surfaces and green lights entirely. Light source top-left, strong readable silhouette, subtle darker edge outline, consistent painterly flat shading. No text, no watermark, no drop shadow, object centered, plain solid background.",
+  "assets": [
+    {
+      "name": "anchor_floor",
+      "role": "floor",
+      "tileable": true,
+      "prompt": "Seamless repeating TEXTURE SWATCH, top-down orthographic, filling 100 percent of the canvas \u2014 this is a material sample, not an object: dark cold blue-violet gunmetal deck plating of a cyberpunk spacecraft (strictly cool indigo-grey steel, absolutely no green or teal tint), matte, subtle hairline panel seams, tiny recessed hex bolts at panel corners, one or two very faint thin magenta guide-light inlay lines along seams, gentle wear, very low contrast, completely uniform ambient light, no lamps, no vignette, no frame, no border. Edges must continue the pattern so it tiles perfectly in all directions."
+    },
+    {
+      "name": "anchor_wall",
+      "role": "wall",
+      "tileable": true,
+      "prompt": "Seamless horizontally-repeating TEXTURE SWATCH filling 100 percent of the canvas \u2014 a material sample, not an object: heavy graphite hull wall panels of a cyberpunk spacecraft, one continuous horizontal neon magenta light strip glowing softly across the middle, thin chrome trim lines, darker and higher contrast than a deck floor, uniform light, no vignette, no frame, no border, no background. Left and right edges must continue the pattern for perfect horizontal tiling."
+    },
+    {
+      "name": "anchor_door",
+      "role": "door",
+      "prompt": "Closed sliding blast door set in a wall opening, matte gunmetal slab with a vertical seam down the middle, diagonal hot-pink and black hazard chevrons across the lower third, a small round porthole window glowing warm amber, thin cyan status light strip beside the frame. Fills the square image."
+    },
+    {
+      "name": "anchor_pawn",
+      "role": "pawn",
+      "keyed": true,
+      "prompt": "Crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette in a worn 1980s bomber jacket with neon pink piping and a chrome shoulder patch, headphones resting around the neck, short windswept hair, warm expressive face with visible eyes looking up toward the viewer, a little tired but hopeful and determined, emotionally relatable, readable at a distance. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "fill": 0.78
+    },
+    {
+      "name": "anchor_growbed",
+      "role": "growbed",
+      "keyed": true,
+      "key_color": [
+        255,
+        0,
+        255
+      ],
+      "prompt": "Hydroponic grow bed of a cyberpunk spacecraft: low chrome-framed trough full of lush healthy GREEN leafy plants (fresh vivid green foliage), a slim cyan nutrient drip line along one edge, small amber status panel, warm white grow-light glow, no pink or magenta anywhere in the object, viewed from above. Centered on a plain solid magenta background (#FF00FF), object fills about 85 percent of the frame.",
+      "fill": 0.95
+    },
+    {
+      "name": "anchor_terminal",
+      "role": "terminal",
+      "keyed": true,
+      "prompt": "Ship control station, small gunmetal pedestal console with a chunky 1980s keyboard, one warm amber CRT monitor with soft scanline glow, a row of tiny cyan and pink indicator LEDs, coiled cable at the side, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "fill": 0.72
+    },
+    {
+      "name": "anchor_scrubber",
+      "role": "scrubber",
+      "prompt": "Air scrubber machine of a cyberpunk spacecraft: squat graphite cylinder with a large circular vent fan on top ringed by a soft cyan neon light, small chrome pipes at the base, subtle violet shadow, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.78
+    },
+    {
+      "name": "anchor_watertank",
+      "role": "watertank",
+      "prompt": "Brushed chrome water tank, round top-down cylinder with a dark anodized band, a small round sight-glass window glowing soft cyan with liquid inside, compact valve cluster, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.75
+    },
+    {
+      "name": "anchor_radiator",
+      "role": "radiator",
+      "prompt": "Heat radiator of a cyberpunk spacecraft: row of parallel dark graphite cooling fins in a chrome frame with a faint warm magenta-orange glow between the fins, viewed from above, long and low. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.9
+    },
+    {
+      "name": "anchor_solar",
+      "role": "solar",
+      "prompt": "Solar collector panel: chrome-framed grid of deep blue-violet photovoltaic cells with thin electric cyan grid lines and a small junction box with a pink LED at one edge, viewed from above, flat rectangular device. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.88
+    },
+    {
+      "name": "anchor_battery",
+      "role": "battery",
+      "prompt": "Battery bank: dark gunmetal rack holding rows of cylindrical power cells, each cell showing a small glowing hot-pink charge bar, thin cyan cable runs along the frame, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.8
+    },
+    {
+      "name": "anchor_vent",
+      "role": "vent",
+      "prompt": "Deck air vent: small round brushed chrome grate with radial louvres set flush into the floor, faint cyan underlight glowing through the slots, viewed from above, flat. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.58
+    },
+    {
+      "name": "anchor_light",
+      "role": "light",
+      "prompt": "Deck lamp: small flat round ceiling light on a chrome base, a warm white-pink neon ring glowing gently around its rim, subtle violet halo, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.55
+    },
+    {
+      "name": "anchor_ladder",
+      "role": "ladder",
+      "prompt": "Deck ladder hatch: open square gunmetal hatch in the floor with a chrome ladder descending into violet darkness, hot-pink and black hazard chevron border around the opening, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.95
+    },
+    {
+      "name": "anchor_reclaimer",
+      "role": "reclaimer",
+      "prompt": "Water reclaimer machine: compact gunmetal unit with a chrome condensation coil wrapped around a small tank, a cyan-glowing drip reservoir window, slim pipes with pink valve handles, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.78
+    },
+    {
+      "name": "anchor_fabricator",
+      "role": "fabricator",
+      "prompt": "Fabricator machine: heavy workbench-sized gunmetal machine with a small articulated robot arm, a magenta laser emitter tip, an amber CRT status screen, cables draped at the side, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.88
+    },
+    {
+      "name": "anchor_machineshop",
+      "role": "machineshop",
+      "prompt": "Machine shop station: dark workbench with a compact 1980s computer with amber CRT, a small oscilloscope showing a cyan waveform, scattered chrome hand tools and wire spools, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.88
+    },
+    {
+      "name": "anchor_recycler",
+      "role": "recycler",
+      "prompt": "Salvage recycler: large gunmetal hopper with toothed crusher rollers visible at the top, a chrome chute at the side lit by a small hot-pink work light, hazard chevrons on the rim, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.88
+    },
+    {
+      "name": "anchor_corpse",
+      "role": "corpse",
+      "prompt": "Fallen crew member seen from above, slumped face-down figure in a worn bomber jacket with faded neon piping, muted desaturated colors, respectful and non-graphic, quiet and somber mood, readable silhouette. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "keyed": true,
+      "fill": 0.85
+    },
+    {
+      "name": "anchor_pawn_b",
+      "role": "pawn_b",
+      "keyed": true,
+      "prompt": "Male crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette, warm middle-aged man with dark skin and a short greying beard, kind tired eyes looking up toward the viewer, worn 1980s flight jacket with amber piping and a chrome shoulder patch, small toolbelt, emotionally relatable, readable at a distance. Same character proportions and painting style as a matching set. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "fill": 0.78
+    },
+    {
+      "name": "anchor_pawn_c",
+      "role": "pawn_c",
+      "keyed": true,
+      "prompt": "Female crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette, young woman with curly red hair tied loosely back and light freckles, hopeful gentle smile looking up toward the viewer, worn 1980s bomber jacket with electric cyan piping and a chrome shoulder patch, emotionally relatable, readable at a distance. Same character proportions and painting style as a matching set. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "fill": 0.78
+    },
+    {
+      "name": "anchor_bed",
+      "role": "bed",
+      "keyed": true,
+      "prompt": "Single crew bunk bed viewed directly from above: slim gunmetal frame, dark grey mattress, one neat pillow at the head end, folded blanket with a single hot-pink accent stripe, small reading light glow at the head, cozy but utilitarian. Fills most of a square tile footprint, longer than wide. Centered on a plain solid green background (#00FF00), object fills about 85 percent of the frame.",
+      "facing": "N",
+      "fill": 0.94
+    },
+    {
+      "name": "anchor_table",
+      "role": "table",
+      "keyed": true,
+      "prompt": "Small square mess table viewed directly from above: dark anodized tabletop with a thin chrome rim and a faint cyan edge-light underglow, two small cups on it, viewed flat top-down. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "fill": 0.72
+    },
+    {
+      "name": "anchor_chair",
+      "role": "chair",
+      "keyed": true,
+      "prompt": "Single chair viewed directly from above: rounded gunmetal seat pad with a visible curved backrest bar on one side reading clearly as a chair from top-down, small hot-pink stitch accent on the seat, compact. Centered on a plain solid green background (#00FF00), object fills about 65 percent of the frame.",
+      "facing": "E",
+      "fill": 0.52
+    },
+    {
+      "name": "anchor_medbed",
+      "role": "medbed",
+      "keyed": true,
+      "prompt": "Clinical medical bed viewed directly from above: white-grey padded surface with a clean cyan sheet fold, slim chrome frame, a small vital-signs monitor arm with a tiny amber CRT at the head end, sterile and precise, longer than wide. Centered on a plain solid green background (#00FF00), object fills about 85 percent of the frame.",
+      "facing": "N",
+      "fill": 0.94
+    },
+    {
+      "name": "anchor_medcab",
+      "role": "medcab",
+      "keyed": true,
+      "prompt": "Medical supply cabinet viewed from above: compact white-grey cart with a chrome tray top holding a few vials and instruments, a small cyan cross emblem, thin cyan status LED, sterile clinical look. Centered on a plain solid green background (#00FF00), object fills about 75 percent of the frame.",
+      "fill": 0.62
+    },
+    {
+      "name": "anchor_locker",
+      "role": "locker",
+      "keyed": true,
+      "facing": "S",
+      "fill": 0.8,
+      "prompt": "Slim personal wardrobe locker viewed from above at a slight 3/4 angle so its louvered front door faces the BOTTOM of the frame: brushed gunmetal cabinet, thin cyan status LED, small name placard (blank, no text), hot-pink sticker accent, compact single-tile footprint. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+      "rotatable": false
+    },
+    {
+      "name": "anchor_desk",
+      "role": "desk",
+      "keyed": true,
+      "facing": "S",
+      "fill": 0.78,
+      "prompt": "Small personal desk viewed from above at a slight 3/4 angle with its seating side toward the BOTTOM of the frame: dark anodized desktop with a tiny amber CRT screen and keyboard at the back edge, a mug and a small notebook, chrome legs, cozy but utilitarian. Centered on a plain solid green background (#00FF00), object fills about 78 percent of the frame.",
+      "rotatable": false
+    },
+    {
+      "name": "anchor_plant",
+      "role": "plant",
+      "keyed": true,
+      "key_color": [
+        255,
+        0,
+        255
+      ],
+      "fill": 0.5,
+      "prompt": "Small potted plant viewed from above: round chrome pot with lush GREEN leafy houseplant spilling over the rim, tiny cyan moisture sensor stick, no pink or magenta anywhere in the object. Centered on a plain solid magenta background (#FF00FF), object fills about 50 percent of the frame."
+    },
+    {
+      "name": "anchor_debris",
+      "role": "debris",
+      "prompt": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas \u2014 a material sample, not an object: dense pile of collapsed spacecraft wreckage, twisted graphite plates, broken chrome pipes, torn cabling with one or two tiny cyan spark glints, dark and matte, no vignette, no frame, tiles in all directions."
+    }
+  ]
+}

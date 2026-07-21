@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# dotnet build output
+bin/
+obj/
+
+# Secrets / local env
+.env
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Test results
+test-results.xml
+*.trx
+[Tt]est[Rr]esults/
+
+# spritegen work dirs: track processed sprites + selection.json, never the
+# raw candidates / intermediate shots (mirror of the moonbase spritegen ignore)
+art/spritegen/work/*/candidates/
+art/spritegen/work/*/*_raw.png
+art/spritegen/work/*/shot.png
+art/spritegen/work/*/contact_candidates.png

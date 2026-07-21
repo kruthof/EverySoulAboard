@@ -1,0 +1,22 @@
+{
+  "anchor_floor": 2,
+  "anchor_wall": 0,
+  "anchor_door": 1,
+  "anchor_pawn": 2,
+  "anchor_growbed": 1,
+  "anchor_terminal": 2,
+  "anchor_scrubber": 0,
+  "anchor_watertank": 1,
+  "anchor_radiator": 0,
+  "anchor_solar": 1,
+  "anchor_battery": 0,
+  "anchor_vent": 0,
+  "anchor_light": 1,
+  "anchor_ladder": 0,
+  "anchor_reclaimer": 0,
+  "anchor_fabricator": 0,
+  "anchor_machineshop": 0,
+  "anchor_recycler": 0,
+  "anchor_corpse": 1,
+  "anchor_debris": 0
+}

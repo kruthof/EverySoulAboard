@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Headless test host for the engine-free assemblies (Sim.Core/Sim.Dsl/Sim.Gen/
+       Sim.Glyph). Compiles the same sources ScenarioRunner does, plus every test
+       file in this directory. Runs with `~/.dotnet/dotnet test` — no Unity. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Moonbase.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../sim/Sim.Core/**/*.cs" />
+    <Compile Include="../../sim/Sim.Dsl/**/*.cs" />
+    <Compile Include="../../sim/Sim.Gen/**/*.cs" />
+    <Compile Include="../../sim/Sim.Glyph/**/*.cs" />
+    <!-- Share the PeriluneTui host + dump renderer so the golden fixtures assert on the
+         exact code path the CLI prints. Explicit allowlist (not a glob): the interactive
+         client's Console/raw-mode files (AnsiTerminal, GameLoop, KeyDecoder, …) must NOT
+         leak into the headless test host — add a file here only when tests need it. -->
+    <Compile Include="../../hosts/tui/SimHost.cs" />
+    <Compile Include="../../hosts/tui/DeviceLayoutFile.cs" />
+    <Compile Include="../../hosts/tui/DumpMode.cs" />
+    <!-- A4: the PURE interactive-client pieces only. These have zero Console/raw-mode
+         dependency (no ITerminal/AnsiTerminal/GameLoop) so they compile headless and are
+         golden/unit-testable. Never add AnsiTerminal.cs / GameLoop.cs here. -->
+    <Compile Include="../../hosts/tui/Terminal/KeyDecoder.cs" />
+    <Compile Include="../../hosts/tui/Terminal/AnsiPaint.cs" />
+    <Compile Include="../../hosts/tui/Ui/InspectorModel.cs" />
+    <Compile Include="../../hosts/tui/Ui/ScreenComposer.cs" />
+    <!-- A6: the web skin's PURE wire serializer only. WebHost/GameSession/Program touch
+         sockets and threads and must NOT leak into the headless test host — add a file here
+         only when a test needs the pure logic. -->
+    <Compile Include="../../hosts/web/WireFormat.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.5.0" />
+  </ItemGroup>
+
+</Project>

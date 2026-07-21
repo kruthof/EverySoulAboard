@@ -1,0 +1,16 @@
+# =============================================================================
+# water.def — fluid network / reclaimer scalars (WaterSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 0.5 s pass Dt and the 1e-4 draw epsilon are structural and NOT
+# tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# tank_capacity_liters is also read outside the tick by ShipMetrics (sidebar
+# tank fill) and Sim.Glyph's water-lens fill band — all via sim.Defs.Water.
+
+[water]
+tank_capacity_liters        = 500      # L — per-tank capacity
+reclaimer_liters_per_second = 0.05     # L/s reclaimer output rate
+reclaim_efficiency          = 0.93     # recovered fraction (ISS-class 93% closure)

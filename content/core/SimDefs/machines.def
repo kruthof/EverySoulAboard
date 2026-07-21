@@ -1,0 +1,50 @@
+# =============================================================================
+# machines.def — the machine table (one row per DeviceKind) + radiator reject
+# =============================================================================
+# These are the SHIPPED DEFAULTS, verbatim from SimDefs.CreateDefault (which
+# mirrors Sim.Core/Entities/MachineDefs.cs). Present so designers can retune in
+# place; because every value equals the compiled default, this file changes
+# nothing and the defs checksum stays identical to the no-file default.
+# Delete or omit any row/line to fall back to the compiled default.
+#
+# Columns (whitespace-aligned, keyed by DeviceKind NAME):
+#   NAME  draw  gen  tier  blocks  heat  wear  maint  fail
+#     draw    kW consumed while wanting power
+#     gen     kW produced
+#     tier    brownout shed order: Comfort | Industry | Defense | LifeSupport
+#     blocks  true if the machine occupies its tile (side-view: all false)
+#     heat    kW waste heat into the room while operating
+#     wear    Condition lost per operating hour at nominal temperature
+#     maint   wants a maintenance job below this Condition
+#     fail    inoperative below this Condition  (must be <= maint)
+
+[machines]
+radiator_reject_kw = 5      # kW a powered, condition-scaled radiator rejects
+
+#                 draw   gen  tier          blocks  heat   wear    maint  fail
+Door            0.1    0    Defense       false   0.05   0.002   0.3    0.05
+AirVent         0.5    0    LifeSupport   false   0.2    0.010   0.4    0.10
+Scrubber        0.4    0    LifeSupport   false   0.4    0.012   0.4    0.10
+Ladder          0      0    Comfort       false   0      0       0      0
+Terminal        0.1    0    Defense       false   0.1    0.001   0.2    0.02
+SolarWing       0      6    Comfort       false   0      0.004   0.4    0.10
+Battery         0      0    Comfort       false   0.1    0.002   0.3    0.05
+Conduit         0      0    Comfort       false   0      0       0      0
+Light           0.15   0    Comfort       false   0.15   0.001   0.2    0.02
+GrowBed         0.6    0    Industry      false   0.5    0.008   0.4    0.10
+WaterTank       0      0    Comfort       false   0      0.001   0.2    0.02
+Pipe            0      0    Comfort       false   0      0       0      0
+Reclaimer       0.8    0    LifeSupport   false   0.6    0.012   0.4    0.10
+Fabricator      3      0    Industry      false   2.5    0.020   0.4    0.10
+MachineShop     2      0    Industry      false   1.6    0.020   0.4    0.10
+SalvageRecycler 1.5    0    Industry      false   1.2    0.018   0.4    0.10
+Radiator        0.2    0    LifeSupport   false   0      0.006   0.4    0.10
+# Furniture (inert; placed by the Sim.Gen RoomDresser)
+Bed             0      0    Comfort       false   0      0       0      0
+Table           0      0    Comfort       false   0      0       0      0
+Chair           0      0    Comfort       false   0      0       0      0
+MedBed          0      0    Comfort       false   0      0       0      0
+MedCabinet      0      0    Comfort       false   0      0       0      0
+Locker          0      0    Comfort       false   0      0       0      0
+Desk            0      0    Comfort       false   0      0       0      0
+PlantPot        0      0    Comfort       false   0      0       0      0

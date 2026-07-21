@@ -1,0 +1,18 @@
+# =============================================================================
+# wear.def — machine wear + maintenance scalars (MachineWear/MaintenanceSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 1 s wear pass Dt and the 273.15 K offset are structural / fixed
+# and NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# maintenance_work_seconds is the BASE service time; MaintenanceSystem derives
+# the tick count as maintenance_work_seconds x Simulation.TicksPerSecond at use.
+
+[wear]
+hot_threshold_c          = 35     # degC — above this, wear accelerates...
+wear_per_degree_c        = 0.05   # ...by 5% per degC over threshold...
+max_heat_multiplier      = 3      # ...capped at 3x
+maintenance_work_seconds = 20     # s of service at the machine (parts or not)
+jury_rig_condition       = 0.6    # Condition after a parts-less repair

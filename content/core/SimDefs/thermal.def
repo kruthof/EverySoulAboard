@@ -1,0 +1,18 @@
+# =============================================================================
+# thermal.def — lumped-node heat model scalars (ThermalSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 0.5 s pass Dt is structural (interval-paired) and NOT tunable.
+# Delete or omit any row/line to fall back to the compiled default.
+
+[thermal]
+heat_capacity_j_per_k_per_tile = 53000    # J/K per room tile (air + coupled mass)
+citizen_heat_w                 = 100      # W resting metabolic heat per living citizen
+radiator_floor_k               = 283.15   # K — radiators never cool below 10 degC
+door_conduct_open_w_per_k      = 40       # W/K bulk exchange across an open door
+door_conduct_closed_w_per_k    = 8        # W/K slab conduction across a closed door
+hull_loss_w_per_k_per_tile     = 0.09     # W/K per hull-contact tile above the sink
+space_sink_k                   = 3        # K lunar-night sky/regolith sink
+min_temperature_k              = 3        # K integrator clamp floor
+max_temperature_k              = 500      # K integrator clamp ceiling

@@ -1,0 +1,54 @@
+{
+  "name": "pixel-32",
+  "tile_px": 32,
+  "style": "pixel",
+  "api_image_size": "1K",
+  "palette_greys": 18,
+  "palette_accents": 6,
+  "accent_sat_min": 0.25,
+  "accent_val_min": 70,
+  "key_color": [
+    255,
+    0,
+    255
+  ],
+  "key_tolerance": 70,
+  "style_block": "Top-down 2D game sprite for a sci-fi spaceship colony sim, RimWorld-like readability. Pixel art, 32x32 tile grid, crisp pixels, no anti-aliasing, no blur. Limited palette: dark desaturated hull greys, steel blue-grey mid-tones, mint green accent #5FE8CB for lights/screens, amber #f0a02a for warnings. Light source top-left, subtle 1px darker outline, flat shading, slight 3/4 top-down view on raised objects. Clean silhouette readable at actual size. No text, no watermark, no drop shadow, centered, plain solid background.",
+  "assets": [
+    {
+      "name": "anchor_floor",
+      "role": "floor",
+      "tileable": true,
+      "prompt": "Spaceship interior deck floor tile, brushed metal plating with subtle panel seams and small rivets, fully seamless/tileable on all four edges, very low contrast. Fills the entire square image."
+    },
+    {
+      "name": "anchor_wall",
+      "role": "wall",
+      "tileable": true,
+      "prompt": "Spaceship interior hull wall segment, reinforced armored panel with a top edge highlight and vertical seam, tiles seamlessly when repeated horizontally, darker than the floor. Fills the entire square image."
+    },
+    {
+      "name": "anchor_door",
+      "role": "door",
+      "prompt": "Closed sliding airlock door set into a wall opening, two metal slabs meeting at a center seam, small mint status light, industrial. Fills the square image."
+    },
+    {
+      "name": "anchor_pawn",
+      "role": "pawn",
+      "keyed": true,
+      "prompt": "Crew member seen from above, simple rounded jumpsuit silhouette with visible shoulders and head, small mint collar light, neutral grey-blue suit. Centered on a plain solid magenta background (#FF00FF)."
+    },
+    {
+      "name": "anchor_growbed",
+      "role": "growbed",
+      "keyed": true,
+      "prompt": "Hydroponic grow bed, low rectangular metal tray with rows of small green seedlings under a thin light bar, mint glow accent. Centered on a plain solid magenta background (#FF00FF)."
+    },
+    {
+      "name": "anchor_terminal",
+      "role": "terminal",
+      "keyed": true,
+      "prompt": "Ship computer terminal, small console pedestal with an angled screen glowing mint green, viewed from above. Centered on a plain solid magenta background (#FF00FF)."
+    }
+  ]
+}

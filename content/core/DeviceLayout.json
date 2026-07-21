@@ -1,0 +1,40 @@
+{
+    "entries": [
+        {
+            "name": "door_command",
+            "x": 20,
+            "y": 8,
+            "z": 1,
+            "remove": false,
+            "hasYaw": true,
+            "yaw": 90.0
+        },
+        {
+            "name": "door_medbay",
+            "x": 34,
+            "y": 8,
+            "z": 1,
+            "remove": false,
+            "hasYaw": true,
+            "yaw": 90.0
+        },
+        {
+            "name": "door_quarters",
+            "x": 50,
+            "y": 8,
+            "z": 1,
+            "remove": false,
+            "hasYaw": true,
+            "yaw": 90.0
+        },
+        {
+            "name": "door_hydro",
+            "x": 22,
+            "y": 11,
+            "z": 1,
+            "remove": false,
+            "hasYaw": true,
+            "yaw": -90.0
+        }
+    ]
+}

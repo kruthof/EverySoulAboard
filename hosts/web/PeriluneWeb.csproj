@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- RimWorld-style flat-2D web skin for the shipping Perilune. Boots the SAME sim the
+       terminal skin boots (SimHost = Bootstrap.BuildAuthoredSim mirror), runs it on a
+       fixed-tick loop (GameSession), and streams GlyphMapper frames + metrics/log/inspect
+       as compact JSON over a WebSocket to a vanilla-JS canvas client (Client.html). Art is
+       100% procedural in the browser; the wire only ever carries SEMANTIC glyph ids. No
+       framework beyond HttpListener/System.Net.WebSockets; no NuGet packages. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>PeriluneWeb</AssemblyName>
+    <RootNamespace>Moonbase.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../sim/Sim.Core/**/*.cs" />
+    <Compile Include="../../sim/Sim.Dsl/**/*.cs" />
+    <Compile Include="../../sim/Sim.Gen/**/*.cs" />
+    <Compile Include="../../sim/Sim.Glyph/**/*.cs" />
+    <!-- Reuse the terminal skin's host-neutral pieces verbatim (no Console/raw-mode deps):
+         SimHost boots the authored sim exactly as Unity does; DeviceLayoutFile is its JSON
+         reader; InspectorModel turns cursor→text. Shared, never duplicated. -->
+    <Compile Include="../tui/SimHost.cs" />
+    <Compile Include="../tui/DeviceLayoutFile.cs" />
+    <Compile Include="../tui/Ui/InspectorModel.cs" />
+  </ItemGroup>
+
+  <!-- The single-page client is served as a file (edit it without rebuilding). -->
+  <ItemGroup>
+    <None Update="Client.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

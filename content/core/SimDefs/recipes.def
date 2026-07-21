@@ -1,0 +1,22 @@
+# =============================================================================
+# recipes.def — crafting table, one row per workstation DeviceKind (CraftingSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault (which mirrors the former
+# CraftingSystem.TryGetRecipe switch). Every value equals the compiled default, so
+# this file changes nothing and leaves the defs checksum identical. Any DeviceKind
+# with no row here is a non-crafting kind (RecipeDef.Defined = false).
+# Delete or omit any row to fall back to the compiled default.
+#
+# Columns (whitespace-aligned; kind + output keyed by DeviceKind / ItemKind NAME):
+#   NAME  input  in_count  output  out_count  work_s
+#     input      ItemKind consumed per batch
+#     in_count   units of input consumed
+#     output     ItemKind produced per batch
+#     out_count  units of output produced
+#     work_s     seconds of work (tick count = work_s x Simulation.TicksPerSecond)
+
+[recipes]
+#               input     in_count  output            out_count  work_s
+SalvageRecycler Regolith  1         Scrap             2          20
+Fabricator      Scrap     2         Parts             1          30
+MachineShop     Parts     2         ControllerModule  1          40

@@ -1,0 +1,12 @@
+# =============================================================================
+# sustenance.def — eat/drink values (SustenanceSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical.
+# Delete or omit any line to fall back to the compiled default.
+
+[sustenance]
+drink_liters         = 0.5     # L consumed per drink
+potato_hunger_value  = 0.36    # hunger removed per potato (800/2200 kcal per day)
+need_threshold       = 0.5     # self-serve trigger for hunger/thirst

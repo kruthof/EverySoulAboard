@@ -1,0 +1,11 @@
+# =============================================================================
+# citizen.def — citizen movement cadence (CitizenSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical.
+# Delete or omit any line to fall back to the compiled default.
+
+[citizen]
+ticks_per_tile             = 5    # ticks to cross one tile (5 = 2 tiles/s at 10 Hz)
+idle_ticks_between_wanders = 30   # idle ticks before an idle citizen wanders

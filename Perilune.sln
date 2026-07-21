@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "hosts", "hosts", "{3040E4C3-0395-4CEE-B601-95669ED9F194}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PeriluneTui", "hosts\tui\PeriluneTui.csproj", "{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PeriluneWeb", "hosts\web\PeriluneWeb.csproj", "{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScenarioRunner", "hosts\scenario\ScenarioRunner.csproj", "{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{95917B32-80A9-428C-A935-5D32D73BF74B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Perilune.Tests", "tests\Perilune.Tests\Perilune.Tests.csproj", "{9CB21496-DF6E-4F9A-8208-BD07D468CD09}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CB21496-DF6E-4F9A-8208-BD07D468CD09}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CB21496-DF6E-4F9A-8208-BD07D468CD09}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CB21496-DF6E-4F9A-8208-BD07D468CD09}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CB21496-DF6E-4F9A-8208-BD07D468CD09}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{833A6C33-EF1C-4F5F-A649-4E2D6B9B45D0} = {3040E4C3-0395-4CEE-B601-95669ED9F194}
+		{ED98D9D2-95A6-4EE0-BBDD-FBF42224A61F} = {3040E4C3-0395-4CEE-B601-95669ED9F194}
+		{C45AFEF7-FF8D-4CFB-9CE5-96114DADB088} = {3040E4C3-0395-4CEE-B601-95669ED9F194}
+		{9CB21496-DF6E-4F9A-8208-BD07D468CD09} = {95917B32-80A9-428C-A935-5D32D73BF74B}
+	EndGlobalSection
+EndGlobal

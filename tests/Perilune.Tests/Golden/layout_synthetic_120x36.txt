@@ -1,0 +1,36 @@
+############|SHIP  Day 0.25                                                                                             
+#..........#|PWR |########--| 0.80                                                                                      
+#....@.....#|O2  |##########| 0.95                                                                                      
++.......V..#|CO2  640 ppm                                                                                               
+#..........#|H2O |######----| 0.55                                                                                      
+############|FOOD|####------| 0.40                                                                                      
+------------|HEAT|#######---| 0.70                                                                                      
+EVENT LOG   |STRC|#########-| 0.90                                                                                      
+D0.10 boot c|MRL |######----| 0.62                                                                                      
+D0.20 reacto|                                                                                                           
+D0.24 door_s|LENS                                                                                                       
+            |PRESSURE kPa                                                                                               
+            | good 96-102  ok >102                                                                                      
+            | warn 60-96   bad <60                                                                                      
+            |                                                                                                           
+            |GOALS                                                                                                      
+            |[x] restore power                                                                                          
+            |[ ] seal the breach                                                                                        
+            |                                                                                                           
+            |INSPECT                                                                                                    
+            |@ 5,2,0                                                                                                    
+            |tile: floor                                                                                                
+            |room: 101.3kPa  20.9%O2                                                                                    
+            |crew: Reyes                                                                                                
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+            |                                                                                                           
+Day 0.25 | 1x | deck 0/1 | lens pressure  synthetic frame                                                         ? help

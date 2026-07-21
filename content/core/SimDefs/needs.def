@@ -1,0 +1,31 @@
+# =============================================================================
+# needs.def — survival thresholds, suffocation/need rates, mood weights (NeedsSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 1 s pass Dt and the −273.15 K offset are structural / fixed and
+# NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# The *_per_second rates carry the exact float bits of the compiled 1/N values
+# (1/90, 1/240, 1/30, 1/172800, 1/86400, 1/57600), written as round-trippable
+# decimals so the parsed checksum stays bit-identical to CreateDefault.
+
+[needs]
+hypoxia_ppo2_kpa                 = 16          # kPa — hypoxia sets in below this ppO2
+severe_hypoxia_ppo2_kpa          = 10          # kPa — vacuum-rate decline below this ppO2
+co2_narcosis_ppm                 = 40000       # ppm CO2 narcosis onset (2x = vacuum rate)
+vacuum_pressure_kpa              = 5           # kPa — below this a room counts as vacuum
+heat_stroke_c                    = 45          # degC — thermal-danger upper bound
+hypothermia_c                    = -10         # degC — thermal-danger lower bound
+suffocation_per_second_vacuum    = 0.011111111 # 1/s (1/90 — ~90 s to death in vacuum)
+suffocation_per_second_hypoxia   = 0.004166667 # 1/s (1/240 — slow decline in thin air)
+suffocation_recovery_per_second  = 0.033333335 # 1/s (1/30 — recovery in breathable air)
+hunger_per_second                = 5.787037e-06  # 1/s (1/172800 — 2 days to starving)
+thirst_per_second                = 1.1574074e-05 # 1/s (1/86400 — 1 day to parched)
+fatigue_per_second               = 1.7361112e-05 # 1/s (1/57600 — 16 h awake to exhausted)
+mood_base                        = 20          # mood intercept
+mood_hunger_weight               = 40          # mood penalty per unit Hunger
+mood_thirst_weight               = 30          # mood penalty per unit Thirst
+mood_fatigue_weight              = 25          # mood penalty per unit Fatigue
+mood_suffocation_weight          = 60          # mood penalty per unit Suffocation

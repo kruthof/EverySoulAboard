@@ -1,0 +1,12 @@
+# =============================================================================
+# hydro.def — grow-bed irrigation + grow rate (HydroponicsSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 1 s pass Dt is structural and NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+
+[hydro]
+grow_bed_water_per_second        = 0.02   # L/s irrigation draw per grow bed
+grow_seconds_per_crop            = 600    # s per crop (DEV RATE — not the GDD 12-day cycle)
+transpiration_recapture_fraction = 0.8    # fraction of irrigation recaptured as condensate

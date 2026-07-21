@@ -1,0 +1,10 @@
+# Designer rule: warn when the ship runs hot.
+#
+# ship.heat is the fraction of pressurized rooms sitting in the 10..35 C comfort
+# band (1.0 = every room comfortable). When it falls below half, the radiators are
+# losing the thermal battle — raise a periodic klaxon so the crew checks them. The
+# alarm lands in the ship's event log (HistorySystem) via AlarmRaisedEvent, exactly
+# like a player script's alarm(). Inert under the shipped defaults: a healthy ship
+# keeps heat well above 0.5, so this never fires and never perturbs behavior.
+every 60s:
+  if ship.heat < 0.5: alarm("THERMAL LOAD HIGH — check radiators")

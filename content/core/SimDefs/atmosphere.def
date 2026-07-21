@@ -1,0 +1,20 @@
+# =============================================================================
+# atmosphere.def — lumped per-room gas model scalars (AtmosphereSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 0.2 s pass Dt and the 0.21/0.79/0.0005 air-mix fractions are
+# structural (interval-paired / fixed chemistry) and NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# nominal_pressure_kpa is the RUNTIME vent-target ceiling. The one-time room-fill
+# baseline (RoomState.Pressurize, a sim-less static utility) still reads the
+# compiled RoomState.NominalPressureKPa const — both are 101.3 by default.
+
+[atmosphere]
+flow_coefficient           = 0.5        # mol/(kPa·s) per open door — hab drains in ~40 s
+o2_per_person_per_second   = 3.04e-4    # mol/s O2 consumed (0.84 kg/day)
+co2_per_person_per_second  = 2.73e-4    # mol/s CO2 produced (1.04 kg/day)
+vent_mol_per_second        = 30         # mol/s a powered vent injects (~50 m³ in ~1 min)
+scrubber_mol_per_second    = 0.001      # mol/s CO2 a scrubber removes (covers ~3 people)
+nominal_pressure_kpa       = 101.3      # kPa — vent top-up ceiling (1 atm)
