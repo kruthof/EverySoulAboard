@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using Perilune.Dsl;
+using Perilune.Gen;
+using Perilune.Gen.Validate;
 using Perilune.Sim;
 
 namespace Perilune.Tools
@@ -20,6 +23,11 @@ namespace Perilune.Tools
 
         public static int Main(string[] args)
         {
+            // WS-SHIPGEN verbs (procedural ship generation + validation gates). The default
+            // verb-less path below is kept byte-identical (the determinism proof CI keys on it).
+            if (args.Length > 0 && args[0] == "gen") return RunGen(args);
+            if (args.Length > 0 && args[0] == "sweep") return RunSweep(args);
+
             int days = 3;
             ulong seed = 42;
             string dataDir = null;
@@ -68,6 +76,100 @@ namespace Perilune.Tools
             Console.WriteLine($"determinism: twin hashes {(h1 == h2 ? "MATCH" : "DIVERGED!!")} ({h1:x16})");
             return h1 == h2 ? 0 : 1;
         }
+
+        // ------------------------------------------------------------ WS-SHIPGEN verbs
+
+        /// <summary><c>gen --seed N [--validate] [--days D] [--data DIR]</c>: build a procedural
+        /// ship variant from the seed and (with --validate) run the V1–V7 gate suite. Exit 0 when
+        /// all gates pass, 1 on any gate failure.</summary>
+        private static int RunGen(string[] args)
+        {
+            ulong seed = ArgULong(args, "--seed", 1UL);
+            int days = ArgInt(args, "--days", 1);
+            bool validate = HasFlag(args, "--validate");
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out int fileCount, out _, out var problems);
+
+            var plan = ProceduralShips.Generate(ShipRecipe.FromSeed(seed));
+            Console.WriteLine($"gen: {plan.Name}");
+            Console.WriteLine($"defs: {defs.Checksum:x16} ({fileCount} files, {problems.Count} problems)");
+            Console.WriteLine($"  {plan.Rooms.Count} rooms, {plan.Devices.Count} devices, " +
+                              $"{plan.Citizens.Count} crew, {plan.Items.Count} item stacks");
+
+            if (!validate)
+            {
+                Console.WriteLine("(pass --validate to run the V1–V7 gate suite)");
+                return 0;
+            }
+
+            var report = ShipGates.Run(plan, defs, days);
+            Console.WriteLine(report.Format());
+            return report.AllPassed ? 0 : 1;
+        }
+
+        /// <summary><c>sweep --count M [--start-seed S] [--days D] [--data DIR]</c>: gate M seeded
+        /// variants, print a summary table. Exit-code contract (CI): 0 = all pass, 1 = any gate
+        /// failure, 2 = a crash while building/validating.</summary>
+        private static int RunSweep(string[] args)
+        {
+            int count = ArgInt(args, "--count", 10);
+            ulong start = ArgULong(args, "--start-seed", 1UL);
+            int days = ArgInt(args, "--days", 1);
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out _, out _, out _);
+
+            Console.WriteLine($"sweep: {count} seed(s) from {start}, {days} day survivability, defs {defs.Checksum:x16}");
+            Console.WriteLine("  seed      result   first failure");
+
+            int failures = 0;
+            for (int i = 0; i < count; i++)
+            {
+                ulong seed = start + (ulong)i;
+                try
+                {
+                    var plan = ProceduralShips.Generate(ShipRecipe.FromSeed(seed));
+                    var report = ShipGates.Run(plan, defs, days);
+                    if (report.AllPassed)
+                    {
+                        Console.WriteLine($"  {seed,-8}  PASS");
+                    }
+                    else
+                    {
+                        failures++;
+                        var f = report.FirstFailure();
+                        Console.WriteLine($"  {seed,-8}  FAIL     {f.Code} {f.Name}: {(f.Findings.Count > 0 ? f.Findings[0] : "")}");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"  {seed,-8}  CRASH    {e.GetType().Name}: {e.Message}");
+                    return 2; // crash exit code (CI contract)
+                }
+            }
+
+            Console.WriteLine(failures == 0
+                ? $"=> all {count} variants pass every gate"
+                : $"=> {failures} of {count} variants failed a gate");
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static bool HasFlag(string[] args, string name)
+        {
+            for (int i = 0; i < args.Length; i++) if (args[i] == name) return true;
+            return false;
+        }
+
+        private static string ArgString(string[] args, string name, string fallback)
+        {
+            for (int i = 0; i < args.Length - 1; i++) if (args[i] == name) return args[i + 1];
+            return fallback;
+        }
+
+        private static int ArgInt(string[] args, string name, int fallback) =>
+            int.TryParse(ArgString(args, name, null), NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : fallback;
+
+        private static ulong ArgULong(string[] args, string name, ulong fallback) =>
+            ulong.TryParse(ArgString(args, name, null), NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong v) ? v : fallback;
 
         /// <summary>Probe upward from the binary for the repo's content/core/SimDefs
         /// (so `dotnet run` finds it without a --data flag). Null if not found — the
