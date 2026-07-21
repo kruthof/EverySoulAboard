@@ -128,6 +128,33 @@ namespace Perilune.Tests
             CheckGolden("web_frame_boot_crew.json", WireFormat.Frame(buf, 0, "none", 10, 3, crew));
         }
 
+        /// <summary>Golden for the light message (W2): a controlled two-room section, ticked so
+        /// the right room's light powers up, then fully revealed — the RLE carries fog(0),
+        /// Dead(1) and Powered(4) runs.</summary>
+        [Test]
+        public void Golden_WebLight_Scenario()
+        {
+            var sim = GlyphTestScenario.Build();
+            for (int i = 0; i < 20; i++) sim.Tick();
+            GlyphTestScenario.RevealLevel(sim, 0);
+            var light = new byte[sim.World.Width * sim.World.Height];
+            LightMapper.Project(sim, 0, light);
+            CheckGolden("web_light_scenario.json",
+                WireFormat.Light(0, sim.World.Width, sim.World.Height, light));
+        }
+
+        /// <summary>W2 must not perturb the frame channel: the boot frame still serializes to the
+        /// committed W1 golden byte-for-byte (no frame-golden churn beyond W1's crew tuple).</summary>
+        [Test]
+        public void Light_Commit_Does_Not_Change_Frame_Bytes()
+        {
+            var buf = BootFrame(0, Lens.None, out _, out _);
+            string frame = WireFormat.Frame(buf, 0, "none", -1, -1);
+            string golden = System.IO.File.ReadAllText(
+                System.IO.Path.Combine(GoldenDir(), "web_frame_boot.json")).Replace("\r\n", "\n");
+            Assert.AreEqual(golden, frame, "frame bytes changed — W2 must only add the light channel");
+        }
+
         // ------------------------------------------------------------------ harness
         // (mirrors PeriluneGoldenTests; the golden lives in the shared Golden/ dir)
 

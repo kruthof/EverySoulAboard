@@ -34,6 +34,7 @@ namespace Perilune.Web
         private readonly SimHost _host;
         private readonly Simulation _sim;
         private readonly GlyphBuffer _map;
+        private readonly byte[] _light;     // reused per-tile light grid (LightMapper output)
         private readonly Action<string> _broadcast;
 
         private readonly System.Collections.Concurrent.ConcurrentQueue<WebCommand> _inbox
@@ -65,6 +66,7 @@ namespace Perilune.Web
             _sim = host.Sim;
             _broadcast = broadcast;
             _map = new GlyphBuffer(_sim.World.Width, _sim.World.Height);
+            _light = new byte[_sim.World.Width * _sim.World.Height];
             _cursor = new Int3(_sim.World.Width / 2, _sim.World.Height / 2, 0);
             _metrics = ShipMetrics.Compute(_sim);
         }
@@ -93,7 +95,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "status", "metrics", "legend", "log", "inspect" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -291,6 +293,10 @@ namespace Perilune.Web
                 crew.Add((c.Pos.X, c.Pos.Y, Portrait(c.Id), c.Id));
             }
             Send("frame", WireFormat.Frame(_map, _deck, _lens.ToString().ToLowerInvariant(), selX, selY, crew), force);
+
+            // Per-tile light overlay for this deck — pure projection, fog-gated first.
+            LightMapper.Project(_sim, _deck, _light);
+            Send("light", WireFormat.Light(_deck, _sim.World.Width, _sim.World.Height, _light), force);
 
             if (force || nowWall - _metricsAtWall >= 1.0)
             {

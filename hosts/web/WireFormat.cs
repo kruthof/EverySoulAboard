@@ -211,6 +211,44 @@ namespace Perilune.Web
             return sb.Append('}').ToString();
         }
 
+        // ------------------------------------------------------------------- light (W2)
+
+        /// <summary>Serialize one deck's per-tile light grid (from LightMapper) as run-length
+        /// pairs over the row-major tiles: {"type":"light","deck":..,"w":..,"h":..,"rle":[[state,count],..]}.
+        /// The client expands the runs to w*h; states are the append-only LightState bytes.</summary>
+        public static string Light(int deck, int w, int h, byte[] states)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"light\",\"deck\":").Append(deck.ToString(Ic));
+            sb.Append(",\"w\":").Append(w.ToString(Ic));
+            sb.Append(",\"h\":").Append(h.ToString(Ic));
+            sb.Append(",\"rle\":[");
+            int total = w * h;
+            if (states != null && states.Length < total) total = states.Length;
+            bool first = true;
+            int run = 0;
+            byte cur = 0;
+            for (int i = 0; i < total; i++)
+            {
+                byte s = states[i];
+                if (run == 0) { cur = s; run = 1; }
+                else if (s == cur) { run++; }
+                else
+                {
+                    if (!first) sb.Append(','); first = false;
+                    sb.Append('[').Append(((int)cur).ToString(Ic)).Append(',').Append(run.ToString(Ic)).Append(']');
+                    cur = s; run = 1;
+                }
+            }
+            if (run > 0)
+            {
+                if (!first) sb.Append(',');
+                sb.Append('[').Append(((int)cur).ToString(Ic)).Append(',').Append(run.ToString(Ic)).Append(']');
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         private static string Lines(string type, IReadOnlyList<string> lines)
         {
             var sb = new StringBuilder(128);
