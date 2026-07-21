@@ -35,6 +35,8 @@ if (beginIdx < 0 || endIdx < 0 || endIdx <= beginIdx) {
 //   const SPRITE_FACING = {...};
 //   const SPRITE_NO_ROTATE = [...];
 //   const SPRITE_URIS = {...};
+//   const SPRITE_STATES = {...};   // append-only: role -> {state: uri}  (machine on/off/broken)
+//   const SPRITE_FRAMES = {...};   // append-only: role -> [uri, ...]    (pawn walk cycle)
 const payload = lines.slice(beginIdx + 1, endIdx).join('\n').trimEnd();
 
 const header =
@@ -44,15 +46,17 @@ const header =
   '// truth). Re-run the extractor after any spritegen regeneration.\n\n';
 
 const footer =
-  '\n\nexport { SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE, SPRITE_URIS };\n';
+  '\n\nexport { SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE, SPRITE_URIS, SPRITE_STATES, SPRITE_FRAMES };\n';
 
 writeFileSync(outFile, header + payload + footer, 'utf8');
 
-const spriteCount = Object.keys(
-  // count keys by a cheap regex rather than eval'ing the big literal
-  {}
-);
-const keyMatches = payload.match(/^\s{2}[a-z_]+:/gm) || [];
+// Count by cheap regex rather than eval'ing the big literals. A base sprite URI is a
+// 2-space-indented `role: 'data:...'` line; state maps (`  role: {`) and frame arrays
+// (`  role: [`) don't quote their value, so they don't inflate the base count.
+const uriCount = (payload.match(/^ {2}[a-z_]+: '/gm) || []).length;
+const stateRoles = (payload.match(/^ {2}[a-z_]+: \{/gm) || []).length;
+const frameRoles = (payload.match(/^ {2}[a-z_]+: \[/gm) || []).length;
 console.log(
-  `Wrote ${outFile}\n  SPRITE_TILE + facing/no-rotate metadata + ${keyMatches.length} sprite URIs`
+  `Wrote ${outFile}\n  SPRITE_TILE + facing/no-rotate metadata + ${uriCount} sprite URIs` +
+    ` + ${stateRoles} state-map roles + ${frameRoles} frame-cycle roles`
 );

@@ -42,7 +42,11 @@
       "role": "pawn",
       "keyed": true,
       "prompt": "Crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette in a worn 1980s bomber jacket with neon pink piping and a chrome shoulder patch, headphones resting around the neck, short windswept hair, warm expressive face with visible eyes looking up toward the viewer, a little tired but hopeful and determined, emotionally relatable, readable at a distance. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
-      "fill": 0.78
+      "fill": 0.78,
+      "frames": [
+        "Crew member in a worn 1980s bomber jacket with neon pink piping and chrome shoulder patch, headphones around the neck, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "Crew member in a worn 1980s bomber jacket with neon pink piping and chrome shoulder patch, headphones around the neck, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      ]
     },
     {
       "name": "anchor_growbed",
@@ -61,14 +65,22 @@
       "role": "terminal",
       "keyed": true,
       "prompt": "Ship control station, small gunmetal pedestal console with a chunky 1980s keyboard, one warm amber CRT monitor with soft scanline glow, a row of tiny cyan and pink indicator LEDs, coiled cable at the side, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
-      "fill": 0.72
+      "fill": 0.72,
+      "states": {
+        "off": "Ship control station, POWERED DOWN: small gunmetal pedestal console with a chunky 1980s keyboard, the amber CRT monitor BLACK and unlit, all indicator LEDs dark, no glow anywhere, dormant, viewed from above. Same console, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Ship control station, BROKEN: small gunmetal pedestal console with a cracked flickering CRT showing a red error glow, a couple of dead LEDs, a thin wisp of smoke and a scorch mark, sparks at the cable, viewed from above. Same console, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_scrubber",
       "role": "scrubber",
       "prompt": "Air scrubber machine of a cyberpunk spacecraft: squat graphite cylinder with a large circular vent fan on top ringed by a soft cyan neon light, small chrome pipes at the base, subtle violet shadow, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
       "keyed": true,
-      "fill": 0.78
+      "fill": 0.78,
+      "states": {
+        "off": "Air scrubber machine of a cyberpunk spacecraft, POWERED DOWN: squat graphite cylinder with a large circular vent fan on top, the neon ring UNLIT and dark, no glow anywhere, fan blades still, dull and dormant, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Air scrubber machine of a cyberpunk spacecraft, BROKEN and malfunctioning: squat graphite cylinder with a cracked bent vent fan, a small red warning glow, a thin wisp of grey smoke, sparks at the base, scorch marks, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_watertank",
@@ -124,28 +136,44 @@
       "role": "reclaimer",
       "prompt": "Water reclaimer machine: compact gunmetal unit with a chrome condensation coil wrapped around a small tank, a cyan-glowing drip reservoir window, slim pipes with pink valve handles, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
       "keyed": true,
-      "fill": 0.78
+      "fill": 0.78,
+      "states": {
+        "off": "Water reclaimer machine, POWERED DOWN: compact gunmetal unit with a chrome condensation coil around a small tank, the reservoir window DARK with no glow, pipes still, dormant and unlit, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Water reclaimer machine, BROKEN: compact gunmetal unit with a burst condensation coil leaking a small puddle, a cracked reservoir window, a red warning glow, sparks and a scorch mark, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_fabricator",
       "role": "fabricator",
       "prompt": "Fabricator machine: heavy workbench-sized gunmetal machine with a small articulated robot arm, a magenta laser emitter tip, an amber CRT status screen, cables draped at the side, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
       "keyed": true,
-      "fill": 0.88
+      "fill": 0.88,
+      "states": {
+        "off": "Fabricator machine, POWERED DOWN: heavy workbench-sized gunmetal machine with a small articulated robot arm folded and still, the laser emitter tip DARK, the CRT screen BLACK and unlit, no glow anywhere, dormant, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Fabricator machine, BROKEN: heavy gunmetal machine with the robot arm bent and drooping, a cracked dark CRT screen, a red warning glow, sparks arcing at the emitter, a thin wisp of smoke and scorch marks, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_machineshop",
       "role": "machineshop",
       "prompt": "Machine shop station: dark workbench with a compact 1980s computer with amber CRT, a small oscilloscope showing a cyan waveform, scattered chrome hand tools and wire spools, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
       "keyed": true,
-      "fill": 0.88
+      "fill": 0.88,
+      "states": {
+        "off": "Machine shop station, POWERED DOWN: dark workbench with a compact 1980s computer, the amber CRT BLACK and unlit, the oscilloscope screen DARK with no waveform, chrome hand tools and wire spools resting, dormant, viewed from above. Same station, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Machine shop station, BROKEN: dark workbench with a cracked dead CRT, a shattered oscilloscope, tools knocked askew, a red warning glow, a few sparks and a scorch mark on the bench, viewed from above. Same station, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_recycler",
       "role": "recycler",
       "prompt": "Salvage recycler: large gunmetal hopper with toothed crusher rollers visible at the top, a chrome chute at the side lit by a small hot-pink work light, hazard chevrons on the rim, viewed from above. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
       "keyed": true,
-      "fill": 0.88
+      "fill": 0.88,
+      "states": {
+        "off": "Salvage recycler, POWERED DOWN: large gunmetal hopper with toothed crusher rollers still, the work light UNLIT and dark, no glow, hazard chevrons on the rim muted, dormant, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "broken": "Salvage recycler, BROKEN: large gunmetal hopper with jammed bent crusher rollers, a red warning glow, sparks arcing from the chute, a wisp of smoke and scorch marks over the hazard chevrons, viewed from above. Same object, silhouette and framing as its powered version. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      }
     },
     {
       "name": "anchor_corpse",
@@ -159,14 +187,22 @@
       "role": "pawn_b",
       "keyed": true,
       "prompt": "Male crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette, warm middle-aged man with dark skin and a short greying beard, kind tired eyes looking up toward the viewer, worn 1980s flight jacket with amber piping and a chrome shoulder patch, small toolbelt, emotionally relatable, readable at a distance. Same character proportions and painting style as a matching set. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
-      "fill": 0.78
+      "fill": 0.78,
+      "frames": [
+        "Warm middle-aged man with dark skin and a short greying beard, worn 1980s flight jacket with amber piping and chrome shoulder patch, small toolbelt, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "Warm middle-aged man with dark skin and a short greying beard, worn 1980s flight jacket with amber piping and chrome shoulder patch, small toolbelt, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      ]
     },
     {
       "name": "anchor_pawn_c",
       "role": "pawn_c",
       "keyed": true,
       "prompt": "Female crew member seen from above at a slight 3/4 angle so the upturned face is clearly visible: rounded friendly silhouette, young woman with curly red hair tied loosely back and light freckles, hopeful gentle smile looking up toward the viewer, worn 1980s bomber jacket with electric cyan piping and a chrome shoulder patch, emotionally relatable, readable at a distance. Same character proportions and painting style as a matching set. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
-      "fill": 0.78
+      "fill": 0.78,
+      "frames": [
+        "Young woman with curly red hair tied loosely back and light freckles, worn 1980s bomber jacket with electric cyan piping and chrome shoulder patch, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame.",
+        "Young woman with curly red hair tied loosely back and light freckles, worn 1980s bomber jacket with electric cyan piping and chrome shoulder patch, seen from above at a slight 3/4 angle, WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking, exactly the same character, palette and proportions as the idle pose. Centered on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+      ]
     },
     {
       "name": "anchor_bed",
