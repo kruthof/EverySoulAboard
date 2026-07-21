@@ -1,0 +1,16 @@
+# =============================================================================
+# social.def — opinion-graph familiarity/decay rates and clamps (SocialSystem)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. The 1 s pass Dt is interval-paired (structural) and NOT tunable here.
+# Delete or omit any line to fall back to the compiled default.
+#
+# Net accrual while two living citizens share a room is
+# familiarize_per_hour − decay_per_hour (decay applies to every edge each pass).
+
+[social]
+familiarize_per_hour = 2     # opinion points/hour, both directions, while sharing a room
+decay_per_hour       = 0.1   # points/hour every opinion relaxes toward 0
+max_opinion          = 100   # clamp ceiling
+min_opinion          = -100  # clamp floor

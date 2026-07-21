@@ -33,6 +33,7 @@ namespace Perilune.Sim
                 new MaintenanceSystem(),
                 new HydroponicsSystem(),
                 new NeedsSystem(),
+                new SocialSystem(),        // after Needs: positions and deaths settled this tick
                 new ExplorationSystem(),
                 new GoalSystem(),
                 new HistorySystem(),

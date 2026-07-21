@@ -77,6 +77,7 @@ namespace Perilune.Sim
         public WearDefs Wear;
         public CitizenDefs Citizen;
         public ExplorationDefs Exploration;
+        public SocialDefs Social;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
         /// <see cref="ComputeChecksum"/>. Recomputed by CreateDefault and by the parser;
@@ -235,6 +236,22 @@ namespace Perilune.Sim
             public int Radius;
         }
 
+        /// <summary>SocialSystem opinion-graph rates (1 Hz pass; Dt is interval-paired
+        /// and structural). Net co-location accrual per pass is familiarize − decay.</summary>
+        public sealed class SocialDefs
+        {
+            /// <summary>SocialSystem — opinion points/hour accrued in BOTH directions while two
+            /// living citizens share a room. Current: 2.</summary>
+            public float FamiliarizePerHour;
+            /// <summary>SocialSystem — opinion points/hour every edge relaxes toward 0 (applies
+            /// during co-location too). Current: 0.1.</summary>
+            public float DecayPerHour;
+            /// <summary>SocialSystem clamp ceiling. Current: 100.</summary>
+            public float MaxOpinion;
+            /// <summary>SocialSystem clamp floor. Current: −100.</summary>
+            public float MinOpinion;
+        }
+
         /// <summary>Fresh graph holding today's constants verbatim. The parser always starts
         /// from a fresh copy of this; <see cref="Default"/> is frozen and never mutated.</summary>
         public static SimDefs CreateDefault()
@@ -359,6 +376,14 @@ namespace Perilune.Sim
                 {
                     Radius = 8,
                 },
+
+                Social = new SocialDefs
+                {
+                    FamiliarizePerHour = 2f,
+                    DecayPerHour = 0.1f,
+                    MaxOpinion = 100f,
+                    MinOpinion = -100f,
+                },
             };
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
@@ -380,8 +405,9 @@ namespace Perilune.Sim
         /// order (floats/doubles via their exact bits, so formatting never matters —
         /// only the numeric value). Order: RadiatorRejectKW → each machine row (8 fields)
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
-        /// → Exploration → each recipe (6 fields). Appending a field ⇒ append one fold at
-        /// the END so existing checksums stay comparable.
+        /// → Exploration → each recipe (6 fields) → Social (4 fields). Appending a field
+        /// ⇒ append one fold at the END (before the rules fold, which stays last so an
+        /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
         public ulong ComputeChecksum()
         {
@@ -470,6 +496,11 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)(uint)r.OutputCount);
                 h = XxHash64.Combine(h, (ulong)(uint)r.WorkSeconds);
             }
+
+            h = XxHash64.Combine(h, Social.FamiliarizePerHour);
+            h = XxHash64.Combine(h, Social.DecayPerHour);
+            h = XxHash64.Combine(h, Social.MaxOpinion);
+            h = XxHash64.Combine(h, Social.MinOpinion);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

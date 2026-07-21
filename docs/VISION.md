@@ -116,6 +116,34 @@ to the map as ships and stations, not planets**:
 This structure is deliberately **modular**: a port-of-call *type* (new site archetypes,
 new factions, new cargo, new persona pools, new arcs) is exactly the shape of a DLC.
 
+## Making her yours (the build itch, answered)
+
+RimWorld's deepest satisfaction — *I built this place* — is not lost by setting the game
+in a ship; it is reframed, deliberately. The hull is fixed exactly the way RimWorld's
+map is fixed: it's the canvas edge, not the content. Everything inside is the player's:
+
+- **Refit inward** (GDD §4.6): cut interior walls, weld new ones, convert compartments,
+  merge cabins into a mess hall, split the gym into quarters. The sealed, vented,
+  fire-damaged decks are the "empty land" — reclaiming a dead deck and making it *live*
+  (pressurized, powered, lit, named) is our homesteading loop, with atmosphere physics
+  making every new room a real engineering act, not a paint operation.
+- **The hold is the blank page.** The cathedral-scale main cargo hold is deliberately
+  authored as open volume: late-game players build whole districts in it — farms,
+  workshops, a plaza — the shipboard equivalent of RimWorld's open field, with the
+  awe of enclosure.
+- **Rooms become places.** Naming a compartment is a mechanical act (it creates the
+  MOSS namespace `hab3.*`), room roles feed morale, furniture and layout affect
+  citizens' comfort and behavior — and citizens *remember* places ("the mess hall
+  where we held Reyes' funeral"). Identity accretes onto player-made spaces through
+  the memory system, which is a form of ownership RimWorld doesn't have.
+- **Automation is decoration too.** A player's MOSS scripts, sensor placements, and
+  the Script lens view of their nervous system are self-expression the way RimWorld
+  base layouts are — visibly, shareably *theirs*.
+- **Ownership in time.** Over a long game the chronicle makes the ship yours
+  historically as well as spatially: this corridor is where the blight started in
+  year two; the observatory is named after a dead astronomer. You don't just build
+  the place — you and it accumulate a shared past.
+
 ## Business design: DLC-ready from day one (RimWorld model)
 
 RimWorld's expansions work because the base game is a systems engine and expansions are

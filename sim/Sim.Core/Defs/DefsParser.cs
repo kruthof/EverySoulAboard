@@ -24,7 +24,7 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Machines, Recipes, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Machines, Recipes, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
 
@@ -121,6 +121,7 @@ namespace Perilune.Sim
                 case "wear": return Section.Wear;
                 case "citizen": return Section.Citizen;
                 case "exploration": return Section.Exploration;
+                case "social": return Section.Social;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
                 default:
@@ -145,6 +146,7 @@ namespace Perilune.Sim
                 case Section.Wear: known = WearKey(d, key, val, loc, p); break;
                 case Section.Citizen: known = CitizenKey(d, key, val, loc, p); break;
                 case Section.Exploration: known = ExplorationKey(d, key, val, loc, p); break;
+                case Section.Social: known = SocialKey(d, key, val, loc, p); break;
                 default: known = false; break;
             }
             if (!known) p.Add(loc + ": unknown key '" + key + "' — ignored");
@@ -267,6 +269,18 @@ namespace Perilune.Sim
             switch (k)
             {
                 case "radius": if (I(v, k, loc, p, out var a)) d.Exploration.Radius = a; return true;
+                default: return false;
+            }
+        }
+
+        private static bool SocialKey(SimDefs d, string k, string v, string loc, List<string> p)
+        {
+            switch (k)
+            {
+                case "familiarize_per_hour": if (F(v, k, loc, p, out var a)) d.Social.FamiliarizePerHour = a; return true;
+                case "decay_per_hour": if (F(v, k, loc, p, out var b)) d.Social.DecayPerHour = b; return true;
+                case "max_opinion": if (F(v, k, loc, p, out var c)) d.Social.MaxOpinion = c; return true;
+                case "min_opinion": if (F(v, k, loc, p, out var e)) d.Social.MinOpinion = e; return true;
                 default: return false;
             }
         }

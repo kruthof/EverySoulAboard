@@ -128,11 +128,15 @@ succession. Produces: knowledge records consumed by conversation manifests ("kno
 about") and by WS-NARRATIVE. P1: skills v0 + knowledge record type. P2: teaching +
 documentation items; death deletes unshared knowledge (the grief mechanic).
 
-**WS-MATTER — Machines, economy, cascade depth** (`sim/Sim.Core/Systems/` matter
-systems, `content/core/SimDefs/`)
+**WS-MATTER — Machines, economy, construction, cascade depth** (`sim/Sim.Core/Systems/`
+matter systems, `content/core/SimDefs/`)
 Coolant loop, machine failure modes, repair chains, stockpile/economy polish, new
-devices. Also owns defs hygiene repo-wide. P1: coolant + failure-mode v1 as the
-cascade showcase. P2: the slice ship's full matter loop balanced.
+devices — and the **build/refit vertical** (VISION "Making her yours"): designate →
+haul materials → construct/deconstruct interior walls, doors, devices, floors;
+compartment conversion with the atmosphere sim enforcing the seal-and-pressurize
+cost. Also owns defs hygiene repo-wide. P1: coolant + failure-mode v1 as the cascade
+showcase. P2: the slice ship's full matter loop balanced + build/refit v0 (wall/door/
+device construction). P3: the hold as open build volume in the campaign.
 
 **WS-SHIPGEN — Procedural ships & sites** (`sim/Sim.Gen/`)
 Generator stages (Hull→Spine→Assign→…), validation gates V1–V7, site archetypes

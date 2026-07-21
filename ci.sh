@@ -15,6 +15,6 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
-printf '%s\n' "$OUT" | grep -q "802d053d7f867e89" || { echo "FAIL: reference hash changed (expected 802d053d7f867e89) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "03cd62cf695edb06" || { echo "FAIL: reference hash changed (expected 03cd62cf695edb06) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== OK =="
