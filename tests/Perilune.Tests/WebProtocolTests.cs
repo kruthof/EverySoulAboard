@@ -60,9 +60,9 @@ namespace Perilune.Tests
             string without = WireFormat.Frame(buf, 0, "none", -1, -1);
             StringAssert.DoesNotContain("\"crew\":", without, "no crew field when the list is empty");
             string with = WireFormat.Frame(buf, 0, "none", -1, -1,
-                new[] { (50, 4, 1), (12, 9, 2) });
-            StringAssert.Contains("\"crew\":[[50,4,1],[12,9,2]]", with,
-                "crew serializes as [x,y,variant] triples");
+                new[] { (50, 4, 1, 7u), (12, 9, 2, 42u) });
+            StringAssert.Contains("\"crew\":[[50,4,1,7],[12,9,2,42]]", with,
+                "crew serializes as [x,y,pv,cid] tuples (cid appended, append-only)");
         }
 
         [Test]
@@ -115,6 +115,44 @@ namespace Perilune.Tests
         {
             var buf = BootFrame(0, Lens.None, out _, out _);
             CheckGolden("web_frame_boot.json", WireFormat.Frame(buf, 0, "none", -1, -1));
+        }
+
+        /// <summary>Locks the append-only 4-element crew tuple [x,y,pv,cid] byte-for-byte on a
+        /// real boot frame. (No pre-existing golden carried crew tuples, so W1's tuple-arity
+        /// growth regenerated nothing; this new golden is the crew shape's coverage.)</summary>
+        [Test]
+        public void Golden_WebFrame_Boot_Crew()
+        {
+            var buf = BootFrame(0, Lens.None, out _, out _);
+            var crew = new[] { (10, 3, 0, 1u), (11, 3, 1, 2u), (20, 7, 2, 3u) };
+            CheckGolden("web_frame_boot_crew.json", WireFormat.Frame(buf, 0, "none", 10, 3, crew));
+        }
+
+        /// <summary>Golden for the light message (W2): a controlled two-room section, ticked so
+        /// the right room's light powers up, then fully revealed — the RLE carries fog(0),
+        /// Dead(1) and Powered(4) runs.</summary>
+        [Test]
+        public void Golden_WebLight_Scenario()
+        {
+            var sim = GlyphTestScenario.Build();
+            for (int i = 0; i < 20; i++) sim.Tick();
+            GlyphTestScenario.RevealLevel(sim, 0);
+            var light = new byte[sim.World.Width * sim.World.Height];
+            LightMapper.Project(sim, 0, light);
+            CheckGolden("web_light_scenario.json",
+                WireFormat.Light(0, sim.World.Width, sim.World.Height, light));
+        }
+
+        /// <summary>W2 must not perturb the frame channel: the boot frame still serializes to the
+        /// committed W1 golden byte-for-byte (no frame-golden churn beyond W1's crew tuple).</summary>
+        [Test]
+        public void Light_Commit_Does_Not_Change_Frame_Bytes()
+        {
+            var buf = BootFrame(0, Lens.None, out _, out _);
+            string frame = WireFormat.Frame(buf, 0, "none", -1, -1);
+            string golden = System.IO.File.ReadAllText(
+                System.IO.Path.Combine(GoldenDir(), "web_frame_boot.json")).Replace("\r\n", "\n");
+            Assert.AreEqual(golden, frame, "frame bytes changed — W2 must only add the light channel");
         }
 
         // ------------------------------------------------------------------ harness

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using Perilune.Dsl;
 using Perilune.Glyph;
 using Perilune.Sim;
 
@@ -22,6 +23,9 @@ namespace Perilune.Web
     ///   legend  {"type":"legend","lines":[...]}
     ///   inspect {"type":"inspect","lines":[...]}
     ///   status  {"type":"status","text":"..","speed":"1x","paused":false}
+    ///   chat    {"type":"chat","sid":..,"ev":"start|delta|line|effect|end", ...per-ev fields}
+    ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":".."}
+    ///   device  {"type":"device","kind":"terminal","tid":".."}
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
     /// </summary>
@@ -31,12 +35,14 @@ namespace Perilune.Web
 
         /// <summary>Serialize one projected deck. <paramref name="lensName"/> is the lowercase
         /// lens label (browser matches the legend to it). <paramref name="crew"/> lists the
-        /// visible crew on this deck as (x, y, variant) — variant is a stable per-citizen
-        /// sprite index so each crew member keeps their face; the session only includes
-        /// citizens whose projected tile actually shows '@' (fog-gated upstream), so the
-        /// wire never leaks an unexplored position.</summary>
+        /// visible crew on this deck as (x, y, pv, cid) — pv is a stable per-citizen
+        /// portrait/sprite variant so each crew member keeps their face, cid is the citizen's
+        /// sim entity id so the client can address them (talk/select). The tuple is
+        /// append-only: [x,y,pv] grew a 4th cid element. The session only includes citizens
+        /// whose projected tile actually shows '@' (fog-gated upstream), so the wire never
+        /// leaks an unexplored position.</summary>
         public static string Frame(GlyphBuffer map, int deck, string lensName, int selX, int selY,
-                                   IReadOnlyList<(int X, int Y, int Variant)> crew = null)
+                                   IReadOnlyList<(int X, int Y, int Pv, uint Cid)> crew = null)
         {
             var sb = new StringBuilder(map.Width * map.Height * 12 + 64);
             sb.Append("{\"type\":\"frame\",\"deck\":").Append(deck.ToString(Ic));
@@ -54,7 +60,8 @@ namespace Perilune.Web
                     if (i > 0) sb.Append(',');
                     sb.Append('[').Append(crew[i].X.ToString(Ic))
                       .Append(',').Append(crew[i].Y.ToString(Ic))
-                      .Append(',').Append(crew[i].Variant.ToString(Ic)).Append(']');
+                      .Append(',').Append(crew[i].Pv.ToString(Ic))
+                      .Append(',').Append(crew[i].Cid.ToString(Ic)).Append(']');
                 }
                 sb.Append(']');
             }
@@ -112,6 +119,214 @@ namespace Perilune.Web
             sb.Append(",\"paused\":").Append(paused ? "true" : "false");
             sb.Append('}');
             return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- dialogue (W1)
+
+        /// <summary>
+        /// One dialogue event on conversation <paramref name="sid"/>. Only the fields relevant
+        /// to <paramref name="ev"/> are emitted, so a payload never carries a null placeholder:
+        ///   start  → cid, name   (the crew member the conversation opened with)
+        ///   delta  → seq, text   (a streamed token chunk, ordered by seq)
+        ///   line   → who, text   (a completed line; who is "player"|"crew"|a speaker id)
+        ///   effect → text        (a human-readable applied-effect note)
+        ///   end    → reason      (why the conversation closed: "done"|"unavailable"|..)
+        /// The header (type, sid, ev) is always present. All strings are JSON-escaped.
+        /// </summary>
+        public static string ChatStart(int sid, uint cid, string name)
+        {
+            var sb = ChatHeader(sid, "start");
+            sb.Append(",\"cid\":").Append(cid.ToString(Ic));
+            sb.Append(",\"name\":"); AppendString(sb, name ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        public static string ChatDelta(int sid, int seq, string text)
+        {
+            var sb = ChatHeader(sid, "delta");
+            sb.Append(",\"seq\":").Append(seq.ToString(Ic));
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        public static string ChatLine(int sid, string who, string text)
+        {
+            var sb = ChatHeader(sid, "line");
+            sb.Append(",\"who\":"); AppendString(sb, who ?? "");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        public static string ChatEffect(int sid, string text)
+        {
+            var sb = ChatHeader(sid, "effect");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        public static string ChatEnd(int sid, string reason)
+        {
+            var sb = ChatHeader(sid, "end");
+            sb.Append(",\"reason\":"); AppendString(sb, reason ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        private static StringBuilder ChatHeader(int sid, string ev)
+        {
+            var sb = new StringBuilder(96);
+            sb.Append("{\"type\":\"chat\",\"sid\":").Append(sid.ToString(Ic));
+            sb.Append(",\"ev\":\"").Append(ev).Append('"');
+            return sb;
+        }
+
+        /// <summary>Crew identity card for the inspector. <paramref name="role"/>/<paramref name="mood"/>
+        /// and <paramref name="traits"/> come from the citizen's mind persona when the host has one,
+        /// else empty. <paramref name="portrait"/> is a stable per-citizen face id ("" when unknown).</summary>
+        public static string Citizen(uint cid, string name, string role, string mood,
+                                     IReadOnlyList<string> traits, string portrait)
+        {
+            var sb = new StringBuilder(160);
+            sb.Append("{\"type\":\"citizen\",\"cid\":").Append(cid.ToString(Ic));
+            sb.Append(",\"name\":"); AppendString(sb, name ?? "");
+            sb.Append(",\"role\":"); AppendString(sb, role ?? "");
+            sb.Append(",\"mood\":"); AppendString(sb, mood ?? "");
+            sb.Append(",\"traits\":[");
+            if (traits != null)
+                for (int i = 0; i < traits.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    AppendString(sb, traits[i]);
+                }
+            sb.Append(']');
+            sb.Append(",\"portrait\":"); AppendString(sb, portrait ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        /// <summary>An interactable device the player selected — v0 carries the MOSS-addressable
+        /// terminal id so the client can open its program panel.</summary>
+        public static string Device(string kind, string tid)
+        {
+            var sb = new StringBuilder(64);
+            sb.Append("{\"type\":\"device\",\"kind\":"); AppendString(sb, kind ?? "");
+            sb.Append(",\"tid\":"); AppendString(sb, tid ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        // ------------------------------------------------------------------- light (W2)
+
+        /// <summary>Serialize one deck's per-tile light grid (from LightMapper) as run-length
+        /// pairs over the row-major tiles: {"type":"light","deck":..,"w":..,"h":..,"rle":[[state,count],..]}.
+        /// The client expands the runs to w*h; states are the append-only LightState bytes.</summary>
+        public static string Light(int deck, int w, int h, byte[] states)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"light\",\"deck\":").Append(deck.ToString(Ic));
+            sb.Append(",\"w\":").Append(w.ToString(Ic));
+            sb.Append(",\"h\":").Append(h.ToString(Ic));
+            sb.Append(",\"rle\":[");
+            int total = w * h;
+            if (states != null && states.Length < total) total = states.Length;
+            bool first = true;
+            int run = 0;
+            byte cur = 0;
+            for (int i = 0; i < total; i++)
+            {
+                byte s = states[i];
+                if (run == 0) { cur = s; run = 1; }
+                else if (s == cur) { run++; }
+                else
+                {
+                    if (!first) sb.Append(','); first = false;
+                    sb.Append('[').Append(((int)cur).ToString(Ic)).Append(',').Append(run.ToString(Ic)).Append(']');
+                    cur = s; run = 1;
+                }
+            }
+            if (run > 0)
+            {
+                if (!first) sb.Append(',');
+                sb.Append('[').Append(((int)cur).ToString(Ic)).Append(',').Append(run.ToString(Ic)).Append(']');
+            }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- MOSS (W3)
+        //
+        // The MOSS terminal bridge. Ops the client sends: "open" (server replies source +
+        // diag), "set" (server replies diag), "audit" (server replies audit). "dryrun" is
+        // RESERVED for a future compile-only-preview op — not implemented here.
+        //   source  {"type":"moss","ev":"source","tid":"..","text":"..","hash":N}
+        //   diag    {"type":"moss","ev":"diag","tid":"..","ok":bool,"diags":[[line,col,sev,"msg"],..]}
+        //   audit   {"type":"moss","ev":"audit","tid":"..","lines":[[tick,"text"],..]}
+        //   rterror {"type":"moss","ev":"rterror","tid":"..","text":".."}
+        // line/col are 1-based; sev is "error"|"warning"; hash is the FNV-1a32 of the source
+        // (== the runtime's saved SourceHash), emitted unsigned so client and sim agree.
+
+        public static string MossSource(string tid, string text)
+        {
+            uint hash = (uint)ScriptRuntime.Fnv1a32(text ?? "");
+            var sb = MossHeader(tid, "source");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            sb.Append(",\"hash\":").Append(hash.ToString(Ic));
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossDiag(string tid, IReadOnlyList<Diagnostic> diags)
+        {
+            bool ok = true;
+            if (diags != null)
+                for (int i = 0; i < diags.Count; i++)
+                    if (diags[i].Severity == DiagnosticSeverity.Error) { ok = false; break; }
+
+            var sb = MossHeader(tid, "diag");
+            sb.Append(",\"ok\":").Append(ok ? "true" : "false");
+            sb.Append(",\"diags\":[");
+            if (diags != null)
+                for (int i = 0; i < diags.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var d = diags[i];
+                    sb.Append('[').Append(d.Line.ToString(Ic))
+                      .Append(',').Append(d.Col.ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, d.Severity == DiagnosticSeverity.Error ? "error" : "warning");
+                    sb.Append(',');
+                    AppendString(sb, d.Message ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossAudit(string tid, IReadOnlyList<(long Tick, string Text)> lines)
+        {
+            var sb = MossHeader(tid, "audit");
+            sb.Append(",\"lines\":[");
+            if (lines != null)
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[').Append(lines[i].Tick.ToString(Ic)).Append(',');
+                    AppendString(sb, lines[i].Text ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossRuntimeError(string tid, string text)
+        {
+            var sb = MossHeader(tid, "rterror");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        private static StringBuilder MossHeader(string tid, string ev)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"moss\",\"ev\":\"").Append(ev).Append("\",\"tid\":");
+            AppendString(sb, tid ?? "");
+            return sb;
         }
 
         private static string Lines(string type, IReadOnlyList<string> lines)
