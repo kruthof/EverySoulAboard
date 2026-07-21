@@ -247,10 +247,10 @@ namespace Perilune.Llm.Providers
         // PERILUNE_LLM_ANTHROPIC_BASE_URL → anthropic.base_url ; DIALOGUE_BACKEND → dialogue.backend ;
         // BUDGET_USD_PER_HOUR → budget.usd_per_hour. Only the first underscore after the prefix maps
         // to the section separator. Unprefixed keys are ignored — EXCEPT the well-known key-name
-        // aliases below, so a plain `.env` with claude_key/openai_key/gemini_key just works. A
-        // canonical PERILUNE_LLM_ name still wins over an alias in the same source (aliases map to
-        // the same canonical slot; last writer within a source is the file's later line, and source
-        // precedence is unchanged).
+        // aliases below, so a plain `.env` with claude_key/openai_key/gemini_key just works.
+        // Aliases map to the same canonical slot, so WITHIN one source the later line wins
+        // regardless of spelling; ACROSS sources the usual env > .env > toml precedence decides
+        // (gate-verified both ways).
         private static string EnvKeyToCanonical(string key)
         {
             const string prefix = "PERILUNE_LLM_";
