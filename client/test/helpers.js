@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 
 import { clampCam } from '../src/render/camera.js';
 import { composeScene } from '../src/render/compose.js';
+import { buildPasses } from '../src/render/webgl/batch.js';
 import { C } from '../src/render/palette.js';
 import { SPRITE_FACING, SPRITE_NO_ROTATE } from '../assets/sprites.g.js';
 
@@ -88,4 +89,31 @@ export function serialize(ops) {
 /** Compose + serialize in one step (the golden production path). */
 export function composeGolden(frame, camera) {
   return serialize(composeScene(frame, camera, ASSETS));
+}
+
+export const PASS_GOLDEN_DIR = join(here, 'golden', 'passes');
+
+/**
+ * The WebGL RenderPass golden path: compose → buildPasses. timeSec is fixed (0) so the reticle
+ * phase is stable; buildPasses is pure so this is byte-for-byte reproducible.
+ */
+export function composePasses(frame, camera, opts = { timeSec: 0 }) {
+  return buildPasses(composeScene(frame, camera, ASSETS), opts);
+}
+
+/**
+ * Stable golden serialization for RenderPass lists: one pass block per name, one op per line,
+ * insertion-ordered keys, trailing newline. Mirrors serialize()'s readable-diff shape.
+ */
+export function serializePasses(passes) {
+  const blocks = passes.map((p) => {
+    const body = p.ops.map((o) => '  ' + JSON.stringify(o)).join(',\n');
+    return '"' + p.name + '": [' + (p.ops.length ? '\n' + body + '\n' : '') + ']';
+  });
+  return '{\n' + blocks.join(',\n') + '\n}\n';
+}
+
+/** Compose → buildPasses → serialize in one step (the pass-golden production path). */
+export function composePassGolden(frame, camera) {
+  return serializePasses(composePasses(frame, camera, { timeSec: 0 }));
 }

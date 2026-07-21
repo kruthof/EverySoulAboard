@@ -49,7 +49,7 @@ toggle) all round-trip. (Crew select+move needs an explored `@`, fog-gated at bo
 
 ```
 wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList ─► execute(list, ctx) ─► pixels
-                    │ PURE: no DOM, no time, no mutation                 │ Canvas2D now, WebGL2 (P2)
+                    │ PURE: no DOM, no time, no mutation                 │ Canvas2D or WebGL2
                     └ golden-testable                                    └ swappable behind Executor
 ```
 
@@ -57,11 +57,34 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
 - `src/render/` — `palette.js` (GlyphColor→RGB), `camera.js` (transform/cull/zoom/pan, pure),
   `glyphs.js` (neighbour + facing logic, pure), **`compose.js`** (the pure core),
   `procedural.js` (vector fallback painters), `sprites.js` (image/rotation runtime),
-  `canvas2d.js` (the P1 executor), `executor.js` (the interface P2's WebGL2 backend implements).
+  `canvas2d.js` (the Canvas2D executor), `executor.js` (the two-backend interface + contract).
+- `src/render/webgl/` — the WebGL2 backend's **pure** halves (the GL upload/draw layer lands in a
+  later package): `batch.js` (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js`
+  (`packAtlas` — sprite-atlas placement + UV math). No DOM, no GL, golden-tested.
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/hud.js` — sidebar/status/log DOM.
-- `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop).
+- `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop);
+  `makeExecutor(canvas)` selects the backend from `?exec=canvas2d|webgl2` (default `canvas2d`
+  until the GL executor exists; `webgl2` currently resolves to Canvas2D).
 - `assets/sprites.g.js` — **generated** (see below).
+
+### WebGL2 backend (pure batcher + atlas)
+
+The WebGL2 executor will draw the same DisplayList as Canvas2D, but first groups it into **four
+ordered RenderPasses** via `buildPasses(list, {timeSec})` (`src/render/webgl/batch.js`) and packs
+the sprite set with `packAtlas(sizes, opts)` (`src/render/webgl/atlas.js`). Both are pure and
+deterministic (`timeSec` is an input — the selection-reticle pulse phase is derived from it as
+data, never a clock read), so they are golden-tested with no GPU.
+
+| pass       | consumes                                  | op shape |
+|------------|-------------------------------------------|----------|
+| `terrain`  | hull/void/floor/debris/wall               | `{kind, x, y}` — `kind` (incl. `wall`/`wall_vert`) doubles as the atlas/fill key |
+| `entities` | entity                                    | `{kind:'entity', x, y, sprite, turns, tint, alpha, glyph, pv, overlay}` — `sprite`=atlas key or `null` (procedural); `turns`=facing transform |
+| `light`    | *(reserved)* op:`light`                   | empty until the sim emits lighting DrawOps; the pass slot always exists |
+| `overlay`  | wash / cursor / reticle                   | `{kind:'wash'|'cursor'|'reticle', …}`; reticle carries `phase` from `timeSec` |
+
+Pass order is fixed (`terrain < entities < light < overlay`) and within a pass ops keep the
+DisplayList order, so GL overdraw matches the canvas skin exactly.
 
 ### DisplayList op vocabulary (`composeScene` output)
 
@@ -99,7 +122,7 @@ logic are skin code (in `src/render/`), not generated data.
 ## Tests (no GPU)
 
 ```sh
-cd client && node --test "test/*.test.js"   # or: npm test        (17 tests)
+cd client && node --test "test/*.test.js"   # or: npm test
 npm run typecheck                            # tsc --checkJs, clean (needs npm install once)
 ```
 
@@ -108,12 +131,17 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   against committed goldens in `test/golden/`. Plus op-vocabulary, determinism, no-mutation.
 - `test/scene.test.js` — behavioural invariants: the fog/hull rule, wall face/vert, lens wash,
   selection reticle, camera culling, facing.
+- `test/webgl.test.js` — WebGL2 batcher + atlas: RenderPass goldens (`test/golden/passes/`, same
+  fixture cases), pass ordering + per-pass vocabulary, the light-pass slot, determinism under
+  deep-frozen inputs, entity resolution parity with the canvas skin, and atlas non-overlap /
+  in-bounds UVs / order-independent packing.
 
-Cases live in `test/cases.js` (shared by tests and the regen script). Regenerate goldens **only**
-for an intended rendering change, and explain the diff in the commit:
+Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
+**only** for an intended rendering change, and explain the diff in the commit:
 
 ```sh
-node client/tools/regen-goldens.mjs         # or: npm run regen-goldens
+node client/tools/regen-goldens.mjs         # DisplayList goldens (or: npm run regen-goldens)
+node client/tools/regen-pass-goldens.mjs    # WebGL RenderPass goldens
 ```
 
 > Note: Node 24's test runner rejects a bare directory positional (`node --test test/`); use the
