@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
+using Perilune.Dsl;       // ScriptRuntime, MossCompiler, Diagnostic
 using Perilune.Glyph;
 using Perilune.Sim;
 using Perilune.Tui;       // SimHost
@@ -53,6 +54,14 @@ namespace Perilune.Web
         // caught up (Snapshot) and a render only re-sends channels that actually changed.
         private readonly object _cacheLock = new object();
         private readonly Dictionary<string, string> _cache = new Dictionary<string, string>();
+
+        // MOSS bridge (W3). _mossSource caches the last source the client SET per terminal
+        // (serves `open` + hash even while paused, before the canonical SetScriptCommand
+        // drains); _lastRtError remembers each terminal's runtime-error state so Render only
+        // pushes an rterror on a transition; _mossAuditBuf is a reused scratch list.
+        private readonly Dictionary<string, string> _mossSource = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> _lastRtError = new Dictionary<string, string>();
+        private readonly List<(long Tick, string Text)> _mossAuditBuf = new List<(long, string)>();
 
         private ShipMetricsSnapshot _metrics;
         private double _metricsAtWall = double.NegativeInfinity;
@@ -174,9 +183,88 @@ namespace Perilune.Web
                 case CmdKind.Talk: TalkTo(cmd.Cid); return false;
                 case CmdKind.Say: return false;   // no live conversation yet — unknown sid ⇒ no-op
                 case CmdKind.Bye: return false;   // no live conversation yet — unknown sid ⇒ no-op
+                case CmdKind.Moss: HandleMoss(cmd); return false;
                 default: return false;
             }
         }
+
+        /// <summary>
+        /// The MOSS terminal bridge. Runs on the sim thread inside DrainCommands — the command
+        /// drain happens BETWEEN ticks, never mid-tick, so SetProgram compiles/installs at a
+        /// tick boundary by construction (no mid-tick sim mutation).
+        ///   open  → reply source (current program text + hash) and its compile diagnostics
+        ///   set   → SetProgram (compile+install now, paused-safe) → reply diag; also enqueue
+        ///           the canonical SetScriptCommand so the saved source (sim.Scripts) tracks
+        ///           the edit; cache the text for a later `open`.
+        ///   audit → reply the terminal's audit ring
+        ///   dryrun→ RESERVED (compile-only preview); not implemented.
+        /// Unknown op ⇒ ignored.
+        /// </summary>
+        private void HandleMoss(WebCommand cmd)
+        {
+            string tid = cmd.Tid;
+            if (string.IsNullOrEmpty(tid)) return;
+            switch (cmd.Op)
+            {
+                case "open":
+                {
+                    string src = CurrentMossSource(tid);
+                    Emit(WireFormat.MossSource(tid, src));
+                    Emit(WireFormat.MossDiag(tid, MossCompiler.Compile(src).Diagnostics));
+                    break;
+                }
+                case "set":
+                {
+                    string text = cmd.Text ?? "";
+                    var diags = _host.Moss.SetProgram(tid, text); // compile + install (tick-boundary safe)
+                    _mossSource[tid] = text;
+                    _sim.EnqueueCommand(new SetScriptCommand(tid, text)); // canonical/saved source
+                    Emit(WireFormat.MossDiag(tid, diags));
+                    break;
+                }
+                case "audit":
+                {
+                    _host.Moss.GetAuditLog(tid, _mossAuditBuf);
+                    Emit(WireFormat.MossAudit(tid, _mossAuditBuf));
+                    break;
+                }
+                default: break; // unknown op (incl. reserved "dryrun") — ignored
+            }
+        }
+
+        /// <summary>The current program text for a terminal: the last text SET this session
+        /// (reflects unsaved edits) else the canonical saved source in sim.Scripts, else "".</summary>
+        private string CurrentMossSource(string tid)
+        {
+            if (_mossSource.TryGetValue(tid, out var cached)) return cached;
+            var scripts = _sim.Scripts;
+            for (int i = 0; i < scripts.Count; i++)
+                if (scripts[i].TerminalId == tid) return scripts[i].Source ?? "";
+            return "";
+        }
+
+        /// <summary>Push a moss rterror whenever a terminal's runtime-error state transitions to a
+        /// (new) error. Polled each render; last state remembered per terminal.</summary>
+        private void PollRuntimeErrors()
+        {
+            var scripts = _sim.Scripts;
+            for (int i = 0; i < scripts.Count; i++)
+            {
+                string tid = scripts[i].TerminalId;
+                string cur = _host.Moss.TryGetRuntimeError(tid, out var err) ? (err ?? "") : "";
+                _lastRtError.TryGetValue(tid, out var prev);
+                if (cur == (prev ?? "")) continue;
+                _lastRtError[tid] = cur;
+                if (cur.Length > 0) Emit(WireFormat.MossRuntimeError(tid, cur));
+            }
+        }
+
+        /// <summary>Test-only hook: apply a command exactly as the sim-thread command drain does
+        /// (between ticks). Lets unit tests exercise the command handlers without the loop.</summary>
+        internal bool ApplyForTest(WebCommand cmd) => Apply(cmd);
+
+        /// <summary>Test-only hook: run the per-render runtime-error poll.</summary>
+        internal void PollRuntimeErrorsForTest() => PollRuntimeErrors();
 
         /// <summary>Open a conversation with a crew member. The LLM/dialogue host wiring lands
         /// in a later package; until then every talk closes immediately with reason
@@ -308,6 +396,9 @@ namespace Perilune.Web
             Send("log", WireFormat.Log(BuildLog()), force);
             Send("inspect", WireFormat.Inspect(InspectorModel.Build(_sim, cursor, _selected)), force);
             Send("status", WireFormat.Status(_status, SpeedLabel[_speedIndex], _speedIndex == 0), force);
+
+            // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
+            PollRuntimeErrors();
         }
 
         /// <summary>Cache the payload and broadcast it — but only when it changed (or on a

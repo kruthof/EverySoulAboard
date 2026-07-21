@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using Perilune.Dsl;
 using Perilune.Glyph;
 using Perilune.Sim;
 
@@ -247,6 +248,85 @@ namespace Perilune.Web
             }
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- MOSS (W3)
+        //
+        // The MOSS terminal bridge. Ops the client sends: "open" (server replies source +
+        // diag), "set" (server replies diag), "audit" (server replies audit). "dryrun" is
+        // RESERVED for a future compile-only-preview op — not implemented here.
+        //   source  {"type":"moss","ev":"source","tid":"..","text":"..","hash":N}
+        //   diag    {"type":"moss","ev":"diag","tid":"..","ok":bool,"diags":[[line,col,sev,"msg"],..]}
+        //   audit   {"type":"moss","ev":"audit","tid":"..","lines":[[tick,"text"],..]}
+        //   rterror {"type":"moss","ev":"rterror","tid":"..","text":".."}
+        // line/col are 1-based; sev is "error"|"warning"; hash is the FNV-1a32 of the source
+        // (== the runtime's saved SourceHash), emitted unsigned so client and sim agree.
+
+        public static string MossSource(string tid, string text)
+        {
+            uint hash = (uint)ScriptRuntime.Fnv1a32(text ?? "");
+            var sb = MossHeader(tid, "source");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            sb.Append(",\"hash\":").Append(hash.ToString(Ic));
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossDiag(string tid, IReadOnlyList<Diagnostic> diags)
+        {
+            bool ok = true;
+            if (diags != null)
+                for (int i = 0; i < diags.Count; i++)
+                    if (diags[i].Severity == DiagnosticSeverity.Error) { ok = false; break; }
+
+            var sb = MossHeader(tid, "diag");
+            sb.Append(",\"ok\":").Append(ok ? "true" : "false");
+            sb.Append(",\"diags\":[");
+            if (diags != null)
+                for (int i = 0; i < diags.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var d = diags[i];
+                    sb.Append('[').Append(d.Line.ToString(Ic))
+                      .Append(',').Append(d.Col.ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, d.Severity == DiagnosticSeverity.Error ? "error" : "warning");
+                    sb.Append(',');
+                    AppendString(sb, d.Message ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossAudit(string tid, IReadOnlyList<(long Tick, string Text)> lines)
+        {
+            var sb = MossHeader(tid, "audit");
+            sb.Append(",\"lines\":[");
+            if (lines != null)
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[').Append(lines[i].Tick.ToString(Ic)).Append(',');
+                    AppendString(sb, lines[i].Text ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        public static string MossRuntimeError(string tid, string text)
+        {
+            var sb = MossHeader(tid, "rterror");
+            sb.Append(",\"text\":"); AppendString(sb, text ?? "");
+            return sb.Append('}').ToString();
+        }
+
+        private static StringBuilder MossHeader(string tid, string ev)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"moss\",\"ev\":\"").Append(ev).Append("\",\"tid\":");
+            AppendString(sb, tid ?? "");
+            return sb;
         }
 
         private static string Lines(string type, IReadOnlyList<string> lines)
