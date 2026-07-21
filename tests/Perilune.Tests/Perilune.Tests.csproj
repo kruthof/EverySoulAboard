@@ -37,6 +37,8 @@
          sockets and threads and must NOT leak into the headless test host — add a file here
          only when a test needs the pure logic. -->
     <Compile Include="../../hosts/web/WireFormat.cs" />
+    <!-- W4: the pure persona→JSON renderer behind `dump-personas` (Program.cs owns the IO). -->
+    <Compile Include="../../hosts/scenario/PersonaDump.cs" />
   </ItemGroup>
 
   <ItemGroup>

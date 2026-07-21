@@ -27,6 +27,7 @@ namespace Perilune.Tools
             // verb-less path below is kept byte-identical (the determinism proof CI keys on it).
             if (args.Length > 0 && args[0] == "gen") return RunGen(args);
             if (args.Length > 0 && args[0] == "sweep") return RunSweep(args);
+            if (args.Length > 0 && args[0] == "dump-personas") return RunDumpPersonas(args);
 
             int days = 3;
             ulong seed = 42;
@@ -82,6 +83,35 @@ namespace Perilune.Tools
         /// <summary><c>gen --seed N [--validate] [--days D] [--data DIR]</c>: build a procedural
         /// ship variant from the seed and (with --validate) run the V1–V7 gate suite. Exit 0 when
         /// all gates pass, 1 on any gate failure.</summary>
+        /// <summary><c>dump-personas [--seed N] [--crew C] [--out FILE] [--data DIR]</c>: boot a
+        /// seeded procedural ship, generate each citizen's persona (the host's one-per-citizen
+        /// worldgen call), and emit the deterministic JSON array the portrait pipeline
+        /// (art/spritegen) consumes. Same arguments ⇒ byte-identical output.</summary>
+        private static int RunDumpPersonas(string[] args)
+        {
+            ulong seed = ArgULong(args, "--seed", 7UL);
+            int crew = ArgInt(args, "--crew", 8);
+            string outPath = ArgString(args, "--out", null);
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out _, out _, out _);
+
+            var recipe = ShipRecipe.FromSeed(seed);
+            recipe.CrewCount = crew;
+            var host = GenSimHost.Build(ProceduralShips.Generate(recipe), defs);
+
+            string json = PersonaDump.Render(seed, host.Sim, host.Minds, host.Facts);
+            if (outPath != null)
+            {
+                File.WriteAllText(outPath, json);
+                Console.WriteLine($"dump-personas: {host.Sim.Citizens.Items.Count} personas (seed {seed}) -> {outPath}");
+            }
+            else
+            {
+                Console.Write(json);
+            }
+            return 0;
+        }
+
         private static int RunGen(string[] args)
         {
             ulong seed = ArgULong(args, "--seed", 1UL);
