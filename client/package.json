@@ -1,0 +1,18 @@
+{
+  "name": "perilune-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PERILUNE structured browser client — pure-core renderer + Canvas2D executor over the semantic wire.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "typecheck": "tsc -p jsconfig.json",
+    "extract-sprites": "node tools/extract-sprites.mjs",
+    "regen-goldens": "node tools/regen-goldens.mjs",
+    "serve": "python3 serve.py"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5"
+  }
+}
