@@ -49,4 +49,41 @@ namespace Perilune.Sim
         public ushort NetworkId;
         public bool InBrownout;
     }
+
+    /// <summary>
+    /// A directed opinion edge crossed a relationship-type threshold (SocialSystem hysteresis
+    /// classifier). Rel values are the Social RelationType enum, carried as byte so the event
+    /// contract stays append-only and lane-independent.
+    /// </summary>
+    public struct RelationshipChangedEvent : ISimEvent
+    {
+        public uint From;
+        public uint To;
+        public byte OldRel;
+        public byte NewRel;
+    }
+
+    /// <summary>Two co-located citizens argued (deterministic social pass roll) — memory + history consume.</summary>
+    public struct ArgumentEvent : ISimEvent
+    {
+        public uint A;
+        public uint B;
+        public Int3 Pos;
+    }
+
+    /// <summary>Two co-located citizens bonded (deterministic social pass roll) — memory + history consume.</summary>
+    public struct BondEvent : ISimEvent
+    {
+        public uint A;
+        public uint B;
+        public Int3 Pos;
+    }
+
+    /// <summary>A designated build (wall/door/device) finished constructing (BuildSystem).</summary>
+    public struct ConstructionCompletedEvent : ISimEvent
+    {
+        public Int3 Pos;
+        public byte BuildKind;   // BuildSystem's kind enum as byte (append-only contract)
+        public uint BuilderId;
+    }
 }
