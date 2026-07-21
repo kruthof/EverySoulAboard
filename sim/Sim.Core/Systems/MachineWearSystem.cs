@@ -29,11 +29,23 @@ namespace Perilune.Sim
         // sim.Defs.Wear (SimDefs.Default reproduces the former consts). Tick reads them each
         // pass so parallel sims with different defs never cross-talk.
 
+        /// <summary>
+        /// Optional Director coupling (WS-NARRATIVE N6, the granted cross-lane contract). When
+        /// present its <see cref="DirectorSystem.WearPressure"/> ([1, MaxWearPressure]) scales
+        /// the wear rate — the Director's one sim-legal lever. Null (the default, and today's
+        /// spine registration) means a fixed 1.0: <c>× 1f</c> is IEEE identity, so all existing
+        /// behaviour, tests and the determinism pin are byte-for-byte unchanged.
+        /// </summary>
+        private readonly DirectorSystem _director;
+
+        public MachineWearSystem(DirectorSystem director = null) => _director = director;
+
         public void Tick(Simulation sim)
         {
             var rooms = sim.Rooms.Rooms;
             var vacuum = rooms[0]; // RoomAt resolves DoorMarker/unassigned tiles here
             var wear = sim.Defs.Wear;
+            float pressure = _director != null ? _director.WearPressure : 1f;
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
             {
@@ -55,7 +67,7 @@ namespace Perilune.Sim
                     }
                 }
 
-                device.Condition -= def.WearPerHour / 3600f * DtSeconds * multiplier;
+                device.Condition -= def.WearPerHour / 3600f * DtSeconds * multiplier * pressure;
                 if (device.Condition < 0f) device.Condition = 0f;
 
                 // Operational going in, below the threshold coming out: this pass IS

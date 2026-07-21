@@ -1,0 +1,32 @@
+# =============================================================================
+# director.def — tension curve + the one pacing lever (DirectorSystem, N6)
+# =============================================================================
+# Shipped DEFAULTS, verbatim from SimDefs.CreateDefault. Every value equals the
+# compiled default, so this file changes nothing and leaves the defs checksum
+# identical. Delete or omit any line to fall back to the compiled default.
+#
+# The Director never rolls dice and never spawns events (VISION honesty
+# contract). It reads REAL sim state into a 0..1 tension scalar and drives ONE
+# sim-legal lever — wear_pressure, a multiplier on machine-wear rate bounded to
+# [1, max_wear_pressure]. Physics constants never change; only WHEN the existing
+# wear physics bites is nudged. Tension = weighted sum of resource/morale
+# DEFICITS (each 0..1) + exponentially-decayed recent alarm/death pressure,
+# clamped to 0..1. The recompute is cadenced every period_ticks (~0.1 Hz);
+# alarm/death events are counted every tick (the event bus is double-buffered).
+#
+# The lever curve: below lever_target_tension (quiet) the lever BUILDS toward
+# the max; above it (after incidents) the lever RELEASES toward 1.0.
+
+[director]
+weight_morale_deficit  = 0.4    # tension weight on (1 - mean morale)
+weight_water_deficit   = 0.2    # tension weight on (1 - water stored/capacity)
+weight_food_deficit    = 0.2    # tension weight on (1 - food per head)
+weight_power_deficit   = 0.2    # tension weight on (1 - power served/demand)
+weight_alarm           = 0.1    # tension weight per unit decayed alarm pressure
+weight_death           = 0.5    # tension weight per unit decayed death pressure
+alarm_decay_per_period = 0.9    # per-period multiplier on the alarm accumulator
+death_decay_per_period = 0.95   # per-period multiplier on the death accumulator
+max_wear_pressure      = 2      # upper bound of the wear_pressure lever (floor is 1.0)
+lever_target_tension   = 0.35   # tension the lever curve targets
+lever_step             = 0.1    # per-period lever step, scaled by (target - tension)
+period_ticks           = 100    # ticks between tension/lever recomputes (~0.1 Hz)

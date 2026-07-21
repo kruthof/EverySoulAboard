@@ -80,6 +80,7 @@ namespace Perilune.Sim
         public SocialDefs Social;
         public NavDefs Nav;
         public BuildDefs Build;
+        public DirectorDefs Director;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
         /// <see cref="ComputeChecksum"/>. Recomputed by CreateDefault and by the parser;
@@ -328,6 +329,45 @@ namespace Perilune.Sim
             public int MaxStaged;
         }
 
+        /// <summary>DirectorSystem (WS-NARRATIVE N6) tension curve + one lever. The Director
+        /// never rolls dice or spawns events (VISION honesty contract): it reads real sim
+        /// state into a tension scalar and modulates pacing through a sim-legal lever only —
+        /// here <c>WearPressure</c>, a multiplier on machine-wear rate bounded to
+        /// [1, <see cref="MaxWearPressure"/>]. Tension is a weighted sum of resource/morale
+        /// DEFICITS (each 0..1, from <see cref="ShipMetrics"/>) plus exponentially-decayed
+        /// recent alarm/death pressure, clamped to 0..1. The recompute is cadenced every
+        /// <see cref="PeriodTicks"/> ticks; event counting runs every tick (double-buffer).</summary>
+        public sealed class DirectorDefs
+        {
+            /// <summary>Tension weight on the mean-morale deficit (1 − morale). Current: 0.4.</summary>
+            public float WeightMoraleDeficit;
+            /// <summary>Tension weight on the water margin deficit (1 − stored/capacity). Current: 0.2.</summary>
+            public float WeightWaterDeficit;
+            /// <summary>Tension weight on the food deficit (1 − food-per-head fraction). Current: 0.2.</summary>
+            public float WeightFoodDeficit;
+            /// <summary>Tension weight on the power deficit (1 − served/demand). Current: 0.2.</summary>
+            public float WeightPowerDeficit;
+            /// <summary>Tension weight per unit of decayed recent-alarm pressure. Current: 0.1.</summary>
+            public float WeightAlarm;
+            /// <summary>Tension weight per unit of decayed recent-death pressure. Current: 0.5.</summary>
+            public float WeightDeath;
+            /// <summary>Per-period multiplier applied to the alarm accumulator (exponential decay, 0..1). Current: 0.9.</summary>
+            public float AlarmDecayPerPeriod;
+            /// <summary>Per-period multiplier applied to the death accumulator (exponential decay, 0..1). Current: 0.95.</summary>
+            public float DeathDecayPerPeriod;
+            /// <summary>Upper bound on the WearPressure lever (lower bound is a fixed 1.0). Current: 2.</summary>
+            public float MaxWearPressure;
+            /// <summary>Tension the lever curve targets: below it (quiet) the lever BUILDS toward
+            /// the max; above it (after incidents) the lever RELEASES toward 1.0. Current: 0.35.</summary>
+            public float LeverTargetTension;
+            /// <summary>Per-period step of the lever toward/away from the bound, scaled by
+            /// (target − tension). Current: 0.1.</summary>
+            public float LeverStep;
+            /// <summary>Ticks between tension/lever recomputes (~0.1 Hz at 100). Structural to the
+            /// decay cadence, but exposed as a designer knob for pacing feel. Current: 100.</summary>
+            public int PeriodTicks;
+        }
+
         /// <summary>Fresh graph holding today's constants verbatim. The parser always starts
         /// from a fresh copy of this; <see cref="Default"/> is frozen and never mutated.</summary>
         public static SimDefs CreateDefault()
@@ -496,6 +536,22 @@ namespace Perilune.Sim
                     DoorConstructTicks = 40,
                     MaxStaged = 64,
                 },
+
+                Director = new DirectorDefs
+                {
+                    WeightMoraleDeficit = 0.4f,
+                    WeightWaterDeficit = 0.2f,
+                    WeightFoodDeficit = 0.2f,
+                    WeightPowerDeficit = 0.2f,
+                    WeightAlarm = 0.1f,
+                    WeightDeath = 0.5f,
+                    AlarmDecayPerPeriod = 0.9f,
+                    DeathDecayPerPeriod = 0.95f,
+                    MaxWearPressure = 2f,
+                    LeverTargetTension = 0.35f,
+                    LeverStep = 0.1f,
+                    PeriodTicks = 100,
+                },
             };
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
@@ -518,8 +574,8 @@ namespace Perilune.Sim
         /// only the numeric value). Order: RadiatorRejectKW → each machine row (8 fields)
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
-        /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended).
-        /// Appending a field
+        /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
+        /// → Director (12 fields, appended). Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -648,6 +704,21 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, (ulong)(uint)Build.DoorMaterial);
             h = XxHash64.Combine(h, (ulong)(uint)Build.DoorConstructTicks);
             h = XxHash64.Combine(h, (ulong)(uint)Build.MaxStaged);
+
+            // Director (WS-NARRATIVE N6) tension weights + lever bounds + cadence, APPENDED
+            // after Build and before the rules fold so every prior checksum stays comparable.
+            h = XxHash64.Combine(h, Director.WeightMoraleDeficit);
+            h = XxHash64.Combine(h, Director.WeightWaterDeficit);
+            h = XxHash64.Combine(h, Director.WeightFoodDeficit);
+            h = XxHash64.Combine(h, Director.WeightPowerDeficit);
+            h = XxHash64.Combine(h, Director.WeightAlarm);
+            h = XxHash64.Combine(h, Director.WeightDeath);
+            h = XxHash64.Combine(h, Director.AlarmDecayPerPeriod);
+            h = XxHash64.Combine(h, Director.DeathDecayPerPeriod);
+            h = XxHash64.Combine(h, Director.MaxWearPressure);
+            h = XxHash64.Combine(h, Director.LeverTargetTension);
+            h = XxHash64.Combine(h, Director.LeverStep);
+            h = XxHash64.Combine(h, (ulong)(uint)Director.PeriodTicks);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).
