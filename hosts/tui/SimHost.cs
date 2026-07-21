@@ -144,7 +144,7 @@ namespace Perilune.Tui
             var systems = new ISimSystem[stack.Length + 2];
             systems[0] = new EffectPump(Effects, Minds, Facts); // MUST run first
             for (int i = 0; i < stack.Length; i++) systems[i + 1] = stack[i];
-            systems[systems.Length - 1] = new MemorySystem(Minds); // after the event publishers
+            systems[systems.Length - 1] = new MemorySystem(Minds, Facts); // after the event publishers; facts persist in its SYSS chapter
 
             for (int i = 0; i < systems.Length; i++)
             {

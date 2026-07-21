@@ -69,7 +69,7 @@ namespace Perilune.Gen
             var systems = new ISimSystem[stack.Length + 2];
             systems[0] = new EffectPump(effects, minds, facts); // MUST run first
             for (int i = 0; i < stack.Length; i++) systems[i + 1] = stack[i];
-            systems[systems.Length - 1] = new MemorySystem(minds); // after the event publishers
+            systems[systems.Length - 1] = new MemorySystem(minds, facts); // after the event publishers; facts persist in its SYSS chapter
             return systems;
         }
     }
