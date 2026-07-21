@@ -62,7 +62,9 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
   later package): `batch.js` (`buildPasses` — DisplayList → ordered RenderPasses) and `atlas.js`
   (`packAtlas` — sprite-atlas placement + UV math). No DOM, no GL, golden-tested.
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
-- `src/ui/hud.js` — sidebar/status/log DOM.
+- `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
+  routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
+  resolver + silhouette fallback), `panels.js` (DOM-only dialogue/citizen/terminal shells).
 - `src/main.js` — runtime glue (canvas sizing, camera placement, sprite toggle, reticle loop);
   `makeExecutor(canvas)` selects the backend from `?exec=canvas2d|webgl2` (default `canvas2d`
   until the GL executor exists; `webgl2` currently resolves to Canvas2D).
@@ -107,6 +109,27 @@ the camera cull window; each tile emits `[base, entity?, wash?, cursor?]`; a sin
 The **fog gate is first**: an unexplored tile emits *only* a `hull` op (no wash, no cursor) —
 the load-bearing invariant, asserted in `test/scene.test.js`.
 
+## P2 panels: dialogue, citizen card, terminal drawer (`src/ui/`)
+
+The slice UI is built as **pure view-models + DOM shells**, so the logic is testable without a
+browser and the host can land the wire later (the client is already wired to consume it):
+
+- **`chat.js`** — a PURE reducer over the `chat` wire events (`start`/`delta`/`line`/`effect`/`end`,
+  keyed by `sid`). The transcript is built ONLY from `line` + `effect` events, so **a client that
+  dropped every `delta` still renders a byte-correct transcript from lines alone**; a `line`
+  supersedes its turn's cosmetic delta preview; deltas reorder by `seq`, dedup (first-wins) and
+  tolerate gaps. `sessionModel(session)` is the render-ready view-model.
+- **`portraits.js`** — `resolvePortrait(citizen, registry)` maps a `portrait` key to an image, or —
+  when the key is unknown/absent (no art yet) — a MANDATORY procedural silhouette (initials over a
+  hue hashed deterministically from `cid`). Never throws.
+- **`panels.js`** — DOM-only panel framework (open/close/z-order-on-focus): the dialogue window
+  (transcript + streaming indicator + input-box shell), the citizen card (portrait/name/role/mood/
+  traits), and the MOSS terminal drawer (placeholder — the editor/diagnostics land in a later
+  package). `#panels` stays empty (view unchanged) until the first chat/citizen/moss message.
+
+Wire shapes are documented as JSDoc typedefs in `wire/messages.js` (`ChatMsg`/`CitizenMsg`/
+`MossMsg`); `main.js` routes them to `Hud.renderChat/renderCitizen/renderMoss`.
+
 ## Sprites (single source of truth = spritegen)
 
 `assets/sprites.g.js` is generated from the `SPRITEGEN` block of `hosts/web/Client.html` (which
@@ -135,6 +158,10 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   fixture cases), pass ordering + per-pass vocabulary, the light-pass slot, determinism under
   deep-frozen inputs, entity resolution parity with the canvas skin, and atlas non-overlap /
   in-bounds UVs / order-independent packing.
+- `test/ui.test.js` — the P2 panel cores: the chat reassembler (out-of-order/dup/dropped seq,
+  line-overrides-deltas byte-exact, end-without-line, zero-delta, two interleaved sids, non-
+  mutation) and the portrait resolver (deterministic hue, unknown-key silhouette safety). Replays
+  the hand-written wire fixtures in `test/fixtures/*.jsonl` end-to-end.
 
 Cases live in `test/cases.js` (shared by tests and both regen scripts). Regenerate goldens
 **only** for an intended rendering change, and explain the diff in the commit:

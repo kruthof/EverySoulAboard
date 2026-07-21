@@ -1,0 +1,11 @@
+{"type":"chat","sid":"A","ev":"start","cid":"mira","name":"Mira Sol"}
+{"type":"chat","sid":"B","ev":"start","cid":"deng","name":"Deng Ruo"}
+{"type":"chat","sid":"A","ev":"delta","seq":2,"text":"world."}
+{"type":"chat","sid":"B","ev":"delta","seq":0,"text":"Reactor "}
+{"type":"chat","sid":"A","ev":"delta","seq":0,"text":"Hello "}
+{"type":"chat","sid":"A","ev":"delta","seq":0,"text":"DUPLICATE-IGNORED"}
+{"type":"chat","sid":"B","ev":"delta","seq":2,"text":"nominal."}
+{"type":"chat","sid":"A","ev":"delta","seq":1,"text":"there, "}
+{"type":"chat","sid":"A","ev":"line","who":"Mira Sol","text":"Hello there, world."}
+{"type":"chat","sid":"B","ev":"end","reason":"interrupted"}
+{"type":"chat","sid":"A","ev":"end","reason":"complete"}

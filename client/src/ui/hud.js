@@ -1,6 +1,10 @@
-// HTML chrome — the sidebar/status/log DOM. Pure DOM writes from decoded wire messages; the
-// canvas owns the world, this owns the panels. Verbatim port of the render* HUD helpers in
-// hosts/web/Client.html.
+// HTML chrome — the sidebar/status/log DOM, plus the floating P2 panels (dialogue window,
+// citizen card, MOSS terminal drawer). Pure DOM writes from decoded wire messages; the canvas
+// owns the world, this owns the panels. The sidebar/status/log helpers are a verbatim port of the
+// render* helpers in hosts/web/Client.html; the panel routing is new (P2, WS-CLIENT C3).
+
+import { PanelManager } from './panels.js';
+import { initChatState, reduceChat, getSession, sessionModel } from './chat.js';
 
 const METRIC_DEFS = [
   ['power', 'Power'], ['oxygen', 'Oxygen'], ['water', 'Water'], ['food', 'Food'],
@@ -74,4 +78,47 @@ export function buildLensButtons(onLens) {
     b.onclick = () => onLens(name);
     b.dataset.lens = name; wrap.appendChild(b);
   });
+}
+
+// ---- P2 panels: dialogue / citizen card / terminal drawer ----
+// The panel manager and the chat store are created lazily on the FIRST chat/citizen/moss message,
+// so a session that never opens a conversation renders byte-identically to before (no DOM added).
+
+let _panels = null;
+let _chat = initChatState();
+/** Portrait key → image src. Empty until the art pipeline (WS-ART) ships portraits. */
+const PORTRAIT_REGISTRY = {};
+
+function panels() {
+  if (!_panels) {
+    _panels = new PanelManager();
+    // onSend is wired to a no-op until the dialogue `say` command exists server-side (the send
+    // box is a shell); main.js may override _panels.onSend once the wire supports it.
+    _panels.onSend = (sid, text) => onSendHandler(sid, text);
+  }
+  return _panels;
+}
+
+let onSendHandler = () => {};
+/** Register a handler for the dialogue input box (dialogue send command lands later). */
+export function onDialogueSend(fn) { onSendHandler = fn || (() => {}); }
+
+/**
+ * Route a decoded `chat` wire message through the pure reassembler and update its dialogue window.
+ * @param {import('../wire/messages.js').ChatMsg} m
+ */
+export function renderChat(m) {
+  _chat = reduceChat(_chat, m);
+  const model = sessionModel(getSession(_chat, m.sid));
+  if (model) panels().dialogue(model);
+}
+
+/** Open/refresh a citizen inspector card. @param {import('../wire/messages.js').CitizenMsg} m */
+export function renderCitizen(m) {
+  panels().citizen(m, PORTRAIT_REGISTRY);
+}
+
+/** Open/refresh the MOSS terminal drawer. @param {import('../wire/messages.js').MossMsg} m */
+export function renderMoss(m) {
+  panels().terminal(m);
 }

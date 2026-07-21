@@ -110,6 +110,10 @@ function onMessage(m) {
     case 'legend': Hud.renderLegend(m.lines); break;
     case 'inspect': Hud.renderInspect(m.lines); break;
     case 'status': Hud.renderStatus(m); break;
+    // P2 panels (host lands these later; the client is ready): dialogue / citizen / terminal.
+    case 'chat': Hud.renderChat(m); break;
+    case 'citizen': Hud.renderCitizen(m); break;
+    case 'moss': Hud.renderMoss(m); break;
     default: break;
   }
 }

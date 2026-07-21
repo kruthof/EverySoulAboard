@@ -1,0 +1,10 @@
+{"type":"chat","sid":"conv-1","ev":"start","cid":"kort","name":"Kort Vael"}
+{"type":"chat","sid":"conv-1","ev":"delta","seq":0,"text":"The "}
+{"type":"chat","sid":"conv-1","ev":"delta","seq":1,"text":"airlock "}
+{"type":"chat","sid":"conv-1","ev":"delta","seq":2,"text":"seal held"}
+{"type":"chat","sid":"conv-1","ev":"line","who":"Kort Vael","text":"The airlock seal held. We're not venting anymore."}
+{"type":"chat","sid":"conv-1","ev":"effect","text":"Kort remembers the airlock repair (trust +1)"}
+{"type":"chat","sid":"conv-1","ev":"delta","seq":0,"text":"Bare"}
+{"type":"chat","sid":"conv-1","ev":"delta","seq":1,"text":"ly."}
+{"type":"chat","sid":"conv-1","ev":"line","who":"Kort Vael","text":"Barely. We lost the aft vent doing it, and I'm out of sealant."}
+{"type":"chat","sid":"conv-1","ev":"end","reason":"complete"}
