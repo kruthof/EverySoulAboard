@@ -2,16 +2,46 @@ using System.Collections.Generic;
 
 namespace Perilune.Sim
 {
+    /// <summary>
+    /// Category of a history entry. APPEND-ONLY (persisted as a byte and folded into
+    /// the state checksum): never reorder, never repurpose a value. 0 = the pre-enrichment
+    /// legacy value, so v1 saves (which carried no kind) restore as <see cref="Generic"/>.
+    /// </summary>
+    public enum HistoryKind : byte
+    {
+        Generic = 0,               // legacy / uncategorised
+        Alarm = 1,
+        Death = 2,
+        Goal = 3,
+        Brownout = 4,
+        RelationshipChanged = 5,
+        Argument = 6,
+        Bond = 7,
+        ConstructionCompleted = 8,
+    }
+
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
     public readonly struct HistoryEntry
     {
         public readonly long Tick;
         public readonly string Text;
 
-        public HistoryEntry(long tick, string text)
+        /// <summary><see cref="HistoryKind"/> as a byte — structural, checksum-folded.</summary>
+        public readonly byte Kind;
+
+        /// <summary>Primary subject id (citizen or device); 0 = none.</summary>
+        public readonly uint SubjectA;
+
+        /// <summary>Secondary subject id (the other party in a pairwise event); 0 = none.</summary>
+        public readonly uint SubjectB;
+
+        public HistoryEntry(long tick, string text, byte kind = 0, uint subjectA = 0, uint subjectB = 0)
         {
             Tick = tick;
             Text = text;
+            Kind = kind;
+            SubjectA = subjectA;
+            SubjectB = subjectB;
         }
 
         public double Day => Tick / (double)SimClockUtil.TicksPerDay;
@@ -23,11 +53,16 @@ namespace Perilune.Sim
     }
 
     /// <summary>
-    /// Historical layer v0 (SIMULATION_ARCHITECTURE §6): notable events become
-    /// day-stamped history — the event log's data source. v0 records alarms and
-    /// deaths; later: arrivals, research, promotions, policy changes, and citizen
-    /// memory hooks. Entries are sim state (saved via IStatefulSystem; strings are
-    /// hash-exempt per convention, so the checksum covers count + ticks only).
+    /// Historical layer (SIMULATION_ARCHITECTURE §6): notable events become day-stamped
+    /// history — the event log's data source and the Chronicle renderer's input. Each
+    /// entry carries a structural <see cref="HistoryEntry.Kind"/> + up to two subject ids
+    /// (citizen/device) so downstream renderers (chronicle, eulogy) can query by category
+    /// and name the people involved, while the human-readable Text stays the display line.
+    ///
+    /// Entries are sim state (saved via IStatefulSystem). Per the HIST convention strings
+    /// are hash-EXEMPT: the checksum folds tick + kind + subjects (the structural fields),
+    /// never the free text — so rewording an entry never perturbs determinism, but adding
+    /// one, or changing its kind/subjects, does.
     /// </summary>
     public sealed class HistorySystem : ISimSystem, IStatefulSystem
     {
@@ -41,24 +76,69 @@ namespace Perilune.Sim
 
         public readonly List<HistoryEntry> Entries = new List<HistoryEntry>(MaxEntries);
 
-        public ushort StateVersion => 1;
+        // v1 = tick+text only (Kind implicitly Generic, subjects 0).
+        // v2 = tick+kind+subjectA+subjectB+text (this build).
+        public ushort StateVersion => 2;
 
         public void Tick(Simulation sim)
         {
-            foreach (var alarm in sim.Events.Read<AlarmRaisedEvent>())
-                Add(sim.TickCount, $"{alarm.SourceId}: {alarm.Message}");
+            long tick = sim.TickCount;
 
+            foreach (var alarm in sim.Events.Read<AlarmRaisedEvent>())
+                Add(tick, $"{alarm.SourceId}: {alarm.Message}", HistoryKind.Alarm);
+
+            // Keep the CitizenId (previously discarded) and name the crew member when the
+            // sim can still resolve them. NOTE: NeedsSystem.Kill removes the citizen from
+            // the store the same tick it publishes CitizenDiedEvent, and HistorySystem
+            // reads events one tick later — so in the live death path the lookup misses and
+            // the text falls back to "A crew member". The id (SubjectA) is always retained.
+            // A CitizenDiedEvent that carried the name would let the text name the dead too;
+            // filed as a contract request (SimEvents.cs is not this lane's write path).
             foreach (var death in sim.Events.Read<CitizenDiedEvent>())
-                Add(sim.TickCount, "A crew member has died.");
+                Add(tick, DeathText(sim, death.CitizenId), HistoryKind.Death, death.CitizenId);
 
             foreach (var goal in sim.Events.Read<GoalCompletedEvent>())
-                Add(sim.TickCount, $"Objective complete: {goal.Text}");
+                Add(tick, $"Objective complete: {goal.Text}", HistoryKind.Goal);
+
+            foreach (var brownout in sim.Events.Read<BrownoutChangedEvent>())
+                Add(tick,
+                    brownout.InBrownout
+                        ? $"Power network {brownout.NetworkId} browned out — non-critical loads shed."
+                        : $"Power network {brownout.NetworkId} recovered.",
+                    HistoryKind.Brownout);
+
+            foreach (var rel in sim.Events.Read<RelationshipChangedEvent>())
+                Add(tick, $"{NameOf(sim, rel.From)}'s regard for {NameOf(sim, rel.To)} shifted.",
+                    HistoryKind.RelationshipChanged, rel.From, rel.To);
+
+            foreach (var arg in sim.Events.Read<ArgumentEvent>())
+                Add(tick, $"{NameOf(sim, arg.A)} and {NameOf(sim, arg.B)} argued.",
+                    HistoryKind.Argument, arg.A, arg.B);
+
+            foreach (var bond in sim.Events.Read<BondEvent>())
+                Add(tick, $"{NameOf(sim, bond.A)} and {NameOf(sim, bond.B)} grew closer.",
+                    HistoryKind.Bond, bond.A, bond.B);
+
+            foreach (var build in sim.Events.Read<ConstructionCompletedEvent>())
+                Add(tick, $"{NameOf(sim, build.BuilderId)} finished a construction.",
+                    HistoryKind.ConstructionCompleted, build.BuilderId);
         }
 
-        private void Add(long tick, string text)
+        /// <summary>Citizen name if the sim can still resolve the id, else a neutral placeholder.</summary>
+        private static string NameOf(Simulation sim, uint id)
+            => id != 0 && sim.Citizens.TryGet(id, out var c) && !string.IsNullOrEmpty(c.Name)
+                ? c.Name
+                : "A crew member";
+
+        private static string DeathText(Simulation sim, uint id)
+            => id != 0 && sim.Citizens.TryGet(id, out var c) && !string.IsNullOrEmpty(c.Name)
+                ? $"{c.Name} has died."
+                : "A crew member has died.";
+
+        private void Add(long tick, string text, HistoryKind kind, uint subjectA = 0, uint subjectB = 0)
         {
             if (Entries.Count >= MaxEntries) Entries.RemoveAt(0);
-            Entries.Add(new HistoryEntry(tick, text));
+            Entries.Add(new HistoryEntry(tick, text, (byte)kind, subjectA, subjectB));
         }
 
         public void CaptureState(System.IO.BinaryWriter writer)
@@ -66,21 +146,37 @@ namespace Perilune.Sim
             writer.Write(Entries.Count);
             for (int i = 0; i < Entries.Count; i++)
             {
-                writer.Write(Entries[i].Tick);
-                writer.Write(Entries[i].Text);
+                var e = Entries[i];
+                writer.Write(e.Tick);
+                writer.Write(e.Kind);
+                writer.Write(e.SubjectA);
+                writer.Write(e.SubjectB);
+                writer.Write(e.Text);
             }
         }
 
         public void RestoreState(System.IO.BinaryReader reader, ushort version)
         {
-            if (version != 1) return;
+            if (version == 0) return; // no such blob is ever written
             Entries.Clear();
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
             {
-                long tick = reader.ReadInt64();
-                string text = reader.ReadString();
-                Entries.Add(new HistoryEntry(tick, text));
+                if (version >= 2)
+                {
+                    long tick = reader.ReadInt64();
+                    byte kind = reader.ReadByte();
+                    uint subjectA = reader.ReadUInt32();
+                    uint subjectB = reader.ReadUInt32();
+                    string text = reader.ReadString();
+                    Entries.Add(new HistoryEntry(tick, text, kind, subjectA, subjectB));
+                }
+                else // v1: tick + text only; kind defaults to Generic, subjects to 0.
+                {
+                    long tick = reader.ReadInt64();
+                    string text = reader.ReadString();
+                    Entries.Add(new HistoryEntry(tick, text));
+                }
             }
         }
 
@@ -88,7 +184,13 @@ namespace Perilune.Sim
         {
             ulong h = 0x48495354UL; // 'HIST'
             for (int i = 0; i < Entries.Count; i++)
-                h = h * 31UL + (ulong)Entries[i].Tick;
+            {
+                var e = Entries[i];
+                h = h * 31UL + (ulong)e.Tick;
+                h = h * 31UL + e.Kind;
+                h = h * 31UL + e.SubjectA;
+                h = h * 31UL + e.SubjectB;
+            }
             return h;
         }
     }

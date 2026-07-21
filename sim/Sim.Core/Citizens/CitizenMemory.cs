@@ -6,8 +6,8 @@ namespace Perilune.Sim
     /// <summary>
     /// One episodic memory (LLM_CITIZENS.md §3). v0 simplification: a single Tag
     /// string instead of the doc's Tags array — the rule table assigns exactly one
-    /// tag per entry today ("alarm", "death", "player", "conversation"); widen to
-    /// an array when the topic classifier lands (v1).
+    /// tag per entry today ("alarm", "death", "social", "promise", "conversation",
+    /// "player"); widen to an array when the topic classifier lands (v1).
     /// </summary>
     public struct MemoryEntry
     {
@@ -158,6 +158,9 @@ namespace Perilune.Sim
     /// </summary>
     public sealed class MindState
     {
+        /// <summary>Template conversation-end summaries (LLM upgrade comes later).</summary>
+        public const float ConversationSummaryImportance = 0.5f;
+
         public readonly CitizenMinds Minds = new CitizenMinds();
 
         /// <summary>Doc-shaped retrieval entry point (nowTick added — decay needs the clock).</summary>
@@ -167,19 +170,48 @@ namespace Perilune.Sim
             if (Minds.TryGet(citizenId, out var mind))
                 mind.Memory.GetTop(nowTick, tagFilter, into, k);
         }
+
+        /// <summary>
+        /// Host-callable conversation-end summary: writes one episodic "conversation"
+        /// memory for the citizen (template one-liner today; an LLM-authored recap
+        /// replaces the text at the same call site later). No-op if the citizen has no
+        /// mind (no LLM presence). Not covered by StateHash — mind state is unhashed.
+        /// </summary>
+        public void WriteConversationSummary(uint citizenId, long tick, string text)
+        {
+            if (!Minds.TryGet(citizenId, out var mind)) return;
+            mind.Memory.Add(new MemoryEntry
+            {
+                Tick = tick,
+                Text = text ?? "",
+                Importance = ConversationSummaryImportance,
+                Tag = "conversation",
+            });
+        }
     }
 
     /// <summary>
     /// Rule table converting sim events into memories (LLM_CITIZENS.md §3): the
-    /// event log is the source, importance is rule-assigned. v0 rules:
-    /// AlarmRaisedEvent → 0.5 for all living crew (alarms are ship-wide klaxons and
-    /// carry no position, so "same room/nearby" degrades to everyone — deviation,
-    /// documented); CitizenDiedEvent → 0.95 for everyone alive. Machine-failure
-    /// alarms already arrive as AlarmRaisedEvent (MachineWearSystem).
+    /// event log is the source, importance is rule-assigned. Ship-wide rules
+    /// broadcast; pairwise/personal rules write only to the citizens involved:
+    /// - AlarmRaisedEvent → 0.5 for all living crew (alarms are ship-wide klaxons and
+    ///   carry no position, so "same room/nearby" degrades to everyone — deviation,
+    ///   documented); CitizenDiedEvent → 0.95 for everyone alive.
+    /// - ArgumentEvent → 0.55 "social" for both participants (each remembers the other).
+    /// - BondEvent → 0.5 "social" for both participants.
+    /// - RelationshipChangedEvent → 0.6 "social" for the opinion holder (the From side).
+    /// - CitizenEffectAppliedEvent (Accepted AgreeTask) → 0.7 "promise" for the citizen
+    ///   who agreed — promise FORMATION. (Promise BREAKING is deferred: see the class
+    ///   note — it needs a broken-promise signal + a def-tunable window this lane cannot
+    ///   add without a spine/def change; filed as contract requests.)
+    /// Machine-failure alarms already arrive as AlarmRaisedEvent (MachineWearSystem).
     /// Registered by the HOST after the systems that publish these events.
     /// IntervalTicks is 1 (doc says 1 Hz) because the event bus is double-buffered
     /// per tick — a 10-tick reader would miss events from unaligned ticks.
-    /// Steady state (no events) does not allocate.
+    /// Steady state (no events) does not allocate. Importances are hardcoded consts,
+    /// NOT def fields: the def registry (SimDefs.cs) is an integrator-gated spine file,
+    /// so tuning them is a contract request, not an in-lane def-field commit.
+    /// Mind state is deliberately UNHASHED — nothing here touches Simulation.StateHash.
     /// </summary>
     public sealed class MemorySystem : ISimSystem
     {
@@ -188,6 +220,10 @@ namespace Perilune.Sim
 
         public const float AlarmImportance = 0.5f;
         public const float DeathImportance = 0.95f;
+        public const float ArgumentImportance = 0.55f;
+        public const float BondImportance = 0.5f;
+        public const float RelationshipImportance = 0.6f;
+        public const float PromiseImportance = 0.7f;
 
         private readonly MindState _minds;
 
@@ -208,8 +244,43 @@ namespace Perilune.Sim
             var deaths = sim.Events.Read<CitizenDiedEvent>();
             for (int i = 0; i < deaths.Length; i++)
                 Broadcast(sim, "We lost someone.", DeathImportance, "death");
+
+            var arguments = sim.Events.Read<ArgumentEvent>();
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                var e = arguments[i];
+                WriteTo(sim, e.A, "Argued with " + NameOf(sim, e.B) + ".", ArgumentImportance, "social");
+                WriteTo(sim, e.B, "Argued with " + NameOf(sim, e.A) + ".", ArgumentImportance, "social");
+            }
+
+            var bonds = sim.Events.Read<BondEvent>();
+            for (int i = 0; i < bonds.Length; i++)
+            {
+                var e = bonds[i];
+                WriteTo(sim, e.A, "Grew closer to " + NameOf(sim, e.B) + ".", BondImportance, "social");
+                WriteTo(sim, e.B, "Grew closer to " + NameOf(sim, e.A) + ".", BondImportance, "social");
+            }
+
+            var relationships = sim.Events.Read<RelationshipChangedEvent>();
+            for (int i = 0; i < relationships.Length; i++)
+            {
+                var e = relationships[i];
+                WriteTo(sim, e.From, "My feelings about " + NameOf(sim, e.To) + " changed.",
+                    RelationshipImportance, "social");
+            }
+
+            // Promise formation: the citizen accepted a task the player asked of them.
+            var effects = sim.Events.Read<CitizenEffectAppliedEvent>();
+            for (int i = 0; i < effects.Length; i++)
+            {
+                var e = effects[i];
+                if (e.Accepted && e.Kind == EffectKind.AgreeTask)
+                    WriteTo(sim, e.CitizenId, "I agreed to dig out some debris for the captain.",
+                        PromiseImportance, "promise");
+            }
         }
 
+        /// <summary>Ship-wide write: every living crew member with a mind remembers it.</summary>
         private void Broadcast(Simulation sim, string text, float importance, string tag)
         {
             var citizens = sim.Citizens.Items;
@@ -227,5 +298,22 @@ namespace Perilune.Sim
                 });
             }
         }
+
+        /// <summary>Targeted write: one specific citizen, if alive and LLM-present.</summary>
+        private void WriteTo(Simulation sim, uint citizenId, string text, float importance, string tag)
+        {
+            if (!sim.Citizens.TryGet(citizenId, out var citizen) || citizen.Dead) return;
+            if (!_minds.Minds.TryGet(citizenId, out var mind)) return;
+            mind.Memory.Add(new MemoryEntry
+            {
+                Tick = sim.TickCount,
+                Text = text,
+                Importance = importance,
+                Tag = tag,
+            });
+        }
+
+        private static string NameOf(Simulation sim, uint id)
+            => id != 0 && sim.Citizens.TryGet(id, out var c) && !string.IsNullOrEmpty(c.Name) ? c.Name : "someone";
     }
 }
