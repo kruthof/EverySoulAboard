@@ -1,0 +1,12 @@
+<Project>
+  <!-- Repo-wide build defaults. Deliberately minimal:
+       - no InvariantGlobalization: the de-DE dev machine is our live culture-bug canary
+         (all wire/dump/golden code must use InvariantCulture explicitly).
+       - no TreatWarningsAsErrors yet: enable per-project as lanes clean up. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+</Project>
