@@ -1,0 +1,5 @@
+# PERILUNE content pack manifest (Sim.Content).
+# The base game itself ships as packs — nothing in Sim.Core knows this pack by name.
+id = "core"
+name = "PERILUNE Core"
+version = "0.1.0"

@@ -18,6 +18,7 @@
     <Compile Include="../../sim/Sim.Gen/**/*.cs" />
     <Compile Include="../../sim/Sim.Glyph/**/*.cs" />
     <Compile Include="../../sim/Sim.Llm/**/*.cs" />
+    <Compile Include="../../sim/Sim.Content/**/*.cs" />
     <!-- Share the PeriluneTui host + dump renderer so the golden fixtures assert on the
          exact code path the CLI prints. Explicit allowlist (not a glob): the interactive
          client's Console/raw-mode files (AnsiTerminal, GameLoop, KeyDecoder, …) must NOT

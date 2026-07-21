@@ -8,6 +8,13 @@ cd "$(dirname "$0")"
 echo "== tests =="
 "$DOTNET" test tests/Perilune.Tests --nologo
 
+echo "== client render tests =="
+if command -v node >/dev/null 2>&1; then
+  node --test "client/test/*.test.js"
+else
+  echo "node not found — skipped"
+fi
+
 echo "== TUI dump smoke =="
 "$DOTNET" run --project hosts/tui -- --dump --days 1 --metrics > /dev/null
 
