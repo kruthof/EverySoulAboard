@@ -9,6 +9,7 @@
     "typecheck": "tsc -p jsconfig.json",
     "extract-sprites": "node tools/extract-sprites.mjs",
     "regen-goldens": "node tools/regen-goldens.mjs",
+    "regen-pass-goldens": "node tools/regen-pass-goldens.mjs",
     "serve": "python3 serve.py"
   },
   "devDependencies": {

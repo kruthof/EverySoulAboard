@@ -108,3 +108,62 @@ button.on{background:rgba(45,226,255,.14); border-color:var(--neon); color:var(-
 .hint{color:var(--faint); font-size:10px; line-height:1.6; margin-top:2px}
 kbd{background:#0d0918;border:1px solid var(--edge);border-radius:4px;padding:0 4px;color:var(--dim);font-size:10px;font-family:ui-monospace,monospace}
 .disconnected{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(7,4,14,.82);color:var(--dim);font-size:14px;letter-spacing:1px;z-index:10}
+
+/* ==== P2 floating panels: dialogue window, citizen card, MOSS terminal drawer ==== */
+/* #panels is an empty overlay until a chat/citizen/moss message opens a panel, so the default
+   client view is byte-identical to before. Panels float above the .app chrome; z-order rises on
+   focus (panels.js hands out the z-index). */
+#panels{position:fixed;inset:0;pointer-events:none;z-index:30}
+.panel{
+  position:absolute;pointer-events:auto;min-width:280px;max-width:420px;
+  background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--edge);border-radius:10px;
+  box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 0 0 1px rgba(45,226,255,.06);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.panel-dialogue{top:64px;right:312px;width:360px;max-height:60vh}
+.panel-citizen{top:64px;right:20px;width:300px}
+.panel-terminal{left:20px;bottom:20px;width:min(560px,60vw);max-height:44vh}
+.panel-bar{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:default;
+  background:linear-gradient(180deg,#221a3c,#160f28);border-bottom:1px solid var(--edge);
+}
+.panel-title{flex:1;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--neon);font-weight:700}
+.panel-x{padding:1px 7px;font-size:13px;line-height:1;color:var(--dim);background:transparent;border:1px solid transparent}
+.panel-x:hover{color:var(--bad);border-color:var(--edge)}
+.panel-body{padding:11px 12px;overflow:auto;display:flex;flex-direction:column;gap:10px;min-height:0}
+
+/* dialogue window */
+.chat-transcript{display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:34vh}
+.chat-line{font-size:12px;line-height:1.5}
+.chat-who{color:var(--neon);font-weight:600;margin-right:6px}
+.chat-who:empty{display:none}
+.chat-said{color:var(--text)}
+.chat-effect{font-size:11px;font-style:italic;color:var(--warn);border-left:2px solid var(--warn);padding-left:8px}
+.chat-stream{font-size:12px;color:var(--dim);opacity:.85;border-left:2px solid var(--neon-dim);padding-left:8px}
+.chat-input{display:flex;align-items:center;gap:7px;border-top:1px solid var(--edge);padding-top:9px}
+.chat-indicator{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.chat-indicator.streaming{background:var(--neon);box-shadow:0 0 8px var(--neon);animation:pulse 1s ease-in-out infinite}
+.chat-indicator.ended{background:var(--faint)}
+.chat-indicator.idle{background:var(--good);box-shadow:0 0 6px var(--good)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.chat-text{flex:1;min-width:0;font:inherit;font-size:12px;color:var(--text);background:#0d0918;border:1px solid var(--edge);border-radius:6px;padding:5px 8px}
+.chat-text:disabled{opacity:.5}
+.chat-send{flex:none}
+
+/* citizen card */
+.cit-head{display:flex;gap:12px;align-items:flex-start}
+.portrait{width:64px;height:64px;border-radius:10px;flex:none;border:1px solid var(--edge);object-fit:cover}
+.portrait.silhouette{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;letter-spacing:1px;color:rgba(255,255,255,.92);text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.cit-ident{min-width:0;display:flex;flex-direction:column;gap:5px}
+.cit-name{font-size:14px;font-weight:700;color:var(--text)}
+.cit-role{font-size:11px;color:var(--dim);letter-spacing:.3px}
+.cit-traits{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
+.cit-trait{font-size:10px;color:var(--neon);background:rgba(45,226,255,.10);border:1px solid var(--neon-dim);border-radius:10px;padding:2px 8px}
+
+/* MOSS terminal drawer (placeholder shell) */
+.term-note{font-size:11px;color:var(--faint);font-style:italic}
+.term-diags{display:flex;flex-direction:column;gap:3px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px}
+.term-diag{color:var(--text)}
+.term-diag.sev2{color:var(--warn)}
+.term-diag.sev3{color:var(--bad)}

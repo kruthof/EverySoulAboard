@@ -33,7 +33,45 @@
 
 /** @typedef {{type:'log'|'legend'|'inspect', lines:string[]}} LinesMsg */
 /** @typedef {{type:'status', text:string, speed:string, paused:boolean}} StatusMsg */
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg} WireMsg */
+
+/**
+ * Conversation stream (P2). One session is keyed by `sid`; `ev` selects the payload:
+ *   start  {cid, name}           begins/reopens the session (speaker identity)
+ *   delta  {seq, text}           COSMETIC token stream for the turn being spoken now
+ *   line   {who, text}           AUTHORITATIVE accumulated turn — the transcript source of truth
+ *   effect {text}                an authoritative side-note (a memory formed, a promise kept)
+ *   end    {reason}              the conversation is over
+ * A client that dropped every `delta` must still render a correct transcript from `line`s alone;
+ * `line` supersedes the delta preview for its turn. See ui/chat.js (pure reassembler).
+ * @typedef {Object} ChatMsg
+ * @property {'chat'} type
+ * @property {string|number} sid
+ * @property {'start'|'delta'|'line'|'effect'|'end'} ev
+ * @property {*} [cid] @property {string} [name]
+ * @property {number} [seq] @property {string} [text]
+ * @property {string} [who] @property {string} [reason]
+ */
+
+/**
+ * A citizen inspector payload (P2). `portrait` is a string key that MAY be unknown (the art
+ * pipeline hasn't produced it) → the client resolves a procedural silhouette fallback.
+ * @typedef {Object} CitizenMsg
+ * @property {'citizen'} type
+ * @property {*} cid @property {string} name @property {string} [role] @property {string} [mood]
+ * @property {string[]} [traits] @property {string} [portrait]
+ */
+
+/**
+ * MOSS terminal channel (P2). `diag` carries compile diagnostics as [line, col, sev, msg] tuples,
+ * 1-based. Other `ev`s (source/audit/rterror) fill in with the terminal IDE package.
+ * @typedef {Object} MossMsg
+ * @property {'moss'} type
+ * @property {'source'|'diag'|'audit'|'rterror'} ev
+ * @property {[number,number,number,string][]} [diags]
+ * @property {string} [text]
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg} WireMsg */
 
 /**
  * Decode one wire line. Returns the parsed message or null on garbage.

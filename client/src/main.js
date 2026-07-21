@@ -14,7 +14,21 @@ import * as Hud from './ui/hud.js';
 const PROC_TILE = 26;
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
-const executor = new Canvas2DExecutor();
+const executor = makeExecutor(canvas);
+
+// Pick the render backend from `?exec=canvas2d|webgl2`. The WebGL2 executor (webgl/batch.js +
+// webgl/atlas.js do the pure work; the GL upload layer lands in a later package) slots in here
+// without touching main's draw loop — both backends implement the executor.js shape and consume
+// the same DisplayList + ExecuteOpts. Until it exists, both modes resolve to Canvas2D.
+function makeExecutor(cnv) {
+  const want = new URLSearchParams(location.search).get('exec') || 'canvas2d';
+  if (want === 'webgl2') {
+    // TODO(webgl2): return new WebGL2Executor(cnv) once render/webgl/gl-executor.js exists.
+    console.info('[perilune] exec=webgl2 requested; GL executor not built yet — using canvas2d.');
+    return new Canvas2DExecutor();
+  }
+  return new Canvas2DExecutor();
+}
 
 let frame = null;
 let spriteMode = true;
@@ -96,6 +110,10 @@ function onMessage(m) {
     case 'legend': Hud.renderLegend(m.lines); break;
     case 'inspect': Hud.renderInspect(m.lines); break;
     case 'status': Hud.renderStatus(m); break;
+    // P2 panels (host lands these later; the client is ready): dialogue / citizen / terminal.
+    case 'chat': Hud.renderChat(m); break;
+    case 'citizen': Hud.renderCitizen(m); break;
+    case 'moss': Hud.renderMoss(m); break;
     default: break;
   }
 }
