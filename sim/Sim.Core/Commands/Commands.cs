@@ -136,6 +136,34 @@ namespace Perilune.Sim
         }
     }
 
+    /// <summary>
+    /// Designate (or cancel) a build at a tile (P2 build/refit v0). Finds the stack's
+    /// BuildSystem and calls its deterministic public API; a sim without a BuildSystem
+    /// ignores the command (pre-M1 behavior preserved).
+    /// </summary>
+    public sealed class DesignateBuildCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+        private readonly BuildKind _kind;
+        private readonly bool _on;
+
+        public DesignateBuildCommand(Int3 pos, BuildKind kind, bool on = true)
+        {
+            _pos = pos; _kind = kind; _on = on;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            foreach (var s in sim.Systems)
+                if (s is BuildSystem b)
+                {
+                    if (_on) b.Designate(sim, _pos, _kind);
+                    else b.Cancel(sim, _pos);
+                    return;
+                }
+        }
+    }
+
     /// <summary>Edit terrain (M1: used by tests and the debug UI; designations arrive in M2).</summary>
     public sealed class SetTileCommand : ISimCommand
     {

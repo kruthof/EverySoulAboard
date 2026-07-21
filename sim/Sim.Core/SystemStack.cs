@@ -32,6 +32,7 @@ namespace Perilune.Sim
                 new CraftingSystem(),
                 new MachineWearSystem(),
                 new MaintenanceSystem(),
+                new BuildSystem(),         // passive; completions applied after job progress this tick
                 new HydroponicsSystem(),
                 new NeedsSystem(),
                 new SocialSystem(),        // after Needs: positions and deaths settled this tick

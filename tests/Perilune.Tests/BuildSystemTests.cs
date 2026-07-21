@@ -38,12 +38,15 @@ namespace Perilune.Tests
 
         private static ISimSystem[] AugmentedStack(out BuildSystem build)
         {
+            // BuildSystem is spine-registered in CreateDefault since the P2 integrator
+            // commit — use the stack's own instance (appending a second one would leave
+            // JobSystem resolving the first, designation-less copy).
             var baseStack = SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
-            build = new BuildSystem();
-            var systems = new ISimSystem[baseStack.Length + 1];
-            Array.Copy(baseStack, systems, baseStack.Length);
-            systems[baseStack.Length] = build; // passive member; JobSystem finds it by scan
-            return systems;
+            build = null;
+            foreach (var s in baseStack)
+                if (s is BuildSystem b) { build = b; break; }
+            Assert.That(build, Is.Not.Null, "BuildSystem must be registered in SystemStack.CreateDefault");
+            return baseStack;
         }
 
         private static Simulation NewSim(string[] map, ulong seed, out BuildSystem build, SimDefs defs = null)
