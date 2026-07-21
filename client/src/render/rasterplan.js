@@ -19,7 +19,7 @@
 // toggle, or a new glyph/colour scrolls into view) — and not every frame.
 
 import { C, FG, HULL, WASH } from './palette.js';
-import { deviceSpriteKey, pawnSpriteKey, pawnFrameKeys } from './motion.js';
+import { deviceSpriteKey, pawnSpriteKey, pawnFrameKeys, isAnimWalking } from './motion.js';
 
 const G_CITIZEN = 64; // '@'
 
@@ -58,7 +58,8 @@ function spriteVariant(op, opts) {
   const base = op.sprite;
   if (op.glyph === G_CITIZEN && opts.frames) {
     const entry = opts.motion && opts.motion[op.x + ',' + op.y];
-    return pawnSpriteKey(base, !!(entry && entry.walking), opts.timeSec || 0, opts.frames);
+    // isAnimWalking: hold the walk sprite across small step gaps (no walking↔standing flicker).
+    return pawnSpriteKey(base, isAnimWalking(entry), opts.timeSec || 0, opts.frames);
   }
   if (opts.states) return deviceSpriteKey(base, op.tint, op.alpha != null && op.alpha < 1, opts.states);
   return base;
@@ -122,7 +123,7 @@ export function collectCellKeys(passes, useSpr, opts = {}) {
         // A walking pawn bakes ALL its walk frames into the atlas so the atlas stays stable as
         // timeSec advances (only the SAMPLED frame changes per-frame, never the atlas contents).
         if (useSpr && o.sprite && o.glyph === G_CITIZEN && opts.frames &&
-            opts.motion && opts.motion[o.x + ',' + o.y] && opts.motion[o.x + ',' + o.y].walking) {
+            opts.motion && isAnimWalking(opts.motion[o.x + ',' + o.y])) {
           for (const k of pawnFrameKeys(o.sprite, opts.frames)) keys.add('spr:' + k);
           continue;
         }

@@ -65,6 +65,7 @@ function fallbackToCanvas2D() {
   camera.placed = false;
   inputDispose = installInput({
     canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+    getMotion: () => motionByTile(motion),
     onEscape: () => Hud.closeActiveDialogue(),
   });
   swapping = false;
@@ -213,6 +214,7 @@ Hud.onTerminalOp((op, tid, text) => session.send(Cmd.moss(op, tid, text)));
 
 inputDispose = installInput({
   canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
+  getMotion: () => motionByTile(motion),
   onEscape: () => Hud.closeActiveDialogue(),
 });
 window.addEventListener('resize', () => { layout(); draw(); });

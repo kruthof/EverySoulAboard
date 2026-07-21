@@ -4,10 +4,44 @@
 // R/F deck, 1–7 lens, space pause, +/− speed, m move, Enter click, P sprite toggle. P2 (C5):
 // T (or Enter on a selected crew) opens a talk with them; Esc closes the active dialogue (bye).
 
-import { tileFromPoint, zoomAt, panPixels, panByStep } from '../render/camera.js';
+import { tileFromPoint, zoomAt, panPixels, panByStep, transform } from '../render/camera.js';
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid } from '../wire/messages.js';
 import { LENSES } from '../ui/hud.js';
+
+/**
+ * Click assist — PURE. Crew walk constantly and slide between tiles, so a click that "looks"
+ * on a pawn often lands on a neighbouring tile and selects nothing. Given the frame's crew
+ * tuples, the motion tracker (to include the tile a walker is sliding FROM), the camera and a
+ * canvas-pixel click point, return the CURRENT tile of the nearest crew member whose drawn
+ * body plausibly covers the click (within ~0.7 tile of either slide endpoint), or null when
+ * the click isn't near anyone — the caller then falls through to the plain tile click.
+ * @param {{crew?:number[][]}|null} frame
+ * @param {Object<string,{fromX:number,fromY:number,walking:boolean}>|null} motion  by-tile map
+ * @param {import('../render/camera.js').Camera} camera
+ * @param {number} px @param {number} py  click point in canvas pixels
+ * @returns {{x:number,y:number}|null}
+ */
+export function crewTileNear(frame, motion, camera, px, py) {
+  if (!frame || !Array.isArray(frame.crew) || frame.crew.length === 0) return null;
+  const T = camera.tile;
+  const { s, ox, oy } = transform(camera);
+  const radius = 0.7 * T * s;
+  let best = null, bestD = radius;
+  for (const c of frame.crew) {
+    if (!Array.isArray(c) || c.length < 2) continue;
+    const entry = motion ? motion[c[0] + ',' + c[1]] : null;
+    // Candidate body centres: the current tile, plus the slide-from tile while mid-walk.
+    const cands = entry && entry.walking ? [[c[0], c[1]], [entry.fromX, entry.fromY]] : [[c[0], c[1]]];
+    for (const [tx, ty] of cands) {
+      const dx = (tx + 0.5) * T * s + ox - px;
+      const dy = (ty + 0.5) * T * s + oy - py;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < bestD) { bestD = d; best = { x: c[0], y: c[1] }; }
+    }
+  }
+  return best;
+}
 
 /**
  * @param {{
@@ -23,6 +57,7 @@ import { LENSES } from '../ui/hud.js';
 export function installInput(opts) {
   const { canvas, camera, session, getFrame, draw, toggleSprites } = opts;
   const onEscape = opts.onEscape || (() => {});
+  const getMotion = opts.getMotion || (() => null);
 
   // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
   // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
@@ -66,7 +101,13 @@ export function installInput(opts) {
       const t = tileFromPoint(camera, px, py);
       if (t.x >= 0 && t.y >= 0 && t.x < frame.w && t.y < frame.h) {
         if (e.shiftKey) { session.send(Cmd.cursor(t.x, t.y)); session.send(Cmd.move()); }
-        else session.send(Cmd.click(t.x, t.y));
+        else {
+          // Click assist: snap to a nearby (possibly mid-slide) crew member's tile so moving
+          // pawns are actually clickable; a click near no one stays a plain tile click.
+          const snap = crewTileNear(frame, getMotion(), camera, px, py);
+          const c = snap || t;
+          session.send(Cmd.click(c.x, c.y));
+        }
       }
     }
     press = null; canvas.parentElement.classList.remove('panning');

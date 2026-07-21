@@ -6,7 +6,7 @@
 import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
-import { deviceSpriteKey, pawnSpriteKey, walkOffset } from './motion.js';
+import { deviceSpriteKey, pawnSpriteKey, walkOffset, isAnimWalking } from './motion.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
@@ -131,7 +131,9 @@ export class Canvas2DExecutor {
           const pr = (PAWN_ROLES[v] && sprites.get(PAWN_ROLES[v])) ? PAWN_ROLES[v] : 'pawn';
           // C7 walk: cycle SPRITE_FRAMES while walking + slide from the previous tile.
           const entry = anim.motion && anim.motion[o.x + ',' + o.y];
-          const key = pawnSpriteKey(pr, !!(entry && entry.walking), anim.timeSec || 0, SPRITE_FRAMES);
+          // Sprite choice holds "walking" for a couple of step-less frames (isAnimWalking) so
+          // per-frame step gaps don't flicker walking↔standing; the SLIDE stays step-gated.
+          const key = pawnSpriteKey(pr, isAnimWalking(entry), anim.timeSec || 0, SPRITE_FRAMES);
           const frameImg = key !== pr ? sprites.decoded(key) : null;
           const off = entry && entry.walking ? walkOffset(entry, anim.walkProgress == null ? 1 : anim.walkProgress) : { ox: 0, oy: 0 };
           const dx = off.ox * T, dy = off.oy * T;

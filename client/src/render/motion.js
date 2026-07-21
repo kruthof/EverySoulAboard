@@ -17,11 +17,31 @@
 
 import { C } from './palette.js';
 
-/** @typedef {{x:number,y:number,walking:boolean,facing:(string|null),fromX:number,fromY:number,dx:number,dy:number}} MotionEntry */
+/** @typedef {{x:number,y:number,walking:boolean,facing:(string|null),fromX:number,fromY:number,dx:number,dy:number,sinceStep:number}} MotionEntry */
 /** @typedef {{deck:(number|null), byCid:Object<string,MotionEntry>}} MotionState */
 
 /** Walk-cycle frame rate (frames per second) — how fast SPRITE_FRAMES advance while walking. */
 export const WALK_FPS = 6;
+
+/**
+ * Sprite hysteresis: keep showing the WALK sprite for this many step-less frames after a real
+ * step. A pathing citizen often steps only every 2nd–3rd wire frame (tick cadence vs render
+ * cadence), and without a hold the pawn flip-flops walking↔standing several times a second.
+ * The hold covers those gaps; a genuinely stopped pawn settles to standing after the hold.
+ * Sub-tile SLIDING (walkOffset) is untouched — only the sprite choice is held.
+ */
+export const WALK_HOLD_FRAMES = 2;
+
+/**
+ * Whether a pawn should be DRAWN with its walk-cycle sprite: it stepped this frame, or within
+ * the last WALK_HOLD_FRAMES frames (see above). Pure; null-tolerant (no entry → standing).
+ * @param {MotionEntry|null|undefined} entry
+ * @returns {boolean}
+ */
+export function isAnimWalking(entry) {
+  if (!entry) return false;
+  return entry.walking || entry.sinceStep <= WALK_HOLD_FRAMES;
+}
 
 const FACING = ['N', 'E', 'S', 'W'];
 /** Facing letter for a unit step (dx,dy). Null for a non-step. */
@@ -58,17 +78,25 @@ export function trackMotion(prev, frame) {
     if (!Array.isArray(c) || c.length <= 3) continue; // no cid → untrackable
     const x = c[0], y = c[1], cid = c[3];
     const p = deckChanged ? null : prev.byCid[cid];
-    let walking = false, facing = null, fromX = x, fromY = y, dx = 0, dy = 0;
+    // sinceStep: frames since the last REAL step — 0 on a step, counting up while standing,
+    // effectively-infinite on a spawn/teleport/deck change (never "recently walked"). Capped
+    // so long-idle counters can't overflow into surprising values.
+    let walking = false, facing = null, fromX = x, fromY = y, dx = 0, dy = 0, sinceStep = 1000;
     if (p) {
       const sx = x - p.x, sy = y - p.y;
       if (Math.abs(sx) + Math.abs(sy) === 1) {
         // a contiguous one-tile step → a real walk; remember where it stepped from.
         walking = true; facing = facingOf(sx, sy); fromX = p.x; fromY = p.y; dx = sx; dy = sy;
+        sinceStep = 0;
+      } else if (sx === 0 && sy === 0) {
+        // standing on the tracked tile: the step recency ages by one frame (held facing kept).
+        sinceStep = Math.min(1000, (p.sinceStep == null ? 1000 : p.sinceStep) + 1);
+        facing = p.facing;
       }
-      // 0 tiles → standing (default); >1 tiles → teleport → reset (default, no walk)
+      // >1 tiles → teleport → reset (default, no walk, stale recency)
     }
     // p == null → fresh spawn / fog reveal / post-deck-change: NOT a walk.
-    byCid[cid] = { x, y, walking, facing, fromX, fromY, dx, dy };
+    byCid[cid] = { x, y, walking, facing, fromX, fromY, dx, dy, sinceStep };
   }
   return { deck, byCid };
 }

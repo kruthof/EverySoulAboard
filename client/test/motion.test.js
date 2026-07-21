@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 
 import {
   initMotion, trackMotion, motionByTile, walkFrameIndex, walkOffset,
-  deviceSpriteKey, pawnSpriteKey, pawnFrameKeys, WALK_FPS,
+  deviceSpriteKey, pawnSpriteKey, pawnFrameKeys, WALK_FPS, WALK_HOLD_FRAMES, isAnimWalking,
 } from '../src/render/motion.js';
 import { C } from '../src/render/palette.js';
 
@@ -151,4 +151,42 @@ test('pawnFrameKeys enumerates every walk frame for the atlas (empty when no mul
   assert.deepEqual(pawnFrameKeys('pawn', { pawn: ['a', 'b'] }), ['pawn#w0', 'pawn#w1']);
   assert.deepEqual(pawnFrameKeys('pawn_b', { pawn_b: ['c'] }), []);
   assert.deepEqual(pawnFrameKeys('pawn', {}), []);
+});
+
+// ---------------- walk-sprite hysteresis (WALK_HOLD_FRAMES) ----------------
+
+test('sinceStep counts step-less frames and isAnimWalking holds the walk sprite across gaps', () => {
+  const step = trackMotion(
+    trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]])),
+    frame(0, [[6, 5, 0, 7]]));
+  assert.equal(step.byCid[7].walking, true);
+  assert.equal(step.byCid[7].sinceStep, 0);
+  assert.equal(isAnimWalking(step.byCid[7]), true);
+
+  // One step-less frame: no longer "walking" (no slide) but the SPRITE stays on the walk cycle.
+  const held1 = trackMotion(step, frame(0, [[6, 5, 0, 7]]));
+  assert.equal(held1.byCid[7].walking, false, 'no slide without a real step');
+  assert.equal(held1.byCid[7].sinceStep, 1);
+  assert.equal(isAnimWalking(held1.byCid[7]), true, 'held within WALK_HOLD_FRAMES');
+  assert.equal(held1.byCid[7].facing, 'E', 'facing survives the hold');
+
+  // Beyond the hold the pawn settles to standing.
+  let m = held1;
+  for (let i = 0; i < WALK_HOLD_FRAMES; i++) m = trackMotion(m, frame(0, [[6, 5, 0, 7]]));
+  assert.equal(m.byCid[7].sinceStep, 1 + WALK_HOLD_FRAMES);
+  assert.equal(isAnimWalking(m.byCid[7]), false, 'a genuinely stopped pawn stands');
+});
+
+test('spawn / teleport / deck change never count as recently-walked', () => {
+  const fresh = trackMotion(initMotion(), frame(0, [[3, 3, 0, 9]]));
+  assert.equal(isAnimWalking(fresh.byCid[9]), false, 'first sighting stands');
+
+  const walked = trackMotion(fresh, frame(0, [[4, 3, 0, 9]]));
+  const tele = trackMotion(walked, frame(0, [[9, 9, 0, 9]]));
+  assert.equal(isAnimWalking(tele.byCid[9]), false, 'a teleport resets the recency');
+
+  const deck = trackMotion(walked, frame(1, [[4, 3, 0, 9]]));
+  assert.equal(isAnimWalking(deck.byCid[9]), false, 'a deck change resets the recency');
+  assert.equal(isAnimWalking(null), false);
+  assert.equal(isAnimWalking(undefined), false);
 });

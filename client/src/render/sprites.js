@@ -7,6 +7,7 @@ import {
   SPRITE_URIS, SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE, SPRITE_STATES, SPRITE_FRAMES,
 } from '../../assets/sprites.g.js';
 import { VARIANT } from './motion.js';
+import { scrubMatte } from './matte.js';
 
 export { SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE };
 
@@ -46,10 +47,36 @@ export class SpriteAssets {
     for (const k of Object.keys(uris)) {
       const image = new Image();
       const isBase = Object.prototype.hasOwnProperty.call(SPRITE_URIS, k);
-      image.onload = () => { if (isBase && ++this._baseLoaded === this._baseTotal && onReady) onReady(); };
+      image.onload = () => {
+        // Matte scrub (see matte.js): a generated frame whose white backdrop survived the
+        // pipeline's key pass gets it cleared here, once, at load. Scoped to the pawn
+        // sprites + their walk frames — the only art class that has exhibited the defect —
+        // so a future light-toned full-bleed tile (wall, floor) can never be gutted by the
+        // border flood. Clean art is a no-op and keeps the original Image.
+        if (k.startsWith('pawn')) {
+          const scrubbed = this._scrub(image);
+          if (scrubbed) this.img[k] = scrubbed;
+        }
+        if (isBase && ++this._baseLoaded === this._baseTotal && onReady) onReady();
+      };
       image.src = uris[k];
       this.img[k] = image;
     }
+  }
+
+  /** Run the pure matte scrub over a decoded image; the corrected canvas when pixels were
+   *  cleared, else null (keep the original — no needless canvas indirection). */
+  _scrub(image) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = image.naturalWidth; c.height = image.naturalHeight;
+      const g = c.getContext('2d');
+      g.drawImage(image, 0, 0);
+      const id = g.getImageData(0, 0, c.width, c.height);
+      if (!scrubMatte(id.data, c.width, c.height)) return null;
+      g.putImageData(id, 0, 0);
+      return c;
+    } catch { return null; } // tainted/odd context — keep the original image
   }
 
   /** All BASE sprite images decoded? (animation variants load opportunistically alongside.) */
@@ -62,10 +89,13 @@ export class SpriteAssets {
   get(name) { return this.img[name]; }
 
   /** The image for a key IF it has decoded, else null — animation variants may lag or be absent, so
-   *  the executor falls back to the base sprite when a variant image isn't ready. */
+   *  the executor falls back to the base sprite when a variant image isn't ready. A matte-scrubbed
+   *  entry is a canvas (always ready); an Image gates on complete+naturalWidth as before. */
   decoded(name) {
     const im = this.img[name];
-    return im && im.complete && im.naturalWidth ? im : null;
+    if (!im) return null;
+    if (typeof im.getContext === 'function') return im; // scrubbed canvas — ready by construction
+    return im.complete && im.naturalWidth ? im : null;
   }
 
   /** Rotated (quarter-turns CW) copy of a role sprite, cached. */
