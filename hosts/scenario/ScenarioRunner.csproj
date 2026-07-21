@@ -17,6 +17,9 @@
     <Compile Include="../../sim/Sim.Core/**/*.cs" />
     <Compile Include="../../sim/Sim.Dsl/**/*.cs" />
     <Compile Include="../../sim/Sim.Gen/**/*.cs" />
+    <!-- The conversation runtime + live provider adapters, for the env-gated
+         `llm-smoke` verb (P2). Adds no CI surface: ci.sh never invokes it. -->
+    <Compile Include="../../sim/Sim.Llm/**/*.cs" />
   </ItemGroup>
 
 </Project>

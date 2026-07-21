@@ -28,6 +28,8 @@ namespace Perilune.Tools
             if (args.Length > 0 && args[0] == "gen") return RunGen(args);
             if (args.Length > 0 && args[0] == "sweep") return RunSweep(args);
             if (args.Length > 0 && args[0] == "dump-personas") return RunDumpPersonas(args);
+            // P2 live-provider smoke: env-gated, spends real money, NEVER in ci.sh.
+            if (args.Length > 0 && args[0] == "llm-smoke") return LlmSmoke.Run(args);
 
             int days = 3;
             ulong seed = 42;
