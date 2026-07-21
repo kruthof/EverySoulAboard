@@ -17,10 +17,15 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   authoritative where the new docs don't supersede it.
 
 ## Status snapshot (2026-07-21)
-P0 + P1 complete (`v1-foundations`): social graph, space layer (nav/sensors),
-offline LLM conversation runtime, content packs, shipgen gates V1-V7 + seeded
-variants, structured client with display-list golden tests. 247 dotnet + 17 node
-tests green. Next: P2 "The Talking Ship" slice (PLAN.md).
+P0 + P1 + **P2 complete** on the automated side ("The Talking Ship" slice; tag
+`v2-talking-ship` pending the human playtest + blind screenshot A/B). Live: async LLM
+runtime + three adapters (Anthropic/OpenAI-compat/Ollama) with `.env` auto-route,
+ConversationHub talking web host, MEMS-persisted crew minds, Chronicle + verbatim
+eulogy, registered Director (gentled 1.35 lever), build/refit walls+doors, relationship
+types, the 8-crew authored slice (`--ship slice`), a ~99%-parity WebGL2 client with
+lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **524 dotnet + 115 node tests
+green** via `./ci.sh`. Live-provider smoke on record ($0.0045, `docs/SMOKE-P2.md`).
+Next: P3 "The Voyage" (PLAN.md).
 
 ## Layout
 `sim/` (Sim.Core, Sim.Dsl, Sim.Gen, Sim.Glyph, Sim.Llm, Sim.Content — all headless) ·
@@ -46,15 +51,20 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (189+ green; `./ci.sh`
-  runs the full gate). Golden rewrite only when intended:
-  `UPDATE_GOLDEN=1 ... --filter ...`, say why.
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (524 green; `./ci.sh`
+  runs the full gate — 524 dotnet + 115 node, ~3 min wall since V6 runs real sim-days).
+  Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
-  state moves it, update ci.sh + here + memory in the same commit).
+  state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
+  `401c9b96aff338a7`; the slice tick-3000 golden is `d1710ab6a1fe50ce`.
 - Play: `~/.dotnet/dotnet run --project hosts/web` → http://localhost:8323 ·
+  the P2 8-crew slice: `... --project hosts/web -- --ship slice` (also `hosts/tui`) ·
   terminal: `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
+- Live LLM: a plain repo-root `.env` (`claude_key` / `openai_key`) auto-routes web-host
+  dialogue to a live backend; the env-gated smoke (zero CI surface, spends cents) is
+  `... --project hosts/scenario -- llm-smoke --backend all` (results in `docs/SMOKE-P2.md`).
 - Sprites: `python3 art/spritegen/run.py --spec <spec.json> --stage all`
-  (`GEMINI_API_KEY` env or repo-root `.env`).
+  (`GEMINI_API_KEY` env or repo-root `.env`). Slice frame: `node art/screenshot-test/slice-shot.mjs`.
 - Commit style: one commit per reviewed work package; substantive changes get a dual
   review before commit.
