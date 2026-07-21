@@ -33,10 +33,12 @@
     <Compile Include="../../hosts/tui/Terminal/AnsiPaint.cs" />
     <Compile Include="../../hosts/tui/Ui/InspectorModel.cs" />
     <Compile Include="../../hosts/tui/Ui/ScreenComposer.cs" />
-    <!-- A6: the web skin's PURE wire serializer only. WebHost/GameSession/Program touch
-         sockets and threads and must NOT leak into the headless test host — add a file here
-         only when a test needs the pure logic. -->
+    <!-- A6: the web skin's PURE wire serializer only. WebHost/Program touch sockets and
+         threads and must NOT leak into the headless test host — add a file here only when a
+         test needs the pure logic. GameSession is pure apart from its (unstarted) sim thread:
+         WebCommand.Parse and the message-building helpers are unit-tested directly. -->
     <Compile Include="../../hosts/web/WireFormat.cs" />
+    <Compile Include="../../hosts/web/GameSession.cs" />
   </ItemGroup>
 
   <ItemGroup>

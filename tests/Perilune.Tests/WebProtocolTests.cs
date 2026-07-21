@@ -60,9 +60,9 @@ namespace Perilune.Tests
             string without = WireFormat.Frame(buf, 0, "none", -1, -1);
             StringAssert.DoesNotContain("\"crew\":", without, "no crew field when the list is empty");
             string with = WireFormat.Frame(buf, 0, "none", -1, -1,
-                new[] { (50, 4, 1), (12, 9, 2) });
-            StringAssert.Contains("\"crew\":[[50,4,1],[12,9,2]]", with,
-                "crew serializes as [x,y,variant] triples");
+                new[] { (50, 4, 1, 7u), (12, 9, 2, 42u) });
+            StringAssert.Contains("\"crew\":[[50,4,1,7],[12,9,2,42]]", with,
+                "crew serializes as [x,y,pv,cid] tuples (cid appended, append-only)");
         }
 
         [Test]
@@ -115,6 +115,17 @@ namespace Perilune.Tests
         {
             var buf = BootFrame(0, Lens.None, out _, out _);
             CheckGolden("web_frame_boot.json", WireFormat.Frame(buf, 0, "none", -1, -1));
+        }
+
+        /// <summary>Locks the append-only 4-element crew tuple [x,y,pv,cid] byte-for-byte on a
+        /// real boot frame. (No pre-existing golden carried crew tuples, so W1's tuple-arity
+        /// growth regenerated nothing; this new golden is the crew shape's coverage.)</summary>
+        [Test]
+        public void Golden_WebFrame_Boot_Crew()
+        {
+            var buf = BootFrame(0, Lens.None, out _, out _);
+            var crew = new[] { (10, 3, 0, 1u), (11, 3, 1, 2u), (20, 7, 2, 3u) };
+            CheckGolden("web_frame_boot_crew.json", WireFormat.Frame(buf, 0, "none", 10, 3, crew));
         }
 
         // ------------------------------------------------------------------ harness

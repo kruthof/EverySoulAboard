@@ -169,8 +169,19 @@ namespace Perilune.Web
                 case CmdKind.Lens: return SetLens(cmd.Name);
                 case CmdKind.Speed: ChangeSpeed(cmd.I); return true;
                 case CmdKind.Pause: TogglePause(); return true;
+                case CmdKind.Talk: TalkTo(cmd.Cid); return false;
+                case CmdKind.Say: return false;   // no live conversation yet — unknown sid ⇒ no-op
+                case CmdKind.Bye: return false;   // no live conversation yet — unknown sid ⇒ no-op
                 default: return false;
             }
+        }
+
+        /// <summary>Open a conversation with a crew member. The LLM/dialogue host wiring lands
+        /// in a later package; until then every talk closes immediately with reason
+        /// "unavailable" (which still exercises the chat serializer end-to-end).</summary>
+        private void TalkTo(uint cid)
+        {
+            Emit(WireFormat.ChatEnd((int)cid, "unavailable"));
         }
 
         private bool SetCursor(int x, int y)
@@ -222,6 +233,8 @@ namespace Perilune.Web
             {
                 _selected = citizen.Id;
                 _status = "selected " + Name(citizen);
+                // Ship the crew identity card so the client can open the inspector/dialogue.
+                Emit(BuildCitizenMessage(citizen));
                 return;
             }
             if (TryDeviceAt(_cursor, out var device))
@@ -240,6 +253,9 @@ namespace Perilune.Web
                     _sim.EnqueueCommand(new SetDeviceStateCommand(device.Id, open: !device.IsOpen));
                     _status = "toggle " + device.Kind;
                 }
+                // A terminal additionally announces itself so the client can open its MOSS panel.
+                if (device.Kind == DeviceKind.Terminal && !string.IsNullOrEmpty(device.Name))
+                    Emit(WireFormat.Device("terminal", device.Name));
                 return;
             }
             _status = "nothing here";
@@ -263,16 +279,16 @@ namespace Perilune.Web
             int selX = -1, selY = -1;
             if (_selected != 0 && _sim.Citizens.TryGet(_selected, out var sel) && !sel.Dead && sel.Pos.Z == _deck)
             { selX = sel.Pos.X; selY = sel.Pos.Y; }
-            // Visible crew with a stable per-citizen sprite variant. Only tiles the
-            // projection actually shows as '@' — the fog gate stays authoritative.
-            var crew = new List<(int X, int Y, int Variant)>();
+            // Visible crew with a stable per-citizen portrait variant and their sim id. Only
+            // tiles the projection actually shows as '@' — the fog gate stays authoritative.
+            var crew = new List<(int X, int Y, int Pv, uint Cid)>();
             var citizens = _sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
             {
                 var c = citizens[i];
                 if (c.Dead || c.Pos.Z != _deck) continue;
                 if (_map[c.Pos.X, c.Pos.Y].Glyph != Glyphs.Citizen) continue;
-                crew.Add((c.Pos.X, c.Pos.Y, (int)(c.Id % 3)));
+                crew.Add((c.Pos.X, c.Pos.Y, Portrait(c.Id), c.Id));
             }
             Send("frame", WireFormat.Frame(_map, _deck, _lens.ToString().ToLowerInvariant(), selX, selY, crew), force);
 
@@ -299,6 +315,36 @@ namespace Perilune.Web
             }
             _broadcast(json);
         }
+
+        /// <summary>Broadcast a one-shot event message (chat / citizen / device / moss) — NOT a
+        /// state channel, so it is never cached or deduped: it is a direct reply to a client
+        /// action, fanned out to every tab (single-session design).</summary>
+        private void Emit(string json) => _broadcast(json);
+
+        /// <summary>The crew identity card. Role/traits come from the mind persona when the host
+        /// generated one; the web host currently skips persona generation (SimHost drops
+        /// GenerateMinds for determinism), so in practice this emits name-only with empty
+        /// traits and portrait "" until a persona pass is wired in.</summary>
+        private string BuildCitizenMessage(Citizen citizen)
+        {
+            string role = "", mood = "", portrait = "";
+            IReadOnlyList<string> traits = Array.Empty<string>();
+            if (_host.Minds != null && _host.Minds.Minds.TryGet(citizen.Id, out var mind))
+            {
+                mood = mind.ActiveEmotion(_sim.TickCount);
+                if (mind.Persona != null)
+                {
+                    role = string.IsNullOrEmpty(mind.Persona.RoleNow) ? mind.Persona.RolePreRaid : mind.Persona.RoleNow;
+                    traits = mind.Persona.Traits;
+                    portrait = Portrait(citizen.Id).ToString(CultureInfo.InvariantCulture);
+                }
+            }
+            return WireFormat.Citizen(citizen.Id, Name(citizen), role, mood, traits, portrait);
+        }
+
+        /// <summary>Stable per-citizen portrait/sprite variant (keeps a crew member's face steady
+        /// across frames). Mirrored in the frame crew tuple's <c>pv</c> element.</summary>
+        private static int Portrait(uint id) => (int)(id % 3);
 
         private IReadOnlyList<string> BuildLog()
         {
@@ -362,7 +408,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Moss }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -372,29 +418,53 @@ namespace Perilune.Web
         public readonly CmdKind Kind;
         public readonly int X, Y, I;
         public readonly string Name;
+        // Dialogue / MOSS payload (W1/W3). Sid = conversation id, Cid = citizen id,
+        // Text = free text (say / moss set), Op = moss op, Tid = moss/device terminal id.
+        public readonly int Sid;
+        public readonly uint Cid;
+        public readonly string Text, Op, Tid;
 
-        public WebCommand(CmdKind kind, int x = 0, int y = 0, int i = 0, string name = null)
+        public WebCommand(CmdKind kind, int x = 0, int y = 0, int i = 0, string name = null,
+                          int sid = 0, uint cid = 0, string text = null, string op = null, string tid = null)
         {
             Kind = kind; X = x; Y = y; I = i; Name = name;
+            Sid = sid; Cid = cid; Text = text; Op = op; Tid = tid;
         }
 
-        /// <summary>Parse one message: {"cmd":"cursor","x":3,"y":4} / {"cmd":"deck","dz":1} /
-        /// {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} / {"cmd":"pause"} etc.
-        /// Unknown/garbage ⇒ Kind.Unknown (ignored by the session).</summary>
+        /// <summary>Parse one message. Two families share this reader:
+        /// the original view commands keyed by "cmd" ({"cmd":"cursor","x":3,"y":4} /
+        /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
+        /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
+        /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
+        /// {"type":"moss","op":"open|set|audit","tid":"..","text"?}). Unknown/garbage ⇒
+        /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)
         {
             if (string.IsNullOrEmpty(json)) return default;
             string cmd = Str(json, "cmd");
-            if (cmd == null) return default;
-            switch (cmd)
+            if (cmd != null)
             {
-                case "cursor": return new WebCommand(CmdKind.Cursor, Int(json, "x"), Int(json, "y"));
-                case "click": return new WebCommand(CmdKind.Click, Int(json, "x"), Int(json, "y"));
-                case "move": return new WebCommand(CmdKind.Move);
-                case "deck": return new WebCommand(CmdKind.Deck, i: Int(json, "dz"));
-                case "lens": return new WebCommand(CmdKind.Lens, name: Str(json, "name"));
-                case "speed": return new WebCommand(CmdKind.Speed, i: Int(json, "delta"));
-                case "pause": return new WebCommand(CmdKind.Pause);
+                switch (cmd)
+                {
+                    case "cursor": return new WebCommand(CmdKind.Cursor, Int(json, "x"), Int(json, "y"));
+                    case "click": return new WebCommand(CmdKind.Click, Int(json, "x"), Int(json, "y"));
+                    case "move": return new WebCommand(CmdKind.Move);
+                    case "deck": return new WebCommand(CmdKind.Deck, i: Int(json, "dz"));
+                    case "lens": return new WebCommand(CmdKind.Lens, name: Str(json, "name"));
+                    case "speed": return new WebCommand(CmdKind.Speed, i: Int(json, "delta"));
+                    case "pause": return new WebCommand(CmdKind.Pause);
+                    default: return default;
+                }
+            }
+            // Dialogue / MOSS family, keyed by "type".
+            string type = Str(json, "type");
+            if (type == null) return default;
+            switch (type)
+            {
+                case "talk": return new WebCommand(CmdKind.Talk, cid: (uint)Int(json, "cid"));
+                case "say": return new WebCommand(CmdKind.Say, sid: Int(json, "sid"), text: Str(json, "text"));
+                case "bye": return new WebCommand(CmdKind.Bye, sid: Int(json, "sid"));
+                case "moss": return new WebCommand(CmdKind.Moss, op: Str(json, "op"), tid: Str(json, "tid"), text: Str(json, "text"));
                 default: return default;
             }
         }
