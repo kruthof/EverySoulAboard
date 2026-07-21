@@ -45,13 +45,17 @@ namespace Perilune.Llm.Providers
     /// </summary>
     public sealed class LlmSettings
     {
-        private static readonly string[] KnownProviders = { "anthropic", "openai", "ollama" };
+        private static readonly string[] KnownProviders = { "anthropic", "openai", "ollama", "gemini" };
 
         private static readonly Dictionary<string, string> DefaultBaseUrls = new Dictionary<string, string>
         {
             ["anthropic"] = "https://api.anthropic.com",
             ["openai"] = "https://api.openai.com",
             ["ollama"] = "http://localhost:11434",
+            // Settings-level slot only for now: the GeminiBackend is future work, but the key is
+            // already carried in the repo .env (the art pipeline uses it) — parse it, hold it,
+            // never route to it (EffectiveBackend's default arm keeps gemini => template).
+            ["gemini"] = "https://generativelanguage.googleapis.com",
         };
 
         public RouteConfig Dialogue { get; }
@@ -242,11 +246,30 @@ namespace Perilune.Llm.Providers
 
         // PERILUNE_LLM_ANTHROPIC_BASE_URL → anthropic.base_url ; DIALOGUE_BACKEND → dialogue.backend ;
         // BUDGET_USD_PER_HOUR → budget.usd_per_hour. Only the first underscore after the prefix maps
-        // to the section separator. Unprefixed keys are ignored.
+        // to the section separator. Unprefixed keys are ignored — EXCEPT the well-known key-name
+        // aliases below, so a plain `.env` with claude_key/openai_key/gemini_key just works. A
+        // canonical PERILUNE_LLM_ name still wins over an alias in the same source (aliases map to
+        // the same canonical slot; last writer within a source is the file's later line, and source
+        // precedence is unchanged).
         private static string EnvKeyToCanonical(string key)
         {
             const string prefix = "PERILUNE_LLM_";
             if (string.IsNullOrEmpty(key)) return null;
+            switch (key.Trim().ToLowerInvariant())
+            {
+                case "claude_key":
+                case "anthropic_api_key":
+                    return "anthropic.key";
+                case "openai_key":
+                case "openai_api_key":
+                    return "openai.key";
+                case "gemini_key":
+                case "geminie_key": // the historic repo-root .env spelling
+                case "gemini_api_key":
+                    return "gemini.key";
+                case "ollama_host":
+                    return "ollama.base_url";
+            }
             if (!key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
             string rest = key.Substring(prefix.Length).ToLowerInvariant();
             int us = rest.IndexOf('_');

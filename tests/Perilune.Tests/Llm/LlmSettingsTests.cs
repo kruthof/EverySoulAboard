@@ -144,5 +144,34 @@ namespace Perilune.Tests.Llm
             Assert.That(s.Providers["anthropic"].ToString(), Does.Not.Contain("SUPERSECRET"));
             Assert.That(s.Providers["anthropic"].ToString(), Does.Contain("<set>"));
         }
+
+        [Test]
+        public void DotEnv_WellKnownKeyAliases_MapToProviderKeys()
+        {
+            // The repo-root .env convention: plain provider key names, no PERILUNE_LLM_ prefix.
+            string dotEnv = "claude_key = sk-ant-ALIAS\nopenai_key = sk-oai-ALIAS\ngeminie_key = AQ.ALIAS\nollama_host = http://box:11434\n";
+            LlmSettings s = LlmSettings.Parse(null, dotEnv, null);
+
+            Assert.That(s.Providers["anthropic"].ApiKey, Is.EqualTo("sk-ant-ALIAS"));
+            Assert.That(s.Providers["openai"].ApiKey, Is.EqualTo("sk-oai-ALIAS"));
+            Assert.That(s.Providers["gemini"].ApiKey, Is.EqualTo("AQ.ALIAS"));
+            Assert.That(s.Providers["ollama"].BaseUrl, Is.EqualTo("http://box:11434"));
+        }
+
+        [Test]
+        public void KeyAliases_LoseToCanonicalNames_AcrossSources()
+        {
+            // A canonical env var must beat a .env alias (source precedence unchanged).
+            var env = new Dictionary<string, string> { ["PERILUNE_LLM_ANTHROPIC_KEY"] = "sk-ant-CANON" };
+            LlmSettings s = LlmSettings.Parse(env, "claude_key=sk-ant-ALIAS\n", null);
+            Assert.That(s.Providers["anthropic"].ApiKey, Is.EqualTo("sk-ant-CANON"));
+        }
+
+        [Test]
+        public void KeyAliases_TemplateFallbackStillHoldsWithoutThem()
+        {
+            LlmSettings s = LlmSettings.Parse(null, "unrelated_key=nope\n", "[dialogue]\nbackend = \"anthropic\"\n");
+            Assert.That(s.EffectiveBackend(s.Dialogue), Is.EqualTo("template"), "unknown names stay ignored; key-absent => template");
+        }
     }
 }
