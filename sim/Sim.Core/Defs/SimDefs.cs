@@ -355,7 +355,7 @@ namespace Perilune.Sim
             public float AlarmDecayPerPeriod;
             /// <summary>Per-period multiplier applied to the death accumulator (exponential decay, 0..1). Current: 0.95.</summary>
             public float DeathDecayPerPeriod;
-            /// <summary>Upper bound on the WearPressure lever (lower bound is a fixed 1.0). Current: 2.</summary>
+            /// <summary>Upper bound on the WearPressure lever (lower bound is a fixed 1.0). Current: 1.35.</summary>
             public float MaxWearPressure;
             /// <summary>Tension the lever curve targets: below it (quiet) the lever BUILDS toward
             /// the max; above it (after incidents) the lever RELEASES toward 1.0. Current: 0.35.</summary>
