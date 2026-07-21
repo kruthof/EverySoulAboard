@@ -32,8 +32,18 @@ namespace Perilune.Web
     ///
     /// Because <see cref="LlmDispatcher.RunTurnAsync"/> re-runs PrepareTurn on ITS worker thread
     /// (which would read the sim off the sim thread), L6 drives turns through this purpose-built
-    /// pump instead — reusing the same PrepareTurn/CompleteTurn split, backend chain, and
-    /// observed-completion + retry/degrade policy, but keeping the snapshot on the sim thread.
+    /// pump instead — reusing the same PrepareTurn/CompleteTurn split and backend-chain shape, but
+    /// keeping the snapshot on the sim thread.
+    ///
+    /// RESILIENCE POLICY (honest, and deliberately simpler than <see cref="LlmDispatcher"/>'s
+    /// breaker): per turn, the primary backend gets up to 1 + maxRetries attempts, each bounded by
+    /// a per-request timeout (a timeout or a throw is a retryable failure); on exhaustion the turn
+    /// falls through the chain to the offline template terminator, which never fails. A completion
+    /// counts ONLY on an observed <see cref="TurnComplete"/> (a truncated stream dispatches
+    /// nothing). "Degraded" means the last turn was answered by a fallback rather than the primary;
+    /// while degraded the primary is re-probed once at the START of every new turn — there is NO
+    /// time-based cooldown, backoff, or breaker window here (that is the LlmDispatcher's job). If a
+    /// chain with no template terminator exhausts, the turn ends reason "error".
     /// </summary>
     internal sealed class ConversationHub
     {
@@ -58,10 +68,15 @@ namespace Perilune.Web
         private readonly CostMeter _cost;
         private readonly Func<DateTime> _clock;
         private readonly int _maxRetries;
+        private readonly TimeSpan _requestTimeout;
 
         private readonly ConcurrentQueue<string> _outbox = new ConcurrentQueue<string>();
         private readonly Dictionary<int, Session> _sessions = new Dictionary<int, Session>();
         private readonly object _completeLock = new object();   // serialises CompleteTurn + _service.Backend swap
+        // CostMeter is an unsynchronised List/decimal aggregate: Record runs on background dialogue
+        // threads, CostPerHourUsd on the sim thread (StatusPayload). ALL access goes through this
+        // lock so a background prune can never shrink the window mid-read on the sim thread.
+        private readonly object _costLock = new object();
 
         private int _nextSid = 1;
         private int _inFlightCount;             // Interlocked
@@ -71,7 +86,8 @@ namespace Perilune.Web
 
         public ConversationHub(SimHost host, Action<string> broadcast,
             IReadOnlyList<IChatBackend> chain, Func<DateTime> clock,
-            decimal budgetPerHourUsd, IReadOnlyDictionary<string, ModelPrice> prices, int maxRetries = 2)
+            decimal budgetPerHourUsd, IReadOnlyDictionary<string, ModelPrice> prices,
+            int maxRetries = 2, TimeSpan? requestTimeout = null)
         {
             _host = host ?? throw new ArgumentNullException(nameof(host));
             _sim = host.Sim;
@@ -82,6 +98,10 @@ namespace Perilune.Web
             _cost = new CostMeter(prices ?? new Dictionary<string, ModelPrice>(), budgetPerHourUsd);
             _activeBackend = _chain[0].Caps.Name;
             _maxRetries = maxRetries < 0 ? 0 : maxRetries;
+            // Per-request wall budget: a live backend that never terminates would otherwise wedge
+            // the session (InFlight stuck true, later says queued forever). A timeout is a retryable
+            // failure that feeds the degrade chain like any other.
+            _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(60);
         }
 
         /// <summary>Record the thread that owns the sim (called from GameSession's loop / test drive)
@@ -191,7 +211,8 @@ namespace Perilune.Web
             AssertSimThread();
             int queued = 0;
             foreach (var kv in _sessions) queued += kv.Value.Pending.Count;
-            decimal cph = _cost.CostPerHourUsd(_clock());
+            decimal cph;
+            lock (_costLock) cph = _cost.CostPerHourUsd(_clock());
             return WireFormat.LlmStatus(_activeBackend, _degraded, cph, Volatile.Read(ref _inFlightCount), queued);
         }
 
@@ -233,7 +254,8 @@ namespace Perilune.Web
                     _service.Backend = answering;                 // the cap CompleteTurn honours
                     dispatched = _service.CompleteTurn(plan, result.Effects); // → PendingEffectBuffer (tick-boundary)
                 }
-                _cost.Record(result.Usage ?? new TurnUsage(0, 0, 0, 0, answering.Caps.Name), LlmPriority.Dialogue, _clock());
+                lock (_costLock)
+                    _cost.Record(result.Usage ?? new TurnUsage(0, 0, 0, 0, answering.Caps.Name), LlmPriority.Dialogue, _clock());
 
                 Enqueue(WireFormat.ChatLine(s.Sid, "crew", result.Text)); // authoritative accumulated turn
                 bool endByEffect = false;
@@ -270,31 +292,39 @@ namespace Perilune.Web
                 var effects = new List<ProposedEffect>();
                 bool complete = false;
                 TurnUsage usage = null;
-                try
+                using (var cts = new CancellationTokenSource())
                 {
-                    await foreach (ChatDelta d in backend.SendAsync(plan.Request, text, CancellationToken.None).ConfigureAwait(false))
+                    if (_requestTimeout > TimeSpan.Zero) cts.CancelAfter(_requestTimeout);
+                    try
                     {
-                        switch (d)
+                        await foreach (ChatDelta d in backend.SendAsync(plan.Request, text, cts.Token)
+                            .WithCancellation(cts.Token).ConfigureAwait(false))
                         {
-                            case TextDelta td:
-                                sb.Append(td.Text);
-                                Enqueue(WireFormat.ChatDelta(s.Sid, s.Seq++, td.Text));
-                                break;
-                            case EffectProposed ep:
-                                if (ep.Effect != null) effects.Add(ep.Effect);
-                                break;
-                            case TurnComplete tc:
-                                complete = true; usage = tc.Usage;
-                                break;
-                            case BackendError _:
-                                complete = false;
-                                break;
+                            switch (d)
+                            {
+                                case TextDelta td:
+                                    sb.Append(td.Text);
+                                    Enqueue(WireFormat.ChatDelta(s.Sid, s.Seq++, td.Text));
+                                    break;
+                                case EffectProposed ep:
+                                    if (ep.Effect != null) effects.Add(ep.Effect);
+                                    break;
+                                case TurnComplete tc:
+                                    complete = true; usage = tc.Usage;
+                                    break;
+                                case BackendError _:
+                                    complete = false;
+                                    break;
+                            }
                         }
                     }
-                }
-                catch
-                {
-                    complete = false; // a backend that throws on player text is a retryable failure
+                    catch
+                    {
+                        // A per-request timeout (cts cancel) or a backend that throws on player text
+                        // is a retryable failure — never propagated, so the driver's finally always
+                        // clears InFlight and the degrade chain advances.
+                        complete = false;
+                    }
                 }
 
                 last = new Drain(sb.ToString(), effects, complete, usage);

@@ -25,11 +25,15 @@ namespace Perilune.Tests
         private static readonly DateTime Now = new DateTime(2026, 7, 21, 0, 0, 0, DateTimeKind.Utc);
 
         private static GameSession NewGame(IChatBackend[] chain, out SimHost host, out List<string> sent, out ConversationHub hub)
+            => NewGame(chain, 2, TimeSpan.FromSeconds(60), out host, out sent, out hub);
+
+        private static GameSession NewGame(IChatBackend[] chain, int maxRetries, TimeSpan timeout,
+            out SimHost host, out List<string> sent, out ConversationHub hub)
         {
             host = SimHost.Build(SimHost.DefaultSeed);
             var captured = new List<string>();
             sent = captured;
-            hub = new ConversationHub(host, captured.Add, chain, () => Now, 0m, null);
+            hub = new ConversationHub(host, captured.Add, chain, () => Now, 0m, null, maxRetries, timeout);
             return new GameSession(host, captured.Add, hub); // NOT started ⇒ no sim thread
         }
 
@@ -186,6 +190,69 @@ namespace Perilune.Tests
             StringAssert.Contains("\"portrait\":\"pk_", card, "portrait is the ship+citizen persona key");
         }
 
+        // ---------------------------------------------------------------- degrade / timeout / hardening
+
+        [Test]
+        public void Primary_Failure_Falls_Through_To_Template_And_Turn_Completes()
+        {
+            var gs = NewGame(new IChatBackend[] { new AlwaysErrorBackend(), new TemplateBackend() },
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "hello"));
+            Assert.IsTrue(hub.WaitIdle(4000), "the turn completes via the template fallback");
+            gs.ConvFlush();
+
+            Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"line\"")), "the template answered after the primary failed");
+            string status = gs.ConvStatusPayload();
+            StringAssert.Contains("\"backend\":\"template\"", status, "degraded onto the fallback");
+            StringAssert.Contains("\"degraded\":true", status);
+        }
+
+        [Test]
+        public void Truncated_Stream_Dispatches_Nothing_And_Session_Recovers()
+        {
+            // A primary that streams text but never sends TurnComplete, with NO template terminator:
+            // the observed-completion hardening must dispatch nothing and end the turn "error".
+            var gs = NewGame(new IChatBackend[] { new TruncatingBackend() }, 0, TimeSpan.FromSeconds(60),
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            host.Minds.Minds.TryGet(cid, out var mind);
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "you are useless")); // would be a SetDisposition
+            Assert.IsTrue(hub.WaitIdle(4000), "the truncated turn resolves (no completion)");
+            gs.ConvFlush();
+
+            StringAssert.Contains("\"reason\":\"error\"", sent.Find(m => m.Contains("\"ev\":\"end\"")) ?? "");
+            host.Sim.Tick();
+            Assert.AreEqual(0f, mind.AffinityToPlayer, "no effect was dispatched from the truncated stream");
+            Assert.AreEqual(0, hub.InFlightCount, "InFlight cleared — the session is not wedged");
+        }
+
+        [Test]
+        public void Hanging_Backend_Times_Out_Clears_InFlight_And_Next_Say_Works()
+        {
+            // A backend that never terminates, bounded by a short per-request timeout, no retries.
+            var gs = NewGame(new IChatBackend[] { new HangingBackend() }, 0, TimeSpan.FromMilliseconds(200),
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "first"));
+            Assert.IsTrue(hub.WaitIdle(4000), "the timeout fires and the turn resolves");
+            Assert.AreEqual(0, hub.InFlightCount, "InFlight cleared after the timeout — no wedge");
+            gs.ConvFlush();
+            StringAssert.Contains("\"reason\":\"error\"", sent.Find(m => m.Contains("\"ev\":\"end\"")) ?? "");
+
+            // The session is NOT ended by a timeout error? It is (reason error) — but a fresh talk
+            // must work. Prove the runtime itself recovered: a new conversation dispatches again.
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 2, text: "second"));
+            Assert.IsTrue(SpinUntil(() => hub.InFlightCount == 1, 2000), "a subsequent turn dispatches (runtime recovered)");
+            Assert.IsTrue(hub.WaitIdle(4000), "and drains");
+        }
+
         // ---------------------------------------------------------------- zero network
 
         [Test]
@@ -222,6 +289,52 @@ namespace Perilune.Tests
             public override BackendCapabilities Caps => new BackendCapabilities("echo", false, false, 4);
             public override ChatResult Respond(ConversationRequest request, string playerUtterance)
                 => new ChatResult(_reply, new List<ProposedEffect>());
+        }
+
+        /// <summary>Streams a BackendError and never completes — a retryable primary failure.</summary>
+        private sealed class AlwaysErrorBackend : IChatBackend
+        {
+            public BackendCapabilities Caps => new BackendCapabilities("boom", true, false, 4);
+            public ChatResult Respond(ConversationRequest request, string playerUtterance)
+                => new ChatResult("", new List<ProposedEffect>());
+#pragma warning disable CS1998
+            public async IAsyncEnumerable<ChatDelta> SendAsync(
+                ConversationRequest req, string utterance, [EnumeratorCancellation] CancellationToken ct)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return new BackendError("boom", true); // no TurnComplete ⇒ failure
+            }
+#pragma warning restore CS1998
+        }
+
+        /// <summary>Streams text but never sends TurnComplete — the truncation the hardening rejects.</summary>
+        private sealed class TruncatingBackend : IChatBackend
+        {
+            public BackendCapabilities Caps => new BackendCapabilities("trunc", true, false, 4);
+            public ChatResult Respond(ConversationRequest request, string playerUtterance)
+                => new ChatResult("partial", new List<ProposedEffect>());
+#pragma warning disable CS1998
+            public async IAsyncEnumerable<ChatDelta> SendAsync(
+                ConversationRequest req, string utterance, [EnumeratorCancellation] CancellationToken ct)
+            {
+                yield return new TextDelta("partial ");
+                // deliberately no TurnComplete and no BackendError — a truncated stream
+            }
+#pragma warning restore CS1998
+        }
+
+        /// <summary>Never terminates until cancelled — exercises the per-request timeout.</summary>
+        private sealed class HangingBackend : IChatBackend
+        {
+            public BackendCapabilities Caps => new BackendCapabilities("hang", true, false, 4);
+            public ChatResult Respond(ConversationRequest request, string playerUtterance)
+                => new ChatResult("", new List<ProposedEffect>());
+            public async IAsyncEnumerable<ChatDelta> SendAsync(
+                ConversationRequest req, string utterance, [EnumeratorCancellation] CancellationToken ct)
+            {
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false); // cancelled by the hub's timeout
+                yield break; // unreachable
+            }
         }
 
         /// <summary>A backend whose stream blocks until Release() — for the in-flight/queue test.</summary>
