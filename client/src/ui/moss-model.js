@@ -62,10 +62,22 @@ export const SYSTEM_IDS = [
 // host computes load ÷ rejection) during the frame before the reply landed. While DETAIL is
 // loading the screen renders no derivation at all; IX-M4's `LOADING…` is the honest thing to say.
 
-/** §5.1 — the fault join is weak and the screen has to say so out loud. */
+/**
+ * §5.1's weak-join admission, narrowed to what THIS module actually does: the FAULT LOG filter
+ * (`faultTokens` below) is a name match on the log text and nothing more, so it has to say so.
+ *
+ * Deliberately scoped two ways. It names the *fault-log filter in this client*, because §5.1 uses
+ * nearly the same words for the ledger's LAST FAULT column, which is derived host-side — and this
+ * text renders on DETAIL, where that column is also in view. And it makes no claim about host code:
+ * the old wording carried "repairs publish no event", a fact about `MachineWearSystem` that this
+ * module cannot see and would have gone silently false the day `MaintenanceSystem` starts
+ * publishing on repair. That limit travels in the host's own `derivation`, where it has one copy.
+ * (This is F1's shape at smaller scale: an unversioned second copy of a fact about code elsewhere.)
+ */
 export const FAULT_CAVEAT =
-  'LAST FAULT is the last thing that went wrong, not the current problem: repairs publish no event, ' +
-  'and a fault is attributed to a row by matching device names against the log text.';
+  'The FAULT LOG filter in this client attributes a line to a system by matching that system\'s ' +
+  'id, label and device names against the line\'s own text. It is a name match and nothing more: ' +
+  'it can catch a line that merely mentions a device, and miss one that names none.';
 
 const HELP_LINES = [
   'HELP                  this list',
@@ -228,10 +240,17 @@ export function reduceMossEvent(model, msg) {
       // the one kept: it appears instantly and survives a slow or dead link, the same reason
       // ConversationHub emits the player's line at dispatch instead of awaiting the model.
       if (Array.isArray(l)) {
-        if (num(l[0], 1) === 0) continue;
-        next = pushConsole(next, num(l[0], 1), str(l[1]));
+        // `[stream, text]`. A malformed tuple degrades toward SHOWING the host's words: a
+        // one-element tuple is text at stream 1 (output), and a missing stream byte defaults to
+        // output too — never to stream 0, which is dropped, and never to an empty line, which
+        // would be a blank row that silently ate what the host said. A zero-length tuple has no
+        // words to show and renders nothing at all.
+        if (!l.length) continue;
+        const stream = l.length >= 2 ? num(l[0], 1) : 1;
+        if (stream === 0) continue;
+        next = pushConsole(next, stream, l.length >= 2 ? str(l[1]) : str(l[0]));
       } else if (l != null) next = pushConsole(next, 1, str(l));
-      else continue;
+      else continue;   // a null entry is not a line; a reply made only of them can still say ok:false
       rendered++;
     }
     if (!rendered && msg.ok === false) next = pushConsole(next, 2, 'COMMAND FAILED');

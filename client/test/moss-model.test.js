@@ -547,6 +547,46 @@ test('IX-M10: a row on the player\'s own ledger opens, even outside the fixed vo
     [{ k: 'moss', op: 'exec', text: 'open door_storage' }]);
 });
 
+test('the live-ledger re-resolve is scoped to `open` — a device WRITE is never navigation', () => {
+  // Without the verb guard, `close reactor` would open the REACTOR detail screen instead of
+  // forwarding a write: the player would watch a page turn where they asked for a door to shut.
+  const m = linked();
+  for (const verb of ['close', 'lock', 'unlock']) {
+    const out = submitCommand(m, verb + ' reactor');
+    assert.equal(out.model.screen, SCREEN.LEDGER, verb + ' must not navigate');
+    assert.equal(out.model.detail, null, verb + ' must not open a detail');
+    assert.deepEqual(out.effects, [{ k: 'moss', op: 'exec', text: verb + ' reactor' }], verb);
+  }
+  // `set` aimed at a row name likewise stays a write, for the host to accept or reject
+  assert.deepEqual(submitCommand(m, 'set reactor.rate max').effects,
+    [{ k: 'moss', op: 'exec', text: 'set reactor.rate max' }]);
+  // …while `open` on that very same name navigates
+  assert.equal(submitCommand(m, 'open reactor').model.screen, SCREEN.DETAIL);
+});
+
+test('exec: a malformed line tuple degrades toward showing the host\'s words', () => {
+  const base = linked();
+  const tail = (msg) => consoleLines(reduceMossEvent(base, msg)).pop();
+  const count = (msg) => consoleLines(reduceMossEvent(base, msg)).length - consoleLines(base).length;
+  // a one-element tuple is TEXT at stream 1 — rendering an empty line here would be the worst of
+  // both: a blank row that says nothing AND hides what the host actually said
+  assert.deepEqual(tail({ ev: 'exec', lines: [['door_storage: CLOSED']] }),
+    { stream: 1, text: 'door_storage: CLOSED' });
+  // a missing stream byte defaults to OUTPUT, never to 0 (which is dropped as the duplicate echo)
+  assert.deepEqual(tail({ ev: 'exec', lines: [[null, 'still here']] }), { stream: 1, text: 'still here' });
+  assert.equal(count({ ev: 'exec', lines: [[null, 'still here']] }), 1, 'and it is not swallowed');
+  // a bare string line, and an explicit error stream, are unchanged
+  assert.deepEqual(tail({ ev: 'exec', lines: ['bare'] }), { stream: 1, text: 'bare' });
+  assert.deepEqual(tail({ ev: 'exec', lines: [[2, 'nope']] }), { stream: 2, text: 'nope' });
+  // a null entry is not a line — but a failed reply made only of them still reports the failure
+  assert.equal(count({ ev: 'exec', ok: true, lines: [null] }), 0);
+  assert.deepEqual(tail({ ev: 'exec', ok: false, lines: [null] }), { stream: 2, text: 'COMMAND FAILED' });
+  assert.equal(count({ ev: 'exec', ok: false, lines: [null] }), 1, 'exactly one line, not two');
+  // a zero-length tuple has no words to show
+  assert.equal(count({ ev: 'exec', ok: true, lines: [[]] }), 0);
+  assert.deepEqual(tail({ ev: 'exec', ok: false, lines: [[]] }), { stream: 2, text: 'COMMAND FAILED' });
+});
+
 test('IX-M13: a link that is up but carries no rows says so (an empty grid is not "nominal")', () => {
   const empty = reduceSystems(openMoss(), { type: 'systems', hull: '7741', day: 213, uptime: 1, rows: [] });
   assert.equal(empty.linked, true);
@@ -671,6 +711,23 @@ test('IX-M22: a reply that carries no derivation says so, rather than inventing 
   const blank = reduceMossEvent(submitCommand(linked(), 'open thermal').model,
     { ev: 'sys', tid: 'thermal', derivation: '   ', devices: [] });
   assert.ok(detailView(blank).notes[0].indexOf('DERIVATION UNDOCUMENTED') === 0);
+});
+
+test('the fault caveat describes THIS client\'s filter and claims nothing about host code', () => {
+  // F1's shape at smaller scale, guarded: an unversioned second copy of a fact about code this
+  // module cannot see goes silently false the day that code changes. "repairs publish no event"
+  // used to sit in this constant — it is MachineWearSystem's fact, and it now travels in the
+  // host's own `derivation`, where there is one copy of it.
+  const c = FAULT_CAVEAT.toLowerCase();
+  assert.ok(c.indexOf('this client') >= 0, 'it must say WHOSE join it describes');
+  assert.ok(c.indexOf('fault log') >= 0, 'and WHICH join — not the ledger\'s host-derived LAST FAULT');
+  for (const hostClaim of ['repair', 'publish', 'maintenance', 'alarm', 'wearperhour']) {
+    assert.equal(c.indexOf(hostClaim), -1, 'no claim about host code: ' + hostClaim);
+  }
+  // and the claim it DOES make is the one faultTokens implements — a name match on the line's
+  // text, loose enough to over-catch (pinned in 'the fault log filter is the documented weak
+  // NAME join' above, which is the behavioural half of this pin).
+  assert.ok(c.indexOf('name match') >= 0);
 });
 
 test('IX-M22: a device place needs all three coordinates, or it is —', () => {
