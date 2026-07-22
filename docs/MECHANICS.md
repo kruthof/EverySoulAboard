@@ -13,10 +13,11 @@ actually happens, and where do I change it*. **§13 "Known gaps" is the most val
 section — read it before you conclude a mechanic works.**
 
 > **⚠ In-flight work.** Four packages were being implemented in parallel while this was
-> written and will change behaviour. Sections describing them carry a visible
-> **IN FLIGHT** note plus an HTML comment so a reconciliation pass can find them:
-> the slice build/work economy · movement tuning · CO2→maintenance dispatch and the
-> `AgreeTask` whitelist · task labels / build-ghost wire fields.
+> written and will change behaviour. Every section describing one carries a visible
+> **IN FLIGHT** note plus an HTML comment so a reconciliation pass can `grep "IN FLIGHT"`
+> and find them all: movement tuning (§5.4) · the slice build/work economy (§6.5) ·
+> CO2→maintenance dispatch and the `AgreeTask` whitelist (§13.1) · task labels and the
+> build-ghost wire fields (§13.4, §15).
 
 ---
 
@@ -87,10 +88,13 @@ Director itself ticks late in the frame.
 All randomness is `SimRng` (xoshiro256**, `Rng/SimRng.cs`). Systems that need dice
 **fork a private stream** so they can never perturb another system's sequence:
 `Fork(streamId)` derives four fresh words from `_s0 ^ (streamId * 0xBF58476D1CE4E5B9)`
-without advancing the parent (`SimRng.cs:31-36`). Exactly two sim-side call sites fork:
+without advancing the parent (`SimRng.cs:31-36`). Exactly two call sites fork **`sim.Rng`**:
 `SocialSystem`'s argument/bond stream (`0x50C1A1`, once on its first pass —
 `Social/SocialSystem.cs:52,85`) and `PersonaGenerator` (`0x5045524C554E45 + citizenId`,
-per citizen at worldgen — `Citizens/PersonaSheet.cs:98,176`).
+per citizen at worldgen — `Citizens/PersonaSheet.cs:98,176`). Two more `Fork` calls exist in
+`Sim.Gen` — `ProceduralShips.cs:25` (`0x5417`) and `ShipRecipe.cs:33` (`0x5EC1DE`) — but each
+forks a **fresh `new SimRng(seed)`** it owns, never the running sim's stream, so they cannot
+perturb a tick.
 
 `CitizenSystem` is the **only** system that takes `sim.Rng` directly
 (`Systems/CitizenSystem.cs:29`, used at `:65` for the idle wander target) — verified by
@@ -249,9 +253,15 @@ dn = flow_coefficient × |Pa − Pb| × Dt              // :116, capped at sourc
 `dn` moles move **at the source room's mixture fractions** (`:121-126`). The destination
 gains nothing if it is room 0 (venting to space is one-directional).
 
-**This is bulk pressure-driven flow, not diffusion.** Once two rooms equalize pressure,
-gas exchange stops completely — a 17,000 ppm room and a 0 ppm room at equal pressure will
-never mix. See §13 for what that does on the shipping slice.
+**This is bulk pressure-driven flow, not diffusion.** There is no concentration term at
+all: if two rooms ever *did* equalize to `|Pa − Pb| < 1e-6`, exchange would stop dead and a
+17,000 ppm room beside a 0 ppm room would stay that way. In practice they never equalize —
+breathing adds moles on one side and scrubbing removes them on the other, so a small
+standing Δp persists and gas keeps moving. Measured on the slice at day 2, the crew
+corridor r5 (11,961 ppm) and the scrubber room r6 (0 ppm) sit at 96.762738 vs 96.762308 kPa
+— a Δp of `4.3e-4` kPa, ~430× the cutoff. Transport is therefore **throughput-limited, not
+zero**: it moves gas at the source room's mixture fraction, which is far too slow to level a
+concentration gradient. See §13.1 for the measured balance.
 
 ### Thresholds that hurt people (`Systems/NeedsSystem.cs:41-73`, `needs.def`)
 
@@ -348,7 +358,8 @@ mirrored in `Entities/MachineDefs.cs`, read via `sim.Defs.Machines[(int)kind]`):
 | SalvageRecycler | 1.5 | 0 | Industry | 1.2 | 0.018 | 0.40 | 0.10 |
 | Radiator | 0.2 | 0 | LifeSupport | 0 | 0.006 | 0.40 | 0.10 |
 | Telescope | 0.4 | 0 | Industry | 0.2 | 0.004 | 0.40 | 0.10 |
-| Ladder, Conduit, Pipe, WaterTank(0.001 wear), and all furniture | 0 | 0 | — | 0 | ~0 | — | — |
+| WaterTank | 0 | 0 | Comfort | 0 | 0.001 | 0.20 | 0.02 |
+| Ladder, Conduit, Pipe, and all furniture | 0 | 0 | Comfort | 0 | 0 | 0 | 0 |
 
 `radiator_reject_kw = 5` is a separate `[machines]` scalar (`machines.def:22`).
 
@@ -516,13 +527,15 @@ tiles from the ENTIRE world — all decks — and returns the first walkable one
 locality, no room preference, no deck preference.
 
 Measured on the shipping slice (8,000 draws from the eight crew start tiles, using the real
-`TryRandomWalkableTile` + `FindPath` API):
+`TryRandomWalkableTile` + `FindPath` API). **The draw RNG is not seed-pinned, so these are
+estimates, not goldens** — three independent runs are quoted as ranges:
 
-- 6,368 draws produced a path; 1,632 were rejected (no walkable sample in 10 tries, or
-  unreachable).
-- **mean path length 21.5 tiles, max 48** ⇒ at `ticks_per_tile = 5`, a mean wander leg is
-  ~10.8 s of continuous walking.
-- **3,732 of 8,000 random picks (47 %) landed on a different deck** than the walker.
+- ~6,400 of 8,000 draws produced a path (6,368 / 6,409 across runs); the rest were rejected
+  — no walkable sample in 10 tries, or unreachable.
+- **mean path length ≈ 21.4 tiles (21.33–21.49), max 48–49** ⇒ at `ticks_per_tile = 5`, a
+  mean wander leg is ~10.7 s of continuous walking.
+- **≈ 46 % of random picks landed on a different deck** than the walker (3,675 / 3,709 /
+  3,732 of 8,000 across the three runs).
 
 ### 5.5 Pathing (`Path/PathService.cs`)
 
@@ -635,8 +648,10 @@ Recipes (`recipes.def`, `input in_count → output out_count, work_s`):
 | `Fabricator` | 2 `Scrap` → 1 `Parts`, 30 s |
 | `MachineShop` | 2 `Parts` → 1 `ControllerModule`, 40 s |
 
-"Staged" is forgiving: any unreserved ground stack of the input kind on **any** 4-neighbour
-of the station counts (`StagedUnits`, `CraftingSystem.cs:326-337`). The drop tile is the
+"Staged" is forgiving: any ground stack of the input kind on **any** 4-neighbour of the
+station counts. The only filter is `item.CarriedBy != 0` — a stack **reserved** by a hauler
+but already put down still counts, deliberately ("incl. our own staged claim",
+`StagedUnits`, `CraftingSystem.cs:326-337`). The drop tile is the
 first walkable 4-neighbour in `+x,−x,+y,−y` order (`TryFindStagingTile`, `:312-323`).
 
 ### 6.5 Build & refit (`Systems/BuildSystem.cs`)
@@ -1094,9 +1109,15 @@ Worse, the slice's air is *nominally over-scrubbed* and still poisons the crew:
   with no diffusion** (`AtmosphereSystem.cs:113`). After 3 sim-days the scrubber rooms sit
   at **exactly 0 ppm** (rooms 6, 9, 18, 19 in the probe) while the corridor the crew
   actually live in (room 5, 108 tiles) is at **17,644 ppm** and room 17 at 8,381 ppm.
-  Once pressures equalize the two never exchange gas again.
+- The scrubber rooms read 0 ppm *because* CO2 keeps arriving and is over-scrubbed — not
+  because nothing arrives. Bulk flow never stops (§3: a standing `4.3e-4` kPa Δp between
+  r5 and r6 at day 2, ~430× the `1e-6` no-flow cutoff), it is simply **too slow**.
+  Measured ship-wide over day 1 → day 2: 8 crew produce **188.70 mol** of CO2, the ship's
+  room inventory grows by **109.97 mol**, so only **78.72 mol — ≈ 42 %** — is removed. The
+  scrubbers have 2.3× the nameplate capacity and still get less than half the ship's
+  output, because most of it is in a room they are not in.
 
-So the scrubbers scrub empty air. Nothing notices and nothing dispatches. The worst room
+So the scrubbers scrub near-empty air. Nothing notices and nothing dispatches. The worst room
 accumulates ≈ **5,700 ppm/day** over days 1→3, so from 17,644 ppm it needs roughly **four
 more days** to reach the 40,000 ppm narcosis threshold that *does* have a consumer — i.e.
 the only CO2 mechanic that exists arrives around day 7 of an unattended voyage, with no
@@ -1113,9 +1134,9 @@ comfort band) falls **1.00 → 0.20** over three days.
 `content/core/SimDefs/rules/overheat_guard.moss` fires
 `alarm("THERMAL LOAD HIGH — check radiators")` whenever `ship.heat < 0.5`, every 60 s.
 Its own comment says it is "inert under the shipped defaults". It is not: measured with
-the real defs+rules directory loaded, it fires **2,579 times over 3 sim-days** — every
-60 s from roughly day 1.1 onward, and it never stops, because the trigger is the ship
-getting *cold* and nothing warms it back up. Radiators have a 10 °C floor; **hull loss does
+the real defs+rules directory loaded, it fires **2,579 times over 3 sim-days** — first at
+tick 1,045,200 (**day 1.21**), then every 60 s, and it never stops, because the trigger is
+the ship getting *cold* and nothing warms it back up. Radiators have a 10 °C floor; **hull loss does
 not**, and nothing heats a room deliberately. The message also tells the player the exact
 opposite of what is happening.
 
@@ -1131,12 +1152,30 @@ set), so a crew member will cheerfully agree to walk with you and then not.
 
 ### 13.4 Four citizen fields the sim writes but never uses — and one it never writes
 
+<!-- IN FLIGHT: task labels / build-ghost wire fields — hosts/web/GameSession.cs (TaskLabel,
+     BuildRoster/BuildDesigns), hosts/web/WireFormat.cs (Design), client work-marker layer
+     + CREW WATCH task line. The roster-wire discussion below describes 0f88231. -->
+> **⚠ IN FLIGHT** — the task-label / build-ghost-wire lane is changing what the roster and
+> `designs` channels carry. `GameSession.TaskLabel` stops emitting five generic words and
+> **names the object** ("Servicing scrubber_ls", "Hauling regolith to wall 3,4 (0/2)"),
+> `WireFormat.Design` gains `delivered`/`required` as **append-only** tuple elements 5 and 6,
+> and the client grows on-map WORK markers plus a CREW WATCH task line. `task` is a
+> pre-existing roster field, so no wire shape moves and a four-element `designs` reader is
+> unaffected. §13.4's roster-wire bullet and §15's `WebCommand.Parse` row describe `0f88231`.
+
 - **`Fatigue`** rises at 1/57,600 per second to a hard clamp of 1.0 after 16 h and
   **nothing anywhere reduces it**. There is no sleep mechanic; `Bed` is inert furniture
   (`machines.def`: `Bed 0 0 Comfort false 0 0 0 0`). Measured: all eight slice crew are at
   `Fatigue = 1.00` after one sim-day, permanently costing 25 mood points.
-- **`Mood`** is computed but gates nothing — no work-speed modifier, no breaks (§5.3).
-  Measured slice steady state: **−37.7 for every crew member**, forever.
+- **`Mood`** is computed but gates nothing — no work-speed modifier, no breaks (§5.3). It
+  is not a flat line: it **sawtooths**, because the hunger/thirst terms ramp and then drop
+  each time a citizen eats or drinks. Measured on the slice, crew-mean at the day marks:
+  **−37.7 (day 1) → −26.4 (day 2) → −29.5 (day 3)**, with a per-citizen envelope over days
+  1–3 of roughly **[−39.8, −10.5]**. The durable fact is the ceiling, not the average:
+  `Fatigue` saturates at 1.0 after ~16 h and never falls, so `Mood ≤ mood_base −
+  mood_fatigue_weight = 20 − 25 = −5` from then on (`NeedsSystem.cs:81-85`, `needs.def:27-31`).
+  **Mood is permanently negative for every crew member from day 1 onward**, whatever they
+  eat.
 - **`Citizen.Health`** (`Citizen.cs:31`, "Damaged by hypoxia, cold and struggle") is
   **never written by any system**. It is saved (`SaveWriter.cs:263`), hashed
   (`Simulation.cs:264`) and displayed (`hosts/tui/Ui/InspectorModel.cs:83`). Measured:
@@ -1154,8 +1193,10 @@ set), so a crew member will cheerfully agree to walk with you and then not.
 ### 13.5 Persona `RoleNow` / `RolePreRaid` are cosmetic strings
 
 Confirmed by grep across `sim/` and `hosts/`: read only by
-`hosts/web/GameSession.cs:546,603` (the roster/bio wire) and
-`Sim.Llm/CitizenContext.cs:114-115` (prompt prose). **No sim system consults a role.**
+`hosts/web/GameSession.cs:546,603` (the roster/bio wire), `Sim.Llm/CitizenContext.cs:114-115`
+(prompt prose), `Citizens/PersonaSheet.cs:193` (`RolePreRaid` interpolated into the raid
+backstory string) and `hosts/scenario/PersonaDump.cs:44` (`rolePreRaid` in the portrait-
+pipeline JSON). All four are prose or display. **No sim system consults a role.**
 Amara Okonkwo's `RoleNow = "life-support lead"` (`Sim.Gen/AuthoredShips.cs:354`) does not
 make her more likely to maintain a scrubber, reach one first, or be told about one.
 
@@ -1203,8 +1244,8 @@ hysteresis classifier never gets to do anything interesting because the opinions
 pinned at the clamp.
 
 Compounding it: the argument gate is `lowerMood < 0` (`argument_mood_threshold = 0`), and
-§13.4 shows mood is pinned near −38 for everyone from day 1 — so **the mood half of the
-argument gate is permanently open**.
+§13.4 shows mood is permanently negative for everyone from day 1 — so **the mood half of
+the argument gate is permanently open**.
 
 ### 13.8 Crew memory and the Chronicle are flooded by social/brownout spam
 
@@ -1212,8 +1253,9 @@ A direct consequence of §13.7 and §13.10, and it lands squarely on the "talkin
 pillar. Measured on the slice with the real defs+rules loaded:
 
 - **After one sim-day, Amara Okonkwo's 120-entry episodic memory is 100 % `social`-tagged**,
-  and the top-8 memories `CitizenContext.Build` would put in her prompt are eight identical
-  lines: *"Grew closer to Priya Raghavan."* / *"Grew closer to Nadia Hassan."*
+  and the top-8 memories `CitizenContext.Build` would put in her prompt are eight lines of
+  the same shape with only **two distinct texts** — five × *"Grew closer to Nadia Hassan."*
+  and three × *"Grew closer to Priya Raghavan."*
 - After three days it is 78 `social` + 42 `alarm` entries (the overheat klaxon), top-8 all
   *"My feelings about ⟨name⟩ changed."* **Zero** persona, player or conversation entries
   survive — `CitizenMemory.Add` evicts the lowest-importance entry, and a 0.5–0.6 social
@@ -1313,7 +1355,7 @@ supersedes them**. Concrete divergences found while writing it:
 | Rationing policies, stockpile filters, room-role assignment UI | Not implemented. `Stockpile` is one boolean tile flag with no filters | `World/TileDefs.cs:13` |
 | `~160×40 tiles, 6 decks` | The authored slice is **64×20×2** | measured at boot |
 | Gravity 0.16 g, fall damage, hauling capacity | No gravity, no falls, no carry limits (a citizen carries exactly one stack) | — |
-| Ten scriptable device types incl. turret/alarm/logger; `on event:` handlers | Six adapter-bearing device kinds + room anchors + read-only `ship`; no `on event:` | `Sim.Dsl/MossBindings.cs:14-44` |
+| Ten scriptable device types incl. turret/alarm/logger; `on event:` handlers | **Seven** adapter-bearing device kinds (`Door` + `AirVent`/`Scrubber`/`SolarWing`/`GrowBed`/`WaterTank`/`Reclaimer`) + room anchors + read-only `ship`; no `on event:` | `Sim.Dsl/MossBindings.cs:22-33` |
 | "explored-but-unseen compartments greyed, last-known-state" | `Explored` is a one-way boolean; no last-known-state layer | §13.10 |
 | Per-tile gas at breach fronts as a visual/hazard wavefront | Not implemented; lumped rooms only, and see §13.1 for what "lumped + pressure-only flow" means | `AtmosphereSystem.cs` |
 
@@ -1364,6 +1406,11 @@ last.
 | the save format | `sim/Sim.Core/Save/SaveWriter.cs` + `SaveReader.cs` (spine files; bump the chapter version and add the reader branch in the same commit) |
 | the shipping slice's ship, crew, stock | `sim/Sim.Gen/AuthoredShips.cs:223-563` |
 | the client's command surface | `hosts/web/GameSession.cs:797-820` (`WebCommand.Parse`) |
+| what a crew member's task line says | `hosts/web/GameSession.cs:684` (`TaskLabel`) — **IN FLIGHT**, see §13.4 |
+| what the build ghosts carry | `hosts/web/WireFormat.cs:293-330` (`Design` / `Designs`) — **IN FLIGHT**, see §13.4 |
+
+<!-- IN FLIGHT: task labels / build-ghost wire fields — the two rows above are the edit
+     points the lane is moving; line numbers are pre-change (0f88231). -->
 
 ### Adding a def field (the ritual, one commit)
 
@@ -1404,3 +1451,17 @@ real-defs run. If you probe this sim, pass an explicit data directory — auto-d
 walks up from the running binary and will not find the repo from a scratch directory.*
 
 *No repo file was modified to obtain any of this.*
+
+*Corrections pass, 2026-07-21. An independent verifier re-derived these claims from a clean
+boot and found five that overstated the code. All five are fixed above, each re-measured
+here before the edit: the mood **sawtooth** and its `−5` ceiling (§13.4/§13.7); **seven**
+adapter-bearing MOSS device kinds, not six (§14, which contradicted §11); Amara's top-8 as
+eight lines of the same *shape* rather than eight identical ones (§13.8 — two distinct texts
+at day 1); CO2 transport as **throughput-limited, not zero** (§3/§13.1 — a `4.3e-4` kPa
+standing Δp and ≈42 % of daily production scrubbed, so "they never mix again" was wrong);
+and the fourth `IN FLIGHT` marker the intro promised (§13.4/§15). Six smaller precision
+fixes came with them (§1 fork qualifier, §4.1 `WaterTank` row, §5.4 wander figures now given
+as ranges because the draw is unseeded, §6.4 `StagedUnits`, §13.2 first-alarm day 1.21, §13.5
+two more role readers). One reviewer figure was **not** reproduced and is not used: a
+claimed "~20 % of production reaches the scrubbers" — the measured ship-wide balance over
+day 1→2 is 78.72 of 188.70 mol, **≈42 %**.*
