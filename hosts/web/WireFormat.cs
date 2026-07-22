@@ -27,7 +27,9 @@ namespace Perilune.Web
     ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":"..","log":[[who,text],..]}
     ///   device  {"type":"device","kind":"terminal","tid":".."}
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
-    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4},..]}
+    ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4,"traits":["..",".."]},..]}
+    ///   designs {"type":"designs","cells":[[x,y,deck,kind],..]}   (pending build ghosts; kind 0 wall / 1 door)
+    ///   terminals {"type":"terminals","list":[[tid,deck,x,y],..]} (MOSS terminal directory)
     ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
@@ -234,12 +236,17 @@ namespace Perilune.Web
             public readonly string Name, Role, Mood, Task, Portrait;
             public readonly float Morale;
             public readonly int Deck, X, Y;
+            // Persona traits (APPEND-ONLY trailing field): the CREW tab's TRAITS column. Host-owned
+            // mind-persona knowledge, same source as the citizen card; empty when the mind is absent.
+            public readonly IReadOnlyList<string> Traits;
 
             public RosterEntry(uint cid, string name, string role, string mood, string task,
-                               string portrait, float morale, int deck, int x, int y)
+                               string portrait, float morale, int deck, int x, int y,
+                               IReadOnlyList<string> traits = null)
             {
                 Cid = cid; Name = name; Role = role; Mood = mood; Task = task;
                 Portrait = portrait; Morale = morale; Deck = deck; X = x; Y = y;
+                Traits = traits;
             }
         }
 
@@ -264,7 +271,82 @@ namespace Perilune.Web
                     sb.Append(",\"deck\":").Append(e.Deck.ToString(Ic));
                     sb.Append(",\"x\":").Append(e.X.ToString(Ic));
                     sb.Append(",\"y\":").Append(e.Y.ToString(Ic));
+                    // APPEND-ONLY trailing field: persona traits (CREW tab TRAITS column).
+                    sb.Append(",\"traits\":[");
+                    var traits = e.Traits;
+                    if (traits != null)
+                        for (int t = 0; t < traits.Count; t++)
+                        {
+                            if (t > 0) sb.Append(',');
+                            AppendString(sb, traits[t] ?? "");
+                        }
+                    sb.Append(']');
                     sb.Append('}');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- build designations (BUILD ghosts)
+
+        /// <summary>
+        /// One pending build designation on the designs wire — a wall/door the sim has NOT yet
+        /// built. The client renders a persistent ghost marker (dashed tile outline) on the
+        /// matching deck until the designation resolves (built or cancelled), at which point it
+        /// drops off this authoritative channel. <see cref="Kind"/> is the append-only
+        /// <see cref="Perilune.Sim.BuildKind"/> byte (0 wall, 1 door). Read-only host mirror of
+        /// <see cref="Perilune.Sim.BuildSystem.Pending"/> — no sim mutation, no RNG.
+        /// </summary>
+        public readonly struct Design
+        {
+            public readonly int X, Y, Deck;
+            public readonly byte Kind;
+            public Design(int x, int y, int deck, byte kind) { X = x; Y = y; Deck = deck; Kind = kind; }
+        }
+
+        /// <summary>Serialize the pending-designation graph (see <see cref="Design"/>). A cached
+        /// state channel like roster: rebuilt each render, deduped by the session; the client
+        /// filters to the shown deck. Each entry is a compact tuple [x, y, deck, kind].
+        ///   {"type":"designs","cells":[[3,4,0,0],..]}</summary>
+        public static string Designs(IReadOnlyList<Design> designs)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"designs\",\"cells\":[");
+            if (designs != null)
+                for (int i = 0; i < designs.Count; i++)
+                {
+                    var d = designs[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[').Append(d.X.ToString(Ic))
+                      .Append(',').Append(d.Y.ToString(Ic))
+                      .Append(',').Append(d.Deck.ToString(Ic))
+                      .Append(',').Append(((int)d.Kind).ToString(Ic)).Append(']');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- terminals (MOSS tab list)
+
+        /// <summary>Serialize the ship's MOSS terminals as a cached state channel — one entry per
+        /// terminal device, [tid, deck, x, y]. The MOSS tab lists these so a player can open a
+        /// terminal's IDE without hunting the deck for a console tile. Read-only host mirror of the
+        /// terminal <see cref="Perilune.Sim.Device"/>s; strings JSON-escaped, numbers InvariantCulture.
+        ///   {"type":"terminals","list":[["term_bridge",0,3,4],..]}</summary>
+        public static string Terminals(IReadOnlyList<(string Tid, int Deck, int X, int Y)> terminals)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"terminals\",\"list\":[");
+            if (terminals != null)
+                for (int i = 0; i < terminals.Count; i++)
+                {
+                    var t = terminals[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[');
+                    AppendString(sb, t.Tid ?? "");
+                    sb.Append(',').Append(t.Deck.ToString(Ic))
+                      .Append(',').Append(t.X.ToString(Ic))
+                      .Append(',').Append(t.Y.ToString(Ic)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

@@ -114,8 +114,26 @@
  * @property {*} cid @property {string} name @property {string} role @property {string} mood
  * @property {number} morale 0..1 @property {string} task @property {string} portrait
  * @property {number} deck @property {number} x @property {number} y
+ * @property {string[]} [traits]  persona traits (APPEND-ONLY trailing field; CREW-tab TRAITS column)
  */
 /** @typedef {{type:'roster', crew:RosterEntry[]}} RosterMsg */
+
+/**
+ * Pending build designations (BUILD ghosts) — walls/doors the sim has NOT yet built. The client
+ * renders a persistent dashed ghost on the matching deck until a designation resolves (built or
+ * cancelled), whereupon it drops off this authoritative channel. Each cell is [x, y, deck, kind]
+ * (kind 0 wall / 1 door). NOT fog-gated (own-ship build knowledge, like roster); snapshot-cached.
+ * @typedef {[number,number,number,number]} DesignCell
+ * @typedef {{type:'designs', cells:DesignCell[]}} DesignsMsg
+ */
+
+/**
+ * The ship's MOSS terminal directory — one entry per terminal device, [tid, deck, x, y]. The MOSS
+ * tab lists these so a terminal's IDE can be opened without hunting the deck for a console tile.
+ * NOT fog-gated; snapshot-cached like roster.
+ * @typedef {[string,number,number,number]} TerminalTuple
+ * @typedef {{type:'terminals', list:TerminalTuple[]}} TerminalsMsg
+ */
 
 /**
  * The ship's chronicle (P2.1 console) — sent on a {"type":"chron"} request and on day rollover.
@@ -132,7 +150,7 @@
  * @typedef {{type:'relations', edges:RelationEdgeTuple[]}} RelationsMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg} WireMsg */
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg} WireMsg */
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

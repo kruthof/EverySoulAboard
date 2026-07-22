@@ -27,14 +27,19 @@ namespace Perilune.Tests
         {
             var rows = new[]
             {
-                new WireFormat.RosterEntry(7u, "Ada", "welder", "grief", "hauling", "pk_00000001", 0.75f, 0, 3, 4),
+                new WireFormat.RosterEntry(7u, "Ada", "welder", "grief", "hauling", "pk_00000001", 0.75f, 0, 3, 4,
+                    new[] { "steady", "wry" }),
                 new WireFormat.RosterEntry(9u, "Bo", "", "", "idle", "", 1f, 1, 10, 2),
             };
             string json = WireFormat.Roster(rows);
             StringAssert.Contains("\"type\":\"roster\"", json);
+            // The traits array is APPEND-ONLY trailing on each row.
             StringAssert.Contains("{\"cid\":7,\"name\":\"Ada\",\"role\":\"welder\",\"mood\":\"grief\"," +
-                "\"morale\":0.75,\"task\":\"hauling\",\"portrait\":\"pk_00000001\",\"deck\":0,\"x\":3,\"y\":4}", json);
+                "\"morale\":0.75,\"task\":\"hauling\",\"portrait\":\"pk_00000001\",\"deck\":0,\"x\":3,\"y\":4," +
+                "\"traits\":[\"steady\",\"wry\"]}", json);
+            // A row with no traits (null) still emits the stable empty array.
             StringAssert.Contains("\"cid\":9", json);
+            StringAssert.Contains("\"y\":2,\"traits\":[]}", json);
             Assert.AreEqual("{\"type\":\"roster\",\"crew\":[]}", WireFormat.Roster(Array.Empty<WireFormat.RosterEntry>()));
         }
 

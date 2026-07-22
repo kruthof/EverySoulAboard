@@ -20,6 +20,8 @@ import {
   speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry, crewClickTarget,
   beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool, isBuildTool,
   hintLine, chronHeader,
+  designsOnDeck, designGlyph, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
+  terminalList, terminalLabel, escapeTarget,
 } from './console-model.js';
 import {
   ringLayout, drawnEdges, focusTag, regardRows, signed,
@@ -54,6 +56,11 @@ let _armed = null;        // the ONE input-mode slot: null|'wall'|'door'|'cancel
 let _tab = 'build';       // active bottom-bar tab (presentation only, IX-20)
 let _pending = null;      // pending cross-deck row click (IX-42)
 let _chronRequested = false; // CHRONICLE requests once per connection (IX-74)
+let _designs = null;      // latest designs message (pending build ghosts)
+let _terminals = null;    // latest terminals message (MOSS directory)
+let _paused = false;      // last status.paused (for the paused nudge)
+let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
+let _nudgeTimer = 0;      // pending auto-dismiss timeout id
 const _citizens = new Map(); // cid → last citizen msg (IX-50/53; never purged, IX-98)
 
 /** @param {import('../wire/messages.js').MetricsMsg} m */
@@ -114,6 +121,10 @@ export function renderStatus(m) {
   // control over already carries the glyph; duplicating ‖ would be noise.
   const speedChip = $('s-speedchip');
   if (speedChip) speedChip.classList.toggle('dim', !!m.paused);
+  // Paused-nudge bookkeeping: resuming the ship dismisses the "PRESS SPACE" hint immediately.
+  const wasPaused = _paused;
+  _paused = !!m.paused;
+  if (wasPaused && !_paused) { _nudge = nextNudge(_nudge, { t: 'unpause' }, now()); paintNudge(); }
 }
 
 /** Reflect the active lens on the legend card + lens buttons when a frame lands. */
@@ -166,7 +177,11 @@ export function initConsole(opts) {
     b.className = 'tool' + (kind === 'cancel' ? ' tool-cancel' : '');
     b.dataset.tool = kind; b.textContent = label;
     if (kind === 'cancel') b.title = 'Cancel a queued build order (refunds staged material)';
-    b.onclick = () => { _armed = nextArmedTool(_armed, { t: 'toggle', tool: kind }); reflectArmed(); };
+    b.onclick = () => {
+      _armed = nextArmedTool(_armed, { t: 'toggle', tool: kind });
+      if (_armed != null) nudgeIfPaused();
+      reflectArmed();
+    };
     pal.appendChild(b);
   }
 
@@ -175,7 +190,11 @@ export function initConsole(opts) {
     const cid = selectedCrewCid(_frame);
     if (cid != null) _send(Cmd.talk(cid));
   };
-  $('b-move').onclick = () => { _armed = nextArmedTool(_armed, { t: 'toggle', tool: 'move' }); reflectArmed(); };
+  $('b-move').onclick = () => {
+    _armed = nextArmedTool(_armed, { t: 'toggle', tool: 'move' });
+    if (_armed != null) nudgeIfPaused();
+    reflectArmed();
+  };
   $('b-bio').onclick = () => {
     const sel = selectedRosterEntry(_frame, _roster);
     if (!sel || !_citizens.has(sel.cid)) return;
@@ -192,6 +211,11 @@ export function initConsole(opts) {
     if (g && g.dataset.cid != null) selectCrew(Number(g.dataset.cid));
   });
 
+  // CREW-tab scroll affordance: keep the "▾ N MORE" indicator + bottom fade current as the
+  // table scrolls (pure count via moreBelow; thin DOM glue here).
+  const crewtable = $('crewtable');
+  if (crewtable) crewtable.addEventListener('scroll', updateCrewMore);
+
   setTab('build');
   refreshSelection();
   reflectArmed();
@@ -207,6 +231,7 @@ export function renderFrame(m) {
   _pending = r.next;
   if (r.send) _send(Cmd.click(r.send.x, r.send.y));
   refreshSelection();
+  paintDesignGhosts(); // deck may have changed — refilter the ghosts to the shown deck
 }
 
 /** Roster dispatch: CREW WATCH list + CREW tab table + selection-dependent surfaces. */
@@ -221,6 +246,20 @@ export function renderRoster(m) {
 export function renderChron(m) {
   _chron = m;
   if (_tab === 'chron') renderChronBlock();
+}
+
+/** Designs dispatch: cache the pending-designation graph + repaint the ghost overlay. The channel
+ *  is authoritative — a ghost persists until its designation resolves (built/cancelled) and drops
+ *  off the wire, so there is no client guessing (honest, wire-backed; see interaction-spec IX-38). */
+export function renderDesigns(m) {
+  _designs = m;
+  paintDesignGhosts();
+}
+
+/** Terminals dispatch: cache the MOSS directory + refresh the MOSS tab if it is up. */
+export function renderTerminals(m) {
+  _terminals = m;
+  if (_tab === 'moss') renderMossTab();
 }
 
 /** Relations dispatch (IX-R3): cache the directed graph; re-render the web when the RELATIONS tab
@@ -239,6 +278,7 @@ export function getArmedTool() { return _armed; }
 export function armFromKey(kind) {
   _armed = nextArmedTool(_armed, kind === 'cancel' ? { t: 'keyX' } : { t: 'keyB' });
   if (isBuildTool(_armed) && _tab !== 'build') setTab('build');
+  if (_armed != null) nudgeIfPaused();
   reflectArmed();
 }
 
@@ -247,7 +287,28 @@ export function armFromKey(kind) {
 export function toolUsed(tool, x, y) {
   _pending = supersedePending(_pending, { t: 'click' });
   pulseAt(tool, x, y);
+  nudgeIfPaused(); // placing a designation while paused is the classic "nothing happened" moment
   if (tool === 'move') { _armed = null; reflectArmed(); }
+}
+
+// ---- paused-ship nudge (surface "PRESS SPACE TO RUN" near the run-state chip) ----
+
+/** Fire the paused nudge when the player arms/places while the sim is paused, then schedule the
+ *  auto-dismiss. A no-op while running (nextNudge ignores a non-paused trigger). */
+function nudgeIfPaused() {
+  _nudge = nextNudge(_nudge, { t: 'trigger', paused: _paused }, now());
+  paintNudge();
+  if (nudgeVisible(_nudge, now())) {
+    if (_nudgeTimer) clearTimeout(_nudgeTimer);
+    _nudgeTimer = setTimeout(() => { _nudgeTimer = 0; paintNudge(); }, NUDGE_MS + 40);
+  }
+}
+
+/** Show/hide the transient nudge chip from the pure visibility derivation. */
+function paintNudge() {
+  const el = $('s-nudge');
+  if (!el) return;
+  el.hidden = !nudgeVisible(_nudge, now());
 }
 
 /** A plain/shift canvas click was sent (controls.js): a newer selection intent — drop any
@@ -256,10 +317,18 @@ export function canvasClicked() {
   _pending = supersedePending(_pending, { t: 'click' });
 }
 
-/** The Escape stack (IX-13), called from main.js's onEscape: armed tool → dialogue → nothing. */
+/** The Escape stack (IX-13 + relations-spec IX-R10), called from main.js's onEscape: armed tool →
+ *  dialogue → (if the RELATIONS tab is active) back to BUILD (restoring the ship viewport) →
+ *  nothing. The rung order + when-to-act is the pure `escapeTarget`. */
 export function handleEscape() {
-  if (_armed != null) { _armed = null; reflectArmed(); return; }
-  closeActiveDialogue();
+  const act = escapeTarget({
+    armed: _armed != null,
+    dialogueOpen: !!(_panels && _panels.activeDialogueSid != null),
+    relationsActive: _tab === 'relations',
+  });
+  if (act === 'disarm') { _armed = null; reflectArmed(); }
+  else if (act === 'dialogue') closeActiveDialogue();
+  else if (act === 'relations') setTab('build');
 }
 
 /** Connection change (IX-96): disarm, drop the pending click, re-request chron next open.
@@ -313,6 +382,55 @@ function pulseAt(tool, x, y) {
   d.style.width = d.style.height = (T * s * k) + 'px';
   stage.appendChild(d);
   setTimeout(() => d.remove(), 160);
+}
+
+/** The persistent build-ghost overlay layer (created lazily inside the stage, above the canvas,
+ *  non-interactive). Keyed sibling of the pulse — same camera-transform math so ghosts glue under
+ *  pan/zoom/deck-change; cleared to empty when there is nothing to show. */
+function designLayer() {
+  const cnv = _getCanvas();
+  const stage = cnv ? cnv.parentElement : document.querySelector('.stage');
+  if (!stage) return null;
+  let layer = stage.querySelector(':scope > .design-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'design-layer';
+    stage.appendChild(layer);
+  }
+  return layer;
+}
+
+/**
+ * Repaint the pending-designation ghosts on the CURRENT deck. Called on every draw (so the ghosts
+ * track drag-pan/zoom continuously), on deck change, and when the designs channel updates. Ghosts
+ * for other decks are hidden (the deck filter is the pure `designsOnDeck`); a resolved designation
+ * drops off the wire and its ghost vanishes on the next channel update.
+ */
+export function paintDesignGhosts() {
+  const layer = designLayer();
+  if (!layer) return;
+  const cnv = _getCanvas();
+  const cells = _designs && Array.isArray(_designs.cells) ? _designs.cells : null;
+  if (!cnv || !_camera || !_frame || !cells) { if (layer.firstChild) layer.replaceChildren(); return; }
+  const stage = cnv.parentElement;
+  const list = designsOnDeck(cells, _frame.deck);
+  if (!list.length) { if (layer.firstChild) layer.replaceChildren(); return; }
+  const { s, ox, oy } = transform(_camera);
+  const T = _camera.tile;
+  const crect = cnv.getBoundingClientRect();
+  const srect = stage.getBoundingClientRect();
+  if (!crect.width || !cnv.width) return;
+  const k = crect.width / cnv.width;
+  const side = (T * s * k);
+  let html = '';
+  for (const g of list) {
+    const left = (crect.left - srect.left + (g.x * T * s + ox) * k);
+    const top = (crect.top - srect.top + (g.y * T * s + oy) * k);
+    html += `<div class="ghost ghost-${g.kind === 1 ? 'door' : 'wall'}" ` +
+      `style="left:${left.toFixed(1)}px;top:${top.toFixed(1)}px;width:${side.toFixed(1)}px;height:${side.toFixed(1)}px">` +
+      `<span class="ghost-glyph" style="font-size:${Math.max(8, side * 0.5).toFixed(1)}px">${designGlyph(g.kind)}</span></div>`;
+  }
+  layer.innerHTML = html;
 }
 
 // ---- tabs ----
@@ -565,7 +683,9 @@ function reflectRowSelection() {
   });
 }
 
-const TABLE_CELLS = ['tc-name', 'tc-role', 'tc-mood', 'tc-morale', 'tc-task', 'tc-deck'];
+// IX-72 + polish: SURNAME NAME · ROLE · MOOD · TRAITS · MORALE% · TASK · DECK n. TRAITS is the
+// enrichment column (persona chips off the roster wire's appended `traits` field).
+const TABLE_CELLS = ['tc-name', 'tc-role', 'tc-mood', 'tc-traits', 'tc-morale', 'tc-task', 'tc-deck'];
 
 function makeTableRow(entry) {
   const row = document.createElement('button');
@@ -578,7 +698,7 @@ function makeTableRow(entry) {
     row.appendChild(c);
     cells[cls] = c;
   }
-  const rec = { el: row, entry, cells };
+  const rec = { el: row, entry, cells, traitsKey: '' };
   row.onclick = () => crewRowClick(rec.entry, row);
   return rec;
 }
@@ -588,6 +708,15 @@ function updateTableRow(rec, entry) {
   setText(rec.cells['tc-name'], surnameFirst(entry.name)); // IX-72: SURNAME-first identity
   setText(rec.cells['tc-role'], entry.role || '');
   setText(rec.cells['tc-mood'], entry.mood || '');
+  // TRAITS chips — rebuilt only when the trait set changes (roster re-sends on change; keep it cheap).
+  const traits = Array.isArray(entry.traits) ? entry.traits : [];
+  const key = traits.join('');
+  if (key !== rec.traitsKey) {
+    rec.cells['tc-traits'].innerHTML = traits.length
+      ? traits.map((t) => `<span class="tchip">${esc(t)}</span>`).join('')
+      : '<span class="tchip-none">—</span>';
+    rec.traitsKey = key;
+  }
   setText(rec.cells['tc-morale'], Math.round(mv * 100) + '%');
   const color = moraleColor(mv);
   if (rec.cells['tc-morale'].style.color !== color) rec.cells['tc-morale'].style.color = color;
@@ -598,28 +727,76 @@ function updateTableRow(rec, entry) {
 /** CREW tab (IX-72): the roster long-form, host order, row click = the selection flow.
  *  Same keyed in-place reconciliation as CREW WATCH. */
 function renderCrewTable() {
-  const wrap = $('tab-crew');
+  const wrap = $('crewtable');
   if (!wrap) return;
   const list = crewList();
   setEmptyLine(wrap, list.length === 0);
   reconcileRows(wrap, _tableRows, list, makeTableRow, updateTableRow);
   reflectRowSelection();
+  updateCrewMore();
 }
 
-/** MOSS tab (IX-73): honest guidance + a live line when the terminal drawer is open. */
+/** Refresh the "▾ N MORE" affordance + the bottom fade from the scroll container's metrics (pure
+ *  `moreBelow`). One uniform row stride is read off the first row (all rows share a height). */
+function updateCrewMore() {
+  const wrap = $('crewtable');
+  const more = $('crew-more');
+  const shell = $('tab-crew');
+  if (!wrap || !more || !shell) return;
+  const first = wrap.querySelector('.crew-trow');
+  const stride = first ? first.getBoundingClientRect().height + 4 /* .crew-table gap */ : 0;
+  const n = moreBelow(wrap.scrollTop, wrap.clientHeight, wrap.scrollHeight, stride);
+  more.hidden = n <= 0;
+  more.textContent = '▾ ' + n + ' MORE';
+  shell.classList.toggle('has-more', n > 0);
+}
+
+/**
+ * MOSS tab (IX-73 + polish): honest guidance, a clickable directory of the ship's terminals, and a
+ * live line when the drawer is open.
+ *
+ * Terminal-list design decision: opening a terminal's IDE needs only its tid — the host answers a
+ * `moss open` with the program source regardless of which deck is shown — so a list row opens the
+ * IDE directly through the SAME client path a console-tile click triggers (the `device` message
+ * calls `panels().openTerminal(tid)`, which fires `moss open`). No deck switch and no device toggle
+ * are needed (unlike replaying a `Cmd.click` on the tile, which would also flip the terminal's
+ * power and be blocked when a crew member stands on it). So every terminal is openable from the
+ * list irrespective of the current deck; the DECK n label is orientation only.
+ */
 function renderMossTab() {
   const wrap = $('tab-moss');
   if (!wrap) return;
-  const tid = _panels ? _panels.openTerminalTid() : null;
+  const openTid = _panels ? _panels.openTerminalTid() : null;
   wrap.replaceChildren();
   const msg = document.createElement('div');
   msg.className = 'menu-msg';
-  msg.textContent = 'MOSS terminals live on the deck. Click a console to open its program in the IDE.';
+  msg.textContent = 'Click a terminal to open its MOSS program in the IDE (or click a console on the deck).';
   wrap.appendChild(msg);
-  if (tid != null) {
+
+  const terms = terminalList(_terminals);
+  if (terms.length) {
+    const list = document.createElement('div');
+    list.className = 'term-list';
+    for (const t of terms) {
+      const row = document.createElement('button');
+      row.className = 'term-row' + (openTid != null && String(openTid) === t.tid ? ' open' : '');
+      row.textContent = terminalLabel(t);
+      row.title = 'Open ' + t.tid + '’s MOSS IDE';
+      row.onclick = () => { panels().openTerminal(t.tid); if (_tab === 'moss') renderMossTab(); };
+      list.appendChild(row);
+    }
+    wrap.appendChild(list);
+  } else {
+    const none = document.createElement('div');
+    none.className = 'menu-msg';
+    none.textContent = 'No MOSS terminals aboard.';
+    wrap.appendChild(none);
+  }
+
+  if (openTid != null) {
     const live = document.createElement('div');
     live.className = 'menu-msg moss-live';
-    live.textContent = 'TERMINAL ' + tid + ' — IDE OPEN';
+    live.textContent = 'TERMINAL ' + openTid + ' — IDE OPEN';
     wrap.appendChild(live);
   }
 }

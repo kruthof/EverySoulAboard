@@ -30,6 +30,9 @@
     <span class="chip">LENS <b id="s-lens">none</b></span>
     <span class="chip" id="s-llmchip" style="display:none">LLM <b id="s-llm">–</b></span>
     <span class="caution idle" id="s-caution">NOMINAL</span>
+    <!-- Paused-ship nudge: a transient call-to-action shown when the player designates/arms while
+         the sim is paused (first-time players never unpause). Dismisses on run or after a few s. -->
+    <div id="s-nudge" class="nudge" hidden>‖ HOLD — PRESS SPACE TO RUN THE SHIP</div>
   </div>
 
   <!-- ================= middle: crew watch | stage | readout ================= -->
@@ -88,7 +91,10 @@
           <span class="zone-label place-label">PLACE ▸</span>
           <span id="palette" class="palette"></span>
         </div>
-        <div id="tab-crew" class="crew-table" hidden></div>
+        <div id="tab-crew" class="crew-tab-wrap" hidden>
+          <div id="crewtable" class="crew-table"></div>
+          <div id="crew-more" class="crew-more" hidden>▾ MORE</div>
+        </div>
         <div id="tab-moss" class="tab-block" hidden></div>
         <div id="tab-chron" class="tab-block chron-block" hidden></div>
         <div id="tab-relations" class="tab-block" hidden>
