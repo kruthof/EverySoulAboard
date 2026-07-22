@@ -16,7 +16,7 @@ import {
 } from './helpers.js';
 import { composeScene } from '../src/render/compose.js';
 import { buildPasses, PASS_ORDER, reticlePhase } from '../src/render/webgl/batch.js';
-import { packAtlas, pow2 } from '../src/render/webgl/atlas.js';
+import { packAtlas, pow2, ATLAS_BORDER, ATLAS_PAD, UV_INSET_TEXELS } from '../src/render/webgl/atlas.js';
 
 const TERRAIN_KINDS = new Set(['hull', 'void', 'floor', 'debris', 'wall', 'wall_vert']);
 const OVERLAY_KINDS = new Set(['wash', 'cursor', 'reticle']);
@@ -203,7 +203,7 @@ test('packAtlas is deterministic and order-independent (sorts by name)', () => {
 
 test('packAtlas wraps to new shelves at maxWidth and handles the empty set', () => {
   const empty = packAtlas([]);
-  assert.deepEqual(empty, { width: 1, height: 1, placements: {}, uv: {} });
+  assert.deepEqual(empty, { width: 1, height: 1, pad: ATLAS_PAD, placements: {}, uv: {} });
   // Three 100px sprites with maxWidth 220 → two per shelf, so the third drops to a new row.
   const atlas = packAtlas(
     [{ name: 'x', w: 100, h: 40 }, { name: 'y', w: 100, h: 40 }, { name: 'z', w: 100, h: 40 }],
@@ -211,6 +211,54 @@ test('packAtlas wraps to new shelves at maxWidth and handles the empty set', () 
   );
   assert.equal(atlas.placements.z.y > atlas.placements.x.y, true, 'z should wrap below x');
   assert.equal(atlas.placements.x.y, atlas.placements.y.y, 'x and y share the first shelf');
+});
+
+// ---- WP-0: bleed protection (gutter + half-texel inset) ----
+test('packAtlas gives every cell an EXCLUSIVE ATLAS_BORDER — replicated edges never collide', () => {
+  const sprites = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((n) => ({ name: n, w: 128, h: 128 }));
+  const atlas = packAtlas(sprites);
+  const names = Object.keys(atlas.placements);
+  // The gutter is reported so the rasterizer can CHECK it (webgl2.js _replicateEdges) instead of
+  // assuming the default, and the default must fit two exclusive borders side by side.
+  assert.ok(atlas.pad >= 2 * ATLAS_BORDER, `default gutter ${atlas.pad} < 2 * ATLAS_BORDER`);
+  assert.equal(packAtlas(sprites, { padding: 3 }).pad, 3, 'a custom gutter is reported, not hidden');
+  // Grow every placement by its border; the grown rects must STILL be disjoint, otherwise one
+  // cell's replicated edge would overwrite its neighbour's and the protection would be fiction.
+  const grown = names.map((n) => {
+    const p = atlas.placements[n];
+    return { x: p.x - ATLAS_BORDER, y: p.y - ATLAS_BORDER, w: p.w + 2 * ATLAS_BORDER, h: p.h + 2 * ATLAS_BORDER };
+  });
+  for (let i = 0; i < grown.length; i++) {
+    const a = grown[i];
+    assert.ok(a.x >= 0 && a.y >= 0, 'a border must not run off the top/left of the texture');
+    assert.ok(a.x + a.w <= atlas.width && a.y + a.h <= atlas.height, 'border off the texture');
+    for (let j = i + 1; j < grown.length; j++) {
+      const b = grown[j];
+      const disjoint = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+      assert.ok(disjoint, `borders of ${names[i]} and ${names[j]} overlap`);
+    }
+  }
+});
+
+test('packAtlas UVs sample every texel CENTRE exactly once when drawn 1:1', () => {
+  // This is the property max zoom depends on: at pitch == cell width, pixel i must land on texel
+  // centre p.x + i + 0.5. A half-texel inset (UV_INSET_TEXELS = 0.5) breaks it — it maps 128 pixels
+  // across 127 texels — and measurably throws away a third of the crispness. See atlas.js.
+  assert.equal(UV_INSET_TEXELS, 0, 'the inset is deliberately disarmed; re-read atlas.js before changing');
+  const W = 128;
+  const atlas = packAtlas([{ name: 'floor', w: W, h: W }, { name: 'wall', w: W, h: W }]);
+  for (const name of ['floor', 'wall']) {
+    const p = atlas.placements[name], uv = atlas.uv[name];
+    for (const i of [0, 1, 63, 126, 127]) {
+      const texel = (uv.u0 + ((i + 0.5) / W) * (uv.u1 - uv.u0)) * atlas.width;
+      assert.ok(Math.abs(texel - (p.x + i + 0.5)) < 1e-9,
+        `pixel ${i} samples texel ${texel}, wanted centre ${p.x + i + 0.5}`);
+    }
+  }
+  // A degenerate 1px cell still yields a usable, non-inverted rect.
+  const tiny = packAtlas([{ name: 'x', w: 1, h: 1 }]);
+  assert.ok(tiny.uv.x.u1 >= tiny.uv.x.u0);
+  assert.ok(tiny.uv.x.u0 > 0 && tiny.uv.x.u1 < 1);
 });
 
 test('packAtlas does not mutate its input list', () => {

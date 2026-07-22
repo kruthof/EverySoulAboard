@@ -45,7 +45,14 @@ the **RELATIONS tab** (crew relationship web, `relations` wire, secret bonds, sp
 `perilune-game-ui.relations-spec.md`), and console visibility polish (wire-backed
 build ghosts via `designs`, paused-ship nudge, CREW traits, MOSS terminal directory
 via `terminals`, Escape exits RELATIONS). **560 dotnet + 188 node** green via
-`./ci.sh`; all determinism pins unmoved. Next up: P3 "The Voyage" (PLAN.md).
+`./ci.sh`; all determinism pins unmoved. **Render WP-0 "a crisp ship stage"** landed
+2026-07-22 (reviewed + corrected): trilinear minify + `imageSmoothingEnabled`, a 4px
+edge-REPLICATED atlas border (tile-seam luma 12.36 → 1.11, −91%), an integer tile
+pitch + rounded origin (`tilePitch`/`transform` in `client/src/render/camera.js`), and
+`MAX_TILE_DEVICE_PX = 128` — max zoom is now 1:1 with the source art, never an upscale.
+The pawn slide is deliberately NOT snapped (added in tile space before the pitch
+multiply); the PAWN SLIDE INVARIANT test drives both real executors to pin that.
+Next up: P3 "The Voyage" (PLAN.md).
 
 ## Layout
 `sim/` (Sim.Core, Sim.Dsl, Sim.Gen, Sim.Glyph, Sim.Llm, Sim.Content — all headless) ·
@@ -71,8 +78,10 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (573 green; `./ci.sh`
-  runs the full gate — 573 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (607 green; `./ci.sh`
+  runs the full gate — 607 dotnet + 198 node, ~3 min wall since V6 runs real sim-days).
+  (Counts MEASURED 2026-07-22, not carried forward: the "573 / 188" that stood here had
+  drifted behind three merged lanes. Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed

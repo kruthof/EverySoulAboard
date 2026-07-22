@@ -138,12 +138,13 @@ python3 client/tools/imgdiff.py A.png B.png [--tol 40] [--bar 0.90]   # standalo
 ```
 
 **Parity is intentionally not pixel-perfect.** The GL path rasterizes the *same* painters/sprites
-but then samples them through nearest-magnify + mipmapped-minify under premultiplied-alpha blending,
+but then samples them through trilinear (mipmapped) minification under premultiplied-alpha blending,
 so antialiased edges and zoomed-out (minified) tiles differ by a few levels. The tolerance: a pixel
 "matches" when its max per-channel diff ≤ **40/255**; the parity **bar is ≥ 90% matching pixels**.
 Structural elements — tile positions, sprite/cell choice, facing, and colours within tolerance —
-must match; the near-zoom shot (upscaled, crisp NEAREST) matches more tightly than the far-zoom
-shot (downscaled, where GL mipmaps soften vs the canvas skin's nearest sampling). If headless
+must match; the near-zoom shot (at most 1:1 — `MAX_TILE_DEVICE_PX` refuses to upscale past the
+source art, so both skins sample it unresampled) matches more tightly than the far-zoom shot
+(downscaled, where GL mipmaps and the canvas skin's smoothing take different routes). If headless
 Chrome or a GPU/SwiftShader context is unavailable, the harness still runs by hand — it prints the
 active backend it captured per shot (grep of `[perilune] backend=…`); if `webgl2` silently fell
 back to Canvas2D the two PNGs will be identical (diff ~0), which is the tell that GL never engaged.
@@ -156,7 +157,9 @@ Against a live host (`~/.dotnet/dotnet run --project hosts/web -- --port 8330` +
    hover cursor and the selection reticle should read the same (colours within tolerance).
 2. Press `P` in the `webgl2` tab — the atlas rebuilds for procedural mode; the vector skin should
    match the Canvas2D procedural skin.
-3. Zoom in (scroll up) — GL magnify stays crisp (NEAREST); zoom out — tiles stay readable (mipmaps).
+3. Zoom in (scroll up) — the zoom stops at 1:1 with the 128px source art (`MAX_TILE_DEVICE_PX`),
+   which is where it is crispest; zoom out — tiles stay readable and seam-free (trilinear mipmaps
+   over the replicated atlas border).
 4. **Context-loss drill.** In the `webgl2` tab's devtools console:
    `document.querySelector('#c').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()`
    — the client logs `webgl2 context lost — falling back to canvas2d`, swaps the canvas element,

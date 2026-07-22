@@ -1,5 +1,14 @@
 {
 "terrain": [
+  {"kind":"hull","x":0,"y":2},
+  {"kind":"hull","x":1,"y":2},
+  {"kind":"hull","x":2,"y":2},
+  {"kind":"hull","x":3,"y":2},
+  {"kind":"hull","x":4,"y":2},
+  {"kind":"hull","x":5,"y":2},
+  {"kind":"hull","x":6,"y":2},
+  {"kind":"hull","x":7,"y":2},
+  {"kind":"hull","x":8,"y":2},
   {"kind":"hull","x":0,"y":3},
   {"kind":"hull","x":1,"y":3},
   {"kind":"wall","x":2,"y":3},
@@ -7,6 +16,8 @@
   {"kind":"wall","x":4,"y":3},
   {"kind":"wall","x":5,"y":3},
   {"kind":"wall","x":6,"y":3},
+  {"kind":"wall","x":7,"y":3},
+  {"kind":"wall","x":8,"y":3},
   {"kind":"hull","x":0,"y":4},
   {"kind":"wall_vert","x":1,"y":4},
   {"kind":"floor","x":2,"y":4},
@@ -14,18 +25,32 @@
   {"kind":"floor","x":4,"y":4},
   {"kind":"floor","x":5,"y":4},
   {"kind":"floor","x":6,"y":4},
+  {"kind":"floor","x":7,"y":4},
+  {"kind":"floor","x":8,"y":4},
   {"kind":"hull","x":0,"y":5},
   {"kind":"wall_vert","x":1,"y":5},
   {"kind":"floor","x":2,"y":5},
   {"kind":"floor","x":3,"y":5},
   {"kind":"floor","x":4,"y":5},
   {"kind":"floor","x":5,"y":5},
-  {"kind":"floor","x":6,"y":5}
+  {"kind":"floor","x":6,"y":5},
+  {"kind":"floor","x":7,"y":5},
+  {"kind":"floor","x":8,"y":5},
+  {"kind":"hull","x":0,"y":6},
+  {"kind":"wall_vert","x":1,"y":6},
+  {"kind":"floor","x":2,"y":6},
+  {"kind":"floor","x":3,"y":6},
+  {"kind":"floor","x":4,"y":6},
+  {"kind":"floor","x":5,"y":6},
+  {"kind":"floor","x":6,"y":6},
+  {"kind":"floor","x":7,"y":6},
+  {"kind":"floor","x":8,"y":6}
 ],
 "entities": [
   {"kind":"entity","x":3,"y":5,"sprite":"solar","turns":0,"tint":8,"alpha":1,"glyph":71,"pv":null,"overlay":null},
   {"kind":"entity","x":5,"y":5,"sprite":"solar","turns":0,"tint":8,"alpha":1,"glyph":71,"pv":null,"overlay":null},
-  {"kind":"entity","x":6,"y":5,"sprite":"light","turns":0,"tint":8,"alpha":1,"glyph":42,"pv":null,"overlay":null}
+  {"kind":"entity","x":6,"y":5,"sprite":"light","turns":0,"tint":8,"alpha":1,"glyph":42,"pv":null,"overlay":null},
+  {"kind":"entity","x":8,"y":5,"sprite":"battery","turns":0,"tint":8,"alpha":1,"glyph":66,"pv":null,"overlay":null}
 ],
 "light": [],
 "overlay": [

@@ -7,32 +7,104 @@
 // Layout is a padded shelf (row) packer: sprites are placed left-to-right in name order, wrapping
 // to a new shelf when the row would exceed maxWidth. Sorting by name makes the layout independent
 // of input order (shuffled input → identical atlas), which is what "deterministic layout" means.
-// The final texture dimensions are rounded up to powers of two (GPU-friendly); a 1px gutter
-// between sprites prevents bilinear bleed. Placements never overlap; every UV rect stays within
+// The final texture dimensions are rounded up to powers of two (GPU-friendly); an ATLAS_PAD gutter
+// between sprites prevents bilinear/mip bleed. Placements never overlap; every UV rect stays within
 // [0,1).
+//
+// TWO anti-bleed measures live here, and they only work together:
+//   1. ATLAS_BORDER = 4px of replicated edge pixels owned EXCLUSIVELY by each cell. A 1px gutter is
+//      already half a texel by mip level 1, so neighbouring cells leak into each other the moment
+//      the view minifies; 4px still leaves a full clean texel at mip 2, which is the level the
+//      zoomed-out establishing view samples. See ATLAS_BORDER for the exact bound (it is mip 2,
+//      not mip 3) and what mip 3 actually costs. Because the border is exclusive, the default
+//      gutter BETWEEN two cells is 2 * ATLAS_BORDER — if neighbours shared one 4px gutter, each
+//      cell's replication would overwrite the other's and the protection would be illusory.
+//      The RASTERIZER must actually fill that border by REPLICATING each cell's edge pixels
+//      outward (see webgl2.js _replicateEdges) — transparent padding would make LINEAR filtering
+//      pull premultiplied zero in and ring every sprite with a dark halo.
+//   2. UV_INSET_TEXELS — the half-texel guard, measured and deliberately set to 0. See the constant.
 
 /** @typedef {{name:string, w:number, h:number}} SpriteSize */
 /** @typedef {{x:number, y:number, w:number, h:number}} Placement */
 /** @typedef {{u0:number, v0:number, u1:number, v1:number}} UVRect */
-/** @typedef {{width:number, height:number, placements:Record<string,Placement>, uv:Record<string,UVRect>}} Atlas */
+/** @typedef {{width:number, height:number, pad:number, placements:Record<string,Placement>, uv:Record<string,UVRect>}} Atlas */
+
+/**
+ * Width (px) of the replicated edge border each cell owns on every side.
+ *
+ * The EXACT guarantee is mip 2, and it is worth being precise because the honest bound is weaker
+ * than "clean through mip 3". At mip level L the border measures 4 / 2^L texels: 4 at mip 0, 2 at
+ * mip 1, 1 at mip 2 — a whole clean texel, so a tap that strays up to half a texel past the cell
+ * edge still lands on replicated edge colour. Mip 2 is the level the zoomed-out establishing view
+ * samples, so that is the level that has to be airtight.
+ *
+ * At mip 3 the border is exactly 0.5 texel. Placements are 8-ALIGNED (pad = 2 * ATLAS_BORDER = 8),
+ * not 16-aligned, so a mip-3 texel straddles the cell boundary and a rim tap picks up roughly 25%
+ * neighbour — at FULL mip-3 weight. In practice the reachable LOD is ~1.7–2.2 (clampCam's minimum
+ * zoom, over this atlas), so mip 3 carries a trilinear weight of ≲0.2, i.e. ≲5% contamination on a
+ * 1px rim. Acceptable, and measured that way — but it is a soft bound, not a guarantee.
+ *
+ * TO HARDEN mip 3: raise this to 8 (placements become 16-aligned and mip 3 gets its own clean
+ * texel). That doubles the gutter, so re-check the packed texture height against pow2.
+ */
+export const ATLAS_BORDER = 4;
+
+/** Default gutter between cells: each neighbour's border, side by side, never overlapping. */
+export const ATLAS_PAD = 2 * ATLAS_BORDER;
+
+/**
+ * How far (in texels) each cell's sample rect stops SHORT of the cell's true edge.
+ *
+ * The textbook anti-bleed hack is half a texel. It is WRONG here, and measurably so. The correct
+ * mapping for a w-texel cell drawn across `pitch` device pixels puts pixel i at texel
+ * `p.x + (i + 0.5) * w / pitch`; at the new max zoom (pitch == w == 128) that is exactly texel
+ * centre p.x + i + 0.5 — pixel-perfect, zero resampling. A half-texel inset instead maps 128 pixels
+ * across 127 texels, so the tap drifts up to half a texel off centre and bilinear smears every
+ * sample. Shot at 1:1 on the slice (2560x1440, ship stage only), inset vs none:
+ *
+ *     mean |grad luma|   1.552  vs  2.075   (-25%)
+ *     Laplacian variance 140.8  vs  260.7   (-46%)
+ *     HF energy > .25 Nyq 3.95% vs  6.08%   (-35%)
+ *
+ * i.e. the guard would have thrown away a third of the crispness this whole change exists to buy,
+ * at precisely the zoom the player notices. It is unnecessary because ATLAS_BORDER already fills
+ * the gutter with replicated edge pixels: at mip level L a tap strays at most 0.5 texel past the
+ * edge while the border is 4 / 2^L texels wide, so the tap lands on a copy of the edge pixel for
+ * every L <= 2 — see ATLAS_BORDER for what mip 3 costs (a soft ≲5% on a 1px rim at the reachable
+ * LOD, not a hard guarantee) and clampCam's minimum zoom for why the ship stays inside it.
+ *
+ * TO RE-ARM (e.g. if ATLAS_BORDER is ever reduced, or a much wider map pushes the reachable LOD
+ * past mip 3): set this to 0.5. Nothing else changes.
+ */
+export const UV_INSET_TEXELS = 0;
 
 /**
  * Pack named sprite sizes into a single atlas.
+ *
+ * SHELF DENSITY, and a thing to watch: the 1px → 8px gutter dropped a 128px row from 4 cells to 3
+ * (3 * 136 + 8 = 416 fits under maxWidth 512; a 4th needs 552). Texture size is unchanged today —
+ * the client's ~24 cells still pack to 512x2048 — but the packer is now height-limited, and the
+ * height is rounded UP to a power of two. Today's 8 rows land at 1096px → 2048; a 9th row (~1232px)
+ * still fits 2048, a 16th (~2048px) is the next cliff. If the cell count grows past ~15 rows,
+ * raise maxWidth (a wider shelf packs more per row) before accepting a 4096px texture.
+ *
  * @param {SpriteSize[]} sprites  list of {name,w,h}; order is irrelevant (sorted by name)
  * @param {{padding?:number, maxWidth?:number}} [opts]
- *   padding  gutter in px between sprites and at the atlas edge (default 1)
+ *   padding  gutter in px between sprites and at the atlas edge (default ATLAS_PAD). The
+ *            rasterizer's edge replication ASSUMES this is >= 2 * ATLAS_BORDER; it is returned as
+ *            `pad` so webgl2.js _replicateEdges can check rather than assume.
  *   maxWidth shelf-wrap threshold in px before power-of-two rounding (default 512)
  * @returns {Atlas}
  */
 export function packAtlas(sprites, opts = {}) {
-  const pad = opts.padding == null ? 1 : opts.padding;
+  const pad = opts.padding == null ? ATLAS_PAD : opts.padding;
   const maxW = opts.maxWidth == null ? 512 : opts.maxWidth;
 
   const entries = [...sprites].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   /** @type {Record<string,Placement>} */
   const placements = {};
 
-  if (entries.length === 0) return { width: 1, height: 1, placements, uv: {} };
+  if (entries.length === 0) return { width: 1, height: 1, pad, placements, uv: {} };
 
   let x = pad, y = pad, shelfH = 0, usedW = pad;
   for (const s of entries) {
@@ -54,19 +126,23 @@ export function packAtlas(sprites, opts = {}) {
   const width = pow2(contentW);
   const height = pow2(contentH);
 
+  // Cell EDGE mapping (see UV_INSET_TEXELS): u spans the cell's outer boundaries, so a quad drawn
+  // `w` device px wide samples every texel centre exactly once. The inset is clamped to half the
+  // cell so it can never invert the rect on a degenerate 1px cell.
   /** @type {Record<string,UVRect>} */
   const uv = {};
   for (const name of Object.keys(placements)) {
     const p = placements[name];
+    const ix = Math.min(UV_INSET_TEXELS, p.w / 2), iy = Math.min(UV_INSET_TEXELS, p.h / 2);
     uv[name] = {
-      u0: p.x / width,
-      v0: p.y / height,
-      u1: (p.x + p.w) / width,
-      v1: (p.y + p.h) / height,
+      u0: (p.x + ix) / width,
+      v0: (p.y + iy) / height,
+      u1: (p.x + p.w - ix) / width,
+      v1: (p.y + p.h - iy) / height,
     };
   }
 
-  return { width, height, placements, uv };
+  return { width, height, pad, placements, uv };
 }
 
 /** Smallest power of two >= n (>= 1). */
