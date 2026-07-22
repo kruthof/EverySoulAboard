@@ -55,9 +55,146 @@ namespace Perilune.Llm
             for (int i = 0; i < mems.Count; i++)
                 req.MemoryLines.Add(mems[i].Text);
 
+            req.ShipState = RenderShipState(sim, citizen);
+
             BuildCapabilitySummary(facts, manifest, req.CapabilitySummary);
             return req;
         }
+
+        // ------------------------------------------------------------------ ship grounding
+
+        /// <summary>CO2 above this reads as a real problem the crew would talk about (ppm).</summary>
+        private const double Co2Bad = 2000.0;
+        /// <summary>CO2 above this is noticeably stale but not yet dangerous (ppm).</summary>
+        private const double Co2Stale = 1000.0;
+        /// <summary>A machine below this condition is "wearing out" even if still operational.</summary>
+        private const float WornBelow = 0.5f;
+        /// <summary>At most this many machines are named; the rest collapse into a count.</summary>
+        private const int MaxMachinesNamed = 4;
+
+        /// <summary>
+        /// The compact ship snapshot behind the prompt's <c>[SHIP]</c> block: worst-room air, the
+        /// machines that are failed or wearing out, and this crew member's own current task. Three
+        /// short lines, plain text, no sim references — the LLM layer only ever sees copied data.
+        ///
+        /// <para>Why: <see cref="Build"/> used to hand the model persona, mood, memories and legal
+        /// effects and NOTHING about the ship, so a live model asked "how are things?" invented a
+        /// CO2 crisis out of the fiction and promised a repair it structurally cannot perform. The
+        /// global system rules point at this block as the only true report of ship condition.</para>
+        ///
+        /// PURE + DETERMINISTIC: it reads the already-computed room list (never
+        /// <c>RecomputeIfDirty</c>, which mutates), walks the device store in its canonical order,
+        /// and formats every number with InvariantCulture. Same sim state ⇒ same bytes.
+        /// </summary>
+        internal static string RenderShipState(Simulation sim, Citizen self)
+        {
+            if (sim == null) return string.Empty;
+            var sb = new StringBuilder(192);
+            AppendAirLine(sb, sim);
+            sb.Append('\n');
+            AppendMachineLine(sb, sim);
+            sb.Append('\n');
+            AppendOwnJobLine(sb, sim, self);
+            return sb.ToString();
+        }
+
+        /// <summary>"Air: worst room is the galley at 1450 ppm CO2 (stale)." — the single worst
+        /// pressurised room, named by its anchor when one resolves to it. Room 0 is the vacuum
+        /// sink and empty rooms have no atmosphere to judge, so both are skipped.</summary>
+        private static void AppendAirLine(StringBuilder sb, Simulation sim)
+        {
+            sb.Append("Air: ");
+            var rooms = sim.Rooms.Rooms;
+            int worst = -1;
+            double worstPpm = 0.0;
+            for (int i = 1; i < rooms.Count; i++)   // 0 = vacuum sink, never a room the crew stand in
+            {
+                var r = rooms[i];
+                if (r == null || r.TileCount <= 0 || r.TotalMoles <= 0) continue;
+                double ppm = r.CO2Ppm;
+                if (worst < 0 || ppm > worstPpm) { worst = i; worstPpm = ppm; }
+            }
+            if (worst < 0) { sb.Append("no sealed compartment aboard reports an atmosphere."); return; }
+
+            sb.Append("worst compartment is ").Append(RoomName(sim, worst)).Append(" at ")
+              .Append(((int)System.Math.Round(worstPpm, System.MidpointRounding.AwayFromZero))
+                          .ToString(CultureInfo.InvariantCulture))
+              .Append(" ppm CO2 (")
+              .Append(worstPpm >= Co2Bad ? "bad" : worstPpm >= Co2Stale ? "stale" : "normal")
+              .Append("). Everywhere else is better than that.");
+        }
+
+        /// <summary>The anchor name of a room id ("the galley"), else "an unnamed compartment".
+        /// Anchors are walked in their canonical order, so the first match is deterministic.</summary>
+        private static string RoomName(Simulation sim, int roomId)
+        {
+            var anchors = sim.Rooms.Anchors;
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                if (string.IsNullOrEmpty(anchors[i].Name)) continue;
+                if (sim.Rooms.RoomIdAt(sim.World, anchors[i].Probe) == roomId) return "the " + anchors[i].Name;
+            }
+            return "an unnamed compartment";
+        }
+
+        /// <summary>"Machines: scrubber_ls has failed; pump_2 is wearing out." — only the machines
+        /// that are actually in trouble, in device-store order, capped so the block stays compact.
+        /// Furniture never wears, so it never appears here.</summary>
+        private static void AppendMachineLine(StringBuilder sb, Simulation sim)
+        {
+            sb.Append("Machines: ");
+            var devices = sim.Devices.Items;
+            int named = 0, extra = 0;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d == null) continue;
+                bool failed = !d.IsOperational(sim.Defs);
+                bool worn = !failed && d.Condition < WornBelow;
+                if (!failed && !worn) continue;
+                if (named >= MaxMachinesNamed) { extra++; continue; }
+                if (named > 0) sb.Append("; ");
+                sb.Append(DeviceName(d)).Append(failed ? " has failed" : " is wearing out");
+                named++;
+            }
+            if (named == 0) { sb.Append("every machine aboard is running."); return; }
+            if (extra > 0)
+                sb.Append("; and ").Append(extra.ToString(CultureInfo.InvariantCulture)).Append(" more in the same state");
+            sb.Append('.');
+        }
+
+        /// <summary>A device's MOSS id when it has one, else its kind — never an empty hole.</summary>
+        private static string DeviceName(Device d)
+            => string.IsNullOrEmpty(d.Name) ? d.Kind.ToString().ToLowerInvariant() : d.Name;
+
+        /// <summary>"Your job right now: servicing scrubber_ls." — the SAME job state the console's
+        /// crew task label reads, phrased in the second person. A crew member with no job is told
+        /// so explicitly, which is what stops "I'll get right on it" from sounding true.</summary>
+        private static void AppendOwnJobLine(StringBuilder sb, Simulation sim, Citizen self)
+        {
+            sb.Append("Your job right now: ");
+            if (self == null) { sb.Append("nothing assigned."); return; }
+            switch (self.JobKind)
+            {
+                case JobKind.Dig: sb.Append("clearing debris at ").Append(Tile(self.JobTarget)).Append('.'); break;
+                case JobKind.HaulPickup:
+                case JobKind.HaulDeliver: sb.Append("hauling cargo across the ship."); break;
+                case JobKind.Eat: sb.Append("getting something to eat."); break;
+                case JobKind.Drink: sb.Append("getting water."); break;
+                case JobKind.Craft: sb.Append("working at ").Append(DeviceAt(sim, self.JobTarget, "a workstation")).Append('.'); break;
+                case JobKind.Maintain: sb.Append("servicing ").Append(DeviceAt(sim, self.JobTarget, "a machine")).Append('.'); break;
+                case JobKind.HaulToBuild:
+                case JobKind.Build: sb.Append("working the build site at ").Append(Tile(self.JobTarget)).Append('.'); break;
+                default: sb.Append("nothing assigned — you are standing here, talking."); break;
+            }
+        }
+
+        private static string DeviceAt(Simulation sim, Int3 pos, string fallback)
+            => sim != null && sim.TryGetDeviceAt(pos, out var d) ? DeviceName(d) : fallback;
+
+        private static string Tile(Int3 p)
+            => p.X.ToString(CultureInfo.InvariantCulture) + "," + p.Y.ToString(CultureInfo.InvariantCulture) +
+               " on deck " + p.Z.ToString(CultureInfo.InvariantCulture);
 
         /// <summary>
         /// The manifest → capability-summary projection: one <see cref="EffectOption"/>

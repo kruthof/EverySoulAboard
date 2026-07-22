@@ -12,8 +12,8 @@ import {
   CREW_HUES, speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry,
   crewClickTarget, beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool,
   isBuildTool, hintLine, chronHeader,
-  designsOnDeck, designGlyph, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
-  terminalList, terminalLabel, escapeTarget,
+  designsOnDeck, designGlyph, ghostState, ghostLabel, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
+  terminalList, terminalLabel, escapeTarget, taskTag, watchTask, workMarkers,
 } from '../src/ui/console-model.js';
 import { Cmd } from '../src/wire/session.js';
 
@@ -337,19 +337,95 @@ test('Cmd.build / Cmd.chron marshal the exact host shapes (GameSession.Parse)', 
 
 // ---------------- build ghosts: designsOnDeck / designGlyph ----------------
 
-test('designsOnDeck: filters to the deck, maps [x,y,deck,kind] → {x,y,kind}, tolerant', () => {
-  const cells = [[3, 4, 0, 0], [5, 6, 1, 1], [7, 8, 0, 1], 'garbage', [1], null];
-  assert.deepEqual(designsOnDeck(cells, 0), [{ x: 3, y: 4, kind: 0 }, { x: 7, y: 8, kind: 1 }]);
-  assert.deepEqual(designsOnDeck(cells, 1), [{ x: 5, y: 6, kind: 1 }]);
+test('designsOnDeck: filters to the deck, maps [x,y,deck,kind,delivered,required], tolerant', () => {
+  const cells = [[3, 4, 0, 0, 0, 2], [5, 6, 1, 1, 1, 2], [7, 8, 0, 1, 2, 2], 'garbage', [1], null];
+  assert.deepEqual(designsOnDeck(cells, 0), [
+    { x: 3, y: 4, kind: 0, delivered: 0, required: 2, state: 'starved' },
+    { x: 7, y: 8, kind: 1, delivered: 2, required: 2, state: 'ready' },
+  ]);
+  assert.deepEqual(designsOnDeck(cells, 1), [{ x: 5, y: 6, kind: 1, delivered: 1, required: 2, state: 'supplied' }]);
   assert.deepEqual(designsOnDeck(cells, 2), []);
   assert.deepEqual(designsOnDeck(null, 0), []);
   assert.deepEqual(designsOnDeck(undefined, 0), []);
+});
+
+test('designsOnDeck: the ledger is APPEND-ONLY — a legacy 4-element tuple still decodes', () => {
+  // The host may only ever append to the designs tuple (WireFormat is a spine file). A reader
+  // handed the pre-ledger shape must keep working, with no ledger and no starved state.
+  assert.deepEqual(designsOnDeck([[3, 4, 0, 0]], 0),
+    [{ x: 3, y: 4, kind: 0, delivered: 0, required: 0, state: 'plain' }]);
+  assert.equal(ghostLabel({ delivered: 0, required: 0 }), '', 'no ledger ⇒ no n/m label');
+  // Garbage in the ledger slots degrades to "no ledger", never NaN on screen.
+  assert.deepEqual(designsOnDeck([[3, 4, 0, 0, 'x', null]], 0),
+    [{ x: 3, y: 4, kind: 0, delivered: 0, required: 0, state: 'plain' }]);
+});
+
+test('ghostState / ghostLabel: starved vs supplied vs ready', () => {
+  assert.equal(ghostState(0, 2), 'starved', 'nothing delivered — this order is going nowhere');
+  assert.equal(ghostState(1, 2), 'supplied');
+  assert.equal(ghostState(2, 2), 'ready');
+  assert.equal(ghostState(3, 2), 'ready', 'over-delivery still reads ready');
+  assert.equal(ghostState(0, 0), 'plain');
+  assert.equal(ghostLabel({ delivered: 0, required: 2 }), '0/2');
+  assert.equal(ghostLabel({ delivered: 1, required: 2 }), '1/2');
+  assert.equal(ghostLabel(null), '');
 });
 
 test('designGlyph: wall/door/unknown', () => {
   assert.equal(designGlyph(0), '▚');
   assert.equal(designGlyph(1), '▯');
   assert.equal(designGlyph(9), '?');
+});
+
+// ---------------- work markers + CREW WATCH task cell ----------------
+
+test('taskTag: every host verb maps to a tag; the job-less states map to none', () => {
+  // These verbs are pinned host-side by WebTaskLabelTests.Every_JobKind_Label_Opens_With_A_Known_Verb.
+  assert.equal(taskTag('Digging out 12,5'), 'DIG');
+  assert.equal(taskTag('Fetching regolith at 4,4'), 'HAUL');
+  assert.equal(taskTag('Hauling regolith to 9,2'), 'HAUL');
+  assert.equal(taskTag('Hauling regolith to wall 3,4 (0/2)'), 'HAUL');
+  assert.equal(taskTag('Building wall 3,4'), 'BUILD');
+  assert.equal(taskTag('Servicing scrubber_ls'), 'SVC');
+  assert.equal(taskTag('Crafting at fab_main'), 'CRAFT');
+  assert.equal(taskTag('Eating'), 'MEAL');
+  assert.equal(taskTag('Drinking at tank_ls'), 'WATER');
+
+  // Doing nothing must never be tagged as work — that was the whole defect.
+  assert.equal(taskTag('Walking to 7,11 (no task)'), null);
+  assert.equal(taskTag('Holding position'), null);
+  assert.equal(taskTag('Idle'), null);
+  assert.equal(taskTag(''), null);
+  assert.equal(taskTag(null), null);
+  assert.equal(taskTag(42), null);
+  assert.equal(taskTag('  servicing  scrubber_ls '), 'SVC', 'tolerant of stray whitespace/casing');
+});
+
+test('watchTask: the CREW WATCH cell shows the label and flags real work', () => {
+  assert.deepEqual(watchTask({ task: 'Servicing scrubber_ls' }), { text: 'Servicing scrubber_ls', working: true });
+  assert.deepEqual(watchTask({ task: 'Idle' }), { text: 'Idle', working: false });
+  assert.deepEqual(watchTask({ task: '   ' }), { text: '—', working: false });
+  assert.deepEqual(watchTask({}), { text: '—', working: false });
+  assert.deepEqual(watchTask(null), { text: '—', working: false });
+});
+
+test('workMarkers: only working crew, only the shown deck, joined from the roster', () => {
+  const crew = [
+    { cid: 1, deck: 0, x: 3, y: 4, task: 'Servicing scrubber_ls' },
+    { cid: 2, deck: 0, x: 5, y: 5, task: 'Idle' },                    // no job → no marker
+    { cid: 3, deck: 0, x: 6, y: 1, task: 'Walking to 7,11 (no task)' }, // walking is not working
+    { cid: 4, deck: 1, x: 2, y: 2, task: 'Digging out 2,2' },         // other deck
+    { cid: 5, deck: 0, x: 9, y: 9, task: 'Hauling regolith to 9,2' },
+  ];
+  assert.deepEqual(workMarkers(crew, 0), [
+    { cid: 1, x: 3, y: 4, tag: 'SVC', task: 'Servicing scrubber_ls' },
+    { cid: 5, x: 9, y: 9, tag: 'HAUL', task: 'Hauling regolith to 9,2' },
+  ]);
+  assert.deepEqual(workMarkers(crew, 1), [{ cid: 4, x: 2, y: 2, tag: 'DIG', task: 'Digging out 2,2' }]);
+  assert.deepEqual(workMarkers(crew, 2), []);
+  assert.deepEqual(workMarkers(null, 0), []);
+  assert.deepEqual(workMarkers([null, {}, { deck: 0, task: 'Digging out 1,1' }], 0), [],
+    'an entry without finite coordinates is skipped, never rendered at NaN');
 });
 
 // ---------------- paused-ship nudge ----------------

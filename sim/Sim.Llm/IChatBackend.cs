@@ -84,6 +84,21 @@ namespace Perilune.Llm
         /// field existed. The offline <see cref="TemplateBackend"/> ignores it.
         /// </summary>
         public List<TranscriptLine> Transcript { get; set; } = new List<TranscriptLine>();
+
+        /// <summary>
+        /// A compact, already-rendered snapshot of the SHIP as this crew member would know it
+        /// right now: worst-room air, machines that are failed or wearing out, and their own
+        /// current task. Composed sim-side by <see cref="CitizenContext"/> (a pure read, plain
+        /// text only — no sim references cross into the Llm layer) and rendered by
+        /// <c>PromptBuilder</c> as the <c>[SHIP]</c> block — well below both cache breakpoints,
+        /// as the last block before the player's question.
+        /// <para>Why it exists: without it the model had NO ship facts and invented them — the
+        /// playtest produced a fictional CO2 crisis and a promise to go fix it. Grounded crew
+        /// speak to real problems.</para>
+        /// Default empty ⇒ a ship-less request renders byte-identically to before this field
+        /// existed (the block is omitted entirely). The offline TemplateBackend ignores it.
+        /// </summary>
+        public string ShipState { get; set; } = string.Empty;
     }
 
     /// <summary>

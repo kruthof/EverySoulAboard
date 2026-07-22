@@ -20,8 +20,8 @@ import {
   speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry, crewClickTarget,
   beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool, isBuildTool,
   hintLine, chronHeader,
-  designsOnDeck, designGlyph, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
-  terminalList, terminalLabel, escapeTarget,
+  designsOnDeck, designGlyph, ghostLabel, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
+  terminalList, terminalLabel, escapeTarget, workMarkers, watchTask,
 } from './console-model.js';
 import {
   ringLayout, drawnEdges, focusTag, regardRows, signed,
@@ -231,7 +231,8 @@ export function renderFrame(m) {
   _pending = r.next;
   if (r.send) _send(Cmd.click(r.send.x, r.send.y));
   refreshSelection();
-  paintDesignGhosts(); // deck may have changed — refilter the ghosts to the shown deck
+  // Deck may have changed — refilter both glued overlays to the shown deck.
+  paintStageOverlays();
 }
 
 /** Roster dispatch: CREW WATCH list + CREW tab table + selection-dependent surfaces. */
@@ -240,6 +241,7 @@ export function renderRoster(m) {
   renderCrewWatch();
   if (_tab === 'crew') renderCrewTable();
   refreshSelection();
+  paintWorkMarks(); // the roster IS the work-marker source (deck/x/y/task)
 }
 
 /** Chron dispatch: cache + live re-render when the CHRONICLE tab is up (IX-74). */
@@ -387,17 +389,52 @@ function pulseAt(tool, x, y) {
 /** The persistent build-ghost overlay layer (created lazily inside the stage, above the canvas,
  *  non-interactive). Keyed sibling of the pulse — same camera-transform math so ghosts glue under
  *  pan/zoom/deck-change; cleared to empty when there is nothing to show. */
-function designLayer() {
+function designLayer() { return stageLayer('design-layer'); }
+
+/** Lazily create (once) a non-interactive absolute overlay inside the stage, above the canvas.
+ *  Shared by the build-ghost layer and the work-marker layer — both are camera-glued and both
+ *  paint by replacing their own innerHTML on each draw. */
+function stageLayer(cls) {
   const cnv = _getCanvas();
   const stage = cnv ? cnv.parentElement : document.querySelector('.stage');
   if (!stage) return null;
-  let layer = stage.querySelector(':scope > .design-layer');
+  let layer = stage.querySelector(':scope > .' + cls);
   if (!layer) {
     layer = document.createElement('div');
-    layer.className = 'design-layer';
+    layer.className = cls;
     stage.appendChild(layer);
   }
   return layer;
+}
+
+/** The camera→stage-pixel transform shared by every glued overlay, or null when the canvas has no
+ *  measurable box yet. Returns the stage-relative origin of tile (0,0) plus a tile side in px. */
+function stageProjection() {
+  const cnv = _getCanvas();
+  if (!cnv || !_camera || !_frame) return null;
+  const stage = cnv.parentElement;
+  if (!stage) return null;
+  const crect = cnv.getBoundingClientRect();
+  if (!crect.width || !cnv.width) return null;
+  const { s, ox, oy } = transform(_camera);
+  const srect = stage.getBoundingClientRect();
+  const k = crect.width / cnv.width;
+  const T = _camera.tile;
+  return {
+    side: T * s * k,
+    left: (x) => crect.left - srect.left + (x * T * s + ox) * k,
+    top: (y) => crect.top - srect.top + (y * T * s + oy) * k,
+  };
+}
+
+/** Repaint BOTH camera-glued stage overlays (build ghosts + work markers) from ONE measurement of
+ *  the canvas box. Painting them independently would read the layout, write innerHTML, then read
+ *  the layout again — a forced synchronous reflow every animation frame. Call this from the draw
+ *  loop and from any wire dispatch that moves either layer's source data. */
+export function paintStageOverlays() {
+  const p = stageProjection();
+  paintDesignGhosts(p);
+  paintWorkMarks(p);
 }
 
 /**
@@ -406,29 +443,63 @@ function designLayer() {
  * for other decks are hidden (the deck filter is the pure `designsOnDeck`); a resolved designation
  * drops off the wire and its ghost vanishes on the next channel update.
  */
-export function paintDesignGhosts() {
+export function paintDesignGhosts(proj) {
   const layer = designLayer();
   if (!layer) return;
-  const cnv = _getCanvas();
   const cells = _designs && Array.isArray(_designs.cells) ? _designs.cells : null;
-  if (!cnv || !_camera || !_frame || !cells) { if (layer.firstChild) layer.replaceChildren(); return; }
-  const stage = cnv.parentElement;
+  if (!cells || !_frame || !_camera || !_getCanvas()) { if (layer.firstChild) layer.replaceChildren(); return; }
   const list = designsOnDeck(cells, _frame.deck);
   if (!list.length) { if (layer.firstChild) layer.replaceChildren(); return; }
-  const { s, ox, oy } = transform(_camera);
-  const T = _camera.tile;
-  const crect = cnv.getBoundingClientRect();
-  const srect = stage.getBoundingClientRect();
-  if (!crect.width || !cnv.width) return;
-  const k = crect.width / cnv.width;
-  const side = (T * s * k);
+  const p = proj || stageProjection();
+  if (!p) return;
+  const side = p.side;
   let html = '';
   for (const g of list) {
-    const left = (crect.left - srect.left + (g.x * T * s + ox) * k);
-    const top = (crect.top - srect.top + (g.y * T * s + oy) * k);
-    html += `<div class="ghost ghost-${g.kind === 1 ? 'door' : 'wall'}" ` +
-      `style="left:${left.toFixed(1)}px;top:${top.toFixed(1)}px;width:${side.toFixed(1)}px;height:${side.toFixed(1)}px">` +
-      `<span class="ghost-glyph" style="font-size:${Math.max(8, side * 0.5).toFixed(1)}px">${designGlyph(g.kind)}</span></div>`;
+    // IX-39: the ledger drives a distinct STARVED look + an n/m readout, so an order nothing is
+    // being hauled to stops looking exactly like one under construction.
+    const cls = `ghost ghost-${g.kind === 1 ? 'door' : 'wall'} ghost-${g.state}`;
+    const label = ghostLabel(g);
+    html += `<div class="${cls}" ` +
+      `style="left:${p.left(g.x).toFixed(1)}px;top:${p.top(g.y).toFixed(1)}px;` +
+      `width:${side.toFixed(1)}px;height:${side.toFixed(1)}px">` +
+      `<span class="ghost-glyph" style="font-size:${Math.max(8, side * 0.5).toFixed(1)}px">${designGlyph(g.kind)}</span>` +
+      (label
+        ? `<span class="ghost-count" style="font-size:${Math.max(6, side * 0.26).toFixed(1)}px">${esc(label)}</span>`
+        : '') +
+      '</div>';
+  }
+  layer.innerHTML = html;
+}
+
+/**
+ * Repaint the on-map WORK markers (IX-103): a small tag over every crew member on the shown deck
+ * who is actually doing a job, joined from the roster's own deck/x/y/task (no wire change). The
+ * console could tell you what someone was doing only in the CREW tab or the READOUT of the one
+ * selected crew member — so "are they truly working on something?" had no answer on the map at
+ * all. Idle and merely-walking crew get NO marker, deliberately: the absence is information.
+ *
+ * Painted from the same camera transform as the ghosts, on every draw, so the tags stay glued
+ * under pan/zoom/deck-change. The tag sits on the crew member's sim tile; a walking pawn's slide
+ * interpolates between tiles, so a hauler's tag steps a fraction of a tile behind the body.
+ */
+export function paintWorkMarks(proj) {
+  const layer = stageLayer('work-layer');
+  if (!layer) return;
+  const crew = _roster && Array.isArray(_roster.crew) ? _roster.crew : null;
+  if (!crew || !_frame || !_camera || !_getCanvas()) { if (layer.firstChild) layer.replaceChildren(); return; }
+  const list = workMarkers(crew, _frame.deck);
+  if (!list.length) { if (layer.firstChild) layer.replaceChildren(); return; }
+  const p = proj || stageProjection();
+  if (!p) return;
+  const side = p.side;
+  let html = '';
+  for (const w of list) {
+    // Centred over the tile, floated just above it — never covering the pawn's face.
+    const cx = p.left(w.x) + side / 2;
+    const cy = p.top(w.y) - side * 0.18;
+    html += `<div class="work-mark" title="${esc(w.task)}" ` +
+      `style="left:${cx.toFixed(1)}px;top:${cy.toFixed(1)}px;font-size:${Math.max(6, side * 0.24).toFixed(1)}px">` +
+      `${esc(w.tag)}</div>`;
   }
   layer.innerHTML = html;
 }
@@ -632,14 +703,18 @@ function makeWatchRow(entry) {
   nameEl.className = 'crew-surname';
   const roleEl = document.createElement('div');
   roleEl.className = 'crew-role';
+  // VS-66: the always-visible answer to "what is this person doing right now" — the task used to
+  // live only in the CREW tab and the selected crew member's READOUT.
+  const taskEl = document.createElement('div');
+  taskEl.className = 'crew-task';
   const track = document.createElement('div');
   track.className = 'morale-track';
   const fill = document.createElement('div');
   fill.className = 'morale-fill';
   track.appendChild(fill);
-  col.appendChild(nameEl); col.appendChild(roleEl); col.appendChild(track);
+  col.appendChild(nameEl); col.appendChild(roleEl); col.appendChild(taskEl); col.appendChild(track);
   row.appendChild(avatar); row.appendChild(col);
-  const rec = { el: row, entry, avatar, portraitKey: portraitKeyOf(entry), nameEl, roleEl, fill };
+  const rec = { el: row, entry, avatar, portraitKey: portraitKeyOf(entry), nameEl, roleEl, taskEl, fill };
   row.onclick = () => crewRowClick(rec.entry, row);
   return rec;
 }
@@ -658,6 +733,11 @@ function updateWatchRow(rec, entry) {
   }
   setText(rec.nameEl, surnameOf(entry.name));
   setText(rec.roleEl, entry.role || '');
+  // Working crew read bright, doing-nothing crew read dim — the row must never make standing
+  // around look like activity (the same honesty rule as the on-map marker).
+  const t = watchTask(entry);
+  setText(rec.taskEl, t.text);
+  rec.taskEl.classList.toggle('working', t.working);
   const mv = Math.max(0, Math.min(1, entry.morale || 0));
   const w = (mv * 100) + '%';
   if (rec.fill.style.width !== w) rec.fill.style.width = w; // in-place → VS-35 transition animates

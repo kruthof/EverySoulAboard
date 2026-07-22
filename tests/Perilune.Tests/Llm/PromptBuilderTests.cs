@@ -180,6 +180,87 @@ namespace Perilune.Tests.Llm
         }
 
         // ----------------------------------------------------------------------------
+        // Honesty: a crew member cannot leave the conversation to do physical work
+        // ----------------------------------------------------------------------------
+
+        [Test]
+        public void GlobalSystemBlock_ForbidsPromisingWorkItCannotDo_AndInventedFaults()
+        {
+            string block = PromptBuilder.GlobalSystemBlock;
+            // The playtest defect: the model invented a CO2 crisis and promised to go fix it.
+            // Only the propose_effect tool moves the world, and no effect kind walks off to
+            // repair anything — so a promise to repair is structurally a lie.
+            Assert.That(block, Does.Contain("cannot walk away from this conversation"),
+                "the crew member is told they cannot leave to do physical work");
+            Assert.That(block, Does.Contain("NEVER promise to go fix"), "the promise ban is present");
+            foreach (string verb in new[] { "repair", "patch", "vent", "reroute", "seal", "restart", "check" })
+                Assert.That(block, Does.Contain(verb), "the banned-promise verb list names " + verb);
+            Assert.That(block, Does.Contain("Say what you would need"),
+                "the rule offers the honest alternative, not just a prohibition");
+            Assert.That(block, Does.Contain("[SHIP]"), "the rules point at the ship-state block");
+            Assert.That(block, Does.Contain("never invent a fault"), "invented emergencies are banned");
+
+            // Everything the earlier rounds established survives byte-for-byte in spirit.
+            Assert.That(block, Does.Contain("ALSO call propose_effect"));
+            Assert.That(block, Does.Contain("<player_speech>...</player_speech>"));
+        }
+
+        // ----------------------------------------------------------------------------
+        // The [SHIP] grounding block
+        // ----------------------------------------------------------------------------
+
+        private const string ShipToken = "SHIPTOKEN_worst compartment is the galley at 1400 ppm CO2";
+
+        [Test]
+        public void ShipBlock_IsOmittedWhenEmpty_SoOldLayoutsAreByteIdentical()
+        {
+            ConversationRequest bare = MakeRequest();                 // ShipState defaults to ""
+            PromptLayout layout = PromptBuilder.Build(bare, new List<TranscriptLine>(), "hello");
+            foreach (PromptBlock b in layout.Blocks)
+                Assert.That(b.Id, Is.Not.EqualTo("ship"), "no ship state ⇒ no block at all");
+            Assert.That(layout.Blocks.Count, Is.EqualTo(5), "tool, global, persona, context, user_turn");
+        }
+
+        [Test]
+        public void ShipBlock_TrailsTheTranscript_IsVolatile_AndSitsJustBeforeTheQuestion()
+        {
+            ConversationRequest req = MakeRequest();
+            req.ShipState = ShipToken;
+            var transcript = new List<TranscriptLine> { Player("hi"), Citizen("hey") };
+
+            IReadOnlyList<PromptBlock> b = PromptBuilder.Build(req, transcript, "how are things?").Blocks;
+            // tool, global, persona, context, msg0, msg1, ship, user_turn
+            Assert.That(b.Count, Is.EqualTo(8));
+            Assert.That(b[6].Id, Is.EqualTo("ship"), "the ship block is the LAST block before the question");
+            Assert.That(b[6].Role, Is.EqualTo(PromptRole.User));
+            Assert.That(b[6].Stability, Is.EqualTo(BlockStability.Volatile));
+            Assert.That(b[6].CacheBreakpoint, Is.False, "ship state must never anchor a cache breakpoint");
+            Assert.That(b[6].Text, Is.EqualTo("[SHIP]\n" + ShipToken));
+            Assert.That(b[7].Id, Is.EqualTo("user_turn"));
+        }
+
+        [Test]
+        public void ShipState_NeverLeaksIntoTheCacheablePrefix_AndMovingItKeepsThatPrefixStable()
+        {
+            ConversationRequest req = MakeRequest();
+            req.ShipState = ShipToken;
+            var transcript = new List<TranscriptLine> { Player("hi"), Citizen("hey") };
+            PromptLayout a = PromptBuilder.Build(req, transcript, "how are things?");
+
+            string cacheable = a.Blocks[0].Text + a.Blocks[1].Text + a.Blocks[2].Text;
+            Assert.That(cacheable, Does.Not.Contain(ShipToken), "volatile ship facts stay out of the cached prefix");
+
+            // Ship state that MOVES mid-conversation must not disturb any earlier block: the
+            // render up to (but not including) the ship block is byte-identical.
+            req.ShipState = "SHIPTOKEN_the scrubber has failed";
+            PromptLayout c = PromptBuilder.Build(req, transcript, "how are things?");
+            Assert.That(c.Blocks.Count, Is.EqualTo(a.Blocks.Count));
+            for (int i = 0; i < 6; i++)
+                Assert.That(c.Blocks[i].Text, Is.EqualTo(a.Blocks[i].Text),
+                    "block " + i + " is unmoved by changing ship state");
+        }
+
+        // ----------------------------------------------------------------------------
         // Volatile content absent from blocks 1-3
         // ----------------------------------------------------------------------------
 
