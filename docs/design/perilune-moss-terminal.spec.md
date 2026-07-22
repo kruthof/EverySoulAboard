@@ -138,6 +138,14 @@ with no way to see the number would reasonably conclude the row is broken. This 
 `stream` is `0` echo · `1` output · `2` error. `ok` is false when the line did not parse or the
 target did not resolve.
 
+**Stream 0 is not rendered by this client** (amended 2026-07-22, `moss-model` lane). The client
+echoes the player's line into the `>` transcript at *submit* time, before the request leaves —
+instantly, and whether or not the link is alive — so also rendering the host's echo prints every
+command twice. This is the same rule `ConversationHub` follows for player speech (emit at dispatch,
+do not wait for the round trip). `moss-systems` may keep emitting stream 0 for the audit ring and
+for other consumers; it is simply not load-bearing for this screen, and a reply whose *only* line is
+a stream-0 echo renders nothing (a failed one still surfaces its failure).
+
 **IX-M40 — the prompt grants NO authority the DSL does not already have.** Command execution
 resolves the target through the **same `DeviceRegistry` / `IScriptable` adapters the MOSS
 interpreter uses** (`sim/Sim.Dsl/DeviceAdapters.cs`, `DeviceRegistry.cs`) and calls the same
@@ -258,7 +266,7 @@ lane may not weaken it.
 | **IX-M5** | `L` opens the FAULT LOG. From LEDGER it opens unfiltered; from DETAIL it opens filtered to that system (`filterId`). `L` again, or ESC, returns. |
 | **IX-M6** | `P` opens the PROGRAM screen: the terminal directory from the existing `terminals` channel, and on selection the MOSS IDE for that terminal. (The `moss-programs` lane implements the IDE half; the shell, the key and the directory ship with `moss-screen`.) |
 | **IX-M7** | Rows are also **clickable**, and a click selects without activating; a double-click activates (= `ENTER`). Keyboard-first does not mean mouse-hostile. Hit targets span the full row width, as the mock's selection band does. |
-| **IX-M8** | The `>` prompt is **always focused by default** on the LEDGER screen: typing anywhere goes to it without clicking. Navigation keys (`↑`/`↓`/`ENTER`/`L`/`P`/`ESC`) are intercepted **before** the prompt only while the prompt buffer is **empty** — once the player has typed a character, `↑`/`↓` are command history and `ENTER` submits. This is the one genuinely fiddly rule in the spec; it must be a table in `moss-model.js` and node-tested in both buffer states. |
+| **IX-M8** | The `>` prompt is **always focused by default** on the LEDGER screen: typing anywhere goes to it without clicking. Navigation keys (`↑`/`↓`/`ENTER`/`L`/`P`/`ESC`) are intercepted **before** the prompt only while the prompt buffer is **empty** — once the player has typed a character, `↑`/`↓` are command history and `ENTER` submits. This is the one genuinely fiddly rule in the spec; it must be a table in `moss-model.js` and node-tested in both buffer states. **Clarified 2026-07-22** (the enumerated set above is `↑ ↓ ENTER L P ESC`, but IX-M3 gives `PageUp`/`PageDown`/`Home`/`End` a ledger meaning too, so the two rules were ambiguous together): `PageUp`/`PageDown` stay **navigation in both buffer states**, because they cannot type a character and mean nothing in a one-line input; `Home`/`End` are navigation only while the buffer is empty and otherwise belong to the text cursor. A held `Ctrl`/`Alt`/`Meta` always passes the key to the browser (`Ctrl-L` is not ours); `Shift` alone does not change routing. |
 | **IX-M9** | Prompt history: `↑`/`↓` on a non-empty buffer walk previously submitted lines (bounded, newest first). Submitting appends. Duplicate consecutive lines collapse. |
 | **IX-M10** | Commands: `HELP` · `STATUS` · `OPEN <system>` · `LOG [system]` · `PROG [terminal]` · `CLEAR` · `EXIT`, plus device verbs per IX-M40 and bare property reads (`ship.power`). Verbs and system names are **case-insensitive and space-tolerant** (`open life support` == `OPEN life_support`). An unknown verb answers with the one-line `HELP` pointer, never a stack trace. |
 | **IX-M11** | Typing in the MOSS prompt must not fire game shortcuts. The existing guard-first `isTextEntryTarget` rule (interaction-spec) covers this; MOSS's own keys are handled inside the MOSS view only. |
