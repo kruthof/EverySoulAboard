@@ -43,6 +43,9 @@ export const CONSOLE_CAP = 200;
 export const PAGE_STEP = 5;
 /** IX-M13: what the ledger says before any `systems` message has arrived. */
 export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
+/** IX-M13's other empty table: the link is up but the payload carried no rows. An empty grid with
+ *  no caption reads as "all systems nominal", which is the one thing it must never read as. */
+export const NO_ROWS = 'NO ROWS ON THIS LINK';
 
 /** The fixed system ids of spec §1.1, in wire order. Used ONLY as `parseCommand`'s vocabulary
  *  (it has no model to consult); `submitCommand` resolves against the LIVE ledger first, so a row
@@ -52,44 +55,12 @@ export const SYSTEM_IDS = [
   'thermal', 'fabrication', 'hull_integrity', 'nav_sensors',
 ];
 
-// The IX-M22 derivation notes — the PRE-LOAD FALLBACK ONLY. §1.2 now ships a `derivation` string
-// on the `ev:sys` reply (the host owns the arithmetic, so the host owns the sentence describing
-// it), and `detailView` prefers it the moment the reply lands. This table exists for the one frame
-// between ENTER and the reply, so the screen is never blank about how a number was made. Each entry
-// states how LOAD and STATE are computed AND what the proxy cannot see (DA-M3).
-export const DERIVATIONS = {
-  reactor: [
-    'LOAD is total wanted draw over total generation across the power network.',
-    'There is no reactor: this row is the ship\'s solar wings in the room named "reactor". Generation is condition-blind by design, so a worn wing still reports full output.',
-  ],
-  life_support: [
-    'STATE is banded on the WORST ROOM\'s CO2, not on scrubber capacity (DA-M4).',
-    'Scrubbers are room-local and air does not diffuse across a closed door, so nameplate capacity can read healthy while one room suffocates.',
-  ],
-  water_reclaim: [
-    'LOAD is the tank fill fraction across the ship.',
-    'Any single tank at zero raises ATTEND, because a healthy ship-wide average hides an empty tank.',
-  ],
-  hydroponics: [
-    'LOAD is mean grow-bed progress.',
-    'A bed frozen mid-crop still reads as progress, not as a fault. If this row stalls, read the water row first.',
-  ],
-  thermal: [
-    'LOAD is radiator rejection against the ship\'s heat load.',
-    'This row reports the measured temperature. The shipped overheat rule\'s wording is not trustworthy and is deliberately not repeated here.',
-  ],
-  fabrication: [
-    'LOAD is powered industry devices over total industry devices.',
-  ],
-  hull_integrity: [
-    'PROXY. LOAD is mean condition over the devices that wear.',
-    'No hull-stress model exists, so this number is about machinery, not plating. A breach shows in STATE, never in LOAD.',
-  ],
-  nav_sensors: [
-    'OFFLINE is derived from the device census: no telescope is installed, so the sensor pass never runs.',
-    'LOAD is "--" because there is nothing to load. Install a telescope and this row comes alive on its own.',
-  ],
-};
+// IX-M22's derivation prose is NOT held here. §1.2 ships a `derivation` string on the `ev:sys`
+// reply: the host does the arithmetic, so the host writes the sentence about it, and there is
+// exactly one copy of that sentence in the codebase. A client-side table was tried and deleted —
+// it had already drifted into stating THERMAL's ratio upside down (rejection ÷ load, where the
+// host computes load ÷ rejection) during the frame before the reply landed. While DETAIL is
+// loading the screen renders no derivation at all; IX-M4's `LOADING…` is the honest thing to say.
 
 /** §5.1 — the fault join is weak and the screen has to say so out loud. */
 export const FAULT_CAVEAT =
@@ -249,12 +220,21 @@ export function reduceMossEvent(model, msg) {
   }
   if (msg.ev === 'exec') {
     let next = m;
+    let rendered = 0;
     const lines = Array.isArray(msg.lines) ? msg.lines : [];
     for (const l of lines) {
-      if (Array.isArray(l)) next = pushConsole(next, num(l[0], 1), str(l[1]));
-      else if (l != null) next = pushConsole(next, 1, str(l));
+      // §1.3 stream 0 is the host's echo of a line THIS client already echoed locally at submit
+      // time (submitCommand), so rendering it would print every command twice. The local echo is
+      // the one kept: it appears instantly and survives a slow or dead link, the same reason
+      // ConversationHub emits the player's line at dispatch instead of awaiting the model.
+      if (Array.isArray(l)) {
+        if (num(l[0], 1) === 0) continue;
+        next = pushConsole(next, num(l[0], 1), str(l[1]));
+      } else if (l != null) next = pushConsole(next, 1, str(l));
+      else continue;
+      rendered++;
     }
-    if (!lines.length && msg.ok === false) next = pushConsole(next, 2, 'COMMAND FAILED');
+    if (!rendered && msg.ok === false) next = pushConsole(next, 2, 'COMMAND FAILED');
     return next;
   }
   const program = reduceMoss(m.program, msg);
@@ -593,15 +573,21 @@ export function submitCommand(model, text) {
   let m = { ...m0, prompt: '', histIdx: -1, histDraft: '' };
   if (!raw) return { model: m, effects: [] };
   m = pushConsole(m, 0, '> ' + raw);
-  m = pushHistory(m, raw);
+  // The length check comes BEFORE the history push: a line the client itself rejected should not
+  // come back on ↑ as if it were a command that had been run.
   if (raw.length > PROMPT_MAX) {
     return { model: pushConsole(m, 2, 'LINE TOO LONG — MAX ' + PROMPT_MAX + ' CHARACTERS'), effects: [] };
   }
+  m = pushHistory(m, raw);
   const cmd = parseCommand(raw);
   const argText = cmd.args.join(' ');
   switch (cmd.kind) {
     case 'nav': return navCommand(m, cmd, argText);
     case 'device': case 'read':
+      // The live ledger is the authority (see `parseCommand`): a row the player can SEE must open
+      // when they type its id, even when it is outside parseCommand's fixed vocabulary. Telling
+      // someone a row on their own screen does not exist is the honesty failure in miniature.
+      if (cmd.verb === 'open' && resolveSystem(m, argText)) return navCommand(m, cmd, argText);
       if (!m.linked) return { model: pushConsole(m, 2, NO_TELEMETRY + ' — COMMAND REFUSED'), effects: [] };
       return { model: m, effects: [{ k: 'moss', op: 'exec', text: raw }] };
     default:
@@ -620,7 +606,7 @@ function navCommand(m, cmd, argText) {
     case 'status': {
       if (!m.linked) return { model: pushConsole(m, 2, NO_TELEMETRY), effects: [] };
       const lines = m.rows.map((r) => statusLine(r));
-      return { model: lines.length ? pushConsoleAll(m, 1, lines) : pushConsole(m, 2, 'NO ROWS ON THIS LINK'), effects: [] };
+      return { model: lines.length ? pushConsoleAll(m, 1, lines) : pushConsole(m, 2, NO_ROWS), effects: [] };
     }
     case 'open': {
       const id = resolveSystem(m, argText);
@@ -700,7 +686,7 @@ export function stateCell(state) {
  * @param {number} faultDay @param {string} faultText @returns {string}
  */
 export function faultCell(faultDay, faultText) {
-  const d = num(faultDay, -1);
+  const d = Math.floor(num(faultDay, -1));   // a day is a whole day; 190.7 must not reach the screen
   if (d < 0) return '—';
   const t = str(faultText).trim();
   return t ? 'DAY ' + d + ' · ' + t : 'DAY ' + d;
@@ -772,19 +758,16 @@ export function ledgerView(model) {
     rows, selectedIndex,
     advisory: selectedIndex >= 0 ? m.rows[selectedIndex].advisory : '',
     linked: m.linked,
-    notice: m.linked ? '' : NO_TELEMETRY,
+    notice: !m.linked ? NO_TELEMETRY : rows.length ? '' : NO_ROWS,
   };
 }
 
 /**
  * The DETAIL view-model. `loading` is honest (IX-M4): until the `moss ev:sys` reply lands the
- * device table is EMPTY and the screen says so. `notes` is IX-M22's derivation prose plus §5.1's
- * fault caveat — that text is part of the feature, not a comment.
- *
- * The derivation comes from the WIRE (§1.2's `derivation`) whenever the reply has landed: the host
- * does the arithmetic, so the host writes the sentence about it, and no client constant can drift
- * out of step with it. The DERIVATIONS table is the fallback for the frame before the reply — and
- * for an older host that sends nothing.
+ * device table is EMPTY, `notes` is EMPTY, and the screen says LOADING. `notes` is IX-M22's
+ * derivation — always the host's own, straight off §1.2's `derivation` field — plus §5.1's fault
+ * caveat, which is about this module's own name-matching and so belongs here. That text is part of
+ * the feature, not a comment.
  * @param {object} model
  * @returns {{title:string, devices:object[], notes:string[], loading:boolean}}
  */
@@ -799,16 +782,19 @@ export function detailView(model) {
     powered: d.powered, poweredText: d.powered ? 'PWR' : 'OFF',
     rate: d.rate, rateText: loadText(d.rate),
     deck: d.deck, x: d.x, y: d.y,
-    place: d.deck >= 0 ? 'DECK ' + d.deck + ' · ' + d.x + ',' + d.y : '—',
+    // A place needs all three coordinates. `DECK 0 · -1,-1` is a fabricated location, and this is
+    // the screen where a fabricated location is least excusable.
+    place: d.deck >= 0 && d.x >= 0 && d.y >= 0 ? 'DECK ' + d.deck + ' · ' + d.x + ',' + d.y : '—',
     note: d.note,
   }));
-  const derivation = m.detail.derivation ? [m.detail.derivation]
-    : Object.prototype.hasOwnProperty.call(DERIVATIONS, id) ? DERIVATIONS[id].slice()
-    : ['DERIVATION UNDOCUMENTED — this row\'s numbers are not explained here.'];
+  // No derivation until the host's own account arrives; a reply that carries none says so.
+  const notes = m.detail.loading ? []
+    : [m.detail.derivation || 'DERIVATION UNDOCUMENTED — this row\'s numbers are not explained here.',
+      FAULT_CAVEAT];
   return {
     title: row ? row.label : upper(str(id).split('_').join(' ')),
     devices,
-    notes: derivation.concat([FAULT_CAVEAT]),
+    notes,
     loading: !!m.detail.loading,
   };
 }

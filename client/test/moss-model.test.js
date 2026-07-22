@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import {
-  SCREEN, STATE, SYSTEM_IDS, KEY_ROUTE, DERIVATIONS, FAULT_CAVEAT,
-  BAR_WIDTH, PROMPT_MAX, HISTORY_CAP, CONSOLE_CAP, PAGE_STEP, NO_TELEMETRY,
+  SCREEN, STATE, SYSTEM_IDS, KEY_ROUTE, FAULT_CAVEAT,
+  BAR_WIDTH, PROMPT_MAX, HISTORY_CAP, CONSOLE_CAP, PAGE_STEP, NO_TELEMETRY, NO_ROWS,
   TICKS_PER_DAY, TICKS_PER_SECOND,
   openMoss, reduceSystems, reduceMossEvent, reduceChron, reduceLog,
   keyPress, routeKey, editPrompt, submitCommand, parseCommand, normalizeSystemId, rowObj,
@@ -90,6 +90,11 @@ test('loadText: percent, and `--` for the -1 sentinel', () => {
   assert.equal(loadText(-1), '--');
   assert.equal(loadText(undefined), '--');
   assert.notEqual(loadText(-1), '0%', 'the sentinel must never render as a real reading');
+  // the clamp is load-bearing: a host that overshoots must not print 140% next to an 8-cell bar
+  assert.equal(loadText(140), '100%');
+  assert.equal(loadText(1e9), '100%');
+  assert.equal(loadText(60.6), '61%', 'and a fraction rounds rather than printing 60.6%');
+  assert.equal(loadText(0.4), '0%');
 });
 
 test('stateCell: the ladder, and ⚠ on ATTEND/DEGRADED only (VS-M8)', () => {
@@ -110,6 +115,8 @@ test('faultCell: composes DAY n · TEXT, and -1 is an em dash', () => {
   assert.equal(faultCell(0, 'LAUNCH ABORT'), 'DAY 0 · LAUNCH ABORT',
     'day 0 is a real day, not a missing one');
   assert.equal(faultCell(190, ''), 'DAY 190', 'a fault with no summary still shows its day');
+  assert.equal(faultCell(190.7, 'X'), 'DAY 190 · X', 'a day is a whole day, never 190.7');
+  assert.equal(faultCell(-0.5, 'X'), '—', 'and a fractional negative is still the sentinel');
 });
 
 test('no row ever renders a DAY prefix without a real day (DA-M1)', () => {
@@ -512,11 +519,51 @@ test('IX-M13: with the link down, device/read lines are refused with a typed err
 });
 
 test('IX-M42: an over-long line is a typed error, not a truncated command', () => {
-  const m = linked();
+  const m = submitCommand(linked(), 'status').model;
   const out = submitCommand(m, 'close ' + 'x'.repeat(PROMPT_MAX));
   assert.deepEqual(out.effects, []);
   assert.equal(consoleLines(out.model).pop().stream, 2);
   assert.ok(consoleLines(out.model).pop().text.indexOf('LINE TOO LONG') === 0);
+  assert.deepEqual(out.model.history, ['status'],
+    'a line the client itself rejected must not come back on ↑ as if it had run');
+});
+
+test('IX-M10: a row on the player\'s own ledger opens, even outside the fixed vocabulary', () => {
+  // The live ledger is the authority. If the host ships a row `parseCommand` has never heard of,
+  // the player can still see it — so typing its id must open it, not tell them it does not exist.
+  const extra = ['medical_suite', 'MEDICAL SUITE', 44, 1, -1, '', 'a row from a newer host'];
+  const m = reduceSystems(openMoss(),
+    { type: 'systems', hull: '7741', day: 213, uptime: 1, rows: SYSTEMS[0].rows.concat([extra]) });
+  assert.equal(SYSTEM_IDS.indexOf('medical_suite'), -1, 'deliberately outside parseCommand\'s list');
+  assert.equal(parseCommand('open medical_suite').kind, 'device', 'the model-free parse cannot know');
+  const out = submitCommand(m, 'open medical_suite');
+  assert.equal(out.model.screen, SCREEN.DETAIL, 'but submitCommand re-resolves against the rows');
+  assert.equal(out.model.selectedId, 'medical_suite');
+  assert.deepEqual(out.effects, [{ k: 'moss', op: 'sys', tid: 'medical_suite' }]);
+  // by label, and case/space tolerantly, too
+  assert.equal(submitCommand(m, 'OPEN medical suite').model.detail.tid, 'medical_suite');
+  // and a name that is NOT on the ledger is still a device line for the host to judge
+  assert.deepEqual(submitCommand(m, 'open door_storage').effects,
+    [{ k: 'moss', op: 'exec', text: 'open door_storage' }]);
+});
+
+test('IX-M13: a link that is up but carries no rows says so (an empty grid is not "nominal")', () => {
+  const empty = reduceSystems(openMoss(), { type: 'systems', hull: '7741', day: 213, uptime: 1, rows: [] });
+  assert.equal(empty.linked, true);
+  const view = ledgerView(empty);
+  assert.deepEqual(view.rows, []);
+  assert.equal(view.selectedIndex, -1);
+  assert.equal(view.notice, NO_ROWS);
+  assert.notEqual(view.notice, '', 'a silent empty table is the precise thing IX-M13 forbids');
+  // rows that are all malformed land in the same place
+  const junk = reduceSystems(openMoss(), { type: 'systems', rows: [null, [''], 7] });
+  assert.equal(ledgerView(junk).notice, NO_ROWS);
+  // and the prompt's own answer agrees with the screen's
+  assert.equal(consoleLines(submitCommand(empty, 'status').model).pop().text, NO_ROWS);
+  // the three notices are distinct states, not one blurred one
+  assert.notEqual(NO_ROWS, NO_TELEMETRY);
+  assert.equal(ledgerView(openMoss()).notice, NO_TELEMETRY);
+  assert.equal(ledgerView(linked()).notice, '');
 });
 
 test('submitCommand: the nav verbs', () => {
@@ -545,11 +592,19 @@ test('submitCommand: the nav verbs', () => {
   assert.deepEqual(submitCommand(m, 'exit').effects, [{ k: 'exit' }]);
   assert.deepEqual(consoleLines(submitCommand(m, 'clear').model), []);
   // STATUS renders one line per live row, no invented rows
+  const before = consoleLines(m).length;
   const status = submitCommand(m, 'status').model;
-  const body = consoleLines(status).filter((l) => l.stream === 1);
-  assert.equal(body.filter((l) => l.text.indexOf('NAV / SENSORS') === 0).length, 1);
-  assert.ok(body.some((l) => l.text.indexOf('NAV / SENSORS') === 0 && l.text.indexOf('--') > 0),
-    'the -1 sentinel survives into STATUS');
+  const body = consoleLines(status).slice(before + 1).map((l) => l.text);  // skip the '> status' echo
+  assert.equal(body.length, 8, 'one line per live row, no invented rows');
+  // STATUS is this module's only column layout (VS-M2: alignment by monospace grid, not CSS), so
+  // it is pinned exactly — including the case that misaligns first, a `--` where a number goes.
+  assert.equal(body[0], 'REACTOR           61%  NOMINAL');
+  assert.equal(body[7], 'NAV / SENSORS      --  OFFLINE');
+  assert.equal(body[0].indexOf('%'), body[7].indexOf('-') + 1,
+    'the load column ends in the same place whether or not there is a reading');
+  const states = ['NOMINAL', 'DEGRADED', 'ATTEND', 'ATTEND', 'ATTEND', 'NOMINAL', 'NOMINAL', 'OFFLINE'];
+  body.forEach((l, i) => assert.equal(l.slice(23), states[i],
+    'the STATE column starts at the same character on every row'));
 });
 
 test('submitCommand: an empty line is a no-op that does not pollute history', () => {
@@ -580,46 +635,80 @@ test('reduceMossEvent: `sys` fills the OPEN detail only, and clears LOADING', ()
   assert.equal(reduceMossEvent(filled, MOSS[1]), filled);
 });
 
-test('IX-M22: the DERIVATION comes from the WIRE once the reply lands', () => {
+test('IX-M22: the DERIVATION is the host\'s own sentence, off the wire, and nothing else', () => {
   const pending = submitCommand(linked(), 'open life_support').model;
   const m = reduceMossEvent(pending, MOSS[0]);
   const notes = detailView(m).notes;
   assert.equal(notes[0], MOSS[0].derivation, 'the host\'s own account of its own arithmetic');
-  assert.equal(notes[notes.length - 1], FAULT_CAVEAT);
-  assert.notEqual(notes[0], DERIVATIONS.life_support[0], 'the client constant did NOT win');
-  assert.equal(notes.length, 2, 'one wire sentence + the caveat');
+  assert.equal(notes[1], FAULT_CAVEAT, 'and §5.1\'s caveat about THIS module\'s name join');
+  assert.equal(notes.length, 2, 'one wire sentence + the caveat — no client prose at all');
 });
 
-test('IX-M22: the client table is the PRE-LOAD fallback, and only that', () => {
-  // the frame between ENTER and the reply: honest about the arithmetic, honest about loading
+test('IX-M22: no derivation is rendered before the reply lands (there is nothing true to say)', () => {
+  // The client used to hold a fallback table. It drifted — its THERMAL entry stated the ratio
+  // upside down against the host's as-built derivation — so it is gone. LOADING… is IX-M4's
+  // honest answer for this frame, and a screen that says nothing beats one that says a reciprocal.
   const pending = submitCommand(linked(), 'open life_support').model;
   assert.equal(detailView(pending).loading, true);
-  assert.deepEqual(detailView(pending).notes.slice(0, 2), DERIVATIONS.life_support);
-  assert.equal(detailView(pending).notes[detailView(pending).notes.length - 1], FAULT_CAVEAT);
-  // an older host that sends no `derivation` also falls back rather than showing nothing
-  const older = reduceMossEvent(pending, { ev: 'sys', tid: 'life_support', devices: [] });
-  assert.equal(older.detail.loading, false);
-  assert.deepEqual(detailView(older).notes.slice(0, 2), DERIVATIONS.life_support);
-  // an empty/whitespace derivation is not a derivation
-  const blank = reduceMossEvent(pending, { ev: 'sys', tid: 'life_support', derivation: '   ', devices: [] });
-  assert.deepEqual(detailView(blank).notes.slice(0, 2), DERIVATIONS.life_support);
-  // every shipped row has a fallback
-  for (const id of SYSTEM_IDS) assert.ok(DERIVATIONS[id] && DERIVATIONS[id].length, id);
-  // and a row we have neither for says so instead of pretending
-  const unknown = reduceMossEvent(
-    { ...pending, detail: { tid: 'mystery', devices: [], loading: true, derivation: '' } },
-    { ev: 'sys', tid: 'mystery', devices: [] });
-  assert.ok(detailView(unknown).notes[0].indexOf('DERIVATION UNDOCUMENTED') === 0);
+  assert.deepEqual(detailView(pending).notes, []);
+  assert.deepEqual(detailView(pending).devices, []);
 });
 
-test('reduceMossEvent: `exec` lines land in the transcript with their streams', () => {
-  let m = linked();
+test('IX-M22: a reply that carries no derivation says so, rather than inventing one', () => {
+  // moss_sys.jsonl:5 — a real protocol case (an older host, or a row whose derivation is unwritten)
+  // with committed wire behind it, not an inline literal.
+  const noDerivation = MOSS[4];
+  assert.equal(noDerivation.ev, 'sys');
+  assert.equal(noDerivation.tid, 'thermal');
+  assert.equal(noDerivation.derivation, undefined, 'the fixture must actually lack the field');
+  const m = reduceMossEvent(submitCommand(linked(), 'open thermal').model, noDerivation);
+  const notes = detailView(m).notes;
+  assert.equal(detailView(m).loading, false);
+  assert.ok(notes[0].indexOf('DERIVATION UNDOCUMENTED') === 0);
+  assert.equal(notes[1], FAULT_CAVEAT);
+  assert.equal(detailView(m).devices.length, 1, 'the device table still arrived');
+  // whitespace is not a derivation either
+  const blank = reduceMossEvent(submitCommand(linked(), 'open thermal').model,
+    { ev: 'sys', tid: 'thermal', derivation: '   ', devices: [] });
+  assert.ok(detailView(blank).notes[0].indexOf('DERIVATION UNDOCUMENTED') === 0);
+});
+
+test('IX-M22: a device place needs all three coordinates, or it is —', () => {
+  const open = () => submitCommand(linked(), 'open thermal').model;
+  const at = (deck, x, y) => detailView(reduceMossEvent(open(),
+    { ev: 'sys', tid: 'thermal', derivation: 'd', devices: [['rad_a', 'Radiator', 50, 1, 100, deck, x, y, '']] })).devices[0].place;
+  assert.equal(at(0, 12, 7), 'DECK 0 · 12,7');
+  assert.equal(at(2, 0, 0), 'DECK 2 · 0,0', 'the origin tile is a real place');
+  assert.equal(at(-1, 12, 7), '—');
+  assert.equal(at(0, -1, 7), '—', 'a missing x is not a location');
+  assert.equal(at(0, 12, -1), '—', 'a missing y is not a location');
+  // the wire tuple that omits the coordinates entirely
+  const short = detailView(reduceMossEvent(open(),
+    { ev: 'sys', tid: 'thermal', derivation: 'd', devices: [['rad_a', 'Radiator', 50, 1, 100]] })).devices[0];
+  assert.equal(short.place, '—');
+});
+
+test('reduceMossEvent: `exec` lines land in the transcript, minus the host\'s duplicate echo', () => {
+  // §1.3: stream 0 is the host echoing back a line this client already echoed at submit time.
+  // Rendering both prints every command twice; the LOCAL echo is the one kept, because it appears
+  // instantly and survives a slow or dead link.
+  let m = submitCommand(linked(), 'close door_storage').model;
+  const before = consoleLines(m).length;
   m = reduceMossEvent(m, MOSS[2]);
-  const tail = consoleLines(m).slice(-2);
-  assert.deepEqual(tail, [
-    { stream: 0, text: 'close door_storage' },
+  assert.equal(MOSS[2].lines[0][0], 0, 'the fixture really does carry a stream-0 echo');
+  assert.equal(consoleLines(m).length, before + 1, 'one line rendered, not two');
+  assert.deepEqual(consoleLines(m).slice(-2), [
+    { stream: 0, text: '> close door_storage' },
     { stream: 1, text: 'door_storage: CLOSED' },
   ]);
+  assert.equal(consoleLines(m).filter((l) => l.text === 'close door_storage').length, 0,
+    'the host\'s bare echo never reaches the transcript');
+  // a reply that is ONLY a stream-0 echo renders nothing at all
+  const echoOnly = reduceMossEvent(m, { ev: 'exec', tid: '@console', ok: true, lines: [[0, 'status']] });
+  assert.equal(consoleLines(echoOnly).length, consoleLines(m).length);
+  // …and if that reply also failed, the failure is still surfaced
+  const failedEcho = reduceMossEvent(m, { ev: 'exec', tid: '@console', ok: false, lines: [[0, 'status']] });
+  assert.deepEqual(consoleLines(failedEcho).pop(), { stream: 2, text: 'COMMAND FAILED' });
   m = reduceMossEvent(m, MOSS[3]);
   assert.deepEqual(consoleLines(m).pop(), { stream: 2, text: 'ship.power is read-only' });
   // a failure with no lines still says something
@@ -753,7 +842,7 @@ test('the view-models never hand out the model\'s own arrays to mutate', () => {
   assert.equal(detailView(m).devices.length, 4);
   assert.equal(ledgerView(m).rows.length, 8);
   assert.equal(consoleLines(m).filter((l) => l.text === 'INJECTED').length, 0);
-  assert.deepEqual(DERIVATIONS.life_support.length, 2, 'the shared DERIVATIONS table is intact');
+  assert.equal(detailView(m).notes[1], FAULT_CAVEAT, 'the shared caveat constant is intact');
 });
 
 // ---------------- immutability ----------------
@@ -805,6 +894,10 @@ const BANNED = [
   ['RNG', /\bMath\s*\.\s*random\b/],
   ['locale API', /toLocale[A-Za-z]*\s*\(/],
   ['locale API', /\bIntl\b/],
+  // Defence in depth: `Math['random']()` and friends read past a name-based scan. Every
+  // OBSERVABLE indirection is already caught by the determinism test below — this closes the
+  // window where an unobservable one is introduced and then made observable later.
+  ['bracket indirection', /\[\s*['"](random|document|now|fetch|localStorage|WebSocket)['"]\s*\]/],
 ];
 
 function scan(source) {
@@ -826,6 +919,9 @@ test('M-PURITY: the scanner itself can fail (it is not a decorative regex list)'
     'const r = Math.random();',
     'label.toLocaleUpperCase();',
     'new Intl.NumberFormat().format(1);',
+    'const r = Math["random"]();',
+    "const t = Date['now']();",
+    'globalThis[ "document" ].title = "x";',
   ];
   for (const v of violations) assert.ok(scan(v).length > 0, 'should have been caught: ' + v);
   assert.deepEqual(scan('const x = Math.round(1.4) + Math.max(0, 1);'), [],
