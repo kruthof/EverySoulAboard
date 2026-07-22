@@ -1,0 +1,4 @@
+{"type":"moss","ev":"sys","tid":"life_support","devices":[["scrubber_ls","Scrubber",88,1,100,0,12,7,""],["scrubber_aft","Scrubber",41,1,100,0,22,9,"WORN — MAINTENANCE DUE"],["vent_ls","AirVent",96,1,60,0,13,7,""],["vent_gal","AirVent",12,0,0,0,31,4,"FAILED"]]}
+{"type":"moss","ev":"sys","tid":"nav_sensors","devices":[]}
+{"type":"moss","ev":"exec","tid":"@console","ok":true,"lines":[[0,"close door_storage"],[1,"door_storage: CLOSED"]]}
+{"type":"moss","ev":"exec","tid":"@console","ok":false,"lines":[[2,"ship.power is read-only"]]}
