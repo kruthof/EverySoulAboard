@@ -119,6 +119,31 @@ test('camera culling: zoomed emits fewer ops than full and only in-window tiles'
   }
 });
 
+test('CULL INVARIANT: the window keeps a tile of slack, so a sliding pawn is never composed out', () => {
+  // A pawn mid-step is DRAWN one tile back from the tile it occupies. A tile-EXACT window therefore
+  // drops a pawn whose tile has just crossed the edge while up to a whole tile of its body is still
+  // on screen — a one-tile-early disappearance at every edge, in every direction, and the only
+  // mechanism that can blink a SOUTH-bound pawn (the entity-order defect is structurally W/N only).
+  const boot = loadBootFrame();
+  const cam = cameraOn(boot, 20, 9, 0.9);
+  const { x0, x1, y0, y1 } = cullRange(cam, boot);
+  const p = tilePitch(cam), { ox, oy } = transform(cam);
+  // For each edge: the tile JUST outside it, whose slid body reaches back into the viewport.
+  const edges = [
+    ['right', x1 - 1, (x1 - 1) * p + ox, cam.viewW],
+    ['left', x0, x0 * p + ox, cam.viewW],
+    ['bottom', y1 - 1, (y1 - 1) * p + oy, cam.viewH],
+    ['top', y0, y0 * p + oy, cam.viewH],
+  ];
+  for (const [name, tile, start, extent] of edges) {
+    // the outermost COMPOSED tile must itself be off-screen: that is the slack, and it is what a
+    // pawn sliding out of (or into) view needs in order to keep being drawn.
+    assert.ok(start + p <= 0 || start >= extent,
+      `${name}: the cull window must extend a full tile past the viewport (tile ${tile} spans ` +
+      `${start}..${start + p} of 0..${extent})`);
+  }
+});
+
 // ---- pixel-grid alignment (WP-0) ----
 
 test('camera: the tile lattice is quantized to whole device pixels', () => {
@@ -218,6 +243,10 @@ function canvasRecorder() {
     globalAlpha: 1, globalCompositeOperation: 'source-over', fillStyle: '#000',
     setTransform(a, b, c, d, e, f) { this._m = [a, b, c, d, e, f]; },
     transform(a, b, c, d, e, f) { this._m = mul(this._m, [a, b, c, d, e, f]); },
+    // translate/scale are how the pawn mirror is expressed; they must compose like the real ctx or
+    // the recorder would silently record an unmirrored draw.
+    translate(x, y) { this._m = mul(this._m, [1, 0, 0, 1, x, y]); },
+    scale(x, y) { this._m = mul(this._m, [x, 0, 0, y, 0, 0]); },
     save() { this._stack.push([this._m.slice(), this.globalAlpha, this.globalCompositeOperation]); },
     restore() {
       const s = this._stack.pop();
@@ -319,15 +348,22 @@ test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide und
 // ---- pass ordering: nothing may paint over a sliding pawn (playtest: "pawns walking left
 //      appear out of nothing") ----
 
-/** A 9x3 corridor of floor with one crew pawn at (cx,1) — and optionally a '*' lamp and a
- *  PROCEDURAL (sprite-less) glyph — composed for real. `lamp` places a Light device so the light
- *  field has a pool to build; `proc` places an open door '/', which both backends draw as vector
- *  strokes rather than a bitmap. */
-function corridorScene(cx, lamp = -1, proc = -1) {
+/** A 9x3 corridor of floor with one crew pawn at (cx,1) — and optionally a '*' lamp, a PROCEDURAL
+ *  (sprite-less) glyph, and a RING of growbeds on the pawn's four neighbours — composed for real.
+ *  `lamp` places a Light device so the light field has a pool to build; `proc` places an open door
+ *  '/', which both backends draw as vector strokes rather than a bitmap; `ring` puts a bitmap
+ *  ENTITY on every tile a step can come from, which is what the second occlusion mechanism needs
+ *  (a device only reappears on the tile a pawn has just vacated — while the pawn stood there the
+ *  citizen glyph masked it). */
+function corridorScene(cx, lamp = -1, proc = -1, ring = false) {
+  const nb = ring
+    ? new Set([(cx - 1) + ',1', (cx + 1) + ',1', cx + ',0', cx + ',2'])
+    : new Set();
   const cells = [];
   for (let y = 0; y < 3; y++) {
     for (let x = 0; x < 9; x++) {
       if (y === 1 && x === cx) cells.push([64, C.Crew, C.Floor, 0]);          // '@'
+      else if (nb.has(x + ',' + y)) cells.push([34, C.Device, C.Floor, 0]);   // '"' growbed
       else if (y === 0 && x === lamp) cells.push([42, C.Device, C.Floor, 0]); // '*'
       else if (y === 2 && x === proc) cells.push([47, C.Device, C.Floor, 0]); // '/' open door
       else cells.push([46, C.Floor, C.Floor, 0]);                            // '.'
@@ -338,29 +374,151 @@ function corridorScene(cx, lamp = -1, proc = -1) {
   return { frame, cam, list: composeScene(frame, cam, ASSETS) };
 }
 
+/** Axis-aligned overlap area of two recorded rects. */
+const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+                          Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+/** The UV rect of whichever pawn cell this frame baked ('spr:pawn', or a walk-frame variant of it
+ *  when the walk hold is on). Identifying the pawn by its atlas cell keeps the assertions free of
+ *  any re-derivation of the slide/mirror maths the executors own. */
+function pawnUv(gl) {
+  const key = Object.keys(gl._uv).find((k) => k.startsWith('spr:pawn'));
+  assert.ok(key, 'the atlas must contain a pawn cell');
+  return gl._uv[key];
+}
+
+/** Every TEXTURED quad the webgl2 recorder emitted, in DRAW order (batch order, then vertex order),
+ *  as {x,y,w,h,u0}. Shadows (black tint, r === 0) are excluded — they are their own pass. Terrain
+ *  is included: it is drawn first, so anything AFTER the pawn's index is an entity. */
+function glTexQuads(calls) {
+  const out = [];
+  for (const c of calls) {
+    if (c.fn !== 'tex' || !c.verts.length || c.verts[4] === 0) continue;
+    for (let q = 0; q + 48 <= c.verts.length; q += 48) {
+      // TRI = [0,1,2,0,2,3] → vertices 0 and 2 of each quad are TL and BR.
+      const x0 = c.verts[q], y0 = c.verts[q + 1], x2 = c.verts[q + 16], y2 = c.verts[q + 17];
+      out.push({ x: Math.min(x0, x2), y: Math.min(y0, y2), w: Math.abs(x2 - x0), h: Math.abs(y2 - y0), u0: c.verts[q + 2] });
+    }
+  }
+  return out;
+}
+
 test('PAWN OCCLUSION INVARIANT: no later draw covers a sliding pawn, in any of the four directions', () => {
-  // composeScene emits ops ROW-MAJOR PER TILE. A pawn mid-step is drawn one tile back from the tile
-  // it now occupies, so on a westward or northward step the neighbouring tile's opaque floor is
-  // emitted LATER and used to paint straight over it (measured: 100% covered at step start). The
-  // executors must therefore walk PASSES (terrain, then entities), not the raw list.
-  for (const d of DIRS) {
-    const cx = 4;
-    const { list, cam } = corridorScene(cx);
-    const motion = { [cx + ',1']: stepEntry(cx, 1, d.dx, d.dy) };
-    const cv = canvasRecorder();
-    for (const ms of [1000, 1100, 1200, 1300]) {
-      const drawn = cv.run(list, { camera: cam, motion, nowMs: ms, timeSec: 0 });
-      const pi = drawn.findIndex((r) => r.name === 'pawn');
-      assert.ok(pi >= 0, `${d.name}: the pawn must be drawn`);
-      const p = drawn[pi];
-      for (let i = pi + 1; i < drawn.length; i++) {
-        const o = drawn[i];
-        const ov = Math.max(0, Math.min(p.x + p.w, o.x + o.w) - Math.max(p.x, o.x)) *
-                   Math.max(0, Math.min(p.y + p.h, o.y + o.h) - Math.max(p.y, o.y));
-        assert.equal(ov, 0,
-          `${d.name} @${ms}ms: '${o.name}' drawn after the pawn covers ${(100 * ov / (p.w * p.h)).toFixed(0)}% of it`);
+  // composeScene emits ops ROW-MAJOR PER TILE, and the entity PASS is still row-major inside itself.
+  // A pawn mid-step is drawn one tile back from the tile it now occupies, so on a westward or
+  // northward step the tile it came from is emitted LATER — first as the neighbour's opaque floor
+  // (100% covered at step start, fixed by the pass split) and then, once a device or a second pawn
+  // sits on that tile, as an ENTITY (measured on the real executors: 69% covered by one growbed,
+  // 45% by a pawn; E and S were clean in all 16 neighbour configurations). Both executors must
+  // therefore walk PASSES, and draw sliding pawns after every settled entity.
+  //
+  // `ring` is the load-bearing half: with it false this passes on the pass split alone.
+  for (const ring of [false, true]) {
+    for (const d of DIRS) {
+      const cx = 4;
+      const { list, cam } = corridorScene(cx, -1, -1, ring);
+      const motion = { [cx + ',1']: stepEntry(cx, 1, d.dx, d.dy) };
+      const cv = canvasRecorder();
+      for (const ms of [1000, 1100, 1200, 1300]) {
+        const tag = `${d.name}${ring ? '+ring' : ''} @${ms}ms`;
+        const drawn = cv.run(list, { camera: cam, motion, nowMs: ms, timeSec: 0 });
+        const pi = drawn.findIndex((r) => r.name === 'pawn');
+        assert.ok(pi >= 0, `${tag}: the pawn must be drawn`);
+        const p = drawn[pi];
+        for (let i = pi + 1; i < drawn.length; i++) {
+          const ov = overlap(p, drawn[i]);
+          assert.equal(ov, 0,
+            `${tag}: '${drawn[i].name}' drawn after the pawn covers ${(100 * ov / (p.w * p.h)).toFixed(0)}% of it`);
+        }
+
+        // …and the SAME invariant on the GL path, read off the vertex stream (batch order is draw
+        // order). Without the moving sub-batch the pawn quad sits mid-array and the growbed quad
+        // that follows it overlaps — the two backends would disagree about who is on top.
+        const gl = webglRecorder();
+        const quads = glTexQuads(gl.run(list, {
+          camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', motion, nowMs: ms, timeSec: 0,
+        }));
+        // Find the pawn by the ATLAS CELL it samples (u0 of 'spr:pawn'), never by recomputing its
+        // position — the slide formula lives in the executor and must not be mirrored into a test.
+        const pu = pawnUv(gl);
+        const gi = quads.findIndex((q) => q.u0 === pu.u0 || q.u0 === pu.u1);
+        assert.ok(gi >= 0, `${tag}: webgl2 must emit a pawn quad`);
+        for (let i = gi + 1; i < quads.length; i++) {
+          assert.equal(overlap(quads[gi], quads[i]), 0,
+            `${tag}: webgl2 draws a quad over the sliding pawn (index ${i} of ${quads.length})`);
+        }
       }
     }
+  }
+});
+
+test('FACING: both executors mirror a westbound pawn, and neither mirrors its shadow\'s lean', () => {
+  // The art is one east-facing profile, so the mirror IS the facing. Two things must hold together:
+  //   (a) the pawn and its grounding shadow both carry the mirror — a mirrored body over an
+  //       unmirrored silhouette reads as two different people;
+  //   (b) the shadow QUAD does not move. Its corners encode AD-3's single light direction (315°,
+  //       55° → down-RIGHT); mirroring them would swing every shadow across the floor the moment a
+  //       pawn turned, i.e. two light sources. So the flip is a source/UV operation only.
+  const cx = 4;
+  const { list, cam } = corridorScene(cx);
+  // The SAME westward step twice, differing only in the mirror — so any position change measured
+  // below is the flip's doing and not the slide's.
+  const east = stepEntry(cx, 1, -1, 0);                      // flipX undefined → unmirrored
+  const west = { ...east, flipX: true };
+  const opts = (m) => ({
+    camera: cam, sprites: STUB_SPRITES, spriteMode: 'on',
+    motion: { [cx + ',1']: m }, nowMs: 1100, timeSec: 0,
+  });
+
+  // --- canvas2d: the recorder keeps the four TRANSFORMED corners, so a mirror shows up as a
+  //     corner order that runs right-to-left, and as an unchanged bounding box.
+  const cvE = withSilhouettes(canvasRecorder()).run(list, opts(east));
+  const cvW = withSilhouettes(canvasRecorder()).run(list, opts(west));
+  const pick = (d, name) => d.find((r) => r.name === name);
+  const pE = pick(cvE, 'pawn'), pW = pick(cvW, 'pawn');
+  assert.ok(pE.c[1][0] > pE.c[0][0], 'unmirrored: the cell\'s left corner draws on the left');
+  assert.ok(pW.c[1][0] < pW.c[0][0], 'canvas2d must MIRROR a westbound pawn (it moonwalks otherwise)');
+  assert.ok(Math.abs(pW.x - pE.x) < 1e-9 && Math.abs(pW.w - pE.w) < 1e-9,
+    `a mirrored pawn must not jump: ${pW.x}/${pW.w} vs ${pE.x}/${pE.w}`);
+  const sE = pick(cvE, 'sil'), sW = pick(cvW, 'sil');
+  assert.ok(sW.c[1][0] < sW.c[0][0], 'the shadow silhouette must mirror WITH the pawn');
+  // …but the parallelogram itself is untouched: same bbox, and its top edge still leans RIGHT.
+  assert.ok(Math.abs(sW.x - sE.x) < 1e-9 && Math.abs(sW.w - sE.w) < 1e-9,
+    'the shadow QUAD must not mirror — that would move the light source');
+  // The parallelogram is the SAME four points either way — the flip only permutes which source
+  // corner lands on which of them. Compare them as a set, and pin the unflipped one to shadowQuad.
+  const key = (c) => c.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).sort().join(' ');
+  assert.equal(key(sW.c), key(sE.c), 'a flipped pawn must cast the SAME parallelogram');
+  const want = shadowQuad(pE.c[0][0], pE.c[0][1], pE.w);
+  for (let i = 0; i < 4; i++) {
+    assert.ok(Math.abs(sE.c[i][0] - want[i * 2]) < 1e-6 && Math.abs(sE.c[i][1] - want[i * 2 + 1]) < 1e-6,
+      `shadow corner ${i} must be shadowQuad's — the one authority on the light direction`);
+  }
+  // …and it still leans DOWN-RIGHT: the top edge is to the right of the bottom edge (AD-3).
+  for (const [s, label] of [[sE, 'unflipped'], [sW, 'flipped']]) {
+    const byY = s.c.slice().sort((a, b) => a[1] - b[1]);
+    const topX = (byY[0][0] + byY[1][0]) / 2, botX = (byY[2][0] + byY[3][0]) / 2;
+    assert.ok(topX - botX > 0.1 * pE.w,
+      `${label}: the shadow must lean down-RIGHT whichever way the pawn faces (${topX - botX})`);
+  }
+
+  // --- webgl2: the mirror is a u0↔u1 swap inside the SAME cell rect (no new atlas cell), and the
+  //     shadow quad's positions must still be shadowQuad's.
+  const runGl = (m) => { const g = webglRecorder(); g.run(list, opts(m)); return g; };
+  const gE = runGl(east), gW = runGl(west);
+  const uv = pawnUv(gE);
+  const pawnQuad = (g) => glTexQuads(g.calls).find((q) => q.u0 === uv.u0 || q.u0 === uv.u1);
+  const qE = pawnQuad(gE), qW = pawnQuad(gW);
+  assert.ok(qE && qW, 'both runs must emit a pawn quad');
+  assert.equal(qE.u0, uv.u0, 'unmirrored: the quad starts at the cell\'s left edge');
+  assert.equal(qW.u0, uv.u1, 'webgl2 must sample the cell right-to-left for a westbound pawn');
+  assert.ok(Math.abs(qW.x - qE.x) < 1e-3 && Math.abs(qW.w - qE.w) < 1e-3,
+    'a UV flip must not move the quad — it stays inside the same cell rect (ATLAS_BORDER intact)');
+  const shE = gE.shadowBatch(), shW = gW.shadowBatch();
+  assert.ok(shW[2] > shE[2], 'the shadow batch must carry the same UV flip');
+  for (let v = 0; v < 6; v++) {
+    assert.equal(shW[v * 8], shE[v * 8], `shadow vertex ${v} x must not move when the pawn flips`);
+    assert.equal(shW[v * 8 + 1], shE[v * 8 + 1], `shadow vertex ${v} y must not move`);
   }
 });
 

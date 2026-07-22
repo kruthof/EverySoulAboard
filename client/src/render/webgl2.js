@@ -78,10 +78,17 @@ function pushFlat(arr, x, y, d, rgba) {
  * `quad` (optional, [x0,y0,x1,y1,x2,y2,x3,y3] in TL,TR,BR,BL order) replaces the axis-aligned
  * corners `x,y,d` would give. The grounding shadow is the only caller: its four corners come from
  * `lightfield.js shadowQuad`, so it is a squashed, sheared parallelogram rather than a box.
+ *
+ * `flip` mirrors the SAMPLED CELL horizontally by swapping u0↔u1 — the pawn-facing mirror
+ * (motion.js "WHICH WAY A PAWN LOOKS"), and the canvas2d twin of `_sprImg`'s `scale(-1,1)`. It is
+ * a UV swap inside the SAME cell rect, not a second atlas cell: nothing samples outside
+ * [u0,u1]x[v0,v1], so WP-0's 4px replicated ATLAS_BORDER is untouched and the atlas signature does
+ * not move. Applied to a shadow it mirrors the silhouette WITHIN the parallelogram and leaves the
+ * corner POSITIONS — i.e. AD-3's down-right lean — exactly as `shadowQuad` produced them.
  */
 const AA = new Float64Array(8); // axis-aligned corner scratch for pushTex
 const SQ = new Float64Array(8); // grounding-shadow corner scratch (lightfield.js shadowQuad)
-function pushTex(arr, x, y, d, uv, alpha, turns, tint, quad) {
+function pushTex(arr, x, y, d, uv, alpha, turns, tint, quad, flip) {
   if (!uv) return;
   let c = quad;
   if (!c) {
@@ -90,8 +97,9 @@ function pushTex(arr, x, y, d, uv, alpha, turns, tint, quad) {
     c = AA;
   }
   // Rotate which UV each position corner samples. turns is CW image rotation → shift UV assignment.
+  const uL = flip ? uv.u1 : uv.u0, uR = flip ? uv.u0 : uv.u1;
   const uvSel = [
-    [uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1],
+    [uL, uv.v0], [uR, uv.v0], [uR, uv.v1], [uL, uv.v1],
   ];
   const t = ((turns % 4) + 4) % 4;
   const a = alpha == null ? 1 : alpha;
@@ -208,9 +216,15 @@ export class WebGL2Executor {
     //      The shadows are their own batch drawn BEFORE every entity, so a pawn's shadow can never
     //      fall across another pawn — it only ever lands on terrain. Same UVs, no new atlas cell:
     //      only the vertex tint (black @ SHADOW_ALPHA) and the corner POSITIONS differ, and those
-    //      come from `shadowQuad` — the same four corners canvas2d turns into its draw matrix. ----
+    //      come from `shadowQuad` — the same four corners canvas2d turns into its draw matrix.
+    //
+    //      Entities go out in TWO textured batches: settled first, then whoever is mid-slide. A
+    //      pawn mid-step is drawn one tile back from the tile it occupies, and the ops are still
+    //      row-major, so on a westward/northward step the tile it just LEFT is drawn later and used
+    //      to repaint it (measured on the real executors: up to 69% of the pawn). Same split, same
+    //      reason, same result as canvas2d — see that file's header. ----
     {
-      const shadow = [], tex = [], lock = [];
+      const shadow = [], tex = [], moving = [], lock = [];
       for (const o of entities.ops) {
         const spec = resolveEntity(o, useSpr, raster);
         stats.entities++;
@@ -218,22 +232,29 @@ export class WebGL2Executor {
         if (isSprite) stats.entitySprite++; else stats.entityProc++;
         // Walking pawns glide continuously toward the current tile (self-gating sub-tile offset that
         // survives step-less frames — same model + gating as the canvas2d path, no divergence).
-        const entry = raster.motion && raster.motion[o.x + ',' + o.y];
+        // '@' is 64 — and on THIS side of the fence the field is `glyph`, not `g`: batch.js
+        // rewrites every DisplayList op into its own shape. Only a pawn carries a motion entry,
+        // and only a pawn is ever mirrored.
+        const entry = o.glyph === 64 && raster.motion ? raster.motion[o.x + ',' + o.y] : null;
         const off = slideOffset(entry, nowMs);
+        const flip = !!(entry && entry.flipX);
+        const sliding = off.ox !== 0 || off.oy !== 0;
         const X = (o.x + off.ox) * PITCH + ox, Y = (o.y + off.oy) * PITCH + oy;
         // Bitmap art only. A procedural vector glyph's silhouette is a few thin strokes, and the
         // canvas2d path cannot silhouette one at all — shadowing it would be a pure divergence.
         if (isSprite) {
           pushTex(shadow, 0, 0, D, this._uv[spec.cell], spec.alpha, spec.turns,
-            [0, 0, 0, SHADOW_ALPHA * spec.alpha], shadowQuad(X, Y, D, SQ));
+            [0, 0, 0, SHADOW_ALPHA * spec.alpha], shadowQuad(X, Y, D, SQ), flip);
           stats.shadows++;
         }
-        pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
+        pushTex(sliding ? moving : tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns,
+          null, null, flip);
         if (spec.overlay) pushFlat(lock, X, Y, D, premul(parseColor(spec.overlay)));
       }
       gl.drawTextured(new Float32Array(shadow), W, H);
       gl.drawTextured(new Float32Array(tex), W, H);
       gl.drawFlat(new Float32Array(lock), W, H); // amber lands on top of its door (same tile)
+      gl.drawTextured(new Float32Array(moving), W, H); // sliding pawns, over everything they left
     }
 
     // ---- light: a multiply pass (dst *= M).

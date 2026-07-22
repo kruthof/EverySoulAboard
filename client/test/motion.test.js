@@ -65,6 +65,34 @@ test('diagonal jumps count as teleports (only 4-neighbour steps walk)', () => {
   assert.equal(m.byCid[7].walking, false);
 });
 
+test('FACING INVARIANT: flipX is sticky — set by a westward step, kept through vertical ones', () => {
+  // The art has ONE east-facing walk profile, so `flipX` is the only thing that stops a westbound
+  // pawn moonwalking. It must be STICKY: a pawn that turns a corner keeps looking where it went.
+  const step = (m, x, y) => trackMotion(m, frame(0, [[x, y, 0, 7]]));
+  let m = step(initMotion(), 5, 5);
+  assert.equal(m.byCid[7].flipX, false, 'a fresh sighting faces the art default (east)');
+
+  m = step(m, 4, 5);                                     // west
+  assert.equal(m.byCid[7].flipX, true, 'a westward step mirrors the pawn');
+  m = step(m, 4, 4);                                     // north — must NOT reset the mirror
+  assert.equal(m.byCid[7].flipX, true, 'a vertical step must not clear a westward flip');
+  m = step(m, 4, 5);                                     // south — likewise
+  assert.equal(m.byCid[7].flipX, true, 'a vertical step must not clear a westward flip');
+  m = step(m, 4, 5);                                     // standing frame
+  assert.equal(m.byCid[7].flipX, true, 'a standing pawn keeps looking where it was going');
+
+  m = step(m, 5, 5);                                     // east
+  assert.equal(m.byCid[7].flipX, false, 'an eastward step clears the mirror');
+  m = step(m, 5, 6);                                     // vertical again
+  assert.equal(m.byCid[7].flipX, false, 'a vertical step must not INVENT a flip either');
+
+  // …and every discontinuity resets to the art's own orientation.
+  let w = step(step(initMotion(), 5, 5), 4, 5);
+  assert.equal(w.byCid[7].flipX, true);
+  assert.equal(trackMotion(w, frame(0, [[9, 9, 0, 7]])).byCid[7].flipX, false, 'teleport resets');
+  assert.equal(trackMotion(w, frame(1, [[4, 5, 0, 7]])).byCid[7].flipX, false, 'deck change resets');
+});
+
 test('a cid-less crew tuple (older host frame) is skipped, never throws', () => {
   const m = trackMotion(initMotion(), frame(0, [[5, 5, 0]]));
   assert.deepEqual(m.byCid, {});
