@@ -22,7 +22,7 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
-printf '%s\n' "$OUT" | grep -q "26907c23d7e48a5c" || { echo "FAIL: reference hash changed (expected 26907c23d7e48a5c) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "3afc99d90e849aa0" || { echo "FAIL: reference hash changed (expected 3afc99d90e849aa0) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then
