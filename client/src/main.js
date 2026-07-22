@@ -138,9 +138,10 @@ function draw() {
     motion: motionByTile(motion),
     nowMs: FROZEN_T != null ? null : nowMs(),
   });
-  // Build ghosts track the same camera transform as the pulse, so they stay glued under
-  // pan/zoom/deck-change (this runs on every draw, incl. drag-pan and the anim loop).
-  Hud.paintDesignGhosts();
+  // Build ghosts + work markers track the same camera transform as the pulse, so they stay glued
+  // under pan/zoom/deck-change (this runs on every draw, incl. drag-pan and the anim loop). One
+  // call, one canvas measurement — see Hud.paintStageOverlays.
+  Hud.paintStageOverlays();
 }
 
 // ---- animation loop: redraw ~30fps while a crew is selected (the reticle breathes even on pause)

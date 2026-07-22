@@ -328,7 +328,9 @@ flex-wrap:wrap;` chip `border:1px solid var(--ln-chip); border-radius:3px; paddi
 font-size:9.5px; color:var(--txt);`. Chips are inert (no hover/cursor).
 **VS-39** — Task line: `border-top:1px dashed var(--ln-hair); padding-top:10px;
 color:var(--txt-hi);` content literally starts with `> ` (renders as `&gt; `), 11px.
-Task text from roster verbatim (digging/hauling/… per wire).
+Task text from roster verbatim — since the work-legibility round that label names its
+object (`> Servicing scrubber_ls`, `> Hauling regolith to wall 3,4 (0/2)`, `> Idle`);
+see IX-104 for the vocabulary and VS-66 for the CREW WATCH twin.
 **VS-40** — Secondary line below task: mood/last-known, `font-size:10.5px; line-height:1.6;
 color:var(--txt-dim);`. NO fabricated memory text — leave empty until wire provides it.
 
@@ -573,6 +575,49 @@ has no palette. Everything else keeps the mock's exact values.
 **VS-65** — 11px mono at these ratios is comfortably legible on the target (desktop,
 game client); nothing in the chrome sits below 4.5:1 except the enumerated decorative
 tier and disabled states. Re-run this table if any token hex changes.
+
+---
+
+## 7b. Work legibility (the "are they actually doing anything?" round)
+
+**VS-66** — CREW WATCH task line (`.crew-task`, the third line of `.crew-col`, between the
+role and the morale track): `font-size:9px; letter-spacing:.04em; margin-top:2px;` single
+line, `text-overflow:ellipsis` (labels can be long — `Hauling regolith to wall 3,4 (0/2)`).
+Two states, and the difference is the point: default `color:var(--txt-dim)` (#8c8377, the
+same tier as the role line above it — readable, unemphatic; the role is uppercased and this
+line is not, so they never blur together), `.working`
+`color:var(--amber-2)` (#e8934a). Idleness must never be styled as activity. `.working` is
+`watchTask`'s flag, which is broader than `taskTag`: an en-route label (`Heading to …`) gets
+amber here even though it gets no map marker (IX-103) — walking to a real job is assigned work,
+not idleness, and the two questions have different answers. Text is the
+roster label verbatim, `—` when absent. Sentence case, NOT uppercased: the label names real
+objects (`scrubber_ls`, `fab_main`) whose casing is data.
+
+**VS-67** — Build-ghost supply states (on top of the existing `.ghost` / `.ghost-wall` /
+`.ghost-door`): `.ghost-starved` `border-color:var(--bad)` + `background:rgba(194,90,63,.08)`
+with the kind glyph faded to `opacity:.45` — a stalled order reads as a problem, not as
+progress; `.ghost-ready` `border-style:solid; border-color:var(--good)` — the requirement is
+met and only the building is left; `supplied`/`plain` keep the amber dashed look unchanged.
+`.ghost-count` is the `n/m` ledger in the tile's bottom-right corner, `font-size:` scaled to
+`side*0.26` (min 6px), `color:var(--txt-dim)`, tinted `--bad-txt` when starved and `--good`
+when ready. Per VS-63 the red BORDER may be `--bad`; the red TEXT is `--bad-txt`.
+
+**VS-68** — On-map work markers (`.work-layer` / `.work-mark`, IX-103). Layer:
+`position:absolute; inset:0; pointer-events:none; z-index:5` — the SAME stacking level as
+`.design-layer`, **not** one above it. Rationale (RELATIONS): the layer is appended to `.stage`
+lazily, on the first frame that has a marker, i.e. always AFTER the static `#relations-view`
+child. `#relations-view` is `z-index:6` (VS-R*), so at 6 the work layer would tie with it and — being
+later in the DOM — paint work tags over the full-viewport RELATIONS web. At 5 it stays under
+RELATIONS. Sharing 5 with `.design-layer` costs nothing: a ghost is a 1.5px dashed outline over
+a 10%-alpha fill, so the two never occlude each other even on the one tile where a crew member
+stands on a pending designation. `:empty{display:none}`. Marker: an accent-filled chip —
+`background:var(--amber-1); color:var(--txt-onacc);` (the same on-accent pairing as the
+initials avatar, 8.0:1), `border-radius:2px; padding:2px 4px; letter-spacing:.10em;
+line-height:1;` mono, `font-size:` scaled to `side*0.24` (min 6px), and a 1px dark
+`box-shadow` ring so it reads against both lit and dark deck tiles. Positioned with
+`transform:translate(-50%,-100%)` at the tile's horizontal centre, `side*0.18` above its top
+edge — over the pawn, never on its face. Content is a short uppercase tag (`DIG`, `HAUL`,
+`BUILD`, `SVC`, `CRAFT`, `MEAL`, `WATER`); the full label is the element `title`.
 
 ---
 

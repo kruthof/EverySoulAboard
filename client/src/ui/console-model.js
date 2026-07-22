@@ -277,21 +277,106 @@ export function hintLine(tool, surname) {
 // ---- build ghosts (designs channel): the persistent designation markers ----
 
 /** The pending designations on a given deck, from the authoritative `designs` wire. Each cell is
- *  the tuple [x, y, deck, kind] (kind 0 wall / 1 door). Tolerant: a null/garbage list → []. PURE. */
+ *  the tuple [x, y, deck, kind, delivered, required] (kind 0 wall / 1 door); elements 5 and 6 are
+ *  the host's APPEND-ONLY material ledger and are optional — an older four-element tuple decodes
+ *  with an empty ledger and no starved state, exactly as before. Tolerant: a null/garbage list →
+ *  []. PURE.
+ *
+ *  `state` is the ghost's supply story, which is the whole point of carrying the ledger: a site
+ *  nobody is feeding looked IDENTICAL to one under active construction, so an order that could
+ *  never complete just sat there silently.
+ *    'starved' — required material, none of it delivered (nothing is arriving)
+ *    'supplied' — partially delivered, still short
+ *    'ready'   — the full requirement is on site; only the building is left
+ *    'plain'   — no ledger on the wire (nothing to say) */
 export function designsOnDeck(cells, deck) {
   if (!Array.isArray(cells)) return [];
   const out = [];
   for (const c of cells) {
     if (Array.isArray(c) && c.length >= 4 && c[2] === deck) {
-      out.push({ x: c[0], y: c[1], kind: c[3] });
+      const delivered = c.length >= 6 && Number.isFinite(c[4]) ? c[4] : 0;
+      const required = c.length >= 6 && Number.isFinite(c[5]) ? c[5] : 0;
+      out.push({ x: c[0], y: c[1], kind: c[3], delivered, required, state: ghostState(delivered, required) });
     }
   }
   return out;
 }
 
+/** The supply state of a build site from its material ledger (see `designsOnDeck`). PURE. */
+export function ghostState(delivered, required) {
+  if (!(required > 0)) return 'plain';
+  if (delivered >= required) return 'ready';
+  return delivered > 0 ? 'supplied' : 'starved';
+}
+
+/** The "n/m" material label under a ghost, or '' when the wire carried no ledger. PURE. */
+export function ghostLabel(g) {
+  if (!g || !(g.required > 0)) return '';
+  return (g.delivered || 0) + '/' + g.required;
+}
+
 /** The one-glyph marker for a designation kind (0 wall → ▚, 1 door → ▯, else ?). PURE. */
 export function designGlyph(kind) {
   return kind === 0 ? '▚' : kind === 1 ? '▯' : '?';
+}
+
+// ---- on-map work markers (roster deck/x/y/task, no wire change) ----
+
+/** Leading task verb → the short tag shown on the map and in CREW WATCH. The host's roster label
+ *  always OPENS with one of these verbs (see GameSession.TaskLabel, which is test-pinned against
+ *  this very vocabulary); a job-less label (Walking / Holding / Idle) maps to null and gets no
+ *  marker — that is the honesty rule: standing around must not look like working. */
+const TASK_TAGS = {
+  digging: 'DIG',
+  fetching: 'HAUL',
+  hauling: 'HAUL',
+  building: 'BUILD',
+  servicing: 'SVC',
+  crafting: 'CRAFT',
+  eating: 'MEAL',
+  drinking: 'WATER',
+};
+
+/** The host's en-route verb ("Heading to service scrubber_ls"): a crew member who HAS a job but is
+ *  still walking to it. Deliberately absent from TASK_TAGS — a tag floating over a walking pawn is
+ *  the very "claimed to be fixing X while doing nothing visible" complaint the markers exist to
+ *  answer — while CREW WATCH still reads it as assigned work, because they are not idle. */
+const EN_ROUTE_VERB = 'heading';
+
+/** The first word of a roster task label, lowercased ('' for a missing/garbage label). PURE. */
+function taskVerb(task) {
+  return typeof task === 'string' ? task.trim().split(/\s+/)[0].toLowerCase() : '';
+}
+
+/** The work tag for a roster task label, or null when the crew member is not (yet) working on
+ *  something at a place: idle, merely walking, or still en route to the job. PURE. */
+export function taskTag(task) {
+  const first = taskVerb(task);
+  return Object.prototype.hasOwnProperty.call(TASK_TAGS, first) ? TASK_TAGS[first] : null;
+}
+
+/** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
+ *  real work (so the row can dim the doing-nothing case instead of implying activity). A crew
+ *  member en route to a job counts — they are assigned, just not there yet. PURE. */
+export function watchTask(entry) {
+  const task = entry && typeof entry.task === 'string' ? entry.task.trim() : '';
+  return { text: task || '—', working: taskTag(task) != null || taskVerb(task) === EN_ROUTE_VERB };
+}
+
+/** Crew on `deck` who are actually working, as map markers joined from the roster's own
+ *  deck/x/y/task (no extra wire field needed). Idle/walking crew are deliberately absent: the
+ *  marker answers "is anyone truly working on something", so it must only ever appear for a real
+ *  job. Tolerant of a missing/garbage roster. PURE. */
+export function workMarkers(crew, deck) {
+  const out = [];
+  if (!Array.isArray(crew)) return out;
+  for (const e of crew) {
+    if (!e || e.deck !== deck || !Number.isFinite(e.x) || !Number.isFinite(e.y)) continue;
+    const tag = taskTag(e.task);
+    if (!tag) continue;
+    out.push({ cid: e.cid, x: e.x, y: e.y, tag, task: e.task });
+  }
+  return out;
 }
 
 // ---- paused-ship nudge (when to show "PRESS SPACE TO RUN") ----

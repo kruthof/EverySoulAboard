@@ -293,11 +293,11 @@ namespace Perilune.Web
             {
                 case "wall":
                     _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall));
-                    _status = "designate wall";
+                    _status = "designate wall" + MaterialNote();
                     break;
                 case "door":
                     _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Door));
-                    _status = "designate door";
+                    _status = "designate door" + MaterialNote();
                     break;
                 case "cancel":
                     _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall, on: false));
@@ -306,6 +306,26 @@ namespace Perilune.Web
                 default:
                     break; // unknown kind — ignored
             }
+        }
+
+        /// <summary>
+        /// " - N regolith aboard" for the designate status line: the ship's loose (uncarried) stock
+        /// of the build material. A designation with nothing to feed it sits starved forever, and
+        /// nothing in the UI used to say why — this is the first honest word about it (the ghost's
+        /// delivered/required ledger on the `designs` channel is the second). READ-ONLY scan of the
+        /// item store on the sim thread; no mutation, no RNG.
+        /// </summary>
+        private string MaterialNote()
+        {
+            int units = 0;
+            var items = _sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (it.Kind == BuildSystem.Material && it.CarriedBy == 0) units += it.Count;
+            }
+            return " - " + units.ToString(CultureInfo.InvariantCulture) + " " +
+                   ItemKindLabel(BuildSystem.Material) + " aboard";
         }
 
         /// <summary>The current program text for a terminal: the last text SET this session
@@ -624,7 +644,9 @@ namespace Perilune.Web
             for (int i = 0; i < pending.Count; i++)
             {
                 var b = pending[i];
-                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind));
+                // delivered/required are the site's material ledger — the client renders a
+                // STARVED ghost (nothing arriving) distinctly from one being actively supplied.
+                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind, b.Delivered, b.Required));
             }
             return rows;
         }
@@ -680,18 +702,160 @@ namespace Perilune.Web
             return rows;
         }
 
-        /// <summary>A short human label for what a crew member is doing right now.</summary>
-        private static string TaskLabel(Citizen c) => c.JobKind switch
+        // Reused scratch for TaskLabel — BuildRoster runs on the sim thread inside Render (≤10 Hz,
+        // one call at a time), so a single shared builder is safe and keeps the label path from
+        // littering the heap with intermediate concatenations.
+        private readonly System.Text.StringBuilder _task = new System.Text.StringBuilder(48);
+
+        /// <summary>
+        /// A short, HONEST label for what a crew member is doing right now — it NAMES the thing:
+        /// the machine being serviced, the item being carried and where to, the build site and its
+        /// material ledger, the tile being dug. The label always opens with a stable verb
+        /// (Digging / Fetching / Hauling / Eating / Drinking / Crafting / Servicing / Building /
+        /// Heading / Walking / Holding / Idle); the client's on-map work marker classifies on that first word
+        /// (`taskTag` in console-model.js) and treats the en-route verb Heading as "has a job but
+        /// is not working yet" (`watchTask`), so KEEP THE VERB SET AND THE CLIENT MAP IN STEP.
+        ///
+        /// The old catch-all reported "walking" for every job-less crew member — 99.9% of all
+        /// labels in the playtest — which read as "busy" when the truth was "nothing assigned".
+        /// A job-less walker now says so out loud, and a parked crew member reads Idle/Holding.
+        ///
+        /// The label always names the JOB and its object. It does NOT claim the work has started:
+        /// a crew member still crossing the deck reads "Heading to service scrubber_ls", and only
+        /// switches to "Servicing scrubber_ls" once they have arrived. The playtest complaint was
+        /// "claimed to be fixing X while doing nothing visible", and an activity verb (plus its
+        /// on-map SVC tag) floating over a walking pawn is that same claim. `HasPath` is the ground
+        /// truth — the very predicate the job-less branch below already reads.
+        ///
+        /// Transit-shaped jobs (Fetching/Hauling/Eating) already say they are in transit, so they
+        /// keep their verb. A crew member with NO job reads Walking / Holding / Idle.
+        ///
+        /// PURE READ: device/item/build lookups only ever read; nothing here mutates the sim or
+        /// touches the RNG. `task` is a pre-existing roster field, so no wire shape moves.
+        /// </summary>
+        private string TaskLabel(Citizen c)
         {
-            JobKind.Dig => "digging",
-            JobKind.HaulPickup or JobKind.HaulDeliver => "hauling",
-            JobKind.Eat => "eating",
-            JobKind.Drink => "drinking",
-            JobKind.Craft => "crafting",
-            JobKind.Maintain => "servicing a machine",
-            JobKind.HaulToBuild => "hauling build materials",
-            JobKind.Build => "building",
-            _ => c.HasPath ? "walking" : "idle",
+            var sb = _task;
+            sb.Clear();
+            // Still walking to the job site ⇒ the work has NOT started; say so instead of
+            // asserting an activity the player cannot see (and that the map would tag).
+            bool enRoute = c.HasPath;
+            switch (c.JobKind)
+            {
+                case JobKind.Dig:
+                    sb.Append(enRoute ? "Heading to dig out " : "Digging out ");
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    break;
+                case JobKind.HaulPickup:
+                    sb.Append("Fetching ").Append(ItemLabel(c.ReservedItemId)).Append(" at ");
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    break;
+                case JobKind.HaulDeliver:
+                    sb.Append("Hauling ").Append(ItemLabel(c.CarryingItemId)).Append(" to ");
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    break;
+                case JobKind.Eat:
+                    sb.Append("Eating");
+                    if (c.Pos != c.JobTarget) { sb.Append(" - food at "); AppendTile(sb, c.JobTarget, c.Pos.Z); }
+                    break;
+                case JobKind.Drink:
+                    sb.Append(enRoute ? "Heading to drink at " : "Drinking at ")
+                      .Append(DeviceLabel(c.JobTarget, "a water tank"));
+                    break;
+                case JobKind.Craft:
+                    sb.Append(enRoute ? "Heading to work at " : "Crafting at ")
+                      .Append(DeviceLabel(c.JobTarget, "a workstation"));
+                    break;
+                case JobKind.Maintain:
+                    sb.Append(enRoute ? "Heading to service " : "Servicing ")
+                      .Append(DeviceLabel(c.JobTarget, "a machine"));
+                    break;
+                case JobKind.HaulToBuild:
+                    sb.Append("Hauling ").Append(ItemKindLabel(BuildSystem.Material))
+                      .Append(" to ").Append(BuildSiteLabel(c.JobTarget)).Append(' ');
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    AppendBuildLedger(sb, c.JobTarget);
+                    break;
+                case JobKind.Build:
+                    sb.Append(enRoute ? "Heading to build " : "Building ")
+                      .Append(BuildSiteLabel(c.JobTarget)).Append(' ');
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    break;
+                default:
+                    // No job. Say which of the three job-less states this actually is.
+                    if (c.HasPath)
+                    {
+                        sb.Append("Walking to ");
+                        AppendTile(sb, c.Path[c.Path.Count - 1], c.Pos.Z);
+                        sb.Append(" (no task)");
+                    }
+                    else if (c.HoldPosition) sb.Append("Holding position");
+                    else sb.Append("Idle");
+                    break;
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>"x,y" — plus " on deck N" when the tile is off the citizen's own deck.</summary>
+        private static void AppendTile(System.Text.StringBuilder sb, Int3 p, int ownDeck)
+        {
+            sb.Append(p.X.ToString(CultureInfo.InvariantCulture)).Append(',')
+              .Append(p.Y.ToString(CultureInfo.InvariantCulture));
+            if (p.Z != ownDeck) sb.Append(" on deck ").Append(p.Z.ToString(CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>The delivered/required ledger of a build site, e.g. " (1/2)". Silent when the
+        /// site is gone (resolved between job assignment and this render) or no BuildSystem runs.</summary>
+        private void AppendBuildLedger(System.Text.StringBuilder sb, Int3 site)
+        {
+            if (_host.BuildSys == null || !_host.BuildSys.TryGet(site, out var b)) return;
+            sb.Append(" (").Append(b.Delivered.ToString(CultureInfo.InvariantCulture)).Append('/')
+              .Append(b.Required.ToString(CultureInfo.InvariantCulture)).Append(')');
+        }
+
+        /// <summary>"wall"/"door" for a pending site; "the site" when the designation is gone.</summary>
+        private string BuildSiteLabel(Int3 site)
+        {
+            if (_host.BuildSys != null && _host.BuildSys.TryGet(site, out var b))
+                return b.Kind == BuildKind.Door ? "door" : "wall";
+            return "the site";
+        }
+
+        /// <summary>The player-facing name of the device on a tile (MOSS id when it has one, else
+        /// the kind), or <paramref name="fallback"/> when the tile carries no device. Resolved
+        /// through the SIM's device grid (<see cref="Simulation.TryGetDeviceAt"/>) — the very same
+        /// lookup MaintenanceSystem/SustenanceSystem use to find the job's device, so the label can
+        /// never name a different device than the one the crew member is actually working on (a
+        /// tile can carry a machine and a conduit at once; the host's own linear scan would pick
+        /// whichever came first in store order).</summary>
+        private string DeviceLabel(Int3 pos, string fallback)
+        {
+            if (!_sim.TryGetDeviceAt(pos, out var d) || d == null) return fallback;
+            if (!string.IsNullOrEmpty(d.Name)) return d.Name;
+            return d.Kind.ToString().ToLowerInvariant();
+        }
+
+        /// <summary>The plain-English name of a carried/reserved stack ("regolith", "food"), or
+        /// "cargo" when the id no longer resolves.</summary>
+        private string ItemLabel(uint itemId)
+        {
+            if (itemId == 0 || !_sim.Items.TryGet(itemId, out var st)) return "cargo";
+            if (st.Kind == ItemKind.Corpse)
+                return string.IsNullOrEmpty(st.Label) ? "a body" : st.Label + "'s body";
+            return ItemKindLabel(st.Kind);
+        }
+
+        /// <summary>Plain-English name of an item kind (allocation-free: interned literals).</summary>
+        private static string ItemKindLabel(ItemKind kind) => kind switch
+        {
+            ItemKind.Regolith => "regolith",
+            ItemKind.MetalOre => "metal ore",
+            ItemKind.Corpse => "a body",
+            ItemKind.Potato => "food",
+            ItemKind.Scrap => "scrap",
+            ItemKind.Parts => "parts",
+            ItemKind.ControllerModule => "a controller module",
+            _ => "cargo",
         };
 
         private IReadOnlyList<string> BuildLog()

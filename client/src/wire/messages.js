@@ -121,9 +121,12 @@
 /**
  * Pending build designations (BUILD ghosts) — walls/doors the sim has NOT yet built. The client
  * renders a persistent dashed ghost on the matching deck until a designation resolves (built or
- * cancelled), whereupon it drops off this authoritative channel. Each cell is [x, y, deck, kind]
- * (kind 0 wall / 1 door). NOT fog-gated (own-ship build knowledge, like roster); snapshot-cached.
- * @typedef {[number,number,number,number]} DesignCell
+ * cancelled), whereupon it drops off this authoritative channel. Each cell is
+ * [x, y, deck, kind, delivered, required] — kind 0 wall / 1 door; delivered/required are the
+ * site's material ledger and are APPEND-ONLY trailing elements (IX-39), so a reader that knows
+ * only the first four is unaffected and an older host that sends four still parses.
+ * NOT fog-gated (own-ship build knowledge, like roster); snapshot-cached.
+ * @typedef {[number,number,number,number,number?,number?]} DesignCell
  * @typedef {{type:'designs', cells:DesignCell[]}} DesignsMsg
  */
 
