@@ -1,4 +1,4 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest-feedback round, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest-feedback round + Console UI rebuild, tag `v2-talking-ship`)
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -165,21 +165,35 @@ full UI redesign) is deliberately deferred to a fresh session — see "Next sess
 Suite after this round: **530 dotnet + 125 node** via `./ci.sh`. Scenario/tick-3000/slice
 hashes unmoved (no sim state was added; verify pins in `ci.sh` still match).
 
-## Next session: the UI rebuild ("Perilune Game UI" design)
+## The Console UI rebuild (2026-07-21, commit `710c5d2`) — LANDED
 
-Garvin supplied a target design — imported to
-**`docs/design/perilune-game-ui.dc.html`** (annotated; read its header comment first).
-Warm Space Mono console: top status bar (ship/deck/day/time/pause/speed/caution chip) ·
-left CREW WATCH sidebar (avatars, surname, role, morale bar — feed from the new `roster`
-channel; clicking a row should select without hunting pawns) · center = the existing
-canvas (keep executors/input untouched) · right READOUT panel (selected crew, traits,
-task, memory + [T] TALK / [M] MOVE / [B] BIO) · bottom bar (BUILD/REFIT/…/CHRONICLE
-tabs — BUILD palette is live via the new build command; LENS SELECT row; SENSOR LOG).
-Also wanted: movable/draggable chat panels (panel-base.js has no drag yet). Rebuild
-`client/index.html` + `styles.css` + `ui/hud.js` around this; the wire needs nothing new
-for v1 of it. Keep the node ui tests honest (`ui.test.js` etc. pin DOM ids). The design's
-static deck mock is replaced by the real canvas; room-overlay lenses on the canvas
-already exist host-side.
+The client UI was rebuilt to Garvin's target design
+**`docs/design/perilune-game-ui.dc.html`** (annotated; header comment first). The full
+specs the build was reviewed against live next to it:
+`perilune-game-ui.interaction-spec.md` (IX-*, keyboard/build/selection/drag/edge
+behavior) and `perilune-game-ui.visual-spec.md` (VS-*, tokens/type/layout/states +
+contrast audit). Read those before touching the console — they are the contract.
+
+What shipped (client-only; wire untouched): warm Space Mono console skin (fonts
+bundled offline under `client/assets/fonts/`, OFL) · top bar with deck stepper,
+DAY·HH:MM clock from `metrics.dayFrac`, pause/speed/lens/LLM chips and a client-derived
+caution chip · CREW WATCH fed by the `roster` wire (keyed in-place row reconciliation
+by cid — never rebuild rows, it eats clicks/focus/portraits) · READOUT from the
+frame+roster join ([T] TALK, [M] MOVE arm-then-click, BIOGRAPHY opens the citizen
+card — the `citizen` msg no longer auto-opens it) · bottom console with
+BUILD/CREW/MOSS/CHRONICLE tabs (REFIT/ORDERS/SHIP/NAV deliberately omitted — no wire),
+wall/door/**cancel** palette (never "demolish": host Cancel only revokes pending
+designations), 7-lens row (keys 1–7), sensor log = `log` wire tail · draggable panels
+(pointer capture in `panel-base.js`) · new `Cmd.build`/`Cmd.chron`, roster/chron
+decoding · B/X armed-tool keys with the Escape stack (armed tool → dialogue → nothing)
+· pure derivations in `client/src/ui/console-model.js` (node-tested; clock, caution,
+speed label, surname, selection join, cross-deck pending-click with supersession,
+armed-tool transitions).
+
+Review record: independent engineering gate PASS (mutation probes 3/3, de-DE culture
+pass) · HCI review + re-gate PASS · visual art-director review + re-gate PASS on live
+pixels (CDP-driven tab/breakpoint/portrait-flash probes). Suite: **530 dotnet + 153
+node** via `./ci.sh`; scenario/tick-3000/slice hashes unmoved (client-only).
 
 ## Running / testing the game
 
@@ -266,6 +280,14 @@ The obvious P3 groundwork already flagged below: hosts finally consume `Sim.Cont
   `PeriluneGoldenTests.cs:65` CA1305 and `InspectorModelTests.cs:80` CA1310 culture warnings.
 - **Hosts still don't consume `Sim.Content`** — deliberate; the switch is the P3 campaign pack.
 - `sweep --count 100` is ~20 min wall (V6 real sim-days) — fine ad hoc, not for CI.
+- **Host `GameSession` can wedge after unclean websocket drops** (spotted by review
+  tooling during the Console re-gate, pre-existing): raw sockets dropped without a
+  close handshake left the session loop not rendering/draining commands until restart;
+  the client then shows stale chips with no disconnect overlay. Worth a look before
+  P3 playtests.
+- **CREW tab scroll affordance** (advisory from the visual re-gate): the tab shows 2
+  of 8 rows and the scrollbar thumb is near-invisible — nothing signals more rows
+  exist. Small polish.
 
 ## Open on Garvin (the human exit bars + setup)
 
