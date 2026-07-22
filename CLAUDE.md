@@ -23,7 +23,7 @@ runtime + three adapters (Anthropic/OpenAI-compat/Ollama) with `.env` auto-route
 ConversationHub talking web host, MEMS-persisted crew minds, Chronicle + verbatim
 eulogy, registered Director (gentled 1.35 lever), build/refit walls+doors, relationship
 types, the 8-crew authored slice (`--ship slice`), a ~99%-parity WebGL2 client with
-lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **541 dotnet + 153 node tests
+lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **560 dotnet + 188 node tests
 green** via `./ci.sh`. Live-provider smoke on record ($0.0045, `docs/SMOKE-P2.md`).
 A post-tag playtest-feedback round landed 2026-07-21 (sprite matte/hysteresis/click
 fixes, plain-first-person dialogue prompt, regenerated pawn idles + slice portraits,
@@ -34,7 +34,15 @@ bottom console with live BUILD/CHRONICLE, draggable panels; specs beside the moc
 (`perilune-game-ui.{interaction,visual}-spec.md`) are the UI contract — see HANDOVER
 "The Console UI rebuild". Conversation history now reaches the model (`9b16c07`,
 Opus-gated + live-probed: transcript threaded hub→adapters, anti-meta prompt) — see
-HANDOVER "Conversation history fix". Next up: P3 "The Voyage" (PLAN.md).
+HANDOVER "Conversation history fix". **Playtest round 2 landed 2026-07-21 evening**
+(four Opus-gated lanes — see HANDOVER "Playtest round 2"): continuous pawn-slide
+interpolation (no more dart/park/snap), player lines echoed in chat + one-click close
++ per-crew CONVERSATION LOG in the biography (durable MEMS summaries now written),
+the **RELATIONS tab** (crew relationship web, `relations` wire, secret bonds, spec
+`perilune-game-ui.relations-spec.md`), and console visibility polish (wire-backed
+build ghosts via `designs`, paused-ship nudge, CREW traits, MOSS terminal directory
+via `terminals`, Escape exits RELATIONS). **560 dotnet + 188 node** green via
+`./ci.sh`; all determinism pins unmoved. Next up: P3 "The Voyage" (PLAN.md).
 
 ## Layout
 `sim/` (Sim.Core, Sim.Dsl, Sim.Gen, Sim.Glyph, Sim.Llm, Sim.Content — all headless) ·
@@ -60,8 +68,8 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (541 green; `./ci.sh`
-  runs the full gate — 541 dotnet + 153 node, ~3 min wall since V6 runs real sim-days).
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (560 green; `./ci.sh`
+  runs the full gate — 560 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed

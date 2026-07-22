@@ -1,4 +1,4 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest round + Console UI rebuild + conversation-history fix, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest rounds 1–2 + Console UI rebuild + RELATIONS tab, tag `v2-talking-ship`)
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -220,6 +220,79 @@ verified** the same day: two-turn exchange with Amara over the real Anthropic ro
 turn 2 recalled a planted name + object verbatim, in character, zero meta (cents
 spent, zero CI surface). Suite: **541 dotnet + 153 node**; hashes unmoved.
 
+## Playtest round 2 (2026-07-21 evening) — four Opus-gated lanes, all LANDED
+
+Garvin played again and filed six findings; all actionable ones landed the same
+evening via four worktree lanes, each with its own independent Opus gate (the
+ritual: blind spec → in-worktree `./ci.sh` → adversarial/mutation probes →
+PASS; fixups re-gated). Recon for the round was done by four parallel explore
+agents whose root-cause reports drove the lane contracts.
+
+1. **Motion** (`b770e88`, gate PASS ×2 after one fixup). "Pawns run and stutter
+   square-to-square": the client faked each 500 ms sim step as a fixed 130 ms
+   frame-anchored glide (≈7.7 tiles/s dart, then ~370 ms parked, snapping when
+   any OTHER crew's step re-sent a frame). `motion.js` now runs a per-cid
+   step-anchored slide: EMA-estimated per-step interval (80–1200 ms clamp,
+   500 ms default — auto-adapts to sim speed), mid-slide re-steps anchor from
+   the current interpolated position, offsets survive step-less frames.
+   Gate-found H1 fixup (`79cc4fe`): `isAnimWalking` is slide-aware so the walk
+   sprite holds for the whole glide (webgl2 atlas bake+sample gates share one
+   `nowMs` and cannot diverge; frozen `?t=` path falls back to the 2-frame
+   hold, byte-identical). Client-only; true pace (2 tiles/s at 1×) is now what
+   the eye sees — if still too fast, that's a `ticks_per_tile` def change
+   (hash-move ritual), deliberately not done here.
+2. **Dialogue** (`0fb9861`, gate PASS). (a) The hub now emits the player's
+   utterance as an authoritative `"you"` chat line at dispatch — ordering
+   player → deltas → crew holds in both the immediate and queued-say paths,
+   and a failed turn still shows what was said. (b) One X/Escape closes a chat
+   for good: pure `chatPanelAction` decision table — `start` is the sole
+   (re)open trigger; trailing end/delta events fold into the reducer but never
+   recreate DOM. (c) BIOGRAPHY gained a bounded per-cid CONVERSATION LOG
+   (append-only trailing `"log"` field on the `citizen` msg + new `bio`
+   re-request cmd), and the previously-unwired `WriteConversationSummary` now
+   fires at conversation end (`PumpEndedSummaries`, sim-thread, unhashed mind
+   state, write-once) — conversations finally persist into MEMS memories. The
+   summary embeds only template text + the crew's own words, never verbatim
+   player text (injection-checked by the gate).
+3. **Relations** (`e43db8e`, gate PASS incl. live CDP pixel probe) — the
+   player-requested RELATIONS tab to a provided visual mock. New cached
+   `relations` channel (append-only `WireFormat.Relations`, read-only
+   `Social.Edges` walk on the sim thread — NEVER `Nudge` from the wire path —
+   snapshot catch-up like roster, not fog-gated). Client: the tab swaps the
+   ship viewport for a `.stage`-overlay SVG ring of the living crew — mutual-
+   regard edge colors (avg of both directions; close ≥45 / warm ≥15 / hostile
+   ≤−15, boundaries in `relations-model.js`), dashed = secret, focus via node
+   or CREW WATCH click (the ONE shared selection), boxed authored-note tags,
+   READOUT gains both-direction regard rows. `AuthoredRelationship` gained an
+   UNHASHED `Secret` flag; exactly one lore-grounded pair is marked (Nadia
+   Hassan ↔ Salif Camara — "she stitched his burns; he owes her"). Contract:
+   `docs/design/perilune-game-ui.relations-spec.md` (IX-R*/VS-R*; VS-R5
+   documents the deliberate focused-edges-keep-tier-hue deviation from the
+   mock; IX-R10 the Escape rung).
+4. **Console visibility polish** (`1410988`, gate PASS incl. live pixels) —
+   round-2's "there is nothing to do" finding: everything was wired but
+   invisible. New cached `designs` channel (read-only `BuildSystem.Pending`
+   mirror) drives persistent dashed designation ghosts glued to the camera
+   (authoritative — a ghost exists only once `CanDesignate` passed; IX-38
+   supersedes IX-35's optimistic-ghost ban for wire-backed ghosts). Arming/
+   designating while paused surfaces a `‖ HOLD — PRESS SPACE` nudge (the sim
+   boots paused — the root cause of "nothing happens"). The `roster` wire
+   gained append-only persona `traits` feeding a compacted CREW tab with a
+   visible scrollbar + `▾ N MORE` affordance (closes the old CREW-scroll
+   backlog item). New `terminals` channel gives the MOSS tab a clickable
+   terminal directory — opens the IDE cross-deck via `moss open`, deliberately
+   NOT `Cmd.click` (no power toggle; IX-73). Escape's final rung exits
+   RELATIONS back to BUILD.
+
+Suite after the round: **560 dotnet + 188 node** via `./ci.sh`; scenario
+(`26907c23d7e48a5c`), tick-3000 (`401c9b96aff338a7`) and slice
+(`d1710ab6a1fe50ce`) pins all verified unmoved (nothing hashed was added —
+Secret/traits/logs are host-owned or unhashed persona state).
+
+Round-2 finding NOT addressed by code: "there is not really anything else to
+do" beyond the above is P3 scope (nav/sensors loop, derelicts, campaign) —
+the polish lane makes the existing verbs visible; P3 adds new ones.
+
 ## Running / testing the game
 
 ```bash
@@ -287,8 +360,8 @@ on unclean websocket drops (backlog below) — it will bite the next playtest; (
 re-run `llm-smoke` + a multi-turn live probe to re-measure the two SMOKE-P2 items
 now that history flows (elicitation + `cache_read`, both flagged below); (3) the two
 human exit bars still open on Garvin (blind screenshot A/B — the new Console UI
-should be in the A/B frames — and the 60-minute playtest); (4) small UI polish:
-CREW-tab scroll affordance.
+should be in the A/B frames — and the 60-minute playtest). (The CREW-tab scroll
+affordance item landed in the round-2 polish lane.)
 
 ## Known issues / backlog (not regressions)
 
@@ -324,9 +397,18 @@ CREW-tab scroll affordance.
   close handshake left the session loop not rendering/draining commands until restart;
   the client then shows stale chips with no disconnect overlay. Worth a look before
   P3 playtests.
-- **CREW tab scroll affordance** (advisory from the visual re-gate): the tab shows 2
-  of 8 rows and the scrollbar thumb is near-invisible — nothing signals more rows
-  exist. Small polish.
+- **`RelationshipSecrets` is not MEMS-persisted** (relations gate LOW): the secret
+  flag is boot-authored and correctly unhashed, but `WritePersona` persists
+  `RelationshipNotes` and not `RelationshipSecrets` — after a save/reload the
+  Nadia↔Salif edge renders solid instead of dashed. Fix is a deliberate MEMS
+  chapter-format decision (append, version bump), not a quick patch.
+- **Motion cosmetics** (motion gate LOWs): on a 1×→5× speed jump the EMA interval
+  lags ~7 steps (pawns briefly trail up to ~2 tiles, self-correcting); and
+  `crewTileNear` click-assist only offers the from-tile candidate on the step
+  frame itself, not during carried step-less frames. Both minor.
+- **`paintDesignGhosts` rebuilds the layer's innerHTML every draw()** (polish gate
+  LOW): bounded (shown-deck pending designs only) but worth a node-reuse pass;
+  the visual spec also wasn't amended for `.design-layer` (IX-38 documents it).
 - **ConversationHub micro-issues** (from the history-fix gate review, pre-existing):
   a stale-`Ended` read can dispatch one redundant turn on a just-ended session;
   `PrepareTurn` re-snapshots persona/context every turn so those bytes can drift
