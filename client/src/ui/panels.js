@@ -8,6 +8,7 @@
 import { portraitElement, resolvePortrait } from './portraits.js';
 import { Panel, el } from './panel-base.js';
 import { TerminalDrawer } from './terminal.js';
+import { PLAYER_WHO, citizenLog } from './chat.js';
 
 export class PanelManager {
   constructor() {
@@ -68,6 +69,10 @@ export class PanelManager {
     p.render(model);
     return p;
   }
+
+  /** Whether a dialogue window is currently mounted for a sid (B2: renderChat consults this so a
+   *  closed conversation's trailing events never recreate the panel). */
+  hasDialogue(sid) { return this.panels.has('chat:' + sid); }
 
   /** Close a dialogue by sid, firing the bye hook. Safe if the panel is already gone. */
   closeDialogue(sid) {
@@ -162,7 +167,10 @@ class DialoguePanel extends Panel {
     if (model.name) this.setTitle(model.name);
     this.transcript.replaceChildren(...model.entries.map((entry) => {
       if (entry.kind === 'effect') return el('div', 'chat-effect', entry.text);
-      const row = el('div', 'chat-line');
+      // B1: the player's own lines (who === PLAYER_WHO) read as a muted echo; the crew's voice
+      // stays bright — a clear two-sided distinction within the warm console palette.
+      const mine = entry.who === PLAYER_WHO;
+      const row = el('div', 'chat-line ' + (mine ? 'chat-line-you' : 'chat-line-crew'));
       row.appendChild(el('span', 'chat-who', (entry.who || '') + ''));
       row.appendChild(el('span', 'chat-said', entry.text));
       return row;
@@ -205,7 +213,28 @@ class CitizenCard extends Panel {
     const head = el('div', 'cit-head');
     head.appendChild(portrait);
     head.appendChild(ident);
-    this.body.replaceChildren(head);
+
+    // Conversation log (B3): the durable-within-run transcript with this crew member. Player vs
+    // crew lines are visually distinguished; an honest empty state when there is nothing yet.
+    const log = el('div', 'cit-log');
+    log.appendChild(el('div', 'cit-log-title', 'CONVERSATION LOG'));
+    const entries = citizenLog(cit);
+    if (!entries.length) {
+      log.appendChild(el('div', 'cit-log-empty', 'No conversations yet.'));
+    } else {
+      const scroll = el('div', 'cit-log-scroll');
+      for (const e of entries) {
+        const row = el('div', 'cit-log-line ' + (e.mine ? 'cit-log-you' : 'cit-log-crew'));
+        row.appendChild(el('span', 'cit-log-who', e.mine ? 'YOU' : 'CREW'));
+        row.appendChild(el('span', 'cit-log-text', e.text));
+        scroll.appendChild(row);
+      }
+      log.appendChild(scroll);
+    }
+
+    this.body.replaceChildren(head, log);
+    const sc = this.body.querySelector('.cit-log-scroll');
+    if (sc) sc.scrollTop = sc.scrollHeight; // keep the newest exchange in view
   }
 }
 

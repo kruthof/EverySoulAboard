@@ -20,9 +20,47 @@
 /** @typedef {{sid:*, cid:*, name:*, transcript:Entry[], deltas:Object<string,string>, ended:boolean, endReason:*}} Session */
 /** @typedef {{sessions:Object<string,Session>}} ChatState */
 
+/** The wire marker for the player's own turns (B1): the crew's line uses "crew", the player's
+ *  echoed utterance uses this. One place so the host echo, the live panel, and the biography
+ *  conversation log all agree on a single player-speaker id. */
+export const PLAYER_WHO = 'you';
+
 /** Fresh, empty chat store. */
 export function initChatState() {
   return { sessions: {} };
+}
+
+/**
+ * Decide what a `chat` event should do to the dialogue panel DOM (B2 — a closed conversation must
+ * NEVER resurrect). A `start` always (re)opens the window (a fresh talk / a reconnect); every other
+ * event only UPDATES an already-open window and is otherwise ignored at the DOM layer. The reducer
+ * still folds every event regardless, so the transcript (and the B3 history it feeds) stays complete
+ * even while the panel stays closed. PURE.
+ * @param {string} ev  the chat event kind ('start'|'delta'|'line'|'effect'|'end')
+ * @param {boolean} isOpen  whether a dialogue panel is currently mounted for this sid
+ * @returns {'create'|'update'|'skip'}
+ */
+export function chatPanelAction(ev, isOpen) {
+  if (ev === 'start') return 'create';
+  return isOpen ? 'update' : 'skip';
+}
+
+/**
+ * Normalize a citizen card's conversation log (B3) into render entries, oldest first. Each wire
+ * entry is a [who, text] pair (who is PLAYER_WHO for the player, else "crew"); tolerant of a
+ * missing/garbage `log` (→ []) and of malformed rows (skipped). PURE.
+ * @param {{log?:*}|null} cit
+ * @returns {{who:string, text:string, mine:boolean}[]}
+ */
+export function citizenLog(cit) {
+  const raw = cit && Array.isArray(cit.log) ? cit.log : [];
+  const out = [];
+  for (const e of raw) {
+    if (!Array.isArray(e) || e.length < 2) continue;
+    const who = e[0] == null ? '' : String(e[0]);
+    out.push({ who, text: e[1] == null ? '' : String(e[1]), mine: who === PLAYER_WHO });
+  }
+  return out;
 }
 
 function emptySession(sid) {

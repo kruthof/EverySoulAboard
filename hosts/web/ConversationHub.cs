@@ -64,8 +64,14 @@ namespace Perilune.Web
             public volatile bool InFlight;       // a turn is streaming right now
             public volatile bool Ended;          // farewell / cap / error reached
             public int Exchanges;                // completed turns (sim/driver only)
+            public volatile bool Summarized;     // a durable MEMS summary was written for this ended session (B3 stretch)
             public readonly Queue<string> Pending = new Queue<string>(); // says queued behind an in-flight turn
         }
+
+        // The player's wire speaker id (B1): the crew's authoritative line uses "crew", the player's
+        // echoed utterance uses this. Kept in one place so the host echo, the live panel, and the
+        // biography conversation log all agree on one marker.
+        private const string PlayerWho = "you";
 
         private readonly SimHost _host;
         private readonly Simulation _sim;
@@ -84,6 +90,13 @@ namespace Perilune.Web
         // threads, CostPerHourUsd on the sim thread (StatusPayload). ALL access goes through this
         // lock so a background prune can never shrink the window mid-read on the sim thread.
         private readonly object _costLock = new object();
+        // The durable-within-run conversation log the biography card reads (B3): per crew member
+        // (CID), player+crew lines across every session with them, bounded (oldest dropped). APPENDED
+        // by the background driver on turn completion, READ (snapshot-copied) on the sim thread by
+        // BuildCitizenMessage — both under this lock, so a sim-thread read never races an append.
+        private readonly object _logLock = new object();
+        private readonly Dictionary<uint, List<TranscriptLine>> _cidLog = new Dictionary<uint, List<TranscriptLine>>();
+        private const int MaxLoggedLines = 60;
 
         private int _nextSid = 1;
         private int _inFlightCount;             // Interlocked
@@ -197,6 +210,12 @@ namespace Perilune.Web
             // the sim thread, while no turn is in flight — so the plan (the only thing that
             // crosses onto the background task) never shares a mutable list with the session.
             plan.Request.Transcript = new List<TranscriptLine>(s.Transcript);
+            // B1: echo the player's own words as an authoritative chat line the instant they speak —
+            // enqueued here on the sim thread, so it lands (FIFO) BEFORE the background task's streamed
+            // deltas and the crew's reply, giving the panel a true two-sided conversation. Emitted at
+            // dispatch, INDEPENDENT of the turn outcome: a failed/degraded/timed-out turn still shows
+            // what the player said (they did speak) — only the crew's answer may be missing.
+            Enqueue(WireFormat.ChatLine(s.Sid, PlayerWho, text));
             s.InFlight = true;
             Interlocked.Increment(ref _inFlightCount);
             _ = Task.Run(() => DriveTurnAsync(s, plan, text));
@@ -226,6 +245,72 @@ namespace Perilune.Web
 
         /// <summary>The ship's log over the wire — Chronicle.Render of the host's HistorySystem.</summary>
         public string ChroniclePayload() => WireFormat.Chronicle(Chronicle.Render(_host.History));
+
+        /// <summary>Snapshot the durable-within-run conversation log for a crew member as normalized
+        /// (who, text) pairs — who is "you" for the player, "crew" for the citizen — oldest first, for
+        /// the biography card (B3). Thread-safe: reads under the same lock the background driver appends
+        /// under, so this sim-thread read never races an in-flight completion's append.</summary>
+        public IReadOnlyList<(string Who, string Text)> ConversationLog(uint cid)
+        {
+            lock (_logLock)
+            {
+                if (!_cidLog.TryGetValue(cid, out var list) || list.Count == 0)
+                    return Array.Empty<(string, string)>();
+                var outp = new List<(string, string)>(list.Count);
+                for (int i = 0; i < list.Count; i++)
+                    outp.Add((list[i].IsPlayer ? PlayerWho : "crew", list[i].Text ?? ""));
+                return outp;
+            }
+        }
+
+        /// <summary>Fold one completed exchange into the per-CID conversation log (background thread),
+        /// bounded to <see cref="MaxLoggedLines"/> with the oldest lines dropped.</summary>
+        private void AppendLog(uint cid, TranscriptLine player, TranscriptLine crew)
+        {
+            lock (_logLock)
+            {
+                if (!_cidLog.TryGetValue(cid, out var list)) { list = new List<TranscriptLine>(); _cidLog[cid] = list; }
+                list.Add(player);
+                list.Add(crew);
+                int over = list.Count - MaxLoggedLines;
+                if (over > 0) list.RemoveRange(0, over);
+            }
+        }
+
+        /// <summary>Stretch (B3): write ONE durable MEMS "conversation" memory per ended session, on
+        /// the SIM THREAD between ticks (the loop calls this right after PumpPending). Gated on
+        /// <c>!InFlight</c> so the read of the ended session mirrors the Transcript-read discipline, and
+        /// on <c>!Summarized</c> so each session writes exactly once. A session that ended without a
+        /// completed exchange (error / immediate bye) records nothing — mirroring the transcript's
+        /// "failed turns leave no history" rule. Mind memory is unhashed sim state, so this moves no
+        /// determinism hash.</summary>
+        public void PumpEndedSummaries()
+        {
+            AssertSimThread();
+            if (_host.Minds == null) return;
+            foreach (var kv in _sessions)
+            {
+                var s = kv.Value;
+                if (!s.Ended || s.InFlight || s.Summarized) continue;
+                s.Summarized = true;
+                if (s.Exchanges == 0) continue; // nothing was actually said and answered — no memory
+                _host.Minds.WriteConversationSummary(s.Cid, _sim.TickCount, ConversationSummary(s));
+            }
+        }
+
+        /// <summary>Template one-liner recap of a conversation (an LLM-authored recap replaces this at
+        /// the same call site later). Reads the session transcript — safe: only called for an ended,
+        /// not-in-flight session on the sim thread.</summary>
+        private static string ConversationSummary(Session s)
+        {
+            string last = "";
+            for (int i = s.Transcript.Count - 1; i >= 0; i--)
+                if (!s.Transcript[i].IsPlayer) { last = s.Transcript[i].Text ?? ""; break; }
+            if (last.Length == 0) return "Spoke with the player.";
+            if (last.Length > 80) last = last.Substring(0, 80) + "…";
+            string who = string.IsNullOrEmpty(s.Name) ? "I" : s.Name;
+            return "Spoke with the player. " + who + ": \"" + last + "\"";
+        }
 
         // ------------------------------------------------------------------ background driver
 
@@ -270,8 +355,14 @@ namespace Perilune.Web
                 // is still true: the sim thread cannot dispatch (and so cannot snapshot the list)
                 // until the finally's volatile InFlight=false write publishes these appends.
                 // Only a COMPLETED turn is recorded; a failed/errored turn leaves no history.
-                s.Transcript.Add(new TranscriptLine(ChatSession.PlayerSpeaker, text));
-                s.Transcript.Add(new TranscriptLine(s.Name, result.Text));
+                var playerLine = new TranscriptLine(ChatSession.PlayerSpeaker, text);
+                var crewLine = new TranscriptLine(s.Name, result.Text);
+                s.Transcript.Add(playerLine);
+                s.Transcript.Add(crewLine);
+                // B3: also fold the completed exchange into the durable-within-run per-CID conversation
+                // log the biography card reads. Only completed turns are logged — same discipline as the
+                // transcript above — so a failed/errored turn leaves no history. Locked (background write).
+                AppendLog(s.Cid, playerLine, crewLine);
 
                 Enqueue(WireFormat.ChatLine(s.Sid, "crew", result.Text)); // authoritative accumulated turn
                 bool endByEffect = false;

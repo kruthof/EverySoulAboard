@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 
 import {
   initChatState, reduceChat, reduceChatAll, getSession, streamingText, sessionModel,
+  chatPanelAction, citizenLog, PLAYER_WHO,
 } from '../src/ui/chat.js';
 import { resolvePortrait, fallbackPortrait, hueFromCid, initialsOf } from '../src/ui/portraits.js';
 import { decode } from '../src/wire/messages.js';
@@ -28,6 +29,43 @@ function loadJsonl(name) {
 }
 
 const chat = (sid, ev, extra = {}) => ({ type: 'chat', sid, ev, ...extra });
+
+// ---------------- B2: closed conversations must never resurrect ----------------
+
+test('chatPanelAction: only a `start` (re)opens; trailing events update only an open panel, else skip', () => {
+  assert.equal(chatPanelAction('start', false), 'create'); // fresh talk / reconnect always opens
+  assert.equal(chatPanelAction('start', true), 'create');
+  for (const ev of ['delta', 'line', 'effect', 'end']) {
+    assert.equal(chatPanelAction(ev, true), 'update', ev + ' updates an open window');
+    assert.equal(chatPanelAction(ev, false), 'skip', ev + ' must NOT recreate a closed panel');
+  }
+});
+
+test('a user-closed session still folds trailing events into state (B3 history) while the panel stays closed', () => {
+  // The reducer is DOM-agnostic: even though chatPanelAction says `skip`, the store keeps folding —
+  // this is what lets the biography conversation log stay complete after the window is closed.
+  let s = initChatState();
+  s = reduceChat(s, chat(5, 'start', { cid: 1, name: 'Ada' }));
+  assert.equal(chatPanelAction('line', false), 'skip'); // window closed by the user
+  s = reduceChat(s, chat(5, 'line', { who: 'crew', text: 'A late reply.' }));
+  s = reduceChat(s, chat(5, 'end', { reason: 'done' }));
+  const m = sessionModel(getSession(s, 5));
+  assert.deepEqual(m.entries, [{ kind: 'line', who: 'crew', text: 'A late reply.' }]);
+  assert.equal(m.ended, true);
+});
+
+// ---------------- B1/B3: player-speaker marker + citizen conversation log ----------------
+
+test('citizenLog: normalizes [who,text] pairs, flags the player, tolerates missing/garbage', () => {
+  assert.equal(PLAYER_WHO, 'you');
+  assert.deepEqual(citizenLog(null), []);
+  assert.deepEqual(citizenLog({}), []);
+  assert.deepEqual(citizenLog({ log: 'nope' }), []);
+  assert.deepEqual(citizenLog({ log: [['you', 'hi'], ['crew', 'hello'], 'bad', ['x']] }), [
+    { who: 'you', text: 'hi', mine: true },
+    { who: 'crew', text: 'hello', mine: false },
+  ]);
+});
 
 // ---------------- chat reducer ----------------
 

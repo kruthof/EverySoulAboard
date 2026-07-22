@@ -10,7 +10,7 @@
 // and the two transient acknowledgments (placement pulse, pending row style).
 
 import { PanelManager } from './panels.js';
-import { initChatState, reduceChat, getSession, sessionModel } from './chat.js';
+import { initChatState, reduceChat, getSession, sessionModel, chatPanelAction } from './chat.js';
 import { portraitRegistry } from '../../assets/portraits-registry.js';
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid } from '../wire/messages.js';
@@ -174,7 +174,9 @@ export function initConsole(opts) {
   $('b-move').onclick = () => { _armed = nextArmedTool(_armed, { t: 'toggle', tool: 'move' }); reflectArmed(); };
   $('b-bio').onclick = () => {
     const sel = selectedRosterEntry(_frame, _roster);
-    if (sel && _citizens.has(sel.cid)) panels().citizen(_citizens.get(sel.cid), PORTRAIT_REGISTRY);
+    if (!sel || !_citizens.has(sel.cid)) return;
+    _send(Cmd.bio(sel.cid)); // re-request so the conversation log is CURRENT (B3); the refresh
+    panels().citizen(_citizens.get(sel.cid), PORTRAIT_REGISTRY); // lands via citizenIfOpen → re-render
   };
 
   setTab('build');
@@ -630,9 +632,13 @@ export function closeActiveDialogue() { if (_panels) _panels.closeActiveDialogue
  * @param {import('../wire/messages.js').ChatMsg} m
  */
 export function renderChat(m) {
-  _chat = reduceChat(_chat, m);
+  _chat = reduceChat(_chat, m); // ALWAYS fold — the transcript (+ B3 history) stays complete
+  const p = panels();
+  // B2: a conversation the user closed must never resurrect. Only a `start` (re)opens the window;
+  // trailing delta/line/effect/end events update it only while it is open, else touch no DOM.
+  if (chatPanelAction(m.ev, p.hasDialogue(m.sid)) === 'skip') return;
   const model = sessionModel(getSession(_chat, m.sid));
-  if (model) panels().dialogue(model);
+  if (model) p.dialogue(model);
 }
 
 /** Cache the citizen payload + live-refresh its card ONLY if already open (IX-54: the card opens

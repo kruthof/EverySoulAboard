@@ -151,8 +151,9 @@ namespace Perilune.Tests
             Assert.IsTrue(hub.WaitIdle(4000), "turn one completes via the template fallback");
             gs.ConvFlush();
 
-            // The authoritative citizen line the hub broadcast — what history must hold.
-            string line = sent.Find(m => m.Contains("\"ev\":\"line\""));
+            // The authoritative citizen line the hub broadcast — what history must hold. (The player's
+            // own echoed line — who "you" — now also rides the stream, so match the crew line.)
+            string line = sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"crew\""));
             Assert.IsNotNull(line, "the template answered turn one");
             string templateReply;
             using (var doc = System.Text.Json.JsonDocument.Parse(line))
