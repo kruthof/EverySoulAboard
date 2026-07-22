@@ -4,6 +4,7 @@
 // hosts/web/Client.html; all the drawing decisions live in the pure core (composeScene).
 
 import { composeScene } from './render/compose.js';
+import { buildLightMesh, createLightScratch } from './render/lightfield.js';
 import { Canvas2DExecutor } from './render/canvas2d.js';
 import { WebGL2Executor } from './render/webgl2.js';
 import { chooseBackend, parseFrozenTime } from './render/exec-select.js';
@@ -131,6 +132,23 @@ function layout() {
   clampCam(camera, frame);
 }
 
+// ---- the WP-3 light field: pure, and memoized on (frame, camera) ----
+// It depends only on the map's emitters/occluders and the visible window, NOT on the animation
+// clock — so the 30 Hz reticle/slide loop must not pay for it. The memo is keyed on the frame
+// OBJECT (each wire frame is freshly parsed) plus the camera state; anything else redrawing
+// reuses the buffers the previous build filled.
+const lightScratch = createLightScratch();
+let lmFrame = null, lmKey = '', lmMesh = null;
+function lightMeshFor(list) {
+  const key = camera.x + ',' + camera.y + ',' + camera.z + ',' + camera.viewW + ',' +
+    camera.viewH + ',' + camera.tile;
+  if (lmFrame !== frame || lmKey !== key || !lmMesh) {
+    lmMesh = buildLightMesh(list, frame, lightScratch);
+    lmFrame = frame; lmKey = key;
+  }
+  return lmMesh;
+}
+
 // ---- render: pure compose → thin execute ----
 function draw() {
   if (!frame) return;
@@ -140,6 +158,7 @@ function draw() {
     timeSec: FROZEN_T != null ? FROZEN_T : nowMs() / 1000,
     motion: motionByTile(motion),
     nowMs: FROZEN_T != null ? null : nowMs(),
+    lightMesh: lightMeshFor(list),
   });
   // Build ghosts + work markers track the same camera transform as the pulse, so they stay glued
   // under pan/zoom/deck-change (this runs on every draw, incl. drag-pan and the anim loop). One
