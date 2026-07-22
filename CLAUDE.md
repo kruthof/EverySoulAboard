@@ -24,12 +24,16 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   authoritative where the new docs don't supersede it.
 
 ## Status snapshot (2026-07-22)
-**Read `docs/HANDOVER.md` "Playtest round 3" first** — it is the newest state and parks
-five decisions for Garvin. New this round: **`docs/MECHANICS.md`** is now the authority
-on how the sim actually behaves (its §13 lists what is *wired but not connected*), the
-slice has a working build/dig economy, crew work is legible on the map, crew no longer
-promise physical work they cannot do, and the ship stage was relit + de-blurred.
-**631 dotnet + 207 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
+**Read `docs/HANDOVER.md` "Playtest round 4" then "round 3"** — newest state, and the
+open items are listed at the end of round 4. Rounds 3–4: **`docs/MECHANICS.md`** is now
+the authority on how the sim actually behaves (its §13 lists what is *wired but not
+connected*), the slice has a working build/dig economy, crew work is legible on the map,
+crew no longer promise physical work they cannot do, the ship stage was relit + de-blurred
++ lit with real pools and grounding shadows, and pawns now face where they walk and no
+longer blink. **`docs/design/perilune-art-direction.md`** is the art authority — the
+sprite regen is DECIDED-NOT-NOW (design first, regenerate last); nothing generated, no
+credits spent.
+**631 dotnet + 237 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
 `b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
 again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
 and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
@@ -120,7 +124,7 @@ another's half-finished work.*
 
 ## Working here
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (631 green; `./ci.sh`
-  runs the full gate — 631 dotnet + 207 node, ~3 min wall since V6 runs real sim-days).
+  runs the full gate — 631 dotnet + 237 node, ~3 min wall since V6 runs real sim-days).
   (Counts MEASURED 2026-07-22 after all six lanes merged, not carried forward: figures
   quoted mid-session drifted behind the lanes still in flight. Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.

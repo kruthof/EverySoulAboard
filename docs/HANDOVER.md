@@ -555,6 +555,148 @@ Reviewers were wrong too, and implementers were told to push back with evidence:
 half-texel UV inset the orchestrator specified — which was **wrong** (128 px across 127
 texels; corroborated by 1:1 frames being byte-identical without it).
 
+## Playtest round 4 (2026-07-22) — the art bible + the movement defects, all LANDED
+
+Follows round 3 in the same session. Counts after: **631 dotnet + 237 node**;
+`26907c23d7e48a5c`, `401c9b96aff338a7`, slice `b31ba82f50cf395c` all unmoved.
+
+### The art-direction revision (`docs/design/perilune-art-direction.md` + `art/spritegen/spec_derelict256.json`)
+
+**Garvin's ruling on the regen: NOT NOW.** Order is (a) revise the sprite AND ship
+design → (b) fix it → (c) only then regenerate at the best resolution to match Prison
+Architect's crispness. **(a) is done; nothing has been generated and no credits spent.**
+
+Rev 1 landed, an independent reviewer re-measured it and returned *"not yet safe to
+spend against"*, and rev 2 fixed it. **The measured colour/value core survived exactly**
+(the §8 grade-transfer table, the §9/§11 hexes, the `GRADE.floor` supersession, AD-33's
+`16+108+12+104+16 = 256` wall stack, AD-18). **Every comparative claim against the PA
+reference failed** — each had been measured on a sample that was not like-for-like:
+
+- **"The crew are already at parity with PA" is WITHDRAWN.** Our 40×40 sample was ~50%
+  dead flat margin scoring zero; PA's window is fully covered textured dirt plus a cast
+  shadow. On identical ground: PA guards **+5.0..+8.4**, ours **+11.1..+17.6** — our
+  pawns are *busier*. **Pawns are NOT exempt from the regen.** (This was relayed to
+  Garvin as fact before it was checked. It was wrong.)
+- Outline-less sprites **21 → 8** (3 terrain that should be, 3 matte-corrupted, 2 genuine).
+  The interim renderer-dilate stopgap that count justified is withdrawn.
+- Wrong-side lighting **10 → 8**; green-matte defects **2 → 3** (`anchor_table` missed).
+- **`G-LIT` was unusable** — its own recipe scored 45/48 sprites below the bar, including
+  on-model art. **`G-COL ≤112` did not bracket the reference** (3 of 7 PA guards score
+  115–120); it had been fitted to the doc's own max sample. Both re-derived.
+- Raw unique-RGB is genuinely **not** a discriminator (PA guards 1,727–2,109) — that
+  conclusion stands, and is why the gates are |lap| / quantised-colour / value-split.
+
+Every number now publishes its method in §1.7 including the seven guard coordinates, so
+it is falsifiable rather than asserted.
+
+**Rulings** (both were self-contradictory in rev 1): outlines are **UNIFORM** (only a
+uniform weight is gateable and holdable by an image model; AD-6's dilate rejection is
+re-argued on the ground that survives — a dilate cannot ink an *internal* edge), with a
+new `G-INK` gate. Walls **BAKE** and drop world-continuity (baking needs no new sampling
+capability in either executor and does not break WP-0's UV clamp / edge replication);
+repeat rhythm comes from 4 bounded phase rolls.
+
+**Four integration blockers rev 1 asserted away, now scoped as required work**:
+`variantUris()`/`VARIANT` (`client/src/render/sprites.js`) does not load the new states;
+`run.py:403` `stage_integrate` crashes on a partial work dir (so the "$0 pawn re-process
+proof" is not executable as written); `rasterplan.js CELL = 128` and `packAtlas`'s
+`maxWidth` 512 are hard-coded (at 256px cells → a 16384² texture); and `clampCam`'s `0.5`
+self-invalidates the 8px outline derivation at 256.
+
+**F1 PLATE is deliberately quieter**: PA's *circulation* floors measure 4.6/7.0 against
+its yard's 8.3–12.5 — its clarity comes from indoor floors being nearly unpatterned under
+high-contrast objects. PLATE gets its own G-DET band (5–9), bolts deleted, drainage moved
+to GRID. Cost estimate: 45 assets × 4 candidates = **180 images**, order $20–40; re-check
+the price before committing.
+
+### Render WP-3 + WP-1 (light pools, grounding shadows) and the pass-order fix
+
+Two commits, deliberately split so the movement fix could land on its own merit.
+
+- **Pass ordering** — `passIndexOf` in `webgl/batch.js` is now the single authority on
+  pass membership for **both** backends, and canvas2d walks buckets instead of the raw
+  row-major op list. See the movement section below for why.
+- **WP-3 light pools** — a pure `client/src/render/lightfield.js`: powered `*` emitters
+  throw radial pools with 3-ray penumbra wall occlusion, sampled at **tile corners** so
+  the field is continuous, emitted as a vertex-coloured multiply mesh reusing the existing
+  flat program (one draw call). Fog gate independently verified: 451 mesh quads over the
+  boot frame, **0 over `hull`, 0 over `void`**.
+- **WP-1, shadow half only** — outlines are the art's job per the bible.
+
+Review caught three things, all fixed. (i) The shadow was an **unsheared full-size offset
+copy**: pawns read as a second dark pawn and the square terminal became a hard-edged black
+rectangle a full tile across. Now squashed+sheared to **AD-3** (315° azimuth, 55° elevation
+— the old `LIGHT_DIR` was 36.9°, not a diagonal). (ii) The advisory lighting-range drop was
+**real, not a metric artefact**: `AMBIENT_LIT` applied `0.700` to *every* powered tile,
+partly undoing the round-3 relight that had raised deck p50 17→41. Now `0.883`, with the
+cast moved into red and the pool's warmth into blue so contrast is bought in chroma where
+it is nearly free (p90 −25.6% → −9.3%, std −19.6% → −8.1%). Widening `LIGHT_RADIUS` to game
+the metric was rejected and is now itself a caught mutation. (iii) **"17 mutation probes,
+all caught" was false** — three survived, including the canvas2d `multiply` blend the
+whole backend-parity claim rests on. Matrix re-run: 26/26.
+
+**Honest residual**: under a multiply-only pass, pool *geometry* in a powered room is
+~0.10 luma. Real brightness pools need an **additive** term — a follow-up, not done.
+
+### The movement defects — "they blink, and they moonwalk"
+
+Garvin: *"when pawns move from right to left, every step it looks they appear out of
+nothing… plus they move backwards"*, then *"they still blink when they go up, down or
+moonwalk.. only forward works great."* That second report was the key: E and S clean while
+W and N blink is *structurally* what row-major draw order produces, and "south" could not
+be explained by it at all. **Three separate causes**, none of them a stale build
+(`serve.py` already sends `Cache-Control: no-store`) and none a WP-0 regression (bisected
+byte-identical pre-WP-0):
+
+1. **Terrain over entities.** `compose.js` emits ops row-major *per tile*; canvas2d walked
+   them raw. A westward-sliding pawn is drawn one tile RIGHT of the tile it now occupies,
+   so the next tile's opaque floor — drawn later — painted over it. Coverage of the pawn
+   quad by later draws: **W and N 100% at step start, E and S 0%.** WebGL2 was immune (it
+   batches terrain before entities) but **canvas2d is the shipping default**. Fixed by the
+   bucketed walk above; independently verified **0% in all four directions**.
+2. **Entities over entities.** The entity pass was still row-major *inside itself*. A pawn
+   mid-step is drawn one tile back, so the tile it just vacated — where a device reappears
+   the moment the citizen glyph stops masking it — is drawn later and repaints the body.
+   Measured pawn-ink at the step boundary behind a growbed: **W 330/1045 (−68%), N
+   316/1022 (−69%)**; impossible for E/S. Fixed: sliding pawns are a second sub-batch
+   drawn after all settled entities, in both backends.
+3. **Tile-exact culling.** A pawn whose tile straddled the viewport edge was composed out
+   entirely — a one-tile-early disappearance at every edge in **every** direction, and the
+   only thing that could blink a south-bound pawn. Fixed: `CULL_PAD = 1`.
+
+**Moonwalk.** There were **zero directional pawn variants** (both walk frames are drawn
+facing east) and no mirror in either backend; `motion.js` already computed a `facing`
+value that **nothing read**, and vertical steps clobbered it. Now a **sticky `flipX`** —
+set on `dx<0`, cleared on `dx>0`, *untouched by vertical steps*, reset on discontinuity.
+canvas2d mirrors with `translate`/`scale(-1,1)`; webgl2 swaps `u0`↔`u1` **inside the same
+cell rect**, so no new atlas cell and WP-0's replicated `ATLAS_BORDER` is untouched.
+Measured bbox shift: **1 device px at 128 px/tile** (all five pawn images are centred to
+within 1px, and `paintUnderglow` is a symmetric ellipse, so mirroring causes no jump).
+
+**The silhouette mirrors; the shadow QUAD does not.** `shadowQuad`'s corners encode AD-3's
+single key light, so mirroring them would swing every shadow the instant a pawn turned.
+The flip is applied in source space, *after* the cell→quad matrix. Pinned by test.
+
+**Known, deliberately not fixed:** a mirrored pawn's **baked-in light step** lands on the
+upper-right, against AD-3 ("every sprite, every state, every frame"). The renderer's own
+cast shadow still obeys the bible, so it reads correctly at gameplay zoom. The honest fix
+is **west-facing walk art** — recorded in `motion.js` and queued for the regen.
+
+Goldens moved: `boot_zoomed`, `boot_lit`, `lens_temperature`, `selection` + their
+`passes/` twins (one added ring of tiles from `CULL_PAD`, verified a pure addition;
+`boot_full` is fit-to-map and did not move). `accepted.png` was re-baselined once in round
+3 per PROTOCOL.md §2 and not again.
+
+### Still open after round 4
+
+- **Sprite mirroring is renderer-only** — west-facing walk *art* is still owed (above).
+- **Movement retune** (`ticks_per_tile 5→10`) — measured, ready, unlanded; moves the CI pin.
+- **CO2** — a gas-transport bug (no diffusion term), not a dispatch gap. Needs a design call.
+- **`Morale`/`Health`** — never written by any system; three crew surfaces render 100%.
+- **The dig is a boot-window economy** — crew idle again after ~4 sim-min.
+- **Additive light term** for real brightness pools.
+- The **selection reticle does not slide** (both backends) — confirmed, not fixed.
+
 ## Render WP-0 — "a crisp ship stage" (2026-07-22, reviewed + corrected)
 
 Renderer only: projection stays pure, no sim / host / wire / def touched. The
