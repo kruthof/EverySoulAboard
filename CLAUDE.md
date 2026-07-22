@@ -26,13 +26,14 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 ## Status snapshot (2026-07-22) — economy Wave 0 IN FLIGHT on a branch
 **Read `docs/HANDOVER.md` "Economy Wave 0 — IN FLIGHT, START HERE" first.** The economy
 programme has started. Wave 0 (behaviour-free plumbing that must land before any economy
-lane spawns) is **four of six packages merged on `lane/economy-w0`, not on `main`**:
+lane spawns) is **five of six packages merged on `lane/economy-w0`, not on `main`**:
 W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-4 `JobSystem` split into an
-`IJobSource` dispatcher · W0-5 the `[production]` node table. **W0-1b** (hash the nine
-saved-but-unhashed fields — `Path`/`PathIndex`/`MoveCooldown` were live tick state hashing
-**equal**) is in review; **W0-3** and **W0-6** are not started. Branch gate measured
-**680 dotnet + 207 node**, `3afc99d90e849aa0`. `main` has advanced since the branch was
-cut (Ollama merge + art rev 2) — merge it in and re-measure the pin first.
+`IJobSource` dispatcher · W0-5 the `[production]` node table · W0-1b the 13
+saved-but-unhashed fields hashed (`Path`/`PathIndex`/`MoveCooldown` were live tick state
+hashing **equal**). **W0-3** (split `JobsDirty`) is next, then **W0-6** (register the
+economy systems). Branch gate measured **680 dotnet + 207 node**, `ffefe9a9a42d8e7e`. `main`
+has advanced since the branch was cut (Ollama merge + art rev 2) — merge it in and
+re-measure the pin first.
 
 ### Earlier snapshot (playtest round 3)
 **`docs/HANDOVER.md` "Playtest round 3"** parks five decisions for Garvin. That round:

@@ -25,26 +25,39 @@ main, after merge.
 |---|---|---|---|
 | W0-1 | un-alias the citizen + item hash packs | **merged**, 2 review rounds | moved |
 | W0-2 | widen `EffectKind` `byte`→`ushort` | **merged**, 2 review rounds | neutral, proven |
-| W0-4 | `JobSystem` (842 lines) → `IJobSource` dispatcher | **merged**, 3 review rounds | neutral, proven |
+| W0-4 | `JobSystem` (842 lines) → `IJobSource` dispatcher | **merged**, 3 review rounds | neutral, proven (twice — see below) |
 | W0-5 | the `[production]` node table | **merged**, 3 review rounds | neutral, proven |
-| **W0-1b** | hash the 9 saved-but-unhashed fields | **implemented, in review**, `lane/w0-1b-savedfields` | moves |
-| **W0-3** | split `JobsDirty` into tile/item/site | **not started** | neutral, prove it |
+| W0-1b | hash the 13 saved-but-unhashed fields | **merged**, 2 review rounds | moved |
+| **W0-3** | split `JobsDirty` into tile/item/site | **NEXT — not started** | neutral, prove it |
 | **W0-6** | register the economy systems empty | **not started** | moves |
 
-**Merged-branch gate, measured 2026-07-22: 680 dotnet + 207 node green, `./ci.sh` exit 0,
-`determinism: twin hashes MATCH (3afc99d90e849aa0)`.**
+**Merged-branch gate (five packages), measured 2026-07-22: 680 dotnet + 207 node green,
+`./ci.sh` exit 0, `determinism: twin hashes MATCH (ffefe9a9a42d8e7e)`.**
 
-Pins as they stand on `lane/economy-w0` (all three moved by W0-1, ritual done):
+Pins as they stand on `lane/economy-w0` (moved by W0-1, then again by W0-1b; ritual done
+both times — these are the CURRENT values, `ci.sh:25` and the two golden files all agree):
 
 | pin | value |
 |---|---|
-| 3-day scenario (`ci.sh:25`) | `3afc99d90e849aa0` |
-| tick-3000 golden | `d807c509743d1b9d` |
-| slice tick-3000 golden | `21ad26192d778d95` |
+| 3-day scenario (`ci.sh:25`) | `ffefe9a9a42d8e7e` |
+| tick-3000 golden | `6071adb8fa781440` |
+| slice tick-3000 golden | `ab47cefd840247c4` |
 
-**W0-1b will move all three again** (measured in its lane: `de5d044d8c38f421` /
-`b4379a7585658722` / `3bdac8f61a69fb9f`) — do not carry those forward, re-measure after
-merge.
+**W0-3 and W0-6 will each move these again.** W0-3 must *prove* it is pin-neutral (it is a
+dispatch-plumbing change, and the slice golden is the only pin that reaches dig assignment);
+W0-6 moves the pin by registering stateful systems. Re-measure after each merge; never carry
+a literal forward.
+
+### W0-4's neutrality is now proven a second way — the whole point of adding W0-1b
+
+W0-4 merged **before** W0-1b on this branch. W0-1b measured its slice golden
+`ab47cefd840247c4` on a branch that did **not** contain W0-4. The five-package integration
+branch contains both, and its `Slice_Tick3000_StateHash_IsStable` produces **exactly
+`ab47cefd840247c4`** (verified 2026-07-22). So adding the dispatcher refactor to a fold that
+can finally *see* path state changed nothing. Combined with the fold-independent 66-assignment
+sequence pin (assignments byte-identical to pre-refactor code), W0-4 is neutral **both** ways:
+identical assignments, and an unmoved pin on the one fold that was blind to routing before.
+This retires the "prove it" that was unprovable when the wave started.
 
 ### Two deviations from `ECONOMY-PLAN.md` §0, both deliberate
 
@@ -61,27 +74,27 @@ merge.
    partial rescan because it is *behaviour* not an optimisation, and no dirty flag is
    proposed for "a citizen changed job" — either add a fourth or document that the citizen
    pass always runs.
-2. **W0-1b was added to the wave** (a third pin move against a budgeted two). Rationale
-   below; it is a hard prerequisite, not a nicety.
+2. **W0-1b was added to the wave** (a third pin move against a budgeted two). It hashes 13
+   saved-but-unhashed fields; `Path`/`PathIndex`/`MoveCooldown` were **live tick state
+   hashing equal**, so W0-4's "neutral — prove it" was literally unprovable and **E0-1**'s
+   whole content (redefining `HasPath` = `PathIndex < Path.Count`) had no canary. It found
+   four more fields on review (`NextEntityId`, `RoomAnchor.Name`, two MOSS `ScriptEntry`
+   fields) and located the `RemapGas` reload-drift bug (below). A hard prerequisite, done.
 
-### W0-1b: why it exists, and why W0-4 is being re-verified on top of it
+### What is left, in order — START HERE for the next session
 
-`Simulation.cs:267` claimed "every field that is saved is also hashed". **False for nine
-fields** — `Citizen.Name`, `PrevPos`, `AutoWander`, `Path[]`, `PathIndex`, `MoveCooldown`,
-`IdleCooldown`, `ItemStack.Label`, `Device.Name`. `Path`/`PathIndex`/`MoveCooldown` are
-**live tick state**, so two sims with different path progress hashed **equal**.
-
-That made W0-4's "neutral — prove it" **unprovable**: a dispatcher refactor's most likely
-regression is a different job→crew assignment yielding a *different path of equal length*,
-and the fold could not see it. Same blindness applies to **E0-1**, whose whole content is
-redefining `HasPath` (= `PathIndex < Path.Count`).
-
-**Action for the next session:** once W0-1b clears review and merges, re-run the gate on the
-combined branch. If anything moves, the suspect is W0-1b's fold, not W0-4's split — and
-`JobDispatchTests`'s **66-assignment sequence pin is the instrument that discriminates**
-assignment changes from fold changes in a way the hash cannot. W0-4 changes no citizen
-field, no item field and no write ordering to either (its one reordering was re-harvested
-against pre-refactor code at 66/66 identical).
+1. **Merge `main` into `lane/economy-w0` and re-measure the pin.** `main` advanced after the
+   branch was cut (Ollama merge `15a0b7b`, art rev 2). `ECONOMY.md`/`ECONOMY-PLAN.md` are
+   byte-identical on both sides so they resolve clean; `CLAUDE.md`/`HANDOVER.md` need a real
+   merge. Per `ECONOMY-PLAN.md` §2.1.4 the pin is measured on the merged result.
+2. **W0-3 — split `JobsDirty`.** The seam is already cut; W0-4 left a worked recommendation
+   (the box directly above this list). Prove pin-neutral.
+3. **W0-6 — register the economy systems empty.** Moves the pin (stateful seeds); batch the
+   registrations into one commit so the wave pays one move, not N.
+4. **Apply the eight `ECONOMY-PLAN.md` corrections** (below) before any E-lane spawns.
+5. **Then Wave 0 is closed and the E-lanes can spawn** (E0-1 recruitability first — it is
+   the hard prerequisite for everything, and now it *has* a canary because W0-1b hashed the
+   path fields).
 
 ### The measurement that should change how you think about this codebase
 
