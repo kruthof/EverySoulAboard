@@ -41,6 +41,7 @@ namespace Perilune.Tui
         public HistorySystem History { get; private set; }
         public GoalSystem Goals { get; private set; }
         public SocialSystem Social { get; private set; }
+        public BuildSystem BuildSys { get; private set; }
         public MindState Minds { get; private set; }
         public FactRegistry Facts { get; private set; }
         public PendingEffectBuffer Effects { get; private set; }
@@ -174,6 +175,7 @@ namespace Perilune.Tui
                 if (stack[i] is HistorySystem history) History = history;
                 if (stack[i] is GoalSystem goals) Goals = goals;
                 if (stack[i] is SocialSystem social) Social = social;
+                if (stack[i] is BuildSystem build) BuildSys = build;
             }
 
             var systems = new ISimSystem[stack.Length + 3];

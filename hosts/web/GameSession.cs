@@ -140,7 +140,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "relations" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -479,6 +479,8 @@ namespace Perilune.Web
             Send("inspect", WireFormat.Inspect(InspectorModel.Build(_sim, cursor, _selected)), force);
             Send("status", WireFormat.Status(_status, SpeedLabel[_speedIndex], _speedIndex == 0), force);
             Send("roster", WireFormat.Roster(BuildRoster()), force);
+            Send("designs", WireFormat.Designs(BuildDesigns()), force);
+            Send("terminals", WireFormat.Terminals(BuildTerminals()), force);
             Send("relations", WireFormat.Relations(BuildRelations()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
@@ -592,6 +594,7 @@ namespace Perilune.Web
                 var c = citizens[i];
                 if (c.Dead) continue;
                 string role = "", mood = "", portrait = "";
+                IReadOnlyList<string> traits = Array.Empty<string>();
                 if (_host.Minds != null && _host.Minds.Minds.TryGet(c.Id, out var mind))
                 {
                     mood = mind.ActiveEmotion(_sim.TickCount);
@@ -599,10 +602,47 @@ namespace Perilune.Web
                     {
                         role = string.IsNullOrEmpty(mind.Persona.RoleNow) ? mind.Persona.RolePreRaid : mind.Persona.RoleNow;
                         portrait = Perilune.Tools.PersonaDump.PersonaKey(_host.Seed, c.Id);
+                        traits = mind.Persona.Traits ?? (IReadOnlyList<string>)Array.Empty<string>();
                     }
                 }
                 rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
-                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y));
+                    portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y, traits));
+            }
+            return rows;
+        }
+
+        /// <summary>The pending build designations for the BUILD ghosts — a READ-ONLY mirror of the
+        /// registered <see cref="BuildSystem.Pending"/> list. Built on the sim thread inside Render
+        /// alongside the roster; NEVER mutates BuildSystem state and never touches the RNG. Empty
+        /// when the stack registers no BuildSystem (no build-free surprise for the client). The list
+        /// carries every deck's pending sites; the client filters to the shown deck.</summary>
+        private List<WireFormat.Design> BuildDesigns()
+        {
+            var rows = new List<WireFormat.Design>();
+            if (_host.BuildSys == null) return rows;
+            var pending = _host.BuildSys.Pending;
+            for (int i = 0; i < pending.Count; i++)
+            {
+                var b = pending[i];
+                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind));
+            }
+            return rows;
+        }
+
+        /// <summary>The ship's MOSS terminals for the MOSS-tab directory — a READ-ONLY scan of the
+        /// device store for <see cref="DeviceKind.Terminal"/>s with a non-empty name (the terminal
+        /// id the MOSS bridge addresses). Built on the sim thread inside Render; NOT fog-gated
+        /// (a directory of consoles is fixed ship knowledge, same rationale as the roster). No
+        /// mutation, no RNG.</summary>
+        private List<(string Tid, int Deck, int X, int Y)> BuildTerminals()
+        {
+            var rows = new List<(string, int, int, int)>();
+            var devices = _sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.Terminal || string.IsNullOrEmpty(d.Name)) continue;
+                rows.Add((d.Name, d.Pos.Z, d.Pos.X, d.Pos.Y));
             }
             return rows;
         }

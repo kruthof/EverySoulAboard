@@ -273,3 +273,104 @@ export function hintLine(tool, surname) {
   if (tool === 'move') return 'MOVE ORDER ▸ CLICK A TILE — ' + (surname || 'CREW') + ' WILL WALK THERE · ESC EXIT';
   return null;
 }
+
+// ---- build ghosts (designs channel): the persistent designation markers ----
+
+/** The pending designations on a given deck, from the authoritative `designs` wire. Each cell is
+ *  the tuple [x, y, deck, kind] (kind 0 wall / 1 door). Tolerant: a null/garbage list → []. PURE. */
+export function designsOnDeck(cells, deck) {
+  if (!Array.isArray(cells)) return [];
+  const out = [];
+  for (const c of cells) {
+    if (Array.isArray(c) && c.length >= 4 && c[2] === deck) {
+      out.push({ x: c[0], y: c[1], kind: c[3] });
+    }
+  }
+  return out;
+}
+
+/** The one-glyph marker for a designation kind (0 wall → ▚, 1 door → ▯, else ?). PURE. */
+export function designGlyph(kind) {
+  return kind === 0 ? '▚' : kind === 1 ? '▯' : '?';
+}
+
+// ---- paused-ship nudge (when to show "PRESS SPACE TO RUN") ----
+
+/** How long the nudge lingers before auto-dismissing (ms). */
+export const NUDGE_MS = 4200;
+
+/**
+ * The paused-nudge state reducer. The nudge fires when the player arms a build tool or places a
+ * designation WHILE the ship is paused (first-time players never unpause and think nothing works);
+ * it dismisses on unpause. Events:
+ *   {t:'trigger', paused}  an arm/placement happened — start the timer only while paused
+ *   {t:'unpause'}          the sim resumed — clear immediately
+ * State is {shownAt:number|null}. PURE (visibility is time-derived via nudgeVisible).
+ * @param {{shownAt:number|null}|null} state @param {{t:string, paused?:boolean}|null} ev
+ * @param {number} now @returns {{shownAt:number|null}}
+ */
+export function nextNudge(state, ev, now) {
+  const s = state || { shownAt: null };
+  if (!ev || typeof ev.t !== 'string') return s;
+  if (ev.t === 'trigger') return ev.paused ? { shownAt: now } : s;
+  if (ev.t === 'unpause') return { shownAt: null };
+  return s;
+}
+
+/** Whether the nudge should currently render (within NUDGE_MS of its trigger). PURE. */
+export function nudgeVisible(state, now) {
+  return !!(state && state.shownAt != null && now - state.shownAt < NUDGE_MS);
+}
+
+// ---- CREW-tab scroll affordance (▾ N MORE) ----
+
+/**
+ * How many rows sit below the visible fold of a scroll container, for the "▾ N MORE" indicator.
+ * Derived from the container's scroll metrics + a uniform row stride; ≤1px of overhang counts as
+ * fully scrolled (no false "1 MORE" at the bottom). PURE, node-tested with exact strides.
+ * @param {number} scrollTop @param {number} clientHeight @param {number} scrollHeight
+ * @param {number} rowStride  a row's height incl. gap
+ * @returns {number}
+ */
+export function moreBelow(scrollTop, clientHeight, scrollHeight, rowStride) {
+  const below = scrollHeight - clientHeight - scrollTop;
+  if (!(rowStride > 0) || below <= 1) return 0;
+  return Math.round(below / rowStride);
+}
+
+// ---- MOSS terminal directory (terminals channel) ----
+
+/** The terminal directory from the `terminals` wire, as {tid,deck,x,y} objects. Each entry is the
+ *  tuple [tid, deck, x, y]. Tolerant: null/garbage → []. PURE. */
+export function terminalList(msg) {
+  const list = msg && Array.isArray(msg.list) ? msg.list : Array.isArray(msg) ? msg : [];
+  const out = [];
+  for (const t of list) {
+    if (Array.isArray(t) && t.length >= 4 && t[0] != null && t[0] !== '') {
+      out.push({ tid: String(t[0]), deck: t[1], x: t[2], y: t[3] });
+    }
+  }
+  return out;
+}
+
+/** The MOSS-tab row label for a terminal: "TID · DECK n". PURE. */
+export function terminalLabel(entry) {
+  return String(entry && entry.tid != null ? entry.tid : '') + ' · DECK ' +
+    String(entry && entry.deck != null ? entry.deck : '?');
+}
+
+// ---- Escape priority stack (IX-13 + relations-spec IX-R10) ----
+
+/**
+ * The Escape action, in priority order: an armed tool disarms first, then an open dialogue closes,
+ * then — if the RELATIONS tab is up — Escape returns to the BUILD tab (restoring the ship
+ * viewport), else nothing. PURE; the caller performs the returned action.
+ * @param {{armed:boolean, dialogueOpen:boolean, relationsActive:boolean}} s
+ * @returns {'disarm'|'dialogue'|'relations'|'none'}
+ */
+export function escapeTarget(s) {
+  if (s && s.armed) return 'disarm';
+  if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.relationsActive) return 'relations';
+  return 'none';
+}

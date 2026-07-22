@@ -12,6 +12,8 @@ import {
   CREW_HUES, speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry,
   crewClickTarget, beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool,
   isBuildTool, hintLine, chronHeader,
+  designsOnDeck, designGlyph, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
+  terminalList, terminalLabel, escapeTarget,
 } from '../src/ui/console-model.js';
 import { Cmd } from '../src/wire/session.js';
 
@@ -331,4 +333,77 @@ test('Cmd.build / Cmd.chron marshal the exact host shapes (GameSession.Parse)', 
   assert.deepEqual(Cmd.build('cancel', 9, 9), { cmd: 'build', kind: 'cancel', x: 9, y: 9 });
   assert.deepEqual(Cmd.chron(), { type: 'chron' });
   assert.deepEqual(Cmd.bio(7), { type: 'bio', cid: 7 }); // B3: re-request the citizen card
+});
+
+// ---------------- build ghosts: designsOnDeck / designGlyph ----------------
+
+test('designsOnDeck: filters to the deck, maps [x,y,deck,kind] → {x,y,kind}, tolerant', () => {
+  const cells = [[3, 4, 0, 0], [5, 6, 1, 1], [7, 8, 0, 1], 'garbage', [1], null];
+  assert.deepEqual(designsOnDeck(cells, 0), [{ x: 3, y: 4, kind: 0 }, { x: 7, y: 8, kind: 1 }]);
+  assert.deepEqual(designsOnDeck(cells, 1), [{ x: 5, y: 6, kind: 1 }]);
+  assert.deepEqual(designsOnDeck(cells, 2), []);
+  assert.deepEqual(designsOnDeck(null, 0), []);
+  assert.deepEqual(designsOnDeck(undefined, 0), []);
+});
+
+test('designGlyph: wall/door/unknown', () => {
+  assert.equal(designGlyph(0), '▚');
+  assert.equal(designGlyph(1), '▯');
+  assert.equal(designGlyph(9), '?');
+});
+
+// ---------------- paused-ship nudge ----------------
+
+test('nextNudge: fires only while paused, dismisses on unpause, honors the window', () => {
+  let s = { shownAt: null };
+  s = nextNudge(s, { t: 'trigger', paused: false }, 1000); // running → no nudge
+  assert.equal(s.shownAt, null);
+  assert.equal(nudgeVisible(s, 1000), false);
+
+  s = nextNudge(s, { t: 'trigger', paused: true }, 2000);  // paused → nudge starts
+  assert.equal(s.shownAt, 2000);
+  assert.equal(nudgeVisible(s, 2000), true);
+  assert.equal(nudgeVisible(s, 2000 + NUDGE_MS - 1), true);
+  assert.equal(nudgeVisible(s, 2000 + NUDGE_MS), false);   // expired by the window edge
+
+  s = nextNudge(s, { t: 'unpause' }, 2500);                // resuming clears immediately
+  assert.equal(s.shownAt, null);
+  assert.equal(nudgeVisible(s, 2500), false);
+
+  // unknown/missing events are inert
+  assert.equal(nextNudge({ shownAt: 7 }, null, 0).shownAt, 7);
+  assert.equal(nextNudge(null, { t: 'noop' }, 0).shownAt, null);
+});
+
+// ---------------- CREW-tab "▾ N MORE" (moreBelow) ----------------
+
+test('moreBelow: rows below the fold from scroll metrics; zero at bottom/degenerate', () => {
+  assert.equal(moreBelow(0, 100, 300, 25), 8);   // 200px below / 25 stride
+  assert.equal(moreBelow(100, 100, 300, 25), 4); // scrolled halfway
+  assert.equal(moreBelow(200, 100, 300, 25), 0); // fully scrolled
+  assert.equal(moreBelow(0, 300, 300, 25), 0);   // nothing overflows
+  assert.equal(moreBelow(0, 100, 300, 0), 0);    // no stride → guard
+  assert.equal(moreBelow(0, 100, 101, 25), 0);   // ≤1px overhang → not "1 MORE"
+});
+
+// ---------------- MOSS terminal directory ----------------
+
+test('terminalList / terminalLabel: parse [tid,deck,x,y], drop garbage, label', () => {
+  const msg = { type: 'terminals', list: [['bridge', 0, 3, 4], ['aft', 1, 9, 2], [null, 0, 0, 0], ['', 0, 0, 0], [1]] };
+  const got = terminalList(msg);
+  assert.deepEqual(got, [{ tid: 'bridge', deck: 0, x: 3, y: 4 }, { tid: 'aft', deck: 1, x: 9, y: 2 }]);
+  assert.equal(terminalLabel(got[0]), 'bridge · DECK 0');
+  assert.equal(terminalLabel(got[1]), 'aft · DECK 1');
+  assert.deepEqual(terminalList(null), []);
+  assert.deepEqual(terminalList({ list: 'nope' }), []);
+});
+
+// ---------------- Escape priority stack (IX-13 + IX-R10) ----------------
+
+test('escapeTarget: armed → dialogue → relations → none, strict priority', () => {
+  assert.equal(escapeTarget({ armed: true, dialogueOpen: true, relationsActive: true }), 'disarm');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: true, relationsActive: true }), 'dialogue');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: true }), 'relations');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: false }), 'none');
+  assert.equal(escapeTarget(null), 'none');
 });

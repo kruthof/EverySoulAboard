@@ -131,6 +131,20 @@ Additions: B and X (both currently unbound). No existing binding changes or is r
   ("your order was sent"), not the *outcome*, and never survives into a second frame. Drawn
   by the HUD layer (a positioned div over the stage using the camera transform), NOT by the
   render executors (do-not-touch list).
+- **IX-38** **Wire-backed build ghosts (playtest-polish supersedes IX-35's "no ghost persistence").**
+  The IX-35 ban was on an *optimistic* client-guessed ghost (dishonest when the sim legally
+  refuses). It does not apply to an *authoritative* ghost: the host adds a cached `designs`
+  channel — a READ-ONLY mirror of `BuildSystem.Pending`, `[[x,y,deck,kind],…]`, snapshot-replayed
+  and deduped like `roster`. The client renders a persistent dashed tile-outline + glyph for every
+  pending designation on the shown deck (pure `designsOnDeck`/`designGlyph`), positioned by the
+  same camera-transform path as the IX-36 pulse (an absolutely-positioned `.design-layer` overlay
+  in the stage, repainted each `draw()` so it stays glued under pan/zoom/deck-change; hidden on
+  other decks). A ghost is never client-invented and never lingers over a refusal: an illegal
+  designation never enters `Pending`, and a built/cancelled one drops off the channel, so the ghost
+  vanishes on the next update. This is the honest fix for the "I can't build — nothing happens"
+  playtest finding; the IX-36 input pulse still fires on the click. The paused-ship nudge
+  (a transient `PRESS SPACE TO RUN` chip by the run-state chip, pure `nextNudge`/`nudgeVisible`)
+  addresses the root cause — designating while the sim boots paused.
 - **IX-37** While a build tool is armed, the canvas hint line (under the canvas, replacing
   its idle content) reads: `BUILD ▸ WALL — CLICK DECK TO PLACE · ESC EXIT` (resp. `DOOR`;
   for cancel: `CANCEL ▸ CLICK A QUEUED ORDER TO REVOKE · ESC EXIT`). Cursor over the canvas
@@ -274,11 +288,21 @@ events only (covers mouse/touch/pen).
   orders them (host order; do not client-sort — stable and culture-proof). Row click =
   the exact IX-41/42 selection flow. This is the roster's long-form; CREW WATCH stays
   the glance-form.
-- **IX-73** MOSS tab: real guidance, not a dead end — a static block:
-  `MOSS terminals live on the deck. Click a console to open its program in the IDE.`
-  plus a live line when the terminal drawer is open: `TERMINAL {tid} — IDE OPEN` .
-  The tab cannot open a terminal itself (a tid only arrives via the `device` message
-  from clicking a console) and does not pretend to.
+  - **Playtest-polish addendum:** the table gains a **TRAITS** column (persona chips from the
+    roster wire's appended `traits` field — host-owned mind persona, `[]` when absent, truncated
+    gracefully), compacted rows so ≥4 fit the 170px console, a **visible** scrollbar thumb, and a
+    bottom-fade + `▾ N MORE` indicator (pure `moreBelow`, node-tested) that updates on scroll —
+    fixing the "clicking CREW gives no real more info / can't tell rows are hidden" finding.
+- **IX-73** MOSS tab: real guidance plus a clickable **terminal directory**. A static guidance
+  line, then one `[TID · DECK n]` row per ship terminal from a new cached `terminals` wire
+  (`[[tid,deck,x,y],…]`, snapshot-replayed like `roster`), then a live `TERMINAL {tid} — IDE OPEN`
+  line when the drawer is open. **Terminal-list design decision:** opening a terminal's IDE needs
+  only its `tid` — the host answers `moss open` with the source regardless of the shown deck — so a
+  row opens the IDE through the SAME client path a console-tile click triggers
+  (`panels().openTerminal(tid)` → `moss open`), with **no deck switch and no device toggle** (unlike
+  replaying `Cmd.click` on the tile, which would flip the terminal's power and be blocked by a crew
+  member standing on it). Every terminal is thus openable from the list cross-deck; the `DECK n`
+  label is orientation only. Fixes the "no terminal" finding.
 - **IX-74** CHRONICLE tab: on first activation per connection, send `{"type":"chron"}`
   (new `Cmd.chron()` in session.js). Renders the `chron` message: days newest-first,
   each as `DAY {day} — {headline}` + its lines, scrollable within the bottom bar height.

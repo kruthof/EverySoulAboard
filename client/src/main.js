@@ -138,6 +138,9 @@ function draw() {
     motion: motionByTile(motion),
     nowMs: FROZEN_T != null ? null : nowMs(),
   });
+  // Build ghosts track the same camera transform as the pulse, so they stay glued under
+  // pan/zoom/deck-change (this runs on every draw, incl. drag-pan and the anim loop).
+  Hud.paintDesignGhosts();
 }
 
 // ---- animation loop: redraw ~30fps while a crew is selected (the reticle breathes even on pause)
@@ -199,6 +202,9 @@ function onMessage(m) {
     // P2.1 console: the crew roster (CREW WATCH + CREW tab) and the ship chronicle.
     case 'roster': Hud.renderRoster(m); break;
     case 'chron': Hud.renderChron(m); break;
+    // Polish: pending build ghosts (BUILD feedback) + the MOSS terminal directory.
+    case 'designs': Hud.renderDesigns(m); break;
+    case 'terminals': Hud.renderTerminals(m); break;
     // RELATIONS tab: the directed relationship graph feeding the crew-web viewport swap.
     case 'relations': Hud.renderRelations(m); break;
     default: break;
