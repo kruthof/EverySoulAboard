@@ -25,6 +25,13 @@ namespace Perilune.Gen
         public readonly List<CitizenSpec> Citizens = new List<CitizenSpec>();
         public readonly List<ItemSpec> Items = new List<ItemSpec>();
         public readonly List<string> PressurizedAnchors = new List<string>();
+
+        /// <summary>Debris tiles the ship boots with already marked for digging (the dig
+        /// board's authored seed — the same <see cref="TileFlags.Designated"/> flag a player's
+        /// <see cref="DesignateDigCommand"/> sets, just placed by the author instead of by
+        /// hand at runtime). Empty on ships whose debris is purely a player objective.</summary>
+        public readonly List<Int3> DigDesignations = new List<Int3>();
+
         public readonly List<GoalSpec> Goals = new List<GoalSpec>();
         public readonly List<ScriptSpec> Scripts = new List<ScriptSpec>();
     }
