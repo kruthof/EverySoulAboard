@@ -195,6 +195,31 @@ pass) · HCI review + re-gate PASS · visual art-director review + re-gate PASS 
 pixels (CDP-driven tab/breakpoint/portrait-flash probes). Suite: **530 dotnet + 153
 node** via `./ci.sh`; scenario/tick-3000/slice hashes unmoved (client-only).
 
+## Conversation history fix (2026-07-21, commit `9b16c07`) — LANDED
+
+Second playtest defect of the day: crew had no memory one sentence back, and replies
+sometimes went meta ("I should behave like I am this person"). Root cause: the
+transcript path in `PromptBuilder.Build` existed but every live call site passed
+null — `SendAsync` carried only the current utterance, the hub's `ChatSession` shell
+was dead code, and the sync `Ask` path never handed its transcript to `Respond`.
+Fixed by `ConversationRequest.Transcript` (append-only DTO field, TemplateBackend
+byte-identity test-pinned), fed by all three adapters; the hub keeps a real
+per-session transcript with a lock-free InFlight-gated handoff (appends by the
+background driver before the volatile release; immutable snapshot taken sim-side
+behind the `!InFlight` gate; failed turns record nothing; bounded 2×MaxExchanges).
+Historical player lines go through the same `player_speech` quarantine as the latest
+utterance; turn N's layout is a byte-prefix of turn N+1's, so both `cache_control`
+breakpoints stay on the stable prefix — and the growing suffix should finally push
+the assembled prompt past the haiku 2048-token cacheable minimum in longer chats
+(re-check the `cache_read` backlog item next smoke). `GlobalSystemBlock` dropped the
+"roleplaying" actor-framing for direct identity + an explicit no-meta rule (the
+propose_effect elicitation + quarantine sentences survive byte-identical).
+Independent gate PASS (race-hunt clean, injection corpus inert on history, mutation
+probes killed incl. a review-round strengthened failed-turn test). **Live-probe
+verified** the same day: two-turn exchange with Amara over the real Anthropic route —
+turn 2 recalled a planted name + object verbatim, in character, zero meta (cents
+spent, zero CI surface). Suite: **541 dotnet + 153 node**; hashes unmoved.
+
 ## Running / testing the game
 
 ```bash
@@ -288,6 +313,12 @@ The obvious P3 groundwork already flagged below: hosts finally consume `Sim.Cont
 - **CREW tab scroll affordance** (advisory from the visual re-gate): the tab shows 2
   of 8 rows and the scrollbar thumb is near-invisible — nothing signals more rows
   exist. Small polish.
+- **ConversationHub micro-issues** (from the history-fix gate review, pre-existing):
+  a stale-`Ended` read can dispatch one redundant turn on a just-ended session;
+  `PrepareTurn` re-snapshots persona/context every turn so those bytes can drift
+  mid-conversation (cache efficiency only, prefix still stable per turn); `_sessions`
+  entries are never removed over a long host run. None are regressions; none
+  memory-unsafe.
 
 ## Open on Garvin (the human exit bars + setup)
 
