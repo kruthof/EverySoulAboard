@@ -111,13 +111,15 @@ export class WebGL2Executor {
     const useSpr = sprites ? sprites.usable(opts.spriteMode) : false;
     const timeSec = opts.timeSec || 0;
 
-    // C7 animation inputs — motion (tile→entry), the art maps, and the walk interpolation progress.
-    const raster = {
-      motion: opts.motion || null, timeSec,
-      states: useSpr ? SPRITE_STATES : null, frames: useSpr ? SPRITE_FRAMES : null,
-    };
     // Wall-clock that drives the continuous per-cid slide (null on the frozen/screenshot path).
     const nowMs = opts.nowMs == null ? null : opts.nowMs;
+    // C7 animation inputs — motion (tile→entry), the art maps, timeSec (walk-cycle phase) and nowMs.
+    // nowMs is threaded here so the ATLAS bake gate (collectCellKeys → isAnimWalking) and the SAMPLE
+    // gate (resolveEntity → spriteVariant → isAnimWalking) agree on the slide-aware walk hold.
+    const raster = {
+      motion: opts.motion || null, timeSec, nowMs,
+      states: useSpr ? SPRITE_STATES : null, frames: useSpr ? SPRITE_FRAMES : null,
+    };
 
     const passes = buildPasses(list, { timeSec });
     this._ensureAtlas(passes, useSpr, sprites, raster);

@@ -287,3 +287,41 @@ test('spawn / teleport / deck change never count as recently-walked', () => {
   assert.equal(isAnimWalking(null), false);
   assert.equal(isAnimWalking(undefined), false);
 });
+
+// ---------------- slide-aware walk-sprite hold (busy scene: no standing ice-skate) ----------------
+
+test('busy scene: the walk sprite is held for the WHOLE slide even when step-less frames outrun WALK_HOLD_FRAMES', () => {
+  // A step anchored at t=0 with the default 500 ms interval, then a burst of step-less frames
+  // (other crew stepping fast → the wire re-sends) every 50 ms: sinceStep climbs past the 2-frame
+  // hold while the slide is still translating the body — the exact multi-walker case this guards.
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);
+  for (let i = 1; i <= 6; i++) m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), i * 50); // t=50..300
+  const e = m.byCid[7];
+  assert.ok(e.sinceStep > WALK_HOLD_FRAMES, 'the fixed frame-count hold has expired');
+  assert.equal(slideActive(e, 300), true, 'but the slide is still in flight');
+  assert.equal(isAnimWalking(e, 300), true, 'so the walk sprite is HELD — no standing pose ice-skating');
+});
+
+test('the slide-held walk sprite settles to standing once the slide finishes', () => {
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);
+  // age the frame-count hold out too, so only the slide clause could hold the sprite.
+  for (let i = 1; i <= 6; i++) m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), i * 50);
+  const e = m.byCid[7];
+  assert.equal(isAnimWalking(e, DEFAULT_STEP_MS - 1), true, 'still walking a hair before the interval');
+  assert.equal(slideActive(e, DEFAULT_STEP_MS), false, 'slide settled at the interval');
+  assert.equal(isAnimWalking(e, DEFAULT_STEP_MS), false, 'settled → standing sprite (frame hold also expired)');
+});
+
+test('frozen/untimed path: isAnimWalking falls back to the fixed frame-count hold (?t= snapshots unchanged)', () => {
+  // Untimed frames record no slide (stepMs null → slideActive always false), so the classic 2-frame
+  // hold governs exactly as before — nowMs=null must not regress deterministic screenshots.
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]));
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]));               // walk (untimed)
+  assert.equal(isAnimWalking(m.byCid[7], null), true, 'the step itself is walking');
+  let held = trackMotion(m, frame(0, [[6, 5, 0, 7]]));        // sinceStep 1 ≤ hold
+  assert.equal(isAnimWalking(held.byCid[7], null), true, 'held within WALK_HOLD_FRAMES');
+  for (let i = 0; i < WALK_HOLD_FRAMES; i++) held = trackMotion(held, frame(0, [[6, 5, 0, 7]]));
+  assert.equal(isAnimWalking(held.byCid[7], null), false, 'beyond the hold → standing, unchanged');
+});

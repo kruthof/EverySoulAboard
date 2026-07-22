@@ -73,9 +73,11 @@ wire (semantic) ─► composeScene(frame, camera, assets) ─► DisplayList �
 - `src/render/exec-select.js` — **pure** backend + `?t=` time-freeze selection (unit-tested).
 - `src/render/motion.js` — **pure** C7 animation runtime: per-cid tracking across frames
   (`trackMotion` — walk vs teleport/deck/fog-reveal/despawn), the deterministic walk-cycle frame
-  index + sub-tile interpolation (`walkFrameIndex`/`walkOffset` — `timeSec`/`progress` as inputs),
-  and the absence-tolerant sprite-variant selectors (`deviceSpriteKey`/`pawnSpriteKey`). Both
-  executors consume it; compose stays time-free, so a fixed `timeSec` is fully deterministic.
+  index + a continuous, step-anchored sub-tile slide (`walkFrameIndex`/`slideOffset` — `timeSec`/
+  `nowMs` as inputs; the per-cid interval is estimated from the gap between the pawn's last two steps,
+  and the walk-sprite hold is slide-aware via `slideActive`), and the absence-tolerant sprite-variant
+  selectors (`deviceSpriteKey`/`pawnSpriteKey`). Both executors consume it; compose stays time-free,
+  so fixed `timeSec`/`nowMs` (the `nowMs=null` frozen path) are fully deterministic.
 - `src/input/controls.js` — mouse + keyboard map (verbatim behaviour port).
 - `src/ui/` — HTML chrome + the P2 floating panels. `hud.js` (sidebar/status/log DOM + panel
   routing), **`chat.js`** (PURE conversation-stream reassembler), **`portraits.js`** (PURE portrait
@@ -270,7 +272,9 @@ npm run typecheck                            # tsc --checkJs, clean (needs npm i
   unknown-tid / absent-terminal safety + non-mutation, and a real-wire fixture replay
   (`moss_session.jsonl`: source → multi-error diag → audit → rterror).
 - `test/motion.test.js` — C7 motion: the reset matrix (teleport/deck/fog/despawn/standing vs a real
-  one-tile walk), non-mutation, deterministic `walkFrameIndex` + `walkOffset` interpolation, and the
+  one-tile walk), non-mutation, deterministic `walkFrameIndex` + the step-anchored `slideOffset`
+  slide (interval estimation/clamp, mid-slide re-step continuity, step-less-frame survival,
+  settle-on-stop, slide-aware walk-sprite hold, frozen `nowMs=null` path), and the
   absence-tolerant device/pawn variant selectors. `test/webgl2.test.js` is extended: walking pawns
   resolve a walk-frame cell, devices resolve broken/off cells, the atlas bakes every walk frame
   (timeSec-stable signature), and static scenes stay byte-identical to the pre-C7 cell set.

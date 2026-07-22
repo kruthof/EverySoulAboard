@@ -135,7 +135,7 @@ export class Canvas2DExecutor {
           // Sprite choice holds "walking" for a couple of step-less frames (isAnimWalking) so
           // per-frame step gaps don't flicker walking↔standing; the SLIDE is time-driven and
           // self-gating (slideOffset survives step-less frames, so no snap when another crew steps).
-          const key = pawnSpriteKey(pr, isAnimWalking(entry), anim.timeSec || 0, SPRITE_FRAMES);
+          const key = pawnSpriteKey(pr, isAnimWalking(entry, anim.nowMs), anim.timeSec || 0, SPRITE_FRAMES);
           const frameImg = key !== pr ? sprites.decoded(key) : null;
           const off = slideOffset(entry, anim.nowMs);
           const dx = off.ox * T, dy = off.oy * T;

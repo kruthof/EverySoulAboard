@@ -47,14 +47,20 @@ export const MAX_STEP_MS = 1200;
 export const STEP_SMOOTH = 0.5;
 
 /**
- * Whether a pawn should be DRAWN with its walk-cycle sprite: it stepped this frame, or within
- * the last WALK_HOLD_FRAMES frames (see above). Pure; null-tolerant (no entry → standing).
- * @param {MotionEntry|null|undefined} entry
+ * Whether a pawn should be DRAWN with its walk-cycle sprite: it stepped this frame, OR its slide is
+ * still in flight at `nowMs`, OR it stepped within the last WALK_HOLD_FRAMES frames. The slide clause
+ * is the important one: the slide now runs ~one estimated interval (~500 ms), far longer than the
+ * fixed 2-frame hold, and wire frames re-send whenever ANY crew steps — so in a busy scene a gliding
+ * pawn's `sinceStep` can exceed the frame hold mid-slide. Holding the sprite while `slideActive`
+ * keeps the walk cycle running for the whole glide (no standing pose ice-skating across the floor).
+ * When `nowMs` is null (frozen/untimed, e.g. ?t= screenshots) there is no slide, so this falls back
+ * to the fixed frame-count hold — byte-identical to the pre-slide behaviour. Pure; null-tolerant.
+ * @param {MotionEntry|null|undefined} entry @param {number|null} [nowMs]
  * @returns {boolean}
  */
-export function isAnimWalking(entry) {
+export function isAnimWalking(entry, nowMs) {
   if (!entry) return false;
-  return entry.walking || entry.sinceStep <= WALK_HOLD_FRAMES;
+  return entry.walking || slideActive(entry, nowMs) || entry.sinceStep <= WALK_HOLD_FRAMES;
 }
 
 const FACING = ['N', 'E', 'S', 'W'];
