@@ -13,6 +13,25 @@
 //                 the sprite's own transparent margin so it never fights the figure's art.
 //
 // Everything is a pure function of (pixels, spec) — same input, same output, no time, no RNG.
+//
+// ── WHAT THE RELIGHT ACTUALLY BOUGHT (measured, and stated honestly) ─────────────────────────
+// The first write-up of this work quoted "full-frame luma p50 17 → 19". That number is close to
+// meaningless: the 2560x1440 slice frame is ~57 % dark console chrome, and averaging the deck in
+// with the HUD understates the deck by ~20x. Re-measured on the CANVAS ONLY (x264-2236,
+// y60-1256 of art/screenshot-test's near hero frame, pawn tiles excluded from both sides):
+//
+//                       p05      p50      p95
+//   before             5.9     16.9     56.7
+//   after              4.6     41.2    116.0     (re-measured here: 4.6 / 42.9 / 116.4)
+//   Prison Architect  37.1    122.5    196.8
+//
+// So the deck's median went 17 → 41, not 17 → 19. It is still a long way under PA, and the shape
+// of the gap is worth keeping in view: PA's floor never goes near-black (p05 37), ours does
+// (p05 4.6 — that is space and unlit cabins in frame), and the LIT floor tiles here span only
+// 13 luma p50→p95 (112.7 → 125.9), far flatter than PA's lit ground. The relight fixed the RANGE
+// of the deck; it did not fix the flatness of a single lit room, and that is still an art problem,
+// not a colour-maths one. The chroma ceilings below move colour only — they leave all of these
+// value numbers unchanged.
 
 // A few generated sprite frames shipped with
 // an opaque white matte behind the figure (the spritegen key pass keys GREEN; when the image
@@ -72,48 +91,92 @@ export function scrubMatte(data, w, h) {
 // ── VALUE-RANGE RELIGHT ─────────────────────────────────────────────────────────────────────
 //
 // Per pixel: split it into luminance + chroma, re-map the luminance through a levels+gamma curve,
-// scale the chroma, re-tint, recombine. Hue survives; only the value range and the amount of
-// colour move. Alpha is never touched (so a figure's silhouette is exactly as generated).
+// scale the chroma (with an optional ceiling), re-tint, recombine. Hue survives; only the value
+// range and the amount of colour move. Alpha is never touched (so a figure's silhouette is
+// exactly as generated).
 //
 //   inLo/inHi   the input luma window that carries this sprite class's real information
 //   outLo/outHi where that window lands (this is the whole point: lift AND stretch)
 //   gamma       curve inside the window (<1 opens the shadows)
 //   sat         chroma multiplier — <1 desaturates the ENVIRONMENT, >1 saturates the CREW
+//   chromaMax   HARD CEILING on the output chroma (max−min), or absent for "no ceiling"
 //   tint        per-channel multiplier applied last (keeps the ship cool without a hue rotate)
 //
-/** @typedef {{inLo:number,inHi:number,outLo:number,outHi:number,gamma:number,sat:number,tint:number[]}} Grade */
+// WHY A CEILING AND NOT JUST A MULTIPLIER (measured, not asserted). The relight's luma lift
+// (outLo/outHi 18→205 at gamma 0.78) roughly TRIPLES the value of already-saturated dark art, so
+// the few screaming pixels in the environment sprites — the wall's magenta conduit stripe, the
+// ladder's magenta frame, the terminal/solar trim — crossed the visibility threshold and the deck
+// started out-shouting the crew ~26:1. A pure `sat` cut fixes that only by flattening the whole
+// class: struct.sat 0.6→0.30 takes the wall's MEAN chroma 13.7→6.8, i.e. it pays for three noisy
+// percent by making the other ninety-seven monochrome. A ceiling is surgical — at struct 45 it
+// clamps 6.6 % of wall pixels and leaves the warm/cool variation in the rest bit-identical, while
+// the stripe survives as a calm line of colour instead of the loudest thing on the deck.
+//
+// Loud-pixel census on the near hero frame (chroma > 60 AND luma > 60, canvas only, attributed to
+// the sprite that painted each pixel):   35 854 loud px, 2.0 % crew / 98.0 % environment
+//                                    →    1 815 loud px, 39.7 % crew / 60.3 % environment.
+// The wall conduit stripe (31 832 px, 88.8 % of the old total) and the ladder frame (875 px) both
+// go to ZERO. What the ceilings CANNOT reach, and what the remainder now is: open doors painted
+// procedurally from the semantic palette rather than from sprite art (680 px — procedural.js
+// paintDoor, no open-door sprite exists), and props under the chroma-adding Dead light (315 px).
+//
+/** @typedef {{inLo:number,inHi:number,outLo:number,outHi:number,gamma:number,sat:number,chromaMax?:number,tint:number[]}} Grade */
 
 /** @type {Record<string,Grade>} Grades by sprite class. */
 export const GRADE = {
   // The deck plate: near-flat 46..72 art. It needs the biggest move — a ~3x stretch that both
   // lifts the median to a working ~113 AND pulls the latent plate seams out of the noise, which
   // is where the in-room value spread comes from. Desaturated hard: the deck is graphite, not lilac.
+  // No ceiling: at sat 0.5 the graded plate tops out at chroma 14.7, nowhere near needing one.
   floor: { inLo: 44, inHi: 74, outLo: 78, outHi: 172, gamma: 1.0, sat: 0.5, tint: [1.02, 1.0, 0.99] },
-  // The ship's SHELL (walls, debris). Already carries range (wall spans 19..139), so it only
-  // needs a lift with the shadows opened — plus a firm desaturation, because the wall art's
-  // magenta conduit stripe runs along every corridor and at full chroma it out-shouts the crew.
-  // The stripe survives as a line of colour; it just stops being the loudest thing on the deck.
-  struct: { inLo: 8, inHi: 190, outLo: 18, outHi: 205, gamma: 0.78, sat: 0.6, tint: [1.0, 0.99, 0.99] },
-  // Props + devices (furniture, doors, terminals, machines): same lift, chroma left alone — a lit
-  // terminal face or a locked door's amber IS a live machine state, which the brief reserves
-  // saturation for. There are few of them, so they read as accents rather than as wallpaper.
-  prop: { inLo: 8, inHi: 190, outLo: 18, outHi: 205, gamma: 0.78, sat: 1.0, tint: [1.0, 0.99, 0.99] },
-  // Crew: lifted clear of the deck's shadow AND saturated hard. People are the only thing on the
-  // stage allowed this much chroma; against a 0.5-sat environment they read instantly.
+  // The ship's SHELL (walls, debris) and anything unrecognised. Already carries range (wall spans
+  // 19..139), so it only needs a lift with the shadows opened — plus the 45 ceiling, set at the
+  // MEAN chroma of a graded crew sprite (pawn 45.4): no structural pixel may out-colour the
+  // average pixel of a person. Measured effect on the wall: mean 13.7→12.3, p99 86.6→46.5.
+  struct: { inLo: 8, inHi: 190, outLo: 18, outHi: 205, gamma: 0.78, sat: 0.6, chromaMax: 45, tint: [1.0, 0.99, 0.99] },
+  // Props + devices (furniture, doors, terminals, machines). They are allowed MORE colour than the
+  // shell — a lit terminal face or a locked door's amber IS a live machine state, which the brief
+  // reserves saturation for — but not more than a crew member: sat 0.70 with a 50 ceiling puts the
+  // loudest prop (solar, mean 62.9) at mean 37.6, i.e. the crew family (mean 67.5) reads 1.79x
+  // louder than the loudest thing they walk past. There are 53 sprite entities to 8 crew on the
+  // slice deck, so an un-capped prop class beats the crew on sheer count no matter how hot the
+  // crew grade is — the ratio, not the crew's own saturation, is what makes people findable.
+  //
+  // Why 50 and not 55: props also have to survive the Dead light, which ADDS chroma rather than
+  // just darkening (palette.js LIGHT[1]: a cool-leaning pixel comes out at 0.42*(B−R) + 51). No
+  // sprite-side ceiling can fully calm an unlit cabin against a +51 term — that is the light, not
+  // the art — but the extra headroom measurably helps at the margin: on the slice near shot the
+  // unlit-cabin bed residue fell 403 → 315 loud pixels going from a 55 ceiling to a 50 one.
+  prop: { inLo: 8, inHi: 190, outLo: 18, outHi: 205, gamma: 0.78, sat: 0.70, chromaMax: 50, tint: [1.0, 0.99, 0.99] },
+  // Crew: lifted clear of the deck's shadow AND saturated hard, with NO ceiling — people are the
+  // only thing on the stage allowed to run to full chroma (pawn_c reaches 218), and against a
+  // capped environment they read instantly.
   crew: { inLo: 6, inHi: 200, outLo: 20, outHi: 235, gamma: 0.8, sat: 1.8, tint: [1.0, 1.0, 1.0] },
 };
 
 /**
- * The grade a sprite key gets, or null for keys that must stay untouched. Animation-variant keys
- * ({role}#w0, {role}#broken) grade exactly like their base role, so a walk cycle never flickers.
- * @param {string} key @returns {Grade|null}
+ * Sprite keys that are furniture / fittings / machines. Explicit, because the DEFAULT has to be
+ * the calm grade: an unrecognised key (a new sprite, a typo, a role the wire invents) must fail
+ * SAFE into `struct` rather than silently join the loudest class on the deck.
+ * @type {Set<string>}
+ */
+export const PROP_KEYS = new Set([
+  'door', 'growbed', 'terminal', 'scrubber', 'watertank', 'radiator', 'solar', 'battery', 'vent',
+  'light', 'ladder', 'reclaimer', 'fabricator', 'machineshop', 'recycler', 'bed', 'table', 'chair',
+  'medbed', 'medcab', 'locker', 'desk', 'plant', 'corpse',
+]);
+
+/**
+ * The grade a sprite key gets. Animation-variant keys ({role}#w0, {role}#broken) grade exactly
+ * like their base role, so a walk cycle never flickers. Unknown keys get `struct` (see PROP_KEYS).
+ * @param {string} key @returns {Grade}
  */
 export function gradeFor(key) {
   const base = baseKey(key);
   if (base === 'floor') return GRADE.floor;
-  if (base === 'wall' || base === 'debris') return GRADE.struct;
   if (isCrewKey(base)) return GRADE.crew;
-  return GRADE.prop;
+  if (PROP_KEYS.has(base)) return GRADE.prop;
+  return GRADE.struct;
 }
 
 /** The role part of a sprite key, dropping any `#variant` suffix. */
@@ -145,6 +208,12 @@ function levelsLut(g) {
 /**
  * Apply a grade to an RGBA buffer in place. Fully transparent pixels are skipped (their RGB is
  * meaningless and grading them would only bleed colour into the atlas's bilinear edges).
+ *
+ * The chroma ceiling is a per-pixel cap, not a second multiplier: the effective saturation is
+ * `min(sat, chromaMax / inputChroma)`, so a pixel whose graded chroma would land under the
+ * ceiling passes through the plain `sat` path bit-for-bit and only the offenders are pulled back
+ * to exactly `chromaMax`. Hue and luma are untouched by the cap.
+ *
  * @param {Uint8ClampedArray|Uint8Array} data RGBA, length w*h*4
  * @param {number} w @param {number} h
  * @param {Grade} g
@@ -154,15 +223,23 @@ export function gradePixels(data, w, h, g) {
   if (!data || !g || w <= 0 || h <= 0 || data.length < w * h * 4) return 0;
   const lut = levelsLut(g);
   const [tr, tg, tb] = g.tint;
+  const cmax = g.chromaMax > 0 ? g.chromaMax : 0;
   let touched = 0;
   for (let o = 0; o < w * h * 4; o += 4) {
     if (data[o + 3] === 0) continue;
     const r = data[o], gr = data[o + 1], b = data[o + 2];
     const L = 0.2126 * r + 0.7152 * gr + 0.0722 * b;
     const L2 = lut[L < 0 ? 0 : L > 255 ? 255 : L | 0];
-    data[o] = clamp255((L2 + (r - L) * g.sat) * tr);
-    data[o + 1] = clamp255((L2 + (gr - L) * g.sat) * tg);
-    data[o + 2] = clamp255((L2 + (b - L) * g.sat) * tb);
+    let sat = g.sat;
+    if (cmax) {
+      const mx = r > gr ? (r > b ? r : b) : (gr > b ? gr : b);
+      const mn = r < gr ? (r < b ? r : b) : (gr < b ? gr : b);
+      const chroma = mx - mn;
+      if (chroma * sat > cmax) sat = cmax / chroma; // chroma > 0 whenever the product exceeds cmax
+    }
+    data[o] = clamp255((L2 + (r - L) * sat) * tr);
+    data[o + 1] = clamp255((L2 + (gr - L) * sat) * tg);
+    data[o + 2] = clamp255((L2 + (b - L) * sat) * tb);
     touched++;
   }
   return touched;
@@ -171,11 +248,21 @@ export function gradePixels(data, w, h, g) {
 // ── CREW ACCENT ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The stage's crew accents. Deliberately the leading saturated entries of the console's own
- * per-crew avatar hue ring (docs/design/perilune-game-ui.visual-spec.md §"avatar hues":
- * #cf7a33, #5aa77f, #c25a3f, #e8934a, #b5652a, #8c8377) so a crew member's colour on the deck
- * speaks the same language as their colour in CREW WATCH. Grey (#8c8377) is excluded — an accent
- * that isn't saturated isn't an accent.
+ * The stage's crew accents: three saturated entries drawn from the console's own per-crew avatar
+ * hue ring (ui/console-model.js CREW_HUES — #cf7a33, #5aa77f, #c25a3f, #e8934a, #b5652a, #8c8377;
+ * grey is excluded, an accent that isn't saturated isn't an accent), so an accent on the deck is
+ * at least drawn from the same box of pencils as CREW WATCH.
+ *
+ * NOT PARITY WITH CREW WATCH, and cannot be here. CREW WATCH picks one of SIX hues by an FNV-1a
+ * hash of the CID, so its eight souls are eight (near-)distinct swatches. This accent is baked
+ * into the sprite bitmap at load time (see paintUnderglow, called from sprites.js `_process`), so
+ * the finest thing it can key off is the SPRITE KEY — i.e. `pv`, the pawn's wire variant, of
+ * which there are three. Eight crew therefore share three deck accents, and a crew member's disc
+ * will often be a different colour from their CREW WATCH avatar.
+ *
+ * Making it per-cid means moving the disc from load time to draw time (or minting per-cid atlas
+ * cells), which is per-entity work inside canvas2d.js / render/webgl — a different lane's files.
+ * Left as a known gap on purpose rather than half-claimed: see the crewAccent doc below.
  */
 export const CREW_ACCENTS = ['#e8934a', '#5aa77f', '#c25a3f'];
 
@@ -186,6 +273,11 @@ const PAWN_ORDER = ['pawn', 'pawn_b', 'pawn_c'];
  * The accent for a crew sprite. DETERMINISTIC: the three shipped pawn roles map to the three
  * accents by wire-variant order, and any future role falls back to a stable string hash — the
  * same key always yields the same colour, in every session, on every machine.
+ *
+ * Keyed by SPRITE KEY (`pv`), not by `cid`: this runs once per decoded sprite, before any crew
+ * member is attached to it. So it separates the pawn ROLES on the deck (three of them), not the
+ * eight individual souls — the disc says "a person is standing here", not "Okonkwo is standing
+ * here". Per-soul accents are a draw-time job for the executors; see CREW_ACCENTS above.
  * @param {string} key sprite key (variant suffixes are ignored)
  * @returns {string} '#rrggbb'
  */

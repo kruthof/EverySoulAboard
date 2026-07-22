@@ -95,17 +95,55 @@ test('the floor grade lifts the shipped deck plate into a working value range an
   for (let i = 0; i < 3; i++) assert.equal(d[i * 4 + 3], 255, 'alpha is never touched');
 });
 
+const one = (grade, rgb) => {
+  const d = new Uint8ClampedArray([...rgb, 255]);
+  gradePixels(d, 1, 1, grade);
+  return [d[0], d[1], d[2]];
+};
+const chroma = (c) => Math.max(...c) - Math.min(...c);
+
 test('the environment grade desaturates and the crew grade saturates — chroma is reserved for people', () => {
-  const one = (grade, rgb) => {
-    const d = new Uint8ClampedArray([...rgb, 255]);
-    gradePixels(d, 1, 1, grade);
-    return [d[0], d[1], d[2]];
-  };
-  const chroma = (c) => Math.max(...c) - Math.min(...c);
   const src = [110, 70, 70];             // the same mid, mildly warm pixel through both grades
   const env = one(GRADE.struct, src), crew = one(GRADE.crew, src);
   assert.ok(chroma(crew) > chroma(env) * 1.5, `crew ${chroma(crew)} must out-colour env ${chroma(env)}`);
   assert.ok(luma(...crew) > luma(...src), 'crew are lifted clear of the deck they stand on');
+});
+
+test('PROPS too must lose to the crew — the class that actually paints the deck', () => {
+  // struct-vs-crew alone left the loudest class untested: there are 53 sprite ENTITIES to 8 crew
+  // on the slice deck, and props (terminals, beds, ladders, machines) are what a player's eye
+  // competes against. Raising GRADE.prop.sat must break this, or the "chroma is for people"
+  // contract is decoration.
+  const src = [110, 70, 70];
+  const prop = one(GRADE.prop, src), crew = one(GRADE.crew, src);
+  assert.ok(chroma(crew) > chroma(prop) * 1.5,
+    `crew ${chroma(crew)} must out-colour props ${chroma(prop)} by 1.5x`);
+  // …and props still keep MORE colour than the shell: a live machine face is not a wall.
+  assert.ok(chroma(prop) > chroma(one(GRADE.struct, src)),
+    'props are allowed more chroma than the ship\'s shell');
+  // A screaming source pixel (the ladder's magenta frame / the wall's conduit stripe) is the case
+  // that actually mattered: both environment classes must cap it, the crew must not be capped.
+  const screamer = [220, 20, 200];
+  assert.ok(chroma(one(GRADE.struct, screamer)) <= GRADE.struct.chromaMax + 1,
+    'the shell ceiling holds against the loudest pixel in the atlas');
+  assert.ok(chroma(one(GRADE.prop, screamer)) <= GRADE.prop.chromaMax + 1,
+    'the prop ceiling holds too');
+  assert.ok(chroma(one(GRADE.crew, screamer)) > GRADE.prop.chromaMax * 1.5,
+    'crew are NOT ceilinged — people may run to full chroma');
+});
+
+test('the chroma ceiling is surgical: it clamps only the offenders, bit-for-bit elsewhere', () => {
+  const quiet = [96, 88, 84];                                   // graded chroma ≈ 7 — far under 45
+  const capped = { ...GRADE.struct, chromaMax: 45 };
+  const uncapped = { ...GRADE.struct }; delete uncapped.chromaMax;
+  assert.deepEqual(one(capped, quiet), one(uncapped, quiet),
+    'a pixel under the ceiling passes through the plain sat path unchanged');
+  const loud = [200, 40, 180];
+  assert.ok(chroma(one(uncapped, loud)) > 45 && Math.abs(chroma(one(capped, loud)) - 45) <= 1,
+    'a pixel over the ceiling is pulled back to exactly the ceiling');
+  // Hue survives the cap: the clamped pixel keeps its channel ORDER (magenta stays magenta).
+  const c = one(capped, loud);
+  assert.ok(c[0] > c[1] && c[2] > c[1], `hue order survives the cap, got ${c}`);
 });
 
 test('grading is pure: same pixels + same spec ⇒ same bytes, and alpha 0 is skipped entirely', () => {
@@ -126,6 +164,13 @@ test('gradeFor routes by sprite class, and animation variants grade like their b
   assert.equal(gradeFor('terminal#broken'), GRADE.prop);
   assert.equal(gradeFor('pawn'), GRADE.crew);
   assert.equal(gradeFor('pawn_c#w2'), GRADE.crew, 'a walk frame must not grade differently');
+  // The DEFAULT fails safe: an unrecognised key gets the calm shell grade, never the loud one.
+  assert.equal(gradeFor('some_future_sprite'), GRADE.struct, 'unknown keys fail safe into struct');
+  assert.equal(gradeFor(''), GRADE.struct);
+  // …but every sprite the atlas actually ships as a prop must still be routed explicitly.
+  for (const k of ['door', 'ladder', 'solar', 'growbed', 'light', 'bed', 'desk', 'plant']) {
+    assert.equal(gradeFor(k), GRADE.prop, `${k} is a prop`);
+  }
   assert.equal(baseKey('pawn_b#w0'), 'pawn_b');
   assert.ok(isCrewKey('pawn') && isCrewKey('pawn_b'));
   assert.ok(!isCrewKey('corpse'), 'the dead do not get a crew accent');
