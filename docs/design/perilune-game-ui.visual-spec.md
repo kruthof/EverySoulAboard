@@ -586,7 +586,10 @@ line, `text-overflow:ellipsis` (labels can be long — `Hauling regolith to wall
 Two states, and the difference is the point: default `color:var(--txt-dim)` (#8c8377, the
 same tier as the role line above it — readable, unemphatic; the role is uppercased and this
 line is not, so they never blur together), `.working`
-`color:var(--amber-2)` (#e8934a). Idleness must never be styled as activity. Text is the
+`color:var(--amber-2)` (#e8934a). Idleness must never be styled as activity. `.working` is
+`watchTask`'s flag, which is broader than `taskTag`: an en-route label (`Heading to …`) gets
+amber here even though it gets no map marker (IX-103) — walking to a real job is assigned work,
+not idleness, and the two questions have different answers. Text is the
 roster label verbatim, `—` when absent. Sentence case, NOT uppercased: the label names real
 objects (`scrubber_ls`, `fab_main`) whose casing is data.
 
@@ -600,8 +603,14 @@ met and only the building is left; `supplied`/`plain` keep the amber dashed look
 when ready. Per VS-63 the red BORDER may be `--bad`; the red TEXT is `--bad-txt`.
 
 **VS-68** — On-map work markers (`.work-layer` / `.work-mark`, IX-103). Layer:
-`position:absolute; inset:0; pointer-events:none; z-index:6` (one above `.design-layer`, so a
-marker is never hidden by a ghost), `:empty{display:none}`. Marker: an accent-filled chip —
+`position:absolute; inset:0; pointer-events:none; z-index:5` — the SAME stacking level as
+`.design-layer`, **not** one above it. Rationale (RELATIONS): the layer is appended to `.stage`
+lazily, on the first frame that has a marker, i.e. always AFTER the static `#relations-view`
+child. `#relations-view` is `z-index:6` (VS-R*), so at 6 the work layer would tie with it and — being
+later in the DOM — paint work tags over the full-viewport RELATIONS web. At 5 it stays under
+RELATIONS. Sharing 5 with `.design-layer` costs nothing: a ghost is a 1.5px dashed outline over
+a 10%-alpha fill, so the two never occlude each other even on the one tile where a crew member
+stands on a pending designation. `:empty{display:none}`. Marker: an accent-filled chip —
 `background:var(--amber-1); color:var(--txt-onacc);` (the same on-accent pairing as the
 initials avatar, 8.0:1), `border-radius:2px; padding:2px 4px; letter-spacing:.10em;
 line-height:1;` mono, `font-size:` scaled to `side*0.24` (min 6px), and a 1px dark

@@ -712,16 +712,23 @@ namespace Perilune.Web
         /// the machine being serviced, the item being carried and where to, the build site and its
         /// material ledger, the tile being dug. The label always opens with a stable verb
         /// (Digging / Fetching / Hauling / Eating / Drinking / Crafting / Servicing / Building /
-        /// Walking / Holding / Idle); the client's on-map work marker classifies on that first word
-        /// (`taskTag` in console-model.js), so KEEP THE VERB SET AND THE CLIENT MAP IN STEP.
+        /// Heading / Walking / Holding / Idle); the client's on-map work marker classifies on that first word
+        /// (`taskTag` in console-model.js) and treats the en-route verb Heading as "has a job but
+        /// is not working yet" (`watchTask`), so KEEP THE VERB SET AND THE CLIENT MAP IN STEP.
         ///
         /// The old catch-all reported "walking" for every job-less crew member — 99.9% of all
         /// labels in the playtest — which read as "busy" when the truth was "nothing assigned".
         /// A job-less walker now says so out loud, and a parked crew member reads Idle/Holding.
         ///
-        /// The label names the JOB and its object, not the instantaneous pose: someone walking to
-        /// the scrubber they were assigned still reads "Servicing scrubber_ls", because that IS
-        /// what they are doing. Only a crew member with NO job reads Walking / Holding / Idle.
+        /// The label always names the JOB and its object. It does NOT claim the work has started:
+        /// a crew member still crossing the deck reads "Heading to service scrubber_ls", and only
+        /// switches to "Servicing scrubber_ls" once they have arrived. The playtest complaint was
+        /// "claimed to be fixing X while doing nothing visible", and an activity verb (plus its
+        /// on-map SVC tag) floating over a walking pawn is that same claim. `HasPath` is the ground
+        /// truth — the very predicate the job-less branch below already reads.
+        ///
+        /// Transit-shaped jobs (Fetching/Hauling/Eating) already say they are in transit, so they
+        /// keep their verb. A crew member with NO job reads Walking / Holding / Idle.
         ///
         /// PURE READ: device/item/build lookups only ever read; nothing here mutates the sim or
         /// touches the RNG. `task` is a pre-existing roster field, so no wire shape moves.
@@ -730,10 +737,14 @@ namespace Perilune.Web
         {
             var sb = _task;
             sb.Clear();
+            // Still walking to the job site ⇒ the work has NOT started; say so instead of
+            // asserting an activity the player cannot see (and that the map would tag).
+            bool enRoute = c.HasPath;
             switch (c.JobKind)
             {
                 case JobKind.Dig:
-                    sb.Append("Digging out "); AppendTile(sb, c.JobTarget, c.Pos.Z);
+                    sb.Append(enRoute ? "Heading to dig out " : "Digging out ");
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
                 case JobKind.HaulPickup:
                     sb.Append("Fetching ").Append(ItemLabel(c.ReservedItemId)).Append(" at ");
@@ -748,13 +759,16 @@ namespace Perilune.Web
                     if (c.Pos != c.JobTarget) { sb.Append(" - food at "); AppendTile(sb, c.JobTarget, c.Pos.Z); }
                     break;
                 case JobKind.Drink:
-                    sb.Append("Drinking at ").Append(DeviceLabel(c.JobTarget, "a water tank"));
+                    sb.Append(enRoute ? "Heading to drink at " : "Drinking at ")
+                      .Append(DeviceLabel(c.JobTarget, "a water tank"));
                     break;
                 case JobKind.Craft:
-                    sb.Append("Crafting at ").Append(DeviceLabel(c.JobTarget, "a workstation"));
+                    sb.Append(enRoute ? "Heading to work at " : "Crafting at ")
+                      .Append(DeviceLabel(c.JobTarget, "a workstation"));
                     break;
                 case JobKind.Maintain:
-                    sb.Append("Servicing ").Append(DeviceLabel(c.JobTarget, "a machine"));
+                    sb.Append(enRoute ? "Heading to service " : "Servicing ")
+                      .Append(DeviceLabel(c.JobTarget, "a machine"));
                     break;
                 case JobKind.HaulToBuild:
                     sb.Append("Hauling ").Append(ItemKindLabel(BuildSystem.Material))
@@ -763,7 +777,8 @@ namespace Perilune.Web
                     AppendBuildLedger(sb, c.JobTarget);
                     break;
                 case JobKind.Build:
-                    sb.Append("Building ").Append(BuildSiteLabel(c.JobTarget)).Append(' ');
+                    sb.Append(enRoute ? "Heading to build " : "Building ")
+                      .Append(BuildSiteLabel(c.JobTarget)).Append(' ');
                     AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
                 default:

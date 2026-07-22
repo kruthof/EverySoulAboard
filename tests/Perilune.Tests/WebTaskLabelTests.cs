@@ -115,12 +115,10 @@ namespace Perilune.Tests
             var c = Parked(host);
 
             var tank = SelfResolving(host, DeviceKind.WaterTank);
-            if (tank != null)
-            {
-                c.JobKind = JobKind.Drink;
-                c.JobTarget = tank.Pos;
-                Assert.AreEqual("Drinking at " + tank.Name, TaskOf(gs, c.Id));
-            }
+            Assert.IsNotNull(tank, "the reference ship has a named water tank the sim resolves by tile");
+            c.JobKind = JobKind.Drink;
+            c.JobTarget = tank.Pos;
+            Assert.AreEqual("Drinking at " + tank.Name, TaskOf(gs, c.Id));
 
             // A target with no device on it must not produce a hole in the sentence.
             var empty = new Int3(0, 0, 0);
@@ -240,7 +238,7 @@ namespace Perilune.Tests
             var known = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Digging", "Fetching", "Hauling", "Eating", "Drinking", "Crafting",
-                "Servicing", "Building", "Walking", "Holding", "Idle",
+                "Servicing", "Building", "Heading", "Walking", "Holding", "Idle",
             };
             var c = Parked(host);
             foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))
@@ -253,6 +251,67 @@ namespace Perilune.Tests
                 Assert.IsTrue(known.Contains(verb), kind + " produced unknown leading verb '" + verb +
                     "' — teach console-model.js `taskTag` about it, then add it here");
             }
+
+            // ...and the same sweep while the pawn is WALKING to the job: no en-route label may
+            // introduce a verb the client cannot classify either.
+            foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))
+            {
+                c.JobKind = kind;
+                c.JobTarget = new Int3(3, 3, c.Pos.Z);
+                WalkTo(c, new Int3(3, 3, c.Pos.Z));
+                string label = TaskOf(gs, c.Id);
+                string verb = label.Split(' ')[0];
+                Assert.IsTrue(known.Contains(verb), kind + " en route produced unknown leading verb '" +
+                    verb + "' — teach console-model.js `taskTag`/`watchTask` about it, then add it here");
+                c.ClearPath();
+            }
+        }
+
+        /// <summary>Give a citizen a live path so <see cref="Citizen.HasPath"/> is true — the host's
+        /// ground truth for "still walking, has not started the work".</summary>
+        private static void WalkTo(Citizen c, Int3 dest)
+        {
+            c.ClearPath();
+            c.Path.Add(c.Pos);
+            c.Path.Add(dest);
+            c.PathIndex = 0;
+        }
+
+        // ------------------------------------------------------------------ en route vs at work
+
+        /// <summary>
+        /// The playtest complaint was "claimed to be fixing X while doing nothing visible". A label
+        /// that says "Servicing scrubber_ls" over a pawn still crossing the deck — and the SVC tag
+        /// the client paints from that verb — is that same claim. An en-route crew member names the
+        /// job they are GOING to, and only claims the work once they have arrived.
+        /// </summary>
+        [Test]
+        public void EnRoute_Names_The_Job_Without_Claiming_The_Work_Has_Started()
+        {
+            var (gs, host) = Boot();
+            var device = SelfResolving(host, DeviceKind.Scrubber);
+            Assert.IsNotNull(device);
+            var c = Parked(host);
+            c.JobKind = JobKind.Maintain;
+            c.JobTarget = device.Pos;
+
+            WalkTo(c, device.Pos);
+            Assert.AreEqual("Heading to service " + device.Name, TaskOf(gs, c.Id),
+                "walking to the machine is not servicing it");
+
+            c.ClearPath();
+            Assert.AreEqual("Servicing " + device.Name, TaskOf(gs, c.Id),
+                "arrived: now the activity verb is true");
+
+            // The same rule on the other place-bound jobs.
+            WalkTo(c, new Int3(9, 4, c.Pos.Z));
+            c.JobKind = JobKind.Dig;
+            c.JobTarget = new Int3(9, 4, c.Pos.Z);
+            Assert.AreEqual("Heading to dig out 9,4", TaskOf(gs, c.Id));
+
+            c.JobKind = JobKind.Craft;
+            c.JobTarget = new Int3(0, 0, 0);
+            Assert.AreEqual("Heading to work at a workstation", TaskOf(gs, c.Id));
         }
 
         [Test]

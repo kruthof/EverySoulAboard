@@ -97,9 +97,12 @@ namespace Perilune.Tests.Llm
         // ----------------------------------------------------------------------------
 
         [Test]
-        public void Render_TurnN_IsExactStringPrefixOf_TurnNPlus1()
+        public void WithNoShipState_Render_TurnN_IsExactStringPrefixOf_TurnNPlus1()
         {
             ConversationRequest req = MakeRequest(); // fixed for the whole conversation
+            Assert.That(req.ShipState, Is.Null.Or.Empty,
+                "PRECONDITION: whole-render prefix only holds while the ship block is absent " +
+                "(the offline/ship-less path) — see the moving-ship-state test below for production");
 
             var t0 = new List<TranscriptLine>();
             string r0 = PromptBuilder.Build(req, t0, "hello").Render();
@@ -114,6 +117,74 @@ namespace Perilune.Tests.Llm
             Assert.That(r1.Length, Is.GreaterThan(r0.Length));
             Assert.That(r2.StartsWith(r1, StringComparison.Ordinal), Is.True, "turn 1 render is a prefix of turn 2 render");
             Assert.That(r2.Length, Is.GreaterThan(r1.Length));
+        }
+
+        /// <summary>
+        /// The PRODUCTION shape: <c>ConversationService.PrepareTurn</c> rebuilds the request every
+        /// turn, so <see cref="ConversationRequest.ShipState"/> genuinely MOVES mid-conversation.
+        /// The whole-render prefix therefore does not hold (the ship block sits where the next turn
+        /// has more history) — and no placement could make it hold. What must hold, and what the
+        /// adapters actually bill on, is BLOCK-level: every block up to and including the transcript
+        /// is byte-identical, so both cache breakpoints stay at an unmoved offset. Asserted here
+        /// against a turn-varying ship state, because the earlier prefix test cannot see any of it.
+        /// </summary>
+        [Test]
+        public void WithMovingShipState_EveryBlockUpToTheTranscript_StaysByteIdentical_AndBreakpointsDoNotMove()
+        {
+            ConversationRequest req = MakeRequest();
+            req.ShipState = "Air: worst compartment is the galley at 900 ppm CO2 (normal).\nHull: sealed.";
+
+            var t0 = new List<TranscriptLine>();
+            PromptLayout l0 = PromptBuilder.Build(req, t0, "how are things?");
+
+            // Turn 1: the exchange is history AND the ship has changed under the crew.
+            req.ShipState = "Air: worst compartment is the galley at 2400 ppm CO2 (bad).\nHull: the hold is open to vacuum.";
+            var t1 = new List<TranscriptLine>(t0) { Player("how are things?"), Citizen("Air's turning.") };
+            PromptLayout l1 = PromptBuilder.Build(req, t1, "what changed?");
+
+            int ship0 = IndexOfBlock(l0, "ship");
+            int ship1 = IndexOfBlock(l1, "ship");
+            Assert.That(ship0, Is.GreaterThanOrEqualTo(0), "the ship block is present at turn 0");
+            Assert.That(ship1, Is.GreaterThan(ship0), "the transcript grew ahead of the ship block");
+
+            // Every block before the ship block is byte-identical, id for id, in order.
+            for (int i = 0; i < ship0; i++)
+            {
+                Assert.That(l1.Blocks[i].Id, Is.EqualTo(l0.Blocks[i].Id), "block " + i + " id is unmoved");
+                Assert.That(l1.Blocks[i].Text, Is.EqualTo(l0.Blocks[i].Text), "block " + i + " bytes are unmoved");
+            }
+
+            // ...so the two cache breakpoints sit at the same byte offset in the system stream.
+            Assert.That(SystemStreamUpToLastBreakpoint(l1), Is.EqualTo(SystemStreamUpToLastBreakpoint(l0)),
+                "the cached system prefix is byte-identical though the ship state moved");
+
+            // Moving ship state reaches the ship block and nothing else.
+            Assert.That(l1.Blocks[ship1].Text, Is.Not.EqualTo(l0.Blocks[ship0].Text),
+                "the new ship facts really did land in the block");
+            Assert.That(l1.Blocks[ship1].Text, Does.Contain("open to vacuum"));
+        }
+
+        private static int IndexOfBlock(PromptLayout layout, string id)
+        {
+            for (int i = 0; i < layout.Blocks.Count; i++)
+                if (layout.Blocks[i].Id == id) return i;
+            return -1;
+        }
+
+        /// <summary>The bytes an Anthropic-style adapter caches: the system blocks concatenated up
+        /// to and including the last cache breakpoint (AnthropicBackend writes exactly these into
+        /// the `system` array with `cache_control` on the breakpoint blocks).</summary>
+        private static string SystemStreamUpToLastBreakpoint(PromptLayout layout)
+        {
+            var sb = new System.Text.StringBuilder();
+            var seen = new System.Text.StringBuilder();
+            foreach (PromptBlock b in layout.Blocks)
+            {
+                if (b.Role != PromptRole.System) continue;
+                seen.Append(b.Text);
+                if (b.CacheBreakpoint) { sb.Clear(); sb.Append(seen); }
+            }
+            return sb.ToString();
         }
 
         // ----------------------------------------------------------------------------
@@ -153,7 +224,11 @@ namespace Perilune.Tests.Llm
             Assert.That(b[6].Id, Is.EqualTo("user_turn"));
             Assert.That(b[6].Text, Does.Contain("any secrets?"), "the latest utterance is the final block, after the history");
 
-            // The turn-one render is a byte-exact prefix of the turn-two render (cache stability).
+            // The turn-one render is a byte-exact prefix of the turn-two render. NOTE the scope:
+            // this request carries no ship state, which is the only case in which the WHOLE render
+            // is a prefix — see WithMovingShipState_... for the block-level invariant that holds in
+            // production.
+            Assert.That(req.ShipState, Is.Null.Or.Empty, "PRECONDITION for the whole-render prefix");
             Assert.That(layout.Render().StartsWith(turn1, StringComparison.Ordinal), Is.True,
                 "turn-one render is an exact string prefix of the second turn's render");
         }
@@ -198,7 +273,19 @@ namespace Perilune.Tests.Llm
             Assert.That(block, Does.Contain("Say what you would need"),
                 "the rule offers the honest alternative, not just a prohibition");
             Assert.That(block, Does.Contain("[SHIP]"), "the rules point at the ship-state block");
-            Assert.That(block, Does.Contain("never invent a fault"), "invented emergencies are banned");
+            Assert.That(block, Does.Contain("never invent a reading or an emergency"), "invented emergencies are banned");
+
+            // ...but the block is a PARTIAL report, and the rules must not overclaim. Telling the
+            // model the block is "the only true report of the ship's condition" made it DENY real
+            // faults the block cannot see (an unpowered scrubber, a breached compartment) — the
+            // original playtest defect re-shaped, not removed.
+            Assert.That(block, Does.Contain("TRUE but PARTIAL"), "the block is not sold as complete");
+            Assert.That(block, Does.Not.Contain("only true report"),
+                "the completeness claim must stay gone — it licensed denying real faults");
+            Assert.That(block, Does.Contain("an omission is NOT proof that all is well"),
+                "silence in the block must never be read as an all-clear");
+            Assert.That(block, Does.Contain("would have to look"),
+                "the rule offers the honest answer for anything the block does not cover");
 
             // Everything the earlier rounds established survives byte-for-byte in spirit.
             Assert.That(block, Does.Contain("ALSO call propose_effect"));

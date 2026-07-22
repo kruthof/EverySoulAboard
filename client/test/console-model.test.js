@@ -399,11 +399,21 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
   assert.equal(taskTag(null), null);
   assert.equal(taskTag(42), null);
   assert.equal(taskTag('  servicing  scrubber_ls '), 'SVC', 'tolerant of stray whitespace/casing');
+
+  // En route: the crew member HAS a job but is still walking to it, so no map tag floats over the
+  // pawn. "Claimed to be fixing X while doing nothing visible" is the defect these markers answer.
+  assert.equal(taskTag('Heading to service scrubber_ls'), null);
+  assert.equal(taskTag('Heading to dig out 12,5'), null);
+  assert.equal(taskTag('Heading to build wall 3,4'), null);
 });
 
 test('watchTask: the CREW WATCH cell shows the label and flags real work', () => {
   assert.deepEqual(watchTask({ task: 'Servicing scrubber_ls' }), { text: 'Servicing scrubber_ls', working: true });
   assert.deepEqual(watchTask({ task: 'Idle' }), { text: 'Idle', working: false });
+  // En route gets no MAP tag, but CREW WATCH still reads it as assigned work: they are walking
+  // to a real job, which is not the same as standing around.
+  assert.deepEqual(watchTask({ task: 'Heading to service scrubber_ls' }),
+    { text: 'Heading to service scrubber_ls', working: true });
   assert.deepEqual(watchTask({ task: '   ' }), { text: '—', working: false });
   assert.deepEqual(watchTask({}), { text: '—', working: false });
   assert.deepEqual(watchTask(null), { text: '—', working: false });
@@ -414,6 +424,7 @@ test('workMarkers: only working crew, only the shown deck, joined from the roste
     { cid: 1, deck: 0, x: 3, y: 4, task: 'Servicing scrubber_ls' },
     { cid: 2, deck: 0, x: 5, y: 5, task: 'Idle' },                    // no job → no marker
     { cid: 3, deck: 0, x: 6, y: 1, task: 'Walking to 7,11 (no task)' }, // walking is not working
+    { cid: 6, deck: 0, x: 7, y: 7, task: 'Heading to service pump_2' }, // en route: no tag yet
     { cid: 4, deck: 1, x: 2, y: 2, task: 'Digging out 2,2' },         // other deck
     { cid: 5, deck: 0, x: 9, y: 9, task: 'Hauling regolith to 9,2' },
   ];

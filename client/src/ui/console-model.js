@@ -337,18 +337,30 @@ const TASK_TAGS = {
   drinking: 'WATER',
 };
 
-/** The work tag for a roster task label, or null when the crew member has no job. PURE. */
+/** The host's en-route verb ("Heading to service scrubber_ls"): a crew member who HAS a job but is
+ *  still walking to it. Deliberately absent from TASK_TAGS — a tag floating over a walking pawn is
+ *  the very "claimed to be fixing X while doing nothing visible" complaint the markers exist to
+ *  answer — while CREW WATCH still reads it as assigned work, because they are not idle. */
+const EN_ROUTE_VERB = 'heading';
+
+/** The first word of a roster task label, lowercased ('' for a missing/garbage label). PURE. */
+function taskVerb(task) {
+  return typeof task === 'string' ? task.trim().split(/\s+/)[0].toLowerCase() : '';
+}
+
+/** The work tag for a roster task label, or null when the crew member is not (yet) working on
+ *  something at a place: idle, merely walking, or still en route to the job. PURE. */
 export function taskTag(task) {
-  if (typeof task !== 'string') return null;
-  const first = task.trim().split(/\s+/)[0].toLowerCase();
+  const first = taskVerb(task);
   return Object.prototype.hasOwnProperty.call(TASK_TAGS, first) ? TASK_TAGS[first] : null;
 }
 
 /** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
- *  real work (so the row can dim the doing-nothing case instead of implying activity). PURE. */
+ *  real work (so the row can dim the doing-nothing case instead of implying activity). A crew
+ *  member en route to a job counts — they are assigned, just not there yet. PURE. */
 export function watchTask(entry) {
   const task = entry && typeof entry.task === 'string' ? entry.task.trim() : '';
-  return { text: task || '—', working: taskTag(task) != null };
+  return { text: task || '—', working: taskTag(task) != null || taskVerb(task) === EN_ROUTE_VERB };
 }
 
 /** Crew on `deck` who are actually working, as map markers joined from the roster's own

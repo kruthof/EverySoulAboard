@@ -458,8 +458,12 @@ Left→right: `MSV PERILUNE` (hardcoded client chrome, FACTS-approved) · deck c
   Source: the `roster` channel's existing `deck`/`x`/`y`/`task` (**no wire change**), joined by
   the pure `workMarkers(crew, deck)`. Tags come from `taskTag`, which classifies on the host
   label's leading verb: `DIG` / `HAUL` / `BUILD` / `SVC` / `CRAFT` / `MEAL` / `WATER`. Crew who
-  are idle, holding position, or merely walking get **no marker at all** — the absence is the
-  information, and this is the rule that keeps standing around from looking like work. The full
+  are idle, holding position, merely walking, or **still en route to a job** (leading verb
+  `Heading`) get **no marker at all** — the absence is the information, and this is the rule
+  that keeps standing around, or walking, from looking like work. A tag floating over a pawn
+  who is only crossing the deck is the playtest's "claimed to be fixing X while doing nothing
+  visible" complaint in miniature, which is why `Heading` is deliberately absent from the tag
+  map even though `watchTask` still counts it as assigned work (VS-66). The full
   label is the marker's `title`. Known cosmetic limitation: the marker sits on the crew
   member's sim tile while a walking pawn's body interpolates between tiles, so a hauler's tag
   runs a fraction of a tile behind them.
@@ -468,10 +472,15 @@ Left→right: `MSV PERILUNE` (hardcoded client chrome, FACTS-approved) · deck c
   `Hauling regolith to 9,2`, `Hauling regolith to wall 3,4 (0/2)`, `Digging out 12,5`,
   `Crafting at fab_main`. The old catch-all reported `walking` for every job-less crew member
   — 99.9% of all labels in the playtest — so the three job-less states are now told apart and
-  told honestly: `Walking to 7,11 (no task)`, `Holding position`, `Idle`. Every label opens
-  with one of a fixed set of verbs (Digging / Fetching / Hauling / Eating / Drinking /
-  Crafting / Servicing / Building / Walking / Holding / Idle); that vocabulary is the contract
-  between the host and `taskTag`, pinned on both sides (`WebTaskLabelTests`, `console-model.test.js`).
+  told honestly: `Walking to 7,11 (no task)`, `Holding position`, `Idle`. The label also does not
+  claim the work has STARTED: a crew member still walking to a place-bound job (dig / build /
+  craft / service / drink) reads `Heading to service scrubber_ls` and only becomes
+  `Servicing scrubber_ls` on arrival (`Citizen.HasPath` is the host-side ground truth).
+  Transit-shaped jobs (`Fetching` / `Hauling` / `Eating`) already say they are in transit and keep
+  their verb. Every label opens with one of a fixed set of verbs (Digging / Fetching / Hauling /
+  Eating / Drinking / Crafting / Servicing / Building / Heading / Walking / Holding / Idle); that
+  vocabulary is the contract between the host and `taskTag`/`watchTask`, pinned on both sides
+  (`WebTaskLabelTests`, `console-model.test.js`).
   The label renders verbatim (IX-50) in the READOUT, the CREW tab, **and now the CREW WATCH
   row** (VS-66) — the always-visible answer to "what is this person doing".
 
