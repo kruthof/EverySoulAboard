@@ -1,4 +1,5 @@
-{"type":"moss","ev":"sys","tid":"life_support","devices":[["scrubber_ls","Scrubber",88,1,100,0,12,7,""],["scrubber_aft","Scrubber",41,1,100,0,22,9,"WORN — MAINTENANCE DUE"],["vent_ls","AirVent",96,1,60,0,13,7,""],["vent_gal","AirVent",12,0,0,0,31,4,"FAILED"]]}
-{"type":"moss","ev":"sys","tid":"nav_sensors","devices":[]}
+{"type":"moss","ev":"sys","tid":"life_support","derivation":"STATE is banded on the worst room's CO2 in ppm, not on scrubber capacity: scrubbers are room-local and FlowAcrossDoor has no diffusion term, so nameplate capacity reads healthy while one room suffocates. LOAD is scrubber capacity against crew CO2 production.","devices":[["scrubber_ls","Scrubber",88,1,100,0,12,7,""],["scrubber_aft","Scrubber",41,1,100,0,22,9,"WORN — MAINTENANCE DUE"],["vent_ls","AirVent",96,1,60,0,13,7,""],["vent_gal","AirVent",12,0,0,0,31,4,"FAILED"]]}
+{"type":"moss","ev":"sys","tid":"nav_sensors","derivation":"OFFLINE is derived from the device census: the sensor pass never runs because no Telescope is placed anywhere on the ship. LOAD is -1 because there is nothing to load. Place a telescope and this row comes alive on its own.","devices":[]}
 {"type":"moss","ev":"exec","tid":"@console","ok":true,"lines":[[0,"close door_storage"],[1,"door_storage: CLOSED"]]}
 {"type":"moss","ev":"exec","tid":"@console","ok":false,"lines":[[2,"ship.power is read-only"]]}
+{"type":"moss","ev":"sys","tid":"thermal","devices":[["rad_a","Radiator",77,1,100,0,3,9,""]]}

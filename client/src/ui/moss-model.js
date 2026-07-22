@@ -52,9 +52,11 @@ export const SYSTEM_IDS = [
   'thermal', 'fabrication', 'hull_integrity', 'nav_sensors',
 ];
 
-// The IX-M22 derivation notes. §1.2 is frozen and carries no derivation field, so this prose lives
-// client-side — which makes it a promise the `moss-systems` lane must keep true. Each entry states
-// how LOAD and STATE are computed AND what the proxy cannot see (DA-M3).
+// The IX-M22 derivation notes — the PRE-LOAD FALLBACK ONLY. §1.2 now ships a `derivation` string
+// on the `ev:sys` reply (the host owns the arithmetic, so the host owns the sentence describing
+// it), and `detailView` prefers it the moment the reply lands. This table exists for the one frame
+// between ENTER and the reply, so the screen is never blank about how a number was made. Each entry
+// states how LOAD and STATE are computed AND what the proxy cannot see (DA-M3).
 export const DERIVATIONS = {
   reactor: [
     'LOAD is total wanted draw over total generation across the power network.',
@@ -241,7 +243,9 @@ export function reduceMossEvent(model, msg) {
     if (!m.detail || m.detail.tid !== str(msg.tid)) return m;
     const devices = [];
     if (Array.isArray(msg.devices)) for (const d of msg.devices) { const o = deviceObj(d); if (o) devices.push(o); }
-    return { ...m, detail: { tid: m.detail.tid, devices, loading: false } };
+    // §1.2's `derivation` (IX-M22): the host's own account of how this row's LOAD and STATE were
+    // computed. An older host that sends none leaves this '' and the client falls back.
+    return { ...m, detail: { tid: m.detail.tid, devices, loading: false, derivation: str(msg.derivation).trim() } };
   }
   if (msg.ev === 'exec') {
     let next = m;
@@ -776,6 +780,11 @@ export function ledgerView(model) {
  * The DETAIL view-model. `loading` is honest (IX-M4): until the `moss ev:sys` reply lands the
  * device table is EMPTY and the screen says so. `notes` is IX-M22's derivation prose plus §5.1's
  * fault caveat — that text is part of the feature, not a comment.
+ *
+ * The derivation comes from the WIRE (§1.2's `derivation`) whenever the reply has landed: the host
+ * does the arithmetic, so the host writes the sentence about it, and no client constant can drift
+ * out of step with it. The DERIVATIONS table is the fallback for the frame before the reply — and
+ * for an older host that sends nothing.
  * @param {object} model
  * @returns {{title:string, devices:object[], notes:string[], loading:boolean}}
  */
@@ -793,8 +802,8 @@ export function detailView(model) {
     place: d.deck >= 0 ? 'DECK ' + d.deck + ' · ' + d.x + ',' + d.y : '—',
     note: d.note,
   }));
-  const derivation = Object.prototype.hasOwnProperty.call(DERIVATIONS, id)
-    ? DERIVATIONS[id].slice()
+  const derivation = m.detail.derivation ? [m.detail.derivation]
+    : Object.prototype.hasOwnProperty.call(DERIVATIONS, id) ? DERIVATIONS[id].slice()
     : ['DERIVATION UNDOCUMENTED — this row\'s numbers are not explained here.'];
   return {
     title: row ? row.label : upper(str(id).split('_').join(' ')),

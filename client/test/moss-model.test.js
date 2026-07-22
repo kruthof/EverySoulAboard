@@ -107,9 +107,40 @@ test('faultCell: composes DAY n · TEXT, and -1 is an em dash', () => {
   assert.equal(faultCell(190, 'SCRAM DRILL'), 'DAY 190 · SCRAM DRILL');
   assert.equal(faultCell(-1, ''), '—');
   assert.equal(faultCell(undefined, ''), '—');
-  assert.equal(faultCell(0, 'NO SENSOR HARDWARE'), 'DAY 0 · NO SENSOR HARDWARE',
+  assert.equal(faultCell(0, 'LAUNCH ABORT'), 'DAY 0 · LAUNCH ABORT',
     'day 0 is a real day, not a missing one');
   assert.equal(faultCell(190, ''), 'DAY 190', 'a fault with no summary still shows its day');
+});
+
+test('no row ever renders a DAY prefix without a real day (DA-M1)', () => {
+  // The generalisable guard behind the nav_sensors ruling: a timestamp on a diagnostic screen may
+  // come from a day and from nothing else. An absent instrument is not a fault; STATE says OFFLINE
+  // and LAST FAULT says nothing at all.
+  for (const msg of SYSTEMS) {
+    for (const row of msg.rows) {
+      const cell = faultCell(row[4], row[5]);
+      assert.equal(cell.indexOf('DAY ') === 0, row[4] >= 0, msg.rows.indexOf(row) + ' ' + row[0]);
+      if (row[4] < 0) {
+        assert.equal(cell, '—', row[0]);
+        assert.equal(row[5], '', row[0] + ': §1.1 — faultText is "" when faultDay is -1');
+      }
+    }
+  }
+  for (const view of SYSTEMS.map((s) => ledgerView(reduceSystems(openMoss(), s)))) {
+    for (const r of view.rows) {
+      if (r.fault !== '—') assert.equal(r.fault.indexOf('DAY '), 0, r.id);
+    }
+  }
+  // across the sentinel boundary, directly
+  for (const d of [-1000, -2, -1]) assert.equal(faultCell(d, 'ANYTHING AT ALL'), '—', String(d));
+  for (const d of [0, 1, 213]) assert.equal(faultCell(d, 'X'), 'DAY ' + d + ' · X');
+  // and nav_sensors specifically: the reason lives in the advisory, where it costs no timestamp
+  const nav = ledgerView(reduceSystems(openMoss(), SYSTEMS[0])).rows[7];
+  assert.equal(nav.id, 'nav_sensors');
+  assert.equal(nav.fault, '—');
+  assert.equal(nav.stateText, 'OFFLINE');
+  assert.ok(nav.advisory.toLowerCase().indexOf('no telescope') >= 0,
+    'the reason is stated, just not as a dated fault');
 });
 
 test('uptimeText: unbounded hours, zero-padded minutes/seconds, no locale', () => {
@@ -549,17 +580,34 @@ test('reduceMossEvent: `sys` fills the OPEN detail only, and clears LOADING', ()
   assert.equal(reduceMossEvent(filled, MOSS[1]), filled);
 });
 
-test('IX-M22: DETAIL carries the derivation prose and the fault caveat', () => {
-  const m = reduceMossEvent(submitCommand(linked(), 'open life_support').model, MOSS[0]);
+test('IX-M22: the DERIVATION comes from the WIRE once the reply lands', () => {
+  const pending = submitCommand(linked(), 'open life_support').model;
+  const m = reduceMossEvent(pending, MOSS[0]);
   const notes = detailView(m).notes;
-  assert.deepEqual(notes.slice(0, DERIVATIONS.life_support.length), DERIVATIONS.life_support);
+  assert.equal(notes[0], MOSS[0].derivation, 'the host\'s own account of its own arithmetic');
   assert.equal(notes[notes.length - 1], FAULT_CAVEAT);
-  assert.ok(notes[0].indexOf('WORST ROOM') > 0, 'DA-M4 is stated in plain words');
-  // every shipped row has one
+  assert.notEqual(notes[0], DERIVATIONS.life_support[0], 'the client constant did NOT win');
+  assert.equal(notes.length, 2, 'one wire sentence + the caveat');
+});
+
+test('IX-M22: the client table is the PRE-LOAD fallback, and only that', () => {
+  // the frame between ENTER and the reply: honest about the arithmetic, honest about loading
+  const pending = submitCommand(linked(), 'open life_support').model;
+  assert.equal(detailView(pending).loading, true);
+  assert.deepEqual(detailView(pending).notes.slice(0, 2), DERIVATIONS.life_support);
+  assert.equal(detailView(pending).notes[detailView(pending).notes.length - 1], FAULT_CAVEAT);
+  // an older host that sends no `derivation` also falls back rather than showing nothing
+  const older = reduceMossEvent(pending, { ev: 'sys', tid: 'life_support', devices: [] });
+  assert.equal(older.detail.loading, false);
+  assert.deepEqual(detailView(older).notes.slice(0, 2), DERIVATIONS.life_support);
+  // an empty/whitespace derivation is not a derivation
+  const blank = reduceMossEvent(pending, { ev: 'sys', tid: 'life_support', derivation: '   ', devices: [] });
+  assert.deepEqual(detailView(blank).notes.slice(0, 2), DERIVATIONS.life_support);
+  // every shipped row has a fallback
   for (const id of SYSTEM_IDS) assert.ok(DERIVATIONS[id] && DERIVATIONS[id].length, id);
-  // a row we have no note for says so instead of pretending
+  // and a row we have neither for says so instead of pretending
   const unknown = reduceMossEvent(
-    { ...submitCommand(linked(), 'open reactor').model, detail: { tid: 'mystery', devices: [], loading: false } },
+    { ...pending, detail: { tid: 'mystery', devices: [], loading: true, derivation: '' } },
     { ev: 'sys', tid: 'mystery', devices: [] });
   assert.ok(detailView(unknown).notes[0].indexOf('DERIVATION UNDOCUMENTED') === 0);
 });
@@ -669,7 +717,7 @@ test('ledgerView: every cell is formatted, and the -1 row is honest', () => {
   assert.equal(nav.loadText, '--');
   assert.equal(nav.stateText, 'OFFLINE');
   assert.equal(nav.warn, false, 'OFFLINE carries no ⚠ (VS-M8)');
-  assert.equal(nav.fault, 'DAY 0 · NO SENSOR HARDWARE');
+  assert.equal(nav.fault, '—', 'an absent instrument is not a fault and has no day');
   const ls = view.rows[1];
   assert.equal(ls.stateText, 'DEGRADED');
   assert.equal(ls.warn, true);
