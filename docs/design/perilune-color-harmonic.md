@@ -102,23 +102,43 @@ surface in the frame. It manufactures roughly `0.28 · N` of blue-minus-red on a
 whole "cool ship" reading purchased at a ~49-chroma swing against the warm pools, and it is
 why the corridor sits at B−R +37.1 and why `style-lock hue-d` reads 0.36.
 
-Proposed: **`AMBIENT_LIT = [0.84, 0.895, 0.95]`**, which preserves the luma recess exactly —
+Shipped: **`AMBIENT_LIT = [0.92, 0.877, 0.83]`** (warm — see H-5's ruling that a lit room is
+never cold), which preserves the luma recess exactly —
 
 ```
-0.2126·0.84 + 0.7152·0.895 + 0.0722·0.95 = 0.883    (unchanged)
-neutral chroma: 0.11·N ≈ 13   (was 0.28·N ≈ 32)
+0.2126·0.92 + 0.7152·0.877 + 0.0722·0.83 = 0.8835   (unchanged)
+neutral chroma: multiply B−R = (0.83−0.92)·N ≈ −0.09·N  →  WARM  (was +0.28·N cold)
 ```
 
-— so `AMBIENT_LUMA_FLOOR` (`lightfield.js:103`, test-enforced) is untouched, the deck's p50
-does not move, and the *relative* warmth of `POOL_CORE` roughly doubles without touching
-`POOL_CORE` itself. The ship stops being a blue gel and becomes a neutral ship with warm lamps.
+— so `AMBIENT_LUMA_FLOOR` (`lightfield.js`, test-enforced) is untouched and the deck's p50 does
+not move; only the hue turns, from a cold +0.28·N cast to a warm −0.09·N one. The ship stops
+being a blue gel. *(An earlier draft proposed a merely-neutral `[0.84,0.895,0.95]`; the warm
+value shipped instead, per H-5.)* Measured effect on the deck: whole-stage mean B−R **+17.0 →
+−1.3**, cool pixels **66% → 7%**, and the wall band — the specific complaint — **+22.3 → −3.1**.
 
-**H-5 — `LIGHT[1]` is retuned only AFTER H-4, never before.**
+**H-5 — `LIGHT[1]` is WARM-DARK: an unlit room is a lamp-off room, not a cold vacuum.**
 
-`palette.js:62` `LIGHT[1] = 'rgba(26,48,114,.58)'` is currently the only chroma on an unlit
-deck. Neutralising it first leaves grey on grey. The replacement, when it lands, is
-**`rgba(22,54,66,.58)`** — solved to hold the multiply luma at 0.529 so the value ladder does
-not move, while cutting the neutral term from ~23 to ~11.5 (multiply path).
+*Decided 2026-07-22 (Garvin): "the walls are cold and the ship does not need to be cold."* The
+Dead overlay was the ship's largest remaining cold mass once the lit floors warmed (H-4), and
+it is now **`rgba(58,42,30,.58)`** — a warm-dark darkening (per-channel multiply 0.55 / 0.52 /
+0.49, luma 0.52, so the value ladder is unmoved and only the hue turns). A neutral source now
+exits a Dead room at chroma ~16 *warm*, versus the old +51 *cold*.
+
+This **reverses a prior design contract** — `lighting.test.js` used to assert Dead "must go
+BLUE… the light is cold." That test is rewritten to assert warm (red survives above blue). The
+ruling that replaces it: **cold is reserved for the hull and the vacuum; a room is never cold,
+only lit or unlit.** The three-state warmth gradient is now lamp (warmest, `POOL_CORE`) → room
+(warm, `AMBIENT_LIT`) → unlit room (warm-dim, `LIGHT[1]`), with true cold only outside the hull.
+
+Because H-5 landed *with* H-4 rather than after it, `POOL_CORE` was pushed a step warmer
+(`[1.00,0.99,0.80]`, was `[_,_,0.85]`) so a lamp still reads as a distinct warm island over the
+now-warm ambient — a gradient needs its peak to clear its floor.
+
+**H-5a — wall warmth comes from the light layer, NOT the material grade.** The `struct` `tint`
+in `matte.js` is applied *after* the `chromaMax` clamp, so a warm tint there re-inflates a
+just-clamped pixel back over the ceiling and lets a wall out-colour a crew member — defeating
+H-3. `struct.tint` therefore stays near-neutral (`[1.0,0.99,0.99]`); all wall warmth is carried
+by `AMBIENT_LIT` + `LIGHT[1]`, which apply uniformly and cannot break the ceiling.
 
 **H-6 — Two documented facts about `LIGHT[1]` are wrong and must be corrected in place.**
 

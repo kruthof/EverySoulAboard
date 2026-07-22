@@ -213,9 +213,11 @@ test('WALL OCCLUSION: a wall casts a real shadow — floor behind it stays at am
   const openSame = tileLuma(mesh, 6, 2);
   assert.ok(openSame > shadowed + 0.2 * POOL_DEPTH,
     `the wall must darken what is behind it (behind ${shadowed.toFixed(3)} vs open ${openSame.toFixed(3)})`);
-  // …and it must COOL it too. Under a multiply-only light pass most of the pool's contrast is
-  // carried in chroma rather than luma (lightfield.js header), so "in shadow" reads as "back to
-  // the ship's cold ambient" as much as it reads as "darker".
+  // …and it must cool it RELATIVE to the pool. Under a multiply-only light pass most of the pool's
+  // contrast is carried in chroma rather than luma (lightfield.js header), so "in shadow" reads as
+  // "back to the room's plain warm ambient" (not cold — the ship is never cold indoors, design
+  // decision 2026-07-22) as much as it reads as "darker": the lamp is the warm PEAK, the shadow is
+  // the merely-warm room.
   assert.ok(tileWarmth(mesh, 6, 2) > tileWarmth(mesh, 6, 1) + 0.02,
     `the lit tile must be WARMER than the shadowed one (${tileWarmth(mesh, 6, 2).toFixed(3)} vs ` +
     `${tileWarmth(mesh, 6, 1).toFixed(3)})`);
@@ -289,22 +291,23 @@ test('AMBIENT FLOOR: the light pass may recess a powered room, not re-dim the wh
     `the pool must lift a powered tile by a real amount, got ${POOL_DEPTH.toFixed(4)}`);
 });
 
-test('POOL_CORE is a WARM core, not the identity — the field crosses over from cool to warm', () => {
+test('POOL_CORE is the WARM peak of a warm gradient — the lamp is warmer than the warm room', () => {
   // A behavioural probe, because the constant alone can be neutralised without any other test
-  // noticing: with POOL_CORE = [1,1,1] the pool still "brightens", the ambient is still cool, and
-  // the ladder still holds — the ship just loses the warm/cool crossover that is the entire
-  // "a cold ship with warm rooms in it" contract.
+  // noticing: with POOL_CORE = [1,1,1] the pool still "brightens" and the ladder still holds — but
+  // the ship loses the warmth GRADIENT that replaced the old cold-ship contract (design decision
+  // 2026-07-22, "the ship does not need to be cold"). The room is warm; the lamp is warmer; the
+  // dead room (palette.js LIGHT[1]) is warm-DIM. Cold is reserved for hull/vacuum, never a room.
   const f = mapFrame(['#' + '.'.repeat(14) + '#', '#*' + '.'.repeat(13) + '#', '#' + '.'.repeat(14) + '#']);
   const mesh = meshFor(f, plane(f, () => true));
   const atLamp = tileWarmth(mesh, 1, 1);
   const far = tileWarmth(mesh, 14, 1);
-  assert.ok(atLamp > 1.02, `the pool core must render WARM (r/b ${atLamp.toFixed(3)} must exceed 1)`);
-  assert.ok(far < 0.98, `the un-pooled surround must render COOL (r/b ${far.toFixed(3)} must be under 1)`);
-  assert.ok(atLamp / far > 1.3, `warm-to-cool swing ${(atLamp / far).toFixed(2)}x is too small to read`);
-  // …and the same statement on the constants, so the crossover cannot be faked by the ambient alone.
+  assert.ok(atLamp > 1.05, `the pool core must render WARM (r/b ${atLamp.toFixed(3)} must exceed 1)`);
+  assert.ok(far > 1.02, `the surround is ALSO warm now — a lit room is never cold (r/b ${far.toFixed(3)})`);
+  assert.ok(atLamp > far + 0.05, `the lamp must be the WARMEST point (${atLamp.toFixed(3)} vs room ${far.toFixed(3)})`);
+  // …and the same statement on the constants, so the gradient cannot be faked by the ambient alone.
   assert.ok(POOL_CORE[2] < POOL_CORE[0] - 0.05,
     'POOL_CORE must pull BLUE down against red — a neutral [1,1,1] core is not a warm pool');
-  assert.ok(AMBIENT_LIT[2] > AMBIENT_LIT[0], 'the surround must be COOL (blue survives red)');
+  assert.ok(AMBIENT_LIT[0] > AMBIENT_LIT[2], 'the surround is WARM too now (red survives blue) — no cold rooms');
 });
 
 test('PENUMBRA: a shadow edge is soft — corners take the intermediate visibilities', () => {

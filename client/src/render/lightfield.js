@@ -81,18 +81,27 @@ export const MAX_EMITTERS = 24;
 
 /**
  * The multiply at the heart of a pool: full red, near-full green, blue pulled down — WARM, at a
- * luma cost of 1.4%. Blue is the cheapest channel to spend (luma weight 0.0722), which is why the
- * warmth is spent there and nowhere else.
+ * luma cost of ~2%. Blue is the cheapest channel to spend (luma weight 0.0722), which is why the
+ * warmth is spent there and nowhere else. Pushed a step warmer than its first value ([_,_,0.85])
+ * so the pool still reads as a distinct warm ISLAND now that AMBIENT_LIT is itself warm: the
+ * design is a warmth GRADIENT (lamp warmest → room warm → dead room warm-dim), not a cold ship
+ * with warm spots. See the AMBIENT_LIT note below and palette.js LIGHT[1].
  */
-export const POOL_CORE = [1.00, 0.995, 0.85];
+export const POOL_CORE = [1.00, 0.99, 0.80];
 
 /**
- * The multiply in a POWERED room no pool reaches. COOL — red pulled down 28%, green 8%, blue
- * untouched. Luma 0.8833: a 12% recess against the un-lit-pass baseline of 1.0, which is what a
- * "far corner of a lit room" should cost. The previous 0.700 was not a recess, it was a second
- * dimming pass over the whole ship (see the header).
+ * The multiply in a POWERED room no pool reaches. WARM — blue pulled down 17%, green 12%, red
+ * only 8%, so a neutral source exits at B−R ≈ −0.09·N: a lit ship is warm even away from a lamp,
+ * because the ship is inhabited, not a morgue. Luma 0.8835 (0.2126·0.92 + 0.7152·0.877 +
+ * 0.0722·0.83): the SAME 12% recess the cool version bought, so the value ladder and the
+ * AMBIENT_LUMA_FLOOR test are unmoved — only the hue turns. Cold is now spent where it belongs:
+ * on Dead/vacuum tiles (palette.js LIGHT[1]), not on every powered surface.
+ *
+ * Superseded [0.72, 0.92, 1.00] (cool): it pulled RED down 28% and left blue at 100%, casting
+ * ~+32 chroma of blue on every lit tile — which is why the walls read cold at B−R +22 even though
+ * the wall material is near-neutral. The ship does not need to be cold; only the dark does.
  */
-export const AMBIENT_LIT = [0.72, 0.92, 1.00];
+export const AMBIENT_LIT = [0.92, 0.877, 0.83];
 
 /**
  * The floor a powered room must keep: `luma(stateAmbient(4)) >= AMBIENT_LUMA_FLOOR`. A lit room's
