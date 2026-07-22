@@ -7,14 +7,39 @@ namespace Perilune.Sim
     /// potatoes when Thirst/Hunger cross 0.5. Registered AFTER JobSystem — working
     /// citizens are never stolen mid-job (they eat when they next go idle), and
     /// JobSystem's switch ignores Eat/Drink so this system alone owns them.
-    /// Non-wandering citizens (AutoWander=false) still self-serve while idle, but
-    /// HoldPosition citizens never do — under strict player control the player owns
-    /// survival (order them to food/water). Thirst outranks hunger.
+    /// Non-wandering citizens (AutoWander=false) still self-serve while idle.
+    /// HoldPosition citizens never TRAVEL for supplies — under strict player control the
+    /// player owns the fetching — but they are not left to starve on top of a meal: an
+    /// idle, path-less one consumes an adjacent tank or an adjacent/underfoot potato
+    /// through <see cref="TryServeInPlace"/>. Thirst outranks hunger.
+    ///
+    /// Units and tuning (`content/core/SimDefs/sustenance.def` [sustenance]):
+    /// `drink_liters` L removed from a tank per drink (and added to the greywater pool
+    /// — drinking is water-conserving), `potato_hunger_value` the 0..1 Hunger removed
+    /// per potato, `need_threshold` the 0..1 level at which an idle citizen goes to
+    /// fetch. Thirst and Hunger are the 0..1 meters <see cref="NeedsSystem"/> ramps;
+    /// this system is their ONLY reducer. Note the asymmetry: a drink zeroes Thirst
+    /// outright, while a potato subtracts a fixed amount from Hunger, so a very hungry
+    /// citizen needs several trips.
+    ///
+    /// Job model: Eat/Drink are <see cref="JobKind"/> values, but they are NOT job-board
+    /// work — JobSystem's switch ignores them and no reservation goes through the board.
+    /// The citizen walks under CitizenSystem's path machinery and this system finishes
+    /// the act on arrival. Potatoes ARE reserved (<see cref="ItemStack.ReservedForJob"/>
+    /// plus <see cref="Citizen.ReservedItemId"/>) so a hauler cannot carry off the meal
+    /// mid-walk; water tanks are not reserved at all — two thirsty citizens can target
+    /// the same tank, and whoever arrives second simply finds it short and re-seeks.
     ///
     /// Determinism: citizens/devices/items iterated in store order, nearest-by-
     /// Manhattan with strict '&lt;' (ties resolve to store order), generation-stamped
     /// candidate passes as in JobSystem, no RNG, no LINQ. Steady state (no needy
-    /// citizens) does not allocate.
+    /// citizens) does not allocate. Manhattan distance is a RANKING heuristic only —
+    /// the reachability test is a real path query — so "nearest" means nearest by
+    /// straight-line grid distance, not by walking time.
+    ///
+    /// Not an <see cref="IStatefulSystem"/>: the tried-stamps are scratch scoped to a
+    /// single selection pass; everything durable lives on citizens, devices and items,
+    /// which Simulation saves and hashes.
     /// </summary>
     public sealed class SustenanceSystem : ISimSystem
     {
@@ -28,10 +53,21 @@ namespace Perilune.Sim
 
         // "Tried and failed during the current selection pass" stamps (JobSystem
         // pattern): one slot per store entry, generation counter instead of clears.
+        // A slot equal to _gen means "already rejected in THIS pass", which is what
+        // guarantees the retry loops below terminate — every iteration either commits
+        // to a target or burns one candidate, and there are finitely many candidates.
+        // Indexed by store POSITION, so the stamps are only valid within one pass
+        // (a store mutation would invalidate them; none happens mid-selection).
         private long[] _deviceTried = new long[64];
         private long[] _itemTried = new long[64];
         private long _gen;
 
+        /// <summary>
+        /// One 1 Hz pass. Three disjoint states per citizen: idle (maybe start a need),
+        /// already drinking, already eating. A citizen doing anything else — hauling,
+        /// digging, building — is skipped entirely, which is the whole reason this
+        /// system is registered after JobSystem.
+        /// </summary>
         public void Tick(Simulation sim)
         {
             var citizens = sim.Citizens.Items;
@@ -283,6 +319,12 @@ namespace Perilune.Sim
             return false;
         }
 
+        /// <summary>
+        /// UNUSED. <see cref="ProgressEat"/> resolves the meal by
+        /// <see cref="Citizen.ReservedItemId"/> instead, which is stricter — it finds
+        /// the exact stack this citizen claimed rather than any reserved potato on the
+        /// tile, and two reserved stacks can share a tile. Kept, not called.
+        /// </summary>
         private static ItemStack FindReservedGroundPotatoAt(Simulation sim, Int3 pos)
         {
             var items = sim.Items.Items;
@@ -298,6 +340,10 @@ namespace Perilune.Sim
 
 
 
+        /// <summary>Grow-only stamp storage. Discarding the old contents (rather than
+        /// copying them) is safe BECAUSE _gen is incremented before every selection pass
+        /// and so is always >= 1 when compared: the fresh zeros can never match it, and
+        /// a grown array correctly reads as "nothing tried yet".</summary>
         private static void EnsureSize(ref long[] array, int needed)
         {
             if (array.Length >= needed) return;
