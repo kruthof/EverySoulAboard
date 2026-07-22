@@ -14,7 +14,7 @@ import {
   resolveTerrain, resolveEntity, resolveOverlay, collectCellKeys, atlasSignature, CELL, LOCK_TINT,
 } from '../src/render/rasterplan.js';
 import { chooseBackend, parseFrozenTime } from '../src/render/exec-select.js';
-import { C } from '../src/render/palette.js';
+import { C, FG, HULL } from '../src/render/palette.js';
 
 function deepFreeze(v) {
   if (v && typeof v === 'object' && !Object.isFrozen(v)) {
@@ -48,8 +48,22 @@ test('parseFrozenTime reads a finite ?t=, else null', () => {
 
 // ---- terrain resolution ----
 test('resolveTerrain: hull/void are flat fills; base tiles are atlas cells', () => {
-  assert.deepEqual(resolveTerrain({ kind: 'hull', x: 0, y: 0 }), { flat: true, color: '#161122' });
+  assert.deepEqual(resolveTerrain({ kind: 'hull', x: 0, y: 0 }), { flat: true, color: HULL });
   assert.equal(resolveTerrain({ kind: 'void', x: 0, y: 0 }).flat, true);
+  // The silhouette contract, BOTH SIDES (see palette.js "The three dark states"). `color: HULL`
+  // above only proves resolveTerrain returns the constant — it would survive any value of it —
+  // so the band the constant has to live in is pinned here:
+  //   floor  hull mass must out-value the space it sits in, or the ship dissolves into the void;
+  //   CEILING hull mass (which is also every UNEXPLORED tile) must stay clearly BELOW the dimmest
+  //           explored room (~60), or "not yet seen" outshines "seen but dark" and the fog reads
+  //           as lit deck. A blown-out hull is exactly as broken as an invisible one.
+  const lum = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  };
+  assert.ok(lum(HULL) - lum(FG[C.Void]) > 25, `hull ${HULL} must out-value space ${FG[C.Void]}`);
+  assert.ok(lum(HULL) < 55, `hull ${HULL} (luma ${lum(HULL).toFixed(1)}) must stay well under the `
+    + 'dimmest explored room (~60) — unexplored must never outshine explored-but-dark');
   assert.deepEqual(resolveTerrain({ kind: 'floor', x: 0, y: 0 }), { cell: 'terrain:floor' });
   assert.deepEqual(resolveTerrain({ kind: 'wall', x: 0, y: 0 }), { cell: 'terrain:wall' });
   assert.deepEqual(resolveTerrain({ kind: 'wall_vert', x: 0, y: 0 }), { cell: 'terrain:wall_vert' });

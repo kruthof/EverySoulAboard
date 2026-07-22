@@ -13,7 +13,10 @@ export const C = {
 
 /** @type {string[]} Foreground RGB per GlyphColor index. */
 export const FG = [];
-FG[C.Unknown] = '#0b0716'; FG[C.Void] = '#161122'; FG[C.Floor] = '#443d5e'; FG[C.Wall] = '#6f6892';
+// Unknown is the canvas CLEAR (the field behind everything) and Void is known-empty space; both
+// are TRUE BLACK so the hull's graphite silhouette (HULL, below) always reads against space.
+// See "The three dark states" at the foot of this file.
+FG[C.Unknown] = '#050409'; FG[C.Void] = '#050409'; FG[C.Floor] = '#443d5e'; FG[C.Wall] = '#6f6892';
 FG[C.Debris] = '#96795a'; FG[C.Crew] = '#2de2ff'; FG[C.Hostile] = '#ff4d6a'; FG[C.Item] = '#e0a84f';
 FG[C.Device] = '#8f9fe8'; FG[C.DeviceDim] = '#5c5b7a'; FG[C.Broken] = '#d03a55'; FG[C.Locked] = '#ffb02e';
 FG[C.Terminal] = '#2de2ff'; FG[C.Water] = '#3ab4f0'; FG[C.Growth] = '#b06df5'; FG[C.Designate] = '#ff3d8a';
@@ -39,8 +42,24 @@ export const ATTR_DIM = 2;
 // A state with no table entry paints nothing (Powered + Unknown are deliberately absent), so a
 // fully-lit deck adds zero light ops and renders byte-identically to the no-lights path. Canvas2D
 // fills this rgba as a translucent over-blend; the WebGL2 light pass folds it into a multiply.
+//
+// Dead is a ~0.48 BLUE-SHIFTED darkening, not a near-black veil. Both executors resolve the same
+// rgba to the same factor — canvas2d over-blends `dst*(1-a) + C*a`, webgl2 folds the identical
+// expression into a multiply `M = (1-a) + C*a` — so the effective per-channel multiply here is
+//   R (1-.58) + 26/255*.58 = 0.48   G … = 0.53   B … = 0.68   (luma ≈ 0.53)
+// An unlit-but-explored room therefore lands at roughly half the lit value with a cold cast: dim
+// and cold, never void, and never confusable with the HULL mass an unexplored tile paints.
+//
+// KNOWN SIDE EFFECT, measured: because the three channels are multiplied UNEQUALLY, this overlay
+// does not merely darken — it MANUFACTURES CHROMA. Expanding the blend, the output's blue-minus-
+// red distance is 0.42*(B−R) + 51, so a perfectly NEUTRAL grey comes out of a Dead room at chroma
+// 51 and a cool-leaning pixel comes out higher still (warm pixels lose chroma until they flip
+// cool). That is why the sprite-side chroma ceilings in render/matte.js cannot fully calm an
+// unlit cabin, and why most of the environment colour still standing in the loud-pixel census
+// lives in the dark cabins. Anyone tuning this rgba should know the blue term buys the "cold"
+// reading and costs chroma at exactly this rate.
 export const LIGHT = [];
-LIGHT[1] = 'rgba(6,5,14,.72)';     // Dead — near-black
+LIGHT[1] = 'rgba(26,48,114,.58)';  // Dead — cold half-light (see the multiply above)
 LIGHT[2] = 'rgba(224,48,64,.30)';  // Emergency — red
 LIGHT[3] = 'rgba(255,168,54,.20)'; // Brownout — amber
 
@@ -49,10 +68,32 @@ export function litOverlay(state) {
   return LIGHT[state];
 }
 
-// Solid ship body: deep hull AND unexplored fog render as this one dark mass, so the hull
-// is a consistent solid the crew's movement never "reveals" tile by tile. Space beyond the
-// hull stays the near-black canvas fill (FG[Unknown]), keeping the ship silhouette crisp.
-export const HULL = '#161122';
+// Solid ship body: deep hull AND unexplored fog render as this one mass, so the hull is a
+// consistent solid the crew's movement never "reveals" tile by tile (the fog gate lives in
+// composeScene; this colour must stay identical for both or exploration would leak).
+// It is a HIGH-VALUE GRAPHITE (luma ≈ 39), so the ship's outline reads at every zoom instead of
+// dissolving into the void — while still sitting a clear step BELOW the dimmest explored room,
+// so "not yet seen" never outshines "seen but dark".
+//
+// CAVEAT, because it surprises people: "graphite against black space" is only true where space
+// has actually been EXPLORED. composeScene emits `hull` for every unexplored tile and `void` only
+// for a tile the projection has marked known-empty, so unexplored vacuum paints graphite (38.5)
+// while explored vacuum paints true black (4.6). On a near shot of a partly-explored ship the
+// exploration FRONTIER is therefore visible as a value step out in the vacuum. That is a
+// deliberate consequence of "hull mass and fog must be the same colour or the fog gate leaks",
+// not a bug — but it means the silhouette contrast is a property of the far/established shot, not
+// something the near shot always shows.
+export const HULL = '#282531';
+
+// ── The three dark states ───────────────────────────────────────────────────────────────────
+// Three different meanings used to share one near-black; they are now three separated bands, so
+// a glance tells you which is which (measured on the slice frame, luma 0..255):
+//   explored void           FG[Void] = FG[Unknown] = #050409     ~   5   true black
+//   hull mass + ALL fog     HULL     = #282531                   ~  39   graphite silhouette
+//   explored but UNLIT room floor art × LIGHT[1]                 ~  60   cold blue half-light
+//   explored and LIT room   floor art (no overlay)               ~ 113   the working value range
+// Whoever moves one of these must re-check the other three still separate — the ship's
+// readability rests entirely on that ladder.
 
 /** True when a lens bg id actually paints a wash. */
 export function hasWash(bg) {
