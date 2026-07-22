@@ -18,7 +18,8 @@
 #   [section]          opens a section; unknown sections are warned + skipped.
 #   key = value        scalar sections take one assignment per line.
 #   NAME col col ...    the [machines]/[recipes] tables are whitespace-aligned
-#                      rows keyed by enum NAME (DeviceKind / ItemKind).
+#                      rows keyed by enum NAME (DeviceKind / ItemKind); [production]
+#                      is whitespace-aligned too but keyed by a free-text node ID.
 #
 # All numbers parse with InvariantCulture ('0.5' is one-half on every machine,
 # including de-DE). Booleans accept true/false or 1/0.
@@ -41,11 +42,26 @@
 #                     NAME draw gen tier blocks heat wear maint fail
 #   [recipes]       one row per crafting DeviceKind:
 #                     NAME input in_count output out_count work_s
+#   [production]    the conversion-graph node table (CraftingSystem, W0-5) — keyed by
+#                   a free-text node ID, so MANY nodes may name one station, with
+#                   many inputs and many outputs:
+#                     ID station work_s inputs outputs
+#                   Ports are 'Kind:count' joined by '+' (no spaces), or 'none'.
+#                   Conversion LOSS is the integer input:output ratio (Scrap:20 ->
+#                   Regolith:17 is exactly 85%); there is no yield column and no
+#                   decimal anywhere in this table.
+#                   SHIPPED EMPTY: a station with no node falls back to its [recipes]
+#                   row. UNLIKE every other section this one is an ORDERED, ADDITIVE
+#                   list — rows accumulate across files in filename order, a repeated
+#                   ID replaces in place, and the checksum folds row order.
+#                   See production.def for the full column reference.
 #
 # Example (scalar):    [thermal]
 #                      citizen_heat_w = 110
 # Example (machine):   [machines]
 #                      SolarWing 0 6 Comfort false 0 0.004 0.4 0.1
+# Example (production):[production]
+#                      fab_parts Fabricator 30 Scrap:2 Parts:1
 #
 # -----------------------------------------------------------------------------
 # CONTRACT (fail-soft, DeviceLayout precedent)

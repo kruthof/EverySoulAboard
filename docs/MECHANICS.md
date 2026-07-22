@@ -1331,6 +1331,53 @@ These *look* suspicious and are actually fine:
 - `EffectPump` and `MemorySystem` not being in the scenario stack is why the pure-sim
   determinism pin is stable.
 
+### 13.12 The `[production]` node table is consumed, and ships empty (W0-5)
+
+`SimDefs.Production` — the `[production]` conversion-graph node table
+(`Defs/ProductionDefs.cs`) — is parsed, folded into the defs checksum, and read on every
+crafting pass: `CraftingSystem` resolves *every* station through
+`ProductionDefs.TryGetBill`, which prefers the station's node and falls back to its legacy
+`SimDefs.Recipes` row. But `content/core/SimDefs/production.def` declares **zero rows**, so
+every shipped station takes the *fallback* leg. **Nothing in the shipped game is a graph
+node**, and the multi-input / multi-output / sink machinery in `CraftingSystem` is exercised
+only by tests.
+
+- **What would connect it:** authoring rows in `production.def`. E0-6 ("conversion loss +
+  `Seals`", `ECONOMY-PLAN.md`) is the first work package that wants one.
+- **Conversion loss (sink S3) is therefore still unbuilt.** The container expresses loss as
+  the integer input:output ratio (`Scrap:20 → Regolith:17` is exactly 85 %); with an empty
+  table no shipped hop is lossy and the graph returns 100 % everywhere.
+  - Stated precisely, because the loose version overstates it: the `SalvageRecycler` hop
+    alone *does* double unit count — measured, 3 `Regolith` at a recycler yields
+    `Regolith = 0, Scrap = 6`. But the two-hop metal loop
+    `Regolith:1 → Scrap:2 → (Fabricator Scrap:2 → Parts:1)` is exactly **1 Regolith → 1
+    Part**, so in ECONOMY.md §10's Part-equivalent accounting the shipped chain is
+    **loss-free (100 %), not a net matter source**. What is missing is the *drain* S3
+    names — every hop returning less than it took — not a leak that needs plugging.
+- **Batch size is a staging requirement, not just a ratio.** `AllInputsStaged` is
+  all-or-nothing and `StepFetch` fetches one stack per trip, so a fine-grained ratio like
+  `Scrap:20 → Regolith:17` makes the crew stage 20 units before a batch starts — ~5× the
+  hauling round-trips of a coarse `Scrap:4` node, and a correspondingly longer bench idle
+  stretch. Anyone tuning this table must scale `work_s` with the batch (a 5× batch at
+  unchanged `work_s` is a ~5× throughput change) and should buy ratio precision
+  deliberately. This lands on the labour budget A1 measures.
+- **Deliberately not shipped:** a fractional yield column. `floor(n·y)/n = y` only when
+  `n·y` is integral, so 0.85 would need out-counts in multiples of 20 and a single
+  node-level yield gives a different effective rate per output port. Loss lives in the
+  counts.
+
+**Two nodes on one station parse but only the first RUNS.** `TryGetBill` resolves **ordinal
+0** — the first node in table order naming that station. A second node parses, folds into
+the checksum and is reachable via `ProductionDefs.TryGetNode(station, ordinal, …)`, but
+nothing selects among them. This is deliberate: selection needs per-station state (which
+bill is mid-batch, priorities, quotas) and therefore a save chapter, which is E-PROD's
+`PROD` blob. It is **not silent** — `DefsParser` emits a problem line naming both node ids
+and pointing here. *What would connect it:* E-PROD's `PROD` `SYSS` chapter plus a selection
+policy.
+
+Also on this table: `ProductionDefs.CountFor` is container API with no sim consumer yet
+(tests and the parser warning only).
+
 ---
 
 ## 14. Where GDD.md / TDD.md disagree with the code
@@ -1437,8 +1484,10 @@ in `ci.sh:25` **and** `CLAUDE.md` **and** memory in that same commit.
 --metrics`. (b) A throwaway probe compiled against the sim sources **outside** the repo,
 booting the same `SimHost.Build(SimHost.SliceSeed, null, <dataDir>, ShipChoice.Slice)` the
 shipping hosts use. The probe was run both with compiled defaults and with the real
-`content/core/SimDefs` — the latter reporting `defs 1cd88ff321d04a46 (16 files, 0
-problems)`, byte-identical to the TUI dump header, and a 24-system stack reading
+`content/core/SimDefs` — the latter reporting `defs 1cd88ff321d04a46 (17 files, 0
+problems)` (16 files when this section was written; W0-5 added the empty
+`production.def`, which folds nothing, so the checksum is unchanged), byte-identical to the
+TUI dump header, and a 24-system stack reading
 `EffectPump Atmosphere Power Nav Thermal Water Citizens Jobs Sustenance Crafting Wear
 Maintenance Build Hydroponics Needs Social Exploration Goals Director History
 DesignerRules Moss Memory Eulogy`, which is exactly §1's table plus the three host
