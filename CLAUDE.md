@@ -79,9 +79,9 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
 
 ## Working here
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (607 green; `./ci.sh`
-  runs the full gate — 607 dotnet + 198 node, ~3 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22, not carried forward: the "573 / 188" that stood here had
-  drifted behind three merged lanes. Re-measure before quoting.)
+  runs the full gate — 607 dotnet + 207 node, ~3 min wall since V6 runs real sim-days).
+  (Counts MEASURED 2026-07-22 after all six lanes merged, not carried forward: figures
+  quoted mid-session drifted behind the lanes still in flight. Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
