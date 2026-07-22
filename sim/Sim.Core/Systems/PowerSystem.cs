@@ -3,29 +3,75 @@ using System.Collections.Generic;
 namespace Perilune.Sim
 {
     /// <summary>
-    /// Power networks + priority-tier brownouts (TDD §3.7). A network is a connected
-    /// component of Conduit tiles; any device on or 4-adjacent to a network's conduit
-    /// belongs to it. Balance at 1 Hz: generation vs. demand by tier (LifeSupport last
-    /// to shed), batteries bridge deficits. Devices not on any network are unpowered.
+    /// Power networks + priority-tier brownouts (TDD §3.7), balanced at 1 Hz. Two
+    /// separable jobs:
+    ///
+    /// TOPOLOGY (<see cref="RebuildNetworks"/>, only when <see cref="Simulation.PowerDirty"/>):
+    /// a network is a connected component of Conduit DEVICES — conduits are overlay
+    /// utilities that share a tile with whatever else stands there, so they are not in
+    /// the tile grid and the flood runs over a position index built fresh each rebuild.
+    /// Connectivity is 6-way: the four lateral neighbours plus straight up and down, so
+    /// a conduit stack acts as a deck-to-deck riser. Every other device then claims the
+    /// network of a conduit on its own tile, or failing that the first conduit found in
+    /// +x,-x,+y,-y,+z,-z order — so a device touching two networks joins exactly one,
+    /// deterministically, and never bridges them.
+    ///
+    /// BALANCE (every pass): sum generation and stored energy per network, sum demand
+    /// per tier, then serve tiers strictly highest-first. Units are kW throughout for
+    /// power and kWh for storage; both come from `content/core/SimDefs/machines.def`
+    /// (the `gen`, `draw` and `tier` columns), read through sim.Defs.Machines. Battery
+    /// capacity is the compiled <see cref="Device.BatteryCapacityKWh"/> (40 kWh), NOT a
+    /// def field. Shed order is <see cref="PowerTier"/>: Comfort sheds first,
+    /// LifeSupport last, and shedding is contagious downward — once any tier is unmet
+    /// every lower tier is cut too, so a surplus never trickles past a browned-out tier
+    /// to light the lamps while the scrubbers are dark.
+    ///
+    /// What it mutates: only <see cref="Device.NetworkId"/>, <see cref="Device.Powered"/>
+    /// and <see cref="Device.StoredKWh"/> — all three saved in the DEVC chapter and
+    /// folded into <see cref="Simulation.StateHash"/> by Simulation. Everything else
+    /// here is scratch. Powered is the flag half the ship reads: AtmosphereSystem's
+    /// vents and scrubbers, HydroponicsSystem's beds, WaterSystem's reclaimers,
+    /// ThermalSystem's radiators and NavSystem's telescopes all gate on it. This system
+    /// therefore sits second in the stack, and NavSystem is registered immediately
+    /// after it so telescope Powered flags are fresh within the tick (SystemStack).
+    ///
+    /// NOT <see cref="IStatefulSystem"/>: the network map and the brownout memory are
+    /// derived, not canonical, and are rebuilt from the (saved) device positions. One
+    /// consequence worth knowing — <see cref="_wasBrownout"/> starts false on load, so
+    /// a save taken mid-brownout re-publishes <see cref="BrownoutChangedEvent"/> after
+    /// the restore. That is a duplicate notification, not a state divergence; nothing
+    /// hashed moves.
+    ///
+    /// Determinism/allocation: the device store is walked in order everywhere, ids are
+    /// handed out by first-encounter in that same order, no RNG. All scratch is
+    /// grow-once (<see cref="EnsureScratch"/>) and the dictionaries/queue are cleared
+    /// rather than reallocated, so a steady ship allocates nothing per pass.
     /// </summary>
     public sealed class PowerSystem : ISimSystem
     {
         public string Name => "Power";
         public int IntervalTicks => 10; // 1 Hz
 
-        private const float BalanceDt = 1f; // seconds per balance pass
+        /// <summary>Seconds per balance pass; structural, paired with
+        /// <see cref="IntervalTicks"/>. Only used to convert a kW deficit into the kWh
+        /// drawn from batteries.</summary>
+        private const float BalanceDt = 1f;
 
+        // Conduit tile -> network id, and the conduit position index the flood runs
+        // over. Both are cleared (never reallocated) on rebuild.
         private readonly Dictionary<Int3, ushort> _conduitNetwork = new Dictionary<Int3, ushort>();
         private readonly Dictionary<Int3, byte> _overlayAt = new Dictionary<Int3, byte>(); // lookup only
         private readonly Queue<Int3> _floodQueue = new Queue<Int3>(64);
         private ushort _networkCount;
 
         // Per-network scratch, reused (index = network id, 0 unused).
-        private readonly List<float> _generation = new List<float>();
-        private readonly List<float> _batteryCharge = new List<float>();
-        private readonly List<float> _demandByTier = new List<float>(); // networkId * 4 + tier
-        private readonly List<bool> _wasBrownout = new List<bool>();
+        private readonly List<float> _generation = new List<float>();   // kW produced
+        private readonly List<float> _batteryCharge = new List<float>();// kWh stored
+        private readonly List<float> _demandByTier = new List<float>(); // kW; networkId * 4 + tier
+        private readonly List<bool> _wasBrownout = new List<bool>();    // edge detection for the event
 
+        /// <summary>Topology on demand, balance always — a ship whose devices never move
+        /// pays only the balance pass.</summary>
         public void Tick(Simulation sim)
         {
             if (sim.PowerDirty)
@@ -36,6 +82,11 @@ namespace Perilune.Sim
             Balance(sim);
         }
 
+        /// <summary>
+        /// Re-derive every network id from scratch. Ids are NOT stable across rebuilds —
+        /// adding one conduit can renumber the whole ship — so nothing may cache a
+        /// network id across a topology change, and the brownout memory is reset below.
+        /// </summary>
         private void RebuildNetworks(Simulation sim)
         {
             _conduitNetwork.Clear();
@@ -79,6 +130,8 @@ namespace Perilune.Sim
             }
 
             // Attach every device to the network of a conduit on/adjacent to its tile.
+            // 0 means "not on any network" — such a device draws nothing, generates
+            // nothing and (with one exception, see the Powered sweep) reads unpowered.
             for (int i = 0; i < devices.Count; i++)
             {
                 var device = devices[i];
@@ -100,6 +153,11 @@ namespace Perilune.Sim
             }
         }
 
+        /// <summary>
+        /// One second of supply-vs-demand per network: tally, decide which tiers are
+        /// served, settle the batteries, then stamp <see cref="Device.Powered"/>.
+        /// Runs even when the topology did not change, because charge and demand do.
+        /// </summary>
         private void Balance(Simulation sim)
         {
             EnsureScratch(_networkCount + 1);
@@ -114,10 +172,15 @@ namespace Perilune.Sim
             var machines = sim.Defs.Machines;
 
             // Sum generation, battery reserve, and demand per tier.
+            // Both sides are condition-blind: generation is the flat machines.def `gen`
+            // with no EffectiveRate factor and no IsOperational gate (a wrecked
+            // SolarWing still supplies its full kW), and demand is the flat `draw` (a
+            // worn scrubber pays full price for reduced output). Wear is expressed in
+            // the consuming systems via EffectiveRate, never in the power ledger.
             for (int i = 0; i < devices.Count; i++)
             {
                 var d = devices[i];
-                if (d.NetworkId == 0) continue;
+                if (d.NetworkId == 0) continue; // off-grid: contributes nothing either way
                 var def = machines[(int)d.Kind];
                 _generation[d.NetworkId] += def.GenerationKW;
                 if (d.Kind == DeviceKind.Battery) _batteryCharge[d.NetworkId] += d.StoredKWh;
@@ -153,7 +216,11 @@ namespace Perilune.Sim
                     }
                 }
 
-                // Battery bookkeeping: discharge to cover deficit, else charge from surplus.
+                // Battery bookkeeping: discharge to cover deficit, else charge from
+                // surplus. `served` counts only demand that was actually met, so a shed
+                // tier's draw never shows up as a deficit and never drains a battery.
+                // Surplus charging is unthrottled — a network's whole spare kW pours in,
+                // limited only by BatteryCapacityKWh; there is no charge-rate model.
                 float deficit = served - _generation[net];
                 float energyDeltaKWh = -deficit * BalanceDt / 3600f; // negative = discharge
                 DistributeBatteryDelta(sim, net, energyDeltaKWh);
@@ -172,6 +239,12 @@ namespace Perilune.Sim
                 var def = machines[(int)d.Kind];
                 if (def.DrawKW <= 0f)
                 {
+                    // Passive kit (conduits, pipes, tanks, batteries, all furniture)
+                    // simply reports whether it is wired up. SolarWing is the one
+                    // hard-coded exception: an unwired wing still reads Powered, even
+                    // though the tally above skipped it and its kW reached no network.
+                    // So Powered on a SolarWing says nothing about whether it is
+                    // contributing — only NetworkId != 0 does.
                     d.Powered = d.NetworkId != 0 || d.Kind == DeviceKind.SolarWing;
                     continue;
                 }
@@ -179,13 +252,27 @@ namespace Perilune.Sim
             }
         }
 
-        // Consumers draw when relevant: open vents, running scrubbers, everything else always.
+        /// <summary>
+        /// Whether a device books its draw this pass. A closed vent is the only device
+        /// that idles: everything else — doors, lights, terminals, fabricators — pays
+        /// its full machines.def `draw` continuously, whether or not it is in use.
+        /// (Consequence: a browned-out network is browned out around the clock, not
+        /// only when the crew is working.)
+        /// </summary>
         private static bool IsWanting(Device d) => d.Kind switch
         {
             DeviceKind.AirVent => d.IsOpen,
             _ => true,
         };
 
+        /// <summary>
+        /// Spread a charge (positive) or discharge (negative) across a network's
+        /// batteries in store order, spilling the remainder into the next battery when
+        /// one hits 0 or <see cref="Device.BatteryCapacityKWh"/>. Not balanced across
+        /// the bank: the first battery in store order does all the work until it is
+        /// full or flat. Any leftover when the loop runs out of batteries is silently
+        /// dropped — energy is not conserved at the edges of the bank.
+        /// </summary>
         private void DistributeBatteryDelta(Simulation sim, ushort net, float deltaKWh)
         {
             if (deltaKWh == 0f) return;
@@ -201,7 +288,9 @@ namespace Perilune.Sim
             }
         }
 
-        // Tier-served bitfield per network, stored in a reused list.
+        // Tier-served bitfield per network, stored in a reused list. One byte per
+        // network, bit index = PowerTier value; rewritten every Balance pass, so no
+        // clear is needed and nothing carries over between passes.
         private readonly List<byte> _tierServed = new List<byte>();
         private void SetTierServed(ushort net, int tier, bool served)
         {
@@ -210,6 +299,9 @@ namespace Perilune.Sim
         }
         private bool GetTierServed(ushort net, int tier) => (_tierServed[net] & (1 << tier)) != 0;
 
+        /// <summary>Grow-only scratch sizing; index 0 is the reserved "no network" slot,
+        /// zeroed each pass and never read. Lists are never shrunk, so a ship that once
+        /// had many networks keeps the capacity and later passes stay allocation-free.</summary>
         private void EnsureScratch(int count)
         {
             while (_generation.Count < count) _generation.Add(0f);

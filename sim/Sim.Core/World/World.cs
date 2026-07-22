@@ -3,7 +3,35 @@ using System.Runtime.InteropServices;
 
 namespace Perilune.Sim
 {
-    /// <summary>The spatial truth: a stack of z-levels. All mutation goes through setters that keep Flags coherent.</summary>
+    /// <summary>
+    /// The spatial truth: a stack of z-levels. All mutation goes through setters that
+    /// keep Flags coherent.
+    ///
+    /// Every tile carries a floor id, a wall id (0 = none), derived flags and a room id,
+    /// stored as parallel flat arrays per <see cref="ZLevel"/>. Walls are their own
+    /// TILES here, not edges between tiles — which is why a 1-tile-thick partition
+    /// occupies a grid cell, why <see cref="RoomState"/> floods around walls rather
+    /// than testing edges, and why "adjacent to void" is a meaningful hull test.
+    ///
+    /// Contract: <see cref="TileFlags.Walkable"/> and <see cref="TileFlags.BlocksGas"/>
+    /// are DERIVED — recomputed from the tile defs on every floor/wall write and never
+    /// settable by hand. Everything else in TileFlags (HasDevice, Designated, Stockpile,
+    /// Explored, Scenery) is authoritative, owned by other systems, and preserved
+    /// verbatim across those writes. Preservation cuts both ways: because SetWall keeps
+    /// Designated, JobSystem has to clear that flag EXPLICITLY when a dig completes,
+    /// or the freshly cleared tile would still read as a standing order.
+    ///
+    /// This class is pure geometry: no ticking, no defs, no events. Room ids live here
+    /// but are owned and rewritten by <see cref="RoomState"/>. All four arrays are
+    /// folded into the determinism hash (<see cref="HashInto"/>), so any tile write is
+    /// hash-visible — including a fog reveal.
+    ///
+    /// Bounds are the CALLER's job: every accessor indexes directly, so callers gate on
+    /// <see cref="InBounds"/> first. Getting that wrong fails in two different ways — a
+    /// bad Z throws on the Levels lookup, but a bad X or Y does NOT throw, because
+    /// <c>ZLevel.Index</c> is a bare <c>y * Width + x</c> that happily aliases into the
+    /// neighbouring row. Silent wrong-tile reads are the failure mode to watch for.
+    /// </summary>
     public sealed class World
     {
         public readonly int Width, Height, Depth;
@@ -38,6 +66,9 @@ namespace Perilune.Sim
             RecomputeFlags(level, p.X, p.Y);
         }
 
+        /// <summary>Set/clear a NON-derived flag. Nothing stops a caller passing
+        /// Walkable or BlocksGas, but the next floor/wall write on that tile silently
+        /// overwrites it — those two belong to <see cref="RecomputeFlags"/> alone.</summary>
         public void SetFlag(Int3 p, TileFlags flag, bool on)
         {
             var level = Levels[p.Z];
@@ -46,6 +77,14 @@ namespace Perilune.Sim
             else level.Flags[i] &= (byte)~flag;
         }
 
+        /// <summary>
+        /// Re-derive the two computed flags for one tile. Walkable requires a walkable
+        /// floor AND an empty wall slot; BlocksGas is the OR of the wall and floor defs.
+        /// With the shipped tile table only Wall and Debris block gas, so a VOID tile is
+        /// unwalkable and gas-PERMEABLE — deliberately: void is what rooms leak into,
+        /// and RoomState decides vacuum connectivity by testing for the void floor id
+        /// explicitly rather than by this flag.
+        /// </summary>
         private static void RecomputeFlags(ZLevel level, int x, int y)
         {
             int i = level.Index(x, y);
@@ -61,7 +100,10 @@ namespace Perilune.Sim
             level.Flags[i] = (byte)(preserved | derived);
         }
 
-        /// <summary>Chain all tile arrays into the state hash.</summary>
+        /// <summary>Chain all tile arrays into the state hash. RoomId is included even
+        /// though it is derived — it is saved, and the project rule is that everything
+        /// saved is hashed, so a room recompute that lands differently is caught by the
+        /// determinism canary rather than by a divergence hours later.</summary>
         public ulong HashInto(ulong h)
         {
             for (int z = 0; z < Depth; z++)

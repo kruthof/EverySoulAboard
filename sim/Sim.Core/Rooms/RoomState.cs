@@ -6,14 +6,21 @@ namespace Perilune.Sim
     /// <summary>
     /// One lumped atmosphere node. Room 0 is the vacuum sink (moles pinned to zero).
     /// Pressure follows P = nRT/V with V = tiles × 2.5 m³.
+    ///
+    /// The mole counts and temperature are the canonical state (saved in the ROOM
+    /// chapter, folded into <see cref="Simulation.StateHash"/>); every property below
+    /// is derived on read and stores nothing. <see cref="AtmosphereSystem"/> owns the
+    /// gas fields, ThermalSystem owns <see cref="TemperatureK"/>, and RoomState
+    /// rebuilds the whole list (carrying gas and heat across by tile overlap) whenever
+    /// topology changes.
     /// </summary>
     public sealed class Room
     {
         public int TileCount;
-        public double O2Moles;
-        public double CO2Moles;
-        public double N2Moles;
-        public double TemperatureK = 293.0;
+        public double O2Moles;   // mol
+        public double CO2Moles;  // mol
+        public double N2Moles;   // mol
+        public double TemperatureK = 293.0; // K; 293 K = 20 °C is the fresh-room default
 
         /// <summary>
         /// Tiles of this room in thermal contact with the hull (bordering the map
@@ -25,9 +32,15 @@ namespace Perilune.Sim
         /// </summary>
         public int HullTiles;
 
+        /// <summary>m³ at a fixed 2.5 m³ per floor tile — the sim's only statement of
+        /// physical ship scale, and the divisor in every pressure reading.</summary>
         public double VolumeM3 => TileCount * 2.5;
         public double TotalMoles => O2Moles + CO2Moles + N2Moles;
 
+        /// <summary>kPa, from the ideal gas law (8.314 J/(mol·K), /1000 for Pa→kPa).
+        /// Because T is a factor, a room's pressure moves when ThermalSystem heats or
+        /// cools it with no gas going anywhere. Zero-volume rooms read 0 rather than
+        /// dividing by zero.</summary>
         public double PressureKPa
         {
             get
@@ -37,7 +50,25 @@ namespace Perilune.Sim
             }
         }
 
+        /// <summary>0..1 mole fraction. Multiply by <see cref="PressureKPa"/> for the
+        /// partial pressure NeedsSystem's hypoxia thresholds actually test — a room can
+        /// be 21% O2 and still suffocate you if it is at 8 kPa.</summary>
         public double O2Fraction => TotalMoles <= 0 ? 0 : O2Moles / TotalMoles;
+
+        /// <summary>
+        /// CO2 as parts per million by mole. READ-ONLY EVERYWHERE, AND A DAMAGE INPUT
+        /// ONLY — no system, job, effect or Director lever ever acts on this value. The
+        /// complete consumer list is: <c>NeedsSystem.Tick</c> (health damage from
+        /// needs.def `co2_narcosis_ppm`, and at 2× that the vacuum-rate band), the CO2
+        /// lens ramp (Sim.Glyph <c>LensRamps.Co2</c>, green/amber/red at 1,000 and
+        /// 2,000 ppm), <c>ShipMetrics.Co2Ppm</c> (worst pressurized room, for the HUD
+        /// and wire), and the MOSS read-only properties <c>room.co2</c> / <c>ship.co2</c>.
+        ///
+        /// Nothing closes the loop: scrubbers run unconditionally while powered, and a
+        /// citizen will stand in lethal CO2 without ever deciding to leave. Player MOSS
+        /// can raise an alarm on it — the shipped hydroponics program does — and an
+        /// alarm is a log line, not a response.
+        /// </summary>
         public double CO2Ppm => TotalMoles <= 0 ? 0 : CO2Moles / TotalMoles * 1_000_000.0;
     }
 
