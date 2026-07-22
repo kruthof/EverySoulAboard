@@ -25,7 +25,7 @@ import {
 } from './rasterplan.js';
 import { transform } from './camera.js';
 import { C, FG, litOverlay } from './palette.js';
-import { walkOffset, baseSpriteKey } from './motion.js';
+import { slideOffset, baseSpriteKey } from './motion.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
@@ -116,7 +116,8 @@ export class WebGL2Executor {
       motion: opts.motion || null, timeSec,
       states: useSpr ? SPRITE_STATES : null, frames: useSpr ? SPRITE_FRAMES : null,
     };
-    const walkProgress = opts.walkProgress == null ? 1 : opts.walkProgress;
+    // Wall-clock that drives the continuous per-cid slide (null on the frozen/screenshot path).
+    const nowMs = opts.nowMs == null ? null : opts.nowMs;
 
     const passes = buildPasses(list, { timeSec });
     this._ensureAtlas(passes, useSpr, sprites, raster);
@@ -157,9 +158,10 @@ export class WebGL2Executor {
         const spec = resolveEntity(o, useSpr, raster);
         stats.entities++;
         if (spec.cell && spec.cell.startsWith('spr:')) stats.entitySprite++; else stats.entityProc++;
-        // Walking pawns slide from their previous tile toward the current one (sub-tile offset).
+        // Walking pawns glide continuously toward the current tile (self-gating sub-tile offset that
+        // survives step-less frames — same model + gating as the canvas2d path, no divergence).
         const entry = raster.motion && raster.motion[o.x + ',' + o.y];
-        const off = entry && entry.walking ? walkOffset(entry, walkProgress) : { ox: 0, oy: 0 };
+        const off = slideOffset(entry, nowMs);
         const X = (o.x + off.ox) * T * s + ox, Y = (o.y + off.oy) * T * s + oy;
         pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
         if (spec.overlay) pushFlat(lock, X, Y, D, premul(parseColor(spec.overlay)));

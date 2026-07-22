@@ -7,8 +7,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  initMotion, trackMotion, motionByTile, walkFrameIndex, walkOffset,
+  initMotion, trackMotion, motionByTile, walkFrameIndex, slideOffset, slideActive,
   deviceSpriteKey, pawnSpriteKey, pawnFrameKeys, WALK_FPS, WALK_HOLD_FRAMES, isAnimWalking,
+  DEFAULT_STEP_MS, MIN_STEP_MS, MAX_STEP_MS,
 } from '../src/render/motion.js';
 import { C } from '../src/render/palette.js';
 
@@ -104,19 +105,115 @@ test('walkFrameIndex is a deterministic wrap of the time-driven cycle', () => {
   assert.equal(walkFrameIndex(7 / WALK_FPS, 3), 1); // floor(7)=7, 7%3=1
 });
 
-// ---------------- interpolation determinism ----------------
+// ---------------- continuous slide: step-anchored interpolation (nowMs flows in as data) ----------------
 
-test('walkOffset interpolates the remaining travel and is deterministic at fixed progress', () => {
-  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]));
-  m = trackMotion(m, frame(0, [[6, 5, 0, 7]])); // stepped east: from (5,5) to (6,5)
+test('slideOffset glides origin→tile over the estimated interval and is deterministic at fixed nowMs', () => {
+  // First sighting at t=0, then a step east at t=1000. Only ONE prior step exists → the interval is
+  // the DEFAULT (no gap to measure yet), and the origin is the from-tile (5,5).
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 1000);
   const e = m.byCid[7];
-  assert.deepEqual(walkOffset(e, 0), { ox: -1, oy: 0 }, 'progress 0 → still at the from-tile');
-  assert.deepEqual(walkOffset(e, 1), { ox: 0, oy: 0 }, 'progress 1 → arrived at current tile');
-  assert.deepEqual(walkOffset(e, 0.5), { ox: -0.5, oy: 0 });
-  // clamps out-of-range progress; a non-walking entry never offsets
-  assert.deepEqual(walkOffset(e, 2), { ox: 0, oy: 0 });
-  assert.deepEqual(walkOffset(e, -1), { ox: -1, oy: 0 });
-  assert.deepEqual(walkOffset({ walking: false }, 0.5), { ox: 0, oy: 0 });
+  assert.equal(e.stepMs, 1000);
+  assert.equal(e.interval, DEFAULT_STEP_MS);
+  // at the step instant → still at the from-tile; half an interval later → half way; a full interval → arrived.
+  assert.deepEqual(slideOffset(e, 1000), { ox: -1, oy: 0 }, 'progress 0 → at the from-tile');
+  assert.deepEqual(slideOffset(e, 1000 + DEFAULT_STEP_MS / 2), { ox: -0.5, oy: 0 });
+  assert.deepEqual(slideOffset(e, 1000 + DEFAULT_STEP_MS), { ox: 0, oy: 0 }, 'arrived → settled on the tile');
+  // past the interval clamps to arrived; before it never over-shoots; a settled/untimed entry offsets 0.
+  assert.deepEqual(slideOffset(e, 9999), { ox: 0, oy: 0 });
+  assert.deepEqual(slideOffset(e, null), { ox: 0, oy: 0 });
+  assert.deepEqual(slideOffset({ stepMs: null, x: 6, y: 5 }, 1000), { ox: 0, oy: 0 });
+});
+
+test('untimed frames (frozen screenshots) record no slide → every pawn reads settled', () => {
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]));   // nowMs omitted
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]));                  // a real step, but untimed
+  const e = m.byCid[7];
+  assert.equal(e.walking, true, 'still a walk for the sprite cycle');
+  assert.equal(e.stepMs, null, 'but no slide anchored');
+  assert.deepEqual(slideOffset(e, 1234), { ox: 0, oy: 0 }, 'untimed → no glide');
+  assert.equal(slideActive(e, 1234), false);
+});
+
+test('the per-cid interval is measured from the gap between two real steps (auto-adapts to sim speed)', () => {
+  // step 1 at t=0, step 2 at t=200 → a 200 ms gap, EMA-smoothed toward from the 500 ms default.
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);      // first step: interval = default
+  assert.equal(m.byCid[7].interval, DEFAULT_STEP_MS);
+  m = trackMotion(m, frame(0, [[7, 5, 0, 7]]), 200);    // second step: gap 200 measured
+  const iv = m.byCid[7].interval;
+  assert.ok(iv > MIN_STEP_MS && iv < DEFAULT_STEP_MS, 'EMA pulled below the default toward 200 ms');
+  assert.equal(iv, DEFAULT_STEP_MS + 0.5 * (200 - DEFAULT_STEP_MS), 'EMA weight 0.5');
+});
+
+test('interval estimate is clamped to a sane range (a huge gap cannot make the slide crawl forever)', () => {
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[7, 5, 0, 7]]), 1e9);   // absurd gap → clamped to MAX before smoothing
+  const iv = m.byCid[7].interval;
+  assert.equal(iv, DEFAULT_STEP_MS + 0.5 * (MAX_STEP_MS - DEFAULT_STEP_MS));
+  assert.ok(iv <= MAX_STEP_MS);
+});
+
+test('a mid-slide re-step starts the new slide from the CURRENT interpolated position (no backward jump)', () => {
+  // step to (6,5) anchored at t=0 with default interval; re-step to (7,5) at t=250 (half way there).
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[7, 5, 0, 7]]), DEFAULT_STEP_MS / 2); // pawn is visually at x≈5.5
+  const e = m.byCid[7];
+  assert.equal(e.x, 7);
+  assert.ok(Math.abs(e.originX - 5.5) < 1e-9, 'origin is the mid-slide position, not the old tile');
+  // at the re-step instant the drawn position is the origin (5.5), i.e. offset = 5.5 - 7 = -1.5 — a
+  // forward continuation, never a snap back to 6.
+  const off = slideOffset(e, DEFAULT_STEP_MS / 2);
+  assert.ok(Math.abs(off.ox - (5.5 - 7)) < 1e-9, 'continues forward from where it was');
+});
+
+test('a step-less frame does NOT snap the pawn: the in-flight slide is carried across it', () => {
+  // step anchored at t=0; another crew member steps at t=100 forcing a re-send where THIS pawn stood.
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);      // real step, slide anchored
+  const stepless = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 100); // pawn stood; another crew stepped
+  const e = stepless.byCid[7];
+  assert.equal(e.walking, false, 'no new step');
+  assert.equal(e.stepMs, 0, 'but the slide anchor is carried, not cleared');
+  assert.ok(Math.abs(e.originX - 5) < 1e-9 && Math.abs(e.originY - 5) < 1e-9, 'origin carried');
+  // the offset still interpolates from the carried anchor — no snap to the tile.
+  const off = slideOffset(e, 100);
+  assert.ok(off.ox < 0 && off.ox > -1, 'still gliding, not snapped to 0');
+  assert.equal(slideActive(e, 100), true, 'slide still in flight → render loop stays alive');
+});
+
+test('a real stop settles the pawn onto its tile once the in-flight slide finishes', () => {
+  let m = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  m = trackMotion(m, frame(0, [[6, 5, 0, 7]]), 0);      // last step, anchored at t=0
+  const e = m.byCid[7];
+  assert.equal(slideActive(e, DEFAULT_STEP_MS - 1), true, 'still arriving just before the interval');
+  assert.equal(slideActive(e, DEFAULT_STEP_MS), false, 'settled at the interval → loop idles');
+  assert.deepEqual(slideOffset(e, DEFAULT_STEP_MS + 500), { ox: 0, oy: 0 }, 'sits on the tile');
+});
+
+test('teleport / deck change / fog reveal reset the slide (hard cut, never a glide)', () => {
+  let base = trackMotion(initMotion(), frame(0, [[5, 5, 0, 7]]), 0);
+  base = trackMotion(base, frame(0, [[6, 5, 0, 7]]), 0);   // a real slide is in flight
+
+  const tp = trackMotion(base, frame(0, [[9, 9, 0, 7]]), 100);
+  assert.equal(tp.byCid[7].stepMs, null, 'teleport clears the slide');
+  assert.deepEqual(slideOffset(tp.byCid[7], 100), { ox: 0, oy: 0 });
+  assert.equal(slideActive(tp.byCid[7], 100), false);
+
+  const dk = trackMotion(base, frame(1, [[6, 5, 0, 7]]), 100);
+  assert.equal(dk.byCid[7].stepMs, null, 'a deck change clears the slide');
+
+  const fog = trackMotion(base, frame(0, [[6, 5, 0, 7], [7, 5, 1, 99]]), 100);
+  assert.equal(fog.byCid[99].stepMs, null, 'a freshly-revealed cid has no slide');
+});
+
+test('slideActive / slideOffset are null-tolerant (no entry, no clock)', () => {
+  assert.equal(slideActive(null, 100), false);
+  assert.equal(slideActive(undefined, 100), false);
+  assert.deepEqual(slideOffset(null, 100), { ox: 0, oy: 0 });
+  assert.deepEqual(slideOffset(undefined, 100), { ox: 0, oy: 0 });
 });
 
 // ---------------- sprite-variant selection (absence-tolerant) ----------------

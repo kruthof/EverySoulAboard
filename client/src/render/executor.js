@@ -21,7 +21,9 @@
  * @property {import('./camera.js').Camera} camera camera descriptor (sets the transform)
  * @property {import('./sprites.js').SpriteAssets} [sprites] loaded sprite set (optional)
  * @property {boolean} [spriteMode] draw sprites when true and assets are ready
- * @property {number} [timeSec] wall-clock seconds, for the animated selection reticle
+ * @property {number} [timeSec] wall-clock seconds, for the animated selection reticle + walk cycle
+ * @property {Object<string,import('./motion.js').MotionEntry>} [motion] per-tile motion (walk slide)
+ * @property {number|null} [nowMs] wall-clock ms driving the continuous slide; null = settled (frozen)
  */
 
 /**
