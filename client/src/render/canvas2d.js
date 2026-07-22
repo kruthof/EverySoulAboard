@@ -3,25 +3,52 @@
 // fallback, wall-face/hull-mass, crew variants, facing-aware rotation, lens wash, hover cursor,
 // selection reticle. Implements the Executor shape in executor.js.
 //
-// It walks the list in PASS order (webgl/batch.js `passIndexOf`: terrain → entities → light →
-// overlay), not raw row-major order. Raw order painted each tile's entity before its neighbours'
-// floors, so anything an entity drew outside its own tile — a pawn mid-slide — was erased by the
-// next tile's opaque floor sprite. That was the "pawns walking left appear out of nothing" bug
-// (measured: 100% of the pawn quad covered at the start of a westward or northward step). Within a
-// tile the relative order is unchanged, and tiles do not overlap, so nothing else moves.
+// It walks the list in PASS order (webgl/batch.js `passIndexOf`: terrain → shadows → entities →
+// light → overlay), not raw row-major order. Raw order painted each tile's entity before its
+// neighbours' floors, so anything an entity drew outside its own tile — a pawn mid-slide, a
+// grounding shadow — was erased by the next tile's opaque floor sprite. That was the "pawns
+// walking left appear out of nothing" bug (measured: 100% of the pawn quad covered at the start of
+// a westward or northward step), and it made WP-1 shadows impossible here. Within a tile the
+// relative order is unchanged, and tiles do not overlap, so nothing else moves.
 
 import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
 import { passIndexOf } from './webgl/batch.js';
 import { deviceSpriteKey, pawnSpriteKey, slideOffset, isAnimWalking } from './motion.js';
+import { shadowQuad, SHADOW_ALPHA, MESH_STRIDE, sampleQuad } from './lightfield.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
+
+/** Sub-tile resolution of the Canvas2D light-pool approximation — see `_lightMesh`. */
+const LIGHT_SUBDIV = 2;
+
+/** Hard cap on `_styleCache`. ~10x a boot frame's distinct styles, so it never evicts in practice;
+ *  it exists so a long session cannot grow the map without bound. */
+const STYLE_CACHE_MAX = 2048;
 
 export class Canvas2DExecutor {
   constructor() {
     /** Reusable pass buckets — the walk is re-ordered per frame without allocating. */
     this._buckets = [[], [], [], []];
+    /** image → black silhouette canvas (or null when this environment has no DOM). */
+    this._sil = new WeakMap();
+    /** Injectable offscreen-canvas factory: returns null where `document` does not exist (node
+     *  tests), which is also why Canvas2D casts no shadow under a procedural-only glyph. */
+    this._makeCanvas = (w, h) => {
+      if (typeof document === 'undefined') return null;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      return c;
+    };
+    this._rgb = [0, 0, 0];
+    /** packed rgb → 'rgb(r,g,b)', so the light pass allocates no strings per frame. The key space
+     *  is 24-bit, and while a boot frame only shows ~142 distinct styles, the set is MONOTONIC —
+     *  panning and relighting keep adding to it — so it is capped and dropped wholesale rather
+     *  than left to grow for the lifetime of the tab. A drop costs one frame of string building. */
+    this._styleCache = new Map();
+    /** Shadow-quad corner scratch: `shadowQuad` writes into this, once per shadowed entity. */
+    this._sq = new Float64Array(8);
   }
 
   /**
@@ -75,11 +102,18 @@ export class Canvas2DExecutor {
       }
     }
 
-    // ---- 1. entities ----
+    // ---- 1a. grounding shadows: every entity's own art, black, squashed onto the ground and
+    //          sheared down-light, under the WHOLE entity batch so one pawn's shadow can never
+    //          fall across another pawn. ----
+    if (useSpr) for (const o of B[1]) this._shadow(ctx, T, o, sprites, anim);
+
+    // ---- 1b. entities ----
     for (const o of B[1]) this._entity(ctx, T, o.x * T, o.y * T, o, useSpr, sprites, anim);
 
-    // ---- 2. light ----
-    for (const o of B[2]) {
+    // ---- 2. light: the vertex-coloured pool mesh when the caller built one, else the legacy
+    //         flat per-tile overlay (identical bytes to before for any caller that passes none). ----
+    if (opts.lightMesh && opts.lightMesh.count) this._lightMesh(ctx, T, opts.lightMesh);
+    else for (const o of B[2]) {
       const c = litOverlay(o.state);
       if (c) { ctx.fillStyle = c; ctx.fillRect(o.x * T, o.y * T, T, T); }
     }
@@ -95,6 +129,134 @@ export class Canvas2DExecutor {
       }
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  // --- WP-3: the light pool mesh -------------------------------------------------------------
+  /**
+   * Paint the light field as `dst *= M` with globalCompositeOperation 'multiply' — algebraically
+   * the SAME operation the GL path folds into its DST_COLOR blend, so the two skins now agree
+   * exactly on lighting (the old translucent over-blend did not: it lifted a black tile toward the
+   * overlay colour where the multiply left it black).
+   *
+   * Canvas2D has no per-vertex colour, so each quad is filled as LIGHT_SUBDIV² sub-rects sampled
+   * at the sub-rect CENTRES. Because bilinear interpolation is linear in each axis, the centre
+   * sample is exactly the sub-rect's area average — this is the box-filtered version of what the
+   * GPU draws, not a different picture. Max deviation at 2×2 is a quarter of the corner spread.
+   */
+  _lightMesh(ctx, T, mesh) {
+    const { data, count } = mesh;
+    const n = LIGHT_SUBDIV, step = T / n, rgb = this._rgb, cache = this._styleCache;
+    const prev = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = 'multiply';
+    for (let q = 0; q < count; q++) {
+      const px = data[q * MESH_STRIDE] * T, py = data[q * MESH_STRIDE + 1] * T;
+      for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+          sampleQuad(data, q, (i + 0.5) / n, (j + 0.5) / n, rgb);
+          // ROUND, do not truncate: `x*255|0` floors, which biases every tile up to 1/255 darker
+          // than the GL path's own 8-bit quantization and would make the two backends disagree by
+          // a whole level over most of the stage.
+          const r = rgb[0] * 255 + 0.5 | 0, g = rgb[1] * 255 + 0.5 | 0, b = rgb[2] * 255 + 0.5 | 0;
+          // An establishing shot is ~2,600 tiles = ~10k sub-rects; building 10k colour STRINGS
+          // every frame was pure garbage, so the (already 8-bit-quantized) colour is memoized.
+          const k = (r << 16) | (g << 8) | b;
+          let style = cache.get(k);
+          if (style === undefined) {
+            if (cache.size >= STYLE_CACHE_MAX) cache.clear();
+            style = 'rgb(' + r + ',' + g + ',' + b + ')';
+            cache.set(k, style);
+          }
+          ctx.fillStyle = style;
+          ctx.fillRect(px + i * step, py + j * step, step, step);
+        }
+      }
+    }
+    ctx.globalCompositeOperation = prev;
+  }
+
+  // --- WP-1: grounding shadows ---------------------------------------------------------------
+  /**
+   * A black silhouette of `img`, cached per image object. Built once per sprite (including rotated
+   * variants, which are themselves cached canvases) with 'source-in', so the shadow carries the
+   * sprite's exact alpha shape — the same shape the GL path gets for free by tinting the atlas cell
+   * black. Returns null where no offscreen canvas can be made (headless node), and callers then
+   * draw nothing rather than guessing.
+   */
+  _silhouette(img) {
+    if (!img) return null;
+    if (this._sil.has(img)) return this._sil.get(img);
+    let out = null;
+    const w = img.width || 0, h = img.height || 0;
+    const cv = w && h ? this._makeCanvas(w, h) : null;
+    const g = cv && cv.getContext ? cv.getContext('2d') : null;
+    if (g) {
+      g.clearRect(0, 0, w, h);
+      g.drawImage(img, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, w, h);
+      out = cv;
+    }
+    this._sil.set(img, out);
+    return out;
+  }
+
+  /**
+   * Draw one entity's grounding shadow: its own silhouette, black, SQUASHED onto the ground plane
+   * about the foot line and sheared down-light (`lightfield.js shadowQuad` — the same four corners
+   * the GL path pushes, so the two backends draw the same parallelogram).
+   *
+   * `shadowQuad` returns TL,TR,BR,BL. The map from the silhouette's source rect [0,T]² onto those
+   * corners is affine, so it is exactly the matrix (TR-TL)/T, (BL-TL)/T, TL — no approximation.
+   *
+   * Sprite-drawn entities only: a procedural vector glyph (open door, loose item, sprites-off mode)
+   * has no bitmap to silhouette and casts none; the GL path makes the same choice, so the two
+   * backends stay in step.
+   */
+  _shadow(ctx, T, o, sprites, anim) {
+    const sil = this._silhouette(this._entityImage(o, sprites, anim));
+    if (!sil) return;
+    const off = o.g === 64 ? slideOffset(anim.motion && anim.motion[o.x + ',' + o.y], anim.nowMs)
+      : { ox: 0, oy: 0 };
+    const q = shadowQuad((o.x + off.ox) * T, (o.y + off.oy) * T, T, this._sq);
+    ctx.save();
+    ctx.globalAlpha = SHADOW_ALPHA * (o.dim ? 0.7 : 1);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.transform((q[2] - q[0]) / T, (q[3] - q[1]) / T,   // u axis: TL → TR
+                  (q[6] - q[0]) / T, (q[7] - q[1]) / T,   // v axis: TL → BL
+                  q[0], q[1]);                            // origin: TL
+    ctx.drawImage(sil, 0, 0, T, T);
+    ctx.restore();
+  }
+
+  /**
+   * The bitmap `_entity` will draw for this op, or null when it will draw a procedural glyph.
+   * Mirrors the sprite-selection branches of `_entity` exactly — the shadow must be the shape of
+   * the thing that casts it, including the current walk frame and device on/off/broken variant.
+   */
+  _entityImage(o, sprites, anim) {
+    if (!sprites) return null;
+    const dim = o.dim;
+    if (o.role && sprites.get(o.role)) {
+      const key = deviceSpriteKey(o.role, o.fg, dim, SPRITE_STATES);
+      const variant = key !== o.role ? sprites.decoded(key) : null;
+      return variant || (o.turns ? sprites.rotated(o.role, o.turns) : sprites.get(o.role));
+    }
+    const ch = String.fromCharCode(o.g);
+    if (ch === '@' && o.fg === C.Crew) {
+      const v = o.pv || 0;
+      const pr = (PAWN_ROLES[v] && sprites.get(PAWN_ROLES[v])) ? PAWN_ROLES[v] : 'pawn';
+      const entry = anim.motion && anim.motion[o.x + ',' + o.y];
+      const key = pawnSpriteKey(pr, isAnimWalking(entry, anim.nowMs), anim.timeSec || 0, SPRITE_FRAMES);
+      return (key !== pr ? sprites.decoded(key) : null) || sprites.get(pr);
+    }
+    if (ch === '+' || ch === 'X') return sprites.get('door');
+    if (ch === '"') return sprites.get('growbed');
+    if (ch === 'T') {
+      const key = deviceSpriteKey('terminal', o.fg, dim, SPRITE_STATES);
+      return (key !== 'terminal' ? sprites.decoded(key) : null) || sprites.get('terminal');
+    }
+    return null;
   }
 
   // --- sprite draw helpers (mirror Client.html spr / sprTurned) ---

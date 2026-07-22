@@ -25,6 +25,10 @@
  * @property {number} [timeSec] wall-clock seconds, for the animated selection reticle + walk cycle
  * @property {Object<string,import('./motion.js').MotionEntry>} [motion] per-tile motion (walk slide)
  * @property {number|null} [nowMs] wall-clock ms driving the continuous slide; null = settled (frozen)
+ * @property {{count:number,data:Float32Array,stride:number}} [lightMesh] the WP-3 light field
+ *   (render/lightfield.js `buildLightMesh`) — a vertex-coloured multiply mesh that REPLACES the
+ *   flat per-tile light overlay. Optional: omit it and both backends fall back to the flat overlay,
+ *   byte-identical to the pre-WP-3 output.
  */
 
 /**

@@ -11,6 +11,9 @@ import {
   MAX_TILE_DEVICE_PX,
 } from '../src/render/camera.js';
 import { C } from '../src/render/palette.js';
+import {
+  buildLightMesh, shadowQuad, sampleQuad, SHADOW_ALPHA, SHADOW_SQUASH, MESH_STRIDE,
+} from '../src/render/lightfield.js';
 import { WebGL2Executor } from '../src/render/webgl2.js';
 import { Canvas2DExecutor } from '../src/render/canvas2d.js';
 import { collectCellKeys, CELL } from '../src/render/rasterplan.js';
@@ -145,10 +148,12 @@ test('camera: the tile lattice is quantized to whole device pixels', () => {
 /** A WebGL2Executor with only its GPU sink replaced: the position math under test is untouched. */
 function webglRecorder() {
   const calls = [];
+  const blends = [];   // setBlendMultiply(on) calls, with the draw index they landed at
   const exec = Object.create(WebGL2Executor.prototype);
   exec.gl = {
     isLost: () => false,
-    beginFrame() {}, setBlendMultiply() {}, uploadAtlas() {},
+    beginFrame() {}, uploadAtlas() {},
+    setBlendMultiply(on) { blends.push({ on, at: calls.length }); },
     drawFlat(verts) { calls.push({ fn: 'flat', verts }); },
     drawTextured(verts) { calls.push({ fn: 'tex', verts }); },
   };
@@ -161,13 +166,24 @@ function webglRecorder() {
     exec._uv = packAtlas(keys.map((k) => ({ name: k, w: CELL, h: CELL }))).uv;
   };
   exec.calls = calls;
-  exec.run = (list, opts) => { calls.length = 0; exec.execute(list, null, opts); return calls; };
-  /** Left edge (device px) of the single textured entity quad this frame emitted. */
+  exec.blends = blends;
+  exec.run = (list, opts) => {
+    calls.length = 0; blends.length = 0;
+    exec.execute(list, null, opts);
+    return calls;
+  };
+  /** Left edge (device px) of the ENTITY quad this frame emitted. A grounding shadow uses the same
+   *  cell and the same UVs and is told apart by its vertex tint: black (r=0) vs white (r=alpha). */
   exec.quadX = (list, opts) => {
     exec.run(list, opts);
-    const tex = calls.filter((c) => c.fn === 'tex' && c.verts.length);
-    assert.equal(tex.length, 1, 'expected exactly one textured batch (the pawn)');
+    const tex = calls.filter((c) => c.fn === 'tex' && c.verts.length && c.verts[4] !== 0);
+    assert.equal(tex.length, 1, 'expected exactly one non-shadow textured batch (the pawn)');
     return tex[0].verts[0]; // vertex 0 = the quad's top-left x
+  };
+  /** The black (shadow) textured batch, or null when none was emitted. */
+  exec.shadowBatch = () => {
+    const s = calls.filter((c) => c.fn === 'tex' && c.verts.length && c.verts[4] === 0);
+    return s.length ? s[0].verts : null;
   };
   return exec;
 }
@@ -183,19 +199,47 @@ const STUB_SPRITES = {
 };
 
 /**
- * A Canvas2DExecutor driven against a ctx that records every draw (image + fill) in order, with the
- * rect it covered, through the live transform. Rects are what the occlusion test needs.
+ * A Canvas2DExecutor driven against a ctx that records every draw (image + fill) in order, through
+ * the live transform — including `transform()`, `save()`/`restore()`, the composite mode and the
+ * alpha. The grounding shadow is drawn under a SHEARED matrix, so the recorder keeps the four
+ * transformed corners (`c`) as well as the axis-aligned bounding rect the occlusion test needs.
  */
 function canvasRecorder() {
   const drawn = [];
+  /** m ∘ n (both [a,b,c,d,e,f]) — canvas `transform()` post-multiplies the current matrix. */
+  const mul = (m, n) => [
+    m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
   const ctx = {
     _m: [1, 0, 0, 1, 0, 0],
+    _stack: [],
     globalAlpha: 1, globalCompositeOperation: 'source-over', fillStyle: '#000',
     setTransform(a, b, c, d, e, f) { this._m = [a, b, c, d, e, f]; },
-    save() {}, restore() {}, clearRect() {}, beginPath() {}, rect() {}, clip() {},
+    transform(a, b, c, d, e, f) { this._m = mul(this._m, [a, b, c, d, e, f]); },
+    save() { this._stack.push([this._m.slice(), this.globalAlpha, this.globalCompositeOperation]); },
+    restore() {
+      const s = this._stack.pop();
+      if (s) { [this._m, this.globalAlpha, this.globalCompositeOperation] = s; }
+    },
+    // Procedural (vector) painters draw with these; they cover no measurable rect, and the
+    // occlusion/shadow tests only care about the bitmap draws, so they are recorded as no-ops.
+    clearRect() {}, beginPath() {}, rect() {}, clip() {}, closePath() {},
+    moveTo() {}, lineTo() {}, arc() {}, ellipse() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+    stroke() {}, fill() {}, strokeRect() {}, createLinearGradient() {
+      return { addColorStop() {} };
+    },
     _rect(name, px, py, w, h) {
-      const s = this._m[0];
-      drawn.push({ name, x: s * px + this._m[4], y: s * py + this._m[5], w: s * w, h: s * h });
+      const m = this._m;
+      const pt = (u, v) => [m[0] * u + m[2] * v + m[4], m[1] * u + m[3] * v + m[5]];
+      const c = [pt(px, py), pt(px + w, py), pt(px + w, py + h), pt(px, py + h)];
+      const xs = c.map((p) => p[0]), ys = c.map((p) => p[1]);
+      const x = Math.min(...xs), y = Math.min(...ys);
+      drawn.push({
+        name, c, x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y,
+        alpha: this.globalAlpha, gco: this.globalCompositeOperation, style: this.fillStyle,
+      });
     },
     fillRect(px, py, w, h) { this._rect('fill', px, py, w, h); },
     drawImage(img, px, py, w, h) { this._rect((img && img.name) || 'img', px, py, w, h); },
@@ -208,6 +252,7 @@ function canvasRecorder() {
   };
   return {
     exec,
+    ctx,
     run,
     /** Left edge (device px) of the pawn's own sprite draw. */
     quadX(list, opts) {
@@ -218,7 +263,7 @@ function canvasRecorder() {
   };
 }
 
-// A pawn that stepped from (x-dx,y-dy) into (x,y) at t=1000 over an estimated 400 ms interval.
+// A pawn that stepped from (fromX,fromY) into (x,y) at t=1000 over an estimated 400 ms interval.
 function stepEntry(x, y, dx, dy) {
   return {
     x, y, walking: true, facing: 'E', fromX: x - dx, fromY: y - dy, dx, dy,
@@ -240,7 +285,6 @@ test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide und
   const boot = loadBootFrame();
   const cam = cameraOn(boot, 20, 9, 0.9);
   const p = tilePitch(cam), { ox } = transform(cam);
-  // A pawn that stepped 19→20 at t=1000 and glides over its estimated 400 ms interval.
   const entry = stepEntry(20, 9, 1, 0);
   const motion = { '20,9': entry };
   const list = [{ op: 'entity', x: 20, y: 9, g: 64 /* '@' */, fg: C.Crew, role: null, turns: 0, pv: 0 }];
@@ -275,13 +319,18 @@ test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide und
 // ---- pass ordering: nothing may paint over a sliding pawn (playtest: "pawns walking left
 //      appear out of nothing") ----
 
-/** A 9x3 corridor of floor with one crew pawn at (cx,1), composed for real. */
-function corridorScene(cx) {
+/** A 9x3 corridor of floor with one crew pawn at (cx,1) — and optionally a '*' lamp and a
+ *  PROCEDURAL (sprite-less) glyph — composed for real. `lamp` places a Light device so the light
+ *  field has a pool to build; `proc` places an open door '/', which both backends draw as vector
+ *  strokes rather than a bitmap. */
+function corridorScene(cx, lamp = -1, proc = -1) {
   const cells = [];
   for (let y = 0; y < 3; y++) {
     for (let x = 0; x < 9; x++) {
-      if (y === 1 && x === cx) cells.push([64, C.Crew, C.Floor, 0]);   // '@'
-      else cells.push([46, C.Floor, C.Floor, 0]);                      // '.'
+      if (y === 1 && x === cx) cells.push([64, C.Crew, C.Floor, 0]);          // '@'
+      else if (y === 0 && x === lamp) cells.push([42, C.Device, C.Floor, 0]); // '*'
+      else if (y === 2 && x === proc) cells.push([47, C.Device, C.Floor, 0]); // '/' open door
+      else cells.push([46, C.Floor, C.Floor, 0]);                            // '.'
     }
   }
   const frame = { w: 9, h: 3, lens: 'none', cells, crew: [[cx, 1, 0]] };
@@ -330,6 +379,196 @@ test('both executors draw ALL terrain before ANY entity (one shared pass order)'
   assert.ok(tex.length >= 2, 'expected a terrain batch and an entity batch');
   assert.ok(tex[0].verts.length > tex[tex.length - 1].verts.length,
     'the first textured batch is the big terrain one');
+});
+
+// ---- WP-1: grounding drop shadows ----
+
+/** Inject the offscreen-canvas factory the browser path uses (node has no DOM), so `_silhouette`
+ *  can build a shadow bitmap. The stub records as name 'sil'. */
+function withSilhouettes(cv) {
+  cv.exec._makeCanvas = (w, h) => ({
+    width: w, height: h, name: 'sil',
+    getContext: () => ({
+      clearRect() {}, drawImage() {}, fillRect() {},
+      globalCompositeOperation: '', fillStyle: '',
+    }),
+  });
+  return cv;
+}
+
+test('GROUNDING SHADOW: webgl2 pushes a black squashed+sheared copy BEFORE the entity batch', () => {
+  const { list, cam } = corridorScene(4);
+  const gl = webglRecorder();
+  const calls = gl.run(list, { camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', timeSec: 0 });
+  const shadow = gl.shadowBatch();
+  assert.ok(shadow, 'expected a shadow batch');
+  // ...pure black at SHADOW_ALPHA, with the sprite's own alpha shape carried by the texture.
+  assert.deepEqual([shadow[4], shadow[5], shadow[6]], [0, 0, 0], 'a shadow is black, never tinted');
+  assert.ok(Math.abs(shadow[7] - SHADOW_ALPHA) < 1e-6, `shadow alpha ${shadow[7]} != ${SHADOW_ALPHA}`);
+  // Batch order is terrain(tex) → shadows(tex, black) → entities(tex) → overlay(empty).
+  const texIdx = calls.map((c, i) => ({ c, i })).filter((e) => e.c.fn === 'tex' && e.c.verts.length);
+  const sIdx = texIdx.find((e) => e.c.verts[4] === 0).i;
+  const eIdx = texIdx.filter((e) => e.c.verts[4] !== 0).pop().i;
+  assert.ok(sIdx < eIdx, 'shadows must be drawn under the whole entity batch');
+  const entityVerts = calls[eIdx].verts;
+  assert.equal(entityVerts.length, 6 * 8, 'one entity quad in this scene');
+  // ...the shadow samples the SAME UVs as the entity (no new atlas cell)...
+  assert.deepEqual([shadow[2], shadow[3]], [entityVerts[2], entityVerts[3]], 'same UVs, same cell');
+  // ...and its four positions are exactly shadowQuad's, which is NOT an offset copy of the entity
+  // quad: it is 45% as tall, anchored at the foot line, and leaning down-light. TRI = [0,1,2,0,2,3]
+  // so vertices 0,1,2,5 of the batch are the quad's TL,TR,BR,BL.
+  const D = entityVerts[8] - entityVerts[0]; // TR.x - TL.x of the entity quad = the cell side
+  const want = shadowQuad(entityVerts[0], entityVerts[1], D);
+  for (const [vi, ci, label] of [[0, 0, 'TL'], [1, 1, 'TR'], [2, 2, 'BR'], [5, 3, 'BL']]) {
+    assert.ok(Math.abs(shadow[vi * 8] - want[ci * 2]) < 1e-2, `${label}.x`);
+    assert.ok(Math.abs(shadow[vi * 8 + 1] - want[ci * 2 + 1]) < 1e-2, `${label}.y`);
+  }
+  const sq = { x0: shadow[0], y0: shadow[1], x1: shadow[8], y1: shadow[9], bx: shadow[40], by: shadow[41] };
+  assert.ok(Math.abs((sq.by - sq.y0) / D - SHADOW_SQUASH) < 1e-6,
+    `a shadow is squashed onto the ground: height ${(sq.by - sq.y0) / D} of a cell, want ${SHADOW_SQUASH}`);
+  assert.ok((sq.x0 - sq.bx) / D > 0.1,
+    'the top of the shadow must LEAN down-light — an unsheared copy reads as a second sprite');
+});
+
+test('GROUNDING SHADOW: canvas2d draws the SAME parallelogram webgl2 does, under the entity', () => {
+  const { list, cam } = corridorScene(4);
+  const cv = withSilhouettes(canvasRecorder());
+  const drawn = cv.run(list, { camera: cam, motion: null, nowMs: null, timeSec: 0 });
+  const sil = drawn.filter((r) => r.name === 'sil');
+  const pawn = drawn.find((r) => r.name === 'pawn');
+  assert.equal(sil.length, 1, 'exactly one grounding shadow for the one sprite entity');
+  assert.ok(drawn.indexOf(sil[0]) < drawn.indexOf(pawn), 'the shadow goes under the entity');
+  // The recorder composes ctx.transform(), so sil[0].c holds the four DEVICE-space corners the
+  // sheared draw actually covered. They must equal shadowQuad over the pawn's own cell — the
+  // single shared authority both backends derive from.
+  const want = shadowQuad(pawn.c[0][0], pawn.c[0][1], pawn.w);
+  for (let i = 0; i < 4; i++) {
+    assert.ok(Math.abs(sil[0].c[i][0] - want[i * 2]) < 1e-6, `corner ${i} x`);
+    assert.ok(Math.abs(sil[0].c[i][1] - want[i * 2 + 1]) < 1e-6, `corner ${i} y`);
+  }
+  // ...and the shadow is genuinely SHORTER than the thing casting it (an offset full-size copy —
+  // the artefact this replaced — would have sil[0].h === pawn.h).
+  assert.ok(sil[0].h < pawn.h * (SHADOW_SQUASH + 0.01),
+    `a shadow must be squashed onto the ground: ${sil[0].h} vs caster ${pawn.h}`);
+  assert.ok(sil[0].w > pawn.w * 1.1, 'and sheared, so it is WIDER than the cell it stands in');
+  assert.ok(Math.abs(sil[0].alpha - SHADOW_ALPHA) < 1e-9, 'drawn at SHADOW_ALPHA');
+});
+
+test('GROUNDING SHADOW: a procedural (sprite-less) glyph casts none, in EITHER backend', () => {
+  // Canvas2D shadows a bitmap by silhouetting it; a procedural vector glyph (open door, loose
+  // item, sprites-off mode) has no bitmap to silhouette, so it CANNOT cast one there. If the GL
+  // path shadowed its baked proc cell anyway the two backends would disagree about what is in the
+  // scene — and a few thin strokes silhouetted solid black is an ink blot, not a shadow.
+  const { list, cam } = corridorScene(4, -1, 6);
+  const procOps = list.filter((o) => o.op === 'entity' && o.g === 47);
+  assert.equal(procOps.length, 1, 'the fixture must actually contain a procedural entity');
+
+  const gl = webglRecorder();
+  gl.run(list, { camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', timeSec: 0 });
+  const shadow = gl.shadowBatch();
+  assert.ok(shadow, 'the PAWN still casts one');
+  assert.equal(shadow.length, 6 * 8,
+    `expected exactly ONE shadow quad (the pawn), got ${shadow.length / (6 * 8)} — the ` +
+    'procedural glyph cast one too, which canvas2d can never match');
+
+  // …and canvas2d agrees: one silhouette draw, not two.
+  const cv = withSilhouettes(canvasRecorder());
+  const drawn = cv.run(list, { camera: cam, motion: null, nowMs: null, timeSec: 0 });
+  assert.equal(drawn.filter((r) => r.name === 'sil').length, 1, 'canvas2d shadows only the pawn');
+});
+
+// ---- WP-3: the light mesh replaces the flat per-tile overlay in BOTH executors ----
+
+test('LIGHT MESH: both executors consume the gradient mesh and skip the flat per-tile overlay', () => {
+  // A corridor with a lamp at (2,0), so the field genuinely varies across and within tiles.
+  const { frame, cam } = corridorScene(4, 2);
+  const litList = composeScene(frame, cam, ASSETS, new Uint8Array(frame.w * frame.h).fill(4));
+  const mesh = buildLightMesh(litList, frame);
+  assert.ok(mesh.count > 0, 'expected a mesh over the corridor');
+
+  // webgl2: ONE flat batch of 6 verts per quad, and its corners carry DIFFERENT colours — which
+  // the legacy flat-overlay path (one colour per quad) cannot produce at any tile.
+  const gl = webglRecorder();
+  const withMesh = gl.run(litList,
+    { camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', timeSec: 0, lightMesh: mesh });
+  const meshBatch = withMesh.filter((c) => c.fn === 'flat' && c.verts.length === mesh.count * 6 * 8);
+  assert.equal(meshBatch.length, 1, 'expected exactly one light-mesh batch');
+  const v = meshBatch[0].verts;
+  assert.ok(v[4] < 1, 'the light pass must actually darken');
+  let varied = 0;
+  for (let q = 0; q < mesh.count; q++) {
+    // Vertices 0 and 1 of a quad are its TL and TR corners (TRI = 0,1,2,0,2,3).
+    if (Math.abs(v[q * 48 + 4] - v[q * 48 + 12]) > 1e-6) varied++;
+  }
+  assert.ok(varied >= 3,
+    `a gradient mesh must give a quad's corners different vertex colours; only ${varied} of ` +
+    `${mesh.count} quads did — that is a FLAT per-tile overlay, not a pool`);
+
+  // canvas2d: the mesh is filled with globalCompositeOperation 'multiply' as sub-tile rects, and
+  // the legacy per-tile overlay is NOT also drawn.
+  const dead = composeScene(frame, cam, ASSETS, new Uint8Array(frame.w * frame.h).fill(1));
+  const cv = canvasRecorder();
+  const legacy = cv.run(dead, { camera: cam, timeSec: 0 }).filter((r) => r.name === 'fill').length;
+  const meshed = cv.run(dead, { camera: cam, timeSec: 0, lightMesh: buildLightMesh(dead, frame) })
+    .filter((r) => r.name === 'fill').length;
+  assert.ok(meshed > legacy, `the mesh path subdivides tiles (${meshed} fills vs ${legacy} legacy)`);
+});
+
+test('LIGHT BLEND PARITY: canvas2d multiplies and webgl2 multiplies — the same dst *= M', () => {
+  // The whole reason the mesh carries a MULTIPLY factor rather than an over-blend colour is that
+  // both backends composite it the same way. Canvas2D must set globalCompositeOperation
+  // 'multiply' (with alpha 1) for the mesh fills and put it back afterwards; WebGL2 must wrap its
+  // mesh draw in setBlendMultiply(true/false), which is DST_COLOR/ONE_MINUS_SRC_ALPHA — and with
+  // alpha 1 that is dst*M in RGB and dst*1 in alpha, i.e. the identical operation.
+  // Without this, 'multiply' → 'source-over' would REPLACE the stage with the multiply factors
+  // (a near-black deck) and no other test in this suite would notice.
+  const { frame, cam } = corridorScene(4, 2);
+  const litList = composeScene(frame, cam, ASSETS, new Uint8Array(frame.w * frame.h).fill(4));
+  const mesh = buildLightMesh(litList, frame);
+
+  const cv = withSilhouettes(canvasRecorder());
+  const drawn = cv.run(litList, { camera: cam, timeSec: 0, lightMesh: mesh });
+  // The mesh sub-rects are exactly the fills whose colour is a light-mesh colour; identify them by
+  // their draw order (they come after the entities and before any overlay) and count.
+  const meshFills = drawn.filter((r) => r.name === 'fill' && r.gco === 'multiply');
+  assert.equal(meshFills.length, mesh.count * 4, 'every mesh sub-rect must be a multiply fill');
+  for (const f of meshFills) assert.equal(f.alpha, 1, 'a multiply factor is opaque, never faded');
+  // ...the composite mode is RESTORED, so the overlay/next frame is not multiplied too.
+  assert.equal(cv.ctx.globalCompositeOperation, 'source-over',
+    'globalCompositeOperation must be restored after the light pass');
+  // ...and each sub-rect carries the mesh colour sampled at its own CENTRE, 8-bit ROUNDED.
+  // Two mutations hide here and both must fail this: sampling the sub-rect's CORNER instead of its
+  // centre (the docstring claims the centre sample is exactly the sub-rect's area average, which
+  // is only true at the centre), and truncating `x*255|0` instead of rounding (which would put
+  // canvas2d a whole 8-bit level below the GL path over most of the stage).
+  // Pick the quad with the largest corner spread, so centre and corner samples genuinely differ.
+  let qBest = 0, spread = -1;
+  for (let q = 0; q < mesh.count; q++) {
+    const b = q * MESH_STRIDE + 2;
+    const s2 = Math.abs(mesh.data[b] - mesh.data[b + 3]) + Math.abs(mesh.data[b] - mesh.data[b + 9]);
+    if (s2 > spread) { spread = s2; qBest = q; }
+  }
+  assert.ok(spread > 2 / 255, `need a quad with a real gradient to tell centre from corner (${spread})`);
+  const rgb = [0, 0, 0];
+  const style = (u, v) => 'rgb(' +
+    [...sampleQuad(mesh.data, qBest, u, v, rgb)].map((x) => (x * 255 + 0.5) | 0).join(',') + ')';
+  // Sub-rects are emitted (i inner, j outer) at the centres of a 2x2 subdivision.
+  const wantCentres = [style(0.25, 0.25), style(0.75, 0.25), style(0.25, 0.75), style(0.75, 0.75)];
+  const got = meshFills.slice(qBest * 4, qBest * 4 + 4).map((f) => f.style);
+  assert.deepEqual(got, wantCentres,
+    'each sub-rect must be the mesh colour at its own centre, rounded to 8 bits');
+
+  // webgl2: the mesh batch sits strictly between setBlendMultiply(true) and setBlendMultiply(false).
+  const gl = webglRecorder();
+  const calls = gl.run(litList,
+    { camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', timeSec: 0, lightMesh: mesh });
+  const blends = gl.blends;
+  assert.deepEqual(blends.map((b) => b.on), [true, false],
+    'the GL light pass must turn the multiply blend on and back off exactly once');
+  const meshAt = calls.findIndex((c) => c.fn === 'flat' && c.verts.length === mesh.count * 6 * 8);
+  assert.ok(meshAt >= 0, 'expected the mesh batch');
+  assert.ok(blends[0].at <= meshAt && meshAt < blends[1].at,
+    'the mesh must be drawn INSIDE the multiply blend, not under the default over-blend');
 });
 
 test('camera: zoom is capped at MAX_TILE_DEVICE_PX — never upscale past the source art', () => {

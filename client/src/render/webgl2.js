@@ -8,10 +8,13 @@
 //                         upload it once. Rebuilds only when the atlas signature changes (sprite
 //                         toggle, or a new glyph/colour scrolls into view).
 //   per frame           : pass walk → interleaved quad batches. terrain (flat hull/void + textured
-//                         base tiles), entities (atlas sprite or baked proc cell, facing via UV
-//                         rotation, dim via alpha, locked-door amber overlay), light (reserved —
-//                         renders nothing when empty, but the multiply-blend slot is wired for C4),
-//                         overlay (lens wash flat + cursor/reticle cells, reticle alpha from phase).
+//                         base tiles), shadows (every sprite entity's own cell, black, squashed
+//                         onto the ground and sheared down-light — WP-1, lightfield.js shadowQuad),
+//                         entities (atlas sprite or baked proc cell,
+//                         facing via UV rotation, dim via alpha, locked-door amber overlay), light
+//                         (the WP-3 vertex-coloured multiply mesh, or the legacy flat per-tile
+//                         overlay when no mesh is supplied), overlay (lens wash flat +
+//                         cursor/reticle cells, reticle alpha from phase).
 //
 // Only construction + execute touch the DOM/GL; every DECISION lives in the pure modules, which
 // are golden-/unit-tested. Context loss surfaces via `onContextLost` so main.js can fall back to
@@ -26,6 +29,7 @@ import {
 import { transform, tilePitch } from './camera.js';
 import { C, FG, litOverlay } from './palette.js';
 import { slideOffset, baseSpriteKey } from './motion.js';
+import { shadowQuad, SHADOW_ALPHA, MESH_STRIDE } from './lightfield.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
@@ -65,21 +69,63 @@ function pushFlat(arr, x, y, d, rgba) {
 /**
  * Push a textured quad. `uv` is {u0,v0,u1,v1}; `turns` rotates the sampled cell by quarter-turns
  * CW (facing), matching sprites.rotated in the canvas skin; `alpha` fades it (premultiplied white).
+ *
+ * `tint` (optional, premultiplied rgba) replaces that white: the fragment shader computes
+ * `texel * v_rgba`, so a tint of (0,0,0,a) yields (0,0,0, a*texelAlpha) — the sprite's exact alpha
+ * shape rendered pure black at `a`. That is how WP-1 draws a grounding shadow with no new atlas
+ * cell, no second texture and no extra pass shape.
+ *
+ * `quad` (optional, [x0,y0,x1,y1,x2,y2,x3,y3] in TL,TR,BR,BL order) replaces the axis-aligned
+ * corners `x,y,d` would give. The grounding shadow is the only caller: its four corners come from
+ * `lightfield.js shadowQuad`, so it is a squashed, sheared parallelogram rather than a box.
  */
-function pushTex(arr, x, y, d, uv, alpha, turns) {
+const AA = new Float64Array(8); // axis-aligned corner scratch for pushTex
+const SQ = new Float64Array(8); // grounding-shadow corner scratch (lightfield.js shadowQuad)
+function pushTex(arr, x, y, d, uv, alpha, turns, tint, quad) {
   if (!uv) return;
-  const corners = [[x, y], [x + d, y], [x + d, y + d], [x, y + d]];
+  let c = quad;
+  if (!c) {
+    AA[0] = x; AA[1] = y; AA[2] = x + d; AA[3] = y;
+    AA[4] = x + d; AA[5] = y + d; AA[6] = x; AA[7] = y + d;
+    c = AA;
+  }
   // Rotate which UV each position corner samples. turns is CW image rotation → shift UV assignment.
   const uvSel = [
     [uv.u0, uv.v0], [uv.u1, uv.v0], [uv.u1, uv.v1], [uv.u0, uv.v1],
   ];
   const t = ((turns % 4) + 4) % 4;
   const a = alpha == null ? 1 : alpha;
+  const r = tint ? tint[0] : a, g = tint ? tint[1] : a, b = tint ? tint[2] : a, al = tint ? tint[3] : a;
   for (const i of TRI) {
-    const c = corners[i];
     const sel = uvSel[(i + t) % 4]; // shift the UV that lands on this corner
-    arr.push(c[0], c[1], sel[0], sel[1], a, a, a, a);
+    arr.push(c[i * 2], c[i * 2 + 1], sel[0], sel[1], r, g, b, al);
   }
+}
+
+/**
+ * Write one light-mesh quad's 6 vertices straight into `out` at float offset `p`: a flat
+ * (untextured) quad whose FOUR CORNERS each carry their own colour. The flat program already
+ * interpolates `a_rgba` per vertex, so the gradient is free — this is the whole reason WP-3's
+ * pools cost nothing extra on the GPU. Alpha is 1 so the DST_COLOR blend resolves to `dst * M`.
+ *
+ * This one writes into a REUSED Float32Array rather than pushing onto a JS array like its
+ * siblings: the light pass covers every explored tile, so on an establishing shot it is ~2,600
+ * quads = ~125k floats, and building that as a boxed JS array and copying it into a fresh
+ * Float32Array 30 times a second was the only allocation in the frame path big enough to matter.
+ * @returns {number} the next write offset
+ */
+const GX = new Float64Array(4), GY = new Float64Array(4); // writeGradient corner scratch (see below)
+function writeGradient(out, p, x, y, d, data, base) {
+  // Module-level corner scratch, not a fresh array per quad: this runs ~2,600 times per frame.
+  GX[0] = x; GX[1] = x + d; GX[2] = x + d; GX[3] = x;
+  GY[0] = y; GY[1] = y; GY[2] = y + d; GY[3] = y + d;
+  for (let t = 0; t < 6; t++) {
+    const i = TRI[t], o = base + i * 3;
+    out[p] = GX[i]; out[p + 1] = GY[i]; out[p + 2] = 0; out[p + 3] = 0;
+    out[p + 4] = data[o]; out[p + 5] = data[o + 1]; out[p + 6] = data[o + 2]; out[p + 7] = 1;
+    p += 8;
+  }
+  return p;
 }
 
 export class WebGL2Executor {
@@ -94,6 +140,7 @@ export class WebGL2Executor {
     this._uv = {};                 // cell key → UV rect
     this._statsLoggedAt = 0;       // wall-clock throttle for the advisory [perilune-stats] line
     this._padWarned = false;       // one-shot: atlas gutter too narrow for the edge replication
+    this._lightVerts = null;       // reused light-mesh vertex buffer (see writeGradient)
     this._atlasCanvas = document.createElement('canvas');
     console.info('[perilune] backend=webgl2 (WebGL2Executor active)');
   }
@@ -140,7 +187,7 @@ export class WebGL2Executor {
       backend: 'webgl2', useSpr,
       terrainTex: 0, terrainFlat: 0,
       entities: 0, entitySprite: 0, entityProc: 0,
-      lightQuads: 0,
+      lightQuads: 0, shadows: 0,
     };
 
     // ---- terrain: flat hull/void + textured base tiles ----
@@ -157,31 +204,62 @@ export class WebGL2Executor {
       gl.drawTextured(new Float32Array(tex), W, H);
     }
 
-    // ---- entities: atlas sprite / baked proc cell + locked-door amber overlay ----
+    // ---- entities: grounding shadow pass, then atlas sprite / baked proc cell + locked-door amber.
+    //      The shadows are their own batch drawn BEFORE every entity, so a pawn's shadow can never
+    //      fall across another pawn — it only ever lands on terrain. Same UVs, no new atlas cell:
+    //      only the vertex tint (black @ SHADOW_ALPHA) and the corner POSITIONS differ, and those
+    //      come from `shadowQuad` — the same four corners canvas2d turns into its draw matrix. ----
     {
-      const tex = [], lock = [];
+      const shadow = [], tex = [], lock = [];
       for (const o of entities.ops) {
         const spec = resolveEntity(o, useSpr, raster);
         stats.entities++;
-        if (spec.cell && spec.cell.startsWith('spr:')) stats.entitySprite++; else stats.entityProc++;
+        const isSprite = !!(spec.cell && spec.cell.startsWith('spr:'));
+        if (isSprite) stats.entitySprite++; else stats.entityProc++;
         // Walking pawns glide continuously toward the current tile (self-gating sub-tile offset that
         // survives step-less frames — same model + gating as the canvas2d path, no divergence).
         const entry = raster.motion && raster.motion[o.x + ',' + o.y];
         const off = slideOffset(entry, nowMs);
         const X = (o.x + off.ox) * PITCH + ox, Y = (o.y + off.oy) * PITCH + oy;
+        // Bitmap art only. A procedural vector glyph's silhouette is a few thin strokes, and the
+        // canvas2d path cannot silhouette one at all — shadowing it would be a pure divergence.
+        if (isSprite) {
+          pushTex(shadow, 0, 0, D, this._uv[spec.cell], spec.alpha, spec.turns,
+            [0, 0, 0, SHADOW_ALPHA * spec.alpha], shadowQuad(X, Y, D, SQ));
+          stats.shadows++;
+        }
         pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
         if (spec.overlay) pushFlat(lock, X, Y, D, premul(parseColor(spec.overlay)));
       }
+      gl.drawTextured(new Float32Array(shadow), W, H);
       gl.drawTextured(new Float32Array(tex), W, H);
       gl.drawFlat(new Float32Array(lock), W, H); // amber lands on top of its door (same tile)
     }
 
-    // ---- light: per-tile overlay folded into a multiply (dst *= M). The palette gives each
-    //      LightState an over-blend rgba (canvas skin); here we convert (C over dst @ alpha) into
-    //      the equivalent multiply factor M = (1-a) + C*a, pushed as a flat quad with alpha 1 so
-    //      the DST_COLOR,ONE_MINUS_SRC_ALPHA blend resolves to dst*M. Powered/Unknown paint
-    //      nothing (no palette entry), so a fully-lit deck draws zero light quads. ----
-    if (light.ops.length) {
+    // ---- light: a multiply pass (dst *= M).
+    //      WP-3: when the caller supplies a light MESH (lightfield.js), every explored tile becomes
+    //      one quad with four independently-coloured corners, so the pools are continuous gradients
+    //      across the grid — the flat program already carries per-vertex rgba, so this costs the
+    //      same single draw call the flat overlay did.
+    //      Fallback (no mesh — e.g. an executor driven directly by a test): the legacy per-tile
+    //      flat overlay, byte-identical to before. The palette gives each LightState an over-blend
+    //      rgba; M = (1-a) + C*a folds it into the DST_COLOR,ONE_MINUS_SRC_ALPHA blend. Powered/
+    //      Unknown paint nothing there, so a fully-lit deck drew zero light quads. ----
+    const mesh = opts.lightMesh;
+    if (mesh && mesh.count) {
+      const need = mesh.count * 6 * VERTEX_STRIDE;
+      if (!this._lightVerts || this._lightVerts.length < need) this._lightVerts = new Float32Array(need);
+      const out = this._lightVerts;
+      let p = 0;
+      for (let q = 0; q < mesh.count; q++) {
+        const b = q * MESH_STRIDE;
+        p = writeGradient(out, p, mesh.data[b] * PITCH + ox, mesh.data[b + 1] * PITCH + oy, D, mesh.data, b + 2);
+        stats.lightQuads++;
+      }
+      gl.setBlendMultiply(true);
+      gl.drawFlat(out.subarray(0, need), W, H); // a view, not a copy
+      gl.setBlendMultiply(false);
+    } else if (light.ops.length) {
       const mul = [];
       for (const o of light.ops) {
         const rgba = litOverlay(o.state);
