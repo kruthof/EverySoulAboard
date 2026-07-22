@@ -41,8 +41,8 @@ on how the sim actually behaves (its §13 lists what is *wired but not connected
 slice has a working build/dig economy, crew work is legible on the map, crew no longer
 promise physical work they cannot do, and the ship stage was relit + de-blurred.
 **607 dotnet + 207 node** green at that point; the round-3 pins (`26907c23d7e48a5c` /
-`401c9b96aff338a7` / `b31ba82f50cf395c`) have **all since moved** — economy W0-1; current
-values live in "Determinism proof" below, which is the authority. Known-honest limits: the
+`401c9b96aff338a7` / `b31ba82f50cf395c`) have **all since moved** — economy W0-1, then
+W0-1b; current values live in "Determinism proof" below, which is the authority. Known-honest limits: the
 dig is a **boot-window** economy (crew idle again after ~4 sim-min of digging), the stage
 is still far flatter than Prison Architect, and the CO2 problem is a **gas-transport bug**
 (no diffusion term), not a dispatch gap.
@@ -106,20 +106,25 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (644 green; `./ci.sh`
-  runs the full gate — 644 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22 on `lane/w0-1-hashpacks` = the pre-W0-1 607 plus this lane's
-  37 hash-honesty cases; not carried forward: figures quoted mid-session drifted behind the
-  lanes still in flight, and the other Wave-0 lanes each add their own. Re-measure before
-  quoting.)
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (670 green; `./ci.sh`
+  runs the full gate — 670 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
+  (Counts MEASURED 2026-07-22 on `lane/w0-1b-savedfields` = the pre-W0-1 607, plus W0-1's
+  37 hash-honesty cases grown to 61, plus W0-1b's 2 save→load→tick-1000 tests; not carried
+  forward: figures quoted mid-session drifted behind the lanes still in flight, and the
+  other Wave-0 lanes each add their own. Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `3afc99d90e849aa0` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `ffefe9a9a42d8e7e` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `d807c509743d1b9d`; the slice tick-3000 golden is `21ad26192d778d95`.
-  All three moved 2026-07-22 by economy **W0-1** (un-aliasing the citizen + item hash
-  packs — a pure fold restructure, zero behaviour change; previous values
-  `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c`).
+  `6071adb8fa781440`; the slice tick-3000 golden is `ab47cefd840247c4`.
+  All three moved twice on 2026-07-22, both times a pure fold change with zero behaviour
+  change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
+  `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
+  `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`, and economy **W0-1b**
+  (folding the **thirteen** saved-but-unhashed fields — crew Name/PrevPos/AutoWander/Path/
+  PathIndex/MoveCooldown/IdleCooldown, `ItemStack.Label`, `Device.Name`, the save header's
+  `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to the
+  current values. Exactly 2 goldens moved each time, both the tick-3000 hash files.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
