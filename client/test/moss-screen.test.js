@@ -14,13 +14,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { DocumentLite, makeWindow, keyEvent, dispatchKey, fire } from './dom-lite.js';
+import { DocumentLite, makeWindow, keyEvent, dispatchKey, fire, editable } from './dom-lite.js';
 import * as FAKE from './moss-model-fake.js';
 import {
   MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
-  isTextEntryTarget,
+  isTextEntryTarget, SCROLL_KEYS,
 } from '../src/ui/moss-screen.js';
-import { systemRows, decode } from '../src/wire/messages.js';
+import { decode } from '../src/wire/messages.js';
 import { escapeTarget } from '../src/ui/console-model.js';
 import { isTextEntryTarget as controlsIsTextEntryTarget } from '../src/input/controls.js';
 
@@ -85,31 +85,72 @@ test('IX-M1: opening MOSS takes the whole window; closing gives it back', () => 
   assert.equal(s.screen.isOpen(), false);
 });
 
+/** HTML elements that never have a closing tag, so they must not open a nesting level. */
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link',
+  'meta', 'param', 'source', 'track', 'wbr']);
+/** Not chrome: they render nothing the player could see behind MOSS. */
+const NON_VISUAL = new Set(['script', 'template', 'style', 'noscript']);
+
+/**
+ * Every element that is a DIRECT child of `<body>`, whatever its tag or indentation. A depth
+ * counter, not a line-anchored regex: the previous version matched `^<(div|main|…)` per line, so an
+ * indented root, or one using a tag outside a hand-written list (`nav`, `dialog`, `canvas`, `ul`,
+ * `form`), slipped through the very check that is supposed to be exhaustive.
+ */
+function topLevelBodyRoots(html) {
+  const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'))
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const re = /<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^'">])*?)(\/?)>/g;
+  const roots = [];
+  let depth = 0, m;
+  while ((m = re.exec(body)) !== null) {
+    const closing = m[1] === '/', tag = m[2].toLowerCase(), attrs = m[3], selfClosed = m[4] === '/';
+    if (closing) { depth = Math.max(0, depth - 1); continue; }
+    if (depth === 0) roots.push({ tag, attrs });
+    if (!VOID_TAGS.has(tag) && !selfClosed) depth++;
+  }
+  return roots;
+}
+
 test('IX-M1: EVERY top-level game-chrome root index.html declares is display:none under the takeover', () => {
   // The strong form of "no game chrome shows through": the covered set is derived from the real
   // index.html, not hand-listed here — so adding a new top-level chrome root without covering it
-  // in the takeover rules turns this test red.
+  // in the takeover rules turns this test red, whatever tag it uses and however it is indented.
   const html = readFileSync(join(CLIENT, 'index.html'), 'utf8');
   const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
-  const body = html.slice(html.indexOf('<body>'), html.indexOf('</body>'));
-  const roots = [...body.matchAll(/^<(?:div|main|section|aside|header|footer)\b([^>]*)>/gm)]
-    .map((m) => m[1]);
-  assert.ok(roots.length >= 3, 'index.html should declare several top-level roots');
+  const roots = topLevelBodyRoots(html);
+  const tags = roots.map((r) => r.tag);
+  assert.ok(tags.includes('script'), 'the scanner sees the module script, i.e. it reached the end');
+  assert.ok(roots.length >= 4, 'index.html declares several top-level roots, got ' + tags.join(','));
 
   const covered = [];
-  for (const attrs of roots) {
+  for (const { tag, attrs } of roots) {
+    if (NON_VISUAL.has(tag)) continue;
     const id = (/id="([^"]+)"/.exec(attrs) || [])[1] || '';
     const cls = ((/class="([^"]+)"/.exec(attrs) || [])[1] || '').split(/\s+/).filter(Boolean);
     if (id === 'moss-view') continue; // the terminal itself
     const selectors = [id ? '#' + id : null, ...cls.map((c) => '.' + c)].filter(Boolean);
+    assert.ok(selectors.length, `top-level <${tag}> has no id or class, so nothing can hide it`);
     const hidden = selectors.some((sel) => {
       const re = new RegExp('body\\.moss-open\\s+' + sel.replace(/[.#]/g, '\\$&') + '\\s*\\{[^}]*display\\s*:\\s*none');
       return re.test(css);
     });
-    assert.ok(hidden, `top-level root ${selectors.join('/')} is not hidden by the takeover`);
+    assert.ok(hidden, `top-level root <${tag}> ${selectors.join('/')} is not hidden by the takeover`);
     covered.push(selectors[0]);
   }
   assert.ok(covered.length >= 3, 'expected the app frame, the panel layer and the disconnect overlay');
+});
+
+test('the top-level root scanner survives indentation, unlisted tags and nested lookalikes', () => {
+  // Pins the scanner itself — the previous line-anchored regex passed its own test while missing
+  // both of these.
+  const doc = '<body>\n  <div class="app"><div id="inner"></div></div>\n' +
+    '    <nav id="deep"></nav>\n<dialog id="dlg"></dialog>\n<img id="v">\n' +
+    '<script src="x"></script>\n</body>';
+  const roots = topLevelBodyRoots(doc);
+  assert.deepEqual(roots.map((r) => r.tag), ['div', 'nav', 'dialog', 'img', 'script']);
+  assert.ok(!roots.some((r) => /id="inner"/.test(r.attrs)), 'a nested element is not a root');
+  assert.ok(roots.some((r) => /id="deep"/.test(r.attrs)), 'indentation does not hide a root');
 });
 
 test('IX-M1: the MOSS root contains no game chrome — it is a replacement, not an overlay', () => {
@@ -221,6 +262,61 @@ test('IX-M8: `handled` — not "did anything change" — decides whether the key
   assert.equal(declined.defaultPrevented, false, 'a declined key reaches the input, state change or not');
 });
 
+test('the command prompt can be CORRECTED — Backspace, Delete and the caret keys reach the input', () => {
+  // The defect this pins: a "any multi-character key cannot type" heuristic swallowed Backspace,
+  // Delete, ArrowLeft/Right, Home, End and Tab, so a player who mistyped `open reacotr` had no way
+  // back but ESC, which throws the whole line away. `editable()` applies the browser default the
+  // handler did or did not suppress, so this fails in node rather than only in Chrome.
+  const s = openWithSystems();
+  const input = s.screen.inputEl;
+  const type = (str) => { for (const ch of str) { const e = keyEvent(ch, { target: input }); s.screen.handleKey(e); editable(input, e); fire(input, 'input'); } };
+
+  type('abcd');
+  assert.equal(s.screen.model.prompt, 'abcd');
+
+  for (const k of ['Backspace', 'Backspace']) {
+    const e = keyEvent(k, { target: input });
+    s.screen.handleKey(e);
+    assert.equal(e.defaultPrevented, false, k + ' must reach the input');
+    editable(input, e);
+    fire(input, 'input');
+  }
+  assert.equal(input.value, 'ab', 'two backspaces actually deleted two characters');
+  assert.equal(s.screen.model.prompt, 'ab', 'and the model followed');
+
+  for (const k of ['ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End', 'Tab']) {
+    const e = keyEvent(k, { target: input });
+    s.screen.handleKey(e);
+    assert.equal(e.defaultPrevented, false, k + ' belongs to the browser inside a text field');
+  }
+});
+
+test('Tab is never swallowed — KEY_ROUTE leaves it unbound on purpose, so focus traversal lives', () => {
+  const s = openWithSystems();
+  for (const target of [undefined, s.screen.inputEl]) {
+    const e = keyEvent('Tab', { target });
+    s.screen.handleKey(e);
+    assert.equal(e.defaultPrevented, false, 'Tab from ' + (target ? 'the prompt' : 'the page'));
+  }
+  assert.equal(s.screen.model.screen, 'ledger');
+});
+
+test('only PageUp/PageDown/Space are swallowed on the DOM\'s own account, and never from the prompt', () => {
+  // The narrow allowlist that replaced the heuristic: it exists to stop the PAGE scrolling under a
+  // declined key. Anything wider starts overriding the model again.
+  const s = openWithSystems();
+  assert.deepEqual(SCROLL_KEYS, ['PageUp', 'PageDown', ' ', 'Spacebar']);
+  s.screen.M = { ...FAKE, keyPress: (m) => ({ model: m, effects: [], handled: false, route: 'pass' }) };
+  for (const k of SCROLL_KEYS) {
+    const away = keyEvent(k, { target: undefined });
+    s.screen.handleKey(away);
+    assert.equal(away.defaultPrevented, true, k + ' must not scroll the ledger away');
+    const fromPrompt = keyEvent(k, { target: s.screen.inputEl });
+    s.screen.handleKey(fromPrompt);
+    assert.equal(fromPrompt.defaultPrevented, false, k + ' in the prompt belongs to the browser');
+  }
+});
+
 test('IX-M11: a key out of the PROGRAM IDE\'s textarea is never offered to the model (guard first)', () => {
   const s = openWithSystems();
   let sawKey = 0;
@@ -236,9 +332,29 @@ test('IX-M11: a key out of the PROGRAM IDE\'s textarea is never offered to the m
   assert.equal(sawKey, 1);
 });
 
-test('the guard is the same predicate as controls.js:isTextEntryTarget', () => {
+test('the guard is BYTE-for-byte the same predicate as controls.js:isTextEntryTarget', () => {
   // It is a deliberate local copy (a `hud → moss-screen → controls → hud` cycle is not worth four
-  // lines); this pins the two together so the copy can never drift.
+  // lines). A behavioural corpus cannot pin a copy: any branch added to ONE of them over an element
+  // the corpus never tries survives it — and the `moss-programs` lane is next and brings a custom
+  // editor element, which is exactly that case. So compare the SOURCE, normalized for whitespace:
+  // the two are textually identical today, and any edit to either side has to be made to both.
+  const body = (src) => {
+    const at = src.indexOf('export function isTextEntryTarget');
+    assert.ok(at >= 0, 'isTextEntryTarget is exported from both files');
+    const open = src.indexOf('{', at);
+    let depth = 0, i = open;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) break;
+    }
+    return src.slice(open, i + 1).replace(/\s+/g, ' ').trim();
+  };
+  const mine = body(readFileSync(join(CLIENT, 'src/ui/moss-screen.js'), 'utf8'));
+  const theirs = body(readFileSync(join(CLIENT, 'src/input/controls.js'), 'utf8'));
+  assert.equal(mine, theirs,
+    'moss-screen.js and controls.js must implement isTextEntryTarget identically');
+
+  // and, belt and braces, they agree behaviourally on the cases we can name
   const cases = [
     { tagName: 'INPUT' }, { tagName: 'TEXTAREA' }, { tagName: 'SELECT' },
     { tagName: 'DIV', isContentEditable: true }, { tagName: 'DIV', isContentEditable: false },
@@ -341,30 +457,89 @@ test('IX-M7: a row click with a half-typed command moves the CURSOR, not the com
 
 // ---------------- VS-M2/M3/M4/M8: the monospace grid ----------------
 
+/**
+ * Where each column's CONTENT actually begins in a rendered line — measured from the line, never
+ * assumed. The earlier version of this test computed the fault offset as `COL_AT.fault` (a module
+ * constant) inside the loop and asserted the set had one member, which is true by construction: it
+ * could not fail. Under the exact mutation that matters — the `⚠` split writing one character too
+ * few, so every ATTEND/DEGRADED row's LAST FAULT slides a cell left — all tests stayed green.
+ */
+function columnStarts(line) {
+  const bar = line.indexOf('[');
+  const close = line.indexOf(']');
+  // the state word is the first run of A-Z after the load column
+  const tail = line.slice(COL_AT.load + COLS.load);
+  const stateRel = tail.search(/[A-Z]/);
+  const state = stateRel < 0 ? -1 : COL_AT.load + COLS.load + stateRel;
+  // LAST FAULT is whatever follows the state cell's fixed width
+  const fault = state < 0 ? -1 : state + (COL_AT.fault - COL_AT.state);
+  return { bar, close, state, fault };
+}
+
 test('VS-M2: every ledger line is one fixed-width monospace record — a `--` shifts nothing', () => {
   const s = openWithSystems();
   const lines = rowsOf(s.root).map(lineOf);
   assert.equal(lines.length, 8);
-  const faultStarts = new Set();
+
+  // Every measured offset must be the SAME on every row, and must equal the declared geometry.
+  const seen = { bar: new Set(), close: new Set(), state: new Set(), fault: new Set() };
   for (const line of lines) {
-    assert.equal(line.indexOf('['), COL_AT.bar, 'the load bar starts in the same cell on every row');
-    assert.equal(line.indexOf(']'), COL_AT.bar + COLS.bar - 1, 'and is exactly 8 cells wide (VS-M4)');
+    const at = columnStarts(line);
+    for (const k of Object.keys(seen)) seen[k].add(at[k]);
+    // the fault cell must begin exactly where the geometry says, measured from the line itself
+    assert.equal(line.slice(0, at.fault).length, COL_AT.fault, line);
     const load = line.slice(COL_AT.load, COL_AT.load + COLS.load);
-    assert.equal(load.length, COLS.load);
-    assert.equal(load, load.trimStart().padStart(COLS.load), 'the load number is right-aligned');
-    faultStarts.add(COL_AT.fault);
-    assert.equal(line.slice(COL_AT.state, COL_AT.fault).length, COLS.state);
+    assert.equal(load, load.trim().padStart(COLS.load), 'the load number is right-aligned: ' + line);
   }
-  assert.equal(faultStarts.size, 1, 'LAST FAULT begins in the same cell on every row');
+  assert.equal(seen.bar.size, 1, 'the load bar starts in the same cell on every row');
+  assert.equal(seen.close.size, 1, 'and ends in the same cell (VS-M4: exactly 8 inner cells)');
+  assert.equal(seen.state.size, 1, 'STATE begins in the same cell on every row');
+  assert.equal(seen.fault.size, 1, 'LAST FAULT begins in the same cell on every row');
+  assert.equal([...seen.bar][0], COL_AT.bar);
+  assert.equal([...seen.close][0], COL_AT.bar + COLS.bar - 1);
+  assert.equal([...seen.state][0], COL_AT.state);
+  assert.equal([...seen.fault][0], COL_AT.fault);
+
+  // the fixture mixes warned and unwarned rows, which is what makes the ⚠ split testable at all
+  assert.ok(lines.some((l) => l.includes('⚠')) && lines.some((l) => !l.includes('⚠')));
 
   // the `--` row (nav_sensors carries load -1) uses an EMPTY bar and still lines up
   const navLine = lines[7];
   assert.equal(navLine.slice(COL_AT.bar, COL_AT.bar + COLS.bar), '[        ]');
   assert.equal(navLine.slice(COL_AT.load, COL_AT.load + COLS.load), '  --');
-  // ...at byte-identical column offsets to a row that DOES have a load
-  const reactor = lines[0];
-  assert.equal(reactor.indexOf('['), navLine.indexOf('['));
-  assert.equal(reactor.slice(COL_AT.state).indexOf('NOMINAL'), 0);
+  assert.deepEqual(columnStarts(navLine), columnStarts(lines[0]),
+    'a `--` row and a loaded row put every column in the same cell');
+});
+
+test('DA-M1: a row whose state the wire did not carry reads UNKNOWN, never NOMINAL', () => {
+  // The whole point of this screen. An unreadable row must not be dressed as a healthy one — and
+  // the decoder that used to live in `messages.js` defaulted state to 0 (NOMINAL) with a green test
+  // pinning it, which is exactly the invention DA-M1 forbids. Row normalization now has ONE home
+  // (`moss-model.js:rowObj`), and this asserts what reaches the pixels.
+  const s = setup();
+  s.screen.onSystems({ type: 'systems', hull: 'X', day: 1, uptime: 10,
+    rows: [['mystery', 'MYSTERY']] }); // no load, no state, no fault
+  s.screen.open();
+  const line = lineOf(rowsOf(s.root)[0]);
+  assert.ok(line.includes('UNKNOWN'), line);
+  assert.ok(!line.includes('NOMINAL'), 'an unreadable row must never read as healthy');
+  assert.ok(line.includes('[        ]'), 'and its load bar is empty, not zero');
+  assert.ok(line.includes('  --') && line.includes('—'), line);
+});
+
+test('VS-M2: the ⚠ split writes the state cell at its exact declared width', () => {
+  // The one place alignment can realistically break: `_ledgerLine` splits the state cell into three
+  // nodes so the ⚠ can be width-pinned, and a slice arithmetic slip there shifts LAST FAULT on
+  // warned rows only — invisible to any assertion that reads the geometry constants back.
+  const s = openWithSystems();
+  const rows = rowsOf(s.root);
+  const view = FAKE.ledgerView(s.screen.model);
+  rows.forEach((el, i) => {
+    const cell = el.oneClass('c-state').textContent;
+    assert.equal(cell.length, COLS.state, `row ${i} state cell width`);
+    assert.equal(cell.trimEnd(), view.rows[i].stateText + (view.rows[i].warn ? ' ⚠' : ''),
+      `row ${i} state cell content`);
+  });
 });
 
 test('VS-M3: the selection band carries the `>` caret and unselected rows keep a blank gutter', () => {
@@ -432,10 +607,13 @@ test('IX-M13: with no telemetry the ledger says LINK DOWN, never an empty table'
   assert.ok(nolink, 'a LINK DOWN block is rendered instead');
   assert.ok(nolink.textContent.includes(NO_TELEMETRY));
   assert.ok(nolink.textContent.includes('NOTHING BELOW IS A READING'));
+  assert.equal(s.root.oneClass('moss-thead'), null,
+    'and no column head — it would imply a table is about to appear beneath it');
   // and the moment telemetry lands, the real table replaces it
   s.screen.onSystems(msgOf('systems'));
   assert.equal(rowsOf(s.root).length, 8);
   assert.equal(s.root.oneClass('moss-nolink'), null);
+  assert.ok(s.root.oneClass('moss-thead'), 'the column head returns with the rows');
 });
 
 test('IX-M13: the headline is the MODEL\'s `notice`, and `linked` — not "zero rows" — is the verdict', () => {
@@ -478,22 +656,47 @@ test('IX-M4: DETAIL shows an honest LOADING… until the reply, then the device 
   assert.ok(s.root.oneClass('moss-notes-head'), 'the DERIVATION note is part of the feature (IX-M22)');
 });
 
-test('IX-M22: the HOST\'s derivation prose wins over the model\'s built-in fallback', () => {
-  // §1.2 carries a `derivation` string on the ev:sys reply. The client explaining the host's maths
-  // from its own table is precisely the drift MECHANICS.md §13 catalogues — so the wire wins, and
-  // the §5.1 fault caveat (the model's, and about the client's own join) still trails it.
+test('IX-M22: the DERIVATION is the host\'s, carried by the model — and NOTHING while loading', () => {
+  // §1.2 puts a `derivation` string on the ev:sys reply and the MODEL keeps it. The screen holds no
+  // derivation state of its own: a client that explained the host's maths from its own table is
+  // precisely the drift MECHANICS.md §13 catalogues, and a second cache here would be a second
+  // authority. While `loading`, `LOADING…` is the whole render — a notes block drawn early would
+  // claim an explanation the screen has not been given.
   const s = openWithSystems();
   s.screen.handleKey(keyEvent('ArrowDown'));
   s.screen.handleKey(keyEvent('Enter'));
-  s.screen.onMossEvent(msgOf('moss', 'sys'));
-  const fallback = s.root.byClass('moss-note').map((e) => e.textContent);
-  assert.ok(fallback[0].includes('TEST DOUBLE PROSE'), 'the model\'s fallback shows pre-wire');
+  assert.ok(s.root.oneClass('moss-loading'));
+  assert.equal(s.root.oneClass('moss-notes'), null, 'no notes block while loading');
+  assert.equal(s.root.byClass('moss-note').length, 0);
+
+  // ...and the screen refuses on its OWN account, not merely because the model returned none:
+  // `LOADING…` is the whole render for that frame, so a model handing over stale prose is ignored.
+  const stale = { ...FAKE, detailView: (m) => ({ ...FAKE.detailView(m), notes: ['STALE PROSE'] }) };
+  const saved = s.screen.M;
+  s.screen.M = stale;
+  s.screen.render();
+  assert.equal(s.root.byClass('moss-note').length, 0, 'the DOM draws no notes while loading');
+  s.screen.M = saved;
 
   s.screen.onMossEvent({ ...msgOf('moss', 'sys'), derivation: 'WORST-ROOM CO2 PPM, MEASURED.' });
   const notes = s.root.byClass('moss-note').map((e) => e.textContent);
-  assert.equal(notes[0], 'WORST-ROOM CO2 PPM, MEASURED.');
-  assert.equal(notes.length, 2, 'the fault caveat still trails it');
-  assert.ok(!notes.join(' ').includes('TEST DOUBLE PROSE'), 'and the fallback is gone');
+  assert.equal(notes[0], 'WORST-ROOM CO2 PPM, MEASURED.', 'the host\'s own account, verbatim');
+  assert.equal(notes.length, 2, 'the §5.1 fault caveat still trails it');
+
+  // the fixture's own reply carries the host's prose, as the amended §1.2 says it must
+  s.screen.escape();
+  s.screen.handleKey(keyEvent('Enter'));
+  s.screen.onMossEvent(msgOf('moss', 'sys'));
+  assert.ok(s.root.byClass('moss-note')[0].textContent.includes('WORST-ROOM CO2 PPM'));
+
+  // ...and an older host that sends none says so rather than the client inventing one
+  const stripped = { ...msgOf('moss', 'sys') };
+  delete stripped.derivation;
+  s.screen.escape();
+  s.screen.handleKey(keyEvent('Enter'));
+  s.screen.onMossEvent(stripped);
+  const bare = s.root.byClass('moss-note').map((e) => e.textContent);
+  assert.ok(bare[0].includes('DERIVATION UNDOCUMENTED'), bare[0]);
 });
 
 // ---------------- IX-M5 / §5.1: FAULT LOG ----------------
@@ -595,26 +798,6 @@ test('submitting a command echoes it, clears the buffer, and sends one exec', ()
   const after = s.root.byClass('moss-cline');
   assert.equal(after[1].textContent, 'NO SUCH DEVICE');
   assert.ok(after[1].className.includes('err'), 'stream 2 renders as an error');
-});
-
-// ---------------- the wire decoder ----------------
-
-test('systemRows: honest sentinels, wire order, and no invented values', () => {
-  const rows = systemRows(msgOf('systems'));
-  assert.equal(rows.length, 8);
-  assert.deepEqual(rows.map((r) => r.id), [
-    'reactor', 'life_support', 'water_reclaim', 'hydroponics',
-    'thermal', 'fabrication', 'hull_integrity', 'nav_sensors',
-  ]);
-  assert.equal(rows[7].load, -1, '-1 is "no meaningful load", not zero');
-  assert.equal(rows[5].faultDay, -1);
-  assert.equal(rows[5].faultText, '');
-  // tolerance: garbage in, nothing out — never a plausible placeholder
-  assert.deepEqual(systemRows(null), []);
-  assert.deepEqual(systemRows({ rows: 'nope' }), []);
-  assert.deepEqual(systemRows({ rows: [[], ['', 'X'], 42] }), []);
-  const short = systemRows({ rows: [['x', 'X']] });
-  assert.deepEqual(short, [{ id: 'x', label: 'X', load: -1, state: 0, faultDay: -1, faultText: '', advisory: '' }]);
 });
 
 // ---------------- IX-M12 ----------------

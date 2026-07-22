@@ -56,6 +56,22 @@ export const DEV_COLS = { name: 20, kind: 14, cond: 6, power: 5, rate: 7, loc: 1
  *  a model old enough not to carry one, and the constant this file's own tests read. */
 export const NO_TELEMETRY = 'NO TELEMETRY — LINK DOWN';
 
+/**
+ * The ONLY keys this layer may swallow on its own account, and only away from the prompt: they
+ * scroll the page, which would slide the ledger out from under the player while the model is busy
+ * deciding it does not want the key.
+ *
+ * This is an ALLOWLIST because the obvious shortcut — "any key whose name is longer than one
+ * character cannot type" — is false and shipped a real defect: it also matched `Backspace`,
+ * `Delete`, `ArrowLeft/Right`, `Home`, `End` and `Tab`, so the command prompt could be typed into
+ * but never CORRECTED. A player who mistyped `open reacotr` had no way back but ESC, which throws
+ * the whole line away. It also silently overrode the model across the entire multi-character key
+ * space, including `Tab`, which `KEY_ROUTE` leaves unbound ON PURPOSE so focus traversal keeps
+ * working. Widening this list is almost always the wrong repair: if a key needs swallowing, the
+ * model should be claiming it via `handled`.
+ */
+export const SCROLL_KEYS = ['PageUp', 'PageDown', ' ', 'Spacebar'];
+
 const SCREEN = MODEL.SCREEN;
 const OFFLINE = MODEL.STATE.OFFLINE;
 
@@ -165,7 +181,6 @@ export class MossScreen {
     this._log = null;       // last `log` message tail
     this._terminals = [];   // the PROGRAM directory, from the `terminals` channel
     this._programTid = null;
-    this._derivations = new Map(); // system id → the host's DERIVATION prose (§1.2), when it ships
     this._onKey = (e) => this.handleKey(e);
     this._build();
   }
@@ -274,13 +289,9 @@ export class MossScreen {
     this.render();
   }
 
-  /** Fold a `moss` event (sys | exec | source | diag | audit | rterror). A `sys` reply may carry
-   *  the host's own DERIVATION prose (§1.2); it is cached per system id and rendered in place of
-   *  the model's fallback text — see `_renderDetail`. */
+  /** Fold a `moss` event (sys | exec | source | diag | audit | rterror). A `sys` reply's §1.2
+   *  `derivation` string is the MODEL's to keep — this layer just hands the message over. */
   onMossEvent(msg) {
-    if (msg && msg.ev === 'sys' && msg.tid != null && typeof msg.derivation === 'string' && msg.derivation) {
-      this._derivations.set(String(msg.tid), msg.derivation);
-    }
     if (!this.opened) return;
     this.model = this.M.reduceMossEvent(this.model, msg);
     this.render();
@@ -330,6 +341,8 @@ export class MossScreen {
    *      precisely IX-M8's buffer-state table without duplicating it here. So `L` on an empty
    *      buffer opens the FAULT LOG and is not typed; `L` mid-command routes `'pass'` and reaches
    *      the input as an ordinary letter.
+   *   4. The ONLY exception to rule 3 is `SCROLL_KEYS`, and only when the event did NOT come out of
+   *      the prompt. See the constant: it is an allowlist, never a "multi-character key" heuristic.
    */
   handleKey(e) {
     if (!this.opened || !e) return;
@@ -341,11 +354,12 @@ export class MossScreen {
     const res = this._keyPress(key, {
       shift: !!e.shiftKey, ctrl: !!e.ctrlKey, alt: !!e.altKey, meta: !!e.metaKey,
     });
-    // Keys that can never produce a character must not also scroll the page or submit anything,
-    // whether or not the model had something to say about them.
-    const structural = typeof key === 'string' && key.length > 1 &&
+    // Rule 4. `res.handled` is the authority; this narrow allowlist only stops the PAGE from
+    // scrolling under a key the model declined, and it stands down entirely for the prompt, whose
+    // owner is the browser's text editing (Backspace, Delete, Home/End, arrows, Tab).
+    const scrollGuard = e.target !== this.inputEl && SCROLL_KEYS.indexOf(key) >= 0 &&
       !(e.ctrlKey || e.metaKey || e.altKey);
-    if (res.handled || structural) { if (e.preventDefault) e.preventDefault(); }
+    if (res.handled || scrollGuard) { if (e.preventDefault) e.preventDefault(); }
     if (!res.handled) return;
     this.model = res.model;
     this._runEffects(res.effects);
@@ -498,7 +512,9 @@ export class MossScreen {
     const doc = this.doc;
     const view = this._ledger();
     const wrap = mk(doc, 'div', 'moss-table');
-    wrap.appendChild(mk(doc, 'div', 'moss-thead', HEAD_LINE));
+    // The column head is a label for rows; with no rows it labels nothing, and printing SYSTEM /
+    // LOAD / STATE over a LINK DOWN notice implies a table is about to appear under it.
+    if (view.linked && view.rows.length) wrap.appendChild(mk(doc, 'div', 'moss-thead', HEAD_LINE));
 
     if (!view.linked || !view.rows.length) {
       // IX-M13 — an empty table would read as "all systems nominal". Say the true thing instead.
@@ -585,16 +601,13 @@ export class MossScreen {
       }
     }
 
-    // IX-M22 / DA-M3 — the DERIVATION note is part of the feature, not a comment.
-    //
-    // The HOST is the authority on how it computes a row: §1.2 carries a `derivation` string on the
-    // `ev:sys` reply, and when one has arrived it REPLACES the model's built-in prose (which is a
-    // pre-load fallback, not a second source of truth — a client that explained the host's maths
-    // from its own hardcoded table is exactly the drift MECHANICS.md §13 exists to catalogue). The
-    // trailing §5.1 fault caveat is the model's and always stays.
-    let notes = Array.isArray(v.notes) ? v.notes : (v.notes ? [S(v.notes)] : []);
-    const wire = this._derivations.get(this._detailTid());
-    if (wire) notes = [wire].concat(notes.length ? [notes[notes.length - 1]] : []);
+    // IX-M22 / DA-M3 — the DERIVATION note is part of the feature, not a comment. It is entirely
+    // the MODEL's: §1.2's `derivation` string comes off the `ev:sys` reply and the model carries it,
+    // so the client is never a second authority on how the host computes a row. While `loading`
+    // there are no notes at all — `LOADING…` is the whole render for that frame, and a notes block
+    // drawn early would be the screen claiming an explanation it has not been given.
+    const notes = v.loading ? []
+      : (Array.isArray(v.notes) ? v.notes : (v.notes ? [S(v.notes)] : []));
     if (notes.length) {
       const nb = mk(doc, 'div', 'moss-notes');
       nb.appendChild(mk(doc, 'div', 'moss-notes-head', 'DERIVATION'));
@@ -603,12 +616,6 @@ export class MossScreen {
     }
     this.bodyEl.replaceChildren(wrap);
     this.advisoryEl.replaceChildren();
-  }
-
-  /** The system id DETAIL is currently showing, or '' . */
-  _detailTid() {
-    const d = this.model && this.model.detail;
-    return d && d.tid != null ? String(d.tid) : '';
   }
 
   _renderFaultLog() {

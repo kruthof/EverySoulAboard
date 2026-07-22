@@ -678,6 +678,11 @@ canvas{
 .moss-row > span{flex:none}
 .moss-row .c-gutter{color:var(--moss-amber)}
 .moss-row .c-bar,.moss-row .c-load{color:var(--moss-dim)}
+/* VS-M4a — the bar cell is width-pinned for the same reason as the ⚠ (VS-M8a): the block/stipple
+   glyphs come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not advance identically and
+   the columns after them drifted ~1.2px between a loaded row and a `--` row. 12 cells = the 10-cell
+   bar plus its 2-cell gap, which is exactly what `_ledgerLine` writes into this span. */
+.moss-row .c-bar{display:inline-block;width:calc(12ch + 12 * var(--moss-track))}
 .moss-row .c-fault{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--moss-dim)}
 /* VS-M8 — ⚠ trails ATTEND/DEGRADED only; OFFLINE is dim (an absence, not an alarm). */
 .moss-row .c-state.warn{color:var(--moss-warn)}

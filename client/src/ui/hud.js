@@ -564,8 +564,13 @@ function setTab(tab) {
  *
  * The takeover is `moss-screen.applyTakeover`: `body.moss-open` puts `.app`, `#panels` and the
  * disconnect overlay at `display:none` and un-hides `#moss-view`. The ship canvas, `composeScene`
- * and the executors are untouched — main.js's draw loop simply idles (it redraws on frames, and a
- * hidden canvas costs nothing).
+ * and the executors are untouched — MOSS changes no render state, it simply is not the view.
+ *
+ * It does NOT stop the renderer, and saying so would be a comfortable lie: `main.js` still runs
+ * `layout(); draw();` on every incoming frame (`main.js:201-206`), so `composeScene` and the
+ * executor keep working on a display:none canvas the whole time MOSS is up. Harmless at 1 Hz frames
+ * and deliberately left alone — gating the draw loop on a UI flag would put view state inside the
+ * render path — but it is real cost, not free.
  */
 function reflectMossView(active) {
   if (!active) { if (_moss) _moss.close(); return; }

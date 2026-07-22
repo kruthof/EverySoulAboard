@@ -129,7 +129,15 @@ export function makeWindow() {
   };
 }
 
-/** A keydown event object with the two flags the screen sets. */
+/**
+ * A keydown event object with the two flags the screen sets.
+ *
+ * `preventDefault` here RECORDS but cannot SIMULATE: a suppressed `Backspace` still leaves
+ * `input.value` untouched in this stub, because nothing in dom-lite implements the browser's
+ * default text-editing action. That gap let a real defect ship — the prompt could be typed into
+ * but never corrected — so `editable()` below models the one default that matters, and the real
+ * proof lives in `client/tools/moss-shot.mjs`, which drives trusted keys through Chrome over CDP.
+ */
 export function keyEvent(key, extra) {
   const e = {
     key, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false,
@@ -139,6 +147,21 @@ export function keyEvent(key, extra) {
     ...(extra || {}),
   };
   return e;
+}
+
+/**
+ * Apply the browser's DEFAULT text-editing action for a keydown on an input, unless the handler
+ * suppressed it. Only the keys a command prompt genuinely needs; enough to assert "the player can
+ * fix a typo" in node rather than only in Chrome. Returns true when the value changed.
+ * @param {{value:string}} input @param {{key:string, defaultPrevented:boolean}} e
+ */
+export function editable(input, e) {
+  if (e.defaultPrevented) return false;
+  const before = input.value;
+  if (e.key === 'Backspace') input.value = before.slice(0, -1);
+  else if (e.key === 'Delete') input.value = before;            // caret is at the end in this stub
+  else if (typeof e.key === 'string' && e.key.length === 1) input.value = before + e.key;
+  return input.value !== before;
 }
 
 /** Dispatch a keydown through capture listeners, then bubble listeners unless stopped. */

@@ -175,34 +175,12 @@
 
 /** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg} WireMsg */
 
-/**
- * Decode a `systems` message's row tuples into named objects, in wire order. Tolerant: a
- * null/garbage message or row yields nothing rather than throwing, and a short tuple decodes with
- * honest sentinels (`load:-1` → `--`, `faultDay:-1` → `—`) rather than an invented number — a
- * screen whose whole purpose is "the truth about this ship" must never render a plausible
- * placeholder (spec DA-M1). PURE.
- * @param {SystemsMsg|null} msg
- * @returns {{id:string,label:string,load:number,state:number,faultDay:number,faultText:string,advisory:string}[]}
- */
-export function systemRows(msg) {
-  const rows = msg && Array.isArray(msg.rows) ? msg.rows : [];
-  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : d);
-  const str = (v) => (typeof v === 'string' ? v : '');
-  const out = [];
-  for (const r of rows) {
-    if (!Array.isArray(r) || r.length < 2 || typeof r[0] !== 'string' || r[0] === '') continue;
-    out.push({
-      id: r[0],
-      label: str(r[1]) || r[0].toUpperCase(),
-      load: num(r[2], -1),
-      state: num(r[3], 0),
-      faultDay: num(r[4], -1),
-      faultText: str(r[5]),
-      advisory: str(r[6]),
-    });
-  }
-  return out;
-}
+// NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
+// the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
+// rules live: a missing state is `-1`/UNKNOWN, never `0`/NOMINAL, because the screen may not
+// invent a healthy reading for a row it cannot read. A second decoder lived here briefly and had
+// ALREADY drifted on exactly that default — it returned NOMINAL, and a green test pinned it that
+// way. If another channel ever needs these rows, import `rowObj`; do not re-derive them.
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

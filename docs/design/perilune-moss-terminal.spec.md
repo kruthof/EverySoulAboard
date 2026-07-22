@@ -294,6 +294,9 @@ Per the rule above, with reasons. Frames: `node client/tools/moss-shot.mjs`.
   has no `⚠`, so it comes from a fallback face whose advance is not one cell; without the pin, an
   `ATTEND ⚠` row would push `LAST FAULT` a fraction of a cell out of line with its neighbours. The
   column text itself is still space-padded to the grid — this pins one glyph, not a layout.
+- **VS-M4a — the load-bar cell is width-pinned the same way**, for the same reason: `█` and `▒` also
+  come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not advance identically and every
+  column after them sat ~1.2px apart between a loaded row and a `--` row.
 - **The vignette scales with the viewport** (`clamp(90px,9vw,200px)`) rather than a fixed spread: at
   1024px a fixed 180px vignette swallowed a quarter of the screen, which is the "costs legibility ⇒
   it goes" clause of VS-M5 applied to its own treatment.
@@ -351,11 +354,34 @@ Two consequences to design around rather than discover later:
 |---|---|
 | `moss-systems` | Determinism (twin sims produce byte-identical `systems` payloads) · InvariantCulture on every number (de-DE probe) · **no hashed state added** (scenario + tick-3000 + slice pins unmoved, asserted as *twin hashes match*, never as a literal) · `nav_sensors` is OFFLINE *because the census finds no `Telescope`*, proven by a test that places one and watches the row come alive · the exec path introduces **no new `ISimCommand`** · an abuse corpus (overlong, malformed, injection-shaped, `ship.*` write attempts) yields typed errors and zero sim mutation. |
 | `moss-model` | The IX-M8 key-routing table in **both** buffer states · selection preserved by id across a row-set change (IX-M12) · `loadBar`/`uptimeText`/`faultCell` formatting incl. `-1` sentinels · command parsing incl. case/space tolerance and unknown verbs · **M-PURITY** by source scan · reducers never mutate their argument. |
-| `moss-screen` | Full takeover leaves no game chrome visible (IX-M1) · the ESC stack order (IX-M2) · click/double-click row semantics (IX-M7) · reduced-motion (VS-M10) · a live-pixel check that the ledger reads correctly at 1024px and at full width (VS-M9). |
+| `moss-screen` | Full takeover leaves no game chrome visible (IX-M1) · the ESC stack order (IX-M2) · click/double-click row semantics (IX-M7) · reduced-motion (VS-M10) · a live-pixel check that the ledger reads correctly at 1024px and at full width (VS-M9) · **the prompt can be CORRECTED** — Backspace/Delete/caret keys/Tab reach the input, proven with TRUSTED key events (§6.1). |
 
 Every package additionally runs `./ci.sh` **in-worktree** and passes an independent Opus gate
 (blind spec → CI battery → adversarial/mutation pass → written PASS/FAIL), per `HANDOVER.md`
 "The rituals".
+
+### 6.1 The prompt must be provable with TRUSTED keys (added 2026-07-22, from a gate FAIL)
+
+**Any lane that touches keyboard handling on this screen runs `node client/tools/moss-shot.mjs`,
+whose `--keys` phase drives the prompt over CDP.** This is not optional polish; it closes a class of
+defect the node suite is structurally blind to.
+
+What happened: `moss-screen.js` swallowed every key whose name is longer than one character, on the
+reasoning that such a key "cannot type". It also matched `Backspace`, `Delete`, `ArrowLeft/Right`,
+`Home`, `End` and `Tab` — so the command prompt could be typed into but **never corrected**. A
+player who mistyped `open reacotr` had no way back except ESC, which throws the whole line away. All
+39 node tests were green.
+
+They were green because a stub `preventDefault` can only *record* the call; it cannot suppress a
+default action the stub never performs in the first place. `client/test/dom-lite.js:editable()` now
+models the one default that matters, so node catches this specific bug — but the general lesson
+stands: **default-action behaviour is only observable in a real browser with real key events.**
+`Input.dispatchKeyEvent` produces trusted events; a synthetic `new KeyboardEvent(...)` does not and
+would have passed just as happily.
+
+Corollary for implementers: the DOM layer may swallow a key on its own account only via the
+explicit `SCROLL_KEYS` allowlist, and never for an event originating in a text field. Everything
+else is `keyPress().handled`. A "keys like this can't type" heuristic is how this went wrong.
 
 ---
 

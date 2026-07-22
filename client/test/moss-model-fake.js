@@ -11,7 +11,24 @@
 // BEHAVIOUR is deliberately simpler (no history stash, no fault-token join, no PROGRAM IDE state)
 // — those are the model lane's tests to write, not this lane's.
 
-import { systemRows } from '../src/wire/messages.js';
+import * as MODEL from '../src/ui/moss-model.js';
+
+/**
+ * Row normalization comes from the AUTHORITATIVE decoder, `moss-model.js:rowObj` — there must not
+ * be a second one. It lands with the model lane's real bodies; while `moss-model.js` is still the
+ * frozen stub in this worktree it is absent, so this stands in with rowObj's exact rules.
+ *
+ * DELETE THE FALLBACK the moment `lane/moss-model` is merged. Note the defaults: a missing state is
+ * `-1` (renders UNKNOWN), NEVER `0` (NOMINAL) — DA-M1 forbids inventing a healthy reading for a row
+ * we cannot read, and the decoder this replaced got precisely that wrong.
+ */
+const rowObj = MODEL.rowObj || ((t) => {
+  if (!Array.isArray(t) || typeof t[0] !== 'string' || t[0] === '') return null;
+  const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const s = (v) => (typeof v === 'string' ? v : '');
+  return { id: t[0], label: s(t[1]) || t[0].split('_').join(' ').toUpperCase(), load: n(t[2], -1),
+    state: n(t[3], -1), faultDay: n(t[4], -1), faultText: s(t[5]), advisory: s(t[6]) };
+});
 
 export const SCREEN = { LEDGER: 'ledger', DETAIL: 'detail', FAULTLOG: 'faultlog', PROGRAM: 'program' };
 export const STATE = { NOMINAL: 0, ATTEND: 1, DEGRADED: 2, OFFLINE: 3 };
@@ -37,7 +54,8 @@ export function openMoss() {
 
 export function reduceSystems(model, msg) {
   if (!msg || !Array.isArray(msg.rows)) return model;
-  const rows = systemRows(msg);
+  const rows = [];
+  for (const t of msg.rows) { const r = rowObj(t); if (r) rows.push(r); }
   // IX-M12 — selection is preserved by row ID, never by index.
   const keep = rows.some((r) => r.id === model.selectedId) ? model.selectedId
     : (rows.length ? rows[0].id : null);
@@ -53,7 +71,10 @@ export function reduceMossEvent(model, msg) {
       name: String(d[0]), kind: String(d[1]), condition: d[2], powered: d[3] === 1,
       rate: d[4], deck: d[5], x: d[6], y: d[7], note: d[8] || '',
     }));
-    return { ...model, detail: { tid: model.detail.tid, devices, loading: false } };
+    // §1.2's `derivation` (IX-M22) is the HOST's account and lives on the model, not the screen.
+    return { ...model,
+      detail: { tid: model.detail.tid, devices, loading: false,
+        derivation: String(msg.derivation == null ? '' : msg.derivation).trim() } };
   }
   if (msg.ev === 'exec') {
     const lines = (Array.isArray(msg.lines) ? msg.lines : [])
@@ -295,10 +316,15 @@ export function detailView(model) {
     place: d.deck >= 0 ? 'DECK ' + d.deck + ' · ' + d.x + ',' + d.y : '—',
     note: d.note,
   }));
+  // No derivation until the host's own account arrives — while `loading` there are NO notes at all,
+  // so the screen must not reserve or draw a notes block for that frame.
+  const notes = model.detail.loading ? []
+    : [model.detail.derivation || 'DERIVATION UNDOCUMENTED — this row\'s numbers are not explained here.',
+      FAULT_CAVEAT];
   return {
     title: row ? row.label : normalizeSystemId(id).split('_').join(' ').toUpperCase(),
     devices,
-    notes: ['DERIVATION FOR ' + (row ? row.label : id) + ' (TEST DOUBLE PROSE).', FAULT_CAVEAT],
+    notes,
     loading: !!model.detail.loading,
   };
 }
