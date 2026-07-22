@@ -16,7 +16,7 @@ import {
 } from './helpers.js';
 import { composeScene } from '../src/render/compose.js';
 import { buildPasses, PASS_ORDER, reticlePhase } from '../src/render/webgl/batch.js';
-import { packAtlas, pow2, ATLAS_BORDER, UV_INSET_TEXELS } from '../src/render/webgl/atlas.js';
+import { packAtlas, pow2, ATLAS_BORDER, ATLAS_PAD, UV_INSET_TEXELS } from '../src/render/webgl/atlas.js';
 
 const TERRAIN_KINDS = new Set(['hull', 'void', 'floor', 'debris', 'wall', 'wall_vert']);
 const OVERLAY_KINDS = new Set(['wash', 'cursor', 'reticle']);
@@ -203,7 +203,7 @@ test('packAtlas is deterministic and order-independent (sorts by name)', () => {
 
 test('packAtlas wraps to new shelves at maxWidth and handles the empty set', () => {
   const empty = packAtlas([]);
-  assert.deepEqual(empty, { width: 1, height: 1, placements: {}, uv: {} });
+  assert.deepEqual(empty, { width: 1, height: 1, pad: ATLAS_PAD, placements: {}, uv: {} });
   // Three 100px sprites with maxWidth 220 → two per shelf, so the third drops to a new row.
   const atlas = packAtlas(
     [{ name: 'x', w: 100, h: 40 }, { name: 'y', w: 100, h: 40 }, { name: 'z', w: 100, h: 40 }],
@@ -218,6 +218,10 @@ test('packAtlas gives every cell an EXCLUSIVE ATLAS_BORDER — replicated edges 
   const sprites = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((n) => ({ name: n, w: 128, h: 128 }));
   const atlas = packAtlas(sprites);
   const names = Object.keys(atlas.placements);
+  // The gutter is reported so the rasterizer can CHECK it (webgl2.js _replicateEdges) instead of
+  // assuming the default, and the default must fit two exclusive borders side by side.
+  assert.ok(atlas.pad >= 2 * ATLAS_BORDER, `default gutter ${atlas.pad} < 2 * ATLAS_BORDER`);
+  assert.equal(packAtlas(sprites, { padding: 3 }).pad, 3, 'a custom gutter is reported, not hidden');
   // Grow every placement by its border; the grown rects must STILL be disjoint, otherwise one
   // cell's replicated edge would overwrite its neighbour's and the protection would be fiction.
   const grown = names.map((n) => {

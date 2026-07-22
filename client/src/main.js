@@ -122,7 +122,10 @@ function layout() {
     const q = new URLSearchParams(location.search);
     if (q.has('cx')) cx = parseFloat(q.get('cx'));
     if (q.has('cy')) cy = parseFloat(q.get('cy'));
-    const tilepx = q.has('zoom') ? parseFloat(q.get('zoom')) : 72;
+    // Default opening zoom in CSS px/tile. 64 (not the old 72) so it agrees with the ceiling:
+    // MAX_TILE_DEVICE_PX is 128 DEVICE px, i.e. 64 CSS px at Retina dpr=2 — the old 72 asked for
+    // 144 device px and was silently clamped, so the constant and the default contradicted.
+    const tilepx = q.has('zoom') ? parseFloat(q.get('zoom')) : 64;
     camera.x = cx; camera.y = cy; camera.z = tilepx * dpr / camera.tile; camera.placed = true;
   }
   clampCam(camera, frame);

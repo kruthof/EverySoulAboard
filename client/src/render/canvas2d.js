@@ -38,9 +38,10 @@ export class Canvas2DExecutor {
     // snapped, only the grid is.
     const { s, ox, oy } = transform(cam);
     ctx.setTransform(s, 0, 0, s, ox, oy);
-    // Smoothing ON: the art is painterly 128px renders, not pixel art. Nearest-neighbour scaling
-    // duplicated/dropped whole texel rows at every non-integer ratio and the artefacts crawled under
-    // pan. This is the canvas2d twin of the LINEAR / LINEAR_MIPMAP_LINEAR filters in webgl/gl.js.
+    // Smoothing ON: the art is painterly 128px renders, not pixel art. Nearest-neighbour MINIFY
+    // dropped whole texel rows at every non-integer ratio and the artefacts crawled under pan.
+    // This is the canvas2d twin of LINEAR_MIPMAP_LINEAR in webgl/gl.js. (It is a no-op at exactly
+    // 1:1, which MAX_TILE_DEVICE_PX makes the maximum zoom — the win is on the minify side.)
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
 
     for (const o of list) {

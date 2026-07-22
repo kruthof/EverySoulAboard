@@ -293,6 +293,61 @@ Round-2 finding NOT addressed by code: "there is not really anything else to
 do" beyond the above is P3 scope (nav/sensors loop, derelicts, campaign) —
 the polish lane makes the existing verbs visible; P3 adds new ones.
 
+## Render WP-0 — "a crisp ship stage" (2026-07-22, reviewed + corrected)
+
+Renderer only: projection stays pure, no sim / host / wire / def touched. The
+stage read soft next to Prison Architect; three verified causes.
+
+1. **Filters.** MIN `NEAREST_MIPMAP_LINEAR` → `LINEAR_MIPMAP_LINEAR` (the one
+   that matters — the old pair aliased *and* blurred at once); canvas2d gets
+   `imageSmoothingEnabled` + quality `high`. MAG `LINEAR` is **inert today** and
+   the source says so: the pitch ceiling means tile quads are never magnified,
+   and at exactly 1:1 LINEAR ≡ NEAREST (1:1 frames byte-identical, RMSE 0.000).
+   The max-zoom crispness win comes from the CEILING, not the filter.
+2. **Atlas gutter 1px → `ATLAS_BORDER` 4px of edge-REPLICATED pixels**, owned
+   exclusively per cell (so the packer's gutter is `2 * ATLAS_BORDER`; a shared
+   gutter would let neighbours overwrite each other's protection). Replicated,
+   not transparent — premultiplied zero would ring every sprite with a dark
+   halo. Tile-seam luma on a flat lit floor: 12.36 → 1.11 (**−91%**). The exact
+   bleed guarantee is **mip 2**, not mip 3: placements are 8-aligned, so at mip
+   3 the border is 0.5 texel and a rim tap picks ~25% neighbour — but the
+   reachable LOD is ~1.7–2.2, so mip-3 weight is ≲0.2 (≲5% on a 1px rim). Soft
+   bound, documented at `ATLAS_BORDER`. `packAtlas` now returns `pad` so
+   `_replicateEdges` CHECKS the gutter instead of assuming the default.
+3. **Integer pixel grid.** `tilePitch()` quantizes device-px-per-tile and
+   `transform()` rounds the origin, so every tile seam lands on a device pixel.
+   Plus `MAX_TILE_DEVICE_PX = 128` — max zoom is 1:1 with the 128px source art
+   instead of a 5× upscale (default opening zoom moved 72 → 64 CSS px/tile so
+   the default stops contradicting the ceiling at Retina dpr=2).
+
+`UV_INSET_TEXELS` is deliberately **0**, with the measurement in the source: the
+textbook half-texel inset maps 128 px across 127 texels and costs 25% of the
+luma gradient / 46% of Laplacian variance / 35% of HF energy at exactly 1:1.
+
+**The pawn slide is NOT snapped** — it is added in tile space *before* the pitch
+multiply and stays a continuous float. The PAWN SLIDE INVARIANT test drives the
+REAL `WebGL2Executor` and `Canvas2DExecutor` (recorders in place of the GPU /
+canvas sink) and reads back device positions; the first version re-derived the
+formula inside the test and pinned nothing. Proven to fail under (a) rounding
+the pawn position in `webgl2.js`, (b) adding the slide after the pitch multiply,
+(c) rounding `dx` in `canvas2d.js`. **Never let this test recompute the formula.**
+
+### Interaction risk to re-measure after the matte/palette lane lands
+
+Lane `worktree-agent-a5f0196b55ab76168` touches `matte.js` / `palette.js` /
+`sprites.js`. No file overlap with WP-0, so it will merge clean — but two
+things genuinely interact and should be re-measured, not assumed:
+
+- (a) that lane's `floor` grade is a ~3× contrast stretch meant to "pull the
+  latent plate seams out of the noise". That re-amplifies exactly the seam
+  contrast WP-0 cut by 91%. Re-shoot the flat-lit-floor seam-luma measurement
+  after both land.
+- (b) its `paintUnderglow` paints a saturated disc into the sprite's transparent
+  margin, i.e. **at the cell edge** — which `_paintCell`'s clip may cut and
+  `_replicateEdges` will then replicate 4px outward. That is the one case where
+  the soft mip-3 rim above becomes visible. Check a zoomed-out establishing
+  frame for haloed pawns before accepting.
+
 ## Running / testing the game
 
 ```bash

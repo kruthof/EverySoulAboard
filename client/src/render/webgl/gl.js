@@ -1,6 +1,6 @@
 // Thin WebGL2 layer — the ONLY GPU-touching module in the client. It owns context acquisition,
 // the two shader programs (textured quad + flat/tinted quad), one shared VAO over one streaming
-// interleaved VBO, the atlas texture (LINEAR magnify, trilinear minify — see uploadAtlas),
+// interleaved VBO, the atlas texture (trilinear minify; MAG is LINEAR but inert — see uploadAtlas),
 // premultiplied-alpha blending, and the context-loss surface. Everything above it
 // (webgl2.js) feeds it plain Float32 vertex data produced from the PURE batcher/atlas/rasterplan.
 //
@@ -127,14 +127,18 @@ export class GLContext {
    * Upload a canvas-backed atlas as the single sampled texture: premultiplied, LINEAR magnify,
    * trilinear (LINEAR_MIPMAP_LINEAR) minify.
    *
-   * Both filters are deliberate and were wrong before. The art is PAINTERLY 128px renders, not
-   * pixel art: NEAREST magnification duplicates whole texel columns at any non-integer ratio (the
-   * default view is ~1.125x, so every 8th column doubles) and the doubled columns SLIDE as you pan
-   * — the "stair-stepping crawl". LINEAR resamples smoothly instead. On the minify side,
-   * NEAREST_MIPMAP_LINEAR point-samples inside each mip (aliasing the detail) while cross-fading
-   * between mips (blurring what survived) — the worst of both; trilinear does the sane thing.
-   * Trilinear only behaves if the atlas gutter survives mip reduction — see atlas.js ATLAS_PAD and
-   * the edge replication in webgl2.js.
+   * MIN_FILTER is the one that matters. NEAREST_MIPMAP_LINEAR point-samples inside each mip
+   * (aliasing the detail) while cross-fading between mips (blurring what survived) — the worst of
+   * both. Trilinear does the sane thing. It only behaves if the atlas gutter survives mip
+   * reduction — see atlas.js ATLAS_BORDER and the edge replication in webgl2.js.
+   *
+   * MAG_FILTER is INERT, and saying otherwise would overstate this change. camera.js caps the
+   * pitch at MAX_TILE_DEVICE_PX (128) and the atlas bakes every cell at CELL (128), so a tile quad
+   * is never magnified — magnification is reached only at exactly 1:1, where LINEAR and NEAREST
+   * agree texel-for-texel. Measured: 1:1 frames before/after are byte-identical (RMSE 0.000). The
+   * crispness win at max zoom comes from the CEILING (no upscaling past the source art at all),
+   * not from this filter. LINEAR is kept because it is the correct choice the moment the ceiling
+   * is ever relaxed, and it costs nothing today.
    * @param {HTMLCanvasElement|ImageBitmap|HTMLImageElement} source
    */
   uploadAtlas(source) {

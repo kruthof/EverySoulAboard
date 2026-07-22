@@ -10,8 +10,11 @@ import {
   cullRange, tileFromPoint, transform, tilePitch, clampCam, zoomAt,
   MAX_TILE_DEVICE_PX,
 } from '../src/render/camera.js';
-import { slideOffset } from '../src/render/motion.js';
 import { C } from '../src/render/palette.js';
+import { WebGL2Executor } from '../src/render/webgl2.js';
+import { Canvas2DExecutor } from '../src/render/canvas2d.js';
+import { collectCellKeys, CELL } from '../src/render/rasterplan.js';
+import { packAtlas } from '../src/render/webgl/atlas.js';
 import {
   loadBootFrame, cameras, deriveLensFrame, deriveSelectionFrame, firstFloorTile, cameraOn, ASSETS,
 } from './helpers.js';
@@ -135,29 +138,110 @@ test('camera: the tile lattice is quantized to whole device pixels', () => {
   }
 });
 
-test('PAWN SLIDE INVARIANT: sub-tile motion stays continuous under the snapped grid', () => {
-  // The grid snap must never reach the pawn. A pawn mid-step is drawn at
-  // `(tileIndex + slide) * pitch + origin`; the slide term is a float added BEFORE the multiply,
-  // so consecutive animation frames must produce distinct, monotone, non-integral positions.
-  // If a future change rounds the pawn's own position, this test fails and the glide is back to
-  // the pre-b770e88 stutter.
+// The pawn-slide guard drives the REAL executors. Recomputing the formula in the test would pin
+// nothing (a mutation inside webgl2.js/canvas2d.js would sail past it), so each backend is run
+// with a recorder in place of its GPU/canvas sink and the emitted DEVICE positions are read back.
+
+/** A WebGL2Executor with only its GPU sink replaced: the position math under test is untouched. */
+function webglRecorder() {
+  const batches = [];
+  const exec = Object.create(WebGL2Executor.prototype);
+  exec.gl = {
+    isLost: () => false,
+    beginFrame() {}, drawFlat() {}, setBlendMultiply() {}, uploadAtlas() {},
+    drawTextured(verts) { batches.push(verts); },
+  };
+  exec._uv = {};
+  exec._sig = null;
+  exec._statsLoggedAt = Infinity; // suppress the throttled advisory console line
+  // Stub ONLY the atlas BAKE (it needs a real 2D canvas). Real packing math, real UV keys.
+  exec._ensureAtlas = (passes, useSpr, sprites, raster) => {
+    const keys = collectCellKeys(passes, useSpr, raster);
+    exec._uv = packAtlas(keys.map((k) => ({ name: k, w: CELL, h: CELL }))).uv;
+  };
+  /** Left edge (device px) of the single textured quad this frame emitted. */
+  exec.quadX = (list, opts) => {
+    batches.length = 0;
+    exec.execute(list, null, opts);
+    const tex = batches.find((b) => b.length);
+    assert.ok(tex, 'expected the executor to emit a textured quad for the pawn');
+    return tex[0]; // vertex 0 = the quad's top-left x
+  };
+  return exec;
+}
+
+const STUB_IMG = { width: CELL, height: CELL };
+const STUB_SPRITES = {
+  usable: () => true,
+  get: () => STUB_IMG,
+  decoded: () => null, // no walk-frame variants decoded → falls back to the base pawn image
+  rotated: () => STUB_IMG,
+  wallVertical: () => STUB_IMG,
+};
+
+/** A Canvas2DExecutor driven against a ctx that records drawImage through the live transform. */
+function canvasRecorder() {
+  const drawn = [];
+  const ctx = {
+    _m: [1, 0, 0, 1, 0, 0],
+    setTransform(a, b, c, d, e, f) { this._m = [a, b, c, d, e, f]; },
+    save() {}, restore() {}, clearRect() {}, fillRect() {}, beginPath() {}, rect() {}, clip() {},
+    drawImage(_img, px, py) { drawn.push(this._m[0] * px + this._m[4]); },
+  };
+  const exec = new Canvas2DExecutor();
+  return {
+    quadX(list, opts) {
+      drawn.length = 0;
+      exec.execute(list, ctx, { ...opts, sprites: STUB_SPRITES, spriteMode: 'on' });
+      assert.equal(drawn.length, 1, 'expected exactly one sprite draw for the pawn');
+      return drawn[0];
+    },
+  };
+}
+
+test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide under the snapped grid', () => {
+  // The grid snap must never reach the pawn. A pawn mid-step is DRAWN by the executors at
+  // `(tileIndex + slide) * pitch + origin`: the slide is a float added BEFORE the pitch multiply,
+  // so successive animation frames must land at distinct, strictly advancing, non-integral device
+  // positions, and one step must cover a whole tile pitch. Rounding the pawn's own position, or
+  // applying the slide AFTER the multiply, breaks one of those and fails here. This is the guard
+  // on b770e88's continuous glide — keep it driving real executors, never a re-derived formula.
   const boot = loadBootFrame();
   const cam = cameraOn(boot, 20, 9, 0.9);
   const p = tilePitch(cam), { ox } = transform(cam);
-  const entry = { x: 20, y: 9, originX: 19, originY: 9, stepMs: 1000, interval: 400 };
+  // A pawn that stepped 19→20 at t=1000 and glides over its estimated 400 ms interval.
+  const entry = {
+    x: 20, y: 9, walking: true, facing: 'E', fromX: 19, fromY: 9, dx: 1, dy: 0,
+    sinceStep: 0, stepMs: 1000, interval: 400, originX: 19, originY: 9,
+  };
+  const motion = { '20,9': entry };
+  const list = [{ op: 'entity', x: 20, y: 9, g: 64 /* '@' */, fg: C.Crew, role: null, turns: 0, pv: 0 }];
+  const gl = webglRecorder(), cv = canvasRecorder();
+  const frameOpts = (nowMs) => ({ camera: cam, motion, nowMs, timeSec: 0 });
+
+  // Sample the step finely enough that ANY rounding to whole device pixels must stall the glide:
+  // 2 ms apart is ~0.58 device px, so a rounded position would repeat instead of advance.
   const xs = [];
-  for (let ms = 1000; ms < 1400; ms += 17) { // ~60fps sampling across one step
-    const off = slideOffset(entry, ms);
-    xs.push((entry.x + off.ox) * p + ox);
+  for (let ms = 1000; ms < 1400; ms += 2) {
+    const x = gl.quadX(list, frameOpts(ms));
+    // 1e-3 not 0: the GL quad comes back through a Float32Array, so it carries float32 rounding
+    // (~6e-5 at these magnitudes) that the canvas path's float64 arithmetic does not.
+    assert.ok(Math.abs(cv.quadX(list, frameOpts(ms)) - x) < 1e-3,
+      `canvas2d and webgl2 must place the pawn identically at t=${ms}`);
+    xs.push(x);
   }
   for (let i = 1; i < xs.length; i++) {
     assert.ok(xs[i] > xs[i - 1], `slide must advance every frame (frame ${i}: ${xs[i - 1]} → ${xs[i]})`);
   }
-  assert.ok(xs.some((v) => v % 1 !== 0), 'a continuous slide must produce sub-pixel positions');
-  // The step covers one tile pitch and ends settled exactly on the grid.
+  assert.ok(xs.filter((v) => v % 1 !== 0).length > xs.length / 2,
+    'a continuous slide is mostly sub-pixel; whole-pixel positions mean the pawn was snapped');
+  // The step covers ~one whole tile pitch — the slide is in TILE units, multiplied by the pitch.
   const travel = xs[xs.length - 1] - xs[0];
   assert.ok(travel > 0.9 * p && travel < p, `one step should traverse ~one tile pitch, got ${travel}/${p}`);
-  assert.equal(slideOffset(entry, 1400).ox, 0, 'arrival settles onto the tile');
+  // …and arrival settles exactly on the (integral) tile lattice.
+  const settled = gl.quadX(list, frameOpts(1400));
+  assert.equal(settled, 20 * p + ox, 'arrival settles onto the tile');
+  assert.equal(settled, Math.round(settled), 'a settled pawn sits on the device-pixel grid');
 });
 
 test('camera: zoom is capped at MAX_TILE_DEVICE_PX — never upscale past the source art', () => {

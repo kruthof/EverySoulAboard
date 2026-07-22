@@ -93,6 +93,7 @@ export class WebGL2Executor {
     this._sig = null;              // current atlas signature
     this._uv = {};                 // cell key → UV rect
     this._statsLoggedAt = 0;       // wall-clock throttle for the advisory [perilune-stats] line
+    this._padWarned = false;       // one-shot: atlas gutter too narrow for the edge replication
     this._atlasCanvas = document.createElement('canvas');
     console.info('[perilune] backend=webgl2 (WebGL2Executor active)');
   }
@@ -245,7 +246,7 @@ export class WebGL2Executor {
       this._paintCell(g, key, sprites, useSpr, p.x, p.y);
       g.restore();
     }
-    for (const key of keys) this._replicateEdges(g, cv, atlas.placements[key]);
+    for (const key of keys) this._replicateEdges(g, cv, atlas.placements[key], atlas.pad);
 
     this.gl.uploadAtlas(cv);
     this._uv = atlas.uv;
@@ -253,7 +254,7 @@ export class WebGL2Executor {
   }
 
   /**
-   * Bleed one cell's outermost row/column of pixels ATLAS_BORDER px outward into its gutter.
+   * Bleed one cell's outermost row/column of pixels up to ATLAS_BORDER px outward into its gutter.
    *
    * Why not just leave the gutter transparent: the atlas is premultiplied, so a transparent texel
    * is (0,0,0,0). LINEAR filtering at a sprite's edge averages the edge texel with whatever sits
@@ -265,12 +266,27 @@ export class WebGL2Executor {
    * `drawImage` with the canvas as its own source is well-defined (the source is snapshotted), and
    * imageSmoothingEnabled is already false, so stretching a 1px strip to ATLAS_BORDER px is an exact
    * copy rather than a gradient. Sides first, then top/bottom over the WIDENED span so the four
-   * corners are covered too. The packer leaves 2 * ATLAS_BORDER between cells, so this never writes
-   * into a neighbour's border.
+   * corners are covered too.
+   *
+   * GUARD: this writes ATLAS_BORDER px OUTWARD on every side, so it is only safe while the packer's
+   * gutter is at least 2 * ATLAS_BORDER (each neighbour's border, side by side). That holds by
+   * construction today — _ensureAtlas takes packAtlas's default ATLAS_PAD — but a future caller
+   * passing a smaller `padding` would silently have cells overwrite each other's protection, which
+   * looks like art corruption rather than a config error. So take the real gutter from the atlas
+   * and clamp to what actually fits, warning once. Never throws: this runs inside the frame path.
+   * @param {number} [pad] the packer's gutter, from packAtlas's returned `pad`
    */
-  _replicateEdges(g, cv, p) {
+  _replicateEdges(g, cv, p, pad) {
     if (!p) return;
-    const P_ = ATLAS_BORDER, { x, y, w, h } = p;
+    const room = pad == null ? ATLAS_BORDER : Math.floor(pad / 2);
+    const P_ = Math.min(ATLAS_BORDER, room);
+    if (P_ < ATLAS_BORDER && !this._padWarned) {
+      this._padWarned = true;
+      console.warn(`[perilune] atlas gutter ${pad} < 2*ATLAS_BORDER (${2 * ATLAS_BORDER}); ` +
+        `edge replication narrowed to ${P_}px — expect mip bleed between cells`);
+    }
+    if (P_ <= 0) return;
+    const { x, y, w, h } = p;
     // left / right edge columns
     g.drawImage(cv, x, y, 1, h, x - P_, y, P_, h);
     g.drawImage(cv, x + w - 1, y, 1, h, x + w, y, P_, h);
