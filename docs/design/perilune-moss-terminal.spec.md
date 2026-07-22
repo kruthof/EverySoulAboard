@@ -232,24 +232,42 @@ VS-R5 is the precedent).
 
 ---
 
-## 5. Derivations — the honest table (verify against source; correct with evidence)
+## 5. Derivations — the honest table (AS BUILT, 2026-07-22)
 
-Citations are from the read-only survey and **must be re-verified by the `moss-systems` lane**.
+**Built and verified** by the `moss-systems` lane in `sim/Sim.Core/ShipSystems.cs`. Rows marked
+**[CORRECTED]** differ from the read-only survey this spec was written from; each carries its
+evidence. Every citation below was re-verified against source.
+
 `MaintainBelow` / `FailBelow` are per-`DeviceKind` def thresholds (`MachineDefs.cs:38-64`) and give
 the NOMINAL / ATTEND / DEGRADED ladder for free: a row is DEGRADED if any member device is below
 `FailBelow` (i.e. `!IsOperational`), ATTEND if any is below `MaintainBelow`, else NOMINAL — *unless
 a row-specific rule below overrides it*.
 
+> **[CORRECTED] LOAD is the row's PRIMARY GAUGE, not uniformly a utilisation.** The survey's table
+> already mixes three meanings (utilisation, fill level, crop progress, mean condition) and that is
+> fine — but it must be *said*, because a column headed LOAD that silently means four things is the
+> same class of misread as an invented number. Each row's DETAIL screen states which it is
+> (`ShipSystems.Derivation`, IX-M22).
+>
+> **[CORRECTED] `ShipSystems.Compute` takes an optional second argument, the `HistorySystem`.**
+> History is not on `Simulation` — it is a stack system the host owns (`SimHost.History`). A caller
+> without one gets a complete ledger whose LAST FAULT column is honestly empty. No new sim state.
+>
+> **[CORRECTED] A row whose hardware does not exist is OFFLINE with a stated reason, load `-1`** —
+> generalised from `nav_sensors` to every row (DA-M1 already implies it): `fabrication` with no
+> industry machines, `water_reclaim` with no tanks and no reclaimer, `hydroponics` with no beds,
+> `reactor` with nothing that generates.
+
 | Row | LOAD | STATE | Notes / traps |
 |---|---|---|---|
-| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over the power network, clamped 0..100 | brownout ⇒ DEGRADED; battery reserve < 25% ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-179`). |
-| `life_support` | scrubber capacity vs crew CO₂ production (defs × census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. The ATTEND/DEGRADED bands must be chosen so the shipping slice's real 500→17,644 ppm arc is *visible*, because it is a real failure. |
-| `water_reclaim` | `ShipMetrics.Water` (tank fill fraction) | reclaimer `Condition` ladder; any tank at 0 L ⇒ ATTEND | `tank_hydro` hits 0.0 L on day 1.2 on the shipping slice (a live bug, `ECONOMY-PLAN.md` B-2). This row should show that. |
-| `hydroponics` | mean `GrowBed.Progress` | growbed condition ladder; no water available ⇒ ATTEND | Frozen mid-crop beds are the visible symptom of B-2. |
-| `thermal` | radiator rejection (5 kW each, `MachineDefs.cs:71`) vs heat load | `ShipMetrics.Heat` bands | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. |
-| `fabrication` | powered ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder | — |
-| `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation already exists, deterministic, at `CitizenContext.cs:155-193`; reuse it rather than re-deriving. No breach event is ever published, so `LAST FAULT` is legitimately `—`. |
-| `nav_sensors` | `-1` (`--`) | **always `OFFLINE`** while no `Telescope` is placed | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: no ship generator or authored ship places a `Telescope`, so the sensor pass never runs. Fault text: `NO SENSOR HARDWARE`. If a telescope is ever placed this row must come alive on its own — derive the OFFLINE state from the device census, never hardcode it. |
+| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over wired devices, clamped 0..100. "Wanting" mirrors the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a vent only wants power while open. | brownout ⇒ DEGRADED; battery reserve < 25% ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-189`). **[CORRECTED]** `PowerSystem` exposes no brownout accessor (`_wasBrownout` is private, `PowerSystem.cs:71`), so the brownout is derived from its OBSERVABLE consequence: a wanting, wired, drawing device whose `Powered` is false has been shed by the tier walk (`PowerSystem.cs:203-234` stamps exactly that). No new public API on a spine file. |
+| `life_support` | crew CO₂ production ÷ scrubber removal capacity (`atmosphere.def` × living census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. **[CORRECTED — bands now chosen]**: `< 1,000` NOMINAL · `≥ 1,000` ATTEND · `≥ 2,000` DEGRADED · `≥ needs.def co2_narcosis_ppm` (40,000) OFFLINE. The 1,000/2,000 figures are the "stale"/"bad" wording the crew themselves use (`CitizenContext.cs:67,69`); the narcosis figure is read live from `sim.Defs` because it is the only ppm number with a *damage* consumer (`NeedsSystem.cs:52`). Measured on the slice this puts the row at DEGRADED from day 1 (6,060 ppm) through day 3 (16,677 ppm) while LOAD stays at 52–58% — i.e. the bar says "coping" and the STATE says "poisoned", which is the truth. |
+| `water_reclaim` | stored litres ÷ total tank capacity (== `ShipMetrics.Water`) | reclaimer/tank condition ladder; **[CORRECTED]** any tank holding less than one drink (`sustenance.def drink_liters`, 0.5 L) ⇒ ATTEND | `tank_hydro` runs dry on the shipping slice (a live bug, `ECONOMY-PLAN.md` B-2). **The survey's `= 0 L` test does not catch it**: measured at day 3 the tank holds **0.02 L**, so a literal zero test reads NOMINAL and hides the exact failure this row exists to show. `< drink_liters` is the sim's OWN dry test — a tank below it is invisible to a thirsty crew member (`SustenanceSystem.cs:126,220,261`). With it the row reads ATTEND at day 3, as it should. |
+| `hydroponics` | mean `GrowBed.Progress` | growbed condition ladder; a bed whose fluid network cannot cover one second of irrigation ⇒ ATTEND | Frozen mid-crop beds are the visible symptom of B-2. The dry test mirrors `WaterSystem.TryDrawWater` (`WaterSystem.cs:215-228`) **read-only**, epsilon included — `TryDrawWater` itself mutates and is never called from the report. Known cold-start artifact: at tick 0 no fluid network exists yet, so every bed reads dry for that one instant. That is what `HydroponicsSystem` would also find at tick 0. |
+| `thermal` | total waste heat (powered operational `HeatKW` + `thermal.def citizen_heat_w` × living crew) ÷ radiator rejection (`RadiatorRejectKW` × `EffectiveRate`) | **[CORRECTED]** measured room temperature, not `ShipMetrics.Heat`: any pressurised compartment outside `needs.def hypothermia_c … heat_stroke_c` ⇒ DEGRADED, outside 10–35 °C ⇒ ATTEND | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. **Why the correction:** `ShipMetrics.Heat` is a *count* of rooms in the comfort band, so it can read a healthy 0.95 while one compartment sits at −13 °C inflicting hypoxia-rate damage on anyone who walks in. Banding off the danger thresholds — the only temperatures with a real consumer (`NeedsSystem`) — is what "report the measured temperature" actually requires. Measured on the slice: NOMINAL day 0 → ATTEND day 1 (3.9 °C) → DEGRADED day 3 (−15.7 °C). |
+| `fabrication` | powered+operational ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder; none aboard ⇒ OFFLINE | Powered is not busy — no machine exposes a run-state (`ThermalSystem.cs:103-106` documents the same gap), so an idle powered fabricator is indistinguishable from a working one. Said in the DETAIL note. |
+| `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` (80) ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation is reused from `CitizenContext.cs:155-193` (mirrored, not referenced: `Sim.Core` must not depend on `Sim.Llm`). **[CORRECTED]** This row makes **no history join at all**, rather than one that finds nothing: nothing publishes a breach event, so any name match here would be an unrelated maintenance alarm rendered as a hull fault. `LAST FAULT` is `—` by construction. |
+| `nav_sensors` | `-1` (`--`) while no telescope exists; once one is placed, powered+operational ÷ total | **`OFFLINE` derived from the device census** finding no `Telescope` | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: its sensor pass is gated on `AnyPoweredTelescope` (`NavSystem.cs:104,121-128`) and no ship generator or authored ship places one. Never hardcoded — a test places a telescope and watches the row come alive, then wrecks it and watches the ladder (not a hardcode) put it back to OFFLINE. |
 
 ### 5.1 Fault attribution — a known-weak join, documented not hidden
 
@@ -258,14 +276,29 @@ a row-specific rule below overrides it*.
 MOSS `alarm()`). So a fault is attributed to a row by **matching device names in the group against
 the entry text** — a string join, and the lane must say so in a doc comment.
 
-Two consequences to design around rather than discover later:
+**[CORRECTED] A row may additionally declare one structural `HistoryKind` as its own**, because the
+name join alone cannot see a fault that names no device. Only `reactor` does: a brownout entry names
+a *network*, not a device (`HistorySystem.cs:104-110`). **And that structural match must be narrowed
+to the fault, not the recovery**: `HistoryKind.Brownout` covers *both* sentences HistorySystem writes
+from `BrownoutChangedEvent`, and the entry does not carry the direction. Left unnarrowed, the shipped
+slice renders `DAY 2 · POWER NETWORK 1 RECOVERED` in a column headed LAST FAULT — measured, and
+exactly the class of misread this spec exists to stop. The implementation matches HistorySystem's own
+literal (`"browned out"`); a test pins that `RECOVERED` never reaches the column.
+
+Three consequences to design around rather than discover later:
 
 1. The 200-entry history ring is roughly **87% brownout spam by day 3** (`MECHANICS.md` §13.8), so
    non-power rows will frequently have no attributable fault. `—` is the correct, honest render.
+   Measured on the slice at day 3: only `reactor` has an attributable fault. Every other row is `—`.
 2. `MaintenanceSystem` publishes **nothing on repair** (`MachineWearSystem.cs:262` — "completion is
    a notice, not an alarm"), so faults can be shown but recoveries cannot. A fault line is
    therefore "the last thing that went wrong", **not** "the current problem". Word the column
    accordingly and say it in the DETAIL derivation note.
+3. **[CORRECTED] Designer-rule alarms never attribute to a row.** `DesignerRuleSystem` publishes
+   `AlarmRaisedEvent` with the *rule name* as `SourceId`, so `overheat_guard`'s 2,579 alarms carry no
+   device name and match nothing. The `thermal` row therefore shows `—` while that rule screams. That
+   is the correct outcome twice over: the join genuinely cannot see it, and the rule's claim is
+   backwards anyway (DA-M1, §5 `thermal`).
 
 ---
 
