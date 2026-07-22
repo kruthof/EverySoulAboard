@@ -6,7 +6,7 @@
 import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
-import { deviceSpriteKey, pawnSpriteKey, walkOffset, isAnimWalking } from './motion.js';
+import { deviceSpriteKey, pawnSpriteKey, slideOffset, isAnimWalking } from './motion.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
@@ -22,8 +22,9 @@ export class Canvas2DExecutor {
     const sprites = opts.sprites || null;
     const useSpr = sprites ? sprites.usable(opts.spriteMode) : false;
     const timeSec = opts.timeSec || 0;
-    // C7 animation context: per-tile motion, walk-cycle time, and the interpolation progress.
-    const anim = { motion: opts.motion || null, timeSec, walkProgress: opts.walkProgress == null ? 1 : opts.walkProgress };
+    // C7 animation context: per-tile motion, walk-cycle time, and the wall-clock that drives the
+    // continuous per-cid slide (null on the frozen/screenshot path → every pawn reads settled).
+    const anim = { motion: opts.motion || null, timeSec, nowMs: opts.nowMs == null ? null : opts.nowMs };
 
     // full clear + deep-fog field behind everything
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -129,13 +130,14 @@ export class Canvas2DExecutor {
         if (useSpr && o.fg === C.Crew) {
           const v = o.pv || 0;
           const pr = (PAWN_ROLES[v] && sprites.get(PAWN_ROLES[v])) ? PAWN_ROLES[v] : 'pawn';
-          // C7 walk: cycle SPRITE_FRAMES while walking + slide from the previous tile.
+          // C7 walk: cycle SPRITE_FRAMES while walking + slide continuously toward the current tile.
           const entry = anim.motion && anim.motion[o.x + ',' + o.y];
           // Sprite choice holds "walking" for a couple of step-less frames (isAnimWalking) so
-          // per-frame step gaps don't flicker walking↔standing; the SLIDE stays step-gated.
-          const key = pawnSpriteKey(pr, isAnimWalking(entry), anim.timeSec || 0, SPRITE_FRAMES);
+          // per-frame step gaps don't flicker walking↔standing; the SLIDE is time-driven and
+          // self-gating (slideOffset survives step-less frames, so no snap when another crew steps).
+          const key = pawnSpriteKey(pr, isAnimWalking(entry, anim.nowMs), anim.timeSec || 0, SPRITE_FRAMES);
           const frameImg = key !== pr ? sprites.decoded(key) : null;
-          const off = entry && entry.walking ? walkOffset(entry, anim.walkProgress == null ? 1 : anim.walkProgress) : { ox: 0, oy: 0 };
+          const off = slideOffset(entry, anim.nowMs);
           const dx = off.ox * T, dy = off.oy * T;
           if (frameImg) this._sprImg(ctx, T, frameImg, px + dx, py + dy, dim ? 0.7 : 1);
           else this._spr(ctx, sprites, T, pr, px + dx, py + dy, dim ? 0.7 : 1);

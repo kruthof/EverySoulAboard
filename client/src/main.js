@@ -8,7 +8,7 @@ import { Canvas2DExecutor } from './render/canvas2d.js';
 import { WebGL2Executor } from './render/webgl2.js';
 import { chooseBackend, parseFrozenTime } from './render/exec-select.js';
 import { clampCam } from './render/camera.js';
-import { initMotion, trackMotion, motionByTile } from './render/motion.js';
+import { initMotion, trackMotion, motionByTile, slideActive } from './render/motion.js';
 import { SpriteAssets, spriteMeta, SPRITE_TILE } from './render/sprites.js';
 import { WireSession, Cmd } from './wire/session.js';
 import { decodeLightPlane } from './wire/messages.js';
@@ -84,22 +84,19 @@ let spriteMode = true;
 const lightPlanes = new Map();
 const currentLights = () => (frame ? lightPlanes.get(frame.deck) || null : null);
 
-// C7 motion: per-cid tracking across frames → walking/facing/interpolation, fed to the executors as
-// data (compose stays time-free). WALK_MS is how long a one-tile slide takes; the walk-progress is
-// derived from wall time since the latest frame landed (frozen to 1 for deterministic screenshots).
-const WALK_MS = 130;
+// C7 motion: per-cid tracking across frames → walking/facing + a CONTINUOUS, step-anchored slide,
+// fed to the executors as data (compose stays time-free). Each real step records its wall-time and a
+// per-cid interval estimate (measured between the pawn's last two steps, so it auto-adapts to sim
+// speed and wire jitter); the pawn glides origin→tile over that interval and is still arriving when
+// the next step lands — no fixed frame-anchored duration, no parked phase. The wall clock (nowMs)
+// flows into trackMotion/the executors as data; frozen screenshots pass null → every pawn settled.
 let motion = initMotion();
-let lastFrameMs = 0;
-function walkProgress() {
-  if (FROZEN_T != null) return 1;
-  const now = (typeof performance !== 'undefined' ? performance.now() : 0);
-  return Math.max(0, Math.min(1, (now - lastFrameMs) / WALK_MS));
-}
+const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+// A slide is in flight while any pawn hasn't reached its tile; the loop idles the moment none is.
 function anyWalking() {
   if (FROZEN_T != null || !motion) return false;
-  const now = (typeof performance !== 'undefined' ? performance.now() : 0);
-  if (now - lastFrameMs >= WALK_MS) return false; // the slide finished; nothing to animate
-  for (const cid in motion.byCid) if (motion.byCid[cid].walking) return true;
+  const t = nowMs();
+  for (const cid in motion.byCid) if (slideActive(motion.byCid[cid], t)) return true;
   return false;
 }
 const sprites = new SpriteAssets(() => { camera.placed = false; layout(); draw(); });
@@ -137,9 +134,9 @@ function draw() {
   const list = composeScene(frame, camera, spriteMeta, currentLights());
   executor.execute(list, ctx, {
     camera, sprites, spriteMode,
-    timeSec: FROZEN_T != null ? FROZEN_T : (typeof performance !== 'undefined' ? performance.now() : 0) / 1000,
+    timeSec: FROZEN_T != null ? FROZEN_T : nowMs() / 1000,
     motion: motionByTile(motion),
-    walkProgress: walkProgress(),
+    nowMs: FROZEN_T != null ? null : nowMs(),
   });
 }
 
@@ -176,8 +173,8 @@ const session = new WireSession(onMessage, (connected) => {
 function onMessage(m) {
   switch (m.type) {
     case 'frame':
-      motion = trackMotion(motion, m);
-      lastFrameMs = (typeof performance !== 'undefined' ? performance.now() : 0);
+      // Anchor slides to the wall clock on the live path; null when frozen (deterministic frames).
+      motion = trackMotion(motion, m, FROZEN_T != null ? null : nowMs());
       frame = m;
       startAnim();
       layout(); draw();

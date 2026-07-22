@@ -58,8 +58,9 @@ function spriteVariant(op, opts) {
   const base = op.sprite;
   if (op.glyph === G_CITIZEN && opts.frames) {
     const entry = opts.motion && opts.motion[op.x + ',' + op.y];
-    // isAnimWalking: hold the walk sprite across small step gaps (no walking↔standing flicker).
-    return pawnSpriteKey(base, isAnimWalking(entry), opts.timeSec || 0, opts.frames);
+    // isAnimWalking: hold the walk sprite for the whole slide (slide-aware) — no walking↔standing
+    // flicker and no standing-pose ice-skate when a gliding pawn's frame hold expires mid-slide.
+    return pawnSpriteKey(base, isAnimWalking(entry, opts.nowMs), opts.timeSec || 0, opts.frames);
   }
   if (opts.states) return deviceSpriteKey(base, op.tint, op.alpha != null && op.alpha < 1, opts.states);
   return base;
@@ -122,8 +123,10 @@ export function collectCellKeys(passes, useSpr, opts = {}) {
       if (p.name === 'entities') {
         // A walking pawn bakes ALL its walk frames into the atlas so the atlas stays stable as
         // timeSec advances (only the SAMPLED frame changes per-frame, never the atlas contents).
+        // Bake gate MUST match the sample gate (spriteVariant) — same slide-aware isAnimWalking with
+        // the same nowMs — or a slide-held pawn would sample a walk frame the atlas never baked.
         if (useSpr && o.sprite && o.glyph === G_CITIZEN && opts.frames &&
-            opts.motion && isAnimWalking(opts.motion[o.x + ',' + o.y])) {
+            opts.motion && isAnimWalking(opts.motion[o.x + ',' + o.y], opts.nowMs)) {
           for (const k of pawnFrameKeys(o.sprite, opts.frames)) keys.add('spr:' + k);
           continue;
         }
