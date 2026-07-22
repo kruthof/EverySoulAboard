@@ -97,6 +97,16 @@ namespace Perilune.Tests
                 new ISimSystem[] { new JobSystem(), build });
         }
 
+        /// <summary>A named source's raw board size — preconditions key on the source's identity,
+        /// never its registration index.</summary>
+        private static int CountFor(JobSystem jobs, string name)
+        {
+            for (int i = 0; i < jobs.Sources.Count; i++)
+                if (jobs.Sources[i].Name == name) return jobs.Sources[i].CandidateCount;
+            Assert.Fail($"no job source named '{name}' is registered");
+            return -1;
+        }
+
         private static void Debris(Simulation sim, Int3 p)
         {
             sim.World.SetWall(p, TileDefs.Debris);
@@ -245,8 +255,18 @@ namespace Perilune.Tests
         /// <summary>
         /// A dig site and a haul item exactly as far from the worker: DIG wins, because the dig
         /// source is registered first and every argmin is strict <c>&lt;</c>.
-        /// NAMED MUTATION: register Haul before Dig, or flip the haul scan to <c>&lt;=</c> —
-        /// the citizen takes HaulPickup and this fails.
+        /// NAMED MUTATION: register Haul before Dig — the citizen takes HaulPickup and this fails.
+        ///
+        /// It used to be TWO mutations: flipping <c>HaulJobSource</c>'s own argmin to <c>&lt;=</c>
+        /// also reddened this test. It no longer does, and that is a PROPERTY worth knowing rather
+        /// than a hole. The dispatcher's <c>d &gt;= bestDist</c> guard means a source with a
+        /// non-strict internal argmin now returns a candidate at exactly the running best and is
+        /// DECLINED, so a sloppy source can no longer steal a cross-source tie from a source
+        /// registered ahead of it — the dispatcher absorbs that whole bug class on behalf of three
+        /// lanes that have not written their sources yet. What a non-strict argmin still breaks is
+        /// the tie WITHIN one source's own board, which is
+        /// <see cref="EqualDistance_TwoHaulItems_ResolveToEntityStoreOrder"/>'s job and which that
+        /// test still catches (measured: the <c>&lt;=</c> flip reddens it alone, 1 of 620).
         /// </summary>
         [Test]
         public void EqualDistance_DigBeatsHaul()
@@ -466,8 +486,11 @@ namespace Perilune.Tests
             Assert.That(pinned.JobKind, Is.EqualTo(JobKind.Dig), "precondition: the digger is pinned on a job");
             Assert.That(pinned.HasPath, Is.True, "precondition: …and never arrives, so he holds it");
             Assert.That(seeker.JobKind, Is.EqualTo(JobKind.None), "precondition: the seeker never gets work");
-            Assert.That(jobs.Sources[0].CandidateCount, Is.EqualTo(2), "precondition: two dig candidates");
-            Assert.That(jobs.Sources[2].CandidateCount, Is.EqualTo(1), "precondition: a build candidate too");
+            // Keyed by name, not position: a registration REORDER is not this test's business, and
+            // asserting Sources[0]/Sources[2] would redden it with an allocation-flavoured message
+            // for a tie-break change. Sources[i].Name keeps the failure honest.
+            Assert.That(CountFor(jobs, "Dig"), Is.EqualTo(2), "precondition: two dig candidates");
+            Assert.That(CountFor(jobs, "Build"), Is.EqualTo(1), "precondition: a build candidate too");
             Assert.That(sim.JobsDirty, Is.False, "precondition: steady state — the rescan is NOT in this window");
 
             long before = GC.GetAllocatedBytesForCurrentThread();
@@ -613,9 +636,13 @@ namespace Perilune.Tests
             Assert.That(taken.Kind, Is.EqualTo(BuildSystem.Material),
                 "precondition: what he took is build material, so the pool really shrank");
 
-            Assert.That(far.JobKind, Is.Not.EqualTo(JobKind.HaulToBuild),
+            // Positive, not `Is.Not.EqualTo(HaulToBuild)`: a negative would also pass if Far simply
+            // went idle, which is a plausible future regression and the opposite of the point. The
+            // fixture deterministically leaves him the far stack to fetch for the stockpile.
+            Assert.That(far.JobKind, Is.EqualTo(JobKind.HaulPickup),
                 "the site must not be promised units a hauler already took in the same pass — " +
-                "nothing un-deposits, so a half-materialed site is dead forever");
+                "nothing un-deposits, so a half-materialed site is dead forever; Far takes the " +
+                "remaining stack for the stockpile instead");
         }
 
         // ------------------------------------------------- the dispatcher defends the argmin
@@ -729,6 +756,7 @@ namespace Perilune.Tests
             var ex = Assert.Throws<InvalidOperationException>(() => sim.Tick());
             Assert.That(ex.Message, Does.Contain("NeverStamps"), "the message names the offending source");
             Assert.That(ex.Message, Does.Contain("stamping"), "and says what it failed to do");
+            Assert.That(ex.Message, Does.Contain("CandidateCount"), "and offers the other diagnosis");
         }
     }
 }

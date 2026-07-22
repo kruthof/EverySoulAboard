@@ -50,12 +50,23 @@ namespace Perilune.Sim
         /// How many RAW candidates the board holds (before validity, backoff or reachability) —
         /// i.e. the number of distinct indices <see cref="Select"/> could return.
         ///
-        /// Two contracts ride on it, both behaviour rather than optimisation. Zero across every
-        /// source makes the dispatcher skip the whole selection pass INCLUDING
+        /// Two contracts ride on it, both behaviour rather than optimisation.
+        ///
+        /// ZERO across every source makes the dispatcher skip the whole selection pass INCLUDING
         /// <see cref="Citizen.ClearPath"/>, so an idle citizen keeps a stale path when there is no
-        /// work anywhere. And the sum across sources is the dispatcher's loop bound: it must be an
-        /// upper bound on how many times this source can refuse before it runs out of candidates,
-        /// or the bound throws on a conforming source.
+        /// work anywhere. Note the corollary: a source returning 0 silently disables itself — no
+        /// throw, no log, its board simply never offered. (The same silence the previous boolean
+        /// had, so not new, but it is the first thing to check when a source "does nothing".)
+        ///
+        /// The SUM across sources is the dispatcher's retry bound, and it is exactly tight —
+        /// <c>sum + 1</c>, zero margin — because every refusal is required to consume a candidate.
+        /// So this must be an UPPER bound on how many times this source can refuse in one pass.
+        /// Over-reporting is free and safe (measured: declaring 9 against a real board of 4 changes
+        /// nothing); under-reporting throws. When in doubt, over-report. A future source that can
+        /// refuse a candidate WITHOUT consuming it breaks the bound outright and needs the
+        /// dispatcher's cap revisited, not a bigger number here.
+        ///
+        /// All three shipped implementations are O(1) — a list count, or the sum of two.
         /// </summary>
         int CandidateCount { get; }
 

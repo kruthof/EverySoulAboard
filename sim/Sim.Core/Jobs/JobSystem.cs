@@ -140,8 +140,8 @@ namespace Perilune.Sim
                 // (c) is indistinguishable from (a) at runtime — JobKind is a flat enum with no
                 // ownership metadata — so it is caught at construction (the duplicate-claim throw)
                 // and by JobDispatchTests' coverage assertion, never by this line.
-                int kind = (int)citizen.JobKind;
-                var owner = kind >= 0 && kind < _byKind.Length ? _byKind[kind] : null;
+                int kind = (int)citizen.JobKind; // JobKind : byte, so 0..255 — only the top bound can fail
+                var owner = kind < _byKind.Length ? _byKind[kind] : null;
                 owner?.Progress(sim, citizen, _ctx);
             }
         }
@@ -243,9 +243,16 @@ namespace Perilune.Sim
             // stamping it (and without a backoff) re-offers it forever: measured, that is a
             // SILENT HANG — no exception, no log, the sim just stops advancing. Fail loudly and
             // name the culprit instead; this is the one place that can defend against a provider.
+            //
+            // TWO faults land here and the message must not presume one: a source that does not
+            // stamp what it refused, or a source that UNDER-REPORTS CandidateCount (measured: a
+            // source stamping correctly but declaring 3 of its 4 candidates throws exactly this
+            // way). Naming only the first sends a lane hunting a stamping bug that isn't there.
             throw new InvalidOperationException(
-                $"job source '{lastRefusal.Name}' refused a candidate {candidates + 1} times without " +
-                "stamping it for this pass or recording a retry backoff — see IJobSource.TryClaim");
+                $"job source '{lastRefusal.Name}' (CandidateCount {lastRefusal.CandidateCount}) refused " +
+                $"a candidate {candidates + 1} times in one selection pass, which is bounded by the " +
+                $"total declared count across all sources ({candidates}) — it is either not stamping " +
+                "refused candidates (see IJobSource.TryClaim) or under-reporting CandidateCount");
         }
     }
 }
