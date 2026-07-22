@@ -19,7 +19,18 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-21)
+## Status snapshot (2026-07-22)
+**Read `docs/HANDOVER.md` "Playtest round 3" first** — it is the newest state and parks
+five decisions for Garvin. New this round: **`docs/MECHANICS.md`** is now the authority
+on how the sim actually behaves (its §13 lists what is *wired but not connected*), the
+slice has a working build/dig economy, crew work is legible on the map, crew no longer
+promise physical work they cannot do, and the ship stage was relit + de-blurred.
+**607 dotnet + 207 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
+`b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
+again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
+and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
+
+### Earlier snapshot (2026-07-21)
 P0 + P1 + **P2 complete** on the automated side ("The Talking Ship" slice; tag
 `v2-talking-ship` pending the human playtest + blind screenshot A/B). Live: async LLM
 runtime + three adapters (Anthropic/OpenAI-compat/Ollama) with `.env` auto-route,
