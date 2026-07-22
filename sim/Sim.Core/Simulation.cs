@@ -228,6 +228,31 @@ namespace Perilune.Sim
         /// <summary>
         /// Canonical-state hash (determinism canary). Two sims with the same seed and
         /// command log must return identical hashes at identical tick counts.
+        ///
+        /// FOLD LAYOUT — the rule is: <b>no field may share a bit with another field.</b>
+        /// A multi-field word is only allowed where every contributor has a statically
+        /// bounded width that provably fits its slot; anything whose width could grow
+        /// (an enum that might be widened, an int/uint that uses its full range) gets its
+        /// own <see cref="XxHash64.Combine"/> call. Clarity beats byte count: the fold is
+        /// NOT a per-tick path — it runs on demand (scenario report, --dump, ShipGates V7,
+        /// tests), so an extra Combine per entity costs nothing a player can measure.
+        ///
+        /// Per citizen, in this order: Id · Pack(Pos) · Suffocation · Hunger · Thirst ·
+        /// Fatigue · Mood · JobKind (own word) · flag word (Dead b0, RevealsFog b1,
+        /// HoldPosition b2 — 1-bit fields, cannot alias) · JobWorkTicks (own word, full
+        /// 32 bits) · CarryingItemId (own word, full 32 bits) · Pack(JobTarget) ·
+        /// ReservedItemId · Faction|Archetype&lt;&lt;8 (both `byte`, exact fit) · Health · Morale.
+        ///
+        /// Per item, in this order: Id (own word, full 32 bits) · Kind (own word) ·
+        /// ReservedForJob (own word) · Count (own word, full 32 bits) · Pack(Pos) · CarriedBy.
+        ///
+        /// History (2026-07-22, W0-1): the previous packing aliased ItemKind bit 7 onto
+        /// ReservedForJob (bit 39) and clipped Count to 24 bits, and overlapped
+        /// JobWorkTicks (bits 16–47) with CarryingItemId (bits 32–63) — so a ≥128th
+        /// ItemKind, a Count ≥ 2^24, or a job longer than 65,535 ticks (109 sim-min, an
+        /// ordinary smelt) made two genuinely distinct states hash EQUAL. Not a
+        /// determinism break, but canary blindness in the exact fields the economy
+        /// stresses. <c>StateHashHonestyTests</c> pins every field in both folds.
         /// </summary>
         public ulong StateHash()
         {
@@ -252,12 +277,12 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, c.Thirst);
                 h = XxHash64.Combine(h, c.Fatigue);
                 h = XxHash64.Combine(h, c.Mood);
-                h = XxHash64.Combine(h, (ulong)c.JobKind
-                                       | (c.Dead ? 1UL << 8 : 0)
-                                       | (c.RevealsFog ? 1UL << 9 : 0)
-                                       | (c.HoldPosition ? 1UL << 10 : 0) // v6
-                                       | ((ulong)(uint)c.JobWorkTicks << 16)
-                                       | ((ulong)c.CarryingItemId << 32));
+                h = XxHash64.Combine(h, (ulong)c.JobKind);
+                h = XxHash64.Combine(h, (c.Dead ? 1UL << 0 : 0)
+                                       | (c.RevealsFog ? 1UL << 1 : 0)
+                                       | (c.HoldPosition ? 1UL << 2 : 0)); // v6
+                h = XxHash64.Combine(h, (ulong)(uint)c.JobWorkTicks);
+                h = XxHash64.Combine(h, (ulong)c.CarryingItemId);
                 h = XxHash64.Combine(h, Pack(c.JobTarget));
                 h = XxHash64.Combine(h, c.ReservedItemId);
                 h = XxHash64.Combine(h, (ulong)c.Faction | ((ulong)c.Archetype << 8)); // v5
@@ -269,10 +294,10 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
-                h = XxHash64.Combine(h, it.Id
-                                       | ((ulong)it.Kind << 32)
-                                       | (it.ReservedForJob ? 1UL << 39 : 0)
-                                       | ((ulong)(uint)it.Count << 40));
+                h = XxHash64.Combine(h, (ulong)it.Id);
+                h = XxHash64.Combine(h, (ulong)it.Kind);
+                h = XxHash64.Combine(h, it.ReservedForJob ? 1UL : 0UL);
+                h = XxHash64.Combine(h, (ulong)(uint)it.Count);
                 h = XxHash64.Combine(h, Pack(it.Pos));
                 h = XxHash64.Combine(h, it.CarriedBy);
             }

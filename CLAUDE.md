@@ -29,10 +29,12 @@ five decisions for Garvin. New this round: **`docs/MECHANICS.md`** is now the au
 on how the sim actually behaves (its §13 lists what is *wired but not connected*), the
 slice has a working build/dig economy, crew work is legible on the map, crew no longer
 promise physical work they cannot do, and the ship stage was relit + de-blurred.
-**607 dotnet + 207 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
-`b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
-again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
-and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
+**607 dotnet + 207 node** green at that point; the round-3 pins (`26907c23d7e48a5c` /
+`401c9b96aff338a7` / `b31ba82f50cf395c`) have **all since moved** — economy W0-1; current
+values live in "Determinism proof" below, which is the authority. Known-honest limits: the
+dig is a **boot-window** economy (crew idle again after ~4 sim-min of digging), the stage
+is still far flatter than Prison Architect, and the CO2 problem is a **gas-transport bug**
+(no diffusion term), not a dispatch gap.
 
 ### Earlier snapshot (2026-07-21)
 P0 + P1 + **P2 complete** on the automated side ("The Talking Ship" slice; tag
@@ -93,17 +95,20 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (607 green; `./ci.sh`
-  runs the full gate — 607 dotnet + 207 node, ~3 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22 after all six lanes merged, not carried forward: figures
-  quoted mid-session drifted behind the lanes still in flight. Re-measure before quoting.)
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (644 green; `./ci.sh`
+  runs the full gate — 644 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
+  (Counts MEASURED 2026-07-22 on `lane/w0-1-hashpacks` = the pre-W0-1 607 plus this lane's
+  37 hash-honesty cases; not carried forward: figures quoted mid-session drifted behind the
+  lanes still in flight, and the other Wave-0 lanes each add their own. Re-measure before
+  quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `3afc99d90e849aa0` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `401c9b96aff338a7`; the slice tick-3000 golden is `b31ba82f50cf395c`
-  (moved 2026-07-21 by the slice work-economy lane — the slice now boots with a
-  designated aft dig; the 2-crew pins are untouched).
+  `d807c509743d1b9d`; the slice tick-3000 golden is `21ad26192d778d95`.
+  All three moved 2026-07-22 by economy **W0-1** (un-aliasing the citizen + item hash
+  packs — a pure fold restructure, zero behaviour change; previous values
+  `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c`).
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:

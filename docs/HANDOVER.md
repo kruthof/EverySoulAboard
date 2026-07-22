@@ -632,13 +632,21 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
   `(Opus-gated PASS xN)` tally in each merge subject is this gate's receipt. It caught real
   defects live (CostMeter race, hung-backend timeout, the eulogy whole-word LOW finding,
   the V6-killing wear cap). Do not skip it — the gate is why 40 commits landed clean.
-- **Hash-move ritual:** adding ANY hashed state (new `IStatefulSystem`, saved field)
-  intentionally moves the reference hash. In the SAME commit: regenerate the tick-3000 golden
+- **Hash-move ritual:** adding ANY hashed state (new `IStatefulSystem`, saved field) — or
+  restructuring the fold itself — intentionally moves the reference hash. In the SAME commit:
+  regenerate the tick-3000 golden
   (`UPDATE_GOLDEN=1 ... --filter Tick3000`) **and** the slice golden if the slice moved, update
-  the pinned hash in `ci.sh` + `CLAUDE.md` + auto-memory, and say why. P2 moved it three times
-  (S1 relationship events, BuildSystem 'BULD' fold, Director 'DRCT' fold + gentled def); N1/N3
-  were verified honestly **un**moved. Current scenario pin `26907c23d7e48a5c`; current tick-3000
-  golden `401c9b96aff338a7`; current slice tick-3000 golden `d1710ab6a1fe50ce`.
+  the pinned hash in `ci.sh` + `CLAUDE.md` + `MECHANICS.md` + auto-memory, and say why. P2 moved
+  it three times (S1 relationship events, BuildSystem 'BULD' fold, Director 'DRCT' fold + gentled
+  def); N1/N3 were verified honestly **un**moved. Economy **W0-1** (2026-07-22) moved all three
+  at once by un-aliasing the citizen + item hash packs — a pure fold restructure, no sim
+  behaviour changed, and exactly 2 goldens moved (both the tick-3000 hash files; every frame,
+  persona and layout golden was byte-identical, which is the check that the cause really was
+  the fold). Current scenario pin `3afc99d90e849aa0`; current tick-3000 golden
+  `d807c509743d1b9d`; current slice tick-3000 golden `21ad26192d778d95`.
+  **Also part of the ritual now:** any newly hashed field ships a row in
+  `tests/Perilune.Tests/StateHashHonestyTests.cs` — mutate that field alone, assert the hash
+  moves. That table is what makes "it's hashed" a measured claim rather than a hopeful one.
 - **Def-field ritual:** one commit = `CreateDefault` value + parser key + checksum fold (append
   before the rules fold) + shipped `.def` verbatim + a consumption-tripwire test.
   `social.def` / `build.def` / `director.def` are clean examples (S1 did it x15).

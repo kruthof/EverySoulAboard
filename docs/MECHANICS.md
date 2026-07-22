@@ -103,12 +103,47 @@ the global stream in a normal tick.
 
 ### What is hashed
 
-`Simulation.StateHash()` (`Simulation.cs:232-324`) folds, in order: tick, RNG state (4
+`Simulation.StateHash()` (`Simulation.cs:257-348`) folds, in order: tick, RNG state (4
 words), the whole world (`Floor`/`Wall`/`Flags`/`RoomId` arrays per deck,
 `World/World.cs:65-76`), every citizen field, every item, every device, every room's
 `TileCount`/`O2Moles`/`CO2Moles`/`N2Moles`/`TemperatureK`, room anchors,
 `WastewaterLiters`, then **every `IStatefulSystem.StateChecksum()`** in stack order
-(`Simulation.cs:319-321`).
+(`Simulation.cs:344-346`).
+
+The fold's own rule since 2026-07-22 (W0-1) is **no field may share a bit with another**:
+a multi-field word is allowed only where every contributor is a statically-bounded `byte`
+or a 1-bit flag, and anything that could grow gets its own `XxHash64.Combine`. Before
+W0-1 the citizen and item packs aliased — `ItemKind` bit 7 landed on `ReservedForJob`'s
+bit 39, `ItemStack.Count` was clipped to 24 bits, and `JobWorkTicks` (bits 16–47)
+overlapped `CarryingItemId` (bits 32–63), so an item kind ≥ 128, a stack above 2^24, or a
+job longer than 65,535 ticks (109 sim-min) made two genuinely distinct states hash EQUAL.
+Not a determinism break; canary blindness. `tests/Perilune.Tests/StateHashHonestyTests.cs`
+is the table test that pins every field of both folds, including the three collision pairs.
+Still packed and *deliberately* so: `Faction | Archetype << 8` (both `byte`), the citizen
+flag word (`Dead`/`RevealsFog`/`HoldPosition`, 1 bit each), and the device word
+(`DeviceKind` byte, three flags, `ushort NetworkId` at 16–31, `Rate` bits at 32–63 — audited
+alias-free at W0-1). **Not** fixed and still known-lossy, both out of W0-1's scope:
+
+- **`Pack(Int3)` overlaps all three axes.** None of the three fields is masked: X is
+  `(uint)p.X` at bits 0–31, Y is `(uint)p.Y << 20` at bits 20–51, Z is `(uint)p.Z << 40` at
+  bits 40–63 (the top 8 bits of Z fall off the word entirely). So the nominal 20-bit lanes
+  hold only while every coordinate is in `[0, 2^20)`; any negative coordinate is
+  `0xFFFFFFFF` and floods every lane above it, and `(-1,0,0)`, `(-1,-1,0)` and `(-1,-1,-1)`
+  are hash-indistinguishable. `ECONOMY-PLAN.md` §4.4 states this as "aliases on negative
+  coordinates and breaks past 2^20"; the negative case is the sharper half. Duplicated
+  verbatim at `Simulation.cs:351` and `Systems/BuildSystem.cs:230` — §3.5's "one shared
+  `Pack` helper" should mask each field when it lands, which is a further pin move.
+- **The room-anchor word shares bits with `Pack`.** It is
+  `Pack(Probe) | ((ulong)Type << 60)`, and because Z reaches bits 40–63 (above), `Type`'s
+  bits 60–63 sit on top of Z's bits 20–23. Measured: `anchor(z = 2^20, Type = None)` and
+  `anchor(z = 0, Type = Corridor)` both pack to `0x1000000000000000`, and
+  `anchor(z = -1, Type = None)` corrupts the `Type` bits outright. **It is safe today only
+  because `Probe.Z` is a deck index (≤ 3), not because the fields were given disjoint
+  lanes.** Separately, `Type` has exactly 4 usable bits before it runs off the top of the
+  word: `RoomType` (`Rooms/RoomType.cs:9-26`) declares 16 members, `None = 0` …
+  `LifeSupport = 15`, which fills them exactly — every shipping member is fine, and it is
+  the **17th** that would silently fold onto `None` (measured: `anchor(Type = 16) ==
+  anchor(Type = 0)`).
 
 `sim.Defs` is deliberately **not** hashed (`Simulation.cs:26`) — both determinism twins
 share one instance; the defs identity rides the `DEFS` save chapter instead
@@ -119,15 +154,17 @@ Not hashed: `Room.HullTiles` (pure function of the grid, `Rooms/RoomState.cs:26`
 network dictionaries, and the entire mind/persona/fact layer *unless* a `MemorySystem` is
 registered (then its `'MEMS'` checksum joins — `Citizens/CitizenMemory.cs:222-231`).
 
-Careful here: the **per-device** `NetworkId` (`Simulation.cs:290`), `FluidNetworkId`
-(`:297`) and `Powered` (`:289`) *are* hashed and saved, even though they are derived —
+Careful here: the **per-device** `NetworkId` (`Simulation.cs:315`), `FluidNetworkId`
+(`:322`) and `Powered` (`:314`) *are* hashed and saved, even though they are derived —
 deliberately, so a load hashes equal immediately while `PowerDirty = true` rebuilds them
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `26907c23d7e48a5c`
-(pinned at `ci.sh:25`); tick-3000 golden `401c9b96aff338a7`; slice tick-3000 golden
-`d1710ab6a1fe50ce`.
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `3afc99d90e849aa0`
+(pinned at `ci.sh:25`); tick-3000 golden `d807c509743d1b9d`; slice tick-3000 golden
+`21ad26192d778d95`. All three moved 2026-07-22 by W0-1 (the hash-pack un-aliasing) and
+only by it — the fold's *inputs* are unchanged, so no sim behaviour moved with them. The
+previous values were `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c`.
 
 ---
 
