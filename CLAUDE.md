@@ -15,6 +15,10 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   `legacy/GDD.md` §4–5 wherever they disagree; read §13 before trusting a mechanic.
 - **`docs/PLAN.md`** — phases, the 10 parallel workstreams, conflict rules. Find your
   lane here before touching code.
+- **`docs/ECONOMY.md`** + **`docs/ECONOMY-PLAN.md`** — the economic redesign (2026-07-22,
+  DESIGN ONLY, nothing built). `ECONOMY.md` is the design authority for matter, labour and
+  value; `ECONOMY-PLAN.md` is the wave/lane execution plan. Read `ECONOMY.md` §1 before
+  touching anything economic — it is a measured indictment of the shipped economy.
 - `docs/legacy/` — the moonbase-era design docs (GDD, TDD, LLM_CITIZENS, MOSS_SPEC,
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.

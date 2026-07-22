@@ -1,14 +1,99 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign, tag `v2-talking-ship`)
 
-> **Newest first:** start at "Playtest round 3 (2026-07-22)" — six landed lanes, the
-> ship-visuals plans, and five decisions parked for Garvin. `docs/MECHANICS.md` is now
-> the authority on how the sim actually behaves; its §13 "known gaps" lists what is
-> wired but not connected. Counts: **607 dotnet + 207 node**.
+> **Newest first, and this is where you start:** read **"The economy redesign
+> (2026-07-22) — START HERE"** immediately below. It is the approved next body of work
+> and it is design-complete: `docs/ECONOMY.md` (design authority) +
+> `docs/ECONOMY-PLAN.md` (waves and lanes). **Nothing is built yet.** After that,
+> "Playtest round 3" is the newest *landed* state, and `docs/MECHANICS.md` is the
+> authority on how the sim actually behaves (its §13 lists what is wired but not
+> connected).
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
 moonbase-era mechanism detail (save format, tick model, MOSS, atmosphere math) is
 still authoritative in `legacy/TDD.md` + `legacy/TUI.md` where not superseded.
+
+## The economy redesign (2026-07-22) — START HERE
+
+**Status: design complete, approved end-to-end by Garvin, ZERO code written.** The next
+agent's job is to start executing it. Read `docs/ECONOMY.md` §1 first — it is a measured
+indictment of the shipped economy — then `docs/ECONOMY-PLAN.md` §0 and §8.
+
+**How it was produced.** Five independent read-only review lanes (current-economy audit,
+logistics & labour, comparative genre design, external supply, architecture & invariant
+cost), each forbidden from editing the repo, each measuring against the real host stack
+rather than reading docs. Their reports are session scratchpad only; everything load-bearing
+was folded into the two documents. The round-3 method — read-only diagnosis first, fix lanes
+briefed with verified findings — was used deliberately and worked again.
+
+**What they found (all MEASURED on the shipping slice, not inferred).**
+
+- The material economy is **dead at sim-minute 64**. 48 debris tiles cleared by tick 1,416;
+  last Regolith consumed at tick 38,451. Three walls designated at tick 3,000 build in 73 s;
+  the same three designated at day 1 sit at **0/6 forever**. The player's only economic verb
+  is functional for about an hour and then *impossible*, not merely slow.
+- **The labour ledger is worse than the mass ledger.** 0.503 % of crew-ticks are economic
+  work over 3 days; **79.8 % is random wander-walking**; all three haul `JobKind`s log
+  **exactly 0 ticks**. `IsIdleForWork` requires `!HasPath` (`Citizen.cs:63`), so a wandering
+  citizen is unrecruitable by all four dispatchers — **the effective crew is 1.43 of 8**.
+- **The decisive number:** priced at today's work rates the *fully built* economy consumes
+  **0.7 %** of the labour budget. No quantity of new item kinds fixes that. Order of
+  operations is labour supply → work rates → matter.
+- **Three live bugs on the shipping build**, none of them design questions:
+  1. An **ownerless reservation leak** (`CraftingSystem.cs:183`) permanently strands the
+     slice's last `Parts` — invisible to `FindNearestParts` but visible to `StagedUnits` — so
+     **every machine repair for the rest of the game is a jury-rig at 0.6**. Root cause:
+     `ReservedForJob` is a `bool` where it needs an owner id.
+  2. **Hydroponics destroys 0.256 L per litre irrigated** → 903 of 1,400 L gone in 28 h →
+     food production permanently dead on **day 1.2**, while the HUD food bar reads 1.00.
+  3. CO₂ gas transport (already on record below).
+- Two **latent** hash defects, harmless today and fatal later: the item pack aliases
+  `ItemKind`'s high bit onto `ReservedForJob` (`Simulation.cs:272-275`) and the citizen pack
+  overlaps `JobWorkTicks` with `CarryingItemId` (`:255-260`). Not determinism breaks —
+  **canary blindness in exactly the fields an economy stresses.**
+- **`NavSystem` is fully built, saved, hashed, ten tests — and provably inert.** No ship
+  generator or authored ship ever places a `Telescope`, so `Tick` returns early every tick.
+- **CI never exercises the material economy at all** (the 2-crew ship has zero designations
+  and `HoldPosition` crew). That is how a 64-minute economy shipped unnoticed.
+
+**The design, in one sentence.** A closed mass ledger with the voyage as its only faucet,
+where the efficiency of every conversion is a fact held in a living person's head — *"what
+will you take apart, who still knows how, and what does it cost to keep what you already
+have?"*
+
+**Decisions Garvin has already made** (full log, `ECONOMY.md` §13 — do not reopen without
+editing that list): 10× work-rate rebase · sleep, in E1 · **the full programme E0→E4**, not
+a staged approval · a slice economy canary enters CI · `Regolith` → `Stock` presentation
+rename (enum row 0 never renumbered) · fix the three live defects immediately. Also on
+record: a **trading-hub DLC** is planned, so `ECONOMY.md` §9.7 specifies the seven seams the
+base game must leave — and the one trap, that a hub is a *converter that takes a cut*, never
+a faucet. The only deferred question is the hub's currency shape, and nothing in E0–E2
+depends on it.
+
+**Where the next agent actually starts.** `ECONOMY-PLAN.md` §0 and §8. The opening wave, in
+order:
+
+1. **Wave 0** — six integrator-owned commits, two pin moves, behaviour-free: un-alias the two
+   hash packs · widen `EffectKind` (2 bits left) · split `JobsDirty` · **refactor `JobSystem`
+   into an `IJobSource` dispatcher** (842 lines, a *de facto* second spine file that three
+   economy lanes all want — this is the parallelism unlock) · the `[production]` node table ·
+   register the economy systems empty. **No lane may spawn before this lands.**
+2. **B-1/B-2/B-3** — the three live bugs. B-3 (CO₂ transport) specifically precedes E1's
+   finite air reserve, or the reserve just kills the crew faster and reads as a balance
+   failure.
+3. **E0-1 recruitability**, then **E0-3 the missing web verbs** (`dig`/`stockpile`/`strip` —
+   they exist in the sim and only the TUI can reach them; adding them unblocks three
+   `JobKind`s and the `AgreeTask` conversation verb at near-zero sim cost).
+
+**Two constraints that are easy to lose and expensive to get wrong.** The approved 10× work
+rebase and the parked movement retune **land behind E0-1, never before** — measured, the
+retune alone costs 29 % of production and drops recruitable crew-ticks 17.9 % → 9.3 %.
+And **pin literals are integrator-only**: lanes assert `twin hashes MATCH` and never the
+literal `26907c23d7e48a5c`, which goes stale the moment another lane merges.
+
+**The gate the whole programme is judged on:** A1 — *crew are > 25 % busy at sim-hour 24*
+(today: **0.0 %**). A conversion graph with finite ore is a longer boot window, not a durable
+loop, and A1 is what tells the difference. Full gate list: `ECONOMY.md` §12.
 
 ## Where the project stands
 
