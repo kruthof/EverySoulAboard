@@ -296,18 +296,25 @@ namespace Perilune.Web
         /// drops off this authoritative channel. <see cref="Kind"/> is the append-only
         /// <see cref="Perilune.Sim.BuildKind"/> byte (0 wall, 1 door). Read-only host mirror of
         /// <see cref="Perilune.Sim.BuildSystem.Pending"/> — no sim mutation, no RNG.
+        /// <para><see cref="Delivered"/>/<see cref="Required"/> are the site's material ledger
+        /// (APPEND-ONLY tuple elements 5 and 6): a site with nothing delivered and nobody hauling
+        /// is starved, and a starved ghost used to look exactly like one under active construction.</para>
         /// </summary>
         public readonly struct Design
         {
             public readonly int X, Y, Deck;
             public readonly byte Kind;
-            public Design(int x, int y, int deck, byte kind) { X = x; Y = y; Deck = deck; Kind = kind; }
+            public readonly int Delivered, Required;
+            public Design(int x, int y, int deck, byte kind, int delivered = 0, int required = 0)
+            { X = x; Y = y; Deck = deck; Kind = kind; Delivered = delivered; Required = required; }
         }
 
         /// <summary>Serialize the pending-designation graph (see <see cref="Design"/>). A cached
         /// state channel like roster: rebuilt each render, deduped by the session; the client
-        /// filters to the shown deck. Each entry is a compact tuple [x, y, deck, kind].
-        ///   {"type":"designs","cells":[[3,4,0,0],..]}</summary>
+        /// filters to the shown deck. Each entry is a compact tuple
+        /// [x, y, deck, kind, delivered, required] — the last two are APPEND-ONLY additions, so a
+        /// reader that only knows the first four elements is unaffected.
+        ///   {"type":"designs","cells":[[3,4,0,0,1,2],..]}</summary>
         public static string Designs(IReadOnlyList<Design> designs)
         {
             var sb = new StringBuilder(128);
@@ -320,7 +327,10 @@ namespace Perilune.Web
                     sb.Append('[').Append(d.X.ToString(Ic))
                       .Append(',').Append(d.Y.ToString(Ic))
                       .Append(',').Append(d.Deck.ToString(Ic))
-                      .Append(',').Append(((int)d.Kind).ToString(Ic)).Append(']');
+                      .Append(',').Append(((int)d.Kind).ToString(Ic))
+                      // APPEND-ONLY trailing elements: the material ledger.
+                      .Append(',').Append(d.Delivered.ToString(Ic))
+                      .Append(',').Append(d.Required.ToString(Ic)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

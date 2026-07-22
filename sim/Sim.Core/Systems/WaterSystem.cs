@@ -11,20 +11,57 @@ namespace Perilune.Sim
     /// least-full tank on their network; consumers (grow beds, later crafting) draw
     /// via <see cref="TryDrawWater"/>. Citizens drink at a specific tank in person
     /// (SustenanceSystem) — that path does not go through network membership.
+    ///
+    /// Units are LITRES throughout (tank contents, reclaimer output, the greywater
+    /// pool); the only rate is `reclaimer_liters_per_second`. Tuning lives in
+    /// `content/core/SimDefs/water.def` [water]: `tank_capacity_liters` (500 L, the cap
+    /// this system enforces and the denominator the HUD and the water lens use),
+    /// `reclaimer_liters_per_second`, `reclaim_efficiency` (0.93 — the ISS-class closure
+    /// figure). The reclaimer's electrical draw and tier come from `machines.def`
+    /// (Reclaimer: LifeSupport tier). <see cref="Dt"/> and <see cref="DrawEpsilon"/> are
+    /// structural.
+    ///
+    /// Conservation: unlike air, water is conserved. Nothing creates litres — the
+    /// reclaimer moves them out of <see cref="Simulation.WastewaterLiters"/> (a single
+    /// abstract shipwide greywater pool, saved and hashed) into a tank, losing the
+    /// inefficiency. The pool is filled by drinking (SustenanceSystem) and by grow-bed
+    /// transpiration (HydroponicsSystem); it is authored with a starting buffer on the
+    /// slice. A ship whose pool is empty has reclaimers that spin and produce nothing.
+    ///
+    /// What it mutates: <see cref="Device.FluidNetworkId"/> and
+    /// <see cref="Device.StoredLiters"/> (both DEVC v2, saved and hashed by Simulation)
+    /// plus the greywater pool. NOT an <see cref="IStatefulSystem"/> — the pipe map is
+    /// derived and rebuilt from saved device positions.
+    ///
+    /// Ordering: HydroponicsSystem is registered after this one (an explicit SystemStack
+    /// rule) so fluid networks and tank levels are current before the first grow-bed
+    /// draw. SustenanceSystem's drinking does not depend on that ordering — it consumes
+    /// a named tank device, not a network.
+    ///
+    /// Determinism/allocation: device store order everywhere (network ids by
+    /// first-encounter, tank selection by strict '&lt;' so ties keep the earlier tank),
+    /// no RNG; dictionaries and the flood queue are cleared rather than reallocated, so
+    /// a settled ship allocates nothing per pass.
     /// </summary>
     public sealed class WaterSystem : ISimSystem
     {
         public string Name => "Water";
         public int IntervalTicks => 5; // 2 Hz (TDD)
 
-        private const float Dt = 0.5f; // seconds per water tick (structural, interval-paired)
+        /// <summary>Seconds per pass; structural, paired with <see cref="IntervalTicks"/>
+        /// at the 10 Hz base rate (5 ticks = 0.5 s).</summary>
+        private const float Dt = 0.5f;
 
         // TankCapacityLiters / ReclaimerLitersPerSecond / ReclaimEfficiency now live in
         // sim.Defs.Water (SimDefs.Default reproduces the former consts: 500, 0.05, 0.93).
         // ShipMetrics and Sim.Glyph's water-fill band read sim.Defs.Water.TankCapacityLiters
         // directly (B4), so parallel sims with different defs never cross-talk.
 
-        /// <summary>Slack for float accumulation when checking network availability.</summary>
+        /// <summary>Slack for float accumulation when checking network availability.
+        /// Without it a tank summing to 0.019999 L refuses a 0.02 L draw forever and a
+        /// grow bed stalls on rounding. The cost: a draw can be reported satisfied while
+        /// up to this much less was actually removed (tanks clamp at 0, they never go
+        /// negative), so at most 0.1 mL per call is conjured. Harmless at these scales.</summary>
         private const float DrawEpsilon = 1e-4f;
 
         // Rebuild condition: the device count changed since the last rebuild.
@@ -51,6 +88,13 @@ namespace Perilune.Sim
             RunReclaimers(sim);
         }
 
+        /// <summary>
+        /// Re-derive fluid network ids from scratch, mirroring <c>PowerSystem</c>'s
+        /// conduit flood exactly (overlay position index, 6-way flood including vertical
+        /// risers, then per-device attachment on-tile-then-+x,-x,+y,-y,+z,-z). Ids are
+        /// not stable across rebuilds, so nothing may cache a
+        /// <see cref="Device.FluidNetworkId"/> across a topology change.
+        /// </summary>
         private void RebuildNetworks(Simulation sim)
         {
             _pipeNetwork.Clear();
@@ -142,6 +186,11 @@ namespace Perilune.Sim
 
                 // Conservation: reclaimed water comes from the greywater pool (drinking,
                 // transpiration condensate) at ReclaimEfficiency — never from nothing.
+                // Read the three lines below as: want this much OUT (rate × pass ×
+                // condition, capped by tank headroom), so pull this much IN (grossed up
+                // by the efficiency, capped by what the pool holds) — then deliver the
+                // efficiency-scaled result. A nearly-empty pool therefore throttles the
+                // reclaimer smoothly instead of stopping it dead.
                 float capacityRoom = water.TankCapacityLiters - target.StoredLiters;
                 float wantOut = Math.Min(water.ReclaimerLitersPerSecond * Dt * reclaimer.EffectiveRate, capacityRoom);
                 float drawIn = Math.Min(wantOut / water.ReclaimEfficiency, sim.WastewaterLiters);
@@ -155,6 +204,13 @@ namespace Perilune.Sim
         /// Draw <paramref name="liters"/> from the tanks of a fluid network, in device
         /// store order (partial draws across tanks). All-or-nothing: if the network
         /// cannot cover the full amount, nothing is drawn and false is returned.
+        ///
+        /// Static and sim-argument-taking on purpose: consumers (HydroponicsSystem
+        /// today) call it directly rather than holding a WaterSystem reference, so
+        /// nothing depends on finding this system in the stack. Two passes over the
+        /// device store — availability, then withdrawal — so a failed draw leaves every
+        /// tank untouched and a caller can safely retry next pass. A zero/negative
+        /// request succeeds trivially; network 0 (unplumbed) always fails.
         /// </summary>
         public static bool TryDrawWater(Simulation sim, ushort fluidNetworkId, float liters)
         {

@@ -145,6 +145,18 @@ Additions: B and X (both currently unbound). No existing binding changes or is r
   playtest finding; the IX-36 input pulse still fires on the click. The paused-ship nudge
   (a transient `PRESS SPACE TO RUN` chip by the run-state chip, pure `nextNudge`/`nudgeVisible`)
   addresses the root cause — designating while the sim boots paused.
+- **IX-39** **Starved-build feedback (the designs tuple carries the material ledger).** A
+  designation with no material arriving used to look EXACTLY like one under construction —
+  the ghost was identical, and nothing in the console said why the wall never appeared. The
+  `designs` tuple is therefore extended, APPEND-ONLY (WireFormat is a spine file), to
+  `[x, y, deck, kind, delivered, required]`; a reader that knows only the first four elements
+  is unaffected, and a tuple without the ledger decodes to state `plain`. Pure `ghostState`
+  derives the ghost's supply story — `starved` (required, none delivered), `supplied`
+  (partial), `ready` (requirement met), `plain` (no ledger) — and `ghostLabel` the `n/m`
+  readout drawn in the ghost's corner. A `starved` ghost is visually distinct (VS-67). The
+  designate status line additionally reports the ship's loose stock of the build material
+  (`designate wall - 12 regolith aboard`), which is the other half of the answer: an order
+  can also stall because there is nothing aboard to build with.
 - **IX-37** While a build tool is armed, the canvas hint line (under the canvas, replacing
   its idle content) reads: `BUILD ▸ WALL — CLICK DECK TO PLACE · ESC EXIT` (resp. `DOOR`;
   for cancel: `CANCEL ▸ CLICK A QUEUED ORDER TO REVOKE · ESC EXIT`). Cursor over the canvas
@@ -190,7 +202,9 @@ Additions: B and X (both currently unbound). No existing binding changes or is r
   else #c25a3f (design's mock thresholds, pure fn `moraleColor(m)`). Row shows SURNAME
   (last whitespace-separated token of `name`, uppercased — pure fn, InvariantCulture
   `toUpperCase` is fine for ASCII crew names; do not use locale-dependent APIs), role
-  (uppercased), initials avatar (first letters of first+last tokens).
+  (uppercased), initials avatar (first letters of first+last tokens), and — since the
+  work-legibility round — the **task line** (IX-104 / VS-66): the roster label verbatim,
+  `—` when the wire sent none, dim by default and amber when `taskTag` says it is real work.
 
 ---
 
@@ -431,6 +445,44 @@ Left→right: `MSV PERILUNE` (hardcoded client chrome, FACTS-approved) · deck c
 - **IX-102** Screenshot rig compatibility: canvas id `c`, stage-parent sizing contract,
   `?exec/?t/?cx/?cy/?zoom` handling, and any DOM `slice-shot.mjs` touches are preserved;
   verify against `art/screenshot-test/slice-shot.mjs` before renaming anything it queries.
+
+---
+
+## 10. Making the work legible
+
+- **IX-103** **On-map work markers.** The map said nothing about what anyone was doing: the
+  task label lived only in the CREW tab (hidden unless that tab is up) and in the READOUT of
+  the ONE selected crew member. A `.work-layer` overlay — the ghost layer's sibling, same
+  camera-transform path, repainted every `draw()` so it stays glued under pan/zoom/deck-change
+  — floats a short tag over every crew member on the shown deck who is **actually on a job**.
+  Source: the `roster` channel's existing `deck`/`x`/`y`/`task` (**no wire change**), joined by
+  the pure `workMarkers(crew, deck)`. Tags come from `taskTag`, which classifies on the host
+  label's leading verb: `DIG` / `HAUL` / `BUILD` / `SVC` / `CRAFT` / `MEAL` / `WATER`. Crew who
+  are idle, holding position, merely walking, or **still en route to a job** (leading verb
+  `Heading`) get **no marker at all** — the absence is the information, and this is the rule
+  that keeps standing around, or walking, from looking like work. A tag floating over a pawn
+  who is only crossing the deck is the playtest's "claimed to be fixing X while doing nothing
+  visible" complaint in miniature, which is why `Heading` is deliberately absent from the tag
+  map even though `watchTask` still counts it as assigned work (VS-66). The full
+  label is the marker's `title`. Known cosmetic limitation: the marker sits on the crew
+  member's sim tile while a walking pawn's body interpolates between tiles, so a hauler's tag
+  runs a fraction of a tile behind them.
+- **IX-104** **The task label names the object.** The roster `task` field (unchanged wire
+  shape) is no longer a five-word vocabulary. It NAMES the thing: `Servicing scrubber_ls`,
+  `Hauling regolith to 9,2`, `Hauling regolith to wall 3,4 (0/2)`, `Digging out 12,5`,
+  `Crafting at fab_main`. The old catch-all reported `walking` for every job-less crew member
+  — 99.9% of all labels in the playtest — so the three job-less states are now told apart and
+  told honestly: `Walking to 7,11 (no task)`, `Holding position`, `Idle`. The label also does not
+  claim the work has STARTED: a crew member still walking to a place-bound job (dig / build /
+  craft / service / drink) reads `Heading to service scrubber_ls` and only becomes
+  `Servicing scrubber_ls` on arrival (`Citizen.HasPath` is the host-side ground truth).
+  Transit-shaped jobs (`Fetching` / `Hauling` / `Eating`) already say they are in transit and keep
+  their verb. Every label opens with one of a fixed set of verbs (Digging / Fetching / Hauling /
+  Eating / Drinking / Crafting / Servicing / Building / Heading / Walking / Holding / Idle); that
+  vocabulary is the contract between the host and `taskTag`/`watchTask`, pinned on both sides
+  (`WebTaskLabelTests`, `console-model.test.js`).
+  The label renders verbatim (IX-50) in the READOUT, the CREW tab, **and now the CREW WATCH
+  row** (VS-66) — the always-visible answer to "what is this person doing".
 
 ---
 

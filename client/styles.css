@@ -158,6 +158,13 @@ button{
   font-size:9px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.08em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+/* VS-66 — CREW WATCH task line: what this person is doing, always visible. Dim by default;
+   .working lifts it to the amber accent so real work is legible at a glance and idleness is not. */
+.crew-task{
+  font-size:9px;color:var(--txt-dim);letter-spacing:.04em;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.crew-task.working{color:var(--amber-2)}
 .morale-track{height:3px;background:var(--ln-hair);border-radius:2px;margin-top:4px}
 .morale-fill{height:3px;border-radius:2px;transition:width .25s ease}
 
@@ -206,6 +213,31 @@ canvas{
 }
 .ghost-door{border-style:dotted;border-color:var(--amber-2);background:rgba(232,147,74,.10)}
 .ghost-glyph{color:var(--amber-3);line-height:1;opacity:.85;font-family:var(--font-mono)}
+/* VS-67 / IX-39 — the material ledger: a site nothing is being hauled to must not look like one under
+   construction. STARVED reads as a warning, SUPPLIED as normal amber, READY as good. */
+.ghost-count{
+  position:absolute;bottom:1px;right:2px;line-height:1;font-family:var(--font-mono);
+  letter-spacing:.02em;color:var(--txt-dim);
+}
+.ghost-starved{border-color:var(--bad);background:rgba(194,90,63,.08)}
+.ghost-starved .ghost-glyph{opacity:.45}
+.ghost-starved .ghost-count{color:var(--bad-txt)}
+.ghost-ready{border-style:solid;border-color:var(--good)}
+.ghost-ready .ghost-count{color:var(--good)}
+
+/* IX-103 — on-map WORK markers: a small tag floating over every crew member who really is on a
+   job (roster deck/x/y/task). Idle/walking crew get none — the absence is the information. */
+/* z-index 5 (NOT 6): the layer is appended to .stage lazily, i.e. AFTER the static
+   #relations-view child, so at equal z-index the markers would paint over the RELATIONS
+   overlay. 5 keeps them under it, exactly like .design-layer. */
+.work-layer{position:absolute;inset:0;pointer-events:none;z-index:5}
+.work-layer:empty{display:none}
+.work-mark{
+  position:absolute;transform:translate(-50%,-100%);white-space:nowrap;
+  font-family:var(--font-mono);letter-spacing:.10em;line-height:1;
+  color:var(--txt-onacc);background:var(--amber-1);border-radius:2px;padding:2px 4px;
+  box-shadow:0 0 0 1px rgba(12,10,8,.65);
+}
 
 /* ==== RELATIONS web (relations-spec VS-R*) — full-cover overlay swapping the ship viewport ==== */
 .relations-view{

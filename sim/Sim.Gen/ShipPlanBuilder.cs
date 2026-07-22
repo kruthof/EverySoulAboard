@@ -49,6 +49,21 @@ namespace Perilune.Gen
                 if (!string.IsNullOrEmpty(spec.Label)) item.Label = spec.Label;
             }
 
+            // Authored dig designations: the same flag DesignateDigCommand sets, seeded at
+            // boot so the job board has work from tick 0. Validated like devices/anchors —
+            // a designation on something that isn't debris is an authoring error, not a
+            // silent no-op (the whole point is that the crew CAN reach and dig it).
+            for (int i = 0; i < plan.DigDesignations.Count; i++)
+            {
+                var pos = plan.DigDesignations[i];
+                if (!world.InBounds(pos))
+                    throw new ArgumentException($"plan '{plan.Name}': dig designation out of bounds at {pos}");
+                if (world.GetWall(pos) != TileDefs.Debris)
+                    throw new ArgumentException($"plan '{plan.Name}': dig designation at {pos} is not debris");
+                world.SetFlag(pos, TileFlags.Designated, true);
+            }
+            if (plan.DigDesignations.Count > 0) sim.JobsDirty = true;
+
             for (int i = 0; i < plan.Rooms.Count; i++)
             {
                 var spec = plan.Rooms[i];

@@ -5,6 +5,9 @@ parallel-workstream contracts. Inherited mechanism detail (save format, tick mod
 MOSS internals, atmosphere math) lives in `docs/legacy/TDD.md` and remains authoritative
 where this document doesn't supersede it.*
 
+*For the **as-implemented** mechanics — tick order, atmosphere/power/jobs numbers, the
+effect whitelist, and the "wired but not connected" gap list — see `MECHANICS.md`.*
+
 ## Ground truth (inherited, proven, non-negotiable)
 
 Carried over from the moonbase codebase with its test suite:

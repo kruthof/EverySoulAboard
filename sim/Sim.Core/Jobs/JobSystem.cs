@@ -58,7 +58,12 @@ namespace Perilune.Sim
         private readonly List<Int3> _buildReady = new List<Int3>(32);   // Delivered >= Required
         private readonly List<Int3> _buildNeedMat = new List<Int3>(32); // Delivered < Required
         private readonly HashSet<Int3> _assignedBuilds = new HashSet<Int3>(); // lookup only
-        private bool _anyFreeMaterial;
+        // Free (un-carried, unreserved) material UNITS on the ground — a count, not a flag.
+        // A boolean "some material exists somewhere" sent haulers at every needy site, so two
+        // designations and two loose units left both sites stranded at 1/2 forever (Deposit has
+        // no un-deposit). A site is only pursued when the whole remainder is actually available;
+        // the count is decremented as stacks are reserved so one pass can't over-commit.
+        private int _freeMaterialUnits;
         private long[] _buildReadyTried = new long[16];
         private long[] _buildMatTried = new long[16];
         private readonly Dictionary<Int3, long> _buildReadyRetryAt = new Dictionary<Int3, long>();
@@ -194,7 +199,7 @@ namespace Perilune.Sim
             // When no BuildSystem is registered the lists stay empty (inert build path).
             _buildReady.Clear();
             _buildNeedMat.Clear();
-            _anyFreeMaterial = false;
+            _freeMaterialUnits = 0;
             if (_build != null)
             {
                 var pend = _build.Pending;
@@ -210,7 +215,7 @@ namespace Perilune.Sim
                     {
                         var it = items[i];
                         if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && !it.ReservedForJob)
-                        { _anyFreeMaterial = true; break; }
+                            _freeMaterialUnits += it.Count;
                     }
                 }
             }
@@ -323,11 +328,13 @@ namespace Perilune.Sim
                     }
                 }
 
-                // Sites still wanting material: only worth pursuing if free material exists.
+                // Sites still wanting material: only worth pursuing if free material exists —
+                // and enough of it to FINISH this site (see _freeMaterialUnits: a partially
+                // materialed site is a dead site, since nothing ever un-deposits).
                 // Priority proxy is distance to the site (the hauler routes via the material
                 // first, but the site is the stable destination — mirrors dig/haul using the
                 // target distance).
-                if (_anyFreeMaterial)
+                if (_freeMaterialUnits > 0)
                 {
                     for (int i = 0; i < _buildNeedMat.Count; i++)
                     {
@@ -339,7 +346,8 @@ namespace Perilune.Sim
                             continue;
                         }
                         if (_assignedBuilds.Contains(p) || _build == null ||
-                            !_build.TryGet(p, out var b) || !BuildSystem.NeedsMaterial(b))
+                            !_build.TryGet(p, out var b) || !BuildSystem.NeedsMaterial(b) ||
+                            _freeMaterialUnits < b.Required - b.Delivered)
                         {
                             _buildMatTried[i] = _gen;
                             continue;
@@ -379,6 +387,16 @@ namespace Perilune.Sim
                         citizen.JobTarget = item.Pos;
                         item.ReservedForJob = true;
                         citizen.ReservedItemId = item.Id;
+                        // A stockpile haul takes material out of the free pool just as surely as
+                        // a build haul does (see TryReserveMaterialFor) — without this, a later
+                        // site in the SAME board pass can clear the sufficiency gate and then find
+                        // nothing to reserve, costing it a 5 s backoff. No-op unless a site is
+                        // actually short (the count is only populated then).
+                        if (item.Kind == BuildSystem.Material)
+                        {
+                            _freeMaterialUnits -= item.Count;
+                            if (_freeMaterialUnits < 0) _freeMaterialUnits = 0;
+                        }
                         _haulRetryAt.Remove(item.Id);
                         return;
                     }
@@ -460,6 +478,12 @@ namespace Perilune.Sim
                     citizen.CarryingItemId = 0;        // still en route to the material
                     citizen.ReservedItemId = item.Id;
                     item.ReservedForJob = true;
+                    // The stack has left the free pool — take it off the count immediately so a
+                    // second site in the SAME pass can't be promised the same units (the board
+                    // is only rescanned on JobsDirty). Deliberately conservative: a surplus that
+                    // gets dropped back reappears on the next rescan.
+                    _freeMaterialUnits -= item.Count;
+                    if (_freeMaterialUnits < 0) _freeMaterialUnits = 0;
                     _matScanTried.Clear();
                     return true;
                 }
