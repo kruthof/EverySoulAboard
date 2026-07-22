@@ -18,7 +18,7 @@
 
 import { C } from './palette.js';
 
-/** @typedef {{x:number,y:number,walking:boolean,facing:(string|null),fromX:number,fromY:number,dx:number,dy:number,sinceStep:number,stepMs:(number|null),interval:number,originX:number,originY:number}} MotionEntry */
+/** @typedef {{x:number,y:number,walking:boolean,facing:(string|null),flipX:boolean,fromX:number,fromY:number,dx:number,dy:number,sinceStep:number,stepMs:(number|null),interval:number,originX:number,originY:number}} MotionEntry */
 /** @typedef {{deck:(number|null), byCid:Object<string,MotionEntry>}} MotionState */
 
 /** Walk-cycle frame rate (frames per second) — how fast SPRITE_FRAMES advance while walking. */
@@ -63,6 +63,37 @@ export function isAnimWalking(entry, nowMs) {
   return entry.walking || slideActive(entry, nowMs) || entry.sinceStep <= WALK_HOLD_FRAMES;
 }
 
+/**
+ * ── WHICH WAY A PAWN LOOKS ──────────────────────────────────────────────────────────────────────
+ * The art has ONE profile: both walk frames in SPRITE_FRAMES are drawn facing EAST (the idles are
+ * front-facing), and there are no directional variants — `SPRITE_FACING` carries no pawn entry and
+ * `spriteTurns` is never applied to '@'. So a westbound pawn used to slide backwards under an
+ * east-facing sprite: the moonwalk the playtest reported.
+ *
+ * `flipX` is the fix and it is deliberately STICKY, not a per-step recomputation:
+ *   • a step with dx < 0 sets it, dx > 0 clears it;
+ *   • a VERTICAL step leaves it untouched — a pawn that walked left and then turns north keeps
+ *     facing left, which is what a person looks like; recomputing per step would snap it back to
+ *     the default east every time the path turned a corner;
+ *   • a step-less frame carries it (like `facing`), and every discontinuity (spawn / teleport /
+ *     deck change) resets to east, the art's own orientation.
+ * The executors mirror the pawn sprite about its CELL CENTRE, which is a no-op on position: all
+ * five pawn images bbox-centre within half a pixel of 63.5 in a 128px cell.
+ *
+ * `facing` is left exactly as it was (a per-step letter, clobbered by vertical steps, read by
+ * nobody) — this is the field the renderer actually uses.
+ *
+ * ── THE ONE COST, STATED PLAINLY (AD-3) ─────────────────────────────────────────────────────────
+ * The art direction requires every sprite's baked light step on its upper-LEFT and its shade step
+ * on the lower-right, "in every sprite, in every state, in every frame". A horizontal mirror moves
+ * a pawn's baked light step to the upper-right, so a westbound pawn is momentarily lit from the
+ * wrong side. That is a knowing trade, not an oversight: the error is a value gradient across ~25
+ * CSS px of a moving figure, against a pawn that otherwise walks backwards — the single loudest
+ * complaint of the playtest. It is also strictly bounded to the BAKED shading. The RENDERER's own
+ * directional work — the grounding shadow — is explicitly NOT mirrored (see canvas2d `_shadow` and
+ * webgl2 `pushTex`'s `flip`), so the stage keeps exactly one light direction. The real fix is
+ * west-facing walk art; until then this is the smaller of two wrongs.
+ */
 const FACING = ['N', 'E', 'S', 'W'];
 /** Facing letter for a unit step (dx,dy). Null for a non-step. */
 function facingOf(dx, dy) {
@@ -108,7 +139,9 @@ export function trackMotion(prev, frame, nowMs) {
     // sinceStep: frames since the last REAL step — 0 on a step, counting up while standing,
     // effectively-infinite on a spawn/teleport/deck change (never "recently walked"). Capped
     // so long-idle counters can't overflow into surprising values.
-    let walking = false, facing = null, fromX = x, fromY = y, dx = 0, dy = 0, sinceStep = 1000;
+    // flipX: the sticky horizontal mirror (see "WHICH WAY A PAWN LOOKS"). False = the art's own
+    // east-facing orientation, which is also what every discontinuity resets to.
+    let walking = false, facing = null, flipX = false, fromX = x, fromY = y, dx = 0, dy = 0, sinceStep = 1000;
     // Continuous-slide state: stepMs = wall-time the active slide's step landed (null = settled),
     // interval = estimated ms/step, (originX,originY) = the sub-tile point the slide starts from.
     let stepMs = null, interval = DEFAULT_STEP_MS, originX = x, originY = y;
@@ -118,6 +151,8 @@ export function trackMotion(prev, frame, nowMs) {
         // a contiguous one-tile step → a real walk; remember where it stepped from.
         walking = true; facing = facingOf(sx, sy); fromX = p.x; fromY = p.y; dx = sx; dy = sy;
         sinceStep = 0;
+        // A horizontal step SETS the mirror; a vertical one leaves whatever the pawn last faced.
+        flipX = sx !== 0 ? sx < 0 : !!p.flipX;
         if (t != null) {
           // Anchor a fresh slide at t. The origin is where the pawn is RIGHT NOW — if it re-stepped
           // before the last slide finished, that's a sub-tile point, so the walk never jumps back.
@@ -128,7 +163,7 @@ export function trackMotion(prev, frame, nowMs) {
       } else if (sx === 0 && sy === 0) {
         // standing on the tracked tile: the step recency ages by one frame (held facing kept).
         sinceStep = Math.min(1000, (p.sinceStep == null ? 1000 : p.sinceStep) + 1);
-        facing = p.facing;
+        facing = p.facing; flipX = !!p.flipX;   // a standing pawn keeps looking where it was going
         // Carry the in-flight slide across this step-less frame (another crew's step forces a
         // re-send): the offset must SURVIVE so the pawn keeps gliding instead of snapping to tile.
         if (t != null) { stepMs = p.stepMs; interval = p.interval || DEFAULT_STEP_MS; originX = p.originX; originY = p.originY; }
@@ -136,7 +171,7 @@ export function trackMotion(prev, frame, nowMs) {
       // >1 tiles → teleport → reset (default, no walk, no slide, stale recency)
     }
     // p == null → fresh spawn / fog reveal / post-deck-change: NOT a walk, no slide.
-    byCid[cid] = { x, y, walking, facing, fromX, fromY, dx, dy, sinceStep, stepMs, interval, originX, originY };
+    byCid[cid] = { x, y, walking, facing, flipX, fromX, fromY, dx, dy, sinceStep, stepMs, interval, originX, originY };
   }
   return { deck, byCid };
 }

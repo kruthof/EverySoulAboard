@@ -10,6 +10,15 @@
 // walking left appear out of nothing" bug (measured: 100% of the pawn quad covered at the start of
 // a westward or northward step), and it made WP-1 shadows impossible here. Within a tile the
 // relative order is unchanged, and tiles do not overlap, so nothing else moves.
+//
+// The pass order alone was not enough. INSIDE the entity pass the walk is still row-major, and a
+// pawn mid-step is drawn one tile back from the tile it now occupies — so on a WESTWARD or
+// NORTHWARD step the tile it just LEFT (which may hold a device, or another pawn, now that the
+// citizen glyph no longer masks it) is drawn AFTER and repaints the sliding body. Measured on the
+// real executor: up to 69% of the pawn covered by one growbed, 45% by a second pawn; E and S were
+// clean in all 16 neighbour configurations, which is exactly why the playtest heard "up, down and
+// left" and never "right". So sliding pawns are drawn as a SECOND sub-batch, after every settled
+// entity — which makes all four directions behave the way E and S already did.
 
 import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
@@ -49,6 +58,8 @@ export class Canvas2DExecutor {
     this._styleCache = new Map();
     /** Shadow-quad corner scratch: `shadowQuad` writes into this, once per shadowed entity. */
     this._sq = new Float64Array(8);
+    /** Reusable "drawn last" bucket: the entity ops that are mid-slide this frame (see the header). */
+    this._moving = [];
   }
 
   /**
@@ -107,8 +118,16 @@ export class Canvas2DExecutor {
     //          fall across another pawn. ----
     if (useSpr) for (const o of B[1]) this._shadow(ctx, T, o, sprites, anim);
 
-    // ---- 1b. entities ----
-    for (const o of B[1]) this._entity(ctx, T, o.x * T, o.y * T, o, useSpr, sprites, anim);
+    // ---- 1b. entities: settled ones in list order, then the sliding pawns on top (header note).
+    //          Two loops, one reused bucket — no per-frame allocation, and the relative order
+    //          WITHIN each group is untouched, so a frame with nobody walking is byte-identical. ----
+    const moving = this._moving;
+    moving.length = 0;
+    for (const o of B[1]) {
+      if (this._sliding(o, anim)) { moving.push(o); continue; }
+      this._entity(ctx, T, o.x * T, o.y * T, o, useSpr, sprites, anim);
+    }
+    for (const o of moving) this._entity(ctx, T, o.x * T, o.y * T, o, useSpr, sprites, anim);
 
     // ---- 2. light: the vertex-coloured pool mesh when the caller built one, else the legacy
     //         flat per-tile overlay (identical bytes to before for any caller that passes none). ----
@@ -174,6 +193,24 @@ export class Canvas2DExecutor {
     ctx.globalCompositeOperation = prev;
   }
 
+  /** The motion entry driving this op's sub-tile slide, or null when the op is not an animated
+   *  pawn. ONE lookup shared by the shadow, the entity draw and the draw-order split, so the three
+   *  can never disagree about which quad is where. `o.g === 64` is '@'. */
+  _entryFor(o, anim) {
+    if (!o || o.g !== 64 || !anim || !anim.motion) return null;
+    return anim.motion[o.x + ',' + o.y] || null;
+  }
+
+  /** Is this op a pawn that is mid-step right now? Those are drawn last (see the header): only a
+   *  sliding pawn reaches outside its own tile, so only a sliding pawn can be repainted by a
+   *  later, higher-row/column entity. */
+  _sliding(o, anim) {
+    const entry = this._entryFor(o, anim);
+    if (!entry) return false;
+    const off = slideOffset(entry, anim.nowMs);
+    return off.ox !== 0 || off.oy !== 0;
+  }
+
   // --- WP-1: grounding shadows ---------------------------------------------------------------
   /**
    * A black silhouette of `img`, cached per image object. Built once per sprite (including rotated
@@ -212,12 +249,21 @@ export class Canvas2DExecutor {
    * Sprite-drawn entities only: a procedural vector glyph (open door, loose item, sprites-off mode)
    * has no bitmap to silhouette and casts none; the GL path makes the same choice, so the two
    * backends stay in step.
+   *
+   * ── A MIRRORED PAWN AND ITS SHADOW ────────────────────────────────────────────────────────────
+   * When `flipX` mirrors the pawn, the SILHOUETTE must mirror with it (a westbound pawn's shadow is
+   * a westbound pawn's shape) but the QUAD must not. The four corners encode AD-3's one light
+   * direction — azimuth 315°, elevation 55°: light from the upper left, shadow laid down-RIGHT —
+   * and mirroring them would swing every shadow to the lower left the moment a pawn turned around,
+   * so the stage would appear to have two light sources. The mirror therefore goes INSIDE the cell
+   * (source space), applied AFTER the cell→quad matrix: the parallelogram, its lean and its offset
+   * are bit-identical to the unflipped case, and only which pixels land in it changes.
    */
   _shadow(ctx, T, o, sprites, anim) {
     const sil = this._silhouette(this._entityImage(o, sprites, anim));
     if (!sil) return;
-    const off = o.g === 64 ? slideOffset(anim.motion && anim.motion[o.x + ',' + o.y], anim.nowMs)
-      : { ox: 0, oy: 0 };
+    const entry = this._entryFor(o, anim);
+    const off = entry ? slideOffset(entry, anim.nowMs) : { ox: 0, oy: 0 };
     const q = shadowQuad((o.x + off.ox) * T, (o.y + off.oy) * T, T, this._sq);
     ctx.save();
     ctx.globalAlpha = SHADOW_ALPHA * (o.dim ? 0.7 : 1);
@@ -225,6 +271,7 @@ export class Canvas2DExecutor {
     ctx.transform((q[2] - q[0]) / T, (q[3] - q[1]) / T,   // u axis: TL → TR
                   (q[6] - q[0]) / T, (q[7] - q[1]) / T,   // v axis: TL → BL
                   q[0], q[1]);                            // origin: TL
+    if (entry && entry.flipX) { ctx.translate(T, 0); ctx.scale(-1, 1); } // source-space only
     ctx.drawImage(sil, 0, 0, T, T);
     ctx.restore();
   }
@@ -268,12 +315,22 @@ export class Canvas2DExecutor {
     ctx.restore();
   }
 
-  /** Draw an already-resolved image (used for animation variants). */
-  _sprImg(ctx, T, img, px, py, alpha) {
+  /**
+   * Draw an already-resolved image (used for animation variants). `flip` mirrors it horizontally
+   * about the CELL centre — the pawn-facing mirror, and the only caller that passes it. Mirroring
+   * about the cell (not the sprite's own bbox) is what makes the flip cost no position change:
+   * every pawn image bbox-centres within half a pixel of the 128px cell's own centre.
+   */
+  _sprImg(ctx, T, img, px, py, alpha, flip) {
     ctx.save();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (alpha !== undefined) ctx.globalAlpha = alpha;
-    ctx.drawImage(img, px, py, T, T);
+    if (flip) {
+      ctx.translate(px + T, py); ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, T, T);
+    } else {
+      ctx.drawImage(img, px, py, T, T);
+    }
     ctx.restore();
   }
 
@@ -335,7 +392,7 @@ export class Canvas2DExecutor {
           const v = o.pv || 0;
           const pr = (PAWN_ROLES[v] && sprites.get(PAWN_ROLES[v])) ? PAWN_ROLES[v] : 'pawn';
           // C7 walk: cycle SPRITE_FRAMES while walking + slide continuously toward the current tile.
-          const entry = anim.motion && anim.motion[o.x + ',' + o.y];
+          const entry = this._entryFor(o, anim);
           // Sprite choice holds "walking" for a couple of step-less frames (isAnimWalking) so
           // per-frame step gaps don't flicker walking↔standing; the SLIDE is time-driven and
           // self-gating (slideOffset survives step-less frames, so no snap when another crew steps).
@@ -343,8 +400,12 @@ export class Canvas2DExecutor {
           const frameImg = key !== pr ? sprites.decoded(key) : null;
           const off = slideOffset(entry, anim.nowMs);
           const dx = off.ox * T, dy = off.oy * T;
-          if (frameImg) this._sprImg(ctx, T, frameImg, px + dx, py + dy, dim ? 0.7 : 1);
-          else this._spr(ctx, sprites, T, pr, px + dx, py + dy, dim ? 0.7 : 1);
+          // …and the sticky horizontal mirror (motion.js "WHICH WAY A PAWN LOOKS") — the art has
+          // one east-facing profile, so a westbound pawn is drawn mirrored instead of moonwalking.
+          // Pawn branch only: devices orient via `turns`, and nothing else here is ever mirrored.
+          const flip = !!(entry && entry.flipX);
+          const img = frameImg || sprites.get(pr);
+          this._sprImg(ctx, T, img, px + dx, py + dy, dim ? 0.7 : 1, flip);
           break;
         }
         P.paintPawn(ctx, cx, cy, r, col); break;
