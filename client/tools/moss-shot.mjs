@@ -248,13 +248,23 @@ async function keyCheck(url) {
     const del = await evaluate('document.querySelector(".moss-input").value');
     if (del !== 'a') problems.push(`Delete is dead: input "${del}" (expected "a")`);
 
-    // Tab must not be swallowed — KEY_ROUTE leaves it unbound so focus traversal keeps working
-    const tabPrevented = await evaluate(
-      'new Promise((r) => { const h = (e) => { if (e.key === "Tab") { window.removeEventListener("keydown", h, false); r(e.defaultPrevented); } };' +
-      ' window.addEventListener("keydown", h, false); setTimeout(() => r("no-event"), 1500); })');
+    // Tab must not be swallowed — KEY_ROUTE leaves it unbound so focus traversal keeps working.
+    // Record into a global from a CAPTURE listener, then read it AFTER dispatching. This check was
+    // dead two independent ways before (gate finding), and both traps are easy to fall back into:
+    //   1. `evaluate` passes awaitPromise:true, so `await evaluate('new Promise(...)')` blocks until
+    //      the promise settles — which only happened via its own timeout, 1.5 s BEFORE the Tab key
+    //      was dispatched. The verdict was fixed before the key was ever sent.
+    //   2. The listener was registered in the BUBBLE phase, and the MOSS handler stopPropagation()s
+    //      every non-Escape key, so it could never have fired (measured: bubble 0, capture 1).
+    // Capture listeners on the same node still run after stopPropagation, and MOSS registers first,
+    // so this reads the POST-handler defaultPrevented — which is the thing under test.
+    await evaluate('window.__tabSeen = "no-event";'
+      + ' window.addEventListener("keydown", function (e) {'
+      + '   if (e.key === "Tab") window.__tabSeen = e.defaultPrevented; }, true); true');
     await key('Tab');
-    const tabRes = await tabPrevented;
-    if (tabRes === true) problems.push('Tab is swallowed — focus traversal is dead inside MOSS');
+    const tabRes = await evaluate('window.__tabSeen');
+    if (tabRes === 'no-event') problems.push('the Tab check is BLIND: no keydown reached the probe');
+    else if (tabRes === true) problems.push('Tab is swallowed — focus traversal is dead inside MOSS');
 
     // and the screen still works: ESC clears the line, not the app
     await evaluate('window.__moss.escape()');

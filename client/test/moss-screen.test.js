@@ -837,6 +837,16 @@ test('VS-M9: the responsive floor drops LAST FAULT before any other column, and 
   assert.match(css, /\.moss-row \.c-fault\{[^}]*text-overflow:ellipsis/);
 });
 
+test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the columns after it', () => {
+  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  // The block/stipple glyphs come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not
+  // advance identically; without this pin every column after the bar sat ~1.2px out on the `load:-1`
+  // row. Measured, not reasoned — and it was the one recorded deviation with no guard, so a future
+  // tidy-up could have deleted the rule with the whole suite staying green.
+  assert.match(css, /\.moss-row \.c-bar\{[^}]*width:calc\(12ch/,
+    'VS-M4a pins .c-bar in ch — deleting it silently re-drifts the `--` row');
+});
+
 test('VS-M5: the CRT treatment is ONE non-interactive overlay, never a per-character effect', () => {
   const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
   const crt = /\.moss-crt\{([^}]*)\}/.exec(css);
