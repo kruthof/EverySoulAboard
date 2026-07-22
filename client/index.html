@@ -123,6 +123,12 @@
      until a chat/citizen/moss wire message arrives, so the default view is unchanged. -->
 <div id="panels"></div>
 
+<!-- MOSS terminal (moss-terminal spec IX-M1) — the FULL-WINDOW takeover, a sibling of .app rather
+     than a child, because it replaces the game window instead of covering part of it. Activating
+     the MOSS tab adds `moss-open` to <body>: .app, #panels and the disconnect overlay all go
+     display:none, and this root un-hides. Its contents are built by src/ui/moss-screen.js. -->
+<div id="moss-view" class="moss" hidden></div>
+
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

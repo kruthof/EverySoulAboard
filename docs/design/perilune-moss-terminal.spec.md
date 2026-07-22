@@ -108,6 +108,15 @@ tick and dwarf the ledger. It is fetched like `moss open`/`moss audit`.
    "devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
 ```
 
+> **Amended 2026-07-22 by `moss-screen`, with evidence.** §1.2 and §1.3 originally wrote the
+> *request* as `{"cmd":"moss",...}`. That message is **silently dropped by the shipped host**:
+> `GameSession.WebCommand.Parse` (`hosts/web/GameSession.cs:955-968`) dispatches anything carrying
+> a `"cmd"` key through the view-command switch, which has no `moss` case and falls to `default`
+> ⇒ `Kind.Unknown` ⇒ ignored. The whole MOSS family — like `talk`/`say`/`bye`/`chron`/`bio` — is
+> keyed by `"type"` (`GameSession.cs:975-986`), which is also what the existing client helper
+> `Cmd.moss` already emits (`client/src/wire/session.js:71`). Requests are therefore `"type"`-keyed
+> here and in §1.3. Pinned by `client/test/moss-screen.test.js` ("MOSS wire ops are keyed by type").
+
 `condition` and `rate` are ints `0..100`, **or `-1` when the underlying float is not finite** (percent —
 the wire carries no floats for these; the sim holds `Condition`/`Rate` as `0..1` floats and the host
 rounds once, `MidpointRounding.AwayFromZero`, InvariantCulture). A `-1` here means *unreadable*, not
@@ -253,6 +262,43 @@ copy of every derivation's prose, and it lives next to the code that computes th
 `Date.now()`/`new Date()`, no `Math.random()`. A node test asserts this by source scan, and the
 lane may not weaken it.
 
+### 2.1 What the DOM lane consumes (reconciled 2026-07-22 against `lane/moss-model` `b17d451`)
+
+§2 froze the *signatures* but not the *shapes* they return. The model lane's landed bodies settle
+them; this records what `moss-screen.js` actually reads, so a future change to either side has one
+place to check.
+
+| read | shape |
+|---|---|
+| `model.screen` · `model.prompt` · `model.detail.tid` · `model.selectedId` | the screen switch, the prompt echo, the DETAIL subject, the id-keyed selection |
+| `keyPress()` | `{model, effects, handled, route}` — **`handled` is load-bearing** (below) |
+| `ledgerView()` | `{rows, selectedIndex, advisory, linked, notice}` |
+| `ledgerView().rows[i]` | **already formatted**: `{id,label,load,bar,loadText,state,stateText,warn,fault,advisory,selected}` |
+| `detailView().devices[i]` | **already formatted**: `{name,kind,conditionText,poweredText,rateText,place,note,…}` |
+| `detailView().notes` | `string[]` — derivation prose, `FAULT_CAVEAT` last |
+| `faultLogView()` | `{title, entries:{day,text,live}[], filterId:string|null}`; the title ALREADY names the filtered system |
+| `consoleLines()[i]` | `{stream:0\|1\|2, text}` — stream 0 already carries its own `> ` |
+| `footerHints()` | `string[]`; the DOM joins with ` · ` (VS-M7) |
+
+Three rulings the DOM depends on:
+
+- **`handled` decides `preventDefault`, not "did anything change".** The screen offers every key to
+  `keyPress` and swallows it only when the model claims it, which is IX-M8's table applied without
+  the DOM re-implementing it. The earlier heuristic ("did the model return a new object?") is wrong
+  in both directions — a clamped `ArrowUp` at row 0 changes nothing yet IS handled.
+- **`keyPress` is the only entry point for `Enter`**; with a non-empty buffer it submits.
+- **`linked`, not `rows.length`, is IX-M13's verdict.** "The link is down" and "the link is up and
+  reports nothing" are different claims and the screen renders them differently.
+
+**IX-M7 still has no reducer, and that costs the DOM a workaround worth naming.** A row click is
+expressed by walking the clamped `ArrowUp`/`ArrowDown` navigation — but IX-M8 routes those keys to
+command *history* once the prompt has text, so `moss-screen.js:_selectIndex` must run the walk on a
+prompt-cleared copy of the model and restore the buffer afterwards. It is correct and node-tested
+("a row click with a half-typed command moves the CURSOR, not the command line"), but it is a
+workaround for a missing verb. **Follow-up contract request: add `selectRow(model, id) → model`**
+(pure, no effects) and let the click be one call. Not taken now because it would mean editing
+another lane's file mid-flight.
+
 ---
 
 ## 3. Interaction (IX-M)
@@ -293,6 +339,31 @@ VS-R5 is the precedent).
 | **VS-M8** | **`⚠`** trails `ATTEND` and `DEGRADED` only. `NOMINAL` and `OFFLINE` carry no glyph. `OFFLINE` renders in dim amber, not warning colour — it is an absence, not an alarm. |
 | **VS-M9** | **Responsive floor**: the layout holds down to 1024px wide by reducing padding, and the `LAST FAULT` column truncates with an ellipsis before any other column gives ground. Below that the fault column drops entirely. The table never horizontally scrolls the page. |
 | **VS-M10** | **Reduced motion**: the cursor blink and any scanline drift respect `prefers-reduced-motion`. The block cursor becomes a steady block. |
+
+### 4.1 Recorded deviations from the mock (`moss-screen`, 2026-07-22)
+
+Per the rule above, with reasons. Frames: `node client/tools/moss-shot.mjs`.
+
+- **VS-M7a — the key hints are pinned to the bottom of the window, not to the bottom of the
+  content.** The mock is a fixed-aspect terminal; a 1440×900 browser window is far taller than the
+  ledger's 8 rows, and following the mock literally left the hints floating in the middle of a black
+  field. The table, the closing rule, the advisory and the prompt stay packed directly under the
+  header exactly as in the mock; only the hint line drops to the floor, which is the ordinary
+  terminal status-bar reading. (`.moss-body{flex:0 1 auto}` + `.moss-foot{margin-top:auto}`.)
+- **VS-M2a — the measure is capped at `112ch` and centred.** Unbounded, the ledger's ~75-cell line
+  sat in the top-left corner of a 2560px panel with 1500px of dead space beside it. The cap is in
+  `ch`, so the measure follows the type rather than a pixel guess, and the type itself is
+  `clamp(12px, 1.05vw, 21px)` — one size per viewport, never a reflow of the grid (VS-M2 holds).
+- **VS-M8a — the `⚠` cell is width-pinned in CSS (`width:calc(1ch + letter-spacing)`).** Space Mono
+  has no `⚠`, so it comes from a fallback face whose advance is not one cell; without the pin, an
+  `ATTEND ⚠` row would push `LAST FAULT` a fraction of a cell out of line with its neighbours. The
+  column text itself is still space-padded to the grid — this pins one glyph, not a layout.
+- **VS-M4a — the load-bar cell is width-pinned the same way**, for the same reason: `█` and `▒` also
+  come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not advance identically and every
+  column after them sat ~1.2px apart between a loaded row and a `--` row.
+- **The vignette scales with the viewport** (`clamp(90px,9vw,200px)`) rather than a fixed spread: at
+  1024px a fixed 180px vignette swallowed a quarter of the screen, which is the "costs legibility ⇒
+  it goes" clause of VS-M5 applied to its own treatment.
 
 ---
 
@@ -383,6 +454,14 @@ Three consequences to design around rather than discover later:
    is the correct outcome twice over: the join genuinely cannot see it, and the rule's claim is
    backwards anyway (DA-M1, §5 `thermal`).
 
+> **Open contract question raised by `moss-screen`, for `moss-systems` to settle.** §1.1 says
+> `faultText` is `""` whenever `faultDay` is `-1`, but §5's `nav_sensors` row specifies
+> `Fault text: NO SENSOR HARDWARE` for a row that has no fault day at all. The DOM renders whichever
+> the host sends (`faultCell(-1, text)` falls back to the text, else `—`), so nothing breaks either
+> way — but the two clauses disagree and the client fixture currently follows §1.1 (empty
+> `faultText`, the reason carried in `advisory`). Pick one; "NO SENSOR HARDWARE is an absence, not a
+> fault, so it belongs in the advisory" is the reading that keeps `LAST FAULT` meaning one thing.
+
 ---
 
 ## 6. Test obligations
@@ -391,11 +470,34 @@ Three consequences to design around rather than discover later:
 |---|---|
 | `moss-systems` | Determinism (twin sims produce byte-identical `systems` payloads) · InvariantCulture on every number (de-DE probe) · **no hashed state added** (scenario + tick-3000 + slice pins unmoved, asserted as *twin hashes match*, never as a literal) · `nav_sensors` is OFFLINE *because the census finds no `Telescope`*, proven by a test that places one and watches the row come alive · the exec path introduces **no new `ISimCommand`** · an abuse corpus (overlong, malformed, injection-shaped, `ship.*` write attempts) yields typed errors and zero sim mutation. |
 | `moss-model` | The IX-M8 key-routing table in **both** buffer states · selection preserved by id across a row-set change (IX-M12) · `loadBar`/`uptimeText`/`faultCell` formatting incl. `-1` sentinels · command parsing incl. case/space tolerance and unknown verbs · **M-PURITY** by source scan · reducers never mutate their argument. |
-| `moss-screen` | Full takeover leaves no game chrome visible (IX-M1) · the ESC stack order (IX-M2) · click/double-click row semantics (IX-M7) · reduced-motion (VS-M10) · a live-pixel check that the ledger reads correctly at 1024px and at full width (VS-M9). |
+| `moss-screen` | Full takeover leaves no game chrome visible (IX-M1) · the ESC stack order (IX-M2) · click/double-click row semantics (IX-M7) · reduced-motion (VS-M10) · a live-pixel check that the ledger reads correctly at 1024px and at full width (VS-M9) · **the prompt can be CORRECTED** — Backspace/Delete/caret keys/Tab reach the input, proven with TRUSTED key events (§6.1). |
 
 Every package additionally runs `./ci.sh` **in-worktree** and passes an independent Opus gate
 (blind spec → CI battery → adversarial/mutation pass → written PASS/FAIL), per `HANDOVER.md`
 "The rituals".
+
+### 6.1 The prompt must be provable with TRUSTED keys (added 2026-07-22, from a gate FAIL)
+
+**Any lane that touches keyboard handling on this screen runs `node client/tools/moss-shot.mjs`,
+whose `--keys` phase drives the prompt over CDP.** This is not optional polish; it closes a class of
+defect the node suite is structurally blind to.
+
+What happened: `moss-screen.js` swallowed every key whose name is longer than one character, on the
+reasoning that such a key "cannot type". It also matched `Backspace`, `Delete`, `ArrowLeft/Right`,
+`Home`, `End` and `Tab` — so the command prompt could be typed into but **never corrected**. A
+player who mistyped `open reacotr` had no way back except ESC, which throws the whole line away. All
+39 node tests were green.
+
+They were green because a stub `preventDefault` can only *record* the call; it cannot suppress a
+default action the stub never performs in the first place. `client/test/dom-lite.js:editable()` now
+models the one default that matters, so node catches this specific bug — but the general lesson
+stands: **default-action behaviour is only observable in a real browser with real key events.**
+`Input.dispatchKeyEvent` produces trusted events; a synthetic `new KeyboardEvent(...)` does not and
+would have passed just as happily.
+
+Corollary for implementers: the DOM layer may swallow a key on its own account only via the
+explicit `SCROLL_KEYS` allowlist, and never for an event originating in a text field. Everything
+else is `keyPress().handled`. A "keys like this can't type" heuristic is how this went wrong.
 
 ---
 

@@ -153,7 +153,34 @@
  * @typedef {{type:'relations', edges:RelationEdgeTuple[]}} RelationsMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg} WireMsg */
+/**
+ * The ship-systems ledger — the MOSS terminal's pushed channel (moss-terminal spec §1.1). A cached
+ * state channel like roster/designs/terminals/relations: rebuilt each render, deduped, snapshot-
+ * replayed on connect, NOT fog-gated (a ship's own telemetry is fixed crew knowledge).
+ *
+ * Each row is [id, label, load, state, faultDay, faultText, advisory]:
+ *   id        stable snake_case key (`reactor`, `life_support`, … ) — addresses `moss sys`/`open`
+ *   label     display text, already uppercase
+ *   load      0..100, or -1 = "no meaningful load" (renders an empty bar and `--`)
+ *   state     0 NOMINAL · 1 ATTEND · 2 DEGRADED · 3 OFFLINE (append-only ladder)
+ *   faultDay  day of the newest attributable fault, or -1 for none
+ *   faultText fault summary, uppercase, NO day prefix (the client composes `DAY {n} · {text}`)
+ *   advisory  host-derived deterministic prose for the selected row ("" renders nothing)
+ * `uptime` is the RAW tick count — the host never ships a preformatted duration (culture bug), the
+ * client formats it. Row order is a host decision, never a client sort (same rule as the relations
+ * ring).
+ * @typedef {[string,string,number,number,number,string,string]} SystemRowTuple
+ * @typedef {{type:'systems', hull:string, day:number, uptime:number, rows:SystemRowTuple[]}} SystemsMsg
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg} WireMsg */
+
+// NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
+// the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
+// rules live: a missing state is `-1`/UNKNOWN, never `0`/NOMINAL, because the screen may not
+// invent a healthy reading for a row it cannot read. A second decoder lived here briefly and had
+// ALREADY drifted on exactly that default — it returned NOMINAL, and a green test pinned it that
+// way. If another channel ever needs these rows, import `rowObj`; do not re-derive them.
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

@@ -230,6 +230,8 @@ function onMessage(m) {
     case 'terminals': Hud.renderTerminals(m); break;
     // RELATIONS tab: the directed relationship graph feeding the crew-web viewport swap.
     case 'relations': Hud.renderRelations(m); break;
+    // MOSS terminal: the ship-systems ledger channel (moss-terminal spec §1.1).
+    case 'systems': Hud.renderSystems(m); break;
     default: break;
   }
 }
