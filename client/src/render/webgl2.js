@@ -19,11 +19,11 @@
 
 import { GLContext, VERTEX_STRIDE } from './webgl/gl.js';
 import { buildPasses } from './webgl/batch.js';
-import { packAtlas } from './webgl/atlas.js';
+import { packAtlas, ATLAS_BORDER } from './webgl/atlas.js';
 import {
   CELL, collectCellKeys, atlasSignature, resolveTerrain, resolveEntity, resolveOverlay,
 } from './rasterplan.js';
-import { transform } from './camera.js';
+import { transform, tilePitch } from './camera.js';
 import { C, FG, litOverlay } from './palette.js';
 import { slideOffset, baseSpriteKey } from './motion.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
@@ -106,7 +106,6 @@ export class WebGL2Executor {
     const gl = this.gl;
     if (gl.isLost()) return; // main.js handles the swap; never throw inside the frame loop
     const cam = opts.camera;
-    const T = cam.tile;
     const sprites = opts.sprites || null;
     const useSpr = sprites ? sprites.usable(opts.spriteMode) : false;
     const timeSec = opts.timeSec || 0;
@@ -124,8 +123,12 @@ export class WebGL2Executor {
     const passes = buildPasses(list, { timeSec });
     this._ensureAtlas(passes, useSpr, sprites, raster);
 
-    const { s, ox, oy } = transform(cam);
-    const W = cam.viewW, H = cam.viewH, D = T * s;
+    // Integer tile pitch + integer origin (camera.js): every quad corner below is
+    // `tileIndex * PITCH + origin`, which lands exactly on a device pixel. The ONLY term that stays
+    // fractional is the pawn's sub-tile slide, added to the tile index before the multiply.
+    const { ox, oy } = transform(cam);
+    const PITCH = tilePitch(cam);
+    const W = cam.viewW, H = cam.viewH, D = PITCH;
     gl.beginFrame(W, H, CLEAR);
 
     const [terrain, entities, light, overlay] = passes;
@@ -145,7 +148,7 @@ export class WebGL2Executor {
       for (const o of terrain.ops) {
         const spec = resolveTerrain(o);
         if (!spec) continue;
-        const X = o.x * T * s + ox, Y = o.y * T * s + oy;
+        const X = o.x * PITCH + ox, Y = o.y * PITCH + oy;
         if (spec.flat) { stats.terrainFlat++; pushFlat(flat, X, Y, D, premul(parseColor(spec.color))); }
         else { stats.terrainTex++; pushTex(tex, X, Y, D, this._uv[spec.cell], 1, 0); }
       }
@@ -164,7 +167,7 @@ export class WebGL2Executor {
         // survives step-less frames — same model + gating as the canvas2d path, no divergence).
         const entry = raster.motion && raster.motion[o.x + ',' + o.y];
         const off = slideOffset(entry, nowMs);
-        const X = (o.x + off.ox) * T * s + ox, Y = (o.y + off.oy) * T * s + oy;
+        const X = (o.x + off.ox) * PITCH + ox, Y = (o.y + off.oy) * PITCH + oy;
         pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
         if (spec.overlay) pushFlat(lock, X, Y, D, premul(parseColor(spec.overlay)));
       }
@@ -184,7 +187,7 @@ export class WebGL2Executor {
         if (!rgba) continue;
         stats.lightQuads++;
         const c = parseColor(rgba), a = c[3];
-        const X = o.x * T * s + ox, Y = o.y * T * s + oy;
+        const X = o.x * PITCH + ox, Y = o.y * PITCH + oy;
         pushFlat(mul, X, Y, D, [(1 - a) + c[0] * a, (1 - a) + c[1] * a, (1 - a) + c[2] * a, 1]);
       }
       if (mul.length) {
@@ -200,7 +203,7 @@ export class WebGL2Executor {
       for (const o of overlay.ops) {
         const spec = resolveOverlay(o);
         if (!spec) continue;
-        const X = o.x * T * s + ox, Y = o.y * T * s + oy;
+        const X = o.x * PITCH + ox, Y = o.y * PITCH + oy;
         if (spec.flat) { if (spec.color) pushFlat(flat, X, Y, D, premul(parseColor(spec.color))); }
         else pushTex(tex, X, Y, D, this._uv[spec.cell], spec.alpha, spec.turns);
       }
@@ -242,10 +245,38 @@ export class WebGL2Executor {
       this._paintCell(g, key, sprites, useSpr, p.x, p.y);
       g.restore();
     }
+    for (const key of keys) this._replicateEdges(g, cv, atlas.placements[key]);
 
     this.gl.uploadAtlas(cv);
     this._uv = atlas.uv;
     this._sig = sig;
+  }
+
+  /**
+   * Bleed one cell's outermost row/column of pixels ATLAS_BORDER px outward into its gutter.
+   *
+   * Why not just leave the gutter transparent: the atlas is premultiplied, so a transparent texel
+   * is (0,0,0,0). LINEAR filtering at a sprite's edge averages the edge texel with whatever sits
+   * beside it, and averaging with premultiplied zero pulls colour AND alpha down — every sprite
+   * would gain a dark, semi-transparent rim, worst at the mip levels the far view uses. Replicating
+   * the edge means that average is the edge colour itself, i.e. a no-op. It also gives generateMipmap
+   * something honest to reduce: through mip 2 the gutter still separates neighbouring cells.
+   *
+   * `drawImage` with the canvas as its own source is well-defined (the source is snapshotted), and
+   * imageSmoothingEnabled is already false, so stretching a 1px strip to ATLAS_BORDER px is an exact
+   * copy rather than a gradient. Sides first, then top/bottom over the WIDENED span so the four
+   * corners are covered too. The packer leaves 2 * ATLAS_BORDER between cells, so this never writes
+   * into a neighbour's border.
+   */
+  _replicateEdges(g, cv, p) {
+    if (!p) return;
+    const P_ = ATLAS_BORDER, { x, y, w, h } = p;
+    // left / right edge columns
+    g.drawImage(cv, x, y, 1, h, x - P_, y, P_, h);
+    g.drawImage(cv, x + w - 1, y, 1, h, x + w, y, P_, h);
+    // top / bottom edge rows, spanning the already-extended width (fills the corners)
+    g.drawImage(cv, x - P_, y, w + 2 * P_, 1, x - P_, y - P_, w + 2 * P_, P_);
+    g.drawImage(cv, x - P_, y + h - 1, w + 2 * P_, 1, x - P_, y + h, w + 2 * P_, P_);
   }
 
   /** Rasterize one atlas cell — the GL-side mirror of the canvas2d per-op branch. */

@@ -1,7 +1,7 @@
 // Thin WebGL2 layer — the ONLY GPU-touching module in the client. It owns context acquisition,
 // the two shader programs (textured quad + flat/tinted quad), one shared VAO over one streaming
-// interleaved VBO, the atlas texture (nearest-neighbour magnify, mipmapped minify for readability
-// across zooms), premultiplied-alpha blending, and the context-loss surface. Everything above it
+// interleaved VBO, the atlas texture (LINEAR magnify, trilinear minify — see uploadAtlas),
+// premultiplied-alpha blending, and the context-loss surface. Everything above it
 // (webgl2.js) feeds it plain Float32 vertex data produced from the PURE batcher/atlas/rasterplan.
 //
 // Vertex layout is a single interleaved format shared by both programs (stride 8 floats):
@@ -124,8 +124,17 @@ export class GLContext {
   }
 
   /**
-   * Upload a canvas-backed atlas as the single sampled texture: premultiplied, nearest-neighbour
-   * magnify (crisp pixels when zoomed in), mipmapped minify (readable when zoomed out).
+   * Upload a canvas-backed atlas as the single sampled texture: premultiplied, LINEAR magnify,
+   * trilinear (LINEAR_MIPMAP_LINEAR) minify.
+   *
+   * Both filters are deliberate and were wrong before. The art is PAINTERLY 128px renders, not
+   * pixel art: NEAREST magnification duplicates whole texel columns at any non-integer ratio (the
+   * default view is ~1.125x, so every 8th column doubles) and the doubled columns SLIDE as you pan
+   * — the "stair-stepping crawl". LINEAR resamples smoothly instead. On the minify side,
+   * NEAREST_MIPMAP_LINEAR point-samples inside each mip (aliasing the detail) while cross-fading
+   * between mips (blurring what survived) — the worst of both; trilinear does the sane thing.
+   * Trilinear only behaves if the atlas gutter survives mip reduction — see atlas.js ATLAS_PAD and
+   * the edge replication in webgl2.js.
    * @param {HTMLCanvasElement|ImageBitmap|HTMLImageElement} source
    */
   uploadAtlas(source) {
@@ -136,8 +145,8 @@ export class GLContext {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     gl.generateMipmap(gl.TEXTURE_2D);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);

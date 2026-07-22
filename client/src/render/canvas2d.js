@@ -32,9 +32,16 @@ export class Canvas2DExecutor {
     ctx.fillStyle = FG[C.Unknown];
     ctx.fillRect(0, 0, cam.viewW, cam.viewH);
 
+    // transform() hands back a QUANTIZED scale (tile * s is a whole number of device px) and an
+    // integer origin, so `o.x * T` under this matrix lands on the pixel grid. Pawn slides are added
+    // in the same pre-transform tile space (px + off.ox * T) and stay fractional — the glide is not
+    // snapped, only the grid is.
     const { s, ox, oy } = transform(cam);
     ctx.setTransform(s, 0, 0, s, ox, oy);
-    ctx.imageSmoothingEnabled = false;
+    // Smoothing ON: the art is painterly 128px renders, not pixel art. Nearest-neighbour scaling
+    // duplicated/dropped whole texel rows at every non-integer ratio and the artefacts crawled under
+    // pan. This is the canvas2d twin of the LINEAR / LINEAR_MIPMAP_LINEAR filters in webgl/gl.js.
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
 
     for (const o of list) {
       const px = o.x * T, py = o.y * T;
@@ -58,7 +65,7 @@ export class Canvas2DExecutor {
   // --- sprite draw helpers (mirror Client.html spr / sprTurned) ---
   _spr(ctx, sprites, T, name, px, py, alpha) {
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.drawImage(sprites.get(name), px, py, T, T);
     ctx.restore();
@@ -67,7 +74,7 @@ export class Canvas2DExecutor {
   /** Draw an already-resolved image (used for animation variants). */
   _sprImg(ctx, T, img, px, py, alpha) {
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.drawImage(img, px, py, T, T);
     ctx.restore();
@@ -76,7 +83,7 @@ export class Canvas2DExecutor {
   _sprTurned(ctx, sprites, T, role, turns, px, py, alpha) {
     if (!turns) { this._spr(ctx, sprites, T, role, px, py, alpha); return; }
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.drawImage(sprites.rotated(role, turns), px, py, T, T);
     ctx.restore();
@@ -97,7 +104,7 @@ export class Canvas2DExecutor {
     if (!o.face) { ctx.fillStyle = HULL; ctx.fillRect(px, py, T, T); return; }
     if (useSpr) {
       if (o.vert) {
-        ctx.save(); ctx.imageSmoothingEnabled = false;
+        ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(sprites.wallVertical(), px, py, T, T); ctx.restore();
       } else {
         this._spr(ctx, sprites, T, 'wall', px, py);

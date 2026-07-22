@@ -6,7 +6,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { composeScene } from '../src/render/compose.js';
-import { cullRange, tileFromPoint, transform } from '../src/render/camera.js';
+import {
+  cullRange, tileFromPoint, transform, tilePitch, clampCam, zoomAt,
+  MAX_TILE_DEVICE_PX,
+} from '../src/render/camera.js';
+import { slideOffset } from '../src/render/motion.js';
 import { C } from '../src/render/palette.js';
 import {
   loadBootFrame, cameras, deriveLensFrame, deriveSelectionFrame, firstFloorTile, cameraOn, ASSETS,
@@ -106,6 +110,67 @@ test('camera culling: zoomed emits fewer ops than full and only in-window tiles'
   const { x0, x1, y0, y1 } = cullRange(camZ, boot);
   for (const o of zoomed) {
     assert.ok(o.x >= x0 && o.x < x1 && o.y >= y0 && o.y < y1, `op outside cull window: ${JSON.stringify(o)}`);
+  }
+});
+
+// ---- pixel-grid alignment (WP-0) ----
+
+test('camera: the tile lattice is quantized to whole device pixels', () => {
+  const boot = loadBootFrame();
+  // Sweep awkward zooms and off-grid centres — every one must still land on the pixel grid.
+  for (const z of [0.5, 0.5625, 0.61, 0.777, 0.9, 1]) {
+    for (const cx of [12, 12.5, 28.37, 33.9]) {
+      const cam = cameraOn(boot, cx, 9.13, z);
+      const p = tilePitch(cam);
+      const { s, ox, oy } = transform(cam);
+      assert.equal(p, Math.round(p), `pitch not integral at z=${z}`);
+      assert.equal(cam.tile * s, p, 'tile * s must be exactly the integer pitch');
+      assert.equal(ox, Math.round(ox), `origin x not integral at z=${z} cx=${cx}`);
+      assert.equal(oy, Math.round(oy), `origin y not integral at z=${z} cx=${cx}`);
+      // …and therefore every tile seam is on a device pixel, arbitrarily far from the centre.
+      for (const t of [0, 1, 7, 63, 199]) {
+        assert.ok(Number.isInteger(t * p + ox), `tile ${t} seam off-grid at z=${z}: ${t * p + ox}`);
+      }
+    }
+  }
+});
+
+test('PAWN SLIDE INVARIANT: sub-tile motion stays continuous under the snapped grid', () => {
+  // The grid snap must never reach the pawn. A pawn mid-step is drawn at
+  // `(tileIndex + slide) * pitch + origin`; the slide term is a float added BEFORE the multiply,
+  // so consecutive animation frames must produce distinct, monotone, non-integral positions.
+  // If a future change rounds the pawn's own position, this test fails and the glide is back to
+  // the pre-b770e88 stutter.
+  const boot = loadBootFrame();
+  const cam = cameraOn(boot, 20, 9, 0.9);
+  const p = tilePitch(cam), { ox } = transform(cam);
+  const entry = { x: 20, y: 9, originX: 19, originY: 9, stepMs: 1000, interval: 400 };
+  const xs = [];
+  for (let ms = 1000; ms < 1400; ms += 17) { // ~60fps sampling across one step
+    const off = slideOffset(entry, ms);
+    xs.push((entry.x + off.ox) * p + ox);
+  }
+  for (let i = 1; i < xs.length; i++) {
+    assert.ok(xs[i] > xs[i - 1], `slide must advance every frame (frame ${i}: ${xs[i - 1]} → ${xs[i]})`);
+  }
+  assert.ok(xs.some((v) => v % 1 !== 0), 'a continuous slide must produce sub-pixel positions');
+  // The step covers one tile pitch and ends settled exactly on the grid.
+  const travel = xs[xs.length - 1] - xs[0];
+  assert.ok(travel > 0.9 * p && travel < p, `one step should traverse ~one tile pitch, got ${travel}/${p}`);
+  assert.equal(slideOffset(entry, 1400).ox, 0, 'arrival settles onto the tile');
+});
+
+test('camera: zoom is capped at MAX_TILE_DEVICE_PX — never upscale past the source art', () => {
+  const boot = loadBootFrame();
+  for (const tile of [128, 26]) {
+    const cam = { x: 20, y: 9, z: 99, viewW: 1664, viewH: 520, tile };
+    clampCam(cam, boot);
+    assert.ok(cam.tile * cam.z <= MAX_TILE_DEVICE_PX + 1e-9,
+      `zoom ceiling breached: ${cam.tile * cam.z} device px/tile`);
+    assert.equal(tilePitch(cam), MAX_TILE_DEVICE_PX, 'the cap is reachable, not merely a limit');
+    // …and repeated zoom-in gestures cannot creep past it.
+    for (let i = 0; i < 20; i++) zoomAt(cam, boot, 832, 260, 1.2);
+    assert.ok(cam.tile * cam.z <= MAX_TILE_DEVICE_PX + 1e-9, 'zoomAt breached the ceiling');
   }
 });
 
