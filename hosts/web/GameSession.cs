@@ -64,6 +64,20 @@ namespace Perilune.Web
         private readonly Dictionary<string, string> _lastRtError = new Dictionary<string, string>();
         private readonly List<(long Tick, string Text)> _mossAuditBuf = new List<(long, string)>();
 
+        /// <summary>The `@console` audit ring (IX-M41): every WRITE the player types at the MOSS
+        /// prompt, so their own commands sit in the same reviewable log as the DSL's. Host-side and
+        /// bounded — it deliberately does NOT live in <see cref="ScriptRuntime"/>'s per-program
+        /// rings, because those are enumerated by <c>ScriptRuntime.StateChecksum</c> and registering
+        /// a `@console` program there would move the determinism hash for a feature that adds no
+        /// sim state. Transient diagnostics either way: never saved, never hashed.</summary>
+        private readonly List<(long Tick, string Text)> _consoleAudit = new List<(long, string)>();
+        private const string ConsoleTid = "@console";
+        private const int ConsoleAuditCapacity = 64;   // matches ScriptRuntime's per-terminal ring
+
+        /// <summary>The ship designation on the `systems` channel — a deterministic NAME from the
+        /// world seed, computed once at boot (identity, not a gauge).</summary>
+        private readonly string _hull;
+
         private ShipMetricsSnapshot _metrics;
         private double _metricsAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
@@ -93,6 +107,7 @@ namespace Perilune.Web
             _light = new byte[_sim.World.Width * _sim.World.Height];
             _cursor = new Int3(_sim.World.Width / 2, _sim.World.Height / 2, 0);
             _metrics = ShipMetrics.Compute(_sim);
+            _hull = ShipSystems.HullDesignation(host.Seed);
 
             // Worldgen persona pass — SimHost boots UnityEngine-free and skips GenerateMinds, so
             // do it here (once). PersonaGenerator forks its own RNG and never advances sim.Rng, so
@@ -140,7 +155,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -241,7 +256,9 @@ namespace Perilune.Web
         ///   set   → SetProgram (compile+install now, paused-safe) → reply diag; also enqueue
         ///           the canonical SetScriptCommand so the saved source (sim.Scripts) tracks
         ///           the edit; cache the text for a later `open`.
-        ///   audit → reply the terminal's audit ring
+        ///   audit → reply the terminal's audit ring (tid "@console" ⇒ the player's own prompt ring)
+        ///   sys   → reply one MOSS-ledger row's per-device breakdown + its derivation note
+        ///   exec  → run ONE prompt line through the DSL's own device adapters (see ExecConsole)
         ///   dryrun→ RESERVED (compile-only preview); not implemented.
         /// Unknown op ⇒ ignored.
         /// </summary>
@@ -251,6 +268,18 @@ namespace Perilune.Web
             if (string.IsNullOrEmpty(tid)) return;
             switch (cmd.Op)
             {
+                case "sys":
+                {
+                    Emit(WireFormat.MossSys(tid, ShipSystems.ComputeDetail(_sim, tid),
+                                            ShipSystems.Derivation(tid)));
+                    break;
+                }
+                case "exec":
+                {
+                    var (ok, lines) = ExecConsole(cmd.Text);
+                    Emit(WireFormat.MossExec(tid, ok, lines));
+                    break;
+                }
                 case "open":
                 {
                     string src = CurrentMossSource(tid);
@@ -269,13 +298,256 @@ namespace Perilune.Web
                 }
                 case "audit":
                 {
-                    _host.Moss.GetAuditLog(tid, _mossAuditBuf);
-                    Emit(WireFormat.MossAudit(tid, _mossAuditBuf));
+                    // The player's own prompt writes live in the host-side @console ring; every
+                    // other terminal's live in the ScriptRuntime's per-program ring.
+                    if (tid == ConsoleTid) Emit(WireFormat.MossAudit(tid, _consoleAudit));
+                    else
+                    {
+                        _host.Moss.GetAuditLog(tid, _mossAuditBuf);
+                        Emit(WireFormat.MossAudit(tid, _mossAuditBuf));
+                    }
                     break;
                 }
                 default: break; // unknown op (incl. reserved "dryrun") — ignored
             }
         }
+
+        // ------------------------------------------------------------------- the MOSS prompt
+
+        /// <summary>Maximum prompt line accepted HOST-side (IX-M42) — not only in the DOM, because
+        /// the DOM is not the security boundary.</summary>
+        private const int MaxConsoleChars = 240;
+
+        private static readonly string[] ConsoleHelp =
+        {
+            "DEVICE:  open <dev> · close <dev> · lock <dev> · unlock <dev>",
+            "         set <dev>.rate <0..1|max|min>",
+            "READ:    <dev>.<property>   e.g. ship.power, vent_ls.rate, hab1.co2",
+            "SCREEN:  status · open <system> · log [system] · prog [terminal] · clear · exit",
+            "Rooms and ship are READ-ONLY, here as in a MOSS program.",
+        };
+
+        /// <summary>
+        /// Run ONE line from the MOSS command prompt (spec §1.3).
+        ///
+        /// <para><b>IX-M40 — the prompt grants NO authority the DSL does not already have.</b> The
+        /// target is resolved through the SAME <see cref="DeviceRegistry"/> the MOSS interpreter
+        /// uses (<c>_host.Registry</c>, populated by <c>MossBindings.RegisterAdapters</c>) and the
+        /// verb goes to the SAME <see cref="IScriptable.TryInvoke"/>. The whitelist is therefore
+        /// INHERITED, not re-declared: doors get open/close/lock/unlock and utility devices get
+        /// open/close/set because <c>DoorAdapter</c> and <c>UtilityDeviceAdapter</c> say so, and
+        /// rooms and <c>ship</c> stay read-only because <c>RoomAdapter</c>/<c>ShipMetricsAdapter</c>
+        /// refuse every verb (<c>DeviceAdapters.cs:130-134</c>, <c>ShipMetricsAdapter.cs</c>). Add a
+        /// verb to an adapter and it appears here for free; there is no second list to forget.</para>
+        ///
+        /// <para><b>No new <see cref="ISimCommand"/>.</b> Every write leaves as the existing
+        /// <see cref="SetDoorStateCommand"/> / <see cref="SetDeviceStateCommand"/> the adapters
+        /// already enqueue, on the ordinary inbox, landing at the next tick boundary.</para>
+        ///
+        /// <para><b>Why a small host-side parser and not the MossCompiler.</b> Investigated and
+        /// rejected, for three independent reasons. (1) The prompt's grammar is not MOSS's: MOSS
+        /// writes <c>close(door_storage)</c>, the prompt writes <c>close door_storage</c>, so a
+        /// translation step is unavoidable either way. (2) Running a compiled statement needs
+        /// <c>Interpreter</c>, <c>MossAuditLog</c> and <c>MossRuntimeException</c>, all
+        /// <c>internal</c> to Sim.Dsl — it would take new public API on the DSL to reach them.
+        /// (3) Decisively: installing a <c>@console</c> program via <c>ScriptRuntime.SetProgram</c>
+        /// registers a ProgramState that <c>ScriptRuntime.StateChecksum</c> enumerates, so a player
+        /// typo would MOVE THE DETERMINISM HASH; and a failed statement publishes an
+        /// <c>AlarmRaisedEvent</c>, which <c>HistorySystem</c> (an IStatefulSystem) folds into its
+        /// checksum. Either alone disqualifies the interpreter route for a feature that must add no
+        /// hashed state. So: parsing here, authority there.</para>
+        ///
+        /// <para>Runs on the sim thread (the command drain, between ticks). Never throws.</para>
+        /// </summary>
+        private (bool Ok, List<(int Stream, string Text)> Lines) ExecConsole(string raw)
+        {
+            var lines = new List<(int, string)>(4);
+            string text = raw ?? "";
+
+            // Echo first, always, even for a rejected line: the player must see what the console
+            // received, not what it decided to keep.
+            lines.Add((0, text.Length > MaxConsoleChars ? text.Substring(0, MaxConsoleChars) : text));
+
+            if (text.Length > MaxConsoleChars)
+            {
+                lines.Add((2, "LINE TOO LONG — MAX " + MaxConsoleChars.ToString(CultureInfo.InvariantCulture) + " CHARACTERS"));
+                return (false, lines);
+            }
+
+            var tok = Tokenize(text);
+            if (tok.Count == 0) return (true, lines);   // blank line: echo and nothing else
+
+            string verb = tok[0].ToLowerInvariant();
+            if (verb == "help")
+            {
+                foreach (var h in ConsoleHelp) lines.Add((1, h));
+                return (true, lines);
+            }
+
+            switch (verb)
+            {
+                case "open":
+                case "close":
+                case "lock":
+                case "unlock":
+                    if (tok.Count != 2)
+                    {
+                        lines.Add((2, verb.ToUpperInvariant() + " EXPECTS ONE TARGET — TYPE HELP"));
+                        return (false, lines);
+                    }
+                    return Invoke(lines, verb, tok[1], Array.Empty<DslValue>(), verb + "(" + tok[1].ToLowerInvariant() + ")");
+
+                case "set":
+                {
+                    // Space-tolerant (IX-M10): "set vent_ls.rate max" == "set vent_ls rate max".
+                    string target, prop, valueTok;
+                    if (tok.Count == 3 && SplitDotted(tok[1], out target, out prop)) valueTok = tok[2];
+                    else if (tok.Count == 4) { target = tok[1]; prop = tok[2].ToLowerInvariant(); valueTok = tok[3]; }
+                    else
+                    {
+                        lines.Add((2, "SET EXPECTS <DEVICE>.<PROPERTY> <VALUE> — TYPE HELP"));
+                        return (false, lines);
+                    }
+                    if (!TryParseSetValue(valueTok, out var value))
+                    {
+                        lines.Add((2, "SET EXPECTS A NUMBER, MAX OR MIN — GOT '" + valueTok.ToUpperInvariant() + "'"));
+                        return (false, lines);
+                    }
+                    var args = new[] { DslValue.Text(prop), value };
+                    return Invoke(lines, "set", target, args,
+                        "set(" + target.ToLowerInvariant() + "." + prop + ", " + value.ToString() + ")");
+                }
+            }
+
+            // A bare `device.property` is a READ (IX-M41: reads are free, writes are audited).
+            if (tok.Count == 1 && SplitDotted(tok[0], out var readTarget, out var readProp))
+                return Read(lines, readTarget, readProp);
+
+            lines.Add((2, "UNKNOWN COMMAND '" + verb.ToUpperInvariant() + "' — TYPE HELP"));
+            return (false, lines);
+        }
+
+        /// <summary>Resolve + invoke through the DSL's own adapter, then audit the write. The
+        /// adapter owns the verdict: an unknown verb, a read-only target and a bad argument all
+        /// come back as ITS error string, so this method has no opinion about what is legal.</summary>
+        private (bool, List<(int, string)>) Invoke(List<(int, string)> lines, string verb, string target,
+                                                   DslValue[] args, string auditText)
+        {
+            if (!_host.Registry.TryResolve(target, out var scriptable))
+            {
+                lines.Add((2, "NO SUCH DEVICE '" + target.ToUpperInvariant() + "'"));
+                return (false, lines);
+            }
+            string error;
+            bool ok;
+            try { ok = scriptable.TryInvoke(verb, args, args.Length, out error); }
+            catch (Exception e) { ok = false; error = "internal error: " + e.Message; }
+
+            if (!ok)
+            {
+                lines.Add((2, (error ?? "COMMAND REFUSED").ToUpperInvariant()));
+                return (false, lines);
+            }
+            // A write happened. It is queued as an ordinary ISimCommand and lands at the next tick
+            // boundary, so say exactly that rather than claiming the device has already moved.
+            lines.Add((1, "QUEUED " + auditText.ToUpperInvariant()));
+            AuditConsole(auditText);
+            return (true, lines);
+        }
+
+        /// <summary>A property read through the same adapter surface. Pure; never audited.</summary>
+        private (bool, List<(int, string)>) Read(List<(int, string)> lines, string target, string prop)
+        {
+            if (!_host.Registry.TryResolve(target, out var scriptable))
+            {
+                lines.Add((2, "NO SUCH DEVICE '" + target.ToUpperInvariant() + "'"));
+                return (false, lines);
+            }
+            DslValue value;
+            bool ok;
+            try { ok = scriptable.TryGetProperty(prop, out value); }
+            catch (Exception) { ok = false; value = default; }
+
+            if (!ok)
+            {
+                lines.Add((2, target.ToUpperInvariant() + " HAS NO PROPERTY '" + prop.ToUpperInvariant() + "'"));
+                return (false, lines);
+            }
+            lines.Add((1, target.ToUpperInvariant() + "." + prop.ToUpperInvariant() + " = " + Scalar(value)));
+            return (true, lines);
+        }
+
+        /// <summary>Append one player write to the bounded `@console` audit ring (IX-M41), in the
+        /// same text shape the interpreter records ("open(door_lab)", "set(pump1.rate, 50)"), so
+        /// the player's commands read as peers of the DSL's in the same log.</summary>
+        private void AuditConsole(string text)
+        {
+            _consoleAudit.Add((_sim.TickCount, text));
+            if (_consoleAudit.Count > ConsoleAuditCapacity) _consoleAudit.RemoveAt(0);
+        }
+
+        /// <summary>Whitespace tokenizer — space-tolerant by construction (IX-M10). Any run of
+        /// whitespace separates; control characters are whitespace too, so an injection-shaped line
+        /// carrying newlines or tabs simply becomes more tokens and fails to resolve.</summary>
+        private static List<string> Tokenize(string s)
+        {
+            var tokens = new List<string>(4);
+            int i = 0;
+            while (i < s.Length)
+            {
+                while (i < s.Length && (char.IsWhiteSpace(s[i]) || s[i] < 0x20)) i++;
+                int start = i;
+                while (i < s.Length && !char.IsWhiteSpace(s[i]) && s[i] >= 0x20) i++;
+                if (i > start) tokens.Add(s.Substring(start, i - start));
+            }
+            return tokens;
+        }
+
+        /// <summary>"vent_ls.rate" → ("vent_ls", "rate"). False when there is no single interior
+        /// dot — a name with two dots is not a thing this DSL has, and guessing would be a lie.</summary>
+        private static bool SplitDotted(string token, out string target, out string prop)
+        {
+            target = null; prop = null;
+            int dot = token.IndexOf('.');
+            if (dot <= 0 || dot >= token.Length - 1) return false;
+            if (token.IndexOf('.', dot + 1) >= 0) return false;
+            target = token.Substring(0, dot);
+            prop = token.Substring(dot + 1).ToLowerInvariant();
+            return true;
+        }
+
+        /// <summary>A `set` argument: a plain InvariantCulture number, or the max/min keywords the
+        /// adapters already understand. InvariantCulture ONLY — this dev machine is de-DE, and
+        /// accepting "0,5" here would mean the same keystrokes did different things on different
+        /// machines.</summary>
+        private static bool TryParseSetValue(string token, out DslValue value)
+        {
+            string lower = token.ToLowerInvariant();
+            if (lower == "max" || lower == "min") { value = DslValue.Text(lower); return true; }
+            if (double.TryParse(token, System.Globalization.NumberStyles.Float,
+                                CultureInfo.InvariantCulture, out double n))
+            {
+                value = DslValue.Number(n);
+                return true;
+            }
+            value = default;
+            return false;
+        }
+
+        /// <summary>Render a read value for the wire: booleans as words, numbers InvariantCulture
+        /// with a fixed shape (never a locale comma, never exponential).</summary>
+        private static string Scalar(DslValue v) => v.Kind switch
+        {
+            DslKind.Bool => v.Bool ? "TRUE" : "FALSE",
+            DslKind.Str => (v.Str ?? "").ToUpperInvariant(),
+            _ => v.Num.ToString("0.####", CultureInfo.InvariantCulture),
+        };
+
+        /// <summary>Test-only hook: run one prompt line exactly as the sim-thread drain does.</summary>
+        internal (bool Ok, List<(int Stream, string Text)> Lines) ExecConsoleForTest(string raw) => ExecConsole(raw);
+
+        /// <summary>Test-only hook: the `@console` audit ring (IX-M41).</summary>
+        internal IReadOnlyList<(long Tick, string Text)> ConsoleAuditForTest() => _consoleAudit;
 
         /// <summary>
         /// The build/refit bridge (P2 M1 over the wire). Kind "wall"/"door" designates at the
@@ -502,6 +774,7 @@ namespace Perilune.Web
             Send("designs", WireFormat.Designs(BuildDesigns()), force);
             Send("terminals", WireFormat.Terminals(BuildTerminals()), force);
             Send("relations", WireFormat.Relations(BuildRelations()), force);
+            Send("systems", WireFormat.Systems(_hull, BuildSystems()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -701,6 +974,16 @@ namespace Perilune.Web
             }
             return rows;
         }
+
+        /// <summary>The MOSS phosphor ledger for the `systems` channel — a READ-ONLY walk of sim
+        /// state through <see cref="ShipSystems.Compute"/>, built on the sim thread inside Render
+        /// alongside BuildRoster/BuildRelations. It is a pure derivation: no mutation, no RNG, no
+        /// Nudge-class side effect, and it adds no hashed state (a test ticks twins while reading
+        /// one of them and asserts the hashes match). NOT fog-gated — a ship's own telemetry is
+        /// fixed crew knowledge, the same deliberate rule as the roster. The optional
+        /// <see cref="SimHost.History"/> is the only source of the LAST FAULT column; without it
+        /// the column is honestly empty rather than fabricated.</summary>
+        private ShipSystemsReport BuildSystems() => ShipSystems.Compute(_sim, _host.History);
 
         // Reused scratch for TaskLabel — BuildRoster runs on the sim thread inside Render (≤10 Hz,
         // one call at a time), so a single shared builder is safe and keeps the label path from
@@ -948,7 +1231,7 @@ namespace Perilune.Web
         /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
         /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
         /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
-        /// {"type":"moss","op":"open|set|audit","tid":"..","text"?}). Unknown/garbage ⇒
+        /// {"type":"moss","op":"open|set|audit|sys|exec","tid":"..","text"?}). Unknown/garbage ⇒
         /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)
         {

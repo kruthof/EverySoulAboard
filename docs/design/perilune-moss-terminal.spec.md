@@ -75,7 +75,7 @@ the same deliberate rule as `roster`).
 |---|---|---|
 | `hull` | string | Ship designation. Deterministic from the world seed — a **name**, not a gauge (DA-M1 does not apply to identity strings). Stable for a given ship. |
 | `day` | int | `TickCount / SimClockUtil.TicksPerDay`. |
-| `uptime` | int | Raw `TickCount`. The client formats it (§2, `uptimeText`) — the host never ships a preformatted duration, because that is a culture bug waiting to happen on this de-DE machine. |
+| `uptime` | int | Raw `TickCount`. The client formats it (§2, `uptimeText`) — the host never ships a preformatted duration, because that is a culture bug waiting to happen on this de-DE machine. **[CORRECTED]** `Simulation.TickCount` is a 64-bit `long` and ships as one; JSON draws no int/long distinction, but a reader must not assume it fits in 32 bits forever. |
 | `id` | string | Stable snake_case key: `reactor`, `life_support`, `water_reclaim`, `hydroponics`, `thermal`, `fabrication`, `hull_integrity`, `nav_sensors`. Used by `moss sys` and by `open <system>`. |
 | `label` | string | Display text, already uppercase (`LIFE SUPPORT`, `NAV / SENSORS`). |
 | `load` | int | `0..100`, or **`-1`** meaning "no meaningful load" → renders an empty bar and `--`. |
@@ -94,13 +94,23 @@ tick and dwarf the ledger. It is fetched like `moss open`/`moss audit`.
 
 ```
 → {"cmd":"moss","op":"sys","tid":"reactor"}
-← {"type":"moss","ev":"sys","tid":"reactor","devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
+← {"type":"moss","ev":"sys","tid":"reactor","derivation":"…",
+   "devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
 ```
 
 `condition` and `rate` are ints `0..100` (percent — the wire carries no floats for these; the sim
 holds `Condition`/`Rate` as `0..1` floats and the host rounds once, `MidpointRounding.AwayFromZero`,
-InvariantCulture). `powered` is `0|1`. `note` is `""` or a short reason string
-(`"WORN — MAINTENANCE DUE"`, `"UNWIRED"`, `"FAILED"`).
+InvariantCulture). `powered` is `0|1`. `kind` is the append-only `DeviceKind` byte. `note` is `""` or
+a short reason string (`"FAILED"`, `"UNWIRED"`, `"UNPOWERED"`, `"WORN — MAINTENANCE DUE"`).
+
+> **[CORRECTED — additive contract change, `moss-model` please read.]** `derivation` is a **new
+> APPEND-ONLY top-level field** carrying IX-M22's plain-prose DERIVATION note. It costs a reader that
+> ignores it nothing, and it closes a real hole: §2's `detailView` promised `notes` with no wire
+> source, so the only way to render IX-M22 would have been to hardcode the prose client-side — a
+> second, unversioned copy of a derivation, free to drift out of truth from the code it describes.
+> That is exactly the failure DA-M3 exists to prevent, on the one screen least able to afford it. The
+> note now ships from the host that computed the row (`ShipSystems.Derivation`), deterministic and
+> never LLM text. **`moss-model`: take `notes` from `msg.derivation`, do not author it.**
 
 ### 1.3 `moss` op `exec` — the command prompt
 
@@ -123,10 +133,36 @@ are **read-only** and must stay so. Every write leaves as an existing `SetDoorSt
 `ISimCommand` is introduced by this feature.** If a lane finds itself writing one, stop — that is
 a contract request, and it means the design drifted.
 
+**[AS BUILT] The host parses; the adapters decide.** `GameSession.ExecConsole` tokenises the line and
+hands the verb straight to `IScriptable.TryInvoke` on the target it resolved from `_host.Registry` —
+the same registry `MossBindings.RegisterAdapters` fills for the interpreter. The whitelist is
+therefore inherited literally: add a verb to `DoorAdapter` and it works at the prompt with no second
+list to update, and `ship`/rooms stay read-only because `ShipMetricsAdapter`/`RoomAdapter` refuse
+every verb. Running the line through `MossCompiler`/`Interpreter` instead was **investigated and
+rejected** — recorded here so nobody re-opens it:
+
+1. the prompt's grammar is not MOSS's (`close door_storage` vs `close(door_storage)`), so a
+   translation step is unavoidable either way;
+2. `Interpreter`, `MossAuditLog` and `MossRuntimeException` are all `internal` to `Sim.Dsl`;
+3. **decisively**, `ScriptRuntime.SetProgram("@console", …)` registers a ProgramState that
+   `ScriptRuntime.StateChecksum` enumerates — a player *typo* would move the determinism hash — and a
+   failing statement publishes an `AlarmRaisedEvent` that `HistorySystem` (an `IStatefulSystem`)
+   folds into its own checksum. Either alone disqualifies it for a feature that adds no hashed state.
+
+**[AS BUILT] Host-side vs client-side verbs.** The host `exec` op owns the **device verbs**, the
+**bare property reads**, and `help`. The navigation verbs (`status`, `open <system>`, `log`, `prog`,
+`clear`, `exit`) are pure client state and never need a round trip — `moss-model` resolves them as
+`kind:'nav'` and they should not be sent. An unknown verb answers `UNKNOWN COMMAND '…' — TYPE HELP`,
+`ok:false`, never a stack trace.
+
 **IX-M41 — reads are free, writes are audited.** `status`, `open`, `log`, `prog`, `help`, `clear`,
 `exit`, and property reads (`ship.power`, `hydro.co2`, `vent_ls.rate`) are pure client/host reads.
 Every *write* additionally appends to the `@console` audit ring so the player's own commands sit
-in the same log as the DSL's, attributable and reviewable.
+in the same log as the DSL's, attributable and reviewable. **[AS BUILT]** That ring is **host-side**
+(a bounded 64-entry list on `GameSession`, matching `MossAuditLog.Capacity`) and is served by the
+existing `moss audit` op when `tid == "@console"`. It is deliberately *not* a `ScriptRuntime`
+per-program ring, for reason (3) under IX-M40. Entries use the interpreter's own text shape —
+`close(door_aft)`, `set(vent_ls.rate, 0.5)` — so player and program lines read as peers.
 
 **IX-M42 — the prompt is bounded.** Input is capped at 240 characters host-side (not only in the
 DOM), and a malformed line is a typed error response, never an exception and never a silent no-op.
@@ -174,6 +210,10 @@ export function detailView(model);                   // → { title, devices, no
 export function faultLogView(model);                 // → { title, entries, filterId }
 export function consoleLines(model);                 // → the `>` transcript, newest last, bounded
 ```
+
+**[CORRECTED] `detailView`'s `notes` comes off the wire**, from the `derivation` field the `sys`
+reply now carries (§1.2). The model formats and wraps it; it does not author it. There is exactly one
+copy of every derivation's prose, and it lives next to the code that computes the derivation.
 
 **Effects** are requests the DOM layer fulfils — the model never touches the socket:
 
