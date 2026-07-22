@@ -67,7 +67,7 @@ RNG, no `Nudge`-class side effects. Not fog-gated (a ship's own telemetry is fix
 the same deliberate rule as `roster`).
 
 ```
-{"type":"systems","hull":"7741","day":213,"uptime":5112074,
+{"type":"systems","hull":"7741","day":213,"uptime":184036640,
  "rows":[[id,label,load,state,faultDay,faultText,advisory],...]}
 ```
 
@@ -80,7 +80,7 @@ the same deliberate rule as `roster`).
 | `label` | string | Display text, already uppercase (`LIFE SUPPORT`, `NAV / SENSORS`). |
 | `load` | int | `0..100`, or **`-1`** meaning "no meaningful load" → renders an empty bar and `--`. |
 | `state` | int | `0` NOMINAL · `1` ATTEND · `2` DEGRADED · `3` OFFLINE. Append-only ladder. |
-| `faultDay` | int | Day of the newest attributable fault, or **`-1`** for none. |
+| `faultDay` | int | Day of the newest attributable fault, or **`-1`** for none. **No row ever invents a day**: `-1` unless a real history entry attributes to the row. |
 | `faultText` | string | Fault summary, uppercase, no day prefix (the client composes `DAY {n} · {text}`). `""` when `faultDay` is `-1`. |
 | `advisory` | string | One or two sentences of plain prose about this row, rendered under the rule when the row is selected (the mock's `> REACTOR: coolant loop B running 4°K warm…`). `""` renders nothing. Host-derived, deterministic, **never LLM text**. |
 
@@ -92,8 +92,18 @@ sort — same rule as the relations ring).
 DETAIL is **not** on the pushed channel: a per-device breakdown would re-send on every condition
 tick and dwarf the ledger. It is fetched like `moss open`/`moss audit`.
 
+> **[CORRECTED] MOSS ops are keyed by `"type"`, not `"cmd"` — in §1.2 and §1.3 both.** The survey
+> wrote `{"cmd":"moss",…}`, which is silently dropped: `WebCommand.Parse` reads `"cmd"` first and, if
+> it is non-null, switches and **returns without falling through** to the `"type"` switch
+> (`GameSession.cs:1249-1262`). `"moss"` is not a case there, so it hits `default` → `Kind.Unknown` →
+> ignored by the session, with no error anywhere. The doc comment at `GameSession.cs:1244-1246`
+> states the split, and the three shipped ops (`open`/`set`/`audit`) already use `"type"`. `sys` and
+> `exec` join the SAME `HandleMoss` switch `CmdKind.Moss` already routes to: no new command family,
+> no new parse branch. A test drives both ops through the real `Parse` for exactly this reason — a
+> handler test that constructs a `WebCommand` directly cannot see a dropped command.
+
 ```
-→ {"cmd":"moss","op":"sys","tid":"reactor"}
+→ {"type":"moss","op":"sys","tid":"reactor"}
 ← {"type":"moss","ev":"sys","tid":"reactor","derivation":"…",
    "devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
 ```
@@ -115,7 +125,7 @@ a short reason string (`"FAILED"`, `"UNWIRED"`, `"UNPOWERED"`, `"WORN — MAINTE
 ### 1.3 `moss` op `exec` — the command prompt
 
 ```
-→ {"cmd":"moss","op":"exec","tid":"@console","text":"close door_storage"}
+→ {"type":"moss","op":"exec","tid":"@console","text":"close door_storage"}
 ← {"type":"moss","ev":"exec","tid":"@console","ok":true,"lines":[[stream,"text"],...]}
 ```
 
@@ -296,7 +306,13 @@ a row-specific rule below overrides it*.
 > **[CORRECTED] A row whose hardware does not exist is OFFLINE with a stated reason, load `-1`** —
 > generalised from `nav_sensors` to every row (DA-M1 already implies it): `fabrication` with no
 > industry machines, `water_reclaim` with no tanks and no reclaimer, `hydroponics` with no beds,
-> `reactor` with nothing that generates.
+> `reactor` with nothing that generates. **The reason goes in `advisory`, never in `faultText`**: an
+> absence of hardware is not a fault and has no day (see `nav_sensors` below).
+>
+> **[CORRECTED] Every row's DERIVATION note ends with the same caveat**, because it is true of every
+> row and a player must not read LAST FAULT as "the current problem": *"LAST FAULT is the last thing
+> that went wrong on this row, NOT the current problem: nothing is published when a machine is
+> repaired, so a fault line never clears itself."* (§5.1 consequence 2, `MachineWearSystem.cs:262`.)
 
 | Row | LOAD | STATE | Notes / traps |
 |---|---|---|---|
@@ -307,7 +323,7 @@ a row-specific rule below overrides it*.
 | `thermal` | total waste heat (powered operational `HeatKW` + `thermal.def citizen_heat_w` × living crew) ÷ radiator rejection (`RadiatorRejectKW` × `EffectiveRate`) | **[CORRECTED]** measured room temperature, not `ShipMetrics.Heat`: any pressurised compartment outside `needs.def hypothermia_c … heat_stroke_c` ⇒ DEGRADED, outside 10–35 °C ⇒ ATTEND | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. **Why the correction:** `ShipMetrics.Heat` is a *count* of rooms in the comfort band, so it can read a healthy 0.95 while one compartment sits at −13 °C inflicting hypoxia-rate damage on anyone who walks in. Banding off the danger thresholds — the only temperatures with a real consumer (`NeedsSystem`) — is what "report the measured temperature" actually requires. Measured on the slice: NOMINAL day 0 → ATTEND day 1 (3.9 °C) → DEGRADED day 3 (−15.7 °C). |
 | `fabrication` | powered+operational ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder; none aboard ⇒ OFFLINE | Powered is not busy — no machine exposes a run-state (`ThermalSystem.cs:103-106` documents the same gap), so an idle powered fabricator is indistinguishable from a working one. Said in the DETAIL note. |
 | `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` (80) ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation is reused from `CitizenContext.cs:155-193` (mirrored, not referenced: `Sim.Core` must not depend on `Sim.Llm`). **[CORRECTED]** This row makes **no history join at all**, rather than one that finds nothing: nothing publishes a breach event, so any name match here would be an unrelated maintenance alarm rendered as a hull fault. `LAST FAULT` is `—` by construction. |
-| `nav_sensors` | `-1` (`--`) while no telescope exists; once one is placed, powered+operational ÷ total | **`OFFLINE` derived from the device census** finding no `Telescope` | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: its sensor pass is gated on `AnyPoweredTelescope` (`NavSystem.cs:104,121-128`) and no ship generator or authored ship places one. Never hardcoded — a test places a telescope and watches the row come alive, then wrecks it and watches the ladder (not a hardcode) put it back to OFFLINE. |
+| `nav_sensors` | `-1` (`--`) while no telescope exists; once one is placed, powered+operational ÷ total | **`OFFLINE` derived from the device census** finding no `Telescope`. **[CORRECTED]** `faultDay` is `-1` and `faultText` is `""`; the reason lives in `advisory` (`NO SENSOR HARDWARE — no telescope is installed…`). | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: its sensor pass is gated on `AnyPoweredTelescope` (`NavSystem.cs:104,121-128`) and no ship generator or authored ship places one. Never hardcoded — a test places a telescope and watches the row come alive, then wrecks it and watches the ladder (not a hardcode) put it back to OFFLINE. **Why the correction:** the survey's `NO SENSOR HARDWARE` *fault text* contradicts §1.1 (`faultText` is `""` when `faultDay` is `-1`), and §1.1 is the one that is right. An absence of hardware is not a fault and has no day; the only way to render it as one is to fabricate a timestamp, which collapses to `DAY 0 · NO SENSOR HARDWARE` on a diagnostic screen — exactly what DA-M1 forbids. STATE already says `OFFLINE`; ADVISORY says why. |
 
 ### 5.1 Fault attribution — a known-weak join, documented not hidden
 

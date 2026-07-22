@@ -80,6 +80,11 @@ namespace Perilune.Web
 
         private ShipMetricsSnapshot _metrics;
         private double _metricsAtWall = double.NegativeInfinity;
+        // The MOSS ledger is a full triple scan like ShipMetrics and carries the same "call at
+        // <=1 Hz" contract, so it is refreshed on the same cadence rather than on every ~10 Hz
+        // render. Send() still dedupes, so the wire sees it only when a row actually moves.
+        private ShipSystemsReport _systems;
+        private double _systemsAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
         private Thread _thread;
         private volatile bool _running;
@@ -774,7 +779,12 @@ namespace Perilune.Web
             Send("designs", WireFormat.Designs(BuildDesigns()), force);
             Send("terminals", WireFormat.Terminals(BuildTerminals()), force);
             Send("relations", WireFormat.Relations(BuildRelations()), force);
-            Send("systems", WireFormat.Systems(_hull, BuildSystems()), force);
+            if (force || nowWall - _systemsAtWall >= 1.0)
+            {
+                _systems = BuildSystems();
+                _systemsAtWall = nowWall;
+            }
+            Send("systems", WireFormat.Systems(_hull, _systems), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();

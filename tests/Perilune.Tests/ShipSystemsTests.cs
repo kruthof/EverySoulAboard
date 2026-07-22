@@ -73,8 +73,33 @@ namespace Perilune.Tests
                 if (row.FaultDay < 0) Assert.AreEqual("", row.FaultText, row.Id + " has no fault text without a fault");
                 Assert.IsNotEmpty(ShipSystems.Derivation(row.Id), row.Id + " ships an IX-M22 derivation note");
                 Assert.IsNotEmpty(row.Advisory, row.Id + " ships an advisory");
+                // Every row carries the LAST FAULT caveat: a player who reads that column as "the
+                // current problem" will chase a fault that was repaired two days ago, because
+                // nothing is published on repair (MachineWearSystem.cs:262).
+                StringAssert.Contains("NOT the current problem", ShipSystems.Derivation(row.Id), row.Id);
             }
-            Assert.AreEqual("", ShipSystems.Derivation("no_such_row"));
+            Assert.AreEqual("", ShipSystems.Derivation("no_such_row"), "and an unknown row invents nothing");
+        }
+
+        [Test]
+        public void Every_Offline_Row_States_Its_Reason_Because_The_Fault_Column_Will_Be_Empty()
+        {
+            // An OFFLINE row's `advisory` is the ONLY place its reason can appear: the fault column
+            // is correctly `—` (an absence of hardware is not a fault and has no day), and the STATE
+            // cell is one word. A bare sim puts most rows OFFLINE at once, which the shipped ships
+            // never do — so assert the invariant here rather than hope the slice exercises it.
+            var bare = ShipSystems.Compute(NewSim());
+            int offline = 0;
+            foreach (var row in bare.Rows)
+            {
+                Assert.AreEqual(-1, row.FaultDay, row.Id + " invents no day");
+                Assert.AreEqual("", row.FaultText, row.Id);
+                if (row.State != ShipSystemState.Offline) continue;
+                offline++;
+                Assert.IsNotEmpty(row.Advisory, row.Id + " OFFLINE without a stated reason");
+                Assert.Greater(row.Advisory.Length, 20, row.Id + " reason is prose, not a shrug");
+            }
+            Assert.Greater(offline, 1, "a bare sim really does put several rows OFFLINE");
         }
 
         [Test]
@@ -163,6 +188,13 @@ namespace Perilune.Tests
                 Assert.AreEqual(-1, nav.Load, "no meaningful load");
                 StringAssert.Contains("no telescope", nav.Advisory.ToLowerInvariant(),
                     "the row states WHY it is offline");
+                StringAssert.Contains("NO SENSOR HARDWARE", nav.Advisory);
+
+                // An absence of hardware is NOT a fault and has NO day. Rendering it as one
+                // collapses to "DAY 0 · NO SENSOR HARDWARE" — a fabricated timestamp on a
+                // diagnostic screen, which is the exact lie DA-M1 forbids.
+                Assert.AreEqual(-1, nav.FaultDay, "no fabricated day");
+                Assert.AreEqual("", nav.FaultText, "the reason lives in ADVISORY, not LAST FAULT");
                 CollectionAssert.IsEmpty(ShipSystems.ComputeDetail(host.Sim, "nav_sensors"));
             }
         }

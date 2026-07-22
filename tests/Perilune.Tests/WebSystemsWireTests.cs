@@ -287,6 +287,64 @@ namespace Perilune.Tests
             StringAssert.Contains("READ-ONLY", reply);
         }
 
+        // ------------------------------------------------------- end-to-end through the REAL Parse
+
+        [Test]
+        public void Sys_And_Exec_Reach_HandleMoss_Through_The_Real_Wire_Parse()
+        {
+            // A silently-dropped command is THE failure mode on this path, and it is invisible to a
+            // test that constructs a WebCommand by hand. MOSS ops are keyed by "type": Parse reads
+            // "cmd" first and, when it is non-null, switches and RETURNS without falling through to
+            // the "type" switch (GameSession.cs:1249-1262). So {"cmd":"moss",...} would land in
+            // Kind.Unknown and be ignored with no error anywhere. Drive the real bytes.
+            var (gs, host, sink) = Boot();
+            var door = host.Sim.Devices.Items.First(d => d.Kind == DeviceKind.Door && d.IsOpen);
+
+            sink.Clear();
+            var sys = WebCommand.Parse("{\"type\":\"moss\",\"op\":\"sys\",\"tid\":\"reactor\"}");
+            Assert.AreEqual(CmdKind.Moss, sys.Kind, "the sys op parses as a MOSS command");
+            Assert.AreEqual("sys", sys.Op);
+            Assert.AreEqual("reactor", sys.Tid);
+            gs.ApplyForTest(sys);
+            string sysReply = sink.Single(s => s.Contains("\"ev\":\"sys\""));
+            StringAssert.Contains("\"tid\":\"reactor\"", sysReply);
+            StringAssert.Contains("\"derivation\":\"", sysReply);
+
+            sink.Clear();
+            var exec = WebCommand.Parse(
+                "{\"type\":\"moss\",\"op\":\"exec\",\"tid\":\"@console\",\"text\":\"close " + door.Name + "\"}");
+            Assert.AreEqual(CmdKind.Moss, exec.Kind, "the exec op parses as a MOSS command");
+            Assert.AreEqual("exec", exec.Op);
+            gs.ApplyForTest(exec);
+            string execReply = sink.Single(s => s.Contains("\"ev\":\"exec\""));
+            StringAssert.Contains("\"ok\":true", execReply);
+            host.Sim.Tick();
+            Assert.IsFalse(door.IsOpen, "the write really landed — the whole path is live end to end");
+
+            // And the shape the survey wrote is the one that gets dropped. Pinned so nobody
+            // "fixes" the client back to it.
+            Assert.AreEqual(CmdKind.Unknown,
+                WebCommand.Parse("{\"cmd\":\"moss\",\"op\":\"sys\",\"tid\":\"reactor\"}").Kind,
+                "{\"cmd\":\"moss\"} is silently dropped — MOSS ops are keyed by \"type\"");
+        }
+
+        [Test]
+        public void Exec_Text_Survives_JSON_Escaping_Through_Parse()
+        {
+            // The prompt is free text on a JSON wire: quotes, backslashes and newlines must arrive
+            // as typed, and must still be refused as typed rather than mangled into something legal.
+            var (gs, _, sink) = Boot();
+            sink.Clear();
+            var cmd = WebCommand.Parse(
+                "{\"type\":\"moss\",\"op\":\"exec\",\"tid\":\"@console\",\"text\":\"close \\\"a\\\"\\nb\"}");
+            Assert.AreEqual("close \"a\"\nb", cmd.Text, "escapes survive the reader intact");
+            gs.ApplyForTest(cmd);
+            string reply = sink.Single(s => s.Contains("\"ev\":\"exec\""));
+            StringAssert.Contains("\"ok\":false", reply);
+            StringAssert.Contains("\\n", reply, "the echo re-escapes the newline rather than breaking the line");
+            Assert.IsEmpty(gs.ConsoleAuditForTest(), "and nothing was written");
+        }
+
         // ------------------------------------------------------------------ the abuse corpus
 
         [Test]

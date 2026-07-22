@@ -83,6 +83,12 @@ namespace Perilune.Sim
     /// neighbour <see cref="ShipMetrics"/>. Full linear device/room scans; call at ≤1 Hz, never
     /// per tick.
     ///
+    /// <para><b>No row ever invents a day.</b> <see cref="ShipSystemRow.FaultDay"/> is -1 (and
+    /// <see cref="ShipSystemRow.FaultText"/> is "") unless a real history entry attributes to the
+    /// row. An absence of hardware is not a fault and has no timestamp: `nav_sensors` says OFFLINE
+    /// in its STATE and explains itself in its ADVISORY, because a fabricated
+    /// `DAY 0 · NO SENSOR HARDWARE` on a diagnostic screen is exactly the lie DA-M1 forbids.</para>
+    ///
     /// <para><b>It adds no sim state.</b> No field, no <c>IStatefulSystem</c>, no def row, no
     /// hash fold: every number below is read out of state some system already owns. Nothing here
     /// mutates the sim, touches the RNG, or publishes an event — a read of this report between
@@ -235,6 +241,23 @@ namespace Perilune.Sim
         /// </summary>
         public static string Derivation(string id)
         {
+            string body = DerivationBody(id);
+            return body.Length == 0 ? "" : body + " " + FaultCaveat;
+        }
+
+        /// <summary>
+        /// The sentence EVERY row's derivation note ends with (spec §5.1). `MaintenanceSystem`
+        /// publishes nothing on repair (`MachineWearSystem.cs:262` — "completion is a notice, not an
+        /// alarm"), so faults can be shown but recoveries cannot. A player who reads LAST FAULT as
+        /// "the current problem" will chase a fault that was fixed two days ago, and the screen must
+        /// say so rather than let them.
+        /// </summary>
+        private const string FaultCaveat =
+            "LAST FAULT is the last thing that went wrong on this row, NOT the current problem: "
+          + "nothing is published when a machine is repaired, so a fault line never clears itself.";
+
+        private static string DerivationBody(string id)
+        {
             switch (id)
             {
                 case IdReactor:
@@ -337,7 +360,8 @@ namespace Perilune.Sim
             var sb = new StringBuilder(192);
             if (c.PowerSourceCount == 0)
             {
-                sb.Append("No generating hardware aboard.");
+                sb.Append("No generating hardware aboard — nothing on this ship makes power, so every "
+                          + "wired device is running on whatever the batteries still hold.");
             }
             else
             {
@@ -392,7 +416,8 @@ namespace Perilune.Sim
             var sb = new StringBuilder(224);
             if (c.PressurizedRooms == 0)
             {
-                sb.Append("No pressurised compartment left aboard.");
+                sb.Append("No pressurised compartment left aboard — there is no air to read, so this row "
+                          + "cannot band itself and reports nothing rather than guessing.");
             }
             else
             {
@@ -432,7 +457,8 @@ namespace Perilune.Sim
             var sb = new StringBuilder(192);
             if (c.Tanks == 0 && c.Reclaimers == 0)
             {
-                sb.Append("No tanks and no reclaimer aboard.");
+                sb.Append("No tanks and no reclaimer aboard — this ship stores no water and recycles "
+                          + "none, so there is no level to report.");
             }
             else
             {
@@ -469,7 +495,8 @@ namespace Perilune.Sim
             var sb = new StringBuilder(192);
             if (c.GrowBeds == 0)
             {
-                sb.Append("No grow beds aboard.");
+                sb.Append("No grow beds aboard — nothing on this ship grows food, so the crew eat only "
+                          + "what is already in stores.");
             }
             else
             {
@@ -513,7 +540,8 @@ namespace Perilune.Sim
             var sb = new StringBuilder(224);
             if (c.PressurizedRooms == 0)
             {
-                sb.Append("No pressurised compartment left aboard.");
+                sb.Append("No pressurised compartment left aboard — with no air there is nothing to hold "
+                          + "heat, so there is no temperature worth reporting.");
             }
             else
             {
@@ -546,7 +574,8 @@ namespace Perilune.Sim
 
             var sb = new StringBuilder(160);
             if (c.IndustryTotal == 0)
-                sb.Append("No fabricator, machine shop or recycler aboard.");
+                sb.Append("No fabricator, machine shop or recycler aboard — nothing on this ship can "
+                    + "make or reclaim parts.");
             else
                 sb.Append(c.IndustryLive.ToString(Ic)).Append(" of ").Append(c.IndustryTotal.ToString(Ic))
                   .Append(" industry machines powered and serviceable. ")
@@ -604,10 +633,14 @@ namespace Perilune.Sim
         {
             if (c.TelescopeTotal == 0)
             {
+                // faultDay -1 / faultText "" — an ABSENCE OF HARDWARE IS NOT A FAULT and has no day.
+                // The reason belongs in the advisory; the STATE column already says OFFLINE.
+                // Emitting a fault line here would collapse to "DAY 0 · NO SENSOR HARDWARE", i.e. a
+                // fabricated timestamp on a diagnostic screen — precisely what DA-M1 forbids.
                 return new ShipSystemRow(IdNavSensors, "NAV / SENSORS", -1, ShipSystemState.Offline,
                     -1, "",
-                    "No sensor hardware aboard: the device census finds no telescope, so NavSystem's "
-                  + "sensor pass never runs. Place one and this row comes alive.");
+                    "NO SENSOR HARDWARE — no telescope is installed, so NavSystem's sensor pass "
+                  + "never runs. Place one and this row comes alive.");
             }
 
             int load = Pct(c.TelescopeLive / (double)c.TelescopeTotal);
