@@ -67,7 +67,7 @@ RNG, no `Nudge`-class side effects. Not fog-gated (a ship's own telemetry is fix
 the same deliberate rule as `roster`).
 
 ```
-{"type":"systems","hull":"7741","day":213,"uptime":5112074,
+{"type":"systems","hull":"7741","day":213,"uptime":184036640,
  "rows":[[id,label,load,state,faultDay,faultText,advisory],...]}
 ```
 
@@ -75,12 +75,12 @@ the same deliberate rule as `roster`).
 |---|---|---|
 | `hull` | string | Ship designation. Deterministic from the world seed — a **name**, not a gauge (DA-M1 does not apply to identity strings). Stable for a given ship. |
 | `day` | int | `TickCount / SimClockUtil.TicksPerDay`. |
-| `uptime` | int | Raw `TickCount`. The client formats it (§2, `uptimeText`) — the host never ships a preformatted duration, because that is a culture bug waiting to happen on this de-DE machine. |
+| `uptime` | int | Raw `TickCount`. The client formats it (§2, `uptimeText`) — the host never ships a preformatted duration, because that is a culture bug waiting to happen on this de-DE machine. **[CORRECTED]** `Simulation.TickCount` is a 64-bit `long` and ships as one; JSON draws no int/long distinction, but a reader must not assume it fits in 32 bits forever. |
 | `id` | string | Stable snake_case key: `reactor`, `life_support`, `water_reclaim`, `hydroponics`, `thermal`, `fabrication`, `hull_integrity`, `nav_sensors`. Used by `moss sys` and by `open <system>`. |
 | `label` | string | Display text, already uppercase (`LIFE SUPPORT`, `NAV / SENSORS`). |
 | `load` | int | `0..100`, or **`-1`** meaning "no meaningful load" → renders an empty bar and `--`. |
 | `state` | int | `0` NOMINAL · `1` ATTEND · `2` DEGRADED · `3` OFFLINE. Append-only ladder. |
-| `faultDay` | int | Day of the newest attributable fault, or **`-1`** for none. |
+| `faultDay` | int | Day of the newest attributable fault, or **`-1`** for none. **No row ever invents a day**: `-1` unless a real history entry attributes to the row. |
 | `faultText` | string | Fault summary, uppercase, no day prefix (the client composes `DAY {n} · {text}`). `""` when `faultDay` is `-1`. |
 | `advisory` | string | One or two sentences of plain prose about this row, rendered under the rule when the row is selected (the mock's `> REACTOR: coolant loop B running 4°K warm…`). `""` renders nothing. Host-derived, deterministic, **never LLM text**. |
 
@@ -92,20 +92,46 @@ sort — same rule as the relations ring).
 DETAIL is **not** on the pushed channel: a per-device breakdown would re-send on every condition
 tick and dwarf the ledger. It is fetched like `moss open`/`moss audit`.
 
+> **[CORRECTED] MOSS ops are keyed by `"type"`, not `"cmd"` — in §1.2 and §1.3 both.** The survey
+> wrote `{"cmd":"moss",…}`, which is silently dropped: `WebCommand.Parse` reads `"cmd"` first and, if
+> it is non-null, switches and **returns without falling through** to the `"type"` switch
+> (`GameSession.cs:1249-1262`). `"moss"` is not a case there, so it hits `default` → `Kind.Unknown` →
+> ignored by the session, with no error anywhere. The doc comment at `GameSession.cs:1244-1246`
+> states the split, and the three shipped ops (`open`/`set`/`audit`) already use `"type"`. `sys` and
+> `exec` join the SAME `HandleMoss` switch `CmdKind.Moss` already routes to: no new command family,
+> no new parse branch. A test drives both ops through the real `Parse` for exactly this reason — a
+> handler test that constructs a `WebCommand` directly cannot see a dropped command.
+
 ```
-→ {"cmd":"moss","op":"sys","tid":"reactor"}
-← {"type":"moss","ev":"sys","tid":"reactor","devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
+→ {"type":"moss","op":"sys","tid":"reactor"}
+← {"type":"moss","ev":"sys","tid":"reactor","derivation":"…",
+   "devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
 ```
 
-`condition` and `rate` are ints `0..100` (percent — the wire carries no floats for these; the sim
-holds `Condition`/`Rate` as `0..1` floats and the host rounds once, `MidpointRounding.AwayFromZero`,
-InvariantCulture). `powered` is `0|1`. `note` is `""` or a short reason string
-(`"WORN — MAINTENANCE DUE"`, `"UNWIRED"`, `"FAILED"`).
+`condition` and `rate` are ints `0..100`, **or `-1` when the underlying float is not finite** (percent —
+the wire carries no floats for these; the sim holds `Condition`/`Rate` as `0..1` floats and the host
+rounds once, `MidpointRounding.AwayFromZero`, InvariantCulture). A `-1` here means *unreadable*, not
+zero, and the row's `note` says `READING NOT FINITE`. `powered` is `0|1`. `kind` is the append-only `DeviceKind` byte. `note` is `""` or
+a short reason string (`"FAILED"`, `"UNWIRED"`, `"UNPOWERED"`, `"WORN — MAINTENANCE DUE"`,
+`"READING NOT FINITE"`). **[CORRECTED]** A `WaterTank` always prints its LITRES here
+(`"497.1 L"`, `"0.0 L — DRY, BELOW ONE DRINK"`), because `water_reclaim`'s STATE turns on a level no
+other column shows: the slice's dry tank holds **0.02 L, not 0**, and a player told "a tank is dry"
+with no way to see the number would reasonably conclude the row is broken. This uses the existing
+`note` field — the device tuple shape is unchanged, so `moss-model` needs no update.
+
+> **[CORRECTED — additive contract change, `moss-model` please read.]** `derivation` is a **new
+> APPEND-ONLY top-level field** carrying IX-M22's plain-prose DERIVATION note. It costs a reader that
+> ignores it nothing, and it closes a real hole: §2's `detailView` promised `notes` with no wire
+> source, so the only way to render IX-M22 would have been to hardcode the prose client-side — a
+> second, unversioned copy of a derivation, free to drift out of truth from the code it describes.
+> That is exactly the failure DA-M3 exists to prevent, on the one screen least able to afford it. The
+> note now ships from the host that computed the row (`ShipSystems.Derivation`), deterministic and
+> never LLM text. **`moss-model`: take `notes` from `msg.derivation`, do not author it.**
 
 ### 1.3 `moss` op `exec` — the command prompt
 
 ```
-→ {"cmd":"moss","op":"exec","tid":"@console","text":"close door_storage"}
+→ {"type":"moss","op":"exec","tid":"@console","text":"close door_storage"}
 ← {"type":"moss","ev":"exec","tid":"@console","ok":true,"lines":[[stream,"text"],...]}
 ```
 
@@ -123,10 +149,36 @@ are **read-only** and must stay so. Every write leaves as an existing `SetDoorSt
 `ISimCommand` is introduced by this feature.** If a lane finds itself writing one, stop — that is
 a contract request, and it means the design drifted.
 
+**[AS BUILT] The host parses; the adapters decide.** `GameSession.ExecConsole` tokenises the line and
+hands the verb straight to `IScriptable.TryInvoke` on the target it resolved from `_host.Registry` —
+the same registry `MossBindings.RegisterAdapters` fills for the interpreter. The whitelist is
+therefore inherited literally: add a verb to `DoorAdapter` and it works at the prompt with no second
+list to update, and `ship`/rooms stay read-only because `ShipMetricsAdapter`/`RoomAdapter` refuse
+every verb. Running the line through `MossCompiler`/`Interpreter` instead was **investigated and
+rejected** — recorded here so nobody re-opens it:
+
+1. the prompt's grammar is not MOSS's (`close door_storage` vs `close(door_storage)`), so a
+   translation step is unavoidable either way;
+2. `Interpreter`, `MossAuditLog` and `MossRuntimeException` are all `internal` to `Sim.Dsl`;
+3. **decisively**, `ScriptRuntime.SetProgram("@console", …)` registers a ProgramState that
+   `ScriptRuntime.StateChecksum` enumerates — a player *typo* would move the determinism hash — and a
+   failing statement publishes an `AlarmRaisedEvent` that `HistorySystem` (an `IStatefulSystem`)
+   folds into its own checksum. Either alone disqualifies it for a feature that adds no hashed state.
+
+**[AS BUILT] Host-side vs client-side verbs.** The host `exec` op owns the **device verbs**, the
+**bare property reads**, and `help`. The navigation verbs (`status`, `open <system>`, `log`, `prog`,
+`clear`, `exit`) are pure client state and never need a round trip — `moss-model` resolves them as
+`kind:'nav'` and they should not be sent. An unknown verb answers `UNKNOWN COMMAND '…' — TYPE HELP`,
+`ok:false`, never a stack trace.
+
 **IX-M41 — reads are free, writes are audited.** `status`, `open`, `log`, `prog`, `help`, `clear`,
 `exit`, and property reads (`ship.power`, `hydro.co2`, `vent_ls.rate`) are pure client/host reads.
 Every *write* additionally appends to the `@console` audit ring so the player's own commands sit
-in the same log as the DSL's, attributable and reviewable.
+in the same log as the DSL's, attributable and reviewable. **[AS BUILT]** That ring is **host-side**
+(a bounded 64-entry list on `GameSession`, matching `MossAuditLog.Capacity`) and is served by the
+existing `moss audit` op when `tid == "@console"`. It is deliberately *not* a `ScriptRuntime`
+per-program ring, for reason (3) under IX-M40. Entries use the interpreter's own text shape —
+`close(door_aft)`, `set(vent_ls.rate, 0.5)` — so player and program lines read as peers.
 
 **IX-M42 — the prompt is bounded.** Input is capped at 240 characters host-side (not only in the
 DOM), and a malformed line is a typed error response, never an exception and never a silent no-op.
@@ -174,6 +226,10 @@ export function detailView(model);                   // → { title, devices, no
 export function faultLogView(model);                 // → { title, entries, filterId }
 export function consoleLines(model);                 // → the `>` transcript, newest last, bounded
 ```
+
+**[CORRECTED] `detailView`'s `notes` comes off the wire**, from the `derivation` field the `sys`
+reply now carries (§1.2). The model formats and wraps it; it does not author it. There is exactly one
+copy of every derivation's prose, and it lives next to the code that computes the derivation.
 
 **Effects** are requests the DOM layer fulfils — the model never touches the socket:
 
@@ -232,24 +288,61 @@ VS-R5 is the precedent).
 
 ---
 
-## 5. Derivations — the honest table (verify against source; correct with evidence)
+## 5. Derivations — the honest table (AS BUILT, 2026-07-22)
 
-Citations are from the read-only survey and **must be re-verified by the `moss-systems` lane**.
+**Built and verified** by the `moss-systems` lane in `sim/Sim.Core/ShipSystems.cs`. Rows marked
+**[CORRECTED]** differ from the read-only survey this spec was written from; each carries its
+evidence. Every citation below was re-verified against source.
+
 `MaintainBelow` / `FailBelow` are per-`DeviceKind` def thresholds (`MachineDefs.cs:38-64`) and give
 the NOMINAL / ATTEND / DEGRADED ladder for free: a row is DEGRADED if any member device is below
 `FailBelow` (i.e. `!IsOperational`), ATTEND if any is below `MaintainBelow`, else NOMINAL — *unless
 a row-specific rule below overrides it*.
 
+> **[CORRECTED] LOAD is the row's PRIMARY GAUGE, not uniformly a utilisation.** The survey's table
+> already mixes three meanings (utilisation, fill level, crop progress, mean condition) and that is
+> fine — but it must be *said*, because a column headed LOAD that silently means four things is the
+> same class of misread as an invented number. Each row's DETAIL screen states which it is
+> (`ShipSystems.Derivation`, IX-M22).
+>
+> **[CORRECTED] `ShipSystems.Compute` takes an optional second argument, the `HistorySystem`.**
+> History is not on `Simulation` — it is a stack system the host owns (`SimHost.History`). A caller
+> without one gets a complete ledger whose LAST FAULT column is honestly empty. No new sim state.
+>
+> **[CORRECTED] A row whose hardware does not exist is OFFLINE with a stated reason, load `-1`** —
+> generalised from `nav_sensors` to every row (DA-M1 already implies it): `fabrication` with no
+> industry machines, `water_reclaim` with no tanks and no reclaimer, `hydroponics` with no beds,
+> `reactor` with nothing that generates. **The reason goes in `advisory`, never in `faultText`**: an
+> absence of hardware is not a fault and has no day (see `nav_sensors` below).
+>
+> **[CORRECTED] A non-finite reading is OFFLINE with a stated reason, never a healthy zero.** If any
+> input a row consumes is `NaN` or infinite, the row renders load `-1`, STATE `OFFLINE` and an
+> `INSTRUMENT UNREADABLE` advisory naming the instrument. This was a real laundering path: `Pct(NaN)`
+> returned 0, `Fixed1(NaN)` printed `"0.0"`, and a NaN room lost every comparison silently while
+> still counting as pressurised — so one poisoned float rendered **eight NOMINAL rows** and a
+> fabricated `mean O2 0%`, while the command prompt read the same field back as `NaN`. The two halves
+> of one feature disagreeing about one number is the worst possible failure on a screen whose purpose
+> is "the truth about this ship". The prompt additionally **rejects non-finite `set` values**
+> (`NumberStyles.Float` parses the `NaN` symbol, and both `UtilityDeviceAdapter`'s `< 0f` guard and
+> `Commands.cs:47`'s clamp are NaN-blind) — but the *rendering* fix is the load-bearing one, since a
+> MOSS program can already reach NaN through `0/0` (`Interpreter.cs:407-408`), so this is not an
+> IX-M40 authority question.
+>
+> **[CORRECTED] Every row's DERIVATION note ends with the same caveat**, because it is true of every
+> row and a player must not read LAST FAULT as "the current problem": *"LAST FAULT is the last thing
+> that went wrong on this row, NOT the current problem: nothing is published when a machine is
+> repaired, so a fault line never clears itself."* (§5.1 consequence 2, `MachineWearSystem.cs:262`.)
+
 | Row | LOAD | STATE | Notes / traps |
 |---|---|---|---|
-| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over the power network, clamped 0..100 | brownout ⇒ DEGRADED; battery reserve < 25% ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-179`). |
-| `life_support` | scrubber capacity vs crew CO₂ production (defs × census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. The ATTEND/DEGRADED bands must be chosen so the shipping slice's real 500→17,644 ppm arc is *visible*, because it is a real failure. |
-| `water_reclaim` | `ShipMetrics.Water` (tank fill fraction) | reclaimer `Condition` ladder; any tank at 0 L ⇒ ATTEND | `tank_hydro` hits 0.0 L on day 1.2 on the shipping slice (a live bug, `ECONOMY-PLAN.md` B-2). This row should show that. |
-| `hydroponics` | mean `GrowBed.Progress` | growbed condition ladder; no water available ⇒ ATTEND | Frozen mid-crop beds are the visible symptom of B-2. |
-| `thermal` | radiator rejection (5 kW each, `MachineDefs.cs:71`) vs heat load | `ShipMetrics.Heat` bands | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. |
-| `fabrication` | powered ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder | — |
-| `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation already exists, deterministic, at `CitizenContext.cs:155-193`; reuse it rather than re-deriving. No breach event is ever published, so `LAST FAULT` is legitimately `—`. |
-| `nav_sensors` | `-1` (`--`) | **always `OFFLINE`** while no `Telescope` is placed | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: no ship generator or authored ship places a `Telescope`, so the sensor pass never runs. Fault text: `NO SENSOR HARDWARE`. If a telescope is ever placed this row must come alive on its own — derive the OFFLINE state from the device census, never hardcode it. |
+| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over wired devices — **[CORRECTED]** the DENOMINATOR carries the off-grid gate too (`PowerSystem.cs:184` skips off-grid devices entirely, generation and battery charge included). Ungated, one stray unwired `SolarWing` took the row from `LOAD 50%` to `LOAD 25%`: a player deconstructing a conduit run would watch the reactor report the ship as *less* loaded. Clamped 0..100. "Wanting" mirrors the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a vent only wants power while open. | brownout ⇒ DEGRADED; **[CORRECTED]** generating hardware aboard but *none of it wired* ⇒ DEGRADED (otherwise a ship with no conduits renders a quiet `--`/NOMINAL while every device is dark); battery reserve < 25% of WIRED capacity ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-189`). **[CORRECTED]** `PowerSystem` exposes no brownout accessor (`_wasBrownout` is private, `PowerSystem.cs:71`), so the brownout is derived from its OBSERVABLE consequence: a wanting, wired, drawing device whose `Powered` is false has been shed by the tier walk (`PowerSystem.cs:203-234` stamps exactly that). No new public API on a spine file. |
+| `life_support` | crew CO₂ production ÷ scrubber removal capacity (`atmosphere.def` × living census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. **[CORRECTED — bands now chosen]**: `< 1,000` NOMINAL · `≥ 1,000` ATTEND · `≥ 2,000` DEGRADED · `≥ needs.def co2_narcosis_ppm` (40,000) OFFLINE. The 1,000/2,000 figures are the "stale"/"bad" wording the crew themselves use (`CitizenContext.cs:67,69`); the narcosis figure is read live from `sim.Defs` because it is the ppm number with a *damage* consumer (`NeedsSystem.cs:130,132` — **[CORRECTED]** an earlier revision cited `:52`, which is class-doc prose about SocialSystem; the spec claimed every citation was re-verified and this one was not). **[CORRECTED — ppO₂ too]** STATE is the WORSE of the CO₂ ladder and a worst-room ppO₂ ladder (`< hypoxia_ppo2_kpa` DEGRADED, `< severe_hypoxia_ppo2_kpa` OFFLINE). DA-M4’s own logic — band off the measured quantity that damages crew — applies identically to oxygen, and `NeedsSystem.cs:130,132` reads ppO₂ and CO₂ through the *same* two-rung test. Banding on CO₂ alone let a single hypoxic compartment sit behind a NOMINAL row on the screen named LIFE SUPPORT, contradicted only by a ship-wide MEAN in the advisory — and a mean is exactly what hides one bad room. No ATTEND rung for ppO₂: `needs.def` defines no third threshold and this row does not invent one. Not reachable on the slice. Measured on the slice this puts the row at DEGRADED from day 1 (6,060 ppm) through day 3 (16,677 ppm) while LOAD stays at 52–58% — i.e. the bar says "coping" and the STATE says "poisoned", which is the truth. |
+| `water_reclaim` | stored litres ÷ total tank capacity (== `ShipMetrics.Water`) | reclaimer/tank condition ladder; **[CORRECTED]** any tank holding less than one drink (`sustenance.def drink_liters`, 0.5 L) ⇒ ATTEND | `tank_hydro` runs dry on the shipping slice (a live bug, `ECONOMY-PLAN.md` B-2). **The survey's `= 0 L` test does not catch it**: measured at day 3 the tank holds **0.02 L**, so a literal zero test reads NOMINAL and hides the exact failure this row exists to show. `< drink_liters` is the sim's OWN dry test — a tank below it is invisible to a thirsty crew member (`SustenanceSystem.cs:126,220,261`). With it the row reads ATTEND at day 3, as it should. |
+| `hydroponics` | mean `GrowBed.Progress` | growbed condition ladder; a bed whose fluid network cannot cover one second of irrigation ⇒ ATTEND | Frozen mid-crop beds are the visible symptom of B-2. The dry test mirrors `WaterSystem.TryDrawWater` (`WaterSystem.cs:215-228`) **read-only**, epsilon included — `TryDrawWater` itself mutates and is never called from the report. Known cold-start artifact: at tick 0 no fluid network exists yet, so every bed reads dry for that one instant. That is what `HydroponicsSystem` would also find at tick 0. |
+| `thermal` | total waste heat (powered operational `HeatKW` + `thermal.def citizen_heat_w` × living crew) ÷ radiator rejection (`RadiatorRejectKW` × `EffectiveRate`). **[CORRECTED]** DOORS and devices whose tile resolves to vacuum/a door marker are excluded, matching all four of `ThermalSystem`'s gates rather than only the vent one: a door is a conduction edge and its `HeatKW` is dropped by design (`ThermalSystem.cs:70-78`), and a device in no room heats nothing (`:83`). The slice has 19 powered doors worth 0.95 kW — a ~6% overstatement of ship waste heat. | **[CORRECTED]** measured room temperature, not `ShipMetrics.Heat`: any pressurised compartment outside `needs.def hypothermia_c … heat_stroke_c` ⇒ DEGRADED, outside 10–35 °C ⇒ ATTEND | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. **Why the correction:** `ShipMetrics.Heat` is a *count* of rooms in the comfort band, so it can read a healthy 0.95 while one compartment sits at −13 °C inflicting hypoxia-rate damage on anyone who walks in. Banding off the danger thresholds — the only temperatures with a real consumer (`NeedsSystem`) — is what "report the measured temperature" actually requires. Measured on the slice: NOMINAL day 0 → ATTEND day 1 (3.9 °C) → DEGRADED day 3 (−15.7 °C). |
+| `fabrication` | powered+operational ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder; none aboard ⇒ OFFLINE | Powered is not busy — no machine exposes a run-state (`ThermalSystem.cs:103-106` documents the same gap), so an idle powered fabricator is indistinguishable from a working one. Said in the DETAIL note. |
+| `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` (80) ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation is reused from `CitizenContext.cs:155-193` (mirrored, not referenced: `Sim.Core` must not depend on `Sim.Llm`). **[CORRECTED]** This row makes **no history join at all**, rather than one that finds nothing: nothing publishes a breach event, so any name match here would be an unrelated maintenance alarm rendered as a hull fault. `LAST FAULT` is `—` by construction. |
+| `nav_sensors` | `-1` (`--`) while no telescope exists; once one is placed, powered+operational ÷ total | **`OFFLINE` derived from the device census** finding no `Telescope`. **[CORRECTED]** `faultDay` is `-1` and `faultText` is `""`; the reason lives in `advisory` (`NO SENSOR HARDWARE — no telescope is installed…`). | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: its sensor pass is gated on `AnyPoweredTelescope` (`NavSystem.cs:104,121-128`) and no ship generator or authored ship places one. Never hardcoded — a test places a telescope and watches the row come alive, then wrecks it and watches the ladder (not a hardcode) put it back to OFFLINE. **Why the correction:** the survey's `NO SENSOR HARDWARE` *fault text* contradicts §1.1 (`faultText` is `""` when `faultDay` is `-1`), and §1.1 is the one that is right. An absence of hardware is not a fault and has no day; the only way to render it as one is to fabricate a timestamp, which collapses to `DAY 0 · NO SENSOR HARDWARE` on a diagnostic screen — exactly what DA-M1 forbids. STATE already says `OFFLINE`; ADVISORY says why. |
 
 ### 5.1 Fault attribution — a known-weak join, documented not hidden
 
@@ -258,14 +351,29 @@ a row-specific rule below overrides it*.
 MOSS `alarm()`). So a fault is attributed to a row by **matching device names in the group against
 the entry text** — a string join, and the lane must say so in a doc comment.
 
-Two consequences to design around rather than discover later:
+**[CORRECTED] A row may additionally declare one structural `HistoryKind` as its own**, because the
+name join alone cannot see a fault that names no device. Only `reactor` does: a brownout entry names
+a *network*, not a device (`HistorySystem.cs:104-110`). **And that structural match must be narrowed
+to the fault, not the recovery**: `HistoryKind.Brownout` covers *both* sentences HistorySystem writes
+from `BrownoutChangedEvent`, and the entry does not carry the direction. Left unnarrowed, the shipped
+slice renders `DAY 2 · POWER NETWORK 1 RECOVERED` in a column headed LAST FAULT — measured, and
+exactly the class of misread this spec exists to stop. The implementation matches HistorySystem's own
+literal (`"browned out"`); a test pins that `RECOVERED` never reaches the column.
+
+Three consequences to design around rather than discover later:
 
 1. The 200-entry history ring is roughly **87% brownout spam by day 3** (`MECHANICS.md` §13.8), so
    non-power rows will frequently have no attributable fault. `—` is the correct, honest render.
+   Measured on the slice at day 3: only `reactor` has an attributable fault. Every other row is `—`.
 2. `MaintenanceSystem` publishes **nothing on repair** (`MachineWearSystem.cs:262` — "completion is
    a notice, not an alarm"), so faults can be shown but recoveries cannot. A fault line is
    therefore "the last thing that went wrong", **not** "the current problem". Word the column
    accordingly and say it in the DETAIL derivation note.
+3. **[CORRECTED] Designer-rule alarms never attribute to a row.** `DesignerRuleSystem` publishes
+   `AlarmRaisedEvent` with the *rule name* as `SourceId`, so `overheat_guard`'s 2,579 alarms carry no
+   device name and match nothing. The `thermal` row therefore shows `—` while that rule screams. That
+   is the correct outcome twice over: the join genuinely cannot see it, and the rule's claim is
+   backwards anyway (DA-M1, §5 `thermal`).
 
 ---
 
@@ -280,6 +388,45 @@ Two consequences to design around rather than discover later:
 Every package additionally runs `./ci.sh` **in-worktree** and passes an independent Opus gate
 (blind spec → CI battery → adversarial/mutation pass → written PASS/FAIL), per `HANDOVER.md`
 "The rituals".
+
+---
+
+## 6.1 Known limitations of the shipped ledger (recorded, not smoothed over)
+
+Disclosed by the `moss-systems` lane after its independent gate. None is a blocker; all are the kind
+of thing this project records rather than discovers twice.
+
+1. **Fault attribution stays a weak string join.** Designer-rule alarms carry the *rule name* as
+   `SourceId` (`DesignerRuleSystem.cs:183,191`), so `overheat_guard`'s 2,579 alarms attribute to
+   nothing. Measured on the slice at day 3: only `reactor` has an attributable fault; every other row
+   is `—`. Correct, but thin.
+2. **`hydroponics` and `reactor` both read pessimistically at tick 0.** Before the first tick no
+   fluid or power network exists, so every bed reads dry and generation reaches nothing. Literally
+   true for that instant, and exactly what `HydroponicsSystem`/`PowerSystem` would find — but it is a
+   cold-start artifact, not a fault.
+3. **`fabrication` cannot distinguish idle from busy** — no machine exposes a run-state. Stated in
+   its DERIVATION note.
+4. **The ppO₂ band is unreachable on shipped content.** Measured worst ppO₂ on the slice at day 3 is
+   18.7 kPa, comfortably above `hypoxia_ppo2_kpa` (16). The ladder is real and tested, but nothing in
+   shipped content exercises it — so it is unproven against emergent play, not merely unproven.
+5. **"Up to 1 s stale" is WALL time, not sim time** (`GameSession.cs:782` gates on `nowWall`). One
+   wall-second at a `tps`-ticks-per-second speed is `tps/10` sim-seconds of ledger age (the sim runs
+   at 10 Hz). So worst-case staleness is ~1 sim-second at 1×, **~1.67 sim-minutes at 100×** and
+   **~16.7 sim-minutes at 1000×** — minutes, not hours. On a *diagnostic* screen that still
+   materially understates the staleness, and a player watching a fast-forwarded ship is exactly who
+   is watching this screen. The dedupe means a stale payload is not re-sent, so the client cannot
+   tell the difference. **Candidate fix for v2: gate on `TickCount` rather than wall time** (inherited
+   from `_metricsAtWall`; changing the cadence under a fixup was the wrong move).
+6. **`ship.*` prompt reads share a mutable cache.** `ShipMetricsAdapter` caches its snapshot for one
+   *sim-second* keyed on `TickCount / TicksPerSecond`, and one instance is registered on the shared
+   `DeviceRegistry` for `DesignerRuleSystem`, `ScriptRuntime` and now the MOSS prompt alike. Whoever
+   reads first within a sim-second fixes the snapshot the others see. The cadence is a pure function
+   of the tick, so both determinism twins recompute at the same ticks — and the gate could **not**
+   produce a divergence over 1,300 slice ticks. Recorded as **latent**, not as a bug.
+7. **`MECHANICS.md` §13.1 carries the same bad citation this spec did** — it attributes the 40,000 ppm
+   damage consumer to `NeedsSystem.cs:52`, which is class-doc prose about `SocialSystem`. The real
+   consumers are `NeedsSystem.cs:130,132`. Left for the doc's owning lane rather than edited here
+   mid-wave.
 
 ---
 

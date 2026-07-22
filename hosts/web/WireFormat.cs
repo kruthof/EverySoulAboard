@@ -31,6 +31,7 @@ namespace Perilune.Web
     ///   designs {"type":"designs","cells":[[x,y,deck,kind],..]}   (pending build ghosts; kind 0 wall / 1 door)
     ///   terminals {"type":"terminals","list":[[tid,deck,x,y],..]} (MOSS terminal directory)
     ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
+    ///   systems {"type":"systems","hull":"..","day":..,"uptime":..,"rows":[[id,label,load,state,faultDay,faultText,advisory],..]}
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
     /// </summary>
@@ -414,6 +415,62 @@ namespace Perilune.Web
             return sb.ToString();
         }
 
+        // ------------------------------------------------------------------- systems (MOSS ledger)
+
+        /// <summary>
+        /// The MOSS phosphor ledger as a cached state channel
+        /// (`docs/design/perilune-moss-terminal.spec.md` §1.1) — rebuilt each render, deduped and
+        /// snapshot-replayed on connect, alongside roster / designs / terminals / relations. Not
+        /// fog-gated: a ship's own telemetry is fixed crew knowledge, the same deliberate rule as
+        /// the roster.
+        ///
+        /// <para><paramref name="hull"/> is the ship designation — a deterministic NAME derived
+        /// from the world seed (<see cref="Perilune.Sim.ShipSystems.HullDesignation"/>), not a
+        /// gauge, so DA-M1 does not apply to it.</para>
+        ///
+        /// <para><c>uptime</c> ships as the RAW tick count and the client formats it. The host
+        /// deliberately never sends a preformatted duration: that is a culture bug waiting to
+        /// happen on this de-DE dev machine, and the client already owns every other format
+        /// decision on this screen.</para>
+        ///
+        /// <para>Each row is a compact tuple
+        /// <c>[id, label, load, state, faultDay, faultText, advisory]</c>. <c>load</c> is 0..100 or
+        /// the <b>-1</b> "no meaningful load" sentinel; <c>state</c> is the append-only
+        /// <see cref="Perilune.Sim.ShipSystemState"/> byte; <c>faultDay</c> is -1 for none (and
+        /// <c>faultText</c> is then ""). Row order is the HOST's fixed presentation order, never a
+        /// client sort — same rule as the relations ring.</para>
+        /// </summary>
+        public static string Systems(string hull, in ShipSystemsReport report)
+        {
+            var sb = new StringBuilder(1024);
+            sb.Append("{\"type\":\"systems\",\"hull\":");
+            AppendString(sb, hull ?? "");
+            sb.Append(",\"day\":").Append(report.Day.ToString(Ic));
+            sb.Append(",\"uptime\":").Append(report.Uptime.ToString(Ic));
+            sb.Append(",\"rows\":[");
+            var rows = report.Rows;
+            if (rows != null)
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var r = rows[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[');
+                    AppendString(sb, r.Id ?? "");
+                    sb.Append(',');
+                    AppendString(sb, r.Label ?? "");
+                    sb.Append(',').Append(r.Load.ToString(Ic))
+                      .Append(',').Append(((int)r.State).ToString(Ic))
+                      .Append(',').Append(r.FaultDay.ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, r.FaultText ?? "");
+                    sb.Append(',');
+                    AppendString(sb, r.Advisory ?? "");
+                    sb.Append(']');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         /// <summary>An interactable device the player selected — v0 carries the MOSS-addressable
         /// terminal id so the client can open its program panel.</summary>
         public static string Device(string kind, string tid)
@@ -523,12 +580,15 @@ namespace Perilune.Web
         // ------------------------------------------------------------------- MOSS (W3)
         //
         // The MOSS terminal bridge. Ops the client sends: "open" (server replies source +
-        // diag), "set" (server replies diag), "audit" (server replies audit). "dryrun" is
-        // RESERVED for a future compile-only-preview op — not implemented here.
+        // diag), "set" (server replies diag), "audit" (server replies audit), "sys" (server
+        // replies one row's device breakdown) and "exec" (server runs one prompt line).
+        // "dryrun" is RESERVED for a future compile-only-preview op — not implemented here.
         //   source  {"type":"moss","ev":"source","tid":"..","text":"..","hash":N}
         //   diag    {"type":"moss","ev":"diag","tid":"..","ok":bool,"diags":[[line,col,sev,"msg"],..]}
         //   audit   {"type":"moss","ev":"audit","tid":"..","lines":[[tick,"text"],..]}
         //   rterror {"type":"moss","ev":"rterror","tid":"..","text":".."}
+        //   sys     {"type":"moss","ev":"sys","tid":"..","derivation":"..","devices":[[..],..]}
+        //   exec    {"type":"moss","ev":"exec","tid":"..","ok":bool,"lines":[[stream,"text"],..]}
         // line/col are 1-based; sev is "error"|"warning"; hash is the FNV-1a32 of the source
         // (== the runtime's saved SourceHash), emitted unsigned so client and sim agree.
 
@@ -577,6 +637,72 @@ namespace Perilune.Web
                 {
                     if (i > 0) sb.Append(',');
                     sb.Append('[').Append(lines[i].Tick.ToString(Ic)).Append(',');
+                    AppendString(sb, lines[i].Text ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        /// <summary>
+        /// SYSTEM DETAIL for one ledger row (spec §1.2) — fetched on demand, never pushed: a
+        /// per-device breakdown would re-send on every condition tick and dwarf the ledger.
+        ///   {"type":"moss","ev":"sys","tid":"reactor","derivation":"..",
+        ///    "devices":[[name,kind,condition,powered,rate,deck,x,y,note],..]}
+        /// <c>kind</c> is the append-only <see cref="Perilune.Sim.DeviceKind"/> byte; condition and
+        /// rate are percent ints 0..100 (the sim holds 0..1 floats and
+        /// <see cref="Perilune.Sim.ShipSystems"/> rounds once, AwayFromZero); powered is 0|1.
+        ///
+        /// <para><c>derivation</c> is an APPEND-ONLY top-level field carrying the row's plain-prose
+        /// DERIVATION note (IX-M22). It ships from the host on purpose: the note states how THIS
+        /// code computed the row and what the proxy's limits are, and a client-side copy would be
+        /// free to drift out of truth from the derivation it describes — precisely the failure
+        /// DA-M3 exists to prevent. A reader that ignores the field is unaffected.</para>
+        /// </summary>
+        public static string MossSys(string tid, IReadOnlyList<ShipSystemDevice> devices, string derivation)
+        {
+            var sb = MossHeader(tid, "sys");
+            sb.Append(",\"derivation\":"); AppendString(sb, derivation ?? "");
+            sb.Append(",\"devices\":[");
+            if (devices != null)
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    var d = devices[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[');
+                    AppendString(sb, d.Name ?? "");
+                    sb.Append(',').Append(((int)d.Kind).ToString(Ic))
+                      .Append(',').Append(d.Condition.ToString(Ic))
+                      .Append(',').Append(d.Powered ? "1" : "0")
+                      .Append(',').Append(d.Rate.ToString(Ic))
+                      .Append(',').Append(d.Deck.ToString(Ic))
+                      .Append(',').Append(d.X.ToString(Ic))
+                      .Append(',').Append(d.Y.ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, d.Note ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        /// <summary>
+        /// The command-prompt reply (spec §1.3):
+        ///   {"type":"moss","ev":"exec","tid":"@console","ok":true,"lines":[[stream,"text"],..]}
+        /// <c>stream</c> is 0 echo · 1 output · 2 error. <c>ok</c> is false when the line did not
+        /// parse or the target did not resolve — a malformed line is ALWAYS a typed error reply,
+        /// never an exception and never a silent no-op (IX-M42).
+        /// </summary>
+        public static string MossExec(string tid, bool ok, IReadOnlyList<(int Stream, string Text)> lines)
+        {
+            var sb = MossHeader(tid, "exec");
+            sb.Append(",\"ok\":").Append(ok ? "true" : "false");
+            sb.Append(",\"lines\":[");
+            if (lines != null)
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[').Append(lines[i].Stream.ToString(Ic)).Append(',');
                     AppendString(sb, lines[i].Text ?? "");
                     sb.Append(']');
                 }
