@@ -10,9 +10,25 @@ using System.Threading.Tasks;
 
 namespace Perilune.Llm.Providers
 {
-    /// <summary>Where and as whom the <see cref="OllamaBackend"/> speaks. Ollama is a local server,
-    /// so there is no key.</summary>
-    public sealed record OllamaConfig(string BaseUrl, string Model);
+    /// <summary>
+    /// Where and as whom the <see cref="OllamaBackend"/> speaks. Ollama is a local server, so there is
+    /// no key — but unlike a cloud provider it needs two RESIDENCY hints, both of which are silent
+    /// footguns at their server defaults:
+    ///
+    /// <para><b>KeepAlive</b> — how long the server holds the weights in memory after a turn. The
+    /// server default is <c>OLLAMA_KEEP_ALIVE=5m</c>, so a player who talks to one crew member, plays
+    /// for six minutes and talks again pays a full model load (seconds, on a 7B) inside
+    /// ConversationHub's 60 s per-request budget. A conversational game wants the model resident.</para>
+    ///
+    /// <para><b>NumCtx</b> — the context window. Ollama does NOT error when a prompt exceeds it; it
+    /// silently drops the OLDEST tokens, which in our layout are the system rules and the persona
+    /// block — the crew member would quietly stop being that crew member. The prompt grows every turn
+    /// (transcript suffix), so the window must have headroom over one turn's worth.</para>
+    ///
+    /// Both are nullable: null omits the field and defers to the server's own default, which is what a
+    /// caller who has tuned their Ollama install wants.
+    /// </summary>
+    public sealed record OllamaConfig(string BaseUrl, string Model, string KeepAlive = "30m", int? NumCtx = 8192);
 
     /// <summary>
     /// Adapter for a local Ollama server (LLM_CITIZENS.md §8 — the offline-capable live backend).
@@ -179,6 +195,14 @@ namespace Perilune.Llm.Providers
                 w.WriteStartObject();
                 w.WriteString("model", _config.Model ?? string.Empty);
                 w.WriteBoolean("stream", true);
+                if (!string.IsNullOrEmpty(_config.KeepAlive)) w.WriteString("keep_alive", _config.KeepAlive);
+                if (_config.NumCtx.HasValue)
+                {
+                    w.WritePropertyName("options");
+                    w.WriteStartObject();
+                    w.WriteNumber("num_ctx", _config.NumCtx.Value);
+                    w.WriteEndObject();
+                }
                 w.WritePropertyName("messages");
                 w.WriteStartArray();
                 foreach (ChatMessage m in messages)

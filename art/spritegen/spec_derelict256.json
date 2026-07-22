@@ -1,0 +1,294 @@
+{
+ "name": "derelict-256",
+ "tile_px": 256,
+ "style": "hd",
+ "api_image_size": "1K",
+ "hue_centers_deg": [
+  215,
+  28,
+  198,
+  12,
+  150
+ ],
+ "hue_pull": 0.45,
+ "harmonize_sat_min": 0.18,
+ "key_color": [
+  0,
+  255,
+  0
+ ],
+ "key_tolerance": 70,
+ "style_block": "Top-down 2D game sprite for a drifting derelict starship colony sim. HARD-EDGE FLAT-SHADED game art in the legibility discipline of Prison Architect: every surface is a FLAT FILL, at most THREE value steps per material (shade / body / light), and the steps meet at a HARD EDGE. NO airbrush, NO soft gradient longer than a tenth of the image, NO noise, NO dither, NO grain, NO texture overlay, NO bloom, NO glow haze, NO chromatic aberration, NO vignette. NO fine detail: no hairline seams, no rivets or bolts smaller than a twentieth of the image, no coiled cables, no wire bundles, no panel-line webs, no stitching, no individual hair strands. Fewer, larger, flatter shapes always beat more, smaller, softer ones. Target about twenty flat colours in the whole image. SILHOUETTE: one closed readable mass with at most two subordinate volumes; nothing thinner than a twentieth of the image; the shape must still be nameable shrunk to a thumbnail. OUTLINE: a hard uniform dark ink line about a thirtieth of the image wide around the whole silhouette and around the few major internal divisions — the ink is a very dark desaturated version of the colour it borders, never pure black. LIGHT: one single light source from the UPPER LEFT — every light step on the upper-left of every form, every shade step on the lower-right, no second light, no rim light from below. Camera: orthographic top-down tilted twenty degrees, so a standing object shows a small front face about a fifth of its height; flat floor-level objects are seen straight down. MATERIAL WORLD: a cold, old, welded ship kept alive by repairs — graphite plate, dull steel, dark polymer, one warm aged brass; visible repairs, bolted patches, mismatched panels, weld beads, honest wear. COLOUR IS RARE AND EARNED: surfaces are near-neutral cool grey; the only saturated things are a lit machine screen or indicator (warm amber), a hazard mark (deep red-orange), and living plants (green). NEVER magenta, NEVER neon pink, NEVER electric cyan, NEVER purple. ABSOLUTELY NO DROP SHADOW, no cast shadow, no contact shadow, no ambient occlusion pool, no darkened ground under the object — the game draws all shadows itself. No text, no letters, no numbers, no labels, no watermark, no frame, no border. Object centred, plain flat solid background.",
+ "assets": [
+  {
+   "name": "anchor_floor",
+   "role": "floor",
+   "tileable": true,
+   "prompt": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no lamps and no vignette and no border. MATERIAL: bare graphite deck plating of an old starship. Large square plates roughly two-thirds the width of the image so the joint rhythm is coarser than one tile, separated by a straight recessed channel; one shallow drainage groove crossing the swatch. Exactly three flat values, hard-edged: shade #4e5158, body #6d7077, light #929498. Cool neutral grey, almost no colour at all. WEAR IS THE SIGNATURE: a scuffed traffic lane worn lighter across the plates, one plate replaced with a slightly mismatched welded patch, one dark stain — all drawn using ONLY the three values above, never a new hue and never as noise. No outline, no border, no edge lip, no vignette. Edges must continue the pattern so it tiles perfectly in all four directions.",
+   "states": {
+    "grid": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no vignette and no border. MATERIAL: heavy steel walkway grating laid over a dark machine void, the floor of an engineering space. Broad flat bars with wide dark slots between them; the slots are FLAT DARK BARS, never an open lattice you can see through. Exactly three flat values, hard-edged: shade #4e433a, body #695e55, light #867d76 — a warm rusted steel, clearly warmer than a plain grey deck. Wear: a rust bloom at one corner and a bar worn bright by boots, drawn only with those three values. No outline, no border, no vignette. Tiles perfectly in all four directions.",
+    "seal": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no vignette and no border. MATERIAL: poured heat-sealed composite floor of a clean medical bay. Almost white, spotless, with ONE fine straight grout line quartering the swatch. This is the brightest surface on the whole ship. Exactly three flat values, hard-edged: shade #737a7e, body #a1a9ad, light #d9dfe2 — a cold clinical grey-blue white. Wear: one faint scuff near a corner only. No outline, no border, no vignette. Tiles perfectly in all four directions.",
+    "weave": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no vignette and no border. MATERIAL: a matted synthetic floor pad laid over deck plate in the crew's own quarters — the one WARM, soft, lived-in surface on a cold ship. Soft-edged irregular matting with a slightly uneven weave read as broad flat patches, not as woven threads. Exactly three flat values, hard-edged: shade #6a5d4e, body #8f8274, light #b8ada0 — warm sand-brown, the most colour any floor is allowed. Wear: a path worn through to the plate beneath at one edge, one small dark spill. No outline, no border, no vignette. Tiles perfectly in all four directions.",
+    "rime": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no vignette and no border. MATERIAL: raw uncoated structural deck of a depressurised compartment — no floor covering at all, bare ribs and stringers showing through, pale frost rime crusted along every seam. Cold and dead; it must read as somewhere you should not walk. Exactly three flat values, hard-edged: shade #363d46, body #4d555d, light #6a7076 — cold blue-grey. The frost is the light value only, laid in the seams, never a white glow. No outline, no border, no vignette. Tiles perfectly in all four directions."
+   }
+  },
+  {
+   "name": "anchor_wall",
+   "role": "wall",
+   "tileable": true,
+   "prompt": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with completely uniform light and no vignette and no border. MATERIAL: the LIT TOP FACE of a starship hull wall — brushed graphite armour plate seen from directly above. Large plates whose joint rhythm is coarser than the image, a broad straight welded seam, a repaired section bolted flat. This is a bright surface: it is how the ship's architecture reads against its floors. Exactly three flat values, hard-edged: shade #6b7076, body #92979d, light #b9bec3 — cool neutral steel grey with almost no colour. Wear: one long scrape and one darker patched plate, drawn only with those three values. CRITICAL: NO outline anywhere, NO edge line, NO lip, NO bevel, NO border, NO vignette, NO side face and NO vertical face — this swatch is the flat top only. The game draws every edge and corner itself. Edges must continue the pattern so it tiles perfectly in all four directions.",
+   "states": {
+    "side": "Seamless HORIZONTALLY repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, with completely uniform light and no vignette and no border. MATERIAL: the VERTICAL FRONT FACE of a starship hull wall, seen very slightly from above — the face you see below the wall's top. Riveted graphite armour panelling in a horizontal band rhythm, one continuous recessed conduit channel running left to right, one bolted repair plate. This face is in shadow relative to the top: it is clearly darker than the wall top but clearly lighter than a dark floor. At most TWO flat values across the whole height, hard-edged, no vertical gradient — it is a flat face, not a curved cylinder: shade #554d47, body #71665f — a warm dark steel. NO outline, NO edge line, NO top or bottom lip, NO border, NO ground, NO shadow beneath. Left and right edges must continue the pattern for perfect horizontal tiling."
+   }
+  },
+  {
+   "name": "anchor_debris",
+   "role": "debris",
+   "tileable": true,
+   "prompt": "Seamless repeating TEXTURE SWATCH filling 100 percent of the canvas — a flat material sample, not an object, seen straight down with uniform light and no vignette and no border. MATERIAL: collapsed starship wreckage, but composed of only FIVE OR SIX LARGE RECOGNISABLE PIECES across the whole swatch — a torn hull plate, a bent structural strut, a burst crate, a folded deck panel, a snapped beam. Each piece is a flat closed shape with a hard dark ink outline and at most three flat values; the gaps between them are flat dark shadow-free voids. It must NOT be a fine rubble field, NOT a scatter of small fragments, NOT noise. Cool graphite and dull steel with one warm rusted piece; shade #3f434a, body #5c6169, light #868b92, rust #6b5a49. No vignette, no border. Tiles perfectly in all four directions."
+  },
+  {
+   "name": "anchor_door",
+   "role": "door",
+   "prompt": "CLOSED heavy pressure door set in a wall opening, seen top-down tilted twenty degrees, filling the whole square image edge to edge. One thick slab of graphite armour with a single straight vertical seam down the middle, a broad recessed handle bar, and a narrow rectangular viewport of dark glass. A band of hazard marking across the lower third: flat deep red-orange and dark chevrons, four broad chevrons only, hard-edged. One small indicator lamp beside the frame glowing flat warm amber. Three flat values on the slab: shade #4a4e54, body #6a6f76, light #8f949a. Hard uniform dark ink outline around the slab and around the viewport and the hazard band. Flat fills only, no gradient, no glow haze, no shadow, no text.",
+   "states": {
+    "open": "The SAME heavy pressure door, OPEN: the slab retracted into the wall so the doorway stands clear, seen top-down tilted twenty degrees, filling the whole square image edge to edge. The open threshold is a flat dark recess crossed by a single raised sill track; the retracted slab shows as a narrow flat band at one side with its hazard chevrons and its handle bar cropped by the wall. The indicator lamp beside the frame is flat warm amber. Same slab values, same ink outline, same hazard colour as the closed version. Flat fills only, no gradient, no glow haze, no shadow, no text."
+   }
+  },
+  {
+   "name": "anchor_pawn",
+   "role": "pawn",
+   "keyed": true,
+   "fill": 0.72,
+   "prompt": "Crew member standing at ease, seen from above at a slight three-quarter angle (the same high camera as a walk-cycle sprite): one closed rounded silhouette in a worn heavy work jacket, headphones resting around the neck, short windswept dark hair read as ONE flat mass. The head is angled so the face shows in THREE-QUARTER PROFILE — gaze level, looking off toward one side as if watching the deck, absolutely NOT tilted up, NOT looking at the viewer or camera. The face is TWO small eye marks and one small mouth mark and nothing else: no nose shading, no brow, no ears, no freckles. At most two flat values per mass — jacket, trousers, hair, skin — meeting at hard edges. The jacket carries ONE saturated accent: a broad flat warm amber panel across the shoulders, the only strong colour in the image; everything else is near-neutral. Hard uniform dark ink outline around the whole figure and around the few major internal divisions (arm from torso, head from collar). Relaxed natural stance with weight on one leg, arms loose, emotionally relatable, readable shrunk to a thumbnail. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame, centred, with clear empty green margin all around and especially below the feet.",
+   "frames": [
+    "Crew member in a worn heavy work jacket with a broad flat warm amber shoulder panel, headphones around the neck, short windswept dark hair as one flat mass, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet.",
+    "Crew member in a worn heavy work jacket with a broad flat warm amber shoulder panel, headphones around the neck, short windswept dark hair as one flat mass, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet."
+   ]
+  },
+  {
+   "name": "anchor_pawn_b",
+   "role": "pawn_b",
+   "keyed": true,
+   "fill": 0.72,
+   "prompt": "Male crew member standing at ease, seen from above at a slight three-quarter angle (the same high camera as a walk-cycle sprite): warm middle-aged man with dark skin and a short greying beard read as ONE flat mass, worn heavy flight jacket, small toolbelt. The head is angled so the face shows in THREE-QUARTER PROFILE — gaze level, looking off toward one side as if checking a readout, absolutely NOT tilted up, NOT looking at the viewer or camera. The face is TWO small eye marks and one small mouth mark and nothing else. At most two flat values per mass, meeting at hard edges. The jacket carries ONE saturated accent: a broad flat deep rust-orange panel across the chest, the only strong colour in the image. Hard uniform dark ink outline around the figure and around the few major internal divisions. Relaxed natural stance, arms loose, same character proportions and painting language as a matching set, readable shrunk to a thumbnail. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame, centred, with clear empty green margin all around and especially below the feet.",
+   "frames": [
+    "Warm middle-aged man with dark skin and a short greying beard as one flat mass, worn heavy flight jacket with a broad flat deep rust-orange chest panel, small toolbelt, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet.",
+    "Warm middle-aged man with dark skin and a short greying beard as one flat mass, worn heavy flight jacket with a broad flat deep rust-orange chest panel, small toolbelt, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet."
+   ]
+  },
+  {
+   "name": "anchor_pawn_c",
+   "role": "pawn_c",
+   "keyed": true,
+   "fill": 0.72,
+   "prompt": "Female crew member standing at ease, seen from above at a slight three-quarter angle (the same high camera as a walk-cycle sprite): young woman with red hair tied back, drawn as ONE flat silhouette mass with a single hard-edged highlight shape — absolutely NO individual curls, NO strands, NO freckles. Worn heavy work jacket. The head is angled so the face shows in THREE-QUARTER PROFILE — gaze level, looking off toward one side with a quiet hopeful expression, absolutely NOT tilted up, NOT looking at the viewer or camera. The face is TWO small eye marks and one small mouth mark and nothing else. At most two flat values per mass, meeting at hard edges. The jacket carries ONE saturated accent: a broad flat pale gold panel down one sleeve, the only strong colour in the image besides the hair. Hard uniform dark ink outline around the figure and around the few major internal divisions. Relaxed natural stance, arms loose, same character proportions and painting language as a matching set, readable shrunk to a thumbnail. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame, centred, with clear empty green margin all around and especially below the feet.",
+   "frames": [
+    "Young woman with red hair tied back as ONE flat mass with a single hard-edged highlight shape (no curls, no strands, no freckles), worn heavy work jacket with a broad flat pale gold sleeve panel, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 1: mid-stride, LEFT leg forward and right arm forward, weight shifted, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet.",
+    "Young woman with red hair tied back as ONE flat mass with a single hard-edged highlight shape (no curls, no strands, no freckles), worn heavy work jacket with a broad flat pale gold sleeve panel, seen from above at a slight three-quarter angle (the same high camera, character, palette and proportions as the matching idle pose), face in three-quarter profile looking level in the walking direction — NOT up, NOT at the viewer; face is two eye marks and one mouth mark only. WALK CYCLE FRAME 2: mid-stride, RIGHT leg forward and left arm forward, weight shifted the other way, clearly walking. Flat fills, at most two values per mass, hard uniform dark ink outline. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 72 percent of the frame with clear empty green margin all around and especially below the feet."
+   ]
+  },
+  {
+   "name": "anchor_corpse",
+   "role": "corpse",
+   "keyed": true,
+   "fill": 0.85,
+   "prompt": "Fallen crew member seen from above, lying prone: the same crew silhouette language as a standing figure but flat on the deck, one closed quiet mass, face turned away and not visible. Respectful and completely non-graphic — no blood, no wound, no distortion. Colour drained to near-neutral: at most two flat values per mass and NO saturated accent anywhere, so it never out-reads a living crew member. Hard uniform dark ink outline around the whole figure. Centred on a plain solid green background: the backdrop must be EXACTLY pure green #00FF00 edge to edge — never white, never grey, no gradient, no vignette. Object fills about 85 percent of the frame."
+  },
+  {
+   "name": "anchor_terminal",
+   "role": "terminal",
+   "keyed": true,
+   "fill": 0.72,
+   "prompt": "Ship control station RUNNING, seen top-down tilted twenty degrees: one closed graphite pedestal mass with a single broad angled screen face and a plain keyboard slab — no small parts, no visible cables, no scattered buttons. The screen is the ONLY saturated thing in the image: a flat warm amber lit face covering about a twentieth of the frame, with two flat darker amber bars on it standing for readouts. One small warm indicator lamp. Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the whole silhouette and around the screen face. One bolted repair patch on the pedestal side. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text or numbers on the screen. Centred on a plain solid green background (#00FF00), object fills about 72 percent of the frame.",
+   "states": {
+    "off": "Ship control station UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same pedestal silhouette, framing, palette and painting as its running version, with ONE difference — the screen face is DEAD: flat dark near-black grey, no amber, no glow, no readout bars, and the indicator lamp is dark. Nothing else changes: no moved parts, no opened panels, no extra detail. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 72 percent of the frame.",
+    "broken": "Ship control station BROKEN, seen top-down tilted twenty degrees: EXACTLY the same pedestal silhouette, framing, palette and painting as its running version, with the screen face DEAD (flat dark near-black grey, no amber, no glow) plus TWO changes and no more — one flat hard-edged crack across the screen, and one small flat deep red-orange fault mark on the body covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO scorch cloud, NO debris. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 72 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_scrubber",
+   "role": "scrubber",
+   "keyed": true,
+   "fill": 0.78,
+   "prompt": "Air scrubber machine RUNNING, seen top-down tilted twenty degrees: one squat closed graphite cylinder mass with a broad circular vent grille on top read as a few wide flat blades — not many thin blades — and one thick pipe stub at the base. The ONLY saturated thing is a flat warm amber status band on the housing covering about a twentieth of the frame. Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the silhouette and around the grille. One welded repair band around the cylinder. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame.",
+   "states": {
+    "off": "Air scrubber machine UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same cylinder silhouette, framing, palette and painting as its running version, with ONE difference — the status band is DEAD: flat dark near-black grey, no amber, no glow. Nothing else changes: the grille blades sit in the same position, no opened panels, no extra detail. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame.",
+    "broken": "Air scrubber machine BROKEN, seen top-down tilted twenty degrees: EXACTLY the same cylinder silhouette, framing, palette and painting as its running version, with the status band DEAD (flat dark near-black grey, no amber) plus TWO changes and no more — one grille blade bent flat and out of line, and one small flat deep red-orange fault mark on the housing covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO scorch cloud, NO debris. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_reclaimer",
+   "role": "reclaimer",
+   "keyed": true,
+   "fill": 0.78,
+   "prompt": "Water reclaimer machine RUNNING, seen top-down tilted twenty degrees: one closed graphite box mass with a single broad drum wrapped by ONE thick coil band and a wide flat sight window — no small pipework, no valve clusters, no fittings. The ONLY saturated thing is the sight window lit flat warm amber, about a twentieth of the frame. Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the silhouette and the window. One bolted repair plate on the drum. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame.",
+   "states": {
+    "off": "Water reclaimer machine UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with ONE difference — the sight window is DEAD: flat dark near-black grey, no amber, no glow. Nothing else changes. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame.",
+    "broken": "Water reclaimer machine BROKEN, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with the sight window DEAD (flat dark near-black grey) plus TWO changes and no more — one flat hard-edged split in the coil band, and one small flat deep red-orange fault mark covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO leaking puddle, NO scorch cloud. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_fabricator",
+   "role": "fabricator",
+   "keyed": true,
+   "fill": 0.88,
+   "prompt": "Fabricator machine RUNNING, seen top-down tilted twenty degrees: one heavy closed graphite bench mass with a single thick folded arm above it and one broad flat work plate — no small joints, no cable loops, no scattered tooling. The ONLY saturated thing is a flat warm amber emitter tip and a matching amber status bar, together about a twentieth of the frame. Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the silhouette, the arm and the work plate. One mismatched welded panel on the bench side. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+   "states": {
+    "off": "Fabricator machine UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with ONE difference — the emitter tip and status bar are DEAD: flat dark near-black grey, no amber, no glow. The arm stays in exactly the same folded position; nothing else changes. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+    "broken": "Fabricator machine BROKEN, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with the emitter tip and status bar DEAD (flat dark near-black grey) plus TWO changes and no more — the arm bent flat out of line at one joint, and one small flat deep red-orange fault mark covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO scorch cloud, NO debris. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_machineshop",
+   "role": "machineshop",
+   "keyed": true,
+   "fill": 0.88,
+   "prompt": "Machine shop station RUNNING, seen top-down tilted twenty degrees: one heavy closed graphite workbench mass with a single broad angled screen at the back edge and ONE large flat tool block on the surface — no scattered hand tools, no wire spools, no small parts. The ONLY saturated thing is the screen face lit flat warm amber, about a twentieth of the frame. Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the silhouette, the screen and the tool block. One bolted repair patch on the bench front. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+   "states": {
+    "off": "Machine shop station UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with ONE difference — the screen face is DEAD: flat dark near-black grey, no amber, no glow. Nothing else changes. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+    "broken": "Machine shop station BROKEN, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with the screen face DEAD (flat dark near-black grey) plus TWO changes and no more — one flat hard-edged crack across the screen, and one small flat deep red-orange fault mark covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO scorch cloud, NO scattered tools. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_recycler",
+   "role": "recycler",
+   "keyed": true,
+   "fill": 0.88,
+   "prompt": "Salvage recycler RUNNING, seen top-down tilted twenty degrees: one large closed graphite hopper mass with a wide flat mouth showing TWO thick crusher rollers and one broad chute at the side — no teeth detail, no small linkage, no hazard tape clutter. Saturated elements, together about a twentieth of the frame: a flat warm amber work lamp at the chute, plus one narrow band of flat deep red-orange hazard chevrons on the rim (four broad chevrons only). Three flat values on the body: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the silhouette, the mouth and the rollers. One welded repair plate on the hopper. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+   "states": {
+    "off": "Salvage recycler UNPOWERED, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with ONE difference — the work lamp is DEAD: flat dark near-black grey, no amber, no glow. The hazard chevrons stay exactly as they are; the rollers stay in exactly the same position; nothing else changes. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame.",
+    "broken": "Salvage recycler BROKEN, seen top-down tilted twenty degrees: EXACTLY the same silhouette, framing, palette and painting as its running version, with the work lamp DEAD (flat dark near-black grey) plus TWO changes and no more — one crusher roller bent flat out of line, and one small flat deep red-orange fault mark covering about a thirtieth of the frame. Absolutely NO smoke, NO sparks, NO scorch cloud, NO spilled debris. Flat fills, hard edges, hard dark ink outline, light from the upper left, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame."
+   }
+  },
+  {
+   "name": "anchor_watertank",
+   "role": "watertank",
+   "keyed": true,
+   "fill": 0.75,
+   "prompt": "Water tank, seen top-down tilted twenty degrees: one closed steel cylinder mass with a single broad band around it and one flat round sight port, plus ONE thick valve stub — no pipe cluster, no fittings. The ONLY saturated thing is the sight port, a flat cool blue-grey disc about a fortieth of the frame. Three flat values: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the silhouette and the port. One bolted repair patch on the shell. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 75 percent of the frame."
+  },
+  {
+   "name": "anchor_radiator",
+   "role": "radiator",
+   "keyed": true,
+   "fill": 0.9,
+   "prompt": "Heat radiator, seen top-down tilted twenty degrees: one long closed graphite frame containing FIVE broad flat cooling fins — five only, wide and flat, never a comb of thin blades. The ONLY saturated element is a narrow flat warm amber strip visible between two of the fins, about a fortieth of the frame. Three flat values: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the frame and around each fin. One welded repair plate at one end. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 90 percent of the frame."
+  },
+  {
+   "name": "anchor_solar",
+   "role": "solar",
+   "keyed": true,
+   "fill": 0.88,
+   "prompt": "Solar collector panel, seen top-down tilted twenty degrees: one flat closed rectangular mass — a steel frame holding a SINGLE dark blue-grey collector face divided by exactly THREE straight cell lines, never a fine grid — plus one small junction box at an edge. The ONLY saturated element is a small flat warm amber lamp on the junction box, about a fiftieth of the frame. Flat values: frame shade #4b5158, frame body #6d747c, collector face #3a4552 with one lighter facet #4d5a68. Hard uniform dark ink outline around the frame and the collector face. One cracked cell drawn as a single hard-edged flat shape. Flat fills, hard edges, light from the upper left, no reflection sheen, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 88 percent of the frame."
+  },
+  {
+   "name": "anchor_battery",
+   "role": "battery",
+   "keyed": true,
+   "fill": 0.8,
+   "prompt": "Battery bank, seen top-down tilted twenty degrees: one closed graphite rack mass holding FOUR broad flat cells — four only, wide, never a dense row — with one thick bus bar running across them. The ONLY saturated element is a flat warm amber charge bar on each cell, together about a twentieth of the frame. Three flat values: shade #43474d, body #62676e, light #878c93. Hard uniform dark ink outline around the rack and each cell. One mismatched replacement cell in a slightly different value. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+  },
+  {
+   "name": "anchor_vent",
+   "role": "vent",
+   "keyed": true,
+   "fill": 0.58,
+   "prompt": "Deck air vent seen STRAIGHT DOWN, flush with the floor and not raised: one round steel grate with FIVE broad flat louvre slots — five only, wide, never a fine grille. The ONLY saturated element is a faint flat warm amber line visible in one slot, about a hundredth of the frame. Three flat values: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the grate rim and around each slot. Dust caught at one edge, drawn as a single flat shape. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 58 percent of the frame."
+  },
+  {
+   "name": "anchor_light",
+   "role": "light",
+   "keyed": true,
+   "fill": 0.55,
+   "prompt": "Deck lamp seen STRAIGHT DOWN, flush with the ceiling plane and not raised: one round steel housing with a single flat lit disc inside it. The lit disc is warm amber-white and flat — a solid shape with a hard edge, NOT a glow, NOT a halo, NOT a gradient — covering about a fifteenth of the frame; the game draws the light it casts, this sprite must not. Three flat values on the housing: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the housing and around the lit disc. Flat fills, hard edges, light from the upper left, no glow haze, no bloom, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 55 percent of the frame."
+  },
+  {
+   "name": "anchor_ladder",
+   "role": "ladder",
+   "keyed": true,
+   "fill": 0.95,
+   "prompt": "Deck ladder hatch seen STRAIGHT DOWN, flush with the floor: one open square opening in the deck showing FOUR broad flat ladder rungs descending into flat darkness — four only, thick, never a long thin ladder. A band of flat deep red-orange and dark hazard chevrons around one edge of the opening, four broad chevrons only. Three flat values on the frame: shade #4b5158, body #6d747c, light #949aa1; the shaft below is one flat near-black. Hard uniform dark ink outline around the opening and around each rung. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 95 percent of the frame."
+  },
+  {
+   "name": "anchor_growbed",
+   "role": "growbed",
+   "keyed": true,
+   "key_color": [
+    255,
+    0,
+    255
+   ],
+   "fill": 0.95,
+   "prompt": "Hydroponic grow bed, seen top-down tilted twenty degrees: one closed steel trough mass filled with lush healthy GREEN leafy plants massed as THREE OR FOUR broad flat leaf clusters — never many small leaves, never fine fronds. The plants are the only saturated thing: two flat greens, a body green and one lighter green, hard-edged. The trough is three flat neutral values: shade #4b5158, body #6d747c, light #949aa1, with one bolted repair patch. Absolutely no pink, no magenta, no purple anywhere. Hard uniform dark ink outline around the trough and around the leaf mass. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid magenta background (#FF00FF), object fills about 95 percent of the frame."
+  },
+  {
+   "name": "anchor_plant",
+   "role": "plant",
+   "keyed": true,
+   "key_color": [
+    255,
+    0,
+    255
+   ],
+   "fill": 0.5,
+   "prompt": "Small potted plant, seen top-down tilted twenty degrees: one round steel pot and a GREEN leafy houseplant massed as THREE broad flat leaf shapes spilling over the rim — three only, never a bush of small leaves. Two flat greens, hard-edged, the only saturated thing in the image. Pot in three flat neutral values: shade #4b5158, body #6d747c, light #949aa1. Absolutely no pink, no magenta, no purple anywhere. Hard uniform dark ink outline around the pot and around the leaf mass. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid magenta background (#FF00FF), object fills about 50 percent of the frame."
+  },
+  {
+   "name": "anchor_bed",
+   "role": "bed",
+   "keyed": true,
+   "facing": "N",
+   "fill": 0.94,
+   "prompt": "Single crew bunk seen STRAIGHT DOWN, longer than wide, head end at the TOP of the frame: one slim steel frame, one flat mattress mass, ONE pillow at the head and ONE folded blanket across the foot — no quilting, no stitching, no pattern, no reading lamp. This is one of the warm lived-in objects on a cold ship: the blanket is a flat warm sand-brown with one darker fold shape. Frame and mattress in three flat neutral values: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the frame, the mattress, the pillow and the blanket. One patched corner on the frame. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 94 percent of the frame."
+  },
+  {
+   "name": "anchor_table",
+   "role": "table",
+   "keyed": true,
+   "fill": 0.72,
+   "prompt": "Small square mess table seen STRAIGHT DOWN: one flat closed tabletop mass with a thin steel rim, and exactly TWO small cups on it. Nothing else: no tray, no crumbs, no edge lighting. Warm worn top: a flat warm sand-brown surface with one darker wear patch. Rim in three flat neutral values: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the top, the rim and each cup. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 72 percent of the frame."
+  },
+  {
+   "name": "anchor_chair",
+   "role": "chair",
+   "keyed": true,
+   "facing": "E",
+   "fill": 0.52,
+   "prompt": "Single chair seen top-down tilted twenty degrees, its backrest bar on the RIGHT side of the frame so it reads clearly as a chair from above: one rounded closed seat mass and one thick backrest bar. Nothing else: no legs visible, no stitching, no cushion pattern. The seat pad is a flat warm sand-brown with one darker worn shape. Frame in three flat neutral values: shade #4b5158, body #6d747c, light #949aa1. Hard uniform dark ink outline around the seat and the backrest. Flat fills, hard edges, light from the UPPER LEFT — never from the lower right. No glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 52 percent of the frame."
+  },
+  {
+   "name": "anchor_medbed",
+   "role": "medbed",
+   "keyed": true,
+   "facing": "N",
+   "fill": 0.94,
+   "prompt": "Clinical medical bed seen STRAIGHT DOWN, longer than wide, head end at the TOP of the frame: one slim steel frame, one flat pale padded surface, ONE folded sheet across the foot, and one small flat monitor panel on an arm at the head end. Nothing else: no straps, no tubing, no instruments. Cold and clinical, clearly the palest object in the room: pad shade #737a7e, pad body #a1a9ad, pad light #d9dfe2. The monitor face is the only saturated thing: flat warm amber, about a fiftieth of the frame. Hard uniform dark ink outline around the frame, the pad, the sheet and the monitor. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 94 percent of the frame."
+  },
+  {
+   "name": "anchor_medcab",
+   "role": "medcab",
+   "keyed": true,
+   "fill": 0.62,
+   "prompt": "Medical supply cabinet seen top-down tilted twenty degrees: one closed pale cart mass with a flat tray top holding exactly THREE small flat objects, and one broad flat cross emblem on the side. Nothing else: no vials, no instruments, no small parts. Clinical pale: shade #737a7e, body #a1a9ad, light #d9dfe2. The cross emblem is the only saturated thing: flat deep red-orange, about a fortieth of the frame. Hard uniform dark ink outline around the cart, the tray and the emblem. Flat fills, hard edges, light from the UPPER LEFT — never from the lower right. No glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 62 percent of the frame."
+  },
+  {
+   "name": "anchor_locker",
+   "role": "locker",
+   "keyed": true,
+   "facing": "S",
+   "fill": 0.8,
+   "rotatable": false,
+   "prompt": "Slim personal locker seen top-down tilted twenty degrees so its door faces the BOTTOM of the frame: one closed steel cabinet mass with a single flat door face divided by TWO broad louvre bands — two only, wide, never a fine grille — and one thick handle. One blank placard, completely empty, no writing of any kind. Three flat values: shade #4b5158, body #6d747c, light #949aa1. One dented lower corner and one mismatched replacement door panel. Hard uniform dark ink outline around the cabinet, the door and the handle. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 80 percent of the frame."
+  },
+  {
+   "name": "anchor_desk",
+   "role": "desk",
+   "keyed": true,
+   "facing": "S",
+   "fill": 0.78,
+   "rotatable": false,
+   "prompt": "Small personal desk seen top-down tilted twenty degrees with its seating side toward the BOTTOM of the frame: one flat closed desktop mass with a small flat screen and a plain keyboard slab at the back edge, and exactly ONE mug on the surface. Nothing else: no notebook, no pens, no cables. Warm lived-in top: flat warm sand-brown with one darker wear patch; the frame in three flat neutral values: shade #4b5158, body #6d747c, light #949aa1. The screen face is the only saturated thing: flat warm amber, about a fiftieth of the frame. Hard uniform dark ink outline around the desktop, the screen and the mug. Flat fills, hard edges, light from the upper left, no glow haze, no shadow, no text. Centred on a plain solid green background (#00FF00), object fills about 78 percent of the frame."
+  }
+ ]
+}

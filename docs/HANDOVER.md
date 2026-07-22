@@ -1,14 +1,99 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign, tag `v2-talking-ship`)
 
-> **Newest first:** start at "Playtest round 3 (2026-07-22)" — six landed lanes, the
-> ship-visuals plans, and five decisions parked for Garvin. `docs/MECHANICS.md` is now
-> the authority on how the sim actually behaves; its §13 "known gaps" lists what is
-> wired but not connected. Counts: **607 dotnet + 207 node**.
+> **Newest first, and this is where you start:** read **"The economy redesign
+> (2026-07-22) — START HERE"** immediately below. It is the approved next body of work
+> and it is design-complete: `docs/ECONOMY.md` (design authority) +
+> `docs/ECONOMY-PLAN.md` (waves and lanes). **Nothing is built yet.** After that,
+> "Playtest round 3" is the newest *landed* state, and `docs/MECHANICS.md` is the
+> authority on how the sim actually behaves (its §13 lists what is wired but not
+> connected).
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
 moonbase-era mechanism detail (save format, tick model, MOSS, atmosphere math) is
 still authoritative in `legacy/TDD.md` + `legacy/TUI.md` where not superseded.
+
+## The economy redesign (2026-07-22) — START HERE
+
+**Status: design complete, approved end-to-end by Garvin, ZERO code written.** The next
+agent's job is to start executing it. Read `docs/ECONOMY.md` §1 first — it is a measured
+indictment of the shipped economy — then `docs/ECONOMY-PLAN.md` §0 and §8.
+
+**How it was produced.** Five independent read-only review lanes (current-economy audit,
+logistics & labour, comparative genre design, external supply, architecture & invariant
+cost), each forbidden from editing the repo, each measuring against the real host stack
+rather than reading docs. Their reports are session scratchpad only; everything load-bearing
+was folded into the two documents. The round-3 method — read-only diagnosis first, fix lanes
+briefed with verified findings — was used deliberately and worked again.
+
+**What they found (all MEASURED on the shipping slice, not inferred).**
+
+- The material economy is **dead at sim-minute 64**. 48 debris tiles cleared by tick 1,416;
+  last Regolith consumed at tick 38,451. Three walls designated at tick 3,000 build in 73 s;
+  the same three designated at day 1 sit at **0/6 forever**. The player's only economic verb
+  is functional for about an hour and then *impossible*, not merely slow.
+- **The labour ledger is worse than the mass ledger.** 0.503 % of crew-ticks are economic
+  work over 3 days; **79.8 % is random wander-walking**; all three haul `JobKind`s log
+  **exactly 0 ticks**. `IsIdleForWork` requires `!HasPath` (`Citizen.cs:63`), so a wandering
+  citizen is unrecruitable by all four dispatchers — **the effective crew is 1.43 of 8**.
+- **The decisive number:** priced at today's work rates the *fully built* economy consumes
+  **0.7 %** of the labour budget. No quantity of new item kinds fixes that. Order of
+  operations is labour supply → work rates → matter.
+- **Three live bugs on the shipping build**, none of them design questions:
+  1. An **ownerless reservation leak** (`CraftingSystem.cs:183`) permanently strands the
+     slice's last `Parts` — invisible to `FindNearestParts` but visible to `StagedUnits` — so
+     **every machine repair for the rest of the game is a jury-rig at 0.6**. Root cause:
+     `ReservedForJob` is a `bool` where it needs an owner id.
+  2. **Hydroponics destroys 0.256 L per litre irrigated** → 903 of 1,400 L gone in 28 h →
+     food production permanently dead on **day 1.2**, while the HUD food bar reads 1.00.
+  3. CO₂ gas transport (already on record below).
+- Two **latent** hash defects, harmless today and fatal later: the item pack aliases
+  `ItemKind`'s high bit onto `ReservedForJob` (`Simulation.cs:272-275`) and the citizen pack
+  overlaps `JobWorkTicks` with `CarryingItemId` (`:255-260`). Not determinism breaks —
+  **canary blindness in exactly the fields an economy stresses.**
+- **`NavSystem` is fully built, saved, hashed, ten tests — and provably inert.** No ship
+  generator or authored ship ever places a `Telescope`, so `Tick` returns early every tick.
+- **CI never exercises the material economy at all** (the 2-crew ship has zero designations
+  and `HoldPosition` crew). That is how a 64-minute economy shipped unnoticed.
+
+**The design, in one sentence.** A closed mass ledger with the voyage as its only faucet,
+where the efficiency of every conversion is a fact held in a living person's head — *"what
+will you take apart, who still knows how, and what does it cost to keep what you already
+have?"*
+
+**Decisions Garvin has already made** (full log, `ECONOMY.md` §13 — do not reopen without
+editing that list): 10× work-rate rebase · sleep, in E1 · **the full programme E0→E4**, not
+a staged approval · a slice economy canary enters CI · `Regolith` → `Stock` presentation
+rename (enum row 0 never renumbered) · fix the three live defects immediately. Also on
+record: a **trading-hub DLC** is planned, so `ECONOMY.md` §9.7 specifies the seven seams the
+base game must leave — and the one trap, that a hub is a *converter that takes a cut*, never
+a faucet. The only deferred question is the hub's currency shape, and nothing in E0–E2
+depends on it.
+
+**Where the next agent actually starts.** `ECONOMY-PLAN.md` §0 and §8. The opening wave, in
+order:
+
+1. **Wave 0** — six integrator-owned commits, two pin moves, behaviour-free: un-alias the two
+   hash packs · widen `EffectKind` (2 bits left) · split `JobsDirty` · **refactor `JobSystem`
+   into an `IJobSource` dispatcher** (842 lines, a *de facto* second spine file that three
+   economy lanes all want — this is the parallelism unlock) · the `[production]` node table ·
+   register the economy systems empty. **No lane may spawn before this lands.**
+2. **B-1/B-2/B-3** — the three live bugs. B-3 (CO₂ transport) specifically precedes E1's
+   finite air reserve, or the reserve just kills the crew faster and reads as a balance
+   failure.
+3. **E0-1 recruitability**, then **E0-3 the missing web verbs** (`dig`/`stockpile`/`strip` —
+   they exist in the sim and only the TUI can reach them; adding them unblocks three
+   `JobKind`s and the `AgreeTask` conversation verb at near-zero sim cost).
+
+**Two constraints that are easy to lose and expensive to get wrong.** The approved 10× work
+rebase and the parked movement retune **land behind E0-1, never before** — measured, the
+retune alone costs 29 % of production and drops recruitable crew-ticks 17.9 % → 9.3 %.
+And **pin literals are integrator-only**: lanes assert `twin hashes MATCH` and never the
+literal `26907c23d7e48a5c`, which goes stale the moment another lane merges.
+
+**The gate the whole programme is judged on:** A1 — *crew are > 25 % busy at sim-hour 24*
+(today: **0.0 %**). A conversion graph with finite ore is a longer boot window, not a durable
+loop, and A1 is what tells the difference. Full gate list: `ECONOMY.md` §12.
 
 ## Where the project stands
 
@@ -382,9 +467,16 @@ tick-3000 `401c9b96aff338a7` unmoved.
    and the style anchor, and would still go to mush. Only pawns retain 1024² sources
    (re-processable to 256 for **$0**); every other asset exists only as 128px output.
 3. **Movement retune** — fully measured, NOT landed (moves the CI pin). See below.
+   **SUPERSEDED 2026-07-22 by the economy redesign:** it is now `ECONOMY-PLAN.md` E0-2 and it
+   **must land behind E0-1 (recruitability)**, bundled with the approved 10× work-rate rebase
+   as one integrator-gated commit. Landing it standalone is a measured −29 % production /
+   −48 % recruitability regression. Do not take it from this section.
 4. **CO2** — re-scoped: it is a **gas-transport bug**, not a dispatch gap. See below.
+   **Now scheduled** as `ECONOMY-PLAN.md` B-3, and it must precede E1's finite air reserve.
 5. **`Morale` / `Health` are never written by any system** yet three crew surfaces render
    them (CREW WATCH bar, CREW tab, READOUT) as a constant 100%. Design question.
+   **Still open** — the economy redesign does not resolve it, but it touches the same
+   surfaces, so decide it before E0-8 (the ledger) reworks the crew readouts.
 
 ### Movement retune — measured, ready, NOT landed
 
@@ -518,6 +610,81 @@ things genuinely interact and should be re-measured, not assumed:
   the soft mip-3 rim above becomes visible. Check a zoomed-out establishing
   frame for haloed pawns before accepting.
 
+## Ollama / mistral — the local dialogue backend (2026-07-22) — LANDED
+
+The third provider path went from never-executed to the **default**. Full measurements and
+the reproduce recipe are in `docs/SMOKE-P2.md` §"Ollama / mistral run". Headlines:
+
+- **Local-first auto-route.** With no `dialogue.backend` configured, a ready local Ollama now
+  outranks a cloud key: ollama → anthropic → openai → template. Boot prints
+  `dialogue backend: ollama/mistral`; when the server is absent it says so in one line and
+  falls back exactly as before. "Ready" means a host verified the server is serving *the
+  wanted model* — a bare port check would let an empty server steal the route from a working
+  key and 404 every turn. **`LlmSettings.Parse` stays pure**: readiness is a *parameter*, and
+  the single socket lives in `LoadFromEnvironment` (the already-documented sole IO seam),
+  which parses twice — pass 1 purely to learn which model to probe for. Dialogue is now $0.
+- **The shipped pipeline produced ~ZERO effects on any non-tool backend, and it was the
+  PARSER, not the prompt.** `EffectEnvelopeParser` dropped well-formed effects over a missing
+  `magnitude` that `ConversationService.TryTranslate` never reads for `RevealInfo`/`AgreeTask`.
+  Under the old prompt *every* envelope mistral emitted omitted magnitude while picking the
+  right row unaided — so the reveal was lost every time, after the model got it right.
+  Measured on the real `ProviderPrompt` bytes, n=64, scored to the sim: **1/64 → 29/64**.
+  **The first effects a non-tool backend has landed in this repo.** Should help the
+  OpenAI-compat path too; **unmeasured — re-run `llm-smoke --backend openai`.**
+- **Two prompt changes were tried, measured, and REVERTED** (an envelope-instruction rewrite
+  and a kind-annotated effect-target list). They added p = 0.22 of nothing on the real prompt,
+  and the rewrite cost a **28% false-positive rate** plus a 4× rate of raw effect JSON leaking
+  into the player-visible line. See the review lesson below — this is the most important thing
+  in this section.
+- **Leniency is gated two ways, both on RISK not semantics.** `EndConversation` is excluded
+  from the magnitude forgiveness even though it qualifies, because `ConversationHub.cs:371`
+  treats a dispatched one as authoritative — forgiving it had the crew **hang up on a player
+  who said hello**, and fired on 11/24 turns where the player had just asked for work. And the
+  manifest row must BE the kind the model claimed (the tool path always enforced this at
+  `AnthropicBackend.cs:412`; the envelope path never did, and the leniency made an `AgreeTask`
+  aimed at a `SetDisposition` row into a live dig assignment).
+  **Residual, recorded honestly: 7.3% of no-op turns still fire something** (was 0%, but that
+  0% came with 1/64 on the turns that mattered).
+- **Native tool calling was measured and rejected.** Ollama advertises
+  `capabilities:["tools"]` for mistral; 0/8 turns produced real `message.tool_calls` (the
+  model writes `propose_effect(...)` into the prose instead). `supportsTools` stays false.
+  `legacy/LLM_CITIZENS.md` §7 assumes otherwise — it is wrong for this model.
+- **Two residency hints** now ride every request (`keep_alive: "30m"`,
+  `options.num_ctx: 8192`). Both server defaults fail silently: 5-minute unload → a full
+  4.4 GB reload inside the hub's 60 s budget; and an over-long prompt is truncated from the
+  FRONT, i.e. the system rules and persona.
+
+Suite **631 dotnet + 207 node** green via `./ci.sh`; scenario `26907c23d7e48a5c`, tick-3000
+and slice pins all unmoved (nothing hashed was touched — this lane is entirely host/LLM-side).
+
+### Review lesson from this lane (the expensive one)
+
+Both gates were worth their cost and caught **disjoint** classes of defect, again. The
+engineering gate killed 31/31 mutations but also found a two-pass config seam with **zero**
+coverage — replacing its body with a constant left all 624 tests green. The LLM gate did
+something no test could: it **refused to reuse the author's probe script**, rebuilt
+`ProviderPrompt.BuildMessages` byte-for-byte, ran 526 live turns, and showed the author's
+headline numbers were measured on a prompt the game does not send (2 capability rows instead
+of 6, no `[SHIP]` block, a `temperature` the adapter never sends) and scored "well-formed
+JSON" instead of "survives `TryTranslate`". The prompt work was reverted on that evidence.
+
+Three rules earned the hard way, for anyone touching prompts here:
+
+1. **Measure the bytes the game actually sends.** A hand-written approximation of a prompt is
+   not the prompt, and the difference reversed the conclusion.
+2. **Score to the sim.** "The model emitted valid JSON" is an upper bound, not a yield.
+   `TryTranslate` and `EffectValidator` reject plenty that parses.
+3. **Always measure the no-op turns.** An elicitation change is only half-measured until you
+   know what it fires on a greeting. The reverted rewrite looked like a win on every turn the
+   author tested and hung up on the player 5/24 times on "Hey Amara."
+
+Watch-outs for the next session: the brew service did **not** start via `brew services start`
+on this machine (silent exit 0, no log) and needed a `launchctl kickstart` once; it is
+`started` now with `RunAtLoad`, but if dialogue silently goes cloud again, check
+`curl localhost:11434/api/version` first. And a 7B is not Haiku — expect blander lines and
+re-measure prompt changes over **many samples**, never one smoke (round-2's lesson, now
+doubly true).
+
 ## Running / testing the game
 
 ```bash
@@ -565,6 +732,11 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
   in the PR description and land in a dedicated serialized spine lane, small and append-only
   (one enum row, one chapter registration, one stack insertion). P2 ran ~10 lanes + spine waves
   this way with zero cross-lane corruption.
+  **Escalated 2026-07-22 to a hard rule covering every SESSION, not just spawned agents —
+  see `CLAUDE.md` "Work in a worktree — ALWAYS".** Two instances shared the main checkout that
+  day and the economy audit watched another session's files change mid-measurement. Nobody
+  edits the main checkout except the integrator merging; never `git add -A`; if `git status`
+  shows files you did not touch, stop and look.
 - **New test files** under `tests/Perilune.Tests/` auto-compile (SDK default items); new `sim/`
   source DIRECTORIES need a csproj glob (tests csproj is integrator-owned).
 - Suite quirk: V6 survivability gate tests run real sim-days — the dotnet suite is ~3 min wall.
@@ -572,7 +744,15 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
 - de-DE machine: test output prints `Bestanden!`/`Fehler`; culture bugs are live —
   InvariantCulture in every wire/dump/parse path, analyzers CA1305/CA1310 warn.
 
-## Next: P3 — The Voyage (PLAN.md has the full list)
+## Next: the economy programme, then P3 — The Voyage (PLAN.md has the full list)
+
+> **Ordering, decided 2026-07-22.** The economy redesign (top of this file) is the approved
+> next body of work and it comes **first** — E0 through E2 all land inside the closed ship
+> and need no nav stack. **E3 *is* P3's economic half**: the voyage becomes the only faucet,
+> so nav/sensors, derelict salvage and away missions arrive as the economy's supply lines
+> rather than as separate features. Read `ECONOMY-PLAN.md` §1 before planning P3 work — the
+> two are one programme, and E3 additionally owns the trading-hub DLC seams (`ECONOMY.md`
+> §9.7) and makes the content-pack prerequisite below non-negotiable.
 
 Nav/sensors full loop (survey → contact → burn → rendezvous); derelict generation
 (ShipGen archetype + generated-history engine + away-mission dual-sim); campaign Act I
@@ -590,6 +770,23 @@ affordance item landed in the round-2 polish lane.)
 
 ## Known issues / backlog (not regressions)
 
+- **Ownerless reservation leak — LIVE on the shipping slice** (`CraftingSystem.cs:183`).
+  A staged crafting input is stamped `ReservedForJob` with no owner and only
+  `ConsumeStagedInputs` ever clears it, so the ship's last `Parts` unit ends up reserved by
+  nobody: invisible to `MachineWearSystem.FindNearestParts` but visible to `StagedUnits`, so
+  the bench waits at 1/2 forever and **every machine repair for the rest of the game is a
+  jury-rig at 0.6**. Fix is `ReservedForJob : bool` → `ReservedBy : uint` (moves the pins).
+  Scheduled as `ECONOMY-PLAN.md` B-1; full write-up `ECONOMY.md` §1.5.
+- **Hydroponics is the water leak — LIVE.** A round trip through a grow bed returns
+  0.8 × 0.93 = 0.744, i.e. **0.256 L destroyed per litre irrigated**. Measured: 903 of the
+  slice's 1,400 L gone in 28 sim-hours, `tank_hydro` at 0.0 L from day 1.2, all three beds
+  frozen mid-crop — **food production permanently dead on day 1.2** while the HUD food bar
+  reads 1.00 (it saturates at 40 potatoes for 8 crew, `ShipMetrics.cs:83`). Scheduled as
+  `ECONOMY-PLAN.md` B-2.
+- **Two latent hashed bit-packs alias** (`Simulation.cs:272-275` and `:255-260`): `ItemKind`'s
+  high bit over `ReservedForJob`, and `JobWorkTicks` bits 32–47 over `CarryingItemId`. Not
+  determinism breaks — **canary blindness** in exactly the fields an economy stresses, and a
+  >65,535-tick job is an ordinary economy number. Scheduled as `ECONOMY-PLAN.md` W0-1.
 - **Prompt prefix below the cacheable minimum.** `PromptBuilder` sets two `cache_control`
   breakpoints, but the slice's assembled prefix is only ~970 input tokens on Haiku and the
   haiku-class minimum cacheable prefix is **2048 tokens**, so caching silently never engages
@@ -650,5 +847,6 @@ affordance item landed in the round-2 polish lane.)
 - **The 60-minute unscripted playtest** — the human P2 exit bar: a tester plays the slice for an
   hour and **names a crew member** when retelling it. (Do the prompt/elicitation work above first
   so a reveal can actually land.)
-- **Ollama** — install it locally only if you want to exercise the third live provider path
-  (`ollama_host` in `.env`); the smoke SKIPs it cleanly when the server is absent.
+- ~~**Ollama** — install it locally only if you want to exercise the third live provider
+  path~~ **DONE 2026-07-22** — installed, running as a brew service, `mistral` pulled, and
+  now the auto-routed default. See "Ollama / mistral" below.

@@ -99,12 +99,23 @@ async queue). This section supersedes its single-vendor assumptions:
     OpenAI-compatible server (OpenRouter, LM Studio, vLLM, llama.cpp-server, Groq…):
     base-URL + key + model id are just settings.
   - `GeminiBackend` (native, since the art pipeline already carries Google credentials)
-  - `OllamaBackend` (local; tools where the model supports them, JSON-envelope fallback)
+  - `OllamaBackend` (local, no key, $0). JSON-envelope only: Ollama advertises
+    `capabilities:["tools"]` for `mistral`, but a measured 0/8 turns produced real
+    `message.tool_calls` — the model writes `propose_effect(...)` into the prose instead,
+    so the adapter deliberately keeps `supportsTools: false`. Carries two residency hints
+    the server defaults get wrong for a game (`keep_alive`, `options.num_ctx`).
   - `TemplateBackend` (offline, feature-complete, ships first, is also the test harness
     and the runtime degradation target)
 - **Model routing by role, not vendor**: dialogue / narration / bulk (summaries,
   compaction, enrichment) are separate routes, each independently assignable to any
   configured backend+model. Local-bulk + API-dialogue is an expected configuration.
+- **Auto-route is LOCAL-FIRST**: with no `dialogue.backend` configured, the dialogue lane
+  picks a ready local Ollama (free, private, offline) ahead of an anthropic key, then
+  openai, then template. "Ready" means a host verified a server IS serving the wanted
+  model — a port check alone would let an empty server steal the route from a working key
+  and 404 every turn. `LlmSettings.Parse` stays pure: readiness arrives as a parameter and
+  the one socket lives in `LoadFromEnvironment`, the documented IO seam. Explicit
+  configuration always wins.
 - **The contract that keeps it safe** is provider-independent and lives sim-side:
   capability manifests computed by the sim, enum-bounded tool schemas, `EffectValidator`
   re-validation + clamps at tick boundaries, player text quarantined as in-fiction

@@ -37,9 +37,11 @@ namespace Perilune.Tools
     /// </summary>
     public static class LlmSmoke
     {
-        private const string AnthropicDefaultModel = "claude-haiku-4-5-20251001"; // dialogue-lane default class
-        private const string OpenAiDefaultModel = "gpt-4o-mini";
-        private const string OllamaDefaultModel = "llama3.2";
+        // The dialogue-lane defaults, owned by LlmSettings so the smoke can never drift from the model
+        // the game itself would actually route to (it did: this file pinned llama3.2 for a year).
+        private const string AnthropicDefaultModel = LlmSettings.AnthropicDefaultModel;
+        private const string OpenAiDefaultModel = LlmSettings.OpenAiDefaultModel;
+        private const string OllamaDefaultModel = LlmSettings.OllamaDefaultModel;
 
         private static readonly List<string> Secrets = new List<string>();
 
@@ -282,12 +284,21 @@ namespace Perilune.Tools
                 {
                     ProviderConfig p = s.Providers["ollama"];
                     string baseUrl = string.IsNullOrEmpty(p.BaseUrl) ? "http://localhost:11434" : p.BaseUrl;
-                    if (!ProbeOllama(baseUrl))
+                    string tags = FetchOllamaTags(baseUrl);
+                    if (tags == null)
                     {
                         skipReason = "Ollama not reachable at " + baseUrl + " (server not running)";
                         return null;
                     }
-                    model = ResolveModel(s.Dialogue, "ollama", OllamaDefaultModel);
+                    model = ResolveModel(s.Dialogue, "ollama", p.Model); // never empty (LlmSettings.Parse)
+                    // A pulled-model check, not just a port check: without it an empty server turns every
+                    // turn into an opaque 404 and the smoke reports "backend failed" instead of "pull it".
+                    if (!LlmSettings.TagsListContains(tags, model))
+                    {
+                        skipReason = "Ollama at " + baseUrl + " is not serving '" + model
+                                   + "' (run: ollama pull " + model + ")";
+                        return null;
+                    }
                     return new OllamaBackend(new HttpChat(new HttpClientHandler()),
                         new OllamaConfig(baseUrl, model));
                 }
@@ -305,7 +316,8 @@ namespace Perilune.Tools
             return fallback;
         }
 
-        private static bool ProbeOllama(string baseUrl)
+        /// <summary>The <c>/api/tags</c> body, or null when the local server is absent/unhealthy.</summary>
+        private static string FetchOllamaTags(string baseUrl)
         {
             try
             {
@@ -313,12 +325,13 @@ namespace Perilune.Tools
                 {
                     string url = baseUrl.TrimEnd('/') + "/api/tags";
                     HttpResponseMessage r = http.GetAsync(url).GetAwaiter().GetResult();
-                    return r.IsSuccessStatusCode;
+                    if (!r.IsSuccessStatusCode) return null;
+                    return r.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 }
             }
             catch
             {
-                return false;
+                return null;
             }
         }
 

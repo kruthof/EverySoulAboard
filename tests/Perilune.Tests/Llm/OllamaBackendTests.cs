@@ -154,5 +154,51 @@ namespace Perilune.Tests.Llm
             Assert.That(messages[0].GetProperty("role").GetString(), Is.EqualTo("system"));
             Assert.That(messages[0].GetProperty("content").GetString(), Does.Contain("```json"));
         }
+
+        [Test]
+        public async Task RequestBody_CarriesResidencyHints_KeepAliveAndNumCtx()
+        {
+            // Both defend against SILENT server defaults, so both must actually reach the wire:
+            //  keep_alive — the server unloads the weights after 5 min, and a reload of a 7B blows a
+            //               visible hole in ConversationHub's 60 s per-request budget;
+            //  num_ctx    — Ollama truncates an over-long prompt from the FRONT without erroring, and
+            //               the front of our layout is the system rules + persona block.
+            string body = LlmFixtures.Load("ollama_reveal.ndjson");
+            var (backend, handler) = Make(StreamOf(body));
+            await Collect(backend.SendAsync(RevealRequest(), "x", default));
+
+            using JsonDocument doc = JsonDocument.Parse(handler.LastBody);
+            JsonElement root = doc.RootElement;
+            Assert.That(root.GetProperty("keep_alive").GetString(), Is.EqualTo("30m"));
+            Assert.That(root.GetProperty("options").GetProperty("num_ctx").GetInt32(), Is.EqualTo(8192));
+        }
+
+        [Test]
+        public async Task RequestBody_ResidencyHintsAreOverridableAndOmittable()
+        {
+            string body = LlmFixtures.Load("ollama_reveal.ndjson");
+
+            var tunedHandler = new FakeHttpHandler(StreamOf(body));
+            var tuned = new OllamaBackend(new HttpChat(tunedHandler),
+                new OllamaConfig(BaseUrl, Model, KeepAlive: "-1", NumCtx: 32768));
+            await Collect(tuned.SendAsync(RevealRequest(), "x", default));
+            using (JsonDocument doc = JsonDocument.Parse(tunedHandler.LastBody))
+            {
+                Assert.That(doc.RootElement.GetProperty("keep_alive").GetString(), Is.EqualTo("-1"), "\"-1\" = never unload");
+                Assert.That(doc.RootElement.GetProperty("options").GetProperty("num_ctx").GetInt32(), Is.EqualTo(32768));
+            }
+
+            // Null/empty means "defer to the server's own configuration" — the field must be ABSENT,
+            // not sent as null or 0, either of which Ollama would read as a real setting.
+            var bare = new FakeHttpHandler(StreamOf(body));
+            var deferring = new OllamaBackend(new HttpChat(bare), new OllamaConfig(BaseUrl, Model, null, null));
+            await Collect(deferring.SendAsync(RevealRequest(), "x", default));
+            using (JsonDocument doc = JsonDocument.Parse(bare.LastBody))
+            {
+                Assert.That(doc.RootElement.TryGetProperty("keep_alive", out _), Is.False);
+                Assert.That(doc.RootElement.TryGetProperty("options", out _), Is.False);
+                Assert.That(doc.RootElement.GetProperty("model").GetString(), Is.EqualTo(Model), "the rest of the body is unchanged");
+            }
+        }
     }
 }

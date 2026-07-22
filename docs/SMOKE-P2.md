@@ -121,3 +121,127 @@ Residuals, honestly noted:
    cacheable minimum (finding 1 above stands).
 
 Cost meter across the session's runs stayed ~$0.005/run; budget cap untouched.
+
+---
+
+## Ollama / mistral run — 2026-07-22 (the third provider, first time live)
+
+**Why:** Ollama had never been exercised — the P2 run above SKIPPED it ("server not running")
+and the adapter had only ever seen canned fixtures. `ollama` 0.32.1 + `mistral:latest`
+(7.2B, Q4_K_M, 32k native context) installed locally. **Total spend: $0.00** — the whole
+run is local, which is the point.
+
+| Backend | Model | Streamed? | Usage | Effects proposed | 3-turn cost | Wall |
+|---|---|---|---|---|---|---|
+| ollama | `mistral` | single-shot by adapter design (see finding 2 above) | yes (`prompt_eval_count` / `eval_count`, ~1300 in / 60 out per turn) | **RevealInfo (turn 2), EndConversation (turn 3)** — both accepted, manifest-bound | **$0.0000** | 7.7 s |
+
+(That run was made with a prompt rewrite that was subsequently **reverted** — see the
+correction below. The effects it shows come from the parser rule, which shipped; a re-run on
+the final build reproduces the `RevealInfo` and drops the turn-3 `EndConversation`.)
+
+Turn 2, ask-about-secret:
+> I have... some supplies stored away. But they were never logged. It's nothing vital to our
+> survival, just seeds and rations. I kept them behind the hydroponics bay, if you need to look.
+>
+> → `RevealInfo(target=1, mag=0)` proposed, accepted and dispatched.
+
+Plain, first-person, no stage directions, no meta — the prompt rework holds on a 7B local model.
+
+### The finding: the shipped pipeline yielded ~ZERO effects, and why
+
+The **first** run on this hardware proposed no effects at all across three turns — the same
+symptom the P2 run recorded for OpenAI. It is not model reluctance.
+
+> **Correction, same day.** An earlier version of this section reported a 0/12 → 10/12 prompt
+> A/B and credited a prompt rewrite as "the single biggest lever". Both were wrong, and the
+> independent gate caught it. Those numbers came from a hand-written approximation of the
+> prompt (2 capability rows instead of 6, no `[SHIP]` block, a `temperature` the adapter never
+> sends) and scored "well-formed JSON" rather than "survives `TryTranslate`". Re-measured
+> against `ProviderPrompt.BuildMessages` byte-for-byte, n=64, scored to the sim: the prompt
+> rewrite added **p = 0.22 of nothing**, and it was reverted. **The parser rule is the whole
+> effect.** The numbers below are the re-measurement. The lesson is in HANDOVER's review
+> lessons: measure the bytes the game actually sends, and score to the sim, not to the JSON.
+
+Measured on the real prompt, on one textbook `RevealInfo` turn, n=64, counting only effects
+that would reach the sim through `ConversationService.TryTranslate`:
+
+| pipeline | usable effects |
+|---|---|
+| as shipped before this change | **1 / 64** |
+| **+ the omitted-magnitude rule** (what ships now) | **29 / 64** |
+
+The cause is one bug, in the parser. Models emit `{"kind":"RevealInfo","target_index":0}` —
+correct in every way except `magnitude`, which `ConversationService.TryTranslate` *never reads*
+for that kind. `TryEntry` required it and silently dropped the entry. Under the old prompt
+**every single envelope mistral emitted omitted magnitude**, and it still picked the right row
+unaided — so the reveal was lost every time, in the parser, after the model got it right.
+
+Now an **omitted** magnitude is forgiven for `RevealInfo` and `AgreeTask`; it stays required
+for `SetDisposition` and `FollowPlayer`, where the number is the entire decision, and a
+**present but non-numeric** magnitude stays fatal for every kind.
+
+### The price of that leniency, and the two gates on it
+
+Forgiving an omission also lets *spurious* effects through that the strict rule was silently
+eating. Measured on four turns where nothing should fire (greeting, a question the `[SHIP]`
+block answers, one it does not, small talk), n=24 each — this is the measurement the first
+attempt at this work never made:
+
+| | no-op turns firing an effect |
+|---|---|
+| before | **0 / 96** |
+| lenient, ungated | 18 / 96 (18.8%) |
+| **as shipped (both gates below)** | **7 / 96 (7.3%)** |
+
+Two gates hold that down, and neither is about magnitude semantics:
+
+1. **`EndConversation` is excluded from the forgiveness**, though it satisfies the "never reads
+   the number" test. `ConversationHub.cs:371` treats a dispatched EndConversation as
+   authoritative and ends the session, so a spurious one has the crew member **hang up on a
+   player who only said hello**. Forgiving it fired on 11/24 turns where the player had just
+   asked for work and 11/96 no-op turns, against no measured legitimate use. A missed goodbye
+   costs one click; a false one costs the conversation.
+2. **The row must be the kind the model claimed.** The tool path has always enforced this
+   (`AnthropicBackend.cs:412` rejects on `opt.Kind != kind`); the envelope path never did, and
+   the leniency turned that from theory into a live hole — `{"kind":"AgreeTask","target_index":0}`
+   aimed at a `SetDisposition` row resolves to `TargetId 0` and passes `TryTranslate`'s bounds
+   check, putting a crew member to work off a line about warmth.
+
+**Residual, recorded not smoothed over: 7.3% of no-op turns still fire something** (mostly
+`RevealInfo` burning an authored secret the player never hears — `EffectValidator.ApplyReveal`
+marks it revealed either way). That is the honest cost of the 1/64 → 29/64 gain, it is a
+7B-model property more than a code one, and it is **not** something the strict rule solved
+either — the strict rule just failed in the other direction, 64 times out of 64.
+
+This is a large part of the standing "effect elicitation is unsolved" backlog item, and it
+benefits the OpenAI-compat path too — **re-run `--backend openai` to measure it**; that has
+not been done.
+
+### Native tool calling: measured and deliberately NOT used
+
+Ollama reports `capabilities:["tools"]` for mistral, and `legacy/LLM_CITIZENS.md` §7 assumes
+the adapter would translate our tool definitions. Measured over 8 turns with a real `tools`
+array: **0/8 produced `message.tool_calls`.** The model instead wrote `propose_effect({...})`
+into the visible prose — strictly worse than the envelope, since the player would see it.
+`OllamaBackend.Caps.supportsTools` stays **false**. Re-measure before believing the
+advertisement for any other local model.
+
+### Residency hints (`keep_alive`, `num_ctx`)
+
+Both server defaults are wrong for a conversational game and both fail **silently**:
+`OLLAMA_KEEP_ALIVE=5m` unloads the weights between conversations, so the next line pays a
+full 4.4 GB model load inside ConversationHub's 60 s per-request budget; and an over-long
+prompt is truncated from the FRONT — the system rules and persona block — with no error.
+`OllamaConfig` now sends `keep_alive: "30m"` and `options.num_ctx: 8192` (the prompt measured
+~1300 tokens/turn and grows with the transcript). Pass null to defer to a tuned local install.
+
+### Reproduce
+
+```
+brew install ollama && brew services start ollama
+ollama pull mistral
+dotnet run --project hosts/scenario -- llm-smoke --backend ollama    # $0.00
+```
+
+With a local server serving the model, the web host now auto-routes to it ahead of any cloud
+key (local-first) — boot prints `dialogue backend: ollama/mistral`.

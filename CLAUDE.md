@@ -15,6 +15,10 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   `legacy/GDD.md` §4–5 wherever they disagree; read §13 before trusting a mechanic.
 - **`docs/PLAN.md`** — phases, the 10 parallel workstreams, conflict rules. Find your
   lane here before touching code.
+- **`docs/ECONOMY.md`** + **`docs/ECONOMY-PLAN.md`** — the economic redesign (2026-07-22,
+  DESIGN ONLY, nothing built). `ECONOMY.md` is the design authority for matter, labour and
+  value; `ECONOMY-PLAN.md` is the wave/lane execution plan. Read `ECONOMY.md` §1 before
+  touching anything economic — it is a measured indictment of the shipped economy.
 - `docs/legacy/` — the moonbase-era design docs (GDD, TDD, LLM_CITIZENS, MOSS_SPEC,
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
@@ -25,7 +29,7 @@ five decisions for Garvin. New this round: **`docs/MECHANICS.md`** is now the au
 on how the sim actually behaves (its §13 lists what is *wired but not connected*), the
 slice has a working build/dig economy, crew work is legible on the map, crew no longer
 promise physical work they cannot do, and the ship stage was relit + de-blurred.
-**607 dotnet + 207 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
+**631 dotnet + 207 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
 `b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
 again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
 and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
@@ -88,9 +92,35 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
 - **Spine files** (Simulation.cs, SystemStack, save chapters, GlyphColor, WireFormat,
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
+## Work in a worktree — ALWAYS (hard rule)
+
+**Every Claude Code instance works in its own git worktree on its own branch. Never edit
+the main checkout directly.** This is not the parallel-lane ritual (PLAN.md) — that governs
+*agents within* a session. This governs *every session*, including a solo one, including a
+"quick fix", including doc-only work.
+
+```bash
+git worktree add ../perilune-wt/<lane> -b lane/<lane>   # start here, before touching anything
+cd ../perilune-wt/<lane> && ./ci.sh                     # verify IN-worktree
+# merge back with the /merge skill, or the integrator merges --no-ff and re-gates on main
+```
+
+- The **only** work that happens on the main checkout is the integrator's merge and the
+  per-wave re-pin commits (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory).
+- **Never `git add -A` / `git commit -a`.** Stage explicit paths. Another instance's
+  in-flight files may be sitting in the tree, and committing them is silent corruption.
+- If `git status` shows files you did not touch, **stop and look** — you are sharing a tree
+  with someone. Do not assume they are yours and do not revert them.
+
+*Why this is a hard rule: on 2026-07-22 two instances worked the same checkout at once. The
+economy audit watched six `sim/Sim.Llm/` files flip to `M` mid-measurement — they belonged to
+another session's Ollama work. Measurements taken against a tree someone else is editing are
+worthless, `git status` stops meaning anything, and one instance can trivially commit
+another's half-finished work.*
+
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (607 green; `./ci.sh`
-  runs the full gate — 607 dotnet + 207 node, ~3 min wall since V6 runs real sim-days).
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (631 green; `./ci.sh`
+  runs the full gate — 631 dotnet + 207 node, ~3 min wall since V6 runs real sim-days).
   (Counts MEASURED 2026-07-22 after all six lanes merged, not carried forward: figures
   quoted mid-session drifted behind the lanes still in flight. Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
@@ -104,8 +134,13 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
   `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
-- Live LLM: a plain repo-root `.env` (`claude_key` / `openai_key`) auto-routes web-host
-  dialogue to a live backend; the env-gated smoke (zero CI surface, spends cents) is
+- Live LLM: auto-route is **local-first** — a local Ollama serving `mistral` wins over any
+  cloud key (ollama → anthropic → openai → template), so dialogue costs $0 by default; boot
+  prints `dialogue backend: ollama/mistral`, or one line saying why it fell back. A plain
+  repo-root `.env` (`claude_key` / `openai_key` / `ollama_host` / `ollama_model`) still
+  works; explicit `PERILUNE_LLM_DIALOGUE_BACKEND` always wins. Ollama runs as a brew service
+  (`curl localhost:11434/api/version` to check). The env-gated smoke (zero CI surface;
+  `--backend ollama` is free, the cloud ones spend cents) is
   `... --project hosts/scenario -- llm-smoke --backend all` (results in `docs/SMOKE-P2.md`).
 - Sprites: `python3 art/spritegen/run.py --spec <spec.json> --stage all`
   (`GEMINI_API_KEY` env or repo-root `.env`). Slice frame: `node art/screenshot-test/slice-shot.mjs`.
