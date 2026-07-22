@@ -21,16 +21,23 @@ namespace Perilune.Sim
     /// Designated, JobSystem has to clear that flag EXPLICITLY when a dig completes,
     /// or the freshly cleared tile would still read as a standing order.
     ///
-    /// This class is pure geometry: no ticking, no defs, no events. Room ids live here
-    /// but are owned and rewritten by <see cref="RoomState"/>. All four arrays are
-    /// folded into the determinism hash (<see cref="HashInto"/>), so any tile write is
-    /// hash-visible — including a fog reveal.
+    /// This class is pure geometry: no ticking, no events, no SimDefs — though
+    /// <see cref="RecomputeFlags"/> does read the compiled <see cref="TileDefs"/> table
+    /// to derive Walkable/BlocksGas. Room ids live here but are owned and rewritten by
+    /// <see cref="RoomState"/>. Four of <see cref="ZLevel"/>'s five arrays (Floor, Wall,
+    /// Flags, RoomId) are folded into the determinism hash (<see cref="HashInto"/>), so
+    /// any tile write is hash-visible — including a fog reveal; the fifth, RegionId, is
+    /// derived and currently neither saved nor hashed.
     ///
     /// Bounds are the CALLER's job: every accessor indexes directly, so callers gate on
     /// <see cref="InBounds"/> first. Getting that wrong fails in two different ways — a
-    /// bad Z throws on the Levels lookup, but a bad X or Y does NOT throw, because
-    /// <c>ZLevel.Index</c> is a bare <c>y * Width + x</c> that happily aliases into the
-    /// neighbouring row. Silent wrong-tile reads are the failure mode to watch for.
+    /// bad Z throws on the Levels lookup, and a bad X or Y goes through
+    /// <c>ZLevel.Index</c>, a bare <c>y * Width + x</c> over a Width*Height array, where
+    /// the outcome depends on where the arithmetic lands. If the computed index leaves
+    /// the array it THROWS (<c>y == Height</c>, the classic off-by-one; or
+    /// <c>x = -1, y = 0</c> → index −1). If it stays in range it does NOT throw and
+    /// silently aliases into the neighbouring row. Those silent wrong-tile reads are the
+    /// failure mode to watch for.
     /// </summary>
     public sealed class World
     {

@@ -33,8 +33,9 @@ namespace Perilune.Sim
     /// convention, so the checksum covers kinds, flags and ticks only.
     ///
     /// HOW A GOAL BECOMES WORK: it doesn't. This system is a pure OBSERVER — it reads
-    /// rooms, tiles and fog flags, and the only thing it ever writes is a goal's own
-    /// Done/DoneTick. It creates no job, no designation, no haul demand; it never sets
+    /// rooms, tiles and fog flags, and the only sim state it ever writes is a goal's own
+    /// Done/DoneTick (plus the <see cref="Version"/> counter and a completion event on
+    /// the bus). It creates no job, no designation, no haul demand; it never sets
     /// <see cref="Simulation.JobsDirty"/>; no other system reads
     /// <see cref="Goals"/>. A goal is a scoreboard entry, and the player (or an LLM
     /// <c>CitizenEffect</c>) is the only thing that turns it into labour.
@@ -42,12 +43,15 @@ namespace Perilune.Sim
     /// The consequence that reads as a bug and is not one: "Clear the aft debris" is
     /// satisfied only when no <see cref="TileDefs.Debris"/> wall remains, and debris is
     /// removed exclusively by <see cref="JobKind.Dig"/>. JobSystem boards a dig only for
-    /// tiles carrying <see cref="TileFlags.Designated"/>, and that flag is set in exactly
-    /// two places: <c>DesignateDigCommand</c> (a host/player command) and the validated
-    /// LLM SetJob effect. Nothing in ship authoring pre-designates. So a freshly booted
-    /// ship shows a debris goal against a permanently empty dig board until the player
-    /// paints designations — the goal does not recruit the crew, and the crew will
-    /// never notice the goal.
+    /// tiles carrying <see cref="TileFlags.Designated"/>, and that flag has exactly ONE
+    /// setter in the whole repo: <c>DesignateDigCommand</c>, a host/player command that
+    /// both sets and clears it (JobSystem clears it again when the dig completes). The
+    /// LLM cannot manufacture one — the validated <see cref="AgreeTask"/> effect only
+    /// READS Designated as a precondition, so an LLM-agreed dig still requires a
+    /// player-painted designation first. Nothing in ship authoring pre-designates
+    /// either. So a freshly booted ship shows a debris goal against a permanently empty
+    /// dig board until the player paints designations — the goal does not recruit the
+    /// crew, and the crew will never notice the goal.
     ///
     /// Latch semantics: Done is one-way. A pressurize goal that completes and then
     /// decompresses stays complete, so DoneTick is a genuine "first achieved" stamp and

@@ -17,9 +17,13 @@ namespace Perilune.Sim
     /// otherwise recovers at `suffocation_recovery_per_second` (~30 s from the brink).
     /// At 1.0 the citizen dies.
     ///
-    /// (2) The SLOW needs — Hunger, Thirst, Fatigue: monotone ramps clamped at 1 that
-    /// feed only <see cref="Citizen.Mood"/>. They never touch health. Hunger and Thirst
-    /// are reset by <see cref="SustenanceSystem"/>; Fatigue has NO reducer anywhere in
+    /// (2) The SLOW needs — Hunger, Thirst, Fatigue: monotone ramps clamped at 1. Within
+    /// THIS system they feed only <see cref="Citizen.Mood"/> and never touch health, but
+    /// Hunger and Thirst are not mood-only ship-wide: <see cref="SustenanceSystem"/>
+    /// compares both against sustenance.def `need_threshold` (0.5) in
+    /// <c>TryStartNeed</c>/<c>TryServeInPlace</c> to decide when an idle citizen fetches
+    /// or consumes — so those two meters gate behaviour as well as mood. Hunger and
+    /// Thirst are reset by that same system; Fatigue has NO reducer anywhere in
     /// v0 (there are no beds yet), so it climbs to 1 over ~16 h and stays there,
     /// permanently costing `mood_fatigue_weight` points of mood.
     ///
@@ -46,9 +50,11 @@ namespace Perilune.Sim
     /// one of the conditions its argument roll requires (alongside an already-poor
     /// opinion and the dice) — which is how hunger and fatigue end up causing fights.
     ///
-    /// Determinism/allocation: store order, no RNG, no LINQ; the only allocation risk
-    /// is <see cref="_diedThisTick"/> growing past its 4-entry capacity in a mass
-    /// casualty, and it is reused (cleared, not reallocated) thereafter. NOT
+    /// Determinism/allocation: store order, no RNG, no LINQ. The steady path allocates
+    /// nothing; DEATHS do, twice over — <see cref="_diedThisTick"/> can grow past its
+    /// 4-entry capacity in a mass casualty (it is reused, cleared not reallocated,
+    /// thereafter), and every <see cref="Kill"/> news up a corpse ItemStack through
+    /// <see cref="Simulation.AddItem"/>. Both are per-death, not per-tick. NOT
     /// <see cref="IStatefulSystem"/> — it owns no state between ticks.
     /// </summary>
     public sealed class NeedsSystem : ISimSystem
@@ -160,8 +166,9 @@ namespace Perilune.Sim
             }
 
             // Deaths after the loop (store mutation): the citizen leaves the live store
-            // entirely; the corpse item carries their identity. No system pays a
-            // permanent if-Dead tax and saves don't accumulate dead entries.
+            // entirely, the corpse item carries their identity, and saves don't
+            // accumulate dead entries. Note this does NOT retire the `if (Dead)` guards
+            // elsewhere — a dozen live sites still test the flag (see Kill).
             for (int i = 0; i < _diedThisTick.Count; i++)
                 Kill(sim, _diedThisTick[i]);
         }
@@ -172,8 +179,13 @@ namespace Perilune.Sim
         /// stack labelled with their name at the tile they fell on, publish the death
         /// and an alarm, and remove them from the live store. Suffocation is pinned to 1
         /// first so any reference still held to the object reads as unambiguously dead;
-        /// the store entry itself is gone, which is why no other system pays a
-        /// permanent if-Dead tax.
+        /// the store entry itself is gone, so nothing iterating the store afterwards can
+        /// see them. That is NOT the same as "no if-Dead tax anywhere": at least a dozen
+        /// live sites still guard on the flag — AtmosphereSystem, CitizenSystem,
+        /// JobSystem, SocialSystem, ThermalSystem, SustenanceSystem, ExplorationSystem,
+        /// MachineWearSystem, CraftingSystem and BuildSystem all do — because the flag is
+        /// set before the removal, callers hold references across it, and several of
+        /// those scans run within the same tick as the death.
         ///
         /// The alarm text says "asphyxiation" for EVERY cause on this track, including
         /// heat stroke and hypothermia — the meter does not record which band filled it.

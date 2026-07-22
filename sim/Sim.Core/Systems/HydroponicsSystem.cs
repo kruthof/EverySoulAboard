@@ -27,9 +27,12 @@ namespace Perilune.Sim
     /// <see cref="Device.FluidNetworkId"/> is fresh before the first draw, and after
     /// <see cref="PowerSystem"/> so Powered reflects this tick's brownout.
     ///
-    /// Determinism/allocation: device store order, no RNG, nothing allocated; state
-    /// lives on the Device (<see cref="Device.Progress"/>, saved DEVC v2 and hashed by
-    /// Simulation) plus the tank litres WaterSystem owns, so this is NOT an
+    /// Determinism/allocation: device store order, no RNG. The growth path allocates
+    /// nothing, but a completed cycle does — <see cref="Harvest"/> goes through
+    /// <see cref="Simulation.AddItem"/>, which news up an ItemStack; that is once per
+    /// `grow_seconds_per_crop` (600 s) of powered-and-watered time per bed, not per
+    /// tick. State lives on the Device (<see cref="Device.Progress"/>, saved DEVC v2 and
+    /// hashed by Simulation) plus the tank litres WaterSystem owns, so this is NOT an
     /// <see cref="IStatefulSystem"/>.
     /// </summary>
     public sealed class HydroponicsSystem : ISimSystem
@@ -78,8 +81,10 @@ namespace Perilune.Sim
         /// Drop one Potato beside the bed. <see cref="Simulation.AddItem"/> does NOT
         /// merge — every harvest is a fresh single-count stack, so a long-running bed
         /// leaves many co-located stacks on one tile, each separately reservable by a
-        /// hauler or an eater. AddItem sets JobsDirty, so the haul board and
-        /// <see cref="SustenanceSystem"/> both see the crop on the next pass.
+        /// hauler or an eater. AddItem sets JobsDirty, so JobSystem re-derives the haul
+        /// board and sees the crop on the next pass. <see cref="SustenanceSystem"/> needs
+        /// no such signal — it never reads JobsDirty (JobSystem is the flag's only
+        /// reader) and rescans the item store from scratch on every 1 Hz pass.
         /// </summary>
         private static void Harvest(Simulation sim, Device bed)
         {

@@ -7,9 +7,11 @@ namespace Perilune.Sim
     /// potatoes when Thirst/Hunger cross 0.5. Registered AFTER JobSystem — working
     /// citizens are never stolen mid-job (they eat when they next go idle), and
     /// JobSystem's switch ignores Eat/Drink so this system alone owns them.
-    /// Non-wandering citizens (AutoWander=false) still self-serve while idle, but
-    /// HoldPosition citizens never do — under strict player control the player owns
-    /// survival (order them to food/water). Thirst outranks hunger.
+    /// Non-wandering citizens (AutoWander=false) still self-serve while idle.
+    /// HoldPosition citizens never TRAVEL for supplies — under strict player control the
+    /// player owns the fetching — but they are not left to starve on top of a meal: an
+    /// idle, path-less one consumes an adjacent tank or an adjacent/underfoot potato
+    /// through <see cref="TryServeInPlace"/>. Thirst outranks hunger.
     ///
     /// Units and tuning (`content/core/SimDefs/sustenance.def` [sustenance]):
     /// `drink_liters` L removed from a tank per drink (and added to the greywater pool

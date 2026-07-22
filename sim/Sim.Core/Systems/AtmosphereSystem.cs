@@ -11,14 +11,23 @@ namespace Perilune.Sim
     ///
     /// One pass = a single loop over the device store handling doors (flow), vents
     /// (inject) and scrubbers (remove) INTERLEAVED in store order, then citizen
-    /// breathing, then the vacuum re-zero. The interleaving is what makes the result
-    /// store-order deterministic rather than phase-order dependent.
+    /// breathing, then the vacuum re-zero. Determinism comes from walking the store in a
+    /// FIXED order, not from the interleaving — splitting this into three phases would be
+    /// exactly as deterministic. What the interleaving decides is WHICH deterministic
+    /// answer you get: a vent that precedes a door in the store injects against the
+    /// pre-flow pressure and vice versa, so a refactor into phases would move the
+    /// numbers (and the golden hashes) without making anything less reproducible.
     ///
     /// Open doors are the only transport edge, and that is sufficient: two areas
-    /// joined by open floor are already ONE room (RoomState floods across anything
-    /// that does not block gas), and a wall removal equalizes INSTANTLY on the next
-    /// room recompute — <see cref="RoomState"/>'s gas remap averages the old rooms by
-    /// tile overlap, no flow involved.
+    /// joined by open floor are already ONE room (RoomState floods across every tile
+    /// that does not block gas, with two exceptions — <see cref="TileDefs.Void"/> floors,
+    /// whose regions are marked vacuum-connected and collapse into room 0, and door
+    /// tiles, which get <see cref="RoomState.DoorMarker"/> instead of a room id), and a
+    /// wall removal equalizes INSTANTLY on the next room recompute —
+    /// <see cref="RoomState"/>'s gas remap SUMS each old room's moles scaled by
+    /// (overlapping tiles / that old room's tile count), a conservative proportional
+    /// transfer that conserves moles exactly on a clean merge; only
+    /// <see cref="Room.TemperatureK"/> is a share-weighted average. No flow involved.
     ///
     /// Deliberate v0 simplifications: a vent injects from an INFINITE reserve (air is
     /// created from nothing — unlike water, which is conserved through
@@ -97,8 +106,17 @@ namespace Perilune.Sim
 
                     case DeviceKind.AirVent when device.IsOpen && device.Powered && device.IsOperational(sim.Defs):
                     {
-                        // Top-up only, never overpressure: below the nominal ceiling the
-                        // vent adds dry Earth mix (21% O2 / 79% N2, no CO2) from an
+                        // Top-up TOWARD the nominal ceiling — but it does overshoot, so
+                        // this is not a "never overpressure" guarantee. The gate is
+                        // tested BEFORE a whole pass is injected, so a room a hair under
+                        // 101.3 kPa still takes the full vent_mol_per_second ×
+                        // EffectiveRate × Dt (up to 30 × 1 × 0.2 = 6 mol), which in a
+                        // 1-tile room (2.5 m³ at 293 K) lands ~5.85 kPa PAST nominal.
+                        // The overshoot scales as 1/volume, so it is negligible in a real
+                        // compartment and only bites in tiny ones. A second vent in the
+                        // same room re-reads live moles and skips, so per pass the
+                        // overshoot is bounded by one vent's injection. Below the ceiling
+                        // the vent adds dry Earth mix (21% O2 / 79% N2, no CO2) from an
                         // unmodelled reserve. Venting into room 0 is refused outright —
                         // the vacuum sink would swallow it and the ship would pump air
                         // into space forever.
@@ -112,9 +130,10 @@ namespace Perilune.Sim
                         break;
                     }
 
-                    // Unconditional while powered: no CO2 setpoint, no duty cycle, no
-                    // IsOpen gate (unlike the vent). Clamped at zero so a big scrubber
-                    // in a clean room cannot drive CO2 negative.
+                    // Unconditional while powered AND operational (the guard below is
+                    // both): no CO2 setpoint, no duty cycle, no IsOpen gate (unlike the
+                    // vent). Clamped at zero so a big scrubber in a clean room cannot
+                    // drive CO2 negative.
                     case DeviceKind.Scrubber when device.Powered && device.IsOperational(sim.Defs):
                     {
                         var room = sim.Rooms.RoomAt(world, device.Pos);

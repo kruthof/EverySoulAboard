@@ -299,9 +299,11 @@ namespace Perilune.Sim
         }
         private bool GetTierServed(ushort net, int tier) => (_tierServed[net] & (1 << tier)) != 0;
 
-        /// <summary>Grow-only scratch sizing; index 0 is the reserved "no network" slot,
-        /// zeroed each pass and never read. Lists are never shrunk, so a ship that once
-        /// had many networks keeps the capacity and later passes stay allocation-free.</summary>
+        /// <summary>Grow-only scratch sizing; index 0 is the reserved "no network" slot —
+        /// nothing ever accumulates into it (off-grid devices are skipped) and nothing
+        /// reads it (the balance loop starts at 1, and the Powered write short-circuits
+        /// on NetworkId != 0). Lists are never shrunk, so a ship that once had many
+        /// networks keeps the capacity and later passes stay allocation-free.</summary>
         private void EnsureScratch(int count)
         {
             while (_generation.Count < count) _generation.Add(0f);
