@@ -66,7 +66,11 @@ function fallbackToCanvas2D() {
   inputDispose = installInput({
     canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
     getMotion: () => motionByTile(motion),
-    onEscape: () => Hud.closeActiveDialogue(),
+    onEscape: () => Hud.handleEscape(),
+    getArmedTool: () => Hud.getArmedTool(),
+    onBuildKey: (kind) => Hud.armFromKey(kind),
+    onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
+    onCanvasClick: () => Hud.canvasClicked(),
   });
   swapping = false;
   layout(); draw();
@@ -164,6 +168,9 @@ function toggleSprites() {
 // ---- wire message dispatch ----
 const session = new WireSession(onMessage, (connected) => {
   document.getElementById('disc').style.display = connected ? 'none' : 'flex';
+  // IX-96: disconnect disarms the tool and drops any pending cross-deck click; the snapshot
+  // replay repopulates every authoritative surface on reconnect.
+  Hud.setConnected(connected);
 });
 
 function onMessage(m) {
@@ -174,8 +181,7 @@ function onMessage(m) {
       frame = m;
       startAnim();
       layout(); draw();
-      Hud.setChip('s-deck', m.deck); Hud.setChip('s-lens', m.lens);
-      Hud.reflectLens(m.lens);
+      Hud.renderFrame(m); // deck/lens chrome + selection surfaces + pending cross-deck click
       break;
     case 'light': {
       const plane = decodeLightPlane(m);
@@ -193,18 +199,24 @@ function onMessage(m) {
     case 'device': Hud.renderDevice(m); break;
     case 'moss': Hud.renderMoss(m); break;
     case 'llmstatus': Hud.renderLlmStatus(m); break;
+    // P2.1 console: the crew roster (CREW WATCH + CREW tab) and the ship chronicle.
+    case 'roster': Hud.renderRoster(m); break;
+    case 'chron': Hud.renderChron(m); break;
     default: break;
   }
 }
 
 // ---- HUD controls + input ----
+// The console chrome (tabs, palette, readout actions, crew rows) sends through this seam; the
+// armed-tool slot lives in the HUD. b-move is bound inside initConsole (it arms the guided move
+// order now, IX-52 — M / shift-click remain the instant expert paths).
+Hud.initConsole({ send: (o) => session.send(o), getCanvas: () => canvas, camera });
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));
 document.getElementById('b-pause').onclick = () => session.send(Cmd.pause());
 document.getElementById('b-faster').onclick = () => session.send(Cmd.speed(1));
 document.getElementById('b-slower').onclick = () => session.send(Cmd.speed(-1));
 document.getElementById('b-deckup').onclick = () => session.send(Cmd.deck(1));
 document.getElementById('b-deckdown').onclick = () => session.send(Cmd.deck(-1));
-document.getElementById('b-move').onclick = () => session.send(Cmd.move());
 
 // P2 conversation wiring: the dialogue input box sends `say`, closing (× / Esc) sends `bye`.
 Hud.onDialogueSend((sid, text) => session.send(Cmd.say(sid, text)));
@@ -215,7 +227,13 @@ Hud.onTerminalOp((op, tid, text) => session.send(Cmd.moss(op, tid, text)));
 inputDispose = installInput({
   canvas, camera, session, getFrame: () => frame, draw, toggleSprites,
   getMotion: () => motionByTile(motion),
-  onEscape: () => Hud.closeActiveDialogue(),
+  // Escape stack (IX-13): armed tool → active dialogue → nothing. Hud owns the stack.
+  onEscape: () => Hud.handleEscape(),
+  getArmedTool: () => Hud.getArmedTool(),
+  onBuildKey: (kind) => Hud.armFromKey(kind),
+  onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
+  // Plain canvas clicks supersede any pending cross-deck row click (IX-42).
+  onCanvasClick: () => Hud.canvasClicked(),
 });
 window.addEventListener('resize', () => { layout(); draw(); });
 

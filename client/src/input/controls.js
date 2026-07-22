@@ -52,12 +52,26 @@ export function crewTileNear(frame, motion, camera, px, py) {
  *   draw: () => void,
  *   toggleSprites: () => void,
  *   onEscape?: () => void,
+ *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'move'),
+ *   onBuildKey?: (kind: 'build'|'cancel') => void,
+ *   onToolUsed?: (tool: string, x: number, y: number) => void,
  * }} opts
  */
 export function installInput(opts) {
   const { canvas, camera, session, getFrame, draw, toggleSprites } = opts;
   const onEscape = opts.onEscape || (() => {});
   const getMotion = opts.getMotion || (() => null);
+  // Armed-tool seam (IX-34): the UI owns the single armedTool slot; the click/Enter handlers
+  // branch on it. onBuildKey routes B/X to the UI (controls.js stays free of UI imports beyond
+  // LENSES); onToolUsed lets the UI acknowledge a placement (pulse) / disarm the move order.
+  const getArmedTool = opts.getArmedTool || (() => null);
+  const onBuildKey = opts.onBuildKey || (() => {});
+  const onToolUsed = opts.onToolUsed || (() => {});
+  // Fires on every plain/shift canvas click (mouse or Enter) — a NEWER selection intent, so the
+  // UI can drop a pending cross-deck row click (IX-42 supersession). Armed-tool clicks report
+  // through onToolUsed instead.
+  const onCanvasClick = opts.onCanvasClick || (() => {});
+  const isBuildArmed = (t) => t === 'wall' || t === 'door' || t === 'cancel';
 
   // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
   // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
@@ -100,13 +114,26 @@ export function installInput(opts) {
       const { px, py } = canvasPoint(e);
       const t = tileFromPoint(camera, px, py);
       if (t.x >= 0 && t.y >= 0 && t.x < frame.w && t.y < frame.h) {
-        if (e.shiftKey) { session.send(Cmd.cursor(t.x, t.y)); session.send(Cmd.move()); }
-        else {
+        const tool = getArmedTool();
+        if (isBuildArmed(tool)) {
+          // IX-32: while a build tool is armed a non-drag click sends exactly one build order —
+          // no selection, no device toggle, no crew snap, and shift is suppressed (IX-33).
+          session.send(Cmd.build(tool, t.x, t.y));
+          onToolUsed(tool, t.x, t.y);
+        } else if (tool === 'move') {
+          // IX-52 guided move order: one click, one order, then the UI disarms via onToolUsed.
+          session.send(Cmd.cursor(t.x, t.y)); session.send(Cmd.move());
+          onToolUsed('move', t.x, t.y);
+        } else if (e.shiftKey) {
+          session.send(Cmd.cursor(t.x, t.y)); session.send(Cmd.move());
+          onCanvasClick(t.x, t.y);
+        } else {
           // Click assist: snap to a nearby (possibly mid-slide) crew member's tile so moving
           // pawns are actually clickable; a click near no one stays a plain tile click.
           const snap = crewTileNear(frame, getMotion(), camera, px, py);
           const c = snap || t;
           session.send(Cmd.click(c.x, c.y));
+          onCanvasClick(c.x, c.y);
         }
       }
     }
@@ -164,13 +191,26 @@ export function installInput(opts) {
     else if (k === 'r' || k === 'R' || k === '>') session.send(Cmd.deck(1));
     else if (k === 'f' || k === 'F' || k === '<') session.send(Cmd.deck(-1));
     else if (k >= '1' && k <= '7') session.send(Cmd.lens(LENSES[+k - 1]));
+    // Space on a focused BUTTON belongs to the button's native activation (same yield as
+    // Enter below) — a keyboard user activating a crew row must not pause the sim instead.
+    else if (k === ' ' && e.target && e.target.tagName === 'BUTTON') return;
     else if (k === ' ') { e.preventDefault(); session.send(Cmd.pause()); }
     else if (k === '+' || k === '=') session.send(Cmd.speed(1));
     else if (k === '-' || k === '_') session.send(Cmd.speed(-1));
     else if (k === 'm' || k === 'M') session.send(Cmd.move());
-    // Enter opens a talk when a crew is already selected (click-selected + Enter), else it acts
-    // as a keyboard "click" at the inspection cursor (device toggle / select).
-    else if (k === 'Enter') { if (!talkSelected()) session.send(Cmd.click(cur.x, cur.y)); }
+    // B/X (IX-10/IX-11): build / cancel-order toggles, routed to the UI's armed-tool slot.
+    else if (k === 'b' || k === 'B') onBuildKey('build');
+    else if (k === 'x' || k === 'X') onBuildKey('cancel');
+    // Enter on a focused BUTTON (crew-watch row, chip, tab) belongs to the button's native
+    // activation (IX-46) — the game key stands down so a row Enter doesn't also click the cursor.
+    else if (k === 'Enter' && e.target && e.target.tagName === 'BUTTON') return;
+    // Enter (armed build tool): keyboard placement parity — build at the inspection cursor (IX-33).
+    // Otherwise: talk when a crew is selected, else a keyboard "click" at the inspection cursor.
+    else if (k === 'Enter') {
+      const tool = getArmedTool();
+      if (isBuildArmed(tool)) { session.send(Cmd.build(tool, cur.x, cur.y)); onToolUsed(tool, cur.x, cur.y); }
+      else if (!talkSelected()) { session.send(Cmd.click(cur.x, cur.y)); onCanvasClick(cur.x, cur.y); }
+    }
     else return;
     e.preventDefault();
   }, { signal });

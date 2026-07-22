@@ -55,6 +55,11 @@ export const Cmd = {
   lens: (name) => ({ cmd: 'lens', name }),
   speed: (delta) => ({ cmd: 'speed', delta }),
   pause: () => ({ cmd: 'pause' }),
+  // P2.1 build palette: designate wall/door or cancel a queued order at a tile on the current
+  // deck. Legality is decided sim-side at the tick boundary — the client never ghosts an outcome.
+  build: (kind, x, y) => ({ cmd: 'build', kind, x, y }),
+  // P2.1 chronicle: request the chron message (also pushed on day rollover).
+  chron: () => ({ type: 'chron' }),
   // P2 conversation: open a talk with a crew member (by cid), stream a player line, or close.
   talk: (cid) => ({ type: 'talk', cid }),
   say: (sid, text) => ({ type: 'say', sid, text }),

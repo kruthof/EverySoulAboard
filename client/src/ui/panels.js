@@ -20,6 +20,9 @@ export class PanelManager {
     this.onBye = () => {};
     /** @type {(op:string, tid:string, text?:string)=>void} a terminal gesture → a `moss` wire op. */
     this.onMoss = () => {};
+    /** @type {(key:string)=>void} fired after any panel closes (the MOSS tab's live line
+     *  watches for 'terminal' so it never claims an IDE is open when the drawer is gone). */
+    this.onClosed = () => {};
     /** The sid of the most-recently focused/opened dialogue — Esc closes this one. */
     this.activeDialogueSid = null;
   }
@@ -42,6 +45,8 @@ export class PanelManager {
       this.panels.set(key, p);
       p.el.addEventListener('mousedown', () => p.focus());
       this.root().appendChild(p.el);
+      // Drag persistence (IX-64): the panel remembers this session's last dragged position by key.
+      if (typeof p.setPosKey === 'function') p.setPosKey(key);
     }
     p.focus();
     return p;
@@ -49,7 +54,7 @@ export class PanelManager {
 
   close(key) {
     const p = this.panels.get(key);
-    if (p) { p.el.remove(); this.panels.delete(key); }
+    if (p) { p.el.remove(); this.panels.delete(key); this.onClosed(key); }
   }
 
   /** Open or update the dialogue window for a chat session (keyed by sid). Closing it (× or Esc)
@@ -85,6 +90,20 @@ export class PanelManager {
     const p = this._panel(key, () => new CitizenCard(cit.cid, () => this.close(key)));
     p.render(cit, registry || {});
     return p;
+  }
+
+  /** Live-refresh a citizen card ONLY if it is already open (IX-54: the `citizen` wire message
+   *  no longer auto-opens the card — BIOGRAPHY does). No-op when the card isn't open. */
+  citizenIfOpen(cit, registry) {
+    if (!cit || cit.cid == null) return;
+    const p = this.panels.get('cit:' + cit.cid);
+    if (p) p.render(cit, registry || {});
+  }
+
+  /** The open MOSS terminal's tid, or null (the MOSS tab's live line reads this). */
+  openTerminalTid() {
+    const p = this.panels.get('terminal');
+    return p ? p.tid : null;
   }
 
   /** Open the MOSS terminal drawer for a device's terminal id (single instance). Switches the

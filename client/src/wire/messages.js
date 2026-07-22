@@ -102,7 +102,24 @@
  * @property {'device'} type @property {string} kind @property {string} [tid]
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg} WireMsg */
+/**
+ * One living-crew roster entry (P2.1 console). NOT fog-gated; snapshot-cached host-side, so it
+ * arrives on connect. x/y are tile coords in the same space as frame/click coords; deck is the
+ * crew's current deck. task is one of the host's fixed labels (digging/hauling/…/idle);
+ * portrait is a "pk_xxxxxxxx" key or "".
+ * @typedef {Object} RosterEntry
+ * @property {*} cid @property {string} name @property {string} role @property {string} mood
+ * @property {number} morale 0..1 @property {string} task @property {string} portrait
+ * @property {number} deck @property {number} x @property {number} y
+ */
+/** @typedef {{type:'roster', crew:RosterEntry[]}} RosterMsg */
+
+/**
+ * The ship's chronicle (P2.1 console) — sent on a {"type":"chron"} request and on day rollover.
+ * @typedef {{type:'chron', days:{day:number, headline:string, lines:string[]}[]}} ChronMsg
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg} WireMsg */
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

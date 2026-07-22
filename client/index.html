@@ -8,66 +8,94 @@
 </head>
 <body>
 <div class="app">
-  <div class="strip">
-    <div class="brand">PERILUNE <small>DERELICT SURVEY</small></div>
-    <div class="chip">DAY <b id="s-day">–</b></div>
-    <div class="chip" id="s-speedchip"><span id="s-runstate" class="run-dot"></span> <b id="s-speed">1x</b></div>
-    <div class="chip">DECK <b id="s-deck">0</b></div>
-    <div class="chip">LENS <b id="s-lens">none</b></div>
-    <div class="chip" id="s-llmchip" style="display:none">LLM <b id="s-llm">–</b></div>
-    <div class="msg" id="s-msg"></div>
+  <!-- ================= top bar (46px) ================= -->
+  <div class="topbar">
+    <span class="ship">MSV PERILUNE</span>
+    <span class="deck-group">
+      <button id="b-deckdown" class="mini" title="Deck down (F)">▼</button>
+      <span id="s-deck" class="deck-label">DECK –</span>
+      <button id="b-deckup" class="mini" title="Deck up (R)">▲</button>
+    </span>
+    <span class="msg" id="s-msg"></span>
+    <span class="topbar-spacer"></span>
+    <span class="chip" id="s-day">DAY –</span>
+    <button class="chip chip-btn" id="b-pause" title="Pause / run (Space)">
+      <span id="s-runstate" class="run-dot"></span><span id="s-pauselabel">‖ HOLD</span>
+    </button>
+    <span class="speed-group">
+      <button id="b-slower" class="mini" title="Slower (−)">‹</button>
+      <span class="chip" id="s-speedchip"><b id="s-speed">1×</b></span>
+      <button id="b-faster" class="mini" title="Faster (+)">›</button>
+    </span>
+    <span class="chip">LENS <b id="s-lens">none</b></span>
+    <span class="chip" id="s-llmchip" style="display:none">LLM <b id="s-llm">–</b></span>
+    <span class="caution idle" id="s-caution">NOMINAL</span>
   </div>
 
+  <!-- ================= middle: crew watch | stage | readout ================= -->
   <div class="mid">
+    <aside class="crewwatch">
+      <div class="zone-label" id="crew-count">CREW WATCH — 0 SOULS</div>
+      <div id="crewlist" class="crewlist"><div class="empty-line">No souls aboard.</div></div>
+    </aside>
+
     <div class="stage">
       <canvas id="c" width="1664" height="520"></canvas>
-    </div>
-
-    <div class="side">
-      <div class="card">
-        <h3>Ship Systems</h3>
-        <div id="metrics"></div>
-      </div>
-
-      <div class="card">
-        <h3>Controls</h3>
-        <div class="controls" style="margin-bottom:8px">
-          <button id="b-pause">⏸ Pause</button>
-          <button id="b-slower">– Speed</button>
-          <button id="b-faster">Speed +</button>
-        </div>
-        <div class="controls" style="margin-bottom:8px">
-          <button id="b-deckdown">▼ Deck</button>
-          <button id="b-deckup">▲ Deck</button>
-          <button id="b-move">↦ Move crew</button>
-        </div>
-        <div class="lens-row" id="lensbtns"></div>
-        <div class="hint">
-          <kbd>WASD</kbd> pan · <kbd>↑↓←→</kbd> cursor · <kbd>R</kbd>/<kbd>F</kbd> deck<br>
-          <kbd>1–7</kbd> lens · <kbd>space</kbd> pause · <kbd>+</kbd>/<kbd>−</kbd> speed · <kbd>m</kbd> move<br>
-          <kbd>T</kbd> talk to selected crew · <kbd>Esc</kbd> close dialogue<br>
-          <kbd>P</kbd> sprite toggle · scroll = zoom · drag = pan · click = select/toggle · shift-click = move
-        </div>
-      </div>
-
-      <div class="card" id="legendcard" style="display:none">
-        <h3>Lens Legend</h3>
+      <div id="inspect" class="stage-card mono"></div>
+      <div class="stage-card legend-card" id="legendcard" style="display:none">
         <div id="legend" class="mono"></div>
       </div>
+      <div id="hint" class="stage-hint">LIVE SPRITE FEED · CLICK DECK TO SELECT · DRAG TO PAN</div>
+    </div>
 
-      <div class="card">
-        <h3>Inspector</h3>
-        <div id="inspect" class="mono"></div>
+    <aside class="readout">
+      <div class="zone-label">READOUT</div>
+      <div id="ro-body">
+        <div class="ro-empty">NO CREW SELECTED</div>
+        <div class="ro-guide">Click a pawn or a CREW WATCH row.</div>
       </div>
+      <div class="ro-ship">
+        <div class="zone-label">SHIP</div>
+        <div id="metrics"></div>
+      </div>
+      <div class="ro-actions">
+        <button id="b-talk" class="btn-primary" disabled>[T] OPEN CHANNEL — TALK</button>
+        <button id="b-move" class="btn-secondary" disabled>[M] MOVE ORDER</button>
+        <button id="b-bio" class="btn-secondary" disabled>BIOGRAPHY</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ================= bottom console (170px) ================= -->
+  <div class="console">
+    <div class="console-menu">
+      <div class="tabrow" id="tabs"></div>
+      <div class="menu-content">
+        <div id="tab-build" class="palette-row">
+          <span class="zone-label place-label">PLACE ▸</span>
+          <span id="palette" class="palette"></span>
+        </div>
+        <div id="tab-crew" class="crew-table" hidden></div>
+        <div id="tab-moss" class="tab-block" hidden></div>
+        <div id="tab-chron" class="tab-block chron-block" hidden></div>
+      </div>
+      <div id="hotkeys" class="hotkeys">B BUILD · X CANCEL ORDER · ESC EXIT · CLICK SELECT · SHIFT-CLICK MOVE · T TALK · 1–7 LENS · SPACE PAUSE · R/F DECK · +/− SPEED</div>
+    </div>
+    <div class="console-lens">
+      <div class="zone-label">LENS SELECT</div>
+      <div class="lens-row" id="lensbtns"></div>
+      <div class="hotkeys lens-foot">1–7 LENS · ATMOSPHERICS &amp; POWER</div>
+    </div>
+    <div class="console-sensor">
+      <div class="zone-label">SENSOR LOG</div>
+      <div id="log" class="loglines"></div>
     </div>
   </div>
-
-  <div class="log">
-    <h3>Event Log</h3>
-    <div id="log"></div>
-  </div>
 </div>
-<div class="disconnected" id="disc">connection lost — is the server still running?</div>
+
+<div class="disconnected" id="disc">
+  <span class="disc-chip"><span class="disc-dot"></span>LINK LOST — RECONNECTING…</span>
+</div>
 
 <!-- Floating P2 panels (dialogue window, citizen card, MOSS terminal drawer) mount here. Empty
      until a chat/citizen/moss wire message arrives, so the default view is unchanged. -->
