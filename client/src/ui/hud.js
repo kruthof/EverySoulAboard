@@ -21,6 +21,9 @@ import {
   beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool, isBuildTool,
   hintLine, chronHeader,
 } from './console-model.js';
+import {
+  ringLayout, drawnEdges, focusTag, regardRows, signed,
+} from './relations-model.js';
 
 const METRIC_DEFS = [
   ['power', 'Power'], ['oxygen', 'Oxygen'], ['water', 'Water'], ['food', 'Food'],
@@ -46,6 +49,7 @@ let _camera = null;
 let _frame = null;        // latest frame message (authoritative selection/deck/lens)
 let _roster = null;       // latest roster message (authoritative crew list)
 let _chron = null;        // latest chron message
+let _relations = null;    // latest relations message (directed opinion graph → the RELATIONS web)
 let _armed = null;        // the ONE input-mode slot: null|'wall'|'door'|'cancel'|'move'
 let _tab = 'build';       // active bottom-bar tab (presentation only, IX-20)
 let _pending = null;      // pending cross-deck row click (IX-42)
@@ -144,8 +148,8 @@ export function initConsole(opts) {
   _getCanvas = opts.getCanvas || (() => null);
   _camera = opts.camera || null;
 
-  // Bottom-bar tabs (IX-70): BUILD · CREW · MOSS · CHRONICLE. Append-ready; nothing fake.
-  const TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
+  // Bottom-bar tabs (IX-70; IX-R1): BUILD · CREW · MOSS · CHRONICLE · RELATIONS. Append-ready.
+  const TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['moss', 'MOSS'], ['chron', 'CHRONICLE'], ['relations', 'RELATIONS']];
   const tabs = $('tabs');
   for (const [key, label] of TABS) {
     const b = document.createElement('button');
@@ -179,6 +183,15 @@ export function initConsole(opts) {
     panels().citizen(_citizens.get(sel.cid), PORTRAIT_REGISTRY); // lands via citizenIfOpen → re-render
   };
 
+  // RELATIONS web (IX-R2): a node click selects that crew — the ONE shared selection mechanism,
+  // so CREW WATCH, the web, and the READOUT stay in lockstep. Delegated so re-rendered nodes need
+  // no re-binding.
+  const relSvg = $('rel-svg');
+  if (relSvg) relSvg.addEventListener('click', (e) => {
+    const g = e.target && e.target.closest ? e.target.closest('.rel-node') : null;
+    if (g && g.dataset.cid != null) selectCrew(Number(g.dataset.cid));
+  });
+
   setTab('build');
   refreshSelection();
   reflectArmed();
@@ -208,6 +221,14 @@ export function renderRoster(m) {
 export function renderChron(m) {
   _chron = m;
   if (_tab === 'chron') renderChronBlock();
+}
+
+/** Relations dispatch (IX-R3): cache the directed graph; re-render the web when the RELATIONS tab
+ *  is up, and refresh the readout (its regard sections are relations-derived). */
+export function renderRelations(m) {
+  _relations = m;
+  if (_tab === 'relations') renderRelationsWeb();
+  refreshSelection();
 }
 
 // ---- armed tool (the single client input mode) ----
@@ -302,7 +323,7 @@ function setTab(tab) {
   _tab = tab;
   document.querySelectorAll('#tabs .tab').forEach((b) =>
     b.classList.toggle('on', /** @type {HTMLElement} */ (b).dataset.tab === tab));
-  for (const key of ['build', 'crew', 'moss', 'chron']) {
+  for (const key of ['build', 'crew', 'moss', 'chron', 'relations']) {
     const blk = $('tab-' + key);
     if (blk) blk.hidden = key !== tab;
   }
@@ -312,7 +333,84 @@ function setTab(tab) {
     if (!_chronRequested) { _chronRequested = true; _send(Cmd.chron()); }
     renderChronBlock();
   }
+  if (tab === 'relations') renderRelationsWeb();
+  // IX-R1: the RELATIONS tab swaps the ship viewport for the web; any other tab returns the ship
+  // view. The readout's regard sections depend on the active tab, so refresh selection either way.
+  reflectRelationsView();
+  refreshSelection();
   if (prevArmed !== _armed) reflectArmed();
+}
+
+// ---- RELATIONS web (the viewport swap) ----
+
+function relEdges() { return _relations && Array.isArray(_relations.edges) ? _relations.edges : []; }
+
+/** IX-R1: show the relations overlay only while its tab is active (ship canvas untouched beneath). */
+function reflectRelationsView() {
+  const view = $('relations-view');
+  if (view) view.hidden = _tab !== 'relations';
+}
+
+/** Select a crew member by cid through the ONE shared selection flow (IX-R2). Reuses crewRowClick
+ *  so same-deck / cross-deck resolution is identical to a CREW WATCH row click. */
+function selectCrew(cid) {
+  const entry = crewList().find((e) => e.cid === cid);
+  if (entry) crewRowClick(entry, document.createElement('div')); // throwaway el for the .pending style
+}
+
+/** Build the SVG crew-web from the directed graph + roster order (IX-R4..R8). Nodes ring in roster
+ *  order; edges are the deduped mutual lines (color = mutual tier, dashed = secret); the focused
+ *  crew's edges brighten/thicken with boxed tags; other edges recede. Pure derivations live in
+ *  relations-model.js — this is SVG glue. */
+function renderRelationsWeb() {
+  const svg = $('rel-svg');
+  if (!svg) return;
+  const list = crewList();
+  const titleEl = $('rel-title');
+  if (titleEl) {
+    titleEl.textContent = 'RELATIONS — ' + list.length + ' SOUL' + (list.length === 1 ? '' : 'S') +
+      ' · CLICK A NAME TO FOCUS';
+  }
+  // viewBox is 1000×640 (see index.html); the ellipse leaves room for surname labels + tags.
+  const pos = ringLayout(list.length, { cx: 500, cy: 300, rx: 372, ry: 232 });
+  const idxByCid = new Map(list.map((e, i) => [e.cid, i]));
+  const lines = drawnEdges(relEdges());
+  const sel = selectedRosterEntry(_frame, _roster);
+  const focusCid = sel ? sel.cid : null;
+  svg.classList.toggle('has-focus', focusCid != null);
+
+  let edgesSvg = '', tagsSvg = '', nodesSvg = '';
+  for (const ln of lines) {
+    const ai = idxByCid.get(ln.a), bi = idxByCid.get(ln.b);
+    if (ai == null || bi == null) continue; // an endpoint not on the current roster — skip
+    const focused = focusCid != null && (ln.a === focusCid || ln.b === focusCid);
+    if (!focused && !ln.draw) continue;      // unfocused noise stays invisible (IX-R6)
+    const pa = pos[ai], pb = pos[bi];
+    const cls = 'rel-edge tier-' + ln.tier + (ln.secret ? ' secret' : '') + (focused ? ' focus' : '');
+    edgesSvg += `<line class="${cls}" x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" ` +
+      `x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}"/>`;
+    if (focused) {
+      const tag = focusTag(ln, focusCid);
+      if (tag) {
+        const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+        const w = Math.max(48, tag.length * 7.4 + 14);
+        tagsSvg += `<g class="rel-tag" transform="translate(${mx.toFixed(1)},${my.toFixed(1)})">` +
+          `<rect x="${(-w / 2).toFixed(1)}" y="-10" width="${w.toFixed(1)}" height="20" rx="2"/>` +
+          `<text x="0" y="4">${esc(tag)}</text></g>`;
+      }
+    }
+  }
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i], p = pos[i];
+    const focused = e.cid === focusCid;
+    nodesSvg += `<g class="rel-node${focused ? ' focus' : ''}" data-cid="${esc(e.cid)}" ` +
+      `transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">` +
+      `<circle class="rel-badge" r="24" style="fill:${crewHue(e.cid)}"/>` +
+      (focused ? '<circle class="rel-ring" r="29"/>' : '') +
+      `<text class="rel-initials" y="6">${esc(crewInitials(e.name))}</text>` +
+      `<text class="rel-surname" y="46">${esc(surnameOf(e.name))}</text></g>`;
+  }
+  svg.innerHTML = edgesSvg + tagsSvg + nodesSvg; // edges behind, tags mid, nodes on top
 }
 
 // ---- crew watch (left column) + CREW tab (bottom) ----
@@ -571,6 +669,7 @@ function refreshSelection() {
       '<div class="ro-empty">NO CREW SELECTED</div>' +
       '<div class="ro-guide">Click a pawn or a CREW WATCH row.</div>';
     for (const b of [talk, move, bio]) if (b) b.disabled = true;
+    if (_tab === 'relations') renderRelationsWeb(); // clear the focus highlight (IX-R2)
     return;
   }
   const cit = _citizens.get(sel.cid);
@@ -584,11 +683,40 @@ function refreshSelection() {
   }
   html += `<div class="ro-task">&gt; ${esc(sel.task || '')}</div>`;
   html += `<div class="ro-morale">MORALE <span style="color:${moraleColor(mv)}">${pct}%</span></div>`;
+  // IX-R7: while RELATIONS is active, the readout gains the two directed regard sections below the
+  // normal glance content. The [T]/[M]/BIOGRAPHY controls (below, in .ro-actions) are untouched.
+  if (_tab === 'relations') html += regardSectionsHtml(sel);
   body.innerHTML = html;
   if (talk) talk.disabled = false;
   if (move) move.disabled = false;
   if (bio) bio.disabled = !_citizens.has(sel.cid); // IX-53: no cache → disabled, never an empty card
+  if (_tab === 'relations') renderRelationsWeb();   // selection drives the web focus (IX-R2)
   reflectArmed(); // move-hint surname may have changed
+}
+
+/** The two directed regard sections for the focused crew (IX-R7): THEIR REGARD FOR OTHERS
+ *  (outgoing "→ NAME  +N") and HOW OTHERS SEE {SURNAME} (incoming "NAME →  +N"), each with the
+ *  relationship note beneath. Signed values: positive green, negative rust (VS-R). */
+function regardSectionsHtml(sel) {
+  const { outgoing, incoming } = regardRows(relEdges(), sel.cid);
+  const byCid = new Map(crewList().map((e) => [e.cid, e]));
+  const rowHtml = (r, arrowBefore) => {
+    const other = byCid.get(r.cid);
+    const label = other ? surnameOf(other.name) : ('#' + r.cid);
+    const vcls = r.opinion > 0 ? 'pos' : r.opinion < 0 ? 'neg' : 'zero';
+    const head = arrowBefore ? `→ ${esc(label)}` : `${esc(label)} →`;
+    return `<div class="rr-row"><div class="rr-line"><span class="rr-name">${head}</span>` +
+      `<span class="rr-val ${vcls}">${esc(signed(r.opinion))}</span></div>` +
+      (r.note ? `<div class="rr-note">${esc(r.note.toUpperCase())}</div>` : '') + '</div>';
+  };
+  let h = '<div class="rr-section"><div class="zone-label">THEIR REGARD FOR OTHERS</div>';
+  h += outgoing.length ? outgoing.map((r) => rowHtml(r, true)).join('')
+    : '<div class="ro-guide">No recorded regard.</div>';
+  h += '</div><div class="rr-section"><div class="zone-label">HOW OTHERS SEE ' +
+    esc(surnameOf(sel.name)) + '</div>';
+  h += incoming.length ? incoming.map((r) => rowHtml(r, false)).join('')
+    : '<div class="ro-guide">No one has recorded regard.</div>';
+  return h + '</div>';
 }
 
 // ---- P2 panels: dialogue / citizen card / terminal drawer ----

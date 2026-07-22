@@ -28,6 +28,7 @@ namespace Perilune.Web
     ///   device  {"type":"device","kind":"terminal","tid":".."}
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
     ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4},..]}
+    ///   relations {"type":"relations","edges":[[fromCid,toCid,opinion,tier,note,secret],..]}
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
     /// </summary>
@@ -264,6 +265,58 @@ namespace Perilune.Web
                     sb.Append(",\"x\":").Append(e.X.ToString(Ic));
                     sb.Append(",\"y\":").Append(e.Y.ToString(Ic));
                     sb.Append('}');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        // ------------------------------------------------------------------- relations (RELATIONS web)
+
+        /// <summary>
+        /// One DIRECTED relationship edge on the relations wire — how <see cref="From"/> regards
+        /// <see cref="To"/>: the rounded opinion (−100..100), the classified directed tier
+        /// (<see cref="Perilune.Sim.RelationType"/> as a byte), an optional relationship note ("" when
+        /// none), and whether the bond is CONCEALED. Names resolve client-side via the cid-keyed
+        /// roster; the client dedups the two directions to one drawn line and derives the MUTUAL
+        /// tier + colour itself. The <see cref="Secret"/> flag on this wire deliberately bypasses
+        /// the dialogue RevealDifficulty gate — the relations view is the player's omniscient eye
+        /// (matching the mock's dashed-edge legend). Personal Persona.Secrets stay OFF the wire;
+        /// only this relationship-level flag ships.
+        /// </summary>
+        public readonly struct RelationEdge
+        {
+            public readonly uint From, To;
+            public readonly int Opinion;
+            public readonly byte Tier;
+            public readonly string Note;
+            public readonly bool Secret;
+
+            public RelationEdge(uint from, uint to, int opinion, byte tier, string note, bool secret)
+            {
+                From = from; To = to; Opinion = opinion; Tier = tier; Note = note; Secret = secret;
+            }
+        }
+
+        /// <summary>Serialize the directed relationship graph (see <see cref="RelationEdge"/>). A
+        /// cached state channel like roster: rebuilt each render, deduped by the session. Both
+        /// directions ship as-is; the client collapses them to one line and classifies the mutual
+        /// tier. Each edge is a compact tuple [from, to, opinion, tier, note, secret].</summary>
+        public static string Relations(IReadOnlyList<RelationEdge> edges)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"type\":\"relations\",\"edges\":[");
+            if (edges != null)
+                for (int i = 0; i < edges.Count; i++)
+                {
+                    var e = edges[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[').Append(e.From.ToString(Ic))
+                      .Append(',').Append(e.To.ToString(Ic))
+                      .Append(',').Append(e.Opinion.ToString(Ic))
+                      .Append(',').Append(((int)e.Tier).ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, e.Note ?? "");
+                    sb.Append(',').Append(e.Secret ? "true" : "false").Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

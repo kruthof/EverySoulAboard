@@ -122,7 +122,17 @@
  * @typedef {{type:'chron', days:{day:number, headline:string, lines:string[]}[]}} ChronMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg} WireMsg */
+/**
+ * The directed relationship graph (RELATIONS web). One DIRECTED edge per tuple:
+ * [fromCid, toCid, opinion(-100..100, int), tier(RelationType byte), note(string,""), secret(bool)].
+ * Names resolve client-side via the cid-keyed roster; MUTUAL regard is derived client-side from the
+ * two directions (relations-model.js). NOT fog-gated (same rule as roster). The `secret` flag ships
+ * deliberately (the player is the ship's omniscient eye) — personal secrets stay off the wire.
+ * @typedef {[number,number,number,number,string,boolean]} RelationEdgeTuple
+ * @typedef {{type:'relations', edges:RelationEdgeTuple[]}} RelationsMsg
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg} WireMsg */
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

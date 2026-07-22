@@ -140,7 +140,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "relations" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -479,6 +479,7 @@ namespace Perilune.Web
             Send("inspect", WireFormat.Inspect(InspectorModel.Build(_sim, cursor, _selected)), force);
             Send("status", WireFormat.Status(_status, SpeedLabel[_speedIndex], _speedIndex == 0), force);
             Send("roster", WireFormat.Roster(BuildRoster()), force);
+            Send("relations", WireFormat.Relations(BuildRelations()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -602,6 +603,39 @@ namespace Perilune.Web
                 }
                 rows.Add(new WireFormat.RosterEntry(c.Id, Name(c), role, mood, TaskLabel(c),
                     portrait, c.Morale, c.Pos.Z, c.Pos.X, c.Pos.Y));
+            }
+            return rows;
+        }
+
+        /// <summary>The directed relationship graph for the RELATIONS web — one edge per living,
+        /// named social opinion. READ-ONLY: it iterates the SocialSystem's canonical (From,To)-sorted
+        /// edge list and joins each edge's note + concealed flag from the owning citizen's mind
+        /// persona (host-owned, unhashed). It NEVER calls Nudge (which mutates + inserts and would
+        /// perturb the SOCL fold) — built on the sim thread inside Render alongside the roster. Not
+        /// fog-gated: the player is the ship's omniscient eye here (same deliberate rule as roster).
+        /// An edge whose From or To is dead/unnamed is excluded (mirrors CitizenContext.RenderCrewRelations).</summary>
+        private List<WireFormat.RelationEdge> BuildRelations()
+        {
+            var rows = new List<WireFormat.RelationEdge>();
+            if (_host.Social == null) return rows;
+            var edges = _host.Social.Edges;
+            for (int i = 0; i < edges.Count; i++)
+            {
+                var e = edges[i];
+                if (!_sim.Citizens.TryGet(e.From, out var from) || from.Dead || string.IsNullOrEmpty(from.Name)) continue;
+                if (!_sim.Citizens.TryGet(e.To, out var to) || to.Dead || string.IsNullOrEmpty(to.Name)) continue;
+
+                string note = "";
+                bool secret = false;
+                if (_host.Minds != null && _host.Minds.Minds.TryGet(e.From, out var mind) && mind.Persona != null)
+                {
+                    if (mind.Persona.RelationshipNotes != null &&
+                        mind.Persona.RelationshipNotes.TryGetValue(e.To, out var n)) note = n ?? "";
+                    secret = mind.Persona.RelationshipSecrets != null &&
+                             mind.Persona.RelationshipSecrets.Contains(e.To);
+                }
+                int opinion = (int)System.Math.Round(e.Opinion, System.MidpointRounding.AwayFromZero);
+                rows.Add(new WireFormat.RelationEdge(e.From, e.To, opinion, e.Rel, note, secret));
             }
             return rows;
         }
