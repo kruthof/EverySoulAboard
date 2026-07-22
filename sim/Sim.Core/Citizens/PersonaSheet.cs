@@ -30,6 +30,15 @@ namespace Perilune.Sim
         public string RaidBackstory = "";    // 2-4 sentences: what they saw/lost in the Lien raid
         public string SpeechStyle = "";
         public Dictionary<uint, string> RelationshipNotes = new Dictionary<uint, string>(); // v1: filled by social sim
+
+        /// <summary>The toward-cids whose relationship is CONCEALED — a dashed edge on the
+        /// RELATIONS web. Host-owned mind state, parallel to <see cref="RelationshipNotes"/>:
+        /// NOT hashed (excluded from the MEMS StateChecksum, exactly like the notes' prose) and
+        /// never emitted to the portrait-pipeline persona dump. Populated for authored crew only.
+        /// Surfacing this on the relations wire deliberately bypasses the dialogue
+        /// RevealDifficulty gate — the relations view is the player's omniscient eye (the mock's
+        /// dashed-edge legend). Personal <see cref="Secrets"/> stay off the wire.</summary>
+        public HashSet<uint> RelationshipSecrets = new HashSet<uint>();
     }
 
     /// <summary>One authored secret (the P2 slice crew): the prose the citizen may reveal,
@@ -53,6 +62,8 @@ namespace Perilune.Sim
         public string Toward;   // the other citizen's Name
         public float Opinion;   // seeded directed opinion (the SocialSystem clamp applies)
         public string Note;     // optional RelationshipNote prose (LLM prompt colour)
+        public bool Secret;     // concealed bond → a dashed edge on the relations web (unhashed
+                                // persona state; never touches Opinion, so the SOCL fold is unmoved)
     }
 
     /// <summary>A fully hand-authored persona (the P2 "Talking Ship" slice crew). Same shape

@@ -46,6 +46,19 @@
         <div id="legend" class="mono"></div>
       </div>
       <div id="hint" class="stage-hint">LIVE SPRITE FEED · CLICK DECK TO SELECT · DRAG TO PAN</div>
+      <!-- RELATIONS viewport swap (relations-spec IX-R*): a full-cover overlay sibling of the
+           canvas, shown only while the RELATIONS tab is active. The ship canvas is untouched. -->
+      <div id="relations-view" class="relations-view" hidden>
+        <div class="rel-title" id="rel-title">RELATIONS</div>
+        <svg id="rel-svg" class="rel-svg" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+        <div class="rel-legend">
+          <span class="rel-key"><i class="sw close"></i>CLOSE</span>
+          <span class="rel-key"><i class="sw warm"></i>WARM</span>
+          <span class="rel-key"><i class="sw neutral"></i>NEUTRAL</span>
+          <span class="rel-key"><i class="sw hostile"></i>HOSTILE</span>
+          <span class="rel-key"><i class="sw secret"></i>SECRET</span>
+        </div>
+      </div>
     </div>
 
     <aside class="readout">
@@ -78,6 +91,9 @@
         <div id="tab-crew" class="crew-table" hidden></div>
         <div id="tab-moss" class="tab-block" hidden></div>
         <div id="tab-chron" class="tab-block chron-block" hidden></div>
+        <div id="tab-relations" class="tab-block" hidden>
+          <div class="menu-msg">The relationship web replaces the deck view. Click a name — in the web or CREW WATCH — to focus their bonds; the READOUT shows both directions.</div>
+        </div>
       </div>
       <div id="hotkeys" class="hotkeys">B BUILD · X CANCEL ORDER · ESC EXIT · CLICK SELECT · SHIFT-CLICK MOVE · T TALK · 1–7 LENS · SPACE PAUSE · R/F DECK · +/− SPEED</div>
     </div>

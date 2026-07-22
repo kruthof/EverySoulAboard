@@ -188,6 +188,59 @@ canvas{
 }
 .pulse-red{border-color:var(--bad-txt)}
 
+/* ==== RELATIONS web (relations-spec VS-R*) — full-cover overlay swapping the ship viewport ==== */
+.relations-view{
+  position:absolute;inset:14px;z-index:6;background:var(--bg-void);
+  box-shadow:0 0 0 1px var(--ln-hair);
+  display:flex;flex-direction:column;gap:8px;padding:14px 18px;overflow:hidden;
+}
+.rel-title{
+  font-size:10px;font-weight:400;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--txt-faint);flex:none;
+}
+.rel-svg{flex:1;min-height:0;width:100%;overflow:visible}
+/* legend row (VS-R): — CLOSE — WARM — NEUTRAL — HOSTILE ⋯ SECRET */
+.rel-legend{
+  display:flex;gap:18px;flex-wrap:wrap;flex:none;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--txt-dim);
+}
+.rel-key{display:inline-flex;align-items:center;gap:7px}
+.rel-key .sw{width:16px;height:0;border-top:2px solid var(--ln-chip)}
+.rel-key .sw.close{border-top-color:var(--good)}
+.rel-key .sw.warm{border-top-color:var(--amber-2)}
+.rel-key .sw.neutral{border-top-color:var(--txt-dim)}
+.rel-key .sw.hostile{border-top-color:var(--bad-txt)}
+.rel-key .sw.secret{border-top-style:dashed;border-top-color:var(--txt-dim)}
+/* edges: mutual tier = color, dashed = secret; unfocused recede, focused brighten/thicken */
+.rel-edge{stroke:var(--ln-chip);stroke-width:1.5;opacity:.55;fill:none}
+.rel-edge.tier-close{stroke:var(--good)}
+.rel-edge.tier-warm{stroke:var(--amber-2)}
+.rel-edge.tier-neutral{stroke:var(--txt-dim)}
+.rel-edge.tier-hostile{stroke:var(--bad-txt)}
+.rel-edge.secret{stroke-dasharray:7 5}
+.rel-svg.has-focus .rel-edge:not(.focus){opacity:.2}
+.rel-edge.focus{opacity:1;stroke-width:3.5}
+/* boxed uppercase tag at a focused edge midpoint */
+.rel-tag rect{fill:var(--bg-bar);stroke:var(--ln-chip);stroke-width:1}
+.rel-tag text{
+  fill:var(--amber-3);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
+  text-anchor:middle;text-transform:uppercase;
+}
+/* nodes: initials badge (crew hue) + surname; focused gets a bright ring */
+.rel-node{cursor:pointer}
+.rel-badge{stroke:var(--ln-chip);stroke-width:1}
+.rel-node.focus .rel-badge{stroke:var(--txt-peak);stroke-width:1.5}
+.rel-ring{fill:none;stroke:var(--txt-peak);stroke-width:2}
+.rel-initials{
+  fill:var(--txt-onacc);font-family:var(--font-mono);font-weight:700;font-size:17px;
+  letter-spacing:.02em;text-anchor:middle;
+}
+.rel-surname{
+  fill:var(--txt-hi);font-family:var(--font-mono);font-size:13px;letter-spacing:.04em;
+  text-anchor:middle;text-transform:uppercase;
+}
+.rel-node.focus .rel-surname{fill:var(--amber-2)}
+
 /* ==== readout (VS-24/25, VS-36..44) ==== */
 .readout{
   background:var(--bg-side);border-left:1px solid var(--ln-hair);padding:16px;
@@ -226,6 +279,19 @@ canvas{
 .ro-actions button:disabled{
   color:var(--txt-faint);border-color:var(--ln-hair);cursor:default;pointer-events:none;
 }
+/* RELATIONS readout regard sections (VS-R) — both directions, signed values right-aligned */
+.rr-section{
+  border-top:1px dashed var(--ln-hair);padding-top:10px;display:flex;flex-direction:column;gap:6px;
+}
+.rr-section .zone-label{margin-bottom:2px}
+.rr-row{display:flex;flex-direction:column;gap:2px}
+.rr-line{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px}
+.rr-name{color:var(--txt-hi)}
+.rr-val{font-weight:700}
+.rr-val.pos{color:var(--good)}
+.rr-val.neg{color:var(--bad-txt)}
+.rr-val.zero{color:var(--txt-dim)}
+.rr-note{color:var(--txt-dim);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
 
 /* ==== bottom console (VS-26) ==== */
 .console{

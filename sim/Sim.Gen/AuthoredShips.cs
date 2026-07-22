@@ -449,7 +449,10 @@ namespace Perilune.Gen
                     Relationships = new[]
                     {
                         new AuthoredRelationship { Toward = "Dmitri Volkov", Opinion = -40f, Note = "the reactor tech who blames him for the breach" },
-                        new AuthoredRelationship { Toward = "Nadia Hassan",  Opinion = 25f, Note = "she stitched his burns; he owes her" },
+                        // CONCEALED bond (dashed on the relations web): a life-debt Salif never
+                        // advertises while Dmitri publicly blames him for the breach. Grounded in
+                        // his own note ("he owes her") and Nadia's ("keeps their secrets").
+                        new AuthoredRelationship { Toward = "Nadia Hassan",  Opinion = 25f, Note = "she stitched his burns; he owes her", Secret = true },
                     },
                 },
                 new AuthoredPersona
@@ -474,7 +477,9 @@ namespace Perilune.Gen
                     Relationships = new[]
                     {
                         new AuthoredRelationship { Toward = "Amara Okonkwo", Opinion = 65f, Note = "her closest friend; the two of them hold the ship's morale" },
-                        new AuthoredRelationship { Toward = "Salif Camara",  Opinion = 32f, Note = "her most frequent patient; fond of him" },
+                        // The other side of the concealed bond above — Nadia, the keeper of the
+                        // crew's secrets, quietly fond of the man who owes her a life.
+                        new AuthoredRelationship { Toward = "Salif Camara",  Opinion = 32f, Note = "her most frequent patient; fond of him", Secret = true },
                     },
                 },
                 new AuthoredPersona
@@ -588,8 +593,13 @@ namespace Perilune.Gen
                     var to = FindCitizen(sim, rels[r].Toward);
                     if (to == null || to.Id == from.Id) continue;
                     social?.Nudge(from.Id, to.Id, rels[r].Opinion, defs);
-                    if (!string.IsNullOrEmpty(rels[r].Note) && minds.Minds.TryGet(from.Id, out var mind) && mind.Persona != null)
-                        mind.Persona.RelationshipNotes[to.Id] = rels[r].Note;
+                    if (minds.Minds.TryGet(from.Id, out var mind) && mind.Persona != null)
+                    {
+                        // Note + secret land on the persona (host-owned, unhashed); the Opinion
+                        // above is the only thing that touches the SOCL fold / StateHash.
+                        if (!string.IsNullOrEmpty(rels[r].Note)) mind.Persona.RelationshipNotes[to.Id] = rels[r].Note;
+                        if (rels[r].Secret) mind.Persona.RelationshipSecrets.Add(to.Id);
+                    }
                 }
             }
 

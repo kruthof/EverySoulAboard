@@ -202,6 +202,8 @@ function onMessage(m) {
     // P2.1 console: the crew roster (CREW WATCH + CREW tab) and the ship chronicle.
     case 'roster': Hud.renderRoster(m); break;
     case 'chron': Hud.renderChron(m); break;
+    // RELATIONS tab: the directed relationship graph feeding the crew-web viewport swap.
+    case 'relations': Hud.renderRelations(m); break;
     default: break;
   }
 }
