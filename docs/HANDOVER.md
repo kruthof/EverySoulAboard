@@ -371,7 +371,11 @@ tick-3000 `401c9b96aff338a7` unmoved.
 1. **Max-zoom clamp.** `MAX_TILE_DEVICE_PX = 128` makes max zoom 1:1 (was a 5× upscale)
    but also clamps the **default** Retina view 72 → 64 CSS px/tile (~12% wider on load).
    One constant reverts it.
-2. **Sprite regen.** Only worth funding **bundled with a hard-edge art spec**. Measured:
+2. **Sprite regen — DECIDED 2026-07-22 by Garvin: NOT NOW.** Order of work is
+   **(a) revise the sprite AND ship design → (b) fix it → (c) only then regenerate, at the
+   best resolution, to match Prison Architect's crispness.** No spritegen run, no API
+   credits, no SPRITE_URIS pin move until (a) and (b) are done. This matches the art
+   lane's own finding below: a resolution-only regen is wasted money. Rationale kept: 
    PA magnified 6× is visibly bilinear-blurred and still reads crisp — its quality is
    hard outlines, flat fills, low detail density, NOT resolution. Our pawns carry ~2,285
    unique colours each. A pure resolution regen costs credits, moves the SPRITE_URIS pin
