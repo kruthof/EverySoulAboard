@@ -1,5 +1,12 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign, tag `v2-talking-ship`)
 
+> **The MOSS terminal landed 2026-07-22** — the newest feature on main. See
+> "The MOSS terminal" section below (search it); spec is
+> `docs/design/perilune-moss-terminal.spec.md`. Four Opus-gated lanes, 680 dotnet +
+> 342 node green, pins unmoved. One deferred follow-up: the PROGRAM screen (fold the
+> existing DSL IDE in — the shell, key and directory already ship; `moss-screen.js`
+> `_renderProgram` documents the seam).
+>
 > **Newest first, and this is where you start:** read **"The economy redesign
 > (2026-07-22) — START HERE"** immediately below. It is the approved next body of work
 > and it is design-complete: `docs/ECONOMY.md` (design authority) +
@@ -94,6 +101,69 @@ literal `26907c23d7e48a5c`, which goes stale the moment another lane merges.
 **The gate the whole programme is judged on:** A1 — *crew are > 25 % busy at sim-hour 24*
 (today: **0.0 %**). A conversion graph with finite ore is a longer boot window, not a durable
 loop, and A1 is what tells the difference. Full gate list: `ECONOMY.md` §12.
+
+## The MOSS terminal — "the phosphor ledger" (2026-07-22) — LANDED
+
+Garvin asked for a true Fallout-4-style terminal: click MOSS and, instead of the ship, you get a
+full-window amber CRT that reports every system aboard on one screen. Landed on main via **four
+Opus-gated worktree lanes** off a frozen contract. Spec: **`docs/design/perilune-moss-terminal.spec.md`**
+(the interaction/visual/data contract — IX-M / VS-M / DA-M; read §0 first, it is the honesty rule).
+The MOSS *language* (`sim/Sim.Dsl`) is unchanged and still runs in the background; this is a new
+**face** over the ship's telemetry.
+
+**What shipped.** Four screens — **LEDGER** (the mock: 8 rows, LOAD bar / STATE / LAST FAULT),
+**SYSTEM DETAIL** (per-device breakdown + a host-authored DERIVATION note), **FAULT LOG**, and a
+**PROGRAM** shell + terminal directory. A live `>` prompt reads (`ship.power`, `hydro.co2`,
+`status`) and commands devices (`close door_storage`, `set vent_hydro.rate max`). Full takeover
+(top bar / CREW WATCH / READOUT / stage / bottom console all hidden — the ship canvas is never
+touched, MOSS just isn't drawing it); ESC is a stack out (PROGRAM → DETAIL/FAULTLOG → LEDGER →
+ship). New cached `systems` wire channel + `moss` ops `sys`/`exec`.
+
+**The design decisions that shaped it** (asked and answered up front):
+- **Honest rows only.** Of the mock's 8 rows, only 4 exist in the sim. MEDICAL SUITE is inert
+  furniture (0 draw, 0 wear, no system reads it); COMMS ARRAY and GRAV RING do not exist anywhere
+  in `sim/` or `hosts/`. Rather than fake three gauges on the one screen whose whole purpose is the
+  truth about the ship (`MECHANICS.md` §13 exists because dead systems shipped behind HUD bars
+  reading 1.00), they were replaced by **THERMAL / FABRICATION / NAV-SENSORS**, all real. Row count
+  and visual density match the mock. `DA-M1..M4` make this a rule: every gauge is derived from live
+  sim state or shown `OFFLINE` with a stated reason (NAV is honestly OFFLINE — no `Telescope` is
+  ever placed, and the row comes alive on its own if one ever is).
+- **The prompt commands devices, but grants no new authority.** It resolves targets through the
+  **same `DeviceRegistry`/`IScriptable` adapters the DSL interpreter uses**, so the verb whitelist
+  is inherited, not re-declared, and every write leaves as an existing `SetDoorState`/`SetDeviceState`
+  command at a tick boundary. **No new `ISimCommand`.** Routing it through `MossCompiler` was
+  investigated and rejected: `SetProgram("@console", …)` would have folded a player's typo into the
+  determinism hash. `ship.*` and rooms stay read-only.
+- **No hash move.** `ShipSystems.Compute`/`ComputeDetail` is a pure on-demand report next to
+  `ShipMetrics` — no sim field, no `IStatefulSystem`, no def, no fold. Scenario/tick-3000/slice pins
+  all unmoved.
+
+**It is a diagnostic instrument pointed at the live economy bugs**, and deliberately does not
+smooth them over: on the slice at day 3 it reads `LIFE SUPPORT — LOAD 58% / DEGRADED / 16,677 ppm`
+(capacity coping, air poisonous — both true, the room-local-scrubber bug B-3), `WATER RECLAIM` /
+`HYDROPONICS` ATTEND on the dry `tank_hydro` (B-2), `THERMAL` DEGRADED at −15.7 °C.
+
+**Suite after merge: 680 dotnet + 342 node** green via `./ci.sh`; `26907c23d7e48a5c` and both
+tick-3000/slice goldens unmoved (nothing hashed was added). Lanes: `moss-systems` (sim/host/wire,
+PASS after a FAIL — a reactor row that read *lower* load as power failed, a ledger that laundered
+NaN into NOMINAL, a note describing the rule its own code replaced), `moss-model` (the pure client
+brain, PASS ×2 — its client-side derivation copy had drifted to a *reciprocal* of the host's), and
+`moss-screen` (the DOM/CRT face, PASS ×2 — Backspace was dead in the prompt, invisible to a node
+harness whose `preventDefault` is a no-op; the fix included closing that harness blindness, now
+spec §6.1: trusted-key CDP verification is obligatory for any lane touching keys here). The
+review method (independent gate per package, blind spec → in-worktree `ci.sh` → adversarial
+mutation pass) again caught **disjoint** classes the author could not: five tests that could not
+fail — one of them inside the tool that enforces the anti-vacuous rule — plus two duplicated-fact
+drifts and three rows that lied.
+
+**Deferred (one follow-up):** the PROGRAM screen's editor half — folding the existing DSL IDE
+(`client/src/ui/terminal.js` / `terminal-model.js`) in behind the directory. The shell, the `P`
+key, the directory and the wire (`moss open` → `ev:source`) all already ship; `moss-screen.js`
+`_renderProgram` documents the seam, and the model already carries `model.program` delegated to
+`terminal-model.js`, so that lane inherits a live editor. **Near-term cleanup, non-blocking**
+(all recorded in spec §6.1): `ShipSystems` gates the `systems` wire on **wall**-clock (~16.7
+sim-min max staleness at 1000× speed — v2 is to gate on `TickCount`); the ppO₂ life-support band
+is correct but unreachable on shipped content (vents inject from an unmodelled reserve).
 
 ## Where the project stands
 

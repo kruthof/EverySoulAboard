@@ -1092,7 +1092,8 @@ institutional memory that prevents the next playtest surprise.***
 > `AgreeTask` whitelist. This describes `0f88231`.
 
 `RoomState.CO2Ppm` has exactly six consumers repo-wide (verified by grep):
-`NeedsSystem.cs:52` (health damage at 40,000 ppm), `ShipMetrics.cs:67` (HUD),
+`NeedsSystem.cs:130,132` (health damage: `> 2× co2_narcosis_ppm` severe, `> co2_narcosis_ppm`
+i.e. 40,000 ppm ordinary — `:52` is SocialSystem class-doc, not the consumer), `ShipMetrics.cs:67` (HUD),
 `Sim.Glyph/GlyphMapper.cs:194` (the CO2 lens), `Sim.Dsl/DeviceAdapters.cs:123` (MOSS
 `room.co2`), `hosts/scenario/Program.cs:377` (the scenario runner's own binding) and
 `hosts/tui/Ui/InspectorModel.cs:54`. **No system reads it to dispatch work, raise an
