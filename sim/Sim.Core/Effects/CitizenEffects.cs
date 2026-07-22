@@ -80,9 +80,12 @@ namespace Perilune.Sim
     /// NOTE string — <c>WireFormat.ChatEffect</c>), and the provider tool schemas bound
     /// the enum by NAME, not ordinal. Nothing may narrow it back on the way through:
     /// there is no <c>(byte)</c> cast of an EffectKind anywhere in the tree, and
-    /// <c>EffectKindWidthTests</c> pins that flags above bit 7 survive the two paths
-    /// that actually carry the value (the event bus into MemorySystem's rule table, and
-    /// the CapabilityManifest legal-set into TurnPlan).
+    /// <c>EffectKindWidthTests</c> pins that flags above bit 7 survive every path that
+    /// actually carries the value — BOTH producers of <c>CitizenEffectAppliedEvent.Kind</c>
+    /// (<see cref="EffectPump"/> below and <c>ApplyCitizenEffectCommand</c>), the consuming
+    /// MemorySystem rule table, and the CapabilityManifest legal-set into TurnPlan. A
+    /// <c>(byte)</c> cast reintroduced at either producer is invisible to consumer-side
+    /// tests, so do not "simplify" those two away.
     ///
     /// Rows stay append-only and stay powers of two; the next free bit is 1 &lt;&lt; 6.
     /// </summary>

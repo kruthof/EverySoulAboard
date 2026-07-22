@@ -859,8 +859,8 @@ effect.** Anything not representable here is unrepresentable, not merely discour
 | `FollowPlayer` | `bool` | sets `mind.FollowingPlayer` (read by nothing — §13.3) |
 | `EndConversation` | `Mood` string | writes a memory entry |
 
-`EffectKind` is a `[Flags]` byte so a `CapabilityManifest` can express a legal-set
-(`:74-84`).
+`EffectKind` is a `[Flags]` **ushort** so a `CapabilityManifest` can express a legal-set
+(`:89-99`; widened from `byte` by ECONOMY-PLAN.md §0 W0-2 — 6 of 8 bits were spent, next free bit is `1 << 6`).
 
 ### 10.2 How an effect reaches the sim
 
