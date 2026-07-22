@@ -68,13 +68,15 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (560 green; `./ci.sh`
-  runs the full gate — 560 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (570 green; `./ci.sh`
+  runs the full gate — 570 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `401c9b96aff338a7`; the slice tick-3000 golden is `d1710ab6a1fe50ce`.
+  `401c9b96aff338a7`; the slice tick-3000 golden is `b31ba82f50cf395c`
+  (moved 2026-07-21 by the slice work-economy lane — the slice now boots with a
+  designated aft dig; the 2-crew pins are untouched).
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:

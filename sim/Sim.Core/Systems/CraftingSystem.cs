@@ -73,8 +73,22 @@ namespace Perilune.Sim
         // Scratch for input consumption (EntityStore.Remove during iteration is unsafe).
         private readonly List<uint> _consumeIds = new List<uint>(8);
 
+        // --- Build-material priority (WS-MATTER). BuildSystem is an OPTIONAL stack member,
+        // resolved lazily exactly as JobSystem resolves it: when absent (_build == null) the
+        // flag below can never be set and this system behaves bit-for-bit as it did before.
+        // While any pending site is still short of material, the standing bills stop FETCHING
+        // that material — a player designation must not lose a race with a recycler that eats
+        // the ship's only Regolith. Already-staged inputs and a batch in progress are never
+        // clawed back (no un-consume exists), so only the fetch leg is gated.
+        private BuildSystem _build;
+        private bool _buildResolved;
+        private bool _buildWantsMaterial;
+
         public void Tick(Simulation sim)
         {
+            if (!_buildResolved) { _build = FindBuildSystem(sim); _buildResolved = true; }
+            _buildWantsMaterial = ComputeBuildDemand();
+
             ReleaseOrphanedWorkers(sim);
 
             var devices = sim.Devices.Items;
@@ -111,7 +125,10 @@ namespace Perilune.Sim
 
             bool canStart = station.Progress > 0f ||
                             StagedUnits(sim, station.Pos, recipe) >= recipe.InputCount;
-            if (!canStart && !AnyFetchCandidate(sim, station.Pos, recipe)) return; // nothing to do — zero-alloc idle
+            // Don't recruit anyone to go fetch material the builders are waiting on.
+            if (!canStart && (FetchBlockedForBuilds(sim, station.Pos, recipe) ||
+                              !AnyFetchCandidate(sim, station.Pos, recipe)))
+                return; // nothing to do — zero-alloc idle
 
             var recruit = FindNearestIdle(sim, staging);
             if (recruit == null) return;
@@ -209,6 +226,12 @@ namespace Perilune.Sim
         /// </summary>
         private void StepFetch(Simulation sim, Device station, in RecipeDef recipe, Citizen worker, Int3 staging)
         {
+            if (FetchBlockedForBuilds(sim, station.Pos, recipe))
+            {
+                Abandon(worker); // builders have first call on this material — free the citizen
+                return;
+            }
+
             ItemStack best = null;
             int bestDist = int.MaxValue;
             var items = sim.Items.Items;
@@ -252,6 +275,42 @@ namespace Perilune.Sim
             if (sim.Paths.FindPath(sim, worker.Pos, best.Pos, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
             else Abandon(worker); // unreachable from here — retried from ground truth next second
         }
+
+        // ------------------------------------------------------------- build priority
+
+        private static BuildSystem FindBuildSystem(Simulation sim)
+        {
+            var systems = sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+                if (systems[i] is BuildSystem b) return b;
+            return null;
+        }
+
+        /// <summary>Is any pending build site still short of material? Evaluated once per pass
+        /// (1 Hz) over the canonical pending list — no allocation, no LINQ. Always false when
+        /// the stack has no BuildSystem.</summary>
+        private bool ComputeBuildDemand()
+        {
+            if (_build == null) return false;
+            var pending = _build.Pending;
+            for (int i = 0; i < pending.Count; i++)
+                if (BuildSystem.NeedsMaterial(pending[i])) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Should this station stop FETCHING right now because builders want its input?
+        /// True only when the recipe eats the build material, some site is short of it, and
+        /// this bench has nothing staged yet. The nothing-staged condition is what keeps the gate
+        /// deadlock-free: a bench that already holds part of a batch is allowed to complete it
+        /// (staged inputs carry the station's own reservation and are invisible to the build
+        /// board, so a half-staged bench that could never finish would strand them for good).
+        /// Shipped content can't reach that case — only SalvageRecycler eats Regolith and it
+        /// takes one unit per batch — but a retuned recipes.def could.
+        /// </summary>
+        private bool FetchBlockedForBuilds(Simulation sim, Int3 stationPos, in RecipeDef recipe) =>
+            _buildWantsMaterial && recipe.Input == BuildSystem.Material &&
+            StagedUnits(sim, stationPos, recipe) == 0;
 
         // ------------------------------------------------------------------ helpers
 

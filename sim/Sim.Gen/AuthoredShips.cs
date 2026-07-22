@@ -272,8 +272,34 @@ namespace Perilune.Gen
             //   * a fuller pantry (grow beds already produce, but a starting stock keeps
             //     nobody starving before the first harvest);
             //   * a second upper-corridor scrubber so CO2 scrubbing covers eight, not
-            //     three-per-scrubber-times-the-old-count.
+            //     three-per-scrubber-times-the-old-count;
+            //   * the lower deck's life-support vent RUNNING, so that deck holds nominal
+            //     while the crew dig the aft collapse open;
+            //   * an opening stock of build material in whole-wall stacks.
             AddSliceMatter(plan);
+
+            // ------------------------------------------------------- the aft dig (M2 work)
+            // Perilune()'s "Clear the aft debris" goal came across with the envelope, but a
+            // GOAL is only a completion predicate — it designates nothing, so on the slice the
+            // dig board booted EMPTY and the crew had no labour at all (measured: 99.9% of
+            // crew-ticks JobKind.None over three days, zero Dig/Haul/Build). Two authored facts
+            // fix that, and both are needed — either alone does nothing:
+            //   * door_aft OPEN. The 6x8 debris field (57..62, 6..13, z0) touches exactly one
+            //     walkable tile, the aft lock at (56,9,0). With the door sealed every dig site
+            //     is unreachable and the board is inert even when designated (verified).
+            //     Fiction: the recapture crew has already broken the aft seal — clearing the
+            //     collapse is what they came back for.
+            //   * The field designated. Digging is the ship's ONLY in-sim source of Regolith
+            //     (JobSystem drops one unit of spoil per cleared tile), so it is what feeds the
+            //     build loop, and CapabilityComputer only lets a citizen AGREE to a dig task
+            //     while a designated debris tile exists.
+            // ALL 48 tiles, not a subset: the field is one collapse and the goal is "clear the
+            // aft debris" — a half-designated field reads as an arbitrary stopping line, and a
+            // subset buys nothing in duration (eight crew clear even the full field inside ~10
+            // sim-minutes). The volume it opens is paid for by the running vent_ls in
+            // AddSliceMatter — see the note there.
+            SetDeviceOpen(plan, "door_aft", true);
+            DesignateDebrisRect(plan, 57, 6, 62, 13, z: 0);
 
             return plan;
         }
@@ -311,6 +337,67 @@ namespace Perilune.Gen
             // tile (a conduit tray is already beneath it) holds the bay in the safe band. This
             // is the M2 death that authoring — not a global .def change — has to solve.
             Dev(plan, DeviceKind.Radiator, 25, 6, 0, "radiator_fab");
+
+            // Air, lower deck: OPEN the life-support vent. The upper deck holds 101.3 kPa
+            // indefinitely because its recirculator pair runs from tick 0; the lower deck's
+            // vent_ls ships closed, so that deck merely coasts (96.1 kPa after three unattended
+            // days, measured) and every tile the crew clear out of the aft collapse is new
+            // volume the coasting deck has to fill — the full 48-tile dig settles it at 82.7 kPa,
+            // thin enough to fail the M2 life-support band. Running the vent (through the open
+            // door_ls into the corridor spine) holds the deck at nominal instead.
+            //   NOT a new device, deliberately: entity ids are handed out in plan order and
+            //   citizens come after devices, so ONE extra DeviceSpec shifts every citizen id by
+            //   one — and the portrait pipeline keys on pk_fnv1a32(seed, citizenId). A new vent
+            //   would silently hand all eight crew each other's committed portraits. Flipping an
+            //   authored device's state (like SetTankLiters above) costs nothing.
+            SetDeviceOpen(plan, "vent_ls", true);
+
+            // Build material: the slice stocks its walls in stacks of TWO — wall_material is 2,
+            // so one stack is one hauler trip is one finished wall. (The 2-crew ship's two
+            // single units came across with the envelope; a lone unit strands a site at 1/2
+            // until a second trip arrives.) Six stacks = twelve units = six walls, enough to
+            // seal a compartment or hang doors the moment the player designates, without
+            // waiting on the aft dig. They ride the two authored Regolith tiles (proven open
+            // storage floor) — no coordinate guessing.
+            AddRegolithAtStores(plan, stacksPerTile: 3, unitsPerStack: 2);
+        }
+
+        /// <summary>Open/close a named device spec in place (doors, vents — struct-in-list ⇒
+        /// mutate by index). Flipping authored state never adds a DeviceSpec, so entity ids
+        /// (and with them the portrait keys) stay exactly where they were.</summary>
+        private static void SetDeviceOpen(ShipPlan plan, string name, bool open)
+        {
+            for (int i = 0; i < plan.Devices.Count; i++)
+            {
+                if (plan.Devices[i].Name != name) continue;
+                var d = plan.Devices[i];
+                d.IsOpen = open;
+                plan.Devices[i] = d;
+                return;
+            }
+        }
+
+        /// <summary>Seed the dig board with every debris tile in an inclusive rect (authoring
+        /// error if a tile in it is not debris — ShipPlanBuilder validates at boot).</summary>
+        private static void DesignateDebrisRect(ShipPlan plan, int x0, int y0, int x1, int y1, int z)
+        {
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                    plan.DigDesignations.Add(new Int3(x, y, z));
+        }
+
+        /// <summary>Add build material on top of every authored Regolith stack (tiles already
+        /// proven to be open storage floor) — the slice's opening wall budget.</summary>
+        private static void AddRegolithAtStores(ShipPlan plan, int stacksPerTile, int unitsPerStack)
+        {
+            int authored = plan.Items.Count; // snapshot: we append while scanning
+            for (int i = 0; i < authored; i++)
+            {
+                if (plan.Items[i].Kind != ItemKind.Regolith) continue;
+                var pos = plan.Items[i].Pos;
+                for (int s = 0; s < stacksPerTile; s++)
+                    plan.Items.Add(new ItemSpec { Kind = ItemKind.Regolith, Count = unitsPerStack, Pos = pos, Label = "slice build stock" });
+            }
         }
 
         /// <summary>Set a named tank's StoredLiters in place (struct-in-list ⇒ mutate by index).</summary>
