@@ -95,6 +95,26 @@ namespace Perilune.Tests.Llm
         }
 
         [Test]
+        public void Respond_IgnoresTranscript_ByteIdenticalWithAndWithoutHistory()
+        {
+            // The transcript threading (ConversationRequest.Transcript) is a live-provider
+            // concern: the offline template matcher never reads it, so a history-bearing
+            // request answers byte-identically to a history-less one.
+            var backend = new TemplateBackend();
+            var caps = new EffectOption(EffectKind.RevealInfo, 7u, "the cache");
+
+            ChatResult bare = backend.Respond(Request(0f, caps), "any secrets to share?");
+
+            ConversationRequest withHistory = Request(0f, caps);
+            withHistory.Transcript.Add(new TranscriptLine(ChatSession.PlayerSpeaker, "hello"));
+            withHistory.Transcript.Add(new TranscriptLine("Okafor", "Hey. What do you need?"));
+            ChatResult threaded = backend.Respond(withHistory, "any secrets to share?");
+
+            Assert.That(threaded.ReplyText, Is.EqualTo(bare.ReplyText), "template output is byte-identical");
+            Assert.That(threaded.Effects.Count, Is.EqualTo(bare.Effects.Count));
+        }
+
+        [Test]
         public void Caps_ReportOfflineNonStreamingNoTools()
         {
             BackendCapabilities caps = new TemplateBackend().Caps;

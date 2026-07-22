@@ -337,6 +337,52 @@ namespace Perilune.Tests.Llm
         }
 
         // ----------------------------------------------------------------------------
+        // Second turn: the transcript rides the request body (the playtest
+        // "no conversation memory" defect — the adapter must send the history)
+        // ----------------------------------------------------------------------------
+
+        [Test]
+        public async Task RequestBody_SecondTurn_CarriesTranscript_AssistantAndQuarantinedUser_BeforeLatest()
+        {
+            string sse = LlmFixtures.Load("anthropic_reveal.sse");
+            var stream = new ChunkStream(LlmFixtures.Whole(sse));
+            var (backend, handler) = Make(StreamOf(stream));
+
+            ConversationRequest req = RevealRequest();
+            req.Transcript.Add(new TranscriptLine(ChatSession.PlayerSpeaker, "do you have any secrets?"));
+            req.Transcript.Add(new TranscriptLine("Okafor", "Maybe. Earn it."));
+
+            await Collect(backend.SendAsync(req, "I fixed your O2 line, remember?", default));
+
+            using JsonDocument doc = JsonDocument.Parse(handler.LastBody);
+            JsonElement messages = doc.RootElement.GetProperty("messages");
+
+            // context + prior player + prior citizen + latest utterance.
+            Assert.That(messages.GetArrayLength(), Is.EqualTo(4));
+
+            JsonElement priorPlayer = messages[1];
+            Assert.That(priorPlayer.GetProperty("role").GetString(), Is.EqualTo("user"));
+            Assert.That(priorPlayer.GetProperty("content").GetString(),
+                Does.Contain("<player_speech>do you have any secrets?</player_speech>"),
+                "the prior player line arrives quarantined");
+
+            JsonElement priorCitizen = messages[2];
+            Assert.That(priorCitizen.GetProperty("role").GetString(), Is.EqualTo("assistant"),
+                "the prior citizen line arrives as an assistant message");
+            Assert.That(priorCitizen.GetProperty("content").GetString(), Does.Contain("Maybe. Earn it."));
+
+            JsonElement latest = messages[3];
+            Assert.That(latest.GetProperty("role").GetString(), Is.EqualTo("user"));
+            Assert.That(latest.GetProperty("content").GetString(),
+                Does.Contain("<player_speech>I fixed your O2 line, remember?</player_speech>"),
+                "the latest utterance is the FINAL message, after the history");
+
+            // The cacheable prefix did not shift: still exactly two cache-annotated system blocks.
+            JsonElement system = doc.RootElement.GetProperty("system");
+            Assert.That(system.GetArrayLength(), Is.EqualTo(2));
+        }
+
+        // ----------------------------------------------------------------------------
         // Whitelist: an out-of-manifest target_index drops the effect
         // ----------------------------------------------------------------------------
 

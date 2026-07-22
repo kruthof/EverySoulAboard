@@ -73,6 +73,17 @@ namespace Perilune.Llm
 
         /// <summary>Persona trait ids, lowercase ("sardonic", "cowardly", "devout").</summary>
         public List<string> Traits { get; set; } = new List<string>();
+
+        /// <summary>
+        /// The conversation so far: completed player↔citizen lines, oldest first, ending
+        /// BEFORE the utterance being answered (which arrives separately). Owners assign an
+        /// immutable per-turn snapshot copy (never a live list — the async hub snapshots on
+        /// the sim thread, <see cref="ChatSession"/> per Ask), and the prompt-building
+        /// backends render it as the growing volatile suffix, player lines quarantined.
+        /// Default empty ⇒ a history-less request renders byte-identically to before this
+        /// field existed. The offline <see cref="TemplateBackend"/> ignores it.
+        /// </summary>
+        public List<TranscriptLine> Transcript { get; set; } = new List<TranscriptLine>();
     }
 
     /// <summary>

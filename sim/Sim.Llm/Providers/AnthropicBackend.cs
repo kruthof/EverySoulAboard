@@ -440,7 +440,9 @@ namespace Perilune.Llm.Providers
 
         internal string BuildRequestBody(ConversationRequest req, string utterance)
         {
-            PromptLayout layout = PromptBuilder.Build(req, null, utterance);
+            // The request carries the completed history (an immutable per-turn snapshot,
+            // possibly empty); the builder renders it as the growing message suffix.
+            PromptLayout layout = PromptBuilder.Build(req, req != null ? req.Transcript : null, utterance);
 
             using var stream = new MemoryStream();
             using (var w = new Utf8JsonWriter(stream))

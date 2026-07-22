@@ -32,7 +32,9 @@ namespace Perilune.Llm.Providers
 
         public static List<ChatMessage> BuildMessages(ConversationRequest req, string utterance)
         {
-            PromptLayout layout = PromptBuilder.Build(req, null, utterance);
+            // The request carries the completed history (an immutable per-turn snapshot,
+            // possibly empty); the builder renders it as the growing message suffix.
+            PromptLayout layout = PromptBuilder.Build(req, req != null ? req.Transcript : null, utterance);
             var messages = new List<ChatMessage>();
 
             var sys = new StringBuilder();

@@ -52,7 +52,14 @@ namespace Perilune.Web
             public int Sid;
             public uint Cid;
             public string Name = "";
-            public ChatSession Chat;             // per-conversation state (exchange cap / transcript shell)
+            // The conversation so far: completed player↔citizen lines, oldest first — what the
+            // backend sees as history on the next turn. WRITTEN only by the background driver
+            // while InFlight is true; READ (snapshot-copied into the outgoing request) only on
+            // the sim thread while InFlight is false. The driver's appends happen-before its
+            // volatile InFlight=false write and Say/PumpPending gate dispatch on !InFlight, so
+            // the two sides never touch the list concurrently. Bounded: the session ends at
+            // ChatSession.MaxExchanges, so this never exceeds 2 * MaxExchanges lines.
+            public readonly List<TranscriptLine> Transcript = new List<TranscriptLine>();
             public int Seq;                      // monotonic delta sequence for this session
             public volatile bool InFlight;       // a turn is streaming right now
             public volatile bool Ended;          // farewell / cap / error reached
@@ -126,7 +133,8 @@ namespace Perilune.Web
 
         /// <summary>Open a conversation with a crew member. Dead/unknown/mindless ⇒ a single chat
         /// end "unavailable" (no session). Otherwise: allocate a sid, snapshot the persona on the
-        /// sim thread for the card + speaker name, create the ChatSession, and emit chat start.</summary>
+        /// sim thread for the card + speaker name, and emit chat start. A fresh session starts
+        /// with an EMPTY transcript — history never bleeds across talk sessions.</summary>
         public void Talk(uint cid)
         {
             AssertSimThread();
@@ -144,11 +152,7 @@ namespace Perilune.Web
                 ? plan.Request.CitizenName
                 : (string.IsNullOrEmpty(c.Name) ? "#" + cid.ToString(CultureInfo.InvariantCulture) : c.Name);
 
-            _sessions[sid] = new Session
-            {
-                Sid = sid, Cid = cid, Name = name,
-                Chat = new ChatSession(_chain[0], plan.Request),
-            };
+            _sessions[sid] = new Session { Sid = sid, Cid = cid, Name = name };
             Enqueue(WireFormat.ChatStart(sid, cid, name));
         }
 
@@ -189,6 +193,10 @@ namespace Perilune.Web
         {
             AssertSimThread();
             TurnPlan plan = _service.PrepareTurn(s.Cid, text); // snapshot between ticks (sim thread)
+            // Deliver the conversation history to the backend: an immutable COPY taken here, on
+            // the sim thread, while no turn is in flight — so the plan (the only thing that
+            // crosses onto the background task) never shares a mutable list with the session.
+            plan.Request.Transcript = new List<TranscriptLine>(s.Transcript);
             s.InFlight = true;
             Interlocked.Increment(ref _inFlightCount);
             _ = Task.Run(() => DriveTurnAsync(s, plan, text));
@@ -256,6 +264,14 @@ namespace Perilune.Web
                 }
                 lock (_costLock)
                     _cost.Record(result.Usage ?? new TurnUsage(0, 0, 0, 0, answering.Caps.Name), LlmPriority.Dialogue, _clock());
+
+                // Record the completed exchange — the player's utterance and the authoritative
+                // accumulated citizen line — as history for the NEXT turn. Written while InFlight
+                // is still true: the sim thread cannot dispatch (and so cannot snapshot the list)
+                // until the finally's volatile InFlight=false write publishes these appends.
+                // Only a COMPLETED turn is recorded; a failed/errored turn leaves no history.
+                s.Transcript.Add(new TranscriptLine(ChatSession.PlayerSpeaker, text));
+                s.Transcript.Add(new TranscriptLine(s.Name, result.Text));
 
                 Enqueue(WireFormat.ChatLine(s.Sid, "crew", result.Text)); // authoritative accumulated turn
                 bool endByEffect = false;

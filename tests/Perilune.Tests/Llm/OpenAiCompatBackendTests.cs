@@ -177,5 +177,39 @@ namespace Perilune.Tests.Llm
             Assert.That(messages[messages.GetArrayLength() - 1].GetProperty("content").GetString(),
                 Does.Contain("any secrets?"));
         }
+
+        [Test]
+        public async Task RequestBody_SecondTurn_CarriesTranscript_AssistantAndQuarantinedUser_BeforeLatest()
+        {
+            string sse = LlmFixtures.Load("openai_reveal.sse");
+            var (backend, handler) = Make(StreamOf(sse));
+
+            ConversationRequest req = RevealRequest();
+            req.Transcript.Add(new TranscriptLine(ChatSession.PlayerSpeaker, "do you have any secrets?"));
+            req.Transcript.Add(new TranscriptLine("Okafor", "Maybe. Earn it."));
+
+            await Collect(backend.SendAsync(req, "I fixed your O2 line, remember?", default));
+
+            using JsonDocument doc = JsonDocument.Parse(handler.LastBody);
+            JsonElement messages = doc.RootElement.GetProperty("messages");
+
+            // system + context + prior player + prior citizen + latest utterance.
+            Assert.That(messages.GetArrayLength(), Is.EqualTo(5));
+            Assert.That(messages[0].GetProperty("role").GetString(), Is.EqualTo("system"));
+
+            Assert.That(messages[2].GetProperty("role").GetString(), Is.EqualTo("user"));
+            Assert.That(messages[2].GetProperty("content").GetString(),
+                Does.Contain("<player_speech>do you have any secrets?</player_speech>"),
+                "the prior player line arrives quarantined");
+
+            Assert.That(messages[3].GetProperty("role").GetString(), Is.EqualTo("assistant"),
+                "the prior citizen line arrives as an assistant message");
+            Assert.That(messages[3].GetProperty("content").GetString(), Does.Contain("Maybe. Earn it."));
+
+            Assert.That(messages[4].GetProperty("role").GetString(), Is.EqualTo("user"));
+            Assert.That(messages[4].GetProperty("content").GetString(),
+                Does.Contain("<player_speech>I fixed your O2 line, remember?</player_speech>"),
+                "the latest utterance is the FINAL message, after the history");
+        }
     }
 }

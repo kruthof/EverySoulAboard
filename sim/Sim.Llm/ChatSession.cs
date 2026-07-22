@@ -76,6 +76,10 @@ namespace Perilune.Llm
                 return new ChatResult(EndedLine, new List<ProposedEffect>());
             }
 
+            // Hand the backend the completed history as of THIS turn — a snapshot copy, so
+            // the request never aliases the live list (same discipline as the async hub).
+            // Bounded by MaxExchanges: the session ends at the cap, so this never grows past it.
+            Request.Transcript = new List<TranscriptLine>(_transcript);
             ChatResult result = _backend.Respond(Request, utterance);
 
             _transcript.Add(new TranscriptLine(PlayerSpeaker, utterance ?? string.Empty));
