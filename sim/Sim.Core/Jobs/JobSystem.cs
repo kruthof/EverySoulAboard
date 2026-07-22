@@ -387,6 +387,16 @@ namespace Perilune.Sim
                         citizen.JobTarget = item.Pos;
                         item.ReservedForJob = true;
                         citizen.ReservedItemId = item.Id;
+                        // A stockpile haul takes material out of the free pool just as surely as
+                        // a build haul does (see TryReserveMaterialFor) — without this, a later
+                        // site in the SAME board pass can clear the sufficiency gate and then find
+                        // nothing to reserve, costing it a 5 s backoff. No-op unless a site is
+                        // actually short (the count is only populated then).
+                        if (item.Kind == BuildSystem.Material)
+                        {
+                            _freeMaterialUnits -= item.Count;
+                            if (_freeMaterialUnits < 0) _freeMaterialUnits = 0;
+                        }
                         _haulRetryAt.Remove(item.Id);
                         return;
                     }

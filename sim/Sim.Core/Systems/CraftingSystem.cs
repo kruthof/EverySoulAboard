@@ -76,10 +76,11 @@ namespace Perilune.Sim
         // --- Build-material priority (WS-MATTER). BuildSystem is an OPTIONAL stack member,
         // resolved lazily exactly as JobSystem resolves it: when absent (_build == null) the
         // flag below can never be set and this system behaves bit-for-bit as it did before.
-        // While any pending site is still short of material, the standing bills stop FETCHING
-        // that material — a player designation must not lose a race with a recycler that eats
-        // the ship's only Regolith. Already-staged inputs and a batch in progress are never
-        // clawed back (no un-consume exists), so only the fetch leg is gated.
+        // While a pending site could actually be FINISHED with the material aboard, the
+        // standing bills stop FETCHING that material — a player designation must not lose a
+        // race with a recycler that eats the ship's only Regolith. Already-staged inputs and a
+        // batch in progress are never clawed back (no un-consume exists), so only the fetch
+        // leg is gated. Sites nobody can fund never gate anything (see ComputeBuildDemand).
         private BuildSystem _build;
         private bool _buildResolved;
         private bool _buildWantsMaterial;
@@ -87,7 +88,7 @@ namespace Perilune.Sim
         public void Tick(Simulation sim)
         {
             if (!_buildResolved) { _build = FindBuildSystem(sim); _buildResolved = true; }
-            _buildWantsMaterial = ComputeBuildDemand();
+            _buildWantsMaterial = ComputeBuildDemand(sim);
 
             ReleaseOrphanedWorkers(sim);
 
@@ -126,7 +127,7 @@ namespace Perilune.Sim
             bool canStart = station.Progress > 0f ||
                             StagedUnits(sim, station.Pos, recipe) >= recipe.InputCount;
             // Don't recruit anyone to go fetch material the builders are waiting on.
-            if (!canStart && (FetchBlockedForBuilds(sim, station.Pos, recipe) ||
+            if (!canStart && (FetchBlockedForBuilds(recipe) ||
                               !AnyFetchCandidate(sim, station.Pos, recipe)))
                 return; // nothing to do — zero-alloc idle
 
@@ -226,7 +227,7 @@ namespace Perilune.Sim
         /// </summary>
         private void StepFetch(Simulation sim, Device station, in RecipeDef recipe, Citizen worker, Int3 staging)
         {
-            if (FetchBlockedForBuilds(sim, station.Pos, recipe))
+            if (FetchBlockedForBuilds(recipe))
             {
                 Abandon(worker); // builders have first call on this material — free the citizen
                 return;
@@ -286,31 +287,88 @@ namespace Perilune.Sim
             return null;
         }
 
-        /// <summary>Is any pending build site still short of material? Evaluated once per pass
-        /// (1 Hz) over the canonical pending list — no allocation, no LINQ. Always false when
-        /// the stack has no BuildSystem.</summary>
-        private bool ComputeBuildDemand()
+        /// <summary>
+        /// Is any pending site short of material a builder could ACTUALLY put in it? This is
+        /// JobSystem's own sufficiency gate (JobSystem refuses to work a site unless the whole
+        /// remainder is free at once, because nothing ever un-deposits), plus the units already
+        /// in flight to that same site — a hauler mid-trip must keep the rest of his site's cost
+        /// protected, or the bills would eat trip two out from under trip one.
+        ///
+        /// Matching the two predicates is load-bearing. A bare "any site is short" gate makes the
+        /// exact set of sites JobSystem has decided it CANNOT work the set that blocks the bills
+        /// forever — one lone Regolith beside a 0/2 wall stops the SalvageRecycler for the rest of
+        /// the game (a site only leaves Pending via Complete or a player Cancel), and with it
+        /// Fabricator and MachineShop, so MachineWearSystem jury-rigs every repair at Condition
+        /// 0.6 on a ship whose whole tension model is wear. Player-reachable on the slice:
+        /// designate eight walls against twelve units aboard and the last two strand.
+        ///
+        /// Evaluated once per pass (1 Hz): the item scan is paid only when a site wants material,
+        /// the citizen scan only when free units alone are not enough. No allocation, no LINQ.
+        /// Always false when the stack has no BuildSystem.
+        /// </summary>
+        private bool ComputeBuildDemand(Simulation sim)
         {
             if (_build == null) return false;
             var pending = _build.Pending;
+            int free = -1; // lazily counted once, then reused across sites
             for (int i = 0; i < pending.Count; i++)
-                if (BuildSystem.NeedsMaterial(pending[i])) return true;
+            {
+                var site = pending[i];
+                if (!BuildSystem.NeedsMaterial(site)) continue;
+                if (free < 0) free = CountFreeMaterial(sim);
+                int need = site.Required - site.Delivered;
+                if (free >= need) return true;                                   // JobSystem would work it now
+                if (free + InFlightMaterial(sim, site.Pos) >= need) return true; // ...or is already funding it
+            }
             return false;
+        }
+
+        /// <summary>Unreserved, uncarried build material on the ground — JobSystem's
+        /// <c>_freeMaterialUnits</c>, recomputed from ground truth at our own cadence.</summary>
+        private static int CountFreeMaterial(Simulation sim)
+        {
+            int units = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && !it.ReservedForJob) units += it.Count;
+            }
+            return units;
+        }
+
+        /// <summary>Material reserved by (or in the hands of) a hauler bound for this site.
+        /// JobSystem takes one stack per trip, so without this term the gate would drop the
+        /// instant the first stack left the free pool.</summary>
+        private static int InFlightMaterial(Simulation sim, Int3 site)
+        {
+            int units = 0;
+            var citizens = sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead || c.JobKind != JobKind.HaulToBuild || c.JobTarget != site) continue;
+                uint id = c.CarryingItemId != 0 ? c.CarryingItemId : c.ReservedItemId;
+                if (id != 0 && sim.Items.TryGet(id, out var stack) && stack.Kind == BuildSystem.Material)
+                    units += stack.Count;
+            }
+            return units;
         }
 
         /// <summary>
         /// Should this station stop FETCHING right now because builders want its input?
-        /// True only when the recipe eats the build material, some site is short of it, and
-        /// this bench has nothing staged yet. The nothing-staged condition is what keeps the gate
-        /// deadlock-free: a bench that already holds part of a batch is allowed to complete it
-        /// (staged inputs carry the station's own reservation and are invisible to the build
-        /// board, so a half-staged bench that could never finish would strand them for good).
-        /// Shipped content can't reach that case — only SalvageRecycler eats Regolith and it
-        /// takes one unit per batch — but a retuned recipes.def could.
+        /// True whenever the recipe eats the build material and some site can actually use it.
+        ///
+        /// There is deliberately NO half-staged carve-out. It was dead code — shipped
+        /// SalvageRecycler takes one unit per batch, so <c>!canStart</c> already implies zero
+        /// staged units at every call site — and under a retuned <c>in_count &gt;= 2</c> it would
+        /// let a bench holding one unit take the last unit a builder was waiting on and consume
+        /// both, starving the build for good. The strand it was meant to prevent (a half-staged
+        /// bench that can never finish) is now handled by the demand predicate itself: the gate
+        /// releases as soon as no pending site can be funded, so the bench always gets its turn.
         /// </summary>
-        private bool FetchBlockedForBuilds(Simulation sim, Int3 stationPos, in RecipeDef recipe) =>
-            _buildWantsMaterial && recipe.Input == BuildSystem.Material &&
-            StagedUnits(sim, stationPos, recipe) == 0;
+        private bool FetchBlockedForBuilds(in RecipeDef recipe) =>
+            _buildWantsMaterial && recipe.Input == BuildSystem.Material;
 
         // ------------------------------------------------------------------ helpers
 

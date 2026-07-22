@@ -68,8 +68,8 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (570 green; `./ci.sh`
-  runs the full gate — 570 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (573 green; `./ci.sh`
+  runs the full gate — 573 dotnet + 188 node, ~3 min wall since V6 runs real sim-days).
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed

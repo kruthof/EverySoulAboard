@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Perilune.Sim;
 
 namespace Perilune.Gen
@@ -386,18 +388,26 @@ namespace Perilune.Gen
                     plan.DigDesignations.Add(new Int3(x, y, z));
         }
 
+        private const string BuildStockLabel = "slice build stock";
+
         /// <summary>Add build material on top of every authored Regolith stack (tiles already
-        /// proven to be open storage floor) — the slice's opening wall budget.</summary>
+        /// proven to be open storage floor) — the slice's opening wall budget. SINGLE-SHOT and
+        /// order-sensitive by construction: it reads the plan's Regolith tiles and appends to
+        /// the same list, so the source positions are gathered first (never a count snapshot
+        /// that silently depends on where in the authoring sequence the call sits), and a
+        /// second call is an authoring error rather than a quietly doubled stock.</summary>
         private static void AddRegolithAtStores(ShipPlan plan, int stacksPerTile, int unitsPerStack)
         {
-            int authored = plan.Items.Count; // snapshot: we append while scanning
-            for (int i = 0; i < authored; i++)
+            var stores = new List<Int3>(4);
+            for (int i = 0; i < plan.Items.Count; i++)
             {
-                if (plan.Items[i].Kind != ItemKind.Regolith) continue;
-                var pos = plan.Items[i].Pos;
-                for (int s = 0; s < stacksPerTile; s++)
-                    plan.Items.Add(new ItemSpec { Kind = ItemKind.Regolith, Count = unitsPerStack, Pos = pos, Label = "slice build stock" });
+                if (plan.Items[i].Label == BuildStockLabel)
+                    throw new InvalidOperationException("AddRegolithAtStores is single-shot — the slice's build stock is already seeded.");
+                if (plan.Items[i].Kind == ItemKind.Regolith) stores.Add(plan.Items[i].Pos);
             }
+            for (int i = 0; i < stores.Count; i++)
+                for (int s = 0; s < stacksPerTile; s++)
+                    plan.Items.Add(new ItemSpec { Kind = ItemKind.Regolith, Count = unitsPerStack, Pos = stores[i], Label = BuildStockLabel });
         }
 
         /// <summary>Set a named tank's StoredLiters in place (struct-in-list ⇒ mutate by index).</summary>
