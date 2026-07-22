@@ -26,7 +26,7 @@ namespace Perilune.Sim
 
         public string Name => "Haul";
         public JobKind[] HandledKinds => Kinds;
-        public bool HasCandidates => _items.Count > 0;
+        public int CandidateCount => _items.Count;
 
         public void BeginTick(Simulation sim) { }
 
@@ -44,18 +44,13 @@ namespace Perilune.Sim
             _items.Clear();
 
             // Ground-item occupancy (per-scan; Contains-lookups only).
-            _groundItemTiles.Clear();
+            JobWork.RebuildGroundItemTiles(sim, _groundItemTiles);
             var items = sim.Items.Items;
-            for (int i = 0; i < items.Count; i++)
-            {
-                var item = items[i];
-                if (item.CarriedBy == 0) _groundItemTiles.Add(item.Pos);
-            }
 
             bool anyFreeStockpile = false;
             for (int i = 0; i < _stockpiles.Count; i++)
             {
-                if (IsFreeStockpileTile(sim, _stockpiles[i]))
+                if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
                 {
                     anyFreeStockpile = true;
                     break;
@@ -76,14 +71,6 @@ namespace Perilune.Sim
 
             JobWork.EnsureSize(ref _tried, _items.Count);
             JobWork.EnsureSize(ref _stockTried, _stockpiles.Count);
-        }
-
-        private bool IsFreeStockpileTile(Simulation sim, Int3 p)
-        {
-            var flags = sim.World.GetFlags(p);
-            return (flags & TileFlags.Stockpile) != 0 &&
-                   (flags & TileFlags.Walkable) != 0 &&
-                   !_groundItemTiles.Contains(p);
         }
 
         // ------------------------------------------------------------- assignment
@@ -124,12 +111,13 @@ namespace Perilune.Sim
                 citizen.StartPath(sim.Defs.Citizen.TicksPerTile);
                 citizen.JobKind = JobKind.HaulPickup;
                 citizen.JobTarget = item.Pos;
+                citizen.ReservedItemId = item.Id;
                 // A stockpile haul takes material out of the free pool just as surely as a build
                 // haul does — without the notification, a later site in the SAME board pass can
                 // clear its sufficiency gate and then find nothing to reserve, costing it a 5 s
-                // backoff. Inert unless a source actually tracks a pool.
+                // backoff. Inert unless a source actually tracks a pool. Fired here, after the
+                // citizen's job state is complete, so every handler sees one world (IJobSource).
                 ctx.ReserveGroundItem(sim, item);
-                citizen.ReservedItemId = item.Id;
                 _retryAt.Remove(item.Id);
                 return true;
             }
@@ -223,12 +211,7 @@ namespace Perilune.Sim
         {
             dest = default;
 
-            _groundItemTiles.Clear();
-            var items = sim.Items.Items;
-            for (int i = 0; i < items.Count; i++)
-            {
-                if (items[i].CarriedBy == 0) _groundItemTiles.Add(items[i].Pos);
-            }
+            JobWork.RebuildGroundItemTiles(sim, _groundItemTiles);
 
             long gen = ctx.NextGen();
             while (true)
@@ -237,7 +220,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < _stockpiles.Count; i++)
                 {
                     if (_stockTried[i] == gen) continue;
-                    if (!IsFreeStockpileTile(sim, _stockpiles[i]))
+                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
                     {
                         _stockTried[i] = gen;
                         continue;

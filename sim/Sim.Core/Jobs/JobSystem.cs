@@ -15,9 +15,18 @@ namespace Perilune.Sim
     ///      idle ones offered work, working ones advanced by whichever source owns their kind.
     ///   2. **The source registration order**, which IS the cross-kind priority (below).
     ///   3. **The arbitration**: one global nearest-job argmin across all sources, strict
-    ///      <c>&lt;</c> throughout, so an exact distance tie falls to registration order.
-    ///   4. **The retry policy**: a claim that fails re-runs the whole selection for the same
-    ///      citizen, and terminates because the source stamped the candidate it just refused.
+    ///      <c>&lt;</c> throughout, so an exact distance tie falls to registration order. The
+    ///      running minimum is threaded through the providers, so it is ENFORCED here rather than
+    ///      trusted — a source reporting a non-improving distance is declined, not obeyed.
+    ///   4. **The retry policy**, and its bound: a claim that fails re-runs the whole selection
+    ///      for the same citizen, and terminates because the source stamped the candidate it just
+    ///      refused. A source that forgets to stamp would spin forever with no exception and no
+    ///      log — a hung game — so the pass is capped at the total candidate count and throws
+    ///      naming the offender instead.
+    ///
+    /// The last two exist because this is the only file in the job system the integrator reviews.
+    /// Everything a provider can get wrong that would corrupt or hang the whole dispatcher is
+    /// caught here, by design.
     ///
     /// THE SOURCE PRIORITY ORDER — Dig, then Haul, then Build — is not a preference, it is a
     /// tie-break, and it was read verbatim off the pre-split <c>TryAssign</c>, whose four inline
@@ -119,8 +128,21 @@ namespace Perilune.Sim
                     if (citizen.IsIdleForWork) TryAssign(sim, citizen); // held citizens never self-assign
                     continue;
                 }
-                var owner = _byKind[(int)citizen.JobKind];
-                owner?.Progress(sim, citizen, _ctx); // null = another system's kind (Eat/Craft/…)
+                // THREE different things land on a null owner, and only one of them is fine:
+                //   (a) a kind this dispatcher legitimately does not drive — Eat/Drink
+                //       (SustenanceSystem), Craft (CraftingSystem), Maintain (MaintenanceSystem).
+                //       Normal, and exactly what the pre-split switch's missing `default:` did.
+                //   (b) an out-of-range byte: JobKind comes back off disk unvalidated
+                //       (SaveReader.cs:254). The bounds check keeps the old switch's behaviour —
+                //       ignore it — where a bare _byKind[k] would throw on a corrupt save.
+                //   (c) a REGISTRATION BUG: a kind no source claimed. Silently swallowed here, and
+                //       it strands every citizen in that kind forever with nothing advancing them.
+                // (c) is indistinguishable from (a) at runtime — JobKind is a flat enum with no
+                // ownership metadata — so it is caught at construction (the duplicate-claim throw)
+                // and by JobDispatchTests' coverage assertion, never by this line.
+                int kind = (int)citizen.JobKind;
+                var owner = kind >= 0 && kind < _byKind.Length ? _byKind[kind] : null;
+                owner?.Progress(sim, citizen, _ctx);
             }
         }
 
@@ -170,22 +192,38 @@ namespace Perilune.Sim
         /// and the next-nearest is tried, so the loop always terminates. Unreachable candidates
         /// stay on their board and are simply retried on later ticks — a terrain change can make
         /// them viable.
+        ///
+        /// NO RESCAN MAY HAPPEN INSIDE THIS METHOD. Board indices returned by
+        /// <see cref="IJobSource.Select"/> are consumed by <see cref="IJobSource.TryClaim"/>
+        /// unvalidated, and the generation stamps are indexed by board position — a source that
+        /// rebuilt its board mid-pass would hand the dispatcher a stale index. The dispatcher
+        /// enforces this by never setting <see cref="Simulation.JobsDirty"/> here and by rescanning
+        /// only at the top of <see cref="Tick"/>; a source must honour the same rule.
         /// </summary>
         private void TryAssign(Simulation sim, Citizen citizen)
         {
-            bool any = false;
-            for (int s = 0; s < _sources.Length; s++) if (_sources[s].HasCandidates) { any = true; break; }
-            if (!any) return; // nothing on any board: leave the citizen (and his path) untouched
+            // Also the loop bound: every failed claim consumes at least one candidate (the source
+            // must stamp what it refused), so the pass can iterate at most once per candidate plus
+            // one final look that finds nothing.
+            int candidates = 0;
+            for (int s = 0; s < _sources.Length; s++) candidates += _sources[s].CandidateCount;
+            if (candidates == 0) return; // nothing on any board: leave the citizen (and his path) untouched
 
             long gen = _ctx.NextGen();
+            IJobSource lastRefusal = null;
 
-            while (true)
+            for (int attempt = 0; attempt <= candidates; attempt++)
             {
                 int bestSource = -1, bestCandidate = -1, bestDist = int.MaxValue;
                 for (int s = 0; s < _sources.Length; s++)
                 {
                     int cand = _sources[s].Select(sim, citizen, bestDist, gen, out int d);
-                    if (cand < 0) continue; // nothing strictly nearer than what we already hold
+                    // `d >= bestDist` is not paranoia about our own three sources: the argmin is a
+                    // running minimum threaded THROUGH the providers, so one source reporting a
+                    // worse distance would RAISE the bar and silently corrupt the filtering of every
+                    // source after it. Enforced here rather than trusted, because the dispatcher is
+                    // the only file the integrator reviews.
+                    if (cand < 0 || d >= bestDist) continue;
                     bestDist = d;
                     bestSource = s;
                     bestCandidate = cand;
@@ -197,8 +235,17 @@ namespace Perilune.Sim
                     return;
                 }
 
-                if (_sources[bestSource].TryClaim(sim, citizen, bestCandidate, gen, _ctx)) return;
+                lastRefusal = _sources[bestSource];
+                if (lastRefusal.TryClaim(sim, citizen, bestCandidate, gen, _ctx)) return;
             }
+
+            // Unreachable with a conforming source. A source that refuses a candidate without
+            // stamping it (and without a backoff) re-offers it forever: measured, that is a
+            // SILENT HANG — no exception, no log, the sim just stops advancing. Fail loudly and
+            // name the culprit instead; this is the one place that can defend against a provider.
+            throw new InvalidOperationException(
+                $"job source '{lastRefusal.Name}' refused a candidate {candidates + 1} times without " +
+                "stamping it for this pass or recording a retry backoff — see IJobSource.TryClaim");
         }
     }
 }

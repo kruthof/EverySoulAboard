@@ -45,7 +45,7 @@ namespace Perilune.Sim
 
         public string Name => "Build";
         public JobKind[] HandledKinds => Kinds;
-        public bool HasCandidates => _ready.Count > 0 || _needMat.Count > 0;
+        public int CandidateCount => _ready.Count + _needMat.Count;
 
         /// <summary>Resolve the optional BuildSystem once. Must happen before any progress pass,
         /// not merely before a rescan: a citizen can be mid-job on a tick where nothing is

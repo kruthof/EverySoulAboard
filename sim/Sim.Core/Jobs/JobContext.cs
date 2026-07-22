@@ -84,6 +84,35 @@ namespace Perilune.Sim
             sim.JobsDirty = true;
         }
 
+        /// <summary>
+        /// Rebuild the "a loose stack is standing here" set from the item store (store order;
+        /// the set is a Contains-lookup only, never iterated). Cleared and refilled in place, so
+        /// it does not allocate once warm.
+        /// </summary>
+        public static void RebuildGroundItemTiles(Simulation sim, HashSet<Int3> into)
+        {
+            into.Clear();
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i].CarriedBy == 0) into.Add(items[i].Pos);
+            }
+        }
+
+        /// <summary>
+        /// Can a stack be set down here? A zoned, walkable tile with nothing already on it.
+        /// Shared rather than private to <see cref="HaulJobSource"/> because E-STOCK's filtered
+        /// zones need exactly this predicate, and a second copy is how two definitions of "free
+        /// stockpile tile" drift apart — the file-level version of the problem W0-4 exists to fix.
+        /// </summary>
+        public static bool IsFreeStockpileTile(Simulation sim, Int3 p, HashSet<Int3> groundItemTiles)
+        {
+            var flags = sim.World.GetFlags(p);
+            return (flags & TileFlags.Stockpile) != 0 &&
+                   (flags & TileFlags.Walkable) != 0 &&
+                   !groundItemTiles.Contains(p);
+        }
+
         /// <summary>Grow a generation-stamp array to hold <paramref name="needed"/> slots.
         /// Deliberately does NOT copy: stamps are valid for one selection pass only, and fresh
         /// zeros can never equal the current generation (which is >= 1).</summary>

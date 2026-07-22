@@ -47,12 +47,17 @@ namespace Perilune.Sim
         JobKind[] HandledKinds { get; }
 
         /// <summary>
-        /// True when the board holds at least one RAW candidate (before validity, backoff or
-        /// reachability). The dispatcher skips the whole selection pass — including
-        /// <see cref="Citizen.ClearPath"/> — when no source has any, so this is behaviour, not
-        /// an optimisation: an idle citizen with a stale path keeps it when there is no work.
+        /// How many RAW candidates the board holds (before validity, backoff or reachability) —
+        /// i.e. the number of distinct indices <see cref="Select"/> could return.
+        ///
+        /// Two contracts ride on it, both behaviour rather than optimisation. Zero across every
+        /// source makes the dispatcher skip the whole selection pass INCLUDING
+        /// <see cref="Citizen.ClearPath"/>, so an idle citizen keeps a stale path when there is no
+        /// work anywhere. And the sum across sources is the dispatcher's loop bound: it must be an
+        /// upper bound on how many times this source can refuse before it runs out of candidates,
+        /// or the bound throws on a conforming source.
         /// </summary>
-        bool HasCandidates { get; }
+        int CandidateCount { get; }
 
         /// <summary>
         /// Once per tick, in registration order, before any rescan/selection/progress. The place
@@ -75,9 +80,18 @@ namespace Perilune.Sim
         /// interprets (the dispatcher never decodes it, so a source may pack several boards into
         /// one index space) and reports its distance in <paramref name="dist"/>.
         ///
+        /// The returned <paramref name="dist"/> MUST be strictly less than
+        /// <paramref name="bestDist"/> — it is a running minimum threaded through every source, so
+        /// a worse distance would raise the bar for every source after this one. The dispatcher
+        /// re-checks and declines the candidate rather than trusting it.
+        ///
         /// Candidates that are stale, already claimed or inside their unreachable backoff must
         /// be STAMPED with <paramref name="gen"/> so the dispatcher's retry loop terminates.
-        /// Must not mutate the world, the citizen or any reservation.
+        ///
+        /// Must not mutate the world, the citizen, any reservation, or the BOARD — the one
+        /// deliberate exception is the source's own per-pass <paramref name="gen"/> stamps, which
+        /// exist precisely so a selection pass can record what it rejected without allocating.
+        /// Stamps are scratch: they carry no meaning past this pass.
         /// </summary>
         int Select(Simulation sim, Citizen citizen, int bestDist, long gen, out int dist);
 
@@ -87,10 +101,22 @@ namespace Perilune.Sim
         /// dispatcher moves to the next citizen.
         ///
         /// On FAILURE (typically an unreachable target — a failed path is a whole-region sweep)
-        /// the source must itself (a) stamp the candidate with <paramref name="gen"/> and (b)
-        /// record its own retry backoff, then return false; the dispatcher immediately re-runs
-        /// the whole selection for the same citizen and would otherwise loop forever. The world
-        /// must be left exactly as it was, minus any reservation the attempt released.
+        /// the source must return false having ALREADY done both of:
+        ///   (a) stamped the candidate with <paramref name="gen"/>, so this pass cannot pick it
+        ///       again — the dispatcher immediately re-runs the whole selection for the same
+        ///       citizen; and
+        ///   (b) recorded its own retry backoff, so later TICKS do not re-attempt a whole-region
+        ///       path sweep against the same dead target every 100 ms.
+        /// (a) is what terminates the pass and (b) is what keeps it cheap. Omitting BOTH is a
+        /// silent hang — no exception, no log — which is why the dispatcher now carries a bounded
+        /// guard that throws naming the source. Omitting only (b) is merely slow.
+        /// The world must be left exactly as it was, minus any reservation the attempt released.
+        ///
+        /// <paramref name="candidate"/> is valid ONLY until this source's next
+        /// <see cref="Rescan"/>, and the dispatcher guarantees no rescan happens between
+        /// <see cref="Select"/> and this call. A source must not rescan its own board here either:
+        /// board indices and generation stamps are both board-position-indexed, so a mid-pass
+        /// rebuild silently redirects an index at a different job.
         /// </summary>
         bool TryClaim(Simulation sim, Citizen citizen, int candidate, long gen, JobContext ctx);
 
@@ -109,6 +135,12 @@ namespace Perilune.Sim
         /// so without this a second citizen in the SAME tick can be promised units a first
         /// citizen already took. There is deliberately no matching release hook: a released
         /// reservation reappears on the next rescan, which is the conservative direction.
+        ///
+        /// TIMING, normalised so every implementer sees one world: the notification fires AFTER
+        /// the reserving citizen's job state is fully written (JobKind, JobTarget, ReservedItemId)
+        /// and after <see cref="ItemStack.ReservedForJob"/> is set. A handler may therefore read
+        /// both. It fires before the claiming source's own bookkeeping (assignment sets, backoff
+        /// removal), so it must not depend on that.
         /// </summary>
         void OnGroundItemReserved(Simulation sim, ItemStack item);
     }

@@ -27,7 +27,7 @@ namespace Perilune.Sim
 
         public string Name => "Dig";
         public JobKind[] HandledKinds => Kinds;
-        public bool HasCandidates => _sites.Count > 0;
+        public int CandidateCount => _sites.Count;
 
         public void BeginTick(Simulation sim) { }
 
