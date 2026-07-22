@@ -1,4 +1,4 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest-feedback round + Console UI rebuild, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest round + Console UI rebuild + conversation-history fix, tag `v2-talking-ship`)
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -282,6 +282,14 @@ Nav/sensors full loop (survey → contact → burn → rendezvous); derelict gen
 dry-run pack that installs into an existing save and uninstalls without bricking it.
 The obvious P3 groundwork already flagged below: hosts finally consume `Sim.Content`.
 
+**Before/alongside P3, in rough priority order:** (1) fix the host GameSession wedge
+on unclean websocket drops (backlog below) — it will bite the next playtest; (2)
+re-run `llm-smoke` + a multi-turn live probe to re-measure the two SMOKE-P2 items
+now that history flows (elicitation + `cache_read`, both flagged below); (3) the two
+human exit bars still open on Garvin (blind screenshot A/B — the new Console UI
+should be in the A/B frames — and the 60-minute playtest); (4) small UI polish:
+CREW-tab scroll affordance.
+
 ## Known issues / backlog (not regressions)
 
 - **Prompt prefix below the cacheable minimum.** `PromptBuilder` sets two `cache_control`
@@ -289,10 +297,16 @@ The obvious P3 groundwork already flagged below: hosts finally consume `Sim.Cont
   haiku-class minimum cacheable prefix is **2048 tokens**, so caching silently never engages
   (`cache_read` flat at 0 across all turns, confirmed live). Not an adapter bug — a
   content/prompt-size matter. Fix is more persona/context/memory in the prefix. (`SMOKE-P2.md` §1.)
+  **Update 2026-07-21 (`9b16c07`):** the transcript now grows the prompt each turn, but as
+  volatile *suffix* — the cacheable *prefix* is unchanged, so this item stands until the prefix
+  itself grows. Re-measure on the next smoke.
 - **Effect elicitation is unsolved.** Live models discuss authored secrets **in prose** but do
   not emit a `RevealInfo` / `propose_effect` tool call (both Anthropic and OpenAI, this run).
   The wire/persona/secret data reaches the model correctly; the models just don't structure the
   reveal. This is prompt work owed **before** the playtest. (`SMOKE-P2.md` §findings.)
+  **Update 2026-07-21:** the prompt-rework smoke (`7bf9234`) plus conversation history
+  (`9b16c07`) both moved this — re-verify live with a multi-turn secret-probing exchange
+  before declaring it closed; single-turn `llm-smoke` alone can't prove it anymore.
 - **Save-reload thermal ULP drift** — pre-existing, documented and reproduced by `P2ExitTests`
   on base (last-bit float drift across a save/reload of the thermal field). Not a P2 regression.
 - **ConversationHub has no backoff/cooldown** — it re-probes the primary backend every turn
