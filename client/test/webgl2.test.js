@@ -14,7 +14,7 @@ import {
   resolveTerrain, resolveEntity, resolveOverlay, collectCellKeys, atlasSignature, CELL, LOCK_TINT,
 } from '../src/render/rasterplan.js';
 import { chooseBackend, parseFrozenTime } from '../src/render/exec-select.js';
-import { C } from '../src/render/palette.js';
+import { C, FG, HULL } from '../src/render/palette.js';
 
 function deepFreeze(v) {
   if (v && typeof v === 'object' && !Object.isFrozen(v)) {
@@ -48,8 +48,15 @@ test('parseFrozenTime reads a finite ?t=, else null', () => {
 
 // ---- terrain resolution ----
 test('resolveTerrain: hull/void are flat fills; base tiles are atlas cells', () => {
-  assert.deepEqual(resolveTerrain({ kind: 'hull', x: 0, y: 0 }), { flat: true, color: '#161122' });
+  assert.deepEqual(resolveTerrain({ kind: 'hull', x: 0, y: 0 }), { flat: true, color: HULL });
   assert.equal(resolveTerrain({ kind: 'void', x: 0, y: 0 }).flat, true);
+  // The silhouette contract: hull mass must stay a MUCH higher value than the space it sits in,
+  // or the ship dissolves into the void (see palette.js "The three dark states").
+  const lum = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  };
+  assert.ok(lum(HULL) - lum(FG[C.Void]) > 25, `hull ${HULL} must out-value space ${FG[C.Void]}`);
   assert.deepEqual(resolveTerrain({ kind: 'floor', x: 0, y: 0 }), { cell: 'terrain:floor' });
   assert.deepEqual(resolveTerrain({ kind: 'wall', x: 0, y: 0 }), { cell: 'terrain:wall' });
   assert.deepEqual(resolveTerrain({ kind: 'wall_vert', x: 0, y: 0 }), { cell: 'terrain:wall_vert' });

@@ -7,7 +7,7 @@ import {
   SPRITE_URIS, SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE, SPRITE_STATES, SPRITE_FRAMES,
 } from '../../assets/sprites.g.js';
 import { VARIANT } from './motion.js';
-import { scrubMatte } from './matte.js';
+import { scrubMatte, gradeFor, gradePixels, crewAccent, isCrewKey, baseKey, paintUnderglow } from './matte.js';
 
 export { SPRITE_TILE, SPRITE_FACING, SPRITE_NO_ROTATE };
 
@@ -48,15 +48,8 @@ export class SpriteAssets {
       const image = new Image();
       const isBase = Object.prototype.hasOwnProperty.call(SPRITE_URIS, k);
       image.onload = () => {
-        // Matte scrub (see matte.js): a generated frame whose white backdrop survived the
-        // pipeline's key pass gets it cleared here, once, at load. Scoped to the pawn
-        // sprites + their walk frames — the only art class that has exhibited the defect —
-        // so a future light-toned full-bleed tile (wall, floor) can never be gutted by the
-        // border flood. Clean art is a no-op and keeps the original Image.
-        if (k.startsWith('pawn')) {
-          const scrubbed = this._scrub(image);
-          if (scrubbed) this.img[k] = scrubbed;
-        }
+        const fixed = this._process(image, k);
+        if (fixed) this.img[k] = fixed;
         if (isBase && ++this._baseLoaded === this._baseTotal && onReady) onReady();
       };
       image.src = uris[k];
@@ -64,16 +57,34 @@ export class SpriteAssets {
     }
   }
 
-  /** Run the pure matte scrub over a decoded image; the corrected canvas when pixels were
-   *  cleared, else null (keep the original — no needless canvas indirection). */
-  _scrub(image) {
+  /**
+   * The load-time pixel passes (all pure — see matte.js), run ONCE per decoded sprite:
+   *   1. matte scrub — a generated frame whose white backdrop survived the pipeline's key pass
+   *      gets it cleared. Scoped to the pawn sprites + their walk frames (the only art class that
+   *      has exhibited the defect) so a light-toned full-bleed tile can never be gutted by the
+   *      border flood. MUST run before the grade, which would otherwise darken the matte into
+   *      something the near-white flood no longer recognises.
+   *   2. value-range relight — lifts the shipped art off the floor of the value scale so a lit
+   *      interior has somewhere to sit and an unlit one still reads (see matte.js GRADE).
+   *   3. crew underglow — the deterministic per-crew accent disc, painted into the transparent
+   *      margin AFTER the scrub has finished walking that margin.
+   * @returns {HTMLCanvasElement|null} the corrected canvas, or null to keep the original Image.
+   */
+  _process(image, key) {
     try {
+      const crew = isCrewKey(baseKey(key));
+      const grade = gradeFor(key);
+      if (!crew && !grade) return null;
       const c = document.createElement('canvas');
       c.width = image.naturalWidth; c.height = image.naturalHeight;
       const g = c.getContext('2d');
       g.drawImage(image, 0, 0);
       const id = g.getImageData(0, 0, c.width, c.height);
-      if (!scrubMatte(id.data, c.width, c.height)) return null;
+      let touched = 0;
+      if (crew) touched += scrubMatte(id.data, c.width, c.height);
+      if (grade) touched += gradePixels(id.data, c.width, c.height, grade);
+      if (crew) touched += paintUnderglow(id.data, c.width, c.height, crewAccent(key));
+      if (!touched) return null;
       g.putImageData(id, 0, 0);
       return c;
     } catch { return null; } // tainted/odd context — keep the original image

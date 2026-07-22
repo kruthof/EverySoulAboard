@@ -30,7 +30,20 @@ test('the light table paints Dead/Emergency/Brownout and treats Powered/Unknown 
   assert.ok(litOverlay(1) && litOverlay(2) && litOverlay(3), 'Dead/Emergency/Brownout paint');
   assert.equal(litOverlay(4), undefined, 'Powered is transparent (no overlay)');
   assert.equal(litOverlay(0), undefined, 'Unknown/fog paints nothing');
-  assert.equal(LIGHT[1], 'rgba(6,5,14,.72)');
+  assert.equal(LIGHT[1], 'rgba(26,48,114,.58)');
+});
+
+test('Dead is a COLD HALF-light, not a near-black veil (both executors fold this same rgba)', () => {
+  // Both skins resolve `dst*(1-a) + C*a`; canvas2d over-blends it, webgl2 folds it into the
+  // multiply M = (1-a) + C*a. The contract this test guards is on M, which is what the player sees:
+  // an unlit-but-explored room must keep roughly half its value, and must go BLUE doing it.
+  const m = LIGHT[1].match(/rgba\((\d+),(\d+),(\d+),([.\d]+)\)/);
+  const a = Number(m[4]);
+  const M = [1, 2, 3].map((i) => (1 - a) + (Number(m[i]) / 255) * a);
+  assert.ok(M[0] > 0.35 && M[0] < 0.55, `red multiply ${M[0]} — dim, never void`);
+  assert.ok(M[2] > M[0] + 0.1, `blue ${M[2]} must survive well above red ${M[0]} — the light is cold`);
+  const luma = 0.2126 * M[0] + 0.7152 * M[1] + 0.0722 * M[2];
+  assert.ok(luma > 0.4 && luma < 0.6, `Dead keeps ~half the value (got ${luma.toFixed(3)})`);
 });
 
 // ---- fog gate: never trust the plane ----
