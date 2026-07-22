@@ -1,4 +1,9 @@
-# HANDOVER — PERILUNE (2026-07-21, P2 complete + playtest rounds 1–2 + Console UI rebuild + RELATIONS tab, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference, tag `v2-talking-ship`)
+
+> **Newest first:** start at "Playtest round 3 (2026-07-22)" — six landed lanes, the
+> ship-visuals plans, and five decisions parked for Garvin. `docs/MECHANICS.md` is now
+> the authority on how the sim actually behaves; its §13 "known gaps" lists what is
+> wired but not connected. Counts: **607 dotnet + 207 node**.
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -292,6 +297,167 @@ Secret/traits/logs are host-owned or unhashed persona state).
 Round-2 finding NOT addressed by code: "there is not really anything else to
 do" beyond the above is P3 scope (nav/sensors loop, derelicts, campaign) —
 the polish lane makes the existing verbs visible; P3 adds new ones.
+
+## Playtest round 3 (2026-07-22) — six lanes, all LANDED on main
+
+Garvin played the slice and reported three things, plus a visual bar and a docs ask:
+
+1. "I can see the building option of a wall, but nothing happens, no one builds anything."
+2. "People run way too fast around, it's disturbing."
+3. "I am not sure if they truly work on something, as they just walk around… there was a
+   CO2 problem, and the life-support lead wrote that she is fixing it, but did not do
+   anything visual."
+4. A Prison Architect screenshot: "more than 10 years old… much more crisp and polished
+   than our ship (not talking about our new UI, that is good)", and later: "even at
+   highest zoom, each sprite is super crisp."
+5. "Ensure the game mechanics are well documented in the code base."
+
+**Method that worked and is worth repeating.** Three *read-only* diagnostic lanes ran
+first and were forbidden from editing anything; only then were fix lanes briefed with
+the verified findings so they could not re-derive (or re-invent) the diagnosis. Every
+package then got BOTH an author self-review and an INDEPENDENT reviewer. Those two gates
+caught **disjoint** classes of defect — see "Review lessons" below. Four of six packages
+were sent back with must-fixes before merging.
+
+**Final gate: 607 dotnet + 207 node green; `26907c23d7e48a5c` unmoved all session.**
+Slice golden moved `d1710ab6a1fe50ce` → **`b31ba82f50cf395c`** (work economy). 2-crew
+tick-3000 `401c9b96aff338a7` unmoved.
+
+### What landed
+
+- **Slice work economy** (`b09eba8`). The build system was never broken. The slice
+  shipped exactly 2 Regolith (a wall costs 2), the SalvageRecycler ate both within ~50 s
+  of boot on a standing bill, and the 48 debris tiles were never designated so the only
+  in-sim Regolith source never ran. Added `ShipPlan.DigDesignations`; the slice now
+  designates its 48 tiles **and opens `door_aft`** — which was closed, making the entire
+  field unreachable (designation alone was bit-identical to baseline). Crafting no longer
+  outbids pending builds for Regolith; `_anyFreeMaterial` (bool) → a free-unit **count**
+  so scarce material finishes one site instead of stranding several. A wall designated at
+  tick 3000 used to stall at `0/2` forever; it completes at **3487**.
+- **Legibility + dialogue honesty** (`db4e8e1`). `TaskLabel` names the object and
+  distinguishes en route ("Heading to service scrubber_ls", no map tag) from at work;
+  task line in CREW WATCH; on-map work markers joined from the roster's existing
+  `deck/x/y/task` (**no wire change**); `designs` wire appends `delivered`/`required`
+  (append-only, elements 5–6) so a starved ghost stops looking like a worked one; prompt
+  gains a promise-ban plus a `[SHIP]` block so crew speak to real conditions.
+- **Render WP-0** (`9e9cdff`) — see the detailed section below.
+- **Stage relight** (`0bf1ce9`). Deck luma p50 **17 → 41**, p95 57 → 116; three-state
+  separation (space 4.6 / hull+fog 38.5 / unlit floor 60.0 / lit floor 112.7); per-crew
+  accent. Style anchor re-baselined per PROTOCOL.md §2 (`bdcdd57`); lighting range
+  2.80× → 4.59×.
+- **`docs/MECHANICS.md`** (`9f6ec7b`, 1467 lines). The as-implemented mechanics
+  reference the repo never had. Every number cited `file:line` or `def-key`, verified
+  against source — explicitly NOT copied from `legacy/GDD.md`/`TDD.md`, which are
+  aspirational and disagree with the code in **14 recorded places**. Its §13 "known gaps —
+  wired but not connected" is the institutional memory whose absence let these bugs ship.
+- **Doc-comment uplift** (`d913a15`). Ten thin foundational sim files brought to the
+  house standard set by `BuildSystem`/`CraftingSystem`. Proven comment-only by
+  comment-stripped token-stream comparison.
+
+### Caveats recorded rather than smoothed over
+
+- **The dig is a BOOT-WINDOW economy, not a durable one.** Crew are ~39% busy over the
+  first 10 sim-min but clear all 48 tiles in under 4, and decay to ~10% by 3 h and ~4% by
+  7 h. The test is named `CrewWorkTheBootWindow_FirstTenSimMinutes` deliberately. **A
+  recurring work source is real, open design work** — this is the durable form of
+  "they just walk around".
+- **The stage is still far flatter than PA.** 41 vs PA's 123 deck p50; lit-floor
+  p50→p95 spread 13 luma vs PA's ~55.
+- The crew accent is baked into the sprite bitmap at load, so 8 crew share **3** hues
+  (CREW WATCH uses 6 by cid hash). Per-soul discs need draw-time work.
+
+### Open decisions for Garvin (nothing below was taken unilaterally)
+
+1. **Max-zoom clamp.** `MAX_TILE_DEVICE_PX = 128` makes max zoom 1:1 (was a 5× upscale)
+   but also clamps the **default** Retina view 72 → 64 CSS px/tile (~12% wider on load).
+   One constant reverts it.
+2. **Sprite regen.** Only worth funding **bundled with a hard-edge art spec**. Measured:
+   PA magnified 6× is visibly bilinear-blurred and still reads crisp — its quality is
+   hard outlines, flat fills, low detail density, NOT resolution. Our pawns carry ~2,285
+   unique colours each. A pure resolution regen costs credits, moves the SPRITE_URIS pin
+   and the style anchor, and would still go to mush. Only pawns retain 1024² sources
+   (re-processable to 256 for **$0**); every other asset exists only as 128px output.
+3. **Movement retune** — fully measured, NOT landed (moves the CI pin). See below.
+4. **CO2** — re-scoped: it is a **gas-transport bug**, not a dispatch gap. See below.
+5. **`Morale` / `Health` are never written by any system** yet three crew surfaces render
+   them (CREW WATCH bar, CREW tab, READOUT) as a constant 100%. Design question.
+
+### Movement retune — measured, ready, NOT landed
+
+`ticks_per_tile = 5` @10 Hz = **2 tiles/s**. The client interpolation is NOT at fault
+(displayed speed matches sim to 0.4%; `b770e88` did its job). The bigger half is
+`PathService.TryRandomWalkableTile` picking a uniformly random tile **ship-wide, all
+decks** → mean ~21–29-tile marches, crew moving **82% of all ticks**, 99.4% of it wander.
+
+Landing shape (measured in a throwaway copy, full suite run 4×): `ticks_per_tile = 10`,
+`idle_ticks_between_wanders = 90`, `DEFAULT_STEP_MS = 1000`, `WALK_FPS 6 → 3`.
+`MAX_STEP_MS = 1200` hard-caps `ticks_per_tile` at 12. Cost: def-field ritual both sides
+(`SimDefs.CreateDefault`, doc comments, `citizen.def`, the mirrored `CitizenSystem.cs:19`
+const, `DefsDefaultTests` literal), scenario pin → **`3076969310f97c25`**, slice golden,
+`ci.sh`, `CLAUDE.md`, this file. The 2-crew tick-3000 golden does NOT move (those crew are
+`HoldPosition`). `idle ≥ ~300` breaks `P2ExitTests` P4 (a second crew member parks in the
+sealing cabin) — 60/120 are safe. **Better second lane: a `wander_radius_tiles` def field**
+capping wander DISTANCE, which preserves the desynchronisation `AuthoredShips.cs:235-241`
+depends on.
+
+### CO2 — the fix is transport, not dispatch
+
+Verified from a clean-room boot: `AtmosphereSystem.FlowAcrossDoor` moves gas only on a
+pressure delta with **no diffusion term**. Five scrubbers cover 2.29× crew production, yet
+scrubber rooms sit at **exactly 0 ppm** while the crew corridor climbs 500 → 6,243 →
+11,961 → **17,644 ppm** over 3 days. Only ~42% of production ever reaches a scrubber.
+Sending a crew member to service a *healthy* scrubber fixes nothing. Related: the ship
+also **freezes** to −12.9 °C (below the −10 °C hypothermia threshold) while the one
+shipped MOSS rule, `overheat_guard` — commented "inert under the shipped defaults" —
+fires **2,579 times in 3 days** saying the ship is too *hot*.
+
+### The ship-visuals plans (two Opus design agents; PLANS ONLY, not built)
+
+Renderer lane (sized impact/effort, disjoint enough to run as parallel worktrees):
+**WP-1 silhouette + drop shadow** (5/2 — bake a dilated dark rim into each atlas cell,
+plus a second offset black quad per entity before the entity batch; *this plus WP-0 is
+most of "why PA reads crisp"*) · **WP-2 wall autotiling + extrusion** (5/4 — an 8-bit
+neighbour mask in `glyphs.js`, `terrain:wall:{mask}`, ≤47 cells; **no wire change**, the
+client already holds the glyph grid) · **WP-3 light pools** (5/3 — a pure `lightfield.js`
+emitting a vertex-coloured multiply mesh; the flat program already carries per-vertex
+rgba so gradients are free) · **WP-4 floor variants + grout + wall-base AO** (3/2, needs
+WP-2) · **WP-5 ghosted room-name floor typography** (3/3 — needs a NEW append-only
+`rooms` wire message; cheapest as a DOM overlay) · **WP-6 animated designation dashes**
+(2/2) · **WP-7 texture-array migration + 256px art** (4/5, last; `sprites.g.js` is already
+1 MB of inline base64).
+
+Art lane: **A** value relight ✔done · **B** three-state separation ✔done · **E** crew
+accent ✔done · **C** room-type floor tint (5/2, needs per-tile tint + room type on the
+wire) · **D** per-tile wear jitter (4/2) · **F** ghosted room labels (4/2) · **J**
+grounding shadows (4/2) · **G** new hard-edge spec, `tile_px: 256`, ≤64 colours/sprite
+(5/4, full regen) · **H** 4–5 authored floor materials (5/3, needs WP-2) · **I** re-process
+surviving 1024² pawns to 256 (3/1, **$0**).
+Target look, agreed: *"a cold ship with warm rooms in it"* — hard high-value graphite hull
+against true black, room identity by floor alone, saturation reserved for crew/hazards,
+wear as the signature (a derelict, not a prison).
+**Biggest trap flagged:** every visual package perturbs `client/test/golden/` and the
+`passes` fixtures, and `UPDATE_GOLDEN=1` will bake a regression silently. Never let two
+lanes regenerate the same golden; eyeball `slice-shot.mjs` output before baking.
+
+### Review lessons (why both gates stay)
+
+Self-review reliably caught the author's own mechanical errors: a **fake test suite**
+(all 10 passed with both fixes disabled), a z-index collision, a per-frame forced reflow,
+and — the best catch of the session — that adding one `DeviceSpec` would have **silently
+rebound all eight crew portraits**, because `_nextEntityId` is shared and citizens are
+added after devices while the portrait pipeline keys on `pk_fnv1a32(seed, citizenId)`.
+Independent review reliably caught what the author could not see: the `[SHIP]` block
+instructing the model to **deny real faults** (it never read `Device.Powered`, and life
+support is a brownout shed tier); a new **permanent crafting-chain deadlock** introduced
+by the work-economy fix; a doc comment inventing a `SetJob` effect that does not exist;
+and **three separate tests that could not fail** (a tautological colour pin, an untested
+`prop` class, and a pawn-slide "guard" that recomputed the transform inside the test and
+survived the exact mutation it claimed to catch).
+Reviewers were wrong too, and implementers were told to push back with evidence: the
+"~20% reaches the scrubbers" figure (really **42%**), a stale test count read from
+`CLAUDE.md` instead of measured, a fixture that hid an in-flight race by luck, and the
+half-texel UV inset the orchestrator specified — which was **wrong** (128 px across 127
+texels; corroborated by 1:1 frames being byte-identical without it).
 
 ## Render WP-0 — "a crisp ship stage" (2026-07-22, reviewed + corrected)
 
