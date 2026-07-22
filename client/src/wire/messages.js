@@ -153,7 +153,56 @@
  * @typedef {{type:'relations', edges:RelationEdgeTuple[]}} RelationsMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg} WireMsg */
+/**
+ * The ship-systems ledger — the MOSS terminal's pushed channel (moss-terminal spec §1.1). A cached
+ * state channel like roster/designs/terminals/relations: rebuilt each render, deduped, snapshot-
+ * replayed on connect, NOT fog-gated (a ship's own telemetry is fixed crew knowledge).
+ *
+ * Each row is [id, label, load, state, faultDay, faultText, advisory]:
+ *   id        stable snake_case key (`reactor`, `life_support`, … ) — addresses `moss sys`/`open`
+ *   label     display text, already uppercase
+ *   load      0..100, or -1 = "no meaningful load" (renders an empty bar and `--`)
+ *   state     0 NOMINAL · 1 ATTEND · 2 DEGRADED · 3 OFFLINE (append-only ladder)
+ *   faultDay  day of the newest attributable fault, or -1 for none
+ *   faultText fault summary, uppercase, NO day prefix (the client composes `DAY {n} · {text}`)
+ *   advisory  host-derived deterministic prose for the selected row ("" renders nothing)
+ * `uptime` is the RAW tick count — the host never ships a preformatted duration (culture bug), the
+ * client formats it. Row order is a host decision, never a client sort (same rule as the relations
+ * ring).
+ * @typedef {[string,string,number,number,number,string,string]} SystemRowTuple
+ * @typedef {{type:'systems', hull:string, day:number, uptime:number, rows:SystemRowTuple[]}} SystemsMsg
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg} WireMsg */
+
+/**
+ * Decode a `systems` message's row tuples into named objects, in wire order. Tolerant: a
+ * null/garbage message or row yields nothing rather than throwing, and a short tuple decodes with
+ * honest sentinels (`load:-1` → `--`, `faultDay:-1` → `—`) rather than an invented number — a
+ * screen whose whole purpose is "the truth about this ship" must never render a plausible
+ * placeholder (spec DA-M1). PURE.
+ * @param {SystemsMsg|null} msg
+ * @returns {{id:string,label:string,load:number,state:number,faultDay:number,faultText:string,advisory:string}[]}
+ */
+export function systemRows(msg) {
+  const rows = msg && Array.isArray(msg.rows) ? msg.rows : [];
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : d);
+  const str = (v) => (typeof v === 'string' ? v : '');
+  const out = [];
+  for (const r of rows) {
+    if (!Array.isArray(r) || r.length < 2 || typeof r[0] !== 'string' || r[0] === '') continue;
+    out.push({
+      id: r[0],
+      label: str(r[1]) || r[0].toUpperCase(),
+      load: num(r[2], -1),
+      state: num(r[3], 0),
+      faultDay: num(r[4], -1),
+      faultText: str(r[5]),
+      advisory: str(r[6]),
+    });
+  }
+  return out;
+}
 
 /**
  * The cid of the crew member on the selected tile (frame.sel), or null when nothing crew-like is

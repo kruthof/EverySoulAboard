@@ -444,18 +444,26 @@ export function terminalLabel(entry) {
     String(entry && entry.deck != null ? entry.deck : '?');
 }
 
-// ---- Escape priority stack (IX-13 + relations-spec IX-R10) ----
+// ---- Escape priority stack (IX-13 + relations-spec IX-R10 + moss-terminal IX-M2) ----
 
 /**
  * The Escape action, in priority order: an armed tool disarms first, then an open dialogue closes,
- * then — if the RELATIONS tab is up — Escape returns to the BUILD tab (restoring the ship
- * viewport), else nothing. PURE; the caller performs the returned action.
- * @param {{armed:boolean, dialogueOpen:boolean, relationsActive:boolean}} s
- * @returns {'disarm'|'dialogue'|'relations'|'none'}
+ * then — if the MOSS terminal has taken the window — Escape belongs to MOSS's OWN inner stack
+ * (PROGRAM → DETAIL/FAULTLOG → LEDGER → ship; and a non-empty prompt clears first), then — if the
+ * RELATIONS tab is up — Escape returns to the BUILD tab (restoring the ship viewport), else
+ * nothing.
+ *
+ * The rung order armed → dialogue → MOSS → relations → none is INVARIANT (moss-terminal IX-M2).
+ * MOSS returns a single `'moss'` verdict rather than its inner step: the inner stack is the MOSS
+ * model's pure key state machine (`moss-model.keyPress`), and duplicating it here would give the
+ * screen two disagreeing sources of truth. PURE; the caller performs the returned action.
+ * @param {{armed:boolean, dialogueOpen:boolean, mossActive?:boolean, relationsActive:boolean}} s
+ * @returns {'disarm'|'dialogue'|'moss'|'relations'|'none'}
  */
 export function escapeTarget(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.mossActive) return 'moss';
   if (s && s.relationsActive) return 'relations';
   return 'none';
 }

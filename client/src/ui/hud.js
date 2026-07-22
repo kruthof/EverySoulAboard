@@ -26,6 +26,7 @@ import {
 import {
   ringLayout, drawnEdges, focusTag, regardRows, signed,
 } from './relations-model.js';
+import { MossScreen } from './moss-screen.js';
 
 const METRIC_DEFS = [
   ['power', 'Power'], ['oxygen', 'Oxygen'], ['water', 'Water'], ['food', 'Food'],
@@ -58,6 +59,8 @@ let _pending = null;      // pending cross-deck row click (IX-42)
 let _chronRequested = false; // CHRONICLE requests once per connection (IX-74)
 let _designs = null;      // latest designs message (pending build ghosts)
 let _terminals = null;    // latest terminals message (MOSS directory)
+let _systems = null;      // latest systems message (the MOSS ledger channel)
+let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
 let _nudgeTimer = 0;      // pending auto-dismiss timeout id
@@ -83,8 +86,10 @@ export function renderMetrics(m) {
   if (chip) { chip.className = 'caution ' + c.level; chip.textContent = c.label; }
 }
 
-/** Sensor log (IX-90): last 5 lines, leading D-token wrapped in .ts (newest tinted via CSS). */
+/** Sensor log (IX-90): last 5 lines, leading D-token wrapped in .ts (newest tinted via CSS). Also
+ *  the MOSS FAULT LOG's live section (spec §2 `reduceLog`), which wants the message not the tail. */
 export function renderLog(lines) {
+  if (_moss) _moss.onLog({ type: 'log', lines: Array.isArray(lines) ? lines : [] });
   const tail = logTail(lines, 5);
   const el = $('log');
   el.innerHTML = tail.length
@@ -244,9 +249,11 @@ export function renderRoster(m) {
   paintWorkMarks(); // the roster IS the work-marker source (deck/x/y/task)
 }
 
-/** Chron dispatch: cache + live re-render when the CHRONICLE tab is up (IX-74). */
+/** Chron dispatch: cache + live re-render when the CHRONICLE tab is up (IX-74). Also the MOSS
+ *  FAULT LOG's source (IX-M5), so it is forwarded to the terminal whenever that exists. */
 export function renderChron(m) {
   _chron = m;
+  if (_moss) _moss.onChron(m);
   if (_tab === 'chron') renderChronBlock();
 }
 
@@ -258,10 +265,19 @@ export function renderDesigns(m) {
   paintDesignGhosts();
 }
 
-/** Terminals dispatch: cache the MOSS directory + refresh the MOSS tab if it is up. */
+/** Terminals dispatch: cache the MOSS directory + refresh the MOSS tab if it is up. Also feeds the
+ *  MOSS terminal's PROGRAM screen, whose directory is the same channel (IX-M6). */
 export function renderTerminals(m) {
   _terminals = m;
+  if (_moss) _moss.setTerminals(terminalList(m));
   if (_tab === 'moss') renderMossTab();
+}
+
+/** Systems dispatch (moss-terminal §1.1): the ship-systems ledger. Cached here so the MOSS
+ *  terminal shows live telemetry the instant it opens rather than a blank first frame. */
+export function renderSystems(m) {
+  _systems = m;
+  if (_moss) _moss.onSystems(m);
 }
 
 /** Relations dispatch (IX-R3): cache the directed graph; re-render the web when the RELATIONS tab
@@ -319,17 +335,22 @@ export function canvasClicked() {
   _pending = supersedePending(_pending, { t: 'click' });
 }
 
-/** The Escape stack (IX-13 + relations-spec IX-R10), called from main.js's onEscape: armed tool →
- *  dialogue → (if the RELATIONS tab is active) back to BUILD (restoring the ship viewport) →
- *  nothing. The rung order + when-to-act is the pure `escapeTarget`. */
+/** The Escape stack (IX-13 + relations-spec IX-R10 + moss-terminal IX-M2), called from main.js's
+ *  onEscape: armed tool → dialogue → the MOSS terminal's OWN inner stack → (if the RELATIONS tab
+ *  is active) back to BUILD (restoring the ship viewport) → nothing. The rung order + when-to-act
+ *  is the pure `escapeTarget`; this function only performs the verdict. MOSS's inner stack
+ *  (prompt → PROGRAM → DETAIL/FAULTLOG → LEDGER → ship) belongs to the MOSS model, so the 'moss'
+ *  verdict just hands Escape over — a `{k:'exit'}` effect is what eventually restores the ship. */
 export function handleEscape() {
   const act = escapeTarget({
     armed: _armed != null,
     dialogueOpen: !!(_panels && _panels.activeDialogueSid != null),
+    mossActive: !!(_moss && _moss.isOpen()),
     relationsActive: _tab === 'relations',
   });
   if (act === 'disarm') { _armed = null; reflectArmed(); }
   else if (act === 'dialogue') closeActiveDialogue();
+  else if (act === 'moss') _moss.escape();
   else if (act === 'relations') setTab('build');
 }
 
@@ -517,6 +538,10 @@ function setTab(tab) {
     if (blk) blk.hidden = key !== tab;
   }
   if (tab === 'crew') renderCrewTable();
+  // IX-M1: the MOSS tab replaces the WHOLE window with the terminal; any other tab restores the
+  // ship. The `#tab-moss` pane below still renders — it is simply behind the takeover, and it is
+  // what the console falls back to if the takeover is ever switched off.
+  reflectMossView(tab === 'moss');
   if (tab === 'moss') renderMossTab();
   if (tab === 'chron') {
     if (!_chronRequested) { _chronRequested = true; _send(Cmd.chron()); }
@@ -528,6 +553,36 @@ function setTab(tab) {
   reflectRelationsView();
   refreshSelection();
   if (prevArmed !== _armed) reflectArmed();
+}
+
+// ---- MOSS terminal (the full-window takeover, IX-M1) ----
+
+/**
+ * Open/close the MOSS terminal. The screen is created on FIRST activation (a session that never
+ * opens MOSS builds no MOSS DOM at all — the same rule as the P2 panels), then reused, so its
+ * cached channels survive a round-trip to the ship and back.
+ *
+ * The takeover is `moss-screen.applyTakeover`: `body.moss-open` puts `.app`, `#panels` and the
+ * disconnect overlay at `display:none` and un-hides `#moss-view`. The ship canvas, `composeScene`
+ * and the executors are untouched — main.js's draw loop simply idles (it redraws on frames, and a
+ * hidden canvas costs nothing).
+ */
+function reflectMossView(active) {
+  if (!active) { if (_moss) _moss.close(); return; }
+  if (!_moss) {
+    const root = $('moss-view');
+    if (!root) return;
+    _moss = new MossScreen({
+      root,
+      send: (o) => _send(o),
+      // IX-M2's last rung: leaving MOSS restores the ship view through the ordinary tab flow.
+      onExit: () => { if (_tab === 'moss') setTab('build'); },
+    });
+    _moss.setTerminals(terminalList(_terminals));
+    if (_systems) _moss.onSystems(_systems);
+    if (_chron) _moss.onChron(_chron);
+  }
+  _moss.open();
 }
 
 // ---- RELATIONS web (the viewport swap) ----
@@ -1045,9 +1100,14 @@ export function renderDevice(m) {
   }
 }
 
-/** Route a MOSS terminal event to the open drawer. @param {import('../wire/messages.js').MossMsg} m */
+/** Route a MOSS terminal event. The full-window terminal takes `sys`/`exec` (its own ops); the
+ *  floating IDE drawer takes the four program events it has always handled. Splitting the routing
+ *  matters: forwarding `sys`/`exec` to `panels()` would lazily build the whole panel layer for a
+ *  message it has nothing to do with. @param {import('../wire/messages.js').MossMsg} m */
 export function renderMoss(m) {
-  panels().mossEvent(m);
+  if (_moss) _moss.onMossEvent(m);
+  const ev = m && m.ev;
+  if (ev === 'source' || ev === 'diag' || ev === 'audit' || ev === 'rterror') panels().mossEvent(m);
 }
 
 /** Reflect the LLM backend status in the top-bar chip: backend name, degraded flag, cost/hr.
