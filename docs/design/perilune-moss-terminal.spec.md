@@ -409,12 +409,14 @@ of thing this project records rather than discovers twice.
 4. **The ppO₂ band is unreachable on shipped content.** Measured worst ppO₂ on the slice at day 3 is
    18.7 kPa, comfortably above `hypoxia_ppo2_kpa` (16). The ladder is real and tested, but nothing in
    shipped content exercises it — so it is unproven against emergent play, not merely unproven.
-5. **"Up to 1 s stale" is WALL time, not sim time** (`GameSession.cs:782` gates on `nowWall`). At 1×
-   that is ~10 sim-seconds between rebuilds; at 100× it is ~17 sim-minutes, and at 1000× ~2.8
-   sim-hours. On a *diagnostic* screen that materially understates the staleness, and a player
-   watching a fast-forwarded ship is exactly who is watching this screen. The dedupe means a stale
-   payload is not re-sent, so the client cannot tell the difference. **Candidate fix for v2: gate on
-   `TickCount` rather than wall time.**
+5. **"Up to 1 s stale" is WALL time, not sim time** (`GameSession.cs:782` gates on `nowWall`). One
+   wall-second at a `tps`-ticks-per-second speed is `tps/10` sim-seconds of ledger age (the sim runs
+   at 10 Hz). So worst-case staleness is ~1 sim-second at 1×, **~1.67 sim-minutes at 100×** and
+   **~16.7 sim-minutes at 1000×** — minutes, not hours. On a *diagnostic* screen that still
+   materially understates the staleness, and a player watching a fast-forwarded ship is exactly who
+   is watching this screen. The dedupe means a stale payload is not re-sent, so the client cannot
+   tell the difference. **Candidate fix for v2: gate on `TickCount` rather than wall time** (inherited
+   from `_metricsAtWall`; changing the cadence under a fixup was the wrong move).
 6. **`ship.*` prompt reads share a mutable cache.** `ShipMetricsAdapter` caches its snapshot for one
    *sim-second* keyed on `TickCount / TicksPerSecond`, and one instance is registered on the shared
    `DeviceRegistry` for `DesignerRuleSystem`, `ScriptRuntime` and now the MOSS prompt alike. Whoever

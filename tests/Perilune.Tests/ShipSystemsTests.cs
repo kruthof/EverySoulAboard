@@ -367,12 +367,32 @@ namespace Perilune.Tests
             // A non-finite ROOM is excluded from every band and never counted as breathable.
             scrub.Rate = 1f;
             room.O2Moles = double.NaN;
-            foreach (var id in new[] { "life_support", "thermal" })
+            // hull_integrity reads rooms too (its pressure half), so it owes the SAME room guard —
+            // otherwise a NaN room is dropped by the census `continue`, LowPressureRooms stays 0,
+            // and hull renders a false all-clear ("every sealed compartment is holding pressure")
+            // about a compartment whose pressure is undefined.
+            foreach (var id in new[] { "life_support", "thermal", "hull_integrity" })
             {
                 var r = Row(ShipSystems.Compute(sim), id);
                 Assert.AreEqual(ShipSystemState.Offline, r.State, id + " must not band a NaN room");
                 StringAssert.Contains("INSTRUMENT UNREADABLE", r.Advisory, id);
             }
+
+            // Pin the hull guard on the pressure half ALONE — a NaN that never touches condition or
+            // O2, only pressure — so the guard cannot silently regress behind the ConditionSum one.
+            var sim2 = NewSim();
+            sim2.AddCitizen("P", new Int3(5, 1, 0));
+            for (int j = 0; j < 5; j++) sim2.Tick();
+            var room2 = sim2.Rooms.RoomAt(sim2.World, new Int3(5, 1, 0));
+            RoomState.Pressurize(room2);
+            Assert.AreEqual(ShipSystemState.Nominal, Row(ShipSystems.Compute(sim2), "hull_integrity").State,
+                "healthy before the poison");
+            room2.N2Moles = double.PositiveInfinity;   // pressure → non-finite; condition untouched
+            var hull = Row(ShipSystems.Compute(sim2), "hull_integrity");
+            Assert.AreEqual(ShipSystemState.Offline, hull.State,
+                "a compartment with undefined pressure is UNREADABLE, never a holding-pressure all-clear");
+            StringAssert.Contains("INSTRUMENT UNREADABLE", hull.Advisory);
+            StringAssert.DoesNotContain("holding pressure", hull.Advisory);
 
             // And DETAIL says so per device rather than printing a number.
             room.O2Moles = 0.0;
@@ -404,6 +424,35 @@ namespace Perilune.Tests
             // The severe rung damages at the vacuum rate (NeedsSystem.cs:130).
             SetPpO2(room, needs.SevereHypoxiaPpO2KPa - 1.0);
             Assert.AreEqual(ShipSystemState.Offline, Row(ShipSystems.Compute(sim), "life_support").State);
+        }
+
+        [Test]
+        public void LifeSupport_ppO2_Uses_Partial_Pressure_Not_The_O2_Percentage()
+        {
+            // The fixtures above pressurise to ~101 kPa, where pressure×fraction and fraction×100
+            // COINCIDE — so a wrong "band on O2 percent" formula would still pass them. Force the
+            // two apart: a low-total-pressure room. 60 kPa at 25% O2 is ppO2 15 kPa (HYPOXIC, below
+            // the 16 kPa threshold), while the O2 PERCENTAGE is 25 (comfortably "fine"). The row
+            // must band on the partial pressure and read DEGRADED.
+            var sim = NewSim();
+            for (int i = 0; i < 5; i++) sim.Tick();
+            var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
+            RoomState.Pressurize(room);
+            SetRoomAtmosphere(room, totalKPa: 60.0, o2Fraction: 0.25, co2Ppm: 400.0);
+
+            Assert.AreEqual(60.0, room.PressureKPa, 0.5, "the room really is at low total pressure");
+            Assert.AreEqual(25.0, room.O2Fraction * 100.0, 0.5, "the O2 PERCENTAGE reads a healthy 25");
+            Assert.AreEqual(15.0, room.PressureKPa * room.O2Fraction, 0.5, "…but the partial pressure is 15 kPa");
+
+            var needs = sim.Defs.Needs;
+            Assert.Less(15.0, needs.HypoxiaPpO2KPa, "15 kPa is below the hypoxia threshold");
+            Assert.Greater(25.0, needs.HypoxiaPpO2KPa, "…while the raw percentage is above it (the trap)");
+
+            var row = Row(ShipSystems.Compute(sim), "life_support");
+            Assert.AreEqual(ShipSystemState.Degraded, row.State,
+                "banded on partial pressure (15 kPa, hypoxic), NOT the O2 percentage (25, fine)");
+            StringAssert.Contains("15.0 kPa", row.Advisory);
+            StringAssert.Contains("hypoxic", row.Advisory);
         }
 
         [Test]
@@ -445,6 +494,19 @@ namespace Perilune.Tests
             double want = total * (kpa / room.PressureKPa);
             room.N2Moles += room.O2Moles - want;
             room.O2Moles = want;
+        }
+
+        /// <summary>Set a room to an exact total pressure, O2 fraction and CO2 ppm at once, by
+        /// scaling the mole pools (pressure is linear in total moles at fixed temp/volume). Used to
+        /// build a LOW-total-pressure room where partial pressure and O2 percentage diverge.</summary>
+        private static void SetRoomAtmosphere(Room room, double totalKPa, double o2Fraction, double co2Ppm)
+        {
+            double totalMoles = room.TotalMoles * (totalKPa / room.PressureKPa);
+            double co2 = totalMoles * co2Ppm / 1_000_000.0;
+            double o2 = totalMoles * o2Fraction;
+            room.O2Moles = o2;
+            room.CO2Moles = co2;
+            room.N2Moles = totalMoles - o2 - co2;
         }
 
         [Test]

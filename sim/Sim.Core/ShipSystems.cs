@@ -662,6 +662,15 @@ namespace Perilune.Sim
         {
             if (!double.IsFinite(c.ConditionSum))
                 return Unreadable(IdHullIntegrity, "HULL INTEGRITY", "machine condition");
+            // The pressure half of this row reads rooms too, so it owes the SAME room guard as
+            // life_support / thermal. Without it a NaN-pressure room is dropped by the census
+            // `continue`, LowPressureRooms stays 0, and hull renders a false all-clear — "every
+            // sealed compartment is holding pressure" about a compartment whose pressure is
+            // undefined. It can never be the SOLE alarmed row (the same NaN forces life_support and
+            // thermal UNREADABLE too), but a row inconsistent with its siblings' own principle is
+            // exactly the drift this ledger refuses.
+            if (c.NonFiniteRooms > 0)
+                return Unreadable(IdHullIntegrity, "HULL INTEGRITY", "a compartment's pressure");
 
             int load = c.WearingDevices == 0 ? -1 : Pct(c.ConditionSum / c.WearingDevices);
 
