@@ -8,6 +8,12 @@ cd "$(dirname "$0")"
 echo "== tests =="
 "$DOTNET" test tests/Perilune.Tests --nologo
 
+# hosts/web is the SHIPPING host but nothing else here compiles it: the test csproj pulls in only
+# WireFormat/GameSession/ConversationHub, and the smokes below run tui + scenario. A compile error
+# in Program.cs (backend chain, boot wiring) used to sail through a green gate. Seconds to close.
+echo "== hosts/web builds =="
+"$DOTNET" build hosts/web/PeriluneWeb.csproj --nologo -v q > /dev/null
+
 echo "== client render tests =="
 if command -v node >/dev/null 2>&1; then
   node --test "client/test/*.test.js"
