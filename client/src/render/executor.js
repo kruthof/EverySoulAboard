@@ -5,7 +5,8 @@
 // to canvas2d until the GL executor lands.
 //
 // Two-backend contract:
-//   Canvas2D  — walks the DisplayList directly, issuing one canvas op per DrawOp (canvas2d.js).
+//   Canvas2D  — buckets the DisplayList by `passIndexOf` (webgl/batch.js) and walks the SAME four
+//               passes the GL backend draws, issuing one canvas op per DrawOp (canvas2d.js).
 //   WebGL2    — first groups the DisplayList into ordered RenderPasses via the PURE batcher
 //               (webgl/batch.js → buildPasses), packs the sprite set with the PURE atlas packer
 //               (webgl/atlas.js → packAtlas), then uploads each pass as an instanced quad batch.

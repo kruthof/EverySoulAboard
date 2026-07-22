@@ -2,15 +2,28 @@
 // it with pixel-identical conventions to hosts/web/Client.html: sprite table with procedural
 // fallback, wall-face/hull-mass, crew variants, facing-aware rotation, lens wash, hover cursor,
 // selection reticle. Implements the Executor shape in executor.js.
+//
+// It walks the list in PASS order (webgl/batch.js `passIndexOf`: terrain → entities → light →
+// overlay), not raw row-major order. Raw order painted each tile's entity before its neighbours'
+// floors, so anything an entity drew outside its own tile — a pawn mid-slide — was erased by the
+// next tile's opaque floor sprite. That was the "pawns walking left appear out of nothing" bug
+// (measured: 100% of the pawn quad covered at the start of a westward or northward step). Within a
+// tile the relative order is unchanged, and tiles do not overlap, so nothing else moves.
 
 import { C, FG, WASH, HULL, litOverlay } from './palette.js';
 import { transform } from './camera.js';
 import { PAWN_ROLES } from './glyphs.js';
+import { passIndexOf } from './webgl/batch.js';
 import { deviceSpriteKey, pawnSpriteKey, slideOffset, isAnimWalking } from './motion.js';
 import { SPRITE_STATES, SPRITE_FRAMES } from '../../assets/sprites.g.js';
 import * as P from './procedural.js';
 
 export class Canvas2DExecutor {
+  constructor() {
+    /** Reusable pass buckets — the walk is re-ordered per frame without allocating. */
+    this._buckets = [[], [], [], []];
+  }
+
   /**
    * @param {import('./compose.js').DrawOp[]} list
    * @param {CanvasRenderingContext2D} ctx
@@ -44,7 +57,13 @@ export class Canvas2DExecutor {
     // 1:1, which MAX_TILE_DEVICE_PX makes the maximum zoom — the win is on the minify side.)
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
 
-    for (const o of list) {
+    // ---- bucket the list into the four passes (shared authority: webgl/batch.js) ----
+    const B = this._buckets;
+    B[0].length = 0; B[1].length = 0; B[2].length = 0; B[3].length = 0;
+    if (list) for (const o of list) { const p = passIndexOf(o); if (p >= 0) B[p].push(o); }
+
+    // ---- 0. terrain ----
+    for (const o of B[0]) {
       const px = o.x * T, py = o.y * T;
       switch (o.op) {
         case 'hull': ctx.fillStyle = HULL; ctx.fillRect(px, py, T, T); break;
@@ -52,8 +71,23 @@ export class Canvas2DExecutor {
         case 'floor': this._floor(ctx, T, px, py, useSpr, sprites); break;
         case 'debris': this._debris(ctx, T, px, py, useSpr, sprites); break;
         case 'wall': this._wall(ctx, T, px, py, o, useSpr, sprites); break;
-        case 'entity': this._entity(ctx, T, px, py, o, useSpr, sprites, anim); break;
-        case 'light': { const c = litOverlay(o.state); if (c) { ctx.fillStyle = c; ctx.fillRect(px, py, T, T); } break; }
+        default: break;
+      }
+    }
+
+    // ---- 1. entities ----
+    for (const o of B[1]) this._entity(ctx, T, o.x * T, o.y * T, o, useSpr, sprites, anim);
+
+    // ---- 2. light ----
+    for (const o of B[2]) {
+      const c = litOverlay(o.state);
+      if (c) { ctx.fillStyle = c; ctx.fillRect(o.x * T, o.y * T, T, T); }
+    }
+
+    // ---- 3. overlay ----
+    for (const o of B[3]) {
+      const px = o.x * T, py = o.y * T;
+      switch (o.op) {
         case 'wash': ctx.fillStyle = WASH[o.bg]; ctx.fillRect(px, py, T, T); break;
         case 'cursor': P.paintCursor(ctx, T, px, py); break;
         case 'reticle': P.paintSelection(ctx, T, px, py, timeSec); break;

@@ -15,7 +15,7 @@ import {
   PASS_GOLDEN_DIR, composePassGolden, composePasses, loadBootFrame, cameras, ASSETS,
 } from './helpers.js';
 import { composeScene } from '../src/render/compose.js';
-import { buildPasses, PASS_ORDER, reticlePhase } from '../src/render/webgl/batch.js';
+import { buildPasses, PASS_ORDER, passIndexOf, reticlePhase } from '../src/render/webgl/batch.js';
 import { packAtlas, pow2, ATLAS_BORDER, ATLAS_PAD, UV_INSET_TEXELS } from '../src/render/webgl/atlas.js';
 
 const TERRAIN_KINDS = new Set(['hull', 'void', 'floor', 'debris', 'wall', 'wall_vert']);
@@ -48,6 +48,32 @@ for (const c of goldenCases()) {
     );
   });
 }
+
+test('passIndexOf and buildPasses agree on EVERY op — the two backends share one pass order', () => {
+  // Canvas2DExecutor buckets the raw DisplayList with passIndexOf; WebGL2Executor draws
+  // buildPasses. If those two ever disagreed about where an op belongs, the backends would silently
+  // diverge in draw order — which is exactly the class of bug that let a westward-walking pawn be
+  // painted over by its neighbour's floor. Drive every op the vocabulary has through both.
+  const ops = [
+    { op: 'hull', x: 0, y: 0 }, { op: 'void', x: 1, y: 0 }, { op: 'floor', x: 2, y: 0 },
+    { op: 'debris', x: 3, y: 0 }, { op: 'wall', x: 4, y: 0, face: true, vert: false },
+    { op: 'wall', x: 5, y: 0, face: false, vert: false },
+    { op: 'entity', x: 6, y: 0, g: 64, fg: 5, dim: false, role: null, turns: 0, pv: 0 },
+    { op: 'light', x: 7, y: 0, state: 1 },
+    { op: 'wash', x: 8, y: 0, bg: 19 }, { op: 'cursor', x: 9, y: 0 }, { op: 'reticle', x: 10, y: 0 },
+  ];
+  const passes = buildPasses(ops, { timeSec: 0 });
+  for (const o of ops) {
+    const i = passIndexOf(o);
+    assert.ok(i >= 0 && i < 4, `passIndexOf dropped '${o.op}' that buildPasses keeps`);
+    assert.ok(passes[i].ops.some((b) => b.x === o.x && b.y === o.y),
+      `'${o.op}' went to pass ${i} (${PASS_ORDER[i]}) for canvas2d but not for buildPasses`);
+  }
+  // Every batched op is accounted for — neither side may invent or swallow one.
+  assert.equal(passes.reduce((n, p) => n + p.ops.length, 0), ops.length);
+  assert.equal(passIndexOf({ op: 'not-an-op' }), -1, 'unknown ops are dropped, never mis-bucketed');
+  assert.equal(passIndexOf(null), -1);
+});
 
 // ---- pass ordering + vocabulary invariants ----
 test('buildPasses returns exactly the four passes in fixed order', () => {

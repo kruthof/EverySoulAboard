@@ -144,12 +144,13 @@ test('camera: the tile lattice is quantized to whole device pixels', () => {
 
 /** A WebGL2Executor with only its GPU sink replaced: the position math under test is untouched. */
 function webglRecorder() {
-  const batches = [];
+  const calls = [];
   const exec = Object.create(WebGL2Executor.prototype);
   exec.gl = {
     isLost: () => false,
-    beginFrame() {}, drawFlat() {}, setBlendMultiply() {}, uploadAtlas() {},
-    drawTextured(verts) { batches.push(verts); },
+    beginFrame() {}, setBlendMultiply() {}, uploadAtlas() {},
+    drawFlat(verts) { calls.push({ fn: 'flat', verts }); },
+    drawTextured(verts) { calls.push({ fn: 'tex', verts }); },
   };
   exec._uv = {};
   exec._sig = null;
@@ -159,45 +160,75 @@ function webglRecorder() {
     const keys = collectCellKeys(passes, useSpr, raster);
     exec._uv = packAtlas(keys.map((k) => ({ name: k, w: CELL, h: CELL }))).uv;
   };
-  /** Left edge (device px) of the single textured quad this frame emitted. */
+  exec.calls = calls;
+  exec.run = (list, opts) => { calls.length = 0; exec.execute(list, null, opts); return calls; };
+  /** Left edge (device px) of the single textured entity quad this frame emitted. */
   exec.quadX = (list, opts) => {
-    batches.length = 0;
-    exec.execute(list, null, opts);
-    const tex = batches.find((b) => b.length);
-    assert.ok(tex, 'expected the executor to emit a textured quad for the pawn');
-    return tex[0]; // vertex 0 = the quad's top-left x
+    exec.run(list, opts);
+    const tex = calls.filter((c) => c.fn === 'tex' && c.verts.length);
+    assert.equal(tex.length, 1, 'expected exactly one textured batch (the pawn)');
+    return tex[0].verts[0]; // vertex 0 = the quad's top-left x
   };
   return exec;
 }
 
-const STUB_IMG = { width: CELL, height: CELL };
+const stubImg = (name) => ({ width: CELL, height: CELL, name });
 const STUB_SPRITES = {
+  _c: {},
   usable: () => true,
-  get: () => STUB_IMG,
+  get(n) { return this._c[n] || (this._c[n] = stubImg(n)); },
   decoded: () => null, // no walk-frame variants decoded → falls back to the base pawn image
-  rotated: () => STUB_IMG,
-  wallVertical: () => STUB_IMG,
+  rotated(n) { return this.get(n); },
+  wallVertical() { return this.get('wall'); },
 };
 
-/** A Canvas2DExecutor driven against a ctx that records drawImage through the live transform. */
+/**
+ * A Canvas2DExecutor driven against a ctx that records every draw (image + fill) in order, with the
+ * rect it covered, through the live transform. Rects are what the occlusion test needs.
+ */
 function canvasRecorder() {
   const drawn = [];
   const ctx = {
     _m: [1, 0, 0, 1, 0, 0],
+    globalAlpha: 1, globalCompositeOperation: 'source-over', fillStyle: '#000',
     setTransform(a, b, c, d, e, f) { this._m = [a, b, c, d, e, f]; },
-    save() {}, restore() {}, clearRect() {}, fillRect() {}, beginPath() {}, rect() {}, clip() {},
-    drawImage(_img, px, py) { drawn.push(this._m[0] * px + this._m[4]); },
+    save() {}, restore() {}, clearRect() {}, beginPath() {}, rect() {}, clip() {},
+    _rect(name, px, py, w, h) {
+      const s = this._m[0];
+      drawn.push({ name, x: s * px + this._m[4], y: s * py + this._m[5], w: s * w, h: s * h });
+    },
+    fillRect(px, py, w, h) { this._rect('fill', px, py, w, h); },
+    drawImage(img, px, py, w, h) { this._rect((img && img.name) || 'img', px, py, w, h); },
   };
   const exec = new Canvas2DExecutor();
+  const run = (list, opts) => {
+    drawn.length = 0;
+    exec.execute(list, ctx, { sprites: STUB_SPRITES, spriteMode: 'on', ...opts });
+    return drawn;
+  };
   return {
+    exec,
+    run,
+    /** Left edge (device px) of the pawn's own sprite draw. */
     quadX(list, opts) {
-      drawn.length = 0;
-      exec.execute(list, ctx, { ...opts, sprites: STUB_SPRITES, spriteMode: 'on' });
-      assert.equal(drawn.length, 1, 'expected exactly one sprite draw for the pawn');
-      return drawn[0];
+      const d = run(list, opts).filter((r) => r.name === 'pawn');
+      assert.equal(d.length, 1, 'expected exactly one pawn sprite draw');
+      return d[0].x;
     },
   };
 }
+
+// A pawn that stepped from (x-dx,y-dy) into (x,y) at t=1000 over an estimated 400 ms interval.
+function stepEntry(x, y, dx, dy) {
+  return {
+    x, y, walking: true, facing: 'E', fromX: x - dx, fromY: y - dy, dx, dy,
+    sinceStep: 0, stepMs: 1000, interval: 400, originX: x - dx, originY: y - dy,
+  };
+}
+const DIRS = [
+  { name: 'E', dx: 1, dy: 0 }, { name: 'W', dx: -1, dy: 0 },
+  { name: 'S', dx: 0, dy: 1 }, { name: 'N', dx: 0, dy: -1 },
+];
 
 test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide under the snapped grid', () => {
   // The grid snap must never reach the pawn. A pawn mid-step is DRAWN by the executors at
@@ -210,10 +241,7 @@ test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide und
   const cam = cameraOn(boot, 20, 9, 0.9);
   const p = tilePitch(cam), { ox } = transform(cam);
   // A pawn that stepped 19→20 at t=1000 and glides over its estimated 400 ms interval.
-  const entry = {
-    x: 20, y: 9, walking: true, facing: 'E', fromX: 19, fromY: 9, dx: 1, dy: 0,
-    sinceStep: 0, stepMs: 1000, interval: 400, originX: 19, originY: 9,
-  };
+  const entry = stepEntry(20, 9, 1, 0);
   const motion = { '20,9': entry };
   const list = [{ op: 'entity', x: 20, y: 9, g: 64 /* '@' */, fg: C.Crew, role: null, turns: 0, pv: 0 }];
   const gl = webglRecorder(), cv = canvasRecorder();
@@ -242,6 +270,66 @@ test('PAWN SLIDE INVARIANT: both executors emit a continuous sub-pixel glide und
   const settled = gl.quadX(list, frameOpts(1400));
   assert.equal(settled, 20 * p + ox, 'arrival settles onto the tile');
   assert.equal(settled, Math.round(settled), 'a settled pawn sits on the device-pixel grid');
+});
+
+// ---- pass ordering: nothing may paint over a sliding pawn (playtest: "pawns walking left
+//      appear out of nothing") ----
+
+/** A 9x3 corridor of floor with one crew pawn at (cx,1), composed for real. */
+function corridorScene(cx) {
+  const cells = [];
+  for (let y = 0; y < 3; y++) {
+    for (let x = 0; x < 9; x++) {
+      if (y === 1 && x === cx) cells.push([64, C.Crew, C.Floor, 0]);   // '@'
+      else cells.push([46, C.Floor, C.Floor, 0]);                      // '.'
+    }
+  }
+  const frame = { w: 9, h: 3, lens: 'none', cells, crew: [[cx, 1, 0]] };
+  const cam = { x: 4.5, y: 1.5, z: 1, viewW: 1280, viewH: 512, tile: 128 };
+  return { frame, cam, list: composeScene(frame, cam, ASSETS) };
+}
+
+test('PAWN OCCLUSION INVARIANT: no later draw covers a sliding pawn, in any of the four directions', () => {
+  // composeScene emits ops ROW-MAJOR PER TILE. A pawn mid-step is drawn one tile back from the tile
+  // it now occupies, so on a westward or northward step the neighbouring tile's opaque floor is
+  // emitted LATER and used to paint straight over it (measured: 100% covered at step start). The
+  // executors must therefore walk PASSES (terrain, then entities), not the raw list.
+  for (const d of DIRS) {
+    const cx = 4;
+    const { list, cam } = corridorScene(cx);
+    const motion = { [cx + ',1']: stepEntry(cx, 1, d.dx, d.dy) };
+    const cv = canvasRecorder();
+    for (const ms of [1000, 1100, 1200, 1300]) {
+      const drawn = cv.run(list, { camera: cam, motion, nowMs: ms, timeSec: 0 });
+      const pi = drawn.findIndex((r) => r.name === 'pawn');
+      assert.ok(pi >= 0, `${d.name}: the pawn must be drawn`);
+      const p = drawn[pi];
+      for (let i = pi + 1; i < drawn.length; i++) {
+        const o = drawn[i];
+        const ov = Math.max(0, Math.min(p.x + p.w, o.x + o.w) - Math.max(p.x, o.x)) *
+                   Math.max(0, Math.min(p.y + p.h, o.y + o.h) - Math.max(p.y, o.y));
+        assert.equal(ov, 0,
+          `${d.name} @${ms}ms: '${o.name}' drawn after the pawn covers ${(100 * ov / (p.w * p.h)).toFixed(0)}% of it`);
+      }
+    }
+  }
+});
+
+test('both executors draw ALL terrain before ANY entity (one shared pass order)', () => {
+  const { list, cam } = corridorScene(4);
+  // canvas2d: every floor draw precedes the pawn draw.
+  const cv = canvasRecorder();
+  const drawn = cv.run(list, { camera: cam, motion: null, nowMs: null, timeSec: 0 });
+  const pawnAt = drawn.findIndex((r) => r.name === 'pawn');
+  const lastFloor = drawn.map((r) => r.name).lastIndexOf('floor');
+  assert.ok(lastFloor >= 0 && pawnAt > lastFloor, 'canvas2d must finish terrain before entities');
+  // webgl2: the terrain batch is uploaded before the entity batch.
+  const gl = webglRecorder();
+  const calls = gl.run(list, { camera: cam, sprites: STUB_SPRITES, spriteMode: 'on', timeSec: 0 });
+  const tex = calls.filter((c) => c.fn === 'tex' && c.verts.length);
+  assert.ok(tex.length >= 2, 'expected a terrain batch and an entity batch');
+  assert.ok(tex[0].verts.length > tex[tex.length - 1].verts.length,
+    'the first textured batch is the big terrain one');
 });
 
 test('camera: zoom is capped at MAX_TILE_DEVICE_PX — never upscale past the source art', () => {

@@ -31,6 +31,31 @@ import { PAWN_ROLES } from '../glyphs.js';
 export const PASS_ORDER = ['terrain', 'entities', 'light', 'overlay'];
 
 /**
+ * DisplayList op name → its pass index in PASS_ORDER. This is THE authority on pass membership,
+ * shared by `buildPasses` below and by Canvas2DExecutor, which walks the same four buckets rather
+ * than the raw row-major list.
+ *
+ * Why that matters (and why this table is exported instead of living inside the switch): composeScene
+ * emits ops row-major PER TILE — [base, entity, light, wash, cursor] for (x,y), then (x+1,y). Anything
+ * an entity draws OUTSIDE its own tile — a pawn mid-slide — is therefore painted
+ * before the neighbouring tile's opaque floor and gets erased by it. Measured before the fix: a pawn
+ * stepping WEST or NORTH was 100% covered at step start. WebGL2 never had the bug because it draws
+ * the passes; Canvas2D (the DEFAULT backend) did. One table, one order, both executors.
+ */
+const PASS_OF = {
+  hull: 0, void: 0, floor: 0, debris: 0, wall: 0,
+  entity: 1,
+  light: 2,
+  wash: 3, cursor: 3, reticle: 3,
+};
+
+/** Pass index (0..3) for a DisplayList op, or -1 for an op no pass claims (forward-compat). */
+export function passIndexOf(op) {
+  const i = PASS_OF[op && op.op];
+  return i == null ? -1 : i;
+}
+
+/**
  * Group a DisplayList into ordered RenderPasses. Pure + deterministic; never mutates `list`
  * or `opts`. Within a pass, ops keep the DisplayList's order (which composeScene already emits
  * base → entity → wash → cursor per tile, reticle last), so the GL executor's overdraw matches
