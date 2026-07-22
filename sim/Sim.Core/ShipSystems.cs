@@ -151,8 +151,11 @@ namespace Perilune.Sim
         //   * 1,000 / 2,000 ppm — the "stale" / "bad" wording the crew themselves use in their
         //     situation prompt (`Sim.Llm/CitizenContext.cs:67,69`). Mirrored (not referenced):
         //     Sim.Core must not depend on Sim.Llm.
-        //   * `needs.def co2_narcosis_ppm` (40,000) — read live from sim.Defs, because it is the
-        //     one CO2 number that actually damages a crew member (`NeedsSystem.cs:52`).
+        //   * `needs.def co2_narcosis_ppm` (40,000) and `hypoxia_ppo2_kpa` /
+        //     `severe_hypoxia_ppo2_kpa` — read live from sim.Defs, because these are the atmosphere
+        //     numbers that actually damage a crew member. The consumers are the two rungs of the
+        //     suffocation ladder at `NeedsSystem.cs:130,132` (NOT `:52`, which is class-doc prose
+        //     about SocialSystem — an earlier revision of this file cited it in error).
 
         private const double Co2StalePpm = 1000.0;
         private const double Co2BadPpm = 2000.0;
@@ -275,8 +278,15 @@ namespace Perilune.Sim
                          + "poisons the compartment the crew stand in. Reading this row off capacity would "
                          + "report NOMINAL at 17,000 ppm.";
                 case IdWaterReclaim:
-                    return "LOAD is stored litres divided by total tank capacity. STATE: any tank at 0 L is "
-                         + "ATTEND; the reclaimer condition ladder can raise it to DEGRADED. LIMIT: fill is a "
+                    // The note must state the rule the CODE uses. "Any tank at 0 L" was the survey's
+                    // rule and it is wrong: the slice's tank_hydro holds 0.02 L at day 3, so a
+                    // literal zero test reads NOMINAL and hides the very failure this row exists to
+                    // show. The DETAIL table prints each tank's litres so the player can see it.
+                    return "LOAD is stored litres divided by total tank capacity. STATE: a tank holding less "
+                         + "than one drink (0.5 L, the sim's own dry test — below it a tank is invisible to a "
+                         + "thirsty crew member) is ATTEND; the tank/reclaimer condition ladder can raise it "
+                         + "to DEGRADED. A tank is NOT required to read exactly 0 L to count as dry, and each "
+                         + "tank's litres are printed in the table above so you can check. LIMIT: fill is a "
                          + "level, not a flow — a full tank on a dead reclaimer and a full tank on a healthy "
                          + "one read the same until the level moves.";
                 case IdHydroponics:
@@ -336,28 +346,42 @@ namespace Perilune.Sim
         // ---------------------------------------------------------------- rows
 
         /// <summary>
-        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW, clamped 0..100.
-        /// "Wanting" mirrors `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a vent only wants
-        /// power while open; everything else always does.
+        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW OF WIRED SOURCES,
+        /// clamped 0..100. BOTH sides carry `PowerSystem.Balance`'s off-grid gate
+        /// (`PowerSystem.cs:184`) — see the Census power ledger for why an ungated denominator makes
+        /// a darkening ship read as less loaded. "Wanting" mirrors `PowerSystem.IsWanting`
+        /// (`PowerSystem.cs:262-266`): a vent only wants power while open; everything else always does.
         /// STATE: brownout ⇒ DEGRADED, derived from the OBSERVABLE consequence — a wanting, wired,
         /// drawing device that <see cref="Device.Powered"/> is false on has been shed
-        /// (`PowerSystem.cs:203-234` stamps exactly that). Else battery reserve &lt; 25% ⇒ ATTEND.
+        /// (`PowerSystem.cs:203-234` stamps exactly that). Generating hardware aboard but NONE of it
+        /// wired is also DEGRADED: the ship is running on reserve with nothing replenishing it, and
+        /// that must never render as a quiet `--`. Else battery reserve &lt; 25% ⇒ ATTEND.
         /// Deliberately NOT <see cref="ShipMetricsSnapshot.Power"/>: that is served ÷ demand, a
         /// shed indicator which saturates at 1.0 and can never show a loaded-but-coping ship.
+        /// <para>Cold-start artifact, same class as `hydroponics`: before the first tick no power
+        /// network exists, so generation reaches nothing and the row reads DEGRADED for that one
+        /// instant. That is exactly what `PowerSystem` would find at tick 0.</para>
         /// </summary>
         private static ShipSystemRow Reactor(Simulation sim, in Census c, HistorySystem history)
         {
+            if (!double.IsFinite(c.GenerationKW) || !double.IsFinite(c.WantingDrawKW) ||
+                !double.IsFinite(c.BatteryKWh))
+                return Unreadable(IdReactor, "REACTOR", "the power ledger");
+
             int load = c.GenerationKW <= 0f
                 ? (c.WantingDrawKW > 0f ? 100 : -1)
                 : Pct(c.WantingDrawKW / c.GenerationKW);
 
+            // Hardware aboard but none of it on a network: nothing is generating INTO the ship.
+            bool generationStranded = c.PowerSourceCount > 0 && c.GenerationKW <= 0f;
+
             ShipSystemState state;
             if (c.PowerSourceCount == 0) state = ShipSystemState.Offline;
-            else if (c.BrownedOutDevices > 0) state = ShipSystemState.Degraded;
-            else if (c.BatteryCount > 0 && c.BatteryChargeFraction < BatteryAttendFraction) state = ShipSystemState.Attend;
+            else if (c.BrownedOutDevices > 0 || generationStranded) state = ShipSystemState.Degraded;
+            else if (c.WiredBatteries > 0 && c.BatteryChargeFraction < BatteryAttendFraction) state = ShipSystemState.Attend;
             else state = ShipSystemState.Nominal;
 
-            var sb = new StringBuilder(192);
+            var sb = new StringBuilder(256);
             if (c.PowerSourceCount == 0)
             {
                 sb.Append("No generating hardware aboard — nothing on this ship makes power, so every "
@@ -366,12 +390,16 @@ namespace Perilune.Sim
             else
             {
                 sb.Append(Fixed1(c.WantingDrawKW)).Append(" kW of wanting draw against ")
-                  .Append(Fixed1(c.GenerationKW)).Append(" kW from ")
+                  .Append(Fixed1(c.GenerationKW)).Append(" kW reaching the grid from ")
                   .Append(Count(c.SolarWings, "solar wing")).Append('.');
-                if (c.BatteryCount > 0)
-                    sb.Append(' ').Append(Count(c.BatteryCount, "battery", "batteries")).Append(" hold ")
+                if (c.UnwiredGenerationKW > 0f)
+                    sb.Append(' ').Append(Fixed1(c.UnwiredGenerationKW))
+                      .Append(" kW of generating hardware is on no network and contributes nothing.");
+                if (c.WiredBatteries > 0)
+                    sb.Append(' ').Append(Count(c.WiredBatteries, "wired battery", "wired batteries")).Append(" hold ")
                       .Append(Fixed1(c.BatteryKWh)).Append(" kWh (")
                       .Append(Pct(c.BatteryChargeFraction).ToString(Ic)).Append("%).");
+                else if (c.BatteryCount > 0) sb.Append(" The battery bank is on no network.");
                 else sb.Append(" No battery bank.");
                 if (c.BrownedOutDevices > 0)
                     sb.Append(' ').Append(c.BrownedOutDevices.ToString(Ic))
@@ -396,24 +424,44 @@ namespace Perilune.Sim
         /// STATE is banded off WORST-ROOM CO₂ ppm (DA-M4), never capacity: measured, worst-room CO₂
         /// climbs 500 → 17,644 ppm over 3 days on the shipping slice with every scrubber healthy at
         /// 2.3× nameplate, because scrubbers are room-local and `FlowAcrossDoor` has no diffusion
-        /// term (`MECHANICS.md` §13.1). Bands: &lt; 1,000 NOMINAL · ≥ 1,000 ATTEND · ≥ 2,000 DEGRADED ·
-        /// ≥ `needs.def co2_narcosis_ppm` OFFLINE (the only ppm figure with a damage consumer).
+        /// term (`MECHANICS.md` §13.1). CO2 bands: &lt; 1,000 NOMINAL · ≥ 1,000 ATTEND · ≥ 2,000
+        /// DEGRADED · ≥ `needs.def co2_narcosis_ppm` OFFLINE.
+        /// <para>The STATE is the WORSE of that ladder and a WORST-ROOM ppO₂ ladder — DA-M4's own
+        /// logic ("band off the measured quantity that damages crew") applies identically to oxygen,
+        /// and `NeedsSystem.cs:130,132` reads ppO₂ and CO2 through the SAME two-rung damage test.
+        /// Banding on CO2 alone would let a single hypoxic compartment sit behind a NOMINAL row on
+        /// the screen named LIFE SUPPORT, with only a ship-wide MEAN in the advisory to contradict
+        /// it — and a mean is exactly what hides one bad room. ppO₂ bands: &lt; `hypoxia_ppo2_kpa`
+        /// DEGRADED · &lt; `severe_hypoxia_ppo2_kpa` OFFLINE (that rung damages at the vacuum rate).
+        /// There is no ATTEND rung for ppO₂ because `needs.def` defines no third threshold and this
+        /// row does not invent one.</para>
         /// </summary>
         private static ShipSystemRow LifeSupport(Simulation sim, in Census c, HistorySystem history)
         {
+            if (c.NonFiniteRooms > 0) return Unreadable(IdLifeSupport, "LIFE SUPPORT", "a compartment's atmosphere");
+            if (!double.IsFinite(c.ScrubberCapacityMolPerSecond))
+                return Unreadable(IdLifeSupport, "LIFE SUPPORT", "scrubber capacity");
+
             int load = c.ScrubberCapacityMolPerSecond <= 0.0
                 ? (c.CrewCo2MolPerSecond > 0.0 ? 100 : -1)
                 : Pct(c.CrewCo2MolPerSecond / c.ScrubberCapacityMolPerSecond);
 
-            double narcosis = sim.Defs.Needs.Co2NarcosisPpm;
-            ShipSystemState state =
-                c.PressurizedRooms == 0 ? ShipSystemState.Offline
-                : c.WorstCo2Ppm >= narcosis ? ShipSystemState.Offline
+            var needs = sim.Defs.Needs;
+            double narcosis = needs.Co2NarcosisPpm;
+            ShipSystemState co2Band =
+                c.WorstCo2Ppm >= narcosis ? ShipSystemState.Offline
                 : c.WorstCo2Ppm >= Co2BadPpm ? ShipSystemState.Degraded
                 : c.WorstCo2Ppm >= Co2StalePpm ? ShipSystemState.Attend
                 : ShipSystemState.Nominal;
+            ShipSystemState o2Band =
+                c.WorstPpO2KPa < needs.SevereHypoxiaPpO2KPa ? ShipSystemState.Offline
+                : c.WorstPpO2KPa < needs.HypoxiaPpO2KPa ? ShipSystemState.Degraded
+                : ShipSystemState.Nominal;
+            ShipSystemState state = c.PressurizedRooms == 0
+                ? ShipSystemState.Offline
+                : Worse(co2Band, o2Band);
 
-            var sb = new StringBuilder(224);
+            var sb = new StringBuilder(288);
             if (c.PressurizedRooms == 0)
             {
                 sb.Append("No pressurised compartment left aboard — there is no air to read, so this row "
@@ -425,6 +473,9 @@ namespace Perilune.Sim
                   .Append(c.WorstCo2Ppm >= narcosis ? "crew-damaging"
                         : c.WorstCo2Ppm >= Co2BadPpm ? "bad"
                         : c.WorstCo2Ppm >= Co2StalePpm ? "stale" : "normal")
+                  .Append("); worst oxygen partial pressure ").Append(Fixed1(c.WorstPpO2KPa)).Append(" kPa (")
+                  .Append(o2Band == ShipSystemState.Offline ? "crew-damaging"
+                        : o2Band == ShipSystemState.Degraded ? "hypoxic" : "breathable")
                   .Append("), mean O2 ").Append(Whole(c.MeanO2Fraction * 100.0)).Append("%. ")
                   .Append(Count(c.Scrubbers, "scrubber")).Append(" running at ")
                   .Append(Fixed1(c.ScrubberCapacityMolPerSecond <= 0.0 || c.CrewCo2MolPerSecond <= 0.0
@@ -447,6 +498,9 @@ namespace Perilune.Sim
         /// </summary>
         private static ShipSystemRow WaterReclaim(Simulation sim, in Census c, HistorySystem history)
         {
+            if (!double.IsFinite(c.TankStoredLiters) || !double.IsFinite(c.TankCapacityLiters))
+                return Unreadable(IdWaterReclaim, "WATER RECLAIM", "the tank ledger");
+
             int load = c.TankCapacityLiters <= 0f ? -1 : Pct(c.TankStoredLiters / c.TankCapacityLiters);
 
             ShipSystemState state;
@@ -485,6 +539,9 @@ namespace Perilune.Sim
         /// </summary>
         private static ShipSystemRow Hydroponics(Simulation sim, in Census c, HistorySystem history)
         {
+            if (!double.IsFinite(c.GrowProgressSum))
+                return Unreadable(IdHydroponics, "HYDROPONICS", "grow-bed progress");
+
             int load = c.GrowBeds == 0 ? -1 : Pct(c.GrowProgressSum / c.GrowBeds);
 
             ShipSystemState state;
@@ -527,6 +584,10 @@ namespace Perilune.Sim
         /// </summary>
         private static ShipSystemRow Thermal(Simulation sim, in Census c, HistorySystem history)
         {
+            if (c.NonFiniteRooms > 0) return Unreadable(IdThermal, "THERMAL", "a compartment's temperature");
+            if (!double.IsFinite(c.WasteHeatKW) || !double.IsFinite(c.RadiatorRejectKW))
+                return Unreadable(IdThermal, "THERMAL", "the heat ledger");
+
             int load = c.RadiatorRejectKW <= 0f
                 ? (c.WasteHeatKW > 0f ? 100 : -1)
                 : Pct(c.WasteHeatKW / c.RadiatorRejectKW);
@@ -599,6 +660,9 @@ namespace Perilune.Sim
         /// </summary>
         private static ShipSystemRow HullIntegrity(Simulation sim, in Census c, HistorySystem history)
         {
+            if (!double.IsFinite(c.ConditionSum))
+                return Unreadable(IdHullIntegrity, "HULL INTEGRITY", "machine condition");
+
             int load = c.WearingDevices == 0 ? -1 : Pct(c.ConditionSum / c.WearingDevices);
 
             ShipSystemState state =
@@ -666,8 +730,8 @@ namespace Perilune.Sim
         private struct Census
         {
             // power
-            public float GenerationKW, WantingDrawKW, BatteryKWh;
-            public int SolarWings, BatteryCount, PowerSourceCount, BrownedOutDevices;
+            public float GenerationKW, WantingDrawKW, BatteryKWh, UnwiredGenerationKW;
+            public int SolarWings, BatteryCount, WiredBatteries, PowerSourceCount, BrownedOutDevices;
             public float BatteryChargeFraction;
             // life support
             public int Scrubbers;
@@ -690,8 +754,8 @@ namespace Perilune.Sim
             // nav
             public int TelescopeTotal, TelescopeLive, TelescopeFailed, TelescopeWorn;
             // shared
-            public int PressurizedRooms, LivingCrew;
-            public double WorstCo2Ppm, MeanO2Fraction;
+            public int PressurizedRooms, LivingCrew, NonFiniteRooms;
+            public double WorstCo2Ppm, MeanO2Fraction, WorstPpO2KPa;
 
             public static Census Take(Simulation sim)
             {
@@ -715,20 +779,45 @@ namespace Perilune.Sim
                     bool live = d.Powered && operational;
                     bool worn = d.Condition < def.MaintainBelow;
 
-                    // power ledger — mirrors PowerSystem.Balance's own tallies.
-                    c.GenerationKW += def.GenerationKW;
-                    if (def.GenerationKW > 0f) c.PowerSourceCount++;
-                    if (d.NetworkId != 0 && def.DrawKW > 0f && Wanting(d))
+                    // Power ledger — mirrors PowerSystem.Balance's own tallies, INCLUDING its
+                    // very first line: `if (d.NetworkId == 0) continue;` (PowerSystem.cs:184)
+                    // skips off-grid devices ENTIRELY, so an unwired SolarWing's kW reaches no
+                    // network and an unwired battery bridges nothing. Both sides of the ratio
+                    // must carry the same gate or the row rewards unplugging things: an off-grid
+                    // wing would inflate the denominator and make a darkening ship read as LESS
+                    // loaded. PowerSystem.cs:243-248 warns about exactly this — `Powered` on a
+                    // SolarWing says nothing about whether it is contributing, only NetworkId does.
+                    if (d.NetworkId != 0)
                     {
-                        c.WantingDrawKW += def.DrawKW;
-                        if (!d.Powered) c.BrownedOutDevices++;   // shed by the tier walk = a brownout
+                        c.GenerationKW += def.GenerationKW;
+                        if (d.Kind == DeviceKind.Battery) { c.WiredBatteries++; c.BatteryKWh += d.StoredKWh; }
+                        if (def.DrawKW > 0f && Wanting(d))
+                        {
+                            c.WantingDrawKW += def.DrawKW;
+                            if (!d.Powered) c.BrownedOutDevices++;   // shed by the tier walk = a brownout
+                        }
                     }
+                    else if (def.GenerationKW > 0f) c.UnwiredGenerationKW += def.GenerationKW;
+
+                    // Census of generating HARDWARE (ungated): "none aboard" and "none of it is
+                    // plugged in" are different failures and the row must not conflate them.
+                    if (def.GenerationKW > 0f || d.Kind == DeviceKind.Battery) c.PowerSourceCount++;
 
                     // hull proxy — identical predicate to ShipMetrics.Structural.
                     if (def.WearPerHour > 0f) { c.ConditionSum += d.Condition; c.WearingDevices++; }
 
-                    // thermal sources — identical predicate to ThermalSystem's device pass.
-                    if (live && def.HeatKW > 0f && !(d.Kind == DeviceKind.AirVent && !d.IsOpen))
+                    // Thermal sources — the SAME predicate as ThermalSystem's device pass, which
+                    // means all four of its gates, not just the vent one (`ThermalSystem.cs:70-108`):
+                    //   * a DOOR is a conduction edge, never a source — it is routed to
+                    //     ConductAcrossDoor and its HeatKW is dropped BY DESIGN (`:70-78`), because
+                    //     a door tile carries DoorMarker and belongs to no room. The slice has 19
+                    //     powered doors worth 0.95 kW, a ~6% overstatement of ship waste heat;
+                    //   * a device whose tile resolves to vacuum, a door marker or an out-of-range
+                    //     room heats nothing (`:83`) — its warmth goes nowhere the model tracks;
+                    //   * powered AND operational (`:81`);
+                    //   * a vent emits only while open (`:105`).
+                    if (live && def.HeatKW > 0f && d.Kind != DeviceKind.Door &&
+                        !(d.Kind == DeviceKind.AirVent && !d.IsOpen) && HeatsARoom(sim, d))
                         c.WasteHeatKW += def.HeatKW;
 
                     switch (d.Kind)
@@ -737,7 +826,7 @@ namespace Perilune.Sim
                             c.SolarWings++;
                             break;
                         case DeviceKind.Battery:
-                            c.BatteryCount++; c.BatteryKWh += d.StoredKWh; c.PowerSourceCount++;
+                            c.BatteryCount++;   // census; WiredBatteries/BatteryKWh are gated above
                             break;
                         case DeviceKind.Scrubber:
                             c.Scrubbers++;
@@ -768,7 +857,10 @@ namespace Perilune.Sim
                             if (!operational) c.HydroFailed++; else if (worn) c.HydroWorn++;
                             break;
                         case DeviceKind.Radiator:
-                            if (live) c.RadiatorRejectKW += defs.RadiatorRejectKW * d.EffectiveRate;
+                            // Same room gate as the sources: a radiator in vacuum rejects nothing
+                            // the model tracks (`ThermalSystem.cs:83` skips it before `:86`).
+                            if (live && HeatsARoom(sim, d))
+                                c.RadiatorRejectKW += defs.RadiatorRejectKW * d.EffectiveRate;
                             break;
                         case DeviceKind.Fabricator:
                         case DeviceKind.MachineShop:
@@ -784,8 +876,10 @@ namespace Perilune.Sim
                             break;
                     }
                 }
-                c.BatteryChargeFraction = c.BatteryCount == 0
-                    ? 0f : c.BatteryKWh / (c.BatteryCount * Device.BatteryCapacityKWh);
+                // Reserve is over WIRED batteries only — an off-grid battery bridges no deficit
+                // (PowerSystem.cs:184-186), so counting it would report a reserve that cannot be spent.
+                c.BatteryChargeFraction = c.WiredBatteries == 0
+                    ? 0f : c.BatteryKWh / (c.WiredBatteries * Device.BatteryCapacityKWh);
 
                 // Dry grow beds: the all-or-nothing draw HydroponicsSystem makes, evaluated
                 // read-only (WaterSystem.TryDrawWater mutates and is never called from here).
@@ -805,21 +899,37 @@ namespace Perilune.Sim
                 // --- rooms (one pass) — the ShipMetrics pressurized gate, verbatim. ---
                 var rooms = sim.Rooms.Rooms;
                 double o2Sum = 0;
+                c.WorstPpO2KPa = double.MaxValue;
                 for (int i = 1; i < rooms.Count; i++)
                 {
                     var room = rooms[i];
                     if (room == null || room.TileCount <= 0) continue;
+
+                    // A non-finite room is counted ONCE and then excluded from every band. Left in,
+                    // NaN loses every comparison silently — it would slip past the pressure gate as
+                    // "pressurised", past the CO2 and temperature maxima as "not the worst", and
+                    // land in the O2 mean as a fabricated 0%. Rows that read these fields report
+                    // themselves UNREADABLE instead (see Unreadable).
+                    if (!double.IsFinite(room.PressureKPa) || !double.IsFinite(room.CO2Ppm) ||
+                        !double.IsFinite(room.O2Fraction) || !double.IsFinite(room.TemperatureK))
+                    { c.NonFiniteRooms++; continue; }
+
                     if (room.PressureKPa < LowPressureKPa) c.LowPressureRooms++;
                     if (room.PressureKPa < PressurizedKPa) continue;
                     c.PressurizedRooms++;
                     o2Sum += room.O2Fraction;
                     if (room.CO2Ppm > c.WorstCo2Ppm) c.WorstCo2Ppm = room.CO2Ppm;
+                    // Partial pressure of oxygen, exactly as NeedsSystem computes it
+                    // (`NeedsSystem.cs:111`): the quantity its hypoxia ladder actually reads.
+                    double ppO2 = room.PressureKPa * room.O2Fraction;
+                    if (ppO2 < c.WorstPpO2KPa) c.WorstPpO2KPa = ppO2;
                     double tempC = room.TemperatureK - 273.15;
                     if (tempC < c.ColdestC) c.ColdestC = tempC;
                     if (tempC > c.WarmestC) c.WarmestC = tempC;
                     if (tempC < defs.Needs.HypothermiaC || tempC > defs.Needs.HeatStrokeC) c.DangerousRooms++;
                     else if (tempC < ComfortLowC || tempC > ComfortHighC) c.UncomfortableRooms++;
                 }
+                if (c.PressurizedRooms == 0) c.WorstPpO2KPa = 0;
                 // DangerousRooms are also outside the comfort band; the advisory's "in band" count
                 // subtracts both, so fold them in here rather than double-classifying above.
                 c.UncomfortableRooms += c.DangerousRooms;
@@ -855,8 +965,18 @@ namespace Perilune.Sim
                 return available;
             }
 
-            /// <summary>Mirror of the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`).</summary>
+            /// <summary>Mirror of the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a
+            /// CLOSED vent is the only device that idles — everything else pays its full
+            /// `machines.def` draw continuously, in use or not.</summary>
             private static bool Wanting(Device d) => d.Kind != DeviceKind.AirVent || d.IsOpen;
+
+            /// <summary>Whether a device's tile resolves to a real room, i.e. whether its heat has
+            /// anywhere to go in the thermal model. Mirror of `ThermalSystem.cs:83`.</summary>
+            private static bool HeatsARoom(Simulation sim, Device d)
+            {
+                ushort roomId = sim.Rooms.RoomIdAt(sim.World, d.Pos);
+                return roomId != 0 && roomId != RoomState.DoorMarker && roomId < sim.Rooms.Rooms.Count;
+            }
         }
 
         // ---------------------------------------------------------------- fault attribution
@@ -901,17 +1021,32 @@ namespace Perilune.Sim
             for (int i = entries.Count - 1; i >= 0; i--)
             {
                 var e = entries[i];
+                if (e.Text == null) continue;
+
+                // A RECOVERY is not a fault, on EITHER branch. HistorySystem writes both the
+                // brownout and its recovery under the same HistoryKind and the entry does not carry
+                // the direction (`HistorySystem.cs:104-110`), so its own literal is the only
+                // discriminator left. The name branch needs the identical guard: nothing stops a
+                // future recovery line from naming a device, and "DAY 2 · … RECOVERED" under a
+                // column headed LAST FAULT is the same misread whichever branch produced it.
+                if (IsRecovery(e.Text)) continue;
+
                 bool hit = ownKind.HasValue && e.Kind == (byte)ownKind.Value
-                           && (ownKindMustContain == null || (e.Text != null &&
-                               e.Text.IndexOf(ownKindMustContain, StringComparison.OrdinalIgnoreCase) >= 0));
-                if (!hit && e.Text != null)
-                    for (int n = 0; n < names.Count && !hit; n++)
-                        hit = e.Text.IndexOf(names[n], StringComparison.OrdinalIgnoreCase) >= 0;
+                           && (ownKindMustContain == null ||
+                               e.Text.IndexOf(ownKindMustContain, StringComparison.OrdinalIgnoreCase) >= 0);
+                for (int n = 0; n < names.Count && !hit; n++)
+                    hit = e.Text.IndexOf(names[n], StringComparison.OrdinalIgnoreCase) >= 0;
                 if (!hit) continue;
                 return ((int)(e.Tick / SimClockUtil.TicksPerDay), Summarize(e.Text));
             }
             return (-1, "");
         }
+
+        /// <summary>Whether a history line reads as a RECOVERY rather than a fault. A string sniff of
+        /// HistorySystem's own literals, and said out loud as one: the entries carry no structural
+        /// "this got better" bit to test instead (`HistorySystem.cs:104-110`).</summary>
+        private static bool IsRecovery(string text) =>
+            text.IndexOf("recovered", StringComparison.OrdinalIgnoreCase) >= 0;
 
         /// <summary>Uppercase, single-line, bounded fault summary — no day prefix (the client
         /// composes `DAY {n} · {text}`). InvariantCulture upcasing: the dev machine is de-DE and
@@ -974,13 +1109,41 @@ namespace Perilune.Sim
             if (def.DrawKW > 0f && d.NetworkId == 0) return "UNWIRED";
             if (def.DrawKW > 0f && !d.Powered) return "UNPOWERED";
             if (def.WearPerHour > 0f && d.Condition < def.MaintainBelow) return "WORN — MAINTENANCE DUE";
+            // A tank always prints its LITRES, because `water_reclaim`'s STATE turns on a level the
+            // rest of this table cannot show: the slice's dry tank holds 0.02 L, not 0, and a player
+            // told "a tank is dry" with no way to see the number would reasonably call the row broken.
+            if (d.Kind == DeviceKind.WaterTank)
+                return Fixed1(d.StoredLiters) + " L"
+                     + (d.StoredLiters < defs.Sustenance.DrinkLiters ? " — DRY, BELOW ONE DRINK" : "");
+            // A non-finite rate has no percent; say so rather than let Pct's -1 read as a number.
+            if (!double.IsFinite(d.Rate) || !double.IsFinite(d.Condition)) return "READING NOT FINITE";
             return "";
         }
 
-        /// <summary>0..1 fraction → 0..100 int, clamped, MidpointRounding.AwayFromZero.</summary>
+        /// <summary>
+        /// The row a system reports when one of its inputs is not a finite number.
+        ///
+        /// <para><b>The ledger must never answer "unknown" with "nominal".</b> A NaN or infinity in
+        /// sim state is a BUG, and the previous formatters laundered it into healthy-looking zeros:
+        /// `Pct(NaN)` read 0, `Fixed1(NaN)` printed "0.0", and a NaN room slipped past every
+        /// comparison while still being counted as pressurised — so a ship with a poisoned float
+        /// rendered eight NOMINAL rows and a fabricated "mean O2 0%". Meanwhile the command prompt
+        /// read the same field back as `NaN`: the two halves of one feature disagreeing about one
+        /// number. The spec already provides the vocabulary for this — load `-1`, STATE OFFLINE, a
+        /// stated reason — so use it.</para>
+        /// </summary>
+        private static ShipSystemRow Unreadable(string id, string label, string what) =>
+            new ShipSystemRow(id, label, -1, ShipSystemState.Offline, -1, "",
+                "INSTRUMENT UNREADABLE — " + what + " is not a finite number, so this row cannot be "
+              + "computed. A non-finite value in sim state is a fault in the ship's software, not a "
+              + "reading: this row reports that it cannot tell you rather than reporting a healthy zero.");
+
+        /// <summary>0..1 fraction → 0..100 int, clamped, MidpointRounding.AwayFromZero. A non-finite
+        /// input returns the <b>-1</b> "no meaningful value" sentinel, never 0 — see
+        /// <see cref="Unreadable"/>.</summary>
         private static int Pct(double fraction)
         {
-            if (double.IsNaN(fraction)) return 0;
+            if (!double.IsFinite(fraction)) return -1;
             double v = Math.Round(fraction * 100.0, MidpointRounding.AwayFromZero);
             if (v < 0) return 0;
             if (v > 100) return 100;
@@ -988,12 +1151,13 @@ namespace Perilune.Sim
         }
 
         /// <summary>InvariantCulture one-decimal number for advisory prose (de-DE machine: a bare
-        /// ToString() here would emit "12,0" into the wire).</summary>
+        /// ToString() here would emit "12,0" into the wire). A non-finite value prints "?" — an
+        /// undefined quantity is not zero, and prose is the last place to pretend otherwise.</summary>
         private static string Fixed1(double v) =>
-            double.IsNaN(v) || double.IsInfinity(v) ? "0.0" : v.ToString("0.0", Ic);
+            !double.IsFinite(v) ? "?" : v.ToString("0.0", Ic);
 
         private static string Whole(double v) =>
-            double.IsNaN(v) || double.IsInfinity(v) ? "0" : Math.Round(v, MidpointRounding.AwayFromZero).ToString("0", Ic);
+            !double.IsFinite(v) ? "?" : Math.Round(v, MidpointRounding.AwayFromZero).ToString("0", Ic);
 
         private static string Count(int n, string singular, string plural = null) =>
             n.ToString(Ic) + " " + (n == 1 ? singular : plural ?? singular + "s");

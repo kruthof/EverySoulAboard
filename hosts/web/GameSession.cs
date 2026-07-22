@@ -342,8 +342,13 @@ namespace Perilune.Web
         /// INHERITED, not re-declared: doors get open/close/lock/unlock and utility devices get
         /// open/close/set because <c>DoorAdapter</c> and <c>UtilityDeviceAdapter</c> say so, and
         /// rooms and <c>ship</c> stay read-only because <c>RoomAdapter</c>/<c>ShipMetricsAdapter</c>
-        /// refuse every verb (<c>DeviceAdapters.cs:130-134</c>, <c>ShipMetricsAdapter.cs</c>). Add a
-        /// verb to an adapter and it appears here for free; there is no second list to forget.</para>
+        /// refuse every verb (<c>DeviceAdapters.cs:130-134</c>, <c>ShipMetricsAdapter.cs</c>).
+        /// <b>The AUTHORITY is inherited, not the vocabulary.</b> The switch below IS a second list
+        /// of verb spellings — but it can only ever be MORE restrictive than the adapters, never
+        /// less: every verb it recognises is handed to <c>TryInvoke</c>, which has the final say and
+        /// can refuse. So this parser cannot grant a permission the DSL withholds, which is what
+        /// IX-M40 requires; what it can do is fail to offer one the DSL allows, and that is a
+        /// missing feature rather than a privilege escalation.</para>
         ///
         /// <para><b>No new <see cref="ISimCommand"/>.</b> Every write leaves as the existing
         /// <see cref="SetDoorStateCommand"/> / <see cref="SetDeviceStateCommand"/> the adapters
@@ -521,16 +526,27 @@ namespace Perilune.Web
             return true;
         }
 
-        /// <summary>A `set` argument: a plain InvariantCulture number, or the max/min keywords the
-        /// adapters already understand. InvariantCulture ONLY — this dev machine is de-DE, and
+        /// <summary>A `set` argument: a plain FINITE InvariantCulture number, or the max/min keywords
+        /// the adapters already understand. InvariantCulture ONLY — this dev machine is de-DE, and
         /// accepting "0,5" here would mean the same keystrokes did different things on different
-        /// machines.</summary>
+        /// machines.
+        ///
+        /// <para><b>Non-finite is rejected here because nothing downstream rejects it.</b>
+        /// <c>NumberStyles.Float</c> happily parses the culture's `NaN` and `Infinity` symbols, and
+        /// then every guard on the path is NaN-blind: <c>UtilityDeviceAdapter</c>'s
+        /// <c>if (rate &lt; 0f)</c> is false for NaN, and <c>SetDeviceStateCommand</c>'s clamp
+        /// (<c>Commands.cs:47</c>) is <c>v &lt; 0f ? 0 : v &gt; 1f ? 1 : v</c> — both comparisons
+        /// false, so NaN is written straight to <see cref="Device.Rate"/>. From there it poisons
+        /// <see cref="Device.EffectiveRate"/>, the atmosphere and every ledger row that reads them.
+        /// This is a typing-hygiene fix, not an authority one: a MOSS program can still reach NaN
+        /// through <c>0/0</c> (<c>Interpreter.cs:407-408</c>), which is why the ledger ALSO renders
+        /// non-finite as OFFLINE rather than trusting this gate.</para></summary>
         private static bool TryParseSetValue(string token, out DslValue value)
         {
             string lower = token.ToLowerInvariant();
             if (lower == "max" || lower == "min") { value = DslValue.Text(lower); return true; }
             if (double.TryParse(token, System.Globalization.NumberStyles.Float,
-                                CultureInfo.InvariantCulture, out double n))
+                                CultureInfo.InvariantCulture, out double n) && double.IsFinite(n))
             {
                 value = DslValue.Number(n);
                 return true;

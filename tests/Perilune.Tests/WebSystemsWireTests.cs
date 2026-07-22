@@ -232,6 +232,31 @@ namespace Perilune.Tests
         }
 
         [Test]
+        public void Exec_Rejects_NonFinite_Set_Values_Because_Nothing_Downstream_Does()
+        {
+            // NumberStyles.Float parses "NaN"/"Infinity", and every guard past this point is
+            // NaN-blind: UtilityDeviceAdapter's `rate < 0f` is false, and SetDeviceStateCommand's
+            // clamp (Commands.cs:47) is `< 0 ? 0 : > 1 ? 1 : v` — both false — so NaN would be
+            // written straight to Device.Rate and poison EffectiveRate and the atmosphere from there.
+            var (gs, host, _) = Boot();
+            var vent = host.Sim.Devices.Items.First(d => d.Kind == DeviceKind.AirVent);
+            gs.ExecConsoleForTest("set " + vent.Name + ".rate 0.5");
+            host.Sim.Tick();
+            Assert.AreEqual(0.5f, vent.Rate, 1e-6f);
+
+            foreach (string junk in new[] { "NaN", "nan", "Infinity", "-Infinity", "∞" })
+            {
+                var (ok, lines) = gs.ExecConsoleForTest("set " + vent.Name + ".rate " + junk);
+                Assert.IsFalse(ok, "must refuse: " + junk);
+                Assert.IsTrue(lines.Any(l => l.Stream == 2), "typed error: " + junk);
+                host.Sim.Tick();
+                Assert.AreEqual(0.5f, vent.Rate, 1e-6f, "rate untouched after: " + junk);
+                Assert.IsTrue(float.IsFinite(vent.Rate), "and still finite after: " + junk);
+            }
+            Assert.AreEqual(1, gs.ConsoleAuditForTest().Count, "only the one legitimate write is audited");
+        }
+
+        [Test]
         public void Exec_Reads_Are_Free_And_Culture_Stable()
         {
             var (gs, host, _) = Boot();

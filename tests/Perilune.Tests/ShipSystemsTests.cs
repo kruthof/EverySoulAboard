@@ -292,9 +292,159 @@ namespace Perilune.Tests
             Assert.AreEqual((int)Math.Round(metrics.Structural * 100.0, MidpointRounding.AwayFromZero), hull.Load);
 
             // Nothing publishes a breach event anywhere in the sim, so this row's LAST FAULT is
-            // legitimately empty rather than borrowing an unrelated maintenance alarm.
+            // legitimately empty rather than borrowing an unrelated maintenance alarm. Asserting
+            // that on the untouched slice proves nothing — no slice history entry happens to name a
+            // wearing device, so the assertion passes whether or not the forbidden join exists.
+            // FALSIFY it: put an entry naming a real hull-group device into history and require the
+            // row to keep ignoring it.
             Assert.AreEqual(-1, hull.FaultDay);
             Assert.AreEqual("", hull.FaultText);
+
+            var wearing = host.Sim.Devices.Items.First(d =>
+                host.Sim.Defs.Machines[(int)d.Kind].WearPerHour > 0f && !string.IsNullOrEmpty(d.Name));
+            host.History.Entries.Add(new HistoryEntry(host.Sim.TickCount,
+                wearing.Name + ": SEAL FAILURE", (byte)HistoryKind.Alarm));
+
+            var after = Row(ShipSystems.Compute(host.Sim, host.History), "hull_integrity");
+            Assert.AreEqual(-1, after.FaultDay,
+                "hull makes NO history join — a maintenance alarm is not a hull breach");
+            Assert.AreEqual("", after.FaultText);
+
+            // …and the join is real elsewhere, so the assertion above is not passing by accident.
+            var group = Row(ShipSystems.Compute(host.Sim, host.History),
+                            wearing.Kind == DeviceKind.Scrubber || wearing.Kind == DeviceKind.AirVent
+                                ? "life_support" : "hull_integrity");
+            Assert.IsNotNull(group.Id);
+        }
+
+        [Test]
+        public void Fault_Join_Ignores_A_Recovery_On_The_NAME_Branch_Too()
+        {
+            // The structural (brownout) branch was narrowed to exclude recoveries; the NAME branch
+            // needs the identical guard. "DAY n · … RECOVERED" under a column headed LAST FAULT is
+            // the same misread whichever branch produced it.
+            var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+            var scrubber = host.Sim.Devices.Items.First(d => d.Kind == DeviceKind.Scrubber && !string.IsNullOrEmpty(d.Name));
+
+            host.History.Entries.Add(new HistoryEntry(host.Sim.TickCount,
+                scrubber.Name + ": FLOW FAULT", (byte)HistoryKind.Alarm));
+            var faulted = Row(ShipSystems.Compute(host.Sim, host.History), "life_support");
+            StringAssert.Contains("FLOW FAULT", faulted.FaultText, "the name join works at all");
+
+            // A NEWER recovery naming the same device must not displace it.
+            host.History.Entries.Add(new HistoryEntry(host.Sim.TickCount + 10,
+                scrubber.Name + ": flow recovered.", (byte)HistoryKind.Alarm));
+            var after = Row(ShipSystems.Compute(host.Sim, host.History), "life_support");
+            StringAssert.Contains("FLOW FAULT", after.FaultText,
+                "the recovery is skipped and the last real FAULT still stands");
+            StringAssert.DoesNotContain("RECOVERED", after.FaultText);
+        }
+
+        [Test]
+        public void A_NonFinite_Reading_Is_OFFLINE_And_Unreadable_Never_A_Healthy_Zero()
+        {
+            // One poisoned float used to render eight NOMINAL rows and a fabricated "mean O2 0%",
+            // because Pct(NaN) was 0, Fixed1(NaN) was "0.0", and a NaN room lost every comparison
+            // silently while still counting as pressurised.
+            var sim = NewSim();
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit");
+            var scrub = sim.AddDevice(DeviceKind.Scrubber, new Int3(3, 1, 0), "scrubber_a");
+            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            for (int i = 0; i < 20; i++) sim.Tick();
+            var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
+            RoomState.Pressurize(room);
+            Assert.AreEqual(ShipSystemState.Nominal, Row(ShipSystems.Compute(sim), "life_support").State);
+
+            // The exact shape a `set scrubber_a.rate NaN` used to produce.
+            scrub.Rate = float.NaN;
+            var poisoned = Row(ShipSystems.Compute(sim), "life_support");
+            Assert.AreEqual(ShipSystemState.Offline, poisoned.State, "unknown is never nominal");
+            Assert.AreEqual(-1, poisoned.Load);
+            StringAssert.Contains("INSTRUMENT UNREADABLE", poisoned.Advisory);
+            StringAssert.DoesNotContain("0.0x", poisoned.Advisory, "no fabricated zero in the prose");
+
+            // A non-finite ROOM is excluded from every band and never counted as breathable.
+            scrub.Rate = 1f;
+            room.O2Moles = double.NaN;
+            foreach (var id in new[] { "life_support", "thermal" })
+            {
+                var r = Row(ShipSystems.Compute(sim), id);
+                Assert.AreEqual(ShipSystemState.Offline, r.State, id + " must not band a NaN room");
+                StringAssert.Contains("INSTRUMENT UNREADABLE", r.Advisory, id);
+            }
+
+            // And DETAIL says so per device rather than printing a number.
+            room.O2Moles = 0.0;
+            scrub.Rate = float.PositiveInfinity;
+            var detail = ShipSystems.ComputeDetail(sim, "life_support").First(d => d.Name == "scrubber_a");
+            Assert.AreEqual(-1, detail.Rate, "an unreadable rate is the -1 sentinel, not 0");
+            Assert.AreEqual("READING NOT FINITE", detail.Note);
+        }
+
+        [Test]
+        public void LifeSupport_Also_Bands_On_ppO2_Because_A_Mean_Hides_One_Bad_Room()
+        {
+            var sim = NewSim();
+            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            for (int i = 0; i < 20; i++) sim.Tick();
+            var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
+            RoomState.Pressurize(room);
+            SetCo2(room, 500.0);   // air is CLEAN — only oxygen will move
+            Assert.AreEqual(ShipSystemState.Nominal, Row(ShipSystems.Compute(sim), "life_support").State);
+
+            var needs = sim.Defs.Needs;
+            // Drop ppO2 into the hypoxia band (NeedsSystem.cs:132) while CO2 stays normal.
+            SetPpO2(room, needs.HypoxiaPpO2KPa - 1.0);
+            var hypoxic = Row(ShipSystems.Compute(sim), "life_support");
+            Assert.AreEqual(ShipSystemState.Degraded, hypoxic.State,
+                "a hypoxic compartment cannot sit behind a NOMINAL LIFE SUPPORT row");
+            StringAssert.Contains("hypoxic", hypoxic.Advisory);
+
+            // The severe rung damages at the vacuum rate (NeedsSystem.cs:130).
+            SetPpO2(room, needs.SevereHypoxiaPpO2KPa - 1.0);
+            Assert.AreEqual(ShipSystemState.Offline, Row(ShipSystems.Compute(sim), "life_support").State);
+        }
+
+        [Test]
+        public void Thermal_Waste_Heat_Excludes_Doors_And_Roomless_Devices()
+        {
+            // ThermalSystem routes doors to ConductAcrossDoor and drops their HeatKW by design
+            // (ThermalSystem.cs:70-78); a device in no room heats nothing (:83). The slice's 19
+            // powered doors are 0.95 kW, a ~6% overstatement if counted.
+            var sim = NewHall();
+            for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.Radiator, new Int3(3, 1, 0), "rad");
+            for (int i = 0; i < 20; i++) sim.Tick();
+            PressurizeAll(sim);
+            string before = Row(ShipSystems.Compute(sim), "thermal").Advisory;
+
+            var door = sim.AddDevice(DeviceKind.Door, new Int3(4, 1, 0), "door_x");
+            for (int i = 0; i < 20; i++) sim.Tick();
+            PressurizeAll(sim);
+            Assert.IsTrue(door.Powered, "the door really is powered, so only the kind gate can excuse it");
+            Assert.AreEqual(WasteKW(before), WasteKW(Row(ShipSystems.Compute(sim), "thermal").Advisory),
+                "a powered door adds NO waste heat — it is a conduction edge, not a source");
+        }
+
+        /// <summary>The "N kW of waste heat" figure out of the thermal advisory.</summary>
+        private static string WasteKW(string advisory)
+        {
+            int i = advisory.IndexOf(" kW of waste heat", StringComparison.Ordinal);
+            Assert.Greater(i, 0, "the thermal advisory states its waste heat");
+            int start = advisory.LastIndexOf(' ', i - 1) + 1;
+            return advisory.Substring(start, i - start);
+        }
+
+        /// <summary>Set a room's oxygen partial pressure to an exact kPa by moving moles between the
+        /// O2 and N2 pools, leaving total moles (and therefore pressure) untouched.</summary>
+        private static void SetPpO2(Room room, double kpa)
+        {
+            double total = room.TotalMoles;
+            double want = total * (kpa / room.PressureKPa);
+            room.N2Moles += room.O2Moles - want;
+            room.O2Moles = want;
         }
 
         [Test]
@@ -317,32 +467,120 @@ namespace Perilune.Tests
 
         // ------------------------------------------------------------------ the remaining rows
 
+        // A taller room, so a conduit bus on one row can wire devices on the row above it. The
+        // one-row-interior Room above cannot do that, and a test that silently wires only half its
+        // devices proves nothing about clamping.
+        private static readonly string[] Hall =
+        {
+            "############",
+            "#..........#",
+            "#..........#",
+            "#..........#",
+            "############",
+        };
+
+        private static Simulation NewHall() =>
+            new Simulation(AsciiWorld.Build(Hall), 7,
+                           SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry())), null);
+
+        /// <summary>Give every room air, so rows that band on the atmosphere have something to read.
+        /// Re-applied after ticking: a topology change (adding a device) marks rooms dirty and the
+        /// recompute rebuilds them.</summary>
+        private static void PressurizeAll(Simulation sim)
+        {
+            for (int i = 1; i < sim.Rooms.Rooms.Count; i++)
+                if (sim.Rooms.Rooms[i] != null && sim.Rooms.Rooms[i].TileCount > 0)
+                    RoomState.Pressurize(sim.Rooms.Rooms[i]);
+        }
+
         [Test]
         public void Reactor_Load_Is_Wanting_Draw_Over_Generation_And_A_Shed_Device_Is_A_Brownout()
         {
-            var sim = NewSim();
-            // 6 kW of generation, 3 kW of fabricator draw ⇒ 50%, no shedding.
-            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
-            sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit");
-            sim.AddDevice(DeviceKind.Fabricator, new Int3(3, 1, 0), "fab");
+            var sim = NewHall();
+            // A conduit bus along y=2 wires everything sitting on y=1.
+            for (int x = 1; x <= 8; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");      // 6 kW
+            var fab1 = sim.AddDevice(DeviceKind.Fabricator, new Int3(2, 1, 0), "fab1");  // 3 kW
             for (int i = 0; i < 20; i++) sim.Tick();
 
             var ok = Row(ShipSystems.Compute(sim), "reactor");
+            Assert.IsTrue(fab1.Powered && fab1.NetworkId != 0, "the fabricator really is on the bus");
             Assert.AreEqual(50, ok.Load, "3 kW of wanting draw against 6 kW of generation");
             Assert.AreEqual(ShipSystemState.Nominal, ok.State);
             StringAssert.Contains("no reactor aboard", ok.Advisory, "the row admits what it actually is");
 
-            // Overload the (battery-less) network: 3 more fabricators = 12 kW wanted, 6 kW supplied.
-            sim.AddDevice(DeviceKind.Conduit, new Int3(4, 1, 0), "conduit2");
-            sim.AddDevice(DeviceKind.Fabricator, new Int3(5, 1, 0), "fab2");
-            sim.AddDevice(DeviceKind.Fabricator, new Int3(6, 1, 0), "fab3");
-            sim.AddDevice(DeviceKind.Fabricator, new Int3(7, 1, 0), "fab4");
+            // 9 kW wanted against 6 kW supplied — a ratio of 1.5. The previous version of this test
+            // reached exactly 100 by ACCIDENT (only two of its four fabricators touched a conduit,
+            // so demand landed on 6 kW and the ratio was 1.0); it would have passed with no clamp at
+            // all. Assert the raw kW in the advisory so the ratio is provably above 1.
+            var fab2 = sim.AddDevice(DeviceKind.Fabricator, new Int3(3, 1, 0), "fab2");
+            var fab3 = sim.AddDevice(DeviceKind.Fabricator, new Int3(4, 1, 0), "fab3");
             for (int i = 0; i < 20; i++) sim.Tick();
 
             var shed = Row(ShipSystems.Compute(sim), "reactor");
+            Assert.IsTrue(fab2.NetworkId != 0 && fab3.NetworkId != 0, "all three fabricators are wired");
+            StringAssert.Contains("9.0 kW of wanting draw against 6.0 kW", shed.Advisory,
+                "the ratio really is 1.5, so 100 can only come from the clamp");
             Assert.AreEqual(100, shed.Load, "demand past generation clamps at 100, it does not wrap");
             Assert.AreEqual(ShipSystemState.Degraded, shed.State, "a shed device IS the brownout signal");
             StringAssert.Contains("shed right now", shed.Advisory);
+        }
+
+        [Test]
+        public void Reactor_Generation_Carries_The_OffGrid_Gate_In_Both_Directions()
+        {
+            // The trap: PowerSystem.Balance skips off-grid devices ENTIRELY (PowerSystem.cs:184), so
+            // an unwired SolarWing supplies nothing. An ungated denominator made a DARKENING ship
+            // read as LESS loaded — deconstruct a conduit run and the reactor row relaxes.
+            var sim = NewHall();
+            for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.Fabricator, new Int3(2, 1, 0), "fab1");
+            for (int i = 0; i < 20; i++) sim.Tick();
+            Assert.AreEqual(50, Row(ShipSystems.Compute(sim), "reactor").Load);
+
+            // Direction 1: a stray wing far from any conduit must NOT move the load.
+            var stray = sim.AddDevice(DeviceKind.SolarWing, new Int3(10, 3, 0), "stray");
+            for (int i = 0; i < 20; i++) sim.Tick();
+            Assert.AreEqual(0, stray.NetworkId, "the stray wing really is off-grid");
+            Assert.IsTrue(stray.Powered, "…and still reads Powered — PowerSystem.cs:243-248's trap");
+            var withStray = Row(ShipSystems.Compute(sim), "reactor");
+            Assert.AreEqual(50, withStray.Load, "off-grid generation contributes NOTHING to the ratio");
+            StringAssert.Contains("6.0 kW reaching the grid", withStray.Advisory);
+            StringAssert.Contains("6.0 kW of generating hardware is on no network", withStray.Advisory,
+                "and the row says the stray hardware is there but useless");
+
+            // Direction 2: strand ALL generation and the row must not go quiet.
+            var sim2 = NewHall();
+            sim2.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim2.AddDevice(DeviceKind.Fabricator, new Int3(4, 1, 0), "fab");   // no conduits anywhere
+            for (int i = 0; i < 20; i++) sim2.Tick();
+            var stranded = Row(ShipSystems.Compute(sim2), "reactor");
+            Assert.AreEqual(ShipSystemState.Degraded, stranded.State,
+                "hardware aboard but none of it wired is DEGRADED, never a quiet NOMINAL");
+            StringAssert.Contains("on no network", stranded.Advisory);
+        }
+
+        [Test]
+        public void Reactor_Load_Honours_The_Wanting_Mirror_A_Closed_Vent_Draws_Nothing()
+        {
+            // Pins the PowerSystem.IsWanting mirror: replacing it with `=> true` must fail here.
+            // A closed vent is the ONE device that idles (PowerSystem.cs:262-266).
+            var sim = NewHall();
+            for (int x = 1; x <= 8; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");     // 6 kW
+            var vent = sim.AddDevice(DeviceKind.AirVent, new Int3(2, 1, 0), "vent");  // 0.5 kW
+            vent.IsOpen = false;
+            for (int i = 0; i < 20; i++) sim.Tick();
+
+            Assert.AreNotEqual(0, vent.NetworkId, "the vent is wired, so only IsOpen can excuse it");
+            Assert.AreEqual(0, Row(ShipSystems.Compute(sim), "reactor").Load,
+                "a CLOSED vent books no draw at all");
+
+            vent.IsOpen = true;
+            for (int i = 0; i < 20; i++) sim.Tick();
+            Assert.AreEqual(8, Row(ShipSystems.Compute(sim), "reactor").Load,
+                "an OPEN vent books its full 0.5 kW against 6 kW");
         }
 
         [Test]
@@ -505,6 +743,51 @@ namespace Perilune.Tests
             Assert.AreEqual("FAILED", Detail(sim, "reactor", "solar").Note);
             Assert.AreEqual("", Detail(sim, "reactor", "batt").Note, "a zero-draw device is never UNWIRED");
             Assert.IsNotNull(battery);
+        }
+
+        [Test]
+        public void Detail_Powered_Is_Pinned_In_BOTH_Directions()
+        {
+            // Asserting only `powered == true` passes against a hardcoded `true`. Show it flipping.
+            var sim = NewHall();
+            for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.Fabricator, new Int3(2, 1, 0), "wired");
+            sim.AddDevice(DeviceKind.Fabricator, new Int3(10, 3, 0), "orphan");  // no conduit adjacent
+            for (int i = 0; i < 20; i++) sim.Tick();
+
+            var wired = Detail(sim, "fabrication", "wired");
+            var orphan = Detail(sim, "fabrication", "orphan");
+            Assert.IsTrue(wired.Powered, "a wired, supplied fabricator is powered");
+            Assert.AreEqual("", wired.Note);
+            Assert.IsFalse(orphan.Powered, "an off-grid fabricator is NOT powered");
+            Assert.AreEqual("UNWIRED", orphan.Note);
+        }
+
+        [Test]
+        public void Detail_Prints_Tank_Litres_So_The_Dry_Rule_Is_Observable()
+        {
+            // water_reclaim's STATE turns on a level no other column shows: the slice's dry tank
+            // holds 0.02 L, not 0. A player told "a tank is dry" with no way to see the number
+            // would reasonably conclude the row is broken.
+            var sim = NewSim();
+            var tank = sim.AddDevice(DeviceKind.WaterTank, new Int3(1, 1, 0), "tank");
+            tank.StoredLiters = 0.02f;
+            sim.Tick();
+
+            var d = Detail(sim, "water_reclaim", "tank");
+            StringAssert.Contains("0.0 L", d.Note, "the litres are on screen");
+            StringAssert.Contains("DRY, BELOW ONE DRINK", d.Note, "and so is the verdict");
+            Assert.AreEqual(ShipSystemState.Attend, Row(ShipSystems.Compute(sim), "water_reclaim").State);
+
+            // The DERIVATION note must state the rule the CODE uses, not the survey's wrong one.
+            string note = ShipSystems.Derivation("water_reclaim");
+            StringAssert.Contains("less than one drink", note);
+            StringAssert.DoesNotContain("any tank at 0 L", note);
+
+            tank.StoredLiters = 400f;
+            StringAssert.Contains("400.0 L", Detail(sim, "water_reclaim", "tank").Note);
+            StringAssert.DoesNotContain("DRY", Detail(sim, "water_reclaim", "tank").Note);
         }
 
         private static ShipSystemDevice Detail(Simulation sim, string id, string name)

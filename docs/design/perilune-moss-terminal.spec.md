@@ -108,10 +108,16 @@ tick and dwarf the ledger. It is fetched like `moss open`/`moss audit`.
    "devices":[[name,kind,condition,powered,rate,deck,x,y,note],...]}
 ```
 
-`condition` and `rate` are ints `0..100` (percent — the wire carries no floats for these; the sim
-holds `Condition`/`Rate` as `0..1` floats and the host rounds once, `MidpointRounding.AwayFromZero`,
-InvariantCulture). `powered` is `0|1`. `kind` is the append-only `DeviceKind` byte. `note` is `""` or
-a short reason string (`"FAILED"`, `"UNWIRED"`, `"UNPOWERED"`, `"WORN — MAINTENANCE DUE"`).
+`condition` and `rate` are ints `0..100`, **or `-1` when the underlying float is not finite** (percent —
+the wire carries no floats for these; the sim holds `Condition`/`Rate` as `0..1` floats and the host
+rounds once, `MidpointRounding.AwayFromZero`, InvariantCulture). A `-1` here means *unreadable*, not
+zero, and the row's `note` says `READING NOT FINITE`. `powered` is `0|1`. `kind` is the append-only `DeviceKind` byte. `note` is `""` or
+a short reason string (`"FAILED"`, `"UNWIRED"`, `"UNPOWERED"`, `"WORN — MAINTENANCE DUE"`,
+`"READING NOT FINITE"`). **[CORRECTED]** A `WaterTank` always prints its LITRES here
+(`"497.1 L"`, `"0.0 L — DRY, BELOW ONE DRINK"`), because `water_reclaim`'s STATE turns on a level no
+other column shows: the slice's dry tank holds **0.02 L, not 0**, and a player told "a tank is dry"
+with no way to see the number would reasonably conclude the row is broken. This uses the existing
+`note` field — the device tuple shape is unchanged, so `moss-model` needs no update.
 
 > **[CORRECTED — additive contract change, `moss-model` please read.]** `derivation` is a **new
 > APPEND-ONLY top-level field** carrying IX-M22's plain-prose DERIVATION note. It costs a reader that
@@ -309,6 +315,19 @@ a row-specific rule below overrides it*.
 > `reactor` with nothing that generates. **The reason goes in `advisory`, never in `faultText`**: an
 > absence of hardware is not a fault and has no day (see `nav_sensors` below).
 >
+> **[CORRECTED] A non-finite reading is OFFLINE with a stated reason, never a healthy zero.** If any
+> input a row consumes is `NaN` or infinite, the row renders load `-1`, STATE `OFFLINE` and an
+> `INSTRUMENT UNREADABLE` advisory naming the instrument. This was a real laundering path: `Pct(NaN)`
+> returned 0, `Fixed1(NaN)` printed `"0.0"`, and a NaN room lost every comparison silently while
+> still counting as pressurised — so one poisoned float rendered **eight NOMINAL rows** and a
+> fabricated `mean O2 0%`, while the command prompt read the same field back as `NaN`. The two halves
+> of one feature disagreeing about one number is the worst possible failure on a screen whose purpose
+> is "the truth about this ship". The prompt additionally **rejects non-finite `set` values**
+> (`NumberStyles.Float` parses the `NaN` symbol, and both `UtilityDeviceAdapter`'s `< 0f` guard and
+> `Commands.cs:47`'s clamp are NaN-blind) — but the *rendering* fix is the load-bearing one, since a
+> MOSS program can already reach NaN through `0/0` (`Interpreter.cs:407-408`), so this is not an
+> IX-M40 authority question.
+>
 > **[CORRECTED] Every row's DERIVATION note ends with the same caveat**, because it is true of every
 > row and a player must not read LAST FAULT as "the current problem": *"LAST FAULT is the last thing
 > that went wrong on this row, NOT the current problem: nothing is published when a machine is
@@ -316,11 +335,11 @@ a row-specific rule below overrides it*.
 
 | Row | LOAD | STATE | Notes / traps |
 |---|---|---|---|
-| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over wired devices, clamped 0..100. "Wanting" mirrors the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a vent only wants power while open. | brownout ⇒ DEGRADED; battery reserve < 25% ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-189`). **[CORRECTED]** `PowerSystem` exposes no brownout accessor (`_wasBrownout` is private, `PowerSystem.cs:71`), so the brownout is derived from its OBSERVABLE consequence: a wanting, wired, drawing device whose `Powered` is false has been shed by the tier walk (`PowerSystem.cs:203-234` stamps exactly that). No new public API on a spine file. |
-| `life_support` | crew CO₂ production ÷ scrubber removal capacity (`atmosphere.def` × living census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. **[CORRECTED — bands now chosen]**: `< 1,000` NOMINAL · `≥ 1,000` ATTEND · `≥ 2,000` DEGRADED · `≥ needs.def co2_narcosis_ppm` (40,000) OFFLINE. The 1,000/2,000 figures are the "stale"/"bad" wording the crew themselves use (`CitizenContext.cs:67,69`); the narcosis figure is read live from `sim.Defs` because it is the only ppm number with a *damage* consumer (`NeedsSystem.cs:52`). Measured on the slice this puts the row at DEGRADED from day 1 (6,060 ppm) through day 3 (16,677 ppm) while LOAD stays at 52–58% — i.e. the bar says "coping" and the STATE says "poisoned", which is the truth. |
+| `reactor` | `Σ DrawKW(wanting) ÷ Σ GenerationKW` over wired devices — **[CORRECTED]** the DENOMINATOR carries the off-grid gate too (`PowerSystem.cs:184` skips off-grid devices entirely, generation and battery charge included). Ungated, one stray unwired `SolarWing` took the row from `LOAD 50%` to `LOAD 25%`: a player deconstructing a conduit run would watch the reactor report the ship as *less* loaded. Clamped 0..100. "Wanting" mirrors the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a vent only wants power while open. | brownout ⇒ DEGRADED; **[CORRECTED]** generating hardware aboard but *none of it wired* ⇒ DEGRADED (otherwise a ship with no conduits renders a quiet `--`/NOMINAL while every device is dark); battery reserve < 25% of WIRED capacity ⇒ ATTEND | **There is no reactor.** The "reactor" is 2× `SolarWing` (6 kW each) in a room named `reactor` (`RoomOutfitter.cs:20-27`). `ShipMetrics.Power` is **not** this number — it is `served/demand`, a *shed indicator* that saturates at 1.0. Generation is condition-blind by design (`PowerSystem.cs:174-189`). **[CORRECTED]** `PowerSystem` exposes no brownout accessor (`_wasBrownout` is private, `PowerSystem.cs:71`), so the brownout is derived from its OBSERVABLE consequence: a wanting, wired, drawing device whose `Powered` is false has been shed by the tier walk (`PowerSystem.cs:203-234` stamps exactly that). No new public API on a spine file. |
+| `life_support` | crew CO₂ production ÷ scrubber removal capacity (`atmosphere.def` × living census × `EffectiveRate`) | **worst-room CO₂ ppm bands it** (DA-M4), not capacity | Scrubbers never gate on a CO₂ reading; vents draw from an infinite reserve. **[CORRECTED — bands now chosen]**: `< 1,000` NOMINAL · `≥ 1,000` ATTEND · `≥ 2,000` DEGRADED · `≥ needs.def co2_narcosis_ppm` (40,000) OFFLINE. The 1,000/2,000 figures are the "stale"/"bad" wording the crew themselves use (`CitizenContext.cs:67,69`); the narcosis figure is read live from `sim.Defs` because it is the ppm number with a *damage* consumer (`NeedsSystem.cs:130,132` — **[CORRECTED]** an earlier revision cited `:52`, which is class-doc prose about SocialSystem; the spec claimed every citation was re-verified and this one was not). **[CORRECTED — ppO₂ too]** STATE is the WORSE of the CO₂ ladder and a worst-room ppO₂ ladder (`< hypoxia_ppo2_kpa` DEGRADED, `< severe_hypoxia_ppo2_kpa` OFFLINE). DA-M4’s own logic — band off the measured quantity that damages crew — applies identically to oxygen, and `NeedsSystem.cs:130,132` reads ppO₂ and CO₂ through the *same* two-rung test. Banding on CO₂ alone let a single hypoxic compartment sit behind a NOMINAL row on the screen named LIFE SUPPORT, contradicted only by a ship-wide MEAN in the advisory — and a mean is exactly what hides one bad room. No ATTEND rung for ppO₂: `needs.def` defines no third threshold and this row does not invent one. Not reachable on the slice. Measured on the slice this puts the row at DEGRADED from day 1 (6,060 ppm) through day 3 (16,677 ppm) while LOAD stays at 52–58% — i.e. the bar says "coping" and the STATE says "poisoned", which is the truth. |
 | `water_reclaim` | stored litres ÷ total tank capacity (== `ShipMetrics.Water`) | reclaimer/tank condition ladder; **[CORRECTED]** any tank holding less than one drink (`sustenance.def drink_liters`, 0.5 L) ⇒ ATTEND | `tank_hydro` runs dry on the shipping slice (a live bug, `ECONOMY-PLAN.md` B-2). **The survey's `= 0 L` test does not catch it**: measured at day 3 the tank holds **0.02 L**, so a literal zero test reads NOMINAL and hides the exact failure this row exists to show. `< drink_liters` is the sim's OWN dry test — a tank below it is invisible to a thirsty crew member (`SustenanceSystem.cs:126,220,261`). With it the row reads ATTEND at day 3, as it should. |
 | `hydroponics` | mean `GrowBed.Progress` | growbed condition ladder; a bed whose fluid network cannot cover one second of irrigation ⇒ ATTEND | Frozen mid-crop beds are the visible symptom of B-2. The dry test mirrors `WaterSystem.TryDrawWater` (`WaterSystem.cs:215-228`) **read-only**, epsilon included — `TryDrawWater` itself mutates and is never called from the report. Known cold-start artifact: at tick 0 no fluid network exists yet, so every bed reads dry for that one instant. That is what `HydroponicsSystem` would also find at tick 0. |
-| `thermal` | total waste heat (powered operational `HeatKW` + `thermal.def citizen_heat_w` × living crew) ÷ radiator rejection (`RadiatorRejectKW` × `EffectiveRate`) | **[CORRECTED]** measured room temperature, not `ShipMetrics.Heat`: any pressurised compartment outside `needs.def hypothermia_c … heat_stroke_c` ⇒ DEGRADED, outside 10–35 °C ⇒ ATTEND | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. **Why the correction:** `ShipMetrics.Heat` is a *count* of rooms in the comfort band, so it can read a healthy 0.95 while one compartment sits at −13 °C inflicting hypoxia-rate damage on anyone who walks in. Banding off the danger thresholds — the only temperatures with a real consumer (`NeedsSystem`) — is what "report the measured temperature" actually requires. Measured on the slice: NOMINAL day 0 → ATTEND day 1 (3.9 °C) → DEGRADED day 3 (−15.7 °C). |
+| `thermal` | total waste heat (powered operational `HeatKW` + `thermal.def citizen_heat_w` × living crew) ÷ radiator rejection (`RadiatorRejectKW` × `EffectiveRate`). **[CORRECTED]** DOORS and devices whose tile resolves to vacuum/a door marker are excluded, matching all four of `ThermalSystem`'s gates rather than only the vent one: a door is a conduction edge and its `HeatKW` is dropped by design (`ThermalSystem.cs:70-78`), and a device in no room heats nothing (`:83`). The slice has 19 powered doors worth 0.95 kW — a ~6% overstatement of ship waste heat. | **[CORRECTED]** measured room temperature, not `ShipMetrics.Heat`: any pressurised compartment outside `needs.def hypothermia_c … heat_stroke_c` ⇒ DEGRADED, outside 10–35 °C ⇒ ATTEND | The shipped `overheat_guard` rule fires 2,579×/3 days and its message is **backwards** (the ship freezes to −12.9 °C). Do not repeat its claim; report the measured temperature. **Why the correction:** `ShipMetrics.Heat` is a *count* of rooms in the comfort band, so it can read a healthy 0.95 while one compartment sits at −13 °C inflicting hypoxia-rate damage on anyone who walks in. Banding off the danger thresholds — the only temperatures with a real consumer (`NeedsSystem`) — is what "report the measured temperature" actually requires. Measured on the slice: NOMINAL day 0 → ATTEND day 1 (3.9 °C) → DEGRADED day 3 (−15.7 °C). |
 | `fabrication` | powered+operational ÷ total industry devices (`Fabricator`, `MachineShop`, `SalvageRecycler`) | condition ladder; none aboard ⇒ OFFLINE | Powered is not busy — no machine exposes a run-state (`ThermalSystem.cs:103-106` documents the same gap), so an idle powered fabricator is indistinguishable from a working one. Said in the DETAIL note. |
 | `hull_integrity` | `ShipMetrics.Structural` = mean `Condition` over devices with `WearPerHour > 0` | breached anchor (probe resolves to room 0) ⇒ DEGRADED; sealed room under `LowPressureKPa` (80) ⇒ ATTEND | **Proxy** — `ShipMetrics.cs:12` says so itself. The breach derivation is reused from `CitizenContext.cs:155-193` (mirrored, not referenced: `Sim.Core` must not depend on `Sim.Llm`). **[CORRECTED]** This row makes **no history join at all**, rather than one that finds nothing: nothing publishes a breach event, so any name match here would be an unrelated maintenance alarm rendered as a hull fault. `LAST FAULT` is `—` by construction. |
 | `nav_sensors` | `-1` (`--`) while no telescope exists; once one is placed, powered+operational ÷ total | **`OFFLINE` derived from the device census** finding no `Telescope`. **[CORRECTED]** `faultDay` is `-1` and `faultText` is `""`; the reason lives in `advisory` (`NO SENSOR HARDWARE — no telescope is installed…`). | `NavSystem` is fully built, saved, hashed and ten-tested, and **provably inert**: its sensor pass is gated on `AnyPoweredTelescope` (`NavSystem.cs:104,121-128`) and no ship generator or authored ship places one. Never hardcoded — a test places a telescope and watches the row come alive, then wrecks it and watches the ladder (not a hardcode) put it back to OFFLINE. **Why the correction:** the survey's `NO SENSOR HARDWARE` *fault text* contradicts §1.1 (`faultText` is `""` when `faultDay` is `-1`), and §1.1 is the one that is right. An absence of hardware is not a fault and has no day; the only way to render it as one is to fabricate a timestamp, which collapses to `DAY 0 · NO SENSOR HARDWARE` on a diagnostic screen — exactly what DA-M1 forbids. STATE already says `OFFLINE`; ADVISORY says why. |
@@ -369,6 +388,43 @@ Three consequences to design around rather than discover later:
 Every package additionally runs `./ci.sh` **in-worktree** and passes an independent Opus gate
 (blind spec → CI battery → adversarial/mutation pass → written PASS/FAIL), per `HANDOVER.md`
 "The rituals".
+
+---
+
+## 6.1 Known limitations of the shipped ledger (recorded, not smoothed over)
+
+Disclosed by the `moss-systems` lane after its independent gate. None is a blocker; all are the kind
+of thing this project records rather than discovers twice.
+
+1. **Fault attribution stays a weak string join.** Designer-rule alarms carry the *rule name* as
+   `SourceId` (`DesignerRuleSystem.cs:183,191`), so `overheat_guard`'s 2,579 alarms attribute to
+   nothing. Measured on the slice at day 3: only `reactor` has an attributable fault; every other row
+   is `—`. Correct, but thin.
+2. **`hydroponics` and `reactor` both read pessimistically at tick 0.** Before the first tick no
+   fluid or power network exists, so every bed reads dry and generation reaches nothing. Literally
+   true for that instant, and exactly what `HydroponicsSystem`/`PowerSystem` would find — but it is a
+   cold-start artifact, not a fault.
+3. **`fabrication` cannot distinguish idle from busy** — no machine exposes a run-state. Stated in
+   its DERIVATION note.
+4. **The ppO₂ band is unreachable on shipped content.** Measured worst ppO₂ on the slice at day 3 is
+   18.7 kPa, comfortably above `hypoxia_ppo2_kpa` (16). The ladder is real and tested, but nothing in
+   shipped content exercises it — so it is unproven against emergent play, not merely unproven.
+5. **"Up to 1 s stale" is WALL time, not sim time** (`GameSession.cs:782` gates on `nowWall`). At 1×
+   that is ~10 sim-seconds between rebuilds; at 100× it is ~17 sim-minutes, and at 1000× ~2.8
+   sim-hours. On a *diagnostic* screen that materially understates the staleness, and a player
+   watching a fast-forwarded ship is exactly who is watching this screen. The dedupe means a stale
+   payload is not re-sent, so the client cannot tell the difference. **Candidate fix for v2: gate on
+   `TickCount` rather than wall time.**
+6. **`ship.*` prompt reads share a mutable cache.** `ShipMetricsAdapter` caches its snapshot for one
+   *sim-second* keyed on `TickCount / TicksPerSecond`, and one instance is registered on the shared
+   `DeviceRegistry` for `DesignerRuleSystem`, `ScriptRuntime` and now the MOSS prompt alike. Whoever
+   reads first within a sim-second fixes the snapshot the others see. The cadence is a pure function
+   of the tick, so both determinism twins recompute at the same ticks — and the gate could **not**
+   produce a divergence over 1,300 slice ticks. Recorded as **latent**, not as a bug.
+7. **`MECHANICS.md` §13.1 carries the same bad citation this spec did** — it attributes the 40,000 ppm
+   damage consumer to `NeedsSystem.cs:52`, which is class-doc prose about `SocialSystem`. The real
+   consumers are `NeedsSystem.cs:130,132`. Left for the doc's owning lane rather than edited here
+   mid-wave.
 
 ---
 
