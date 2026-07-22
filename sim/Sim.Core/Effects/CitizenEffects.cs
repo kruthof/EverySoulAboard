@@ -70,9 +70,27 @@ namespace Perilune.Sim
     /// <summary>
     /// Effect discriminator. Flags so <see cref="CapabilityManifest.LegalEffects"/>
     /// can express a legal-set; single values identify one effect in events.
+    ///
+    /// WIDTH — <c>ushort</c>, deliberately (ECONOMY-PLAN.md §0 W0-2). Six of the eight
+    /// bits a <c>byte</c> offers were already spent, so the economy's first two effects
+    /// would have filled it; widening later would have been a cross-lane refactor. The
+    /// widening is behaviour-free and pin-neutral: <see cref="EffectKind"/> is not
+    /// written to any save chapter, not folded into any <c>StateChecksum</c>, and not
+    /// carried numerically on the wire (the web skin sends an already-rendered effect
+    /// NOTE string — <c>WireFormat.ChatEffect</c>), and the provider tool schemas bound
+    /// the enum by NAME, not ordinal. Nothing may narrow it back on the way through:
+    /// there is no <c>(byte)</c> cast of an EffectKind anywhere in the tree, and
+    /// <c>EffectKindWidthTests</c> pins that flags above bit 7 survive every path that
+    /// actually carries the value — BOTH producers of <c>CitizenEffectAppliedEvent.Kind</c>
+    /// (<see cref="EffectPump"/> below and <c>ApplyCitizenEffectCommand</c>), the consuming
+    /// MemorySystem rule table, and the CapabilityManifest legal-set into TurnPlan. A
+    /// <c>(byte)</c> cast reintroduced at either producer is invisible to consumer-side
+    /// tests, so do not "simplify" those two away.
+    ///
+    /// Rows stay append-only and stay powers of two; the next free bit is 1 &lt;&lt; 6.
     /// </summary>
     [Flags]
-    public enum EffectKind : byte
+    public enum EffectKind : ushort
     {
         None = 0,
         SetDisposition = 1 << 0,

@@ -29,6 +29,12 @@ namespace Perilune.Tests.Llm
             var names = new List<string>();
             foreach (Type t in baseType.Assembly.GetTypes())
             {
+                // The .csproj compiles sim/Sim.Core/**/*.cs INTO this test assembly, so
+                // typeof(CitizenEffect).Assembly is the TEST assembly and GetTypes() also
+                // returns test-only probe effects (EffectKindWidthTests' wide-kind probe).
+                // Exclude the test namespace only: the guard over SHIPPED effect types —
+                // "no spawn/set-stat effect can exist in Perilune.Sim" — is untouched.
+                if (t.Namespace != null && t.Namespace.StartsWith("Perilune.Tests", StringComparison.Ordinal)) continue;
                 if (t.IsClass && !t.IsAbstract && baseType.IsAssignableFrom(t))
                     names.Add(t.Name);
             }
