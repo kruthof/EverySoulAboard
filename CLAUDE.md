@@ -10,6 +10,9 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   def-field, worktree lanes), backlog, and what's next. Read before touching code.
 - **`docs/VISION.md`** — what we're building and why it isn't RimWorld.
 - **`docs/ARCHITECTURE.md`** — module map, invariants, LLM runtime, content packs.
+- **`docs/MECHANICS.md`** — how the game actually works *as implemented* (every number
+  cited `file:line`), plus the "Known gaps — wired but not connected" list. Supersedes
+  `legacy/GDD.md` §4–5 wherever they disagree; read §13 before trusting a mechanic.
 - **`docs/PLAN.md`** — phases, the 10 parallel workstreams, conflict rules. Find your
   lane here before touching code.
 - `docs/legacy/` — the moonbase-era design docs (GDD, TDD, LLM_CITIZENS, MOSS_SPEC,
