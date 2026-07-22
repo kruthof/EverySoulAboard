@@ -103,15 +103,18 @@ the global stream in a normal tick.
 
 ### What is hashed
 
-`Simulation.StateHash()` (`Simulation.cs:257-348`) folds, in order: tick, RNG state (4
+`Simulation.StateHash()` (`Simulation.cs:280-393`) folds, in order: tick, RNG state (4
 words), the whole world (`Floor`/`Wall`/`Flags`/`RoomId` arrays per deck,
 `World/World.cs:65-76`), every citizen field, every item, every device, every room's
 `TileCount`/`O2Moles`/`CO2Moles`/`N2Moles`/`TemperatureK`, room anchors,
 `WastewaterLiters`, then **every `IStatefulSystem.StateChecksum()`** in stack order
-(`Simulation.cs:344-346`).
+(`Simulation.cs:389-391`).
 
-The fold's own rule since 2026-07-22 (W0-1) is **no field may share a bit with another**:
-a multi-field word is allowed only where every contributor is a statically-bounded `byte`
+The fold's own rules since 2026-07-22 are **no field may share a bit with another** (W0-1)
+and **a variable-length member folds its length before its entries** (W0-1b — `Path` is the
+only one; without the count, path tiles can shuffle between two crew members and hash the
+same, and `StateHashHonestyTests` constructs that exact collision pair). A multi-field word
+is allowed only where every contributor is a statically-bounded `byte`
 or a 1-bit flag, and anything that could grow gets its own `XxHash64.Combine`. Before
 W0-1 the citizen and item packs aliased — `ItemKind` bit 7 landed on `ReservedForJob`'s
 bit 39, `ItemStack.Count` was clipped to 24 bits, and `JobWorkTicks` (bits 16–47)
@@ -131,7 +134,7 @@ alias-free at W0-1). **Not** fixed and still known-lossy, both out of W0-1's sco
   `0xFFFFFFFF` and floods every lane above it, and `(-1,0,0)`, `(-1,-1,0)` and `(-1,-1,-1)`
   are hash-indistinguishable. `ECONOMY-PLAN.md` §4.4 states this as "aliases on negative
   coordinates and breaks past 2^20"; the negative case is the sharper half. Duplicated
-  verbatim at `Simulation.cs:351` and `Systems/BuildSystem.cs:230` — §3.5's "one shared
+  verbatim at `Simulation.cs:396` and `Systems/BuildSystem.cs:230` — §3.5's "one shared
   `Pack` helper" should mask each field when it lands, which is a further pin move.
 - **The room-anchor word shares bits with `Pack`.** It is
   `Pack(Probe) | ((ulong)Type << 60)`, and because Z reaches bits 40–63 (above), `Type`'s
@@ -149,22 +152,67 @@ alias-free at W0-1). **Not** fixed and still known-lossy, both out of W0-1's sco
 share one instance; the defs identity rides the `DEFS` save chapter instead
 (`Save/SaveWriter.cs:342-345`).
 
-Not hashed: `Room.HullTiles` (pure function of the grid, `Rooms/RoomState.cs:26`),
-`ZLevel.RegionId`, the job board (purely derived), `PowerSystem`/`WaterSystem`'s internal
-network dictionaries, and the entire mind/persona/fact layer *unless* a `MemorySystem` is
-registered (then its `'MEMS'` checksum joins — `Citizens/CitizenMemory.cs:222-231`).
+Not hashed: `Room.HullTiles` (pure function of the grid, `Rooms/RoomState.cs:26`, and not
+saved), `ZLevel.RegionId`, the job board (purely derived), the device grid index,
+`PowerSystem`/`WaterSystem`'s internal network dictionaries, the `SYSS` chapters' own
+human-readable text (`GoalSystem` `Param`/`Text`, `HistorySystem` entry text — see below),
+and the entire mind/persona/fact layer *unless* a `MemorySystem` is registered (then its
+`'MEMS'` checksum joins — `Citizens/CitizenMemory.cs:222-231`).
 
-Careful here: the **per-device** `NetworkId` (`Simulation.cs:315`), `FluidNetworkId`
-(`:322`) and `Powered` (`:314`) *are* hashed and saved, even though they are derived —
+**Scope of the "saved ⇒ hashed" rule, stated precisely, because a looser version of this
+sentence has now been wrong twice.** Every field of the **header, `TILE`, `ROOM`, `CITZ`,
+`DEVC`, `ITEM` and `DSLS`** chapters is folded by `StateHash`. `SYSS` is *not* covered
+field-by-field: each `IStatefulSystem` owns its own `StateChecksum` and several deliberately
+exempt their prose. `DEFS` is deliberately unhashed. Do not restate this as "everything
+saved is hashed" — that phrasing is what hid thirteen fields.
+
+Until 2026-07-22 the fold silently missed **thirteen** saved fields. Nine were found by
+economy W0-1b: `Citizen.Name`, `PrevPos`, `AutoWander`, `Path[]`, `PathIndex`,
+`MoveCooldown`, `IdleCooldown` (`Save/SaveWriter.cs:241-249`), `ItemStack.Label` (`:319`)
+and `Device.Name` (`:287`). Four more were found by its **independent review, after that
+package had already written "the list is now complete"**: the save header's `NextEntityId`
+(`:147`), `RoomAnchor.Name` (`:218`) and `ScriptEntry.TerminalId`/`.Source` (`:333-334`).
+
+Three of the citizen fields are live tick state read and written by `CitizenSystem` every
+pass, so **two sims at different path progress hashed equal**, and `AutoWander` is a
+behaviour gate (`Systems/CitizenSystem.cs:61`), so two sims about to diverge hashed equal at
+load. The four late ones are the same class of hazard on other keys: `NextEntityId` decides
+the id of the next spawn (and every tie-break on the ship resolves to entity store order);
+`RoomAnchor.Name` **is** the MOSS room namespace, so a renamed anchor unbinds every
+`room.<name>` reference exactly as a renamed device unbinds an adapter; and a MOSS source
+*is* the player's program, not a label for it (`Simulation.cs:171`, TDD §4.5).
+
+W0-1b folds all thirteen. Strings go through `XxHash64.Combine(ulong, string)`, which folds
+length then each UTF-16 code unit — ordinal, culture-free, allocation-free, and never
+`string.GetHashCode()`, whose seed .NET randomizes per process (a *non-deterministic* canary
+would be worse than a blind one). This mattered beyond tidiness: a job-dispatcher refactor's
+most likely regression is a different job→crew assignment producing a *different path of
+equal length*, which the canary could not see. To reproduce the blindness, run the
+`Citizen.PathIndex`, `Citizen.AutoWander` or `Citizen.Name` row of
+`StateHashHonestyTests` against the parent commit `59049f1` — each fails with the twins
+hash-**equal**.
+
+The blanket "project convention: strings are hash-exempt" that `GoalSystem.StateChecksum`
+used to cite is **retired**: it was too broad, because three of the six newly folded strings
+are *binding keys*, not prose. The rule that replaces it is written at that call site — an
+entity field the save format writes is hashed; a `SYSS` chapter decides for itself; and
+human-readable text stays exempt so a copy-edit cannot move a determinism pin.
+
+Careful here: the **per-device** `NetworkId` (`Simulation.cs:357`), `FluidNetworkId`
+(`:364`) and `Powered` (`:356`) *are* hashed and saved, even though they are derived —
 deliberately, so a load hashes equal immediately while `PowerDirty = true` rebuilds them
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `3afc99d90e849aa0`
-(pinned at `ci.sh:25`); tick-3000 golden `d807c509743d1b9d`; slice tick-3000 golden
-`21ad26192d778d95`. All three moved 2026-07-22 by W0-1 (the hash-pack un-aliasing) and
-only by it — the fold's *inputs* are unchanged, so no sim behaviour moved with them. The
-previous values were `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c`.
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `ffefe9a9a42d8e7e`
+(pinned at `ci.sh:25`); tick-3000 golden `6071adb8fa781440`; slice tick-3000 golden
+`ab47cefd840247c4`. All three moved twice on 2026-07-22, each time by a pure fold change
+whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
+un-aliasing) took `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
+`3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`, and W0-1b (folding the
+thirteen saved-but-unhashed fields) took those to the current values. Both times exactly 2 goldens
+moved — the two tick-3000 hash files — and every frame, persona and layout golden was
+byte-identical, which is the check that the cause really was the fold.
 
 ---
 
@@ -982,7 +1030,7 @@ chronological order.
 `MemorySystem` (`:233-329`, `IntervalTicks = 1`) writes from events with hardcoded
 importances (`:241-246`): alarm 0.5 (ship-wide broadcast), death 0.95 (broadcast),
 argument 0.55, bond 0.5, relationship change 0.6, accepted `AgreeTask` 0.7 ("promise
-formation"). **Promise *breaking* is not implemented** — §13.10.
+formation"). **Promise *breaking* is not implemented** — §13.11.
 
 ---
 
@@ -1103,14 +1151,22 @@ path caches. `PowerDirty`/`JobsDirty` are forced true and `RoomState.Dirty` defa
 | `ScriptRuntime` | — | 1 | `Sim.Dsl/ScriptRuntime.cs:209` |
 | `DesignerRuleSystem` | — | 1 | `Sim.Dsl/DesignerRuleSystem.cs:207` |
 
-**Strings are hash-exempt by convention** for `HIST`, `SOCL` and `MEMS`: the checksum
-folds tick + kind + subject ids (`HistorySystem.cs:200-212`), edge key + opinion + tier
-(`SocialSystem.cs:289-310`) and counts/ticks/importance bits — never the free text. So
-rewording an entry never perturbs determinism, but **adding** one does.
+**`SYSS` free TEXT is hash-exempt** for `HIST`, `SOCL`, `GOAL` and `MEMS`: those checksums
+fold tick + kind + subject ids (`HistorySystem.cs:200-212`), edge key + opinion + tier
+(`SocialSystem.cs:289-310`), goal kind + done tick (`GoalSystem.cs:228-238`) and
+counts/ticks/importance bits — never the free text. So rewording an entry never perturbs
+determinism, but **adding** one does. Note the narrowing: this used to be stated as the
+blanket "strings are hash-exempt", and W0-1b retired that (six saved strings are folded now,
+three of them binding keys). The live rule is at `GoalSystem.StateChecksum`: **an entity
+field the save format writes is hashed; a `SYSS` chapter decides for itself; human-readable
+text stays exempt.**
 
-**The ritual**: every saved field is also hashed (`Simulation.cs:241-243`). Adding a field
-means default + parser key + checksum fold + save round-trip + hash-move, in the **same
-commit**, and updating the pin in `ci.sh` + `CLAUDE.md`.
+**The ritual**: every field of the header/`TILE`/`ROOM`/`CITZ`/`DEVC`/`ITEM`/`DSLS` chapters
+is also hashed — the scope note at `Simulation.cs:332-343` is the authority. Adding a
+field means default + parser key + checksum fold + save round-trip + hash-move, in the
+**same commit**, and updating the pin in `ci.sh` + `CLAUDE.md`. **And read `SaveWriter`
+beside `StateHash` field-for-field when you do — W0-1b found thirteen fields that had
+skipped this step, four of them only on a second reading.**
 
 ---
 
@@ -1286,7 +1342,7 @@ the argument gate is permanently open**.
 
 ### 13.8 Crew memory and the Chronicle are flooded by social/brownout spam
 
-A direct consequence of §13.7 and §13.10, and it lands squarely on the "talking ship"
+A direct consequence of §13.7 and §13.11, and it lands squarely on the "talking ship"
 pillar. Measured on the slice with the real defs+rules loaded:
 
 - **After one sim-day, Amara Okonkwo's 120-entry episodic memory is 100 % `social`-tagged**,
@@ -1318,7 +1374,46 @@ and the eight slice secrets carry hand-tuned values from 0.55 to 0.85
 "this mind knows it". A model that calls `reveal_info` gets the secret on turn one
 regardless of trust.
 
-### 13.10 Smaller dead wires
+### 13.10 A reload is not bit-exact under run-on: `RoomState.Recompute` is not gas-idempotent
+
+**The save is not the cause — `Recompute` is**, and the cleanest demonstration removes the
+save path entirely: on a *single* sim, with no partition change at all, `MarkDirty()` +
+`RecomputeIfDirty()` moves `StateHash` and perturbs **20 of 22 rooms**. A reload merely
+triggers it, because `SaveReader` leaves `RoomState.Dirty = true` by design, so the reloaded
+sim runs `Rooms.Recompute` on its first tick while an uninterrupted twin does not.
+
+Two distinct lossy paths inside `RemapGas` (`Rooms/RoomState.cs:322-340`):
+
+- **Gases** are rebuilt as a sum of per-tile shares, and the share is a **reciprocal
+  multiply**, not a division — `double share = 1.0 / oldRoom.TileCount` (`:331`) then
+  `newRoom.O2Moles += oldRoom.O2Moles * share`. Computing the reciprocal once and multiplying
+  is fractionally lossier than dividing per tile, and it rules out "just divide" as a fix.
+- **`TemperatureK`** drifts by a *different* route: it is a weighted mean,
+  `tempWeighted / shareSum`, not a sum — so a fix aimed only at the mole sums would leave
+  temperature drifting.
+
+So **recomputing an UNCHANGED partition perturbs O2/CO2/N2 *and* temperature in the last
+bits.** Measured on the slice (save at T = 300, fresh system stack, `SimDefs.Default`): the
+hash is bit-exact **at load**, and essentially every room drifts on the very first tick after
+it. The drift **grows with run-on** — worst ~2.7e-15 relative on the first tick, ~1.5e-14 by
+N = 1000 — so quoting a single figure understates it; the largest absolute case at the first
+tick is O2 `663.9121356693391` vs `663.9121356693432`. Nothing else drifts: crew, items,
+devices, the world arrays, RNG, tick count, wastewater and every `IStatefulSystem` fold are
+bit-exact 1000 ticks later (`SaveRestoreRunOnTests.SaveLoadTickThousand_WithoutAMatchedRecompute_…`
+asserts exactly that blast radius, at a 1e-9 relative band ≈ 6.5×10^4 times looser than the
+worst measured drift — it permits the drift rather than requiring it, so a fix cannot redden
+it).
+
+Consequences worth knowing before the economy lands: (a) the ECONOMY-PLAN §5.1 "save → load
+→ tick 1000 → re-compare" test can only demand whole-`StateHash` equality if both sims take
+the same recompute, which is why the shipped test marks the twin's rooms dirty; (b)
+`P2ExitTests` compares only per-system folds after its reload for this reason; (c) a player
+who saves and reloads gets a very slightly different ship, forever. This is the long-standing
+"save-reload thermal ULP drift" in `HANDOVER.md` — the cause is now located, not fixed. The
+fix (skip the remap when the partition is unchanged, or remap by total rather than per-tile
+share) changes sim behaviour and moves every pin, so it is its own package.
+
+### 13.11 Smaller dead wires
 
 - **`PromiseBrokenEvent`** (`Events/SimEvents.cs:93`) is declared and **never published or
   consumed** anywhere. `MemorySystem` writes promise *formation* only
@@ -1356,7 +1451,7 @@ regardless of trust.
   never cleared (`Systems/ExplorationSystem.cs:7-8`). There is no "greyed last-known-state"
   memory layer — a tile is either dark or fully live.
 
-### 13.11 Non-gaps worth not re-investigating
+### 13.12 Non-gaps worth not re-investigating
 
 These *look* suspicious and are actually fine:
 
@@ -1393,7 +1488,7 @@ supersedes them**. Concrete divergences found while writing it:
 | `~160×40 tiles, 6 decks` | The authored slice is **64×20×2** | measured at boot |
 | Gravity 0.16 g, fall damage, hauling capacity | No gravity, no falls, no carry limits (a citizen carries exactly one stack) | — |
 | Ten scriptable device types incl. turret/alarm/logger; `on event:` handlers | **Seven** adapter-bearing device kinds (`Door` + `AirVent`/`Scrubber`/`SolarWing`/`GrowBed`/`WaterTank`/`Reclaimer`) + room anchors + read-only `ship`; no `on event:` | `Sim.Dsl/MossBindings.cs:22-33` |
-| "explored-but-unseen compartments greyed, last-known-state" | `Explored` is a one-way boolean; no last-known-state layer | §13.10 |
+| "explored-but-unseen compartments greyed, last-known-state" | `Explored` is a one-way boolean; no last-known-state layer | §13.11 |
 | Per-tile gas at breach fronts as a visual/hazard wavefront | Not implemented; lumped rooms only, and see §13.1 for what "lumped + pressure-only flow" means | `AtmosphereSystem.cs` |
 
 Agreements worth recording (the code *does* honour these): 101.3 kPa / 21 % O2 nominal;

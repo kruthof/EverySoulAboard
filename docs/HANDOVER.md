@@ -642,11 +642,26 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
   at once by un-aliasing the citizen + item hash packs — a pure fold restructure, no sim
   behaviour changed, and exactly 2 goldens moved (both the tick-3000 hash files; every frame,
   persona and layout golden was byte-identical, which is the check that the cause really was
-  the fold). Current scenario pin `3afc99d90e849aa0`; current tick-3000 golden
-  `d807c509743d1b9d`; current slice tick-3000 golden `21ad26192d778d95`.
+  the fold). Economy **W0-1b** (same day) moved all three again for the same kind of reason:
+  **thirteen** fields were **saved but not hashed** — crew `Name`/`PrevPos`/`AutoWander`/
+  `Path`/`PathIndex`/`MoveCooldown`/`IdleCooldown`, `ItemStack.Label`, `Device.Name`, the save
+  header's `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source` — so two
+  sims at different path progress, or differing only in whether a crew member wanders, hashed
+  EQUAL. **Nine were found by the package and four more by its independent review, after the
+  package had already declared the audit complete** — budget a second reader for that audit,
+  it is not a test the suite can run. Again a pure fold change, again exactly 2 goldens moved
+  (both tick-3000 hash files; every frame, persona and layout golden byte-identical). Current
+  scenario pin `ffefe9a9a42d8e7e`; current tick-3000 golden `6071adb8fa781440`; current slice
+  tick-3000 golden `ab47cefd840247c4` (W0-1's values were `3afc99d90e849aa0` / `d807c509743d1b9d` /
+  `21ad26192d778d95`).
   **Also part of the ritual now:** any newly hashed field ships a row in
   `tests/Perilune.Tests/StateHashHonestyTests.cs` — mutate that field alone, assert the hash
   moves. That table is what makes "it's hashed" a measured claim rather than a hopeful one.
+  **And the audit that table cannot do:** a table built *from* the fold can only test fields
+  the fold already has, so any commit that adds saved state must also read `SaveWriter`
+  beside `StateHash` field-for-field. That is how W0-1b's nine were found — by reading, not
+  by a red test. The matching restore proof is `SaveRestoreRunOnTests` (save → load → tick
+  1000 → re-compare on the populated slice; ECONOMY-PLAN §5.1).
 - **Def-field ritual:** one commit = `CreateDefault` value + parser key + checksum fold (append
   before the rules fold) + shipped `.def` verbatim + a consumption-tripwire test.
   `social.def` / `build.def` / `director.def` are clean examples (S1 did it x15).
@@ -698,8 +713,25 @@ affordance item landed in the round-2 polish lane.)
   **Update 2026-07-21:** the prompt-rework smoke (`7bf9234`) plus conversation history
   (`9b16c07`) both moved this — re-verify live with a multi-turn secret-probing exchange
   before declaring it closed; single-turn `llm-smoke` alone can't prove it anymore.
-- **Save-reload thermal ULP drift** — pre-existing, documented and reproduced by `P2ExitTests`
-  on base (last-bit float drift across a save/reload of the thermal field). Not a P2 regression.
+- **Save-reload gas/thermal ULP drift** — pre-existing, documented and reproduced by
+  `P2ExitTests` on base. **Cause located 2026-07-22 (W0-1b), confirmed and sharpened by its
+  review, still unfixed.** The save is not the cause: on a *single* sim with no partition
+  change, `MarkDirty()` + `RecomputeIfDirty()` alone moves `StateHash` and perturbs **20 of 22
+  rooms**. `Recompute` unconditionally calls `RemapGas` (`Rooms/RoomState.cs:322-340`), which
+  rebuilds gases as a sum of per-tile shares via a **reciprocal multiply** (`1.0 / TileCount`,
+  `:331`) and rebuilds `TemperatureK` by a *different* route, a weighted mean
+  `tempWeighted / shareSum` — so a fix aimed only at the mole sums would leave temperature
+  drifting. **`Recompute` is not gas-idempotent: recomputing an UNCHANGED partition perturbs
+  O2/CO2/N2 and T in the last bits.** A reload merely triggers it (`SaveReader` leaves
+  `Dirty = true` by design). Measured on the slice at T=300: bit-exact at load, essentially
+  every room drifting on the first tick after, and the drift **grows** with run-on (~2.7e-15
+  relative → ~1.5e-14 by N=1000). Crew, items, devices, RNG, tick, wastewater and every system
+  fold stay bit-exact for 1000 ticks. So a plain save/load is *not* bit-exact under run-on,
+  and the whole-`StateHash` §5.1 comparison only holds when both sims take the same recompute
+  (`SaveRestoreRunOnTests` does exactly that; its second test pins the drift's blast radius at
+  a band that permits rather than requires the drift, so a fix cannot redden it). Fixing it
+  means skipping the remap when the partition is unchanged, or remapping by total — a
+  behaviour change and a pin move, so it is its own package. Not a P2 or W0-1b regression.
 - **ConversationHub has no backoff/cooldown** — it re-probes the primary backend every turn
   through its bespoke pump (it can't use `LlmDispatcher` because the dispatcher re-runs
   `PrepareTurn` off the sim thread). Give it `LlmDispatcher` parity — snapshot-kept-on-sim-thread

@@ -86,6 +86,36 @@ namespace Perilune.Sim
         public static ulong Combine(ulong accumulator, double value) =>
             Combine(accumulator, (ulong)BitConverter.DoubleToInt64Bits(value));
 
+        /// <summary>
+        /// Fold a string into the hash: its LENGTH first, then each UTF-16 code unit in order.
+        ///
+        /// Three properties, all deliberate and all load-bearing for the determinism canary:
+        /// <list type="bullet">
+        /// <item><b>Never <c>string.GetHashCode()</c>.</b> .NET randomizes string hash seeds
+        /// per process, so a fold built on it would make two processes hashing the same ship
+        /// disagree — a *non-deterministic* canary, which is worse than a blind one.</item>
+        /// <item><b>Ordinal by construction, culture-free.</b> Code units are folded raw; no
+        /// comparer, no normalization, no <c>Encoding</c>. The dev machine is de-DE
+        /// (CLAUDE.md), and this is one of the few string paths that must not care.</item>
+        /// <item><b>Allocation-free.</b> Indexing a <see cref="string"/> copies nothing and
+        /// each step reuses the scalar overload's <c>stackalloc</c> — no
+        /// <c>Encoding.UTF8.GetBytes</c>, no <c>char[]</c>, zero heap.</item>
+        /// </list>
+        ///
+        /// The length is folded FIRST so a variable-length field cannot alias its neighbours
+        /// (the same rule as the path fold in <see cref="Simulation.StateHash"/>). <c>null</c>
+        /// folds a sentinel length no real string can have, so <c>null</c> and <c>""</c> stay
+        /// distinguishable; the save format writes both as <c>""</c>, but the fold does not
+        /// depend on that.
+        /// </summary>
+        public static ulong Combine(ulong accumulator, string value)
+        {
+            if (value == null) return Combine(accumulator, ulong.MaxValue);
+            ulong h = Combine(accumulator, (ulong)value.Length);
+            for (int i = 0; i < value.Length; i++) h = Combine(h, (ulong)value[i]);
+            return h;
+        }
+
         /// <summary>Hash a single 64-bit value into an accumulator (for scalars like tick count).</summary>
         public static ulong Combine(ulong accumulator, ulong value)
         {

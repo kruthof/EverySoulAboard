@@ -239,12 +239,41 @@ namespace Perilune.Sim
         ///
         /// Per citizen, in this order: Id · Pack(Pos) · Suffocation · Hunger · Thirst ·
         /// Fatigue · Mood · JobKind (own word) · flag word (Dead b0, RevealsFog b1,
-        /// HoldPosition b2 — 1-bit fields, cannot alias) · JobWorkTicks (own word, full
-        /// 32 bits) · CarryingItemId (own word, full 32 bits) · Pack(JobTarget) ·
-        /// ReservedItemId · Faction|Archetype&lt;&lt;8 (both `byte`, exact fit) · Health · Morale.
+        /// HoldPosition b2, AutoWander b3 — 1-bit fields, cannot alias) · JobWorkTicks
+        /// (own word, full 32 bits) · CarryingItemId (own word, full 32 bits) ·
+        /// Pack(JobTarget) · ReservedItemId · Faction|Archetype&lt;&lt;8 (both `byte`, exact
+        /// fit) · Health · Morale · Name (length then code units) · Pack(PrevPos) ·
+        /// Path.Count · Pack(Path[0…n−1]) · PathIndex · MoveCooldown · IdleCooldown.
         ///
         /// Per item, in this order: Id (own word, full 32 bits) · Kind (own word) ·
-        /// ReservedForJob (own word) · Count (own word, full 32 bits) · Pack(Pos) · CarriedBy.
+        /// ReservedForJob (own word) · Count (own word, full 32 bits) · Pack(Pos) ·
+        /// CarriedBy · Label.
+        ///
+        /// Per device: Id · Pack(Pos) · the audited state word · LockOwner · StoredKWh ·
+        /// StoredLiters · Progress · FluidNetworkId · Condition · Name.
+        ///
+        /// Per room anchor: Pack(Probe)|Type&lt;&lt;60 · Name. Then, after WastewaterLiters,
+        /// the DSLS script list: Scripts.Count · (TerminalId · Source) per entry.
+        ///
+        /// <b>Every variable-length member folds its COUNT (or length) before its
+        /// entries</b> — <c>Path</c>, the script list, and each string. A length-free fold
+        /// over a variable-length run lets adjacent runs shuffle entries across their
+        /// boundary and still produce the same call sequence — the same aliasing class W0-1
+        /// removed one package earlier. Two exact collision pairs are constructed rather
+        /// than argued: <c>Aliased_PathTilesCannotShuffleAcrossTwoCitizens_…</c> (a path
+        /// tile moves between two crew members) and
+        /// <c>Aliased_NameCharactersCannotShuffleAcrossTwoDevices_…</c> (a code unit moves
+        /// between two device names). Path entries fold in list order, index 0 first, which
+        /// is walk order; <c>PathIndex</c> follows so path *progress* is canonical too.
+        ///
+        /// LIMIT on that doctrine, measured and not papered over: the tests pin that the
+        /// length IS folded and that the fold is prefix-free. They do NOT pin its POSITION.
+        /// Measured: moving the string length to after its code units reddens 0 tests and
+        /// only the 2 tick-3000 goldens; moving Path.Count to after its entries reddens 0
+        /// tests and only the SLICE golden (the 2-crew reference ship never carries a path).
+        /// Either order is still prefix-free for these shapes, so "first" is a convention —
+        /// chosen so a reader meets the boundary before the payload — and a golden move is
+        /// not evidence to the contrary; it only says the fold VALUE changed.
         ///
         /// History (2026-07-22, W0-1): the previous packing aliased ItemKind bit 7 onto
         /// ReservedForJob (bit 39) and clipped Count to 24 bits, and overlapped
@@ -253,6 +282,46 @@ namespace Perilune.Sim
         /// ordinary smelt) made two genuinely distinct states hash EQUAL. Not a
         /// determinism break, but canary blindness in the exact fields the economy
         /// stresses. <c>StateHashHonestyTests</c> pins every field in both folds.
+        ///
+        /// History (2026-07-22, W0-1b): THIRTEEN fields were SAVED but not hashed — the
+        /// citizen's Name/PrevPos/AutoWander/Path/PathIndex/MoveCooldown/IdleCooldown
+        /// (<c>Save/SaveWriter.cs:241-249</c>), <c>ItemStack.Label</c> (<c>:319</c>),
+        /// <c>Device.Name</c> (<c>:287</c>), the header's <c>NextEntityId</c> (<c>:147</c>),
+        /// <c>RoomAnchor.Name</c> (<c>:218</c>) and <c>ScriptEntry.TerminalId</c>/<c>.Source</c>
+        /// (<c>:333-334</c>). Three of the citizen fields are live tick state consumed by
+        /// <c>CitizenSystem</c>, so two sims at different path progress, or differing only
+        /// in whether a crew member wanders, hashed EQUAL — the canary was blind to
+        /// exactly the regression a job-dispatcher refactor produces (a different
+        /// assignment yielding a different path of equal length). All thirteen fold now.
+        /// (The first nine were found by the package; the last four by its review — the
+        /// package's own first pass at "the list is now complete" was itself wrong, which
+        /// is why the scope note above is written as a chapter list rather than a slogan.)
+        ///
+        /// COST of W0-1b, measured on the slice at tick 300 (8 crew, 12 stacks, 931 devices,
+        /// 2 MOSS scripts, 22 anchors), five rounds of 200 calls each side:
+        /// +15,000-odd <c>Combine</c> calls per <c>StateHash</c> — the string fold is one
+        /// call per code unit and 931 device names dominate (931 + 13,726 = 14,657 of them) —
+        /// taking the call from 0.79 ms to 2.01 ms, <b>2.54×</b> (independently reproduced here
+        /// at 2.05–2.13 ms/call over five rounds). Immaterial in practice:
+        /// <c>Simulation.Tick</c> never calls this, and <c>ValidationGateTests</c>, the
+        /// heaviest StateHash consumer in the suite, measures 33 s on both commits. Call
+        /// sites are hosts/scenario <c>Report</c> (once per sim-day) + its final twin check,
+        /// hosts/tui <c>DumpMode</c>, <c>Sim.Gen ShipGates.V7Determinism</c> (4 per candidate)
+        /// and tests. If it ever needs to be cheaper, pack four UTF-16 code units per word in
+        /// the string overload — 4× fewer calls, same prefix-free property.
+        ///
+        /// ALLOCATION: this fold itself allocates nothing — every <c>Combine</c> is a
+        /// <c>stackalloc</c>, string indexing copies nothing, and the path loop indexes by
+        /// position rather than enumerating. W0-1b adds ZERO bytes (measured identical on the
+        /// commit before it). But <c>StateHash()</c> as a whole is NOT allocation-free, and
+        /// never was — an earlier draft of this comment said "still zero bytes" and was simply
+        /// wrong. Measured on the slice: <b>512 B per call</b>, all of it
+        /// <c>MemorySystem.StateChecksum()</c> (102,400 B over 200 calls; bisected to the
+        /// "Memory" system by name; identical pre- and post-W0-1b). It is CONTENT-dependent —
+        /// the same slice with empty minds allocates 0, so it appears only once
+        /// <c>PopulateSlice</c> has fed the mind store. Pre-existing, out of scope here, and now
+        /// pinned by <c>StateHashHonestyTests.Fold_AllocatesNothing_OnASimWithoutTheMemorySystem</c>
+        /// so the next person gets a red test instead of a comment to trust.
         /// </summary>
         public ulong StateHash()
         {
@@ -262,10 +331,25 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, s1);
             h = XxHash64.Combine(h, s2);
             h = XxHash64.Combine(h, s3);
+            // W0-1b — the save header's next-entity-id (Save/SaveWriter.cs:147). Live state,
+            // not derived: two sims equal on every entity still diverge at the next spawn.
+            h = XxHash64.Combine(h, _nextEntityId);
             h = World.HashInto(h);
 
-            // Every field that is saved is also hashed — otherwise the determinism
-            // canary is blind exactly where the save format claims canonical state.
+            // SCOPE OF THE FOLD, audited field-by-field against Save/SaveWriter.cs at W0-1b
+            // and true as stated — read it as a scoped claim, not a global one:
+            //   * Every field of the HEADER, TILE, ROOM, CITZ, DEVC, ITEM and DSLS chapters
+            //     is folded here. That is the part the canary would otherwise be blind to
+            //     while the save format calls it canonical.
+            //   * SYSS is NOT covered field-by-field. Each IStatefulSystem owns its own
+            //     StateChecksum, and several deliberately exempt their strings (GoalSystem
+            //     and HistorySystem fold kind/tick but not text; the whole mind/persona/fact
+            //     layer is host state, gate-proven out of determinism at P2). Those folds
+            //     are their systems' contract, not this method's — see the note on
+            //     GoalSystem.StateChecksum for why entity fields and SYSS text differ.
+            //   * DEFS rides its own chapter and is deliberately unhashed (Simulation.cs:26).
+            // The converse is also NOT claimed: this fold covers derived state saved only so
+            // a load hashes equal immediately (Device.NetworkId/Powered, Citizen.PrevPos).
             var citizens = Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
             {
@@ -280,7 +364,8 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)c.JobKind);
                 h = XxHash64.Combine(h, (c.Dead ? 1UL << 0 : 0)
                                        | (c.RevealsFog ? 1UL << 1 : 0)
-                                       | (c.HoldPosition ? 1UL << 2 : 0)); // v6
+                                       | (c.HoldPosition ? 1UL << 2 : 0)   // v6
+                                       | (c.AutoWander ? 1UL << 3 : 0));   // W0-1b
                 h = XxHash64.Combine(h, (ulong)(uint)c.JobWorkTicks);
                 h = XxHash64.Combine(h, (ulong)c.CarryingItemId);
                 h = XxHash64.Combine(h, Pack(c.JobTarget));
@@ -288,6 +373,19 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)c.Faction | ((ulong)c.Archetype << 8)); // v5
                 h = XxHash64.Combine(h, c.Health);
                 h = XxHash64.Combine(h, c.Morale);
+                // W0-1b — saved since CITZ v1, folded only now. Name is the identity every
+                // other layer keys on; PrevPos is derived-but-hashed (same contract as
+                // Device.NetworkId/Powered: a load hashes equal immediately, and dropping it
+                // visibly breaks the client's pawn slide across a load); the path triple is
+                // live tick state CitizenSystem reads and writes every pass.
+                h = XxHash64.Combine(h, c.Name);
+                h = XxHash64.Combine(h, Pack(c.PrevPos));
+                var path = c.Path;
+                h = XxHash64.Combine(h, (ulong)path.Count); // length FIRST — see the fold-layout note
+                for (int p = 0; p < path.Count; p++) h = XxHash64.Combine(h, Pack(path[p]));
+                h = XxHash64.Combine(h, (ulong)(uint)c.PathIndex);
+                h = XxHash64.Combine(h, (ulong)(uint)c.MoveCooldown);
+                h = XxHash64.Combine(h, (ulong)(uint)c.IdleCooldown);
             }
 
             var items = Items.Items;
@@ -300,6 +398,7 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)(uint)it.Count);
                 h = XxHash64.Combine(h, Pack(it.Pos));
                 h = XxHash64.Combine(h, it.CarriedBy);
+                h = XxHash64.Combine(h, it.Label); // W0-1b — corpse identity (NeedsSystem.cs:200)
             }
 
             var devices = Devices.Items;
@@ -321,6 +420,9 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, d.Progress);
                 h = XxHash64.Combine(h, d.FluidNetworkId);
                 h = XxHash64.Combine(h, d.Condition);
+                // W0-1b — MossBindings.cs:20-32 registers every MOSS adapter BY NAME, so a
+                // restore that changed one silently unbinds every player program, no error.
+                h = XxHash64.Combine(h, d.Name);
             }
 
             var rooms = Rooms.Rooms;
@@ -336,9 +438,25 @@ namespace Perilune.Sim
 
             var anchors = Rooms.Anchors;
             for (int i = 0; i < anchors.Count; i++)
+            {
                 h = XxHash64.Combine(h, Pack(anchors[i].Probe) | ((ulong)anchors[i].Type << 60));
+                // W0-1b — the anchor name is the MOSS ROOM NAMESPACE (Save/SaveWriter.cs:218).
+                // Exactly the Device.Name argument on a different field: a restore that renamed
+                // an anchor unbinds every `room.<name>` reference with no error.
+                h = XxHash64.Combine(h, anchors[i].Name);
+            }
 
             h = XxHash64.Combine(h, WastewaterLiters);
+
+            // W0-1b — MOSS program sources are canonical sim state (Simulation.cs:171, TDD
+            // §4.5), saved verbatim in DSLS (Save/SaveWriter.cs:333-334) and folded by nothing
+            // until now. Insertion-ordered; both strings fold, length first.
+            h = XxHash64.Combine(h, (ulong)Scripts.Count);
+            for (int i = 0; i < Scripts.Count; i++)
+            {
+                h = XxHash64.Combine(h, Scripts[i].TerminalId);
+                h = XxHash64.Combine(h, Scripts[i].Source);
+            }
 
             // System-internal canonical state (MOSS latches/timers etc.).
             for (int i = 0; i < _systems.Length; i++)
