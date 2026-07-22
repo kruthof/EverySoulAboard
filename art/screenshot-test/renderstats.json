@@ -2,10 +2,10 @@
   "backend": "webgl2",
   "useSpr": true,
   "terrainTex": 577,
-  "terrainFlat": 663,
-  "entities": 61,
-  "entitySprite": 53,
+  "terrainFlat": 643,
+  "entities": 59,
+  "entitySprite": 51,
   "entityProc": 8,
-  "lightQuads": 709,
-  "spriteCoverage": 0.8688524590163934
+  "lightQuads": 682,
+  "spriteCoverage": 0.864406779661017
 }
