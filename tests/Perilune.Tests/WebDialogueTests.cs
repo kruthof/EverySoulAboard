@@ -77,7 +77,7 @@ namespace Perilune.Tests
                 new[] { "sardonic", "devout" }, "1");
             Assert.AreEqual(
                 "{\"type\":\"citizen\",\"cid\":42,\"name\":\"Reyes\",\"role\":\"hydroponics engineer\"," +
-                "\"mood\":\"wary\",\"traits\":[\"sardonic\",\"devout\"],\"portrait\":\"1\"}",
+                "\"mood\":\"wary\",\"traits\":[\"sardonic\",\"devout\"],\"portrait\":\"1\",\"log\":[]}",
                 s);
         }
 
@@ -87,7 +87,7 @@ namespace Perilune.Tests
             string s = WireFormat.Citizen(9, "Doe", "", "", System.Array.Empty<string>(), "");
             Assert.AreEqual(
                 "{\"type\":\"citizen\",\"cid\":9,\"name\":\"Doe\",\"role\":\"\",\"mood\":\"\"," +
-                "\"traits\":[],\"portrait\":\"\"}",
+                "\"traits\":[],\"portrait\":\"\",\"log\":[]}",
                 s);
         }
 

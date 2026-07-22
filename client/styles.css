@@ -368,6 +368,9 @@ canvas{
 .chat-who{color:var(--amber-2);font-weight:700;margin-right:6px}
 .chat-who:empty{display:none}
 .chat-said{color:var(--txt-hi)}
+/* B1: player's own lines read as a muted echo; the crew's voice keeps the bright default. */
+.chat-line-you .chat-who{color:var(--txt-dim)}
+.chat-line-you .chat-said{color:var(--txt)}
 .chat-effect{
   font-size:11px;font-style:italic;color:var(--warn-txt);
   border-left:2px solid var(--amber-1);padding-left:8px;
@@ -403,6 +406,17 @@ canvas{
 .cit-role{font-size:9.5px;color:var(--txt-dim);letter-spacing:.1em;text-transform:uppercase}
 .cit-traits{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px}
 .cit-trait{border:1px solid var(--ln-chip);border-radius:3px;padding:2px 7px;font-size:9.5px;color:var(--txt)}
+/* conversation log in the citizen card (B3) */
+.cit-log{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--ln-hair);padding-top:9px}
+.cit-log-title{font-size:9.5px;letter-spacing:.14em;font-weight:700;color:var(--txt-dim)}
+.cit-log-empty{font-size:11px;font-style:italic;color:var(--txt-faint)}
+.cit-log-scroll{display:flex;flex-direction:column;gap:5px;overflow:auto;max-height:24vh}
+.cit-log-line{font-size:11px;line-height:1.45}
+.cit-log-who{font-weight:700;font-size:9px;letter-spacing:.08em;margin-right:6px}
+.cit-log-you .cit-log-who{color:var(--txt-dim)}
+.cit-log-you .cit-log-text{color:var(--txt)}
+.cit-log-crew .cit-log-who{color:var(--amber-2)}
+.cit-log-crew .cit-log-text{color:var(--txt-hi)}
 
 /* MOSS terminal drawer (VS-59 — .term-code 12px/18px is LOAD-BEARING) */
 .term-banner{

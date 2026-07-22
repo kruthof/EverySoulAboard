@@ -54,11 +54,14 @@
 
 /**
  * A citizen inspector payload (P2). `portrait` is a string key that MAY be unknown (the art
- * pipeline hasn't produced it) → the client resolves a procedural silhouette fallback.
+ * pipeline hasn't produced it) → the client resolves a procedural silhouette fallback. `log` is the
+ * durable-within-run conversation log (B3, append-only trailing field): [who, text] pairs oldest
+ * first, who = "you" (player) | "crew"; absent on an older host → the card shows the empty state.
  * @typedef {Object} CitizenMsg
  * @property {'citizen'} type
  * @property {*} cid @property {string} name @property {string} [role] @property {string} [mood]
  * @property {string[]} [traits] @property {string} [portrait]
+ * @property {[string,string][]} [log]
  */
 
 /**

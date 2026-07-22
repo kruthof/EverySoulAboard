@@ -168,7 +168,8 @@ namespace Perilune.Web
                 last = now;
 
                 bool viewChanged = DrainCommands();
-                _conv.PumpPending(); // dispatch any say queued behind a completed turn
+                _conv.PumpPending();        // dispatch any say queued behind a completed turn
+                _conv.PumpEndedSummaries();  // write durable MEMS summaries for ended sessions (sim thread)
 
                 bool ticked = false;
                 int tps = SpeedTps[_speedIndex];
@@ -226,6 +227,7 @@ namespace Perilune.Web
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
                 case CmdKind.Chron: Emit(_conv.ChroniclePayload()); return false;
+                case CmdKind.Bio: EmitCitizen(cmd.Cid); return false;
                 case CmdKind.Moss: HandleMoss(cmd); return false;
                 default: return false;
             }
@@ -350,6 +352,7 @@ namespace Perilune.Web
         internal bool ConvWaitIdle(int ms = 4000) => _conv.WaitIdle(ms);
         internal void ConvFlush() => _conv.Flush();
         internal void ConvPumpPending() => _conv.PumpPending();
+        internal void ConvPumpEndedSummaries() => _conv.PumpEndedSummaries();
         internal string ConvStatusPayload() => _conv.StatusPayload();
         internal string ConvChroniclePayload() => _conv.ChroniclePayload();
 
@@ -542,7 +545,16 @@ namespace Perilune.Web
                     portrait = Perilune.Tools.PersonaDump.PersonaKey(_host.Seed, citizen.Id);
                 }
             }
-            return WireFormat.Citizen(citizen.Id, Name(citizen), role, mood, traits, portrait);
+            return WireFormat.Citizen(citizen.Id, Name(citizen), role, mood, traits, portrait,
+                                      _conv.ConversationLog(citizen.Id));
+        }
+
+        /// <summary>Re-emit a living crew member's identity card on demand (the READOUT BIOGRAPHY
+        /// button, {"type":"bio","cid":N}) so the client always opens it with the CURRENT
+        /// conversation log after new chats. Sim thread (command drain); unknown/dead ⇒ no-op.</summary>
+        private void EmitCitizen(uint cid)
+        {
+            if (_sim.Citizens.TryGet(cid, out var c) && !c.Dead) Emit(BuildCitizenMessage(c));
         }
 
         /// <summary>Stable per-citizen portrait/sprite variant (keeps a crew member's face steady
@@ -670,7 +682,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -730,6 +742,7 @@ namespace Perilune.Web
                 case "say": return new WebCommand(CmdKind.Say, sid: Int(json, "sid"), text: Str(json, "text"));
                 case "bye": return new WebCommand(CmdKind.Bye, sid: Int(json, "sid"));
                 case "chron": return new WebCommand(CmdKind.Chron);
+                case "bio": return new WebCommand(CmdKind.Bio, cid: (uint)Int(json, "cid"));
                 case "moss": return new WebCommand(CmdKind.Moss, op: Str(json, "op"), tid: Str(json, "tid"), text: Str(json, "text"));
                 default: return default;
             }

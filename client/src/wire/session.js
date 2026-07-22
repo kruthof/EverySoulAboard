@@ -64,6 +64,9 @@ export const Cmd = {
   talk: (cid) => ({ type: 'talk', cid }),
   say: (sid, text) => ({ type: 'say', sid, text }),
   bye: (sid) => ({ type: 'bye', sid }),
+  // P2 biography: re-request a crew member's citizen card (with the CURRENT conversation log) so the
+  // READOUT BIOGRAPHY button always opens fresh after new chats.
+  bio: (cid) => ({ type: 'bio', cid }),
   // P2 MOSS terminal ops (C6): open/set/audit a program by terminal id.
   moss: (op, tid, text) => (text === undefined ? { type: 'moss', op, tid } : { type: 'moss', op, tid, text }),
 };

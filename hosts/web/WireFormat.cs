@@ -24,7 +24,7 @@ namespace Perilune.Web
     ///   inspect {"type":"inspect","lines":[...]}
     ///   status  {"type":"status","text":"..","speed":"1x","paused":false}
     ///   chat    {"type":"chat","sid":..,"ev":"start|delta|line|effect|end", ...per-ev fields}
-    ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":".."}
+    ///   citizen {"type":"citizen","cid":..,"name":"..","role":"..","mood":"..","traits":[..],"portrait":"..","log":[[who,text],..]}
     ///   device  {"type":"device","kind":"terminal","tid":".."}
     ///   roster  {"type":"roster","crew":[{"cid":..,"name":"..","role":"..","mood":"..","morale":0.8,
     ///            "task":"..","portrait":"..","deck":0,"x":3,"y":4},..]}
@@ -183,9 +183,13 @@ namespace Perilune.Web
 
         /// <summary>Crew identity card for the inspector. <paramref name="role"/>/<paramref name="mood"/>
         /// and <paramref name="traits"/> come from the citizen's mind persona when the host has one,
-        /// else empty. <paramref name="portrait"/> is a stable per-citizen face id ("" when unknown).</summary>
+        /// else empty. <paramref name="portrait"/> is a stable per-citizen face id ("" when unknown).
+        /// <paramref name="log"/> is the durable-within-run conversation log (B3, APPEND-ONLY trailing
+        /// field): [who,text] pairs, oldest first, who = "you" (player) | "crew"; always emitted (empty
+        /// array when none) so the shape is stable.</summary>
         public static string Citizen(uint cid, string name, string role, string mood,
-                                     IReadOnlyList<string> traits, string portrait)
+                                     IReadOnlyList<string> traits, string portrait,
+                                     IReadOnlyList<(string Who, string Text)> log = null)
         {
             var sb = new StringBuilder(160);
             sb.Append("{\"type\":\"citizen\",\"cid\":").Append(cid.ToString(Ic));
@@ -201,6 +205,18 @@ namespace Perilune.Web
                 }
             sb.Append(']');
             sb.Append(",\"portrait\":"); AppendString(sb, portrait ?? "");
+            sb.Append(",\"log\":[");
+            if (log != null)
+                for (int i = 0; i < log.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('[');
+                    AppendString(sb, log[i].Who ?? "");
+                    sb.Append(',');
+                    AppendString(sb, log[i].Text ?? "");
+                    sb.Append(']');
+                }
+            sb.Append(']');
             return sb.Append('}').ToString();
         }
 

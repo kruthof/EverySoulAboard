@@ -63,9 +63,13 @@ namespace Perilune.Tests
             gs.ConvFlush();
 
             Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"delta\"")), "streamed at least one text delta");
-            string line = sent.Find(m => m.Contains("\"ev\":\"line\""));
+            // B1: the player's own utterance is echoed as an authoritative line, before the crew reply.
+            string playerLine = sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"you\""));
+            Assert.IsNotNull(playerLine, "the player's own line is echoed (B1)");
+            StringAssert.Contains("do you have any secrets?", playerLine);
+            string line = sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"crew\""));
             Assert.IsNotNull(line, "an authoritative crew line lands");
-            StringAssert.Contains("\"who\":\"crew\"", line);
+            Assert.Less(sent.IndexOf(playerLine), sent.IndexOf(line), "player line precedes the crew reply (B1 ordering)");
             Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"effect\"")), "an accepted effect note is emitted");
 
             // The effect is dispatched to the buffer, not yet applied: it lands on the NEXT tick.
@@ -134,7 +138,7 @@ namespace Perilune.Tests
             Assert.IsTrue(hub.WaitIdle(4000));
             gs.ConvFlush();
 
-            string line = sent.Find(m => m.Contains("\"ev\":\"line\""));
+            string line = sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"crew\""));
             Assert.IsNotNull(line);
             StringAssert.Contains("\\\"hi\\\"", line, "quotes escaped");
             StringAssert.Contains("\\n", line, "newline escaped");
@@ -203,7 +207,7 @@ namespace Perilune.Tests
             Assert.IsTrue(hub.WaitIdle(4000), "the turn completes via the template fallback");
             gs.ConvFlush();
 
-            Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"line\"")), "the template answered after the primary failed");
+            Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"crew\"")), "the template answered after the primary failed");
             string status = gs.ConvStatusPayload();
             StringAssert.Contains("\"backend\":\"template\"", status, "degraded onto the fallback");
             StringAssert.Contains("\"degraded\":true", status);
@@ -267,12 +271,104 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "hello there"));
             Assert.IsTrue(hub.WaitIdle(4000));
             gs.ConvFlush();
-            Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"line\"")), "the offline turn produced a line");
+            Assert.IsNotNull(sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"crew\"")), "the offline turn produced a crew line");
             StringAssert.Contains("\"backend\":\"template\"", gs.ConvStatusPayload());
             StringAssert.Contains("\"degraded\":false", gs.ConvStatusPayload());
         }
 
+        // ---------------------------------------------------------------- B1: player line survives a failed turn
+
+        [Test]
+        public void Player_Line_Shows_Even_When_The_Turn_Fails()
+        {
+            // A truncating primary with NO template terminator: the turn ends "error" and no crew line
+            // lands — but the player's own line was emitted at DISPATCH, so it still shows (they spoke).
+            var gs = NewGame(new IChatBackend[] { new TruncatingBackend() }, 0, TimeSpan.FromSeconds(60),
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "are you there?"));
+            Assert.IsTrue(hub.WaitIdle(4000));
+            gs.ConvFlush();
+
+            string playerLine = sent.Find(m => m.Contains("\"ev\":\"line\"") && m.Contains("\"who\":\"you\""));
+            Assert.IsNotNull(playerLine, "the player line is emitted at dispatch, independent of the failed turn");
+            StringAssert.Contains("are you there?", playerLine);
+            Assert.IsNull(sent.Find(m => m.Contains("\"who\":\"crew\"")), "no crew line — the turn produced no completion");
+        }
+
+        // ---------------------------------------------------------------- B3: conversation log on the card
+
+        [Test]
+        public void Fresh_Citizen_Card_Has_An_Empty_Conversation_Log()
+        {
+            var gs = NewGame(new IChatBackend[] { new TemplateBackend() }, out var host, out var sent, out _);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Bio, cid: cid));
+            string card = sent.Find(m => m.Contains("\"type\":\"citizen\""));
+            Assert.IsNotNull(card, "the bio command re-emits the citizen card");
+            StringAssert.Contains("\"log\":[]", card, "no conversations yet ⇒ empty log");
+        }
+
+        [Test]
+        public void Conversation_Log_Accumulates_Completed_Exchanges_And_Rides_The_Card()
+        {
+            var gs = NewGame(new IChatBackend[] { new EchoBackend("The pumps hold.") },
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "status?"));
+            Assert.IsTrue(hub.WaitIdle(4000));
+            gs.ConvFlush();
+
+            sent.Clear();
+            gs.ApplyForTest(new WebCommand(CmdKind.Bio, cid: cid));
+            string card = sent.Find(m => m.Contains("\"type\":\"citizen\""));
+            Assert.IsNotNull(card, "bio re-requests the citizen card with the log");
+            StringAssert.Contains("\"log\":[[\"you\",\"status?\"],[\"crew\",\"The pumps hold.\"]]", card);
+        }
+
+        // ---------------------------------------------------------------- B3 stretch: durable MEMS summary
+
+        [Test]
+        public void Ended_Conversation_Writes_One_Durable_Mems_Summary_On_The_Sim_Thread()
+        {
+            var gs = NewGame(new IChatBackend[] { new EchoBackend("Understood.") },
+                out var host, out var sent, out var hub);
+            uint cid = FirstCitizen(host);
+            Assert.AreEqual(0, CountConversationMemories(host, cid), "no conversation memory before talking");
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Say, sid: 1, text: "report"));
+            Assert.IsTrue(hub.WaitIdle(4000));
+            gs.ApplyForTest(new WebCommand(CmdKind.Bye, sid: 1)); // end the session (sim thread)
+            gs.ConvPumpEndedSummaries();                          // the loop's sim-thread summary pump
+
+            Assert.AreEqual(1, CountConversationMemories(host, cid), "one durable conversation memory at end");
+            gs.ConvPumpEndedSummaries();
+            Assert.AreEqual(1, CountConversationMemories(host, cid), "written exactly once (idempotent)");
+        }
+
+        [Test]
+        public void Ended_Conversation_With_No_Exchange_Writes_No_Summary()
+        {
+            // talk → bye with nothing said: mirrors "failed turns leave no history".
+            var gs = NewGame(new IChatBackend[] { new TemplateBackend() }, out var host, out _, out _);
+            uint cid = FirstCitizen(host);
+            gs.ApplyForTest(new WebCommand(CmdKind.Talk, cid: cid));
+            gs.ApplyForTest(new WebCommand(CmdKind.Bye, sid: 1));
+            gs.ConvPumpEndedSummaries();
+            Assert.AreEqual(0, CountConversationMemories(host, cid), "an empty conversation records nothing");
+        }
+
         // ---------------------------------------------------------------- helpers / fakes
+
+        private static int CountConversationMemories(SimHost host, uint cid)
+        {
+            var into = new List<MemoryEntry>();
+            host.Minds.GetTopMemories(cid, host.Sim.TickCount, "conversation", into, 64);
+            return into.Count;
+        }
 
         private static bool SpinUntil(Func<bool> cond, int ms)
         {
