@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PERILUNE — item library gallery</title>
+<!-- The warm theme's DOM/HUD custom properties (mirror of src/theme/warm-tokens.js). -->
+<link rel="stylesheet" href="src/theme/warm.css">
+<style>
+  /* Stage + grid lifted from docs/design/perilune-item-set.dc.html so the review matches the mock. */
+  body { margin: 0; background: #0a0d14; font-family: var(--font-mono); color: var(--ink-bright); }
+  .page { display: flex; flex-direction: column; gap: 26px; padding: 42px; }
+  h1 { font-size: 20px; font-weight: 400; margin: 0; color: var(--ink-bright); }
+  .sub { color: var(--ink-mute); font-size: 11.5px; line-height: 1.6; max-width: 960px; }
+  h2 { font-size: 16px; font-weight: 400; margin: 20px 0 0; color: var(--amber-1); letter-spacing: .04em; }
+  .wrap { display: grid; grid-template-columns: repeat(auto-fill, 150px); gap: 20px; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .stage {
+    position: relative; width: 150px; height: 132px; border-radius: 10px; overflow: hidden;
+    background: radial-gradient(120% 110% at 50% 42%, #2a2018, #151009);
+    box-shadow: inset 0 0 0 1px #2b241c, inset 0 6px 0 rgba(232,147,74,.18);
+  }
+  .stage::before {
+    content: ""; position: absolute; inset: 10px;
+    background-image: radial-gradient(rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .lbl { font-size: 10px; letter-spacing: .08em; color: var(--ink-bright); text-align: center; }
+  .meta { font-size: 8.5px; letter-spacing: .06em; text-align: center; }
+  .k-functional { color: var(--good); }
+  .k-cosmetic { color: var(--ink-mute); }
+  .k-material { color: var(--cold); }
+  .new { color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>PERILUNE — item library</h1>
+  <div class="sub">All 60 pieces of the warm item set, each drawn by its pure SVG builder
+    (<code>client/src/items/*</code>) on the mock's warm stage. Green = FUNCTIONAL (sim DeviceKind),
+    grey = COSMETIC (decor), blue = MATERIAL (wall/floor). <span class="new">amber tag</span> = a NEW
+    DeviceKind (not yet in the sim). Rendered live from <code>src/items/index.js</code>, no build step.</div>
+  <div id="root"></div>
+</div>
+
+<script type="module">
+  import { ITEMS, ITEM_IDS } from './src/items/index.js';
+
+  // Display labels (the mock's exact wording where it differs from the id).
+  const LABELS = {
+    'o2-scrubber': 'O₂ SCRUBBER', 'hatch-ladder': 'HATCH / LADDER',
+  };
+  const label = (id) => LABELS[id] || id.replace(/-/g, ' ').toUpperCase();
+
+  const SECTIONS = [
+    ['OBJECTS (30)', 0, 30],
+    ['WALLS (6) — material', 30, 36],
+    ['FLOORS (6) — material', 36, 42],
+    ['FIXTURES (18)', 42, 60],
+  ];
+
+  const root = document.getElementById('root');
+  for (const [title, a, b] of SECTIONS) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    root.appendChild(h);
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    for (const id of ITEM_IDS.slice(a, b)) {
+      const e = ITEMS[id];
+      const meta =
+        e.kind === 'functional'
+          ? `${e.deviceKind}${e.deviceStatus === 'new' ? ' ·NEW' : ''}${e.glyph ? ' ·' + e.glyph : ''}`
+          : e.kind === 'material'
+            ? e.material
+            : 'decor';
+      const cell = document.createElement('div');
+      cell.className = 'item';
+      cell.innerHTML =
+        `<div class="stage"><svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">` +
+        e.build({ w: 100, h: 100, idPrefix: id }) +
+        `</svg></div>` +
+        `<div class="lbl">${label(id)}</div>` +
+        `<div class="meta k-${e.kind} ${e.deviceStatus === 'new' ? 'new' : ''}">${meta}</div>`;
+      wrap.appendChild(cell);
+    }
+    root.appendChild(wrap);
+  }
+</script>
+</body>
+</html>
