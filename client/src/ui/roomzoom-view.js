@@ -183,6 +183,7 @@ export function exitRoom() {
   if (!_open) return;
   _open = false;
   _armed = null;
+  _drag = null;   // a sweep in progress is abandoned on exit (guards onCanvasUp against a null _focus)
   _focus = null;
   document.body.classList.remove('roomzoom-open');
   _onExit();
@@ -516,6 +517,7 @@ function onMinimapSlot(slotEl) {
   if (target.deck !== _focus.deck) _send(Cmd.deck(target.deck - _focus.deck)); // cross-deck (IX-Z-35)
   _focus = target;
   _armed = null;
+  _drag = null; // a room swap abandons any in-progress sweep
   repaint();
 }
 
@@ -611,6 +613,7 @@ function onCanvasMove(e) {
 function onCanvasUp(e) {
   if (!_drag || e.button !== 0) return;
   const drag = _drag; _drag = null;
+  if (!_open || !_focus) return; // the room vanished / was left mid-sweep — abandon (no null _focus deref)
   const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
   const pc = paletteCommand(drag.tool);
   const material = activeMaterial(_materials, drag.tool);

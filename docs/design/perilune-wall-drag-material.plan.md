@@ -55,3 +55,15 @@ existing ships until a player picks a material).
 - **INT re-pin** — ci.sh + docs + memory; full ./ci.sh gate.
 
 Each package: Opus implementer + independent Opus reviewer; integrator (me) merges + re-pins.
+
+## Known latent (revisit when demolish-of-built-structure lands)
+Independent review confirmed the feature; two latent notes, harmless today because built structures
+cannot be demolished yet (`roomMaterialTiles` also gates floor emission on the frame glyph being `.`):
+- `World.SetMaterial` is a bare write with no clear on `SetWall(pos, 0)` — a removed wall would leave a
+  stale non-zero `Material`, which `BuildMaterials` would re-emit as `kind:1` floor. When demolish
+  lands, clear Material on wall removal.
+- A single `Material` byte per tile: building a wall over a materialed floor overwrites the floor's
+  byte irrecoverably. If floor material must survive a wall-then-demolish, split into wall/floor
+  material planes (or restore-on-demolish).
+Review also fixed: `_drag` is now cleared in `exitRoom` / `onMinimapSlot` and `onCanvasUp` guards on
+`_open`/`_focus`, closing a null-`_focus` deref if the room vanished mid-sweep.
