@@ -12,11 +12,15 @@
 
 ## Economy Wave 0 — COMPLETE, START HERE (2026-07-22)
 
-**All six Wave 0 packages are merged on `lane/economy-w0`.** Gate: **713 dotnet + 207 node**
-green, pin `616ed4a84a9f6e87`. Every package was Opus-implemented and independently
-Opus-reviewed (four of six sent back at least once). The next session's job is the ordered
-list in "What is left" below: **merge `main` in → re-pin → apply the eight `ECONOMY-PLAN.md`
-corrections → spawn the E-lanes (E0-1 first).** Everything below is the detail.
+**All six Wave 0 packages are merged on `lane/economy-w0`, and `main` is now merged into the
+branch** (the MOSS terminal, render light-pools + movement fixes, Ollama, art rev 2, playtest
+round 4). Gate on the merged tree, measured 2026-07-22: **786 dotnet + 356 node** green, pin
+`616ed4a84a9f6e87` **held** (the merge is pin-neutral — main added no hashed sim state, so all
+three pins and the defs checksum `08b73814d97c7be3` are unmoved). Every package was
+Opus-implemented and independently Opus-reviewed (four of six sent back at least once). The
+next session's job is the ordered list in "What is left" below: **land the branch on `main`
+→ B-1/B-2/B-3 shipping-bug commits → spawn the E-lanes (E0-1 first).** The `main`-merge and
+the eight `ECONOMY-PLAN.md` corrections are already done. Everything below is the detail.
 
 
 **Where the work is: branch `lane/economy-w0`, NOT `main`.** It was cut from `main` @
@@ -40,8 +44,11 @@ main, after merge.
 | W0-1b | hash the 13 saved-but-unhashed fields | **merged**, 2 review rounds | moved |
 | W0-6 | register the four economy systems empty | **merged**, 1 review round | moved |
 
-**ALL SIX MERGED. Final gate (`lane/economy-w0`), measured 2026-07-22: 713 dotnet + 207 node
-green, `./ci.sh` exit 0, `determinism: twin hashes MATCH (616ed4a84a9f6e87)`.**
+**ALL SIX MERGED, and `main` is now merged into the branch. Final gate (`lane/economy-w0`
+with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.sh` exit 0,
+`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** The pre-`main`-merge branch gate was
+713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
+surface) and moved no pin.
 
 Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6 — ritual done each time;
 CURRENT values, `ci.sh:25` and the two golden files all agree):
@@ -59,8 +66,9 @@ invisible-to-CI to caught). W0-6 moved all three pins by registering four empty 
 systems (`ZONE`/`PROD`/`ORES`/`TRAD`; their checksum seeds fold unconditionally) and shipped
 the old-save compat test §3.3 required. Pre-W0-6 values were `ffefe9a9a42d8e7e` /
 `6071adb8fa781440` / `ab47cefd840247c4`. **Wave 0 is closed; the next pin move belongs to
-E0-2 (the work-rate rebase) or the first E-lane that adds hashed state. Re-measure on `main`
-after the `main`-merge; never carry a literal forward.**
+E0-2 (the work-rate rebase) or the first E-lane that adds hashed state. The `main`-merge is
+done and re-measured (pin-neutral); the next re-measure is on `main` itself after the
+integrator lands the branch. Never carry a literal forward.**
 
 ### W0-4's neutrality is now proven a second way — the whole point of adding W0-1b
 
@@ -97,14 +105,19 @@ This retires the "prove it" that was unprovable when the wave started.
 
 ### What is left, in order — START HERE for the next session
 
-**Wave 0 itself is DONE (all six merged).** What remains is getting it onto `main` and then
-opening the economy proper:
+**Wave 0 itself is DONE (all six merged), and `main` is now merged into the branch.** What
+remains is landing it on `main` and then opening the economy proper:
 
-1. **Merge `main` into `lane/economy-w0` and re-measure the pin.** `main` advanced after the
-   branch was cut (Ollama merge `15a0b7b`, art rev 2). `ECONOMY.md`/`ECONOMY-PLAN.md` are
-   byte-identical on both sides so they resolve clean; `CLAUDE.md`/`HANDOVER.md` need a real
-   merge. Per `ECONOMY-PLAN.md` §2.1.4 the pin is measured on the merged result. Then land the
-   whole of `lane/economy-w0` on `main` (integrator `--no-ff`, re-gate on `main`).
+1. **DONE — `main` merged into `lane/economy-w0` and re-measured.** `main` had advanced 35
+   commits since the cut (the MOSS terminal programme, render light-pools + movement fixes,
+   Ollama merge `15a0b7b`, art rev 2, playtest round 4) — far more than the Ollama+art the
+   plan anticipated. Conflicts were doc-only (no sim source on both sides): `ECONOMY-PLAN.md`
+   kept the branch copy with the corrections (main carried the stale pre-correction copy from
+   the independent `36b6ca4`); `CLAUDE.md`/`HANDOVER.md` narratives merged. Per
+   `ECONOMY-PLAN.md` §2.1.4 the pin was measured on the merged result: **786 dotnet + 356 node
+   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state). **Next
+   for the integrator: land the whole of `lane/economy-w0` on `main` (`--no-ff`, re-gate on
+   `main`).**
 2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the
    "Corrections" section below — they were folded in during the wave, each measured and each
    reproduced by a second agent). Nothing to do but be aware they are in.
