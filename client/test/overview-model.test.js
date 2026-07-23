@@ -36,10 +36,13 @@ test('CHRONICLE is inert; BUILD/CREW/MOSS/RELATIONS are not', () => {
 
 // ---- click classification (IX-O-11/12/13/15/19) ----
 
-test('an armed build tool classifies as a placement regardless of what was hit', () => {
+test('building is zoom-only: an armed build tool never builds on the Overview — it falls through', () => {
+  // walls/floors are placed inside the Room Zoom, not on the ship schematic. A stale wall/door/cancel
+  // from the shared console slot is ignored here; the click resolves by the normal hit rule.
   for (const tool of ['wall', 'door', 'cancel']) {
-    assert.deepEqual(overviewClickAction(tool, { pawnCid: 5 }), { type: 'build' });
-    assert.deepEqual(overviewClickAction(tool, { roomAnchor: 'reactor' }), { type: 'build' });
+    assert.deepEqual(overviewClickAction(tool, { pawnCid: 5 }), { type: 'select', cid: 5 });
+    assert.deepEqual(overviewClickAction(tool, { roomAnchor: 'reactor' }), { type: 'enterRoom', anchor: 'reactor' });
+    assert.deepEqual(overviewClickAction(tool, {}), { type: 'none' });
   }
 });
 
@@ -66,8 +69,8 @@ test('a MOSS terminal hit classifies as `terminal` (opens MOSS); pawn wins, term
   // the terminal beats the room it sits in (you want MOSS, not room-zoom)
   assert.deepEqual(overviewClickAction(null, { terminalId: 'con-3', roomAnchor: 'command' }),
     { type: 'terminal', tid: 'con-3' });
-  // an armed build tool still wins over a terminal (placement is unconditional)
-  assert.deepEqual(overviewClickAction('wall', { terminalId: 'con-3' }), { type: 'build' });
+  // building is zoom-only: an armed build tool does NOT win — the terminal hit still resolves.
+  assert.deepEqual(overviewClickAction('wall', { terminalId: 'con-3' }), { type: 'terminal', tid: 'con-3' });
 });
 
 // ---- lens grade + tint (IX-O-29/30) ----

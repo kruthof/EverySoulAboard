@@ -256,16 +256,17 @@ function buildIslands() {
       (i + 1) + ' ' + LENS_SHORT[i] + '</button>').join('') + '</div>';
   _el.lensBtns = Array.from(_root.querySelectorAll('.ov-lensbtn'));
 
-  // command bar — a FIXED PLACE palette (shown only on the BUILD tab) + a FIXED tab set.
-  const TOOLS = [['wall', 'WALL'], ['door', 'DOOR'], ['cancel', '⌫ CANCEL']];
+  // command bar — the BUILD tab + a FIXED tab set. Building is ZOOM-ONLY: walls/floors are placed
+  // INSIDE a room (the Room Zoom), never on the ship schematic, so the BUILD tab carries no tile-build
+  // tools — just a hint pointing the player into a room. (＋ADD ROOM to open a new hall still lives on
+  // the scene's hall slots.)
   $('ov-cmd').innerHTML =
-    '<div class="hud ov-place" hidden><span class="ov-hdr">PLACE ▸</span>' +
-      TOOLS.map(([kind, label]) => '<button class="ov-tool' + (kind === 'cancel' ? ' cancel' : '') +
-        '" data-ov-tool="' + kind + '">' + esc(label) + '</button>').join('') + '</div>' +
+    '<div class="hud ov-place" hidden><span class="ov-hdr">BUILD ▸</span>' +
+      '<span class="ov-buildhint">CLICK A ROOM TO BUILD INSIDE IT · ＋ADD ROOM OPENS A NEW HALL</span></div>' +
     '<div class="hud ov-tabs">' + OV_TABS.map(([key, label]) =>
       '<button class="ov-tab" data-ov-tab="' + key + '">' + esc(label) + '</button>').join('') + '</div>';
   _el.place = _root.querySelector('.ov-place');
-  _el.toolBtns = Array.from(_root.querySelectorAll('.ov-tool'));
+  _el.toolBtns = []; // no tile-build tools on the Overview — building is zoom-only
   _el.tabBtns = Array.from(_root.querySelectorAll('.ov-tab'));
 
   // sensor log — a fixed header + 5 fixed line slots (each ts span + rest span), toggled/updated.
@@ -577,11 +578,8 @@ function onSceneClick(e) {
   const hit = hitTest(e.target);
   const action = overviewClickAction(armed, hit);
   switch (action.type) {
-    case 'build': {
-      const t = pointToTile(svg, e);
-      if (t) { _send(Cmd.build(armed, t.x, t.y)); Hud.toolUsed(armed, t.x, t.y); }
-      break;
-    }
+    // No 'build' case — building is zoom-only (walls/floors are placed in the Room Zoom). The
+    // Overview never sends Cmd.build; overviewClickAction never returns 'build'.
     case 'move': {
       const t = pointToTile(svg, e);
       if (t) { _send(Cmd.cursor(t.x, t.y)); _send(Cmd.move()); Hud.toolUsed('move', t.x, t.y); }

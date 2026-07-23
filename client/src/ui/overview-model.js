@@ -43,29 +43,29 @@ export { makeTransform };
 // everything; with no tool armed, the DOM hit (pawn > add-room chip > bound room > hall) decides.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-const BUILD_TOOLS = ['wall', 'door', 'cancel'];
-
 /**
- * Classify an Overview click into an action. `armed` is the shared armed-tool slot (null | wall |
- * door | cancel | move); `hit` is the DOM hit-test result:
+ * Classify an Overview click into an action. `armed` is the shared armed-tool slot (null | move);
+ * `hit` is the DOM hit-test result:
  *   { pawnCid?, addRoomSlot?, roomAnchor?, hallSlot? }  (all optional; absent = miss)
  *
+ * BUILDING IS ZOOM-ONLY: walls/floors are placed inside a room (the Room Zoom), never on the ship
+ * schematic. So there is NO 'build' action here — an armed wall/door/cancel (if one leaks in from
+ * the shared console slot) is ignored on the Overview and the click falls through to the hit rule.
+ *
  * Precedence (single disambiguation rule):
- *   1. a BUILD tool armed → 'build'  (placement by projected tile — IX-O-12/19)
- *   2. the MOVE order armed → 'move' (the move target tile — IX-O-41)
- *   3. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
- *   4. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
- *   5. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
- *   6. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom, a later lane)
- *   7. a bare hall / empty space → 'none' (IX-O-13/18)
+ *   1. the MOVE order armed → 'move' (the move target tile — IX-O-41)
+ *   2. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
+ *   3. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
+ *   4. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
+ *   5. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom — where building happens)
+ *   6. a bare hall / empty space → 'none' (IX-O-13/18)
  * PURE.
- * @param {null|'wall'|'door'|'cancel'|'move'} armed
+ * @param {null|'move'|string} armed
  * @param {{pawnCid?:*, terminalId?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
- * @returns {{type:'build'|'move'|'select'|'terminal'|'addroom'|'enterRoom'|'none', cid?:*, tid?:*, slot?:number, anchor?:string}}
+ * @returns {{type:'move'|'select'|'terminal'|'addroom'|'enterRoom'|'none', cid?:*, tid?:*, slot?:number, anchor?:string}}
  */
 export function overviewClickAction(armed, hit) {
   const h = hit || {};
-  if (BUILD_TOOLS.indexOf(armed) >= 0) return { type: 'build' };
   if (armed === 'move') return { type: 'move' };
   if (h.pawnCid != null) return { type: 'select', cid: h.pawnCid };
   if (h.terminalId != null) return { type: 'terminal', tid: h.terminalId };
