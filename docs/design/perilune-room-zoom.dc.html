@@ -1,0 +1,198 @@
+<!--
+  IMPORTED DESIGN MOCKUP — Perilune Room Zoom (Level 2), the detailed build/decorate view.
+  Source: claude.ai/design project cb4b6b0f-… ("Perilune Room Zoom.dc.html"), imported via
+  the claude_design MCP. READ AS A SPEC, NOT A LIVE PAGE (Design-Component runtime:
+  sc-for/{{bindings}}/DCLogic; pulls a vorsatz design-system bundle + support.js not vendored).
+
+  WHAT IT DEFINES (the Level-2 "Room Zoom" target — reached by clicking a room in Overview):
+  - A big single-room BUILD CANVAS (1488x672 floor) on a warm wood-plank floor with an inset
+    navy-steel border + amber top trim-light + inner shadow; a faint 32px build grid; a soft
+    ambient warmth glow-pool.
+  - Furniture placed at pixel positions: rug (with dashed inset), lower + upper bunks (cream
+    pillows, striped/blue blankets), footlocker, desk + cyan-lit terminal + chair, wardrobe/
+    locker, book shelf, framed photo, desk-lamp glow, potted plant, and a right-wall PORTHOLE
+    to stars. An occupant pawn (front-facing 16x24 SVG, "Ashby").
+  - Placement ghosts on a 32px grid; click floor to place, click a ghost with DEMOLISH to remove.
+  - BREADCRUMB (blur-glass): ‹ PERILUNE ▸ DECK 2 ▸ CREW QUARTERS.
+  - DECK MINIMAP (blur-glass, top-right): an SVG of the deck's 8-room grid, current room
+    highlighted amber + a pulsing you-are-here dot.
+  - CONSTRUCTION MENU (bottom-center): BUILD ▸ QUARTERS, palette WALL/DOOR/BUNK/DESK/CHAIR/
+    LOCKER/SHELF/LAMP/RUG/PLANT/⌫ DEMOLISH; hint "SELECT ITEM · CLICK FLOOR TO PLACE · CLICK A
+    GHOST WITH DEMOLISH TO REMOVE".
+
+  IMPLEMENTATION NOTE (approved plan): realized as a PURE SVG/DOM view
+  (client/src/ui/roomzoom-view.js + room-model.js) driven by the live wire — the `frame` cells
+  clamped to the focused room's tile-rect (from the new view-only `decks` channel), rendered as
+  the warm SVG item set; occupant pawns from frame.crew; build ghosts from `designs`. Functional
+  furniture placement lowers to isolated sim commands (PlaceDeviceCommand); cosmetic decor
+  (rug/shelf/photo/porthole) is a view-only, NON-hashed decor layer. No raster; WebGL renderer parked.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+  <style>
+    body{margin:0;background:#0a0d14;font-family:'Space Mono',monospace;}
+    a{color:#e8934a}a:hover{color:#f2b563}
+    svg.pawn{shape-rendering:auto;display:block;}
+    .hud{background:rgba(18,14,10,.66);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(232,147,74,.18);box-shadow:0 10px 34px rgba(0,0,0,.5);}
+    @keyframes pulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+  </style>
+</helmet>
+<div data-screen-label="Cabin build view" style="position:relative;width:1600px;height:900px;margin:0 auto;overflow:hidden;font-family:'Space Mono',monospace;color:#b3aa9c;background:#0a0d14;">
+
+  <!-- ===== ROOM BUILD CANVAS ===== -->
+  <div onClick="{{placeD}}" style="position:absolute;left:56px;top:78px;width:1488px;height:672px;border-radius:8px;cursor:crosshair;overflow:hidden;background:repeating-linear-gradient(90deg,#bd9066 0 54px,#b0865a 54px 58px);box-shadow:inset 0 0 0 6px #2b3742,inset 0 9px 0 rgba(232,147,74,.42),inset 0 0 90px rgba(0,0,0,.5);">
+    <!-- build grid -->
+    <div style="position:absolute;inset:12px;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:32px 32px;pointer-events:none;"></div>
+    <!-- ambient warmth -->
+    <div style="position:absolute;left:780px;top:180px;width:640px;height:460px;border-radius:50%;background:radial-gradient(circle,rgba(242,181,99,.16),transparent 70%);pointer-events:none;"></div>
+
+    <!-- rug -->
+    <div style="position:absolute;left:560px;top:330px;width:320px;height:200px;border-radius:10px;background:repeating-linear-gradient(90deg,#b34a34 0 16px,#a4402d 16px 32px);box-shadow:inset 0 0 0 6px #d9b48a,0 3px 10px rgba(0,0,0,.3);pointer-events:none;"></div>
+    <div style="position:absolute;left:590px;top:360px;width:260px;height:140px;border:2px dashed rgba(217,180,138,.6);border-radius:6px;pointer-events:none;"></div>
+
+    <!-- lower bunk -->
+    <div style="position:absolute;left:150px;top:170px;width:180px;height:104px;border-radius:8px;background:#8a6b4a;box-shadow:0 4px 10px rgba(0,0,0,.35);pointer-events:none;"></div>
+    <div style="position:absolute;left:158px;top:178px;width:164px;height:60px;border-radius:6px;background:repeating-linear-gradient(90deg,#c14a32 0 14px,#b0402b 14px 28px);pointer-events:none;"></div>
+    <div style="position:absolute;left:164px;top:184px;width:60px;height:44px;border-radius:5px;background:#eadfca;pointer-events:none;"></div>
+    <!-- upper bunk -->
+    <div style="position:absolute;left:150px;top:300px;width:180px;height:104px;border-radius:8px;background:#7a5c3f;box-shadow:0 4px 10px rgba(0,0,0,.35);pointer-events:none;"></div>
+    <div style="position:absolute;left:158px;top:308px;width:164px;height:60px;border-radius:6px;background:repeating-linear-gradient(90deg,#4a6b82 0 14px,#3f5f74 14px 28px);pointer-events:none;"></div>
+    <div style="position:absolute;left:164px;top:314px;width:60px;height:44px;border-radius:5px;background:#eadfca;pointer-events:none;"></div>
+    <!-- footlocker -->
+    <div style="position:absolute;left:150px;top:430px;width:110px;height:52px;border-radius:6px;background:linear-gradient(#6b5334,#4f3d24);box-shadow:inset 0 2px 0 rgba(242,181,99,.3),0 3px 6px rgba(0,0,0,.4);pointer-events:none;"></div>
+
+    <!-- desk + terminal + chair -->
+    <div style="position:absolute;left:1040px;top:210px;width:190px;height:66px;border-radius:6px;background:linear-gradient(#7a5c38,#5f4527);box-shadow:inset 0 2px 0 rgba(242,181,99,.35),0 4px 8px rgba(0,0,0,.4);pointer-events:none;"></div>
+    <div style="position:absolute;left:1060px;top:196px;width:74px;height:40px;border-radius:5px;background:linear-gradient(#333d47,#232b33);box-shadow:0 3px 7px rgba(0,0,0,.4);pointer-events:none;"></div>
+    <div style="position:absolute;left:1068px;top:202px;width:58px;height:22px;border-radius:3px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 12px 3px rgba(90,200,220,.5);pointer-events:none;"></div>
+    <div style="position:absolute;left:1150px;top:290px;width:54px;height:52px;border-radius:8px;background:#4a3a28;box-shadow:0 3px 6px rgba(0,0,0,.4);pointer-events:none;"></div>
+
+    <!-- wardrobe / locker -->
+    <div style="position:absolute;left:1350px;top:170px;width:96px;height:150px;border-radius:6px;background:linear-gradient(90deg,#4a5560,#3a434d);box-shadow:inset 0 0 0 2px #2b3742,0 4px 10px rgba(0,0,0,.4);pointer-events:none;"></div>
+    <div style="position:absolute;left:1396px;top:170px;width:3px;height:150px;background:rgba(0,0,0,.4);pointer-events:none;"></div>
+
+    <!-- shelf with books (top wall) -->
+    <div style="position:absolute;left:430px;top:120px;width:220px;height:30px;border-radius:4px;background:#5a442c;box-shadow:0 3px 6px rgba(0,0,0,.35);pointer-events:none;"></div>
+    <div style="position:absolute;left:440px;top:124px;display:flex;gap:4px;align-items:flex-end;pointer-events:none;">
+      <div style="width:9px;height:20px;background:#c14a32;"></div><div style="width:9px;height:22px;background:#5aa77f;"></div><div style="width:9px;height:18px;background:#e8934a;"></div><div style="width:9px;height:21px;background:#5a9fd4;"></div><div style="width:9px;height:19px;background:#c9b083;"></div><div style="width:9px;height:22px;background:#b5652a;"></div><div style="width:9px;height:20px;background:#8fbf6a;"></div>
+    </div>
+
+    <!-- framed photo -->
+    <div style="position:absolute;left:760px;top:118px;width:52px;height:38px;border-radius:3px;background:#12202e;box-shadow:inset 0 0 0 3px #d9b48a,0 2px 5px rgba(0,0,0,.4);pointer-events:none;"></div>
+
+    <!-- desk lamp glow -->
+    <div style="position:absolute;left:1210px;top:250px;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 22px 8px rgba(232,134,60,.55);pointer-events:none;"></div>
+
+    <!-- potted plant -->
+    <div style="position:absolute;left:1360px;top:560px;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#5f8a3a,#3f6b2a);box-shadow:0 0 18px 4px rgba(95,138,58,.35);pointer-events:none;"></div>
+    <div style="position:absolute;left:1374px;top:600px;width:28px;height:24px;border-radius:0 0 8px 8px;background:#8a5a38;pointer-events:none;"></div>
+
+    <!-- porthole (right wall) showing stars -->
+    <div style="position:absolute;left:1440px;top:430px;width:74px;height:74px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#1c3a52,#0c1a26);box-shadow:0 0 0 6px #3a4b5c,inset 0 0 14px rgba(0,0,0,.7);pointer-events:none;"></div>
+    <div style="position:absolute;left:1466px;top:452px;width:2px;height:2px;border-radius:50%;background:#fff;pointer-events:none;"></div>
+    <div style="position:absolute;left:1490px;top:474px;width:2px;height:2px;border-radius:50%;background:#ffe9cf;pointer-events:none;"></div>
+    <div style="position:absolute;left:1476px;top:486px;width:1px;height:1px;border-radius:50%;background:#cfe0ff;pointer-events:none;"></div>
+
+    <!-- occupant pawn (Ashby) -->
+    <div style="position:absolute;left:930px;top:300px;">
+      <svg class="pawn" width="74" height="111" viewBox="0 0 16 24">
+        <ellipse cx="8" cy="23" rx="6" ry="1.3" fill="rgba(0,0,0,.4)"></ellipse>
+        <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="#3a2a1a"></rect>
+        <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="#caa074"></rect>
+        <rect x="4" y="4" width="1" height="6" fill="#3a2a1a"></rect><rect x="11" y="4" width="1" height="6" fill="#3a2a1a"></rect>
+        <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect><rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+        <rect x="4" y="10" width="8" height="1" fill="#c4bbab"></rect>
+        <rect x="3.8" y="10.6" width="8.4" height="6.6" rx="1.8" fill="#8c8377"></rect>
+        <rect x="2" y="11.2" width="2.4" height="5" rx="1.1" fill="#8c8377"></rect><rect x="11.6" y="11.2" width="2.4" height="5" rx="1.1" fill="#8c8377"></rect>
+        <rect x="5" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect><rect x="8.1" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect>
+        <rect x="4" y="4" width="1" height="13" fill="rgba(242,181,99,.4)"></rect>
+      </svg>
+    </div>
+
+    <!-- placement ghosts -->
+    <sc-for list="{{ghostsD}}" as="g" hint-placeholder-count="0">
+      <div onClick="{{g.on}}" style="position:absolute;left:{{g.x}}px;top:{{g.y}}px;width:32px;height:32px;box-sizing:border-box;border:1.5px dashed #f2b563;background:rgba(232,147,74,.22);color:#f2b563;font-size:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;">{{g.label}}</div>
+    </sc-for>
+
+    <div style="position:absolute;left:20px;bottom:16px;font-size:9.5px;letter-spacing:.16em;color:rgba(255,240,220,.5);pointer-events:none;">CREW QUARTERS · BUILD DETAIL · <span style="color:#f2b563;">{{placedCountD}}</span></div>
+  </div>
+
+  <!-- ===== BREADCRUMB ===== -->
+  <div class="hud" style="position:absolute;left:32px;top:24px;display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:10px;font-size:11px;letter-spacing:.1em;">
+    <span style="color:#8c8377;cursor:pointer;">‹ PERILUNE</span>
+    <span style="color:#57503f;">▸</span>
+    <span style="color:#8c8377;">DECK 2</span>
+    <span style="color:#57503f;">▸</span>
+    <span style="color:#f2b563;font-weight:700;">CREW QUARTERS</span>
+  </div>
+
+  <!-- ===== MINIMAP ===== -->
+  <div class="hud" style="position:absolute;right:32px;top:24px;display:flex;flex-direction:column;gap:6px;padding:11px;border-radius:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;">
+      <span style="font-size:8px;letter-spacing:.16em;color:#57503f;">SHIP · DECK 2</span>
+      <span style="font-size:8px;letter-spacing:.12em;color:#f2b563;">QUARTERS</span>
+    </div>
+    <div style="position:relative;">
+      <svg width="188" height="80" viewBox="0 0 160 70">
+        <rect x="2" y="24" width="8" height="16" rx="3" fill="#232d36"></rect>
+        <rect x="10" y="12" width="144" height="46" rx="16" fill="#28323d" stroke="#3f4e5c" stroke-width="2"></rect>
+        <rect x="24" y="20" width="26" height="13" rx="2" fill="#9a7c52"></rect>
+        <rect x="54" y="20" width="26" height="13" rx="2" fill="#8a9857"></rect>
+        <rect x="84" y="20" width="26" height="13" rx="2" fill="#c2894e"></rect>
+        <rect x="114" y="20" width="26" height="13" rx="2" fill="#d8c39c"></rect>
+        <rect x="24" y="37" width="26" height="13" rx="2" fill="#a08a63"></rect>
+        <rect x="54" y="37" width="26" height="13" rx="2" fill="#a1875c"></rect>
+        <rect x="84" y="37" width="26" height="13" rx="2" fill="#c8935a"></rect>
+        <rect x="114" y="37" width="26" height="13" rx="2" fill="#e8863c" stroke="#f2b563" stroke-width="1.5"></rect>
+      </svg>
+      <div style="position:absolute;left:150px;top:26px;width:12px;height:12px;border-radius:50%;background:#f2b563;box-shadow:0 0 10px 3px rgba(242,181,99,.7);animation:pulse 1.4s ease-in-out infinite;"></div>
+    </div>
+  </div>
+
+  <!-- ===== CONSTRUCTION MENU ===== -->
+  <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;">
+    <div class="hud" style="display:flex;gap:7px;align-items:center;padding:9px 12px;border-radius:12px;">
+      <span style="font-size:9px;letter-spacing:.16em;color:#57503f;flex:none;padding-right:2px;">BUILD ▸ QUARTERS</span>
+      <sc-for list="{{buildItemsD}}" as="b" hint-placeholder-count="10">
+        <div onClick="{{b.on}}" style="padding:8px 13px;border-radius:7px;font-size:10.5px;letter-spacing:.04em;cursor:pointer;background:{{b.bg}};color:{{b.fg}};border:1px solid {{b.bd}};">{{b.label}}</div>
+      </sc-for>
+    </div>
+    <div style="font-size:9.5px;color:#57503f;letter-spacing:.06em;">SELECT AN ITEM · CLICK THE FLOOR TO PLACE · CLICK A GHOST WITH DEMOLISH TO REMOVE</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1600, &quot;height&quot;: 900}}">
+class Component extends DCLogic {
+  state = { toolD: 'bunk', placedD: [] };
+  renderVals() {
+    const tools = [ ['wall','WALL'], ['door','DOOR'], ['bunk','BUNK'], ['desk','DESK'], ['chair','CHAIR'], ['locker','LOCKER'], ['shelf','SHELF'], ['lamp','LAMP'], ['rug','RUG'], ['plant','PLANT'], ['demo','⌫ DEMOLISH'] ];
+    const abbr = { wall:'WA', door:'DO', bunk:'BU', desk:'DE', chair:'CH', locker:'LO', shelf:'SH', lamp:'LA', rug:'RU', plant:'PL' };
+    return {
+      buildItemsD: tools.map(([k, label]) => ({ label, on: () => this.setState({ toolD: k }), bg: k === this.state.toolD ? (k === 'demo' ? '#3a1a10' : '#3a2a12') : 'rgba(26,22,17,.5)', fg: k === this.state.toolD ? (k === 'demo' ? '#e07a5f' : '#f2b563') : '#8c8377', bd: k === this.state.toolD ? (k === 'demo' ? '#a53a25' : '#cf7a33') : '#3a332a' })),
+      placedCountD: this.state.placedD.length + ' PLACED',
+      ghostsD: this.state.placedD.map((pl, i) => ({ x: pl.x, y: pl.y, label: abbr[pl.t] || '?', on: (e) => { e.stopPropagation(); if (this.state.toolD === 'demo') this.setState(s => ({ placedD: s.placedD.filter((_, j) => j !== i) })); } })),
+      placeD: (e) => {
+        const t = this.state.toolD;
+        if (!t || t === 'demo') return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const g = 32;
+        const x = Math.max(6, Math.min(1450, Math.floor((e.clientX - rect.left) * (1488 / rect.width) / g) * g));
+        const y = Math.max(6, Math.min(634, Math.floor((e.clientY - rect.top) * (672 / rect.height) / g) * g));
+        this.setState(s => ({ placedD: [...s.placedD, { x, y, t }] }));
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

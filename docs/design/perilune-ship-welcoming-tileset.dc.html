@@ -1,0 +1,167 @@
+<!--
+  IMPORTED DESIGN MOCKUP — Perilune Welcoming Tileset (warm material re-skin of walls/floors).
+  Source: claude.ai/design project cb4b6b0f-… ("Perilune Ship - Welcoming Tileset.dc.html"),
+  imported via the claude_design MCP. READ AS A SPEC, NOT A LIVE PAGE (Design-Component runtime).
+
+  WHAT IT DEFINES (the material language that makes the ship feel lived-in):
+  - A composed welcoming deck: navy-steel hull plate (#28323d) with rooms whose FLOORS read by
+    material + tint — warm WOOD PLANK (#c2894e/#bd9066), GROW MATTING (#8a9857), STEEL-TAN GRID
+    (#9c8763), CREAM TILE (#d8c39c). Each room glows softly from within (radial amber, screen).
+  - WALLS are navy-steel bulkheads (#3a4b5c) carrying a thin amber TOP TRIM-LIGHT
+    (box-shadow inset 0 3px 0 rgba(232,147,74,.55)) + near-black rivets; DOORWAYS spill an
+    amber threshold strip onto the floor. Furniture is chunky + readable (long table, hearth/
+    stove glow, beds with cream pillows + striped blankets, planters w/ green glow, workbench
+    w/ amber glow, porthole).
+  - MATERIAL SWATCHES: wall options (STEEL+TRIM / TIMBER-LINED / STEEL+PORTS) and floor options
+    (WARM PLANK / STEEL-TAN GRID / GROW MATTING). Framed explicitly as "a re-skin of wall/floor/
+    room tiles — the layout, pawns, and workstations stay exactly as they are."
+
+  IMPLEMENTATION NOTE (approved plan): the material vocabulary drives render/palette.js
+  (RoomType -> floor-tint table) and the warm CSS/SVG floor+wall styles. Realized as pure
+  SVG/CSS material fills (no raster). The full buildable wall/floor catalog lives in the
+  companion "Perilune Item Set" mock. No Gemini generation.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+  <style>
+    body { margin:0; background:#0c0f14; font-family:'Space Mono',monospace; }
+    a { color:#e8934a; } a:hover { color:#f2b563; }
+    .badge { background:#e8934a;color:#12100d;font:700 12px 'Space Mono',monospace;padding:3px 9px;border-radius:3px; }
+    .cap { color:#8c8377;font-size:11.5px;max-width:900px;line-height:1.7; }
+    .swlabel { font-size:9px;letter-spacing:.1em;color:#8c8377;text-align:center; }
+    .tile { image-rendering:pixelated; }
+  </style>
+</helmet>
+
+
+<section style="display:flex;flex-direction:column;gap:40px;padding:52px;max-width:1000px;">
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="badge">1a</span>
+      <span style="color:#e8dcc9;font-size:20px;">A ship you'd want to live in</span>
+    </div>
+    <div class="cap">The current decks are cold grey metal on concrete — technically a ship, emotionally a parking garage. Swapping the <b style="color:#f2b563;">materials</b> does the heavy lifting: <b style="color:#c89a5f;">warm plank &amp; timber floors</b>, <b style="color:#3a4b5c;">navy-steel bulkheads with a warm amber trim-light</b>, and a <b style="color:#e8dcc9;">distinct tint + texture per room</b> so each space feels purpose-built and homey. Lighting stays soft and practical — no sparkle, just glow from where power actually is.</div>
+  </div>
+
+  <!-- ===== composed welcoming deck ===== -->
+  <div style="position:relative;width:860px;height:520px;border-radius:8px;background:radial-gradient(130% 100% at 50% 40%, #16283a, #0c1522);box-shadow:inset 0 0 0 1px rgba(122,150,178,.15);overflow:hidden;">
+
+    <!-- hull plate -->
+    <div style="position:absolute;left:20px;top:20px;right:20px;bottom:20px;border-radius:6px;background:#28323d;box-shadow:inset 0 0 0 2px #1c242d, 0 0 30px rgba(0,0,0,.5);"></div>
+
+    <!-- ROOM FLOORS (inside hull, wall thickness ~14) -->
+    <div style="position:absolute;left:34px;top:34px;width:372px;height:174px;background:repeating-linear-gradient(90deg,#c2894e 0 44px,#b57e45 44px 47px);box-shadow:inset 0 8px 22px rgba(0,0,0,.22),inset 0 0 0 1px rgba(0,0,0,.15);"></div>
+    <div style="position:absolute;left:440px;top:34px;width:372px;height:174px;background:repeating-linear-gradient(90deg,#bd9066 0 44px,#b08659 44px 47px);box-shadow:inset 0 8px 22px rgba(0,0,0,.22),inset 0 0 0 1px rgba(0,0,0,.15);"></div>
+    <div style="position:absolute;left:34px;top:222px;width:778px;height:78px;background:repeating-linear-gradient(0deg,#9c8763 0 46px,#917c59 46px 48px);box-shadow:inset 0 0 26px rgba(0,0,0,.28),inset 0 0 0 1px rgba(0,0,0,.15);"></div>
+    <div style="position:absolute;left:34px;top:314px;width:372px;height:172px;background:repeating-linear-gradient(90deg,#8a9857 0 44px,#7e8c4d 44px 47px);box-shadow:inset 0 8px 22px rgba(0,0,0,.24),inset 0 0 0 1px rgba(0,0,0,.15);"></div>
+    <div style="position:absolute;left:440px;top:314px;width:372px;height:172px;background:repeating-linear-gradient(90deg,#a1875c 0 44px,#957c52 44px 47px);box-shadow:inset 0 8px 22px rgba(0,0,0,.24),inset 0 0 0 1px rgba(0,0,0,.15);"></div>
+
+    <!-- rug in quarters -->
+    <div style="position:absolute;left:520px;top:120px;width:150px;height:66px;border-radius:4px;background:repeating-linear-gradient(90deg,#b34a34 0 10px,#a4402d 10px 20px);box-shadow:inset 0 0 0 3px #d9b48a,0 2px 6px rgba(0,0,0,.3);"></div>
+
+    <!-- ===== WALLS (navy-steel + amber trim-light + rivets) ===== -->
+    <div style="position:absolute;left:34px;top:208px;width:120px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:214px;top:208px;width:192px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:440px;top:208px;width:150px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:650px;top:208px;width:162px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:34px;top:300px;width:120px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:214px;top:300px;width:192px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:440px;top:300px;width:150px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:650px;top:300px;width:162px;height:14px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:406px;top:34px;width:14px;height:64px;background:#3a4b5c;box-shadow:inset 3px 0 0 rgba(232,147,74,.5),inset -2px 0 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:406px;top:158px;width:14px;height:50px;background:#3a4b5c;box-shadow:inset 3px 0 0 rgba(232,147,74,.5),inset -2px 0 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:406px;top:314px;width:14px;height:64px;background:#3a4b5c;box-shadow:inset 3px 0 0 rgba(232,147,74,.5),inset -2px 0 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:406px;top:438px;width:14px;height:48px;background:#3a4b5c;box-shadow:inset 3px 0 0 rgba(232,147,74,.5),inset -2px 0 0 rgba(0,0,0,.4);"></div>
+
+    <!-- door thresholds (amber-lit floor) -->
+    <div style="position:absolute;left:154px;top:210px;width:60px;height:10px;background:rgba(242,181,99,.35);"></div>
+    <div style="position:absolute;left:590px;top:210px;width:60px;height:10px;background:rgba(242,181,99,.35);"></div>
+    <div style="position:absolute;left:154px;top:302px;width:60px;height:10px;background:rgba(242,181,99,.35);"></div>
+    <div style="position:absolute;left:590px;top:302px;width:60px;height:10px;background:rgba(242,181,99,.35);"></div>
+
+    <!-- porthole in quarters exterior wall -->
+    <div style="position:absolute;left:756px;top:70px;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#274a63,#0e1e2c);box-shadow:0 0 0 3px #4a5a68,inset 0 0 6px rgba(0,0,0,.6);"></div>
+
+    <!-- ===== FURNITURE ===== -->
+    <div style="position:absolute;left:96px;top:96px;width:170px;height:46px;border-radius:3px;background:linear-gradient(#7a5334,#5f3f26);box-shadow:inset 0 2px 0 rgba(242,181,99,.35),0 3px 6px rgba(0,0,0,.35);"></div>
+    <div style="position:absolute;left:300px;top:60px;width:52px;height:40px;border-radius:3px;background:#39424c;box-shadow:0 2px 5px rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:308px;top:70px;width:36px;height:20px;border-radius:2px;background:radial-gradient(circle,#f2b563,#e8863c 60%,#c14a32);box-shadow:0 0 16px 6px rgba(232,134,60,.6);"></div>
+    <div style="position:absolute;left:466px;top:60px;width:56px;height:118px;border-radius:4px;background:#8a6b4a;box-shadow:0 3px 6px rgba(0,0,0,.35);"></div>
+    <div style="position:absolute;left:466px;top:60px;width:56px;height:78px;border-radius:4px 4px 0 0;background:repeating-linear-gradient(90deg,#c14a32 0 10px,#b0402b 10px 20px);"></div>
+    <div style="position:absolute;left:472px;top:64px;width:44px;height:22px;border-radius:3px;background:#eadfca;"></div>
+    <div style="position:absolute;left:70px;top:350px;width:300px;height:26px;border-radius:3px;background:#5a442c;box-shadow:0 2px 4px rgba(0,0,0,.3);"></div>
+    <div style="position:absolute;left:74px;top:346px;width:292px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#5f8a3a 0 12px,#4f7a30 12px 22px);box-shadow:0 0 18px 3px rgba(95,138,58,.4);"></div>
+    <div style="position:absolute;left:70px;top:400px;width:300px;height:26px;border-radius:3px;background:#5a442c;box-shadow:0 2px 4px rgba(0,0,0,.3);"></div>
+    <div style="position:absolute;left:74px;top:396px;width:292px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#5f8a3a 0 12px,#4f7a30 12px 22px);box-shadow:0 0 18px 3px rgba(95,138,58,.4);"></div>
+    <div style="position:absolute;left:520px;top:360px;width:200px;height:50px;border-radius:3px;background:linear-gradient(#4a3a28,#33281b);box-shadow:inset 0 2px 0 rgba(242,181,99,.3),0 3px 6px rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:540px;top:372px;width:26px;height:26px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 14px 5px rgba(232,134,60,.55);"></div>
+    <div style="position:absolute;left:670px;top:430px;width:40px;height:40px;border-radius:3px;background:#6b5334;box-shadow:0 2px 5px rgba(0,0,0,.4);"></div>
+
+    <!-- ===== soft practical room glows (screen) ===== -->
+    <div style="position:absolute;left:60px;top:60px;width:300px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(242,181,99,.16),transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+    <div style="position:absolute;left:470px;top:60px;width:320px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(232,147,74,.13),transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+    <div style="position:absolute;left:40px;top:330px;width:340px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(120,150,70,.16),transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+    <div style="position:absolute;left:460px;top:330px;width:360px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(232,134,60,.14),transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+
+    <!-- room labels -->
+    <div style="position:absolute;left:44px;top:40px;font-size:9px;letter-spacing:.14em;color:rgba(255,245,230,.55);">GALLEY · COMMON</div>
+    <div style="position:absolute;left:450px;top:40px;font-size:9px;letter-spacing:.14em;color:rgba(255,245,230,.55);">CREW QUARTERS</div>
+    <div style="position:absolute;left:44px;top:320px;font-size:9px;letter-spacing:.14em;color:rgba(255,245,230,.55);">HYDROPONICS</div>
+    <div style="position:absolute;left:450px;top:320px;font-size:9px;letter-spacing:.14em;color:rgba(255,245,230,.55);">WORKSHOP</div>
+  </div>
+
+  <!-- ===== material swatches ===== -->
+  <div style="display:flex;gap:48px;flex-wrap:wrap;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="font-size:10px;letter-spacing:.16em;color:#57503f;">WALL / BULKHEAD OPTIONS</div>
+      <div style="display:flex;gap:14px;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:#3a4b5c;box-shadow:inset 0 6px 0 rgba(232,147,74,.55),inset 0 0 0 1px rgba(0,0,0,.4);background-image:radial-gradient(rgba(0,0,0,.35) 1.5px,transparent 2px);background-size:20px 20px;background-position:6px 26px;"></div>
+          <div class="swlabel">STEEL + TRIM</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:repeating-linear-gradient(0deg,#8a5e38 0 14px,#7a5230 14px 16px);box-shadow:inset 0 0 0 3px #5f3f26,inset 0 0 0 1px rgba(0,0,0,.3);"></div>
+          <div class="swlabel">TIMBER-LINED</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:#2f3e4c;box-shadow:inset 0 0 0 4px #244b63,inset 0 0 0 6px #2f3e4c;background-image:radial-gradient(rgba(90,159,212,.5) 2px,transparent 3px);background-size:28px 28px;background-position:14px 14px;"></div>
+          <div class="swlabel">STEEL + PORTS</div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="font-size:10px;letter-spacing:.16em;color:#57503f;">FLOOR OPTIONS</div>
+      <div style="display:flex;gap:14px;">
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:repeating-linear-gradient(90deg,#c2894e 0 20px,#b57e45 20px 22px);box-shadow:inset 0 0 0 1px rgba(0,0,0,.2),inset 0 6px 14px rgba(0,0,0,.15);"></div>
+          <div class="swlabel">WARM PLANK</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:#9c8763;background-image:linear-gradient(rgba(0,0,0,.14) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.14) 1px,transparent 1px);background-size:28px 28px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></div>
+          <div class="swlabel">STEEL-TAN GRID</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div class="tile" style="width:84px;height:84px;border-radius:4px;background:#8a9857;background-image:radial-gradient(rgba(60,90,40,.5) 2px,transparent 3px);background-size:16px 16px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2);"></div>
+          <div class="swlabel">GROW MATTING</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cap">Each room reads at a glance by material + tint: <b style="color:#c2894e;">wood</b> for social/living, <b style="color:#8a9857;">grow matting</b> for hydroponics, <b style="color:#9c8763;">steel-tan grid</b> for corridors &amp; utility. Walls carry a thin amber trim-light so powered spaces feel warm; doorways spill a little of that light onto the floor. This maps onto your existing isometric sprites as a re-skin of wall/floor/room tiles — the layout, pawns, and workstations stay exactly as they are.</div>
+
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!--
+  IMPORTED DESIGN MOCKUP — Perilune Crew Sprites (the new pawns).
+  Source: claude.ai/design project cb4b6b0f-… ("Perilune Crew - Sprites.dc.html"), imported via
+  the claude_design MCP. READ AS A SPEC, NOT A LIVE PAGE (Design-Component runtime).
+
+  WHAT IT DEFINES (the new pawn look — replaces the old raster isometric sprites):
+  - Chunky FRONT-FACING pixel pawns as inline SVG (16x24 viewBox): rounded rects for hair,
+    skin, role-colored uniform (torso + two arms), a soft ground shadow ellipse, dark eyes,
+    boots, and a thin amber RIM-LIGHT down the LEFT side (x=4, rgba(242,181,99,.4)). A gentle
+    "bob" animation. Warm skin tones; hair/skin/uniform vary per soul so 8 read distinct.
+  - Each ROLE OWNS A HUE: amber life-support (#e8934a), green hydroponics (#6f8a3a), rust
+    reactor (#c14a32), teal damage-control/helm (#4a6b82 / #2f6f7a), cream medic (#e8dcc9),
+    stores (#b5852f), comms (#5a9fd4). Accent + hair + skin per soul in the DCLogic `crew[]`.
+  - The SAME sprite serves two forms: (1) the in-world pawn on the plank floor, (2) a roster
+    PORTRAIT CHIP (bust, 16x20 viewBox in a rounded well with an amber underglow) for CREW WATCH.
+  - Front-facing means NO facing rotation; directional motion reads via position slide + bob,
+    not by turning the sprite.
+
+  IMPLEMENTATION NOTE (approved plan): realized as a parametric SVG generator
+  (client/src/render/pawn-svg.js) — one pure function of crew data producing both the in-world
+  pawn and the portrait chip; role hue is a parameter, deterministic hair/skin/uniform per cid.
+  Pawns join SPRITE_NO_ROTATE (never rotated); smooth sub-tile slide reused from motion.js.
+  Retires the raster portraits pipeline for crew. No Gemini generation.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+  <style>
+    body { margin:0; background:#0c1522; font-family:'Space Mono',monospace; }
+    a { color:#e8934a; } a:hover { color:#f2b563; }
+    .badge { background:#e8934a;color:#12100d;font:700 12px 'Space Mono',monospace;padding:3px 9px;border-radius:3px; }
+    .cap { color:#8c8377;font-size:11.5px;max-width:960px;line-height:1.7; }
+    svg { shape-rendering:auto; display:block; }
+    @keyframes bob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-2px);} }
+  </style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:36px;padding:52px;">
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="badge">1a</span>
+      <span style="color:#e8dcc9;font-size:20px;">Crew, drawn to match the warm deck</span>
+    </div>
+    <div class="cap">Chunky front-facing pixel pawns that belong on the plank floors: <b style="color:#f2c;color:#f2b563;">warm skin tones</b>, <b style="color:#e8dcc9;">role-colored uniforms</b>, a soft ground shadow, and a thin amber <b style="color:#f2b563;">rim-light</b> down one side so they catch the same practical glow the rooms do. Simple, readable at any zoom, and never cold. Below: the same sprite as a roster portrait chip for the CREW WATCH panel.</div>
+  </div>
+
+  <!-- ===== in-world pawns on plank floor ===== -->
+  <div style="position:relative;width:1020px;border-radius:8px;padding:34px 20px 26px;background:repeating-linear-gradient(90deg,#c2894e 0 44px,#b57e45 44px 47px);box-shadow:inset 0 8px 22px rgba(0,0,0,.2),inset 0 0 0 1px rgba(0,0,0,.15);overflow:hidden;">
+    <div style="position:absolute;left:0;right:0;top:0;height:12px;background:#3a4b5c;box-shadow:inset 0 3px 0 rgba(232,147,74,.55),inset 0 -2px 0 rgba(0,0,0,.4);"></div>
+    <div style="position:absolute;left:-100px;top:-40px;width:400px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(242,181,99,.16),transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+    <div style="display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap;position:relative;">
+      <sc-for list="{{crew}}" as="c" hint-placeholder-count="8">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px;width:114px;">
+          <svg width="74" height="111" viewBox="0 0 16 24" style="animation:bob 3.2s ease-in-out infinite;">
+            <ellipse cx="8" cy="23" rx="6" ry="1.3" fill="rgba(0,0,0,.35)"></ellipse>
+            <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="{{c.hair}}"></rect>
+            <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="{{c.skin}}"></rect>
+            <rect x="4" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+            <rect x="11" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+            <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect>
+            <rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+            <rect x="4" y="10" width="8" height="1" fill="{{c.accent}}"></rect>
+            <rect x="3.8" y="10.6" width="8.4" height="6.6" rx="1.8" fill="{{c.uniform}}"></rect>
+            <rect x="2" y="11.2" width="2.4" height="5" rx="1.1" fill="{{c.uniform}}"></rect>
+            <rect x="11.6" y="11.2" width="2.4" height="5" rx="1.1" fill="{{c.uniform}}"></rect>
+            <rect x="11" y="11" width="1" height="6" fill="rgba(0,0,0,.16)"></rect>
+            <rect x="2" y="16" width="2" height="1" fill="{{c.skin}}"></rect>
+            <rect x="12" y="16" width="2" height="1" fill="{{c.skin}}"></rect>
+            <rect x="5" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect>
+            <rect x="8.1" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect>
+            <rect x="5" y="21" width="3" height="1" fill="#16100b"></rect>
+            <rect x="8" y="21" width="3" height="1" fill="#16100b"></rect>
+            <rect x="4" y="4" width="1" height="13" fill="rgba(242,181,99,.4)"></rect>
+          </svg>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <div style="font-size:11px;letter-spacing:.1em;color:#3a2c1c;font-weight:700;">{{c.surname}}</div>
+            <div style="font-size:8.5px;letter-spacing:.08em;color:#6b4f30;text-align:center;">{{c.role}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="position:absolute;left:20px;bottom:6px;font-size:9px;letter-spacing:.14em;color:rgba(58,44,28,.55);">LIVE SPRITE FEED — 8 SOULS</div>
+  </div>
+
+  <!-- ===== roster portrait chips ===== -->
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div style="font-size:10px;letter-spacing:.18em;color:#57503f;">CREW WATCH — ROSTER CHIP</div>
+    <div style="display:grid;grid-template-columns:repeat(4,236px);gap:12px;">
+      <sc-for list="{{crew}}" as="c" hint-placeholder-count="8">
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#1a1310;border-radius:6px;box-shadow:inset 0 0 0 1px #2b241c;">
+          <div style="position:relative;width:52px;height:52px;border-radius:5px;overflow:hidden;background:radial-gradient(circle at 50% 30%,#2a3a48,#141d26);box-shadow:inset 0 0 0 1px #3a4b5c;flex-shrink:0;">
+            <div style="position:absolute;left:0;right:0;bottom:0;height:20px;background:radial-gradient(circle at 50% 100%,rgba(242,181,99,.35),transparent 70%);"></div>
+            <svg width="52" height="65" viewBox="0 0 16 20" style="position:absolute;left:0;top:6px;">
+              <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="{{c.hair}}"></rect>
+              <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="{{c.skin}}"></rect>
+              <rect x="4" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+              <rect x="11" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+              <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect>
+              <rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+              <rect x="4" y="10" width="8" height="1" fill="{{c.accent}}"></rect>
+              <rect x="3" y="11" width="10" height="9" rx="2" fill="{{c.uniform}}"></rect>
+              <rect x="11" y="11" width="2" height="9" fill="rgba(0,0,0,.16)"></rect>
+              <rect x="4" y="4" width="1" height="16" fill="rgba(242,181,99,.4)"></rect>
+            </svg>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+            <div style="font-size:12px;letter-spacing:.08em;color:#e8dcc9;">{{c.surname}}</div>
+            <div style="font-size:9px;letter-spacing:.06em;color:#8c8377;">{{c.role}}</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
+              <div style="width:7px;height:7px;border-radius:50%;background:{{c.uniform}};"></div>
+              <div style="font-size:9px;color:#6fc09a;">{{c.status}}</div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div class="cap">Each role owns a hue so you read the deck at a glance — amber life-support, green hydroponics, rust reactor, teal helm, cream medic, and so on. Same sprite serves both the in-world pawn and the roster bust, lit to match the warm rooms. Hair/skin variety keeps eight souls distinct without extra art. Tell me any role recolor, or if you'd rather a side/isometric view to match the game camera.</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      crew: [
+        { surname:'OKONKWO', role:'LIFE-SUPPORT LEAD', uniform:'#e8934a', accent:'#f2b563', hair:'#241812', skin:'#8a5a38', status:'On deck 0' },
+        { surname:'RAGHAVAN', role:'HYDROPONICS', uniform:'#6f8a3a', accent:'#9ab55a', hair:'#1c140e', skin:'#a06e42', status:'Tending bay 2' },
+        { surname:'VOLKOV', role:'REACTOR WATCH', uniform:'#c14a32', accent:'#e8724a', hair:'#c9b89a', skin:'#d8b48c', status:'Coolant loop B' },
+        { surname:'CAMARA', role:'DAMAGE CONTROL', uniform:'#4a6b82', accent:'#7fb0d8', hair:'#0f0b08', skin:'#6b4327', status:'At recycler' },
+        { surname:'HASSAN', role:"SHIP'S MEDIC", uniform:'#e8dcc9', accent:'#c14a32', hair:'#1a120c', skin:'#9a6440', status:'Med bay' },
+        { surname:'FERREIRA', role:'HELM WATCH', uniform:'#2f6f7a', accent:'#5ab0b8', hair:'#2a1c12', skin:'#c99a6a', status:'Machine shop' },
+        { surname:'OYELARAN', role:'STORES & LOGISTICS', uniform:'#b5852f', accent:'#e0b45a', hair:'#0f0b08', skin:'#7a4a28', status:'At fabricator' },
+        { surname:'CHEN', role:'COMMS & SENSORS', uniform:'#5a9fd4', accent:'#8fc4ea', hair:'#161008', skin:'#caa074', status:'Idle' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>
