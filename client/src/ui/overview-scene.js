@@ -342,6 +342,35 @@ function ghostLayer(designs, deck, t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Terminals — clickable MOSS console markers, one per terminal device on the shown deck. Drawn
+// BELOW the pawns (a crew member standing on a console still selects as a pawn) but above the room
+// so the marker is hittable. Carries `data-tid` so the click routes straight to that terminal's
+// MOSS program (overview-view's hitTest → 'terminal' action). The `terminals` wire channel
+// ([tid,deck,x,y]) is the source; an empty/absent channel draws nothing (graceful).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+function terminalLayer(terminals, deck, t, id) {
+  const list = Array.isArray(terminals) ? terminals : [];
+  const out = [];
+  for (const term of list) {
+    if (!term || (term.deck | 0) !== deck) continue;
+    const [cx, cy] = t.project(term.x + 0.5, term.y + 0.5);
+    const s = Math.max(8, t.tileSize * 1.0);
+    const w = s, h = s * 0.78;
+    const x = cx - w / 2, y = cy - h * 0.7;
+    out.push(`<g class="pl-terminal" data-tid="${esc(term.tid)}">`
+      // hit target (transparent, generous) so the whole cell is clickable
+      + `<rect x="${n(cx - t.KX / 2)}" y="${n(cy - t.KY / 2)}" width="${n(t.KX)}" height="${n(t.KY)}" fill="transparent"/>`
+      // console body + amber phosphor screen + stand
+      + `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="1.6" fill="rgba(18,14,10,.92)" stroke="#f2b563" stroke-width="1"/>`
+      + `<rect x="${n(x + 1.4)}" y="${n(y + 1.4)}" width="${n(w - 2.8)}" height="${n(h - 2.8)}" rx="1" fill="rgba(242,181,99,.3)"/>`
+      + `<rect x="${n(cx - w * 0.18)}" y="${n(y + h)}" width="${n(w * 0.36)}" height="${n(h * 0.22)}" fill="#cf7a33"/>`
+      + `</g>`);
+  }
+  return out.length ? `<g class="pl-terminals">${out.join('')}</g>` : '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Layer 6 — pawns: front-facing crew figures for on-deck roster members (VS-O-39 … VS-O-48).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -395,6 +424,7 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
  * @param {object} [state.frame]         the frame message (furniture comes from its cells).
  * @param {Array}  [state.crew]          roster crew [{cid,name,role,deck,x,y}].
  * @param {Array}  [state.designs]       build-ghost design cells (or a {cells} message).
+ * @param {Array}  [state.terminals]     MOSS terminal directory [{tid,deck,x,y}] — clickable markers.
  * @param {*}      [state.selectedCid]   the selected crew cid (selection glow + amber tag).
  * @param {string} [state.lens]          the active lens (accepted; resting look only for now).
  * @param {string} [state.idPrefix]      def-id namespace (default 'ov') so many scenes can coexist.
@@ -422,6 +452,7 @@ export function overviewScene(state) {
     + furnitureLayer(st.frame, deck, t, id)
     + glowPools(slots, t, id)
     + ghostLayer(st.designs, deck, t)
+    + terminalLayer(st.terminals, deck, t, id)
     + pawnLayer(st.crew, deck, t, st.selectedCid, id);
 
   return `<svg class="pl-overview" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid meet"`
