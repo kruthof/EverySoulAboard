@@ -6,8 +6,9 @@ namespace Perilune.Sim
     /// a byte (<see cref="ConstructionCompletedEvent.BuildKind"/>) — append-only.</summary>
     public enum BuildKind : byte
     {
-        Wall = 0, // SetWall tile write, then room reflood (seal + pressurize via atmosphere)
-        Door = 1, // spawn a runtime Door device on the tile
+        Wall = 0,  // SetWall tile write, then room reflood (seal + pressurize via atmosphere)
+        Door = 1,  // spawn a runtime Door device on the tile
+        Floor = 2, // re-material an existing floor tile (no wall created); inert identity write
     }
 
     /// <summary>
@@ -23,6 +24,7 @@ namespace Perilune.Sim
         public int Required;   // material units (Regolith) the site needs before it can build
         public int Delivered;  // material units already staged at the site
         public int WorkTicks;  // construct ticks the Build job counts down from (def-frozen at designate)
+        public byte Material;  // material-variant byte recorded via World.SetMaterial on completion (0 = default)
     }
 
     /// <summary>
@@ -50,7 +52,7 @@ namespace Perilune.Sim
     {
         public string Name => "Build";
         public int IntervalTicks => 1; // registered in the stack; Tick is a no-op (state is command/JobSystem driven)
-        public ushort StateVersion => 1;
+        public ushort StateVersion => 2; // v2 adds PendingBuild.Material (pre-v2 restores → Material 0)
 
         /// <summary>The material every build consumes in v0 (dig spoil → wall/door).</summary>
         public const ItemKind Material = ItemKind.Regolith;
@@ -87,17 +89,31 @@ namespace Perilune.Sim
 
         /// <summary>
         /// Whether <paramref name="pos"/> is a legal target for a fresh <paramref name="kind"/>
-        /// designation right now: in bounds, an open non-void floor tile with no wall, no
-        /// device, no citizen standing on it, and not already designated. Deterministic —
-        /// same world, same answer.
+        /// designation right now (with <paramref name="material"/> the requested material byte).
+        /// Wall/Door: in bounds, an open non-void floor tile with no wall, no device, no citizen
+        /// standing on it, and not already designated. Floor: in bounds, a non-void floor tile
+        /// with no wall, not already designated, under the staging cap, and the material must
+        /// actually change (re-flooring the SAME material is a deterministic no-op) — a floor
+        /// re-material may sit under furniture or a standing citizen, so it does NOT require an
+        /// empty device/tile. Deterministic — same world, same answer.
         /// </summary>
-        public bool CanDesignate(Simulation sim, Int3 pos, BuildKind kind)
+        public bool CanDesignate(Simulation sim, Int3 pos, BuildKind kind, byte material = 0)
         {
             if (!sim.World.InBounds(pos)) return false;
             if (TryGet(pos, out _)) return false;                       // already designated
             if (_pending.Count >= sim.Defs.Build.MaxStaged) return false; // concurrency cap
             if (sim.World.GetFloor(pos) == TileDefs.Void) return false; // nothing to build on
             if (sim.World.GetWall(pos) != 0) return false;              // already walled / debris
+
+            if (kind == BuildKind.Floor)
+            {
+                // A floor re-material is an inert identity write: it needs only a real floor with
+                // no wall (both checked above) and an actual change. It may go under furniture or
+                // a citizen — no device/occupancy gate.
+                if (sim.World.GetMaterial(pos) == material) return false; // no-op re-floor
+                return true;
+            }
+
             if ((sim.World.GetFlags(pos) & TileFlags.HasDevice) != 0) return false; // device present
             if (sim.TryGetDeviceAt(pos, out _)) return false;
             // A citizen standing on the tile blocks a wall (they'd be sealed in) and a door.
@@ -113,9 +129,9 @@ namespace Perilune.Sim
         /// / duplicate tile is a deterministic no-op. Sets <see cref="Simulation.JobsDirty"/>
         /// so the job board picks up the new haul/build demand.
         /// </summary>
-        public bool Designate(Simulation sim, Int3 pos, BuildKind kind)
+        public bool Designate(Simulation sim, Int3 pos, BuildKind kind, byte material = 0)
         {
-            if (!CanDesignate(sim, pos, kind)) return false;
+            if (!CanDesignate(sim, pos, kind, material)) return false;
             var b = new PendingBuild
             {
                 Pos = pos,
@@ -123,6 +139,7 @@ namespace Perilune.Sim
                 Required = MaterialCost(sim.Defs.Build, kind),
                 Delivered = 0,
                 WorkTicks = ConstructTicks(sim.Defs.Build, kind),
+                Material = material,
             };
             InsertSorted(b);
             sim.JobsDirty |= JobBoardDirty.Sites; // a new pending site — build board must re-derive
@@ -186,13 +203,22 @@ namespace Perilune.Sim
             {
                 if (_pending[i].Pos != pos) continue;
                 var kind = _pending[i].Kind;
+                var material = _pending[i].Material;
                 _pending.RemoveAt(i);
 
                 if (kind == BuildKind.Wall)
                 {
                     sim.World.SetWall(pos, TileDefs.Wall);   // RecomputeFlags → BlocksGas, not walkable
+                    sim.World.SetMaterial(pos, material);    // record the wall's material variant
                     sim.Rooms.MarkDirty();                   // reflood next tick: seal + RoomsChangedEvent
                     sim.PowerDirty = true;                   // conduit reachability may change
+                }
+                else if (kind == BuildKind.Floor)
+                {
+                    // Re-material an existing floor tile: inert identity write only. No SetWall,
+                    // no reflood, no PowerDirty — material never affects Walkable/BlocksGas or
+                    // atmosphere/power reachability. The tile stays the floor it already was.
+                    sim.World.SetMaterial(pos, material);
                 }
                 else // Door
                 {
@@ -221,11 +247,19 @@ namespace Perilune.Sim
 
         // ------------------------------------------------------------------ defs read
 
+        // Floor costs/ticks are v1 literals (this package deliberately touches no defs so the defs
+        // checksum stays stable). TODO(economy): promote to BuildDefs.FloorMaterial /
+        // BuildDefs.FloorConstructTicks tunables in a later economy pass.
+        private const int FloorMaterialCost = 1;
+        private const int FloorConstructTicks = 20;
+
         private static int MaterialCost(SimDefs.BuildDefs d, BuildKind kind) =>
-            kind == BuildKind.Wall ? d.WallMaterial : d.DoorMaterial;
+            kind == BuildKind.Wall ? d.WallMaterial :
+            kind == BuildKind.Floor ? FloorMaterialCost : d.DoorMaterial;
 
         private static int ConstructTicks(SimDefs.BuildDefs d, BuildKind kind) =>
-            kind == BuildKind.Wall ? d.WallConstructTicks : d.DoorConstructTicks;
+            kind == BuildKind.Wall ? d.WallConstructTicks :
+            kind == BuildKind.Floor ? FloorConstructTicks : d.DoorConstructTicks;
 
         // ----------------------------------------------------------- sorted insert
 
@@ -259,12 +293,13 @@ namespace Perilune.Sim
                 writer.Write(b.Required);
                 writer.Write(b.Delivered);
                 writer.Write(b.WorkTicks);
+                writer.Write(b.Material); // v2: material-variant byte
             }
         }
 
         public void RestoreState(System.IO.BinaryReader reader, ushort version)
         {
-            if (version != 1) return;
+            if (version < 1 || version > StateVersion) return;
             _pending.Clear();
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
@@ -276,6 +311,8 @@ namespace Perilune.Sim
                     Required = reader.ReadInt32(),
                     Delivered = reader.ReadInt32(),
                     WorkTicks = reader.ReadInt32(),
+                    // v2 appends Material; a v1 save has none → leave it 0 (default material).
+                    Material = version >= 2 ? reader.ReadByte() : (byte)0,
                 };
                 _pending.Add(b); // saved in canonical order → stays sorted
             }
@@ -292,6 +329,7 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)(uint)b.Required);
                 h = XxHash64.Combine(h, (ulong)(uint)b.Delivered);
                 h = XxHash64.Combine(h, (ulong)(uint)b.WorkTicks);
+                h = XxHash64.Combine(h, (ulong)b.Material); // v2: appended last, fixed position
             }
             return h;
         }

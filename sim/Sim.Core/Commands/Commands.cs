@@ -146,10 +146,11 @@ namespace Perilune.Sim
         private readonly Int3 _pos;
         private readonly BuildKind _kind;
         private readonly bool _on;
+        private readonly byte _material;
 
-        public DesignateBuildCommand(Int3 pos, BuildKind kind, bool on = true)
+        public DesignateBuildCommand(Int3 pos, BuildKind kind, bool on = true, byte material = 0)
         {
-            _pos = pos; _kind = kind; _on = on;
+            _pos = pos; _kind = kind; _on = on; _material = material;
         }
 
         public void Execute(Simulation sim)
@@ -157,7 +158,7 @@ namespace Perilune.Sim
             foreach (var s in sim.Systems)
                 if (s is BuildSystem b)
                 {
-                    if (_on) b.Designate(sim, _pos, _kind);
+                    if (_on) b.Designate(sim, _pos, _kind, _material);
                     else b.Cancel(sim, _pos);
                     return;
                 }
