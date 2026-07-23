@@ -239,6 +239,22 @@ namespace Perilune.Tests
         }
 
         [Test]
+        public void MutatedDiffusionCoefficient_Diverge_ProvingAtmosphereReadsDefs()
+        {
+            // DiffusionCoefficient zeroed: the per-species diffusion term (B-3) stops moving
+            // gas across the open door between the two rooms, so the crew-side CO2/O2 and the
+            // hydro-side (vent-fed) mix — both in StateHash via Room moles — drift apart from
+            // the diffusing baseline. If AtmosphereSystem ignored the def, this would never
+            // diverge (the scenario's one open door links the two compartments).
+            var mutated = SimDefs.CreateDefault();
+            mutated.Atmosphere.DiffusionCoefficient = 0.0;
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(SimDefs.CreateDefault(), mutated, 4000, "zeroed DiffusionCoefficient");
+        }
+
+        [Test]
         public void MutatedNeedsRate_Diverge_ProvingNeedsReadsDefs()
         {
             // Hunger rate x10: every living citizen accumulates Hunger (and thus Mood, both

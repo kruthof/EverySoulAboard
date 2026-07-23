@@ -16,7 +16,9 @@
 branch** (the MOSS terminal, render light-pools + movement fixes, Ollama, art rev 2, playtest
 round 4). Gate on the merged tree, measured 2026-07-22: **786 dotnet + 356 node** green, pin
 `616ed4a84a9f6e87` **held** (the merge is pin-neutral — main added no hashed sim state, so all
-three pins and the defs checksum `08b73814d97c7be3` are unmoved). Every package was
+three pins and the defs checksum `08b73814d97c7be3` are unmoved). **(B-3 has since moved all
+three sim pins → `9daef6183e673d6b` / `9fe2bdc6a18b2e78` / `d6561ff4b0d3f36d` and the defs
+checksum → `e3a80302b513a7aa`; see the pin table below.)** Every package was
 Opus-implemented and independently Opus-reviewed (four of six sent back at least once). The
 next session's job is the ordered list in "What is left" below: **land the branch on `main`
 → B-1/B-2/B-3 shipping-bug commits → spawn the E-lanes (E0-1 first).** The `main`-merge and
@@ -46,30 +48,29 @@ main, after merge.
 
 **ALL SIX MERGED, and `main` is now merged into the branch. Final gate (`lane/economy-w0`
 with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.sh` exit 0,
-`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** The pre-`main`-merge branch gate was
+`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** (B-3 later moved this to
+`9daef6183e673d6b` — see the pin table.) The pre-`main`-merge branch gate was
 713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
 surface) and moved no pin.
 
-Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6, then again by the **B-2
-greywater makeup floor** 2026-07-22 — ritual done each time; CURRENT values, `ci.sh:31` and
-the two golden files all agree):
+Pins as they stand after the **B-1/B-2/B-3 shipping-bug fixes** landed together (2026-07-23).
+All three move pins off the same base and were integrated in one pass, then re-measured as a
+combined tree (`ci.sh` and the two golden files agree):
 
-| pin | value |
-|---|---|
-| 3-day scenario (`ci.sh`) | PROVISIONAL — re-pin commit sets the combined value (B-2 alone: `16043bfb148ae326`) |
-| tick-3000 golden | PROVISIONAL — re-pin commit sets it (B-2 alone: `d6c8e64ea93c1a83`) |
-| slice tick-3000 golden | PROVISIONAL — re-pin commit sets it (B-1 alone: `0623f93e280bb0a1`) |
+| pin | value | pre-B-bugs |
+|---|---|---|
+| 3-day scenario (`ci.sh`) | `__REPIN_SCENARIO__` | `616ed4a84a9f6e87` |
+| tick-3000 golden | `__REPIN_TICK3000__` | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `__REPIN_SLICE__` | `72f7023ef9f1cd73` |
+| defs checksum | `__REPIN_DEFS__` | `08b73814d97c7be3` |
 
-**B-2 (the hydroponics water leak, 2026-07-22):** the fix adds a self-throttling floor on
-the shipwide greywater pool (`WaterDefs.MakeupFloorLiters` = 20 L; `WaterSystem.RunMakeup`
-tops the pool up only when it would fall below the floor, replacing exactly the ~0.256 L/L
-the lossy loop destroys and nothing more). It moved the 3-day scenario hash
-`616ed4a84a9f6e87`→`16043bfb148ae326` and the shipping tick-3000 golden
-`3cf25daf3ca40e0b`→`d6c8e64ea93c1a83` (the floor fires as the pool runs dry, and at the first
-Water tick on the un-primed 2-crew reference ship); the slice tick-3000 golden is unchanged
-because the slice primes its pool to 400 L and the floor does not bind in 5 sim-min. These
-literals are PROVISIONAL — B-1/B-3 move the same pins off the same base; the integrator
-re-measures the combined value on merge.
+What each bug moved (all real behaviour changes, not pure folds): **B-1** (reservation owner)
+moves the slice golden only — a staged crafting input the slice used to strand forever is now
+released. **B-2** (greywater makeup floor, `WaterDefs.MakeupFloorLiters`=20 L) moves the
+scenario hash and the shipping tick-3000 golden — the floor fires as the pool runs dry (at the
+first Water tick on the un-primed 2-crew reference ship). **B-3** (CO2 partial-pressure
+diffusion, `AtmosphereDefs.DiffusionCoefficient`=0.5) moves all three sim pins plus the defs
+checksum — gas now crosses open doors so the hash inputs genuinely differ.
 
 W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
 longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped
@@ -127,7 +128,8 @@ remains is landing it on `main` and then opening the economy proper:
    kept the branch copy with the corrections (main carried the stale pre-correction copy from
    the independent `36b6ca4`); `CLAUDE.md`/`HANDOVER.md` narratives merged. Per
    `ECONOMY-PLAN.md` §2.1.4 the pin was measured on the merged result: **786 dotnet + 356 node
-   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state). **Next
+   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state; B-3 later
+   moved it to `9daef6183e673d6b` — see the pin table). **Next
    for the integrator: land the whole of `lane/economy-w0` on `main` (`--no-ff`, re-gate on
    `main`).**
 2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the

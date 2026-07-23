@@ -743,19 +743,22 @@ namespace Perilune.Tests
         public void The_Slice_Ledger_Surfaces_Its_Real_Failures_By_Day_Three()
         {
             // A regression pin on the HONESTY of the shipped slice's ledger, not on exact numbers:
-            // MECHANICS.md §13.1 (CO2 climbs past 2,000 ppm with healthy scrubbers) and §13.2 (the
-            // ship freezes below needs.def hypothermia_c) are STILL live at day three, so those rows
-            // must still degrade. ECONOMY-PLAN B-2 (tank_hydro ran dry ~day 1.2, stalling the beds
-            // forever) is now FIXED by the greywater makeup floor (WaterSystem.RunMakeup), so the
-            // water_reclaim + hydroponics rows must now read healthy — the ledger honestly reflects
-            // a sustainable loop rather than a dry tank.
+            // By day three, only §13.2 (the ship freezes below needs.def hypothermia_c) is STILL
+            // live, so the thermal row must still degrade. The two economy defects are now FIXED:
+            //  - B-2 (tank_hydro ran dry ~day 1.2, stalling the beds forever) — fixed by the greywater
+            //    makeup floor (WaterSystem.RunMakeup), so water_reclaim + hydroponics read Nominal.
+            //  - B-3/§13.1 ("CO2 climbs past 2,000 ppm with healthy scrubbers") — was the gas-transport
+            //    bug: gas could not cross the open doors to reach a scrubber. The diffusion term fixes
+            //    it, so the scrubbers hold the air and LIFE SUPPORT reads Nominal (the §13.1 symptom is
+            //    gone; that doc note described the pre-B-3 sim).
             var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
             while (host.Sim.TickCount < 3 * SimClockUtil.TicksPerDay) host.Sim.Tick();
             var report = ShipSystems.Compute(host.Sim, host.History);
 
             var ls = Row(report, "life_support");
-            Assert.AreEqual(ShipSystemState.Degraded, ls.State, "§13.1: the air is bad and the row says so");
-            Assert.Less(ls.Load, 100, "…while scrubber capacity still exceeds crew output");
+            Assert.AreEqual(ShipSystemState.Nominal, ls.State,
+                "B-3: partial-pressure diffusion lets the scrubbers reach the crew room, so the air is clean");
+            Assert.Less(ls.Load, 100, "…scrubber capacity comfortably exceeds crew CO2 output");
 
             Assert.AreEqual(ShipSystemState.Degraded, Row(report, "thermal").State, "§13.2: the ship freezes");
             StringAssert.Contains("LOSING heat", Row(report, "thermal").Advisory);

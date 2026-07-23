@@ -154,14 +154,11 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `16043bfb148ae326` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `__REPIN_SCENARIO__` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  <PROVISIONAL — the B-bug integration re-pin commit rewrites all three literals to the
-  combined measured values. B-1 moves the slice golden (`72f7023ef9f1cd73`→`0623f93e280bb0a1`,
-  a released-reservation behaviour change); B-2 moves the scenario hash
-  (`616ed4a84a9f6e87`→`16043bfb148ae326`) and the shipping tick-3000 golden
-  (`3cf25daf3ca40e0b`→`d6c8e64ea93c1a83`); B-3 moves all of them again plus the defs checksum.
-  Final values live in `ci.sh` + the two golden files + the re-pin commit.>
+  `__REPIN_TICK3000__`; the slice tick-3000 golden is `__REPIN_SLICE__`. (The three B-bugs
+  B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
+  defs checksum are set to their combined measured values by the integration re-pin commit.)
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
@@ -171,8 +168,12 @@ another's half-finished work.*
   `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to
   `ffefe9a9a42d8e7e` / `6071adb8fa781440` / `ab47cefd840247c4`; and economy **W0-6**
   (registering four empty economy systems — `ZONE`, `PROD`, `ORES`, `TRAD` — whose seeds fold
-  unconditionally) took those to the current values. Exactly 2 goldens moved each time, both
-  the tick-3000 hash files.
+  unconditionally) took those to `616ed4a84a9f6e87` / `3cf25daf3ca40e0b` / `72f7023ef9f1cd73`.
+  Exactly 2 goldens moved each fold, both the tick-3000 hash files. **B-3** (the CO2
+  partial-pressure diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then moved all three
+  to the current values above — the first move that is a real behaviour change, not a fold: gas
+  now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
+  `08b73814d97c7be3` → `e3a80302b513a7aa`. Still only the two tick-3000 goldens moved.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
