@@ -72,14 +72,32 @@ export function transform(cam) {
   return { s, ox, oy };
 }
 
-/** Visible tile range [x0,x1) × [y0,y1), culled exactly like Client.html draw(). */
+/**
+ * ── CULL PADDING ────────────────────────────────────────────────────────────────────────────────
+ * How many tiles of slack the cull window keeps beyond the viewport. It is 1, and the reason is
+ * exact rather than defensive: a pawn mid-step is DRAWN one tile back from the tile it occupies, so
+ * a tile-exact window drops a pawn whose tile has just crossed the edge while up to a whole tile of
+ * its body is still on screen. Measured at the default zoom (pitch 64, viewport 768 px, window
+ * [2,14)): an east-bound pawn whose tile is 14 renders its body across device x 704–768 — squarely
+ * inside the viewport — and was composed out entirely. That is a one-tile-early disappearance at
+ * every edge, in every direction, and it is the only mechanism that can blink a SOUTH-bound pawn
+ * (the entity-order defect is structurally W/N only).
+ *
+ * One tile is exactly enough: `slideOffset` is bounded by one tile in each axis, and nothing else
+ * in the display list draws outside its own cell — the grounding shadow leans ~0.6 tile but is laid
+ * BACK into the caster's own cell. The cost is one ring of tiles per frame.
+ */
+export const CULL_PAD = 1;
+
+/** Visible tile range [x0,x1) × [y0,y1), the viewport plus CULL_PAD tiles of slack, clamped to the
+ *  map. Ported from Client.html draw(); the padding is this renderer's own (see above). */
 export function cullRange(cam, frame) {
   const { ox, oy } = transform(cam);
   const p = tilePitch(cam); // == tile * s, exactly, with no float residue
-  const x0 = Math.max(0, Math.floor(-ox / p));
-  const x1 = Math.min(frame.w, Math.ceil((cam.viewW - ox) / p));
-  const y0 = Math.max(0, Math.floor(-oy / p));
-  const y1 = Math.min(frame.h, Math.ceil((cam.viewH - oy) / p));
+  const x0 = Math.max(0, Math.floor(-ox / p) - CULL_PAD);
+  const x1 = Math.min(frame.w, Math.ceil((cam.viewW - ox) / p) + CULL_PAD);
+  const y0 = Math.max(0, Math.floor(-oy / p) - CULL_PAD);
+  const y1 = Math.min(frame.h, Math.ceil((cam.viewH - oy) / p) + CULL_PAD);
   return { x0, x1, y0, y1 };
 }
 

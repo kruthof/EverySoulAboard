@@ -1,12 +1,14 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign + **economy Wave 0 in flight**, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)**, tag `v2-talking-ship`)
 
-> **Newest first, and this is where you start:** read **"Economy Wave 0 — IN FLIGHT,
+> **Newest first, and this is where you start:** read **"Economy Wave 0 — COMPLETE,
 > START HERE"** immediately below. Wave 0 is the behaviour-free plumbing that must land
-> before any economy lane spawns, and it is **partly merged on a branch, not on `main`**.
-> After that, "The economy redesign" explains *why* (design authority `docs/ECONOMY.md`
-> + `docs/ECONOMY-PLAN.md`), "Playtest round 3" is the newest *landed* state on `main`,
-> and `docs/MECHANICS.md` is the authority on how the sim actually behaves (its §13
-> lists what is wired but not connected).
+> before any economy lane spawns; **all six packages are merged on `lane/economy-w0`, and
+> `main` is now merged into the branch** (bringing playtest round 4, the render light-pools
+> + movement fixes, and the **MOSS terminal** — COMPLETE on `main`, spec
+> `docs/design/perilune-moss-terminal.spec.md`). After that, "The economy redesign" explains
+> *why* (design authority `docs/ECONOMY.md` + `docs/ECONOMY-PLAN.md`), "Playtest round 4"
+> then "round 3" are the newest *landed* state, and `docs/MECHANICS.md` is the authority on
+> how the sim actually behaves (its §13 lists what is wired but not connected).
 
 ## Economy Wave 0 — COMPLETE, START HERE (2026-07-22)
 
@@ -239,7 +241,6 @@ consequence, not just an implementation note.
   not let a design correction propagate on one agent's say-so.
 
 
-
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
 moonbase-era mechanism detail (save format, tick model, MOSS, atmosphere math) is
@@ -326,6 +327,80 @@ literal `26907c23d7e48a5c`, which goes stale the moment another lane merges.
 **The gate the whole programme is judged on:** A1 — *crew are > 25 % busy at sim-hour 24*
 (today: **0.0 %**). A conversion graph with finite ore is a longer boot window, not a durable
 loop, and A1 is what tells the difference. Full gate list: `ECONOMY.md` §12.
+
+## The MOSS terminal — "the phosphor ledger" (2026-07-22) — LANDED
+
+Garvin asked for a true Fallout-4-style terminal: click MOSS and, instead of the ship, you get a
+full-window amber CRT that reports every system aboard on one screen. Landed on main via **four
+Opus-gated worktree lanes** off a frozen contract. Spec: **`docs/design/perilune-moss-terminal.spec.md`**
+(the interaction/visual/data contract — IX-M / VS-M / DA-M; read §0 first, it is the honesty rule).
+The MOSS *language* (`sim/Sim.Dsl`) is unchanged and still runs in the background; this is a new
+**face** over the ship's telemetry.
+
+**What shipped.** Four screens — **LEDGER** (the mock: 8 rows, LOAD bar / STATE / LAST FAULT),
+**SYSTEM DETAIL** (per-device breakdown + a host-authored DERIVATION note), **FAULT LOG**, and a
+**PROGRAM** shell + terminal directory. A live `>` prompt reads (`ship.power`, `hydro.co2`,
+`status`) and commands devices (`close door_storage`, `set vent_hydro.rate max`). Full takeover
+(top bar / CREW WATCH / READOUT / stage / bottom console all hidden — the ship canvas is never
+touched, MOSS just isn't drawing it); ESC is a stack out (PROGRAM → DETAIL/FAULTLOG → LEDGER →
+ship). New cached `systems` wire channel + `moss` ops `sys`/`exec`.
+
+**The design decisions that shaped it** (asked and answered up front):
+- **Honest rows only.** Of the mock's 8 rows, only 4 exist in the sim. MEDICAL SUITE is inert
+  furniture (0 draw, 0 wear, no system reads it); COMMS ARRAY and GRAV RING do not exist anywhere
+  in `sim/` or `hosts/`. Rather than fake three gauges on the one screen whose whole purpose is the
+  truth about the ship (`MECHANICS.md` §13 exists because dead systems shipped behind HUD bars
+  reading 1.00), they were replaced by **THERMAL / FABRICATION / NAV-SENSORS**, all real. Row count
+  and visual density match the mock. `DA-M1..M4` make this a rule: every gauge is derived from live
+  sim state or shown `OFFLINE` with a stated reason (NAV is honestly OFFLINE — no `Telescope` is
+  ever placed, and the row comes alive on its own if one ever is).
+- **The prompt commands devices, but grants no new authority.** It resolves targets through the
+  **same `DeviceRegistry`/`IScriptable` adapters the DSL interpreter uses**, so the verb whitelist
+  is inherited, not re-declared, and every write leaves as an existing `SetDoorState`/`SetDeviceState`
+  command at a tick boundary. **No new `ISimCommand`.** Routing it through `MossCompiler` was
+  investigated and rejected: `SetProgram("@console", …)` would have folded a player's typo into the
+  determinism hash. `ship.*` and rooms stay read-only.
+- **No hash move.** `ShipSystems.Compute`/`ComputeDetail` is a pure on-demand report next to
+  `ShipMetrics` — no sim field, no `IStatefulSystem`, no def, no fold. Scenario/tick-3000/slice pins
+  all unmoved.
+
+**It is a diagnostic instrument pointed at the live economy bugs**, and deliberately does not
+smooth them over: on the slice at day 3 it reads `LIFE SUPPORT — LOAD 58% / DEGRADED / 16,677 ppm`
+(capacity coping, air poisonous — both true, the room-local-scrubber bug B-3), `WATER RECLAIM` /
+`HYDROPONICS` ATTEND on the dry `tank_hydro` (B-2), `THERMAL` DEGRADED at −15.7 °C.
+
+**Suite after merge: 680 dotnet + 356 node** green via `./ci.sh`; `26907c23d7e48a5c` and both
+tick-3000/slice goldens unmoved (nothing hashed was added). Lanes: `moss-systems` (sim/host/wire,
+PASS after a FAIL — a reactor row that read *lower* load as power failed, a ledger that laundered
+NaN into NOMINAL, a note describing the rule its own code replaced), `moss-model` (the pure client
+brain, PASS ×2 — its client-side derivation copy had drifted to a *reciprocal* of the host's),
+`moss-screen` (the DOM/CRT face, PASS ×2 — Backspace was dead in the prompt, invisible to a node
+harness whose `preventDefault` is a no-op; the fix included closing that harness blindness, now
+spec §6.1: trusted-key CDP verification is obligatory for any lane touching keys here), and
+`moss-programs` (the PROGRAM in-terminal IDE, PASS after a FAIL — its CDP proof drove the *fake*
+model, so the check could not fail for a real-model regression; the integrator re-verified the
+repointed check both directions against the shipping model). The review method (independent gate
+per package, blind spec → in-worktree `ci.sh` → adversarial mutation pass) again caught
+**disjoint** classes the author could not: **six** tests that could not fail — two of them inside
+the tools that enforce the anti-vacuous rule — plus two duplicated-fact drifts, three rows that
+lied, a dead Backspace, and a silently-dropped `source` reply.
+
+**The PROGRAM screen** (`moss-programs`, the last lane) is a working in-terminal IDE — source
+editor + gutter/diagnostic markers + diagnostics list + audit pane + Install + runtime-error
+banner. It is a **view of `model.program`** (kept live by `reduceMossEvent` delegating
+source/diag/audit/rterror to `terminal-model.js`), a single source of truth reusing the shipped
+pure editor brain rather than a second copy. It closed a real pre-existing seam bug: the
+directory-click path sent `moss open` but never opened the terminal in the model, so
+`model.program.tid` stayed null and the tid-match **silently dropped the source reply**; new pure
+`selectProgram`/`editProgramDraft`/`beginProgramCompile` reducers fix it. The refill rule refills
+the textarea from `draft` (never `installed`), so a stray render never clobbers a mid-type caret.
+`terminal.js`'s floating `TerminalDrawer` (the deck-console editor path) is untouched — the
+PROGRAM screen is a second presentation of the same model shape.
+
+**Near-term cleanup, non-blocking** (recorded in spec §6.1): `ShipSystems` gates the `systems`
+wire on **wall**-clock (~16.7 sim-min max staleness at 1000× speed — v2 is to gate on
+`TickCount`); the ppO₂ life-support band is correct but unreachable on shipped content (vents
+inject from an unmodelled reserve).
 
 ## Where the project stands
 
@@ -699,9 +774,16 @@ tick-3000 `401c9b96aff338a7` unmoved.
    and the style anchor, and would still go to mush. Only pawns retain 1024² sources
    (re-processable to 256 for **$0**); every other asset exists only as 128px output.
 3. **Movement retune** — fully measured, NOT landed (moves the CI pin). See below.
+   **SUPERSEDED 2026-07-22 by the economy redesign:** it is now `ECONOMY-PLAN.md` E0-2 and it
+   **must land behind E0-1 (recruitability)**, bundled with the approved 10× work-rate rebase
+   as one integrator-gated commit. Landing it standalone is a measured −29 % production /
+   −48 % recruitability regression. Do not take it from this section.
 4. **CO2** — re-scoped: it is a **gas-transport bug**, not a dispatch gap. See below.
+   **Now scheduled** as `ECONOMY-PLAN.md` B-3, and it must precede E1's finite air reserve.
 5. **`Morale` / `Health` are never written by any system** yet three crew surfaces render
    them (CREW WATCH bar, CREW tab, READOUT) as a constant 100%. Design question.
+   **Still open** — the economy redesign does not resolve it, but it touches the same
+   surfaces, so decide it before E0-8 (the ledger) reworks the crew readouts.
 
 ### Movement retune — measured, ready, NOT landed
 
@@ -780,6 +862,148 @@ Reviewers were wrong too, and implementers were told to push back with evidence:
 half-texel UV inset the orchestrator specified — which was **wrong** (128 px across 127
 texels; corroborated by 1:1 frames being byte-identical without it).
 
+## Playtest round 4 (2026-07-22) — the art bible + the movement defects, all LANDED
+
+Follows round 3 in the same session. Counts after: **631 dotnet + 237 node**;
+`26907c23d7e48a5c`, `401c9b96aff338a7`, slice `b31ba82f50cf395c` all unmoved.
+
+### The art-direction revision (`docs/design/perilune-art-direction.md` + `art/spritegen/spec_derelict256.json`)
+
+**Garvin's ruling on the regen: NOT NOW.** Order is (a) revise the sprite AND ship
+design → (b) fix it → (c) only then regenerate at the best resolution to match Prison
+Architect's crispness. **(a) is done; nothing has been generated and no credits spent.**
+
+Rev 1 landed, an independent reviewer re-measured it and returned *"not yet safe to
+spend against"*, and rev 2 fixed it. **The measured colour/value core survived exactly**
+(the §8 grade-transfer table, the §9/§11 hexes, the `GRADE.floor` supersession, AD-33's
+`16+108+12+104+16 = 256` wall stack, AD-18). **Every comparative claim against the PA
+reference failed** — each had been measured on a sample that was not like-for-like:
+
+- **"The crew are already at parity with PA" is WITHDRAWN.** Our 40×40 sample was ~50%
+  dead flat margin scoring zero; PA's window is fully covered textured dirt plus a cast
+  shadow. On identical ground: PA guards **+5.0..+8.4**, ours **+11.1..+17.6** — our
+  pawns are *busier*. **Pawns are NOT exempt from the regen.** (This was relayed to
+  Garvin as fact before it was checked. It was wrong.)
+- Outline-less sprites **21 → 8** (3 terrain that should be, 3 matte-corrupted, 2 genuine).
+  The interim renderer-dilate stopgap that count justified is withdrawn.
+- Wrong-side lighting **10 → 8**; green-matte defects **2 → 3** (`anchor_table` missed).
+- **`G-LIT` was unusable** — its own recipe scored 45/48 sprites below the bar, including
+  on-model art. **`G-COL ≤112` did not bracket the reference** (3 of 7 PA guards score
+  115–120); it had been fitted to the doc's own max sample. Both re-derived.
+- Raw unique-RGB is genuinely **not** a discriminator (PA guards 1,727–2,109) — that
+  conclusion stands, and is why the gates are |lap| / quantised-colour / value-split.
+
+Every number now publishes its method in §1.7 including the seven guard coordinates, so
+it is falsifiable rather than asserted.
+
+**Rulings** (both were self-contradictory in rev 1): outlines are **UNIFORM** (only a
+uniform weight is gateable and holdable by an image model; AD-6's dilate rejection is
+re-argued on the ground that survives — a dilate cannot ink an *internal* edge), with a
+new `G-INK` gate. Walls **BAKE** and drop world-continuity (baking needs no new sampling
+capability in either executor and does not break WP-0's UV clamp / edge replication);
+repeat rhythm comes from 4 bounded phase rolls.
+
+**Four integration blockers rev 1 asserted away, now scoped as required work**:
+`variantUris()`/`VARIANT` (`client/src/render/sprites.js`) does not load the new states;
+`run.py:403` `stage_integrate` crashes on a partial work dir (so the "$0 pawn re-process
+proof" is not executable as written); `rasterplan.js CELL = 128` and `packAtlas`'s
+`maxWidth` 512 are hard-coded (at 256px cells → a 16384² texture); and `clampCam`'s `0.5`
+self-invalidates the 8px outline derivation at 256.
+
+**F1 PLATE is deliberately quieter**: PA's *circulation* floors measure 4.6/7.0 against
+its yard's 8.3–12.5 — its clarity comes from indoor floors being nearly unpatterned under
+high-contrast objects. PLATE gets its own G-DET band (5–9), bolts deleted, drainage moved
+to GRID. Cost estimate: 45 assets × 4 candidates = **180 images**, order $20–40; re-check
+the price before committing.
+
+### Render WP-3 + WP-1 (light pools, grounding shadows) and the pass-order fix
+
+Two commits, deliberately split so the movement fix could land on its own merit.
+
+- **Pass ordering** — `passIndexOf` in `webgl/batch.js` is now the single authority on
+  pass membership for **both** backends, and canvas2d walks buckets instead of the raw
+  row-major op list. See the movement section below for why.
+- **WP-3 light pools** — a pure `client/src/render/lightfield.js`: powered `*` emitters
+  throw radial pools with 3-ray penumbra wall occlusion, sampled at **tile corners** so
+  the field is continuous, emitted as a vertex-coloured multiply mesh reusing the existing
+  flat program (one draw call). Fog gate independently verified: 451 mesh quads over the
+  boot frame, **0 over `hull`, 0 over `void`**.
+- **WP-1, shadow half only** — outlines are the art's job per the bible.
+
+Review caught three things, all fixed. (i) The shadow was an **unsheared full-size offset
+copy**: pawns read as a second dark pawn and the square terminal became a hard-edged black
+rectangle a full tile across. Now squashed+sheared to **AD-3** (315° azimuth, 55° elevation
+— the old `LIGHT_DIR` was 36.9°, not a diagonal). (ii) The advisory lighting-range drop was
+**real, not a metric artefact**: `AMBIENT_LIT` applied `0.700` to *every* powered tile,
+partly undoing the round-3 relight that had raised deck p50 17→41. Now `0.883`, with the
+cast moved into red and the pool's warmth into blue so contrast is bought in chroma where
+it is nearly free (p90 −25.6% → −9.3%, std −19.6% → −8.1%). Widening `LIGHT_RADIUS` to game
+the metric was rejected and is now itself a caught mutation. (iii) **"17 mutation probes,
+all caught" was false** — three survived, including the canvas2d `multiply` blend the
+whole backend-parity claim rests on. Matrix re-run: 26/26.
+
+**Honest residual**: under a multiply-only pass, pool *geometry* in a powered room is
+~0.10 luma. Real brightness pools need an **additive** term — a follow-up, not done.
+
+### The movement defects — "they blink, and they moonwalk"
+
+Garvin: *"when pawns move from right to left, every step it looks they appear out of
+nothing… plus they move backwards"*, then *"they still blink when they go up, down or
+moonwalk.. only forward works great."* That second report was the key: E and S clean while
+W and N blink is *structurally* what row-major draw order produces, and "south" could not
+be explained by it at all. **Three separate causes**, none of them a stale build
+(`serve.py` already sends `Cache-Control: no-store`) and none a WP-0 regression (bisected
+byte-identical pre-WP-0):
+
+1. **Terrain over entities.** `compose.js` emits ops row-major *per tile*; canvas2d walked
+   them raw. A westward-sliding pawn is drawn one tile RIGHT of the tile it now occupies,
+   so the next tile's opaque floor — drawn later — painted over it. Coverage of the pawn
+   quad by later draws: **W and N 100% at step start, E and S 0%.** WebGL2 was immune (it
+   batches terrain before entities) but **canvas2d is the shipping default**. Fixed by the
+   bucketed walk above; independently verified **0% in all four directions**.
+2. **Entities over entities.** The entity pass was still row-major *inside itself*. A pawn
+   mid-step is drawn one tile back, so the tile it just vacated — where a device reappears
+   the moment the citizen glyph stops masking it — is drawn later and repaints the body.
+   Measured pawn-ink at the step boundary behind a growbed: **W 330/1045 (−68%), N
+   316/1022 (−69%)**; impossible for E/S. Fixed: sliding pawns are a second sub-batch
+   drawn after all settled entities, in both backends.
+3. **Tile-exact culling.** A pawn whose tile straddled the viewport edge was composed out
+   entirely — a one-tile-early disappearance at every edge in **every** direction, and the
+   only thing that could blink a south-bound pawn. Fixed: `CULL_PAD = 1`.
+
+**Moonwalk.** There were **zero directional pawn variants** (both walk frames are drawn
+facing east) and no mirror in either backend; `motion.js` already computed a `facing`
+value that **nothing read**, and vertical steps clobbered it. Now a **sticky `flipX`** —
+set on `dx<0`, cleared on `dx>0`, *untouched by vertical steps*, reset on discontinuity.
+canvas2d mirrors with `translate`/`scale(-1,1)`; webgl2 swaps `u0`↔`u1` **inside the same
+cell rect**, so no new atlas cell and WP-0's replicated `ATLAS_BORDER` is untouched.
+Measured bbox shift: **1 device px at 128 px/tile** (all five pawn images are centred to
+within 1px, and `paintUnderglow` is a symmetric ellipse, so mirroring causes no jump).
+
+**The silhouette mirrors; the shadow QUAD does not.** `shadowQuad`'s corners encode AD-3's
+single key light, so mirroring them would swing every shadow the instant a pawn turned.
+The flip is applied in source space, *after* the cell→quad matrix. Pinned by test.
+
+**Known, deliberately not fixed:** a mirrored pawn's **baked-in light step** lands on the
+upper-right, against AD-3 ("every sprite, every state, every frame"). The renderer's own
+cast shadow still obeys the bible, so it reads correctly at gameplay zoom. The honest fix
+is **west-facing walk art** — recorded in `motion.js` and queued for the regen.
+
+Goldens moved: `boot_zoomed`, `boot_lit`, `lens_temperature`, `selection` + their
+`passes/` twins (one added ring of tiles from `CULL_PAD`, verified a pure addition;
+`boot_full` is fit-to-map and did not move). `accepted.png` was re-baselined once in round
+3 per PROTOCOL.md §2 and not again.
+
+### Still open after round 4
+
+- **Sprite mirroring is renderer-only** — west-facing walk *art* is still owed (above).
+- **Movement retune** (`ticks_per_tile 5→10`) — measured, ready, unlanded; moves the CI pin.
+- **CO2** — a gas-transport bug (no diffusion term), not a dispatch gap. Needs a design call.
+- **`Morale`/`Health`** — never written by any system; three crew surfaces render 100%.
+- **The dig is a boot-window economy** — crew idle again after ~4 sim-min.
+- **Additive light term** for real brightness pools.
+- The **selection reticle does not slide** (both backends) — confirmed, not fixed.
+
 ## Render WP-0 — "a crisp ship stage" (2026-07-22, reviewed + corrected)
 
 Renderer only: projection stays pure, no sim / host / wire / def touched. The
@@ -834,6 +1058,81 @@ things genuinely interact and should be re-measured, not assumed:
   `_replicateEdges` will then replicate 4px outward. That is the one case where
   the soft mip-3 rim above becomes visible. Check a zoomed-out establishing
   frame for haloed pawns before accepting.
+
+## Ollama / mistral — the local dialogue backend (2026-07-22) — LANDED
+
+The third provider path went from never-executed to the **default**. Full measurements and
+the reproduce recipe are in `docs/SMOKE-P2.md` §"Ollama / mistral run". Headlines:
+
+- **Local-first auto-route.** With no `dialogue.backend` configured, a ready local Ollama now
+  outranks a cloud key: ollama → anthropic → openai → template. Boot prints
+  `dialogue backend: ollama/mistral`; when the server is absent it says so in one line and
+  falls back exactly as before. "Ready" means a host verified the server is serving *the
+  wanted model* — a bare port check would let an empty server steal the route from a working
+  key and 404 every turn. **`LlmSettings.Parse` stays pure**: readiness is a *parameter*, and
+  the single socket lives in `LoadFromEnvironment` (the already-documented sole IO seam),
+  which parses twice — pass 1 purely to learn which model to probe for. Dialogue is now $0.
+- **The shipped pipeline produced ~ZERO effects on any non-tool backend, and it was the
+  PARSER, not the prompt.** `EffectEnvelopeParser` dropped well-formed effects over a missing
+  `magnitude` that `ConversationService.TryTranslate` never reads for `RevealInfo`/`AgreeTask`.
+  Under the old prompt *every* envelope mistral emitted omitted magnitude while picking the
+  right row unaided — so the reveal was lost every time, after the model got it right.
+  Measured on the real `ProviderPrompt` bytes, n=64, scored to the sim: **1/64 → 29/64**.
+  **The first effects a non-tool backend has landed in this repo.** Should help the
+  OpenAI-compat path too; **unmeasured — re-run `llm-smoke --backend openai`.**
+- **Two prompt changes were tried, measured, and REVERTED** (an envelope-instruction rewrite
+  and a kind-annotated effect-target list). They added p = 0.22 of nothing on the real prompt,
+  and the rewrite cost a **28% false-positive rate** plus a 4× rate of raw effect JSON leaking
+  into the player-visible line. See the review lesson below — this is the most important thing
+  in this section.
+- **Leniency is gated two ways, both on RISK not semantics.** `EndConversation` is excluded
+  from the magnitude forgiveness even though it qualifies, because `ConversationHub.cs:371`
+  treats a dispatched one as authoritative — forgiving it had the crew **hang up on a player
+  who said hello**, and fired on 11/24 turns where the player had just asked for work. And the
+  manifest row must BE the kind the model claimed (the tool path always enforced this at
+  `AnthropicBackend.cs:412`; the envelope path never did, and the leniency made an `AgreeTask`
+  aimed at a `SetDisposition` row into a live dig assignment).
+  **Residual, recorded honestly: 7.3% of no-op turns still fire something** (was 0%, but that
+  0% came with 1/64 on the turns that mattered).
+- **Native tool calling was measured and rejected.** Ollama advertises
+  `capabilities:["tools"]` for mistral; 0/8 turns produced real `message.tool_calls` (the
+  model writes `propose_effect(...)` into the prose instead). `supportsTools` stays false.
+  `legacy/LLM_CITIZENS.md` §7 assumes otherwise — it is wrong for this model.
+- **Two residency hints** now ride every request (`keep_alive: "30m"`,
+  `options.num_ctx: 8192`). Both server defaults fail silently: 5-minute unload → a full
+  4.4 GB reload inside the hub's 60 s budget; and an over-long prompt is truncated from the
+  FRONT, i.e. the system rules and persona.
+
+Suite **631 dotnet + 207 node** green via `./ci.sh`; scenario `26907c23d7e48a5c`, tick-3000
+and slice pins all unmoved (nothing hashed was touched — this lane is entirely host/LLM-side).
+
+### Review lesson from this lane (the expensive one)
+
+Both gates were worth their cost and caught **disjoint** classes of defect, again. The
+engineering gate killed 31/31 mutations but also found a two-pass config seam with **zero**
+coverage — replacing its body with a constant left all 624 tests green. The LLM gate did
+something no test could: it **refused to reuse the author's probe script**, rebuilt
+`ProviderPrompt.BuildMessages` byte-for-byte, ran 526 live turns, and showed the author's
+headline numbers were measured on a prompt the game does not send (2 capability rows instead
+of 6, no `[SHIP]` block, a `temperature` the adapter never sends) and scored "well-formed
+JSON" instead of "survives `TryTranslate`". The prompt work was reverted on that evidence.
+
+Three rules earned the hard way, for anyone touching prompts here:
+
+1. **Measure the bytes the game actually sends.** A hand-written approximation of a prompt is
+   not the prompt, and the difference reversed the conclusion.
+2. **Score to the sim.** "The model emitted valid JSON" is an upper bound, not a yield.
+   `TryTranslate` and `EffectValidator` reject plenty that parses.
+3. **Always measure the no-op turns.** An elicitation change is only half-measured until you
+   know what it fires on a greeting. The reverted rewrite looked like a win on every turn the
+   author tested and hung up on the player 5/24 times on "Hey Amara."
+
+Watch-outs for the next session: the brew service did **not** start via `brew services start`
+on this machine (silent exit 0, no log) and needed a `launchctl kickstart` once; it is
+`started` now with `RunAtLoad`, but if dialogue silently goes cloud again, check
+`curl localhost:11434/api/version` first. And a 7B is not Haiku — expect blander lines and
+re-measure prompt changes over **many samples**, never one smoke (round-2's lesson, now
+doubly true).
 
 ## Running / testing the game
 
@@ -905,6 +1204,11 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
   in the PR description and land in a dedicated serialized spine lane, small and append-only
   (one enum row, one chapter registration, one stack insertion). P2 ran ~10 lanes + spine waves
   this way with zero cross-lane corruption.
+  **Escalated 2026-07-22 to a hard rule covering every SESSION, not just spawned agents —
+  see `CLAUDE.md` "Work in a worktree — ALWAYS".** Two instances shared the main checkout that
+  day and the economy audit watched another session's files change mid-measurement. Nobody
+  edits the main checkout except the integrator merging; never `git add -A`; if `git status`
+  shows files you did not touch, stop and look.
 - **New test files** under `tests/Perilune.Tests/` auto-compile (SDK default items); new `sim/`
   source DIRECTORIES need a csproj glob (tests csproj is integrator-owned).
 - Suite quirk: V6 survivability gate tests run real sim-days — the dotnet suite is ~3 min wall.
@@ -912,7 +1216,15 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
 - de-DE machine: test output prints `Bestanden!`/`Fehler`; culture bugs are live —
   InvariantCulture in every wire/dump/parse path, analyzers CA1305/CA1310 warn.
 
-## Next: P3 — The Voyage (PLAN.md has the full list)
+## Next: the economy programme, then P3 — The Voyage (PLAN.md has the full list)
+
+> **Ordering, decided 2026-07-22.** The economy redesign (top of this file) is the approved
+> next body of work and it comes **first** — E0 through E2 all land inside the closed ship
+> and need no nav stack. **E3 *is* P3's economic half**: the voyage becomes the only faucet,
+> so nav/sensors, derelict salvage and away missions arrive as the economy's supply lines
+> rather than as separate features. Read `ECONOMY-PLAN.md` §1 before planning P3 work — the
+> two are one programme, and E3 additionally owns the trading-hub DLC seams (`ECONOMY.md`
+> §9.7) and makes the content-pack prerequisite below non-negotiable.
 
 Nav/sensors full loop (survey → contact → burn → rendezvous); derelict generation
 (ShipGen archetype + generated-history engine + away-mission dual-sim); campaign Act I
@@ -930,6 +1242,23 @@ affordance item landed in the round-2 polish lane.)
 
 ## Known issues / backlog (not regressions)
 
+- **Ownerless reservation leak — LIVE on the shipping slice** (`CraftingSystem.cs:183`).
+  A staged crafting input is stamped `ReservedForJob` with no owner and only
+  `ConsumeStagedInputs` ever clears it, so the ship's last `Parts` unit ends up reserved by
+  nobody: invisible to `MachineWearSystem.FindNearestParts` but visible to `StagedUnits`, so
+  the bench waits at 1/2 forever and **every machine repair for the rest of the game is a
+  jury-rig at 0.6**. Fix is `ReservedForJob : bool` → `ReservedBy : uint` (moves the pins).
+  Scheduled as `ECONOMY-PLAN.md` B-1; full write-up `ECONOMY.md` §1.5.
+- **Hydroponics is the water leak — LIVE.** A round trip through a grow bed returns
+  0.8 × 0.93 = 0.744, i.e. **0.256 L destroyed per litre irrigated**. Measured: 903 of the
+  slice's 1,400 L gone in 28 sim-hours, `tank_hydro` at 0.0 L from day 1.2, all three beds
+  frozen mid-crop — **food production permanently dead on day 1.2** while the HUD food bar
+  reads 1.00 (it saturates at 40 potatoes for 8 crew, `ShipMetrics.cs:83`). Scheduled as
+  `ECONOMY-PLAN.md` B-2.
+- **Two latent hashed bit-packs alias** (`Simulation.cs:272-275` and `:255-260`): `ItemKind`'s
+  high bit over `ReservedForJob`, and `JobWorkTicks` bits 32–47 over `CarryingItemId`. Not
+  determinism breaks — **canary blindness** in exactly the fields an economy stresses, and a
+  >65,535-tick job is an ordinary economy number. Scheduled as `ECONOMY-PLAN.md` W0-1.
 - **Prompt prefix below the cacheable minimum.** `PromptBuilder` sets two `cache_control`
   breakpoints, but the slice's assembled prefix is only ~970 input tokens on Haiku and the
   haiku-class minimum cacheable prefix is **2048 tokens**, so caching silently never engages
@@ -1007,5 +1336,6 @@ affordance item landed in the round-2 polish lane.)
 - **The 60-minute unscripted playtest** — the human P2 exit bar: a tester plays the slice for an
   hour and **names a crew member** when retelling it. (Do the prompt/elicitation work above first
   so a reveal can actually land.)
-- **Ollama** — install it locally only if you want to exercise the third live provider path
-  (`ollama_host` in `.env`); the smoke SKIPs it cleanly when the server is absent.
+- ~~**Ollama** — install it locally only if you want to exercise the third live provider
+  path~~ **DONE 2026-07-22** — installed, running as a brew service, `mistral` pulled, and
+  now the auto-routed default. See "Ollama / mistral" below.

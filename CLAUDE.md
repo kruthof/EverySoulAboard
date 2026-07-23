@@ -23,33 +23,44 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-22) — economy Wave 0 COMPLETE on a branch
+## Status snapshot (2026-07-22) — economy Wave 0 COMPLETE, `main` merged in
 **Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** The economy
 programme's Wave 0 (behaviour-free plumbing that must land before any economy lane spawns)
-is **DONE — all six packages merged on `lane/economy-w0`, NOT yet on `main`**:
+is **DONE — all six packages merged on `lane/economy-w0`**:
 W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-3 `JobsDirty` split into
 tile/item/site/citizen flags · W0-4 `JobSystem` split into an `IJobSource` dispatcher ·
 W0-5 the `[production]` node table · W0-1b the 13 saved-but-unhashed fields hashed
 (`Path`/`PathIndex`/`MoveCooldown` were live tick state hashing **equal**) · W0-6 the four
 empty economy systems registered (`ZONE`/`PROD`/`ORES`/`TRAD` SYSS, one batched pin move).
-**713 dotnet + 207 node** green, pin `616ed4a84a9f6e87` (see "Determinism proof" below).
 Every package was Opus-implemented + independently Opus-reviewed; four of six were sent back
-at least once. **Next: merge `main` into the branch** (advanced since the cut — Ollama merge
-+ art rev 2) **and re-measure the pin, apply the eight `ECONOMY-PLAN.md` corrections, then the
-E-lanes spawn (E0-1 first).**
+at least once. **`main` — through the MOSS terminal, render light-pools and the movement
+fixes — is now merged into the branch; the gate and pin are re-measured on the merged tree**
+(see "Determinism proof" below). **Next: land the branch on `main`, then the B-1/B-2/B-3
+shipping-bug commits (`ECONOMY.md` §1.5), then the E-lanes spawn (E0-1 recruitability first).**
 
-### Earlier snapshot (playtest round 3)
-**`docs/HANDOVER.md` "Playtest round 3"** parks five decisions for Garvin. That round:
-**`docs/MECHANICS.md`** became the authority
-on how the sim actually behaves (its §13 lists what is *wired but not connected*), the
-slice has a working build/dig economy, crew work is legible on the map, crew no longer
-promise physical work they cannot do, and the ship stage was relit + de-blurred.
-**607 dotnet + 207 node** green at that point; the round-3 pins (`26907c23d7e48a5c` /
-`401c9b96aff338a7` / `b31ba82f50cf395c`) have **all since moved** — economy W0-1, then
-W0-1b; current values live in "Determinism proof" below, which is the authority. Known-honest limits: the
-dig is a **boot-window** economy (crew idle again after ~4 sim-min of digging), the stage
-is still far flatter than Prison Architect, and the CO2 problem is a **gas-transport bug**
-(no diffusion term), not a dispatch gap.
+### Earlier snapshot (playtest rounds 3–4 + MOSS terminal)
+**`docs/HANDOVER.md` "Playtest round 4" then "round 3"** — **`docs/MECHANICS.md`** is the
+authority on how the sim actually behaves (its §13 lists what is *wired but not connected*),
+the slice has a working build/dig economy, crew work is legible on the map, crew no longer
+promise physical work they cannot do, the ship stage was relit + de-blurred + lit with real
+pools and grounding shadows, and pawns now face where they walk and no longer blink.
+**`docs/design/perilune-art-direction.md`** is the art authority — the sprite regen is
+DECIDED-NOT-NOW (design first, regenerate last); nothing generated, no credits spent.
+Known-honest limits: the dig is a **boot-window** economy (crew idle again after ~4 sim-min
+of digging), the stage is still far flatter than Prison Architect, and the CO2 problem is a
+**gas-transport bug** (no diffusion term), not a dispatch gap.
+
+**MOSS terminal COMPLETE 2026-07-22** (five lanes, each Opus-gated, spec
+`docs/design/perilune-moss-terminal.spec.md`): clicking MOSS replaces the whole window with a
+Fallout-style amber CRT — a one-screen ledger of all 8 ship systems (LOAD/STATE/LAST FAULT),
+SYSTEM DETAIL, FAULT LOG, a **PROGRAM** in-terminal IDE (source editor + diagnostics + audit +
+Install, a view of `model.program` over the DSL), and a live `>` prompt that reads and commands
+devices through the DSL's own adapters (no new `ISimCommand`). `ShipSystems.Compute` is a **pure**
+report next to `ShipMetrics` — no sim field, no hash fold, pins unmoved. Every gauge is derived
+from live sim state or shown OFFLINE with a reason: the mock's MEDICAL/COMMS/GRAV-RING rows are
+inert or absent in the sim, so they were replaced by THERMAL/FABRICATION/NAV-SENSORS. The screen
+honestly surfaces the three live economy bugs (life_support DEGRADED at 16,677 ppm while capacity
+reads 58%; the dry hydro tank; the freezing thermal loop). Nothing deferred.
 
 ### Earlier snapshot (2026-07-21)
 P0 + P1 + **P2 complete** on the automated side ("The Talking Ship" slice; tag
@@ -109,13 +120,38 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
 - **Spine files** (Simulation.cs, SystemStack, save chapters, GlyphColor, WireFormat,
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
+## Work in a worktree — ALWAYS (hard rule)
+
+**Every Claude Code instance works in its own git worktree on its own branch. Never edit
+the main checkout directly.** This is not the parallel-lane ritual (PLAN.md) — that governs
+*agents within* a session. This governs *every session*, including a solo one, including a
+"quick fix", including doc-only work.
+
+```bash
+git worktree add ../perilune-wt/<lane> -b lane/<lane>   # start here, before touching anything
+cd ../perilune-wt/<lane> && ./ci.sh                     # verify IN-worktree
+# merge back with the /merge skill, or the integrator merges --no-ff and re-gates on main
+```
+
+- The **only** work that happens on the main checkout is the integrator's merge and the
+  per-wave re-pin commits (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory).
+- **Never `git add -A` / `git commit -a`.** Stage explicit paths. Another instance's
+  in-flight files may be sitting in the tree, and committing them is silent corruption.
+- If `git status` shows files you did not touch, **stop and look** — you are sharing a tree
+  with someone. Do not assume they are yours and do not revert them.
+
+*Why this is a hard rule: on 2026-07-22 two instances worked the same checkout at once. The
+economy audit watched six `sim/Sim.Llm/` files flip to `M` mid-measurement — they belonged to
+another session's Ollama work. Measurements taken against a tree someone else is editing are
+worthless, `git status` stops meaning anything, and one instance can trivially commit
+another's half-finished work.*
+
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (713 green; `./ci.sh`
-  runs the full gate — 713 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22 on `lane/w0-6-register` = all of Wave 0's merged packages
-  plus W0-6's 5 economy-registration tests; not carried forward: figures quoted mid-session
-  drifted behind the lanes still in flight, and the other Wave-0 lanes each add their own.
-  Re-measure before quoting.)
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
+  gate — dotnet + node, ~4 min wall since V6 runs real sim-days). Counts move with every
+  lane and are re-measured per commit; **re-measure before quoting**. The merged tree =
+  Wave 0's six packages + `main`'s MOSS terminal / render / Ollama test surface; the current
+  gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
@@ -136,8 +172,13 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
   `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
-- Live LLM: a plain repo-root `.env` (`claude_key` / `openai_key`) auto-routes web-host
-  dialogue to a live backend; the env-gated smoke (zero CI surface, spends cents) is
+- Live LLM: auto-route is **local-first** — a local Ollama serving `mistral` wins over any
+  cloud key (ollama → anthropic → openai → template), so dialogue costs $0 by default; boot
+  prints `dialogue backend: ollama/mistral`, or one line saying why it fell back. A plain
+  repo-root `.env` (`claude_key` / `openai_key` / `ollama_host` / `ollama_model`) still
+  works; explicit `PERILUNE_LLM_DIALOGUE_BACKEND` always wins. Ollama runs as a brew service
+  (`curl localhost:11434/api/version` to check). The env-gated smoke (zero CI surface;
+  `--backend ollama` is free, the cloud ones spend cents) is
   `... --project hosts/scenario -- llm-smoke --backend all` (results in `docs/SMOKE-P2.md`).
 - Sprites: `python3 art/spritegen/run.py --spec <spec.json> --stage all`
   (`GEMINI_API_KEY` env or repo-root `.env`). Slice frame: `node art/screenshot-test/slice-shot.mjs`.

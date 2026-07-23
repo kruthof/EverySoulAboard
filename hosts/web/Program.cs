@@ -62,6 +62,15 @@ namespace Perilune.Web
             Console.Error.WriteLine($"  NOTE: the page at :{port} is the LEGACY skin (no dialogue/LLM UI).");
             Console.Error.WriteLine($"        The game: run `python3 client/serve.py` and open http://localhost:8331/?port={port}");
             Console.Error.WriteLine($"  dialogue backend: {backendName}");
+            // Only claim the local model is missing when we actually looked. With an explicitly
+            // configured dialogue.backend no probe runs (explicit wins, so the answer could not
+            // matter), and reporting that as "no local Ollama" would be a plain lie when one is
+            // sitting there running.
+            if (!settings.DialogueBackendConfigured && !settings.OllamaReady
+                && !backendName.StartsWith("ollama", StringComparison.Ordinal))
+                Console.Error.WriteLine(
+                    "        (no local Ollama serving " + settings.Providers["ollama"].Model + " at "
+                    + settings.Providers["ollama"].BaseUrl + " — local-first route not taken)");
             Console.Error.WriteLine("  Ctrl+C to stop.");
 
             var done = new ManualResetEventSlim(false);
@@ -97,8 +106,6 @@ namespace Perilune.Web
         private static IReadOnlyList<IChatBackend> BuildDialogueChain(LlmSettings settings, out string backendName)
         {
             string backend = settings.EffectiveBackend(settings.Dialogue);
-            backendName = backend;
-            string model = settings.Dialogue.Model;
             var template = new TemplateBackend();
 
             switch (backend)
@@ -106,6 +113,8 @@ namespace Perilune.Web
                 case "anthropic":
                 {
                     var p = settings.Providers["anthropic"];
+                    string model = ResolveModel(settings.Dialogue.Model, LlmSettings.AnthropicDefaultModel);
+                    backendName = backend + "/" + model;
                     var live = new AnthropicBackend(new HttpChat(new HttpClientHandler()),
                         new AnthropicConfig(p.BaseUrl, p.ApiKey, model));
                     return new IChatBackend[] { live, template };
@@ -113,6 +122,8 @@ namespace Perilune.Web
                 case "openai":
                 {
                     var p = settings.Providers["openai"];
+                    string model = ResolveModel(settings.Dialogue.Model, LlmSettings.OpenAiDefaultModel);
+                    backendName = backend + "/" + model;
                     var live = new OpenAiCompatBackend(new HttpChat(new HttpClientHandler()),
                         new OpenAiCompatConfig(p.BaseUrl, p.ApiKey, model));
                     return new IChatBackend[] { live, template };
@@ -120,13 +131,26 @@ namespace Perilune.Web
                 case "ollama":
                 {
                     var p = settings.Providers["ollama"];
-                    var live = new OllamaBackend(new HttpChat(new HttpClientHandler()),
-                        new OllamaConfig(p.BaseUrl, model));
+                    string model = ResolveModel(settings.Dialogue.Model, p.Model);
+                    backendName = backend + "/" + model;
+                    // The residency hints keep the adapter's defaults unless configured (ollama_keep_alive
+                    // / ollama_num_ctx) — someone who has tuned their local install can override both.
+                    var cfg = new OllamaConfig(p.BaseUrl, model);
+                    if (p.KeepAlive != null) cfg = cfg with { KeepAlive = p.KeepAlive };
+                    if (p.NumCtx.HasValue) cfg = cfg with { NumCtx = p.NumCtx };
+                    var live = new OllamaBackend(new HttpChat(new HttpClientHandler()), cfg);
                     return new IChatBackend[] { live, template };
                 }
                 default:
+                    backendName = backend;
                     return new IChatBackend[] { template }; // offline: template only
             }
         }
+
+        /// <summary>An unset route model must never reach a provider verbatim: every one of them rejects
+        /// <c>"model": ""</c>, and the chain would then degrade to template on EVERY turn while the boot
+        /// line still claimed a live backend. Fall back to the lane default instead.</summary>
+        private static string ResolveModel(string configured, string fallback)
+            => string.IsNullOrEmpty(configured) ? fallback : configured;
     }
 }

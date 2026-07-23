@@ -5,7 +5,8 @@
 // to canvas2d until the GL executor lands.
 //
 // Two-backend contract:
-//   Canvas2D  — walks the DisplayList directly, issuing one canvas op per DrawOp (canvas2d.js).
+//   Canvas2D  — buckets the DisplayList by `passIndexOf` (webgl/batch.js) and walks the SAME four
+//               passes the GL backend draws, issuing one canvas op per DrawOp (canvas2d.js).
 //   WebGL2    — first groups the DisplayList into ordered RenderPasses via the PURE batcher
 //               (webgl/batch.js → buildPasses), packs the sprite set with the PURE atlas packer
 //               (webgl/atlas.js → packAtlas), then uploads each pass as an instanced quad batch.
@@ -24,6 +25,10 @@
  * @property {number} [timeSec] wall-clock seconds, for the animated selection reticle + walk cycle
  * @property {Object<string,import('./motion.js').MotionEntry>} [motion] per-tile motion (walk slide)
  * @property {number|null} [nowMs] wall-clock ms driving the continuous slide; null = settled (frozen)
+ * @property {{count:number,data:Float32Array,stride:number}} [lightMesh] the WP-3 light field
+ *   (render/lightfield.js `buildLightMesh`) — a vertex-coloured multiply mesh that REPLACES the
+ *   flat per-tile light overlay. Optional: omit it and both backends fall back to the flat overlay,
+ *   byte-identical to the pre-WP-3 output.
  */
 
 /**

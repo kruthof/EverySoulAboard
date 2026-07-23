@@ -133,6 +133,119 @@ namespace Perilune.Tests.Llm
             Assert.That(r.Effects.Count, Is.EqualTo(0), "a non-numeric magnitude makes the entry invalid");
         }
 
+        // ---------------------------------------------------------------- omitted magnitude
+        // The live finding behind these: on a textbook reveal turn mistral emits
+        // {"kind":"RevealInfo","target_index":0} — correct in every way except the field
+        // ConversationService.TryTranslate never reads for that kind. Requiring it silently threw the
+        // reveal away, which is a large part of why no non-tool backend had ever landed an effect.
+
+        [Test]
+        public void OmittedMagnitude_Accepted_ForTheKindsThatIgnoreIt()
+        {
+            // RevealInfo resolves a fact id and AgreeTask a dig target — neither reads the number.
+            var caps = Caps(new EffectOption(EffectKind.RevealInfo, 7u, "the cache in D-7"),
+                            new EffectOption(EffectKind.AgreeTask, 3u, "dig the aft debris"));
+            string reply = "There's a cache in D-7.\n\n```json\n["
+                + "{\"kind\":\"RevealInfo\",\"target_index\":0},"
+                + "{\"kind\":\"AgreeTask\",\"target_index\":1}]\n```";
+            EnvelopeResult r = EffectEnvelopeParser.Parse(reply, caps, 4);
+
+            Assert.That(r.Effects.Count, Is.EqualTo(2), "an omitted magnitude is forgiven where it is never read");
+            Assert.That(r.Effects[0].Kind, Is.EqualTo(EffectKind.RevealInfo));
+            Assert.That(r.Effects[0].TargetId, Is.EqualTo(7u), "the manifest resolution still happens");
+            foreach (ProposedEffect e in r.Effects)
+                Assert.That(e.Magnitude, Is.EqualTo(0f), "the inert magnitude defaults to 0");
+            Assert.That(r.VisibleText, Is.EqualTo("There's a cache in D-7."));
+        }
+
+        [Test]
+        public void OmittedMagnitude_NotForgivenForEndConversation_EvenThoughItIgnoresTheNumber()
+        {
+            // Deliberately excluded on RISK, not semantics: ConversationHub treats a dispatched
+            // EndConversation as authoritative and ends the session, so a spurious one hangs up on a
+            // player who only said hello. Measured on mistral, forgiving it fired on 11/24 turns where
+            // the player had just ASKED FOR WORK. A missed goodbye costs one click; a false one costs
+            // the conversation.
+            var caps = Caps(new EffectOption(EffectKind.EndConversation, 0u, "end the talk"));
+            string bare = "Good talking to you.\n\n```json\n[{\"kind\":\"EndConversation\",\"target_index\":0}]\n```";
+            Assert.That(EffectEnvelopeParser.Parse(bare, caps, 4).Effects.Count, Is.EqualTo(0),
+                "no magnitude, no hang-up");
+
+            // A model that states the magnitude is taken at its word — this is a leniency gate, not a ban.
+            string explicitMag = "```json\n[{\"kind\":\"EndConversation\",\"target_index\":0,\"magnitude\":0}]\n```";
+            Assert.That(EffectEnvelopeParser.Parse(explicitMag, caps, 4).Effects.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void OmittedMagnitude_StillDropped_WhereTheNumberIsTheWholePayload()
+        {
+            // Guessing here would invent meaning: 0 disposition is "no change at all", and
+            // FollowPlayer(magnitude > 0) would read an omission as "stop following".
+            var caps = Caps(new EffectOption(EffectKind.SetDisposition, 1u, "your standing"),
+                            new EffectOption(EffectKind.FollowPlayer, 2u, "follow the player"));
+            string reply = "```json\n["
+                + "{\"kind\":\"SetDisposition\",\"target_index\":0},"
+                + "{\"kind\":\"FollowPlayer\",\"target_index\":1}]\n```";
+            EnvelopeResult r = EffectEnvelopeParser.Parse(reply, caps, 4);
+            Assert.That(r.Effects.Count, Is.EqualTo(0), "no magnitude means no decision to act on");
+        }
+
+        [Test]
+        public void OmittedMagnitude_MixedEntries_KeepOnlyTheForgivenOnes()
+        {
+            var caps = Caps(new EffectOption(EffectKind.RevealInfo, 7u, "the cache in D-7"),
+                            new EffectOption(EffectKind.SetDisposition, 1u, "your standing"));
+            string reply = "```json\n["
+                + "{\"kind\":\"SetDisposition\",\"target_index\":1},"        // dropped: no magnitude
+                + "{\"kind\":\"RevealInfo\",\"target_index\":0},"            // kept
+                + "{\"kind\":\"SetDisposition\",\"target_index\":1,\"magnitude\":0.4}]\n```"; // kept
+            EnvelopeResult r = EffectEnvelopeParser.Parse(reply, caps, 4);
+
+            Assert.That(r.Effects.Count, Is.EqualTo(2));
+            Assert.That(r.Effects[0].Kind, Is.EqualTo(EffectKind.RevealInfo));
+            Assert.That(r.Effects[1].Kind, Is.EqualTo(EffectKind.SetDisposition));
+            Assert.That(r.Effects[1].Magnitude, Is.EqualTo(0.4f).Within(1e-6f), "a supplied magnitude is untouched");
+        }
+
+        [Test]
+        public void KindMustMatchTheManifestRow_OrTheEntryIsDropped()
+        {
+            // The row and the index come from the same manifest entry, so a disagreement is always
+            // the model's error. Without this the forgiven-magnitude rule opens a real hole: the
+            // SetDisposition/FollowPlayer/EndConversation rows all carry TargetId 0, so an AgreeTask
+            // aimed at one of them resolves to 0, clears TryTranslate's bounds check, and puts the
+            // crew member to work on dig target 0 off a line about warmth.
+            var caps = Caps(new EffectOption(EffectKind.SetDisposition, 0u, "your standing"),
+                            new EffectOption(EffectKind.RevealInfo, 7u, "the cache in D-7"));
+
+            string mismatched = "```json\n[{\"kind\":\"AgreeTask\",\"target_index\":0}]\n```";
+            Assert.That(EffectEnvelopeParser.Parse(mismatched, caps, 4).Effects.Count, Is.EqualTo(0),
+                "AgreeTask aimed at a SetDisposition row must not resolve to its target id");
+
+            string alsoMismatched = "```json\n[{\"kind\":\"SetDisposition\",\"target_index\":1,\"magnitude\":0.5}]\n```";
+            Assert.That(EffectEnvelopeParser.Parse(alsoMismatched, caps, 4).Effects.Count, Is.EqualTo(0),
+                "a magnitude-bearing entry is dropped on mismatch too");
+
+            // The matching pair still resolves exactly as before.
+            string matched = "```json\n[{\"kind\":\"RevealInfo\",\"target_index\":1}]\n```";
+            EnvelopeResult ok = EffectEnvelopeParser.Parse(matched, caps, 4);
+            Assert.That(ok.Effects.Count, Is.EqualTo(1));
+            Assert.That(ok.Effects[0].TargetId, Is.EqualTo(7u));
+        }
+
+        [Test]
+        public void PresentButMalformedMagnitude_StaysFatal_EvenForTheForgivenKinds()
+        {
+            // The forgiveness is for ABSENCE only. A present-but-wrong-typed field is a malformed
+            // entry, and malformed entries stay invalid regardless of kind.
+            foreach (string bad in new[] { "\"lots\"", "null", "true", "[1]", "{}" })
+            {
+                string reply = "```json\n[{\"kind\":\"RevealInfo\",\"target_index\":0,\"magnitude\":" + bad + "}]\n```";
+                EnvelopeResult r = EffectEnvelopeParser.Parse(reply, RevealCaps(), 4);
+                Assert.That(r.Effects.Count, Is.EqualTo(0), "magnitude " + bad + " is malformed, not absent");
+            }
+        }
+
         [Test]
         public void UnknownKind_EntryDropped_ValidSiblingKept()
         {

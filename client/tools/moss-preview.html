@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PERILUNE — MOSS terminal preview</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<!--
+  MOSS terminal DESIGN HARNESS — the phosphor ledger, driven by a committed fixture.
+
+  Why it exists: the MOSS screen is a visual contract (spec §4, VS-M) and it cannot be signed off
+  from node tests. This page renders the REAL src/ui/moss-screen.js against the REAL styles.css,
+  inside the REAL index.html chrome (fetched and injected below, so the takeover is proven against
+  the actual game window rather than a mock of it), with no sim host running.
+
+  The model it drives is the SHIPPING ../src/ui/moss-model.js. It was ../test/moss-model-fake.js
+  while the `moss-model` lane's real bodies waited on the integrator; those bodies are now merged
+  (and the `moss-programs` lane extends them with the PROGRAM reducers), so the "once they are
+  merged, flip MODEL_URL" condition in the original note is met. Driving the real model is what gives
+  moss-shot.mjs's PROGRAM phase its teeth: its model-level assertions (program.tid set, source in the
+  draft — the tid-gap fix) run against the code that ships, so a regression in the real
+  `selectProgram` / `reduceMossEvent` turns the CDP check RED. (The node suite still injects the fake
+  double directly, to test moss-screen's DOM in isolation from the model lane — that split is
+  deliberate and unchanged; only this browser harness drives the real brain.)
+
+  Usage:  python3 client/serve.py 8342
+          open http://localhost:8342/tools/moss-preview.html
+  Params: ?screen=ledger|detail|faultlog|program   ?sel=<0-based row>   ?nolink=1 (IX-M13 state)
+  Automated: client/tools/moss-shot.mjs screenshots this page at several widths and scrapes the
+             [moss-check] console line below, which is the IX-M1 "no game chrome visible" assertion
+             computed from real getComputedStyle — the one form of that proof node cannot give.
+-->
+<script type="module">
+import { MossScreen } from '../src/ui/moss-screen.js';
+
+const MODEL_URL = '../src/ui/moss-model.js';
+const MODEL = await import(MODEL_URL);
+const q = new URLSearchParams(location.search);
+
+// --- 1. the real game window, so the takeover has real chrome to hide -------------------------
+const html = await (await fetch('../index.html')).text();
+const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
+document.body.innerHTML = body.replace(/<script[\s\S]*?<\/script>/g, '');
+// main.js normally sets this inline when the link drops; do it here so the takeover is tested
+// against the same inline-style specificity the running client produces.
+document.getElementById('disc').style.display = 'flex';
+
+// --- 2. the fixture ---------------------------------------------------------------------------
+const lines = (await (await fetch('../test/fixtures/moss.jsonl')).text())
+  .split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+const pick = (type, ev) => lines.find((m) => m.type === type && (ev === undefined || m.ev === ev));
+
+// --- 3. the screen ----------------------------------------------------------------------------
+const sent = [];
+const screen = new MossScreen({
+  root: document.getElementById('moss-view'),
+  model: MODEL,
+  send: (o) => sent.push(o),
+  onExit: () => console.log('[moss-preview] exit → ship view'),
+});
+if (!q.has('nolink')) screen.onSystems(pick('systems'));
+screen.setTerminals((pick('terminals').list || []).map((t) => ({ tid: t[0], deck: t[1], x: t[2], y: t[3] })));
+screen.onChron(pick('chron'));
+screen.open();
+
+const key = (k) => screen.handleKey({ key: k, preventDefault() {}, stopPropagation() {} });
+for (let i = 0; i < (+q.get('sel') || 0); i++) key('ArrowDown');
+const want = q.get('screen') || 'ledger';
+if (want === 'detail') { key('Enter'); screen.onMossEvent(pick('moss', 'sys')); }
+else if (want === 'faultlog') key('l');
+else if (want === 'program') {
+  key('p');
+  // Select the first terminal and populate the embedded IDE so the frame shows a working editor:
+  // an installed source, a warning diagnostic (gutter marker + list row), and a couple audit lines.
+  const term = (pick('terminals').list || [])[0];
+  if (term) {
+    const tid = term[0];
+    screen.selectProgram(tid);
+    screen.onMossEvent({ type: 'moss', ev: 'source', tid,
+      text: 'when reactor.temp > 900:\n  set life_support.vent max\n  alarm "SCRAM DRILL"', hash: 4242 });
+    screen.onMossEvent({ type: 'moss', ev: 'diag', tid, ok: false,
+      diags: [[2, 7, 'warning', 'life_support.vent clamps at max']] });
+    screen.onMossEvent({ type: 'moss', ev: 'audit', tid,
+      lines: [[184320, 'reactor.temp 812 → hold'], [184328, 'life_support.vent opened']] });
+  }
+}
+window.__moss = screen;
+
+// --- 4. the IX-M1 assertion, from real computed styles ----------------------------------------
+// "Nothing of the game console shows through" is a claim about PIXELS, so it is measured here and
+// printed for moss-shot.mjs to scrape. A root counts as visible if it has any layout box at all.
+const CHROME = ['.app', '.topbar', '.crewwatch', '.stage', '.readout', '.console', '#panels',
+  '.disconnected', '#c', '#tabs', '#crewlist'];
+function visible(el) {
+  if (!el) return false;
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
+}
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  const leaks = CHROME.filter((sel) => visible(document.querySelector(sel)));
+  const page = document.querySelector('.moss-page');
+  const report = {
+    width: window.innerWidth,
+    screen: want,
+    leaks,
+    mossVisible: visible(document.getElementById('moss-view')),
+    rows: document.querySelectorAll('.moss-row').length,
+    fontPx: page ? Math.round(parseFloat(getComputedStyle(page).fontSize) * 100) / 100 : 0,
+    faultShown: !!document.querySelector('.c-fault') &&
+      getComputedStyle(document.querySelector('.c-fault')).display !== 'none',
+    docScrollW: document.documentElement.scrollWidth,
+    docClientW: document.documentElement.clientWidth,
+  };
+  report.noHorizontalScroll = report.docScrollW <= report.docClientW;
+  console.log('[moss-check] ' + btoa(unescape(encodeURIComponent(JSON.stringify(report)))));
+}));
+</script>
+</body>
+</html>

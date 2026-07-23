@@ -112,6 +112,27 @@ namespace Perilune.Llm.Providers
             }
         }
 
+        /// <summary>
+        /// Kinds for which an omitted <c>magnitude</c> is forgiven. Two conditions, both required.
+        ///
+        /// <para>1. <see cref="ConversationService"/> never reads the number for that kind, so nothing
+        /// is being guessed: RevealInfo resolves a fact id, AgreeTask a dig target. (SetDisposition's
+        /// magnitude is the entire warmer/colder decision and FollowPlayer's is the follow/stop bit —
+        /// there an absence is missing information and the entry is dropped.)</para>
+        ///
+        /// <para>2. A FALSE POSITIVE for that kind is survivable. This is a risk judgement, not a
+        /// semantic one, and it is why <c>EndConversation</c> is deliberately NOT here even though it
+        /// satisfies (1): <c>ConversationHub</c> treats a dispatched EndConversation as authoritative
+        /// and terminates the session, so a spurious one has the crew member hang up on a player who
+        /// only said hello. Measured live on mistral (n=24/turn, real prompt bytes): forgiving it
+        /// fired on 11/24 turns where the player ASKED FOR WORK and on 11/96 no-op turns, against
+        /// essentially no legitimate use — it took the no-op false-positive rate from 7.3% to 18.8%
+        /// while adding nothing. A missed goodbye costs the player one click; a false one ends the
+        /// conversation they were having.</para>
+        /// </summary>
+        private static bool MagnitudeIsInert(EffectKind kind)
+            => kind == EffectKind.RevealInfo || kind == EffectKind.AgreeTask;
+
         private static bool TryEntry(JsonElement e, ConversationRequest req, out ProposedEffect pe)
         {
             pe = null;
@@ -119,17 +140,47 @@ namespace Perilune.Llm.Providers
 
             if (!ProviderJson.TryParseKind(ProviderJson.GetString(e, "kind"), out EffectKind kind)) return false;
             if (!ProviderJson.TryGetInt(e, "target_index", out int index) || index < 0) return false;
-            if (!e.TryGetProperty("magnitude", out JsonElement mag)
-                || mag.ValueKind != JsonValueKind.Number
-                || !mag.TryGetDouble(out double magnitude))
+
+            // Magnitude: an OMITTED one is forgiven for the inert kinds; a PRESENT but non-numeric one
+            // is still fatal for every kind. The distinction is deliberate — an absent field is the
+            // model declining to fill in a number it was never going to use, whereas "magnitude":"lots"
+            // is a malformed entry and malformed entries stay invalid.
+            //
+            // Where the number IS the payload (SetDisposition's warmer/colder decision, FollowPlayer's
+            // follow/stop bit) absence is genuinely missing information, so the entry is dropped rather
+            // than guessed — defaulting to 0 would silently mean "no warmth change" / "stop following".
+            // For the other three, demanding it threw away real, well-formed effects: local models
+            // routinely emit {"kind":"RevealInfo","target_index":0} and the reveal was lost. Measured
+            // live against mistral on a reveal turn (n=64, the real ProviderPrompt bytes): 1/64 usable
+            // before, 29/64 after — this rule is the whole of that gain.
+            // The tool path is unaffected: Anthropic's strict schema keeps magnitude in `required`
+            // (AnthropicBackend.cs:540-545), so a tool call cannot reach here missing one.
+            double magnitude = 0d;
+            if (e.TryGetProperty("magnitude", out JsonElement mag))
+            {
+                if (mag.ValueKind != JsonValueKind.Number || !mag.TryGetDouble(out magnitude)) return false;
+            }
+            else if (!MagnitudeIsInert(kind))
+            {
                 return false;
+            }
 
             // Resolve the listed index to its real target id; an out-of-range index passes through
             // as the raw index so the downstream translator rejects it.
             List<EffectOption> caps = req != null ? req.CapabilitySummary : null;
-            uint targetId = (caps != null && index < caps.Count && caps[index] != null)
-                ? caps[index].TargetId
-                : (uint)index;
+            bool listed = caps != null && index < caps.Count && caps[index] != null;
+
+            // The row must actually BE the kind the model claimed. The tool path has always enforced
+            // this (AnthropicBackend.cs:412 rejects on `opt.Kind != kind`); the envelope path never
+            // did, and relaxing the magnitude rule above turned that from theory into a live hole:
+            // {"kind":"AgreeTask","target_index":0} aimed at a SetDisposition row resolves to
+            // TargetId 0, and TryTranslate's AgreeTask arm only bounds-checks the id — so it would
+            // put the crew member to work on dig target 0 off a line about warmth. Dropping a
+            // mismatched pair also costs nothing legitimate: the index and the kind come from the
+            // same manifest row, so disagreeing about it is always the model's error.
+            if (listed && caps[index].Kind != kind) return false;
+
+            uint targetId = listed ? caps[index].TargetId : (uint)index;
 
             pe = new ProposedEffect(kind, targetId, (float)magnitude);
             return true;
