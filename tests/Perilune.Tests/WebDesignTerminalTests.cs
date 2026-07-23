@@ -30,32 +30,37 @@ namespace Perilune.Tests
                 new WireFormat.Design(10, 2, 1, 1, 0, 3),
             };
             string json = WireFormat.Designs(rows);
-            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,1,2],[10,2,1,1,0,3]]}", json);
+            // element 7 = material variant (default 0), APPEND-ONLY after the delivered/required ledger.
+            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,1,2,0],[10,2,1,1,0,3,0]]}", json);
             Assert.AreEqual("{\"type\":\"designs\",\"cells\":[]}", WireFormat.Designs(Array.Empty<WireFormat.Design>()));
             Assert.AreEqual("{\"type\":\"designs\",\"cells\":[]}", WireFormat.Designs(null));
         }
 
         /// <summary>
-        /// The material ledger is an APPEND-ONLY extension of the designs tuple: the first four
-        /// elements keep their meaning and position, delivered/required trail them, and a Design
-        /// built the old four-argument way still serializes a well-formed six-element tuple.
-        /// WireFormat is a spine file — this is the test that says so out loud.
+        /// The designs tuple grows only by APPEND: the first four elements keep their meaning and
+        /// position, delivered/required trail them, and the material variant trails those (element 7).
+        /// A Design built the old four-argument way still serializes a well-formed tuple with the
+        /// trailing fields defaulted to 0. WireFormat is a spine file — this is the test that says so.
         /// </summary>
         [Test]
         public void Designs_Ledger_Is_AppendOnly_On_The_Tuple()
         {
             string legacy = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0) });
-            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,0,0]]}", legacy,
-                "the four-argument ctor still works; the ledger defaults to 0/0");
+            Assert.AreEqual("{\"type\":\"designs\",\"cells\":[[3,4,0,0,0,0,0]]}", legacy,
+                "the four-argument ctor still works; the ledger + material default to 0");
 
             string ledger = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0, 1, 2) });
             StringAssert.StartsWith("{\"type\":\"designs\",\"cells\":[[3,4,0,0,", ledger,
                 "x,y,deck,kind keep their positions — a reader that knows only the first four is unaffected");
-            StringAssert.EndsWith(",1,2]]}", ledger, "delivered then required, trailing");
+            StringAssert.EndsWith(",1,2,0]]}", ledger, "delivered, required, then material (0) trailing");
+
+            // The material variant rides as the 7th element (append-only after the ledger).
+            string mat = WireFormat.Designs(new[] { new WireFormat.Design(3, 4, 0, 0, 1, 2, 5) });
+            StringAssert.EndsWith(",1,2,5]]}", mat, "material variant 5 trails delivered/required");
 
             // A starved site (nothing delivered) and a ready one are distinguishable on the wire.
-            StringAssert.Contains("[9,9,0,1,0,2]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 0, 2) }));
-            StringAssert.Contains("[9,9,0,1,2,2]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 2, 2) }));
+            StringAssert.Contains("[9,9,0,1,0,2,0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 0, 2) }));
+            StringAssert.Contains("[9,9,0,1,2,2,0]", WireFormat.Designs(new[] { new WireFormat.Design(9, 9, 0, 1, 2, 2) }));
         }
 
         [Test]
@@ -136,8 +141,8 @@ namespace Perilune.Tests
             // A freshly designated site has delivered 0 of the def's required material — the
             // STARVED state the client now renders distinctly.
             Assert.IsTrue(build.TryGet(target.Value, out var pending));
-            StringAssert.Contains(tuple + "0," + pending.Required.ToString(CultureInfo.InvariantCulture) + "]", after,
-                "the ledger reports 0 delivered of the site's requirement");
+            StringAssert.Contains(tuple + "0," + pending.Required.ToString(CultureInfo.InvariantCulture) + ",0]", after,
+                "the ledger reports 0 delivered of the site's requirement; material 0 (default) trails");
 
             // Cancelling it drops the ghost off the authoritative channel.
             gs.ApplyForTest(new WebCommand(CmdKind.Build, target.Value.X, target.Value.Y, name: "cancel"));
