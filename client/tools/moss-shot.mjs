@@ -292,11 +292,20 @@ async function keyCheck(url) {
 }
 
 // ---- trusted keys into the PROGRAM editor's textarea ------------------------------------------
-// The embedded MOSS IDE is a real <textarea> that is a VIEW of `model.program`. Its correctness has
-// one class node cannot see: the refill rule must NOT reset the caret while the user types. dom-lite
-// has no caret, so a `textarea.value = draft` on every keystroke looks identical whether or not it
-// clobbers the cursor. Only a real browser with trusted keys reveals it — so this types into the
-// MIDDLE of the buffer and asserts the characters land where the caret was, not at the end.
+// The embedded MOSS IDE is a real <textarea> that is a VIEW of the SHIPPING model.program (the
+// preview drives ../src/ui/moss-model.js, not the fake — so these assertions run against the code
+// that ships). Two things node cannot give:
+//   1. That the source actually reaches the buffer THROUGH THE REAL MODEL — the tid-gap fix. The
+//      node suite proves the reducer in isolation; this proves the whole path (selectProgram folds
+//      the tid, the source reply is accepted, the draft renders) end-to-end in a browser. Revert the
+//      real `selectProgram` fix and this goes red ("program.tid is null").
+//   2. That mid-buffer typing stays COHERENT with trusted keys: it types between two characters and
+//      asserts they land where the caret was, not at the end. This catches a refill that writes
+//      DIVERGENT content on a keystroke (e.g. `installed` instead of `draft`) — that clobbers the
+//      caret and reorders the text. It does NOT (and is not claimed to) prove the `!==` guard: an
+//      unconditional write of the IDENTICAL `draft` string does not move Chrome's caret, so the
+//      guard is a redundant-write skip, node-pinned where it matters (refill from draft, not
+//      installed — terminal test in moss-program-editor.test.js).
 
 async function programKeyCheck(url) {
   const userDir = mkdtempSync(join(tmpdir(), 'perilune-progkeys-'));

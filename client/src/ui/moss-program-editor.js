@@ -22,10 +22,17 @@
 //
 // THE REFILL RULE (where editors corrupt input): the textarea is the user's live buffer.
 // `editProgramDraft` keeps `program.draft` equal to the textarea on every keystroke, so the only
-// time they diverge is when a wire `source` event resets `draft` to the installed text. Therefore:
-// if `textarea.value !== program.draft` set it, otherwise leave it alone. That refills
-// authoritatively on `source` and is a no-op during typing — the caret is never clobbered mid-type.
-// (Mirrors terminal.js: "local edits are only overwritten by an authoritative source.")
+// time they diverge is when a wire `source` event resets `draft` to the installed text. So on sync
+// we set `textarea.value = program.draft` — always from DRAFT, never `installed` (refilling from the
+// installed source would discard a live edit). That is the load-bearing rule, and it is node-pinned
+// both directions (moss-program-editor.test.js: refill from a source, and a triggered refill in a
+// dirty state that adopts the draft rather than the installed text).
+//
+// The `!==` guard on that assignment is a redundant-write SKIP, not a correctness gate: because
+// `draft` is byte-identical to the textarea during typing, an unconditional `value = draft` would
+// write the same string and not move Chrome's caret either. So do not read the guard as "what keeps
+// the caret" — it just avoids a pointless identical write. (Mirrors terminal.js: "local edits are
+// only overwritten by an authoritative source.")
 
 import { gutterMarkers, auditView, canInstall } from './terminal-model.js';
 
@@ -136,7 +143,8 @@ export class MossProgramEditor {
     if (!this.mounted || !this.code) return;
     const p = program || emptyProgram();
 
-    // THE REFILL RULE — authoritative on `source`, a no-op during typing (see the header).
+    // THE REFILL RULE — refill from DRAFT (never `installed`; see header). The `!==` is a
+    // redundant-write skip, not caret protection: during typing draft === value already.
     if (this.code.value !== p.draft) this.code.value = p.draft;
 
     // gutter line numbers (one per source row, min 1) — computed from the textarea AFTER a refill,

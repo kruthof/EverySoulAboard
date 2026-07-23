@@ -471,7 +471,7 @@ Three consequences to design around rather than discover later:
 | `moss-systems` | Determinism (twin sims produce byte-identical `systems` payloads) · InvariantCulture on every number (de-DE probe) · **no hashed state added** (scenario + tick-3000 + slice pins unmoved, asserted as *twin hashes match*, never as a literal) · `nav_sensors` is OFFLINE *because the census finds no `Telescope`*, proven by a test that places one and watches the row come alive · the exec path introduces **no new `ISimCommand`** · an abuse corpus (overlong, malformed, injection-shaped, `ship.*` write attempts) yields typed errors and zero sim mutation. |
 | `moss-model` | The IX-M8 key-routing table in **both** buffer states · selection preserved by id across a row-set change (IX-M12) · `loadBar`/`uptimeText`/`faultCell` formatting incl. `-1` sentinels · command parsing incl. case/space tolerance and unknown verbs · **M-PURITY** by source scan · reducers never mutate their argument. |
 | `moss-screen` | Full takeover leaves no game chrome visible (IX-M1) · the ESC stack order (IX-M2) · click/double-click row semantics (IX-M7) · reduced-motion (VS-M10) · a live-pixel check that the ledger reads correctly at 1024px and at full width (VS-M9) · **the prompt can be CORRECTED** — Backspace/Delete/caret keys/Tab reach the input, proven with TRUSTED key events (§6.1). |
-| `moss-programs` | The PROGRAM IDE (IX-M6) is a **VIEW of `model.program`** — the single source of truth kept live by `reduceMossEvent`; no second `terminal-model` instance that can drift · `selectProgram(model, tid)` opens the terminal in the model so the `source` reply is **not dropped** by terminal-model's tid guard (proven by a source event *dropped-before / accepted-after* selection) · edits and Install route back through the pure `editProgramDraft` / `beginProgramCompile` reducers and emit `moss set` / `moss audit` · **the textarea refill rule holds both directions** — authoritative on `source`, a no-op mid-type, and refills from `draft` (never `installed`) so a live edit is never clobbered · **the embedded `<textarea>` is provable with TRUSTED keys** — source loads, mid-buffer typing keeps the caret, Install compiles — driven over CDP by `moss-shot.mjs`'s PROGRAM phase (§6.1). |
+| `moss-programs` | The PROGRAM IDE (IX-M6) is a **VIEW of `model.program`** — the single source of truth kept live by `reduceMossEvent`; no second `terminal-model` instance that can drift · `selectProgram(model, tid)` opens the terminal in the model so the `source` reply is **not dropped** by terminal-model's tid guard (proven by a source event *dropped-before / accepted-after* selection) · edits and Install route back through the pure `editProgramDraft` / `beginProgramCompile` reducers and emit `moss set` / `moss audit` · **the textarea refill rule holds both directions** — authoritative on `source`, a no-op mid-type, and refills from `draft` (never `installed`) so a live edit is never clobbered · **the embedded `<textarea>` is provable with TRUSTED keys against the SHIPPING model** — source loads through the real `model.program` (revert the tid-gap fix → the phase goes red), mid-buffer typing stays coherent, Install compiles — driven over CDP by `moss-shot.mjs`'s PROGRAM phase, which drives `src/ui/moss-model.js` not the fake (§6.1). |
 
 Every package additionally runs `./ci.sh` **in-worktree** and passes an independent Opus gate
 (blind spec → CI battery → adversarial/mutation pass → written PASS/FAIL), per `HANDOVER.md`
@@ -502,11 +502,18 @@ else is `keyPress().handled`. A "keys like this can't type" heuristic is how thi
 
 The rule now covers **every editable surface on the screen, not just the `>` prompt.** The
 `moss-programs` lane added the PROGRAM editor's `<textarea>` — a second text field — so
-`moss-shot.mjs` grew a PROGRAM phase that drives it with trusted keys: it proves the source loads
-into the buffer, that typing in the MIDDLE of the buffer keeps the caret (a refill that reset the
-cursor on each keystroke is invisible to the node suite, which has no caret), and that Install
-enables and compiles. Same reason as the prompt: caret behaviour under a `.value` write is a real
-browser's to decide, and only a trusted key reveals it.
+`moss-shot.mjs` grew a PROGRAM phase. **That phase drives the SHIPPING model:**
+`moss-preview.html` now imports `../src/ui/moss-model.js` (the real bodies are merged; the fake was
+only a build-time stand-in), so the phase's model-level assertions run against the code that ships,
+and are not a test-that-cannot-fail. It proves: (1) the source reaches the buffer **through the real
+model** — the tid-gap fix (`selectProgram` opening the terminal so the reply is accepted); revert
+that fix and the phase goes red with "program.tid is null". (2) mid-buffer typing stays COHERENT —
+it types between two characters and asserts they land where the caret was; this catches a refill
+that writes DIVERGENT content on a keystroke (e.g. `installed` for `draft`), which reorders the text.
+(3) Install enables and compiles. Caveat for the next lane: this does NOT prove the refill's `!==`
+guard — an unconditional write of the identical `draft` string does not move Chrome's caret, so that
+guard is a redundant-write skip, not caret protection; the load-bearing direction (refill from
+`draft`, not `installed`) is node-pinned.
 
 ---
 
