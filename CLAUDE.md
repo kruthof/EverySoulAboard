@@ -23,8 +23,19 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-23) — economy Wave 0 + the B-bugs landed on `main`
-**Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** Economy Wave 0
+## Status snapshot (2026-07-23) — economy Wave 0 + the B-bugs + **E0-1 recruitability** landed on `main`
+**Read `docs/HANDOVER.md` "E0-1 — labour supply (recruitability)" first, then "Economy Wave 0
+— COMPLETE".** **E0-1 (recruitability) is LANDED on `main`** (`c643293`, Opus-implemented +
+independently Opus-reviewed PASS): `Citizen.IsIdleForWork` no longer vetoes a wander path, so
+wandering crew are offered work and self-serve (measured 6/6 recruited vs 2/6 with the fix
+reverted; all 8 slice crew take work at tick 1, was t31), and a new `wander_radius_tiles` def
+field (default 8, Chebyshev-bounded sampler) preserves the slice's anti-pile-on desync. It moved
+the slice golden (`994aa1ac`→`d93165a4`) and defs checksum (`81ae90b`→`60147a5`); both StateHash
+pins held. **Player-control note (decided — Garvin, revisit at E0-3):** an active
+`MoveCitizenCommand` order is now interruptible by auto self-serve/work; `HoldPosition` is the
+strict-control escape hatch. **Next: E0-2 (10× work-rate rebase + parked movement retune, behind
+E0-1 never before it) and E0-3 (dig/stockpile/strip verbs on the web client).**
+Below is the still-current Wave 0 record. Economy Wave 0
 (behaviour-free plumbing, six packages) is **landed on `main`**, and on top of it the three
 **shipping-bug fixes B-1/B-2/B-3** (`ECONOMY.md` §1.5) landed together:
 W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-3 `JobsDirty` split into
@@ -38,8 +49,8 @@ gas-transport bug (`AtmosphereDefs.DiffusionCoefficient`: partial-pressure diffu
 doors reaches the scrubbers; life_support Degraded→Nominal on the slice). Every package was
 Opus-implemented + independently Opus-reviewed; the three B-bugs each took **one send-back**
 before PASS (legacy-save sentinel / vacuous test / stale doc). Pins re-measured on the combined
-tree (see "Determinism proof" below). **Next: the E-lanes spawn — E0-1 recruitability first
-(`ECONOMY-PLAN.md`).**
+tree (see "Determinism proof" below). (E0-1 has since landed on top — see the status snapshot
+above; next is E0-2 then E0-3, `ECONOMY-PLAN.md`.)
 
 ### Earlier snapshot (playtest rounds 3–4 + MOSS terminal)
 **`docs/HANDOVER.md` "Playtest round 4" then "round 3"** — **`docs/MECHANICS.md`** is the
@@ -159,9 +170,12 @@ another's half-finished work.*
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `494ad0b05a154ccb` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `0f66ffdf9f90f766`; the slice tick-3000 golden is `994aa1ac661aa1cc`. (The three B-bugs
-  B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
-  defs checksum are set to their combined measured values by the integration re-pin commit.)
+  `0f66ffdf9f90f766`; the slice tick-3000 golden is `d93165a481ebb344` (**E0-1** moved it from
+  `994aa1ac661aa1cc` — wandering crew are now recruited to work); the defs checksum is
+  `60147a57e27c5c31` (E0-1's `wander_radius_tiles` fold, from `81ae90bdd049f745`). The scenario
+  and tick-3000 StateHash pins held through E0-1 (their ships carry no wandering crew).
+  (The three B-bugs B-1/B-2/B-3 all move pins off the same base and land together; these three
+  literals plus the defs checksum are set to their combined measured values by the re-pin commit.)
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →

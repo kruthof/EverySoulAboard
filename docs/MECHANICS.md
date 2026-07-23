@@ -206,7 +206,13 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
 `CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `494ad0b05a154ccb`
 (pinned in `ci.sh`); tick-3000 golden `0f66ffdf9f90f766`; slice tick-3000 golden
-`994aa1ac661aa1cc`; defs checksum `81ae90bdd049f745`. These moved with the **B-1/B-2/B-3**
+`d93165a481ebb344`; defs checksum `60147a57e27c5c31`. The slice golden + defs checksum most
+recently moved with **E0-1** (recruitability, 2026-07-23) — a REAL slice behaviour change
+(wandering crew are now recruited to work: `IsIdleForWork` no longer vetoes a wander path, and a
+new `wander_radius_tiles` def field bounds wander scope). The two StateHash pins held (the
+scenario and perilune tick-3000 ships carry non-wandering / HoldPosition crew, so neither enters
+the labour or wander paths that changed). Before E0-1 the slice golden was `994aa1ac661aa1cc` and
+the defs checksum `81ae90bdd049f745`, both of which had moved with the **B-1/B-2/B-3**
 shipping-bug fixes (2026-07-23) — the first pin moves that are real BEHAVIOUR changes rather
 than pure folds (B-1 releases a stranded crafting reservation on the slice; B-2's greywater
 makeup floor keeps the hydro loop alive; B-3's partial-pressure diffusion transports CO2 across
