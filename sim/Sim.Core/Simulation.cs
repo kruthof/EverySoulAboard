@@ -245,7 +245,7 @@ namespace Perilune.Sim
         ///
         /// Per citizen, in this order: Id · Pack(Pos) · Suffocation · Hunger · Thirst ·
         /// Fatigue · Mood · JobKind (own word) · flag word (Dead b0, RevealsFog b1,
-        /// HoldPosition b2, AutoWander b3 — 1-bit fields, cannot alias) · JobWorkTicks
+        /// HoldPosition b2, AutoWander b3, OrderedMove b4 — 1-bit fields, cannot alias) · JobWorkTicks
         /// (own word, full 32 bits) · CarryingItemId (own word, full 32 bits) ·
         /// Pack(JobTarget) · ReservedItemId · Faction|Archetype&lt;&lt;8 (both `byte`, exact
         /// fit) · Health · Morale · Name (length then code units) · Pack(PrevPos) ·
@@ -371,7 +371,8 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (c.Dead ? 1UL << 0 : 0)
                                        | (c.RevealsFog ? 1UL << 1 : 0)
                                        | (c.HoldPosition ? 1UL << 2 : 0)   // v6
-                                       | (c.AutoWander ? 1UL << 3 : 0));   // W0-1b
+                                       | (c.AutoWander ? 1UL << 3 : 0)     // W0-1b
+                                       | (c.OrderedMove ? 1UL << 4 : 0));  // E0-3
                 h = XxHash64.Combine(h, (ulong)(uint)c.JobWorkTicks);
                 h = XxHash64.Combine(h, (ulong)c.CarryingItemId);
                 h = XxHash64.Combine(h, Pack(c.JobTarget));

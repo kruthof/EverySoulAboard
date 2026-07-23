@@ -49,7 +49,7 @@ namespace Perilune.Sim
 
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
-        public const ushort CitizenVersion = 6; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition
+        public const ushort CitizenVersion = 7; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove
         public const ushort DeviceVersion = 4;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner
         public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
@@ -265,6 +265,7 @@ namespace Perilune.Sim
                 w.Write(c.Morale);         // v5
                 w.Write(c.Archetype);      // v5
                 w.Write(c.HoldPosition);   // v6
+                w.Write(c.OrderedMove);    // v7 (E0-3 player-order precedence)
             }
         }
 

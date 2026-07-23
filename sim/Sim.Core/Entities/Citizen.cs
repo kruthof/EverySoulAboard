@@ -72,6 +72,36 @@ namespace Perilune.Sim
         // wander path is simply replaced when real work exists — no takeover machinery needed.
         public bool IsIdleForWork => !Dead && !HoldPosition && JobKind == JobKind.None;
 
+        /// <summary>
+        /// E0-3 (player-order precedence): executing an explicit <c>MoveCitizenCommand</c>. Set when
+        /// the order paths successfully, cleared the moment that path ends — on arrival, when the
+        /// route is blocked, or when the crew member flees lethal air. It is therefore true ONLY
+        /// while a player-ordered walk is actually in progress, and never survives it.
+        /// </summary>
+        public bool OrderedMove;
+
+        /// <summary>
+        /// Recruitable by the AUTO-WORK dispatchers (jobs, crafting, maintenance). E0-1 relaxed
+        /// <see cref="IsIdleForWork"/> so a wandering crew member could be offered work; the same
+        /// relaxation made a player's explicit move order — which also carries JobKind.None —
+        /// hijackable by an auto-assignment mid-walk. That was latent until E0-3 gave the web
+        /// client a dig verb and made auto-work reachable at all; this is the promised revisit.
+        ///
+        /// Deliberately NOT used by <c>SustenanceSystem</c>: a move order suppresses WORK, never
+        /// SURVIVAL. A crew member who crosses a real thirst/hunger threshold mid-order still
+        /// diverts to drink or eat, exactly as E0-2's SafetySystem still lets them flee lethal air.
+        /// An order the player gave must not be a way to starve someone.
+        ///
+        /// The guard is <c>OrderedMove &amp;&amp; HasPath</c>, not <c>OrderedMove</c> alone, so it can
+        /// only ever bite while the ordered walk is actually in progress. That matters because the
+        /// systems allowed to interrupt an order (self-serve, flee) overwrite the citizen's path
+        /// wholesale: a bare flag left standing after such an interrupt would lock that crew member
+        /// out of work permanently. This way an order protects the walk and nothing more — the
+        /// explicit clears on arrival / blocked / flee keep the flag honest, and this keeps a missed
+        /// one from being a silent, unrecoverable idle bug.
+        /// </summary>
+        public bool IsRecruitableForWork => IsIdleForWork && !(OrderedMove && HasPath);
+
         public void ClearPath()
         {
             Path.Clear();

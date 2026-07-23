@@ -95,6 +95,10 @@ namespace Perilune.Sim
                     // as on death) WITHOUT clearing that path, then commit to the flee.
                     sim.CancelJob(c);
                     c.JobKind = JobKind.Flee;
+                    // E0-3: survival outranks a player order. The flee has already overwritten the
+                    // ordered path, so the claim must go with it — otherwise a crew member who fled
+                    // an order would stay flagged as "executing" it and never be recruitable again.
+                    c.OrderedMove = false;
                     c.StartPath(sim.Defs.Citizen.TicksPerTile);
                 }
             }
