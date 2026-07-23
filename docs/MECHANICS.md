@@ -206,7 +206,12 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
 `CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `616ed4a84a9f6e87`
 (pinned at `ci.sh:25`); tick-3000 golden `3cf25daf3ca40e0b`; slice tick-3000 golden
-`72f7023ef9f1cd73`. All three moved three times on 2026-07-22, each time by a pure fold
+`0623f93e280bb0a1` (moved `72f7023ef9f1cd73` → `0623f93e280bb0a1` by **B-1**, the
+ownerless-reservation-leak fix — a genuine BEHAVIOUR change, not a fold-reformat: a staged
+crafting input the slice used to strand forever is now released back to the pool, so the
+slice's tick-3000 world state differs. The scenario and 2-crew tick-3000 pins held: the
+reference ships carry no reserved item at those ticks, so bool-0 and uint-0 fold identically).
+All three moved three times on 2026-07-22, each time by a pure fold
 change whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
 un-aliasing) took `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
 `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; W0-1b (folding the thirteen

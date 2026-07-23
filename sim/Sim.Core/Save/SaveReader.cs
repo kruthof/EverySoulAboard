@@ -303,9 +303,11 @@ namespace Perilune.Sim
             }
         }
 
-        // --- ITEM v1 (mirrors SaveWriter.WriteItems) ---
+        // --- ITEM v3 (mirrors SaveWriter.WriteItems) ---
 
-        private static void ReadItems(Simulation sim, BinaryReader reader, ushort version)
+        // internal (not private) so the pre-v3 legacy-reservation read path — which the
+        // scenario/slice gate never exercises — can be driven directly by a unit test.
+        internal static void ReadItems(Simulation sim, BinaryReader reader, ushort version)
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
@@ -316,7 +318,14 @@ namespace Perilune.Sim
                 it.Count = reader.ReadInt32();
                 it.Pos = ReadInt3(reader);
                 it.CarriedBy = reader.ReadUInt32();
-                it.ReservedForJob = reader.ReadBoolean();
+                // v3 widened the reservation to an owner id (0 = free). A pre-v3 save only knew
+                // WHETHER a stack was reserved, not by WHOM — the owner is unrecoverable. Restore
+                // it FREE, never a sentinel: an owner id no live entity holds would be an
+                // ownerless claim no owner-gated release could ever clear — the exact B-1 leak,
+                // reintroduced. Free is strictly safer: the reserving job re-reserves (or the haul
+                // board re-derives) next tick, worst case a transient double-target that self-heals.
+                if (version >= 3) it.ReservedBy = reader.ReadUInt32();
+                else { reader.ReadBoolean(); it.ReservedBy = 0u; }
                 if (version >= 2) it.Label = reader.ReadString();
                 sim.Items.Add(it, id);
             }

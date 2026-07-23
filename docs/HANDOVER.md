@@ -57,7 +57,7 @@ CURRENT values, `ci.sh:25` and the two golden files all agree):
 |---|---|
 | 3-day scenario (`ci.sh:25`) | `616ed4a84a9f6e87` |
 | tick-3000 golden | `3cf25daf3ca40e0b` |
-| slice tick-3000 golden | `72f7023ef9f1cd73` |
+| slice tick-3000 golden | `0623f93e280bb0a1` (was `72f7023ef9f1cd73`; moved by **B-1** — a released reservation leak, a behaviour change) |
 
 W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
 longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped

@@ -156,7 +156,11 @@ another's half-finished work.*
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `72f7023ef9f1cd73`.
+  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `0623f93e280bb0a1`
+  (moved `72f7023ef9f1cd73` → `0623f93e280bb0a1` by **B-1** — the ownerless-reservation-leak
+  fix; a BEHAVIOUR change, not a fold-reformat: a staged input the slice used to strand forever
+  is now released, so the slice's tick-3000 world state differs. The scenario hash and the
+  2-crew tick-3000 golden are unmoved — the reference ships carry no reserved item at those ticks).
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →

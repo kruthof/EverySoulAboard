@@ -31,14 +31,15 @@ namespace Perilune.Sim
         public long NextGen() => ++_gen;
 
         /// <summary>
-        /// Reserve a loose ground stack for a job and tell every source, in registration order,
-        /// that the free pool shrank. The ONLY sanctioned way to set
-        /// <see cref="ItemStack.ReservedForJob"/> from a job source — see
-        /// <see cref="IJobSource.OnGroundItemReserved"/> for why.
+        /// Reserve a loose ground stack for a job on behalf of <paramref name="owner"/> and tell
+        /// every source, in registration order, that the free pool shrank. The ONLY sanctioned way
+        /// to set <see cref="ItemStack.ReservedBy"/> from a job source — see
+        /// <see cref="IJobSource.OnGroundItemReserved"/> for why. Stamping the OWNER id (not a bare
+        /// flag) lets each release path clear only its own claim on a co-located tile (B-1).
         /// </summary>
-        public void ReserveGroundItem(Simulation sim, ItemStack item)
+        public void ReserveGroundItem(Simulation sim, Citizen owner, ItemStack item)
         {
-            item.ReservedForJob = true;
+            item.ReservedBy = owner.Id;
             for (int i = 0; i < _sources.Length; i++) _sources[i].OnGroundItemReserved(sim, item);
         }
     }

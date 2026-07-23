@@ -735,8 +735,8 @@ namespace Perilune.Tests
         /// NAMED MUTATIONS (both applied, both observed failing, both reverted) — either one
         /// disables the channel completely, and before this test both passed the entire suite:
         ///   (a) make <c>BuildJobSource.OnGroundItemReserved</c> a no-op;
-        ///   (b) in <c>HaulJobSource.TryClaim</c>, replace <c>ctx.ReserveGroundItem(sim, item)</c>
-        ///       with a direct <c>item.ReservedForJob = true</c>, skipping the fan-out.
+        ///   (b) in <c>HaulJobSource.TryClaim</c>, replace <c>ctx.ReserveGroundItem(sim, citizen, item)</c>
+        ///       with a direct <c>item.ReservedBy = citizen.Id</c>, skipping the fan-out.
         /// </summary>
         [Test]
         public void AStockpileHaulTakenMidPass_RemovesTheUnitsFromTheBuildSourcesFreePool()
