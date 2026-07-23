@@ -60,7 +60,17 @@ namespace Perilune.Sim
 
         public bool HasPath => PathIndex < Path.Count;
 
-        public bool IsIdleForWork => !Dead && !HoldPosition && JobKind == JobKind.None && !HasPath;
+        // E0-1 (recruitability): "idle for work" means carrying no *job* — NOT "standing
+        // still". The old `&& !HasPath` excluded any crew mid-wander (AutoWander crew almost
+        // always are), collapsing the effective labour pool to ~1.43 of 8: a wanderer was only
+        // pickable in the brief settle gap between wander paths. Because this already requires
+        // JobKind==None, the ONLY path a citizen carries here is a wander path (or a player
+        // MoveCitizenCommand, also JobKind==None — a player who left crew idle-walking is content
+        // to have them auto-assigned). Every consumer overwrites that path from the citizen's
+        // current tile on claim (JobWork.TryPathToAdjacent / FindPath(sim, citizen.Pos, ...)) or
+        // leaves it untouched when nothing is on offer (JobSystem.TryAssign, candidates==0), so a
+        // wander path is simply replaced when real work exists — no takeover machinery needed.
+        public bool IsIdleForWork => !Dead && !HoldPosition && JobKind == JobKind.None;
 
         public void ClearPath()
         {

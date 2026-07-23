@@ -29,6 +29,7 @@ namespace Perilune.Sim
             var rng = sim.Rng;
             int ticksPerTile = sim.Defs.Citizen.TicksPerTile;
             int idleTicksBetweenWanders = sim.Defs.Citizen.IdleTicksBetweenWanders;
+            int wanderRadius = sim.Defs.Citizen.WanderRadiusTiles; // E0-1: bound the wander locally
 
             for (int i = 0; i < citizens.Count; i++)
             {
@@ -62,7 +63,7 @@ namespace Perilune.Sim
                     if (citizen.JobKind != JobKind.None) continue; // working citizens don't wander
                     if (--citizen.IdleCooldown > 0) continue;
                     citizen.IdleCooldown = idleTicksBetweenWanders;
-                    if (paths.TryRandomWalkableTile(sim, rng, out var target) && target != citizen.Pos)
+                    if (paths.TryRandomWalkableTileNear(sim, rng, citizen.Pos, wanderRadius, out var target) && target != citizen.Pos)
                     {
                         if (paths.FindPath(sim, citizen.Pos, target, citizen.Path))
                         {

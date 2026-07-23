@@ -122,6 +122,7 @@ namespace Perilune.Tests
             // so this keeps referencing the real const — the defs graph must mirror it.
             Assert.That(D.Citizen.TicksPerTile, Is.EqualTo(CitizenSystem.TicksPerTile));
             Assert.That(D.Citizen.IdleTicksBetweenWanders, Is.EqualTo(30));
+            Assert.That(D.Citizen.WanderRadiusTiles, Is.EqualTo(8)); // E0-1 wander scope
         }
 
         [Test]
