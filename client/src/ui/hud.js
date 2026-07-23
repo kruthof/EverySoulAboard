@@ -63,6 +63,7 @@ let _systems = null;      // latest systems message (the MOSS ledger channel)
 let _decks = null;        // latest decks message (per-deck compartment grid → warm SVG Overview)
 let _rooms = null;        // latest rooms message (per-room atmosphere)
 let _decor = null;        // latest decor message (cosmetic view-only furniture layer)
+let _materials = null;    // latest materials message (sparse wall/floor material variants → tile skins)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -92,6 +93,7 @@ export function getRooms() { return _rooms; }
 export function getDesigns() { return _designs; }
 export function getTerminals() { return _terminals; }
 export function getDecor() { return _decor; }
+export function getMaterials() { return _materials; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
@@ -377,6 +379,10 @@ export function renderRooms(m) { _rooms = m; notifyShip(); }
 
 /** Decor dispatch: cache the cosmetic view-only decor layer. */
 export function renderDecor(m) { _decor = m; }
+
+/** Materials dispatch: cache the sparse wall/floor material layer; notify the SVG views to re-skin
+ *  their built walls/floors. View-only — never touches the sim. */
+export function renderMaterials(m) { _materials = m; notifyShip(); }
 
 /** Relations dispatch (IX-R3): cache the directed graph; re-render the web when the RELATIONS tab
  *  is up, and refresh the readout (its regard sections are relations-derived). */

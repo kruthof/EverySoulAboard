@@ -55,9 +55,11 @@ export const Cmd = {
   lens: (name) => ({ cmd: 'lens', name }),
   speed: (delta) => ({ cmd: 'speed', delta }),
   pause: () => ({ cmd: 'pause' }),
-  // P2.1 build palette: designate wall/door or cancel a queued order at a tile on the current
-  // deck. Legality is decided sim-side at the tick boundary — the client never ghosts an outcome.
-  build: (kind, x, y) => ({ cmd: 'build', kind, x, y }),
+  // P2.1 build palette: designate wall/door/floor or cancel a queued order at a tile on the current
+  // deck. `material` is the wall/floor material variant byte (0 = default; ignored for door/cancel);
+  // the host records it on the built tile. Legality is decided sim-side at the tick boundary — the
+  // client never ghosts an outcome. Existing 3-arg callers get material 0.
+  build: (kind, x, y, material = 0) => ({ cmd: 'build', kind, x, y, material: material | 0 }),
   // Room Zoom decorate palette: place a functional furniture device (kind is the palette tool
   // string bunk/desk/chair/locker/plant/lamp/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never

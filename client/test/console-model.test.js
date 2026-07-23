@@ -328,9 +328,12 @@ test('chronHeader: strips the headline\'s own "Day n" prefix, keeps foreign/no p
 // ---------------- new wire command shapes ----------------
 
 test('Cmd.build / Cmd.chron marshal the exact host shapes (GameSession.Parse)', () => {
-  assert.deepEqual(Cmd.build('wall', 3, 4), { cmd: 'build', kind: 'wall', x: 3, y: 4 });
-  assert.deepEqual(Cmd.build('door', 0, 0), { cmd: 'build', kind: 'door', x: 0, y: 0 });
-  assert.deepEqual(Cmd.build('cancel', 9, 9), { cmd: 'build', kind: 'cancel', x: 9, y: 9 });
+  // build now carries a material byte (0 = default; ignored host-side for door/cancel).
+  assert.deepEqual(Cmd.build('wall', 3, 4), { cmd: 'build', kind: 'wall', x: 3, y: 4, material: 0 });
+  assert.deepEqual(Cmd.build('wall', 3, 4, 2), { cmd: 'build', kind: 'wall', x: 3, y: 4, material: 2 });
+  assert.deepEqual(Cmd.build('floor', 1, 1, 5), { cmd: 'build', kind: 'floor', x: 1, y: 1, material: 5 });
+  assert.deepEqual(Cmd.build('door', 0, 0), { cmd: 'build', kind: 'door', x: 0, y: 0, material: 0 });
+  assert.deepEqual(Cmd.build('cancel', 9, 9), { cmd: 'build', kind: 'cancel', x: 9, y: 9, material: 0 });
   assert.deepEqual(Cmd.chron(), { type: 'chron' });
   assert.deepEqual(Cmd.bio(7), { type: 'bio', cid: 7 }); // B3: re-request the citizen card
 });

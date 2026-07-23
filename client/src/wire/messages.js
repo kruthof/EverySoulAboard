@@ -337,6 +337,23 @@ export function decodeDecor(msg) {
 }
 
 /**
+ * Decode the sparse `materials` channel — the non-default wall/floor material variants, so built
+ * tiles render their material skin. Mirrors WireFormat.Materials: {type:'materials',cells:[[x,y,
+ * deck,kind,mat],..]} where kind 0 = wall, 1 = floor and mat is the WallMaterial/FloorMaterial byte.
+ * Tolerant: malformed rows dropped. Returns [{x,y,deck,kind,mat}] or null.
+ * @param {{type:string, cells?:Array}} msg
+ */
+export function decodeMaterials(msg) {
+  if (!msg || msg.type !== 'materials' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 5) continue;
+    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, mat: t[4] | 0 });
+  }
+  return out;
+}
+
+/**
  * Decode one wire line. Returns the parsed message or null on garbage.
  * @param {string} data
  * @returns {WireMsg|null}
