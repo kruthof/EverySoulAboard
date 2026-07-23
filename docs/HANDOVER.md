@@ -12,27 +12,31 @@
 
 ## Economy Wave 0 — COMPLETE, START HERE (2026-07-22)
 
-**All six Wave 0 packages are merged on `lane/economy-w0`, and `main` is now merged into the
-branch** (the MOSS terminal, render light-pools + movement fixes, Ollama, art rev 2, playtest
-round 4). Gate on the merged tree, measured 2026-07-22: **786 dotnet + 356 node** green, pin
-`616ed4a84a9f6e87` **held** (the merge is pin-neutral — main added no hashed sim state, so all
-three pins and the defs checksum `08b73814d97c7be3` are unmoved). **(B-3 has since moved all
-three sim pins → `9daef6183e673d6b` / `9fe2bdc6a18b2e78` / `d6561ff4b0d3f36d` and the defs
-checksum → `e3a80302b513a7aa`; see the pin table below.)** Every package was
-Opus-implemented and independently Opus-reviewed (four of six sent back at least once). The
-next session's job is the ordered list in "What is left" below: **land the branch on `main`
-→ B-1/B-2/B-3 shipping-bug commits → spawn the E-lanes (E0-1 first).** The `main`-merge and
-the eight `ECONOMY-PLAN.md` corrections are already done. Everything below is the detail.
+**Wave 0 (all six packages) is LANDED on `main`, and on top of it the three shipping-bug fixes
+B-1/B-2/B-3 (`ECONOMY.md` §1.5) are LANDED too** (2026-07-23). Combined gate on `main`, measured
+after integration: **`./ci.sh` exit 0, twin hashes MATCH**. Pins re-measured on the combined
+tree (all three B-bugs move pins off the same base, integrated in one pass):
 
+| pin | value | pre-B-bugs |
+|---|---|---|
+| 3-day scenario (`ci.sh`) | `494ad0b05a154ccb` | `616ed4a84a9f6e87` |
+| tick-3000 golden | `0f66ffdf9f90f766` | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `994aa1ac661aa1cc` | `72f7023ef9f1cd73` |
+| defs checksum | `81ae90bdd049f745` | `08b73814d97c7be3` |
 
-**Where the work is: branch `lane/economy-w0`, NOT `main`.** It was cut from `main` @
-`3efd181` (what `ECONOMY-PLAN.md` was written against). **`main` has since advanced** —
-`15a0b7b` merged the Ollama lane, `9494420`/`e7b9c22` are art-direction rev 2, and
-`36b6ca4` committed the economy design docs independently (byte-identical to the copies on
-this branch, so that resolves cleanly; `CLAUDE.md` and `HANDOVER.md` will need a real
-merge). **First job of the next session: merge `main` into `lane/economy-w0`, re-gate, and
-re-measure the pin** — per `ECONOMY-PLAN.md` §2.1.4 pin measurement is integrator-only, on
-main, after merge.
+Every package was Opus-implemented and independently Opus-reviewed; **the three B-bugs each took
+one review send-back before PASS** (B-1 a legacy-save sentinel that reintroduced the leak, B-2 a
+vacuous survival test, B-3 stale MECHANICS prose + a vacuous vacuum test — the review method
+catching the author's blind spot every time). **Next: the E-lanes spawn — E0-1 recruitability
+first (`ECONOMY-PLAN.md`).** Everything below is the historical record of how Wave 0 and the
+B-bugs went.
+
+**How it got here (record):** Wave 0 was cut from `main` @ `3efd181`; `main` advanced 35 commits
+(MOSS terminal, render, movement, Ollama, art rev 2, playtest round 4); the branch merged `main`
+in twice (re-measured pin-neutral each time) and landed at `7f67f2a`. The three B-bugs were then
+built as parallel Opus worktree lanes off `7f67f2a`, each independently reviewed, and integrated
+onto `main` in one pass with a combined re-pin. The eight `ECONOMY-PLAN.md` corrections were
+folded in during Wave 0.
 
 ### State of the six Wave 0 packages
 
@@ -49,7 +53,7 @@ main, after merge.
 **ALL SIX MERGED, and `main` is now merged into the branch. Final gate (`lane/economy-w0`
 with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.sh` exit 0,
 `determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** (B-3 later moved this to
-`9daef6183e673d6b` — see the pin table.) The pre-`main`-merge branch gate was
+`494ad0b05a154ccb` — see the pin table.) The pre-`main`-merge branch gate was
 713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
 surface) and moved no pin.
 
@@ -59,10 +63,10 @@ combined tree (`ci.sh` and the two golden files agree):
 
 | pin | value | pre-B-bugs |
 |---|---|---|
-| 3-day scenario (`ci.sh`) | `__REPIN_SCENARIO__` | `616ed4a84a9f6e87` |
-| tick-3000 golden | `__REPIN_TICK3000__` | `3cf25daf3ca40e0b` |
-| slice tick-3000 golden | `__REPIN_SLICE__` | `72f7023ef9f1cd73` |
-| defs checksum | `__REPIN_DEFS__` | `08b73814d97c7be3` |
+| 3-day scenario (`ci.sh`) | `494ad0b05a154ccb` | `616ed4a84a9f6e87` |
+| tick-3000 golden | `0f66ffdf9f90f766` | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `994aa1ac661aa1cc` | `72f7023ef9f1cd73` |
+| defs checksum | `81ae90bdd049f745` | `08b73814d97c7be3` |
 
 What each bug moved (all real behaviour changes, not pure folds): **B-1** (reservation owner)
 moves the slice golden only — a staged crafting input the slice used to strand forever is now
@@ -118,29 +122,23 @@ This retires the "prove it" that was unprovable when the wave started.
 
 ### What is left, in order — START HERE for the next session
 
-**Wave 0 itself is DONE (all six merged), and `main` is now merged into the branch.** What
-remains is landing it on `main` and then opening the economy proper:
+**Wave 0 AND the B-1/B-2/B-3 shipping-bug fixes are all LANDED on `main`** (2026-07-23). Steps
+1–3 below are DONE (kept as record); the live next step is step 4, the E-lanes.
 
-1. **DONE — `main` merged into `lane/economy-w0` and re-measured.** `main` had advanced 35
-   commits since the cut (the MOSS terminal programme, render light-pools + movement fixes,
-   Ollama merge `15a0b7b`, art rev 2, playtest round 4) — far more than the Ollama+art the
-   plan anticipated. Conflicts were doc-only (no sim source on both sides): `ECONOMY-PLAN.md`
-   kept the branch copy with the corrections (main carried the stale pre-correction copy from
-   the independent `36b6ca4`); `CLAUDE.md`/`HANDOVER.md` narratives merged. Per
-   `ECONOMY-PLAN.md` §2.1.4 the pin was measured on the merged result: **786 dotnet + 356 node
-   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state; B-3 later
-   moved it to `9daef6183e673d6b` — see the pin table). **Next
-   for the integrator: land the whole of `lane/economy-w0` on `main` (`--no-ff`, re-gate on
-   `main`).**
-2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the
-   "Corrections" section below — they were folded in during the wave, each measured and each
-   reproduced by a second agent). Nothing to do but be aware they are in.
-3. **B-1 / B-2 / B-3** — the three shipping-build bug commits (`ECONOMY.md` §1.5): the
-   ownerless reservation leak, the hydroponics water leak, the CO₂ gas-transport bug. These
-   are **behavioural** (they move pins and change outcomes), so they were deliberately NOT
-   started during behaviour-free Wave 0. B-3 must precede E1's finite air reserve. Good first
-   batch after the `main`-merge.
-4. **Then the E-lanes spawn — E0-1 recruitability first.** It is the hard prerequisite for
+1. **DONE — `main` merged into `lane/economy-w0`, re-measured, and landed on `main`.** `main`
+   had advanced 35 commits since the cut (the MOSS terminal programme, render light-pools +
+   movement fixes, Ollama merge `15a0b7b`, art rev 2, playtest round 4). Conflicts were doc-only
+   (no sim source on both sides). The pre-B-bug landed gate was 786 dotnet + 356 node, pin
+   `616ed4a84a9f6e87` (the `main`-merge was pin-neutral); the B-bugs then moved the pins to the
+   combined values in the pin table above.
+2. **DONE — the eight `ECONOMY-PLAN.md` corrections** were folded in during the wave, each
+   measured and reproduced by a second agent.
+3. **DONE — B-1 / B-2 / B-3** (`ECONOMY.md` §1.5) landed together as three `--no-ff` merges + one
+   combined re-pin: **B-1** ownerless reservation leak (`ReservedForJob:bool`→`ReservedBy:uint`),
+   **B-2** hydroponics water leak (self-throttling greywater makeup floor), **B-3** CO₂
+   gas-transport (partial-pressure diffusion across open doors, which E1's finite air reserve
+   required first). Each was Opus-implemented + independently Opus-reviewed, one send-back each.
+4. **NEXT — the E-lanes spawn, E0-1 recruitability first.** It is the hard prerequisite for
    everything, and it now *has* a canary: W0-1b hashed the path fields, so a routing change is
    finally visible to the pin (before W0-1b it was not). E0-2 (the 10× work-rate rebase +
    parked movement retune) lands *behind* E0-1, never before — measured, the retune alone

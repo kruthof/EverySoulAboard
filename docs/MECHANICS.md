@@ -204,9 +204,9 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `__REPIN_SCENARIO__`
-(pinned in `ci.sh`); tick-3000 golden `__REPIN_TICK3000__`; slice tick-3000 golden
-`__REPIN_SLICE__`; defs checksum `__REPIN_DEFS__`. These moved with the **B-1/B-2/B-3**
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `494ad0b05a154ccb`
+(pinned in `ci.sh`); tick-3000 golden `0f66ffdf9f90f766`; slice tick-3000 golden
+`994aa1ac661aa1cc`; defs checksum `81ae90bdd049f745`. These moved with the **B-1/B-2/B-3**
 shipping-bug fixes (2026-07-23) — the first pin moves that are real BEHAVIOUR changes rather
 than pure folds (B-1 releases a stranded crafting reservation on the slice; B-2's greywater
 makeup floor keeps the hydro loop alive; B-3's partial-pressure diffusion transports CO2 across
@@ -222,7 +222,7 @@ diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then took those to the cu
 above — the FIRST of these moves that is a real behaviour change, not a pure fold: gas now
 crosses open doors by partial-pressure gradient, so the hash's *inputs* genuinely differ (its
 new `diffusion_coefficient` def also moved the defs checksum `08b73814d97c7be3` →
-`e3a80302b513a7aa`). Still only the two tick-3000 goldens moved; every frame, persona and
+`81ae90bdd049f745`). Still only the two tick-3000 goldens moved; every frame, persona and
 layout golden stayed byte-identical.
 All three times exactly 2 goldens moved — the two tick-3000 hash files — and every frame,
 persona and layout golden was byte-identical, which is the check that the cause really was

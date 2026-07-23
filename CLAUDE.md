@@ -23,20 +23,23 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-22) — economy Wave 0 COMPLETE, `main` merged in
-**Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** The economy
-programme's Wave 0 (behaviour-free plumbing that must land before any economy lane spawns)
-is **DONE — all six packages merged on `lane/economy-w0`**:
+## Status snapshot (2026-07-23) — economy Wave 0 + the B-bugs landed on `main`
+**Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** Economy Wave 0
+(behaviour-free plumbing, six packages) is **landed on `main`**, and on top of it the three
+**shipping-bug fixes B-1/B-2/B-3** (`ECONOMY.md` §1.5) landed together:
 W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-3 `JobsDirty` split into
 tile/item/site/citizen flags · W0-4 `JobSystem` split into an `IJobSource` dispatcher ·
-W0-5 the `[production]` node table · W0-1b the 13 saved-but-unhashed fields hashed
-(`Path`/`PathIndex`/`MoveCooldown` were live tick state hashing **equal**) · W0-6 the four
-empty economy systems registered (`ZONE`/`PROD`/`ORES`/`TRAD` SYSS, one batched pin move).
-Every package was Opus-implemented + independently Opus-reviewed; four of six were sent back
-at least once. **`main` — through the MOSS terminal, render light-pools and the movement
-fixes — is now merged into the branch; the gate and pin are re-measured on the merged tree**
-(see "Determinism proof" below). **Next: land the branch on `main`, then the B-1/B-2/B-3
-shipping-bug commits (`ECONOMY.md` §1.5), then the E-lanes spawn (E0-1 recruitability first).**
+W0-5 the `[production]` node table · W0-1b the 13 saved-but-unhashed fields hashed ·
+W0-6 four empty economy systems registered (`ZONE`/`PROD`/`ORES`/`TRAD`) · **B-1** the ownerless
+reservation leak (`ItemStack.ReservedForJob:bool`→`ReservedBy:uint` owner id; a released stranded
+claim) · **B-2** the hydroponics water leak (a self-throttling greywater makeup floor,
+`WaterDefs.MakeupFloorLiters`, keeps the food loop alive past day 1.2) · **B-3** the CO2
+gas-transport bug (`AtmosphereDefs.DiffusionCoefficient`: partial-pressure diffusion across open
+doors reaches the scrubbers; life_support Degraded→Nominal on the slice). Every package was
+Opus-implemented + independently Opus-reviewed; the three B-bugs each took **one send-back**
+before PASS (legacy-save sentinel / vacuous test / stale doc). Pins re-measured on the combined
+tree (see "Determinism proof" below). **Next: the E-lanes spawn — E0-1 recruitability first
+(`ECONOMY-PLAN.md`).**
 
 ### Earlier snapshot (playtest rounds 3–4 + MOSS terminal)
 **`docs/HANDOVER.md` "Playtest round 4" then "round 3"** — **`docs/MECHANICS.md`** is the
@@ -154,9 +157,9 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `__REPIN_SCENARIO__` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `494ad0b05a154ccb` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `__REPIN_TICK3000__`; the slice tick-3000 golden is `__REPIN_SLICE__`. (The three B-bugs
+  `0f66ffdf9f90f766`; the slice tick-3000 golden is `994aa1ac661aa1cc`. (The three B-bugs
   B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
   defs checksum are set to their combined measured values by the integration re-pin commit.)
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
@@ -173,7 +176,7 @@ another's half-finished work.*
   partial-pressure diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then moved all three
   to the current values above — the first move that is a real behaviour change, not a fold: gas
   now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
-  `08b73814d97c7be3` → `e3a80302b513a7aa`. Still only the two tick-3000 goldens moved.
+  `08b73814d97c7be3` → `81ae90bdd049f745`. Still only the two tick-3000 goldens moved.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
