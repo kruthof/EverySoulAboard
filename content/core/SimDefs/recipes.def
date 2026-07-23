@@ -17,6 +17,6 @@
 
 [recipes]
 #               input     in_count  output            out_count  work_s
-SalvageRecycler Regolith  1         Scrap             2          20
-Fabricator      Scrap     2         Parts             1          30
-MachineShop     Parts     2         ControllerModule  1          40
+SalvageRecycler Regolith  1         Scrap             2          600
+Fabricator      Scrap     2         Parts             1          900
+MachineShop     Parts     2         ControllerModule  1          1800

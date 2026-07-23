@@ -49,6 +49,8 @@ namespace Perilune.Sim
                 new TradeSystem(),         // 'TRAD' — E-VOY trade (empty)
                 new HydroponicsSystem(),
                 new NeedsSystem(),
+                new SafetySystem(),        // after Needs: acts on this tick's fresh Suffocation — a crew
+                                           // member in lethal air drops its job and flees to breathable air
                 new SocialSystem(),        // after Needs: positions and deaths settled this tick
                 new ExplorationSystem(),
                 new GoalSystem(),

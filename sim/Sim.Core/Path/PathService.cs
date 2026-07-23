@@ -73,6 +73,60 @@ namespace Perilune.Sim
             return false;
         }
 
+        /// <summary>Path (excluding start, including goal) to the NEAREST reachable tile whose room
+        /// is breathable (<see cref="AtmosphereSafety.IsBreathable"/>). Uniform-cost search over the
+        /// same walkability/neighbour rule as <see cref="FindPath"/> — the first popped breathable
+        /// tile is the closest by step count, so ties resolve deterministically by the heap's fixed
+        /// insertion order. Returns false when no breathable tile is reachable (a doomed pocket).
+        /// Used by <see cref="SafetySystem"/> so a crew member in lethal air flees toward safety
+        /// through exactly the tiles it could walk to work. No RNG, no allocation once warm.</summary>
+        public bool FindNearestBreathable(Simulation sim, Int3 start, SimDefs.NeedsDefs needs, List<Int3> outPath)
+        {
+            outPath.Clear();
+            _sim = sim;
+            _world = sim.World;
+            if (!_world.InBounds(start)) return false;
+
+            EnsureCapacity(_world.Width * _world.Height * _world.Depth);
+            _version++;
+            _heapCount = 0;
+
+            int startIdx = Pack(start);
+            Visit(startIdx);
+            _gScore[startIdx] = 0;
+            _cameFrom[startIdx] = -1;
+            HeapPush(startIdx, 0f); // uniform cost: f == gScore (no heuristic, no fixed goal)
+
+            Span<Int3> neighbors = stackalloc Int3[6];
+            while (_heapCount > 0)
+            {
+                int current = HeapPop();
+                var cp = Unpack(current);
+                // The start tile is (by definition) unbreathable when we are called; only a tile we
+                // can actually stand and breathe in ends the search.
+                if (current != startIdx && AtmosphereSafety.IsBreathable(sim.Rooms.RoomAt(_world, cp), needs))
+                {
+                    Reconstruct(current, outPath);
+                    return true;
+                }
+
+                int count = GetNeighbors(cp, neighbors);
+                for (int i = 0; i < count; i++)
+                {
+                    var n = neighbors[i];
+                    if (!_world.InBounds(n) || !IsWalkable(n)) continue;
+                    int ni = Pack(n);
+                    float tentative = _gScore[current] + 1f;
+                    if (_visitVersion[ni] == _version && tentative >= _gScore[ni]) continue;
+                    Visit(ni);
+                    _gScore[ni] = tentative;
+                    _cameFrom[ni] = current;
+                    HeapPush(ni, tentative);
+                }
+            }
+            return false;
+        }
+
         /// <summary>Pick a random reachable walkable tile (best effort, up to 10 samples).</summary>
         public bool TryRandomWalkableTile(Simulation sim, SimRng rng, out Int3 result)
         {

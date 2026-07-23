@@ -104,5 +104,7 @@ namespace Perilune.Sim
         Maintain = 7,    // servicing a worn machine (MaintenanceSystem)
         HaulToBuild = 8, // carrying materials to a build designation (BuildSystem)
         Build = 9,       // constructing at a build designation (BuildSystem)
+        Flee = 10,       // walking out of unbreathable air to survive (SafetySystem) — not None, so no
+                         //   dispatcher recruits a fleeing crew until it has recovered in safe air
     }
 }

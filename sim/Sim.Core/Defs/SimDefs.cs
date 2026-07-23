@@ -188,6 +188,12 @@ namespace Perilune.Sim
             public float MoodFatigueWeight;
             /// <summary>NeedsSystem inline mood penalty per unit Suffocation. Current: 60.</summary>
             public float MoodSuffocationWeight;
+            /// <summary>SafetySystem.FleeSuffocation — the <see cref="Citizen.Suffocation"/> level
+            /// at which a crew member in unbreathable air abandons its job and flees to the nearest
+            /// breathable tile (E0-2 crew-safety guard). 0.5 = "halfway to death, get out"; below 1
+            /// with ample travel margin at the vacuum/hypoxia decline rates. NeedsSystem does not
+            /// read it — SafetySystem does. Current: 0.5.</summary>
+            public float FleeSuffocation;
         }
 
         /// <summary>SustenanceSystem constants (public consts there today).</summary>
@@ -243,7 +249,7 @@ namespace Perilune.Sim
             public float WearPerDegreeC;
             /// <summary>MachineWearSystem.MaxHeatMultiplier — cap on the heat wear multiplier. Current: 3.</summary>
             public float MaxHeatMultiplier;
-            /// <summary>MaintenanceSystem.WorkSeconds — service time (BASE; WorkTicks = ×TicksPerSecond). Current: 20.</summary>
+            /// <summary>MaintenanceSystem.WorkSeconds — service time (BASE; WorkTicks = ×TicksPerSecond). Current: 900 (E0-2 L1 rebase).</summary>
             public int MaintenanceWorkSeconds;
             /// <summary>MaintenanceSystem.JuryRigCondition — condition after a parts-less repair. Current: 0.6.</summary>
             public float JuryRigCondition;
@@ -252,7 +258,7 @@ namespace Perilune.Sim
         /// <summary>CitizenSystem movement constants.</summary>
         public sealed class CitizenDefs
         {
-            /// <summary>CitizenSystem.TicksPerTile — ticks to cross one tile (5 = 2 tiles/s at 10 Hz). Current: 5.</summary>
+            /// <summary>CitizenSystem.TicksPerTile — ticks to cross one tile (10 = 1 tile/s at 10 Hz). Current: 10 (E0-2 movement retune, was 5).</summary>
             public int TicksPerTile;
             /// <summary>CitizenSystem.IdleTicksBetweenWanders — idle ticks before a wander. Current: 30.</summary>
             public int IdleTicksBetweenWanders;
@@ -353,11 +359,11 @@ namespace Perilune.Sim
         {
             /// <summary>BuildSystem — Regolith units a Wall designation stages before it builds. Current: 2.</summary>
             public int WallMaterial;
-            /// <summary>BuildSystem — work ticks to raise a Wall once materialed (6 s at 10 Hz). Current: 60.</summary>
+            /// <summary>BuildSystem — work ticks to raise a Wall once materialed (240 s at 10 Hz). Current: 2400 (E0-2 L1 rebase, was 60).</summary>
             public int WallConstructTicks;
             /// <summary>BuildSystem — Regolith units a Door designation stages before it builds. Current: 1.</summary>
             public int DoorMaterial;
-            /// <summary>BuildSystem — work ticks to hang a Door once materialed (4 s at 10 Hz). Current: 40.</summary>
+            /// <summary>BuildSystem — work ticks to hang a Door once materialed (180 s at 10 Hz). Current: 1800 (E0-2 L1 rebase, was 40).</summary>
             public int DoorConstructTicks;
             /// <summary>BuildSystem — cap on concurrent pending designations; a designate past it
             /// is a deterministic no-op (a runaway/queue guard, not a per-site buffer). Current: 64.</summary>
@@ -487,6 +493,7 @@ namespace Perilune.Sim
                     MoodThirstWeight = 30f,
                     MoodFatigueWeight = 25f,
                     MoodSuffocationWeight = 60f,
+                    FleeSuffocation = 0.5f, // E0-2 crew-safety guard (SafetySystem)
                 },
 
                 Sustenance = new SustenanceDefs
@@ -516,13 +523,13 @@ namespace Perilune.Sim
                     HotThresholdC = 35f,
                     WearPerDegreeC = 0.05f,
                     MaxHeatMultiplier = 3f,
-                    MaintenanceWorkSeconds = 20,
+                    MaintenanceWorkSeconds = 900,
                     JuryRigCondition = 0.6f,
                 },
 
                 Citizen = new CitizenDefs
                 {
-                    TicksPerTile = 5,
+                    TicksPerTile = 10,
                     IdleTicksBetweenWanders = 30,
                     WanderRadiusTiles = 8,
                 },
@@ -569,9 +576,9 @@ namespace Perilune.Sim
                 Build = new BuildDefs
                 {
                     WallMaterial = 2,
-                    WallConstructTicks = 60,
+                    WallConstructTicks = 2400,
                     DoorMaterial = 1,
-                    DoorConstructTicks = 40,
+                    DoorConstructTicks = 1800,
                     MaxStaged = 64,
                 },
 
@@ -594,9 +601,9 @@ namespace Perilune.Sim
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
             d.Recipes = new RecipeDef[d.Machines.Length];
-            d.Recipes[(int)DeviceKind.SalvageRecycler] = new RecipeDef(ItemKind.Regolith, 1, ItemKind.Scrap, 2, 20);
-            d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 30);
-            d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 40);
+            d.Recipes[(int)DeviceKind.SalvageRecycler] = new RecipeDef(ItemKind.Regolith, 1, ItemKind.Scrap, 2, 600);
+            d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 900);
+            d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 1800);
 
             // W0-5: the conversion-graph container ships EMPTY. Shipped crafting is still
             // the three legacy rows above, reached through TryGetBill's fallback leg.
@@ -676,6 +683,7 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Needs.MoodThirstWeight);
             h = XxHash64.Combine(h, Needs.MoodFatigueWeight);
             h = XxHash64.Combine(h, Needs.MoodSuffocationWeight);
+            h = XxHash64.Combine(h, Needs.FleeSuffocation); // E0-2 crew-safety guard (append-only)
 
             h = XxHash64.Combine(h, Sustenance.DrinkLiters);
             h = XxHash64.Combine(h, Sustenance.PotatoHungerValue);

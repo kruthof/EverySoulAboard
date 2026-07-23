@@ -27,15 +27,17 @@ namespace Perilune.Sim
     /// v0 (there are no beds yet), so it climbs to 1 over ~16 h and stays there,
     /// permanently costing `mood_fatigue_weight` points of mood.
     ///
-    /// **CO2 IS A DAMAGE INPUT ONLY.** Nothing in this sim turns an atmosphere reading
-    /// into crew action. The complete set of <see cref="Room.CO2Ppm"/> consumers is:
-    /// the two thresholds below, the CO2 lens colour ramp (Sim.Glyph LensRamps.Co2),
-    /// the HUD/sidebar worst-room figure (ShipMetrics.Co2Ppm), and the MOSS read-only
-    /// properties `room.co2` / `ship.co2`. No system, job, effect or Director lever
-    /// reads it — <see cref="AtmosphereSystem"/>'s scrubbers run unconditionally while
-    /// powered, and a citizen will stand in 60,000 ppm taking damage without ever
-    /// choosing to leave. The shipped MOSS program can raise an alarm on it
-    /// (`alarm when hydro.co2 > 2000ppm`), and an alarm is a log line, not a response.
+    /// **CO2 IS A DAMAGE INPUT.** The <see cref="Room.CO2Ppm"/> consumers are: the two
+    /// thresholds below, the CO2 lens colour ramp (Sim.Glyph LensRamps.Co2), the HUD/sidebar
+    /// worst-room figure (ShipMetrics.Co2Ppm), the MOSS read-only properties `room.co2` /
+    /// `ship.co2`, and — since E0-2 — <see cref="AtmosphereSafety.IsBreathable"/>, through which
+    /// <see cref="SafetySystem"/> makes a crew member FLEE air that is already damaging it
+    /// (narcosis-level CO2, hypoxia, vacuum or thermal injury) once its Suffocation crosses
+    /// `needs.flee_suffocation`. That is the ONLY crew response, and it is reactive, not
+    /// pre-emptive: <see cref="AtmosphereSystem"/>'s scrubbers still run unconditionally while
+    /// powered, no job or Director lever steers on CO2, and a crew member will breathe survivable
+    /// CO2 (below narcosis) indefinitely without acting. The shipped MOSS program can raise an
+    /// alarm on it (`alarm when hydro.co2 > 2000ppm`), and an alarm is a log line, not a response.
     ///
     /// Interactions: reads Room pressure/O2 fraction/CO2/temperature (owned by
     /// <see cref="AtmosphereSystem"/> and ThermalSystem) and

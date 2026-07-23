@@ -29,3 +29,6 @@ mood_hunger_weight               = 40          # mood penalty per unit Hunger
 mood_thirst_weight               = 30          # mood penalty per unit Thirst
 mood_fatigue_weight              = 25          # mood penalty per unit Fatigue
 mood_suffocation_weight          = 60          # mood penalty per unit Suffocation
+flee_suffocation                 = 0.5         # E0-2 crew-safety: Suffocation at which a crew member in
+                                               # unbreathable air drops its job and flees to breathable air
+                                               # (SafetySystem; NeedsSystem does not read it)

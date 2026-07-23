@@ -565,7 +565,7 @@ namespace Perilune.Tests
 
             Assert.That(ProductionDefs.TryGetBill(defs, DeviceKind.Fabricator, out var fab), Is.True);
             Assert.That(fab.IsGraphNode, Is.False, "shipped content declares no nodes — this must be the fallback");
-            Assert.That(fab.WorkSeconds, Is.EqualTo(30));
+            Assert.That(fab.WorkSeconds, Is.EqualTo(900)); // E0-2 L1 rebase (was 30)
             Assert.That(fab.InputPortCount, Is.EqualTo(1));
             Assert.That(fab.Input(0).Kind, Is.EqualTo(ItemKind.Scrap));
             Assert.That(fab.Input(0).Count, Is.EqualTo(2));
@@ -584,7 +584,7 @@ namespace Perilune.Tests
         ///
         /// MUTATION THAT MAKES THIS FAIL: in <c>TryGetBill</c>, check the legacy array first
         /// and only consult Production when the recipe is undefined — IsGraphNode is false and
-        /// WorkSeconds reads 30. (Applied, observed red, reverted.)
+        /// WorkSeconds reads 900 (the E0-2 legacy value, not the node's 7). (Applied, observed red, reverted.)
         /// </summary>
         [Test]
         public void DeclaredNode_TryGetBill_PrefersItOverTheLegacyRecipe()
@@ -692,7 +692,9 @@ namespace Perilune.Tests
             var sim = BuildBenchScenario(SimDefs.CreateDefault());
             sim.AddItem(ItemKind.Scrap, 2, new Int3(4, 2, 0));
 
-            Run(sim, 3000);
+            // E0-2: the shipped Fabricator recipe is now 900 s (9000 work ticks; was 30/3000), so
+            // the batch needs a far wider budget than the sub-second legacy timing once did.
+            Run(sim, 12000);
 
             Assert.That(UnitsAnywhere(sim, ItemKind.Scrap), Is.EqualTo(0), "the legacy batch consumed its input");
             Assert.That(UnitsOnGround(sim, ItemKind.Parts), Is.EqualTo(1),

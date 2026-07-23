@@ -15,8 +15,10 @@ namespace Perilune.Sim
     /// </summary>
     public sealed class DigJobSource : IJobSource, IJobTileScanner
     {
-        /// <summary>Work ticks to dig one rock tile (6 s at 10 Hz).</summary>
-        public const int DigWorkTicks = 60;
+        /// <summary>Work ticks to dig one rock tile (600 s at 10 Hz). E0-2 L1 rebase (~10×):
+        /// was 60. TODO(E-MINE/E3): move to mining.def when E-MINE owns dig extraction —
+        /// deliberately kept a const in E0-2 to avoid an interim def section E-MINE would migrate.</summary>
+        public const int DigWorkTicks = 6000;
 
         private static readonly JobKind[] Kinds = { JobKind.Dig };
 

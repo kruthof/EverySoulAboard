@@ -35,7 +35,13 @@ namespace Perilune.Tests
             foreach (var s in baseStack)
                 if (s is BuildSystem b) { build = b; break; }
             Assert.That(build, Is.Not.Null, "BuildSystem must be registered in SystemStack.CreateDefault");
-            return baseStack;
+            // E0-2: drop NeedsSystem — the work-rate rebase makes a wall 2400 ticks (was 60), and
+            // a lone crew in this unpressurized micro-map would suffocate before finishing. The
+            // material-capture mechanic under test is orthogonal to suffocation; the slice-level
+            // tests keep the full stack. (Floors are 20-tick and unaffected either way.)
+            var kept = new List<ISimSystem>(baseStack.Length);
+            foreach (var s in baseStack) if (!(s is NeedsSystem)) kept.Add(s);
+            return kept.ToArray();
         }
 
         private static Simulation NewSim(string[] map, ulong seed, out BuildSystem build)
@@ -63,7 +69,8 @@ namespace Perilune.Tests
 
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall, material: 3), Is.True);
 
-            for (int t = 0; t < 2000 && build.Pending.Count > 0; t++) sim.Tick();
+            // E0-2: WallConstructTicks 60→2400 (plus haul/travel), so the budget is widened.
+            for (int t = 0; t < 6000 && build.Pending.Count > 0; t++) sim.Tick();
 
             Assert.That(build.Pending, Is.Empty, "the wall must finish");
             Assert.That(sim.World.GetWall(StubSite), Is.EqualTo(TileDefs.Wall), "tile is a wall");

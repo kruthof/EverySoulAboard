@@ -24,9 +24,12 @@ namespace Perilune.Tests
     /// </summary>
     public class SliceWorkEconomyTests
     {
-        /// <summary>Ten sim-minutes — the BOOT WINDOW: long enough for the aft dig to finish and
-        /// the crafting chain to pick up, short enough to stay a fast test. Deliberately not
-        /// widened: see the census test for what happens after, and why.</summary>
+        /// <summary>Ten sim-minutes — the BOOT WINDOW the census test samples. Pre-E0-2 this was
+        /// long enough for the aft dig to FINISH; after the E0-2 work-rate rebase a single dig is
+        /// 6000 work ticks, so 6000 ticks now covers only the OPENING of the dig-out (the field is
+        /// not cleared until ~t61493 — see JobDispatchTests' saturation sequence). Kept at 6000: it
+        /// still proves the crew take work and the dig fires in the stretch a player first watches,
+        /// which is all the census test asserts.</summary>
         private const int WorkWindowTicks = 6000;
 
         private static Simulation NewSlice(out BuildSystem build)
@@ -99,17 +102,20 @@ namespace Perilune.Tests
             // SCOPE, stated plainly: this guards the BOOT WINDOW only — the first ten sim-minutes,
             // which is the stretch a player watches after loading the slice and the stretch that
             // used to be dead (6.4% of crew-ticks, all of it the recycler, zero Dig/Haul/Build in
-            // three sim-days). Threshold: a fifth of live crew-ticks on a job; measured on this
-            // build it is 39.5% (dig ~10% + craft ~30%), so 20% leaves the balance room to move.
+            // three sim-days). Threshold: a fifth of live crew-ticks on a job.
             //
-            // It is NOT evidence of a durable work economy, and must not be quoted as one. The
-            // aft dig is a ONE-OFF: 48 tiles are cleared in under four sim-minutes and the spoil
-            // is recycled away, after which there is nothing left to do. Cumulative working
-            // fraction measured on this build, same run: 39.5% at 10 sim-min, 28.9% at 60,
-            // 10.4% at 180 (already under this bar), 4.3% at 432 — with debris, Regolith and
-            // Scrap all at zero. That decay is a real design limitation, not a test defect:
-            // the slice has no renewable labour. Widening this window or lowering the bar would
-            // only hide it; the fix is a standing source of work, which is P3's business.
+            // It is NOT evidence of a durable work economy, and must not be quoted as one. The aft
+            // dig is a ONE-OFF: 48 tiles of debris and once they are cleared and the spoil recycled
+            // there is nothing left to do. The slice has no renewable labour — a real design
+            // limitation, not a test defect; the fix is a standing source of work (P3's business).
+            //
+            // The specific cumulative-fraction figures once cited here (39.5% at 10 sim-min, 28.9%
+            // at 60, 10.4% at 180, 4.3% at 432) were measured PRE-E0-2, when a dig was 60 ticks and
+            // the field cleared in under four sim-minutes. E0-2 rebased dig to 6000 ticks and
+            // movement to 10 ticks/tile, so the SAME 48-tile field now occupies the crew for the
+            // span of a shift (last dig assigned ~t61493, JobDispatchTests) — the decay is far
+            // slower and the old percentages no longer describe it. This test asserts only the
+            // floor (a fifth of crew-ticks on a job, and the dig fires); it does not pin the curve.
             var sim = NewSlice(out _);
 
             long working = 0, live = 0, dig = 0;
@@ -196,14 +202,20 @@ namespace Perilune.Tests
             foreach (var s in full)
                 if (s is BuildSystem b) { build = b; break; }
 
-            ISimSystem[] systems = full;
-            if (!withBuildSystem)
+            // E0-2: drop NeedsSystem from this micro-map bench. The work-rate rebase makes a wall
+            // 2400 ticks and a recycle batch 6000 (were 60/200), and a crew in this unpressurized
+            // shop suffocates in ~900 ticks — the old tests only passed by finishing first. The
+            // build-priority / material-conservation mechanics under test are orthogonal to
+            // suffocation; the slice-level tests (NewSlice) keep the full stack and its survival.
+            var keptNeeds = new List<ISimSystem>(full.Length);
+            foreach (var s in full)
             {
-                var kept = new List<ISimSystem>(full.Length);
-                foreach (var s in full) if (!(s is BuildSystem)) kept.Add(s);
-                systems = kept.ToArray();
-                build = null;
+                if (s is NeedsSystem) continue;
+                if (!withBuildSystem && s is BuildSystem) { continue; }
+                keptNeeds.Add(s);
             }
+            if (!withBuildSystem) build = null;
+            ISimSystem[] systems = keptNeeds.ToArray();
 
             var sim = new Simulation(AsciiWorld.Build(ShopMap), 7, systems);
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
@@ -275,7 +287,8 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 1, 0));
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True);
 
-            for (int t = 0; t < 5000 && build.Pending.Count > 0; t++) sim.Tick();
+            // E0-2: WallConstructTicks 60→2400 (plus slower haul/travel), so the budget is widened.
+            for (int t = 0; t < 10000 && build.Pending.Count > 0; t++) sim.Tick();
 
             bool stillPending = build.TryGet(StubSite, out var stuck);
             Assert.That(stillPending, Is.False,
@@ -300,7 +313,8 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0));
             sim.AddItem(ItemKind.Regolith, 1, new Int3(5, 2, 0));
 
-            for (int t = 0; t < 5000; t++) sim.Tick();
+            // E0-2: WallConstructTicks 60→2400 (plus slower haul/travel), so the budget is widened.
+            for (int t = 0; t < 10000; t++) sim.Tick();
 
             int built = 0, stranded = 0;
             foreach (var s in sites)
@@ -330,8 +344,9 @@ namespace Perilune.Tests
             Assert.That(site.Required, Is.GreaterThan(1), "precondition: a wall costs more than one unit");
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0)); // strictly less than the site needs
 
+            // E0-2: SalvageRecycler WorkSeconds 20→600 (a batch is 6000 work ticks), so widen the budget.
             int scrap = 0;
-            for (int t = 0; t < 6000 && scrap == 0; t++) { sim.Tick(); scrap = ScrapUnits(sim); }
+            for (int t = 0; t < 12000 && scrap == 0; t++) { sim.Tick(); scrap = ScrapUnits(sim); }
 
             Assert.That(scrap, Is.GreaterThan(0),
                 "an under-funded designation must not stop the recycler — the salvage chain has to keep running");
@@ -359,9 +374,15 @@ namespace Perilune.Tests
 
         private static Simulation NewLongBay(out BuildSystem build, SimDefs defs = null)
         {
-            var systems = SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
+            var full = SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
             build = null;
-            foreach (var s in systems) if (s is BuildSystem b) { build = b; break; }
+            foreach (var s in full) if (s is BuildSystem b) { build = b; break; }
+            // E0-2: drop NeedsSystem — see NewShop. A far-site wall now takes 2400 ticks plus a
+            // long two-trip haul across the bay, far past the suffocation window in this
+            // unpressurized map; the in-flight-material mechanic under test is orthogonal.
+            var kept = new List<ISimSystem>(full.Length);
+            foreach (var s in full) if (!(s is NeedsSystem)) kept.Add(s);
+            var systems = kept.ToArray();
             var sim = new Simulation(AsciiWorld.Build(LongBayMap), 7, systems, defs);
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit_a");
@@ -388,7 +409,9 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0)); // both stacks sit AT the bench end,
             sim.AddItem(ItemKind.Regolith, 1, new Int3(5, 2, 0)); // seconds from the recycler's fetcher
 
-            for (int t = 0; t < 5000 && build.Pending.Count > 0; t++) sim.Tick();
+            // E0-2: WallConstructTicks 60→2400 + ticks_per_tile 5→10 over a ~17-tile bay (two
+            // round trips), so the budget is widened well past the new construct+haul time.
+            for (int t = 0; t < 15000 && build.Pending.Count > 0; t++) sim.Tick();
 
             Assert.That(build.TryGet(FarSite, out var stuck), Is.False,
                 $"the site must keep the material promised to it — stranded at {stuck.Delivered}/{stuck.Required}");
@@ -429,7 +452,8 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Regolith, 1, new Int3(5, 2, 0));
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0));
 
-            for (int t = 0; t < 5000 && build.Pending.Count > 0; t++) sim.Tick();
+            // E0-2: WallConstructTicks 60→2400 + ticks_per_tile 5→10 over the ~17-tile bay, so widen.
+            for (int t = 0; t < 15000 && build.Pending.Count > 0; t++) sim.Tick();
 
             Assert.That(build.TryGet(FarSite, out var stuck), Is.False,
                 $"the builder must win both stacks — stranded at {stuck.Delivered}/{stuck.Required}");
@@ -510,7 +534,9 @@ namespace Perilune.Tests
             Assert.That(bench.Powered && bench.IsOperational(sim.Defs), Is.True,
                 "precondition: the bench must be live, or TickStation returns before the gate");
 
-            for (int i = 0; i < 2000; i++) sim.Tick(); // warm-up: the lone unit is fetched and recycled
+            // E0-2: SalvageRecycler WorkSeconds 20→600 (a batch is 6000 work ticks), so the
+            // warm-up must run long enough to fetch and complete one recycle batch.
+            for (int i = 0; i < 9000; i++) sim.Tick(); // warm-up: the lone unit is fetched and recycled
             Assert.That(ScrapUnits(sim), Is.GreaterThan(0),
                 "the bench really ran — the gate was reached, evaluated and released");
             Assert.That(build.TryGet(StubSite, out var still), Is.True);
