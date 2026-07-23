@@ -24,10 +24,10 @@ namespace Perilune.Sim
     /// This class is pure geometry: no ticking, no events, no SimDefs — though
     /// <see cref="RecomputeFlags"/> does read the compiled <see cref="TileDefs"/> table
     /// to derive Walkable/BlocksGas. Room ids live here but are owned and rewritten by
-    /// <see cref="RoomState"/>. Four of <see cref="ZLevel"/>'s five arrays (Floor, Wall,
-    /// Flags, RoomId) are folded into the determinism hash (<see cref="HashInto"/>), so
-    /// any tile write is hash-visible — including a fog reveal; the fifth, RegionId, is
-    /// derived and currently neither saved nor hashed.
+    /// <see cref="RoomState"/>. Five of <see cref="ZLevel"/>'s six arrays (Floor, Wall,
+    /// Flags, RoomId, Material) are folded into the determinism hash (<see cref="HashInto"/>),
+    /// so any tile write is hash-visible — including a fog reveal or a material change; the
+    /// sixth, RegionId, is derived and currently neither saved nor hashed.
     ///
     /// Bounds are the CALLER's job: every accessor indexes directly, so callers gate on
     /// <see cref="InBounds"/> first. Getting that wrong fails in two different ways — a
@@ -58,6 +58,7 @@ namespace Perilune.Sim
         public ushort GetFloor(Int3 p) => Levels[p.Z].Floor[Levels[p.Z].Index(p.X, p.Y)];
         public ushort GetWall(Int3 p) => Levels[p.Z].Wall[Levels[p.Z].Index(p.X, p.Y)];
         public TileFlags GetFlags(Int3 p) => (TileFlags)Levels[p.Z].Flags[Levels[p.Z].Index(p.X, p.Y)];
+        public byte GetMaterial(Int3 p) => Levels[p.Z].Material[Levels[p.Z].Index(p.X, p.Y)];
 
         public void SetFloor(Int3 p, ushort tileDefId)
         {
@@ -71,6 +72,16 @@ namespace Perilune.Sim
             var level = Levels[p.Z];
             level.Wall[level.Index(p.X, p.Y)] = tileDefId;
             RecomputeFlags(level, p.X, p.Y);
+        }
+
+        /// <summary>Set a tile's material variant id (0 = default). Inert identity: a
+        /// direct array write with NO <see cref="RecomputeFlags"/> — material never affects
+        /// Walkable/BlocksGas or any other derived state. Saved and hashed, so a write is
+        /// determinism-visible.</summary>
+        public void SetMaterial(Int3 p, byte material)
+        {
+            var level = Levels[p.Z];
+            level.Material[level.Index(p.X, p.Y)] = material;
         }
 
         /// <summary>Set/clear a NON-derived flag. Nothing stops a caller passing
@@ -110,7 +121,10 @@ namespace Perilune.Sim
         /// <summary>Chain all tile arrays into the state hash. RoomId is included even
         /// though it is derived — it is saved, and the project rule is that everything
         /// saved is hashed, so a room recompute that lands differently is caught by the
-        /// determinism canary rather than by a divergence hours later.</summary>
+        /// determinism canary rather than by a divergence hours later. Fold order is fixed:
+        /// Floor, Wall, Flags, RoomId, then Material (the newest array, appended last so the
+        /// pre-Material fold prefix is unchanged) — RegionId alone is still neither saved nor
+        /// hashed.</summary>
         public ulong HashInto(ulong h)
         {
             for (int z = 0; z < Depth; z++)
@@ -120,6 +134,7 @@ namespace Perilune.Sim
                 h = XxHash64.Hash(MemoryMarshal.AsBytes((ReadOnlySpan<ushort>)level.Wall), h);
                 h = XxHash64.Hash(level.Flags, h);
                 h = XxHash64.Hash(MemoryMarshal.AsBytes((ReadOnlySpan<ushort>)level.RoomId), h);
+                h = XxHash64.Hash(level.Material, h);
             }
             return h;
         }

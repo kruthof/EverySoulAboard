@@ -47,7 +47,7 @@ namespace Perilune.Sim
         public const uint SystemChapter = 'S' | 'Y' << 8 | 'S' << 16 | 'S' << 24; // "SYSS"
         public const uint DefsChapter = 'D' | 'E' << 8 | 'F' << 16 | 'S' << 24; // "DEFS"
 
-        public const ushort TileVersion = 1;
+        public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
         public const ushort CitizenVersion = 6; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition
         public const ushort DeviceVersion = 4;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner
@@ -174,11 +174,11 @@ namespace Perilune.Sim
             outer.Write(buffer.GetBuffer(), 0, (int)buffer.Length);
         }
 
-        // --- TILE v1: per z-level, W*H-sized arrays -----------------------------
+        // --- TILE v2: per z-level, W*H-sized arrays -----------------------------
         // for z in 0..Depth-1: ushort[n] Floor, ushort[n] Wall, byte[n] Flags,
-        // ushort[n] RoomId. Flags are saved verbatim (HasDevice/Designated included —
-        // the reader must NOT re-derive them). RegionId is derived and currently
-        // unused: not saved, left zeroed on load.
+        // ushort[n] RoomId, byte[n] Material (v2). Flags are saved verbatim
+        // (HasDevice/Designated included — the reader must NOT re-derive them).
+        // RegionId is derived and currently unused: not saved, left zeroed on load.
 
         private static void WriteTiles(Simulation sim, BinaryWriter w)
         {
@@ -191,6 +191,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < n; i++) w.Write(level.Wall[i]);
                 w.Write(level.Flags, 0, n);
                 for (int i = 0; i < n; i++) w.Write(level.RoomId[i]);
+                w.Write(level.Material, 0, n); // v2
             }
         }
 
