@@ -23,6 +23,17 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-23) — + **wall drag-build & authoritative materials** on top of E0-1
+**Wall drag-build + hashed wall/floor materials** landed on `main` (7 commits, each Opus-implemented +
+independently Opus-reviewed): RimWorld-style press-drag-release wall/floor building in the Room Zoom
+(walls trace the dragged rectangle's perimeter, floors fill it) with a live material-skinned preview,
+a 6-swatch material picker (WALL/FLOOR), and built walls/floors now rendered in their chosen material.
+Sim: a per-tile hashed `World.Material` byte plane (S1); `BuildKind.Floor` + `PendingBuild.Material`
+(S2); view-only `materials` wire channel. Material sets a tile's identity + skin, NOT a differentiated
+cost (every build still consumes `Regolith`; floors 1 Regolith/20 ticks, v1 literals). Moved the
+scenario/tick-3000/slice pins once (S1's all-zero fold) — see "Determinism proof". Legacy on-map
+console drag-build is a fast-follow; see `docs/design/perilune-wall-drag-material.plan.md`.
+
 ## Status snapshot (2026-07-23) — economy Wave 0 + the B-bugs + **E0-1 recruitability** landed on `main`
 **Read `docs/HANDOVER.md` "E0-1 — labour supply (recruitability)" first, then "Economy Wave 0
 — COMPLETE".** **E0-1 (recruitability) is LANDED on `main`** (`c643293`, Opus-implemented +
@@ -170,14 +181,14 @@ another's half-finished work.*
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
   (with shipped rules: final hash `a53d8505013dc25d` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `9b834cffc232ce7f`; the slice tick-3000 golden is `SLICEHASHTBD` and the defs checksum is
+  `9b834cffc232ce7f`; the slice tick-3000 golden is `9a84a72f6ab67386` and the defs checksum is
   `60147a57e27c5c31`. Two features stack off the `494ad0b0 / 0f66ffdf / 994aa1ac` base:
   **E0-1** (recruitability) moved the slice golden (`994aa1ac`→`d93165a481ebb344`) and the defs
   checksum (`81ae90b`→`60147a57e27c5c31`), holding both StateHash pins (its ships carry no
   wandering crew); then the **wall-drag + authoritative-materials** feature added a per-tile
   `World.Material` byte plane folded last into `HashInto` (an all-zero fold, zero behaviour change),
   moving the scenario hash (`494ad0b0`→`a53d8505013dc25d`), the tick-3000 golden
-  (`0f66ffdf`→`9b834cffc232ce7f`) and the slice golden again (`d93165a4`→`SLICEHASHTBD`);
+  (`0f66ffdf`→`9b834cffc232ce7f`) and the slice golden again (`d93165a4`→`9a84a72f6ab67386`);
   `BuildKind.Floor` + `PendingBuild.Material` were pin-neutral (no defs added, checksum stays
   `60147a57e27c5c31`). (The three B-bugs
   B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
