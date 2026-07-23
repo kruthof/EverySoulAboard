@@ -492,14 +492,17 @@ test('terminalList / terminalLabel: parse [tid,deck,x,y], drop garbage, label', 
 
 // ---------------- Escape priority stack (IX-13 + IX-R10 + moss-terminal IX-M2) ----------------
 
-test('escapeTarget: armed → dialogue → MOSS → relations → none, strict priority', () => {
-  assert.equal(escapeTarget({ armed: true, dialogueOpen: true, mossActive: true, relationsActive: true }), 'disarm');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: true, mossActive: true, relationsActive: true }), 'dialogue');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, mossActive: true, relationsActive: true }), 'moss');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, mossActive: false, relationsActive: true }), 'relations');
-  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, mossActive: false, relationsActive: false }), 'none');
+test('escapeTarget: armed → dialogue → dossier → MOSS → relations → none, strict priority', () => {
+  assert.equal(escapeTarget({ armed: true, dialogueOpen: true, dossierOpen: true, mossActive: true, relationsActive: true }), 'disarm');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: true, dossierOpen: true, mossActive: true, relationsActive: true }), 'dialogue');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: true, mossActive: true, relationsActive: true }), 'dossier');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: true, relationsActive: true }), 'moss');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: false, relationsActive: true }), 'relations');
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: false, mossActive: false, relationsActive: false }), 'none');
   assert.equal(escapeTarget(null), 'none');
-  // the MOSS rung is ADDITIVE: a caller that never mentions it keeps the pre-existing behaviour
+  // the dossier rung sits ABOVE full-screen navigators: an open BIO card closes before MOSS/relations
+  assert.equal(escapeTarget({ armed: false, dialogueOpen: false, dossierOpen: true, mossActive: false, relationsActive: false }), 'dossier');
+  // both new rungs are ADDITIVE: a caller that never mentions them keeps the pre-existing behaviour
   assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: true }), 'relations');
   assert.equal(escapeTarget({ armed: false, dialogueOpen: false, relationsActive: false }), 'none');
 });

@@ -26,6 +26,8 @@ export class PanelManager {
     this.onClosed = () => {};
     /** The sid of the most-recently focused/opened dialogue — Esc closes this one. */
     this.activeDialogueSid = null;
+    /** The cid of the most-recently opened crew DOSSIER (BIO) card — Esc closes this one. */
+    this.activeCitizenCid = null;
   }
 
   root() {
@@ -92,9 +94,27 @@ export class PanelManager {
   citizen(cit, registry) {
     if (!cit || cit.cid == null) return;
     const key = 'cit:' + cit.cid;
-    const p = this._panel(key, () => new CitizenCard(cit.cid, () => this.close(key)));
+    const p = this._panel(key, () => new CitizenCard(cit.cid, () => this.closeCitizen(cit.cid)));
+    this.activeCitizenCid = cit.cid;
     p.render(cit, registry || {});
     return p;
+  }
+
+  /** Close a crew dossier by cid, clearing the Esc tracker. Safe if already gone. */
+  closeCitizen(cid) {
+    const key = 'cit:' + cid;
+    if (this.panels.has(key)) this.close(key);
+    if (this.activeCitizenCid === cid) this.activeCitizenCid = null;
+  }
+
+  /** Close the most-recently opened dossier card (Esc). No-op when none is open. */
+  closeActiveCitizen() {
+    if (this.activeCitizenCid != null) this.closeCitizen(this.activeCitizenCid);
+  }
+
+  /** Whether a crew dossier card is currently mounted (the Esc `dossier` rung reads this). */
+  hasOpenCitizen() {
+    return this.activeCitizenCid != null && this.panels.has('cit:' + this.activeCitizenCid);
   }
 
   /** Live-refresh a citizen card ONLY if it is already open (IX-54: the `citizen` wire message
@@ -192,35 +212,200 @@ class DialoguePanel extends Panel {
   }
 }
 
-// ---- citizen card: portrait + identity + traits ----
+// ---- crew DOSSIER: the person-detail surface ----
+//
+// A first-class character screen — the game's promise is "every crew member is a person", so the
+// inspector is large and legible. Fields fall into two honestly-separated classes:
+//   · REAL   — carried by the wire today: portrait, name, role, current emotion, morale, traits,
+//              directed relationships (joined in by hud.enrichCitizen via regardRows), and the
+//              conversation log.
+//   · SAMPLE — the sim MODELS these (needs, affinity/trust, values/fears, backstory, episodic
+//              memory — see sim/Sim.Core/Citizens/*) but they are not on the wire yet. We show the
+//              intended surface with placeholder values, deterministically seeded per-cid so a given
+//              crew member reads consistently, and every such section wears a ◇ SAMPLE badge so the
+//              player knows it is not yet the live simulation. Widening the `citizen` wire message to
+//              carry the real values is the follow-up (see HANDOVER).
+//
+// Nothing here fabricates a system that does NOT exist in the sim: there is deliberately no skill
+// grid and no body-part injury model (the sim has neither), so the dossier never invents them.
+
+// deterministic 0..1 from (cid, salt) — stable per crew so SAMPLE data doesn't flicker on refresh.
+function seeded(cid, salt) {
+  let h = ((cid | 0) * 2654435761 + (salt | 0) * 40503) >>> 0;
+  h ^= h >>> 13; h = (h * 1274126177) >>> 0; h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function pick(arr, cid, salt) { return arr[Math.floor(seeded(cid, salt) * arr.length) % arr.length]; }
+function pickN(arr, cid, salt, n) {
+  const out = [], used = new Set();
+  for (let i = 0; out.length < n && i < arr.length * 3; i++) {
+    const idx = Math.floor(seeded(cid, salt + i * 7) * arr.length) % arr.length;
+    if (!used.has(idx)) { used.add(idx); out.push(arr[idx]); }
+  }
+  return out;
+}
+
+const SAMPLE_VALUES = ['LOYALTY', 'CURIOSITY', 'ORDER', 'FREEDOM', 'CRAFT', 'KINSHIP', 'DUTY', 'SURVIVAL'];
+const SAMPLE_FEARS = ['ABANDONMENT', 'THE DARK', 'FAILURE', 'CONFINEMENT', 'DROWNING', 'BETRAYAL', 'THE VOID'];
+const SAMPLE_SPEECH = ['terse, dry', 'warm, wandering', 'clipped and formal', 'soft-spoken', 'blunt', 'wry, deflecting'];
+const SAMPLE_BACKSTORY = [
+  'Signed aboard the Perilune to outrun a debt that was never really about money.',
+  'Grew up dockside on a hauler — the black is the only home that ever quite fit.',
+  'Left a research berth after the Lien raid, and talks about it only sideways.',
+  'The last of a colony that isn’t on the charts anymore.',
+  'Came for the pay, stayed because someone here needed the help.',
+];
+const SAMPLE_MEMORY = [
+  ['tended a burn in the medbay', 3],
+  ['argued with the quartermaster over rations', 2],
+  ['watched the reactor gauges a beat too long', 1],
+  ['shared a drink after the alarm cleared', 2],
+  ['fixed the scrubber no one else would touch', 3],
+  ['dreamt of a planet with weather', 1],
+  ['logged a fault, and told no one', 2],
+];
+
+/** A small section shell: title + optional ◇ SAMPLE badge, then the caller's rows. */
+function section(title, sample, rows) {
+  const s = el('div', 'dsr-sec' + (sample ? ' dsr-sample' : ''));
+  const h = el('div', 'dsr-sec-hd');
+  h.appendChild(el('span', 'dsr-sec-title', title));
+  if (sample) h.appendChild(el('span', 'dsr-badge', '◇ SAMPLE'));
+  s.appendChild(h);
+  for (const r of rows) if (r) s.appendChild(r);
+  return s;
+}
+
+/** A labelled meter row: LABEL … [bar] value. `frac` 0..1, `color` a CSS value. */
+function meter(label, frac, valueText, color) {
+  const f = Math.max(0, Math.min(1, frac));
+  const row = el('div', 'dsr-meter');
+  row.appendChild(el('span', 'dsr-meter-lbl', label));
+  const track = el('div', 'dsr-bar');
+  const fill = el('div', 'dsr-bar-fill');
+  fill.style.width = Math.round(f * 100) + '%';
+  if (color) fill.style.background = color;
+  track.appendChild(fill);
+  row.appendChild(track);
+  row.appendChild(el('span', 'dsr-meter-val', valueText));
+  return row;
+}
+
+function needColor(f) { return f >= 0.66 ? 'var(--good)' : f >= 0.33 ? 'var(--warn)' : 'var(--bad)'; }
+function regardColor(op) { return op > 15 ? 'var(--good)' : op < -15 ? 'var(--bad)' : 'var(--warn)'; }
 
 class CitizenCard extends Panel {
   constructor(cid, onClose) {
-    super('Citizen', 'panel-citizen', onClose);
+    super('Dossier', 'panel-citizen', onClose);
     this.cid = cid;
   }
 
   render(cit, registry) {
-    this.setTitle(cit.name || String(cit.cid));
-    const portrait = portraitElement(resolvePortrait(cit, registry));
-    const ident = el('div', 'cit-ident');
-    ident.appendChild(el('div', 'cit-name', cit.name || String(cit.cid)));
-    ident.appendChild(el('div', 'cit-role', [cit.role, cit.mood].filter(Boolean).join(' · ')));
-    const traits = el('div', 'cit-traits');
-    for (const t of (cit.traits || [])) traits.appendChild(el('span', 'cit-trait', t));
-    ident.appendChild(traits);
+    const cid = cit.cid;
+    this.setTitle('DOSSIER · ' + (cit.name || String(cid)));
 
-    const head = el('div', 'cit-head');
-    head.appendChild(portrait);
+    // ── identity band: big portrait, name, role · activity, morale, current emotion ──
+    const portrait = portraitElement(resolvePortrait(cit, registry));
+    const ident = el('div', 'dsr-ident');
+    ident.appendChild(el('div', 'dsr-name', cit.name || String(cid)));
+    const sub = [cit.role, cit.task ? ('› ' + cit.task) : ''].filter(Boolean).join('  ');
+    ident.appendChild(el('div', 'dsr-role', sub || '—'));
+    if (typeof cit.morale === 'number') {
+      ident.appendChild(meter('MORALE', cit.morale,
+        Math.round(cit.morale * 100) + '%', needColor(cit.morale)));
+    }
+    const emoWrap = el('div', 'dsr-chips');
+    if (cit.mood) emoWrap.appendChild(el('span', 'dsr-emo', cit.mood)); // hide when the emotion is stale ('')
+    ident.appendChild(emoWrap);
+    const head = el('div', 'dsr-head');
+    head.appendChild(el('div', 'dsr-portrait', undefined));
+    head.firstChild.appendChild(portrait);
     head.appendChild(ident);
 
-    // Conversation log (B3): the durable-within-run transcript with this crew member. Player vs
-    // crew lines are visually distinguished; an honest empty state when there is nothing yet.
-    const log = el('div', 'cit-log');
-    log.appendChild(el('div', 'cit-log-title', 'CONVERSATION LOG'));
+    const legend = el('div', 'dsr-legend',
+      '◇ SAMPLE sections use placeholder data — the crew are simulated underneath; the live wiring lands next.');
+
+    // ── NEEDS (SAMPLE) ──
+    const nH = 0.72 + 0.28 * seeded(cid, 1), nF = 0.30 + 0.60 * seeded(cid, 2);
+    const nW = 0.50 + 0.45 * seeded(cid, 3), nR = 0.25 + 0.62 * seeded(cid, 4);
+    const needs = section('NEEDS', true, [
+      meter('Health', nH, Math.round(nH * 100) + '%', needColor(nH)),
+      meter('Food', nF, Math.round(nF * 100) + '%', needColor(nF)),
+      meter('Water', nW, Math.round(nW * 100) + '%', needColor(nW)),
+      meter('Rest', nR, Math.round(nR * 100) + '%', needColor(nR)),
+    ]);
+
+    // ── YOUR STANDING (SAMPLE) — affinity/trust toward the player, -100..+100 ──
+    const aff = Math.round(-20 + 90 * seeded(cid, 5));
+    const tru = Math.round(-10 + 60 * seeded(cid, 6));
+    const standing = section('YOUR STANDING', true, [
+      meter('Affinity', (aff + 100) / 200, (aff > 0 ? '+' : '') + aff, regardColor(aff)),
+      meter('Trust', (tru + 100) / 200, (tru > 0 ? '+' : '') + tru, regardColor(tru)),
+      el('div', 'dsr-hint', tru > 30 ? 'Seems close to telling you something.'
+        : 'Talk to them to build trust.'),
+    ]);
+
+    // ── PERSONALITY — traits REAL, values/fears/speech SAMPLE ──
+    const persona = el('div', 'dsr-sec dsr-sample');
+    const pH = el('div', 'dsr-sec-hd');
+    pH.appendChild(el('span', 'dsr-sec-title', 'PERSONALITY'));
+    pH.appendChild(el('span', 'dsr-badge', '◇ SAMPLE'));
+    persona.appendChild(pH);
+    if ((cit.traits || []).length) {
+      const tr = el('div', 'dsr-tags');
+      tr.appendChild(el('span', 'dsr-tag-lbl', 'TRAITS'));
+      for (const t of cit.traits) tr.appendChild(el('span', 'dsr-tag real', t)); // traits ARE real
+      persona.appendChild(tr);
+    }
+    const vals = el('div', 'dsr-tags');
+    vals.appendChild(el('span', 'dsr-tag-lbl', 'VALUES'));
+    for (const v of pickN(SAMPLE_VALUES, cid, 10, 2)) vals.appendChild(el('span', 'dsr-tag', v));
+    persona.appendChild(vals);
+    const fears = el('div', 'dsr-tags');
+    fears.appendChild(el('span', 'dsr-tag-lbl', 'FEARS'));
+    for (const v of pickN(SAMPLE_FEARS, cid, 20, 2)) fears.appendChild(el('span', 'dsr-tag', v));
+    persona.appendChild(fears);
+    persona.appendChild(el('div', 'dsr-hint', 'Speech: ' + pick(SAMPLE_SPEECH, cid, 30)));
+
+    // ── RELATIONSHIPS — REAL when the relations graph carries this crew, else a note ──
+    const rel = Array.isArray(cit.relations) ? cit.relations : [];
+    let relations;
+    if (rel.length) {
+      const rows = rel.slice(0, 8).map((r) => {
+        const row = el('div', 'dsr-rel');
+        row.appendChild(el('span', 'dsr-rel-dir', r.dir === 'out' ? '→' : '←'));
+        row.appendChild(el('span', 'dsr-rel-name', r.name || ('#' + r.cid)));
+        const op = el('span', 'dsr-rel-op', (r.opinion > 0 ? '+' : '') + r.opinion);
+        op.style.color = regardColor(r.opinion);
+        row.appendChild(op);
+        if (r.note) row.appendChild(el('span', 'dsr-rel-note', r.note));
+        return row;
+      });
+      relations = section('RELATIONSHIPS', false, rows);
+    } else {
+      relations = section('RELATIONSHIPS', false, [el('div', 'dsr-hint', 'No strong bonds recorded yet.')]);
+    }
+
+    // ── BACKSTORY (SAMPLE) ──
+    const backstory = section('BACKSTORY', true, [
+      el('div', 'dsr-prose', pick(SAMPLE_BACKSTORY, cid, 40)),
+    ]);
+
+    // ── RECENT MEMORIES (SAMPLE) ──
+    const mems = pickN(SAMPLE_MEMORY, cid, 50, 3).map((m, i) => {
+      const row = el('div', 'dsr-mem');
+      row.appendChild(el('span', 'dsr-mem-dots', '●'.repeat(m[1]) + '○'.repeat(3 - m[1])));
+      row.appendChild(el('span', 'dsr-mem-text', m[0]));
+      return row;
+    });
+    const memories = section('RECENT MEMORIES', true, mems);
+
+    // ── CONVERSATION LOG (REAL) ──
+    const log = el('div', 'dsr-sec');
+    log.appendChild(el('div', 'dsr-sec-hd')).appendChild(el('span', 'dsr-sec-title', 'CONVERSATION LOG'));
     const entries = citizenLog(cit);
     if (!entries.length) {
-      log.appendChild(el('div', 'cit-log-empty', 'No conversations yet.'));
+      log.appendChild(el('div', 'cit-log-empty', 'No conversations yet — press [T] to open a channel.'));
     } else {
       const scroll = el('div', 'cit-log-scroll');
       for (const e of entries) {
@@ -232,7 +417,10 @@ class CitizenCard extends Panel {
       log.appendChild(scroll);
     }
 
-    this.body.replaceChildren(head, log);
+    const grid = el('div', 'dsr-grid');
+    grid.append(needs, standing, persona, relations);
+
+    this.body.replaceChildren(head, legend, grid, backstory, memories, log);
     const sc = this.body.querySelector('.cit-log-scroll');
     if (sc) sc.scrollTop = sc.scrollHeight; // keep the newest exchange in view
   }

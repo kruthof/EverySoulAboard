@@ -80,6 +80,7 @@ const _pips = new Map();        // deck key → {el}
 const _crew = new Map();        // cid key → {el, nameEl, roleEl, fill}
 let _roBustCid = null;          // readout bust: whose portrait the <svg> currently holds
 let _roTraitsKey = '';          // readout traits: the last-rendered trait set (rebuild only on change)
+let _lastSpeed = '1×';          // last running speed label — shown (dimmed) while paused so the stepper never blanks
 
 /** Guarded text write — no DOM mutation when the value is unchanged (keeps idle repaints inert). */
 function setText(node, v) { if (node && node.textContent !== v) node.textContent = v; }
@@ -168,15 +169,31 @@ function buildSkeleton() {
  *  mutate these nodes in place; only keyed lists (crew watch, deck rail) create/remove children. */
 function buildIslands() {
   // top status bar — fixed structure, only text/classes change.
+  //  · LLM chip (which mind is voicing the crew) — hidden until the first llmstatus lands.
+  //  · SPEED is now an interactive « value » stepper (was a dead read-only chip): the value IS the
+  //    reflected state and the arrows change it (mirrors the +/- keys → Cmd.speed(±1)).
+  //  · PAUSE toggles between a loud "▶ RESUME" (with a .paused state class) and "❚❚ HOLD" so a
+  //    paused ship unmistakably reads as "click again to resume".
+  //  · CAUTION is now a button — clicking it opens the MOSS diagnostics screen (VS-O jump-to-fault).
   $('ov-topbar').innerHTML =
     '<span class="ov-ship">MSV PERILUNE</span>' +
     '<span class="ov-deckctx"></span><span class="ov-clock"></span><span class="ov-spacer"></span>' +
-    '<button class="ov-chip ov-pause" data-ov-pause></button>' +
-    '<span class="ov-chip ov-speed"></span><span class="ov-chip ov-caution"></span>';
+    '<span class="ov-chip ov-llm" data-ov-llm hidden ' +
+      'title="The AI mind voicing the crew (talk backend). Offline-safe."></span>' +
+    '<span class="ov-speedctl" title="Simulation speed — click « / » or press − / +">' +
+      '<button class="ov-spdbtn" data-ov-speed-dn aria-label="Slower">«</button>' +
+      '<span class="ov-speedval"></span>' +
+      '<button class="ov-spdbtn" data-ov-speed-up aria-label="Faster">»</button>' +
+    '</span>' +
+    '<button class="ov-chip ov-pause" data-ov-pause title="Pause / resume the simulation (Space)"></button>' +
+    '<button class="ov-chip ov-caution" data-ov-caution ' +
+      'title="Ship status at a glance — click to open MOSS diagnostics"></button>';
   _el.tbDeck = _root.querySelector('.ov-deckctx');
   _el.tbClock = _root.querySelector('.ov-clock');
+  _el.tbLlm = _root.querySelector('.ov-llm');
+  _el.tbSpeedCtl = _root.querySelector('.ov-speedctl');
+  _el.tbSpeedVal = _root.querySelector('.ov-speedval');
   _el.tbPause = _root.querySelector('.ov-pause');
-  _el.tbSpeed = _root.querySelector('.ov-speed');
   _el.tbCaution = _root.querySelector('.ov-caution');
   _el.tbCautionLevel = '';
 
@@ -349,13 +366,34 @@ function paintTopbar(activeDeck, dView) {
   const speed = status ? speedLabel(status.speed) : '1×';
   setText(_el.tbDeck, 'DECK ' + activeDeck + (total ? ' OF ' + total : ''));
   setText(_el.tbClock, 'DAY ' + day + ' · ' + clock);
-  setText(_el.tbPause, paused ? '► RUN' : '‖ HOLD');
-  setText(_el.tbSpeed, speed);
-  setText(_el.tbCaution, c.label);
+  // (1) PAUSE — text AND a strong state class so a paused ship reads unmistakably as "resume me".
+  setText(_el.tbPause, paused ? '▶  RESUME' : '❚❚  HOLD');
+  setCls(_el.tbPause, 'paused', paused);
+  // (2) SPEED — the value IS the state; keep the last running tier visible (dimmed) while paused.
+  if (status && status.speed && status.speed !== 'paused') _lastSpeed = speed;
+  setText(_el.tbSpeedVal, paused ? _lastSpeed : speed);
+  setCls(_el.tbSpeedCtl, 'dim', paused);
+  // (3) CAUTION — idle reads "SYSTEMS NOMINAL" (the bare word "NOMINAL" confused players); the
+  //     title spells out the meaning and the chip is clickable → MOSS (see onHudClick).
+  setText(_el.tbCaution, c.level === 'idle' ? 'SYSTEMS NOMINAL' : c.label);
   if (c.level !== _el.tbCautionLevel) { // caution ramp class: swap only when the level changes
     setClassName(_el.tbCaution, 'ov-chip ov-caution' + (c.level ? ' ' + c.level : ''));
     _el.tbCautionLevel = c.level;
   }
+  // (4) LLM — which mind voices the crew; hidden until the first llmstatus lands.
+  paintLlmChip();
+}
+
+/** The top-bar LLM chip: backend name (+ degraded flag + hourly cost), or hidden when unknown. */
+function paintLlmChip() {
+  const llm = Hud.getLlm();
+  const backend = llm && llm.backend;
+  if (!backend) { setHidden(_el.tbLlm, true); return; }
+  const cost = (typeof llm.costPerHour === 'number' && isFinite(llm.costPerHour) && llm.costPerHour > 0)
+    ? ' · $' + llm.costPerHour.toFixed(2) + '/h' : '';
+  setText(_el.tbLlm, '◈ ' + String(backend).toUpperCase() + (llm.degraded ? ' ⚠ FALLBACK' : '') + cost);
+  setCls(_el.tbLlm, 'degraded', !!llm.degraded);
+  setHidden(_el.tbLlm, false);
 }
 
 // ── deck rail ──
@@ -584,6 +622,9 @@ function onHudClick(e) {
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
   else if (d.ovTool != null) { Hud.armTool(d.ovTool); }
   else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
+  else if ('ovSpeedDn' in d) { _send(Cmd.speed(-1)); }
+  else if ('ovSpeedUp' in d) { _send(Cmd.speed(1)); }
+  else if ('ovCaution' in d) { Hud.selectTab('moss'); } // ship-status chip → MOSS diagnostics
   else if ('ovPause' in d) { _send(Cmd.pause()); }
   else if ('ovTalk' in d) { Hud.talkSelectedCrew(); }
   else if ('ovMove' in d) { Hud.armTool('move'); }
