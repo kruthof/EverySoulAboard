@@ -14,7 +14,7 @@ import { decksView } from '../src/ui/decks-model.js';
 import { makeTransform } from '../src/ui/overview-scene.js';
 import {
   tileAt, overviewClickAction, lensGrade, lensSlotTint, GRADE_TINT, currentRoom,
-  deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel,
+  deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
 } from '../src/ui/overview-model.js';
 
 const FIX = JSON.parse(
@@ -24,6 +24,15 @@ const decks = decodeDecks(decode(JSON.stringify(FIX.decks)));
 const rooms = decodeRooms(decode(JSON.stringify(FIX.rooms)));
 const view = decksView(decks, rooms);
 const frame = FIX.frame;
+
+// ---- command-bar tab gating (CHRONICLE kept but inert) ----
+
+test('CHRONICLE is inert; BUILD/CREW/MOSS/RELATIONS are not', () => {
+  assert.equal(tabIsInert('chron'), true);            // kept in the bar, but clicking does nothing
+  for (const t of ['build', 'crew', 'moss', 'relations']) {
+    assert.equal(tabIsInert(t), false, t + ' must stay actionable');
+  }
+});
 
 // ---- click classification (IX-O-11/12/13/15/19) ----
 

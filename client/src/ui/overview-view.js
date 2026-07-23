@@ -27,7 +27,7 @@ import {
 } from './console-model.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
-  fmtO2, fmtCo2, fmtTemp, powerLabel,
+  fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -581,7 +581,7 @@ function onHudClick(e) {
   if ('ovPickCancel' in d) { closeRoomPicker(); return; }
   if (d.ovDeck != null) { _send(Cmd.deck(deckDelta(Number(d.ovDeck), _ctx.frame ? _ctx.frame.deck : 0))); }
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
-  else if (d.ovTab != null) { Hud.selectTab(d.ovTab); }
+  else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
   else if (d.ovTool != null) { Hud.armTool(d.ovTool); }
   else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
   else if ('ovPause' in d) { _send(Cmd.pause()); }

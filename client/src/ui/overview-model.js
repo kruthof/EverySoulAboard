@@ -75,6 +75,21 @@ export function overviewClickAction(armed, hit) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Command-bar tab gating. CHRONICLE still renders as a tab button (the slot is kept) but is INERT
+// for now — its legacy console surface is not wired to the Overview, so selecting it would un-hide
+// the old `.app` and strand the player. Clicking it is a silent no-op; BUILD/CREW/MOSS/RELATIONS are
+// unaffected. Pure predicate so the view's click handler stays declarative + node-testable.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Tabs rendered in the command bar but with no action bound (kept visible, but inert). PURE. */
+export const INERT_TABS = Object.freeze(['chron']);
+
+/** True when a command-bar tab is present-but-inert (clicking it must do nothing). PURE. */
+export function tabIsInert(key) {
+  return INERT_TABS.indexOf(key) >= 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // LENS recolor (IX-O-29/30). A non-`none` lens grades each room by one metric; the grade picks a
 // translucent wash painted over the floor. Grades reuse the console's danger language (one meaning,
 // one colour). Water has no per-room wire value (rooms carries no H₂O) and power is a per-slot

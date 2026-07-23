@@ -52,6 +52,24 @@ let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomT
 let _armed = null;        // the ONE Level-2 input slot (11 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 
+// ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
+// The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
+// (`innerHTML =`) on EVERY coalesced wire repaint (~5–10×/s). That tore down the button under the
+// pointer (so the armed/hover state was lost and a placement flickered) and, worse, tore down the
+// breadcrumb ‹ back link mid-click, so the click to leave the room was swallowed and the user was
+// stuck. Now the interactive chrome is built ONCE (buildChrome) and the paint helpers MUTATE nodes
+// in place; the palette's `.on` toggles, the caption/breadcrumb text is guard-written, and the
+// minimap SVG is re-set only when its signature changes. Mirrors overview-view.js's keyed pattern.
+// The SVG canvas layer (paintLayers) is still rebuilt as one string — it holds no interactive focus
+// (its clicks resolve synchronously against geometry, not against a DOM node).
+const _el = {};           // cached chrome node references (built once)
+let _miniSig = '';        // last-rendered minimap innerHTML — re-set only on change
+
+/** Guarded text write — no DOM mutation when the value is unchanged (idle repaints stay inert). */
+function setText(node, v) { if (node && node.textContent !== v) node.textContent = v; }
+/** Guarded class toggle (no attribute churn when already in the wanted state). */
+function setCls(node, cls, on) { if (node && node.classList.contains(cls) !== !!on) node.classList.toggle(cls, !!on); }
+
 /** Mount the Room Zoom surface. Call once from main.js. Returns the { enter, exit } control API. */
 export function initRoomZoom(opts) {
   _send = (opts && opts.send) || (() => {});
@@ -86,9 +104,46 @@ function buildSkeleton() {
   _layers = $('rz-layers');
   _pulseLayer = $('rz-pulse');
   _toast = $('rz-toast');
+  buildChrome();
   _canvas.addEventListener('click', onCanvasClick);
   _canvas.addEventListener('mousemove', onCanvasHover);
   _root.addEventListener('click', onHudClick);
+}
+
+/** Build the interactive chrome's DOM ONCE and cache node references. From here on the paint helpers
+ *  mutate these nodes in place (guarded text / class toggles); the FIXED palette + breadcrumb nodes
+ *  are never torn down, so a hovered/armed tool and the ‹ back link survive every repaint + click. */
+function buildChrome() {
+  // caption — "NAME · BUILD DETAIL · N PLACED"; only the name + count change.
+  const cap = $('rz-caption');
+  cap.innerHTML = '<span class="rz-cap-name"></span> · BUILD DETAIL · <span class="rz-placed"></span>';
+  _el.capName = cap.querySelector('.rz-cap-name');
+  _el.capPlaced = cap.querySelector('.rz-placed');
+
+  // breadcrumb — FIXED links (home / deck / leaf); only the deck number + leaf name change. The
+  // `data-rz` targets are stable nodes, so the ‹ click always lands (the "can't go back" fix).
+  const bc = $('rz-breadcrumb');
+  bc.innerHTML =
+    '<span class="rz-crumb-link" data-rz="home">‹ PERILUNE</span>' +
+    '<span class="rz-crumb-sep">▸</span>' +
+    '<span class="rz-crumb-link" data-rz="deck"></span>' +
+    '<span class="rz-crumb-sep">▸</span>' +
+    '<span class="rz-crumb-leaf"></span>';
+  _el.crumbDeck = bc.querySelector('[data-rz="deck"]');
+  _el.crumbLeaf = bc.querySelector('.rz-crumb-leaf');
+
+  // palette — a FIXED label + 11 FIXED tool buttons (membership never changes); repaint only toggles
+  // the `.on` armed class, so the button under the cursor is never rebuilt.
+  const pal = $('rz-palette');
+  let btns = '<span class="rz-place-label"></span>';
+  for (const tool of ROOM_TOOLS) {
+    const demo = tool === 'demolish' ? ' demo' : '';
+    btns += '<button class="rz-tool' + demo + '" data-rztool="' + tool + '">' + esc(TOOL_LABEL[tool]) + '</button>';
+  }
+  pal.innerHTML = btns;
+  _el.placeLabel = pal.querySelector('.rz-place-label');
+  _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
+  _miniSig = ''; // force the first minimap paint to render
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -296,36 +351,31 @@ function ghostSvg(list) {
 function paintCaption(frame, designs) {
   const nDesigns = roomDesigns(designs, _focus).length;
   const nDevices = roomCells(frame, _focus).filter((c) => c.itemId).length;
-  const n = nDesigns + nDevices;
-  $('rz-caption').innerHTML = esc(_focus.displayName) + ' · BUILD DETAIL · <span class="rz-placed">' + n + ' PLACED</span>';
+  setText(_el.capName, _focus.displayName);      // textContent → intrinsically escaped
+  setText(_el.capPlaced, (nDesigns + nDevices) + ' PLACED');
 }
 
 function paintBreadcrumb() {
-  $('rz-breadcrumb').innerHTML =
-    '<span class="rz-crumb-link" data-rz="home">‹ PERILUNE</span>' +
-    '<span class="rz-crumb-sep">▸</span>' +
-    '<span class="rz-crumb-link" data-rz="deck">DECK ' + (_focus.deck | 0) + '</span>' +
-    '<span class="rz-crumb-sep">▸</span>' +
-    '<span class="rz-crumb-leaf">' + esc(_focus.displayName) + '</span>';
+  setText(_el.crumbDeck, 'DECK ' + (_focus.deck | 0));
+  setText(_el.crumbLeaf, _focus.displayName);
 }
 
+// The minimap's interactive slots come from the PURE deckMinimap SVG string (deck-minimap.js). It
+// changes only on a room/deck swap (a "set change"), so we compare its full HTML and re-set only then
+// — idle repaints (and hovering a slot / holding a palette tool) leave every slot node untouched.
 function paintMinimap() {
   const slots = deckSlots(currentDeckView(), _focus.deck);
-  $('rz-minimap').innerHTML =
+  const html =
     '<div class="rz-mini-head">' +
       '<span class="rz-mini-ship">SHIP · DECK ' + (_focus.deck | 0) + '</span>' +
       '<span class="rz-mini-room">' + esc(_focus.displayName) + '</span>' +
     '</div>' + deckMinimap(slots, _focus.slotIndex);
+  if (html !== _miniSig) { $('rz-minimap').innerHTML = html; _miniSig = html; }
 }
 
 function paintPalette() {
-  let btns = '<span class="rz-place-label">BUILD ▸ ' + esc(_focus.displayName) + '</span>';
-  for (const tool of ROOM_TOOLS) {
-    const on = _armed === tool ? ' on' : '';
-    const demo = tool === 'demolish' ? ' demo' : '';
-    btns += '<button class="rz-tool' + demo + on + '" data-rztool="' + tool + '">' + esc(TOOL_LABEL[tool]) + '</button>';
-  }
-  $('rz-palette').innerHTML = btns;
+  setText(_el.placeLabel, 'BUILD ▸ ' + _focus.displayName);
+  for (const b of _el.toolBtns) setCls(b, 'on', _armed === b.dataset.rztool);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
