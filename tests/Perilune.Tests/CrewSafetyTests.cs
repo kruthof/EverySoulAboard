@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.IO;
+using Perilune.Dsl;
 using Perilune.Sim;
 using NUnit.Framework;
 
@@ -128,6 +130,93 @@ namespace Perilune.Tests
 
             Assert.That(a.Dead, Is.False, "at flee_suffocation = 0.5 the crew flees and lives");
             Assert.That(b.Dead, Is.True, "at flee_suffocation = 1.5 the threshold is unreachable and the crew dies");
+        }
+
+        // A heavily-vented, breathable refuge (left) joined by an OPEN door to a small vacuum
+        // pocket (right) held open to space by a void breach. The pocket stays unbreathable because
+        // it bleeds to the void faster than the door diffuses air in; the refuge stays breathable
+        // because three powered vents out-inject that same leak. Atmosphere is entirely sim-driven —
+        // NO manual RoomState.Pressurize (which does not round-trip under load, per review).
+        private static readonly string[] BreachPocketMap =
+        {
+            "########",
+            "#......#",
+            "#......#",
+            "##.#####",
+            "##.  ###",
+            "########",
+        };
+
+        private static Simulation NewBreachPocketSim()
+        {
+            var sim = new Simulation(AsciiWorld.Build(BreachPocketMap), 3,
+                SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry())));
+            // Solar → a conduit chain along row 1 → three powered, open vents hung below it in
+            // row 2. Three are needed: one alone only lifts the refuge to a hypoxic ~60 kPa
+            // against the door-to-void bleed, so it too would read unbreathable. The crew's flee
+            // corridor (2,2)→door(2,3)→pocket(2,4) is left device-free so it stays walkable.
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit_a");
+            sim.AddDevice(DeviceKind.Conduit, new Int3(3, 1, 0), "conduit_b");
+            sim.AddDevice(DeviceKind.Conduit, new Int3(4, 1, 0), "conduit_c");
+            sim.AddDevice(DeviceKind.Conduit, new Int3(5, 1, 0), "conduit_d");
+            sim.AddDevice(DeviceKind.AirVent, new Int3(3, 2, 0), "vent_a").IsOpen = true;
+            sim.AddDevice(DeviceKind.AirVent, new Int3(4, 2, 0), "vent_b").IsOpen = true;
+            sim.AddDevice(DeviceKind.AirVent, new Int3(5, 2, 0), "vent_c").IsOpen = true;
+            sim.AddDevice(DeviceKind.Door, new Int3(2, 3, 0), "door").IsOpen = true;
+            // The crew stands in the vacuum pocket (2,4) — void at (3,4) keeps it lethal — with a
+            // breathable refuge one door away. It suffocates in place and the guard flees it.
+            sim.AddCitizen("Rao", new Int3(2, 4, 0)); // AutoWander false → it does not wander off
+            return sim;
+        }
+
+        /// <summary>
+        /// The <see cref="JobKind.Flee"/> save/load seam. Drives a REAL sim (sim-driven atmosphere,
+        /// no manual Pressurize) until a crew member is genuinely mid-Flee — kind 10, carrying a live
+        /// flee path — then round-trips it through <see cref="SaveWriter"/>/<see cref="SaveReader"/>
+        /// and asserts the reload does not throw on the new kind and is bit-exact: the reloaded
+        /// StateHash equals the pre-save one. The precondition (a real fleeing citizen with a path)
+        /// is what makes this non-vacuous — it cannot pass on a sim where nobody ever fled.
+        ///
+        /// NAMED MUTATION: drop <c>JobKind</c> (or the citizen <c>Path</c>) from the CITZ save
+        /// chapter / its StateHash fold — the mid-Flee kind (10) and its path would no longer
+        /// round-trip, so <c>loaded.StateHash()</c> would differ from the pre-save hash and the
+        /// final assertion fails. (The precondition guarantees a Flee citizen with a path is present
+        /// to be dropped, so the mutation genuinely bites.)
+        /// </summary>
+        [Test]
+        public void FleeingCitizen_SaveLoad_RoundTripsBitExact()
+        {
+            var sim = NewBreachPocketSim();
+
+            Citizen fleeing = null;
+            for (int t = 0; t < 4000 && fleeing == null; t++)
+            {
+                sim.Tick();
+                var crew = sim.Citizens.Items;
+                for (int i = 0; i < crew.Count; i++)
+                    if (!crew[i].Dead && crew[i].JobKind == JobKind.Flee && crew[i].HasPath) { fleeing = crew[i]; break; }
+            }
+
+            Assert.That(fleeing, Is.Not.Null,
+                "precondition: a crew member reached JobKind.Flee mid-walk from lethal air (sim-driven, no manual Pressurize)");
+            Assert.That((byte)fleeing.JobKind, Is.EqualTo((byte)10), "precondition: the fleeing kind is the new value 10");
+            Assert.That(fleeing.Path.Count, Is.GreaterThan(fleeing.PathIndex),
+                "precondition: it is carrying a live flee path (the thing that must round-trip)");
+
+            ulong beforeSave = sim.StateHash();
+
+            var blob = new MemoryStream();
+            SaveWriter.Write(sim, blob);
+            blob.Position = 0;
+
+            Simulation loaded = null;
+            Assert.DoesNotThrow(
+                () => loaded = SaveReader.Read(blob, SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()))),
+                "loading a save that contains a JobKind.Flee (10) citizen must not throw");
+
+            Assert.That(loaded.StateHash(), Is.EqualTo(beforeSave),
+                "the mid-Flee citizen — its kind (10) and its flee path — round-trips bit-exactly");
         }
     }
 }
