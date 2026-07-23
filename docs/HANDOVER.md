@@ -8,7 +8,14 @@
 > and `docs/MECHANICS.md` is the authority on how the sim actually behaves (its §13
 > lists what is wired but not connected).
 
-## Economy Wave 0 — IN FLIGHT, START HERE (2026-07-22)
+## Economy Wave 0 — COMPLETE, START HERE (2026-07-22)
+
+**All six Wave 0 packages are merged on `lane/economy-w0`.** Gate: **713 dotnet + 207 node**
+green, pin `616ed4a84a9f6e87`. Every package was Opus-implemented and independently
+Opus-reviewed (four of six sent back at least once). The next session's job is the ordered
+list in "What is left" below: **merge `main` in → re-pin → apply the eight `ECONOMY-PLAN.md`
+corrections → spawn the E-lanes (E0-1 first).** Everything below is the detail.
+
 
 **Where the work is: branch `lane/economy-w0`, NOT `main`.** It was cut from `main` @
 `3efd181` (what `ECONOMY-PLAN.md` was written against). **`main` has since advanced** —
@@ -25,19 +32,17 @@ main, after merge.
 |---|---|---|---|
 | W0-1 | un-alias the citizen + item hash packs | **merged**, 2 review rounds | moved |
 | W0-2 | widen `EffectKind` `byte`→`ushort` | **merged**, 2 review rounds | neutral, proven |
+| W0-3 | split `JobsDirty` into tile/item/site/citizen | **merged**, 1 round + F1 test | neutral, proven |
 | W0-4 | `JobSystem` (842 lines) → `IJobSource` dispatcher | **merged**, 3 review rounds | neutral, proven (twice — see below) |
 | W0-5 | the `[production]` node table | **merged**, 3 review rounds | neutral, proven |
 | W0-1b | hash the 13 saved-but-unhashed fields | **merged**, 2 review rounds | moved |
-| **W0-3** | split `JobsDirty` into tile/item/site | **NEXT — not started** | neutral, prove it |
-| **W0-6** | register the economy systems empty | **done** — 4 empty SYSS, one pin move | moved |
+| W0-6 | register the four economy systems empty | **merged**, 1 review round | moved |
 
-**Merged-branch gate (five packages), measured 2026-07-22: 680 dotnet + 207 node green,
-`./ci.sh` exit 0, `determinism: twin hashes MATCH (ffefe9a9a42d8e7e)`.** (Superseded by W0-6
-below — with W0-6 the gate is **713 dotnet + 207 node** green and the pin is
-`616ed4a84a9f6e87`, measured on `lane/w0-6-register` 2026-07-22.)
+**ALL SIX MERGED. Final gate (`lane/economy-w0`), measured 2026-07-22: 713 dotnet + 207 node
+green, `./ci.sh` exit 0, `determinism: twin hashes MATCH (616ed4a84a9f6e87)`.**
 
-Pins as they stand (moved by W0-1, again by W0-1b, again by **W0-6** — ritual done each
-time; these are the CURRENT values, `ci.sh:25` and the two golden files all agree):
+Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6 — ritual done each time;
+CURRENT values, `ci.sh:25` and the two golden files all agree):
 
 | pin | value |
 |---|---|
@@ -45,11 +50,15 @@ time; these are the CURRENT values, `ci.sh:25` and the two golden files all agre
 | tick-3000 golden | `3cf25daf3ca40e0b` |
 | slice tick-3000 golden | `72f7023ef9f1cd73` |
 
-W0-6 moved all three by registering four empty stateful systems (their checksum seeds fold
-unconditionally). Pre-W0-6 values were `ffefe9a9a42d8e7e` / `6071adb8fa781440` /
-`ab47cefd840247c4`. **W0-3 (still not started) must *prove* it is pin-neutral** (it is a
-dispatch-plumbing change, and the slice golden is the only pin that reaches dig assignment).
-Re-measure after each merge; never carry a literal forward.
+W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
+longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped
+the F1 positive haul-assignment test that converts the whole missed-rescan class from
+invisible-to-CI to caught). W0-6 moved all three pins by registering four empty stateful
+systems (`ZONE`/`PROD`/`ORES`/`TRAD`; their checksum seeds fold unconditionally) and shipped
+the old-save compat test §3.3 required. Pre-W0-6 values were `ffefe9a9a42d8e7e` /
+`6071adb8fa781440` / `ab47cefd840247c4`. **Wave 0 is closed; the next pin move belongs to
+E0-2 (the work-rate rebase) or the first E-lane that adds hashed state. Re-measure on `main`
+after the `main`-merge; never carry a literal forward.**
 
 ### W0-4's neutrality is now proven a second way — the whole point of adding W0-1b
 
@@ -86,18 +95,35 @@ This retires the "prove it" that was unprovable when the wave started.
 
 ### What is left, in order — START HERE for the next session
 
+**Wave 0 itself is DONE (all six merged).** What remains is getting it onto `main` and then
+opening the economy proper:
+
 1. **Merge `main` into `lane/economy-w0` and re-measure the pin.** `main` advanced after the
    branch was cut (Ollama merge `15a0b7b`, art rev 2). `ECONOMY.md`/`ECONOMY-PLAN.md` are
    byte-identical on both sides so they resolve clean; `CLAUDE.md`/`HANDOVER.md` need a real
-   merge. Per `ECONOMY-PLAN.md` §2.1.4 the pin is measured on the merged result.
-2. **W0-3 — split `JobsDirty`.** The seam is already cut; W0-4 left a worked recommendation
-   (the box directly above this list). Prove pin-neutral.
-3. **W0-6 — register the economy systems empty.** Moves the pin (stateful seeds); batch the
-   registrations into one commit so the wave pays one move, not N.
-4. **Apply the eight `ECONOMY-PLAN.md` corrections** (below) before any E-lane spawns.
-5. **Then Wave 0 is closed and the E-lanes can spawn** (E0-1 recruitability first — it is
-   the hard prerequisite for everything, and now it *has* a canary because W0-1b hashed the
-   path fields).
+   merge. Per `ECONOMY-PLAN.md` §2.1.4 the pin is measured on the merged result. Then land the
+   whole of `lane/economy-w0` on `main` (integrator `--no-ff`, re-gate on `main`).
+2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the
+   "Corrections" section below — they were folded in during the wave, each measured and each
+   reproduced by a second agent). Nothing to do but be aware they are in.
+3. **B-1 / B-2 / B-3** — the three shipping-build bug commits (`ECONOMY.md` §1.5): the
+   ownerless reservation leak, the hydroponics water leak, the CO₂ gas-transport bug. These
+   are **behavioural** (they move pins and change outcomes), so they were deliberately NOT
+   started during behaviour-free Wave 0. B-3 must precede E1's finite air reserve. Good first
+   batch after the `main`-merge.
+4. **Then the E-lanes spawn — E0-1 recruitability first.** It is the hard prerequisite for
+   everything, and it now *has* a canary: W0-1b hashed the path fields, so a routing change is
+   finally visible to the pin (before W0-1b it was not). E0-2 (the 10× work-rate rebase +
+   parked movement retune) lands *behind* E0-1, never before — measured, the retune alone
+   costs 29 % of production and halves recruitability.
+
+**Process note for the next integrator (learned this session): the machine is shared by
+multiple Claude sessions.** A background `ci.sh` waiter that does `pgrep -f "dotnet test"`
+will match *another session's* test run (and often its own shell), so it hangs forever — two
+lane agents got stuck this way and had to be told to run their gate **foreground**. Brief
+implementer agents to run `./ci.sh` foreground, or verify their gate yourself as integrator.
+Also: `git status` showing files you did not touch means you are sharing a tree — stop and
+look, never `git add -A`.
 
 ### The measurement that should change how you think about this codebase
 

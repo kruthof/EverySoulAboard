@@ -23,18 +23,20 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-22) — economy Wave 0 IN FLIGHT on a branch
-**Read `docs/HANDOVER.md` "Economy Wave 0 — IN FLIGHT, START HERE" first.** The economy
-programme has started. Wave 0 (behaviour-free plumbing that must land before any economy
-lane spawns) is **on `lane/economy-w0`, not on `main`**:
-W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-4 `JobSystem` split into an
-`IJobSource` dispatcher · W0-5 the `[production]` node table · W0-1b the 13
-saved-but-unhashed fields hashed (`Path`/`PathIndex`/`MoveCooldown` were live tick state
-hashing **equal**) · **W0-6** the four empty economy systems registered (`ZONE`/`PROD`/
-`ORES`/`TRAD` SYSS, one batched pin move). **W0-3** (split `JobsDirty`) is the only Wave-0
-package still open. Post-W0-6 pin `616ed4a84a9f6e87` (see "Determinism proof" below). `main`
-has advanced since the branch was cut (Ollama merge + art rev 2) — merge it in and
-re-measure the pin first.
+## Status snapshot (2026-07-22) — economy Wave 0 COMPLETE on a branch
+**Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** The economy
+programme's Wave 0 (behaviour-free plumbing that must land before any economy lane spawns)
+is **DONE — all six packages merged on `lane/economy-w0`, NOT yet on `main`**:
+W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-3 `JobsDirty` split into
+tile/item/site/citizen flags · W0-4 `JobSystem` split into an `IJobSource` dispatcher ·
+W0-5 the `[production]` node table · W0-1b the 13 saved-but-unhashed fields hashed
+(`Path`/`PathIndex`/`MoveCooldown` were live tick state hashing **equal**) · W0-6 the four
+empty economy systems registered (`ZONE`/`PROD`/`ORES`/`TRAD` SYSS, one batched pin move).
+**713 dotnet + 207 node** green, pin `616ed4a84a9f6e87` (see "Determinism proof" below).
+Every package was Opus-implemented + independently Opus-reviewed; four of six were sent back
+at least once. **Next: merge `main` into the branch** (advanced since the cut — Ollama merge
++ art rev 2) **and re-measure the pin, apply the eight `ECONOMY-PLAN.md` corrections, then the
+E-lanes spawn (E0-1 first).**
 
 ### Earlier snapshot (playtest round 3)
 **`docs/HANDOVER.md` "Playtest round 3"** parks five decisions for Garvin. That round:
