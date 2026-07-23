@@ -91,8 +91,10 @@ namespace Perilune.Web
             return sb.ToString();
         }
 
-        /// <summary>Serialize the sidebar snapshot. Fractions are 0..1; Co2Ppm is raw ppm.</summary>
-        public static string Metrics(ShipMetricsSnapshot m)
+        /// <summary>Serialize the sidebar snapshot. Fractions are 0..1; Co2Ppm is raw ppm. `regolith`
+        /// is the ship's loose (uncarried) build-material stock in whole units — view-only, additive,
+        /// default 0 for callers that don't supply it (the STORES chip reads it).</summary>
+        public static string Metrics(ShipMetricsSnapshot m, int regolith = 0)
         {
             var sb = new StringBuilder(256);
             sb.Append("{\"type\":\"metrics\"");
@@ -106,6 +108,7 @@ namespace Perilune.Web
             Field(sb, "heat", m.Heat);
             Field(sb, "structural", m.Structural);
             Field(sb, "morale", m.Morale);
+            sb.Append(",\"regolith\":").Append(regolith.ToString(Ic));
             sb.Append('}');
             return sb.ToString();
         }

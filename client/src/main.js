@@ -17,6 +17,7 @@ import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 import { initOverview } from './ui/overview-view.js';
 import { initRoomZoom } from './ui/roomzoom-view.js';
+import { initOnboarding } from './ui/onboarding.js';
 
 const PROC_TILE = 26;
 const params = new URLSearchParams(location.search);
@@ -254,6 +255,8 @@ const roomZoom = initRoomZoom({ send: (o) => session.send(o) });
 // HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth. Clicking
 // an occupied room enters the Room Zoom (Level 2) through the injectable hook.
 initOverview({ send: (o) => session.send(o), onEnterRoom: (anchor) => roomZoom.enter(anchor) });
+// First-run onboarding: the one-time intro (premise + the two verbs) and the persistent `?` help.
+initOnboarding();
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));
 document.getElementById('b-pause').onclick = () => session.send(Cmd.pause());
 document.getElementById('b-faster').onclick = () => session.send(Cmd.speed(1));

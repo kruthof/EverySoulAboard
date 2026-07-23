@@ -716,6 +716,16 @@ namespace Perilune.Web
         /// </summary>
         private string MaterialNote()
         {
+            return " - " + LooseMaterialUnits().ToString(CultureInfo.InvariantCulture) + " " +
+                   ItemKindLabel(BuildSystem.Material) + " aboard";
+        }
+
+        /// <summary>The ship's loose (uncarried) stock of the build material — the number that gates
+        /// whether a wall/door ghost can be fed. READ-ONLY scan of the item store on the sim thread.
+        /// Surfaced on the metrics wire so the Overview can show a STORES chip (a designation with no
+        /// matter to feed it otherwise sits starved with nothing in the HUD saying why).</summary>
+        private int LooseMaterialUnits()
+        {
             int units = 0;
             var items = _sim.Items.Items;
             for (int i = 0; i < items.Count; i++)
@@ -723,8 +733,7 @@ namespace Perilune.Web
                 var it = items[i];
                 if (it.Kind == BuildSystem.Material && it.CarriedBy == 0) units += it.Count;
             }
-            return " - " + units.ToString(CultureInfo.InvariantCulture) + " " +
-                   ItemKindLabel(BuildSystem.Material) + " aboard";
+            return units;
         }
 
         /// <summary>The current program text for a terminal: the last text SET this session
@@ -892,7 +901,7 @@ namespace Perilune.Web
                 _metrics = ShipMetrics.Compute(_sim);
                 _metricsAtWall = nowWall;
             }
-            Send("metrics", WireFormat.Metrics(_metrics), force);
+            Send("metrics", WireFormat.Metrics(_metrics, LooseMaterialUnits()), force);
             Send("legend", WireFormat.Legend(LensLegend.For(_lens)), force);
             Send("log", WireFormat.Log(BuildLog()), force);
             Send("inspect", WireFormat.Inspect(InspectorModel.Build(_sim, cursor, _selected)), force);
