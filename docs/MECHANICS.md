@@ -204,15 +204,23 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `494ad0b05a154ccb`
-(pinned in `ci.sh`); tick-3000 golden `0f66ffdf9f90f766`; slice tick-3000 golden
-`d93165a481ebb344`; defs checksum `60147a57e27c5c31`. The slice golden + defs checksum most
-recently moved with **E0-1** (recruitability, 2026-07-23) — a REAL slice behaviour change
-(wandering crew are now recruited to work: `IsIdleForWork` no longer vetoes a wander path, and a
-new `wander_radius_tiles` def field bounds wander scope). The two StateHash pins held (the
-scenario and perilune tick-3000 ships carry non-wandering / HoldPosition crew, so neither enters
-the labour or wander paths that changed). Before E0-1 the slice golden was `994aa1ac661aa1cc` and
-the defs checksum `81ae90bdd049f745`, both of which had moved with the **B-1/B-2/B-3**
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `85ac8c44233284e9`
+(pinned in `ci.sh`); tick-3000 golden `9b834cffc232ce7f`; slice tick-3000 golden
+`8c6b2544fac36d63`; defs checksum `e56d33a2e46b5644` (this is `SimDefs.Default.Checksum`, the
+compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
+print, which is a different value). The scenario + slice pins + defs checksum most recently moved
+with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety
+`SafetySystem`/`JobKind.Flee` guard, 2026-07-23) — a REAL behaviour change (human-pace crew doing
+minutes-long watchable work): scenario `a53d8505`→`85ac8c44`, slice `9a84a72f`→`8c6b2544`, defs
+`60147a5`→`e56d33a2` (the changed work-rate defs + the new `flee_suffocation` field). The
+tick-3000 golden held (`9b834cffc232ce7f` — the default ship's 2 crew neither move nor work within
+3000 ticks). Before E0-2, the **wall drag-build + materials** feature moved scenario
+`494ad0b0`→`a53d8505`, tick-3000 `0f66ffdf`→`9b834cffc232ce7f`, slice `d93165a4`→`9a84a72f` (an
+all-zero `World.Material` fold); and before that **E0-1** (recruitability) moved the slice golden
+`994aa1ac`→`d93165a4` and the defs checksum `81ae90b`→`60147a5` (wandering crew now recruited:
+`IsIdleForWork` no longer vetoes a wander path, plus a `wander_radius_tiles` def field), holding
+both StateHash pins. Before E0-1 the slice golden was `994aa1ac661aa1cc` and the defs checksum
+`81ae90bdd049f745`, both of which had moved with the **B-1/B-2/B-3**
 shipping-bug fixes (2026-07-23) — the first pin moves that are real BEHAVIOUR changes rather
 than pure folds (B-1 releases a stranded crafting reservation on the slice; B-2's greywater
 makeup floor keeps the hydro loop alive; B-3's partial-pressure diffusion transports CO2 across

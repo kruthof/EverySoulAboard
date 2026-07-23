@@ -23,6 +23,22 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-23) — **E0-2 (work-rate rebase + movement retune + crew-safety guard)** landed on `main`
+**E0-2 is LANDED on `main`** (`39702a3`, Opus-implemented + independently Opus-reviewed PASS, three
+legible commits). The L1 **work-rate rebase (~10×)** — dig 6s→10min, wall 6s→4min, door 4s→3min,
+maintenance 20s→15min, crafting 600/900/1800s — plus the **movement retune** `ticks_per_tile` 5→10,
+landed together (the retune alone costs 29% of production, so never before E0-1). This is the
+biggest *feel* change since the slice: human-pace crew doing watchable, minutes-long work. The 10×
+maintenance value exposed a latent crew-safety gap (crew stood in lethal air for a 15-min service
+and died on generated ships); fixed in-package with a **`SafetySystem` + `JobKind.Flee`** — a
+working crew member whose local air turns lethal (`Suffocation ≥ flee_suffocation`, tile
+unbreathable) drops its job, releases reservations, and paths to the nearest breathable tile,
+resting until recovered before returning. General self-preservation, **inert on healthy ships**.
+Pins: scenario `a53d8505`→`85ac8c44233284e9`, slice golden `9a84a72f`→`8c6b2544fac36d63`, defs
+checksum `60147a5`→`e56d33a2e46b5644`; tick-3000 golden held. **Decision (Garvin):** keep the 10×
+value, make crew self-preserving. **Next: E0-3** (dig/stockpile/strip verbs on the web client —
+review the new UI surface first). See `docs/HANDOVER.md` "E0-2" at the top.
+
 ## Status snapshot (2026-07-23) — + **wall drag-build & authoritative materials** on top of E0-1
 **Wall drag-build + hashed wall/floor materials** landed on `main` (7 commits, each Opus-implemented +
 independently Opus-reviewed): RimWorld-style press-drag-release wall/floor building in the Room Zoom
@@ -179,18 +195,24 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `a53d8505013dc25d` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `85ac8c44233284e9` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `9b834cffc232ce7f`; the slice tick-3000 golden is `9a84a72f6ab67386` and the defs checksum is
-  `60147a57e27c5c31`. Two features stack off the `494ad0b0 / 0f66ffdf / 994aa1ac` base:
-  **E0-1** (recruitability) moved the slice golden (`994aa1ac`→`d93165a481ebb344`) and the defs
-  checksum (`81ae90b`→`60147a57e27c5c31`), holding both StateHash pins (its ships carry no
-  wandering crew); then the **wall-drag + authoritative-materials** feature added a per-tile
-  `World.Material` byte plane folded last into `HashInto` (an all-zero fold, zero behaviour change),
-  moving the scenario hash (`494ad0b0`→`a53d8505013dc25d`), the tick-3000 golden
-  (`0f66ffdf`→`9b834cffc232ce7f`) and the slice golden again (`d93165a4`→`9a84a72f6ab67386`);
-  `BuildKind.Floor` + `PendingBuild.Material` were pin-neutral (no defs added, checksum stays
-  `60147a57e27c5c31`). (The three B-bugs
+  `9b834cffc232ce7f`; the slice tick-3000 golden is `8c6b2544fac36d63` and the defs checksum
+  (`SimDefs.Default.Checksum`, NOT the scenario host's rules-inclusive `defs:` print) is
+  `e56d33a2e46b5644`. **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 +
+  a crew-safety `SafetySystem`/`JobKind.Flee` guard) is the most recent mover — a REAL behaviour
+  change (human-pace crew, minutes-long watchable work): it moved the scenario hash
+  (`a53d8505`→`85ac8c44233284e9`), the slice golden (`9a84a72f`→`8c6b2544fac36d63`) and the defs
+  checksum (`60147a5`→`e56d33a2e46b5644`, the changed work-rate defs + the new `flee_suffocation`
+  field); the tick-3000 golden held (`9b834cffc232ce7f` — the default ship's 2 crew neither move
+  nor work within 3000 ticks). Earlier movers off the `494ad0b0 / 0f66ffdf / 994aa1ac` base:
+  **E0-1** (recruitability) moved the slice golden (`994aa1ac`→`d93165a4`) and the defs
+  checksum (`81ae90b`→`60147a5`), holding both StateHash pins; then the **wall-drag +
+  authoritative-materials** feature added a per-tile `World.Material` byte plane folded last into
+  `HashInto` (an all-zero fold, zero behaviour change), moving the scenario hash
+  (`494ad0b0`→`a53d8505`), the tick-3000 golden (`0f66ffdf`→`9b834cffc232ce7f`) and the slice
+  golden again (`d93165a4`→`9a84a72f`); its `BuildKind.Floor` + `PendingBuild.Material` were
+  pin-neutral. (The three B-bugs
   B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
   defs checksum are set to their combined measured values by the integration re-pin commit.)
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour

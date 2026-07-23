@@ -1,4 +1,61 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **E0-2 work-rate rebase** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
+
+## E0-2 — work-rate rebase + movement retune + crew-safety guard: LANDED on `main` (2026-07-23), START HERE for the economy
+
+**E0-2 is on `main`** (`39702a3`, merged `--no-ff` from `lane/e0-2-work-rate`; three legible
+commits `9c43f12` retunes · `accef26` guard · `bc006ef` durable Flee save/load test).
+Opus-implemented + independently Opus-reviewed **PASS** (all six test mutations applied and
+confirmed failing; the `JobKind.Flee` lifecycle, search determinism, and `IsBreathable`/`NeedsSystem`
+agreement all verified). This is the biggest *feel* change since the slice shipped.
+
+**What it does — two coupled parts:**
+1. **L1 work-rate rebase (~10×)** + **movement retune** `ticks_per_tile` 5→10, landed TOGETHER (the
+   retune alone costs 29% of production, so it lands behind E0-1, never before). Values (ECONOMY.md
+   §6.1): `DigWorkTicks` 60→6000, `wall_construct_ticks` 60→2400, `door_construct_ticks` 40→1800,
+   `maintenance_work_seconds` 20→900, recipes SalvageRecycler/Fabricator/MachineShop 20/30/40 →
+   600/900/1800. `DigWorkTicks` stays a const with a `TODO(E-MINE/E3)` to move to `mining.def`. The
+   result: a crew member does a handful of watchable, minutes-long tasks per day, not 400 two-second
+   beats — directly answering playtest round-3's "I can't tell if they're really working".
+2. **Crew-safety guard** (`SafetySystem`, 1 Hz after `NeedsSystem`; new `JobKind.Flee`;
+   `flee_suffocation`=0.5 def field in `needs.def`). The 10× maintenance value exposed a latent gap:
+   a working crew member had NO response to bad air and would stand at a machine for the full 15-min
+   service and suffocate on generated ships (V6 survivability failed for all seeds; the slice/scenario
+   are immune — `HoldPosition` crew self-serve in place). Now: when a working crew member's
+   `Suffocation ≥ flee_suffocation` AND its tile is unbreathable (`AtmosphereSafety.IsBreathable`, the
+   exact negation of `NeedsSystem`'s vacuum/hypoxia/CO2-narcosis/thermal bands), it `CancelJob`s
+   (cargo dropped, reservations released) and takes `Flee`, pathing via `PathService.FindNearestBreathable`
+   to the nearest breathable tile, and stays undispatchable until breathing AND recovered below
+   `0.5×flee_suffocation` (rests before returning — no death-ratchet). `JobKind.Flee` (not `None`+path)
+   is deliberate: the relaxed E0-1 idle gate would re-dispatch a `None` fleeing crew straight back into
+   the vacuum every tick (traced deadlock). All four dispatch sites skip a `Flee` crew unchanged.
+
+**Pins (current — supersedes wall-drag/E0-1 tables below):**
+
+| pin | value | pre-E0-2 |
+|---|---|---|
+| 3-day scenario (`ci.sh`) | `85ac8c44233284e9` | `a53d8505013dc25d` (moved) |
+| tick-3000 golden | `9b834cffc232ce7f` | `9b834cffc232ce7f` (HELD) |
+| slice tick-3000 golden | `8c6b2544fac36d63` | `9a84a72f6ab67386` (moved) |
+| defs checksum (`SimDefs.Default`) | `e56d33a2e46b5644` | `60147a57e27c5c31` (moved) |
+
+The retunes moved scenario + slice + defs; the tick-3000 golden held (default ship's 2 crew neither
+move nor work within 3000 ticks). The crew-safety guard is **inert on every pinned ship** (pinned crew
+never suffocate → `JobKind` never becomes `Flee`), so it moved only the defs checksum further (the new
+field). Gate on merged `main`: **`./ci.sh` exit 0, twin hashes MATCH, 828 dotnet + 476 node green.**
+(Defs-checksum note: the docs track `SimDefs.Default.Checksum`; the scenario host's `defs:` print is a
+different rules-inclusive fingerprint — measure the former with a `SimDefs.Default.Checksum` build, not
+the host print.)
+
+**What E0-2 left for later (`MECHANICS §13`):** crafting stations whose `WorkSeconds` changed are still
+not reachable in the shipped slice; `DigWorkTicks` should migrate to `mining.def` at E-MINE (E3).
+
+**Next: E0-3** — dig/stockpile/strip verbs on the web client (the first economy work that touches the
+new AAA UI / Overview+Room-Zoom surface; review that UI before briefing). Then the rest of E0
+(`ECONOMY-PLAN.md` §E0): E0-4 stockpile zones, E0-5 deconstruct, E0-6 conversion loss, E0-7 ice→water,
+E0-8 the ledger (+A1 measurement). Player-control note still open from E0-1: a `MoveCitizenCommand`
+order is interruptible by auto-behaviour; revisit at E0-3.
+
+---
 
 ## Drifting parallax starfield (ship-motion backdrop): LANDED on `main` (2026-07-23, `8614b42`)
 
