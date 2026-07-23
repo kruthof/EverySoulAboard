@@ -737,6 +737,17 @@ skills.** For an idle citizen:
 | `HaulToBuild` (8) | JobSystem | two hops on one `JobTarget` (always the SITE): phase A empty-handed to the reserved material, phase B carrying it to the site; deposits what the site can take, surplus drops as a loose stack (`:600-683`) |
 | `Build` (9) | JobSystem | mirrors Dig; on the last work tick calls `BuildSystem.Complete` (`:691-715`) |
 
+**Build kinds + materials (2026-07-23).** `BuildKind` is `Wall=0 / Door=1 / Floor=2`
+(`Systems/BuildSystem.cs:7`). A **Wall** build seals the tile (`SetWall`) and records its material via
+`World.SetMaterial`; a **Floor** build re-materials an existing floor tile (material-only, no wall, inert —
+it needs a real non-void floor with no wall and an actual material change, may sit under furniture/a
+citizen, costs 1 `Regolith` / 20 ticks, v1 literals `:253-254`); a Door spawns a device. Each
+`PendingBuild` carries a `Material` byte (0=default) chosen client-side and threaded through
+`DesignateBuildCommand`. Material is authoritative, **hashed** per tile (`ZLevel.Material`, folded last
+into `World.HashInto`, saved TILE chapter v2) but **inert identity** — it never affects Walkable/BlocksGas
+or cost (every build still consumes `Regolith`; there are no per-material item kinds). The client reads
+it back via the view-only sparse `materials` wire channel to skin built walls/floors.
+
 **Reservation discipline.** `ItemStack.ReservedForJob` is set by: haul pickup
 (`JobSystem.cs:380`), build-material reservation (`:462`), eating
 (`SustenanceSystem.cs:160`), and — as the *station's* claim — a crafting input the moment

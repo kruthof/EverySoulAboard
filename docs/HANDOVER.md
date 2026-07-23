@@ -1,4 +1,35 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability**, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **wall drag-build & materials**, tag `v2-talking-ship`)
+
+## Wall drag-build + authoritative wall/floor materials: LANDED on `main` (2026-07-23, `70e0b95`)
+
+RimWorld-style **click-drag** wall/floor building with a live orientation-aware preview + **authoritative
+hashed** wall/floor material selection (the 12 MATERIAL pieces of the item set). Seven commits, each
+Opus-implemented + independently Opus-reviewed. Design/plan: `docs/design/perilune-wall-drag-material.plan.md`.
+
+**In the Room Zoom (the current build face, `--ship grid` → Overview → click a room):** arm WALL or FLOOR
+→ a **material swatch strip** (6 wall / 6 floor item-set skins) appears → pick one → **press-drag across
+the floor** and release. Walls trace the dragged rectangle's **perimeter** (a 1-wide drag = a straight
+run, a wide drag = an enclosing ring); floors **fill** the box; door + non-structural tools stay single
+click. A plain click is the degenerate 1-tile drag. Built walls + non-default floors now **render with
+their material skin** (interior partitions were previously invisible).
+
+**Sim/wire:**
+- **S1** per-tile hashed `ZLevel.Material` byte plane (0=default), folded last into `World.HashInto`,
+  saved in the TILE chapter (v1→v2, pre-v2 reads 0). `World.Get/SetMaterial` (inert, no RecomputeFlags).
+- **S2** `BuildKind.Floor=2` (re-material a floor tile), `PendingBuild.Material` (StateVersion 1→2),
+  `Designate/CanDesignate/DesignateBuildCommand(material)`, `Complete` writes `SetMaterial`. Floors cost
+  1 Regolith / 20 ticks (v1 literals; TODO `BuildDefs`). Pin-neutral.
+- **W1/W2** `Cmd.build(kind,x,y,material)`; host `HandleBuild` floor + material; `designs` tuple appends
+  material (elem 7); view-only sparse `materials` channel (`WireFormat.Materials`/`BuildMaterials`) projects
+  the World plane → client skins built tiles.
+
+**Honest caveats:** material = tile identity + skin, NOT a differentiated cost (every build still consumes
+`Regolith`; no glass/timber item kinds exist). Drag + picker are Room-Zoom-only — the **legacy on-map
+console is a fast-follow**. Latent (revisit when demolish-of-built lands): `SetMaterial` isn't cleared on
+`SetWall(pos,0)`; one Material byte/tile means wall-over-floor overwrites the floor byte.
+
+**Determinism (combined w/ E0-1):** scenario `a53d8505013dc25d` (twins match), tick-3000 `9b834cffc232ce7f`,
+slice `9a84a72f6ab67386`, defs `60147a57e27c5c31` (E0-1's; unmoved by this feature). `ci.sh` green.
 
 ## E0-1 — labour supply (recruitability): LANDED on `main` (2026-07-23), START HERE for the economy
 
