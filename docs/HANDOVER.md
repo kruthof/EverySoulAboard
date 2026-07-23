@@ -57,6 +57,14 @@ order is interruptible by auto-behaviour; revisit at E0-3.
 
 ---
 
+## Game title: **Every Soul Aboard** (decided 2026-07-23)
+
+The game is now titled **Every Soul Aboard**. "Perilune" is retained as the internal **codename**:
+the repo, the `Perilune.*` C# namespaces, and the ship MSV *Perilune* in fiction all keep it —
+**no code namespaces or the repo folder are renamed** by this decision (that would be a large,
+separate refactor). Documented in `docs/VISION.md` (the naming note + pitch) and `CLAUDE.md`. If a
+full codename→title rename is ever wanted, it's an explicit workstream, not implied by this.
+
 ## Drifting parallax starfield (ship-motion backdrop): LANDED on `main` (2026-07-23, `8614b42`)
 
 The Overview's 220-star backdrop now **drifts slowly right-to-left** so the ship reads as moving

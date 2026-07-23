@@ -1,4 +1,10 @@
-# PERILUNE — Vision & Differentiation
+# Every Soul Aboard — Vision & Differentiation
+
+> **Name (2026-07-23):** the game is titled **Every Soul Aboard**. "Perilune" is retained as
+> the internal **codename** (the repo, the C# namespaces `Perilune.*`, and the ship's name in
+> fiction — MSV *Perilune*, whose closest-approach orbital point the title's crew are drifting
+> through). The title foregrounds the game's real differentiator: each crew member is a person,
+> chronicled and mourned. No code namespaces or the repo folder are renamed by this decision.
 
 *Written 2026-07-20 at the founding of this repo (clean-room successor to `moonbase/`).
 This document is the product north star. `ARCHITECTURE.md` says how, `PLAN.md` says when
@@ -12,7 +18,7 @@ person you can actually talk to — and the game's story is written between you 
 
 ## The pitch
 
-RimWorld generates stories through systems and asks you to imagine the people. PERILUNE
+RimWorld generates stories through systems and asks you to imagine the people. Every Soul Aboard
 generates the same systemic depth — atmosphere physics, power cascades, emergent failure,
 factions — and then puts *real conversation* on top: crew who remember what happened to
 them, hold grudges about it, tell you about it in their own voice, grieve their dead, and

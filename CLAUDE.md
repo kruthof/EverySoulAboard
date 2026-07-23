@@ -1,5 +1,9 @@
 # PERILUNE — project guide for Claude
 
+> **Game title: Every Soul Aboard** (decided 2026-07-23). "Perilune" is the internal **codename** —
+> the repo, the `Perilune.*` C# namespaces, and the ship MSV *Perilune* keep it; nothing in code is
+> renamed by the title decision. See `docs/VISION.md` for the naming note.
+
 A RimWorld-depth colony sim aboard a drifting ship where every crew member is a person
 you can talk to. Deterministic UnityEngine-free C# sim, semantic glyph projection,
 web/TUI skins, MOSS automation DSL, LLM-driven crew (multi-provider, offline-capable),
