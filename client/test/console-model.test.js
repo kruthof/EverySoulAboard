@@ -335,6 +335,11 @@ test('Cmd.build / Cmd.chron marshal the exact host shapes (GameSession.Parse)', 
   assert.deepEqual(Cmd.bio(7), { type: 'bio', cid: 7 }); // B3: re-request the citizen card
 });
 
+test('Cmd.addRoom marshals the exact host shape (GameSession addroom: deck/slot/type)', () => {
+  assert.deepEqual(Cmd.addRoom(1, 3, 'medbay'), { cmd: 'addroom', deck: 1, slot: 3, type: 'medbay' });
+  assert.deepEqual(Cmd.addRoom(0, 7, 'quarters'), { cmd: 'addroom', deck: 0, slot: 7, type: 'quarters' });
+});
+
 // ---------------- build ghosts: designsOnDeck / designGlyph ----------------
 
 test('designsOnDeck: filters to the deck, maps [x,y,deck,kind,delivered,required], tolerant', () => {
