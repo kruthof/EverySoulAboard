@@ -1,0 +1,78 @@
+/* Warm-theme CSS custom properties — the DOM/HUD mirror of client/src/theme/warm-tokens.js.
+ *
+ * ADDITIVE ONLY. This file defines variables; it styles nothing on its own and must never be
+ * edited to override client/styles.css. Later phases (the floating HUD, the `.hud` glass panels)
+ * consume these vars; until then this is inert.
+ *
+ * Every value is verbatim from docs/design/perilune-art-direction-warm.md (section cited inline)
+ * and matches the JS token module value-for-value. Keep the two in sync.
+ */
+
+:root {
+  /* §2.1  Void / space — the deep-navy ramp (never black) */
+  --void-core: #141a2b;
+  --void-mid:  #0a0c16;
+  --void-edge: #05060c;
+  --void-gradient: radial-gradient(150% 120% at 60% 30%, #141a2b 0%, #0a0c16 50%, #05060c 100%);
+
+  /* §2.2  Hull — navy-steel */
+  --hull-plate:      #28323d;
+  --hull-stroke:     #3f4e5c;
+  --hull-shadow:     #1c242d;
+  --hull-wall-body:  #3a4b5c;
+  --hull-deep-steel: #1f2830;
+  --hull-deep-steel-2: #1a222b;
+
+  /* §2.2  Amber trim-light — the powered-bulkhead heartbeat (alpha scales with power) */
+  --trim-min:  rgba(232,147,74,.35);
+  --trim-base: rgba(232,147,74,.5);
+  --trim-max:  rgba(232,147,74,.6);
+
+  /* §2.3  Amber — the accent ramp */
+  --amber-deep:     #cf7a33; /* == --amber-1 on the console */
+  --amber-1:        #e8934a;
+  --amber-light:    #f2b563;
+  --amber-rust:     #b5652a;
+  --amber-ember:    #e8863c;
+  --amber-ember-hot:#ffe6b0;
+  --amber-rust-red: #c14a32;
+
+  /* §2.5  Status — one meaning, one colour (H-7) */
+  --good:        #5aa77f;
+  --good-bright: #6fc09a;
+  --warn:        #cf7a33;
+  --bad:         #c25a3f;
+  --bad-bright:  #e07a5f;
+  --cold:        #5a9fd4; /* the one reserved cool signal */
+  --cold-bright: #5ac8dc;
+
+  /* §2.6  UI ink ramp — warm-grey ascending to cream */
+  --ink-bright: #e8dcc9;
+  --ink-body:   #b3aa9c;
+  --ink-mute:   #8c8377;
+  --ink-faint:  #57503f;
+  --ink-hairline:      #2b241c;
+  --ink-inset-border:  #3a332a;
+  --ink-active-border: #cf7a33;
+  --ink-highlight:     #f2b563;
+
+  /* §2.4 / §5  The four floor materials */
+  --mat-wood:      #c2894e;
+  --mat-wood-line: #b57e45;
+  --mat-grow:      #8a9857;
+  --mat-grow-dot:  rgba(60,90,40,.55);
+  --mat-cream:     #d8c39c;
+  --mat-cream-grid:rgba(0,0,0,.1);
+  --mat-steel-tan: #9c8763;
+  --mat-steel-grid:rgba(0,0,0,.16);
+
+  /* §9  The HUD — floating translucent glass (`.hud` token) */
+  --hud-bg:         rgba(18,14,10,.62);
+  --hud-blur:       10px;
+  --hud-border:     1px solid rgba(232,147,74,.16);
+  --hud-border-color: rgba(232,147,74,.16);
+  --hud-shadow:     0 10px 34px rgba(0,0,0,.5);
+
+  /* §9  Type — Space Mono (WA-25) */
+  --font-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
