@@ -16,6 +16,7 @@ import { decodeLightPlane } from './wire/messages.js';
 import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 import { initOverview } from './ui/overview-view.js';
+import { initRoomZoom } from './ui/roomzoom-view.js';
 
 const PROC_TILE = 26;
 const params = new URLSearchParams(location.search);
@@ -246,10 +247,13 @@ function onMessage(m) {
 // armed-tool slot lives in the HUD. b-move is bound inside initConsole (it arms the guided move
 // order now, IX-52 — M / shift-click remain the instant expert paths).
 Hud.initConsole({ send: (o) => session.send(o), getCanvas: () => canvas, camera });
+// The warm Level-2 Room Zoom: the single-room build/decorate takeover, entered from the Overview.
+const roomZoom = initRoomZoom({ send: (o) => session.send(o) });
 // The warm Level-1 Overview: the default SHIP surface when the wire carries a `decks` grid. It
 // reads authoritative state back from the HUD caches and lowers every action to an existing Cmd /
-// HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth.
-initOverview({ send: (o) => session.send(o) });
+// HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth. Clicking
+// an occupied room enters the Room Zoom (Level 2) through the injectable hook.
+initOverview({ send: (o) => session.send(o), onEnterRoom: (anchor) => roomZoom.enter(anchor) });
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));
 document.getElementById('b-pause').onclick = () => session.send(Cmd.pause());
 document.getElementById('b-faster').onclick = () => session.send(Cmd.speed(1));
