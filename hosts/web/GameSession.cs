@@ -244,6 +244,8 @@ namespace Perilune.Web
                 case CmdKind.Speed: ChangeSpeed(cmd.I); return true;
                 case CmdKind.Pause: TogglePause(); return true;
                 case CmdKind.Build: HandleBuild(cmd); return true;
+                case CmdKind.Place: HandlePlace(cmd); return true;
+                case CmdKind.Remove: HandleRemove(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
@@ -599,6 +601,54 @@ namespace Perilune.Web
                     break;
                 default:
                     break; // unknown kind — ignored
+            }
+        }
+
+        /// <summary>
+        /// The decorate bridge (Room Zoom place palette). Maps the palette tool string to a
+        /// furniture <see cref="DeviceKind"/> and enqueues a <see cref="PlaceDeviceCommand"/> at the
+        /// clicked tile on the message's deck. Legality (floor tile, unoccupied, placeable kind) is
+        /// decided sim-side at the tick boundary, exactly like HandleBuild — an illegal request is a
+        /// silent sim no-op and the item only appears once the sim confirms it in the next frame.
+        /// </summary>
+        private void HandlePlace(WebCommand cmd)
+        {
+            if (!TryFurnitureKind(cmd.Name, out var kind)) return; // unknown tool — ignored
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+            _sim.EnqueueCommand(new PlaceDeviceCommand(kind, pos));
+            _status = "place " + cmd.Name;
+        }
+
+        /// <summary>The demolish bridge for placed furniture: enqueue a
+        /// <see cref="RemoveDeviceCommand"/> at the clicked tile; the sim resolves tile → device and
+        /// removes it only if it is removable furniture (silent no-op otherwise).</summary>
+        private void HandleRemove(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+            _sim.EnqueueCommand(new RemoveDeviceCommand(pos));
+            _status = "remove furniture";
+        }
+
+        /// <summary>Room Zoom palette tool string → furniture <see cref="DeviceKind"/> (IX-Z-21).
+        /// Unknown tools return false and are ignored — the whitelist is enforced again sim-side.</summary>
+        private static bool TryFurnitureKind(string tool, out DeviceKind kind)
+        {
+            switch (tool)
+            {
+                case "bunk": kind = DeviceKind.Bed; return true;
+                case "desk": kind = DeviceKind.Desk; return true;
+                case "chair": kind = DeviceKind.Chair; return true;
+                case "locker": kind = DeviceKind.Locker; return true;
+                case "plant": kind = DeviceKind.PlantPot; return true;
+                case "lamp": kind = DeviceKind.Light; return true;
+                case "growbed": kind = DeviceKind.GrowBed; return true;
+                case "medbed": kind = DeviceKind.MedBed; return true;
+                case "table": kind = DeviceKind.Table; return true;
+                default: kind = default; return false;
             }
         }
 
@@ -1355,7 +1405,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1403,6 +1453,11 @@ namespace Perilune.Web
                     // {"cmd":"build","kind":"wall|door|cancel","x":..,"y":..} — designate/cancel
                     // a build at a tile on the current deck (see GameSession.HandleBuild).
                     case "build": return new WebCommand(CmdKind.Build, Int(json, "x"), Int(json, "y"), name: Str(json, "kind"));
+                    // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
+                    //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
+                    case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
+                    // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.
+                    case "remove": return new WebCommand(CmdKind.Remove, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
                     default: return default;
                 }
             }

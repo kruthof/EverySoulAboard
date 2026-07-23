@@ -164,6 +164,87 @@ namespace Perilune.Sim
         }
     }
 
+    /// <summary>
+    /// Place a piece of functional furniture at a floor tile (Room Zoom decorate palette).
+    /// Furniture is inert — no power/heat/wear — so placement rides the existing hashed Device
+    /// state (Kind/Pos/Name fold in <see cref="Simulation.StateHash"/>); it adds no new saved
+    /// field. Validation is deterministic (no RNG/Date): the kind must be a placeable furniture
+    /// kind, and the tile must be in bounds, a walkable non-wall floor, and empty of a device
+    /// (one device per tile). An illegal request is a silent no-op — the client only promises the
+    /// attempt and shows the item once the sim confirms it in the next frame.
+    /// </summary>
+    public sealed class PlaceDeviceCommand : ISimCommand
+    {
+        private readonly DeviceKind _kind;
+        private readonly Int3 _pos;
+
+        public PlaceDeviceCommand(DeviceKind kind, Int3 pos)
+        {
+            _kind = kind; _pos = pos;
+        }
+
+        /// <summary>The furniture whitelist: crew/decor pieces the player may place or remove at
+        /// runtime. Deliberately excludes doors, life-support, power, crafting, sensors and every
+        /// other functional machine — those ship at authoring only.</summary>
+        public static bool IsPlaceableFurniture(DeviceKind kind)
+        {
+            switch (kind)
+            {
+                case DeviceKind.Bed:
+                case DeviceKind.Desk:
+                case DeviceKind.Chair:
+                case DeviceKind.Locker:
+                case DeviceKind.PlantPot:
+                case DeviceKind.Light:
+                case DeviceKind.GrowBed:
+                case DeviceKind.MedBed:
+                case DeviceKind.Table:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        public void Execute(Simulation sim)
+        {
+            if (!IsPlaceableFurniture(_kind)) return;
+            if (!sim.World.InBounds(_pos)) return;
+            // A walkable non-wall floor tile, empty of any device (one-per-tile rule).
+            if ((sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) return;
+            if (sim.World.GetWall(_pos) != TileDefs.Void) return;
+            if ((sim.World.GetFlags(_pos) & TileFlags.HasDevice) != 0) return;
+            if (sim.TryGetDeviceAt(_pos, out _)) return;
+            // Deterministic name (kind + tile) — no counters, no RNG; InvariantCulture ints.
+            string name = System.FormattableString.Invariant(
+                $"{_kind.ToString().ToLowerInvariant()}_{_pos.X}_{_pos.Y}_{_pos.Z}");
+            sim.AddDevice(_kind, _pos, name); // marks rooms + power dirty
+        }
+    }
+
+    /// <summary>
+    /// Remove a placed furniture device from a tile (Room Zoom demolish). Only the furniture
+    /// whitelist (<see cref="PlaceDeviceCommand.IsPlaceableFurniture"/>) is removable — doors,
+    /// life-support, power, crafting and sensors are never deleted this way. Deterministic no-op
+    /// when the tile holds no removable furniture.
+    /// </summary>
+    public sealed class RemoveDeviceCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+
+        public RemoveDeviceCommand(Int3 pos)
+        {
+            _pos = pos;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            if (!sim.World.InBounds(_pos)) return;
+            if (!sim.TryGetDeviceAt(_pos, out var device)) return;
+            if (!PlaceDeviceCommand.IsPlaceableFurniture(device.Kind)) return;
+            sim.RemoveDevice(device.Id); // marks rooms + power dirty
+        }
+    }
+
     /// <summary>Edit terrain (M1: used by tests and the debug UI; designations arrive in M2).</summary>
     public sealed class SetTileCommand : ISimCommand
     {
