@@ -205,9 +205,25 @@ namespace Perilune.Sim
 
         /// <summary>
         /// Folds into <see cref="Simulation.StateHash"/>. Param and Text are saved but
-        /// deliberately NOT hashed (project convention: strings are hash-exempt), so
-        /// rewording an objective is a content edit that cannot move a determinism pin;
-        /// changing a goal's KIND or its completion tick can and must.
+        /// deliberately NOT hashed, so rewording an objective is a content edit that cannot
+        /// move a determinism pin; changing a goal's KIND or its completion tick can and must.
+        ///
+        /// The blanket rule this used to cite — "project convention: strings are hash-exempt"
+        /// — was RETIRED on 2026-07-22 by economy W0-1b, which folded six saved strings
+        /// (<c>Citizen.Name</c>, <c>ItemStack.Label</c>, <c>Device.Name</c>,
+        /// <c>RoomAnchor.Name</c>, <c>ScriptEntry.TerminalId</c>/<c>.Source</c>). It was too
+        /// broad: three of those are BINDING KEYS, not prose. A renamed device silently
+        /// unbinds its MOSS adapter (<c>MossBindings.cs:20-32</c>), a renamed anchor unbinds
+        /// the whole <c>room.&lt;name&gt;</c> namespace, and a MOSS source IS the program.
+        ///
+        /// The rule that replaces it, and the line this system sits on: <b>an entity field
+        /// the save format writes is hashed; a SYSS chapter's own checksum decides for
+        /// itself, and human-readable TEXT stays exempt.</b> Goal <c>Text</c> and
+        /// <c>Param</c> qualify — nothing dispatches on them, they are HUD prose, and
+        /// exempting them keeps a copy-edit off the determinism pin. Same for
+        /// <c>HistorySystem</c> entry text, and for the entire mind/persona/fact layer,
+        /// whose exclusion from determinism is a gate-proven P2 decision. If a string ever
+        /// becomes a key here, it stops being exempt.
         /// </summary>
         public ulong StateChecksum()
         {

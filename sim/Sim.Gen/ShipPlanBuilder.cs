@@ -62,7 +62,7 @@ namespace Perilune.Gen
                     throw new ArgumentException($"plan '{plan.Name}': dig designation at {pos} is not debris");
                 world.SetFlag(pos, TileFlags.Designated, true);
             }
-            if (plan.DigDesignations.Count > 0) sim.JobsDirty = true;
+            if (plan.DigDesignations.Count > 0) sim.JobsDirty |= JobBoardDirty.Tiles; // boot dig designations
 
             for (int i = 0; i < plan.Rooms.Count; i++)
             {

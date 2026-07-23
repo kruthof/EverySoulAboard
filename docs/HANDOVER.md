@@ -1,20 +1,258 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)**, tag `v2-talking-ship`)
 
-> **The MOSS terminal is COMPLETE on main (2026-07-22)** — the newest feature. See
-> "The MOSS terminal" section below (search it); spec is
-> `docs/design/perilune-moss-terminal.spec.md`. Five Opus-gated lanes, 680 dotnet +
-> 356 node green, pins unmoved. The PROGRAM screen's in-terminal IDE landed last
-> (`moss-programs`, gate FAIL→PASS): it is a view of `model.program` over the DSL,
-> and it closed a real seam bug (directory-click sent `moss open` but never opened
-> the terminal in the model, silently dropping the source reply). Nothing deferred.
->
-> **Newest first, and this is where you start:** read **"The economy redesign
-> (2026-07-22) — START HERE"** immediately below. It is the approved next body of work
-> and it is design-complete: `docs/ECONOMY.md` (design authority) +
-> `docs/ECONOMY-PLAN.md` (waves and lanes). **Nothing is built yet.** After that,
-> "Playtest round 3" is the newest *landed* state, and `docs/MECHANICS.md` is the
-> authority on how the sim actually behaves (its §13 lists what is wired but not
-> connected).
+> **Newest first, and this is where you start:** read **"Economy Wave 0 — COMPLETE,
+> START HERE"** immediately below. Wave 0 is the behaviour-free plumbing that must land
+> before any economy lane spawns; **all six packages are merged on `lane/economy-w0`, and
+> `main` is now merged into the branch** (bringing playtest round 4, the render light-pools
+> + movement fixes, and the **MOSS terminal** — COMPLETE on `main`, spec
+> `docs/design/perilune-moss-terminal.spec.md`). After that, "The economy redesign" explains
+> *why* (design authority `docs/ECONOMY.md` + `docs/ECONOMY-PLAN.md`), "Playtest round 4"
+> then "round 3" are the newest *landed* state, and `docs/MECHANICS.md` is the authority on
+> how the sim actually behaves (its §13 lists what is wired but not connected).
+
+## Economy Wave 0 — COMPLETE, START HERE (2026-07-22)
+
+**All six Wave 0 packages are merged on `lane/economy-w0`, and `main` is now merged into the
+branch** (the MOSS terminal, render light-pools + movement fixes, Ollama, art rev 2, playtest
+round 4). Gate on the merged tree, measured 2026-07-22: **786 dotnet + 356 node** green, pin
+`616ed4a84a9f6e87` **held** (the merge is pin-neutral — main added no hashed sim state, so all
+three pins and the defs checksum `08b73814d97c7be3` are unmoved). Every package was
+Opus-implemented and independently Opus-reviewed (four of six sent back at least once). The
+next session's job is the ordered list in "What is left" below: **land the branch on `main`
+→ B-1/B-2/B-3 shipping-bug commits → spawn the E-lanes (E0-1 first).** The `main`-merge and
+the eight `ECONOMY-PLAN.md` corrections are already done. Everything below is the detail.
+
+
+**Where the work is: branch `lane/economy-w0`, NOT `main`.** It was cut from `main` @
+`3efd181` (what `ECONOMY-PLAN.md` was written against). **`main` has since advanced** —
+`15a0b7b` merged the Ollama lane, `9494420`/`e7b9c22` are art-direction rev 2, and
+`36b6ca4` committed the economy design docs independently (byte-identical to the copies on
+this branch, so that resolves cleanly; `CLAUDE.md` and `HANDOVER.md` will need a real
+merge). **First job of the next session: merge `main` into `lane/economy-w0`, re-gate, and
+re-measure the pin** — per `ECONOMY-PLAN.md` §2.1.4 pin measurement is integrator-only, on
+main, after merge.
+
+### State of the six Wave 0 packages
+
+| pkg | what | status | pin |
+|---|---|---|---|
+| W0-1 | un-alias the citizen + item hash packs | **merged**, 2 review rounds | moved |
+| W0-2 | widen `EffectKind` `byte`→`ushort` | **merged**, 2 review rounds | neutral, proven |
+| W0-3 | split `JobsDirty` into tile/item/site/citizen | **merged**, 1 round + F1 test | neutral, proven |
+| W0-4 | `JobSystem` (842 lines) → `IJobSource` dispatcher | **merged**, 3 review rounds | neutral, proven (twice — see below) |
+| W0-5 | the `[production]` node table | **merged**, 3 review rounds | neutral, proven |
+| W0-1b | hash the 13 saved-but-unhashed fields | **merged**, 2 review rounds | moved |
+| W0-6 | register the four economy systems empty | **merged**, 1 review round | moved |
+
+**ALL SIX MERGED, and `main` is now merged into the branch. Final gate (`lane/economy-w0`
+with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.sh` exit 0,
+`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** The pre-`main`-merge branch gate was
+713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
+surface) and moved no pin.
+
+Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6 — ritual done each time;
+CURRENT values, `ci.sh:25` and the two golden files all agree):
+
+| pin | value |
+|---|---|
+| 3-day scenario (`ci.sh:25`) | `616ed4a84a9f6e87` |
+| tick-3000 golden | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `72f7023ef9f1cd73` |
+
+W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
+longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped
+the F1 positive haul-assignment test that converts the whole missed-rescan class from
+invisible-to-CI to caught). W0-6 moved all three pins by registering four empty stateful
+systems (`ZONE`/`PROD`/`ORES`/`TRAD`; their checksum seeds fold unconditionally) and shipped
+the old-save compat test §3.3 required. Pre-W0-6 values were `ffefe9a9a42d8e7e` /
+`6071adb8fa781440` / `ab47cefd840247c4`. **Wave 0 is closed; the next pin move belongs to
+E0-2 (the work-rate rebase) or the first E-lane that adds hashed state. The `main`-merge is
+done and re-measured (pin-neutral); the next re-measure is on `main` itself after the
+integrator lands the branch. Never carry a literal forward.**
+
+### W0-4's neutrality is now proven a second way — the whole point of adding W0-1b
+
+W0-4 merged **before** W0-1b on this branch. W0-1b measured its slice golden
+`ab47cefd840247c4` on a branch that did **not** contain W0-4. The five-package integration
+branch contains both, and its `Slice_Tick3000_StateHash_IsStable` produces **exactly
+`ab47cefd840247c4`** (verified 2026-07-22). So adding the dispatcher refactor to a fold that
+can finally *see* path state changed nothing. Combined with the fold-independent 66-assignment
+sequence pin (assignments byte-identical to pre-refactor code), W0-4 is neutral **both** ways:
+identical assignments, and an unmoved pin on the one fold that was blind to routing before.
+This retires the "prove it" that was unprovable when the wave started.
+
+### Two deviations from `ECONOMY-PLAN.md` §0, both deliberate
+
+1. **W0-4 ran before W0-3.** Both own `JobSystem.cs` so they cannot be parallel, and the
+   dirty-flag split maps far more naturally onto per-source rescan responsibility than onto
+   the monolith. W0-4's report contains a **worked recommendation for W0-3** — read it
+   before starting: gate the dispatcher's single world tile pass on `TilesDirty` alone (a
+   two-line change that kills the `AddItem`-forces-full-rescan hazard with **no source
+   edits**), then pass a `[Flags] JobBoardDirty what` argument through `IJobSource.Rescan`
+   rather than adding `RescanItems`/`RescanSites` members — the per-source derivations are
+   genuinely not separable (`HaulJobSource` needs tiles *and* items; `BuildJobSource` needs
+   pending *and* citizens *and* items). Also: the tile pass must run before any source's
+   `Rescan` (asserted only by a comment today), `CandidateCount` must stay honest across a
+   partial rescan because it is *behaviour* not an optimisation, and no dirty flag is
+   proposed for "a citizen changed job" — either add a fourth or document that the citizen
+   pass always runs.
+2. **W0-1b was added to the wave** (a third pin move against a budgeted two). It hashes 13
+   saved-but-unhashed fields; `Path`/`PathIndex`/`MoveCooldown` were **live tick state
+   hashing equal**, so W0-4's "neutral — prove it" was literally unprovable and **E0-1**'s
+   whole content (redefining `HasPath` = `PathIndex < Path.Count`) had no canary. It found
+   four more fields on review (`NextEntityId`, `RoomAnchor.Name`, two MOSS `ScriptEntry`
+   fields) and located the `RemapGas` reload-drift bug (below). A hard prerequisite, done.
+
+### What is left, in order — START HERE for the next session
+
+**Wave 0 itself is DONE (all six merged), and `main` is now merged into the branch.** What
+remains is landing it on `main` and then opening the economy proper:
+
+1. **DONE — `main` merged into `lane/economy-w0` and re-measured.** `main` had advanced 35
+   commits since the cut (the MOSS terminal programme, render light-pools + movement fixes,
+   Ollama merge `15a0b7b`, art rev 2, playtest round 4) — far more than the Ollama+art the
+   plan anticipated. Conflicts were doc-only (no sim source on both sides): `ECONOMY-PLAN.md`
+   kept the branch copy with the corrections (main carried the stale pre-correction copy from
+   the independent `36b6ca4`); `CLAUDE.md`/`HANDOVER.md` narratives merged. Per
+   `ECONOMY-PLAN.md` §2.1.4 the pin was measured on the merged result: **786 dotnet + 356 node
+   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state). **Next
+   for the integrator: land the whole of `lane/economy-w0` on `main` (`--no-ff`, re-gate on
+   `main`).**
+2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the
+   "Corrections" section below — they were folded in during the wave, each measured and each
+   reproduced by a second agent). Nothing to do but be aware they are in.
+3. **B-1 / B-2 / B-3** — the three shipping-build bug commits (`ECONOMY.md` §1.5): the
+   ownerless reservation leak, the hydroponics water leak, the CO₂ gas-transport bug. These
+   are **behavioural** (they move pins and change outcomes), so they were deliberately NOT
+   started during behaviour-free Wave 0. B-3 must precede E1's finite air reserve. Good first
+   batch after the `main`-merge.
+4. **Then the E-lanes spawn — E0-1 recruitability first.** It is the hard prerequisite for
+   everything, and it now *has* a canary: W0-1b hashed the path fields, so a routing change is
+   finally visible to the pin (before W0-1b it was not). E0-2 (the 10× work-rate rebase +
+   parked movement retune) lands *behind* E0-1, never before — measured, the retune alone
+   costs 29 % of production and halves recruitability.
+
+**Process note for the next integrator (learned this session): the machine is shared by
+multiple Claude sessions.** A background `ci.sh` waiter that does `pgrep -f "dotnet test"`
+will match *another session's* test run (and often its own shell), so it hangs forever — two
+lane agents got stuck this way and had to be told to run their gate **foreground**. Brief
+implementer agents to run `./ci.sh` foreground, or verify their gate yourself as integrator.
+Also: `git status` showing files you did not touch means you are sharing a tree — stop and
+look, never `git add -A`.
+
+### The measurement that should change how you think about this codebase
+
+Instrumented on the pre-refactor `JobSystem`, on the pinned 3-day scenario:
+
+```
+INSTR TryAssignCalls=10365760 Dig=0 Haul=0 BuildHaul=0 Build=0 Progress=0
+```
+
+**10.4 million dispatch calls, zero job assignments** — every one returns at the empty-board
+guard. `perilune_tick3000_hash.txt` likewise reaches zero. `slice_tick3000_hash.txt` reaches
+**48 `Dig` only**. So **no determinism pin in this repository constrains haul, build-haul or
+build assignment, the cross-source argmin, registration tie-breaks, backoff timing, or the
+reservation fan-out.** `tests/Perilune.Tests/JobDispatchTests.cs` is the *only* thing that
+does — it is load-bearing in a way its filename does not advertise, and the next person to
+"simplify" a job source will assume otherwise because `ci.sh` is green. This is
+`ECONOMY-PLAN.md` §5.3's A9 warning confirmed empirically; **A9's slice-based economy canary
+closes the gap for free**, and until it lands, treat `JobDispatchTests` as a pin.
+
+### Corrections to `ECONOMY-PLAN.md` and `ECONOMY.md` — all measured, none yet applied
+
+**These are integrator-owned edits still outstanding. Apply them before the E-lanes spawn.**
+
+1. **§5.1's hash-honesty claim is false.** It says a per-field mutation table "would have
+   caught both W0-1 bit-aliases". It would not: against the old fold, mutating `ItemKind`
+   4→128 still moves a bit, so that row **passes**. A single-field table finds *dropped* and
+   *truncated* fields; only a **collision pair** (two distinct states built to hash equal)
+   finds an *alias*. Reproduced twice, independently. §5.1 should read "a per-field mutation
+   table **plus**, for any field sharing a word with another, an explicit collision-pair
+   test." `StateHashHonestyTests.cs` ships both shapes and is the template.
+2. **§3.2's "the defs checksum is unmoved" is false for scalar fields.** Appending a fold
+   for a field whose shipped value equals its compiled default still moves
+   `CreateDefault().Checksum` — measured `08b73814d97c7be3 → 18c26618041a5e0a` with all 30
+   defs tests green. Shipped-equals-default guarantees *parsed == default*, not *default ==
+   yesterday's*. W0-5 is neutral only because it made its fold a no-op on an empty table
+   (the `RuleDef` precedent). Every def-field lane should budget for a moved defs checksum
+   and a `SaveReader` warning on pre-existing saves.
+3. **§4.5's "stamp arrays are indexed by store position" is wrong** — they are indexed by
+   **board** position. The real hazard is not "removing items during a scan", it is **any
+   rescan between `Select` and `TryClaim`**, which is exactly the shape an extraction source
+   refreshing its ore board would reach for. `IJobSource.cs` now states it correctly, so the
+   plan is the odd one out. Fix before three lanes copy the pattern.
+4. **§4.4 understates `Pack(Int3)`.** Not just "aliases on negative coordinates and breaks
+   past 2^20": X occupies bits 0–31 **unmasked**, so X↔Y alias from bit 20, Y↔Z from bit 40,
+   and z truncates above 2^24. *Any* single negative coordinate is `0xFFFFFFFF` and floods
+   all three fields. Also "reuse the one shared helper" is misleading advice — **the shared
+   helper is the defect**; it should read "reuse it *and* fix it to masked 21/21/6 fields
+   before any lane grows the ship".
+5. **§3.1's five-site pin ritual is wrong twice.** `CLAUDE.md` has **two** pin sites,
+   `MECHANICS.md` has two plus `file:line` cites, and the two golden `.txt` files are a
+   further site the list omits. And the fifth named site — auto-memory — **contains no pin
+   literal at all**, so it is vacuous as written. Replace the list with
+   `grep -rnE '\b[0-9a-f]{16}\b' docs CLAUDE.md ci.sh tests`, which cannot go stale. (It
+   already caught two stale pins the hand list missed.)
+6. **§3.5 says zero-alloc is asserted "in seven test files"** — it is eight now.
+7. **§5.1's mandatory set is not universally applicable.** W0-4 adds no hashed or serialized
+   state, so save round-trip, tick-1000 re-compare, def-field, defs-checksum and de-DE items
+   are all N/A there. Say so, or reviewers score packages against gates they cannot fail.
+8. **§4 trap 10's mechanism is imprecise.** `float.Parse("0.5")` yields 5 under de-DE only
+   because its *default* styles include `AllowThousands`. With an explicit
+   `NumberStyles.Float`, `"0.85"` under de-DE does not parse as 85 — it **fails to parse**.
+   Same hazard, different symptom, and the symptom is what people search for.
+9. **`ECONOMY.md` §10's per-unit loss figures are not expressible in an integer item
+   model — DECISION PARKED FOR GARVIN, see below.**
+
+### Decisions parked for Garvin
+
+**§10's loss figures must be restated as integer ratios.** W0-5 originally shipped a float
+`yield` column; with flooring, `floor(n·y)/n = y` only when `n·y` is integral, so 0.85 needs
+batch multiples of **20** and §10's 0.93 reclaimer needs **100**. The shipped example
+advertised 0.85 and actually delivered **75 %**, and one node-level yield gave *different*
+effective efficiencies per output port (50 % and 66.7 % from a declared 85 %). **I made the
+container call**: the float column is gone; loss is the integer input:output ratio
+(`Scrap:20 → Regolith:17` **is** exactly 85 %). This is exact, culture-free, float-free,
+deletes determinism traps 7 and 10 from that table, and makes the closed-mass axiom
+checkable at parse. **What is NOT mine and is still open: renumbering `ECONOMY.md` §10's
+efficiencies to ratios.** `ECONOMY.md` is the design authority and Garvin approved those
+numbers; someone must decide the batch granularity (a coarser ratio may be better design
+than a faithful 100:93). **Nothing in E0 depends on it** — the table ships empty.
+
+**Also worth Garvin's eye:** the reshape moves cost onto logistics. `AllInputsStaged` is
+all-or-nothing and `StepFetch` carries one stack per trip, so `Scrap:20` stages twenty units
+before a batch starts — ~5× the round-trips of `Scrap:4`, landing directly on the labour
+budget A1 measures. Documented in `production.def` and §13.12, but it is a design
+consequence, not just an implementation note.
+
+### New packages discovered during Wave 0 — none started, all justified
+
+| pkg | what | why | cost |
+|---|---|---|---|
+| **`Pack(Int3)` masking** | mask to 21/21/6 and de-duplicate the helper (`Simulation.cs:351` and `BuildSystem.cs:230` are character-identical copies) | any negative coordinate floods all three fields; z corrupts `RoomAnchor.Type` above 2^20 | pin move |
+| **`RemapGas` idempotence** | `RoomState.Recompute` is not gas-idempotent; a load leaves `Dirty = true`, and `RemapGas` (`Rooms/RoomState.cs:322-340`) rebuilds room moles as a sum of per-tile shares, so recomputing an *unchanged* partition perturbs O2/CO2/N2/T at ~6e-15 relative | **a plain save→reload is not bit-exact today.** This is the long-known "thermal ULP drift" — it was never just thermal, it is all three gases, and the cause is now located. A player who saves and reloads gets a slightly different ship, forever | pin move, behaviour change |
+| **`RoomType` 17th row** | `Type` has 4 usable bits at 60–63 and `RoomType` already declares exactly 16 members | the 17th silently folds onto `None` | pin move |
+| **`SaveReader` enum validation** | `SaveReader.cs:254` reads `JobKind` as an unvalidated byte | a corrupt byte is silently ignored; the error should name the *save*, not surface as an array index 30 frames later | small |
+
+### Process notes that earned their keep
+
+- **Four of six packages were sent back at least once** — exactly the rate `ECONOMY-PLAN.md`
+  §6.3 predicted. Budget for it.
+- **Independent review found what self-review could not, every single time.** The clearest
+  case: W0-2's author shipped two passing width tests, and the reviewer applied the exact
+  defect the package existed to prevent — a `(byte)` cast at **both** shipped producers of
+  `CitizenEffectAppliedEvent.Kind` — and got **611/611 green**. The tests pinned the
+  consumer side and stepped straight over both producers.
+- **Fixes introduce the defect class they fix.** Happened twice: W0-5's second-node warning
+  had an overlay-retarget hole, and W0-4's `bestDist` guard silently invalidated one of its
+  own round-1 named mutations. **Re-review every fix round.**
+- **Named mutations go stale like any other documentation.** Requiring the reviewer to
+  *apply* them (§5.2.5) is what caught that.
+- **Both sides push back and both are sometimes right.** Implementers corrected the plan on
+  §5.1, §3.2 and §10; reviewers corrected implementers on bit arithmetic, test honesty and
+  scope. Two agents independently reproduced each doc correction before it was adopted — do
+  not let a design correction propagate on one agent's say-so.
+
 
 For the next session. Read `CLAUDE.md` first, then this top to bottom. Design intent
 lives in `VISION.md`, mechanism in `ARCHITECTURE.md`, phasing/lanes in `PLAN.md`;
@@ -938,13 +1176,36 @@ node art/screenshot-test/slice-shot.mjs     # the repeatable slice frame (headle
   `(Opus-gated PASS xN)` tally in each merge subject is this gate's receipt. It caught real
   defects live (CostMeter race, hung-backend timeout, the eulogy whole-word LOW finding,
   the V6-killing wear cap). Do not skip it — the gate is why 40 commits landed clean.
-- **Hash-move ritual:** adding ANY hashed state (new `IStatefulSystem`, saved field)
-  intentionally moves the reference hash. In the SAME commit: regenerate the tick-3000 golden
+- **Hash-move ritual:** adding ANY hashed state (new `IStatefulSystem`, saved field) — or
+  restructuring the fold itself — intentionally moves the reference hash. In the SAME commit:
+  regenerate the tick-3000 golden
   (`UPDATE_GOLDEN=1 ... --filter Tick3000`) **and** the slice golden if the slice moved, update
-  the pinned hash in `ci.sh` + `CLAUDE.md` + auto-memory, and say why. P2 moved it three times
-  (S1 relationship events, BuildSystem 'BULD' fold, Director 'DRCT' fold + gentled def); N1/N3
-  were verified honestly **un**moved. Current scenario pin `26907c23d7e48a5c`; current tick-3000
-  golden `401c9b96aff338a7`; current slice tick-3000 golden `d1710ab6a1fe50ce`.
+  the pinned hash in `ci.sh` + `CLAUDE.md` + `MECHANICS.md` + auto-memory, and say why. P2 moved
+  it three times (S1 relationship events, BuildSystem 'BULD' fold, Director 'DRCT' fold + gentled
+  def); N1/N3 were verified honestly **un**moved. Economy **W0-1** (2026-07-22) moved all three
+  at once by un-aliasing the citizen + item hash packs — a pure fold restructure, no sim
+  behaviour changed, and exactly 2 goldens moved (both the tick-3000 hash files; every frame,
+  persona and layout golden was byte-identical, which is the check that the cause really was
+  the fold). Economy **W0-1b** (same day) moved all three again for the same kind of reason:
+  **thirteen** fields were **saved but not hashed** — crew `Name`/`PrevPos`/`AutoWander`/
+  `Path`/`PathIndex`/`MoveCooldown`/`IdleCooldown`, `ItemStack.Label`, `Device.Name`, the save
+  header's `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source` — so two
+  sims at different path progress, or differing only in whether a crew member wanders, hashed
+  EQUAL. **Nine were found by the package and four more by its independent review, after the
+  package had already declared the audit complete** — budget a second reader for that audit,
+  it is not a test the suite can run. Again a pure fold change, again exactly 2 goldens moved
+  (both tick-3000 hash files; every frame, persona and layout golden byte-identical). Current
+  scenario pin `ffefe9a9a42d8e7e`; current tick-3000 golden `6071adb8fa781440`; current slice
+  tick-3000 golden `ab47cefd840247c4` (W0-1's values were `3afc99d90e849aa0` / `d807c509743d1b9d` /
+  `21ad26192d778d95`).
+  **Also part of the ritual now:** any newly hashed field ships a row in
+  `tests/Perilune.Tests/StateHashHonestyTests.cs` — mutate that field alone, assert the hash
+  moves. That table is what makes "it's hashed" a measured claim rather than a hopeful one.
+  **And the audit that table cannot do:** a table built *from* the fold can only test fields
+  the fold already has, so any commit that adds saved state must also read `SaveWriter`
+  beside `StateHash` field-for-field. That is how W0-1b's nine were found — by reading, not
+  by a red test. The matching restore proof is `SaveRestoreRunOnTests` (save → load → tick
+  1000 → re-compare on the populated slice; ECONOMY-PLAN §5.1).
 - **Def-field ritual:** one commit = `CreateDefault` value + parser key + checksum fold (append
   before the rules fold) + shipped `.def` verbatim + a consumption-tripwire test.
   `social.def` / `build.def` / `director.def` are clean examples (S1 did it x15).
@@ -1026,8 +1287,25 @@ affordance item landed in the round-2 polish lane.)
   **Update 2026-07-21:** the prompt-rework smoke (`7bf9234`) plus conversation history
   (`9b16c07`) both moved this — re-verify live with a multi-turn secret-probing exchange
   before declaring it closed; single-turn `llm-smoke` alone can't prove it anymore.
-- **Save-reload thermal ULP drift** — pre-existing, documented and reproduced by `P2ExitTests`
-  on base (last-bit float drift across a save/reload of the thermal field). Not a P2 regression.
+- **Save-reload gas/thermal ULP drift** — pre-existing, documented and reproduced by
+  `P2ExitTests` on base. **Cause located 2026-07-22 (W0-1b), confirmed and sharpened by its
+  review, still unfixed.** The save is not the cause: on a *single* sim with no partition
+  change, `MarkDirty()` + `RecomputeIfDirty()` alone moves `StateHash` and perturbs **20 of 22
+  rooms**. `Recompute` unconditionally calls `RemapGas` (`Rooms/RoomState.cs:322-340`), which
+  rebuilds gases as a sum of per-tile shares via a **reciprocal multiply** (`1.0 / TileCount`,
+  `:331`) and rebuilds `TemperatureK` by a *different* route, a weighted mean
+  `tempWeighted / shareSum` — so a fix aimed only at the mole sums would leave temperature
+  drifting. **`Recompute` is not gas-idempotent: recomputing an UNCHANGED partition perturbs
+  O2/CO2/N2 and T in the last bits.** A reload merely triggers it (`SaveReader` leaves
+  `Dirty = true` by design). Measured on the slice at T=300: bit-exact at load, essentially
+  every room drifting on the first tick after, and the drift **grows** with run-on (~2.7e-15
+  relative → ~1.5e-14 by N=1000). Crew, items, devices, RNG, tick, wastewater and every system
+  fold stay bit-exact for 1000 ticks. So a plain save/load is *not* bit-exact under run-on,
+  and the whole-`StateHash` §5.1 comparison only holds when both sims take the same recompute
+  (`SaveRestoreRunOnTests` does exactly that; its second test pins the drift's blast radius at
+  a band that permits rather than requires the drift, so a fix cannot redden it). Fixing it
+  means skipping the remap when the partition is unchanged, or remapping by total — a
+  behaviour change and a pin move, so it is its own package. Not a P2 or W0-1b regression.
 - **ConversationHub has no backoff/cooldown** — it re-probes the primary backend every turn
   through its bespoke pump (it can't use `LlmDispatcher` because the dispatcher re-runs
   `PrepareTurn` off the sim thread). Give it `LlmDispatcher` parity — snapshot-kept-on-sim-thread

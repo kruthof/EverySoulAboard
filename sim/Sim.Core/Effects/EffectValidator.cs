@@ -141,7 +141,9 @@ namespace Perilune.Sim
             citizen.JobKind = JobKind.Dig;
             citizen.JobTarget = target;
             citizen.JobWorkTicks = JobSystem.DigWorkTicks;
-            sim.JobsDirty = true;
+            // A citizen took a dig with nothing else changing — the dig source must re-derive its
+            // assigned set from citizen state so this site is not offered to anyone else.
+            sim.JobsDirty |= JobBoardDirty.Citizens;
 
             mind.Memory.Add(new MemoryEntry
             {

@@ -54,6 +54,21 @@ namespace Perilune.Sim
         /// <see cref="RecipeDef.Defined"/> is false are non-crafting kinds.</summary>
         public RecipeDef[] Recipes;
 
+        // ---------------------------------------------------------------- production
+
+        /// <summary>The <c>[production]</c> conversion-graph node table (W0-5), living
+        /// BESIDE <see cref="Recipes"/> — multi-input, multi-output, per-node yield, keyed
+        /// by node id so two bills on one station coexist instead of overwriting, with
+        /// conversion loss carried by the integer input:output ratio (no float anywhere in
+        /// the table — W0-5 review B4). Shipped
+        /// content declares ZERO nodes, so every shipped station still runs its legacy
+        /// <see cref="RecipeDef"/>: <see cref="ProductionDefs.TryGetBill"/> is the single
+        /// additive lookup (prefer the node, fall back to the array) and
+        /// <see cref="CraftingSystem"/> is its only consumer. An EMPTY table folds nothing
+        /// into <see cref="Checksum"/> (the <see cref="Rules"/> precedent), so W0-5 leaves
+        /// the shipped defs fingerprint byte-identical.</summary>
+        public ProductionDefs Production;
+
         // -------------------------------------------------------------- sub-sections
 
         // ------------------------------------------------------------- designer rules
@@ -560,6 +575,10 @@ namespace Perilune.Sim
             d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 30);
             d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 40);
 
+            // W0-5: the conversion-graph container ships EMPTY. Shipped crafting is still
+            // the three legacy rows above, reached through TryGetBill's fallback leg.
+            d.Production = new ProductionDefs { Nodes = Array.Empty<ProductionNode>() };
+
             d.ComputeChecksum();
             return d;
         }
@@ -575,7 +594,8 @@ namespace Perilune.Sim
         /// → Thermal → Atmosphere → Needs → Sustenance → Water → Hydro → Wear → Citizen
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
         /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
-        /// → Director (12 fields, appended). Appending a field
+        /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
+        /// while the table is empty). Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -719,6 +739,37 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Director.LeverTargetTension);
             h = XxHash64.Combine(h, Director.LeverStep);
             h = XxHash64.Combine(h, (ulong)(uint)Director.PeriodTicks);
+
+            // Production graph (W0-5) node table, APPENDED after Director and before the
+            // rules fold. An EMPTY table folds NOTHING — exactly the RuleDef precedent — so
+            // CreateDefault's fingerprint is identical to pre-W0-5 and every previously
+            // recorded defs checksum stays byte-comparable. Rows fold in TABLE ORDER: unlike
+            // [machines]/[recipes] this section is an ordered list, and reordering it changes
+            // which node TryGetBill resolves, so the order is a value, not formatting.
+            if (Production != null && Production.Nodes != null)
+            {
+                for (int i = 0; i < Production.Nodes.Length; i++)
+                {
+                    var n = Production.Nodes[i];
+                    h = XxHash64.Hash(Encoding.UTF8.GetBytes(n.Id ?? ""), h);
+                    h = XxHash64.Combine(h, (ulong)(byte)n.Station);
+                    h = XxHash64.Combine(h, (ulong)(uint)n.WorkSeconds);
+                    int inCount = n.Inputs == null ? 0 : n.Inputs.Length;
+                    h = XxHash64.Combine(h, (ulong)(uint)inCount);
+                    for (int p = 0; p < inCount; p++)
+                    {
+                        h = XxHash64.Combine(h, (ulong)(byte)n.Inputs[p].Kind);
+                        h = XxHash64.Combine(h, (ulong)(uint)n.Inputs[p].Count);
+                    }
+                    int outCount = n.Outputs == null ? 0 : n.Outputs.Length;
+                    h = XxHash64.Combine(h, (ulong)(uint)outCount);
+                    for (int p = 0; p < outCount; p++)
+                    {
+                        h = XxHash64.Combine(h, (ulong)(byte)n.Outputs[p].Kind);
+                        h = XxHash64.Combine(h, (ulong)(uint)n.Outputs[p].Count);
+                    }
+                }
+            }
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

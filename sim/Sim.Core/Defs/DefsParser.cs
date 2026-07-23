@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace Perilune.Sim
 {
@@ -14,7 +15,10 @@ namespace Perilune.Sim
     /// tolerated. <c>[section]</c> opens a section; scalar sections take
     /// <c>key = value</c>; <c>[machines]</c>/<c>[recipes]</c> are whitespace-aligned
     /// tables keyed by enum NAME, and <c>[machines]</c> also accepts the
-    /// <c>radiator_reject_kw = …</c> scalar.
+    /// <c>radiator_reject_kw = …</c> scalar. <c>[production]</c> (W0-5) is a whitespace-
+    /// aligned table too, but keyed by a free-text node id and ORDERED — rows accumulate
+    /// across files in file order, and a repeated id replaces in place. It is also the one
+    /// table with no decimal column at all: every value is an integer or an enum name.
     ///
     /// FAIL-SOFT (DeviceLayout.json precedent: warn, never brick): every malformed line
     /// appends a problem string and keeps the default value, so <see cref="Parse"/>
@@ -24,9 +28,10 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Director, Machines, Recipes, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Director, Machines, Recipes, Production, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
+        private static readonly char[] PortSeparator = { '+' };
 
         public static SimDefs Parse(IReadOnlyList<(string name, string text)> files, List<string> problems) =>
             Parse(files, null, problems);
@@ -47,6 +52,12 @@ namespace Perilune.Sim
         {
             if (problems == null) throw new ArgumentNullException(nameof(problems));
             var d = SimDefs.CreateDefault(); // fresh graph — never mutate SimDefs.Default
+
+            // [production] is an ORDERED, ADDITIVE table (unlike the keyed [machines]/
+            // [recipes] arrays), so rows accumulate across every file in file order and are
+            // installed once at the end. A repeated node id REPLACES in place — the overlay
+            // contract, without disturbing table order.
+            var production = new List<ProductionNode>();
 
             if (files != null)
             {
@@ -72,11 +83,12 @@ namespace Perilune.Sim
                         if (section == Section.None) { problems.Add(loc + ": content before any [section] — ignored"); continue; }
                         if (section == Section.Unknown) continue; // already warned at the header
 
-                        if (section == Section.Machines || section == Section.Recipes)
+                        if (section == Section.Machines || section == Section.Recipes || section == Section.Production)
                         {
                             if (section == Section.Machines && line.IndexOf('=') >= 0) ApplyMachineScalar(d, line, loc, problems);
                             else if (section == Section.Machines) ApplyMachineRow(d, line, loc, problems);
-                            else ApplyRecipeRow(d, line, loc, problems);
+                            else if (section == Section.Recipes) ApplyRecipeRow(d, line, loc, problems);
+                            else ApplyProductionRow(production, line, loc, problems);
                             continue;
                         }
 
@@ -89,6 +101,12 @@ namespace Perilune.Sim
                     }
                 }
             }
+
+            d.Production = new ProductionDefs
+            {
+                Nodes = production.Count == 0 ? Array.Empty<ProductionNode>() : production.ToArray(),
+            };
+            if (production.Count > 1) WarnOnShadowedNodes(d.Production, problems);
 
             if (ruleFiles != null && ruleFiles.Count > 0)
             {
@@ -127,6 +145,7 @@ namespace Perilune.Sim
                 case "director": return Section.Director;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
+                case "production": return Section.Production;
                 default:
                     problems.Add(loc + ": unknown section '" + raw.Trim() + "' — ignored");
                     return Section.Unknown;
@@ -401,6 +420,200 @@ namespace Perilune.Sim
                 return;
             }
             d.Recipes[(int)kind] = new RecipeDef(input, inCount, output, outCount, work);
+        }
+
+        /// <summary>
+        /// One <c>[production]</c> row — the conversion-graph node table (W0-5):
+        /// <c>ID STATION WORK_S INPUTS OUTPUTS</c>, five whitespace-aligned columns.
+        /// Port lists are <c>Kind:count</c> pairs joined by <c>+</c> with NO spaces (the
+        /// row is whitespace-split), or the literal <c>none</c> for an empty side.
+        ///
+        /// Every column is an integer or an enum name. There is deliberately no float yield
+        /// column (W0-5 review, B4): conversion loss is the integer input:output RATIO, which
+        /// is exact where <c>floor(n·y)</c> is not, and which takes this whole table out of
+        /// reach of ECONOMY-PLAN §4's trap 10 (InvariantCulture) — there is no decimal to
+        /// mis-parse.
+        ///
+        /// Fail-soft like every other row: a malformed row is warned about and skipped, and
+        /// the table keeps whatever rows already parsed. Validation is deliberately strict
+        /// where a bad value would be UNSAFE rather than merely wrong:
+        ///   • <c>work_s</c> in [1, <see cref="ProductionNode.MaxWorkSeconds"/>] — CraftingSystem
+        ///     divides by it, and the derived tick count must not overflow int (N3);
+        ///   • <c>count</c> in [1, <see cref="ProductionNode.MaxPortCount"/>] per port — unit
+        ///     counts feed int accumulators and an unbounded count wraps them (N3b);
+        ///   • at least one input port, and no same-kind gain — a node with no inputs, or one
+        ///     that turns <c>Scrap:1</c> into <c>Scrap:5</c>, is a matter SOURCE, which
+        ///     ECONOMY.md §2.1's closed-mass axiom forbids. Cross-kind ratios are NOT policed:
+        ///     <c>Regolith:1 → Seals:2</c> is §4's own design and kinds are not comparable
+        ///     without a mass model;
+        ///   • <b>no ItemKind twice within one side</b> (B1) — the consumers check staging
+        ///     per port against the AGGREGATE staged units of a kind, so a repeated kind lets
+        ///     one stack satisfy two ports and the batch creates matter.
+        /// </summary>
+        private static void ApplyProductionRow(List<ProductionNode> nodes, string line, string loc, List<string> p)
+        {
+            string[] c = line.Split(Whitespace, StringSplitOptions.RemoveEmptyEntries);
+            if (c.Length != 5)
+            {
+                p.Add(loc + ": [production] row needs 5 columns (id station work_s inputs outputs), got " + c.Length + " — skipped");
+                return;
+            }
+
+            string id = c[0];
+            if (!TryEnum<DeviceKind>(c[1], loc, p, out var station)) return;
+            if (!int.TryParse(c[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int work))
+            {
+                p.Add(loc + ": [production] row '" + id + "' work_s expects an integer, got '" + c[2] + "' — skipped");
+                return;
+            }
+            if (work < 1 || work > ProductionNode.MaxWorkSeconds)
+            {
+                p.Add(loc + ": [production] row '" + id + "' work_s must be in [1, "
+                      + ProductionNode.MaxWorkSeconds.ToString(CultureInfo.InvariantCulture) + "], got "
+                      + work.ToString(CultureInfo.InvariantCulture) + " — skipped");
+                return;
+            }
+
+            if (!TryPorts(c[3], "inputs", id, loc, p, out var inputs)) return;
+            if (!TryPorts(c[4], "outputs", id, loc, p, out var outputs)) return;
+            if (inputs.Length == 0)
+            {
+                p.Add(loc + ": [production] row '" + id + "' has no inputs — a node with no inputs is a matter source — skipped");
+                return;
+            }
+
+            // SAME-KIND matter creation is statically detectable and unambiguous: Scrap:1 →
+            // Scrap:5 mints four units of Scrap out of nothing, whatever else the row does.
+            // CROSS-kind ratios are deliberately NOT policed — Regolith:1 → Seals:2 is
+            // ECONOMY.md §4's own design, and units of different kinds are not comparable
+            // without a mass model the sim does not have.
+            for (int o = 0; o < outputs.Length; o++)
+            {
+                for (int i = 0; i < inputs.Length; i++)
+                {
+                    if (inputs[i].Kind != outputs[o].Kind || outputs[o].Count <= inputs[i].Count) continue;
+                    p.Add(loc + ": [production] row '" + id + "' turns " + inputs[i].Count.ToString(CultureInfo.InvariantCulture)
+                          + " " + inputs[i].Kind + " into " + outputs[o].Count.ToString(CultureInfo.InvariantCulture)
+                          + " " + outputs[o].Kind + " — a same-kind gain is unambiguous matter creation "
+                          + "(ECONOMY.md §2.1) — skipped");
+                    return;
+                }
+            }
+
+            var node = new ProductionNode(id, station, work, inputs, outputs);
+            int existing = -1;
+            for (int i = 0; i < nodes.Count; i++)
+                if (string.Equals(nodes[i].Id, id, StringComparison.Ordinal)) { existing = i; break; }
+            if (existing >= 0) nodes[existing] = node; // overlay: replace in place, order preserved
+            else nodes.Add(node);
+            // Shadowed-node detection is NOT done here: an overlay row can retarget an existing
+            // id onto a station that already has a node, which no per-row check sees. It runs
+            // once over the ASSEMBLED table instead — see WarnOnShadowedNodes.
+        }
+
+        /// <summary>
+        /// One scan over the finished table: every station carrying more than one node gets one
+        /// problem line naming the node that RUNS and the ones it shadows.
+        ///
+        /// <see cref="ProductionDefs.TryGetBill"/> resolves ordinal 0 only, so a second node on
+        /// a station parses and folds into the checksum but is dead until E-PROD's <c>PROD</c>
+        /// chapter carries per-station bill state. Shipping the limitation is fine; shipping it
+        /// silently is not (W0-5 review, B3).
+        ///
+        /// Deliberately a whole-table pass rather than a per-row one. The per-row form had a
+        /// hole exactly where the overlay contract is most useful: <c>b</c> declared on
+        /// SalvageRecycler and then re-declared on Fabricator (which already had a node) took
+        /// the overlay branch, never reached the check, and installed a silent dead node. A
+        /// single scan over the assembled list closes every route — first declaration, overlay,
+        /// retarget, or rows split across files — and costs one pass instead of an O(n²)
+        /// per-row check. The trade is the line number, which is why both node ids are named.
+        /// </summary>
+        private static void WarnOnShadowedNodes(ProductionDefs production, List<string> p)
+        {
+            var nodes = production.Nodes;
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                var station = nodes[i].Station;
+
+                bool isFirstOnStation = true;                       // report once per station,
+                for (int j = 0; j < i; j++)                          // at its running node
+                    if (nodes[j].Station == station) { isFirstOnStation = false; break; }
+                if (!isFirstOnStation) continue;
+
+                int count = production.CountFor(station);
+                if (count < 2) continue;
+
+                var sb = new StringBuilder();
+                sb.Append("[production]: ").Append(count.ToString(CultureInfo.InvariantCulture))
+                  .Append(" nodes are declared on ").Append(station)
+                  .Append(" — only '").Append(nodes[i].Id)
+                  .Append("' (the first in table order) is ever run today; shadowed: ");
+                bool first = true;
+                for (int j = i + 1; j < nodes.Length; j++)
+                {
+                    if (nodes[j].Station != station) continue;
+                    if (!first) sb.Append(", ");
+                    sb.Append('\'').Append(nodes[j].Id).Append('\'');
+                    first = false;
+                }
+                sb.Append(" — see MECHANICS.md §13.12");
+                p.Add(sb.ToString());
+            }
+        }
+
+        /// <summary>Parse a <c>Kind:count+Kind:count</c> port list (or <c>none</c>). Rejects
+        /// empty segments (a trailing or leading <c>+</c>) and a kind repeated within the
+        /// list.</summary>
+        private static bool TryPorts(string text, string field, string id, string loc, List<string> p, out ProductionPort[] ports)
+        {
+            ports = Array.Empty<ProductionPort>();
+            if (string.Equals(text, "none", StringComparison.OrdinalIgnoreCase)) return true;
+
+            // NOT RemoveEmptyEntries: "Scrap:2+" and "+Scrap:2" are authoring errors, and
+            // silently accepting them hides a half-written port list (N8).
+            string[] parts = text.Split(PortSeparator);
+            var result = new ProductionPort[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length == 0)
+                {
+                    p.Add(loc + ": [production] row '" + id + "' " + field + " has an empty port (stray '+') — skipped");
+                    return false;
+                }
+                int colon = parts[i].IndexOf(':');
+                if (colon <= 0 || colon == parts[i].Length - 1)
+                {
+                    p.Add(loc + ": [production] row '" + id + "' " + field + " port '" + parts[i] + "' must be Kind:count — skipped");
+                    return false;
+                }
+                if (!TryEnum<ItemKind>(parts[i].Substring(0, colon), loc, p, out var kind)) return false;
+
+                string countText = parts[i].Substring(colon + 1);
+                if (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
+                {
+                    p.Add(loc + ": [production] row '" + id + "' " + field + " port '" + parts[i]
+                          + "' count expects an integer, got '" + countText + "' — skipped");
+                    return false;
+                }
+                if (count < 1 || count > ProductionNode.MaxPortCount)
+                {
+                    p.Add(loc + ": [production] row '" + id + "' " + field + " port '" + parts[i]
+                          + "' count must be in [1, " + ProductionNode.MaxPortCount.ToString(CultureInfo.InvariantCulture)
+                          + "] — unit counts feed int accumulators and an unbounded count wraps them — skipped");
+                    return false;
+                }
+                for (int j = 0; j < i; j++)
+                {
+                    if (result[j].Kind != kind) continue;
+                    p.Add(loc + ": [production] row '" + id + "' names " + kind + " twice in " + field
+                          + " — staging is counted per KIND, so a repeated kind would let one stack "
+                          + "satisfy two ports and the batch would create matter — skipped");
+                    return false;
+                }
+                result[i] = new ProductionPort(kind, count);
+            }
+            ports = result;
+            return true;
         }
 
         // ------------------------------------------------------------------ helpers

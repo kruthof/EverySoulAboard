@@ -192,9 +192,21 @@ pure physics canary. (It is a 22×6 single-deck room with two citizens, no desig
 items — economy *behaviour* is inert there; what moves the pin is new stateful seeds and new
 field folds.)
 
-**Five text sites must be updated in the same commit as any pin move**: `ci.sh:25`, the
-`CLAUDE.md` determinism block, `MECHANICS.md`, the `HANDOVER.md` ritual block, and auto-memory.
-Missing one is the classic follow-on failure.
+**Find every pin site with a grep, not a list (CORRECTED 2026-07-22).** The old five-site list
+was wrong twice: `CLAUDE.md` has **two** pin sites, `MECHANICS.md` has two plus `file:line` cites
+that a fold restructure also invalidates, the two golden `.txt` files are a site it omitted
+entirely, and the fifth named site — auto-memory — **contains no pin literal at all**, so it was
+vacuous. It had already failed once in the wild (`MECHANICS.md` and `HANDOVER.md` both shipped a
+slice golden that had moved weeks earlier). Use:
+
+```bash
+grep -rnE '\b[0-9a-f]{16}\b' docs CLAUDE.md ci.sh tests
+```
+
+which returns the complete set and cannot go stale. Distinguish **live** sites (update) from
+**dated session records and deliberate "never assert the literal" examples** (leave frozen), and
+note that not every 16-hex literal is a sim pin — the defs checksum looks identical and moves for
+different reasons.
 
 ### 3.2 Def surface — 50–70 fields, 4–6 **hash-neutral** commits
 
@@ -208,8 +220,13 @@ parser key, **appended** checksum fold (at the END, before the rules fold), the 
 line *verbatim equal to the compiled default*, and a **consumption tripwire test**. Measured
 precedent: Social S1 landed **15 fields in one commit**, so 4–6 commits is a demonstrated rate.
 
-Because shipped values equal compiled defaults, the defs checksum is unmoved and **the sim pin
-does not move at all**. Def work is therefore the *cheapest* part of this project and should be
+**CORRECTED 2026-07-22 (measured): the defs checksum DOES move.** Appending a fold for a scalar
+field whose shipped value equals its compiled default still moves `CreateDefault().Checksum`
+(measured `08b73814d97c7be3` -> `18c26618041a5e0a`, all 30 defs tests green). Shipped-equals-default
+guarantees *parsed == CreateDefault*, not *CreateDefault == yesterday's*. Budget for a moved defs
+checksum and a `SaveReader` warning on pre-existing saves; only a fold that is a **no-op on empty
+data** (the `RuleDef` / W0-5 `[production]` precedent) is genuinely neutral. **The sim pin still
+does not move at all** — defs are not in `StateHash`. Def work is therefore the *cheapest* part of this project and should be
 scheduled early to unblock content tuning — **provided the tripwire is honoured**. `MECHANICS.md
 §13` ("wired but not connected") exists precisely because that step gets skipped.
 
@@ -254,7 +271,7 @@ scheduled early to unblock content tuning — **provided the tripwire is honoure
 ### 3.5 Performance — the zero-alloc tick path
 
 Zero-alloc is **test-enforced**, not aspirational (`GC.GetAllocatedBytesForCurrentThread()`
-deltas asserted `== 0` over 3000 ticks in seven test files). Patterns to copy verbatim:
+deltas asserted `== 0` over 3000 ticks in eight test files — seven pre-economy plus `JobDispatchTests`). Patterns to copy verbatim:
 reusable board lists + **generation stamps** instead of clearing (`JobSystem`); `HashSet`/
 `Dictionary` for **lookup only, never iterated**; canonical **packed-position** ordering with
 binary insert (`BuildSystem`); `stackalloc` top-K insertion sort (`CapabilityComputer`); a
@@ -291,10 +308,21 @@ Every item is a place a new economy could silently break the pins.
    the same order. **Mitigation is a rule and an integrator grep, not a test** — and it must be
    stated in every lane brief, because a conversion graph is exactly the code where someone
    reaches for `foreach (var kv in _stationBills)`.
-4. **Packed positions alias on negative coordinates** and break past 2^20 in a dimension. Reuse
-   the one shared helper.
-5. **Stamp arrays are indexed by store position and valid for one selection pass only.** A new
-   system that removes items *during* a scan breaks them.
+4. **Packed positions are worse than they look (CORRECTED 2026-07-22, measured).** `Pack(Int3)`
+   masks **none** of its three fields: X occupies bits 0-31, so X<->Y alias from bit 20, Y<->Z from
+   bit 40, and z truncates above 2^24 while corrupting `RoomAnchor.Type` above 2^20. *Any* single
+   negative coordinate is `0xFFFFFFFF` and floods all three fields, so `(-1,0,0)`, `(-1,-1,0)` and
+   `(-1,-1,-1)` are hash-indistinguishable. Latent today (every hashed `Int3` is a bounded in-world
+   tile) but live the moment a lane grows the ship. **"Reuse the one shared helper" is misleading —
+   the shared helper IS the defect**, and it is duplicated character-identically at
+   `Simulation.cs:351` and `BuildSystem.cs:230`. Reuse it *and* fix it to masked 21/21/6 fields
+   before any lane grows the ship. That is a pin move; budget it.
+5. **Stamp arrays are indexed by BOARD position (CORRECTED 2026-07-22)**, not store position —
+   board indices are derived from store order but are not the same thing, and the boards are
+   rebuilt wholesale by `Rescan`. The real hazard is therefore **any rescan between `Select` and
+   `TryClaim`** (an extraction source refreshing its ore board is the shape that will reach for
+   it), not merely "removing items during a scan". `sim/Sim.Core/Jobs/IJobSource.cs` states the
+   invariant correctly; treat it as the authority.
 6. **RNG:** `CitizenSystem` draws from the shared `sim.Rng`. Any new system drawing from it
    shifts every subsequent draw and moves all pins. **Fork, or do not draw.**
 7. **Float accumulation order.** `station.Progress += 1f / WorkSeconds` is a hashed float, safe
@@ -308,7 +336,13 @@ Every item is a place a new economy could silently break the pins.
 9. **`Int3.Manhattan` treats a deck change as one tile.** Measured: Manhattan-nearest is *not*
    path-nearest **28.7 %** of the time (mean penalty 8.2 tiles, worst 29; worst cross-deck
    walk/Manhattan ratio 23×). Every dispatcher inherits this. Deterministic — just wrong.
-10. **InvariantCulture everywhere.** The dev machine is de-DE; `float.Parse("0.5")` yields 5.
+10. **InvariantCulture everywhere.** The dev machine is de-DE. **The symptom depends on the
+    styles (CORRECTED 2026-07-22, measured):** bare `float.Parse("0.5")` yields **5**, because its
+    default styles include `AllowThousands`; with an explicit `NumberStyles.Float` the same string
+    **fails to parse at all** (`False, 0`). Same hazard, different failure — a silent 100x value in
+    one case, a parse *problem* in the other. `NumberStyles.Integer` is culture-inert for unsigned
+    decimals, so an integer-only table has no culture exposure and a "culture test" over it is a
+    tautology unless it pins the **style set**.
     A `[production]` table of decimal yields is a live hazard, as is every new wire number.
 
 ---
@@ -316,6 +350,13 @@ Every item is a place a new economy could silently break the pins.
 ## 5. Testing — and how these tests avoid being tautological
 
 ### 5.1 The mandatory set, per economy commit
+
+> **Not every item applies to every package (added 2026-07-22).** A package that adds no hashed
+> and no serialized state — W0-4's dispatcher refactor is the worked example — cannot fail save
+> round-trip, save->load->tick-1000, old-save-without-chapter, def-field, defs-checksum or de-DE
+> culture gates, because it does not touch those surfaces. State the applicable subset in the lane
+> brief, or a reviewer scores the package against gates it cannot fail and both sides waste a
+> round.
 
 Determinism twin · save round-trip (populated) · **save → load → tick 1000 → re-compare**
 (new; a restore that drops a derived index hashes equal *at load* and diverges hundreds of
@@ -330,8 +371,13 @@ over 3 sim-days, on the slice. The water loop already advertises this shape
 (`Simulation.cs:46-48`); the economy should assert it.
 
 Plus a **hash-honesty table test**: for each newly hashed field, mutate exactly that field and
-assert `StateHash()` changes. **This is the test that would have caught both W0-1 bit-aliases**,
-and it is trivially cheap.
+assert `StateHash()` changes. **CORRECTED 2026-07-22 (measured, twice, independently): a
+per-field table would NOT have caught either W0-1 bit-alias.** Against the pre-fix fold,
+mutating `ItemKind` 4 -> 128 still moves a bit, so that row *passes*. A single-field table finds
+*dropped* and *truncated* fields; only a **collision pair** — two distinct states constructed to
+hash equal under the packing — finds an *alias*. The mandatory set is therefore a per-field
+mutation table **plus**, for any field sharing a word with another, an explicit collision-pair
+test. `tests/Perilune.Tests/StateHashHonestyTests.cs` ships both shapes and is the template.
 
 ### 5.2 The five anti-tautology rules
 
@@ -412,6 +458,15 @@ Reuse the round-3 method verbatim, because it demonstrably worked:
 ---
 
 ## 8. The first move
+
+> **STATUS 2026-07-22: Wave 0 is partly done. See `HANDOVER.md` "Economy Wave 0 — IN FLIGHT".**
+> Merged on branch `lane/economy-w0`: **W0-1** (hash packs un-aliased, pins moved), **W0-2**
+> (`EffectKind` widened), **W0-4** (`IJobSource` dispatcher), **W0-5** (`[production]` table,
+> integer-ratio loss). In review: **W0-1b**, a package this document did not anticipate — nine
+> saved-but-unhashed fields (`Path`, `PathIndex`, `MoveCooldown`, `AutoWander`, four names/labels,
+> `PrevPos`) meant two sims with different path progress hashed **equal**, which made W0-4's and
+> E0-1's "prove it is neutral" *unprovable*. Not started: **W0-3**, **W0-6**. Wave 0 therefore
+> costs **three** pin moves, not two. No E-lane may spawn until W0-3 and W0-6 land.
 
 With the full programme approved, the opening wave is **Wave 0 + B-1/B-2/B-3 + E0-1 + E0-3**,
 in that order:

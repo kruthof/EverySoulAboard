@@ -23,20 +23,32 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-22)
-**Read `docs/HANDOVER.md` "Playtest round 4" then "round 3"** — newest state, and the
-open items are listed at the end of round 4. Rounds 3–4: **`docs/MECHANICS.md`** is now
-the authority on how the sim actually behaves (its §13 lists what is *wired but not
-connected*), the slice has a working build/dig economy, crew work is legible on the map,
-crew no longer promise physical work they cannot do, the ship stage was relit + de-blurred
-+ lit with real pools and grounding shadows, and pawns now face where they walk and no
-longer blink. **`docs/design/perilune-art-direction.md`** is the art authority — the
-sprite regen is DECIDED-NOT-NOW (design first, regenerate last); nothing generated, no
-credits spent.
-**680 dotnet + 356 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
-`b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
-again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
-and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
+## Status snapshot (2026-07-22) — economy Wave 0 COMPLETE, `main` merged in
+**Read `docs/HANDOVER.md` "Economy Wave 0 — COMPLETE, START HERE" first.** The economy
+programme's Wave 0 (behaviour-free plumbing that must land before any economy lane spawns)
+is **DONE — all six packages merged on `lane/economy-w0`**:
+W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-3 `JobsDirty` split into
+tile/item/site/citizen flags · W0-4 `JobSystem` split into an `IJobSource` dispatcher ·
+W0-5 the `[production]` node table · W0-1b the 13 saved-but-unhashed fields hashed
+(`Path`/`PathIndex`/`MoveCooldown` were live tick state hashing **equal**) · W0-6 the four
+empty economy systems registered (`ZONE`/`PROD`/`ORES`/`TRAD` SYSS, one batched pin move).
+Every package was Opus-implemented + independently Opus-reviewed; four of six were sent back
+at least once. **`main` — through the MOSS terminal, render light-pools and the movement
+fixes — is now merged into the branch; the gate and pin are re-measured on the merged tree**
+(see "Determinism proof" below). **Next: land the branch on `main`, then the B-1/B-2/B-3
+shipping-bug commits (`ECONOMY.md` §1.5), then the E-lanes spawn (E0-1 recruitability first).**
+
+### Earlier snapshot (playtest rounds 3–4 + MOSS terminal)
+**`docs/HANDOVER.md` "Playtest round 4" then "round 3"** — **`docs/MECHANICS.md`** is the
+authority on how the sim actually behaves (its §13 lists what is *wired but not connected*),
+the slice has a working build/dig economy, crew work is legible on the map, crew no longer
+promise physical work they cannot do, the ship stage was relit + de-blurred + lit with real
+pools and grounding shadows, and pawns now face where they walk and no longer blink.
+**`docs/design/perilune-art-direction.md`** is the art authority — the sprite regen is
+DECIDED-NOT-NOW (design first, regenerate last); nothing generated, no credits spent.
+Known-honest limits: the dig is a **boot-window** economy (crew idle again after ~4 sim-min
+of digging), the stage is still far flatter than Prison Architect, and the CO2 problem is a
+**gas-transport bug** (no diffusion term), not a dispatch gap.
 
 **MOSS terminal COMPLETE 2026-07-22** (five lanes, each Opus-gated, spec
 `docs/design/perilune-moss-terminal.spec.md`): clicking MOSS replaces the whole window with a
@@ -135,17 +147,27 @@ worthless, `git status` stops meaning anything, and one instance can trivially c
 another's half-finished work.*
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (631 green; `./ci.sh`
-  runs the full gate — 631 dotnet + 237 node, ~3 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22 after all six lanes merged, not carried forward: figures
-  quoted mid-session drifted behind the lanes still in flight. Re-measure before quoting.)
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
+  gate — dotnet + node, ~4 min wall since V6 runs real sim-days). Counts move with every
+  lane and are re-measured per commit; **re-measure before quoting**. The merged tree =
+  Wave 0's six packages + `main`'s MOSS terminal / render / Ollama test surface; the current
+  gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `26907c23d7e48a5c` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `401c9b96aff338a7`; the slice tick-3000 golden is `b31ba82f50cf395c`
-  (moved 2026-07-21 by the slice work-economy lane — the slice now boots with a
-  designated aft dig; the 2-crew pins are untouched).
+  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `72f7023ef9f1cd73`.
+  All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
+  change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
+  `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
+  `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; economy **W0-1b**
+  (folding the **thirteen** saved-but-unhashed fields — crew Name/PrevPos/AutoWander/Path/
+  PathIndex/MoveCooldown/IdleCooldown, `ItemStack.Label`, `Device.Name`, the save header's
+  `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to
+  `ffefe9a9a42d8e7e` / `6071adb8fa781440` / `ab47cefd840247c4`; and economy **W0-6**
+  (registering four empty economy systems — `ZONE`, `PROD`, `ORES`, `TRAD` — whose seeds fold
+  unconditionally) took those to the current values. Exactly 2 goldens moved each time, both
+  the tick-3000 hash files.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:

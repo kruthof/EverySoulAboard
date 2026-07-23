@@ -18,8 +18,8 @@ namespace Perilune.Sim
     ///   recomputes rooms. The recompute is a pure, deterministic function of the
     ///   loaded tiles + devices + saved rooms/RoomId arrays, so two loads of the
     ///   same save stay bitwise identical.
-    /// - PowerDirty/JobsDirty: forced true — networks and the job board rebuild
-    ///   on the first tick (the fresh system instances hold no per-sim caches).
+    /// - PowerDirty forced true / JobsDirty forced to JobBoardDirty.All — networks and every
+    ///   job sub-board rebuild on the first tick (the fresh system instances hold no per-sim caches).
     /// - Tile Flags (incl. HasDevice/Designated) are restored verbatim from the
     ///   TILE chapter, never re-derived.
     /// </summary>
@@ -144,7 +144,7 @@ namespace Perilune.Sim
 
             // Power networks and the job board are derived — rebuild on first tick.
             sim.PowerDirty = true;
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
             return sim;
         }
 

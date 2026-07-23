@@ -1,0 +1,100 @@
+# =============================================================================
+# production.def — the conversion-graph node table (CraftingSystem, W0-5)
+# =============================================================================
+# The container the economy programme's conversion graph (ECONOMY.md §4) needs, and
+# the one [recipes] cannot be: [recipes] is one row per workstation DeviceKind,
+# single-input/single-output, so a second bill on the same station OVERWRITES the
+# first. A [production] row is keyed by its own node ID instead, so many nodes may
+# name one station, and it takes MANY inputs and MANY outputs.
+#
+# SHIPPED STATE: this table is deliberately EMPTY. Every shipped station still runs
+# its legacy [recipes] row — ProductionDefs.TryGetBill prefers a station's node and
+# FALLS BACK to the recipe array, and with no nodes declared the fallback is what
+# runs. An empty table also folds nothing into the defs checksum, so this file
+# changes nothing at all: same behaviour, same checksum, byte for byte.
+#
+# -----------------------------------------------------------------------------
+# COLUMNS (whitespace-aligned; five of them)
+# -----------------------------------------------------------------------------
+#   ID  STATION  WORK_S  INPUTS  OUTPUTS
+#
+#     ID        node key, unique in the table. A later row with the SAME id replaces
+#               it in place (the .def overlay contract) — that is how a pack retunes
+#               a core node without disturbing table order.
+#     STATION   DeviceKind NAME of the workstation. NOT the key: several nodes may
+#               name one station (but see NOT YET CONNECTED below).
+#     WORK_S    whole seconds of work per batch, 1..86400 (tick count = work_s x
+#               Simulation.TicksPerSecond).
+#     INPUTS    'Kind:count' pairs joined by '+', NO spaces (the row is whitespace-
+#               split). At least one port; a kind may not repeat within the list.
+#               Consumed all-or-nothing when the batch starts; a worker fetches for
+#               the first short port in port order.
+#     OUTPUTS   same syntax, or the literal 'none' for a pure sink (ECONOMY.md §5 S7,
+#               "vent the carbonate — gone forever"). All ports spawn at the worker's
+#               tile when the batch completes.
+#
+# EVERY COLUMN IS AN INTEGER OR AN ENUM NAME. There is no yield/efficiency column,
+# on purpose:
+#
+#   CONVERSION LOSS IS THE INPUT:OUTPUT RATIO. `Scrap:20 Regolith:17` is exactly
+#   85 %, on every machine, forever. A fractional yield multiplier cannot be exact
+#   against integer stacks — floor(n*y)/n equals y only when n*y is a whole number,
+#   so 0.85 would need out_counts in multiples of 20 and ECONOMY.md §10's 0.93
+#   reclaimer multiples of 100, and one node-level yield produces a DIFFERENT
+#   effective rate per output port. Ratios are exact, culture-free and float-free,
+#   the closed-mass axiom (§2.1) is checkable by reading the row, and the author has
+#   to state the batch size that the rounding was going to impose on him anyway.
+#
+#   BUT THE BATCH SIZE IS ALSO A STAGING REQUIREMENT, and that is the real cost of a
+#   fine-grained ratio. Inputs are all-or-nothing: CraftingSystem will not start a
+#   batch until EVERY input port's full count is staged on the bench's neighbours,
+#   and a worker fetches ONE stack per trip. So `Scrap:20 Regolith:17` makes the crew
+#   stage twenty units before a single batch begins, where `Scrap:4` needed four —
+#   five times the hauling round-trips per batch, and a correspondingly longer stretch
+#   of bench idle time while they run. That lands directly on the labour model that
+#   ECONOMY.md §12.1 A1 measures.
+#
+#   Two consequences for whoever tunes this table. First, scale `work_s` with the
+#   batch: a 5x batch at unchanged `work_s` is a ~5x throughput change, not a
+#   like-for-like re-expression of the same node. Second, prefer the COARSEST ratio
+#   that says what you mean — 0.85 as `Scrap:20 Regolith:17` costs five times the
+#   logistics of an 0.75 written `Scrap:4 Regolith:3`, so buy precision deliberately.
+#
+# ORDER IS SIGNIFICANT here, unlike [machines]/[recipes]: this section is an ordered
+# list (rows accumulate across files in Ordinal filename order), the checksum folds
+# it in that order, and a station's bill is resolved by ORDINAL within it.
+#
+# -----------------------------------------------------------------------------
+# WORKED EXAMPLES — commented out on purpose (see SHIPPED STATE above)
+# -----------------------------------------------------------------------------
+# ECONOMY.md §4/§10 shapes in this syntax, so the next lane has a concrete target.
+# Uncommenting any of them CHANGES the game and the defs checksum — and the ones
+# marked (E0+) also need ItemKind rows that do not exist yet (§3.2 stages Seals,
+# Ice, Swarf, Circuits ... each landing with its consumer).
+#
+# [production]
+# # id             station          work_s  inputs              outputs
+# scrap_to_stock   SalvageRecycler  20      Scrap:20            Regolith:17          # exactly 85%
+# recycle_swarf    SalvageRecycler  20      Swarf:5             Regolith:3           # exactly 60%  (E1+)
+# fab_parts        Fabricator       30      Scrap:2             Parts:1
+# fab_seals        Fabricator       15      Regolith:1          Seals:2              # (E0+)
+# shop_controller  MachineShop      40      Parts:2+Circuits:1  ControllerModule:1   # (E2+)
+# scrap_corpse     SalvageRecycler  60      Corpse:1            none                 # a pure SINK
+#
+# Note 'fab_parts' and 'fab_seals': two bills on ONE station, coexisting — the
+# single thing this table exists to make expressible (but read the next section:
+# only the first is RUN today, and the parser will tell you so).
+# Note 'shop_controller': two INPUT ports. Note 'scrap_corpse': 'none' outputs.
+# Note the ratios: matter leaves the ship at every hop, in exact whole units.
+#
+# -----------------------------------------------------------------------------
+# NOT YET CONNECTED (MECHANICS.md §13.12)
+# -----------------------------------------------------------------------------
+# CraftingSystem resolves a station's bill at ORDINAL 0 — the first node in table
+# order naming that station. Rows beyond ordinal 0 parse, checksum and are reachable
+# through ProductionDefs.TryGetNode, but nothing selects among them yet: choosing
+# needs per-station state (which bill is mid-batch, priorities, quotas) and therefore
+# a save chapter, which is the E-PROD lane's PROD blob. Declaring a second node on a
+# station is NOT silent — the parser emits a problem line pointing here.
+
+[production]
