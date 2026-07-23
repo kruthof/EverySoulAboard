@@ -232,6 +232,10 @@ function onMessage(m) {
     case 'relations': Hud.renderRelations(m); break;
     // MOSS terminal: the ship-systems ledger channel (moss-terminal spec §1.1).
     case 'systems': Hud.renderSystems(m); break;
+    // Warm-SVG view channels (wire-channels spec): compartment grid / room atmosphere / decor.
+    case 'decks': Hud.renderDecks(m); break;
+    case 'rooms': Hud.renderRooms(m); break;
+    case 'decor': Hud.renderDecor(m); break;
     default: break;
   }
 }

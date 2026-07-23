@@ -471,6 +471,163 @@ namespace Perilune.Web
             return sb.ToString();
         }
 
+        // ------------------------------------------------------------------- decks / rooms / decor (warm-SVG view channels)
+        //
+        // Three VIEW-ONLY cached state channels the warm SVG Overview / Room-Zoom consume
+        // (docs/design/perilune-wire-channels.spec.md). Like systems/roster they are rebuilt each
+        // render, deduped and snapshot-replayed, and NOT fog-gated. They move NO determinism hash:
+        // decks/rooms are a pure read of RoomState/Room derived props; decor is inert (view-only).
+        //   decks {"type":"decks","decks":[{"deck":N,"slots":[[idx,x,y,w,h,"anchor",roomType,occ,act],..]},..]}
+        //   rooms {"type":"rooms","rooms":[["anchor",deck,o2,co2ppm,pressureKPa,tempK,tileCount],..]}
+        //   decor {"type":"decor","items":[[deck,x,y,"itemId",yawDeg,variant],..]}
+
+        /// <summary>One 2×4 compartment slot on the <c>decks</c> channel. Geometry
+        /// (<see cref="X"/>/<see cref="Y"/>/<see cref="W"/>/<see cref="H"/>, tile rect in
+        /// frame/click space) and <see cref="RoomType"/> come from the plan's authoring slot grid;
+        /// <see cref="AnchorName"/>/<see cref="Occupied"/>/<see cref="Active"/> are DERIVED from live
+        /// <see cref="Perilune.Sim.RoomState"/> each render — <see cref="AnchorName"/> is BLANK for an
+        /// empty (airless) hall, never the plan's authored anchor. The tuple
+        /// [slotIndex, x, y, w, h, anchorName, roomType, occupied, active] is append-only.</summary>
+        public readonly struct DeckSlot
+        {
+            public readonly int SlotIndex, X, Y, W, H;
+            public readonly string AnchorName;
+            public readonly byte RoomType;
+            public readonly bool Occupied, Active;
+
+            public DeckSlot(int slotIndex, int x, int y, int w, int h, string anchorName,
+                            byte roomType, bool occupied, bool active)
+            {
+                SlotIndex = slotIndex; X = x; Y = y; W = w; H = h;
+                AnchorName = anchorName; RoomType = roomType; Occupied = occupied; Active = active;
+            }
+        }
+
+        /// <summary>One deck's compartment grid on the <c>decks</c> channel — its deck index and its
+        /// slot tuples in a fixed host order (row-major over the 2×4 grid; never a client sort).</summary>
+        public readonly struct DeckEntry
+        {
+            public readonly int Deck;
+            public readonly IReadOnlyList<DeckSlot> Slots;
+            public DeckEntry(int deck, IReadOnlyList<DeckSlot> slots) { Deck = deck; Slots = slots; }
+        }
+
+        /// <summary>Serialize the per-deck compartment grid (see <see cref="DeckEntry"/>). A cached
+        /// state channel like roster: rebuilt each render, deduped by the session.</summary>
+        public static string Decks(IReadOnlyList<DeckEntry> decks)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"type\":\"decks\",\"decks\":[");
+            if (decks != null)
+                for (int d = 0; d < decks.Count; d++)
+                {
+                    if (d > 0) sb.Append(',');
+                    var entry = decks[d];
+                    sb.Append("{\"deck\":").Append(entry.Deck.ToString(Ic)).Append(",\"slots\":[");
+                    var slots = entry.Slots;
+                    if (slots != null)
+                        for (int s = 0; s < slots.Count; s++)
+                        {
+                            if (s > 0) sb.Append(',');
+                            var t = slots[s];
+                            sb.Append('[').Append(t.SlotIndex.ToString(Ic))
+                              .Append(',').Append(t.X.ToString(Ic))
+                              .Append(',').Append(t.Y.ToString(Ic))
+                              .Append(',').Append(t.W.ToString(Ic))
+                              .Append(',').Append(t.H.ToString(Ic))
+                              .Append(',');
+                            AppendString(sb, t.AnchorName ?? "");
+                            sb.Append(',').Append(((int)t.RoomType).ToString(Ic))
+                              .Append(',').Append(t.Occupied ? "true" : "false")
+                              .Append(',').Append(t.Active ? "true" : "false").Append(']');
+                        }
+                    sb.Append("]}");
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        /// <summary>One room's derived atmosphere on the <c>rooms</c> channel — RAW <see cref="Perilune.Sim.Room"/>
+        /// derived properties (fraction stays a fraction, ppm stays ppm, K stays K); ALL display
+        /// formatting (%, °C, rounding) is the client's job. The tuple
+        /// [anchorName, deck, o2, co2ppm, pressureKPa, tempK, tileCount] is append-only.</summary>
+        public readonly struct RoomTuple
+        {
+            public readonly string AnchorName;
+            public readonly int Deck;
+            public readonly double O2, Co2Ppm, PressureKPa, TempK;
+            public readonly int TileCount;
+
+            public RoomTuple(string anchorName, int deck, double o2, double co2ppm,
+                             double pressureKPa, double tempK, int tileCount)
+            {
+                AnchorName = anchorName; Deck = deck; O2 = o2; Co2Ppm = co2ppm;
+                PressureKPa = pressureKPa; TempK = tempK; TileCount = tileCount;
+            }
+        }
+
+        /// <summary>Serialize the per-room atmosphere (see <see cref="RoomTuple"/>). A cached state
+        /// channel like roster; numbers InvariantCulture. Row order is a host decision, never a
+        /// client sort.</summary>
+        public static string Rooms(IReadOnlyList<RoomTuple> rooms)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append("{\"type\":\"rooms\",\"rooms\":[");
+            if (rooms != null)
+                for (int i = 0; i < rooms.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var r = rooms[i];
+                    sb.Append('[');
+                    AppendString(sb, r.AnchorName ?? "");
+                    sb.Append(',').Append(r.Deck.ToString(Ic))
+                      .Append(',').Append(Num(r.O2))
+                      .Append(',').Append(Num(r.Co2Ppm))
+                      .Append(',').Append(Num(r.PressureKPa))
+                      .Append(',').Append(Num(r.TempK))
+                      .Append(',').Append(r.TileCount.ToString(Ic)).Append(']');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        /// <summary>One cosmetic, view-only furniture placement on the <c>decor</c> channel — inert
+        /// exactly as <c>DeviceLayout.Entry.YawDeg</c> is (the sim never reads it). The tuple
+        /// [deck, x, y, itemId, yawDeg, variant] is append-only.</summary>
+        public readonly struct DecorItem
+        {
+            public readonly int Deck, X, Y;
+            public readonly string ItemId;
+            public readonly int YawDeg, Variant;
+            public DecorItem(int deck, int x, int y, string itemId, int yawDeg, int variant)
+            { Deck = deck; X = x; Y = y; ItemId = itemId; YawDeg = yawDeg; Variant = variant; }
+        }
+
+        /// <summary>Serialize the cosmetic decor layer (see <see cref="DecorItem"/>). A cached state
+        /// channel like roster; NEVER folded into any determinism hash. Typically empty until an
+        /// authored decor set exists — the empty channel still ships so a reconnecting client is
+        /// caught up (snapshot-replay).</summary>
+        public static string Decor(IReadOnlyList<DecorItem> items)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"decor\",\"items\":[");
+            if (items != null)
+                for (int i = 0; i < items.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var d = items[i];
+                    sb.Append('[').Append(d.Deck.ToString(Ic))
+                      .Append(',').Append(d.X.ToString(Ic))
+                      .Append(',').Append(d.Y.ToString(Ic))
+                      .Append(',');
+                    AppendString(sb, d.ItemId ?? "");
+                    sb.Append(',').Append(d.YawDeg.ToString(Ic))
+                      .Append(',').Append(d.Variant.ToString(Ic)).Append(']');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         /// <summary>An interactable device the player selected — v0 carries the MOSS-addressable
         /// terminal id so the client can open its program panel.</summary>
         public static string Device(string kind, string tid)

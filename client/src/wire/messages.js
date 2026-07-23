@@ -173,7 +173,42 @@
  * @typedef {{type:'systems', hull:string, day:number, uptime:number, rows:SystemRowTuple[]}} SystemsMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg} WireMsg */
+/**
+ * The per-deck compartment grid (warm-SVG Overview / Room-Zoom, wire-channels spec §1). A cached
+ * state channel like roster: rebuilt each render, deduped, snapshot-replayed, NOT fog-gated. Each
+ * deck ships a fixed set of slot tuples in a host-decided order (row-major over the 2×4 grid) —
+ * the client renders slots by `slotIndex`, never re-sorted.
+ *
+ * SlotTuple = [slotIndex, x, y, w, h, anchorName, roomType, occupied, active]:
+ *   slotIndex  0..7 grid position     x,y,w,h  tile rect in frame/click space
+ *   anchorName the LIVE-occupying room's anchor (""=empty hall), joins to a `rooms` row
+ *   roomType   RoomType byte (0 None … 15 LifeSupport; stable, from the authoring grid)
+ *   occupied   bool — a real (non-vacuum) room fills the slot (host-derived, never client-guessed)
+ *   active     bool — the deck holds ≥1 non-vacuum room (host-derived)
+ * Append-only: a future field is a trailing element; a reader that knows nine is unaffected.
+ * @typedef {[number,number,number,number,number,string,number,boolean,boolean]} SlotTuple
+ * @typedef {{deck:number, slots:SlotTuple[]}} DeckEntryTuple
+ * @typedef {{type:'decks', decks:DeckEntryTuple[]}} DecksMsg
+ */
+
+/**
+ * Per-room atmosphere (warm-SVG LENS overlays + atmos box, spec §2). RAW `Room` derived values —
+ * all display formatting (%, °C, rounding) is the client's job. One row per real room; the vacuum
+ * sink and empty (airless) halls are omitted. Keyed by `anchorName` (joins a `decks` slot).
+ * RoomTuple = [anchorName, deck, o2(0..1), co2ppm, pressureKPa, tempK, tileCount]. Append-only.
+ * @typedef {[string,number,number,number,number,number,number]} RoomTuple
+ * @typedef {{type:'rooms', rooms:RoomTuple[]}} RoomsMsg
+ */
+
+/**
+ * The cosmetic, view-only decor layer (spec §3) — furniture the sim does not model. NEVER hashed;
+ * the sim never reads it. Typically empty until an authored decor set exists.
+ * DecorTuple = [deck, x, y, itemId, yawDeg, variant]. Append-only.
+ * @typedef {[number,number,number,string,number,number]} DecorTuple
+ * @typedef {{type:'decor', items:DecorTuple[]}} DecorMsg
+ */
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
@@ -220,6 +255,84 @@ export function decodeLightPlane(msg) {
     if (i >= total) break;
   }
   return plane;
+}
+
+/**
+ * Decode one `decks` slot tuple to an object, or null if malformed (too short / not an array).
+ * Tolerant: numeric fields are coerced, anchorName defaults to "", flags to booleans. Never throws.
+ * @param {*} t
+ * @returns {{slotIndex:number,x:number,y:number,w:number,h:number,anchorName:string,roomType:number,occupied:boolean,active:boolean}|null}
+ */
+export function decodeSlot(t) {
+  if (!Array.isArray(t) || t.length < 9) return null;
+  return {
+    slotIndex: t[0] | 0, x: t[1] | 0, y: t[2] | 0, w: t[3] | 0, h: t[4] | 0,
+    anchorName: typeof t[5] === 'string' ? t[5] : '',
+    roomType: t[6] | 0, occupied: !!t[7], active: !!t[8],
+  };
+}
+
+/**
+ * Decode a `decks` message to a per-deck array of decoded slots. A malformed message → null; a
+ * malformed slot or deck entry is dropped (never thrown), mirroring decodeLightPlane's tolerance.
+ * @param {DecksMsg|null} msg
+ * @returns {{deck:number, slots:ReturnType<typeof decodeSlot>[]}[]|null}
+ */
+export function decodeDecks(msg) {
+  if (!msg || msg.type !== 'decks' || !Array.isArray(msg.decks)) return null;
+  const out = [];
+  for (const d of msg.decks) {
+    if (!d || typeof d.deck !== 'number' || !Array.isArray(d.slots)) continue;
+    const slots = [];
+    for (const t of d.slots) { const s = decodeSlot(t); if (s) slots.push(s); }
+    out.push({ deck: d.deck | 0, slots });
+  }
+  return out;
+}
+
+/**
+ * Decode one `rooms` tuple to an object, or null if malformed. Numeric atmos fields are coerced to
+ * finite numbers (a garbage value → 0). Never throws.
+ * @param {*} t
+ * @returns {{anchorName:string,deck:number,o2:number,co2ppm:number,pressureKPa:number,tempK:number,tileCount:number}|null}
+ */
+function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
+export function decodeRoom(t) {
+  if (!Array.isArray(t) || t.length < 7) return null;
+  if (typeof t[0] !== 'string') return null;
+  return {
+    anchorName: t[0], deck: t[1] | 0,
+    o2: num(t[2]), co2ppm: num(t[3]), pressureKPa: num(t[4]), tempK: num(t[5]), tileCount: t[6] | 0,
+  };
+}
+
+/**
+ * Decode a `rooms` message to an array of decoded rooms. Malformed message → null; malformed row
+ * dropped. Never throws.
+ * @param {RoomsMsg|null} msg
+ * @returns {ReturnType<typeof decodeRoom>[]|null}
+ */
+export function decodeRooms(msg) {
+  if (!msg || msg.type !== 'rooms' || !Array.isArray(msg.rooms)) return null;
+  const out = [];
+  for (const t of msg.rooms) { const r = decodeRoom(t); if (r) out.push(r); }
+  return out;
+}
+
+/**
+ * Decode a `decor` message to an array of placement objects. Malformed message → null; malformed
+ * item dropped. Never throws.
+ * @param {DecorMsg|null} msg
+ * @returns {{deck:number,x:number,y:number,itemId:string,yawDeg:number,variant:number}[]|null}
+ */
+export function decodeDecor(msg) {
+  if (!msg || msg.type !== 'decor' || !Array.isArray(msg.items)) return null;
+  const out = [];
+  for (const t of msg.items) {
+    if (!Array.isArray(t) || t.length < 6 || typeof t[3] !== 'string') continue;
+    out.push({ deck: t[0] | 0, x: t[1] | 0, y: t[2] | 0, itemId: t[3], yawDeg: t[4] | 0, variant: t[5] | 0 });
+  }
+  return out;
 }
 
 /**

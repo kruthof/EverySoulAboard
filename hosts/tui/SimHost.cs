@@ -48,6 +48,13 @@ namespace Perilune.Tui
 
         public ShipChoice Ship { get; private set; }
         public ulong Seed { get; private set; }
+
+        /// <summary>The plan's authoring/VIEW-ONLY slot grid (per-deck 2×4 compartment layout) —
+        /// the geometry + roomType source for the <c>decks</c> wire channel. Never saved, never
+        /// hashed (see <see cref="ShipPlan.SlotGrid"/>); empty on ships that use no slot grid
+        /// (Perilune/PeriluneSlice). The host reads it for slot geometry only and derives
+        /// occupancy/naming from live <see cref="RoomState"/>, never from this field.</summary>
+        public IReadOnlyList<SlotDescriptor> SlotGrid { get; private set; }
         public string LayoutPath { get; private set; }       // resolved file, or null when none loaded
         public string LayoutChecksum { get; private set; }   // stable hash of the layout text, or "none"
         public IReadOnlyList<string> LayoutProblems { get; private set; }
@@ -164,6 +171,7 @@ namespace Perilune.Tui
             host.Sim = sim;
             host.Moss = moss;
             host.Registry = registry;
+            host.SlotGrid = plan.SlotGrid; // authoring/view-only geometry for the `decks` channel
             host.LayoutProblems = problems;
             return host;
         }
