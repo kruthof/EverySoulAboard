@@ -111,7 +111,7 @@ namespace Perilune.Sim
                     for (int i = 0; i < items.Count; i++)
                     {
                         var it = items[i];
-                        if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && !it.ReservedForJob)
+                        if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && it.ReservedBy == 0)
                             _freeMaterialUnits += it.Count;
                     }
                 }
@@ -246,7 +246,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < items.Count; i++)
                 {
                     var it = items[i];
-                    if (it.Kind != BuildSystem.Material || it.CarriedBy != 0 || it.ReservedForJob) continue;
+                    if (it.Kind != BuildSystem.Material || it.CarriedBy != 0 || it.ReservedBy != 0) continue;
                     int d = Int3.Manhattan(citizen.Pos, it.Pos);
                     if (d < bestDist && !_matScanTried.Contains(it.Id))
                     {
@@ -268,7 +268,7 @@ namespace Perilune.Sim
                     // pass cannot be promised the same units (the board is only rescanned on
                     // JobsDirty). Deliberately conservative: a surplus that gets dropped back
                     // reappears on the next rescan.
-                    ctx.ReserveGroundItem(sim, item);
+                    ctx.ReserveGroundItem(sim, citizen, item);
                     _matScanTried.Clear();
                     return true;
                 }
@@ -313,7 +313,7 @@ namespace Perilune.Sim
                 if (mat == null || mat.CarriedBy != 0 || mat.Pos != citizen.Pos)
                 {
                     // Never arrived at the material (path lost) or it vanished — release it.
-                    if (mat != null && mat.CarriedBy == 0) mat.ReservedForJob = false;
+                    if (mat != null && mat.CarriedBy == 0 && mat.ReservedBy == citizen.Id) mat.ReservedBy = 0;
                     citizen.ReservedItemId = 0;
                     JobWork.AbandonJob(sim, citizen);
                     return;
@@ -323,7 +323,7 @@ namespace Perilune.Sim
                 // world as it was (minus the released reservation).
                 if (!JobWork.TryPathToAdjacent(sim, citizen, site))
                 {
-                    mat.ReservedForJob = false;
+                    if (mat.ReservedBy == citizen.Id) mat.ReservedBy = 0;
                     citizen.ReservedItemId = 0;
                     JobWork.AbandonJob(sim, citizen);
                     return;
@@ -352,7 +352,7 @@ namespace Perilune.Sim
             {
                 // Path lost before reaching the site — drop the stack where we stand.
                 carried.CarriedBy = 0;
-                carried.ReservedForJob = false;
+                carried.ReservedBy = 0; // carried by us — our claim to clear
                 citizen.CarryingItemId = 0;
                 JobWork.AbandonJob(sim, citizen);
                 return;
@@ -368,7 +368,7 @@ namespace Perilune.Sim
             else
             {
                 carried.CarriedBy = 0;
-                carried.ReservedForJob = false;
+                carried.ReservedBy = 0;       // carried by us — our claim to clear
                 carried.Pos = citizen.Pos;    // leftover drops at the site, re-enters the pool
             }
             citizen.CarryingItemId = 0;
@@ -420,14 +420,15 @@ namespace Perilune.Sim
                 {
                     carried.Pos = citizen.Pos;
                     carried.CarriedBy = 0;
-                    carried.ReservedForJob = false;
+                    carried.ReservedBy = 0; // carried by us — our claim to clear
                 }
                 citizen.CarryingItemId = 0;
             }
             else if (citizen.ReservedItemId != 0)
             {
-                if (sim.Items.TryGet(citizen.ReservedItemId, out var reserved) && reserved.CarriedBy == 0)
-                    reserved.ReservedForJob = false;
+                if (sim.Items.TryGet(citizen.ReservedItemId, out var reserved) &&
+                    reserved.CarriedBy == 0 && reserved.ReservedBy == citizen.Id)
+                    reserved.ReservedBy = 0;
                 citizen.ReservedItemId = 0;
             }
         }

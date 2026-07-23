@@ -25,7 +25,7 @@ namespace Perilune.Sim
     /// Job model: Eat/Drink are <see cref="JobKind"/> values, but they are NOT job-board
     /// work — JobSystem's switch ignores them and no reservation goes through the board.
     /// The citizen walks under CitizenSystem's path machinery and this system finishes
-    /// the act on arrival. Potatoes ARE reserved (<see cref="ItemStack.ReservedForJob"/>
+    /// the act on arrival. Potatoes ARE reserved (<see cref="ItemStack.ReservedBy"/>
     /// plus <see cref="Citizen.ReservedItemId"/>) so a hauler cannot carry off the meal
     /// mid-walk; water tanks are not reserved at all — two thirsty citizens can target
     /// the same tank, and whoever arrives second simply finds it short and re-seeks.
@@ -169,7 +169,7 @@ namespace Perilune.Sim
                 {
                     if (_itemTried[i] == _gen) continue;
                     var item = items[i];
-                    if (item.Kind != ItemKind.Potato || item.CarriedBy != 0 || item.ReservedForJob)
+                    if (item.Kind != ItemKind.Potato || item.CarriedBy != 0 || item.ReservedBy != 0)
                     {
                         _itemTried[i] = _gen;
                         continue;
@@ -193,7 +193,7 @@ namespace Perilune.Sim
                     citizen.StartPath(sim.Defs.Citizen.TicksPerTile);
                     citizen.JobKind = JobKind.Eat;
                     citizen.JobTarget = potato.Pos;
-                    potato.ReservedForJob = true; // released by us or Simulation.CancelJob
+                    potato.ReservedBy = citizen.Id; // owner-scoped; released by us or Simulation.CancelJob
                     citizen.ReservedItemId = potato.Id; // identity for the release/consume path
                     return;
                 }
@@ -231,7 +231,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < items.Count; i++)
                 {
                     var item = items[i];
-                    if (item.Kind != ItemKind.Potato || item.CarriedBy != 0 || item.ReservedForJob) continue;
+                    if (item.Kind != ItemKind.Potato || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                     if (item.Pos != citizen.Pos && !Int3.IsAdjacent4(citizen.Pos, item.Pos)) continue;
                     item.Count--;
                     if (item.Count <= 0) sim.Items.Remove(item.Id);
@@ -276,8 +276,9 @@ namespace Perilune.Sim
             {
                 // Path was cleared/blocked before arrival — release exactly our stack.
                 if (citizen.ReservedItemId != 0 &&
-                    sim.Items.TryGet(citizen.ReservedItemId, out var reserved) && reserved.CarriedBy == 0)
-                    reserved.ReservedForJob = false;
+                    sim.Items.TryGet(citizen.ReservedItemId, out var reserved) &&
+                    reserved.CarriedBy == 0 && reserved.ReservedBy == citizen.Id)
+                    reserved.ReservedBy = 0;
                 citizen.ReservedItemId = 0;
                 citizen.JobKind = JobKind.None;
                 return;
@@ -294,7 +295,7 @@ namespace Perilune.Sim
 
             item.Count--;
             if (item.Count <= 0) sim.Items.Remove(item.Id);
-            else item.ReservedForJob = false; // remaining stack returns to the pool
+            else if (item.ReservedBy == citizen.Id) item.ReservedBy = 0; // remaining stack returns to the pool
             citizen.Hunger = Math.Max(0f, citizen.Hunger - sim.Defs.Sustenance.PotatoHungerValue);
             citizen.JobKind = JobKind.None;
             sim.JobsDirty |= JobBoardDirty.Items; // ground items changed; haul board must re-derive
@@ -332,7 +333,7 @@ namespace Perilune.Sim
             {
                 var item = items[i];
                 if (item.Kind == ItemKind.Potato && item.CarriedBy == 0 &&
-                    item.ReservedForJob && item.Pos == pos)
+                    item.ReservedBy != 0 && item.Pos == pos)
                     return item;
             }
             return null;

@@ -31,15 +31,18 @@ namespace Perilune.Sim
     /// still work.
     ///
     /// Reservations: fetched stacks travel as plain carries; ON STAGING they become the
-    /// station's claim (ReservedForJob=true) so the haul board can never drag staged
-    /// inputs to a stockpile mid-batch (review livelock fix). Simulation.CancelJob
-    /// (player redirects, death) does not know how to release a Craft input
-    /// reservation, so instead of reserving across ticks we validate on arrival: the
-    /// fetch leg walks to a stack and re-checks the ground when it gets there; if the
-    /// stack is gone (hauled away, consumed by another station) the job is abandoned
-    /// and the every-tick rescan retries from ground truth. A canceled Craft therefore
-    /// leaks nothing: a carried stack is dropped by CancelJob itself, and un-carried
-    /// stacks were never marked.
+    /// station's claim (ReservedBy = the station's Device.Id) so the haul board can never
+    /// drag staged inputs to a stockpile mid-batch (review livelock fix). The claim is
+    /// OWNER-SCOPED: only this station (or, once the batch dies, its own release path) can
+    /// clear it — a co-located citizen reservation on the same tile is untouched.
+    /// A carried stack is still dropped by Simulation.CancelJob itself (it is CarriedBy the
+    /// worker), and un-carried stacks are never marked. The one thing CancelJob cannot reach
+    /// is a STAGED claim (no citizen owns it, so CancelJob's citizen-keyed release skips it):
+    /// that is freed by <see cref="ReleaseStagedClaims"/> when the batch goes dead — no live
+    /// worker and no input left to fetch, so the set can never complete. Before the owner id
+    /// (B-1) the ownerless flag had ONLY <see cref="ConsumeStagedInputs"/> as a release, which a
+    /// half-staged batch never reached, so the last unit stayed reserved by nobody forever —
+    /// invisible to the haul board and to MachineWearSystem, yet still counted 1/2 staged.
     ///
     /// Interruption semantics: when the worker is redirected or dies mid-work, the
     /// station's Progress holds (frozen) and already-consumed inputs stay consumed —
@@ -136,10 +139,21 @@ namespace Perilune.Sim
             if (!hasStaging || !station.Powered || !station.IsOperational(sim.Defs)) return;
 
             bool canStart = station.Progress > 0f || AllInputsStaged(sim, station.Pos, recipe);
-            // Don't recruit anyone to go fetch material the builders are waiting on.
-            if (!canStart && (FetchBlockedForBuilds(recipe) ||
-                              !AnyFetchCandidate(sim, station.Pos, recipe)))
-                return; // nothing to do — zero-alloc idle
+            if (!canStart)
+            {
+                // Builders have first call on this material: hold the staged set and wait — a
+                // batch a builder is starving is NOT dead, and its inputs stay claimed.
+                if (FetchBlockedForBuilds(recipe)) return; // nothing to do — zero-alloc idle
+                // Otherwise, if there is no un-staged input left to fetch, the batch is DEAD:
+                // no worker, and the set can never be completed. Free this station's staged
+                // claim so the stranded inputs re-enter the pool (B-1 — an ownerless staged
+                // reservation used to strand the last unit here forever).
+                if (!AnyFetchCandidate(sim, station.Pos, recipe))
+                {
+                    ReleaseStagedClaims(sim, station);
+                    return;
+                }
+            }
 
             var recruit = FindNearestIdle(sim, staging);
             if (recruit == null) return;
@@ -199,8 +213,8 @@ namespace Perilune.Sim
                 if (worker.HasPath) return;
 
                 carried.CarriedBy = 0; // set the stack down where we stand
-                carried.ReservedForJob = true; // the STATION's claim: staged inputs are
-                                               // invisible to the haul board (livelock fix)
+                carried.ReservedBy = station.Id; // the STATION's claim: staged inputs are
+                                                 // invisible to the haul board (livelock fix)
                 worker.CarryingItemId = 0;
                 sim.JobsDirty |= JobBoardDirty.Items; // input staged/dropped — haul board must re-derive
                 if (!Int3.IsAdjacent4(worker.Pos, station.Pos))
@@ -267,7 +281,7 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item.Kind != want.Kind || item.CarriedBy != 0 || item.ReservedForJob) continue;
+                if (item.Kind != want.Kind || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                 if (Int3.IsAdjacent4(item.Pos, station.Pos)) continue; // already staged at this bench
                 int d = Int3.Manhattan(worker.Pos, item.Pos);
                 if (d < bestDist)
@@ -360,7 +374,7 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
-                if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && !it.ReservedForJob) units += it.Count;
+                if (it.Kind == BuildSystem.Material && it.CarriedBy == 0 && it.ReservedBy == 0) units += it.Count;
             }
             return units;
         }
@@ -539,7 +553,7 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item.Kind != kind || item.CarriedBy != 0 || item.ReservedForJob) continue;
+                if (item.Kind != kind || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                 if (!Int3.IsAdjacent4(item.Pos, stationPos)) return true;
             }
             return false;
@@ -592,6 +606,28 @@ namespace Perilune.Sim
         {
             worker.JobKind = JobKind.None;
             worker.JobWorkTicks = 0;
+        }
+
+        /// <summary>
+        /// Free this station's staged claims — every ground stack it stamped with its own id
+        /// (<see cref="ItemStack.ReservedBy"/> == <paramref name="station"/>.Id) — back to the
+        /// pool. Called ONLY when the batch is dead (no worker, the set can never be completed),
+        /// so the reserved-but-idle inputs stop being invisible to the haul board and to
+        /// MachineWearSystem. Owner-scoped: a citizen's (or another station's) claim on a
+        /// co-located tile is never touched. Store order, no allocation, no RNG (B-1).
+        /// </summary>
+        private static void ReleaseStagedClaims(Simulation sim, Device station)
+        {
+            bool any = false;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.CarriedBy != 0 || item.ReservedBy != station.Id) continue;
+                item.ReservedBy = 0;
+                any = true;
+            }
+            if (any) sim.JobsDirty |= JobBoardDirty.Items; // freed inputs re-enter the haul board
         }
 
         /// <summary>Set any carried stack down where the citizen stands.</summary>

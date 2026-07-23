@@ -111,7 +111,7 @@ namespace Perilune.Sim
     ///                    mean jury-rig (Condition = 0.6). Only reachable when no Parts
     ///                    existed anywhere at decision time.
     ///
-    /// Reservations: NEVER sets ItemStack.ReservedForJob (Simulation.CancelJob could
+    /// Reservations: NEVER sets ItemStack.ReservedBy (Simulation.CancelJob could
     /// not release it for Maintain). Instead everything re-validates from ground truth
     /// each settled moment, and a redirected/dead servicer's carried Parts are dropped
     /// generically by CancelJob — the machine still wants service, so the next pass
@@ -369,7 +369,7 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item.Kind != ItemKind.Parts || item.CarriedBy != 0 || item.ReservedForJob) continue;
+                if (item.Kind != ItemKind.Parts || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                 int d = Int3.Manhattan(from, item.Pos);
                 if (d < bestDist)
                 {

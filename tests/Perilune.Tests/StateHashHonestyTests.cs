@@ -177,7 +177,7 @@ namespace Perilune.Tests
             c.MoveCooldown = 3;
             c.IdleCooldown = 7;
             var it = sim.AddItem(ItemKind.Scrap, 5, new Int3(2, 1, 0));
-            it.ReservedForJob = false;
+            it.ReservedBy = 0;
             it.CarriedBy = 0;
             it.Label = "Okafor"; // W0-1b — corpse identity
             sim.AddDevice(DeviceKind.Door, new Int3(3, 1, 0), "door_aft"); // W0-1b — MOSS binds by name
@@ -252,7 +252,7 @@ namespace Perilune.Tests
             // The two fields the old pack clipped or aliased, exercised at the widths the
             // economy will actually reach (a 128th kind; a stockpile above 16.7M units).
             yield return Case("ItemStack.Kind (high bit, ≥128)", s => Item(s).Kind = (ItemKind)128, s => (ulong)Item(s).Kind);
-            yield return Case("ItemStack.ReservedForJob", s => Item(s).ReservedForJob = true, s => Item(s).ReservedForJob ? 1UL : 0UL);
+            yield return Case("ItemStack.ReservedBy", s => Item(s).ReservedBy = 4242, s => (ulong)Item(s).ReservedBy);
             yield return Case("ItemStack.Count", s => Item(s).Count = 6, s => (ulong)(uint)Item(s).Count);
             yield return Case("ItemStack.Count (above 2^24)", s => Item(s).Count = 5 + (1 << 24), s => (ulong)(uint)Item(s).Count);
             yield return Case("ItemStack.Pos.X", s => Item(s).Pos = new Int3(3, 1, 0), s => (ulong)Item(s).Pos.X);
@@ -356,13 +356,36 @@ namespace Perilune.Tests
             Assert.That(b.StateHash(), Is.EqualTo(a.StateHash()), "precondition: twins hash equal");
 
             Item(a).Kind = (ItemKind)128;   // old fold: sets bit 39
-            Item(a).ReservedForJob = false;
+            Item(a).ReservedBy = 0;
             Item(b).Kind = (ItemKind)0;
-            Item(b).ReservedForJob = true;  // old fold: sets bit 39 too
+            Item(b).ReservedBy = 1;         // old fold: a reserved stack set bit 39 too
 
             Assert.That(Item(a).Kind, Is.Not.EqualTo(Item(b).Kind), "precondition: the two states really differ");
             Assert.That(b.StateHash(), Is.Not.EqualTo(a.StateHash()),
-                "ItemKind's high bit collides with ReservedForJob in the item fold");
+                "ItemKind's high bit collides with the reservation bit in the item fold");
+        }
+
+        /// <summary>
+        /// B-1 widened the item reservation from a bool to <c>ReservedBy</c> (a uint owner id). The
+        /// old fold folded <c>ReservedForJob ? 1 : 0</c>, collapsing EVERY nonzero owner to the same
+        /// 1UL — so "reserved by citizen 1" and "reserved by citizen 2" hashed EQUAL. That is an
+        /// exact collision pair under the old pack: the canary was blind to WHO holds a claim on a
+        /// shared tile, the precise question the owner id exists to answer. This pins that the full
+        /// 32 bits fold, not merely the truthiness.
+        /// </summary>
+        [Test]
+        public void Aliased_ReservedByOwnerId_IsNotCollapsedToASingleReservedBit()
+        {
+            var a = Fixture();
+            var b = Fixture();
+            Assert.That(b.StateHash(), Is.EqualTo(a.StateHash()), "precondition: twins hash equal");
+
+            Item(a).ReservedBy = 1;   // old bool fold: 1UL ("reserved")
+            Item(b).ReservedBy = 2;   // old bool fold: 1UL too — the collision the uint fold breaks
+
+            Assert.That(Item(a).ReservedBy, Is.Not.EqualTo(Item(b).ReservedBy), "precondition: distinct owners");
+            Assert.That(b.StateHash(), Is.Not.EqualTo(a.StateHash()),
+                "ReservedBy folds only its truthiness, collapsing distinct owner ids to one hash");
         }
 
         /// <summary>

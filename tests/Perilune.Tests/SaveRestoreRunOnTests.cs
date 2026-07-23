@@ -263,7 +263,7 @@ namespace Perilune.Tests
                 Assert.That(li[i].Count, Is.EqualTo(ti[i].Count), what + " Count");
                 Assert.That(li[i].Pos, Is.EqualTo(ti[i].Pos), what + " Pos");
                 Assert.That(li[i].CarriedBy, Is.EqualTo(ti[i].CarriedBy), what + " CarriedBy");
-                Assert.That(li[i].ReservedForJob, Is.EqualTo(ti[i].ReservedForJob), what + " ReservedForJob");
+                Assert.That(li[i].ReservedBy, Is.EqualTo(ti[i].ReservedBy), what + " ReservedBy");
                 Assert.That(li[i].Label, Is.EqualTo(ti[i].Label), what + " Label");
             }
 
@@ -296,6 +296,100 @@ namespace Perilune.Tests
                 what + " drifted beyond the documented reload ULP band (" +
                 actual.ToString("R", CultureInfo.InvariantCulture) + " vs " +
                 expected.ToString("R", CultureInfo.InvariantCulture) + ")");
+        }
+
+        // ------------------------------------------------------------------ B-1: owner id round-trip
+
+        /// <summary>
+        /// B-1 widened the item reservation from a bool to an OWNER id (<c>ReservedBy</c>). Saving
+        /// must carry the WHO, not just the whether: a specific claimant's id, restored bit-for-bit.
+        /// The old bool save round-tripped "reserved" but collapsed every owner to the same value —
+        /// which is exactly the information the owner id exists to keep. Non-tautological: the
+        /// asserted value is a specific, non-sentinel citizen id, and the precondition proves it is
+        /// a real nonzero id, so a save that dropped the field (restoring 0) or clamped it to a
+        /// single "reserved" bit would fail.
+        /// </summary>
+        [Test]
+        public void ReservedByOwnerId_RoundTripsByValue()
+        {
+            var host = BootSlice();
+            var sim = host.Sim;
+            for (int t = 0; t < SaveTick; t++) sim.Tick();
+
+            Assert.That(sim.Items.Items.Count, Is.GreaterThan(0), "precondition: the slice carries item stacks");
+            Assert.That(sim.Citizens.Items.Count, Is.GreaterThan(0), "precondition: the slice carries crew");
+            var owner = sim.Citizens.Items[0];
+            var stack = sim.Items.Items[0];
+            Assert.That(owner.Id, Is.Not.EqualTo(0u), "precondition: the owner id is a real, nonzero id");
+            stack.ReservedBy = owner.Id; // a specific owner id — not merely "nonzero / reserved"
+
+            Simulation loaded = RoundTrip(sim);
+
+            Assert.That(loaded.Items.TryGet(stack.Id, out var restored), Is.True, "the reserved stack survived the save");
+            Assert.That(restored.ReservedBy, Is.EqualTo(owner.Id),
+                "the reservation OWNER id round-trips by value, not collapsed to a bool");
+        }
+
+        /// <summary>
+        /// The v2→v3 MIGRATION, and the one code path the scenario/slice gate never exercises. A
+        /// pre-v3 save knew only WHETHER a stack was reserved, not by WHOM. Restoring it as an
+        /// owner id no live entity holds (a sentinel like <c>uint.MaxValue</c>) would be an
+        /// ownerless claim no owner-gated release could EVER clear — the exact B-1 leak, reintroduced
+        /// on the very first load after v3 ships (every existing save is pre-v3, and a stack is
+        /// almost always mid-reservation at save time). The reader must restore it FREE.
+        ///
+        /// This drives the <c>version &lt; 3</c> branch directly and proves the restored stack is
+        /// releasable. It FAILS under the old sentinel: the read alone would leave ReservedBy at
+        /// MaxValue (≠ 0), and <see cref="Simulation.CancelJob"/> — owner-gated on
+        /// <c>ReservedBy == citizen.Id</c> — could never clear a value no citizen holds.
+        /// </summary>
+        [Test]
+        public void LegacyPreV3Reservation_RestoresFreeAndReleasable()
+        {
+            var sim = new Simulation(AsciiWorld.Build(new[]
+            {
+                "#####",
+                "#...#",
+                "#####",
+            }), 1UL, new ISimSystem[0]);
+
+            // A citizen who reserved a ground stack and is mid-pickup — the in-flight case a real
+            // save captures (someone is almost always mid-haul when the game is saved).
+            var carrier = sim.AddCitizen("Vane", new Int3(1, 1, 0));
+
+            // Hand-write a pre-v3 ITEM chapter BODY (ItemVersion 2 field order: Id, Kind, Count,
+            // Pos, CarriedBy, bool ReservedForJob, string Label) with ONE ground stack flagged
+            // reserved — encoding matched to the real reader (SaveFormat.Utf8).
+            var body = new MemoryStream();
+            using (var w = new BinaryWriter(body, SaveFormat.Utf8, leaveOpen: true))
+            {
+                w.Write(1);                             // item count
+                w.Write(7u);                            // Id
+                w.Write((byte)ItemKind.Parts);          // Kind
+                w.Write(3);                             // Count
+                w.Write(2); w.Write(1); w.Write(0);     // Pos (X, Y, Z)
+                w.Write(0u);                            // CarriedBy (0 = on the ground)
+                w.Write(true);                          // legacy bool ReservedForJob = true
+                w.Write("");                            // Label (v2)
+            }
+            body.Position = 0;
+
+            using (var r = new BinaryReader(body, SaveFormat.Utf8, leaveOpen: true))
+                SaveReader.ReadItems(sim, r, 2); // the pre-v3 read path (no coverage before this)
+
+            Assert.That(sim.Items.TryGet(7u, out var restored), Is.True, "the legacy stack loaded");
+            // PRIMARY guard — fails under the old uint.MaxValue sentinel (MaxValue ≠ 0).
+            Assert.That(restored.ReservedBy, Is.EqualTo(0u),
+                "a pre-v3 reservation restores FREE — a sentinel would be an unreleasable ownerless claim (the B-1 leak)");
+
+            // Releasable: the carrier holds ReservedItemId for it, then a player move order cancels
+            // the job. Under the sentinel the read left MaxValue and CancelJob (owner-gated) could
+            // never clear it; free, it stays free and haul-visible.
+            carrier.JobKind = JobKind.HaulPickup;
+            carrier.ReservedItemId = restored.Id;
+            sim.CancelJob(carrier);
+            Assert.That(restored.ReservedBy, Is.EqualTo(0u), "the restored stack is releasable — CancelJob leaves it free");
+            Assert.That(restored.CarriedBy, Is.EqualTo(0u), "and on the ground, visible to the haul board / FindNearestParts");
         }
 
         // ------------------------------------------------------------------ harness

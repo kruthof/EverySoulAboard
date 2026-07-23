@@ -19,7 +19,9 @@ namespace Perilune.Sim
         public int Count = 1;
         public Int3 Pos;
         public uint CarriedBy;      // 0 = on the ground
-        public bool ReservedForJob; // hauling/eating reservation
+        public uint ReservedBy;     // 0 = free; else the entity id (citizen or crafting station)
+                                    // that claimed this stack. Owner-scoped so a release can never
+                                    // clear another claimant's hold on a co-located tile (B-1).
         public string Label = "";   // identity for corpses ("Okafor"), flavor for salvage
     }
 }

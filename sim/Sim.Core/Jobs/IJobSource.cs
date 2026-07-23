@@ -30,7 +30,7 @@ namespace Perilune.Sim
     ///    iterate them (that is a determinism rule, not a perf one), indexed <c>for</c> only,
     ///    no LINQ, no lambdas, no closures.
     /// 5. **Reservations go through <see cref="JobContext.ReserveGroundItem"/>**, never by
-    ///    setting <see cref="ItemStack.ReservedForJob"/> directly — that is the channel through
+    ///    setting <see cref="ItemStack.ReservedBy"/> directly — that is the channel through
     ///    which a source that keeps a derived free-material count learns its pool shrank
     ///    mid-tick. See <see cref="OnGroundItemReserved"/>.
     /// </summary>
@@ -164,7 +164,7 @@ namespace Perilune.Sim
         ///
         /// TIMING, normalised so every implementer sees one world: the notification fires AFTER
         /// the reserving citizen's job state is fully written (JobKind, JobTarget, ReservedItemId)
-        /// and after <see cref="ItemStack.ReservedForJob"/> is set. A handler may therefore read
+        /// and after <see cref="ItemStack.ReservedBy"/> is set. A handler may therefore read
         /// both. It fires before the claiming source's own bookkeeping (assignment sets, backoff
         /// removal), so it must not depend on that.
         /// </summary>

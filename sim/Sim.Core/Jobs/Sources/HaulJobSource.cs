@@ -69,7 +69,7 @@ namespace Perilune.Sim
                     for (int i = 0; i < items.Count; i++)
                     {
                         var item = items[i];
-                        if (item.CarriedBy != 0 || item.ReservedForJob) continue;
+                        if (item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                         if (item.Kind == ItemKind.Corpse) continue; // the dead are not cargo
                         if ((sim.World.GetFlags(item.Pos) & TileFlags.Stockpile) != 0) continue; // already stored
                         _items.Add(item.Id);
@@ -96,7 +96,7 @@ namespace Perilune.Sim
                     continue;
                 }
                 if (!sim.Items.TryGet(_items[i], out var item) ||
-                    item.CarriedBy != 0 || item.ReservedForJob)
+                    item.CarriedBy != 0 || item.ReservedBy != 0)
                 {
                     _tried[i] = gen;
                     continue;
@@ -125,7 +125,7 @@ namespace Perilune.Sim
                 // clear its sufficiency gate and then find nothing to reserve, costing it a 5 s
                 // backoff. Inert unless a source actually tracks a pool. Fired here, after the
                 // citizen's job state is complete, so every handler sees one world (IJobSource).
-                ctx.ReserveGroundItem(sim, item);
+                ctx.ReserveGroundItem(sim, citizen, item);
                 _retryAt.Remove(item.Id);
                 return true;
             }
@@ -152,8 +152,9 @@ namespace Perilune.Sim
             {
                 // Path was cleared/blocked before arrival — release the reservation.
                 if (citizen.ReservedItemId != 0 &&
-                    sim.Items.TryGet(citizen.ReservedItemId, out var reserved) && reserved.CarriedBy == 0)
-                    reserved.ReservedForJob = false;
+                    sim.Items.TryGet(citizen.ReservedItemId, out var reserved) &&
+                    reserved.CarriedBy == 0 && reserved.ReservedBy == citizen.Id)
+                    reserved.ReservedBy = 0;
                 citizen.ReservedItemId = 0;
                 JobWork.AbandonJob(sim, citizen);
                 return;
@@ -173,7 +174,7 @@ namespace Perilune.Sim
             // exactly as it was (minus the released reservation).
             if (!TryPathToFreeStockpile(sim, citizen, ctx, out var dest))
             {
-                item.ReservedForJob = false;
+                if (item.ReservedBy == citizen.Id) item.ReservedBy = 0;
                 citizen.ReservedItemId = 0;
                 JobWork.AbandonJob(sim, citizen);
                 return;
@@ -204,7 +205,7 @@ namespace Perilune.Sim
             // where we stand. A drop outside the stockpile re-enters the haul pool on the rescan
             // triggered below.
             item.CarriedBy = 0;
-            item.ReservedForJob = false;
+            item.ReservedBy = 0; // carried by us — our claim to clear
             citizen.CarryingItemId = 0;
             citizen.JobKind = JobKind.None;
             sim.JobsDirty |= JobBoardDirty.Items; // the stack was set down (position/unreserve changed)

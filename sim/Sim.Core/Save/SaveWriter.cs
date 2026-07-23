@@ -51,7 +51,7 @@ namespace Perilune.Sim
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
         public const ushort CitizenVersion = 6; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition
         public const ushort DeviceVersion = 4;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner
-        public const ushort ItemVersion = 2;    // v2: + Label
+        public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
         public const ushort DefsVersion = 1;    // v1: ulong checksum of the sim's active SimDefs
 
@@ -299,9 +299,10 @@ namespace Perilune.Sim
             }
         }
 
-        // --- ITEM v1 ------------------------------------------------------------
+        // --- ITEM v3 ------------------------------------------------------------
         // int count; per item (store order):
-        // uint Id, byte Kind, int Count, Int3 Pos, uint CarriedBy, bool ReservedForJob.
+        // uint Id, byte Kind, int Count, Int3 Pos, uint CarriedBy,
+        // uint ReservedBy (v3; was bool ReservedForJob in v1/v2), string Label (v2).
 
         private static void WriteItems(Simulation sim, BinaryWriter w)
         {
@@ -315,7 +316,7 @@ namespace Perilune.Sim
                 w.Write(it.Count);
                 WriteInt3(w, it.Pos);
                 w.Write(it.CarriedBy);
-                w.Write(it.ReservedForJob);
+                w.Write(it.ReservedBy);   // v3 (was bool ReservedForJob ≤ v2)
                 w.Write(it.Label ?? ""); // v2
             }
         }

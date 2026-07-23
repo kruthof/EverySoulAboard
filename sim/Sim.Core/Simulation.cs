@@ -137,16 +137,18 @@ namespace Perilune.Sim
                 {
                     carried.Pos = citizen.Pos;
                     carried.CarriedBy = 0;
-                    carried.ReservedForJob = false;
+                    carried.ReservedBy = 0; // the carrier owned this stack (CarriedBy proved it)
                 }
                 citizen.CarryingItemId = 0;
             }
             else if (citizen.ReservedItemId != 0)
             {
                 // Release exactly the stack this citizen reserved — never a co-located
-                // stranger's reservation (two reserved stacks can share a tile).
-                if (Items.TryGet(citizen.ReservedItemId, out var reserved) && reserved.CarriedBy == 0)
-                    reserved.ReservedForJob = false;
+                // stranger's (or a crafting station's) reservation. Two reserved stacks can share
+                // a tile, so gate on the owner id, not just "reserved" (B-1 makes this exact).
+                if (Items.TryGet(citizen.ReservedItemId, out var reserved) &&
+                    reserved.CarriedBy == 0 && reserved.ReservedBy == citizen.Id)
+                    reserved.ReservedBy = 0;
             }
 
             citizen.ReservedItemId = 0;
@@ -250,8 +252,8 @@ namespace Perilune.Sim
         /// Path.Count · Pack(Path[0…n−1]) · PathIndex · MoveCooldown · IdleCooldown.
         ///
         /// Per item, in this order: Id (own word, full 32 bits) · Kind (own word) ·
-        /// ReservedForJob (own word) · Count (own word, full 32 bits) · Pack(Pos) ·
-        /// CarriedBy · Label.
+        /// ReservedBy (own word, full 32 bits — the owner id, 0 = free) · Count (own word,
+        /// full 32 bits) · Pack(Pos) · CarriedBy · Label.
         ///
         /// Per device: Id · Pack(Pos) · the audited state word · LockOwner · StoredKWh ·
         /// StoredLiters · Progress · FluidNetworkId · Condition · Name.
@@ -398,7 +400,7 @@ namespace Perilune.Sim
                 var it = items[i];
                 h = XxHash64.Combine(h, (ulong)it.Id);
                 h = XxHash64.Combine(h, (ulong)it.Kind);
-                h = XxHash64.Combine(h, it.ReservedForJob ? 1UL : 0UL);
+                h = XxHash64.Combine(h, (ulong)it.ReservedBy);
                 h = XxHash64.Combine(h, (ulong)(uint)it.Count);
                 h = XxHash64.Combine(h, Pack(it.Pos));
                 h = XxHash64.Combine(h, it.CarriedBy);

@@ -417,7 +417,11 @@ namespace Perilune.Tests
             for (int t = 0; t < 300; t++) sim.Tick();
             Assert.That(ScrapUnits(sim), Is.Zero, "one unit cannot complete a two-unit batch");
             Assert.That(RegolithUnits(sim), Is.EqualTo(1), "the unit is still aboard...");
-            Assert.That(sim.Items.Items[0].ReservedForJob, Is.True, "...staged at the bench as its own claim");
+            // B-1: the bench stages it as the station's own claim, but a batch that can never be
+            // completed is DEAD — the station releases the claim so the unit re-enters the pool.
+            // (Under the old ownerless bool it leaked here and stayed reserved by nobody forever.)
+            Assert.That(sim.Items.Items[0].ReservedBy, Is.EqualTo(0u),
+                "...and, the batch being uncompletable, freed back to the pool rather than stranded");
 
             // Phase 2 — the player designates a far wall and exactly its cost arrives, in the
             // two stacks that force two trips, right under the half-staged bench's nose.
@@ -432,6 +436,53 @@ namespace Perilune.Tests
             Assert.That(sim.World.GetWall(FarSite), Is.EqualTo(TileDefs.Wall), "the wall is standing");
             Assert.That(ScrapUnits(sim), Is.Zero,
                 "the half-staged bench never completed a batch off the builder's material");
+        }
+
+        [Test]
+        public void StationClaimOnAHalfStagedInput_IsReleasedWhenTheBatchGoesDead()  // B-1
+        {
+            // THE B-1 LEAK, isolated. A crafting station stamps a staged input with its own claim
+            // so the haul board can't drag it off mid-batch. Before the fix that claim had NO
+            // owner and its ONLY release was ConsumeStagedInputs — never reached by a half-staged
+            // batch — so the last unit was reserved by NOBODY forever: invisible to the haul board
+            // and to MachineWearSystem.FindNearestParts, yet still counted 1/2 staged, so the bench
+            // waited at 1/2 and every repair jury-rigged. With ReservedBy owning the claim, a dead
+            // batch (no worker, nothing left to fetch) frees it and the unit re-enters the pool.
+            var defs = SimDefs.CreateDefault();
+            defs.Recipes[(int)DeviceKind.SalvageRecycler] = new RecipeDef(ItemKind.Regolith, 2, ItemKind.Scrap, 2, 20);
+            var sim = NewLongBay(out _, defs);
+            Assert.That(sim.TryGetDeviceAt(new Int3(2, 2, 0), out var recycler), Is.True,
+                "precondition: the recycler is where NewLongBay places it");
+
+            var unit = sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0));
+
+            // The bench stages the one unit aboard as the STATION's own claim (owned, not a bare
+            // flag): prove that window is real before proving the release.
+            bool sawStationClaim = false;
+            for (int t = 0; t < 600 && !sawStationClaim; t++)
+            {
+                sim.Tick();
+                if (sim.Items.TryGet(unit.Id, out var s) && s.ReservedBy == recycler.Id) sawStationClaim = true;
+            }
+            Assert.That(sawStationClaim, Is.True,
+                "the staged input is claimed by the STATION id — an owned reservation, not an ownerless flag");
+
+            // The retuned batch wants two units and only one exists, so it can never complete:
+            // a dead half-staged batch must free its input rather than strand it forever.
+            for (int t = 0; t < 300; t++) sim.Tick();
+            Assert.That(sim.Items.TryGet(unit.Id, out var freed), Is.True, "the unit is still aboard (nothing consumed it)");
+            Assert.That(ScrapUnits(sim), Is.Zero, "one unit cannot complete a two-unit batch");
+            // ReservedBy == 0 && CarriedBy == 0 on a ground stack IS the exact skip-predicate the
+            // haul board (HaulJobSource), the build source and MachineWearSystem.FindNearestParts
+            // all gate on — so this is precisely "visible again to every consumer", not a proxy.
+            Assert.That(freed.ReservedBy, Is.EqualTo(0u), "the dead half-staged batch freed its input (the B-1 leak)");
+            Assert.That(freed.CarriedBy, Is.EqualTo(0u), "and it sits on the ground, back in the pool");
+
+            // Stable: the freed unit is NOT re-leaked on subsequent passes (the release is idempotent,
+            // and with no un-staged unit to fetch the station never re-claims it).
+            for (int t = 0; t < 300; t++) sim.Tick();
+            Assert.That(sim.Items.TryGet(unit.Id, out var still), Is.True);
+            Assert.That(still.ReservedBy, Is.EqualTo(0u), "the freed unit stays free — no re-leak, no thrash");
         }
 
         [Test]
