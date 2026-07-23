@@ -81,7 +81,13 @@ namespace Perilune.Sim
             citizen.JobKind = JobKind.None;
             citizen.JobWorkTicks = 0;
             citizen.ClearPath();
-            sim.JobsDirty = true;
+            // A shared helper with callers of differing needs: a dig/build abandon frees a site
+            // (Citizens re-derives every assigned set), while a haul/build-haul abandon has just
+            // released a ground stack / material unit back to the free pool (Items — the released
+            // stack must re-enter the haul board and the build free-material count). Set both so no
+            // caller can under-trigger; over-triggering Items on a dig abandon rebuilds the haul
+            // board to an identical result and never walks the world tile pass.
+            sim.JobsDirty |= JobBoardDirty.Items | JobBoardDirty.Citizens;
         }
 
         /// <summary>

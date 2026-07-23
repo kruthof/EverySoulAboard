@@ -110,7 +110,7 @@ namespace Perilune.Sim
             // Only rock walls are diggable.
             if (_on && sim.World.GetWall(_pos) != TileDefs.Debris) return;
             sim.World.SetFlag(_pos, TileFlags.Designated, _on);
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Tiles; // a dig designation is a tile-board change
             sim.Events.Publish(new TileChangedEvent { Pos = _pos });
         }
     }
@@ -131,7 +131,7 @@ namespace Perilune.Sim
             if (!sim.World.InBounds(_pos)) return;
             if (_on && (sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) return;
             sim.World.SetFlag(_pos, TileFlags.Stockpile, _on);
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Tiles; // a stockpile zone is a tile-board change
             sim.Events.Publish(new TileChangedEvent { Pos = _pos });
         }
     }

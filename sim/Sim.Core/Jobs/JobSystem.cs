@@ -115,9 +115,17 @@ namespace Perilune.Sim
 
             // Terrain edits (SetTileCommand, MOSS effects, …) publish TileChangedEvent but don't
             // all set JobsDirty themselves — treat any tile change from the previous tick as
-            // board-dirtying. Cheap, and keeps the board honest.
-            if (sim.Events.Read<TileChangedEvent>().Length > 0) sim.JobsDirty = true;
-            if (sim.JobsDirty) Rescan(sim);
+            // TILE-dirtying. Cheap, and keeps the board honest.
+            //
+            // LOAD-BEARING INVARIANT for the W0-3 gating win (read before re-pointing any writer):
+            // this line makes TileChangedEvent an INDEPENDENT source of the Tiles flag. Every
+            // current Tiles-setting writer also publishes the event, so a writer that forgets its
+            // Tiles flag is backstopped here — but nothing backstops the reverse. An ITEM/SITE/
+            // CITIZENS writer that wrongly emits TileChangedEvent silently forces the full world
+            // pass and quietly erases the win. The whole optimisation therefore rests on item-only
+            // writers NEVER publishing TileChangedEvent, not on the Tiles writers setting the flag.
+            if (sim.Events.Read<TileChangedEvent>().Length > 0) sim.JobsDirty |= JobBoardDirty.Tiles;
+            if (sim.JobsDirty != JobBoardDirty.None) Rescan(sim);
 
             var citizens = sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
@@ -149,16 +157,21 @@ namespace Perilune.Sim
         // ------------------------------------------------------------------ board
 
         /// <summary>
-        /// Rebuild every source's board: ONE z,y,x world pass shared by the tile-derived boards
-        /// (dig sites, stockpile zones), then each source's own derivation, in registration order.
-        /// Sources derive independently — no board may read another's — so the order is for
-        /// determinism of declaration, not correctness.
+        /// Rebuild the derived sub-boards the dirty flags name, and only those (W0-3). The z,y,x
+        /// world pass — the only full-world scan, shared by the tile-derived boards (dig sites,
+        /// stockpile zones) — runs iff <see cref="JobBoardDirty.Tiles"/> is set, so an item-only
+        /// change no longer walks the world. Each source's own derivation then runs, in registration
+        /// order, and reads <paramref name="what"/> to skip the sub-passes it can. Sources derive
+        /// independently — no board may read another's — so the order is for determinism of
+        /// declaration, not correctness, EXCEPT that the tile pass must precede every source's
+        /// Rescan (Haul reads the stockpile board it builds); that is why the tile block is first.
         /// </summary>
         private void Rescan(Simulation sim)
         {
-            sim.JobsDirty = false;
+            JobBoardDirty what = sim.JobsDirty;
+            sim.JobsDirty = JobBoardDirty.None;
 
-            if (_tileScanners.Length > 0)
+            if ((what & JobBoardDirty.Tiles) != 0 && _tileScanners.Length > 0)
             {
                 for (int s = 0; s < _tileScanners.Length; s++) _tileScanners[s].BeginTileScan(sim);
 
@@ -180,7 +193,7 @@ namespace Perilune.Sim
                 }
             }
 
-            for (int s = 0; s < _sources.Length; s++) _sources[s].Rescan(sim, _ctx);
+            for (int s = 0; s < _sources.Length; s++) _sources[s].Rescan(sim, _ctx, what);
         }
 
         // ------------------------------------------------------------- assignment

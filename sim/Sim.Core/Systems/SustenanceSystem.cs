@@ -236,7 +236,7 @@ namespace Perilune.Sim
                     item.Count--;
                     if (item.Count <= 0) sim.Items.Remove(item.Id);
                     citizen.Hunger = Math.Max(0f, citizen.Hunger - sus.PotatoHungerValue);
-                    sim.JobsDirty = true; // ground items changed; haul board must re-derive
+                    sim.JobsDirty |= JobBoardDirty.Items; // ground items changed; haul board must re-derive
                     return;
                 }
             }
@@ -297,7 +297,7 @@ namespace Perilune.Sim
             else item.ReservedForJob = false; // remaining stack returns to the pool
             citizen.Hunger = Math.Max(0f, citizen.Hunger - sim.Defs.Sustenance.PotatoHungerValue);
             citizen.JobKind = JobKind.None;
-            sim.JobsDirty = true; // ground items changed; haul board must re-derive
+            sim.JobsDirty |= JobBoardDirty.Items; // ground items changed; haul board must re-derive
         }
 
         // ------------------------------------------------------------------ misc

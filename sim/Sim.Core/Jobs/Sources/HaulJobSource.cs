@@ -39,33 +39,41 @@ namespace Perilune.Sim
             if ((flags & (byte)TileFlags.Stockpile) != 0) _stockpiles.Add(pos);
         }
 
-        public void Rescan(Simulation sim, JobContext ctx)
+        public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what)
         {
-            _items.Clear();
-
-            // Ground-item occupancy (per-scan; Contains-lookups only).
-            JobWork.RebuildGroundItemTiles(sim, _groundItemTiles);
-            var items = sim.Items.Items;
-
-            bool anyFreeStockpile = false;
-            for (int i = 0; i < _stockpiles.Count; i++)
+            // The haul candidate list depends on BOTH the item store AND the stockpile tile board
+            // (no free stockpile ⇒ no candidates), so rebuild it when either changed. A Sites- or
+            // Citizens-only rescan leaves `_items` — and hence CandidateCount — at its prior value,
+            // which is correct because neither items nor stockpiles moved. Haul has no
+            // citizen-derived set, so there is nothing to run on those rescans but the EnsureSize.
+            if ((what & (JobBoardDirty.Items | JobBoardDirty.Tiles)) != 0)
             {
-                if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
+                _items.Clear();
+
+                // Ground-item occupancy (per-scan; Contains-lookups only).
+                JobWork.RebuildGroundItemTiles(sim, _groundItemTiles);
+                var items = sim.Items.Items;
+
+                bool anyFreeStockpile = false;
+                for (int i = 0; i < _stockpiles.Count; i++)
                 {
-                    anyFreeStockpile = true;
-                    break;
+                    if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
+                    {
+                        anyFreeStockpile = true;
+                        break;
+                    }
                 }
-            }
 
-            if (anyFreeStockpile)
-            {
-                for (int i = 0; i < items.Count; i++)
+                if (anyFreeStockpile)
                 {
-                    var item = items[i];
-                    if (item.CarriedBy != 0 || item.ReservedForJob) continue;
-                    if (item.Kind == ItemKind.Corpse) continue; // the dead are not cargo
-                    if ((sim.World.GetFlags(item.Pos) & TileFlags.Stockpile) != 0) continue; // already stored
-                    _items.Add(item.Id);
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        var item = items[i];
+                        if (item.CarriedBy != 0 || item.ReservedForJob) continue;
+                        if (item.Kind == ItemKind.Corpse) continue; // the dead are not cargo
+                        if ((sim.World.GetFlags(item.Pos) & TileFlags.Stockpile) != 0) continue; // already stored
+                        _items.Add(item.Id);
+                    }
                 }
             }
 
@@ -199,7 +207,7 @@ namespace Perilune.Sim
             item.ReservedForJob = false;
             citizen.CarryingItemId = 0;
             citizen.JobKind = JobKind.None;
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Items; // the stack was set down (position/unreserve changed)
         }
 
         /// <summary>

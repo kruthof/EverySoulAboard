@@ -125,7 +125,7 @@ namespace Perilune.Sim
                 WorkTicks = ConstructTicks(sim.Defs.Build, kind),
             };
             InsertSorted(b);
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Sites; // a new pending site — build board must re-derive
             return true;
         }
 
@@ -142,8 +142,8 @@ namespace Perilune.Sim
                 if (_pending[i].Pos != pos) continue;
                 int delivered = _pending[i].Delivered;
                 _pending.RemoveAt(i);
-                if (delivered > 0) sim.AddItem(Material, delivered, pos); // AddItem sets JobsDirty
-                sim.JobsDirty = true;
+                if (delivered > 0) sim.AddItem(Material, delivered, pos); // AddItem sets Items
+                sim.JobsDirty |= JobBoardDirty.Sites; // the pending site is gone — build board re-derives
                 return true;
             }
             return false;
@@ -167,7 +167,7 @@ namespace Perilune.Sim
                 int consumed = units < need ? units : need;
                 b.Delivered += consumed;
                 _pending[i] = b;
-                sim.JobsDirty = true;
+                sim.JobsDirty |= JobBoardDirty.Sites; // Delivered changed — the site may now be ready
                 return consumed;
             }
             return 0;
@@ -211,7 +211,9 @@ namespace Perilune.Sim
                     BuildKind = (byte)kind,
                     BuilderId = builderId,
                 });
-                sim.JobsDirty = true;
+                // The pending site is gone (Sites) and a wall/door now occupies the tile (Tiles —
+                // the SetWall/AddDevice above; the TileChangedEvent also re-confirms it).
+                sim.JobsDirty |= JobBoardDirty.Sites | JobBoardDirty.Tiles;
                 return true;
             }
             return false;

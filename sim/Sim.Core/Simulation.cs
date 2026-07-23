@@ -35,8 +35,10 @@ namespace Perilune.Sim
         /// <summary>Set by terrain/designation/device changes; PowerSystem rebuilds networks when set.</summary>
         public bool PowerDirty = true;
 
-        /// <summary>Set when designations/items/stockpiles change; JobSystem rescans when set.</summary>
-        public bool JobsDirty = true;
+        /// <summary>Which derived sub-boards changed; JobSystem rescans the flagged ones and skips
+        /// the rest (W0-3). Writers <c>|=</c> the axes they touched — see <see cref="JobBoardDirty"/>
+        /// for the mapping. Forced to <see cref="JobBoardDirty.All"/> at boot and on load.</summary>
+        public JobBoardDirty JobsDirty = JobBoardDirty.All;
 
         /// <summary>Bumped on any device add/remove — cheap staleness check for derived
         /// topologies (fluid networks) that don't own PowerDirty.</summary>
@@ -150,7 +152,9 @@ namespace Perilune.Sim
             citizen.ReservedItemId = 0;
             citizen.JobKind = JobKind.None;
             citizen.JobWorkTicks = 0;
-            JobsDirty = true;
+            // Cargo was dropped/unreserved (Items) and the citizen left a dig/build site (Citizens,
+            // which re-derives every source's assigned set). No tile or pending-list change.
+            JobsDirty |= JobBoardDirty.Items | JobBoardDirty.Citizens;
         }
 
         public Citizen AddCitizen(string name, Int3 pos)
@@ -164,7 +168,7 @@ namespace Perilune.Sim
         {
             var item = new ItemStack { Kind = kind, Count = count, Pos = pos };
             Items.Add(item, _nextEntityId++);
-            JobsDirty = true;
+            JobsDirty |= JobBoardDirty.Items; // a loose ground stack appeared — the headline W0-3 case
             return item;
         }
 
