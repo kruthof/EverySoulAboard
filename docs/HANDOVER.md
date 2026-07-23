@@ -31,14 +31,19 @@ independently Opus-reviewed (incl. headless-Chrome visual gates).
   door open + Pressurize; no new hashed field) + the Overview ＋ADD ROOM room-type picker.
 
 **Determinism:** the seed-42 pin **`494ad0b05a154ccb` is UNMOVED** by the entire rework (every lane
-view-only/content/isolated-sim). Counts on `main`: **807 dotnet + 460 node**.
+view-only/content/isolated-sim). Counts on `main`: **807 dotnet + 461 node**.
 **Playtest fixes (2026-07-23, all live-verified on `--ship grid`):** #1 HUD *flicker* — the Overview
 rebuilt every HUD island via `innerHTML=` ~5–10 Hz, tearing down the button under the cursor and
 eating clicks; fixed with keyed in-place reconciliation (the `hud.js reconcileRows` pattern). #2
 *older systems felt broken* — was mostly #1 eating clicks; also restored the click-a-map-terminal →
 MOSS affordance. #3 *couldn't build* — the grid ship shipped with **zero regolith** and held crew, so
 wall ghosts starved; seeded regolith + made crew workable in `PeriluneGrid` (a wall now builds ~tick
-257). Pin still `494ad0b05a154ccb`. **Play it:**
+257). **Round 2:** the Room Zoom had the *same* per-frame `innerHTML` rebuild (I fixed the Overview
+but missed Room Zoom) — flickered on placing furniture and ate the ‹ back click; fixed with the same
+keyed reconciliation (palette/breadcrumb/minimap stable; ‹ and ESC both exit). The CHRONICLE command-bar
+tab is now inert-but-present (was dumping to the legacy console). Both new interactive views
+(Overview + Room Zoom) now reconcile in place — no button flickers or eats clicks. Pin still
+`494ad0b05a154ccb`. **Play it:**
 `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship grid` + `python3 client/serve.py`.
 **Deferred (honest):** in the Overview, the RELATIONS/MOSS/CHRONICLE tabs delegate to the existing
 console surfaces (v1); the `decor` channel is wired but empty (no authored decor yet); built-wall
