@@ -743,8 +743,12 @@ namespace Perilune.Tests
         public void The_Slice_Ledger_Surfaces_Its_Real_Failures_By_Day_Three()
         {
             // A regression pin on the HONESTY of the shipped slice's ledger, not on exact numbers:
-            // MECHANICS.md §13.1 (CO2 climbs past 2,000 ppm with healthy scrubbers), §13.2 (the ship
-            // freezes below needs.def hypothermia_c) and ECONOMY-PLAN B-2 (tank_hydro runs dry).
+            // MECHANICS.md §13.1 (CO2 climbs past 2,000 ppm with healthy scrubbers) and §13.2 (the
+            // ship freezes below needs.def hypothermia_c) are STILL live at day three, so those rows
+            // must still degrade. ECONOMY-PLAN B-2 (tank_hydro ran dry ~day 1.2, stalling the beds
+            // forever) is now FIXED by the greywater makeup floor (WaterSystem.RunMakeup), so the
+            // water_reclaim + hydroponics rows must now read healthy — the ledger honestly reflects
+            // a sustainable loop rather than a dry tank.
             var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
             while (host.Sim.TickCount < 3 * SimClockUtil.TicksPerDay) host.Sim.Tick();
             var report = ShipSystems.Compute(host.Sim, host.History);
@@ -756,10 +760,10 @@ namespace Perilune.Tests
             Assert.AreEqual(ShipSystemState.Degraded, Row(report, "thermal").State, "§13.2: the ship freezes");
             StringAssert.Contains("LOSING heat", Row(report, "thermal").Advisory);
 
-            Assert.AreEqual(ShipSystemState.Attend, Row(report, "water_reclaim").State,
-                "B-2: tank_hydro is dry — a tank that cannot serve one drink is dry, as the sim itself judges it");
-            Assert.AreEqual(ShipSystemState.Attend, Row(report, "hydroponics").State,
-                "…and the beds on that line are stalled");
+            Assert.AreEqual(ShipSystemState.Nominal, Row(report, "water_reclaim").State,
+                "B-2 fixed: the makeup floor keeps the greywater pool alive so tank_hydro stays served");
+            Assert.AreEqual(ShipSystemState.Nominal, Row(report, "hydroponics").State,
+                "…and the beds on that line keep growing");
             Assert.AreEqual(ShipSystemState.Offline, Row(report, "nav_sensors").State);
         }
 

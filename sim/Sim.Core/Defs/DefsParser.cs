@@ -251,6 +251,7 @@ namespace Perilune.Sim
                 case "tank_capacity_liters": if (F(v, k, loc, p, out var a)) d.Water.TankCapacityLiters = a; return true;
                 case "reclaimer_liters_per_second": if (F(v, k, loc, p, out var b)) d.Water.ReclaimerLitersPerSecond = b; return true;
                 case "reclaim_efficiency": if (F(v, k, loc, p, out var c)) d.Water.ReclaimEfficiency = c; return true;
+                case "makeup_floor_liters": if (F(v, k, loc, p, out var e)) d.Water.MakeupFloorLiters = e; return true;
                 default: return false;
             }
         }

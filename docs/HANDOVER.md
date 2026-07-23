@@ -50,14 +50,26 @@ with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.
 713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
 surface) and moved no pin.
 
-Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6 — ritual done each time;
-CURRENT values, `ci.sh:25` and the two golden files all agree):
+Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6, then again by the **B-2
+greywater makeup floor** 2026-07-22 — ritual done each time; CURRENT values, `ci.sh:31` and
+the two golden files all agree):
 
 | pin | value |
 |---|---|
-| 3-day scenario (`ci.sh:25`) | `616ed4a84a9f6e87` |
-| tick-3000 golden | `3cf25daf3ca40e0b` |
-| slice tick-3000 golden | `0623f93e280bb0a1` (was `72f7023ef9f1cd73`; moved by **B-1** — a released reservation leak, a behaviour change) |
+| 3-day scenario (`ci.sh`) | PROVISIONAL — re-pin commit sets the combined value (B-2 alone: `16043bfb148ae326`) |
+| tick-3000 golden | PROVISIONAL — re-pin commit sets it (B-2 alone: `d6c8e64ea93c1a83`) |
+| slice tick-3000 golden | PROVISIONAL — re-pin commit sets it (B-1 alone: `0623f93e280bb0a1`) |
+
+**B-2 (the hydroponics water leak, 2026-07-22):** the fix adds a self-throttling floor on
+the shipwide greywater pool (`WaterDefs.MakeupFloorLiters` = 20 L; `WaterSystem.RunMakeup`
+tops the pool up only when it would fall below the floor, replacing exactly the ~0.256 L/L
+the lossy loop destroys and nothing more). It moved the 3-day scenario hash
+`616ed4a84a9f6e87`→`16043bfb148ae326` and the shipping tick-3000 golden
+`3cf25daf3ca40e0b`→`d6c8e64ea93c1a83` (the floor fires as the pool runs dry, and at the first
+Water tick on the un-primed 2-crew reference ship); the slice tick-3000 golden is unchanged
+because the slice primes its pool to 400 L and the floor does not bind in 5 sim-min. These
+literals are PROVISIONAL — B-1/B-3 move the same pins off the same base; the integrator
+re-measures the combined value on merge.
 
 W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
 longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped

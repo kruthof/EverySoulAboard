@@ -224,6 +224,21 @@ namespace Perilune.Tests
         }
 
         [Test]
+        public void MutatedMakeupFloor_Diverge_ProvingWaterReadsMakeup()
+        {
+            // Makeup floor raised above the scenario's primed greywater pool (150 L): the first
+            // Water pass tops the pool up to the floor, so Simulation.WastewaterLiters (part of
+            // StateHash) jumps immediately. If WaterSystem.RunMakeup did not read
+            // sim.Defs.Water.MakeupFloorLiters, the pool would only drift down and never diverge.
+            var mutated = SimDefs.CreateDefault();
+            mutated.Water.MakeupFloorLiters = 300f; // > BuildScenario's 150 L pool, fires at once
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(SimDefs.CreateDefault(), mutated, 50, "raised MakeupFloorLiters above the pool");
+        }
+
+        [Test]
         public void MutatedNeedsRate_Diverge_ProvingNeedsReadsDefs()
         {
             // Hunger rate x10: every living citizen accumulates Hunger (and thus Mood, both

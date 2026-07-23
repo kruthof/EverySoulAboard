@@ -154,13 +154,14 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `16043bfb148ae326` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `0623f93e280bb0a1`
-  (moved `72f7023ef9f1cd73` → `0623f93e280bb0a1` by **B-1** — the ownerless-reservation-leak
-  fix; a BEHAVIOUR change, not a fold-reformat: a staged input the slice used to strand forever
-  is now released, so the slice's tick-3000 world state differs. The scenario hash and the
-  2-crew tick-3000 golden are unmoved — the reference ships carry no reserved item at those ticks).
+  <PROVISIONAL — the B-bug integration re-pin commit rewrites all three literals to the
+  combined measured values. B-1 moves the slice golden (`72f7023ef9f1cd73`→`0623f93e280bb0a1`,
+  a released-reservation behaviour change); B-2 moves the scenario hash
+  (`616ed4a84a9f6e87`→`16043bfb148ae326`) and the shipping tick-3000 golden
+  (`3cf25daf3ca40e0b`→`d6c8e64ea93c1a83`); B-3 moves all of them again plus the defs checksum.
+  Final values live in `ci.sh` + the two golden files + the re-pin commit.>
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
