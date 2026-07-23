@@ -207,6 +207,13 @@ namespace Perilune.Sim
             public float ReclaimerLitersPerSecond;
             /// <summary>WaterSystem.ReclaimEfficiency — recovered fraction (ISS-class 93%). Current: 0.93.</summary>
             public float ReclaimEfficiency;
+            /// <summary>WaterSystem.MakeupFloorLiters — self-throttling floor on the shipwide
+            /// greywater pool, L. Each Water pass tops the pool up to this level ONLY when it
+            /// would otherwise fall below it, and never otherwise — so it conjures exactly the
+            /// water the closed loop destroys (irrigation's ~0.256 L/L, drinking's ~7%) and
+            /// nothing when the loop is healthy. This is the fix for B-2 (the hydro loop drank
+            /// its pool dry ~day 1.2, then every grow bed stalled forever). Current: 20.</summary>
+            public float MakeupFloorLiters;
         }
 
         /// <summary>HydroponicsSystem constants (public consts there today). Excludes Dt (1 s).</summary>
@@ -480,6 +487,7 @@ namespace Perilune.Sim
                     TankCapacityLiters = 500f,
                     ReclaimerLitersPerSecond = 0.05f,
                     ReclaimEfficiency = 0.93f,
+                    MakeupFloorLiters = 20f,
                 },
 
                 Hydro = new HydroDefs
@@ -660,6 +668,7 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Water.TankCapacityLiters);
             h = XxHash64.Combine(h, Water.ReclaimerLitersPerSecond);
             h = XxHash64.Combine(h, Water.ReclaimEfficiency);
+            h = XxHash64.Combine(h, Water.MakeupFloorLiters);
 
             h = XxHash64.Combine(h, Hydro.GrowBedWaterPerSecond);
             h = XxHash64.Combine(h, Hydro.GrowSecondsPerCrop);

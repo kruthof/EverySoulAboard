@@ -14,3 +14,7 @@
 tank_capacity_liters        = 500      # L — per-tank capacity
 reclaimer_liters_per_second = 0.05     # L/s reclaimer output rate
 reclaim_efficiency          = 0.93     # recovered fraction (ISS-class 93% closure)
+makeup_floor_liters         = 20       # L — self-throttling greywater floor (B-2): tops the
+                                       #     pool up to this level only when it would fall
+                                       #     below it, replacing exactly the water the lossy
+                                       #     loop destroys and nothing more (never inflates)

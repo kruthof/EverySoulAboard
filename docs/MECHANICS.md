@@ -204,9 +204,14 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `616ed4a84a9f6e87`
-(pinned at `ci.sh:25`); tick-3000 golden `3cf25daf3ca40e0b`; slice tick-3000 golden
-`72f7023ef9f1cd73`. All three moved three times on 2026-07-22, each time by a pure fold
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `16043bfb148ae326`
+(pinned at `ci.sh:31`); tick-3000 golden `d6c8e64ea93c1a83`; slice tick-3000 golden
+`72f7023ef9f1cd73`. (B-2 water-source lane, 2026-07-22 — the greywater makeup floor —
+moved the scenario hash `616ed4a84a9f6e87`→`16043bfb148ae326` and the shipping tick-3000
+golden `3cf25daf3ca40e0b`→`d6c8e64ea93c1a83` because the floor fires as the pool runs dry;
+the slice golden is unchanged since the slice primes its pool. Behaviour DID move here — the
+loop is now sustainable — so this is not a pure-fold move. PROVISIONAL: B-1/B-3 move the same
+pins off the same base; the integrator re-measures on merge.) All three moved three times on 2026-07-22, each time by a pure fold
 change whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
 un-aliasing) took `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
 `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; W0-1b (folding the thirteen
@@ -466,15 +471,22 @@ drawIn  = min(wantOut / 0.93, sim.WastewaterLiters)
 sim.WastewaterLiters -= drawIn;  tank.StoredLiters += drawIn × 0.93
 ```
 
-**Water is never created** — only cycled, with a 7 % loss per pass through the reclaimer.
 Greywater enters the pool from drinking (`Systems/SustenanceSystem.cs:188,229`) and from
-plant transpiration (`Systems/HydroponicsSystem.cs:34`).
+plant transpiration (`Systems/HydroponicsSystem.cs:34`). The loop is lossy by design (the
+reclaimer's 7 % per pass, plus the ~20 % transpiration that never returns), so with no
+runtime source the pool was **strictly monotone-decreasing** — it drank itself dry ~day 1.2
+and stalled every grow bed forever (ECONOMY-PLAN B-2). **`WaterSystem.RunMakeup` (called each
+Water pass before the reclaimers) fixes that**: a self-throttling floor tops the pool up to
+`makeup_floor_liters` **only when it would otherwise fall below it**, so it replaces exactly
+the ~0.256 L/L·irrigation the loop destroys and **nothing when the loop is healthy or tanks
+are capped** — the greywater number self-limits at the floor rather than inflating. This is
+the one place water is created at runtime; everywhere else it is only cycled.
 
 `WaterSystem.TryDrawWater` (`:159-184`) is **all-or-nothing** across a network's tanks: if
 the network cannot cover the full amount, nothing is drawn.
 
 Tunables (`water.def`): `tank_capacity_liters = 500`, `reclaimer_liters_per_second = 0.05`,
-`reclaim_efficiency = 0.93`.
+`reclaim_efficiency = 0.93`, `makeup_floor_liters = 20`.
 
 ### 4.3 Thermal (`Systems/ThermalSystem.cs`, 2 Hz, `Dt = 0.5 s`)
 

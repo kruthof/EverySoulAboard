@@ -21,12 +21,16 @@ namespace Perilune.Sim
     /// (Reclaimer: LifeSupport tier). <see cref="Dt"/> and <see cref="DrawEpsilon"/> are
     /// structural.
     ///
-    /// Conservation: unlike air, water is conserved. Nothing creates litres — the
-    /// reclaimer moves them out of <see cref="Simulation.WastewaterLiters"/> (a single
-    /// abstract shipwide greywater pool, saved and hashed) into a tank, losing the
-    /// inefficiency. The pool is filled by drinking (SustenanceSystem) and by grow-bed
-    /// transpiration (HydroponicsSystem); it is authored with a starting buffer on the
-    /// slice. A ship whose pool is empty has reclaimers that spin and produce nothing.
+    /// Conservation: unlike air, water is *nearly* conserved. The reclaimer moves litres
+    /// out of <see cref="Simulation.WastewaterLiters"/> (a single abstract shipwide
+    /// greywater pool, saved and hashed) into a tank, losing the inefficiency; the pool is
+    /// filled by drinking (SustenanceSystem), grow-bed transpiration (HydroponicsSystem)
+    /// and a starting buffer authored on the slice. The ONE runtime source is
+    /// <see cref="RunMakeup"/> — a self-throttling floor that tops the pool up only when it
+    /// would otherwise fall below <c>MakeupFloorLiters</c>, replacing exactly the water the
+    /// lossy loop destroys and nothing more (B-2 fix; see that method). Before it, a ship
+    /// whose pool ran dry had reclaimers that spun and produced nothing, stalling every
+    /// grow bed on the network forever.
     ///
     /// What it mutates: <see cref="Device.FluidNetworkId"/> and
     /// <see cref="Device.StoredLiters"/> (both DEVC v2, saved and hashed by Simulation)
@@ -85,7 +89,35 @@ namespace Perilune.Sim
                 _lastTopologyVersion = sim.DeviceTopologyVersion;
                 RebuildNetworks(sim);
             }
+            RunMakeup(sim);      // floor the pool BEFORE reclaimers read it, same pass
             RunReclaimers(sim);
+        }
+
+        /// <summary>
+        /// Self-throttling makeup source (B-2 fix). The shipped loop is lossy by design —
+        /// irrigation destroys ~0.256 L per litre cycled (0.8 transpiration recapture ×
+        /// 0.93 reclaim), drinking loses the reclaimer's 7% — so with no runtime source the
+        /// greywater pool is strictly monotone-decreasing and the self-contained hydro bay
+        /// (its own tank + reclaimer on one fluid network) drank the shared pool dry ~day 1.2,
+        /// after which <see cref="RunReclaimers"/> found nothing to cycle and every grow bed
+        /// stalled forever while the food HUD still read full.
+        ///
+        /// The floor tops the pool up to <c>MakeupFloorLiters</c> ONLY when it would otherwise
+        /// fall below it, and conjures NOTHING when the loop is healthy or tanks are capped
+        /// (a healthy loop keeps the pool above the floor on its own). So the amount created
+        /// self-limits to exactly the ~0.0154 L/s the loop destroys — the greywater number
+        /// can never inflate without bound, unlike a constant drip. It injects into the pool,
+        /// not a tank, so recaptured transpiration still routes through <c>reclaimer_hydro</c>.
+        ///
+        /// Conservation note: this is the ONE place water is created at runtime (air is not
+        /// conserved; water otherwise is). It is deliberate and bounded — read it as an
+        /// abstract shipwide condensate/ice makeup, the litres a real closed loop tops up.
+        /// </summary>
+        private static void RunMakeup(Simulation sim)
+        {
+            var water = sim.Defs.Water;
+            if (sim.WastewaterLiters < water.MakeupFloorLiters)
+                sim.WastewaterLiters = water.MakeupFloorLiters;
         }
 
         /// <summary>
