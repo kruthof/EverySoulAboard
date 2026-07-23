@@ -54,19 +54,21 @@ const BUILD_TOOLS = ['wall', 'door', 'cancel'];
  *   1. a BUILD tool armed → 'build'  (placement by projected tile — IX-O-12/19)
  *   2. the MOVE order armed → 'move' (the move target tile — IX-O-41)
  *   3. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
- *   4. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
- *   5. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom, a later lane)
- *   6. a bare hall / empty space → 'none' (IX-O-13/18)
+ *   4. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
+ *   5. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
+ *   6. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom, a later lane)
+ *   7. a bare hall / empty space → 'none' (IX-O-13/18)
  * PURE.
  * @param {null|'wall'|'door'|'cancel'|'move'} armed
- * @param {{pawnCid?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
- * @returns {{type:'build'|'move'|'select'|'addroom'|'enterRoom'|'none', cid?:*, slot?:number, anchor?:string}}
+ * @param {{pawnCid?:*, terminalId?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
+ * @returns {{type:'build'|'move'|'select'|'terminal'|'addroom'|'enterRoom'|'none', cid?:*, tid?:*, slot?:number, anchor?:string}}
  */
 export function overviewClickAction(armed, hit) {
   const h = hit || {};
   if (BUILD_TOOLS.indexOf(armed) >= 0) return { type: 'build' };
   if (armed === 'move') return { type: 'move' };
   if (h.pawnCid != null) return { type: 'select', cid: h.pawnCid };
+  if (h.terminalId != null) return { type: 'terminal', tid: h.terminalId };
   if (h.addRoomSlot != null) return { type: 'addroom', slot: h.addRoomSlot };
   if (h.roomAnchor) return { type: 'enterRoom', anchor: h.roomAnchor };
   return { type: 'none' };

@@ -125,6 +125,24 @@ test('the selected crew gets a selection glow + amber tag; others do not', () =>
   assert.equal((svgNone.match(/id="ov-sel-/g) || []).length, 0);
 });
 
+test('terminals on the shown deck render as clickable pl-terminal markers; other decks / none do not', () => {
+  const terminals = [
+    { tid: 'con-1', deck: 0, x: 3, y: 2 },
+    { tid: 'con-2', deck: 0, x: 6, y: 4 },
+    { tid: 'con-off', deck: 1, x: 1, y: 1 }, // a different deck — must not render here
+  ];
+  const svg = overviewScene(baseState({ deck: 0, terminals }));
+  assert.equal((svg.match(/class="pl-terminal"/g) || []).length, 2); // only the two on deck 0
+  assert.ok(svg.includes('data-tid="con-1"'));
+  assert.ok(svg.includes('data-tid="con-2"'));
+  assert.ok(!svg.includes('data-tid="con-off"'));
+  // no terminals channel → no terminal markers (graceful; unchanged scene)
+  const svgNone = overviewScene(baseState({ deck: 0 }));
+  assert.equal((svgNone.match(/class="pl-terminal"/g) || []).length, 0);
+  // deterministic: same terminals → byte-identical
+  assert.equal(overviewScene(baseState({ deck: 0, terminals })), svg);
+});
+
 test('furniture maps from frame glyphs via SPRITE_FOR_GLYPH → item builder', () => {
   const svg = overviewScene(baseState({ deck: 0 }));
   assert.match(svg, /class="pl-furniture"/);

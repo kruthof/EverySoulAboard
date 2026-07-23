@@ -38,7 +38,7 @@ test('the move order classifies as a move target over any hit', () => {
   assert.deepEqual(overviewClickAction('move', { roomAnchor: 'mess' }), { type: 'move' });
 });
 
-test('with no tool: pawn > add-room > room > space (the single disambiguation rule)', () => {
+test('with no tool: pawn > terminal > add-room > room > space (the single disambiguation rule)', () => {
   assert.deepEqual(overviewClickAction(null, { pawnCid: 42, roomAnchor: 'mess' }),
     { type: 'select', cid: 42 });
   assert.deepEqual(overviewClickAction(null, { addRoomSlot: 3 }), { type: 'addroom', slot: 3 });
@@ -46,6 +46,19 @@ test('with no tool: pawn > add-room > room > space (the single disambiguation ru
     { type: 'enterRoom', anchor: 'reactor' });
   assert.deepEqual(overviewClickAction(null, { hallSlot: 2 }), { type: 'none' });
   assert.deepEqual(overviewClickAction(null, {}), { type: 'none' });
+});
+
+test('a MOSS terminal hit classifies as `terminal` (opens MOSS); pawn wins, terminal beats the room', () => {
+  // a bare terminal → open its MOSS program
+  assert.deepEqual(overviewClickAction(null, { terminalId: 'con-3' }), { type: 'terminal', tid: 'con-3' });
+  // a crew member standing ON a console still selects as a pawn (pawns sit on top)
+  assert.deepEqual(overviewClickAction(null, { pawnCid: 7, terminalId: 'con-3' }),
+    { type: 'select', cid: 7 });
+  // the terminal beats the room it sits in (you want MOSS, not room-zoom)
+  assert.deepEqual(overviewClickAction(null, { terminalId: 'con-3', roomAnchor: 'command' }),
+    { type: 'terminal', tid: 'con-3' });
+  // an armed build tool still wins over a terminal (placement is unconditional)
+  assert.deepEqual(overviewClickAction('wall', { terminalId: 'con-3' }), { type: 'build' });
 });
 
 // ---- lens grade + tint (IX-O-29/30) ----

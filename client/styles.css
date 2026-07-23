@@ -898,6 +898,7 @@ body.moss-open #overview-view{display:none !important}
 /* left CREW WATCH dock (VS-O-56..60) */
 .ov-crewwatch{position:absolute;left:70px;top:96px;width:236px;max-height:calc(100vh - 220px);
   overflow-y:auto;padding:12px;border-radius:14px;display:flex;flex-direction:column;gap:7px;z-index:11}
+.ov-crewlist{display:contents} /* keyed reconcile container; rows join the crewwatch flex directly */
 .ov-crew{display:flex;gap:9px;align-items:center;padding:7px;border:1px solid rgba(46,40,32,.6);
   border-radius:8px;background:transparent;cursor:pointer;width:100%;text-align:left}
 .ov-crew.sel{border-color:#cf7a33;background:rgba(34,27,18,.8)}
