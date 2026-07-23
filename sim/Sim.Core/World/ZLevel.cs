@@ -12,6 +12,7 @@ namespace Perilune.Sim
         public readonly byte[] Flags;      // TileFlags
         public readonly ushort[] RoomId;   // 0 = outside/vacuum
         public readonly ushort[] RegionId; // pathfinding region
+        public readonly byte[] Material;   // wall/floor material variant id, 0 = default
 
         public ZLevel(int width, int height)
         {
@@ -22,6 +23,7 @@ namespace Perilune.Sim
             Flags = new byte[n];
             RoomId = new ushort[n];
             RegionId = new ushort[n];
+            Material = new byte[n];
         }
 
         public int Index(int x, int y) => y * Width + x;

@@ -309,8 +309,9 @@ namespace Perilune.Web
             public readonly int X, Y, Deck;
             public readonly byte Kind;
             public readonly int Delivered, Required;
-            public Design(int x, int y, int deck, byte kind, int delivered = 0, int required = 0)
-            { X = x; Y = y; Deck = deck; Kind = kind; Delivered = delivered; Required = required; }
+            public readonly byte Material; // wall/floor material variant (0 = default); APPEND-ONLY element 7
+            public Design(int x, int y, int deck, byte kind, int delivered = 0, int required = 0, byte material = 0)
+            { X = x; Y = y; Deck = deck; Kind = kind; Delivered = delivered; Required = required; Material = material; }
         }
 
         /// <summary>Serialize the pending-designation graph (see <see cref="Design"/>). A cached
@@ -332,9 +333,10 @@ namespace Perilune.Web
                       .Append(',').Append(d.Y.ToString(Ic))
                       .Append(',').Append(d.Deck.ToString(Ic))
                       .Append(',').Append(((int)d.Kind).ToString(Ic))
-                      // APPEND-ONLY trailing elements: the material ledger.
+                      // APPEND-ONLY trailing elements: the material ledger, then the material variant.
                       .Append(',').Append(d.Delivered.ToString(Ic))
-                      .Append(',').Append(d.Required.ToString(Ic)).Append(']');
+                      .Append(',').Append(d.Required.ToString(Ic))
+                      .Append(',').Append(((int)d.Material).ToString(Ic)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();
@@ -626,6 +628,31 @@ namespace Perilune.Web
                     AppendString(sb, d.ItemId ?? "");
                     sb.Append(',').Append(d.YawDeg.ToString(Ic))
                       .Append(',').Append(d.Variant.ToString(Ic)).Append(']');
+                }
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        /// <summary>Serialize the sparse wall/floor MATERIAL layer: one entry per tile whose material
+        /// variant differs from the default, [x, y, deck, kind, mat] where kind 0 = wall, 1 = floor.
+        /// A view-only cached state channel (like decor); the client skins built walls/floors from it.
+        /// The determinism-authoritative source is the sim's World material plane — this is a read-only
+        /// projection of it, never folded into any hash. Empty until a player picks a material.
+        ///   {"type":"materials","cells":[[3,4,0,0,2],..]}</summary>
+        public static string Materials(IReadOnlyList<(int X, int Y, int Deck, int Kind, int Mat)> cells)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("{\"type\":\"materials\",\"cells\":[");
+            if (cells != null)
+                for (int i = 0; i < cells.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    var c = cells[i];
+                    sb.Append('[').Append(c.X.ToString(Ic))
+                      .Append(',').Append(c.Y.ToString(Ic))
+                      .Append(',').Append(c.Deck.ToString(Ic))
+                      .Append(',').Append(c.Kind.ToString(Ic))
+                      .Append(',').Append(c.Mat.ToString(Ic)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

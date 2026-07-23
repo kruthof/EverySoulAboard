@@ -103,8 +103,8 @@ namespace Perilune.Sim
                 switch (fourCC)
                 {
                     case SaveFormat.TileChapter:
-                        RequireVersion(fourCC, chapterVersion, SaveFormat.TileVersion);
-                        ReadTiles(sim, reader);
+                        RequireVersionUpTo(fourCC, chapterVersion, SaveFormat.TileVersion);
+                        ReadTiles(sim, reader, chapterVersion);
                         break;
                     case SaveFormat.RoomChapter:
                         RequireVersionUpTo(fourCC, chapterVersion, SaveFormat.RoomVersion);
@@ -179,10 +179,12 @@ namespace Perilune.Sim
                     $"chapter '{SaveFormat.FourCCToString(fourCC)}' version {got} unsupported (expected {expected})");
         }
 
-        // --- TILE v1 (mirrors SaveWriter.WriteTiles) ---
+        // --- TILE v2 (mirrors SaveWriter.WriteTiles) ---
         // Direct array writes — flags saved verbatim, no SetFloor/SetWall re-derivation.
+        // v2 appended a per-tile Material array; a pre-v2 save has none, so Material stays
+        // zeroed (fresh World arrays), which is the "default material" identity.
 
-        private static void ReadTiles(Simulation sim, BinaryReader reader)
+        private static void ReadTiles(Simulation sim, BinaryReader reader, ushort version)
         {
             var world = sim.World;
             int n = world.Width * world.Height;
@@ -193,6 +195,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < n; i++) level.Wall[i] = reader.ReadUInt16();
                 ReadExactly(reader, level.Flags, n);
                 for (int i = 0; i < n; i++) level.RoomId[i] = reader.ReadUInt16();
+                if (version >= 2) ReadExactly(reader, level.Material, n); // v2; pre-v2: stays zeroed
                 // RegionId: derived + unused — stays zeroed (fresh World arrays).
             }
         }

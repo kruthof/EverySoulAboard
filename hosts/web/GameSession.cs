@@ -586,11 +586,16 @@ namespace Perilune.Web
         {
             var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
                                Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
+            byte material = (byte)Clamp(cmd.I, 0, 255); // material variant (0 = default); door/cancel ignore it
             switch (cmd.Name)
             {
                 case "wall":
-                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall));
+                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Wall, on: true, material: material));
                     _status = "designate wall" + MaterialNote();
+                    break;
+                case "floor":
+                    _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Floor, on: true, material: material));
+                    _status = "designate floor" + MaterialNote();
                     break;
                 case "door":
                     _sim.EnqueueCommand(new DesignateBuildCommand(pos, BuildKind.Door));
@@ -922,6 +927,7 @@ namespace Perilune.Web
             Send("decks", WireFormat.Decks(BuildDecks()), force);
             Send("rooms", WireFormat.Rooms(BuildRooms()), force);
             Send("decor", WireFormat.Decor(BuildDecor()), force);
+            Send("materials", WireFormat.Materials(BuildMaterials()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1066,7 +1072,7 @@ namespace Perilune.Web
                 var b = pending[i];
                 // delivered/required are the site's material ledger — the client renders a
                 // STARVED ghost (nothing arriving) distinctly from one being actively supplied.
-                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind, b.Delivered, b.Required));
+                rows.Add(new WireFormat.Design(b.Pos.X, b.Pos.Y, b.Pos.Z, (byte)b.Kind, b.Delivered, b.Required, b.Material));
             }
             return rows;
         }
@@ -1256,6 +1262,32 @@ namespace Perilune.Web
         private List<WireFormat.DecorItem> BuildDecor() => _decor;
         private static readonly List<WireFormat.DecorItem> _decor = new List<WireFormat.DecorItem>();
 
+        /// <summary>The sparse wall/floor MATERIAL layer for the warm SVG views — a VIEW-ONLY read-only
+        /// projection of the sim's World material plane (the authoritative, hashed source). One entry per
+        /// tile whose material differs from the default; kind 0 = wall, 1 = floor. Never hashed. Ships
+        /// empty until a player picks a material, so an untouched ship is unchanged.</summary>
+        private readonly List<(int, int, int, int, int)> _materialsScratch = new List<(int, int, int, int, int)>();
+        private List<(int, int, int, int, int)> BuildMaterials()
+        {
+            _materialsScratch.Clear();
+            var world = _sim.World;
+            int w = world.Width, h = world.Height;
+            for (int z = 0; z < world.Depth; z++)
+            {
+                var level = world.Levels[z];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int idx = level.Index(x, y);
+                        byte mat = level.Material[idx];
+                        if (mat == 0) continue;                      // default → not on the sparse channel
+                        int kind = level.Wall[idx] != 0 ? 0 : 1;     // walled tile → wall material, else floor
+                        _materialsScratch.Add((x, y, z, kind, mat));
+                    }
+            }
+            return _materialsScratch;
+        }
+
         // Reused scratch for TaskLabel — BuildRoster runs on the sim thread inside Render (≤10 Hz,
         // one call at a time), so a single shared builder is safe and keeps the label path from
         // littering the heap with intermediate concatenations.
@@ -1367,11 +1399,11 @@ namespace Perilune.Web
               .Append(b.Required.ToString(CultureInfo.InvariantCulture)).Append(')');
         }
 
-        /// <summary>"wall"/"door" for a pending site; "the site" when the designation is gone.</summary>
+        /// <summary>"wall"/"floor"/"door" for a pending site; "the site" when the designation is gone.</summary>
         private string BuildSiteLabel(Int3 site)
         {
             if (_host.BuildSys != null && _host.BuildSys.TryGet(site, out var b))
-                return b.Kind == BuildKind.Door ? "door" : "wall";
+                return b.Kind == BuildKind.Door ? "door" : b.Kind == BuildKind.Floor ? "floor" : "wall";
             return "the site";
         }
 
@@ -1519,9 +1551,10 @@ namespace Perilune.Web
                     case "lens": return new WebCommand(CmdKind.Lens, name: Str(json, "name"));
                     case "speed": return new WebCommand(CmdKind.Speed, i: Int(json, "delta"));
                     case "pause": return new WebCommand(CmdKind.Pause);
-                    // {"cmd":"build","kind":"wall|door|cancel","x":..,"y":..} — designate/cancel
-                    // a build at a tile on the current deck (see GameSession.HandleBuild).
-                    case "build": return new WebCommand(CmdKind.Build, Int(json, "x"), Int(json, "y"), name: Str(json, "kind"));
+                    // {"cmd":"build","kind":"wall|floor|door|cancel","x":..,"y":..,"material":..} —
+                    // designate/cancel a build at a tile on the current deck (see HandleBuild). The
+                    // material byte (0 = default) rides on `i`; it is ignored for door/cancel.
+                    case "build": return new WebCommand(CmdKind.Build, Int(json, "x"), Int(json, "y"), i: Int(json, "material"), name: Str(json, "kind"));
                     // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));

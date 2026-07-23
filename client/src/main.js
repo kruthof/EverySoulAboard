@@ -239,6 +239,7 @@ function onMessage(m) {
     case 'decks': Hud.renderDecks(m); break;
     case 'rooms': Hud.renderRooms(m); break;
     case 'decor': Hud.renderDecor(m); break;
+    case 'materials': Hud.renderMaterials(m); break;
     default: break;
   }
 }

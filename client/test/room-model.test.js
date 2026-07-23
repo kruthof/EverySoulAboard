@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  U, ROOM_TOOLS, paletteCommand, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
+  U, ROOM_TOOLS, paletteCommand, isStructuralTool, roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung,
 } from '../src/ui/room-model.js';
@@ -89,10 +89,11 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the eleven tools to a class + verb', () => {
+test('paletteCommand maps every one of the twelve tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
-  assert.equal(ROOM_TOOLS.length, 11);
+  assert.equal(ROOM_TOOLS.length, 12);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
+  assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
   for (const [t, dk] of [['bunk', 'Bed'], ['desk', 'Desk'], ['chair', 'Chair'], ['locker', 'Locker'], ['plant', 'PlantPot'], ['lamp', 'Light']]) {
     assert.equal(byTool[t].cls, 'functional');
@@ -103,6 +104,9 @@ test('paletteCommand maps every one of the eleven tools to a class + verb', () =
   assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
   assert.deepEqual(paletteCommand('nope'), { cls: 'none', verb: null });
+  // isStructuralTool: wall/floor/door drag-build; everything else false.
+  for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
+  for (const t of ['bunk', 'rug', 'demolish', null, 'nope']) assert.equal(isStructuralTool(t), false);
 });
 
 // ---- armed-tool reducer ----
@@ -156,11 +160,30 @@ test('roomCrew keeps only crew on the room deck inside the rect', () => {
 });
 
 test('roomDesigns clamps design cells to the room + deck and decodes the ledger', () => {
-  const designs = { cells: [[5, 7, 1, 0, 0, 3], [6, 8, 1, 1, 2, 2], [1, 1, 1, 0, 0, 1], [5, 7, 2, 0, 0, 1]] };
+  // element 6 = material (append-only); the 3rd design carries it, the others omit it → 0.
+  const designs = { cells: [[5, 7, 1, 0, 0, 3, 2], [6, 8, 1, 1, 2, 2], [1, 1, 1, 0, 0, 1], [5, 7, 2, 0, 0, 1]] };
   const g = roomDesigns(designs, room);
   assert.equal(g.length, 2); // the out-of-rect and wrong-deck cells drop
-  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3 });
-  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2 });
+  assert.deepEqual(g[0], { x: 5, y: 7, kind: 0, delivered: 0, required: 3, material: 2 });
+  assert.deepEqual(g[1], { x: 6, y: 8, kind: 1, delivered: 2, required: 2, material: 0 });
+});
+
+test('roomMaterialTiles skins every in-room wall + only non-default floors', () => {
+  // two walls inside the room (5,7)+(6,8), one wall out of the room (1,1); floor materials on (7,7).
+  const frame = frameWith([[5, 7, '#'], [6, 8, '#'], [1, 1, '#']]);
+  const materials = [
+    { x: 5, y: 7, deck: 1, kind: 0, mat: 2 }, // wall gets material 2
+    { x: 7, y: 7, deck: 1, kind: 1, mat: 4 }, // floor gets material 4
+    { x: 9, y: 9, deck: 2, kind: 1, mat: 1 }, // wrong deck → ignored
+  ];
+  const tiles = roomMaterialTiles(frame, room, materials);
+  const walls = tiles.filter((t) => t.kind === 'wall');
+  const floors = tiles.filter((t) => t.kind === 'floor');
+  assert.equal(walls.length, 2);                                     // both in-room walls, out-of-room dropped
+  assert.deepEqual(walls.find((t) => t.tx === 5 && t.ty === 7), { tx: 5, ty: 7, kind: 'wall', mat: 2 });
+  assert.deepEqual(walls.find((t) => t.tx === 6 && t.ty === 8), { tx: 6, ty: 8, kind: 'wall', mat: 0 }); // no channel entry → default
+  assert.deepEqual(floors, [{ tx: 7, ty: 7, kind: 'floor', mat: 4 }]); // only the materialed floor
+  assert.deepEqual(roomMaterialTiles(frame, { ...room, deck: 9 }, materials), []); // wrong deck → empty
 });
 
 test('roomDecor clamps decor to the room + deck', () => {

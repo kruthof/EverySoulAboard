@@ -22,24 +22,27 @@ export const U = 32;
 // (Device.cs); `itemId` is the item-set piece for cosmetic decor.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The palette tools, in the visual order the bar renders them (VS-Z-46). */
+/** The palette tools, in the visual order the bar renders them (VS-Z-46). WALL + FLOOR carry a
+ *  material picker and drag-build; DOOR is a single structural placement. */
 export const ROOM_TOOLS = Object.freeze([
-  'wall', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish',
+  'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish',
 ]);
 
 /** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). */
 export const TOOL_LABEL = Object.freeze({
-  wall: 'WALL', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR', locker: 'LOCKER',
-  shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT', demolish: '⌫ DEMOLISH',
+  wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
+  locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT', demolish: '⌫ DEMOLISH',
 });
 
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
 export const GHOST_ABBR = Object.freeze({
-  wall: 'WA', door: 'DO', bunk: 'BU', desk: 'DE', chair: 'CH', locker: 'LO', plant: 'PL', lamp: 'LA',
+  wall: 'WA', floor: 'FL', door: 'DO', bunk: 'BU', desk: 'DE', chair: 'CH', locker: 'LO',
+  plant: 'PL', lamp: 'LA',
 });
 
 const PALETTE_CMD = Object.freeze({
   wall:  { cls: 'structural', verb: 'build',  kind: 'wall' },
+  floor: { cls: 'structural', verb: 'build',  kind: 'floor' },
   door:  { cls: 'structural', verb: 'build',  kind: 'door' },
   bunk:  { cls: 'functional', verb: 'place',  kind: 'bunk',   deviceKind: 'Bed' },
   desk:  { cls: 'functional', verb: 'place',  kind: 'desk',   deviceKind: 'Desk' },
@@ -60,6 +63,12 @@ const PALETTE_CMD = Object.freeze({
 export function paletteCommand(tool) {
   const c = tool && PALETTE_CMD[tool];
   return c ? { ...c } : { cls: 'none', verb: null };
+}
+
+/** True for the drag-build structural tools (wall / floor / door). Wall + floor also carry a
+ *  material picker; door is single-tile. PURE. */
+export function isStructuralTool(tool) {
+  return paletteCommand(tool).cls === 'structural';
 }
 
 /**
@@ -259,7 +268,8 @@ export function roomDesigns(designs, focusRoom) {
   for (const c of cells) {
     if (!Array.isArray(c) || (c[2] | 0) !== (focusRoom.deck | 0)) continue;
     if (!clampTileToRoom(c[0] | 0, c[1] | 0, focusRoom)) continue;
-    out.push({ x: c[0] | 0, y: c[1] | 0, kind: c[3] | 0, delivered: c[4] | 0, required: c[5] | 0 });
+    // element 6 (material) is APPEND-ONLY — absent on old hosts → 0 (default skin).
+    out.push({ x: c[0] | 0, y: c[1] | 0, kind: c[3] | 0, delivered: c[4] | 0, required: c[5] | 0, material: c[6] | 0 });
   }
   return out;
 }
@@ -277,6 +287,42 @@ export function roomDecor(decor, focusRoom) {
   for (const d of decor) {
     if (!d || (d.deck | 0) !== (focusRoom.deck | 0)) continue;
     if (clampTileToRoom(d.x | 0, d.y | 0, focusRoom)) out.push(d);
+  }
+  return out;
+}
+
+/**
+ * The in-room wall/floor MATERIAL tiles to skin (C4). Every wall glyph ('#') inside the room rect
+ * becomes a `{tx,ty,kind:'wall',mat}` (so built partitions render with their material — default 0
+ * when absent from the sparse `materials` channel); a floor glyph ('.') is emitted ONLY when it
+ * carries a non-default material. `materials` is the decoded sparse channel [{x,y,deck,kind,mat}].
+ * PURE — never mutates its arguments.
+ * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
+ * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
+ * @param {Array<{x:number,y:number,deck:number,kind:number,mat:number}>|null} materials
+ * @returns {{tx:number,ty:number,kind:'wall'|'floor',mat:number}[]}
+ */
+export function roomMaterialTiles(frame, focusRoom, materials) {
+  const out = [];
+  if (!frame || !focusRoom || !Array.isArray(frame.cells)) return out;
+  if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
+  const matAt = new Map();
+  if (Array.isArray(materials)) {
+    for (const m of materials) {
+      if (m && (m.deck | 0) === (focusRoom.deck | 0)) matAt.set((m.x | 0) + ',' + (m.y | 0), m.mat | 0);
+    }
+  }
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
+    for (let tx = Math.max(0, rx); tx < Math.min(frame.w | 0, x1); tx++) {
+      const cell = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const code = cell[0] | 0;
+      const mat = matAt.get(tx + ',' + ty) || 0;
+      if (code === 35) out.push({ tx, ty, kind: 'wall', mat });          // '#' wall → always skinned
+      else if (code === 46 && mat) out.push({ tx, ty, kind: 'floor', mat }); // '.' floor → only if non-default
+    }
   }
   return out;
 }
