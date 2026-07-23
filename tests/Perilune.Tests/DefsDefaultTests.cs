@@ -111,7 +111,7 @@ namespace Perilune.Tests
             Assert.That(D.Wear.HotThresholdC, Is.EqualTo(35f));
             Assert.That(D.Wear.WearPerDegreeC, Is.EqualTo(0.05f));
             Assert.That(D.Wear.MaxHeatMultiplier, Is.EqualTo(3f));
-            Assert.That(D.Wear.MaintenanceWorkSeconds, Is.EqualTo(20));
+            Assert.That(D.Wear.MaintenanceWorkSeconds, Is.EqualTo(900)); // E0-2 L1 rebase (was 20)
             Assert.That(D.Wear.JuryRigCondition, Is.EqualTo(0.6f));
         }
 
@@ -140,17 +140,17 @@ namespace Perilune.Tests
             Assert.That(salvage.Input, Is.EqualTo(ItemKind.Regolith));
             Assert.That(salvage.Output, Is.EqualTo(ItemKind.Scrap));
             Assert.That(salvage.OutputCount, Is.EqualTo(2));
-            Assert.That(salvage.WorkSeconds, Is.EqualTo(20));
+            Assert.That(salvage.WorkSeconds, Is.EqualTo(600)); // E0-2 L1 rebase (was 20)
 
             var fab = D.Recipes[(int)DeviceKind.Fabricator];
             Assert.That(fab.Input, Is.EqualTo(ItemKind.Scrap));
             Assert.That(fab.InputCount, Is.EqualTo(2));
             Assert.That(fab.Output, Is.EqualTo(ItemKind.Parts));
-            Assert.That(fab.WorkSeconds, Is.EqualTo(30));
+            Assert.That(fab.WorkSeconds, Is.EqualTo(900)); // E0-2 L1 rebase (was 30)
 
             var shop = D.Recipes[(int)DeviceKind.MachineShop];
             Assert.That(shop.Output, Is.EqualTo(ItemKind.ControllerModule));
-            Assert.That(shop.WorkSeconds, Is.EqualTo(40));
+            Assert.That(shop.WorkSeconds, Is.EqualTo(1800)); // E0-2 L1 rebase (was 40)
 
             // A non-crafting kind has no recipe.
             Assert.That(D.Recipes[(int)DeviceKind.Door].Defined, Is.False);

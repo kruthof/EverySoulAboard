@@ -7,7 +7,7 @@
 # Delete or omit any line to fall back to the compiled default.
 
 [citizen]
-ticks_per_tile             = 5    # ticks to cross one tile (5 = 2 tiles/s at 10 Hz)
+ticks_per_tile             = 10   # ticks to cross one tile (10 = 1 tile/s at 10 Hz; E0-2 L1 retune, was 5)
 idle_ticks_between_wanders = 30   # idle ticks before an idle citizen wanders
 wander_radius_tiles        = 8    # E0-1: idle-wander target drawn within this Chebyshev radius
                                   #       (local dispersal near work; UNTUNED, pending A1)

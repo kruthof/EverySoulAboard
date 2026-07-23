@@ -645,8 +645,8 @@ Idle (`:54-78`): a citizen with `AutoWander && !HoldPosition && JobKind == None`
 `IdleCooldown` down and then picks a wander target via
 `PathService.TryRandomWalkableTileNear` (E0-1; was the world-wide `TryRandomWalkableTile`).
 
-`citizen.def`: `ticks_per_tile = 5` (2 tiles/s at 10 Hz), `idle_ticks_between_wanders = 30`
-(3 s), `wander_radius_tiles = 8` (E0-1; the idle-wander scope).
+`citizen.def`: `ticks_per_tile = 10` (1 tile/s at 10 Hz; E0-2 movement retune, was 5 = 2 tiles/s),
+`idle_ticks_between_wanders = 30` (3 s), `wander_radius_tiles = 8` (E0-1; the idle-wander scope).
 
 **`TryRandomWalkableTileNear` (`Path/PathService.cs`) samples up to 10 random tiles from a
 Chebyshev box of half-width `wander_radius_tiles` around the citizen (clamped to the world)
@@ -658,7 +658,7 @@ reproduces the pre-E0-1 global wander. The un-bounded `TryRandomWalkableTile` re
 `PathService` (no longer called by the sim).
 
 The pre-E0-1 global sampler produced, on the shipping slice, a mean wander leg of ~21 tiles
-(~10.7 s at `ticks_per_tile = 5`) with ~46 % of picks on a different deck — i.e. crew
+(~21 s at the E0-2 `ticks_per_tile = 10`; was ~10.7 s at the pre-E0-2 5) with ~46 % of picks on a different deck — i.e. crew
 routinely crossed the whole ship between needs. That is the ship-wide roaming E0-1's radius
 now bounds.
 
@@ -727,7 +727,7 @@ skills.** For an idle citizen:
 
 | kind | owner | lifecycle |
 |------|-------|-----------|
-| `Dig` (1) | JobSystem | path adjacent → count down `JobWorkTicks` from `DigWorkTicks = 60` (6 s, `:28`) → `SetWall(0)`, `SetFloor(Floor)`, clear `Designated`, `Rooms.MarkDirty()`, **drop 1 `Regolith` on the tile**, publish `TileChangedEvent` (`ProgressDig`, `:491-523`) |
+| `Dig` (1) | JobSystem | path adjacent → count down `JobWorkTicks` from `DigWorkTicks = 6000` (600 s; E0-2 L1 rebase, was 60/6 s; the const is `Jobs/Sources/DigJobSource.cs:19`, surfaced as `JobSystem.DigWorkTicks`) → `SetWall(0)`, `SetFloor(Floor)`, clear `Designated`, `Rooms.MarkDirty()`, **drop 1 `Regolith` on the tile**, publish `TileChangedEvent` (`DigJobSource.Progress`) |
 | `HaulPickup` (2) | JobSystem | walk to the reserved item; on arrival pick a reachable free stockpile tile **before** touching carry state, then graduate the reservation into a carry and become `HaulDeliver` (`:525-565`) |
 | `HaulDeliver` (3) | JobSystem | carried item's `Pos` is glued to the carrier every tick; on arrival (or path loss) the stack is set down where the citizen stands (`:567-589`) |
 | `Eat` (4) | **SustenanceSystem** | §4.5 |
@@ -780,9 +780,9 @@ Recipes (`recipes.def`, `input in_count → output out_count, work_s`):
 
 | station | recipe |
 |---------|--------|
-| `SalvageRecycler` | 1 `Regolith` → 2 `Scrap`, 20 s |
-| `Fabricator` | 2 `Scrap` → 1 `Parts`, 30 s |
-| `MachineShop` | 2 `Parts` → 1 `ControllerModule`, 40 s |
+| `SalvageRecycler` | 1 `Regolith` → 2 `Scrap`, 600 s (E0-2 L1 rebase, was 20 s) |
+| `Fabricator` | 2 `Scrap` → 1 `Parts`, 900 s (E0-2, was 30 s) |
+| `MachineShop` | 2 `Parts` → 1 `ControllerModule`, 1800 s (E0-2, was 40 s) |
 
 "Staged" is forgiving: any ground stack of the input kind on **any** 4-neighbour of the
 station counts. The only filter is `item.CarriedBy != 0` — a stack **reserved** by a hauler
@@ -811,8 +811,8 @@ Costs (`build.def`, material is always `ItemKind.Regolith`, `:56`):
 
 | kind | material | construct ticks |
 |------|----------|-----------------|
-| `Wall` | `wall_material = 2` | `wall_construct_ticks = 60` (6 s) |
-| `Door` | `door_material = 1` | `door_construct_ticks = 40` (4 s) |
+| `Wall` | `wall_material = 2` | `wall_construct_ticks = 2400` (240 s; E0-2 L1 rebase, was 60/6 s) |
+| `Door` | `door_material = 1` | `door_construct_ticks = 1800` (180 s; E0-2, was 40/4 s) |
 
 `max_staged = 64` caps concurrent designations.
 
@@ -868,7 +868,8 @@ One servicer per machine, bound by `JobTarget = the machine's tile`.
 Phases are encoded in existing citizen fields (`:98-116`):
 `JobWorkTicks == 0` ⇒ logistics (fetch a `Parts` stack, or carry one over — sub-phase by
 `CarryingItemId`); `> 0` ⇒ servicing adjacent to the machine, counting down by
-`IntervalTicks (10)` per pass from `maintenance_work_seconds × 10 = 200` ticks
+`IntervalTicks (10)` per pass from `maintenance_work_seconds × 10 = 9000` ticks
+(E0-2 L1 rebase: `maintenance_work_seconds` 20→900, so the service is 900 s not 20 s)
 (`:284,319`).
 
 **The completion mode is decided by what is in the servicer's hands** (`:248-259`):
@@ -878,7 +879,7 @@ Phases are encoded in existing citizen fields (`:98-116`):
   reachable when no `Parts` existed anywhere on the ship at decision time (`:290-323`).
 
 Tunables (`wear.def`): `hot_threshold_c = 35`, `wear_per_degree_c = 0.05`,
-`max_heat_multiplier = 3`, `maintenance_work_seconds = 20`, `jury_rig_condition = 0.6`.
+`max_heat_multiplier = 3`, `maintenance_work_seconds = 900` (E0-2 L1 rebase, was 20), `jury_rig_condition = 0.6`.
 
 **Measured on the slice, 3 sim-days, no `Parts` on the ship**: 19 maintenance jobs started;
 scrubbers/reclaimers settled at `Condition ≈ 0.51`, radiators `0.55`, workstations
@@ -1032,7 +1033,7 @@ have a mind. Then per effect:
   currently `Designated` **and** `Wall == Debris`, not already worked by another living
   citizen; and an adjacent approach tile must be pathable (same `+x,−x,+y,−y` order as
   `JobSystem`). Only then does it write `JobKind.Dig`, `JobTarget`,
-  `JobWorkTicks = JobSystem.DigWorkTicks (60)` and set `JobsDirty`.
+  `JobWorkTicks = JobSystem.DigWorkTicks (6000; E0-2, was 60)` and set `JobsDirty`.
 - **`RevealInfo`** (`:156-180`): the fact must exist, not already be revealed, and be in
   `mind.KnownFactIds`.
 - **`EndConversation`** (`:182-194`): mood string ≤ 64 chars.
@@ -1672,7 +1673,7 @@ last.
 | fog reveal radius | `content/core/SimDefs/exploration.def` |
 | delta-v, transit speed, telescope detection | `content/core/SimDefs/nav.def` |
 | **job selection policy** (priorities, skills, distance metric) | `sim/Sim.Core/Jobs/JobSystem.cs:242-422` — code, no defs |
-| dig work time | `sim/Sim.Core/Jobs/JobSystem.cs:28` (`DigWorkTicks`) — code, no def |
+| dig work time | `sim/Sim.Core/Jobs/Sources/DigJobSource.cs:19` (`DigWorkTicks = 6000`; E0-2 L1 rebase) — code const, no def; `TODO(E-MINE/E3)` moves it to `mining.def` when E-MINE owns dig |
 | unreachable-target backoff | `sim/Sim.Core/Jobs/JobSystem.cs:46` (`UnreachableRetryTicks`) |
 | what the LLM may propose | `sim/Sim.Core/Effects/CitizenEffects.cs` (the record set + `EffectKind`) — spine file |
 | what the LLM may propose *right now* | `sim/Sim.Core/Effects/CapabilityComputer.cs:46-76` |

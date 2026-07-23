@@ -118,30 +118,35 @@ namespace Perilune.Tests
 
         /// <summary>
         /// EVERY job assignment the eight-crew slice ever makes, with a wall designated at boot —
-        /// all 73 of them, verbatim. This is the reordering canary: it exercises all four shipped
+        /// all 65 of them, verbatim. This is the reordering canary: it exercises all four shipped
         /// job kinds through the REAL dispatcher and asserts the observable (tick, citizen, kind,
         /// target) sequence rather than recomputing it.
         ///
-        /// RE-RECORDED FOR E0-1 (recruitability), and the change is the whole point of that lane:
-        /// this sequence WAS 66 assignments beginning at t31 and dribbling in as wandering crew
-        /// happened to fall idle. It now OPENS with all eight crew (c932–c939) taking work at
-        /// **t1** — the relaxed <see cref="Citizen.IsIdleForWork"/> gate recruits crew straight
-        /// off a wander instead of waiting for a settle gap — and saturates far sooner (the aft dig
-        /// field is worked out and the last haul lands by t3922, after which ~36 000 further ticks
-        /// produce nothing). The wander RNG stream also changed (the bounded
-        /// <c>TryRandomWalkableTileNear</c> sampler now feeds the slice's wandering crew), so every
-        /// target below is a fresh recording, not a reorder of the old one. Recorded from the
-        /// post-E0-1 build; asserted unchanged thereafter.
+        /// RE-RECORDED FOR E0-2 (work-rate rebase + movement retune), and the shift is the whole
+        /// point of that lane. Under the E0-1 recording this was 73 assignments that OPENED at t1
+        /// with all eight crew and SATURATED by t3922 — a boot-window flurry over in ~6 sim-min.
+        /// E0-2 slows the game down by design: a dig is 6 000 work ticks (was 60) and a tile is
+        /// 10 movement ticks (was 5), so the same 48-tile aft field is now worked out over the
+        /// span of a real shift. The opening is unchanged in shape — all eight crew still take
+        /// work at **t1** off the relaxed <see cref="Citizen.IsIdleForWork"/> gate — but the digs
+        /// now land in slow waves (t303, t6553, t12823, …) and the last one is assigned at
+        /// **t61493**, after which ~28 000 further ticks produce nothing (true saturation, not a
+        /// truncated prefix; measured against a 150 000-tick window before the window below was
+        /// tightened). Every tick below moved with the retune; the assignment ORDER and targets
+        /// are otherwise a re-timing of the same argmin dispatch, not a new RNG stream (durations
+        /// changed, no draw counts did). Recorded from the post-E0-2 build; asserted unchanged
+        /// thereafter.
         ///
-        /// The window (40 000 ticks, cap 400) is deliberately far past saturation, so a change
-        /// that only ADDS assignments fails on the count instead of passing on a prefix.
+        /// The window (90 000 ticks, cap 400) is deliberately far past saturation (last assignment
+        /// t61493), so a change that only ADDS assignments fails on the count instead of passing on
+        /// a prefix.
         ///
         /// NAMED MUTATION (applied, observed failing, reverted): flip <c>DigJobSource.Select</c>'s
         /// argmin from <c>&lt;</c> to <c>&lt;=</c> — the sequence diverges inside the aft dig field,
         /// where equidistant sites are common.
         ///
         /// MEASURED LIMIT, stated because it matters: swapping the Dig and Haul REGISTRATIONS does
-        /// NOT move this sequence. Nowhere in all 73 assignments is a dig site exactly as far from a
+        /// NOT move this sequence. Nowhere in all 65 assignments is a dig site exactly as far from a
         /// citizen as a haul item, so the cross-source tie never arises on the slice. That mutation
         /// is caught by <see cref="EqualDistance_DigBeatsHaul"/> instead. A recorded sequence is a
         /// good canary and a bad proof; the constructed ties below are the proof.
@@ -160,71 +165,63 @@ namespace Perilune.Tests
             "t1 c937 HaulPickup 29,6,0",
             "t1 c938 HaulPickup 31,6,0",
             "t1 c939 HaulPickup 31,6,0",
-            "t67 c939 HaulPickup 32,6,0",
-            "t87 c938 HaulPickup 32,6,0",
-            "t112 c937 HaulPickup 31,6,0",
-            "t147 c933 HaulToBuild 30,10,0",
-            "t153 c939 Dig 57,9,0",
-            "t158 c933 HaulPickup 31,10,0",
-            "t175 c933 Build 30,10,0",
-            "t353 c933 Dig 57,10,0",
-            "t378 c935 Dig 57,8,0",
-            "t378 c936 Dig 58,9,0",
-            "t578 c933 Dig 57,7,0",
-            "t578 c935 Dig 58,8,0",
-            "t578 c936 Dig 59,9,0",
-            "t578 c938 Dig 58,10,0",
-            "t578 c939 Dig 57,11,0",
-            "t643 c933 Dig 57,6,0",
-            "t643 c935 Dig 58,7,0",
-            "t643 c936 Dig 59,8,0",
-            "t648 c939 Dig 59,10,0",
-            "t682 c934 Dig 60,9,0",
-            "t708 c933 Dig 58,11,0",
-            "t708 c935 Dig 57,12,0",
-            "t732 c936 Dig 58,6,0",
-            "t732 c939 Dig 59,7,0",
-            "t763 c938 Dig 60,10,0",
-            "t788 c933 Dig 59,11,0",
-            "t788 c935 Dig 58,12,0",
-            "t807 c936 Dig 59,6,0",
-            "t807 c939 Dig 60,7,0",
-            "t833 c938 Dig 61,10,0",
-            "t852 c937 Dig 60,8,0",
-            "t853 c933 Dig 60,11,0",
-            "t853 c935 Dig 57,13,0",
-            "t872 c939 Dig 59,12,0",
-            "t898 c938 Dig 62,10,0",
-            "t914 c935 Dig 58,13,0",
-            "t918 c933 Dig 61,11,0",
-            "t962 c939 Dig 60,12,0",
-            "t963 c938 Dig 61,9,0",
-            "t972 c932 Dig 60,6,0",
-            "t979 c935 Dig 59,13,0",
-            "t983 c933 Dig 62,11,0",
-            "t1024 c938 Dig 61,8,0",
-            "t1027 c939 Dig 61,12,0",
-            "t1044 c935 Dig 60,13,0",
-            "t1048 c933 Dig 62,12,0",
-            "t1089 c938 Dig 62,9,0",
-            "t1109 c935 Dig 61,13,0",
-            "t1113 c933 Dig 62,13,0",
-            "t1150 c938 Dig 61,7,0",
-            "t1162 c937 Dig 62,8,0",
-            "t1274 c932 Dig 61,6,0",
-            "t1274 c933 Dig 62,7,0",
-            "t1374 c932 Dig 62,6,0",
-            "t1462 c932 HaulPickup 61,6,0",
-            "t1462 c933 HaulPickup 60,7,0",
-            "t1462 c935 HaulPickup 61,11,0",
-            "t1462 c937 HaulPickup 57,8,0",
-            "t1462 c938 HaulPickup 59,9,0",
-            "t3922 c933 HaulPickup 57,6,0",
-            "t3922 c934 HaulPickup 17,5,0",
-            "t3922 c935 HaulPickup 57,9,0",
-            "t3922 c937 HaulPickup 17,5,0",
-            "t3922 c938 HaulPickup 57,10,0",
-            "t3922 c939 HaulPickup 14,5,0",
+            "t132 c939 HaulPickup 32,6,0",
+            "t172 c938 HaulPickup 32,6,0",
+            "t222 c937 HaulPickup 31,6,0",
+            "t292 c933 HaulToBuild 30,10,0",
+            "t303 c939 Dig 57,9,0",
+            "t313 c933 HaulPickup 31,10,0",
+            "t345 c933 Build 30,10,0",
+            "t6553 c933 Dig 57,10,0",
+            "t6553 c935 Dig 57,8,0",
+            "t6553 c936 Dig 58,9,0",
+            "t6852 c937 HaulPickup 24,14,1",
+            "t6852 c938 HaulPickup 22,14,1",
+            "t6852 c939 HaulPickup 57,9,0",
+            "t12823 c932 Dig 57,7,0",
+            "t12823 c933 Dig 58,8,0",
+            "t12823 c935 Dig 59,9,0",
+            "t12823 c936 Dig 58,10,0",
+            "t12823 c938 Dig 57,11,0",
+            "t18833 c933 Dig 58,7,0",
+            "t18833 c935 Dig 59,8,0",
+            "t18833 c936 Dig 59,10,0",
+            "t19092 c934 Dig 60,9,0",
+            "t19093 c938 Dig 58,11,0",
+            "t19313 c932 Dig 57,6,0",
+            "t24843 c933 Dig 58,6,0",
+            "t24843 c935 Dig 59,7,0",
+            "t24843 c936 Dig 60,10,0",
+            "t25103 c938 Dig 57,12,0",
+            "t25323 c932 Dig 60,8,0",
+            "t28162 c939 Dig 61,9,0",
+            "t30853 c933 Dig 59,6,0",
+            "t30853 c935 Dig 60,7,0",
+            "t30853 c936 Dig 59,11,0",
+            "t31104 c938 Dig 58,12,0",
+            "t31353 c932 Dig 61,8,0",
+            "t36863 c933 Dig 60,6,0",
+            "t36863 c935 Dig 61,7,0",
+            "t36873 c936 Dig 60,11,0",
+            "t36942 c937 Dig 57,13,0",
+            "t37114 c938 Dig 59,12,0",
+            "t37363 c932 Dig 62,8,0",
+            "t41232 c934 Dig 62,9,0",
+            "t42873 c933 Dig 61,6,0",
+            "t42873 c935 Dig 62,7,0",
+            "t42883 c936 Dig 61,11,0",
+            "t43124 c938 Dig 58,13,0",
+            "t43373 c932 Dig 61,10,0",
+            "t48883 c933 Dig 62,6,0",
+            "t48883 c935 Dig 62,10,0",
+            "t48893 c936 Dig 60,12,0",
+            "t49125 c938 Dig 59,13,0",
+            "t49403 c932 Dig 62,11,0",
+            "t49952 c937 Dig 61,12,0",
+            "t54943 c935 Dig 60,13,0",
+            "t55443 c932 Dig 62,12,0",
+            "t56493 c936 Dig 61,13,0",
+            "t61493 c932 Dig 62,13,0",
         };
 
         [Test]
@@ -247,8 +244,10 @@ namespace Perilune.Tests
             sim.JobsDirty = JobBoardDirty.All;
 
             // 400 is a cap the scenario must not reach: hitting it would mean the run had not
-            // saturated and the "all 73" claim in the doc comment is a lie.
-            var log = RecordAssignments(sim, 40000, 400);
+            // saturated and the "all 65" claim in the doc comment is a lie. E0-2 slows every job,
+            // so the window is 90 000 ticks (last assignment lands at t61493; verified nothing
+            // more assigns out to a 150 000-tick probe).
+            var log = RecordAssignments(sim, 90000, 400);
             Assert.That(log.Count, Is.LessThan(400), "precondition: the run saturated inside the window");
 
             // The coverage assertions below prove every source's path was REACHED. They run AFTER

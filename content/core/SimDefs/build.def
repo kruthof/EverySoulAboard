@@ -7,13 +7,13 @@
 #
 # The build material is always Regolith (the debris spoil) in v0. A designation
 # stages `*_material` units at the site (hauled as JobKind.HaulToBuild), then a
-# builder spends `*_construct_ticks` work ticks (10 Hz, so 60 ticks = 6 s) to
+# builder spends `*_construct_ticks` work ticks (10 Hz, so 2400 ticks = 240 s) to
 # raise it (JobKind.Build). A completed Wall seals its tile and the atmosphere
 # sim reflows/pressurizes the new compartment; a completed Door spawns a device.
 
 [build]
 wall_material         = 2     # Regolith units a Wall stages before it can build
-wall_construct_ticks  = 60    # work ticks to raise a Wall once materialed (6 s)
+wall_construct_ticks  = 2400  # work ticks to raise a Wall once materialed (240 s; E0-2 L1 rebase, was 60)
 door_material         = 1     # Regolith units a Door stages before it can build
-door_construct_ticks  = 40    # work ticks to hang a Door once materialed (4 s)
+door_construct_ticks  = 1800  # work ticks to hang a Door once materialed (180 s; E0-2 L1 rebase, was 40)
 max_staged            = 64    # cap on concurrent pending designations (queue guard)

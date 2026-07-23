@@ -44,7 +44,23 @@ namespace Perilune.Tests
             foreach (var s in baseStack)
                 if (s is BuildSystem b) { build = b; break; }
             Assert.That(build, Is.Not.Null, "BuildSystem must be registered in SystemStack.CreateDefault");
-            return baseStack;
+            // E0-2: drop NeedsSystem. The work-rate rebase makes a wall 2400 ticks (was 60), and
+            // a lone crew in these unpressurized micro-maps suffocates in ~900 ticks — the old
+            // tests only passed by finishing the build before death. Suffocation is orthogonal to
+            // the build/haul/seal mechanics under test; AtmosphereSystem stays, so FullLoop's
+            // seal→pressurize is unaffected. Slice-level tests keep the full stack and its
+            // survival model (GenSimHost on the authored, life-supported ship).
+            return DropNeedsSystem(baseStack);
+        }
+
+        /// <summary>Return the stack without its <see cref="NeedsSystem"/> (suffocation/needs
+        /// death), so a mechanic test can run past the E0-2 work durations without the crew
+        /// dying in an unpressurized micro-map. See AugmentedStack for the rationale.</summary>
+        private static ISimSystem[] DropNeedsSystem(ISimSystem[] stack)
+        {
+            var kept = new List<ISimSystem>(stack.Length);
+            foreach (var s in stack) if (!(s is NeedsSystem)) kept.Add(s);
+            return kept.ToArray();
         }
 
         private static Simulation NewSim(string[] map, ulong seed, out BuildSystem build, SimDefs defs = null)
@@ -102,7 +118,8 @@ namespace Perilune.Tests
             sim.Rooms.RecomputeIfDirty(sim); // rooms are derived on the first tick — force it to read now
             bool wasVacuumBeforeSeal = sim.Rooms.RoomAt(sim.World, new Int3(3, 1, 0)) == sim.Rooms.Rooms[0];
 
-            for (int t = 0; t < 2000 && build.Pending.Count > 0; t++)
+            // E0-2: WallConstructTicks 60→2400 (plus haul/travel), so the budget is widened.
+            for (int t = 0; t < 6000 && build.Pending.Count > 0; t++)
             {
                 sim.Tick();
                 completions.AddRange(sim.Events.Read<ConstructionCompletedEvent>().ToArray());
@@ -142,7 +159,8 @@ namespace Perilune.Tests
             Assert.That(build.Designate(sim, doorPos, BuildKind.Door), Is.True);
 
             var completions = new List<ConstructionCompletedEvent>();
-            for (int t = 0; t < 2000 && build.Pending.Count > 0; t++)
+            // E0-2: DoorConstructTicks 40→1800 (plus haul/travel), so the budget is widened.
+            for (int t = 0; t < 5000 && build.Pending.Count > 0; t++)
             {
                 sim.Tick();
                 completions.AddRange(sim.Events.Read<ConstructionCompletedEvent>().ToArray());
@@ -234,7 +252,8 @@ namespace Perilune.Tests
             // Run until a builder is mid-construction (materialed, progress started).
             int guard = 0;
             Citizen builder = sim.Citizens.Items[0];
-            while (guard++ < 3000 &&
+            // E0-2: WallConstructTicks 60→2400 + slower movement, so widen the reach-mid-build guard.
+            while (guard++ < 6000 &&
                    !(builder.JobKind == JobKind.Build && builder.JobWorkTicks < sim.Defs.Build.WallConstructTicks
                      && builder.JobWorkTicks > 0))
                 sim.Tick();
@@ -254,8 +273,10 @@ namespace Perilune.Tests
             Assert.That(loadedBuild.TryGet(StubSite, out var lp), Is.True);
             Assert.That(lp.Delivered, Is.EqualTo(pend.Delivered));
 
-            // Both resume identically and both finish the same wall.
-            for (int t = 0; t < 400; t++) { sim.Tick(); loaded.Tick(); }
+            // Both resume identically and both finish the same wall. E0-2: WallConstructTicks
+            // 60→2400, and mid-build can be caught right after the countdown starts, so allow
+            // the full construct time to elapse.
+            for (int t = 0; t < 2800; t++) { sim.Tick(); loaded.Tick(); }
             Assert.That(loaded.StateHash(), Is.EqualTo(sim.StateHash()), "resumed sims stay bit-identical");
             Assert.That(sim.World.GetWall(StubSite), Is.EqualTo(TileDefs.Wall));
             Assert.That(loaded.World.GetWall(StubSite), Is.EqualTo(TileDefs.Wall));
@@ -352,7 +373,8 @@ namespace Perilune.Tests
                 sim.AddCitizen("Test", new Int3(3, 2, 0));
                 sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0)); // only two units available
                 build.Designate(sim, StubSite, BuildKind.Wall);
-                for (int t = 0; t < 2000 && build.Pending.Count > 0; t++) sim.Tick();
+                // E0-2: WallConstructTicks 60→2400 (plus haul/travel), so the budget is widened.
+                for (int t = 0; t < 6000 && build.Pending.Count > 0; t++) sim.Tick();
                 return sim.World.GetWall(StubSite) == TileDefs.Wall;
             }
 

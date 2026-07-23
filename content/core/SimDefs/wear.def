@@ -14,5 +14,5 @@
 hot_threshold_c          = 35     # degC — above this, wear accelerates...
 wear_per_degree_c        = 0.05   # ...by 5% per degC over threshold...
 max_heat_multiplier      = 3      # ...capped at 3x
-maintenance_work_seconds = 20     # s of service at the machine (parts or not)
+maintenance_work_seconds = 900    # s of service at the machine (parts or not; E0-2 L1 rebase, was 20)
 jury_rig_condition       = 0.6    # Condition after a parts-less repair

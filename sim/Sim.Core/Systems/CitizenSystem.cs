@@ -10,13 +10,14 @@ namespace Perilune.Sim
         public string Name => "Citizens";
         public int IntervalTicks => 1;
 
-        /// <summary>2 tiles/s at 10 Hz — brisk walk on 1 m tiles. Reads the compiled
-        /// DEFAULT — retained only for the frozen Game.View DISPLAY path (IsoWorldPresenter
-        /// interpolates movement with it and has no <c>SimDefs</c> in scope). Every
-        /// determinism read is migrated: CitizenSystem.Tick and Citizen.StartPath both take
-        /// <c>sim.Defs.Citizen.TicksPerTile</c> (B4; SimDefs.CreateDefault mirrors this
-        /// const), so no sim cadence flows through this const.</summary>
-        public const int TicksPerTile = 5;
+        /// <summary>1 tile/s at 10 Hz — a measured walk on 1 m tiles (E0-2 movement retune,
+        /// was 5 = 2 tiles/s). Reads the compiled DEFAULT — retained only for the frozen
+        /// Game.View DISPLAY path (IsoWorldPresenter interpolates movement with it and has no
+        /// <c>SimDefs</c> in scope). Every determinism read is migrated: CitizenSystem.Tick
+        /// and Citizen.StartPath both take <c>sim.Defs.Citizen.TicksPerTile</c> (B4;
+        /// SimDefs.CreateDefault mirrors this const), so no sim cadence flows through this
+        /// const.</summary>
+        public const int TicksPerTile = 10;
 
         // IdleTicksBetweenWanders (30) now lives in sim.Defs.Citizen (SimDefs.Default
         // reproduces it). Tick reads both movement scalars each pass so parallel sims
