@@ -157,9 +157,14 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `494ad0b05a154ccb` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `a53d8505013dc25d` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `0f66ffdf9f90f766`; the slice tick-3000 golden is `994aa1ac661aa1cc`. (The three B-bugs
+  `9b834cffc232ce7f`; the slice tick-3000 golden is `9d43bf3d6fa13d2a`. (The wall-drag +
+  authoritative-materials feature moved all three off the `494ad0b05a154ccb` /
+  `0f66ffdf9f90f766` / `994aa1ac661aa1cc` base: **S1** added a per-tile `World.Material`
+  byte plane folded last into `HashInto` — an all-zero fold, zero behaviour change; **S2**
+  (build material + `BuildKind.Floor`) was pin-neutral, the defs checksum unmoved at
+  `81ae90bdd049f745`.) (The three B-bugs
   B-1/B-2/B-3 all move pins off the same base and land together; these three literals plus the
   defs checksum are set to their combined measured values by the integration re-pin commit.)
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
