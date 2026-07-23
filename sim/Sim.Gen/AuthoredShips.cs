@@ -713,6 +713,150 @@ namespace Perilune.Gen
             return null;
         }
 
+        // =====================================================================
+        // Grid ship — PeriluneGrid()  (--ship grid)
+        // =====================================================================
+        // A multi-deck ship laid out on a clean 8-slot-per-deck lattice (a 2×4 grid of
+        // uniform compartments around a central horizontal spine corridor), carved by
+        // SlotGridPlanner. Distinct from Perilune()/PeriluneSlice() in every respect —
+        // its own seed, its own 45×18×8 envelope, its own method — so it perturbs none
+        // of their pinned hashes or portrait keys. Purpose: give the warm SVG Overview/
+        // Room-Zoom a real slot-grid ship to drive.
+        //
+        // ALL eight decks are present from boot. Two are furnished (deck 0 fully, deck 1
+        // partly); the rest are 8-slot grids of EMPTY HALLS — real compartments (floor +
+        // walls + a door) the player builds out, not void. Empty halls boot sealed and
+        // airless; the furnished decks' rooms + spines boot pressurised. The crew is under
+        // strict player control (HoldPosition), stationed on the pressurised, life-supported
+        // lower deck, so no one ever wanders into an unbuilt vacuum hall.
+
+        /// <summary>The grid ship's own seed — a DISTINCT identity from Perilune (20260718)
+        /// and the slice (20260721).</summary>
+        public const ulong GridSeed = 20260723UL;
+
+        public const int GridWidth = SlotGridPlanner.Width;   // 45
+        public const int GridHeight = SlotGridPlanner.Height; // 18
+        public const int GridDepth = 8;
+
+        public static ShipPlan PeriluneGrid()
+        {
+            var plan = new ShipPlan { Name = "MSV Perilune (grid)", Seed = GridSeed };
+
+            // Deck 0 — fully furnished: all eight room types the player starts with.
+            var deck0 = new[]
+            {
+                Slot(RoomType.Quarters,    "quarters"),
+                Slot(RoomType.Mess,        "mess"),
+                Slot(RoomType.Medbay,      "medbay"),
+                Slot(RoomType.Hydro,       "hydro"),
+                Slot(RoomType.Reactor,     "reactor"),
+                Slot(RoomType.LifeSupport, "lifesupport"),
+                Slot(RoomType.Workshop,    "workshop"),
+                Slot(RoomType.Storage,     "storage"),
+            };
+            // Deck 1 — partly furnished: four typed rooms interleaved with four empty halls.
+            var deck1 = new[]
+            {
+                Slot(RoomType.Command,     "command"),
+                Slot(RoomType.Commons,     "commons"),
+                Slot(RoomType.Engineering, "engineering"),
+                Hall(1, 3),
+                Slot(RoomType.Fabrication, "fabrication"),
+                Hall(1, 5),
+                Hall(1, 6),
+                Hall(1, 7),
+            };
+
+            var canvases = new GridCanvas[GridDepth];
+            var rects = new System.Collections.Generic.Dictionary<string, BandPlanner.Rect>[GridDepth];
+            for (int z = 0; z < GridDepth; z++)
+            {
+                var canvas = new GridCanvas(GridWidth, GridHeight, '#');
+                var slots = z == 0 ? deck0 : z == 1 ? deck1 : EmptyDeck(z);
+                rects[z] = SlotGridPlanner.Carve(canvas, plan, z, slots, $"grid_spine_{z}");
+                canvases[z] = canvas;
+            }
+
+            plan.DeckRows = new string[GridDepth][];
+            for (int z = 0; z < GridDepth; z++) plan.DeckRows[z] = canvases[z].ToRows();
+
+            // ---------------------------------------------------------------- power
+            // Full conduit trays on the two active decks; vertical adjacency turns every
+            // shared column into a riser, so the deck-0 reactor feeds deck 1's machines.
+            AddConduits(plan, canvases[0], 0);
+            AddConduits(plan, canvases[1], 1);
+
+            // ----------------------------------------------------- room outfitting
+            RoomOutfitter.Reactor(plan, rects[0]["reactor"], 0);
+            RoomOutfitter.LifeSupport(plan, rects[0]["lifesupport"], 0);
+            RoomOutfitter.Hydro(plan, rects[0]["hydro"], 0);
+            RoomOutfitter.Mess(plan, rects[0]["mess"], 0);
+            RoomOutfitter.Light(plan, rects[0]["quarters"], 0, "light_quarters");
+            RoomOutfitter.Light(plan, rects[0]["medbay"], 0, "light_medbay");
+            RoomOutfitter.Light(plan, rects[0]["workshop"], 0, "light_workshop");
+            RoomOutfitter.Light(plan, rects[0]["storage"], 0, "light_storage");
+
+            RoomOutfitter.Engineering(plan, rects[1]["engineering"], 1);
+            RoomOutfitter.Fabrication(plan, rects[1]["fabrication"], 1);
+            RoomOutfitter.Light(plan, rects[1]["command"], 1, "light_command");
+            RoomOutfitter.Light(plan, rects[1]["commons"], 1, "light_commons");
+
+            // Spine life support + lights on the two active decks. The crew stand in the
+            // deck-0 spine, a large air mass (spine + eight open-door rooms) with grow-bed
+            // O2 and a corridor scrubber, so three held crew breathe easily for days.
+            Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, 0, "scrubber_spine_0");
+            plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, 0), Name = "vent_spine_0", IsOpen = true });
+            Dev(plan, DeviceKind.Light, 20, SlotGridPlanner.SpineY1, 0, "light_spine_0");
+            Dev(plan, DeviceKind.Light, 20, SlotGridPlanner.SpineY1, 1, "light_spine_1");
+
+            // ------------------------------------------------------- ladder trunk
+            // One vertical trunk at the spine centre column links all eight decks for
+            // pathing (a Ladder at every deck's (LadderX, SpineY0)).
+            for (int z = 0; z < GridDepth; z++)
+                Dev(plan, DeviceKind.Ladder, SlotGridPlanner.LadderX, SlotGridPlanner.SpineY0, z, $"ladder_d{z}");
+
+            // ------------------------------------------------------------- people
+            // Strict player control (HoldPosition) — they move only on direct orders, and
+            // so never path into an unbuilt vacuum hall.
+            plan.Citizens.Add(new CitizenSpec { Name = "Halloran", Pos = new Int3(8, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
+            plan.Citizens.Add(new CitizenSpec { Name = "Vega",     Pos = new Int3(18, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
+            plan.Citizens.Add(new CitizenSpec { Name = "Sato",     Pos = new Int3(30, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
+
+            // -------------------------------------------------------- opening stock
+            var storage = rects[0]["storage"];
+            plan.Items.Add(new ItemSpec { Kind = ItemKind.Potato, Count = 8, Pos = new Int3(storage.X0 + 1, storage.CenterY, 0), Label = "grid rations" });
+
+            // ---------------------------------------------------- starting state
+            // Pressurise the two active decks (furnished rooms + spine). The empty halls
+            // stay vacuum — sealed, unbuilt volume the player pressurises as they build out.
+            foreach (var a in new[]
+            {
+                "quarters", "mess", "medbay", "hydro", "reactor", "lifesupport", "workshop", "storage", "grid_spine_0",
+                "command", "commons", "engineering", "fabrication", "grid_spine_1",
+            })
+                plan.PressurizedAnchors.Add(a);
+
+            // Furnish every typed room by rule (empty halls / corridors are skipped).
+            RoomDresser.Dress(plan);
+
+            return plan;
+        }
+
+        private static SlotGridPlanner.SlotAssign Slot(RoomType type, string anchor) =>
+            new SlotGridPlanner.SlotAssign { Type = type, Anchor = anchor };
+
+        /// <summary>An empty hall: a real compartment with its own anchor but no room type
+        /// and no furniture, for the player to build out.</summary>
+        private static SlotGridPlanner.SlotAssign Hall(int z, int index) =>
+            new SlotGridPlanner.SlotAssign { Type = RoomType.None, Anchor = $"hall_d{z}_s{index}" };
+
+        private static SlotGridPlanner.SlotAssign[] EmptyDeck(int z)
+        {
+            var slots = new SlotGridPlanner.SlotAssign[SlotGridPlanner.SlotCount];
+            for (int i = 0; i < slots.Length; i++) slots[i] = Hall(z, i);
+            return slots;
+        }
+
         // ------------------------------------------------------------ small helpers
 
         private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name) =>

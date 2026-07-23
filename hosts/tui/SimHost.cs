@@ -9,7 +9,7 @@ namespace Perilune.Tui
     /// <summary>Which authored ship the hosts boot. Default is the shipping 2-crew Perilune
     /// (the pinned-golden / CI path); <see cref="Slice"/> is the P2 "Talking Ship" 8-crew
     /// vertical slice, selected with <c>--ship slice</c> and never seen by CI.</summary>
-    public enum ShipChoice { Perilune, Slice }
+    public enum ShipChoice { Perilune, Slice, Grid }
 
     /// <summary>
     /// The headless boot of the shipping ship — the terminal/web skins' equivalent of
@@ -77,7 +77,10 @@ namespace Perilune.Tui
 
         /// <summary>The default seed for a given ship choice (so a host with no --seed boots the
         /// right identity per ship).</summary>
-        public static ulong DefaultSeedFor(ShipChoice ship) => ship == ShipChoice.Slice ? SliceSeed : DefaultSeed;
+        public static ulong DefaultSeedFor(ShipChoice ship) =>
+            ship == ShipChoice.Slice ? SliceSeed :
+            ship == ShipChoice.Grid ? AuthoredShips.GridSeed :
+            DefaultSeed;
 
         /// <summary>
         /// Build the shipping sim. <paramref name="layoutPath"/> overrides layout
@@ -95,7 +98,10 @@ namespace Perilune.Tui
             var registry = new DeviceRegistry();
             var moss = new ScriptRuntime(registry);
 
-            var plan = ship == ShipChoice.Slice ? AuthoredShips.PeriluneSlice() : AuthoredShips.Perilune();
+            var plan =
+                ship == ShipChoice.Slice ? AuthoredShips.PeriluneSlice() :
+                ship == ShipChoice.Grid ? AuthoredShips.PeriluneGrid() :
+                AuthoredShips.Perilune();
             plan.Seed = seed;
 
             // Data-driven tuning (step mirrored from Bootstrap.LoadDefs / ScenarioRunner):
@@ -112,10 +118,13 @@ namespace Perilune.Tui
             // DeviceLayout.json is a hand-tuned artefact of the SHIPPING Perilune (it yaws
             // that ship's doors); the slice ships its own authored positions and never takes
             // the overlay, so its canonical boot needs no file at all.
-            string resolved = ship == ShipChoice.Slice ? null : (layoutPath ?? ResolveLayoutPath());
-            if (ship == ShipChoice.Slice)
+            // The DeviceLayout.json overlay is a hand-tuned artefact of the SHIPPING Perilune
+            // (it yaws that ship's doors). The slice and the grid ship carry their own authored
+            // positions and never take the overlay.
+            string resolved = ship != ShipChoice.Perilune ? null : (layoutPath ?? ResolveLayoutPath());
+            if (ship != ShipChoice.Perilune)
             {
-                host.LayoutChecksum = "none"; // authored slice positions; no overlay
+                host.LayoutChecksum = "none"; // authored positions; no overlay
             }
             else if (resolved != null && File.Exists(resolved))
             {

@@ -34,6 +34,37 @@ namespace Perilune.Gen
 
         public readonly List<GoalSpec> Goals = new List<GoalSpec>();
         public readonly List<ScriptSpec> Scripts = new List<ScriptSpec>();
+
+        /// <summary>
+        /// AUTHORING/VIEW-ONLY slot grid — the per-deck 2×4 compartment layout the warm
+        /// SVG Overview/Room-Zoom consume via the <c>decks</c> wire channel (geometry +
+        /// binding + roomType per slot). This is a PLAN-LEVEL field: it is NEVER copied
+        /// into World/ZLevel state, a save chapter, or <c>World.HashInto</c>, and — like
+        /// every other <see cref="ShipPlan"/> field — the plan itself is never serialized
+        /// (a plan is a pure function of author/seed; saves persist the BUILT world). It
+        /// therefore moves NO determinism hash. <see cref="SlotGridPlanner"/> fills it as
+        /// it carves each deck; ships that use no slot grid (Perilune/PeriluneSlice) leave
+        /// it empty. The host's future <c>BuildDecks()</c> reads it for slot geometry, and
+        /// derives <c>occupied</c>/<c>active</c>/blanked <c>anchorName</c> from live
+        /// <see cref="RoomState"/> (never from this field).
+        /// </summary>
+        public readonly List<SlotDescriptor> SlotGrid = new List<SlotDescriptor>();
+    }
+
+    /// <summary>One 2×4 slot of a deck's compartment grid — the authoring source for a
+    /// <c>decks</c> wire SlotTuple. View/authoring-only: not saved, not hashed (see
+    /// <see cref="ShipPlan.SlotGrid"/>). <paramref name="X"/>/<paramref name="Y"/>/
+    /// <paramref name="W"/>/<paramref name="H"/> is the slot's tile rect in frame/click
+    /// space (wall-inclusive compartment window). <see cref="Anchor"/> joins to the
+    /// room's <c>RoomAnchor.Name</c> (and the MOSS namespace); an unfurnished hall carries
+    /// its own anchor with <see cref="RoomType.None"/>.</summary>
+    public struct SlotDescriptor
+    {
+        public int Deck;
+        public int Index;   // 0..7, row-major over the 2×4 grid (0..3 top, 4..7 bottom)
+        public int X, Y, W, H;
+        public string Anchor;
+        public RoomType Type;
     }
 
     /// <summary>A named, typed room anchor (the MOSS namespace + template key).</summary>
