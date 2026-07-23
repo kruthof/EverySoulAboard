@@ -1,0 +1,368 @@
+<!--
+  IMPORTED DESIGN MOCKUP — Perilune Ship Overview (Level 1), "Warm" concept.
+  Source: Garvin's claude.ai/design project "Perilune UI design concepts"
+  (project cb4b6b0f-fb4b-4f84-8bf6-bdc14a967fdf, file "Perilune Game UI - Warm.dc.html"),
+  imported 2026-07-22 via the claude_design MCP.
+
+  READ AS A SPEC, NOT A LIVE PAGE. It is a Design-Component runtime file (sc-for loops,
+  {{bindings}}, a DCLogic class at the bottom holding mock state/data) and pulls a
+  vorsatz-design-system bundle + support.js that are NOT vendored here. The center ship
+  is drawn live from the DCLogic `data`/`renderVals`, not a screenshot.
+
+  WHAT IT DEFINES (the Level-1 "Ship Overview" target):
+  - Full-bleed deep-navy space with low-opacity nebula washes + deterministic stars.
+  - A hull silhouette (SVG) with two engine glows, fore/aft nacelle triangles, and a
+    BRIDGE nub, containing a 2x4 grid of ROOM compartments + a horizontal SPINE corridor.
+  - Rooms are material-tinted floors (wood plank / grow-matting / steel-tan grid / cream
+    tile) with an inset amber TOP TRIM-LIGHT (box-shadow inset 0 4px 0 <amber>), inner
+    shadow, chunky furniture, and a soft amber radial GLOW-POOL (mix-blend screen).
+  - Front-facing chunky pawns (16x24 viewBox SVG) walk the floors: ground shadow, hair/
+    skin/uniform rects, amber rim-light down the left side, bob animation, surname tag.
+  - Floating blur-glass HUD (.hud = rgba(18,14,10,.62)+blur(10px)+hairline amber border):
+      * top-left status: MSV PERILUNE · DECK 2 · HABITATION & DRIVE · DAY 212 · 06:41
+      * top-right: pause/run chip, 1x speed chip, blinking "CAUTION · CO2" chip
+      * left CREW WATCH dock (6 souls): avatar chip + surname + role + morale bar; click=select
+      * right SELECTED readout: bust + name/role/room, trait chips, "> task", memory line,
+        CURRENT ROOM atmos box (O2/CO2/temp/power), [T] TALK / [M] MOVE / [B] BIO
+      * bottom-left LENS row: none/pressure/O2/CO2/temp/power
+      * bottom-center command bar: PLACE palette (wall/door/bunk/console/scrubber/hydro
+        tray/light/demolish) + menu tabs BUILD/REFIT/ORDERS/CREW/RELATIONS/SHIP/MOSS/NAV/CHRONICLE
+      * bottom-right SENSOR LOG (last 3)
+  - Interactions: click a room floor while a build tool is armed -> place a 26px ghost on a
+    26px grid; click a pawn -> select; click a ghost with DEMOLISH -> remove.
+
+  IMPLEMENTATION NOTE (per the approved plan): this is realized as a PURE SVG/DOM view
+  (client/src/ui/overview-view.js + overview-model.js), driven by the live wire
+  (frame + roster + new view-only decks/rooms channels), NOT as a static picture and NOT
+  by reskinning the WebGL tile renderer. The 2x4 grid maps onto the new 8-slot grid ship.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+<style>
+  body{margin:0;background:#05060c}a{color:#e8934a}a:hover{color:#f2b563}
+  svg.pawn{shape-rendering:auto;display:block}
+  @keyframes plnBlink{0%,60%{opacity:1}70%,100%{opacity:.25}}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+  @keyframes tw{0%,100%{opacity:.3}50%{opacity:1}}
+  @keyframes eflick{0%,100%{opacity:.75}50%{opacity:1}}
+  .hud{background:rgba(18,14,10,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(232,147,74,.16);box-shadow:0 10px 34px rgba(0,0,0,.5);}
+</style>
+</helmet>
+<div data-screen-label="Immersive sim view" style="position:relative;width:1920px;height:1000px;margin:0 auto;overflow:hidden;font-family:'Space Mono',monospace;color:#b3aa9c;background:radial-gradient(150% 120% at 60% 30%,#141a2b 0%,#0a0c16 50%,#05060c 100%);">
+
+  <!-- ===== FULL-BLEED SPACE ===== -->
+  <div style="position:absolute;left:-6%;top:8%;width:52%;height:90%;border-radius:50%;background:radial-gradient(circle,rgba(90,70,150,.16),transparent 65%);pointer-events:none;"></div>
+  <div style="position:absolute;right:-8%;bottom:-24%;width:48%;height:80%;border-radius:50%;background:radial-gradient(circle,rgba(40,120,130,.12),transparent 65%);pointer-events:none;"></div>
+  <div style="position:absolute;left:38%;top:-22%;width:44%;height:62%;border-radius:50%;background:radial-gradient(circle,rgba(180,90,60,.09),transparent 65%);pointer-events:none;"></div>
+  <!-- galaxy -->
+  <div style="position:absolute;right:12%;top:9%;width:190px;height:74px;transform:rotate(-22deg);border-radius:50%;background:radial-gradient(ellipse at center,rgba(255,240,220,.9) 0%,rgba(232,181,120,.5) 18%,rgba(150,120,180,.2) 45%,transparent 72%);pointer-events:none;filter:blur(.5px);"></div>
+  <!-- stars -->
+  <sc-for list="{{starsD}}" as="s" hint-placeholder-count="0">
+    <div style="position:absolute;left:{{s.x}}%;top:{{s.y}}%;width:{{s.s}}px;height:{{s.s}}px;border-radius:50%;background:{{s.c}};box-shadow:{{s.glow}};animation:tw {{s.d}}s ease-in-out infinite;animation-delay:{{s.delay}}s;pointer-events:none;"></div>
+  </sc-for>
+
+  <!-- ===== SHIP (centered, floating) ===== -->
+  <div onClick="{{mapClickD}}" style="position:absolute;left:310px;top:172px;width:1300px;height:561px;cursor:crosshair;">
+    <svg width="1300" height="561" viewBox="0 0 1300 561" style="position:absolute;left:0;top:0;pointer-events:none;overflow:visible;">
+      <ellipse cx="70" cy="230" rx="72" ry="34" fill="rgba(232,134,60,.5)" style="filter:blur(3px);"></ellipse>
+      <ellipse cx="70" cy="330" rx="72" ry="34" fill="rgba(232,134,60,.5)" style="filter:blur(3px);"></ellipse>
+      <path d="M540 150 L660 74 L860 150 Z" fill="#1f2830" stroke="#33414d" stroke-width="2"></path>
+      <path d="M540 411 L660 487 L860 411 Z" fill="#1f2830" stroke="#33414d" stroke-width="2"></path>
+      <g stroke="rgba(232,147,74,.3)" stroke-width="1.5">
+        <line x1="600" y1="132" x2="700" y2="96"></line><line x1="660" y1="140" x2="740" y2="108"></line>
+        <line x1="600" y1="429" x2="700" y2="465"></line><line x1="660" y1="421" x2="740" y2="453"></line>
+      </g>
+      <rect x="24" y="196" width="86" height="68" rx="10" fill="#232d36" stroke="#39424c" stroke-width="2"></rect>
+      <rect x="24" y="296" width="86" height="68" rx="10" fill="#232d36" stroke="#39424c" stroke-width="2"></rect>
+      <circle cx="34" cy="230" r="20" fill="#e8863c" style="animation:eflick 1.4s ease-in-out infinite;"></circle>
+      <circle cx="34" cy="330" r="20" fill="#e8863c" style="animation:eflick 1.4s ease-in-out infinite;animation-delay:.5s;"></circle>
+      <circle cx="34" cy="230" r="10" fill="#ffe6b0"></circle>
+      <circle cx="34" cy="330" r="10" fill="#ffe6b0"></circle>
+      <path d="M150 168 C 420 132 860 132 1070 158 Q 1180 172 1274 280 Q 1180 389 1070 403 C 860 429 420 429 150 393 Q 96 384 92 344 L 92 217 Q 96 177 150 168 Z" fill="#28323d" stroke="#3f4e5c" stroke-width="3"></path>
+      <g stroke="rgba(0,0,0,.28)" stroke-width="2" fill="none">
+        <path d="M150 262 L1120 262"></path><path d="M150 300 L1120 300"></path>
+        <path d="M340 150 L340 410"></path><path d="M700 146 L700 414"></path>
+      </g>
+      <path d="M160 172 C 420 138 860 138 1065 163" fill="none" stroke="rgba(242,181,99,.4)" stroke-width="2"></path>
+      <g><circle cx="300" cy="141" r="2.6" fill="#f2b563"></circle><circle cx="520" cy="135" r="2.6" fill="#f2b563"></circle><circle cx="760" cy="137" r="2.6" fill="#f2b563"></circle><circle cx="980" cy="147" r="2.6" fill="#f2b563"></circle></g>
+      <path d="M1090 210 Q 1210 250 1250 280 Q 1210 310 1090 350 Z" fill="#1a222b" stroke="#3f4e5c" stroke-width="2"></path>
+      <path d="M1110 232 Q 1195 258 1222 280 Q 1195 302 1110 328 Z" fill="#12202e" stroke="rgba(122,180,220,.35)" stroke-width="1.5"></path>
+      <circle cx="1150" cy="270" r="1.4" fill="#cfe0ff"></circle><circle cx="1175" cy="288" r="1.2" fill="#cfe0ff"></circle>
+      <text x="1120" y="284" fill="rgba(122,180,220,.5)" font-family="Space Mono, monospace" font-size="9" letter-spacing="1">BRIDGE</text>
+    </svg>
+
+    <sc-for list="{{roomsD}}" as="r" hint-placeholder-count="9">
+      <div style="position:absolute;left:{{r.l}}px;top:{{r.t}}px;width:{{r.w}}px;height:{{r.h}}px;background:{{r.bg}};box-shadow:inset 0 4px 0 {{r.trim}},inset 0 0 20px rgba(0,0,0,.3),inset 0 0 0 1px rgba(0,0,0,.35);box-sizing:border-box;border-radius:2px;pointer-events:none;">
+        <div style="font-size:8.5px;letter-spacing:.12em;color:{{r.label}};padding:4px 6px;">{{r.name}}</div>
+      </div>
+    </sc-for>
+    <sc-for list="{{furnD}}" as="f" hint-placeholder-count="0">
+      <div style="position:absolute;left:{{f.x}}px;top:{{f.y}}px;width:{{f.w}}px;height:{{f.h}}px;border-radius:{{f.r}}px;background:{{f.bg}};box-shadow:{{f.sh}};pointer-events:none;"></div>
+    </sc-for>
+    <sc-for list="{{glowD}}" as="g" hint-placeholder-count="0">
+      <div style="position:absolute;left:{{g.x}}px;top:{{g.y}}px;width:{{g.w}}px;height:{{g.h}}px;border-radius:50%;background:radial-gradient(circle,{{g.c}},transparent 70%);mix-blend-mode:screen;pointer-events:none;"></div>
+    </sc-for>
+    <sc-for list="{{ghostsD}}" as="g" hint-placeholder-count="0">
+      <div onClick="{{g.on}}" style="position:absolute;left:{{g.x}}px;top:{{g.y}}px;width:26px;height:26px;box-sizing:border-box;border:1.5px dashed #f2b563;background:rgba(232,147,74,.22);color:#f2b563;font-size:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;">{{g.label}}</div>
+    </sc-for>
+    <sc-for list="{{pawnsD}}" as="p" hint-placeholder-count="6">
+      <div onClick="{{p.on}}" title="{{p.name}}" style="position:absolute;left:{{p.x}}px;top:{{p.y}}px;width:32px;height:48px;margin:-40px 0 0 -16px;cursor:pointer;z-index:5;">
+        <div style="position:absolute;left:50%;bottom:-3px;transform:translateX(-50%);width:34px;height:34px;border-radius:50%;background:radial-gradient(circle,{{p.selGlow}},transparent 70%);"></div>
+        <svg class="pawn" width="32" height="48" viewBox="0 0 16 24" style="position:relative;animation:bob 3.4s ease-in-out infinite;animation-delay:{{p.delay}}s;">
+          <ellipse cx="8" cy="23" rx="6" ry="1.3" fill="rgba(0,0,0,.4)"></ellipse>
+          <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="{{p.hair}}"></rect>
+          <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="{{p.skin}}"></rect>
+          <rect x="4" y="4" width="1" height="6" fill="{{p.hair}}"></rect>
+          <rect x="11" y="4" width="1" height="6" fill="{{p.hair}}"></rect>
+          <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect>
+          <rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+          <rect x="4" y="10" width="8" height="1" fill="{{p.accent}}"></rect>
+          <rect x="3.8" y="10.6" width="8.4" height="6.6" rx="1.8" fill="{{p.hue}}"></rect>
+          <rect x="2" y="11.2" width="2.4" height="5" rx="1.1" fill="{{p.hue}}"></rect>
+          <rect x="11.6" y="11.2" width="2.4" height="5" rx="1.1" fill="{{p.hue}}"></rect>
+          <rect x="11" y="11" width="1" height="6" fill="rgba(0,0,0,.16)"></rect>
+          <rect x="2" y="16" width="2" height="1" fill="{{p.skin}}"></rect>
+          <rect x="12" y="16" width="2" height="1" fill="{{p.skin}}"></rect>
+          <rect x="5" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect>
+          <rect x="8.1" y="17" width="2.9" height="5" rx="1" fill="#2b2018"></rect>
+          <rect x="5" y="21" width="3" height="1" fill="#16100b"></rect>
+          <rect x="8" y="21" width="3" height="1" fill="#16100b"></rect>
+          <rect x="4" y="4" width="1" height="13" fill="rgba(242,181,99,.4)"></rect>
+        </svg>
+        <div style="position:absolute;left:50%;top:-11px;transform:translateX(-50%);font-size:7.5px;letter-spacing:.06em;color:{{p.tagC}};background:rgba(12,10,8,.72);padding:1px 4px;border-radius:2px;white-space:nowrap;">{{p.surname}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- ===== FLOATING HUD ===== -->
+  <!-- top-left status -->
+  <div class="hud" style="position:absolute;left:26px;top:22px;display:flex;align-items:center;gap:16px;padding:9px 16px;border-radius:11px;font-size:11px;letter-spacing:.1em;">
+    <span style="color:#cf7a33;font-weight:700;">MSV PERILUNE</span>
+    <span style="color:#57503f;">DECK 2 · HABITATION &amp; DRIVE</span>
+    <span style="color:#b3aa9c;">DAY 212 · 06:41</span>
+  </div>
+  <!-- top-right controls -->
+  <div style="position:absolute;right:26px;top:22px;display:flex;align-items:center;gap:8px;">
+    <span onClick="{{togglePauseD}}" class="hud" style="cursor:pointer;padding:8px 12px;border-radius:9px;font-size:11px;color:{{pauseColD}};">{{pauseLabelD}}</span>
+    <span class="hud" style="padding:8px 12px;border-radius:9px;font-size:11px;color:#8c8377;">1×</span>
+    <span class="hud" style="padding:8px 14px;border-radius:9px;font-size:11px;background:rgba(58,42,18,.72);color:#e8934a;font-weight:700;animation:plnBlink 1.6s infinite;border-color:rgba(232,147,74,.4);">CAUTION · CO₂</span>
+  </div>
+
+  <!-- left crew dock -->
+  <div class="hud" style="position:absolute;left:26px;top:96px;width:236px;padding:12px;border-radius:14px;display:flex;flex-direction:column;gap:7px;">
+    <div style="font-size:10px;letter-spacing:.18em;color:#57503f;padding:0 2px 2px;">CREW WATCH — 6 SOULS</div>
+    <sc-for list="{{crewD}}" as="c" hint-placeholder-count="6">
+      <div onClick="{{c.on}}" style="display:flex;gap:9px;align-items:center;padding:7px;border:1px solid {{c.bdA}};border-radius:8px;background:{{c.bgA}};cursor:pointer;">
+        <div style="position:relative;width:40px;height:40px;border-radius:6px;overflow:hidden;background:radial-gradient(circle at 50% 30%,#2a2018,#12100d);box-shadow:inset 0 0 0 1px rgba(232,147,74,.18);flex:none;">
+          <div style="position:absolute;left:0;right:0;bottom:0;height:14px;background:radial-gradient(circle at 50% 100%,rgba(242,181,99,.35),transparent 70%);"></div>
+          <svg class="pawn" width="40" height="50" viewBox="0 0 16 20" style="position:absolute;left:0;top:5px;">
+            <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="{{c.hair}}"></rect>
+            <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="{{c.skin}}"></rect>
+            <rect x="4" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+            <rect x="11" y="4" width="1" height="6" fill="{{c.hair}}"></rect>
+            <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect>
+            <rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+            <rect x="4" y="10" width="8" height="1" fill="{{c.accent}}"></rect>
+            <rect x="3" y="11" width="10" height="9" rx="2" fill="{{c.hue}}"></rect>
+            <rect x="4" y="4" width="1" height="16" fill="rgba(242,181,99,.4)"></rect>
+          </svg>
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:11px;color:#e8dcc9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{c.surname}}</div>
+          <div style="font-size:8.5px;color:#8c8377;text-transform:uppercase;letter-spacing:.08em;">{{c.role}}</div>
+          <div style="height:3px;background:rgba(43,36,28,.8);border-radius:2px;margin-top:4px;"><div style="height:3px;border-radius:2px;width:{{c.moraleW}};background:{{c.moraleC}};"></div></div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- right readout card -->
+  <div class="hud" style="position:absolute;right:26px;top:96px;width:298px;padding:16px;border-radius:14px;display:flex;flex-direction:column;gap:10px;font-size:11px;">
+    <div style="font-size:10px;letter-spacing:.18em;color:#57503f;">SELECTED</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="position:relative;width:52px;height:52px;border-radius:8px;overflow:hidden;background:radial-gradient(circle at 50% 30%,#2a2018,#12100d);box-shadow:inset 0 0 0 1px {{selD.hue}};flex:none;">
+        <div style="position:absolute;left:0;right:0;bottom:0;height:18px;background:radial-gradient(circle at 50% 100%,rgba(242,181,99,.4),transparent 70%);"></div>
+        <svg class="pawn" width="52" height="65" viewBox="0 0 16 20" style="position:absolute;left:0;top:7px;">
+          <rect x="4" y="2" width="8" height="3.4" rx="1.6" fill="{{selD.hair}}"></rect>
+          <rect x="4.7" y="3.8" width="6.6" height="6.4" rx="2.2" fill="{{selD.skin}}"></rect>
+          <rect x="4" y="4" width="1" height="6" fill="{{selD.hair}}"></rect>
+          <rect x="11" y="4" width="1" height="6" fill="{{selD.hair}}"></rect>
+          <rect x="6" y="7" width="1" height="1" fill="#2a201a"></rect>
+          <rect x="9" y="7" width="1" height="1" fill="#2a201a"></rect>
+          <rect x="4" y="10" width="8" height="1" fill="{{selD.accent}}"></rect>
+          <rect x="3" y="11" width="10" height="9" rx="2" fill="{{selD.hue}}"></rect>
+          <rect x="4" y="4" width="1" height="16" fill="rgba(242,181,99,.4)"></rect>
+        </svg>
+      </div>
+      <div>
+        <div style="color:#f2b563;font-size:14px;font-weight:700;">{{selD.name}}</div>
+        <div style="color:#8c8377;text-transform:uppercase;letter-spacing:.1em;font-size:9.5px;margin-top:3px;">{{selD.role}} · {{selD.room}}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <sc-for list="{{selD.traits}}" as="t" hint-placeholder-count="3"><span style="border:1px solid #3a332a;border-radius:3px;padding:2px 7px;font-size:9.5px;color:#b3aa9c;">{{t}}</span></sc-for>
+    </div>
+    <div style="border-top:1px dashed #2b241c;padding-top:9px;color:#e8dcc9;">&gt; {{selD.task}}</div>
+    <div style="color:#8c8377;font-size:10.5px;line-height:1.6;">{{selD.mem}}</div>
+    <div style="border:1px solid #2b241c;border-radius:8px;padding:9px;background:rgba(16,13,10,.6);display:flex;flex-direction:column;gap:5px;">
+      <div style="font-size:9px;letter-spacing:.16em;color:#57503f;">CURRENT ROOM · {{selD.room}}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;"><span style="color:#8c8377;">ATMOS</span><span style="color:#6fc09a;">{{selD.o2}} O₂ · {{selD.co2}} CO₂</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;"><span style="color:#8c8377;">TEMP · POWER</span><span style="color:#f2b563;">{{selD.temp}} · {{selD.pwr}}</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="border:1px solid #cf7a33;color:#f2b563;text-align:center;padding:7px;border-radius:6px;cursor:pointer;">[T] OPEN CHANNEL — TALK</div>
+      <div style="display:flex;gap:6px;">
+        <div style="flex:1;border:1px solid #3a332a;text-align:center;padding:7px;border-radius:6px;cursor:pointer;color:#b3aa9c;">[M] MOVE</div>
+        <div style="flex:1;border:1px solid #3a332a;text-align:center;padding:7px;border-radius:6px;cursor:pointer;color:#b3aa9c;">[B] BIO</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- bottom-left lens -->
+  <div class="hud" style="position:absolute;left:26px;bottom:24px;padding:10px 12px;border-radius:12px;">
+    <div style="font-size:9px;letter-spacing:.16em;color:#57503f;margin-bottom:7px;">LENS</div>
+    <div style="display:flex;gap:6px;">
+      <sc-for list="{{lensBtnsD}}" as="b" hint-placeholder-count="6">
+        <div onClick="{{b.on}}" style="min-width:42px;text-align:center;padding:7px 6px;border-radius:6px;font-size:10.5px;cursor:pointer;background:{{b.bg}};color:{{b.fg}};border:1px solid {{b.bd}};">{{b.label}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- bottom-center command bar -->
+  <div style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;">
+    <div class="hud" style="display:{{paletteDd}};gap:7px;align-items:center;padding:8px 12px;border-radius:11px;">
+      <span style="font-size:9px;letter-spacing:.16em;color:#57503f;flex:none;">PLACE ▸</span>
+      <sc-for list="{{buildItemsD}}" as="b" hint-placeholder-count="8">
+        <div onClick="{{b.on}}" style="padding:7px 12px;border-radius:6px;font-size:10.5px;cursor:pointer;background:{{b.bg}};color:{{b.fg}};border:1px solid {{b.bd}};">{{b.label}}</div>
+      </sc-for>
+    </div>
+    <div class="hud" style="display:flex;gap:6px;padding:9px 11px;border-radius:12px;">
+      <sc-for list="{{menuTabsD}}" as="m" hint-placeholder-count="9">
+        <div onClick="{{m.on}}" style="padding:9px 15px;border-radius:8px;font-size:11px;letter-spacing:.08em;cursor:pointer;background:{{m.bg}};color:{{m.fg}};border:1px solid {{m.bd}};">{{m.label}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- bottom-right sensor log -->
+  <div class="hud" style="position:absolute;right:26px;bottom:24px;width:340px;padding:12px 14px;border-radius:12px;font-size:10px;line-height:1.7;color:#8c8377;">
+    <div style="font-size:9px;letter-spacing:.16em;color:#57503f;margin-bottom:6px;">SENSOR LOG — LAST 3</div>
+    <div><span style="color:#e8934a;">06:38</span> co2.quarters 740 ppm ↑ (scrubber #2 at 61%)</div>
+    <div><span style="color:#8c8377;">06:12</span> nav.contact K-114 reacquired, SNR 8.2</div>
+    <div><span style="color:#8c8377;">05:50</span> reactor.pump P-2 bearing temp +2.1 K</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1920, &quot;height&quot;: 1000}}">
+class Component extends DCLogic {
+  state = { selD: 'dmitri', menuD: 'build', toolD: 'wall', placedD: [], pausedD: false, lensD: 'none' };
+
+  get data() {
+    if (this._d) return this._d;
+    const rooms = [
+      { id:'reactor', name:'REACTOR', l:205,t:168,w:150,h:96, bg:'#9a7c52', line:'#8e7049', mat:'wood', trim:'rgba(232,147,74,.6)', label:'rgba(50,35,20,.7)', o2:'20.6%', co2:'500', temp:'41°C', pwr:'NOMINAL' },
+      { id:'hydro', name:'HYDROPONICS', l:370,t:168,w:175,h:96, bg:'#8a9857', line:'#7e8c4d', mat:'grow', trim:'rgba(232,147,74,.4)', label:'rgba(30,35,20,.7)', o2:'21.3%', co2:'480', temp:'22°C', pwr:'NOMINAL' },
+      { id:'mess', name:'MESS HALL', l:560,t:168,w:175,h:96, bg:'#c2894e', line:'#b57e45', mat:'wood', trim:'rgba(232,147,74,.5)', label:'rgba(50,35,20,.7)', o2:'20.7%', co2:'610', temp:'23°C', pwr:'NOMINAL' },
+      { id:'med', name:'MED BAY', l:750,t:168,w:160,h:96, bg:'#d8c39c', line:'#cdb891', mat:'cream', trim:'rgba(90,159,212,.4)', label:'rgba(40,45,55,.7)', o2:'20.4%', co2:'740', temp:'24°C', pwr:'BROWNOUT' },
+      { id:'corr', name:'SPINE', l:190,t:270,w:930,h:30, bg:'#9c8763', line:'#917c59', mat:'grid', trim:'rgba(232,147,74,.35)', label:'rgba(45,38,25,.6)', o2:'20.5%', co2:'560', temp:'20°C', pwr:'NOMINAL' },
+      { id:'lifesup', name:'LIFE SUPPORT', l:205,t:306,w:150,h:96, bg:'#a08a63', line:'#95805a', mat:'grid', trim:'rgba(232,147,74,.4)', label:'rgba(45,38,25,.65)', o2:'20.9%', co2:'430', temp:'19°C', pwr:'NOMINAL' },
+      { id:'hold', name:'MAIN HOLD', l:370,t:306,w:175,h:96, bg:'#a1875c', line:'#957c52', mat:'wood', trim:'rgba(232,147,74,.4)', label:'rgba(45,38,25,.65)', o2:'20.2%', co2:'650', temp:'17°C', pwr:'BROWNOUT' },
+      { id:'galley', name:'GALLEY', l:560,t:306,w:175,h:96, bg:'#c8935a', line:'#bd8850', mat:'wood', trim:'rgba(232,147,74,.5)', label:'rgba(50,35,20,.7)', o2:'20.8%', co2:'520', temp:'21°C', pwr:'NOMINAL' },
+      { id:'quarters', name:'QUARTERS', l:750,t:306,w:160,h:96, bg:'#bd9066', line:'#b08659', mat:'wood', trim:'rgba(232,147,74,.5)', label:'rgba(50,35,20,.7)', o2:'20.4%', co2:'740', temp:'24°C', pwr:'BROWNOUT' },
+    ];
+    const bg = r => {
+      if (r.mat === 'grow') return `radial-gradient(rgba(60,90,40,.5) 2px,transparent 3px) 0 0/16px 16px, ${r.bg}`;
+      if (r.mat === 'grid') return `linear-gradient(rgba(0,0,0,.14) 1px,transparent 1px) 0 0/26px 26px, linear-gradient(90deg,rgba(0,0,0,.14) 1px,transparent 1px) 0 0/26px 26px, ${r.bg}`;
+      if (r.mat === 'cream') return `linear-gradient(rgba(0,0,0,.08) 1px,transparent 1px) 0 0/24px 24px, linear-gradient(90deg,rgba(0,0,0,.08) 1px,transparent 1px) 0 0/24px 24px, ${r.bg}`;
+      return `repeating-linear-gradient(90deg,${r.bg} 0 42px,${r.line} 42px 45px)`;
+    };
+    rooms.forEach(r => r.bgcss = bg(r));
+    const crew = [
+      { id:'dmitri', name:'Dmitri Volkov', surname:'VOLKOV', role:'Reactor watch', hue:'#cf7a33', accent:'#f2b563', hair:'#c9b89a', skin:'#d8b48c', morale:60, room:'REACTOR', roomId:'reactor', task:'Inspecting coolant pump P-2', traits:['stoic','sardonic','haunted'], mem:'Remembers: the brownout on Day 148 — he was the only one on watch.', x:280, y:256 },
+      { id:'amara', name:'Amara Okoye', surname:'OKOYE', role:'Quartermaster', hue:'#5aa77f', accent:'#8fd0aa', hair:'#0f0b08', skin:'#6b4327', morale:82, room:'MESS HALL', roomId:'mess', task:"Writing the day's chronicle entry", traits:['warm','meticulous','stubborn'], mem:'Remembers: naming the mess hall after the vote on Day 91.', x:647, y:256 },
+      { id:'reyes', name:'Reyes Calderón', surname:'CALDERÓN', role:'Engineer', hue:'#c25a3f', accent:'#e8845f', hair:'#2a1c12', skin:'#c99a6a', morale:71, room:'LIFE SUPPORT', roomId:'lifesup', task:'Patching CO₂ scrubber #2', traits:['restless','inventive'], mem:"Remembers: Halvorsen teaching him her airlock script, line by line.", x:280, y:394 },
+      { id:'sana', name:'Sana Qadir', surname:'QADIR', role:'Medic', hue:'#e8934a', accent:'#f2b563', hair:'#1a120c', skin:'#9a6440', morale:55, room:'MED BAY', roomId:'med', task:'Inventorying med stores', traits:['gentle','insomniac'], mem:'Remembers: losing Halvorsen on the table, Day 209.', x:830, y:256 },
+      { id:'teo', name:'Teo Brandt', surname:'BRANDT', role:'Hydroponicist', hue:'#b5652a', accent:'#e0a054', hair:'#7a5230', skin:'#caa074', morale:77, room:'HYDROPONICS', roomId:'hydro', task:'Thinning the barley trays', traits:['cheerful','homesick'], mem:'Remembers: the first barley harvest, Day 205. Everyone clapped.', x:457, y:256 },
+      { id:'wren', name:'Wren Ashby', surname:'ASHBY', role:'Apprentice', hue:'#8c8377', accent:'#c4bbab', hair:'#3a2a1a', skin:'#caa074', morale:64, room:'MAIN HOLD', roomId:'hold', task:"Reading Halvorsen's dead scripts", traits:['curious','anxious'], mem:'Remembers: her first EVA — Volkov held the tether the whole time.', x:457, y:394 },
+    ];
+    const CONS = 'linear-gradient(#333d47,#232b33)';
+    const SCRN = 'linear-gradient(#0e3a44,#0b2a32)';
+    const SCRNg = '0 0 7px 2px rgba(90,200,220,.5)';
+    const AMBRs = 'linear-gradient(#3a2a10,#2a1e0c)';
+    const AMBRg = '0 0 8px 2px rgba(232,147,74,.5)';
+    const DESK = 'linear-gradient(#7a5c38,#5f4527)';
+    const GREEN = 'repeating-linear-gradient(90deg,#5f8a3a 0 11px,#4f7a30 11px 20px)';
+    const furnByRoom = {
+      reactor: [ {dx:18,dy:26,w:64,h:56,r:9,bg:'radial-gradient(circle at 50% 40%,#e8863c,#8a3a1f)',sh:'inset 0 0 0 3px #39424c,0 0 22px 6px rgba(232,134,60,.5)'}, {dx:24,dy:66,w:56,h:11,r:2,bg:AMBRs,sh:AMBRg} ],
+      lifesup: [ {dx:16,dy:52,w:64,h:20,r:3,bg:'#4a5560',sh:'0 2px 4px rgba(0,0,0,.35)'}, {dx:24,dy:36,w:52,h:11,r:2,bg:AMBRs,sh:AMBRg} ],
+      hydro: [ {dx:12,dy:34,w:150,h:12,r:2,bg:GREEN,sh:'0 0 14px 3px rgba(95,138,58,.4)'}, {dx:12,dy:60,w:150,h:12,r:2,bg:GREEN,sh:'0 0 14px 3px rgba(95,138,58,.4)'} ],
+      mess: [ {dx:22,dy:40,w:130,h:28,r:3,bg:'linear-gradient(#7a5334,#5f3f26)',sh:'inset 0 2px 0 rgba(242,181,99,.35),0 3px 6px rgba(0,0,0,.35)'}, {dx:22,dy:74,w:130,h:9,r:2,bg:'#5f3f26',sh:'0 2px 4px rgba(0,0,0,.3)'} ],
+      med: [ {dx:14,dy:30,w:46,h:56,r:4,bg:'#c9b083',sh:'inset 0 0 0 2px #c14a32,0 2px 5px rgba(0,0,0,.3)'}, {dx:18,dy:34,w:38,h:14,r:3,bg:'#eadfca',sh:'none'}, {dx:76,dy:34,w:34,h:20,r:3,bg:CONS,sh:'0 2px 5px rgba(0,0,0,.4)'}, {dx:80,dy:32,w:26,h:13,r:2,bg:SCRN,sh:SCRNg} ],
+      hold: [ {dx:16,dy:18,w:145,h:12,r:2,bg:'#5a442c',sh:'0 2px 4px rgba(0,0,0,.35)'}, {dx:16,dy:38,w:130,h:48,r:3,bg:DESK,sh:'0 3px 6px rgba(0,0,0,.4)'} ],
+      galley: [ {dx:12,dy:28,w:145,h:16,r:3,bg:'#6b5334',sh:'inset 0 2px 0 rgba(242,181,99,.3),0 2px 5px rgba(0,0,0,.35)'}, {dx:22,dy:52,w:44,h:30,r:3,bg:'#39424c',sh:'0 2px 5px rgba(0,0,0,.4)'}, {dx:30,dy:58,w:28,h:16,r:2,bg:'radial-gradient(circle,#f2b563,#e8863c 60%,#c14a32)',sh:'0 0 13px 4px rgba(232,134,60,.6)'} ],
+      quarters: [ {dx:12,dy:32,w:48,h:56,r:4,bg:'repeating-linear-gradient(90deg,#c14a32 0 11px,#b0402b 11px 22px)',sh:'inset 0 0 0 3px #8a6b4a,0 3px 6px rgba(0,0,0,.35)'}, {dx:16,dy:36,w:40,h:14,r:3,bg:'#eadfca',sh:'none'}, {dx:78,dy:54,w:44,h:20,r:3,bg:DESK,sh:'0 2px 5px rgba(0,0,0,.35)'}, {dx:86,dy:44,w:14,h:12,r:2,bg:'radial-gradient(circle,#f2b563,#e8863c)',sh:'0 0 12px 4px rgba(232,134,60,.5)'} ],
+    };
+    const furn = rooms.flatMap(r => (furnByRoom[r.id] || []).map(f => ({ ...f, x: r.l + f.dx, y: r.t + f.dy })));
+    const glow = rooms.filter(r => r.id !== 'corr').map(r => ({ x: r.l + 2, y: r.t - 6, w: r.w + 6, h: r.h + 30, c: r.mat === 'grow' ? 'rgba(120,150,70,.16)' : r.mat === 'cream' ? 'rgba(90,159,212,.12)' : r.id === 'reactor' ? 'rgba(232,134,60,.22)' : 'rgba(242,147,74,.14)' }));
+    const rnd = s => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
+    const cols = ['#fff','#ffe9cf','#cfe0ff','#f2d9b0','#ffffff'];
+    const stars = Array.from({ length: 220 }, (_, i) => {
+      const b = rnd(i + 0.7);
+      const s = b > 0.94 ? 3 : b > 0.8 ? 2 : 1;
+      const c = cols[Math.floor(rnd(i + 0.3) * cols.length)];
+      return { x: +(rnd(i) * 100).toFixed(2), y: +(rnd(i + 0.5) * 100).toFixed(2), s, c, glow: s >= 2 ? `0 0 ${s * 2}px ${c}` : 'none', d: +(2 + rnd(i + 0.2) * 3.5).toFixed(1), delay: +(rnd(i + 0.9) * 4).toFixed(1) };
+    });
+    this._d = { rooms, crew, furn, glow, stars };
+    return this._d;
+  }
+
+  renderVals() {
+    const { rooms, crew, furn, glow, stars } = this.data;
+    const moraleC = m => m >= 75 ? '#5aa77f' : m >= 50 ? '#cf7a33' : '#c25a3f';
+    const selD = crew.find(c => c.id === this.state.selD) || crew[0];
+    const enrich = c => ({ ...c, moraleW: c.morale + '%', moraleC: moraleC(c.morale) });
+    const tools = [ ['wall','WALL'], ['door','DOOR'], ['bunk','BUNK'], ['console','CONSOLE'], ['scrub','SCRUBBER'], ['tray','HYDRO TRAY'], ['light','LIGHT'], ['demo','⌫ DEMOLISH'] ];
+    const toolAbbr = { wall:'WA', door:'DO', bunk:'BU', console:'CO', scrub:'SC', tray:'TR', light:'LI' };
+    const menuTabs = [ ['build','BUILD'], ['refit','REFIT'], ['orders','ORDERS'], ['crew','CREW'], ['relations','RELATIONS'], ['ship','SHIP'], ['moss','MOSS'], ['nav','NAV'], ['log','CHRONICLE'] ];
+    const lenses = [ ['none','NONE'], ['pressure','PRES'], ['oxygen','O₂'], ['co2','CO₂'], ['temp','TEMP'], ['power','PWR'] ];
+    const rm = rooms.find(r => r.id === selD.roomId) || {};
+    return {
+      starsD: stars,
+      roomsD: rooms.map(r => ({ ...r, bg: r.bgcss })),
+      furnD: furn, glowD: glow,
+      pawnsD: crew.map((c, i) => ({ ...c, on: () => this.setState({ selD: c.id }), selGlow: c.id === selD.id ? 'rgba(242,181,99,.65)' : 'transparent', tagC: c.id === selD.id ? '#f2b563' : 'rgba(220,210,195,.7)', delay: (i * 0.5).toFixed(1) })),
+      selD: { ...enrich(selD), o2: rm.o2, co2: rm.co2, temp: rm.temp, pwr: rm.pwr },
+      crewD: crew.map(c => ({ ...enrich(c), on: () => this.setState({ selD: c.id }), bdA: c.id === selD.id ? '#cf7a33' : 'rgba(46,40,32,.6)', bgA: c.id === selD.id ? 'rgba(34,27,18,.8)' : 'transparent' })),
+      lensBtnsD: lenses.map(([k, label]) => ({ label, on: () => this.setState({ lensD: k }), ...(k === this.state.lensD ? { bg:'#3a2a12', fg:'#f2b563', bd:'#cf7a33' } : { bg:'rgba(26,22,17,.6)', fg:'#8c8377', bd:'#3a332a' }) })),
+      menuTabsD: menuTabs.map(([k, label]) => ({ label, on: () => this.setState({ menuD: k }), bg: k === this.state.menuD ? '#3a2a12' : 'rgba(26,22,17,.5)', fg: k === this.state.menuD ? '#f2b563' : '#8c8377', bd: k === this.state.menuD ? '#cf7a33' : '#3a332a' })),
+      buildItemsD: tools.map(([k, label]) => ({ label, on: () => this.setState({ toolD: k }), bg: k === this.state.toolD ? (k==='demo' ? '#3a1a10' : '#3a2a12') : 'transparent', fg: k === this.state.toolD ? (k==='demo' ? '#e07a5f' : '#f2b563') : '#8c8377', bd: k === this.state.toolD ? (k==='demo' ? '#a53a25' : '#cf7a33') : '#2b241c' })),
+      paletteDd: this.state.menuD === 'build' ? 'flex' : 'none',
+      menuMsgDd: this.state.menuD === 'build' ? 'none' : 'block',
+      placedCountD: this.state.placedD.length + ' QUEUED',
+      ghostsD: this.state.placedD.map((pl, i) => ({ x: pl.x, y: pl.y, label: toolAbbr[pl.t] || '?', on: (e) => { e.stopPropagation(); if (this.state.toolD === 'demo') this.setState(s => ({ placedD: s.placedD.filter((_, j) => j !== i) })); } })),
+      mapClickD: (e) => {
+        const t = this.state.toolD;
+        if (!t || t === 'demo') return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const g = 26;
+        const x = Math.max(0, Math.min(1274, Math.floor((e.clientX - rect.left) * (1300 / rect.width) / g) * g));
+        const y = Math.max(0, Math.min(535, Math.floor((e.clientY - rect.top) * (561 / rect.height) / g) * g));
+        this.setState(s => ({ placedD: [...s.placedD, { x, y, t }] }));
+      },
+      pauseLabelD: this.state.pausedD ? '► RUN' : '‖ HOLD', pauseColD: this.state.pausedD ? '#e8934a' : '#8c8377',
+      togglePauseD: () => this.setState(s => ({ pausedD: !s.pausedD })),
+    };
+  }
+}
+</script>
+</body>
+</html>

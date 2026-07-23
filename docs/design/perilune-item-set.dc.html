@@ -1,0 +1,441 @@
+<!--
+  IMPORTED DESIGN MOCKUP — Perilune Item Set (the full 60-piece warm art catalog).
+  Source: claude.ai/design project cb4b6b0f-… ("Perilune Item Set.dc.html"), imported via the
+  claude_design MCP. READ AS A SPEC, NOT A LIVE PAGE (Design-Component runtime / static canvas).
+
+  WHAT IT DEFINES — 60 placeable/buildable pieces in the PERILUNE material language (navy-steel
+  + amber trim, warm wood, cyan/amber lit screens, soft practical glows; top-down, chunky,
+  readable at tile size), each as a CSS-div / inline-SVG object on a 150x132 stage:
+    OBJECTS (30): REACTOR, SOLAR PANEL, BATTERY BANK, O2 SCRUBBER, OXYGEN TANK, WATER RECYCLER,
+      HYDROPONICS, COOKER, COOLER, PASTE DISPENSER, DINING TABLE, BUNK BED, DESK, CHAIR, LOCKER,
+      RUG, STANDING LAMP, POTTED PLANT, BOOKSHELF, MED BED, RESEARCH CONSOLE, COMMS DISH (svg),
+      SENSOR ARRAY (svg), WORKBENCH, FABRICATOR, STORAGE CRATE, BLAST DOOR, TURRET, CRYOPOD, FUEL DRUM.
+    WALLS (6): STEEL BULKHEAD, TIMBER-LINED WALL, BLAST WALL, GLASS PARTITION, INSULATED WALL, HULL PLATING.
+    FLOORS (6): STEEL-TAN, WOOD PLANK, GROW MATTING, CREAM TILE, METAL GRATING, CARPET.
+    FIXTURES (18): SLIDING DOOR, AIRLOCK, HATCH/LADDER, POWER CONDUIT, AIR VENT, PIPE RUN,
+      WALL LAMP, VIEWPORT, WALL SCREEN, SPACE HEATER, VENT FAN, SHELF RACK, SUPPLY BARREL,
+      WEAPONS RACK, SUN LAMP, HERB PLANTER, DECK SIGN, FLOODLIGHT.
+
+  IMPLEMENTATION NOTE (approved plan): this is the source geometry for a parametric SVG item
+  library (client/src/items/*), one pure builder per piece. Split:
+    - FUNCTIONAL -> existing sim DeviceKind (reactor, solar, battery, scrubber, oxygen/water
+      tank, hydroponics/growbed, cooker/stove, fabricator, workbench/machineshop, recycler,
+      bunk/bed, desk, chair, locker, plant, med bed, research console/terminal, door, airlock,
+      ladder/hatch, vent, light) -> pure re-skin, NO sim change.
+    - COSMETIC -> view-only decor layer, NEVER hashed (rug, bookshelf/shelf-rack, standing/wall
+      lamp glow, framed photo, viewport, deck sign, storage crate, fuel drum, comms dish, sensor
+      array, cryopod, turret, weapons rack, supply barrel).
+    - WALLS/FLOORS -> material tables + buildable variants.
+  No raster; no Gemini generation; WebGL renderer parked.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/vorsatz-design-system-1ad4dc7e-03ed-458b-a57d-a99da35eb860/fonts/fonts.css">
+  <style>
+    body{margin:0;background:#0a0d14;font-family:'Space Mono',monospace;}
+    a{color:#e8934a}a:hover{color:#f2b563}
+    .wrap{display:grid;grid-template-columns:repeat(6,150px);gap:20px;}
+    .item{display:flex;flex-direction:column;align-items:center;gap:8px;}
+    .stage{position:relative;width:150px;height:132px;border-radius:10px;overflow:hidden;background:radial-gradient(120% 110% at 50% 42%,#2a2018,#151009);box-shadow:inset 0 0 0 1px #2b241c,inset 0 6px 0 rgba(232,147,74,.18);}
+    .stage::before{content:"";position:absolute;inset:10px;background-image:radial-gradient(rgba(255,255,255,.045) 1px,transparent 1px);background-size:18px 18px;}
+    .lbl{font-size:10px;letter-spacing:.08em;color:#e8dcc9;text-align:center;}
+    .obj{position:absolute;left:75px;top:64px;}
+    @keyframes eflick{0%,100%{opacity:.82}50%{opacity:1}}
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+  </style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:26px;padding:52px;">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:960px;">
+    <div style="color:#e8dcc9;font-size:21px;">Colony item set — 30 objects</div>
+    <div style="color:#8c8377;font-size:11.5px;line-height:1.6;max-width:960px;">Placeable structures &amp; furniture in the PERILUNE material language: navy-steel + amber trim, warm wood, cyan/amber lit screens, soft practical glows. Top-down, chunky, readable at tile size.</div>
+  </div>
+
+  <div class="wrap">
+
+    <!-- 1 REACTOR -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#ffe6b0,#e8863c 45%,#8a3a1f);box-shadow:0 0 22px 7px rgba(232,134,60,.5),inset 0 0 0 5px #39424c;animation:eflick 1.6s ease-in-out infinite;"></div>
+    </div><div class="lbl">REACTOR</div></div>
+
+    <!-- 2 SOLAR PANEL -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:92px;height:56px;border-radius:4px;background:linear-gradient(#2f5f74,#274f61);background-image:linear-gradient(rgba(0,0,0,.35) 2px,transparent 2px),linear-gradient(90deg,rgba(0,0,0,.35) 2px,transparent 2px);background-size:22px 18px;box-shadow:inset 0 0 0 4px #d9c9a0,0 3px 8px rgba(0,0,0,.4);"></div>
+    </div><div class="lbl">SOLAR PANEL</div></div>
+
+    <!-- 3 BATTERY BANK -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);display:flex;gap:6px;">
+        <div style="width:26px;height:56px;border-radius:4px;background:linear-gradient(#3a4b5c,#28323d);box-shadow:inset 0 0 0 2px #1c242d;position:relative;"><div style="position:absolute;left:5px;bottom:5px;width:16px;height:30px;background:#5aa77f;border-radius:2px;box-shadow:0 0 8px 2px rgba(90,167,127,.4);"></div></div>
+        <div style="width:26px;height:56px;border-radius:4px;background:linear-gradient(#3a4b5c,#28323d);box-shadow:inset 0 0 0 2px #1c242d;position:relative;"><div style="position:absolute;left:5px;bottom:5px;width:16px;height:20px;background:#e8934a;border-radius:2px;box-shadow:0 0 8px 2px rgba(232,147,74,.4);"></div></div>
+      </div>
+    </div><div class="lbl">BATTERY BANK</div></div>
+
+    <!-- 4 O2 SCRUBBER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:66px;height:60px;border-radius:6px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-2px);width:40px;height:6px;background:repeating-linear-gradient(90deg,#2b3742 0 4px,#5a6672 4px 8px);border-radius:2px;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(16px);width:34px;height:11px;border-radius:2px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 8px 2px rgba(90,200,220,.4);"></div>
+    </div><div class="lbl">O₂ SCRUBBER</div></div>
+
+    <!-- 5 OXYGEN TANK -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:38px;height:70px;border-radius:19px;background:linear-gradient(90deg,#5a9fd4,#3d7fb0 55%,#2f6690);box-shadow:inset 0 0 0 3px #274f61,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-40px);width:14px;height:12px;background:#4a5560;border-radius:2px;"></div>
+    </div><div class="lbl">OXYGEN TANK</div></div>
+
+    <!-- 6 WATER RECYCLER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:66px;border-radius:6px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:34px;height:40px;border-radius:4px;background:linear-gradient(#3a86a8,#2b6a88);box-shadow:inset 0 0 8px rgba(255,255,255,.25);"></div>
+    </div><div class="lbl">WATER RECYCLER</div></div>
+
+    <!-- 7 HYDROPONICS TRAY -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:92px;height:48px;border-radius:5px;background:#5a442c;box-shadow:0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-9px);width:80px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#5f8a3a 0 11px,#4f7a30 11px 20px);box-shadow:0 0 12px 3px rgba(95,138,58,.45);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(9px);width:80px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#5f8a3a 0 11px,#4f7a30 11px 20px);box-shadow:0 0 12px 3px rgba(95,138,58,.45);"></div>
+    </div><div class="lbl">HYDROPONICS</div></div>
+
+    <!-- 8 COOKER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:66px;height:52px;border-radius:6px;background:linear-gradient(#39424c,#2a323b);box-shadow:inset 0 0 0 2px #1c242d,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateX(-14px);width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c 60%,#c14a32);box-shadow:0 0 12px 4px rgba(232,134,60,.6);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateX(16px);width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c 60%,#c14a32);box-shadow:0 0 12px 4px rgba(232,134,60,.6);"></div>
+    </div><div class="lbl">COOKER</div></div>
+
+    <!-- 9 COOLER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:52px;height:70px;border-radius:6px;background:linear-gradient(#d8e2e8,#b8c6cf);box-shadow:inset 0 0 0 3px #8fa2ad,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-10px);width:34px;height:26px;border-radius:3px;background:linear-gradient(#7fb8d8,#5a9fd4);box-shadow:inset 0 0 6px rgba(255,255,255,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(20px);width:22px;height:5px;border-radius:2px;background:#8fa2ad;"></div>
+    </div><div class="lbl">COOLER</div></div>
+
+    <!-- 10 PASTE DISPENSER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:58px;height:64px;border-radius:6px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);width:30px;height:12px;border-radius:2px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 8px 2px rgba(90,200,220,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(22px);width:40px;height:8px;border-radius:2px;background:#c9b083;"></div>
+    </div><div class="lbl">PASTE DISPENSER</div></div>
+
+    <!-- 11 DINING TABLE -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:78px;height:50px;border-radius:8px;background:linear-gradient(#7a5334,#5f3f26);box-shadow:inset 0 2px 0 rgba(242,181,99,.35),0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-52px,0);width:18px;height:18px;border-radius:50%;background:#4a3a28;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(52px,0);width:18px;height:18px;border-radius:50%;background:#4a3a28;"></div>
+    </div><div class="lbl">DINING TABLE</div></div>
+
+    <!-- 12 BUNK BED -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:56px;height:80px;border-radius:8px;background:#8a6b4a;box-shadow:0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-4px);width:48px;height:52px;border-radius:5px;background:repeating-linear-gradient(90deg,#c14a32 0 11px,#b0402b 11px 22px);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-24px);width:40px;height:16px;border-radius:4px;background:#eadfca;"></div>
+    </div><div class="lbl">BUNK BED</div></div>
+
+    <!-- 13 DESK -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:88px;height:44px;border-radius:5px;background:linear-gradient(#7a5c38,#5f4527);box-shadow:inset 0 2px 0 rgba(242,181,99,.35),0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(20px,-16px);width:30px;height:18px;border-radius:3px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 8px 2px rgba(90,200,220,.4);"></div>
+    </div><div class="lbl">DESK</div></div>
+
+    <!-- 14 CHAIR -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:44px;height:44px;border-radius:8px;background:#4a3a28;box-shadow:0 3px 6px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-22px);width:44px;height:14px;border-radius:6px;background:#5f4a30;"></div>
+    </div><div class="lbl">CHAIR</div></div>
+
+    <!-- 15 LOCKER -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:52px;height:80px;border-radius:5px;background:linear-gradient(90deg,#4a5560,#3a434d);box-shadow:inset 0 0 0 2px #2b3742,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:2px;height:80px;background:rgba(0,0,0,.45);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-8px,0);width:5px;height:12px;border-radius:2px;background:#f2b563;"></div>
+    </div><div class="lbl">LOCKER</div></div>
+
+    <!-- 16 RUG -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:96px;height:64px;border-radius:8px;background:repeating-linear-gradient(90deg,#b34a34 0 14px,#a4402d 14px 28px);box-shadow:inset 0 0 0 5px #d9b48a;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:34px;border:2px dashed rgba(217,180,138,.7);border-radius:5px;"></div>
+    </div><div class="lbl">RUG</div></div>
+
+    <!-- 17 STANDING LAMP -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-18px);width:44px;height:44px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 26px 10px rgba(232,134,60,.5);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(20px);width:6px;height:44px;background:#4a3a28;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(42px);width:26px;height:6px;border-radius:3px;background:#4a3a28;"></div>
+    </div><div class="lbl">STANDING LAMP</div></div>
+
+    <!-- 18 POTTED PLANT -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-10px);width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#6f9c48,#3f6b2a);box-shadow:0 0 18px 4px rgba(95,138,58,.35);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(30px);width:34px;height:28px;border-radius:0 0 10px 10px;background:linear-gradient(#8a5a38,#6b4527);"></div>
+    </div><div class="lbl">POTTED PLANT</div></div>
+
+    <!-- 19 BOOKSHELF -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:80px;height:66px;border-radius:5px;background:#5a442c;box-shadow:inset 0 0 0 3px #4a3822,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-14px);display:flex;gap:3px;align-items:flex-end;"><div style="width:8px;height:22px;background:#c14a32;"></div><div style="width:8px;height:26px;background:#5aa77f;"></div><div style="width:8px;height:20px;background:#e8934a;"></div><div style="width:8px;height:24px;background:#5a9fd4;"></div><div style="width:8px;height:22px;background:#c9b083;"></div><div style="width:8px;height:26px;background:#b5652a;"></div></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(14px);display:flex;gap:3px;align-items:flex-end;"><div style="width:8px;height:24px;background:#8fbf6a;"></div><div style="width:8px;height:20px;background:#e07a5f;"></div><div style="width:8px;height:26px;background:#7fb0d8;"></div><div style="width:8px;height:22px;background:#f2b563;"></div><div style="width:8px;height:24px;background:#b34a34;"></div><div style="width:8px;height:20px;background:#5f8a3a;"></div></div>
+    </div><div class="lbl">BOOKSHELF</div></div>
+
+    <!-- 20 MED BED -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:52px;height:78px;border-radius:6px;background:#c9b083;box-shadow:inset 0 0 0 3px #b39a6a,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-26px);width:36px;height:14px;border-radius:4px;background:#eadfca;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(6px);width:22px;height:5px;background:#c14a32;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(6px);width:5px;height:22px;background:#c14a32;"></div>
+    </div><div class="lbl">MED BED</div></div>
+
+    <!-- 21 RESEARCH CONSOLE -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:80px;height:52px;border-radius:6px;background:linear-gradient(#333d47,#232b33);box-shadow:0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);width:66px;height:26px;border-radius:3px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 12px 3px rgba(90,200,220,.5);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(18px);width:66px;height:8px;border-radius:2px;background:#2b3742;"></div>
+    </div><div class="lbl">RESEARCH CONSOLE</div></div>
+
+    <!-- 22 COMMS DISH -->
+    <div class="item"><div class="stage">
+      <svg class="obj" width="90" height="90" viewBox="0 0 90 90" style="transform:translate(-50%,-50%);">
+        <path d="M12 20 A40 40 0 0 1 70 40 L45 52 Z" fill="#c9b083" stroke="#8fa2ad" stroke-width="2"></path>
+        <line x1="45" y1="52" x2="52" y2="82" stroke="#3a4b5c" stroke-width="6" stroke-linecap="round"></line>
+        <circle cx="45" cy="52" r="5" fill="#e8934a"></circle>
+        <rect x="38" y="80" width="28" height="7" rx="3" fill="#3a4b5c"></rect>
+      </svg>
+    </div><div class="lbl">COMMS DISH</div></div>
+
+    <!-- 23 SENSOR ARRAY -->
+    <div class="item"><div class="stage">
+      <svg class="obj" width="88" height="88" viewBox="0 0 88 88" style="transform:translate(-50%,-50%);">
+        <circle cx="44" cy="44" r="36" fill="none" stroke="#3a4b5c" stroke-width="2"></circle>
+        <circle cx="44" cy="44" r="24" fill="none" stroke="#3a4b5c" stroke-width="2"></circle>
+        <circle cx="44" cy="44" r="12" fill="none" stroke="#3a4b5c" stroke-width="2"></circle>
+        <path d="M44 44 L44 8 A36 36 0 0 1 74 30 Z" fill="rgba(90,200,220,.25)"></path>
+        <line x1="44" y1="44" x2="74" y2="30" stroke="#5ac8dc" stroke-width="2"></line>
+        <circle cx="62" cy="26" r="3.5" fill="#e8934a" style="animation:pulse 1.4s ease-in-out infinite"></circle>
+      </svg>
+    </div><div class="lbl">SENSOR ARRAY</div></div>
+
+    <!-- 24 WORKBENCH -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:92px;height:48px;border-radius:5px;background:linear-gradient(#4a3a28,#33281b);box-shadow:inset 0 2px 0 rgba(242,181,99,.3),0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateX(-22px);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 13px 4px rgba(232,134,60,.55);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(22px,-2px);width:30px;height:8px;border-radius:2px;background:#8fa2ad;"></div>
+    </div><div class="lbl">WORKBENCH</div></div>
+
+    <!-- 25 FABRICATOR -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:70px;height:64px;border-radius:6px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(4px);width:38px;height:24px;border-radius:4px;background:radial-gradient(circle,#f2b563,#e8863c 60%,#8a3a1f);box-shadow:0 0 16px 5px rgba(232,134,60,.55);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-22px);width:16px;height:12px;background:#2b3742;"></div>
+    </div><div class="lbl">FABRICATOR</div></div>
+
+    <!-- 26 STORAGE CRATE -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:64px;height:60px;border-radius:5px;background:linear-gradient(#7a5c38,#5f4527);box-shadow:inset 0 0 0 2px #4a3822,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:64px;height:9px;background:#4a3822;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:9px;height:60px;background:#4a3822;"></div>
+    </div><div class="lbl">STORAGE CRATE</div></div>
+
+    <!-- 27 BLAST DOOR -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:78px;height:70px;border-radius:4px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 3px #2b3742,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:8px;height:70px;background:#1c242d;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-24px);width:78px;height:10px;background:repeating-linear-gradient(45deg,#e8934a 0 8px,#2b241c 8px 16px);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(24px);width:78px;height:10px;background:repeating-linear-gradient(45deg,#e8934a 0 8px,#2b241c 8px 16px);"></div>
+    </div><div class="lbl">BLAST DOOR</div></div>
+
+    <!-- 28 TURRET -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(18px);width:48px;height:26px;border-radius:8px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-4px);width:30px;height:30px;border-radius:50%;background:#3a4b5c;box-shadow:inset 0 0 0 3px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(0,-30px);width:9px;height:34px;background:#2b3742;border-radius:3px;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(0,-44px);width:9px;height:9px;border-radius:50%;background:#e8863c;box-shadow:0 0 10px 3px rgba(232,134,60,.6);"></div>
+    </div><div class="lbl">TURRET</div></div>
+
+    <!-- 29 CRYOPOD -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:48px;height:82px;border-radius:24px;background:linear-gradient(90deg,#4a5560,#38424d);box-shadow:inset 0 0 0 3px #2b3742,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:30px;height:62px;border-radius:15px;background:linear-gradient(#7fb8d8,#5a9fd4 60%,#3a86a8);box-shadow:inset 0 0 10px rgba(255,255,255,.5);"></div>
+    </div><div class="lbl">CRYOPOD</div></div>
+
+    <!-- 30 FUEL DRUM -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:48px;height:64px;border-radius:8px;background:linear-gradient(90deg,#c8935a,#a8763f 55%,#8a5f30);box-shadow:inset 0 0 0 2px #6b4a26,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);width:48px;height:12px;background:repeating-linear-gradient(45deg,#e8934a 0 7px,#2b241c 7px 14px);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(16px);width:48px;height:4px;background:rgba(0,0,0,.3);"></div>
+    </div><div class="lbl">FUEL DRUM</div></div>
+
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:960px;margin-top:26px;">
+    <div style="color:#e8dcc9;font-size:21px;">30 more — walls, floors &amp; fixtures</div>
+    <div style="color:#8c8377;font-size:11.5px;line-height:1.6;max-width:960px;">Buildable wall + floor materials (shown as tile swatches) plus structural fixtures. Same warm palette; walls carry the amber trim-light, floors show their material pattern.</div>
+  </div>
+
+  <div class="wrap">
+
+    <!-- WALLS -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:#3a4b5c;box-shadow:inset 0 5px 0 rgba(232,147,74,.5),inset 0 0 0 2px #2b3742;background-image:radial-gradient(rgba(0,0,0,.35) 1.5px,transparent 2px);background-size:20px 20px;background-position:9px 22px;"></div>
+    </div><div class="lbl">STEEL BULKHEAD</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:repeating-linear-gradient(0deg,#8a5e38 0 15px,#7a5230 15px 17px);box-shadow:inset 0 0 0 4px #5f3f26;"></div>
+    </div><div class="lbl">TIMBER-LINED WALL</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:linear-gradient(#2b3742,#232c34);box-shadow:inset 0 0 0 4px #4a5560;background-image:radial-gradient(rgba(0,0,0,.45) 2px,transparent 3px);background-size:26px 26px;background-position:13px 13px;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-34px);width:106px;height:14px;background:repeating-linear-gradient(45deg,#e8934a 0 9px,#2b241c 9px 18px);"></div>
+    </div><div class="lbl">BLAST WALL</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:linear-gradient(135deg,rgba(90,200,220,.28),rgba(90,159,212,.12));box-shadow:inset 0 0 0 5px #4a5560,inset 0 0 22px rgba(255,255,255,.18);"></div>
+    </div><div class="lbl">GLASS PARTITION</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:#4a5560;background-image:linear-gradient(rgba(0,0,0,.18) 2px,transparent 2px),linear-gradient(90deg,rgba(0,0,0,.18) 2px,transparent 2px);background-size:24px 24px;box-shadow:inset 0 0 0 3px #38424d;"></div>
+    </div><div class="lbl">INSULATED WALL</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:6px;background:#28323d;box-shadow:inset 0 0 0 2px #1c242d;background-image:linear-gradient(90deg,rgba(0,0,0,.3) 2px,transparent 2px),radial-gradient(rgba(0,0,0,.35) 1.5px,transparent 2px);background-size:35px 100%,20px 20px;background-position:0 0,10px 10px;"></div>
+    </div><div class="lbl">HULL PLATING</div></div>
+
+    <!-- FLOORS -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:#9c8763;background-image:linear-gradient(rgba(0,0,0,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.16) 1px,transparent 1px);background-size:22px 22px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);"></div>
+    </div><div class="lbl">STEEL-TAN FLOOR</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:repeating-linear-gradient(90deg,#c2894e 0 21px,#b57e45 21px 23px);box-shadow:inset 0 0 0 1px rgba(0,0,0,.22),inset 0 6px 14px rgba(0,0,0,.14);"></div>
+    </div><div class="lbl">WOOD PLANK FLOOR</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:#8a9857;background-image:radial-gradient(rgba(60,90,40,.55) 2px,transparent 3px);background-size:15px 15px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.22);"></div>
+    </div><div class="lbl">GROW MATTING</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:#d8c39c;background-image:linear-gradient(rgba(0,0,0,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.1) 1px,transparent 1px);background-size:26px 26px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);"></div>
+    </div><div class="lbl">CREAM TILE FLOOR</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:#6e6656;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.3) 0 2px,transparent 2px 9px),radial-gradient(rgba(0,0,0,.4) 1.5px,transparent 2px);background-size:100% 9px,18px 18px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3);"></div>
+    </div><div class="lbl">METAL GRATING</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:106px;height:94px;border-radius:5px;background:repeating-linear-gradient(90deg,#b34a34 0 11px,#a4402d 11px 22px);box-shadow:inset 0 0 0 5px #d9b48a;"></div>
+    </div><div class="lbl">CARPET FLOOR</div></div>
+
+    <!-- FIXTURES -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:96px;height:70px;border-radius:5px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 3px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:6px;height:70px;background:#e8934a;box-shadow:0 0 10px 3px rgba(232,147,74,.5);"></div>
+    </div><div class="lbl">SLIDING DOOR</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 5px #2b3742,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:46px;height:46px;border-radius:50%;background:#2a323b;box-shadow:inset 0 0 0 3px #1c242d;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:52px;height:6px;background:#e8934a;box-shadow:0 0 8px 2px rgba(232,147,74,.4);"></div>
+    </div><div class="lbl">AIRLOCK</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:64px;height:74px;border-radius:4px;background:#2a323b;box-shadow:inset 0 0 0 4px #4a5560;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);display:flex;flex-direction:column;gap:8px;"><div style="width:40px;height:5px;background:#8fa2ad;border-radius:2px;"></div><div style="width:40px;height:5px;background:#8fa2ad;border-radius:2px;"></div><div style="width:40px;height:5px;background:#8fa2ad;border-radius:2px;"></div></div>
+    </div><div class="lbl">HATCH / LADDER</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:96px;height:14px;border-radius:7px;background:#2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateX(-30px);width:12px;height:12px;border-radius:50%;background:#e8934a;box-shadow:0 0 10px 3px rgba(232,147,74,.55);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#e8934a;box-shadow:0 0 10px 3px rgba(232,147,74,.55);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateX(30px);width:12px;height:12px;border-radius:50%;background:#e8934a;box-shadow:0 0 10px 3px rgba(232,147,74,.55);"></div>
+    </div><div class="lbl">POWER CONDUIT</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:72px;height:56px;border-radius:5px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:56px;height:40px;background:repeating-linear-gradient(0deg,#2b3742 0 5px,#5a6672 5px 9px);border-radius:3px;"></div>
+    </div><div class="lbl">AIR VENT</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:96px;height:16px;border-radius:8px;background:linear-gradient(#5a6672,#3a434d);box-shadow:inset 0 2px 0 rgba(255,255,255,.12);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-24px,18px);width:16px;height:34px;border-radius:6px;background:linear-gradient(90deg,#5a6672,#3a434d);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(30px,-16px);width:16px;height:30px;border-radius:6px;background:linear-gradient(90deg,#5a6672,#3a434d);"></div>
+    </div><div class="lbl">PIPE RUN</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(14px);width:22px;height:34px;border-radius:4px;background:#4a5560;box-shadow:inset 0 0 0 2px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-14px);width:52px;height:34px;border-radius:26px 26px 6px 6px;background:radial-gradient(circle at 50% 80%,#f2b563,#e8863c);box-shadow:0 0 26px 9px rgba(232,134,60,.55);"></div>
+    </div><div class="lbl">WALL LAMP</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:90px;height:64px;border-radius:8px;background:radial-gradient(circle at 40% 35%,#1c3a52,#0c1a26);box-shadow:0 0 0 6px #3a4b5c,inset 0 0 16px rgba(0,0,0,.7);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-18px,-10px);width:3px;height:3px;border-radius:50%;background:#fff;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(20px,8px);width:2px;height:2px;border-radius:50%;background:#ffe9cf;"></div>
+    </div><div class="lbl">VIEWPORT</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:92px;height:60px;border-radius:5px;background:#232b33;box-shadow:inset 0 0 0 3px #3a4b5c,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:76px;height:44px;border-radius:3px;background:linear-gradient(#0e3a44,#0b2a32);box-shadow:0 0 14px 3px rgba(90,200,220,.5);"></div>
+    </div><div class="lbl">WALL SCREEN</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:64px;border-radius:6px;background:linear-gradient(#4a5560,#38424d);box-shadow:inset 0 0 0 2px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);display:flex;flex-direction:column;gap:6px;"><div style="width:40px;height:7px;border-radius:3px;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 10px 2px rgba(232,134,60,.5);"></div><div style="width:40px;height:7px;border-radius:3px;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 10px 2px rgba(232,134,60,.5);"></div><div style="width:40px;height:7px;border-radius:3px;background:radial-gradient(circle,#f2b563,#e8863c);box-shadow:0 0 10px 2px rgba(232,134,60,.5);"></div></div>
+    </div><div class="lbl">SPACE HEATER</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:76px;height:76px;border-radius:8px;background:#38424d;box-shadow:inset 0 0 0 3px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:conic-gradient(#5a6672 0 25%,#3a434d 0 50%,#5a6672 0 75%,#3a434d 0);box-shadow:inset 0 0 0 3px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#8fa2ad;"></div>
+    </div><div class="lbl">VENT FAN</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:88px;height:76px;border-radius:5px;background:#4a5560;box-shadow:inset 0 0 0 3px #38424d,0 3px 7px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-18px);display:flex;gap:6px;"><div style="width:22px;height:16px;background:#c8935a;border-radius:2px;"></div><div style="width:22px;height:16px;background:#7a5c38;border-radius:2px;"></div><div style="width:22px;height:16px;background:#c14a32;border-radius:2px;"></div></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(16px);display:flex;gap:6px;"><div style="width:22px;height:16px;background:#5aa77f;border-radius:2px;"></div><div style="width:22px;height:16px;background:#c8935a;border-radius:2px;"></div><div style="width:22px;height:16px;background:#5a9fd4;border-radius:2px;"></div></div>
+    </div><div class="lbl">SHELF RACK</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:48px;height:64px;border-radius:8px;background:linear-gradient(90deg,#5a9fd4,#3d7fb0 55%,#2f6690);box-shadow:inset 0 0 0 2px #274f61,0 3px 8px rgba(0,0,0,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);width:48px;height:10px;background:repeating-linear-gradient(45deg,#cfe0ff 0 7px,#274f61 7px 14px);"></div>
+    </div><div class="lbl">SUPPLY BARREL</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:88px;height:60px;border-radius:5px;background:#38424d;box-shadow:inset 0 0 0 3px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%);display:flex;gap:8px;align-items:center;">
+        <div style="width:6px;height:44px;background:#8fa2ad;border-radius:2px;"></div><div style="width:6px;height:44px;background:#8fa2ad;border-radius:2px;"></div><div style="width:6px;height:44px;background:#8fa2ad;border-radius:2px;"></div><div style="width:6px;height:44px;background:#8fa2ad;border-radius:2px;"></div>
+      </div>
+    </div><div class="lbl">WEAPONS RACK</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-16px);width:70px;height:40px;border-radius:8px 8px 4px 4px;background:radial-gradient(circle at 50% 90%,#fff6d8,#f2b563 55%,#e8863c);box-shadow:0 0 30px 12px rgba(255,220,150,.55);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(20px);width:8px;height:40px;background:#4a5560;"></div>
+    </div><div class="lbl">SUN LAMP</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(16px);width:44px;height:30px;border-radius:0 0 8px 8px;background:linear-gradient(#8a5a38,#6b4527);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-14px);width:50px;height:44px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#6f9c48,#3f6b2a);box-shadow:0 0 16px 4px rgba(95,138,58,.35);"></div>
+    </div><div class="lbl">HERB PLANTER</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(20px);width:6px;height:40px;background:#4a5560;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);width:80px;height:34px;border-radius:5px;background:linear-gradient(#3a2a12,#2a1e0c);box-shadow:inset 0 0 0 2px #cf7a33;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-8px);color:#f2b563;font:700 15px 'Space Mono',monospace;">2 ▸</div>
+    </div><div class="lbl">DECK SIGN</div></div>
+
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-16px);width:40px;height:30px;border-radius:6px;background:#4a5560;box-shadow:inset 0 0 0 2px #2b3742;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-16px) translateX(24px);width:30px;height:22px;border-radius:3px;background:radial-gradient(circle at 20% 50%,#fff6d8,#f2b563 60%,transparent);box-shadow:0 0 22px 8px rgba(255,220,150,.5);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(20px);width:8px;height:40px;background:#38424d;"></div>
+    </div><div class="lbl">FLOODLIGHT</div></div>
+
+  </div>
+</section>
+</x-dc>
+</body>
+</html>
