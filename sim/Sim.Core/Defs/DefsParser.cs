@@ -287,6 +287,7 @@ namespace Perilune.Sim
             {
                 case "ticks_per_tile": if (I(v, k, loc, p, out var a)) d.Citizen.TicksPerTile = a; return true;
                 case "idle_ticks_between_wanders": if (I(v, k, loc, p, out var b)) d.Citizen.IdleTicksBetweenWanders = b; return true;
+                case "wander_radius_tiles": if (I(v, k, loc, p, out var c)) d.Citizen.WanderRadiusTiles = c; return true;
                 default: return false;
             }
         }

@@ -133,8 +133,12 @@ namespace Perilune.Tests
 
             // ---- P3 + P5(quiet): a quiet stretch — capture the first natural social event
             //      (and prove it landed in both minds) while WearPressure builds. -----------
+            //      E0-1 (recruitability) widened this window from 300: bounding idle-wander to a
+            //      local radius changed which crew co-locate when, so the first natural
+            //      Argument/Bond now accrues at tick ~712 rather than inside the first 300. Still
+            //      the opening ~sim-minute-and-a-half of a quiet ship, before any incident.
             int scanned = 0;
-            while (sim.TickCount < 300)
+            while (sim.TickCount < 1000)
             {
                 sim.Tick();
                 if (director.WearPressure > arc.MaxQuietWear) arc.MaxQuietWear = director.WearPressure;
@@ -143,6 +147,14 @@ namespace Perilune.Tests
             }
 
             // ---- P4(setup): isolate the victim in cabin_1, then seal + breach it. ---------
+            // E0-1 makes an idle-walking crew member (a MoveCitizenCommand leaves JobKind==None)
+            // eligible to SELF-SERVE mid-order: without this pin the victim diverts to a water
+            // tank on the way to the cabin and never arrives. HoldPosition is the game's own
+            // direct-control flag (it gates IsIdleForWork), so pinning the victim models exactly
+            // what the scenario intends — the player marches this one crew member to the cabin and
+            // they stay put — while path-following (and thus the ordered move) still runs.
+            sim.Citizens.TryGet(victim, out Citizen victimCitizen);
+            victimCitizen.HoldPosition = true;
             sim.EnqueueCommand(new MoveCitizenCommand(victim, CabinTarget));
             for (int t = 0; t < 1200; t++)
             {
