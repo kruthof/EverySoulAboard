@@ -212,8 +212,9 @@ namespace Perilune.Tui
                 case null:
                 case "perilune": return ShipChoice.Perilune;
                 case "slice": return ShipChoice.Slice;
+                case "grid": return ShipChoice.Grid;
                 default:
-                    err.WriteLine($"warning: bad --ship '{s}' (expected perilune|slice)");
+                    err.WriteLine($"warning: bad --ship '{s}' (expected perilune|slice|grid)");
                     return ShipChoice.Perilune;
             }
         }

@@ -96,8 +96,11 @@ namespace Perilune.Tools
         /// --out. Same arguments ⇒ byte-identical output (the W4 portrait handoff contract).</summary>
         private static int RunDumpPersonas(string[] args)
         {
-            bool slice = ArgString(args, "--ship", "perilune") == "slice";
-            ulong seed = ArgULong(args, "--seed", slice ? AuthoredShips.SliceSeed : 7UL);
+            string shipName = ArgString(args, "--ship", "perilune");
+            bool slice = shipName == "slice";
+            bool grid = shipName == "grid";
+            ulong seed = ArgULong(args, "--seed",
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 7UL);
             int crew = ArgInt(args, "--crew", 8);
             string outPath = ArgString(args, "--out", null);
             string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
@@ -113,6 +116,13 @@ namespace Perilune.Tools
                 host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs);
                 AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
             }
+            else if (grid)
+            {
+                // The authored grid ship (--ship grid): the multi-deck 8-slot lattice. It carries no
+                // authored personas (its crew are held under player control, not an LLM slice), so
+                // the dump emits whatever PersonaGenerator produces for the built citizens.
+                host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            }
             else
             {
                 var recipe = ShipRecipe.FromSeed(seed);
@@ -125,7 +135,7 @@ namespace Perilune.Tools
             {
                 File.WriteAllText(outPath, json);
                 Console.WriteLine($"dump-personas: {host.Sim.Citizens.Items.Count} personas " +
-                                  $"({(slice ? "slice" : "procedural")}, seed {seed}) -> {outPath}");
+                                  $"({(slice ? "slice" : grid ? "grid" : "procedural")}, seed {seed}) -> {outPath}");
             }
             else
             {

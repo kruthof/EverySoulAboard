@@ -11,7 +11,7 @@ namespace Perilune.Tui
     ///     PeriluneTui --dump [--seed N] [--ticks N | --days D] [--every M]
     ///                 [--deck 0|1|all] [--lens …] [--cursor x,y]
     ///                 [--colors] [--metrics] [--out FILE] [--layout PATH] [--data DIR]
-    ///                 [--ship perilune|slice]
+    ///                 [--ship perilune|slice|grid]
     ///
     ///   --play  … interactive DF-style terminal client (raw ANSI, alt-screen).
     ///
