@@ -1,11 +1,12 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–3 + Console UI rebuild + RELATIONS tab + the mechanics reference + the economy redesign, tag `v2-talking-ship`)
 
-> **The MOSS terminal landed 2026-07-22** — the newest feature on main. See
+> **The MOSS terminal is COMPLETE on main (2026-07-22)** — the newest feature. See
 > "The MOSS terminal" section below (search it); spec is
-> `docs/design/perilune-moss-terminal.spec.md`. Four Opus-gated lanes, 680 dotnet +
-> 342 node green, pins unmoved. One deferred follow-up: the PROGRAM screen (fold the
-> existing DSL IDE in — the shell, key and directory already ship; `moss-screen.js`
-> `_renderProgram` documents the seam).
+> `docs/design/perilune-moss-terminal.spec.md`. Five Opus-gated lanes, 680 dotnet +
+> 356 node green, pins unmoved. The PROGRAM screen's in-terminal IDE landed last
+> (`moss-programs`, gate FAIL→PASS): it is a view of `model.program` over the DSL,
+> and it closed a real seam bug (directory-click sent `moss open` but never opened
+> the terminal in the model, silently dropping the source reply). Nothing deferred.
 >
 > **Newest first, and this is where you start:** read **"The economy redesign
 > (2026-07-22) — START HERE"** immediately below. It is the approved next body of work
@@ -143,27 +144,38 @@ smooth them over: on the slice at day 3 it reads `LIFE SUPPORT — LOAD 58% / DE
 (capacity coping, air poisonous — both true, the room-local-scrubber bug B-3), `WATER RECLAIM` /
 `HYDROPONICS` ATTEND on the dry `tank_hydro` (B-2), `THERMAL` DEGRADED at −15.7 °C.
 
-**Suite after merge: 680 dotnet + 342 node** green via `./ci.sh`; `26907c23d7e48a5c` and both
+**Suite after merge: 680 dotnet + 356 node** green via `./ci.sh`; `26907c23d7e48a5c` and both
 tick-3000/slice goldens unmoved (nothing hashed was added). Lanes: `moss-systems` (sim/host/wire,
 PASS after a FAIL — a reactor row that read *lower* load as power failed, a ledger that laundered
 NaN into NOMINAL, a note describing the rule its own code replaced), `moss-model` (the pure client
-brain, PASS ×2 — its client-side derivation copy had drifted to a *reciprocal* of the host's), and
+brain, PASS ×2 — its client-side derivation copy had drifted to a *reciprocal* of the host's),
 `moss-screen` (the DOM/CRT face, PASS ×2 — Backspace was dead in the prompt, invisible to a node
 harness whose `preventDefault` is a no-op; the fix included closing that harness blindness, now
-spec §6.1: trusted-key CDP verification is obligatory for any lane touching keys here). The
-review method (independent gate per package, blind spec → in-worktree `ci.sh` → adversarial
-mutation pass) again caught **disjoint** classes the author could not: five tests that could not
-fail — one of them inside the tool that enforces the anti-vacuous rule — plus two duplicated-fact
-drifts and three rows that lied.
+spec §6.1: trusted-key CDP verification is obligatory for any lane touching keys here), and
+`moss-programs` (the PROGRAM in-terminal IDE, PASS after a FAIL — its CDP proof drove the *fake*
+model, so the check could not fail for a real-model regression; the integrator re-verified the
+repointed check both directions against the shipping model). The review method (independent gate
+per package, blind spec → in-worktree `ci.sh` → adversarial mutation pass) again caught
+**disjoint** classes the author could not: **six** tests that could not fail — two of them inside
+the tools that enforce the anti-vacuous rule — plus two duplicated-fact drifts, three rows that
+lied, a dead Backspace, and a silently-dropped `source` reply.
 
-**Deferred (one follow-up):** the PROGRAM screen's editor half — folding the existing DSL IDE
-(`client/src/ui/terminal.js` / `terminal-model.js`) in behind the directory. The shell, the `P`
-key, the directory and the wire (`moss open` → `ev:source`) all already ship; `moss-screen.js`
-`_renderProgram` documents the seam, and the model already carries `model.program` delegated to
-`terminal-model.js`, so that lane inherits a live editor. **Near-term cleanup, non-blocking**
-(all recorded in spec §6.1): `ShipSystems` gates the `systems` wire on **wall**-clock (~16.7
-sim-min max staleness at 1000× speed — v2 is to gate on `TickCount`); the ppO₂ life-support band
-is correct but unreachable on shipped content (vents inject from an unmodelled reserve).
+**The PROGRAM screen** (`moss-programs`, the last lane) is a working in-terminal IDE — source
+editor + gutter/diagnostic markers + diagnostics list + audit pane + Install + runtime-error
+banner. It is a **view of `model.program`** (kept live by `reduceMossEvent` delegating
+source/diag/audit/rterror to `terminal-model.js`), a single source of truth reusing the shipped
+pure editor brain rather than a second copy. It closed a real pre-existing seam bug: the
+directory-click path sent `moss open` but never opened the terminal in the model, so
+`model.program.tid` stayed null and the tid-match **silently dropped the source reply**; new pure
+`selectProgram`/`editProgramDraft`/`beginProgramCompile` reducers fix it. The refill rule refills
+the textarea from `draft` (never `installed`), so a stray render never clobbers a mid-type caret.
+`terminal.js`'s floating `TerminalDrawer` (the deck-console editor path) is untouched — the
+PROGRAM screen is a second presentation of the same model shape.
+
+**Near-term cleanup, non-blocking** (recorded in spec §6.1): `ShipSystems` gates the `systems`
+wire on **wall**-clock (~16.7 sim-min max staleness at 1000× speed — v2 is to gate on
+`TickCount`); the ppO₂ life-support band is correct but unreachable on shipped content (vents
+inject from an unmodelled reserve).
 
 ## Where the project stands
 

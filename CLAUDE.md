@@ -33,22 +33,22 @@ crew no longer promise physical work they cannot do, the ship stage was relit + 
 longer blink. **`docs/design/perilune-art-direction.md`** is the art authority — the
 sprite regen is DECIDED-NOT-NOW (design first, regenerate last); nothing generated, no
 credits spent.
-**680 dotnet + 342 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
+**680 dotnet + 356 node** green; `26907c23d7e48a5c` unmoved; slice golden is now
 `b31ba82f50cf395c`. Known-honest limits: the dig is a **boot-window** economy (crew idle
 again after ~4 sim-min of digging), the stage is still far flatter than Prison Architect,
 and the CO2 problem is a **gas-transport bug** (no diffusion term), not a dispatch gap.
 
-**MOSS terminal landed 2026-07-22** (four lanes, each Opus-gated, spec
+**MOSS terminal COMPLETE 2026-07-22** (five lanes, each Opus-gated, spec
 `docs/design/perilune-moss-terminal.spec.md`): clicking MOSS replaces the whole window with a
 Fallout-style amber CRT — a one-screen ledger of all 8 ship systems (LOAD/STATE/LAST FAULT),
-SYSTEM DETAIL, FAULT LOG, and a live `>` prompt that reads and commands devices through the
-DSL's own adapters (no new `ISimCommand`). `ShipSystems.Compute` is a **pure** report next to
-`ShipMetrics` — no sim field, no hash fold, pins unmoved. Every gauge is derived from live sim
-state or shown OFFLINE with a reason: the mock's MEDICAL/COMMS/GRAV-RING rows are inert or
-absent in the sim, so they were replaced by THERMAL/FABRICATION/NAV-SENSORS. The screen honestly
-surfaces the three live economy bugs (life_support DEGRADED at 16,677 ppm while capacity reads
-58%; the dry hydro tank; the freezing thermal loop). PROGRAM screen (folding the DSL IDE in) is
-the one deferred follow-up.
+SYSTEM DETAIL, FAULT LOG, a **PROGRAM** in-terminal IDE (source editor + diagnostics + audit +
+Install, a view of `model.program` over the DSL), and a live `>` prompt that reads and commands
+devices through the DSL's own adapters (no new `ISimCommand`). `ShipSystems.Compute` is a **pure**
+report next to `ShipMetrics` — no sim field, no hash fold, pins unmoved. Every gauge is derived
+from live sim state or shown OFFLINE with a reason: the mock's MEDICAL/COMMS/GRAV-RING rows are
+inert or absent in the sim, so they were replaced by THERMAL/FABRICATION/NAV-SENSORS. The screen
+honestly surfaces the three live economy bugs (life_support DEGRADED at 16,677 ppm while capacity
+reads 58%; the dry hydro tank; the freezing thermal loop). Nothing deferred.
 
 ### Earlier snapshot (2026-07-21)
 P0 + P1 + **P2 complete** on the automated side ("The Talking Ship" slice; tag
