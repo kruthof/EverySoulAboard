@@ -142,6 +142,10 @@ namespace Perilune.Sim
             public double ScrubberMolPerSecond;
             /// <summary>RoomState.NominalPressureKPa — vent target / Pressurize baseline, kPa. Current: 101.3.</summary>
             public double NominalPressureKPa;
+            /// <summary>AtmosphereSystem.DiffusionCoefficient — mol/(kPa·s) per open door of
+            /// per-species partial-pressure diffusion (the B-3 fix). Same units as
+            /// <see cref="FlowCoefficient"/>. Current: 0.5.</summary>
+            public double DiffusionCoefficient;
         }
 
         /// <summary>NeedsSystem thresholds and accumulation rates (currently private consts;
@@ -445,6 +449,7 @@ namespace Perilune.Sim
                     VentMolPerSecond = 30.0,
                     ScrubberMolPerSecond = 0.001,
                     NominalPressureKPa = 101.3,
+                    DiffusionCoefficient = 0.5,
                 },
 
                 Needs = new NeedsDefs
@@ -595,7 +600,8 @@ namespace Perilune.Sim
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
         /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
         /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
-        /// while the table is empty). Appending a field
+        /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended).
+        /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
         /// </summary>
@@ -770,6 +776,14 @@ namespace Perilune.Sim
                     }
                 }
             }
+
+            // Atmosphere.DiffusionCoefficient (B-3 gas-transport fix), APPENDED after
+            // Production and before the rules fold so every prior checksum stays byte-
+            // comparable. It sits here rather than beside the other Atmosphere folds above for
+            // the same reason every field since Social-S1 does: append-at-END is the invariant
+            // (README.def HANDOVER INVARIANT #3), and inserting mid-block would renumber the
+            // fold order of everything after it.
+            h = XxHash64.Combine(h, Atmosphere.DiffusionCoefficient);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

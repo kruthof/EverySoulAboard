@@ -47,11 +47,13 @@ namespace Perilune.Sim
     ///
     /// Determinism/allocation: defs are read fresh each pass and never cached, so
     /// parallel sims with different tunings cannot cross-talk; device and citizen
-    /// stores are walked in store order; no RNG; nothing is allocated (the door's
-    /// neighbour probe is a stackalloc). NOT <see cref="IStatefulSystem"/> — every
-    /// value it moves lives on <see cref="Room"/>, which the ROOM save chapter
-    /// persists and <see cref="Simulation.StateHash"/> folds in; this class is
-    /// entirely stateless between ticks.
+    /// stores are walked in store order; no RNG; nothing is allocated in steady state
+    /// (the door's neighbour probe is a stackalloc, and the per-species diffusion
+    /// accumulators are grown geometrically then Array.Clear'd, never reallocated).
+    /// NOT <see cref="IStatefulSystem"/> — every value it moves lives on
+    /// <see cref="Room"/>, which the ROOM save chapter persists and
+    /// <see cref="Simulation.StateHash"/> folds in; the diffusion scratch carries
+    /// nothing across a tick, so this class is still entirely stateless between ticks.
     ///
     /// Non-obvious couplings: ThermalSystem owns <see cref="Room.TemperatureK"/> and
     /// pressure is nRT/V, so a room's pressure moves when it heats or cools with no
@@ -76,6 +78,20 @@ namespace Perilune.Sim
         // vent's NominalPressureKPa target now live in sim.Defs.Atmosphere (SimDefs.Default
         // reproduces the former consts: 0.5, 3.04e-4, 2.73e-4, 30, 0.001, 101.3). Tick reads
         // them each pass; nothing here caches the graph so parallel sims stay isolated.
+
+        /// <summary>Gas constant, J/(mol·K) — the same 8.314 <see cref="Room.PressureKPa"/>
+        /// uses. A partial pressure is <c>moles · R · T / V / 1000</c> kPa.</summary>
+        private const double GasConstant = 8.314;
+
+        // Per-room, per-species diffusion accumulators, index = room id. Mirror
+        // ThermalSystem._deltaJ exactly: grown geometrically and Array.Clear'd at the top of
+        // every diffusion pass, so all reads see start-of-pass moles and within-pass door
+        // order can never bias which way a species moves. Cleared every pass ⇒ they carry
+        // NOTHING between ticks, add no saved/hashed field, and keep this system stateless
+        // (NOT IStatefulSystem), exactly as the thermal scratch does.
+        private double[] _dO2 = new double[16];
+        private double[] _dCO2 = new double[16];
+        private double[] _dN2 = new double[16];
 
         /// <summary>
         /// One 0.2 s gas pass. Devices first (doors/vents/scrubbers interleaved in
@@ -143,6 +159,16 @@ namespace Perilune.Sim
                     }
                 }
             }
+
+            // 1b. Partial-pressure diffusion across open doors — the per-species analogue of
+            //     ThermalSystem's door conduction, and the fix for B-3. FlowAcrossDoor above
+            //     equalises TOTAL pressure but carries the SOURCE room's whole mix, so two
+            //     rooms joined by an open door that already sit at equal pressure never trade
+            //     composition: a crew room climbs to ~17 kppm CO2 while the room-local scrubber
+            //     next door scrubs its OWN air to ~0. This closes that gap so a scrubber can
+            //     reach the compartment the crew stand in. One pass, after the device walk (so
+            //     it reads the post-flow/post-scrub state) and before breathing.
+            DiffuseAcrossDoors(sim, atmo);
 
             // 2. Citizens breathe into their room. O2 draw is clamped to what the room
             //    actually holds, but CO2 output is NOT — a crew suffocating in a sealed
@@ -243,6 +269,112 @@ namespace Perilune.Sim
             {
                 dst.O2Moles += dn * fO2; dst.CO2Moles += dn * fCO2; dst.N2Moles += dn * fN2;
             }
+        }
+
+        /// <summary>
+        /// Diffuse each species across every OPEN door by its PARTIAL-pressure gradient — the
+        /// term <see cref="FlowAcrossDoor"/> deliberately lacks. Signed conservative flux, per
+        /// door, per species: <c>f = D · (pp_s(a) − pp_s(b)) · Dt</c> moles, then
+        /// <c>_dS[a] −= f; _dS[b] += f</c> — one <c>f</c> added as <c>−f/+f</c>, so the paired
+        /// change sums to exactly zero and no gas is conjured. Accumulate into scratch (all
+        /// reads see start-of-pass moles), then apply once — door order can never bias
+        /// direction. A door onto vacuum (room 0 / out of bounds) drains the non-zero side
+        /// one-sidedly and never credits room 0, exactly as ThermalSystem.ConductAcrossDoor and
+        /// FlowAcrossDoor do into vacuum.
+        ///
+        /// Gate on <see cref="Device.IsOpen"/> ONLY — a sealed door must block gas (unlike
+        /// thermal, where a closed door still conducts a fraction). <see cref="D"/> is chosen
+        /// (atmosphere.def `diffusion_coefficient`) small enough that a pass never overshoots
+        /// equilibrium, so the <c>Max(0,…)</c> clamp below — the scrubber's safety net — never
+        /// fires in normal operation and mole conservation holds to float tolerance.
+        /// </summary>
+        private void DiffuseAcrossDoors(Simulation sim, SimDefs.AtmosphereDefs atmo)
+        {
+            double diffusion = atmo.DiffusionCoefficient;
+            if (diffusion <= 0) return; // disabled: keep the pure-bulk-flow behaviour
+
+            var rooms = sim.Rooms.Rooms;
+            if (_dO2.Length < rooms.Count)
+            {
+                int grown = _dO2.Length;
+                while (grown < rooms.Count) grown *= 2;
+                _dO2 = new double[grown];
+                _dCO2 = new double[grown];
+                _dN2 = new double[grown];
+            }
+            Array.Clear(_dO2, 0, rooms.Count);
+            Array.Clear(_dCO2, 0, rooms.Count);
+            Array.Clear(_dN2, 0, rooms.Count);
+
+            // One store-order walk over every open door (same deterministic order the device
+            // loop and FlowAcrossDoor use). Accumulate signed flux per species.
+            var devices = sim.Devices.Items;
+            for (int d = 0; d < devices.Count; d++)
+            {
+                var device = devices[d];
+                if (device.Kind == DeviceKind.Door && device.IsOpen)
+                    DiffuseOneDoor(sim, device.Pos, diffusion);
+            }
+
+            // Apply. Room 0 (vacuum) is never credited — the loop starts at 1, and the flux
+            // above never writes _dS[0]. Max(0,…) mirrors the scrubber clamp (:141); kept in
+            // the non-overshoot regime it never actually fires.
+            for (int r = 1; r < rooms.Count; r++)
+            {
+                var room = rooms[r];
+                room.O2Moles = Math.Max(0, room.O2Moles + _dO2[r]);
+                room.CO2Moles = Math.Max(0, room.CO2Moles + _dCO2[r]);
+                room.N2Moles = Math.Max(0, room.N2Moles + _dN2[r]);
+            }
+        }
+
+        /// <summary>Accumulate one open door's per-species diffusive flux into the scratch
+        /// buffers. Same 4-neighbour room-resolution scan as
+        /// <see cref="ThermalSystem.ConductAcrossDoor"/> (canonical +x,−x,+y,−y order).</summary>
+        private void DiffuseOneDoor(Simulation sim, Int3 doorPos, double diffusion)
+        {
+            var world = sim.World;
+            var level = world.Levels[doorPos.Z];
+            var rooms = sim.Rooms.Rooms;
+
+            ushort a = RoomState.DoorMarker, b = RoomState.DoorMarker;
+            for (int n = 0; n < 4; n++)
+            {
+                var p = Int3.Neighbor4(doorPos, n);
+                ushort id;
+                if (!world.InBounds(p)) id = 0; // out of bounds = vacuum
+                else
+                {
+                    int pi = level.Index(p.X, p.Y);
+                    if ((level.Flags[pi] & (byte)TileFlags.BlocksGas) != 0) continue; // wall: no edge
+                    id = level.RoomId[pi];
+                    if (id == RoomState.DoorMarker) continue; // adjacent door tile: neither side is a node
+                    if (id >= rooms.Count) id = 0; // stale id: treat as vacuum, like RoomAt
+                }
+                if (a == RoomState.DoorMarker) a = id;
+                else if (id != a) { b = id; break; }
+            }
+            if (a == RoomState.DoorMarker || b == RoomState.DoorMarker || a == b) return;
+
+            var roomA = rooms[a];
+            var roomB = rooms[b];
+            // f = D · Δ(partial pressure) · Dt, one value per species. Room 0 reads pp 0 (its
+            // moles are pinned to zero), so a door onto vacuum drains the live side.
+            double fO2 = diffusion * (PartialKPa(roomA, roomA.O2Moles) - PartialKPa(roomB, roomB.O2Moles)) * Dt;
+            double fCO2 = diffusion * (PartialKPa(roomA, roomA.CO2Moles) - PartialKPa(roomB, roomB.CO2Moles)) * Dt;
+            double fN2 = diffusion * (PartialKPa(roomA, roomA.N2Moles) - PartialKPa(roomB, roomB.N2Moles)) * Dt;
+
+            if (a != 0) { _dO2[a] -= fO2; _dCO2[a] -= fCO2; _dN2[a] -= fN2; }
+            if (b != 0) { _dO2[b] += fO2; _dCO2[b] += fCO2; _dN2[b] += fN2; }
+        }
+
+        /// <summary>Partial pressure of one species' mole count in a room, kPa — the same
+        /// ideal-gas expression as <see cref="Room.PressureKPa"/> applied to one pool. A
+        /// zero-volume room (or room 0 with no tiles) reads 0 rather than dividing by zero.</summary>
+        private static double PartialKPa(Room room, double speciesMoles)
+        {
+            double v = room.VolumeM3;
+            return v <= 0 ? 0 : speciesMoles * GasConstant * room.TemperatureK / v / 1000.0;
         }
     }
 }

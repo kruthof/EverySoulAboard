@@ -204,15 +204,22 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `616ed4a84a9f6e87`
-(pinned at `ci.sh:25`); tick-3000 golden `3cf25daf3ca40e0b`; slice tick-3000 golden
-`72f7023ef9f1cd73`. All three moved three times on 2026-07-22, each time by a pure fold
-change whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `9daef6183e673d6b`
+(pinned at `ci.sh:31`); tick-3000 golden `9fe2bdc6a18b2e78`; slice tick-3000 golden
+`d6561ff4b0d3f36d`. All three moved three times on 2026-07-22 by pure fold
+changes whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
 un-aliasing) took `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
 `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; W0-1b (folding the thirteen
 saved-but-unhashed fields) took those to `ffefe9a9a42d8e7e` / `6071adb8fa781440` /
 `ab47cefd840247c4`; and **W0-6** (registering four empty economy systems — `ZONE`, `PROD`,
-`ORES`, `TRAD` — whose checksum seeds fold unconditionally) took those to the current values.
+`ORES`, `TRAD` — whose checksum seeds fold unconditionally) took those to
+`616ed4a84a9f6e87` / `3cf25daf3ca40e0b` / `72f7023ef9f1cd73`. **B-3** (the CO2 partial-pressure
+diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then took those to the current values
+above — the FIRST of these moves that is a real behaviour change, not a pure fold: gas now
+crosses open doors by partial-pressure gradient, so the hash's *inputs* genuinely differ (its
+new `diffusion_coefficient` def also moved the defs checksum `08b73814d97c7be3` →
+`e3a80302b513a7aa`). Still only the two tick-3000 goldens moved; every frame, persona and
+layout golden stayed byte-identical.
 All three times exactly 2 goldens moved — the two tick-3000 hash files — and every frame,
 persona and layout golden was byte-identical, which is the check that the cause really was
 the fold.
@@ -340,6 +347,12 @@ dn = flow_coefficient × |Pa − Pb| × Dt              // :116, capped at sourc
 
 `dn` moles move **at the source room's mixture fractions** (`:121-126`). The destination
 gains nothing if it is room 0 (venting to space is one-directional).
+
+> **✅ FIXED by B-3 (`AtmosphereSystem.DiffuseAcrossDoors`)** — partial-pressure diffusion
+> across open doors now transports CO2 to scrubber rooms. `FlowAcrossDoor` (bulk flow) runs as
+> below, but a **per-species concentration term** now runs beside it every pass, so a 17,000 ppm
+> room beside a 0 ppm room DOES equalize even at equal total pressure. The paragraph below
+> describes the PRE-B-3 sim (kept for the mechanism detail of the bulk-flow half).
 
 **This is bulk pressure-driven flow, not diffusion.** There is no concentration term at
 all: if two rooms ever *did* equalize to `|Pa − Pb| < 1e-6`, exchange would stop dead and a
@@ -1184,12 +1197,20 @@ in this session by reading the code and, where a number is quoted, by a headless
 against the shipping slice (`--ship slice`, `SimHost.SliceSeed`). **This section is the
 institutional memory that prevents the next playtest surprise.***
 
-### 13.1 Nothing converts an atmosphere reading into a job — and scrubbers cannot help the room the crew is in
+### 13.1 Nothing converts an atmosphere reading into a job — and scrubbers cannot help the room the crew is in [CO2-transport half FIXED by B-3]
 
 <!-- IN FLIGHT: CO2 → maintenance dispatch and the AgreeTask whitelist —
      MachineWearSystem.cs, EffectValidator.cs, CapabilityComputer.cs. -->
 > **⚠ IN FLIGHT** — a lane is adding CO2→maintenance dispatch and revisiting the
 > `AgreeTask` whitelist. This describes `0f88231`.
+
+> **✅ FIXED by B-3 (`AtmosphereSystem.DiffuseAcrossDoors`)** — the "scrubbers cannot help the
+> room the crew is in" half of this entry is resolved: partial-pressure diffusion across open
+> doors now transports CO2 to the scrubber rooms, so the slice's crew corridor no longer climbs
+> to 17,644 ppm — LIFE SUPPORT reads NOMINAL by day 3. The measured
+> **500 → 6,243 → 11,961 → 17,644 ppm** figures and the "no diffusion" cause below describe the
+> **PRE-B-3** sim. The FIRST half — nothing converts a CO2 reading into a job/alarm/vent — is
+> untouched by B-3 and still live.
 
 `RoomState.CO2Ppm` has exactly six consumers repo-wide (verified by grep):
 `NeedsSystem.cs:130,132` (health damage: `> 2× co2_narcosis_ppm` severe, `> co2_narcosis_ppm`
@@ -1206,8 +1227,9 @@ Worse, the slice's air is *nominally over-scrubbed* and still poisons the crew:
   production — **2.3× the required capacity**, every scrubber healthy and powered.
 - Yet measured worst-room CO2 climbs **500 → 6,243 → 11,961 → 17,644 ppm over 3 days**
   (`hosts/tui --dump --ship slice --days 3 --metrics`, and the same figures from a probe).
-- Cause: scrubbers are **room-local**, and §3's door flow is **pressure-driven bulk flow
-  with no diffusion** (`AtmosphereSystem.cs:113`). After 3 sim-days the scrubber rooms sit
+- Cause (PRE-B-3; now fixed — see the banner above): scrubbers are **room-local**, and §3's
+  door flow was **pressure-driven bulk flow with no diffusion** (`AtmosphereSystem.cs:113`).
+  After 3 sim-days the scrubber rooms sit
   at **exactly 0 ppm** (rooms 6, 9, 18, 19 in the probe) while the corridor the crew
   actually live in (room 5, 108 tiles) is at **17,644 ppm** and room 17 at 8,381 ppm.
 - The scrubber rooms read 0 ppm *because* CO2 keeps arriving and is over-scrubbed — not

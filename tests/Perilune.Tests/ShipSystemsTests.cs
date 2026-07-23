@@ -743,15 +743,20 @@ namespace Perilune.Tests
         public void The_Slice_Ledger_Surfaces_Its_Real_Failures_By_Day_Three()
         {
             // A regression pin on the HONESTY of the shipped slice's ledger, not on exact numbers:
-            // MECHANICS.md §13.1 (CO2 climbs past 2,000 ppm with healthy scrubbers), §13.2 (the ship
-            // freezes below needs.def hypothermia_c) and ECONOMY-PLAN B-2 (tank_hydro runs dry).
+            // §13.2 (the ship freezes below needs.def hypothermia_c) and ECONOMY-PLAN B-2 (tank_hydro
+            // runs dry) are still live. MECHANICS.md §13.1 — "CO2 climbs past 2,000 ppm with healthy
+            // scrubbers" — was the B-3 gas-transport bug: gas could not cross the open doors to reach
+            // a scrubber. The diffusion term FIXES it, so by day three the slice's scrubbers hold the
+            // air and LIFE SUPPORT reads NOMINAL. That the air is now clean is the whole point of the
+            // fix; the §13.1 symptom is gone (that doc note describes the pre-B-3 sim).
             var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
             while (host.Sim.TickCount < 3 * SimClockUtil.TicksPerDay) host.Sim.Tick();
             var report = ShipSystems.Compute(host.Sim, host.History);
 
             var ls = Row(report, "life_support");
-            Assert.AreEqual(ShipSystemState.Degraded, ls.State, "§13.1: the air is bad and the row says so");
-            Assert.Less(ls.Load, 100, "…while scrubber capacity still exceeds crew output");
+            Assert.AreEqual(ShipSystemState.Nominal, ls.State,
+                "B-3: partial-pressure diffusion lets the scrubbers reach the crew room, so the air is clean");
+            Assert.Less(ls.Load, 100, "…scrubber capacity comfortably exceeds crew CO2 output");
 
             Assert.AreEqual(ShipSystemState.Degraded, Row(report, "thermal").State, "§13.2: the ship freezes");
             StringAssert.Contains("LOSING heat", Row(report, "thermal").Advisory);

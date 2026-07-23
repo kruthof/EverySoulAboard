@@ -16,7 +16,9 @@
 branch** (the MOSS terminal, render light-pools + movement fixes, Ollama, art rev 2, playtest
 round 4). Gate on the merged tree, measured 2026-07-22: **786 dotnet + 356 node** green, pin
 `616ed4a84a9f6e87` **held** (the merge is pin-neutral — main added no hashed sim state, so all
-three pins and the defs checksum `08b73814d97c7be3` are unmoved). Every package was
+three pins and the defs checksum `08b73814d97c7be3` are unmoved). **(B-3 has since moved all
+three sim pins → `9daef6183e673d6b` / `9fe2bdc6a18b2e78` / `d6561ff4b0d3f36d` and the defs
+checksum → `e3a80302b513a7aa`; see the pin table below.)** Every package was
 Opus-implemented and independently Opus-reviewed (four of six sent back at least once). The
 next session's job is the ordered list in "What is left" below: **land the branch on `main`
 → B-1/B-2/B-3 shipping-bug commits → spawn the E-lanes (E0-1 first).** The `main`-merge and
@@ -46,18 +48,24 @@ main, after merge.
 
 **ALL SIX MERGED, and `main` is now merged into the branch. Final gate (`lane/economy-w0`
 with `main` folded in), measured 2026-07-22: 786 dotnet + 356 node green, `./ci.sh` exit 0,
-`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** The pre-`main`-merge branch gate was
+`determinism: twin hashes MATCH (616ed4a84a9f6e87)`.** (B-3 later moved this to
+`9daef6183e673d6b` — see the pin table.) The pre-`main`-merge branch gate was
 713 dotnet + 207 node; `main` added 73 dotnet + 149 node (the MOSS terminal / render / Ollama
 surface) and moved no pin.
 
-Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6 — ritual done each time;
-CURRENT values, `ci.sh:25` and the two golden files all agree):
+Pins as they stand (moved by W0-1, again by W0-1b, again by W0-6, and now by **B-3** — the
+first move that is a real behaviour change, not a pure fold: the CO2 partial-pressure
+diffusion term makes gas cross open doors, so the hash inputs genuinely differ. B-3 also
+moves the defs checksum `08b73814d97c7be3` → `e3a80302b513a7aa` via its new
+`diffusion_coefficient` field. Values below are the B-3 branch's; PROVISIONAL — the
+integrator re-measures the combined value when B-1/B-3 land on `main`. `ci.sh:31` and the two
+golden files agree with them on the branch):
 
-| pin | value |
-|---|---|
-| 3-day scenario (`ci.sh:25`) | `616ed4a84a9f6e87` |
-| tick-3000 golden | `3cf25daf3ca40e0b` |
-| slice tick-3000 golden | `72f7023ef9f1cd73` |
+| pin | value (B-3 branch) | pre-B-3 |
+|---|---|---|
+| 3-day scenario (`ci.sh:31`) | `9daef6183e673d6b` | `616ed4a84a9f6e87` |
+| tick-3000 golden | `9fe2bdc6a18b2e78` | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `d6561ff4b0d3f36d` | `72f7023ef9f1cd73` |
 
 W0-3 landed pin-neutral (it *proved* the optimisation fires — an item-only `AddItem` no
 longer walks the O(W·H·D) tile pass — while assignments stay byte-identical; it also shipped
@@ -115,7 +123,8 @@ remains is landing it on `main` and then opening the economy proper:
    kept the branch copy with the corrections (main carried the stale pre-correction copy from
    the independent `36b6ca4`); `CLAUDE.md`/`HANDOVER.md` narratives merged. Per
    `ECONOMY-PLAN.md` §2.1.4 the pin was measured on the merged result: **786 dotnet + 356 node
-   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state). **Next
+   green, pin `616ed4a84a9f6e87` held, pin-neutral** (main added no hashed sim state; B-3 later
+   moved it to `9daef6183e673d6b` — see the pin table). **Next
    for the integrator: land the whole of `lane/economy-w0` on `main` (`--no-ff`, re-gate on
    `main`).**
 2. **The eight `ECONOMY-PLAN.md` corrections are ALREADY APPLIED on this branch** (see the

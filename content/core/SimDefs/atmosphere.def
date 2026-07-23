@@ -18,3 +18,5 @@ co2_per_person_per_second  = 2.73e-4    # mol/s CO2 produced (1.04 kg/day)
 vent_mol_per_second        = 30         # mol/s a powered vent injects (~50 m³ in ~1 min)
 scrubber_mol_per_second    = 0.001      # mol/s CO2 a scrubber removes (covers ~3 people)
 nominal_pressure_kpa       = 101.3      # kPa — vent top-up ceiling (1 atm)
+diffusion_coefficient      = 0.5        # mol/(kPa·s) per open door — per-species partial-pressure
+                                        # diffusion (B-3); lets a scrubber reach the next room's CO2

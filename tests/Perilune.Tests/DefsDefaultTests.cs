@@ -67,6 +67,14 @@ namespace Perilune.Tests
         }
 
         [Test]
+        public void Atmosphere_DiffusionCoefficient_MatchesDocumentedDefault()
+        {
+            // B-3: AtmosphereSystem reads sim.Defs.Atmosphere.DiffusionCoefficient for the
+            // per-species partial-pressure diffusion term — pin the documented literal.
+            Assert.That(D.Atmosphere.DiffusionCoefficient, Is.EqualTo(0.5));
+        }
+
+        [Test]
         public void Sustenance_MatchesDocumentedDefaults()
         {
             // B4 moved these consts INTO the defs graph (SustenanceSystem now reads

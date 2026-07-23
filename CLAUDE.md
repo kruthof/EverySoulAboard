@@ -154,9 +154,9 @@ another's half-finished work.*
   gate count and pin live in "Determinism proof" below and in `ci.sh`.
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `9daef6183e673d6b` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `72f7023ef9f1cd73`.
+  `9fe2bdc6a18b2e78`; the slice tick-3000 golden is `d6561ff4b0d3f36d`.
   All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
@@ -166,8 +166,12 @@ another's half-finished work.*
   `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to
   `ffefe9a9a42d8e7e` / `6071adb8fa781440` / `ab47cefd840247c4`; and economy **W0-6**
   (registering four empty economy systems — `ZONE`, `PROD`, `ORES`, `TRAD` — whose seeds fold
-  unconditionally) took those to the current values. Exactly 2 goldens moved each time, both
-  the tick-3000 hash files.
+  unconditionally) took those to `616ed4a84a9f6e87` / `3cf25daf3ca40e0b` / `72f7023ef9f1cd73`.
+  Exactly 2 goldens moved each fold, both the tick-3000 hash files. **B-3** (the CO2
+  partial-pressure diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then moved all three
+  to the current values above — the first move that is a real behaviour change, not a fold: gas
+  now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
+  `08b73814d97c7be3` → `e3a80302b513a7aa`. Still only the two tick-3000 goldens moved.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:

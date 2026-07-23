@@ -204,6 +204,7 @@ namespace Perilune.Sim
                 case "vent_mol_per_second": if (D(v, k, loc, p, out var e)) d.Atmosphere.VentMolPerSecond = e; return true;
                 case "scrubber_mol_per_second": if (D(v, k, loc, p, out var f)) d.Atmosphere.ScrubberMolPerSecond = f; return true;
                 case "nominal_pressure_kpa": if (D(v, k, loc, p, out var g)) d.Atmosphere.NominalPressureKPa = g; return true;
+                case "diffusion_coefficient": if (D(v, k, loc, p, out var h)) d.Atmosphere.DiffusionCoefficient = h; return true;
                 default: return false;
             }
         }
