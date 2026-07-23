@@ -1,4 +1,32 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **wall drag-build & materials**, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
+
+## Drifting parallax starfield (ship-motion backdrop): LANDED on `main` (2026-07-23, `8614b42`)
+
+The Overview's 220-star backdrop now **drifts slowly right-to-left** so the ship reads as moving
+forward. Client-only, cosmetic; a single lane (`lane/star-drift` @ `c64c288`), Opus-implemented.
+
+**Why it wasn't a one-liner:** the Overview scene SVG is rebuilt via `_stage.innerHTML =` on every
+repaint (each wire update), so any animation *inside* it restarts every frame and never moves. The
+fix hoists the backdrop out of the per-repaint SVG into the **build-once** skeleton, where the
+void+nebula washes already lived (the persistent CSS `.ov-space`/`.ov-neb` layer is byte-identical
+to the old in-SVG `spaceLayer` — `--void-gradient` and the nebula colors match exactly; the SVG
+copy was redundant and hid it).
+
+- **`overview-scene.js`** — drop the redundant in-SVG `spaceLayer`/`nebula`; add exported
+  `starLayerSvg()` that renders the seeded 220-star field **twice** side-by-side (x=0 and
+  x=`VIEW_W`). `starfield()` stays pure + tested. The per-repaint scene body no longer draws space.
+- **`overview-view.js`** — inject `starLayerSvg()` into the skeleton once, above the nebula and
+  below the interactive `.ov-stage` (original z-order preserved).
+- **`styles.css`** — `@keyframes plnStarDrift` translates `.ov-stars-drift` `0 → −1300px` (one full
+  tile = `VIEW_W`; 1px = 1 SVG user unit) over **120s linear infinite**. The two tiles are
+  identical, so the wrap is seamless. Guarded by `prefers-reduced-motion`.
+- **`overview-preview.html`** — mirror the layer so the dev harness stays representative (it links
+  `warm.css` not `styles.css`, so the keyframes are inlined there).
+
+**Determinism:** none moved — client-only, no sim/hash surface. **476 node tests green** on the
+merged tree (incl. the 14 overview-scene tests; `starfield()` determinism pin unchanged).
+Speed lever = the `120s` in `styles.css`. Room Zoom (`.rz-space`) has no starfield today — drift
+there is a fast-follow if wanted.
 
 ## Wall drag-build + authoritative wall/floor materials: LANDED on `main` (2026-07-23, `70e0b95`)
 
