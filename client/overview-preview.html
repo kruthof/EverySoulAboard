@@ -24,6 +24,12 @@
       display: grid; place-items: center;
     }
     .stage svg.pl-overview { width: min(100vw, 177.8vh); height: auto; display: block; }
+    /* drifting starfield underlay (mirrors styles.css; the shipping skin gets it from there) */
+    .stars-underlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .ov-stars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .ov-stars-drift { animation: plnStarDrift 120s linear infinite; will-change: transform; }
+    @keyframes plnStarDrift { from { transform: translateX(0); } to { transform: translateX(-1300px); } }
+    @media (prefers-reduced-motion: reduce) { .ov-stars-drift { animation: none; } }
     /* review chrome (not part of the scene) */
     .rail {
       position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
@@ -50,6 +56,7 @@
   </style>
 </head>
 <body>
+  <div class="stars-underlay" id="stars-underlay"></div>
   <div class="stage" id="stage">loading fixture…</div>
   <div class="rail" id="rail"></div>
   <div class="meta" id="meta"></div>
@@ -60,7 +67,10 @@
   <script type="module">
     import { decode, decodeDecks, decodeRooms } from './src/wire/messages.js';
     import { decksView } from './src/ui/decks-model.js';
-    import { overviewScene } from './src/ui/overview-scene.js';
+    import { overviewScene, starLayerSvg } from './src/ui/overview-scene.js';
+
+    // The drifting starfield is a persistent underlay (built once), exactly as the shipping skin does.
+    document.getElementById('stars-underlay').innerHTML = starLayerSvg();
 
     const fix = await fetch('./test/fixtures/overview-grid.json').then((r) => r.json());
     const view = decksView(decodeDecks(decode(JSON.stringify(fix.decks))),

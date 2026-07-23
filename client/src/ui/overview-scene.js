@@ -1,6 +1,6 @@
 // The LEVEL-1 OVERVIEW SVG SCENE — the warm ship-deck schematic. A PURE, DOM-free composer that
 // turns one captured wire snapshot (frame + decks/rooms view + roster + designs) into a single
-// self-contained SVG string: full-bleed space, the hull silhouette, the 8-slot compartment grid
+// self-contained SVG string: the hull silhouette, the 8-slot compartment grid
 // with material floors + amber trim-light + glow-pools, the deck's furniture, and the front-facing
 // crew pawns. No DOM, no clock, no randomness beyond the spec's seeded starfield — same `state`
 // yields a byte-identical string.
@@ -111,7 +111,8 @@ export function makeTransform(slots, frame) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 1 — space backdrop + deterministic starfield (VS-O-05 … VS-O-10).
+// Layer 1 — the deterministic starfield (VS-O-05 … VS-O-10). The void + nebula backdrop it drifts
+// over is the persistent CSS `.ov-space`/`.ov-neb` skeleton layer, not this SVG.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 const STAR_COLS = ['#fff', '#ffe9cf', '#cfe0ff', '#f2d9b0', '#ffffff'];
@@ -128,30 +129,30 @@ export function starfield(count = 220) {
   return out;
 }
 
-function spaceLayer(id) {
-  const stars = starfield()
+/** The starfield as ONE circle-per-star SVG fragment (no wrapper), mapped into design space. */
+function starCircles() {
+  return starfield()
     .map((st) => `<circle cx="${n(st.x / 100 * VIEW_W)}" cy="${n(st.y / 100 * VIEW_H)}" r="${n(st.s / 2)}" fill="${st.c}"/>`)
     .join('');
-  return ''
-    + `<defs>`
-    +   `<radialGradient id="${id}-void" cx="60%" cy="30%" r="90%">`
-    +     `<stop offset="0" stop-color="#141a2b"/><stop offset="0.5" stop-color="#0a0c16"/>`
-    +     `<stop offset="1" stop-color="#05060c"/></radialGradient>`
-    +   nebula(`${id}-neb1`, '90,70,150', 0.16) + nebula(`${id}-neb2`, '40,120,130', 0.12)
-    +   nebula(`${id}-neb3`, '180,90,60', 0.09)
-    + `</defs>`
-    + `<rect x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" fill="url(#${id}-void)"/>`
-    // three nebula washes (VS-O-06), positioned by mock proportion within the viewBox
-    + `<ellipse cx="${n(0.20 * VIEW_W)}" cy="${n(0.50 * VIEW_H)}" rx="${n(0.30 * VIEW_W)}" ry="${n(0.55 * VIEW_H)}" fill="url(#${id}-neb1)"/>`
-    + `<ellipse cx="${n(0.84 * VIEW_W)}" cy="${n(0.90 * VIEW_H)}" rx="${n(0.27 * VIEW_W)}" ry="${n(0.50 * VIEW_H)}" fill="url(#${id}-neb2)"/>`
-    + `<ellipse cx="${n(0.62 * VIEW_W)}" cy="${n(0.10 * VIEW_H)}" rx="${n(0.24 * VIEW_W)}" ry="${n(0.38 * VIEW_H)}" fill="url(#${id}-neb3)"/>`
-    + `<g class="pl-stars">${stars}</g>`;
 }
 
-function nebula(id, rgb, a) {
-  return `<radialGradient id="${id}" cx="50%" cy="50%" r="50%">`
-    + `<stop offset="0" stop-color="rgb(${rgb})" stop-opacity="${a}"/>`
-    + `<stop offset="0.65" stop-color="rgb(${rgb})" stop-opacity="0"/></radialGradient>`;
+/**
+ * The drifting parallax starfield as a STANDALONE, self-animating SVG layer. This is NOT part of the
+ * per-repaint scene — it is injected ONCE into the skeleton's `.ov-space` (see overview-view.js) so
+ * the CSS drift survives the scene's `innerHTML` rebuilds. The seeded 220-star field is tiled twice
+ * side by side (at x=0 and x=VIEW_W); a −VIEW_W CSS translate on `.ov-stars-drift` (styles.css) loops
+ * seamlessly because the two tiles are identical. `slice` makes the field cover the full backdrop,
+ * letterbox bands included. The void + nebula washes it drifts over live in the persistent CSS
+ * `.ov-space`/`.ov-neb` backdrop, which is byte-identical to the old in-SVG `spaceLayer`.
+ */
+export function starLayerSvg() {
+  const field = starCircles();
+  return `<svg class="ov-stars" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="xMidYMid slice"`
+    + ` xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
+    + `<g class="ov-stars-drift">`
+    +   `<g class="pl-stars">${field}</g>`
+    +   `<g class="pl-stars" transform="translate(${VIEW_W} 0)">${field}</g>`
+    + `</g></svg>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -445,8 +446,9 @@ export function overviewScene(state) {
     rooms.push(slot.occupied || slot.displayName ? roomCompartment(slot, r) : hallCompartment(slot, r));
   }
 
+  // The space backdrop (void + nebula + drifting stars) is NOT drawn here: it lives in the
+  // persistent `.ov-space` skeleton layer (starLayerSvg + CSS) so its drift survives repaints.
   const body = ''
-    + spaceLayer(id)
     + hullLayer(id)
     + `<g class="pl-rooms">${rooms.join('')}</g>`
     + furnitureLayer(st.frame, deck, t, id)

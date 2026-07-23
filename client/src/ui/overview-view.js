@@ -19,7 +19,7 @@ import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid, decodeDecks, decodeRooms } from '../wire/messages.js';
 import { decksView } from './decks-model.js';
-import { overviewScene, makeTransform } from './overview-scene.js';
+import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
 import { pawnChip } from '../render/pawn-svg.js';
 import {
   clockHHMM, cautionState, moraleColor, surnameOf, speedLabel, logLineParts, logTail,
@@ -140,6 +140,9 @@ function buildSkeleton() {
   _root.innerHTML =
     '<div class="ov-space">' +
       '<div class="ov-neb ov-neb1"></div><div class="ov-neb ov-neb2"></div><div class="ov-neb ov-neb3"></div>' +
+      // The drifting starfield: built ONCE here (not in the per-repaint scene) so its CSS drift is
+      // never restarted by the scene's innerHTML rebuild. Sits above the nebula, below the stage.
+      starLayerSvg() +
       '<div class="ov-stage" id="ov-stage"></div>' +
     '</div>' +
     '<div class="hud ov-topbar" id="ov-topbar"></div>' +
