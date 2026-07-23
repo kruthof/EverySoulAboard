@@ -29,6 +29,7 @@
  * @property {number} power @property {number} oxygen @property {number} co2ppm
  * @property {number} water @property {number} food @property {number} heat
  * @property {number} structural @property {number} morale
+ * @property {number} [regolith] loose build-material stock in whole units (view-only STORES chip)
  */
 
 /** @typedef {{type:'log'|'legend'|'inspect', lines:string[]}} LinesMsg */

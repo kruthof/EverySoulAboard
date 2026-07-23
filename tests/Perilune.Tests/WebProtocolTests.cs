@@ -71,9 +71,18 @@ namespace Perilune.Tests
             var host = SimHost.Build(SimHost.DefaultSeed);
             string json = WireFormat.Metrics(ShipMetrics.Compute(host.Sim));
             foreach (var field in new[] { "day", "dayFrac", "power", "oxygen", "co2ppm",
-                                          "water", "food", "heat", "structural", "morale" })
+                                          "water", "food", "heat", "structural", "morale", "regolith" })
                 StringAssert.Contains("\"" + field + "\":", json);
             StringAssert.Contains("\"type\":\"metrics\"", json);
+        }
+
+        [Test]
+        public void Metrics_Carries_Loose_Regolith_Stock()
+        {
+            // The STORES chip reads this: the loose (uncarried) build-material count, additive + view-only.
+            var host = SimHost.Build(SimHost.DefaultSeed);
+            string json = WireFormat.Metrics(ShipMetrics.Compute(host.Sim), 7);
+            StringAssert.Contains("\"regolith\":7", json);
         }
 
         [Test]

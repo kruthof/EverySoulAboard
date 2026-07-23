@@ -178,6 +178,8 @@ function buildIslands() {
   $('ov-topbar').innerHTML =
     '<span class="ov-ship">MSV PERILUNE</span>' +
     '<span class="ov-deckctx"></span><span class="ov-clock"></span><span class="ov-spacer"></span>' +
+    '<span class="ov-chip ov-stores" data-ov-stores hidden ' +
+      'title="Loose regolith aboard — the build material that feeds wall/door work. Wall ghosts starve at 0."></span>' +
     '<span class="ov-chip ov-llm" data-ov-llm hidden ' +
       'title="The AI mind voicing the crew (talk backend). Offline-safe."></span>' +
     '<span class="ov-speedctl" title="Simulation speed — click « / » or press − / +">' +
@@ -190,6 +192,7 @@ function buildIslands() {
       'title="Ship status at a glance — click to open MOSS diagnostics"></button>';
   _el.tbDeck = _root.querySelector('.ov-deckctx');
   _el.tbClock = _root.querySelector('.ov-clock');
+  _el.tbStores = _root.querySelector('.ov-stores');
   _el.tbLlm = _root.querySelector('.ov-llm');
   _el.tbSpeedCtl = _root.querySelector('.ov-speedctl');
   _el.tbSpeedVal = _root.querySelector('.ov-speedval');
@@ -382,6 +385,18 @@ function paintTopbar(activeDeck, dView) {
   }
   // (4) LLM — which mind voices the crew; hidden until the first llmstatus lands.
   paintLlmChip();
+  // STORES — loose regolith aboard; the currency that gates building. Empty reads as a live warning
+  // (a starved wall ghost otherwise sits forever with nothing in the HUD saying why).
+  paintStoresChip(metrics);
+}
+
+/** The STORES chip: loose build-material stock; hidden until metrics carries it, red/pulse at 0. */
+function paintStoresChip(metrics) {
+  const reg = metrics && typeof metrics.regolith === 'number' ? metrics.regolith : null;
+  if (reg == null) { setHidden(_el.tbStores, true); return; }
+  setText(_el.tbStores, '◆ REGOLITH ' + reg);
+  setCls(_el.tbStores, 'empty', reg <= 0);
+  setHidden(_el.tbStores, false);
 }
 
 /** The top-bar LLM chip: backend name (+ degraded flag + hourly cost), or hidden when unknown. */

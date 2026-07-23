@@ -960,6 +960,52 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 /* (4) LLM chip — which mind voices the crew. */
 .ov-llm{font-weight:600;color:var(--amber-2,#e0a35a);border-color:rgba(224,163,90,.3);cursor:default}
 .ov-llm.degraded{color:#e8934a;border-color:rgba(232,147,74,.45)}
+/* STORES chip — loose regolith; the build currency. Empty is a live warning. */
+.ov-stores{font-weight:700;color:var(--ink-body,#b3aa9c);cursor:default;font-variant-numeric:tabular-nums}
+.ov-stores.empty{background:rgba(58,20,14,.8);color:var(--bad-bright,#e07a5f);
+  border-color:var(--bad,#c25a3f);animation:plnBlink 1.6s infinite}
+
+/* ==== first-run onboarding + `?` help ==== */
+.onb-layer{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(6,9,14,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.onb-layer[hidden]{display:none}
+.onb-card{width:min(600px,94vw);max-height:92vh;overflow:auto;padding:30px 32px;border-radius:16px;
+  background:linear-gradient(180deg,rgba(26,21,16,.98),rgba(16,13,10,.98));
+  border:1px solid rgba(255,196,128,.42);box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);
+  animation:onbIn .28s ease}
+@keyframes onbIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.onb-card{animation:none}}
+.onb-eyebrow{font-size:9.5px;letter-spacing:.22em;font-weight:700;color:var(--amber-deep,#cf7a33)}
+.onb-title{margin:10px 0 0;font-size:30px;line-height:1.08;font-weight:700;color:var(--amber-1,#e8934a);
+  letter-spacing:.01em}
+.onb-lede{margin:12px 0 0;font-size:13.5px;line-height:1.6;color:var(--ink-body,#b3aa9c)}
+.onb-verbs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+@media (max-width:480px){.onb-verbs{grid-template-columns:1fr}}
+.onb-verb{padding:13px 14px;border-radius:10px;background:rgba(255,196,128,.04);
+  border:1px solid rgba(255,196,128,.22)}
+.onb-verb-h{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--amber-2,#e0a35a)}
+.onb-verb-b{margin-top:6px;font-size:11.5px;line-height:1.5;color:var(--ink-body,#b3aa9c)}
+.onb-verb-b b{color:var(--txt-hi,#e9e2d5)}
+.onb-controls{margin-top:20px;border-top:1px solid rgba(255,255,255,.08);padding-top:16px}
+.onb-controls-h{font-size:9.5px;letter-spacing:.16em;font-weight:700;color:var(--txt-dim,#8c8377)}
+.onb-kgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin-top:11px}
+@media (max-width:480px){.onb-kgrid{grid-template-columns:1fr}}
+.onb-krow{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--ink-body,#b3aa9c)}
+.onb-key{flex:none;min-width:20px;text-align:center;padding:2px 7px;border-radius:5px;
+  font-family:inherit;font-size:10.5px;font-weight:700;color:var(--amber-1,#e8934a);
+  background:rgba(0,0,0,.35);border:1px solid rgba(255,196,128,.32);box-shadow:0 1px 0 rgba(0,0,0,.5)}
+.onb-begin{margin-top:24px;width:100%;padding:13px;border-radius:10px;cursor:pointer;
+  font:inherit;font-size:13px;font-weight:700;letter-spacing:.14em;color:#1a130c;
+  background:linear-gradient(180deg,#f2b877,#e0994f);border:0;
+  box-shadow:0 6px 20px rgba(224,153,79,.35);transition:transform .1s,box-shadow .12s}
+.onb-begin:hover{box-shadow:0 8px 26px rgba(224,153,79,.5)}
+.onb-begin:active{transform:translateY(1px)}
+.onb-foot{margin-top:12px;text-align:center;font-size:10px;color:var(--txt-faint,#6f675c)}
+.onb-help{position:fixed;right:30px;top:66px;z-index:120;width:32px;height:32px;border-radius:50%;
+  cursor:pointer;font:inherit;font-size:16px;font-weight:700;color:var(--amber-1,#e8934a);
+  background:rgba(20,16,12,.82);border:1px solid rgba(255,196,128,.34);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.onb-help:hover{color:#1a130c;background:var(--amber-1,#e8934a);border-color:var(--amber-1,#e8934a)}
 
 /* deck rail (VS-O-49/50) */
 .ov-deckrail{position:absolute;left:26px;top:50%;transform:translateY(-50%);display:flex;
