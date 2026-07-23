@@ -64,6 +64,11 @@ export const Cmd = {
   // ghosts an outcome; the item appears only when the sim confirms it in the next frame.
   place: (kind, x, y, deck) => ({ cmd: 'place', kind, x, y, deck }),
   remove: (x, y, deck) => ({ cmd: 'remove', x, y, deck }),
+  // Overview ＋ADD ROOM: commission an empty hall (deck + slot index) into a live typed room.
+  // roomType is the picker's lowercase type string (quarters/mess/medbay/…); the host validates
+  // it and the commission (must be a sealed, airless hall) at the tick boundary — the client never
+  // ghosts the outcome; the slot flips occupied+typed only when the next `decks` frame confirms it.
+  addRoom: (deck, slotIndex, roomType) => ({ cmd: 'addroom', deck, slot: slotIndex, type: roomType }),
   // P2.1 chronicle: request the chron message (also pushed on day rollover).
   chron: () => ({ type: 'chron' }),
   // P2 conversation: open a talk with a crew member (by cid), stream a player line, or close.

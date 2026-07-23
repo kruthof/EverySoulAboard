@@ -246,6 +246,7 @@ namespace Perilune.Web
                 case CmdKind.Build: HandleBuild(cmd); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
+                case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
@@ -631,6 +632,60 @@ namespace Perilune.Web
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
             _sim.EnqueueCommand(new RemoveDeviceCommand(pos));
             _status = "remove furniture";
+        }
+
+        /// <summary>
+        /// The room-commission bridge (Overview ＋ADD ROOM). Looks up the target slot in the plan's
+        /// view-only, unhashed <see cref="SimHost.SlotGrid"/>, derives its centre PROBE tile (the
+        /// interior centre of the wall-inclusive slot window — a floor tile inside the compartment)
+        /// and its existing ANCHOR name, and enqueues an <see cref="AddRoomCommand"/> carrying that
+        /// geometry. The sim itself has no slot-grid knowledge, so all geometry rides the command.
+        /// Legality (the slot must be a SEALED, AIRLESS empty hall) is decided sim-side at the tick
+        /// boundary — an illegal request is a silent sim no-op, and the slot only flips occupied+typed
+        /// once the sim confirms it in the next <c>decks</c> frame. Unknown room type ⇒ ignored.
+        /// </summary>
+        private void HandleAddRoom(WebCommand cmd)
+        {
+            int deck = cmd.X, slotIndex = cmd.Y;
+            if (!ParseRoomType(cmd.Name, out var type)) return; // unknown/blank type — ignored
+            var slots = _host.SlotGrid;
+            if (slots == null) return;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                var s = slots[i];
+                if (s.Deck != deck || s.Index != slotIndex) continue;
+                var probe = new Int3(s.X + s.W / 2, s.Y + s.H / 2, deck);
+                _sim.EnqueueCommand(new AddRoomCommand(deck, slotIndex, type, probe, s.Anchor));
+                _status = "commission " + type.ToString().ToLowerInvariant();
+                return;
+            }
+        }
+
+        /// <summary>Overview picker room-type string → <see cref="RoomType"/> (the commissionable set:
+        /// the player-facing room kinds, deliberately excluding the structural None/Corridor/Bridge).
+        /// Unknown/blank ⇒ false and the command is ignored; the sim re-checks nothing about the type,
+        /// so this whitelist is the type gate.</summary>
+        private static bool ParseRoomType(string name, out RoomType type)
+        {
+            type = RoomType.None;
+            if (string.IsNullOrEmpty(name)) return false;
+            switch (name.ToLowerInvariant())
+            {
+                case "quarters": type = RoomType.Quarters; return true;
+                case "mess": type = RoomType.Mess; return true;
+                case "medbay": type = RoomType.Medbay; return true;
+                case "hydro": type = RoomType.Hydro; return true;
+                case "workshop": type = RoomType.Workshop; return true;
+                case "storage": type = RoomType.Storage; return true;
+                case "commons": type = RoomType.Commons; return true;
+                case "engineering": type = RoomType.Engineering; return true;
+                case "fabrication": type = RoomType.Fabrication; return true;
+                case "reactor": type = RoomType.Reactor; return true;
+                case "lifesupport": type = RoomType.LifeSupport; return true;
+                case "command": type = RoomType.Command; return true;
+                case "observatory": type = RoomType.Observatory; return true;
+                default: return false;
+            }
         }
 
         /// <summary>Room Zoom palette tool string → furniture <see cref="DeviceKind"/> (IX-Z-21).
@@ -1095,15 +1150,19 @@ namespace Perilune.Web
             for (int i = 0; i < slots.Count; i++)
             {
                 var slot = slots[i];
-                var (occupied, anchorName) = ResolveSlot(world, rs, slot);
+                var (occupied, anchorName, liveType) = ResolveSlot(world, rs, slot);
                 if (!buckets.TryGetValue(slot.Deck, out var list))
                 {
                     list = new List<WireFormat.DeckSlot>(8);
                     buckets[slot.Deck] = list;
                     byDeck.Add(slot.Deck);
                 }
+                // Room TYPE comes from LIVE state (the RoomAnchor's Type, set by AddRoomCommand when
+                // a hall is commissioned), not the authoring descriptor — so a commissioned hall shows
+                // its new type. Fall back to the descriptor when no live type is known (airless hall).
+                byte typeByte = (occupied && liveType != RoomType.None) ? (byte)liveType : (byte)slot.Type;
                 list.Add(new WireFormat.DeckSlot(slot.Index, slot.X, slot.Y, slot.W, slot.H,
-                    anchorName, (byte)slot.Type, occupied, active: false));
+                    anchorName, typeByte, occupied, active: false));
             }
 
             // Second pass: active = the deck holds ≥1 occupied (non-vacuum) room; stamp every slot.
@@ -1129,10 +1188,10 @@ namespace Perilune.Web
         /// only when that room actually holds atmosphere (moles &gt; 0), so a sealed-but-airless empty
         /// hall reads unoccupied with a blank name. The name is the anchor on this deck whose probe
         /// resolves to the same room id — derived from live state, never the descriptor's anchor.</summary>
-        private static (bool Occupied, string AnchorName) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
+        private static (bool Occupied, string AnchorName, RoomType Type) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
         {
             int deck = slot.Deck;
-            if (deck < 0 || deck >= world.Depth) return (false, "");
+            if (deck < 0 || deck >= world.Depth) return (false, "", RoomType.None);
 
             ushort roomId = 0;
             for (int y = slot.Y; y < slot.Y + slot.H && roomId == 0; y++)
@@ -1145,18 +1204,19 @@ namespace Perilune.Web
                     if (id != 0 && id != RoomState.DoorMarker) { roomId = id; break; }
                 }
             }
-            if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "");
-            if (rs.Rooms[roomId].TotalMoles <= 0) return (false, ""); // sealed but airless = empty hall
+            if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "", RoomType.None);
+            if (rs.Rooms[roomId].TotalMoles <= 0) return (false, "", RoomType.None); // sealed but airless = empty hall
 
             string name = "";
+            RoomType type = RoomType.None;
             var anchors = rs.Anchors;
             for (int i = 0; i < anchors.Count; i++)
             {
                 var a = anchors[i];
                 if (a.Probe.Z != deck) continue;
-                if (rs.RoomIdAt(world, a.Probe) == roomId) { name = a.Name; break; }
+                if (rs.RoomIdAt(world, a.Probe) == roomId) { name = a.Name; type = a.Type; break; }
             }
-            return (true, name);
+            return (true, name, type);
         }
 
         /// <summary>Per-room atmosphere for the warm SVG LENS overlays / atmos box — a READ-ONLY walk
@@ -1405,7 +1465,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1458,6 +1518,9 @@ namespace Perilune.Web
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
                     // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.
                     case "remove": return new WebCommand(CmdKind.Remove, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
+                    // {"cmd":"addroom","deck":..,"slot":..,"type":"medbay|.."} — commission an empty hall
+                    // into a live typed room (Overview ＋ADD ROOM). X=deck, Y=slot, name=roomType string.
+                    case "addroom": return new WebCommand(CmdKind.AddRoom, Int(json, "deck"), Int(json, "slot"), name: Str(json, "type"));
                     default: return default;
                 }
             }

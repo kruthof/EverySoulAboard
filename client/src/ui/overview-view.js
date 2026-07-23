@@ -34,6 +34,14 @@ import {
 
 const LENSES = ['none', 'pressure', 'oxygen', 'co2', 'temperature', 'power', 'water'];
 const LENS_SHORT = ['∅', 'PRES', 'O₂', 'CO₂', 'TEMP', 'PWR', 'H₂O'];
+// ＋ADD ROOM picker: the commissionable room types (lowercase wire string → UPPERCASE label). Mirrors
+// GameSession.ParseRoomType's whitelist; sending an unlisted type is a host no-op, so keep in step.
+const ROOM_TYPE_CHOICES = [
+  ['quarters', 'QUARTERS'], ['mess', 'MESS'], ['medbay', 'MEDBAY'], ['hydro', 'HYDROPONICS'],
+  ['workshop', 'WORKSHOP'], ['storage', 'STORAGE'], ['commons', 'COMMONS'], ['engineering', 'ENGINEERING'],
+  ['fabrication', 'FABRICATION'], ['reactor', 'REACTOR'], ['lifesupport', 'LIFE SUPPORT'],
+  ['command', 'COMMAND'], ['observatory', 'OBSERVATORY'],
+];
 // Ship tabs the Overview owns; the rest lower to the console (v1 delegation).
 const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['relations', 'RELATIONS'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
 const SHIP_TABS = new Set(['build', 'crew']);
@@ -52,7 +60,11 @@ let _raf = 0;                // coalesce many wire messages into one repaint
 let _ctx = { transform: null, frame: null }; // last projection, for click→tile
 // Level-2 room-zoom hooks (owned by a later lane). For now: select/centre + an honest toast.
 let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + ')'); };
-let _onAddRoom = (deck, slot) => { toast('＋ ADD ROOM — coming soon'); };
+// ＋ADD ROOM: open the room-type picker for the clicked hall; a choice lowers to Cmd.addRoom and the
+// slot commissions (glow-pool + label) once the next `decks` frame confirms it. Overridable for tests.
+let _onAddRoom = (deck, slot) => showRoomPicker(deck, slot);
+let _pickDeck = 0;
+let _pickSlot = 0;
 
 /** Mount the Overview surface + subscribe to the shared HUD state. Call once from main.js. */
 export function initOverview(opts) {
@@ -88,7 +100,11 @@ function buildSkeleton() {
     '<div class="hud ov-lens" id="ov-lens"></div>' +
     '<div class="ov-cmd" id="ov-cmd"></div>' +
     '<div class="hud ov-sensor" id="ov-sensor"></div>' +
-    '<div class="ov-toast" id="ov-toast" hidden></div>';
+    '<div class="ov-toast" id="ov-toast" hidden></div>' +
+    // ＋ADD ROOM room-type picker (a centred modal over the scene; styles inlined so it works
+    // without a stylesheet). Populated on demand by showRoomPicker; clicks route via onHudClick.
+    '<div class="ov-picker" id="ov-picker" hidden style="position:fixed;inset:0;z-index:60;' +
+      'display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,.55)"></div>';
   _stage = document.getElementById('ov-stage');
   _toast = document.getElementById('ov-toast');
 
@@ -387,9 +403,12 @@ function onHudClick(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   if (t.closest('.ov-stage')) return; // scene has its own handler
+  if (t.id === 'ov-picker') { closeRoomPicker(); return; } // click the picker backdrop → dismiss
   const btn = t.closest('button');
   if (!btn || btn.disabled) return;
   const d = btn.dataset;
+  if (d.ovPick != null) { submitRoomPick(d.ovPick); return; }
+  if ('ovPickCancel' in d) { closeRoomPicker(); return; }
   if (d.ovDeck != null) { _send(Cmd.deck(deckDelta(Number(d.ovDeck), _ctx.frame ? _ctx.frame.deck : 0))); }
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
   else if (d.ovTab != null) { Hud.selectTab(d.ovTab); }
@@ -401,7 +420,44 @@ function onHudClick(e) {
   else if ('ovBio' in d) { Hud.openBioForSelected(); }
 }
 
-// ── transient toast (add-room / room-zoom stubs) ──
+// ── ＋ADD ROOM room-type picker ──
+
+/** Open the room-type picker for a hall (deck + slot index). A choice sends Cmd.addRoom. */
+function showRoomPicker(deck, slot) {
+  _pickDeck = deck | 0;
+  _pickSlot = slot | 0;
+  const el = $('ov-picker');
+  if (!el) return;
+  const btns = ROOM_TYPE_CHOICES.map(([type, label]) =>
+    '<button class="ov-pickbtn" data-ov-pick="' + type + '" ' +
+      'style="padding:8px 10px;border:1px solid rgba(255,196,128,.35);border-radius:6px;' +
+      'background:rgba(24,18,12,.9);color:#ffdcb0;font:inherit;cursor:pointer;letter-spacing:.04em">' +
+      esc(label) + '</button>').join('');
+  el.innerHTML =
+    '<div class="ov-pickcard" style="max-width:420px;padding:18px;border-radius:12px;' +
+      'background:rgba(14,12,10,.96);border:1px solid rgba(255,196,128,.4);box-shadow:0 12px 48px rgba(0,0,0,.6)">' +
+      '<div class="ov-hdr" style="margin-bottom:12px;color:#ffb570">COMMISSION ROOM · DECK ' +
+        esc(_pickDeck) + ' · SLOT ' + esc(_pickSlot) + '</div>' +
+      '<div class="ov-pickgrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + btns + '</div>' +
+      '<button class="ov-pickcancel" data-ov-pick-cancel ' +
+        'style="margin-top:14px;width:100%;padding:8px;border:1px solid rgba(255,255,255,.2);border-radius:6px;' +
+        'background:transparent;color:#cbb;font:inherit;cursor:pointer">CANCEL</button>' +
+    '</div>';
+  el.hidden = false;
+}
+
+function submitRoomPick(type) {
+  _send(Cmd.addRoom(_pickDeck, _pickSlot, type));
+  toast('COMMISSIONING ' + String(type).toUpperCase() + ' — DECK ' + _pickDeck + ' SLOT ' + _pickSlot);
+  closeRoomPicker();
+}
+
+function closeRoomPicker() {
+  const el = $('ov-picker');
+  if (el) { el.hidden = true; el.innerHTML = ''; }
+}
+
+// ── transient toast (room-zoom stub) ──
 
 function toast(msg) {
   if (!_toast) return;
