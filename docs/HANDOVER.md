@@ -1,5 +1,34 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)**, tag `v2-talking-ship`)
 
+## AAA UI-polish programme — 2 waves MERGED to main (2026-07-23)
+
+On top of the warm SVG rework, an AAA polish pass landed in two reviewed, `ci.sh`-gated waves — pin
+`494ad0b05a154ccb` **UNMOVED** (view-only/client + one additive view-only wire field; the regolith
+count is derived, not hashed). Each package was Opus-implemented + independently Opus-reviewed clean.
+
+- **Wave 1 — `lane/ui-polish` (merge `edfc870`)**: six shipped-UI fixes on the two-level Overview.
+  (1) PAUSE chip toggles a loud `▶ RESUME` state (was an invisible text-only swap); (2) SPEED is now
+  an interactive `« value »` stepper (was a dead read-only chip — no handler existed in the new UI);
+  (3) idle caution reads `SYSTEMS NOMINAL` + tooltip and the chip is a button → MOSS; (4) the LLM
+  backend chip restored on the Overview (`◈ BACKEND`, fed by `hud.getLlm`); (5) the ~300px BIO card
+  rebuilt into a large crew **DOSSIER** (identity/NEEDS/STANDING/PERSONALITY/RELATIONSHIPS/BACKSTORY/
+  MEMORIES/LOG — real fields live, not-yet-wired sections wear a `◇ SAMPLE` badge; no skill/injury
+  model, the sim has neither); (6) ESC now closes the DOSSIER (new `dossier` rung in `escapeTarget`).
+- **Wave 2 — `lane/first-impression` (merge `ba3ba8a`)**: two roadmap P0s. A **STORES chip** —
+  the host emits loose build-material on the `metrics` wire (`WireFormat.Metrics` additive optional
+  `regolith`; `MaterialNote` shares `LooseMaterialUnits()`) and the top bar shows `◆ REGOLITH N`,
+  red/blink at 0 (fixes the "starved wall ghost with no HUD reason"). And **boot onboarding** —
+  `client/src/ui/onboarding.js`, a one-time localStorage-gated intro ("Your crew are people." +
+  TALK/BUILD verbs + controls ref) plus a persistent `?` reopener = the game's only help surface.
+
+**The roadmap:** `docs/design/perilune-user-journey-review.md` — a 5-agent journey audit (onboarding ·
+build/economy · crew · systems/MOSS · nav/IA) with a cross-journey P0/P1/P2 backlog. Verdict: "the
+pieces meet a AAA bar; the product doesn't yet" — silence (onboarding), invisibility (sim models more
+than the UI shows), dead ends (alarm/log/lens connect to nothing). **Next best steps (unshipped):**
+the closed diagnostic loop (chip→MOSS-focused-on-fault + actionable faults), decouple the master alarm
+from the unfixable CO₂ condition, and **widen the `citizen` wire to make the DOSSIER's `◇ SAMPLE`
+sections live** (data already in `sim/Sim.Core/Citizens/*`, outside `StateHash` → determinism-safe).
+
 ## Warm SVG visual/UI rework — COMPLETE (2026-07-23), parallel programme
 
 A second programme landed on `main` alongside the economy work: the **warm SVG visual/UI
