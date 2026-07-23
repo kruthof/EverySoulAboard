@@ -74,6 +74,7 @@ const _citizens = new Map(); // cid → last citizen msg (IX-50/53; never purged
 let _status = null;       // last status message
 let _metrics = null;      // last metrics message
 let _log = null;          // last sensor-log lines
+let _llm = null;          // last llmstatus message (backend/degraded/cost — surfaced in the Overview top bar)
 let _connected = true;    // last connection state
 
 // The Overview subscribes here; every wire dispatch that moves a ship-surface input notifies it so
@@ -94,6 +95,7 @@ export function getDecor() { return _decor; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
+export function getLlm() { return _llm; }
 export function getTab() { return _tab; }
 export function isConnected() { return _connected; }
 export function isMossActive() { return !!(_moss && _moss.isOpen()); }
@@ -119,7 +121,27 @@ export function openBioForSelected() {
   const sel = selectedRosterEntry(_frame, _roster);
   if (!sel || !_citizens.has(sel.cid)) return;
   _send(Cmd.bio(sel.cid));
-  panels().citizen(_citizens.get(sel.cid), PORTRAIT_REGISTRY);
+  panels().citizen(enrichCitizen(_citizens.get(sel.cid)), PORTRAIT_REGISTRY);
+}
+
+/** Join the roster + relations caches onto a raw `citizen` payload so the DOSSIER card can show the
+ *  REAL morale/current-task and directed relationships (which ride other channels) — the wire's
+ *  `citizen` message itself carries only role/mood/traits/log today. Presentation-only. */
+function enrichCitizen(cit) {
+  if (!cit || cit.cid == null) return cit;
+  const crew = _roster && Array.isArray(_roster.crew) ? _roster.crew : [];
+  const sel = crew.find((e) => e.cid === cit.cid);
+  const nameByCid = (id) => { const c = crew.find((e) => e.cid === id); return c ? c.name : ('#' + id); };
+  const { outgoing, incoming } = regardRows(relEdges(), cit.cid);
+  const relations = [
+    ...outgoing.map((r) => ({ dir: 'out', name: nameByCid(r.cid), opinion: r.opinion, note: r.note })),
+    ...incoming.map((r) => ({ dir: 'in', name: nameByCid(r.cid), opinion: r.opinion, note: r.note })),
+  ];
+  return Object.assign({}, cit, {
+    morale: sel && typeof sel.morale === 'number' ? sel.morale : cit.morale,
+    task: cit.task != null ? cit.task : (sel ? sel.task : undefined),
+    relations,
+  });
 }
 
 /** @param {import('../wire/messages.js').MetricsMsg} m */
@@ -424,11 +446,13 @@ export function handleEscape() {
   const act = escapeTarget({
     armed: _armed != null,
     dialogueOpen: !!(_panels && _panels.activeDialogueSid != null),
+    dossierOpen: !!(_panels && _panels.hasOpenCitizen()),
     mossActive: !!(_moss && _moss.isOpen()),
     relationsActive: _tab === 'relations',
   });
   if (act === 'disarm') { _armed = null; reflectArmed(); }
   else if (act === 'dialogue') closeActiveDialogue();
+  else if (act === 'dossier') _panels.closeActiveCitizen();
   else if (act === 'moss') _moss.escape();
   else if (act === 'relations') setTab('build');
 }
@@ -1174,7 +1198,7 @@ export function renderChat(m) {
 export function renderCitizen(m) {
   if (!m || m.cid == null) return;
   _citizens.set(m.cid, m);
-  if (_panels) _panels.citizenIfOpen(m, PORTRAIT_REGISTRY);
+  if (_panels) _panels.citizenIfOpen(enrichCitizen(m), PORTRAIT_REGISTRY);
   refreshSelection(); // traits may have just become available; BIO may enable
 }
 
@@ -1200,6 +1224,8 @@ export function renderMoss(m) {
 /** Reflect the LLM backend status in the top-bar chip: backend name, degraded flag, cost/hr.
  *  Hidden until the first llmstatus message arrives. @param {import('../wire/messages.js').LlmStatusMsg} m */
 export function renderLlmStatus(m) {
+  _llm = m;                // cache for the Overview top-bar chip (read via getLlm)
+  notifyShip();           // let the Overview repaint its LLM chip
   const chip = $('s-llmchip');
   if (!chip) return;
   chip.style.display = '';

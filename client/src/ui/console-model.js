@@ -448,21 +448,26 @@ export function terminalLabel(entry) {
 
 /**
  * The Escape action, in priority order: an armed tool disarms first, then an open dialogue closes,
- * then — if the MOSS terminal has taken the window — Escape belongs to MOSS's OWN inner stack
- * (PROGRAM → DETAIL/FAULTLOG → LEDGER → ship; and a non-empty prompt clears first), then — if the
- * RELATIONS tab is up — Escape returns to the BUILD tab (restoring the ship viewport), else
- * nothing.
+ * then an open crew DOSSIER (BIO) card closes, then — if the MOSS terminal has taken the window —
+ * Escape belongs to MOSS's OWN inner stack (PROGRAM → DETAIL/FAULTLOG → LEDGER → ship; and a
+ * non-empty prompt clears first), then — if the RELATIONS tab is up — Escape returns to the BUILD
+ * tab (restoring the ship viewport), else nothing.
  *
- * The rung order armed → dialogue → MOSS → relations → none is INVARIANT (moss-terminal IX-M2).
+ * The rung order armed → dialogue → dossier → MOSS → relations → none is INVARIANT. The `dossier`
+ * rung slots in with the other floating-panel closers (dialogue) ABOVE the full-screen-surface
+ * navigators (moss, relations): a focused inspector card is dismissed before Escape descends into
+ * screen navigation. Without this rung an open BIO card left Escape falling through to the browser
+ * (which, in a fullscreen tab, exits fullscreen instead of closing the card).
  * MOSS returns a single `'moss'` verdict rather than its inner step: the inner stack is the MOSS
  * model's pure key state machine (`moss-model.keyPress`), and duplicating it here would give the
  * screen two disagreeing sources of truth. PURE; the caller performs the returned action.
- * @param {{armed:boolean, dialogueOpen:boolean, mossActive?:boolean, relationsActive:boolean}} s
- * @returns {'disarm'|'dialogue'|'moss'|'relations'|'none'}
+ * @param {{armed:boolean, dialogueOpen:boolean, dossierOpen?:boolean, mossActive?:boolean, relationsActive:boolean}} s
+ * @returns {'disarm'|'dialogue'|'dossier'|'moss'|'relations'|'none'}
  */
 export function escapeTarget(s) {
   if (s && s.armed) return 'disarm';
   if (s && s.dialogueOpen) return 'dialogue';
+  if (s && s.dossierOpen) return 'dossier';
   if (s && s.mossActive) return 'moss';
   if (s && s.relationsActive) return 'relations';
   return 'none';

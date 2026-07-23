@@ -492,7 +492,7 @@ canvas{
   box-shadow:0 12px 32px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;
 }
 .panel-dialogue{top:64px;right:332px;width:360px;max-height:60vh}
-.panel-citizen{top:64px;right:36px;width:300px}
+.panel-citizen{top:5vh;right:36px;width:min(560px,94vw);max-width:min(560px,94vw);max-height:90vh}
 .panel-terminal{left:20px;bottom:190px;width:min(560px,60vw);max-height:44vh}
 .panel-bar{
   display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-bar);
@@ -565,6 +565,58 @@ canvas{
 .cit-log-you .cit-log-text{color:var(--txt)}
 .cit-log-crew .cit-log-who{color:var(--amber-2)}
 .cit-log-crew .cit-log-text{color:var(--txt-hi)}
+
+/* ==== crew DOSSIER (the enlarged person-detail surface) ==== */
+.panel-citizen .panel-body{gap:12px;padding:14px 15px}
+/* identity band */
+.dsr-head{display:flex;gap:14px;align-items:flex-start}
+.dsr-portrait{flex:none;width:104px;height:104px;border-radius:6px;overflow:hidden;
+  border:1px solid var(--ln-chip);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.dsr-portrait .portrait{width:104px;height:104px;border-radius:0;border:0}
+.dsr-ident{min-width:0;flex:1;display:flex;flex-direction:column;gap:7px}
+.dsr-name{font-size:18px;font-weight:700;color:var(--amber-1);letter-spacing:.02em;line-height:1.1}
+.dsr-role{font-size:10px;color:var(--txt-dim);letter-spacing:.09em;text-transform:uppercase}
+.dsr-chips{display:flex;flex-wrap:wrap;gap:6px}
+.dsr-emo{align-self:flex-start;font-size:10px;padding:3px 9px;border-radius:20px;
+  background:rgba(224,163,90,.14);border:1px solid rgba(224,163,90,.4);color:var(--amber-2);
+  letter-spacing:.04em}
+.dsr-legend{font-size:9.5px;font-style:italic;color:var(--txt-faint);line-height:1.4;
+  border-left:2px solid var(--ln-chip);padding-left:9px}
+/* two-column section grid */
+.dsr-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+@media (max-width:520px){.dsr-grid{grid-template-columns:1fr}}
+.dsr-sec{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:7px;
+  background:rgba(255,255,255,.02);border:1px solid var(--ln-hair)}
+.dsr-sample{background:rgba(255,196,128,.03);border-style:dashed;border-color:rgba(224,163,90,.28)}
+.dsr-sec-hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dsr-sec-title{font-size:9.5px;letter-spacing:.14em;font-weight:700;color:var(--txt-dim)}
+.dsr-badge{font-size:8px;letter-spacing:.1em;font-weight:700;color:var(--amber-2);
+  border:1px solid rgba(224,163,90,.4);border-radius:3px;padding:1px 5px;opacity:.85}
+/* meters (needs / standing / morale) */
+.dsr-meter{display:flex;align-items:center;gap:8px;font-size:10px}
+.dsr-meter-lbl{flex:none;width:58px;color:var(--txt-dim)}
+.dsr-bar{flex:1;height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden}
+.dsr-bar-fill{height:100%;border-radius:4px;background:var(--good);transition:width .3s ease}
+.dsr-meter-val{flex:none;width:40px;text-align:right;font-weight:700;color:var(--txt-hi);
+  font-variant-numeric:tabular-nums}
+.dsr-hint{font-size:9.5px;font-style:italic;color:var(--txt-faint);line-height:1.4}
+/* tag rows (traits/values/fears) */
+.dsr-tags{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.dsr-tag-lbl{font-size:8.5px;letter-spacing:.1em;color:var(--txt-faint);margin-right:2px}
+.dsr-tag{font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid var(--ln-chip);
+  color:var(--txt-dim)}
+.dsr-tag.real{color:var(--txt-hi);border-color:rgba(224,163,90,.4)}
+/* relationships */
+.dsr-rel{display:flex;align-items:center;gap:7px;font-size:10px}
+.dsr-rel-dir{flex:none;width:12px;color:var(--txt-faint);text-align:center}
+.dsr-rel-name{flex:1;min-width:0;color:var(--txt-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsr-rel-op{flex:none;font-weight:700;font-variant-numeric:tabular-nums}
+.dsr-rel-note{flex:none;font-size:8.5px;color:var(--txt-faint);font-style:italic}
+/* backstory + memories (full width) */
+.dsr-prose{font-size:11px;line-height:1.5;color:var(--txt);font-style:italic}
+.dsr-mem{display:flex;align-items:baseline;gap:9px;font-size:10px;line-height:1.4}
+.dsr-mem-dots{flex:none;font-size:7px;letter-spacing:1px;color:var(--amber-2)}
+.dsr-mem-text{color:var(--txt)}
 
 /* MOSS terminal drawer (VS-59 — .term-code 12px/18px is LOAD-BEARING) */
 .term-banner{
@@ -879,13 +931,35 @@ body.moss-open #overview-view{display:none !important}
 .ov-clock{color:var(--ink-body,#b3aa9c)}
 .ov-spacer{flex:1}
 .ov-chip{padding:7px 12px;border-radius:9px;font-size:11px;background:var(--hud-bg);
-  border:1px solid var(--ink-inset-border,#3a332a);color:var(--ink-mute,#8c8377)}
-.ov-pause{cursor:pointer}
+  border:1px solid var(--ink-inset-border,#3a332a);color:var(--ink-mute,#8c8377);font-family:inherit;
+  letter-spacing:inherit}
+button.ov-chip{cursor:pointer;transition:background .12s,color .12s,border-color .12s,box-shadow .12s}
+button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
+/* (1) PAUSE affordance — HOLD is quiet; RESUME is loud and unmistakably "press me" (soft glow + pulse). */
+.ov-pause{cursor:pointer;font-weight:700;min-width:96px;text-align:center}
+.ov-pause.paused{background:rgba(46,58,30,.85);color:var(--good,#9ccf6a);
+  border-color:rgba(156,207,106,.55);box-shadow:0 0 0 1px rgba(156,207,106,.25),0 0 14px rgba(156,207,106,.28);
+  animation:plnBreathe 1.9s ease-in-out infinite}
+@keyframes plnBreathe{0%,100%{box-shadow:0 0 0 1px rgba(156,207,106,.22),0 0 10px rgba(156,207,106,.22)}
+  50%{box-shadow:0 0 0 1px rgba(156,207,106,.4),0 0 18px rgba(156,207,106,.42)}}
+/* (2) SPEED stepper — « value » with a bright, glanceable current tier. */
+.ov-speedctl{display:inline-flex;align-items:center;gap:2px;padding:3px 4px;border-radius:9px;
+  background:var(--hud-bg);border:1px solid var(--ink-inset-border,#3a332a)}
+.ov-speedctl.dim{opacity:.5}
+.ov-spdbtn{cursor:pointer;font:inherit;font-size:13px;line-height:1;width:20px;height:22px;border-radius:6px;
+  border:1px solid transparent;background:transparent;color:var(--ink-mute,#8c8377)}
+.ov-spdbtn:hover{background:rgba(255,196,128,.14);color:var(--amber-1,#ffdcb0);border-color:rgba(255,196,128,.3)}
+.ov-speedval{min-width:44px;text-align:center;font-weight:700;font-size:11.5px;color:var(--amber-1,#ffdcb0);
+  letter-spacing:.03em}
+/* (3) CAUTION chip — clickable → MOSS. */
 .ov-caution{font-weight:700}
 .ov-caution.warn{background:rgba(58,42,18,.72);color:#e8934a;border-color:rgba(232,147,74,.4);
   animation:plnBlink 1.6s infinite}
 .ov-caution.alert{background:rgba(58,20,14,.8);color:var(--bad-bright,#e07a5f);
   border-color:var(--bad,#c25a3f);animation:plnBlink 1.2s infinite}
+/* (4) LLM chip — which mind voices the crew. */
+.ov-llm{font-weight:600;color:var(--amber-2,#e0a35a);border-color:rgba(224,163,90,.3);cursor:default}
+.ov-llm.degraded{color:#e8934a;border-color:rgba(232,147,74,.45)}
 
 /* deck rail (VS-O-49/50) */
 .ov-deckrail{position:absolute;left:26px;top:50%;transform:translateY(-50%);display:flex;
