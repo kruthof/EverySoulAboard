@@ -1,4 +1,63 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)**, tag `v2-talking-ship`)
+# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability**, tag `v2-talking-ship`)
+
+## E0-1 — labour supply (recruitability): LANDED on `main` (2026-07-23), START HERE for the economy
+
+**The first E-lane is on `main`** (`c643293`, merged `--no-ff` from `lane/e0-1-recruitability`
+@ `f3b5d93`). Opus-implemented + independently Opus-reviewed **PASS** (all four named test
+mutations applied and confirmed failing; every pin reproduced). E0-1 is the hard prerequisite
+that unblocks every other economy lane — it moves the effective labour pool from a measured ~1.43
+of 8 toward the full crew.
+
+**What it does — two levers:**
+1. **`Citizen.IsIdleForWork` dropped `&& !HasPath`** → now `!Dead && !HoldPosition && JobKind ==
+   JobKind.None`. A wandering crew member (`AutoWander`) is almost always mid-wander-path, so the
+   old gate hid it from the dispatcher (`JobSystem:136`), self-serve (`SustenanceSystem:82`) and
+   the maintain/craft recruiters. The path takeover was already clean — a job claim re-paths from
+   `citizen.Pos` (`JobWork.TryPathToAdjacent`), overwriting the wander path — so no takeover
+   machinery was added. **Measured: 6/6 crew recruited vs 2/6 with the fix reverted; all 8 slice
+   crew take work at tick 1 (was: first at t31).**
+2. **`wander_radius_tiles` def field** (default **8**, `PathService.TryRandomWalkableTileNear`, a
+   Chebyshev-box bounded sampler wired into `CitizenSystem:65`; full six-site def ritual). Radius
+   is the lever — NOT idle-time — because reducing wander cadence would re-synchronise the crew's
+   needs and revive the anti-pile-on hypoxia deadlock `AuthoredShips.cs:235-241` guards against.
+   Bounded wander keeps crew dispersed locally AND near job sites. Default is UNTUNED pending the
+   A1 measurement.
+
+**Pins (current — supersedes the B-bug tables below):**
+
+| pin | value | pre-E0-1 |
+|---|---|---|
+| 3-day scenario (`ci.sh`) | `494ad0b05a154ccb` | `494ad0b05a154ccb` (HELD) |
+| tick-3000 golden | `0f66ffdf9f90f766` | `0f66ffdf9f90f766` (HELD) |
+| slice tick-3000 golden | `d93165a481ebb344` | `994aa1ac661aa1cc` (moved) |
+| defs checksum | `60147a57e27c5c31` | `81ae90bdd049f745` (moved) |
+
+Both StateHash pins HELD because the scenario and perilune tick-3000 ships carry non-wandering /
+`HoldPosition` crew — they never enter the labour or wander paths E0-1 changed (proven
+empirically: an RNG-consuming sampler swap would have moved those hashes had those ships wandered).
+The slice golden moved (regenerated single-owner, cause stated) and the defs checksum moved (new
+scalar fold). Gate on the merged tree: **`./ci.sh` exit 0, twin hashes MATCH, 811 dotnet + 461
+node green.**
+
+**Player-control semantics — DECIDED (Garvin, 2026-07-23):** relaxing `IsIdleForWork` makes an
+active `MoveCitizenCommand` order (which carries a `JobKind==None` path) newly interruptible by
+auto self-serve AND auto-work. The self-serve interrupt (divert to drink/eat on a real threshold
+crossing) is live now; the sharper edge — an auto-DIG assignment hijacking an explicit order — is
+LATENT because the web client has no dig/stockpile verb yet (`MECHANICS §13.6`). Decision:
+**leave as-is, `HoldPosition` is the strict-control escape hatch; revisit at E0-3** when the dig
+verb makes the auto-work edge reachable. The reviewer ruled this a design question, not a merge
+blocker.
+
+**What E0-1 left unconnected (`MECHANICS §13.6`):** it fixed the *recruiter* half of the near-zero
+labour pool; the *designation* half is still a gap — the web client has no dig/stockpile/strip
+verb, so `AgreeTask` stays dead. That is **E0-3**. And the wander radius default (8) is untuned.
+
+**Next: E0-2** (10× work-rate rebase + the parked movement retune, landed together as ONE
+integrator-gated commit, BEHIND E0-1 never before it — the retune alone costs 29% of production
+and halves recruitability) **then E0-3** (dig/stockpile/strip verbs on the web client — review the
+new AAA UI surface first, below). See `ECONOMY-PLAN.md` §E0.
+
+---
 
 ## AAA UI-polish programme — 2 waves MERGED to main (2026-07-23)
 
@@ -108,9 +167,9 @@ tree (all three B-bugs move pins off the same base, integrated in one pass):
 Every package was Opus-implemented and independently Opus-reviewed; **the three B-bugs each took
 one review send-back before PASS** (B-1 a legacy-save sentinel that reintroduced the leak, B-2 a
 vacuous survival test, B-3 stale MECHANICS prose + a vacuous vacuum test — the review method
-catching the author's blind spot every time). **Next: the E-lanes spawn — E0-1 recruitability
-first (`ECONOMY-PLAN.md`).** Everything below is the historical record of how Wave 0 and the
-B-bugs went.
+catching the author's blind spot every time). (E0-1 recruitability has since landed on top — see
+the E0-1 section at the top of this file; next is E0-2 then E0-3.) Everything below is the
+historical record of how Wave 0 and the B-bugs went.
 
 **How it got here (record):** Wave 0 was cut from `main` @ `3efd181`; `main` advanced 35 commits
 (MOSS terminal, render, movement, Ollama, art rev 2, playtest round 4); the branch merged `main`

@@ -88,6 +88,42 @@ namespace Perilune.Sim
             return false;
         }
 
+        /// <summary>Pick a random reachable walkable tile within a Chebyshev radius of
+        /// <paramref name="origin"/> (best effort, up to 10 samples). The radius bounds an idle
+        /// citizen's wander LOCALLY (E0-1, <c>CitizenDefs.WanderRadiusTiles</c>).
+        ///
+        /// Chebyshev (a clamped box) rather than Manhattan: a box sample needs no per-draw
+        /// distance rejection — every draw is in range by construction — so the draw count per
+        /// attempt stays a fixed 3 (as in <see cref="TryRandomWalkableTile"/>) and the method is
+        /// bounded and zero-alloc. Manhattan would either reject out-of-range draws (variable draw
+        /// count, RNG-stream-fragile) or need a triangular remap; the corners a box admits and a
+        /// diamond would not are harmless for local dispersal. A <paramref name="radius"/> ≥ the
+        /// ship extent saturates the box to the whole world, reproducing
+        /// <see cref="TryRandomWalkableTile"/>'s global wander exactly.</summary>
+        public bool TryRandomWalkableTileNear(Simulation sim, SimRng rng, Int3 origin, int radius, out Int3 result)
+        {
+            var world = sim.World;
+            _sim = sim;
+            _world = world;
+
+            int xLo = origin.X - radius; if (xLo < 0) xLo = 0;
+            int xHi = origin.X + radius; if (xHi >= world.Width)  xHi = world.Width  - 1;
+            int yLo = origin.Y - radius; if (yLo < 0) yLo = 0;
+            int yHi = origin.Y + radius; if (yHi >= world.Height) yHi = world.Height - 1;
+            int zLo = origin.Z - radius; if (zLo < 0) zLo = 0;
+            int zHi = origin.Z + radius; if (zHi >= world.Depth)  zHi = world.Depth  - 1;
+
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                var p = new Int3(xLo + rng.NextInt(xHi - xLo + 1),
+                                 yLo + rng.NextInt(yHi - yLo + 1),
+                                 zLo + rng.NextInt(zHi - zLo + 1));
+                if (IsWalkable(p)) { result = p; return true; }
+            }
+            result = default;
+            return false;
+        }
+
         private bool IsWalkable(Int3 p) => _sim.IsWalkable(p); // single shared rule
 
         private int GetNeighbors(Int3 p, Span<Int3> buffer)

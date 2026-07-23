@@ -35,7 +35,7 @@
 #   [water]         tank capacity, reclaimer rate + efficiency, greywater makeup floor (WaterSystem)
 #   [hydro]         hydroponics irrigation + grow rate (HydroponicsSystem)
 #   [wear]          machine wear + maintenance (MachineWear/MaintenanceSystem)
-#   [citizen]       movement cadence (CitizenSystem)
+#   [citizen]       movement cadence + idle-wander scope (CitizenSystem)
 #   [exploration]   fog-reveal radius (ExplorationSystem)
 #   [director]      tension weights + the wear_pressure lever (DirectorSystem)
 #   [machines]      radiator_reject_kw scalar + one row per DeviceKind:

@@ -256,6 +256,15 @@ namespace Perilune.Sim
             public int TicksPerTile;
             /// <summary>CitizenSystem.IdleTicksBetweenWanders — idle ticks before a wander. Current: 30.</summary>
             public int IdleTicksBetweenWanders;
+            /// <summary>CitizenSystem wander scope — an idle-wander target is drawn within this
+            /// Chebyshev radius (in tiles) of the citizen's current position (E0-1). Bounds the
+            /// wander LOCALLY so crew disperse near their work (short job paths, bounded need
+            /// drag) instead of roaming ship-wide, WITHOUT reducing wander cadence — the slice
+            /// depends on wandering to desynchronise needs (AuthoredShips.cs:235-241), so we bound
+            /// reach, not frequency. A radius ≥ the ship extent reproduces the pre-E0-1 global
+            /// wander (the sample box saturates to the whole world). UNTUNED default pending A1
+            /// measurement. Current: 8.</summary>
+            public int WanderRadiusTiles;
         }
 
         /// <summary>ExplorationSystem fog-reveal reach.</summary>
@@ -515,6 +524,7 @@ namespace Perilune.Sim
                 {
                     TicksPerTile = 5,
                     IdleTicksBetweenWanders = 30,
+                    WanderRadiusTiles = 8,
                 },
 
                 Exploration = new ExplorationDefs
@@ -688,6 +698,7 @@ namespace Perilune.Sim
 
             h = XxHash64.Combine(h, (ulong)(uint)Citizen.TicksPerTile);
             h = XxHash64.Combine(h, (ulong)(uint)Citizen.IdleTicksBetweenWanders);
+            h = XxHash64.Combine(h, (ulong)(uint)Citizen.WanderRadiusTiles);
 
             h = XxHash64.Combine(h, (ulong)(uint)Exploration.Radius);
 

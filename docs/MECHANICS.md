@@ -206,7 +206,13 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
 `CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `494ad0b05a154ccb`
 (pinned in `ci.sh`); tick-3000 golden `0f66ffdf9f90f766`; slice tick-3000 golden
-`994aa1ac661aa1cc`; defs checksum `81ae90bdd049f745`. These moved with the **B-1/B-2/B-3**
+`d93165a481ebb344`; defs checksum `60147a57e27c5c31`. The slice golden + defs checksum most
+recently moved with **E0-1** (recruitability, 2026-07-23) — a REAL slice behaviour change
+(wandering crew are now recruited to work: `IsIdleForWork` no longer vetoes a wander path, and a
+new `wander_radius_tiles` def field bounds wander scope). The two StateHash pins held (the
+scenario and perilune tick-3000 ships carry non-wandering / HoldPosition crew, so neither enters
+the labour or wander paths that changed). Before E0-1 the slice golden was `994aa1ac661aa1cc` and
+the defs checksum `81ae90bdd049f745`, both of which had moved with the **B-1/B-2/B-3**
 shipping-bug fixes (2026-07-23) — the first pin moves that are real BEHAVIOUR changes rather
 than pure folds (B-1 releases a stranded crafting reservation on the slice; B-2's greywater
 makeup floor keeps the hydro loop alive; B-3's partial-pressure diffusion transports CO2 across
@@ -587,9 +593,17 @@ Three behaviour switches:
   never self-serves by travelling.
 - `RevealsFog` (`:23`) — hidden survivors don't lift fog until found.
 
-`IsIdleForWork` (`:63`) = `!Dead && !HoldPosition && JobKind == None && !HasPath`. This
-one predicate gates every recruiter (`JobSystem`, `SustenanceSystem`, `CraftingSystem`,
-`MaintenanceSystem`).
+`IsIdleForWork` (`:63`) = `!Dead && !HoldPosition && JobKind == None`. This one predicate
+gates every recruiter (`JobSystem`, `SustenanceSystem`, `CraftingSystem`,
+`MaintenanceSystem`). **E0-1 (recruitability, L0) dropped the old `&& !HasPath` clause:** a
+crew member mid-wander (AutoWander crew almost always are) used to be invisible to every
+recruiter, pickable only in the brief settle gap between wander legs, so the effective
+labour pool collapsed toward ~1.43 of 8. It is now recruited straight off a wander — its
+wander path is overwritten from where it stands when a source claims it (every recruiter
+paths from `citizen.Pos`), or left untouched when nothing is on offer. This also means an
+idle-walking crew member under a `MoveCitizenCommand` (also `JobKind==None`) will now
+self-serve or take work mid-order — deliberate; use `HoldPosition` for a crew member the
+player wants to stay strictly on the ordered path.
 
 ### 5.2 Need rates (`needs.def`, applied at 1 Hz with `Dt = 1 s`)
 
@@ -629,25 +643,24 @@ tick), step one tile, and reset `MoveCooldown = ticks_per_tile`. On arriving,
 
 Idle (`:54-78`): a citizen with `AutoWander && !HoldPosition && JobKind == None` counts
 `IdleCooldown` down and then picks a wander target via
-`PathService.TryRandomWalkableTile`.
+`PathService.TryRandomWalkableTileNear` (E0-1; was the world-wide `TryRandomWalkableTile`).
 
 `citizen.def`: `ticks_per_tile = 5` (2 tiles/s at 10 Hz), `idle_ticks_between_wanders = 30`
-(3 s).
+(3 s), `wander_radius_tiles = 8` (E0-1; the idle-wander scope).
 
-**`TryRandomWalkableTile` (`Path/PathService.cs:77-89`) samples up to 10 uniformly random
-tiles from the ENTIRE world — all decks — and returns the first walkable one.** There is no
-locality, no room preference, no deck preference.
+**`TryRandomWalkableTileNear` (`Path/PathService.cs`) samples up to 10 random tiles from a
+Chebyshev box of half-width `wander_radius_tiles` around the citizen (clamped to the world)
+and returns the first walkable one (E0-1).** It bounds wandering LOCALLY so crew disperse
+near their work instead of roaming ship-wide, WITHOUT reducing wander cadence — the slice
+depends on wandering to desynchronise needs (§5.1 `AutoWander` note), so E0-1 bounds reach,
+not frequency. The default 8 is UNTUNED, pending A1 measurement; a radius ≥ the ship extent
+reproduces the pre-E0-1 global wander. The un-bounded `TryRandomWalkableTile` remains in
+`PathService` (no longer called by the sim).
 
-Measured on the shipping slice (8,000 draws from the eight crew start tiles, using the real
-`TryRandomWalkableTile` + `FindPath` API). **The draw RNG is not seed-pinned, so these are
-estimates, not goldens** — three independent runs are quoted as ranges:
-
-- ~6,400 of 8,000 draws produced a path (6,368 / 6,409 across runs); the rest were rejected
-  — no walkable sample in 10 tries, or unreachable.
-- **mean path length ≈ 21.4 tiles (21.33–21.49), max 48–49** ⇒ at `ticks_per_tile = 5`, a
-  mean wander leg is ~10.7 s of continuous walking.
-- **≈ 46 % of random picks landed on a different deck** than the walker (3,675 / 3,709 /
-  3,732 of 8,000 across the three runs).
+The pre-E0-1 global sampler produced, on the shipping slice, a mean wander leg of ~21 tiles
+(~10.7 s at `ticks_per_tile = 5`) with ~46 % of picks on a different deck — i.e. crew
+routinely crossed the whole ship between needs. That is the ship-wide roaming E0-1's radius
+now bounds.
 
 ### 5.5 Pathing (`Path/PathService.cs`)
 
@@ -1359,7 +1372,19 @@ Measured on the slice at boot and throughout a 1-day run: **48 debris tiles, 0 d
   debris"*) is therefore uncompletable from the web client.
 
 Measured job occupancy over 3 sim-days, all 8 crew: `None 99.92 %`, `Maintain 0.03 %`,
-`Drink 0.02 %`, `Eat 0.01 %`, `Craft 0.01 %`, everything else **0.00 %**.
+`Drink 0.02 %`, `Eat 0.01 %`, `Craft 0.01 %`, everything else **0.00 %** (measured pre-E0-1).
+
+**E0-1 (recruitability, L0) fixed the recruiter half of this, not the designation half.**
+Two distinct things kept the labour pool near zero: (a) `IsIdleForWork` excluded any crew
+mid-wander, so even when work existed the effective pool collapsed toward ~1.43 of 8; and
+(b) the web client exposes no dig/stockpile verb, so no work is ever *designated* from the
+shipping client. E0-1 removes (a) — a wandering crew member is now recruited straight off a
+wander (§5.1), demonstrated by the re-recorded slice assignment pin in `JobDispatchTests`
+where all eight crew take work at tick 1 once a designation exists. **(b) is untouched and
+remains the live gap**: with no dig/stockpile verb in `GameSession.cs`, the shipping client
+still cannot create the demand that would put the enlarged pool to work, and `AgreeTask`
+stays dead. Also left for later: the `wander_radius_tiles` default (8) is UNTUNED pending
+the A1 "crew are >25 % busy at sim-hour 24" measurement (§5.4).
 
 ### 13.7 The social graph saturates in a single day
 

@@ -118,103 +118,117 @@ namespace Perilune.Tests
 
         /// <summary>
         /// EVERY job assignment the eight-crew slice ever makes, with a wall designated at boot —
-        /// all 66 of them, verbatim. The scenario saturates: the aft dig field is exhausted by
-        /// t1277 and the last haul lands at t5561, after which 34 000 further ticks produce
-        /// nothing. This is the reordering canary: it exercises all four shipped job kinds
-        /// through the REAL dispatcher and asserts the observable (tick, citizen, kind, target)
-        /// sequence rather than recomputing it.
+        /// all 73 of them, verbatim. This is the reordering canary: it exercises all four shipped
+        /// job kinds through the REAL dispatcher and asserts the observable (tick, citizen, kind,
+        /// target) sequence rather than recomputing it.
         ///
-        /// The window is deliberately past saturation rather than a round number, so the pin
-        /// covers the late second haul cluster (t5392–t5561) as well as the boot window, and so a
-        /// change that only ADDS assignments fails on the count instead of passing on a prefix.
+        /// RE-RECORDED FOR E0-1 (recruitability), and the change is the whole point of that lane:
+        /// this sequence WAS 66 assignments beginning at t31 and dribbling in as wandering crew
+        /// happened to fall idle. It now OPENS with all eight crew (c932–c939) taking work at
+        /// **t1** — the relaxed <see cref="Citizen.IsIdleForWork"/> gate recruits crew straight
+        /// off a wander instead of waiting for a settle gap — and saturates far sooner (the aft dig
+        /// field is worked out and the last haul lands by t3922, after which ~36 000 further ticks
+        /// produce nothing). The wander RNG stream also changed (the bounded
+        /// <c>TryRandomWalkableTileNear</c> sampler now feeds the slice's wandering crew), so every
+        /// target below is a fresh recording, not a reorder of the old one. Recorded from the
+        /// post-E0-1 build; asserted unchanged thereafter.
+        ///
+        /// The window (40 000 ticks, cap 400) is deliberately far past saturation, so a change
+        /// that only ADDS assignments fails on the count instead of passing on a prefix.
         ///
         /// NAMED MUTATION (applied, observed failing, reverted): flip <c>DigJobSource.Select</c>'s
-        /// argmin from <c>&lt;</c> to <c>&lt;=</c> — the sequence diverges (measured: it does,
-        /// inside the aft dig field, where equidistant sites are common).
+        /// argmin from <c>&lt;</c> to <c>&lt;=</c> — the sequence diverges inside the aft dig field,
+        /// where equidistant sites are common.
         ///
-        /// MEASURED LIMIT, stated because it matters: swapping the Dig and Haul REGISTRATIONS
-        /// does NOT move this sequence. Nowhere in all 66 assignments is a dig site exactly as far
-        /// from a citizen as a haul item, so the cross-source tie never arises on the slice. That
-        /// mutation is caught by <see cref="EqualDistance_DigBeatsHaul"/> instead. A recorded
-        /// sequence is a good canary and a bad proof; the constructed ties below are the proof.
+        /// MEASURED LIMIT, stated because it matters: swapping the Dig and Haul REGISTRATIONS does
+        /// NOT move this sequence. Nowhere in all 73 assignments is a dig site exactly as far from a
+        /// citizen as a haul item, so the cross-source tie never arises on the slice. That mutation
+        /// is caught by <see cref="EqualDistance_DigBeatsHaul"/> instead. A recorded sequence is a
+        /// good canary and a bad proof; the constructed ties below are the proof.
         ///
         /// This is a BEHAVIOUR PIN, like a golden: any lane that deliberately changes labour
-        /// assignment (E0-1 recruitability, E0-2 work rates, a new job source) will move it,
-        /// and must re-record it in the same commit and say why. It must never be re-recorded
-        /// to make a red build green.
+        /// assignment (E0-2 work rates, a new job source) will move it, and must re-record it in
+        /// the same commit and say why. It must never be re-recorded to make a red build green.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
-            "t31 c939 HaulPickup 29,6,0",
-            "t68 c939 HaulToBuild 30,10,0",
-            "t81 c932 HaulPickup 19,13,0",
-            "t91 c933 HaulPickup 29,6,0",
-            "t101 c936 Dig 57,9,0",
-            "t144 c939 HaulToBuild 30,10,0",
-            "t146 c934 HaulPickup 31,6,0",
-            "t151 c935 HaulPickup 32,6,0",
-            "t176 c936 HaulPickup 57,9,0",
-            "t186 c938 Dig 58,9,0",
-            "t205 c939 Build 30,10,0",
-            "t226 c937 HaulPickup 32,6,0",
-            "t257 c932 HaulPickup 32,6,0",
-            "t266 c939 HaulPickup 31,6,0",
-            "t267 c933 HaulPickup 31,6,0",
-            "t353 c932 Dig 57,10,0",
-            "t353 c933 Dig 57,8,0",
-            "t403 c935 Dig 58,10,0",
-            "t427 c937 Dig 58,8,0",
-            "t533 c932 Dig 57,7,0",
-            "t533 c933 Dig 59,9,0",
-            "t550 c938 Dig 57,11,0",
-            "t616 c932 Dig 57,6,0",
-            "t616 c933 Dig 58,7,0",
-            "t616 c935 Dig 59,8,0",
-            "t632 c936 Dig 60,9,0",
-            "t681 c932 Dig 59,10,0",
-            "t681 c935 Dig 58,11,0",
-            "t691 c933 Dig 58,6,0",
-            "t722 c939 Dig 59,7,0",
-            "t726 c934 Dig 60,8,0",
-            "t751 c935 Dig 59,11,0",
-            "t756 c933 Dig 58,12,0",
-            "t816 c935 Dig 60,11,0",
-            "t846 c933 Dig 57,12,0",
-            "t881 c935 Dig 59,12,0",
-            "t911 c933 Dig 58,13,0",
-            "t937 c936 Dig 61,9,0",
-            "t951 c935 Dig 60,12,0",
-            "t972 c933 Dig 57,13,0",
-            "t982 c939 Dig 59,6,0",
-            "t1002 c936 Dig 60,10,0",
-            "t1016 c934 Dig 60,7,0",
-            "t1016 c935 Dig 59,13,0",
-            "t1037 c933 Dig 60,13,0",
-            "t1042 c938 Dig 61,8,0",
-            "t1047 c939 Dig 62,9,0",
-            "t1072 c936 Dig 61,10,0",
-            "t1081 c934 Dig 61,11,0",
-            "t1086 c935 Dig 61,12,0",
-            "t1092 c937 Dig 60,6,0",
-            "t1137 c936 Dig 62,10,0",
-            "t1137 c939 Dig 61,7,0",
-            "t1161 c935 Dig 62,12,0",
-            "t1166 c934 Dig 62,11,0",
-            "t1202 c936 Dig 62,8,0",
-            "t1212 c939 Dig 61,6,0",
-            "t1226 c935 Dig 61,13,0",
-            "t1231 c934 Dig 62,13,0",
-            "t1272 c936 Dig 62,7,0",
-            "t1277 c939 Dig 62,6,0",
-            "t5392 c938 HaulPickup 17,5,0",
-            "t5401 c935 HaulPickup 17,5,0",
-            "t5421 c936 HaulPickup 57,6,0",
-            "t5436 c937 HaulPickup 57,10,0",
-            "t5561 c939 HaulPickup 58,11,0",
+            "t1 c932 HaulPickup 19,13,0",
+            "t1 c933 HaulToBuild 30,10,0",
+            "t1 c934 HaulPickup 29,6,0",
+            "t1 c935 HaulPickup 32,6,0",
+            "t1 c936 HaulPickup 32,6,0",
+            "t1 c937 HaulPickup 29,6,0",
+            "t1 c938 HaulPickup 31,6,0",
+            "t1 c939 HaulPickup 31,6,0",
+            "t67 c939 HaulPickup 32,6,0",
+            "t87 c938 HaulPickup 32,6,0",
+            "t112 c937 HaulPickup 31,6,0",
+            "t147 c933 HaulToBuild 30,10,0",
+            "t153 c939 Dig 57,9,0",
+            "t158 c933 HaulPickup 31,10,0",
+            "t175 c933 Build 30,10,0",
+            "t353 c933 Dig 57,10,0",
+            "t378 c935 Dig 57,8,0",
+            "t378 c936 Dig 58,9,0",
+            "t578 c933 Dig 57,7,0",
+            "t578 c935 Dig 58,8,0",
+            "t578 c936 Dig 59,9,0",
+            "t578 c938 Dig 58,10,0",
+            "t578 c939 Dig 57,11,0",
+            "t643 c933 Dig 57,6,0",
+            "t643 c935 Dig 58,7,0",
+            "t643 c936 Dig 59,8,0",
+            "t648 c939 Dig 59,10,0",
+            "t682 c934 Dig 60,9,0",
+            "t708 c933 Dig 58,11,0",
+            "t708 c935 Dig 57,12,0",
+            "t732 c936 Dig 58,6,0",
+            "t732 c939 Dig 59,7,0",
+            "t763 c938 Dig 60,10,0",
+            "t788 c933 Dig 59,11,0",
+            "t788 c935 Dig 58,12,0",
+            "t807 c936 Dig 59,6,0",
+            "t807 c939 Dig 60,7,0",
+            "t833 c938 Dig 61,10,0",
+            "t852 c937 Dig 60,8,0",
+            "t853 c933 Dig 60,11,0",
+            "t853 c935 Dig 57,13,0",
+            "t872 c939 Dig 59,12,0",
+            "t898 c938 Dig 62,10,0",
+            "t914 c935 Dig 58,13,0",
+            "t918 c933 Dig 61,11,0",
+            "t962 c939 Dig 60,12,0",
+            "t963 c938 Dig 61,9,0",
+            "t972 c932 Dig 60,6,0",
+            "t979 c935 Dig 59,13,0",
+            "t983 c933 Dig 62,11,0",
+            "t1024 c938 Dig 61,8,0",
+            "t1027 c939 Dig 61,12,0",
+            "t1044 c935 Dig 60,13,0",
+            "t1048 c933 Dig 62,12,0",
+            "t1089 c938 Dig 62,9,0",
+            "t1109 c935 Dig 61,13,0",
+            "t1113 c933 Dig 62,13,0",
+            "t1150 c938 Dig 61,7,0",
+            "t1162 c937 Dig 62,8,0",
+            "t1274 c932 Dig 61,6,0",
+            "t1274 c933 Dig 62,7,0",
+            "t1374 c932 Dig 62,6,0",
+            "t1462 c932 HaulPickup 61,6,0",
+            "t1462 c933 HaulPickup 60,7,0",
+            "t1462 c935 HaulPickup 61,11,0",
+            "t1462 c937 HaulPickup 57,8,0",
+            "t1462 c938 HaulPickup 59,9,0",
+            "t3922 c933 HaulPickup 57,6,0",
+            "t3922 c934 HaulPickup 17,5,0",
+            "t3922 c935 HaulPickup 57,9,0",
+            "t3922 c937 HaulPickup 17,5,0",
+            "t3922 c938 HaulPickup 57,10,0",
+            "t3922 c939 HaulPickup 14,5,0",
         };
 
         [Test]
-        public void SliceAssignmentSequence_AllSixtySixJobsToSaturation_IsUnchangedByTheDispatcherSplit()
+        public void SliceAssignmentSequence_AllSeventyThreeJobsToSaturation_IsStableAfterE0_1Recruitability()
         {
             var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
             BuildSystem build = null;
@@ -233,7 +247,7 @@ namespace Perilune.Tests
             sim.JobsDirty = JobBoardDirty.All;
 
             // 400 is a cap the scenario must not reach: hitting it would mean the run had not
-            // saturated and the "all 66" claim in the doc comment is a lie.
+            // saturated and the "all 73" claim in the doc comment is a lie.
             var log = RecordAssignments(sim, 40000, 400);
             Assert.That(log.Count, Is.LessThan(400), "precondition: the run saturated inside the window");
 
