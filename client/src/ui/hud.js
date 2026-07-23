@@ -68,6 +68,57 @@ let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
 let _nudgeTimer = 0;      // pending auto-dismiss timeout id
 const _citizens = new Map(); // cid → last citizen msg (IX-50/53; never purged, IX-98)
+// Caches for the Overview surface (overview-view.js). The console renders status/metrics/log
+// straight to DOM; the Overview needs the last values too, so they are also retained here and read
+// through the getters below. Additive — the console's own rendering is unchanged.
+let _status = null;       // last status message
+let _metrics = null;      // last metrics message
+let _log = null;          // last sensor-log lines
+let _connected = true;    // last connection state
+
+// The Overview subscribes here; every wire dispatch that moves a ship-surface input notifies it so
+// it repaints (throttled its own side). One shared tab/armed/selection/cache truth, two renders.
+const _shipSubs = [];
+/** Register a callback fired after each ship-surface-relevant wire dispatch (Overview repaint). */
+export function onShipUpdate(fn) { if (typeof fn === 'function') _shipSubs.push(fn); }
+function notifyShip() { for (const fn of _shipSubs) { try { fn(); } catch (e) { /* isolate */ } } }
+
+// ---- read-only accessors for the Overview (the wire is authoritative; these expose the caches) ----
+export function getFrame() { return _frame; }
+export function getRoster() { return _roster; }
+export function getDecks() { return _decks; }
+export function getRooms() { return _rooms; }
+export function getDesigns() { return _designs; }
+export function getStatus() { return _status; }
+export function getMetrics() { return _metrics; }
+export function getLog() { return _log; }
+export function getTab() { return _tab; }
+export function isConnected() { return _connected; }
+export function isMossActive() { return !!(_moss && _moss.isOpen()); }
+export function getSelectedEntry() { return selectedRosterEntry(_frame, _roster); }
+
+// ---- action seams the Overview lowers to (reusing the ONE armed-tool/tab/selection machinery) ----
+/** Public tab switch (Overview command-bar tabs reuse the console's `setTab`). */
+export function selectTab(tab) { setTab(tab); }
+/** Toggle-arm a tool from the Overview PLACE palette / MOVE button (mirrors the console palette). */
+export function armTool(kind) {
+  _armed = nextArmedTool(_armed, { t: 'toggle', tool: kind });
+  if (isBuildTool(_armed) && _tab !== 'build') setTab('build');
+  if (_armed != null) nudgeIfPaused();
+  reflectArmed();
+  notifyShip();
+}
+/** Select a crew member by cid through the ONE shared selection flow (same as a CREW WATCH row). */
+export function selectCrewByCid(cid) { selectCrew(Number(cid)); }
+/** Open a channel with the currently selected crew (Overview [T] TALK). */
+export function talkSelectedCrew() { const cid = selectedCrewCid(_frame); if (cid != null) _send(Cmd.talk(cid)); }
+/** Open the biography card for the selected crew (Overview [B] BIO), enabled iff cached. */
+export function openBioForSelected() {
+  const sel = selectedRosterEntry(_frame, _roster);
+  if (!sel || !_citizens.has(sel.cid)) return;
+  _send(Cmd.bio(sel.cid));
+  panels().citizen(_citizens.get(sel.cid), PORTRAIT_REGISTRY);
+}
 
 /** @param {import('../wire/messages.js').MetricsMsg} m */
 export function renderMetrics(m) {
@@ -81,18 +132,21 @@ export function renderMetrics(m) {
   html += `<div class="metric"><div class="row"><span>CO₂ worst</span><span>${co2} ppm</span></div>` +
     `<div class="track"><div class="fill" style="width:${Math.min(100, co2 / 20)}%;background:${co2 > 2000 ? 'var(--bad)' : co2 > 1000 ? 'var(--warn)' : 'var(--good)'}"></div></div></div>`;
   el.innerHTML = html;
+  _metrics = m;
   // Top-bar clock (IX-81): day verbatim (0-based, matches the log channel's D<day.dd>), HH:MM
   // from dayFrac. Caution chip (IX-84): derived, display-only, ~1 Hz with metrics.
   setChip('s-day', 'DAY ' + m.day + ' · ' + clockHHMM(m.dayFrac || 0));
   const c = cautionState(m);
   const chip = $('s-caution');
   if (chip) { chip.className = 'caution ' + c.level; chip.textContent = c.label; }
+  notifyShip();
 }
 
 /** Sensor log (IX-90): last 5 lines, leading D-token wrapped in .ts (newest tinted via CSS). Also
  *  the MOSS FAULT LOG's live section (spec §2 `reduceLog`), which wants the message not the tail. */
 export function renderLog(lines) {
-  if (_moss) _moss.onLog({ type: 'log', lines: Array.isArray(lines) ? lines : [] });
+  _log = Array.isArray(lines) ? lines : [];
+  if (_moss) _moss.onLog({ type: 'log', lines: _log });
   const tail = logTail(lines, 5);
   const el = $('log');
   el.innerHTML = tail.length
@@ -104,6 +158,7 @@ export function renderLog(lines) {
     }).join('')
     : '<div class="line" style="color:var(--faint)">— no events yet · unpause or speed up to run the ship —</div>';
   el.scrollTop = el.scrollHeight;
+  notifyShip();
 }
 
 export function renderLegend(lines) {
@@ -118,6 +173,7 @@ export function renderInspect(lines) {
 
 /** @param {import('../wire/messages.js').StatusMsg} m */
 export function renderStatus(m) {
+  _status = m;
   $('s-speed').textContent = speedLabel(m.speed);
   $('s-msg').textContent = m.text || '';
   const dot = $('s-runstate');
@@ -133,6 +189,7 @@ export function renderStatus(m) {
   const wasPaused = _paused;
   _paused = !!m.paused;
   if (wasPaused && !_paused) { _nudge = nextNudge(_nudge, { t: 'unpause' }, now()); paintNudge(); }
+  notifyShip();
 }
 
 /** Reflect the active lens on the legend card + lens buttons when a frame lands. */
@@ -241,6 +298,7 @@ export function renderFrame(m) {
   refreshSelection();
   // Deck may have changed — refilter both glued overlays to the shown deck.
   paintStageOverlays();
+  notifyShip();
 }
 
 /** Roster dispatch: CREW WATCH list + CREW tab table + selection-dependent surfaces. */
@@ -250,6 +308,7 @@ export function renderRoster(m) {
   if (_tab === 'crew') renderCrewTable();
   refreshSelection();
   paintWorkMarks(); // the roster IS the work-marker source (deck/x/y/task)
+  notifyShip();
 }
 
 /** Chron dispatch: cache + live re-render when the CHRONICLE tab is up (IX-74). Also the MOSS
@@ -266,6 +325,7 @@ export function renderChron(m) {
 export function renderDesigns(m) {
   _designs = m;
   paintDesignGhosts();
+  notifyShip();
 }
 
 /** Terminals dispatch: cache the MOSS directory + refresh the MOSS tab if it is up. Also feeds the
@@ -286,10 +346,10 @@ export function renderSystems(m) {
 /** Decks dispatch (warm-SVG view channels): cache the per-deck compartment grid. Cached here so
  *  the future warm SVG Overview / Room-Zoom render live geometry the instant they mount; the
  *  decoded per-deck view-model is decks-model.js:decksView over this + the rooms channel. */
-export function renderDecks(m) { _decks = m; }
+export function renderDecks(m) { _decks = m; notifyShip(); }
 
 /** Rooms dispatch: cache the per-room atmosphere (LENS overlays + atmos box). */
-export function renderRooms(m) { _rooms = m; }
+export function renderRooms(m) { _rooms = m; notifyShip(); }
 
 /** Decor dispatch: cache the cosmetic view-only decor layer. */
 export function renderDecor(m) { _decor = m; }
@@ -300,6 +360,7 @@ export function renderRelations(m) {
   _relations = m;
   if (_tab === 'relations') renderRelationsWeb();
   refreshSelection();
+  notifyShip();
 }
 
 // ---- armed tool (the single client input mode) ----
@@ -312,6 +373,7 @@ export function armFromKey(kind) {
   if (isBuildTool(_armed) && _tab !== 'build') setTab('build');
   if (_armed != null) nudgeIfPaused();
   reflectArmed();
+  notifyShip(); // the Overview PLACE palette reflects the armed tool immediately
 }
 
 /** A placement/move click landed (controls.js): pulse the tile; a move order disarms (IX-52).
@@ -321,6 +383,7 @@ export function toolUsed(tool, x, y) {
   pulseAt(tool, x, y);
   nudgeIfPaused(); // placing a designation while paused is the classic "nothing happened" moment
   if (tool === 'move') { _armed = null; reflectArmed(); }
+  notifyShip();
 }
 
 // ---- paused-ship nudge (surface "PRESS SPACE TO RUN" near the run-state chip) ----
@@ -372,6 +435,7 @@ export function handleEscape() {
  *  On reconnect with CHRONICLE already active, re-request immediately (IX-74 "per connection" —
  *  the tab can't be re-activated to fire it, so the reconnect fires it). */
 export function setConnected(connected) {
+  _connected = connected;
   if (!connected) {
     _armed = nextArmedTool(_armed, { t: 'disconnect' });
     _pending = supersedePending(_pending, { t: 'disconnect' });
@@ -381,6 +445,7 @@ export function setConnected(connected) {
     _chronRequested = true;
     _send(Cmd.chron());
   }
+  notifyShip();
 }
 
 function reflectArmed() {
@@ -567,6 +632,7 @@ function setTab(tab) {
   reflectRelationsView();
   refreshSelection();
   if (prevArmed !== _armed) reflectArmed();
+  notifyShip(); // the Overview shows for BUILD/CREW, hides for RELATIONS/MOSS/CHRONICLE
 }
 
 // ---- MOSS terminal (the full-window takeover, IX-M1) ----
