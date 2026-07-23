@@ -12,6 +12,7 @@
 // — those are the model lane's tests to write, not this lane's.
 
 import * as MODEL from '../src/ui/moss-model.js';
+import { initTerminal, openTerminal, reduceMoss, editDraft, beginCompile } from '../src/ui/terminal-model.js';
 
 /**
  * Row normalization comes from the AUTHORITATIVE decoder, `moss-model.js:rowObj` — there must not
@@ -41,6 +42,9 @@ export function openMoss() {
     chron: [], log: [],
     prompt: '', history: [], histIdx: -1,
     console: [],
+    // Shape parity with the now-real model: the PROGRAM IDE state lives under `program` and the
+    // `source|diag|audit|rterror` events delegate to terminal-model (see reduceMossEvent below).
+    program: initTerminal(),
   };
 }
 
@@ -73,7 +77,25 @@ export function reduceMossEvent(model, msg) {
       .map((l) => ({ stream: l[0] | 0, text: String(l[1]) }));
     return { ...model, console: model.console.concat(lines) };
   }
-  return model;
+  // source | diag | audit | rterror belong to the PROGRAM editor and delegate to terminal-model,
+  // exactly as the real reduceMossEvent does — a message for another tid is dropped by its guard.
+  const program = reduceMoss(model.program, msg);
+  return program === model.program ? model : { ...model, program };
+}
+
+// ---- PROGRAM IDE reducers (the moss-programs lane) ---------------------------------------------
+
+export function selectProgram(model, tid) {
+  const id = tid == null || tid === '' ? null : String(tid);
+  return { ...model, program: id ? openTerminal(id) : initTerminal() };
+}
+
+export function editProgramDraft(model, text) {
+  return { ...model, program: editDraft(model.program, text) };
+}
+
+export function beginProgramCompile(model) {
+  return { ...model, program: beginCompile(model.program) };
 }
 
 export function reduceChron(model, msg) {

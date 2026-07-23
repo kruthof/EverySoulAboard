@@ -721,6 +721,70 @@ canvas{
 /* the directory's DECK label is its own column, NOT `.c-fault` — it must survive the VS-M9 floor,
    which drops the ledger's fault column */
 .moss-prog-row .c-deck{color:var(--moss-faint)}
+/* ---- the embedded PROGRAM IDE (moss-program-editor.js) — a CRT skin over correct text. The code
+   metrics (12px / 18px) are LOAD-BEARING: moss-program-editor's LINE_HEIGHT=18 places the gutter
+   diagnostic markers at padTop + (line-1)*18, so this line-height must stay 18px. ---- */
+.moss-prog-editor{display:flex;flex-direction:column;gap:.55em}
+.moss-prog-banner{
+  color:var(--moss-ink);background:var(--moss-warn);text-shadow:none;
+  padding:.35em .7em;font-size:12px;letter-spacing:.04em;white-space:pre-wrap;
+}
+.moss-prog-banner[hidden]{display:none}
+.moss-prog-edit{
+  display:flex;align-items:stretch;min-height:9em;
+  border:1px solid var(--moss-faint);background:rgba(0,0,0,.28);
+}
+.moss-prog-gutter{
+  position:relative;flex:0 0 auto;overflow:hidden;
+  background:rgba(0,0,0,.25);border-right:1px solid var(--moss-faint);
+}
+.moss-prog-nums{
+  margin:0;padding:4px 6px;font-family:var(--font-mono);font-size:12px;line-height:18px;
+  letter-spacing:0;color:var(--moss-faint);text-align:right;min-width:2.4ch;white-space:pre;
+}
+.moss-prog-markers{position:absolute;inset:0;pointer-events:none}
+.moss-prog-marker{position:absolute;right:2px;width:7px;height:7px;margin-top:9px;border-radius:50%}
+.moss-prog-marker.sev-error{background:#ff6a4d}
+.moss-prog-marker.sev-warning{background:var(--moss-warn)}
+.moss-prog-code{
+  flex:1 1 auto;min-width:0;resize:vertical;
+  margin:0;padding:4px 8px;border:0;outline:none;
+  background:transparent;color:var(--moss-amber);caret-color:var(--moss-amber);
+  font-family:var(--font-mono);font-size:12px;line-height:18px;letter-spacing:0;
+  text-shadow:0 0 5px var(--moss-glow);white-space:pre;overflow:auto;
+}
+.moss-prog-actions{display:flex;align-items:center;gap:1ch}
+.moss-prog-state{
+  font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  padding:.15em .7em;border:1px solid var(--moss-faint);color:var(--moss-dim);
+}
+.moss-prog-state.st-dirty{color:var(--moss-warn);border-color:var(--moss-warn)}
+.moss-prog-state.st-compiling{color:var(--moss-amber);border-color:var(--moss-amber)}
+.moss-prog-state.st-installed{color:var(--moss-amber);border-color:var(--moss-amber)}
+.moss-prog-state.st-error{color:#ff6a4d;border-color:#ff6a4d}
+.moss-prog-install{
+  margin-left:auto;font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;padding:.28em 1.1em;cursor:pointer;
+  background:transparent;color:var(--moss-amber);border:1px solid var(--moss-amber);
+}
+.moss-prog-install:hover{background:var(--moss-glow)}
+.moss-prog-install:disabled{opacity:.38;cursor:default;pointer-events:none}
+.moss-prog-diags{display:flex;flex-direction:column;gap:2px;font-family:var(--font-mono);font-size:11px}
+.moss-prog-diags:empty{display:none}
+.moss-prog-diag{color:var(--moss-warn);white-space:pre-wrap}
+.moss-prog-diag.sev-error{color:#ff6a4d}
+.moss-prog-audit-head{display:flex;align-items:center;gap:1ch;margin-top:.2em}
+.moss-prog-audit-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--moss-faint)}
+.moss-prog-refresh{
+  font-size:12px;line-height:1;padding:.1em .5em;cursor:pointer;
+  background:transparent;color:var(--moss-dim);border:1px solid var(--moss-faint);
+}
+.moss-prog-refresh:hover{color:var(--moss-amber);border-color:var(--moss-amber)}
+.moss-prog-audit{
+  max-height:11em;overflow:auto;display:flex;flex-direction:column;gap:1px;
+  font-family:var(--font-mono);font-size:11px;line-height:1.45;color:var(--moss-dim);white-space:pre-wrap;
+}
+.moss-prog-audit:empty::before{content:'— no audit lines —';color:var(--moss-faint)}
 /* the `>` transcript above the prompt (echo / output / error) */
 .moss-console{flex:none;max-height:22vh;overflow-y:auto;overflow-x:hidden;margin-top:.5em}
 .moss-console:empty{display:none}

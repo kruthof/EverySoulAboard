@@ -21,6 +21,7 @@
 
 import { Cmd } from '../wire/session.js';
 import * as MODEL from './moss-model.js';
+import { MossProgramEditor } from './moss-program-editor.js';
 
 /** The monospace column geometry (character cells). Exported so the tests assert real offsets. */
 export const COLS = {
@@ -183,6 +184,16 @@ export class MossScreen {
     this._programTid = null;
     this._onKey = (e) => this.handleKey(e);
     this._build();
+    // The PROGRAM screen's embedded IDE (a VIEW of `model.program`). Constructed here so the
+    // shipping client gets it with no hud.js change; `attachProgramEditor` stays public so tests can
+    // swap in a spy. Its gestures route BACK through the pure moss-model (editProgramDraft /
+    // beginProgramCompile) + the `moss set|audit` wire ops — it holds no editor state of its own.
+    this.attachProgramEditor(new MossProgramEditor({
+      document: this.doc,
+      onEdit: (text) => this._programEdit(text),
+      onInstall: () => this._programInstall(),
+      onAudit: () => this._programAudit(),
+    }));
   }
 
   // ---- element tree (built once) --------------------------------------------------------------
@@ -232,9 +243,12 @@ export class MossScreen {
     crt.setAttribute('aria-hidden', 'true');
 
     this.root.replaceChildren(page, crt);
-    // Clicking anywhere in the page returns focus to the prompt (IX-M8).
+    // Clicking anywhere in the page returns focus to the prompt (IX-M8) — EXCEPT on a text-entry
+    // surface the user meant to edit: the prompt input itself, or the PROGRAM editor's textarea.
+    // Stealing focus back off the editor would make its textarea unclickable (the browser's own
+    // focus-on-mousedown would be undone the same frame).
     page.addEventListener('mousedown', (e) => {
-      if (e && e.target === this.inputEl) return;
+      if (e && (e.target === this.inputEl || isTextEntryTarget(e.target))) return;
       this._focusPrompt();
     });
   }
@@ -271,6 +285,10 @@ export class MossScreen {
     if (this._editor && this._mountedTid && this._editor.detach) this._editor.detach();
     this._mountedTid = null;
     this._mountedEditor = null;
+    // A FRESH model every entry (open() calls openMoss(), whose `program` is terminal-less); the
+    // remembered selection must reset with it, or a re-entered PROGRAM screen would mount an editor
+    // for a tid whose source it never re-fetched.
+    this._programTid = null;
   }
 
   _replayChannels() {
@@ -652,20 +670,26 @@ export class MossScreen {
   }
 
   /**
-   * PROGRAM (IX-M6) — the shell + the terminal directory ship here; the MOSS IDE that fills the
-   * right half is the `moss-programs` follow-up lane.
+   * PROGRAM (IX-M6) — the terminal directory on the left, the embedded MOSS IDE on the right. The
+   * IDE is `moss-program-editor.js`, a VIEW of `model.program` (which `reduceMossEvent` keeps live).
    *
-   * ── THE SEAM FOR THAT LANE ────────────────────────────────────────────────────────────────
+   * ── THE MOUNT/DETACH/SYNC CONTRACT (extended by the moss-programs lane) ───────────────────────
    * `this.programMount` is a `<div class="moss-prog-editor">` created ONCE and re-parented on each
-   * render — deliberately NOT rebuilt, so an editor mounted into it keeps its DOM, its scroll and
+   * render — deliberately NOT rebuilt, so the editor mounted into it keeps its DOM, its scroll and
    * its focus while the directory beside it re-renders. `this._programTid` is the tid the player
-   * selected (null = none). To fold the IDE in:
-   *     mossScreen.attachProgramEditor({ mount(el, tid) {…}, detach() {…} })
-   * `mount` is called ONLY when the selected tid changes (and once on attach); `detach` when the
-   * selection changes or MOSS closes. The source fetch is already wired: selecting a row sends
-   * `{type:'moss',op:'open',tid}`, whose `moss ev:source` reply reaches the model through
-   * `onMossEvent`. Nothing else in this file needs to change — do NOT re-plumb the wire, the key
-   * routing or the takeover.
+   * selected (null = none). The editor object implements:
+   *     { mount(el, tid), detach(), sync(programState) }
+   * `mount` is called ONLY when the selected tid (or the editor instance) changes — building the
+   * textarea once; `detach` when the selection changes or MOSS closes; and `sync(model.program)` is
+   * called after EVERY render, because source/diag/audit/rterror all reduce into `model.program`
+   * WITHOUT changing the tid, so a same-tid wire event must repaint the editor in place. The editor
+   * NEVER re-instantiates a terminal-model — `model.program` is the single source of truth.
+   *
+   * The source fetch is wired in `selectProgram`: it folds `M.selectProgram(model, tid)` (which
+   * `openTerminal`s the tid into `model.program` so terminal-model's tid guard ACCEPTS the reply —
+   * the gap this lane closed) and sends `{type:'moss',op:'open',tid}`, whose `moss ev:source` reply
+   * reaches `model.program` through `onMossEvent`. Editor gestures come back as `_programEdit` /
+   * `_programInstall` / `_programAudit`, which fold the pure reducers and emit `moss set|audit`.
    */
   _renderProgram() {
     const doc = this.doc;
@@ -700,31 +724,72 @@ export class MossScreen {
     this.advisoryEl.replaceChildren();
   }
 
-  /** Mount/unmount the PROGRAM editor for the current selection, once per tid change. */
+  /**
+   * Mount/detach the PROGRAM editor for the current selection (once per tid/editor change), then
+   * `sync` it EVERY render — a view of `model.program` must repaint when a same-tid source/diag/
+   * audit/rterror lands. The placeholder path remains for a screen with no editor attached.
+   */
   _syncProgramEditor() {
-    if (this._mountedTid === this._programTid && this._mountedEditor === this._editor) return;
-    if (this._editor && this._mountedTid) { if (this._editor.detach) this._editor.detach(); }
-    this.programMount.replaceChildren();
-    this._mountedTid = this._programTid;
-    this._mountedEditor = this._editor;
-    if (this._editor && this._programTid) { this._editor.mount(this.programMount, this._programTid); return; }
-    this.programMount.appendChild(mk(this.doc, 'div', 'moss-empty', this._programTid
-      ? 'PROGRAM ' + this._programTid + ' — EDITOR NOT INSTALLED (moss-programs lane)'
-      : 'SELECT A TERMINAL TO LOAD ITS PROGRAM.'));
+    if (this._mountedTid !== this._programTid || this._mountedEditor !== this._editor) {
+      if (this._editor && this._mountedTid && this._editor.detach) this._editor.detach();
+      this.programMount.replaceChildren();
+      this._mountedTid = this._programTid;
+      this._mountedEditor = this._editor;
+      if (this._editor && this._programTid) {
+        this._editor.mount(this.programMount, this._programTid);
+      } else {
+        this.programMount.appendChild(mk(this.doc, 'div', 'moss-empty', this._programTid
+          ? 'PROGRAM ' + this._programTid + ' — NO EDITOR ATTACHED'
+          : 'SELECT A TERMINAL TO LOAD ITS PROGRAM.'));
+      }
+    }
+    if (this._editor && this._programTid && this._editor.sync) {
+      this._editor.sync(this.model && this.model.program);
+    }
   }
 
-  /** Select a terminal on the PROGRAM screen and request its source (the `moss-programs` seam). */
+  /**
+   * Select a terminal on the PROGRAM directory and request its source. Folds `M.selectProgram` so
+   * `model.program.tid` is set BEFORE the `source` reply lands — otherwise terminal-model's tid
+   * guard drops the reply as a no-op (the wiring gap this lane closed). The P-key `prog <terminal>`
+   * path opens the terminal in the model itself; the directory-click path did not, until now.
+   */
   selectProgram(tid) {
     this._programTid = tid || null;
+    if (this.M.selectProgram) this.model = this.M.selectProgram(this.model, this._programTid);
     if (this._programTid) this.send(Cmd.moss('open', this._programTid));
     if (this.opened) this.render();
     this._focusPrompt();
   }
 
-  /** Install the PROGRAM screen's editor half. See `_renderProgram`'s seam note. */
+  /** Install the PROGRAM screen's editor. See `_renderProgram`'s contract note. */
   attachProgramEditor(editor) {
     this._editor = editor || null;
     if (this.opened) this.render();
+  }
+
+  /** The editor's textarea changed — fold the draft into `model.program` and repaint the editor in
+   *  place (NOT a full render: the directory/header are unchanged, and a full render on every
+   *  keystroke is wasteful; the targeted sync also runs the refill rule, which is a no-op here). */
+  _programEdit(text) {
+    if (!this.opened) return;
+    if (this.M.editProgramDraft) this.model = this.M.editProgramDraft(this.model, text);
+    if (this._editor && this._editor.sync) this._editor.sync(this.model && this.model.program);
+  }
+
+  /** Install pressed — mark the program compiling and send `moss set {tid, draft}`. */
+  _programInstall() {
+    if (!this.opened || !this._programTid) return;
+    if (this.M.beginProgramCompile) this.model = this.M.beginProgramCompile(this.model);
+    const draft = this.model && this.model.program ? S(this.model.program.draft) : '';
+    this.send(Cmd.moss('set', this._programTid, draft));
+    this.render();
+  }
+
+  /** Refresh pressed — ask the host for the audit ring. */
+  _programAudit() {
+    if (!this._programTid) return;
+    this.send(Cmd.moss('audit', this._programTid));
   }
 
   _renderConsole() {
