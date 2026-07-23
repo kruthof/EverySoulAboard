@@ -83,10 +83,41 @@ auto-work cannot hijack a direct order. Full ritual in ONE commit: default + sav
 round-trip test. This moves the slice golden and possibly the scenario pin; re-measured and
 re-pinned in the integration commit.
 
+## A stale premise, corrected mid-lane
+
+Building the acceptance tests against the *real* slice (rather than against `§13.6`'s prose)
+surfaced that **part of the gap this lane was briefed on had already closed**. Recorded here
+because the stale numbers were cited in the ECONOMY plan and in this lane's first commit message.
+
+`§13.6` claimed "48 debris tiles, **0 designated**", `digTargets = 0`, and "`AgreeTask` is dead
+code". That stopped being true at commit `5e2bd41` ("restore the slice's work economy",
+2026-07-21): `AuthoredShips.PeriluneSlice` calls `DesignateDebrisRect(plan, 57, 6, 62, 13, z: 0)`
+and `ShipPlanBuilder.cs:63` applies `plan.DigDesignations` as real `TileFlags.Designated` at boot.
+
+Re-measured on the shipping slice (`SliceDigLoopTests`): **48 debris, 48 designated, 0 stockpile**;
+`digTargets > 0`; **`AgreeTask` legal at boot**. What E0-3 actually buys, stated honestly:
+
+| briefed as | actually |
+|---|---|
+| dig verb unblocks `JobKind.Dig` | already reachable via the authored seed; **E0-1** made it get worked |
+| dig verb unblocks `AgreeTask` | already legal since `5e2bd41` |
+| dig verb | lets the player designate work the **author did not place** — the slice after its seed is dug out, and **every generated ship**, which authors none |
+| stockpile verb unblocks haul | **correct, and the unqualified win** — nothing anywhere authors a stockpile, so `HaulJobSource` could never build a candidate in any shipped configuration |
+
+`docs/MECHANICS.md` §13.6 is rewritten to match, keeping the correction visible rather than
+silently deleting the old numbers.
+
 ## Acceptance
 
-- A player can designate dig on slice debris from the shipping web client and watch crew clear it.
-- A player can zone a stockpile and see haul jobs run (`HaulPickup`/`HaulDeliver` leave 0.00 %).
-- `AgreeTask` appears in a slice crew member's LLM manifest (`digTargets > 0`).
-- An explicit move order is no longer hijacked by auto-work.
-- `./ci.sh` exit 0, twin hashes match, pins re-measured and updated in the same commit.
+- A player can designate dig **and** zone a stockpile from the shipping web client, and both are
+  visible on the map (the two reserved `GlyphColor` ids get their first emitter). ✅
+- A stockpile zone lands, which is the precondition `HaulJobSource` scans for — the one thing
+  that genuinely could not happen before this lane. ✅
+- With the authored seed cleared (the generated-ship state), a player dig order is the only thing
+  that can create dig work or restore `AgreeTask`. ✅
+- An explicit move order is no longer hijacked by auto-work, while survival still interrupts it. ✅
+- `./ci.sh` exit 0, twin hashes match. **No pin moved** — projection is pure, and the new hash
+  fold bit contributes 0 on every pinned ship. ✅
+
+Still open (E0-8 + A1): job occupancy has not been re-measured post-E0-1/2/3, so `§13.6`'s
+`None 99.92 %` is pre-E0-1 and must not be quoted as current; `wander_radius_tiles` stays untuned.
