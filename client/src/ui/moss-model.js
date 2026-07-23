@@ -22,7 +22,7 @@
 // `diag` / `audit` / `rterror` events are delegated to it rather than reimplemented, so the
 // `moss-programs` lane inherits a live editor state machine under `model.program`.
 
-import { initTerminal, openTerminal, reduceMoss } from './terminal-model.js';
+import { initTerminal, openTerminal, reduceMoss, editDraft, beginCompile } from './terminal-model.js';
 
 export const SCREEN = { LEDGER: 'ledger', DETAIL: 'detail', FAULTLOG: 'faultlog', PROGRAM: 'program' };
 export const STATE = { NOMINAL: 0, ATTEND: 1, DEGRADED: 2, OFFLINE: 3 };
@@ -488,6 +488,41 @@ function openProgram(m, tid) {
   const next = { ...m, screen: SCREEN.PROGRAM, program: tid ? openTerminal(tid) : m.program };
   if (m.screen !== SCREEN.PROGRAM) next.stack = m.stack.concat([m.screen]);
   return { model: next, effects: tid ? [{ k: 'moss', op: 'open', tid }] : [], handled: true };
+}
+
+/**
+ * IX-M6: select a terminal on the PROGRAM directory (the directory-click path). Opens — or switches
+ * — that terminal in `model.program` so the `source` reply that follows is ACCEPTED. Without this,
+ * `program.tid` is still the terminal-less `null` from `initTerminal`, terminal-model's `matches()`
+ * tid-check fails, and `reduceMoss` silently DROPS the source (a no-op). The screen sends the
+ * `moss open` wire op separately; this reducer only moves the model. A null/empty tid clears the
+ * selection back to a terminal-less editor. Mirrors the P-key path (`openProgram(m, tid)`), which
+ * already `openTerminal`s for the `prog <terminal>` command.
+ * @param {object} model @param {string|null} tid @returns {object}
+ */
+export function selectProgram(model, tid) {
+  const m = model || openMoss();
+  const id = tid == null || tid === '' ? null : String(tid);
+  return { ...m, program: id ? openTerminal(id) : initTerminal() };
+}
+
+/**
+ * IX-M6: the PROGRAM editor's textarea changed — fold the draft edit into `model.program` through
+ * terminal-model's `editDraft`. Keeping `program.draft` equal to the textarea on every keystroke is
+ * what makes the DOM refill rule a no-op during normal typing (it only refills on an authoritative
+ * `source`), so the caret is never clobbered mid-type.
+ * @param {object} model @param {string} text @returns {object}
+ */
+export function editProgramDraft(model, text) {
+  const m = model || openMoss();
+  return { ...m, program: editDraft(m.program, text) };
+}
+
+/** IX-M6: Install pressed — mark the PROGRAM editor `compiling` (the screen sends `moss set`
+ *  alongside). A successful `diag` reply then commits the draft as the installed source. */
+export function beginProgramCompile(model) {
+  const m = model || openMoss();
+  return { ...m, program: beginCompile(m.program) };
 }
 
 /** Pop one rung of the ESC ladder (IX-M2). */

@@ -133,6 +133,13 @@ async function main() {
       console.error('trusted-key check FAILED to run: ' + e.message);
       fail++;
     }
+    console.log('\n=== trusted-key PROGRAM editor check (CDP) ===');
+    try {
+      fail += await programKeyCheck(`http://localhost:${PORT}/tools/moss-preview.html?screen=program`);
+    } catch (e) {
+      console.error('program-editor key check FAILED to run: ' + e.message);
+      fail++;
+    }
   }
 
   stop();
@@ -281,6 +288,92 @@ async function keyCheck(url) {
     return 1;
   }
   console.log('  ok    type / Backspace / Delete / ArrowLeft / Tab / ESC all behave with trusted keys');
+  return 0;
+}
+
+// ---- trusted keys into the PROGRAM editor's textarea ------------------------------------------
+// The embedded MOSS IDE is a real <textarea> that is a VIEW of `model.program`. Its correctness has
+// one class node cannot see: the refill rule must NOT reset the caret while the user types. dom-lite
+// has no caret, so a `textarea.value = draft` on every keystroke looks identical whether or not it
+// clobbers the cursor. Only a real browser with trusted keys reveals it — so this types into the
+// MIDDLE of the buffer and asserts the characters land where the caret was, not at the end.
+
+async function programKeyCheck(url) {
+  const userDir = mkdtempSync(join(tmpdir(), 'perilune-progkeys-'));
+  const dbg = PORT + 1001;
+  const chrome = spawn(CHROME, [
+    '--headless=new', '--disable-crash-reporter', '--no-first-run', '--no-default-browser-check',
+    '--remote-debugging-port=' + dbg, '--user-data-dir=' + userDir, '--window-size=1440,900', url,
+  ], { stdio: ['ignore', 'ignore', 'ignore'] });
+
+  let wsUrl = null;
+  for (let i = 0; i < 100 && !wsUrl; i++) {
+    try {
+      const list = await (await fetch(`http://127.0.0.1:${dbg}/json/list`)).json();
+      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+      if (page) wsUrl = page.webSocketDebuggerUrl;
+    } catch { /* not up yet */ }
+    if (!wsUrl) await sleep(200);
+  }
+  if (!wsUrl) { try { chrome.kill('SIGKILL'); } catch { /**/ } throw new Error('no CDP page target appeared'); }
+
+  const cleanup = () => { try { chrome.kill('SIGKILL'); } catch { /**/ } rmSync(userDir, { recursive: true, force: true }); };
+  const problems = [];
+  try {
+    const c = await cdp(wsUrl);
+    await c.send('Runtime.enable');
+    await sleep(2000);
+    const evaluate = async (expression) => {
+      const r = await c.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      return r.result && r.result.value;
+    };
+    const key = async (k, text) => {
+      const meta = KEY_META[k] || {};
+      const base = { key: k, code: meta.code || ('Key' + k.toUpperCase()),
+        windowsVirtualKeyCode: meta.keyCode, nativeVirtualKeyCode: meta.keyCode };
+      await c.send('Input.dispatchKeyEvent', text ? { type: 'keyDown', text, ...base } : { type: 'rawKeyDown', ...base });
+      await c.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+      await sleep(40);
+    };
+
+    const ready = await evaluate('!!document.querySelector(".moss-prog-code")');
+    if (!ready) throw new Error('the PROGRAM editor textarea never rendered');
+
+    // 1. the source loaded through the model (the tid-gap fix): a non-empty draft in the textarea.
+    const loaded = await evaluate('({v: document.querySelector(".moss-prog-code").value.length, d: window.__moss.model.program.draft.length, tid: window.__moss.model.program.tid})');
+    if (!loaded.tid) problems.push('program.tid is null — the terminal was never opened in the model (source dropped)');
+    if (!loaded.v || loaded.v !== loaded.d) problems.push(`source not in the textarea: value ${loaded.v} chars, draft ${loaded.d}`);
+
+    // 2. the caret is not clobbered mid-type. Reset to a known short buffer, type in the MIDDLE.
+    const tid = await evaluate('window.__moss.model.program.tid');
+    await evaluate(`window.__moss.onMossEvent({type:'moss',ev:'source',tid:${JSON.stringify(tid)},text:'XY',hash:1})`);
+    await evaluate('var t=document.querySelector(".moss-prog-code"); t.focus(); t.setSelectionRange(1,1); true');
+    await key('1', '1');
+    await key('2', '2');
+    const mid = await evaluate('({v: document.querySelector(".moss-prog-code").value, d: window.__moss.model.program.draft})');
+    if (mid.v !== 'X12Y') {
+      problems.push(`CARET CLOBBERED: typed 1,2 between X and Y, got "${mid.v}" (expected "X12Y" — a refill that resets the caret gives "X1Y2")`);
+    }
+    if (mid.d !== mid.v) problems.push(`model.program.draft "${mid.d}" out of sync with the textarea "${mid.v}"`);
+
+    // 3. Install is enabled after an edit (canInstall), and firing it marks the program compiling
+    //    and sends `moss set`. Read the button's disabled state, then click it.
+    const canInstall = await evaluate('!document.querySelector(".moss-prog-install").disabled');
+    if (!canInstall) problems.push('Install is disabled after an edit (canInstall should be true)');
+    await evaluate('document.querySelector(".moss-prog-install").click(); true');
+    const afterInstall = await evaluate('window.__moss.model.program.state');
+    if (afterInstall !== 'compiling') problems.push(`Install did not mark the program compiling (state "${afterInstall}")`);
+
+    c.close();
+  } finally {
+    cleanup();
+  }
+
+  if (problems.length) {
+    for (const p of problems) console.log('  FAIL  ' + p);
+    return 1;
+  }
+  console.log('  ok    source loads · mid-buffer typing keeps the caret · Install enables + compiles');
   return 0;
 }
 

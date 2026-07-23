@@ -65,7 +65,22 @@ for (let i = 0; i < (+q.get('sel') || 0); i++) key('ArrowDown');
 const want = q.get('screen') || 'ledger';
 if (want === 'detail') { key('Enter'); screen.onMossEvent(pick('moss', 'sys')); }
 else if (want === 'faultlog') key('l');
-else if (want === 'program') key('p');
+else if (want === 'program') {
+  key('p');
+  // Select the first terminal and populate the embedded IDE so the frame shows a working editor:
+  // an installed source, a warning diagnostic (gutter marker + list row), and a couple audit lines.
+  const term = (pick('terminals').list || [])[0];
+  if (term) {
+    const tid = term[0];
+    screen.selectProgram(tid);
+    screen.onMossEvent({ type: 'moss', ev: 'source', tid,
+      text: 'when reactor.temp > 900:\n  set life_support.vent max\n  alarm "SCRAM DRILL"', hash: 4242 });
+    screen.onMossEvent({ type: 'moss', ev: 'diag', tid, ok: false,
+      diags: [[2, 7, 'warning', 'life_support.vent clamps at max']] });
+    screen.onMossEvent({ type: 'moss', ev: 'audit', tid,
+      lines: [[184320, 'reactor.temp 812 → hold'], [184328, 'life_support.vent opened']] });
+  }
+}
 window.__moss = screen;
 
 // --- 4. the IX-M1 assertion, from real computed styles ----------------------------------------

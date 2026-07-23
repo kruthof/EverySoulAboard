@@ -53,6 +53,7 @@ class Element extends Node {
     this.listeners = {};
     this.value = '';
     this.focused = false;
+    this.style = {}; // just enough for absolutely-positioned markers (el.style.top = '18px')
   }
   get className() { return this._className; }
   set className(v) { this._className = String(v); this.classList._reset(v); }

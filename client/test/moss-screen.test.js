@@ -745,11 +745,12 @@ test('IX-M6: P opens the PROGRAM directory; selecting a terminal requests its so
 
   fire(rows[1], 'click');
   assert.deepEqual(s.sent, [{ type: 'moss', op: 'open', tid: 'aft' }]);
-  assert.ok(s.root.oneClass('moss-prog-editor').textContent.includes('EDITOR NOT INSTALLED'),
-    'the seam states plainly that the editor half is a follow-up lane');
+  // the shipped IDE (a real <textarea>) mounts on selection — the old "editor not installed"
+  // placeholder is gone (moss-programs lane).
+  assert.ok(s.root.oneClass('moss-prog-code'), 'the embedded editor mounts with a real textarea');
 });
 
-test('IX-M6: the PROGRAM seam mounts a supplied editor with the selected tid', () => {
+test('IX-M6: attachProgramEditor swaps in a supplied editor, mounted with the selected tid', () => {
   const s = openWithSystems();
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }]);
   const mounted = [];
