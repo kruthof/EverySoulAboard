@@ -111,7 +111,7 @@ namespace Perilune.Tests
         {
             sim.World.SetWall(p, TileDefs.Debris);
             sim.World.SetFlag(p, TileFlags.Designated, true);
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
         }
 
         // ------------------------------------------------- the recorded assignment sequence
@@ -230,7 +230,7 @@ namespace Perilune.Tests
                 Assert.That(sim.IsWalkable(p), Is.True, $"precondition: {p} is an open corridor tile");
                 sim.World.SetFlag(p, TileFlags.Stockpile, true);
             }
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
 
             // 400 is a cap the scenario must not reach: hitting it would mean the run had not
             // saturated and the "all 66" claim in the doc comment is a lie.
@@ -300,7 +300,7 @@ namespace Perilune.Tests
             // Fund the site fully so it boards as READY (no material haul in the way).
             Assert.That(build.TryGet(new Int3(7, 2, 0), out var site), Is.True);
             Assert.That(build.Deposit(sim, new Int3(7, 2, 0), site.Required), Is.EqualTo(site.Required));
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
 
             for (int t = 0; t < 5 && worker.JobKind == JobKind.None; t++) sim.Tick();
 
@@ -328,7 +328,7 @@ namespace Perilune.Tests
             Assert.That(build.TryGet(ready, out var r), Is.True);
             Assert.That(build.Deposit(sim, ready, r.Required), Is.EqualTo(r.Required));
             sim.AddItem(ItemKind.Regolith, r.Required, new Int3(5, 3, 0)); // funds the needy site too
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
 
             for (int t = 0; t < 5 && worker.JobKind == JobKind.None; t++) sim.Tick();
 
@@ -380,6 +380,136 @@ namespace Perilune.Tests
             Assert.That(worker.ReservedItemId, Is.EqualTo(first.Id));
         }
 
+        // ----------------------------------------------------- the W0-3 win: the tile pass is gated
+
+        /// <summary>An inert source that also opts into the dispatcher's world pass, purely to COUNT
+        /// how often each stage runs. <see cref="TileScanCount"/> is the number of full O(W·H·D)
+        /// world passes; <see cref="RescanCount"/> is the number of board rescans (any dirty axis).
+        /// Offers no work (CandidateCount 0, no handled kinds) so it never perturbs assignment.</summary>
+        private sealed class CountingTileScanner : IJobSource, IJobTileScanner
+        {
+            public int TileScanCount;   // BeginTileScan calls == full-world passes
+            public int VisitCount;      // VisitTile calls
+            public int RescanCount;     // IJobSource.Rescan calls == board rescans
+            private static readonly JobKind[] Kinds = System.Array.Empty<JobKind>();
+            public string Name => "Counter";
+            public JobKind[] HandledKinds => Kinds;
+            public int CandidateCount => 0;
+            public void BeginTick(Simulation sim) { }
+            public void BeginTileScan(Simulation sim) => TileScanCount++;
+            public void VisitTile(Simulation sim, Int3 pos, byte flags, ushort wall, ushort floor) => VisitCount++;
+            public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what) => RescanCount++;
+            public int Select(Simulation sim, Citizen citizen, int bestDist, long gen, out int dist)
+            { dist = bestDist; return -1; }
+            public bool TryClaim(Simulation sim, Citizen citizen, int c, long gen, JobContext ctx) => false;
+            public void Progress(Simulation sim, Citizen citizen, JobContext ctx) { }
+            public void OnGroundItemReserved(Simulation sim, ItemStack item) { }
+        }
+
+        /// <summary>
+        /// THE W0-3 WIN, proven positively — not "the hash is unmoved" (that proves the split is
+        /// SAFE, not that it FIRED) but "an item change no longer walks the world". The defect: every
+        /// <see cref="Simulation.AddItem"/> forced the dispatcher's single O(W·H·D) tile pass, so a
+        /// production ship emitting items dozens per second re-scanned every tile on every drop.
+        ///
+        /// The counting scanner records both stages, so this asserts the PATH WAS REACHED before the
+        /// outcome: an item-only change still triggers a board rescan (RescanCount climbs — the board
+        /// is not silently stale), but that rescan does NOT re-walk the tile pass (TileScanCount held).
+        /// A real tile change (a dig designation) still does, proving the pass was gated, not removed.
+        ///
+        /// NAMED MUTATION (applied, observed failing, reverted): in <c>JobSystem.Rescan</c>, change
+        /// the tile-pass guard from <c>(what &amp; JobBoardDirty.Tiles) != 0</c> back to the pre-W0-3
+        /// <c>what != JobBoardDirty.None</c> — the item-only leg then re-walks the world and
+        /// TileScanCount reaches 2 after the AddItem, failing "the item-only rescan did NOT re-walk".
+        /// </summary>
+        [Test]
+        public void AnItemOnlyChange_DoesNotWalkTheWorldTilePass_ButATileChangeStillDoes()
+        {
+            var counter = new CountingTileScanner();
+            var sim = new Simulation(AsciiWorld.Build(TieMap), 7,
+                new ISimSystem[] { new JobSystem(new IJobSource[] { counter }) });
+            sim.World.SetWall(new Int3(3, 2, 0), TileDefs.Debris); // a diggable tile for the tile leg
+
+            // Boot: JobsDirty defaults to All, so the first tick runs the world pass exactly once.
+            sim.Tick();
+            Assert.That(counter.TileScanCount, Is.EqualTo(1), "precondition: boot ran the world tile pass once");
+            Assert.That(counter.VisitCount, Is.EqualTo(55), "precondition: one pass visited all 11×5×1 tiles");
+            int rescansAfterBoot = counter.RescanCount;
+
+            // A steady tick with nothing dirty rescans nothing — neither the board nor the world.
+            sim.Tick();
+            Assert.That(counter.RescanCount, Is.EqualTo(rescansAfterBoot), "precondition: steady state does not rescan");
+            Assert.That(counter.TileScanCount, Is.EqualTo(1), "precondition: …so the world pass does not run");
+
+            // THE WIN: a loose stack appears (Items only). The board DID rescan (path reached) …
+            sim.AddItem(ItemKind.Scrap, 1, new Int3(5, 2, 0));
+            sim.Tick();
+            Assert.That(counter.RescanCount, Is.EqualTo(rescansAfterBoot + 1),
+                "the item change DID trigger a board rescan — the board is not left stale");
+            // … but that rescan did NOT re-walk the O(W·H·D) world pass. This is the whole package.
+            Assert.That(counter.TileScanCount, Is.EqualTo(1),
+                "the item-only rescan did NOT re-walk the world tile pass — the W0-3 win");
+            Assert.That(counter.VisitCount, Is.EqualTo(55), "no extra tile visits either");
+
+            // CONTROL: a real tile change (a dig designation) still walks the world, so the pass was
+            // gated on TilesDirty, not deleted.
+            sim.EnqueueCommand(new DesignateDigCommand(new Int3(3, 2, 0), true));
+            sim.Tick();
+            Assert.That(counter.TileScanCount, Is.EqualTo(2),
+                "a tile change still re-walks the world — the pass is gated on Tiles, not removed");
+        }
+
+        /// <summary>
+        /// THE POSITIVE HALF of the win (F1): an item-only rescan must not merely SKIP the tile pass,
+        /// it must still let a REAL source rebuild its board and hand out the job the new stack
+        /// created. The optimisation test above proves the skip with an inert zero-candidate scanner;
+        /// this proves the item sub-pass still fires through the shipped <see cref="HaulJobSource"/>.
+        ///
+        /// It closes the missed-rescan blind spot the reviewer measured: because the pinned scenario
+        /// makes ZERO haul assignments and the slice reaches dig only, pin + goldens + the
+        /// 66-sequence are necessary-but-not-sufficient here — mutating <see cref="Simulation.AddItem"/>
+        /// to set the WRONG flag (a genuine "dropped stacks never board for haul" bug) leaves all of
+        /// them byte-identical. Only a positive assignment assertion catches it.
+        ///
+        /// The stack is added AFTER the board reaches steady state (JobsDirty None asserted), so the
+        /// AddItem is the ONLY thing that can board it — no boot rescan, no unrelated dirty flag.
+        ///
+        /// NAMED MUTATION (applied, observed failing, reverted): in <c>Simulation.AddItem</c>, set
+        /// <c>JobBoardDirty.Citizens</c> instead of <c>JobBoardDirty.Items</c>. Haul's item derivation
+        /// is gated on <c>Items | Tiles</c>, so a Citizens-only rescan never re-boards the stack, the
+        /// idle citizen is offered nothing, and the HaulPickup assertion fails.
+        /// </summary>
+        [Test]
+        public void AnItemOnlyAddItem_BoardsTheStackAndYieldsARealHaulAssignment()
+        {
+            var sim = NewTieShip(out _);
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            sim.World.SetFlag(new Int3(5, 1, 0), TileFlags.Stockpile, true); // a haul destination exists
+
+            // Settle to steady state: no items, no dig/build, so the idle citizen takes nothing and
+            // the board goes clean. This is the precondition that makes the AddItem the sole trigger.
+            for (int t = 0; t < 5; t++) sim.Tick();
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: nothing to do yet, citizen idle");
+            Assert.That(sim.JobsDirty, Is.EqualTo(JobBoardDirty.None),
+                "precondition: the board is clean — the AddItem below is the ONLY thing that can dirty it");
+
+            // The one item-only change under test: a haulable stack drops within reach. Deliberately
+            // NOT asserting which flag AddItem set — that would recompute the subject and let a flag
+            // typo die on an equality check instead of on the behaviour it corrupts. The mutation
+            // (AddItem sets Citizens) must be caught by the ASSIGNMENT below, not by a flag readout.
+            var stack = sim.AddItem(ItemKind.Scrap, 1, new Int3(7, 2, 0));
+
+            for (int t = 0; t < 5 && worker.JobKind == JobKind.None; t++) sim.Tick();
+
+            // Path reached: the shipped Haul source rebuilt its board across the partial rescan and
+            // produced a real pickup of exactly the stack that dropped. THIS is the canary — under
+            // the wrong-flag mutation the stack never boards and the citizen stays idle here.
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.HaulPickup),
+                "an item-only AddItem must still board the stack and yield a haul — the missed-rescan canary");
+            Assert.That(worker.ReservedItemId, Is.EqualTo(stack.Id),
+                "…and the job targets the exact stack the AddItem created");
+        }
+
         // ------------------------------------------------------------------ zero-alloc
 
         /// <summary>
@@ -416,7 +546,7 @@ namespace Perilune.Tests
             foreach (var s in sim.Systems) if (s is JobSystem j) { jobs = j; break; }
             Assert.That(jobs, Is.Not.Null);
 
-            for (int i = 0; i < 50; i++) { sim.JobsDirty = true; sim.Tick(); } // warm up every collection
+            for (int i = 0; i < 50; i++) { sim.JobsDirty = JobBoardDirty.All; sim.Tick(); } // warm up every collection
 
             Assert.That(jobs.Sources.Count, Is.EqualTo(3), "precondition: the shipped three sources");
             for (int i = 0; i < jobs.Sources.Count; i++)
@@ -425,7 +555,7 @@ namespace Perilune.Tests
             Assert.That(idle.JobKind, Is.EqualTo(JobKind.None), "precondition: the held citizen never took a job");
 
             long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 3000; i++) { sim.JobsDirty = true; sim.Tick(); }
+            for (int i = 0; i < 3000; i++) { sim.JobsDirty = JobBoardDirty.All; sim.Tick(); }
             long delta = GC.GetAllocatedBytesForCurrentThread() - before;
 
             Assert.That(delta, Is.EqualTo(0),
@@ -491,7 +621,7 @@ namespace Perilune.Tests
             // for a tie-break change. Sources[i].Name keeps the failure honest.
             Assert.That(CountFor(jobs, "Dig"), Is.EqualTo(2), "precondition: two dig candidates");
             Assert.That(CountFor(jobs, "Build"), Is.EqualTo(1), "precondition: a build candidate too");
-            Assert.That(sim.JobsDirty, Is.False, "precondition: steady state — the rescan is NOT in this window");
+            Assert.That(sim.JobsDirty, Is.EqualTo(JobBoardDirty.None), "precondition: steady state — the rescan is NOT in this window");
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 3000; i++) sim.Tick();
@@ -657,7 +787,7 @@ namespace Perilune.Tests
             public JobKind[] HandledKinds => Kinds;
             public int CandidateCount => 1;
             public void BeginTick(Simulation sim) { }
-            public void Rescan(Simulation sim, JobContext ctx) { }
+            public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what) { }
             public int Select(Simulation sim, Citizen citizen, int bestDist, long gen, out int dist)
             {
                 dist = bestDist;  // EQUAL, never strictly better — the contract forbids returning this
@@ -720,7 +850,7 @@ namespace Perilune.Tests
             public JobKind[] HandledKinds => Kinds;
             public int CandidateCount => 1;
             public void BeginTick(Simulation sim) { }
-            public void Rescan(Simulation sim, JobContext ctx) { }
+            public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what) { }
             public int Select(Simulation sim, Citizen citizen, int bestDist, long gen, out int dist)
             {
                 dist = 1;
@@ -751,7 +881,7 @@ namespace Perilune.Tests
             var sim = new Simulation(AsciiWorld.Build(TieMap), 31,
                 new ISimSystem[] { new JobSystem(new IJobSource[] { new NeverStampsJobSource() }) });
             sim.AddCitizen("Worker", new Int3(5, 2, 0));
-            sim.JobsDirty = true;
+            sim.JobsDirty = JobBoardDirty.All;
 
             var ex = Assert.Throws<InvalidOperationException>(() => sim.Tick());
             Assert.That(ex.Message, Does.Contain("NeverStamps"), "the message names the offending source");

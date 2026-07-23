@@ -40,9 +40,12 @@ namespace Perilune.Sim
             if ((flags & (byte)TileFlags.Designated) != 0 && wall == TileDefs.Debris) _sites.Add(pos);
         }
 
-        public void Rescan(Simulation sim, JobContext ctx)
+        public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what)
         {
-            // Sites already being worked, re-derived from citizen state in store order.
+            // Dig has one derivation and it is not tile-gated: the assigned set, re-derived from
+            // citizen state every rescan (store order). The site board itself is filled by the
+            // dispatcher's tile pass (gated on Tiles up in JobSystem), so `what` needs no branch
+            // here — this pass is O(crew) and always correct to run. See IJobSource.Rescan.
             _assigned.Clear();
             var citizens = sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
@@ -138,7 +141,9 @@ namespace Perilune.Sim
             sim.Events.Publish(new TileChangedEvent { Pos = target });
             citizen.JobKind = JobKind.None;
             citizen.JobWorkTicks = 0;
-            sim.JobsDirty = true;
+            // The wall/floor/designation changed (Tiles: the dug tile leaves the site board and the
+            // TileChangedEvent above re-confirms it); the Regolith drop already set Items via AddItem.
+            sim.JobsDirty |= JobBoardDirty.Tiles;
         }
     }
 }

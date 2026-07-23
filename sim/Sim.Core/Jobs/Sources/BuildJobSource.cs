@@ -61,10 +61,12 @@ namespace Perilune.Sim
 
         // ------------------------------------------------------------------ board
 
-        public void Rescan(Simulation sim, JobContext ctx)
+        public void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what)
         {
-            // Sites already claimed, re-derived from citizen state in store order: a citizen
+            // (1) Sites already claimed, re-derived from citizen state in store order: a citizen
             // hauling to OR building a site stores that site as JobTarget, so one pass covers both.
+            // ALWAYS run — cheap (O crew), no separable flag, and the reason an abandon that sets
+            // only JobBoardDirty.Citizens still frees its site here. See IJobSource.Rescan.
             _assigned.Clear();
             var citizens = sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
@@ -75,19 +77,35 @@ namespace Perilune.Sim
                     _assigned.Add(c.JobTarget);
             }
 
-            _ready.Clear();
-            _needMat.Clear();
-            _freeMaterialUnits = 0;
-            if (_build != null)
+            // (2) The ready / needs-material split derives from the pending list only, so rebuild it
+            // when a site changed (designate/deposit/cancel/complete all set Sites). Skipping on a
+            // non-Sites rescan leaves _ready/_needMat — and CandidateCount — at their prior value,
+            // correct because no pending entry moved.
+            if ((what & JobBoardDirty.Sites) != 0)
             {
-                var pend = _build.Pending;
-                for (int i = 0; i < pend.Count; i++)
+                _ready.Clear();
+                _needMat.Clear();
+                if (_build != null)
                 {
-                    if (BuildSystem.IsReady(pend[i])) _ready.Add(pend[i].Pos);
-                    else _needMat.Add(pend[i].Pos);
+                    var pend = _build.Pending;
+                    for (int i = 0; i < pend.Count; i++)
+                    {
+                        if (BuildSystem.IsReady(pend[i])) _ready.Add(pend[i].Pos);
+                        else _needMat.Add(pend[i].Pos);
+                    }
                 }
-                // Only pay for the material scan when a site actually wants some.
-                if (_needMat.Count > 0)
+            }
+
+            // (3) The free-material COUNT derives from the item store, gated by whether any site
+            // wants material. Recompute when the item pool changed (Items) OR the needs-material set
+            // was just rebuilt (Sites) — either can invalidate it, and both together must never
+            // desync. On a Tiles/Citizens-only rescan it is left at its live value, which the
+            // OnGroundItemReserved decrements keep equal to a fresh scan as long as no item was
+            // added or removed — and Items-not-set is exactly that guarantee.
+            if ((what & (JobBoardDirty.Items | JobBoardDirty.Sites)) != 0)
+            {
+                _freeMaterialUnits = 0;
+                if (_build != null && _needMat.Count > 0)
                 {
                     var items = sim.Items.Items;
                     for (int i = 0; i < items.Count; i++)
@@ -355,7 +373,9 @@ namespace Perilune.Sim
             }
             citizen.CarryingItemId = 0;
             citizen.JobKind = JobKind.None;
-            sim.JobsDirty = true;
+            // The carried stack was consumed into the site or a leftover dropped (Items); the site's
+            // Delivered changed inside BuildSystem.Deposit, which sets Sites itself.
+            sim.JobsDirty |= JobBoardDirty.Items;
         }
 
         /// <summary>
@@ -384,10 +404,10 @@ namespace Perilune.Sim
 
             if (--citizen.JobWorkTicks > 0) return;
 
-            _build.Complete(sim, target, citizen.Id); // world write + event + JobsDirty
+            _build.Complete(sim, target, citizen.Id); // world write + event + JobsDirty (Sites|Tiles)
             citizen.JobKind = JobKind.None;
             citizen.JobWorkTicks = 0;
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Citizens; // the builder freed itself; Complete set Sites|Tiles
         }
 
         /// <summary>Release whatever a build-haul citizen holds when its site disappears: a

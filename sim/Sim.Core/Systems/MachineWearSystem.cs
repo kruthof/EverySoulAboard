@@ -80,7 +80,10 @@ namespace Perilune.Sim
                         SourceId = device.Name,
                         Message = "MACHINE FAILURE — " + device.Name,
                     });
-                    sim.JobsDirty = true;
+                    // Defensive full rescan (rare): a failure changes no board input directly, but a
+                    // failed machine's blocking/walkability can shift, so preserve the pre-W0-3
+                    // behaviour of a full rescan rather than reason about reachability here.
+                    sim.JobsDirty |= JobBoardDirty.All;
                 }
             }
         }
@@ -259,7 +262,7 @@ namespace Perilune.Sim
                 }
                 worker.JobKind = JobKind.None;
                 worker.JobWorkTicks = 0;
-                sim.JobsDirty = true; // completion is a notice, not an alarm
+                sim.JobsDirty |= JobBoardDirty.Items; // a Parts stack was consumed / set down
                 return;
             }
 
@@ -300,7 +303,7 @@ namespace Perilune.Sim
                         best.CarriedBy = worker.Id;
                         worker.CarryingItemId = best.Id;
                         worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-                        sim.JobsDirty = true; // the stack left the ground
+                        sim.JobsDirty |= JobBoardDirty.Items; // the stack left the ground
                     }
                     else
                     {
@@ -410,7 +413,7 @@ namespace Perilune.Sim
             {
                 carried.Pos = worker.Pos;
                 carried.CarriedBy = 0;
-                sim.JobsDirty = true;
+                sim.JobsDirty |= JobBoardDirty.Items; // carried stack set down where we stand
             }
             worker.CarryingItemId = 0;
         }

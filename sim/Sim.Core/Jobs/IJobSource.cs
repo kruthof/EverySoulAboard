@@ -78,12 +78,27 @@ namespace Perilune.Sim
         void BeginTick(Simulation sim);
 
         /// <summary>
-        /// Rebuild this source's derived board. Called in registration order, only when
-        /// <see cref="Simulation.JobsDirty"/> was set, and AFTER the dispatcher's single world
-        /// pass (see <see cref="IJobTileScanner"/>) so tile-derived boards are already filled.
-        /// Boards are purely derived: never serialized, never a source of truth.
+        /// Rebuild this source's derived board. Called in registration order, only when SOME axis of
+        /// <see cref="Simulation.JobsDirty"/> was set, and AFTER the dispatcher's single world pass
+        /// (see <see cref="IJobTileScanner"/>) so tile-derived boards are already filled. Boards are
+        /// purely derived: never serialized, never a source of truth.
+        ///
+        /// <paramref name="what"/> names WHICH inputs changed (W0-3). A source with separable
+        /// sub-passes must SKIP the ones no set flag touches — that is the whole point of the split
+        /// (a build designation must not re-scan the item store for haul candidates). A source
+        /// whose derivations are not separable (dig re-derives only from citizens; every source
+        /// re-derives its assigned-set from citizen state) may ignore it and run its cheap pass on
+        /// every call, exactly as before. TWO invariants a skip must not break:
+        ///   • A skipped sub-pass leaves that board's <see cref="CandidateCount"/> at its prior
+        ///     value; because the flag guarantees that board's inputs did not change, the prior
+        ///     value is still correct — <see cref="CandidateCount"/> is BEHAVIOUR (the all-empty
+        ///     early-out skips <see cref="Citizen.ClearPath"/>), not an optimisation, so a stale
+        ///     count that flips it is a bug.
+        ///   • The assigned-from-citizens set is re-derived on EVERY call regardless of
+        ///     <paramref name="what"/> (it is cheap and has no separable flag — an abandon/grant
+        ///     sets <see cref="JobBoardDirty.Citizens"/> only to trigger this).
         /// </summary>
-        void Rescan(Simulation sim, JobContext ctx);
+        void Rescan(Simulation sim, JobContext ctx, JobBoardDirty what);
 
         /// <summary>
         /// This source's nearest candidate for <paramref name="citizen"/> that is strictly

@@ -202,7 +202,7 @@ namespace Perilune.Sim
                 carried.ReservedForJob = true; // the STATION's claim: staged inputs are
                                                // invisible to the haul board (livelock fix)
                 worker.CarryingItemId = 0;
-                sim.JobsDirty = true;
+                sim.JobsDirty |= JobBoardDirty.Items; // input staged/dropped — haul board must re-derive
                 if (!Int3.IsAdjacent4(worker.Pos, station.Pos))
                 {
                     Abandon(worker); // route was lost — the dropped input re-enters the pool
@@ -292,7 +292,7 @@ namespace Perilune.Sim
                     best.CarriedBy = worker.Id;
                     worker.CarryingItemId = best.Id;
                     worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-                    sim.JobsDirty = true; // the stack left the ground — haul board must not chase it
+                    sim.JobsDirty |= JobBoardDirty.Items; // the stack left the ground — haul board must not chase it
                 }
                 else
                 {
@@ -579,7 +579,7 @@ namespace Perilune.Sim
                 }
             }
             for (int i = 0; i < _consumeIds.Count; i++) sim.Items.Remove(_consumeIds[i]);
-            sim.JobsDirty = true;
+            sim.JobsDirty |= JobBoardDirty.Items; // staged inputs consumed into the craft
         }
 
         /// <summary>
@@ -602,7 +602,7 @@ namespace Perilune.Sim
             {
                 carried.Pos = worker.Pos;
                 carried.CarriedBy = 0;
-                sim.JobsDirty = true;
+                sim.JobsDirty |= JobBoardDirty.Items; // carried input set down where we stand
             }
             worker.CarryingItemId = 0;
         }
