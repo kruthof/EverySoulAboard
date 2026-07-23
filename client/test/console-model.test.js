@@ -11,7 +11,7 @@ import {
   clockHHMM, cautionState, moraleColor, surnameOf, surnameFirst, crewInitials, crewHue,
   CREW_HUES, speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry,
   crewClickTarget, beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool,
-  isBuildTool, hintLine, chronHeader,
+  isBuildTool, isOrderTool, isPaletteTool, hintLine, chronHeader,
   designsOnDeck, designGlyph, ghostState, ghostLabel, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
   terminalList, terminalLabel, escapeTarget, taskTag, watchTask, workMarkers,
 } from '../src/ui/console-model.js';
@@ -279,6 +279,68 @@ test('armedTool: exits — Esc and disconnect always disarm; tab switch disarms 
   assert.equal(nextArmedTool('cancel', { t: 'tab', tab: 'chron' }), null);
   assert.equal(nextArmedTool('wall', { t: 'tab', tab: 'build' }), 'wall');   // staying on BUILD keeps it
   assert.equal(nextArmedTool('move', { t: 'tab', tab: 'crew' }), 'move');    // move survives tab switches
+});
+
+// ---------------- E0-3 order tools: dig + stockpile (ECONOMY-PLAN §E0) ----------------
+
+test('tool families: build kinds, order kinds and the palette union are disjoint where they must be', () => {
+  for (const t of ['wall', 'door', 'cancel']) {
+    assert.equal(isBuildTool(t), true, t + ' is a build tool');
+    assert.equal(isOrderTool(t), false, t + ' is not an order tool');
+    assert.equal(isPaletteTool(t), true);
+  }
+  for (const t of ['dig', 'stockpile']) {
+    // The distinction is load-bearing: an order tool must NOT be lowered to Cmd.build.
+    assert.equal(isBuildTool(t), false, t + ' must not be a build tool');
+    assert.equal(isOrderTool(t), true, t + ' is an order tool');
+    assert.equal(isPaletteTool(t), true, t + ' lives in the BUILD tab');
+  }
+  // MOVE is a crew order, not a palette tool — it survives a tab switch (see the exits test).
+  for (const t of ['move', null, undefined, 'nonsense']) {
+    assert.equal(isBuildTool(t), false);
+    assert.equal(isOrderTool(t), false);
+    assert.equal(isPaletteTool(t), false);
+  }
+});
+
+test('armedTool: G toggles dig, Z toggles stockpile, and both share the single slot', () => {
+  assert.equal(nextArmedTool(null, { t: 'keyG' }), 'dig');
+  assert.equal(nextArmedTool('dig', { t: 'keyG' }), null);
+  assert.equal(nextArmedTool(null, { t: 'keyZ' }), 'stockpile');
+  assert.equal(nextArmedTool('stockpile', { t: 'keyZ' }), null);
+  // One slot: arming either order tool replaces whatever was armed, including the other one.
+  assert.equal(nextArmedTool('wall', { t: 'keyG' }), 'dig');
+  assert.equal(nextArmedTool('dig', { t: 'keyZ' }), 'stockpile');
+  assert.equal(nextArmedTool('stockpile', { t: 'keyG' }), 'dig');
+  assert.equal(nextArmedTool('move', { t: 'keyG' }), 'dig');
+  // B/X are unchanged by the new family: an armed order tool is not a build tool, so B arms wall.
+  assert.equal(nextArmedTool('dig', { t: 'keyB' }), 'wall');
+  assert.equal(nextArmedTool('stockpile', { t: 'keyX' }), 'cancel');
+  // Toggling through the palette buttons works the same as the keys.
+  assert.equal(nextArmedTool(null, { t: 'toggle', tool: 'dig' }), 'dig');
+  assert.equal(nextArmedTool('dig', { t: 'toggle', tool: 'dig' }), null);
+});
+
+test('armedTool: order tools disarm when leaving BUILD, and always on Esc/disconnect', () => {
+  for (const s of ['dig', 'stockpile']) {
+    assert.equal(nextArmedTool(s, { t: 'tab', tab: 'crew' }), null, s + ' leaves with the BUILD tab');
+    assert.equal(nextArmedTool(s, { t: 'tab', tab: 'build' }), s, s + ' survives staying on BUILD');
+    assert.equal(nextArmedTool(s, { t: 'escape' }), null);
+    assert.equal(nextArmedTool(s, { t: 'disconnect' }), null);
+    // selectionLost only ever disarms MOVE — an order tool has no crew subject to lose.
+    assert.equal(nextArmedTool(s, { t: 'selectionLost' }), s);
+  }
+});
+
+test('Cmd.dig / Cmd.stockpile carry an EXPLICIT on-flag so a sweep is idempotent', () => {
+  assert.deepEqual(Cmd.dig(7, 3), { cmd: 'dig', x: 7, y: 3, on: 1 });
+  assert.deepEqual(Cmd.dig(7, 3, true), { cmd: 'dig', x: 7, y: 3, on: 1 });
+  assert.deepEqual(Cmd.dig(7, 3, false), { cmd: 'dig', x: 7, y: 3, on: 0 });
+  assert.deepEqual(Cmd.stockpile(0, 0), { cmd: 'stockpile', x: 0, y: 0, on: 1 });
+  assert.deepEqual(Cmd.stockpile(2, 9, false), { cmd: 'stockpile', x: 2, y: 9, on: 0 });
+  // They are their OWN verbs — never a build kind, which the host would route to BuildSystem.
+  assert.notEqual(Cmd.dig(1, 1).cmd, 'build');
+  assert.notEqual(Cmd.stockpile(1, 1).cmd, 'build');
 });
 
 test('armedTool: selection loss disarms ONLY the move order (IX-52); junk events are inert', () => {

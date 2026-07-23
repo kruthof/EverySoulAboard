@@ -18,7 +18,7 @@ import { transform } from '../render/camera.js';
 import {
   clockHHMM, cautionState, moraleColor, surnameOf, surnameFirst, crewInitials, crewHue,
   speedLabel, logLineParts, logTail, soulsLabel, selectedRosterEntry, crewClickTarget,
-  beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool, isBuildTool,
+  beginPendingClick, resolvePendingClick, supersedePending, nextArmedTool, isPaletteTool,
   hintLine, chronHeader,
   designsOnDeck, designGlyph, ghostLabel, nextNudge, nudgeVisible, NUDGE_MS, moreBelow,
   terminalList, terminalLabel, escapeTarget, workMarkers, watchTask,
@@ -109,7 +109,7 @@ export function selectTab(tab) { setTab(tab); }
 /** Toggle-arm a tool from the Overview PLACE palette / MOVE button (mirrors the console palette). */
 export function armTool(kind) {
   _armed = nextArmedTool(_armed, { t: 'toggle', tool: kind });
-  if (isBuildTool(_armed) && _tab !== 'build') setTab('build');
+  if (isPaletteTool(_armed) && _tab !== 'build') setTab('build');
   if (_armed != null) nudgeIfPaused();
   reflectArmed();
   notifyShip();
@@ -260,14 +260,23 @@ export function initConsole(opts) {
     tabs.appendChild(b);
   }
 
-  // Build palette (IX-21/31): WALL / DOOR / ⌫ CANCEL only. Cancel is not demolition.
-  const TOOLS = [['wall', 'WALL'], ['door', 'DOOR'], ['cancel', '⌫ CANCEL']];
+  // Build palette (IX-21/31): WALL / DOOR / ⌫ CANCEL, plus the E0-3 order verbs ⛏ DIG and
+  // ▤ STOCKPILE. Cancel is not demolition. DIG and STOCKPILE are ORDERS, not construction — they
+  // mark work for the crew rather than spending material — but they share this palette because
+  // they share the one armed-tool slot and the same click-a-tile gesture.
+  const TOOLS = [
+    ['wall', 'WALL', ''],
+    ['door', 'DOOR', ''],
+    ['dig', '⛏ DIG', 'Mark rubble for the crew to clear (G)'],
+    ['stockpile', '▤ STOCKPILE', 'Zone a floor tile as a haul destination (Z)'],
+    ['cancel', '⌫ CANCEL', 'Cancel a queued build order (refunds staged material)'],
+  ];
   const pal = $('palette');
-  for (const [kind, label] of TOOLS) {
+  for (const [kind, label, title] of TOOLS) {
     const b = document.createElement('button');
     b.className = 'tool' + (kind === 'cancel' ? ' tool-cancel' : '');
     b.dataset.tool = kind; b.textContent = label;
-    if (kind === 'cancel') b.title = 'Cancel a queued build order (refunds staged material)';
+    if (title) b.title = title;
     b.onclick = () => {
       _armed = nextArmedTool(_armed, { t: 'toggle', tool: kind });
       if (_armed != null) nudgeIfPaused();
@@ -397,10 +406,12 @@ export function renderRelations(m) {
 
 export function getArmedTool() { return _armed; }
 
-/** B/X from controls.js (IX-10/23): toggle wall/cancel; arming surfaces the BUILD tab. */
+/** B/X/G/Z from controls.js (IX-10/23, E0-3): toggle wall/cancel/dig/stockpile; arming surfaces
+ *  the BUILD tab so the palette showing the armed state is actually on screen. */
+const KEY_EVENT = { cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', build: 'keyB' };
 export function armFromKey(kind) {
-  _armed = nextArmedTool(_armed, kind === 'cancel' ? { t: 'keyX' } : { t: 'keyB' });
-  if (isBuildTool(_armed) && _tab !== 'build') setTab('build');
+  _armed = nextArmedTool(_armed, { t: KEY_EVENT[kind] || 'keyB' });
+  if (isPaletteTool(_armed) && _tab !== 'build') setTab('build');
   if (_armed != null) nudgeIfPaused();
   reflectArmed();
   notifyShip(); // the Overview PLACE palette reflects the armed tool immediately

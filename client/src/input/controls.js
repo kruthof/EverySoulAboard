@@ -8,6 +8,7 @@ import { tileFromPoint, zoomAt, panPixels, panByStep, transform } from '../rende
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid } from '../wire/messages.js';
 import { LENSES } from '../ui/hud.js';
+import { isBuildTool } from '../ui/console-model.js';
 
 /**
  * Click assist — PURE. Crew walk constantly and slide between tiles, so a click that "looks"
@@ -44,6 +45,27 @@ export function crewTileNear(frame, motion, camera, px, py) {
 }
 
 /**
+ * Lower an armed PALETTE tool + tile to the ONE wire order it means, or null when the tool is not
+ * a palette tool (MOVE / nothing armed — those have their own branches at the call site). PURE.
+ *
+ * Build kinds go out as `Cmd.build`; the E0-3 order kinds go out as `Cmd.dig` / `Cmd.stockpile`.
+ * Same gesture, different verb — routing an order tool through `Cmd.build` would hand it to
+ * BuildSystem, which knows nothing about designations. This is one exported function rather than a
+ * branch inlined at each call site so the mouse-click and Enter-key paths cannot drift apart (they
+ * previously shared a forked copy of console-model's `isBuildTool`), and so the routing itself is
+ * node-testable without a DOM.
+ *
+ * @param {null|string} tool @param {number} x @param {number} y
+ * @returns {object|null} a Cmd payload, or null when the tool owns no tile order
+ */
+export function paletteOrder(tool, x, y) {
+  if (isBuildTool(tool)) return Cmd.build(tool, x, y);
+  if (tool === 'dig') return Cmd.dig(x, y, true);
+  if (tool === 'stockpile') return Cmd.stockpile(x, y, true);
+  return null;
+}
+
+/**
  * @param {{
  *   canvas: HTMLCanvasElement,
  *   camera: import('../render/camera.js').Camera,
@@ -52,8 +74,8 @@ export function crewTileNear(frame, motion, camera, px, py) {
  *   draw: () => void,
  *   toggleSprites: () => void,
  *   onEscape?: () => void,
- *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'move'),
- *   onBuildKey?: (kind: 'build'|'cancel') => void,
+ *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'move'),
+ *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile') => void,
  *   onToolUsed?: (tool: string, x: number, y: number) => void,
  * }} opts
  */
@@ -71,7 +93,6 @@ export function installInput(opts) {
   // UI can drop a pending cross-deck row click (IX-42 supersession). Armed-tool clicks report
   // through onToolUsed instead.
   const onCanvasClick = opts.onCanvasClick || (() => {});
-  const isBuildArmed = (t) => t === 'wall' || t === 'door' || t === 'cancel';
 
   // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
   // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
@@ -115,10 +136,11 @@ export function installInput(opts) {
       const t = tileFromPoint(camera, px, py);
       if (t.x >= 0 && t.y >= 0 && t.x < frame.w && t.y < frame.h) {
         const tool = getArmedTool();
-        if (isBuildArmed(tool)) {
-          // IX-32: while a build tool is armed a non-drag click sends exactly one build order —
+        const order = paletteOrder(tool, t.x, t.y);
+        if (order) {
+          // IX-32: while a palette tool is armed a non-drag click sends exactly one order —
           // no selection, no device toggle, no crew snap, and shift is suppressed (IX-33).
-          session.send(Cmd.build(tool, t.x, t.y));
+          session.send(order);
           onToolUsed(tool, t.x, t.y);
         } else if (tool === 'move') {
           // IX-52 guided move order: one click, one order, then the UI disarms via onToolUsed.
@@ -201,6 +223,11 @@ export function installInput(opts) {
     // B/X (IX-10/IX-11): build / cancel-order toggles, routed to the UI's armed-tool slot.
     else if (k === 'b' || k === 'B') onBuildKey('build');
     else if (k === 'x' || k === 'X') onBuildKey('cancel');
+    // G/Z (E0-3): dig / stockpile-zone order toggles, through the same armed-tool seam. The
+    // mnemonic keys are taken: D and S are WASD panning, and H is vim cursor-left above — binding
+    // H here would have been silently dead for lowercase h, which is why stockpile is Z for ZONE.
+    else if (k === 'g' || k === 'G') onBuildKey('dig');
+    else if (k === 'z' || k === 'Z') onBuildKey('stockpile');
     // Enter on a focused BUTTON (crew-watch row, chip, tab) belongs to the button's native
     // activation (IX-46) — the game key stands down so a row Enter doesn't also click the cursor.
     else if (k === 'Enter' && e.target && e.target.tagName === 'BUTTON') return;
@@ -208,7 +235,8 @@ export function installInput(opts) {
     // Otherwise: talk when a crew is selected, else a keyboard "click" at the inspection cursor.
     else if (k === 'Enter') {
       const tool = getArmedTool();
-      if (isBuildArmed(tool)) { session.send(Cmd.build(tool, cur.x, cur.y)); onToolUsed(tool, cur.x, cur.y); }
+      const order = paletteOrder(tool, cur.x, cur.y);
+      if (order) { session.send(order); onToolUsed(tool, cur.x, cur.y); }
       else if (!talkSelected()) { session.send(Cmd.click(cur.x, cur.y)); onCanvasClick(cur.x, cur.y); }
     }
     else return;
