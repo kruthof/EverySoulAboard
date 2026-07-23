@@ -816,15 +816,30 @@ namespace Perilune.Gen
                 Dev(plan, DeviceKind.Ladder, SlotGridPlanner.LadderX, SlotGridPlanner.SpineY0, z, $"ladder_d{z}");
 
             // ------------------------------------------------------------- people
-            // Strict player control (HoldPosition) — they move only on direct orders, and
-            // so never path into an unbuilt vacuum hall.
-            plan.Citizens.Add(new CitizenSpec { Name = "Halloran", Pos = new Int3(8, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
-            plan.Citizens.Add(new CitizenSpec { Name = "Vega",     Pos = new Int3(18, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
+            // Halloran and Vega are the WORKABLE pair (HoldPosition=false ⇒ IsIdleForWork ⇒
+            // they self-assign haul/build jobs): without at least one non-held crew, every
+            // wall the player designates stages material forever and never raises, so the ship
+            // "cannot build anything". AutoWander stays FALSE so they never idle-wander into an
+            // unbuilt vacuum hall — they leave the spine only for real work (a build/haul job at
+            // a designated tile), then return. Sato stays under strict player control
+            // (HoldPosition) as the direct-order hand.
+            plan.Citizens.Add(new CitizenSpec { Name = "Halloran", Pos = new Int3(8, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
+            plan.Citizens.Add(new CitizenSpec { Name = "Vega",     Pos = new Int3(18, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
             plan.Citizens.Add(new CitizenSpec { Name = "Sato",     Pos = new Int3(30, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
 
             // -------------------------------------------------------- opening stock
             var storage = rects[0]["storage"];
             plan.Items.Add(new ItemSpec { Kind = ItemKind.Potato, Count = 8, Pos = new Int3(storage.X0 + 1, storage.CenterY, 0), Label = "grid rations" });
+
+            // Build material: the grid ship seeds NO diggable regolith (its decks are pre-carved,
+            // not a collapse to clear), so its build loop needs an opening regolith stock or every
+            // wall/door designation starves at "0 regolith aboard" (wall_material=2, door_material=1).
+            // Six stacks of four units = 24 units = twelve walls (or more doors) — enough for the
+            // workable pair to build out several rooms before the player has to find more matter.
+            // The stacks ride the storage room's back row (y = CenterY-1 = 12, clear of the ration
+            // tile at CenterY), all proven open storage floor (interior x34..43, y11..16).
+            for (int i = 0; i < 6; i++)
+                plan.Items.Add(new ItemSpec { Kind = ItemKind.Regolith, Count = 4, Pos = new Int3(storage.X0 + 1 + i, storage.CenterY - 1, 0), Label = "grid build stock" });
 
             // ---------------------------------------------------- starting state
             // Pressurise the two active decks (furnished rooms + spine). The empty halls
