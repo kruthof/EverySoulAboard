@@ -188,6 +188,12 @@ namespace Perilune.Sim
             public float MoodFatigueWeight;
             /// <summary>NeedsSystem inline mood penalty per unit Suffocation. Current: 60.</summary>
             public float MoodSuffocationWeight;
+            /// <summary>SafetySystem.FleeSuffocation — the <see cref="Citizen.Suffocation"/> level
+            /// at which a crew member in unbreathable air abandons its job and flees to the nearest
+            /// breathable tile (E0-2 crew-safety guard). 0.5 = "halfway to death, get out"; below 1
+            /// with ample travel margin at the vacuum/hypoxia decline rates. NeedsSystem does not
+            /// read it — SafetySystem does. Current: 0.5.</summary>
+            public float FleeSuffocation;
         }
 
         /// <summary>SustenanceSystem constants (public consts there today).</summary>
@@ -487,6 +493,7 @@ namespace Perilune.Sim
                     MoodThirstWeight = 30f,
                     MoodFatigueWeight = 25f,
                     MoodSuffocationWeight = 60f,
+                    FleeSuffocation = 0.5f, // E0-2 crew-safety guard (SafetySystem)
                 },
 
                 Sustenance = new SustenanceDefs
@@ -676,6 +683,7 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Needs.MoodThirstWeight);
             h = XxHash64.Combine(h, Needs.MoodFatigueWeight);
             h = XxHash64.Combine(h, Needs.MoodSuffocationWeight);
+            h = XxHash64.Combine(h, Needs.FleeSuffocation); // E0-2 crew-safety guard (append-only)
 
             h = XxHash64.Combine(h, Sustenance.DrinkLiters);
             h = XxHash64.Combine(h, Sustenance.PotatoHungerValue);

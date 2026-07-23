@@ -397,6 +397,22 @@ store entirely, a `Corpse` item labelled with their name drops on their tile, an
 `CitizenDiedEvent` and an `AlarmRaisedEvent("CITIZEN DOWN — asphyxiation")` fire.
 **Thermal injury shares the suffocation track** — there is no separate hypothermia meter.
 
+**Crew now self-preserve (E0-2 `SafetySystem`, `Systems/SafetySystem.cs`, 1 Hz, after
+`NeedsSystem`).** Before E0-2 a crew member had no response to bad air at all — it would work a
+job on a tile whose air had turned lethal until it died (§13's "a citizen will stand in 60,000
+ppm taking damage without ever choosing to leave"). Once the L1 rebase stretched a maintenance
+call to 900 s that killed every generated ship. The guard: when a crew member's `Suffocation`
+reaches `needs.flee_suffocation` (0.5) AND its current tile is not breathable
+(`AtmosphereSafety.IsBreathable` — the exact negation of the danger bands above), it drops its
+job (`CancelJob` — cargo/reservations released) and takes `JobKind.Flee`, pathing to the nearest
+breathable tile (`PathService.FindNearestBreathable`). While `Flee` it is not idle, so no
+dispatcher recruits it back into the air it is fleeing; it returns to `None` only once it is
+breathing and has recovered below `0.5 × flee_suffocation`. The guard is INERT on a healthy ship
+(crew never suffocate, so `JobKind` never becomes `Flee` and no hash moves); it does NOT make
+crew respond to CO2 they can survive, seek air pre-emptively, or fight fires — it is purely "do
+not stand in lethal air until dead". A sealed pocket with no breathable tile reachable still
+kills, which the ship-gen V6 survivability gate is right to catch.
+
 ### Key tunables
 
 | key | value | file |
@@ -1657,6 +1673,7 @@ last.
 | how often a system runs | that system's `IntervalTicks`; if it is interval-paired with a `Dt` const, change both |
 | air chemistry rates, vent/scrubber throughput, vent ceiling | `content/core/SimDefs/atmosphere.def` |
 | what makes air lethal, need fill rates, mood weights | `content/core/SimDefs/needs.def` |
+| when a crew member flees lethal air | `content/core/SimDefs/needs.def` (`flee_suffocation`; consumed by `Systems/SafetySystem.cs`) |
 | walking speed / wander cadence | `content/core/SimDefs/citizen.def` (`ticks_per_tile`, `idle_ticks_between_wanders`) |
 | **where** a citizen wanders to | `sim/Sim.Core/Path/PathService.cs:77-89` (`TryRandomWalkableTile`) — code, not a def |
 | a machine's draw / generation / tier / heat / wear / thresholds | `content/core/SimDefs/machines.def` (one row per `DeviceKind`) |

@@ -1367,6 +1367,9 @@ namespace Perilune.Web
                       .Append(BuildSiteLabel(c.JobTarget)).Append(' ');
                     AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
+                case JobKind.Flee:
+                    sb.Append("Heading to safe air"); // E0-2 crew-safety: fleeing unbreathable air
+                    break;
                 default:
                     // No job. Say which of the three job-less states this actually is.
                     if (c.HasPath)

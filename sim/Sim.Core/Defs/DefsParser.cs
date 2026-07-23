@@ -230,6 +230,7 @@ namespace Perilune.Sim
                 case "mood_thirst_weight": if (F(v, k, loc, p, out var r)) d.Needs.MoodThirstWeight = r; return true;
                 case "mood_fatigue_weight": if (F(v, k, loc, p, out var s)) d.Needs.MoodFatigueWeight = s; return true;
                 case "mood_suffocation_weight": if (F(v, k, loc, p, out var t)) d.Needs.MoodSuffocationWeight = t; return true;
+                case "flee_suffocation": if (F(v, k, loc, p, out var fs)) d.Needs.FleeSuffocation = fs; return true;
                 default: return false;
             }
         }
