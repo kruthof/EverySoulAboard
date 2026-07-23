@@ -204,15 +204,18 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `ffefe9a9a42d8e7e`
-(pinned at `ci.sh:25`); tick-3000 golden `6071adb8fa781440`; slice tick-3000 golden
-`ab47cefd840247c4`. All three moved twice on 2026-07-22, each time by a pure fold change
-whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `616ed4a84a9f6e87`
+(pinned at `ci.sh:25`); tick-3000 golden `3cf25daf3ca40e0b`; slice tick-3000 golden
+`72f7023ef9f1cd73`. All three moved three times on 2026-07-22, each time by a pure fold
+change whose *inputs* were unchanged, so no sim behaviour moved with them: W0-1 (the hash-pack
 un-aliasing) took `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
-`3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`, and W0-1b (folding the
-thirteen saved-but-unhashed fields) took those to the current values. Both times exactly 2 goldens
-moved — the two tick-3000 hash files — and every frame, persona and layout golden was
-byte-identical, which is the check that the cause really was the fold.
+`3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; W0-1b (folding the thirteen
+saved-but-unhashed fields) took those to `ffefe9a9a42d8e7e` / `6071adb8fa781440` /
+`ab47cefd840247c4`; and **W0-6** (registering four empty economy systems — `ZONE`, `PROD`,
+`ORES`, `TRAD` — whose checksum seeds fold unconditionally) took those to the current values.
+All three times exactly 2 goldens moved — the two tick-3000 hash files — and every frame,
+persona and layout golden was byte-identical, which is the check that the cause really was
+the fold.
 
 ---
 
@@ -1148,6 +1151,10 @@ path caches. `PowerDirty`/`JobsDirty` are forced true and `RoomState.Dirty` defa
 | `DirectorSystem` | `'DRCT'` | 1 | `Director/DirectorSystem.cs:38,40` |
 | `NavSystem` | `'NAVS'` | 1 | `Space/NavSystem.cs:28,207` |
 | `MemorySystem` | `'MEMS'` | 1 | `Citizens/CitizenMemory.cs:239` (host-registered only) |
+| `StockZoneSystem` | `'ZONE'` | 1 | `Stock/StockZoneSystem.cs` — W0-6 empty registry, §13.14 |
+| `ProductionSystem` | `'PROD'` | 1 | `Production/ProductionSystem.cs` — W0-6 empty registry, §13.14 |
+| `OreRegistrySystem` | `'ORES'` | 1 | `Mining/OreRegistrySystem.cs` — W0-6 empty registry, §13.14 |
+| `TradeSystem` | `'TRAD'` | 1 | `Space/TradeSystem.cs` — W0-6 empty registry, §13.14 |
 | `ScriptRuntime` | — | 1 | `Sim.Dsl/ScriptRuntime.cs:209` |
 | `DesignerRuleSystem` | — | 1 | `Sim.Dsl/DesignerRuleSystem.cs:207` |
 
@@ -1509,6 +1516,30 @@ policy.
 
 Also on this table: `ProductionDefs.CountFor` is container API with no sim consumer yet
 (tests and the parser warning only).
+
+### 13.14 Four economy systems are registered, fold the pin, and hold no state (W0-6)
+
+`SystemStack.CreateDefault` registers four **passive, empty** `IStatefulSystem`s grouped
+after `BuildSystem` — `StockZoneSystem` (`'ZONE'`), `ProductionSystem` (`'PROD'`),
+`OreRegistrySystem` (`'ORES'`), `TradeSystem` (`'TRAD'`). Each has a no-op `Tick`, a
+`CaptureState` that writes only a state-marker byte, a `RestoreState` that version-*branches*
+(never `if (version != 1) return;`), and a `StateChecksum` that folds only its FourCC seed.
+That empty seed-fold is exactly what moved the three determinism pins (W0-6). They exist so
+the SYSS chapters and seeds are declared **once, batched** — the economy lanes then fill in
+real state without another pin site to find, `SystemStack` reorder, or save chapter to invent.
+
+- **Holds no state today.** Every system's persisted payload is a single constant byte; there
+  is no behaviour behind any of them. A pre-W0-6 save (no economy chapters) loads into the
+  economy build as empty economy state with no reader branch —
+  `EconomySystemRegistrationTests.PreEconomySaveLoadsIntoEconomyBuild_*` pins that compat.
+- **What would connect each (the E-lane that owns it, `ECONOMY-PLAN.md` §2):** `'ZONE'` →
+  **E-STOCK** filtered stockpile zones (`sim/Sim.Core/Stock/`); `'PROD'` → **E-PROD** the
+  production graph / station bills (`sim/Sim.Core/Production/`, which also takes over
+  `CraftingSystem`); `'ORES'` → **E-MINE** the ore-deposit registry an extraction `IJobSource`
+  reads (`sim/Sim.Core/Mining/`) — a *registry*, not a ticking system, per §3.4; `'TRAD'` →
+  **E-VOY** trade (`sim/Sim.Core/Space/`). `CITZ` v7 (E-PEOPLE) and `ITEM` v3 (E-DECAY) are
+  entity-field bumps, not new systems; `NAVS` ext (E-VOY) extends the existing `NavSystem`
+  chapter — none of those are registered here.
 
 ---
 

@@ -26,12 +26,13 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 ## Status snapshot (2026-07-22) — economy Wave 0 IN FLIGHT on a branch
 **Read `docs/HANDOVER.md` "Economy Wave 0 — IN FLIGHT, START HERE" first.** The economy
 programme has started. Wave 0 (behaviour-free plumbing that must land before any economy
-lane spawns) is **five of six packages merged on `lane/economy-w0`, not on `main`**:
+lane spawns) is **on `lane/economy-w0`, not on `main`**:
 W0-1 hash packs un-aliased · W0-2 `EffectKind` widened · W0-4 `JobSystem` split into an
 `IJobSource` dispatcher · W0-5 the `[production]` node table · W0-1b the 13
 saved-but-unhashed fields hashed (`Path`/`PathIndex`/`MoveCooldown` were live tick state
-hashing **equal**). **W0-3** (split `JobsDirty`) is next, then **W0-6** (register the
-economy systems). Branch gate measured **680 dotnet + 207 node**, `ffefe9a9a42d8e7e`. `main`
+hashing **equal**) · **W0-6** the four empty economy systems registered (`ZONE`/`PROD`/
+`ORES`/`TRAD` SYSS, one batched pin move). **W0-3** (split `JobsDirty`) is the only Wave-0
+package still open. Post-W0-6 pin `616ed4a84a9f6e87` (see "Determinism proof" below). `main`
 has advanced since the branch was cut (Ollama merge + art rev 2) — merge it in and
 re-measure the pin first.
 
@@ -107,25 +108,28 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
 
 ## Working here
-- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (670 green; `./ci.sh`
-  runs the full gate — 670 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
-  (Counts MEASURED 2026-07-22 on `lane/w0-1b-savedfields` = the pre-W0-1 607, plus W0-1's
-  37 hash-honesty cases grown to 61, plus W0-1b's 2 save→load→tick-1000 tests; not carried
-  forward: figures quoted mid-session drifted behind the lanes still in flight, and the
-  other Wave-0 lanes each add their own. Re-measure before quoting.)
+- Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (713 green; `./ci.sh`
+  runs the full gate — 713 dotnet + 207 node, ~4 min wall since V6 runs real sim-days).
+  (Counts MEASURED 2026-07-22 on `lane/w0-6-register` = all of Wave 0's merged packages
+  plus W0-6's 5 economy-registration tests; not carried forward: figures quoted mid-session
+  drifted behind the lanes still in flight, and the other Wave-0 lanes each add their own.
+  Re-measure before quoting.)
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `ffefe9a9a42d8e7e` — pinned in ci.sh; adding hashed
+  (with shipped rules: final hash `616ed4a84a9f6e87` — pinned in ci.sh; adding hashed
   state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `6071adb8fa781440`; the slice tick-3000 golden is `ab47cefd840247c4`.
-  All three moved twice on 2026-07-22, both times a pure fold change with zero behaviour
+  `3cf25daf3ca40e0b`; the slice tick-3000 golden is `72f7023ef9f1cd73`.
+  All three moved THREE times on 2026-07-22, each time a pure fold change with zero behaviour
   change: economy **W0-1** (un-aliasing the citizen + item hash packs) took
   `26907c23d7e48a5c` / `401c9b96aff338a7` / `b31ba82f50cf395c` →
-  `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`, and economy **W0-1b**
+  `3afc99d90e849aa0` / `d807c509743d1b9d` / `21ad26192d778d95`; economy **W0-1b**
   (folding the **thirteen** saved-but-unhashed fields — crew Name/PrevPos/AutoWander/Path/
   PathIndex/MoveCooldown/IdleCooldown, `ItemStack.Label`, `Device.Name`, the save header's
-  `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to the
-  current values. Exactly 2 goldens moved each time, both the tick-3000 hash files.
+  `NextEntityId`, `RoomAnchor.Name` and `ScriptEntry.TerminalId`/`.Source`) took those to
+  `ffefe9a9a42d8e7e` / `6071adb8fa781440` / `ab47cefd840247c4`; and economy **W0-6**
+  (registering four empty economy systems — `ZONE`, `PROD`, `ORES`, `TRAD` — whose seeds fold
+  unconditionally) took those to the current values. Exactly 2 goldens moved each time, both
+  the tick-3000 hash files.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:

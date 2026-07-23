@@ -36,6 +36,17 @@ namespace Perilune.Sim
                 new MachineWearSystem(director),
                 new MaintenanceSystem(),
                 new BuildSystem(),         // passive; completions applied after job progress this tick
+                // Economy Wave 0 (W0-6): four PASSIVE, EMPTY registries grouped here beside the
+                // existing passive BuildSystem. Their Tick is a no-op today; they exist so their
+                // SYSS chapters and checksum seeds are registered (one batched pin move) before
+                // the economy lanes spawn. The E-lane named on each fills in the real state.
+                // ORDER IS LOAD-BEARING: it fixes the SYSS fold order and therefore the pin, so a
+                // later reorder is another pin move. Fixed as the ECONOMY-PLAN §2 lane order
+                // (E-STOCK, E-PROD, E-MINE, E-VOY) = the §3.1 seed order — do not reorder.
+                new StockZoneSystem(),     // 'ZONE' — E-STOCK filtered stockpiles (empty)
+                new ProductionSystem(),    // 'PROD' — E-PROD production graph & bills (empty)
+                new OreRegistrySystem(),   // 'ORES' — E-MINE ore registry, a job-source's state (empty)
+                new TradeSystem(),         // 'TRAD' — E-VOY trade (empty)
                 new HydroponicsSystem(),
                 new NeedsSystem(),
                 new SocialSystem(),        // after Needs: positions and deaths settled this tick

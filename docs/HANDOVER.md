@@ -29,24 +29,27 @@ main, after merge.
 | W0-5 | the `[production]` node table | **merged**, 3 review rounds | neutral, proven |
 | W0-1b | hash the 13 saved-but-unhashed fields | **merged**, 2 review rounds | moved |
 | **W0-3** | split `JobsDirty` into tile/item/site | **NEXT — not started** | neutral, prove it |
-| **W0-6** | register the economy systems empty | **not started** | moves |
+| **W0-6** | register the economy systems empty | **done** — 4 empty SYSS, one pin move | moved |
 
 **Merged-branch gate (five packages), measured 2026-07-22: 680 dotnet + 207 node green,
-`./ci.sh` exit 0, `determinism: twin hashes MATCH (ffefe9a9a42d8e7e)`.**
+`./ci.sh` exit 0, `determinism: twin hashes MATCH (ffefe9a9a42d8e7e)`.** (Superseded by W0-6
+below — with W0-6 the gate is **713 dotnet + 207 node** green and the pin is
+`616ed4a84a9f6e87`, measured on `lane/w0-6-register` 2026-07-22.)
 
-Pins as they stand on `lane/economy-w0` (moved by W0-1, then again by W0-1b; ritual done
-both times — these are the CURRENT values, `ci.sh:25` and the two golden files all agree):
+Pins as they stand (moved by W0-1, again by W0-1b, again by **W0-6** — ritual done each
+time; these are the CURRENT values, `ci.sh:25` and the two golden files all agree):
 
 | pin | value |
 |---|---|
-| 3-day scenario (`ci.sh:25`) | `ffefe9a9a42d8e7e` |
-| tick-3000 golden | `6071adb8fa781440` |
-| slice tick-3000 golden | `ab47cefd840247c4` |
+| 3-day scenario (`ci.sh:25`) | `616ed4a84a9f6e87` |
+| tick-3000 golden | `3cf25daf3ca40e0b` |
+| slice tick-3000 golden | `72f7023ef9f1cd73` |
 
-**W0-3 and W0-6 will each move these again.** W0-3 must *prove* it is pin-neutral (it is a
-dispatch-plumbing change, and the slice golden is the only pin that reaches dig assignment);
-W0-6 moves the pin by registering stateful systems. Re-measure after each merge; never carry
-a literal forward.
+W0-6 moved all three by registering four empty stateful systems (their checksum seeds fold
+unconditionally). Pre-W0-6 values were `ffefe9a9a42d8e7e` / `6071adb8fa781440` /
+`ab47cefd840247c4`. **W0-3 (still not started) must *prove* it is pin-neutral** (it is a
+dispatch-plumbing change, and the slice golden is the only pin that reaches dig assignment).
+Re-measure after each merge; never carry a literal forward.
 
 ### W0-4's neutrality is now proven a second way — the whole point of adding W0-1b
 
