@@ -13,7 +13,7 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { decodeDecks, decodeRooms, decodeDecor } from '../wire/messages.js';
+import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials } from '../wire/messages.js';
 import { decksView } from './decks-model.js';
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
@@ -21,16 +21,21 @@ import { isTextEntryTarget } from '../input/controls.js';
 import { roomMaterial } from '../theme/warm-tokens.js';
 import { deckMinimap } from './deck-minimap.js';
 import {
-  U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, nextRoomTool, roomTileRect, deckSlots,
-  roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, demolishTarget,
-  addDecor, removeDecor, escStackRung,
+  U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isStructuralTool, nextRoomTool, roomTileRect,
+  deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
+import { buildDragTiles, dragModeForTool, dragCaption } from './build-drag-model.js';
+import {
+  materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
+} from './build-material-model.js';
 
 /* eslint-disable no-multi-spaces */
 
 const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
+const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
-const HINT = 'SELECT AN ITEM · CLICK THE FLOOR TO PLACE · CLICK A GHOST WITH DEMOLISH TO REMOVE';
+const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -49,8 +54,10 @@ let _raf = 0;
 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
-let _armed = null;        // the ONE Level-2 input slot (11 tools + null)
+let _armed = null;        // the ONE Level-2 input slot (12 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
+let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
+let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
 
 // ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
 // The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
@@ -96,6 +103,7 @@ function buildSkeleton() {
     '<div class="hud rz-breadcrumb" id="rz-breadcrumb"></div>' +
     '<div class="hud rz-minimap" id="rz-minimap"></div>' +
     '<div class="rz-palette-wrap">' +
+      '<div class="hud rz-matstrip" id="rz-matstrip" hidden></div>' +
       '<div class="hud rz-palette" id="rz-palette"></div>' +
       '<div class="rz-hint">' + HINT + '</div>' +
     '</div>' +
@@ -105,8 +113,12 @@ function buildSkeleton() {
   _pulseLayer = $('rz-pulse');
   _toast = $('rz-toast');
   buildChrome();
+  // Structural tools (WALL/FLOOR/DOOR) use a press-drag-release gesture (RimWorld sweep); a plain
+  // click is the degenerate 1-tile drag. Non-structural tools stay on the click handler.
+  _canvas.addEventListener('mousedown', onCanvasDown);
+  _canvas.addEventListener('mousemove', onCanvasMove);
+  window.addEventListener('mouseup', onCanvasUp); // window: catch a release that ends off-canvas
   _canvas.addEventListener('click', onCanvasClick);
-  _canvas.addEventListener('mousemove', onCanvasHover);
   _root.addEventListener('click', onHudClick);
 }
 
@@ -143,8 +155,13 @@ function buildChrome() {
   pal.innerHTML = btns;
   _el.placeLabel = pal.querySelector('.rz-place-label');
   _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
+  _el.matStrip = $('rz-matstrip'); // material swatch row — populated on arm(wall|floor)
+  _matSig = '';
   _miniSig = ''; // force the first minimap paint to render
 }
+
+// The material strip's last-rendered signature (tool + active byte) — re-set only on change.
+let _matSig = '';
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Enter / exit.
@@ -211,6 +228,7 @@ function repaint() {
   paintBreadcrumb();
   paintMinimap();
   paintPalette();
+  paintMatStrip();
 }
 
 // ── the framed floor (VS-Z-06..09) ──
@@ -239,11 +257,42 @@ function paintLayers(frame, crew, designs, decor) {
 
   let body = gridSvg(rw, rh, logicalW, logicalH);
   body += glowSvg(logicalW, logicalH);
+  body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())));
   body += decorSvg(roomDecor(decor, _focus));
   body += furnitureSvg(roomCells(frame, _focus));
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
+  body += previewSvg();
   _layers.innerHTML = body;
+}
+
+/** The live drag-build preview (VS-Z spirit of the ghost, but pre-commit): the tiles the current
+ *  sweep WOULD designate, each skinned with the chosen material at low opacity + an amber dashed
+ *  ring, plus a run caption near the drag end. Recomputed each repaint from the pure drag model. */
+function previewSvg() {
+  if (!_drag) return '';
+  const res = buildDragTiles(_drag.start, _drag.end, _drag.mode, roomBounds());
+  if (!res.tiles.length) return '';
+  const tool = _drag.tool;
+  const itemId = materialItemId(tool, activeMaterial(_materials, tool)); // '' for door (no material)
+  const out = [];
+  for (const t of res.tiles) {
+    const [lx, ly] = localXY(t.x, t.y);
+    if (itemId) {
+      const g = buildItem(itemId, { w: MAT_SIDE, h: MAT_SIDE, idPrefix: 'rz-pv-' + t.x + '-' + t.y });
+      out.push('<g opacity="0.6" transform="translate(' + (lx + U / 2 - MAT_SIDE / 2).toFixed(1) +
+        ' ' + (ly + U / 2 - MAT_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
+    }
+    out.push('<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
+      (U - 1) + '" rx="2" fill="' + (itemId ? 'none' : 'rgba(232,147,74,.20)') +
+      '" stroke="#f2b563" stroke-width="1.5" stroke-dasharray="3 2"/>');
+  }
+  const [ex, ey] = localXY(_drag.end.x, _drag.end.y);
+  out.push('<text x="' + (ex + U / 2).toFixed(1) + '" y="' + (ey - 5).toFixed(1) +
+    '" font-size="9" text-anchor="middle" dominant-baseline="middle" ' +
+    'font-family="\'Space Mono\', ui-monospace, monospace" stroke="rgba(10,13,20,.9)" stroke-width="2.5" ' +
+    'paint-order="stroke" fill="#f2b563">' + esc(dragCaption(res)) + '</text>');
+  return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
 /** The faint 32-unit build grid (VS-Z-10), drawn in logical space so a cell == a tile at any fit. */
@@ -283,6 +332,25 @@ function decorSvg(list) {
     out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
   }
   return out.length ? '<g class="rz-decor" pointer-events="none">' + out.join('') + '</g>' : '';
+}
+
+/** Built walls + non-default floors → their item-set material skins (C4). A wall '#' inside the room
+ *  is a player-built partition — rendered with its wall material (default steel when the sparse
+ *  `materials` channel has no entry); a floor tile is skinned only when it carries a chosen material.
+ *  Drawn under decor/furniture so items sit on top. */
+function materialLayerSvg(tiles) {
+  const floors = [], walls = [];
+  for (const t of tiles) {
+    const id = materialItemId(t.kind, t.mat);
+    if (!id) continue;
+    const [lx, ly] = localXY(t.tx, t.ty);
+    const g = buildItem(id, { w: MAT_SIDE, h: MAT_SIDE, idPrefix: 'rz-mt-' + t.tx + '-' + t.ty });
+    const wrap = '<g transform="translate(' + (lx + U / 2 - MAT_SIDE / 2).toFixed(1) + ' ' +
+      (ly + U / 2 - MAT_SIDE / 2).toFixed(1) + ')">' + g + '</g>';
+    (t.kind === 'wall' ? walls : floors).push(wrap);
+  }
+  return (floors.length ? '<g class="rz-floor-mat" pointer-events="none">' + floors.join('') + '</g>' : '') +
+    (walls.length ? '<g class="rz-walls" pointer-events="none">' + walls.join('') + '</g>' : '');
 }
 
 /** The sim's own furniture cells → warm SVG items (VS-Z-19); unmapped glyph → the dashed chip. */
@@ -326,7 +394,7 @@ function ghostSvg(list) {
   const out = [];
   for (const g of list) {
     const [lx, ly] = localXY(g.x, g.y);
-    const abbr = g.kind === 1 ? GHOST_ABBR.door : GHOST_ABBR.wall;
+    const abbr = g.kind === 1 ? GHOST_ABBR.door : g.kind === 2 ? GHOST_ABBR.floor : GHOST_ABBR.wall;
     const starved = g.required > 0 && g.delivered <= 0;
     const ready = g.required > 0 && g.delivered >= g.required;
     let stroke = '#f2b563', dash = ' stroke-dasharray="3 2"', fill = 'rgba(232,147,74,.22)', op = '1';
@@ -378,13 +446,41 @@ function paintPalette() {
   for (const b of _el.toolBtns) setCls(b, 'on', _armed === b.dataset.rztool);
 }
 
+/** The material swatch row: shown only when WALL or FLOOR is armed, listing that surface's 6
+ *  materials as clickable item-set swatches with the active one lit. Re-rendered only when the
+ *  (tool, active-byte) signature changes, so idle repaints and hovers leave the chips untouched. */
+function paintMatStrip() {
+  if (!_el.matStrip) return;
+  const tool = _armed;
+  if (!toolHasMaterial(tool)) {
+    if (_matSig !== 'off') { _el.matStrip.hidden = true; _el.matStrip.innerHTML = ''; _matSig = 'off'; }
+    return;
+  }
+  const active = activeMaterial(_materials, tool);
+  const sig = tool + ':' + active;
+  if (sig === _matSig) return;
+  let html = '<span class="rz-mat-label">' + esc(TOOL_LABEL[tool]) + ' ▸</span>';
+  for (const m of materialsForTool(tool)) {
+    const swatch = buildItem(m.id, { w: 26, h: 26, idPrefix: 'rz-mc-' + tool + '-' + m.mat });
+    html += '<button class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
+      '" title="' + esc(m.label) + '">' +
+      '<svg class="rz-mat-sw" viewBox="0 0 26 26" width="26" height="26" xmlns="http://www.w3.org/2000/svg">' +
+      swatch + '</svg><span class="rz-mat-name">' + esc(m.label) + '</span></button>';
+  }
+  _el.matStrip.innerHTML = html;
+  _el.matStrip.hidden = false;
+  _matSig = sig;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Input.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 function arm(tool) {
   _armed = nextRoomTool(_armed, { t: 'toggle', tool });
+  _drag = null; // arming/disarming cancels any in-progress sweep
   paintPalette();
+  paintMatStrip();
   paintCanvas();
 }
 
@@ -394,10 +490,20 @@ function onHudClick(e) {
   if (t.closest('#rz-canvas')) return; // the canvas has its own handler
   const tool = t.closest('[data-rztool]');
   if (tool) { arm(tool.getAttribute('data-rztool')); return; }
+  const mat = t.closest('[data-rzmat]');
+  if (mat) { onMatChip(mat); return; }
   const crumb = t.closest('[data-rz]');
   if (crumb) { exitRoom(); return; } // ‹ PERILUNE / DECK n both pop to the Overview (IX-Z-32/33)
   const slot = t.closest('.rz-mini-slot');
   if (slot) { onMinimapSlot(slot); return; }
+}
+
+/** Choose a wall/floor material from the strip; re-skins the strip + any live preview. */
+function onMatChip(el) {
+  const tool = _armed;
+  if (!toolHasMaterial(tool)) return;
+  const next = setMaterial(_materials, tool, parseInt(el.getAttribute('data-rzmat'), 10) | 0);
+  if (next !== _materials) { _materials = next; paintMatStrip(); scheduleRepaint(); }
 }
 
 /** Lateral / cross-deck room swap from the minimap (IX-Z-34/35). */
@@ -427,12 +533,13 @@ function onCanvasClick(e) {
     return;
   }
 
+  // Structural tools (WALL/FLOOR/DOOR) are placed by the press-drag-release gesture (onCanvasDown/
+  // Move/Up); the trailing click after a release must not double-fire, so bail here.
+  if (isStructuralTool(_armed)) return;
+
   const pc = paletteCommand(_armed);
   const deck = _focus.deck;
-  if (pc.cls === 'structural') {
-    _send(Cmd.build(pc.kind, tile.x, tile.y)); // IX-Z-20 — the shipped build path
-    pulse(tile, false);
-  } else if (pc.cls === 'functional') {
+  if (pc.cls === 'functional') {
     // IX-Z-21/53 — Cmd.place lands with the sim build pass; call it DEFENSIVELY.
     if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.deviceKind, tile.x, tile.y, deck)); pulse(tile, false); }
     else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
@@ -463,12 +570,56 @@ function doDemolish(tile, deck) {
   }
 }
 
-/** Hover reticle while a tool is armed (IX-Z-13): the host reticle doubles as the preview. */
-function onCanvasHover(e) {
+/** The room-tile rect for clipping a drag (never designate outside the focused room). */
+function roomBounds() {
+  return { x: _focus.rx | 0, y: _focus.ry | 0, w: _focus.rw | 0, h: _focus.rh | 0 };
+}
+
+/** Resolve a mouse event to an absolute sim tile (or null on the letterbox / outside the room). */
+function tileAt(e) {
+  return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+}
+
+/** Begin a structural sweep. WALL/FLOOR/DOOR only; a plain click is the degenerate 1-tile drag. */
+function onCanvasDown(e) {
+  if (e.button !== 0 || !isStructuralTool(_armed)) return; // non-structural → the click handler
+  const tile = tileAt(e);
+  if (!tile) return;
+  _drag = { start: tile, end: tile, tool: _armed, mode: dragModeForTool(_armed) };
+  scheduleRepaint();
+  e.preventDefault(); // suppress text/drag selection during the sweep
+}
+
+/** Extend the sweep (drag) or emit the hover reticle (no drag) while a tool is armed (IX-Z-13). */
+function onCanvasMove(e) {
+  if (_drag) {
+    const tile = tileAt(e);
+    if (tile && (tile.x !== _drag.end.x || tile.y !== _drag.end.y)) {
+      _drag.end = tile;
+      _send(Cmd.cursor(tile.x, tile.y));
+      scheduleRepaint();
+    }
+    return;
+  }
   if (_armed == null) return;
-  const rect = _layers.getBoundingClientRect();
-  const tile = tileFromCanvasXY(e.clientX, e.clientY, rect, _focus);
+  const tile = tileAt(e);
   if (tile) _send(Cmd.cursor(tile.x, tile.y));
+}
+
+/** Commit the sweep on release: one Cmd.build per previewed tile, carrying the active material.
+ *  Bound on window so a release that ends off-canvas still commits (IX-Z spirit). */
+function onCanvasUp(e) {
+  if (!_drag || e.button !== 0) return;
+  const drag = _drag; _drag = null;
+  const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
+  const pc = paletteCommand(drag.tool);
+  const material = activeMaterial(_materials, drag.tool);
+  for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material)); // sim decides legality per tile
+  if (res.tiles.length) {
+    pulse(res.tiles[res.tiles.length - 1], false);
+    toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res));
+  }
+  scheduleRepaint();
 }
 
 /** The one transient (IX-Z-27): a ≤150ms fading tile outline at the clicked tile. */
