@@ -1,5 +1,45 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)**, tag `v2-talking-ship`)
 
+## Warm SVG visual/UI rework — COMPLETE (2026-07-23), parallel programme
+
+A second programme landed on `main` alongside the economy work: the **warm SVG visual/UI
+rework** — a from-scratch two-level ship UI that supersedes the cold "derelict" WebGL look.
+Design authority + plan: `/Users/garvin/.claude/plans/we-have-to-do-eager-pebble.md`,
+`docs/design/perilune-art-direction-warm.md`, `perilune-overview.*`, `perilune-roomzoom.*`,
+`perilune-wire-channels.spec.md`, `perilune-item-mapping.md`, and the five imported
+`.dc.html` mocks. **Pure SVG everywhere** (no Gemini raster; the WebGL renderer is *parked*,
+its goldens byte-identical). Orchestrated autonomously, every artifact Opus-implemented +
+independently Opus-reviewed (incl. headless-Chrome visual gates).
+
+**What shipped (Phases 0–5, all merged, each behind its own reviewed lane):**
+- **P1 SVG asset layer** — `client/src/theme/warm-tokens.js`+`warm.css` (palette/ROOM_MATERIAL/
+  ROLE_HUE), the 60-piece parametric item library `client/src/items/*`, front-facing pawns
+  `client/src/render/pawn-svg.js` (in-world + roster chip; retires raster crew portraits).
+- **P2a grid ship** `--ship grid` (`AuthoredShips.PeriluneGrid`, `SlotGridPlanner`,
+  `ShipPlan.SlotGrid` — authoring/view-only, NOT hashed): depth 8, all decks present, deck 0
+  furnished / deck 1 half / decks 2–7 empty "halls". Pinned `slice`/`Perilune` untouched.
+- **P2b view-only wire channels** `decks`/`rooms`/`decor` (`WireFormat.cs` spine-additive; host
+  derives occupied/active/anchorName from live `RoomState`; client decode + `decks-model.js`).
+- **P3 Overview** (Level 1) — `overview-scene.js` (pure SVG deck schematic; glow-pools keyed on
+  `occupied`, not `active`) + `overview-view.js`/`overview-model.js`: **the default SHIP surface
+  when the `decks` channel is populated**, warm floating HUD, click→scene-CTM-invert→`Cmd`. Parks
+  the WebGL canvas; `--ship slice` keeps the legacy tile view.
+- **P4 Room Zoom** (Level 2) — `roomzoom-view.js`/`room-model.js`/`deck-minimap.js` (click a room →
+  detailed warm build/decorate room) + `PlaceDeviceCommand`/`RemoveDeviceCommand` (furniture,
+  whitelisted; rides existing hashed Device state).
+- **P5 `AddRoomCommand`** — commission an empty hall into a live typed room (SetAnchor re-type +
+  door open + Pressurize; no new hashed field) + the Overview ＋ADD ROOM room-type picker.
+
+**Determinism:** the seed-42 pin **`494ad0b05a154ccb` is UNMOVED** by the entire rework (every lane
+view-only/content/isolated-sim). Counts on `main`: **807 dotnet + 458 node**. **Play it:**
+`~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship grid` + `python3 client/serve.py`.
+**Deferred (honest):** in the Overview, the RELATIONS/MOSS/CHRONICLE tabs delegate to the existing
+console surfaces (v1); the `decor` channel is wired but empty (no authored decor yet); built-wall
+demolish is a no-op; large grid rooms read a touch sparse (content/polish). Memory:
+`warm-svg-rework-state.md`.
+
+---
+
 > **Newest first, and this is where you start:** read **"Economy Wave 0 — COMPLETE,
 > START HERE"** immediately below. Wave 0 is the behaviour-free plumbing that must land
 > before any economy lane spawns; **all six packages are merged on `lane/economy-w0`, and
