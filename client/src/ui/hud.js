@@ -89,6 +89,7 @@ export function getRoster() { return _roster; }
 export function getDecks() { return _decks; }
 export function getRooms() { return _rooms; }
 export function getDesigns() { return _designs; }
+export function getDecor() { return _decor; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
