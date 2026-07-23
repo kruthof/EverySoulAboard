@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using Perilune.Dsl;       // ScriptRuntime, MossCompiler, Diagnostic
+using Perilune.Gen;       // SlotDescriptor (authoring slot grid → the `decks` channel)
 using Perilune.Glyph;
 using Perilune.Llm;       // IChatBackend, TemplateBackend, ConversationHub deps
 using Perilune.Sim;
@@ -160,7 +161,7 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -802,6 +803,12 @@ namespace Perilune.Web
             }
             Send("systems", WireFormat.Systems(_hull, _systems), force);
 
+            // Warm-SVG view channels (view-only, not fog-gated, move no determinism hash): the
+            // per-deck compartment grid, per-room atmosphere, and the cosmetic decor layer.
+            Send("decks", WireFormat.Decks(BuildDecks()), force);
+            Send("rooms", WireFormat.Rooms(BuildRooms()), force);
+            Send("decor", WireFormat.Decor(BuildDecor()), force);
+
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
 
@@ -1010,6 +1017,125 @@ namespace Perilune.Web
         /// <see cref="SimHost.History"/> is the only source of the LAST FAULT column; without it
         /// the column is honestly empty rather than fabricated.</summary>
         private ShipSystemsReport BuildSystems() => ShipSystems.Compute(_sim, _host.History);
+
+        // ------------------------------------------------------------------- decks / rooms / decor
+
+        /// <summary>The per-deck 2×4 compartment grid for the warm SVG Overview — a READ-ONLY join of
+        /// the plan's authoring slot geometry (<see cref="SimHost.SlotGrid"/>) with LIVE
+        /// <see cref="RoomState"/>. Geometry + roomType come from the slot descriptor; occupancy and
+        /// the room's name are DERIVED here from live state, never from the descriptor's authored
+        /// anchor (Phase-2a review nit): a slot's <c>anchorName</c> is the anchor whose probe lands in
+        /// the slot AND resolves to a non-vacuum (pressurized) room, and is BLANK for an airless empty
+        /// hall. <c>occupied</c> = the slot holds such a room; <c>active</c> = the deck holds ≥1 such
+        /// room. Pure: no mutation, no RNG; reads the already-recomputed RoomId plane (RecomputeIfDirty
+        /// runs in the tick), exactly as ShipMetrics reads the room list. Empty on ships with no slot
+        /// grid (Perilune/PeriluneSlice). Moves no determinism hash.</summary>
+        private List<WireFormat.DeckEntry> BuildDecks()
+        {
+            var entries = new List<WireFormat.DeckEntry>();
+            var slots = _host.SlotGrid;
+            if (slots == null || slots.Count == 0) return entries;
+
+            var world = _sim.World;
+            var rs = _sim.Rooms;
+
+            // Group slots by deck in first-seen order (the plan appends them deck-major, slot 0..7).
+            var byDeck = new List<int>();
+            var buckets = new Dictionary<int, List<WireFormat.DeckSlot>>();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                var slot = slots[i];
+                var (occupied, anchorName) = ResolveSlot(world, rs, slot);
+                if (!buckets.TryGetValue(slot.Deck, out var list))
+                {
+                    list = new List<WireFormat.DeckSlot>(8);
+                    buckets[slot.Deck] = list;
+                    byDeck.Add(slot.Deck);
+                }
+                list.Add(new WireFormat.DeckSlot(slot.Index, slot.X, slot.Y, slot.W, slot.H,
+                    anchorName, (byte)slot.Type, occupied, active: false));
+            }
+
+            // Second pass: active = the deck holds ≥1 occupied (non-vacuum) room; stamp every slot.
+            for (int d = 0; d < byDeck.Count; d++)
+            {
+                var list = buckets[byDeck[d]];
+                bool deckActive = false;
+                for (int s = 0; s < list.Count; s++) if (list[s].Occupied) { deckActive = true; break; }
+                if (deckActive)
+                    for (int s = 0; s < list.Count; s++)
+                    {
+                        var t = list[s];
+                        list[s] = new WireFormat.DeckSlot(t.SlotIndex, t.X, t.Y, t.W, t.H,
+                            t.AnchorName, t.RoomType, t.Occupied, active: true);
+                    }
+                entries.Add(new WireFormat.DeckEntry(byDeck[d], list));
+            }
+            return entries;
+        }
+
+        /// <summary>Resolve a slot's live occupancy + room name from <see cref="RoomState"/>. Scans the
+        /// slot's tile rect for the first tile in a real (non-vacuum-sink) room; a slot is OCCUPIED
+        /// only when that room actually holds atmosphere (moles &gt; 0), so a sealed-but-airless empty
+        /// hall reads unoccupied with a blank name. The name is the anchor on this deck whose probe
+        /// resolves to the same room id — derived from live state, never the descriptor's anchor.</summary>
+        private static (bool Occupied, string AnchorName) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
+        {
+            int deck = slot.Deck;
+            if (deck < 0 || deck >= world.Depth) return (false, "");
+
+            ushort roomId = 0;
+            for (int y = slot.Y; y < slot.Y + slot.H && roomId == 0; y++)
+            {
+                if (y < 0 || y >= world.Height) continue;
+                for (int x = slot.X; x < slot.X + slot.W; x++)
+                {
+                    if (x < 0 || x >= world.Width) continue;
+                    ushort id = rs.RoomIdAt(world, new Int3(x, y, deck));
+                    if (id != 0 && id != RoomState.DoorMarker) { roomId = id; break; }
+                }
+            }
+            if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "");
+            if (rs.Rooms[roomId].TotalMoles <= 0) return (false, ""); // sealed but airless = empty hall
+
+            string name = "";
+            var anchors = rs.Anchors;
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                var a = anchors[i];
+                if (a.Probe.Z != deck) continue;
+                if (rs.RoomIdAt(world, a.Probe) == roomId) { name = a.Name; break; }
+            }
+            return (true, name);
+        }
+
+        /// <summary>Per-room atmosphere for the warm SVG LENS overlays / atmos box — a READ-ONLY walk
+        /// of <see cref="RoomState.Anchors"/>, emitting the RAW derived <see cref="Room"/> properties
+        /// (fraction/ppm/kPa/K/tiles) for every anchor that resolves to a non-vacuum, non-airless room.
+        /// The vacuum sink and empty halls (no meaningful atmosphere) are omitted. Pure; moves no hash;
+        /// this is the same data ShipMetrics/MOSS read, so the numbers agree by construction.</summary>
+        private List<WireFormat.RoomTuple> BuildRooms()
+        {
+            var rows = new List<WireFormat.RoomTuple>();
+            var world = _sim.World;
+            var rs = _sim.Rooms;
+            var anchors = rs.Anchors;
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                var a = anchors[i];
+                var room = rs.RoomAt(world, a.Probe);
+                if (room == rs.Rooms[0] || room.TotalMoles <= 0) continue; // vacuum sink / airless hall
+                rows.Add(new WireFormat.RoomTuple(a.Name, a.Probe.Z, room.O2Fraction, room.CO2Ppm,
+                    room.PressureKPa, room.TemperatureK, room.TileCount));
+            }
+            return rows;
+        }
+
+        /// <summary>The cosmetic decor layer for the warm SVG views — VIEW-ONLY, never hashed, never
+        /// read by the sim. No authored decor set exists yet, so this ships empty; the channel is wired
+        /// (and snapshot-replayed) so a placed decor item survives reconnect once a source lands.</summary>
+        private List<WireFormat.DecorItem> BuildDecor() => _decor;
+        private static readonly List<WireFormat.DecorItem> _decor = new List<WireFormat.DecorItem>();
 
         // Reused scratch for TaskLabel — BuildRoster runs on the sim thread inside Render (≤10 Hz,
         // one call at a time), so a single shared builder is safe and keeps the label path from

@@ -60,6 +60,9 @@ let _chronRequested = false; // CHRONICLE requests once per connection (IX-74)
 let _designs = null;      // latest designs message (pending build ghosts)
 let _terminals = null;    // latest terminals message (MOSS directory)
 let _systems = null;      // latest systems message (the MOSS ledger channel)
+let _decks = null;        // latest decks message (per-deck compartment grid → warm SVG Overview)
+let _rooms = null;        // latest rooms message (per-room atmosphere)
+let _decor = null;        // latest decor message (cosmetic view-only furniture layer)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -279,6 +282,17 @@ export function renderSystems(m) {
   _systems = m;
   if (_moss) _moss.onSystems(m);
 }
+
+/** Decks dispatch (warm-SVG view channels): cache the per-deck compartment grid. Cached here so
+ *  the future warm SVG Overview / Room-Zoom render live geometry the instant they mount; the
+ *  decoded per-deck view-model is decks-model.js:decksView over this + the rooms channel. */
+export function renderDecks(m) { _decks = m; }
+
+/** Rooms dispatch: cache the per-room atmosphere (LENS overlays + atmos box). */
+export function renderRooms(m) { _rooms = m; }
+
+/** Decor dispatch: cache the cosmetic view-only decor layer. */
+export function renderDecor(m) { _decor = m; }
 
 /** Relations dispatch (IX-R3): cache the directed graph; re-render the web when the RELATIONS tab
  *  is up, and refresh the readout (its regard sections are relations-derived). */
