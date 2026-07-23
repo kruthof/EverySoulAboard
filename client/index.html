@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PERILUNE</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="src/theme/warm.css">
 </head>
 <body>
 <div class="app">
@@ -114,6 +115,12 @@
     </div>
   </div>
 </div>
+
+<!-- LEVEL-1 OVERVIEW (perilune-overview.*) — the warm deck schematic + floating HUD, a sibling of
+     .app like #moss-view. Shown when `body.overview-open` (the wire carries a `decks` grid AND a
+     ship tab is active); the console `.app` + parked canvas keep running behind it. Built by
+     src/ui/overview-view.js. -->
+<div id="overview-view" class="ov" hidden></div>
 
 <div class="disconnected" id="disc">
   <span class="disc-chip"><span class="disc-dot"></span>LINK LOST — RECONNECTING…</span>
