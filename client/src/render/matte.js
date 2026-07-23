@@ -133,6 +133,11 @@ export const GRADE = {
   // 19..139), so it only needs a lift with the shadows opened — plus the 45 ceiling, set at the
   // MEAN chroma of a graded crew sprite (pawn 45.4): no structural pixel may out-colour the
   // average pixel of a person. Measured effect on the wall: mean 13.7→12.3, p99 86.6→46.5.
+  // NOTE: `tint` is applied AFTER the chromaMax clamp (see the Grade doc), so a warm tint here
+  // would re-inflate a just-clamped pixel back over the ceiling and let a wall out-colour a crew
+  // member — which defeats the ceiling's whole purpose. Wall WARMTH is therefore carried by the
+  // light layer (lightfield.js AMBIENT_LIT + palette.js LIGHT[1], both warm), never by this tint.
+  // Keep this near-neutral: it may nudge hue but must not add chroma the ceiling then can't hold.
   struct: { inLo: 8, inHi: 190, outLo: 18, outHi: 205, gamma: 0.78, sat: 0.6, chromaMax: 45, tint: [1.0, 0.99, 0.99] },
   // Props + devices (furniture, doors, terminals, machines). They are allowed MORE colour than the
   // shell — a lit terminal face or a locked door's amber IS a live machine state, which the brief

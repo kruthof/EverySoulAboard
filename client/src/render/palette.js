@@ -43,23 +43,24 @@ export const ATTR_DIM = 2;
 // fully-lit deck adds zero light ops and renders byte-identically to the no-lights path. Canvas2D
 // fills this rgba as a translucent over-blend; the WebGL2 light pass folds it into a multiply.
 //
-// Dead is a ~0.48 BLUE-SHIFTED darkening, not a near-black veil. Both executors resolve the same
-// rgba to the same factor — canvas2d over-blends `dst*(1-a) + C*a`, webgl2 folds the identical
-// expression into a multiply `M = (1-a) + C*a` — so the effective per-channel multiply here is
-//   R (1-.58) + 26/255*.58 = 0.48   G … = 0.53   B … = 0.68   (luma ≈ 0.53)
-// An unlit-but-explored room therefore lands at roughly half the lit value with a cold cast: dim
-// and cold, never void, and never confusable with the HULL mass an unexplored tile paints.
+// Dead is a ~0.52 WARM-DARK darkening — a room with the lamp OFF, not a morgue under moonlight.
+// Both executors resolve the same rgba to the same factor — canvas2d over-blends `dst*(1-a)+C*a`,
+// webgl2 folds the identical expression into a multiply `M = (1-a) + C*a` — so the per-channel
+// multiply for rgba(58,42,30,.58) is
+//   R (1-.58) + 58/255*.58 = 0.55   G … = 0.52   B … = 0.49   (luma ≈ 0.52)
+// An unlit-but-explored room therefore lands at roughly half the lit value with a WARM cast: dim
+// and inhabited, never void, and never confusable with the HULL mass an unexplored tile paints.
+// (Design decision 2026-07-22, Garvin: "the ship does not need to be cold." The ship is warm where
+// it is alive AND warm-dim where the lights are off; COLD is reserved for vacuum/hull, not rooms.)
 //
 // KNOWN SIDE EFFECT, measured: because the three channels are multiplied UNEQUALLY, this overlay
-// does not merely darken — it MANUFACTURES CHROMA. Expanding the blend, the output's blue-minus-
-// red distance is 0.42*(B−R) + 51, so a perfectly NEUTRAL grey comes out of a Dead room at chroma
-// 51 and a cool-leaning pixel comes out higher still (warm pixels lose chroma until they flip
-// cool). That is why the sprite-side chroma ceilings in render/matte.js cannot fully calm an
-// unlit cabin, and why most of the environment colour still standing in the loud-pixel census
-// lives in the dark cabins. Anyone tuning this rgba should know the blue term buys the "cold"
-// reading and costs chroma at exactly this rate.
+// does not merely darken — it manufactures a little chroma. Expanding the blend, the output's
+// red-minus-blue distance is 0.42*(R−B) + (58−30)/255*.58*255 ≈ 0.42*(R−B) + 16, so a perfectly
+// NEUTRAL grey comes out of a Dead room at chroma ~16 (WARM) — a quarter of the old cold overlay's
+// +51, and pointing the friendly way. The sprite-side chroma ceilings in render/matte.js no longer
+// have to fight a +51 cold term; the prop ceiling can return to 55 (see matte.js).
 export const LIGHT = [];
-LIGHT[1] = 'rgba(26,48,114,.58)';  // Dead — cold half-light (see the multiply above)
+LIGHT[1] = 'rgba(58,42,30,.58)';  // Dead — warm-dark half-light (lamp off; see the multiply above)
 LIGHT[2] = 'rgba(224,48,64,.30)';  // Emergency — red
 LIGHT[3] = 'rgba(255,168,54,.20)'; // Brownout — amber
 
