@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PERILUNE · Overview scene preview</title>
+  <!-- The warm token variables (client/src/theme/warm.css) — the DOM mirror of warm-tokens.js. -->
+  <link rel="stylesheet" href="./src/theme/warm.css" />
+  <style>
+    /* Standalone visual-review harness for client/src/ui/overview-scene.js. Loads the captured
+       grid fixture, derives the decksView the client would, and paints the pure SVG scene. This
+       page is NOT the shipping view — the floating HUD islands + click wiring are a later lane. */
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: #05060c;
+      color: var(--ink-body, #b3aa9c);
+      font-family: var(--font-mono, 'Space Mono', ui-monospace, monospace);
+      overflow: hidden;
+    }
+    .stage {
+      position: absolute; inset: 0;
+      background: var(--void-gradient, radial-gradient(150% 120% at 60% 30%, #141a2b 0%, #0a0c16 50%, #05060c 100%));
+      display: grid; place-items: center;
+    }
+    .stage svg.pl-overview { width: min(100vw, 177.8vh); height: auto; display: block; }
+    /* review chrome (not part of the scene) */
+    .rail {
+      position: absolute; left: 18px; top: 50%; transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 6px;
+      background: var(--hud-bg, rgba(18,14,10,.62)); backdrop-filter: blur(10px);
+      border: var(--hud-border, 1px solid rgba(232,147,74,.16)); border-radius: 12px;
+      padding: 10px 8px; box-shadow: var(--hud-shadow, 0 10px 34px rgba(0,0,0,.5));
+    }
+    .rail button {
+      width: 40px; height: 30px; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer;
+      background: rgba(26,22,17,.6); color: var(--ink-mute, #8c8377); border: 1px solid #3a332a;
+    }
+    .rail button.on { background: #3a2a12; color: var(--amber-light, #f2b563); border-color: #cf7a33; }
+    .meta {
+      position: absolute; left: 18px; top: 18px; font-size: 11px; letter-spacing: .1em;
+      background: var(--hud-bg, rgba(18,14,10,.62)); backdrop-filter: blur(10px);
+      border: var(--hud-border, 1px solid rgba(232,147,74,.16)); border-radius: 10px; padding: 8px 14px;
+    }
+    .meta b { color: var(--amber-deep, #cf7a33); }
+    label.sel { position: absolute; right: 18px; top: 18px; font-size: 11px; display: flex; gap: 8px;
+      align-items: center; background: var(--hud-bg, rgba(18,14,10,.62)); backdrop-filter: blur(10px);
+      border: var(--hud-border, 1px solid rgba(232,147,74,.16)); border-radius: 10px; padding: 8px 14px; }
+    select { font: inherit; background: #1a1610; color: var(--ink-body, #b3aa9c); border: 1px solid #3a332a; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">loading fixture…</div>
+  <div class="rail" id="rail"></div>
+  <div class="meta" id="meta"></div>
+  <label class="sel">SELECT CREW
+    <select id="crew"><option value="">— none —</option></select>
+  </label>
+
+  <script type="module">
+    import { decode, decodeDecks, decodeRooms } from './src/wire/messages.js';
+    import { decksView } from './src/ui/decks-model.js';
+    import { overviewScene } from './src/ui/overview-scene.js';
+
+    const fix = await fetch('./test/fixtures/overview-grid.json').then((r) => r.json());
+    const view = decksView(decodeDecks(decode(JSON.stringify(fix.decks))),
+                           decodeRooms(decode(JSON.stringify(fix.rooms))));
+    const crew = fix.roster.crew;
+
+    let deck = fix.frame.deck ?? 0;
+    let selectedCid = '';
+
+    const stage = document.getElementById('stage');
+    const rail = document.getElementById('rail');
+    const meta = document.getElementById('meta');
+    const crewSel = document.getElementById('crew');
+
+    for (const c of crew) {
+      const o = document.createElement('option');
+      o.value = c.cid; o.textContent = `${c.name} (deck ${c.deck})`;
+      crewSel.append(o);
+    }
+    crewSel.addEventListener('change', () => { selectedCid = crewSel.value; render(); });
+
+    // deck rail — highest deck on top so up/down reads spatially (VS-O-49)
+    const deckNums = view.map((d) => d.deck).sort((a, b) => b - a);
+    for (const d of deckNums) {
+      const b = document.createElement('button');
+      b.textContent = d; b.dataset.deck = d;
+      b.addEventListener('click', () => { deck = d; render(); });
+      rail.append(b);
+    }
+
+    function render() {
+      // furniture only exists for the captured frame's deck; pass the frame only when it matches.
+      const frame = fix.frame.deck === deck ? fix.frame : null;
+      stage.innerHTML = overviewScene({ deck, decksView: view, frame, crew, designs: fix.designs.cells, selectedCid });
+      const dv = view.find((d) => d.deck === deck) || { slots: [] };
+      const occ = dv.slots.filter((s) => s.occupied).length;
+      meta.innerHTML = `<b>MSV PERILUNE</b> &nbsp; DECK ${deck} OF ${view.length} &nbsp; · &nbsp; ${occ} rooms, ${dv.slots.length - occ} halls`;
+      for (const b of rail.children) b.classList.toggle('on', +b.dataset.deck === deck);
+    }
+    render();
+  </script>
+</body>
+</html>
