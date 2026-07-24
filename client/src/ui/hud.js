@@ -53,7 +53,7 @@ let _frame = null;        // latest frame message (authoritative selection/deck/
 let _roster = null;       // latest roster message (authoritative crew list)
 let _chron = null;        // latest chron message
 let _relations = null;    // latest relations message (directed opinion graph → the RELATIONS web)
-let _armed = null;        // the ONE input-mode slot: null|'wall'|'door'|'cancel'|'move'
+let _armed = null;        // the ONE input-mode slot: null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'
 let _tab = 'build';       // active bottom-bar tab (presentation only, IX-20)
 let _pending = null;      // pending cross-deck row click (IX-42)
 let _chronRequested = false; // CHRONICLE requests once per connection (IX-74)
@@ -269,6 +269,7 @@ export function initConsole(opts) {
     ['door', 'DOOR', ''],
     ['dig', '⛏ DIG', 'Mark rubble for the crew to clear (G)'],
     ['stockpile', '▤ STOCKPILE', 'Zone a floor tile as a haul destination (Z)'],
+    ['strip', '✂ STRIP', 'Mark a wall or machine to deconstruct for salvage (V)'],
     ['cancel', '⌫ CANCEL', 'Cancel a queued build order (refunds staged material)'],
   ];
   const pal = $('palette');
@@ -406,9 +407,9 @@ export function renderRelations(m) {
 
 export function getArmedTool() { return _armed; }
 
-/** B/X/G/Z from controls.js (IX-10/23, E0-3): toggle wall/cancel/dig/stockpile; arming surfaces
- *  the BUILD tab so the palette showing the armed state is actually on screen. */
-const KEY_EVENT = { cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', build: 'keyB' };
+/** B/X/G/Z/V from controls.js (IX-10/23, E0-3/E0-5): toggle wall/cancel/dig/stockpile/strip;
+ *  arming surfaces the BUILD tab so the palette showing the armed state is actually on screen. */
+const KEY_EVENT = { cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', strip: 'keyV', build: 'keyB' };
 export function armFromKey(kind) {
   _armed = nextArmedTool(_armed, { t: KEY_EVENT[kind] || 'keyB' });
   if (isPaletteTool(_armed) && _tab !== 'build') setTab('build');

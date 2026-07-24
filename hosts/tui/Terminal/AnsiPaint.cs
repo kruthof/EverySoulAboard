@@ -44,8 +44,10 @@ namespace Perilune.Tui.Terminal
                 case GlyphColor.Terminal: return 122;   // mint terminal glow
                 case GlyphColor.Water: return 39;       // cyan
                 case GlyphColor.Growth: return 40;      // green
-                case GlyphColor.Designate: return 170;  // magenta order
+                case GlyphColor.Designate: return 170;  // magenta order (dig)
                 case GlyphColor.Stockpile: return 100;  // olive zone
+                case GlyphColor.Deconstruct: return 166; // E0-5 strip: burnt orange (distinct from
+                                                         // dig-magenta 170, Locked-amber 208, Item 179)
                 case GlyphColor.LensGood: return 46;    // bright green
                 case GlyphColor.LensOk: return 190;     // yellow-green
                 case GlyphColor.LensWarn: return 214;   // amber

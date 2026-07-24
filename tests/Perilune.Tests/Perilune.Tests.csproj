@@ -44,6 +44,9 @@
     <Compile Include="../../hosts/web/ConversationHub.cs" />
     <!-- W4: the pure persona→JSON renderer behind `dump-personas` (Program.cs owns the IO). -->
     <Compile Include="../../hosts/scenario/PersonaDump.cs" />
+    <!-- E0-5 WP-4: the pure occupancy strip-selection helper (Program.cs owns the IO/flag).
+         Tested directly so "designates exactly N workable non-hull walls, canonical order" is pinned. -->
+    <Compile Include="../../hosts/scenario/StripHarness.cs" />
   </ItemGroup>
 
   <ItemGroup>

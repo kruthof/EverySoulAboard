@@ -289,7 +289,7 @@ test('tool families: build kinds, order kinds and the palette union are disjoint
     assert.equal(isOrderTool(t), false, t + ' is not an order tool');
     assert.equal(isPaletteTool(t), true);
   }
-  for (const t of ['dig', 'stockpile']) {
+  for (const t of ['dig', 'stockpile', 'strip']) {
     // The distinction is load-bearing: an order tool must NOT be lowered to Cmd.build.
     assert.equal(isBuildTool(t), false, t + ' must not be a build tool');
     assert.equal(isOrderTool(t), true, t + ' is an order tool');
@@ -303,22 +303,29 @@ test('tool families: build kinds, order kinds and the palette union are disjoint
   }
 });
 
-test('armedTool: G toggles dig, Z toggles stockpile, and both share the single slot', () => {
+test('armedTool: G toggles dig, Z toggles stockpile, V toggles strip, all share the single slot', () => {
   assert.equal(nextArmedTool(null, { t: 'keyG' }), 'dig');
   assert.equal(nextArmedTool('dig', { t: 'keyG' }), null);
   assert.equal(nextArmedTool(null, { t: 'keyZ' }), 'stockpile');
   assert.equal(nextArmedTool('stockpile', { t: 'keyZ' }), null);
-  // One slot: arming either order tool replaces whatever was armed, including the other one.
+  // E0-5: V arms/disarms strip (V = salVage; X was already CANCEL). Same one-slot semantics.
+  assert.equal(nextArmedTool(null, { t: 'keyV' }), 'strip');
+  assert.equal(nextArmedTool('strip', { t: 'keyV' }), null);
+  // One slot: arming any order tool replaces whatever was armed, including a sibling order tool.
   assert.equal(nextArmedTool('wall', { t: 'keyG' }), 'dig');
   assert.equal(nextArmedTool('dig', { t: 'keyZ' }), 'stockpile');
   assert.equal(nextArmedTool('stockpile', { t: 'keyG' }), 'dig');
   assert.equal(nextArmedTool('move', { t: 'keyG' }), 'dig');
-  // B/X are unchanged by the new family: an armed order tool is not a build tool, so B arms wall.
+  assert.equal(nextArmedTool('dig', { t: 'keyV' }), 'strip');
+  assert.equal(nextArmedTool('strip', { t: 'keyG' }), 'dig');
+  // B/X are unchanged by the new family: an armed order tool is not a build tool, so B arms wall,
+  // and V never collides with the CANCEL key (X) it deliberately avoids.
   assert.equal(nextArmedTool('dig', { t: 'keyB' }), 'wall');
   assert.equal(nextArmedTool('stockpile', { t: 'keyX' }), 'cancel');
+  assert.equal(nextArmedTool('strip', { t: 'keyX' }), 'cancel');
   // Toggling through the palette buttons works the same as the keys.
-  assert.equal(nextArmedTool(null, { t: 'toggle', tool: 'dig' }), 'dig');
-  assert.equal(nextArmedTool('dig', { t: 'toggle', tool: 'dig' }), null);
+  assert.equal(nextArmedTool(null, { t: 'toggle', tool: 'strip' }), 'strip');
+  assert.equal(nextArmedTool('strip', { t: 'toggle', tool: 'strip' }), null);
 });
 
 test('armedTool: order tools disarm when leaving BUILD, and always on Esc/disconnect', () => {
@@ -338,6 +345,10 @@ test('Cmd.dig / Cmd.stockpile carry an EXPLICIT on-flag so a sweep is idempotent
   assert.deepEqual(Cmd.dig(7, 3, false), { cmd: 'dig', x: 7, y: 3, on: 0 });
   assert.deepEqual(Cmd.stockpile(0, 0), { cmd: 'stockpile', x: 0, y: 0, on: 1 });
   assert.deepEqual(Cmd.stockpile(2, 9, false), { cmd: 'stockpile', x: 2, y: 9, on: 0 });
+  // E0-5 strip shares the explicit-on contract; the host infers wall vs device from the tile.
+  assert.deepEqual(Cmd.strip(4, 6), { cmd: 'strip', x: 4, y: 6, on: 1 });
+  assert.deepEqual(Cmd.strip(4, 6, false), { cmd: 'strip', x: 4, y: 6, on: 0 });
+  assert.notEqual(Cmd.strip(1, 1).cmd, 'build');
   // They are their OWN verbs — never a build kind, which the host would route to BuildSystem.
   assert.notEqual(Cmd.dig(1, 1).cmd, 'build');
   assert.notEqual(Cmd.stockpile(1, 1).cmd, 'build');

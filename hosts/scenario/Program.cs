@@ -224,6 +224,21 @@ namespace Perilune.Tools
             int crewCount = sim.Citizens.Items.Count;
             if (crewCount == 0) { Console.WriteLine("occupancy: no crew aboard — nothing to measure."); return 1; }
 
+            // OPT-IN E0-5 measurement source (--strip N, default 0). Host-side: it designates the
+            // first N legal interior walls for deconstruct at t=0 via the same command the client
+            // issues, so the h29+ flatline has something to lift. --strip 0 (the default) touches
+            // nothing and keeps the CI-pinned verb-less path byte-identical. See StripHarness.
+            int stripN = ArgInt(args, "--strip", 0);
+            int stripped = 0;
+            if (stripN > 0)
+            {
+                stripped = StripHarness.EnqueueStrip(sim, stripN);
+                Console.WriteLine($"--strip {stripN}: designated {stripped} interior wall(s) for " +
+                                  "deconstruct at t=0 (canonical z,y,x)" +
+                                  (stripped < stripN ? $"  [ship had only {stripped} legal]" : ""));
+                Console.WriteLine();
+            }
+
             const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
             int kindCount = Enum.GetValues(typeof(JobKind)).Length;
             var kindTicks = new long[kindCount];        // crew-ticks per JobKind, whole run
@@ -311,6 +326,15 @@ namespace Perilune.Tools
                     }
             Console.WriteLine($"  debris tiles left      {debris,6}   (dig work remaining: {designated})");
             Console.WriteLine($"  stockpile tiles zoned  {stockpile,6}   (0 ⇒ HaulPickup/HaulDeliver can never be assigned)");
+            // E0-5: pending deconstruct sites (the strip demand source). Read the registry, not a
+            // tile flag — deconstruct is a registry. Prints only when the harness seeded any, so the
+            // default verb-less report is unchanged.
+            if (stripN > 0)
+            {
+                int pending = sim.Deconstruct != null ? sim.Deconstruct.Pending.Count : 0;
+                Console.WriteLine($"  strip sites pending    {pending,6}   (of {stripped} designated ⇒ " +
+                                  $"{stripped - pending} torn down this run)");
+            }
 
             var stock = new Dictionary<ItemKind, int>();
             foreach (var it in sim.Items.Items)

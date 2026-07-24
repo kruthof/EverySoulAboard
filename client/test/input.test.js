@@ -76,6 +76,7 @@ test('paletteOrder: build kinds lower to Cmd.build at the clicked tile', () => {
 test('paletteOrder: dig and stockpile lower to their OWN verbs, marking (never clearing)', () => {
   assert.deepEqual(paletteOrder('dig', 58, 7), { cmd: 'dig', x: 58, y: 7, on: 1 });
   assert.deepEqual(paletteOrder('stockpile', 12, 5), { cmd: 'stockpile', x: 12, y: 5, on: 1 });
+  assert.deepEqual(paletteOrder('strip', 3, 4), { cmd: 'strip', x: 3, y: 4, on: 1 }); // E0-5
   // A palette click always MARKS; clearing is the CANCEL tool's job, not a hidden toggle. If this
   // ever became a toggle, a sweep across mixed tiles would flip some on and some off.
   assert.equal(paletteOrder('dig', 1, 1).on, 1);

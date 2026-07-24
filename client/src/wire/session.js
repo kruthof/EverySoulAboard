@@ -67,6 +67,10 @@ export const Cmd = {
   // is a silent no-op, and the player sees it land when the tile recolours in the next frame.
   dig: (x, y, on = true) => ({ cmd: 'dig', x, y, on: on ? 1 : 0 }),
   stockpile: (x, y, on = true) => ({ cmd: 'stockpile', x, y, on: on ? 1 : 0 }),
+  // E0-5 strip verb: mark (on=true) a wall/device at a tile on the current deck for deconstruct.
+  // Same explicit-on contract as dig/stockpile. The host infers wall-vs-device from the tile and
+  // the sim re-validates (hull walls and doors refused); an illegal order is a silent no-op.
+  strip: (x, y, on = true) => ({ cmd: 'strip', x, y, on: on ? 1 : 0 }),
   // Room Zoom decorate palette: place a functional furniture device (kind is the palette tool
   // string bunk/desk/chair/locker/plant/lamp/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never

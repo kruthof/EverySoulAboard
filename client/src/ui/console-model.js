@@ -214,17 +214,18 @@ export function supersedePending(pending, ev) {
 
 // ---- armed tool (IX-1/2, IX-10 B/X, IX-30, IX-52): the ONE client-side input mode slot ----
 
-/** @typedef {null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'move'} ArmedTool */
+/** @typedef {null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'} ArmedTool */
 
 const BUILD_KINDS = ['wall', 'door', 'cancel'];
 export function isBuildTool(t) { return BUILD_KINDS.indexOf(t) >= 0; }
 
-// E0-3 ORDER tools. Structurally these behave exactly like the build kinds — they share the one
-// armed slot, live in the BUILD tab, and lower a click to a single tile order — but they are a
-// DIFFERENT wire verb (Cmd.dig / Cmd.stockpile, never Cmd.build), so the click sites must be able
-// to tell them apart. Keeping `isBuildTool` narrow and adding a separate predicate makes that
-// distinction explicit rather than leaving it to a string compare at each call site.
-const ORDER_KINDS = ['dig', 'stockpile'];
+// E0-3/E0-5 ORDER tools. Structurally these behave exactly like the build kinds — they share the
+// one armed slot, live in the BUILD tab, and lower a click to a single tile order — but they are a
+// DIFFERENT wire verb (Cmd.dig / Cmd.stockpile / Cmd.strip, never Cmd.build), so the click sites
+// must be able to tell them apart. Keeping `isBuildTool` narrow and adding a separate predicate
+// makes that distinction explicit rather than leaving it to a string compare at each call site.
+// 'strip' (E0-5 deconstruct) joins dig/stockpile as an order verb.
+const ORDER_KINDS = ['dig', 'stockpile', 'strip'];
 export function isOrderTool(t) { return ORDER_KINDS.indexOf(t) >= 0; }
 
 /** Tools that live in the BUILD tab's palette — i.e. everything that a tab switch away from BUILD
@@ -238,6 +239,7 @@ export function isPaletteTool(t) { return isBuildTool(t) || isOrderTool(t); }
  *   {t:'keyX'}           X: 'cancel' armed → disarm; else arm 'cancel'
  *   {t:'keyG'}           G: 'dig' armed → disarm; else arm 'dig' (E0-3)
  *   {t:'keyZ'}           Z: 'stockpile' armed → disarm; else arm 'stockpile' (E0-3)
+ *   {t:'keyV'}           V: 'strip' armed → disarm; else arm 'strip' (E0-5; V = salVage)
  *   {t:'escape'}         Esc: disarm (stack step 2)
  *   {t:'tab', tab}       bottom-bar tab switch: leaving BUILD disarms palette tools (move survives)
  *   {t:'selectionLost'}  selCid became null: the move order lost its subject → disarm move only
@@ -254,6 +256,7 @@ export function nextArmedTool(state, ev) {
     case 'keyX': return s === 'cancel' ? null : 'cancel';
     case 'keyG': return s === 'dig' ? null : 'dig';
     case 'keyZ': return s === 'stockpile' ? null : 'stockpile';
+    case 'keyV': return s === 'strip' ? null : 'strip';
     case 'escape': return null;
     case 'disconnect': return null;
     case 'tab': return ev.tab !== 'build' && isPaletteTool(s) ? null : s;

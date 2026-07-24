@@ -188,6 +188,7 @@ namespace Perilune.Tui
                 case InputAction.Move: MoveOrder(); break;
                 case InputAction.Dig: DesignateDig(); break;
                 case InputAction.Stockpile: DesignateStockpile(); break;
+                case InputAction.Strip: DesignateStrip(); break;
                 case InputAction.Follow: ToggleFollow(); break;
                 case InputAction.MossOpen: OpenMoss(); break;
 
@@ -319,6 +320,32 @@ namespace Perilune.Tui
             }
             _sim.EnqueueCommand(new DesignateStockpileCommand(_cursor, on));
             _status = on ? "stockpile set" : "stockpile cleared";
+            _uiDirty = true;
+        }
+
+        private void DesignateStrip()
+        {
+            // Deconstruct is a REGISTRY, not a tile flag (ECONOMY.md §8 reserves the last flag
+            // bit), so the registry — not level.Flags — is the source of truth for "already
+            // condemned". A reduced stack without the system reports so instead of silently eating
+            // the key.
+            var strip = _sim.Deconstruct;
+            if (strip == null) { _status = "strip unavailable"; _uiDirty = true; return; }
+            bool already = strip.TryGet(_cursor, out _);
+            // A tile holding a device strips the DEVICE; otherwise a wall. The sim re-validates
+            // either way — this only routes to the right kind (the ContextAction idiom).
+            var kind = _sim.TryGetDeviceAt(_cursor, out _)
+                ? DeconstructKind.Device : DeconstructKind.Wall;
+            // Mirror CanDesignate so an illegal strip (hull wall, non-wall, a door) reports the
+            // truth rather than a phantom "strip designated" — the DesignateDig/Stockpile precedent.
+            if (!already && !strip.CanDesignate(_sim, _cursor, kind))
+            {
+                _status = "not strippable";
+                _uiDirty = true;
+                return;
+            }
+            _sim.EnqueueCommand(new DesignateDeconstructCommand(_cursor, kind, on: !already));
+            _status = already ? "strip cleared" : "strip designated";
             _uiDirty = true;
         }
 
@@ -622,6 +649,7 @@ namespace Perilune.Tui
             "m               move selected crew to cursor",
             "d               designate dig (debris)",
             "p               designate stockpile",
+            "v               designate strip (deconstruct wall/device)",
             "c               follow selected crew",
             "t               open MOSS pane on terminal (e edit)",
             "esc             deselect / close",

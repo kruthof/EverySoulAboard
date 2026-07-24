@@ -30,6 +30,12 @@ namespace Perilune.Glyph
             int h = dst.Height < world.Height ? dst.Height : world.Height;
             var level = world.Levels[z];
             var rooms = sim.Rooms.Rooms;
+            // The deconstruct registry (E0-5), resolved once. It is a REGISTRY, not a tile flag, so
+            // the strip emitter below must query it per tile rather than read level.Flags. Null on a
+            // reduced stack, and skipped entirely when nothing is condemned (the common case) so a
+            // strip-free ship pays zero — no per-tile registry probe unless a site exists.
+            var strip = sim.Deconstruct;
+            bool anyStrip = strip != null && strip.Pending.Count > 0;
 
             // Anything the world doesn't cover stays blank fog.
             dst.Fill(GlyphCell.Blank);
@@ -60,15 +66,24 @@ namespace Perilune.Glyph
                         else { glyph = Glyphs.Void; fg = GlyphColor.Void; }
                     }
 
-                    // Player designations recolour the terrain they sit on (E0-3). Both ids were
+                    // Player designations recolour the terrain they sit on. Both flag ids were
                     // reserved in GlyphColor from the start with no emitter; this is that emitter.
-                    // Dig outranks stockpile: DesignateDigCommand only marks Debris walls and
-                    // DesignateStockpileCommand only marks walkable tiles, so the two flags cannot
-                    // legally coexist — but a stale flag left by an older save must still resolve
-                    // to exactly one colour, so the order is stated rather than assumed.
+                    // PRECEDENCE, stated rather than assumed (an old save may carry a stale flag, so
+                    // every tile must resolve to exactly one colour):
+                    //   1. Designate (dig)   — TileFlags.Designated
+                    //   2. Stockpile (zone)  — TileFlags.Stockpile
+                    //   3. Deconstruct (E0-5 strip) — the registry, NOT a flag
+                    // Dig outranks stockpile because DesignateDigCommand only marks Debris walls and
+                    // DesignateStockpileCommand only marks walkable tiles, so the two cannot legally
+                    // coexist. Deconstruct is LAST: it targets a standing WALL (dig targets Debris,
+                    // stockpile targets floor), so it cannot legally share a tile with either flag —
+                    // but ranking it last keeps a corrupt-state tile deterministic. The registry is
+                    // queried only when something is actually condemned (anyStrip), so the common
+                    // strip-free frame never touches it.
                     byte flags = level.Flags[i];
                     if ((flags & (byte)TileFlags.Designated) != 0) fg = GlyphColor.Designate;
                     else if ((flags & (byte)TileFlags.Stockpile) != 0) fg = GlyphColor.Stockpile;
+                    else if (anyStrip && strip.TryGet(new Int3(x, y, z), out _)) fg = GlyphColor.Deconstruct;
 
                     GlyphColor bg = LensBackground(sim, lens, rooms, level.RoomId[i]);
                     dst[x, y] = new GlyphCell(glyph, fg, bg);

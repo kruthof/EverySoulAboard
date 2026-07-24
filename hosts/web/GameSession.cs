@@ -246,6 +246,7 @@ namespace Perilune.Web
                 case CmdKind.Build: HandleBuild(cmd); return true;
                 case CmdKind.Dig: HandleDesignate(cmd, dig: true); return true;
                 case CmdKind.Stockpile: HandleDesignate(cmd, dig: false); return true;
+                case CmdKind.Strip: HandleStrip(cmd); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
@@ -640,6 +641,32 @@ namespace Perilune.Web
                 _sim.EnqueueCommand(new DesignateStockpileCommand(pos, on));
                 _status = on ? "zone stockpile" : "clear stockpile";
             }
+        }
+
+        /// <summary>
+        /// The STRIP bridge (E0-5 deconstruct verb), sibling of <see cref="HandleDesignate"/>. Maps
+        /// a clicked tile to a <see cref="DesignateDeconstructCommand"/>. The <c>on</c> flag is
+        /// EXPLICIT (E0-3's decision): a sweep is idempotent and the host never races the sim.
+        ///
+        /// The KIND (Wall vs Device) is inferred from the host's current view of the tile — a device
+        /// on the tile strips the DEVICE, otherwise a WALL — exactly the ContextAction idiom. This
+        /// is only routing: the sim RE-VALIDATES through <c>DeconstructSystem.CanDesignate</c> at the
+        /// tick boundary, so a stale inference (e.g. Wall for a tile that is not a wall, or Device
+        /// for a door) is a silent no-op, never a corrupt designation. THE COMMAND CARRIES A TILE,
+        /// never an entity id — the sim resolves the device id itself (WP-2 removed targetId).
+        ///
+        /// Like <see cref="HandlePlace"/>, this bridge promises only the ATTEMPT: an illegal or hull
+        /// tile is a silent sim no-op and the condemned marker only appears once the sim confirms it.
+        /// </summary>
+        private void HandleStrip(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
+            bool on = cmd.I != 0;
+            var kind = _sim.TryGetDeviceAt(pos, out _)
+                ? DeconstructKind.Device : DeconstructKind.Wall;
+            _sim.EnqueueCommand(new DesignateDeconstructCommand(pos, kind, on));
+            _status = on ? "designate strip" : "clear strip";
         }
 
         /// <summary>
@@ -1570,7 +1597,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1625,6 +1652,7 @@ namespace Perilune.Web
                     // never races the sim over what the tile's flag currently is.
                     case "dig": return new WebCommand(CmdKind.Dig, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
                     case "stockpile": return new WebCommand(CmdKind.Stockpile, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
+                    case "strip": return new WebCommand(CmdKind.Strip, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
                     // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
