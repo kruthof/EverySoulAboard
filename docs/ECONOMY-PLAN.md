@@ -60,6 +60,15 @@ Each phase is independently playable and ships with its own acceptance measureme
 **Goal: A1 ≥ 25 % busy at sim-hour 24, and A3 "can build a wall at day 3".** This alone turns
 the measured four-hour economy into roughly fifteen.
 
+> **⚠️ A1 has now been MEASURED (2026-07-23) and the E0-4/E0-5 order below is contested.**
+> E0-1/E0-2/E0-3 are landed. A1 = **24.979 %** (FAIL by 0.02), but the finding is the *shape*:
+> the economy **terminates permanently at sim-hour 28** on every ship, because all finite matter
+> is converted into `ControllerModule`, which nothing consumes. **The binding constraint is now
+> matter, not labour** — and E0-4 adds no matter. `docs/HANDOVER.md` argues **E0-5 before E0-4**
+> and states the measured counter-argument (`ECONOMY.md` §593-597's throughput warning).
+> **This table is unchanged and remains the authority until Garvin decides.** Full measurement:
+> `MECHANICS §13.15`; re-run with `hosts/scenario -- occupancy --ship slice --days 3`.
+
 | WP | content | notes |
 |---|---|---|
 | **E0-1** | **Labour supply (L0).** `IsIdleForWork`'s `!HasPath` → "has no *job* path"; a `wander_radius_tiles` def field bounding wander scope. | **Hard prerequisite for everything else.** Moves the effective pool from 1.43 of 8 toward the full crew. Preserves the desynchronisation `AuthoredShips.cs:235-241` depends on (that is why radius, not idle-time, is the lever). |

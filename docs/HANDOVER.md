@@ -1,4 +1,26 @@
-# HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **E0-2 work-rate rebase** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
+# HANDOVER — Every Soul Aboard *(codename PERILUNE)*
+
+**Last updated 2026-07-23.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
+codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
+is renamed). Tag `v2-talking-ship`.
+
+## Orientation for a fresh session
+
+1. **Read the two sections directly below, in order** — the A1 measurement (what the economy
+   actually does today) and the E0-5-before-E0-4 sequencing case (what to do about it). Everything
+   further down is history, newest first.
+2. **`docs/MECHANICS.md` is the authority on behaviour**, and its **§13** lists what is wired but
+   not connected. **§13.15** is the current occupancy measurement; **§13.6** is closed.
+3. **Work in a worktree — always** (`CLAUDE.md` hard rule), even for doc-only work. Never edit the
+   main checkout; never `git add -A`.
+4. **Re-measure before quoting numbers.** Test counts and pins move every lane. Current gate:
+   **846 dotnet + 483 node**, scenario `85ac8c44233284e9`, tick-3000 `9b834cffc232ce7f`, slice
+   `8c6b2544fac36d63`, defs `e56d33a2e46b5644`.
+
+**Landed so far:** P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the
+mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
+recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + wall
+drag-build & materials + drifting starfield + the **A1 measurement**.
 
 ## A1 MEASURED — the economy is finite and TERMINATES at sim-hour 28 (2026-07-23), START HERE
 
@@ -47,6 +69,68 @@ table, an hourly busy curve (the shape matters — a decaying spike and a flat l
 same and mean opposite things), the A1 headline, and an end-of-run "why did work run out"
 diagnostic. Busy is reported two ways on purpose: **any** (incl. eat/drink/flee) and **work**
 (productive only) — a crew 25 % busy eating has not met A1's intent.
+
+---
+
+## RECOMMENDED NEXT: E0-5 before E0-4 — the case, and the counter-case
+
+**This argues against `ECONOMY-PLAN.md`'s written order.** The plan lists E0-4 (filtered
+stockpile zones) next; the A1 measurement above is the reason to reconsider. **The plan has not
+been edited** — it remains the authority until Garvin decides. Read both sides and pick.
+
+### The case FOR E0-5 (deconstruct/strip) first
+
+1. **The measurement says matter binds, not labour — and E0-4 adds no matter.** Every ship
+   converts its finite starting matter into `ControllerModule` and then idles forever. E0-4
+   reorganises haul traffic; it creates nothing to haul. It cannot move the h28 cliff.
+2. **The cliff is a dead game, not a balance problem.** After sim-hour 28 there is *no player
+   action* that creates work — dig is impossible (no debris regenerates), craft is out of
+   feedstock, build has no material. E0-5 is the **only lane in E0** that lets a player create
+   matter from what is already aboard, without new content or nav work.
+3. **It is the decision the whole design is built around.** `ECONOMY.md` names it twice as the
+   signature moment: *"Deconstruct the gym for its 70 % — a real, slightly shameful decision"*
+   (§546) and *"I tore down the gym for the metal — deconstruct-as-verb is felt"* (§948). §2's
+   thesis sentence is a deconstruct decision. Shipping it turns a dead ship into a dilemma.
+4. **It refills the loop that just starved.** 50 % wall recovery + `Parts × condition` feeds
+   `Scrap → Parts`, which is precisely the feedstock crafting exhausted by h28.
+5. **Plan-stated bonus:** it gives `Condition` its second consumer, and it is the mechanism the
+   two-tier debris design note (`docs/design/perilune-debris-and-skills.md`) depends on.
+
+### The case AGAINST — take this seriously, it is measured
+
+1. **`ECONOMY.md` §593-597 warns, from measurement, that stockpiles are not automatically good.**
+   A zone on the wrong deck sends on-job travel to **75.7 %** and drops throughput **14 %**, because
+   *crafting outputs spawn unreserved, so the haul board drags them to the stockpile and the
+   downstream station's fetcher walks them back*. **"A zone system without a 'don't haul what a
+   bench wants' rule is a throughput regression."** That rule is E0-4's payload. E0-5 produces
+   `Scrap` that wants hauling ⇒ doing it first pours traffic into exactly the unfiltered system
+   the measurement condemns.
+2. **`'ZONE'` is already registered and waiting** (W0-6), and E0-4 establishes the storage design
+   (a registry + its own save chapter, keyed by packed position) that later lanes build on.
+3. **E0-3 shipped stockpile on `TileFlags.Stockpile` (bit 4); E0-4 migrates it off.** Every lane
+   in between is more migration surface — though in practice little should accrete on it.
+
+### Recommendation: E0-5 first, then E0-4 immediately, as a PAIR
+
+The regression risk in (1) is real but currently **latent**: authored ships zone **0 stockpile
+tiles**, so it only bites when a player opts in. And weigh the magnitudes honestly — a −14 %
+throughput hit on an economy that **stops entirely after 28 hours** is a rounding error against
+the stopping. Fix the cliff, then optimise the traffic into it.
+
+There is also a positive reason to take them in this order rather than merely a tolerable one:
+**E0-5 creates the haul traffic that makes E0-4 measurable at all.** Tuning a filtered-zone system
+today would be tuning against zero traffic — E0-4's own acceptance ("don't haul what a bench
+wants") cannot be demonstrated until something is actually being hauled.
+
+**Guardrails if you take E0-5 first:**
+- **Do not zone stockpiles in any authored ship** until E0-4 lands — keep the regression latent.
+- **Re-run `occupancy` immediately after E0-5** (`--ship slice --days 3`) and check whether the
+  h29+ flatline actually lifts. If deconstruct yield is too small to matter, that is a tuning
+  finding worth having before E0-4, not after.
+- Keep E0-5's guardrail from the plan: **never the pressure hull.**
+
+**If you disagree and take E0-4 as written, that is defensible** — just expect A1 to stay ~25 %
+and the h28 cliff to remain, and don't read that as E0-4 failing.
 
 ---
 
