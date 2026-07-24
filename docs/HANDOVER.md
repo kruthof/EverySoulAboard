@@ -61,6 +61,17 @@ conversion loss, E0-7 ice→water, E0-8 the ledger + A1. **Job occupancy has NOT
 post-E0-1/2/3** — `§13.6`'s `None 99.92 %` is pre-E0-1 and must not be quoted as current; that
 measurement belongs to E0-8/A1 along with tuning `wander_radius_tiles` (still 8, untuned).
 
+**Design note parked alongside (nothing built, does not block E0-4):**
+`docs/design/perilune-debris-and-skills.md` — two-tier debris (rubble anyone can haul vs dead
+machinery that must be *disassembled*) placed in the **empty hall slots** of the grid ship, plus
+per-person skill trees as a **view** over E2's scalars + `Procedure` rather than a point-spending
+minigame. Mostly connects things that already exist (the `Regolith→Scrap→Parts` ladder, E0-5's
+`Parts × condition`, E2's yield/defect). Two live tensions recorded there: item **quality tiers**
+are an existing `ECONOMY.md` non-goal (use yield %/defect instead), and a tree must not become
+"RimWorld skills with extra steps". The one cheap, high-value piece is **wreck-filling some grid
+slots** — it fixes the standing asymmetry that `--ship grid` has the AAA UI but zero debris while
+`--ship slice` has the debris but cannot show the Overview at all.
+
 ---
 
 ## E0-2 — work-rate rebase + movement retune + crew-safety guard: LANDED on `main` (2026-07-23)
