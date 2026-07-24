@@ -206,16 +206,22 @@ namespace Perilune.Tests
         // ----------------------------------------------------------- version-branch shape
 
         /// <summary>
-        /// RestoreState must CONSUME exactly what CaptureState wrote (the state-marker byte), and
-        /// must version-BRANCH rather than version-BAIL (§3.3) so a v1 blob restores cleanly. An
-        /// under-/over-reading RestoreState desyncs the E-lane's future format even though today's
-        /// SaveReader re-syncs on the length prefix. Assert the reader position equals the written
-        /// length after each round-trip, and that the empty checksum survives.
+        /// RestoreState must CONSUME exactly what CaptureState wrote, and must version-BRANCH rather
+        /// than version-BAIL (§3.3) so a blob restores cleanly. An under-/over-reading RestoreState
+        /// desyncs the E-lane's future format even though today's SaveReader re-syncs on the length
+        /// prefix. Assert the reader position equals the written length after each round-trip, and
+        /// that the empty checksum survives. Each system round-trips at its OWN
+        /// <see cref="IStatefulSystem.StateVersion"/>: PROD/ORES/TRAD are still v1 and write a single
+        /// state-marker byte; ZONE is now v2 (E0-4) and writes a 4-byte empty <c>_zones.Count</c>
+        /// instead — the empty payload differs, but the "consume exactly what you wrote" contract is
+        /// identical.
         ///
-        /// MUTATION (applied, observed failing, reverted): remove <c>reader.ReadByte()</c> from
-        /// <c>StockZoneSystem.RestoreState</c> → the marker byte CaptureState wrote is left
-        /// unconsumed, position (0) != length (1), and this fails. (The forbidden
-        /// <c>if (version != 1) return;</c> guard is the same failure at v0/v2.)
+        /// MUTATION (applied, observed failing, reverted): skip the <c>reader.ReadInt32()</c> count
+        /// read in <c>StockZoneSystem.RestoreState</c>'s v2 branch → the 4 bytes CaptureState wrote
+        /// for the empty count are left unconsumed, position (0) != written (4), and the ZONE
+        /// round-trip's full-consumption assert fails. (For the three v1 systems the equivalent bite
+        /// is removing their <c>reader.ReadByte()</c> → position (0) != written (1). The forbidden
+        /// <c>if (version != StateVersion) return;</c> guard is the same failure class.)
         /// </summary>
         [Test]
         public void EmptyBlobsRoundTripAndFullyConsumeTheirBytes()
