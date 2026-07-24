@@ -1252,10 +1252,25 @@ namespace Perilune.Tests
         /// no throw. The ID is the identity, so a DIFFERENT device that moved onto the same tile in
         /// the meantime is not the one the player condemned and must survive.
         ///
-        /// MUTATION: delete <c>if (!TargetStillExists(sim, site)) return true;</c> from
-        /// <see cref="DeconstructSystem.Complete"/>'s device branch → the arrival dereferences a
-        /// device that is gone and the test dies on a NullReferenceException; with the
-        /// impostor in place it instead deletes a machine the player never condemned.
+        /// F1 (WP-2 review, medium) — THIS DOC COMMENT'S MUTATION USED TO BE UNFALSIFIABLE, and the
+        /// guard was restructured rather than the sentence re-worded. WP-1/WP-2 shipped a COMPOUND
+        /// arrival guard, <c>if (!TargetStillExists(sim, site) || !sim.Devices.TryGet(site.TargetId,
+        /// out var device)) return true;</c>, and the review measured that each leg deflected the
+        /// other: dropping only the <c>TargetStillExists</c> leg was GREEN, dropping only the
+        /// <c>TryGet</c> early-return was GREEN, and only deleting BOTH went red. The predicted
+        /// NullReferenceException was impossible from the single-line mutation the comment named.
+        /// The <c>TargetStillExists</c> call was genuinely redundant here — its <c>Pos</c> clause is
+        /// unreachable (nothing writes <see cref="Device.Pos"/> after creation) and entity ids are
+        /// never recycled, so no impostor can inherit a condemned id — so WP-3 collapsed the two
+        /// into ONE guard, <see cref="DeconstructSystem.TryGetLiveDevice"/>, which both validates
+        /// and hands out the entity.
+        ///
+        /// MUTATION (applied, observed failing, reverted): drop the early return in
+        /// <see cref="DeconstructSystem.Complete"/>'s device branch —
+        /// <c>if (!TryGetLiveDevice(sim, site, out var device)) return true;</c> →
+        /// <c>TryGetLiveDevice(sim, site, out var device);</c> — one line, nothing left to deflect
+        /// it: <c>DeviceYield</c> tolerates the null, and the very next statement
+        /// (<c>byte deviceKind = (byte)device.Kind;</c>) dies on a NullReferenceException.
         /// </summary>
         [Test]
         public void Complete_OnADeviceRemovedByAnotherPath_ConsumesTheSite_AndSparesAnImpostorOnTheSameTile()
@@ -1575,51 +1590,352 @@ namespace Perilune.Tests
                 "…but nothing was torn down, so nothing may be remembered as torn down");
         }
 
-        // ---------------------------------------------------------- a finding, pinned not hidden
+        // ============================== WP-3: the round trip is CLOSED, and provably lossy
 
         /// <summary>
-        /// A FINDING, pinned as CURRENT BEHAVIOUR so fixing it is a deliberate red test rather than
-        /// an accident: <b>place-then-strip mints Parts out of nothing.</b>
-        /// <see cref="PlaceDeviceCommand"/> — the Room Zoom decorate palette, reachable from the
-        /// shipping web client — charges NOTHING for a bed, and WP-2 makes that bed worth 2 Parts.
-        /// Repeat for infinite Parts, which is the ship's one never-ending sink.
+        /// THE HEADLINE INVARIANT of E0-5 WP-3, driven through the REAL command and the REAL
+        /// dispatcher end to end: <b>place a device, strip it back at Condition 1.0, and the ship
+        /// is strictly poorer.</b>
         ///
-        /// This is NOT a deconstruct bug and is deliberately not patched here. Free placement was
-        /// already free before E0-5; device strip is only the first verb that gives the free thing
-        /// a price. Fixing it inside <c>CanDesignate</c> (e.g. refusing
-        /// <see cref="PlaceDeviceCommand.IsPlaceableFurniture"/> kinds) would forbid stripping
-        /// exactly the machines worth stripping — grow beds, lights, med beds are all on that
-        /// whitelist. THE FIX BELONGS IN <c>PlaceDeviceCommand</c>: charge a build cost, the way
-        /// <see cref="BuildSystem"/> charges Regolith for a wall. Owner: E0-6 / the economy lane.
+        /// WP-2's independent review measured the hole this closes: <c>PlaceDeviceCommand</c>
+        /// charged nothing while a strip paid <c>floor(device_parts × Condition)</c> = 2 Parts, so
+        /// place → strip → repeat minted 1 Part per 476 ticks with zero matter input, against
+        /// 15 000 ticks + 1 Regolith for the same Part through the shipped <c>recipes.def</c>
+        /// ladder — into <c>MaintenanceSystem</c>, the one sink that never ends.
         ///
-        /// NOTE: the exploit is not yet reachable by a player — the <c>strip</c> UI surface is WP-3
-        /// — so this lands as a documented finding rather than a shipped hole.
+        /// This is the BEST case for the exploiter (a brand-new machine, full recovery) and it is
+        /// still a loss: 3 Parts out, 2 back. Every worn machine is worse.
         ///
-        /// MUTATION: give <c>PlaceDeviceCommand.Execute</c> a material cost, or exclude free-placed
-        /// furniture in <c>CanDesignate</c> → this test goes red, which is exactly the signal the
-        /// fixing lane should see.
+        /// The strip half runs through <c>JobSystem</c>, not through a direct
+        /// <see cref="DeconstructSystem.Complete"/> call, so the crew member really walks over and
+        /// really spends <c>device_work_ticks</c> — a registry-only test would not prove the
+        /// shipping path pays.
+        ///
+        /// MUTATION (apply, observe, revert): delete
+        /// <c>if (!TryPay(sim, sim.Defs.Build.DevicePlaceCost)) return;</c> from
+        /// <c>PlaceDeviceCommand.Execute</c> → the 3 seeded Parts are still there after placement,
+        /// the "spent" assertion fails, and the net becomes +2 instead of −1. That single line IS
+        /// the fix, and nothing else deflects it.
         /// </summary>
         [Test]
-        public void FINDING_PlaceThenStripFurniture_MintsPartsFromNothing_BecausePlacementIsFree()
+        public void PlaceThenStripAtFullCondition_ThroughTheCommandAndTheDispatcher_LeavesTheShipOnePartPoorer()
         {
-            var sim = NewSim(TwoRooms, 53, out var strip);
+            var sim = NewSim(TwoRooms, 61, out var strip);
+            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0));
+            int price = SimDefs.Default.Build.DevicePlaceCost;
+            sim.AddItem(ItemKind.Parts, price, new Int3(1, 1, 0)); // the ship's entire treasury
             sim.Tick();
-            int regolithBefore = CountGround(sim, ItemKind.Regolith);
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(price),
+                "precondition: exactly the price is aboard, and nothing else");
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: idle");
 
-            for (int cycle = 0; cycle < 3; cycle++)
+            // --- PLACE, through the real command over the real inbox.
+            sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, MachineTile));
+            sim.Tick();
+            Assert.That(sim.TryGetDeviceAt(MachineTile, out var bed), Is.True, "the bed is placed…");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0),
+                "…and it was PAID FOR: every seeded Part is gone");
+            Assert.That(bed.Condition, Is.EqualTo(1f),
+                "precondition: brand new, so the strip below is the exploiter's BEST case");
+
+            // --- STRIP, through the real dispatcher.
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+            for (int t = 0; t < 20 && worker.JobKind == JobKind.None; t++) sim.Tick();
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.Deconstruct),
+                "precondition: the dispatcher really offered the strip");
+            for (int t = 0; t < 3000 && strip.Pending.Count > 0; t++) sim.Tick();
+            Assert.That(strip.Pending, Is.Empty, "the strip completed inside the budget");
+            Assert.That(sim.Devices.TryGet(bed.Id, out _), Is.False, "the bed is gone");
+
+            int back = CountGround(sim, ItemKind.Parts);
+            Assert.That(back, Is.EqualTo(2), "a pristine device refunds floor(2 × 1.0) = 2 Parts");
+            Assert.That(back, Is.LessThan(price),
+                $"THE INVARIANT: {price} Parts in, {back} back — the round trip is a LOSS, not a faucet");
+        }
+
+        /// <summary>
+        /// The exploit loop, run until it STOPS — the falsifiable form of "bounded". WP-2's finding
+        /// was that nothing bounded place → strip → repeat: not material (free), not
+        /// <c>max_staged</c> (a queue-depth cap, not a rate cap), not tiles (re-placeable
+        /// instantly), not kind. Charging in the currency the strip refunds makes the loop a
+        /// monotone drain that terminates in a refusal, and this measures the exact arithmetic:
+        ///
+        /// <code>
+        ///   7 Parts → −3 +2 = 6 → 5 → 4 → 3 → 2   (five cycles)
+        ///   2 &lt; 3 ⇒ the sixth placement is refused and consumes nothing
+        /// </code>
+        ///
+        /// Uses the registry's <see cref="DeconstructSystem.Complete"/> rather than the dispatcher
+        /// on purpose — it is the CYCLE COUNT that is under test, and the dispatcher half is
+        /// pinned by the test above. Named for that limit.
+        ///
+        /// MUTATION: change <c>if (Affordable(sim) &lt; cost) return false;</c> in
+        /// <c>PlaceDeviceCommand.TryPay</c> to <c>if (false) return false;</c> → the loop never
+        /// refuses, the treasury goes to 0 and then stays there while devices keep appearing
+        /// (matter destroyed, furniture from nothing), and both the cycle count and the "consumed
+        /// nothing" assertion fail.
+        /// </summary>
+        [Test]
+        public void RepeatedPlaceStripCycles_AreAMonotoneDrain_AndTerminateInARefusal()
+        {
+            var sim = NewSim(TwoRooms, 62, out var strip);
+            sim.AddItem(ItemKind.Parts, 7, new Int3(1, 1, 0));
+            sim.Tick();
+
+            int previous = CountGround(sim, ItemKind.Parts);
+            Assert.That(previous, Is.EqualTo(7), "precondition: the treasury");
+
+            int cycles = 0;
+            while (true)
             {
                 new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
-                Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
-                    "PlaceDeviceCommand consumed nothing and produced a device");
+                if (!sim.TryGetDeviceAt(MachineTile, out _)) break; // the ship could not pay
                 Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
                 Assert.That(strip.Complete(sim, MachineTile, 0u), Is.True);
+                cycles++;
+                int now = CountGround(sim, ItemKind.Parts);
+                Assert.That(now, Is.LessThan(previous),
+                    $"cycle {cycles} must LOSE Parts, not gain or hold them");
+                previous = now;
+                Assert.That(cycles, Is.LessThan(100), "the loop must terminate, not run forever");
             }
 
-            Assert.That(CountGround(sim, ItemKind.Regolith), Is.EqualTo(regolithBefore),
-                "nothing was ever consumed — placement is free");
-            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(6),
-                "3 free beds × 2 Parts = 6 Parts from nothing. THE FIX IS A PLACEMENT COST IN " +
-                "PlaceDeviceCommand, not a narrower strip whitelist — see this test's doc comment");
+            Assert.That(cycles, Is.EqualTo(5), "7 Parts buys exactly five −3/+2 cycles");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(2),
+                "and the refused sixth placement consumed NOTHING — 2 Parts are still aboard");
+            Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.False,
+                "…and placed nothing: an unaffordable request is a clean no-op, not a half-spend");
+        }
+
+        /// <summary>
+        /// ALL OR NOTHING, and PROVABLY INERT ON REFUSAL. A ship one Part short must place nothing
+        /// AND consume nothing — a partial spend would destroy matter and produce no device, which
+        /// is the leak this package exists to close, inverted.
+        ///
+        /// The strong assertion is the last one: an unaffordable placement leaves
+        /// <see cref="Simulation.StateHash"/> BIT-IDENTICAL to a twin sim that never enqueued the
+        /// command at all. That is what "a refusal cannot desync the web host"
+        /// (<c>GameSession.HandlePlace</c> enqueues blind) means in a form a test can check —
+        /// a `TryGetDeviceAt` assertion alone would pass even if the command had quietly eaten a
+        /// stack or dirtied the job board.
+        ///
+        /// MUTATION (applied, observed failing, reverted): change
+        /// <c>if (Affordable(sim) &lt; cost) return false;</c> in <c>PlaceDeviceCommand.TryPay</c>
+        /// to <c>if (false) return false;</c> — one line, dropping the all-or-nothing pre-check →
+        /// the greedy loop spends both Parts, places the bed anyway, and all three assertions fail
+        /// including the twin-hash one.
+        /// </summary>
+        [Test]
+        public void PlacementOnePartShort_PlacesNothing_ConsumesNothing_AndHashesLikeItNeverHappened()
+        {
+            Simulation Build(ulong seed)
+            {
+                var s = NewSim(TwoRooms, seed, out _);
+                s.AddItem(ItemKind.Parts, SimDefs.Default.Build.DevicePlaceCost - 1, new Int3(1, 1, 0));
+                s.Tick();
+                return s;
+            }
+
+            var acted = Build(63);
+            var untouched = Build(63);
+            Assert.That(acted.StateHash(), Is.EqualTo(untouched.StateHash()), "precondition: twins");
+
+            acted.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Bed, MachineTile));
+            acted.Tick();
+            untouched.Tick();
+
+            Assert.That(acted.TryGetDeviceAt(MachineTile, out _), Is.False,
+                "one Part short buys nothing");
+            Assert.That(CountGround(acted, ItemKind.Parts),
+                Is.EqualTo(SimDefs.Default.Build.DevicePlaceCost - 1),
+                "…and costs nothing: a partial spend would be matter destroyed for no device");
+            Assert.That(acted.StateHash(), Is.EqualTo(untouched.StateHash()),
+                "a refused placement is bit-for-bit a no-op — the host may enqueue blind");
+        }
+
+        /// <summary>
+        /// The treasury is LOOSE GROUND STOCK ONLY. Parts a crew member is carrying, and Parts a
+        /// job has claimed (<see cref="ItemStack.ReservedBy"/> — a builder's haul, a crafting
+        /// station's staged input, a maintainer's overhaul Part), are somebody else's: spending
+        /// them would strand the job that reserved them, which is exactly the B-1 bug class the
+        /// owner-scoped <c>ReservedBy</c> field was introduced to end.
+        ///
+        /// Three Parts aboard, price three, and the placement is still REFUSED because two of them
+        /// are spoken for. Freeing one claim then makes the identical request succeed — so the
+        /// filter, not some unrelated rejection, is what refused.
+        ///
+        /// MUTATION: delete <c>|| it.CarriedBy != 0 || it.ReservedBy != 0</c> from
+        /// <c>PlaceDeviceCommand.Affordable</c> → the first placement succeeds and the
+        /// "refused while claimed" assertion fails; the carried stack is silently eaten out of a
+        /// crew member's hands.
+        /// </summary>
+        [Test]
+        public void Placement_NeverSpendsCarriedOrReservedParts_EvenWhenTheyWouldCoverThePrice()
+        {
+            var sim = NewSim(TwoRooms, 64, out _);
+            var hauler = sim.AddCitizen("Vale", new Int3(2, 2, 0));
+            sim.Tick();
+
+            var free = sim.AddItem(ItemKind.Parts, 1, new Int3(1, 1, 0));
+            var claimed = sim.AddItem(ItemKind.Parts, 1, new Int3(1, 2, 0));
+            var carried = sim.AddItem(ItemKind.Parts, 1, new Int3(1, 3, 0));
+            claimed.ReservedBy = hauler.Id;
+            carried.CarriedBy = hauler.Id;
+
+            Assert.That(CountGround(sim, ItemKind.Parts) + carried.Count, Is.EqualTo(3),
+                "precondition: three Parts exist aboard, exactly the price");
+            Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(1),
+                "…but only ONE of them is loose, unclaimed ground stock");
+
+            new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
+            Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.False,
+                "refused: a claimed stack is not the ship's to spend");
+            Assert.That(claimed.Count, Is.EqualTo(1), "the reserved stack is untouched");
+            Assert.That(carried.Count, Is.EqualTo(1), "and so is the carried one");
+
+            // Release the two claims: the SAME request must now go through, so the claim filter
+            // is what refused above and not the tile, the kind or the total.
+            claimed.ReservedBy = 0;
+            carried.CarriedBy = 0;
+            Assert.That(PlaceDeviceCommand.Affordable(sim), Is.EqualTo(3));
+            new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
+            Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
+                "…and with the claims released the identical request succeeds");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0), "all three spent");
+            Assert.That(free.Count + claimed.Count + carried.Count, Is.EqualTo(0),
+                "drained in item-store order, every stack emptied");
+        }
+
+        // ===================== F2: the SHIPPING path reads the def, not only the helper
+
+        /// <summary>
+        /// F2 (WP-2 review, medium) — <b>the yield defs were not proven to be consumed by the
+        /// shipping completion path.</b> Measured: replacing
+        /// <c>int deviceYield = DeviceYield(sim.Defs, device);</c> with <c>int deviceYield = 2;</c>
+        /// in <see cref="DeconstructSystem.Complete"/> passed the ENTIRE suite, and
+        /// <c>int yield = WallYield(sim.Defs);</c> → <c>int yield = 1;</c> did too. The tripwires
+        /// called the static helpers directly; the loop tests anchored on the default value
+        /// (<c>Is.EqualTo(WallYield(SimDefs.Default))</c> — rule 1, recomputing the subject); nothing
+        /// joined them. A content pack setting <c>device_parts = 7</c> would have moved the defs
+        /// checksum, passed every gate, and still dropped 2.
+        ///
+        /// The fix is to run the FULL DISPATCHER under a TUNED sim and assert the tuned number
+        /// lands on the freed tile — a literal, not an expression the code could satisfy by
+        /// accident.
+        ///
+        /// MUTATION A: <c>int yield = WallYield(sim.Defs);</c> → <c>int yield = 1;</c> → the wall
+        /// half fails (1 Regolith where 2 was tuned). Previously GREEN.
+        /// MUTATION B: <c>int deviceYield = DeviceYield(sim.Defs, device);</c> →
+        /// <c>int deviceYield = 2;</c> → the device half fails (2 Parts where 7 was tuned).
+        /// Previously GREEN.
+        /// </summary>
+        [Test]
+        public void TunedYieldDefs_ReachTheDispatcherCompletionPath_NotJustTheStaticHelpers()
+        {
+            SimDefs Tuned(string text)
+            {
+                var problems = new List<string>();
+                var d = DefsParser.Parse(new[] { ("tuned.def", text) }, problems);
+                Assert.That(problems, Is.Empty, "the tuned file must parse cleanly: " + string.Join(" | ", problems));
+                return d;
+            }
+
+            // --- WALL: wall_recovery 1.0 ⇒ floor(2 × 1.0) = 2 Regolith, not the shipped 1.
+            var fullRecovery = Tuned("[deconstruct]\nwall_recovery = 1.0\n");
+            Assert.That(DeconstructSystem.WallYield(SimDefs.Default), Is.EqualTo(1),
+                "precondition: the SHIPPED yield is 1, so 2 can only come from the tuned defs");
+            var wallSim = NewSim(TwoRooms, 65, out var wallStrip, fullRecovery);
+            var digger = wallSim.AddCitizen("Ito", new Int3(2, 2, 0));
+            wallSim.Tick();
+            Assert.That(wallStrip.Designate(wallSim, Partition, DeconstructKind.Wall), Is.True);
+            for (int t = 0; t < 20 && digger.JobKind == JobKind.None; t++) wallSim.Tick();
+            Assert.That(digger.JobKind, Is.EqualTo(JobKind.Deconstruct),
+                "precondition: the dispatcher offered the wall strip — the path under test was reached");
+            for (int t = 0; t < 4000 && wallStrip.Pending.Count > 0; t++) wallSim.Tick();
+            Assert.That(wallStrip.Pending, Is.Empty, "the wall came down inside the budget");
+            Assert.That(CountGround(wallSim, ItemKind.Regolith), Is.EqualTo(2),
+                "Complete must read sim.Defs.Deconstruct.WallRecovery — a hard-coded 1 fails here");
+
+            // --- DEVICE: device_parts 7 ⇒ floor(7 × 1.0) = 7 Parts, not the shipped 2.
+            var richParts = Tuned("[deconstruct]\ndevice_parts = 7\n");
+            Assert.That(SimDefs.Default.Deconstruct.DeviceParts, Is.EqualTo(2),
+                "precondition: the SHIPPED base is 2, so 7 can only come from the tuned defs");
+            var devSim = NewSim(TwoRooms, 66, out var devStrip, richParts);
+            var puller = devSim.AddCitizen("Okafor", new Int3(2, 2, 0));
+            var machine = devSim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_tuned");
+            devSim.Tick();
+            Assert.That(machine.Condition, Is.EqualTo(1f), "precondition: pristine, so the base is undiluted");
+            Assert.That(devStrip.Designate(devSim, MachineTile, DeconstructKind.Device), Is.True);
+            for (int t = 0; t < 20 && puller.JobKind == JobKind.None; t++) devSim.Tick();
+            Assert.That(puller.JobKind, Is.EqualTo(JobKind.Deconstruct),
+                "precondition: the dispatcher offered the device strip");
+            for (int t = 0; t < 3000 && devStrip.Pending.Count > 0; t++) devSim.Tick();
+            Assert.That(devStrip.Pending, Is.Empty, "the machine came out inside the budget");
+            Assert.That(CountGround(devSim, ItemKind.Parts), Is.EqualTo(7),
+                "Complete must read sim.Defs.Deconstruct.DeviceParts — a hard-coded 2 fails here");
+        }
+
+        /// <summary>
+        /// The same F2 question asked of the field this package ADDS, before anyone can ask it of
+        /// us: does <c>PlaceDeviceCommand</c> read <c>build.device_place_cost</c>, or does it
+        /// charge a constant that happens to equal the default? Tuned to 5 and to 1 — two values,
+        /// so a hard-coded 3 fails whichever direction it is wrong in — and driven through the
+        /// real command over the real command inbox.
+        ///
+        /// Also pins the fail-soft floor: a content pack that sets the price to 0 gets the
+        /// pre-E0-5 free placement rather than an exception or a negative stack.
+        ///
+        /// MUTATION: change <c>TryPay(sim, sim.Defs.Build.DevicePlaceCost)</c> to
+        /// <c>TryPay(sim, 3)</c> in <c>PlaceDeviceCommand.Execute</c> → the price-5 ship still has
+        /// 2 Parts left (it should have 0) and the price-1 ship has 0 left (it should have 4).
+        /// MUTATION: delete the <c>case "device_place_cost":</c> line from
+        /// <c>DefsParser.BuildKey</c> → the parse reports an unknown key, <c>problems</c> is
+        /// non-empty and every row fails at the parse assertion.
+        /// MUTATION: delete the <c>Build.DevicePlaceCost</c> fold from
+        /// <c>SimDefs.ComputeChecksum</c> → the checksum-moved assertion fails.
+        /// </summary>
+        [Test]
+        public void DevicePlaceCost_IsReadFromDefsByTheShippingPlacementPath_AndZeroMeansFree()
+        {
+            SimDefs Tuned(string body)
+            {
+                var problems = new List<string>();
+                var d = DefsParser.Parse(new[] { ("build.def", "[build]\n" + body) }, problems);
+                Assert.That(problems, Is.Empty, "the tuned file must parse cleanly: " + string.Join(" | ", problems));
+                Assert.That(d.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum),
+                    "a retuned device_place_cost must move the defs checksum (parser key + fold)");
+                return d;
+            }
+
+            int PlaceWith(SimDefs defs, int purse, ulong seed)
+            {
+                var sim = NewSim(TwoRooms, seed, out _, defs);
+                sim.AddItem(ItemKind.Parts, purse, new Int3(1, 1, 0));
+                sim.Tick();
+                sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Desk, MachineTile));
+                sim.Tick();
+                Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
+                    "precondition: the purse covers the tuned price, so the placement path was REACHED");
+                return CountGround(sim, ItemKind.Parts);
+            }
+
+            Assert.That(SimDefs.Default.Build.DevicePlaceCost, Is.EqualTo(3),
+                "precondition: the shipped price, which neither tuned value equals");
+            Assert.That(PlaceWith(Tuned("device_place_cost = 5\n"), 5, 71), Is.EqualTo(0),
+                "a price-5 ship spends all five — a hard-coded 3 would leave 2");
+            Assert.That(PlaceWith(Tuned("device_place_cost = 1\n"), 5, 72), Is.EqualTo(4),
+                "…and a price-1 ship spends exactly one — a hard-coded 3 would leave 2");
+
+            // Fail-soft: an unset/zero price is free, not a crash and not a negative stack.
+            var freeDefs = Tuned("device_place_cost = 0\n");
+            var broke = NewSim(TwoRooms, 73, out _, freeDefs);
+            broke.Tick();
+            Assert.That(CountGround(broke, ItemKind.Parts), Is.EqualTo(0), "precondition: penniless");
+            new PlaceDeviceCommand(DeviceKind.Chair, MachineTile).Execute(broke);
+            Assert.That(broke.TryGetDeviceAt(MachineTile, out _), Is.True,
+                "device_place_cost = 0 restores pre-E0-5 free placement rather than bricking it");
+            Assert.That(CountGround(broke, ItemKind.Parts), Is.EqualTo(0),
+                "and never mints or destroys a stack doing so");
         }
 
         // ------------------------------------------------------------------ helpers

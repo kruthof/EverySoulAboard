@@ -152,23 +152,58 @@ namespace Perilune.Sim
         }
 
         /// <summary>
-        /// Does this site still have something to tear down? "Exists", NOT "is legal" — the
-        /// legality rules (hull, staging cap, duplicates) belong to <see cref="CanDesignate"/> at
-        /// designate time and to <see cref="Complete"/> on arrival. Shared by <see cref="Reap"/>
-        /// and by <c>DeconstructJobSource</c>, so the board and the registry can never disagree
-        /// about which sites are dead.
+        /// Does this site still have something to tear down? Shared by <see cref="Reap"/>, by
+        /// <c>DeconstructJobSource</c> and (through <see cref="TryGetLiveDevice"/>) by
+        /// <see cref="Complete"/>, so the board, the registry and the completion path can never
+        /// disagree about which sites are dead.
+        ///
+        /// MOSTLY "EXISTS", NOT "IS LEGAL" — the tunable legality rules (hull, staging cap,
+        /// duplicates) belong to <see cref="CanDesignate"/> at designate time and to
+        /// <see cref="Complete"/> on arrival, and are deliberately NOT re-tested here: a wall that
+        /// became hull mid-job is still a wall and still the player's order (see
+        /// <see cref="Reap"/>'s "narrow on purpose").
+        ///
+        /// F3, WP-2 review — WITH ONE ADMITTED EXCEPTION, stated rather than hidden: the device
+        /// leg's <c>Kind != Door</c> clause is a LEGALITY test living in an existence predicate.
+        /// It is kept here on purpose as a corrupt-save backstop. <see cref="CanDesignate"/> is the
+        /// only way to create a site and already refuses Doors, and a <see cref="Device"/>'s Kind
+        /// is never rewritten, so the ONLY way a Door-targeted site can exist is a hand-edited or
+        /// foreign STRP chapter — in which case <see cref="Reap"/> drops it on the next tick
+        /// instead of letting <see cref="Complete"/> delete a door and pay Parts for it. Alternative
+        /// considered and rejected: hoisting the clause into <c>Complete</c> would put it back in
+        /// two places, which is exactly the compound-guard shape F1 was raised about.
         /// </summary>
         public static bool TargetStillExists(Simulation sim, PendingDeconstruct site)
         {
             if (site.Kind == DeconstructKind.Wall)
                 return sim.World.InBounds(site.Pos) && sim.World.GetWall(site.Pos) == TileDefs.Wall;
-
-            // Device: the ID is the identity. A different device that moved onto the same tile is
-            // not the one the player condemned, and a device whose id no longer resolves is gone.
-            return sim.Devices.TryGet(site.TargetId, out var device) &&
-                   device.Pos == site.Pos &&
-                   device.Kind != DeviceKind.Door;
+            return TryGetLiveDevice(sim, site, out _);
         }
+
+        /// <summary>
+        /// The device leg of <see cref="TargetStillExists"/>, WITH THE ENTITY OUT — so
+        /// <see cref="Complete"/> can validate and dereference through ONE guard instead of two.
+        ///
+        /// F1, WP-2 review: <c>Complete</c> previously asked <c>!TargetStillExists(...) ||
+        /// !sim.Devices.TryGet(...)</c>, two guards that each deflected the other's mutation
+        /// (dropping either leg alone measured GREEN across the whole suite; only deleting both
+        /// went RED). A test cannot name a failing one-line mutation against a guard whose twin
+        /// silently covers it, so the redundancy is removed rather than re-worded.
+        ///
+        /// The ID is the identity: entity ids are never recycled (<c>Simulation._nextEntityId</c>
+        /// only increments), so a resolving id IS the condemned object and a REPLACEMENT device on
+        /// the same tile can never inherit a condemned site.
+        ///
+        /// <c>device.Pos == site.Pos</c> is UNREACHABLE-FALSE ON TODAY'S CONTENT and kept anyway:
+        /// <see cref="Device.Pos"/> is written in exactly two places in the repo
+        /// (<c>Simulation.AddDevice</c> and <c>SaveReader</c>'s DEVC load), so nothing moves a
+        /// device after it exists. It costs one comparison and it is the clause that keeps this
+        /// honest the day something does.
+        /// </summary>
+        public static bool TryGetLiveDevice(Simulation sim, PendingDeconstruct site, out Device device) =>
+            sim.Devices.TryGet(site.TargetId, out device) &&
+            device.Pos == site.Pos &&
+            device.Kind != DeviceKind.Door;
 
         // ------------------------------------------------------------------ queries
 
@@ -416,11 +451,11 @@ namespace Perilune.Sim
 
                 if (site.Kind == DeconstructKind.Device)
                 {
-                    // Validate on ARRIVAL. TargetId may have been removed by another path (a
-                    // RemoveDeviceCommand, a second stripper, a save from a build that had it)
-                    // during the 90-second pull; the id — not the tile — is the identity.
-                    if (!TargetStillExists(sim, site) ||
-                        !sim.Devices.TryGet(site.TargetId, out var device)) return true;
+                    // Validate on ARRIVAL through ONE guard (F1: the two-guard form each leg
+                    // deflected the other's mutation). TargetId may have been removed by another
+                    // path — a RemoveDeviceCommand, a second stripper — during the 90-second pull;
+                    // the id, not the tile, is the identity.
+                    if (!TryGetLiveDevice(sim, site, out var device)) return true;
 
                     int deviceYield = DeviceYield(sim.Defs, device);
                     byte deviceKind = (byte)device.Kind;

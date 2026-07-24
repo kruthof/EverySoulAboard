@@ -22,6 +22,13 @@
 # exactly two overhauls: stripping a machine in good repair pays to keep two others
 # alive, and a wreck below Condition 0.5 is worth nothing at all.
 #
+# THE ROUND TRIP IS LOSSY, AND IT IS ONLY LOSSY BECAUSE PLACING COSTS (E0-5 WP-3):
+# device_parts is read against [build] device_place_cost = 3 PARTS, in the same
+# currency, so the best possible cycle — place a machine, strip it pristine — is
+# 3 Parts out and 2 back. Raising device_parts to 3 or lowering device_place_cost
+# to 2 turns furniture into a Parts printer feeding maintenance forever. The two
+# numbers are a PAIR; retune them together or not at all.
+#
 # WHICH DEVICES: any device EXCEPT a Door. Doors are BuildSystem's output and their
 # inverse is build-cancel; two owners for one object's lifetime is the bug. Life
 # support is deliberately INCLUDED — stripping the scrubber to make rent is the

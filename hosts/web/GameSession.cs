@@ -648,6 +648,20 @@ namespace Perilune.Web
         /// clicked tile on the message's deck. Legality (floor tile, unoccupied, placeable kind) is
         /// decided sim-side at the tick boundary, exactly like HandleBuild — an illegal request is a
         /// silent sim no-op and the item only appears once the sim confirms it in the next frame.
+        ///
+        /// SINCE E0-5 WP-3 PLACEMENT ALSO COSTS MATTER (<c>build.device_place_cost</c> Parts, taken
+        /// from loose ground stacks), so "the sim refused" now includes "the ship could not pay".
+        /// That needs no change here and cannot desync the host: this bridge already promises only
+        /// the ATTEMPT, and an unaffordable placement is the same silent no-op an illegal tile is —
+        /// the next frame simply does not contain the furniture. The status line likewise reports
+        /// what was asked for, not what happened, exactly as it did for an illegal tile.
+        ///
+        /// HONESTLY STATED LIMIT (MECHANICS §13 material): a player whose ship cannot pay gets NO
+        /// FEEDBACK — the click just does nothing, and the decorate palette shows no price and no
+        /// Parts balance. That is pre-existing behaviour for every illegal placement, not a
+        /// regression, but "not enough Parts" is the first refusal a player will hit while doing
+        /// something perfectly legal. The fix is a client-side affordance (price on the palette,
+        /// a refusal reason on the status line) and belongs with the strip UI surface, not here.
         /// </summary>
         private void HandlePlace(WebCommand cmd)
         {

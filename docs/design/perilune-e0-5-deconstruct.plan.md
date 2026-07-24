@@ -311,8 +311,17 @@ here. Copy E0-3's shape exactly (`DesignationVerbTests.cs` is the test template)
 |---|---|---|
 | **WP-1** | `DeconstructSystem` + `PendingDeconstruct` + `DeconstructKind` + `IsPressureHull` + `JobKind.Deconstruct` + `DeconstructJobSource` + `SystemStack` registration + `DesignateDeconstructCommand`. **Walls only** — `DeconstructKind.Device` declared and rejected by `CanDesignate` with a stated TODO(WP-2). | full §10 set. Moves scenario + both tick-3000 goldens (new stateful seed). |
 | **WP-2** | Device strip: `CanDesignate` accepts `Device`, arrival re-validation, `RemoveDevice` + `Parts × Condition`, the MOSS-adapter test. | §10 set. **Cuttable** — if WP-1 overruns, WP-2 defers and the lane still lands a coherent verb. |
-| **WP-3** | The `strip` surface: defs, command, web/TUI/client, `GlyphColor.Deconstruct`. | defs-equivalence + mutation probe + tripwire + de-DE culture + golden single-owner. |
-| **WP-4** | `occupancy --strip N` harness + `IsProductive` + the re-measurement. | host-only, **no pin impact**. |
+| **WP-3** | ~~The `strip` surface~~ → **REDEFINED (Garvin, 2026-07-23), see below.** Close the place→strip matter faucet: `PlaceDeviceCommand` charges `build.device_place_cost` **Parts**, plus WP-2's two review findings (the compound arrival guard; the yield defs unproven on the shipping path). | defs ritual + full-dispatcher tripwires + all-or-nothing refusal. **Defs checksum moves; no sim pin moves.** |
+| **WP-4** | The `strip` surface (defs done, command done: web/TUI/client, `GlyphColor.Deconstruct`) **and** the `occupancy --strip N` harness + `IsProductive` + the re-measurement. | §8's list; host-side parts have **no pin impact**. |
+
+**Why WP-3 was redefined.** WP-2's independent review measured an **unbounded matter faucet**:
+`PlaceDeviceCommand` charged nothing, and WP-2 made the device it places worth
+`floor(device_parts × Condition)` = 2 Parts. Place → strip → repeat yielded **1 Part per 476
+ticks with zero matter input**, against **15 000 ticks + 1 Regolith** for the same Part through
+the shipped `recipes.def` ladder — feeding `MaintenanceSystem`, the one sink that never ends.
+Nothing bounded it: not material (free), not `max_staged` (a queue-depth cap, not a rate cap),
+not tiles, not kind. It is not player-reachable until the `strip` verb ships, **so the loop had
+to close before the surface did** — §8's UI work moves to WP-4 behind it.
 
 WP-1 and WP-3's def work may be co-committed if that keeps the def-field ritual atomic — **the
 ritual's atomicity wins over the WP boundary.**

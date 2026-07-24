@@ -10,6 +10,22 @@
 # builder spends `*_construct_ticks` work ticks (10 Hz, so 2400 ticks = 240 s) to
 # raise it (JobKind.Build). A completed Wall seals its tile and the atmosphere
 # sim reflows/pressurizes the new compartment; a completed Door spawns a device.
+#
+# device_place_cost is the ODD ONE OUT and deliberately so (E0-5 WP-3). It is not
+# BuildSystem's — it is what PlaceDeviceCommand (the Room Zoom decorate palette)
+# charges for one piece of furniture — and it is priced in PARTS, not Regolith,
+# because it must be the same currency [deconstruct] device_parts refunds. Before
+# it existed, placing was free and stripping paid 2 Parts, so place->strip->repeat
+# minted Parts out of nothing into the ship's one never-ending sink.
+#
+#   place 3 Parts  ->  strip a pristine machine  ->  2 Parts back   (net -1)
+#   place 3 Parts  ->  strip one at Condition .75 ->  1 Part  back   (net -2)
+#   place 3 Parts  ->  strip a wreck (< .50)      ->  0 Parts back   (net -3)
+#
+# 3 > the best possible strip yield (floor(2 x 1.0) = 2), so the loop is lossy at
+# EVERY condition — 66.7% recovery at pristine, inside ECONOMY.md §9.6's 50-70%
+# band. Setting it to 2 or lower re-opens the faucet; a default-equivalence test
+# refuses to let that happen silently.
 
 [build]
 wall_material         = 2     # Regolith units a Wall stages before it can build
@@ -17,3 +33,4 @@ wall_construct_ticks  = 2400  # work ticks to raise a Wall once materialed (240 
 door_material         = 1     # Regolith units a Door stages before it can build
 door_construct_ticks  = 1800  # work ticks to hang a Door once materialed (180 s; E0-2 L1 rebase, was 40)
 max_staged            = 64    # cap on concurrent pending designations (queue guard)
+device_place_cost     = 3     # PARTS consumed to place one furniture device (PlaceDeviceCommand)

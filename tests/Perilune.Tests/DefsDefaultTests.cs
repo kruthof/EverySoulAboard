@@ -99,6 +99,43 @@ namespace Perilune.Tests
                 "is worth one ControllerModule of value");
         }
 
+        /// <summary>
+        /// E0-5 WP-3 — THE LOSSINESS INVARIANT, asserted on the DEFAULTS rather than on one
+        /// scenario. <c>PlaceDeviceCommand</c> charges <c>build.device_place_cost</c> Parts and
+        /// <c>DeconstructSystem</c> refunds at most <c>floor(deconstruct.device_parts × 1.0)</c>
+        /// Parts, so the shipped pair is only safe while the charge STRICTLY exceeds the best
+        /// possible refund. If it ever does not, place → strip → repeat is an unbounded Parts
+        /// faucet into <c>MaintenanceSystem</c>, the ship's one never-ending sink — measured by
+        /// WP-2's review at 1 Part per 476 ticks with zero matter input.
+        ///
+        /// It is asserted as an INEQUALITY, not as "3 and 2", so a future retune of either number
+        /// is free as long as the pair stays lossy — and the recovery band is checked against
+        /// <c>ECONOMY.md</c> §9.6 ("recoverable at 50–70 %") so a technically-lossy but absurd
+        /// pricing (cost 100, yield 2) is also a red test.
+        ///
+        /// MUTATION (apply, observe, revert): set <c>DevicePlaceCost = 2</c> in
+        /// <c>SimDefs.CreateDefault</c> → the strict-inequality assertion fails (2 &gt; 2 is false),
+        /// which is exactly the free-matter regression this pins. Set it to 5 → the ≥ 50 % band
+        /// assertion fails (2/5 = 40 %).
+        /// </summary>
+        [Test]
+        public void Build_DevicePlaceCost_StrictlyExceedsTheBestPossibleStripYield()
+        {
+            Assert.That(D.Build.DevicePlaceCost, Is.EqualTo(3), "the shipped price, in Parts");
+            Assert.That(PlaceDeviceCommand.Currency, Is.EqualTo(DeconstructSystem.DeviceSalvage),
+                "the charge and the refund must be the SAME currency, or the loop is only " +
+                "material-neutral and still a labour exploit");
+
+            int bestYield = D.Deconstruct.DeviceParts; // floor(device_parts × Condition 1.0)
+            Assert.That(D.Build.DevicePlaceCost, Is.GreaterThan(bestYield),
+                "placing then stripping a PRISTINE device must leave the ship strictly poorer");
+
+            double recovery = bestYield / (double)D.Build.DevicePlaceCost;
+            Assert.That(recovery, Is.GreaterThanOrEqualTo(0.50).And.LessThanOrEqualTo(0.70),
+                "ECONOMY.md §9.6: matter already installed is recoverable at 50–70 % — " +
+                $"measured {recovery:P1}");
+        }
+
         [Test]
         public void Sustenance_MatchesDocumentedDefaults()
         {

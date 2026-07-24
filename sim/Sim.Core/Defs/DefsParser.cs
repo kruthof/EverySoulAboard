@@ -353,6 +353,8 @@ namespace Perilune.Sim
                 case "door_material": if (I(v, k, loc, p, out var c)) d.Build.DoorMaterial = c; return true;
                 case "door_construct_ticks": if (I(v, k, loc, p, out var e)) d.Build.DoorConstructTicks = e; return true;
                 case "max_staged": if (I(v, k, loc, p, out var f)) d.Build.MaxStaged = f; return true;
+                // E0-5 WP-3: PlaceDeviceCommand's price, in whole Parts — I(), no culture hazard.
+                case "device_place_cost": if (I(v, k, loc, p, out var g)) d.Build.DevicePlaceCost = g; return true;
                 default: return false;
             }
         }
