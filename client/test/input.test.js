@@ -4,7 +4,7 @@
 // isTextEntryTarget; the window keydown handler bails (except Escape) when it's true.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isTextEntryTarget } from '../src/input/controls.js';
+import { isTextEntryTarget, paletteOrder } from '../src/input/controls.js';
 
 test('text-entry elements are recognized', () => {
   assert.equal(isTextEntryTarget({ tagName: 'INPUT' }), true);
@@ -59,4 +59,31 @@ test('nearest crew wins; empty/absent crew lists never snap', () => {
   assert.equal(crewTileNear({ crew: [] }, null, cam, 100, 100), null);
   assert.equal(crewTileNear(null, null, cam, 100, 100), null);
   assert.equal(crewTileNear({}, null, cam, 100, 100), null);
+});
+
+// ---------------- armed palette tool → wire order (E0-3) ----------------
+// The mouse-click and Enter-key paths both lower an armed tool through paletteOrder, so this is
+// the single point where "which verb does this tool send" is decided — and therefore the single
+// point worth pinning. Routing an order tool through Cmd.build would hand a designation to
+// BuildSystem, which has no idea what one is: a silent no-op the player would read as a dead UI.
+
+test('paletteOrder: build kinds lower to Cmd.build at the clicked tile', () => {
+  assert.deepEqual(paletteOrder('wall', 4, 9), { cmd: 'build', kind: 'wall', x: 4, y: 9, material: 0 });
+  assert.deepEqual(paletteOrder('door', 0, 0), { cmd: 'build', kind: 'door', x: 0, y: 0, material: 0 });
+  assert.deepEqual(paletteOrder('cancel', 7, 2), { cmd: 'build', kind: 'cancel', x: 7, y: 2, material: 0 });
+});
+
+test('paletteOrder: dig and stockpile lower to their OWN verbs, marking (never clearing)', () => {
+  assert.deepEqual(paletteOrder('dig', 58, 7), { cmd: 'dig', x: 58, y: 7, on: 1 });
+  assert.deepEqual(paletteOrder('stockpile', 12, 5), { cmd: 'stockpile', x: 12, y: 5, on: 1 });
+  // A palette click always MARKS; clearing is the CANCEL tool's job, not a hidden toggle. If this
+  // ever became a toggle, a sweep across mixed tiles would flip some on and some off.
+  assert.equal(paletteOrder('dig', 1, 1).on, 1);
+  assert.equal(paletteOrder('stockpile', 1, 1).on, 1);
+});
+
+test('paletteOrder: MOVE and an empty slot own no tile order (their branches handle them)', () => {
+  for (const t of ['move', null, undefined, '', 'nonsense', 'bunk']) {
+    assert.equal(paletteOrder(t, 3, 3), null, String(t) + ' must not lower to a tile order');
+  }
 });

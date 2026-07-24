@@ -60,6 +60,13 @@ export const Cmd = {
   // the host records it on the built tile. Legality is decided sim-side at the tick boundary — the
   // client never ghosts an outcome. Existing 3-arg callers get material 0.
   build: (kind, x, y, material = 0) => ({ cmd: 'build', kind, x, y, material: material | 0 }),
+  // E0-3 order verbs: mark (on=true) or clear (on=false) a dig target / stockpile zone at a tile on
+  // the current deck. `on` is explicit rather than a toggle so a drag-sweep is idempotent and the
+  // client never has to guess the tile's current flag. Legality is the sim's call at the tick
+  // boundary (dig marks Debris walls only; stockpile zones walkable tiles only) — an illegal order
+  // is a silent no-op, and the player sees it land when the tile recolours in the next frame.
+  dig: (x, y, on = true) => ({ cmd: 'dig', x, y, on: on ? 1 : 0 }),
+  stockpile: (x, y, on = true) => ({ cmd: 'stockpile', x, y, on: on ? 1 : 0 }),
   // Room Zoom decorate palette: place a functional furniture device (kind is the palette tool
   // string bunk/desk/chair/locker/plant/lamp/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never

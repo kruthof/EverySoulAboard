@@ -269,6 +269,9 @@ namespace Perilune.Sim
                     c.Archetype = reader.ReadByte();
                 }
                 if (version >= 6) c.HoldPosition = reader.ReadBoolean();
+                // v7: pre-v7 saves predate player-order precedence — no order was in flight when
+                // they were written, so false (the default) is the correct read, not a guess.
+                if (version >= 7) c.OrderedMove = reader.ReadBoolean();
                 sim.Citizens.Add(c, id);
             }
         }

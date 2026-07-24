@@ -44,6 +44,7 @@ namespace Perilune.Sim
                     if (!IsStepStillValid(sim, next))
                     {
                         citizen.ClearPath(); // blocked (door closed etc.) — re-decide next tick
+                        citizen.OrderedMove = false; // E0-3: a dead-ended order releases its claim
                         citizen.IdleCooldown = 1;
                         continue;
                     }
@@ -51,7 +52,13 @@ namespace Perilune.Sim
                     citizen.Pos = next;
                     citizen.PathIndex++;
                     citizen.MoveCooldown = ticksPerTile;
-                    if (!citizen.HasPath) citizen.IdleCooldown = idleTicksBetweenWanders;
+                    if (!citizen.HasPath)
+                    {
+                        citizen.IdleCooldown = idleTicksBetweenWanders;
+                        // E0-3: arrival ends the order. From here the crew member is recruitable
+                        // again — the order bought them the walk, not permanent idleness.
+                        citizen.OrderedMove = false;
+                    }
                 }
                 else
                 {

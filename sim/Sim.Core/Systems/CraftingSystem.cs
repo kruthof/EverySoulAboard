@@ -461,7 +461,7 @@ namespace Perilune.Sim
             for (int i = 0; i < citizens.Count; i++)
             {
                 var c = citizens[i];
-                if (!c.IsIdleForWork) continue;
+                if (!c.IsRecruitableForWork) continue;
                 int d = Int3.Manhattan(c.Pos, target);
                 if (d < bestDist)
                 {

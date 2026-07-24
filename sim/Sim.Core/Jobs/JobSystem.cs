@@ -133,7 +133,7 @@ namespace Perilune.Sim
                 var citizen = citizens[i];
                 if (citizen.JobKind == JobKind.None)
                 {
-                    if (citizen.IsIdleForWork) TryAssign(sim, citizen); // held citizens never self-assign
+                    if (citizen.IsRecruitableForWork) TryAssign(sim, citizen); // held + player-ordered crew never self-assign
                     continue;
                 }
                 // THREE different things land on a null owner, and only one of them is fine:

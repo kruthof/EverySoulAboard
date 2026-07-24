@@ -60,6 +60,16 @@ namespace Perilune.Glyph
                         else { glyph = Glyphs.Void; fg = GlyphColor.Void; }
                     }
 
+                    // Player designations recolour the terrain they sit on (E0-3). Both ids were
+                    // reserved in GlyphColor from the start with no emitter; this is that emitter.
+                    // Dig outranks stockpile: DesignateDigCommand only marks Debris walls and
+                    // DesignateStockpileCommand only marks walkable tiles, so the two flags cannot
+                    // legally coexist — but a stale flag left by an older save must still resolve
+                    // to exactly one colour, so the order is stated rather than assumed.
+                    byte flags = level.Flags[i];
+                    if ((flags & (byte)TileFlags.Designated) != 0) fg = GlyphColor.Designate;
+                    else if ((flags & (byte)TileFlags.Stockpile) != 0) fg = GlyphColor.Stockpile;
+
                     GlyphColor bg = LensBackground(sim, lens, rooms, level.RoomId[i]);
                     dst[x, y] = new GlyphCell(glyph, fg, bg);
                 }

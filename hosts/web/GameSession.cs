@@ -244,6 +244,8 @@ namespace Perilune.Web
                 case CmdKind.Speed: ChangeSpeed(cmd.I); return true;
                 case CmdKind.Pause: TogglePause(); return true;
                 case CmdKind.Build: HandleBuild(cmd); return true;
+                case CmdKind.Dig: HandleDesignate(cmd, dig: true); return true;
+                case CmdKind.Stockpile: HandleDesignate(cmd, dig: false); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
@@ -607,6 +609,36 @@ namespace Perilune.Web
                     break;
                 default:
                     break; // unknown kind — ignored
+            }
+        }
+
+        /// <summary>
+        /// The order bridge (E0-3): dig designations and stockpile zones at the clicked tile on the
+        /// CURRENT deck. Closes the designation half of MECHANICS §13.6 — until now
+        /// <see cref="DesignateDigCommand"/> was issued from the TUI alone, so the shipping client
+        /// could never create demand for the labour pool E0-1 unlocked, and the LLM's AgreeTask verb
+        /// stayed dead for want of a designated debris tile.
+        ///
+        /// Like HandleBuild, this only ever promises the ATTEMPT: both commands carry their own
+        /// preconditions (dig marks Debris walls only; stockpile zones walkable tiles only) and an
+        /// illegal request is a silent sim no-op decided deterministically at the next tick boundary.
+        /// The status line therefore names the order, never the outcome — the player learns it landed
+        /// by seeing the tile recolour in the next frame (GlyphColor.Designate / .Stockpile).
+        /// </summary>
+        private void HandleDesignate(WebCommand cmd, bool dig)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
+            bool on = cmd.I != 0;
+            if (dig)
+            {
+                _sim.EnqueueCommand(new DesignateDigCommand(pos, on));
+                _status = on ? "designate dig" : "clear dig";
+            }
+            else
+            {
+                _sim.EnqueueCommand(new DesignateStockpileCommand(pos, on));
+                _status = on ? "zone stockpile" : "clear stockpile";
             }
         }
 
@@ -1509,7 +1541,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1558,6 +1590,12 @@ namespace Perilune.Web
                     // designate/cancel a build at a tile on the current deck (see HandleBuild). The
                     // material byte (0 = default) rides on `i`; it is ignored for door/cancel.
                     case "build": return new WebCommand(CmdKind.Build, Int(json, "x"), Int(json, "y"), i: Int(json, "material"), name: Str(json, "kind"));
+                    // E0-3 order verbs: mark/unmark a dig target or a stockpile zone at a tile on
+                    // the current deck. `on` is EXPLICIT (1 = mark, 0 = clear) rather than a
+                    // host-side read of world state, so a drag-sweep is idempotent and the host
+                    // never races the sim over what the tile's flag currently is.
+                    case "dig": return new WebCommand(CmdKind.Dig, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
+                    case "stockpile": return new WebCommand(CmdKind.Stockpile, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
                     // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));

@@ -1,6 +1,69 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **E0-2 work-rate rebase** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
 
-## E0-2 — work-rate rebase + movement retune + crew-safety guard: LANDED on `main` (2026-07-23), START HERE for the economy
+## E0-3 — player verbs (dig + stockpile) + order precedence: on `lane/e0-3-verbs` (2026-07-23), START HERE
+
+**Three commits on `lane/e0-3-verbs`.** Plan: `docs/design/perilune-e0-3-verbs.plan.md`.
+**Gate: `./ci.sh` exit 0, 846 dotnet + 483 node green, and NO pin moved** — scenario
+`85ac8c44233284e9` (twins match), tick-3000 `9b834cffc232ce7f`, slice `8c6b2544fac36d63`, defs
+`e56d33a2e46b5644`, all held. Projection is pure, and the one new hash-fold bit contributes 0 on
+every pinned ship (no crew carries an order in flight), so the citizen flag word stays bit-identical.
+
+**Surface decision (Garvin): the LEGACY CONSOLE, not the AAA Overview.** Surveyed before briefing,
+as E0-2's handover asked. The Overview is `SlotGrid`-driven and the code says so itself —
+`GameSession.cs:1150` *"Empty on ships with no slot grid (Perilune/PeriluneSlice)"*,
+`overview-view.js:15` *"an empty `decks` (e.g. --ship slice) never shows the [Overview]"*. The ship
+carrying the debris, the 8 crew and the `ClearAllDebris` goal is **`--ship slice`**, which plays on
+the legacy console canvas; `--ship grid` has the modern face but nothing to dig. `overview-model.js:51`
+also states the rule *"BUILDING IS ZOOM-ONLY … there is NO 'build' action here"* — the Overview is a
+schematic on purpose. **An Overview ORDERS layer is a live follow-up**, and it needs three things
+this lane did not do: debris authored into the grid ship, a designation wire channel (the frame's
+raw `GlyphColor` bytes only serve the legacy canvas), and a decision to break the schematic rule.
+
+**`strip` was NOT in scope** — no `JobKind.Strip` or deconstruct system exists and **E0-5** already
+owns that brief (50 % wall recovery, `Parts × condition`, never the pressure hull).
+
+**What landed:**
+1. **The two verbs** — `dig` / `stockpile` in the web parser → the existing `DesignateDigCommand` /
+   `DesignateStockpileCommand`. The `on` flag is EXPLICIT rather than a host-side read of world
+   state, so a sweep is idempotent and the host never races the sim. ⛏ DIG / ▤ STOCKPILE palette
+   buttons, keys **G** and **Z** (`Z` not `H` — lowercase `h` is already vim cursor-left, so that
+   binding would have been silently dead). `GlyphColor.Designate` (15) and `.Stockpile` (16) get
+   their FIRST emitter in `GlyphMapper.Project`; the client palette has carried both colours since
+   it was written, so **no wire-format, enum or palette change was needed**.
+2. **Order precedence** (the E0-1 revisit) — hashed `Citizen.OrderedMove` (CITZ v6→v7, folded as
+   flag-word bit 4) + `IsRecruitableForWork` = `IsIdleForWork && !(OrderedMove && HasPath)`, guarding
+   the three WORK recruiters. `SustenanceSystem` deliberately still uses `IsIdleForWork`: **an order
+   suppresses work, never survival**. The `&& HasPath` term is load-bearing — self-serve and flee
+   overwrite the path wholesale, and a bare flag surviving that would strand a crew member
+   permanently unrecruitable.
+
+**⚠️ A stale measurement was corrected — read this before quoting `§13.6`.** Writing the acceptance
+tests against the *real* slice showed **part of the briefed gap had already closed**. `§13.6`'s
+"48 debris tiles, **0 designated**", `digTargets = 0` and "`AgreeTask` is dead code" stopped being
+true at commit `5e2bd41` (2026-07-21): the slice **authors** its dig seed
+(`DesignateDebrisRect(plan, 57, 6, 62, 13, z: 0)` → `ShipPlanBuilder.cs:63`). Re-measured
+(`SliceDigLoopTests`): **48 debris, 48 designated, 0 stockpile**; `AgreeTask` **legal at boot**.
+
+| briefed as | actually |
+|---|---|
+| dig verb unblocks `JobKind.Dig` | already reachable via the authored seed; **E0-1** made it get worked |
+| dig verb unblocks `AgreeTask` | already legal since `5e2bd41` |
+| dig verb's real value | designating work the **author did not place** — the slice post-seed, and **every generated ship**, which authors none |
+| stockpile verb unblocks haul | **correct — the unqualified win.** Nothing anywhere authors a stockpile, so `HaulJobSource` could never build a haul candidate in ANY shipped configuration |
+
+`docs/MECHANICS.md` §13.6 is rewritten to match, keeping the correction visible. **The first
+commit's message repeats the stale claim** — it was written before the re-measurement; the third
+commit corrects the record.
+
+**Next: E0-4** (filtered stockpile zones as a registry with its own save chapter — NEVER in
+`TileFlags`, one bit left and `TILE` is exact-version-gated), then E0-5 deconstruct/strip, E0-6
+conversion loss, E0-7 ice→water, E0-8 the ledger + A1. **Job occupancy has NOT been re-measured
+post-E0-1/2/3** — `§13.6`'s `None 99.92 %` is pre-E0-1 and must not be quoted as current; that
+measurement belongs to E0-8/A1 along with tuning `wander_radius_tiles` (still 8, untuned).
+
+---
+
+## E0-2 — work-rate rebase + movement retune + crew-safety guard: LANDED on `main` (2026-07-23)
 
 **E0-2 is on `main`** (`39702a3`, merged `--no-ff` from `lane/e0-2-work-rate`; three legible
 commits `9c43f12` retunes · `accef26` guard · `bc006ef` durable Flee save/load test).

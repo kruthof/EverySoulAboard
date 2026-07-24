@@ -71,7 +71,12 @@ namespace Perilune.Sim
             sim.CancelJob(citizen);
             citizen.AutoWander = false;
             citizen.ClearPath();
-            if (sim.Paths.FindPath(sim, citizen.Pos, _target, citizen.Path))
+            // E0-3: the order OWNS the citizen until it completes — no auto-work may hijack it
+            // mid-walk (see Citizen.IsRecruitableForWork). Set only on a route that actually
+            // exists: an unreachable target leaves the citizen plainly idle and recruitable, not
+            // silently locked out of work by an order that never started.
+            citizen.OrderedMove = sim.Paths.FindPath(sim, citizen.Pos, _target, citizen.Path);
+            if (citizen.OrderedMove)
                 citizen.StartPath(sim.Defs.Citizen.TicksPerTile);
         }
     }

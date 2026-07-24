@@ -1383,44 +1383,63 @@ pipeline JSON). All four are prose or display. **No sim system consults a role.*
 Amara Okonkwo's `RoleNow = "life-support lead"` (`Sim.Gen/AuthoredShips.cs:354`) does not
 make her more likely to maintain a scrubber, reach one first, or be told about one.
 
-### 13.6 On the shipping slice, three whole `JobKind`s are unreachable — including `AgreeTask`
+### 13.6 The player verbs — CLOSED by E0-3, and an earlier measurement here was stale
 
-`TileFlags.Designated` is set by exactly one writer in the entire repo:
-`DesignateDigCommand` (`Commands/Commands.cs:112`). That command is issued from exactly one
-place: the **TUI** (`hosts/tui/GameLoop.cs:304`). The web host's command parser
-(`hosts/web/GameSession.cs:797-820`) exposes `cursor/click/move/deck/lens/speed/pause/
-build(wall|door|cancel)/talk/say/bye/chron/bio/moss` — **no dig verb and no stockpile
-verb.**
+**Status: closed (E0-3, 2026-07-23).** This section previously claimed that three `JobKind`s
+were unreachable on the slice and that `AgreeTask` was dead code. Re-measured during E0-3,
+**part of that was already false when it was written** — the correction is recorded here
+rather than quietly deleted, because the stale numbers were cited in several later plans.
 
-Measured on the slice at boot and throughout a 1-day run: **48 debris tiles, 0 designated,
-0 stockpile tiles.** Consequences:
+**What was true, and is now fixed.** `TileFlags.Designated` had exactly one writer
+(`DesignateDigCommand`) issued from exactly one place, the **TUI**
+(`hosts/tui/GameLoop.cs:293`). The web host's parser exposed no dig verb and no stockpile
+verb. **E0-3 adds both** (`dig` / `stockpile` in `hosts/web/GameSession.cs`, driving the
+existing commands; ⛏ DIG and ▤ STOCKPILE on the console palette, keys `G` and `Z`), and
+gives the two long-reserved `GlyphColor` ids — `Designate` (15) and `Stockpile` (16) — their
+first emitter in `GlyphMapper.Project`, so a designation is finally *visible*.
 
-- `JobKind.Dig` can never be assigned from the shipping client.
-- `JobKind.HaulPickup`/`HaulDeliver` can never be assigned either — `Rescan` builds haul
-  candidates only when a free stockpile tile exists (`JobSystem.cs:153-176`), and there are
-  none.
-- **`AgreeTask` is dead code**: `CapabilityComputer.FillDigTargets` needs a designated
-  debris tile (`:97-98`), so the manifest never includes it. Measured manifest for a slice
-  crew member: `legal = SetDisposition, SetEmotionalState, RevealInfo, FollowPlayer,
-  EndConversation`, `digTargets = 0`. The single richest LLM verb — the one that lets a
-  conversation change the world — cannot fire in the shipped configuration.
-- The `ClearAllDebris` goal on the slice (`AuthoredShips.cs:195`, *"Clear the aft
-  debris"*) is therefore uncompletable from the web client.
+**What was stale.** "48 debris tiles, **0 designated**" and "`digTargets = 0`, `AgreeTask`
+is dead code" no longer described the shipping slice, and had not since commit `5e2bd41`
+("restore the slice's work economy", 2026-07-21). `AuthoredShips.PeriluneSlice` calls
+`DesignateDebrisRect(plan, 57, 6, 62, 13, z: 0)` and `ShipPlanBuilder.cs:63` applies
+`plan.DigDesignations` as real `TileFlags.Designated` at boot. Re-measured on the shipping
+slice (`SliceDigLoopTests`): **48 debris tiles, 48 designated, 0 stockpile tiles**;
+`digTargets > 0` and **`AgreeTask` is legal** for idle crew at boot. The `ClearAllDebris`
+goal is likewise completable — E0-1 is what made the authored seed actually get *worked*.
 
-Measured job occupancy over 3 sim-days, all 8 crew: `None 99.92 %`, `Maintain 0.03 %`,
-`Drink 0.02 %`, `Eat 0.01 %`, `Craft 0.01 %`, everything else **0.00 %** (measured pre-E0-1).
+So the honest accounting of what each lane bought:
 
-**E0-1 (recruitability, L0) fixed the recruiter half of this, not the designation half.**
-Two distinct things kept the labour pool near zero: (a) `IsIdleForWork` excluded any crew
-mid-wander, so even when work existed the effective pool collapsed toward ~1.43 of 8; and
-(b) the web client exposes no dig/stockpile verb, so no work is ever *designated* from the
-shipping client. E0-1 removes (a) — a wandering crew member is now recruited straight off a
-wander (§5.1), demonstrated by the re-recorded slice assignment pin in `JobDispatchTests`
-where all eight crew take work at tick 1 once a designation exists. **(b) is untouched and
-remains the live gap**: with no dig/stockpile verb in `GameSession.cs`, the shipping client
-still cannot create the demand that would put the enlarged pool to work, and `AgreeTask`
-stays dead. Also left for later: the `wander_radius_tiles` default (8) is UNTUNED pending
-the A1 "crew are >25 % busy at sim-hour 24" measurement (§5.4).
+| claim | reality |
+|---|---|
+| `JobKind.Dig` unreachable | **was already reachable** via the authored seed; E0-1 made it get worked |
+| `AgreeTask` dead code | **was already legal** on the slice since `5e2bd41` |
+| `HaulPickup`/`HaulDeliver` unreachable | **TRUE and closed by E0-3** — see below |
+| no player dig/stockpile verb | **TRUE and closed by E0-3** |
+
+**The haul half was the real gap, and it is the unqualified E0-3 win.** `HaulJobSource`
+builds haul candidates only when a *free stockpile tile* exists, and **nothing anywhere
+authors a stockpile** — 0 zoned tiles on the slice, on the default ship, and on every
+generated ship. `HaulPickup`/`HaulDeliver` genuinely could not be assigned in any shipped
+configuration until a player could zone one. E0-3's stockpile verb is that capability.
+
+**What the dig verb genuinely adds**, now that the `AgreeTask` framing is corrected: the
+player can designate work the *author* did not pre-place. That matters on the slice once the
+authored aft seed is dug out, and on **every generated ship**, which authors no designations
+at all. Pinned in `SliceDigLoopTests.WithTheAuthoredSeedCleared_OnlyAPlayerOrderCanCreateDigWork`.
+
+**Player-order precedence (the E0-1 revisit, also E0-3).** E0-1's relaxed `IsIdleForWork`
+made an explicit `MoveCitizenCommand` hijackable by auto-work mid-walk — latent only because
+no web verb could create work. New hashed `Citizen.OrderedMove` + `IsRecruitableForWork`
+(`IsIdleForWork && !(OrderedMove && HasPath)`) now guard the three **work** recruiters
+(`JobSystem`, `CraftingSystem`, `MachineWearSystem`). `SustenanceSystem` deliberately keeps
+using `IsIdleForWork`: an order suppresses **work**, never **survival** — a crew member
+crossing a real thirst/hunger threshold mid-order still diverts, exactly as E0-2's
+`SafetySystem` still lets them flee lethal air. See §5.1.
+
+Still open: job occupancy has **not** been re-measured post-E0-1/E0-2/E0-3 (the last figure,
+`None 99.92 %` over 3 sim-days, is **pre-E0-1** and should not be quoted as current), and the
+`wander_radius_tiles` default (8) is UNTUNED pending the A1 "crew are >25 % busy at sim-hour
+24" measurement (§5.4). Both belong to E0-8 + A1.
 
 ### 13.7 The social graph saturates in a single day
 
