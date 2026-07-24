@@ -1400,8 +1400,19 @@ namespace Perilune.Web
                     AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
                 case JobKind.Deconstruct:
-                    sb.Append(enRoute ? "Heading to strip the wall at " : "Stripping the wall at ");
-                    AppendTile(sb, c.JobTarget, c.Pos.Z); // E0-5: build's inverse
+                    // E0-5: build's inverse. One JobKind, two targets — the tile tells them apart,
+                    // because a device site always has a device standing on it and a wall site
+                    // never does. Saying "the wall" over a scrubber was a lie WP-2 had to fix.
+                    if (_sim.TryGetDeviceAt(c.JobTarget, out _))
+                    {
+                        sb.Append(enRoute ? "Heading to strip " : "Stripping ")
+                          .Append(DeviceLabel(c.JobTarget, "a machine")).Append(' ');
+                    }
+                    else
+                    {
+                        sb.Append(enRoute ? "Heading to strip the wall at " : "Stripping the wall at ");
+                    }
+                    AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
                 case JobKind.Flee:
                     sb.Append("Heading to safe air"); // E0-2 crew-safety: fleeing unbreathable air

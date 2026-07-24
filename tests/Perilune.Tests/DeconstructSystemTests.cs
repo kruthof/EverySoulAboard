@@ -12,23 +12,29 @@ using NUnit.Framework;
 namespace Perilune.Tests
 {
     /// <summary>
-    /// E0-5 WP-1 — DECONSTRUCT, walls only. <see cref="BuildSystem"/>'s mirror: the designate →
-    /// walk → tear-down loop, the pressure-hull guardrail measured ON THE REAL SLICE, the bulkhead
-    /// consequence (rooms MERGE and re-equalise), the STRP save chapter, hash honesty over every
-    /// new folded field, flee pre-emption, twin determinism, zero-alloc steady state over a
-    /// POPULATED board, and the deconstruct.def consumption tripwires.
+    /// E0-5 — DECONSTRUCT. <see cref="BuildSystem"/>'s mirror: the designate → walk → tear-down
+    /// loop, the pressure-hull guardrail measured ON THE REAL SLICE, the bulkhead consequence
+    /// (rooms MERGE and re-equalise), the STRP save chapter, hash honesty over every folded field,
+    /// flee pre-emption, twin determinism, zero-alloc steady state over a POPULATED board, and the
+    /// deconstruct.def consumption tripwires.
+    ///
+    /// WP-2 adds DEVICE STRIP below the "device strip" banner: legality (any kind but a Door), the
+    /// <c>floor(device_parts × Condition)</c> yield, validate-on-arrival, the liveness reap that
+    /// fixes WP-1's zombie-site leak, the Chronicle trace, and the MOSS consequence
+    /// (<c>ECONOMY.md</c> §9.3) exercised as a FEATURE.
     ///
     /// LINQ is used freely here — it is a TEST; the no-LINQ rule governs tick paths under sim/.
     ///
     /// LIMITS OF THIS FILE, stated so a reviewer does not read more into it than it proves:
-    ///  * WALLS ONLY. <see cref="DeconstructKind.Device"/> is pinned as REJECTED, nothing more;
-    ///    WP-2 owns its behaviour.
     ///  * The hull predicate is measured on the two AUTHORED decks, which contain no
     ///    <see cref="TileDefs.Void"/> tile at all — so the "adjacent to vacuum" leg is exercised
     ///    on a synthetic map, and the slice measurement pins the (surprising, real) fact that on
     ///    that ship the predicate reduces to the map-edge ring.
     ///  * No test here runs a full sim-day; the conservation ledger over 3 sim-days is WP-4's
     ///    harness, because nothing designates without the <c>--strip</c> flag it ships.
+    ///  * <see cref="DeviceKind.Conduit"/> / <see cref="DeviceKind.Pipe"/> are pinned as
+    ///    UN-STRIPPABLE, which is a consequence of the device grid excluding utility overlays, not
+    ///    a designed rule. If overlays ever become tile-addressable this file must be revisited.
     /// </summary>
     public class DeconstructSystemTests
     {
@@ -212,12 +218,16 @@ namespace Perilune.Tests
         // ============================================================== designation rules
 
         /// <summary>
-        /// Every rejection leg of <see cref="DeconstructSystem.CanDesignate"/>, in its documented
-        /// order, plus the WP-2 marker: <see cref="DeconstructKind.Device"/> is DECLARED and
-        /// REJECTED, so a save can never carry a Device entry no source knows how to finish.
+        /// Every rejection leg of <see cref="DeconstructSystem.CanDesignate"/>'s WALL path, in its
+        /// documented order, plus the cross-kind rule WP-2 makes load-bearing: a
+        /// <see cref="DeconstructKind.Device"/> designation on a tile with NO DEVICE on it is
+        /// refused, so the two kinds can never claim each other's targets. (The device path's own
+        /// legality — any kind but a Door — is
+        /// <see cref="Designate_AcceptsEveryGridDeviceKindExceptDoor_AndResolvesTargetIdFromTheTile"/>.)
         ///
-        /// MUTATION: delete <c>if (kind != DeconstructKind.Wall) return false;</c> → the Device
-        /// assertion fails (a Device entry would be accepted on any wall tile). Delete the
+        /// MUTATION: delete <c>if (!sim.TryGetDeviceAt(pos, out var device)) return false;</c> from
+        /// the Device branch → a Device entry is accepted on a bare wall tile, the Device assertion
+        /// fails, and the registry acquires a site whose target never existed. Delete the
         /// <c>GetWall(pos) != TileDefs.Wall</c> guard → the debris assertion fails, and dig's verb
         /// silently acquires a second owner.
         /// </summary>
@@ -244,9 +254,12 @@ namespace Perilune.Tests
             Assert.That(strip.Designate(sim, new Int3(0, 0, 0), DeconstructKind.Wall), Is.False,
                 "the outer ring is hull");
 
-            // WP-2 marker: the enum member ships, the behaviour does not.
+            // The two kinds never claim each other's targets: a Device designation needs a DEVICE.
+            Assert.That(sim.TryGetDeviceAt(interior, out _), Is.False, "precondition: bare wall tile");
             Assert.That(strip.Designate(sim, interior, DeconstructKind.Device), Is.False,
-                "DeconstructKind.Device is declared but rejected until E0-5 WP-2");
+                "a Device designation on a tile with no device on it is nothing to tear down");
+            Assert.That(strip.Designate(sim, new Int3(1, 1, 0), DeconstructKind.Device), Is.False,
+                "…and an empty floor tile is no different");
             Assert.That(strip.Pending, Is.Empty);
 
             Assert.That(strip.Designate(sim, interior, DeconstructKind.Wall), Is.True, "valid interior wall");
@@ -255,7 +268,12 @@ namespace Perilune.Tests
 
             // Cancel is pure forgetting — a deconstruct stages nothing, so nothing is refunded.
             int itemsBefore = sim.Items.Items.Count;
+            sim.JobsDirty = JobBoardDirty.None;
             Assert.That(strip.Cancel(sim, interior), Is.True);
+            // MUTATION: delete `sim.JobsDirty |= JobBoardDirty.Sites;` from Cancel → the strip
+            // board keeps offering a site the player just revoked until something else dirties it.
+            Assert.That(sim.JobsDirty & JobBoardDirty.Sites, Is.Not.EqualTo(JobBoardDirty.None),
+                "a cancelled site must re-dirty the SITES axis, or the board keeps offering it");
             Assert.That(strip.Pending, Is.Empty);
             Assert.That(sim.Items.Items.Count, Is.EqualTo(itemsBefore),
                 "cancelling a deconstruct must not conjure a refund — nothing was ever staged");
@@ -335,8 +353,15 @@ namespace Perilune.Tests
 
             // Strip the partition through the system's own completion path (no world poking).
             Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
+            Assert.That(sim.PowerDirty, Is.False,
+                "precondition: PowerSystem settled the networks on the tick above");
             Assert.That(strip.Complete(sim, Partition, 0u), Is.True);
             Assert.That(sim.World.GetWall(Partition), Is.EqualTo(0), "the bulkhead is gone");
+            // Opening a wall changes what a conduit network can REACH, so the strip must re-dirty
+            // power. Unpinned in WP-1 and the one of the reviewer's three probes with a real
+            // consequence. MUTATION: delete `sim.PowerDirty = true;` from Complete → this fails.
+            Assert.That(sim.PowerDirty, Is.True,
+                "a wall that opens changes conduit reachability — PowerSystem must rebuild");
 
             for (int t = 0; t < 200; t++) sim.Tick(); // reflood + atmosphere settle
 
@@ -532,21 +557,29 @@ namespace Perilune.Tests
         /// <summary>
         /// The STRP chapter round-trips a POPULATED pending list (never an empty one — an empty
         /// blob round-trips trivially and proves nothing), and the loaded sim hashes bit-equal.
+        /// The list carries BOTH kinds, so the device row exercises the one field a wall-only list
+        /// leaves at zero for free: a non-zero <see cref="PendingDeconstruct.TargetId"/>.
         ///
         /// MUTATION: delete <c>writer.Write(s.TargetId);</c> from
         /// <see cref="DeconstructSystem.CaptureState"/> → RestoreState reads the next entry's X as
         /// a TargetId, the whole list desyncs, and both the count and the hash assertions fail.
+        /// (Before WP-2 every shipped TargetId was 0, so this mutation cost only the desync; the
+        /// device row makes the VALUE itself load-bearing.)
         /// </summary>
         [Test]
-        public void StrpChapter_RoundTripsAPopulatedPendingList_BitExactly()
+        public void StrpChapter_RoundTripsAPopulatedPendingList_OfBothKinds_BitExactly()
         {
             var map = new[] { "########", "#......#", "#.#.#..#", "#......#", "#.#....#", "########" };
             var sim = NewSim(map, 5, out var strip);
             sim.Tick();
+            var device = sim.AddDevice(DeviceKind.WaterTank, new Int3(5, 1, 0), "tank_a");
             Assert.That(strip.Designate(sim, new Int3(4, 2, 0), DeconstructKind.Wall), Is.True);
             Assert.That(strip.Designate(sim, new Int3(2, 4, 0), DeconstructKind.Wall), Is.True);
             Assert.That(strip.Designate(sim, new Int3(2, 2, 0), DeconstructKind.Wall), Is.True);
-            Assert.That(strip.Pending, Has.Count.EqualTo(3), "precondition: a POPULATED list");
+            Assert.That(strip.Designate(sim, new Int3(5, 1, 0), DeconstructKind.Device), Is.True);
+            Assert.That(strip.Pending, Has.Count.EqualTo(4), "precondition: a POPULATED list");
+            Assert.That(strip.Pending.Any(s => s.TargetId != 0), Is.True,
+                "precondition: at least one entry carries a NON-ZERO TargetId, or the field is free");
 
             var ms = new MemoryStream();
             SaveWriter.Write(sim, ms);
@@ -555,8 +588,10 @@ namespace Perilune.Tests
 
             Assert.That(loaded.StateHash(), Is.EqualTo(sim.StateHash()),
                 "the STRP chapter must round-trip every field the checksum folds");
-            Assert.That(loadedStrip.Pending, Has.Count.EqualTo(3));
-            for (int i = 0; i < 3; i++)
+            Assert.That(loadedStrip.Pending, Has.Count.EqualTo(4));
+            Assert.That(loadedStrip.Pending.First(s => s.Kind == DeconstructKind.Device).TargetId,
+                Is.EqualTo(device.Id), "the device site's target survived the round trip by VALUE");
+            for (int i = 0; i < 4; i++)
             {
                 Assert.That(loadedStrip.Pending[i].Pos, Is.EqualTo(strip.Pending[i].Pos),
                     "and in the SAME canonical packed-position order");
@@ -767,9 +802,34 @@ namespace Perilune.Tests
         /// Twin determinism with live strip work: two identical sims, one crew member, one
         /// designation, compared every 250 ticks across the completion.
         ///
-        /// MUTATION: make <c>DeconstructJobSource.Select</c> iterate <c>_retryAt</c> (a Dictionary)
-        /// instead of probing it → enumeration order is not part of the sim's contract and the
-        /// twins diverge. (Also the exact bug class the no-foreach-over-Dictionary rule exists for.)
+        /// MUTATION (applied, observed failing, reverted): in <c>DeconstructJobSource</c>, change
+        /// <c>private bool _stripResolved;</c> to <c>private static bool _stripResolved;</c> — the
+        /// accidental-static bug class, ONE KEYWORD, on <c>BeginTick</c>, which runs every tick of
+        /// every sim. The twins then share the "have I found my DeconstructSystem yet" latch: x
+        /// resolves first and sets it, y reads it as already-done and keeps a null registry, so y
+        /// never offers the job, never tears the wall down, and the hashes part company.
+        /// (<c>private static DeconstructSystem _strip;</c> reddens it the same way, for the
+        /// symmetric reason — y's source ends up driving x's registry.)
+        ///
+        /// TWO MUTATIONS THAT DO NOT REDDEN IT, measured, so nobody re-proposes them: making
+        /// <c>_tried</c> or <c>_assigned</c> static. Both are rebuilt or written only on paths this
+        /// scenario never takes — the single partition is claimed on the first attempt, so nothing
+        /// is ever stamped as refused, and <c>_assigned</c> is cleared and refilled by each sim's
+        /// own Rescan before it is read.
+        ///
+        /// HONESTLY STATED LIMIT — WP-1's doc comment named a mutation that CANNOT fail this test,
+        /// and a reviewer measured it three ways. It claimed "make <c>Select</c> iterate
+        /// <c>_retryAt</c> instead of probing it". Two independent faithful readings of that
+        /// mutation passed, and instrumenting <c>Select</c> to THROW whenever
+        /// <c>_retryAt.Count > 0</c> also passed: <c>_retryAt</c> is empty for this entire run,
+        /// because the single partition is reachable on the first claim, so the named path never
+        /// executes at all. More generally, a twin test cannot catch Dictionary/HashSet iteration
+        /// order in .NET — two identically-constructed dictionaries fed identical insertions
+        /// enumerate identically, so BOTH twins would take the same wrong order and still agree.
+        /// The no-foreach-over-Dictionary rule is an integrator grep, not something this shape can
+        /// enforce. What this test genuinely catches is state that is shared or non-reproducible
+        /// ACROSS sim instances — statics, wall-clock, ambient RNG — which is what the mutation
+        /// above injects.
         /// </summary>
         [Test]
         public void TwinRuns_WithALiveStripJob_StayHashIdentical()
@@ -854,6 +914,10 @@ namespace Perilune.Tests
         /// <c>SimDefs.ComputeChecksum</c> → the checksum-moved assertion for that field fails.
         /// Hard-code <c>WorkTicks = 1200</c> in <c>DeconstructSystem.Designate</c> → the
         /// wall_work_ticks tripwire fails.
+        /// MUTATION (WP-2): delete the <c>Deconstruct.DeviceParts</c> fold → the device_parts
+        /// checksum row fails. Hard-code <c>2</c> in <see cref="DeconstructSystem.DeviceYield"/> →
+        /// the device_parts yield row fails. Drop the <c>kind == Wall ? … : …</c> ternary in
+        /// <c>Designate</c> → the device_work_ticks row fails.
         /// </summary>
         [Test]
         public void EveryDeconstructDefField_IsActuallyConsumed_AndMovesTheChecksum()
@@ -892,6 +956,31 @@ namespace Perilune.Tests
             Assert.That(strip2.Designate(sim2, new Int3(4, 2, 0), DeconstructKind.Wall), Is.False,
                 "max_staged = 1 must reject the second designation");
             Assert.That(strip2.Pending, Has.Count.EqualTo(1));
+
+            // --- WP-2's two device fields, same ritual. ---
+
+            // device_parts: the base the Condition scaling multiplies.
+            var rich = Tuned("device_parts = 7\n");
+            var probe = NewSim(TwoRooms, 3, out _, rich);
+            var machine = probe.AddDevice(DeviceKind.Fabricator, MachineTile, "fab_probe");
+            Assert.That(DeconstructSystem.DeviceYield(rich, machine), Is.EqualTo(7),
+                "DeviceYield must read sim.Defs.Deconstruct.DeviceParts, not a const");
+            machine.Condition = 0.5f;
+            Assert.That(DeconstructSystem.DeviceYield(rich, machine), Is.EqualTo(3),
+                "…and still floor(7 × 0.5) = 3, so the retune flows through the scaling too");
+
+            // device_work_ticks: def-frozen onto a DEVICE site at designate, independently of walls.
+            var slow = Tuned("device_work_ticks = 23\n");
+            var sim3 = NewSim(TwoRooms, 4, out var strip3, slow);
+            sim3.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_probe");
+            sim3.Tick();
+            Assert.That(strip3.Designate(sim3, MachineTile, DeconstructKind.Device), Is.True);
+            Assert.That(strip3.Pending[0].WorkTicks, Is.EqualTo(23),
+                "a device site freezes device_work_ticks…");
+            Assert.That(strip3.Designate(sim3, Partition, DeconstructKind.Wall), Is.True);
+            Assert.That(strip3.TryGet(Partition, out var wallSite), Is.True);
+            Assert.That(wallSite.WorkTicks, Is.EqualTo(slow.Deconstruct.WallWorkTicks),
+                "…and a wall site on the SAME sim is unaffected by it");
         }
 
         /// <summary>
@@ -982,7 +1071,565 @@ namespace Perilune.Tests
             Assert.That(crew.JobKind, Is.EqualTo(JobKind.Dig));
         }
 
+        // ========================================================= device strip (E0-5 WP-2)
+
+        /// <summary>A floor tile inside room A of <see cref="TwoRooms"/> — where the device tests
+        /// stand their machine. Room A because the two rooms have NO DOOR between them, so a
+        /// machine in room B would be genuinely unreachable and the dispatcher loop could never
+        /// close (measured: it does not).</summary>
+        private static readonly Int3 MachineTile = new Int3(3, 3, 0);
+
+        /// <summary>The device kinds a TILE-ADDRESSED verb can name: everything except the utility
+        /// overlays, which <see cref="Simulation.IsUtilityOverlay"/> keeps out of the device grid
+        /// because they share a tile with a machine.</summary>
+        private static IEnumerable<DeviceKind> GridAddressableKinds()
+        {
+            foreach (DeviceKind k in Enum.GetValues(typeof(DeviceKind)))
+                if (!Simulation.IsUtilityOverlay(k)) yield return k;
+        }
+
+        /// <summary>
+        /// THE LEGALITY RULE (lane plan §5): <b>any device is strippable EXCEPT a
+        /// <see cref="DeviceKind.Door"/></b> — walked over EVERY grid-addressable kind rather than
+        /// a sample, so a kind added later is refused-or-accepted by a rule and not by luck. Life
+        /// support (<see cref="DeviceKind.Scrubber"/>, <see cref="DeviceKind.AirVent"/>) is
+        /// deliberately INCLUDED: stripping the scrubber to make rent is the game.
+        ///
+        /// Also pins the two things <see cref="DeconstructSystem.Designate"/> resolves SIM-SIDE:
+        /// the device id (from the tile — the player clicks a tile, never an entity id) and the
+        /// kind-dependent def-frozen work budget.
+        ///
+        /// MUTATION: change <c>return device.Kind != DeviceKind.Door;</c> to <c>return true;</c> →
+        /// the Door row fails, and build's output acquires a second owner for its lifetime.
+        /// MUTATION: set <c>targetId = 0</c> in <c>Designate</c> → the TargetId row fails and every
+        /// device site becomes unfinishable. MUTATION: drop the <c>kind == Wall ? … : …</c> ternary
+        /// on <c>WorkTicks</c> → the 900-vs-1200 row fails and <c>device_work_ticks</c> is
+        /// decoration.
+        /// </summary>
+        [Test]
+        public void Designate_AcceptsEveryGridDeviceKindExceptDoor_AndResolvesTargetIdFromTheTile()
+        {
+            int accepted = 0, refused = 0;
+            foreach (var kind in GridAddressableKinds())
+            {
+                var sim = NewSim(TwoRooms, 101, out var strip);
+                sim.Tick();
+                var device = sim.AddDevice(kind, MachineTile, "unit_" + kind.ToString().ToLowerInvariant());
+                Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
+                    $"precondition: {kind} really entered the device grid");
+
+                bool ok = strip.Designate(sim, MachineTile, DeconstructKind.Device);
+                if (kind == DeviceKind.Door)
+                {
+                    Assert.That(ok, Is.False,
+                        "a Door is BuildSystem's output — its inverse is build-cancel, not strip");
+                    Assert.That(strip.Pending, Is.Empty);
+                    refused++;
+                    continue;
+                }
+
+                Assert.That(ok, Is.True, $"{kind} must be strippable — the rule is 'anything but a door'");
+                Assert.That(strip.TryGet(MachineTile, out var site), Is.True);
+                Assert.That(site.Kind, Is.EqualTo(DeconstructKind.Device));
+                Assert.That(site.TargetId, Is.EqualTo(device.Id),
+                    "the id is resolved from the TILE by the sim, not supplied by the caller");
+                Assert.That(site.WorkTicks, Is.EqualTo(SimDefs.Default.Deconstruct.DeviceWorkTicks),
+                    "a device site freezes device_work_ticks, not wall_work_ticks");
+                accepted++;
+            }
+
+            Assert.That(refused, Is.EqualTo(1), "exactly one kind is excluded, and it is the Door");
+            Assert.That(accepted, Is.EqualTo(Enum.GetValues(typeof(DeviceKind)).Length - 3),
+                "every kind except Door, Conduit and Pipe (the two overlays are not grid-addressable)");
+            Assert.That(SimDefs.Default.Deconstruct.DeviceWorkTicks,
+                Is.Not.EqualTo(SimDefs.Default.Deconstruct.WallWorkTicks),
+                "precondition on the WorkTicks row above: the two budgets must differ, or it proves nothing");
+
+            // The overlays, pinned as a CONSEQUENCE of the device grid, not as a designed rule.
+            var overlay = NewSim(TwoRooms, 102, out var oStrip);
+            overlay.Tick();
+            overlay.AddDevice(DeviceKind.Conduit, MachineTile, "conduit_b");
+            Assert.That(overlay.TryGetDeviceAt(MachineTile, out _), Is.False,
+                "utility overlays never enter the device grid (Simulation.IsUtilityOverlay)");
+            Assert.That(oStrip.Designate(overlay, MachineTile, DeconstructKind.Device), Is.False,
+                "so a tile-addressed strip cannot name a conduit — an honest limit, not a rule");
+        }
+
+        /// <summary>
+        /// End to end through the DISPATCHER: designate a scrubber, a crew member walks over,
+        /// spends <c>device_work_ticks</c>, and the machine is GONE — off the grid, off the tile
+        /// flags, out of the entity store — leaving <c>floor(device_parts × Condition)</c> Parts
+        /// where it stood.
+        ///
+        /// Named for its limits: ONE device, inside a bounded tick budget, on a synthetic two-room
+        /// map. It says nothing about a durable strip economy — that is WP-4's measurement.
+        ///
+        /// MUTATION: delete <c>if (deviceYield > 0) sim.AddItem(DeviceSalvage, deviceYield, pos);</c>
+        /// → the machine still vanishes (so a laxer test would pass) but the Parts assertion fails:
+        /// device strip would be pure destruction, and <c>Condition</c> would gain no consumer.
+        /// MUTATION: replace <c>sim.RemoveDevice(site.TargetId)</c> with
+        /// <c>sim.Devices.Remove(site.TargetId)</c> → the entity goes but the device GRID and
+        /// <see cref="TileFlags.HasDevice"/> keep a dangling reference, and the two flag assertions
+        /// fail. That is the corruption the plan asked to be checked for by name.
+        /// </summary>
+        [Test]
+        public void FullLoop_OneScrubberStrippedByTheDispatcher_LeavesNoDeviceStateAndDropsParts()
+        {
+            var sim = NewSim(TwoRooms, 43, out var strip);
+            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0));
+            var scrubber = sim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_b");
+            sim.Tick();
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: idle, nothing to do");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0), "precondition: no Parts aboard");
+            Assert.That(scrubber.Condition, Is.EqualTo(1f), "precondition: pristine, so the yield is full");
+            int topologyBefore = sim.DeviceTopologyVersion;
+
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+
+            for (int t = 0; t < 20 && worker.JobKind == JobKind.None; t++) sim.Tick();
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.Deconstruct),
+                "an idle crew member must be offered the device strip by JobSystem");
+            Assert.That(worker.JobTarget, Is.EqualTo(MachineTile));
+
+            for (int t = 0; t < 3000 && strip.Pending.Count > 0; t++) sim.Tick();
+
+            Assert.That(strip.Pending, Is.Empty, "the site completed inside the budget");
+            Assert.That(sim.Devices.TryGet(scrubber.Id, out _), Is.False, "the entity is gone");
+            Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.False,
+                "…and so is its device-grid entry (RemoveDevice owns both)");
+            Assert.That(sim.World.GetFlags(MachineTile) & TileFlags.HasDevice, Is.EqualTo((TileFlags)0),
+                "…and the tile no longer claims to hold a device");
+            Assert.That(sim.DeviceTopologyVersion, Is.GreaterThan(topologyBefore),
+                "derived topologies (fluid networks) must see the removal");
+
+            Assert.That(CountGround(sim, ItemKind.Parts),
+                Is.EqualTo(DeconstructSystem.DeviceYield(SimDefs.Default, scrubber)));
+            Assert.That(DeconstructSystem.DeviceYield(SimDefs.Default, scrubber), Is.EqualTo(2),
+                "floor(device_parts 2 × Condition 1.0) = 2 Parts — exactly two maintenance overhauls");
+            var salvage = sim.Items.Items.First(i => i.Kind == ItemKind.Parts);
+            Assert.That(salvage.Pos, Is.EqualTo(MachineTile), "the parts drop where the machine stood");
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "and the worker is free again");
+        }
+
+        /// <summary>
+        /// <c>floor(device_parts × Condition)</c>, measured across the whole range — and the row
+        /// that matters is the LAST one: a machine below half condition is worth NOTHING. That is
+        /// what gives <see cref="Device.Condition"/> its second consumer in the repo (every reader
+        /// outside <c>MachineWearSystem</c> is display-only) and what makes letting a machine rot
+        /// a decision with a price.
+        ///
+        /// MUTATION: change <c>Math.Floor</c> to <c>Math.Round</c> in
+        /// <see cref="DeconstructSystem.DeviceYield"/> → the 0.49 row returns 1 instead of 0 and
+        /// fails; a wreck becomes worth as much as a working machine.
+        /// MUTATION: delete <c>if (condition > 1.0) condition = 1.0;</c> → the over-unity row
+        /// returns 3 and fails: Condition is a bare public float, and an out-of-range value must
+        /// never mint more Parts than <c>device_parts</c>.
+        /// </summary>
+        [Test]
+        public void DeviceYield_FloorsPartsByCondition_SoAMachineBelowHalfIsWorthNothing()
+        {
+            var sim = NewSim(TwoRooms, 44, out _);
+            var d = sim.AddDevice(DeviceKind.Fabricator, MachineTile, "fab_b");
+
+            int YieldAt(float condition) { d.Condition = condition; return DeconstructSystem.DeviceYield(SimDefs.Default, d); }
+
+            Assert.That(SimDefs.Default.Deconstruct.DeviceParts, Is.EqualTo(2),
+                "precondition: the rows below are read against device_parts = 2");
+            Assert.That(YieldAt(1.00f), Is.EqualTo(2), "pristine: the full base value");
+            Assert.That(YieldAt(0.75f), Is.EqualTo(1), "floor(1.5) — three quarters of a machine is one Part");
+            Assert.That(YieldAt(0.50f), Is.EqualTo(1), "floor(1.0) — exactly half still pays once");
+            Assert.That(YieldAt(0.49f), Is.EqualTo(0), "floor(0.98) — below half is WORTH NOTHING");
+            Assert.That(YieldAt(0.00f), Is.EqualTo(0), "a wreck is scrap the ship cannot even use");
+            Assert.That(YieldAt(-1f), Is.EqualTo(0), "and a negative never mints a negative stack");
+            Assert.That(YieldAt(1.5f), Is.EqualTo(2), "Condition is clamped: over-unity never mints extra");
+            Assert.That(DeconstructSystem.DeviceYield(SimDefs.Default, null), Is.EqualTo(0),
+                "a device that no longer resolves yields nothing rather than throwing");
+        }
+
+        /// <summary>
+        /// VALIDATE-ON-ARRIVAL for the device path (lane plan §10.6). The target is removed by
+        /// ANOTHER path between designate and arrival; the site must be consumed with no yield and
+        /// no throw. The ID is the identity, so a DIFFERENT device that moved onto the same tile in
+        /// the meantime is not the one the player condemned and must survive.
+        ///
+        /// MUTATION: delete <c>if (!TargetStillExists(sim, site)) return true;</c> from
+        /// <see cref="DeconstructSystem.Complete"/>'s device branch → the arrival dereferences a
+        /// device that is gone and the test dies on a NullReferenceException; with the
+        /// impostor in place it instead deletes a machine the player never condemned.
+        /// </summary>
+        [Test]
+        public void Complete_OnADeviceRemovedByAnotherPath_ConsumesTheSite_AndSparesAnImpostorOnTheSameTile()
+        {
+            var sim = NewSim(TwoRooms, 45, out var strip);
+            sim.Tick();
+            var condemned = sim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_old");
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+            Assert.That(strip.TryGet(MachineTile, out var site), Is.True);
+            Assert.That(site.TargetId, Is.EqualTo(condemned.Id));
+
+            // Somebody else pulls it, and a NEW machine is installed on the same tile.
+            sim.RemoveDevice(condemned.Id);
+            var impostor = sim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_new");
+            Assert.That(impostor.Id, Is.Not.EqualTo(condemned.Id), "precondition: a genuinely new entity");
+
+            Assert.That(strip.Complete(sim, MachineTile, 0u), Is.True, "the pending entry is consumed…");
+            Assert.That(strip.Pending, Is.Empty, "…so nothing loops on it");
+            Assert.That(sim.Devices.TryGet(impostor.Id, out _), Is.True,
+                "…and the REPLACEMENT survives: the condemned id, not the tile, was the identity");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(0),
+                "no Parts from a machine that was already gone — that would be matter from nowhere");
+        }
+
+        /// <summary>
+        /// The plan's §5 instruction: "if the implementer finds a device kind whose removal throws
+        /// or corrupts state, report it as a finding." This is that probe, run as a test so a kind
+        /// added later cannot quietly break it. Every grid-addressable kind except the Door is
+        /// stood up on a live default stack, stripped through the registry's own completion path,
+        /// and the sim is ticked 60 further ticks with every system running.
+        ///
+        /// RESULT AT WP-2: none of them throws and none corrupts. Every device lookup in the repo
+        /// is <c>TryGet</c>-guarded, and the two systems that hold a device across ticks
+        /// (<c>CraftingSystem</c>, <c>MaintenanceSystem</c>) already re-resolve by tile each pass.
+        ///
+        /// MUTATION: replace <c>sim.RemoveDevice(site.TargetId)</c> with
+        /// <c>sim.Devices.Remove(site.TargetId)</c> → the device grid and
+        /// <see cref="TileFlags.HasDevice"/> keep dangling references for every kind and the
+        /// per-kind flag assertion fails on the first one.
+        /// </summary>
+        [Test]
+        public void StrippingEveryGridDeviceKind_NeitherThrowsNorLeavesDanglingState()
+        {
+            int checkedKinds = 0;
+            foreach (var kind in GridAddressableKinds())
+            {
+                if (kind == DeviceKind.Door) continue;
+                var sim = new Simulation(AsciiWorld.Build(TwoRooms), 46, StackNoNeeds(out var strip));
+                sim.AddCitizen("Probe", new Int3(2, 2, 0));
+                sim.Tick();
+                var device = sim.AddDevice(kind, MachineTile, "unit_" + kind.ToString().ToLowerInvariant());
+                Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True, kind.ToString());
+
+                Assert.DoesNotThrow(() => strip.Complete(sim, MachineTile, 0u),
+                    $"RemoveDevice must not throw for {kind}");
+                Assert.DoesNotThrow(() => { for (int t = 0; t < 60; t++) sim.Tick(); },
+                    $"…and the full system stack must survive 60 ticks after a {kind} is stripped");
+
+                Assert.That(sim.Devices.TryGet(device.Id, out _), Is.False, kind.ToString());
+                Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.False,
+                    $"{kind}: the device grid must not keep a dangling entry");
+                Assert.That(sim.World.GetFlags(MachineTile) & TileFlags.HasDevice, Is.EqualTo((TileFlags)0),
+                    $"{kind}: TileFlags.HasDevice must be cleared");
+                Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(2),
+                    $"{kind}: a pristine device is worth floor(2 × 1.0) Parts whatever it was");
+                checkedKinds++;
+            }
+            Assert.That(checkedKinds, Is.EqualTo(Enum.GetValues(typeof(DeviceKind)).Length - 3),
+                "precondition: every kind but Door and the two overlays was actually exercised");
+        }
+
+        /// <summary>
+        /// THE MOSS CONSEQUENCE, exercised as the FEATURE <c>ECONOMY.md</c> §9.3 says it is:
+        /// <i>"deleting a named device un-registers its MOSS adapter, so you can break your own
+        /// automation by selling a valve."</i> Nothing here defends against it. What IS required is
+        /// that the break is LEGIBLE: the program reports a runtime error naming the device it can
+        /// no longer read, raises an alarm the Chronicle records, and neither throws out of
+        /// <c>Tick</c> nor takes the sim or any OTHER program down with it.
+        ///
+        /// MUTATION: delete <c>sim.RemoveDevice(site.TargetId)</c> from
+        /// <see cref="DeconstructSystem.Complete"/>'s device branch → the adapter keeps resolving,
+        /// no runtime error ever appears, and the "the automation is broken" assertion fails.
+        ///
+        /// HONESTLY STATED LIMIT — a real gap this test pins the SHAPE of but cannot fix: only
+        /// READS fail legibly. <c>UtilityDeviceAdapter.TryInvoke</c> enqueues its command against a
+        /// dead entity id and returns TRUE, so a write-only script (<c>do scrub.close</c> with no
+        /// property read) goes on silently doing nothing forever. Asserted below so the silence is
+        /// on the record; fixing it means an existence check inside the adapters, which is
+        /// Sim.Dsl's package and not this one's.
+        /// </summary>
+        [Test]
+        public void MossProgramBoundToAStrippedDevice_BreaksLegiblyOnReads_ButSilentlyOnWrites()
+        {
+            var registry = new DeviceRegistry();
+            var moss = new ScriptRuntime(registry);
+            var stack = new List<ISimSystem>();
+            foreach (var s in SystemStack.CreateDefault(moss)) if (!(s is NeedsSystem)) stack.Add(s);
+            var sim = new Simulation(AsciiWorld.Build(TwoRooms), 47, stack.ToArray());
+            DeconstructSystem strip = null;
+            foreach (var s in sim.Systems) if (s is DeconstructSystem d) strip = d;
+
+            var scrubber = sim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_b");
+            sim.AddDevice(DeviceKind.AirVent, new Int3(1, 1, 0), "vent_a"); // the untouched control
+            MossBindings.RegisterAdapters(sim, registry);
+            Assert.That(moss.SetProgram("term_reader", "if scrub_b.powered: alarm(\"scrubber nominal\")\n"),
+                Is.Empty, "precondition: the reader program compiles");
+            Assert.That(moss.SetProgram("term_writer", "close(scrub_b)\n"),
+                Is.Empty, "precondition: the writer program compiles");
+            Assert.That(moss.SetProgram("term_control", "if vent_a.powered: alarm(\"vent nominal\")\n"),
+                Is.Empty, "precondition: the control program compiles");
+
+            sim.Tick();
+            Assert.That(moss.TryGetRuntimeError("term_reader", out _), Is.False,
+                "precondition: while the scrubber exists the automation is HEALTHY");
+
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+            Assert.DoesNotThrow(() => strip.Complete(sim, MachineTile, 0u),
+                "stripping a MOSS-addressed device must not throw");
+            Assert.That(sim.Devices.TryGet(scrubber.Id, out _), Is.False, "precondition: it really went");
+
+            Assert.DoesNotThrow(() => { for (int t = 0; t < 10; t++) sim.Tick(); },
+                "a broken program must never take the sim down");
+
+            Assert.That(moss.TryGetRuntimeError("term_reader", out var err), Is.True,
+                "the player broke their own automation — that is the feature, and it must SHOW");
+            Assert.That(err, Does.Contain("scrub_b"),
+                "…legibly: the message must name the device the script can no longer read");
+            Assert.That(moss.TryGetRuntimeError("term_control", out _), Is.False,
+                "…and exactly one program is affected: the control still runs");
+
+            // The gap, pinned rather than hidden: a write-only script fails SILENTLY.
+            Assert.That(moss.TryGetRuntimeError("term_writer", out _), Is.False,
+                "KNOWN GAP: DeviceAdapters.TryInvoke never checks the id still resolves, so a " +
+                "write-only script against a stripped device reports nothing at all");
+        }
+
+        // ------------------------------------------------- liveness: the WP-1 zombie-site leak
+
+        /// <summary>
+        /// F2, the leak an independent review of WP-1 measured: a designated WALL removed by
+        /// another path (a MOSS tile write, a <see cref="SetTileCommand"/>, a dig) left a PERMANENT
+        /// zombie site. <c>Progress</c> abandoned cleanly, <c>Select</c> then skipped it forever,
+        /// and nothing removed the entry — after 3000 further ticks the registry still read
+        /// <c>pending = 1, CandidateCount = 1, workerJob = None</c>. One of <c>max_staged</c>'s 64
+        /// slots was consumed forever, cancellable only by a player who happened to notice.
+        ///
+        /// The consequence is asserted where it BITES, not where it is convenient: with
+        /// <c>max_staged = 1</c> a zombie makes the whole verb unusable for the rest of the game.
+        ///
+        /// MUTATION: revert <c>DeconstructSystem.Tick</c> to WP-1's <c>{ }</c> no-op (i.e. delete
+        /// the <c>=&gt; Reap(sim)</c>) → every assertion after the tear-away fails, exactly as
+        /// measured on WP-1.
+        /// </summary>
+        [Test]
+        public void ADesignatedWallRemovedByAnotherPath_IsReaped_AndFreesItsMaxStagedSlot()
+        {
+            var oneSlot = DefsParser.Parse(
+                new[] { ("d.def", "[deconstruct]\nmax_staged = 1\n") }, new List<string>());
+            var sim = NewSim(TwoRooms, 48, out var strip, oneSlot);
+            var worker = sim.AddCitizen("Reyes", new Int3(2, 2, 0));
+            sim.Tick();
+            Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
+
+            for (int t = 0; t < 400 && !(worker.JobKind == JobKind.Deconstruct && !worker.HasPath); t++)
+                sim.Tick();
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.Deconstruct), "precondition: a worker is on it");
+
+            // Somebody else opens the wall while the tear-down is in progress.
+            new SetTileCommand(Partition, floor: TileDefs.Floor, wall: 0).Execute(sim);
+            for (int t = 0; t < 20; t++) sim.Tick();
+
+            Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "the worker abandoned (WP-1 did this much)");
+            Assert.That(strip.Pending, Is.Empty,
+                "and the SITE is gone too — WP-1 left it pending forever with nobody able to finish it");
+            var source = ((JobSystem)FindSystem<JobSystem>(sim)).Sources.First(s => s is DeconstructJobSource);
+            Assert.That(source.CandidateCount, Is.EqualTo(0), "…so the board is empty, not permanently stuck at 1");
+
+            // The bite: with one slot, a zombie would have made the verb unusable forever.
+            Assert.That(strip.Designate(sim, new Int3(5, 1, 0), DeconstructKind.Wall), Is.True,
+                "the freed max_staged slot is genuinely reusable");
+        }
+
+        /// <summary>
+        /// The same leak on the DEVICE path, and the case no job-source-side fix can reach: NO
+        /// CITIZEN EXISTS, so nothing ever claims the site and <c>Progress</c> never runs — and
+        /// <c>Simulation.RemoveDevice</c> sets no <see cref="JobBoardDirty"/> flag, so the job
+        /// board is never even rescanned. Only a registry-owned per-tick reap collects this one.
+        /// That is why <see cref="DeconstructSystem.Reap"/> lives in <c>Tick</c> and not in
+        /// <c>DeconstructJobSource.Rescan</c>, which the review offered as the alternative.
+        ///
+        /// MUTATION: move the reap into <c>DeconstructJobSource.Rescan</c> (or revert
+        /// <c>Tick</c> to a no-op) → nothing dirties the board on this map, the rescan never runs,
+        /// and the site is still pending at the end.
+        /// </summary>
+        [Test]
+        public void ADesignatedDeviceRemovedByAnotherPath_IsReaped_EvenWithNoCrewAndNoBoardRescan()
+        {
+            var sim = NewSim(TwoRooms, 49, out var strip);
+            sim.Tick();
+            var device = sim.AddDevice(DeviceKind.GrowBed, MachineTile, "bed_b");
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+            Assert.That(sim.Citizens.Items, Is.Empty, "precondition: nobody can ever claim this site");
+
+            sim.RemoveDevice(device.Id);          // another path — e.g. RemoveDeviceCommand
+            sim.JobsDirty = JobBoardDirty.None;   // …and it dirties no job axis, so no rescan is due
+            sim.Tick();
+
+            Assert.That(strip.Pending, Is.Empty,
+                "a site whose device no longer exists must not survive a single tick");
+        }
+
+        /// <summary>
+        /// <see cref="DeconstructSystem.Reap"/> is deliberately NARROW: "the target is gone", never
+        /// "the target became illegal". A wall that became <see cref="DeconstructSystem.IsPressureHull"/>
+        /// mid-job is STILL a wall and still the player's standing order — it is
+        /// <see cref="DeconstructSystem.Complete"/> that refuses it on arrival. If the reap also
+        /// collected newly-illegal sites, designations near a hull breach would silently evaporate
+        /// between the click and the crew member arriving, with no feedback anywhere.
+        ///
+        /// MUTATION: add <c>|| IsPressureHull(sim.World, site.Pos)</c> to
+        /// <see cref="DeconstructSystem.TargetStillExists"/>'s wall leg (i.e. widen the reap to
+        /// "still legal") → the designation vanishes and this fails.
+        /// </summary>
+        [Test]
+        public void Reap_DropsOnlyVanishedTargets_NotAWallThatMerelyBecameHull()
+        {
+            var sim = NewSim(TwoRooms, 50, out var strip);
+            sim.Tick();
+            Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
+
+            new SetTileCommand(new Int3(5, 1, 0), floor: TileDefs.Void, wall: 0).Execute(sim);
+            Assert.That(DeconstructSystem.IsPressureHull(sim.World, Partition), Is.True,
+                "precondition: the partition became hull — illegal, but still very much a wall");
+
+            for (int t = 0; t < 30; t++) sim.Tick();
+            Assert.That(strip.Pending, Has.Count.EqualTo(1),
+                "an illegal-but-present target stays the player's order; Complete refuses it on arrival");
+            Assert.That(strip.Reap(sim), Is.EqualTo(0), "and a direct reap agrees");
+        }
+
+        // ------------------------------------------------------------------ the Chronicle trace
+
+        /// <summary>
+        /// <c>Complete</c>'s <c>workerId</c> was a DEAD PARAMETER in WP-1: read by nothing, while
+        /// its presence implied a trace that did not exist — a strip left no Chronicle line at all,
+        /// unlike every build. WP-2 wires it through <see cref="DeconstructCompletedEvent"/> so
+        /// tearing the ship apart is remembered the way building it is.
+        ///
+        /// Both rows matter: the wall row proves the event fires and names the crew member; the
+        /// device row proves the DEVICE KIND survives the entity's removal (RemoveDevice runs a
+        /// full tick before HistorySystem reads the event, so an id lookup would always miss —
+        /// exactly the problem <c>CitizenDiedEvent.Name</c> exists to solve).
+        ///
+        /// MUTATION: delete the <c>sim.Events.Publish(new DeconstructCompletedEvent …)</c> from
+        /// <see cref="DeconstructSystem.Complete"/>'s wall branch → the wall row fails.
+        /// MUTATION: set <c>Device = 0</c> instead of <c>Device = deviceKind</c> in the device
+        /// branch → the Chronicle says "the door" and the device row fails.
+        /// </summary>
+        [Test]
+        public void EveryCompletedStrip_LeavesAChronicleLine_NamingTheWorkerAndWhatWasTornDown()
+        {
+            var sim = NewSim(TwoRooms, 51, out var strip);
+            var worker = sim.AddCitizen("Okafor", new Int3(2, 2, 0));
+            sim.AddDevice(DeviceKind.Reclaimer, MachineTile, "recl_b");
+            sim.Tick();
+            var history = (HistorySystem)FindSystem<HistorySystem>(sim);
+            int before = history.Entries.Count;
+
+            Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
+            Assert.That(strip.Complete(sim, Partition, worker.Id), Is.True);
+            Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+            Assert.That(strip.Complete(sim, MachineTile, worker.Id), Is.True);
+            // TWO ticks: the bus swaps at tick END, so an event published outside a tick is only
+            // readable during the tick AFTER the next swap.
+            sim.Tick(); sim.Tick();
+
+            var lines = history.Entries.Skip(before)
+                .Where(e => e.Kind == (byte)HistoryKind.DeconstructCompleted).ToList();
+            Assert.That(lines, Has.Count.EqualTo(2), "one Chronicle line per completed strip");
+            foreach (var line in lines)
+            {
+                Assert.That(line.Text, Does.Contain("Okafor"), "the Chronicle names who did it");
+                Assert.That(line.SubjectA, Is.EqualTo(worker.Id), "…structurally, not only in prose");
+            }
+            Assert.That(lines.Any(l => l.Text.Contains("a wall")), Is.True,
+                "the wall strip is recorded as a wall");
+            Assert.That(lines.Any(l => l.Text.Contains("reclaimer")), Is.True,
+                "and the device strip NAMES THE MACHINE, which only works because the kind rides " +
+                "the event — the entity itself is long gone by the time HistorySystem reads it");
+        }
+
+        /// <summary>
+        /// The other half of the same contract: a strip that changes NOTHING announces nothing. A
+        /// site consumed by validate-on-arrival (the wall had already gone) must publish no
+        /// completion event, or the Chronicle fills with tear-downs that never happened.
+        ///
+        /// MUTATION: hoist the <c>sim.Events.Publish(new DeconstructCompletedEvent …)</c> above the
+        /// two <c>return true;</c> validate-on-arrival guards in
+        /// <see cref="DeconstructSystem.Complete"/> → a phantom line appears and this fails.
+        /// </summary>
+        [Test]
+        public void AStripConsumedByValidateOnArrival_LeavesNoChronicleLine()
+        {
+            var sim = NewSim(TwoRooms, 52, out var strip);
+            var worker = sim.AddCitizen("Vale", new Int3(2, 2, 0));
+            sim.Tick();
+            var history = (HistorySystem)FindSystem<HistorySystem>(sim);
+            int before = history.Entries.Count;
+
+            Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
+            new SetTileCommand(Partition, floor: TileDefs.Floor, wall: 0).Execute(sim);
+            Assert.That(strip.Complete(sim, Partition, worker.Id), Is.True, "the entry is consumed…");
+            sim.Tick(); sim.Tick(); // the same two-tick window the positive test uses
+
+            Assert.That(history.Entries.Skip(before)
+                    .Count(e => e.Kind == (byte)HistoryKind.DeconstructCompleted), Is.EqualTo(0),
+                "…but nothing was torn down, so nothing may be remembered as torn down");
+        }
+
+        // ---------------------------------------------------------- a finding, pinned not hidden
+
+        /// <summary>
+        /// A FINDING, pinned as CURRENT BEHAVIOUR so fixing it is a deliberate red test rather than
+        /// an accident: <b>place-then-strip mints Parts out of nothing.</b>
+        /// <see cref="PlaceDeviceCommand"/> — the Room Zoom decorate palette, reachable from the
+        /// shipping web client — charges NOTHING for a bed, and WP-2 makes that bed worth 2 Parts.
+        /// Repeat for infinite Parts, which is the ship's one never-ending sink.
+        ///
+        /// This is NOT a deconstruct bug and is deliberately not patched here. Free placement was
+        /// already free before E0-5; device strip is only the first verb that gives the free thing
+        /// a price. Fixing it inside <c>CanDesignate</c> (e.g. refusing
+        /// <see cref="PlaceDeviceCommand.IsPlaceableFurniture"/> kinds) would forbid stripping
+        /// exactly the machines worth stripping — grow beds, lights, med beds are all on that
+        /// whitelist. THE FIX BELONGS IN <c>PlaceDeviceCommand</c>: charge a build cost, the way
+        /// <see cref="BuildSystem"/> charges Regolith for a wall. Owner: E0-6 / the economy lane.
+        ///
+        /// NOTE: the exploit is not yet reachable by a player — the <c>strip</c> UI surface is WP-3
+        /// — so this lands as a documented finding rather than a shipped hole.
+        ///
+        /// MUTATION: give <c>PlaceDeviceCommand.Execute</c> a material cost, or exclude free-placed
+        /// furniture in <c>CanDesignate</c> → this test goes red, which is exactly the signal the
+        /// fixing lane should see.
+        /// </summary>
+        [Test]
+        public void FINDING_PlaceThenStripFurniture_MintsPartsFromNothing_BecausePlacementIsFree()
+        {
+            var sim = NewSim(TwoRooms, 53, out var strip);
+            sim.Tick();
+            int regolithBefore = CountGround(sim, ItemKind.Regolith);
+
+            for (int cycle = 0; cycle < 3; cycle++)
+            {
+                new PlaceDeviceCommand(DeviceKind.Bed, MachineTile).Execute(sim);
+                Assert.That(sim.TryGetDeviceAt(MachineTile, out _), Is.True,
+                    "PlaceDeviceCommand consumed nothing and produced a device");
+                Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True);
+                Assert.That(strip.Complete(sim, MachineTile, 0u), Is.True);
+            }
+
+            Assert.That(CountGround(sim, ItemKind.Regolith), Is.EqualTo(regolithBefore),
+                "nothing was ever consumed — placement is free");
+            Assert.That(CountGround(sim, ItemKind.Parts), Is.EqualTo(6),
+                "3 free beds × 2 Parts = 6 Parts from nothing. THE FIX IS A PLACEMENT COST IN " +
+                "PlaceDeviceCommand, not a narrower strip whitelist — see this test's doc comment");
+        }
+
         // ------------------------------------------------------------------ helpers
+
+        private static ISimSystem FindSystem<T>(Simulation sim) where T : ISimSystem
+        {
+            foreach (var s in sim.Systems) if (s is T) return s;
+            Assert.Fail($"the stack must register a {typeof(T).Name}");
+            return null;
+        }
 
         private static int CountGround(Simulation sim, ItemKind kind)
         {

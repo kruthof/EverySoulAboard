@@ -367,6 +367,10 @@ namespace Perilune.Sim
                 case "wall_recovery": if (F(v, k, loc, p, out var a)) d.Deconstruct.WallRecovery = a; return true;
                 case "wall_work_ticks": if (I(v, k, loc, p, out var b)) d.Deconstruct.WallWorkTicks = b; return true;
                 case "max_staged": if (I(v, k, loc, p, out var c)) d.Deconstruct.MaxStaged = c; return true;
+                // E0-5 WP-2 device strip. Both are whole ticks / whole units, so I() and no
+                // culture hazard — wall_recovery remains the section's only decimal.
+                case "device_parts": if (I(v, k, loc, p, out var e)) d.Deconstruct.DeviceParts = e; return true;
+                case "device_work_ticks": if (I(v, k, loc, p, out var f)) d.Deconstruct.DeviceWorkTicks = f; return true;
                 default: return false;
             }
         }

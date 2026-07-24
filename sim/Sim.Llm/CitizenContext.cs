@@ -335,8 +335,16 @@ namespace Perilune.Llm
                       .Append(Tile(self.JobTarget)).Append('.');
                     break;
                 case JobKind.Deconstruct:
-                    sb.Append(enRoute ? "on your way to strip the wall at " : "stripping the wall at ")
-                      .Append(Tile(self.JobTarget)).Append('.');
+                    // E0-5 WP-2: one JobKind, two targets. A crew member who says "the wall" while
+                    // pulling the scrubber apart is lying to the player, and this prose is the
+                    // only thing the model knows about what its hands are doing.
+                    if (sim != null && sim.TryGetDeviceAt(self.JobTarget, out var stripped))
+                        sb.Append(enRoute ? "on your way to strip out " : "stripping out ")
+                          .Append(DeviceName(stripped)).Append(" at ")
+                          .Append(Tile(self.JobTarget)).Append('.');
+                    else
+                        sb.Append(enRoute ? "on your way to strip the wall at " : "stripping the wall at ")
+                          .Append(Tile(self.JobTarget)).Append('.');
                     break;
                 default: sb.Append("nothing assigned — you are standing here, talking."); break;
             }

@@ -103,4 +103,27 @@ namespace Perilune.Sim
         public byte BuildKind;   // BuildSystem's kind enum as byte (append-only contract)
         public uint BuilderId;
     }
+
+    /// <summary>
+    /// A designated deconstruct finished and the world actually changed (E0-5,
+    /// <see cref="DeconstructSystem.Complete"/>) — build's inverse of
+    /// <see cref="ConstructionCompletedEvent"/>, and the reason <c>Complete</c>'s worker id is a
+    /// live parameter rather than decoration. Published ONLY on a real tear-down: a site consumed
+    /// by validate-on-arrival (the wall went away, the device was already removed, the wall became
+    /// hull) changes nothing and therefore announces nothing.
+    ///
+    /// <see cref="Device"/> carries the removed device's kind as a byte so the Chronicle can name
+    /// what was stripped AFTER the entity is gone — <see cref="Simulation.RemoveDevice"/> runs in
+    /// the same tick, and HistorySystem reads events one tick later, so an id lookup would always
+    /// miss (exactly the CitizenDiedEvent.Name precedent). 0 is unambiguous "not a device":
+    /// <see cref="DeviceKind.Door"/> is 0 and is the one kind deconstruct never strips.
+    /// </summary>
+    public struct DeconstructCompletedEvent : ISimEvent
+    {
+        public Int3 Pos;
+        public byte Kind;        // DeconstructKind as byte (append-only contract)
+        public byte Device;      // DeviceKind as byte; 0 when Kind == Wall (Door is never stripped)
+        public uint WorkerId;
+        public int Yield;        // units actually dropped (0 when a worn machine is worth nothing)
+    }
 }

@@ -88,6 +88,15 @@ namespace Perilune.Tests
                 "tearing down is deliberately exactly half a build");
             Assert.That(DeconstructSystem.WallYield(D), Is.EqualTo(1),
                 "floor(2 × 0.5): a stripped wall returns HALF of what raising it cost");
+
+            // E0-5 WP-2 device strip.
+            Assert.That(D.Deconstruct.DeviceParts, Is.EqualTo(2));
+            Assert.That(D.Deconstruct.DeviceWorkTicks, Is.EqualTo(900));
+            Assert.That(D.Deconstruct.DeviceWorkTicks, Is.LessThan(D.Deconstruct.WallWorkTicks),
+                "pulling a machine is deliberately quicker than cutting structure");
+            Assert.That(D.Deconstruct.DeviceParts, Is.EqualTo(D.Recipes[(int)DeviceKind.MachineShop].InputCount),
+                "device_parts is priced off the MachineShop's 2-Parts input: one stripped machine " +
+                "is worth one ControllerModule of value");
         }
 
         [Test]

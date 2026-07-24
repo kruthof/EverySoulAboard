@@ -178,20 +178,26 @@ namespace Perilune.Sim
     ///
     /// The <c>on</c> flag is EXPLICIT rather than a host-side read of world state (E0-3's
     /// decision): a sweep is then idempotent and the host can never race the sim. Every
-    /// precondition — bounds, hull, wall-ness, the staging cap — is enforced sim-side at the tick
-    /// boundary, so a client may enqueue a click blind and an illegal order is a silent no-op.
+    /// precondition — bounds, hull, wall-ness, device kind, the staging cap — is enforced sim-side
+    /// at the tick boundary, so a client may enqueue a click blind and an illegal order is a
+    /// silent no-op.
+    ///
+    /// THE COMMAND CARRIES A TILE, NEVER AN ENTITY ID (E0-5 WP-2 removed the <c>targetId</c>
+    /// parameter WP-1 shipped). A device site's <see cref="PendingDeconstruct.TargetId"/> is
+    /// resolved sim-side inside <see cref="DeconstructSystem.Designate"/>: the player clicks a
+    /// tile, entity ids are sim-internal, and a client-supplied id would be a second unvalidated
+    /// identity for the same object.
     /// </summary>
     public sealed class DesignateDeconstructCommand : ISimCommand
     {
         private readonly Int3 _pos;
         private readonly DeconstructKind _kind;
         private readonly bool _on;
-        private readonly uint _targetId;
 
         public DesignateDeconstructCommand(Int3 pos, DeconstructKind kind = DeconstructKind.Wall,
-                                           bool on = true, uint targetId = 0)
+                                           bool on = true)
         {
-            _pos = pos; _kind = kind; _on = on; _targetId = targetId;
+            _pos = pos; _kind = kind; _on = on;
         }
 
         public void Execute(Simulation sim)
@@ -199,7 +205,7 @@ namespace Perilune.Sim
             foreach (var s in sim.Systems)
                 if (s is DeconstructSystem d)
                 {
-                    if (_on) d.Designate(sim, _pos, _kind, _targetId);
+                    if (_on) d.Designate(sim, _pos, _kind);
                     else d.Cancel(sim, _pos);
                     return;
                 }

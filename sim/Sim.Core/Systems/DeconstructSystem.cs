@@ -8,11 +8,10 @@ namespace Perilune.Sim
     {
         /// <summary>A <see cref="TileDefs.Wall"/> tile → open floor, yielding Regolith.</summary>
         Wall = 0,
-        /// <summary>A <see cref="Device"/> entity → removed, yielding Parts × Condition.
-        /// DECLARED, NOT IMPLEMENTED: <see cref="DeconstructSystem.CanDesignate"/> rejects it —
-        /// TODO(E0-5 WP-2) accept it, re-validate <see cref="PendingDeconstruct.TargetId"/> on
-        /// arrival, and complete through <c>Simulation.RemoveDevice</c>. The enum member ships
-        /// now so the saved/hashed byte never has to be renumbered.</summary>
+        /// <summary>A <see cref="Device"/> entity → removed through <c>Simulation.RemoveDevice</c>,
+        /// yielding <c>floor(device_parts × Condition)</c> Parts on the freed tile (E0-5 WP-2).
+        /// LEGAL FOR EVERY DEVICE KIND EXCEPT <see cref="DeviceKind.Door"/> — see
+        /// <see cref="DeconstructSystem.CanDesignate"/>.</summary>
         Device = 1,
     }
 
@@ -31,9 +30,12 @@ namespace Perilune.Sim
         /// <c>deconstruct.def</c> mid-save never rewrites live sites.</summary>
         public int WorkTicks;
         /// <summary>Device entity id for <see cref="DeconstructKind.Device"/>; 0 for a Wall.
-        /// Saved and hashed because a device can be removed by another path between designate
-        /// and completion, so the job source must RE-VALIDATE it on arrival rather than trust a
-        /// cross-tick reservation (the CraftingSystem validate-on-arrival pattern).</summary>
+        /// RESOLVED FROM THE TILE at designate time (the player clicks a tile, never an entity
+        /// id), then saved and hashed because a device can be removed by another path between
+        /// designate and completion — so <see cref="DeconstructSystem.Complete"/> RE-VALIDATES it
+        /// on arrival rather than trusting a cross-tick reservation (the CraftingSystem
+        /// validate-on-arrival pattern). The id, not the position, is the device's identity: a
+        /// DIFFERENT device standing on the same tile is not the one the player condemned.</summary>
         public uint TargetId;
     }
 
@@ -51,19 +53,24 @@ namespace Perilune.Sim
     /// that bit would break a documented invariant. This is the BuildSystem shape instead:
     /// canonical list, packed-position sorted, SYSS-saved, checksum-folded.
     ///
-    /// PASSIVE: <see cref="Tick"/> is a no-op — the registry is command-driven (designate/cancel)
-    /// and JobSystem-driven (complete), so a strip-free ship costs nothing and allocates nothing
-    /// here.
+    /// NEARLY PASSIVE: <see cref="Tick"/> does exactly one bounded thing — <see cref="Reap"/>,
+    /// the liveness sweep that drops sites whose target stopped existing. It returns on the first
+    /// line for an empty registry, so a strip-free ship still costs nothing and allocates nothing
+    /// here. WP-1 shipped a literally-empty Tick and that was a LEAK, not a virtue: see
+    /// <see cref="Reap"/> for the measurement.
     ///
-    /// SCOPE (WP-1): WALLS ONLY. <see cref="DeconstructKind.Device"/> is declared but rejected by
-    /// <see cref="CanDesignate"/> — TODO(E0-5 WP-2).
+    /// SCOPE (WP-2): WALLS AND DEVICES. A device site removes the entity through
+    /// <c>Simulation.RemoveDevice</c> and drops <c>floor(device_parts × Condition)</c> Parts.
     ///
     /// YIELD, and a deliberate divergence from <c>ECONOMY.md</c> §5's flow diagram: a stripped
     /// wall returns <see cref="ItemKind.Regolith"/>, not Scrap. In the shipped ladder the
     /// SalvageRecycler CONSUMES Regolith to MAKE Scrap, so yielding Scrap would skip a conversion
     /// hop and make tearing down a wall strictly better than digging — inverting the intended
     /// lossiness. Regolith re-enters the ladder at the top and pays full conversion loss.
-    /// Revisit at E0-6, when the graph inverts.
+    /// Revisit at E0-6, when the graph inverts. A stripped DEVICE returns
+    /// <see cref="ItemKind.Parts"/>, which feeds the ship's one never-ending sink (a
+    /// <c>MaintenanceSystem</c> overhaul consumes one Part), and is the only place outside
+    /// <c>MachineWearSystem</c> where <see cref="Device.Condition"/> changes an outcome.
     ///
     /// Determinism: the pending list is kept in canonical packed-position order (sorted insert),
     /// so every scan — the job board, the save, the checksum — is order-stable. No RNG, no
@@ -83,6 +90,11 @@ namespace Perilune.Sim
         /// consumes Regolith to raise a wall; stripping returns a fraction of it).</summary>
         public const ItemKind WallSalvage = ItemKind.Regolith;
 
+        /// <summary>What a stripped device drops (E0-5 WP-2). Parts is the ladder's third rung and
+        /// the ship's ONE never-ending sink (an overhaul consumes one), so a device strip pays
+        /// straight into the only demand that survives the economy's terminal cliff.</summary>
+        public const ItemKind DeviceSalvage = ItemKind.Parts;
+
         // Canonical packed-position-sorted pending list. Never iterated for lookups (a small
         // linear scan by position is fine at v0 densities and stays alloc-free).
         private readonly List<PendingDeconstruct> _pending = new List<PendingDeconstruct>(32);
@@ -90,7 +102,73 @@ namespace Perilune.Sim
         /// <summary>Pending sites in canonical order (the job board + inspectors read this).</summary>
         public IReadOnlyList<PendingDeconstruct> Pending => _pending;
 
-        public void Tick(Simulation sim) { /* passive: no per-tick work (command/JobSystem driven) */ }
+        /// <summary>The registry's only per-tick work: <see cref="Reap"/>. Everything else is
+        /// command-driven (designate/cancel) or JobSystem-driven (complete).</summary>
+        public void Tick(Simulation sim) => Reap(sim);
+
+        /// <summary>
+        /// LIVENESS SWEEP (E0-5 WP-2, fixing a WP-1 leak found by review). Drops every pending
+        /// site whose TARGET NO LONGER EXISTS — a designated wall dug/vented/scripted away, a
+        /// designated device removed by <c>RemoveDeviceCommand</c>, a save, or another stripper.
+        /// Returns how many entries it removed.
+        ///
+        /// THE BUG THIS FIXES, measured on WP-1: designate a wall, let a worker claim it, then
+        /// remove the wall by another path. <c>DeconstructJobSource.Progress</c> abandons cleanly,
+        /// <c>Select</c> then skips the site forever (it is no longer a wall), and NOTHING removes
+        /// the entry — after 3000 further ticks the registry still read <c>pending = 1</c>,
+        /// <c>CandidateCount = 1</c>, <c>workerJob = None</c>. One of <c>max_staged</c>'s 64 slots
+        /// was consumed permanently, cancellable only by a player who happened to notice. It also
+        /// contradicted <see cref="Complete"/>'s own stated rationale, which garbage-collects an
+        /// unsatisfiable entry — but only if a worker survives all the way to arrival.
+        ///
+        /// WHY HERE AND NOT IN THE JOB SOURCE (the review suggested either): the leaked entry is
+        /// REGISTRY state — saved, hashed, and counted against <c>max_staged</c> — so removing it
+        /// from a consumer's derived board would have fixed the symptom and left the leak. This
+        /// also covers the case no job-source fix reaches: a site nobody ever claimed, whose wall
+        /// a dig removed, on a tick where the job board is not dirty.
+        ///
+        /// NARROW ON PURPOSE — "the target is gone", never "the target became illegal". A wall
+        /// that became <see cref="IsPressureHull"/> mid-job is still a wall and is still the
+        /// player's order; <see cref="Complete"/> refuses it on arrival and consumes it there, so
+        /// the crew member learns by walking over. Reaping it here would make designations near a
+        /// hull breach silently evaporate.
+        ///
+        /// Deterministic: a pure function of world/device state walked in canonical pending order,
+        /// no RNG, no Dictionary/HashSet iteration, and alloc-free (<c>RemoveAt</c> on a
+        /// <see cref="List{T}"/> shifts in place). Bounded by <c>max_staged</c> = 64.
+        /// </summary>
+        public int Reap(Simulation sim)
+        {
+            if (_pending.Count == 0) return 0; // the whole cost on every strip-free ship
+            int removed = 0;
+            for (int i = _pending.Count - 1; i >= 0; i--) // backwards: RemoveAt keeps the prefix valid
+            {
+                if (TargetStillExists(sim, _pending[i])) continue;
+                _pending.RemoveAt(i);
+                removed++;
+            }
+            if (removed > 0) sim.JobsDirty |= JobBoardDirty.Sites; // the strip board must shrink
+            return removed;
+        }
+
+        /// <summary>
+        /// Does this site still have something to tear down? "Exists", NOT "is legal" — the
+        /// legality rules (hull, staging cap, duplicates) belong to <see cref="CanDesignate"/> at
+        /// designate time and to <see cref="Complete"/> on arrival. Shared by <see cref="Reap"/>
+        /// and by <c>DeconstructJobSource</c>, so the board and the registry can never disagree
+        /// about which sites are dead.
+        /// </summary>
+        public static bool TargetStillExists(Simulation sim, PendingDeconstruct site)
+        {
+            if (site.Kind == DeconstructKind.Wall)
+                return sim.World.InBounds(site.Pos) && sim.World.GetWall(site.Pos) == TileDefs.Wall;
+
+            // Device: the ID is the identity. A different device that moved onto the same tile is
+            // not the one the player condemned, and a device whose id no longer resolves is gone.
+            return sim.Devices.TryGet(site.TargetId, out var device) &&
+                   device.Pos == site.Pos &&
+                   device.Kind != DeviceKind.Door;
+        }
 
         // ------------------------------------------------------------------ queries
 
@@ -132,7 +210,8 @@ namespace Perilune.Sim
         ///    to the map-edge ring. That is correct, not a bug — those ships genuinely have no
         ///    exposed hull face — but it means the predicate protects far fewer walls there than
         ///    "hull" suggests. Measured by
-        ///    <c>DeconstructSystemTests.PressureHull_OnTheRealSlice_RejectsTheOuterHullAndAcceptsInteriorPartitions</c>.
+        ///    <c>DeconstructSystemTests.PressureHull_OnTheRealSlice_IsExactlyTheMapEdgeRing_AndRejectsDesignationThere</c>
+        ///    (F3: WP-1 cited a symbol that does not exist — this is the real name).
         /// </summary>
         public static bool IsPressureHull(World world, Int3 pos)
         {
@@ -160,6 +239,29 @@ namespace Perilune.Sim
             return units < 0 ? 0 : units;
         }
 
+        /// <summary>
+        /// <see cref="ItemKind.Parts"/> a stripped device returns:
+        /// <c>floor(deconstruct.device_parts × Condition)</c> = 2 for a pristine machine at
+        /// shipped values, and <b>0 below Condition 0.5</b> — a wreck is worth nothing, which is
+        /// the point. This is <see cref="Device.Condition"/>'s SECOND consumer in the repo (every
+        /// reader outside <c>MachineWearSystem</c> is display-only), and it is what makes letting
+        /// a machine rot a decision with a price rather than a cosmetic number.
+        ///
+        /// Condition is CLAMPED to [0,1] before the multiply: the field is a public float that
+        /// nothing structurally bounds, and an out-of-range value must never mint more Parts than
+        /// <c>device_parts</c>. Widened to double first so the fold-visible float is the only
+        /// source of imprecision, then floored.
+        /// </summary>
+        public static int DeviceYield(SimDefs defs, Device device)
+        {
+            if (device == null) return 0;
+            double condition = device.Condition;
+            if (condition <= 0.0) return 0;
+            if (condition > 1.0) condition = 1.0;
+            int units = (int)System.Math.Floor(defs.Deconstruct.DeviceParts * condition);
+            return units < 0 ? 0 : units;
+        }
+
         // ---------------------------------------------------------------- public API
 
         /// <summary>
@@ -168,9 +270,28 @@ namespace Perilune.Sim
         ///
         /// Rejection order (mirrors <see cref="BuildSystem.CanDesignate"/>):
         /// out of bounds → already designated here → over the staging cap →
-        /// <see cref="DeconstructKind.Device"/> (WP-2, not yet) → not a wall tile (so
-        /// <see cref="TileDefs.Debris"/> stays DIG's verb and <see cref="TileDefs.Void"/> is
-        /// nothing) → <see cref="IsPressureHull"/> → a living citizen standing on the tile.
+        /// then, per kind:
+        /// <list type="bullet">
+        /// <item><b>Device</b>: no device resolves at the tile → reject; the device is a
+        /// <see cref="DeviceKind.Door"/> → reject. <b>Everything else is legal, INCLUDING LIFE
+        /// SUPPORT</b> (<c>ECONOMY.md</c> §7.2 — stripping the scrubber to make rent is the game,
+        /// and E0-2's <c>SafetySystem</c> already handles the consequence).</item>
+        /// <item><b>Wall</b>: not a wall tile (so <see cref="TileDefs.Debris"/> stays DIG's verb
+        /// and <see cref="TileDefs.Void"/> is nothing) → <see cref="IsPressureHull"/> → a living
+        /// citizen standing on the tile.</item>
+        /// </list>
+        ///
+        /// WHY DOORS ARE THE ONE EXCLUSION: a door is <see cref="BuildSystem"/>'s OUTPUT
+        /// (<c>BuildSystem.Complete</c> spawns it), so its inverse is build-cancel, not strip.
+        /// Two owners for one object's lifetime is the bug. Deliberately NOT
+        /// <see cref="PlaceDeviceCommand.IsPlaceableFurniture"/>: that is a different, much
+        /// narrower verb (nine decor kinds the player may conjure at runtime), and reusing it
+        /// would forbid stripping exactly the machines worth stripping.
+        ///
+        /// NO CITIZEN-STANDING CHECK ON THE DEVICE PATH, unlike the wall path. A wall tile that
+        /// opens under a crew member can drop them into vacuum; a removed device leaves the floor
+        /// exactly as it was, only more walkable. Blocking machines already stand on unwalkable
+        /// tiles, so nobody can be there at all.
         /// </summary>
         public bool CanDesignate(Simulation sim, Int3 pos, DeconstructKind kind)
         {
@@ -178,9 +299,16 @@ namespace Perilune.Sim
             if (TryGet(pos, out _)) return false;                                 // already designated
             if (_pending.Count >= sim.Defs.Deconstruct.MaxStaged) return false;   // concurrency cap
 
-            // TODO(E0-5 WP-2): device strip. Accepting it here without the arrival re-validation
-            // and the RemoveDevice completion would designate work no source can finish.
-            if (kind != DeconstructKind.Wall) return false;
+            if (kind == DeconstructKind.Device)
+            {
+                // TryGetDeviceAt reads the device GRID, which deliberately excludes the utility
+                // overlays (Conduit/Pipe — Simulation.IsUtilityOverlay): they share a tile with a
+                // machine and never enter the grid, so a tile-addressed verb cannot name one
+                // unambiguously. HONEST LIMIT: conduits and pipes are therefore un-strippable
+                // today. They are also the cheapest things on the ship, so nothing is lost yet.
+                if (!sim.TryGetDeviceAt(pos, out var device)) return false;
+                return device.Kind != DeviceKind.Door;
+            }
 
             // Only a real WALL. Debris is DigJobSource's target (a different verb with a
             // different yield); Void is nothing to tear down.
@@ -201,15 +329,31 @@ namespace Perilune.Sim
         /// <see cref="CanDesignate"/> rejects it, so an illegal / hull / duplicate tile is a
         /// deterministic no-op. Sets <see cref="Simulation.JobsDirty"/> so the job board picks the
         /// new site up.
+        ///
+        /// <see cref="PendingDeconstruct.TargetId"/> is RESOLVED HERE from the device grid, not
+        /// supplied by the caller. The player clicks a TILE; entity ids are sim-internal, and a
+        /// caller-supplied id would be a second, unvalidated identity for the same object — the
+        /// bug class E0-3 settled when it made the designate flag explicit rather than a host-side
+        /// read of world state. <c>TargetId</c> stays 0 for a Wall.
+        ///
+        /// <see cref="PendingDeconstruct.WorkTicks"/> is def-frozen at designate (kind-dependent:
+        /// <c>wall_work_ticks</c> or <c>device_work_ticks</c>), exactly as
+        /// <see cref="PendingBuild.WorkTicks"/> is, so retuning defs mid-save never rewrites a
+        /// live site.
         /// </summary>
-        public bool Designate(Simulation sim, Int3 pos, DeconstructKind kind, uint targetId = 0)
+        public bool Designate(Simulation sim, Int3 pos, DeconstructKind kind)
         {
             if (!CanDesignate(sim, pos, kind)) return false;
+            uint targetId = 0;
+            if (kind == DeconstructKind.Device && sim.TryGetDeviceAt(pos, out var device))
+                targetId = device.Id;
             InsertSorted(new PendingDeconstruct
             {
                 Pos = pos,
                 Kind = kind,
-                WorkTicks = sim.Defs.Deconstruct.WallWorkTicks,
+                WorkTicks = kind == DeconstructKind.Wall
+                    ? sim.Defs.Deconstruct.WallWorkTicks
+                    : sim.Defs.Deconstruct.DeviceWorkTicks,
                 TargetId = targetId,
             });
             sim.JobsDirty |= JobBoardDirty.Sites; // a new pending site — the strip board re-derives
@@ -240,27 +384,65 @@ namespace Perilune.Sim
         /// no yield. That is deliberate: leaving an unsatisfiable entry pending would loop a crew
         /// member on it forever.
         ///
-        /// On a real completion: the wall tile becomes open floor, the ROOMS ON EITHER SIDE MERGE
-        /// and their gas re-equalises for free through <see cref="RoomState.MarkDirty"/> +
+        /// On a real WALL completion: the wall tile becomes open floor, the ROOMS ON EITHER SIDE
+        /// MERGE and their gas re-equalises for free through <see cref="RoomState.MarkDirty"/> +
         /// <c>AtmosphereSystem</c> (the "strip the wrong bulkhead and you decompress the mess
         /// hall" moment), power reachability may have changed, and the recovered Regolith drops as
         /// a loose stack on the freed tile.
         ///
         /// The tile's MATERIAL byte is deliberately left alone: the freed floor keeps the wall's
         /// material identity, exactly as <c>DigJobSource</c> leaves it on a dug-out tile.
+        ///
+        /// On a real DEVICE completion: <c>Simulation.RemoveDevice</c> does all of it — clears the
+        /// device grid, clears <see cref="TileFlags.HasDevice"/>, marks rooms dirty and bumps
+        /// <c>DeviceTopologyVersion</c> — and <c>floor(device_parts × Condition)</c> Parts drop on
+        /// the freed tile. <b>THE MOSS CONSEQUENCE IS A FEATURE</b> (<c>ECONOMY.md</c> §9.3:
+        /// <i>"deleting a named device un-registers its MOSS adapter, so you can break your own
+        /// automation by selling a valve"</i>): a script addressing the stripped device fails with
+        /// a legible per-tick runtime error and raises an alarm. Nothing here defends against it.
+        ///
+        /// <paramref name="workerId"/> is LIVE: it rides
+        /// <see cref="DeconstructCompletedEvent"/>, which <c>HistorySystem</c> turns into a
+        /// Chronicle line naming the crew member. Published only on a real tear-down.
         /// </summary>
         public bool Complete(Simulation sim, Int3 pos, uint workerId)
         {
             for (int i = 0; i < _pending.Count; i++)
             {
                 if (_pending[i].Pos != pos) continue;
-                var kind = _pending[i].Kind;
+                var site = _pending[i];
                 _pending.RemoveAt(i);
                 sim.JobsDirty |= JobBoardDirty.Sites; // the pending site is gone either way
 
-                // WP-1 is walls only; a Device entry cannot exist yet (CanDesignate rejects it),
-                // and if one ever did it would be consumed without effect rather than mis-applied.
-                if (kind != DeconstructKind.Wall) return true;
+                if (site.Kind == DeconstructKind.Device)
+                {
+                    // Validate on ARRIVAL. TargetId may have been removed by another path (a
+                    // RemoveDeviceCommand, a second stripper, a save from a build that had it)
+                    // during the 90-second pull; the id — not the tile — is the identity.
+                    if (!TargetStillExists(sim, site) ||
+                        !sim.Devices.TryGet(site.TargetId, out var device)) return true;
+
+                    int deviceYield = DeviceYield(sim.Defs, device);
+                    byte deviceKind = (byte)device.Kind;
+                    sim.RemoveDevice(site.TargetId); // grid + HasDevice + rooms + power + topology
+                    if (deviceYield > 0) sim.AddItem(DeviceSalvage, deviceYield, pos);
+                    // A genuine TILE change: RemoveDevice cleared TileFlags.HasDevice, which is
+                    // what BuildSystem.CanDesignate and PlaceDeviceCommand read to decide the tile
+                    // is occupied. (It does NOT change walkability today — no shipped machine sets
+                    // Blocks, and the one kind IsWalkable gates on is Door, which is never
+                    // stripped. It would the moment a blocking kind ships.)
+                    sim.Events.Publish(new TileChangedEvent { Pos = pos });
+                    sim.Events.Publish(new DeconstructCompletedEvent
+                    {
+                        Pos = pos,
+                        Kind = (byte)DeconstructKind.Device,
+                        Device = deviceKind,
+                        WorkerId = workerId,
+                        Yield = deviceYield,
+                    });
+                    sim.JobsDirty |= JobBoardDirty.Tiles;
+                    return true;
+                }
 
                 // Validate on ARRIVAL, never trust the designate-time decision.
                 if (sim.World.GetWall(pos) != TileDefs.Wall) return true;
@@ -273,6 +455,14 @@ namespace Perilune.Sim
                 sim.PowerDirty = true;                      // conduit reachability may change
                 if (yield > 0) sim.AddItem(WallSalvage, yield, pos); // AddItem sets Items itself
                 sim.Events.Publish(new TileChangedEvent { Pos = pos });
+                sim.Events.Publish(new DeconstructCompletedEvent
+                {
+                    Pos = pos,
+                    Kind = (byte)DeconstructKind.Wall,
+                    Device = 0,          // not a device (Door is 0 and is never stripped)
+                    WorkerId = workerId,
+                    Yield = yield,
+                });
                 sim.JobsDirty |= JobBoardDirty.Tiles;       // the tile board must re-derive
                 return true;
             }
@@ -322,8 +512,11 @@ namespace Perilune.Sim
         public void RestoreState(System.IO.BinaryReader reader, ushort version)
         {
             // Version-BRANCH, never version-BAIL (ECONOMY-PLAN §3.3). Deliberately NOT
-            // `if (version != 1) return;` — that shape silently drops every v1 save the moment
-            // WP-2 ships v2. A future v2 reads its extra fields under a `version >= 2` branch.
+            // `if (version != 1) return;` — that shape silently drops every v1 save the moment a
+            // v2 ships. A future v2 reads its extra fields under a `version >= 2` branch.
+            // STILL v1 AFTER WP-2: device strip added no saved field (TargetId shipped in WP-1
+            // precisely so this bump would never be needed), so v1 saves and v1 writers stay
+            // byte-identical across the device work.
             if (version < 1 || version > StateVersion) return;
             _pending.Clear();
             int count = reader.ReadInt32();

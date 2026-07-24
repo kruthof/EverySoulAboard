@@ -16,10 +16,21 @@
 # The pressure hull is never strippable (a wall adjacent to vacuum or the map
 # edge) — that is a code rule in DeconstructSystem.IsPressureHull, not a tunable.
 #
-# WP-1 ships WALLS ONLY. WP-2 appends device_parts / device_work_ticks here,
-# alongside their consumer.
+# A stripped DEVICE returns floor(device_parts x Condition) Parts — the only place
+# outside MachineWearSystem where Device.Condition changes an outcome. Parts feed
+# the ship's one never-ending sink (an overhaul consumes ONE Part), so 2 Parts is
+# exactly two overhauls: stripping a machine in good repair pays to keep two others
+# alive, and a wreck below Condition 0.5 is worth nothing at all.
+#
+# WHICH DEVICES: any device EXCEPT a Door. Doors are BuildSystem's output and their
+# inverse is build-cancel; two owners for one object's lifetime is the bug. Life
+# support is deliberately INCLUDED — stripping the scrubber to make rent is the
+# game, and E0-2's SafetySystem already handles the consequence. That is a code
+# rule in DeconstructSystem.CanDesignate, not a tunable.
 
 [deconstruct]
-wall_recovery    = 0.5   # fraction of build.wall_material a stripped wall returns (floored)
-wall_work_ticks  = 1200  # work ticks to tear a Wall down (120 s; half build's 2400)
-max_staged       = 64    # cap on concurrent pending deconstruct designations (queue guard)
+wall_recovery     = 0.5   # fraction of build.wall_material a stripped wall returns (floored)
+wall_work_ticks   = 1200  # work ticks to tear a Wall down (120 s; half build's 2400)
+max_staged        = 64    # cap on concurrent pending deconstruct designations (queue guard)
+device_parts      = 2     # base Parts a stripped device returns, before floor(x Condition)
+device_work_ticks = 900   # work ticks to strip a device (90 s; between maintenance and a wall)

@@ -109,6 +109,9 @@ namespace Perilune.Sim
             HistoryKind.Eulogy => 8,
             HistoryKind.Death => 7,
             HistoryKind.ConstructionCompleted => 6,
+            // E0-5: build's inverse ranks with build. Tearing the ship apart for salvage is at
+            // least as much the story of a day as raising a wall was.
+            HistoryKind.DeconstructCompleted => 6,
             HistoryKind.Brownout => 5,
             HistoryKind.Argument => 4,
             HistoryKind.Bond => 4,
@@ -136,6 +139,7 @@ namespace Perilune.Sim
             HistoryKind.Argument => "Argument",
             HistoryKind.Bond => "Bond",
             HistoryKind.ConstructionCompleted => "Construction",
+            HistoryKind.DeconstructCompleted => "Salvage",
             HistoryKind.Generic => "Note",
             _ => "Note",
         };

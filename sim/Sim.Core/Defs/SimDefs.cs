@@ -371,11 +371,12 @@ namespace Perilune.Sim
             public int MaxStaged;
         }
 
-        /// <summary>DeconstructSystem (E0-5) strip costs — build's inverse. The salvage is always
-        /// Regolith in WP-1 (a stripped wall returns a FRACTION of what raising it consumed, so
-        /// the loop is lossy and one-way); work ticks are whole ticks at 10 Hz, so they are
-        /// interval-agnostic and safe as defs. WP-2 appends the device-strip fields
-        /// (<c>device_parts</c>, <c>device_work_ticks</c>) HERE, alongside their consumer.</summary>
+        /// <summary>DeconstructSystem (E0-5) strip costs — build's inverse. A stripped WALL returns
+        /// a FRACTION of the Regolith raising it consumed, so the loop is lossy and one-way; a
+        /// stripped DEVICE returns <c>floor(device_parts × Condition)</c> Parts, which is
+        /// <see cref="Device.Condition"/>'s second consumer in the whole repo (every other reader
+        /// outside MachineWearSystem is display-only). Work ticks are whole ticks at 10 Hz, so they
+        /// are interval-agnostic and safe as defs.</summary>
         public sealed class DeconstructDefs
         {
             /// <summary>DeconstructSystem — fraction of <see cref="BuildDefs.WallMaterial"/> a
@@ -390,6 +391,17 @@ namespace Perilune.Sim
             /// designate past it is a deterministic no-op. Mirrors
             /// <see cref="BuildDefs.MaxStaged"/>. Current: 64.</summary>
             public int MaxStaged;
+            /// <summary>DeconstructSystem (E0-5 WP-2) — base <see cref="ItemKind.Parts"/> a stripped
+            /// device returns, BEFORE the <c>floor(× Condition)</c> scaling, so only a machine in
+            /// good repair is worth its full value and a wreck is worth nothing. 2 matches the
+            /// MachineShop's 2-Parts input (one stripped machine ≈ one ControllerModule of value)
+            /// and exactly two <see cref="WearDefs"/> overhauls, which consume one Part each.
+            /// Current: 2.</summary>
+            public int DeviceParts;
+            /// <summary>DeconstructSystem (E0-5 WP-2) — work ticks to strip a device (90 s at
+            /// 10 Hz). Between a maintenance service (900) and a wall tear-down (1200): pulling a
+            /// machine is quicker than cutting structure. Current: 900.</summary>
+            public int DeviceWorkTicks;
         }
 
         /// <summary>DirectorSystem (WS-NARRATIVE N6) tension curve + one lever. The Director
@@ -609,6 +621,8 @@ namespace Perilune.Sim
                     WallRecovery = 0.5f,
                     WallWorkTicks = 1200,
                     MaxStaged = 64,
+                    DeviceParts = 2,
+                    DeviceWorkTicks = 900,
                 },
 
                 Director = new DirectorDefs
@@ -655,7 +669,8 @@ namespace Perilune.Sim
         /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
         /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
         /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended)
-        /// → Deconstruct (E0-5, 3 fields, appended).
+        /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
+        /// 2 fields, appended).
         /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
@@ -851,6 +866,13 @@ namespace Perilune.Sim
             h = XxHash64.Combine(h, Deconstruct.WallRecovery);
             h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.WallWorkTicks);
             h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.MaxStaged);
+
+            // Deconstruct DEVICE fields (E0-5 WP-2), appended after MaxStaged exactly as the
+            // block above promised — the SECOND defs-checksum move this lane makes, and a
+            // deliberate one: WP-1 held these back because a def with no consumer has no honest
+            // tripwire, and DeconstructSystem.DeviceYield / Designate are that consumer.
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceParts);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceWorkTicks);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).
