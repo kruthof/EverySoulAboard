@@ -6,9 +6,14 @@ is renamed). Tag `v2-talking-ship`.
 
 ## Orientation for a fresh session
 
-1. **Read the two sections directly below, in order** — the A1 measurement (what the economy
+0. **⚠️ E0-4 IS IN PROGRESS on `lane/e0-4-stockpile-zones` (NOT on `main`, NOT merged).** If you are
+   the session picking it up, **read the "E0-4 — filtered stockpile zones: IN PROGRESS" section
+   directly below first** — WP-1/WP-2/WP-3 are committed on the lane; WP-4, WP-5 and integration
+   remain. The lane plan `docs/design/perilune-e0-4-stockpile-zones.plan.md` is the authority on
+   what is left. Do the remaining work IN THAT WORKTREE (`../perilune-wt/e0-4-stockpile-zones`).
+1. **Read the two sections further below, in order** — the A1 measurement (what the economy
    actually does today) and the E0-5-before-E0-4 sequencing case (what to do about it). Everything
-   further down is history, newest first.
+   below the E0-4 section is history, newest first.
 2. **`docs/MECHANICS.md` is the authority on behaviour**, and its **§13** lists what is wired but
    not connected. **§13.15** is the current occupancy measurement; **§13.6** is closed.
 3. **Work in a worktree — always** (`CLAUDE.md` hard rule), even for doc-only work. Never edit the
@@ -21,6 +26,100 @@ is renamed). Tag `v2-talking-ship`.
 mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
 recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + **E0-5**
 deconstruct/strip + wall drag-build & materials + drifting starfield + the **A1 measurement**.
+**In flight (NOT on `main`):** **E0-4** filtered stockpile zones — WP-1/2/3 committed on
+`lane/e0-4-stockpile-zones`, WP-4/5 + integrate remaining (see the E0-4 section below).
+
+## E0-4 — filtered stockpile zones: IN PROGRESS on `lane/e0-4-stockpile-zones` (2026-07-24), READ IF RESUMING
+
+**Status: WP-1, WP-2, WP-3 committed on the lane branch. WP-4, WP-5, and integration REMAIN. NOT
+merged to `main`.** Orchestrated the same way as E0-5 (plan agent → per-WP Opus implementer +
+**independent** Opus reviewer → integrator). Lane plan (the authority on the whole lane, including
+what is left): **`docs/design/perilune-e0-4-stockpile-zones.plan.md`**. Worktree:
+`../perilune-wt/e0-4-stockpile-zones`.
+
+**The design (DECIDED — Garvin, 2026-07-24 — "Choice A"):** the stockpile *presence* stays on
+`TileFlags.Stockpile` (bit 4, E0-3); only the *filter* (a per-tile `ulong AcceptMask`, bit k = accept
+`ItemKind` k) moves into the `ZONE` SYSS registry (`StockZoneSystem`), keyed by packed position;
+**absent registry entry = accept-all** (back-compat with every E0-3 stockpile + every old save, zero
+migration). The full presence-migration ("Choice B", `HANDOVER.md`'s old line "E0-4 migrates it off
+`TileFlags`") was **rejected** — ECONOMY.md §8 only forbids *filters* in `TileFlags`, not the
+presence bit. Reserved bit 7 untouched.
+
+**Landed on the lane (each Opus-implemented + independently Opus-reviewed unless noted):**
+- **`caf2a0d`** — the lane plan (Choice A recorded).
+- **WP-1** `765897f` + F1-fix `79d56bb` (review **PASS**): filled the W0-6-empty `StockZoneSystem` as
+  `DeconstructSystem`'s twin — `struct StockZone{Int3 Pos; ulong AcceptMask}`, packed-sorted registry,
+  `SetFilter`/`ClearFilter`/`TryGetFilter`/`Accepts`, `Pack`/`InsertSorted` (the deliberate 4th copy),
+  `ZONE` save **v1→v2** (version-BRANCH: a v1 marker-byte blob upgrades to accept-all), `StateChecksum`
+  fold (**empty registry folds bare `Seed` — byte-identical to today, which is what holds the pins**);
+  `Simulation.StockZones` reference accessor (no new hashed/saved field). Review F1: the v1→v2 bump
+  orphaned a neighbouring test's named mutation (`EconomySystemRegistrationTests`) — re-targeted to the
+  v2 format. **No `SystemStack` edit** (W0-6 pre-registered it).
+- **WP-2** `e88e548` (review **PASS**): `SetStockpileFilterCommand(pos, mask)` (the one new command) +
+  `DesignateStockpileCommand` OFF→`ClearFilter` (no orphan entries) + **haul honours the filter**
+  (kind-ed `IsFreeStockpileTile` overload, per-item candidate gate, `TryPathToFreeStockpile` filters
+  destinations, lazy `StockZones` resolve in `BeginTick`). **No bench rule yet.** Reviewer empirically
+  proved the `filtered` fast-path is byte-identical to no-filter for an accept-all mask.
+- **WP-3** `a7d3f3d` (**independent review still owed — see below**): the opt-in
+  `occupancy --stockpile <bench|far> [--stockpile-n N]` harness (host-only, mirrors E0-5's
+  `StripHarness`; verb-less default path byte-identical), + occupancy report of Haul %, throughput
+  (`ControllerModule` end-count), on-job travel %, `stockpile tiles zoned`. Pure `SelectStockpile`
+  helper unit-pinned (same N tiles across two boots, canonical z,y,x, walkable-only).
+
+**Pins held after every WP** (E0-4 is inert without player intent, exactly like E0-5 — no authored
+ship zones a stockpile): scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice
+`1f8f2225ee568de9`, defs `5a471d12643b64f9` — all byte-identical. Lane test count **914 dotnet** (was
+894 on `main`; +20 across WP-1/2/3). **No def scalar added** (defs checksum stays put — see plan §2.5).
+
+**WP-3 measurement — the pre-rule "before" A/B** (`occupancy --ship slice --days 3`):
+
+| run | A1 (h24) | Haul % (pickup+deliver) | throughput (CtrlModule end) | on-job travel |
+|---|---|---|---|---|
+| baseline (no flag) | 24.979 % FAIL | 0.00 % | 31 | — |
+| `--stockpile bench 4` | 24.979 % | 0.026 + 0.021 % | 31 | 3.7 % |
+| `--stockpile far 4` | 50.000 % **"PASS"** ⚠️ | **49.233** + 0.017 % | **6** | 0.2 % |
+
+`bench` (a stockpile hugging the benches) is **neutral-to-buffer** — throughput held at 31, tiny
+travel — matching ECONOMY.md §8's "buffer, not a hit".
+
+**`far` (wrong-deck) is a SEVERE regression — far worse than ECONOMY.md §8's −14 %, and the modern
+`IJobSource` dispatcher AMPLIFIES it rather than deflecting it (hazard 8.1 answered).** Throughput
+**collapses 31 → 6 `ControllerModule`** (−81 %); crew burn **49.2 % of ticks on `HaulPickup`** but
+**0.017 % on `HaulDeliver`** — an endless pick-up-and-re-drop thrash that never delivers; **`debris
+tiles left` is 47** (baseline digs to 0 — real work never happens); and the run takes **2595 s ≈ 43
+min, ~36× baseline** as the haul board thrashes. **The A1 "PASS" at 50 % is a TRAP, not a win** — it is
+the exact "25 % busy *eating* has not met A1's intent" caveat: crew are busy hauling uselessly, not
+producing. So A1 (which measures *any* productive-kind busy, and haul counts) is the wrong scorecard
+for this lane; **throughput (`ControllerModule` end-count) and `HaulDeliver`-vs-`HaulPickup` symmetry
+are the real ones.** WP-4's rule must flip this: travel/pickup-thrash gone, throughput back to ≥ 31.
+**A1 does not move on the productive economy and is not expected to** (E0-4 adds no matter; plan §1).
+**Reminder: still do not zone stockpiles in any authored ship** — this regression stays latent until
+WP-4's rule lands.
+
+**What REMAINS (next session, in the lane worktree):**
+1. **WP-3 independent review** — owed (host-only, low-risk; I ran its 6 harness tests green + a light
+   self-review, but the E0-5 method reviews every package). Cheap; do it first.
+2. **WP-4 — the "don't haul what a bench wants" rule** (plan §2.4/§5/§9, task-list #5): a `ulong
+   _benchWanted` mask in `HaulJobSource.Rescan` (computed inside the `anyFreeStockpile` branch) skipping
+   any `ItemKind` a live device's resolved `ProductionBill` consumes. Then **re-measure the flip**
+   under WP-3's `--stockpile far` harness (travel must NOT blow up; CtrlModule end ≥ 31). **If `far`
+   does not reproduce a throughput regression pre-rule (hazard 8.1 — the modern dispatcher may deflect
+   it), the deterministic unit test still proves the rule; report the real numbers, do not fabricate a
+   regression.** Closes the output-strand / haul-in↔fetch-out exploit. Edits `HaulJobSource.cs` — so it
+   is **sequential after WP-2** (same file). Independent Opus review after.
+3. **WP-5 — the filter UI** (plan §6, task #6): extend the E0-3 `stockpile` verb — client kind-palette
+   + a `filter` wire msg (`CmdKind.Filter`/`HandleFilter`), TUI filter arg, optional client-only
+   filtered-tile tint. **MUST land after WP-4** (close the faucet before shipping the tap). No glyph /
+   golden move. Independent Opus review after.
+4. **Integrate** (task #7): `./ci.sh` in the worktree, confirm the four pins byte-identical, update
+   `CLAUDE.md` + `MECHANICS.md` (§13 deferred items — incl. the WP-2-reviewer note that a mis-placed
+   stack on a filter-rejecting tile is not re-hauled off it, inherited from the "already stored" guard;
+   and the P1 rule forbidding stockpiling crafting intermediates while a consuming bench exists) +
+   `HANDOVER.md` + memory; merge `--no-ff` to `main` and re-gate.
+
+**Open items flagged in the plan** (§8 hazards, §12 out-of-scope): the far-regression reproduction
+(hazard 8.1); the 64-`ItemKind` mask ceiling (flagged, not fixed); no stack merging / priorities /
+containers (later E-STOCK packages); no `stock.def` (deferred until a real tunable exists).
 
 ## E0-5 — deconstruct/strip: LANDED on `main` (2026-07-23), before E0-4, START HERE
 
