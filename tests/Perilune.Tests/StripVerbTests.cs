@@ -187,13 +187,17 @@ namespace Perilune.Tests
         /// tore down 0/40 and moved occupancy nothing. Requiring a walkable neighbour picks the
         /// reachable partitions a crew actually strips.
         ///
-        /// THREE mutations, one per clause (apply, observe, revert):
+        /// TWO mutations bite here, one per independently-exercised clause (apply, observe, revert):
         ///   * drop <c>HasWalkableNeighbor</c> → a buried wall with no walkable neighbour is picked →
         ///     the walkable-neighbour assertion fails (and the whole point of WP-4's correction is lost).
-        ///   * drop <c>IsPressureHull</c> → a map-edge ring wall (walkable room floor on its inner
-        ///     side) is picked → the non-hull assertion fails.
         ///   * change the scan to x,y,z (or any non-canonical order) → the strictly-increasing
         ///     packed-order assertion fails.
+        /// The <c>IsPressureHull</c> clause is NOT independently exercised on this fixture: the slice is
+        /// carved from solid mass (no Void tile), so its only hull walls are the map-edge ring, whose
+        /// inner neighbours are also solid wall — the walkable-neighbour filter already excludes every
+        /// hull wall, making hull∩walkable empty here. The clause is load-bearing on non-solid-mass ships
+        /// and its real guardrail is <c>DeconstructSystemTests</c>' <c>CanDesignate</c> hull coverage, not
+        /// this selector test. (Reviewer finding F1, WP-4.)
         /// </summary>
         [Test]
         public void SelectWalls_OnTheSlice_IsExactlyNWorkableNonHullWalls_InCanonicalZyxOrder()
