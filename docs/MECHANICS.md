@@ -1677,8 +1677,14 @@ points.** But the pass/fail is the least interesting part; the *shape* is the fi
 problem has moved.
 
 **The busy curve, by sim-hour:** `80 % → 75 % → 37.5 % (h3–18) → 25 % (h19–27) → 12.5 % (h28)
-→ 0.0 % from h29 onward, permanently.` The flat plateaus are exact crew fractions (3/8, then
-2/8) — a fixed number of crew on long crafting bills, not a busy ship.
+→ ~1.5 % from h29 onward.` The flat plateaus are exact crew fractions (3/8, then 2/8) — a fixed
+number of crew on long crafting bills, not a busy ship.
+
+**CORRECTED 2026-07-23 (E0-5): the post-cliff floor is 1.480 %, not 0.0 %.** Measured over h29–h72
+the mean work-busy is **1.480 %**, with sporadic spikes (h45 9.5 %, h46 13.6 %, h62 15.0 %, h68
+6.5 %). `MachineWearSystem` is the *one* demand source that survives the cliff: wear is a rate and
+the overhaul consumes `Parts` (of which the ship still holds some) without new feedstock. "0.0 % from
+h29 onward, forever" overstated it; the economy idles, it does not flatline.
 
 **Why it terminates** (end-of-run state, printed by the harness):
 
@@ -1704,6 +1710,43 @@ source), **E0-7** (ice → water: a recurring haul source), **E0-6** (conversion
 thing that finally gives `ControllerModule` a consumer). **E0-4** (filtered stockpile zones)
 unblocks the 0.00 % haul kinds but adds no matter, so it moves haul off zero without extending
 the 28-hour runway.
+
+**E0-5 LANDED 2026-07-23 — deconstruct extends the runway, measured.** With the opt-in `--strip N`
+harness (which designates N *reachable* interior walls at t=0 — the plain verb-less path is
+unchanged), `occupancy --ship slice --days 3 --strip 40` lifts the h29–h72 floor **1.480 % → 13.198 %**
+and flips **A1 24.979 % (FAIL) → 37.424 % (PASS)**. 40 walls yield 40 `Regolith`, which idle crew craft
+up the ladder to **+19 `ControllerModule`** (31→50) — matter conserves, nothing minted. Deconstruct is
+**player-designated**, so it is inert on every authored ship (none designates a strip); the runway
+extends only when a player chooses to tear the ship apart. This is the "deconstruct at a loss"
+faucet of §7.2, now real. See `docs/HANDOVER.md` "E0-5". §13.16 records the wired-but-not-connected
+follow-ups (furniture strip currency, placement haul, MOSS write legibility).
+
+---
+
+### 13.16 E0-5 deconstruct — what is wired but not connected (owner: E0-6)
+
+The deconstruct verb is complete and reviewed, but four seams were deliberately left for E0-6, each
+recorded here so they are not rediscovered as bugs:
+
+- **Furniture costs machine `Parts` to place.** `PlaceDeviceCommand` charges `device_place_cost`
+  Parts in the *same* currency the strip refunds, because charge-currency must equal refund-currency
+  or the place→strip loop reopens per-kind. That is economically correct but fictionally odd (a chair
+  costing machine parts). The clean fix is furniture with its own strip yield in its own currency —
+  E0-6, not a per-kind cost table here (`PlaceDeviceCommand.Execute`, `DeconstructSystem.DeviceSalvage`).
+- **Placement material teleports.** The Parts cost is consumed from any loose ground stack aboard, in
+  item-store order, with no haul and no distance term. A real staged-haul placement is `BuildSystem`'s
+  shape and belongs to E0-6. Stated in the command's doc comment.
+- **MOSS write-only scripts fail silently against a stripped device.** A read against a removed device
+  breaks legibly (the adapter is gone); a `TryInvoke` write enqueues against a dead id and returns
+  true, so a write-only script fails silently forever. The fix belongs in `Sim.Dsl`.
+- **No client feedback on an unaffordable placement.** The command refuses (a bit-for-bit no-op), but
+  the shipping client shows the player nothing. A WP-level client affordance, E0-6.
+
+Also structural, not a defect: **`Conduit`/`Pipe` are un-strippable** because `Simulation.IsUtilityOverlay`
+keeps them off the device grid, so `TryGetDeviceAt` never resolves them — a consequence, not a designed
+rule. And the **`IsPressureHull` predicate is in-plane only** (4-neighbour, no z-term) and geometric,
+not structural (there is no hull-stress model — `ShipSystems.cs:650-694`); on the solid-mass slice it
+reduces to the map-edge ring.
 
 ---
 

@@ -27,6 +27,34 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-23) — **E0-5 (deconstruct/strip)** landed on `main`, before E0-4
+**E0-5 is LANDED on `main`** (merged `--no-ff` from `lane/e0-5-deconstruct`; six commits, four work
+packages, each Opus-implemented + independently Opus-reviewed **PASS**). Taken **before E0-4** by
+Garvin's decision against `ECONOMY-PLAN`'s written order: A1 measured **matter**, not labour, as the
+binding constraint (`docs/HANDOVER.md` "E0-5 before E0-4"), and deconstruct is the only E0 lane that
+*creates* matter. **Deconstruct is now a first-class verb mirroring `BuildSystem`:** a passive
+`DeconstructSystem` registry (`'STRP'`) + `DeconstructJobSource` + `JobKind.Deconstruct=11`, the
+`strip` verb across web/TUI/client (key **V**), and `GlyphColor.Deconstruct` (appended, index 26).
+**Walls → `Regolith` (`floor(wall_material × wall_recovery)`); devices → `Parts × Condition`** (giving
+`Condition` its second consumer — every other reader was display-only). Guardrail: **`IsPressureHull`**
+(a wall adjacent to void or map edge is never strippable — the canvas edge). Stripping an interior
+bulkhead merges rooms + equalises gas for free via `Rooms.MarkDirty()`. Device strip un-registers the
+MOSS adapter (a *feature* — break your own automation) and writes a `DeconstructCompletedEvent` to the
+Chronicle. **The place→strip matter faucet is closed:** `PlaceDeviceCommand` now charges
+`device_place_cost` Parts (all-or-nothing, refuses when unaffordable), so the round trip is strictly
+lossy (66.7% recovery at pristine, in `ECONOMY.md` §9.6's 50–70% band). **Measured** (slice, 3 days,
+new `occupancy --strip N` harness): `--strip 40` lifts the post-cliff h29–h72 busy floor
+**1.480% → 13.198%** and flips **A1 24.979% (FAIL) → 37.424% (PASS)**; matter conserves (40 walls →
+40 Regolith → up the ladder to +19 `ControllerModule`). **Inert without player intent** — the
+verb-less occupancy path and every pin are byte-identical to baseline. Pins: scenario
+`85ac8c44`→`00e0a2dadb8e5076` (WP-1 `'STRP'` seed fold, fold-only), tick-3000
+`9b834cffc232ce7f`→`4be2e77864fb7409`, slice `8c6b2544`→`1f8f2225ee568de9`, defs
+`e56d33a2`→`5a471d12643b64f9` (three def packages). **Deferred to E0-6:** furniture costing machine
+Parts is a placeholder (give furniture its own strip currency); the material *teleports* on placement
+(no haul); MOSS write-only scripts against a stripped device fail silently. **Next: E0-4** (filtered
+stockpile zones) — **do not zone stockpiles in any authored ship until it lands** (keeps the measured
+−14% throughput regression latent). See `docs/HANDOVER.md` "E0-5" at the top.
+
 ## Status snapshot (2026-07-23) — **E0-2 (work-rate rebase + movement retune + crew-safety guard)** landed on `main`
 **E0-2 is LANDED on `main`** (`39702a3`, Opus-implemented + independently Opus-reviewed PASS, three
 legible commits). The L1 **work-rate rebase (~10×)** — dig 6s→10min, wall 6s→4min, door 4s→3min,

@@ -14,13 +14,86 @@ is renamed). Tag `v2-talking-ship`.
 3. **Work in a worktree — always** (`CLAUDE.md` hard rule), even for doc-only work. Never edit the
    main checkout; never `git add -A`.
 4. **Re-measure before quoting numbers.** Test counts and pins move every lane. Current gate:
-   **846 dotnet + 483 node**, scenario `85ac8c44233284e9`, tick-3000 `9b834cffc232ce7f`, slice
-   `8c6b2544fac36d63`, defs `e56d33a2e46b5644`.
+   **894 dotnet + 485 node**, scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice
+   `1f8f2225ee568de9`, defs `5a471d12643b64f9`.
 
 **Landed so far:** P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the
 mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
-recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + wall
-drag-build & materials + drifting starfield + the **A1 measurement**.
+recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + **E0-5**
+deconstruct/strip + wall drag-build & materials + drifting starfield + the **A1 measurement**.
+
+## E0-5 — deconstruct/strip: LANDED on `main` (2026-07-23), before E0-4, START HERE
+
+**Taken before E0-4 by Garvin's decision** (the "E0-5 before E0-4" case below). Six commits on
+`lane/e0-5-deconstruct`, four work packages, each Opus-implemented + **independently Opus-reviewed
+PASS**. Plan: `docs/design/perilune-e0-5-deconstruct.plan.md`. **`./ci.sh` exit 0, twins match,
+894 dotnet + 485 node.**
+
+**What landed — deconstruct is now a first-class verb mirroring `BuildSystem`:**
+- **`DeconstructSystem`** (`'STRP'`, passive `ISimSystem + IStatefulSystem`, no-op `Tick` except a
+  narrow `Reap` of vanished sites) + **`DeconstructJobSource`** + **`JobKind.Deconstruct = 11`** +
+  **`DesignateDeconstructCommand`** (three-arg: pos + kind + explicit on-flag; sim resolves the
+  device id). Registered right after `BuildSystem` in `SystemStack`; `DefaultSources` appends it last.
+- **Walls → `Regolith`** = `floor(wall_material × wall_recovery)` (1 at shipped 2×0.5). **Devices →
+  `Parts`** = `floor(device_parts × Condition)` — **`Condition`'s second consumer** (every other
+  reader was display-only). Yield is `Regolith` **not `Scrap`**, deliberately diverging from
+  `ECONOMY.md` §5's diagram: the shipped recycler *consumes* Regolith to make Scrap, so a Scrap yield
+  would skip a hop and make stripping strictly better than digging. Revisit at E0-6.
+- **`IsPressureHull` guardrail** — a wall adjacent to void or the map edge is never strippable (the
+  canvas edge, VISION). **Honest limit:** in-plane 4-neighbour only, no z-term; and the slice is
+  carved from solid mass (no `Void` tile), so on it the predicate reduces to the map-edge ring
+  (328/1705 walls) — a *canvas-edge* guard, not yet a *vacuum* guard. The `CanDesignate` hull check
+  is the real guardrail; `DeconstructSystemTests` pins it.
+- **Consequences all wired, none faked:** stripping an interior bulkhead merges rooms + equalises gas
+  for free (`Rooms.MarkDirty()` → `AtmosphereSystem`; measured on the real slice: two rooms at 101.35
+  and 0.00 kPa → merged at 76.84 kPa). Device strip un-registers its MOSS adapter (a *feature* — break
+  your own automation) and writes a **`DeconstructCompletedEvent`** to the Chronicle
+  (`HistoryKind.DeconstructCompleted = 10`).
+- **The `strip` verb across all five surfaces** (web/TUI/client), key **V** (`X`/`S`/`D` were taken),
+  and **`GlyphColor.Deconstruct` appended** (index 26 — append-only; no golden moved because no
+  authored ship designates).
+
+**The place→strip matter faucet — found by review, closed in-lane.** WP-2's reviewer measured that
+`PlaceDeviceCommand` charged nothing while a stripped device yielded 2 Parts: place→strip→repeat minted
+**1 Part / 476 ticks with zero matter** (vs 15,000 ticks + 1 Regolith through the legit ladder) into
+the one never-ending sink. WP-3 charges **`device_place_cost` Parts** to place (all-or-nothing, refuses
+when unaffordable, a refusal is a bit-for-bit no-op) — charging *the currency it refunds* closes the
+labour exploit a Regolith cost would leave open. Round trip is strictly lossy: **66.7 %** recovery at
+pristine, inside `ECONOMY.md` §9.6's 50–70 % band.
+
+**Measured — the number the lane exists to produce** (`occupancy --ship slice --days 3`, a new opt-in
+`--strip N` harness that designates N *reachable* interior walls at t=0):
+
+| | h29–h72 mean work | A1 (h24) | end `ControllerModule` |
+|---|---|---|---|
+| baseline (no strip) | **1.480 %** | 24.979 % **FAIL** | 31 |
+| `--strip 40` | **13.198 %** | **37.424 % PASS** | 50 |
+
+Deconstruct lifts the post-cliff floor **9×** and flips A1. Matter conserves: 40 walls → 40 Regolith →
+idle crew craft it up the ladder to **+19 `ControllerModule`** (nothing minted or destroyed; no
+leftover Regolith/Scrap/Parts). **Inert without player intent** — the verb-less occupancy path and all
+four pins are byte-identical to baseline; *any* movement there would be a bug.
+
+**⚠️ Two record corrections this lane forced:**
+1. The A1/§13.15 claim "0.0 % from h29 onward, forever" **overstates it** — the floor is **1.480 %**,
+   not zero. `MachineWearSystem` is the one demand source that survives the cliff (wear is a rate, and
+   the overhaul consumes `Parts` without feedstock): spikes at h45/h46/h62/h68. §13.15 is corrected.
+2. The handover's own E0-5 guardrail ("re-run occupancy, check the flatline lifts") was
+   **unsatisfiable as written** — deconstruct is player-designated and no authored ship designates
+   anything, so the lane had to ship its own `--strip N` measurement surface to make the check
+   meaningful. Inert-without-the-flag is now an assertion, not a hope.
+
+**Deferred (E0-6, all recorded in `MECHANICS §13`):** furniture costs machine `Parts` to place — a
+placeholder until furniture gets its own strip currency; placement material **teleports** (no haul, no
+distance — a real staged-haul placement is `BuildSystem`'s shape); MOSS *write-only* scripts against a
+stripped device fail **silently** (only reads break legibly); the `Scrap`-yield deconstruct of the
+diagram; and a hull *stress* model. `Conduit`/`Pipe` are un-strippable (a consequence of
+`IsUtilityOverlay` keeping them off the device grid, not a designed rule).
+
+**Next: E0-4** (filtered stockpile zones). E0-5 created the haul traffic that makes E0-4's "don't haul
+what a bench wants" rule measurable — but **do not zone stockpiles in any authored ship until E0-4
+lands**, to keep the measured −14 % wrong-deck throughput regression latent. E0-5's own guardrail held:
+no authored ship designates a strip.
 
 ## A1 MEASURED — the economy is finite and TERMINATES at sim-hour 28 (2026-07-23), START HERE
 
