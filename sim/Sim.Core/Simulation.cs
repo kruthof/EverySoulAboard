@@ -53,6 +53,7 @@ namespace Perilune.Sim
         private uint _nextEntityId = 1;
         private readonly ISimSystem[] _systems;
         private readonly DeconstructSystem _deconstruct;
+        private readonly StockZoneSystem _stockZones;
         private readonly ConcurrentQueue<ISimCommand> _inbox = new ConcurrentQueue<ISimCommand>();
         private readonly List<ISimCommand> _drain = new List<ISimCommand>(64);
         private readonly Dictionary<Int3, uint> _deviceGrid = new Dictionary<Int3, uint>();
@@ -67,6 +68,11 @@ namespace Perilune.Sim
             // purely so the PURE projection can recolour a condemned tile — see Deconstruct.
             for (int i = 0; i < _systems.Length; i++)
                 if (_systems[i] is DeconstructSystem d) { _deconstruct = d; break; }
+            // Resolve the optional stockpile-filter registry ONCE (E0-4), the exact _deconstruct
+            // precedent — a reference for the haul board / harness, NOT a new saved or hashed field
+            // (StockZoneSystem serialises and folds itself in its own ZONE chapter).
+            for (int i = 0; i < _systems.Length; i++)
+                if (_systems[i] is StockZoneSystem z) { _stockZones = z; break; }
         }
 
         /// <summary>
@@ -80,6 +86,18 @@ namespace Perilune.Sim
         /// must ask the registry. Nothing here mutates the sim.
         /// </summary>
         public DeconstructSystem Deconstruct => _deconstruct;
+
+        /// <summary>
+        /// The E0-4 filtered-stockpile registry (per-tile accept masks), or <c>null</c> on a
+        /// reduced stack without one. READ-ONLY VIEW, and it adds no saved or hashed field — the
+        /// registry serialises and folds itself in its own ZONE chapter; this is only a reference
+        /// resolved once at construction, the <see cref="Deconstruct"/> precedent.
+        ///
+        /// It exists for the haul board (WP-2, <c>HaulJobSource</c> asks
+        /// <see cref="StockZoneSystem.Accepts"/> which free stockpile tiles will take a carried
+        /// kind) and the occupancy harness (WP-3). Nothing here mutates the sim.
+        /// </summary>
+        public StockZoneSystem StockZones => _stockZones;
 
         /// <summary>Conduits and pipes are service-tray overlays: they share tiles with
         /// machines and never enter the tile grid (side-section world).</summary>
