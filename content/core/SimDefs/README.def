@@ -37,6 +37,10 @@
 #   [wear]          machine wear + maintenance (MachineWear/MaintenanceSystem)
 #   [citizen]       movement cadence + idle-wander scope (CitizenSystem)
 #   [exploration]   fog-reveal radius (ExplorationSystem)
+#   [build]         build/refit material costs + construct times (BuildSystem), plus
+#                   device_place_cost — PlaceDeviceCommand's price in PARTS (E0-5 WP-3)
+#   [deconstruct]   strip recovery fraction, device Parts yield + tear-down times
+#                   (DeconstructSystem, E0-5)
 #   [director]      tension weights + the wear_pressure lever (DirectorSystem)
 #   [machines]      radiator_reject_kw scalar + one row per DeviceKind:
 #                     NAME draw gen tier blocks heat wear maint fail

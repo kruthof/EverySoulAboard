@@ -95,6 +95,7 @@ namespace Perilune.Sim
         public SocialDefs Social;
         public NavDefs Nav;
         public BuildDefs Build;
+        public DeconstructDefs Deconstruct;
         public DirectorDefs Director;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
@@ -354,7 +355,12 @@ namespace Perilune.Sim
         /// <summary>BuildSystem (WS-MATTER) build/refit costs. Material is always Regolith
         /// in v0; these tune how much of it each build kind wants and how long it takes to
         /// raise, plus a concurrency guard on the number of open designations. Construct
-        /// times are whole ticks (10 Hz), so they are interval-agnostic and safe as defs.</summary>
+        /// times are whole ticks (10 Hz), so they are interval-agnostic and safe as defs.
+        ///
+        /// E0-5 WP-3 adds one field that is NOT BuildSystem's: <see cref="DevicePlaceCost"/>,
+        /// the price of <see cref="PlaceDeviceCommand"/>. It lives here because this is the
+        /// section that says what putting matter INTO the ship's fabric costs, and it is
+        /// deliberately priced in a DIFFERENT currency from the other two — see its doc.</summary>
         public sealed class BuildDefs
         {
             /// <summary>BuildSystem — Regolith units a Wall designation stages before it builds. Current: 2.</summary>
@@ -368,6 +374,58 @@ namespace Perilune.Sim
             /// <summary>BuildSystem — cap on concurrent pending designations; a designate past it
             /// is a deterministic no-op (a runaway/queue guard, not a per-site buffer). Current: 64.</summary>
             public int MaxStaged;
+            /// <summary>
+            /// <see cref="PlaceDeviceCommand"/> (E0-5 WP-3) — <see cref="ItemKind.Parts"/> consumed
+            /// to place one piece of furniture from the Room Zoom decorate palette. Current: 3.
+            ///
+            /// PRICED IN PARTS, NOT REGOLITH, ON PURPOSE — it must be the SAME currency
+            /// <c>[deconstruct] device_parts</c> refunds. A Regolith cost against a Parts yield
+            /// would still be a 900-tick Regolith→Parts converter, bypassing the ~30 000 ticks of
+            /// crafting the shipped ladder charges for the same conversion.
+            ///
+            /// 3 &gt; the maximum device strip yield (<c>floor(device_parts 2 × Condition 1.0)</c> =
+            /// 2), so place→strip is LOSSY AT EVERY CONDITION: 66.7 % recovery at pristine — inside
+            /// <c>ECONOMY.md</c> §9.6's 50–70 % band, and within a point of §5's flow diagram
+            /// ("deconstruct 30 %"). Pinned by
+            /// <c>DefsDefaultTests.Build_DevicePlaceCost_StrictlyExceedsTheBestPossibleStripYield</c>.
+            /// </summary>
+            public int DevicePlaceCost;
+        }
+
+        /// <summary>DeconstructSystem (E0-5) strip costs — build's inverse. A stripped WALL returns
+        /// a FRACTION of the Regolith raising it consumed, so the loop is lossy and one-way; a
+        /// stripped DEVICE returns <c>floor(device_parts × Condition)</c> Parts, which is
+        /// <see cref="Device.Condition"/>'s second consumer in the whole repo (every other reader
+        /// outside MachineWearSystem is display-only). Work ticks are whole ticks at 10 Hz, so they
+        /// are interval-agnostic and safe as defs.</summary>
+        public sealed class DeconstructDefs
+        {
+            /// <summary>DeconstructSystem — fraction of <see cref="BuildDefs.WallMaterial"/> a
+            /// stripped wall returns, floored to whole units (2 × 0.5 → 1). DECIMAL: parses with
+            /// InvariantCulture, or de-DE reads "0.5" as 5. Current: 0.5.</summary>
+            public float WallRecovery;
+            /// <summary>DeconstructSystem — work ticks to tear a Wall down (120 s at 10 Hz), half
+            /// <see cref="BuildDefs.WallConstructTicks"/>: tearing down is faster than building.
+            /// Current: 1200.</summary>
+            public int WallWorkTicks;
+            /// <summary>DeconstructSystem — cap on concurrent pending deconstruct designations; a
+            /// designate past it is a deterministic no-op. Mirrors
+            /// <see cref="BuildDefs.MaxStaged"/>. Current: 64.</summary>
+            public int MaxStaged;
+            /// <summary>DeconstructSystem (E0-5 WP-2) — base <see cref="ItemKind.Parts"/> a stripped
+            /// device returns, BEFORE the <c>floor(× Condition)</c> scaling, so only a machine in
+            /// good repair is worth its full value and a wreck is worth nothing. 2 matches the
+            /// MachineShop's 2-Parts input (one stripped machine ≈ one ControllerModule of value)
+            /// and exactly two <see cref="WearDefs"/> overhauls, which consume one Part each.
+            /// Current: 2.
+            /// <para>E0-5 WP-3: read this against <see cref="BuildDefs.DevicePlaceCost"/> = 3, the
+            /// PARTS price of placing furniture. They are a PAIR — the round trip is lossy only
+            /// while the cost strictly exceeds the best possible yield here.</para></summary>
+            public int DeviceParts;
+            /// <summary>DeconstructSystem (E0-5 WP-2) — work ticks to strip a device (90 s at
+            /// 10 Hz). Between a maintenance service (900) and a wall tear-down (1200): pulling a
+            /// machine is quicker than cutting structure. Current: 900.</summary>
+            public int DeviceWorkTicks;
         }
 
         /// <summary>DirectorSystem (WS-NARRATIVE N6) tension curve + one lever. The Director
@@ -580,6 +638,16 @@ namespace Perilune.Sim
                     DoorMaterial = 1,
                     DoorConstructTicks = 1800,
                     MaxStaged = 64,
+                    DevicePlaceCost = 3,
+                },
+
+                Deconstruct = new DeconstructDefs
+                {
+                    WallRecovery = 0.5f,
+                    WallWorkTicks = 1200,
+                    MaxStaged = 64,
+                    DeviceParts = 2,
+                    DeviceWorkTicks = 900,
                 },
 
                 Director = new DirectorDefs
@@ -625,7 +693,9 @@ namespace Perilune.Sim
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
         /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
         /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
-        /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended).
+        /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended)
+        /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
+        /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended).
         /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
@@ -812,6 +882,29 @@ namespace Perilune.Sim
             // (README.def HANDOVER INVARIANT #3), and inserting mid-block would renumber the
             // fold order of everything after it.
             h = XxHash64.Combine(h, Atmosphere.DiffusionCoefficient);
+
+            // Deconstruct (E0-5 strip costs), APPENDED after Atmosphere.DiffusionCoefficient and
+            // before the rules fold — the append-at-END invariant (README.def HANDOVER INVARIANT
+            // #3), so every previously recorded checksum stays byte-comparable and only the
+            // trailing bytes change. WP-2's device_parts / device_work_ticks append HERE, after
+            // MaxStaged, for the same reason.
+            h = XxHash64.Combine(h, Deconstruct.WallRecovery);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.WallWorkTicks);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.MaxStaged);
+
+            // Deconstruct DEVICE fields (E0-5 WP-2), appended after MaxStaged exactly as the
+            // block above promised — the SECOND defs-checksum move this lane makes, and a
+            // deliberate one: WP-1 held these back because a def with no consumer has no honest
+            // tripwire, and DeconstructSystem.DeviceYield / Designate are that consumer.
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceParts);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceWorkTicks);
+
+            // Build.DevicePlaceCost (E0-5 WP-3), appended at the END — the THIRD defs-checksum
+            // move this lane makes. It folds HERE and not up in the Build block for the reason
+            // every field since Social-S1 does: append-at-END is the invariant (README.def
+            // HANDOVER INVARIANT #3), and inserting it beside its siblings would renumber the
+            // fold order of everything after it and invalidate every recorded checksum.
+            h = XxHash64.Combine(h, (ulong)(uint)Build.DevicePlaceCost);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

@@ -19,6 +19,7 @@ namespace Perilune.Sim
         Bond = 7,
         ConstructionCompleted = 8,
         Eulogy = 9,                // a closest-friend eulogy on a death (EulogySystem, N5)
+        DeconstructCompleted = 10, // a wall torn down / a device stripped (DeconstructSystem, E0-5)
     }
 
     /// <summary>One line of ship history, day-stamped ("Day 142.12 — Blight detected in Bay 3").</summary>
@@ -122,6 +123,26 @@ namespace Perilune.Sim
             foreach (var build in sim.Events.Read<ConstructionCompletedEvent>())
                 Add(tick, $"{NameOf(sim, build.BuilderId)} finished a construction.",
                     HistoryKind.ConstructionCompleted, build.BuilderId);
+
+            // E0-5: build's inverse deserves the same Chronicle trace build gets. The DEVICE KIND
+            // rides the event because RemoveDevice already ran — an id lookup here would always
+            // miss, exactly as CitizenDiedEvent.Name exists to solve.
+            foreach (var strip in sim.Events.Read<DeconstructCompletedEvent>())
+                Add(tick, StripText(sim, strip), HistoryKind.DeconstructCompleted, strip.WorkerId);
+        }
+
+        /// <summary>"Ito stripped the scrubber for parts." / "Ito tore down a wall for salvage."
+        /// A zero yield is stated rather than hidden — stripping a wreck for nothing is exactly
+        /// the kind of decision the Chronicle exists to remember.</summary>
+        private static string StripText(Simulation sim, DeconstructCompletedEvent e)
+        {
+            string who = NameOf(sim, e.WorkerId);
+            string what = e.Kind == (byte)DeconstructKind.Wall
+                ? "a wall"
+                : "the " + ((DeviceKind)e.Device).ToString().ToLowerInvariant();
+            return e.Yield > 0
+                ? $"{who} stripped {what} for salvage."
+                : $"{who} stripped {what}, and it was worth nothing.";
         }
 
         /// <summary>Citizen name if the sim can still resolve the id, else a neutral placeholder.</summary>

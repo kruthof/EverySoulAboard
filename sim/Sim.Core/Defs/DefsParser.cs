@@ -28,7 +28,7 @@ namespace Perilune.Sim
     /// </summary>
     public static class DefsParser
     {
-        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Director, Machines, Recipes, Production, Unknown }
+        private enum Section { None, Thermal, Atmosphere, Needs, Sustenance, Water, Hydro, Wear, Citizen, Exploration, Social, Nav, Build, Deconstruct, Director, Machines, Recipes, Production, Unknown }
 
         private static readonly char[] Whitespace = { ' ', '\t' };
         private static readonly char[] PortSeparator = { '+' };
@@ -142,6 +142,7 @@ namespace Perilune.Sim
                 case "social": return Section.Social;
                 case "nav": return Section.Nav;
                 case "build": return Section.Build;
+                case "deconstruct": return Section.Deconstruct;
                 case "director": return Section.Director;
                 case "machines": return Section.Machines;
                 case "recipes": return Section.Recipes;
@@ -171,6 +172,7 @@ namespace Perilune.Sim
                 case Section.Social: known = SocialKey(d, key, val, loc, p); break;
                 case Section.Nav: known = NavKey(d, key, val, loc, p); break;
                 case Section.Build: known = BuildKey(d, key, val, loc, p); break;
+                case Section.Deconstruct: known = DeconstructKey(d, key, val, loc, p); break;
                 case Section.Director: known = DirectorKey(d, key, val, loc, p); break;
                 default: known = false; break;
             }
@@ -351,6 +353,26 @@ namespace Perilune.Sim
                 case "door_material": if (I(v, k, loc, p, out var c)) d.Build.DoorMaterial = c; return true;
                 case "door_construct_ticks": if (I(v, k, loc, p, out var e)) d.Build.DoorConstructTicks = e; return true;
                 case "max_staged": if (I(v, k, loc, p, out var f)) d.Build.MaxStaged = f; return true;
+                // E0-5 WP-3: PlaceDeviceCommand's price, in whole Parts — I(), no culture hazard.
+                case "device_place_cost": if (I(v, k, loc, p, out var g)) d.Build.DevicePlaceCost = g; return true;
+                default: return false;
+            }
+        }
+
+        // E0-5. `wall_recovery` is the section's one DECIMAL value and therefore its one live
+        // culture hazard — F() pins InvariantCulture, without which de-DE reads "0.5" as 5 and a
+        // stripped wall would return five times what raising it cost.
+        private static bool DeconstructKey(SimDefs d, string k, string v, string loc, List<string> p)
+        {
+            switch (k)
+            {
+                case "wall_recovery": if (F(v, k, loc, p, out var a)) d.Deconstruct.WallRecovery = a; return true;
+                case "wall_work_ticks": if (I(v, k, loc, p, out var b)) d.Deconstruct.WallWorkTicks = b; return true;
+                case "max_staged": if (I(v, k, loc, p, out var c)) d.Deconstruct.MaxStaged = c; return true;
+                // E0-5 WP-2 device strip. Both are whole ticks / whole units, so I() and no
+                // culture hazard — wall_recovery remains the section's only decimal.
+                case "device_parts": if (I(v, k, loc, p, out var e)) d.Deconstruct.DeviceParts = e; return true;
+                case "device_work_ticks": if (I(v, k, loc, p, out var f)) d.Deconstruct.DeviceWorkTicks = f; return true;
                 default: return false;
             }
         }

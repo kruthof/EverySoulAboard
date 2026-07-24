@@ -136,5 +136,6 @@ namespace Perilune.Sim
         Build = 9,       // constructing at a build designation (BuildSystem)
         Flee = 10,       // walking out of unbreathable air to survive (SafetySystem) — not None, so no
                          //   dispatcher recruits a fleeing crew until it has recovered in safe air
+        Deconstruct = 11, // tearing down a designated wall (DeconstructSystem, E0-5) — build's inverse
     }
 }

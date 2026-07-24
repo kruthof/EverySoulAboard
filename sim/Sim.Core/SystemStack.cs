@@ -36,6 +36,10 @@ namespace Perilune.Sim
                 new MachineWearSystem(director),
                 new MaintenanceSystem(),
                 new BuildSystem(),         // passive; completions applied after job progress this tick
+                new DeconstructSystem(),   // E0-5 'STRP' — passive; build's inverse, so it sits beside it.
+                                           // ORDER IS LOAD-BEARING: it fixes the SYSS fold order and
+                                           // therefore the pin. Inert on every authored ship (nothing
+                                           // designates), so registering it is a FOLD-ONLY pin move.
                 // Economy Wave 0 (W0-6): four PASSIVE, EMPTY registries grouped here beside the
                 // existing passive BuildSystem. Their Tick is a no-op today; they exist so their
                 // SYSS chapters and checksum seeds are registered (one batched pin move) before

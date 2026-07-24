@@ -36,6 +36,10 @@ namespace Perilune.Glyph
         Accent,
         Text,
         TextDim,
+        Deconstruct,   // E0-5: a pending strip designation (a condemned wall / device). Appended
+                       // (index 26) — NOT a reuse of Water(13)/Growth(14): those are the wrong
+                       // semantics and reusing one would lie in the golden format. No shipped
+                       // golden moves: no authored ship carries a deconstruct designation.
     }
 
     /// <summary>Per-cell rendering attributes; the skin decides how each is shown.</summary>

@@ -48,7 +48,7 @@ export function crewTileNear(frame, motion, camera, px, py) {
  * Lower an armed PALETTE tool + tile to the ONE wire order it means, or null when the tool is not
  * a palette tool (MOVE / nothing armed — those have their own branches at the call site). PURE.
  *
- * Build kinds go out as `Cmd.build`; the E0-3 order kinds go out as `Cmd.dig` / `Cmd.stockpile`.
+ * Build kinds go out as `Cmd.build`; the order kinds go out as `Cmd.dig`/`Cmd.stockpile`/`Cmd.strip`.
  * Same gesture, different verb — routing an order tool through `Cmd.build` would hand it to
  * BuildSystem, which knows nothing about designations. This is one exported function rather than a
  * branch inlined at each call site so the mouse-click and Enter-key paths cannot drift apart (they
@@ -62,6 +62,7 @@ export function paletteOrder(tool, x, y) {
   if (isBuildTool(tool)) return Cmd.build(tool, x, y);
   if (tool === 'dig') return Cmd.dig(x, y, true);
   if (tool === 'stockpile') return Cmd.stockpile(x, y, true);
+  if (tool === 'strip') return Cmd.strip(x, y, true);
   return null;
 }
 
@@ -74,8 +75,8 @@ export function paletteOrder(tool, x, y) {
  *   draw: () => void,
  *   toggleSprites: () => void,
  *   onEscape?: () => void,
- *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'move'),
- *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile') => void,
+ *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'),
+ *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile'|'strip') => void,
  *   onToolUsed?: (tool: string, x: number, y: number) => void,
  * }} opts
  */
@@ -228,6 +229,10 @@ export function installInput(opts) {
     // H here would have been silently dead for lowercase h, which is why stockpile is Z for ZONE.
     else if (k === 'g' || k === 'G') onBuildKey('dig');
     else if (k === 'z' || k === 'Z') onBuildKey('stockpile');
+    // V (E0-5): strip / deconstruct order toggle. X — the plan's first choice — is already the
+    // CANCEL toggle above, and no letter of "strip" is free (S/T/R panning+talk+deck, P sprites,
+    // I is vim-adjacent), so V for salVage (the sim's own term: WallSalvage/DeviceSalvage).
+    else if (k === 'v' || k === 'V') onBuildKey('strip');
     // Enter on a focused BUTTON (crew-watch row, chip, tab) belongs to the button's native
     // activation (IX-46) — the game key stands down so a row Enter doesn't also click the cursor.
     else if (k === 'Enter' && e.target && e.target.tagName === 'BUTTON') return;

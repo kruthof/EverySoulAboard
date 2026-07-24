@@ -108,6 +108,42 @@ namespace Perilune.Tests
                 "the label names the machine, not 'servicing a machine'");
         }
 
+        /// <summary>
+        /// E0-5 WP-2: <see cref="JobKind.Deconstruct"/> drives TWO targets — a wall and a device —
+        /// and the label must not say "the wall" over a scrubber. The tile is the discriminator:
+        /// a device site always carries a device, a wall site never does.
+        ///
+        /// MUTATION: revert <c>GameSession.TaskLabel</c>'s Deconstruct case to WP-1's single
+        /// <c>"Stripping the wall at "</c> line → the device row reads "Stripping the wall at x,y"
+        /// and fails. Keeping only the device branch → the wall row fails.
+        /// </summary>
+        [Test]
+        public void Deconstruct_NamesTheMachineWhenItIsADevice_AndTheWallWhenItIsNot()
+        {
+            var (gs, host) = Boot();
+            var device = SelfResolving(host, DeviceKind.Scrubber);
+            Assert.IsNotNull(device, "the reference ship has a named scrubber the sim resolves by tile");
+            var c = Parked(host);
+            c.Pos = new Int3(c.Pos.X, c.Pos.Y, device.Pos.Z); // same deck ⇒ no deck suffix
+            c.JobKind = JobKind.Deconstruct;
+            c.JobTarget = device.Pos;
+            string tile = device.Pos.X.ToString(CultureInfo.InvariantCulture) + "," +
+                          device.Pos.Y.ToString(CultureInfo.InvariantCulture);
+
+            Assert.AreEqual("Stripping " + device.Name + " " + tile, TaskOf(gs, c.Id),
+                "a device strip names the MACHINE — 'the wall' would be a lie");
+
+            // A tile with no device on it still reads as a wall strip.
+            var bare = new Int3(0, 0, device.Pos.Z); // the map-edge ring: never dressed
+            Assert.IsFalse(host.Sim.TryGetDeviceAt(bare, out _),
+                "precondition: the wall row needs a genuinely device-free tile");
+            c.JobTarget = bare;
+            Assert.AreEqual("Stripping the wall at " +
+                bare.X.ToString(CultureInfo.InvariantCulture) + "," +
+                bare.Y.ToString(CultureInfo.InvariantCulture), TaskOf(gs, c.Id),
+                "and a device-less tile is still a wall strip");
+        }
+
         [Test]
         public void Craft_And_Drink_Name_Their_Device_With_A_Safe_Fallback()
         {
@@ -238,7 +274,7 @@ namespace Perilune.Tests
             var known = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Digging", "Fetching", "Hauling", "Eating", "Drinking", "Crafting",
-                "Servicing", "Building", "Heading", "Walking", "Holding", "Idle",
+                "Servicing", "Building", "Stripping", "Heading", "Walking", "Holding", "Idle",
             };
             var c = Parked(host);
             foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))

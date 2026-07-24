@@ -52,6 +52,7 @@ namespace Perilune.Sim
         private long _tick;
         private uint _nextEntityId = 1;
         private readonly ISimSystem[] _systems;
+        private readonly DeconstructSystem _deconstruct;
         private readonly ConcurrentQueue<ISimCommand> _inbox = new ConcurrentQueue<ISimCommand>();
         private readonly List<ISimCommand> _drain = new List<ISimCommand>(64);
         private readonly Dictionary<Int3, uint> _deviceGrid = new Dictionary<Int3, uint>();
@@ -62,7 +63,23 @@ namespace Perilune.Sim
             Rng = new SimRng(seed);
             _systems = systems ?? Array.Empty<ISimSystem>();
             Defs = defs ?? SimDefs.Default;
+            // Resolve the optional deconstruct registry ONCE (a reduced stack has none). This is
+            // purely so the PURE projection can recolour a condemned tile — see Deconstruct.
+            for (int i = 0; i < _systems.Length; i++)
+                if (_systems[i] is DeconstructSystem d) { _deconstruct = d; break; }
         }
+
+        /// <summary>
+        /// The deconstruct/strip registry (E0-5), or <c>null</c> on a reduced stack without one.
+        /// READ-ONLY VIEW, and it adds no saved or hashed field — the registry serialises and folds
+        /// itself in its own STRP chapter; this is only a reference resolved once at construction.
+        ///
+        /// It exists for the PURE projection (<c>GlyphMapper</c>, a Sim.Glyph consumer that reads
+        /// only public sim state): deconstruct is a REGISTRY, not a <see cref="TileFlags"/> bit, so
+        /// unlike dig/stockpile the map layer cannot read a condemned tile off the tile plane and
+        /// must ask the registry. Nothing here mutates the sim.
+        /// </summary>
+        public DeconstructSystem Deconstruct => _deconstruct;
 
         /// <summary>Conduits and pipes are service-tray overlays: they share tiles with
         /// machines and never enter the tile grid (side-section world).</summary>

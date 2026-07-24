@@ -8,7 +8,7 @@ export const C = {
   Unknown: 0, Void: 1, Floor: 2, Wall: 3, Debris: 4, Crew: 5, Hostile: 6, Item: 7, Device: 8,
   DeviceDim: 9, Broken: 10, Locked: 11, Terminal: 12, Water: 13, Growth: 14, Designate: 15,
   Stockpile: 16, LensGood: 17, LensOk: 18, LensWarn: 19, LensBad: 20, LensCold: 21, LensHot: 22,
-  Accent: 23, Text: 24, TextDim: 25,
+  Accent: 23, Text: 24, TextDim: 25, Deconstruct: 26,
 };
 
 /** @type {string[]} Foreground RGB per GlyphColor index. */
@@ -23,6 +23,9 @@ FG[C.Terminal] = '#2de2ff'; FG[C.Water] = '#3ab4f0'; FG[C.Growth] = '#b06df5'; F
 FG[C.Stockpile] = '#b0a860'; FG[C.LensGood] = '#3ee08a'; FG[C.LensOk] = '#c6d13a'; FG[C.LensWarn] = '#ffb02e';
 FG[C.LensBad] = '#ff4d6a'; FG[C.LensCold] = '#3ab4f0'; FG[C.LensHot] = '#ff6d4a'; FG[C.Accent] = '#2de2ff';
 FG[C.Text] = '#e4def2'; FG[C.TextDim] = '#948caa';
+// E0-5 strip designation: burnt orange, distinct from the dig-pink Designate (#ff3d8a) and the
+// olive Stockpile (#b0a860) so a condemned tile reads as its own order at a glance.
+FG[C.Deconstruct] = '#ff7a1f';
 
 /** @type {string[]} Lens background wash (translucent over the tile). Only lens bg ids tint. */
 export const WASH = [];

@@ -23,6 +23,7 @@ namespace Perilune.Tui.Terminal
         Move,      // m — order the selected citizen to the cursor
         Dig,       // d — designate dig on debris
         Stockpile, // p — designate a stockpile tile
+        Strip,     // v — designate deconstruct (strip a wall/device for salvage), E0-5
         Follow,    // c — keep the cursor on the selected citizen
         MossOpen,  // t — (A5) MOSS editor; today a one-line status
 
@@ -90,6 +91,7 @@ namespace Perilune.Tui.Terminal
                 case 'm': case 'M': return InputAction.Move;
                 case 'd': case 'D': return InputAction.Dig;
                 case 'p': case 'P': return InputAction.Stockpile;
+                case 'v': case 'V': return InputAction.Strip;   // E0-5: salVage / strip
                 case 'c': case 'C': return InputAction.Follow;
                 case 't': case 'T': return InputAction.MossOpen;
                 case 'q': case 'Q': return InputAction.Quit;

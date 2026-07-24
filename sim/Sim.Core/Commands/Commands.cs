@@ -171,6 +171,48 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// Designate (or cancel) a DECONSTRUCT at a tile (E0-5, build's inverse). Finds the stack's
+    /// <see cref="DeconstructSystem"/> and calls its deterministic public API; a sim without one
+    /// ignores the command (the <see cref="DesignateBuildCommand"/> optional-system walk), so a
+    /// reduced stack keeps its pre-E0-5 behaviour.
+    ///
+    /// The <c>on</c> flag is EXPLICIT rather than a host-side read of world state (E0-3's
+    /// decision): a sweep is then idempotent and the host can never race the sim. Every
+    /// precondition — bounds, hull, wall-ness, device kind, the staging cap — is enforced sim-side
+    /// at the tick boundary, so a client may enqueue a click blind and an illegal order is a
+    /// silent no-op.
+    ///
+    /// THE COMMAND CARRIES A TILE, NEVER AN ENTITY ID (E0-5 WP-2 removed the <c>targetId</c>
+    /// parameter WP-1 shipped). A device site's <see cref="PendingDeconstruct.TargetId"/> is
+    /// resolved sim-side inside <see cref="DeconstructSystem.Designate"/>: the player clicks a
+    /// tile, entity ids are sim-internal, and a client-supplied id would be a second unvalidated
+    /// identity for the same object.
+    /// </summary>
+    public sealed class DesignateDeconstructCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+        private readonly DeconstructKind _kind;
+        private readonly bool _on;
+
+        public DesignateDeconstructCommand(Int3 pos, DeconstructKind kind = DeconstructKind.Wall,
+                                           bool on = true)
+        {
+            _pos = pos; _kind = kind; _on = on;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            foreach (var s in sim.Systems)
+                if (s is DeconstructSystem d)
+                {
+                    if (_on) d.Designate(sim, _pos, _kind);
+                    else d.Cancel(sim, _pos);
+                    return;
+                }
+        }
+    }
+
+    /// <summary>
     /// Place a piece of functional furniture at a floor tile (Room Zoom decorate palette).
     /// Furniture is inert — no power/heat/wear — so placement rides the existing hashed Device
     /// state (Kind/Pos/Name fold in <see cref="Simulation.StateHash"/>); it adds no new saved
@@ -178,11 +220,49 @@ namespace Perilune.Sim
     /// kind, and the tile must be in bounds, a walkable non-wall floor, and empty of a device
     /// (one device per tile). An illegal request is a silent no-op — the client only promises the
     /// attempt and shows the item once the sim confirms it in the next frame.
+    ///
+    /// <para><b>IT COSTS MATTER (E0-5 WP-3).</b> Placing consumes
+    /// <c>defs.Build.DevicePlaceCost</c> units of <see cref="Currency"/> from loose ground
+    /// stacks. Before this, placement was FREE while <c>DeconstructSystem</c> paid
+    /// <c>floor(device_parts × Condition)</c> Parts to strip the same object — measured by WP-2's
+    /// independent review as an unbounded matter faucet: place → strip → repeat minted 1 Part per
+    /// 476 ticks with zero matter input, against 15 000 ticks + 1 Regolith for the same Part
+    /// through the shipped <c>recipes.def</c> ladder, feeding <c>MaintenanceSystem</c> — the one
+    /// sink that never ends. Nothing bounded it: not material (free), not <c>max_staged</c> (a
+    /// queue-depth cap, not a rate cap), not tiles (re-placeable instantly), not kind.</para>
+    ///
+    /// <para><b>THE CURRENCY IS THE ONE STRIP REFUNDS</b>, not the one BuildSystem charges for a
+    /// wall. A Regolith cost against a Parts yield would be material-neutral and STILL an exploit:
+    /// 2 Regolith → 2 Parts in 900 ticks bypasses the ~30 000 ticks of crafting the ladder charges
+    /// for that conversion (Regolith →<i>600t</i>→ Scrap ×2 →<i>900t per 2</i>→ Parts). Charging
+    /// Parts closes the loop in one move and leaves <see cref="Device.Condition"/> as the loss
+    /// term. Structurally pinned: <see cref="Currency"/> == <c>DeconstructSystem.DeviceSalvage</c>
+    /// is asserted by <c>DeconstructSystemTests</c>.</para>
+    ///
+    /// <para><b>HONESTLY STATED LIMIT — THE MATERIAL TELEPORTS.</b> Payment is taken from any free
+    /// ground stack anywhere aboard, in item-store order, with no haul job, no reservation, and no
+    /// distance term. Nobody carries the Parts to the tile. That is a deliberate simplification, not
+    /// an oversight: a real staged-haul placement is <see cref="BuildSystem"/>'s shape
+    /// (designate → <c>JobKind.HaulToBuild</c> → build) and belongs to E0-6, which owns the
+    /// placement-as-a-build-site rework. Until then this is <c>MECHANICS §13</c> material: the COST
+    /// is real and conserved, the LOGISTICS are not modelled.</para>
+    ///
+    /// <para><b>ALL OR NOTHING.</b> A ship that cannot pay in full places nothing and consumes
+    /// nothing — partial consumption would be a matter leak (Parts destroyed, no device). The cost
+    /// is charged LAST, after every legality check, so an illegal tile never spends. A refusal is
+    /// the same silent no-op every other rejection is, so the web host
+    /// (<c>GameSession.HandlePlace</c>) neither throws nor desyncs: it enqueues blind and the next
+    /// frame simply does not contain the furniture.</para>
     /// </summary>
     public sealed class PlaceDeviceCommand : ISimCommand
     {
         private readonly DeviceKind _kind;
         private readonly Int3 _pos;
+
+        /// <summary>What placing furniture is paid in. MUST equal
+        /// <c>DeconstructSystem.DeviceSalvage</c> — the round trip is only provably lossy if the
+        /// charge and the refund are the same currency (see the class doc).</summary>
+        public const ItemKind Currency = ItemKind.Parts;
 
         public PlaceDeviceCommand(DeviceKind kind, Int3 pos)
         {
@@ -220,10 +300,74 @@ namespace Perilune.Sim
             if (sim.World.GetWall(_pos) != TileDefs.Void) return;
             if ((sim.World.GetFlags(_pos) & TileFlags.HasDevice) != 0) return;
             if (sim.TryGetDeviceAt(_pos, out _)) return;
+            // CHARGED LAST, so an illegal request never spends: every rejection above leaves the
+            // ship's matter untouched, and this one leaves it untouched too when it cannot pay.
+            if (!TryPay(sim, sim.Defs.Build.DevicePlaceCost)) return;
             // Deterministic name (kind + tile) — no counters, no RNG; InvariantCulture ints.
             string name = System.FormattableString.Invariant(
                 $"{_kind.ToString().ToLowerInvariant()}_{_pos.X}_{_pos.Y}_{_pos.Z}");
             sim.AddDevice(_kind, _pos, name); // marks rooms + power dirty
+        }
+
+        /// <summary>
+        /// Free <see cref="Currency"/> units lying loose aboard: on the ground
+        /// (<c>CarriedBy == 0</c>) and unclaimed (<c>ReservedBy == 0</c>). Carried and reserved
+        /// stacks are somebody else's — a builder's haul, a station's staged input, a
+        /// maintainer's overhaul Part — and taking them would strand the job that claimed them
+        /// (the B-1 bug class).
+        /// </summary>
+        public static int Affordable(Simulation sim)
+        {
+            int units = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (it.Kind != Currency || it.CarriedBy != 0 || it.ReservedBy != 0) continue;
+                units += it.Count;
+            }
+            return units;
+        }
+
+        /// <summary>
+        /// Consume exactly <paramref name="cost"/> units of <see cref="Currency"/>, or NOTHING.
+        /// Two passes on purpose: pass one counts, and only if the whole price is affordable does
+        /// pass two spend. A single greedy pass that ran out halfway would destroy matter and
+        /// place nothing — the leak this command exists to close, inverted.
+        ///
+        /// DETERMINISTIC: stacks are drained in ITEM-STORE ORDER (insertion order, the sim's
+        /// canonical entity order — the same order <c>Simulation.StateHash</c> folds them in), so
+        /// two identical sims spend the same stacks. No distance term, no nearest-first tie-break,
+        /// no RNG, no Dictionary iteration, and no allocation: emptied stacks are removed in place
+        /// and the cursor simply does not advance over the shift
+        /// (<see cref="EntityStore{T}.Remove"/> is an order-preserving <c>List.Remove</c>).
+        ///
+        /// A zero or negative cost is free and consumes nothing, so a content pack that unsets
+        /// the price gets the pre-E0-5 behaviour rather than an exception.
+        /// </summary>
+        private static bool TryPay(Simulation sim, int cost)
+        {
+            if (cost <= 0) return true;
+            if (Affordable(sim) < cost) return false; // all or nothing — never a partial spend
+
+            int remaining = cost;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count && remaining > 0; )
+            {
+                var it = items[i];
+                if (it.Kind != Currency || it.CarriedBy != 0 || it.ReservedBy != 0 || it.Count <= 0)
+                {
+                    i++;
+                    continue;
+                }
+                int take = it.Count < remaining ? it.Count : remaining;
+                it.Count -= take;
+                remaining -= take;
+                if (it.Count == 0) sim.Items.Remove(it.Id); // shifts left: hold the cursor
+                else i++;
+            }
+            sim.JobsDirty |= JobBoardDirty.Items; // ground stacks were spent — the haul board shrinks
+            return true;
         }
     }
 
