@@ -347,6 +347,7 @@ const TASK_TAGS = {
   fetching: 'HAUL',
   hauling: 'HAUL',
   building: 'BUILD',
+  stripping: 'STRIP', // E0-5 deconstruct — build's inverse, so it earns its own tag, not BUILD
   servicing: 'SVC',
   crafting: 'CRAFT',
   eating: 'MEAL',

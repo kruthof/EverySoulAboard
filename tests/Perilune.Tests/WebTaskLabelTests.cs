@@ -238,7 +238,7 @@ namespace Perilune.Tests
             var known = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Digging", "Fetching", "Hauling", "Eating", "Drinking", "Crafting",
-                "Servicing", "Building", "Heading", "Walking", "Holding", "Idle",
+                "Servicing", "Building", "Stripping", "Heading", "Walking", "Holding", "Idle",
             };
             var c = Parked(host);
             foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))

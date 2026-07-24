@@ -456,6 +456,7 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
   assert.equal(taskTag('Hauling regolith to 9,2'), 'HAUL');
   assert.equal(taskTag('Hauling regolith to wall 3,4 (0/2)'), 'HAUL');
   assert.equal(taskTag('Building wall 3,4'), 'BUILD');
+  assert.equal(taskTag('Stripping the wall at 3,4'), 'STRIP'); // E0-5 deconstruct
   assert.equal(taskTag('Servicing scrubber_ls'), 'SVC');
   assert.equal(taskTag('Crafting at fab_main'), 'CRAFT');
   assert.equal(taskTag('Eating'), 'MEAL');
@@ -475,6 +476,7 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
   assert.equal(taskTag('Heading to service scrubber_ls'), null);
   assert.equal(taskTag('Heading to dig out 12,5'), null);
   assert.equal(taskTag('Heading to build wall 3,4'), null);
+  assert.equal(taskTag('Heading to strip the wall at 3,4'), null);
 });
 
 test('watchTask: the CREW WATCH cell shows the label and flags real work', () => {

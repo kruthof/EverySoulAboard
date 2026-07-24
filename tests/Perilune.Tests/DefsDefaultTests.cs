@@ -74,6 +74,22 @@ namespace Perilune.Tests
             Assert.That(D.Atmosphere.DiffusionCoefficient, Is.EqualTo(0.5));
         }
 
+        /// <summary>E0-5: the shipped <c>[deconstruct]</c> values, pinned as literals so a silent
+        /// retune of the compiled default is a red test rather than an economy drift. The
+        /// wall_recovery relationship to <c>build.wall_material</c> is what makes the loop lossy,
+        /// so it is asserted as the DERIVED yield too, not just the raw fraction.</summary>
+        [Test]
+        public void Deconstruct_MatchesDocumentedDefaults_AndYieldsHalfOfABuild()
+        {
+            Assert.That(D.Deconstruct.WallRecovery, Is.EqualTo(0.5f));
+            Assert.That(D.Deconstruct.WallWorkTicks, Is.EqualTo(1200));
+            Assert.That(D.Deconstruct.MaxStaged, Is.EqualTo(D.Build.MaxStaged));
+            Assert.That(D.Deconstruct.WallWorkTicks * 2, Is.EqualTo(D.Build.WallConstructTicks),
+                "tearing down is deliberately exactly half a build");
+            Assert.That(DeconstructSystem.WallYield(D), Is.EqualTo(1),
+                "floor(2 × 0.5): a stripped wall returns HALF of what raising it cost");
+        }
+
         [Test]
         public void Sustenance_MatchesDocumentedDefaults()
         {

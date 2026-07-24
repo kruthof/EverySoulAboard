@@ -340,7 +340,8 @@ namespace Perilune.Tools
         private static bool IsProductive(JobKind k) =>
             k == JobKind.Dig || k == JobKind.HaulPickup || k == JobKind.HaulDeliver ||
             k == JobKind.Craft || k == JobKind.Maintain || k == JobKind.HaulToBuild ||
-            k == JobKind.Build;
+            k == JobKind.Build || k == JobKind.Deconstruct; // E0-5: a closed whitelist, so a new
+            // productive kind that is not listed here is silently measured as idle.
 
         private static string Bar(double pct)
         {

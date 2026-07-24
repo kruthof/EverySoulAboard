@@ -1399,6 +1399,10 @@ namespace Perilune.Web
                       .Append(BuildSiteLabel(c.JobTarget)).Append(' ');
                     AppendTile(sb, c.JobTarget, c.Pos.Z);
                     break;
+                case JobKind.Deconstruct:
+                    sb.Append(enRoute ? "Heading to strip the wall at " : "Stripping the wall at ");
+                    AppendTile(sb, c.JobTarget, c.Pos.Z); // E0-5: build's inverse
+                    break;
                 case JobKind.Flee:
                     sb.Append("Heading to safe air"); // E0-2 crew-safety: fleeing unbreathable air
                     break;

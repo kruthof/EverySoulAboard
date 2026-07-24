@@ -73,6 +73,10 @@ namespace Perilune.Sim
             new DigJobSource(),
             new HaulJobSource(),
             new BuildJobSource(),
+            // E0-5 appended LAST on purpose: at an exact distance tie deconstruct loses to dig,
+            // haul and build, which is the safe default this doc comment describes. Build's
+            // inverse sits directly after build.
+            new DeconstructJobSource(),
         };
 
         public JobSystem() : this(DefaultSources()) { }

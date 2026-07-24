@@ -334,6 +334,10 @@ namespace Perilune.Llm
                     sb.Append(enRoute ? "on your way to the build site at " : "working the build site at ")
                       .Append(Tile(self.JobTarget)).Append('.');
                     break;
+                case JobKind.Deconstruct:
+                    sb.Append(enRoute ? "on your way to strip the wall at " : "stripping the wall at ")
+                      .Append(Tile(self.JobTarget)).Append('.');
+                    break;
                 default: sb.Append("nothing assigned — you are standing here, talking."); break;
             }
         }

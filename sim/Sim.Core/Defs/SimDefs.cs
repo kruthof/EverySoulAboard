@@ -95,6 +95,7 @@ namespace Perilune.Sim
         public SocialDefs Social;
         public NavDefs Nav;
         public BuildDefs Build;
+        public DeconstructDefs Deconstruct;
         public DirectorDefs Director;
 
         /// <summary>XxHash64 over every tunable value in the fixed order of
@@ -370,6 +371,27 @@ namespace Perilune.Sim
             public int MaxStaged;
         }
 
+        /// <summary>DeconstructSystem (E0-5) strip costs — build's inverse. The salvage is always
+        /// Regolith in WP-1 (a stripped wall returns a FRACTION of what raising it consumed, so
+        /// the loop is lossy and one-way); work ticks are whole ticks at 10 Hz, so they are
+        /// interval-agnostic and safe as defs. WP-2 appends the device-strip fields
+        /// (<c>device_parts</c>, <c>device_work_ticks</c>) HERE, alongside their consumer.</summary>
+        public sealed class DeconstructDefs
+        {
+            /// <summary>DeconstructSystem — fraction of <see cref="BuildDefs.WallMaterial"/> a
+            /// stripped wall returns, floored to whole units (2 × 0.5 → 1). DECIMAL: parses with
+            /// InvariantCulture, or de-DE reads "0.5" as 5. Current: 0.5.</summary>
+            public float WallRecovery;
+            /// <summary>DeconstructSystem — work ticks to tear a Wall down (120 s at 10 Hz), half
+            /// <see cref="BuildDefs.WallConstructTicks"/>: tearing down is faster than building.
+            /// Current: 1200.</summary>
+            public int WallWorkTicks;
+            /// <summary>DeconstructSystem — cap on concurrent pending deconstruct designations; a
+            /// designate past it is a deterministic no-op. Mirrors
+            /// <see cref="BuildDefs.MaxStaged"/>. Current: 64.</summary>
+            public int MaxStaged;
+        }
+
         /// <summary>DirectorSystem (WS-NARRATIVE N6) tension curve + one lever. The Director
         /// never rolls dice or spawns events (VISION honesty contract): it reads real sim
         /// state into a tension scalar and modulates pacing through a sim-legal lever only —
@@ -582,6 +604,13 @@ namespace Perilune.Sim
                     MaxStaged = 64,
                 },
 
+                Deconstruct = new DeconstructDefs
+                {
+                    WallRecovery = 0.5f,
+                    WallWorkTicks = 1200,
+                    MaxStaged = 64,
+                },
+
                 Director = new DirectorDefs
                 {
                     WeightMoraleDeficit = 0.4f,
@@ -625,7 +654,8 @@ namespace Perilune.Sim
         /// → Exploration → each recipe (6 fields) → Social (4 fields) → Nav (5 fields)
         /// → Social S1 tunables (15 fields, appended) → Build (5 fields, appended)
         /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
-        /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended).
+        /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended)
+        /// → Deconstruct (E0-5, 3 fields, appended).
         /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
@@ -812,6 +842,15 @@ namespace Perilune.Sim
             // (README.def HANDOVER INVARIANT #3), and inserting mid-block would renumber the
             // fold order of everything after it.
             h = XxHash64.Combine(h, Atmosphere.DiffusionCoefficient);
+
+            // Deconstruct (E0-5 strip costs), APPENDED after Atmosphere.DiffusionCoefficient and
+            // before the rules fold — the append-at-END invariant (README.def HANDOVER INVARIANT
+            // #3), so every previously recorded checksum stays byte-comparable and only the
+            // trailing bytes change. WP-2's device_parts / device_work_ticks append HERE, after
+            // MaxStaged, for the same reason.
+            h = XxHash64.Combine(h, Deconstruct.WallRecovery);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.WallWorkTicks);
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.MaxStaged);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

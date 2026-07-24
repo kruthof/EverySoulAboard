@@ -97,6 +97,19 @@ namespace Perilune.Tests
                 new ISimSystem[] { new JobSystem(), build });
         }
 
+        /// <summary>As <see cref="NewTieShip(out BuildSystem)"/> but with the E0-5
+        /// <see cref="DeconstructSystem"/> registered too, so the fourth job source resolves and
+        /// its board can be populated. Separate rather than folded into the shared builder: every
+        /// OTHER test here pins an assignment sequence, and those must keep measuring the
+        /// three-source stack they were recorded against.</summary>
+        private static Simulation NewTieShipWithDeconstruct(out BuildSystem build, out DeconstructSystem strip)
+        {
+            build = new BuildSystem();
+            strip = new DeconstructSystem();
+            return new Simulation(AsciiWorld.Build(TieMap), 11,
+                new ISimSystem[] { new JobSystem(), build, strip });
+        }
+
         /// <summary>A named source's raw board size — preconditions key on the source's identity,
         /// never its registration index.</summary>
         private static int CountFor(JobSystem jobs, string name)
@@ -526,15 +539,19 @@ namespace Perilune.Tests
         // ------------------------------------------------------------------ zero-alloc
 
         /// <summary>
-        /// A FULL RESCAN every tick, on a board where all three sources have candidates, must not
+        /// A FULL RESCAN every tick, on a board where EVERY source has candidates, must not
         /// allocate. The existing zero-alloc tests all measure a steady state where nothing is
         /// dirty, so none of them walks the dispatcher's shared world pass or any source's board
         /// rebuild — which is exactly the code W0-4 moved.
         ///
         /// The setup is deliberate so the measured window really REACHES it: the citizen holds
         /// position (so no assignment, no FindPath, and none of pathing's own allocation is in
-        /// the window), JobsDirty is re-set after every tick, and all three boards are asserted
+        /// the window), JobsDirty is re-set after every tick, and EVERY board is asserted
         /// non-empty through <see cref="IJobSource.CandidateCount"/> before the counter starts.
+        /// The count is read from <c>Sources.Count</c> rather than hard-coded, and the per-board
+        /// loop is what makes a newly registered source join this guarantee automatically — E0-5
+        /// added the fourth (Deconstruct) and had to populate its board to keep the precondition
+        /// true, which is the intended friction.
         ///
         /// NAMED MUTATION (applied, observed failing, reverted): in <c>DigJobSource</c>, drop the
         /// <c>readonly</c> from the <c>_sites</c> field — it will not compile otherwise (CS0191) —
@@ -543,9 +560,9 @@ namespace Perilune.Tests
         /// 2 472 000 bytes over the window.
         /// </summary>
         [Test]
-        public void FullRescanEveryTick_WithAllThreeBoardsPopulated_IsZeroAlloc()
+        public void FullRescanEveryTick_WithEveryBoardPopulated_IsZeroAlloc()
         {
-            var sim = NewTieShip(out var build);
+            var sim = NewTieShipWithDeconstruct(out var build, out var strip);
             var idle = sim.AddCitizen("Held", new Int3(5, 2, 0));
             idle.HoldPosition = true; // never self-assigns: the rescan is the only path measured
 
@@ -554,6 +571,9 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Scrap, 1, new Int3(7, 2, 0));                 // haul candidate
             Assert.That(build.Designate(sim, new Int3(7, 1, 0), BuildKind.Wall), Is.True); // build board
             sim.AddItem(ItemKind.Regolith, 4, new Int3(6, 3, 0));              // free material to count
+            // Deconstruct board: an interior wall raised mid-map, so it is not the (hull) map edge.
+            sim.World.SetWall(new Int3(2, 3, 0), TileDefs.Wall);
+            Assert.That(strip.Designate(sim, new Int3(2, 3, 0), DeconstructKind.Wall), Is.True);
 
             JobSystem jobs = null;
             foreach (var s in sim.Systems) if (s is JobSystem j) { jobs = j; break; }
@@ -561,7 +581,7 @@ namespace Perilune.Tests
 
             for (int i = 0; i < 50; i++) { sim.JobsDirty = JobBoardDirty.All; sim.Tick(); } // warm up every collection
 
-            Assert.That(jobs.Sources.Count, Is.EqualTo(3), "precondition: the shipped three sources");
+            Assert.That(jobs.Sources.Count, Is.EqualTo(4), "precondition: every shipped source is registered");
             for (int i = 0; i < jobs.Sources.Count; i++)
                 Assert.That(jobs.Sources[i].CandidateCount, Is.GreaterThan(0),
                     $"precondition: the {jobs.Sources[i].Name} board is populated, so its rescan does real work");
@@ -654,20 +674,25 @@ namespace Perilune.Tests
         /// <see cref="JobKind"/>. It does NOT pin the constructor's duplicate-claim throw; that is
         /// <see cref="TwoSourcesClaimingTheSameJobKind_AreRejectedAtRegistration"/>'s job.
         /// NAMED MUTATION: any reorder of <c>DefaultSources()</c>.
+        ///
+        /// E0-5 APPENDED Deconstruct LAST, which is the safe default this file's header describes:
+        /// at an exact distance tie it loses to dig, haul and build, so no recorded assignment
+        /// sequence above could move.
         /// </summary>
         [Test]
-        public void ShippedSourceRegistration_IsDigThenHaulThenBuild_AndCoversEveryDispatchedKind()
+        public void ShippedSourceRegistration_IsDigThenHaulThenBuildThenDeconstruct_AndCoversEveryDispatchedKind()
         {
             var jobs = new JobSystem();
             var names = new List<string>();
             for (int i = 0; i < jobs.Sources.Count; i++) names.Add(jobs.Sources[i].Name);
-            Assert.That(names, Is.EqualTo(new[] { "Dig", "Haul", "Build" }));
+            Assert.That(names, Is.EqualTo(new[] { "Dig", "Haul", "Build", "Deconstruct" }));
 
             var claimed = new List<JobKind>();
             for (int i = 0; i < jobs.Sources.Count; i++) claimed.AddRange(jobs.Sources[i].HandledKinds);
             Assert.That(claimed, Is.EquivalentTo(new[]
             {
                 JobKind.Dig, JobKind.HaulPickup, JobKind.HaulDeliver, JobKind.HaulToBuild, JobKind.Build,
+                JobKind.Deconstruct,
             }), "every kind the dispatcher drives has exactly one owner");
         }
 

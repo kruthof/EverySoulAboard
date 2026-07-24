@@ -171,6 +171,42 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// Designate (or cancel) a DECONSTRUCT at a tile (E0-5, build's inverse). Finds the stack's
+    /// <see cref="DeconstructSystem"/> and calls its deterministic public API; a sim without one
+    /// ignores the command (the <see cref="DesignateBuildCommand"/> optional-system walk), so a
+    /// reduced stack keeps its pre-E0-5 behaviour.
+    ///
+    /// The <c>on</c> flag is EXPLICIT rather than a host-side read of world state (E0-3's
+    /// decision): a sweep is then idempotent and the host can never race the sim. Every
+    /// precondition — bounds, hull, wall-ness, the staging cap — is enforced sim-side at the tick
+    /// boundary, so a client may enqueue a click blind and an illegal order is a silent no-op.
+    /// </summary>
+    public sealed class DesignateDeconstructCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+        private readonly DeconstructKind _kind;
+        private readonly bool _on;
+        private readonly uint _targetId;
+
+        public DesignateDeconstructCommand(Int3 pos, DeconstructKind kind = DeconstructKind.Wall,
+                                           bool on = true, uint targetId = 0)
+        {
+            _pos = pos; _kind = kind; _on = on; _targetId = targetId;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            foreach (var s in sim.Systems)
+                if (s is DeconstructSystem d)
+                {
+                    if (_on) d.Designate(sim, _pos, _kind, _targetId);
+                    else d.Cancel(sim, _pos);
+                    return;
+                }
+        }
+    }
+
+    /// <summary>
     /// Place a piece of functional furniture at a floor tile (Room Zoom decorate palette).
     /// Furniture is inert — no power/heat/wear — so placement rides the existing hashed Device
     /// state (Kind/Pos/Name fold in <see cref="Simulation.StateHash"/>); it adds no new saved
