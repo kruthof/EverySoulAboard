@@ -28,6 +28,8 @@ namespace Perilune.Tools
             if (args.Length > 0 && args[0] == "gen") return RunGen(args);
             if (args.Length > 0 && args[0] == "sweep") return RunSweep(args);
             if (args.Length > 0 && args[0] == "dump-personas") return RunDumpPersonas(args);
+            // A1: the "are the crew actually working?" measurement (ECONOMY-PLAN §E0).
+            if (args.Length > 0 && args[0] == "occupancy") return RunOccupancy(args);
             // P2 live-provider smoke: env-gated, spends real money, NEVER in ci.sh.
             if (args.Length > 0 && args[0] == "llm-smoke") return LlmSmoke.Run(args);
 
@@ -167,6 +169,184 @@ namespace Perilune.Tools
             var report = ShipGates.Run(plan, defs, days);
             Console.WriteLine(report.Format());
             return report.AllPassed ? 0 : 1;
+        }
+
+        /// <summary>
+        /// <c>occupancy [--ship perilune|slice|grid] [--days D] [--seed N] [--data DIR]</c>:
+        /// THE A1 MEASUREMENT — "are the crew actually working?"
+        ///
+        /// `ECONOMY-PLAN.md` §E0 states its goal as a number: **A1 ≥ 25 % busy at sim-hour 24**.
+        /// Nothing in the repo measured it. `MECHANICS §13.6`'s occupancy table (`None 99.92 %`)
+        /// was taken **pre-E0-1** and has not been refreshed across E0-1 (recruitability), E0-2
+        /// (the 10× work-rate rebase + movement retune) or E0-3 (the player verbs), so the phase
+        /// has been building toward a target nobody has checked. This verb is that check.
+        ///
+        /// Samples every crew member's <see cref="JobKind"/> every tick and reports three things:
+        ///   1. the occupancy table (share of crew-ticks per JobKind) — comparable to §13.6's;
+        ///   2. the **A1 headline** — busy share over the hour-23→24 window, i.e. "at sim-hour 24";
+        ///   3. an hourly curve, because the shape matters: playtest round 3 found a *boot-window*
+        ///      economy (crew idle again a few sim-minutes after the dig starts). A flat 25 % and a
+        ///      spike that decays to 0 average the same and mean opposite things.
+        ///
+        /// Reports busy TWO ways on purpose. **any** = `JobKind != None`, which includes Eat, Drink
+        /// and Flee; **work** = the productive kinds only (Dig/Haul*/Craft/Maintain/Build). A crew
+        /// that clears 25 % by eating and fleeing has not met the intent of A1, and a single number
+        /// would hide that. Read-only: no sim mutation beyond ticking, no files written.
+        /// </summary>
+        private static int RunOccupancy(string[] args)
+        {
+            string shipName = ArgString(args, "--ship", "slice");
+            bool slice = shipName == "slice";
+            bool grid = shipName == "grid";
+            int days = ArgInt(args, "--days", 1);
+            ulong seed = ArgULong(args, "--seed",
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 42UL);
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out _, out _, out _);
+
+            GenSimHost host;
+            if (slice)
+            {
+                host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs);
+                AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
+            }
+            else if (grid)
+            {
+                host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            }
+            else
+            {
+                var recipe = ShipRecipe.FromSeed(seed);
+                host = GenSimHost.Build(ProceduralShips.Generate(recipe), defs);
+            }
+
+            var sim = host.Sim;
+            int crewCount = sim.Citizens.Items.Count;
+            if (crewCount == 0) { Console.WriteLine("occupancy: no crew aboard — nothing to measure."); return 1; }
+
+            const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
+            int kindCount = Enum.GetValues(typeof(JobKind)).Length;
+            var kindTicks = new long[kindCount];        // crew-ticks per JobKind, whole run
+            int hours = days * 24;
+            var hourAny = new long[hours];              // crew-ticks with ANY job, per sim-hour
+            var hourWork = new long[hours];             // crew-ticks with a PRODUCTIVE job, per sim-hour
+            long totalTicks = (long)days * TicksPerDay;
+
+            Console.WriteLine($"occupancy — {shipName} ship, {crewCount} crew, {days} day(s), seed {seed}");
+            Console.WriteLine($"defs: {defs.Checksum:x16}");
+            Console.WriteLine();
+
+            var clock = Stopwatch.StartNew();
+            for (long t = 0; t < totalTicks; t++)
+            {
+                sim.Tick();
+                int hour = (int)(t / TicksPerHour);
+                if (hour >= hours) hour = hours - 1;
+                var crew = sim.Citizens.Items;
+                for (int i = 0; i < crew.Count; i++)
+                {
+                    var c = crew[i];
+                    if (c.Dead) continue;
+                    kindTicks[(int)c.JobKind]++;
+                    if (c.JobKind == JobKind.None) continue;
+                    hourAny[hour]++;
+                    if (IsProductive(c.JobKind)) hourWork[hour]++;
+                }
+            }
+            clock.Stop();
+
+            long grandTotal = 0;
+            for (int k = 0; k < kindCount; k++) grandTotal += kindTicks[k];
+            if (grandTotal == 0) { Console.WriteLine("occupancy: every crew member died — nothing to measure."); return 1; }
+
+            Console.WriteLine("job occupancy (share of live crew-ticks):");
+            foreach (JobKind k in Enum.GetValues(typeof(JobKind)))
+            {
+                double pct = 100.0 * kindTicks[(int)k] / grandTotal;
+                string tag = k == JobKind.None ? "" : IsProductive(k) ? "  (work)" : "  (survival)";
+                Console.WriteLine($"  {k,-12} {pct,7:0.00} %{tag}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("busy by sim-hour (any = incl. eat/drink/flee · work = productive only):");
+            for (int h = 0; h < hours; h++)
+            {
+                long denom = (long)TicksPerHour * crewCount;
+                double any = 100.0 * hourAny[h] / denom, work = 100.0 * hourWork[h] / denom;
+                Console.WriteLine($"  h{h + 1,-3} any {any,6:0.0} %   work {work,6:0.0} %   {Bar(work)}");
+            }
+
+            // A1 is stated "at sim-hour 24" — read the hour-23→24 window, not an instant (a single
+            // tick is noise), and not the whole-run average (which a decaying boot window flatters).
+            if (hours >= 24)
+            {
+                long denom = (long)TicksPerHour * crewCount;
+                double anyAt24 = 100.0 * hourAny[23] / denom, workAt24 = 100.0 * hourWork[23] / denom;
+                Console.WriteLine();
+                Console.WriteLine($"A1 (busy at sim-hour 24, target >= 25 %):  any {anyAt24:0.000} %   work {workAt24:0.000} %");
+                Console.WriteLine($"A1 verdict (work): {(workAt24 >= 25.0 ? "PASS" : "FAIL")}");
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("A1 needs --days 1 or more to reach sim-hour 24.");
+            }
+
+            // "0 % busy" is a symptom, not a diagnosis. The interesting question is always WHY the
+            // work ran out, so close with the state of every demand source the dispatcher scans.
+            // Without this the operator has to re-derive it by hand every time.
+            Console.WriteLine();
+            Console.WriteLine("end-of-run demand sources (why work did or didn't exist):");
+            int designated = 0, stockpile = 0, debris = 0;
+            var world = sim.World;
+            for (int z = 0; z < world.Depth; z++)
+                for (int y = 0; y < world.Height; y++)
+                    for (int x = 0; x < world.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (world.GetWall(p) == TileDefs.Debris) debris++;
+                        var f = world.GetFlags(p);
+                        if ((f & TileFlags.Designated) != 0) designated++;
+                        if ((f & TileFlags.Stockpile) != 0) stockpile++;
+                    }
+            Console.WriteLine($"  debris tiles left      {debris,6}   (dig work remaining: {designated})");
+            Console.WriteLine($"  stockpile tiles zoned  {stockpile,6}   (0 ⇒ HaulPickup/HaulDeliver can never be assigned)");
+
+            var stock = new Dictionary<ItemKind, int>();
+            foreach (var it in sim.Items.Items)
+            {
+                stock.TryGetValue(it.Kind, out int n);
+                stock[it.Kind] = n + it.Count;
+            }
+            // Iterate the ENUM, not the dictionary: hash order is not a contract, and this report
+            // is meant to be diffable between runs.
+            Console.Write("  ground stock          ");
+            if (stock.Count == 0) Console.Write("  (none)");
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
+                if (stock.TryGetValue(k, out int n) && n > 0) Console.Write($"  {k}={n}");
+            Console.WriteLine();
+
+            int alive = 0;
+            foreach (var c in sim.Citizens.Items) if (!c.Dead) alive++;
+            Console.WriteLine($"  crew alive             {alive,6} / {crewCount}");
+
+            Console.WriteLine($"\n{totalTicks:N0} ticks in {clock.Elapsed.TotalSeconds:0.0}s wall");
+            return 0;
+        }
+
+        /// <summary>Productive work, as opposed to survival (Eat/Drink) or self-preservation (Flee).
+        /// A1's intent is "the economy has work for the crew", so the headline number counts only
+        /// these — a ship whose crew are 25 % busy eating has not met it.</summary>
+        private static bool IsProductive(JobKind k) =>
+            k == JobKind.Dig || k == JobKind.HaulPickup || k == JobKind.HaulDeliver ||
+            k == JobKind.Craft || k == JobKind.Maintain || k == JobKind.HaulToBuild ||
+            k == JobKind.Build;
+
+        private static string Bar(double pct)
+        {
+            int n = (int)(pct / 2.5); // 40 cells = 100 %
+            if (n > 40) n = 40;
+            return new string('#', n < 0 ? 0 : n);
         }
 
         /// <summary><c>sweep --count M [--start-seed S] [--days D] [--data DIR]</c>: gate M seeded

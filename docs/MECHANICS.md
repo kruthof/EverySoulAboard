@@ -1436,10 +1436,11 @@ using `IsIdleForWork`: an order suppresses **work**, never **survival** — a cr
 crossing a real thirst/hunger threshold mid-order still diverts, exactly as E0-2's
 `SafetySystem` still lets them flee lethal air. See §5.1.
 
-Still open: job occupancy has **not** been re-measured post-E0-1/E0-2/E0-3 (the last figure,
-`None 99.92 %` over 3 sim-days, is **pre-E0-1** and should not be quoted as current), and the
-`wander_radius_tiles` default (8) is UNTUNED pending the A1 "crew are >25 % busy at sim-hour
-24" measurement (§5.4). Both belong to E0-8 + A1.
+**Job occupancy has now been re-measured** (2026-07-23, post-E0-1/2/3) — see **§13.15**, which
+supersedes the `None 99.92 %` figure. Headline: `None` fell **99.92 % → 85.28 %** over 3 sim-days,
+so the labour fix worked; but the remaining work is finite and the ship goes **permanently idle
+after sim-hour 28**. The `wander_radius_tiles` default (8) is still UNTUNED — tuning it against a
+labour metric is premature while the binding constraint is matter, not labour (§13.15).
 
 ### 13.7 The social graph saturates in a single day
 
@@ -1654,6 +1655,55 @@ real state without another pin site to find, `SystemStack` reorder, or save chap
   **E-VOY** trade (`sim/Sim.Core/Space/`). `CITZ` v7 (E-PEOPLE) and `ITEM` v3 (E-DECAY) are
   entity-field bumps, not new systems; `NAVS` ext (E-VOY) extends the existing `NavSystem`
   chapter — none of those are registered here.
+
+### 13.15 The economy is finite and TERMINATES — measured A1 (2026-07-23)
+
+**This supersedes §13.6's `None 99.92 %` occupancy table**, which was pre-E0-1. Measured with
+`dotnet run --project hosts/scenario -- occupancy --ship slice --days 3`, sampling every live
+crew member's `JobKind` every tick. "work" excludes `Eat`/`Drink`/`Flee`.
+
+**A1 (`ECONOMY-PLAN.md` §E0's goal: ≥ 25 % busy at sim-hour 24) = 24.979 % — FAIL, by 0.02
+points.** But the pass/fail is the least interesting part; the *shape* is the finding.
+
+| | pre-E0-1 (§13.6) | now (3 sim-days) |
+|---|---|---|
+| `None` | 99.92 % | **85.28 %** |
+| `Craft` | 0.01 % | 12.35 % |
+| `Dig` | 0.00 % | 1.41 % |
+| `Maintain` | 0.03 % | 0.90 % |
+| `HaulPickup`/`HaulDeliver`/`Build`/`HaulToBuild` | 0.00 % | **0.00 %** |
+
+**So E0-1/E0-2 worked** — the labour pool really did open up (busy 0.08 % → 14.72 %). The
+problem has moved.
+
+**The busy curve, by sim-hour:** `80 % → 75 % → 37.5 % (h3–18) → 25 % (h19–27) → 12.5 % (h28)
+→ 0.0 % from h29 onward, permanently.` The flat plateaus are exact crew fractions (3/8, then
+2/8) — a fixed number of crew on long crafting bills, not a busy ship.
+
+**Why it terminates** (end-of-run state, printed by the harness):
+
+- **`debris tiles left: 0`.** The authored 48-tile field is fully dug out by ~h2. **Nothing
+  regenerates debris**, so `JobKind.Dig` can never be assigned again on that ship, ever.
+- **`stockpile tiles zoned: 0`.** Haul stays structurally unreachable unless a player zones one
+  (E0-3 shipped the verb; nothing zones by default).
+- **`ground stock: Corpse=1, Potato=699, ControllerModule=31`.** No `Regolith`, no `Scrap`, no
+  `Parts` left — all of it was converted, and the terminal product is **`ControllerModule`,
+  which nothing in the repo consumes.** Sole producer: `MachineShop: Parts 2 → ControllerModule 1`
+  (`SimDefs.cs:606`, `recipes.def:22`). This is `ECONOMY.md`'s A6 dead-`ItemKind` confirmed by
+  measurement: the ship spends its entire finite matter budget manufacturing a paperweight.
+
+**Not slice-specific.** `--ship grid` (3 crew) shows the same terminal shape and dies sooner:
+`Craft 28.23 %` on day 1 but **A1 at hour 24 = 0.000 %**, ending at `0 debris, 0 stockpile,
+Potato=273, ControllerModule=12`.
+
+**The binding constraint is now MATTER, not LABOUR.** Every ship converts its finite starting
+matter into an unused item and then idles forever. That reframes the rest of E0: tuning
+`wander_radius_tiles` against a labour metric is premature, and the lanes that matter are the
+ones that create *durable* demand or supply — **E0-5** (deconstruct: a real one-way matter
+source), **E0-7** (ice → water: a recurring haul source), **E0-6** (conversion loss, and the one
+thing that finally gives `ControllerModule` a consumer). **E0-4** (filtered stockpile zones)
+unblocks the 0.00 % haul kinds but adds no matter, so it moves haul off zero without extending
+the 28-hour runway.
 
 ---
 

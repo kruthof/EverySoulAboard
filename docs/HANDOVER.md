@@ -1,6 +1,56 @@
 # HANDOVER — PERILUNE (2026-07-22, P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the mechanics reference + MOSS terminal + the economy redesign + **economy Wave 0 COMPLETE (`main` merged in)** + **E0-1 recruitability** + **E0-2 work-rate rebase** + **wall drag-build & materials** + **drifting starfield**, tag `v2-talking-ship`)
 
-## E0-3 — player verbs (dig + stockpile) + order precedence: on `lane/e0-3-verbs` (2026-07-23), START HERE
+## A1 MEASURED — the economy is finite and TERMINATES at sim-hour 28 (2026-07-23), START HERE
+
+**`ECONOMY-PLAN.md` §E0's goal is a number nobody had ever checked.** Measured now, after E0-1/2/3:
+
+```
+dotnet run --project hosts/scenario -- occupancy --ship slice --days 3
+```
+
+**A1 (≥ 25 % busy at sim-hour 24) = 24.979 % — FAIL by 0.02 points.** The pass/fail is the least
+interesting part. Full detail in **`docs/MECHANICS.md` §13.15**, which supersedes §13.6's
+`None 99.92 %` table.
+
+**E0-1/E0-2 worked.** `None` fell **99.92 % → 85.28 %** over 3 sim-days; busy went 0.08 % → 14.72 %.
+The labour pool really did open up.
+
+**But the problem has moved, and the new one is worse.** The busy curve by sim-hour:
+
+`80 % → 75 % → 37.5 % (h3–18) → 25 % (h19–27) → 12.5 % (h28) → 0.0 % from h29 onward, forever.`
+
+The plateaus are exact crew fractions (3/8, then 2/8) — a couple of crew on long crafting bills,
+not a busy ship. End-of-run state says why:
+
+- **`debris tiles left: 0`** — the authored 48-tile field is dug out by ~h2, and **nothing
+  regenerates debris**, so `JobKind.Dig` can never be assigned on that ship again.
+- **`stockpile tiles zoned: 0`** — haul stays structurally unreachable unless the player zones one.
+- **`ground stock: Potato=699, ControllerModule=31`** — no `Regolith`/`Scrap`/`Parts` left. The ship
+  spent its **entire finite matter budget** manufacturing `ControllerModule`, which **nothing in the
+  repo consumes** (sole producer `MachineShop: Parts 2 → ControllerModule 1`, `SimDefs.cs:606`).
+  That is `ECONOMY.md`'s A6 dead-`ItemKind`, confirmed by measurement.
+
+**Not slice-specific:** `--ship grid` dies sooner — A1 at hour 24 = **0.000 %**.
+
+**The binding constraint is now MATTER, not LABOUR.** This reframes the rest of E0:
+
+- **E0-5** (deconstruct — a real one-way matter source), **E0-7** (ice → water — a recurring haul
+  source) and **E0-6** (conversion loss, and the one thing that gives `ControllerModule` a consumer)
+  are the lanes that actually extend the runway. Consider pulling one forward.
+- **E0-4** (filtered stockpile zones) moves haul off 0.00 % but **adds no matter**, so it does not
+  extend the 28-hour runway. Still worth doing — just don't expect A1 to move much.
+- **Tuning `wander_radius_tiles` is premature** while the constraint is matter, not labour.
+
+The harness is a new `occupancy` verb on the scenario host (`--ship perilune|slice|grid`,
+`--days`, `--seed`). The CI-pinned verb-less default path is untouched. It reports the occupancy
+table, an hourly busy curve (the shape matters — a decaying spike and a flat line average the
+same and mean opposite things), the A1 headline, and an end-of-run "why did work run out"
+diagnostic. Busy is reported two ways on purpose: **any** (incl. eat/drink/flee) and **work**
+(productive only) — a crew 25 % busy eating has not met A1's intent.
+
+---
+
+## E0-3 — player verbs (dig + stockpile) + order precedence: LANDED on `main` (2026-07-23)
 
 **Three commits on `lane/e0-3-verbs`.** Plan: `docs/design/perilune-e0-3-verbs.plan.md`.
 **Gate: `./ci.sh` exit 0, 846 dotnet + 483 node green, and NO pin moved** — scenario
