@@ -136,9 +136,40 @@ namespace Perilune.Sim
             if (!sim.World.InBounds(_pos)) return;
             if (_on && (sim.World.GetFlags(_pos) & TileFlags.Walkable) == 0) return;
             sim.World.SetFlag(_pos, TileFlags.Stockpile, _on);
+            // E0-4 (hazard 3): clearing the presence bit clears any E0-4 filter on the same tile,
+            // so a de-designated stockpile never orphans a filter entry accumulating in the ZONE
+            // hash. Optional-system-guarded — a stack without a StockZoneSystem is a no-op, and a
+            // tile that never carried a filter is ClearFilter's own no-op.
+            if (!_on) sim.StockZones?.ClearFilter(sim, _pos);
             sim.JobsDirty |= JobBoardDirty.Tiles; // a stockpile zone is a tile-board change
             sim.Events.Publish(new TileChangedEvent { Pos = _pos });
         }
+    }
+
+    /// <summary>
+    /// Set the E0-4 accept-filter mask on a stockpile tile: bit <c>k</c> set ⇒ accept
+    /// <see cref="ItemKind"/> <c>k</c>. Optional-system walk to <see cref="StockZoneSystem.SetFilter"/>
+    /// (the <see cref="DesignateDeconstructCommand"/> contract) — a sim without a
+    /// <see cref="StockZoneSystem"/> silently ignores it.
+    ///
+    /// PRECONDITION-LIGHT ON PURPOSE. There is no tile-legality check here: a mask on a
+    /// non-stockpile tile is inert (the haul board only ever consults <see cref="StockZoneSystem.Accepts"/>
+    /// where a <see cref="TileFlags.Stockpile"/> presence bit already exists), and the OFF path of
+    /// <see cref="DesignateStockpileCommand"/> clears any stray entry. So a client may enqueue a
+    /// filter click blind and an illegal tile is the same silent no-op every other designate is.
+    /// An ABSENT entry (never set, or cleared) = accept-all; a <c>mask == 0</c> entry accepts nothing.
+    /// </summary>
+    public sealed class SetStockpileFilterCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+        private readonly ulong _mask;
+
+        public SetStockpileFilterCommand(Int3 pos, ulong mask)
+        {
+            _pos = pos; _mask = mask;
+        }
+
+        public void Execute(Simulation sim) => sim.StockZones?.SetFilter(sim, _pos, _mask);
     }
 
     /// <summary>

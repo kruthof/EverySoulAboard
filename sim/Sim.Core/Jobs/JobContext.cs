@@ -120,6 +120,22 @@ namespace Perilune.Sim
                    !groundItemTiles.Contains(p);
         }
 
+        /// <summary>
+        /// E0-4 kind-ed overload: a free stockpile tile that ALSO accepts <paramref name="kind"/>
+        /// under its filter. An ABSENT filter entry — and a sim with no <see cref="StockZoneSystem"/>
+        /// — is accept-all (<c>sim.StockZones?.Accepts(p, kind) ?? true</c>), so on an unfiltered
+        /// tile this is byte-for-byte the kind-less overload above. The single shared free-stockpile
+        /// predicate the haul board's per-item candidate gate and destination selection both call
+        /// with the CARRIED kind; the kind-less overload stays the accept-all-equivalent "does ANY
+        /// free stockpile tile exist" gate (lane plan §8 hazard 4 — keeping both so the existing
+        /// caller's behaviour cannot silently change).
+        /// </summary>
+        public static bool IsFreeStockpileTile(Simulation sim, Int3 p, HashSet<Int3> groundItemTiles, ItemKind kind)
+        {
+            return IsFreeStockpileTile(sim, p, groundItemTiles) &&
+                   (sim.StockZones?.Accepts(p, kind) ?? true);
+        }
+
         /// <summary>Grow a generation-stamp array to hold <paramref name="needed"/> slots.
         /// Deliberately does NOT copy: stamps are valid for one selection pass only, and fresh
         /// zeros can never equal the current generation (which is >= 1).</summary>

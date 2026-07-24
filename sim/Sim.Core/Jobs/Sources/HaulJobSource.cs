@@ -24,11 +24,28 @@ namespace Perilune.Sim
         private long[] _stockTried = new long[64];
         private readonly Dictionary<uint, long> _retryAt = new Dictionary<uint, long>(); // lookup only
 
+        // E0-4: the optional per-tile stockpile-filter registry, resolved once (the
+        // DeconstructJobSource lazy-resolve precedent — a job source owns its own dependency rather
+        // than leaning on Simulation's convenience accessor). null on a stack without one, in which
+        // case every tile is accept-all and the candidate gate below is byte-for-byte its pre-E0-4
+        // self.
+        private StockZoneSystem _stockZones;
+        private bool _stockZonesResolved;
+
         public string Name => "Haul";
         public JobKind[] HandledKinds => Kinds;
         public int CandidateCount => _items.Count;
 
-        public void BeginTick(Simulation sim) { }
+        /// <summary>Resolve the optional <see cref="StockZoneSystem"/> once, before any progress or
+        /// rescan pass reads a filter (the <see cref="DeconstructJobSource"/> pattern).</summary>
+        public void BeginTick(Simulation sim)
+        {
+            if (_stockZonesResolved) return;
+            var systems = sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+                if (systems[i] is StockZoneSystem z) { _stockZones = z; break; }
+            _stockZonesResolved = true;
+        }
 
         // ------------------------------------------------------------------ board
 
@@ -66,12 +83,21 @@ namespace Perilune.Sim
 
                 if (anyFreeStockpile)
                 {
+                    // E0-4: a filter can refuse a kind, so the "some free stockpile exists" gate
+                    // above (kind-less) is no longer sufficient per item. When any filter is live,
+                    // an item is a candidate only if SOME free stockpile tile accepts ITS kind —
+                    // otherwise it has nowhere to go and would be picked up only to be dropped again.
+                    // With no registry, or no filter set, this fast-path is skipped and every item
+                    // that passed the guards below boards exactly as it did pre-E0-4 (the byte-for-byte
+                    // inert path on any pinned, filter-free ship).
+                    bool filtered = _stockZones != null && _stockZones.Zones.Count > 0;
                     for (int i = 0; i < items.Count; i++)
                     {
                         var item = items[i];
                         if (item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                         if (item.Kind == ItemKind.Corpse) continue; // the dead are not cargo
                         if ((sim.World.GetFlags(item.Pos) & TileFlags.Stockpile) != 0) continue; // already stored
+                        if (filtered && !AnyFreeStockpileAccepts(sim, item.Kind)) continue; // no zone takes this kind
                         _items.Add(item.Id);
                     }
                 }
@@ -171,8 +197,9 @@ namespace Perilune.Sim
             }
 
             // Pick the destination before touching carry state, so a failure leaves the world
-            // exactly as it was (minus the released reservation).
-            if (!TryPathToFreeStockpile(sim, citizen, ctx, out var dest))
+            // exactly as it was (minus the released reservation). The carried kind decides which
+            // filtered tiles will take it (E0-4).
+            if (!TryPathToFreeStockpile(sim, citizen, ctx, item.Kind, out var dest))
             {
                 if (item.ReservedBy == citizen.Id) item.ReservedBy = 0;
                 citizen.ReservedItemId = 0;
@@ -211,12 +238,24 @@ namespace Perilune.Sim
             sim.JobsDirty |= JobBoardDirty.Items; // the stack was set down (position/unreserve changed)
         }
 
+        /// <summary>Does any free stockpile tile accept <paramref name="kind"/>? The per-item
+        /// candidate gate (E0-4): reuses the current tile board and the freshly rebuilt ground-item
+        /// occupancy, alloc-free, integer mask ops only.</summary>
+        private bool AnyFreeStockpileAccepts(Simulation sim, ItemKind kind)
+        {
+            for (int i = 0; i < _stockpiles.Count; i++)
+                if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind))
+                    return true;
+            return false;
+        }
+
         /// <summary>
         /// Nearest free stockpile tile (Manhattan; ties: z,y,x scan order) that is actually
-        /// reachable. Occupancy is recomputed from ground items on demand — the board may be
-        /// several ticks old by the time a hauler arrives at his stack.
+        /// reachable AND accepts <paramref name="kind"/> under its filter (E0-4). Occupancy is
+        /// recomputed from ground items on demand — the board may be several ticks old by the time
+        /// a hauler arrives at his stack.
         /// </summary>
-        private bool TryPathToFreeStockpile(Simulation sim, Citizen citizen, JobContext ctx, out Int3 dest)
+        private bool TryPathToFreeStockpile(Simulation sim, Citizen citizen, JobContext ctx, ItemKind kind, out Int3 dest)
         {
             dest = default;
 
@@ -229,7 +268,7 @@ namespace Perilune.Sim
                 for (int i = 0; i < _stockpiles.Count; i++)
                 {
                     if (_stockTried[i] == gen) continue;
-                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
+                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind))
                     {
                         _stockTried[i] = gen;
                         continue;
