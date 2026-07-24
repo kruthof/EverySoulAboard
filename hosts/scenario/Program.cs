@@ -239,12 +239,42 @@ namespace Perilune.Tools
                 Console.WriteLine();
             }
 
+            // OPT-IN E0-4 measurement source (--stockpile <bench|far> [--stockpile-n N], default N=4).
+            // Host-side: it designates N accept-all (unfiltered — the pre-WP-4 "before") stockpile
+            // tiles at t=0 via the same command the client issues — `bench` hugs the crafting benches
+            // (a pre-positioning buffer), `far` lands on the opposite deck (the wrong-deck regression
+            // ECONOMY.md §8 measured). No flag ⇒ the CI-pinned verb-less path is byte-identical. See
+            // StockpileHarness.
+            string stockMode = ArgString(args, "--stockpile", null);
+            bool stockFar = stockMode == "far";
+            int stockN = ArgInt(args, "--stockpile-n", 4);
+            int zoned = 0;
+            if (stockMode != null)
+            {
+                if (stockMode != "bench" && stockMode != "far")
+                {
+                    Console.WriteLine($"--stockpile: unknown mode '{stockMode}' (expected 'bench' or 'far').");
+                    return 1;
+                }
+                zoned = StockpileHarness.EnqueueStockpile(sim, stockFar, stockN);
+                Console.WriteLine($"--stockpile {stockMode} {stockN}: designated {zoned} accept-all stockpile " +
+                                  $"tile(s) at t=0 ({(stockFar ? "opposite deck, farthest from" : "adjacent to")} the " +
+                                  "crafting benches; NO filter — the pre-rule 'before')" +
+                                  (zoned < stockN ? $"  [ship had only {zoned} legal]" : ""));
+                Console.WriteLine();
+            }
+
             const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
             int kindCount = Enum.GetValues(typeof(JobKind)).Length;
             var kindTicks = new long[kindCount];        // crew-ticks per JobKind, whole run
             int hours = days * 24;
             var hourAny = new long[hours];              // crew-ticks with ANY job, per sim-hour
             var hourWork = new long[hours];             // crew-ticks with a PRODUCTIVE job, per sim-hour
+            // E0-4 on-job travel proxy: of the ticks a crew member is ON a productive job, how many
+            // are spent WALKING to the site (a path still to follow) vs actually WORKING at it. A
+            // wrong-deck stockpile inflates the walking share (the −14 % ECONOMY.md §8 names). Only
+            // meaningful under --stockpile (haul is 0 % otherwise), but always counted — it is free.
+            long onJobTravel = 0, onJobWork = 0;
             long totalTicks = (long)days * TicksPerDay;
 
             Console.WriteLine($"occupancy — {shipName} ship, {crewCount} crew, {days} day(s), seed {seed}");
@@ -265,7 +295,13 @@ namespace Perilune.Tools
                     kindTicks[(int)c.JobKind]++;
                     if (c.JobKind == JobKind.None) continue;
                     hourAny[hour]++;
-                    if (IsProductive(c.JobKind)) hourWork[hour]++;
+                    if (IsProductive(c.JobKind))
+                    {
+                        hourWork[hour]++;
+                        // HasPath ⇒ still en route to the job site (travelling); path exhausted ⇒
+                        // standing at the site consuming JobWorkTicks (working).
+                        if (c.HasPath) onJobTravel++; else onJobWork++;
+                    }
                 }
             }
             clock.Stop();
@@ -305,6 +341,26 @@ namespace Perilune.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine("A1 needs --days 1 or more to reach sim-hour 24.");
+            }
+
+            // E0-4 measurement block — the numbers acceptance needs (plan §11 items 2/3/4). Gated on
+            // the --stockpile flag so the CI-pinned no-flag report stays byte-identical: haul is a flat
+            // 0 % without a zone, so these lines only carry signal under the harness.
+            if (stockMode != null)
+            {
+                double haulPickup = 100.0 * kindTicks[(int)JobKind.HaulPickup] / grandTotal;
+                double haulDeliver = 100.0 * kindTicks[(int)JobKind.HaulDeliver] / grandTotal;
+                long onJob = onJobTravel + onJobWork;
+                double travelPct = onJob > 0 ? 100.0 * onJobTravel / onJob : 0.0;
+                int controllers = 0;
+                foreach (var it in sim.Items.Items)
+                    if (it.Kind == ItemKind.ControllerModule) controllers += it.Count;
+
+                Console.WriteLine();
+                Console.WriteLine($"E0-4 measurement (--stockpile {stockMode}, {zoned} tile(s) zoned):");
+                Console.WriteLine($"  haul occupancy         HaulPickup {haulPickup:0.000} %  +  HaulDeliver {haulDeliver:0.000} %");
+                Console.WriteLine($"  throughput             ControllerModule end-count {controllers}   (A1 baseline 31)");
+                Console.WriteLine($"  on-job travel          {travelPct:0.0} %   (share of productive-job ticks spent walking, not working)");
             }
 
             // "0 % busy" is a symptom, not a diagnosis. The interesting question is always WHY the
