@@ -50,19 +50,6 @@
         <div id="legend" class="mono"></div>
       </div>
       <div id="hint" class="stage-hint">LIVE SPRITE FEED · CLICK DECK TO SELECT · DRAG TO PAN</div>
-      <!-- RELATIONS viewport swap (relations-spec IX-R*): a full-cover overlay sibling of the
-           canvas, shown only while the RELATIONS tab is active. The ship canvas is untouched. -->
-      <div id="relations-view" class="relations-view" hidden>
-        <div class="rel-title" id="rel-title">RELATIONS</div>
-        <svg id="rel-svg" class="rel-svg" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
-        <div class="rel-legend">
-          <span class="rel-key"><i class="sw close"></i>CLOSE</span>
-          <span class="rel-key"><i class="sw warm"></i>WARM</span>
-          <span class="rel-key"><i class="sw neutral"></i>NEUTRAL</span>
-          <span class="rel-key"><i class="sw hostile"></i>HOSTILE</span>
-          <span class="rel-key"><i class="sw secret"></i>SECRET</span>
-        </div>
-      </div>
     </div>
 
     <aside class="readout">
@@ -138,6 +125,15 @@
      occupied room in the Overview); it covers the Overview + console beneath. MOSS beats it. Built
      by src/ui/roomzoom-view.js. -->
 <div id="roomzoom-view" class="rz" hidden></div>
+
+<!-- RELATIONS (relations-spec IX-R*) — the crew relationship web. A BODY-LEVEL SIBLING of .app,
+     like #moss-view / #overview-view / #roomzoom-view, and for the same reason: it replaces the game
+     window rather than covering part of one surface. It used to live inside .stage and be un-hidden
+     by the RELATIONS tab, which on the standard ship (--ship grid) dropped `body.overview-open` and
+     brought the whole deprecated console back on screen. `body.relations-open` now hides .app and
+     #overview-view directly; MOSS and the Room Zoom hide THIS root. Built by
+     src/ui/relations-view.js. -->
+<div id="relations-view" class="rl" hidden></div>
 
 <div class="disconnected" id="disc">
   <span class="disc-chip"><span class="disc-dot"></span>LINK LOST — RECONNECTING…</span>

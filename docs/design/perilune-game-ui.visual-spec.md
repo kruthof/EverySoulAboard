@@ -604,11 +604,14 @@ when ready. Per VS-63 the red BORDER may be `--bad`; the red TEXT is `--bad-txt`
 
 **VS-68** — On-map work markers (`.work-layer` / `.work-mark`, IX-103). Layer:
 `position:absolute; inset:0; pointer-events:none; z-index:5` — the SAME stacking level as
-`.design-layer`, **not** one above it. Rationale (RELATIONS): the layer is appended to `.stage`
-lazily, on the first frame that has a marker, i.e. always AFTER the static `#relations-view`
-child. `#relations-view` is `z-index:6` (VS-R*), so at 6 the work layer would tie with it and — being
-later in the DOM — paint work tags over the full-viewport RELATIONS web. At 5 it stays under
-RELATIONS. Sharing 5 with `.design-layer` costs nothing: a ghost is a 1.5px dashed outline over
+`.design-layer`, **not** one above it. Rationale: the layer is appended to `.stage` lazily, on the
+first frame that has a marker, so it must not outrank the stage cards it lands after
+(`.stage-card` is 4, `.design-layer` is 5). *(Historical note, console-retirement WP-7: the original
+rationale was RELATIONS — `#relations-view` was then a static `.stage` child at `z-index:6`, and at 6
+the later-appended work layer would have tied with it and painted work tags over the web. RELATIONS
+has since left `.stage` entirely for a body-level takeover, `body.relations-open` — see VS-R1 — so
+that constraint is gone. The value stays 5 for the `.stage-card`/`.design-layer` reason above.)*
+Sharing 5 with `.design-layer` costs nothing: a ghost is a 1.5px dashed outline over
 a 10%-alpha fill, so the two never occlude each other even on the one tile where a crew member
 stands on a pending designation. `:empty{display:none}`. Marker: an accent-filled chip —
 `background:var(--amber-1); color:var(--txt-onacc);` (the same on-accent pairing as the

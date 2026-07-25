@@ -11,9 +11,16 @@
 //
 // Default-view switch (IX-O-07): when `decks` is populated AND the active tab is a ship tab
 // (BUILD/CREW) the Overview takes over (`body.overview-open` hides the console `.app`, the canvas
-// keeps running behind it). RELATIONS / MOSS / CHRONICLE lower to the console's proven surfaces
-// (v1 delegation — see the tab handler); an empty `decks` (e.g. --ship slice) never shows the
-// Overview at all, so the legacy tile view is unchanged.
+// keeps running behind it). An empty `decks` (e.g. --ship slice) never shows the Overview at all,
+// so the legacy tile view is unchanged.
+//
+// The non-ship tabs are NOT a delegation to the console any more. MOSS (`body.moss-open`) and
+// RELATIONS (`body.relations-open`) are body-level takeovers of their own, each hiding `.app` and
+// this surface with its own CSS switch; CHRONICLE is the one still-inert slot (`overview-model.js`
+// INERT_TABS). That distinction is load-bearing: while RELATIONS was a console overlay, selecting it
+// dropped `overview-open` and brought the entire deprecated console back on screen over the modern
+// game. Any tab added here that leaves for a surface of its own MUST bring its own body switch —
+// `client/test/relations-view.test.js` "A2" fails if one does not.
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
