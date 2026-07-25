@@ -10,6 +10,17 @@
 /** Numeric guard: a finite number, else 0 (a missing opinion direction counts as neutral). */
 function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
 
+/**
+ * The directed edge list carried by a `relations` wire message, or `[]` for a missing/malformed one.
+ * Every consumer of the cached message goes through this — the RELATIONS surface and the DOSSIER
+ * card's `enrichCitizen` both used to keep their own private copy of the same three-way guard.
+ * @param {*} msg the cached `relations` message (or null before the first one arrives)
+ * @returns {Array} the raw directed edge tuples/objects, never null
+ */
+export function edgesOf(msg) {
+  return msg && Array.isArray(msg.edges) ? msg.edges : [];
+}
+
 /** Stable id comparator (cids are numbers, but compare structurally so it never NaNs). */
 function cmpId(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
 

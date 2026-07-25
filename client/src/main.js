@@ -17,6 +17,7 @@ import { installInput } from './input/controls.js';
 import * as Hud from './ui/hud.js';
 import { initOverview } from './ui/overview-view.js';
 import { initRoomZoom } from './ui/roomzoom-view.js';
+import { initRelations } from './ui/relations-view.js';
 import { initOnboarding } from './ui/onboarding.js';
 
 const PROC_TILE = 26;
@@ -257,6 +258,12 @@ const roomZoom = initRoomZoom({ send: (o) => session.send(o) });
 // HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth. Clicking
 // an occupied room enters the Room Zoom (Level 2) through the injectable hook.
 initOverview({ send: (o) => session.send(o), onEnterRoom: (anchor) => roomZoom.enter(anchor) });
+// RELATIONS: the crew relationship web, a body-level takeover of its own (`body.relations-open`)
+// rather than an overlay inside the console stage — as an overlay it dropped `body.overview-open`
+// and brought the whole deprecated console back on screen over the modern surface. It derives its
+// visibility from the shared tab state, so leaving it is the ordinary tab flow (the same rung
+// Escape already uses).
+initRelations({ onExit: () => Hud.selectTab('build') });
 // First-run onboarding: the one-time intro (premise + the two verbs) and the persistent `?` help.
 initOnboarding();
 Hud.buildLensButtons((name) => session.send(Cmd.lens(name)));
