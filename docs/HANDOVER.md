@@ -35,17 +35,38 @@ thrash" is wrong (**crew never pick up** — the claim is released before carry 
 `--stockpile bench` does not "hug the benches" (**3 of its 4 tiles are ON them**, distance 0, because
 `DesignateStockpileCommand` gates only on `Walkable` with no device exclusion).
 
-**Five branches, all unmerged, `main` untouched.** Four implemented + independently reviewed + at
-least one send-back each + PASS:
+### ⇒ WHERE TO STAND — resume in the LANE worktree; it already exists, do not create one
 
-| branch | commit | status |
-|---|---|---|
-| `lane/e0-4-stockpile-zones` | `395a65a` | the LANE (WP-1/2/3/4). **WP-4b is UNCOMMITTED in its working tree and is SEND-BACK — do not commit it as-is.** |
-| `lane/e0-4-wp3-rigor` | `42e5b27` | **PASS** — the two non-biting mutations replaced |
-| `lane/e0-4-wp5-filter-ui` | `1e52b0e` | **PASS** — the filter UI |
-| `lane/e0-4-wp6-mask-collapse` | `35bacc9` | **PASS** — accept-all stores no entry (restores the haul fast path) |
-| `lane/e0-4-wp7-unreachable-backoff` | `5b72e04` | **PASS** — the livelock fix (**orchestrator scope expansion; separable**) |
-| `lane/e0-4-haul-diagnosis` | `487d924` | the diagnosis; WP-7 inverted its characterization test |
+```bash
+cd /Users/garvin/Research/Code/perilune-wt/e0-4-stockpile-zones   # the lane; ALREADY EXISTS
+git branch --show-current                                        # → lane/e0-4-stockpile-zones
+git status                                                       # → NOT clean, and that is expected:
+#   M hosts/scenario/Program.cs          ┐ WP-4b, uncommitted and SEND-BACK.
+#   M hosts/scenario/StockpileHarness.cs ┘ Do NOT commit as-is; do NOT `git checkout` them away
+#                                          (an earlier session destroyed a test that way).
+```
+
+**Everything else has its own worktree — never edit the main checkout, and never work two packages
+in one worktree** (the tests project references the scenario host, so two concurrent builders
+corrupt each other; that is why each package below got its own):
+
+| worktree (all under `/Users/garvin/Research/Code/perilune-wt/`) | branch | commit | status |
+|---|---|---|---|
+| `e0-4-stockpile-zones` | `lane/e0-4-stockpile-zones` | `395a65a` | **the LANE** (WP-1/2/3/4). Merge the others INTO this, then `--no-ff` into `main`. Holds WP-4b uncommitted + **SEND-BACK**. |
+| `e0-4-wp3-rigor` | `lane/e0-4-wp3-rigor` | `42e5b27` | **PASS** — the two non-biting mutations replaced |
+| `e0-4-wp5-filter-ui` | `lane/e0-4-wp5-filter-ui` | `1e52b0e` | **PASS** — the filter UI |
+| `e0-4-wp6-mask-collapse` | `lane/e0-4-wp6-mask-collapse` | `35bacc9` | **PASS** — accept-all stores no entry (restores the haul fast path) |
+| `e0-4-wp7-unreachable-backoff` | `lane/e0-4-wp7-unreachable-backoff` | `5b72e04` | **PASS** — the livelock fix (**orchestrator scope expansion; separable**) |
+| `e0-4-haul-diagnosis` | `lane/e0-4-haul-diagnosis` | `487d924` | the diagnosis; WP-7 inverted its characterization test |
+
+**Merge order into the lane**, then `./ci.sh` on the lane, then `--no-ff` to `main` and re-gate:
+`wp3-rigor` → `wp5-filter-ui` → `wp6-mask-collapse` → `wp7-unreachable-backoff` → the WP-4b redo.
+Expect **one** small end-of-file conflict in `tests/Perilune.Tests/StockpileHarnessTests.cs`
+(wp3-rigor's edits vs the restored WP-4b test) — **keep both**; they are independent additions and
+`git merge-tree` was verified clean on a synthetic worst case.
+
+**The WP-4b redo happens in the lane worktree** (that is where its uncommitted work already sits).
+Do the reachability gate and the re-measurement there; do not start a new worktree for it.
 
 **All four determinism pins byte-identical throughout** — scenario `00e0a2dadb8e5076`, tick-3000
 `4be2e77864fb7409`, slice `1f8f2225ee568de9`, defs `5a471d12643b64f9`. Per-branch gate counts were
