@@ -10,8 +10,11 @@ is renamed). Tag `v2-talking-ship`.
 commit message, read this section. This is a RETRACTION, not an extension.** Everything below this
 section is history, newest first; where it disagrees with this section, **this section wins**.
 
-E0-4 is on `main` (`0be9d70`, merged `--no-ff` from `lane/e0-4-stockpile-zones`; six work packages,
-each Opus-implemented and independently Opus-reviewed). Lane plan
+E0-4 is on `main` (`0be9d70`, merged `--no-ff` from `lane/e0-4-stockpile-zones`). It was chartered as
+**six** work packages (WP-1…WP-6) and shipped **eight**: WP-7 was an orchestrator scope expansion
+(a pre-existing engine bug the lane tripped over) and **WP-4b** was a send-back redo, plus one
+integration-fix package for three tests that only failed once the packages met. Each was
+Opus-implemented and **independently** Opus-reviewed. Lane plan
 `docs/design/perilune-e0-4-stockpile-zones.plan.md`. **Gate on `main` @ `7d24ff5`: `./ci.sh` exit 0,
 979 dotnet + 529 node, five pins byte-identical.** The full measured tables and every `file:line`
 live in **`MECHANICS.md` §13.17** (what is wired but not connected) and **§13.18** (the retraction);
@@ -163,7 +166,7 @@ remedy. Exactly **one** added line; the other 100 are byte-identical, verified b
   which at least showed activity. `MECHANICS.md` §13.17-(1); **a live follow-up, first E0-6
   candidate.** The fix also **degrades with terrain churn** (up to 93 % defeat under adversarial
   `Tiles` dirtying, gracefully; escape hatch recorded in §13.17-(2)).
-- **The six packages.** WP-1 filled the W0-6-empty `StockZoneSystem` (`ZONE` v1→v2, packed-sorted
+- **The packages.** WP-1 filled the W0-6-empty `StockZoneSystem` (`ZONE` v1→v2, packed-sorted
   registry, absent entry = accept-all); WP-2 added `SetStockpileFilterCommand` and made haul honour
   the filter; WP-3 the opt-in `occupancy --stockpile <bench|far|filtered-far> [--stockpile-n N]`
   harness; WP-4 the bench rule; WP-5 the filter UI; WP-6 made an accept-all mask store **no** registry
@@ -236,7 +239,7 @@ project real work"**. In one line each:
 **not** imply a green merged lane — WP-6 and WP-7 were each reviewed PASS in isolation, merged
 textually clean, and **three tests failed only once the packages met** (all three were stale tests,
 merged behaviour correct). And per-branch gate counts **do not add**: E0-4's branches read 918–928
-apiece, the merged lane read 943.
+apiece, the merged lane read 943 passing of 946.
 
 **Landed on `main` (2026-07-24, docs-only):** `docs/design/perilune-automation-player-journey.md`
 — an easy-to-understand design of *how an automation enthusiast plays the game*, grounded in the

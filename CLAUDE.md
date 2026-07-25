@@ -30,8 +30,10 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 ## Status snapshot (2026-07-25) — **E0-4 LANDED on `main`, and its headline claim is RETRACTED**
 
 **Read `docs/HANDOVER.md`'s top section before quoting any stockpile number from anywhere.**
-E0-4 (filtered stockpile zones) is on `main` (`0be9d70`, six work packages, each Opus-implemented
-and independently Opus-reviewed). **Its central published claim was FALSE.**
+E0-4 (filtered stockpile zones) is on `main` (`0be9d70`) — chartered as **six** work packages
+(WP-1…WP-6) and shipped **eight** (WP-7 a scope expansion for a pre-existing engine bug; WP-4b a
+send-back redo), each Opus-implemented and **independently** Opus-reviewed. **Its central published
+claim was FALSE.**
 
 **⛔ RETRACTED — "a wrong-deck stockpile is a severe throughput regression" was never measured.**
 `StockpileHarness.SelectStockpile` gated candidates on the `TileFlags.Walkable` flag with **no
@@ -366,13 +368,14 @@ look inert when it is not.
 
 ## Working here
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
-  gate — dotnet + node, ~7 min wall since V6 runs real sim-days). Counts move with every
+  gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
+  is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main`
   @ `7d24ff5` (2026-07-25): 979 dotnet + 529 node, `./ci.sh` exit 0.** Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
-  branches read 918–928 apiece and the merged lane read 943, and three tests that passed on every
-  branch **failed once the packages met** (see "Determinism proof" and `docs/HANDOVER.md`).
+  branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that
+  passed on every branch **failed once the packages met** (see "Determinism proof" and `docs/HANDOVER.md`).
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
 - Determinism proof — **FIVE pins, all gate-enforced as of 2026-07-25**, not four:
 
