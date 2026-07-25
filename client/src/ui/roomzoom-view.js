@@ -14,7 +14,8 @@
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones } from '../wire/messages.js';
-import { roomZoneTiles } from './zone-model.js';
+import { roomZoneTiles, zoneLegendRows } from './zone-model.js';
+import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
 import { decksView } from './decks-model.js';
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
@@ -49,6 +50,8 @@ let _root = null;         // #roomzoom-view
 let _canvas = null;       // .rz-canvas (the framed floor)
 let _layers = null;       // <svg> furniture/pawn/ghost layer
 let _pulseLayer = null;   // transient input pulses
+let _zoneKey = null;      // .rz-zonekey (WP-3: what the zone marks MEAN, in words)
+let _zoneKeySig = '';     // last-rendered key HTML — re-set only on change (the minimap pattern)
 let _toast = null;
 let _toastTimer = 0;
 let _raf = 0;
@@ -59,6 +62,7 @@ let _armed = null;        // the ONE Level-2 input slot (12 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
+let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
 
 // ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
 // The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
@@ -99,6 +103,10 @@ function buildSkeleton() {
     '<div class="rz-canvas" id="rz-canvas">' +
       '<svg class="rz-layers" id="rz-layers" xmlns="http://www.w3.org/2000/svg"></svg>' +
       '<div class="rz-caption" id="rz-caption"></div>' +
+      // WP-3 — THE ZONE KEY. Hidden until the room actually has a zoned tile, so it costs an empty
+      // ship nothing. It exists because the marks alone are unreadable: the wording used to live only
+      // in an SVG <title> inside a `pointer-events="none"` group, i.e. nowhere a player could reach.
+      '<div class="rz-zonekey" id="rz-zonekey" hidden></div>' +
       '<div class="rz-pulse" id="rz-pulse"></div>' +
     '</div>' +
     '<div class="hud rz-breadcrumb" id="rz-breadcrumb"></div>' +
@@ -112,6 +120,7 @@ function buildSkeleton() {
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
   _pulseLayer = $('rz-pulse');
+  _zoneKey = $('rz-zonekey');
   _toast = $('rz-toast');
   buildChrome();
   // Structural tools (WALL/FLOOR/DOOR) use a press-drag-release gesture (RimWorld sweep); a plain
@@ -223,9 +232,13 @@ function repaint() {
   const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
   const designs = Hud.getDesigns();
   const decor = allDecor();
+  // WP-3: derived ONCE per repaint and shared by the floor layer and the key beside it, so the marks
+  // on the floor and the words explaining them can never disagree about what is in the room.
+  _zoneTiles = roomZoneTiles(decodeZones(Hud.getZones()), _focus);
 
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor);
+  paintZoneKey();
   paintCaption(frame, designs);
   paintBreadcrumb();
   paintMinimap();
@@ -259,8 +272,15 @@ function paintLayers(frame, crew, designs, decor) {
 
   let body = gridSvg(rw, rh, logicalW, logicalH);
   body += glowSvg(logicalW, logicalH);
-  body += zoneLayerSvg(roomZoneTiles(decodeZones(Hud.getZones()), _focus));
   body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())));
+  // Zones sit ABOVE the material layer. The first draft put them under it "so a stored crate still
+  // reads as sitting ON the zone" — which was wrong twice over: the Room Zoom draws no loose item
+  // stacks at all (roomCells is furniture + devices), and materialLayerSvg paints an OPAQUE item at
+  // U * 1.2 — LARGER than the tile — for every floor whose material byte is non-zero. So the moment a
+  // player builds a floor with a chosen material, that skin would completely occlude the zone tint
+  // underneath it. Authored floors are material 0 and are skipped, which is the only reason the
+  // original order looked correct in a screenshot.
+  body += zoneLayerSvg(_zoneTiles, _focus);
   body += decorSvg(roomDecor(decor, _focus));
   body += furnitureSvg(roomCells(frame, _focus));
   body += pawnSvg(roomCrew(crew, _focus));
@@ -296,37 +316,6 @@ function previewSvg() {
     'font-family="\'Space Mono\', ui-monospace, monospace" stroke="rgba(10,13,20,.9)" stroke-width="2.5" ' +
     'paint-order="stroke" fill="#f2b563">' + esc(dragCaption(res)) + '</text>');
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
-}
-
-/** Stockpile zones (console-retirement WP-3), UNDER the material/decor/furniture layers so a stored
- *  crate still reads as sitting ON the zone. Three states, three visual weights:
- *    every zoned tile   a soft slate tint + a dotted boundary — the zone itself, invisible until now
- *    RESTRICTED         + a corner wedge; the accepted-kinds list is the tile's <title> (hover)
- *    BACKED OFF         + a hatch and an amber ring — "no hauler reached this recently" (§5 gap 3)
- *  A <title> rather than bespoke chrome: it is the one hover affordance an inline SVG gets for free,
- *  it needs no new element ids, and it carries the honest wording out of zone-model.js verbatim
- *  instead of re-deriving it here. Pointer-events off — the zone layer never eats a build click. */
-function zoneLayerSvg(tiles) {
-  if (!tiles.length) return '';
-  const out = ['<defs><pattern id="rz-zone-hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
-    'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(242,181,99,.55)" ' +
-    'stroke-width="1.5"/></pattern></defs>'];
-  for (const t of tiles) {
-    const [lx, ly] = localXY(t.tx, t.ty);
-    let cell = '<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
-      (U - 1) + '" rx="2" fill="rgba(126,158,196,.16)" stroke="rgba(126,158,196,.55)" ' +
-      'stroke-width="1" stroke-dasharray="2 2"/>';
-    if (t.backedOff) {
-      cell += '<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
-        (U - 1) + '" rx="2" fill="url(#rz-zone-hatch)" stroke="#f2b563" stroke-width="1.5"/>';
-    }
-    if (t.restricted) {
-      cell += '<path d="M' + (lx + U - 9) + ' ' + (ly + 1) + 'h8v8z" fill="#f2b563"/>';
-    }
-    out.push('<g class="rz-zone' + (t.restricted ? ' rz-zone-restricted' : '') +
-      (t.backedOff ? ' rz-zone-backedoff' : '') + '"><title>' + esc(t.label) + '</title>' + cell + '</g>');
-  }
-  return '<g class="rz-zones" pointer-events="none">' + out.join('') + '</g>';
 }
 
 /** The faint 32-unit build grid (VS-Z-10), drawn in logical space so a cell == a tile at any fit. */
@@ -455,6 +444,16 @@ function paintCaption(frame, designs) {
   const nDevices = roomCells(frame, _focus).filter((c) => c.itemId).length;
   setText(_el.capName, _focus.displayName);      // textContent → intrinsically escaped
   setText(_el.capPlaced, (nDesigns + nDevices) + ' PLACED');
+}
+
+/** WP-3 — paint the zone key from the PURE row list, hiding the box when the room has no zones.
+ *  Guarded by a signature like the minimap: an idle repaint (5–10×/s) touches no DOM, so a player
+ *  reading the key is not fighting a node that is being torn down under them. */
+function paintZoneKey() {
+  if (!_zoneKey) return;
+  const html = zoneKeyHtml(zoneLegendRows(_zoneTiles));
+  if (html !== _zoneKeySig) { _zoneKeySig = html; _zoneKey.innerHTML = html; }
+  _zoneKey.hidden = !html;
 }
 
 function paintBreadcrumb() {

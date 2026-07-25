@@ -79,9 +79,16 @@ function inKindRange(kind) { return kind >= 0 && kind < STOCK_KINDS.length; }
 
 /**
  * The armed hint's readable rendering of a mask: 'ALL', 'NOTHING', or the accepted labels joined
- * with ' · '. This is currently the ONLY place a player can read a filter back in words — filtered
- * tiles carry no tint or badge (there is no wire channel for one; see MECHANICS §13) — so it is
- * load-bearing, not decoration. PURE.
+ * with ' · '. THE ONE AUTHORITY for naming a mask in words, and load-bearing rather than decoration:
+ * the armed hint and the Room Zoom's zone key (`ui/zone-overlay.js`, via `zone-model.js`) both read
+ * it, so a label change lands in both places at once. PURE.
+ *
+ * CORRECTED (console-retirement WP-3): this doc used to say it was "currently the ONLY place a player
+ * can read a filter back in words — filtered tiles carry no tint or badge (there is no wire channel
+ * for one)". That channel now exists (`zones`), and a filtered tile carries both a mark and a named
+ * key. Note the HALF-HONOURED CEILING flagged in zone-model.js's header: the reduction below uses
+ * `(mask | 0)`, a 32-bit operation, so a mask with a bit at index 32 or above would be mis-NAMED here
+ * even though `decodeZones` delivers it intact. Unreachable with 7 ItemKinds; fix both halves together.
  */
 export function stockFilterLabel(mask) {
   const m = (mask | 0) & ACCEPT_ALL;

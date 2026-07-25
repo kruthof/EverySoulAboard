@@ -33,7 +33,8 @@ import { dirname, join } from 'node:path';
 import { decodeZones, ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
 import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
 import {
-  BACKED_OFF_LABEL, roomZoneTiles, zoneBackedOff, zoneRestricted, zoneSummary,
+  ACCEPTS_ALL_LABEL, BACKED_OFF_LABEL, roomZoneTiles, zoneBackedOff, zoneLabel, zoneLegendRows,
+  zoneRestricted,
 } from '../src/ui/zone-model.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,7 @@ function codeOnly(src) {
 const WIRE_ZONES_CS = codeOnly(read(join(REPO, 'hosts/web/WireFormat.Zones.cs')));
 const ROOMZOOM = codeOnly(read(join(CLIENT, 'src/ui/roomzoom-view.js')));
 const MAIN = codeOnly(read(join(CLIENT, 'src/main.js')));
+const OVERLAY = codeOnly(read(join(CLIENT, 'src/ui/zone-overlay.js')));
 
 // ════════════════════════════════════════════════════════════════════ the cross-language constant
 
@@ -165,6 +167,35 @@ test('zoneBackedOff reads bit 0 of flags and ignores the rest', () => {
   assert.equal(zoneBackedOff(undefined), false);
 });
 
+// BOTH FACTS, NEITHER SUPPRESSING THE OTHER. The first draft let the back-off wording REPLACE the
+// filter list, so on a restricted-AND-backed-off tile — the state a player most needs to tell apart —
+// the restriction was unreadable by any means at all (the visual marks were both amber too).
+//
+// MUTATION: drop the `zoneRestricted` branch so the back-off wording wins alone ⇒ this fails.
+// MUTATION 2: put the filter list first ⇒ fails (the urgent fact must lead).
+test('zoneLabel names BOTH facts, back-off first', () => {
+  assert.equal(zoneLabel(ACCEPT_ALL, 0), ACCEPTS_ALL_LABEL);
+  assert.equal(zoneLabel(1 << 3, 0), 'FOOD');
+  assert.equal(zoneLabel(ACCEPT_ALL, ZONE_FLAG_BACKED_OFF), BACKED_OFF_LABEL);
+  assert.equal(zoneLabel(1 << 3, ZONE_FLAG_BACKED_OFF), BACKED_OFF_LABEL + ' · FOOD',
+    'a tile that is both restricted AND unreached must say so — that is the state that needs telling ' +
+    'apart, and it is the one the first draft made unreadable');
+  // Never empty: a surface showing this can always show something.
+  for (const [m, f] of [[ACCEPT_ALL, 0], [0, 0], [ACCEPT_ALL, 1], [0, 1]]) {
+    assert.ok(zoneLabel(m, f).length > 0, `zoneLabel(${m},${f}) must never be empty`);
+  }
+});
+
+// The wording is a claim about the world and the data cannot support the strong version: the sim-side
+// back-off map is a rate limiter with three lifts, so a tile can stop being backed off the tick after
+// a door opens. MUTATION: reword BACKED_OFF_LABEL to 'UNREACHABLE' ⇒ this fails.
+test('the back-off wording does not claim unreachability', () => {
+  assert.match(BACKED_OFF_LABEL, /RECENTLY/,
+    'the label must be time-qualified — the flag means "no hauler reached this recently", and the ' +
+    'sim cannot support "unreachable" (three things lift a back-off, one of them on the next tick)');
+  assert.doesNotMatch(BACKED_OFF_LABEL, /UNREACHABLE/, 'over-claims what the flag knows');
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════ roomZoneTiles
 
 const FOCUS = { deck: 0, rx: 10, ry: 5, rw: 4, rh: 3 };   // tiles x10..13, y5..7 on deck 0
@@ -190,10 +221,7 @@ test('roomZoneTiles tolerates a missing focus or a missing channel', () => {
   assert.deepEqual(roomZoneTiles([row(10, 5, 0, ACCEPT_ALL, 0)], null), []);
 });
 
-// MUTATION: swap the label ternary so `restricted` wins over `backedOff` ⇒ this fails. A zone nothing
-// can reach is the more urgent fact than what it would have accepted, and the two badges are drawn
-// together, so only the wording has to choose.
-test('roomZoneTiles annotates each tile, and the back-off wording wins over the filter list', () => {
+test('roomZoneTiles annotates each tile with both facts and its wording', () => {
   const tiles = roomZoneTiles([
     row(10, 5, 0, ACCEPT_ALL, 0),                            // plain zone
     row(11, 5, 0, 1 << 3, 0),                                // FOOD only
@@ -203,47 +231,125 @@ test('roomZoneTiles annotates each tile, and the back-off wording wins over the 
 
   assert.deepEqual(tiles.map((t) => [t.restricted, t.backedOff]),
     [[false, false], [true, false], [false, true], [true, true]]);
-  assert.equal(tiles[0].label, 'ACCEPTS ALL');
-  assert.equal(tiles[1].label, 'FOOD', 'the kind list comes from stockFilterLabel, the ONE authority');
-  assert.equal(tiles[2].label, BACKED_OFF_LABEL);
-  assert.equal(tiles[3].label, BACKED_OFF_LABEL, 'the back-off wording wins when both apply');
+  assert.deepEqual(tiles.map((t) => t.label),
+    [ACCEPTS_ALL_LABEL, 'FOOD', BACKED_OFF_LABEL, BACKED_OFF_LABEL + ' · FOOD']);
   // The tile coordinates stay in WORLD space — the caller owns the local transform (roomCells rule).
   assert.deepEqual(tiles.map((t) => t.tx), [10, 11, 12, 13]);
 });
 
-// The wording is a claim about the world and the data cannot support the strong version: the sim-side
-// back-off map is a rate limiter with three lifts, so a tile can stop being backed off the tick after
-// a door opens. MUTATION: reword BACKED_OFF_LABEL to 'UNREACHABLE' ⇒ this fails.
-test('the back-off wording does not claim unreachability', () => {
-  assert.match(BACKED_OFF_LABEL, /RECENTLY/,
-    'the label must be time-qualified — the flag means "no hauler reached this recently", and the ' +
-    'sim cannot support "unreachable" (three things lift a back-off, one of them on the next tick)');
-  assert.doesNotMatch(BACKED_OFF_LABEL, /UNREACHABLE/, 'over-claims what the flag knows');
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE TWO PROPERTIES THE HEADER CLAIMS, WITH FIXTURES THAT CAN ACTUALLY DISTINGUISH THEM.
+//
+// Both of these survived the first review round, and for the SAME reason the host-side loop-swap
+// mutation survived one file over: the fixtures above are ascending in x with constant or ascending y,
+// and a set that is already in sorted order is its own sorted order. `out.sort(...)` — the "second
+// authority on order" the header forbids — changed nothing, and `z.__touched = true` inside the loop
+// broke the PURE claim with nothing watching. Ordinary fixtures cannot see either.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// MUTATION: `out.sort((a, b) => a.tx - b.tx)` (or any sort) at the end of roomZoneTiles ⇒ fails.
+test('roomZoneTiles preserves the HOST order, and the fixture can tell', () => {
+  // Deliberately NOT sorted: descending x on one row, then a row above it, then one below.
+  const zones = [
+    row(13, 6, 0, ACCEPT_ALL, 0),
+    row(11, 6, 0, ACCEPT_ALL, 0),
+    row(12, 5, 0, ACCEPT_ALL, 0),
+    row(10, 7, 0, ACCEPT_ALL, 0),
+  ];
+  const wire = zones.map((z) => [z.x, z.y]);
+
+  // FIXTURE NON-VACUITY, three ways a sort could sneak in. If any of these equalled the wire order
+  // the assertion below would pass under the very mutation it exists to catch.
+  const byX = [...wire].sort((a, b) => a[0] - b[0]);
+  const byY = [...wire].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  const byXY = [...wire].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const [name, ord] of [['x', byX], ['y,x', byY], ['x,y', byXY]]) {
+    assert.notDeepEqual(ord, wire, `the fixture is already in ${name} order — a sort would be invisible`);
+  }
+
+  assert.deepEqual(roomZoneTiles(zones, FOCUS).map((t) => [t.tx, t.ty]), wire,
+    'the host emits canonical z,y,x and THAT is the wire contract; a client sort is a second, ' +
+    'silently divergent authority on order');
 });
 
-test('zoneSummary tallies a deck, or the whole ship', () => {
+// MUTATION: `z.__touched = true;` anywhere inside roomZoneTiles' loop ⇒ the frozen input THROWS
+// (ES modules are strict mode) and this fails. MUTATION 2: `out.push(z)` — aliasing the input row into
+// the output instead of building a fresh object ⇒ the identity assertion fails, and a later consumer
+// mutating a "derived" tile would silently corrupt the wire cache.
+test('roomZoneTiles is PURE: inputs are neither mutated nor aliased', () => {
   const zones = [
-    row(1, 1, 0, ACCEPT_ALL, 0),
-    row(2, 1, 0, 1 << 3, 0),
-    row(3, 1, 0, ACCEPT_ALL, ZONE_FLAG_BACKED_OFF),
-    row(4, 1, 1, 1 << 3, ZONE_FLAG_BACKED_OFF),
+    Object.freeze(row(10, 5, 0, ACCEPT_ALL, 0)),
+    Object.freeze(row(11, 6, 0, 1 << 3, ZONE_FLAG_BACKED_OFF)),
   ];
-  assert.deepEqual(zoneSummary(zones, 0), { tiles: 3, restricted: 1, backedOff: 1 });
-  assert.deepEqual(zoneSummary(zones, 1), { tiles: 1, restricted: 1, backedOff: 1 });
-  assert.deepEqual(zoneSummary(zones), { tiles: 4, restricted: 2, backedOff: 2 });
-  assert.deepEqual(zoneSummary(null), { tiles: 0, restricted: 0, backedOff: 0 });
+  const before = JSON.parse(JSON.stringify(zones));
+
+  const tiles = roomZoneTiles(zones, FOCUS);   // must not throw on a frozen row
+
+  assert.deepEqual(JSON.parse(JSON.stringify(zones)), before, 'an input row was mutated');
+  assert.equal(tiles.length, 2);
+  for (let i = 0; i < tiles.length; i++) {
+    assert.notEqual(tiles[i], zones[i], 'a derived tile ALIASES its input row');
+    assert.ok(!('x' in tiles[i]), 'a derived tile must carry tx/ty, not the wire row\'s x/y');
+  }
+  // Non-vacuity: prove the freeze would actually bite, so this is not a test of nothing.
+  assert.throws(() => { zones[0].__probe = 1; }, TypeError,
+    'the fixture rows are not frozen, so the "never mutates" half of this test cannot fail');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════ zoneLegendRows
+
+// The KEY is what makes the marks readable at all (the <title> alone could not be reached).
+// MUTATION: collapse the per-mask rows to one bare 'RESTRICTED' ⇒ fails. MUTATION 2: drop the
+// backedoff row ⇒ fails. MUTATION 3: return [] always ⇒ fails.
+test('zoneLegendRows explains only the states present, one row per distinct filter', () => {
+  const tiles = roomZoneTiles([
+    row(10, 5, 0, ACCEPT_ALL, 0),
+    row(11, 5, 0, 1 << 5, 0),                                 // PARTS
+    row(12, 5, 0, 1 << 3, 0),                                 // FOOD  (lower mask ⇒ sorts first)
+    row(13, 5, 0, 1 << 3, ZONE_FLAG_BACKED_OFF),              // FOOD again + unreached
+  ], FOCUS);
+
+  assert.deepEqual(zoneLegendRows(tiles), [
+    { kind: 'zone', label: 'STOCKPILE' },
+    { kind: 'restricted', label: 'ACCEPTS FOOD' },
+    { kind: 'restricted', label: 'ACCEPTS PARTS' },
+    { kind: 'backedoff', label: BACKED_OFF_LABEL },
+  ]);
+});
+
+test('zoneLegendRows omits what is not there, and is empty for an unzoned room', () => {
+  assert.deepEqual(zoneLegendRows([]), [], 'no zones ⇒ no key ⇒ the box hides itself');
+  assert.deepEqual(zoneLegendRows(null), []);
+  // A room with zones but no filters and no back-offs gets exactly the one row.
+  assert.deepEqual(zoneLegendRows(roomZoneTiles([row(10, 5, 0, ACCEPT_ALL, 0)], FOCUS)),
+    [{ kind: 'zone', label: 'STOCKPILE' }]);
+  // …and one that is unreached but unfiltered gets no 'restricted' row.
+  assert.deepEqual(
+    zoneLegendRows(roomZoneTiles([row(10, 5, 0, ACCEPT_ALL, ZONE_FLAG_BACKED_OFF)], FOCUS)),
+    [{ kind: 'zone', label: 'STOCKPILE' }, { kind: 'backedoff', label: BACKED_OFF_LABEL }]);
+});
+
+test('zoneLegendRows does not mutate the tiles it reads', () => {
+  const tiles = roomZoneTiles([row(10, 5, 0, 1 << 3, ZONE_FLAG_BACKED_OFF)], FOCUS).map(Object.freeze);
+  const before = JSON.parse(JSON.stringify(tiles));
+  zoneLegendRows(tiles);
+  assert.deepEqual(JSON.parse(JSON.stringify(tiles)), before);
+  assert.throws(() => { tiles[0].__probe = 1; }, TypeError, 'the fixture tiles are not frozen');
 });
 
 // ══════════════════════════════════════════════════════════════════ the channel is actually DRAWN
 
 // A decoder with no renderer is a wire channel the player can never see — the failure
 // tests/Perilune.Tests/SurfaceBoundaryTests.cs catches from the host side, checked here from the
-// client side and one level deeper than a `case` label.
+// client side. This scan proves the WIRING; `zone-overlay.test.js` proves the markup itself, which is
+// the half that was missing: with the builder living inside roomzoom-view.js, making it return '' left
+// the whole gate green.
 //
 // MUTATION: comment out the `body += zoneLayerSvg(...)` line in roomzoom-view.js ⇒ this fails (which
 // is the whole reason every scan runs through codeOnly first). MUTATION 2: delete the `case 'zones'`
-// from main.js ⇒ this fails, and so does the C# boundary test.
-test('the Room Zoom draws the zone layer, and main.js dispatches the channel to the cache', () => {
+// from main.js ⇒ this fails, and so does the C# boundary test. MUTATION 3: drop the paintZoneKey()
+// call from repaint() ⇒ the key never renders and this fails.
+test('the Room Zoom draws the zone layer + key, and main.js dispatches the channel', () => {
   assert.ok(/case\s*'zones'\s*:/.test(MAIN),
     "client/src/main.js's onMessage switch must dispatch the `zones` channel — it is the standard " +
     'client\'s ONLY dispatch point (tests/Perilune.Tests/SurfaceBoundaryTests.cs pins the same fact)');
@@ -252,14 +358,46 @@ test('the Room Zoom draws the zone layer, and main.js dispatches the channel to 
     'client/src/ui/roomzoom-view.js must read the cached zones and derive its overlay through the ' +
     'pure model — a channel nothing renders is host work the player can never see');
   assert.ok(/body\s*\+=\s*zoneLayerSvg\(/.test(ROOMZOOM),
-    'the zone layer must actually be CONCATENATED into the SVG body. A `zoneLayerSvg` function that ' +
-    'nobody calls satisfies every other assertion in this test and draws nothing.');
-  // The layer must be UNDER the material/decor/furniture layers, or a stored crate disappears
-  // beneath its own zone tint.
-  const zoneAt = ROOMZOOM.indexOf('zoneLayerSvg(');
+    'the zone layer must actually be CONCATENATED into the SVG body. A `zoneLayerSvg` that nobody ' +
+    'calls satisfies every other assertion in this test and draws nothing.');
+  // `paintZoneKey();` WITH THE SEMICOLON — the statement, not the declaration. The first version of
+  // this line matched `/paintZoneKey\(\)/`, which the string `function paintZoneKey() {` satisfies all
+  // by itself, so deleting the CALL from repaint() left the assertion green: the key stopped rendering
+  // and nothing noticed. Measured, not imagined — it was the one survivor of the mutation round.
+  assert.match(ROOMZOOM, /\n\s*paintZoneKey\(\);/,
+    'repaint() must CALL paintZoneKey() — a defined-but-never-called painter renders nothing, and the ' +
+    'key is the only wording a player can actually read (the <title> alone cannot be reached)');
+  assert.ok(/zoneKeyHtml\(/.test(ROOMZOOM) && /zoneLegendRows\(/.test(ROOMZOOM),
+    'and it must build that key from the pure model rather than re-deriving the wording here');
+
+  // LAYER ORDER — zones ABOVE the material layer. materialLayerSvg paints an OPAQUE item at U * 1.2,
+  // LARGER than the tile, for every floor whose material byte is non-zero; drawn after the zones it
+  // would completely occlude the tint on any floor the player has built with a chosen material.
+  // (Authored floors are material 0 and skipped, which is why the wrong order looked fine.)
+  const zoneAt = ROOMZOOM.indexOf('zoneLayerSvg(_zoneTiles');
   const matAt = ROOMZOOM.indexOf('materialLayerSvg(roomMaterialTiles');
-  assert.ok(zoneAt >= 0 && matAt >= 0 && zoneAt < matAt,
-    'the zone tint must be composited BEFORE (under) the material layer');
+  assert.ok(zoneAt >= 0 && matAt >= 0, 'both layer call sites must be present in the composite');
+  assert.ok(matAt < zoneAt,
+    'the zone marks must be composited AFTER (above) the material layer, or a player-built floor ' +
+    'skin hides the zone it sits on');
+});
+
+// The `<title>` is the per-tile detail, and it is only reachable if the group receives pointer events.
+// It did NOT: the first draft copied `pointer-events="none"` from every sibling layer, so Chrome's
+// hit-test landed on the bare <svg> (no title child) and NO tooltip could ever fire — the wording this
+// package was built around reached the DOM and stopped. Verified in a real browser, both before and
+// after. This is the CI tripwire for the regression.
+//
+// MUTATION: put `pointer-events="none"` back on the rz-zones group ⇒ this fails.
+test('the zone group receives pointer events, or its <title> can never fire', () => {
+  const g = /<g class="rz-zones"[^>]*>/.exec(OVERLAY);
+  assert.ok(g, 'the zone group open tag was not found — this scan has rotted');
+  assert.doesNotMatch(g[0], /pointer-events\s*=\s*"none"/,
+    'the rz-zones group carries pointer-events="none", which silently disables the <title> tooltip ' +
+    'that is the only per-tile wording. The Room Zoom\'s handlers are bound to the CONTAINER and ' +
+    'resolve tiles from clientX/clientY (never e.target), so letting the group receive events and ' +
+    'bubble costs nothing — verified by driving a real drag-build in Chrome.');
+  assert.match(g[0], /pointer-events\s*=\s*"visiblePainted"/, 'and it must opt in explicitly');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════ NEGATIVE CONTROLS
@@ -301,7 +439,7 @@ test('codeOnly is string-literal aware, so a quoted marker cannot blind the scan
 // than pass vacuously, but an EMPTY file would not, so pin that all three really have content.
 test('the scanned sources are non-empty', () => {
   for (const [name, text] of [['WireFormat.Zones.cs', WIRE_ZONES_CS], ['roomzoom-view.js', ROOMZOOM],
-    ['main.js', MAIN]]) {
+    ['main.js', MAIN], ['zone-overlay.js', OVERLAY]]) {
     assert.ok(text.length > 500, `${name} parsed to ${text.length} chars — the scan is broken`);
   }
 });

@@ -88,7 +88,7 @@ namespace Perilune.Web
         /// <see cref="Perilune.Sim.TileFlags.Stockpile"/>, in the caller's order.
         ///
         /// ORDER IS THE CALLER'S, AND IT MATTERS. This method sorts nothing — <c>GameSession</c>
-        /// walks the world <c>z, y, x</c> (the <see cref="IJobSource"/> rule-3 scan order, and the
+        /// walks the world <c>z, y, x</c> (the <c>IJobSource</c> rule-3 scan order, and the
         /// same walk <c>BuildMaterials</c> uses) so the emission order is a function of world geometry
         /// alone. Neither of the two sources consulted per tile is ever ENUMERATED: the filter comes
         /// from a keyed <c>TryGetFilter</c> and the back-off bit from a keyed

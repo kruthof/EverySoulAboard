@@ -1092,6 +1092,30 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-caption{position:absolute;left:20px;bottom:16px;pointer-events:none;font-size:9.5px;
   letter-spacing:.16em;color:rgba(255,240,220,.5)}
 .rz-placed{color:#f2b563}
+/* WP-3 — THE ZONE KEY (console-retirement plan §5 gaps 1+3). What the marks on the floor MEAN, in
+   words, with no hover required.
+   PLACEMENT, MEASURED IN A BROWSER RATHER THAN REASONED ABOUT. BOTTOM-right of the framed floor. The
+   first attempt was TOP-right "so it never collides with the caption (bottom-left) or the breadcrumb
+   (top-left)" — which was wrong, and the screenshot said so immediately: `#rz-minimap` also lives
+   top-right and covered two of the key's three rows, so the wording was unreadable again, one layer up
+   from the <title> bug this box exists to fix. Bottom-right is the one free corner (the caption is
+   bottom-LEFT, the palette/material strip sit BELOW the floor frame), and the overlap is now asserted
+   against all four neighbours by the browser check in the package report.
+   `pointer-events:none` is safe HERE — nothing in it is interactive — unlike on the zone group itself,
+   where it silently killed the only wording that existed.
+   Swatch colours MUST track zone-overlay.js: slate zone, pale cool wedge, amber hatch. */
+.rz-zonekey{position:absolute;right:20px;bottom:14px;display:flex;flex-direction:column;gap:4px;
+  pointer-events:none;font-size:9px;letter-spacing:.14em;color:rgba(255,240,220,.62);
+  background:rgba(14,18,26,.62);border:1px solid rgba(255,240,220,.10);border-radius:4px;
+  padding:7px 10px;max-width:34ch}
+.rz-zonekey[hidden]{display:none}
+.rz-key-title{color:#f2b563;letter-spacing:.2em}
+.rz-key-row{display:flex;align-items:center;gap:7px}
+.rz-key-sw{width:9px;height:9px;flex:0 0 auto;border-radius:2px;display:inline-block}
+.rz-key-sw-zone{background:rgba(126,158,196,.30);border:1px dashed rgba(126,158,196,.75)}
+.rz-key-sw-restricted{background:#dbe6f2;border:1px solid rgba(16,22,32,.85)}
+.rz-key-sw-backedoff{background:repeating-linear-gradient(45deg,#f2b563 0 1.5px,transparent 1.5px 4px);
+  border:1px solid #f2b563}
 .rz-pulse{position:absolute;inset:6px;pointer-events:none}
 .rz-pulse-tile{position:absolute;box-sizing:border-box;border:2px solid #f2b563;border-radius:3px;
   animation:rzPulse .16s ease-out forwards;pointer-events:none}

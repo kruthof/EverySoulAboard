@@ -1,26 +1,45 @@
-// PURE model for the STOCKPILE-ZONE overlay (console-retirement WP-3). Turns the sparse `zones`
+// PURE DERIVATION for the STOCKPILE-ZONE overlay (console-retirement WP-3). Turns the sparse `zones`
 // wire channel into what a surface has to draw: which tiles inside the focused room are zoned, which
 // of them are RESTRICTED (a filter is set), which are BACKED OFF (no hauler has reached them
-// recently), and a compact label for each. No DOM, no wire, no mutation — the same shape and the same
-// reason as stock-filter-model.js / decks-model.js: every decision the overlay makes has to be
-// node-testable without a browser.
+// recently), the wording for each, and the KEY that tells the player what the marks mean. No DOM, no
+// markup, no wire, no mutation — the same shape and the same reason as stock-filter-model.js /
+// decks-model.js: every decision the overlay makes has to be node-testable without a browser. The
+// markup itself is `zone-overlay.js` (also pure); `roomzoom-view.js` is one call to each.
 //
-// WHY THIS EXISTS AT ALL. Before this channel, a filtered stockpile tile was indistinguishable from
-// an unfiltered one on every surface (`controls.js`: *"there is no wire channel for a filter"*), and a
-// zone that no crew can reach never filled with nothing anywhere saying so (MECHANICS §13.17). Those
-// are E0-4 feedback gaps 1 and 3.
+// WHY THIS EXISTS. Before this channel a filtered stockpile tile was indistinguishable from an
+// unfiltered one on every surface, and a zone no crew can reach never filled with nothing anywhere
+// saying so (MECHANICS §13.17). Those are E0-4 feedback gaps 1 and 3. `controls.js` used to carry the
+// sentence "there is no wire channel for a filter" — WP-3 is the package that made it false, and that
+// comment (plus two others) was corrected in the same commit.
 //
-// THE LABELS ARE DELIBERATELY WEAK. `RESTRICTED` says only *that* a filter is set — the kind list
-// comes from `stockFilterLabel`, which is the ONE authority for naming a mask and already mirrors the
-// sim's ItemKind enum member-for-member. And the back-off label is "NO HAULER REACHED THIS RECENTLY",
-// not "UNREACHABLE": the sim-side map is a rate limiter with three lifts, so the stronger word would
-// be a claim the data cannot support. See ZONE_FLAG_BACKED_OFF in ../wire/messages.js.
+// TWO FACTS, BOTH LEGIBLE, NEITHER SUPPRESSING THE OTHER. A tile can be restricted AND backed off, and
+// that is the state a player most needs to tell apart: "nothing is arriving" reads very differently
+// when the zone is also refusing six of the seven kinds. So `label` carries BOTH, with the back-off
+// first because it is the more urgent, and the two visual marks are deliberately different colours
+// (zone-overlay.js). An earlier draft let the back-off wording REPLACE the filter list; on a both-tile
+// the filter was then unreadable by any means.
+//
+// THE LABELS ARE DELIBERATELY WEAK. The kind list comes from `stockFilterLabel`, which is the ONE
+// authority for naming a mask and already mirrors the sim's ItemKind enum member-for-member. And the
+// back-off wording is "NO HAULER REACHED THIS RECENTLY", not "UNREACHABLE": the sim-side map is a rate
+// limiter with three lifts, so the stronger word would be a claim the data cannot support. See
+// ZONE_FLAG_BACKED_OFF in ../wire/messages.js.
+//
+// KNOWN, DISCLOSED: the 32-bit ceiling is only HALF honoured downstream. `decodeZones` keeps the mask
+// exact (see its note), but `stockFilterLabel` reduces with `(mask | 0) & ACCEPT_ALL`, so a mask with a
+// bit at 32+ would be mis-NAMED even though it arrived intact. Harmless while ItemKind has 7 members,
+// and out of this package's file set (stock-filter-model.js is WP-6's); flagged here so the eventual
+// widening fixes both halves. `zoneRestricted` below does NOT use `| 0`, so the BADGE stays correct
+// even where the name would not be.
 
 import { ZONE_FLAG_BACKED_OFF } from '../wire/messages.js';
 import { ACCEPT_ALL, stockFilterLabel } from './stock-filter-model.js';
 
 /** The wording for a backed-off tile. Weak on purpose — see the header. */
 export const BACKED_OFF_LABEL = 'NO HAULER REACHED THIS RECENTLY';
+
+/** The wording for a zoned tile with no filter on it. */
+export const ACCEPTS_ALL_LABEL = 'ACCEPTS ALL';
 
 /**
  * Is this tile's filter a real restriction? True iff the mask is not accept-all.
@@ -47,6 +66,20 @@ export function zoneBackedOff(flags) {
 }
 
 /**
+ * The one-line human reading of a tile's two facts. Back-off FIRST (the urgent one), then the accepted
+ * kinds when the tile is restricted; `ACCEPTS ALL` when neither applies — never an empty string, so a
+ * surface that shows this can always show something. PURE.
+ * @param {number} mask @param {number} flags
+ * @returns {string}
+ */
+export function zoneLabel(mask, flags) {
+  const parts = [];
+  if (zoneBackedOff(flags)) parts.push(BACKED_OFF_LABEL);
+  if (zoneRestricted(mask)) parts.push(stockFilterLabel(mask));
+  return parts.length ? parts.join(' · ') : ACCEPTS_ALL_LABEL;
+}
+
+/**
  * The decoded `zones` rows that fall inside a Room-Zoom focus rect, in the host's order, each
  * annotated with what the overlay draws.
  *
@@ -56,12 +89,13 @@ export function zoneBackedOff(flags) {
  * room you are editing.
  *
  * Returns `[{tx, ty, mask, restricted, backedOff, label}]` where `tx`/`ty` are the ORIGINAL tile
- * coordinates (the caller owns the local transform, exactly as roomCells does) and `label` is the
- * one-line human reading: the back-off wording wins when both apply, because a zone that nothing can
- * reach is the more urgent fact than what it would have accepted.
+ * coordinates (the caller owns the local transform, exactly as roomCells does).
  *
- * Order is the input's, unchanged — the host emits canonical z,y,x and a client sort would be a
- * second authority on order. PURE; never mutates the input rows.
+ * ORDER IS THE INPUT'S, UNCHANGED. The host emits canonical z,y,x and a client sort would be a second
+ * authority on order. PURE — the input rows are never mutated and never aliased into the output; both
+ * properties are pinned by fixtures built to distinguish them (zone-model.test.js), because the
+ * obvious fixtures cannot: a set of ascending tiles is its own sorted order, which is exactly the
+ * shape that let a loop-swap mutation survive on the host side of this package.
  * @param {{x:number,y:number,deck:number,mask:number,flags:number}[]|null} zones
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}|null} focus
  */
@@ -72,39 +106,49 @@ export function roomZoneTiles(zones, focus) {
     if (!z || z.deck !== focus.deck) continue;
     if (z.x < focus.rx || z.x >= focus.rx + focus.rw) continue;
     if (z.y < focus.ry || z.y >= focus.ry + focus.rh) continue;
-    const restricted = zoneRestricted(z.mask);
-    const backedOff = zoneBackedOff(z.flags);
     out.push({
       tx: z.x,
       ty: z.y,
       mask: z.mask,
-      restricted,
-      backedOff,
-      label: backedOff ? BACKED_OFF_LABEL : (restricted ? stockFilterLabel(z.mask) : 'ACCEPTS ALL'),
+      restricted: zoneRestricted(z.mask),
+      backedOff: zoneBackedOff(z.flags),
+      label: zoneLabel(z.mask, z.flags),
     });
   }
   return out;
 }
 
 /**
- * A one-deck tally for a readout line: how many stockpile tiles the deck has, how many are
- * restricted, how many are backed off. `deck === null` tallies the whole ship.
+ * THE KEY — what the marks on the floor MEAN, in words, for the states actually present in this room.
  *
- * This is the data behind plan §5 gap 2 ("I changed the filter and nothing happened") — the count of
- * already-painted tiles is the only thing that can say a filter change did not reach them. PURE.
- * @param {{x:number,y:number,deck:number,mask:number,flags:number}[]|null} zones
- * @param {number|null} [deck]
- * @returns {{tiles:number, restricted:number, backedOff:number}}
+ * This is the fix for the thing that made the whole package nearly pointless. The first draft drew an
+ * amber hatch and a corner wedge and put the only wording in an SVG `<title>`, inside a group carrying
+ * `pointer-events="none"` — so no tooltip could ever fire and what shipped to a player was two
+ * unexplained marks: very close to the silence (MECHANICS §13.17) this channel exists to end. A key
+ * needs no hover, no pointer and no tooltip, so it cannot be switched off by an attribute.
+ *
+ * Returns `[{kind, label}]` with `kind` in `'zone' | 'restricted' | 'backedoff'`:
+ *   'zone'        one row whenever the room has any zoned tile at all
+ *   'restricted'  ONE ROW PER DISTINCT MASK present, ascending by mask, each naming its kinds — two
+ *                 differently-filtered zones in one room are two different facts, and collapsing them
+ *                 to a bare "RESTRICTED" would hide the one the player is looking for
+ *   'backedoff'   one row when any tile is backed off
+ * Order is fixed (zone, restricted…, backedoff) — a presentation decision, made HERE so it is
+ * asserted rather than left to whichever surface renders it. Empty for a room with no zones, so the
+ * key hides itself. PURE.
+ * @param {{restricted:boolean, backedOff:boolean, mask:number}[]} tiles roomZoneTiles output
+ * @returns {{kind:string, label:string}[]}
  */
-export function zoneSummary(zones, deck = null) {
-  const t = { tiles: 0, restricted: 0, backedOff: 0 };
-  if (!Array.isArray(zones)) return t;
-  for (const z of zones) {
-    if (!z) continue;
-    if (deck !== null && z.deck !== deck) continue;
-    t.tiles += 1;
-    if (zoneRestricted(z.mask)) t.restricted += 1;
-    if (zoneBackedOff(z.flags)) t.backedOff += 1;
+export function zoneLegendRows(tiles) {
+  if (!Array.isArray(tiles) || !tiles.length) return [];
+  const rows = [{ kind: 'zone', label: 'STOCKPILE' }];
+  const masks = [];
+  for (const t of tiles) {
+    if (!t || !t.restricted) continue;
+    if (masks.indexOf(t.mask) < 0) masks.push(t.mask);
   }
-  return t;
+  masks.sort((a, b) => a - b);
+  for (const m of masks) rows.push({ kind: 'restricted', label: 'ACCEPTS ' + stockFilterLabel(m) });
+  if (tiles.some((t) => t && t.backedOff)) rows.push({ kind: 'backedoff', label: BACKED_OFF_LABEL });
+  return rows;
 }

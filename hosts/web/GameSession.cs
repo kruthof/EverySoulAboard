@@ -1446,7 +1446,7 @@ namespace Perilune.Web
         /// this channel is for and what it deliberately does not duplicate.
         ///
         /// ORDER — z, y, x, GUARANTEED BY THE WALK AND BY NOTHING ELSE. The emission order is the
-        /// triple loop below (the <see cref="IJobSource"/> rule-3 tile scan order, identical in shape
+        /// triple loop below (the <c>IJobSource</c> rule-3 tile scan order, identical in shape
         /// to <see cref="BuildMaterials"/>), so it is a pure function of world geometry. The two
         /// per-tile facts are fetched by KEY, never by enumeration:
         /// <see cref="StockZoneSystem.TryGetFilter"/> is a linear scan of a canonically sorted list,
