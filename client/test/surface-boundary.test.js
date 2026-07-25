@@ -776,12 +776,15 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
 
 /** Every hud.js symbol the three view modules + controls.js are allowed to reach. All state-layer
  *  verbs: caches, getters, the one armed-tool slot, the shared selection flow, the action seams.
- *  Measured at the WP-7 merge (24: 23 via `Hud.*`, plus `LENSES` as a named import in controls.js). */
+ *  Measured at the WP-7 merge (24: 23 via `Hud.*`, plus `LENSES` as a named import in controls.js).
+ *  WP-3 (the `zones` channel) added `getZones` — 25. It is pure ship state in the same sense as
+ *  `getMaterials`: one more sparse view-only wire cache, read by the Room Zoom's zone overlay, with no
+ *  DOM of its own, so it moves to ship-state.js with the rest of the cache at WP-9. */
 const SHIP_STATE_REACH = Object.freeze([
   'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame', 'getLlm',
   'getLog', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster', 'getStatus',
-  'getTab', 'getTerminals', 'isMossActive', 'onShipUpdate', 'openBioForSelected', 'selectCrewByCid',
-  'selectTab', 'talkSelectedCrew', 'toolUsed',
+  'getTab', 'getTerminals', 'getZones', 'isMossActive', 'onShipUpdate', 'openBioForSelected',
+  'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
 ]);
 
 /** ⚠️ THE DOM HATCHES. Exported by hud.js, and reachable by nobody outside it. `setChip(id, value)`

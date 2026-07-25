@@ -77,9 +77,15 @@ export function paletteOrders(tool, x, y, mask) {
     // would break the day an OFF path is added here. Pinned by test now, while it is free.
     //
     // A missing/garbage mask defaults to ACCEPT-ALL and NEVER to silence: sending nothing would let
-    // a tile keep an earlier restrictive filter that the player has just repainted as accept-all,
-    // with no tint, badge or readout anywhere that could tell them (there is no wire channel for a
-    // filter, see MECHANICS §13). Every repaint re-asserts the whole truth.
+    // a tile keep an earlier restrictive filter that the player has just repainted as accept-all.
+    // Every repaint re-asserts the whole truth.
+    //
+    // CORRECTED (console-retirement WP-3): this comment used to end "with no tint, badge or readout
+    // anywhere that could tell them (there is no wire channel for a filter, see MECHANICS §13)".
+    // There is one now — the sparse `zones` channel carries every stockpile tile's accept mask, and
+    // the Room Zoom draws a restricted tile with a wedge plus a named key (ui/zone-overlay.js). The
+    // re-assert-everything rule above still stands on its own merits; it just is not the last line of
+    // defence any more.
     const m = Number.isFinite(mask) ? mask : ACCEPT_ALL;
     return [Cmd.stockpile(x, y, true), Cmd.filter(x, y, m)];
   }

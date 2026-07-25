@@ -41,6 +41,11 @@
          test needs the pure logic. GameSession is pure apart from its (unstarted) sim thread:
          WebCommand.Parse and the message-building helpers are unit-tested directly. -->
     <Compile Include="../../hosts/web/WireFormat.cs" />
+    <!-- console-retirement WP-3: the `zones` channel, a sibling PARTIAL of WireFormat (the spine file
+         itself takes a one-token diff). This list is an explicit allowlist by design, so a new
+         WireFormat*.cs must be added here by hand — SurfaceBoundaryTests globs the directory from
+         DISK and would happily report a channel this project cannot even compile. -->
+    <Compile Include="../../hosts/web/WireFormat.Zones.cs" />
     <Compile Include="../../hosts/web/GameSession.cs" />
     <!-- L6: the conversation runtime (sockets-free) — GameSession delegates talk/say/bye to it,
          so the headless host needs it to compile and to drive the offline dialogue tests. -->

@@ -283,11 +283,15 @@ export function chronHeader(day, headline) {
  * The stage hint line while a tool is armed (IX-37 / IX-52), or null when idle (the caller shows
  * the idle chrome). surname only matters for 'move'; stockLabel only for 'stockpile'.
  *
- * The stockpile line NAMES ITS FILTER (E0-4 WP-5), and that is load-bearing rather than decorative:
- * a filtered stockpile tile is visually identical to an unfiltered one — the frame carries raw
- * GlyphColor bytes and there is no wire channel for a zone's accept-set (MECHANICS §13) — so this
- * string is the only place in the whole client where a player can read the filter they are about to
- * paint. An absent label degrades to ALL, matching defaultStockFilter().
+ * The stockpile line NAMES ITS FILTER (E0-4 WP-5): it is where a player reads the filter they are
+ * ABOUT TO paint, as opposed to one already on the floor. An absent label degrades to ALL, matching
+ * defaultStockFilter().
+ *
+ * CORRECTED (console-retirement WP-3): this doc used to justify itself with "a filtered stockpile tile
+ * is visually identical to an unfiltered one … there is no wire channel for a zone's accept-set", and
+ * called itself "the only place in the whole client". Both are now false — the `zones` channel carries
+ * every tile's mask and the Room Zoom draws it with a named key. This surface is the deprecated console
+ * anyway (CLAUDE.md, THE STANDARD SURFACE); the line is kept accurate rather than kept load-bearing.
  * @param {ArmedTool} tool @param {string} [surname] @param {string} [stockLabel]
  * @returns {string|null}
  */

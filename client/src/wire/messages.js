@@ -209,7 +209,62 @@
  * @typedef {{type:'decor', items:DecorTuple[]}} DecorMsg
  */
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg} WireMsg */
+/**
+ * The sparse STOCKPILE-ZONE layer (console-retirement WP-3) — one entry per tile carrying the sim's
+ * `TileFlags.Stockpile`, in the host's canonical z,y,x order (never re-sorted client-side).
+ * ZoneTuple = [x, y, deck, mask, flags]. Append-only.
+ *
+ *   mask   the EFFECTIVE accept mask: bit k ⇒ the tile accepts ItemKind k. A tile with no filter
+ *          entry ships accept-all (127 today), never 0 — "restricted" is `mask !== ACCEPT_ALL`, and
+ *          there is deliberately no absence sentinel to special-case.
+ *   flags  bitfield; bit 0 (`ZONE_FLAG_BACKED_OFF`) = a live haul back-off sits on the tile.
+ *
+ * This channel exists because two facts could NOT ride `cell[1]`: stockpile PRESENCE already does
+ * (GlyphColor.Stockpile = 16), but a colour byte cannot carry a 7-bit mask or a diagnostic bit.
+ * NOT fog-gated (own-ship logistics knowledge, same rule as roster/designs); snapshot-cached.
+ * @typedef {[number,number,number,number,number]} ZoneTuple
+ * @typedef {{type:'zones', cells:ZoneTuple[]}} ZonesMsg
+ */
+
+/**
+ * `flags` bit 0 of a `zones` tuple: a LIVE haul back-off sits on this stockpile tile — no hauler has
+ * managed to path to it recently.
+ *
+ * ⚠️ READ IT AS "RECENTLY, NOBODY GOT HERE", NEVER AS "UNREACHABLE". The sim-side map is a rate
+ * limiter with three lifts (a ≤5 s expiry, removal on the first successful path, a wholesale clear on
+ * any tile-board change), so the bit can vanish the tick after a door opens. Any surface wording
+ * stronger than "no hauler has reached this recently" over-claims.
+ *
+ * Mirrors `WireFormat.ZoneFlagBackedOff` in hosts/web/WireFormat.Zones.cs; the two are pinned equal
+ * by client/test/zone-model.test.js, which parses that file (the tripwire palette.test.js runs
+ * against GlyphColor.cs, and stock-filter-model.test.js against ItemStack.cs).
+ */
+export const ZONE_FLAG_BACKED_OFF = 1;
+
+/**
+ * Decode the sparse `zones` channel. Mirrors WireFormat.Zones: {type:'zones',cells:[[x,y,deck,mask,
+ * flags],..]}. Tolerant: a malformed message → null, a malformed row is dropped, never throws (the
+ * receive-path contract at the top of this file). ORDER IS PRESERVED — the host emits z,y,x and that
+ * order is the wire contract; a client sort would be a second, silently divergent authority.
+ *
+ * `mask` is coerced with `num`, NOT `| 0`: `| 0` is a 32-bit operation, so it would silently zero
+ * every bit at index 32 and above the day ItemKind grows past 32 members — a filter that quietly
+ * accepts nothing. (The host's own ceiling is 53, JavaScript's exact-integer limit; it pins that in
+ * ZonesChannelTests.) Every other field is a small tile coordinate and `| 0` is correct for those.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{x:number,y:number,deck:number,mask:number,flags:number}[]|null}
+ */
+export function decodeZones(msg) {
+  if (!msg || msg.type !== 'zones' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 5) continue;
+    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, mask: num(t[3]), flags: t[4] | 0 });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel

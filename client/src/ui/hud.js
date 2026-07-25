@@ -70,6 +70,7 @@ let _decks = null;        // latest decks message (per-deck compartment grid →
 let _rooms = null;        // latest rooms message (per-room atmosphere)
 let _decor = null;        // latest decor message (cosmetic view-only furniture layer)
 let _materials = null;    // latest materials message (sparse wall/floor material variants → tile skins)
+let _zones = null;        // latest zones message (sparse stockpile zones: accept mask + back-off bit)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -100,6 +101,8 @@ export function getDesigns() { return _designs; }
 export function getTerminals() { return _terminals; }
 export function getDecor() { return _decor; }
 export function getMaterials() { return _materials; }
+/** The cached `zones` message (sparse stockpile zones), for the standard surface's zone overlay. */
+export function getZones() { return _zones; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
@@ -411,6 +414,13 @@ export function renderDecor(m) { _decor = m; }
 /** Materials dispatch: cache the sparse wall/floor material layer; notify the SVG views to re-skin
  *  their built walls/floors. View-only — never touches the sim. */
 export function renderMaterials(m) { _materials = m; notifyShip(); }
+
+/** Zones dispatch (console-retirement WP-3): cache the sparse stockpile-zone layer — per-tile accept
+ *  mask + the WP-7 haul back-off bit — and notify the SVG surfaces so a zone paint, a filter change or
+ *  a tile going unreachable becomes visible on the next repaint. View-only; never touches the sim.
+ *  STATE-LAYER ONLY: this function draws nothing and reaches no DOM, so it survives the console
+ *  deletion with the rest of the cache (see SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
+export function renderZones(m) { _zones = m; notifyShip(); }
 
 /** Relations dispatch (IX-R3): cache the directed graph and notify. The RELATIONS surface reads the
  *  cache back through `getRelations()` and repaints itself off `notifyShip` (relations-view.js);

@@ -242,6 +242,9 @@ function onMessage(m) {
     case 'rooms': Hud.renderRooms(m); break;
     case 'decor': Hud.renderDecor(m); break;
     case 'materials': Hud.renderMaterials(m); break;
+    // Stockpile zones (console-retirement WP-3): per-tile accept mask + the haul back-off bit. Cached
+    // in the shared state layer; drawn by the Room Zoom's zone overlay.
+    case 'zones': Hud.renderZones(m); break;
     default: break;
   }
 }
