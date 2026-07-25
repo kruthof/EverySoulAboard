@@ -236,6 +236,42 @@ scope only by editing PLAN.md through the integrator.
 - Every lane keeps the TUI dump green — it is how agents see the game and how CI sees
   everything.
 
+### THE STANDARD SURFACE (find your surface before you build UI)
+
+**Decided 2026-07-25, binding.** There is exactly **one** standard UI. Any lane that adds a
+player-facing affordance builds it there and nowhere else.
+
+| surface | what it is | status |
+|---|---|---|
+| **`--ship grid`** + **Level-1 Overview** (`client/src/ui/overview-view.js`) + **Level-2 Room Zoom** (`client/src/ui/roomzoom-view.js`) | **THE standard UI.** Deck-scoped orders on the Overview; room-scoped building in the Room Zoom | **build here** |
+| the console `.app` shell — `client/index.html` + `client/src/ui/hud.js`'s DOM half | the old skin | **deprecated, closed to new work**, deleted by the console-retirement plan's WP-9 |
+| **`--ship slice`** driven by `hosts/scenario` | the **headless measurement fixture** for the economy programme (A1 / occupancy / `--strip` / `--stockpile`) | keep as-is; it has **no UI and needs none** |
+| `hosts/web/Client.html` | a fourth, frozen legacy surface, load-bearing for the sprite pipeline | do not touch (out of scope, see the plan) |
+
+Note that `hud.js` is **two things fused**: an authoritative wire cache + armed-tool/tab/selection
+state machine that *both* modern surfaces import, and the console's DOM chrome. Only the second half
+is deprecated. Reading ship state through `hud.js`'s getters is correct; reaching into its DOM from a
+modern view module is not, and fails a test.
+
+**Mechanised, so a lane cannot cross this by accident:**
+`client/test/surface-boundary.test.js` (verb parity against a `KNOWN_GAPS` ledger that may shrink but
+never grow silently, with the console palette classified against a *pinned* build-kind list so a verb
+cannot be hidden by declaring it a build kind; the console shell's element-id census **and** four
+`hud.js` widget counts — DOM lookups, `createElement`, innerHTML-family writes, import specifiers —
+pinned by **equality**, because the id census alone would have missed WP-5's *first* draft, which
+added no element id at all, and a `<=` ceiling silently banks the headroom a re-home frees; a pinned
+`SHIP_STATE_REACH` so no module can bridge into console DOM through `setChip`; the plan §1.5.4
+**crew-interaction census**, so all crew interaction stays consolidated in one Persona window; only
+the console's own module may touch console DOM; no orphan `*-view.js`) and
+`tests/Perilune.Tests/SurfaceBoundaryTests.cs` (every `WireFormat` channel must be dispatched by
+`client/src/main.js`, so a host channel cannot be built for a surface that never reads it).
+**Why it is mechanised rather than written down:** E0-4's WP-5 built an entire stockpile ACCEPTS
+filter onto the deprecated console. It was implemented, independently reviewed and merged, and the
+wrong surface was only noticed when the running game was opened. Prose alone is exactly what failed.
+
+Sequencing authority: `docs/design/perilune-console-retirement.plan.md` (port the missing verbs onto
+the standard surface → verify a human can play `--ship grid` end to end → delete the console).
+
 ---
 
 ## DLC readiness checklist (enforced from P1, audited each phase exit)
