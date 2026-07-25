@@ -53,6 +53,10 @@ the plan and why the plan does **not** propose an extraction (§7, §8).
    `Golden/slice_tick3000_hash.txt` = `1f8f2225ee568de9`); the defs value is doc-only.
    This makes the plan *cheaper* than briefed, but it also means a def-value drift would
    not fail CI.
+   **✅ CLOSED 2026-07-25** by `DefsChecksumTests.SimDefsDefaultChecksum_IsPinned_NotTheScenario`
+   `HostsRulesInclusiveValue` — the literal is now asserted, the test name states which of the two
+   checksums it is, and a mutation test confirms a single changed def default fails it
+   (`CitizenHeatW` 100→101 ⇒ `97a231fdf8f28256`). All four pins are now gate-enforced.
 2. **`Citizen.Fatigue`'s doc comment is false.** `Citizen.cs:49` says
    `public float Fatigue; // 1 = exhausted (slows work)`. It slows nothing. Its only
    readers are `NeedsSystem.cs:154` (writes it), `NeedsSystem.cs:166` (feeds `Mood`),
@@ -238,23 +242,47 @@ concatenation:
 
 **Seventeen members. That is the whole outward surface of the economy.**
 
-And the game-specific reaches are **exactly six sites**, which I list in full because the
-count is the finding:
+And the game-specific reaches are **seven sites**, which I list in full because the count is
+the finding.
 
-| site | what it reaches for | severity |
-|---|---|---|
-| `Jobs/Sources/DigJobSource.cs:141` | `sim.Rooms.MarkDirty()` | **notification only** — a void call |
-| `Systems/BuildSystem.cs:213` | `sim.Rooms.MarkDirty()` | notification only |
-| `Systems/DeconstructSystem.cs:489` | `sim.Rooms.MarkDirty()` | notification only |
-| `Systems/DeconstructSystem.cs:251,351,484` | `IsPressureHull(World, Int3)` — a wall adjacent to `TileDefs.Void` or the map edge | **genuinely game-specific** (vacuum) |
-| `Systems/MachineWearSystem.cs:45,46,59,62` | `sim.Rooms.Rooms`, `RoomAt(...)`, `room.TemperatureK` | **a real read** — heat modulates wear |
-| `Systems/CraftingSystem.cs:109`, `MachineWearSystem.cs:49,177`, `sim.TryGetDeviceAt` | `Device` / `DeviceKind` — MOSS-scriptable machines | generic-shaped (a "machine") |
+> **⚠ CORRECTED 2026-07-25 while mechanising this table into
+> `tests/Perilune.Tests/ArchitectureBoundaryTests.cs`.** This section originally said "exactly
+> six game-specific call sites" and counted `Device`/`DeviceKind` as the sixth. That conflated
+> two different things and undercounted. The measured facts:
+> - **Seven reaches into ship-system state:** `sim.Rooms` ×5 and **`sim.PowerDirty` ×2**
+>   (`BuildSystem.cs:214`, `DeconstructSystem.cs:490`). The `PowerDirty` pair was listed in the
+>   member table above but omitted from the site table — an error of transcription, not of
+>   measurement.
+> - **Six of those seven are notify-only** (3× `sim.Rooms.MarkDirty()`, 2× `sim.PowerDirty = true`,
+>   and `MachineWearSystem.cs:45`'s `sim.Rooms.Rooms` is a list fetch). **Exactly one is a real
+>   read of ship state:** `MachineWearSystem.cs:59,62`'s room temperature.
+> - `IsPressureHull` (3 code uses, all in `DeconstructSystem.cs`) is **not** a reach into a ship
+>   system — it is a static predicate over `World` geometry, defined inside the economy. It is
+>   game-specific but self-contained, and is asserted separately.
+> - `Device`/`DeviceKind` is a **generic-shaped** dependency ("a machine"), not a ship reach.
+>
+> The conclusion is unchanged and slightly strengthened: six of seven reaches are notifications,
+> and the economy reads ship state in exactly one place. The counts are now enforced by
+> `Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites`, so this table cannot drift from
+> the code again.
 
-Three of six are `MarkDirty()` — one line each, trivially replaceable by an event or a
-no-op. One (`MachineWearSystem`'s temperature read) is a *generic mechanism*
-("environment modulates wear rate", already def-gated by `Wear.HotThresholdC` and
-`Wear.WearPerDegreeC`) with a game-specific *source* for the value. Only
-`IsPressureHull` is irreducibly about a spaceship.
+| # | site | what it reaches for | severity |
+|---|---|---|---|
+| 1 | `Jobs/Sources/DigJobSource.cs:141` | `sim.Rooms.MarkDirty()` | **notify only** — a void call |
+| 2 | `Systems/BuildSystem.cs:213` | `sim.Rooms.MarkDirty()` | notify only |
+| 3 | `Systems/DeconstructSystem.cs:489` | `sim.Rooms.MarkDirty()` | notify only |
+| 4 | `Systems/BuildSystem.cs:214` | `sim.PowerDirty = true` | notify only |
+| 5 | `Systems/DeconstructSystem.cs:490` | `sim.PowerDirty = true` | notify only |
+| 6 | `Systems/MachineWearSystem.cs:45` | `sim.Rooms.Rooms` (list fetch, for the vacuum sentinel) | notify-adjacent |
+| 7 | `Systems/MachineWearSystem.cs:59,62` | `RoomAt(...)`, `room.TemperatureK` | **THE ONLY REAL READ** — heat modulates wear |
+| — | `Systems/DeconstructSystem.cs:251,351,484` | `IsPressureHull(World, Int3)` — a wall adjacent to `TileDefs.Void` or the map edge | **game-specific but self-contained**: a static predicate over `World` geometry, no system dependency |
+| — | `Systems/CraftingSystem.cs:109`, `MachineWearSystem.cs:49,177`, `sim.TryGetDeviceAt` | `Device` / `DeviceKind` | **generic-shaped** ("a machine"), not a ship reach |
+
+**Six of the seven are notifications.** Sites 1–5 are one line each, trivially replaceable by an
+event (§7 step 4). Site 7 — the only place the economy *reads* ship state — is a *generic
+mechanism* ("environment modulates wear rate", already def-gated by `Wear.HotThresholdC` and
+`Wear.WearPerDegreeC`) with a game-specific *source* for the value. Only `IsPressureHull` is
+irreducibly about a spaceship, and it costs no coupling.
 
 **And now the part that matters more — what the economy does NOT touch.** Grepped across
 the whole economy file set:
@@ -273,6 +301,27 @@ The economy has no idea the crew have inner lives, that there is an LLM, that th
 or that anything is drawn. That is a much better starting position than
 `docs/ECONOMY.md` §1's indictment would suggest — the indictment is about the economy being
 *shallow and broken*, not about it being *entangled*.
+
+> **⚠ CORRECTED 2026-07-25, and the correction is instructive.** An earlier draft of this table
+> claimed these identifiers were zero *"even including comments"*. That was produced by a
+> `grep` whose file list was an unquoted shell variable — **zsh does not word-split unquoted
+> parameters**, so the whole list was passed as one filename, the error was swallowed by
+> `2>/dev/null`, and every count came back `0` because **nothing was scanned**. The zero was an
+> artefact of a broken measurement, not a measurement.
+>
+> The re-measured truth: **all twenty are zero in CODE** (the claim above stands, and is now
+> enforced by `Economy_KnowsNothingAboutSoulsPresentationOrPhysiology`), but one appears in
+> **prose** — `DeconstructSystem.cs:441`'s doc comment says the event it publishes is what
+> *"`HistorySystem` turns into a Chronicle line naming the crew member"*. That is correct
+> documentation of a downstream consumer, and the economy has no dependency on `Chronicle`
+> (it publishes `DeconstructCompletedEvent`; `HistorySystem`, outside the economy, writes the
+> Chronicle). The test therefore scans code only, and a mutation test confirms it fails on a
+> code reference and passes on a comment.
+>
+> Recording this because it is the exact defect class this project has sent six packages back
+> for — *a check whose named target cannot bite* — and here it hit the audit's own measurement.
+> It was caught only because the assertion was mechanised and immediately disagreed with the
+> prose. **That is the argument for §7 step 2 in miniature.**
 
 ### 1.6 Essential vs accidental coupling
 
@@ -838,6 +887,14 @@ an identity and the step is wrong.
 
 ### Step 2 — An architecture test. `M` + `P`. **~1 hour. Do this first if only one thing happens.**
 
+> **✅ LANDED 2026-07-25** — `tests/Perilune.Tests/ArchitectureBoundaryTests.cs`, 8 tests, plus the
+> defs pin in `DefsChecksumTests.cs`. Test-only; no production file touched; all four pins
+> byte-identical; gate `903 dotnet + 485 node`, `ci.sh` exit 0. Every assertion was proven to bite
+> by physically introducing the violation and observing the specific failure (11 mutations,
+> including two *negative* controls confirming a comment mentioning `Mood` or `foreach` does **not**
+> fail). Writing it corrected two measurements in this document — see the boxes in §1.5.
+> Assertions deliberately **not** written are listed at the end of this step.
+
 **What changes.** One new test file. No production code. Assertions:
 
 1. No file under `sim/Sim.Core/` contains `using Perilune.` (the §1.2 DAG invariant).
@@ -862,6 +919,19 @@ real risk is a *false* allowlist entry ossifying a coupling — so write the all
 the `file:line` and the reason, not just the file.
 
 **Cost/benefit:** the best in this document. An hour, zero risk, protects the asset.
+
+**Assertions deliberately NOT written**, because each would be a tripwire people learn to ignore
+rather than a boundary worth defending:
+
+| not asserted | why not |
+|---|---|
+| **Fully-qualified cross-module references** (`Perilune.Glyph.GlyphColor.X` with no `using`) | A regex cannot resolve types. The DAG tests pin the **declared** dependency — the `using` line, which is what a reviewer reads and what a future `.csproj` split turns into a `ProjectReference`. Stated as a limitation in the test's class doc rather than faked. |
+| **`foreach` over dictionaries repo-wide** | Five files elsewhere in `Sim.Core` legitimately use `foreach` (`Commands.cs`, `RoomState.cs`, `AtmosphereSystem.cs`, `CitizenMemory.cs`, `HistorySystem.cs`). The determinism rule is a **`Jobs/`** rule (`IJobSource.cs:29-32`); generalising it would fire on correct code and get suppressed. |
+| **Zero-alloc on tick paths** | Not observable from source text. `AllocationTests` in moonbase measured it at runtime; that is the right mechanism and it is a separate piece of work (§2.6). |
+| **Exact `Simulation`-member counts** for the economy (the §1.5 17-member table) | Legitimately churns with every economy lane — `sim.Items`/`sim.Defs`/`sim.World` counts move whenever anyone edits a job source. Pinning them would fire on nearly every E-lane commit and teach nothing. Only the *ship-system* reaches are pinned, because those are the ones that must stay rare. |
+| **`ItemKind` member count** | E0-6/E0-7 are *supposed* to add `Seals` and `Ice`. Asserting 7 would fail by design. |
+| **`Sim.Core` has no file IO** | Two documented violations already exist (`Sim.Dsl/RulesLoader.cs`, `Sim.Llm/Providers/LlmSettings.cs` — §1.2), both outside `Sim.Core`. A `Sim.Core`-only assertion would pass vacuously today and I could not verify it stays meaningful; better as a real cleanup than a green test. |
+| **InvariantCulture usage** | A `ToString()` with no `IFormatProvider` is already flagged by analyzer warnings CA1305/CA1310 during the build (visible in the gate output). Duplicating that in a test would add noise, not coverage. |
 
 ### Step 3 — Real `.csproj` per sim module. `M` + `P`. **~1 day, moderate risk.**
 
