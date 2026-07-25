@@ -743,9 +743,66 @@ skills.** For an idle citizen:
      *reachable* free Regolith stack, stores the **site** as `JobTarget` and routes the
      citizen to the material first.
 4. On a pathing failure, stamp the candidate tried **and** set an unreachable-backoff of
-   `UnreachableRetryTicks = 50` ticks (5 s) for that target (`:46,370,386,402,414`), then
+   `UnreachableRetryTicks = 50` ticks (5 s) for that target. The constant lives at
+   `sim/Sim.Core/Jobs/JobContext.cs:55` and each source stamps in its own `TryClaim`
+   (the `:46,370,386,402,414` line cites here predate the W0-4 split and are dead — that
+   `JobSystem.cs` is 275 lines now, and the arbitration is all this file still owns). Then
    retry the next-nearest. The loop always terminates because every failure stamps.
 5. If nothing is left, `citizen.ClearPath()` and return (`:418-419`).
+
+**The backoff has a second axis: per STOCKPILE TILE (E0-4 WP-7).** Step 4's backoff is keyed by
+*candidate* — a dig site, a build site, a haul item. That left one hole: the haul candidate gate
+asks only "does a free stockpile tile exist" (`Jobs/JobContext.cs:115-121` — `Stockpile` +
+`Walkable` + no ground stack) while the *delivery* step asks the stronger "can this citizen path to
+one". A zoned tile that is walkable but that nobody can reach — the slice's authored-sealed
+observatory is exactly that (`Sim.Gen/AuthoredShips.cs:93` `DoorClosed = true`) — therefore held the
+gate permanently open against a delivery that could never succeed: **72,928 pickup starts, zero
+deliveries, 31.191 % of all crew-ticks over 30,000 slice ticks**, an ~8-crew livelock at 50 % duty.
+`HaulJobSource` now keeps a second backoff map keyed by *tile*
+(`Jobs/Sources/HaulJobSource.cs:53`, `_tileRetryAt`). It is **written in one place only** — a failed
+`FindPath` in `TryPathToFreeStockpile` stamps its tile for the same `UnreachableRetryTicks = 50`
+(`:499`) and a successful one removes the stamp (`:495`) — and **read in three**, all of which skip a
+stamped tile: the kind-less candidate gate (`:176`), E0-4's filtered `AnyFreeStockpileAccepts`
+(`:384`), and the destination-selection loop itself (`:477`). That third one is what makes the saving
+real — it is the site that would otherwise re-run a whole-region A* sweep per hauler per tick.
+Measured after: **918 / 0 / 2.254 %**, with the reachable controls (a far-deck tile, a
+bench-adjacent buffer) byte-identical to before, and the 3,000-sim-second leg down from 51 s of wall
+time to 1.2 s.
+
+It is a rate limiter, not a blacklist, and three separate things lift a stamp: the deadline
+(`IsPathworthy`, `:400` — the *sole* expiry mechanism, since nothing sweeps the map), a successful
+path, and `ForgetBackoffsOnTileChange` (`:156`), which empties the map wholesale on any
+`JobBoardDirty.Tiles` rescan — so an E0-5 deconstruct or a dug-out wall re-opens the zone on the
+**next tick**, not after 5 s. A door opening is the one case that still takes the 5 s path, because
+`SetDoorStateCommand` sets no `JobsDirty` and publishes no `TileChangedEvent`; `HaulJobSource.BeginTick`
+re-dirties the board once at each expiry precisely so a quiescent board cannot leave that zone dead.
+
+**The liveness re-probe is free in crew-time, and it is the tuning lever.** Measured over the same
+30,000 ticks: with the wake **918 starts / 2.254 %**; with it disabled, **50 starts / 2.382 %** — it
+trades a few long wasted claims for many short ones. Anyone wanting the residual cheaper should move
+`UnreachableRetryTicks`, not delete the wake: without it, a board that goes quiet while a zone is
+backed off never rescans, and the zone is dead until something unrelated dirties it.
+
+**HOW WELL THE FIX WORKS IS A FUNCTION OF TERRAIN CHURN — read this before believing 2.254 %.**
+Because a `Tiles`-dirty rescan throws the whole cache away, every terrain edit buys back a round of
+wasted claims. Measured over the same 30,000 slice ticks, three sealed-observatory tiles zoned:
+
+| terrain churn | pickup starts / 30k | share of crew-ticks |
+|---|---|---|
+| untouched slice (**10** `Tiles`-dirty ticks in 30,000) | 918 | 2.254 % |
+| `Tiles` dirty **every** tick (adversarial — ship-wide digging or stripping) | 67,742 | 28.873 % |
+| no fix at all | 72,928 | 31.191 % |
+
+So continuous churn defeats ~**93 %** of the fix. It degrades *gracefully* — never worse than
+pre-WP-7, never incorrect, only wasted crew time — but "my late-game ship started livelocking again"
+is a terrain-churn question first. Calibration: ten `Tiles`-dirty ticks cost **+0.37 pp** on the
+slice. **The escape hatch** is to drop the clear in `ForgetBackoffsOnTileChange` and rely on the
+`IsPathworthy` expiry alone: measured **1.884 %**, churn-independent, and the only thing given up is
+that a deconstruct re-opens the zone after ≤5 s instead of on the next tick.
+
+Like the step-4 backoff this is **transient board state — not saved, not hashed**; all four
+determinism pins are unmoved. No collection is iterated (`IJobSource` arbitration contract rule 4):
+lookup, keyed remove and wholesale clear only.
 
 ### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:85-97`)
 
@@ -1811,7 +1868,7 @@ last.
 | delta-v, transit speed, telescope detection | `content/core/SimDefs/nav.def` |
 | **job selection policy** (priorities, skills, distance metric) | `sim/Sim.Core/Jobs/JobSystem.cs:242-422` — code, no defs |
 | dig work time | `sim/Sim.Core/Jobs/Sources/DigJobSource.cs:19` (`DigWorkTicks = 6000`; E0-2 L1 rebase) — code const, no def; `TODO(E-MINE/E3)` moves it to `mining.def` when E-MINE owns dig |
-| unreachable-target backoff | `sim/Sim.Core/Jobs/JobSystem.cs:46` (`UnreachableRetryTicks`) |
+| unreachable-target backoff (per candidate, and per stockpile tile — E0-4 WP-7) | `sim/Sim.Core/Jobs/JobContext.cs:55` (`JobWork.UnreachableRetryTicks`), stamped by each source's `TryClaim` and by `sim/Sim.Core/Jobs/Sources/HaulJobSource.cs:499` (`_tileRetryAt`) |
 | what the LLM may propose | `sim/Sim.Core/Effects/CitizenEffects.cs` (the record set + `EffectKind`) — spine file |
 | what the LLM may propose *right now* | `sim/Sim.Core/Effects/CapabilityComputer.cs:46-76` |
 | the clamps on a proposed effect | `sim/Sim.Core/Effects/EffectValidator.cs:19-22` + each `Apply*` |
