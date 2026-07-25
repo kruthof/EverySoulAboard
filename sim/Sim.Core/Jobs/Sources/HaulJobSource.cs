@@ -32,9 +32,27 @@ namespace Perilune.Sim
         private StockZoneSystem _stockZones;
         private bool _stockZonesResolved;
 
+        // E0-4 WP-4 — the "don't haul what a bench wants" rule. B(sim): every ItemKind that appears
+        // as an INPUT port of a device's resolved ProductionBill (the EXACT bill resolution
+        // CraftingSystem fetches against, so this can never drift from what a bench actually pulls).
+        // Bit k set ⇒ kind k is a bench input ⇒ ineligible for general haul, so it is never dragged
+        // to a stockpile out from under the crafting chain (closing the output-strand / haul-in↔
+        // fetch-out oscillation, lane plan §2.6). Recomputed once per Rescan(Items|Tiles), and ONLY
+        // inside the anyFreeStockpile branch — never even computed on a stockpile-free ship, so it is
+        // zero-cost and fully inert on every pinned ship. A ulong field (kinds 0–63), no allocation.
+        private ulong _benchWanted;
+
         public string Name => "Haul";
         public JobKind[] HandledKinds => Kinds;
         public int CandidateCount => _items.Count;
+
+        /// <summary>The bench-input mask B(sim) most recently folded (E0-4 WP-4): bit k ⇒ kind k is
+        /// an input port of some device's resolved <see cref="ProductionBill"/> and therefore
+        /// ineligible for general haul. Diagnostic surface (mirrors <see cref="CandidateCount"/>) so a
+        /// test can assert the bench-rule branch was actually REACHED before scoring its outcome
+        /// (lane plan §7 trap 5 — a zero-alloc / never-hauled assertion over an unreached branch is a
+        /// tautology). Zero on a stockpile-free tick because the branch that computes it never runs.</summary>
+        public ulong BenchWantedMask => _benchWanted;
 
         /// <summary>Resolve the optional <see cref="StockZoneSystem"/> once, before any progress or
         /// rescan pass reads a filter (the <see cref="DeconstructJobSource"/> pattern).</summary>
@@ -83,6 +101,11 @@ namespace Perilune.Sim
 
                 if (anyFreeStockpile)
                 {
+                    // E0-4 WP-4: fold B(sim) — the set of kinds any device's resolved bill CONSUMES —
+                    // once, here, before the candidate loop. Only computed inside this branch, so a
+                    // stockpile-free ship never pays for it and the pinned-ship path is byte-identical.
+                    _benchWanted = ComputeBenchWanted(sim);
+
                     // E0-4: a filter can refuse a kind, so the "some free stockpile exists" gate
                     // above (kind-less) is no longer sufficient per item. When any filter is live,
                     // an item is a candidate only if SOME free stockpile tile accepts ITS kind —
@@ -97,6 +120,13 @@ namespace Perilune.Sim
                         if (item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                         if (item.Kind == ItemKind.Corpse) continue; // the dead are not cargo
                         if ((sim.World.GetFlags(item.Pos) & TileFlags.Stockpile) != 0) continue; // already stored
+                        // WP-4 (precedence step 2, lane plan §2.4): a bench-wanted kind never enters
+                        // the haulable pool — it is ceded to CraftingSystem.StepFetch entirely, so the
+                        // haul board stops competing for intermediates and the round-trip that stranded
+                        // outputs on the wrong deck cannot form. This OVERRIDES the filter below: a tile
+                        // whose mask accepts Scrap still receives no Scrap while a Fabricator exists,
+                        // because Scrap never becomes a candidate here.
+                        if ((_benchWanted & (1UL << (int)item.Kind)) != 0) continue;
                         if (filtered && !AnyFreeStockpileAccepts(sim, item.Kind)) continue; // no zone takes this kind
                         _items.Add(item.Id);
                     }
@@ -236,6 +266,30 @@ namespace Perilune.Sim
             citizen.CarryingItemId = 0;
             citizen.JobKind = JobKind.None;
             sim.JobsDirty |= JobBoardDirty.Items; // the stack was set down (position/unreserve changed)
+        }
+
+        /// <summary>
+        /// Fold B(sim) — WP-4's bench-wanted mask (lane plan §2.4). For every device in
+        /// <see cref="Simulation.Devices"/> STORE ORDER whose kind resolves a
+        /// <see cref="ProductionBill"/>, OR in the bit of each of the bill's INPUT ports. Reuses the
+        /// exact <see cref="ProductionDefs.TryGetBill"/> + <see cref="ProductionBill.InputPortCount"/>
+        /// / <see cref="ProductionBill.Input"/> resolution <see cref="CraftingSystem"/> fetches
+        /// against, so "what a bench wants" can never drift from what a bench actually pulls. Recomputed
+        /// every rescan, so removing a bench (e.g. the E0-5 device strip) drops its inputs back out of
+        /// the mask on the next Items/Tiles rescan — the mask self-heals (lane plan §8 hazard 5). No
+        /// RNG, no allocation: <see cref="ProductionBill"/> is a struct over arrays that already exist.
+        /// </summary>
+        private static ulong ComputeBenchWanted(Simulation sim)
+        {
+            ulong mask = 0;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                if (!ProductionDefs.TryGetBill(sim.Defs, devices[i].Kind, out var bill)) continue;
+                for (int p = 0; p < bill.InputPortCount; p++)
+                    mask |= 1UL << (int)bill.Input(p).Kind;
+            }
+            return mask;
         }
 
         /// <summary>Does any free stockpile tile accept <paramref name="kind"/>? The per-item
