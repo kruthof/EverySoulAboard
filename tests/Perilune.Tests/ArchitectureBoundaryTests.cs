@@ -810,6 +810,14 @@ namespace Perilune.Tests
                     // so a source stays inert when that system is absent from the stack.
                     ["sim/Sim.Core/Jobs/Sources/BuildJobSource.cs"] = 1,
                     ["sim/Sim.Core/Jobs/Sources/DeconstructJobSource.cs"] = 1,
+                    // E0-4 WP-4 (`e88e548`): resolves the optional StockZoneSystem so the haul
+                    // filter is inert on a stack without it. ONCE-ONLY and precedented — the
+                    // lookup sits behind a `_stockZonesResolved` bool in `BeginTick`, exactly the
+                    // `DeconstructJobSource.BeginTick` / `_stripResolved` shape, so it is one array
+                    // walk per SIMULATION, not per tick. This entry was added hours after the rest
+                    // of the allowlist was measured: E0-4 and the lane that wrote this test landed
+                    // in parallel on 2026-07-25, so the reach was real before the number was.
+                    ["sim/Sim.Core/Jobs/Sources/HaulJobSource.cs"] = 1,
                     ["sim/Sim.Core/Systems/CraftingSystem.cs"] = 1,
                     // MIXED FILE: PlaceDeviceCommand / RemoveDeviceCommand resolving their registries.
                     ["sim/Sim.Core/Commands/Commands.cs"] = 2,
