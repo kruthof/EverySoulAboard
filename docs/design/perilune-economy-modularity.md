@@ -402,11 +402,27 @@ magnitude is a def. That is materially easier and better-evidenced than what §6
 and it means E2's operator model is an *extension of a shipped mechanism* rather than a new
 architectural direction.
 
-**One honest caveat about the existing channel:** it is mood → *wear*, i.e. mood makes machines
-break faster. The operator model wants mood → *throughput*. Those are different couplings with
-different design consequences — one is a hidden tax, the other is visible at the workbench — and
-`automation-and-souls` §4.1's "material, not cosmetic" test applies to the new one independently.
-**The precedent is the wiring, not the game feel.**
+**Three honest caveats — the wiring transfers, the DATA PATH does not.** "Materially easier and
+better-evidenced" is right about the **signature** and mildly optimistic about the **body**, and the
+difference is worth spelling out because it is where E2's time will actually go:
+
+| | the shipped precedent (mood → wear) | what the operator model needs (mood → throughput) |
+|---|---|---|
+| **signal granularity** | a **mean over the whole crew** (`ShipMetrics.cs:83,86` sums every citizen's `Mood` and divides) | **this citizen's** `Citizen.Mood`, at **this workbench** |
+| **cadence & smoothing** | recomputed only on the Director's cadenced pass — `DirectorSystem.cs:61` (`PeriodTicks`), documented as **~0.1 Hz** at `:22` — and then deliberately **smoothed** through a lever that eases toward a target rather than tracking the signal (`:79`) | **per tick, un-smoothed** — a jam or a spill has to land when the work lands |
+| **what it feels like** | a **hidden tax**: machines quietly break faster | **visible at the workbench** — `automation-and-souls` §4.1 demands "material, not cosmetic", which argues hard for visible |
+
+**And the sharpest consequence, which the precedent does NOT give you for free:** reading *this
+citizen's* mood inside an economy system is **exactly the crossing `Economy_KnowsNothingAbout`**
+**`SoulsPresentationOrPhysiology` guards.** `MachineWearSystem` never touches `Citizen.Mood` — it
+reads a pure aggregate report off an injected sibling, which is why it sits inside a narrow
+carve-out. A per-citizen, per-tick read is a different and larger crossing, and **the existence of
+this precedent does not pre-authorise it.** E2 must widen the carve-out deliberately, citing the
+design authority, and should expect that to be the reviewable decision — not the plumbing.
+
+**So: the precedent is the wiring — an optional injected modulator, a def-weighted magnitude, a
+deterministic function of hashed state, inert at `× 1f`. It is not the data path, and it is not the
+game feel.**
 
 ### 1.5.2 The other invisible channel: `sim.Systems`
 
@@ -664,7 +680,7 @@ stockpile zones (`StockZoneSystem` is the empty stub; E0-4 unmerged), `OreRegist
 >
 > | moonbase file | is its SUBJECT covered here? |
 > |---|---|
-> | `AllocationTests.cs` (61 LOC, 2 tests) | **yes, far better** — `GC.GetAllocatedBytesForCurrentThread` appears **32 times across 14 files** with **15 zero-allocation assertions**. `JobDispatchTests.cs:594` alone asserts zero bytes across **3000 dirty-every-tick job-board rescans** |
+> | `AllocationTests.cs` (61 LOC, 2 tests) | **yes, far better** — `GC.GetAllocatedBytesForCurrentThread` appears **32 times across 14 files**, forming **16 measured sites** with **16 zero-allocation assertions**. `JobDispatchTests.cs:594` alone asserts zero bytes across **3000 dirty-every-tick job-board rescans** |
 > | `ThermalTests`, `AtmosphereTests`, `DeterminismTests`, `CraftingTests`, `JobSystemTests`, `MaintenanceTests`, `SaveLoadTests` | **yes** — 7–26 files reference each subject |
 > | `GoalTests.cs` | **no** — `GoalSystem` is referenced by 0 test files here |
 > | `PathfindingTests.cs` | **thin** — `PathService` is referenced by 1 |
@@ -673,6 +689,16 @@ stockpile zones (`StockZoneSystem` is the empty stub; E0-4 unmerged), `OreRegist
 > So the real losses are narrow and nameable: **`GoalSystem` has no coverage, `PathService` and
 > `ExplorationSystem` are thin.** The sweeping "4,923 LOC of coverage was abandoned" framing was
 > wrong, and the lesson below survives only in its weaker form — see the amended paragraph.
+>
+> **How the allocation figure was settled**, because three different numbers were quoted during
+> review and grep windows produced all of them. **Count by PAIRING, not by proximity:** each
+> measured site is exactly two `GetAllocatedBytesForCurrentThread()` calls (a `before` and an
+> `after`), so 32 calls ⇒ **16 sites**, distributed 1 per file except `DefsProductionTests` and
+> `JobDispatchTests` which have 2 each. Each site carries exactly one `Is.EqualTo(0)` / `Is.Zero`
+> and **none asserts anything weaker** (no `LessThan`, no tolerance). A fixed `grep -A6` window
+> undercounts to 15 because `DefsProductionTests` asserts at +8 and +11 lines; a `-A12` window
+> overcounts to 17 by catching an unrelated `Is.EqualTo(0)` nearby. **32 / 14 / 16 is the
+> pairing-derived answer and is what this document states.**
 
 **moonbase's 30-file, 4,923-LOC, 175-`[Test]` Unity suite has no same-named counterpart here**
 (29 of 30 files absent), including **all eight `EditMode/Moss/*` files, 1,105 LOC** — the
@@ -1007,12 +1033,21 @@ Then replace the five sites in §6 with calls. **`WorkRate` returning the litera
 byte-for-byte identical** — an integer identity, exactly the trick `MachineWearSystem`'s `× 1f`
 director lever used (`MachineWearSystem.cs:36-37`) to land pin-neutral.
 
-**Follow the precedent for the E2 body, not just the identity trick.** When E2 fills `WorkRate`
-in, the modulator should arrive the way `WearPressure` does: an **optional constructor-injected**
-source on `JobSystem` (so the dependency is explicit and the system degrades to rate 1 without it),
-with the **magnitude in a def** (`WeightMoraleDeficit` is the model), computed as a **deterministic
-function of hashed `Citizen` state** — never an RNG roll (`automation-and-souls` §4.2). Getting the
-signature right now, against a pattern already in the tree, is most of what this step buys.
+**Follow the precedent for the E2 body — but only as far as it goes.** When E2 fills `WorkRate` in,
+the modulator should arrive the way `WearPressure` does: an **optional constructor-injected** source
+on `JobSystem` (so the dependency is explicit and the system degrades to rate 1 without it), with the
+**magnitude in a def** (`WeightMoraleDeficit` is the model), computed as a **deterministic function
+of hashed `Citizen` state** — never an RNG roll (`automation-and-souls` §4.2). Getting that
+**signature** right now, against a pattern already in the tree, is most of what this step buys.
+
+**What the precedent does NOT hand E2** (§1.5.1's caveat table, and it is the honest cost): the
+existing channel reads a **crew-wide mean** off a pure aggregate report, on a **~0.1 Hz cadence**,
+through a **deliberately smoothed** lever. The operator model needs **this citizen's** mood at **this
+workbench, per tick, un-smoothed**. That per-citizen read is itself the crossing
+`Economy_KnowsNothingAboutSoulsPresentationOrPhysiology` guards, and **the precedent does not
+pre-authorise it** — `MachineWearSystem` never touches `Citizen.Mood`. So: the plumbing is
+precedented and cheap; the data path is new and is the part that needs a design decision. Budget
+step 1 as the *signature*, and E2 as the *signal*.
 
 **What it buys.** One place where "a person does a tick of work" is defined. E2's operator
 model becomes a one-function change instead of a five-file change. Kills the false
@@ -1036,10 +1071,12 @@ an identity and the step is wrong.
 > blinding the comment stripper, a `;foreach` token evasion, order-laundering via `.CopyTo`, an
 > unscanned `Commands.cs`, and a second souls→economy channel) are all now caught, and four negative
 > controls confirm comments, string literals and self-referencing `using` aliases do **not** fail.
-> Writing and then revising it corrected **five** measurements in this document: §1.5's site count
-> (twice), §1.5's "whole outward surface" claim, §1.5.1's souls channel, §2.6's coverage ledger, and
-> §6's "no seam" conclusion. Assertions deliberately **not** written are listed at the end of this
-> step.
+> Writing and then revising it corrected **six** measurements in this document: §1.5's site count
+> (twice), §1.5's "whole outward surface" claim, §1.5.1's souls channel, §2.6's coverage ledger,
+> §6's "no seam" conclusion, and the allocation figure (settled at 32/14/**16** by pairing). A second
+> review round closed two further matcher evasions (`global::` and a directive split across lines),
+> added a module-level census so a new `sim/` module cannot go unscanned, and sharpened §1.5.1's
+> caveat. Assertions deliberately **not** written are listed at the end of this step.
 
 **What changes.** One new test file. No production code. Assertions:
 
@@ -1073,7 +1110,7 @@ rather than a boundary worth defending:
 |---|---|
 | **Fully-qualified cross-module references** (`Perilune.Glyph.GlyphColor.X` with no `using`) | A regex cannot resolve types. The DAG tests pin the **declared** dependency — the `using` line, which is what a reviewer reads and what a future `.csproj` split turns into a `ProjectReference`. Stated as a limitation in the test's class doc rather than faked. |
 | **`foreach` over dictionaries repo-wide** | Five files elsewhere in `Sim.Core` legitimately use `foreach` (`Commands.cs`, `RoomState.cs`, `AtmosphereSystem.cs`, `CitizenMemory.cs`, `HistorySystem.cs`). The determinism rule is a **`Jobs/`** rule (`IJobSource.cs:29-32`); generalising it would fire on correct code and get suppressed. |
-| **Zero-alloc on tick paths** | Not observable from source text — and **already covered at runtime**, which is the honest reason. `GC.GetAllocatedBytesForCurrentThread` appears 32 times across 14 test files with 15 zero-allocation assertions; `JobDispatchTests.cs:594` asserts zero bytes over 3000 dirty-every-tick rescans. A source-scanning approximation would be strictly worse than what exists. |
+| **Zero-alloc on tick paths** | Not observable from source text — and **already covered at runtime**, which is the honest reason. `GC.GetAllocatedBytesForCurrentThread` appears **32 times across 14 test files = 16 before/after sites, each with exactly one zero-allocation assertion and none asserting anything weaker**; `JobDispatchTests.cs:594` asserts zero bytes over 3000 dirty-every-tick rescans. A source-scanning approximation would be strictly worse than what exists. |
 | **Exact `Simulation`-member counts** for the economy (the §1.5 17-member table) | Legitimately churns with every economy lane — `sim.Items`/`sim.Defs`/`sim.World` counts move whenever anyone edits a job source. Pinning them would fire on nearly every E-lane commit and teach nothing. Only the *ship-system* reaches are pinned, because those are the ones that must stay rare. |
 | **`ItemKind` member count** | E0-6/E0-7 are *supposed* to add `Seals` and `Ice`. Asserting 7 would fail by design. |
 | **`Sim.Core` has no file IO** | It would **FAIL, not pass vacuously** — the original reason given here was wrong. `System.IO` is used legitimately throughout `Sim.Core`: `BinaryWriter`/`BinaryReader` in every `IStatefulSystem`'s `CaptureState`/`RestoreState` (≥5 systems) and in `Save{Reader,Writer}`. The invariant is "hosts own **file** IO; sim takes text", and separating a `BinaryWriter` over a caller-supplied stream from a `File.ReadAllText` needs more than a token scan. The two known real violations (`Sim.Dsl/RulesLoader.cs`, `Sim.Llm/Providers/LlmSettings.cs` — §1.2) are outside `Sim.Core` anyway. Better as a real cleanup than a fragile test. |
