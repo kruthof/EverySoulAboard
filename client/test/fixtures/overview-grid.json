@@ -1,5 +1,5 @@
 {
- "note": "Captured from `dotnet run --project hosts/web -- --port 8399 --ship grid` — the WP-1 wrecked grid ship. BOOT SNAPSHOT (connected at host start): `frame` is deck 0, and `decks`/`rooms`/`roster`/`designs` are the first of each channel, so the roster's 8 crew are still on deck 0 where the deck-0 pawn tests need them. Deck 0: 8 rooms. Deck 1: 5 rooms — including 'hold' (roomType 14), the LIVE WRECK, a TYPED room so the client has a label for it — plus 3 sealed halls. Decks 2-7: all halls. `frameDeck1` is deck 1 from LATER IN THE SAME SESSION (~25 s in) and is the only frame carrying the wreck's fg bytes 4 (Debris, undesignated) AND 15 (Designate) together: at boot every live-wreck tile is designated, so a boot deck-1 frame has 15 and no 4. WP-2's 'a designated tile renders differently from an undesignated one, asserted on the fg byte' must be driven from frameDeck1. Regenerate: scratchpad/wp1-capture.mjs.",
+ "note": "Captured from `dotnet run --project hosts/web -- --port 8394 --ship grid` \u2014 the WP-1 wrecked grid ship. TWO COHERENT SNAPSHOTS FROM ONE SESSION, and the pairing matters more than it looks.\n(1) BOOT (connected at host start): `frame` (deck 0) + `roster` + `decks` + `rooms` + `designs`. Deck 0: 8 rooms. Deck 1: 5 rooms \u2014 including 'hold' (roomType 14), the LIVE WRECK, a TYPED room so the client has a label for it \u2014 plus 3 sealed halls. Decks 2-7: all halls.\n(2) WORKING (deck 1, later in the same session): `frameDeck1` + `rosterDeck1`, both from the SAME host Render() pass \u2014 hosts/web/GameSession.cs sends `frame` (:1042) and `roster` (:1058) in one pass, and Send() de-duplicates unchanged payloads, so the roster captured with a frame IS that frame's tick.\n\u26a0 `roster` IS BOOT-ONLY AND MUST NEVER BE PAIRED WITH `frameDeck1`. Every one of its 8 crew reads deck 0 and task \"Idle\", while `frameDeck1` draws those same 8 cids on deck 1 mid-dig. A test that drives task-tagging or deck-1 pawns from `roster` asserts against all-Idle/all-deck-0 data: it passes and it means nothing. That is why `rosterDeck1` exists \u2014 WP-8's \"a working pawn is tagged with its task; an idle one is not\" is driven from it.\n`rosterDeck1` composition (all 8 on deck 1, clustered in the hold at x25-32 y15-16, which is also the tag-overlap case): 5 WORKING \u2014 4 \"Digging out \u2026\" (tag DIG) + 1 \"Crafting at recycler_1\" (tag CRAFT, so the tag TEXT varies, not just its presence) \u2014 and 3 \"Idle\" (no tag). Both halves are load-bearing: the 3 idle crew are what let the negative half of the assertion fail.\n`frameDeck1` is still the only frame carrying the wreck's fg bytes 4 (Debris, undesignated) AND 15 (Designate) together: at boot every live-wreck tile is designated, so a boot deck-1 frame has 15 and no 4. WP-2's 'a designated tile renders differently from an undesignated one, asserted on the fg byte' must be driven from `frameDeck1`.\nRegenerate: scratchpad/wp8-capture.mjs (supersedes wp1-capture.mjs). It is PREDICATE-gated, not wall-clock gated \u2014 it refuses to write unless frameDeck1 carries fg 4+15 and rosterDeck1 has >=2 working crew with >=2 distinct tags and >=1 non-working crew. It also steps the sim to 20x while hunting: E0-2 rebased a dig to 10 sim-minutes, so at 1x all 8 crew are still on their FIRST dig ten wall-minutes in and the roster never varies. Faster, not different \u2014 the tick sequence is the same deterministic one, and the boot half of this file re-captured byte-identical across two runs with different connect timing.",
  "frame": {
   "type": "frame",
   "deck": 0,
@@ -4927,50 +4927,50 @@
   "h": 18,
   "crew": [
    [
-    23,
-    11,
+    28,
+    15,
     0,
     1251
    ],
    [
-    24,
-    14,
+    30,
+    15,
     1,
     1252
    ],
    [
-    30,
-    14,
+    25,
+    2,
     2,
     1253
    ],
    [
-    25,
-    14,
+    29,
+    15,
     0,
     1254
    ],
    [
     26,
-    14,
+    16,
     1,
     1255
    ],
    [
-    30,
-    12,
+    32,
+    15,
     2,
     1256
    ],
    [
     27,
-    12,
+    15,
     0,
     1257
    ],
    [
-    27,
-    10,
+    31,
+    15,
     1,
     1258
    ]
@@ -5667,8 +5667,8 @@
     0
    ],
    [
-    46,
-    2,
+    64,
+    5,
     1,
     0
    ],
@@ -7839,8 +7839,8 @@
     0
    ],
    [
-    64,
-    5,
+    47,
+    8,
     1,
     0
    ],
@@ -8085,8 +8085,8 @@
     0
    ],
    [
-    64,
-    5,
+    46,
+    2,
     1,
     0
    ],
@@ -8379,12 +8379,6 @@
     0
    ],
    [
-    64,
-    5,
-    1,
-    0
-   ],
-   [
     46,
     2,
     1,
@@ -8397,8 +8391,14 @@
     0
    ],
    [
-    64,
-    5,
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
     1,
     0
    ],
@@ -8901,6 +8901,294 @@
     0
    ],
    [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
     64,
     5,
     1,
@@ -8919,20 +9207,8 @@
     0
    ],
    [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
+    64,
+    5,
     1,
     0
    ],
@@ -8943,6 +9219,138 @@
     0
    ],
    [
+    64,
+    5,
+    1,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    32,
+    0,
+    0,
+    0
+   ],
+   [
+    35,
+    3,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
+    46,
+    2,
+    1,
+    0
+   ],
+   [
     46,
     2,
     1,
@@ -8973,144 +9381,6 @@
     0
    ],
    [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
     37,
     4,
     1,
@@ -9161,6 +9431,36 @@
    [
     35,
     3,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
+    1,
+    0
+   ],
+   [
+    64,
+    5,
+    1,
+    0
+   ],
+   [
+    44,
+    7,
     1,
     0
    ],
@@ -9183,50 +9483,32 @@
     0
    ],
    [
-    37,
-    15,
+    44,
+    7,
     1,
     0
    ],
    [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
+    44,
+    7,
     1,
     0
    ],
    [
     35,
     3,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
+    1,
+    0
+   ],
+   [
+    37,
+    4,
     1,
     0
    ],
@@ -9291,288 +9573,6 @@
     0
    ],
    [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    46,
-    2,
-    1,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    37,
-    15,
-    1,
-    0
-   ],
-   [
-    35,
-    3,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    37,
-    4,
-    1,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
-    32,
-    0,
-    0,
-    0
-   ],
-   [
     35,
     3,
     1,
@@ -9801,15 +9801,15 @@
     0
    ],
    [
-    32,
-    0,
-    0,
+    35,
+    3,
+    1,
     0
    ],
    [
-    32,
-    0,
-    0,
+    35,
+    3,
+    1,
     0
    ],
    [
@@ -10860,6 +10860,147 @@
     "deck": 0,
     "x": 40,
     "y": 9,
+    "traits": [
+     "unbending",
+     "sardonic",
+     "devout"
+    ]
+   }
+  ]
+ },
+ "rosterDeck1": {
+  "type": "roster",
+  "crew": [
+   {
+    "cid": 1251,
+    "name": "Halloran",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Digging out 28,16",
+    "portrait": "pk_f971062a",
+    "deck": 1,
+    "x": 28,
+    "y": 15,
+    "traits": [
+     "superstitious",
+     "garrulous",
+     "stoic"
+    ]
+   },
+   {
+    "cid": 1252,
+    "name": "Vega",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Digging out 30,16",
+    "portrait": "pk_6893cad5",
+    "deck": 1,
+    "x": 30,
+    "y": 15,
+    "traits": [
+     "devout",
+     "cowardly",
+     "unbending"
+    ]
+   },
+   {
+    "cid": 1253,
+    "name": "Sato",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Crafting at recycler_1",
+    "portrait": "pk_18678bc4",
+    "deck": 1,
+    "x": 25,
+    "y": 2,
+    "traits": [
+     "meticulous",
+     "haunted",
+     "restless"
+    ]
+   },
+   {
+    "cid": 1254,
+    "name": "Okonjo",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Digging out 29,16",
+    "portrait": "pk_08ec48f7",
+    "deck": 1,
+    "x": 29,
+    "y": 15,
+    "traits": [
+     "haunted",
+     "wry",
+     "restless"
+    ]
+   },
+   {
+    "cid": 1255,
+    "name": "Novak",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Digging out 27,16",
+    "portrait": "pk_c18a6f8e",
+    "deck": 1,
+    "x": 26,
+    "y": 16,
+    "traits": [
+     "haunted",
+     "cowardly",
+     "sardonic"
+    ]
+   },
+   {
+    "cid": 1256,
+    "name": "Adeyemi",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Idle",
+    "portrait": "pk_30ad3439",
+    "deck": 1,
+    "x": 32,
+    "y": 15,
+    "traits": [
+     "superstitious",
+     "devout",
+     "haunted"
+    ]
+   },
+   {
+    "cid": 1257,
+    "name": "Kaur",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Idle",
+    "portrait": "pk_e080f528",
+    "deck": 1,
+    "x": 27,
+    "y": 15,
+    "traits": [
+     "devout",
+     "sardonic",
+     "gentle"
+    ]
+   },
+   {
+    "cid": 1258,
+    "name": "Ito",
+    "role": "general crew",
+    "mood": "",
+    "morale": 1,
+    "task": "Idle",
+    "portrait": "pk_d105b25b",
+    "deck": 1,
+    "x": 31,
+    "y": 15,
     "traits": [
      "unbending",
      "sardonic",
