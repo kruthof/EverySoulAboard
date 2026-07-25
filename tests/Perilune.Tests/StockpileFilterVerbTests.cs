@@ -183,8 +183,60 @@ namespace Perilune.Tests
         /// Bits above the last <see cref="ItemKind"/> are canonicalised away. Not cosmetics:
         /// <c>StockZoneSystem.StateChecksum</c> folds <c>AcceptMask</c> verbatim, so an undefined
         /// high bit perturbs HASHED state while changing no behaviour whatsoever — two byte-different
-        /// sims that play identically. MUTATION: drop <c>&amp; AcceptAllMask</c> in
-        /// <c>HandleFilter</c> ⇒ the stored mask is 0x1FF.
+        /// sims that play identically.
+        ///
+        /// WHY THE WIRE VALUE IS 0x1F3 AND NOT 0x1FF — the wp5 × wp6 interaction. As written on the
+        /// WP-5 branch this test sent <c>0x1FF</c>, whose canonical form is <c>0x7F</c>, i.e. exactly
+        /// <see cref="StockZoneSystem.AcceptAllMask"/>. WP-6 then made an accept-EVERYTHING mask store
+        /// NO entry (<c>SetFilter</c> collapses it to <c>ClearFilter</c>, so that
+        /// <c>HaulJobSource</c>'s <c>Zones.Count &gt; 0</c> fast path stays reachable on a ship that
+        /// restricts nothing), and the "an entry is stored" assertion started failing. Nothing is
+        /// wrong with either package: the canonicalisation this test names still happens, it is just
+        /// no longer OBSERVABLE through a mask whose canonical form is accept-all, because that mask's
+        /// correct resting state is now absence. So the wire value moved to <c>0x1F3</c> — high bits
+        /// 7 and 8 set, and a canonical form of <c>0x73</c> (Regolith · MetalOre · Scrap · Parts ·
+        /// ControllerModule; Corpse and Potato refused) which is a REAL restriction and therefore a
+        /// real stored entry. The second row below pins the collapse case that used to be row one.
+        ///
+        /// THE THREE ROWS AND THE MUTATION EACH ONE ANSWERS FOR. Measured full-suite, not asserted:
+        ///
+        ///  1. VIA THE WIRE (0x1F3 ⇒ stored 0x73). Bitten by NO single-site deletion of the
+        ///     canonicalisation, and this is stated because an earlier revision of this comment
+        ///     claimed otherwise four lines above its own refutation. Deleting
+        ///     <c>mask &amp;= AcceptAllMask</c> from <see cref="StockZoneSystem.SetFilter"/> leaves this
+        ///     row GREEN, because <c>HandleFilter</c> already masked; deleting <c>HandleFilter</c>'s
+        ///     leaves it green too, because <c>SetFilter</c> masks. Row 1 pins the end-to-end outcome
+        ///     the player gets, and rows 2–3 are what make the individual doors answerable.
+        ///  2. DIRECT TO THE SIM DOOR (<c>SetFilter(0x1F3)</c> on a second host, bypassing the bridge
+        ///     entirely) ⇒ stored 0x73, and the SAME hashed state as row 1 reached through the wire.
+        ///     MUTATION: delete <c>mask &amp;= AcceptAllMask;</c> from <see cref="StockZoneSystem.SetFilter"/>
+        ///     ⇒ this row stores 0x1F3, and the checksum equality — one representation per meaning,
+        ///     whichever door the mask arrives through — breaks. This is the row that makes the file
+        ///     bite the sim door on its own.
+        ///  3. THE COLLAPSE (a real restriction, then an accept-all repaint over it). Two mutations,
+        ///     and the second is the one that matters: replace the collapse body with a bare
+        ///     <c>return;</c> ⇒ the stale restriction SURVIVES the accept-all repaint, which is the
+        ///     live player-facing bug (a zone restricted once and re-painted unrestricted silently
+        ///     keeps refusing, with no UI anywhere that could reveal it). Delete the collapse line
+        ///     outright ⇒ an entry appears where absence is required. A row that only painted
+        ///     accept-all onto a tile with no prior entry would catch the second and NOT the first,
+        ///     because <c>ClearFilter</c> on an entry-less tile is a no-op — indistinguishable from
+        ///     "never stored" and from "never arrived". Hence the restriction is painted first and
+        ///     asserted to have landed.
+        ///
+        /// HONEST LIMIT on <c>GameSession.HandleFilter</c>'s own <c>&amp; AcceptAllMask</c>: it is
+        /// redundant for stored state, and therefore un-bitable there, **while the two derivations
+        /// agree** — <c>GameSession.AcceptAllMask</c> is count-based
+        /// (<c>(1UL &lt;&lt; Enum.GetValues(typeof(ItemKind)).Length) - 1</c>) and
+        /// <see cref="StockZoneSystem.AcceptAllMask"/> is per-enum-VALUE, so they coincide only while
+        /// <see cref="ItemKind"/> is contiguous from 0. Add a kind 9 with 7 and 8 undefined and they
+        /// diverge, at which point the host mask is load-bearing again and its deletion is observable.
+        /// That divergence condition is itself pinned, by
+        /// <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
+        /// The real resolution is to make every site consume
+        /// <see cref="StockZoneSystem.AcceptAllMask"/>, after which the host line is provably the same
+        /// operation and can simply be deleted — LOGGED, not done here (it touches three host files
+        /// and is outside this fix's remit).
         /// </summary>
         [Test]
         public void BitsAboveTheLastItemKindAreCanonicalisedAway()
@@ -192,34 +244,104 @@ namespace Perilune.Tests
             var (gs, host) = Boot();
             var pos = FirstWalkable(host.Sim, 0);
             gs.ApplyForTest(new WebCommand(CmdKind.Stockpile, pos.X, pos.Y, i: 1));
-            gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x1FF));
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x1F3));
             host.Sim.Tick();
 
-            Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask));
-            Assert.AreNotEqual(0x1FFUL, mask, "the over-wide mask was NOT stored verbatim");
-            Assert.AreEqual(GameSession.AcceptAllMask, mask);
+            const ulong canonical = 0x1F3UL & 0x7FUL;   // 0x73 — spelled as the operation, not a literal
+            Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask),
+                "a real restriction stores a real entry");
+            Assert.AreNotEqual(0x1F3UL, mask, "the over-wide mask was NOT stored verbatim");
+            Assert.AreEqual(canonical, mask);
             Assert.AreEqual(0UL, mask >> Enum.GetValues(typeof(ItemKind)).Length,
                 "no bit above the last ItemKind survives into hashed state");
-            // ONE REPRESENTATION PER MEANING, asserted rather than merely claimed: the hashed state
-            // after the over-wide wire message is byte-identical to the hashed state the sim reaches
-            // when the canonical mask is set directly. Without the canonicalisation these two
-            // checksums differ while the two sims play identically.
-            ulong viaWire = host.Sim.StockZones.StateChecksum();
-            host.Sim.StockZones.SetFilter(host.Sim, pos, GameSession.AcceptAllMask);
-            Assert.AreEqual(host.Sim.StockZones.StateChecksum(), viaWire,
-                "the canonicalised entry hashes exactly as the directly-set canonical mask does");
+            Assert.IsFalse(host.Sim.StockZones.Accepts(pos, ItemKind.Potato),
+                "and the restriction the player asked for is really in force — the canonicalisation " +
+                "removed only the undefined bits, not a meaningful one");
+
+            // ROW 2 — THE SIM DOOR, ON ITS OWN. The same over-wide value handed straight to
+            // StockZoneSystem.SetFilter on a fresh host, with GameSession's bridge (and its own mask)
+            // out of the picture entirely, so this row is answerable by the sim's canonicalisation and
+            // nothing else. ONE REPRESENTATION PER MEANING is then a real comparison rather than a
+            // tautology: two sims that were told the same thing through DIFFERENT doors must reach
+            // byte-identical hashed state. (The previous revision of this row re-set the entry on the
+            // SAME host to the value the assertion above had just pinned, which could not fail.)
+            var (_, direct) = Boot();
+            direct.Sim.StockZones.SetFilter(direct.Sim, pos, 0x1F3UL);
+            Assert.IsTrue(direct.Sim.StockZones.TryGetFilter(pos, out ulong straight),
+                "the sim door stores the entry");
+            Assert.AreEqual(canonical, straight,
+                "StockZoneSystem.SetFilter canonicalises on its own — with no host in front of it");
+            Assert.AreEqual(direct.Sim.StockZones.StateChecksum(), host.Sim.StockZones.StateChecksum(),
+                "0x1F3 through the wire bridge and 0x1F3 through the sim door must land in the SAME "
+                + "hashed state — one representation per meaning, whichever door it arrives through");
+
+            // ROW 3 — THE COLLAPSE, OVER A LIVE RESTRICTION. A real filter is painted and asserted to
+            // have landed FIRST, so the accept-all repaint below has something to remove: that is what
+            // separates "collapsed" from "never stored" and makes a `return;`-instead-of-ClearFilter
+            // mutation observable. This is also the player's actual sequence — restrict a zone, then
+            // change your mind — and the case in which a surviving stale mask is a silent bug.
+            var second = FirstWalkable(host.Sim, 1);
+            Assert.GreaterOrEqual(second.X, 0, "deck 1 has a walkable tile to zone");
+            Assert.IsTrue(gs.ApplyForTest(new WebCommand(CmdKind.Deck, i: 1)), "deck 0 → 1");
+            gs.ApplyForTest(new WebCommand(CmdKind.Stockpile, second.X, second.Y, i: 1));
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, second.X, second.Y,
+                i: 1 << (int)ItemKind.Potato));
+            host.Sim.Tick();
+
+            Assert.IsTrue(host.Sim.StockZones.TryGetFilter(second, out ulong restricted),
+                "precondition: a REAL restriction is live on the tile before the accept-all repaint — "
+                + "without it ClearFilter is a no-op and this row could not tell a collapse from a "
+                + "tile that never had an entry");
+            Assert.AreEqual(1UL << (int)ItemKind.Potato, restricted);
+            Assert.IsFalse(host.Sim.StockZones.Accepts(second, ItemKind.Scrap),
+                "precondition: and the restriction really refuses a kind");
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, second.X, second.Y, i: 0x1FF));
+            host.Sim.Tick();
+
+            Assert.IsFalse(host.Sim.StockZones.TryGetFilter(second, out ulong wide),
+                "0x1FF canonicalises to AcceptAllMask, and an accept-all paint REMOVES the entry — a "
+                + "collapse that merely returned would leave the stale restriction in place "
+                + "(mask read back: 0x" + wide.ToString("X", CultureInfo.InvariantCulture) + ")");
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
+                Assert.IsTrue(host.Sim.StockZones.Accepts(second, k),
+                    "and absence means accept-all, so the zone now takes ItemKind." + k);
         }
 
         /// <summary>
         /// The accept-all mask covers EVERY <see cref="ItemKind"/> and nothing else — that is what
         /// makes it a derived value rather than a copied 0x7F. Driven end to end: an over-wide wire
-        /// mask is canonicalised by the host, stored by the sim, and then queried through the real
+        /// mask is canonicalised by the host, taken by the sim, and then queried through the real
         /// <see cref="StockZoneSystem.Accepts"/> for every enum member.
         ///
-        /// MUTATION: hard-code <c>internal static readonly ulong AcceptAllMask = 0x3FUL;</c> in
-        /// <c>GameSession</c> (exactly what "one fewer kind than there really are" looks like) ⇒
-        /// <c>ControllerModule</c> is rejected by a zone the player set to accept everything. A
-        /// second mutation that bites the same way: <c>1UL &lt;&lt; (Length - 1)</c>.
+        /// WHAT "ACCEPTED BY THE SIM" MEANS SINCE WP-6 — the wp5 × wp6 interaction. This test was
+        /// written on the WP-5 branch and asserted that the paint left a STORED entry equal to
+        /// <see cref="GameSession.AcceptAllMask"/>. WP-6 then made accept-everything the ABSENT entry
+        /// (<c>SetFilter</c> collapses it, keeping <c>HaulJobSource</c>'s <c>Zones.Count &gt; 0</c>
+        /// fast path off on a ship that restricts nothing), so the entry assertion started failing
+        /// while the property this test is actually named for — every kind is accepted — went on
+        /// holding, by absence instead of by a stored mask. The player-facing promise is unchanged and
+        /// it is still asserted end to end through <see cref="StockZoneSystem.Accepts"/>; only the
+        /// representation assertion moved, and it is now asserted in WP-6's terms (no entry at all).
+        ///
+        /// THE RESTRICTION IS PAINTED FIRST, DELIBERATELY. An accept-all paint onto a tile that never
+        /// had an entry is satisfied by the feature doing nothing at all: <c>ClearFilter</c> on an
+        /// entry-less tile is a no-op, so "no entry afterwards" would be equally true of a collapse, of
+        /// a paint that never arrived, and of a collapse that merely <c>return</c>s. Painting a real
+        /// restriction first and asserting it landed turns the row into a statement about REMOVAL, and
+        /// removal is the thing the player depends on (restrict a zone, change your mind, and the old
+        /// restriction must not quietly survive).
+        ///
+        /// MUTATIONS, each measured full-suite:
+        ///   * hard-code <c>internal static readonly ulong AcceptAllMask = 0x3FUL;</c> in
+        ///     <c>GameSession</c> (what "one fewer kind than there really are" looks like) ⇒ the paint
+        ///     stores a real 0x3F entry so the removal row fails, <c>ControllerModule</c> is rejected by
+        ///     a zone the player set to accept everything, and the bit count is 6 against 7 kinds.
+        ///     <c>1UL &lt;&lt; (Length - 1)</c> bites all three the same way.
+        ///   * replace <see cref="StockZoneSystem.SetFilter"/>'s collapse body with a bare
+        ///     <c>return;</c> ⇒ the Potato restriction survives the accept-all repaint: the removal row
+        ///     fails and the accept-every-kind loop fails on the first refused kind. This is the
+        ///     mutation the previous revision of this test could NOT catch.
         /// </summary>
         [Test]
         public void AcceptAllMaskIsDerivedFromItemKind_NotALiteral_AndAcceptsEveryKind()
@@ -227,11 +349,28 @@ namespace Perilune.Tests
             var (gs, host) = Boot();
             var pos = FirstWalkable(host.Sim, 0);
             gs.ApplyForTest(new WebCommand(CmdKind.Stockpile, pos.X, pos.Y, i: 1));
+
+            // A REAL RESTRICTION FIRST, so the accept-all paint below has something to remove. Without
+            // it the collapse is a no-op on an entry-less tile and the "no entry" assertion cannot tell
+            // a collapse from a paint that never arrived — nor catch a collapse that merely `return`s
+            // and leaves the player's old restriction silently in force.
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 1 << (int)ItemKind.Potato));
+            host.Sim.Tick();
+            Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong before),
+                "precondition: a restriction is live on the tile");
+            Assert.AreEqual(1UL << (int)ItemKind.Potato, before);
+            Assert.IsFalse(host.Sim.StockZones.Accepts(pos, ItemKind.ControllerModule),
+                "precondition: and it really refuses the kind the accept-all paint must restore");
+
             gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x7FFF));
             host.Sim.Tick();
 
-            Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong stored));
-            Assert.AreEqual(GameSession.AcceptAllMask, stored);
+            // WP-6: accept-everything is the absent entry. A mask that is one bit SHORT of accept-all
+            // is a restriction and would be stored — which is exactly how the mutations named above
+            // announce themselves here.
+            Assert.IsFalse(host.Sim.StockZones.TryGetFilter(pos, out ulong stored),
+                "a paint that accepts every ItemKind REMOVES the entry (mask read back: 0x"
+                + stored.ToString("X", CultureInfo.InvariantCulture) + ")");
 
             int kinds = 0;
             foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
@@ -240,9 +379,10 @@ namespace Perilune.Tests
                 Assert.IsTrue(host.Sim.StockZones.Accepts(pos, k),
                     "a zone set to ACCEPT ALL must accept ItemKind." + k);
             }
-            // ...and it sets exactly one bit per kind — no phantom bit, no missing one.
+            // ...and the host's derived mask sets exactly one bit per kind — no phantom bit, no
+            // missing one. Read off GameSession.AcceptAllMask itself, since the sim now stores nothing.
             int bits = 0;
-            for (ulong m = stored; m != 0; m >>= 1) bits += (int)(m & 1UL);
+            for (ulong m = GameSession.AcceptAllMask; m != 0; m >>= 1) bits += (int)(m & 1UL);
             Assert.AreEqual(kinds, bits, "AcceptAllMask has exactly one bit per ItemKind");
         }
 

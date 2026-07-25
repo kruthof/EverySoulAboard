@@ -57,8 +57,11 @@ namespace Perilune.Tests
     /// <c>AuthoredShips.cs:93</c> <c>DoorClosed = true</c>, "Reyes sealed himself in" — and
     /// <see cref="Simulation.IsWalkable"/> refuses a closed door (<c>Simulation.cs:155</c>), so its
     /// floor is permanently unreachable while still carrying <see cref="TileFlags.Walkable"/>. The
-    /// E0-4 WP-3 `--stockpile far` harness picks three of its tiles, which is why that leg measured
-    /// 49.233 % HaulPickup against 0.017 % HaulDeliver.
+    /// E0-4 WP-3 `--stockpile far` harness picked three of its tiles AS IT THEN STOOD, which is why
+    /// that leg measured 49.233 % HaulPickup against 0.017 % HaulDeliver — a historical measurement,
+    /// and no longer a description of the selector: WP-4b's redo gates `SelectStockpile` on
+    /// reachability, so `far` now skips these tiles. This file hard-codes them instead (see
+    /// <see cref="SealedObservatoryTiles"/>) and reads `far` mode nowhere.
     ///
     /// THE NAMED MUTATIONS. Ten, each physically applied to the source, run, observed failing, and
     /// reverted; every one was checked against the WHOLE file, so no mutation is credited to a test
@@ -80,8 +83,20 @@ namespace Perilune.Tests
     /// </summary>
     public class HaulUnreachableStockpileLivelockTests
     {
-        /// <summary>Three tiles inside the slice's sealed observatory — walkable floor, zero crew
-        /// can path there. Exactly the tiles `occupancy --stockpile far 4` designates.</summary>
+        /// <summary>
+        /// Three tiles inside the slice's sealed observatory — walkable floor, and zero crew can path
+        /// to any of them. That property is authored into the ship and asserted below by
+        /// <see cref="SealedObservatoryTiles_AreWalkableFlagged_ButUnreachable"/>, which is the whole
+        /// reason these are the fixture: they are the cheapest real instance of the shape this file
+        /// exists for, a tile that passes <c>JobWork.IsFreeStockpileTile</c> and that nobody can reach.
+        ///
+        /// DELIBERATELY HARD-CODED, NOT TAKEN FROM THE HARNESS. An earlier revision of this comment
+        /// claimed these were "exactly the tiles `occupancy --stockpile far 4` designates"; that was
+        /// true when it was written and is not a property to depend on. WP-4b's redo gives
+        /// <c>StockpileHarness.SelectStockpile</c> a reachability gate, after which `far 4` picks four
+        /// REACHABLE far-deck tiles and skips these three by design. No assertion in this file reads
+        /// `far` mode, so nothing here changes when that lands — only this sentence had to.
+        /// </summary>
         private static readonly Int3[] SealedObservatoryTiles =
         {
             new Int3(58, 14, 1), new Int3(57, 15, 1), new Int3(58, 15, 1),
@@ -249,6 +264,14 @@ namespace Perilune.Tests
         /// NAMED MUTATIONS caught here: M-C2 (a successful path stamps the tile instead of clearing
         /// it — this test is the ONLY one M-C2 fails, so it is the sole guard on the clear half of
         /// the stamp/clear pair) and M-C1.
+        ///
+        /// THE ONE HARNESS COUPLING IN THIS FILE, and it is deliberate: the tiles come from
+        /// <c>StockpileHarness.SelectStockpile(far: false)</c>, a HOST-SIDE MEASUREMENT helper, so that
+        /// this control scores the same tiles the lane's occupancy numbers were taken on — a control
+        /// against hand-picked tiles would not be a control. The coupling is a one-way ratchet in the
+        /// test's favour: <c>MaxBackedOff == 0</c> below fails loudly if the selector ever starts
+        /// handing back an unreachable bench tile. `far` mode, whose tile set WP-4b's redo changes, is
+        /// read nowhere in this file.
         /// </summary>
         [Test]
         public void BenchStockpile_StillFills()
@@ -569,6 +592,28 @@ namespace Perilune.Tests
         /// test is the ONLY one M-F fails, which is the point — with any simpler arrangement the
         /// kind-less gate closes first and the second call site is never reached, so the mutation
         /// would not bite and the guard would be untested decoration.
+        ///
+        /// WHY THE TRAP TILES CARRY NO FILTER AT ALL — the wp6 × wp7 interaction. As written on the
+        /// WP-7 branch the three trap tiles were painted <c>ulong.MaxValue</c> and the premise asserted
+        /// FOUR live entries. WP-6 then taught <see cref="StockZoneSystem.SetFilter"/> to canonicalise
+        /// (<c>mask &amp;= AcceptAllMask</c>) and to collapse an accept-EVERYTHING mask to NO entry, so
+        /// <c>ulong.MaxValue</c> became <c>0x7F == AcceptAllMask</c> became <c>ClearFilter</c>: the
+        /// three trap entries silently vanished and only the accept-nothing decoy survived. The two
+        /// packages merged clean textually and this premise guard — the one WP-7 wrote precisely so
+        /// this test could not degenerate quietly — caught it (Expected 4, was 1).
+        ///
+        /// The repair is to stop painting the traps at all. "Accept everything" IS the absent entry
+        /// after WP-6, so an UNFILTERED trap tile is not a weaker fixture than an accept-all-painted
+        /// one — it is the same sim state, reached the way a real ship reaches it: WP-5's UI sends a
+        /// whole accept-mask on every stockpile paint, wp6 collapses it, and the tile ends up with no
+        /// entry. Three consequences, all improvements: the fixture no longer depends on the sim
+        /// treating EXACTLY accept-all as absence — MEASURED, full suite: adding
+        /// <c>SetStockpileFilterCommand(trap, ulong.MaxValue)</c> back changes NO test outcome anywhere
+        /// (0 failures), so the painted and the bare arrangement really are the same state, which is
+        /// the point; there is no mask literal to keep in step with <see cref="ItemKind"/>; and the
+        /// arrangement under test is one a player can actually produce. The decoy alone therefore holds <c>Zones.Count == 1</c>, which is all
+        /// <c>Rescan</c>'s <c>filtered</c> predicate needs — it reads <c>Zones.Count &gt; 0</c>, never
+        /// four.
         /// </summary>
         [Test]
         public void FilteredBoard_UnreachableAcceptingTile_DoesNotLivelockEither()
@@ -579,20 +624,34 @@ namespace Perilune.Tests
             // stays open for the whole run.
             sim.EnqueueCommand(new DesignateStockpileCommand(ReachableFarTile, on: true));
             sim.EnqueueCommand(new SetStockpileFilterCommand(ReachableFarTile, 0UL));
-            // The trap: unreachable, accepts every kind.
+            // The trap: unreachable, zoned, and left UNFILTERED — which after WP-6 is precisely
+            // "accepts every kind" (see the method doc). No SetStockpileFilterCommand here on purpose.
             ZoneObservatory(sim);
-            for (int i = 0; i < SealedObservatoryTiles.Length; i++)
-                sim.EnqueueCommand(new SetStockpileFilterCommand(SealedObservatoryTiles[i], ulong.MaxValue));
 
             const int Ticks = 3000;
             var c = Run(sim, Ticks);
 
             Assert.That(sim.StockZones, Is.Not.Null, "premise: the filtered path needs a StockZoneSystem");
-            Assert.That(sim.StockZones.Zones.Count, Is.EqualTo(4),
-                "premise: four filters must be live, or the filtered branch is never taken and this " +
-                "test degenerates into the kind-less one");
+            Assert.That(sim.StockZones.Zones.Count, Is.EqualTo(1),
+                "premise: a filter must be live, or `filtered` in Rescan is false, the filtered branch " +
+                "is never taken, and this test degenerates into the kind-less one. ONE is the whole " +
+                "requirement — the predicate is `Zones.Count > 0` — and the decoy is the only tile " +
+                "that carries a real restriction");
             Assert.That(sim.StockZones.Accepts(ReachableFarTile, ItemKind.Regolith), Is.False,
                 "premise: the decoy must refuse cargo, so it stays free and holds the kind-less gate open");
+            // premise: the TRAP must accept every kind, or the filtered gate would refuse those items
+            // for the ordinary "no zone takes this kind" reason and the backoff — the thing under test
+            // — would never be consulted. Asserted through the real Accepts query, per kind, rather
+            // than as a mask equality: that is the form Rescan asks the question in, and it is true
+            // here BY ABSENCE, which is the state a real accept-all paint leaves behind.
+            foreach (ItemKind kind in Enum.GetValues(typeof(ItemKind)))
+                for (int i = 0; i < SealedObservatoryTiles.Length; i++)
+                {
+                    Assert.That(sim.StockZones.TryGetFilter(SealedObservatoryTiles[i], out _), Is.False,
+                        $"premise: {SealedObservatoryTiles[i]} carries no filter entry");
+                    Assert.That(sim.StockZones.Accepts(SealedObservatoryTiles[i], kind), Is.True,
+                        $"premise: the unreachable trap must accept ItemKind.{kind}");
+                }
             Assert.That(c.MaxBackedOff, Is.GreaterThan(0),
                 "premise: the observatory tiles must have been stamped, or the filtered gate was " +
                 "never asked the question this test exists to ask");
