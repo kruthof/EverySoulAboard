@@ -35,8 +35,10 @@ three of which are one-line notifications (§1.5). But there is **no module boun
 matters most is the *inverse* of the question: the economy is not insufficiently decoupled
 from the ship, it is **insufficiently coupled to the crew**. `grep -rni skill sim/` returns
 nothing; the work countdown is five independent copies of `--citizen.JobWorkTicks`; the
-binding operator model ("mood + skill are the throughput") is 0 % built and has nowhere to
-land (§6). Creating that one seam is simultaneously the top maintainability win, the E2
+binding operator model ("mood + skill are the throughput") is 0 % built — though **not**, as an
+earlier draft of this document claimed, without a seam to build against: crew mood already
+modulates machine wear through a constructor-injected `DirectorSystem`, which is the precedent
+`WorkRate` should copy (§1.5.1, §6). Creating that one seam is simultaneously the top maintainability win, the E2
 prerequisite, and the abstraction any portable economy needs — which is why it is step 1 of
 the plan and why the plan does **not** propose an extraction (§7, §8).
 
@@ -168,7 +170,10 @@ repos and one engine port — by discipline alone, with no compiler help.
 
 ### 1.3 Inside `Sim.Core` there is no boundary whatsoever
 
-`Sim.Core` is 16,138 LOC in **one namespace**, `Perilune.Sim`. Every system reaches every
+`Sim.Core` is 16,138 LOC in effectively **one namespace**, `Perilune.Sim` — 72 of its 73
+`namespace` declarations, the single exception being a shim declaring
+`namespace System.Runtime.CompilerServices` (the `IsExternalInit` polyfill that `LangVersion 9.0`
+records require). Every system reaches every
 other through one god object:
 
 ```
@@ -240,7 +245,14 @@ concatenation:
 | `sim.PowerDirty` | 2 | power net invalidation | ship-specific |
 | `sim.RemoveDevice` / `sim.AddDevice` | 2 | device lifecycle | generic-shaped |
 
-**Seventeen members. That is the whole outward surface of the economy.**
+**Seventeen members — but that is NOT the whole outward surface.**
+
+> **⚠ CORRECTED 2026-07-25.** This line originally read *"Seventeen members. That is the whole
+> outward surface of the economy."* It is not. The economy has one outward dependency that does
+> not travel through `Simulation` at all: **`MachineWearSystem` takes a `DirectorSystem` by
+> constructor injection** (`SystemStack.cs:24,36`) and reads its `WearPressure` lever
+> (`MachineWearSystem.cs:47`). A constructor-injected sibling system is invisible to a
+> `sim.X` census — which is exactly how this audit missed it. See §1.5.1.
 
 And the game-specific reaches are **seven sites**, which I list in full because the count is
 the finding.
@@ -273,13 +285,15 @@ the finding.
 | 3 | `Systems/DeconstructSystem.cs:489` | `sim.Rooms.MarkDirty()` | notify only |
 | 4 | `Systems/BuildSystem.cs:214` | `sim.PowerDirty = true` | notify only |
 | 5 | `Systems/DeconstructSystem.cs:490` | `sim.PowerDirty = true` | notify only |
-| 6 | `Systems/MachineWearSystem.cs:45` | `sim.Rooms.Rooms` (list fetch, for the vacuum sentinel) | notify-adjacent |
+| 6 | `Systems/MachineWearSystem.cs:45` | `sim.Rooms.Rooms` (list fetch, for the vacuum sentinel) | **a read** |
 | 7 | `Systems/MachineWearSystem.cs:59,62` | `RoomAt(...)`, `room.TemperatureK` | **THE ONLY REAL READ** — heat modulates wear |
 | — | `Systems/DeconstructSystem.cs:251,351,484` | `IsPressureHull(World, Int3)` — a wall adjacent to `TileDefs.Void` or the map edge | **game-specific but self-contained**: a static predicate over `World` geometry, no system dependency |
 | — | `Systems/CraftingSystem.cs:109`, `MachineWearSystem.cs:49,177`, `sim.TryGetDeviceAt` | `Device` / `DeviceKind` | **generic-shaped** ("a machine"), not a ship reach |
 
-**Six of the seven are notifications.** Sites 1–5 are one line each, trivially replaceable by an
-event (§7 step 4). Site 7 — the only place the economy *reads* ship state — is a *generic
+**Five of the seven are notifications; two are reads, both in `MachineWearSystem`.** Sites 1–5 are
+one line each, trivially replaceable by an event (§7 step 4). (An earlier version of this paragraph
+and of the test's failure message said "six notify-only" — arithmetically impossible, since 3+2=5 —
+by mis-classifying site 6's list fetch as a notification. Corrected in both places.) Site 7 — the only place the economy *reads* ship state — is a *generic
 mechanism* ("environment modulates wear rate", already def-gated by `Wear.HotThresholdC` and
 `Wear.WearPerDegreeC`) with a game-specific *source* for the value. Only `IsPressureHull` is
 irreducibly about a spaceship, and it costs no coupling.
@@ -297,8 +311,11 @@ the whole economy file set:
 | `Deck` | **0** |
 | `Moss` / `Dsl` / `ScriptRuntime` | **0** |
 
-The economy has no idea the crew have inner lives, that there is an LLM, that there is air,
-or that anything is drawn. That is a much better starting position than
+The economy has no idea there is an LLM, that there is air, or that anything is drawn — and
+it names no crew-mood field directly. **But it is not true that "the economy has no idea the
+crew have inner lives": crew mood already modulates machine wear through an injected sibling
+system. See §1.5.1, which is the correction to this paragraph.** On the narrower point the
+table makes, this is still a much better starting position than
 `docs/ECONOMY.md` §1's indictment would suggest — the indictment is about the economy being
 *shallow and broken*, not about it being *entangled*.
 
@@ -309,8 +326,7 @@ or that anything is drawn. That is a much better starting position than
 > `2>/dev/null`, and every count came back `0` because **nothing was scanned**. The zero was an
 > artefact of a broken measurement, not a measurement.
 >
-> The re-measured truth: **all twenty are zero in CODE** (the claim above stands, and is now
-> enforced by `Economy_KnowsNothingAboutSoulsPresentationOrPhysiology`), but one appears in
+> The re-measured truth: **all of them are zero in CODE** (the claim above stands), but one appears in
 > **prose** — `DeconstructSystem.cs:441`'s doc comment says the event it publishes is what
 > *"`HistorySystem` turns into a Chronicle line naming the crew member"*. That is correct
 > documentation of a downstream consumer, and the economy has no dependency on `Chronicle`
@@ -322,6 +338,87 @@ or that anything is drawn. That is a much better starting position than
 > for — *a check whose named target cannot bite* — and here it hit the audit's own measurement.
 > It was caught only because the assertion was mechanised and immediately disagreed with the
 > prose. **That is the argument for §7 step 2 in miniature.**
+>
+> **Enforcement, stated precisely.** `Economy_KnowsNothingAboutSoulsPresentationOrPhysiology`
+> checks **23 distinct identifiers**: the ten souls/narrative names, `Director` and `WearPressure`
+> (§1.5.1), `Llm`/`IChatBackend`/`CitizenEffect`, `Glyph` plus its two specific types,
+> `Moss`/`ScriptRuntime`, `Atmosphere`/`Oxygen`/`Suffocation`/`Fatigue`, and `Deck`. (`GlyphColor`
+> and `GlyphMapper` are substrings of `Glyph`, so 25 table rows are 23 distinct checks; the
+> specific names exist only so a failure message can name the exact type.) An earlier version of
+> this box claimed the table was "now enforced" while `Atmosphere`, `Oxygen`, `CitizenEffect`,
+> `Moss` and `ScriptRuntime` were absent from the list — they were added rather than the prose
+> weakened, since all were measured at zero. `Dsl` is deliberately **not** asserted: banning a
+> three-letter token invites a false positive on some future identifier for no gain.
+
+### 1.5.1 The one souls→economy channel that already exists — and why it changes the plan
+
+**This subsection is a correction, added 2026-07-25 after an independent review caught it.** The
+audit above concluded the economy is blind to the crew. It is not, and the mechanism is one this
+document's own §2.5 mentioned in passing (*"the Director's `× pressure` lever"*) without making
+the connection.
+
+**Crew mood already modulates machine wear, in the shipped default system stack:**
+
+```
+Citizen.Mood ──(mean over crew)──▶ ShipMetrics.Morale ──(× WeightMoraleDeficit 0.4)──▶
+DirectorSystem tension ──(lever, clamped [1, MaxWearPressure])──▶ DirectorSystem.WearPressure
+──▶ MachineWearSystem:  device.Condition -= WearPerHour/3600 * dt * heatMultiplier * pressure
+```
+
+| step | citation |
+|---|---|
+| the injection | `SystemStack.cs:24` `var director = new DirectorSystem();` · `:36` `new MachineWearSystem(director)` |
+| the read | `MachineWearSystem.cs:47` `float pressure = _director != null ? _director.WearPressure : 1f;` |
+| the effect | `MachineWearSystem.cs:70` `device.Condition -= def.WearPerHour / 3600f * DtSeconds * multiplier * pressure;` |
+| mood enters | `DirectorSystem.cs:66` `d.WeightMoraleDeficit * (1f - m.Morale)` |
+| `Morale` **is** mean mood | `ShipMetrics.cs:83,86` `moodSum += citizens[i].Mood;` … `m.Morale = (moodSum / pop + 100f) / 200f;` |
+| the weight | `SimDefs.cs:655` `WeightMoraleDeficit = 0.4f` |
+
+**Why every measurement in this audit missed it.** The mechanism is a **constructor-injected
+sibling system**. It is not a `using` (both types share one namespace), and it is not a `sim.X`
+reach (the reference is a private field, not a path through `Simulation`). A dependency census
+built on those two shapes — which is exactly what §1.4/§1.5 are — cannot see it. It is now the
+fourth disclosed limitation in `ArchitectureBoundaryTests`' class doc, and `Director`/`WearPressure`
+are scanned with an explicit carve-out for `MachineWearSystem` so that a *second* such channel has
+to be deliberate.
+
+**This makes the plan's headline recommendation stronger, not weaker.** §6 said the operator model
+was *"0 % built with no seam to build against"*. The first half stands — there is no skill concept
+and no per-worker rate. **The second half was wrong.** The wiring pattern the operator model needs
+already exists, shipped, with all four properties the binding design authority demands:
+
+- **injected, not reached for** — the economy system takes its modulator as a constructor argument,
+  so the dependency is explicit and testable;
+- **def-weighted** — the magnitude is a def (`WeightMoraleDeficit`), so it is tunable without code,
+  which gives `docs/design/perilune-automation-and-souls.md` §9's "magnitude curve" question a home;
+- **mood-derived and deterministic** — a pure function of hashed `Citizen.Mood`, no RNG, satisfying
+  that doc's §4.2 ("never a runtime RNG dice roll");
+- **inert when absent** — `_director == null` ⇒ `× 1f`, an IEEE identity
+  (`MachineWearSystem.cs:36-37`), which is precisely how it landed without moving a pin.
+
+So `JobWork.WorkRate` (§7 step 1) should **follow this precedent rather than invent a pattern**:
+`JobSystem` gains an optional injected modulator, `WorkRate` returns `1` when it is absent, and the
+magnitude is a def. That is materially easier and better-evidenced than what §6 originally proposed,
+and it means E2's operator model is an *extension of a shipped mechanism* rather than a new
+architectural direction.
+
+**One honest caveat about the existing channel:** it is mood → *wear*, i.e. mood makes machines
+break faster. The operator model wants mood → *throughput*. Those are different couplings with
+different design consequences — one is a hidden tax, the other is visible at the workbench — and
+`automation-and-souls` §4.1's "material, not cosmetic" test applies to the new one independently.
+**The precedent is the wiring, not the game feel.**
+
+### 1.5.2 The other invisible channel: `sim.Systems`
+
+`Simulation` exposes `internal ISimSystem[] Systems` (`Simulation.cs:210`) and three economy call
+sites use it to resolve a sibling system lazily — `BuildJobSource.cs:56`,
+`DeconstructJobSource.cs:58`, `CraftingSystem.cs:326`, plus two in the mixed `Commands.cs`. Because
+the array is untyped, **nothing in the source text says which system is being fished out**: a review
+probe type-tested for `AtmosphereSystem` beside an existing loop and every boundary assertion stayed
+green. It is a legitimate pattern — it is how a source stays inert when its system is absent from
+the stack — but it is a general-purpose hole in any dependency census. The call count is now pinned
+so a fourth caller is visible; the *contents* of the type test are not checkable by any source scan,
+and that is disclosed rather than fixed.
 
 ### 1.6 Essential vs accidental coupling
 
@@ -560,25 +657,42 @@ stockpile zones (`StockZoneSystem` is the empty stub; E0-4 unmerged), `OreRegist
 
 ### 2.6 The warning in the data: portable code is not portable tests
 
-**moonbase's entire 30-file, 4,923-LOC, 175-`[Test]` Unity suite was abandoned.** 29 of 30
-files have no counterpart here. Gone: `PathfindingTests`, `SaveLoadTests`, `ThermalTests`,
-`DeterminismTests`, `AllocationTests`, `CraftingTests`, `JobSystemTests`,
-`JobInteractionTests`, `MaintenanceTests`, `AtmosphereTests`, `PowerNeedsTests`, `GoalTests`,
-`ExplorationTests`, `FoodWaterTests`, `ShipSurvivalTests` — and **all eight
-`EditMode/Moss/*` files, 1,105 LOC**, the lexer/parser/runtime/audit/persistence/error/
-integration/allocation suite for `Sim.Dsl`.
+> **⚠ THIS SECTION WAS A FILENAME CENSUS PRESENTED AS A COVERAGE CENSUS — corrected 2026-07-25
+> after an independent review.** Every *file* claim below is true; the *coverage* conclusion drawn
+> from it was not. moonbase's 30 test files have no same-named counterpart here, but this repo
+> rebuilt the coverage **distributed per system** rather than losing it. Measured:
+>
+> | moonbase file | is its SUBJECT covered here? |
+> |---|---|
+> | `AllocationTests.cs` (61 LOC, 2 tests) | **yes, far better** — `GC.GetAllocatedBytesForCurrentThread` appears **32 times across 14 files** with **15 zero-allocation assertions**. `JobDispatchTests.cs:594` alone asserts zero bytes across **3000 dirty-every-tick job-board rescans** |
+> | `ThermalTests`, `AtmosphereTests`, `DeterminismTests`, `CraftingTests`, `JobSystemTests`, `MaintenanceTests`, `SaveLoadTests` | **yes** — 7–26 files reference each subject |
+> | `GoalTests.cs` | **no** — `GoalSystem` is referenced by 0 test files here |
+> | `PathfindingTests.cs` | **thin** — `PathService` is referenced by 1 |
+> | `ExplorationTests.cs` | **thin** — 2 |
+>
+> So the real losses are narrow and nameable: **`GoalSystem` has no coverage, `PathService` and
+> `ExplorationSystem` are thin.** The sweeping "4,923 LOC of coverage was abandoned" framing was
+> wrong, and the lesson below survives only in its weaker form — see the amended paragraph.
 
-**`Sim.Dsl` is the most portable module in the repo — 16 of 16 files byte-identical — and its
-entire dedicated test suite did not come along.** All nine of those files are absent here;
-moonbase's 37 dedicated MOSS unit tests are replaced by 25 integration/wire-level ones, with
-**no direct lexer or parser coverage at all** (measured — see §8.5). This repo rebuilt to a
-larger suite overall, but not a superset: `GoalSystem` is referenced by **0** test files here
-(moonbase had `GoalTests.cs`); `PathService` by **1** (moonbase had `PathfindingTests.cs`).
+**moonbase's 30-file, 4,923-LOC, 175-`[Test]` Unity suite has no same-named counterpart here**
+(29 of 30 files absent), including **all eight `EditMode/Moss/*` files, 1,105 LOC** — the
+lexer/parser/runtime/audit/persistence/error/integration/allocation suite for `Sim.Dsl`. What
+that *cost* varies enormously by subject, per the box above: mostly nothing, and in the
+allocation case the replacement is stronger than the original.
+
+**Where the loss is real: `Sim.Dsl`.** It is the most portable module in the repo (16 of 16 files
+byte-identical) and its nine dedicated test files are all absent. moonbase's 37 dedicated MOSS
+unit tests are replaced by 25 integration/wire-level ones, and there is **no dedicated lexer or
+parser unit suite**. Note the honest qualifier, because the same census-vs-coverage error applies
+here too: `MossCompiler.Compile` *is* exercised indirectly from ~14 test files, so the front end is
+not untested — it is untested *directly*, with no unit-level cases for its diagnostics, error
+recovery or budgets. See §8.5.
 
 Two implications for the plan. First, when §3.2 says a unit is "port-proven", that means its
-*code* crossed — its *tests* may not have, and the tests are where the hard-won behaviour is
-pinned. Second, the reusable asset in §4 is only reusable if the gate comes with it: **copy
-`ci.sh` and the golden fixtures, not just the source.**
+*code* crossed — its *tests* may not have, and the tests are where hard-won behaviour is pinned.
+Second, the reusable asset in §4 is only reusable if the gate comes with it: **copy `ci.sh` and the
+golden fixtures, not just the source.** Both still hold; what does not hold is the idea that this
+port lost coverage wholesale.
 
 One thing that looks like a port regression and is not: **player-facing save/load.** `SaveWriter`/
 `SaveReader` exist here and are test-covered but unreachable from any host — and in moonbase
@@ -778,14 +892,26 @@ portability reasons.** Do it for the two reasons that are already good — closi
 
 ---
 
-## 6. The gap that matters — the operator model has nowhere to land
+## 6. The gap that matters — the operator model has one precedent and no seam
 
 `docs/design/perilune-automation-and-souls.md` is a **binding** design authority. Its §4 is
 titled "the centerpiece" and its claim is: *"Mood + skill are the throughput."* §4.1
 insists the operator's effect be **material, not cosmetic**. §4.2 requires it be a
 deterministic function of hashed state, never an RNG roll. §7's table assigns it to E2.
 
-**Measured state of that principle: 0 % implemented, with no seam to implement it against.**
+**Measured state of that principle: 0 % implemented — but it has a precedent.**
+
+> **⚠ CORRECTED 2026-07-25.** This section originally read *"0 % implemented, with no seam to
+> implement it against."* The first clause is right; the second was wrong, and the correction makes
+> the recommendation **stronger**. There is exactly one shipped souls→economy channel —
+> `Citizen.Mood` → `ShipMetrics.Morale` → `DirectorSystem.WearPressure` → device wear, via
+> constructor injection into `MachineWearSystem` — and it already has every property the design
+> authority demands (injected, def-weighted, deterministic, inert when absent). **§1.5.1 is the full
+> citation trail and the argument.** So the operator model is an *extension of a shipped mechanism*,
+> not a new architectural direction, and step 1 below is a smaller, better-evidenced change than
+> originally described.
+
+What is genuinely missing is narrower than "a seam": there is no **per-worker** rate anywhere.
 
 - `grep -rni skill sim/` → **no matches**. There is no skill concept in the simulation.
 - `Citizen.Mood` exists and is hashed (`Simulation.cs:386`). Its only readers are
@@ -821,6 +947,14 @@ requirement." Both halves point at the same missing function:
 That is three requirements satisfied by one ~40-line change. Nothing else in this audit has
 that ratio, which is why it is step 1.
 
+**And it is not a novel design.** `MachineWearSystem` already does the analogous thing for wear:
+takes an optional modulator by constructor injection, reads a def-weighted mood-derived scalar off
+it, multiplies, and degrades to `× 1f` when the modulator is absent (§1.5.1). `WorkRate` is that
+pattern applied to labour instead of decay. The one design question the precedent does *not* answer
+is whether mood→throughput should be a *hidden* multiplier (as mood→wear currently is) or a
+*visible* one at the workbench; `automation-and-souls` §4.1 ("material, not cosmetic") argues
+strongly for visible, and that is a design decision for E2, not an architectural one.
+
 ---
 
 ## 7. The plan
@@ -855,7 +989,8 @@ would have changed the outcome of the last port. It belongs in `docs/ARCHITECTUR
 
 ### Step 1 — The work seam. `M` + `P` + unblocks E2. **~1–2 days.**
 
-**What changes.** One static helper beside `JobWork` (`Jobs/JobContext.cs`):
+**What changes.** One static helper beside `JobWork` (`Jobs/JobContext.cs`), shaped to match the
+shipped `MachineWearSystem` precedent (§1.5.1) rather than to invent a pattern:
 
 ```csharp
 // SKETCH — not built. Rate 1 today ⇒ identical behaviour, pins hold.
@@ -868,10 +1003,16 @@ public static bool ApplyWork(Simulation sim, Citizen worker, int ticks = 1)
 public static int WorkRate(Simulation sim, Citizen worker) => 1;  // E2 replaces this body
 ```
 
-Then replace the five sites in §6 with calls. **`WorkRate` returning the literal `1` makes
-this byte-for-byte identical** — an integer identity, the same trick
-`MachineWearSystem`'s `× 1f` director lever used (`MachineWearSystem.cs:36-37`) to land
-pin-neutral.
+Then replace the five sites in §6 with calls. **`WorkRate` returning the literal `1` makes this
+byte-for-byte identical** — an integer identity, exactly the trick `MachineWearSystem`'s `× 1f`
+director lever used (`MachineWearSystem.cs:36-37`) to land pin-neutral.
+
+**Follow the precedent for the E2 body, not just the identity trick.** When E2 fills `WorkRate`
+in, the modulator should arrive the way `WearPressure` does: an **optional constructor-injected**
+source on `JobSystem` (so the dependency is explicit and the system degrades to rate 1 without it),
+with the **magnitude in a def** (`WeightMoraleDeficit` is the model), computed as a **deterministic
+function of hashed `Citizen` state** — never an RNG roll (`automation-and-souls` §4.2). Getting the
+signature right now, against a pattern already in the tree, is most of what this step buys.
 
 **What it buys.** One place where "a person does a tick of work" is defined. E2's operator
 model becomes a one-function change instead of a five-file change. Kills the false
@@ -887,13 +1028,18 @@ an identity and the step is wrong.
 
 ### Step 2 — An architecture test. `M` + `P`. **~1 hour. Do this first if only one thing happens.**
 
-> **✅ LANDED 2026-07-25** — `tests/Perilune.Tests/ArchitectureBoundaryTests.cs`, 8 tests, plus the
-> defs pin in `DefsChecksumTests.cs`. Test-only; no production file touched; all four pins
-> byte-identical; gate `903 dotnet + 485 node`, `ci.sh` exit 0. Every assertion was proven to bite
-> by physically introducing the violation and observing the specific failure (11 mutations,
-> including two *negative* controls confirming a comment mentioning `Mood` or `foreach` does **not**
-> fail). Writing it corrected two measurements in this document — see the boxes in §1.5.
-> Assertions deliberately **not** written are listed at the end of this step.
+> **✅ LANDED 2026-07-25**, then **revised after an independent review send-back** —
+> `tests/Perilune.Tests/ArchitectureBoundaryTests.cs` (10 tests) plus two determinism pins in
+> `DefsChecksumTests.cs`. Test-only; no production file touched; all four pins byte-identical.
+> Every assertion proven to bite by physically introducing the violation and observing the specific
+> failure; the review's own probes (a `using static` cycle, a `using ALIAS =` cycle, a quoted `/*`
+> blinding the comment stripper, a `;foreach` token evasion, order-laundering via `.CopyTo`, an
+> unscanned `Commands.cs`, and a second souls→economy channel) are all now caught, and four negative
+> controls confirm comments, string literals and self-referencing `using` aliases do **not** fail.
+> Writing and then revising it corrected **five** measurements in this document: §1.5's site count
+> (twice), §1.5's "whole outward surface" claim, §1.5.1's souls channel, §2.6's coverage ledger, and
+> §6's "no seam" conclusion. Assertions deliberately **not** written are listed at the end of this
+> step.
 
 **What changes.** One new test file. No production code. Assertions:
 
@@ -927,11 +1073,15 @@ rather than a boundary worth defending:
 |---|---|
 | **Fully-qualified cross-module references** (`Perilune.Glyph.GlyphColor.X` with no `using`) | A regex cannot resolve types. The DAG tests pin the **declared** dependency — the `using` line, which is what a reviewer reads and what a future `.csproj` split turns into a `ProjectReference`. Stated as a limitation in the test's class doc rather than faked. |
 | **`foreach` over dictionaries repo-wide** | Five files elsewhere in `Sim.Core` legitimately use `foreach` (`Commands.cs`, `RoomState.cs`, `AtmosphereSystem.cs`, `CitizenMemory.cs`, `HistorySystem.cs`). The determinism rule is a **`Jobs/`** rule (`IJobSource.cs:29-32`); generalising it would fire on correct code and get suppressed. |
-| **Zero-alloc on tick paths** | Not observable from source text. `AllocationTests` in moonbase measured it at runtime; that is the right mechanism and it is a separate piece of work (§2.6). |
+| **Zero-alloc on tick paths** | Not observable from source text — and **already covered at runtime**, which is the honest reason. `GC.GetAllocatedBytesForCurrentThread` appears 32 times across 14 test files with 15 zero-allocation assertions; `JobDispatchTests.cs:594` asserts zero bytes over 3000 dirty-every-tick rescans. A source-scanning approximation would be strictly worse than what exists. |
 | **Exact `Simulation`-member counts** for the economy (the §1.5 17-member table) | Legitimately churns with every economy lane — `sim.Items`/`sim.Defs`/`sim.World` counts move whenever anyone edits a job source. Pinning them would fire on nearly every E-lane commit and teach nothing. Only the *ship-system* reaches are pinned, because those are the ones that must stay rare. |
 | **`ItemKind` member count** | E0-6/E0-7 are *supposed* to add `Seals` and `Ice`. Asserting 7 would fail by design. |
-| **`Sim.Core` has no file IO** | Two documented violations already exist (`Sim.Dsl/RulesLoader.cs`, `Sim.Llm/Providers/LlmSettings.cs` — §1.2), both outside `Sim.Core`. A `Sim.Core`-only assertion would pass vacuously today and I could not verify it stays meaningful; better as a real cleanup than a green test. |
-| **InvariantCulture usage** | A `ToString()` with no `IFormatProvider` is already flagged by analyzer warnings CA1305/CA1310 during the build (visible in the gate output). Duplicating that in a test would add noise, not coverage. |
+| **`Sim.Core` has no file IO** | It would **FAIL, not pass vacuously** — the original reason given here was wrong. `System.IO` is used legitimately throughout `Sim.Core`: `BinaryWriter`/`BinaryReader` in every `IStatefulSystem`'s `CaptureState`/`RestoreState` (≥5 systems) and in `Save{Reader,Writer}`. The invariant is "hosts own **file** IO; sim takes text", and separating a `BinaryWriter` over a caller-supplied stream from a `File.ReadAllText` needs more than a token scan. The two known real violations (`Sim.Dsl/RulesLoader.cs`, `Sim.Llm/Providers/LlmSettings.cs` — §1.2) are outside `Sim.Core` anyway. Better as a real cleanup than a fragile test. |
+| **Constructor-injected sibling systems** | **The most important gap, and it is structural.** §1.5.1's souls→economy channel is a private field assigned in a constructor — no `using`, no `sim.X` path, nothing a text scan can key on. `Director`/`WearPressure` are now scanned *by name* with a carve-out, which catches a second channel through the *same* system; it would not catch a channel through a differently-named one. A real fix needs reflection over `ISimSystem` constructor parameters, which is possible (all six modules are one assembly at runtime) and is the natural follow-up if this class of coupling recurs. |
+| **What `sim.Systems` fishes out** | §1.5.2. The array is untyped, so the *call count* is pinnable but the *type test inside* is not. A review probe type-tested for `AtmosphereSystem` and stayed green. Disclosed, not fixed. |
+| **The contract's lambda/closure clause** | `IJobSource.cs:29-32` forbids LINQ, lambdas and closures on the tick path. `foreach` and the order-laundering escapes are mechanised; `=>` is not, because it is ubiquitous in expression-bodied members and a token ban would be pure noise. Review-only, and stated as such in the test. |
+| **Interpolated-string holes** | `CodeOnly` treats `$"{Foo.Bar}"` contents as string text, so an identifier used *only* inside an interpolation hole is invisible. Fail-open (a missed violation, never a false failure); no economy file currently contains an interpolated string. Raw string literals (`"""`) are closed by `LangVersion 9.0`. |
+| **InvariantCulture usage** | Partly covered by analyzers CA1305/CA1310, but **flagged ≠ enforced**: `Directory.Build.props` sets no `TreatWarningsAsErrors`, and three such warnings ride along with `ci.sh` exiting 0 today. So this is a genuine gap, not a covered one. A token scan is still the wrong fix (the call sites needing invariance are not syntactically distinctive); the right fix is `TreatWarningsAsErrors` for CA1305/CA1310, which is a build change and outside a test-only lane. `DefsCultureTests` covers the def parser specifically. |
 
 ### Step 3 — Real `.csproj` per sim module. `M` + `P`. **~1 day, moderate risk.**
 
@@ -1125,11 +1275,16 @@ I measured this rather than leaving it as a worry, and it is worse than §2.6 im
 | MOSS tests | **37 dedicated unit tests** | **25**, spread across `DesignerRuleTests` (9), `WebMossTests` (12), `MossApplyContractTests` (4) |
 | direct lexer / parser coverage | yes | **none** |
 
-So the repo's most valuable portable asset — 2,679 lines of language implementation — has
-**zero direct unit coverage of its lexer and parser**, and what coverage exists is
-integration- and wire-level. That is not a portability problem, it is a live correctness
-problem that happens to also destroy the asset's reuse value: nobody sensibly lifts a parser
-into a second game on the strength of 12 WebSocket tests.
+So the repo's most valuable portable asset — 2,679 lines of language implementation — has **no
+dedicated unit suite**, and what coverage exists is integration- and wire-level.
+
+**Stated precisely, because the same census-vs-coverage trap applies here.** `MossCompiler.Compile`
+*is* exercised indirectly from ~14 test files, so the lexer and parser are not untested — a
+malformed script would fail something. What is absent is *unit-level* coverage of the things the
+integration tests do not exercise: diagnostic messages and positions, error recovery, step/ budget
+enforcement, allocation behaviour, and persistence round-trips — precisely the eight files moonbase
+had. That is a modest correctness gap and a large *reuse* gap: nobody sensibly lifts a parser into a
+second game on the strength of 12 WebSocket tests, however green.
 
 **Restoring a `Sim.Dsl` unit suite is the highest-value item I found that is not in the plan
 above.** I have not costed it (I did not read the moonbase suite's contents, only its size and
