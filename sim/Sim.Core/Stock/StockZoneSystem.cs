@@ -9,6 +9,10 @@ namespace Perilune.Sim
     /// position. A stockpile tile with NO entry here = accept-all (the whole back-compat story:
     /// every E0-3 stockpile and every pre-E0-4 save keeps accept-everything with zero migration).
     /// An entry with <c>AcceptMask == 0</c> is a valid "accept nothing" zone.
+    ///
+    /// WP-6: an accept-EVERYTHING mask is never an entry — it is the ABSENCE of one. See
+    /// <see cref="StockZoneSystem.SetFilter"/>; the invariant is "every stored entry restricts
+    /// something", so <c>Zones.Count &gt; 0</c> means "some tile really is restricted".
     /// </summary>
     public struct StockZone
     {
@@ -73,6 +77,33 @@ namespace Perilune.Sim
         /// to decode to "ZONE" by <c>EconomySystemRegistrationTests.FourCCsSpellTheirChapter</c>.</summary>
         public const ulong Seed = 0x5A4F4E45UL;
 
+        /// <summary>
+        /// WP-6 — the mask that accepts EVERY declared <see cref="ItemKind"/>: bit <c>k</c> set for
+        /// each declared kind, and nothing else (today kinds 0–6 ⇒ <c>0x7F</c>). DERIVED FROM THE
+        /// ENUM, never hard-coded, so an 8th kind widens it automatically instead of silently
+        /// turning "accept everything" into "accept everything except the new kind" — the exact way
+        /// a hard-coded <c>0x7F</c> would rot. Computed once at type-init (the
+        /// <c>JobSystem.KindCount</c> precedent, <c>JobSystem.cs:57</c>); no tick path touches it.
+        ///
+        /// Kinds ≥ 64 are skipped, not shifted: <c>1UL &lt;&lt; 64</c> silently aliases to bit 0 in
+        /// C#, and <see cref="StockZone.AcceptMask"/> already documents kinds ≥ 64 as
+        /// unrepresentable (they would need a wider mask and a format bump).
+        /// </summary>
+        public static readonly ulong AcceptAllMask = ComputeAcceptAllMask();
+
+        private static ulong ComputeAcceptAllMask()
+        {
+            ulong m = 0;
+            // ItemKind's underlying type is byte, so every value is in 0..255 — the only bound worth
+            // testing is the mask's 64-bit ceiling.
+            foreach (var kind in (ItemKind[])System.Enum.GetValues(typeof(ItemKind)))
+            {
+                int k = (int)kind;
+                if (k < 64) m |= 1UL << k;
+            }
+            return m;
+        }
+
         // Canonical packed-position-sorted filter list. Never iterated for lookups (a small linear
         // scan by position, exactly like DeconstructSystem.TryGet/Cancel, is fine at v0 densities
         // and stays alloc-free).
@@ -92,9 +123,37 @@ namespace Perilune.Sim
         /// change (the same axis a stockpile designation dirties). No legality check: an entry on a
         /// non-stockpile tile is inert (haul ignores non-stockpile tiles), so a mask is only ever
         /// consulted where a presence bit already exists.
+        ///
+        /// WP-6 — TWO CANONICALISATIONS, both at this single write door (the only way a running sim
+        /// can ever create an entry; <c>_zones</c> is private and the command path lands here):
+        ///
+        /// 1. UNDEFINED BITS ARE MASKED OFF. <see cref="Accepts"/> only ever consults a real
+        ///    <see cref="ItemKind"/>'s bit, so bits above <see cref="AcceptAllMask"/> change no
+        ///    behaviour — but <see cref="StateChecksum"/> folds <see cref="StockZone.AcceptMask"/>
+        ///    VERBATIM, so leaving them would make two identically-behaving sims hash differently
+        ///    (hashed state that means nothing — the class of thing W0-1 spent a package removing).
+        ///    Callers that spell "everything but Potato" as <c>~(1UL &lt;&lt; 3)</c> and callers that
+        ///    spell it <c>0x77</c> now produce the same canonical state.
+        ///
+        /// 2. AN ACCEPT-EVERYTHING MASK STORES NO ENTRY — it collapses to <see cref="ClearFilter"/>.
+        ///    "Accept everything" IS the absent-entry state (see the type doc), so storing it would
+        ///    be a second, redundant spelling of the same meaning. It would also be actively
+        ///    expensive: <c>HaulJobSource.cs:116</c> takes its pre-E0-4 fast path on
+        ///    <c>Zones.Count == 0</c>, so one accept-all paint anywhere would turn the per-item
+        ///    <c>AnyFreeStockpileAccepts</c> gate — a linear scan over <see cref="TryGetFilter"/>,
+        ///    itself a linear scan — on FOREVER, at 10 Hz, on a ship with no restriction on it.
+        ///    Collapsing keeps the invariant "every stored entry restricts something".
+        ///
+        /// Note the collapse is a REMOVE, never a no-op: repainting a restricted tile as unrestricted
+        /// must drop the old mask, or the player's restriction survives a "you accept everything now"
+        /// paint invisibly. On a tile that had no entry, <see cref="ClearFilter"/> is itself a no-op
+        /// and does not dirty the board — nothing changed, so nothing needs rebuilding.
         /// </summary>
         public void SetFilter(Simulation sim, Int3 pos, ulong mask)
         {
+            mask &= AcceptAllMask;                                  // (1) drop meaningless bits
+            if (mask == AcceptAllMask) { ClearFilter(sim, pos); return; }  // (2) accept-all = no entry
+
             for (int i = 0; i < _zones.Count; i++)      // replace an existing filter in place
             {
                 if (_zones[i].Pos != pos) continue;
@@ -186,6 +245,18 @@ namespace Perilune.Sim
 
         public void RestoreState(System.IO.BinaryReader reader, ushort version)
         {
+            // WP-6, DELIBERATELY NOT MIGRATED: the accept-all collapse is enforced at the WRITE door
+            // (SetFilter) only — RestoreState restores exactly what CaptureState wrote, byte for
+            // byte, including a hypothetical all-accept or junk-high-bit entry. Reasons: (a) no save
+            // the game can produce contains one, because SetFilter is the only way an entry is ever
+            // created (_zones is private; the command path lands there) and the ZONE v2 payload has
+            // never shipped — so there is nothing to migrate; (b) load must stay the exact inverse of
+            // save, or `loaded.StateHash() == saved.StateHash()` (the save gate every stateful system
+            // here is held to) stops being true for the blobs it does not rewrite; (c) such an entry
+            // is behaviourally inert anyway — it accepts every kind, exactly like its own absence —
+            // and the next SetFilter/ClearFilter on that tile removes it. So NO StateVersion bump and
+            // NO format change: v2 stays v2.
+            //
             // Version-BRANCH, never version-BAIL (ECONOMY-PLAN §3.3). Deliberately NOT
             // `if (version != StateVersion) return;` — that shape silently drops every v1 save the
             // moment v2 ships, losing nothing today but every stockpile the day filters are saved.

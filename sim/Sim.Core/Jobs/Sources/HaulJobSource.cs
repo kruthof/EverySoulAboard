@@ -113,6 +113,14 @@ namespace Perilune.Sim
                     // With no registry, or no filter set, this fast-path is skipped and every item
                     // that passed the guards below boards exactly as it did pre-E0-4 (the byte-for-byte
                     // inert path on any pinned, filter-free ship).
+                    //
+                    // WP-6 KEEPS THAT ESCAPE HATCH REACHABLE. `Zones.Count > 0` is only a useful test
+                    // because StockZoneSystem.SetFilter collapses an accept-everything mask to NO
+                    // entry: without that, a UI that paints an explicit whole accept-mask on every
+                    // stockpile (WP-5 must, or a re-painted zone silently keeps its old restriction)
+                    // would make Count > 0 permanently true on any played ship, and this per-item gate
+                    // — a linear scan over TryGetFilter, itself a linear scan — would run forever at
+                    // 10 Hz on ships with no restriction on them.
                     bool filtered = _stockZones != null && _stockZones.Zones.Count > 0;
                     for (int i = 0; i < items.Count; i++)
                     {
