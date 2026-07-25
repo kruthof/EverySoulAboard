@@ -31,8 +31,10 @@ deconstruct/strip + wall drag-build & materials + drifting starfield + the **A1 
 
 ## E0-4 — filtered stockpile zones: IN PROGRESS on `lane/e0-4-stockpile-zones` (2026-07-24), READ IF RESUMING
 
-**Status: WP-1, WP-2, WP-3 committed on the lane branch. WP-4, WP-5, and integration REMAIN. NOT
-merged to `main`.** Orchestrated the same way as E0-5 (plan agent → per-WP Opus implementer +
+**Status: WP-1, WP-2, WP-3, WP-4 committed on the lane branch. WP-4b (the real flip demonstration),
+WP-5, WP-3-rigor-fix, and integration REMAIN. NOT merged to `main`.** WP-4 is the correct round-trip
+fix but its far measurement is NOT the wrong-deck flip — see the 2026-07-24-later UPDATE block below.
+Orchestrated the same way as E0-5 (plan agent → per-WP Opus implementer +
 **independent** Opus reviewer → integrator). Lane plan (the authority on the whole lane, including
 what is left): **`docs/design/perilune-e0-4-stockpile-zones.plan.md`**. Worktree:
 `../perilune-wt/e0-4-stockpile-zones`.
@@ -96,26 +98,49 @@ are the real ones.** WP-4's rule must flip this: travel/pickup-thrash gone, thro
 **Reminder: still do not zone stockpiles in any authored ship** — this regression stays latent until
 WP-4's rule lands.
 
+**UPDATE (2026-07-24, later): WP-3 reviewed + WP-4 LANDED — but WP-4 is the round-trip fix, NOT the
+wrong-deck flip.** Two more commits on the lane:
+- **WP-3 independent review — SEND-BACK (F1/F2, test-rigor only).** The harness *measurement* is sound
+  and fully reproduced (selector correct, metrics honest, no-flag path byte-identical, bench leg
+  matches). But two named mutations don't bite (redundant guards): F1 `SelectStockpile_IsIdentical
+  AcrossTwoRuns` can't detect a missing tie-break (identical input → identical `Sort`); F2
+  `IsAnEmptyNoOp` N≤0 guard is redundant with the `picks.Count < n` loop. **Fix owed** (task #10) — see
+  below.
+- **WP-4 `c6df011` — the bench rule, mechanically proven, honest measurement.** `_benchWanted` mask in
+  `HaulJobSource.Rescan`; 4 named-mutation tests + the `JobDispatchTests` zero-alloc refactor; **918
+  dotnet green; all four pins held byte-identical.** **But the far measurement is NOT a flip (measured,
+  not fabricated):** `--stockpile far 4` CtrlModule **31 baseline → 6 pre-rule → 2 POST-RULE (worse)**;
+  HaulPickup stays ~49 %; Regolith strands to 42. **The bench rule does not rescue an accept-all
+  wrong-deck stockpile** — that pathology is dominated by hauling ~700 Potatoes cross-deck, which no
+  bench wants (so the rule correctly doesn't touch it), and by not hauling Regolith it strands
+  intermediates while crew drown in food-hauling. **The wrong-deck regression is a FILTER problem (don't
+  accept food on the wrong deck = WP-2), not a bench-wanted problem — `ECONOMY.md` §8's framing was
+  incomplete.** The bench rule fixes the real-but-smaller intermediate ROUND-TRIP (unit-proven); WP-2's
+  filter fixes the big cost. **Decision (Garvin): ship WP-4 as the correct round-trip fix with honest
+  docs; move the real flip demonstration to next session.**
+
 **What REMAINS (next session, in the lane worktree):**
-1. **WP-3 independent review** — owed (host-only, low-risk; I ran its 6 harness tests green + a light
-   self-review, but the E0-5 method reviews every package). Cheap; do it first.
-2. **WP-4 — the "don't haul what a bench wants" rule** (plan §2.4/§5/§9, task-list #5): a `ulong
-   _benchWanted` mask in `HaulJobSource.Rescan` (computed inside the `anyFreeStockpile` branch) skipping
-   any `ItemKind` a live device's resolved `ProductionBill` consumes. Then **re-measure the flip**
-   under WP-3's `--stockpile far` harness (travel must NOT blow up; CtrlModule end ≥ 31). **If `far`
-   does not reproduce a throughput regression pre-rule (hazard 8.1 — the modern dispatcher may deflect
-   it), the deterministic unit test still proves the rule; report the real numbers, do not fabricate a
-   regression.** Closes the output-strand / haul-in↔fetch-out exploit. Edits `HaulJobSource.cs` — so it
-   is **sequential after WP-2** (same file). Independent Opus review after.
+1. **WP-4b — the real flip demonstration** (the headline the accept-all far run could not show). Add a
+   **filtered-far** mode to the `--stockpile` harness (WP-3 `StockpileHarness` + a `SetStockpileFilter
+   Command` per painted tile) that zones a far stockpile which **rejects Potato** (accepts only terminal
+   goods). Measure: throughput should recover toward 31 — proving the **WP-2 filter + WP-4 bench rule
+   pair**. Host-only, zero pin impact. This is the honest acceptance for the lane; do it before integrate.
+2. **WP-3 rigor fix** (task #10): make F1/F2 bite — F1 assert the *total order* (pin the expected coord
+   sequence or compare to an independently `(dist,key)`-ordered candidate set); F2 correct the comment
+   to name `picks.Count < n` as the real guard (defense-in-depth, not a biting mutation) or add
+   distinguishing coverage. Host test files only. **Serialize (don't run a second builder in the lane
+   worktree while another agent edits sim files).**
 3. **WP-5 — the filter UI** (plan §6, task #6): extend the E0-3 `stockpile` verb — client kind-palette
    + a `filter` wire msg (`CmdKind.Filter`/`HandleFilter`), TUI filter arg, optional client-only
-   filtered-tile tint. **MUST land after WP-4** (close the faucet before shipping the tap). No glyph /
-   golden move. Independent Opus review after.
+   filtered-tile tint. No glyph / golden move. Independent Opus review after.
 4. **Integrate** (task #7): `./ci.sh` in the worktree, confirm the four pins byte-identical, update
    `CLAUDE.md` + `MECHANICS.md` (§13 deferred items — incl. the WP-2-reviewer note that a mis-placed
    stack on a filter-rejecting tile is not re-hauled off it, inherited from the "already stored" guard;
-   and the P1 rule forbidding stockpiling crafting intermediates while a consuming bench exists) +
-   `HANDOVER.md` + memory; merge `--no-ff` to `main` and re-gate.
+   the P1 rule forbidding stockpiling crafting intermediates while a consuming bench exists; **and the
+   corrected framing: the wrong-deck regression is primarily a filter problem, the bench rule is the
+   secondary round-trip fix — update `ECONOMY.md` §8's "a zone system without a 'don't haul what a bench
+   wants' rule is a throughput regression" claim to match the measurement**) + `HANDOVER.md` + memory;
+   merge `--no-ff` to `main` and re-gate.
 
 **Open items flagged in the plan** (§8 hazards, §12 out-of-scope): the far-regression reproduction
 (hazard 8.1); the 64-`ItemKind` mask ceiling (flagged, not fixed); no stack merging / priorities /
