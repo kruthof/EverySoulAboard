@@ -74,6 +74,18 @@ namespace Perilune.Sim
         /// Once per tick, in registration order, before any rescan/selection/progress. The place
         /// for lazy one-time resolution of an optional stack system — a source must be inert,
         /// not throw, when the system it needs is absent from the stack.
+        ///
+        /// It is ALSO the one hook from which a source may set <see cref="Simulation.JobsDirty"/>
+        /// TO REQUEST ITS OWN RESCAN — a source with an internal deadline (E0-4 WP-7's per-tile
+        /// unreachable backoff is the first) has no other way to be re-derived on a board that has
+        /// gone quiet. A <see cref="Progress"/>-time write reporting a world change the source just
+        /// made is unaffected and remains normal (<c>JobWork.AbandonJob</c> and every source's own
+        /// completion path do exactly that); what <see cref="JobSystem"/> forbids is a write from
+        /// the SELECTION pass, where a rescan would invalidate the board indices already handed out.
+        /// This hook runs BEFORE the dispatcher's dirty check, so a flag set here is honoured on the
+        /// same tick and no index exists yet to invalidate. Raise the narrowest axis that re-derives
+        /// you (WP-7 raises Items, not Tiles — the tile board did not change and the full world pass
+        /// is not needed).
         /// </summary>
         void BeginTick(Simulation sim);
 

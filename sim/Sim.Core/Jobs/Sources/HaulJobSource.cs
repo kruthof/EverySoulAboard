@@ -8,9 +8,10 @@ namespace Perilune.Sim
     /// <see cref="JobKind.HaulDeliver"/> (carrying, en route to the tile chosen at pickup).
     ///
     /// Boards: stockpile tiles in z,y,x order (dispatcher world pass); haul candidates in item
-    /// ENTITY STORE order. Candidates only exist while at least one stockpile tile is free —
-    /// otherwise the crew would queue for a destination that does not exist. Items already
-    /// standing inside a zone count as stored, or every delivery would re-dirty into a re-haul.
+    /// ENTITY STORE order. Candidates only exist while at least one stockpile tile is free AND not
+    /// under a WP-7 unreachable backoff — otherwise the crew would queue for a destination that does
+    /// not exist, or for one nobody can walk to. Items already standing inside a zone count as
+    /// stored, or every delivery would re-dirty into a re-haul.
     /// Corpses are excluded (the dead are not cargo; funerals are M3+).
     /// </summary>
     public sealed class HaulJobSource : IJobSource, IJobTileScanner
@@ -23,6 +24,50 @@ namespace Perilune.Sim
         private long[] _tried = new long[64];
         private long[] _stockTried = new long[64];
         private readonly Dictionary<uint, long> _retryAt = new Dictionary<uint, long>(); // lookup only
+
+        // E0-4 WP-7 — the PER-TILE unreachable backoff. Key: a stockpile tile position; value: the
+        // tick at which that tile may be pathed to again. TRANSIENT JOB-BOARD SCRATCH, exactly like
+        // `_retryAt` above: never saved, never hashed, never restored. That is deliberate and it is
+        // what keeps this package pin-neutral — the board is derived state (JobSystem's class
+        // comment), and a backoff is a statement about the board's recent luck, not about the world.
+        //
+        // WHY IT EXISTS: `JobWork.IsFreeStockpileTile` asks "Stockpile + Walkable + empty", never
+        // "can anyone REACH it" (JobContext.cs:115). A walkable-but-unreachable zoned tile — the
+        // slice's authored-sealed observatory is one, AuthoredShips.cs:93 — therefore held the
+        // candidate gate permanently open while the delivery step could never succeed, and every
+        // idle crew member burned a 2-tick claim/abandon cycle forever (measured: 72,928 pickup
+        // starts and ZERO deliveries in 30,000 slice ticks, 31.191 % of all crew-ticks).
+        //
+        // A RATE LIMITER, NOT A BLACKLIST. Reachability is per-citizen; this map is per-tile, so a
+        // stamp is a cached judgement that must be able to go stale in the player's favour. THREE
+        // things lift one, and between them there is no way to reach a permanently dead zone:
+        //   * `IsPathworthy`'s deadline — the tile is tried again after UnreachableRetryTicks (5 s);
+        //   * a successful FindPath REMOVES the entry outright (TryPathToFreeStockpile);
+        //   * `ForgetBackoffsOnTileChange` empties the map on ANY tile-board change, so an E0-5
+        //     deconstruct or a dug-out wall re-opens the zone on the NEXT TICK, not after the 5 s.
+        // (A door opening is the one case none of the three catches instantly — SetDoorStateCommand
+        // sets no JobsDirty and publishes no TileChangedEvent — so it takes the 5 s path.) The cost
+        // of the approximation is that a citizen who CAN reach a tile another citizen could not
+        // waits at most 5 s for it — bounded, self-healing, never a permanent exclusion.
+        // Lookup, keyed Remove and wholesale Clear ONLY — never iterated (IJobSource rule 4).
+        private readonly Dictionary<Int3, long> _tileRetryAt = new Dictionary<Int3, long>();
+
+        // The earliest live backoff expiry (0 = none). Needed because — unlike `_retryAt`, which is
+        // consulted in Select and so lets a backed-off item resume with no rescan — a tile backoff
+        // acts through Rescan's candidate gate, and Rescan only runs when JobsDirty is set. Without
+        // this, a board that went quiet while a tile was backed off would stay quiet after the tile
+        // became viable again: a permanently dead zone, i.e. exactly the new bug the backoff must
+        // not introduce. BeginTick re-dirties ONCE when this deadline passes (Items, not Tiles — the
+        // stockpile tile board itself did not change, so the full world pass is not needed).
+        //
+        // WHAT THE LIVENESS GUARANTEE COSTS, measured (30,000 slice ticks, the 3 sealed observatory
+        // tiles zoned): with the wake 918 pickup starts / 2.254 % of crew-ticks; with the wake
+        // disabled and the board left to rescan only when something else dirties it, 50 starts /
+        // 2.382 %. So it is FREE in crew-time — it trades a few long wasted claims (walk to a distant
+        // stack, then discover there is nowhere to put it) for many short ones, and buys back an
+        // unbounded stall. Both are against 72,928 starts / 31.191 % before the fix. If a future
+        // tuner wants this cheaper, the lever is UnreachableRetryTicks, not this branch.
+        private long _backoffWakeAt;
 
         // E0-4: the optional per-tile stockpile-filter registry, resolved once (the
         // DeconstructJobSource lazy-resolve precedent — a job source owns its own dependency rather
@@ -54,15 +99,36 @@ namespace Perilune.Sim
         /// tautology). Zero on a stockpile-free tick because the branch that computes it never runs.</summary>
         public ulong BenchWantedMask => _benchWanted;
 
+        /// <summary>How many stockpile tiles currently carry a WP-7 unreachable backoff. Diagnostic
+        /// surface (the <see cref="BenchWantedMask"/> precedent) so a test can assert the backoff
+        /// branch was actually REACHED before scoring its outcome, and can pin the map's bound —
+        /// it can never exceed the stockpile tile count, because only tiles taken from
+        /// <c>_stockpiles</c> are ever stamped and <see cref="ForgetBackoffsOnTileChange"/> empties
+        /// the map on every rebuild of that list.</summary>
+        public int BackedOffStockpileTiles => _tileRetryAt.Count;
+
         /// <summary>Resolve the optional <see cref="StockZoneSystem"/> once, before any progress or
-        /// rescan pass reads a filter (the <see cref="DeconstructJobSource"/> pattern).</summary>
+        /// rescan pass reads a filter (the <see cref="DeconstructJobSource"/> pattern), then wake the
+        /// board if a WP-7 tile backoff has just expired (see <c>_backoffWakeAt</c>). Run from
+        /// <see cref="JobSystem.Tick"/> BEFORE its JobsDirty check, so the flag set here is honoured
+        /// on this very tick.</summary>
         public void BeginTick(Simulation sim)
         {
-            if (_stockZonesResolved) return;
-            var systems = sim.Systems;
-            for (int i = 0; i < systems.Length; i++)
-                if (systems[i] is StockZoneSystem z) { _stockZones = z; break; }
-            _stockZonesResolved = true;
+            if (!_stockZonesResolved)
+            {
+                var systems = sim.Systems;
+                for (int i = 0; i < systems.Length; i++)
+                    if (systems[i] is StockZoneSystem z) { _stockZones = z; break; }
+                _stockZonesResolved = true;
+            }
+
+            // Inert on every ship that never zoned a stockpile: `_backoffWakeAt` can only become
+            // non-zero inside the anyFreeStockpile scan, which iterates an empty tile board there.
+            if (_backoffWakeAt != 0 && sim.TickCount >= _backoffWakeAt)
+            {
+                _backoffWakeAt = 0;
+                sim.JobsDirty |= JobBoardDirty.Items;
+            }
         }
 
         // ------------------------------------------------------------------ board
@@ -85,19 +151,32 @@ namespace Perilune.Sim
             {
                 _items.Clear();
 
+                // WP-7: a tile-board change invalidates every cached reachability judgement, so
+                // forget them all before the gate reads them (this also bounds the map).
+                ForgetBackoffsOnTileChange(what);
+
                 // Ground-item occupancy (per-scan; Contains-lookups only).
                 JobWork.RebuildGroundItemTiles(sim, _groundItemTiles);
                 var items = sim.Items.Items;
 
+                // WP-7: the gate now asks "does a free stockpile tile exist that someone recently
+                // MANAGED to path to", not merely "does a free stockpile tile exist". One
+                // walkable-but-unreachable tile no longer holds the whole haul board open.
+                //
+                // The pre-WP-7 `break` on the first free tile is gone on purpose: the scan must also
+                // find the EARLIEST expiry among the tiles it skipped, so BeginTick can wake the
+                // board exactly when the first of them comes back. Full-scan cost is one pass over
+                // the player's stockpile tiles per rescan (at most once per tick), and it is ZERO
+                // iterations on every pinned ship — none of them zones a stockpile.
                 bool anyFreeStockpile = false;
+                long wake = 0;
                 for (int i = 0; i < _stockpiles.Count; i++)
                 {
-                    if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles))
-                    {
-                        anyFreeStockpile = true;
-                        break;
-                    }
+                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles)) continue;
+                    if (IsPathworthy(sim, _stockpiles[i], out long until)) { anyFreeStockpile = true; continue; }
+                    if (wake == 0 || until < wake) wake = until;  // min over _stockpiles order — deterministic
                 }
+                _backoffWakeAt = wake;
 
                 if (anyFreeStockpile)
                 {
@@ -294,13 +373,76 @@ namespace Perilune.Sim
 
         /// <summary>Does any free stockpile tile accept <paramref name="kind"/>? The per-item
         /// candidate gate (E0-4): reuses the current tile board and the freshly rebuilt ground-item
-        /// occupancy, alloc-free, integer mask ops only.</summary>
+        /// occupancy, alloc-free, integer mask ops only. WP-7: a tile under an unreachable backoff
+        /// does not count here either — otherwise a filtered board would reproduce the livelock one
+        /// kind at a time, which is the exact failure the kind-less gate above was just taught to
+        /// avoid (the two gates must agree or the per-item path re-opens the hole).</summary>
         private bool AnyFreeStockpileAccepts(Simulation sim, ItemKind kind)
         {
             for (int i = 0; i < _stockpiles.Count; i++)
-                if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind))
+                if (JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind) &&
+                    IsPathworthy(sim, _stockpiles[i], out _))
                     return true;
             return false;
+        }
+
+        /// <summary>
+        /// WP-7: may this stockpile tile be pathed to right now? False only while a live unreachable
+        /// backoff sits on it; <paramref name="until"/> then carries that entry's expiry tick so the
+        /// caller can schedule a wake-up.
+        ///
+        /// <c>sim.TickCount &lt; until</c> is the SOLE expiry mechanism in WP-7 — nothing sweeps the
+        /// map for stale deadlines, so deleting that comparison turns the backoff into a blacklist
+        /// that only a tile-board change can lift. Pinned by
+        /// <c>ExpiredBackoff_LiftsItselfWithNoTileBoardChange</c>. Lookup-only — no allocation, no
+        /// enumeration.
+        /// </summary>
+        private bool IsPathworthy(Simulation sim, Int3 p, out long until)
+        {
+            if (_tileRetryAt.TryGetValue(p, out until) && sim.TickCount < until) return false;
+            until = 0;
+            return true;
+        }
+
+        /// <summary>
+        /// WP-7: a TILE-BOARD change forgets every backoff, wholesale.
+        ///
+        /// A backoff is a cached "nobody could walk here" judgement, and a tile-board change — a
+        /// zone painted or erased, a wall dug out, an E0-5 deconstruct, a door built — is precisely
+        /// the class of event that can invalidate it. So the honest response to
+        /// <see cref="JobBoardDirty.Tiles"/> is to throw the cache away rather than to reason about
+        /// which entries survived: stale-negative is the failure mode that costs the player a dead
+        /// zone, and this makes a deconstruct re-open one IMMEDIATELY instead of after the ≤5 s
+        /// expiry. It is also what BOUNDS the map — only tiles read out of <c>_stockpiles</c> are
+        /// ever stamped, and <c>_stockpiles</c> itself is only rebuilt behind this same flag, so
+        /// between two clears the key set is a subset of a fixed tile list.
+        ///
+        /// THE FIX'S EFFECTIVENESS IS THEREFORE A FUNCTION OF TERRAIN CHURN, and this is the line
+        /// that makes it so. Every Tiles-dirty rescan throws the cache away, so a hauler re-probes
+        /// and the wasted claim/abandon is paid again. Measured over 30,000 slice ticks with the
+        /// three sealed-observatory tiles zoned: the untouched slice sees TEN Tiles-dirty ticks and
+        /// costs 918 pickup starts / 2.254 % of crew-ticks; forcing Tiles dirty EVERY tick
+        /// (adversarial — continuous digging or deconstruction across the ship) costs 67,742 /
+        /// 28.873 %, against 72,928 / 31.191 % for no fix at all. So ~93 % of the fix can be
+        /// defeated by continuous churn. It degrades GRACEFULLY — never worse than pre-WP-7, never
+        /// incorrect, only wasted crew time — but anyone debugging "my late-game ship started
+        /// livelocking again" should look at terrain churn first. Calibration: ten Tiles-dirty ticks
+        /// cost +0.37 pp on the slice. THE ESCAPE HATCH is to delete this clear and rely on the
+        /// expiry in <see cref="IsPathworthy"/> alone: measured 1.884 %, churn-independent, and the
+        /// only thing given up is that a deconstruct re-opens the zone after ≤5 s instead of on the
+        /// next tick.
+        ///
+        /// NO ITERATION. <c>Clear</c> and keyed <c>Remove</c>/<c>TryGetValue</c> only — the
+        /// <see cref="IJobSource"/> arbitration contract rule 4 bars iterating a Dictionary from a
+        /// job source at all, and that is a determinism rule, not a perf one. An earlier draft swept
+        /// the map for expired entries with a <c>foreach</c>; it was order-independent in outcome but
+        /// it was still the only collection enumeration in <c>sim/Sim.Core/Jobs/</c>, and a contract
+        /// with a silent counterexample in the tree is not a contract. Expiry needs no sweep: it
+        /// lives entirely in <see cref="IsPathworthy"/>, which reads the deadline it stored.
+        /// </summary>
+        private void ForgetBackoffsOnTileChange(JobBoardDirty what)
+        {
+            if ((what & JobBoardDirty.Tiles) != 0) _tileRetryAt.Clear();
         }
 
         /// <summary>
@@ -308,6 +450,15 @@ namespace Perilune.Sim
         /// reachable AND accepts <paramref name="kind"/> under its filter (E0-4). Occupancy is
         /// recomputed from ground items on demand — the board may be several ticks old by the time
         /// a hauler arrives at his stack.
+        ///
+        /// WP-7: this is where the backoff is WRITTEN. Every <see cref="PathService.FindPath"/> that
+        /// fails here stamps its tile for <see cref="JobWork.UnreachableRetryTicks"/>, and every one
+        /// that succeeds REMOVES the tile's stamp — the symmetric pair, mirroring
+        /// <see cref="TryClaim"/>'s <c>_retryAt</c> write/remove on the item axis. It is also the
+        /// only writer, so the map can only ever hold tiles that this method personally failed to
+        /// reach. Tiles already under a live backoff are skipped rather than re-swept: a failed
+        /// FindPath is a whole-region A* sweep, and re-running it every tick for every hauler is the
+        /// cost the backoff exists to remove.
         /// </summary>
         private bool TryPathToFreeStockpile(Simulation sim, Citizen citizen, JobContext ctx, ItemKind kind, out Int3 dest)
         {
@@ -322,7 +473,8 @@ namespace Perilune.Sim
                 for (int i = 0; i < _stockpiles.Count; i++)
                 {
                     if (_stockTried[i] == gen) continue;
-                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind))
+                    if (!JobWork.IsFreeStockpileTile(sim, _stockpiles[i], _groundItemTiles, kind) ||
+                        !IsPathworthy(sim, _stockpiles[i], out _))
                     {
                         _stockTried[i] = gen;
                         continue;
@@ -340,9 +492,11 @@ namespace Perilune.Sim
                 if (sim.Paths.FindPath(sim, citizen.Pos, tile, citizen.Path))
                 {
                     citizen.StartPath(sim.Defs.Citizen.TicksPerTile);
+                    _tileRetryAt.Remove(tile);      // WP-7: proven reachable — clear any stale stamp
                     dest = tile;
                     return true;
                 }
+                _tileRetryAt[tile] = sim.TickCount + JobWork.UnreachableRetryTicks; // WP-7: stamp
                 _stockTried[best] = gen;
             }
         }
