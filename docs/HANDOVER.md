@@ -30,8 +30,9 @@ is renamed). Tag `v2-talking-ship`.
 mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
 recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + **E0-5**
 deconstruct/strip + wall drag-build & materials + drifting starfield + the **A1 measurement**.
-**In flight (NOT on `main`):** **E0-4** filtered stockpile zones — WP-1/2/3 committed on
-`lane/e0-4-stockpile-zones`, WP-4/5 + integrate remaining (see the E0-4 section below).
+**In flight (NOT on `main`):** **E0-4** filtered stockpile zones — WP-1/2/3/4 committed on
+`lane/e0-4-stockpile-zones`, WP-4b (real flip demo) + WP-5 + WP-3 rigor fix + integrate remaining
+(see the E0-4 section below). **Merged to `main`:** the **automation & souls** design principle.
 
 ## E0-4 — filtered stockpile zones: IN PROGRESS on `lane/e0-4-stockpile-zones` (2026-07-24), READ IF RESUMING
 
