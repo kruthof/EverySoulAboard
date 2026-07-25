@@ -208,7 +208,18 @@ namespace Perilune.Web
                 }
                 else acc = 0.0;
 
-                if ((ticked || viewChanged || _viewDirty || _conv.HasPending) && now - lastRender >= RenderSeconds)
+                // A view change must SURVIVE a throttled frame. `viewChanged` is a per-iteration local:
+                // if the render is skipped because we are inside the RenderSeconds window, it used to be
+                // dropped on the floor, and the only thing that re-opened the gate was `ticked` — which a
+                // PAUSED sim never sets again. So a pause command that drained on any non-render
+                // iteration was applied to the sim and NEVER BROADCAST: the ship stopped while the client's
+                // status channel still said "running", so the top bar read "❚❚ HOLD" (i.e. running) and
+                // every paused-ship affordance downstream of it was dead. Measured on 2026-07-25 against
+                // `--ship grid`: 7 of 8 pause commands were lost this way (scratchpad wp8-pausebug.mjs
+                // proves the sim really was paused — any later view change made the truth appear).
+                // Folding it into the sticky `_viewDirty` costs one line and cannot lose an edge.
+                _viewDirty |= viewChanged;
+                if ((ticked || _viewDirty || _conv.HasPending) && now - lastRender >= RenderSeconds)
                 {
                     Render(now, force: false);
                     _viewDirty = false;
