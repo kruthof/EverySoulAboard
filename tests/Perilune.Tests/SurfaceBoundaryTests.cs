@@ -42,6 +42,12 @@ namespace Perilune.Tests
     /// — <c>case 'zones':</c> reads identically in code and in a <c>// TODO</c> — so
     /// <c>client/src/main.js</c> is run through <see cref="CodeOnly"/> first. Without that, the
     /// cheapest way past this boundary would be to write the fix in a comment instead of doing it.
+    /// RESIDUAL, DISCLOSED: <c>CodeOnly</c> is a comment stripper, not a token scanner, so a
+    /// <c>case 'zones'</c> appearing inside a STRING LITERAL still satisfies the consumer scan. That
+    /// is the honest cost of porting ~30 lines instead of writing a JS tokenizer in a C# test, and
+    /// the residual is benign in a way the comment case was not: nobody writes a channel name into a
+    /// string literal shaped like a switch case by accident, whereas leaving a <c>// TODO: case …</c>
+    /// behind is an ordinary Tuesday.
     /// </summary>
     public class SurfaceBoundaryTests
     {
@@ -251,8 +257,13 @@ namespace Perilune.Tests
                 "an unbalanced quote in a regex ran past its own line; the string scan must stop at the newline");
 
             // The globbed file set must really be finding the serializer, not an empty directory.
-            Assert.That(WireFormatFiles().Count, Is.GreaterThanOrEqualTo(1));
-            Assert.That(WireFormatFiles()[0], Does.EndWith("WireFormat.cs"));
+            // `Has.Some`, NOT `[0]`: the list is Ordinal-sorted and 'Z' (0x5A) < 'c' (0x63), so the
+            // day WP-3 adds `WireFormat.Zones.cs` — the sibling partial this glob exists for — it
+            // sorts FIRST and an index-0 assertion would fail in the exact scenario the glob was
+            // written to support. A guard that breaks when the work it anticipated is done correctly
+            // is worse than no guard.
+            Assert.That(WireFormatFiles(), Has.Some.EndsWith("WireFormat.cs"),
+                "the WireFormat*.cs glob no longer finds the original serializer");
         }
 
         // ---------------------------------------------------------------- the prose, pinned

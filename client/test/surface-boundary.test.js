@@ -29,12 +29,13 @@
 //     sources there are 229 literal id lookups and 5 non-literal, and 4 of the 5 are the
 //     `$`/`getElementById(id)` helper DEFINITIONS — exactly one real constructed call site exists,
 //     inside an owner file. Disclosed, not fixed.
-//   • THE RE-EXPORT BRIDGE is the widest hole here, and it is open. A three-line `console-bridge.js`
-//     exporting `export const grab = (id) => document.getElementById(id)` would let any modern view
-//     module reach console DOM with the ownership scan seeing nothing — and `hud.js` ALREADY EXPORTS
-//     such a hatch (`setChip(id, value)`, :46). Closing it needs call-graph analysis, which is out of
-//     proportion to the risk; the countermeasure is that the bridge is itself a conspicuous new file.
-//     Named here so a reviewer does not have to rediscover it.
+//   • THE RE-EXPORT BRIDGE — a function that TAKES an element id is invisible to a scan that only
+//     sees id literals, and `hud.js` exports exactly such a hatch (`setChip(id, value)`, :44). This
+//     was disclosed-and-left-open in an earlier round on the grounds that closing it needed
+//     call-graph analysis. It did not: the reachable surface is small and countable, so it is now
+//     CLOSED by pinning `SHIP_STATE_REACH` (both import forms) with `setChip` in `FORBIDDEN_REACH`.
+//     What remains open is narrower — a module could import a *permitted* getter and do something
+//     unexpected with it — and that genuinely is call-graph work.
 //   • The scans run over CODE ONLY — `codeOnly` for JS, `htmlCodeOnly` for the page, both with their
 //     own behaviour asserted below, and the C# half strips `client/src/main.js` the same way. A
 //     comment naming `#stockfilter` is documentation, not a dependency; a test that fired on prose
@@ -43,15 +44,35 @@
 //   • Nothing here proves the modern surface WORKS. It proves that a verb which exists on the dying
 //     surface also exists on the living one, and that nobody is quietly growing the dying one.
 //     Playability is a human check (§7.6 of the plan).
+//   • EVERY module symbol is resolved LATE, through `requireExport` — never by a static `import` at
+//     the top of this file. That is not style. A static import turns any rename of `paletteOrders`
+//     or `ROOM_TOOLS` into a load-time SyntaxError that takes down ALL of these tests with no
+//     boundary message anywhere, and the natural fix for a hurried author is to edit this file's
+//     import line, which is the one action every message below exists to discourage. Late resolution
+//     costs one `await` and turns that into a single failure that says what the symbol was for.
+//     Likewise every file read goes through `readOrNull`: each source parsed here is scheduled to be
+//     deleted or renamed, and an unguarded read makes the guard CRASH at the finish line instead of
+//     reporting a settled boundary — which happened, five times, before it was handled centrally.
 //
-// WHAT CATCHES THE CANONICAL FAILURE, and why there are three layers rather than one. The E0-4 WP-5
-// filter SHIPPED with its own `#stockfilter-row`, so the id census catches it — but WP-5's own commit
-// says the chips were FIRST built into the existing `#palette`, and that draft has no new id at all.
-// Detection must not rest on a CSS layout accident, so: (1) the id census, (2) the hud.js SIZE PIN
-// (lookup sites + createElement sites — this is what catches the no-new-id draft and any class-only
-// widget), and (3) verb parity, which catches the verb however it is drawn. A fourth console verb
-// declared a BUILD kind evades (3) via a one-word edit to `BUILD_KINDS`, so the palette is classified
-// against a PINNED literal (`CONSOLE_BUILD_KINDS`), never against the live predicate.
+// WHAT CATCHES THE CANONICAL FAILURE, and why there are so many layers. The E0-4 WP-5 filter SHIPPED
+// with its own `#stockfilter-row`, so the id census catches it — but WP-5's own commit says the chips
+// were FIRST built into the existing `#palette`, and that draft adds no id at all. Every attempt to
+// catch it with one assertion was defeated by a plausible rewrite in a style already present in this
+// file, so the layers exist one per evasion, each proven RED by a reconstruction of that evasion:
+//   1. the `.app` id census .................. the draft that shipped
+//   2. hud.js `createElement` sites .......... the first draft, chips into the existing `#palette`
+//   3. hud.js innerHTML-family writes ........ the same draft via `insertAdjacentHTML` (hud.js's
+//      other native idiom — 9 sites; counting only createElement made the catch a coin flip)
+//   4. hud.js literal DOM-lookup sites ....... a widget needing a new handle
+//   5. hud.js import specifiers .............. the builder LIFTED into a new console-only module
+//   6. verb parity ........................... the verb itself, however it is drawn
+//   7. `CONSOLE_BUILD_KINDS`, a PINNED literal  a 4th console verb hidden from (6) by a one-word
+//      edit declaring it a build kind. The live `isBuildTool` is never trusted for classification.
+//   8. `SHIP_STATE_REACH` .................... a module bridging into console DOM through a function
+//      that takes an id (`setChip`), which no id-literal scan can see.
+// Every numeric pin is EQUALITY, not `<=`: a ceiling silently banks the headroom a re-home frees, and
+// WP-7 had already done that (46→43 ids under a ceiling of 46 = three free slots during the exact
+// window the shell is supposed to be closed).
 //
 // HOW TO RESPOND WHEN ONE FAILS. Every message below names the boundary, why it exists, and the two
 // legitimate exits. Read it before editing anything.
@@ -62,14 +83,25 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
-import { ROOM_TOOLS } from '../src/ui/room-model.js';
-import { isOrderTool, isBuildTool } from '../src/ui/console-model.js';
-import { paletteOrders } from '../src/input/controls.js';
-
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
 const SRC = join(CLIENT, 'src');
 const read = (rel) => readFileSync(join(CLIENT, rel), 'utf8');
+
+/**
+ * Read a client file, or `null` if it does not exist.
+ *
+ * EVERY parser here reads a file that this programme is scheduled to DELETE OR RENAME (`hud.js`
+ * becomes `ship-state.js` at WP-9; `console-model.js` gets pruned). An unguarded read turns the
+ * finish line into a stack trace: the guard crashes instead of reporting a settled boundary, and the
+ * crash lands on whoever completes the work rather than on whoever breaks it. Four separate branches
+ * in this file were already gated on "the console is gone"; a fifth was reading `hud.js`
+ * unconditionally and threw ENOENT. So the endgame is handled at the ONE place that touches the disk
+ * rather than at each caller, which is the only version of this that stays true as the file grows.
+ */
+function readOrNull(rel) {
+  try { return readFileSync(join(CLIENT, rel), 'utf8'); } catch { return null; }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // THE PORTING LEDGER — KNOWN_GAPS and its seal
@@ -120,6 +152,37 @@ const MODERN_TOOL_TABLES = Object.freeze([
   ['../src/ui/room-model.js', 'ROOM_TOOLS'],     // Level-2 Room Zoom palette (exists today)
   ['../src/ui/overview-model.js', 'ORDER_TOOLS'], // Level-1 Overview ORDERS bar (WP-5 seam)
 ]);
+
+/**
+ * Resolve one named export, reporting a MISSING EXPORT as a boundary failure rather than as a
+ * module-resolution crash.
+ *
+ * WHY NOT A STATIC IMPORT. A static `import { paletteOrders } from …` at the top of this file makes
+ * a rename of that symbol take down ALL of these tests at load time, with a SyntaxError and no
+ * boundary message anywhere. The natural response to that — for a hurried author who just renamed a
+ * function — is to edit this file's import line, which is the one action the forty lines of failure
+ * messages below exist to discourage. So every symbol is resolved late and named in its own
+ * assertion: a rename fails ONE test, and the message says what it was for.
+ */
+async function requireExport(spec, name) {
+  let mod;
+  try {
+    mod = await import(spec);
+  } catch (e) {
+    assert.fail(
+      `surface-boundary could not load ${spec} (${e.message}).\n` +
+      'This guard resolves the client\'s modules by path. If the module MOVED, fix the path here in ' +
+      'the same commit as the move. Do not delete the assertion that needed it.');
+  }
+  assert.ok(name in mod,
+    `${spec} no longer exports '${name}', which this guard reads to enforce the surface boundary.\n` +
+    '\n' +
+    'If the symbol was RENAMED, update the name here in the same commit — that is a one-word edit ' +
+    'and it keeps the boundary intact. If the symbol was REMOVED, the assertion that used it needs ' +
+    'to be rewritten or retired deliberately, with the reason in the commit message. What must not ' +
+    'happen is the boundary quietly losing a check because a symbol moved.');
+  return mod[name];
+}
 
 /** Every verb the standard surface can arm, unioned across the registry. */
 async function modernToolSet() {
@@ -191,6 +254,12 @@ function srcFiles(dir = SRC, out = []) {
 }
 
 const rel = (abs) => relative(CLIENT, abs).replace(/\\/g, '/');
+
+/** The files allowed to drive console DOM. `ship-state.js` is listed AHEAD of its existence: WP-9
+ *  renames hud.js to it, and without the entry this test would fire thirty-odd times on the renamed
+ *  file advising "take its id out of CONSOLE_SHELL_IDS" — wrong advice, loudly, at the finish line. */
+const CONSOLE_OWNERS = Object.freeze(['src/ui/hud.js', 'src/ui/ship-state.js', 'src/main.js']);
+
 
 /** index.html with `<!-- … -->` removed. A commented-out element is not an element: it must not be
  *  counted in a census, and — the reason this is a function and not an afterthought — an HTML
@@ -377,7 +446,8 @@ test('the legacy-verb parse is not vacuous — both of its sources are still the
     'MODERN_TOOL_TABLES resolved to NO tools. Every entry is optional-by-design, so a typo in a ' +
     'module specifier or export name degrades silently — and the surface-parity and stale-ledger ' +
     'tests would then pass vacuously. Fix the registry.');
-  for (const t of ROOM_TOOLS) {
+  const roomTools = await requireExport('../src/ui/room-model.js', 'ROOM_TOOLS');
+  for (const t of roomTools) {
     assert.ok(modern.has(t), `ROOM_TOOLS contains '${t}' but modernToolSet() does not — the ` +
       "room-model.js entry in MODERN_TOOL_TABLES is not resolving to the module's real export");
   }
@@ -402,8 +472,10 @@ test('the legacy-verb parse is not vacuous — both of its sources are still the
       `ORDER_KINDS no longer contains '${v}'. If the verb was genuinely retired, remove it here and ` +
       'from KNOWN_GAPS/KNOWN_GAPS_SEALED in the same commit; if the parse broke, fix parseOrderKinds().');
   }
-  // Cross-check the text parse against the module's own exported predicate — the array literal and
+  // Cross-check the text parse against the module's own exported predicates — the array literal and
   // the behaviour must agree, so neither one can drift without the other noticing.
+  const isOrderTool = await requireExport('../src/ui/console-model.js', 'isOrderTool');
+  const isBuildTool = await requireExport('../src/ui/console-model.js', 'isBuildTool');
   for (const v of parsedOrders) assert.ok(isOrderTool(v), `isOrderTool('${v}') disagrees with the parsed ORDER_KINDS`);
   assert.ok(!isOrderTool('wall') && isBuildTool('wall'), 'build/order classification inverted');
 
@@ -435,8 +507,11 @@ test('the legacy-verb parse is not vacuous — both of its sources are still the
 
 // And a behavioural anchor: these are real verbs with real wire payloads, not palette labels. If a
 // verb stopped lowering to anything, "port it to the modern surface" would be meaningless.
-test('every legacy order verb lowers to a real wire payload through the one seam', () => {
-  for (const verb of legacyOrderVerbs()) {
+test('every legacy order verb lowers to a real wire payload through the one seam', async () => {
+  const verbs = legacyOrderVerbs();
+  if (verbs.length === 0) return;                       // WP-9: nothing left on the console to lower
+  const paletteOrders = await requireExport('../src/input/controls.js', 'paletteOrders');
+  for (const verb of verbs) {
     const orders = paletteOrders(verb, 3, 4);
     assert.ok(orders.length >= 1, `paletteOrders('${verb}') lowered to nothing — not a real verb`);
   }
@@ -446,10 +521,12 @@ test('every legacy order verb lowers to a real wire payload through the one seam
  *  BUILD_KINDS-dodge note in the vacuity test for why this must not be `isBuildTool`. */
 const CONSOLE_BUILD_KINDS = Object.freeze(['wall', 'door', 'cancel']);
 
-/** A module-private `const NAME = ['a', 'b']` array, parsed out of a client source. */
+/** A module-private `const NAME = ['a', 'b']` array, parsed out of a client source. `[]` when the
+ *  FILE is gone — see `readOrNull`; every one of these sources is scheduled for deletion or rename. */
 function parseStringArray(relPath, name) {
-  const code = codeOnly(read(relPath));
-  const m = new RegExp(`const\\s+${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(code);
+  const raw = readOrNull(relPath);
+  if (raw === null) return [];
+  const m = new RegExp(`const\\s+${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(codeOnly(raw));
   if (!m) return [];
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
 }
@@ -460,10 +537,16 @@ function parseOrderKinds() { return parseStringArray('src/ui/console-model.js', 
 /** BUILD_KINDS, likewise. Read only to PIN it — never to classify (see CONSOLE_BUILD_KINDS). */
 function parseBuildKinds() { return parseStringArray('src/ui/console-model.js', 'BUILD_KINDS'); }
 
-/** The console palette's tool keys, parsed from hud.js's `initConsole` TOOLS table. [] once gone. */
+/** The console palette's tool keys, parsed from hud.js's `initConsole` TOOLS table. [] once gone —
+ *  and "gone" includes the FILE being gone. WP-9 renames hud.js to ship-state.js, and an unguarded
+ *  read here threw ENOENT and took SURFACE PARITY down with a stack trace instead of a boundary
+ *  message, because `legacyOrderVerbs()` is evaluated BEFORE parity reaches its `.app` branch. That
+ *  was the fifth instance of this class in this package; `readOrNull` is now the only way any of
+ *  these parsers touches the disk. */
 function parseConsolePaletteTools() {
-  const code = codeOnly(read('src/ui/hud.js'));
-  const m = /const\s+TOOLS\s*=\s*\[([\s\S]*?)\n\s*\];/.exec(code);
+  const raw = readOrNull('src/ui/hud.js');
+  if (raw === null) return [];
+  const m = /const\s+TOOLS\s*=\s*\[([\s\S]*?)\n\s*\];/.exec(codeOnly(raw));
   if (!m) return [];
   return [...m[1].matchAll(/\[\s*'([^']+)'/g)].map((x) => x[1]);
 }
@@ -481,22 +564,18 @@ function legacyOrderVerbs() {
 // 2. THE CONSOLE SHELL IS CLOSED TO NEW WORK — index.html id census
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-/** ⚠️ THE CENSUS CEILING — the same ratchet KNOWN_GAPS has, and for the same reason. Without it,
- *  the test that actually caught WP-5 is the one test here with NO ratchet: add a console id and
- *  quietly extend the array below by one sorted line, and everything is green — a one-line test
- *  edit buried in a diff full of feature code. `.app` is closed to new work, so this number may
- *  only ever go DOWN (WP-7 takes three, WP-9 takes the rest). Raising it is a decision. */
-const CONSOLE_SHELL_ID_CEILING = 46;
+/** ⚠️ THE CENSUS SIZE, pinned by EQUALITY and not by a ceiling — see the note on ratchets below.
+ *  43 as of the WP-7 merge (`relations-view`/`rel-svg`/`rel-title` left with RELATIONS). */
+const CONSOLE_SHELL_ID_CEILING = 43;
 
-/** The `.app` shell's complete element-id census, frozen at WP-0 (46 ids, index.html:11-128).
- *  Sorted. `relations-view`/`rel-svg`/`rel-title` leave in WP-7; the whole list goes in WP-9. */
+/** The `.app` shell's complete element-id census. Sorted. The whole list goes in WP-9. */
 const CONSOLE_SHELL_IDS = Object.freeze([
   'b-bio', 'b-deckdown', 'b-deckup', 'b-faster', 'b-move', 'b-pause', 'b-slower', 'b-talk', 'c',
   'crew-count', 'crew-more', 'crewlist', 'crewtable', 'hint', 'hotkeys', 'inspect', 'legend',
-  'legendcard', 'lensbtns', 'log', 'metrics', 'palette', 'rel-svg', 'rel-title', 'relations-view',
-  'ro-body', 's-caution', 's-day', 's-deck', 's-lens', 's-llm', 's-llmchip', 's-msg', 's-nudge',
-  's-pauselabel', 's-runstate', 's-speed', 's-speedchip', 'stockfilter', 'stockfilter-row',
-  'tab-build', 'tab-chron', 'tab-crew', 'tab-moss', 'tab-relations', 'tabs',
+  'legendcard', 'lensbtns', 'log', 'metrics', 'palette', 'ro-body', 's-caution', 's-day', 's-deck',
+  's-lens', 's-llm', 's-llmchip', 's-msg', 's-nudge', 's-pauselabel', 's-runstate', 's-speed',
+  's-speedchip', 'stockfilter', 'stockfilter-row', 'tab-build', 'tab-chron', 'tab-crew', 'tab-moss',
+  'tab-relations', 'tabs',
 ]);
 
 // MUTATION: add `<div id="ov-newthing"></div>` inside .app — the shape of every "just one more chip
@@ -507,18 +586,20 @@ test('the deprecated console shell is CLOSED — its id census is frozen', () =>
   const html = htmlCodeOnly(read('index.html'));
   const app = appBlock(html);
 
-  assert.ok(CONSOLE_SHELL_IDS.length <= CONSOLE_SHELL_ID_CEILING,
-    `CONSOLE_SHELL_IDS now holds ${CONSOLE_SHELL_IDS.length} ids, above its WP-0 ceiling of ` +
+  assert.equal(CONSOLE_SHELL_IDS.length, CONSOLE_SHELL_ID_CEILING,
+    `CONSOLE_SHELL_IDS holds ${CONSOLE_SHELL_IDS.length} ids but the pinned size is ` +
     `${CONSOLE_SHELL_ID_CEILING}.\n` +
     '\n' +
-    'This list is allowed to SHRINK (WP-7 re-homes three ids with RELATIONS; WP-9 removes the rest) ' +
-    'and never to grow: the `.app` shell is closed to new work, so a new id in the census means a ' +
-    'new widget on the surface we are deleting. Extending the array below by one sorted line is the ' +
-    'cheapest way to make the census test — the one that actually catches the E0-4 WP-5 mistake — ' +
-    'pass without fixing anything, so the ceiling exists to make that edit loud.\n' +
+    'RATCHET, NOT CEILING — and the difference is not pedantry. A `<=` ceiling looks safe and rots: ' +
+    'when WP-7 removed three ids from the array, the ceiling stayed at 46 and silently left THREE ' +
+    'FREE SLOTS for new console work, during exactly the WP-8/WP-9 window when the shell is supposed ' +
+    'to be closed. So the size is pinned by EQUALITY, and it reads in both directions:\n' +
+    '  • the array GREW ⇒ something was added to the deprecated console shell. Build it on the ' +
+    'standard surface instead (client/src/ui/overview-view.js / roomzoom-view.js).\n' +
+    '  • the array SHRANK ⇒ good, ids were re-homed or deleted. Lower this number in the SAME COMMIT, ' +
+    'or the slots you just freed become silent headroom.\n' +
     '\n' +
-    'THE TWO LEGITIMATE EXITS: build it on the standard surface instead, or raise the ceiling here ' +
-    'with the reason in the commit message.');
+    'This cannot false-fire: it only triggers on a commit that is already editing the array.');
 
   if (app === null) {
     // WP-9 has landed. Flip to the denylist: none of the shell's ids may survive anywhere in the page.
@@ -551,8 +632,12 @@ test('the deprecated console shell is CLOSED — its id census is frozen', () =>
     'moved — SURFACE_ROOTS below, in the SAME COMMIT. Shrinking this list is progress; growing it is a decision.');
 });
 
-/** The body-level surface roots — one per full-window surface. WP-7 adds `relations-view`. */
-const SURFACE_ROOTS = Object.freeze(['overview-view', 'roomzoom-view', 'disc', 'panels', 'moss-view']);
+/** The body-level surface roots — one per full-window surface, IN PAGE ORDER. `relations-view`
+ *  joined at the WP-7 merge, lifted out of `.app`'s `.stage` where it used to drag the player back
+ *  into the console. */
+const SURFACE_ROOTS = Object.freeze([
+  'overview-view', 'roomzoom-view', 'relations-view', 'disc', 'panels', 'moss-view',
+]);
 
 // MUTATION: add a sixth body-level `<div id="…">` ⇒ fails. Same trick moss-screen.test.js:115-117
 // already uses (derive the covered set from the real page), pointed at surface OWNERSHIP instead of
@@ -583,24 +668,42 @@ test('the set of body-level surface roots is pinned', () => {
 // console widget styled by class instead of id. Detection of this repo's canonical failure must not
 // depend on a layout accident.
 //
-// Two numbers close it, and neither is the churn risk that omitting them was justified with,
-// because `hud.js` is CLOSED TO NEW WORK: on a file nobody may add to, these can only go DOWN.
-// WP-7 lifts RELATIONS out (−4 lookups: rel-svg, rel-title, relations-view, tab-relations) and
-// WP-9's split deletes most of the rest. Measured at WP-0: 42 lookup sites over 35 distinct ids,
-// 27 createElement sites.
+// FOUR numbers close it, because there are four ways to add a widget and the guard has to be blind
+// to none of them. Each was reconstructed as a real mutation and each one alone was GREEN before its
+// metric existed:
+//   • `createElement` sites ....... the first draft as WP-5 would plausibly have written it
+//   • innerHTML-family writes ..... the SAME draft written with `insertAdjacentHTML`, which is not a
+//     contrivance: hud.js has 27 createElement sites and 9 innerHTML-family sites, and the
+//     list-building ones (renderLegend, renderInspect, the stage overlays, refreshSelection) are
+//     exactly this shape. Counting only createElement made the catch a coin flip between two house
+//     styles that both already live in this file.
+//   • literal DOM-lookup sites .... a widget that needs a new handle
+//   • IMPORT SPECIFIERS ........... the builder LIFTED OUT into a new console-only module
+//     (`src/ui/prio-chips.js` taking `parent` as an argument). All three DOM counts stay put,
+//     because the code left the file — but hud.js must still import it to run it.
+//
+// None of this is the churn risk that omitting it was justified with, because `hud.js` is CLOSED TO
+// NEW WORK: on a file nobody may add to, every one of these can only go DOWN. Pinned by EQUALITY,
+// not `<=`, for the reason spelled out in the census test — a ceiling silently banks the headroom
+// that a re-home frees, and WP-7 had already done exactly that (46→43 ids under a ceiling of 46).
+// Measured at the WP-7 merge: 38 lookup sites, 27 createElement, 9 html writes, 10 imports.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-const HUD_DOM_LOOKUP_SITES_CEILING = 42;
-const HUD_CREATE_ELEMENT_CEILING = 27;
+const HUD_DOM_LOOKUP_SITES = 38;
+const HUD_CREATE_ELEMENT_SITES = 27;
+const HUD_HTML_WRITE_SITES = 9;
+const HUD_IMPORT_SPECIFIERS = 10;
 
-// MUTATION A (the WP-5 FIRST DRAFT, reconstructed): append the seven ACCEPTS chips into the
-// existing `#palette` — hud.js only, no new id, no new class rule ⇒ the createElement count moves
-// ⇒ RED. MUTATION B: any console widget with a class and no id ⇒ same.
+/** innerHTML / outerHTML / insertAdjacentHTML — the OTHER way this file builds DOM. */
+const HTML_WRITE = /\b(?:innerHTML|outerHTML|insertAdjacentHTML)\b/g;
+
+// MUTATION A (WP-5's FIRST DRAFT): the seven ACCEPTS chips appended into the existing `#palette`,
+// reusing the existing handle ⇒ createElement moves ⇒ RED. MUTATION B: the same draft written with
+// `pal.insertAdjacentHTML(...)` ⇒ html writes move ⇒ RED. MUTATION C: a class-only widget ⇒ RED.
+// MUTATION D: the builder lifted into a new console-only module ⇒ the import list moves ⇒ RED.
 test('the console module is CLOSED — its DOM surface may only shrink', () => {
-  const hudPath = join(SRC, 'ui', 'hud.js');
-  let exists = true;
-  try { statSync(hudPath); } catch { exists = false; }
-  if (!exists) {
+  const raw = readOrNull('src/ui/hud.js');
+  if (raw === null) {
     // WP-9 split hud.js into ship-state.js. There is no console module left to pin; the census
     // test's denylist branch is the proof now. Same endgame gate as everywhere else.
     assert.equal(appBlock(htmlCodeOnly(read('index.html'))), null,
@@ -609,50 +712,193 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
     return;
   }
 
-  const code = codeOnly(readFileSync(hudPath, 'utf8'));
-  const sites = domLookupSites(code).length;
-  const creates = (code.match(/\bcreateElement\(/g) || []).length;
+  const code = codeOnly(raw);
+  const measured = {
+    'literal DOM-lookup sites': [domLookupSites(code).length, HUD_DOM_LOOKUP_SITES],
+    'createElement() sites': [(code.match(/\bcreateElement\(/g) || []).length, HUD_CREATE_ELEMENT_SITES],
+    'innerHTML-family writes': [(code.match(HTML_WRITE) || []).length, HUD_HTML_WRITE_SITES],
+    'import specifiers': [(code.match(/from\s*['"][^'"]+['"]/g) || []).length, HUD_IMPORT_SPECIFIERS],
+  };
 
-  const why = (what, now, ceiling) =>
-    `client/src/ui/hud.js now has ${now} ${what}, above its WP-0 ceiling of ${ceiling}.\n` +
+  for (const [what, [now, pinned]] of Object.entries(measured)) {
+    assert.equal(now, pinned,
+      `client/src/ui/hud.js has ${now} ${what}; the pinned number is ${pinned}.\n` +
+      '\n' +
+      'THE BOUNDARY: the console `.app` shell and its module are DEPRECATED and CLOSED TO NEW WORK. ' +
+      'The standard surface is `--ship grid` = the Level-1 Overview (client/src/ui/overview-view.js) ' +
+      '+ the Level-2 Room Zoom (client/src/ui/roomzoom-view.js).\n' +
+      '\n' +
+      'WHY FOUR NUMBERS AND NOT JUST THE ID CENSUS: E0-4 WP-5 built the stockpile ACCEPTS filter ' +
+      'here. It got its own `#stockfilter-row` — and so was caught by the id census — only because ' +
+      'seven chips overflowed the console menu in headless Chrome. Its FIRST draft appended them to ' +
+      'the existing `#palette` and added no element id at all; write that draft with ' +
+      '`insertAdjacentHTML` instead of `createElement`, or lift the builder into its own module, and ' +
+      'three of these four counts do not move either. A guard that catches this repo\'s canonical ' +
+      'failure by luck is not a guard.\n' +
+      '\n' +
+      'IT READS BOTH WAYS, deliberately:\n' +
+      `  • ${what} WENT UP ⇒ something was added to the console. Build it on the standard surface ` +
+      'instead. Nothing you need is in here: both modern surfaces already import hud.js for its wire ' +
+      'cache and armed-tool state, which is the half that survives WP-9.\n' +
+      `  • ${what} WENT DOWN ⇒ good, that is the programme working (WP-7 re-homed RELATIONS out of ` +
+      'here; WP-9 splits the file). LOWER the number in client/test/surface-boundary.test.js in the ' +
+      'SAME COMMIT — a `<=` ceiling would silently bank the slack as headroom for new console work, ' +
+      'which is precisely what happened when WP-7 took the id census from 46 to 43 under a ceiling ' +
+      'of 46.');
+  }
+
+  // Non-vacuity: if the scan or the stripper silently returned nothing, equality against a stale
+  // pin would be the only thing standing, and a re-pin would then bake the blindness in.
+  assert.ok(measured['literal DOM-lookup sites'][0] > 20 && measured['createElement() sites'][0] > 10,
+    'the hud.js scan found implausibly little for the console module — the scan or codeOnly() is ' +
+    'broken, and every number above is then being compared for the wrong reason.');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE RE-EXPORT BRIDGE, closed — and with it plan §1.5.4's crew-interaction census.
+//
+// The ownership scan sees `$('id')` / `getElementById('id')` / `'#id'` and nothing else, so a module
+// that reaches console DOM through a FUNCTION is invisible to it. That is not hypothetical: hud.js
+// exports `setChip(id, value)`, which is a write to an arbitrary element id, and any new
+// `console-bridge.js` re-exporting `getElementById` would do the same job.
+//
+// The previous round disclosed this and left it open, arguing that closing it needed call-graph
+// analysis. It does not. The real surface is small and countable: pin the set of hud.js symbols that
+// non-owner modules may reach, and the hatch is shut without following a single call. `setChip` is
+// not in the set and may not enter it.
+//
+// The same assertion delivers something the plan explicitly asked WP-0 for and the first draft of
+// this package did not give — §1.5.4: "add `openPersonaForSelected` to its census as the ONLY
+// sanctioned crew-interaction entry, so a later lane that scatters a second one fails a test." The
+// owner has decided all crew interaction consolidates into ONE Persona window; CREW_INTERACTION
+// below is the mechanised version of that line.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Every hud.js symbol the three view modules + controls.js are allowed to reach. All state-layer
+ *  verbs: caches, getters, the one armed-tool slot, the shared selection flow, the action seams.
+ *  Measured at the WP-7 merge (24: 23 via `Hud.*`, plus `LENSES` as a named import in controls.js). */
+const SHIP_STATE_REACH = Object.freeze([
+  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame', 'getLlm',
+  'getLog', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster', 'getStatus',
+  'getTab', 'getTerminals', 'isMossActive', 'onShipUpdate', 'openBioForSelected', 'selectCrewByCid',
+  'selectTab', 'talkSelectedCrew', 'toolUsed',
+]);
+
+/** ⚠️ THE DOM HATCHES. Exported by hud.js, and reachable by nobody outside it. `setChip(id, value)`
+ *  writes any element by id — a one-import bypass of the entire ownership scan. */
+const FORBIDDEN_REACH = Object.freeze(['setChip', 'initConsole', 'paintStageOverlays', 'buildLensButtons']);
+
+/** ⚠️ PLAN §1.5.4 — the crew-interaction census. Exactly the entries through which a player may be
+ *  taken from the map to a person. The Persona window replaces these; it does not join them. */
+const CREW_INTERACTION = Object.freeze(['openBioForSelected', 'talkSelectedCrew']); // sorted
+
+/** Symbols a non-owner module reaches out of hud.js, by either import form: `import * as Hud` +
+ *  `Hud.x`, or a named `import { x } from './hud.js'`. Both are counted, because pinning only the
+ *  namespace form would leave `import { setChip }` as an open door. */
+function shipStateReach() {
+  const found = new Set();
+  for (const abs of srcFiles()) {
+    const path = rel(abs);
+    if (CONSOLE_OWNERS.includes(path)) continue;
+    const code = codeOnly(readFileSync(abs, 'utf8'));
+    for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"][^'"]*hud\.js['"]/g)) {
+      for (const part of m[1].split(',')) {
+        const name = part.trim().split(/\s+as\s+/)[0].trim();
+        if (name) found.add(name);
+      }
+    }
+    // The namespace alias is CAPTURED, not assumed to be `Hud`: `import * as Ship from './hud.js'`
+    // would otherwise be a free bypass of this entire allowlist, and it is a one-word choice.
+    const ns = /import\s*\*\s*as\s+([A-Za-z_]\w*)\s*from\s*['"][^'"]*hud\.js['"]/.exec(code);
+    if (ns) {
+      for (const m of code.matchAll(new RegExp(`\\b${ns[1]}\\.([A-Za-z_]\\w*)`, 'g'))) found.add(m[1]);
+    }
+  }
+  return [...found].sort();
+}
+
+// MUTATION: `import { setChip } from './hud.js'` in overview-view.js and one `setChip('s-day', …)`
+// ⇒ the ownership scan sees no id literal at all, and THIS fails. MUTATION 2: a second
+// crew-interaction seam added beside talkSelectedCrew ⇒ the §1.5.4 census fails.
+test('the ship-state reach is pinned — no module may bridge into console DOM', () => {
+  const hudSource = readOrNull('src/ui/hud.js');
+  if (hudSource === null) return; // WP-9: hud.js is ship-state.js; re-pin the reach then.
+  const reach = shipStateReach();
+
+  for (const name of FORBIDDEN_REACH) {
+    assert.ok(!reach.includes(name),
+      `a module outside the console reaches hud.js's '${name}'.\n` +
+      '\n' +
+      'THE BOUNDARY: hud.js is TWO THINGS FUSED — an authoritative wire cache + armed-tool/tab/' +
+      'selection state machine that both modern surfaces legitimately share, and the console\'s DOM ' +
+      `chrome, which is deprecated. '${name}' is on the chrome side. \`setChip(id, value)\` in ` +
+      'particular writes ANY element by id, so importing it is a one-line bypass of the entire ' +
+      'console-DOM ownership scan — the scan only sees id literals, not functions that take one.\n' +
+      '\n' +
+      'THE EXIT: read the state through the getters (that is what the Overview and Room Zoom do) and ' +
+      'write your own surface\'s DOM yourself. There is no legitimate reason for a modern view to ' +
+      'drive console chrome; if you believe there is, it belongs in a commit message, not an ' +
+      'allowlist edit.');
+  }
+
+  assert.deepEqual(reach, [...SHIP_STATE_REACH],
+    `the ship-state reach is now ${JSON.stringify(reach)},\npinned as ${JSON.stringify(SHIP_STATE_REACH)}.\n` +
     '\n' +
-    'THE BOUNDARY: the console `.app` shell and its module are DEPRECATED and CLOSED TO NEW WORK. ' +
-    'The standard surface is `--ship grid` = the Level-1 Overview (client/src/ui/overview-view.js) ' +
-    '+ the Level-2 Room Zoom (client/src/ui/roomzoom-view.js). These two numbers may only go DOWN: ' +
-    'WP-7 re-homes RELATIONS out of here, WP-9 splits the file.\n' +
+    'THE BOUNDARY: this is the exact list of hud.js symbols the standard surface depends on — the ' +
+    'shared state layer that SURVIVES the console deletion. It is pinned for two reasons. (1) It is ' +
+    'the specification for WP-9\'s split: everything on this list moves to ship-state.js, everything ' +
+    'else is chrome and goes. A silent addition changes that plan without anyone deciding to. ' +
+    '(2) A function that takes an element id (hud.js exports `setChip`) is invisible to the ' +
+    'console-DOM ownership scan, so this list is what actually closes that door.\n' +
     '\n' +
-    'WHY THIS EXISTS AND NOT JUST THE ID CENSUS: E0-4 WP-5 built the stockpile ACCEPTS filter here. ' +
-    'It ended up with its own `#stockfilter-row` only because seven chips overflowed the console ' +
-    'menu in headless Chrome — its FIRST draft appended them to the existing `#palette` and would ' +
-    'have added no element id at all. A guard that only counts ids would have missed the mistake ' +
-    'it was written for, by luck. This one counts the widgets.\n' +
+    'THE EXIT: if a modern surface genuinely needs one more piece of SHIP STATE, add it here in the ' +
+    'same commit and say why. If what you need is console CHROME, the answer is no — see ' +
+    'FORBIDDEN_REACH above.');
+
+  // Non-vacuity, twice over.
+  // (a) A broken scan returns [] and the deepEqual above would be the only witness.
+  assert.ok(reach.length >= 10, `the reach scan found only ${reach.length} symbols — it is broken`);
+  // (b) A denylist of names that no longer exist is a denylist of nothing. `FORBIDDEN_REACH` names
+  //     real hud.js exports today (all four); if every one of them were renamed away the test would
+  //     keep passing while guarding air. Only ONE is required to still exist, so incremental chrome
+  //     removal during WP-9 does not fire this — the point is to catch the list going wholly
+  //     fictional, not to freeze the chrome's export names.
+  const hudExports = [...codeOnly(hudSource).matchAll(/^export\s+(?:function|const|let)\s+([A-Za-z_]\w*)/gm)]
+    .map((m) => m[1]);
+  assert.ok(FORBIDDEN_REACH.some((n) => hudExports.includes(n)),
+    `none of FORBIDDEN_REACH ${JSON.stringify(FORBIDDEN_REACH)} is still an export of ` +
+    `client/src/ui/hud.js, so the denylist is guarding nothing. Either the DOM hatches were renamed ` +
+    '(update the list in the same commit — `setChip`-shaped exports are what it exists to catch) or ' +
+    'they are genuinely gone, in which case say so and retire the list deliberately.');
+
+  // PLAN §1.5.4 — the crew-interaction census.
+  const crew = reach.filter((n) => /^(talk|openPersona|openBio|converse|chat)/i.test(n));
+  assert.deepEqual(crew, [...CREW_INTERACTION],
+    `crew-interaction entries reachable from the map are ${JSON.stringify(crew)}, pinned as ` +
+    `${JSON.stringify(CREW_INTERACTION)}.\n` +
+    '\n' +
+    'THE BOUNDARY (docs/design/perilune-console-retirement.plan.md §1.5.4, an OWNER DECISION): all ' +
+    'crew interaction consolidates into ONE Persona window. Its design is deferred; what is decided ' +
+    'is that there is exactly one door from the map to a person, so the Persona window replaces one ' +
+    'function body instead of being threaded through five surfaces.\n' +
     '\n' +
     'THE TWO LEGITIMATE EXITS:\n' +
-    '  (1) BUILD IT ON THE STANDARD SURFACE. Nothing you need is in here — both modern surfaces ' +
-    'already import hud.js for its wire cache and armed-tool state, which is the half that survives.\n' +
-    '  (2) If this really is a re-home or a deletion, LOWER the ceiling in ' +
-    'client/test/surface-boundary.test.js in the same commit. Raising it needs an argument.';
-
-  assert.ok(sites <= HUD_DOM_LOOKUP_SITES_CEILING, why('literal DOM-lookup sites', sites, HUD_DOM_LOOKUP_SITES_CEILING));
-  assert.ok(creates <= HUD_CREATE_ELEMENT_CEILING, why('createElement() sites', creates, HUD_CREATE_ELEMENT_CEILING));
-
-  // Non-vacuity: if the scan or the stripper silently returned nothing, both ceilings would pass.
-  assert.ok(sites > 20 && creates > 10,
-    `the hud.js scan found only ${sites} lookups / ${creates} createElement sites — implausibly few ` +
-    'for the console module. The scan or codeOnly() is broken, and both ceilings above are then ' +
-    'passing for the wrong reason.');
+    '  (1) You are BUILDING the Persona seam: replace an entry here rather than adding beside it — ' +
+    '`openPersonaForSelected` is meant to SUPERSEDE `talkSelectedCrew`/`openBioForSelected`, and the ' +
+    'census shrinking to one is the whole point.\n' +
+    '  (2) You are scattering a second crew-interaction affordance. Do not. That is the thing this ' +
+    'assertion was requested to prevent.');
 });
 
 // MUTATION: add `$('stockfilter')` to overview-view.js — a modern view reaching into console DOM,
 // the inverse of the WP-5 mistake and the way the two skins would fuse back together ⇒ fails.
 test('only the console\'s own module may touch console DOM', () => {
-  const OWNERS = ['src/ui/hud.js', 'src/main.js'];
   const shell = new Set(CONSOLE_SHELL_IDS);
   const files = srcFiles();
   assert.ok(files.length >= 40, `only ${files.length} client sources walked — the scan is broken`);
   for (const abs of files) {
     const path = rel(abs);
-    if (OWNERS.includes(path)) continue;
+    if (CONSOLE_OWNERS.includes(path)) continue;
     for (const id of domLookups(codeOnly(readFileSync(abs, 'utf8')))) {
       assert.ok(!shell.has(id),
         `${path} looks up the console-shell element '#${id}'.\n` +
