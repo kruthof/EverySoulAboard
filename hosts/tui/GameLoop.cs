@@ -47,6 +47,20 @@ namespace Perilune.Tui
         private string _status = "";
         private bool _running = true;
 
+        // E0-4 WP-5 — the PENDING stockpile accept-filter. Not a per-tile editor: 'i' walks the kind
+        // cursor, 'I' accepts/rejects the kind under it, and the resulting mask is applied to the
+        // next tile 'p' zones (and to every tile after it, until changed). Starts at accept-all, so
+        // a TUI player who never presses 'i' sees E0-3's BEHAVIOUR — an all-accept mask and an
+        // absent registry entry are indistinguishable to StockZoneSystem.Accepts.
+        //
+        // BEHAVIOUR, NOT COST. Zoning any tile now writes an explicit accept-all entry, so
+        // StockZoneSystem.Zones.Count > 0 permanently arms WP-2's `filtered` fast path in
+        // HaulJobSource and the per-item AnyFreeStockpileAccepts gate runs forever, over a
+        // TryGetFilter that is a LINEAR scan. See stock-filter-model.js for the full note; the fix
+        // is a sim/ change, outside this package.
+        private int _stockKind;
+        private ulong _stockMask = StockFilterModel.AcceptAllMask;
+
         // MOSS pane state. When _mossTerminal != null the pane is open (a modal): only e/Esc
         // act, and RenderFrame builds the MossPaneModel from these.
         private string _mossTerminal;   // terminal id the pane is bound to, or null = closed
@@ -189,6 +203,8 @@ namespace Perilune.Tui
                 case InputAction.Dig: DesignateDig(); break;
                 case InputAction.Stockpile: DesignateStockpile(); break;
                 case InputAction.Strip: DesignateStrip(); break;
+                case InputAction.StockFilterKind: StepStockFilterKind(); break;
+                case InputAction.StockFilterToggle: ToggleStockFilterKind(); break;
                 case InputAction.Follow: ToggleFollow(); break;
                 case InputAction.MossOpen: OpenMoss(); break;
 
@@ -319,7 +335,41 @@ namespace Perilune.Tui
                 return;
             }
             _sim.EnqueueCommand(new DesignateStockpileCommand(_cursor, on));
-            _status = on ? "stockpile set" : "stockpile cleared";
+            // E0-4 WP-5: presence THEN the complete accept-set, in that order and only on the ON
+            // path. Both drain before any system runs, so the intermediate state is unobservable —
+            // but DesignateStockpileCommand's OFF path CLEARS the filter, so sending the filter
+            // first would have it wiped by the designation that follows. The OFF path needs nothing
+            // here for the same reason: clearing the zone already clears its filter.
+            //
+            // The mask is always the WHOLE truth for the tile, never a delta — so re-zoning a tile
+            // after widening the filter genuinely widens it, instead of leaving an invisible stale
+            // restriction the TUI has no way to display.
+            if (on) _sim.EnqueueCommand(new SetStockpileFilterCommand(_cursor, _stockMask));
+            _status = on
+                ? "stockpile set (accepts " + StockFilterModel.Describe(_stockMask) + ")"
+                : "stockpile cleared";
+            _uiDirty = true;
+        }
+
+        /// <summary>'i' — step the pending-filter kind cursor and report where it landed.</summary>
+        private void StepStockFilterKind()
+        {
+            _stockKind = StockFilterModel.NextKind(_stockKind);
+            ReportStockFilter();
+        }
+
+        /// <summary>'I' — accept/reject the kind under the cursor in the pending filter.</summary>
+        private void ToggleStockFilterKind()
+        {
+            _stockMask = StockFilterModel.Toggle(_stockMask, _stockKind);
+            ReportStockFilter();
+        }
+
+        private void ReportStockFilter()
+        {
+            _status = "filter: " + StockFilterModel.KindName(_stockKind)
+                    + (StockFilterModel.Accepts(_stockMask, _stockKind) ? " accepted" : " rejected")
+                    + " (accepts " + StockFilterModel.Describe(_stockMask) + ")";
             _uiDirty = true;
         }
 
@@ -648,7 +698,9 @@ namespace Perilune.Tui
             "L               lock / unlock door",
             "m               move selected crew to cursor",
             "d               designate dig (debris)",
-            "p               designate stockpile",
+            "p               designate stockpile (with the filter below)",
+            "i               cycle stockpile filter kind",
+            "I               toggle that kind (accept / reject)",
             "v               designate strip (deconstruct wall/device)",
             "c               follow selected crew",
             "t               open MOSS pane on terminal (e edit)",

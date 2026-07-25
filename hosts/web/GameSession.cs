@@ -247,6 +247,7 @@ namespace Perilune.Web
                 case CmdKind.Dig: HandleDesignate(cmd, dig: true); return true;
                 case CmdKind.Stockpile: HandleDesignate(cmd, dig: false); return true;
                 case CmdKind.Strip: HandleStrip(cmd); return true;
+                case CmdKind.Filter: HandleFilter(cmd); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
@@ -667,6 +668,54 @@ namespace Perilune.Web
                 ? DeconstructKind.Device : DeconstructKind.Wall;
             _sim.EnqueueCommand(new DesignateDeconstructCommand(pos, kind, on));
             _status = on ? "designate strip" : "clear strip";
+        }
+
+        /// <summary>
+        /// Every <see cref="ItemKind"/> accepted — the canonical "accept all" mask, DERIVED from the
+        /// enum rather than written as a literal (0x7F today). A literal would silently stop covering
+        /// the whole set the day an eighth kind is added; the derived form widens with the enum, and
+        /// <c>AcceptAllMaskIsDerivedFromItemKind_NotALiteral</c> pins that. Reflection is fine here:
+        /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
+        /// into a static. The TUI host derives its own copy the same way — the two host projects share
+        /// no assembly, and a derived value cannot drift where a copied literal would.
+        /// </summary>
+        internal static readonly ulong AcceptAllMask =
+            (1UL << Enum.GetValues(typeof(ItemKind)).Length) - 1UL;
+
+        /// <summary>
+        /// The E0-4 FILTER bridge — set the complete accept-set of a stockpile tile on the current
+        /// deck. Sibling of <see cref="HandleDesignate"/>: same clamp, same <c>_deck</c> supplies Z,
+        /// same "promise the ATTEMPT only" contract (<see cref="SetStockpileFilterCommand"/> is
+        /// precondition-light by design — a mask on a non-stockpile tile is inert, and the OFF path
+        /// of a stockpile designation clears any stray entry).
+        ///
+        /// TWO THINGS THE WIRE VALUE GETS DONE TO IT, both deliberate:
+        ///
+        /// 1. A NEGATIVE MASK IS REFUSED OUTRIGHT — no command is enqueued at all. This is the single
+        ///    drop site for every mask this protocol cannot express: a literal negative on the wire,
+        ///    AND an absent/non-numeric "mask" key, which Parse decodes to the -1 sentinel rather
+        ///    than to 0 (0 means ACCEPT NOTHING here and must stay reachable as a real value).
+        ///    <c>WebCommand.Int</c>
+        ///    has an explicit sign branch, so a hand-crafted socket line CAN deliver one, and a naive
+        ///    <c>(ulong)cmd.I</c> would widen -1 to every bit set, which <c>StockZoneSystem.Accepts</c>
+        ///    reads as ACCEPT EVERYTHING — the exact inverse of a restrictive filter, and silently
+        ///    permissive rather than loudly broken. It is deliberately NOT clamped to 0 (accept
+        ///    nothing) or to AcceptAllMask either: both invent an intent this protocol cannot express.
+        ///    The client never produces a negative (Cmd.filter masks with ACCEPT_ALL); dropping is the
+        ///    only honest answer to a message that cannot legitimately exist.
+        /// 2. BITS ABOVE THE LAST ItemKind ARE CANONICALISED AWAY. Not cosmetics:
+        ///    <c>StockZoneSystem.StateChecksum</c> folds AcceptMask verbatim, so an undefined high bit
+        ///    would perturb the hashed state while changing no behaviour — two byte-different sims that
+        ///    behave identically. Masking here guarantees ONE representation per meaning in hashed state.
+        /// </summary>
+        private void HandleFilter(WebCommand cmd)
+        {
+            if (cmd.I < 0) return;   // (1) — not clamped, DROPPED
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
+            ulong mask = (ulong)(uint)cmd.I & AcceptAllMask;   // (2)
+            _sim.EnqueueCommand(new SetStockpileFilterCommand(pos, mask));
+            _status = mask == AcceptAllMask ? "stockpile accepts all" : "stockpile filter set";
         }
 
         /// <summary>
@@ -1597,7 +1646,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1653,6 +1702,21 @@ namespace Perilune.Web
                     case "dig": return new WebCommand(CmdKind.Dig, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
                     case "stockpile": return new WebCommand(CmdKind.Stockpile, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
                     case "strip": return new WebCommand(CmdKind.Strip, Int(json, "x"), Int(json, "y"), i: Int(json, "on"));
+                    // E0-4 WP-5 filter verb: {"cmd":"filter","x":..,"y":..,"mask":N} — set the
+                    // COMPLETE accept-set of the stockpile tile at (x,y) on the current deck. The
+                    // mask rides on `i` as a plain non-negative integer: ItemKind has 7 members, so
+                    // every legal mask fits in 7 bits and never approaches int's range. It is always
+                    // the WHOLE truth for that tile, never a per-kind delta — the same explicit
+                    // contract dig/stockpile/strip chose, so a drag-sweep is idempotent and a
+                    // repaint can never leave a stale restrictive filter behind.
+                    //
+                    // An ABSENT (or non-numeric) "mask" decodes to the -1 sentinel, NOT to 0: a mask
+                    // of 0 is a real, reachable value here (accept nothing), so letting a missing key
+                    // fall to 0 would turn a malformed line into "this zone refuses everything" — the
+                    // most destructive reading available. -1 lands on HandleFilter's negative guard
+                    // and is dropped, which is the same answer this protocol gives every other
+                    // message it cannot express, through the same single drop site.
+                    case "filter": return new WebCommand(CmdKind.Filter, Int(json, "x"), Int(json, "y"), i: Int(json, "mask", -1));
                     // {"cmd":"place","kind":"bunk|desk|chair|locker|plant|lamp|growbed|medbed|table",
                     //  "x":..,"y":..,"deck":..} — place a furniture device (Room Zoom decorate palette).
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
@@ -1696,15 +1760,22 @@ namespace Perilune.Web
             return sb.ToString();
         }
 
-        private static int Int(string s, string key)
+        private static int Int(string s, string key) => Int(s, key, 0);
+
+        /// <summary>As <see cref="Int(string,string)"/>, but returns <paramref name="missing"/> when
+        /// the key is absent OR its value has no digits — letting a caller tell "not stated" apart
+        /// from a real 0. The two-argument form passes 0 and is therefore byte-identical to what it
+        /// always did; only the E0-4 <c>filter</c> case asks for a sentinel, because a mask of 0 is a
+        /// REAL value there (accept nothing) and must not be what an absent key decodes to.</summary>
+        private static int Int(string s, string key, int missing)
         {
             int v = ValueStart(s, key);
-            if (v < 0) return 0;
+            if (v < 0) return missing;
             int sign = 1;
             if (v < s.Length && s[v] == '-') { sign = -1; v++; }
             int n = 0; bool any = false;
             while (v < s.Length && s[v] >= '0' && s[v] <= '9') { n = n * 10 + (s[v] - '0'); v++; any = true; }
-            return any ? sign * n : 0;
+            return any ? sign * n : missing;
         }
 
         /// <summary>Index of the first char of the value for "key", skipping the colon and

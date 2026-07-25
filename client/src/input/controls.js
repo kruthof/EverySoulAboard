@@ -9,6 +9,7 @@ import { Cmd } from '../wire/session.js';
 import { selectedCrewCid } from '../wire/messages.js';
 import { LENSES } from '../ui/hud.js';
 import { isBuildTool } from '../ui/console-model.js';
+import { ACCEPT_ALL } from '../ui/stock-filter-model.js';
 
 /**
  * Click assist — PURE. Crew walk constantly and slide between tiles, so a click that "looks"
@@ -45,8 +46,9 @@ export function crewTileNear(frame, motion, camera, px, py) {
 }
 
 /**
- * Lower an armed PALETTE tool + tile to the ONE wire order it means, or null when the tool is not
- * a palette tool (MOVE / nothing armed — those have their own branches at the call site). PURE.
+ * Lower an armed PALETTE tool + tile to the wire orders it means — an array of 0..2 payloads, empty
+ * when the tool is not a palette tool (MOVE / nothing armed — those have their own branches at the
+ * call site). PURE.
  *
  * Build kinds go out as `Cmd.build`; the order kinds go out as `Cmd.dig`/`Cmd.stockpile`/`Cmd.strip`.
  * Same gesture, different verb — routing an order tool through `Cmd.build` would hand it to
@@ -55,15 +57,33 @@ export function crewTileNear(frame, motion, camera, px, py) {
  * previously shared a forked copy of console-model's `isBuildTool`), and so the routing itself is
  * node-testable without a DOM.
  *
+ * IT RETURNS A LIST, NOT ONE PAYLOAD (E0-4 WP-5). Painting a filtered stockpile needs BOTH presence
+ * and filter, and inlining the second `session.send` at one of the two call sites is precisely the
+ * drift this function exists to prevent. Widening the seam keeps "which verbs does this tool send"
+ * in one testable place; the alternative puts it in two, one of which nobody remembers.
+ *
  * @param {null|string} tool @param {number} x @param {number} y
- * @returns {object|null} a Cmd payload, or null when the tool owns no tile order
+ * @param {number} [mask] the stockpile accept-mask; ignored by every other tool
+ * @returns {object[]} 0..2 Cmd payloads, in send order
  */
-export function paletteOrder(tool, x, y) {
-  if (isBuildTool(tool)) return Cmd.build(tool, x, y);
-  if (tool === 'dig') return Cmd.dig(x, y, true);
-  if (tool === 'stockpile') return Cmd.stockpile(x, y, true);
-  if (tool === 'strip') return Cmd.strip(x, y, true);
-  return null;
+export function paletteOrders(tool, x, y, mask) {
+  if (isBuildTool(tool)) return [Cmd.build(tool, x, y)];
+  if (tool === 'dig') return [Cmd.dig(x, y, true)];
+  if (tool === 'strip') return [Cmd.strip(x, y, true)];
+  if (tool === 'stockpile') {
+    // ALWAYS both, ALWAYS in this order: zone the tile, THEN assert its complete accept-set.
+    // Both land in the same command drain before any system runs, so the intermediate state is
+    // unobservable — but `DesignateStockpileCommand` OFF *clears* the filter, so the reverse order
+    // would break the day an OFF path is added here. Pinned by test now, while it is free.
+    //
+    // A missing/garbage mask defaults to ACCEPT-ALL and NEVER to silence: sending nothing would let
+    // a tile keep an earlier restrictive filter that the player has just repainted as accept-all,
+    // with no tint, badge or readout anywhere that could tell them (there is no wire channel for a
+    // filter, see MECHANICS §13). Every repaint re-asserts the whole truth.
+    const m = Number.isFinite(mask) ? mask : ACCEPT_ALL;
+    return [Cmd.stockpile(x, y, true), Cmd.filter(x, y, m)];
+  }
+  return [];
 }
 
 /**
@@ -76,6 +96,7 @@ export function paletteOrder(tool, x, y) {
  *   toggleSprites: () => void,
  *   onEscape?: () => void,
  *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'),
+ *   getStockFilter?: () => number,
  *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile'|'strip') => void,
  *   onToolUsed?: (tool: string, x: number, y: number) => void,
  * }} opts
@@ -88,6 +109,11 @@ export function installInput(opts) {
   // branch on it. onBuildKey routes B/X to the UI (controls.js stays free of UI imports beyond
   // LENSES); onToolUsed lets the UI acknowledge a placement (pulse) / disarm the move order.
   const getArmedTool = opts.getArmedTool || (() => null);
+  // E0-4 WP-5: the stockpile accept-mask, read at click time from the UI's palette. It arrives as a
+  // GETTER parameter rather than being read out of hud.js here (controls.js already imports from
+  // hud.js, so that would compile) because a module-state read would make paletteOrders impure and
+  // untestable — the whole reason the seam exists.
+  const getStockFilter = opts.getStockFilter || (() => ACCEPT_ALL);
   const onBuildKey = opts.onBuildKey || (() => {});
   const onToolUsed = opts.onToolUsed || (() => {});
   // Fires on every plain/shift canvas click (mouse or Enter) — a NEWER selection intent, so the
@@ -137,11 +163,11 @@ export function installInput(opts) {
       const t = tileFromPoint(camera, px, py);
       if (t.x >= 0 && t.y >= 0 && t.x < frame.w && t.y < frame.h) {
         const tool = getArmedTool();
-        const order = paletteOrder(tool, t.x, t.y);
-        if (order) {
-          // IX-32: while a palette tool is armed a non-drag click sends exactly one order —
-          // no selection, no device toggle, no crew snap, and shift is suppressed (IX-33).
-          session.send(order);
+        const orders = paletteOrders(tool, t.x, t.y, getStockFilter());
+        if (orders.length) {
+          // IX-32: while a palette tool is armed a non-drag click sends that tool's orders and
+          // nothing else — no selection, no device toggle, no crew snap, shift suppressed (IX-33).
+          for (const o of orders) session.send(o);
           onToolUsed(tool, t.x, t.y);
         } else if (tool === 'move') {
           // IX-52 guided move order: one click, one order, then the UI disarms via onToolUsed.
@@ -240,8 +266,8 @@ export function installInput(opts) {
     // Otherwise: talk when a crew is selected, else a keyboard "click" at the inspection cursor.
     else if (k === 'Enter') {
       const tool = getArmedTool();
-      const order = paletteOrder(tool, cur.x, cur.y);
-      if (order) { session.send(order); onToolUsed(tool, cur.x, cur.y); }
+      const orders = paletteOrders(tool, cur.x, cur.y, getStockFilter());
+      if (orders.length) { for (const o of orders) session.send(o); onToolUsed(tool, cur.x, cur.y); }
       else if (!talkSelected()) { session.send(Cmd.click(cur.x, cur.y)); onCanvasClick(cur.x, cur.y); }
     }
     else return;
