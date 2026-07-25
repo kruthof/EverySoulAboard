@@ -386,6 +386,12 @@ canvas{
 }
 .tool:hover{color:var(--txt);border-color:var(--ln-chip)}
 .tool.on,.tool.on:hover{background:var(--sel-bg);color:var(--sel-fg);border-color:var(--sel-bd)}
+/* E0-4 stockpile accept-filter chips — the same .tool on/off chip (a filter toggle IS an on/off
+   tool), on their own row under PLACE and tighter, because the console row is a hard 170px and the
+   two rows plus the hotkey line have to live inside it. */
+.build-tab{display:flex;flex-direction:column;gap:6px;min-height:0}
+.stock-filter{gap:4px}
+.stock-filter .tool{padding:5px 8px;font-size:9.5px}
 .tool-cancel:hover{color:var(--bad-txt);border-color:var(--demo-bd)}
 .tool-cancel.on,.tool-cancel.on:hover{background:var(--demo-bg);color:var(--demo-fg);border-color:var(--demo-bd)}
 /* tab content blocks */

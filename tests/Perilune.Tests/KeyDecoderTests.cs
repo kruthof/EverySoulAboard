@@ -6,8 +6,9 @@ namespace Perilune.Tests
 {
     /// <summary>
     /// The key map is pure and the client's only input contract, so it gets a full table
-    /// test — including the one case-sensitive collision (lowercase 'l' = cursor-right,
-    /// uppercase 'L' = door-lock) and Shift+Enter = lock.
+    /// test — including BOTH case-sensitive collisions (lowercase 'l' = cursor-right vs
+    /// uppercase 'L' = door-lock; lowercase 'i' = stockpile-filter kind vs uppercase 'I' =
+    /// toggle that kind, E0-4) and Shift+Enter = lock.
     /// </summary>
     public class KeyDecoderTests
     {
@@ -73,6 +74,30 @@ namespace Perilune.Tests
             Assert.AreEqual(InputAction.Help, KeyDecoder.Decode(Ch('?')));
             Assert.AreEqual(InputAction.Quit, KeyDecoder.Decode(Ch('q')));
             Assert.AreEqual(InputAction.Cancel, KeyDecoder.Decode(Key(ConsoleKey.Escape)));
+        }
+
+        /// <summary>
+        /// E0-4 WP-5: 'i' and 'I' are DISTINCT actions — the second case-sensitive pair in this map,
+        /// after 'l'/'L'. MUTATION: map <c>case 'i': case 'I':</c> to the same action (the classic
+        /// case-collapse every other letter command in this file uses) ⇒ 'I' decodes to
+        /// StockFilterKind and the player can walk the kind cursor but never toggle anything, so the
+        /// filter is permanently accept-all and the whole TUI surface is dead.
+        ///
+        /// The neighbours are re-asserted because the risk is a stolen key, not a missing one: 'i'
+        /// and 'I' were free, and this is what proves they still are for everyone else.
+        /// </summary>
+        [Test]
+        public void I_And_i_Are_Distinct_StockFilter_Actions()
+        {
+            Assert.AreEqual(InputAction.StockFilterKind, KeyDecoder.Decode(Ch('i')));
+            Assert.AreEqual(InputAction.StockFilterToggle, KeyDecoder.Decode(Ch('I', shift: true)));
+            Assert.AreNotEqual(KeyDecoder.Decode(Ch('i')), KeyDecoder.Decode(Ch('I', shift: true)));
+
+            // Unmoved neighbours.
+            Assert.AreEqual(InputAction.Stockpile, KeyDecoder.Decode(Ch('p')));
+            Assert.AreEqual(InputAction.Strip, KeyDecoder.Decode(Ch('v')));
+            Assert.AreEqual(InputAction.CursorRight, KeyDecoder.Decode(Ch('l')));
+            Assert.AreEqual(InputAction.Lock, KeyDecoder.Decode(Ch('L', shift: true)));
         }
 
         [Test]

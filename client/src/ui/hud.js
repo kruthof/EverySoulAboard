@@ -26,6 +26,9 @@ import {
 import {
   ringLayout, drawnEdges, focusTag, regardRows, signed,
 } from './relations-model.js';
+import {
+  STOCK_KINDS, defaultStockFilter, stockKindAccepted, toggleStockKind, stockFilterLabel,
+} from './stock-filter-model.js';
 import { MossScreen } from './moss-screen.js';
 
 const METRIC_DEFS = [
@@ -54,6 +57,11 @@ let _roster = null;       // latest roster message (authoritative crew list)
 let _chron = null;        // latest chron message
 let _relations = null;    // latest relations message (directed opinion graph → the RELATIONS web)
 let _armed = null;        // the ONE input-mode slot: null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'
+// E0-4 WP-5: the accept-mask the STOCKPILE tool paints with. A PREFERENCE, not part of the armed
+// transition — like the Room Zoom's material picker it survives disarm, tab switches and Escape, so
+// a player who set "FOOD only" does not silently get accept-all back after one Esc. Deliberately not
+// touched by nextArmedTool (console-model.js needs no change for it).
+let _stockFilter = defaultStockFilter();
 let _tab = 'build';       // active bottom-bar tab (presentation only, IX-20)
 let _pending = null;      // pending cross-deck row click (IX-42)
 let _chronRequested = false; // CHRONICLE requests once per connection (IX-74)
@@ -286,6 +294,22 @@ export function initConsole(opts) {
     pal.appendChild(b);
   }
 
+  // E0-4 WP-5: the stockpile ACCEPT-filter chips — one per ItemKind, reusing the .tool/.tool.on
+  // chip because a filter toggle IS an on/off tool. They are real <button>s, so they sit in the
+  // console's natural tab order and Enter/Space activate them natively (controls.js already stands
+  // down for both on a focused BUTTON). No new global hotkey: digits 1–7 are the LENS keys, and Z
+  // still arms the tool — the row it reveals is then keyboard-reachable.
+  const sf = $('stockfilter');
+  for (const { kind, label } of STOCK_KINDS) {
+    const b = document.createElement('button');
+    b.className = 'tool';
+    b.dataset.kind = String(kind);
+    b.textContent = label;
+    b.title = 'Accept ' + label + ' in stockpiles painted from now on';
+    b.onclick = () => { _stockFilter = toggleStockKind(_stockFilter, kind); reflectArmed(); };
+    sf.appendChild(b);
+  }
+
   // Readout actions (IX-51/52/53).
   $('b-talk').onclick = () => {
     const cid = selectedCrewCid(_frame);
@@ -407,6 +431,10 @@ export function renderRelations(m) {
 
 export function getArmedTool() { return _armed; }
 
+/** The stockpile accept-mask the palette currently carries (E0-4 WP-5). Read at click time by
+ *  controls.js through the getStockFilter option — never imported as module state. */
+export function getStockFilter() { return _stockFilter; }
+
 /** B/X/G/Z/V from controls.js (IX-10/23, E0-3/E0-5): toggle wall/cancel/dig/stockpile/strip;
  *  arming surfaces the BUILD tab so the palette showing the armed state is actually on screen. */
 const KEY_EVENT = { cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', strip: 'keyV', build: 'keyB' };
@@ -495,6 +523,13 @@ export function setConnected(connected) {
 function reflectArmed() {
   document.querySelectorAll('#palette .tool').forEach((b) =>
     b.classList.toggle('on', /** @type {HTMLElement} */ (b).dataset.tool === _armed));
+  // E0-4 WP-5: the accept-filter row lives INSIDE reflectArmed rather than beside the palette
+  // button's onclick, so it appears identically whether STOCKPILE was armed by the button or by the
+  // Z key — a second reflection point is the drift bug this function already exists to prevent.
+  const filterRow = $('stockfilter-row');
+  if (filterRow) filterRow.hidden = _armed !== 'stockpile';
+  document.querySelectorAll('#stockfilter .tool').forEach((b) =>
+    b.classList.toggle('on', stockKindAccepted(_stockFilter, +(/** @type {HTMLElement} */ (b).dataset.kind))));
   const move = $('b-move');
   if (move) move.classList.toggle('armed', _armed === 'move');
   const cnv = _getCanvas();
@@ -503,7 +538,7 @@ function reflectArmed() {
   const hint = $('hint');
   if (hint) {
     const sel = selectedRosterEntry(_frame, _roster);
-    const armedText = hintLine(_armed, sel ? surnameOf(sel.name) : '');
+    const armedText = hintLine(_armed, sel ? surnameOf(sel.name) : '', stockFilterLabel(_stockFilter));
     hint.textContent = armedText || IDLE_HINT;
     hint.classList.toggle('armed', !!armedText);
   }
