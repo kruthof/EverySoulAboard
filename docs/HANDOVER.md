@@ -8,9 +8,13 @@ is renamed). Tag `v2-talking-ship`.
 
 0. **⚠️ E0-4 IS IN PROGRESS on `lane/e0-4-stockpile-zones` (NOT on `main`, NOT merged).** If you are
    the session picking it up, **read the "E0-4 — filtered stockpile zones: IN PROGRESS" section
-   directly below first** — WP-1/WP-2/WP-3 are committed on the lane; WP-4, WP-5 and integration
-   remain. The lane plan `docs/design/perilune-e0-4-stockpile-zones.plan.md` is the authority on
-   what is left. Do the remaining work IN THAT WORKTREE (`../perilune-wt/e0-4-stockpile-zones`).
+   directly below first** — WP-1/WP-2/WP-3/WP-4 are committed on the lane; **WP-4b (the real flip
+   demonstration), WP-5, the WP-3 rigor fix, and integration remain** (see the "What REMAINS" list in
+   that section). Note WP-4's bench rule is the round-trip fix, NOT the wrong-deck flip — the flip is a
+   filter problem, demonstrated by WP-4b. The lane plan `docs/design/perilune-e0-4-stockpile-zones.plan.md`
+   is the authority on the lane; the automation/souls principle
+   `docs/design/perilune-automation-and-souls.md` (now on `main`) governs future economy work. Do the
+   remaining work IN THAT WORKTREE (`../perilune-wt/e0-4-stockpile-zones`).
 1. **Read the two sections further below, in order** — the A1 measurement (what the economy
    actually does today) and the E0-5-before-E0-4 sequencing case (what to do about it). Everything
    below the E0-4 section is history, newest first.
