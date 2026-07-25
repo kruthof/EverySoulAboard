@@ -181,6 +181,12 @@ what a bench wants" rule measurable — but **do not zone stockpiles in any auth
 lands**, to keep the measured −14 % wrong-deck throughput regression latent. E0-5's own guardrail held:
 no authored ship designates a strip.
 
+> **⚠️ RETRACTED, 2026-07-25 — this paragraph is kept as history, not as guidance.** The "measured
+> −14 % wrong-deck throughput regression" is `ECONOMY.md` §8's figure, and E0-4 **never reproduced
+> it** — the runs that appeared to were zoning a sealed compartment (see the RESTART block at the top
+> of this file). The advice "do not zone stockpiles in any authored ship" still stands, but the
+> operative reason is now the **unreachable-tile haul livelock**, not an unmeasured throughput cost.
+
 ## A1 MEASURED — the economy is finite and TERMINATES at sim-hour 28 (2026-07-23), START HERE
 
 **`ECONOMY-PLAN.md` §E0's goal is a number nobody had ever checked.** Measured now, after E0-1/2/3:
