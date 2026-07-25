@@ -4,39 +4,62 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒ RESTART — START HERE (2026-07-24): resume E0-4 in its existing worktree
+## ⇒ RESTART — START HERE (2026-07-25): E0-4's far-leg thesis is RETRACTED; five unmerged branches
 
-**A game-work lane is mid-flight and NOT on `main`. Do not start fresh — resume it:**
+**⚠️ Before quoting ANY `--stockpile far` number from this file or from `ECONOMY.md` §8, read this.**
 
-```bash
-cd /Users/garvin/Research/Code/perilune-wt/e0-4-stockpile-zones   # the worktree ALREADY EXISTS
-git status && git branch --show-current                           # → lane/e0-4-stockpile-zones, clean
-```
+**"A wrong-deck stockpile is a severe throughput regression" was never measured.**
+`StockpileHarness.SelectStockpile` gates candidates on the `TileFlags.Walkable` flag with **no
+reachability test**, so `--stockpile far` deterministically zones **3 of its 4 slice tiles inside the
+authored sealed observatory** (`sim/Sim.Gen/AuthoredShips.cs:93` `DoorClosed = true`;
+`Simulation.IsWalkable` refuses a closed door; **nothing in the sim ever opens a door**). Those tiles
+are `Walkable` but unreachable; `JobWork.IsFreeStockpileTile` has no reachability term, so one
+unreachable free tile holds the haul candidate gate open forever while delivery always fails — a
+2-tick claim/abandon livelock consuming ~8 crew at 50 % duty. Measured, 30 000 slice ticks:
 
-- **The lane:** `lane/e0-4-stockpile-zones` (filtered stockpile zones). WP-1/WP-2/WP-3/WP-4 are
-  committed on it; it is **unmerged**. Full detail is in **that worktree's** `docs/HANDOVER.md`
-  "E0-4 — filtered stockpile zones: IN PROGRESS" section and in memory
-  `e0-4-stockpile-zones-in-progress.md` (loaded automatically — memory survives restart).
-- **Do these four, IN THIS ORDER** (the method is: Opus agent implements each + a separate Opus
-  agent independently reviews; orchestrator integrates — same as E0-5):
-  1. **WP-4b — the filtered-far flip demonstration** (host-only). **UN-STARTED** — an implementer
-     was launched then interrupted, so *nothing was written*. Add a `filtered-far` mode to
-     `hosts/scenario/StockpileHarness.cs` (a far stockpile that rejects Potato via
-     `SetStockpileFilterCommand`) + a `--stockpile filtered-far` flag in `hosts/scenario/Program.cs`;
-     measure whether throughput recovers toward baseline **31** `ControllerModule` (the real
-     scorecard — A1 is a trap here). Report the honest number; do not fabricate a flip. Zero pins.
-  2. **WP-3 rigor fix** (host test file only, `tests/Perilune.Tests/StockpileHarnessTests.cs`): make
-     the F1/F2 named mutations actually bite (F1 assert the *total order*; F2 fix the redundant-guard
-     comment / add distinguishing coverage).
-  3. **WP-5 — the filter UI**: extend the E0-3 `stockpile` verb (client kind-palette + `filter` wire
-     msg `CmdKind.Filter`/`HandleFilter`, TUI filter arg, optional client-only tint). **Must land
-     after WP-4.** No glyph/golden move.
-  4. **Integrate**: `./ci.sh` in the worktree, confirm the four pins byte-identical (scenario
-     `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice `1f8f2225ee568de9`, defs
-     `5a471d12643b64f9`), update docs (incl. correcting `ECONOMY.md` §8's "no bench rule =
-     regression" framing to match the measurement) + memory, `--no-ff` merge to `main`, re-gate.
+| zoned | pickup starts | deliveries | pickup share |
+|---|---|---|---|
+| `bench` 4 (all reachable) | 10 | 9 | 0.913 % |
+| **one REACHABLE far-deck tile** | **2** | **2** | **0.175 %** |
+| the 3 observatory tiles | 72 928 | 0 | 31.191 % |
 
-**Landed on `main` this session (2026-07-24, docs-only):** `docs/design/perilune-automation-player-journey.md`
+**Reachability — not distance, not deck, not the filter — is the differentiator. Cross-deck haul
+demonstrably works** (deliveries carried Potato from `(29,6,0)` deck 0 to `(60,1,1)` deck 1 via the
+ladders). **`ECONOMY.md` §8's −14 % wrong-deck regression is not reproduced by any of these runs**,
+and the "the wrong-deck regression is primarily a FILTER problem" reframing rested on the same
+confounded number. The bug is **pre-existing** (worse at parent `6911d18`) and was undocumented.
+
+Three further corrections to this file's own record: WP-4b was **not** "UN-STARTED — nothing was
+written" (it was written, and is now send-back for unrelated reasons); the "endless pick-up-and-re-drop
+thrash" is wrong (**crew never pick up** — the claim is released before carry state changes); and
+`--stockpile bench` does not "hug the benches" (**3 of its 4 tiles are ON them**, distance 0, because
+`DesignateStockpileCommand` gates only on `Walkable` with no device exclusion).
+
+**Five branches, all unmerged, `main` untouched.** Four implemented + independently reviewed + at
+least one send-back each + PASS:
+
+| branch | commit | status |
+|---|---|---|
+| `lane/e0-4-stockpile-zones` | `395a65a` | the LANE (WP-1/2/3/4). **WP-4b is UNCOMMITTED in its working tree and is SEND-BACK — do not commit it as-is.** |
+| `lane/e0-4-wp3-rigor` | `42e5b27` | **PASS** — the two non-biting mutations replaced |
+| `lane/e0-4-wp5-filter-ui` | `1e52b0e` | **PASS** — the filter UI |
+| `lane/e0-4-wp6-mask-collapse` | `35bacc9` | **PASS** — accept-all stores no entry (restores the haul fast path) |
+| `lane/e0-4-wp7-unreachable-backoff` | `5b72e04` | **PASS** — the livelock fix (**orchestrator scope expansion; separable**) |
+| `lane/e0-4-haul-diagnosis` | `487d924` | the diagnosis; WP-7 inverted its characterization test |
+
+**All four determinism pins byte-identical throughout** — scenario `00e0a2dadb8e5076`, tick-3000
+`4be2e77864fb7409`, slice `1f8f2225ee568de9`, defs `5a471d12643b64f9`. Per-branch gate counts were
+measured in isolation and **do NOT simply add** — re-measure on the merged lane.
+
+**⇒ The full session record — branch map, merge order, the one expected conflict, every correction
+owed, and the next-task order — is `E0-4-INTEGRATION-STATE.md` in the session scratchpad**, and in
+memory `e0-4-far-leg-thesis-retracted` + `e0-4-stockpile-zones-in-progress` + `e0-4-orchestration-lessons`.
+Read those before resuming. **E0-4 cannot close until WP-4b is redone**: add a reachability gate to
+`SelectStockpile`, re-measure the **whole** `far` column (the `6` and the `2` are as confounded as the
+`9`, and WP-7 makes all three stale), rewrite the comments to the re-measured numbers, then restore
+and strengthen its test.
+
+**Landed on `main` (2026-07-24, docs-only):** `docs/design/perilune-automation-player-journey.md`
 — an easy-to-understand design of *how an automation enthusiast plays the game*, grounded in the
 binding automation-&-souls principle. Opus-written + independently Opus-reviewed. No code, no pins.
 (Not part of E0-4; a standalone reference. See memory `automation-player-journey-doc`.)
@@ -50,9 +73,14 @@ binding automation-&-souls principle. Opus-written + independently Opus-reviewed
    not connected. **§13.15** is the current occupancy measurement; **§13.6** is closed.
 3. **Work in a worktree — always** (`CLAUDE.md` hard rule), even for doc-only work. Never edit the
    main checkout; never `git add -A`.
-4. **Re-measure before quoting numbers.** Test counts and pins move every lane. Current gate:
-   **894 dotnet + 485 node**, scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice
-   `1f8f2225ee568de9`, defs `5a471d12643b64f9`.
+4. **Re-measure before quoting numbers.** Test counts and pins move every lane, and the counts in
+   this file have repeatedly gone stale (894 and 914 both appeared while the true lane value was
+   918). `main`'s gate is **894 dotnet + 485 node**; the unmerged E0-4 branches measure 918–928
+   **in isolation, and those do not add on merge**. The four pins are unmoved: scenario
+   `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice `1f8f2225ee568de9`, defs
+   `5a471d12643b64f9`. **`defs` means `SimDefs.Default.Checksum`, NOT the scenario host's
+   rules-inclusive `defs:` print (`3f23ce5bd40283c8`)** — these are different values and have been
+   confused more than once.
 
 **Landed so far:** P2 complete + playtest rounds 1–4 + Console UI rebuild + RELATIONS tab + the
 mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
