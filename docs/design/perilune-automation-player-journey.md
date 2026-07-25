@@ -89,9 +89,10 @@ asks *what will you take apart, and what does it cost to keep what you already h
     stock)                   currency)   currency)
 ```
 
-Every hop **loses a little** — the chain returns less than it took, by design (a closed box can't
-have a free multiplier). Parts keep your machines alive; ControllerModule is the rare prize at the
-top.
+Every hop is **meant to lose a little** — by design the chain should return less than it took (a
+closed box can't have a free multiplier). *(That conversion loss is design intent, planned for
+E0-6; today's recipes aren't lossy yet — see the honest box.)* Parts keep your machines alive;
+ControllerModule is the rare prize at the top.
 
 **3. Spend the scarce rung to buy scriptability.** A machine is a dumb appliance until you install
 a ControllerModule in it. Then, and only then, MOSS can address it. So *automating a machine costs
@@ -257,7 +258,9 @@ no elaborate balancing act, just: *how rare is the module?*
 Hour to hour, these are the decisions you're making — and notice how many of them are *human*
 decisions wearing an engineering hat:
 
-- **The slightly shameful deconstruct.** *"Do I tear down the gym for its 70% metal recovery?"* The
+- **The slightly shameful deconstruct.** *"Do I tear down the gym for its metal?"* (Stripping is
+  lossy — a wall returns only about half its build-stock today; the 70% figure in the design docs is
+  a target, not the shipped number.) The
   crew used that gym. Stripping it is a real, faintly guilty choice — mass yield against morale and
   the memory of a place. The first time reclaiming a deck makes the ship *worse* (more to power,
   more to maintain, more to leak) is the moment this economy has landed.
