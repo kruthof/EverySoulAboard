@@ -25,9 +25,12 @@ namespace Perilune.Tests
     ///   • A regex is not a compiler. A dependency introduced via a FULLY-QUALIFIED name
     ///     (`Perilune.Glyph.GlyphColor.Foo` with no `using`) is INVISIBLE to the DAG tests. They
     ///     pin the DECLARED dependency — the `using` line a reviewer reads, and what a future
-    ///     .csproj split would turn into a `ProjectReference`. `using`, `using static` and
-    ///     `using ALIAS =` are all matched (<see cref="DeclaredPeriluneUsings"/>); a bare
-    ///     fully-qualified reference is not, and that gap is deliberate and disclosed, not fixed.
+    ///     .csproj split would turn into a `ProjectReference`. MATCHED: plain `using`,
+    ///     `using static`, `using ALIAS =`, an optional `global::` prefix, and a directive split
+    ///     across lines (<see cref="DeclaredPeriluneUsings"/>). NOT MATCHED — and this is the honest
+    ///     boundary of the claim, not a footnote: a bare fully-qualified reference with no `using`
+    ///     at all (`Perilune.Glyph.GlyphColor.Foo`), which no text scan can catch without type
+    ///     resolution. That one gap is deliberate and disclosed, not fixed.
     ///   • `global using` and MSBuild `<Using Include="…"/>` would also evade the DAG tests. Both
     ///     are closed today by `LangVersion 9.0` in every .csproj (global usings are C# 10), and
     ///     the `<Using>` route additionally generates into `obj/`, which
@@ -117,8 +120,8 @@ namespace Perilune.Tests
         /// reads", which is this test's own stated criterion, so all three are matched.
         /// </summary>
         private static readonly Regex PeriluneUsing = new Regex(
-            @"^\s*using\s+(?:static\s+)?(?:[A-Za-z_]\w*\s*=\s*)?Perilune\.(?<module>[A-Za-z_]\w*)",
-            RegexOptions.Compiled);
+            @"^[ \t]*using\s+(?:static\s+)?(?:[A-Za-z_]\w*\s*=\s*)?(?:global::)?Perilune\.(?<module>[A-Za-z_]\w*)",
+            RegexOptions.Compiled | RegexOptions.Multiline);
 
         /// <summary>
         /// The root namespace each module directory declares. A `using` naming a module's OWN
@@ -137,15 +140,21 @@ namespace Perilune.Tests
                 ["Sim.Content"] = "Content",
             };
 
-        /// <summary>The Perilune module names declared by one file, ordinal-sorted, duplicates kept.</summary>
+        /// <summary>
+        /// The Perilune module names declared by one file, ordinal-sorted, duplicates kept.
+        ///
+        /// Scanned over the WHOLE FILE with <see cref="RegexOptions.Multiline"/> rather than
+        /// line-by-line, because <c>using\s+</c> must be able to cross a newline: a directive split
+        /// as <c>using⏎    Perilune.Gen;</c> is legal C# and creates a real edge, and a per-line
+        /// matcher cannot see it. The leading <c>[ \t]*</c> — deliberately not <c>\s*</c> — keeps
+        /// <c>^</c> anchored to a genuine line start, so allowing whitespace to cross a newline
+        /// after the `using` keyword cannot let the match slide past an intervening line.
+        /// </summary>
         private static List<string> DeclaredPeriluneUsings(string path)
         {
             var modules = new List<string>();
-            foreach (var raw in File.ReadAllLines(path))
-            {
-                var m = PeriluneUsing.Match(raw);
-                if (m.Success) modules.Add(m.Groups["module"].Value);
-            }
+            foreach (Match m in PeriluneUsing.Matches(File.ReadAllText(path)))
+                modules.Add(m.Groups["module"].Value);
             modules.Sort(StringComparer.Ordinal);
             return modules;
         }
@@ -164,6 +173,20 @@ namespace Perilune.Tests
         /// </summary>
         private static List<string> CrossModuleUsings(string path, string module)
         {
+            // Never let an unmapped module surface as a KeyNotFoundException — that failure mode
+            // tells the reader nothing. EveryModule below should catch it first.
+            Assert.That(OwnNamespace.ContainsKey(module), Is.True,
+                "UNMAPPED MODULE: sim/" + module + " has no OwnNamespace entry, so this test cannot " +
+                "tell its self-references from its cross-module edges — it would silently scan the " +
+                "wrong thing.\n" +
+                "FIX: add sim/" + module + " to BOTH hand-maintained maps in this file, in the same " +
+                "commit:\n" +
+                "  1. OwnNamespace — its ROOT namespace. Note this is not mechanical: Sim.Core's is " +
+                "`Sim`, not `Core`.\n" +
+                "  2. `allowed` in SimModules_FormTheDeclaredAcyclicDependencyGraph — the modules it " +
+                "may depend on. Check the result is still acyclic with Sim.Core as the sink.\n" +
+                "If you are seeing this instead of SimModuleCensus_ForcesADecisionOnEveryNewModule, " +
+                "that census is stale too.");
             string self = OwnNamespace[module];
             var external = new List<string>();
             foreach (var m in DeclaredPeriluneUsings(path))
@@ -998,6 +1021,48 @@ namespace Perilune.Tests
         /// roughly twice a year, at exactly the moment the answer matters. That is a prompt, not a
         /// tax.
         /// </summary>
+        /// <summary>
+        /// EVERY SIM MODULE IS DECLARED — the same gap as the `Systems/` census, one level up.
+        ///
+        /// `OwnNamespace` and `allowed` are hand-maintained maps keyed by module directory. A future
+        /// `sim/Sim.Ui/` would therefore be **entirely unscanned**: no DAG check, no cycle check,
+        /// nothing — because every other test in this file iterates the maps, not the filesystem.
+        /// Worse, the first thing to notice would have been a bare `KeyNotFoundException` out of
+        /// <see cref="CrossModuleUsings"/>, which tells a reader nothing. This closes both: a new
+        /// module directory fails HERE first, with instructions.
+        ///
+        /// Cheap and near-zero fire rate: six module directories have existed since the founding
+        /// commit and none has been added since.
+        /// </summary>
+        [Test]
+        public void SimModuleCensus_ForcesADecisionOnEveryNewModule()
+        {
+            var declared = new List<string>(OwnNamespace.Keys);
+            declared.Sort(StringComparer.Ordinal);
+
+            var onDisk = new List<string>();
+            foreach (var dir in Directory.GetDirectories(Path.Combine(RepoRoot(), "sim")))
+                onDisk.Add(Path.GetFileName(dir));
+            onDisk.Sort(StringComparer.Ordinal);
+
+            Assert.That(onDisk, Is.EqualTo(declared),
+                "UNDECLARED MODULE: sim/ gained or lost a module directory.\n" +
+                "  declared (" + declared.Count + "): " + string.Join(", ", declared) + "\n" +
+                "  on disk  (" + onDisk.Count + "): " + string.Join(", ", onDisk) + "\n" +
+                "WHY: every other test in this file iterates the hand-maintained maps rather than the\n" +
+                "  filesystem, so a module absent from them is a module NOTHING here checks — no DAG\n" +
+                "  assertion, no cycle assertion. It would be invisible rather than merely unpinned.\n" +
+                "FIX (a NEW module) — three edits, all in the same commit:\n" +
+                "  1. OwnNamespace: its root namespace. Not mechanical — Sim.Core's is `Sim`.\n" +
+                "  2. `allowed` in SimModules_FormTheDeclaredAcyclicDependencyGraph: which modules it\n" +
+                "     may depend on. Keep the graph acyclic with Sim.Core as the sink.\n" +
+                "  3. The hosts that should compile it — there are no per-module .csproj, so a module\n" +
+                "     only ships if a host's <Compile Include> glob names it (economy-modularity §1.1;\n" +
+                "     sim/Sim.Content is compiled by the TEST project alone and is dead at runtime,\n" +
+                "     which is exactly the mistake to avoid repeating).\n" +
+                "FIX (a REMOVED module): delete it from both maps, same commit.");
+        }
+
         [Test]
         public void EconomySystemCensus_ForcesADecisionOnEveryNewSystemFile()
         {
