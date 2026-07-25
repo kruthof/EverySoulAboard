@@ -27,6 +27,15 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-24) — **E0-4 IN PROGRESS on a lane; automation player-journey doc landed**
+**RESUME, don't restart.** E0-4 (filtered stockpile zones) is mid-flight on `lane/e0-4-stockpile-zones`
+in the **existing worktree** `../perilune-wt/e0-4-stockpile-zones` (WP-1/2/3/4 committed, unmerged).
+Next, in order: **WP-4b** (filtered-far flip demo — UN-STARTED), **WP-3 rigor fix**, **WP-5** (filter UI),
+**integrate**. See `docs/HANDOVER.md` "⇒ RESTART — START HERE" (top) and memory
+`e0-4-stockpile-zones-in-progress.md`. Also landed on `main` this session (docs-only): the
+**automation player-journey** design (`docs/design/perilune-automation-player-journey.md`) — how an
+automation enthusiast plays the game, per the binding automation-&-souls principle. Below is the E0-5 record.
+
 ## Status snapshot (2026-07-23) — **E0-5 (deconstruct/strip)** landed on `main`, before E0-4
 **E0-5 is LANDED on `main`** (merged `--no-ff` from `lane/e0-5-deconstruct`; six commits, four work
 packages, each Opus-implemented + independently Opus-reviewed **PASS**). Taken **before E0-4** by

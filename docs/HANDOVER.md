@@ -1,8 +1,45 @@
 # HANDOVER — Every Soul Aboard *(codename PERILUNE)*
 
-**Last updated 2026-07-23.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
+**Last updated 2026-07-24.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
+
+## ⇒ RESTART — START HERE (2026-07-24): resume E0-4 in its existing worktree
+
+**A game-work lane is mid-flight and NOT on `main`. Do not start fresh — resume it:**
+
+```bash
+cd /Users/garvin/Research/Code/perilune-wt/e0-4-stockpile-zones   # the worktree ALREADY EXISTS
+git status && git branch --show-current                           # → lane/e0-4-stockpile-zones, clean
+```
+
+- **The lane:** `lane/e0-4-stockpile-zones` (filtered stockpile zones). WP-1/WP-2/WP-3/WP-4 are
+  committed on it; it is **unmerged**. Full detail is in **that worktree's** `docs/HANDOVER.md`
+  "E0-4 — filtered stockpile zones: IN PROGRESS" section and in memory
+  `e0-4-stockpile-zones-in-progress.md` (loaded automatically — memory survives restart).
+- **Do these four, IN THIS ORDER** (the method is: Opus agent implements each + a separate Opus
+  agent independently reviews; orchestrator integrates — same as E0-5):
+  1. **WP-4b — the filtered-far flip demonstration** (host-only). **UN-STARTED** — an implementer
+     was launched then interrupted, so *nothing was written*. Add a `filtered-far` mode to
+     `hosts/scenario/StockpileHarness.cs` (a far stockpile that rejects Potato via
+     `SetStockpileFilterCommand`) + a `--stockpile filtered-far` flag in `hosts/scenario/Program.cs`;
+     measure whether throughput recovers toward baseline **31** `ControllerModule` (the real
+     scorecard — A1 is a trap here). Report the honest number; do not fabricate a flip. Zero pins.
+  2. **WP-3 rigor fix** (host test file only, `tests/Perilune.Tests/StockpileHarnessTests.cs`): make
+     the F1/F2 named mutations actually bite (F1 assert the *total order*; F2 fix the redundant-guard
+     comment / add distinguishing coverage).
+  3. **WP-5 — the filter UI**: extend the E0-3 `stockpile` verb (client kind-palette + `filter` wire
+     msg `CmdKind.Filter`/`HandleFilter`, TUI filter arg, optional client-only tint). **Must land
+     after WP-4.** No glyph/golden move.
+  4. **Integrate**: `./ci.sh` in the worktree, confirm the four pins byte-identical (scenario
+     `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice `1f8f2225ee568de9`, defs
+     `5a471d12643b64f9`), update docs (incl. correcting `ECONOMY.md` §8's "no bench rule =
+     regression" framing to match the measurement) + memory, `--no-ff` merge to `main`, re-gate.
+
+**Landed on `main` this session (2026-07-24, docs-only):** `docs/design/perilune-automation-player-journey.md`
+— an easy-to-understand design of *how an automation enthusiast plays the game*, grounded in the
+binding automation-&-souls principle. Opus-written + independently Opus-reviewed. No code, no pins.
+(Not part of E0-4; a standalone reference. See memory `automation-player-journey-doc`.)
 
 ## Orientation for a fresh session
 
