@@ -213,7 +213,9 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   console — implemented, independently reviewed, merged — and nobody noticed the surface was
   wrong until the running game was opened. Mechanised in
   `client/test/surface-boundary.test.js` (verb parity + a `KNOWN_GAPS` ledger that only pays down;
-  the console shell's id census is frozen) and `tests/Perilune.Tests/SurfaceBoundaryTests.cs`
+  the console shell's id census **and** `hud.js`'s DOM-widget count are frozen — the id census alone
+  would have missed WP-5's first draft, which added no id) and
+  `tests/Perilune.Tests/SurfaceBoundaryTests.cs`
   (every `WireFormat` channel must have a consumer in `client/src/main.js`). Plan:
   `docs/design/perilune-console-retirement.plan.md`.
 

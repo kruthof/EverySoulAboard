@@ -255,8 +255,11 @@ modern view module is not, and fails a test.
 
 **Mechanised, so a lane cannot cross this by accident:**
 `client/test/surface-boundary.test.js` (verb parity against a `KNOWN_GAPS` ledger that may shrink but
-never grow silently; the console shell's element-id census is frozen; only the console's own module
-may touch console DOM; no orphan `*-view.js`) and
+never grow silently, with the console palette classified against a *pinned* build-kind list so a verb
+cannot be hidden by declaring it a build kind; the console shell's element-id census **and**
+`hud.js`'s DOM-widget count are frozen and may only shrink — the id census alone would have missed
+WP-5's *first* draft, which added no element id at all; only the console's own module may touch
+console DOM; no orphan `*-view.js`) and
 `tests/Perilune.Tests/SurfaceBoundaryTests.cs` (every `WireFormat` channel must be dispatched by
 `client/src/main.js`, so a host channel cannot be built for a surface that never reads it).
 **Why it is mechanised rather than written down:** E0-4's WP-5 built an entire stockpile ACCEPTS
