@@ -888,6 +888,12 @@ namespace Perilune.Gen
             //     wrecked halls' doors, so B-3 door diffusion has the shortest path from a
             //     digging crew's CO2 to a scrubber. All four tiles are spine floor with a conduit
             //     tray already under them, and LifeSupport is the LAST tier shed in a brownout.
+            // ⚠️ HONEST LIMIT: the vent IS test-covered (delete it and the full-clear test's
+            // pressure assertion fails), the SCRUBBERS ARE NOT. Deleting all three leaves every
+            // test green, because deck 1 holds ~1,100 m³ and eight crew need ~230 h to raise it to
+            // co2_narcosis_ppm — no test at a playable horizon can bite. They are sized by the
+            // arithmetic above, not by a test; the supporting measurement is the day-1 ship metric
+            // going 1189 ppm (3 crew, no deck-1 scrubbing) → 9 ppm (8 crew, this pair).
             Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, GridWreckDeck, "scrubber_spine_1");
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, GridWreckDeck), Name = "vent_spine_1", IsOpen = true });
             Dev(plan, DeviceKind.Scrubber, SlotGridPlanner.InteriorRect(5).CenterX, SlotGridPlanner.SpineY1, GridWreckDeck, "scrubber_spine_1b");

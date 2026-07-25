@@ -27,17 +27,30 @@ namespace Perilune.Tests
         private static ISimSystem[] Stack() =>
             SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
 
-        private const int WreckDeck = AuthoredShips.GridWreckDeck;
-        private const int OpenSlot = AuthoredShips.GridOpenWreckSlot;
-        private const int WreckRows = AuthoredShips.GridWreckRows;
-
-        /// <summary>Slots authored wrecked. Mirrored from the (private) authoring list on purpose:
-        /// a test that reads the same field it checks cannot fail, so this is written out by hand
-        /// and <see cref="Wreck_SitsOnlyInTheThreeFreeDeck1Halls"/> proves the world agrees.</summary>
+        // ⚠️ EVERY expectation below is written out BY HAND, never read from the AuthoredShips
+        // constants it checks. A test that derives its expected value from the authoring constant
+        // cannot fail when that constant changes — the recurring review defect in this repo ("the
+        // test whose named mutation cannot bite", six instances in E0-4), and one this file was
+        // caught committing: with WreckRows read from AuthoredShips.GridWreckRows, halving the
+        // wreck left all eight tests green. These literals ARE the pin; changing the ship's
+        // content means changing them in the same commit, deliberately.
+        private const int WreckDeck = 1;                 // AuthoredShips.GridWreckDeck
+        private const int OpenSlot = 6;                  // AuthoredShips.GridOpenWreckSlot
+        private const int WreckRows = 2;                 // AuthoredShips.GridWreckRows
+        private const int WreckTilesPerSlot = 20;        // WreckRows × SlotGridPlanner.InteriorW (10)
         private static readonly int[] ExpectedWreckSlots = { 5, 6, 7 };
+        private const int ExpectedWreckTiles = 60;       // 3 slots × 20
 
-        private static int WreckTilesPerSlot => WreckRows * SlotGridPlanner.InteriorW;
-        private static int ExpectedWreckTiles => ExpectedWreckSlots.Length * WreckTilesPerSlot;
+        [Test]
+        public void TheseTestsPinTheAuthoredShip_NotTheOtherWayRound()
+        {
+            Assert.That(WreckDeck, Is.EqualTo(AuthoredShips.GridWreckDeck), "the wreck moved deck");
+            Assert.That(OpenSlot, Is.EqualTo(AuthoredShips.GridOpenWreckSlot), "the live wreck moved slot");
+            Assert.That(WreckRows, Is.EqualTo(AuthoredShips.GridWreckRows), "the collapse got deeper or shallower");
+            Assert.That(WreckTilesPerSlot, Is.EqualTo(WreckRows * SlotGridPlanner.InteriorW),
+                "the slot geometry changed under the wreck");
+            Assert.That(ExpectedWreckTiles, Is.EqualTo(ExpectedWreckSlots.Length * WreckTilesPerSlot));
+        }
 
         private static List<Int3> DebrisTiles(Simulation sim)
         {
@@ -50,6 +63,21 @@ namespace Perilune.Tests
                         var p = new Int3(x, y, z);
                         if (world.GetWall(p) == TileDefs.Debris) found.Add(p);
                     }
+            return found;
+        }
+
+        /// <summary>Debris inside one deck-1 slot's interior — a whole-ship count would be
+        /// satisfied by another slot's rubble.</summary>
+        private static List<Int3> DebrisIn(Simulation sim, int slot)
+        {
+            var r = SlotGridPlanner.InteriorRect(slot);
+            var found = new List<Int3>(32);
+            for (int y = r.Y0; y <= r.Y1; y++)
+                for (int x = r.X0; x <= r.X1; x++)
+                {
+                    var p = new Int3(x, y, WreckDeck);
+                    if (sim.World.GetWall(p) == TileDefs.Debris) found.Add(p);
+                }
             return found;
         }
 
@@ -261,7 +289,8 @@ namespace Perilune.Tests
         public void Crew_ClearTheLiveWreck_UnpromptedAndInBreathableAir()
         {
             var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
-            int debrisAtBoot = DebrisTiles(sim).Count;
+            int debrisAtBoot = DebrisIn(sim, OpenSlot).Count;  // the live wreck only, not the ship
+            Assert.That(debrisAtBoot, Is.EqualTo(WreckTilesPerSlot));
 
             bool sawDig = false, sawFlee = false;
             var diggers = new HashSet<string>();
@@ -278,8 +307,7 @@ namespace Perilune.Tests
             Assert.That(sawDig, Is.True, "no crew member ever took a dig job on the authored, designated field");
             Assert.That(sawFlee, Is.False, "a crew member fled unbreathable air — the wreck is not a survivable worksite");
 
-            var left = DebrisTiles(sim);
-            int cleared = debrisAtBoot - left.Count;
+            int cleared = debrisAtBoot - DebrisIn(sim, OpenSlot).Count;
             Assert.That(cleared, Is.GreaterThanOrEqualTo(WreckTilesPerSlot / 2),
                 $"only {cleared} of the live wreck's {WreckTilesPerSlot} tiles came out in 25 sim-minutes " +
                 $"({diggers.Count} crew dug) — the field is reachable in principle but not in practice");
@@ -345,9 +373,17 @@ namespace Perilune.Tests
             Assert.That(painted, Is.EqualTo(WreckTilesPerSlot),
                 "DesignateDigCommand accepted a different number of tiles than the slot's authored rubble");
 
-            int before = DebrisTiles(sim).Count;
-            for (int t = 0; t < 15000; t++) sim.Tick();
-            int cleared = before - DebrisTiles(sim).Count;
+            // Counted INSIDE slot 5 only. A whole-ship count would be satisfied by the live wreck
+            // (slot 6) the crew are already digging at boot, and this test would pass with the
+            // ＋ADD ROOM step deleted — measured, not hypothetical.
+            int before = DebrisIn(sim, sealedSlot).Count;
+            Assert.That(before, Is.EqualTo(WreckTilesPerSlot), "the sealed slot's rubble is not where it was authored");
+            // 40,000 ticks (~66 sim-minutes), not 15,000: the crew are ALSO clearing the live wreck
+            // the ship boots designated, and the dispatcher picks the nearest site, so slot 5 only
+            // gets hands once slot 6 thins out. At 15,000 this test failed with 0 cleared — which is
+            // the ship being honest, not the route being broken.
+            for (int t = 0; t < 40000; t++) sim.Tick();
+            int cleared = before - DebrisIn(sim, sealedSlot).Count;
             Assert.That(cleared, Is.GreaterThan(0),
                 "the crew never cleared a tile of the commissioned wreck — the player's route is scenery");
         }
