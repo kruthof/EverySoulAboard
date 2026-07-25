@@ -4,11 +4,17 @@
 The client is a set of plain ES modules — no build step — so any static server works. This
 one adds no-store headers (so edits show on reload, matching the host's dev ergonomics) and
 the correct MIME type for .js modules. It does NOT proxy the sim: the client opens a WebSocket
-straight to the host (default ws://localhost:8330/ws — see src/wire/session.js). Run the host
-separately:
+straight to the host (default ws://localhost:8330/ws — see src/wire/session.js).
+
+To PLAY, do not run this by hand — from the repo root:
+
+    ./play.sh                         # starts host + client, prints one URL
+
+It exists as a separate script for the times you want the two halves apart:
 
     ~/.dotnet/dotnet run --project hosts/web -- --port 8330
     python3 client/serve.py           # serves client/ at http://localhost:8331/
+    # then open http://localhost:8331/?port=8330
 
 Override the client port with:  python3 client/serve.py 9000
 """
@@ -42,6 +48,7 @@ def main():
     with ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
         print(f"PERILUNE client: http://localhost:{port}/  (serving {CLIENT_DIR})")
         print("  host must be running: ~/.dotnet/dotnet run --project hosts/web -- --port 8330")
+        print("  (or just use ./play.sh from the repo root — it starts both)")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

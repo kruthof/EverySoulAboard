@@ -15,7 +15,18 @@ namespace Perilune.Web
     /// skin and Unity boot), start the fixed-tick GameSession, and serve the flat-2D web
     /// client + WebSocket on localhost.
     ///
-    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR] [--ship perilune|slice|grid]
+    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR] [--ship grid|slice|perilune]
+    ///
+    /// THE GAME IS `--ship grid` — the default, and the only ship a player ever wants. Start it
+    /// with `./play.sh` from the repo root (that runs this host and the client static server
+    /// together and prints one URL); there is nothing to choose.
+    ///
+    /// The other two `--ship` values are TEST FIXTURES, not games, kept so the gate keeps
+    /// working:
+    ///   slice    — the 8-crew economy measurement fixture, driven headless by hosts/scenario.
+    ///   perilune — the generated/layout ship that backs the tick-3000 determinism goldens.
+    /// (`SimHost.Build`'s own default is still ShipChoice.Perilune — the goldens depend on it.
+    /// Only this host's player-facing default is Grid.)
     ///
     /// Single global game: every browser tab that connects steers the same ship. Ctrl+C stops
     /// the server cleanly (the sim thread and all sockets are torn down).
@@ -27,7 +38,10 @@ namespace Perilune.Web
             int port = 8323;
             ulong? seed = null;
             string layout = null, data = null;
-            var ship = ShipChoice.Perilune;
+            // The one game. `--ship slice|perilune` still selects the fixtures for a gate or a
+            // repro; a player never passes --ship at all. NOT the same knob as SimHost.Build's
+            // own default parameter (ShipChoice.Perilune) — leave that alone, the goldens read it.
+            var ship = ShipChoice.Grid;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -43,6 +57,9 @@ namespace Perilune.Web
                             string shipArg = args[++i];
                             if (shipArg == "slice") ship = ShipChoice.Slice;
                             else if (shipArg == "grid") ship = ShipChoice.Grid;
+                            // Explicit now that Grid is the default: without this branch
+                            // `--ship perilune` would silently hand back the grid.
+                            else if (shipArg == "perilune") ship = ShipChoice.Perilune;
                         }
                         break;
                     default: break;
@@ -64,10 +81,11 @@ namespace Perilune.Web
             web.Run(session);
             session.Start();
 
-            Console.Error.WriteLine($"PeriluneWeb: http://localhost:{port}/  (seed {host.Seed}, defs {host.DefsChecksum:x16})");
+            Console.Error.WriteLine($"PeriluneWeb: http://localhost:{port}/  (ship {ship}, seed {host.Seed}, defs {host.DefsChecksum:x16})");
             Console.Error.WriteLine($"  client: {web.ClientHtmlPath}");
             Console.Error.WriteLine($"  NOTE: the page at :{port} is the LEGACY skin (no dialogue/LLM UI).");
-            Console.Error.WriteLine($"        The game: run `python3 client/serve.py` and open http://localhost:8331/?port={port}");
+            Console.Error.WriteLine($"        The game: `./play.sh` starts both halves; or run `python3 client/serve.py`");
+            Console.Error.WriteLine($"        yourself and open http://localhost:8331/?port={port}");
             Console.Error.WriteLine($"  dialogue backend: {backendName}");
             // Only claim the local model is missing when we actually looked. With an explicitly
             // configured dialogue.backend no probe runs (explicit wins, so the answer could not
