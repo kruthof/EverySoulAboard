@@ -584,9 +584,16 @@ spoilage, and a one-stack-of-unbounded-size carry model.
 - **Kind-bucketed item indexes.** `TryAssign` is O(board) per retry iteration and
   `TryReserveMaterialFor` rescans *all* items on every iteration; `CraftingSystem` scans items
   per station per second. With a conversion graph this shape does not survive.
-- **Do not build belts, drones or logistics automation.** Hauling stays crew labour. It is one
-  of the two largest labour sinks in the genre, and automating it away removes the thing that
-  makes crew visible on screen — which was round 3's complaint.
+- **Do not build belts, drones or logistics *conveyance*.** Hauling stays crew labour. It is one
+  of the two largest labour sinks in the genre, and automating *transport* away removes the thing
+  that makes crew visible on screen — which was round 3's complaint. **REFRAMED (director,
+  2026-07-24) — see `docs/design/perilune-automation-and-souls.md`:** this measurement stands, but
+  its *conclusion* is now "automate **control**, not **conveyance**" — MOSS scripting a device's
+  duty cycle (gated by scarce `ControllerModule`, E0-6) is the automation game and moves zero
+  matter; and *processing* automation at a bench is welcome **when it is operated by a named crew
+  member whose mood + skill set its throughput and defects** (the operator model), because that
+  *stations* the person on screen rather than erasing them. The blanket "no automation" reading is
+  superseded; the "no cross-ship conveyance that replaces visible haulers" reading is preserved.
 
 **A warning from measurement.** Stockpiles are not automatically good. Enabling them
 experimentally: a stockpile *beside* the benches acts as a pre-positioning buffer (craft

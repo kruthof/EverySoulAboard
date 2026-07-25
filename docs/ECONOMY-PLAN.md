@@ -55,6 +55,16 @@ Alongside Wave 0, three **bug** commits that are independent of every design dec
 
 Each phase is independently playable and ships with its own acceptance measurement.
 
+> **⚑ BINDING DESIGN PRINCIPLE (director, 2026-07-24) — `docs/design/perilune-automation-and-souls.md`.**
+> Every phase below that touches production, automation, trade, skills, or mood must be designed
+> against the **operator model** and the **three-clause test**: (1) automation removes a *chore*, never
+> a *decision*; (2) it carries a *specific soul's fingerprint* — an automated line is *operated* by a
+> named crew member whose **mood + skill deterministically set its throughput and defects**, so souls
+> and the automation game are ONE feedback loop, not two; (3) it is *gated behind the scarcest currency*
+> (`ControllerModule`/`Circuits`), the self-balancing throttle for "as much automation as souls-matter
+> can digest." Automate **control** (MOSS), never cross-ship **conveyance** (belts that erase visible
+> haulers). Read that doc before designing E0-6, E0-8, E2, E3, or E4.
+
 ### E0 — Close the box, and give the player verbs *(highest value per unit effort)*
 
 **Goal: A1 ≥ 25 % busy at sim-hour 24, and A3 "can build a wall at day 3".** This alone turns
@@ -98,6 +108,13 @@ an economic vocabulary. `Circuits` gate `ControllerModule`.
 *This is `PLAN.md`'s deferred WS-PEOPLE P2 body. The economy is what gives it teeth, because
 the loss becomes quantified.*
 
+> **Operator model (2026-07-24):** E2 is where the operator model becomes real. Add **mood** as the
+> *second* yield/defect modulator beside skill — a bound operator's **mood + skill + held `Procedure`**
+> deterministically set a line's throughput and defect rate (a depressed/drunk operator jams and spills
+> scarce matter; a happy specialist pushes past nominal). Mood is hashed `Citizen` state; the modulation
+> is a pure function, never RNG. This is what wires the souls pillar into the economy. See
+> `docs/design/perilune-automation-and-souls.md` §4.
+
 ### E3 — The voyage is the faucet
 
 Make `NavSystem` non-inert (place a `Telescope`; add `ShipVelX/ShipVelY` and station-keeping;
@@ -118,6 +135,18 @@ deterministic price formation with no runtime RNG. The one that is easy to miss 
 to retrofit: **the away-mission crew-transfer contract must support non-crew personas resident
 at a site**, or a hub can never have a quartermaster who remembers you. That is a sentence in
 the lane brief now and a contract change later.
+
+> **Outposts & trade-with-a-face (2026-07-24) — `docs/design/perilune-automation-and-souls.md` §5–§6.**
+> The extraction chain finally gets a **terminal sink**: high-value materials → **defensive tech
+> (shields, laser weapons)** — the consumer `ControllerModule` never had. Two bounded logistics loops
+> ride E3's seams: **planetary/comet outposts** the crew set up (skill-gated, MOSS-controlled), voyage
+> away from, and return to (offline production = *accrual-on-return*; the "absence is the intended
+> fantasy" case) and **trading outposts** that auto-sell via a hub under a MOSS policy. Auto-sell's risk
+> is the **idle money-printer** — bound it: prices move against you (the deterministic price formation +
+> faction scarcity above), the hub takes a cut and gates on standing, the trip costs fuel/time, and the
+> hub is a **quartermaster *persona*** (the non-crew resident persona this paragraph already mandates),
+> not a menu — the LLM proposes, the sim adjudicates. Auto-sell for fungibles, physical return for
+> high-value/contraband. The auto-sell economy *funds* the human story; it must never *be* it.
 
 **Prerequisite, and it is not optional:** the content-pack seam is currently a lie in the
 shipping binary. `PackSource` has two channels, **no host loads packs at all**, and no save
