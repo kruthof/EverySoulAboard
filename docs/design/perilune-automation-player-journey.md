@@ -18,6 +18,9 @@
 
 ## TL;DR (read this if you read nothing else)
 
+*This describes the **intended** play experience. Some of it ships today, much of it is designed but
+not yet built — the [honesty box](#honest-box-built-today-vs-planned) at the end draws the exact line.*
+
 - You **extract matter** by tearing the ship apart, **refine it up a four-step ladder**
   (Regolith → Scrap → Parts → **ControllerModule**), and spend the scarce top rung to make a
   machine **scriptable**. Then you write **MOSS** — the ship's in-fiction automation language — to
