@@ -445,10 +445,21 @@ look inert when it is not.
   fold: gas now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
   `08b73814d97c7be3` → `81ae90bdd049f745`. Still only the two tick-3000 goldens moved. From that
   base the chain runs E0-1 → wall-drag/materials → E0-2 → E0-5 → **today's table above**.
-- Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
-  + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
-  The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
-  `... --project hosts/tui -- --play` · agent/CI eyes: `--dump --days 1 --metrics`.
+- **Play: `./play.sh`** — one command, one terminal, one game. It builds the host, starts it
+  plus `client/serve.py`, waits until both actually answer, prints the single URL
+  (`http://localhost:8331/?port=8330`) and opens it; Ctrl+C stops **both** (no orphaned
+  `PeriluneWeb`/`serve.py`). A busy port is named, not swallowed. Override with
+  `./play.sh --host-port N --client-port N` (or `PERILUNE_HOST_PORT`/`PERILUNE_CLIENT_PORT`);
+  `--no-open` skips the browser. **There is no ship to choose** — `hosts/web` defaults to
+  `--ship grid`, the one standard surface (Level-1 Overview + Level-2 Room Zoom).
+  The host's own page (:8323 by default, :8330 under play.sh) is the LEGACY skin — no dialogue UI.
+- **Test fixtures, not games** (they still work; never offer them to a player):
+  `--ship slice` — the 8-crew economy measurement fixture, driven headless by `hosts/scenario`
+  (`--dump --days 1 --metrics`, the occupancy legs); `--ship perilune` — the generated/layout
+  ship behind the tick-3000 determinism goldens, and still `SimHost.Build`'s own default
+  parameter (only `hosts/web`'s player-facing default moved to Grid). Run either directly:
+  `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`. Terminal skin:
+  `... --project hosts/tui -- --play`.
 - Live LLM: auto-route is **local-first** — a local Ollama serving `mistral` wins over any
   cloud key (ollama → anthropic → openai → template), so dialogue costs $0 by default; boot
   prints `dialogue backend: ollama/mistral`, or one line saying why it fell back. A plain
