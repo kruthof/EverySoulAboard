@@ -107,6 +107,41 @@ namespace Perilune.Sim
         /// the map on every rebuild of that list.</summary>
         public int BackedOffStockpileTiles => _tileRetryAt.Count;
 
+        /// <summary>
+        /// Is a LIVE WP-7 unreachable backoff sitting on <paramref name="pos"/> as of
+        /// <paramref name="tick"/>? <paramref name="untilTick"/> carries that entry's expiry tick when
+        /// it is (0 otherwise, including for a tile whose stamp has already expired).
+        ///
+        /// THE ONE DEFINITION OF "BACKED OFF". <see cref="IsPathworthy"/> — the predicate all three
+        /// job-board read sites consult — is now literally <c>!IsBackedOff(...)</c>, so the wire and
+        /// the haul board cannot disagree about a tile. A second, parallel copy of the
+        /// <c>tick &lt; until</c> comparison is exactly how a diagnostic surface starts lying: the
+        /// count above already showed how easily a *display* of the map drifts from the map's meaning.
+        ///
+        /// WHY IT IS PUBLIC (console-retirement plan §4.1 ii / §5 gap 3). WP-7 traded an
+        /// expensive-and-visible bug for a cheap-and-invisible one: a zone painted where no crew can
+        /// reach now simply never fills, silently, with nothing anywhere to say so
+        /// (<c>MECHANICS.md</c> §13.17). The <c>zones</c> wire channel reads this per tile so the
+        /// player can be told. Read it as *"no hauler has managed to path here recently"*, NEVER as
+        /// proof of permanent unreachability — the map is a rate limiter with three lifts (see
+        /// <c>_tileRetryAt</c>'s comment), and it is wholesale cleared on any tile-board rebuild.
+        ///
+        /// NO ENUMERATION, AND NO ORDER OF ITS OWN. A keyed <see cref="Dictionary{K,V}.TryGetValue"/>
+        /// — the <see cref="IJobSource"/> contract rule 4 bars iterating this container at all, and
+        /// that is a determinism rule. A caller wanting *every* backed-off tile must therefore walk a
+        /// container that HAS a canonical order (the world in z,y,x, or <c>_stockpiles</c>, which is
+        /// built in that order) and probe this per tile; there is deliberately no
+        /// <c>IEnumerable&lt;Int3&gt;</c> here to tempt anyone into shipping Dictionary layout order
+        /// over the wire. Alloc-free (<see cref="Int3"/> is <c>IEquatable</c>, so the default
+        /// comparer does not box) and side-effect-free.
+        /// </summary>
+        public bool IsBackedOff(Int3 pos, long tick, out long untilTick)
+        {
+            if (_tileRetryAt.TryGetValue(pos, out untilTick) && tick < untilTick) return true;
+            untilTick = 0;
+            return false;
+        }
+
         /// <summary>Resolve the optional <see cref="StockZoneSystem"/> once, before any progress or
         /// rescan pass reads a filter (the <see cref="DeconstructJobSource"/> pattern), then wake the
         /// board if a WP-7 tile backoff has just expired (see <c>_backoffWakeAt</c>). Run from
@@ -404,13 +439,14 @@ namespace Perilune.Sim
         /// that only a tile-board change can lift. Pinned by
         /// <c>ExpiredBackoff_LiftsItselfWithNoTileBoardChange</c>. Lookup-only — no allocation, no
         /// enumeration.
+        ///
+        /// It is now the exact negation of <see cref="IsBackedOff"/>, which is the public form the
+        /// <c>zones</c> wire channel reads. ONE comparison, two callers — deleting the expiry test
+        /// from <see cref="IsBackedOff"/> is still the single mutation that turns the backoff into a
+        /// blacklist, and it now also makes the wire lie in the same breath.
         /// </summary>
-        private bool IsPathworthy(Simulation sim, Int3 p, out long until)
-        {
-            if (_tileRetryAt.TryGetValue(p, out until) && sim.TickCount < until) return false;
-            until = 0;
-            return true;
-        }
+        private bool IsPathworthy(Simulation sim, Int3 p, out long until) =>
+            !IsBackedOff(p, sim.TickCount, out until);
 
         /// <summary>
         /// WP-7: a TILE-BOARD change forgets every backoff, wholesale.

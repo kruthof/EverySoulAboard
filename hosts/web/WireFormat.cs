@@ -35,7 +35,7 @@ namespace Perilune.Web
     /// cells is a FLAT row-major array (index = y*w + x), length == w*h — the browser rebuilds
     /// the grid. glyph is the char's code point; fg/bg/attr are the raw enum bytes.
     /// </summary>
-    public static class WireFormat
+    public static partial class WireFormat
     {
         private static readonly CultureInfo Ic = CultureInfo.InvariantCulture;
 

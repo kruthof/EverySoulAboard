@@ -13,7 +13,8 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials } from '../wire/messages.js';
+import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones } from '../wire/messages.js';
+import { roomZoneTiles } from './zone-model.js';
 import { decksView } from './decks-model.js';
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
@@ -258,6 +259,7 @@ function paintLayers(frame, crew, designs, decor) {
 
   let body = gridSvg(rw, rh, logicalW, logicalH);
   body += glowSvg(logicalW, logicalH);
+  body += zoneLayerSvg(roomZoneTiles(decodeZones(Hud.getZones()), _focus));
   body += materialLayerSvg(roomMaterialTiles(frame, _focus, decodeMaterials(Hud.getMaterials())));
   body += decorSvg(roomDecor(decor, _focus));
   body += furnitureSvg(roomCells(frame, _focus));
@@ -294,6 +296,37 @@ function previewSvg() {
     'font-family="\'Space Mono\', ui-monospace, monospace" stroke="rgba(10,13,20,.9)" stroke-width="2.5" ' +
     'paint-order="stroke" fill="#f2b563">' + esc(dragCaption(res)) + '</text>');
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
+}
+
+/** Stockpile zones (console-retirement WP-3), UNDER the material/decor/furniture layers so a stored
+ *  crate still reads as sitting ON the zone. Three states, three visual weights:
+ *    every zoned tile   a soft slate tint + a dotted boundary — the zone itself, invisible until now
+ *    RESTRICTED         + a corner wedge; the accepted-kinds list is the tile's <title> (hover)
+ *    BACKED OFF         + a hatch and an amber ring — "no hauler reached this recently" (§5 gap 3)
+ *  A <title> rather than bespoke chrome: it is the one hover affordance an inline SVG gets for free,
+ *  it needs no new element ids, and it carries the honest wording out of zone-model.js verbatim
+ *  instead of re-deriving it here. Pointer-events off — the zone layer never eats a build click. */
+function zoneLayerSvg(tiles) {
+  if (!tiles.length) return '';
+  const out = ['<defs><pattern id="rz-zone-hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
+    'patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="rgba(242,181,99,.55)" ' +
+    'stroke-width="1.5"/></pattern></defs>'];
+  for (const t of tiles) {
+    const [lx, ly] = localXY(t.tx, t.ty);
+    let cell = '<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
+      (U - 1) + '" rx="2" fill="rgba(126,158,196,.16)" stroke="rgba(126,158,196,.55)" ' +
+      'stroke-width="1" stroke-dasharray="2 2"/>';
+    if (t.backedOff) {
+      cell += '<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
+        (U - 1) + '" rx="2" fill="url(#rz-zone-hatch)" stroke="#f2b563" stroke-width="1.5"/>';
+    }
+    if (t.restricted) {
+      cell += '<path d="M' + (lx + U - 9) + ' ' + (ly + 1) + 'h8v8z" fill="#f2b563"/>';
+    }
+    out.push('<g class="rz-zone' + (t.restricted ? ' rz-zone-restricted' : '') +
+      (t.backedOff ? ' rz-zone-backedoff' : '') + '"><title>' + esc(t.label) + '</title>' + cell + '</g>');
+  }
+  return '<g class="rz-zones" pointer-events="none">' + out.join('') + '</g>';
 }
 
 /** The faint 32-unit build grid (VS-Z-10), drawn in logical space so a cell == a tile at any fit. */

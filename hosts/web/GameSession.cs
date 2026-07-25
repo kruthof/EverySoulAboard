@@ -161,7 +161,12 @@ namespace Perilune.Web
             var list = new List<string>(8);
             lock (_cacheLock)
             {
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor" })
+                // NOTE — `materials` is absent from this list and that is a PRE-EXISTING gap, not a
+                // WP-3 decision: a reconnecting tab does not get the material layer replayed until the
+                // next Render changes it. `zones` is listed because a reconnect must not silently drop
+                // the only surface that says WHY a zone never fills; fixing `materials` belongs to
+                // whoever owns that channel.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1072,6 +1077,7 @@ namespace Perilune.Web
             Send("rooms", WireFormat.Rooms(BuildRooms()), force);
             Send("decor", WireFormat.Decor(BuildDecor()), force);
             Send("materials", WireFormat.Materials(BuildMaterials()), force);
+            Send("zones", WireFormat.Zones(BuildZones()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1430,6 +1436,82 @@ namespace Perilune.Web
                     }
             }
             return _materialsScratch;
+        }
+
+        /// <summary>
+        /// The sparse STOCKPILE-ZONE layer for the standard surface — one
+        /// <see cref="WireFormat.ZoneTile"/> per tile carrying <see cref="TileFlags.Stockpile"/>,
+        /// with its EFFECTIVE accept mask and the WP-7 back-off bit. VIEW-ONLY: a read of
+        /// authoritative state, never a write, never hashed. See <c>WireFormat.Zones.cs</c> for what
+        /// this channel is for and what it deliberately does not duplicate.
+        ///
+        /// ORDER — z, y, x, GUARANTEED BY THE WALK AND BY NOTHING ELSE. The emission order is the
+        /// triple loop below (the <see cref="IJobSource"/> rule-3 tile scan order, identical in shape
+        /// to <see cref="BuildMaterials"/>), so it is a pure function of world geometry. The two
+        /// per-tile facts are fetched by KEY, never by enumeration:
+        /// <see cref="StockZoneSystem.TryGetFilter"/> is a linear scan of a canonically sorted list,
+        /// and <c>HaulJobSource.IsBackedOff</c> is a Dictionary <c>TryGetValue</c>. So no hash
+        /// container's internal layout can reach the socket, and re-ordering the loops is the only way
+        /// to change the byte order — which is what
+        /// <c>ZonesChannelTests.Zones_AreEmittedInCanonical_Z_Y_X_Order</c> pins.
+        ///
+        /// COST. One pass over the world per render (≤10 Hz, on the sim thread inside
+        /// <see cref="Render"/>) — the same pass <see cref="BuildMaterials"/> already makes, and NOT a
+        /// tick path. It reuses one scratch list, so a steady state allocates nothing. On a ship that
+        /// never zoned a stockpile the list stays empty and <see cref="Send"/> dedupes the payload
+        /// after the first render.
+        /// </summary>
+        private readonly List<WireFormat.ZoneTile> _zonesScratch = new List<WireFormat.ZoneTile>();
+        private List<WireFormat.ZoneTile> BuildZones()
+        {
+            _zonesScratch.Clear();
+            var world = _sim.World;
+            var stock = _sim.StockZones;                  // may be null on a stack without the system
+            var haul = HaulSource();                      // may be null on a stack without a JobSystem
+            long tick = _sim.TickCount;
+            int w = world.Width, h = world.Height;
+            for (int z = 0; z < world.Depth; z++)
+            {
+                var level = world.Levels[z];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        if ((level.Flags[level.Index(x, y)] & (byte)TileFlags.Stockpile) == 0) continue;
+                        var pos = new Int3(x, y, z);
+                        // ACCEPT-ALL IS THE ABSENCE OF AN ENTRY (StockZoneSystem's whole back-compat
+                        // story), so an unfiltered tile ships the derived accept-all mask rather than
+                        // 0 — which would read as "accepts nothing", the exact inverse of the truth.
+                        ulong mask = StockZoneSystem.AcceptAllMask;
+                        if (stock != null && stock.TryGetFilter(pos, out ulong m)) mask = m;
+                        int flags = 0;
+                        if (haul != null && haul.IsBackedOff(pos, tick, out _)) flags |= WireFormat.ZoneFlagBackedOff;
+                        _zonesScratch.Add(new WireFormat.ZoneTile(x, y, z, mask, flags));
+                    }
+            }
+            return _zonesScratch;
+        }
+
+        /// <summary>The live <see cref="HaulJobSource"/> out of the running stack, resolved ONCE
+        /// (the <c>HaulJobSource._stockZones</c> / <c>DeconstructJobSource</c> lazy-resolve precedent:
+        /// a reader owns its own dependency rather than growing <see cref="Simulation"/> a convenience
+        /// accessor — <c>Simulation.cs</c> is a spine file). Indexed loops over an array and an
+        /// <c>IReadOnlyList</c>, so nothing is enumerated out of a hash container. Null when the stack
+        /// registers no <see cref="JobSystem"/> or no haul source, in which case the back-off bit is
+        /// simply never set — an honest "we cannot know", not a fabricated zero.</summary>
+        private HaulJobSource _haulSource;
+        private bool _haulSourceResolved;
+        private HaulJobSource HaulSource()
+        {
+            if (_haulSourceResolved) return _haulSource;
+            _haulSourceResolved = true;
+            var systems = _sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+            {
+                if (!(systems[i] is JobSystem js)) continue;
+                for (int s = 0; s < js.Sources.Count; s++)
+                    if (js.Sources[s] is HaulJobSource h) { _haulSource = h; return _haulSource; }
+            }
+            return null;
         }
 
         // Reused scratch for TaskLabel — BuildRoster runs on the sim thread inside Render (≤10 Hz,
