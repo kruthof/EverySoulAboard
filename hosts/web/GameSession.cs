@@ -707,6 +707,28 @@ namespace Perilune.Web
         ///    <c>StockZoneSystem.StateChecksum</c> folds AcceptMask verbatim, so an undefined high bit
         ///    would perturb the hashed state while changing no behaviour — two byte-different sims that
         ///    behave identically. Masking here guarantees ONE representation per meaning in hashed state.
+        ///
+        ///    SINCE E0-4 WP-6 THIS MASK IS BELT TO THE SIM'S BRACES, AND UN-BITABLE BY A TEST — but
+        ///    only conditionally, which is why it stays. <c>StockZoneSystem.SetFilter</c> now performs
+        ///    the same <c>mask &amp;= AcceptAllMask</c> at the sim write door, so while the two derived
+        ///    masks are EQUAL the operation is idempotent and the stored value is <c>v &amp; 0x7F</c>
+        ///    whether or not this line ran — no test can observe its deletion, and
+        ///    <c>StockpileFilterVerbTests.BitsAboveTheLastItemKindAreCanonicalisedAway</c> says so in
+        ///    its own doc rather than pretending otherwise.
+        ///
+        ///    THE TWO MASKS ARE DERIVED INDEPENDENTLY AND CAN DIVERGE. <see cref="AcceptAllMask"/> here
+        ///    is COUNT-based (<c>(1UL &lt;&lt; Length) - 1</c>, which assumes <see cref="ItemKind"/> is
+        ///    contiguous from 0); <c>StockZoneSystem.AcceptAllMask</c> is per-enum-VALUE. Give
+        ///    <see cref="ItemKind"/> a gap — say a kind 9 with 7 and 8 undefined — and this mask sets
+        ///    phantom bits the sim's does not, at which point this line is load-bearing again and its
+        ///    deletion IS observable. That contiguity assumption is pinned by
+        ///    <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
+        ///
+        ///    THE REAL RESOLUTION, LOGGED AND NOT DONE HERE: have every site consume
+        ///    <c>StockZoneSystem.AcceptAllMask</c> — this bridge, <c>Tui.Ui.StockFilterModel</c> and the
+        ///    client's <c>ACCEPT_ALL</c> — after which the two derivations cannot diverge, this line is
+        ///    provably the same operation as the sim's, and it can simply be deleted along with the
+        ///    cross-derivation bridge test. Three host files and a JS constant; its own package.
         /// </summary>
         private void HandleFilter(WebCommand cmd)
         {
