@@ -9,18 +9,28 @@
 // Measured in headless Chrome on 2026-07-25 against `--ship grid`: `body.className` `""`, `.app`
 // `display:grid` at 1440×813, `.topbar`/`.crewwatch`/`.console` all painting real boxes.
 //
-// Group A is the CSS/DOM contract, read out of the real `index.html` / `styles.css` / sources — a
-// structural guard, declared as such. Group B drives the REAL hud.js + relations-view.js against
-// `dom-lite` and asserts the behaviour: the shared tab state toggles the body switch, the surface
-// renders the web and both directed regard sections, Escape leaves, and MOSS displaces it.
+// Group A is the CSS/DOM/wiring contract, read out of the real `index.html` / `styles.css` /
+// sources — a structural guard, declared as such. Group B drives the REAL hud.js +
+// relations-view.js against `dom-lite` and asserts the behaviour: the shared tab state toggles the
+// body switch, the surface renders the web and both directed regard sections, Escape leaves, and
+// MOSS displaces it.
 //
-// What node cannot prove is a computed style; `body.relations-open .app{display:none}` is asserted
-// here as a RULE and was verified as a computed `display:none` in Chrome (the reproduction above,
-// re-run after the fix).
+// WHAT THE CSS ASSERTIONS DO AND DO NOT PROVE — read this before trusting them. `hides()` parses
+// the stylesheet as TEXT. It is honest about two defeats found in review:
+//   * comments — the raw-regex version was satisfied by a commented-out rule, and this very file's
+//     prose quotes `body.overview-open .app{display:none}`, so the pattern was already matchable by
+//     a comment. Comments are now stripped before matching.
+//   * later overrides — appending `body.relations-open .app{display:grid !important}` left the
+//     first version green while the game was re-broken. `hides()` now models the ONE cascade rule
+//     that covers the realistic accident: for a given selector, the LAST declaration in the file
+//     wins, so it checks the last matching block rather than any of them.
+// It still does NOT model the full cascade (a higher-specificity or inline override elsewhere is
+// invisible to it), and it cannot produce a computed style at all. The computed proof is the
+// browser harness: all 16 combinations of the four body switches, measured in Chrome.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -31,18 +41,66 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
 const src = (rel) => readFileSync(join(CLIENT, rel), 'utf8');
 
-const HTML = src('index.html');
-const CSS = src('styles.css');
-const HUD = src('src/ui/hud.js');
-const RVIEW = src('src/ui/relations-view.js');
-const OVIEW = src('src/ui/overview-view.js');
-const OMODEL = src('src/ui/overview-model.js');
+/**
+ * JS source with comments removed, quote-aware so `'ws://…'` and `"a // b"` survive intact.
+ *
+ * Not cosmetic: the first version of the wiring guard below was satisfied by
+ * `// initRelations({ … });`, i.e. by the very mutation it exists to catch. Every source assertion
+ * in this file reads code, never prose — including this file's own prose, which quotes the code it
+ * guards and would otherwise match it.
+ */
+function stripJsComments(s) {
+  let out = '', i = 0, q = null;
+  while (i < s.length) {
+    const c = s[i], d = s[i + 1];
+    if (q) {
+      if (c === '\\') { out += c + (d || ''); i += 2; continue; }
+      if (c === q) q = null;
+      out += c; i++; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { q = c; out += c; i++; continue; }
+    if (c === '/' && d === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+const js = (rel) => stripJsComments(src(rel));
 
-/** `body.<switch> <selector>{…display:none…}` exists in the stylesheet. */
+const HTML = src('index.html');
+const HUD = js('src/ui/hud.js');
+const MAIN = js('src/main.js');
+const RVIEW = js('src/ui/relations-view.js');
+const OVIEW = js('src/ui/overview-view.js');
+const OMODEL = js('src/ui/overview-model.js');
+
+/** The stylesheet with `/* … *\/` stripped, for the same reason. */
+const CSS = src('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+
+/**
+ * The value `prop` ends up with for exactly this selector, or null if never declared.
+ *
+ * Scans EVERY block whose selector list contains the compound and keeps the LAST declaration —
+ * same-selector last-declaration-wins, which is the cascade rule a later accidental override trips.
+ * See the header for what this deliberately does not model.
+ * @param {string} selector e.g. `body.relations-open .app` (whitespace-normalised)
+ * @param {string} prop e.g. `display`
+ */
+function lastDeclaration(selector, prop) {
+  const want = selector.replace(/\s+/g, ' ').trim();
+  const re = new RegExp(prop + '\\s*:\\s*([a-z-]+)', 'g');
+  let value = null;
+  for (const block of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selectors = block[1].split(',').map((s) => s.trim().replace(/\s+/g, ' '));
+    if (!selectors.includes(want)) continue;
+    for (const d of block[2].matchAll(re)) value = d[1];
+  }
+  return value;
+}
+
+/** Does `body.<switch> <selector>` end up at `display:none`? Deleted AND overridden both fail. */
 function hides(switchClass, selector) {
-  const re = new RegExp('body\\.' + switchClass + '\\s+' + selector.replace(/[.#]/g, '\\$&') +
-    '\\s*\\{[^}]*display\\s*:\\s*none');
-  return re.test(CSS);
+  return lastDeclaration('body.' + switchClass + ' ' + selector, 'display') === 'none';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -81,6 +139,38 @@ function topLevelBodyRootIds(html) {
   }
   return out.filter(Boolean);
 }
+
+// A CSS switch only fires if something mounts the surface, and NOTHING covered that until review
+// found it: commenting out `initRelations({…})` in main.js left the whole node suite green while
+// the browser reproduced the original regression verbatim (`body=""`, `.app` painting at 1440×813,
+// the console back on screen). `main.js` is exactly the seam WP-9 edits, so the wiring needs a
+// guard of its own — the same shape as `input.test.js`'s "both installInput blocks are wired".
+//
+// The rule, derived rather than hand-listed: a top-level body root whose id matches a
+// `src/ui/<id>.js` SURFACE CONTROLLER (the `*-view.js` naming convention) is mounted from main.js,
+// so main.js must import that module and call the `init*` function it exports. Roots with no such
+// module (`#moss-view` → moss-screen.js, `#panels` → panels.js, both mounted lazily by hud.js) are
+// out of scope by construction, not by exception list.
+//
+// MUTATION: comment out the `initRelations(...)` call in main.js ⇒ red.
+// MUTATION: drop the `relations-view.js` import from main.js ⇒ red.
+// MUTATION: add a `foo-view.js` surface + `#foo-view` root and forget to mount it ⇒ red.
+test('A0: every *-view surface root declared in index.html is actually mounted by main.js', () => {
+  const roots = topLevelBodyRootIds(HTML).filter((id) => id.endsWith('-view')
+    && existsSync(join(CLIENT, 'src/ui/' + id + '.js')));
+  assert.ok(roots.includes('relations-view'), 'the RELATIONS surface is in scope of this guard');
+  assert.ok(roots.length >= 3, 'the loop is not vacuous — surfaces found: ' + roots.join(','));
+  for (const id of roots) {
+    const mod = src('src/ui/' + id + '.js');
+    const initFn = (/export function (init[A-Za-z]*)\s*\(/.exec(mod) || [])[1];
+    assert.ok(initFn, `src/ui/${id}.js exports no init* — a surface nobody can mount`);
+    assert.ok(MAIN.includes("from './ui/" + id + ".js'"),
+      `main.js does not import ./ui/${id}.js`);
+    assert.ok(new RegExp('(^|[^./\\w])' + initFn + '\\s*\\(', 'm').test(MAIN),
+      `main.js never calls ${initFn}() — the #${id} surface is declared, styled and dead. ` +
+      'This is the seam whose absence reproduced the original console regression.');
+  }
+});
 
 // THE anti-recurrence guard, and the one that fails if the fix is reverted.
 //
@@ -121,9 +211,10 @@ test('A2b: body.relations-open hides the console shell — THE rule the regressi
 });
 
 test('A3: the RELATIONS root is display:none by default and shown only by its own switch', () => {
-  assert.match(CSS, /#relations-view\{[^}]*display:none/,
+  assert.equal(lastDeclaration('#relations-view', 'display'), 'none',
     'default-hidden, so a session that never opens RELATIONS shows nothing');
-  assert.match(CSS, /body\.relations-open #relations-view\{[^}]*display:block/);
+  assert.equal(lastDeclaration('body.relations-open #relations-view', 'display'), 'block',
+    'and its own switch is the only thing that shows it');
 });
 
 test('A4: under the RELATIONS takeover the Overview is display:none too (not merely covered)', () => {
