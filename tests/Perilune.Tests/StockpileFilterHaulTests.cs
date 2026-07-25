@@ -147,6 +147,53 @@ namespace Perilune.Tests
                 "the accepted Scrap kind boards — the gate rejects by kind, not everything");
         }
 
+        // ================================================= WP-6: accept-all repaint, at the board
+
+        /// <summary>
+        /// WP-6 END TO END, through the REAL command path. A zone is painted Scrap-only (a Potato has
+        /// nowhere to go and does not board), then re-painted with the whole accept-mask — the paint
+        /// WP-5's UI must send on every unrestricted stockpile, or a re-painted zone keeps its old
+        /// restriction invisibly. Two things must then be true at once:
+        ///
+        ///  * the Potato boards again (the stale restriction really is gone), and
+        ///  * the registry is EMPTY, so <c>HaulJobSource</c>'s
+        ///    <c>filtered = ... Zones.Count &gt; 0</c> is false again and the per-item
+        ///    <c>AnyFreeStockpileAccepts</c> gate — a linear scan over a linear scan, at 10 Hz — stops
+        ///    running on a ship that restricts nothing. Without the collapse, the honest UI paint
+        ///    would turn that gate on permanently for every played ship.
+        ///
+        /// MUTATION (verified): in <c>StockZoneSystem.SetFilter</c> replace the collapse body
+        /// <c>{ ClearFilter(sim, pos); return; }</c> with a bare <c>{ return; }</c> ⇒ the Scrap-only
+        /// entry survives the accept-all repaint, the Potato still finds no accepting tile, the
+        /// candidate count stays 0, and this fails.
+        /// </summary>
+        [Test]
+        public void AcceptAllRepaint_ThroughTheCommand_UnblocksTheKind_AndEmptiesTheRegistry()
+        {
+            var sim = NewHaulSim(out var jobs, out _);
+            var only = new Int3(7, 1, 0);
+
+            sim.EnqueueCommand(new DesignateStockpileCommand(only, on: true));
+            sim.EnqueueCommand(new SetStockpileFilterCommand(only, MaskOf(ItemKind.Scrap))); // NOT Potato
+            sim.Tick();
+
+            sim.AddItem(ItemKind.Potato, 1, new Int3(4, 1, 0));
+            sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.Tick();
+            Assert.That(HaulCandidates(jobs), Is.EqualTo(0), "precondition: the restriction really bites");
+            Assert.That(sim.StockZones.Zones, Has.Count.EqualTo(1),
+                "precondition: a restricting filter IS an entry");
+
+            // The honest "this zone accepts everything" paint.
+            sim.EnqueueCommand(new SetStockpileFilterCommand(only, StockZoneSystem.AcceptAllMask));
+            sim.Tick();
+
+            Assert.That(sim.StockZones.Zones, Is.Empty,
+                "an unrestricted zone stores nothing — the pre-E0-4 haul fast path is reachable again");
+            Assert.That(HaulCandidates(jobs), Is.EqualTo(1),
+                "and the Potato boards: the stale Scrap-only restriction is genuinely gone");
+        }
+
         // ================================================= OFF clears the filter entry (hazard 3)
 
         /// <summary>
