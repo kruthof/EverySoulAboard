@@ -742,13 +742,18 @@ namespace Perilune.Gen
         // GridWreckSlots. Debris in the airless decks 2..7 would have looked identical in a
         // screenshot and been undiggable in play.
         //
-        // The crew stay AutoWander=false. Unlike the slice (whose whole reachable volume is
-        // pressurised) this ship carries six decks of VACUUM spine that the ladder trunk makes
-        // walkable from tick 0, so idle wandering here is lethal in a way it is not there. What
-        // AutoWander bought the slice — desynchronising eight crew so they never crowd one small
-        // room into hypoxia — this ship gets from its geometry instead: deck 0's eight room doors
-        // all boot OPEN, so the deck is one ~570-tile air mass and no single room can be breathed
-        // down (75 h of eight-crew O2 draw in the mess alone, before any flow from next door).
+        // The crew stay AutoWander=false, and the honest reason is the WANDER SAMPLER, not lethality.
+        // PathService.TryRandomWalkableTileNear boxes Z along with X and Y, and the default
+        // wander_radius_tiles (8) is >= this ship's depth (8) — so the box saturates every deck and a
+        // SINGLE idle draw can land a crew member in any of the six VACUUM spines the ladder trunk
+        // makes walkable from tick 0. MEASURED with AutoWander=true over one sim-day, it is
+        // survivable rather than fatal — 8/8 alive, work 24.990 % against 24.938 %, the crew flee
+        // back out — but 4.46 % of all crew-ticks go to JobKind.Flee, walking out of vacuum for
+        // nothing, on the ship a new player is watching. What AutoWander bought the slice —
+        // desynchronising eight crew so they never crowd one small room into hypoxia — this ship
+        // gets from its geometry instead: deck 0's eight room doors all boot OPEN, so the deck is
+        // one ~570-tile air mass and no single room can be breathed down (75 h of eight-crew O2
+        // draw in the mess alone, before any flow from next door).
 
         /// <summary>The grid ship's own seed — a DISTINCT identity from Perilune (20260718)
         /// and the slice (20260721).</summary>
@@ -783,12 +788,33 @@ namespace Perilune.Gen
         /// on the standard play ship from tick 0 with no player input and no harness flag — the
         /// grid ship's analogue of the slice's opened door_aft + designated aft field.
         ///
-        /// The other two wrecks boot as every other empty hall does (door closed, airless,
-        /// undesignated): they are the player's own work, reached either by ＋ADD ROOM (which
-        /// opens the door and fills the compartment) or by opening the door directly, and then by
-        /// painting DIG. The ClearAllDebris goal needs all three, so it cannot be completed
+        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. An air-filled slot
+        /// reads OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws an occupied slot
+        /// as a room — no ＋ADD ROOM chip, and a label of <c>roomLabel(roomType) || anchorName</c>
+        /// (<c>client/src/ui/decks-model.js</c>, <c>deckSlotView</c>). Left as
+        /// <c>RoomType.None</c> (this package's first draft) it therefore rendered as a room
+        /// LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an UPPERCASE-label UI, and
+        /// could never be commissioned out of that state either, because <c>AddRoomCommand</c>
+        /// returns early on <c>TotalMoles &gt; 0</c> (Commands.cs:483). A typed slot has a real
+        /// label, needs no commissioning, and boots its door OPEN by construction
+        /// (<c>SlotGridPlanner.Carve</c>: <c>IsOpen = !empty</c>).
+        ///
+        /// The other two wrecks boot as every other empty hall does (RoomType.None, door closed,
+        /// airless, undesignated): they are the player's own work, reached either by ＋ADD ROOM
+        /// (which opens the door and fills the compartment) or by opening the door directly, and
+        /// then by painting DIG. The ClearAllDebris goal needs all three, so it cannot be completed
         /// without the player using the verb.</summary>
         public const int GridOpenWreckSlot = 6;
+
+        /// <summary>The live wreck's anchor + type: the collapsed aft hold. <c>Storage</c> is
+        /// deliberate — <see cref="RoomDresser"/> furnishes only Quarters/Mess/Commons/Command/
+        /// Observatory/Medbay/Bridge, so a Storage room takes NO furniture and the compartment reads
+        /// as what it is: an emptied hold with the deckhead down in it. The anchor is "hold" and not
+        /// "storage" because deck 0 already owns that name — anchors are the MOSS namespace and must
+        /// be unique — and it must not be of the internal <c>hall_dN_sM</c> form, which is what the
+        /// client would print at the player.</summary>
+        public const string GridOpenWreckAnchor = "hold";
+        public const RoomType GridOpenWreckType = RoomType.Storage;
 
         public static ShipPlan PeriluneGrid()
         {
@@ -815,7 +841,7 @@ namespace Perilune.Gen
                 Hall(1, 3),
                 Slot(RoomType.Fabrication, "fabrication"),
                 Hall(1, 5),
-                Hall(1, 6),
+                Slot(GridOpenWreckType, GridOpenWreckAnchor),  // slot 6 — the live wreck (GridOpenWreckSlot)
                 Hall(1, 7),
             };
 
@@ -883,17 +909,21 @@ namespace Perilune.Gen
             //   * three scrubbers, which is the whole eight-crew CO2 load on this deck alone
             //     (3 × scrubber_mol_per_second 0.001 > 8 × co2_per_person_per_second 2.73e-4).
             //     Deck 0 already carries four (spine + hydro + mess + lifesupport), so EITHER
-            //     active deck can hold the entire crew indefinitely, which is the property that
-            //     matters when work moves them between decks. Two sit on the spine facing the
-            //     wrecked halls' doors, so B-3 door diffusion has the shortest path from a
-            //     digging crew's CO2 to a scrubber. All four tiles are spine floor with a conduit
-            //     tray already under them, and LifeSupport is the LAST tier shed in a brownout.
-            // ⚠️ HONEST LIMIT: the vent IS test-covered (delete it and the full-clear test's
-            // pressure assertion fails), the SCRUBBERS ARE NOT. Deleting all three leaves every
-            // test green, because deck 1 holds ~1,100 m³ and eight crew need ~230 h to raise it to
-            // co2_narcosis_ppm — no test at a playable horizon can bite. They are sized by the
-            // arithmetic above, not by a test; the supporting measurement is the day-1 ship metric
-            // going 1189 ppm (3 crew, no deck-1 scrubbing) → 9 ppm (8 crew, this pair).
+            //     active deck can hold the entire crew, which is the property that matters when work
+            //     moves them between decks. Two of the three sit on the spine facing the wrecked
+            //     halls' doors, because deck 1 is SIX SEPARATE ROOMS and not one: the scrubbers
+            //     stand in the spine while the crew's CO2 is made in the wreck, so the sizing rests
+            //     entirely on B-3 partial-pressure diffusion carrying it across the open doors. All
+            //     four tiles are spine floor with a conduit tray already under them, and LifeSupport
+            //     is the LAST tier shed in a brownout.
+            //     THE TREND, NOT THE THRESHOLD, is what they buy and what the test asserts. Narcosis
+            //     is ~190 h away (deck 1's connected mass is 366 tiles ≈ 915 m³ ≈ 38,000 mol, and 4 %
+            //     of that is ~1,520 mol at 2.18e-3 mol/s), so nothing at a playable horizon can bite
+            //     on co2_narcosis_ppm — but the DIRECTION separates inside the hour the full-clear
+            //     test already runs: at its tick 55,191 the worst deck-1 room reads 384 ppm and
+            //     FALLING below its 500 ppm boot fill with these three, and 792 ppm and RISING
+            //     without them (at one sim-day, 9 ppm vs 3,405 ppm). That is the assertion in
+            //     Goal_IsCompletable_ByTheAuthoredCrew_ViaAddRoomAndDig, so deleting them fails.
             Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, GridWreckDeck, "scrubber_spine_1");
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, GridWreckDeck), Name = "vent_spine_1", IsOpen = true });
             Dev(plan, DeviceKind.Scrubber, SlotGridPlanner.InteriorRect(5).CenterX, SlotGridPlanner.SpineY1, GridWreckDeck, "scrubber_spine_1b");
@@ -927,7 +957,7 @@ namespace Perilune.Gen
                 ("Halloran", 8,  SlotGridPlanner.SpineY0),
                 ("Vega",     18, SlotGridPlanner.SpineY0),
                 ("Sato",     30, SlotGridPlanner.SpineY0),
-                ("Reyes",    12, SlotGridPlanner.SpineY1),
+                ("Okonjo",   12, SlotGridPlanner.SpineY1),
                 ("Novak",    24, SlotGridPlanner.SpineY1),
                 ("Adeyemi",  36, SlotGridPlanner.SpineY0),
                 ("Kaur",     6,  SlotGridPlanner.SpineY1),
@@ -961,16 +991,16 @@ namespace Perilune.Gen
                 plan.PressurizedAnchors.Add(a);
 
             // ------------------------------------------------- the live collapse
-            // GridOpenWreckSlot is the one wreck the ship boots already working: door OPEN and
-            // compartment PRESSURISED (so the diggers are in breathable air, not fleeing it), and
-            // its debris DESIGNATED (a goal designates nothing — GoalSystem is a pure observer —
-            // and DesignateDigCommand has exactly one other caller, the player). Both facts are
-            // needed and either alone does nothing: the slice learned this the hard way with
-            // door_aft, where a sealed door left every designated tile unreachable and the board
-            // inert. The other two wrecks stay closed, airless and undesignated — the player's
-            // work, and the reason the goal cannot complete without them.
-            SetDeviceOpen(plan, $"door_d{GridWreckDeck}_s{GridOpenWreckSlot}", true);
-            plan.PressurizedAnchors.Add(HallAnchor(GridWreckDeck, GridOpenWreckSlot));
+            // GridOpenWreckSlot is the one wreck the ship boots already working: it is a TYPED,
+            // commissioned room, so Carve already booted its door OPEN (asserted, not assumed, in
+            // GridWreckTests); it is PRESSURISED here, so the diggers stand in breathable air
+            // instead of fleeing it; and its debris is DESIGNATED, because a goal designates nothing
+            // (GoalSystem is a pure observer) and DesignateDigCommand has exactly one other caller,
+            // the player. Every one of those is needed and any one alone does nothing: the slice
+            // learned this with door_aft, where a sealed door left every designated tile unreachable
+            // and the board inert. The other two wrecks stay closed, airless and undesignated — the
+            // player's work, and the reason the goal cannot complete without it.
+            plan.PressurizedAnchors.Add(GridOpenWreckAnchor);
             var liveWreck = wrecks[GridOpenWreckSlot];
             for (int i = 0; i < liveWreck.Count; i++) plan.DigDesignations.Add(liveWreck[i]);
 

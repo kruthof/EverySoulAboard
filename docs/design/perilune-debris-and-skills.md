@@ -66,11 +66,23 @@ only when open+unlocked"*), so every debris tile behind one is unreachable and t
 inert even when designated — the slice learned exactly this with `door_aft`. And an *airless*
 compartment is worse than an unreachable one: a crew member who does get in drops the job and runs
 (`SafetySystem` / `JobKind.Flee`, E0-2), so the wreck would be permanently undiggable and a
-`ClearAllDebris` goal over it permanently unreachable. WP-1 therefore authors one wreck **open and
-pressurised** (the live collapse, designated at boot) and leaves the other two sealed as the
-*player's* work, reachable through `＋ADD ROOM`, which opens the door and fills the compartment as
-a side effect of commissioning it. Wreck-filling the airless decks 2..7, which this note's spirit
-invites, would have produced debris that looks identical in a screenshot and can never be dug.
+`ClearAllDebris` goal over it permanently unreachable — and that goal is a **whole-world scan**
+(`GoalSystem.cs:130-143`), so a single debris tile on deck 3 makes it unreachable *for the whole
+ship*. WP-1 therefore authors one wreck **open and pressurised** (the live collapse, designated at
+boot) and leaves the other two sealed as the *player's* work, reachable through `＋ADD ROOM`, which
+opens the door and fills the compartment as a side effect of commissioning it. Wreck-filling the
+airless decks 2..7, which this note's spirit invites, would have produced debris that looks
+identical in a screenshot and can never be dug.
+
+⚠️ **And the open one must be a TYPED room, not a hall** — a second thing the sim only tells you
+downstream. An air-filled slot reads OCCUPIED to `GameSession.ResolveSlot`, the Overview draws an
+occupied slot as a room (no `＋ADD ROOM` chip), and its label is
+`roomLabel(roomType) || anchorName` (`client/src/ui/decks-model.js`). A pressurised
+`RoomType.None` slot therefore renders **labelled with its own internal anchor id** — "hall_d1_s6"
+— and can never be commissioned out of that state, because `AddRoomCommand` returns early on
+`TotalMoles > 0` (`Commands.cs:483`). WP-1's live wreck is authored as `RoomType.Storage`
+/ anchor `hold`: the collapsed hold. `RoomDresser` furnishes no Storage room, so it takes no
+furniture.
 
 **Why it is worth doing beyond fixing the gap:**
 

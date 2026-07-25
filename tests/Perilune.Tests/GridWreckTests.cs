@@ -81,6 +81,24 @@ namespace Perilune.Tests
             return found;
         }
 
+        /// <summary>CO2 ppm of the room a tile is in.</summary>
+        private static double Co2At(Simulation sim, Int3 probe) => sim.Rooms.RoomAt(sim.World, probe).CO2Ppm;
+
+        /// <summary>The worst (highest) CO2 ppm among a deck's live, air-holding rooms — the same
+        /// "worst pressurised room" reading ShipMetrics puts on the HUD.</summary>
+        private static double WorstCo2OnDeck(Simulation sim, int deck)
+        {
+            double worst = 0;
+            foreach (var a in sim.Rooms.Anchors)
+            {
+                if (a.Probe.Z != deck) continue;
+                var room = sim.Rooms.RoomAt(sim.World, a.Probe);
+                if (room.TotalMoles <= 0) continue;
+                if (room.CO2Ppm > worst) worst = room.CO2Ppm;
+            }
+            return worst;
+        }
+
         private static Int3 HallProbe(int slot, int deck)
         {
             var r = SlotGridPlanner.InteriorRect(slot);
@@ -216,6 +234,101 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// THE LIVE WRECK IS A TYPED ROOM, AND THAT IS A CLIENT CONTRACT, not decoration. An
+        /// air-filled slot reads OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws
+        /// an occupied slot as a room: no ＋ADD ROOM chip, and a label of
+        /// <c>roomLabel(roomType) || anchorName</c> (<c>decks-model.js deckSlotView</c>). So a
+        /// pressurised <c>RoomType.None</c> slot renders LABELLED WITH ITS INTERNAL ANCHOR ID in an
+        /// UPPERCASE-label UI — and can never be commissioned either, because
+        /// <c>AddRoomCommand</c> returns early on <c>TotalMoles &gt; 0</c>. That combination shipped
+        /// in this package's first draft and is what this test exists to stop coming back.
+        /// Mutation: put the live wreck back to <c>Hall(1, 6)</c> and the type/anchor assertions
+        /// fail (and `hall_d1_s6` is exactly the string that would have reached the player).
+        /// </summary>
+        [Test]
+        public void LiveWreck_IsATypedRoom_SoTheClientHasALabelForIt()
+        {
+            var plan = AuthoredShips.PeriluneGrid();
+
+            SlotDescriptor live = default;
+            bool found = false;
+            foreach (var s in plan.SlotGrid)
+                if (s.Deck == WreckDeck && s.Index == OpenSlot) { live = s; found = true; }
+            Assert.That(found, Is.True);
+            Assert.That(live.Type, Is.Not.EqualTo(RoomType.None),
+                "the live wreck is pressurised, so the client reads it as OCCUPIED and draws a ROOM — " +
+                "with RoomType.None its label falls back to the raw anchor id");
+            Assert.That(live.Type, Is.EqualTo(RoomType.Storage), "the collapsed hold is a Storage room");
+            Assert.That(live.Anchor, Is.EqualTo("hold"));
+            Assert.That(live.Anchor, Does.Not.StartWith("hall_"),
+                "an anchor of the hall_dN_sM form is an internal identifier, not a player-facing name");
+
+            // The two sealed wrecks stay untyped — they are still the player's ＋ADD ROOM work.
+            foreach (var s in plan.SlotGrid)
+            {
+                if (s.Deck != WreckDeck || s.Index == OpenSlot) continue;
+                bool wrecked = false;
+                foreach (int slot in ExpectedWreckSlots) if (s.Index == slot) wrecked = true;
+                if (wrecked) Assert.That(s.Type, Is.EqualTo(RoomType.None), $"slot {s.Index} must stay commissionable");
+            }
+
+            // RoomDresser furnishes only Quarters/Mess/Commons/Command/Observatory/Medbay/Bridge, so
+            // typing the wreck Storage must not have dropped furniture into a collapsed compartment.
+            var r = SlotGridPlanner.InteriorRect(OpenSlot);
+            foreach (var d in plan.Devices)
+            {
+                if (d.Pos.Z != WreckDeck) continue;
+                if (d.Pos.X < r.X0 || d.Pos.X > r.X1 || d.Pos.Y < r.Y0 || d.Pos.Y > r.Y1) continue;
+                Assert.That(d.Kind, Is.EqualTo(DeviceKind.Conduit),
+                    $"a {d.Kind} was furnished into the collapsed hold at {d.Pos}");
+            }
+        }
+
+        /// <summary>
+        /// The deck-1 life-support pair is authored where the crew now work: three scrubbers and an
+        /// OPEN vent, all on spine floor. A plan-level pin, because the behaviour they buy is slow
+        /// (see the CO2 assertion in the full-clear test for the part that is measured) and a device
+        /// silently dropped in a refactor would otherwise show up as a ship that poisons itself over
+        /// days. The ladder trunk is pinned here too: it is the stated premise of the AutoWander
+        /// decision AND the only way the crew reach the wreck at all.
+        /// </summary>
+        [Test]
+        public void Deck1_HasItsLifeSupportPair_AndTheLadderTrunkIsWholeShip()
+        {
+            var plan = AuthoredShips.PeriluneGrid();
+
+            int scrubbers = 0, openVents = 0, ladders = 0, regolith = 0;
+            var ladderDecks = new HashSet<int>();
+            foreach (var d in plan.Devices)
+            {
+                if (d.Kind == DeviceKind.Ladder)
+                {
+                    ladders++;
+                    ladderDecks.Add(d.Pos.Z);
+                    Assert.That(d.Pos.X, Is.EqualTo(SlotGridPlanner.LadderX));
+                    Assert.That(d.Pos.Y, Is.EqualTo(SlotGridPlanner.SpineY0));
+                }
+                if (d.Pos.Z != WreckDeck) continue;
+                bool onSpine = d.Pos.Y == SlotGridPlanner.SpineY0 || d.Pos.Y == SlotGridPlanner.SpineY1;
+                if (d.Kind == DeviceKind.Scrubber) { scrubbers++; Assert.That(onSpine, Is.True, $"scrubber off-spine at {d.Pos}"); }
+                if (d.Kind == DeviceKind.AirVent && d.IsOpen) { openVents++; Assert.That(onSpine, Is.True, $"vent off-spine at {d.Pos}"); }
+            }
+            Assert.That(scrubbers, Is.EqualTo(3),
+                "deck 1 carries three scrubbers — the whole eight-crew CO2 load on this deck alone " +
+                "(3 × 0.001 mol/s > 8 × 2.73e-4), reached by B-3 diffusion across the open doors");
+            Assert.That(openVents, Is.EqualTo(1),
+                "deck 1 carries one OPEN vent — every dug tile is ~2.5 m³ of new volume to make up");
+            Assert.That(ladderDecks.Count, Is.EqualTo(AuthoredShips.GridDepth),
+                "the ladder trunk must reach every deck: it is how the crew get to the wreck at all");
+            Assert.That(ladders, Is.EqualTo(AuthoredShips.GridDepth));
+
+            foreach (var item in plan.Items) if (item.Kind == ItemKind.Regolith) regolith += item.Count;
+            Assert.That(regolith, Is.EqualTo(24),
+                "the opening regolith stock is the build loop's only matter until the first tile is dug " +
+                "(wall_material 2 ⇒ twelve walls); without it every designation starves at '0 regolith aboard'");
+        }
+
+        /// <summary>
         /// The goal is real: one authored objective, ClearAllDebris, and it is NOT vacuously true at
         /// boot. ClearAllDebris completes on its first poll on a ship authored without debris — which
         /// is exactly what the grid ship was before WP-1 — so "the ship has a goal" is only worth
@@ -275,6 +388,7 @@ namespace Perilune.Tests
             }
         }
 
+
         // ------------------------------------------------------------------ playability
 
         /// <summary>
@@ -284,6 +398,10 @@ namespace Perilune.Tests
         /// means, and it is the assertion a sealed or airless wreck cannot pass: a closed door makes
         /// every designated tile unreachable, and an airless one makes the digger flee
         /// (SafetySystem/JobKind.Flee) instead of working.
+        ///
+        /// MARGIN: the first tile comes out at tick 6,160 and the tenth — the bar below — at 12,200,
+        /// against a 25,000-tick budget (2.05×). It ran at 15,000 (1.23×) until the review pointed
+        /// out that was the thinnest bound in the file; the extra ticks are free next to the digs.
         /// </summary>
         [Test]
         public void Crew_ClearTheLiveWreck_UnpromptedAndInBreathableAir()
@@ -294,7 +412,7 @@ namespace Perilune.Tests
 
             bool sawDig = false, sawFlee = false;
             var diggers = new HashSet<string>();
-            for (int t = 0; t < 15000; t++)   // 25 sim-minutes: travel + two 10-minute digs
+            for (int t = 0; t < 25000; t++)   // ~42 sim-minutes; the tenth tile is out by 12,200
             {
                 sim.Tick();
                 foreach (var c in sim.Citizens.Items)
@@ -381,7 +499,8 @@ namespace Perilune.Tests
             // 40,000 ticks (~66 sim-minutes), not 15,000: the crew are ALSO clearing the live wreck
             // the ship boots designated, and the dispatcher picks the nearest site, so slot 5 only
             // gets hands once slot 6 thins out. At 15,000 this test failed with 0 cleared — which is
-            // the ship being honest, not the route being broken.
+            // the ship being honest, not the route being broken. MARGIN: the first slot-5 tile comes
+            // out at tick 18,500, so the budget is 2.16×.
             for (int t = 0; t < 40000; t++) sim.Tick();
             int cleared = before - DebrisIn(sim, sealedSlot).Count;
             Assert.That(cleared, Is.GreaterThan(0),
@@ -405,7 +524,7 @@ namespace Perilune.Tests
         [Test]
         public void Goal_IsCompletable_ByTheAuthoredCrew_ViaAddRoomAndDig()
         {
-            const int TickCap = 150000; // ~4.2 sim-hours; the measured completion is 55,191
+            const int TickCap = 150000; // ~4.2 sim-hours; MARGIN: the goal latches at 55,191 (2.72×)
             var systems = Stack();
             var plan = AuthoredShips.PeriluneGrid();
             var sim = ShipPlanBuilder.Build(plan, systems);
@@ -413,6 +532,13 @@ namespace Perilune.Tests
             GoalSystem goals = null;
             foreach (var s in systems) if (s is GoalSystem g) goals = g;
             for (int i = 0; i < 20; i++) sim.Tick();
+
+            // The baseline for the CO2 trend assertion below, read from this same run rather than
+            // hard-coded — and pinned, so a change to the fill mix is visible here too. A room the
+            // authoring pressurises boots at the structural 0.0005 CO2 fraction = 500 ppm.
+            double bootCo2 = Co2At(sim, HallProbe(OpenSlot, WreckDeck));
+            double bootWorst = WorstCo2OnDeck(sim, WreckDeck);
+            Assert.That(bootCo2, Is.EqualTo(500.0).Within(1.0), "a freshly pressurised room boots at 500 ppm CO2");
 
             // 1. Commission the two sealed wrecks (＋ADD ROOM opens the door + fills the compartment).
             foreach (var s in plan.SlotGrid)
@@ -440,6 +566,30 @@ namespace Perilune.Tests
             Assert.That(doneAt, Is.GreaterThan(0),
                 $"the ClearAllDebris goal did not complete in {TickCap} ticks — " +
                 $"{DebrisTiles(sim).Count} debris tiles left of {ExpectedWreckTiles}");
+
+            // CO2 TREND, at zero extra runtime: after eight crew have spent an hour working deck 1,
+            // its worst room must be BELOW where the deck booted. That is the deck-1 scrubbers doing
+            // their job through B-3 door diffusion, and it is the only assertion in the suite that
+            // can bite on them — the narcosis threshold is ~190 h away, but the direction separates
+            // inside this run (measured at the completion tick: 384 ppm falling with the three
+            // scrubbers, 792 ppm rising without them; at one sim-day, 9 ppm vs 3,405 ppm).
+            // Read the LIVE WRECK'S OWN ROOM first — the compartment the crew have been breathing in
+            // for the whole run, and the one with no scrubber of its own, so it is the honest test of
+            // whether B-3 diffusion is carrying its CO2 out to the spine scrubbers.
+            var wreckRoom = sim.Rooms.RoomAt(sim.World, HallProbe(OpenSlot, WreckDeck));
+            // Identity check, so this assertion cannot drift onto some other room and stay green: the
+            // wreck's compartment is the only room on the ship that GREW — 40 clear tiles at boot plus
+            // the 20 its crew dug out. It also pins that the dug volume actually joined the room.
+            Assert.That(wreckRoom.TileCount, Is.EqualTo(SlotGridPlanner.InteriorW * SlotGridPlanner.InteriorH),
+                "the cleared wreck must be a whole 10x6 compartment again — 40 clear + 20 dug");
+            double wreckCo2 = wreckRoom.CO2Ppm;
+            Assert.That(wreckCo2, Is.LessThan(bootCo2),
+                $"the wreck the crew just spent an hour digging is at {wreckCo2:0} ppm CO2, at or above its " +
+                $"{bootCo2:0} ppm boot value — its CO2 is not reaching deck 1's scrubbers");
+            double worstCo2 = WorstCo2OnDeck(sim, WreckDeck);
+            Assert.That(worstCo2, Is.LessThan(bootWorst),
+                $"deck 1's worst room is at {worstCo2:0} ppm CO2, at or above the deck's {bootWorst:0} ppm boot " +
+                "value — the deck is accumulating what its crew breathe out instead of scrubbing it");
             Assert.That(DebrisTiles(sim).Count, Is.Zero, "the goal latched with debris still aboard");
 
             int alive = 0;
