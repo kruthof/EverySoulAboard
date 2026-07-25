@@ -58,8 +58,9 @@ test('every tile group carries its wording as a <title>', () => {
 
   const titles = [...svg.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1]);
   assert.deepEqual(titles, [
-    'ACCEPTS ALL', 'FOOD', BACKED_OFF_LABEL, BACKED_OFF_LABEL + ' · FOOD',
-  ], 'the <title> must carry zoneLabel verbatim — including BOTH facts on a both-tile');
+    'ACCEPTS ALL', 'ACCEPTS FOOD', BACKED_OFF_LABEL, BACKED_OFF_LABEL + ' · ACCEPTS FOOD',
+  ], 'the <title> must carry zoneLabel verbatim — including BOTH facts on a both-tile, in the same ' +
+     'spelling the key uses');
   // A title outside its group would attach to the layer, not the tile: pin that each group has one.
   assert.equal(count(svg, /<g class="rz-zone[" ][^>]*><title>/g), 4,
     'the <title> must be the FIRST child of its own tile group, or the browser attaches it elsewhere');
@@ -137,6 +138,10 @@ test('zoneKeyHtml renders one labelled row per legend row, with its swatch', () 
 
   assert.equal(count(html, /class="rz-key-row"/g), rows.length, 'one rendered row per legend row');
   assert.equal(count(html, /class="rz-key-sw rz-key-sw-/g), rows.length, 'each row carries its swatch');
+  // The label needs its OWN element: as a bare text node beside the swatch its wrapped second line
+  // started back at the swatch column. MUTATION: drop the span ⇒ fails.
+  assert.equal(count(html, /class="rz-key-text"/g), rows.length,
+    'each label sits in its own .rz-key-text item, so a wrapped line hangs under the text');
   for (const r of rows) {
     assert.ok(html.includes('rz-key-sw-' + r.kind), `the '${r.kind}' swatch class is emitted`);
     assert.ok(html.includes(r.label), `the words "${r.label}" reach the page`);

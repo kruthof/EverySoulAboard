@@ -38,8 +38,24 @@ import { ACCEPT_ALL, stockFilterLabel } from './stock-filter-model.js';
 /** The wording for a backed-off tile. Weak on purpose — see the header. */
 export const BACKED_OFF_LABEL = 'NO HAULER REACHED THIS RECENTLY';
 
-/** The wording for a zoned tile with no filter on it. */
-export const ACCEPTS_ALL_LABEL = 'ACCEPTS ALL';
+/**
+ * The ONE spelling of "this zone accepts <kinds>", shared by the per-tile `<title>` and the key.
+ *
+ * It exists because the two disagreed. The tooltip said `FOOD` where the key said `ACCEPTS FOOD`, and
+ * on a multi-kind tile that also broke the SEPARATOR: `stockFilterLabel` joins kinds with the same
+ * ` · ` the composed label uses, so a restricted-and-unreached tile read
+ * `NO HAULER REACHED THIS RECENTLY · FOOD · PARTS` — three items at one level, where the first is a
+ * status and the rest are a list. With the prefix, `· ACCEPTS FOOD · PARTS` reads as one clause whose
+ * list belongs to ACCEPTS. Deriving both callers from this function is the point: a prefix that has to
+ * be written twice is a prefix that will eventually be written two ways. PURE.
+ * @param {number} mask
+ * @returns {string}
+ */
+export function acceptsLabel(mask) { return 'ACCEPTS ' + stockFilterLabel(mask); }
+
+/** The wording for a zoned tile with no filter on it — 'ACCEPTS ALL', DERIVED so it cannot drift from
+ *  the restricted spelling (`stockFilterLabel(ACCEPT_ALL)` is 'ALL'). */
+export const ACCEPTS_ALL_LABEL = acceptsLabel(ACCEPT_ALL);
 
 /**
  * Is this tile's filter a real restriction? True iff the mask is not accept-all.
@@ -75,7 +91,10 @@ export function zoneBackedOff(flags) {
 export function zoneLabel(mask, flags) {
   const parts = [];
   if (zoneBackedOff(flags)) parts.push(BACKED_OFF_LABEL);
-  if (zoneRestricted(mask)) parts.push(stockFilterLabel(mask));
+  // `acceptsLabel`, NOT a bare `stockFilterLabel` — the tooltip and the key must spell the same fact
+  // the same way, and on a multi-kind tile the prefix is also what keeps ` · ACCEPTS FOOD · PARTS`
+  // from reading as three peer items. See acceptsLabel's own doc.
+  if (zoneRestricted(mask)) parts.push(acceptsLabel(mask));
   return parts.length ? parts.join(' · ') : ACCEPTS_ALL_LABEL;
 }
 
@@ -148,7 +167,7 @@ export function zoneLegendRows(tiles) {
     if (masks.indexOf(t.mask) < 0) masks.push(t.mask);
   }
   masks.sort((a, b) => a - b);
-  for (const m of masks) rows.push({ kind: 'restricted', label: 'ACCEPTS ' + stockFilterLabel(m) });
+  for (const m of masks) rows.push({ kind: 'restricted', label: acceptsLabel(m) });
   if (tiles.some((t) => t && t.backedOff)) rows.push({ kind: 'backedoff', label: BACKED_OFF_LABEL });
   return rows;
 }

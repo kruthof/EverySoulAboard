@@ -103,8 +103,11 @@ export function zoneKeyHtml(rows) {
   const out = ['<span class="rz-key-title">ZONES</span>'];
   for (const r of rows) {
     if (!r) continue;
+    // The label gets its OWN element rather than sitting as a bare text node beside the swatch. As an
+    // anonymous flex item its wrapped second line started back at the SWATCH column, so the four-row
+    // key read as a ragged block; a real item wraps within its own edges and hangs under the text.
     out.push('<span class="rz-key-row"><i class="rz-key-sw rz-key-sw-' + esc(r.kind) +
-      '"></i>' + esc(r.label) + '</span>');
+      '"></i><span class="rz-key-text">' + esc(r.label) + '</span></span>');
   }
   return out.join('');
 }

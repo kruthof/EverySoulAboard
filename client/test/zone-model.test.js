@@ -33,8 +33,8 @@ import { dirname, join } from 'node:path';
 import { decodeZones, ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
 import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
 import {
-  ACCEPTS_ALL_LABEL, BACKED_OFF_LABEL, roomZoneTiles, zoneBackedOff, zoneLabel, zoneLegendRows,
-  zoneRestricted,
+  ACCEPTS_ALL_LABEL, BACKED_OFF_LABEL, acceptsLabel, roomZoneTiles, zoneBackedOff, zoneLabel,
+  zoneLegendRows, zoneRestricted,
 } from '../src/ui/zone-model.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -175,11 +175,18 @@ test('zoneBackedOff reads bit 0 of flags and ignores the rest', () => {
 // MUTATION 2: put the filter list first ⇒ fails (the urgent fact must lead).
 test('zoneLabel names BOTH facts, back-off first', () => {
   assert.equal(zoneLabel(ACCEPT_ALL, 0), ACCEPTS_ALL_LABEL);
-  assert.equal(zoneLabel(1 << 3, 0), 'FOOD');
+  assert.equal(zoneLabel(1 << 3, 0), 'ACCEPTS FOOD');
   assert.equal(zoneLabel(ACCEPT_ALL, ZONE_FLAG_BACKED_OFF), BACKED_OFF_LABEL);
-  assert.equal(zoneLabel(1 << 3, ZONE_FLAG_BACKED_OFF), BACKED_OFF_LABEL + ' · FOOD',
+  assert.equal(zoneLabel(1 << 3, ZONE_FLAG_BACKED_OFF), BACKED_OFF_LABEL + ' · ACCEPTS FOOD',
     'a tile that is both restricted AND unreached must say so — that is the state that needs telling ' +
     'apart, and it is the one the first draft made unreadable');
+  // THE SEPARATOR CASE, which is why the prefix is not decoration. stockFilterLabel joins kinds with
+  // the same ' · ', so without 'ACCEPTS ' a multi-kind both-tile read as three peer items where the
+  // first was a status: `NO HAULER REACHED THIS RECENTLY · FOOD · PARTS`.
+  // MUTATION: `parts.push(stockFilterLabel(mask))` instead of `acceptsLabel(mask)` ⇒ fails.
+  assert.equal(zoneLabel((1 << 3) | (1 << 5), ZONE_FLAG_BACKED_OFF),
+    BACKED_OFF_LABEL + ' · ACCEPTS FOOD · PARTS',
+    'the kind list must sit under an ACCEPTS clause, not float beside the status at the same level');
   // Never empty: a surface showing this can always show something.
   for (const [m, f] of [[ACCEPT_ALL, 0], [0, 0], [ACCEPT_ALL, 1], [0, 1]]) {
     assert.ok(zoneLabel(m, f).length > 0, `zoneLabel(${m},${f}) must never be empty`);
@@ -232,7 +239,7 @@ test('roomZoneTiles annotates each tile with both facts and its wording', () => 
   assert.deepEqual(tiles.map((t) => [t.restricted, t.backedOff]),
     [[false, false], [true, false], [false, true], [true, true]]);
   assert.deepEqual(tiles.map((t) => t.label),
-    [ACCEPTS_ALL_LABEL, 'FOOD', BACKED_OFF_LABEL, BACKED_OFF_LABEL + ' · FOOD']);
+    [ACCEPTS_ALL_LABEL, 'ACCEPTS FOOD', BACKED_OFF_LABEL, BACKED_OFF_LABEL + ' · ACCEPTS FOOD']);
   // The tile coordinates stay in WORLD space — the caller owns the local transform (roomCells rule).
   assert.deepEqual(tiles.map((t) => t.tx), [10, 11, 12, 13]);
 });
@@ -329,6 +336,30 @@ test('zoneLegendRows omits what is not there, and is empty for an unzoned room',
     [{ kind: 'zone', label: 'STOCKPILE' }, { kind: 'backedoff', label: BACKED_OFF_LABEL }]);
 });
 
+// TOOLTIP AND KEY MUST SPELL THE SAME FACT THE SAME WAY. They did not: the tile said `FOOD` where the
+// key said `ACCEPTS FOOD`, so a player checking one against the other saw two different strings for one
+// zone. Both now derive from `acceptsLabel`, and this is the assertion that keeps them derived.
+// MUTATION: make either caller build its own 'ACCEPTS ' + stockFilterLabel(...) with a different
+// prefix (or none) ⇒ fails.
+test('the per-tile label and the key row are the SAME spelling', () => {
+  const mask = (1 << 3) | (1 << 5);                       // FOOD · PARTS
+  const tiles = roomZoneTiles([row(10, 5, 0, mask, 0), row(11, 5, 0, mask, ZONE_FLAG_BACKED_OFF)], FOCUS);
+  assert.equal(tiles.length, 2, 'fixture: both rows must land inside FOCUS (note row() takes a DECK ' +
+    'as its third argument — passing the mask there silently drops every tile)');
+  const keyRow = zoneLegendRows(tiles).find((r) => r.kind === 'restricted');
+  assert.ok(keyRow, 'fixture: the key must actually have a restricted row to compare against');
+
+  assert.equal(tiles[0].label, keyRow.label,
+    'a restricted, reachable tile\'s <title> must read exactly as its key row does');
+  assert.ok(tiles[1].label.endsWith(keyRow.label),
+    'and on a tile that is ALSO backed off the same clause must appear verbatim after the status, ' +
+    `not in a second spelling (tile "${tiles[1].label}" vs key "${keyRow.label}")`);
+  // Non-vacuity: the shared spelling must actually carry the prefix, or this test passes on two
+  // identically-wrong strings.
+  assert.equal(keyRow.label, acceptsLabel(mask));
+  assert.match(keyRow.label, /^ACCEPTS /);
+});
+
 test('zoneLegendRows does not mutate the tiles it reads', () => {
   const tiles = roomZoneTiles([row(10, 5, 0, 1 << 3, ZONE_FLAG_BACKED_OFF)], FOCUS).map(Object.freeze);
   const before = JSON.parse(JSON.stringify(tiles));
@@ -369,6 +400,23 @@ test('the Room Zoom draws the zone layer + key, and main.js dispatches the chann
     'key is the only wording a player can actually read (the <title> alone cannot be reached)');
   assert.ok(/zoneKeyHtml\(/.test(ROOMZOOM) && /zoneLegendRows\(/.test(ROOMZOOM),
     'and it must build that key from the pure model rather than re-deriving the wording here');
+
+  // …AND THE STRING MUST REACH A VISIBLE ELEMENT. The three assertions above prove the call happens
+  // and (with zone-overlay.test.js) that the markup is right; NEITHER proves the markup is ever shown.
+  // Two mutations survived 563/563 on exactly that gap, and both put the surface back in the state
+  // this review round opened with — a mark on the floor with no wording anywhere:
+  //   (a) delete the '<div … id="rz-zonekey" …>' from buildSkeleton ⇒ `_zoneKey` is null,
+  //       paintZoneKey returns at its own guard, and the key silently never renders;
+  //   (b) `_zoneKey.hidden = !html` → `= true` ⇒ the key is built, assigned, and never shown.
+  // Both are CODE (a string literal and a statement), so codeOnly cannot be fooled by a comment.
+  assert.match(ROOMZOOM, /id="rz-zonekey"/,
+    'buildSkeleton must create the #rz-zonekey element. Without it paintZoneKey hits its own ' +
+    '`if (!_zoneKey) return;` and the key never renders — the wording disappears with no error ' +
+    'anywhere, which is precisely the failure mode this whole box was added to fix.');
+  assert.match(ROOMZOOM, /_zoneKey\.hidden\s*=\s*!html/,
+    'the key must be UNHIDDEN whenever it has content (and hidden when it does not). Pinning the ' +
+    'exact expression because `= true` is a one-word edit that builds the key, assigns it, and shows ' +
+    'the player nothing.');
 
   // LAYER ORDER — zones ABOVE the material layer. materialLayerSvg paints an OPAQUE item at U * 1.2,
   // LARGER than the tile, for every floor whose material byte is non-zero; drawn after the zones it
