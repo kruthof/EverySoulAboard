@@ -42,7 +42,10 @@ was ever paid in any of those runs.**
 
 **The retraction is the wall clock.** A reachability gate now runs in the harness
 (`sim.Paths.FindPath` from every live crew member; host-side, no sim change, pin-neutral).
-`--stockpile far --days 1` went from **~43 min of wall clock to 24 s**; at 3 sim-days every leg now
+`--stockpile far --days 1` went from **~43 min of wall clock to 24 s** (the **~43 min** is
+contemporaneous prose — **no timing artifact survives**, and two contemporaneous sources disagree on
+whether it was the 1-day or the 3-day leg; the post-gate numbers are recorded `.time` files, 71.3–73.3 s
+across 23 three-day legs); at 3 sim-days every leg now
 runs in **~72 s**. `far 4` zones `(60,1,1) (61,10,1) (59,1,1) (60,2,1)` after the gate skips
 `(58,15,1) (58,14,1) (57,15,1) (58,13,1) (57,14,1) (56,15,1)`. **Two honest limits of the gate,
 disclosed:** it is a **t = 0 snapshot** that never re-runs, and it is **∃-any-live-crew** where the
@@ -114,34 +117,57 @@ bit-identical on all three re-run legs):
 | `bw0 + strip 40 + bench 40` | 51 | 0.389 | 3.1 % | 202 |
 | `bw0 + strip 40 + far 40` | 51 | 0.795 | 6.8 % | 263 |
 
-**The double dissociation — the cleanest evidence this lane produced.** With a **far-deck** zone the
-revert costs **+3.2–4.1 pp** of on-job travel **and crafting occupancy RISES** (21.71 % → 22.09 %,
-+0.38 pp) while idle `None` falls ~1 pp (75.35 % → 74.37 %) — the *stations*, not the haulers, do the
-extra walking, which is §8's sentence observed directly for the first time. With a **bench-side** zone
-it costs only **+0.2–0.4 pp** and crafting occupancy **FALLS** (21.64 % → 21.33 % with headroom;
-12.48 % → 12.12 % without). **The sign flips with placement**, so this is the §8 round-trip and **not
-merely "more hauling happens"**. That validates WP-4 as a wrong-deck mitigation far better than any
-throughput number would have.
+**The double dissociation — the cleanest evidence this lane produced, and it replicates in BOTH
+horizons.** With a **far-deck** zone the revert costs **+3.2–4.1 pp** of on-job travel **and crafting
+occupancy RISES**: **21.71 % → 22.09 % (+0.38 pp)** with `--strip 40`, and **12.52 % → 12.72 %
+(+0.20 pp)** without it — while idle `None` falls in both (75.35 % → 74.37 % with headroom, 84.85 % →
+84.10 % without). The *stations*, not the haulers, do the extra walking: §8's sentence observed
+directly for the first time. With a **bench-side** zone crafting occupancy **FALLS**, again in both
+horizons (**21.64 % → 21.33 %** with headroom, **12.48 % → 12.12 %** without), at a cost of only
+**+0.2–0.4 pp**.
+
+| revert, crafting occupancy | with `--strip 40` | without |
+|---|---|---|
+| **far-deck** zone | 21.71 → **22.09 %** (+0.38) | 12.52 → **12.72 %** (+0.20) |
+| **bench-side** zone | 21.64 → **21.33 %** (−0.31) | 12.48 → **12.12 %** (−0.36) |
+
+**The sign flips with placement in both horizons**, so this is the §8 round-trip and **not merely
+"more hauling happens"** — a volume story would push crafting the same way regardless of *where* the
+zone is. That validates WP-4 as a wrong-deck mitigation far better than any throughput number would
+have. **Note the contrast with the magnitude question:** the *direction* is horizon-independent; every
+*fraction* is not.
 
 ### ⛔ DELIBERATELY NOT QUANTIFIED: how much of §8 the bench rule removes
 
 **No future edit should supply a single percentage, and one that does is cherry-picking.** The
-fraction depends entirely on which contrast is chosen:
+fraction depends entirely on which contrast is chosen — **all four rows below are the `--strip 40`
+(matter-headroom) legs**, which is load-bearing, not a footnote (see the warning under the table):
 
-| contrast | fraction |
+| contrast (**`--strip 40` legs**) | fraction |
 |---|---|
 | far's **absolute** on-job travel (6.8 → 3.6 %) | ~47 % |
 | the **far-minus-bench travel penalty** (+3.7 → +0.7 pp) | ~81 % |
 | haul **volume** (263 → 91 delivery legs) | ~65 % |
 | the **per-delivery** penalty (**1.57× with the rule, 1.57× without**) | **~0 %** |
 
+> **⚠️ WITHOUT HEADROOM THE LAST ROW FLIPS SIGN — label the horizon or the table misleads.** Re-derive
+> the per-delivery penalty from the **un-stripped** rows of the table above and you get **1.52× with
+> the rule** (`far 40` 0.278/80 = 0.00348 vs `bench 40` 0.169/74 = 0.00228) against **1.37× without**
+> (`bw0 + far 40` 0.762/244 vs `bw0 + bench 40` 0.357/156). At N = 40 with no `--strip`, the bench rule
+> makes the per-delivery penalty **larger, not equal** — the opposite of "~0 %". A reader re-deriving
+> from our own published rows and finding 1.52 ≠ 1.37 would reasonably conclude the record is wrong.
+> **It is not: "~0 %" is a `--strip 40` statement.** This is exactly why the magnitude is declined —
+> even the *sign* of "does the rule change the per-delivery cost?" is horizon-dependent.
+
 **The rule does not make a wrong-deck haul cheaper. It makes 2.1–3.2× fewer of them happen**, by
 returning `{Regolith, Scrap, Parts}` to the pool. **Direction and placement-dependence are measured;
-magnitude is not.** Quote absolute pp and never ratios: the rule's removal adds **+0.463 pp** of haul
-cost on the far deck against **+0.243 pp** beside the benches — as a *ratio* bench is hit harder
-(2.66× vs 2.39×), which inverts the story and is the wrong axis. And **§8's magnitude is never
-approached**: worst on-job travel anywhere is **9.3 %** against §8's **75.7 %**, ~8× short, and it
-never costs a module.
+magnitude is not.** Quote absolute pp and never ratios: **on the `--strip 40` legs** the rule's removal
+adds **+0.463 pp** of haul cost on the far deck against **+0.243 pp** beside the benches — as a *ratio*
+bench is hit harder there (**2.66× vs 2.39×**), which inverts the story and is the wrong axis.
+(**Without headroom**, same axis: **+0.484 pp** far against **+0.188 pp** bench, ratios **2.74× vs
+2.11×** — the pp ordering is stable across horizons, the ratio ordering is not, which is the whole
+argument for quoting pp.) And **§8's magnitude is never approached**: worst on-job travel anywhere is
+**9.3 %** against §8's **75.7 %**, ~8× short, and it never costs a module.
 
 ### ⚠️ The A1 trap, for the fourth time in one lane
 
@@ -155,6 +181,10 @@ exact run whose `31` was misread into the retracted claim — now prints an unco
 headroom warning beside `ground stock`, naming `--strip N` as the remedy, guarded by
 `StockpileHarness.MatterHeadroomWarning(int)` and a test that asserts the message keeps naming the
 remedy. Exactly **one** added line; the other 100 are byte-identical, verified by stash/diff.
+**Disclosed residual:** the single `Console.WriteLine` **call site** (`hosts/scenario/Program.cs:491`)
+is **uncovered** — the tests project does not compile `Program.cs` — so the *text* of the warning is
+pinned but **deleting the call leaves the gate green.** The guard covers the message, not its
+emission.
 
 ### What else the lane shipped
 
@@ -181,6 +211,25 @@ remedy. Exactly **one** added line; the other 100 are byte-identical, verified b
   `HasDevice` tiles so the mode means what it says — **that moves the published bench row and requires
   re-running the 3-day A/B**, and nobody has quantified how much it would change.
 
+### The architecture boundary test fired for real, within minutes — and one merge deliberately skipped review
+
+**This is the economy-modularity audit's single best evidence of value, and it earned its keep the day
+it landed.** The audit shipped an architecture-boundary test with an allowlist of sanctioned
+`sim.Systems` reaches, **measured pre-E0-4**. E0-4's WP-2 had added a `sim.Systems` reach in
+`HaulJobSource` to resolve `StockZoneSystem` once (mirroring `DeconstructJobSource` — legitimate, and
+exactly the kind of thing the allowlist exists to make *visible* rather than to forbid). The two
+landed within minutes of each other and **the gate went red on `main` immediately**, which is the
+test doing its job on its first real encounter. Fixed by an allowlist entry plus the doc figures
+(`d43f545`, `49e42d4`).
+
+> **⚠️ DELIBERATE DEVIATION FROM THE REVIEW DISCIPLINE, recorded here on purpose.** `d43f545` was
+> merged **without an independent review round** — the only merge that day that was not independently
+> reviewed. **Integrator's rationale:** a red gate sitting on `main` is worse than an unreviewed
+> allowlist bump, and three directional mutations were run to prove the entry was correct and
+> narrow. **This is stated because the record elsewhere says E0-4's packages were "each independently
+> Opus-reviewed", which is true of the packages and NOT of everything merged that day.** A deliberate
+> deviation belongs in the record, not only in a scratchpad.
+
 ### Follow-ups this lane owes, and nobody yet owns
 
 1. **A player-facing unreachable-zone indicator** — WP-7's own recommendation. `BackedOffStockpileTiles`
@@ -196,6 +245,14 @@ remedy. Exactly **one** added line; the other 100 are byte-identical, verified b
    257 → 512, `StockZoneSystem` 58 → 300) and its "four of the six economy systems are empty stubs"
    claim both predate E0-4; `StockZoneSystem` is no longer a stub. **Someone must own this.**
 5. **A labour-bound ship** — the honest prerequisite for ever quoting a wrong-deck cost again.
+6. **Collapse the three `AcceptAllMask` derivations** into one — make every site consume
+   `StockZoneSystem.AcceptAllMask`, then **delete** (do not maintain) the cross-derivation bridge
+   test. Until then the host-side `& AcceptAllMask` in `GameSession.HandleFilter` is redundant *only
+   while the three derivations agree at `0x7F`*, and **no test can bite it** (`MECHANICS.md`
+   §13.17-(10)). Decision on record: keep the line, document the divergence condition, no status
+   accessor.
+7. **`BenchStockpile_StillFills` is coupled to `SelectStockpile(far: false, 4)`** rather than
+   declaring its tiles — accepted as a one-way ratchet, not fixed (`MECHANICS.md` §13.17-(11)).
 
 ### ⇒ NEW PROGRAMME in flight: console retirement (owner decisions 2026-07-25)
 
@@ -753,6 +810,13 @@ board.~~
 > lane that currently moves none. The **throughput** reason was never valid and is retracted, and the
 > **livelock** reason is now fixed. What did *not* go away is `MECHANICS.md` §13.17-(1) — a zone
 > painted where no crew can reach now fills **never, and silently**.
+>
+> **⇒ THE SURVIVING REASON IS A DESIGN DECISION, NOT A MEASUREMENT. Do not go hunting for the number
+> behind it — there isn't one, and there does not need to be.** That is *why* it is the durable
+> reason: the two dead reasons were **empirical** and both evaporated (one was never valid, one got
+> fixed), whereas a design reason can only be changed **by decision**. It is also not post-hoc — the
+> lane plan gave it independently at
+> `docs/design/perilune-e0-4-stockpile-zones.plan.md:82-86`, before this retraction existed.
 
 ## E0-5 — deconstruct/strip: LANDED on `main` (2026-07-23), before E0-4, START HERE
 
@@ -824,7 +888,7 @@ diagram; and a hull *stress* model. `Conduit`/`Pipe` are un-strippable (a conseq
 
 **Next: E0-4** (filtered stockpile zones). E0-5 created the haul traffic that makes E0-4's "don't haul
 what a bench wants" rule measurable — but **do not zone stockpiles in any authored ship until E0-4
-lands**, to keep the measured −14 % wrong-deck throughput regression latent. E0-5's own guardrail held:
+lands**, to keep the ~~measured −14 % wrong-deck throughput regression~~ latent. E0-5's own guardrail held:
 no authored ship designates a strip.
 
 > **⚠️ RETRACTED, 2026-07-25 — this paragraph is kept as history, not as guidance.** The "measured
@@ -836,7 +900,9 @@ no authored ship designates a strip.
 > **⚠️ AMENDED LATER THE SAME DAY, once E0-4 landed.** The livelock reason is now **also** gone —
 > WP-7 fixed it. **The advice still stands; only its justification keeps evaporating**, which is
 > itself worth noticing. The operative reason is now simply that **a zone is the player's decision**
-> (authoring one deletes it, and would move pins this lane does not move). E0-4 did **not** disprove
+> (authoring one deletes it, and would move pins this lane does not move) — **a DESIGN DECISION, not a
+> measurement, which is exactly why it is the one that survived**: measurements evaporate, decisions
+> only change by decision. E0-4 did **not** disprove
 > §8's −14 %: it showed the slice **cannot settle it**, because throughput there is matter-bound.
 > And what replaced the livelock is quieter, not gone — an unreachable zone now fills **never, and
 > silently** (`MECHANICS.md` §13.17-(1)).
@@ -940,8 +1006,8 @@ been edited** — it remains the authority until Garvin decides. Read both sides
 ### Recommendation: E0-5 first, then E0-4 immediately, as a PAIR
 
 The regression risk in (1) is real but currently **latent**: authored ships zone **0 stockpile
-tiles**, so it only bites when a player opts in. And weigh the magnitudes honestly — a −14 %
-throughput hit on an economy that **stops entirely after 28 hours** is a rounding error against
+tiles**, so it only bites when a player opts in. And weigh the magnitudes honestly — a ~~−14 %
+throughput hit~~ on an economy that **stops entirely after 28 hours** is a rounding error against
 the stopping. Fix the cliff, then optimise the traffic into it.
 
 > **⚠️ 2026-07-25 — this paragraph reasoned correctly from a number that turned out to be
@@ -962,7 +1028,8 @@ wants") cannot be demonstrated until something is actually being hauled.
   **⚠️ 2026-07-25: the ADVICE STANDS, the JUSTIFICATION IS VOID.** There is no measured regression to
   keep latent; §8's −14 % was never reproduced and the slice cannot settle it. The reason to keep
   authored ships zone-free is that **a zone is the player's decision** and authoring one would both
-  delete that decision and move pins. See the E0-4 section at the top of this file.
+  delete that decision and move pins — **a design decision, not a measurement; there is no number
+  behind it to look for.** See the E0-4 section at the top of this file.
 - **Re-run `occupancy` immediately after E0-5** (`--ship slice --days 3`) and check whether the
   h29+ flatline actually lifts. If deconstruct yield is too small to matter, that is a tuning
   finding worth having before E0-4, not after.

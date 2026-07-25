@@ -1897,7 +1897,22 @@ true pre-WP-6 cost was `O(items × stockpile-tiles²)`, because `AnyFreeStockpil
 and each `IsFreeStockpileTile(…, kind)` (`JobContext.cs:133`) calls `TryGetFilter`, itself a linear
 scan of S entries.
 
-**10. Still flagged, still not fixed:** the accept mask is a `ulong`, so **`ItemKind` 64 is a hard
+**10. `AcceptAllMask` has THREE independent derivations, and the host-side redundancy is safe only
+while they agree.** All three currently compute `0x7F`. `GameSession.HandleFilter`'s `& AcceptAllMask`
+is therefore redundant with `StockZoneSystem.SetFilter`'s own `mask &= AcceptAllMask`
+(`sim/Sim.Core/Stock/StockZoneSystem.cs:154`) — **but only while the derivations agree**, and **no
+test can bite the host-side line**, because since WP-6 it uniquely decides a `_status` string nothing
+observes. A cross-derivation contiguity test pins the agreement and is a **bridge, not a fixture**.
+**The logged resolution is to make every site consume `StockZoneSystem.AcceptAllMask`**, after which
+that bridge test should be *deleted, not maintained*. Decision on record: **keep** the redundant line
+with the divergence condition documented; **no** status accessor was added.
+
+**11. One harness coupling was left deliberately, as a one-way ratchet:**
+`BenchStockpile_StillFills` draws its tiles from `SelectStockpile(far: false, 4)` rather than
+declaring them, so a change to the selection order changes what that test exercises. Documented and
+accepted rather than fixed.
+
+**12. Still flagged, still not fixed:** the accept mask is a `ulong`, so **`ItemKind` 64 is a hard
 ceiling**; there is no stack merging, no zone priority, and no containers (later E-STOCK packages);
 and there is no `stock.def` (deferred until a real tunable exists).
 
@@ -1917,7 +1932,9 @@ inside the authored observatory behind a door built closed (`sim/Sim.Gen/Authore
 `DoorClosed = true`; `Simulation.IsWalkable` refuses a closed door and **nothing in the sim ever opens
 a door**). Distance-descending ranked all of them above every legal tile, so `--stockpile far` zoned a
 **sealed compartment** and what it measured was the §13.17-(1) haul livelock. `--stockpile far
---days 1` went from **~43 min of wall clock to 24 s** once a reachability gate landed; at 3 sim-days
+--days 1` went from **~43 min of wall clock to 24 s** once a reachability gate landed — the **~43 min**
+is contemporaneous prose, **no timing artifact survives**, while the post-gate figures are recorded
+`.time` files; at 3 sim-days
 every leg now runs in **~72 s**. That collapse *is* the retraction. A reachability gate now runs in
 the harness (`sim.Paths.FindPath` from every live crew member, host-side, t = 0 snapshot,
 ∃-any-live-crew — so a `HoldPosition` crew member counts as a witness yet can never haul; measured
@@ -1978,23 +1995,42 @@ guard):
 | `bw0 + strip 40 + bench 40` | 51 | 0.389 | 3.1 % | 202 |
 | `bw0 + strip 40 + far 40` | 51 | 0.795 | 6.8 % | 263 |
 
-**The sign flips with placement, which is what makes it §8's round-trip rather than "more hauling".**
-With a **far-deck** zone the revert costs **+3.2–4.1 pp** on-job travel **and crafting occupancy
-RISES** (21.71 % → 22.09 %, +0.38 pp) while idle `None` falls ~1 pp (75.35 % → 74.37 %) — the
-stations, not the haulers, do the extra walking, which is §8's sentence verbatim. With a
-**bench-side** zone it costs only +0.2–0.4 pp and crafting occupancy **FALLS** (21.64 % → 21.33 %
-with headroom; 12.48 % → 12.12 % without).
+**The sign flips with placement, which is what makes it §8's round-trip rather than "more hauling" —
+and it replicates in BOTH horizons.** With a **far-deck** zone the revert costs **+3.2–4.1 pp** on-job
+travel **and crafting occupancy RISES**; with a **bench-side** zone crafting occupancy **FALLS**, at a
+cost of only +0.2–0.4 pp. Idle `None` falls in both far-deck cases (75.35 % → 74.37 % with headroom,
+84.85 % → 84.10 % without). The stations, not the haulers, do the extra walking — §8's sentence
+verbatim.
+
+| revert, crafting occupancy | with `--strip 40` | without |
+|---|---|---|
+| **far-deck** zone | 21.71 → **22.09 %** (+0.38) | 12.52 → **12.72 %** (+0.20) |
+| **bench-side** zone | 21.64 → **21.33 %** (−0.31) | 12.48 → **12.12 %** (−0.36) |
+
+A volume story would push crafting the same way regardless of *where* the zone sits. It does not.
 
 **DELIBERATELY NOT QUANTIFIED: how much of §8 the bench rule removes.** The fraction depends entirely
-on the contrast chosen — **~47 %** of far's absolute travel (6.8 → 3.6 %), **~81 %** of the
+on the contrast chosen. **All four contrasts below are the `--strip 40` (matter-headroom) legs, and
+that label is load-bearing:** **~47 %** of far's absolute travel (6.8 → 3.6 %), **~81 %** of the
 far-minus-bench travel *penalty* (+3.7 → +0.7 pp), **~65 %** of haul *volume* (263 → 91 legs), and
-**~0 %** of the *per-delivery* penalty (**1.57× with the rule and 1.57× without**, on the `--strip 40`
-legs). **The rule does not make a wrong-deck haul cheaper; it makes 2.1–3.2× fewer of them happen**,
+**~0 %** of the *per-delivery* penalty (**1.57× with the rule and 1.57× without**).
+
+> **⚠️ WITHOUT HEADROOM THE LAST ONE FLIPS SIGN.** Re-derived from the **un-stripped** rows of the
+> main table: **1.52× with the rule** (`far 40` 0.278/80 = 0.00348 vs `bench 40` 0.169/74 = 0.00228)
+> against **1.37× without** (`bw0 + far 40` 0.762/244 vs `bw0 + bench 40` 0.357/156). At N = 40 with no
+> `--strip`, the rule makes the per-delivery penalty **larger, not equal** — the opposite of "~0 %".
+> **"~0 %" is a `--strip 40` statement, not a general one.** Even the *sign* of "does the rule change
+> the per-delivery cost?" is horizon-dependent, which is the sharpest single reason the magnitude is
+> declined.
+
+**The rule does not make a wrong-deck haul cheaper; it makes 2.1–3.2× fewer of them happen**,
 by returning `{Regolith, Scrap, Parts}` to the pool. **Any single percentage would be cherry-picked.**
 Direction and placement-dependence are measured; **magnitude is not.** Quote absolute pp, not ratios:
-the rule's removal adds **+0.463 pp** of haul cost on the far deck against **+0.243 pp** beside the
-benches (as a *ratio* bench is hit harder, 2.66× vs 2.39×, which inverts the story and is the wrong
-axis).
+**on the `--strip 40` legs** the rule's removal adds **+0.463 pp** of haul cost on the far deck against
+**+0.243 pp** beside the benches (as a *ratio* bench is hit harder there, **2.66× vs 2.39×**, which
+inverts the story and is the wrong axis). **Without headroom**: **+0.484 pp** far against **+0.188 pp**
+bench, ratios **2.74× vs 2.11×**. **The pp ordering is stable across horizons; the ratio ordering is
+not** — which is the whole argument for quoting pp.
 
 **§8's magnitude is never approached.** The worst on-job travel anywhere above is **9.3 %** against
 §8's **75.7 %** — roughly 8× short — and it never costs a single module. **Settling §8 needs a ship
@@ -2024,7 +2060,10 @@ quantified how much it would change.
 `occupancy --ship slice --days 3` report — the exact run whose `31` was misread into the retracted
 claim — now prints an unconditional ⚠️ matter-headroom warning beside `ground stock`, naming
 `--strip N` as the remedy. It is guarded by `StockpileHarness.MatterHeadroomWarning(int)` plus a test
-that asserts the message keeps naming the remedy. This intentionally adds exactly **one line** to that
+that asserts the message keeps naming the remedy. **Disclosed residual: the single `Console.WriteLine`
+call site (`hosts/scenario/Program.cs:491`) is UNCOVERED** — the tests project does not compile
+`Program.cs` — so **deleting the call leaves the gate green**. The message is pinned; its emission is
+not. This intentionally adds exactly **one line** to that
 report; the other 100 lines are byte-identical.
 
 ---

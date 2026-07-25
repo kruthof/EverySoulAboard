@@ -1,5 +1,35 @@
 # E0-4 — Filtered stockpile zones (LANE PLAN)
 
+> ## ⛔ STATUS 2026-07-25: LANE COMPLETE AND MERGED — **and this plan's premise is RETRACTED**
+>
+> **Read this before any number below.** E0-4 landed on `main` (`0be9d70`). This plan remains the
+> authority on the lane's **shape** — Choice A, the registry design, the save format, the package
+> split — and it is **not** an authority on any measured figure.
+>
+> **Every `−14 %`, `75.7 %`, `28 → 31` and `craft-walk 13.0 % → 8.0 %` in this document is
+> `ECONOMY.md` §8's figure, and E0-4 did NOT reproduce any of them.** They appear unmarked at
+> `:83`, `:95`, `:100-101`, `:162`, `:199`, `:218-219`, `:386`, `:483` and `:488` (line numbers as of
+> this banner); this banner retracts all of them at once rather than littering the plan with nine
+> boxes. Treat **every** figure in this document as retracted, not only those lines.
+>
+> **What actually happened:** the `--stockpile far` harness leg gated on the `TileFlags.Walkable`
+> flag with **no reachability test**, so it zoned **3 of its 4 tiles inside the slice's authored
+> sealed observatory** and measured an unreachable-tile **haul livelock**, not a wrong-deck cost.
+> Every `far` figure this lane published (throughput `6`/`2`/`9`, ~49 % HaulPickup against ~0.0 %
+> HaulDeliver, A1 "50.000 %") is **void**.
+>
+> **And do NOT read that as a refutation.** `ECONOMY.md` §8's −14 % is **NEITHER CONFIRMED NOR
+> REFUTED**: the slice's throughput metric is **matter-bound**, so it has no power to detect the
+> regression this plan was written to reproduce. §8's *mechanism*, on the other hand, is now
+> **positively supported** and is placement-dependent, which vindicates §5's bench rule — just not
+> for the reason §5 gives. **Hazard 8.1 (the far-regression reproduction) closes as NOT SETTLEABLE
+> ON THE SLICE**, not as done and not as disproved; reopening it needs a **labour-bound ship**, not
+> another run.
+>
+> Authoritative record: `docs/HANDOVER.md`'s E0-4 section, `MECHANICS.md` §13.17 (wired but not
+> connected) and **§13.18** (the retraction, with every measured table), and `ECONOMY.md` §8's
+> correction box.
+
 **Lane:** `lane/e0-4-stockpile-zones` · worktree `../perilune-wt/e0-4-stockpile-zones`
 **Authority:** `docs/ECONOMY.md` §8 (storage & logistics — THE design authority), `docs/ECONOMY-PLAN.md`
 §E0 row E0-4, §2 (E-STOCK lane), §3.3 (save format), §4 (determinism traps), §5.1/§5.2 (test discipline).

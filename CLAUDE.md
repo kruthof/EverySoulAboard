@@ -45,7 +45,9 @@ previously published `far` number is void**: throughput `6`/`2`/`9`, ~49 % `Haul
 ~0.0 % `HaulDeliver`, and A1 "50.000 %". A reachability gate (`sim.Paths.FindPath` from every live
 crew member; host-side, pin-neutral) landed with the re-measure, and slice geometry came out
 **807 walkable / 657 reachable / 150 unreachable (19 %)**. `--stockpile far --days 1` collapsed from
-**~43 min of wall clock to 24 s**; that collapse *is* the retraction.
+**~43 min of wall clock to 24 s**; that collapse *is* the retraction. (The **~43 min** is
+contemporaneous prose — **no timing artifact survives**; the 24 s and the ~72 s 3-day legs are from
+recorded `.time` files.)
 
 **`ECONOMY.md` §8's −14 % wrong-deck regression is NEITHER CONFIRMED NOR REFUTED — and the slice
 cannot settle it.** End-of-run `ControllerModule` is **matter-bound**, not labour-bound
@@ -117,9 +119,21 @@ verb-less occupancy path and every pin are byte-identical to baseline. Pins: sce
 `9b834cffc232ce7f`→`4be2e77864fb7409`, slice `8c6b2544`→`1f8f2225ee568de9`, defs
 `e56d33a2`→`5a471d12643b64f9` (three def packages). **Deferred to E0-6:** furniture costing machine
 Parts is a placeholder (give furniture its own strip currency); the material *teleports* on placement
-(no haul); MOSS write-only scripts against a stripped device fail silently. **Next: E0-4** (filtered
+(no haul); MOSS write-only scripts against a stripped device fail silently. ~~**Next: E0-4** (filtered
 stockpile zones) — **do not zone stockpiles in any authored ship until it lands** (keeps the measured
-−14% throughput regression latent). See `docs/HANDOVER.md` "E0-5" at the top.
+−14% throughput regression latent).~~ See `docs/HANDOVER.md` "E0-5" at the top.
+
+> **⚠️ RETRACTED 2026-07-25 — the struck sentence is history, not guidance, and it contains the exact
+> claim this file's top snapshot voids.** (a) **E0-4 has landed**, so "Next" and "until it lands" are
+> false. (b) **There is no "measured −14 % throughput regression"** — that is `ECONOMY.md` §8's figure,
+> E0-4 **never reproduced it**, and the slice **cannot settle** it (throughput there is matter-bound).
+> **Not disproved — unsettleable.** (c) The advice *"do not zone stockpiles in any authored ship"*
+> **still stands**, but its justification has now evaporated twice: the throughput reason was never
+> valid, and the unreachable-tile livelock reason was fixed by WP-7. **The surviving reason is a DESIGN
+> DECISION, not a measurement** — a zone is the player's decision, so authoring one deletes that
+> decision, and it would move pins on lanes that currently move none. Do not go looking for a number
+> behind it; there isn't one, and a design reason cannot evaporate the way a measurement can. See the
+> top snapshot, `docs/HANDOVER.md`'s E0-4 section, and `MECHANICS.md` §13.18.
 
 ## Status snapshot (2026-07-23) — **E0-2 (work-rate rebase + movement retune + crew-safety guard)** landed on `main`
 **E0-2 is LANDED on `main`** (`39702a3`, Opus-implemented + independently Opus-reviewed PASS, three

@@ -598,13 +598,14 @@ spoilage, and a one-stack-of-unbounded-size carry model.
 **A warning from measurement — ⚠️ PARTLY RETRACTED 2026-07-25 by E0-4; read the correction below
 before quoting any number in this paragraph.** Stockpiles are not automatically good. Enabling them
 experimentally: a stockpile *beside* the benches acts as a pre-positioning buffer (craft
-walking 13.0 % → 8.0 %, throughput 28 → 31). A stockpile on the **wrong deck** is catastrophic
-— on-job travel rises to **75.7 %**, throughput drops 14 %, and material strands in the wrong
-place. Root cause: crafting **outputs** spawn unreserved, so the haul board immediately drags
+walking ~~13.0 % → 8.0 %~~, throughput ~~28 → 31~~). A stockpile on the **wrong deck** is catastrophic
+— on-job travel rises to ~~**75.7 %**~~, throughput drops ~~14 %~~, and material strands in the wrong
+place. *(Every struck numeral: **NOT REPRODUCED**, see the box below. The unstruck words are the
+mechanism, which stands.)* Root cause: crafting **outputs** spawn unreserved, so the haul board immediately drags
 them to the stockpile, from which the downstream station's fetcher must walk them back. **A
 zone system without a "don't haul what a bench wants" rule is a throughput regression.**
 
-> ### ⚠️ CORRECTION 2026-07-25 (E0-4) — three of the figures above are **not reproduced**, and this
+> ### ⚠️ CORRECTION 2026-07-25 (E0-4) — all four figures above are **not reproduced**, and this
 > ship cannot settle whether they are right
 >
 > **The mechanism survives; the magnitudes do not, and the third sentence is unsupported.** E0-4
@@ -614,8 +615,13 @@ zone system without a "don't haul what a bench wants" rule is a throughput regre
 > **NOT REPRODUCED — do not quote as measured fact:** the **75.7 %** on-job travel (worst observed
 > anywhere, in any configuration including a deliberate revert of the fix, is **9.3 %** — roughly 8×
 > short); the **−14 %** throughput drop (**no** placement of **any** zone moved throughput in **any**
-> configuration); and the **28 → 31** bench-side gain (baseline is 31 with **no** zone at all, and
-> `bench 40` is also 31). §8's third sentence — *"a zone system without a 'don't haul what a bench
+> configuration); the **28 → 31** bench-side gain (baseline is 31 with **no** zone at all, and
+> `bench 40` is also 31); and — **for completeness, because silence about it would imply it
+> survived** — the **craft-walking 13.0 % → 8.0 %** figure, which comes from *the same bench
+> experiment* as the 28 → 31 and is therefore **equally unsupported**. E0-4 never reproduced it and
+> did not measure a craft-walking metric at all; it measured **on-job travel** (`bench 40` 4.6 %,
+> `far 40` 5.2 %), which is not the same quantity. **All four numerals in the paragraph above are
+> withdrawn, not three.** §8's third sentence — *"a zone system without a 'don't haul what a bench
 > wants' rule is a throughput regression"* — is answered by the only experiment in the repo that
 > speaks to it (WP-4's rule reverted, measurement-only, never committed) and it reads **31 = 31**
 > without matter headroom and **51 = 51** with it. **Not a throughput regression on this ship, by the
