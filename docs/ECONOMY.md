@@ -595,13 +595,70 @@ spoilage, and a one-stack-of-unbounded-size carry model.
   *stations* the person on screen rather than erasing them. The blanket "no automation" reading is
   superseded; the "no cross-ship conveyance that replaces visible haulers" reading is preserved.
 
-**A warning from measurement.** Stockpiles are not automatically good. Enabling them
+**A warning from measurement — ⚠️ PARTLY RETRACTED 2026-07-25 by E0-4; read the correction below
+before quoting any number in this paragraph.** Stockpiles are not automatically good. Enabling them
 experimentally: a stockpile *beside* the benches acts as a pre-positioning buffer (craft
 walking 13.0 % → 8.0 %, throughput 28 → 31). A stockpile on the **wrong deck** is catastrophic
 — on-job travel rises to **75.7 %**, throughput drops 14 %, and material strands in the wrong
 place. Root cause: crafting **outputs** spawn unreserved, so the haul board immediately drags
 them to the stockpile, from which the downstream station's fetcher must walk them back. **A
 zone system without a "don't haul what a bench wants" rule is a throughput regression.**
+
+> ### ⚠️ CORRECTION 2026-07-25 (E0-4) — three of the figures above are **not reproduced**, and this
+> ship cannot settle whether they are right
+>
+> **The mechanism survives; the magnitudes do not, and the third sentence is unsupported.** E0-4
+> built the zone system and measured it on the slice (3 sim-days = 2,592,000 ticks, one seed, n = 1;
+> full tables and every `file:line` in **`MECHANICS.md` §13.18**). What it found:
+>
+> **NOT REPRODUCED — do not quote as measured fact:** the **75.7 %** on-job travel (worst observed
+> anywhere, in any configuration including a deliberate revert of the fix, is **9.3 %** — roughly 8×
+> short); the **−14 %** throughput drop (**no** placement of **any** zone moved throughput in **any**
+> configuration); and the **28 → 31** bench-side gain (baseline is 31 with **no** zone at all, and
+> `bench 40` is also 31). §8's third sentence — *"a zone system without a 'don't haul what a bench
+> wants' rule is a throughput regression"* — is answered by the only experiment in the repo that
+> speaks to it (WP-4's rule reverted, measurement-only, never committed) and it reads **31 = 31**
+> without matter headroom and **51 = 51** with it. **Not a throughput regression on this ship, by the
+> only available measurement.**
+>
+> **BUT THAT IS NOT A REFUTATION, AND MUST NOT BE RECORDED AS ONE.** On the authored ships
+> end-of-run throughput is **matter-bound, not labour-bound** (`MECHANICS.md` §13.15): the ladder
+> converts the ship's entire matter budget by ~sim-hour 28 and idles, so **every** unmodified leg ends
+> on the *identical* ground stock `Corpse=1 Potato=699 ControllerModule=31` with zero
+> Regolith/Scrap/Parts left. A far-deck zone's whole haul cost is **1.6 crew-hours against ~352
+> crew-hours of post-cliff idle** — it would have to be **~200× larger**, and land as contention
+> during h1–h28, to cost a single module. **"31 in every leg" is a saturated instrument, not a null
+> result.** `ECONOMY.md` §8's −14 % is therefore **NEITHER CONFIRMED NOR REFUTED**. Settling it needs
+> a ship whose economy is **labour-bound**; the slice is not one, and building one is the honest
+> prerequisite for ever quoting a wrong-deck cost again.
+>
+> **THE MECHANISM IS NOW POSITIVELY SUPPORTED — this paragraph's root-cause sentence is the part that
+> held up.** With WP-4's bench rule reverted and a **far-deck** zone, on-job travel rises **+3.2–4.1
+> pp** *and* **crafting occupancy RISES** (21.71 % → 22.09 %) while idle falls ~1 pp: the *stations*,
+> not the haulers, do the extra walking — which is "the downstream station's fetcher must walk them
+> back", observed directly for the first time. With a **bench-side** zone crafting occupancy *falls*.
+> **The sign flips with placement**, so the effect is the §8 round-trip and not merely "more hauling
+> happens". **The stranding half is refuted outright:** deliveries land on the far deck via the
+> ladders in every zoned leg — cross-deck haul works and material is not marooned.
+>
+> **What is measured, with horizons, and stands:** at equal capacity (N = 40) a *reachable* far-deck
+> stockpile costs **+0.109 pp** of crew time and **+0.6 pp** of on-job travel over a bench-side one;
+> **per delivery it costs ~1.5×**, and that ratio is a **lower bound**; and with `--strip 40` matter
+> headroom the metric *does* resolve (50 → 51) while **far still equals bench**.
+>
+> **HOW MUCH OF §8 THE BENCH RULE REMOVES IS DELIBERATELY NOT QUANTIFIED, and no future edit should
+> supply a number.** The fraction is **~47 %**, **~81 %**, **~65 %** or **~0 %** according only to
+> which contrast is picked (far's absolute travel / the far-minus-bench penalty / haul volume /
+> per-delivery). Per delivery it is **1.57× with the rule and 1.57× without it**: the rule does not
+> make a wrong-deck haul *cheaper*, it makes **2.1–3.2× fewer of them happen**, by returning
+> `{Regolith, Scrap, Parts}` to the pool. Any single percentage would be cherry-picked.
+>
+> **Design consequence.** The bullet above — *filtered zones in a registry with its own save chapter,
+> never in `TileFlags`* — is unaffected and shipped as specified (`StockZoneSystem`, `ZONE` v2). The
+> "don't haul what a bench wants" rule shipped too and stands on its **unit evidence and the mechanism
+> above**, not on a throughput number. What changes is the *justification* offered to a future lane:
+> **do not cite a −14 % wrong-deck regression as a reason for anything.** Cite the mechanism, cite the
+> placement-dependence, and say the magnitude is unknown.
 
 ---
 
