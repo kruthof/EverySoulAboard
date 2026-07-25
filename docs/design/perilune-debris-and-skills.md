@@ -40,16 +40,49 @@ meeting each other**. Nothing here needs a new economy.
 
 This is the piece with no prior art in any plan, and it is the cheapest thing in this note.
 
+> **UPDATE 2026-07-25 — §3 is LANDED, in part, by WP-1 of the console-retirement programme**
+> (`docs/design/perilune-console-retirement.plan.md`). `--ship grid` now boots three wrecked deck-1
+> halls (60 debris tiles), a `ClearAllDebris` goal and eight crew; the "zero debris / no goal /
+> three crew" statements below are the *pre-WP-1* record. Two departures from this note, both
+> measured rather than argued, are written into the amended paragraphs: the wrecked halls are
+> **not** all left sealed and airless, and the change moved **no pin**. The dead-machinery half of
+> §3 (devices at `Condition <= FailBelow`) is still unbuilt — `DeviceSpec` carries no condition
+> field.
+
 **The problem it solves.** `--ship grid` — the ship that carries the AAA Overview and Room Zoom —
-has **zero debris tiles anywhere** (verified by grep over its builder). Its unused slots are just
-sealed empty halls. Meanwhile `--ship slice`, which has the 48-tile aft debris field, the eight
-crew and the `ClearAllDebris` goal, **cannot show the Overview at all** (`GameSession.cs:1150`
-*"Empty on ships with no slot grid"*). The content and the good UI are on different ships. This
-was the blocking asymmetry behind E0-3's surface decision, and it is still live.
+had **zero debris tiles anywhere** (verified by grep over its builder; fixed in WP-1). Its unused
+slots were just sealed empty halls. Meanwhile `--ship slice`, which has the 48-tile aft debris
+field, the eight crew and the `ClearAllDebris` goal, **cannot show the Overview at all**
+(`GameSession.cs:1150` *"Empty on ships with no slot grid"*). The content and the good UI were on
+different ships. This was the blocking asymmetry behind E0-3's surface decision.
 
 **What changes.** Some `RoomType.None` slots boot **wreck-filled** rather than merely empty:
 debris tiles inside the compartment, and a few dead devices (`Condition` at or below `FailBelow`)
-among them. The slot stays sealed and airless, exactly as now.
+among them.
+
+⚠️ **"The slot stays sealed and airless, exactly as now" does not survive contact with the sim, and
+WP-1 did not do it.** A sealed hall's door is not walkable (`PathService`: *"door tiles walkable
+only when open+unlocked"*), so every debris tile behind one is unreachable and the dig board is
+inert even when designated — the slice learned exactly this with `door_aft`. And an *airless*
+compartment is worse than an unreachable one: a crew member who does get in drops the job and runs
+(`SafetySystem` / `JobKind.Flee`, E0-2), so the wreck would be permanently undiggable and a
+`ClearAllDebris` goal over it permanently unreachable — and that goal is a **whole-world scan**
+(`GoalSystem.cs:130-143`), so a single debris tile on deck 3 makes it unreachable *for the whole
+ship*. WP-1 therefore authors one wreck **open and pressurised** (the live collapse, designated at
+boot) and leaves the other two sealed as the *player's* work, reachable through `＋ADD ROOM`, which
+opens the door and fills the compartment as a side effect of commissioning it. Wreck-filling the
+airless decks 2..7, which this note's spirit invites, would have produced debris that looks
+identical in a screenshot and can never be dug.
+
+⚠️ **And the open one must be a TYPED room, not a hall** — a second thing the sim only tells you
+downstream. An air-filled slot reads OCCUPIED to `GameSession.ResolveSlot`, the Overview draws an
+occupied slot as a room (no `＋ADD ROOM` chip), and its label is
+`roomLabel(roomType) || anchorName` (`client/src/ui/decks-model.js`). A pressurised
+`RoomType.None` slot therefore renders **labelled with its own internal anchor id** — "hall_d1_s6"
+— and can never be commissioned out of that state, because `AddRoomCommand` returns early on
+`TotalMoles > 0` (`Commands.cs:483`). WP-1's live wreck is authored as `RoomType.Storage`
+/ anchor `hold`: the collapsed hold. `RoomDresser` furnishes no Storage room, so it takes no
+furniture.
 
 **Why it is worth doing beyond fixing the gap:**
 
@@ -61,9 +94,21 @@ among them. The slot stays sealed and airless, exactly as now.
   fiction, and it front-loads a material source before any external supply exists.
 - It costs **level data only**: no new systems, no new item kinds, no art (debris already renders).
 
-**Sequencing.** Cheap and additive, but it changes generated ship layout ⇒ it moves the scenario
-pin and the tick-3000 goldens. Land it in its own commit with the pins re-measured, not folded
-into a feature lane.
+**Sequencing.** Cheap and additive. ⚠️ **CORRECTED 2026-07-25 (WP-1, measured):** this paragraph
+used to read *"it changes generated ship layout ⇒ it moves the scenario pin and the tick-3000
+goldens"*. **That is wrong when the change is confined to `PeriluneGrid()`, and it was never
+measured.** WP-1 wreck-filled three grid halls, added a goal and went from three crew to eight —
+crew fields *are* hashed, so this is a strictly stronger change than debris alone — and **all five
+pins came back byte-identical**: scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice
+`1f8f2225ee568de9`, defs-defaults `5a471d12643b64f9`, defs-rules `3f23ce5bd40283c8`.
+
+The reason is that **no golden covers the grid ship**: the scenario pin is a seed-42 *procedural*
+ship (`ci.sh`), `perilune_tick3000_hash.txt` is `Perilune()`, `slice_tick3000_hash.txt` is the
+slice, and the defs checksums are defs. The grid ship's only test surface is
+`AddRoomCommandTests` + WP-1's own `GridWreckTests`, neither of which pins a hash. A pin move
+would have come from touching `Perilune()`, the procedural generator, or a `.def` field — none of
+which grid-ship level data does. **The pin ritual is not on this work's critical path; a `.def`
+field would be.**
 
 ## 4. Tier 2: what "disassembly" should mean
 

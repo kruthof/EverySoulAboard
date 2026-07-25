@@ -726,9 +726,34 @@ namespace Perilune.Gen
         // ALL eight decks are present from boot. Two are furnished (deck 0 fully, deck 1
         // partly); the rest are 8-slot grids of EMPTY HALLS — real compartments (floor +
         // walls + a door) the player builds out, not void. Empty halls boot sealed and
-        // airless; the furnished decks' rooms + spines boot pressurised. The crew is under
-        // strict player control (HoldPosition), stationed on the pressurised, life-supported
-        // lower deck, so no one ever wanders into an unbuilt vacuum hall.
+        // airless; the furnished decks' rooms + spines boot pressurised.
+        //
+        // WP-1 (console retirement) made it a GAME rather than a sandbox, because it is now the
+        // ONE standard play ship. Three things landed together and each is load-bearing:
+        //   * THE WRECK. Three deck-1 halls boot as a hull-side collapse (GridWreckSlots), so
+        //     DesignateDigCommand finally has legal targets aboard this ship — it refuses any
+        //     tile whose wall is not TileDefs.Debris (Commands.cs:116), and before WP-1 the grid
+        //     ship had none, making DIG a guaranteed silent no-op on the ship the player plays.
+        //   * A GOAL. ClearAllDebris over that wreck — the ship had no goal at all.
+        //   * EIGHT CREW, all workable, up from three (two workable). Eight is the slice's
+        //     number and the number the deck-0 loops are sized for.
+        // The wreck is authored so it is CLEARABLE, not merely present: every debris tile sits
+        // in a compartment that is (or can be) pressurised and reachable — see the ⚠️ note on
+        // GridWreckSlots. Debris in the airless decks 2..7 would have looked identical in a
+        // screenshot and been undiggable in play.
+        //
+        // The crew stay AutoWander=false, and the honest reason is the WANDER SAMPLER, not lethality.
+        // PathService.TryRandomWalkableTileNear boxes Z along with X and Y, and the default
+        // wander_radius_tiles (8) is >= this ship's depth (8) — so the box saturates every deck and a
+        // SINGLE idle draw can land a crew member in any of the six VACUUM spines the ladder trunk
+        // makes walkable from tick 0. MEASURED with AutoWander=true over one sim-day, it is
+        // survivable rather than fatal — 8/8 alive, work 24.990 % against 24.938 %, the crew flee
+        // back out — but 4.46 % of all crew-ticks go to JobKind.Flee, walking out of vacuum for
+        // nothing, on the ship a new player is watching. What AutoWander bought the slice —
+        // desynchronising eight crew so they never crowd one small room into hypoxia — this ship
+        // gets from its geometry instead: deck 0's eight room doors all boot OPEN, so the deck is
+        // one ~570-tile air mass and no single room can be breathed down (75 h of eight-crew O2
+        // draw in the mess alone, before any flow from next door).
 
         /// <summary>The grid ship's own seed — a DISTINCT identity from Perilune (20260718)
         /// and the slice (20260721).</summary>
@@ -737,6 +762,59 @@ namespace Perilune.Gen
         public const int GridWidth = SlotGridPlanner.Width;   // 45
         public const int GridHeight = SlotGridPlanner.Height; // 18
         public const int GridDepth = 8;
+
+        /// <summary>The deck the wreck sits on: deck 1, the ship's other PRESSURISED, powered,
+        /// ladder-connected deck. Not decks 2..7 — those boot airless behind closed doors, so
+        /// debris there would be undiggable (crew flee unbreathable air, SafetySystem/JobKind.Flee)
+        /// and would make the ClearAllDebris goal permanently unreachable.</summary>
+        public const int GridWreckDeck = 1;
+
+        /// <summary>Interior rows of a wrecked slot that collapse, counted from the HULL side
+        /// inward. Two of the six leaves the door apron, the room's centre probe tile and the
+        /// four rows nearest the spine as clear floor.</summary>
+        public const int GridWreckRows = 2;
+
+        /// <summary>The deck-1 hall slots that boot WRECKED.
+        ///
+        /// ⚠️ Slot 3 is deliberately absent and must stay absent. Deck 0 is fully furnished, so
+        /// deck 1 slot 3 is the FIRST RoomType.None entry in plan.SlotGrid — i.e. it is
+        /// AddRoomCommandTests' FirstEmptyHall, which probes the slot's centre tile and asserts a
+        /// sealed, AIRLESS, non-vacuum room. Debris on that probe, air in that compartment, or an
+        /// opened door would each break the ＋ADD ROOM contract and that test.</summary>
+        private static readonly int[] GridWreckSlots = { 5, 6, 7 };
+
+        /// <summary>The one wreck the crew are ALREADY cutting into: its door boots open, its
+        /// compartment boots pressurised and its debris boots DESIGNATED, so the dig loop is live
+        /// on the standard play ship from tick 0 with no player input and no harness flag — the
+        /// grid ship's analogue of the slice's opened door_aft + designated aft field.
+        ///
+        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. An air-filled slot
+        /// reads OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws an occupied slot
+        /// as a room — no ＋ADD ROOM chip, and a label of <c>roomLabel(roomType) || anchorName</c>
+        /// (<c>client/src/ui/decks-model.js</c>, <c>deckSlotView</c>). Left as
+        /// <c>RoomType.None</c> (this package's first draft) it therefore rendered as a room
+        /// LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an UPPERCASE-label UI, and
+        /// could never be commissioned out of that state either, because <c>AddRoomCommand</c>
+        /// returns early on <c>TotalMoles &gt; 0</c> (Commands.cs:483). A typed slot has a real
+        /// label, needs no commissioning, and boots its door OPEN by construction
+        /// (<c>SlotGridPlanner.Carve</c>: <c>IsOpen = !empty</c>).
+        ///
+        /// The other two wrecks boot as every other empty hall does (RoomType.None, door closed,
+        /// airless, undesignated): they are the player's own work, reached either by ＋ADD ROOM
+        /// (which opens the door and fills the compartment) or by opening the door directly, and
+        /// then by painting DIG. The ClearAllDebris goal needs all three, so it cannot be completed
+        /// without the player using the verb.</summary>
+        public const int GridOpenWreckSlot = 6;
+
+        /// <summary>The live wreck's anchor + type: the collapsed aft hold. <c>Storage</c> is
+        /// deliberate — <see cref="RoomDresser"/> furnishes only Quarters/Mess/Commons/Command/
+        /// Observatory/Medbay/Bridge, so a Storage room takes NO furniture and the compartment reads
+        /// as what it is: an emptied hold with the deckhead down in it. The anchor is "hold" and not
+        /// "storage" because deck 0 already owns that name — anchors are the MOSS namespace and must
+        /// be unique — and it must not be of the internal <c>hall_dN_sM</c> form, which is what the
+        /// client would print at the player.</summary>
+        public const string GridOpenWreckAnchor = "hold";
+        public const RoomType GridOpenWreckType = RoomType.Storage;
 
         public static ShipPlan PeriluneGrid()
         {
@@ -763,7 +841,7 @@ namespace Perilune.Gen
                 Hall(1, 3),
                 Slot(RoomType.Fabrication, "fabrication"),
                 Hall(1, 5),
-                Hall(1, 6),
+                Slot(GridOpenWreckType, GridOpenWreckAnchor),  // slot 6 — the live wreck (GridOpenWreckSlot)
                 Hall(1, 7),
             };
 
@@ -776,6 +854,18 @@ namespace Perilune.Gen
                 rects[z] = SlotGridPlanner.Carve(canvas, plan, z, slots, $"grid_spine_{z}");
                 canvases[z] = canvas;
             }
+
+            // ----------------------------------------------------------- the wreck
+            // Collapse the hull-side rows of the three free deck-1 halls. This must happen HERE:
+            // after Carve (which lays the floor those rows are cut back out of) and before both
+            // ToRows() — DeckRows is a one-shot snapshot of the canvas, so a later edit is silently
+            // ignored — and AddConduits, which only trays '.' tiles. Trays under the rubble are
+            // therefore gone with it: a dug-out tile is bare floor until the player runs conduit to
+            // it, which is the honest reading of a collapse and costs the cleared compartment
+            // nothing else (its four clear rows keep their trays, connected through the door tile).
+            var wrecks = new Dictionary<int, List<Int3>>(GridWreckSlots.Length);
+            foreach (int slot in GridWreckSlots)
+                wrecks[slot] = WreckFillBottomSlot(canvases[GridWreckDeck], GridWreckDeck, slot, GridWreckRows);
 
             plan.DeckRows = new string[GridDepth][];
             for (int z = 0; z < GridDepth; z++) plan.DeckRows[z] = canvases[z].ToRows();
@@ -803,11 +893,41 @@ namespace Perilune.Gen
 
             // Spine life support + lights on the two active decks. The crew stand in the
             // deck-0 spine, a large air mass (spine + eight open-door rooms) with grow-bed
-            // O2 and a corridor scrubber, so three held crew breathe easily for days.
+            // O2 and a corridor scrubber.
             Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, 0, "scrubber_spine_0");
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, 0), Name = "vent_spine_0", IsOpen = true });
             Dev(plan, DeviceKind.Light, 20, SlotGridPlanner.SpineY1, 0, "light_spine_0");
             Dev(plan, DeviceKind.Light, 20, SlotGridPlanner.SpineY1, 1, "light_spine_1");
+
+            // Deck 1's OWN life-support pair (WP-1). Before the wreck, deck 1 held no crew and
+            // needed neither; now it is where the work is, and it also GAINS VOLUME as the crew
+            // clear the collapse (each dug tile is one more tile of room to fill, ~2.5 m³). Two
+            // devices answer that:
+            //   * an OPEN vent, which tops the deck's connected mass back toward
+            //     nominal_pressure_kpa as the volume grows (clearing all 60 wreck tiles would
+            //     otherwise dilute deck 1 from 101.3 kPa to ~89 kPa — breathable, but drifting);
+            //   * three scrubbers, which is the whole eight-crew CO2 load on this deck alone
+            //     (3 × scrubber_mol_per_second 0.001 > 8 × co2_per_person_per_second 2.73e-4).
+            //     Deck 0 already carries four (spine + hydro + mess + lifesupport), so EITHER
+            //     active deck can hold the entire crew, which is the property that matters when work
+            //     moves them between decks. Two of the three sit on the spine facing the wrecked
+            //     halls' doors, because deck 1 is SIX SEPARATE ROOMS and not one: the scrubbers
+            //     stand in the spine while the crew's CO2 is made in the wreck, so the sizing rests
+            //     entirely on B-3 partial-pressure diffusion carrying it across the open doors. All
+            //     four tiles are spine floor with a conduit tray already under them, and LifeSupport
+            //     is the LAST tier shed in a brownout.
+            //     THE TREND, NOT THE THRESHOLD, is what they buy and what the test asserts. Narcosis
+            //     is ~190 h away (deck 1's connected mass is 366 tiles ≈ 915 m³ ≈ 38,000 mol, and 4 %
+            //     of that is ~1,520 mol at 2.18e-3 mol/s), so nothing at a playable horizon can bite
+            //     on co2_narcosis_ppm — but the DIRECTION separates inside the hour the full-clear
+            //     test already runs: at its tick 55,191 the worst deck-1 room reads 384 ppm and
+            //     FALLING below its 500 ppm boot fill with these three, and 792 ppm and RISING
+            //     without them (at one sim-day, 9 ppm vs 3,405 ppm). That is the assertion in
+            //     Goal_IsCompletable_ByTheAuthoredCrew_ViaAddRoomAndDig, so deleting them fails.
+            Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, GridWreckDeck, "scrubber_spine_1");
+            plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, GridWreckDeck), Name = "vent_spine_1", IsOpen = true });
+            Dev(plan, DeviceKind.Scrubber, SlotGridPlanner.InteriorRect(5).CenterX, SlotGridPlanner.SpineY1, GridWreckDeck, "scrubber_spine_1b");
+            Dev(plan, DeviceKind.Scrubber, SlotGridPlanner.InteriorRect(7).CenterX, SlotGridPlanner.SpineY1, GridWreckDeck, "scrubber_spine_1c");
 
             // ------------------------------------------------------- ladder trunk
             // One vertical trunk at the spine centre column links all eight decks for
@@ -815,17 +935,36 @@ namespace Perilune.Gen
             for (int z = 0; z < GridDepth; z++)
                 Dev(plan, DeviceKind.Ladder, SlotGridPlanner.LadderX, SlotGridPlanner.SpineY0, z, $"ladder_d{z}");
 
-            // ------------------------------------------------------------- people
-            // Halloran and Vega are the WORKABLE pair (HoldPosition=false ⇒ IsIdleForWork ⇒
-            // they self-assign haul/build jobs): without at least one non-held crew, every
-            // wall the player designates stages material forever and never raises, so the ship
-            // "cannot build anything". AutoWander stays FALSE so they never idle-wander into an
-            // unbuilt vacuum hall — they leave the spine only for real work (a build/haul job at
-            // a designated tile), then return. Sato stays under strict player control
-            // (HoldPosition) as the direct-order hand.
-            plan.Citizens.Add(new CitizenSpec { Name = "Halloran", Pos = new Int3(8, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
-            plan.Citizens.Add(new CitizenSpec { Name = "Vega",     Pos = new Int3(18, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
-            plan.Citizens.Add(new CitizenSpec { Name = "Sato",     Pos = new Int3(30, SlotGridPlanner.SpineY0, 0), AutoWander = false, RevealsFog = true, HoldPosition = true });
+            // --------------------------------------------------------- people (8)
+            // EIGHT crew, ALL WORKABLE (HoldPosition=false ⇒ IsIdleForWork ⇒ they self-assign
+            // dig/haul/build/craft work; E0-1 made an idle crew member recruitable without a
+            // player order). Was three, of which one was held: a three-hand ship cannot show what
+            // the economy verbs do, and the held hand read in play as "my crew ignores me".
+            // Direct control did not go anywhere — an explicit MoveCitizenCommand still moves
+            // anyone, and HoldPosition remains the strict-control escape hatch for a player who
+            // wants one (E0-1's player-control note).
+            //
+            // AutoWander=false for all eight, deliberately AGAINST the slice's setting: this ship's
+            // ladder trunk makes six VACUUM decks walkable from tick 0, so an idle wander is a
+            // death sentence here. See the header note for why the slice's pile-on argument does
+            // not transfer.
+            //
+            // They stand along the deck-0 spine — the pressurised, life-supported, food-and-water
+            // deck — and walk to work: the wreck is up one ladder at the spine's centre column.
+            // Two rows so eight bodies do not read as a queue; every tile is spine floor.
+            var crewStarts = new (string Name, int X, int Y)[]
+            {
+                ("Halloran", 8,  SlotGridPlanner.SpineY0),
+                ("Vega",     18, SlotGridPlanner.SpineY0),
+                ("Sato",     30, SlotGridPlanner.SpineY0),
+                ("Okonjo",   12, SlotGridPlanner.SpineY1),
+                ("Novak",    24, SlotGridPlanner.SpineY1),
+                ("Adeyemi",  36, SlotGridPlanner.SpineY0),
+                ("Kaur",     6,  SlotGridPlanner.SpineY1),
+                ("Ito",      40, SlotGridPlanner.SpineY1),
+            };
+            foreach (var c in crewStarts)
+                plan.Citizens.Add(new CitizenSpec { Name = c.Name, Pos = new Int3(c.X, c.Y, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
 
             // -------------------------------------------------------- opening stock
             var storage = rects[0]["storage"];
@@ -851,6 +990,36 @@ namespace Perilune.Gen
             })
                 plan.PressurizedAnchors.Add(a);
 
+            // ------------------------------------------------- the live collapse
+            // GridOpenWreckSlot is the one wreck the ship boots already working: it is a TYPED,
+            // commissioned room, so Carve already booted its door OPEN (asserted, not assumed, in
+            // GridWreckTests); it is PRESSURISED here, so the diggers stand in breathable air
+            // instead of fleeing it; and its debris is DESIGNATED, because a goal designates nothing
+            // (GoalSystem is a pure observer) and DesignateDigCommand has exactly one other caller,
+            // the player. Every one of those is needed and any one alone does nothing: the slice
+            // learned this with door_aft, where a sealed door left every designated tile unreachable
+            // and the board inert. The other two wrecks stay closed, airless and undesignated — the
+            // player's work, and the reason the goal cannot complete without it.
+            plan.PressurizedAnchors.Add(GridOpenWreckAnchor);
+            var liveWreck = wrecks[GridOpenWreckSlot];
+            for (int i = 0; i < liveWreck.Count; i++) plan.DigDesignations.Add(liveWreck[i]);
+
+            // ------------------------------------------------------------- goal
+            // ONE goal, and ClearAllDebris is the only one of the three kinds that is a GAME on
+            // this ship. PressurizeAnchor would read as met the moment it was polled (every anchor
+            // this ship boots with air is already at 101.3 kPa, and the ones without air are behind
+            // sealed doors with no player verb that pressurises them except ＋ADD ROOM, which
+            // pressurises as a side effect of commissioning). ExploreAnchor would either be met by
+            // a crew member standing where they already stand, or would point at a vacuum deck the
+            // player can only reach by sending someone to suffocate. ClearAllDebris is false at
+            // boot (60 debris tiles), true only after the player has opened the two sealed wrecks
+            // and painted DIG over them, and its subject is the exact content WP-1 authored.
+            plan.Goals.Add(new GoalSpec
+            {
+                Kind = GoalKind.ClearAllDebris, Param = "",
+                Text = "Clear the collapsed compartments",
+            });
+
             // Furnish every typed room by rule (empty halls / corridors are skipped).
             RoomDresser.Dress(plan);
 
@@ -863,7 +1032,52 @@ namespace Perilune.Gen
         /// <summary>An empty hall: a real compartment with its own anchor but no room type
         /// and no furniture, for the player to build out.</summary>
         private static SlotGridPlanner.SlotAssign Hall(int z, int index) =>
-            new SlotGridPlanner.SlotAssign { Type = RoomType.None, Anchor = $"hall_d{z}_s{index}" };
+            new SlotGridPlanner.SlotAssign { Type = RoomType.None, Anchor = HallAnchor(z, index) };
+
+        /// <summary>The anchor name of a hall slot — the single spelling of the convention, so the
+        /// wreck wiring cannot drift from <see cref="Hall"/>.</summary>
+        private static string HallAnchor(int z, int index) => $"hall_d{z}_s{index}";
+
+        /// <summary>
+        /// Collapse the <paramref name="rows"/> interior rows FARTHEST from a bottom-row slot's
+        /// spine door into debris ('R' — floor AND wall, <c>AsciiWorld</c>), i.e. inward from the
+        /// hull. Returns the filled tiles in z,y,x scan order (the order the dig board reads the
+        /// world in), so an authored designation list matches the board's own ordering.
+        ///
+        /// BOTTOM-ROW SLOTS ONLY (4..7). Their door sits on the slot's TOP wall, against the
+        /// spine, so "farthest from the door" is unambiguously the high-y hull side and the
+        /// approach stays clear. Passing a top-row slot would collapse the rows nearest its door
+        /// and wall the compartment off from the inside; it throws rather than authoring that.
+        ///
+        /// Two invariants are asserted here rather than left to a playtest, because both are
+        /// silent failures: the room's centre PROBE tile must stay walkable floor (anchors,
+        /// pressurisation and ＋ADD ROOM all resolve a room through it), and the door APRON — the
+        /// tile inside the compartment directly under the door — must stay walkable floor, or the
+        /// wreck is sealed off from the ship and no crew member can ever stand next to it.
+        /// </summary>
+        private static List<Int3> WreckFillBottomSlot(GridCanvas deck, int z, int slotIndex, int rows)
+        {
+            if (slotIndex < SlotGridPlanner.Cols || slotIndex >= SlotGridPlanner.SlotCount)
+                throw new ArgumentException($"WreckFillBottomSlot: slot {slotIndex} is not a bottom-row slot (4..7)");
+            if (rows < 1 || rows > SlotGridPlanner.InteriorH - 2)
+                throw new ArgumentException($"WreckFillBottomSlot: {rows} rows leaves no clear approach in a {SlotGridPlanner.InteriorH}-row interior");
+
+            var r = SlotGridPlanner.InteriorRect(slotIndex);
+            int firstWreckY = r.Y1 - rows + 1;
+            if (r.CenterY >= firstWreckY)
+                throw new ArgumentException($"WreckFillBottomSlot: {rows} rows would bury slot {slotIndex}'s probe tile ({r.CenterX},{r.CenterY})");
+            if (r.Y0 >= firstWreckY)
+                throw new ArgumentException($"WreckFillBottomSlot: {rows} rows would bury slot {slotIndex}'s door apron");
+
+            var filled = new List<Int3>(rows * SlotGridPlanner.InteriorW);
+            for (int y = firstWreckY; y <= r.Y1; y++)
+                for (int x = r.X0; x <= r.X1; x++)
+                {
+                    deck.Set(x, y, 'R');
+                    filled.Add(new Int3(x, y, z));
+                }
+            return filled;
+        }
 
         private static SlotGridPlanner.SlotAssign[] EmptyDeck(int z)
         {

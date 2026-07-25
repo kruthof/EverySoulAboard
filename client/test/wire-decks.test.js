@@ -6,6 +6,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   decode, decodeDecks, decodeRooms, decodeDecor, decodeSlot, decodeRoom,
@@ -178,4 +180,59 @@ test('decksView is tolerant of null / garbage inputs', () => {
   assert.deepEqual(decksView(null, null), []);
   assert.deepEqual(decksView('x', 'y'), []);
   assert.deepEqual(decksView([{ deck: 0 }], null), []); // deck missing slots → skipped
+});
+
+// ---------------------------------------------------------------------------------------------
+// WP-1: the grid ship's LIVE WRECK must have a player-facing label. Driven by the real captured
+// wire snapshot, not a hand-built tuple, because the defect this pins was invisible in a hand-built
+// one: `displayName` is `roomLabel(roomType) || anchorName`, so ANY pressurised slot left at
+// RoomType.None renders as a room labelled with its own internal anchor id. The grid ship's live
+// wreck is pressurised at boot (it is the compartment the crew are already digging), and in this
+// package's first draft it was RoomType.None — so the one standard play ship showed "hall_d1_s6" in
+// an UPPERCASE-label UI, and could never be commissioned out of it either (AddRoomCommand returns
+// early on TotalMoles > 0). Authoring it as a typed room is the fix; this is the tripwire.
+
+const GRID_FIX = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),
+);
+
+test('WP-1: every OCCUPIED slot on the grid ship has a real label, never an internal anchor id', () => {
+  const view = decksView(
+    decodeDecks(decode(JSON.stringify(GRID_FIX.decks))),
+    decodeRooms(decode(JSON.stringify(GRID_FIX.rooms))),
+  );
+
+  for (const deck of view) {
+    for (const s of deck.slots) {
+      if (!s.occupied) continue;
+      assert.ok(s.displayName, `deck ${deck.deck} slot ${s.slotIndex} is occupied with no label at all`);
+      assert.ok(
+        !/^hall_d\d+_s\d+$/.test(s.displayName),
+        `deck ${deck.deck} slot ${s.slotIndex} renders as the internal id "${s.displayName}" — an occupied `
+        + 'slot draws as a ROOM with no ＋ADD ROOM chip, so RoomType.None leaks the anchor name to the player',
+      );
+      assert.equal(s.displayName, s.displayName.toUpperCase(),
+        `deck ${deck.deck} slot ${s.slotIndex} label "${s.displayName}" is not the UPPERCASE form the UI uses`);
+    }
+  }
+
+  // And specifically the live wreck: deck 1 slot 6, occupied, Storage, labelled.
+  const wreck = view.find((d) => d.deck === 1).slots.find((s) => s.slotIndex === 6);
+  assert.equal(wreck.occupied, true, 'the live wreck boots pressurised, so the client reads it as occupied');
+  assert.equal(wreck.displayName, 'STORAGE');
+  assert.equal(wreck.anchorName, 'hold');
+});
+
+test('WP-1: the fixture carries a deck-1 frame with BOTH debris and designation fg bytes', () => {
+  // WP-2's acceptance is "a designated tile renders differently from an undesignated one, asserted
+  // on the fg byte". That needs one frame carrying GlyphColor.Debris (4) AND GlyphColor.Designate
+  // (15). Neither exists anywhere on deck 0, so a deck-0-only fixture would force WP-2 to hand-craft
+  // cells — the vacuous test the WP-1-before-WP-2 ordering exists to prevent.
+  const f = GRID_FIX.frameDeck1;
+  assert.ok(f && f.deck === 1, 'the fixture must carry a deck-1 frame');
+  const fg = new Set(f.cells.map((c) => c[1]));
+  assert.ok(fg.has(4), 'no GlyphColor.Debris (4) in the deck-1 frame');
+  assert.ok(fg.has(15), 'no GlyphColor.Designate (15) in the deck-1 frame');
+  const fg0 = new Set(GRID_FIX.frame.cells.map((c) => c[1]));
+  assert.ok(!fg0.has(4) && !fg0.has(15), 'deck 0 has no wreck — if it does, this fixture is not what it says');
 });

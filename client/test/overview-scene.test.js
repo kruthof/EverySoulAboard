@@ -88,11 +88,13 @@ test('every OCCUPIED slot gets a glow pool and empty halls do NOT (driven by `oc
 });
 
 test('active-but-unoccupied halls draw NO glow — glow is `occupied`, never `active` (Phase-2b note)', () => {
-  // Deck 1 is the decisive case: 4 halls whose deck-level `active` flag is TRUE. If the glow read
+  // Deck 1 is the decisive case: halls whose deck-level `active` flag is TRUE. If the glow read
   // `active` (the shipped-review bug) they would each light; because it reads `occupied`, none do.
+  // THREE since WP-1, not four: deck 1 slot 6 is now the grid ship's live wreck, an authored
+  // Storage room ('hold') rather than an empty hall, so it is occupied and correctly DOES glow.
   const d1 = view.find((d) => d.deck === 1);
   const activeHalls = d1.slots.filter((s) => !s.occupied && s.active);
-  assert.equal(activeHalls.length, 4);
+  assert.equal(activeHalls.length, 3);
   const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
   assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, d1.slots.filter((s) => s.occupied).length);
 
