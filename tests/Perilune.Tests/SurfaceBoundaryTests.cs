@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 
@@ -33,6 +34,14 @@ namespace Perilune.Tests
     /// is matched explicitly at its three call sites. That gap is disclosed, not fixed — and
     /// <see cref="TheChannelParseIsNotVacuous"/> exists so a rename that silently empties the parse
     /// fails loudly instead of making the boundary pass for the wrong reason.
+    ///
+    /// CODE-ONLY, ON BOTH SIDES, BY TWO DIFFERENT MECHANISMS — do not over-read either.
+    /// The EMITTER scan is code-only *by construction*: an emission site writes the escaped literal
+    /// <c>{\"type\":\"NAME\"</c> while the doc comments in the same file write the unescaped form, so
+    /// the pattern cannot match prose (asserted, both directions). The CONSUMER scan has no such luck
+    /// — <c>case 'zones':</c> reads identically in code and in a <c>// TODO</c> — so
+    /// <c>client/src/main.js</c> is run through <see cref="CodeOnly"/> first. Without that, the
+    /// cheapest way past this boundary would be to write the fix in a comment instead of doing it.
     /// </summary>
     public class SurfaceBoundaryTests
     {
@@ -63,6 +72,50 @@ namespace Perilune.Tests
             return File.ReadAllText(path);
         }
 
+        /// <summary>
+        /// Strip JS/C# comments, STRING-LITERAL AWARE. The client-side half of this guard scans code
+        /// only, and this half must too: without it, <c>// TODO: case 'zones':</c> in main.js would
+        /// satisfy the consumption boundary below — a channel "consumed" by a comment. A '…'/"…"
+        /// scan terminates at the newline, so an unbalanced quote can damage at most its own line and
+        /// cannot blind the scan to end of file. Port of <c>codeOnly</c> in
+        /// <c>client/test/surface-boundary.test.js</c>; behaviour asserted by
+        /// <see cref="TheChannelParseIsNotVacuous"/>.
+        /// </summary>
+        internal static string CodeOnly(string src)
+        {
+            var sb = new StringBuilder(src.Length);
+            int i = 0, n = src.Length;
+            while (i < n)
+            {
+                char c = src[i];
+                if (c == '/' && i + 1 < n && src[i + 1] == '/')
+                {
+                    while (i < n && src[i] != '\n') i++;                     // to EOL, keep the \n
+                }
+                else if (c == '/' && i + 1 < n && src[i + 1] == '*')
+                {
+                    i += 2;
+                    while (i + 1 < n && !(src[i] == '*' && src[i + 1] == '/')) { if (src[i] == '\n') sb.Append('\n'); i++; }
+                    i += 2;
+                }
+                else if (c == '\'' || c == '"' || c == '`')
+                {
+                    char q = c;
+                    sb.Append(c); i++;
+                    while (i < n)
+                    {
+                        if (src[i] == '\\') { sb.Append(src[i]); if (i + 1 < n) sb.Append(src[i + 1]); i += 2; continue; }
+                        sb.Append(src[i]);
+                        bool done = src[i] == q || (q != '`' && src[i] == '\n');
+                        i++;
+                        if (done) break;
+                    }
+                }
+                else { sb.Append(c); i++; }
+            }
+            return sb.ToString();
+        }
+
         // ---------------------------------------------------------------- channel census
 
         /// <summary>An emission site writes the escaped literal <c>{\"type\":\"NAME\"</c>. Doc
@@ -76,13 +129,29 @@ namespace Perilune.Tests
         /// beside the word "type". Matched at the call site instead.</summary>
         private static readonly Regex LinesCall = new Regex(@"\bLines\(\s*""(\w+)""", RegexOptions.Compiled);
 
-        /// <summary>Every wire channel type <c>hosts/web/WireFormat.cs</c> can put on the socket.</summary>
+        /// <summary>The wire-serializer sources. GLOBBED, not hard-coded: a sibling partial
+        /// (<c>WireFormat.Zones.cs</c>) is the obvious way to add a channel without touching the
+        /// 900-line original, and a single-file scan would not see it — nor would the vacuity floor
+        /// notice, since the original alone clears it.</summary>
+        private static List<string> WireFormatFiles()
+        {
+            var found = new List<string>(Directory.GetFiles(
+                Path.Combine(RepoRoot(), "hosts", "web"), "WireFormat*.cs", SearchOption.TopDirectoryOnly));
+            found.Sort(StringComparer.Ordinal);
+            Assert.That(found, Is.Not.Empty, "hosts/web must contain at least WireFormat.cs");
+            return found;
+        }
+
+        /// <summary>Every wire channel type <c>hosts/web/WireFormat*.cs</c> can put on the socket.</summary>
         private static SortedSet<string> EmittedChannels()
         {
-            string src = ReadRepoFile("hosts", "web", "WireFormat.cs");
             var found = new SortedSet<string>(StringComparer.Ordinal);
-            foreach (Match m in TypeLiteral.Matches(src)) found.Add(m.Groups[1].Value);
-            foreach (Match m in LinesCall.Matches(src)) found.Add(m.Groups[1].Value);
+            foreach (var path in WireFormatFiles())
+            {
+                string src = File.ReadAllText(path);
+                foreach (Match m in TypeLiteral.Matches(src)) found.Add(m.Groups[1].Value);
+                foreach (Match m in LinesCall.Matches(src)) found.Add(m.Groups[1].Value);
+            }
             return found;
         }
 
@@ -103,7 +172,10 @@ namespace Perilune.Tests
         [Test]
         public void EveryWireChannelIsConsumedByTheStandardClient()
         {
-            string main = ReadRepoFile("client", "src", "main.js");
+            // CODE ONLY. `// TODO: case 'zones':` must not count as a consumer — the JS half of this
+            // guard strips comments before every scan and this one has to match, or the cheapest way
+            // past the boundary is to write the fix in a comment instead of doing it.
+            string main = CodeOnly(ReadRepoFile("client", "src", "main.js"));
             var missing = new List<string>();
             foreach (var channel in EmittedChannels())
             {
@@ -165,6 +237,22 @@ namespace Perilune.Tests
                 "and a test that fires on comments gets the comments deleted");
             Assert.That(TypeLiteral.IsMatch("sb.Append(\"{\\\"type\\\":\\\"frame\\\",\\\"deck\\\":\");"), Is.True,
                 "the channel scan stopped matching a real emission site");
+
+            // And the consumer side is code-only too, with the stripper's own behaviour pinned —
+            // including that a quoted comment marker cannot blind it to end of file (the hole an
+            // earlier hand-verified version of ArchitectureBoundaryTests.CodeOnly actually shipped).
+            Assert.That(CodeOnly("// case 'zones': break;\nconst live = 1;"), Does.Not.Contain("zones"),
+                "CodeOnly left a line comment in place — a channel could then be 'consumed' by a TODO");
+            Assert.That(CodeOnly("/* case 'zones': */ const live = 1;"), Does.Not.Contain("zones"),
+                "CodeOnly left a block comment in place");
+            Assert.That(CodeOnly("const u = \"http://x//y\";\ncase 'zones':"), Does.Contain("case 'zones'"),
+                "a quoted '//' blinded CodeOnly to end of file — every scan using it then passes vacuously");
+            Assert.That(CodeOnly("const rx = /['\"]/g;\ncase 'zones':"), Does.Contain("case 'zones'"),
+                "an unbalanced quote in a regex ran past its own line; the string scan must stop at the newline");
+
+            // The globbed file set must really be finding the serializer, not an empty directory.
+            Assert.That(WireFormatFiles().Count, Is.GreaterThanOrEqualTo(1));
+            Assert.That(WireFormatFiles()[0], Does.EndWith("WireFormat.cs"));
         }
 
         // ---------------------------------------------------------------- the prose, pinned

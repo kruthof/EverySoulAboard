@@ -25,14 +25,33 @@
 // parses `sim/Sim.Glyph/GlyphColor.cs`, `stock-filter-model.test.js:23,130` parses two C# files.
 // The honest limits:
 //   • A regex is not a parser. An element reached by a CONSTRUCTED id (`$('tab-' + key)`) is
-//     invisible to the ownership scan. Disclosed, not fixed.
-//   • The scans run over CODE ONLY (see `codeOnly`, whose own behaviour is asserted below). A
-//     comment naming `#stockfilter` is documentation, not a dependency — a test that fired on prose
+//     invisible to the ownership scan. Quantified rather than hand-waved: across all 51 client
+//     sources there are 229 literal id lookups and 5 non-literal, and 4 of the 5 are the
+//     `$`/`getElementById(id)` helper DEFINITIONS — exactly one real constructed call site exists,
+//     inside an owner file. Disclosed, not fixed.
+//   • THE RE-EXPORT BRIDGE is the widest hole here, and it is open. A three-line `console-bridge.js`
+//     exporting `export const grab = (id) => document.getElementById(id)` would let any modern view
+//     module reach console DOM with the ownership scan seeing nothing — and `hud.js` ALREADY EXPORTS
+//     such a hatch (`setChip(id, value)`, :46). Closing it needs call-graph analysis, which is out of
+//     proportion to the risk; the countermeasure is that the bridge is itself a conspicuous new file.
+//     Named here so a reviewer does not have to rediscover it.
+//   • The scans run over CODE ONLY — `codeOnly` for JS, `htmlCodeOnly` for the page, both with their
+//     own behaviour asserted below, and the C# half strips `client/src/main.js` the same way. A
+//     comment naming `#stockfilter` is documentation, not a dependency; a test that fired on prose
 //     would teach people to delete explanatory comments, which is the maintenance tax this file
 //     must not create.
 //   • Nothing here proves the modern surface WORKS. It proves that a verb which exists on the dying
 //     surface also exists on the living one, and that nobody is quietly growing the dying one.
 //     Playability is a human check (§7.6 of the plan).
+//
+// WHAT CATCHES THE CANONICAL FAILURE, and why there are three layers rather than one. The E0-4 WP-5
+// filter SHIPPED with its own `#stockfilter-row`, so the id census catches it — but WP-5's own commit
+// says the chips were FIRST built into the existing `#palette`, and that draft has no new id at all.
+// Detection must not rest on a CSS layout accident, so: (1) the id census, (2) the hud.js SIZE PIN
+// (lookup sites + createElement sites — this is what catches the no-new-id draft and any class-only
+// widget), and (3) verb parity, which catches the verb however it is drawn. A fourth console verb
+// declared a BUILD kind evades (3) via a one-word edit to `BUILD_KINDS`, so the palette is classified
+// against a PINNED literal (`CONSOLE_BUILD_KINDS`), never against the live predicate.
 //
 // HOW TO RESPOND WHEN ONE FAILS. Every message below names the boundary, why it exists, and the two
 // legitimate exits. Read it before editing anything.
@@ -128,10 +147,9 @@ async function modernToolSet() {
  *
  * Handles '…', "…", `…` (including `${}` only insofar as it stays inside the template — good enough,
  * since an id in a template is a CONSTRUCTED id and already disclosed as invisible) and both comment
- * forms. NOT handled: regex literals — a `/…/` containing `//` or an unbalanced quote could confuse
- * it. Disclosed rather than fixed; `codeOnly` is asserted below against the real client sources
- * staying parseable, so a future regex that breaks it fails loudly here rather than silently
- * blinding a scan.
+ * forms. NOT handled: regex literals — a `/…/` containing a quote could confuse it. Disclosed rather
+ * than fixed, and bounded: a '…'/"…" scan terminates at the newline, so the worst it can do is
+ * damage its own line (asserted below).
  */
 function codeOnly(src) {
   let out = '';
@@ -174,11 +192,19 @@ function srcFiles(dir = SRC, out = []) {
 
 const rel = (abs) => relative(CLIENT, abs).replace(/\\/g, '/');
 
+/** index.html with `<!-- … -->` removed. A commented-out element is not an element: it must not be
+ *  counted in a census, and — the reason this is a function and not an afterthought — an HTML
+ *  comment CONTAINING `<div` would corrupt `appBlock`'s depth tracker and silently mis-slice the
+ *  shell. Strip once, structure-scan the remainder. */
+function htmlCodeOnly(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 /**
  * The `.app` console-shell block of index.html, or null once it is gone. Depth-tracked over `<div`
- * tokens only — every other tag inside it is balanced and cannot unbalance the count. Returning
- * null is the WP-9 endgame, and every assertion below FLIPS ITSELF when that happens rather than
- * needing an edit.
+ * tokens only — every other tag inside it is balanced and cannot unbalance the count. Takes
+ * COMMENT-STRIPPED html (see `htmlCodeOnly`). Returning null is the WP-9 endgame, and every
+ * assertion below FLIPS ITSELF when that happens rather than needing an edit.
  */
 function appBlock(html) {
   const start = html.indexOf('<div class="app">');
@@ -194,9 +220,17 @@ function appBlock(html) {
   return null;
 }
 
-/** ids of divs opened at body depth 0 — i.e. the SURFACE ROOTS, one per full-window surface. */
+/** ids of divs opened at body depth 0 — i.e. the SURFACE ROOTS, one per full-window surface.
+ *  Takes COMMENT-STRIPPED html. `<body …>` is matched as a TAG, not as the literal string `<body>`:
+ *  the literal would return −1 the day the tag gains an attribute and we would silently parse from
+ *  byte 5 of the file. */
 function bodyRootIds(html, appSlice) {
-  let body = html.slice(html.indexOf('<body>') + '<body>'.length, html.indexOf('</body>'));
+  const open = /<body\b[^>]*>/.exec(html);
+  const close = html.indexOf('</body>');
+  assert.ok(open && close > open.index,
+    'client/index.html has no parseable <body> … </body>. The surface-root census cannot run; fix ' +
+    'bodyRootIds() rather than letting it scan garbage.');
+  let body = html.slice(open.index + open[0].length, close);
   if (appSlice) body = body.replace(appSlice, '');
   const re = /<div\b[^>]*>|<\/div\s*>/g;
   const roots = [];
@@ -213,13 +247,29 @@ function bodyRootIds(html, appSlice) {
   return roots;
 }
 
-/** Element ids a file looks up in the DOM: `$('x')`, `getElementById('x')`, `'#x'`. */
-function domLookups(code) {
-  const out = new Set();
+/** Every LITERAL id lookup site in a file, duplicates included: `$('x')`, `getElementById('x')`,
+ *  `'#x'`. Sites (not distinct ids) because the count is what pins a file closed to new work.
+ *
+ *  ⚠️ DISCLOSED HOLE — the re-export bridge. This matches the two call spellings and a CSS selector
+ *  literal, nothing else. A three-line `console-bridge.js` exporting
+ *  `export const grab = (id) => document.getElementById(id)` would let any modern view module reach
+ *  console DOM completely invisibly to the ownership scan, and `hud.js` ALREADY EXPORTS such a hatch
+ *  (`setChip(id, value)`). Closing it needs call-graph analysis, which is out of proportion here; the
+ *  countermeasure is that creating the bridge is itself a conspicuous new file in a diff. Related and
+ *  also disclosed: a CONSTRUCTED id (`$('tab-' + key)`) is invisible. Measured across all 51 client
+ *  sources: 229 literal lookups vs 5 non-literal, and 4 of the 5 are the `$`/`getElementById(id)`
+ *  helper DEFINITIONS — exactly one real constructed call site exists, inside an owner file. */
+function domLookupSites(code) {
   const re = /(?:\$|getElementById)\(\s*(['"])([^'"\n]+)\1\s*\)|(['"])#([A-Za-z][-\w]*)\3/g;
+  const out = [];
   let m;
-  while ((m = re.exec(code)) !== null) out.add(m[2] ?? m[4]);
+  while ((m = re.exec(code)) !== null) out.push(m[2] ?? m[4]);
   return out;
+}
+
+/** Distinct ids a file looks up in the DOM. */
+function domLookups(code) {
+  return new Set(domLookupSites(code));
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -237,7 +287,7 @@ test('SURFACE PARITY: every console order verb exists on the standard surface, o
   // deprecated surface left for a verb to hide on, so the ledger must be settled — and with
   // KNOWN_GAPS empty the loop below becomes the strict assertion this guard was always aiming at.
   // No edit is needed to make that happen; deleting the shell does it.
-  if (appBlock(read('index.html')) === null) {
+  if (appBlock(htmlCodeOnly(read('index.html'))) === null) {
     assert.deepEqual(Object.keys(KNOWN_GAPS), [],
       'The console `.app` shell is GONE from client/index.html, so no verb can still be waiting to ' +
       `be ported off it — yet KNOWN_GAPS still lists ${JSON.stringify(Object.keys(KNOWN_GAPS))}.\n` +
@@ -332,19 +382,55 @@ test('the legacy-verb parse is not vacuous — both of its sources are still the
       "room-model.js entry in MODERN_TOOL_TABLES is not resolving to the module's real export");
   }
 
+  // The parses only have to exist while there is a console to parse. WP-9 removes the console
+  // chrome from hud.js and may prune console-model.js, and this test must not be the thing that
+  // goes red on the day the programme finishes — the endgame gate belongs on EVERY branch that
+  // reads the dying surface, not just the two obvious ones.
+  if (appBlock(htmlCodeOnly(read('index.html'))) === null) return;
+
   const parsedOrders = parseOrderKinds();
-  assert.deepEqual(parsedOrders, ['dig', 'stockpile', 'strip'],
-    'ORDER_KINDS could not be parsed out of client/src/ui/console-model.js, or it changed. The ' +
-    'parity test reads it; a failed parse would make that test vacuous. Fix parseOrderKinds().');
+  // NON-EMPTY + SUPERSET, never exact equality. Adding a fourth order verb CORRECTLY (on both
+  // surfaces) is legitimate work; an exact-match assertion would fail it with "fix parseOrderKinds()"
+  // — sending an author to repair a parser that is working perfectly. That is how a guard earns a
+  // reputation for crying wolf and gets suppressed. Growth is the parity test's business, not this
+  // one's; this one only proves the parse still SEES something.
+  assert.ok(parsedOrders.length > 0,
+    'ORDER_KINDS could not be parsed out of client/src/ui/console-model.js. The parity test reads ' +
+    'it; a failed parse would make that test vacuous. Fix parseOrderKinds().');
+  for (const v of ['dig', 'stockpile', 'strip']) {
+    assert.ok(parsedOrders.includes(v),
+      `ORDER_KINDS no longer contains '${v}'. If the verb was genuinely retired, remove it here and ` +
+      'from KNOWN_GAPS/KNOWN_GAPS_SEALED in the same commit; if the parse broke, fix parseOrderKinds().');
+  }
   // Cross-check the text parse against the module's own exported predicate — the array literal and
   // the behaviour must agree, so neither one can drift without the other noticing.
   for (const v of parsedOrders) assert.ok(isOrderTool(v), `isOrderTool('${v}') disagrees with the parsed ORDER_KINDS`);
   assert.ok(!isOrderTool('wall') && isBuildTool('wall'), 'build/order classification inverted');
 
   const palette = parseConsolePaletteTools();
-  assert.ok(palette.includes('wall') && palette.includes('door') && palette.includes('cancel'),
-    'the console TOOLS table in client/src/ui/hud.js could not be parsed (expected at least ' +
-    `wall/door/cancel; got ${JSON.stringify(palette)}). A failed parse makes the parity test vacuous.`);
+  for (const v of CONSOLE_BUILD_KINDS) {
+    assert.ok(palette.includes(v),
+      'the console TOOLS table in client/src/ui/hud.js could not be parsed (expected at least ' +
+      `${JSON.stringify(CONSOLE_BUILD_KINDS)}; got ${JSON.stringify(palette)}). A failed parse makes ` +
+      'the parity test vacuous.');
+  }
+  // THE BUILD_KINDS DODGE, closed. `legacyOrderVerbs()` classifies the console palette with the
+  // PINNED literal below, not with the live `isBuildTool` — otherwise a fourth console verb could be
+  // hidden from the parity test by a ONE-WORD edit adding it to BUILD_KINDS in console-model.js: no
+  // ledger entry, no seal edit, nothing loud. Here we additionally pin that the live list has not
+  // moved, so the dodge is named rather than merely neutralised.
+  assert.deepEqual(parseBuildKinds(), [...CONSOLE_BUILD_KINDS],
+    `BUILD_KINDS in client/src/ui/console-model.js is now ${JSON.stringify(parseBuildKinds())}, ` +
+    `pinned as ${JSON.stringify(CONSOLE_BUILD_KINDS)}.\n` +
+    '\n' +
+    'THE BOUNDARY: the console is CLOSED TO NEW WORK, so its set of build kinds is finished. ' +
+    'Widening it is also the cheapest way to smuggle a new verb past the surface-parity test — ' +
+    'declaring a verb a "build kind" does not make it one, and the parity test deliberately does ' +
+    'not trust this list.\n' +
+    '\n' +
+    'THE TWO LEGITIMATE EXITS: build the new verb on the standard surface (Overview / Room Zoom), ' +
+    'where it needs nothing from this list — or, if a console build kind was genuinely RETIRED, ' +
+    'shrink CONSOLE_BUILD_KINDS here in the same commit.');
 });
 
 // And a behavioural anchor: these are real verbs with real wire payloads, not palette labels. If a
@@ -356,13 +442,23 @@ test('every legacy order verb lowers to a real wire payload through the one seam
   }
 });
 
-/** ORDER_KINDS, parsed from console-model.js (it is module-private, so text is the only access). */
-function parseOrderKinds() {
-  const code = codeOnly(read('src/ui/console-model.js'));
-  const m = /const\s+ORDER_KINDS\s*=\s*\[([^\]]*)\]/.exec(code);
+/** The console's build kinds, PINNED as a literal rather than read from the live source. See the
+ *  BUILD_KINDS-dodge note in the vacuity test for why this must not be `isBuildTool`. */
+const CONSOLE_BUILD_KINDS = Object.freeze(['wall', 'door', 'cancel']);
+
+/** A module-private `const NAME = ['a', 'b']` array, parsed out of a client source. */
+function parseStringArray(relPath, name) {
+  const code = codeOnly(read(relPath));
+  const m = new RegExp(`const\\s+${name}\\s*=\\s*\\[([^\\]]*)\\]`).exec(code);
   if (!m) return [];
   return [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
 }
+
+/** ORDER_KINDS, parsed from console-model.js (it is module-private, so text is the only access). */
+function parseOrderKinds() { return parseStringArray('src/ui/console-model.js', 'ORDER_KINDS'); }
+
+/** BUILD_KINDS, likewise. Read only to PIN it — never to classify (see CONSOLE_BUILD_KINDS). */
+function parseBuildKinds() { return parseStringArray('src/ui/console-model.js', 'BUILD_KINDS'); }
 
 /** The console palette's tool keys, parsed from hud.js's `initConsole` TOOLS table. [] once gone. */
 function parseConsolePaletteTools() {
@@ -372,16 +468,25 @@ function parseConsolePaletteTools() {
   return [...m[1].matchAll(/\[\s*'([^']+)'/g)].map((x) => x[1]);
 }
 
-/** Order verbs reachable on the console: the union of both authorities, so neither alone can hide
- *  a new verb. Sorted for a stable failure order. */
+/** Order verbs reachable on the console: the union of both authorities, so neither alone can hide a
+ *  new verb. The palette is classified against the PINNED CONSOLE_BUILD_KINDS, never against the
+ *  live `isBuildTool` — a one-word edit to BUILD_KINDS would otherwise make a new console verb
+ *  invisible to the parity test. Sorted for a stable failure order. */
 function legacyOrderVerbs() {
-  const paletteOrderTools = parseConsolePaletteTools().filter((t) => !isBuildTool(t));
+  const paletteOrderTools = parseConsolePaletteTools().filter((t) => !CONSOLE_BUILD_KINDS.includes(t));
   return [...new Set([...parseOrderKinds(), ...paletteOrderTools])].filter((t) => t !== 'move').sort();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 2. THE CONSOLE SHELL IS CLOSED TO NEW WORK — index.html id census
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** ⚠️ THE CENSUS CEILING — the same ratchet KNOWN_GAPS has, and for the same reason. Without it,
+ *  the test that actually caught WP-5 is the one test here with NO ratchet: add a console id and
+ *  quietly extend the array below by one sorted line, and everything is green — a one-line test
+ *  edit buried in a diff full of feature code. `.app` is closed to new work, so this number may
+ *  only ever go DOWN (WP-7 takes three, WP-9 takes the rest). Raising it is a decision. */
+const CONSOLE_SHELL_ID_CEILING = 46;
 
 /** The `.app` shell's complete element-id census, frozen at WP-0 (46 ids, index.html:11-128).
  *  Sorted. `relations-view`/`rel-svg`/`rel-title` leave in WP-7; the whole list goes in WP-9. */
@@ -399,8 +504,21 @@ const CONSOLE_SHELL_IDS = Object.freeze([
 // AND: this test FLIPS ITSELF at WP-9. Once `.app` is deleted it becomes a denylist of zero
 // occurrences — the mechanised proof the shell is GONE and not merely hidden (plan §7.6.2).
 test('the deprecated console shell is CLOSED — its id census is frozen', () => {
-  const html = read('index.html');
+  const html = htmlCodeOnly(read('index.html'));
   const app = appBlock(html);
+
+  assert.ok(CONSOLE_SHELL_IDS.length <= CONSOLE_SHELL_ID_CEILING,
+    `CONSOLE_SHELL_IDS now holds ${CONSOLE_SHELL_IDS.length} ids, above its WP-0 ceiling of ` +
+    `${CONSOLE_SHELL_ID_CEILING}.\n` +
+    '\n' +
+    'This list is allowed to SHRINK (WP-7 re-homes three ids with RELATIONS; WP-9 removes the rest) ' +
+    'and never to grow: the `.app` shell is closed to new work, so a new id in the census means a ' +
+    'new widget on the surface we are deleting. Extending the array below by one sorted line is the ' +
+    'cheapest way to make the census test — the one that actually catches the E0-4 WP-5 mistake — ' +
+    'pass without fixing anything, so the ceiling exists to make that edit loud.\n' +
+    '\n' +
+    'THE TWO LEGITIMATE EXITS: build it on the standard surface instead, or raise the ceiling here ' +
+    'with the reason in the commit message.');
 
   if (app === null) {
     // WP-9 has landed. Flip to the denylist: none of the shell's ids may survive anywhere in the page.
@@ -440,7 +558,7 @@ const SURFACE_ROOTS = Object.freeze(['overview-view', 'roomzoom-view', 'disc', '
 // already uses (derive the covered set from the real page), pointed at surface OWNERSHIP instead of
 // takeover coverage.
 test('the set of body-level surface roots is pinned', () => {
-  const html = read('index.html');
+  const html = htmlCodeOnly(read('index.html'));
   const roots = bodyRootIds(html, appBlock(html));
   assert.deepEqual(roots, [...SURFACE_ROOTS],
     `body-level surface roots are ${JSON.stringify(roots)}, pinned as ${JSON.stringify(SURFACE_ROOTS)}.\n` +
@@ -454,12 +572,85 @@ test('the set of body-level surface roots is pinned', () => {
     'surface and why. If it is not, you probably meant to add a panel INSIDE an existing surface.');
 });
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE SIZE PIN — plan §3.1's "the count is pinned", and the assertion without which this whole
+// guard is contingent on a CSS accident.
+//
+// The id census catches the WP-5 that SHIPPED, because seven ACCEPTS chips overflowed
+// `.console-menu` in headless Chrome and had to be given their own `#stockfilter-row`. But WP-5's
+// own commit message says the chips were FIRST built into the EXISTING `#palette` row — hud.js
+// only, no new element id — and that draft sails past every id-based assertion here. So does any
+// console widget styled by class instead of id. Detection of this repo's canonical failure must not
+// depend on a layout accident.
+//
+// Two numbers close it, and neither is the churn risk that omitting them was justified with,
+// because `hud.js` is CLOSED TO NEW WORK: on a file nobody may add to, these can only go DOWN.
+// WP-7 lifts RELATIONS out (−4 lookups: rel-svg, rel-title, relations-view, tab-relations) and
+// WP-9's split deletes most of the rest. Measured at WP-0: 42 lookup sites over 35 distinct ids,
+// 27 createElement sites.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const HUD_DOM_LOOKUP_SITES_CEILING = 42;
+const HUD_CREATE_ELEMENT_CEILING = 27;
+
+// MUTATION A (the WP-5 FIRST DRAFT, reconstructed): append the seven ACCEPTS chips into the
+// existing `#palette` — hud.js only, no new id, no new class rule ⇒ the createElement count moves
+// ⇒ RED. MUTATION B: any console widget with a class and no id ⇒ same.
+test('the console module is CLOSED — its DOM surface may only shrink', () => {
+  const hudPath = join(SRC, 'ui', 'hud.js');
+  let exists = true;
+  try { statSync(hudPath); } catch { exists = false; }
+  if (!exists) {
+    // WP-9 split hud.js into ship-state.js. There is no console module left to pin; the census
+    // test's denylist branch is the proof now. Same endgame gate as everywhere else.
+    assert.equal(appBlock(htmlCodeOnly(read('index.html'))), null,
+      'client/src/ui/hud.js is gone but the `.app` shell is still in client/index.html — the shell ' +
+      'now has no module to drive it, which is a white page, not a deletion.');
+    return;
+  }
+
+  const code = codeOnly(readFileSync(hudPath, 'utf8'));
+  const sites = domLookupSites(code).length;
+  const creates = (code.match(/\bcreateElement\(/g) || []).length;
+
+  const why = (what, now, ceiling) =>
+    `client/src/ui/hud.js now has ${now} ${what}, above its WP-0 ceiling of ${ceiling}.\n` +
+    '\n' +
+    'THE BOUNDARY: the console `.app` shell and its module are DEPRECATED and CLOSED TO NEW WORK. ' +
+    'The standard surface is `--ship grid` = the Level-1 Overview (client/src/ui/overview-view.js) ' +
+    '+ the Level-2 Room Zoom (client/src/ui/roomzoom-view.js). These two numbers may only go DOWN: ' +
+    'WP-7 re-homes RELATIONS out of here, WP-9 splits the file.\n' +
+    '\n' +
+    'WHY THIS EXISTS AND NOT JUST THE ID CENSUS: E0-4 WP-5 built the stockpile ACCEPTS filter here. ' +
+    'It ended up with its own `#stockfilter-row` only because seven chips overflowed the console ' +
+    'menu in headless Chrome — its FIRST draft appended them to the existing `#palette` and would ' +
+    'have added no element id at all. A guard that only counts ids would have missed the mistake ' +
+    'it was written for, by luck. This one counts the widgets.\n' +
+    '\n' +
+    'THE TWO LEGITIMATE EXITS:\n' +
+    '  (1) BUILD IT ON THE STANDARD SURFACE. Nothing you need is in here — both modern surfaces ' +
+    'already import hud.js for its wire cache and armed-tool state, which is the half that survives.\n' +
+    '  (2) If this really is a re-home or a deletion, LOWER the ceiling in ' +
+    'client/test/surface-boundary.test.js in the same commit. Raising it needs an argument.';
+
+  assert.ok(sites <= HUD_DOM_LOOKUP_SITES_CEILING, why('literal DOM-lookup sites', sites, HUD_DOM_LOOKUP_SITES_CEILING));
+  assert.ok(creates <= HUD_CREATE_ELEMENT_CEILING, why('createElement() sites', creates, HUD_CREATE_ELEMENT_CEILING));
+
+  // Non-vacuity: if the scan or the stripper silently returned nothing, both ceilings would pass.
+  assert.ok(sites > 20 && creates > 10,
+    `the hud.js scan found only ${sites} lookups / ${creates} createElement sites — implausibly few ` +
+    'for the console module. The scan or codeOnly() is broken, and both ceilings above are then ' +
+    'passing for the wrong reason.');
+});
+
 // MUTATION: add `$('stockfilter')` to overview-view.js — a modern view reaching into console DOM,
 // the inverse of the WP-5 mistake and the way the two skins would fuse back together ⇒ fails.
 test('only the console\'s own module may touch console DOM', () => {
   const OWNERS = ['src/ui/hud.js', 'src/main.js'];
   const shell = new Set(CONSOLE_SHELL_IDS);
-  for (const abs of srcFiles()) {
+  const files = srcFiles();
+  assert.ok(files.length >= 40, `only ${files.length} client sources walked — the scan is broken`);
+  for (const abs of files) {
     const path = rel(abs);
     if (OWNERS.includes(path)) continue;
     for (const id of domLookups(codeOnly(readFileSync(abs, 'utf8')))) {
@@ -543,6 +734,25 @@ test('POSITIVE CONTROL: the same ids in real code DO trip the ownership scan', (
   const code = "const a = $('stockfilter'); const b = document.getElementById('palette'); const c = root.querySelector('#crewlist');";
   assert.deepEqual([...domLookups(codeOnly(code))].sort(), ['crewlist', 'palette', 'stockfilter'],
     'the ownership scan missed a real DOM lookup — every assertion resting on it is then vacuous');
+});
+
+test('NEGATIVE CONTROL: an id in an HTML comment is not an element, and cannot corrupt the parse', () => {
+  // Two failure modes in one. (a) A commented-out `<div id="x">` must not enter the census — a
+  // census that counts prose punishes people for leaving a note about what used to be there.
+  // (b) An HTML comment CONTAINING `<div` would otherwise unbalance appBlock's depth tracker and
+  // silently mis-slice the shell, which is the quiet kind of wrong.
+  const html = '<body>\n<div class="app">\n<!-- was: <div id="ghost"></div> — removed in WP-x -->\n' +
+    '<div id="real"></div>\n</div>\n<div id="surface"></div>\n</body>';
+  const stripped = htmlCodeOnly(html);
+  const app = appBlock(stripped);
+  assert.ok(app !== null, 'a comment containing `<div` unbalanced the depth tracker');
+  assert.deepEqual([...app.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]), ['real'],
+    'a commented-out element was counted in the shell census');
+  assert.deepEqual(bodyRootIds(stripped, app), ['surface'],
+    'the surface-root scan mis-parsed once a comment was involved');
+  // …and <body> with attributes must still be found (the indexOf('<body>') trap: −1 + 6 = byte 5).
+  assert.deepEqual(bodyRootIds(htmlCodeOnly('<body class="x">\n<div id="only"></div>\n</body>'), null), ['only'],
+    '<body> with an attribute was not recognised, so the scan started from the middle of the file');
 });
 
 test('NEGATIVE CONTROL: a legacy verb named only in a comment is not a console verb', () => {
