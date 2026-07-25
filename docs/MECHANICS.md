@@ -1768,6 +1768,13 @@ thing that finally gives `ControllerModule` a consumer). **E0-4** (filtered stoc
 unblocks the 0.00 % haul kinds but adds no matter, so it moves haul off zero without extending
 the 28-hour runway.
 
+**E0-4 LANDED 2026-07-25, and that last sentence held exactly — expensively.** Every zoned leg moves
+haul off zero (0.115–0.332 % against 0.000 %) and **every one still ends on `ControllerModule = 31`**,
+the identical byte-for-byte ground stock as the baseline. The lane spent a whole work package aiming
+its acceptance test at that number before recognising the metric was matter-bound and could not move:
+**this paragraph already said so, and named this lane.** §13.18 is the retraction, and the lesson is
+generic — *before aiming a lane's acceptance at a metric, check that the metric has the power to move.*
+
 **E0-5 LANDED 2026-07-23 — deconstruct extends the runway, measured.** With the opt-in `--strip N`
 harness (which designates N *reachable* interior walls at t=0 — the plain verb-less path is
 unchanged), `occupancy --ship slice --days 3 --strip 40` lifts the h29–h72 floor **1.480 % → 13.198 %**
@@ -1804,6 +1811,221 @@ keeps them off the device grid, so `TryGetDeviceAt` never resolves them — a co
 rule. And the **`IsPressureHull` predicate is in-plane only** (4-neighbour, no z-term) and geometric,
 not structural (there is no hull-stress model — `ShipSystems.cs:650-694`); on the solid-mass slice it
 reduces to the map-edge ring.
+
+---
+
+### 13.17 E0-4 filtered stockpile zones — what is wired but not connected (2026-07-25)
+
+E0-4 landed on `main` (`0be9d70`). The registry, the per-tile filter, the haul enforcement and the
+livelock fix are complete and reviewed. These seams are not.
+
+**⚠️ Read §13.18 before quoting any `--stockpile far` number.** The lane's published far-leg
+throughput figures are **withdrawn**.
+
+**1. An unreachable zone tile is now cheap and INVISIBLE — the bug got quieter, not fixed.**
+Before WP-7, painting a stockpile tile no crew could path to livelocked the haul board: one
+unreachable free tile held the per-item candidate gate open forever while delivery always failed, a
+2-tick claim/abandon churn across ~8 crew at ~50 % duty (72,928 pickup starts per 30,000 slice ticks).
+WP-7 fixed it with a per-tile backoff (`sim/Sim.Core/Jobs/Sources/HaulJobSource.cs:507` stamps,
+`:410` honours, reusing `JobWork.UnreachableRetryTicks = 50` at
+`sim/Sim.Core/Jobs/JobContext.cs:55`), taking it to **918 starts / 2.254 %**. **The honest cost: a
+zone painted where no crew can reach now simply never fills, silently, and nothing anywhere says so.**
+There is no indicator on any surface, no MOSS fault row, and no log line. Arguably a worse play
+experience than the livelock, which at least showed visible activity. The data is one line from being
+enumerable (`HaulJobSource.cs:108`, `BackedOffStockpileTiles`) and would ride the existing view-only
+wire channel beside `designs`/`materials`. **Live follow-up, first E0-6 candidate.**
+
+**2. WP-7's fix degrades with terrain churn** — measured, and this belongs in any future debugging of
+"my late-game ship started livelocking again". Every `JobBoardDirty.Tiles` rescan discards every
+stamp (`HaulJobSource.cs:453`, a wholesale `Clear()` — chosen so an E0-5 deconstruct re-opens a zone
+immediately instead of after ≤5 s):
+
+| terrain churn (per 30,000 slice ticks) | pickup starts | share |
+|---|---|---|
+| untouched slice (10 `Tiles`-dirty ticks) | 918 | 2.254 % |
+| `Tiles` dirty **every** tick (adversarial) | 67,742 | **28.873 %** |
+| no fix at all | 72,928 | 31.191 % |
+
+Up to **93 % defeat under continuous churn.** It degrades *gracefully* — never worse than pre-WP-7,
+never incorrect, only wasted crew time. Calibration: 10 `Tiles`-dirty ticks cost +0.37 pp. **Escape
+hatch:** drop the `Tiles` clear and rely on expiry alone (the measured 1.884 % variant), costing ≤5 s
+of re-open latency after a deconstruct.
+
+**3. `_tileRetryAt` / `_backoffWakeAt` are transient, so a reload can diverge from a live game** by up
+to one re-probe cycle: the reloaded game starts with an empty backoff map where the live one held
+entries. **Identical in kind to the pre-existing `_retryAt`** in Haul/Dig/Deconstruct — not introduced
+by E0-4 — and **no test in the suite would catch either. Nobody has checked it.**
+
+**4. A filtered stockpile tile has NO visual indicator anywhere.** Filtered and unfiltered tiles are
+byte-identical to every projection: the accept mask lives in the `ZONE` registry
+(`sim/Sim.Core/Stock/StockZoneSystem.cs`), which no wire channel carries. An honest indicator needs a
+new channel and is its own package.
+
+**5. A chip toggle affects only FUTURE paints.** Both filter UIs are a *pending mask* applied at
+designate time, not a per-tile editor: an existing zone is unchanged until repainted, and (per 4)
+nothing says so. The TUI is explicitly a **two-key pending mask** — `i` walks the kind cursor,
+`I` accepts/rejects the kind under it (`hosts/tui/GameLoop.cs:354`, `:361`).
+
+**6. A mis-placed stack on a filter-rejecting tile is not re-hauled off it.** Haul skips any item
+already standing on a `Stockpile` tile as "already stored" (`HaulJobSource.cs:209`) **before** the
+filter is consulted, so a stack that arrived on a tile whose mask rejects its kind stays there
+forever. Inherited from the pre-E0-4 guard, not introduced by the filter.
+
+**7. `DesignateStockpileCommand` has no device exclusion**, so a **bench tile is a legal zone tile at
+distance 0** (`sim/Sim.Core/Commands/Commands.cs:137` gates on `TileFlags.Walkable` alone). A player
+can do this; it is not a harness artifact. Second-order consequence worth knowing: crafting outputs
+spawn at `worker.Pos` (`sim/Sim.Core/Systems/CraftingSystem.cs:196`) and the worker stands *adjacent*
+to the station, so an output can land on a zoned tile — where the "already stored" guard (6) skips it,
+and **it never enters the haul pool at all.**
+
+**8. The E0-4 verbs are on the DEPRECATED surface only.** The stockpile verb and its `ACCEPTS ▸`
+filter row live in the `.app` console shell (`client/index.html:88-90`,
+`client/src/ui/hud.js:302`, `:523-525`), which `body.overview-open` hides — so on **`--ship grid`**,
+**the one standard UI** (`CLAUDE.md`, THE STANDARD SURFACE), the player cannot reach them at all.
+Tracked as debt that only pays down: `KNOWN_GAPS.stockpile` in
+`client/test/surface-boundary.test.js:132-136`, owned by the console-retirement WP-5. `dig` and
+`strip` are in the same position.
+
+**9. Two code comments are now stale and must be rewritten** (recorded rather than fixed, because the
+package that found this was docs-only): `hosts/tui/GameLoop.cs:56-60` and
+`client/src/ui/stock-filter-model.js:38-45` disclose the filter's cost as *"zoning any tile now writes
+an explicit accept-all entry, so `Zones.Count > 0` permanently arms the `filtered` fast path"* at
+`O(items × stockpile-tiles)`. **Both halves are wrong now.** WP-6 made an accept-all mask store **no
+registry entry** (`StockZoneSystem.cs:152-155` — `mask &= AcceptAllMask`, then accept-all collapses to
+`ClearFilter`), so the fast path is *not* permanently armed; and the exponent was understated — the
+true pre-WP-6 cost was `O(items × stockpile-tiles²)`, because `AnyFreeStockpileAccepts` loops S tiles
+and each `IsFreeStockpileTile(…, kind)` (`JobContext.cs:133`) calls `TryGetFilter`, itself a linear
+scan of S entries.
+
+**10. Still flagged, still not fixed:** the accept mask is a `ulong`, so **`ItemKind` 64 is a hard
+ceiling**; there is no stack merging, no zone priority, and no containers (later E-STOCK packages);
+and there is no `stock.def` (deferred until a real tunable exists).
+
+---
+
+### 13.18 ⛔ RETRACTED: the `--stockpile far` measurements, and what the slice can and cannot settle
+
+**Every `far`-column number this project published before 2026-07-25 is void.** They are listed here
+so that a reader who finds one elsewhere learns it is withdrawn: end-of-run `ControllerModule`
+throughput **`6`**, **`2`** and **`9`**; `HaulPickup` **~49 %** against `HaulDeliver` **~0.0 %**;
+on-job travel **~0.2–0.3 %**; and **A1 "50.000 % PASS"**.
+
+**Why.** `StockpileHarness.SelectStockpile` gated candidates on the `TileFlags.Walkable` **flag** with
+**no reachability test**, and ordered them by distance-to-nearest-bench *descending*. Walkability says
+nothing about connectivity: **150 of the slice's 807 walkable tiles (19 %) are unreachable**, sitting
+inside the authored observatory behind a door built closed (`sim/Sim.Gen/AuthoredShips.cs:93`,
+`DoorClosed = true`; `Simulation.IsWalkable` refuses a closed door and **nothing in the sim ever opens
+a door**). Distance-descending ranked all of them above every legal tile, so `--stockpile far` zoned a
+**sealed compartment** and what it measured was the §13.17-(1) haul livelock. `--stockpile far
+--days 1` went from **~43 min of wall clock to 24 s** once a reachability gate landed; at 3 sim-days
+every leg now runs in **~72 s**. That collapse *is* the retraction. A reachability gate now runs in
+the harness (`sim.Paths.FindPath` from every live crew member, host-side, t = 0 snapshot,
+∃-any-live-crew — so a `HoldPosition` crew member counts as a witness yet can never haul; measured
+inert on the slice, 0 of 40 picks affected).
+
+**`ECONOMY.md` §8's −14 % wrong-deck regression is NEITHER CONFIRMED NOR REFUTED, and this ship
+cannot settle it.** The reason is §13.15: end-of-run `ControllerModule` is **matter-bound, not
+labour-bound**. Every unmodified leg — baseline, `bench 4/40`, `far 4/40`, `filtered-far 4/40` — ends
+on the **identical** ground stock `Corpse=1 Potato=699 ControllerModule=31` with zero
+Regolith/Scrap/Parts left. `far 40`'s entire haul cost is **1.6 crew-hours against ~352 crew-hours of
+post-cliff idle** (h29–h72 × 8 crew); to cost one module it would have to be **~200× larger** *and*
+land as contention during h1–h28. **"31 in every leg" is a saturated instrument, not a null result —
+uninformative, not evidence of absence. Do not record §8 as disproved.**
+
+**What IS measured and stands** (slice, 3 sim-days = 2,592,000 ticks, one seed, **n = 1**):
+
+| leg | modules | haul % | on-job travel | delivery legs | A1 h24 |
+|---|---|---|---|---|---|
+| no flag (baseline) | 31 | 0.000 | — | 0 | 24.979 FAIL |
+| `bench 40` | 31 | 0.169 | 4.6 % | 74 | 24.979 FAIL |
+| `far 40` | 31 | 0.278 | 5.2 % | 80 | 24.979 FAIL |
+| `filtered-far 40` | 31 | 0.115 | 4.2 % | 31 | **25.219 PASS** ⚠️ |
+| `strip 40` (headroom, no zone) | 50 | 0.000 | — | 0 | 37.424 PASS |
+| `strip 40 + bench 40` | 51 | 0.146 | 2.9 % | 63 | 37.417 PASS |
+| `strip 40 + far 40` | 51 | 0.332 | 3.6 % | 91 | 37.479 PASS |
+| `strip 40 + filtered-far 40` | 50 | 0.137 | 2.9 % | 40 | 37.622 PASS |
+
+- **Cross-deck haul works.** Deliveries land on deck 1 via the ladders in every zoned leg. That
+  refutes the *stranding* half of §8's "catastrophic" — material is not marooned. It bounds no cost.
+- **A reachable far-deck stockpile is nearly harmless at equal capacity.** At N = 40 it costs
+  **+0.109 pp** of crew time and **+0.6 pp** of on-job travel over a bench-side zone (with
+  `--strip 40`: +0.186 pp and +0.7 pp).
+- **Per delivery a far-deck leg costs ~1.5× a bench-side one** — the normalised figure, not a total:
+  0.00348 vs 0.00228 %-of-crew-time per leg at N = 40; 0.00365 vs 0.00232 with `--strip 40`. **That
+  1.5× is a LOWER BOUND**: an abandoned leg is counted but carries fewer ticks, so over-counted legs
+  inflate the denominator and bias the ratio *downward*. (The bias is small here — `Flee` 0.00 % and
+  8/8 crew alive in every leg, so abandons are path-loss only.)
+- **With headroom the metric resolves and placement still does not move it:** `--strip 40` reads
+  50 → 51 and **far equals bench**.
+- **The `--strip 40` leg reproduces §13.15's published E0-5 numbers to the digit** (31 → 50, A1
+  37.424), which is the evidence that the harness itself is sound.
+
+**§8's MECHANISM is real, and WP-4's bench rule is what suppresses it — the lane's strongest result.**
+§8's named root cause is "crafting **outputs** spawn unreserved, so the haul board drags them to the
+stockpile, from which the downstream station's fetcher must walk them back". WP-4's bench rule
+(`HaulJobSource.cs:216`) deletes exactly that by dropping `_benchWanted` = `{Regolith, Scrap, Parts}`
+from the candidate pool first; `Corpse` is hard-excluded (`:208`) and `MetalOre` is a dead kind no
+system creates, leaving only `Potato` and `ControllerModule` haulable — **neither an input to any
+bench**. So every unmodified leg above measures "is there a regression?" on a tree that already
+contains the fix. With the rule reverted (`_benchWanted` forced to 0 — a **measurement-only local
+revert, never committed**, independently replicated by the textually different edit of deleting the
+guard):
+
+| revert leg | modules | haul % | on-job travel | delivery legs |
+|---|---|---|---|---|
+| `bw0 + bench 40` | 31 | 0.357 | 5.0 % | 156 |
+| `bw0 + far 40` | 31 | 0.762 | **9.3 %** | 244 |
+| `bw0 + strip 40 + bench 40` | 51 | 0.389 | 3.1 % | 202 |
+| `bw0 + strip 40 + far 40` | 51 | 0.795 | 6.8 % | 263 |
+
+**The sign flips with placement, which is what makes it §8's round-trip rather than "more hauling".**
+With a **far-deck** zone the revert costs **+3.2–4.1 pp** on-job travel **and crafting occupancy
+RISES** (21.71 % → 22.09 %, +0.38 pp) while idle `None` falls ~1 pp (75.35 % → 74.37 %) — the
+stations, not the haulers, do the extra walking, which is §8's sentence verbatim. With a
+**bench-side** zone it costs only +0.2–0.4 pp and crafting occupancy **FALLS** (21.64 % → 21.33 %
+with headroom; 12.48 % → 12.12 % without).
+
+**DELIBERATELY NOT QUANTIFIED: how much of §8 the bench rule removes.** The fraction depends entirely
+on the contrast chosen — **~47 %** of far's absolute travel (6.8 → 3.6 %), **~81 %** of the
+far-minus-bench travel *penalty* (+3.7 → +0.7 pp), **~65 %** of haul *volume* (263 → 91 legs), and
+**~0 %** of the *per-delivery* penalty (**1.57× with the rule and 1.57× without**, on the `--strip 40`
+legs). **The rule does not make a wrong-deck haul cheaper; it makes 2.1–3.2× fewer of them happen**,
+by returning `{Regolith, Scrap, Parts}` to the pool. **Any single percentage would be cherry-picked.**
+Direction and placement-dependence are measured; **magnitude is not.** Quote absolute pp, not ratios:
+the rule's removal adds **+0.463 pp** of haul cost on the far deck against **+0.243 pp** beside the
+benches (as a *ratio* bench is hit harder, 2.66× vs 2.39×, which inverts the story and is the wrong
+axis).
+
+**§8's magnitude is never approached.** The worst on-job travel anywhere above is **9.3 %** against
+§8's **75.7 %** — roughly 8× short — and it never costs a single module. **Settling §8 needs a ship
+whose economy is labour-bound rather than matter-bound.**
+
+**⚠️ The A1 trap, for the fourth time in this one lane.** `filtered-far 40` is the only unmodified leg
+whose A1 "PASSES" (**25.219 %** against the 25 % target) and its throughput is **31 — identical to the
+FAILING baseline**. A1 counts crew who are **busy**, and haul is busywork. The withdrawn "50.000 %
+PASS" was pure livelock: crew claiming and abandoning, never producing. **Never read A1 as
+production.**
+
+**Two knobs, and which question each answers:** `--stockpile-n N` is **capacity** (free slots, hence
+how much haul can happen before the zone saturates); `--strip N` is **headroom** (new matter, hence
+whether throughput can move at all). `N = 40` is the measuring package's own choice with **no prior
+precedent in the repo**, picked so both placements have equal capacity.
+
+**The `bench` leg was MISLABELLED and the label is corrected, not the measurement.** `--stockpile
+bench 4` picks `(13,5,0)`, `(16,5,0)`, `(22,6,0)` — **the three benches themselves, distance 0** —
+plus `(13,4,0)`, the one genuinely adjacent tile. So it is a stockpile **on and beside** the benches,
+not one "hugging" them; see §13.17-(7) for why that is legal. The conclusion still holds directionally
+(throughput at baseline, near-zero haul — what a pre-positioning buffer looks like). **Recorded
+follow-up, not taken:** make `bench` mode skip `HasDevice` tiles so the mode means what it says —
+**that moves the published bench row and requires re-running the 3-day A/B**, and nobody has
+quantified how much it would change.
+
+**Repo-wide remedy that landed with the retraction:** the plain, verb-less
+`occupancy --ship slice --days 3` report — the exact run whose `31` was misread into the retracted
+claim — now prints an unconditional ⚠️ matter-headroom warning beside `ground stock`, naming
+`--strip N` as the remedy. It is guarded by `StockpileHarness.MatterHeadroomWarning(int)` plus a test
+that asserts the message keeps naming the remedy. This intentionally adds exactly **one line** to that
+report; the other 100 lines are byte-identical.
 
 ---
 
