@@ -201,6 +201,21 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   art direction = new spec; work dirs stay out of git except processed/selection.
 - **Spine files** (Simulation.cs, SystemStack, save chapters, GlyphColor, WireFormat,
   Commands, CitizenEffect set) change only through the integrator lane — see PLAN.md.
+- **THE STANDARD SURFACE — build UI on it and nowhere else** (decided 2026-07-25, binding).
+  There is exactly **one** standard UI: **`--ship grid`** wearing the **Level-1 Overview**
+  (`client/src/ui/overview-view.js`) plus the **Level-2 Room Zoom**
+  (`client/src/ui/roomzoom-view.js`). The console `.app` shell in `client/index.html` +
+  `client/src/ui/hud.js` is the **old path**: deprecated, scheduled for deletion, and **closed
+  to new work** (`hud.js` survives the deletion only as the shared wire-cache/state layer both
+  modern surfaces already read). **`--ship slice` is the headless measurement fixture** for the
+  economy programme — driven by `hosts/scenario`, no UI, and it needs no face. *Why this is an
+  invariant and not a preference:* E0-4's WP-5 built an entire stockpile ACCEPTS filter onto the
+  console — implemented, independently reviewed, merged — and nobody noticed the surface was
+  wrong until the running game was opened. Mechanised in
+  `client/test/surface-boundary.test.js` (verb parity + a `KNOWN_GAPS` ledger that only pays down;
+  the console shell's id census is frozen) and `tests/Perilune.Tests/SurfaceBoundaryTests.cs`
+  (every `WireFormat` channel must have a consumer in `client/src/main.js`). Plan:
+  `docs/design/perilune-console-retirement.plan.md`.
 
 ## Work in a worktree — ALWAYS (hard rule)
 
