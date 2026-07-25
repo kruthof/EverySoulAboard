@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 
 namespace Perilune.Tests
@@ -20,26 +21,38 @@ namespace Perilune.Tests
     /// one flat assembly (`hosts/*/…csproj`, `<Compile Include="../../sim/Sim.Core/**/*.cs" />`).
     /// So a reflection-based layering test is impossible today: at runtime all six modules ARE one
     /// assembly. Scanning the sources is the only mechanism available, and these limits are real:
-    ///   • A regex is not a compiler. A dependency introduced via a fully-qualified name
-    ///     (`Perilune.Glyph.GlyphColor.Foo` with no `using`) is INVISIBLE to the DAG tests.
-    ///     They pin the DECLARED dependency (the `using` line), which is what a reviewer reads
-    ///     and what a future .csproj split would turn into a `ProjectReference`.
+    ///
+    ///   • A regex is not a compiler. A dependency introduced via a FULLY-QUALIFIED name
+    ///     (`Perilune.Glyph.GlyphColor.Foo` with no `using`) is INVISIBLE to the DAG tests. They
+    ///     pin the DECLARED dependency — the `using` line a reviewer reads, and what a future
+    ///     .csproj split would turn into a `ProjectReference`. `using`, `using static` and
+    ///     `using ALIAS =` are all matched (<see cref="DeclaredPeriluneUsings"/>); a bare
+    ///     fully-qualified reference is not, and that gap is deliberate and disclosed, not fixed.
+    ///   • `global using` and MSBuild `<Using Include="…"/>` would also evade the DAG tests. Both
+    ///     are closed today by `LangVersion 9.0` in every .csproj (global usings are C# 10), and
+    ///     the `<Using>` route additionally generates into `obj/`, which
+    ///     <see cref="ModuleFiles"/> skips — so it would be doubly invisible. If LangVersion is
+    ///     ever raised, revisit this test before trusting it.
     ///   • The identifier and call-site scans run over CODE ONLY (<see cref="CodeOnly"/>), because
-    ///     a doc comment naming a downstream consumer is documentation, not a dependency — deleting
-    ///     such a comment to appease a test is precisely the maintenance tax this file must not
-    ///     create. That stripper is deliberately fail-OPEN: an unhandled construct makes it see less
-    ///     code, so the worst case is a missed violation, never a false failure. Read its doc before
-    ///     trusting a pass.
-    ///   • Line numbers are never asserted. E0-4 is editing `Jobs/Sources/HaulJobSource.cs` and
-    ///     `Stock/StockZoneSystem.cs` in a sibling worktree right now; a test keyed on line numbers
-    ///     would be a tripwire people learn to ignore. Counts and file identities are asserted.
+    ///     a doc comment naming a downstream consumer is documentation, not a dependency —
+    ///     deleting such a comment to appease a test is precisely the maintenance tax this file
+    ///     must not create. That stripper is string-literal aware and its own behaviour is
+    ///     asserted by <see cref="CodeOnly_IsStringLiteralAware_SoAQuotedCommentMarkerCannotBlindTheScans"/>,
+    ///     because an earlier hand-verified version had a hole that silently blinded every scan
+    ///     from a quoted "/*" to end of FILE.
+    ///   • A CONSTRUCTOR-INJECTED SIBLING SYSTEM is invisible to all of it. That is not
+    ///     hypothetical: it is how the one shipped souls→economy channel is wired, and this file
+    ///     originally missed it entirely. See
+    ///     <see cref="Economy_KnowsNothingAboutSoulsPresentationOrPhysiology"/>.
     ///
     /// HOW TO RESPOND WHEN ONE OF THESE FAILS. Every message below names the boundary, why it
     /// exists, and the two legitimate paths forward. None of these invariants is sacred — they are
     /// *measured facts we chose to keep*. Crossing one deliberately means editing the allowlist in
     /// this file IN THE SAME COMMIT as the crossing, and saying why in the commit message. That
     /// edit is the point: it makes an architectural decision visible in a diff instead of
-    /// invisible in a merge.
+    /// invisible in a merge. Measured over 299 commits of history, the ship-state reach total
+    /// changed substantively exactly twice (3→5 at the first build verb, 5→7 at E0-5's
+    /// deconstruct) — both moments a human should have looked. That is the intended fire rate.
     /// </summary>
     public class ArchitectureBoundaryTests
     {
@@ -77,8 +90,8 @@ namespace Perilune.Tests
             var found = new List<string>();
             foreach (var path in Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories))
             {
-                // Build output can contain generated .cs (AssemblyInfo, ref assemblies). It is not
-                // hand-written source and must never be scanned.
+                // Build output can contain generated .cs (AssemblyInfo, ref assemblies, and the
+                // MSBuild <Using Include> global-using file). Not hand-written source; never scanned.
                 if (path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) ||
                     path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
                     continue;
@@ -93,23 +106,223 @@ namespace Perilune.Tests
         private static string Rel(string absolute) =>
             absolute.Substring(RepoRoot().Length).TrimStart('/', '\\').Replace('\\', '/');
 
-        /// <summary>The `using Perilune.X;` module names declared by one file, ordinal-sorted.
-        /// Matches only a leading `using` (a file-scoped declaration), never a using INSIDE a
-        /// comment block, because the line must start with `using` after trimming.</summary>
+        /// <summary>
+        /// Matches every FORM of a declared dependency on another Perilune module:
+        ///   `using Perilune.Dsl;`              — plain
+        ///   `using static Perilune.Gen.X;`     — static import
+        ///   `using GEN = Perilune.Gen;`        — alias
+        /// The first version of this helper gated on `StartsWith("using Perilune")` and therefore
+        /// missed the last two, which meant a genuine `Sim.Core → Sim.Gen` CYCLE could be
+        /// introduced with the whole suite green. All three are "the `using` line a reviewer
+        /// reads", which is this test's own stated criterion, so all three are matched.
+        /// </summary>
+        private static readonly Regex PeriluneUsing = new Regex(
+            @"^\s*using\s+(?:static\s+)?(?:[A-Za-z_]\w*\s*=\s*)?Perilune\.(?<module>[A-Za-z_]\w*)",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// The root namespace each module directory declares. A `using` naming a module's OWN
+        /// namespace is not a dependency on anything — it is redundant or, more usefully, an alias
+        /// for one of its own nested types. Note `Sim.Core`'s namespace is `Perilune.Sim`, not
+        /// `Perilune.Core`.
+        /// </summary>
+        private static readonly Dictionary<string, string> OwnNamespace =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Sim.Core"] = "Sim",
+                ["Sim.Dsl"] = "Dsl",
+                ["Sim.Glyph"] = "Glyph",
+                ["Sim.Gen"] = "Gen",
+                ["Sim.Llm"] = "Llm",
+                ["Sim.Content"] = "Content",
+            };
+
+        /// <summary>The Perilune module names declared by one file, ordinal-sorted, duplicates kept.</summary>
         private static List<string> DeclaredPeriluneUsings(string path)
         {
             var modules = new List<string>();
             foreach (var raw in File.ReadAllLines(path))
             {
-                string line = raw.Trim();
-                if (!line.StartsWith("using Perilune", StringComparison.Ordinal)) continue;
-                // "using Perilune.Dsl;" -> "Dsl";  "using Perilune.Llm.Providers;" -> "Llm"
-                string tail = line.Substring("using ".Length).TrimEnd(';').Trim();
-                string[] parts = tail.Split('.');
-                modules.Add(parts.Length >= 2 ? parts[1] : tail);
+                var m = PeriluneUsing.Match(raw);
+                if (m.Success) modules.Add(m.Groups["module"].Value);
             }
             modules.Sort(StringComparer.Ordinal);
             return modules;
+        }
+
+        /// <summary>
+        /// The same, minus self-references. Self-references are real `using` lines but they are not
+        /// edges: `sim/Sim.Gen/RoomOutfitter.cs:2` reads
+        /// <c>using Rect = Perilune.Gen.BandPlanner.Rect;</c> — Sim.Gen aliasing one of its own
+        /// nested types.
+        ///
+        /// That line is worth knowing about for a second reason: it is shipped proof that
+        /// <see cref="PeriluneUsing"/>'s alias clause was a necessary fix and not a hypothetical.
+        /// The original `StartsWith("using Perilune")` matcher could not see it at all, which is
+        /// exactly the hole through which a real `Sim.Core → Sim.Gen` cycle could have been
+        /// introduced with the whole suite green.
+        /// </summary>
+        private static List<string> CrossModuleUsings(string path, string module)
+        {
+            string self = OwnNamespace[module];
+            var external = new List<string>();
+            foreach (var m in DeclaredPeriluneUsings(path))
+                if (!string.Equals(m, self, StringComparison.Ordinal)) external.Add(m);
+            return external;
+        }
+
+        // ---------------------------------------------------------------- comment stripping
+
+        /// <summary>
+        /// Source with comments removed, so a DEPENDENCY scan is not fooled by PROSE — and
+        /// STRING-LITERAL AWARE, so a quoted comment marker cannot blind the scan.
+        ///
+        /// WHY THE PROSE/CODE SPLIT EXISTS. `DeconstructSystem.cs` has a doc comment reading
+        /// *"…which HistorySystem turns into a Chronicle line naming the crew member"* — describing
+        /// a DOWNSTREAM consumer of the event it publishes. That is exactly the documentation we
+        /// want, and the economy has no dependency on `Chronicle` (it publishes
+        /// `DeconstructCompletedEvent`; `HistorySystem`, outside the economy, writes the Chronicle).
+        /// A raw-text scan would flag it and the "fix" would be to delete a true comment.
+        ///
+        /// WHY IT IS STRING-AWARE. The first version tracked no string state, and was
+        /// hand-verified against the then-current economy files rather than mechanised. A review
+        /// probe defeated it in one line: `private const string F4Sep = "/*";` makes a
+        /// non-string-aware stripper scan to the next `*/` **or end of file**, silently deleting
+        /// the rest of the file from every scan. Four real forbidden identifiers were then added in
+        /// real code and the whole suite stayed green. A hand-verification dated "today" is exactly
+        /// the class of claim these tests exist to eliminate, so the behaviour is now asserted by
+        /// <see cref="CodeOnly_IsStringLiteralAware_SoAQuotedCommentMarkerCannotBlindTheScans"/>.
+        ///
+        /// HANDLED: `//` to end of line · `/* … */` (including unterminated) · `"…"` with
+        /// backslash escapes · `@"…"` verbatim with `""` escapes · `'c'` char literals ·
+        /// `$"…"` (treated as an ordinary string).
+        ///
+        /// NOT HANDLED, and both are closed by the build today: C# 11 raw string literals
+        /// (`"""…"""`) and interpolated-string HOLES (`$"{Foo.Bar}"` — the hole's contents are
+        /// treated as string text, so an identifier used only there is invisible). Raw strings
+        /// need LangVersion ≥ 11 and every .csproj pins `LangVersion 9.0`. Interpolation holes are
+        /// a genuine residual gap; it is fail-OPEN (a missed violation, never a false failure).
+        /// </summary>
+        private static string CodeOnly(string source)
+        {
+            var sb = new StringBuilder(source.Length);
+            int i = 0;
+            while (i < source.Length)
+            {
+                char c = source[i];
+
+                // ---- line comment
+                if (c == '/' && i + 1 < source.Length && source[i + 1] == '/')
+                {
+                    while (i < source.Length && source[i] != '\n') i++;
+                    sb.Append('\n');
+                    continue;
+                }
+                // ---- block comment (unterminated ⇒ drop the rest; fail-open)
+                if (c == '/' && i + 1 < source.Length && source[i + 1] == '*')
+                {
+                    int end = source.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    i = end < 0 ? source.Length : end + 2;
+                    sb.Append(' ');
+                    continue;
+                }
+                // ---- verbatim string @"…"  ("" escapes an embedded quote)
+                if (c == '@' && i + 1 < source.Length && source[i + 1] == '"')
+                {
+                    sb.Append("\"\""); // token-shaped placeholder; contents dropped
+                    i += 2;
+                    while (i < source.Length)
+                    {
+                        if (source[i] == '"')
+                        {
+                            if (i + 1 < source.Length && source[i + 1] == '"') { i += 2; continue; }
+                            i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+                // ---- ordinary or interpolated string "…" / $"…"  (backslash escapes)
+                if (c == '"')
+                {
+                    sb.Append("\"\"");
+                    i++;
+                    while (i < source.Length)
+                    {
+                        if (source[i] == '\\') { i += 2; continue; }
+                        if (source[i] == '"') { i++; break; }
+                        if (source[i] == '\n') break; // unterminated line-string; fail-open
+                        i++;
+                    }
+                    continue;
+                }
+                // ---- char literal 'c' / '\n' / '\'' / '"'
+                if (c == '\'')
+                {
+                    sb.Append("' '");
+                    i++;
+                    while (i < source.Length)
+                    {
+                        if (source[i] == '\\') { i += 2; continue; }
+                        if (source[i] == '\'') { i++; break; }
+                        if (source[i] == '\n') break; // fail-open
+                        i++;
+                    }
+                    continue;
+                }
+
+                sb.Append(c);
+                i++;
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// THE STRIPPER'S OWN CORRECTNESS, asserted rather than hand-checked. Each case below is a
+        /// construct that defeated an earlier version of <see cref="CodeOnly"/> or could plausibly
+        /// defeat the next one. The load-bearing case is #3: a quoted `/*` used to blind every
+        /// other test in this file from that point to end of file, silently.
+        /// </summary>
+        [Test]
+        public void CodeOnly_IsStringLiteralAware_SoAQuotedCommentMarkerCannotBlindTheScans()
+        {
+            // 1. prose is removed …
+            Assert.That(CodeOnly("// Mood\nint a;"), Does.Not.Contain("Mood"));
+            Assert.That(CodeOnly("/// <see cref=\"Mood\"/>\nint a;"), Does.Not.Contain("Mood"));
+            Assert.That(CodeOnly("/* Mood */ int a;"), Does.Not.Contain("Mood"));
+            // … and code is kept
+            Assert.That(CodeOnly("int a; // x"), Does.Contain("int a;"));
+
+            // 2. a quoted // must not be treated as a comment
+            Assert.That(CodeOnly("string s = \"a//b\"; int Mood;"), Does.Contain("Mood"),
+                "a '//' inside a string literal must not be treated as a comment");
+
+            // 3. THE REGRESSION: a quoted /* must not eat the rest of the FILE
+            Assert.That(CodeOnly("string s = \"/*\";\nint Mood;\n"), Does.Contain("Mood"),
+                "a '/*' inside a string literal blinded every scan in this file to end-of-file; " +
+                "this is the exact hole a review probe used to hide four forbidden identifiers");
+            Assert.That(CodeOnly("const string A = \"/*\", B = \"*/\";\nfloat m = c.Mood;\n"),
+                Does.Contain("Mood"));
+
+            // 4. verbatim strings, including the "" escape
+            Assert.That(CodeOnly("var s = @\"/* not a comment\";\nint Mood;"), Does.Contain("Mood"));
+            Assert.That(CodeOnly("var s = @\"a\"\"/*\"\"b\";\nint Mood;"), Does.Contain("Mood"));
+
+            // 5. char literals, including the quote character and an escaped backslash
+            Assert.That(CodeOnly("char c = '\"'; int Mood;"), Does.Contain("Mood"),
+                "a quote CHARACTER must not open a string");
+            Assert.That(CodeOnly("char c = '\\\\'; int Mood;"), Does.Contain("Mood"));
+
+            // 6. escapes inside ordinary strings must not swallow the closing quote
+            Assert.That(CodeOnly("var s = \"a\\\\\"; int Mood;"), Does.Contain("Mood"));
+
+            // 7. string CONTENTS are dropped, so a forbidden word in a message is not a dependency
+            Assert.That(CodeOnly("var s = \"Mood\";"), Does.Not.Contain("Mood"),
+                "an identifier appearing only inside a string literal is not a code dependency");
+
+            // 8. an unterminated block comment drops the remainder (fail-open, never a false fail)
+            Assert.That(CodeOnly("/* unterminated\nint Mood;"), Does.Not.Contain("Mood"));
         }
 
         // ---------------------------------------------------------------- the economy file set
@@ -117,14 +330,30 @@ namespace Perilune.Tests
         /// <summary>
         /// THE ECONOMY, as a file set. Whole directories are globbed rather than listed so a NEW
         /// economy file is covered automatically — a lane adding `Jobs/Sources/MineJobSource.cs`
-        /// (E-MINE) inherits every assertion here without touching this file. The four economy
-        /// systems that live in shared directories are listed explicitly because their neighbours
+        /// (E-MINE) inherits every assertion here without touching this file (proven by mutation).
+        /// Files living in shared directories are listed explicitly because their neighbours
         /// (`Systems/AtmosphereSystem.cs`, `Systems/NeedsSystem.cs`, …) are emphatically NOT
-        /// economy and must not be scanned.
+        /// economy and must not be scanned — <see cref="EconomySystemCensus_ForcesADecisionOnEveryNewSystemFile"/>
+        /// is what stops that hand-written list going stale.
         ///
         /// `Stock/`, `Production/`, `Mining/` and `Space/TradeSystem.cs` are the W0-6 empty
         /// registrations — no behaviour yet, but they are where E-STOCK / E-PROD / E-MINE / E-VOY
         /// land, so they are inside the boundary from the start rather than joining it later.
+        ///
+        /// `Commands/Commands.cs` IS INCLUDED, and it is a MIXED file — worth reading. It holds the
+        /// entire player-intent surface of the economy (`DesignateDig`, `DesignateStockpile`,
+        /// `DesignateBuild`, `DesignateDeconstruct`, `PlaceDeviceCommand` with E0-5's Parts charge
+        /// that closed the matter faucet, `RemoveDeviceCommand`) — and also commands that are not
+        /// economy at all (`AddRoomCommand`, `SetTileCommand`, `SetDoorStateCommand`,
+        /// `MoveCitizenCommand`, `SetScriptCommand`). Leaving it out left a hole a review probe
+        /// walked straight through: a verbatim copy of `IsPressureHull` in
+        /// `DesignateDeconstructCommand` — the single most likely place for that predicate to be
+        /// duplicated — was not scanned at all, so
+        /// <see cref="PressureHullGuard_LivesInDeconstructSystemAlone"/> could not catch the exact
+        /// drift it is named after. So it is scanned, and the ship-reach allowlist annotates which
+        /// COMMAND owns each of its reaches, so a reader can see that three of them belong to
+        /// `AddRoomCommand` (a room command, definitionally ship) rather than mistaking them for
+        /// economy coupling.
         /// </summary>
         private static List<string> EconomyFiles()
         {
@@ -140,21 +369,12 @@ namespace Perilune.Tests
                 files.AddRange(Directory.GetFiles(abs, "*.cs", SearchOption.AllDirectories));
             }
 
-            foreach (var rel in new[]
-            {
-                "Systems/BuildSystem.cs",        // the pending-build registry
-                "Systems/DeconstructSystem.cs",  // build's inverse (E0-5)
-                "Systems/CraftingSystem.cs",     // bills at stations
-                "Systems/MachineWearSystem.cs",  // wear + MaintenanceSystem (two classes, one file)
-                "Entities/ItemStack.cs",         // ItemKind + the stack
-                "Defs/ProductionDefs.cs",        // the [production] node table
-                "Space/TradeSystem.cs",          // E-VOY trade (empty registration)
-            })
+            foreach (var rel in EconomyFilesInSharedDirectories)
             {
                 string abs = Path.Combine(root, "sim", "Sim.Core", rel.Replace('/', Path.DirectorySeparatorChar));
                 Assert.That(File.Exists(abs), Is.True,
                     "the economy file sim/Sim.Core/" + rel + " must exist — if it moved, update " +
-                    "EconomyFiles() in this file in the same commit");
+                    "EconomyFilesInSharedDirectories in this file in the same commit");
                 files.Add(abs);
             }
 
@@ -162,57 +382,25 @@ namespace Perilune.Tests
             return files;
         }
 
-        /// <summary>Occurrences of a literal substring in a file. Raw text: comments included.</summary>
+        /// <summary>Economy files that live in directories shared with non-economy code.</summary>
+        private static readonly string[] EconomyFilesInSharedDirectories =
+        {
+            "Systems/BuildSystem.cs",        // the pending-build registry
+            "Systems/DeconstructSystem.cs",  // build's inverse (E0-5)
+            "Systems/CraftingSystem.cs",     // bills at stations
+            "Systems/MachineWearSystem.cs",  // wear + MaintenanceSystem (two classes, one file)
+            "Entities/ItemStack.cs",         // ItemKind + the stack
+            "Defs/ProductionDefs.cs",        // the [production] node table
+            "Space/TradeSystem.cs",          // E-VOY trade (empty registration)
+            "Commands/Commands.cs",          // the player-intent surface (mixed file — see EconomyFiles)
+        };
+
+        /// <summary>Occurrences of a literal substring. Caller decides raw vs <see cref="CodeOnly"/>.</summary>
         private static int CountOccurrences(string text, string needle)
         {
             int n = 0, i = 0;
             while ((i = text.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
             return n;
-        }
-
-        /// <summary>
-        /// Source with comments removed, so a DEPENDENCY scan is not fooled by PROSE.
-        ///
-        /// This distinction is load-bearing rather than pedantic. `DeconstructSystem.cs:441` has a
-        /// doc comment reading *"…which HistorySystem turns into a Chronicle line naming the crew
-        /// member"* — describing a DOWNSTREAM consumer of the event it publishes. That is exactly
-        /// the documentation we want, and the economy has no dependency on `Chronicle` whatsoever
-        /// (it publishes `DeconstructCompletedEvent`; `HistorySystem`, outside the economy, writes
-        /// the Chronicle). A raw-text scan would flag it and the "fix" would be to delete a true
-        /// comment — the maintenance tax this whole file is meant to avoid.
-        ///
-        /// EXACTLY WHAT THIS HANDLES, and how it fails. It drops `/* … */` spans and everything
-        /// from a `//` (or `///`) to end of line. It does NOT track string literals, so a `//`
-        /// inside a string would truncate the rest of that line. Verified 2026-07-25 against the
-        /// economy file set: no string literal contains `//`, every `/* */` is single-line, and
-        /// there are no verbatim (`@"…"`) strings — so this is exact for the current set.
-        ///
-        /// It fails in the SAFE direction on purpose: an unhandled construct makes the scan see
-        /// LESS code, so the worst case is a missed violation (a false pass), never a false failure
-        /// that blocks a legitimate commit. A regex is not a compiler; when it is unsure it should
-        /// get out of the way rather than cry wolf.
-        /// </summary>
-        private static string CodeOnly(string source)
-        {
-            var sb = new StringBuilder(source.Length);
-            for (int i = 0; i < source.Length; i++)
-            {
-                if (source[i] == '/' && i + 1 < source.Length && source[i + 1] == '/')
-                {
-                    while (i < source.Length && source[i] != '\n') i++;
-                    sb.Append('\n');
-                    continue;
-                }
-                if (source[i] == '/' && i + 1 < source.Length && source[i + 1] == '*')
-                {
-                    int end = source.IndexOf("*/", i + 2, StringComparison.Ordinal);
-                    i = end < 0 ? source.Length : end + 1; // unterminated ⇒ drop the rest (safe direction)
-                    sb.Append(' ');
-                    continue;
-                }
-                sb.Append(source[i]);
-            }
-            return sb.ToString();
         }
 
         // ================================================================ 1. the module DAG
@@ -231,7 +419,7 @@ namespace Perilune.Tests
         {
             var offenders = new List<string>();
             foreach (var path in ModuleFiles("Sim.Core"))
-                foreach (var module in DeclaredPeriluneUsings(path))
+                foreach (var module in CrossModuleUsings(path, "Sim.Core"))
                     offenders.Add(Rel(path) + " → Perilune." + module);
 
             Assert.That(offenders, Is.Empty,
@@ -273,7 +461,7 @@ namespace Perilune.Tests
             {
                 var permitted = new List<string>(pair.Value);
                 foreach (var path in ModuleFiles(pair.Key))
-                    foreach (var module in DeclaredPeriluneUsings(path))
+                    foreach (var module in CrossModuleUsings(path, pair.Key))
                         if (!permitted.Contains(module))
                             offenders.Add(Rel(path) + " → Perilune." + module +
                                           " (sim/" + pair.Key + " may only use: " +
@@ -287,7 +475,8 @@ namespace Perilune.Tests
                 "    Sim.Core  ← Sim.Dsl · Sim.Glyph · Sim.Llm · Sim.Content · Sim.Gen(+Sim.Dsl)\n" +
                 "  It is acyclic with Sim.Core as the sink, and it is enforced by NOTHING ELSE — the\n" +
                 "  six sim modules have no .csproj, so at runtime they are one assembly and the\n" +
-                "  compiler cannot see a cycle (economy-modularity §1.1).\n" +
+                "  compiler cannot see a cycle (economy-modularity §1.1). `using static` and\n" +
+                "  `using ALIAS =` count: both are declared dependencies and both are matched here.\n" +
                 "FIX: prefer injecting an interface over adding an edge.\n" +
                 "IF DELIBERATE: add the edge to `allowed` in this test IN THE SAME COMMIT, check the\n" +
                 "  result is still acyclic, and update docs/ARCHITECTURE.md's module map. A cycle\n" +
@@ -326,7 +515,7 @@ namespace Perilune.Tests
                 Assert.That(File.Exists(path), Is.True,
                     "sim/Sim.Dsl/" + name + " must exist — if it was renamed, update the `pure` list " +
                     "in this test in the same commit");
-                foreach (var module in DeclaredPeriluneUsings(path))
+                foreach (var module in CrossModuleUsings(path, "Sim.Dsl"))
                     offenders.Add("sim/Sim.Dsl/" + name + " → Perilune." + module);
             }
 
@@ -365,7 +554,7 @@ namespace Perilune.Tests
 
             var actual = new List<string>();
             foreach (var path in ModuleFiles("Sim.Dsl"))
-                if (DeclaredPeriluneUsings(path).Count > 0)
+                if (CrossModuleUsings(path, "Sim.Dsl").Count > 0)
                     actual.Add(Path.GetFileName(path));
             actual.Sort(StringComparer.Ordinal);
 
@@ -386,130 +575,185 @@ namespace Perilune.Tests
         // ================================================================ 3. economy ↔ souls
 
         /// <summary>
-        /// THE ECONOMY KNOWS NOTHING ABOUT SOULS, PRESENTATION OR PHYSIOLOGY. Measured 2026-07-25:
-        /// every identifier below appears ZERO times across the whole economy file set — not in
-        /// code and not even in a comment. That is why this scan is raw text with no
-        /// comment-stripping: the assertion is absolute, so it needs no fragile C#-parsing regex
-        /// and cannot be fooled by one.
+        /// WHAT THE ECONOMY MAY NOT NAME — souls, presentation, physiology, the LLM, and the
+        /// Director's tension lever. Measured 2026-07-25: every identifier below appears zero times
+        /// in economy CODE, except the two the carve-out permits explicitly.
         ///
-        /// TWO REASONS THIS MATTERS, and they pull in opposite directions — read both before
-        /// "fixing" a failure.
+        /// ⚠ DO NOT SAY "THE ECONOMY KNOWS NOTHING ABOUT SOULS". It is false, and an earlier
+        /// version of this very test asserted it. There is exactly ONE shipped souls→economy
+        /// channel and it is live in the default system stack:
         ///
-        /// 1. PORTABILITY (keep it at zero). An economy that reads mood, personas or glyph colours
-        ///    is welded to *this* game. The measured zero is the best evidence in
-        ///    economy-modularity §1.5 that the economy is closer to generic than the docs implied.
+        ///     Citizen.Mood ──(mean)──▶ ShipMetrics.Morale ──(WeightMoraleDeficit 0.4)──▶
+        ///     DirectorSystem tension ──(lever)──▶ DirectorSystem.WearPressure ──▶
+        ///     MachineWearSystem: device.Condition -= … * pressure
         ///
-        /// 2. THE BINDING PRINCIPLE (this zero is ALSO the gap). `docs/design/
-        ///    perilune-automation-and-souls.md` §4 — a DESIGN AUTHORITY — requires that "mood +
-        ///    skill are the throughput". `Mood` and `Skill` being absent here is precisely why that
-        ///    principle is 0 % implemented (economy-modularity §6). E2 is *supposed* to cross this
-        ///    line.
+        ///   `SystemStack.cs:24,36`    var director = new DirectorSystem(); … new MachineWearSystem(director)
+        ///   `MachineWearSystem.cs:47` float pressure = _director != null ? _director.WearPressure : 1f;
+        ///   `MachineWearSystem.cs:70` device.Condition -= def.WearPerHour / 3600f * DtSeconds * multiplier * pressure;
+        ///   `DirectorSystem.cs:66`    d.WeightMoraleDeficit * (1f - m.Morale)
+        ///   `ShipMetrics.cs:83,86`    moodSum += citizens[i].Mood;  m.Morale = (moodSum / pop + 100f) / 200f;
+        ///   `SimDefs.cs:655`          WeightMoraleDeficit = 0.4f
         ///
-        /// So this test is not a wall, it is a checkpoint. When E2 lands the operator model, the
-        /// right response is to remove `Mood` (and add `Skill`, once it exists) from the forbidden
-        /// list — deliberately, in the E2 commit, with the design authority cited. What must NOT
-        /// happen is a stray `citizen.Mood` sneaking into a job source as a balance tweak. The
-        /// difference between those two is exactly what this test forces someone to notice.
+        /// So crew mood already modulates machine wear. Two consequences worth internalising:
         ///
-        /// NOTE the intended shape of the eventual crossing: economy-modularity §7 step 1 proposes
-        /// ONE seam (`JobWork.WorkRate`) so that mood/skill enter the economy in a single function
-        /// rather than at the five independent `--citizen.JobWorkTicks` sites. If this test fails
-        /// with mood references scattered across several files, that is the wrong shape.
+        ///   1. The mechanism — a CONSTRUCTOR-INJECTED SIBLING SYSTEM — is invisible to every other
+        ///      assertion in this file. It is not a `using`, and it is not a `sim.X` reach, so
+        ///      nothing here saw it; the audit that produced these tests read the code and still
+        ///      missed the connection. That is why `Director` and `WearPressure` are scanned now,
+        ///      with a reasoned carve-out rather than a blanket ban: the channel is legitimate and
+        ///      shipped, but a SECOND one must be a deliberate act.
+        ///   2. It is a PRECEDENT, not a violation. `docs/design/perilune-automation-and-souls.md`
+        ///      §4's operator model ("mood + skill are the throughput") is unbuilt — but it is not
+        ///      unprecedented, and the claim that it has "no seam to build against" was wrong. The
+        ///      wiring pattern it needs already exists here: injected sibling system, def-weighted,
+        ///      mood-derived, deterministic, hashed, and inert when the sibling is null (`× 1f` is
+        ///      IEEE identity, `MachineWearSystem.cs:36-37`). economy-modularity §7 step 1's
+        ///      `JobWork.WorkRate` should FOLLOW this pattern, not invent one.
+        ///
+        /// The list is therefore a checkpoint, not a wall. When E2 lands the operator model, widen
+        /// the carve-out deliberately, in the E2 commit, citing the design authority — and check
+        /// the crossing has the right SHAPE: one seam (`JobWork.WorkRate`), not mood references
+        /// scattered across five job sources.
         /// </summary>
         [Test]
         public void Economy_KnowsNothingAboutSoulsPresentationOrPhysiology()
         {
             // Grouped by what they are, because the right response differs per group.
+            // COUNTING NOTE: GlyphColor/GlyphMapper are substrings of Glyph, so the 25 rows below
+            // are 23 DISTINCT checks — the two specific names exist so a failure message can name
+            // the exact type rather than just "Glyph".
             var forbidden = new (string Name, string Why)[]
             {
-                // Souls / inner life. E2 is expected to cross Mood and Skill — see the doc comment.
-                ("Mood",           "crew inner life — E2's operator model crosses this DELIBERATELY, via one seam"),
-                ("Morale",         "crew inner life"),
+                // ---- souls / inner life. E2 crosses Mood and Skill DELIBERATELY — see the doc.
+                ("Mood",           "crew inner life — E2's operator model crosses this via ONE seam"),
+                ("Morale",         "crew inner life (note: ShipMetrics.Morale IS mean crew Mood)"),
                 ("Skill",          "does not exist anywhere in sim/ yet; E2 introduces it"),
                 ("Persona",        "LLM persona sheets"),
                 ("CitizenMind",    "LLM-facing mind state"),
                 ("CitizenMemory",  "MEMS persistence"),
-                ("Chronicle",      "narrative record"),
+                ("Chronicle",      "narrative record — publish an event, let HistorySystem write it"),
                 ("Eulogy",         "narrative record"),
                 ("SocialSystem",   "relationships"),
                 ("RelationType",   "relationships"),
-                // The LLM. Must never be reachable from a deterministic tick path.
+                // ---- the Director's tension lever: the ONE shipped souls→economy channel.
+                ("Director",       "the tension lever — mood reaches wear THROUGH this; carved out below"),
+                ("WearPressure",   "the lever's value; carved out for MachineWearSystem only"),
+                // ---- the LLM. Must never be reachable from a deterministic tick path.
                 ("Llm",            "the LLM runtime — never on a deterministic tick path"),
                 ("IChatBackend",   "the LLM runtime"),
-                // Presentation. The projection reads the sim; the sim must never read the projection.
+                ("CitizenEffect",  "the LLM→sim effect pipeline; applied at tick boundaries elsewhere"),
+                // ---- presentation. Projection is one-way: sim → glyph, never back.
                 ("Glyph",          "presentation — projection is one-way, sim → glyph"),
                 ("GlyphColor",     "presentation"),
                 ("GlyphMapper",    "presentation"),
-                // Physiology. Needs belong to NeedsSystem/SustenanceSystem/SafetySystem, not to work.
+                // ---- the automation language. Devices are exposed TO MOSS, never the reverse.
+                ("Moss",           "the automation DSL — devices reach it via IScriptable adapters"),
+                ("ScriptRuntime",  "the MOSS runtime is an injected ISimSystem, never called into"),
+                // ---- ship physiology / atmosphere. Owned by their own systems.
+                ("Atmosphere",     "ship physiology — AtmosphereSystem owns gas"),
+                ("Oxygen",         "ship physiology"),
                 ("Suffocation",    "physiology — SafetySystem owns fleeing lethal air, not the job board"),
-                ("Hunger",         "physiology — SustenanceSystem owns eating"),
-                ("Thirst",         "physiology — SustenanceSystem owns drinking"),
                 ("Fatigue",        "physiology — and note Citizen.cs's claim that it 'slows work' is FALSE"),
-                // Spatial vocabulary the sim does not actually have.
+                // ---- spatial vocabulary the sim does not actually have.
                 ("Deck",           "the sim has z-levels, not 'decks'; hauling is deck-agnostic"),
+            };
+
+            // The ONE legitimate, shipped crossing. file → identifier → measured count.
+            var carveOut = new Dictionary<string, Dictionary<string, int>>(StringComparer.Ordinal)
+            {
+                ["sim/Sim.Core/Systems/MachineWearSystem.cs"] = new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    // Exactly two in CODE: the field's declared type (`DirectorSystem _director;`)
+                    // and the ctor parameter's type (`MachineWearSystem(DirectorSystem director…)`).
+                    // The lowercase `_director` / `director` do not match, and the three mentions in
+                    // the doc comment are stripped by CodeOnly.
+                    ["Director"] = 2,
+                    // `_director.WearPressure` — the single read.
+                    ["WearPressure"] = 1,
+                },
             };
 
             var offenders = new List<string>();
             foreach (var path in EconomyFiles())
             {
+                string rel = Rel(path);
                 // CODE only. A doc comment naming a downstream consumer is documentation, not a
                 // dependency — see CodeOnly() for the concrete case that forced this distinction.
                 string code = CodeOnly(File.ReadAllText(path));
+                carveOut.TryGetValue(rel, out var permitted);
+
                 foreach (var (name, why) in forbidden)
                 {
-                    int n = CountOccurrences(code, name);
-                    if (n > 0)
+                    int actual = CountOccurrences(code, name);
+                    int allowed = 0;
+                    if (permitted != null) permitted.TryGetValue(name, out allowed);
+                    if (actual != allowed)
                         offenders.Add(string.Format(CultureInfo.InvariantCulture,
-                            "{0}: '{1}' ×{2}  [{3}]", Rel(path), name, n, why));
+                            "{0}: '{1}' expected ×{2}, found ×{3}  [{4}]", rel, name, allowed, actual, why));
                 }
             }
 
             Assert.That(offenders, Is.Empty,
-                "BOUNDARY CROSSED: the economy now references souls / presentation / physiology.\n" +
-                "  found: " + string.Join("\n         ", offenders) + "\n" +
-                "WHY (portability): every one of these identifiers was measured at ZERO across the\n" +
-                "  whole economy file set on 2026-07-25 — comments included. That zero is the\n" +
-                "  strongest evidence in economy-modularity §1.5 that this economy is close to a\n" +
-                "  generic tile-colony economy rather than welded to a spaceship with an LLM crew.\n" +
-                "WHY (design): the same zero is the GAP. docs/design/perilune-automation-and-souls.md\n" +
-                "  §4 is binding and requires 'mood + skill are the throughput'. E2 is supposed to\n" +
-                "  cross this line for Mood and Skill.\n" +
+                "BOUNDARY CHANGED: the economy's knowledge of souls / presentation / physiology moved.\n" +
+                "  " + string.Join("\n  ", offenders) + "\n" +
+                "WHY (portability): with ONE carved-out exception, every identifier above is zero in\n" +
+                "  economy code. That is the strongest evidence in economy-modularity §1.5 that this\n" +
+                "  economy is close to a generic tile-colony economy rather than welded to a\n" +
+                "  spaceship with an LLM crew.\n" +
+                "THE ONE EXCEPTION, so you know what 'normal' looks like: MachineWearSystem takes a\n" +
+                "  DirectorSystem by constructor injection and multiplies device wear by its\n" +
+                "  WearPressure lever, which the Director derives from ShipMetrics.Morale — i.e. mean\n" +
+                "  crew Mood. Crew mood ALREADY modulates machine wear. That channel is legitimate,\n" +
+                "  shipped, deterministic and hashed, and it is the PATTERN to copy.\n" +
                 "SO — WHICH IS THIS?\n" +
-                "  (a) E2 / the operator model: correct and expected. Remove that identifier from\n" +
-                "      `forbidden` above in the SAME commit, cite the design authority, and make sure\n" +
-                "      it enters through ONE seam (economy-modularity §7 step 1 proposes\n" +
-                "      JobWork.WorkRate) — not scattered across job sources. Several files in this\n" +
-                "      failure list is the WRONG shape even for E2.\n" +
+                "  (a) E2 / the operator model: correct and expected. docs/design/\n" +
+                "      perilune-automation-and-souls.md §4 requires 'mood + skill are the\n" +
+                "      throughput'. Widen the carve-out above in the SAME commit, cite the design\n" +
+                "      authority, and FOLLOW THE EXISTING PATTERN — injected sibling system,\n" +
+                "      def-weighted, mood-derived, inert when the sibling is null. Then check the\n" +
+                "      SHAPE: economy-modularity §7 step 1 wants ONE seam (JobWork.WorkRate).\n" +
+                "      Several files in this failure list is the WRONG shape even for E2.\n" +
                 "  (b) anything else — a balance tweak reading citizen.Mood, a job source importing a\n" +
-                "      GlyphColor, an economy system checking Suffocation: revert it. SafetySystem\n" +
-                "      owns lethal air; SustenanceSystem owns eating and drinking; the projection is\n" +
-                "      one-way. Reaching for these from the economy is how the two halves of this\n" +
-                "      game become one tangled half.");
+                "      GlyphColor, an economy system checking Suffocation or Atmosphere: revert it.\n" +
+                "      SafetySystem owns lethal air; AtmosphereSystem owns gas; the projection is\n" +
+                "      one-way; MOSS reaches devices through IScriptable, never the reverse.\n" +
+                "  (c) a count that DROPPED inside the carve-out: someone removed a coupling. Good.\n" +
+                "      Lower the number in the same commit.");
         }
 
         // ================================================================ 4. economy → ship
 
         /// <summary>
-        /// THE ECONOMY REACHES INTO SHIP SYSTEMS AT EXACTLY THESE SITES — an allowlist, pinned by
-        /// count, keyed by file (never by line number: E0-4 is editing this directory in a sibling
-        /// worktree as of 2026-07-25).
+        /// THE ECONOMY REACHES INTO SHIP-SYSTEM STATE AT EXACTLY THESE SITES — an allowlist, pinned
+        /// by count, keyed by file (never by line number: E0-4 is editing this directory in a
+        /// sibling worktree as of 2026-07-25).
         ///
         /// This is `docs/design/perilune-economy-modularity.md` §1.5's table, mechanised — and
-        /// writing the test CORRECTED it. The doc's headline said "exactly six game-specific call
-        /// sites" and its own member table listed `sim.PowerDirty` ×2 without counting them. The
-        /// measured total is SEVEN reaches into ship state: five `sim.Rooms` and two
-        /// `sim.PowerDirty`. §1.5 is amended accordingly.
+        /// writing it corrected that table twice. The honest shape, measured, from the economy
+        /// SYSTEMS (excluding the mixed `Commands.cs`, annotated separately in the allowlist):
         ///
-        /// Read the shape, because the shape is the finding: THREE of the five `sim.Rooms` reaches
-        /// are `MarkDirty()` — a void notification, no read, trivially replaceable by an event
-        /// (economy-modularity §7 step 4). Only `MachineWearSystem` genuinely READS ship state
-        /// (a room's temperature, to modulate wear — a generic mechanism with a game-specific
-        /// source for the value). `sim.PowerDirty` is likewise a notification, not a read.
+        ///   FIVE notifications (a write or a dirty-flag; no read of ship state):
+        ///     3× sim.Rooms.MarkDirty()   — DigJobSource, BuildSystem, DeconstructSystem
+        ///     2× sim.PowerDirty = true   — BuildSystem, DeconstructSystem
+        ///   TWO reads of ship state, BOTH in MachineWearSystem:
+        ///     sim.Rooms.Rooms                  — the vacuum sentinel (rooms[0])
+        ///     sim.Rooms.RoomAt(…).TemperatureK — heat modulates wear
         ///
-        /// `IsPressureHull` is deliberately NOT counted as a reach: it is a static predicate
-        /// defined INSIDE the economy that reads `World` geometry, not a ship system. It is
-        /// asserted separately below, because which file may know that vacuum exists is its own
-        /// boundary.
+        /// Seven reaches: FIVE notifications and TWO reads. (An earlier version of this message said
+        /// "six notify-only", which is arithmetically impossible — 3+2=5 — and mis-classified the
+        /// `sim.Rooms.Rooms` list fetch as a notification. Fixed, because the whole justification of
+        /// these messages is that the next reader trusts them.)
+        ///
+        /// `sim.Systems` IS ALSO TRACKED HERE, and it is the sharper hazard. It is an untyped
+        /// `internal ISimSystem[]` escape hatch used for lazy sibling-system resolution; a review
+        /// probe added a type-test for `AtmosphereSystem` beside an existing loop and the suite
+        /// stayed green. Nothing in the text says WHICH system is being fished out, so it can
+        /// smuggle a dependency on anything past every other assertion in this file. Pinning the
+        /// call count at least makes a new caller visible.
+        ///
+        /// `IsPressureHull` is deliberately NOT counted as a reach: it is a static predicate defined
+        /// INSIDE the economy that reads `World` geometry, not a ship system. It is asserted
+        /// separately below, because which file may know that vacuum exists is its own boundary.
         /// </summary>
         [Test]
         public void Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites()
@@ -523,8 +767,13 @@ namespace Perilune.Tests
                     ["sim/Sim.Core/Jobs/Sources/DigJobSource.cs"] = 1,
                     ["sim/Sim.Core/Systems/BuildSystem.cs"] = 1,
                     ["sim/Sim.Core/Systems/DeconstructSystem.cs"] = 1,
-                    // THE ONLY REAL READ in the whole economy: room temperature modulates wear.
+                    // THE ONLY TWO READS in the whole economy: vacuum sentinel + room temperature.
                     ["sim/Sim.Core/Systems/MachineWearSystem.cs"] = 2,
+                    // MIXED FILE: all three belong to AddRoomCommand — a ROOM command, definitionally
+                    // ship rather than economy. Scanned because Commands.cs also holds the economy's
+                    // designate/place/remove verbs (see EconomyFiles), NOT because the economy
+                    // reaches rooms three more times. Do not fold these into the seven above.
+                    ["sim/Sim.Core/Commands/Commands.cs"] = 3,
                 },
                 ["sim.PowerDirty"] = new Dictionary<string, int>(StringComparer.Ordinal)
                 {
@@ -532,13 +781,27 @@ namespace Perilune.Tests
                     ["sim/Sim.Core/Systems/BuildSystem.cs"] = 1,
                     ["sim/Sim.Core/Systems/DeconstructSystem.cs"] = 1,
                 },
+                ["sim.Systems"] = new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    // The untyped sibling-system escape hatch. Each resolves ONE known system lazily
+                    // so a source stays inert when that system is absent from the stack.
+                    ["sim/Sim.Core/Jobs/Sources/BuildJobSource.cs"] = 1,
+                    ["sim/Sim.Core/Jobs/Sources/DeconstructJobSource.cs"] = 1,
+                    ["sim/Sim.Core/Systems/CraftingSystem.cs"] = 1,
+                    // MIXED FILE: PlaceDeviceCommand / RemoveDeviceCommand resolving their registries.
+                    ["sim/Sim.Core/Commands/Commands.cs"] = 2,
+                },
             };
+
+            var economy = EconomyFiles();
+            var relSet = new List<string>();
+            foreach (var path in economy) relSet.Add(Rel(path));
 
             var problems = new List<string>();
             foreach (var pattern in allowlist)
             {
                 var expected = pattern.Value;
-                foreach (var path in EconomyFiles())
+                foreach (var path in economy)
                 {
                     string rel = Rel(path);
                     // Code only: a doc comment may discuss sim.Rooms freely without tripping this.
@@ -550,23 +813,27 @@ namespace Perilune.Tests
                 }
                 // An allowlist entry for a file that is no longer in the economy set is stale.
                 foreach (var entry in expected)
-                {
-                    bool present = false;
-                    foreach (var path in EconomyFiles()) if (Rel(path) == entry.Key) { present = true; break; }
-                    if (!present)
+                    if (!relSet.Contains(entry.Key))
                         problems.Add("stale allowlist entry: " + entry.Key + " ('" + pattern.Key +
                                      "') is not in the economy file set");
-                }
             }
 
             Assert.That(problems, Is.Empty,
                 "BOUNDARY CHANGED: the economy's reach into ship systems moved.\n" +
                 "  " + string.Join("\n  ", problems) + "\n" +
                 "WHY: the whole portability argument in economy-modularity §1.5 rests on this reach\n" +
-                "  being tiny and enumerable — SEVEN sites, of which SIX are notify-only\n" +
-                "  (3× sim.Rooms.MarkDirty, 2× sim.PowerDirty) and exactly ONE is a real read\n" +
-                "  (MachineWearSystem's room temperature). An economy that starts reading rooms,\n" +
-                "  atmosphere or power is an economy that cannot be reused anywhere.\n" +
+                "  being tiny and enumerable — from the economy SYSTEMS, SEVEN sites: FIVE\n" +
+                "  notifications (3× sim.Rooms.MarkDirty, 2× sim.PowerDirty) and TWO reads, both in\n" +
+                "  MachineWearSystem (the vacuum sentinel and a room's temperature). An economy that\n" +
+                "  starts reading rooms, atmosphere or power is an economy that cannot be reused.\n" +
+                "  Measured over 299 commits this total changed substantively twice, so a failure\n" +
+                "  here is rare and worth reading properly.\n" +
+                "ON Commands.cs: it is a MIXED file. Its three sim.Rooms reaches belong to\n" +
+                "  AddRoomCommand — a room command, not economy — and are annotated as such above.\n" +
+                "  It is scanned because it also holds every economy designate/place/remove verb.\n" +
+                "ON sim.Systems: an untyped ISimSystem[] escape hatch. It can smuggle a dependency on\n" +
+                "  ANY system past every other assertion in this file, because nothing in the text\n" +
+                "  says which system is fished out. A new caller is a design decision; treat it so.\n" +
                 "FIX (a new reach): can it be an EVENT instead? Every notify-only site here is a\n" +
                 "  candidate for exactly that refactor (economy-modularity §7 step 4). Can the value\n" +
                 "  be a def instead of a live read? MachineWearSystem already takes its thresholds\n" +
@@ -584,6 +851,10 @@ namespace Perilune.Tests
         /// static predicate over `World` geometry, so it costs the economy no system dependency,
         /// but it must stay in one file: a second copy is how two definitions of "the hull" drift
         /// apart, and the guardrail's whole job is to be the canvas edge nothing can cross.
+        ///
+        /// This test was toothless until `Commands/Commands.cs` joined the economy set: a verbatim
+        /// copy of the predicate in `DesignateDeconstructCommand` — the single most likely place for
+        /// it to be duplicated — was not scanned at all.
         /// </summary>
         [Test]
         public void PressureHullGuard_LivesInDeconstructSystemAlone()
@@ -616,7 +887,7 @@ namespace Perilune.Tests
         // ================================================================ 5. determinism rule
 
         /// <summary>
-        /// NO `foreach` IN `sim/Sim.Core/Jobs/`. This is a DETERMINISM rule, not a style
+        /// NO UNORDERED ITERATION IN `sim/Sim.Core/Jobs/`. This is a DETERMINISM rule, not a style
         /// preference — `IJobSource.cs`'s arbitration contract states it outright: use
         /// `HashSet`/`Dictionary` "for LOOKUP ONLY and never iterate them (that is a determinism
         /// rule, not a perf one), indexed `for` only, no LINQ, no lambdas, no closures."
@@ -626,41 +897,69 @@ namespace Perilune.Tests
         /// break on board order, so a single unordered iteration silently makes job assignment
         /// non-reproducible — which moves the determinism pins and, worse, does so intermittently.
         ///
-        /// A regex cannot type-resolve, so it cannot tell `foreach` over a `List` (harmless) from
-        /// `foreach` over a `HashSet` (a determinism bug). It does not need to: `Jobs/` currently
-        /// contains ZERO `foreach` of any kind, and every board is walked with an indexed `for`
-        /// already. Banning the keyword outright in this one directory is therefore exact today,
-        /// costs nothing, and is far more robust than trying to parse C# — and the rule's own
-        /// wording ("indexed `for` only") is what is being enforced. Five files elsewhere in
-        /// Sim.Core do use `foreach`; this is a Jobs/-only constraint, deliberately.
+        /// SCOPE — read this before trusting a pass. The contract has four clauses and this test
+        /// mechanises three of them by BANNED TOKEN, not by type analysis:
+        ///   • `foreach` — banned outright. `Jobs/` has zero today and every board is walked with
+        ///     an indexed `for`, so this is exact and costs nothing. A regex cannot tell `foreach`
+        ///     over a `List` (harmless) from `foreach` over a `HashSet` (a determinism bug); it does
+        ///     not have to, because neither is wanted here. Matched with `\bforeach\b` — an earlier
+        ///     version required a leading space or line start and a probe walked past it with
+        ///     `int n=0;foreach (…)`.
+        ///   • the ORDER-LAUNDERING escapes — `.CopyTo(`, `ToArray()`, `ToList()`, `.Keys`,
+        ///     `.Values`, `using System.Linq` — are banned too, because they reproduce the exact
+        ///     defect without the keyword: `var a = new Int3[_set.Count]; _set.CopyTo(a);` followed
+        ///     by an indexed `for` IS order-unspecified hash iteration, and a review probe used
+        ///     precisely that to pass this test green.
+        ///   • lambdas/closures are NOT mechanised (`=>` is ubiquitous in expression-bodied members,
+        ///     so a token ban would be pure noise). That clause stays review-only; this is the
+        ///     disclosure.
+        /// `Stock/`, `Production/` and `Mining/` are deliberately OUT of scope — this is a `Jobs/`
+        /// rule, and `Stock/StockZoneSystem.cs` legitimately uses `foreach` off the tick path. Five
+        /// files elsewhere in `Sim.Core` use `foreach` too; generalising would fire on correct code
+        /// and get suppressed.
         /// </summary>
         [Test]
-        public void EconomyJobBoard_UsesIndexedForOnly_NoForeach()
+        public void EconomyJobBoard_UsesIndexedForOnly_NoUnorderedIteration()
         {
-            var offenders = new List<string>();
+            var banned = new (Regex Pattern, string Label, string Instead)[]
+            {
+                (new Regex(@"\bforeach\b"), "foreach",
+                 "an indexed `for` over a List whose order you declared"),
+                (new Regex(@"\.CopyTo\s*\("), ".CopyTo(",
+                 "a parallel List in a declared order — copying a HashSet out does not give it one"),
+                (new Regex(@"\bToArray\s*\(\s*\)"), "ToArray()",
+                 "a parallel List in a declared order"),
+                (new Regex(@"\bToList\s*\(\s*\)"), "ToList()",
+                 "a parallel List in a declared order"),
+                (new Regex(@"\.Keys\b"), ".Keys",
+                 "TryGetValue — a Dictionary's key ORDER is unspecified"),
+                (new Regex(@"\.Values\b"), ".Values",
+                 "TryGetValue — a Dictionary's value ORDER is unspecified"),
+                (new Regex(@"^\s*using\s+System\.Linq\s*;", RegexOptions.Multiline), "using System.Linq",
+                 "no LINQ on a tick path — it allocates and hides iteration order"),
+            };
+
             var jobFiles = Directory.GetFiles(
                 Path.Combine(RepoRoot(), "sim", "Sim.Core", "Jobs"), "*.cs", SearchOption.AllDirectories);
             Array.Sort(jobFiles, StringComparer.Ordinal);
             Assert.That(jobFiles, Is.Not.Empty, "sim/Sim.Core/Jobs must contain .cs files");
 
+            var offenders = new List<string>();
             foreach (var path in jobFiles)
             {
-                // Comments stripped by the same helper the other scans use, so the class doc's
-                // prose ("never iterate them") and this very sentence cannot trip the test.
+                // Comments stripped by the same helper the other scans use, so the class doc's prose
+                // ("never iterate them") and this very sentence cannot trip the test.
                 string[] codeLines = CodeOnly(File.ReadAllText(path)).Split('\n');
                 for (int i = 0; i < codeLines.Length; i++)
-                {
-                    string t = codeLines[i].Trim();
-                    if (t.StartsWith("foreach", StringComparison.Ordinal) ||
-                        t.Contains(" foreach ") || t.Contains(" foreach(") ||
-                        t.Contains("\tforeach") || t.Contains("{foreach"))
-                        offenders.Add(string.Format(CultureInfo.InvariantCulture,
-                            "{0}:{1}: {2}", Rel(path), i + 1, t));
-                }
+                    foreach (var (pattern, label, instead) in banned)
+                        if (pattern.IsMatch(codeLines[i]))
+                            offenders.Add(string.Format(CultureInfo.InvariantCulture,
+                                "{0}:{1}: '{2}' — use {3}\n      {4}",
+                                Rel(path), i + 1, label, instead, codeLines[i].Trim()));
             }
 
             Assert.That(offenders, Is.Empty,
-                "DETERMINISM RULE VIOLATED: a `foreach` appeared in sim/Sim.Core/Jobs/.\n" +
+                "DETERMINISM RULE VIOLATED in sim/Sim.Core/Jobs/.\n" +
                 "  " + string.Join("\n  ", offenders) + "\n" +
                 "WHY: IJobSource.cs's arbitration contract requires HashSet/Dictionary be used for\n" +
                 "  LOOKUP ONLY and never iterated — 'that is a determinism rule, not a perf one,\n" +
@@ -669,14 +968,79 @@ namespace Perilune.Tests
                 "  ORDER, so one unordered walk makes job assignment irreproducible — intermittently,\n" +
                 "  which is the worst way for a determinism bug to arrive. It would move the pins\n" +
                 "  (scenario 00e0a2dadb8e5076 · tick-3000 4be2e77864fb7409 · slice 1f8f2225ee568de9).\n" +
-                "  Zero-alloc matters too: foreach over a generic interface boxes its enumerator.\n" +
-                "FIX: an indexed `for` over a List whose order you declared. Every shipped board does\n" +
-                "  this — see HaulJobSource's `_items` (item store order) and `_stockpiles` (z,y,x).\n" +
-                "  Need set semantics? Keep the HashSet for Contains() and a parallel List for order,\n" +
-                "  which is exactly what JobWork.RebuildGroundItemTiles + `_stockpiles` already do.\n" +
-                "NOTE: this test bans the keyword outright because Jobs/ has zero `foreach` today and\n" +
-                "  a regex cannot tell a List walk from a HashSet walk. If you have a genuinely safe,\n" +
-                "  order-declared foreach, prefer the indexed `for` anyway — the rule says so.");
+                "  Zero-alloc matters too: foreach over a generic interface boxes its enumerator,\n" +
+                "  and JobDispatchTests asserts 3000 dirty-every-tick rescans allocate ZERO bytes.\n" +
+                "FIX: an indexed `for` over a List whose order you DECLARED. Every shipped board does\n" +
+                "  this — HaulJobSource's `_items` (item store order) and `_stockpiles` (z,y,x).\n" +
+                "  Need set semantics? Keep the HashSet for Contains() and a parallel List for order:\n" +
+                "  JobWork.RebuildGroundItemTiles + `_stockpiles` is the shipped pattern.\n" +
+                "  Copying the set out (.CopyTo / ToArray / .Keys / .Values) does NOT launder the\n" +
+                "  order — that is the same bug with extra steps, which is why those are banned too.\n" +
+                "NOTE: token ban, not type analysis, and it does NOT cover the contract's\n" +
+                "  lambda/closure clause (`=>` is everywhere in expression-bodied members). Scope is\n" +
+                "  Jobs/ only — Stock/StockZoneSystem.cs legitimately uses foreach off the tick path.");
+        }
+
+        // ================================================================ 6. drift detector
+
+        /// <summary>
+        /// EVERY FILE IN `Systems/` IS CLASSIFIED — economy or not. A new file under `Jobs/`,
+        /// `Stock/`, `Production/` or `Mining/` inherits every assertion in this file automatically
+        /// (globbed; proven by mutation). A new file under `Systems/` does NOT, because that
+        /// directory is shared and the economy members are listed by hand — and `Systems/` is
+        /// exactly where E0-6 (`Seals` + conversion loss) and E0-7 (ice → melter → water) are most
+        /// likely to land. Without this test, a new economy system would silently sit outside every
+        /// boundary check in this file.
+        ///
+        /// FIRE RATE, measured before writing this rather than guessed: 16 files have ever been
+        /// added under `Systems/` across 302 commits, and only two since the engine port
+        /// (`SafetySystem` at E0-2, `DeconstructSystem` at E0-5). So it asks a human one question
+        /// roughly twice a year, at exactly the moment the answer matters. That is a prompt, not a
+        /// tax.
+        /// </summary>
+        [Test]
+        public void EconomySystemCensus_ForcesADecisionOnEveryNewSystemFile()
+        {
+            // NOT economy: ship physiology, crew, narrative. A positive list, so a new file cannot
+            // join it by accident.
+            var notEconomy = new[]
+            {
+                "AtmosphereSystem.cs", "CitizenSystem.cs", "ExplorationSystem.cs", "GoalSystem.cs",
+                "HistorySystem.cs", "HydroponicsSystem.cs", "NeedsSystem.cs", "PowerSystem.cs",
+                "SafetySystem.cs", "SustenanceSystem.cs", "ThermalSystem.cs", "WaterSystem.cs",
+            };
+
+            var expected = new List<string>(notEconomy);
+            foreach (var rel in EconomyFilesInSharedDirectories)
+                if (rel.StartsWith("Systems/", StringComparison.Ordinal))
+                    expected.Add(rel.Substring("Systems/".Length));
+            expected.Sort(StringComparer.Ordinal);
+
+            var actual = new List<string>();
+            foreach (var path in Directory.GetFiles(
+                         Path.Combine(RepoRoot(), "sim", "Sim.Core", "Systems"), "*.cs"))
+                actual.Add(Path.GetFileName(path));
+            actual.Sort(StringComparer.Ordinal);
+
+            Assert.That(actual, Is.EqualTo(expected),
+                "UNCLASSIFIED SYSTEM: sim/Sim.Core/Systems/ gained or lost a file.\n" +
+                "  expected (" + expected.Count + "): " + string.Join(", ", expected) + "\n" +
+                "  actual   (" + actual.Count + "): " + string.Join(", ", actual) + "\n" +
+                "WHY: Systems/ is a SHARED directory, so its economy members are listed by hand in\n" +
+                "  EconomyFilesInSharedDirectories rather than globbed. A new economy system landing\n" +
+                "  here would otherwise sit outside every boundary check in this file — and Systems/\n" +
+                "  is where E0-6 (Seals, conversion loss) and E0-7 (ice → melter → water) are most\n" +
+                "  likely to land.\n" +
+                "FIX — answer one question: is the new file ECONOMY (matter, labour, items, work,\n" +
+                "  machines, value)?\n" +
+                "  • YES → add it to EconomyFilesInSharedDirectories. It then inherits the souls,\n" +
+                "    ship-reach and hull-guard assertions; expect to extend the ship-reach allowlist\n" +
+                "    with its measured counts, in the same commit.\n" +
+                "  • NO  → add it to `notEconomy` in this test, and say in the commit message why it\n" +
+                "    sits outside the economy boundary.\n" +
+                "Either way it is one line, and the point is that someone DECIDED rather than\n" +
+                "  defaulted. This fires about twice a year (16 adds in 302 commits, 2 since the\n" +
+                "  engine port), so do not suppress it — read it.");
         }
     }
 }
