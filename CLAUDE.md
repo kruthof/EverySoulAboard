@@ -213,11 +213,19 @@ DeviceLayout.json) · `art/spritegen/` (Gemini image pipeline).
   console — implemented, independently reviewed, merged — and nobody noticed the surface was
   wrong until the running game was opened. Mechanised in
   `client/test/surface-boundary.test.js` (verb parity + a `KNOWN_GAPS` ledger that only pays down;
-  the console shell's id census **and** `hud.js`'s DOM-widget count are frozen — the id census alone
-  would have missed WP-5's first draft, which added no id) and
+  the console shell's id census **and** four `hud.js` widget counts are pinned by equality — the id
+  census alone would have missed WP-5's *first* draft, which added no id) and
   `tests/Perilune.Tests/SurfaceBoundaryTests.cs`
   (every `WireFormat` channel must have a consumer in `client/src/main.js`). Plan:
   `docs/design/perilune-console-retirement.plan.md`.
+- **ONE door from the map to a person** (`plan §1.5.4`, owner decision). All crew interaction
+  consolidates into a single **Persona window** (design deferred). The entries through which a
+  player reaches a crew member are pinned as `CREW_INTERACTION` in
+  `client/test/surface-boundary.test.js`: the Persona seam **replaces** `talkSelectedCrew` /
+  `openBioForSelected`, it does not join them, and a lane that scatters a second crew-interaction
+  affordance onto any surface fails a test. The same assertion pins `SHIP_STATE_REACH` — the exact
+  set of `hud.js` symbols a modern surface may reach, which is also the specification for WP-9's
+  `hud.js` → `ship-state.js` split.
 
 ## Work in a worktree — ALWAYS (hard rule)
 
