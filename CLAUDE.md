@@ -27,14 +27,69 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-24) — **E0-4 IN PROGRESS on a lane; automation player-journey doc landed**
-**RESUME, don't restart.** E0-4 (filtered stockpile zones) is mid-flight on `lane/e0-4-stockpile-zones`
-in the **existing worktree** `../perilune-wt/e0-4-stockpile-zones` (WP-1/2/3/4 committed, unmerged).
-Next, in order: **WP-4b** (filtered-far flip demo — UN-STARTED), **WP-3 rigor fix**, **WP-5** (filter UI),
-**integrate**. See `docs/HANDOVER.md` "⇒ RESTART — START HERE" (top) and memory
-`e0-4-stockpile-zones-in-progress.md`. Also landed on `main` this session (docs-only): the
-**automation player-journey** design (`docs/design/perilune-automation-player-journey.md`) — how an
-automation enthusiast plays the game, per the binding automation-&-souls principle. Below is the E0-5 record.
+## Status snapshot (2026-07-25) — **E0-4 LANDED on `main`, and its headline claim is RETRACTED**
+
+**Read `docs/HANDOVER.md`'s top section before quoting any stockpile number from anywhere.**
+E0-4 (filtered stockpile zones) is on `main` (`0be9d70`, six work packages, each Opus-implemented
+and independently Opus-reviewed). **Its central published claim was FALSE.**
+
+**⛔ RETRACTED — "a wrong-deck stockpile is a severe throughput regression" was never measured.**
+`StockpileHarness.SelectStockpile` gated candidates on the `TileFlags.Walkable` flag with **no
+reachability test**, so `--stockpile far` zoned **3 of its 4 slice tiles inside the authored sealed
+observatory** (`sim/Sim.Gen/AuthoredShips.cs:93` `DoorClosed = true`; `Simulation.IsWalkable` refuses
+a closed door; nothing in the sim ever opens a door). What the `far` column measured was an
+unreachable-tile **haul livelock** — a pre-existing engine bug — not a cross-deck haul cost. **Every
+previously published `far` number is void**: throughput `6`/`2`/`9`, ~49 % `HaulPickup` against
+~0.0 % `HaulDeliver`, and A1 "50.000 %". A reachability gate (`sim.Paths.FindPath` from every live
+crew member; host-side, pin-neutral) landed with the re-measure, and slice geometry came out
+**807 walkable / 657 reachable / 150 unreachable (19 %)**. `--stockpile far --days 1` collapsed from
+**~43 min of wall clock to 24 s**; that collapse *is* the retraction.
+
+**`ECONOMY.md` §8's −14 % wrong-deck regression is NEITHER CONFIRMED NOR REFUTED — and the slice
+cannot settle it.** End-of-run `ControllerModule` is **matter-bound**, not labour-bound
+(`MECHANICS.md` §13.15): every unmodified leg ends on the *identical* ground stock `Corpse=1
+Potato=699 ControllerModule=31` with zero Regolith/Scrap/Parts left, and `far 40`'s entire haul cost
+is **1.6 crew-hours against ~352 crew-hours of post-cliff idle** — it would have to be ~200× larger,
+landing during h1–h28, to cost one module. **"31 in every leg" is a saturated instrument, not a null
+result. Never write "disproved".**
+
+**What IS measured and stands** (slice, 3 sim-days = 2 592 000 ticks, one seed, n = 1): cross-deck
+haul **works** (deliveries land on deck 1 via the ladders in every zoned leg); at equal zone size
+(N = 40) a *reachable* far-deck stockpile costs **+0.109 pp** of crew time and **+0.6 pp** of on-job
+travel against a bench-side one; **per delivery it costs ~1.5×**, and that ratio is a **lower bound**;
+and with `--strip 40` headroom the metric does resolve (50 → 51) while **far still equals bench**.
+
+**§8's MECHANISM is real, and WP-4's bench rule is what suppresses it — the lane's best result.**
+With the bench rule reverted (`_benchWanted` forced to 0, a measurement-only local revert, never
+committed) a **far-deck** zone raises on-job travel **+3.2–4.1 pp** *and raises crafting occupancy*
+(21.71 → 22.09 %) while idle `None` falls ~1 pp — literally §8's "the downstream station's fetcher
+must walk them back". With a **bench-side** zone crafting occupancy *falls*. **The sign flips with
+placement**, so it is the §8 round-trip and not merely "more hauling". **How much of §8 the rule
+removes is DELIBERATELY NOT QUANTIFIED**: the fraction is ~47 %, ~81 %, ~65 % or **~0 %** purely
+according to which contrast you pick. Per delivery it is **1.57× with the rule and 1.57× without**
+(the `--strip 40` legs) — the rule does not make a wrong-deck haul *cheaper*, it makes **2.1–3.2×
+fewer of them happen**. Any single percentage would be cherry-picked.
+
+**A1 trap, four times in one lane:** `filtered-far 40` "PASSES" A1 at **25.219 %** with throughput
+**31 — identical to the FAILING baseline**. A1 counts *busy* crew and haul is busywork.
+
+**Also landed with it.** A real pre-existing bug fixed (WP-7: an unreachable stockpile tile no longer
+livelocks the haul board — it was burning ~8 crew at 50 % duty), at an honest cost — the bug went from
+**expensive-and-visible to cheap-and-invisible**: a zone painted where no crew can reach now simply
+never fills, silently, with nothing anywhere to say so (`MECHANICS.md` §13.17; a live follow-up).
+Also the **economy-modularity audit** + its architecture-boundary test
+(`docs/design/perilune-economy-modularity.md`), and the **console-retirement programme** — see
+**THE STANDARD SURFACE** invariant below: `--ship grid` wearing Overview + Room Zoom is the **one**
+standard UI, `--ship slice` is the **headless measurement fixture**, and the `.app` console shell is
+deprecated and closed to new work. E0-4's WP-5 built the whole ACCEPTS filter onto that deprecated
+shell, which is why the invariant is mechanised rather than written down.
+
+**Gate on `main`: 979 dotnet + 529 node**, `./ci.sh` exit 0. **There are FIVE pins now, not four** —
+see "Determinism proof" below. E0-4 moved **none** of them: no sim-state field, no def scalar, and
+it is inert without player intent (no authored ship zones a stockpile).
+
+Earlier, still current (2026-07-24, docs-only): the **automation player-journey** design
+(`docs/design/perilune-automation-player-journey.md`). Below is the E0-5 record.
 
 ## Status snapshot (2026-07-23) — **E0-5 (deconstruct/strip)** landed on `main`, before E0-4
 **E0-5 is LANDED on `main`** (merged `--no-ff` from `lane/e0-5-deconstruct`; six commits, four work
@@ -152,7 +207,8 @@ ConversationHub talking web host, MEMS-persisted crew minds, Chronicle + verbati
 eulogy, registered Director (gentled 1.35 lever), build/refit walls+doors, relationship
 types, the 8-crew authored slice (`--ship slice`), a ~99%-parity WebGL2 client with
 lighting/dialogue/MOSS-IDE/motion, and `P2ExitTests`. **560 dotnet + 188 node tests
-green** via `./ci.sh`. Live-provider smoke on record ($0.0045, `docs/SMOKE-P2.md`).
+green** via `./ci.sh` *(as of 2026-07-21 — `main` is 979 + 529 today; see "Working here")*.
+Live-provider smoke on record ($0.0045, `docs/SMOKE-P2.md`).
 A post-tag playtest-feedback round landed 2026-07-21 (sprite matte/hysteresis/click
 fixes, plain-first-person dialogue prompt, regenerated pawn idles + slice portraits,
 `roster`/`build` wire), and the **Console UI rebuild landed the same day** (`710c5d2`,
@@ -170,7 +226,8 @@ the **RELATIONS tab** (crew relationship web, `relations` wire, secret bonds, sp
 `perilune-game-ui.relations-spec.md`), and console visibility polish (wire-backed
 build ghosts via `designs`, paused-ship nudge, CREW traits, MOSS terminal directory
 via `terminals`, Escape exits RELATIONS). **560 dotnet + 188 node** green via
-`./ci.sh`; all determinism pins unmoved. **Render WP-0 "a crisp ship stage"** landed
+`./ci.sh` *(2026-07-21 figures — current is 979 + 529)*; all determinism pins unmoved.
+**Render WP-0 "a crisp ship stage"** landed
 2026-07-22 (reviewed + corrected): trilinear minify + `imageSmoothingEnabled`, a 4px
 edge-REPLICATED atlas border (tile-seam luma 12.36 → 1.11, −91%), an integer tile
 pitch + rounded origin (`tilePitch`/`transform` in `client/src/render/camera.js`), and
@@ -253,20 +310,94 @@ another session's Ollama work. Measurements taken against a tree someone else is
 worthless, `git status` stops meaning anything, and one instance can trivially commit
 another's half-finished work.*
 
+## Traps that have each cost this project real work — read before writing a guard test or a mutation harness
+
+These are not style notes. Each one shipped a **green gate over a broken claim**, and each was
+rediscovered at full cost.
+
+### 1. A guard that matches raw source text is satisfied by the thing it guards against, COMMENTED OUT
+
+A test that greps a source file for evidence of a fix will pass when the fix is present **and** when
+the fix is sitting in a comment. On **2026-07-25 this landed independently in four packages** — in
+**CSS**, in **C#**, and **twice in JavaScript**. Every one of those tests looked correct and passed
+its suite.
+
+**The countermeasure, both halves required:**
+1. **Strip comments before matching, quote-aware** so string literals survive (a quoted `//` or
+   `/* */` must not blind the stripper and swallow the rest of the file). Live implementations to
+   copy, not re-derive: `client/test/surface-boundary.test.js:205` (JS, `codeOnly`) and `:264`
+   (HTML `<!-- … -->` — a commented-out `<div` also corrupts a depth tracker),
+   `client/test/relations-view.test.js:45` (JS) and `:78` (CSS),
+   `tests/Perilune.Tests/SurfaceBoundaryTests.cs:82` (`CodeOnly`, C#/JS).
+2. **A negative control proving comments do NOT trip the scan** — otherwise the guard fires on prose,
+   which teaches people to delete explanatory comments to appease a test. Examples:
+   `client/test/surface-boundary.test.js:967`, `:985`, `:1004`, `:1013`;
+   `tests/Perilune.Tests/SurfaceBoundaryTests.cs:238-253`.
+
+The general form of this defect — **a test whose named mutation cannot bite** — is the single most
+common review finding in this repo. E0-4 produced **six** of them; every E0-4 and E0-5 work package
+failed its first independent review on one. **Physically apply every mutation you name, watch it go
+red, and revert.** A mutation you only *described* is not evidence.
+
+### 2. `git checkout` must NEVER appear in a mutation loop
+
+It has cost this project work **twice**: once destroying an uncommitted test written by an earlier
+session, once discarding an agent's own in-flight edits. `git checkout -- <file>` restores the *last
+commit*, not the state you were in — so any uncommitted work in that file is gone, silently.
+
+**The rule that prevents it: the restore source is an in-memory copy taken BEFORE the first
+mutation.** Read the file into a variable (or a `.orig` sidecar outside the repo), mutate, restore
+from that copy. Never from git.
+
+**And restore with `shutil.copy` + `os.utime`, never `shutil.copy2`.** `copy2` preserves mtime, so a
+restored source looks *older* than `bin/`, MSBuild skips the rebuild, and the next `dotnet test`
+silently runs the **previous** mutation's assembly. This presented as a reproducible 3-test
+regression that passed when the tests were run individually. Delete `bin/` + `obj/` when in doubt.
+The same shape bites the scenario host: `dotnet build tests/Perilune.Tests` followed by
+`dotnet run --no-build --project hosts/scenario` runs a **stale scenario binary**, so a mutation can
+look inert when it is not.
+
+### 3. Two shell traps that produced findings out of nothing
+
+- **An unquoted `$flags` in a loop** made three "stockpile" measurement legs run **flagless**, and
+  they produced baseline-identical output that looked like a real finding.
+- **A grep with no non-vacuity check** is the same defect: assert your matcher matches *something*
+  before you believe that it matched nothing.
+
 ## Working here
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
-  gate — dotnet + node, ~4 min wall since V6 runs real sim-days). Counts move with every
-  lane and are re-measured per commit; **re-measure before quoting**. The merged tree =
-  Wave 0's six packages + `main`'s MOSS terminal / render / Ollama test surface; the current
-  gate count and pin live in "Determinism proof" below and in `ci.sh`.
+  gate — dotnet + node, ~7 min wall since V6 runs real sim-days). Counts move with every
+  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main`
+  @ `7d24ff5` (2026-07-25): 979 dotnet + 529 node, `./ci.sh` exit 0.** Every "560 dotnet + 188
+  node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
+  current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
+  branches read 918–928 apiece and the merged lane read 943, and three tests that passed on every
+  branch **failed once the packages met** (see "Determinism proof" and `docs/HANDOVER.md`).
   Golden rewrite only when intended: `UPDATE_GOLDEN=1 ... --filter ...`, say why.
-- Determinism proof: `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`
-  (with shipped rules: final hash `85ac8c44233284e9` — pinned in ci.sh; adding hashed
-  state moves it, update ci.sh + here + memory in the same commit). Tick-3000 golden is
-  `9b834cffc232ce7f`; the slice tick-3000 golden is `8c6b2544fac36d63` and the defs checksum
-  (`SimDefs.Default.Checksum`, NOT the scenario host's rules-inclusive `defs:` print) is
-  `e56d33a2e46b5644`. **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 +
-  a crew-safety `SafetySystem`/`JobKind.Flee` guard) is the most recent mover — a REAL behaviour
+- Determinism proof — **FIVE pins, all gate-enforced as of 2026-07-25**, not four:
+
+  | pin | value | enforced by |
+  |---|---|---|
+  | scenario `--days 3 --seed 42` | `00e0a2dadb8e5076` | `ci.sh:31` (also twin-run equality) |
+  | tick-3000 golden | `4be2e77864fb7409` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
+  | slice tick-3000 golden | `1f8f2225ee568de9` | `Golden/slice_tick3000_hash.txt` |
+  | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
+  | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
+
+  Run it with `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`. Adding hashed
+  state moves a pin ⇒ update `ci.sh` + here + `MECHANICS.md` + memory in the SAME commit.
+  **The last two rows are new on 2026-07-25 and matter more than they look.** The
+  rules-inclusive value had **never** been pinned, and the defaults value `5a471d12643b64f9` was
+  asserted **nowhere in the repo** — `DefsChecksumTests` only checked internal consistency — so every
+  "all four pins hold" claim written before today rested, for that one pin, on a *printed* value
+  rather than an enforced one (found by the economy-modularity audit,
+  `docs/design/perilune-economy-modularity.md` §0.2). The two are **different values for different
+  things** and have been confused repeatedly: `3f23ce5bd40283c8` is what every occupancy run prints
+  at the top of its output; **never paste it into the defaults pin.** Both are now asserted by name.
+  **Last mover: E0-5** (deconstruct/strip) for the first four. **E0-4 moved nothing** — no hashed
+  field, no def scalar, and its whole measurement surface is opt-in host-side flags. Before that,
+  **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 +
+  a crew-safety `SafetySystem`/`JobKind.Flee` guard) was the last REAL behaviour
   change (human-pace crew, minutes-long watchable work): it moved the scenario hash
   (`a53d8505`→`85ac8c44233284e9`), the slice golden (`9a84a72f`→`8c6b2544fac36d63`) and the defs
   checksum (`60147a5`→`e56d33a2e46b5644`, the changed work-rate defs + the new `flee_suffocation`
@@ -293,9 +424,10 @@ another's half-finished work.*
   unconditionally) took those to `616ed4a84a9f6e87` / `3cf25daf3ca40e0b` / `72f7023ef9f1cd73`.
   Exactly 2 goldens moved each fold, both the tick-3000 hash files. **B-3** (the CO2
   partial-pressure diffusion term, `AtmosphereSystem.DiffuseAcrossDoors`) then moved all three
-  to the current values above — the first move that is a real behaviour change, not a fold: gas
-  now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
-  `08b73814d97c7be3` → `81ae90bdd049f745`. Still only the two tick-3000 goldens moved.
+  to `494ad0b0` / `0f66ffdf` / `994aa1ac` — the first move that is a real behaviour change, not a
+  fold: gas now crosses open doors, and its new `diffusion_coefficient` def moved the defs checksum
+  `08b73814d97c7be3` → `81ae90bdd049f745`. Still only the two tick-3000 goldens moved. From that
+  base the chain runs E0-1 → wall-drag/materials → E0-2 → E0-5 → **today's table above**.
 - Play (two terminals): `~/.dotnet/dotnet run --project hosts/web -- --port 8330 --ship slice`
   + `python3 client/serve.py` → http://localhost:8331 (T talks to selected crew).
   The host's own page (:8323) is the LEGACY skin — no dialogue UI. Terminal skin:
