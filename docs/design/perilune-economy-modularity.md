@@ -85,6 +85,14 @@ the plan and why the plan does **not** propose an extraction (§7, §8).
   `Jobs/Sources/HaulJobSource.cs` and `hosts/scenario/StockpileHarness.cs` are being edited
   elsewhere right now. Every line/number I cite for those three files is as of `b538450`
   and **will move**. The `StockZoneSystem` I read is the empty W0-6 stub.
+  > **↑ IT MOVED, 2026-07-25.** E0-4 has since landed on `main`. Only the figures the boundary
+  > tests enforce were refreshed against it: §1.5's `sim.Systems` count (3 → 4) and §1.5.2's site
+  > list, because `Economy_ReachesIntoShipSystemsAtExactlyTheAllowlistedSites` failed the moment
+  > the two lanes met. **Everything else about these three files in this document is stale and was
+  > NOT re-audited**: notably §1.4's LOC ledger (`HaulJobSource.cs` 257 → 512,
+  > `StockZoneSystem.cs` 58 → 300) and §1.4's "four of the six economy systems are empty stubs" —
+  > `StockZoneSystem` is no longer a stub. Re-measure before quoting any number for these files;
+  > the unenforced ones are prose, not pins.
 - I did **not** re-verify any retracted E0-4 number and this note quotes none. See memory
   `e0-4-far-leg-thesis-retracted`.
 - Type-reference counts in §1.4–1.5 come from grepping a comment-stripped concatenation of
@@ -240,7 +248,7 @@ concatenation:
 | `sim.Rooms` | 5 | `RoomState` | **ship-specific** |
 | `sim.AddItem` | 5 | spawn a stack | generic |
 | `sim.Devices` | 4 | `EntityStore<Device>` | generic-shaped |
-| `sim.Systems` | 3 | lazy sibling-system lookup | generic |
+| `sim.Systems` | 4 | lazy sibling-system lookup | generic |
 | `sim.IsWalkable` | 3 | door-aware walkability | **tile-game only** |
 | `sim.PowerDirty` | 2 | power net invalidation | ship-specific |
 | `sim.RemoveDevice` / `sim.AddDevice` | 2 | device lifecycle | generic-shaped |
@@ -426,15 +434,24 @@ game feel.**
 
 ### 1.5.2 The other invisible channel: `sim.Systems`
 
-`Simulation` exposes `internal ISimSystem[] Systems` (`Simulation.cs:210`) and three economy call
+`Simulation` exposes `internal ISimSystem[] Systems` (`Simulation.cs:210`) and **four** economy call
 sites use it to resolve a sibling system lazily — `BuildJobSource.cs:56`,
-`DeconstructJobSource.cs:58`, `CraftingSystem.cs:326`, plus two in the mixed `Commands.cs`. Because
+`DeconstructJobSource.cs:58`, `HaulJobSource.cs:119`, `CraftingSystem.cs:326`, plus two in the mixed
+`Commands.cs`. Because
 the array is untyped, **nothing in the source text says which system is being fished out**: a review
 probe type-tested for `AtmosphereSystem` beside an existing loop and every boundary assertion stayed
 green. It is a legitimate pattern — it is how a source stays inert when its system is absent from
 the stack — but it is a general-purpose hole in any dependency census. The call count is now pinned
-so a fourth caller is visible; the *contents* of the type test are not checkable by any source scan,
-and that is disclosed rather than fixed.
+so a **fifth** caller is visible; the *contents* of the type test are not checkable by any source
+scan, and that is disclosed rather than fixed.
+
+> **↑ UPDATED 2026-07-25 (was "three call sites", and the fourth arrived within hours).** This
+> section and §1.5's member table were measured against `b538450`, before E0-4 merged. E0-4's WP-4
+> (`e88e548`) added `HaulJobSource.BeginTick`'s lookup of the optional `StockZoneSystem` — a
+> deliberate, precedented reach: it sits behind a `_stockZonesResolved` bool and is therefore ONE
+> array walk per simulation, the same shape as `DeconstructJobSource`'s `_stripResolved`. So the
+> pin worked exactly as §1.5.2 promised — the fourth caller was visible the moment the two lanes
+> met, and this paragraph is the record of it being read rather than rubber-stamped.
 
 ### 1.6 Essential vs accidental coupling
 
