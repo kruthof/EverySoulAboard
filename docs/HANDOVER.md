@@ -61,9 +61,16 @@ corrupt each other; that is why each package below got its own):
 
 **Merge order into the lane**, then `./ci.sh` on the lane, then `--no-ff` to `main` and re-gate:
 `wp3-rigor` → `wp5-filter-ui` → `wp6-mask-collapse` → `wp7-unreachable-backoff` → the WP-4b redo.
-Expect **one** small end-of-file conflict in `tests/Perilune.Tests/StockpileHarnessTests.cs`
-(wp3-rigor's edits vs the restored WP-4b test) — **keep both**; they are independent additions and
-`git merge-tree` was verified clean on a synthetic worst case.
+Expect **two** conflicts, both small and both with a known resolution:
+
+1. `tests/Perilune.Tests/StockpileHarnessTests.cs`, end of file — wp3-rigor's edits vs the restored
+   WP-4b test. **Keep both**; they are independent additions, and `git merge-tree` was verified
+   clean on a synthetic worst case.
+2. `docs/HANDOVER.md`, in the **E0-5** section right after "no authored ship designates a strip." —
+   `main`'s `5a8ff4b` and the lane's `ab0442f` both insert the same ⚠️ RETRACTED block there, and
+   they differ only in the final cross-reference clause. **Take `main`'s wording** ("see the RESTART
+   block at the top of this file"), because the merged file will have this RESTART block; the lane's
+   variant points at its own E0-4 RETRACTED block only because its branch predates this one.
 
 **The WP-4b redo happens in the lane worktree** (that is where its uncommitted work already sits).
 Do the reachability gate and the re-measurement there; do not start a new worktree for it.
