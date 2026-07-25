@@ -45,9 +45,16 @@ Pitch line: *"Dwarf Fortress meets Oxygen Not Included, crewed by people who rem
    answer to "is a single ship enough?" all come from the voyage structure (below),
    not from planetfall colony-building — that would make us RimWorld-minus.
 
-4. **Automation is diegetic.** MOSS, the in-fiction scripting language, remains the
-   mechanical differentiator for the engineer-brained half of the audience: the ship's
-   nervous system is a language you learn by reading dead crew's scripts.
+4. **Automation is diegetic — and operated by souls.** MOSS, the in-fiction scripting
+   language, remains the mechanical differentiator for the engineer-brained half of the
+   audience: the ship's nervous system is a language you learn by reading dead crew's
+   scripts. Automation is **control, not conveyance** (script a machine's duty cycle;
+   never a belt that erases visible haulers), it is **operated by a named crew member
+   whose mood + skill set its throughput and defects** (so the automation game and the
+   souls pillar are one feedback loop, not two), and it is **gated behind the scarcest
+   currency** so *what to automate* stays a hard choice. Automation exists to free a
+   scarce person to do the one thing that can never be automated — be a person. See
+   `docs/design/perilune-automation-and-souls.md` (director decision, 2026-07-24).
 
 ## The emotional engine (what "LLM integration" concretely means)
 
