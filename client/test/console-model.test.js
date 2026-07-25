@@ -354,6 +354,23 @@ test('Cmd.dig / Cmd.stockpile carry an EXPLICIT on-flag so a sweep is idempotent
   assert.notEqual(Cmd.stockpile(1, 1).cmd, 'build');
 });
 
+// MUTATION: drop `& ACCEPT_ALL` in Cmd.filter ⇒ the last two assertions survive with -1 and 0xFFFF
+// on the wire. A negative is the dangerous one: the host's JSON reader has a sign branch, and -1
+// widened to a ulong host-side is EVERY bit set, which StockZoneSystem.Accepts reads as ACCEPT
+// EVERYTHING — the exact inverse of the restriction the message was asking for, and silently
+// permissive rather than loudly broken. The host refuses a negative outright; this keeps the client
+// from ever producing one.
+test('Cmd.filter carries the WHOLE mask for a tile, canonical and never negative', () => {
+  assert.deepEqual(Cmd.filter(3, 4, 8), { cmd: 'filter', x: 3, y: 4, mask: 8 });
+  // Accept-nothing is a real value, not a falsy omission.
+  assert.deepEqual(Cmd.filter(3, 4, 0), { cmd: 'filter', x: 3, y: 4, mask: 0 });
+  assert.equal(Cmd.filter(1, 1, -1).mask, 127, 'a negative can never reach the wire');
+  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 127, 'bits above the last ItemKind are dropped');
+  // Its OWN verb — never the presence verb, which carries no mask at all.
+  assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'stockpile');
+  assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'build');
+});
+
 test('armedTool: selection loss disarms ONLY the move order (IX-52); junk events are inert', () => {
   assert.equal(nextArmedTool('move', { t: 'selectionLost' }), null);
   assert.equal(nextArmedTool('wall', { t: 'selectionLost' }), 'wall');
@@ -380,6 +397,20 @@ test('hintLine: per-tool content; null when idle', () => {
   assert.equal(hintLine('move', 'VOLKOV'), 'MOVE ORDER ▸ CLICK A TILE — VOLKOV WILL WALK THERE · ESC EXIT');
   assert.equal(hintLine('move', ''), 'MOVE ORDER ▸ CLICK A TILE — CREW WILL WALK THERE · ESC EXIT');
   assert.equal(hintLine(null), null);
+  // E0-4 WP-5: the stockpile hint NAMES its filter. This is the only place in the whole client a
+  // player can read a zone's accept-set back — a filtered tile looks exactly like an unfiltered one
+  // (the frame carries raw GlyphColor bytes and no wire channel carries a filter; MECHANICS §13) —
+  // so it is load-bearing, not decoration.
+  // MUTATION: drop the stockLabel from the stockpile branch (return the bare 'STOCKPILE ▸ CLICK
+  // DECK TO ZONE · ESC EXIT') ⇒ the FOOD · PARTS assertion fails, and the player loses the only
+  // readback there is.
+  assert.equal(hintLine('stockpile', '', 'FOOD · PARTS'),
+    'STOCKPILE ▸ CLICK DECK TO ZONE — ACCEPTS FOOD · PARTS · ESC EXIT');
+  assert.equal(hintLine('stockpile'), 'STOCKPILE ▸ CLICK DECK TO ZONE — ACCEPTS ALL · ESC EXIT',
+    'an absent label degrades to ALL, matching defaultStockFilter()');
+  // The other order verbs still have no armed hint — this branch is stockpile-only.
+  assert.equal(hintLine('dig'), null);
+  assert.equal(hintLine('strip'), null);
 });
 
 // ---------------- chronicle day header (dedupe) ----------------

@@ -32,6 +32,9 @@
     <Compile Include="../../hosts/tui/Terminal/KeyDecoder.cs" />
     <Compile Include="../../hosts/tui/Terminal/AnsiPaint.cs" />
     <Compile Include="../../hosts/tui/Ui/InspectorModel.cs" />
+    <!-- E0-4 WP-5: the pure pending-stockpile-filter helpers. GameLoop owns Console/raw-mode and is
+         deliberately absent from this host, so the filter logic lives here to be testable at all. -->
+    <Compile Include="../../hosts/tui/Ui/StockFilterModel.cs" />
     <Compile Include="../../hosts/tui/Ui/ScreenComposer.cs" />
     <!-- A6: the web skin's PURE wire serializer only. WebHost/Program touch sockets and
          threads and must NOT leak into the headless test host — add a file here only when a
@@ -47,6 +50,9 @@
     <!-- E0-5 WP-4: the pure occupancy strip-selection helper (Program.cs owns the IO/flag).
          Tested directly so "designates exactly N workable non-hull walls, canonical order" is pinned. -->
     <Compile Include="../../hosts/scenario/StripHarness.cs" />
+    <!-- E0-4 WP-3: the pure occupancy stockpile-selection helper (Program.cs owns the IO/flag).
+         Tested directly so "designates the same N walkable tiles on two runs" is pinned. -->
+    <Compile Include="../../hosts/scenario/StockpileHarness.cs" />
   </ItemGroup>
 
   <ItemGroup>

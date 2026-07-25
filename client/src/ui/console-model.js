@@ -281,15 +281,22 @@ export function chronHeader(day, headline) {
 
 /**
  * The stage hint line while a tool is armed (IX-37 / IX-52), or null when idle (the caller shows
- * the idle chrome). surname only matters for 'move'.
- * @param {ArmedTool} tool @param {string} [surname]
+ * the idle chrome). surname only matters for 'move'; stockLabel only for 'stockpile'.
+ *
+ * The stockpile line NAMES ITS FILTER (E0-4 WP-5), and that is load-bearing rather than decorative:
+ * a filtered stockpile tile is visually identical to an unfiltered one — the frame carries raw
+ * GlyphColor bytes and there is no wire channel for a zone's accept-set (MECHANICS §13) — so this
+ * string is the only place in the whole client where a player can read the filter they are about to
+ * paint. An absent label degrades to ALL, matching defaultStockFilter().
+ * @param {ArmedTool} tool @param {string} [surname] @param {string} [stockLabel]
  * @returns {string|null}
  */
-export function hintLine(tool, surname) {
+export function hintLine(tool, surname, stockLabel) {
   if (tool === 'wall') return 'BUILD ▸ WALL — CLICK DECK TO PLACE · ESC EXIT';
   if (tool === 'door') return 'BUILD ▸ DOOR — CLICK DECK TO PLACE · ESC EXIT';
   if (tool === 'cancel') return 'CANCEL ▸ CLICK A QUEUED ORDER TO REVOKE · ESC EXIT';
   if (tool === 'move') return 'MOVE ORDER ▸ CLICK A TILE — ' + (surname || 'CREW') + ' WILL WALK THERE · ESC EXIT';
+  if (tool === 'stockpile') return 'STOCKPILE ▸ CLICK DECK TO ZONE — ACCEPTS ' + (stockLabel || 'ALL') + ' · ESC EXIT';
   return null;
 }
 

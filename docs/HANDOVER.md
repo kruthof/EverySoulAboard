@@ -94,9 +94,22 @@ binding automation-&-souls principle. Opus-written + independently Opus-reviewed
 
 ## Orientation for a fresh session
 
-1. **Read the two sections directly below, in order** — the A1 measurement (what the economy
+0. **⚠️ E0-4 IS IN PROGRESS on `lane/e0-4-stockpile-zones` (NOT on `main`, NOT merged), and its
+   published far-leg thesis has been RETRACTED.** If you are the session picking it up, **read the
+   "E0-4 — filtered stockpile zones: IN PROGRESS" section directly below first, in full** — it is a
+   retraction, not an extension, and it lists four specific statements in the older record that are
+   false. Short version: "a wrong-deck stockpile is a severe throughput regression" was **never
+   measured** — the `far` harness leg zones a **sealed room**, and what it measured is an
+   unreachable-tile haul livelock. Cross-deck haul works. WP-1/2/3/4 are committed on the lane; four
+   further packages sit reviewed-PASS on their own unmerged branches; WP-4b is implemented but
+   **send-back and uncommitted in the lane worktree**. The lane plan
+   `docs/design/perilune-e0-4-stockpile-zones.plan.md` is the authority on the lane's *shape* (but not
+   on its far-leg numbers); the automation/souls principle
+   `docs/design/perilune-automation-and-souls.md` (now on `main`) governs future economy work. Do the
+   remaining work IN THAT WORKTREE (`../perilune-wt/e0-4-stockpile-zones`).
+1. **Read the two sections further below, in order** — the A1 measurement (what the economy
    actually does today) and the E0-5-before-E0-4 sequencing case (what to do about it). Everything
-   further down is history, newest first.
+   below the E0-4 section is history, newest first.
 2. **`docs/MECHANICS.md` is the authority on behaviour**, and its **§13** lists what is wired but
    not connected. **§13.15** is the current occupancy measurement; **§13.6** is closed.
 3. **Work in a worktree — always** (`CLAUDE.md` hard rule), even for doc-only work. Never edit the
@@ -114,6 +127,384 @@ binding automation-&-souls principle. Opus-written + independently Opus-reviewed
 mechanics reference + MOSS terminal + the economy redesign + economy **Wave 0** + **E0-1**
 recruitability + **E0-2** work-rate rebase + **E0-3** player verbs & order precedence + **E0-5**
 deconstruct/strip + wall drag-build & materials + drifting starfield + the **A1 measurement**.
+**In flight (NOT on `main`):** **E0-4** filtered stockpile zones — WP-1/2/3/4 committed on
+`lane/e0-4-stockpile-zones`; WP-3-rigor, WP-5, WP-6 and WP-7 reviewed **PASS** on four separate
+unmerged branches; **WP-4b send-back**; the lane's far-leg thesis **retracted**; merge + a full
+re-measure remaining (see the E0-4 section below). **Merged to `main`:** the **automation & souls**
+design principle.
+
+## E0-4 — filtered stockpile zones: IN PROGRESS on `lane/e0-4-stockpile-zones` (2026-07-24), READ IF RESUMING
+
+**Status: nothing is on `main`.** The lane branch carries WP-1/2/3/4; four further packages sit
+**reviewed PASS and unmerged on their own branches** (WP-3-rigor, WP-5, WP-6, WP-7) plus a
+diagnosis branch; **WP-4b is implemented but SEND-BACK and must NOT be committed as-is** — its
+implementation is sitting **uncommitted in the lane worktree** (`hosts/scenario/Program.cs`,
+`hosts/scenario/StockpileHarness.cs`). Orchestrated the same way as E0-5 (plan agent → per-WP Opus
+implementer → **independent** Opus reviewer → integrator). Lane plan:
+**`docs/design/perilune-e0-4-stockpile-zones.plan.md`**. Worktree:
+`../perilune-wt/e0-4-stockpile-zones`.
+
+**This section is a RETRACTION, not an extension.** The lane's own published record has now been
+corrected three times for claims outrunning measurement. Read the retraction block first; then
+treat every `far`-leg number previously written down as void.
+
+### ⛔ RETRACTED: "a wrong-deck stockpile is a severe throughput regression" was NEVER MEASURED
+
+The `--stockpile far` harness leg does not measure a wrong deck. It measures a **sealed room**.
+
+`StockpileHarness.SelectStockpile` (`hosts/scenario/StockpileHarness.cs:70`) gates candidates on
+the `TileFlags.Walkable` flag alone (`:90`) with **no reachability test**, and orders them by
+distance-to-nearest-bench *descending*. On the slice that deterministically lands **3 of its 4
+tiles inside the authored sealed observatory** — `sim/Sim.Gen/AuthoredShips.cs:93` builds it with
+`DoorClosed = true`, `Simulation.IsWalkable` refuses a closed door, and **nothing in the sim ever
+opens a door**. Those tiles are `Walkable` but **unreachable**.
+
+`JobWork.IsFreeStockpileTile` (`sim/Sim.Core/Jobs/JobContext.cs:115-121`) has **no reachability
+term**, so a single unreachable free tile holds the per-item candidate gate permanently open while
+delivery can never succeed. The result is a **2-tick claim/abandon livelock** across ~8 crew at
+~50 % duty — which is the entire "49 % HaulPickup" signal the lane published.
+
+Controls (30,000 slice ticks) — **reachability, not distance and not deck, is the differentiator**:
+
+| zoned tiles | pickup starts | deliveries | pickup share |
+|---|---|---|---|
+| `bench` 4 (all reachable) | 10 | 9 | 0.913 % |
+| **`(60,1,1)` alone — far deck, REACHABLE** | **2** | **2** | **0.175 %** |
+| the 3 observatory tiles alone (unreachable) | 72,928 | 0 | 31.191 % |
+| `far` 4 (1 reachable + 3 not) | 48,857 | 2 | 21.548 % |
+
+Reachability was confirmed independently with `sim.Paths.FindPath` from every crew member:
+`(58,15,1) (58,14,1) (57,15,1)` are reachable by **no** crew member; `(60,1,1)` and all four
+`bench` tiles are reachable by some.
+
+**Consequences, all of which must survive into whatever is written next:**
+- **`ECONOMY.md` §8's −14 % wrong-deck regression is not reproduced by any run in this lane.** It
+  is neither confirmed nor refuted here — it was never actually tested.
+- **Cross-deck haul demonstrably WORKS.** The deliveries in the reachable-far leg carried Potato
+  from `(29,6,0)` on deck 0 to `(60,1,1)` on deck 1 via the ladders. A *reachable* far-deck
+  stockpile costs **0.175 %** of crew time and delivers.
+- Every `far`-column number in this lane's prior record — the `6`, the `2` **and** the `9` — is
+  the same sealed room measured three ways. **All of it must be re-measured.**
+- The livelock is **PRE-EXISTING, not introduced by E0-4**: measured at the lane's parent
+  `6911d18` it is *worse* (33.5 % churn). It is **undocumented in `MECHANICS §13`**; §6.2 step 4
+  documents the `UnreachableRetryTicks = 50` backoff discipline that `ProgressPickup` violates.
+- A characterization test asserting the **broken** behaviour on purpose is committed on
+  `lane/e0-4-haul-diagnosis` (`487d924`,
+  `tests/Perilune.Tests/HaulUnreachableStockpileLivelockTests.cs`). It goes RED when the bug is
+  fixed; **WP-7 inverts it.**
+
+### Four further statements in the prior record are FALSE — corrected here
+
+1. **"WP-4b is UN-STARTED — nothing was written." FALSE.** A complete WP-4b implementation was
+   found uncommitted in the lane worktree and verified (it builds; it ran a 3-day measurement to
+   completion). It is send-back for *other* reasons (below), not for not existing.
+2. **"An endless pick-up-and-re-drop thrash." FALSE.** Crew **never pick anything up** — the claim
+   is released before carry state changes. Nothing is ever carried and nothing is ever re-dropped.
+   The shape is claim/abandon, not carry/drop.
+3. **The `far` and `bench` test counts in the prior record are stale, and the per-branch counts do
+   NOT add.** `894` is `main`'s gate; `914` was this section's own stale claim; `918` is the
+   measured lane count pre-WP-5 (matching WP-4's commit message). Per-branch measured counts are
+   in the branch table below; **each was measured in isolation on top of the lane base, so they
+   overlap and cannot be summed — the merged-lane gate must be re-measured from scratch.**
+4. **"`--stockpile bench` is a stockpile hugging the benches." MISLEADING.**
+   `DesignateStockpileCommand.Execute` (`sim/Sim.Core/Commands/Commands.cs:134-138`) gates only on
+   `Walkable` with **no device exclusion**, so bench tiles are legal candidates at distance **0**
+   and legal zone tiles — a player can do this too; it is not a harness artifact. `--stockpile
+   bench 4` picks `(13,5,0)`, `(16,5,0)`, `(22,6,0)` — **the three benches themselves** — plus
+   `(13,4,0)`. So **3 of 4 zone tiles are ON the benches; exactly one is adjacent.** Second-order:
+   crafting outputs spawn at `worker.Pos` (`sim/Sim.Core/Systems/CraftingSystem.cs:196`) and the
+   worker stands *adjacent* to the station, so outputs can land on `(13,4,0)` — the one genuinely
+   adjacent zoned tile — where `HaulJobSource`'s "already stored" guard
+   (`sim/Sim.Core/Jobs/Sources/HaulJobSource.cs:122`) skips them, so **they never enter the haul
+   pool at all.** The bench-leg *conclusion* still holds directionally (throughput held at
+   baseline 31, near-zero haul at 0.026 + 0.021 % — what a working pre-positioning buffer looks
+   like), but the **label** was wrong in two places (this file, and
+   `hosts/scenario/StockpileHarness.cs:21-22`). Cheap fix taken: correct the wording. Recorded
+   follow-up **not** taken: make `bench` mode skip `HasDevice` tiles so the mode means what it
+   says — **that moves the published bench row and requires re-running the 3-day A/B**; nobody has
+   quantified how much it would change.
+
+**And the reframing that rested on all of it is withdrawn:** "the wrong-deck regression is
+primarily a FILTER problem, the bench rule is the secondary round-trip fix" was derived from the
+confounded `far` column and **is not supported**. WP-4b's `2 → 9` throughput movement is real but
+**mis-attributed**: its mechanism is "the filter removes ~723 Potato from the pool feeding a
+livelock", **not** "the filter pays down a cross-deck haul cost" — no cross-deck distance is ever
+paid in that run. `ECONOMY.md` §8 still needs a correction; **we do not yet know what it should
+say.**
+
+### The design (DECIDED — Garvin, 2026-07-24 — "Choice A")
+
+Stockpile *presence* stays on `TileFlags.Stockpile` (bit 4, E0-3); only the *filter* (a per-tile
+`ulong AcceptMask`, bit k = accept `ItemKind` k) moves into the `ZONE` SYSS registry
+(`StockZoneSystem`), keyed by packed position; **absent registry entry = accept-all** (back-compat
+with every E0-3 stockpile and every old save, zero migration). The full presence-migration
+("Choice B") was **rejected** — `ECONOMY.md` §8 forbids *filters* in `TileFlags`, not the presence
+bit. Reserved bit 7 untouched.
+
+### Branches — five side branches, all unmerged, nothing on `main`
+
+| branch | head | verdict |
+|---|---|---|
+| `lane/e0-4-stockpile-zones` | `395a65a` | the LANE. WP-1/2/3/4 + plan + hand-off commits. **WP-4b is UNCOMMITTED in this worktree.** |
+| `lane/e0-4-wp3-rigor` | `42e5b27` | **PASS**, polish applied. Test-file only; `StockpileHarness.cs` byte-identical to lane HEAD. 918 dotnet + 485 node. |
+| `lane/e0-4-wp5-filter-ui` | `1e52b0e` | **PASS** (implemented → reviewed → send-back fixed → re-reviewed). |
+| `lane/e0-4-wp6-mask-collapse` | `35bacc9` | **PASS**, polish applied. Sim edit. 926 dotnet + 485 node; four pins byte-identical, goldens untouched vs lane base. |
+| `lane/e0-4-wp7-unreachable-backoff` | `5b72e04` | **PASS**, editorial applied. Sim edit. 928 dotnet + 485 node; four pins byte-identical, goldens untouched. **Scope expansion — separable (see open decisions).** |
+| `lane/e0-4-haul-diagnosis` | `487d924` | diagnosis only, no sim change. Characterization test asserting the BROKEN livelock; goes RED once WP-7 lands. |
+
+**WP-1** `765897f` + F1-fix `79d56bb` (**PASS**) — filled the W0-6-empty `StockZoneSystem` as
+`DeconstructSystem`'s twin: `struct StockZone{Int3 Pos; ulong AcceptMask}`, packed-sorted registry,
+`SetFilter`/`ClearFilter`/`TryGetFilter`/`Accepts`, `Pack`/`InsertSorted` (the deliberate 4th
+copy), `ZONE` save **v1→v2** (version-BRANCH: a v1 marker-byte blob upgrades to accept-all),
+`StateChecksum` fold (**an empty registry folds a bare `Seed` — byte-identical to today, which is
+what holds the pins**), and a `Simulation.StockZones` reference accessor (no new hashed/saved
+field). No `SystemStack` edit — W0-6 pre-registered `ZONE`. Review F1: the v1→v2 bump orphaned a
+neighbouring named mutation in `EconomySystemRegistrationTests`; re-targeted to the v2 format.
+
+**WP-2** `e88e548` (**PASS**) — `SetStockpileFilterCommand(pos, mask)`, the one new command;
+`DesignateStockpileCommand` OFF now also `ClearFilter`s (no orphan entries); and **haul honours the
+filter** (a kind-ed `IsFreeStockpileTile` overload, a per-item candidate gate, `TryPathToFree
+Stockpile` filtering destinations, a lazy `StockZones` resolve in `BeginTick`). No bench rule. The
+reviewer empirically proved the `filtered` fast path is byte-identical to no-filter for an
+accept-all mask.
+
+**WP-3** `a7d3f3d` (**SEND-BACK on test rigor only; fixed on `lane/e0-4-wp3-rigor`**) — the opt-in
+`occupancy --stockpile <bench|far> [--stockpile-n N]` harness (host-only, mirrors E0-5's
+`StripHarness`; the verb-less default path stays byte-identical), plus occupancy reporting of
+Haul %, throughput (`ControllerModule` end-count), on-job travel % and `stockpile tiles zoned`. The
+*measurement machinery* was fully reproduced by the reviewer and is sound — it is the
+**interpretation** of the `far` leg that the retraction above voids. The two review findings were
+non-biting named mutations (F1 `SelectStockpile_IsIdenticalAcrossTwoRuns` cannot detect a missing
+tie-break, since identical input gives identical `Sort` output; F2 an `N ≤ 0` guard redundant with
+the `picks.Count < n` loop), both fixed at `42e5b27`.
+
+**WP-4** `c6df011` (**PASS**) — the "don't haul what a bench wants" rule: a `_benchWanted` mask in
+`HaulJobSource.Rescan` (`sim/Sim.Core/Jobs/Sources/HaulJobSource.cs:129`) that keeps a
+bench-wanted kind out of the haulable pool entirely, ceding it to `CraftingSystem.StepFetch`. Four
+named-mutation tests + a `JobDispatchTests` zero-alloc refactor; 918 dotnet green; four pins held.
+**Its far measurement measured the sealed room** and is void. The rule itself is unit-proven as the
+intermediate round-trip fix and stands on that evidence, not on the `far` column.
+
+**WP-4b** — **implemented, REVIEWED, SEND-BACK. Do not commit as-is.** It adds a `filtered-far`
+harness mode (the same tiles as `far`, plus a `SetStockpileFilterCommand` per painted tile with a
+Potato-rejecting mask). The **plumbing is verified correct** (same tiles as `far`, filter live at
+t = 0, command ordering safe in both orders) — it is the claims around it that fail:
+- **F1 — the missing test is the ORCHESTRATOR'S fault, not the author's.** WP-4b *did* ship a test
+  (`EnqueueFilteredFar_RejectsPotato_AcceptsTerminalGood`), run and passing 7/7. While backing out
+  unrelated orchestrator edits, `git checkout --` on
+  `tests/Perilune.Tests/StockpileHarnessTests.cs` reverted the WP-4b test along with them; the
+  reviewer then correctly found no test. **Original text preserved at
+  `scratchpad/mine-StockpileHarnessTests.cs`** (it also carries superseded orchestrator edits —
+  take only the test method, and prefer the stronger test the reviewer specified). The absence
+  bites: mutating `far: true` → `false` **and** deleting the `SetStockpileFilterCommand` enqueue
+  still gives 918 passed, 0 failed.
+- **F2 — `RejectPotatoMask`'s stated rationale is FALSE, proven empirically.** The doc argues the
+  mask exercises "the WP-2 filter + WP-4 bench-rule pair". It cannot: the bench-rule `continue`
+  (`HaulJobSource.cs:129`) runs **before** the filter check (`:130`), and `benchWanted = 0x31` =
+  `{Regolith, Scrap, Parts}` — exactly the kinds the mask "still accepts", whose bits are therefore
+  never consulted. `Corpse` is hard-excluded upstream (`:121`) and **`MetalOre` is a dead kind no
+  system ever creates**. The only live bit is `ControllerModule`. Measured: this mask and
+  `MaskOf(ControllerModule)` produce a **byte-identical item world and crew state over 60k slice
+  ticks** (non-vacuity guard: 601 haul crew-ticks occurred). The junk high bits are **57 bits of
+  hashed state carrying zero behaviour** (folded verbatim by `StateChecksum`), which makes this
+  harness's zone checksum un-comparable with any client-authored mask.
+- **F3** — the reachability confound, confirmed independently (see the retraction).
+- **F4/F5/F6** — the reviewer supplied exact replacement wording for every overclaiming passage in
+  `StockpileHarness.cs` and `Program.cs`; a `(default …)` doc claim with no default in the
+  signature; and stale `<bench|far>` / "Two modes" / "accept-all" comments.
+
+Its 3-day measurement completed (`occupancy --ship slice --days 3 --stockpile filtered-far
+--stockpile-n 4`, 2'592'000 ticks in **7694.6 s**; full output at
+`scratchpad/MEASUREMENT-filtered-far-3day.txt`) and is recorded here **only as a record of what was
+run, not as evidence for anything** — it measures the sealed room:
+
+| | baseline | `far` pre-rule | `far` post-WP-4 | `filtered-far` |
+|---|---|---|---|---|
+| throughput (end `ControllerModule`) | **31** | 6 | 2 | 9 |
+| HaulPickup | 0.00 % | 49.233 % | ~49 % | 47.371 % |
+| HaulDeliver | 0.00 % | 0.017 % | — | 0.003 % |
+| on-job travel | — | 0.2 % | — | 0.3 % |
+| A1 (h24) | 24.979 % FAIL | 50.000 % ⚠️ | — | 50.000 % ⚠️ |
+
+End state: `debris tiles left 0`, `stockpile tiles zoned 4`, ground stock `Regolith=38 Corpse=1
+Potato=723 Scrap=12 Parts=1 ControllerModule=9`, crew 8/8; busy pinned at **exactly 50.0 %** h8–h72
+(a 4-of-8-crew plateau). **A1's 50 % "PASS" is the trap, for the third time in this lane** — crew
+are busy claiming and abandoning haul jobs, not producing. The honest reading of the whole table is
+that `HaulPickup ~47 %` against `HaulDeliver ~0.00 %` with on-job travel `~0.3 %` is the livelock's
+signature, present in the accept-all `far` leg too.
+
+**WP-5** `1e52b0e` (**PASS**) — the filter UI, the only surface through which a player can reach
+`SetStockpileFilterCommand`: a client kind-palette, a `filter` wire message, a TUI filter arg. No
+glyph or golden move.
+
+**WP-6** `35bacc9` (**PASS**) — an accept-all filter stores **no** registry entry, so the haul fast
+path stays reachable. **Integrator note: the cross-derivation contiguity assertion in this package
+is a BRIDGE — delete it (do not maintain it) once WP-5's sites consume
+`StockZoneSystem.AcceptAllMask`.**
+
+### WP-7 `5b72e04` — the engine fix for the livelock (PASS), and its caveat
+
+An unreachable stockpile tile no longer livelocks the haul board. Design: a per-tile `_tileRetryAt`
+backoff — **transient scratch, never saved and never hashed, which is what keeps it pin-neutral** —
+written only in `TryPathToFreeStockpile`, honoured at all three read sites. Plus `_backoffWakeAt`,
+which the suggested design **lacked**: a tile backoff acts through `Rescan`'s gate and `Rescan` only
+runs on `JobsDirty`, so without a wake-up a zone that went quiet while backed off would be
+**permanently dead**. That costs ~0.3 % of crew-ticks (a re-probe every 5 s) versus the no-wake
+variant — a deliberate, documented liveness-vs-cost trade. It reuses `UnreachableRetryTicks = 50`.
+
+Measured (30,000 slice ticks):
+
+| leg | pickup starts | deliveries | share | wall |
+|---|---|---|---|---|
+| observatory ×3 (unreachable) **before** | 72,928 | 0 | 31.191 % | 51,210 ms |
+| observatory ×3 **after** | **918** | 0 | **2.254 %** | ~1,262 ms |
+| far reachable `(60,1,1)` before → after | 2 → 2 | 2 → 2 | unchanged | — |
+| `bench` 4 before → after | 10 → 10 | 9 → 9 | unchanged | — |
+
+(The `918 / 2.254 %` figure is the **final** design; an earlier variant measured `915 / 1.884 %`.
+The difference was traded for "a deconstruct re-opens a zone immediately" — see the escape hatch.)
+
+Two must-fixes it addressed: **`HaulJobSource`'s `foreach` over a `Dictionary` violated
+`IJobSource`'s rule 4** ("use `Dictionary`/`HashSet` for LOOKUP ONLY and never iterate them — that
+is a determinism rule"); it was the only collection iteration in `sim/Sim.Core/Jobs/`, safe today
+only because `Int3.GetHashCode` is arithmetic and `Dictionary` layout is a pure function of the
+insert/remove sequence — both true, neither promised. Fix taken: don't iterate — `Clear()` on a
+`Tiles`-dirty rescan plus per-tile `Remove` driven by the ordered `_stockpiles` list, with expiry
+moved entirely into `IsPathworthy` and pinned by a new test. And **no zero-alloc test**, against a
+`CLAUDE.md` hard invariant, when WP-4 *in this same lane* shipped one; now measured and pinned at
+0 bytes / 3000 ticks with a live hauler and preconditions sampled *inside* the window. 10 named
+mutations, 5 sole-guarded. The reviewer also **disproved its own proposed simplification**: gating
+the wake on `!anyFreeStockpile` reintroduces the dead-zone bug on a filtered board.
+
+**⚠️ Honest limit — WP-7's fix DEGRADES WITH TERRAIN CHURN** (measured by the reviewer; this
+belongs in any future debugging of "my late-game ship started livelocking again"):
+
+| terrain churn | pickup starts / 30k | share |
+|---|---|---|
+| untouched slice (10 `Tiles`-dirty ticks per 30,000) | 918 | 2.254 % |
+| `Tiles` dirty **every** tick (adversarial) | 67,742 | **28.873 %** |
+| no fix at all | 72,928 | 31.191 % |
+
+Up to **93 % defeat under continuous churn**, because every `Tiles`-dirty rescan discards every
+stamp. It degrades *gracefully* (never worse than pre-WP-7, never incorrect, only wasted crew
+time), which is why it was judged non-blocking. Calibration: 10 `Tiles`-dirty ticks cost +0.37 pp.
+**Escape hatch if it ever bites: drop the `Tiles` clear and rely on expiry alone** — that is the
+measured 1.884 % variant, costing only ≤ 5 s of re-open latency after a deconstruct.
+
+**Known, inherited, and verified by nobody:** `_tileRetryAt`/`_backoffWakeAt` are transient, so a
+reloaded game starts with an empty map where a live one would have entries, and can diverge by up
+to one re-probe cycle. **This is identical in kind to the pre-existing `_retryAt`** in
+Haul/Dig/Deconstruct — **not introduced by WP-7** — and no test in the suite would catch either.
+Nobody has checked it.
+
+**WP-7's own recommendation, which the orchestrator endorses:** the engine fix makes the bug
+*cheap* but not *legible*. A player who paints a zone into a sealed room now sees a normal-looking
+zone that simply never fills, with no explanation anywhere — arguably a worse play experience than
+the livelock, which at least showed visible activity. The data is already free
+(`BackedOffStockpileTiles` is one line from being enumerable) and would ride the existing view-only
+wire channel beside `designs`/`materials`, plus a MOSS "UNREACHABLE ZONE" fault row. Projection-
+pure, pin-neutral, composes with WP-5's tile-decoration layer.
+
+### The four pins — byte-identical on every branch so far, and must stay so at integration
+
+- scenario `00e0a2dadb8e5076`
+- tick-3000 `4be2e77864fb7409`
+- slice `1f8f2225ee568de9`
+- defs `5a471d12643b64f9` — this is **`SimDefs.Default.Checksum`**, and it is **NOT** the scenario
+  host's rules-inclusive `defs:` print, which is `3f23ce5bd40283c8`. **These are different things
+  and have been confused before** (the `3f23ce5b` value appears at the top of every occupancy
+  run's output; do not paste it into a pin).
+
+E0-4 is inert without player intent, exactly like E0-5 — no authored ship zones a stockpile — and
+**no def scalar was added**, so the defs checksum is not expected to move at all.
+
+### Merge order, and the one conflict to expect
+
+`lane/e0-4-wp3-rigor` (`42e5b27`) → `lane/e0-4-wp5-filter-ui` (`1e52b0e`) →
+`lane/e0-4-wp6-mask-collapse` (`35bacc9`) → `lane/e0-4-wp7-unreachable-backoff` (`5b72e04`) →
+the WP-4b redo. Then `./ci.sh` on the lane, then `--no-ff` to `main` and re-gate.
+
+Expect **one** small end-of-file conflict in `tests/Perilune.Tests/StockpileHarnessTests.cs` —
+WP-4b appends a `filtered-far` test at the end of the class and the WP-3 rigor fix edits the
+earlier tests and may append helpers there too; both branch from the same lane HEAD. **Resolve by
+keeping BOTH** (independent additions); the WP-3-rigor reviewer verified this merges clean with
+`git merge-tree`.
+
+### What REMAINS before E0-4 can close, in order
+
+1. **WP-4b redo** — it is SEND-BACK; do not commit the working-tree version as-is. In order:
+   (a) add a **reachability gate** to `StockpileHarness.SelectStockpile` — a tile no crew can
+   `FindPath` to is not a legal measurement tile; (b) **re-measure the WHOLE `far` column** — the
+   `6` and the `2` are as confounded as the `9`, and WP-7 makes all of them stale by construction
+   anyway (that mode zones the observatory tiles). 3-day legs take ~45 min – 2 h each; **run them
+   serially and do not build in that worktree while one runs**; (c) rewrite the comments to what
+   the re-measured numbers actually say (the reviewer supplied exact replacement wording, F4 a–e);
+   (d) **restore and strengthen the test** (see F1 — text at
+   `scratchpad/mine-StockpileHarnessTests.cs`; take only the test method).
+   **Sequencing decision (orchestrator): re-measure AFTER WP-7 lands**, since WP-7 changes haul
+   behaviour and a re-measurement taken before it would be obsolete immediately.
+2. **Merge in the order above**, resolving the one expected conflict.
+3. **Re-measure the gate counts on the merged lane.** Every per-branch count in the table above was
+   measured in isolation on top of the lane base; **they do NOT add.**
+4. **Rewrite the downstream record.** This is the largest remaining piece and it is a
+   **retraction**: `ECONOMY.md` §8's framing, `MECHANICS §13`'s missing livelock entry, and this
+   section's own `far` column. Also owed, unchanged from before: the WP-5 cost disclosure
+   **understates an exponent** — three passages (the WP-5 commit message,
+   `stock-filter-model.js`'s `defaultStockFilter`, and `GameLoop.cs`) say
+   `O(items × stockpile-tiles)` where the true cost is `O(items × stockpile-tiles²)`, because
+   `AnyFreeStockpileAccepts` loops S tiles and each `IsFreeStockpileTile` calls `TryGetFilter`,
+   itself a linear scan of S entries. The mechanism is described correctly and the `file:line`
+   citation is right; only the exponent is wrong — and **WP-6 removes the problem**, so those
+   passages need rewriting once it lands regardless.
+5. **`MECHANICS.md` §13 entries owed** (from WP-5, deliberately outside its file set, plus
+   carry-overs): a filtered stockpile tile has **no visual indicator anywhere** — filtered and
+   unfiltered tiles are indistinguishable, and an honest indicator needs a new wire channel (its
+   own package); a stored all-accept entry will **not** auto-accept a future `ItemKind` 7 (WP-6 may
+   make this moot — re-check after it lands); the TUI filter is a **two-key pending mask** (`i`
+   cycles kind, `I` toggles), not a per-tile editor; a chip toggle affects only **future** paints,
+   so an existing zone is unchanged until repainted with nothing to say so; the stockpile verb
+   lives in `.app`, which `body.overview-open` hides, so on any ship with a populated `decks` grid
+   the verb is reachable only in the legacy tile view (pre-existing); and a mis-placed stack on a
+   filter-rejecting tile is **not** re-hauled off it (inherited from the "already stored" guard —
+   carried from WP-2's review).
+
+### Two open decisions for Garvin — neither taken unilaterally
+
+1. **WP-7 is an orchestrator scope expansion.** E0-4 was chartered as filtered stockpile zones;
+   WP-7 is a sim-level haul-dispatch fix for a **pre-existing** bug the lane merely tripped over.
+   It is **PASS and separable** — it lives entirely on its own branch and can be held back, landed
+   in E0-4, or promoted to its own lane. It is included in the merge order above on the
+   orchestrator's judgement only.
+2. **The player-facing unreachable-zone indicator** (WP-7's recommendation, above) — recommended,
+   and the argument that it belongs in **E0-4** is that this lane ships player-authored zones and
+   this is the first way a player can author one that silently does nothing. **Sequence it after
+   WP-5.** Not started.
+
+### Non-blocking notes carried forward
+
+- N4: `client/src/wire/session.js` imports from `ui/` — inverts layering, no cycle today.
+- N8: two adapted `paletteOrders` tests carry no named mutation (grandfathered from E0-3).
+- The WP-5 two-row console layout is verified at **one viewport (1600×1000)** only; `styles.css`
+  has `@media` rules at ~1360/1180 px that were not exercised. Judged non-blocking by review
+  (`.console-menu{overflow:hidden}` clips rather than spills).
+- **Repo-wide methodology trap, learned the expensive way in WP-7:** a mutation harness using
+  `shutil.copy2` **preserves mtime** — restoring a mutated source made it look older than `bin/`,
+  MSBuild skipped the rebuild, and the next `dotnet test` silently ran the PREVIOUS mutation's
+  assembly. It presented as a reproducible 3-test regression that passed when each test was run
+  individually. Fixed with `shutil.copy` + `os.utime` and everything re-run from a deleted
+  `bin/`+`obj/`. **Any agent using a copy-restore mutation harness needs the same fix.**
+- This lane has now produced **six** tests that did not bite what they claimed to (five found by
+  reviewers, one found by WP-7's implementer against its own work). Independent review is earning
+  its keep here more than in any prior lane.
+
+**Open items flagged in the plan** (§8 hazards, §12 out-of-scope): the far-regression reproduction
+(hazard 8.1) — **still open, and now known never to have been performed**; the 64-`ItemKind` mask
+ceiling (flagged, not fixed); no stack merging / priorities / containers (later E-STOCK packages);
+no `stock.def` (deferred until a real tunable exists).
+
+**Reminder: still do not zone stockpiles in any authored ship.** The reason has changed — it is
+not the unmeasured −14 %; it is that until WP-7 lands, an unreachable zoned tile livelocks the haul
+board.
 
 ## E0-5 — deconstruct/strip: LANDED on `main` (2026-07-23), before E0-4, START HERE
 

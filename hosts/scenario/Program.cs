@@ -239,12 +239,93 @@ namespace Perilune.Tools
                 Console.WriteLine();
             }
 
+            // OPT-IN E0-4 measurement source (--stockpile <bench|far|filtered-far>
+            // [--stockpile-n N], default N=4). Host-side: it designates N stockpile tiles at t=0 via
+            // the same command the client issues — `bench` hugs (and, on the slice, mostly sits ON)
+            // the crafting benches, `far` lands on the opposite deck, and `filtered-far` is `far`'s
+            // tiles plus a Potato-rejecting accept mask. `bench` and `far` are accept-all (unfiltered
+            // — the pre-WP-4 "before"); `filtered-far` carries the WP-2 filter.
+            //
+            // ⚠️ RETRACTED: `far` was published as reproducing ECONOMY.md §8's −14 % wrong-deck
+            // regression. It did not. Before WP-4b's reachability gate it zoned the slice's SEALED
+            // observatory (walkable, but behind a permanently closed door), so the old `far` /
+            // `filtered-far` numbers measured an unreachable-tile haul livelock — a pre-existing bug,
+            // since fixed by WP-7 — not a cross-deck haul cost. Every tile the harness picks is now
+            // reachable by some crew member at t=0; see StockpileHarness.SelectStockpile.
+            //
+            // No flag ⇒ the CI-pinned verb-less path is byte-identical (nothing below runs).
+            string stockMode = ArgString(args, "--stockpile", null);
+            int stockN = ArgInt(args, "--stockpile-n", 4);
+            int zoned = 0;
+            if (stockMode != null)
+            {
+                if (stockMode != "bench" && stockMode != "far" && stockMode != "filtered-far")
+                {
+                    Console.WriteLine($"--stockpile: unknown mode '{stockMode}' (expected 'bench', 'far' or 'filtered-far').");
+                    return 1;
+                }
+                // The tiles the reachability gate REJECTED on the way to filling the N slots — printed
+                // so a reader of the log can see the gate working instead of taking it on trust.
+                var skipped = new List<Int3>();
+                var zonedTiles = new List<Int3>();
+                if (stockMode == "filtered-far")
+                {
+                    zoned = StockpileHarness.EnqueueFilteredFarStockpile(sim, stockN, skipped, zonedTiles);
+                    Console.WriteLine($"--stockpile filtered-far {stockN}: designated {zoned} FILTERED stockpile " +
+                                      $"tile(s) at t=0 (opposite deck, farthest from the crafting benches, crew-REACHABLE; " +
+                                      $"accept-mask 0x{StockpileHarness.RejectPotatoMask:x16} — REJECTS Potato)" +
+                                      (zoned < stockN ? $"  [ship had only {zoned} legal]" : ""));
+                }
+                else
+                {
+                    // `far` is every mode but `bench`; naming it here (not from `stockMode == "far"`
+                    // higher up) keeps the flag next to its only reader, so a fourth mode cannot
+                    // silently inherit `false`.
+                    bool stockFar = stockMode != "bench";
+                    zoned = StockpileHarness.EnqueueStockpile(sim, stockFar, stockN, skipped, zonedTiles);
+                    Console.WriteLine($"--stockpile {stockMode} {stockN}: designated {zoned} accept-all stockpile " +
+                                      // "on and beside", not "adjacent to": DesignateStockpileCommand
+                                      // gates only on Walkable, so the bench TILES qualify at distance
+                                      // 0 and 3 of the slice's 4 bench picks are the benches themselves.
+                                      $"tile(s) at t=0 ({(stockFar ? "opposite deck, farthest from" : "on and beside")} the " +
+                                      "crafting benches, crew-REACHABLE; NO filter — the pre-rule 'before')" +
+                                      (zoned < stockN ? $"  [ship had only {zoned} legal]" : ""));
+                }
+                Console.Write($"  tiles zoned ({zonedTiles.Count})");
+                if (zonedTiles.Count == 0) Console.Write("  (none)");
+                foreach (var p in zonedTiles) Console.Write($"  {p}");
+                Console.WriteLine();
+                // NOT a ship survey: the gate is probed lazily in rank order and stops once N tiles
+                // survive, so this lists only the rejects ranked ABOVE the last pick. The slice has 150
+                // unreachable walkable tiles in total; a far-40 run prints 26 of them.
+                Console.Write($"  tiles SKIPPED unreachable ({skipped.Count}, rank-order audit — NOT a ship survey)");
+                if (skipped.Count == 0) Console.Write("  (none)");
+                foreach (var p in skipped) Console.Write($"  {p}");
+                Console.WriteLine();
+                Console.WriteLine();
+            }
+
             const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
             int kindCount = Enum.GetValues(typeof(JobKind)).Length;
             var kindTicks = new long[kindCount];        // crew-ticks per JobKind, whole run
             int hours = days * 24;
             var hourAny = new long[hours];              // crew-ticks with ANY job, per sim-hour
             var hourWork = new long[hours];             // crew-ticks with a PRODUCTIVE job, per sim-hour
+            // E0-4 on-job travel proxy: of the ticks a crew member is ON a productive job, how many
+            // are spent WALKING to the site (a path still to follow) vs actually WORKING at it. A
+            // far-deck stockpile inflates the walking share — MEASURED at +0.6 pp on the slice at
+            // N=40 (bench 4.6 % → far 5.2 %). ECONOMY.md §8's −14 % throughput figure is NOT
+            // reproduced here and this ship CANNOT reproduce it; see the ⚠️ RETRACTED block above and
+            // StockpileHarness's class doc. Only meaningful under --stockpile (haul is 0 % otherwise),
+            // but always counted — it is free.
+            long onJobTravel = 0, onJobWork = 0;
+            // WP-4b (review NICE-TO-HAVE 3): a delivery COUNT, so the haul-cost comparison between two
+            // zone placements is normalised per haul instead of inferred from equal zone capacity.
+            // `deliveryLegs` counts HaulDeliver→(anything else) transitions per crew member — an UPPER
+            // BOUND on successful deliveries, because an abandon ends the leg too. Paired with the
+            // end-of-run "stacks resting on stockpile tiles", which is the direct saturation reading.
+            long deliveryLegs = 0;
+            var wasDelivering = new bool[sim.Citizens.Items.Count];
             long totalTicks = (long)days * TicksPerDay;
 
             Console.WriteLine($"occupancy — {shipName} ship, {crewCount} crew, {days} day(s), seed {seed}");
@@ -261,11 +342,25 @@ namespace Perilune.Tools
                 for (int i = 0; i < crew.Count; i++)
                 {
                     var c = crew[i];
+                    // Count the delivery leg BEFORE the Dead skip: a crew member who dies mid-carry
+                    // has still ended its leg, and dropping it here would silently under-count.
+                    bool delivering = !c.Dead && c.JobKind == JobKind.HaulDeliver;
+                    if (i < wasDelivering.Length)
+                    {
+                        if (wasDelivering[i] && !delivering) deliveryLegs++;
+                        wasDelivering[i] = delivering;
+                    }
                     if (c.Dead) continue;
                     kindTicks[(int)c.JobKind]++;
                     if (c.JobKind == JobKind.None) continue;
                     hourAny[hour]++;
-                    if (IsProductive(c.JobKind)) hourWork[hour]++;
+                    if (IsProductive(c.JobKind))
+                    {
+                        hourWork[hour]++;
+                        // HasPath ⇒ still en route to the job site (travelling); path exhausted ⇒
+                        // standing at the site consuming JobWorkTicks (working).
+                        if (c.HasPath) onJobTravel++; else onJobWork++;
+                    }
                 }
             }
             clock.Stop();
@@ -305,6 +400,45 @@ namespace Perilune.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine("A1 needs --days 1 or more to reach sim-hour 24.");
+            }
+
+            // E0-4 measurement block — the numbers acceptance needs (plan §11 items 2/3/4). Gated on
+            // the --stockpile flag so the CI-pinned no-flag report stays byte-identical: haul is a flat
+            // 0 % without a zone, so these lines only carry signal under the harness.
+            if (stockMode != null)
+            {
+                double haulPickup = 100.0 * kindTicks[(int)JobKind.HaulPickup] / grandTotal;
+                double haulDeliver = 100.0 * kindTicks[(int)JobKind.HaulDeliver] / grandTotal;
+                long onJob = onJobTravel + onJobWork;
+                double travelPct = onJob > 0 ? 100.0 * onJobTravel / onJob : 0.0;
+                int controllers = 0;
+                foreach (var it in sim.Items.Items)
+                    if (it.Kind == ItemKind.ControllerModule) controllers += it.Count;
+
+                Console.WriteLine();
+                Console.WriteLine($"E0-4 measurement (--stockpile {stockMode}, {zoned} tile(s) zoned):");
+                Console.WriteLine($"  haul occupancy         HaulPickup {haulPickup:0.000} %  +  HaulDeliver {haulDeliver:0.000} %");
+                Console.WriteLine($"  throughput             ControllerModule end-count {controllers}   (A1 baseline 31)");
+                Console.WriteLine($"  on-job travel          {travelPct:0.0} %   (share of productive-job ticks spent walking, not working)");
+                // WP-4b: the matter-ceiling warning is NOT printed here. It lives beside the
+                // unconditional `ground stock` line below, because the run that most needs it is the
+                // plain verb-less `occupancy --ship slice --days 3` — the command MECHANICS §13.15
+                // documents, and the exact run whose `31` was misread into this lane's retracted claim.
+                //
+                // `delivery legs ended` counts HaulDeliver→(anything else) transitions. It is an UPPER
+                // BOUND on successful deliveries, and the direction of that bias matters: the only
+                // over-count is a leg abandoned mid-carry, which enters the count with FEWER ticks than
+                // a completed delivery. Extra legs therefore inflate the denominator of any
+                // cost-per-delivery figure, so a far/bench cost RATIO computed from these counts is a
+                // LOWER BOUND on the true per-delivery penalty. (On the slice the bias is small anyway:
+                // `Flee` is 0.00 % and 8/8 crew survive in every leg, so abandons are path-loss only.)
+                Console.WriteLine($"  delivery legs ended    {deliveryLegs}   (upper bound on deliveries — an " +
+                                  "abandon ends a leg too, with fewer ticks, so a cost-per-delivery " +
+                                  "ratio from these is a LOWER bound)");
+                Console.WriteLine($"  stacks on zone tiles   {StacksOnStockpileTiles(sim)} / {zoned} zoned   " +
+                                  "(>= zoned ⇒ the zone is plausibly saturated and stopped accepting; " +
+                                  "counts stacks RESTING there however they arrived — hauled, dropped, or " +
+                                  "spawned by a bench standing on a zoned tile — so > zoned is normal)");
             }
 
             // "0 % busy" is a symptom, not a diagnosis. The interesting question is always WHY the
@@ -349,6 +483,13 @@ namespace Perilune.Tools
             foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
                 if (stock.TryGetValue(k, out int n) && n > 0) Console.Write($"  {k}={n}");
             Console.WriteLine();
+            // WP-4b — UNCONDITIONAL, and deliberately here rather than in the --stockpile block. The
+            // plain verb-less run is the one whose `ControllerModule=31` was misread as a throughput
+            // measurement and published as a wrong-deck regression, so the warning has to reach a reader
+            // who passed no flags at all. This adds ONE line to the default occupancy report; nothing in
+            // ci.sh pins that report's text, and no determinism pin is affected (host printing only).
+            string headroom = StockpileHarness.MatterHeadroomWarning(stripN);
+            if (headroom != null) Console.WriteLine(headroom);
 
             int alive = 0;
             foreach (var c in sim.Citizens.Items) if (!c.Dead) alive++;
@@ -356,6 +497,26 @@ namespace Perilune.Tools
 
             Console.WriteLine($"\n{totalTicks:N0} ticks in {clock.Elapsed.TotalSeconds:0.0}s wall");
             return 0;
+        }
+
+        /// <summary>WP-4b — how many item stacks are resting ON a stockpile tile at end of run, the
+        /// saturation reading the review asked for. <c>HaulJobSource</c> only offers a tile as a
+        /// destination while <c>IsFreeStockpileTile</c> holds, so once every zoned tile carries a stack
+        /// the zone stops accepting — and THAT is what bounds haul volume in these legs, not distance.
+        ///
+        /// HONEST LIMIT, because the obvious reading is wrong: this is NOT "stacks the haul board
+        /// delivered". It counts whatever rests there, including stacks a crafting station SPAWNED on a
+        /// zoned tile (outputs appear at the worker's position, and `bench` mode zones the bench tiles
+        /// themselves) and stacks simply dropped. So it routinely EXCEEDS the zoned-tile count —
+        /// several stacks may share a tile — and is an UPPER bound on stored-by-haul. Read it as
+        /// "&gt;= zoned ⇒ plausibly saturated", never as a delivery count; `delivery legs ended` is the
+        /// volume metric. Counts uncarried stacks only — a stack in transit is not stored.</summary>
+        private static int StacksOnStockpileTiles(Simulation sim)
+        {
+            int n = 0;
+            foreach (var it in sim.Items.Items)
+                if (it.CarriedBy == 0 && (sim.World.GetFlags(it.Pos) & TileFlags.Stockpile) != 0) n++;
+            return n;
         }
 
         /// <summary>Productive work, as opposed to survival (Eat/Drink) or self-preservation (Flee).

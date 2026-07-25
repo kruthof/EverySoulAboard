@@ -72,6 +72,7 @@ function fallbackToCanvas2D() {
     getMotion: () => motionByTile(motion),
     onEscape: () => Hud.handleEscape(),
     getArmedTool: () => Hud.getArmedTool(),
+    getStockFilter: () => Hud.getStockFilter(),
     onBuildKey: (kind) => Hud.armFromKey(kind),
     onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
     onCanvasClick: () => Hud.canvasClicked(),
@@ -277,6 +278,10 @@ inputDispose = installInput({
   // Escape stack (IX-13): armed tool → active dialogue → nothing. Hud owns the stack.
   onEscape: () => Hud.handleEscape(),
   getArmedTool: () => Hud.getArmedTool(),
+  // E0-4 WP-5: the stockpile accept-mask, read at click time. BOTH installInput blocks must pass
+  // it — the WebGL2→Canvas2D fallback above re-installs, and wiring only one would silently paint
+  // every zone unfiltered after a context loss. input.test.js counts the two.
+  getStockFilter: () => Hud.getStockFilter(),
   onBuildKey: (kind) => Hud.armFromKey(kind),
   onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
   // Plain canvas clicks supersede any pending cross-deck row click (IX-42).

@@ -30,14 +30,22 @@ namespace Perilune.Tui.Terminal
         Help,      // ?
         Cancel,    // Esc — deselect / close overlay
         Quit,      // q
+
+        // E0-4 WP-5 — the TUI's stockpile accept-filter. APPENDED (the file's own rule), so no
+        // existing member's ordinal moves. Two keys rather than one because the filter is a SET,
+        // not a flag: 'i' walks the ItemKind cursor, 'I' accepts/rejects the kind under it. The
+        // resulting pending mask rides along with the next 'p' designation.
+        StockFilterKind,   // i — step the pending stockpile-filter kind cursor
+        StockFilterToggle, // I — accept/reject that kind in the pending stockpile filter
     }
 
     /// <summary>
     /// Pure ConsoleKeyInfo → <see cref="InputAction"/> map. Arrows and vim hjkl move the
     /// cursor; digits 1-7 pick a lens; the letter commands mirror the DF idiom. Case
-    /// matters in exactly one spot: lowercase 'l' is cursor-right (hjkl), uppercase 'L'
-    /// is door-lock — so we branch on KeyChar, not just ConsoleKey. Unmapped keys return
-    /// <see cref="InputAction.None"/>.
+    /// matters in exactly TWO spots: lowercase 'l' is cursor-right (hjkl) vs uppercase 'L'
+    /// door-lock, and lowercase 'i' steps the stockpile-filter kind vs uppercase 'I' toggles
+    /// it (E0-4) — so we branch on KeyChar, not just ConsoleKey. Every other letter command
+    /// accepts both cases. Unmapped keys return <see cref="InputAction.None"/>.
     ///
     /// Deck keys: R and '>' raise the deck (z+1, "up the stack"); F and '<' lower it
     /// (z-1). Speed: '+'/'=' faster, '-'/'_' slower.
@@ -92,6 +100,10 @@ namespace Perilune.Tui.Terminal
                 case 'd': case 'D': return InputAction.Dig;
                 case 'p': case 'P': return InputAction.Stockpile;
                 case 'v': case 'V': return InputAction.Strip;   // E0-5: salVage / strip
+                // E0-4: case matters here exactly as it does for 'l'/'L' above — lowercase 'i'
+                // steps the stockpile-filter kind cursor, uppercase 'I' toggles that kind.
+                case 'i': return InputAction.StockFilterKind;
+                case 'I': return InputAction.StockFilterToggle;
                 case 'c': case 'C': return InputAction.Follow;
                 case 't': case 'T': return InputAction.MossOpen;
                 case 'q': case 'Q': return InputAction.Quit;

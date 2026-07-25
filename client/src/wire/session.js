@@ -4,6 +4,10 @@
 // like Client.html. Command shapes mirror hosts/web/GameSession.cs WebCommand.Parse.
 
 import { decode } from './messages.js';
+// The one accept-all constant, derived from the ItemKind mirror rather than re-typed as 0x7F here
+// (stock-filter-model.js is a pure table with no DOM and no wire dependency of its own, so this
+// import adds no cycle and no coupling beyond the number itself).
+import { ACCEPT_ALL } from '../ui/stock-filter-model.js';
 
 // The structured client is served separately from the host (a static server / file://), so it
 // cannot rely on location.host for the WebSocket. Resolution order:
@@ -71,6 +75,18 @@ export const Cmd = {
   // Same explicit-on contract as dig/stockpile. The host infers wall-vs-device from the tile and
   // the sim re-validates (hull walls and doors refused); an illegal order is a silent no-op.
   strip: (x, y, on = true) => ({ cmd: 'strip', x, y, on: on ? 1 : 0 }),
+  // E0-4 filter verb: set the COMPLETE accept-set of the stockpile tile at (x,y) on the current
+  // deck — bit k set ⇒ accept ItemKind k. Never a per-kind toggle and never a delta: the same
+  // explicit-whole-value contract dig/stockpile/strip chose, so a drag-sweep is idempotent AND a
+  // repaint always re-asserts the full truth (a partial message would leave a tile the player just
+  // repainted with an invisible stale restriction, and nothing in the UI could tell them).
+  // `mask` is REQUIRED — paletteOrders is the only producer and supplies ACCEPT_ALL when the caller
+  // has no filter; `Cmd.filter(x,y)` on its own would coerce to 0, which means ACCEPT NOTHING.
+  // `& ACCEPT_ALL` guarantees a defined, non-negative wire value: the host's JSON int reader has a
+  // sign branch, and a negative widened host-side to a ulong is EVERY bit set — accept-everything,
+  // the silent inverse of a restrictive filter. The host refuses a negative outright; this makes
+  // sure the client can never produce one in the first place.
+  filter: (x, y, mask) => ({ cmd: 'filter', x, y, mask: (mask | 0) & ACCEPT_ALL }),
   // Room Zoom decorate palette: place a functional furniture device (kind is the palette tool
   // string bunk/desk/chair/locker/plant/lamp/growbed/medbed/table) or remove a placed one at a
   // tile on the given deck. Legality is decided sim-side at the tick boundary — the client never

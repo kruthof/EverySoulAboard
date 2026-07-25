@@ -88,9 +88,20 @@
     <div class="console-menu">
       <div class="tabrow" id="tabs"></div>
       <div class="menu-content">
-        <div id="tab-build" class="palette-row">
-          <span class="zone-label place-label">PLACE ▸</span>
-          <span id="palette" class="palette"></span>
+        <div id="tab-build" class="build-tab">
+          <div class="palette-row">
+            <span class="zone-label place-label">PLACE ▸</span>
+            <span id="palette" class="palette"></span>
+          </div>
+          <!-- E0-4 WP-5 stockpile accept-filter chips. Its OWN row, not more chips on the PLACE
+               row: seven of them beside the six place tools overflow .console-menu, and a shrunk
+               #palette spills its (flex:none) buttons over whatever follows. Hidden unless the
+               STOCKPILE tool is armed; shown/hidden by hud.js reflectArmed() — the one place
+               armed state is painted, so the Z key and the palette button agree by construction. -->
+          <div id="stockfilter-row" class="palette-row" hidden>
+            <span class="zone-label place-label">ACCEPTS ▸</span>
+            <span id="stockfilter" class="palette stock-filter"></span>
+          </div>
         </div>
         <div id="tab-crew" class="crew-tab-wrap" hidden>
           <div id="crewtable" class="crew-table"></div>
