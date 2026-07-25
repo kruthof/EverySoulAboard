@@ -392,7 +392,12 @@ different reasons. Re-pinning is **integrator-only, on `main`, after merge**.
 ## 12. Explicitly out of scope
 
 - **E0-4 stockpile zones.** Next, immediately after. **Do not zone stockpiles in any authored ship**
-  until it lands — that keeps the measured −14 % throughput regression latent.
+  ~~until it lands — that keeps the measured −14 % throughput regression latent.~~
+  **⚠️ 2026-07-25 — E0-4 has landed, and there is no "measured −14 % throughput regression":** it is
+  `ECONOMY.md` §8's figure, E0-4 never reproduced it, and the slice **cannot settle** it (not
+  disproved — unsettleable). **The advice still stands; the reason is now a DESIGN DECISION, not a
+  measurement** — a zone is the player's decision, so authoring one deletes it. See `MECHANICS.md`
+  §13.18.
 - Fixing `Pack(Int3)`'s field aliasing (§6.3) — its own package, its own pin move.
 - Widening `EffectValidator.AgreeTask` past `Dig` — E2.
 - Hull *stress*; `Scrap`-yield deconstruct (E0-6); derelict stripping (E3).
