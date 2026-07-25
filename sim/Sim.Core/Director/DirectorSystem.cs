@@ -24,11 +24,26 @@ namespace Perilune.Sim
     ///
     /// STATE: tension, the lever, and the two decay accumulators are canonical sim state —
     /// <see cref="IStatefulSystem"/>, saved via the SYSS chapter and folded into
-    /// <see cref="Simulation.StateHash"/> under the 'DRCT' seed. The system ships UNREGISTERED
-    /// (the M1 pattern): building/hashing/saving are proven standalone here; the integrator
-    /// adds the single <see cref="SystemStack"/> line (after GoalSystem, before HistorySystem)
-    /// with the hash-move ritual — registering an empty-'DRCT' fold is exactly what moves the
-    /// determinism pin, so it is the integrator's move, not this lane's.
+    /// <see cref="Simulation.StateHash"/> under the 'DRCT' seed.
+    ///
+    /// REGISTERED — and it is registered TWICE, in two roles, from one instance. This paragraph
+    /// previously said the system "ships UNREGISTERED (the M1 pattern)" and that the integrator
+    /// would later add "the single SystemStack line". That happened; the prose did not keep up.
+    /// What is actually in <see cref="SystemStack.CreateDefault"/> today:
+    ///   • <c>SystemStack.cs:24</c> hoists one instance — <c>var director = new DirectorSystem();</c>
+    ///   • <c>:36</c> passes it to <see cref="MachineWearSystem"/>, which reads
+    ///     <see cref="WearPressure"/> as a wear multiplier. This is a CONSUMER, not a tick slot.
+    ///   • <c>:61</c> registers the instance itself in the tick order (after GoalSystem, before
+    ///     HistorySystem), which is what folds 'DRCT' into the hash.
+    /// The hoist exists because the consumer is registered EARLIER in the stack than the producer
+    /// ticks, so the lever MachineWear reads is always the previous cadenced pass's value.
+    ///
+    /// Consequence worth knowing before touching this: <see cref="WearPressure"/> is the one
+    /// sanctioned path by which crew mood reaches the economy — mean crew <c>Mood</c> becomes
+    /// <see cref="ShipMetricsSnapshot.Morale"/>, which weights tension, which moves this lever,
+    /// which scales device wear. `docs/design/perilune-economy-modularity.md` §1.5.1 documents that
+    /// chain and treats this class as the reference pattern for wiring a soul-derived modulator into
+    /// an economy system, so keep this doc comment true.
     /// </summary>
     public sealed class DirectorSystem : ISimSystem, IStatefulSystem
     {
