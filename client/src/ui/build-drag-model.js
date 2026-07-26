@@ -8,6 +8,13 @@
 //   floors → the FILLED rectangle (re-material every tile in the box).
 //   single → just the end tile (doors + any non-drag tool; also what a plain click yields).
 //
+// `dragModeForTool` below maps only the BUILD palette. The Room Zoom's two ORDER verbs (DIG / STRIP,
+// console-retirement WP-4) also sweep, and they take `'fill'` — a designation is a region of intent,
+// and `'perimeter'` would leave the middle of a swept wreck untouched. That mapping deliberately does
+// NOT live here: it is a Room-Zoom palette decision and it sits with the rest of that palette's
+// classification, in `room-model.js`'s `roomDragMode`, which defers to this function for every
+// non-order tool. This file stays the pure GEOMETRY and knows nothing about designations.
+//
 // start == end (a plain click, no travel) yields EXACTLY ONE tile for every mode, so the single-click
 // build path is just the degenerate drag. Row-major deterministic ordering, so the preview overlay and
 // the committed designations are stable and reproducible. No DOM, no wire, no mutation. Integer math +

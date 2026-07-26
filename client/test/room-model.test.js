@@ -1,11 +1,19 @@
 // Tests for the PURE Room-Zoom view-model (client/src/ui/room-model.js) + the shared deck-minimap
-// (client/src/ui/deck-minimap.js). No DOM, no GPU. Proves: the focused-room tile-rect lookup, the
+// (client/src/ui/deck-minimap.js). Proves: the focused-room tile-rect lookup, the
 // fit transform + responsive click hit-testing (incl. letterbox-margin + out-of-room rejection),
 // the in-room channel clamps (cells → items, crew, designs, decor), the palette tool → command-class
-// map (exhaustive over all eleven tools), the demolish classifier + its precedence over every layer,
-// the armed-tool reducer, the local decor transforms, and the ESC rung. No test pins a DOM id/class.
+// map (exhaustive over all fourteen tools), the demolish classifier + its precedence over every layer,
+// the armed-tool reducer, the local decor transforms, and the ESC rung.
+//
+// ⚠️ THE LAST SECTION IS DIFFERENT, and the "no DOM" line that used to open this file is no longer
+// true of the whole of it. Console-retirement WP-4 put the two ORDER verbs (DIG / STRIP) on this
+// surface, and the thing that can go wrong there is a LOWERING — which payload leaves the client —
+// so that section instantiates the real `roomzoom-view.js` controller over `client/test/dom-lite.js`
+// and asserts on the commands it sends. It sets `globalThis.document` / `globalThis.window` at the
+// point of use, after every pure test above has been declared. Everything before it is unchanged and
+// still pins no DOM id or class.
 
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -14,10 +22,13 @@ import { join, dirname } from 'node:path';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  U, ROOM_TOOLS, paletteCommand, isStructuralTool, roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
+  U, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isStructuralTool, isOrderTool, isSweepTool, roomDragMode,
+  roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
+import { dragModeForTool } from '../src/ui/build-drag-model.js';
+import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { MARK_FOR_FG, markForFg, markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
@@ -95,9 +106,9 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the twelve tools to a class + verb', () => {
+test('paletteCommand maps every one of the fourteen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
-  assert.equal(ROOM_TOOLS.length, 12);
+  assert.equal(ROOM_TOOLS.length, 14);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -109,10 +120,47 @@ test('paletteCommand maps every one of the twelve tools to a class + verb', () =
   assert.deepEqual(byTool.rug, { cls: 'cosmetic', verb: 'decor', itemId: 'rug' });
   assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
+  // WP-4 — the two ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a
+  // designation, and routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58).
+  assert.deepEqual(byTool.dig, { cls: 'order', verb: 'dig' });
+  assert.deepEqual(byTool.strip, { cls: 'order', verb: 'strip' });
   assert.deepEqual(paletteCommand('nope'), { cls: 'none', verb: null });
-  // isStructuralTool: wall/floor/door drag-build; everything else false.
+  // isStructuralTool: wall/floor/door drag-build; everything else false — INCLUDING the two order
+  // tools, which sweep but carry no material and never reach the material strip.
   for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
-  for (const t of ['bunk', 'rug', 'demolish', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'strip', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  // isOrderTool / isSweepTool: the two sibling sets the three gesture sites gate on.
+  for (const t of ['dig', 'strip']) assert.equal(isOrderTool(t), true);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', null, 'nope']) assert.equal(isOrderTool(t), false);
+  for (const t of ['wall', 'floor', 'door', 'dig', 'strip']) assert.equal(isSweepTool(t), true);
+  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', null, 'nope']) {
+    assert.equal(isSweepTool(t), false);
+  }
+  // Every tool the palette renders has a label — a missing one paints an empty button.
+  for (const t of ROOM_TOOLS) assert.ok(TOOL_LABEL[t], `no TOOL_LABEL for '${t}'`);
+});
+
+// MUTATION: `roomDragMode` returning `dragModeForTool(tool)` unconditionally ⇒ dig/strip sweep
+// 'single' and a drag across a wreck designates ONE tile ⇒ the driven sweep tests below go red too.
+test('WP-4: roomDragMode sweeps an ORDER tool as a FILLED region, and defers otherwise', () => {
+  assert.equal(roomDragMode('dig'), 'fill');
+  assert.equal(roomDragMode('strip'), 'fill');
+  // Every non-order tool is passed through to build-drag-model UNCHANGED — asserted against the real
+  // function, not against re-typed literals, so a change to either side reddens.
+  for (const t of [...ROOM_TOOLS.filter((x) => !isOrderTool(x)), null, 'nope', 'move']) {
+    assert.equal(roomDragMode(t), dragModeForTool(t), `roomDragMode drifted from dragModeForTool for '${t}'`);
+  }
+  assert.equal(roomDragMode('wall'), 'perimeter');   // and the pass-through really is non-trivial
+  assert.equal(roomDragMode('floor'), 'fill');
+  assert.equal(roomDragMode('door'), 'single');
+});
+
+test('WP-4: the armed-tool reducer arms and disarms the two order tools like any other', () => {
+  assert.equal(nextRoomTool(null, { t: 'toggle', tool: 'dig' }), 'dig');
+  assert.equal(nextRoomTool('dig', { t: 'toggle', tool: 'dig' }), null);
+  assert.equal(nextRoomTool('dig', { t: 'toggle', tool: 'strip' }), 'strip');
+  assert.equal(nextRoomTool('strip', { t: 'toggle', tool: 'wall' }), 'wall');
+  assert.equal(nextRoomTool('strip', { t: 'clear' }), null);
 });
 
 // ---- armed-tool reducer ----
@@ -618,4 +666,446 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
   const src = 'const u = "http://x//y";\nbody += markLayerSvg(roomMarkTiles(f, r), r);\n';
   assert.match(codeOnly(src), /body\s*\+=\s*markLayerSvg\(/,
     'a quoted "//" blinded the stripper, so every scan using it passes for the wrong reason');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// WP-4 — DIG + STRIP on the Level-2 Room Zoom, DRIVEN through the real controller
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY THESE ARE DRIVEN AND NOT SCANNED. The whole risk of this package is in the LOWERING: the Room
+// Zoom does NOT use `paletteOrders` (that function is the console/canvas path, called only from
+// `client/src/input/controls.js:172` and `:275`), so there are now TWO independent paths that must
+// emit the same wire payload for the same verb. Nothing about that is visible to a source scan, and
+// the two failure modes that matter — an order routed through `Cmd.build` (which reaches
+// `BuildSystem`, a system that knows nothing about designations) and a sweep that escapes the room —
+// are both behaviours, not tokens. So `roomzoom-view.js` is instantiated over `dom-lite` and the
+// assertions read the payloads that come out of the injected `send`.
+//
+// PARITY IS PINNED BY IMPORT, NOT BY LITERAL. Every expectation below is compared against what
+// `paletteOrders(verb, x, y)` ACTUALLY returns, imported from `controls.js` — so a drift on EITHER
+// side reddens. A copied literal `{cmd:'dig',…}` could not do that, and the console's own lowering
+// is the thing this package must not diverge from. One absolute wire-shape pin is kept alongside it
+// (a `Cmd.dig` change moves BOTH paths together, so equality alone would stay green through it).
+//
+// THE DOM IS A STUB, and the limits are the same as `relations-view.test.js`'s: `dom-lite` does not
+// parse markup, so the chrome nodes are registered by hand and `querySelectorAll` returns nothing —
+// which means `_el.toolBtns` is empty and the visual `.on` toggle is NOT proven here. What is proven
+// is the state machine and the wire, which is where a designation can go wrong.
+
+const RZ_IDS = [
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-minimap',
+  // hud.js writes these unconditionally on a roster/status dispatch (see relations-view.test.js).
+  'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
+];
+
+/** dom-lite + the four extras roomzoom-view.js needs: innerHTML, querySelector(All), closest,
+ *  getBoundingClientRect. Subclassed here so the shared helper keeps its narrow contract. */
+class RzEl extends DomEl {
+  constructor(doc, tag) { super(doc, tag); this._html = ''; this._rect = { left: 0, top: 0, width: 0, height: 0 }; }
+  get innerHTML() { return this._html; }
+  set innerHTML(v) { this._html = String(v); this.childNodes = []; }
+  querySelector() { return null; }            // no markup parser — chrome handles are null-guarded
+  querySelectorAll() { return []; }
+  getBoundingClientRect() { return this._rect; }
+  closest(sel) {
+    let n = this;
+    while (n && n.nodeType === 1) {
+      if (/^\[data-/.test(sel)) {
+        const key = sel.replace(/^\[data-|\]$/g, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        if (n.dataset && n.dataset[key] !== undefined) return n;
+      } else if (sel.startsWith('#')) {
+        if (n._id === sel.slice(1)) return n;
+      } else if (n.classList.contains(sel.replace(/^\./, ''))) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+}
+class RzDoc extends DomDocument {
+  constructor() { super(); this.body = new RzEl(this, 'body'); }
+  createElement(tag) { return new RzEl(this, tag); }
+  querySelector() { return null; }
+  querySelectorAll() { return []; }
+}
+
+const rzDoc = new RzDoc();
+for (const id of RZ_IDS) { const e = new RzEl(rzDoc, 'div'); e._id = id; rzDoc.register(id, e); }
+globalThis.document = rzDoc;
+const rzWinListeners = {};
+globalThis.window = {
+  addEventListener(t, fn) { (rzWinListeners[t] = rzWinListeners[t] || []).push(fn); },
+  removeEventListener() {},
+};
+
+// Resolved AFTER the globals above are in place — these modules touch `document` at init.
+const Hud = await import('../src/ui/hud.js');
+const RoomZoom = await import('../src/ui/roomzoom-view.js');
+const { paletteOrders } = await import('../src/input/controls.js');
+
+const rzSent = [];
+const rzApi = RoomZoom.initRoomZoom({ send: (o) => rzSent.push(o) });
+Hud.renderDecks(FIX.decks);
+Hud.renderRooms(FIX.rooms);
+// The SAME capture the pure assertions above run on — so the driven half sees the real wreck
+// (`demolishTarget` and every SVG layer read the frame back out of the shared HUD cache, not out of
+// a local). NO roster is dispatched: `renderRoster` builds the CONSOLE's CREW WATCH rows, which
+// dom-lite cannot host, and the crew layer is not what this package changed.
+Hud.renderFrame(wreck);
+
+/** THE ROOM UNDER TEST is the fixture's own live wreck: deck-1 slot 6, anchor 'hold' (roomType 14),
+ *  the room the capture's note calls "the LIVE WRECK". Its rect is read from the fixture, never
+ *  hand-written, so a recapture that moves the room moves these tests with it. */
+const HOLD = slotFocus('hold');
+rzApi.enter('hold');                       // the Overview's own entry point, by anchorName
+const rzLayers = rzDoc.getElementById('rz-layers');
+const rzCanvas = rzDoc.getElementById('rz-canvas');
+const rzRoot = rzDoc.getElementById('roomzoom-view');
+// One logical unit per CSS px (fit scale s = 1), so a tile's centre is trivially invertible.
+rzLayers._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+
+/** The client-space point at the centre of tile (tx,ty), under the rect above. */
+const atTile = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
+
+function rzFire(el, type, extra) {
+  const e = {
+    type, target: el, defaultPrevented: false, propagationStopped: false,
+    preventDefault() { e.defaultPrevented = true; }, stopPropagation() { e.propagationStopped = true; },
+    ...(extra || {}),
+  };
+  let n = el;
+  while (n) {
+    for (const fn of ((n.listeners && n.listeners[type]) || []).slice()) { fn(e); if (e.propagationStopped) return e; }
+    n = n.parentNode;
+  }
+  return e;
+}
+/** `mouseup` is bound on WINDOW (a release that ends off-canvas still commits), so it is dispatched
+ *  through the window stub rather than through the element tree. */
+function rzMouseUp(button = 0) { for (const fn of (rzWinListeners.mouseup || []).slice()) fn({ button }); }
+function rzKey(key) {
+  const e = {
+    key, target: undefined, defaultPrevented: false, propagationStopped: false,
+    preventDefault() { e.defaultPrevented = true; }, stopPropagation() { e.propagationStopped = true; },
+  };
+  for (const fn of (rzWinListeners.keydown || []).slice()) fn(e);
+  return e;
+}
+
+/**
+ * PER-TEST RESET, in a hook rather than inline at the end of each test.
+ *
+ * Every driven test below both arms and disarms, which is fine until one of them FAILS: the assert
+ * throws, the trailing `rzArm` never runs, and the next test starts with a tool still armed and a
+ * drag possibly still open. An independent reviewer hit exactly that — a preview failure cascaded
+ * into the following test — which makes the failure COUNT in this section untrustworthy even though
+ * each individual assertion is sound. One defect must produce one red test.
+ *
+ * The reset is AUTHORITATIVE rather than a mirror of what the tests think they armed: `exitRoom()`
+ * clears `_armed`, `_drag` and `_focus` outright and `enterRoom()` re-resolves the room with
+ * `_armed = null`, so it lands on a known state even when the controller is mid-gesture or when a
+ * mutation has broken arming itself. `rzMouseUp()` first, so a drag left open by a failed test is
+ * ended against the OLD room rather than the freshly re-entered one.
+ */
+afterEach(() => {
+  if (!rzApi) return;                 // the driven section has not been reached yet
+  rzMouseUp();
+  rzApi.exit();
+  rzApi.enter('hold');
+  rzSent.length = 0;
+});
+
+/** Arm a tool the way a player does — a click on a palette button carrying `data-rztool`, dispatched
+ *  through the surface root's real delegated handler. Clicking the armed tool again disarms it. */
+const rzToolBtns = new Map();
+function rzArm(tool) {
+  let b = rzToolBtns.get(tool);
+  if (!b) {
+    b = new RzEl(rzDoc, 'button');
+    b.dataset.rztool = tool;
+    b.setAttribute('data-rztool', tool);
+    rzRoot.appendChild(b);
+    rzToolBtns.set(tool, b);
+  }
+  rzFire(b, 'click', {});
+}
+
+/** Press at `from`, drag to `to`, release. Returns everything `send` received, oldest first. */
+function rzSweep(from, to) {
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(from.x, from.y) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(to.x, to.y) });
+  rzMouseUp();
+  return rzSent.slice();
+}
+/** Only the tool payloads — `Cmd.cursor` chatter from the drag is not the subject. */
+const rzOrders = (sent) => sent.filter((o) => o.cmd !== 'cursor');
+const xy = (o) => [o.x, o.y];
+
+// The fixture's three ALREADY-DESIGNATED dig tiles (fg 15) — read out of the capture, not typed.
+const FIX_DIG = roomMarkTiles(wreck, { ...HOLD, deck: DECK1 }).filter((m) => m.mark === 'dig');
+
+test('WP-4 fixture check: the room under test is the live wreck, with real designations in it', () => {
+  assert.equal(HOLD.rw * HOLD.rh, 96, 'the hold should be the fixture\'s 12×8 slot');
+  assert.equal(FIX_DIG.length, 3,
+    'the fixture no longer carries exactly three fg-15 dig designations inside the hold; the sweep '
+    + 'tests below are anchored on them, so re-derive their coordinates before adjusting anything');
+  assert.deepEqual(FIX_DIG.map((m) => [m.tx, m.ty]), [[28, 16], [29, 16], [30, 16]]);
+});
+
+// The palette BAR itself, read out of the markup `buildChrome` actually wrote. Without this, every
+// assertion below could be satisfied by a tool the player has no button for: the tests arm through a
+// `data-rztool` node they construct themselves, so they would pass against an unrendered palette.
+// (`querySelectorAll` is stubbed out here, so this reads the innerHTML string, not parsed nodes.)
+test('WP-4: the palette actually PAINTS a DIG and a STRIP button, labelled and armable', () => {
+  const html = rzDoc.getElementById('rz-palette').innerHTML;
+  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
+  for (const [tool, label] of [['dig', '⛏ DIG'], ['strip', '⚒ STRIP'], ['wall', 'WALL']]) {
+    assert.ok(html.includes('data-rztool="' + tool + '"'), `no palette button for '${tool}'`);
+    assert.ok(html.includes('>' + label + '<'), `the '${tool}' button is missing its label '${label}'`);
+  }
+  // And the hint line names the two new hotkeys, since nothing else on the surface can.
+  const hint = rzRoot.innerHTML;
+  assert.match(hint, /DIG \[G\]/);
+  assert.match(hint, /STRIP \[V\]/);
+});
+
+test('WP-4: DIG arms and disarms through the palette, and so does STRIP (one exclusive slot)', () => {
+  rzArm('dig');
+  assert.equal(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }).length, 1, 'DIG armed → a click designates');
+  rzArm('dig');                                    // same button again → disarm
+  assert.deepEqual(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }), [], 'disarmed → nothing is sent');
+  rzArm('strip');
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'strip');
+  rzArm('dig');                                    // a different tool REPLACES, never stacks
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'dig');
+  rzArm('dig');
+  assert.deepEqual(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }), []);
+});
+
+// MUTATION: drop the `g`/`G` branch from onKey ⇒ the sweep after it sends nothing ⇒ RED.
+test('WP-4: G arms DIG and V arms STRIP, the console\'s own two bindings (controls.js:262/267)', () => {
+  const g = rzKey('G');
+  assert.ok(g.defaultPrevented && g.propagationStopped, 'the Room Zoom must swallow its own hotkey');
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'dig');
+  rzKey('v');                                       // lowercase too — 'h' was silently dead once
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'strip');
+  rzKey('V');                                       // toggles back off
+  assert.deepEqual(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }), []);
+});
+
+// MUTATIONS this one catches: `Cmd.build` in the order branch; `on: false`; a wrong verb; a
+// `paletteOrders` drift on the controls.js side; `roomDragMode → 'single'` OR `→ 'perimeter'`.
+//
+// ⚠️ THE DRAG IS 3×3 AND THAT IS LOAD-BEARING. An earlier draft swept 3×2, where every tile is on
+// the border — so `fill` and `perimeter` COINCIDE and this test could not tell them apart, while its
+// own message claimed it was pinning the fill. Reverting `roomDragMode` to perimeter left it green.
+// 3×3 is the smallest rectangle with an interior: fill = 9, perimeter = 8.
+test('WP-4: a DIG sweep emits one Cmd.dig per tile — byte-identical to paletteOrders\' payload', () => {
+  rzArm('dig');
+  // Drag across the fixture's own three designated tiles plus the two rows above them.
+  const sent = rzOrders(rzSweep({ x: 28, y: 14 }, { x: 30, y: 16 }));
+  assert.deepEqual(sent.map(xy), [
+    [28, 14], [29, 14], [30, 14],
+    [28, 15], [29, 15], [30, 15],
+    [28, 16], [29, 16], [30, 16]],
+    'a DIG drag must sweep the FILLED rectangle in row-major order (roomDragMode → fill). The '
+    + 'centre tile (29,15) is the one a `perimeter` sweep would drop, and it is why this drag is 3×3.');
+  assert.ok(sent.some((o) => o.x === 29 && o.y === 15),
+    'the INTERIOR tile is missing — the sweep traced an outline, not a region');
+  // (a) PARITY BY IMPORT — the console's lowering is the contract, and it is asked, not restated.
+  assert.deepEqual(sent, sent.map((o) => paletteOrders('dig', o.x, o.y)[0]),
+    'the Room Zoom emitted a different payload than paletteOrders() does for the same verb + tile. '
+    + 'Two independent lowering paths now exist for DIG; they must not drift.');
+  // (b) THE ABSOLUTE WIRE SHAPE — a change to Cmd.dig itself moves BOTH paths together, so (a) would
+  // stay green through it. This is the pin that catches that, and it is the host's own contract
+  // (hosts/web/GameSession.cs WebCommand.Parse; client/src/wire/session.js:72).
+  assert.deepEqual(sent[0], { cmd: 'dig', x: 28, y: 14, on: 1 });
+  rzArm('dig');
+});
+
+// The SAME 3×3 drag the WALL control below uses, deliberately: one gesture, two classes, and the
+// counts differ — 9 for an ORDER (fill) against 8 for WALL (perimeter). That contrast is the
+// cheapest available proof that `roomDragMode` really does branch, in the running controller.
+test('WP-4: a STRIP sweep does the same for the deconstruct verb', () => {
+  rzArm('strip');
+  const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 }));
+  assert.deepEqual(sent.map(xy), [
+    [24, 11], [25, 11], [26, 11],
+    [24, 12], [25, 12], [26, 12],
+    [24, 13], [25, 13], [26, 13]]);
+  assert.ok(sent.some((o) => o.x === 25 && o.y === 12), 'the interior tile of a STRIP region is missing');
+  assert.deepEqual(sent, sent.map((o) => paletteOrders('strip', o.x, o.y)[0]));
+  assert.deepEqual(sent[0], { cmd: 'strip', x: 24, y: 11, on: 1 });
+  rzArm('strip');
+});
+
+// THE SINGLE WORST THING THIS PACKAGE COULD DO (charter's "wrong if"): an order that reaches
+// BuildSystem. MUTATION: `_send(Cmd.build(pc.kind, …))` for the order branch ⇒ RED here, and the
+// WALL half below is what stops the assertion from being satisfiable by sending nothing at all.
+test('WP-4: an ORDER never routes through Cmd.build — and WALL still does', () => {
+  rzArm('dig');
+  const dig = rzOrders(rzSweep({ x: 28, y: 14 }, { x: 30, y: 16 }));
+  assert.ok(dig.length > 0, 'the order sweep sent nothing — this assertion would pass vacuously');
+  assert.deepEqual(dig.filter((o) => o.cmd === 'build'), [],
+    'a DIG order was lowered to `build`. Cmd.build reaches BuildSystem, which knows nothing about '
+    + 'designations, so the order would be silently swallowed (client/src/input/controls.js:52-58).');
+  assert.deepEqual([...new Set(dig.map((o) => o.cmd))], ['dig']);
+  rzArm('dig');
+
+  rzArm('strip');
+  const strip = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 }));
+  assert.deepEqual([...new Set(strip.map((o) => o.cmd))], ['strip']);
+  rzArm('strip');
+
+  // CONTROL: the structural branch is untouched — WALL still emits Cmd.build carrying its material,
+  // and it still sweeps the PERIMETER. Without this half, deleting the whole commit path would pass.
+  rzArm('wall');
+  const wall = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 }));   // THE IDENTICAL 3×3 DRAG
+  assert.deepEqual([...new Set(wall.map((o) => o.cmd))], ['build']);
+  assert.deepEqual(wall[0], { cmd: 'build', kind: 'wall', x: 24, y: 11, material: 0 });
+  assert.equal(wall.length, 8, 'a 3×3 wall drag is the 8-tile perimeter, not the 9-tile fill');
+  rzArm('wall');
+
+  // THE CONTRAST, stated once: one and the same gesture over one and the same tiles, and the two
+  // classes commit different SETS. This is what proves `roomDragMode` branches in the live
+  // controller rather than only in its unit test.
+  assert.equal(strip.length, 9);
+  assert.ok(strip.length > wall.length,
+    'an ORDER sweep must cover the region a WALL sweep only outlines — if these are equal, every '
+    + 'assertion about `fill` above is being satisfied by a `perimeter` sweep');
+  assert.ok(!wall.some((o) => o.x === 25 && o.y === 12), 'the wall perimeter must leave its interior open');
+});
+
+// THE WP-2 LESSON, APPLIED TO THIS PACKAGE: a sweep that commits correctly but shows the player
+// nothing while they drag is a defect the wire assertions above cannot see. So this reads the SVG
+// `previewSvg` ACTUALLY emitted mid-drag, and pins the emitted numbers rather than recomputing the
+// transform in the test. An order tool carries no material, so the preview is the bare amber dashed
+// ring — `materialItemId('dig', …)` is '' — which is exactly right for a designation.
+// MUTATION: `previewSvg` returning '' for an order tool ⇒ RED, and no wire assertion would notice.
+test('WP-4: an order sweep PREVIEWS, in room-local units, while the button is still down', async () => {
+  rzArm('dig');
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(28, 15) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(30, 16) });
+  await new Promise((r) => setTimeout(r, 40));            // the coalesced repaint
+  const svg = rzLayers.innerHTML;
+  assert.match(svg, /class="rz-preview"/, 'nothing was drawn for a sweep in progress');
+  const preview = svg.slice(svg.indexOf('class="rz-preview"'));
+  const rects = [...preview.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)"/g)];
+  assert.equal(rects.length, 6, 'one preview cell per swept tile (the 3×2 fill)');
+  // Room-local: tile (28,15) in a room anchored at (22,10) sits at ((28-22)*U + .5, (15-10)*U + .5).
+  assert.deepEqual(rects[0].slice(1, 4), ['192.5', '160.5', String(U - 1)]);
+  assert.deepEqual(rects[5].slice(1, 3), ['256.5', '192.5']);     // the far corner, tile (30,16)
+  assert.match(preview, /3×2 · 6 TILES/, 'the run caption must count the tiles the sweep will order');
+  rzMouseUp();
+  rzArm('dig');
+});
+
+// ⚠️ READ THIS BEFORE TRUSTING THE MUTATION THIS TEST USED TO NAME. An earlier version of this
+// comment claimed that "replacing `isSweepTool` with `isStructuralTool` at the onCanvasClick bail
+// ⇒ the trailing click double-fires ⇒ RED". It was applied exactly as written by an independent
+// reviewer and the whole suite stayed GREEN. **That named mutation cannot bite, and the claim is
+// withdrawn.** The mechanism, verified: past the bail, `onCanvasClick`'s tail is an if/else-if chain
+// over `pc.cls` that handles ONLY `functional`, `cosmetic` and `demolish` (roomzoom-view.js:657-667).
+// There is no `order` branch — and no `structural` branch either. With DIG armed, `pc.cls === 'order'`
+// falls off the end of the chain and sends nothing, so THE BAIL CANNOT PREVENT A DOUBLE-FIRE BECAUSE
+// THERE IS NO SECOND FIRE TO PREVENT. The bail is a DEFENSIVE SECOND guard; the first and effective
+// guard is the absent branch. Both surfaces of that were confirmed against the real host: a drag
+// emitted exactly the swept set and nothing extra.
+//
+// So what this test actually pins is narrower and still worth having: A RELEASE COMMITS THE SWEPT SET
+// EXACTLY ONCE, trailing click included. The mutation that DOES bite it takes TWO edits, because it
+// takes two to create the hazard — add an `order` branch to `onCanvasClick`'s chain AND drop the
+// bail. Applied together: 18 payloads instead of 9, RED. That pair is in the package's mutation log.
+test('WP-4: a release commits the swept set exactly once, trailing click included', () => {
+  rzArm('dig');
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(28, 14) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(30, 16) });
+  rzMouseUp();
+  rzFire(rzCanvas, 'click', { button: 0, ...atTile(30, 16) });  // the browser's trailing click
+  assert.equal(rzOrders(rzSent).length, 9, 'the release committed 9 tiles; the trailing click added more');
+  rzArm('dig');
+});
+
+// The room is the whole canvas at Level 2, so a pointer outside it cannot even NAME a tile
+// (`tileFromCanvasXY` returns null on the letterbox / out-of-rect). The fixture makes this concrete:
+// there is REAL undesignated debris at x34-40 y15-16, outside the hold, and a player sweeping toward
+// it must not designate any of it.
+//
+// ⚠️ WHAT THIS DOES *NOT* PROVE: it is not a test of the `roomBounds()` clip. Measured — dropping
+// that argument leaves this test GREEN, because the hit test has already refused the tile. The clip
+// is the second guard and its only reachable failure case is the shrink test further down. Do not
+// read a pass here as evidence the clip is wired.
+test('WP-4: a sweep dragged at out-of-room debris designates none of it', () => {
+  const debrisOutside = [];
+  for (let y = 0; y < wreck.h; y++) {
+    for (let x = 0; x < wreck.w; x++) {
+      const c = wreck.cells[y * wreck.w + x];
+      if (Array.isArray(c) && (c[1] | 0) === 4 && !clampTileToRoom(x, y, HOLD)) debrisOutside.push([x, y]);
+    }
+  }
+  assert.ok(debrisOutside.length >= 10,
+    'the fixture no longer has out-of-room debris to drag at — this test would be vacuous');
+  const [tx, ty] = debrisOutside[debrisOutside.length - 1]; // the far-right stretch at x40
+  rzArm('dig');
+  const sent = rzOrders(rzSweep({ x: 30, y: 16 }, { x: tx, y: ty }));
+  for (const o of sent) {
+    assert.ok(clampTileToRoom(o.x, o.y, HOLD), `designated (${o.x},${o.y}) OUTSIDE the focused room`);
+  }
+  assert.deepEqual(sent.map(xy), [[30, 16]], 'the drag should not have grown past the room edge');
+  rzArm('dig');
+});
+
+// MUTATION: drop the `roomBounds()` argument from `buildDragTiles` in onCanvasUp ⇒ 42 payloads
+// instead of 12, twelve of them outside the room ⇒ RED.
+//
+// AND THIS IS THE ONLY TEST THAT MUTATION REDDENS — measured, and it is worth knowing why. The clip
+// is UNREACHABLE from ordinary mouse input: `tileFromCanvasXY` already refuses any point outside the
+// room, so both drag endpoints are always in-room and the bounding rectangle of two in-room tiles is
+// in-room too. The out-of-room-debris test above therefore exercises the HIT TEST, not the clip, and
+// stays green without it. What the clip is genuinely for is the case below: `repaint()` re-resolves
+// the room rect on every frame ("a resized rect stays correct"), so the room can shrink under a
+// sweep that is already in progress, and only then does the recorded start tile fall outside.
+test('WP-4: a room that SHRINKS mid-sweep clips the committed order to its new rect', async () => {
+  rzArm('dig');
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(24, 11) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(30, 16) });   // a 7×6 = 42-tile sweep
+
+  // try/finally, not a trailing restore: this test is the one piece of SHARED state in the section
+  // (the HUD's decks cache), and a failed assertion must not leave the hold shrunk for the rest of
+  // the file. The afterEach hook re-enters the room and would re-enter the shrunk one.
+  try {
+    const shrunk = JSON.parse(JSON.stringify(FIX.decks));
+    const deck1 = shrunk.decks.find((d) => d.deck === 1);
+    const slot = deck1.slots.find((s) => s[5] === 'hold');
+    slot[3] = 6; slot[4] = 4;                                        // 12×8 → 6×4 (x22-27, y10-13)
+    Hud.renderDecks(shrunk);
+    await new Promise((r) => setTimeout(r, 40));                     // let the coalesced repaint land
+
+    rzMouseUp();
+    const sent = rzOrders(rzSent);
+    assert.equal(sent.length, 12, 'the sweep must be clipped to the room\'s CURRENT rect, not its old one');
+    for (const o of sent) {
+      assert.ok(o.x >= 22 && o.x < 28 && o.y >= 10 && o.y < 14, `designated (${o.x},${o.y}) outside the shrunk room`);
+    }
+  } finally {
+    Hud.renderDecks(FIX.decks);
+    await new Promise((r) => setTimeout(r, 40));
+  }
+});
+
+// MUTATION: leave the demolish toast at its pre-WP-4 wording ⇒ RED. A built wall used to be a dead
+// end on this surface; STRIP is the verb that ends it, so the message has to name it.
+test('WP-4: the built-wall dead end now points at STRIP', () => {
+  const wallTile = { x: HOLD.rx, y: HOLD.ry };
+  assert.equal(demolishTarget(wallTile.x, wallTile.y, null, null, wreck).kind, 'built-wall',
+    'the hold\'s top-left tile is no longer a built wall in the fixture — pick another');
+  rzArm('demolish');
+  rzFire(rzCanvas, 'click', { button: 0, ...atTile(wallTile.x, wallTile.y) });
+  assert.match(rzDoc.getElementById('rz-toast').textContent, /STRIP/,
+    'DEMOLISH on a built wall must name the verb that CAN take it apart, now that STRIP exists here');
+  rzArm('demolish');
 });

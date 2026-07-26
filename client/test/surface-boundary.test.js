@@ -130,9 +130,7 @@ function readOrNull(rel) {
 /** The verbs that exist on the console and NOT YET on the standard surface. Value = the package
  *  that removes the entry. DELETE YOUR LINE when you land it — do not weaken the assertion. */
 const KNOWN_GAPS = Object.freeze({
-  dig: 'WP-4 — Room Zoom gains DIG (order-class ROOM_TOOL, drag-swept, clipped to the room)',
   stockpile: 'WP-5 — Overview ORDERS bar (deck-scoped: a zone is a ship-level logistics decision)',
-  strip: 'WP-4 — Room Zoom gains STRIP (order-class ROOM_TOOL, the precise instrument for a partition)',
 });
 
 /** ⚠️ THE SEAL. The WP-0 census of unported verbs — the high-water mark, not the live debt.

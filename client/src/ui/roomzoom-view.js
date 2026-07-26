@@ -23,11 +23,12 @@ import { isTextEntryTarget } from '../input/controls.js';
 import { roomMaterial } from '../theme/warm-tokens.js';
 import { deckMinimap } from './deck-minimap.js';
 import {
-  U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isStructuralTool, nextRoomTool, roomTileRect,
+  U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
+  nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
-import { buildDragTiles, dragModeForTool, dragCaption } from './build-drag-model.js';
+import { buildDragTiles, dragCaption } from './build-drag-model.js';
 import { taskTag } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import {
@@ -39,7 +40,8 @@ import {
 const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
 const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
-const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · DEMOLISH REMOVES A GHOST';
+const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
+  'DIG [G] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -135,8 +137,9 @@ function buildSkeleton() {
   _toast = $('rz-toast');
   _nudge = makeNudge({ el: () => $('rz-nudge') });
   buildChrome();
-  // Structural tools (WALL/FLOOR/DOOR) use a press-drag-release gesture (RimWorld sweep); a plain
-  // click is the degenerate 1-tile drag. Non-structural tools stay on the click handler.
+  // Structural tools (WALL/FLOOR/DOOR) and the two ORDER tools (DIG/STRIP) use a press-drag-release
+  // gesture (RimWorld sweep) — the `isSweepTool` sibling set; a plain click is the degenerate 1-tile
+  // drag. Every other tool stays on the click handler.
   _canvas.addEventListener('mousedown', onCanvasDown);
   _canvas.addEventListener('mousemove', onCanvasMove);
   window.addEventListener('mouseup', onCanvasUp); // window: catch a release that ends off-canvas
@@ -166,7 +169,8 @@ function buildChrome() {
   _el.crumbDeck = bc.querySelector('[data-rz="deck"]');
   _el.crumbLeaf = bc.querySelector('.rz-crumb-leaf');
 
-  // palette — a FIXED label + 11 FIXED tool buttons (membership never changes); repaint only toggles
+  // palette — a FIXED label + one FIXED button per ROOM_TOOLS entry (membership never changes, so the
+  // set is built once from the table rather than counted here); repaint only toggles
   // the `.on` armed class, so the button under the cursor is never rebuilt.
   const pal = $('rz-palette');
   let btns = '<span class="rz-place-label"></span>';
@@ -644,9 +648,16 @@ function onCanvasClick(e) {
     return;
   }
 
-  // Structural tools (WALL/FLOOR/DOOR) are placed by the press-drag-release gesture (onCanvasDown/
-  // Move/Up); the trailing click after a release must not double-fire, so bail here.
-  if (isStructuralTool(_armed)) return;
+  // Every SWEPT tool (WALL/FLOOR/DOOR + DIG/STRIP) is committed by the press-drag-release gesture
+  // (onCanvasDown/Move/Up), so the browser's trailing click after a release must not commit again.
+  //
+  // THIS IS THE SECOND GUARD, NOT THE FIRST, and saying so is worth three lines because a test
+  // comment once claimed otherwise and an independent reviewer proved it wrong: the `pc.cls` chain
+  // below handles only `functional`/`cosmetic`/`demolish`, so a swept class already falls off the end
+  // of it and sends nothing. Removing this line changes no behaviour today. It is kept — and kept
+  // ahead of the chain — because the day someone adds an `order` or `structural` branch below for a
+  // single-click affordance, this is the line that stops every sweep from committing twice.
+  if (isSweepTool(_armed)) return;
 
   const pc = paletteCommand(_armed);
   const deck = _focus.deck;
@@ -675,7 +686,10 @@ function doDemolish(tile, deck) {
       else { toast('REMOVE — LANDS WITH THE SIM BUILD PASS'); pulse(tile, true); }
       break;
     case 'built-wall':
-      toast('CANNOT DEMOLISH BUILT STRUCTURE — CANCEL ONLY REVOKES QUEUED ORDERS');
+      // WP-4 made this dead end reachable: DEMOLISH still only revokes a QUEUED order, but STRIP now
+      // exists on this palette and is the verb that takes a built wall apart, so the message names it
+      // instead of leaving the player at a wall with no next move.
+      toast('CANNOT DEMOLISH BUILT STRUCTURE — CANCEL ONLY REVOKES QUEUED ORDERS · USE ⚒ STRIP [V]');
       break;
     default: break; // empty → dropped no-op (IX-Z-24)
   }
@@ -691,12 +705,12 @@ function tileAt(e) {
   return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
 }
 
-/** Begin a structural sweep. WALL/FLOOR/DOOR only; a plain click is the degenerate 1-tile drag. */
+/** Begin a sweep. WALL/FLOOR/DOOR + DIG/STRIP; a plain click is the degenerate 1-tile drag. */
 function onCanvasDown(e) {
-  if (e.button !== 0 || !isStructuralTool(_armed)) return; // non-structural → the click handler
+  if (e.button !== 0 || !isSweepTool(_armed)) return; // non-swept tool → the click handler
   const tile = tileAt(e);
   if (!tile) return;
-  _drag = { start: tile, end: tile, tool: _armed, mode: dragModeForTool(_armed) };
+  _drag = { start: tile, end: tile, tool: _armed, mode: roomDragMode(_armed) };
   scheduleRepaint();
   e.preventDefault(); // suppress text/drag selection during the sweep
 }
@@ -717,7 +731,30 @@ function onCanvasMove(e) {
   if (tile) _send(Cmd.cursor(tile.x, tile.y));
 }
 
-/** Commit the sweep on release: one Cmd.build per previewed tile, carrying the active material.
+/**
+ * Lower an ORDER-class tool + tile to its wire payload. THE ONE PLACE this surface turns a
+ * designation into a message, and deliberately NOT `Cmd.build`: an order goes to the designation
+ * boards (`DigJobSource` / `DeconstructSystem`), whereas `Cmd.build` goes to `BuildSystem`, which
+ * knows nothing about designations and would silently swallow it.
+ *
+ * It must stay byte-identical to what the console's `paletteOrders`
+ * (`client/src/input/controls.js:69`) already emits for the same verb — two independent lowering
+ * paths now exist for the same two verbs, and the day they disagree is the day one surface starts
+ * sending a message the host understands differently. `client/test/room-model.test.js` pins that by
+ * IMPORTING `paletteOrders` and comparing, so a drift on EITHER side reddens; a copied literal here
+ * could not do that.
+ *
+ * `on` is always true: the Room Zoom paints intent and never erases it. UN-designating is a KNOWN GAP
+ * — the wire carries it (`Cmd.dig(x, y, false)`) and no surface in the client sends it, the console
+ * included, so WP-4 ports the capability the game actually has rather than inventing a verb here.
+ */
+function orderCmd(verb, x, y) {
+  if (verb === 'strip') return Cmd.strip(x, y, true);
+  return Cmd.dig(x, y, true);
+}
+
+/** Commit the sweep on release: one payload per previewed tile — `Cmd.build` (carrying the active
+ *  material) for a structural tool, `Cmd.dig`/`Cmd.strip` for an ORDER tool.
  *  Bound on window so a release that ends off-canvas still commits (IX-Z spirit). */
 function onCanvasUp(e) {
   if (!_drag || e.button !== 0) return;
@@ -726,7 +763,9 @@ function onCanvasUp(e) {
   const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
   const pc = paletteCommand(drag.tool);
   const material = activeMaterial(_materials, drag.tool);
-  for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material)); // sim decides legality per tile
+  // sim decides legality per tile, for both classes — an illegal order is a silent no-op, never a ghost
+  if (pc.cls === 'order') for (const t of res.tiles) _send(orderCmd(pc.verb, t.x, t.y));
+  else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
     toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res));
@@ -765,6 +804,10 @@ function onKey(e) {
     arm('wall'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'x' || k === 'X') {         // IX-Z-17: X toggles DEMOLISH
     arm('demolish'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'g' || k === 'G') {         // WP-4: G toggles DIG — the console's own binding
+    arm('dig'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'v' || k === 'V') {         // WP-4: V toggles STRIP (salVage; see controls.js:264)
+    arm('strip'); e.stopPropagation(); e.preventDefault();
   }
 }
 
