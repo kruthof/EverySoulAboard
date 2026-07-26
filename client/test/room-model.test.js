@@ -19,6 +19,7 @@ import {
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
 import { MARK_FOR_FG, markForFg, markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
+import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { deckPlanSvg, yahDotPos, deckMinimap } from '../src/ui/deck-minimap.js';
 
@@ -307,7 +308,9 @@ test('WP-2: the fixture can actually DRIVE the designation acceptance (the anti-
   }
   assert.ok(cens.get(4) && cens.get(4).count >= 1,
     'frameDeck1 carries NO fg-4 (Debris) cell — every "undesignated tile" assertion below would then '
-    + 'be a claim about the empty set. Re-capture with scratchpad/wp8-capture.mjs (predicate-gated).');
+    + 'be a claim about the empty set. The frame must be re-captured from a live `--ship grid` host '
+    + 'mid-dig, gated on the predicate "frameDeck1 carries fg 4 AND fg 15" (the fixture\'s own `note` '
+    + 'describes the capture; note it names a scratchpad script that is NOT in the repo).');
   assert.ok(cens.get(15) && cens.get(15).count >= 1,
     'frameDeck1 carries NO fg-15 (Designate) cell, so "renders differently" is unfalsifiable here.');
   assert.equal(cens.get(4).count, 30);   // the measured census, pinned so a recapture fails LOUDLY
@@ -383,17 +386,88 @@ test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one in th
   // the rubble is still there under the order — a dig mark queues work, it does not clear the tile
   assert.ok(dig.every((k) => k.body.includes('<path d="M')));
 
-  // room-LOCAL placement, one U per tile (the same contract zoneLayerSvg keeps)
-  for (const m of roomMarkTiles(wreck, holdFocus)) {
-    const lx = (m.tx - holdFocus.rx) * U, ly = (m.ty - holdFocus.ry) * U;
-    assert.ok(lx >= 0 && lx < holdFocus.rw * U && ly >= 0 && ly < holdFocus.rh * U);
-  }
   assert.match(digSvg, /^<g class="rz-marks" pointer-events="none">/);
   assert.ok(digSvg.endsWith('</g>'));
   // deterministic + empty-safe
   assert.equal(markLayerSvg(roomMarkTiles(wreck, holdFocus), holdFocus), digSvg);
   assert.equal(markLayerSvg([], holdFocus), '');
   assert.equal(markLayerSvg(roomMarkTiles(wreck, slotFocus('command')), slotFocus('command')), '');
+});
+
+// The geometry pin, READ OUT OF THE EMITTED STRING — the `zone-overlay.test.js:106-111` shape, and
+// the assertion this file shipped WITHOUT on its first draft. What stood here instead recomputed the
+// transform inside the test and never looked at `digSvg` at all, so it re-asserted `roomMarkTiles`'
+// clamping (already covered three tests above) and left the layer's own placement math untested.
+// THREE mutations survived the whole suite green, and the first of them is not cosmetic:
+//   • drop the `- rx` / `- ry` room-local conversion  ⇒ marks land at 800–1024 in a 384-unit
+//     viewBox, i.e. THE ROOM ZOOM'S MARK LAYER IS ENTIRELY INVISIBLE IN THE RUNNING GAME;
+//   • emit every mark at a constant (0,0)            ⇒ all marks stacked in the top-left corner;
+//   • halve the default `unit`                       ⇒ half-size marks at the wrong pitch.
+// All three are now covered, `unit` included, because the expected numbers are DERIVED from U and
+// from the fixture's own tile coordinates rather than copied out of the current output.
+test('WP-2: the Room Zoom places each mark in ROOM-LOCAL space, one U per tile', () => {
+  const holdFocus = slotFocus('hold');
+  const tiles = roomMarkTiles(wreck, holdFocus);
+  const svg = markLayerSvg(tiles, holdFocus);
+  assert.equal(tiles.length, 3);
+
+  // Two independent rects per dig mark: the rubble bed (inset 12% of the tile, 76% wide) and the
+  // order ring (inset 1). `<rect x=` only matches the bed — the ring carries `class` first.
+  const beds = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+    .map((m) => [+m[1], +m[2], +m[3], +m[4]]);
+  const rings = [...svg.matchAll(/<rect class="mk-order-ring" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+    .map((m) => [+m[1], +m[2], +m[3], +m[4]]);
+
+  assert.deepEqual(beds, tiles.map((m) => [
+    (m.tx - holdFocus.rx) * U + U * 0.12, (m.ty - holdFocus.ry) * U + U * 0.12, U * 0.76, U * 0.76,
+  ]), 'a mark\'s rubble bed is not at its tile\'s room-local origin, at one U per tile');
+  assert.deepEqual(rings, tiles.map((m) => [
+    (m.tx - holdFocus.rx) * U + 1, (m.ty - holdFocus.ry) * U + 1, U - 2, U - 2,
+  ]), 'the order ring is not on its own tile');
+
+  // …and every emitted rect lies inside the room's logical viewBox, which is the property the
+  // dropped-transform mutation actually violates (the layer would draw off-canvas).
+  for (const [x, y, w, h] of beds.concat(rings)) {
+    assert.ok(x >= 0 && y >= 0 && x + w <= holdFocus.rw * U && y + h <= holdFocus.rh * U,
+      `a mark rect (${x},${y},${w},${h}) falls outside the ${holdFocus.rw * U}×${holdFocus.rh * U} `
+      + 'room viewBox — the Room Zoom would draw the whole layer off-screen');
+  }
+
+  // `unit` is honoured rather than hard-coded: half the pitch halves every number.
+  const half = [...markLayerSvg(tiles, holdFocus, U / 2)
+    .matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)"/g)].map((m) => [+m[1], +m[2]]);
+  assert.deepEqual(half, tiles.map((m) => [
+    (m.tx - holdFocus.rx) * (U / 2) + (U / 2) * 0.12, (m.ty - holdFocus.ry) * (U / 2) + (U / 2) * 0.12,
+  ]));
+});
+
+// The mark colours, pinned. `zone-overlay.test.js` pins its equivalent, and without this the dialect
+// the whole rendering argument rests on — AMBER DASHED MEANS "an order is queued on this tile",
+// borrowed from the build ghosts — is unasserted: repainting the order ring rubble-grey survived the
+// entire suite. The stockpile swatch is checked against the string `zone-overlay.js` actually emits,
+// so "reused verbatim from WP-3" is a measured claim rather than a comment.
+test('WP-2: amber means an order; rubble does not; the zone swatch is WP-3\'s own', () => {
+  const AMBER = '#f2b563';
+  const dig = markCellSvg('dig', 0, 0, 32, 32);
+  const debris = markCellSvg('debris', 0, 0, 32, 32);
+  const strip = markCellSvg('strip', 0, 0, 32, 32);
+
+  assert.match(dig, new RegExp(`class="mk-order-ring"[^/]*stroke="${AMBER}"`),
+    'the dig order ring is not amber — the "an order is queued here" dialect it shares with the '
+    + 'build ghosts is what makes a designated tile legible as an ORDER rather than as more rubble');
+  assert.match(strip, new RegExp(`class="mk-condemn"[^/]*stroke="${AMBER}"`));
+  assert.ok(!debris.includes(AMBER),
+    'an UNDESIGNATED debris tile carries the order colour — a player would read a queued order that '
+    + 'does not exist');
+  // the rubble itself is the warm grey, on both the plain and the designated tile
+  assert.ok(debris.includes('fill="#8a7d6e"') && dig.includes('fill="#8a7d6e"'));
+
+  // The stockpile swatch, compared against zoneLayerSvg's real output rather than a copied literal.
+  const zoneSvg = zoneLayerSvg([{ tx: 0, ty: 0, restricted: false, backedOff: false, label: 'x' }],
+    { rx: 0, ry: 0 });
+  const attrs = (s) => (/fill="(rgba\([^"]+\))" stroke="(rgba\([^"]+\))"/.exec(s) || []).slice(1, 3);
+  assert.deepEqual(attrs(markCellSvg('stockpile', 0, 0, 32, 32)), attrs(zoneSvg));
+  assert.equal(attrs(zoneSvg).length, 2, 'the zone-overlay parse rotted — the comparison is vacuous');
 });
 
 // ── SYNTHETIC-CELL COVERAGE (clearly separated from the fixture-driven acceptance above) ──
@@ -462,10 +536,12 @@ test('WP-2 (synthetic): markVariant is deterministic, in range, and actually var
   }
   assert.equal(seen.size, 3, 'a single arrangement tiles a debris field into obvious wallpaper');
   assert.ok(markVariant(-1, -1) >= 0, 'a negative tile coordinate must not fall off the table');
-  // …and it really changes the drawing (otherwise the variant is decorative dead code)
-  const a = markCellSvg('debris', 0, 0, 32, 32, 0);
-  const b = markCellSvg('debris', 0, 0, 32, 32, 1);
-  assert.notEqual(a, b);
+  // …and all THREE really draw differently. Comparing only 0 vs 1 left `RUBBLE_SETS[2] :=
+  // RUBBLE_SETS[0]` surviving the whole suite, i.e. the wallpaper property was unasserted for a
+  // third of every debris field — the exact tiles the property exists to break up.
+  assert.equal(new Set([0, 1, 2].map((v) => markCellSvg('debris', 0, 0, 32, 32, v))).size, 3,
+    'two of the three rubble arrangements draw the same pile, so a debris field still tiles into '
+    + 'visible wallpaper across a third of its tiles');
 });
 
 // ── THE WIRING SCAN, and why it is a source scan at all ──

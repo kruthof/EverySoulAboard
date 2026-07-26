@@ -334,11 +334,33 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
 //
 // WHY IT IS A LAYER OF ITS OWN and not a fix to `roomCells`. Every debris and dig-designation cell
 // in the shipped capture carries glyph code 37 (`'%'`), which is in `NON_FURNITURE` above, so
-// `roomCells` skips it — and it must keep skipping it. Removing 37 from that set would push debris
-// through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` (which have no mapping for it, so it would still draw
-// nothing) while silently reclassifying the tile for `roomCells`' two other readers, `itemForGlyph`
-// and `demolishTarget`'s device branch. The mark layer keys on the fg byte alone and never on the
-// glyph, which is also what makes it work for a strip mark on a WALL (code 35, likewise NON_FURNITURE).
+// `roomCells` skips it — and it must keep skipping it.
+//
+// ⚠️ THE FIRST DRAFT OF THIS COMMENT GAVE THE WRONG REASON, and it is quoted here rather than
+// deleted so that anyone who grepped the old wording lands on the correction. It said removing 37
+// from `NON_FURNITURE` would *"push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` (which have no
+// mapping for it, so it would still draw nothing) while silently reclassifying the tile for
+// `roomCells`' two other readers, `itemForGlyph` and `demolishTarget`'s device branch."* **All three
+// clauses are false, measured by physically removing 37 from the set** (independent review):
+//   • it does NOT "still draw nothing" — it draws THIRTY-THREE pieces of junk. `roomCells` then
+//     emits 33 cells at code 37 with `itemId:''`, and `furnitureSvg`'s else-branch
+//     (`roomzoom-view.js:429-438`) renders the VS-Z-25 dashed "unknown" chip for each, carrying a
+//     literal `%` glyph. That is the OPPOSITE of the claim, in the very file the claim was in.
+//   • `itemForGlyph(37)` returns `''` either way — there is no `'%'` key in `SPRITE_FOR_GLYPH`
+//     (`render/glyphs.js:13-19`), so it is UNCHANGED, not reclassified.
+//   • `demolishTarget` at such a tile returns `{kind:'empty', verb:null}` either way — its device
+//     branch (below) requires a truthy `itemForGlyph(code)`, and 37 is not in `STRUCTURE_CODES`.
+//     Also UNCHANGED.
+// THE TRUE REASON IS STRONGER: loosening the set does not merely fail to draw debris, it fills the
+// wreck with 33 dashed unknown-glyph chips — a worse lie than invisibility, because a chip claims
+// "something here we do not skin yet" about a tile whose meaning the client knows perfectly well.
+// The mark layer instead keys on the fg byte alone and never on the glyph, which is also what makes
+// it work for a strip mark on a WALL (code 35, likewise `NON_FURNITURE`) — a case no amount of
+// furniture reclassification could reach.
+//
+// NOTE THE TWO SURFACES DIFFER HERE, and the mirrored comment in `overview-scene.js` is correct for
+// its own file: `furnitureLayer` does `if (!itemId) continue`, so on the Overview an unmapped glyph
+// really does draw nothing. The Room Zoom has an unknown-chip fallback and the Overview does not.
 //
 // The mark vocabulary itself — which byte means what, and what each mark looks like — is
 // `mark-overlay.js`, shared verbatim with the Level-1 Overview so one fg byte cannot come to mean two
@@ -347,9 +369,15 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
 
 /**
  * The debris / designation marks inside the room (WP-2). Every in-rect, on-deck cell whose fg byte
- * carries a mark becomes `{tx, ty, mark, fg, code}`; everything else is dropped. This is the COMPLETE
- * derivation — stockpile marks included — because it is also the answer to "is there debris under my
- * sweep?" that WP-4's DIG tool will want. It is `markLayerSvg` that decides what gets *drawn*. PURE.
+ * carries a mark becomes `{tx, ty, mark, fg, code}`; everything else is dropped. PURE.
+ *
+ * IT REPORTS ALL FOUR KINDS, INCLUDING STOCKPILE, even though `markLayerSvg` draws only three. The
+ * reason is not "WP-4 will want it" — that argument covers debris and nothing else. It is that this
+ * function's job is to say what the FRAME contains, and a derivation that silently omits one of the
+ * four bytes is a derivation whose output cannot be trusted as a census: a caller asking "is this
+ * tile already spoken for?" (WP-4's DIG and STRIP sweeps both must, and so must anything that comes
+ * to explain a tile in the readout) would get "no" for a zoned tile. The drawing decision belongs to
+ * the layer that draws, and it is made there, once, with its reason attached.
  * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
  * @returns {{tx:number, ty:number, mark:string, fg:number, code:number}[]}

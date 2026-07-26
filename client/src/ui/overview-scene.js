@@ -338,9 +338,15 @@ function furnitureLayer(frame, deck, t, id) {
 //
 // It is a layer of its own rather than a change to `furnitureLayer` because every debris and dig
 // cell rides glyph 37 (`'%'`), which is in `NON_FURNITURE` above and must stay there: removing it
-// would push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so it
-// would still draw nothing — while changing what "furniture" means for the Room Zoom's mirrored copy
-// of that set. Keying on the fg byte is also what lets a STRIP mark land on a wall (code 35).
+// would push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so
+// `furnitureLayer`'s `if (!itemId) continue` would still draw nothing — while changing what
+// "furniture" means for the Room Zoom's mirrored copy of that set. ⚠️ THAT LAST STEP IS WHERE THE
+// TWO SURFACES PART, and it is worth knowing before copying this paragraph back the other way: the
+// Room Zoom has NO `continue` there. `furnitureSvg` (`roomzoom-view.js:429-438`) falls through to a
+// VS-Z-25 dashed "unknown" chip, so the same loosening that is merely inert here would draw 33 junk
+// chips over the wreck in the Room Zoom — measured, not reasoned. See `room-model.js`'s copy of this
+// note, which records the corrected version and the wrong first draft it replaced.
+// Keying on the fg byte is also what lets a STRIP mark land on a wall (code 35).
 //
 // It draws BELOW the furniture and the pawns and above the room floors: a mark is a fact about the
 // floor, and a crew member or a machine standing on it must not be hidden by it. Stockpile marks ARE

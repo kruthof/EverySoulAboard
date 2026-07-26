@@ -4,7 +4,10 @@
 // No DOM, no wire, no state, no clock, no randomness: same arguments → byte-identical string.
 //
 // WHAT THIS FIXES. `GlyphMapper.Project` recolours the terrain a player designation sits on
-// (`sim/Sim.Glyph/GlyphMapper.cs:82-85`): `TileFlags.Designated` → `GlyphColor.Designate` (15),
+// (`sim/Sim.Glyph/GlyphMapper.cs:83-86` — the flags read plus all three writes. NOTE the
+// console-retirement plan §4.1 ii cites `:82-85`, which is off by one and, worse, ENDS BEFORE the
+// Deconstruct line the same sentence names; this file's range is the measured one):
+// `TileFlags.Designated` → `GlyphColor.Designate` (15),
 // `TileFlags.Stockpile` → `Stockpile` (16), the deconstruct registry → `Deconstruct` (26); plain
 // rubble stays `Debris` (4). Those bytes ride every frame as `cell[1]`
 // (`client/src/wire/messages.js`) and BOTH SVG surfaces threw them away, reading only `cell[0]`.

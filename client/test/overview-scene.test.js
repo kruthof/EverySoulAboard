@@ -570,7 +570,9 @@ test('WP-2: the fixture can actually DRIVE the designation acceptance (the anti-
   const desig = census.get(15);
   assert.ok(debris && debris.count >= 1,
     'frameDeck1 carries NO fg-4 (Debris) cell. Every "an undesignated tile renders as rubble" '
-    + 'assertion below is then a claim about the empty set. Re-capture with scratchpad/wp8-capture.mjs.');
+    + 'assertion below is then a claim about the empty set. The frame must be re-captured from a live '
+    + '`--ship grid` host mid-dig, gated on "frameDeck1 carries fg 4 AND fg 15". (The fixture\'s own '
+    + '`note` names a scratchpad capture script; it is NOT in the repo — do not go looking for it.)');
   assert.ok(desig && desig.count >= 1,
     'frameDeck1 carries NO fg-15 (Designate) cell, so "a designated tile renders differently" is '
     + 'unfalsifiable here. The capture script is predicate-gated on exactly this — see the fixture note.');
@@ -663,9 +665,16 @@ test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () =>
   // No <defs>/gradient/pattern ⇒ no new id namespace to collide (the id-collision test above still
   // counts only ov-* ids). Measured rather than asserted by construction:
   const svg = overviewScene(st());
-  const before = overviewScene(baseState({ deck: 1, frame: null, crew: crewDeck1 }));
-  const idsWith = [...svg.matchAll(/\bid="([^"]+)"/g)].map((mm) => mm[1]);
-  const idsWithout = [...before.matchAll(/\bid="([^"]+)"/g)].map((mm) => mm[1]);
-  assert.deepEqual(new Set(idsWith).size, idsWith.length, 'the mark layer introduced a duplicate id');
-  assert.ok(idsWith.length >= idsWithout.length);
+  const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((mm) => mm[1]);
+  assert.equal(new Set(ids).size, ids.length, 'the mark layer introduced a duplicate id');
+  // THE CLAIM, made to bite: the layer itself emits no id at all, so it can never collide with the
+  // `ov-*` namespace however many marks a deck carries. (The first draft compared id COUNTS against
+  // a `frame: null` scene — which has no furniture ids either, so the comparison was vacuous: adding
+  // 33 ids to the mark layer would still have passed it.)
+  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-furniture"/.exec(svg);
+  assert.ok(layer, 'the mark layer was not found where the layer order puts it — this pin has rotted');
+  assert.ok(layer[1].includes('class="mk mk-'), 'the extracted slice is not the mark layer');
+  assert.equal((layer[1].match(/\bid="/g) || []).length, 0,
+    'the mark layer emitted an id. It draws once per marked tile, so an id inside it is an id per '
+    + 'tile — a <defs>/gradient/pattern here would collide across marks and across scenes.');
 });
