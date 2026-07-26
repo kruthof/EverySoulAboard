@@ -16,8 +16,8 @@ history, newest first.** The section immediately after this one is E0-4's landed
 - **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
   **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
   The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 657 node**, re-measured on `main` after the BUG-B merge
-  (+8 node; dotnet unchanged — every package in this run is client-only). Twin hash
+- **Gate: `./ci.sh` exit 0, 1002 dotnet + 662 node**, re-measured on `main` after the strip-visible
+  merge (**+6 dotnet — the first sim-side change in days**; +5 node — every package in this run is client-only). Twin hash
   `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
   WP-4, WP-5 and the stockpile move are all pin-neutral.
 - **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
@@ -786,6 +786,35 @@ line.**
 > **Not touched, deliberately:** `shelf` and `rug` are client-local decor with no `deviceKind`, so
 > strip can never touch them — giving them one is a design decision, not a bug fix. The palette
 > overflow that clips STRIP below ~1140 px is also still open.
+>
+> ---
+>
+> **⚠️ §4b LIMIT 1 IS NARROWED, NOT CLOSED — the reviewer's verdict, and do not record it as closed.**
+> The old wording (*"strip marks are delivered for walls only"*) is now false and struck. The honest
+> replacement: **strip marks are delivered for walls and devices, but NOT through a crew member or a
+> ground item.** The fix routes through the `cell[1]` fg byte, so it can only beat **pass 4**. **Pass 3**
+> (ground item stacks) and **pass 5** (living citizens) still overwrite the byte, and **every device kind
+> is non-blocking** (`content/core/SimDefs/machines.def` — `blocks = false` in all **26** rows, counted),
+> so a device tile is walkable. **A crew member standing on a condemned desk, or an item dropped on it,
+> still erases its ✕ for as long as they are there — and on `--ship grid` crew walk constantly, so a
+> condemned tile's mark will BLINK OUT AND BACK as people cross it.** Only the `strips`/designations
+> channel (defect 3) fixes that, because it does not ride the projection at all.
+>
+> **⇒ THE GENERAL LESSON, and it has now cost THREE owner reports: §4b called this "cosmetic" and it was
+> not.** A designation the player cannot see is **indistinguishable from a verb that does not work** —
+> the two cost the same to report and far more to diagnose, and this one consumed a full diagnosis
+> agent, two implementation rounds and three review passes. **A limit that says "the order still
+> happens, the player just isn't told" is a FUNCTIONAL limit on a game whose entire loop is issuing
+> orders.** Weigh invisible-feedback findings that way in future rather than filing them beside
+> rendering polish.
+>
+> **Verification worth inheriting:** the reviewer reproduced the owner's exact gesture on a CDP rig —
+> `.rz-marks` **0 → 1** child on the clicked desk, still there after ~20 repaints, **and still there
+> after a full page reload and re-entry** (so it is sim state, not a client artefact); live DOM order
+> `rz-furniture` then `rz-marks`, with no pawn layer above. It also confirmed the equivalent-mutant
+> handling by measurement rather than argument: gating the enqueue **without** an `on` escape hatch —
+> the realistic mistake — goes **RED**; **with** the escape hatch it survives, which is what makes it a
+> true equivalent.
 
 **Reported by Garvin from live play, 2026-07-26: *"strip means deconstruct and recycle? if so it does
 not work — I cannot place the command on a table."* Diagnosed: the verb WORKS and the feedback does
