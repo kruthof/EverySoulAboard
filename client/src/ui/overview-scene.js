@@ -33,6 +33,10 @@ import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
 // §1: `taskTag` is a PURE roster-label → tag mapping and is the SAME source the console's on-map
 // WORK markers used, so the two surfaces cannot disagree about who is working).
 import { taskTag } from './console-model.js';
+// The debris/designation mark vocabulary (console-retirement WP-2). SHARED verbatim with the Level-2
+// Room Zoom (`room-model.js` markLayerSvg) so one projected fg byte cannot come to mean two different
+// things on the two surfaces — see mark-overlay.js's header for why it is its own module.
+import { markForFg, markVariant, markCellSvg } from './mark-overlay.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -329,6 +333,44 @@ function furnitureLayer(frame, deck, t, id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// Layer 5b — DEBRIS + DESIGNATION MARKS (console-retirement WP-2). The only layer in this file that
+// reads `cell[1]`, the projected `GlyphColor` foreground byte, instead of `cell[0]`.
+//
+// It is a layer of its own rather than a change to `furnitureLayer` because every debris and dig
+// cell rides glyph 37 (`'%'`), which is in `NON_FURNITURE` above and must stay there: removing it
+// would push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so
+// `furnitureLayer`'s `if (!itemId) continue` would still draw nothing — while changing what
+// "furniture" means for the Room Zoom's mirrored copy of that set. ⚠️ THAT LAST STEP IS WHERE THE
+// TWO SURFACES PART, and it is worth knowing before copying this paragraph back the other way: the
+// Room Zoom has NO `continue` there. `furnitureSvg` (`roomzoom-view.js:429-438`) falls through to a
+// VS-Z-25 dashed "unknown" chip, so the same loosening that is merely inert here would draw 33 junk
+// chips over the wreck in the Room Zoom — measured, not reasoned. See `room-model.js`'s copy of this
+// note, which records the corrected version and the wrong first draft it replaced.
+// Keying on the fg byte is also what lets a STRIP mark land on a wall (code 35).
+//
+// It draws BELOW the furniture and the pawns and above the room floors: a mark is a fact about the
+// floor, and a crew member or a machine standing on it must not be hidden by it. Stockpile marks ARE
+// drawn here, unlike in the Room Zoom, because this surface has no `zones` overlay of its own.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+function markLayer(frame, deck, t) {
+  if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) return '';
+  const out = [];
+  for (let ty = 0; ty < frame.h; ty++) {
+    for (let tx = 0; tx < frame.w; tx++) {
+      const cell = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const mark = markForFg(cell[1] | 0);
+      if (!mark) continue;
+      const r = t.rect({ x: tx, y: ty, w: 1, h: 1 });
+      const g = markCellSvg(mark, r.x, r.y, r.w, r.h, markVariant(tx, ty));
+      if (g) out.push(g);
+    }
+  }
+  return out.length ? `<g class="pl-marks" pointer-events="none">${out.join('')}</g>` : '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Build ghosts (VS-O-72) — wire-backed dashed placement markers on this deck.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -581,6 +623,7 @@ export function overviewScene(state) {
   const body = ''
     + hullLayer(id)
     + `<g class="pl-rooms">${rooms.join('')}</g>`
+    + markLayer(st.frame, deck, t)
     + furnitureLayer(st.frame, deck, t, id)
     + glowPools(slots, t, id)
     + ghostLayer(st.designs, deck, t)

@@ -525,3 +525,156 @@ test('the coordinate transform is the shared contract: project ∘ invert is ide
     assert.ok(Math.abs(bx - tx) < 1e-6 && Math.abs(by - ty) < 1e-6);
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// WP-2 — DEBRIS + DESIGNATION MARKS on the Level-1 Overview (console-retirement plan §4.1 ii).
+//
+// THE ACCEPTANCE: "a designated tile renders differently from an undesignated one, asserted on the
+// fg byte, driven from the real fixture". It is driven from `frameDeck1` — the WORKING capture, the
+// only frame in this file that carries fg 4 (Debris, undesignated) and fg 15 (Designate) TOGETHER;
+// at boot every live-wreck tile is designated, so a boot deck-1 frame has 15 and no 4 (fixture note).
+//
+// WHY THE fg BYTE IS THE WHOLE STORY HERE, and not a detail: all 33 of those cells carry the SAME
+// glyph code, 37 (`'%'`). `cell[0]` cannot tell them apart, and 37 is in `NON_FURNITURE`, so before
+// this package BOTH kinds of tile rendered as literally nothing. The census test below is the
+// tripwire that keeps that true of the fixture — a recapture that loses the designations must fail
+// loudly here rather than leave every assertion under it passing over an empty set.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Every `<g class="mk mk-KIND">…</g>` in an SVG, as `{kind, body}`. Read out of the emitted string
+ *  rather than recomputed, so what is asserted is what a browser would receive. */
+function marks(svg) {
+  const out = [];
+  for (const m of svg.matchAll(/<g class="mk mk-([a-z]+)">([\s\S]*?)<\/g>/g)) {
+    out.push({ kind: m[1], body: m[2] });
+  }
+  return out;
+}
+
+/** The fg-byte census of a frame: Map<fgByte, {count, glyphs:Set}>. Independent of the code under
+ *  test — it reads the wire cells directly. */
+function fgCensus(f) {
+  const out = new Map();
+  for (const c of f.cells) {
+    if (!Array.isArray(c)) continue;
+    const e = out.get(c[1]) || { count: 0, glyphs: new Set() };
+    e.count += 1; e.glyphs.add(c[0]);
+    out.set(c[1], e);
+  }
+  return out;
+}
+
+test('WP-2: the fixture can actually DRIVE the designation acceptance (the anti-vacuity tripwire)', () => {
+  const census = fgCensus(frameDeck1);
+  const debris = census.get(4);
+  const desig = census.get(15);
+  assert.ok(debris && debris.count >= 1,
+    'frameDeck1 carries NO fg-4 (Debris) cell. Every "an undesignated tile renders as rubble" '
+    + 'assertion below is then a claim about the empty set. The frame must be re-captured from a live '
+    + '`--ship grid` host mid-dig, gated on "frameDeck1 carries fg 4 AND fg 15". (The fixture\'s own '
+    + '`note` names a scratchpad capture script; it is NOT in the repo — do not go looking for it.)');
+  assert.ok(desig && desig.count >= 1,
+    'frameDeck1 carries NO fg-15 (Designate) cell, so "a designated tile renders differently" is '
+    + 'unfalsifiable here. The capture script is predicate-gated on exactly this — see the fixture note.');
+  // The measured census, pinned so a recapture that changes the wreck fails loudly instead of quietly.
+  assert.equal(debris.count, 30);
+  assert.equal(desig.count, 3);
+  // THE LOAD-BEARING FACT: both kinds ride the SAME glyph, so `cell[0]` cannot distinguish them and
+  // only `cell[1]` can. If this ever splits, the acceptance below stops testing what it claims to.
+  assert.deepEqual([...debris.glyphs], [37]);
+  assert.deepEqual([...desig.glyphs], [37]);
+});
+
+test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one on the Overview', () => {
+  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  const m = marks(svg);
+  const debris = m.filter((k) => k.kind === 'debris');
+  const dig = m.filter((k) => k.kind === 'dig');
+
+  // one mark per marked cell, matching the fixture's own census — nothing dropped, nothing invented
+  assert.equal(debris.length, 30);
+  assert.equal(dig.length, 3);
+  assert.equal(m.length, 33, 'the layer drew a mark for a byte that carries none');
+
+  // THE ACCEPTANCE: the two are not the same drawing. Stated as a set difference rather than
+  // "they are unequal", because two rubble piles at different tiles are unequal for a boring reason.
+  const digShapes = new Set(dig.map((k) => k.body.replace(/[-\d.]+/g, '#')));
+  const debShapes = new Set(debris.map((k) => k.body.replace(/[-\d.]+/g, '#')));
+  for (const s of digShapes) {
+    assert.ok(!debShapes.has(s),
+      'a DESIGNATED tile emitted the same shape as an UNDESIGNATED one — the fg byte reached the '
+      + 'layer but changed nothing, which is the whole of WP-2');
+  }
+  // …and specifically: the order ring is the difference, and only the designated tiles have it.
+  assert.ok(dig.every((k) => k.body.includes('mk-order-ring')));
+  assert.ok(debris.every((k) => !k.body.includes('mk-order-ring')));
+  // both still carry rubble — a dig order does not replace the debris, it queues work on it
+  assert.ok(dig.every((k) => k.body.includes('<path d="M')));
+  assert.ok(debris.every((k) => k.body.includes('<path d="M')));
+});
+
+test('WP-2: marks are placed on their own tiles, under the furniture and the pawns', () => {
+  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  assert.match(svg, /<g class="pl-marks" pointer-events="none">/);
+  // Layer order: floors → marks → furniture → … → pawns. A mark is a fact about the FLOOR, so a
+  // machine or a crew member standing on it must not be hidden behind it.
+  const iRooms = svg.indexOf('<g class="pl-rooms">');
+  const iMarks = svg.indexOf('<g class="pl-marks"');
+  const iFurn = svg.indexOf('<g class="pl-furniture"');
+  const iPawns = svg.indexOf('<g class="pl-pawns">');
+  assert.ok(iRooms >= 0 && iMarks > iRooms, 'marks must draw over the room floors');
+  assert.ok(iFurn > iMarks, 'marks must draw UNDER the furniture');
+  assert.ok(iPawns > iMarks, 'marks must draw UNDER the pawns');
+
+  // Geometry: each mark lands inside the projected box of a cell that really carries its byte.
+  const t = makeTransform(view.find((d) => d.deck === 1).slots, frameDeck1);
+  const boxes = [];
+  for (let ty = 0; ty < frameDeck1.h; ty++) {
+    for (let tx = 0; tx < frameDeck1.w; tx++) {
+      const c = frameDeck1.cells[ty * frameDeck1.w + tx];
+      if (Array.isArray(c) && (c[1] === 4 || c[1] === 15)) boxes.push(t.rect({ x: tx, y: ty, w: 1, h: 1 }));
+    }
+  }
+  assert.equal(boxes.length, 33);
+  for (const k of marks(svg)) {
+    // Points: every `M x y` / `L x y` in a path, plus every rect's own origin.
+    const pts = [...k.body.matchAll(/[ML]([-\d.]+) ([-\d.]+)/g)].map((mm) => [+mm[1], +mm[2]]);
+    for (const rr of k.body.matchAll(/<rect[^>]*\sx="([-\d.]+)" y="([-\d.]+)"/g)) pts.push([+rr[1], +rr[2]]);
+    assert.ok(pts.length > 0, 'a mark emitted no coordinates at all');
+    const hit = boxes.some((b) => pts.every(([x, y]) => x >= b.x - 1 && x <= b.x + b.w + 1
+      && y >= b.y - 1 && y <= b.y + b.h + 1));
+    assert.ok(hit, 'a mark was drawn outside every marked tile\'s projected box');
+  }
+});
+
+test('WP-2: a deck with no marked cell draws no mark layer at all', () => {
+  // Deck 0's boot frame carries no fg 4/15/16/26 — asserted from the census, not assumed.
+  const census = fgCensus(frame);
+  for (const b of [4, 15, 16, 26]) assert.ok(!census.has(b), `frame (deck 0) unexpectedly carries fg ${b}`);
+  const svg = overviewScene(baseState({ deck: 0 }));
+  assert.equal((svg.match(/class="pl-marks"/g) || []).length, 0);
+  assert.equal(marks(svg).length, 0);
+  // …and a frame for another deck is not borrowed
+  const svg7 = overviewScene(baseState({ deck: 7, frame: frameDeck1, crew: [] }));
+  assert.equal(marks(svg7).length, 0);
+});
+
+test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () => {
+  const st = () => baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 });
+  assert.equal(overviewScene(st()), overviewScene(st()));
+  // No <defs>/gradient/pattern ⇒ no new id namespace to collide (the id-collision test above still
+  // counts only ov-* ids). Measured rather than asserted by construction:
+  const svg = overviewScene(st());
+  const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map((mm) => mm[1]);
+  assert.equal(new Set(ids).size, ids.length, 'the mark layer introduced a duplicate id');
+  // THE CLAIM, made to bite: the layer itself emits no id at all, so it can never collide with the
+  // `ov-*` namespace however many marks a deck carries. (The first draft compared id COUNTS against
+  // a `frame: null` scene — which has no furniture ids either, so the comparison was vacuous: adding
+  // 33 ids to the mark layer would still have passed it.)
+  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-furniture"/.exec(svg);
+  assert.ok(layer, 'the mark layer was not found where the layer order puts it — this pin has rotted');
+  assert.ok(layer[1].includes('class="mk mk-'), 'the extracted slice is not the mark layer');
+  assert.equal((layer[1].match(/\bid="/g) || []).length, 0,
+    'the mark layer emitted an id. It draws once per marked tile, so an id inside it is an id per '
+    + 'tile — a <defs>/gradient/pattern here would collide across marks and across scenes.');
+});

@@ -25,7 +25,7 @@ import { deckMinimap } from './deck-minimap.js';
 import {
   U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isStructuralTool, nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
-  demolishTarget, addDecor, removeDecor, escStackRung,
+  roomMarkTiles, markLayerSvg, demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragModeForTool, dragCaption } from './build-drag-model.js';
 import { taskTag } from './console-model.js';
@@ -319,6 +319,10 @@ function paintLayers(frame, crew, designs, decor) {
   // underneath it. Authored floors are material 0 and are skipped, which is the only reason the
   // original order looked correct in a screenshot.
   body += zoneLayerSvg(_zoneTiles, _focus);
+  // WP-2 — debris + dig/strip marks, read off the frame's `cell[1]`. ABOVE the material layer, which
+  // paints an opaque U*1.2 swatch over any built wall (so a strip mark under it would be invisible),
+  // and above the zone layer, whose tiles this one deliberately skips (room-model.js markLayerSvg).
+  body += markLayerSvg(roomMarkTiles(frame, _focus), _focus);
   body += decorSvg(roomDecor(decor, _focus));
   body += furnitureSvg(roomCells(frame, _focus));
   body += pawnSvg(roomCrew(crew, _focus));

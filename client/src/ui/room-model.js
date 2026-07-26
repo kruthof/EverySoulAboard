@@ -10,6 +10,7 @@
 // is hashed, touches the sim, or mutates its arguments.
 
 import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
+import { markForFg, markVariant, markCellSvg } from './mark-overlay.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -325,6 +326,112 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
     }
   }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// DEBRIS + DESIGNATION MARKS (console-retirement WP-2). The one place in this file that reads
+// `cell[1]` — the projected `GlyphColor` foreground byte — rather than `cell[0]`.
+//
+// WHY IT IS A LAYER OF ITS OWN and not a fix to `roomCells`. Every debris and dig-designation cell
+// in the shipped capture carries glyph code 37 (`'%'`), which is in `NON_FURNITURE` above, so
+// `roomCells` skips it — and it must keep skipping it.
+//
+// ⚠️ THE FIRST DRAFT OF THIS COMMENT GAVE THE WRONG REASON, and it is quoted here rather than
+// deleted so that anyone who grepped the old wording lands on the correction. It said removing 37
+// from `NON_FURNITURE` would *"push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` (which have no
+// mapping for it, so it would still draw nothing) while silently reclassifying the tile for
+// `roomCells`' two other readers, `itemForGlyph` and `demolishTarget`'s device branch."* **All three
+// clauses are false, measured by physically removing 37 from the set** (independent review):
+//   • it does NOT "still draw nothing" — it draws THIRTY-THREE pieces of junk. `roomCells` then
+//     emits 33 cells at code 37 with `itemId:''`, and `furnitureSvg`'s else-branch
+//     (`roomzoom-view.js:429-438`) renders the VS-Z-25 dashed "unknown" chip for each, carrying a
+//     literal `%` glyph. That is the OPPOSITE of the claim, in the very file the claim was in.
+//   • `itemForGlyph(37)` returns `''` either way — there is no `'%'` key in `SPRITE_FOR_GLYPH`
+//     (`render/glyphs.js:13-19`), so it is UNCHANGED, not reclassified.
+//   • `demolishTarget` at such a tile returns `{kind:'empty', verb:null}` either way — its device
+//     branch (below) requires a truthy `itemForGlyph(code)`, and 37 is not in `STRUCTURE_CODES`.
+//     Also UNCHANGED.
+// THE TRUE REASON IS STRONGER: loosening the set does not merely fail to draw debris, it fills the
+// wreck with 33 dashed unknown-glyph chips — a worse lie than invisibility, because a chip claims
+// "something here we do not skin yet" about a tile whose meaning the client knows perfectly well.
+// The mark layer instead keys on the fg byte alone and never on the glyph, which is also what makes
+// it work for a strip mark on a WALL (code 35, likewise `NON_FURNITURE`) — a case no amount of
+// furniture reclassification could reach.
+//
+// NOTE THE TWO SURFACES DIFFER HERE, and the mirrored comment in `overview-scene.js` is correct for
+// its own file: `furnitureLayer` does `if (!itemId) continue`, so on the Overview an unmapped glyph
+// really does draw nothing. The Room Zoom has an unknown-chip fallback and the Overview does not.
+//
+// The mark vocabulary itself — which byte means what, and what each mark looks like — is
+// `mark-overlay.js`, shared verbatim with the Level-1 Overview so one fg byte cannot come to mean two
+// different things on the two surfaces. See that file's header for the honest limits of `cell[1]`.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The debris / designation marks inside the room (WP-2). Every in-rect, on-deck cell whose fg byte
+ * carries a mark becomes `{tx, ty, mark, fg, code}`; everything else is dropped. PURE.
+ *
+ * IT REPORTS ALL FOUR KINDS, INCLUDING STOCKPILE, even though `markLayerSvg` draws only three. The
+ * reason is not "WP-4 will want it" — that argument covers debris and nothing else. It is that this
+ * function's job is to say what the FRAME contains, and a derivation that silently omits one of the
+ * four bytes is a derivation whose output cannot be trusted as a census: a caller asking "is this
+ * tile already spoken for?" (WP-4's DIG and STRIP sweeps both must, and so must anything that comes
+ * to explain a tile in the readout) would get "no" for a zoned tile. The drawing decision belongs to
+ * the layer that draws, and it is made there, once, with its reason attached.
+ * @param {{deck:number,w:number,h:number,cells:Array}|null} frame
+ * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
+ * @returns {{tx:number, ty:number, mark:string, fg:number, code:number}[]}
+ */
+export function roomMarkTiles(frame, focusRoom) {
+  const out = [];
+  if (!frame || !focusRoom || !Array.isArray(frame.cells)) return out;
+  if ((frame.deck | 0) !== (focusRoom.deck | 0)) return out;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  for (let ty = Math.max(0, ry); ty < Math.min(frame.h | 0, y1); ty++) {
+    for (let tx = Math.max(0, rx); tx < Math.min(frame.w | 0, x1); tx++) {
+      const cell = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const fg = cell[1] | 0;
+      const mark = markForFg(fg);
+      if (!mark) continue;
+      out.push({ tx, ty, mark, fg, code: cell[0] | 0 });
+    }
+  }
+  return out;
+}
+
+/**
+ * The Room Zoom's mark layer as one SVG string in room-local logical units (`U` per tile), or ''.
+ * PURE — a string builder, no DOM, so the gate can see it draw (the `zone-overlay.js` lesson: a
+ * builder that lives inside the view can be made to return '' with the whole suite still green).
+ *
+ * STOCKPILE MARKS ARE DELIBERATELY NOT DRAWN HERE, and this is the one place the two surfaces
+ * differ in output. WP-3 already paints this room's stockpile tiles from the `zones` wire channel
+ * (`zone-overlay.js` `zoneLayerSvg`, called one line above this layer in `roomzoom-view.js`), and
+ * that source is strictly better: it survives an item being stored on the tile (which overwrites
+ * `cell[1]` — see `mark-overlay.js`) and it carries the RESTRICTED and BACKED-OFF states this byte
+ * cannot express. Drawing both would stack two slate tints on the same tile. The semantics are
+ * unchanged — fg 16 still means "stockpile zone" on both surfaces; the Room Zoom just gets it from
+ * the better channel. `roomMarkTiles` still REPORTS the mark, so nothing is hidden from a caller.
+ * (If WP-6 replaces the zone layer wholesale, delete this filter with it.)
+ *
+ * @param {{tx:number, ty:number, mark:string}[]} marks  roomMarkTiles output
+ * @param {{rx:number, ry:number}} focusRoom  the room rect's origin, for the local transform
+ * @param {number} [unit]
+ * @returns {string}
+ */
+export function markLayerSvg(marks, focusRoom, unit = U) {
+  if (!Array.isArray(marks) || !marks.length || !focusRoom) return '';
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const out = [];
+  for (const m of marks) {
+    if (!m || m.mark === 'stockpile') continue; // WP-3's zoneLayerSvg owns this tile — see above
+    const cell = markCellSvg(m.mark, (m.tx - rx) * unit, (m.ty - ry) * unit, unit, unit,
+      markVariant(m.tx, m.ty));
+    if (cell) out.push(cell);
+  }
+  return out.length ? '<g class="rz-marks" pointer-events="none">' + out.join('') + '</g>' : '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
