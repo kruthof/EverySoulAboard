@@ -44,9 +44,11 @@ const DECK1_WORKING = crewDeck1.filter((c) => /^(Digging|Crafting|Hauling|Fetchi
 const DECK1_IDLE = crewDeck1.filter((c) => /^(Idle|Holding|Walking|Heading)\b/.test(c.task));
 
 /**
- * Every pawn's rendered label, by cid: `{ text, work, crowded }`.
+ * Every pawn's rendered label, by cid: `{ text, work, crowded, rect, leaderX }`.
  * `text` is the pill's visible string (tspans flattened), `work` whether the label was marked as
- * carrying a task tag, `crowded` whether the de-clutter sweep gave up and hid it.
+ * carrying a task tag, `crowded` whether the de-clutter sweep gave up and hid it, and `rect` is the
+ * pill's EMITTED box `{x,y,w,h}` — read out of the SVG rather than recomputed, because the whole
+ * point of the overlap assertion below is that the sweep's model and the emitted geometry agree.
  */
 function pawnLabels(svg) {
   const out = new Map();
@@ -54,14 +56,37 @@ function pawnLabels(svg) {
     const cid = chunk.slice(0, chunk.indexOf('"'));
     const m = /<g class="(pl-tag[^"]*)">([\s\S]*?)<\/g>/.exec(chunk);
     if (!m) continue;
+    const r = /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/.exec(m[2]);
+    const ln = /<line x1="([-\d.]+)"/.exec(m[2]);
     out.set(cid, {
       text: m[2].replace(/<[^>]*>/g, ''),
       work: m[1].includes('pl-tag-work'),
       crowded: m[1].includes('pl-tag-crowded'),
       leader: m[2].includes('<line '),
+      rect: r ? { x: +r[1], y: +r[2], w: +r[3], h: +r[4] } : null,
+      leaderX: ln ? +ln[1] : null,
     });
   }
   return out;
+}
+
+/** Every pair of VISIBLE pills that overlaps in BOTH axes, as `"A × B (w × h px)"` strings.
+ *  Crowded pills are excluded because CSS renders them at `opacity:0` — an overlap you cannot see is
+ *  not a legibility defect, and counting them would make the assertion unsatisfiable by design. */
+function overlappingPairs(labels) {
+  const vis = [...labels.values()].filter((l) => !l.crowded && l.rect);
+  const bad = [];
+  for (let i = 0; i < vis.length; i += 1) {
+    for (let j = i + 1; j < vis.length; j += 1) {
+      const a = vis[i].rect, b = vis[j].rect;
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (ox > 0 && oy > 0) {
+        bad.push(`${vis[i].text} × ${vis[j].text} (${ox.toFixed(1)} × ${oy.toFixed(1)} px)`);
+      }
+    }
+  }
+  return bad;
 }
 
 // Count distinct id="…" attributes and total id occurrences (for collision-freedom).
@@ -160,8 +185,11 @@ test('on-deck crew are placed as pawns; off-deck crew are not', () => {
 // `roster` is a BOOT capture in which all 8 crew read deck 0 and task "Idle", while `frameDeck1` is
 // deck 1 from later in the session. Driven from that pair, every assertion below would have PASSED
 // while proving nothing — no crew on the drawn deck, no task but "Idle", so "no idle pawn is tagged"
-// is trivially true of an empty set. `rosterDeck1` (added by WP-8, same host Render() pass as
-// `frameDeck1`) is what makes them bite, and the first test here is the tripwire that keeps it so.
+// is trivially true of an empty set. `rosterDeck1` (added by WP-8: the most recent roster at the
+// moment `frameDeck1` arrived, so the same sim state to within ≤1 render pass — NOT "the same
+// Render() pass", which is the fixture note's retracted claim, since GameSession.cs sends `frame`
+// at :1053 BEFORE `roster` at :1069) is what makes them bite. The first test here is the tripwire
+// that keeps it so, and it VERIFIES the pairing by position agreement rather than assuming it.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 test('WP-8: the fixture can actually DRIVE the work-marker acceptance (the anti-vacuity tripwire)', () => {
@@ -183,6 +211,20 @@ test('WP-8: the fixture can actually DRIVE the work-marker acceptance (the anti-
   assert.equal(frameDeck1.deck, 1);
   assert.ok(crewDeck1.every((c) => c.deck === 1),
     'rosterDeck1 has crew off deck 1 — it is not the roster of frameDeck1\'s tick');
+  // (c2) THE PAIRING IS VERIFIED, NOT ASSUMED. Send order proves nothing here — the host emits
+  // `frame` before `roster` in the same pass, so a capture pairs a frame with the PREVIOUS pass's
+  // roster. What licenses the pairing is that they agree: every cid the frame draws stands on the
+  // exact tile the roster reports. If a recapture ever lands a stale roster against a frame, the
+  // crew will have moved and this is what says so.
+  const frameAt = new Map((frameDeck1.crew || []).map((t) => [t[3], [t[0], t[1]]]));
+  assert.equal(frameAt.size, crewDeck1.length,
+    `frameDeck1 draws ${frameAt.size} crew but rosterDeck1 lists ${crewDeck1.length}`);
+  for (const c of crewDeck1) {
+    assert.deepEqual(frameAt.get(c.cid), [c.x, c.y],
+      `cid ${c.cid} (${c.name}) stands at ${JSON.stringify(frameAt.get(c.cid))} in frameDeck1 but `
+      + `rosterDeck1 puts it at [${c.x},${c.y}] — the two halves are from different ticks, so every `
+      + 'on-map assertion below is comparing a label against the wrong pawn');
+  }
   // (d) and the BOOT roster is still boot, which is exactly why it must never be paired with frameDeck1
   assert.ok(FIX.roster.crew.every((c) => c.deck === 0 && c.task === 'Idle'),
     'FIX.roster is no longer the all-idle boot capture the fixture note describes');
@@ -272,6 +314,79 @@ test('WP-8: labels DE-CLUTTER — same-row pills never overlap, and a lifted one
     // the scene's own row assignment is recomputed there, so only assert that SOME label has a leader
     assert.ok([...labels.values()].some((l) => l.leader), 'no lifted label drew a leader line');
     break;
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE OVERLAP ACCEPTANCE, MEASURED OFF THE EMITTED RECTS — and why the test above is not enough.
+//
+// The sweep's job is "no two visible pills overlap". Its first version proved a strictly weaker
+// thing: that same-ROW spans are horizontally disjoint. Those are not the same claim, because each
+// pill hangs off its OWN pawn's feet (`baseY = fy - 24*S - 4`), so a pawn one tile lower sits ~15
+// design px lower while a row step is 12 — "same row" therefore neither implies nor is implied by
+// "same height". Driven from the package's own shipped fixture the weaker test passed while the
+// scene emitted a real, visible collision: `OKONJO · DIG` × `NOVAK · DIG`, 18.5 × 10 px, about 91 %
+// of a pill's height. Eight crew on alternating tile rows produced four such pairs.
+//
+// So this reads the `<rect>`s the scene ACTUALLY WROTE and intersects them in both axes. It is the
+// acceptance; the row-level test above is kept because it pins the mechanism (rows, leaders).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Same 8 cids, re-placed and re-tasked — the vertical spread is the whole point of each case. */
+const respread = (fn) => crewDeck1.map((c, i) => ({ ...c, ...fn(c, i) }));
+
+const OVERLAP_CASES = [
+  // The shipped fixture itself: the hold at x25-32, crew on tile rows y=15 AND y=16. This is the
+  // case the package captured and called the label-overlap case, and it is where the row-only sweep
+  // certified one overlapping pair.
+  ['the shipped rosterDeck1 fixture (crew on tile rows 15 AND 16)', crewDeck1],
+  // All eight on one tile row — the only arrangement the original Chrome measurement covered, and
+  // the one arrangement in which "same row ⇒ same height" happens to be true.
+  ['8 digging on a single tile row', respread((c, i) => ({ y: 15, x: 25 + i, task: 'Digging out 1,1' }))],
+  // Alternating rows: the adversarial case for a row-index-only sweep.
+  ['8 servicing on alternating tile rows', respread((c, i) => ({ y: 15 + (i % 2), x: 25 + i, task: 'Servicing scrubber_ls' }))],
+];
+
+test('WP-8: NO two visible pills overlap — measured on the EMITTED rects, in both axes', () => {
+  for (const [name, crew] of OVERLAP_CASES) {
+    const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew })));
+    // Non-vacuity: an empty or rect-less parse would make "0 overlaps" true of nothing.
+    assert.equal(labels.size, crew.length, `${name}: parsed ${labels.size} labels for ${crew.length} crew`);
+    for (const [cid, l] of labels) {
+      assert.ok(l.rect && l.rect.w > 0 && l.rect.h > 0,
+        `${name}: no pill rect parsed for cid ${cid} — this assertion is reading nothing`);
+    }
+    const bad = overlappingPairs(labels);
+    assert.deepEqual(bad, [], `${name}: ${bad.length} overlapping label pair(s) — ${bad.join('; ')}.\n`
+      + 'Pills collide vertically as well as horizontally, because each hangs off its own pawn\'s '
+      + 'feet. The de-clutter sweep must compare whole rects (layoutPawnLabels + `baseY`), not spans '
+      + 'within a row index.');
+  }
+});
+
+test('WP-8: the two properties that must survive de-cluttering — a work tag is never hidden, and a '
+  + 'leader line points at its OWN pawn', () => {
+  for (const [name, crew] of OVERLAP_CASES) {
+    const labels = pawnLabels(overviewScene(baseState({ deck: 1, frame: frameDeck1, crew })));
+    let leaders = 0;
+    for (const [cid, l] of labels) {
+      assert.ok(!(l.work && l.crowded),
+        `${name}: the work tag for cid ${cid} was marked crowded, i.e. rendered at opacity 0. A tag `
+        + 'that vanishes when the room gets busy says "nobody here is working" at exactly the moment '
+        + 'everybody is — that is the lie B4 exists to prevent. It may stack or overlap; never hide.');
+      if (l.leaderX != null) {
+        leaders += 1;
+        // The pill is centred on its pawn's feet, so the leader must start at the pill's own centre;
+        // any other x is a line pointing at somebody else's pawn.
+        assert.ok(Math.abs(l.leaderX - (l.rect.x + l.rect.w / 2)) < 0.02,
+          `${name}: cid ${cid}'s leader line starts at x=${l.leaderX} but its pill is centred at `
+          + `${l.rect.x + l.rect.w / 2} — the line points at the wrong pawn, which is worse than no line`);
+      }
+    }
+    // Non-vacuity for the leader half: at least one case must actually lift a label.
+    if (name.startsWith('8 digging')) {
+      assert.ok(leaders > 0, `${name}: nothing was lifted, so the leader-line assertion never ran`);
+    }
   }
 });
 

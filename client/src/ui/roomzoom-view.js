@@ -113,8 +113,12 @@ function buildSkeleton() {
     '</div>' +
     '<div class="rz-toast" id="rz-toast" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). This surface needs its
-    // own: building is ZOOM-ONLY, so "I placed a wall and nothing happened" happens HERE.
-    '<div class="rz-nudge" id="rz-nudge" hidden>‖ HOLD — PRESS SPACE TO RUN THE SHIP</div>';
+    // own: building is ZOOM-ONLY, so "I placed a wall and nothing happened" happens HERE. A BUTTON
+    // that resumes on click, for the reason spelled out on the Overview's twin: the tool button the
+    // player just clicked holds focus, and `input/controls.js` yields SPACE to it, so "PRESS SPACE"
+    // alone is a dead end on the very path that raises this chip.
+    '<button type="button" class="rz-nudge" id="rz-nudge" data-rz-nudge hidden ' +
+      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>';
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
   _pulseLayer = $('rz-pulse');
@@ -229,6 +233,16 @@ function isPaused() {
  *  so nudging there would be the same dishonesty in the opposite direction. */
 function nudgeOnIntent() {
   if (_nudge) _nudge.trigger(isPaused());
+}
+
+/** Hand SPACE back to the game after a POINTER activation of `btn`. Chrome focuses the button you
+ *  click and `input/controls.js` yields SPACE to a focused button's native activation — so a player
+ *  who clicks WALL, reads "PRESS SPACE" and presses it just re-clicks WALL. Pointer only:
+ *  `e.detail === 0` is a keyboard activation, whose focus must survive. */
+function releaseSpace(btn, e) {
+  if (!btn || typeof btn.blur !== 'function') return;
+  if (e && e.detail === 0) return;
+  btn.blur();
 }
 
 function repaint() {
@@ -411,12 +425,22 @@ function furnitureSvg(cells) {
  * readout, so adding a second line of text to a 32-unit tile would cost more than it tells. A room
  * tile is wide enough for a 3–5 character tag, so no de-clutter sweep is needed here; two crew
  * standing on the SAME tile do overlap, exactly as their sprites already do.
+ *
+ * EXPORTED, and `focus` is injectable, purely so the honesty rule is testable. While this was a
+ * private function the mutation that matters most — `taskTag(c.task) || 'IDLE'`, which tags idle crew
+ * and destroys the rule on this surface — passed the whole node suite, because the only instrument
+ * pointed at it was a source scan for the token `taskTag`. `focus` defaults to the live `_focus`, so
+ * every in-app call site is unchanged; a test passes `{rx,ry}` and gets the same string.
+ *
+ * @param {Array<{cid:*, role:*, x:number, y:number, task:string}>} list
+ * @param {{rx:number, ry:number}} [focus] the room's tile origin (defaults to the open room)
  */
-function pawnSvg(list) {
+export function pawnSvg(list, focus) {
   const out = [];
   const S = PAWN_H / 24;
+  const org = focus || _focus;
   for (const c of list) {
-    const [lx, ly] = localXY(c.x, c.y);
+    const [lx, ly] = [(c.x - org.rx) * U, (c.y - org.ry) * U];
     const fx = lx + U / 2, fy = ly + U; // feet on the tile bottom-centre
     const body = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
     out.push('<g class="rz-pawn" transform="translate(' + (fx - 8 * S).toFixed(1) + ' ' +
@@ -536,8 +560,10 @@ function onHudClick(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   if (t.closest('#rz-canvas')) return; // the canvas has its own handler
+  // The nudge IS its own fix: it complains the ship is stopped, so clicking it starts it.
+  if (t.closest('[data-rz-nudge]')) { _send(Cmd.pause()); return; }
   const tool = t.closest('[data-rztool]');
-  if (tool) { arm(tool.getAttribute('data-rztool')); return; }
+  if (tool) { arm(tool.getAttribute('data-rztool')); releaseSpace(tool, e); return; }
   const mat = t.closest('[data-rzmat]');
   if (mat) { onMatChip(mat); return; }
   const crumb = t.closest('[data-rz]');

@@ -400,14 +400,43 @@ const LABEL_ROW_STEP = 12;
 export const LABEL_MAX_ROWS = 8;
 /** Horizontal breathing room added to each side of a pill before testing it for overlap. */
 const LABEL_GAP = 2;
+/** The pill's own box, in design px. SHARED by the sweep and the renderer below so the geometry the
+ *  sweep reasons about is literally the geometry that gets emitted — see `labelRect`. */
+export const LABEL_PILL_H = 11;
+/** How far the pill's TOP edge sits above the label's text baseline (`tagY`). */
+export const LABEL_PILL_RISE = 8;
+
+/** The pill rect `[x0,x1,y0,y1]` a label would occupy on `row`. The single place this geometry is
+ *  written down: `pawnLayer` emits from it too, so the sweep cannot reason about a different box than
+ *  the one on screen (which is exactly how a row-index-only sweep came to certify overlapping pills). */
+function labelRect(l, row) {
+  const base = Number.isFinite(l.baseY) ? l.baseY : 0;
+  const tagY = base - row * LABEL_ROW_STEP;
+  return [
+    l.cx - l.w / 2 - LABEL_GAP, l.cx + l.w / 2 + LABEL_GAP,
+    tagY - LABEL_PILL_RISE, tagY - LABEL_PILL_RISE + LABEL_PILL_H,
+  ];
+}
 
 /**
- * Assign each pawn label a de-clutter ROW so that same-row labels never overlap horizontally. PURE.
+ * Assign each pawn label a de-clutter ROW so that no two visible pills overlap. PURE.
  *
  * A greedy sweep in PRIORITY order — WORKING crew first, then by cid — takes the lowest row (closest
- * to the pawns) whose occupied spans its own span misses. Priority is what makes the result principled
- * rather than arbitrary: the work tags are the honesty affordance, so they get the legible rows, and
- * anything that has to give way is an idle crew member's name, which the CREW WATCH dock also carries.
+ * to the pawns) whose rect misses every rect already claimed. Priority is what makes the result
+ * principled rather than arbitrary: the work tags are the honesty affordance, so they get the legible
+ * rows, and anything that has to give way is an idle crew member's name, which the CREW WATCH dock
+ * also carries.
+ *
+ * THE OCCUPANCY TEST IS 2-D, and it has to be. Each pill hangs off its OWN pawn's feet (`baseY`), so
+ * two pawns a tile apart vertically are ~15 design px apart while `LABEL_ROW_STEP` is 12 — "same row"
+ * therefore neither implies nor is implied by "same height", and a sweep that compared only horizontal
+ * spans within a row index certified a genuinely overlapping pair as clean. It did: measured off the
+ * emitted rects, the shipped `rosterDeck1` fixture (crew at tile y=15 AND y=16) produced ONE
+ * overlapping pair, `OKONJO · DIG` × `NOVAK · DIG` at 18.5 × 10 px — ~91 % of a pill's height — and
+ * eight crew on alternating rows produced four. Comparing whole rects instead costs nothing and makes
+ * the property the code claims ("no two visible pills overlap") the property it actually enforces.
+ * A `baseY` is optional: absent, every label shares baseline 0 and the sweep degenerates to the
+ * horizontal one, which is the right answer for a caller that has no vertical spread to describe.
  *
  * When all `LABEL_MAX_ROWS` rows are taken the two cases are treated DIFFERENTLY, and this asymmetry
  * is the point: an IDLE label is marked `crowded` (the caller renders it transparent, revealed by
@@ -419,7 +448,7 @@ const LABEL_GAP = 2;
  * Ordering avoids `localeCompare` deliberately: it is locale-sensitive and this repo's dev machine is
  * de-DE, so a locale-dependent sort would make the SVG non-deterministic across machines.
  *
- * @param {Array<{cid:*, cx:number, w:number, working:boolean}>} labels
+ * @param {Array<{cid:*, cx:number, w:number, working:boolean, baseY?:number}>} labels
  * @returns {Map<string,{row:number, crowded:boolean}>} keyed by String(cid)
  */
 export function layoutPawnLabels(labels) {
@@ -430,18 +459,19 @@ export function layoutPawnLabels(labels) {
     const ka = String(a.cid), kb = String(b.cid);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
-  const rows = []; // rows[r] = [[x0,x1], …] spans already claimed on that row
+  const claimed = []; // every rect already taken, as [x0,x1,y0,y1]
   for (const l of list) {
-    const x0 = l.cx - l.w / 2 - LABEL_GAP;
-    const x1 = l.cx + l.w / 2 + LABEL_GAP;
     let row = -1;
+    let rect = null;
     for (let r = 0; r < LABEL_MAX_ROWS; r += 1) {
-      if (!rows[r]) rows[r] = [];
-      if (!rows[r].some((s) => x0 < s[1] && x1 > s[0])) { row = r; break; }
+      const cand = labelRect(l, r);
+      if (!claimed.some((s) => cand[0] < s[1] && cand[1] > s[0] && cand[2] < s[3] && cand[3] > s[2])) {
+        row = r; rect = cand; break;
+      }
     }
     const full = row < 0;
-    if (full) row = LABEL_MAX_ROWS - 1;
-    rows[row].push([x0, x1]);
+    if (full) { row = LABEL_MAX_ROWS - 1; rect = labelRect(l, row); }
+    claimed.push(rect);
     out.set(String(l.cid), { row, crowded: full && !l.working });
   }
   return out;
@@ -461,6 +491,9 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
     pawns.push({
       c, fx, fy, S, sur, tag,
       cid: c.cid, cx: fx, working: tag != null,
+      // The pill's UNLIFTED text baseline, derived from this pawn's own feet — so it is part of what
+      // the sweep must know: two pawns a tile apart vertically are further apart than a row step.
+      baseY: fy - 24 * S - 4,
       w: Math.max(16, text.length * 5 + 8),           // same metric the surname pill always used
     });
   }
@@ -486,7 +519,7 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
     g += `<g transform="translate(${n(fx - 8 * S)} ${n(fy - 23 * S)}) scale(${n(S)})">${body}</g>`;
     // identity + WORK label above the head (VS-O-47 + IX-103)
     const lay = layout.get(String(c.cid)) || { row: 0, crowded: false };
-    const baseY = fy - 24 * S - 4;
+    const baseY = p.baseY;
     const tagY = baseY - lay.row * LABEL_ROW_STEP;
     const tagC = selected ? '#f2b563' : 'rgba(220,210,195,.7)';
     const cls = 'pl-tag' + (p.tag ? ' pl-tag-work' : '') + (lay.crowded ? ' pl-tag-crowded' : '');
@@ -495,7 +528,9 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
       + (lay.row > 0
         ? `<line x1="${n(fx)}" y1="${n(tagY + 3)}" x2="${n(fx)}" y2="${n(baseY + 3)}" stroke="rgba(220,210,195,.3)" stroke-width="1"/>`
         : '')
-      + `<rect x="${n(fx - p.w / 2)}" y="${n(tagY - 8)}" width="${n(p.w)}" height="11" rx="2" fill="rgba(12,10,8,${p.tag ? '.86' : '.72'})"/>`
+      // The pill box comes from the SAME two constants the sweep reasoned about (LABEL_PILL_*), so a
+      // change to either cannot silently make the sweep certify a box that is no longer emitted.
+      + `<rect x="${n(fx - p.w / 2)}" y="${n(tagY - LABEL_PILL_RISE)}" width="${n(p.w)}" height="${LABEL_PILL_H}" rx="2" fill="rgba(12,10,8,${p.tag ? '.86' : '.72'})"/>`
       + `<text x="${n(fx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${tagC}" text-anchor="middle" dominant-baseline="central" font-family="'Space Mono', ui-monospace, monospace">`
       + `${esc(p.sur)}`
       + (p.tag ? `<tspan fill="#f2b563"> · ${esc(p.tag)}</tspan>` : '')

@@ -165,7 +165,16 @@ function buildSkeleton() {
     '<div class="ov-toast" id="ov-toast" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
     // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
-    '<div class="ov-nudge" id="ov-nudge" hidden>‖ HOLD — PRESS SPACE TO RUN THE SHIP</div>' +
+    //
+    // A BUTTON, not a div, and the wording leads with the click. The console's chip only ever said
+    // "PRESS SPACE" — and on the path that raises it, SPACE DOES NOT WORK: Chrome focuses the button
+    // the player just clicked to arm a tool, and `input/controls.js` yields SPACE to a focused
+    // button's native activation. Measured over CDP with a real key event: arm MOVE on a held ship →
+    // nudge up, press SPACE → still held. An affordance whose only instruction is a dead end is worse
+    // than no affordance, so the chip now carries the resume itself (`releaseSpace` below hands the
+    // key back too, but the click is the guarantee).
+    '<button type="button" class="ov-nudge" id="ov-nudge" data-ov-nudge hidden ' +
+      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>' +
     // ＋ADD ROOM room-type picker (a centred modal over the scene; styles inlined so it works
     // without a stylesheet). Populated on demand by showRoomPicker; clicks route via onHudClick.
     '<div class="ov-picker" id="ov-picker" hidden style="position:fixed;inset:0;z-index:60;' +
@@ -318,6 +327,27 @@ function isPaused() {
  *  work while paused, so nudging would be a lie in the other direction. */
 function nudgeOnIntent() {
   if (_nudge) _nudge.trigger(isPaused());
+}
+
+/** A tool-toggle button was just activated. `Hud.armTool` is a TOGGLE, so the same click both arms
+ *  and CANCELS — and only the arming half is an order the stopped ship is failing to carry out.
+ *  Nudging on the cancel told the player "press space to run the ship" for withdrawing an order,
+ *  which is the affordance firing at the exact moment it has nothing to say. */
+function afterToolToggle(btn, e) {
+  if (Hud.getArmedTool() != null) nudgeOnIntent();
+  releaseSpace(btn, e);
+}
+
+/** Hand SPACE back to the game after a POINTER activation. Chrome focuses the button you click, and
+ *  `input/controls.js` deliberately yields SPACE to a focused button's native activation (so a
+ *  keyboard user activating a crew row does not pause the sim) — which leaves a player who clicked
+ *  [M] MOVE and read "PRESS SPACE" pressing a key that re-clicks the button instead. Dropping focus
+ *  fixes that, but ONLY for a mouse click: `e.detail === 0` is a keyboard activation, and stealing a
+ *  keyboard user's place in the tab order to fix a mouse problem is not a trade worth making. */
+function releaseSpace(btn, e) {
+  if (!btn || typeof btn.blur !== 'function') return;
+  if (e && e.detail === 0) return;
+  btn.blur();
 }
 
 /** Whether the Overview should be the shown surface right now (IX-O-07 default-view switch). */
@@ -687,14 +717,16 @@ function onHudClick(e) {
   if (d.ovDeck != null) { _send(Cmd.deck(deckDelta(Number(d.ovDeck), _ctx.frame ? _ctx.frame.deck : 0))); }
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
-  else if (d.ovTool != null) { Hud.armTool(d.ovTool); nudgeOnIntent(); }
+  else if (d.ovTool != null) { Hud.armTool(d.ovTool); afterToolToggle(btn, e); }
   else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
   else if ('ovSpeedDn' in d) { _send(Cmd.speed(-1)); }
   else if ('ovSpeedUp' in d) { _send(Cmd.speed(1)); }
   else if ('ovCaution' in d) { Hud.selectTab('moss'); } // ship-status chip → MOSS diagnostics
   else if ('ovPause' in d) { _send(Cmd.pause()); }
+  // The nudge IS its own fix: it complains that the ship is stopped, so clicking it starts it.
+  else if ('ovNudge' in d) { _send(Cmd.pause()); }
   else if ('ovTalk' in d) { Hud.talkSelectedCrew(); }
-  else if ('ovMove' in d) { Hud.armTool('move'); nudgeOnIntent(); }
+  else if ('ovMove' in d) { Hud.armTool('move'); afterToolToggle(btn, e); }
   else if ('ovBio' in d) { Hud.openBioForSelected(); }
 }
 
