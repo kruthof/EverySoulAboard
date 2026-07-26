@@ -16,8 +16,8 @@ history, newest first.** The section immediately after this one is E0-4's landed
 - **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
   **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
   The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 1002 dotnet + 662 node**, re-measured on `main` after the strip-visible
-  merge (**+6 dotnet — the first sim-side change in days**; +5 node — every package in this run is client-only). Twin hash
+- **Gate: `./ci.sh` exit 0, 1002 dotnet + 678 node**, re-measured on `main` after the WP-6 merge
+  (+16 node, client-only; dotnet unchanged — every package in this run is client-only). Twin hash
   `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
   WP-4, WP-5 and the stockpile move are all pin-neutral.
 - **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
@@ -868,7 +868,79 @@ face.**
   into `overview-model.js`'s own doc comment: **"BUILDING is zoom-only; ORDERS are deck-scoped"**, on
   the grounds that a designation consumes no material and changes no geometry — it marks intent.
 
-**5. WP-6 — ACCEPTS chips on the ORDERS bar + the three missing indicators.**
+### 4j. WP-6 — the ACCEPTS chips, and the accept-mask made reachable at last (merged 2026-07-26)
+
+**The owner asked: *"is it correct that we have one global stockpile, i.e. we do not set filters?"* —
+IT WAS.** The accept-mask has been per-tile in the sim since E0-4 and every painted tile emits
+`Cmd.filter(x, y, mask)`, but the **only** writer of the client's mask was the `onclick` on the
+**deprecated console shell's** chips (`hud.js`), so on the standard surface it was pinned at
+`defaultStockFilter()` forever: **every zone accepted everything, permanently.**
+
+**⇒ THE LESSON, and it is the sharpest one this programme has produced: A VERB CAN BE PRESENT AND
+INERT. Verb parity is necessary and NOT SUFFICIENT.** This is E0-4's original mistake — filter UI on
+the wrong surface — **surviving one package past the guard written to catch it**, because WP-0's parity
+assertion checks *verbs* and `stockpile` was present and passing the whole time. The ledger reached
+empty (§4e) with the verb reachable and its **options** unreachable.
+
+**What shipped.** The chips now sit on the **Room Zoom palette** beside the tool that paints with them
+(the plan said the ORDERS bar; §4f moved the verb, so the chips followed) — revealed on arm as a
+sibling of the material strip and **mutually exclusive with it, so zero net height** on a palette that
+already clips below ~1140 px. Seven real `<button>`s with `type="button"` and `aria-pressed`:
+keyboard-reachable and screen-reader-legible. New pure `client/src/ui/accepts-row.js`;
+`stock-filter-model.js` **untouched** and its TUI cross-skin tripwire intact.
+**Gate: 1002 dotnet (unchanged) + 678 node, exit 0, no pin moved.**
+
+**Measured live off an intercepted socket, and this one number is the package:** six chips off, a 4×2
+drag emits **8 `stockpile`+`filter` pairs, every filter carrying `mask: 8`, not 127** — zone-before-
+filter on every tile, zero `build`. Flipping ORE back on then reads
+`APPLIES TO TILES YOU PAINT NEXT · 8 ZONED TILES IN THIS ROOM KEEP A DIFFERENT FILTER`.
+
+**An existing guard was REMOVED, and the removal was correct.** `room-model.test.js`'s wiring scan
+named WP-6 in its own text as the thing it was watching for. But `getStockFilter` is now **entirely
+absent** from `roomzoom-view.js` and from `main.js`'s call, so there is no option left to forget and
+**a scan for a line that must not exist guards air.** The property it protected is now pinned *better*
+— behaviourally, end-to-end: chip click → the mask the row shows → the mask every swept tile emits. A
+chip click that fails to move the mask reddens **8** tests. That is `CLAUDE.md` traps item 4 applied as
+intended: **runtime state beats text.**
+
+**⚠️ DECLINED, and it should NOT be re-offered — offer the `designations` channel instead.** Having the
+Overview read the `zones` channel would create a **second producer for the same tint**, forcing the
+fg-16 suppression in `markLayerSvg` to move in lockstep or the Overview stacks two tints — **the exact
+bug WP-3 hit with the material layer**, which this programme has already paid for once. And it banks a
+*partial* fix where §4g's single `designations` channel closes passes 3, 4 and 5 together.
+
+**⚠️ PLAN §5's THREE FEEDBACK GAPS: TWO CLOSED, ONE NARROWED.**
+- **Gap 2 (chips affect only future paints, with nothing saying so) — CLOSED.** The wording is
+  *visible*, not buried in a `title=` nobody hovers, and the count of already-zoned tiles that disagree
+  is the other half.
+- **Gap 3 (no indicator for the backed-off set) — CLOSED IN MECHANISM, with a caveat worth keeping:**
+  the bit rides the wire, the client derives it, the hatch and key render it, and the wording refuses to
+  claim unreachability — but **nobody has yet seen it fire on a real haul retry**, because the sim will
+  not produce one on demand. The rendering leg is covered **synthetically** (decode → derive → SVG →
+  DOM all real; only the frame's origin fabricated), and labelled so.
+- **Gap 1 (a filtered tile has no visual indicator) — NARROWED.** Closed on the **Room Zoom** (wedge +
+  `<title>` + a key naming the filter in words). **Not closed on the Overview**, which renders the
+  stockpile tint from `cell[1]`'s fg-16 byte and *cannot carry restriction at all*. **A player looking
+  at the schematic still cannot tell a filtered zone from an unfiltered one. That closes with the
+  `designations` channel (§4g) and not before.**
+
+**Known and disclosed:** four `esc` call sites in `accepts-row.js` are uncovered and **unreachable by
+construction** (all interpolated model text is ASCII from a frozen table; verified by measurement, not
+argument) — the calls are kept as a contract so an eighth `ItemKind` or a player-typed name cannot walk
+in. The mismatch count is **room-scoped and says so**; a player with zones in three rooms sees three
+counts and never a ship total.
+
+**⚠️ An instrument note, from a finding the reviewer RETRACTED.** Its first pass showed the mismatch
+line never appearing across 0.3 s / 1 s / 3 s and a forced repaint — it looked like a real defect. It
+was the instrument: the chip click had not landed, so the mismatch was genuinely zero and the row was
+right to stay quiet. **Any live chip test must assert the mask actually moved before reading the
+consequence.** That is the *second* time a coalesced-repaint/stale-read nearly produced a confident
+wrong finding in this programme (§4h was the first).
+
+**5. ~~WP-6 — ACCEPTS chips on the ORDERS bar + the three missing indicators.~~ — ✅ LANDED, see §4j.
+The charter below is superseded: the chips went to the ROOM ZOOM (§4f moved the verb), the
+"flip WP-0's parity test to strict" item was already automatic
+(`surface-boundary.test.js:322-327`), and WP-3's indicator layer was EXTENDED, not replaced.**
 - **Do:** the accept-mask chips, plus the three feedback gaps E0-4 shipped without (plan §5): a
   **filtered** tile carries a corner badge (`stockFilterLabel` already exists,
   `client/src/ui/stock-filter-model.js`); the chips **say** they apply to tiles painted next, with a

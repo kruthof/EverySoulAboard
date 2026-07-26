@@ -488,7 +488,7 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  strip-visible merge (2026-07-26): 1002 dotnet + 662 node, `./ci.sh` exit 0**
+  WP-6 merge (2026-07-26): 1002 dotnet + 678 node, `./ci.sh` exit 0**
   (+6 dotnet — strip-visible touched `sim/Sim.Glyph/GlyphMapper.cs`, the first sim-side change since
   the deck-confined wander; **all five pins held and no golden moved**). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
