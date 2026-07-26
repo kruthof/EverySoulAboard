@@ -34,7 +34,7 @@ import { decodeZones, ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
 import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
 import {
   ACCEPTS_ALL_LABEL, BACKED_OFF_LABEL, acceptsLabel, roomZoneTiles, zoneBackedOff, zoneLabel,
-  zoneLegendRows, zoneRestricted,
+  zoneLegendRows, zoneMaskMismatch, zoneRestricted,
 } from '../src/ui/zone-model.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -304,6 +304,51 @@ test('roomZoneTiles is PURE: inputs are neither mutated nor aliased', () => {
   // Non-vacuity: prove the freeze would actually bite, so this is not a test of nothing.
   assert.throws(() => { zones[0].__probe = 1; }, TypeError,
     'the fixture rows are not frozen, so the "never mutates" half of this test cannot fail');
+});
+
+// ══════════════════════════════════════════════════════════════════════════ zoneMaskMismatch (WP-6)
+
+// The honest half of plan §5 gap 2. The chips say "applies to tiles you paint next"; this is the
+// count that turns that rule into the player's actual situation, and it is the number that makes the
+// difference between a rule and an answer.
+//
+// MUTATION: `return 0` ⇒ fails. MUTATION 2: `!==` → `===` ⇒ fails (and the all-agree leg is what
+// stops "count everything" from passing as well).
+test('zoneMaskMismatch counts the tiles whose stored filter is NOT the one the chips show', () => {
+  const tiles = roomZoneTiles([
+    row(10, 5, 0, ACCEPT_ALL, 0),
+    row(11, 5, 0, 1 << 3, 0),
+    row(12, 5, 0, 1 << 3, ZONE_FLAG_BACKED_OFF),   // the back-off bit is irrelevant to the count
+    row(13, 5, 0, 1 << 5, 0),
+  ], FOCUS);
+  assert.equal(tiles.length, 4, 'the fixture must produce four tiles or this is vacuous');
+
+  assert.equal(zoneMaskMismatch(tiles, ACCEPT_ALL), 3, 'three tiles carry something other than all');
+  assert.equal(zoneMaskMismatch(tiles, 1 << 3), 2, 'the two FOOD tiles agree; the other two do not');
+  assert.equal(zoneMaskMismatch(tiles, 1 << 5), 3, 'only the PARTS tile agrees');
+  assert.equal(zoneMaskMismatch(tiles, 0), 4, 'accept-nothing matches none of them');
+  // ALL AGREE ⇒ zero. Without this leg a "count every tile" mutant survives every line above.
+  const same = roomZoneTiles([row(10, 5, 0, 1 << 3, 0), row(11, 5, 0, 1 << 3, 0)], FOCUS);
+  assert.equal(zoneMaskMismatch(same, 1 << 3), 0);
+  assert.equal(zoneMaskMismatch(same, ACCEPT_ALL), 2);
+});
+
+// PERMISSIVE ON JUNK, the same direction `zoneRestricted` takes and for the same reason: the UI must
+// never claim a discrepancy the player did not create out of a value it could not read.
+// MUTATION: drop the isFinite guard ⇒ NaN !== mask is true and an unreadable tile raises a false
+// alarm ⇒ fails.
+test('zoneMaskMismatch is total, and an unreadable mask raises no alarm', () => {
+  assert.equal(zoneMaskMismatch(null, ACCEPT_ALL), 0);
+  assert.equal(zoneMaskMismatch(undefined, ACCEPT_ALL), 0);
+  assert.equal(zoneMaskMismatch([], ACCEPT_ALL), 0);
+  assert.equal(zoneMaskMismatch([null, undefined], ACCEPT_ALL), 0);
+  for (const junk of [NaN, Infinity, '3', null, undefined]) {
+    assert.equal(zoneMaskMismatch([{ mask: junk }], ACCEPT_ALL), 0,
+      `a tile whose mask is ${String(junk)} was counted as disagreeing`);
+  }
+  // Non-vacuity: a READABLE mask in the same shape IS counted, so the guard is not swallowing
+  // everything.
+  assert.equal(zoneMaskMismatch([{ mask: 1 << 3 }], ACCEPT_ALL), 1);
 });
 
 // ═════════════════════════════════════════════════════════════════════════════ zoneLegendRows

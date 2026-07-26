@@ -138,6 +138,33 @@ export function roomZoneTiles(zones, focus) {
 }
 
 /**
+ * HOW MANY of these tiles carry a filter OTHER than `mask` (console-retirement WP-6, plan §5 gap 2).
+ *
+ * The chips on the Room Zoom's palette apply to tiles painted NEXT — they do not reach back and
+ * re-filter a zone already on the floor. Saying that is half the fix; this is the other half, because
+ * the sentence alone is a rule and the count is the player's actual situation. `accepts-row.js` turns
+ * it into words.
+ *
+ * AN UNREADABLE MASK IS COUNTED AS MATCHING, i.e. it raises no alarm — the same permissive direction
+ * `zoneRestricted` takes above and for the same reason: a mask the client cannot read must never make
+ * the UI claim a discrepancy the player did not create. `roomZoneTiles` has already scoped the input
+ * to the focused room, so this is room-scoped by construction and the wording says so. PURE.
+ * @param {{mask:number}[]} tiles roomZoneTiles output
+ * @param {number} mask the mask the chips currently show
+ * @returns {number}
+ */
+export function zoneMaskMismatch(tiles, mask) {
+  if (!Array.isArray(tiles)) return 0;
+  const m = mask | 0;
+  let n = 0;
+  for (const t of tiles) {
+    if (!t || typeof t.mask !== 'number' || !isFinite(t.mask)) continue;
+    if ((t.mask | 0) !== m) n += 1;
+  }
+  return n;
+}
+
+/**
  * THE KEY — what the marks on the floor MEAN, in words, for the states actually present in this room.
  *
  * This is the fix for the thing that made the whole package nearly pointless. The first draft drew an

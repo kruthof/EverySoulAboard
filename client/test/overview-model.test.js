@@ -1102,14 +1102,20 @@ test('THE LIVE BUG: arming STRIP and clicking furniture on the Overview says som
 
 // ⚠️ THIS TEST IS THE INVERSE OF THE ONE WP-5 SHIPPED. WP-5 asserted that `initOverview` IS handed
 // `Hud.getStockFilter()`, because the ORDERS bar's STOCKPILE painted with it. The verb moved to the
-// Room Zoom and the mask moved with it, so the assertion here is that the Overview is handed NO mask
-// — and the POSITIVE half (the Room Zoom really does get it, plus the commented-out negative
-// control) lives in `room-model.test.js`, beside the surface that now reads it.
+// Room Zoom and the mask moved with it, so the assertion here is that the Overview is handed NO mask.
+//
+// ⚠️ AND ITS NON-VACUITY ANCHOR MOVED AGAIN AT WP-6, which is the only reason to read this comment.
+// It used to be the `initRoomZoom` block: *"the SAME regex must be shown to match somewhere in the
+// SAME file — the `initRoomZoom` block — before the absence means anything."* WP-6 gave the Room Zoom
+// its own ACCEPTS chips and its own `_stockFilter`, so `initRoomZoom` is handed no mask either and
+// that anchor is gone. The regex is now anchored on the two `installInput` blocks, which still wire
+// `Hud.getStockFilter()` for the console's own canvas path — a stronger anchor, since there are two
+// of them and `input.test.js` pins them independently.
 //
 // AN ABSENCE ASSERTION IS THE DANGEROUS KIND: a typo'd regex, a call block that failed to parse, or
 // a renamed getter all produce "absent" and all pass. So the SAME regex must be shown to match
-// somewhere in the SAME file — the `initRoomZoom` block — before the absence means anything. That is
-// what makes this a guard rather than a wish.
+// somewhere in the SAME file before the absence means anything. That is what makes this a guard
+// rather than a wish.
 //
 // It is STRUCTURAL and says so, exactly as `input.test.js:204` does for the sibling claim about the
 // two `installInput` blocks: main.js is the composition root, it takes no injection of its own, and
@@ -1132,13 +1138,28 @@ test('main.js hands the Overview NO accept-mask — the seam went to the Room Zo
   assert.ok(!/stockpile/i.test(call),
     'the initOverview call block still mentions stockpile in code — the ORDERS bar has no such tool');
   // NON-VACUITY, and it is the whole reason this test can be trusted: the identical regex MUST match
-  // the initRoomZoom block. Without this leg, renaming `Hud.getStockFilter` (or breaking `callBlocks`)
+  // somewhere in main.js. Without this leg, renaming `Hud.getStockFilter` (or breaking `callBlocks`)
   // would make the absence above true for entirely the wrong reason and the guard would go quiet.
+  const inputs = callBlocks(main, 'installInput');
+  assert.equal(inputs.length, 2, 'expected two installInput({…}) calls in main.js (the WebGL2→' +
+    `Canvas2D fallback re-installs), found ${inputs.length}`);
+  for (const [i, block] of inputs.entries()) {
+    assert.match(block, WIRE,
+      `installInput block #${i + 1} does not wire Hud.getStockFilter, so the regex above matched ` +
+      'NOTHING in main.js and the absence assertion is vacuous. (The console canvas path still ' +
+      'reads the shared mask; WP-9 removes it with the shell.)');
+  }
+  // …and the seam it USED to be anchored on is gone, deliberately (WP-6): the Room Zoom owns its own
+  // mask now, set by the ACCEPTS chips on its palette. This is pinned rather than left implicit
+  // because a later lane "restoring" that wiring would silently put the brush back on a mask no
+  // player can reach — the exact defect WP-6 was written to fix.
   const rz = callBlocks(main, 'initRoomZoom');
   assert.equal(rz.length, 1, 'expected exactly one initRoomZoom({…}) call in main.js, found ' + rz.length);
-  assert.match(rz[0], WIRE,
-    'the accept-mask is on NEITHER surface. It did not move, it VANISHED — every zone painted in ' +
-    'the Room Zoom now silently accepts everything, on a client whose ACCEPTS chips are elsewhere.');
+  assert.ok(!WIRE.test(rz[0]),
+    'main.js hands the Room Zoom `Hud.getStockFilter()` again. The ONLY writer of that value is the ' +
+    'onclick on the DEPRECATED console shell\'s ACCEPTS chips (hud.js), so re-wiring it pins every ' +
+    'zone painted on the standard surface at ACCEPT-ALL for ever and makes the Room Zoom\'s own ' +
+    'chips inert. The palette owns the mask — see roomzoom-view.js\'s `_stockFilter`.');
 });
 
 // ── the ledger ──

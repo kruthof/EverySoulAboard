@@ -14,7 +14,14 @@
 // THREE STATES, THREE MARKS, TWO COLOUR FAMILIES.
 //   every zoned tile   a slate tint + dotted boundary — the zone, invisible on this surface until now
 //   RESTRICTED         a PALE corner wedge (cool, near-white)
-//   BACKED OFF         an AMBER hatch + ring (the alarm colour)
+//   BACKED OFF         a DIM SCRIM + an AMBER hatch + ring (the alarm colour)
+//
+// THE SCRIM IS WP-6's ONE ADDITION TO THIS LAYER, and the layer was deliberately EXTENDED rather than
+// replaced. The plan (§5 gap 3) specifies a backed-off tile as "dim + hatch + a one-line reason"; WP-3
+// shipped the hatch and the reason (the `<title>` plus the visible key) and not the dim, so that is
+// the whole of the delta. Replacing a working, independently-reviewed, character-tested layer would
+// have thrown away `zone-overlay.test.js` — the file that exists because WP-3's first draft passed
+// 546/546 with the builder returning the empty string — and re-derived it, for preference.
 // The wedge is deliberately NOT amber. It was, over an amber hatch and an amber ring, which made a
 // restricted-AND-backed-off tile — the state a player most needs to tell apart — a single amber smear;
 // and the label used to suppress the filter list on exactly those tiles, so the restriction was
@@ -38,6 +45,12 @@ const ZONE_EDGE = 'rgba(126,158,196,.55)';
 const WEDGE = '#dbe6f2';                     // pale cool: RESTRICTED
 const WEDGE_EDGE = 'rgba(16,22,32,.85)';
 const ALARM = '#f2b563';                     // amber: BACKED OFF
+// The DIM half of "dim + hatched" (WP-6). A near-black scrim rather than a lowered fill-opacity on
+// ZONE_FILL: the tile has to read as inert against the FLOOR, and the floor is painted by the canvas
+// background under this whole SVG, so lightening the tint would leave the tile exactly as bright as
+// its neighbours. It is drawn UNDER the hatch and the ring so the alarm marks stay at full contrast —
+// dimming the thing that is shouting would be the wrong half of the tile to mute.
+const DIM = 'rgba(9,12,18,.46)';
 
 /**
  * The SVG floor layer for one room's zoned tiles.
@@ -73,6 +86,8 @@ export function zoneLayerSvg(tiles, focus) {
       '" height="' + (U - 1) + '" rx="2" fill="' + ZONE_FILL + '" stroke="' + ZONE_EDGE +
       '" stroke-width="1" stroke-dasharray="2 2"/>';
     if (t.backedOff) {
+      cell += '<rect class="rz-zone-dim" x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' +
+        (U - 1) + '" height="' + (U - 1) + '" rx="2" fill="' + DIM + '"/>';
       cell += '<rect class="rz-zone-hatch" x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' +
         (U - 1) + '" height="' + (U - 1) + '" rx="2" fill="url(#rz-zone-hatch)" stroke="' + ALARM +
         '" stroke-width="1.5"/>';

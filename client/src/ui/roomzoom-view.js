@@ -14,9 +14,10 @@
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones } from '../wire/messages.js';
-import { roomZoneTiles, zoneLegendRows, acceptsLabel } from './zone-model.js';
-import { ACCEPT_ALL, defaultStockFilter } from './stock-filter-model.js';
+import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
+import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
+import { acceptsRowHtml } from './accepts-row.js';
 import { decksView } from './decks-model.js';
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
@@ -70,21 +71,31 @@ let _decor = [];          // session-local cosmetic decor (never hashed, never w
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
 let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
-// The STOCKPILE accept-mask, read at COMMIT time (one read per sweep, not one per tile).
+// THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
-// A GETTER, injected, exactly as `client/src/input/controls.js:118-122` takes it and for the same
-// stated reason: reading module state would make the lowering impure and untestable. It arrived here
-// with the verb — WP-5 wired it into `initOverview`, and when `stockpile` came down to this palette
-// the mask had to come with it, because a zone command that does not assert its filter leaves the
-// tile wearing whatever filter it wore before. `main.js` wires it to `Hud.getStockFilter()`, the one
-// slot beside the one armed tool, so while the console still exists both surfaces paint with ONE
-// mask rather than two that drift. Default is the shared `defaultStockFilter()` (ACCEPT-ALL), never
-// a literal — see stock-filter-model.js.
+// ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
+// false now: *"A GETTER, injected … `main.js` wires it to `Hud.getStockFilter()`, the one slot beside
+// the one armed tool, so while the console still exists both surfaces paint with ONE mask rather than
+// two that drift."* The injection is GONE and the shared slot with it. What that wiring bought was a
+// mask no player could change: `hud.js:312` — the `onclick` on the console shell's `#stockfilter`
+// chips — was the ONLY writer of `_stockFilter` anywhere in the client, and the console is deprecated,
+// unreachable in normal play and scheduled for deletion. So on the standard surface the "shared" mask
+// was permanently `defaultStockFilter()`, every zone accepted everything, and the per-tile filtering
+// the sim has supported since E0-4 could not be reached at all. Sharing an inert value is not sharing.
 //
-// WP-6 OWNS THE CHIPS, AND ITS TARGET MOVED WITH THIS PACKAGE: the ACCEPTS row it was to add to the
-// Overview's ORDERS bar belongs on THIS palette now. That is still a one-line change here, because
-// this getter is the only reader.
-let _getStockFilter = () => defaultStockFilter();
+// THE COST, STATED: the console's chips and this palette's chips are now TWO independent masks. That
+// is deliberate and it is the honest arrangement — each surface's chips describe what THAT surface
+// paints with, and a chip row that silently drove another surface's brush would be worse. They cannot
+// be reached in one session anyway (`body.roomzoom-open` hides the console entirely; §4f records the
+// only window in which the console is live as a boot artifact), and WP-9 deletes the console half.
+// Merging them the other way is not available: writing `hud.js`'s `_stockFilter` needs an exported
+// setter, and `SHIP_STATE_REACH` (surface-boundary.test.js) pins the exact set of `hud.js` symbols a
+// modern surface may reach — adding one to drive a dying surface's state is the wrong direction.
+//
+// Default is the shared `defaultStockFilter()` (ACCEPT-ALL), never a literal — see
+// stock-filter-model.js. A player who never touches the chips gets exactly E0-3 behaviour.
+let _stockFilter = defaultStockFilter();
+let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatch count), or 'off'
 
 // ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
 // The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
@@ -108,7 +119,6 @@ function setCls(node, cls, on) { if (node && node.classList.contains(cls) !== !!
 export function initRoomZoom(opts) {
   _send = (opts && opts.send) || (() => {});
   _onExit = (opts && opts.onExit) || (() => {});
-  if (opts && typeof opts.getStockFilter === 'function') _getStockFilter = opts.getStockFilter;
   _root = document.getElementById('roomzoom-view');
   if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false };
   buildSkeleton();
@@ -136,6 +146,25 @@ function buildSkeleton() {
     '<div class="hud rz-minimap" id="rz-minimap"></div>' +
     '<div class="rz-palette-wrap">' +
       '<div class="hud rz-matstrip" id="rz-matstrip" hidden></div>' +
+      // WP-6 — THE ACCEPTS ROW, shown only while STOCKPILE is armed.
+      //
+      // ⚠️ THE DESIGN CALL, ARGUED, because always-visible was the live alternative. It is a SIBLING
+      // OF `#rz-matstrip` in every sense: same wrapper, same place in the stack, same reveal rule,
+      // and the same job — the options belonging to the ARMED tool. That idiom already exists on this
+      // exact surface for WALL/FLOOR materials, so reveal-on-arm costs the player no new concept,
+      // and the console it replaces reveals its own row the same way (`hud.js` `reflectArmed`
+      // toggling `#stockfilter-row`). Three further reasons, in order of weight:
+      //   1. The two rows are MUTUALLY EXCLUSIVE — `toolHasMaterial` is wall/floor, this is stockpile
+      //      — so the reveal costs ZERO net height. An always-visible ACCEPTS row would be a third
+      //      permanent band under a palette that already clips below ~1140 px (a known-open defect,
+      //      not this package's to fix, but emphatically this package's not to worsen).
+      //   2. A permanently-visible seven-chip filter next to fifteen tools reads as fifteen more
+      //      tools. Arming STOCKPILE is what makes "which kinds?" a question the player is asking.
+      //   3. The cost of hiding it — discoverability — is paid off elsewhere and cheaply: the hint
+      //      line names STOCKPILE [Z], and the sweep toast already ends with the accept-set in the
+      //      zone key's own words, so a player who never opens the row still reads back what they
+      //      painted. A hidden control whose EFFECT is visible is not a hidden decision.
+      '<div class="hud rz-accepts" id="rz-accepts" hidden></div>' +
       '<div class="hud rz-palette" id="rz-palette"></div>' +
       '<div class="rz-hint">' + HINT + '</div>' +
     '</div>' +
@@ -199,7 +228,9 @@ function buildChrome() {
   _el.placeLabel = pal.querySelector('.rz-place-label');
   _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
   _el.matStrip = $('rz-matstrip'); // material swatch row — populated on arm(wall|floor)
+  _el.accepts = $('rz-accepts');   // ACCEPTS chip row — populated on arm(stockpile)
   _matSig = '';
+  _accSig = '';
   _miniSig = ''; // force the first minimap paint to render
 }
 
@@ -303,6 +334,11 @@ function repaint() {
   paintMinimap();
   paintPalette();
   paintMatStrip();
+  // AFTER `_zoneTiles` is derived, and that ordering is the whole point of calling it from here at
+  // all: the row's second line counts the already-zoned tiles in this room whose filter differs from
+  // the chips, so it has to be recomputed whenever the `zones` channel moves — a hauler filling the
+  // last free tile, or the player painting more of the room, both change it without touching a chip.
+  paintAccepts();
 }
 
 // ── the framed floor (VS-Z-06..09) ──
@@ -614,6 +650,31 @@ function paintMatStrip() {
   _matSig = sig;
 }
 
+/**
+ * The ACCEPTS chip row (WP-6): shown only when STOCKPILE is armed, listing the seven ItemKinds with
+ * the accepted ones lit, plus the line saying the chips apply to tiles painted NEXT and how many
+ * already-zoned tiles in this room disagree.
+ *
+ * Re-rendered only when its (mask, mismatch) signature changes, so idle repaints at the wire's 10 Hz
+ * never tear down the chip under the pointer. That is not tidiness here, it is the bug §4h was: this
+ * surface rebuilt its chrome wholesale on every repaint and the node under the press was detached
+ * between mousedown and mouseup, so Chrome fired no `click` at all. A chip you have to click twice is
+ * that bug wearing a filter.
+ */
+function paintAccepts() {
+  if (!_el.accepts) return;
+  if (_armed !== 'stockpile') {
+    if (_accSig !== 'off') { _el.accepts.hidden = true; _el.accepts.innerHTML = ''; _accSig = 'off'; }
+    return;
+  }
+  const mismatch = zoneMaskMismatch(_zoneTiles, _stockFilter);
+  const sig = _stockFilter + ':' + mismatch;
+  if (sig === _accSig) return;
+  _el.accepts.innerHTML = acceptsRowHtml(_stockFilter, mismatch);
+  _el.accepts.hidden = false;
+  _accSig = sig;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Input.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -623,6 +684,7 @@ function arm(tool) {
   _drag = null; // arming/disarming cancels any in-progress sweep
   paintPalette();
   paintMatStrip();
+  paintAccepts();
   paintCanvas();
   if (_armed != null) nudgeOnIntent(); // arming (not disarming) is the intent worth nudging about
 }
@@ -637,6 +699,8 @@ function onHudClick(e) {
   if (tool) { arm(tool.getAttribute('data-rztool')); releaseSpace(tool, e); return; }
   const mat = t.closest('[data-rzmat]');
   if (mat) { onMatChip(mat); return; }
+  const acc = t.closest('[data-rzaccept]');
+  if (acc) { onAcceptChip(acc); releaseSpace(acc, e); return; }
   const crumb = t.closest('[data-rz]');
   if (crumb) { exitRoom(); return; } // ‹ PERILUNE / DECK n both pop to the Overview (IX-Z-32/33)
   const slot = t.closest('.rz-mini-slot');
@@ -649,6 +713,35 @@ function onMatChip(el) {
   if (!toolHasMaterial(tool)) return;
   const next = setMaterial(_materials, tool, parseInt(el.getAttribute('data-rzmat'), 10) | 0);
   if (next !== _materials) { _materials = next; paintMatStrip(); scheduleRepaint(); }
+}
+
+/**
+ * Toggle ONE ItemKind in the accept-mask the next sweep will paint with (WP-6).
+ *
+ * The mutation goes through `toggleStockKind`, the shared pure reducer, which is TOTAL for a NUMBER:
+ * an out-of-range kind returns the mask unchanged rather than wrapping a bit back inside the valid
+ * range (JS reduces shift counts modulo 32, so `1 << 32` is 1 — that hole was measured and closed in
+ * stock-filter-model.js).
+ *
+ * ⚠️ IT IS NOT TOTAL FOR `NaN`, AND THAT IS WHY THE PARSE IS A DIGIT TEST RATHER THAN `parseInt`.
+ * `parseInt('', 10)` and `parseInt('nonsense', 10)` are both `NaN`, `NaN | 0` is `0`, and `0` is a
+ * perfectly valid kind — so a chip whose attribute was missing, blanked or corrupted would silently
+ * toggle REGOLITH, the first kind in the enum, every time it was clicked. Measured on the first draft
+ * of this function, which used `parseInt`. `-1` is the deliberate out-of-range sentinel, which the
+ * reducer then refuses.
+ *
+ * IT DOES NOT REPAINT THE FLOOR, deliberately: nothing about the zone tiles already on the map has
+ * changed, and this row is the one thing on screen that has. What it DOES change is the row's second
+ * line — flip a chip and the "N ZONED TILES IN THIS ROOM KEEP A DIFFERENT FILTER" count moves with
+ * it, which is the fastest honest answer to "did that do anything to what I already painted?".
+ */
+function onAcceptChip(el) {
+  const raw = el.getAttribute('data-rzaccept');
+  const kind = /^\d+$/.test(String(raw)) ? Number(raw) : -1;
+  const next = toggleStockKind(_stockFilter, kind);
+  if (next === _stockFilter) return;
+  _stockFilter = next;
+  paintAccepts();
 }
 
 /** Lateral / cross-deck room swap from the minimap (IX-Z-34/35). */
@@ -817,20 +910,31 @@ function onCanvasUp(e) {
   const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
   const pc = paletteCommand(drag.tool);
   const material = activeMaterial(_materials, drag.tool);
-  // ONE mask read for the whole sweep, and only for an ORDER — a getter called per tile could
-  // observe a mask change mid-commit and paint one rectangle with two different filters, and a WALL
-  // sweep has no business reading a stockpile filter at all.
-  const mask = pc.cls === 'order' ? _getStockFilter() : 0;
+  // ONE mask read for the whole sweep, taken at COMMIT and only for an ORDER — a WALL sweep has no
+  // business reading a stockpile filter at all.
+  //
+  // AT COMMIT, NOT AT PRESS, and that is the observable half of this line: a player who presses,
+  // drags, then flips a chip before releasing gets the rectangle they can SEE the chips describing.
+  // Stashing the mask on `_drag` in `onCanvasDown` is the plausible refactor and it silently paints
+  // the older filter; `room-model.test.js` toggles a chip mid-drag to make that mutation bite.
+  // (The per-tile-read hazard the injected getter used to guard is now structurally absent: the mask
+  // is module state whose only writer is a DOM handler, and this loop is synchronous, so a per-tile
+  // read could not observe a different value. Stated rather than tested, because there is no longer
+  // a mechanism by which it could differ.)
+  const mask = pc.cls === 'order' ? _stockFilter : 0;
   // sim decides legality per tile, for both classes — an illegal order is a silent no-op, never a ghost
   if (pc.cls === 'order') {
     for (const t of res.tiles) for (const o of orderPayloads(pc.verb, t.x, t.y, mask)) _send(o);
   } else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
-    // STOCKPILE's caption names the mask it just painted, because nothing else on this surface can:
-    // the ACCEPTS chips are still on the console (WP-6 brings them here), and a zone that silently
-    // refuses every item looks exactly like one nothing has been hauled to yet. `acceptsLabel` is
-    // the SHARED spelling the zone key uses, so the toast and the key cannot word it differently.
+    // STOCKPILE's caption names the mask it just painted. The reason recorded here — "because nothing
+    // else on this surface can: the ACCEPTS chips are still on the console" — is SPENT as of WP-6;
+    // the chips are two rows above. It is kept because the reason it survives is a different and
+    // better one: the chips state INTENT and the toast states what was actually committed, and a zone
+    // that silently refuses every item looks exactly like one nothing has been hauled to yet.
+    // `acceptsLabel` is the SHARED spelling the zone key uses, so the chips, the toast and the key
+    // cannot word one mask three ways.
     const accepts = pc.verb === 'stockpile' ? ' · ' + acceptsLabel(mask) : '';
     toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res) + accepts);
     nudgeOnIntent(); // designations placed on a stopped ship — nobody will come and build them
