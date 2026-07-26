@@ -426,7 +426,33 @@ The same shape bites the scenario host: `dotnet build tests/Perilune.Tests` foll
 `dotnet run --no-build --project hosts/scenario` runs a **stale scenario binary**, so a mutation can
 look inert when it is not.
 
-### 3. Two shell traps that produced findings out of nothing
+### 3. A FALSE RED — a mutation that goes red for the wrong reason (found 2026-07-26, WP-4)
+
+Everything above hunts false **greens**. This is the mirror image, it is newer, and it is harder to
+spot **because red looks like success**.
+
+WP-4's harness mutated `roomzoom-view.js` by substituting `isStructuralTool` back into two call
+sites — **from a file that no longer imported it.** Both mutations died on
+`ReferenceError: isStructuralTool is not defined`. **They proved the module cannot load; they proved
+nothing about the semantics they claimed to pin.** With the import restored as part of the mutation,
+one was a genuine RED (n=9) and **the other was a survivor** — a real hole that a false RED had been
+hiding. Two of 23 claimed REDs were bogus, and the defect was found only because an independent
+reviewer applied a *third* mutation by hand.
+
+**The insidious part, measured:** the crash reddened **only 2 tests**. A false RED does **not**
+present as an obvious explosion — it presents as a small, plausible failure count, which is exactly
+what a semantic RED looks like.
+
+**The countermeasures:**
+1. **A mutation must leave the module loadable.** If it removes or renames an identifier the module
+   still references, restore the reference as part of the same mutation.
+2. **Distinguish a crash from a semantic failure in the harness itself**, and report it as such —
+   WP-4's now prints `!! CRASH (not a semantic RED)`. A harness that only counts red/green cannot
+   tell you which kind you got.
+3. **Sanity-check the failure set, not just the count.** A mutation to one call site that reddens a
+   suspiciously broad or suspiciously narrow set of tests is worth reading before believing.
+
+### 4. Two shell traps that produced findings out of nothing
 
 - **An unquoted `$flags` in a loop** made three "stockpile" measurement legs run **flagless**, and
   they produced baseline-identical output that looked like a real finding.
@@ -437,9 +463,9 @@ look inert when it is not.
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
-  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` @ `38ff68b`
-  (2026-07-25, after the WP-2 merge): 996 dotnet + 607 node, `./ci.sh` exit 0**
-  (+18 node, WP-2's own tests; dotnet unchanged — WP-2 is client-only). Every "560 dotnet + 188
+  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
+  WP-4 merge (2026-07-26): 996 dotnet + 621 node, `./ci.sh` exit 0**
+  (+14 node, WP-4's own tests; dotnet unchanged — WP-4 is client-only, as WP-2 was). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that

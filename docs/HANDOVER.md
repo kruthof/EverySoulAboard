@@ -13,12 +13,16 @@ history, newest first.** The section immediately after this one is E0-4's landed
 
 ### 1. The tree, measured — not quoted
 
-- **`main` is at `38ff68b`**, working tree clean. **WP-2 LANDED** (`9c71878` + `fd02799`, merged
-  `--no-ff` at `38ff68b`); its record is §4b. The deck-confined wander (§4 step 1) landed before it as
-  `61dea33`, merged `98f0e63`; its record is §4a.
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 607 node**, re-measured on `main` @ `38ff68b` after the merge
-  (+18 node, all WP-2; dotnet unchanged — WP-2 is client-only). Twin hash `00e0a2dadb8e5076`.
-- *(Superseded:* 996 dotnet + 589 node on `main` @ `98f0e63`, the deck-wander merge.*)*
+- **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
+  **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
+  The deck-confined wander landed before them (§4a).
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 621 node**, re-measured on `main` after the WP-4 merge
+  (+14 node, all WP-4; dotnet unchanged — WP-4 is client-only, as WP-2 was). Twin hash
+  `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane and
+  WP-4 are all pin-neutral.
+- **`KNOWN_GAPS` is down to ONE entry** (`stockpile` → WP-5). `dig` and `strip` were deleted by WP-4's
+  ledger ratchet. **On the standard surface a player can now dig and strip; they still cannot zone.**
+- *(Superseded:* 996 + 607 @ `38ff68b`; 996 + 589 @ `98f0e63`.*)*
 - *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
   (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
   gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
@@ -411,7 +415,76 @@ hash with **one** spine edit against **four** for fields on `Citizen` (`SaveWrit
 `SaveReader.cs:160-172`, `Simulation.cs:504-506`). Of **18 goldens exactly two are StateHash-derived**.
 `DefsParser.cs` carries **117** parser keys.
 
-**3. WP-4 — DIG + STRIP in the Room Zoom palette.**
+### 4d. WP-4 — DIG + STRIP in the Room Zoom — LANDED (`d8b5948` + `8419a5f`, merged 2026-07-26)
+
+**What shipped.** Two new `ROOM_TOOLS` classed **`'order'`** — a fourth command class beside
+structural/functional/cosmetic, whose `verb` holds the **wire verb name** and never `'build'` — plus
+`isOrderTool`, `isSweepTool` (structural ∪ order, the set all three gesture sites gate on, a function
+rather than a literal list so a future tool cannot be wired into one site and forgotten at the others)
+and `roomDragMode`. Lowering is `orderCmd` → `Cmd.dig`/`Cmd.strip`. **G arms DIG, V arms STRIP**
+(the console's own bindings), and the `built-wall` DEMOLISH toast now names STRIP — that branch was a
+dead end before this package existed. **An order drag sweeps the FILLED rectangle**: a designation is
+a *region* of intent, and a perimeter would leave the middle of a swept wreck untouched. **Gate on
+`main`: 996 dotnet (unchanged, client-only) + 621 node, `./ci.sh` exit 0, twin hash
+`00e0a2dadb8e5076`, no pin moved.** `KNOWN_GAPS` is down to **one entry** (`stockpile`, WP-5's).
+
+**Verified end-to-end against the real host — which no test in the suite does.** `G` → drag → exactly
+8 `{cmd:'dig',x,y,on:1}` row-major at the right coordinates, **zero `build`**; `V` → drag → 4 strips,
+the toast, and the four walls **immediately rendering WP-2's amber ✕**. That is the first time the two
+packages were seen working together.
+
+**Why the `fill` decision is right and is NOT a parity break — measured, not assumed.** The console
+**cannot sweep at all**: its canvas drag is **pan** (`client/src/input/controls.js:163-166`) and
+`paletteOrders` fires only on `press && !press.moved`, so one click = one tile. The TUI is one keypress
+= one tile (`hosts/tui/GameLoop.cs:313-322`). **No surface had a designation gesture to be parity
+with**, and the Room Zoom was already the only surface that sweeps anything.
+
+**⚠️ THE PACKAGE SHIPPED CORRECT CODE TWICE. Both review rounds found only wrong explanations of it** —
+zero code defects across two independent rounds. That is a rare and instructive shape, and the two
+defects are both about *evidence*, not behaviour:
+1. **A named mutation that could not bite.** The comment claimed that reverting a guard at
+   `onCanvasClick` would double-fire the order. Applied exactly as written: **621 pass / 0 fail.**
+   Mechanism: past that bail, `onCanvasClick`'s tail is an if/else-if chain over `pc.cls` handling only
+   `functional`/`cosmetic`/`demolish` — there is **no `order` branch and no `structural` branch** — so an
+   armed order falls through and sends nothing. **The bail cannot prevent a double-fire because there is
+   no second fire to prevent.** It is a defensive *second* guard; the first is a branch that does not
+   exist. Now withdrawn quoted-and-negated, and the **source** comment at the bail says so too, which is
+   where the next author looks. The replacement is a legitimate **two-edit** mutation, and the reviewer
+   proved it properly by running three legs: adding an `order` branch alone **survives**, dropping the
+   bail alone **survives**, both together go **RED** — leg 1 is what convicts, because it shows the bail
+   is precisely what neutralises the hazard the branch creates.
+2. **Two headline sweeps that could not tell `fill` from `perimeter`.** The drags were 3×2 and 2×2 —
+   **every tile is on the border**, so the two modes coincide and the comments claimed to pin a fill they
+   could not see. Now 3×3 with an explicit interior-tile assertion at `(29,15)`, and STRIP uses the
+   **identical 3×3 gesture as the WALL control** so one gesture over one tile-set commits **9 for an
+   order against 8 for a wall**, asserted as a contrast in the same test. Reverting `roomDragMode` now
+   reddens **6** tests, up from 2.
+
+**⚠️ MY CHARTER NAMED AN ACCEPTANCE CRITERION THAT COULD NOT FAIL, and it is on record here so it is not
+repeated.** *"A drag sweeps and is clipped to `roomBounds()`"* is **inert on ordinary mouse input**:
+`onCanvasDown` bails on a null tile, `onCanvasMove` assigns `_drag.end` only when non-null, and
+`tileFromCanvasXY` → `clampTileToRoom` rejects out-of-room points — so **both endpoints are always
+in-room, and the bounding box of two points inside an axis-aligned rectangle is inside it.** Dropping
+the `roomBounds()` argument reddens **exactly one** test, the shrink-mid-sweep one; the fixture-driven
+out-of-room-debris drag stays **green**, proving it exercises `tileFromCanvasXY` and not the clip. The
+implementer caught this and wrote the test that actually bites; both tests now carry the caveat in
+their own prose.
+
+**⚠️ Limits, not wins — the reviewer's wording, kept deliberately:**
+1. **A mis-dragged STRIP cannot be undone from any client surface.** Fill-mode sweeps plus **no
+   un-designate anywhere in `client/`** (`Cmd.dig(x,y,false)` rides the wire; nothing sends it) mean one
+   wrong drag condemns a whole **w×h rectangle** with no recovery — DEMOLISH revokes queued *builds*,
+   not designations. The console's blast radius was one tile per misclick. **The TUI *can* un-designate**
+   (`hosts/tui/GameLoop.cs:322`), so this is a **client gap, not a game gap** — that distinction is the
+   difference between a missing feature and a missing surface, and it is what makes this cheap to close.
+2. **The `roomBounds()` clip is inert on ordinary mouse input** (above). Anyone reading "clipped to the
+   room" should know the effective guard is `tileFromCanvasXY`.
+3. **The `.on` armed-state palette toggle is not covered by the suite** — `dom-lite`'s
+   `querySelectorAll` returns `[]`, so arming is driven through a constructed node. Verified in Chrome;
+   still untested. A palette-markup test blocks the "satisfiable by an unrendered palette" failure.
+
+**3. ~~WP-4 — DIG + STRIP in the Room Zoom palette.~~ — ✅ LANDED, see §4d. Next actionable step is 4,
+WP-5.**
 - **Do:** two new `ROOM_TOOLS` (`client/src/ui/room-model.js:27`) classed `'order'` in `PALETTE_CMD`,
   joining `isStructuralTool`'s sibling set so they inherit drag-sweep clipped to `roomBounds()`.
 - **Files:** `client/src/ui/room-model.js`, `client/src/ui/roomzoom-view.js`,
