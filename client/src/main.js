@@ -260,7 +260,14 @@ const roomZoom = initRoomZoom({ send: (o) => session.send(o) });
 // reads authoritative state back from the HUD caches and lowers every action to an existing Cmd /
 // HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth. Clicking
 // an occupied room enters the Room Zoom (Level 2) through the injectable hook.
-initOverview({ send: (o) => session.send(o), onEnterRoom: (anchor) => roomZoom.enter(anchor) });
+// WP-5: the ORDERS bar's STOCKPILE paints with the SAME accept-mask the console's ACCEPTS chips set
+// (`Hud.getStockFilter`, the one slot beside the one armed tool), so the two surfaces cannot zone
+// the same tile with two different filters. A getter, read at click time — see overview-view.js.
+initOverview({
+  send: (o) => session.send(o),
+  onEnterRoom: (anchor) => roomZoom.enter(anchor),
+  getStockFilter: () => Hud.getStockFilter(),
+});
 // RELATIONS: the crew relationship web, a body-level takeover of its own (`body.relations-open`)
 // rather than an overlay inside the console stage — as an overlay it dropped `body.overview-open`
 // and brought the whole deprecated console back on screen over the modern surface. It derives its
