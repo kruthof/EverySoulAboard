@@ -212,7 +212,34 @@ test('the filter order is constructed ONLY in the palette seam, and BOTH inputs 
     'exactly one Cmd.filter construction in controls.js — the seam');
   assert.equal(count(controls, '= paletteOrders('), 2,
     'exactly two call sites (mouse-up and Enter) lower a tool through the seam');
-  assert.equal(count(main, 'getStockFilter:'), count(main, 'installInput({'),
-    'every installInput block passes getStockFilter (the fallback re-install included)');
-  assert.ok(count(main, 'installInput({') >= 2, 'main.js really does install input twice');
+  // Each `installInput({ … })` ARGUMENT OBJECT must carry `getStockFilter`, read by matching the
+  // block's own braces rather than by counting the token across the whole file.
+  //
+  // WHY NOT A WHOLE-FILE COUNT (which is what this was, and it broke on the first legitimate second
+  // reader): `count(main, 'getStockFilter:') === count(main, 'installInput({')` silently assumed
+  // that `installInput` is the ONLY thing in main.js that takes a stock filter. Console-retirement
+  // WP-5 gave `initOverview` the same getter — the ORDERS bar paints with the SAME mask, which is
+  // the point — and the count went 3 vs 2 with every install site correctly wired. A guard that
+  // fires on a correct change is a guard that gets edited away in a hurry, so it is scoped instead.
+  // MUTATION B (drop the getter from the fallback re-install only) still reddens; verified.
+  const blocks = [];
+  for (let i = main.indexOf('installInput({'); i >= 0; i = main.indexOf('installInput({', i + 1)) {
+    let depth = 0;
+    const from = main.indexOf('{', i);
+    let j = from;
+    for (; j < main.length; j++) {
+      if (main[j] === '{') depth += 1;
+      else if (main[j] === '}') { depth -= 1; if (depth === 0) break; }
+    }
+    blocks.push(main.slice(from, j + 1));
+  }
+  assert.ok(blocks.length >= 2, 'main.js really does install input twice');
+  for (const [i, block] of blocks.entries()) {
+    assert.ok(block.includes('getStockFilter:'),
+      `installInput block #${i + 1} does not pass getStockFilter (the fallback re-install included) ` +
+      '— that block would silently paint every zone accept-all');
+    // Non-vacuity: a brace walk that ran away to EOF would contain everything and prove nothing.
+    assert.ok(block.length < main.length / 2 && block.includes('canvas, camera, session'),
+      `installInput block #${i + 1} did not parse as one argument object (${block.length} chars)`);
+  }
 });

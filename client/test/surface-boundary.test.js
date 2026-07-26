@@ -130,7 +130,10 @@ function readOrNull(rel) {
 /** The verbs that exist on the console and NOT YET on the standard surface. Value = the package
  *  that removes the entry. DELETE YOUR LINE when you land it — do not weaken the assertion. */
 const KNOWN_GAPS = Object.freeze({
-  stockpile: 'WP-5 — Overview ORDERS bar (deck-scoped: a zone is a ship-level logistics decision)',
+  // EMPTY — and that is the ledger reaching its endgame, not a list nobody filled in. WP-4 paid off
+  // `dig` and `strip` (Room Zoom); WP-5 paid off `stockpile` (the deck-scoped Overview ORDERS bar).
+  // Every verb the player can reach on the dying console is now reachable on the standard surface.
+  // From here the ratchet only has one direction left: a new key fails against KNOWN_GAPS_SEALED.
 });
 
 /** ⚠️ THE SEAL. The WP-0 census of unported verbs — the high-water mark, not the live debt.

@@ -1039,6 +1039,15 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
   color:var(--ink-mute,#8c8377);border:1px solid #2b241c}
 .ov-tool.on{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33}
 .ov-tool.cancel.on{background:#3a1a10;color:#e07a5f;border-color:#a53a25}
+/* the deck-scoped ORDERS bar (console-retirement WP-5). Same shell as .ov-place — one bottom-bar
+   island idiom — and it reuses .ov-tool/.ov-tool.on wholesale, so an armed order reads exactly like
+   an armed console palette tool. The hint is .ov-buildhint's twin: a readback, not a control. */
+.ov-orders{display:flex;gap:7px;align-items:center;padding:8px 12px;border-radius:11px}
+/* the header and the three fixed labels never break mid-token ("[G] ⛏ / DIG" reads as damage). The
+   HINT is deliberately left wrappable: a restricted mask spells out up to seven kind names, and a
+   wrapped line is better than one that overflows the viewport. WP-6's chips re-lay-out this bar. */
+.ov-orders .ov-ordershdr,.ov-orders .ov-tool{white-space:nowrap}
+.ov-orderhint{font-size:9.5px;letter-spacing:.06em;color:var(--ink-mute,#8c8377)}
 .ov-tabs{display:flex;gap:6px;padding:9px 11px;border-radius:12px}
 .ov-tab{padding:9px 15px;border-radius:8px;font-size:11px;letter-spacing:.06em;cursor:pointer;
   background:rgba(26,22,17,.5);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}

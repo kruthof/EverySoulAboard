@@ -9,8 +9,35 @@
 // speedLabel, designsOnDeck) are IMPORTED from console-model.js — never re-forked — so the Overview
 // and the console speak one contract (interaction-spec IX-O-03). InvariantCulture-safe throughout
 // (no locale APIs): round + ASCII only.
+//
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE AMENDED SCHEMATIC RULE — **BUILDING is zoom-only; ORDERS are deck-scoped.** BINDING.
+// (console-retirement plan §4.2, amended and adopted; this file is where the plan says it lives.)
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// The rule this replaces was "nothing is placed on the ship schematic". Its justification was always
+// about WALLS: a wall is a physical thing with a footprint, a material cost and a geometry
+// consequence, and placing one at a scale where a tile is a handful of pixels is a mis-click waiting
+// to happen. That argument does not reach a designation. **A designation consumes no material and
+// changes no geometry — it marks intent.** `Cmd.dig` / `Cmd.stockpile` / `Cmd.strip` write a flag the
+// sim's job board reads; the sim re-validates every tile and silently no-ops an illegal one, so the
+// worst a fat-fingered order can do is nothing. A stockpile in particular is a *logistics decision
+// about the ship* — you zone the storage room because crew hauling from deck 3 need somewhere to put
+// things — and painting it one room at a time, having entered that room from this very schematic, is
+// the wrong altitude.
+//
+// So the amended rule is SHARPER than the one it replaces, not looser: it names the property that
+// does the work (material + geometry) instead of naming the surface. The code already spoke this
+// distinction — `console-model.js` `isOrderTool` vs `isBuildTool`, and `controls.js:53-58` ("Same
+// gesture, different verb — routing an order tool through `Cmd.build` would hand it to BuildSystem,
+// which knows nothing about designations"). WP-5 only makes the schematic honour it.
+//
+// WRONG IF THIS FILE EVER RETURNS A 'build' ACTION. There is no build branch below and there must
+// not be one: an armed wall/floor/door/cancel leaking in from the shared console armed slot is
+// IGNORED here and the click resolves by the ordinary hit rule (pinned by test).
 
 import { makeTransform } from './overview-scene.js';
+import { stockFilterLabel } from './stock-filter-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -39,34 +66,122 @@ export function tileAt(transform, vx, vy, frame) {
 export { makeTransform };
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// The ORDERS bar (console-retirement WP-5) — the deck-scoped designation verbs.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The three ORDER verbs the Overview arms, in the bar's visual order — the SAME order and the same
+ * three names as the console's own `ORDER_KINDS` (`console-model.js`), because they are the same
+ * verbs on a different surface and a divergence here would be a divergence in the game.
+ *
+ * This is also the table `client/test/surface-boundary.test.js` MODERN_TOOL_TABLES resolves to prove
+ * verb parity with the dying console. Renaming it is a one-line edit THERE, in the same commit.
+ */
+export const ORDER_TOOLS = Object.freeze(['dig', 'stockpile', 'strip']);
+
+/** Tool → the bar's button label. The hotkey prefix is the console's own binding (`controls.js`
+ *  G/Z/V), which still arms through the one shared slot while the Overview is on screen; the ⛏ / ⚒
+ *  icons are the Room Zoom's (`room-model.js` TOOL_LABEL), so one verb reads the same on both. */
+export const ORDER_LABEL = Object.freeze({
+  dig: '[G] ⛏ DIG', stockpile: '[Z] ▦ STOCKPILE', strip: '[V] ⚒ STRIP',
+});
+
+/** True for a tool the Overview lowers to a DESIGNATION rather than resolving as a hit. PURE. */
+export function isOrderTool(tool) {
+  return ORDER_TOOLS.indexOf(tool) >= 0;
+}
+
+/**
+ * The ORDERS bar's one-line readback: what a click will do, and WHICH DECK it will do it on.
+ *
+ * The deck is in EVERY branch on purpose. "Deck-scoped" is otherwise an invisible property — the
+ * order verbs carry no z on the wire (the host applies them to the session's current deck), so the
+ * only thing standing between a player and a designation on a deck they are not looking at is that
+ * the schematic shows one deck at a time. Saying so is the affordance.
+ *
+ * `stockFilterLabel` is the shared authority for naming a mask in words (the console's armed hint
+ * and the Room Zoom's zone key read the same function), so a label change lands everywhere at once.
+ * Only STOCKPILE carries it — dig and strip ignore the mask entirely. PURE, ASCII + the two verb
+ * icons, no locale APIs.
+ *
+ * @param {null|string} armed  the shared armed-tool slot
+ * @param {number} deck        the deck currently on screen (frame.deck)
+ * @param {number} [mask]      the stockpile accept-mask
+ */
+export function orderHintLine(armed, deck, mask) {
+  const d = ' ON DECK ' + (deck | 0);
+  if (armed === 'dig') return '⛏ DIG ▸ CLICK DEBRIS' + d;
+  if (armed === 'strip') return '⚒ STRIP ▸ CLICK A WALL OR DEVICE' + d;
+  if (armed === 'stockpile') return '▦ STOCKPILE ▸ CLICK A TILE' + d + ' · ACCEPTS ' + stockFilterLabel(mask);
+  return 'ORDERS APPLY TO DECK ' + (deck | 0) + ' · BUILDING IS ZOOM-ONLY';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Click classification (IX-O-11/12/13/15/19). One rule for a floor click: an armed tool decides
 // everything; with no tool armed, the DOM hit (pawn > add-room chip > bound room > hall) decides.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Classify an Overview click into an action. `armed` is the shared armed-tool slot (null | move);
- * `hit` is the DOM hit-test result:
- *   { pawnCid?, addRoomSlot?, roomAnchor?, hallSlot? }  (all optional; absent = miss)
+ * Classify an Overview click into an action. `armed` is the shared armed-tool slot
+ * (null | 'move' | an ORDER tool | a build tool that leaked in); `hit` is the DOM hit-test result:
+ *   { pawnCid?, terminalId?, addRoomSlot?, roomAnchor?, hallSlot? }  (all optional; absent = miss)
  *
- * BUILDING IS ZOOM-ONLY: walls/floors are placed inside a room (the Room Zoom), never on the ship
- * schematic. So there is NO 'build' action here — an armed wall/door/cancel (if one leaks in from
- * the shared console slot) is ignored on the Overview and the click falls through to the hit rule.
+ * BUILDING IS ZOOM-ONLY; ORDERS ARE DECK-SCOPED (the module header, binding). So there is NO 'build'
+ * action here — an armed wall/door/cancel leaking in from the shared console slot is ignored and the
+ * click falls through to the hit rule — but there IS an 'order' action, and it sits at the TOP.
  *
  * Precedence (single disambiguation rule):
  *   1. the MOVE order armed → 'move' (the move target tile — IX-O-41)
- *   2. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
- *   3. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
- *   4. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
- *   5. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom — where building happens)
- *   6. a bare hall / empty space → 'none' (IX-O-13/18)
+ *   2. an ORDER tool armed → 'order' (the designation target tile — WP-5)
+ *   3. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
+ *   4. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
+ *   5. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
+ *   6. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom — where building happens)
+ *   7. a bare hall / empty space → 'none' (IX-O-13/18)
+ *
+ * ═══ WHY 'order' SHORT-CIRCUITS EVERYTHING AND NOT MERELY 'enterRoom'. This is the decision WP-5
+ * exists to take, and "ahead of enterRoom" — the charter's minimum — would have been WRONG.
+ *
+ * The general reason is that an armed tool is a MODE, and a mode owns the click. That is not a new
+ * rule invented here; it is what the other two surfaces already do with these exact verbs. The
+ * console: "while a palette tool is armed a non-drag click sends that tool's orders and nothing else
+ * — no selection, no device toggle, no crew snap, shift suppressed" (IX-32/33,
+ * `controls.js:174-177`). The Room Zoom: `onCanvasClick` bails outright on `isSweepTool(_armed)`
+ * (`roomzoom-view.js:660`) so the sweep owns the gesture. `armed === 'move'` above is the same rule,
+ * already on THIS surface. A designation that lost to a hit would make the Overview the one surface
+ * where an armed tool is a suggestion.
+ *
+ * And each of the three hits it now overtakes is a MEASURED hole, not a hypothetical one:
+ *   · PAWN. `docs/HANDOVER.md` §4b limit 2: on `--ship grid` the crew cluster in the hold at
+ *     x25-32 y15-16 — "exactly where the dig designations are". If `select` won, the debris a player
+ *     most wants dug would be the debris they cannot designate, and the failure would look like a
+ *     dead button rather than a rule.
+ *   · TERMINAL. A device is precisely what STRIP targets (`DeviceSalvage`, E0-5). If `terminal` won,
+ *     no device could ever be stripped from the Overview at all — the verb would ship inert over its
+ *     own subject matter.
+ *   · ＋ADD ROOM. WP-1's wreck-fill put the debris in the HALLS, and the ＋ADD ROOM chip is "the only
+ *     interactive thing in a hall". If `addroom` won, the halls — where the dig economy actually is —
+ *     would be un-diggable, and the click would commission a room instead. That is the worst of the
+ *     three: it does something loud and wrong rather than nothing.
+ * The cost of the choice is real and is accepted: with an order armed you cannot select a pawn,
+ * open MOSS or enter a room from the schematic. Escape disarms (`overviewEscape` rung 1), which is
+ * the same exit the console and the Room Zoom offer, and the bar's own button un-arms on a second
+ * click. That is a mode with a visible, one-key way out.
+ *
+ * ═══ 'move' vs 'order' IS UNOBSERVABLE, and the order between them is therefore not a decision.
+ * `armed` is ONE string from ONE mutually-exclusive slot (`hud.js` `_armed`, `nextArmedTool`), so at
+ * most one of the two branches can ever match; no input exists that distinguishes them. `move` is
+ * left first purely to keep the diff to one inserted line. Do not read a precedence into it.
  * PURE.
  * @param {null|'move'|string} armed
  * @param {{pawnCid?:*, terminalId?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
- * @returns {{type:'move'|'select'|'terminal'|'addroom'|'enterRoom'|'none', cid?:*, tid?:*, slot?:number, anchor?:string}}
+ * @returns {{type:'move'|'order'|'select'|'terminal'|'addroom'|'enterRoom'|'none',
+ *            tool?:string, cid?:*, tid?:*, slot?:number, anchor?:string}}
  */
 export function overviewClickAction(armed, hit) {
   const h = hit || {};
   if (armed === 'move') return { type: 'move' };
+  if (isOrderTool(armed)) return { type: 'order', tool: armed };
   if (h.pawnCid != null) return { type: 'select', cid: h.pawnCid };
   if (h.terminalId != null) return { type: 'terminal', tid: h.terminalId };
   if (h.addRoomSlot != null) return { type: 'addroom', slot: h.addRoomSlot };
