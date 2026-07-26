@@ -115,13 +115,11 @@ input.
 **`main` is settled and gated at `38ff68b`.** WP-2 is merged (§4b). Two lanes are running in worktrees
 as of the 2026-07-25 overnight session, neither on `main`:
 
-- **`lane/character-sim-design`** — a **docs-only** design for an in-depth character simulation
-  (Big Five argued rather than assumed, personal history biasing present action, incidents and
-  relationships modulating behaviour). Fable plans it; **three** independent Opus 5 reviewers then read
-  it from three lenses — architecture/determinism, game-design/legibility, and psychological-validity
-  /governance. Its file set is `docs/design/perilune-character-simulation.plan.md` alone, so it does
-  **not** contend with the console-retirement chain.
 - the next console-retirement package in the serial chain (WP-4, then WP-5).
+
+**Landed overnight, docs-only: the CHARACTER SIMULATION design** (`0a630ec`, plan at
+`docs/design/perilune-character-simulation.plan.md`). **DESIGN ONLY — NOTHING IS BUILT, and §12 holds
+FIVE decisions left open for the owner.** Read §4c below before quoting it.
 
 **Every day's lane so far has taken exactly one send-back before PASS** — WP-3, WP-8, the deck-confined
 wander, and now WP-2; E0-4/E0-5 were eight-for-eight before that. **Treat a first-round PASS as a
@@ -363,6 +361,55 @@ confirm no old coverage left with them.
 the repo.** WP-2's two new failure messages were reworded to warn rather than propagate it, but
 **regenerating that fixture is now an undocumented manual procedure**, and WP-4/WP-5/WP-6 all depend on
 it. Whoever next needs a recapture should write the script into the repo, not the scratchpad.
+
+### 4c. The character-simulation design — LANDED docs-only (`0a630ec`, 2026-07-26). **NOTHING IS BUILT.**
+
+`docs/design/perilune-character-simulation.plan.md`. Planned by **Fable** from an owner brief (*an
+in-depth character simulation, possibly Big Five, personal history shaping how a person thinks and acts
+now, incidents and current relationships modulating behaviour*), then reviewed by **three independent
+Opus 5 agents on three lenses** — architecture/determinism, game-design/legibility, psychological-
+validity/governance — plus two focused re-reviews. **All three: ADOPT WITH CHANGES.** Three commits are
+kept separate (`a592e5e` r1, `bf54b1d` r2, `b28a532` r3) so each review stays legible against the
+version it reviewed. **No code, no defs, no pins; the gate is untouched.**
+
+**⚠️ §12 HOLDS FIVE DECISIONS THAT ARE THE OWNER'S AND ARE NOT TAKEN.** Each carries a recommendation
+and a specified refusal path: ① charter axis drift now or later; ② give `--ship grid` social ignition
+(authored relationships including a **negative** pair, plus minority RaidTrauma on the flagship eight);
+③ may a late flee be survivable-only-sometimes; ④ Openness in v1; ⑤ name **assignment** as the player
+verb this substrate exists to enable. **Do not resolve any of them by implementing.**
+
+**The plan's shape changed under review, and how it changed is the most useful thing here.** It began
+Big-Five-first. It ends **marks-as-engine, Big Five as the prior**. Two reviewers reached that
+independently — one from the extreme-environment literature (in isolated/confined/extreme settings
+behavioural variance is **state**-dominated; trait screening predicts poorly, state monitoring predicts
+well), one from drama — while the third proved the marks layer **cannot fire on `--ship grid` at all**.
+That collision produced the **event-supply audit** (§0.2), now the section the rest of the plan rests
+on, and its finding that **idle movement is the only high-bandwidth channel this game has** is what
+promotes the opinion-weighted co-location wander to the load-bearing visibility mechanism.
+
+**Three findings were defects that read as features. Keep them; they are the transferable lessons.**
+1. **An arithmetic defect that silently voided two other features.** A bond-relief step at `×0.9` per
+   event against a **measured 2 611 bond events/sim-day** (`MECHANICS.md` §13.7) is `0.9^650 ≈ 10⁻³⁰`
+   per citizen per day — it annihilated the 96 h half-life written in the same section, and a mark that
+   retires in hours never accumulates dwell, so **chartered axis drift could never deposit.** Now gated
+   on tier crossings (29/day) plus a hashed rate limit.
+2. **A control whose polarity certified the hole it appeared to block.** A test asserting Feud *cannot*
+   fire on the unseeded ship is **green today** and goes red *when the fix lands* — the opposite of the
+   red-until-ignition gate it was described as. Now a **positive** test on the shipped grid ship.
+3. **Two chartered changes that fight.** `SocialSystem` decay relaxes edges **toward zero
+   symmetrically** (`SocialSystem.cs:107-114`), so the retune that keeps the positive graph off its
+   clamp also drags the authored −40 pair back toward neutral — and `Enemy` needs ≤ −60. Tuning either
+   one alone breaks the other; WP-F must now measure **both legs**.
+
+**Structural facts it established about THIS codebase, useful beyond this design.** `CitizenSystem.cs:30`
+uses the **raw shared `sim.Rng`**, not a forked stream, and `Rng.State` folds into `StateHash` — so a
+change in draw *count* moves a pin with no field changed, and "neutral-is-identity" is a **whole-sim**
+property, not a per-citizen one. There is **no `JobCompletedEvent`** (all 17 event structs enumerated);
+there are **nine** genuine completion sites across six systems, and `PromiseBrokenEvent`
+(`SimEvents.cs:93`) is **declared but never published**. A new `IStatefulSystem` genuinely ships save +
+hash with **one** spine edit against **four** for fields on `Citizen` (`SaveWriter.cs:120-134`,
+`SaveReader.cs:160-172`, `Simulation.cs:504-506`). Of **18 goldens exactly two are StateHash-derived**.
+`DefsParser.cs` carries **117** parser keys.
 
 **3. WP-4 — DIG + STRIP in the Room Zoom palette.**
 - **Do:** two new `ROOM_TOOLS` (`client/src/ui/room-model.js:27`) classed `'order'` in `PALETTE_CMD`,
