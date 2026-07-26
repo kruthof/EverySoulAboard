@@ -865,6 +865,16 @@ body.moss-open #overview-view{display:none !important}
 .ov-stage{position:absolute;inset:0;cursor:crosshair}
 .ov-stage svg.pl-overview{width:100%;height:100%;display:block}
 
+/* IX-103 on the standard surface — the pawn identity+WORK label, de-cluttered. Rows and leader lines
+   are geometry and live in overview-scene.js (layoutPawnLabels); the only thing CSS owns is the
+   last-resort case. A label the sweep could not fit anywhere is emitted `.pl-tag-crowded` —
+   transparent, so a packed compartment stays readable — and hovering its pawn brings it back, so
+   nothing is permanently lost. ONLY an idle label can ever be marked crowded: a work tag stacks or
+   overlaps but never hides, because a hidden work tag reads as "nobody is working here". */
+.pl-tag-crowded{opacity:0;transition:opacity .12s ease}
+.pl-pawn:hover .pl-tag-crowded{opacity:1}
+@media (prefers-reduced-motion:reduce){.pl-tag-crowded{transition:none}}
+
 /* the `.hud` glass token — every floating island (VS-O-53) */
 #overview-view .hud{background:var(--hud-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:var(--hud-border);box-shadow:var(--hud-shadow)}
@@ -976,6 +986,12 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 .ov-crewname{font-size:11px;color:var(--ink-bright,#e8dcc9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ov-crewrole{font-size:8.5px;color:var(--ink-mute,#8c8377);text-transform:uppercase;letter-spacing:.08em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* B5 — the CREW WATCH task line, ported off the console's `.crew-task` at WP-8. Dim by default so a
+   doing-nothing crew member never reads as activity; `.working` lifts it to the amber accent, which
+   makes "who is actually working" answerable by scanning the dock's colour alone. */
+.ov-crewtask{font-size:8.5px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov-crewtask.working{color:var(--amber-light,#f2b563)}
 .ov-morale{height:3px;background:rgba(43,36,28,.8);border-radius:2px;margin-top:2px;overflow:hidden}
 .ov-morale-fill{display:block;height:3px;border-radius:2px}
 .ov-empty{color:var(--ink-mute,#8c8377);font-size:10px}
@@ -1040,6 +1056,33 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 .ov-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:12;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
   color:var(--amber-light,#f2b563);font-size:11px;letter-spacing:.06em;box-shadow:var(--hud-shadow)}
+
+/* B6 — the paused-ship nudge, ported off the console's `.nudge` at WP-8. Pinned under the top bar's
+   right end, directly beneath the HOLD/RESUME chip: the complaint and its fix read as one thing. The
+   `.rz-nudge` twin is the Room Zoom's, positioned for that surface's chrome — the Room Zoom is where
+   walls and devices are actually placed, so it is where the "nothing happened" moment mostly lands.
+   The blink is the console's own plnBlink and it is switched OFF under prefers-reduced-motion below:
+   an indefinite blinker is the worst kind of motion to leave running. */
+/* right:74px, NOT 26px: the `?` help button is `position:fixed;right:30px;top:66px;width:32px`
+   (`.onb-help` above) and a nudge at the bar's own right margin lands underneath it — measured in
+   headless Chrome, where the chip's last two characters disappeared behind the circle. 30+32+12. */
+/* Both are <button>s and both RESUME on click, which is the affordance's own escape hatch: the key it
+   names is yielded to whatever button the player just clicked (input/controls.js), so a chip that
+   only said "PRESS SPACE" was a dead end on the exact path that raises it. `font:inherit` +
+   `cursor:pointer` are load-bearing — a button inherits neither the console face nor the hand. */
+.ov-nudge{position:absolute;right:74px;top:66px;z-index:14;
+  padding:6px 14px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
+  color:var(--amber-light,#f2b563);font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.10em;
+  white-space:nowrap;cursor:pointer;box-shadow:var(--hud-shadow);animation:plnBlink 1.6s infinite}
+/* TOP CENTRE, not top right: `.rz-minimap` is `right:32px;top:24px` and the Room Zoom's breadcrumb
+   owns the left, so the centre is the only free lane at the top of that surface — measured, after the
+   first version sat on top of the minimap card. */
+.rz-nudge{position:absolute;left:50%;top:26px;transform:translateX(-50%);z-index:24;
+  padding:6px 14px;border-radius:8px;background:var(--hud-bg);border:1px solid #cf7a33;
+  color:var(--amber-light,#f2b563);font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.10em;
+  white-space:nowrap;cursor:pointer;box-shadow:var(--hud-shadow);animation:plnBlink 1.6s infinite}
+.ov-nudge:hover,.rz-nudge:hover{background:rgba(232,147,74,.22);border-color:#f2b563}
+@media (prefers-reduced-motion:reduce){.ov-nudge,.rz-nudge{animation:none}}
 
 @media (max-width:1359px){
   #overview-view .ov-sensor{display:none} /* match the console's narrow-viewport drop */

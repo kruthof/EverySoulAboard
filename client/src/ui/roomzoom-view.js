@@ -28,6 +28,8 @@ import {
   demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragModeForTool, dragCaption } from './build-drag-model.js';
+import { taskTag } from './console-model.js';
+import { makeNudge } from './paused-nudge.js';
 import {
   materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
 } from './build-material-model.js';
@@ -55,6 +57,8 @@ let _zoneKeySig = '';     // last-rendered key HTML — re-set only on change (t
 let _toast = null;
 let _toastTimer = 0;
 let _raf = 0;
+let _nudge = null;        // the paused-ship nudge controller (paused-nudge.js), bound to #rz-nudge
+let _wasPaused = false;   // previous run state — the edge that dismisses the nudge on resume
 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
@@ -116,12 +120,20 @@ function buildSkeleton() {
       '<div class="hud rz-palette" id="rz-palette"></div>' +
       '<div class="rz-hint">' + HINT + '</div>' +
     '</div>' +
-    '<div class="rz-toast" id="rz-toast" hidden></div>';
+    '<div class="rz-toast" id="rz-toast" hidden></div>' +
+    // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). This surface needs its
+    // own: building is ZOOM-ONLY, so "I placed a wall and nothing happened" happens HERE. A BUTTON
+    // that resumes on click, for the reason spelled out on the Overview's twin: the tool button the
+    // player just clicked holds focus, and `input/controls.js` yields SPACE to it, so "PRESS SPACE"
+    // alone is a dead end on the very path that raises this chip.
+    '<button type="button" class="rz-nudge" id="rz-nudge" data-rz-nudge hidden ' +
+      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>';
   _canvas = $('rz-canvas');
   _layers = $('rz-layers');
   _pulseLayer = $('rz-pulse');
   _zoneKey = $('rz-zonekey');
   _toast = $('rz-toast');
+  _nudge = makeNudge({ el: () => $('rz-nudge') });
   buildChrome();
   // Structural tools (WALL/FLOOR/DOOR) use a press-drag-release gesture (RimWorld sweep); a plain
   // click is the degenerate 1-tile drag. Non-structural tools stay on the click handler.
@@ -220,8 +232,34 @@ function allDecor() {
   return wire.concat(_decor);
 }
 
+/** Whether the sim is on HOLD right now, from the shared status cache (the only source of truth). */
+function isPaused() {
+  const s = Hud.getStatus();
+  return !!(s && s.paused);
+}
+
+/** A player intent the paused sim will not act on: surface the nudge (B6). Deliberately NOT called
+ *  for cosmetic decor — that is a view-only layer which really does apply while the ship is stopped,
+ *  so nudging there would be the same dishonesty in the opposite direction. */
+function nudgeOnIntent() {
+  if (_nudge) _nudge.trigger(isPaused());
+}
+
+/** Hand SPACE back to the game after a POINTER activation of `btn`. Chrome focuses the button you
+ *  click and `input/controls.js` yields SPACE to a focused button's native activation — so a player
+ *  who clicks WALL, reads "PRESS SPACE" and presses it just re-clicks WALL. Pointer only:
+ *  `e.detail === 0` is a keyboard activation, whose focus must survive. */
+function releaseSpace(btn, e) {
+  if (!btn || typeof btn.blur !== 'function') return;
+  if (e && e.detail === 0) return;
+  btn.blur();
+}
+
 function repaint() {
   if (!_open || !_root || !_focus) return;
+  const nowPaused = isPaused();
+  if (_wasPaused && !nowPaused && _nudge) _nudge.unpause(); // resumed → the nudge has done its job
+  _wasPaused = nowPaused;
   // Re-resolve geometry from the live decks channel (rect may move; room may vanish).
   const f = roomTileRect(currentDeckView(), _focus.anchor, _focus.slotIndex);
   if (!f) { toast('ROOM NO LONGER EXISTS'); exitRoom(); return; }
@@ -398,16 +436,48 @@ function furnitureSvg(cells) {
   return out.length ? '<g class="rz-furniture" pointer-events="none">' + out.join('') + '</g>' : '';
 }
 
-/** Occupant pawns (VS-Z-27..29): front-facing, feet on the tile, above furniture. */
-function pawnSvg(list) {
+/**
+ * Occupant pawns (VS-Z-27..29): front-facing, feet on the tile, above furniture — each carrying the
+ * WORK marker (IX-103, ported off the console at WP-8) when it holds a real job.
+ *
+ * This is the surface where a player watches individual people work, so the console's honesty rule
+ * belongs here too: a tag ONLY for a crew member doing a job at a place, nothing for idle, walking or
+ * en-route crew (`taskTag` returns null for all three). Unlike the Overview's pawns these carry NO
+ * name — the room view is already scoped to a handful of people and clicking one names it in the
+ * readout, so adding a second line of text to a 32-unit tile would cost more than it tells. A room
+ * tile is wide enough for a 3–5 character tag, so no de-clutter sweep is needed here; two crew
+ * standing on the SAME tile do overlap, exactly as their sprites already do.
+ *
+ * EXPORTED, and `focus` is injectable, purely so the honesty rule is testable. While this was a
+ * private function the mutation that matters most — `taskTag(c.task) || 'IDLE'`, which tags idle crew
+ * and destroys the rule on this surface — passed the whole node suite, because the only instrument
+ * pointed at it was a source scan for the token `taskTag`. `focus` defaults to the live `_focus`, so
+ * every in-app call site is unchanged; a test passes `{rx,ry}` and gets the same string.
+ *
+ * @param {Array<{cid:*, role:*, x:number, y:number, task:string}>} list
+ * @param {{rx:number, ry:number}} [focus] the room's tile origin (defaults to the open room)
+ */
+export function pawnSvg(list, focus) {
   const out = [];
   const S = PAWN_H / 24;
+  const org = focus || _focus;
   for (const c of list) {
-    const [lx, ly] = localXY(c.x, c.y);
+    const [lx, ly] = [(c.x - org.rx) * U, (c.y - org.ry) * U];
     const fx = lx + U / 2, fy = ly + U; // feet on the tile bottom-centre
     const body = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
     out.push('<g class="rz-pawn" transform="translate(' + (fx - 8 * S).toFixed(1) + ' ' +
       (fy - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + body + '</g>');
+    const tag = taskTag(c.task);
+    if (tag) {
+      const w = Math.max(16, tag.length * 5.6 + 8);
+      const ty = fy - PAWN_H - 3;                     // just above the head, never over the face
+      out.push('<g class="rz-worktag">' +
+        '<rect x="' + (fx - w / 2).toFixed(1) + '" y="' + (ty - 9).toFixed(1) + '" width="' + w.toFixed(1) +
+          '" height="11" rx="2" fill="rgba(12,10,8,.86)" stroke="rgba(232,147,74,.5)" stroke-width="0.75"/>' +
+        '<text x="' + fx.toFixed(1) + '" y="' + (ty - 3.5).toFixed(1) + '" font-size="8" letter-spacing=".6" ' +
+          'fill="#f2b563" text-anchor="middle" dominant-baseline="central" ' +
+          'font-family="\'Space Mono\', ui-monospace, monospace">' + esc(tag) + '</text></g>');
+    }
   }
   return out.length ? '<g class="rz-pawns" pointer-events="none">' + out.join('') + '</g>' : '';
 }
@@ -515,14 +585,17 @@ function arm(tool) {
   paintPalette();
   paintMatStrip();
   paintCanvas();
+  if (_armed != null) nudgeOnIntent(); // arming (not disarming) is the intent worth nudging about
 }
 
 function onHudClick(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   if (t.closest('#rz-canvas')) return; // the canvas has its own handler
+  // The nudge IS its own fix: it complains the ship is stopped, so clicking it starts it.
+  if (t.closest('[data-rz-nudge]')) { _send(Cmd.pause()); return; }
   const tool = t.closest('[data-rztool]');
-  if (tool) { arm(tool.getAttribute('data-rztool')); return; }
+  if (tool) { arm(tool.getAttribute('data-rztool')); releaseSpace(tool, e); return; }
   const mat = t.closest('[data-rzmat]');
   if (mat) { onMatChip(mat); return; }
   const crumb = t.closest('[data-rz]');
@@ -575,7 +648,7 @@ function onCanvasClick(e) {
   const deck = _focus.deck;
   if (pc.cls === 'functional') {
     // IX-Z-21/53 — Cmd.place lands with the sim build pass; call it DEFENSIVELY.
-    if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.deviceKind, tile.x, tile.y, deck)); pulse(tile, false); }
+    if (typeof Cmd.place === 'function') { _send(Cmd.place(pc.deviceKind, tile.x, tile.y, deck)); pulse(tile, false); nudgeOnIntent(); }
     else { toast(TOOL_LABEL[_armed] + ' — PLACEMENT LANDS WITH THE SIM BUILD PASS'); pulse(tile, false); }
   } else if (pc.cls === 'cosmetic') {
     _decor = addDecor(_decor, deck, tile.x, tile.y, pc.itemId); // IX-Z-23 view-only, local
@@ -591,10 +664,10 @@ function doDemolish(tile, deck) {
   const designs = Hud.getDesigns();
   const dt = demolishTarget(tile.x, tile.y, designs && designs.cells, allDecor(), frame);
   switch (dt.kind) {
-    case 'pending': _send(Cmd.build('cancel', tile.x, tile.y)); pulse(tile, true); break; // IX-Z-24
+    case 'pending': _send(Cmd.build('cancel', tile.x, tile.y)); pulse(tile, true); nudgeOnIntent(); break; // IX-Z-24
     case 'decor': _decor = removeDecor(_decor, deck, tile.x, tile.y); pulse(tile, true); repaint(); break;
     case 'device':
-      if (typeof Cmd.remove === 'function') { _send(Cmd.remove(tile.x, tile.y, deck)); pulse(tile, true); }
+      if (typeof Cmd.remove === 'function') { _send(Cmd.remove(tile.x, tile.y, deck)); pulse(tile, true); nudgeOnIntent(); }
       else { toast('REMOVE — LANDS WITH THE SIM BUILD PASS'); pulse(tile, true); }
       break;
     case 'built-wall':
@@ -653,6 +726,7 @@ function onCanvasUp(e) {
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
     toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res));
+    nudgeOnIntent(); // designations placed on a stopped ship — nobody will come and build them
   }
   scheduleRepaint();
 }

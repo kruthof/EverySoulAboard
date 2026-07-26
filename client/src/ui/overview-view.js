@@ -30,8 +30,9 @@ import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js'
 import { pawnChip } from '../render/pawn-svg.js';
 import {
   clockHHMM, cautionState, moraleColor, surnameOf, speedLabel, logLineParts, logTail,
-  selectedRosterEntry, crewClickTarget, terminalList,
+  selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';
+import { makeNudge } from './paused-nudge.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
@@ -88,6 +89,8 @@ const _crew = new Map();        // cid key → {el, nameEl, roleEl, fill}
 let _roBustCid = null;          // readout bust: whose portrait the <svg> currently holds
 let _roTraitsKey = '';          // readout traits: the last-rendered trait set (rebuild only on change)
 let _lastSpeed = '1×';          // last running speed label — shown (dimmed) while paused so the stepper never blanks
+let _nudge = null;              // the paused-ship nudge controller (paused-nudge.js), bound to #ov-nudge
+let _wasPaused = false;         // previous run state — the edge that dismisses the nudge on resume
 
 /** Guarded text write — no DOM mutation when the value is unchanged (keeps idle repaints inert). */
 function setText(node, v) { if (node && node.textContent !== v) node.textContent = v; }
@@ -160,12 +163,25 @@ function buildSkeleton() {
     '<div class="ov-cmd" id="ov-cmd"></div>' +
     '<div class="hud ov-sensor" id="ov-sensor"></div>' +
     '<div class="ov-toast" id="ov-toast" hidden></div>' +
+    // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
+    // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
+    //
+    // A BUTTON, not a div, and the wording leads with the click. The console's chip only ever said
+    // "PRESS SPACE" — and on the path that raises it, SPACE DOES NOT WORK: Chrome focuses the button
+    // the player just clicked to arm a tool, and `input/controls.js` yields SPACE to a focused
+    // button's native activation. Measured over CDP with a real key event: arm MOVE on a held ship →
+    // nudge up, press SPACE → still held. An affordance whose only instruction is a dead end is worse
+    // than no affordance, so the chip now carries the resume itself (`releaseSpace` below hands the
+    // key back too, but the click is the guarantee).
+    '<button type="button" class="ov-nudge" id="ov-nudge" data-ov-nudge hidden ' +
+      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>' +
     // ＋ADD ROOM room-type picker (a centred modal over the scene; styles inlined so it works
     // without a stylesheet). Populated on demand by showRoomPicker; clicks route via onHudClick.
     '<div class="ov-picker" id="ov-picker" hidden style="position:fixed;inset:0;z-index:60;' +
       'display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,.55)"></div>';
   _stage = document.getElementById('ov-stage');
   _toast = document.getElementById('ov-toast');
+  _nudge = makeNudge({ el: () => $('ov-nudge') });
 
   buildIslands();
 
@@ -299,6 +315,41 @@ function scheduleRepaint() {
   _raf = raf(() => { _raf = 0; repaint(); });
 }
 
+/** Whether the sim is on HOLD right now, from the shared status cache (the only source of truth). */
+function isPaused() {
+  const s = Hud.getStatus();
+  return !!(s && s.paused);
+}
+
+/** An order or an arm just happened: surface the paused nudge if the ship is not running (B6). Every
+ *  call site is a player intent that CANNOT take effect while the sim is stopped — arming a tool,
+ *  issuing a move, commissioning a room. View-only actions deliberately do not call this: they do
+ *  work while paused, so nudging would be a lie in the other direction. */
+function nudgeOnIntent() {
+  if (_nudge) _nudge.trigger(isPaused());
+}
+
+/** A tool-toggle button was just activated. `Hud.armTool` is a TOGGLE, so the same click both arms
+ *  and CANCELS — and only the arming half is an order the stopped ship is failing to carry out.
+ *  Nudging on the cancel told the player "press space to run the ship" for withdrawing an order,
+ *  which is the affordance firing at the exact moment it has nothing to say. */
+function afterToolToggle(btn, e) {
+  if (Hud.getArmedTool() != null) nudgeOnIntent();
+  releaseSpace(btn, e);
+}
+
+/** Hand SPACE back to the game after a POINTER activation. Chrome focuses the button you click, and
+ *  `input/controls.js` deliberately yields SPACE to a focused button's native activation (so a
+ *  keyboard user activating a crew row does not pause the sim) — which leaves a player who clicked
+ *  [M] MOVE and read "PRESS SPACE" pressing a key that re-clicks the button instead. Dropping focus
+ *  fixes that, but ONLY for a mouse click: `e.detail === 0` is a keyboard activation, and stealing a
+ *  keyboard user's place in the tab order to fix a mouse problem is not a trade worth making. */
+function releaseSpace(btn, e) {
+  if (!btn || typeof btn.blur !== 'function') return;
+  if (e && e.detail === 0) return;
+  btn.blur();
+}
+
 /** Whether the Overview should be the shown surface right now (IX-O-07 default-view switch). */
 function shouldShow() {
   const decks = Hud.getDecks();
@@ -308,6 +359,13 @@ function shouldShow() {
 
 function repaint() {
   if (!_root) return;
+  // The nudge's dismissal is tracked whether or not this surface is SHOWN: the player can arm on the
+  // Overview, drop into the Room Zoom and resume there, and a stale "PRESS SPACE" would then be
+  // waiting on the way back. Cheap — one cache read, no DOM unless the edge fires.
+  const nowPaused = isPaused();
+  if (_wasPaused && !nowPaused && _nudge) _nudge.unpause();
+  _wasPaused = nowPaused;
+
   const show = shouldShow();
   document.body.classList.toggle('overview-open', show);
   if (!show) return; // hidden → skip the heavy scene rebuild until it matters again
@@ -453,18 +511,31 @@ function paintCrewWatch(crew, selCid) {
         '<span class="ov-bust"><svg viewBox="0 0 16 20">' + pawnChip({ cid: e.cid, role: e.role }) + '</svg></span>' +
         '<span class="ov-crewcol">' +
           '<span class="ov-crewname"></span><span class="ov-crewrole"></span>' +
+          '<span class="ov-crewtask"></span>' +
           '<span class="ov-morale"><span class="ov-morale-fill"></span></span>' +
         '</span>';
       return {
         el: b,
         nameEl: b.querySelector('.ov-crewname'),
         roleEl: b.querySelector('.ov-crewrole'),
+        taskEl: b.querySelector('.ov-crewtask'),
         fill: b.querySelector('.ov-morale-fill'),
       };
     },
     (rec, e) => {
       setText(rec.nameEl, surnameOf(e.name));
       setText(rec.roleEl, e.role || '');
+      // CREW WATCH task line (B5, ported off the console at WP-8). The SAME pure derivation the
+      // console used, so the two surfaces cannot disagree: the host's own words, plus whether they
+      // count as real work — and only the working rows read bright. A row that shows "Idle" in dim
+      // grey is the honest answer and it is also the legibility mechanism: the eye reads the amber
+      // rows as "work is happening", so a dock of grey rows is a TRUE signal that nothing is. On
+      // `--ship grid` that will be most of the day (crew there do not auto-wander), and the choice
+      // was deliberate — writing something like "AWAITING ORDERS" would imply the ship is waiting on
+      // the player, when an idle crew member may simply have nothing reachable to do.
+      const t = watchTask(e);
+      setText(rec.taskEl, t.text);
+      setCls(rec.taskEl, 'working', t.working);
       const mv = Math.max(0, Math.min(1, e.morale || 0));
       const w = Math.round(mv * 100) + '%';
       if (rec.fill.style.width !== w) rec.fill.style.width = w; // in-place → the width transition animates
@@ -592,7 +663,10 @@ function onSceneClick(e) {
     // Overview never sends Cmd.build; overviewClickAction never returns 'build'.
     case 'move': {
       const t = pointToTile(svg, e);
-      if (t) { _send(Cmd.cursor(t.x, t.y)); _send(Cmd.move()); Hud.toolUsed('move', t.x, t.y); }
+      if (t) {
+        _send(Cmd.cursor(t.x, t.y)); _send(Cmd.move()); Hud.toolUsed('move', t.x, t.y);
+        nudgeOnIntent(); // an order placed on a stopped ship is the classic "nothing happened"
+      }
       break;
     }
     case 'select': Hud.selectCrewByCid(action.cid); break;
@@ -643,14 +717,16 @@ function onHudClick(e) {
   if (d.ovDeck != null) { _send(Cmd.deck(deckDelta(Number(d.ovDeck), _ctx.frame ? _ctx.frame.deck : 0))); }
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
-  else if (d.ovTool != null) { Hud.armTool(d.ovTool); }
+  else if (d.ovTool != null) { Hud.armTool(d.ovTool); afterToolToggle(btn, e); }
   else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
   else if ('ovSpeedDn' in d) { _send(Cmd.speed(-1)); }
   else if ('ovSpeedUp' in d) { _send(Cmd.speed(1)); }
   else if ('ovCaution' in d) { Hud.selectTab('moss'); } // ship-status chip → MOSS diagnostics
   else if ('ovPause' in d) { _send(Cmd.pause()); }
+  // The nudge IS its own fix: it complains that the ship is stopped, so clicking it starts it.
+  else if ('ovNudge' in d) { _send(Cmd.pause()); }
   else if ('ovTalk' in d) { Hud.talkSelectedCrew(); }
-  else if ('ovMove' in d) { Hud.armTool('move'); }
+  else if ('ovMove' in d) { Hud.armTool('move'); afterToolToggle(btn, e); }
   else if ('ovBio' in d) { Hud.openBioForSelected(); }
 }
 
@@ -684,6 +760,7 @@ function submitRoomPick(type) {
   _send(Cmd.addRoom(_pickDeck, _pickSlot, type));
   toast('COMMISSIONING ' + String(type).toUpperCase() + ' — DECK ' + _pickDeck + ' SLOT ' + _pickSlot);
   closeRoomPicker();
+  nudgeOnIntent(); // a commission the paused sim will not act on
 }
 
 function closeRoomPicker() {

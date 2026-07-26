@@ -29,6 +29,10 @@
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
 import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
+// The work-tag classifier (console-model.js is misnamed, not console-only — see the retirement plan
+// §1: `taskTag` is a PURE roster-label → tag mapping and is the SAME source the console's on-map
+// WORK markers used, so the two surfaces cannot disagree about who is working).
+import { taskTag } from './console-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -372,16 +376,132 @@ function terminalLayer(terminals, deck, t, id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 6 — pawns: front-facing crew figures for on-deck roster members (VS-O-39 … VS-O-48).
+// Layer 6 — pawns: front-facing crew figures for on-deck roster members (VS-O-39 … VS-O-48), each
+// wearing its identity + WORK label (IX-103, ported off the console at WP-8).
+//
+// THE WORK MARKER (console-retirement plan §1(b) B4). The console answered "is this person actually
+// working?" on the map, with a tag over every crew member holding a real job (`hud.js paintWorkMarks`
+// over `console-model.workMarkers`). The Overview tagged pawns with a SURNAME only, so the map could
+// not answer it at all. The tag now reads `SURNAME · DIG`, and the honesty rule the console's marker
+// existed for is preserved exactly: the tag half appears ONLY for a crew member doing a job at a
+// place. Idle, merely walking, and *en route* crew get no tag — `taskTag` returns null for all three,
+// and the ABSENCE is the information.
+//
+// THE LEGIBILITY PROBLEM, and what was done about it. Eight pawns fit inside one 10×6 compartment
+// (the grid ship's hold), where a tile is ~15 design px and a name pill is ~50 — so the pre-existing
+// surname tags already overlapped into `HALL(VE OKO NOV KAUR / SAT ITO YEMI`, and adding task text
+// would have made an already-unreadable label worse. So the labels are DE-CLUTTERED: overlapping
+// pills lift onto stacked rows with a leader line back to their pawn (`layoutPawnLabels`, below).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** How far each de-clutter row lifts a label, in design px (a pill is 11 tall, so 12 leaves 1 of air). */
+const LABEL_ROW_STEP = 12;
+/** Rows the sweep may stack before it gives up. 8 = one row per crew member in the densest room. */
+export const LABEL_MAX_ROWS = 8;
+/** Horizontal breathing room added to each side of a pill before testing it for overlap. */
+const LABEL_GAP = 2;
+/** The pill's own box, in design px. SHARED by the sweep and the renderer below so the geometry the
+ *  sweep reasons about is literally the geometry that gets emitted — see `labelRect`. */
+export const LABEL_PILL_H = 11;
+/** How far the pill's TOP edge sits above the label's text baseline (`tagY`). */
+export const LABEL_PILL_RISE = 8;
+
+/** The pill rect `[x0,x1,y0,y1]` a label would occupy on `row`. The single place this geometry is
+ *  written down: `pawnLayer` emits from it too, so the sweep cannot reason about a different box than
+ *  the one on screen (which is exactly how a row-index-only sweep came to certify overlapping pills). */
+function labelRect(l, row) {
+  const base = Number.isFinite(l.baseY) ? l.baseY : 0;
+  const tagY = base - row * LABEL_ROW_STEP;
+  return [
+    l.cx - l.w / 2 - LABEL_GAP, l.cx + l.w / 2 + LABEL_GAP,
+    tagY - LABEL_PILL_RISE, tagY - LABEL_PILL_RISE + LABEL_PILL_H,
+  ];
+}
+
+/**
+ * Assign each pawn label a de-clutter ROW so that no two visible pills overlap. PURE.
+ *
+ * A greedy sweep in PRIORITY order — WORKING crew first, then by cid — takes the lowest row (closest
+ * to the pawns) whose rect misses every rect already claimed. Priority is what makes the result
+ * principled rather than arbitrary: the work tags are the honesty affordance, so they get the legible
+ * rows, and anything that has to give way is an idle crew member's name, which the CREW WATCH dock
+ * also carries.
+ *
+ * THE OCCUPANCY TEST IS 2-D, and it has to be. Each pill hangs off its OWN pawn's feet (`baseY`), so
+ * two pawns a tile apart vertically are ~15 design px apart while `LABEL_ROW_STEP` is 12 — "same row"
+ * therefore neither implies nor is implied by "same height", and a sweep that compared only horizontal
+ * spans within a row index certified a genuinely overlapping pair as clean. It did: measured off the
+ * emitted rects, the shipped `rosterDeck1` fixture (crew at tile y=15 AND y=16) produced ONE
+ * overlapping pair, `OKONJO · DIG` × `NOVAK · DIG` at 18.5 × 10 px — ~91 % of a pill's height — and
+ * eight crew on alternating rows produced four. Comparing whole rects instead costs nothing and makes
+ * the property the code claims ("no two visible pills overlap") the property it actually enforces.
+ * A `baseY` is optional: absent, every label shares baseline 0 and the sweep degenerates to the
+ * horizontal one, which is the right answer for a caller that has no vertical spread to describe.
+ *
+ * When all `LABEL_MAX_ROWS` rows are taken the two cases are treated DIFFERENTLY, and this asymmetry
+ * is the point: an IDLE label is marked `crowded` (the caller renders it transparent, revealed by
+ * hovering its pawn), while a WORKING label is never marked — it draws on the top row and accepts the
+ * overlap. A tag that is merely ugly is honest; a work tag that vanishes because the room is busy
+ * would say "nobody here is working" at exactly the moment everybody is, which is the lie B4 exists
+ * to prevent.
+ *
+ * Ordering avoids `localeCompare` deliberately: it is locale-sensitive and this repo's dev machine is
+ * de-DE, so a locale-dependent sort would make the SVG non-deterministic across machines.
+ *
+ * @param {Array<{cid:*, cx:number, w:number, working:boolean, baseY?:number}>} labels
+ * @returns {Map<string,{row:number, crowded:boolean}>} keyed by String(cid)
+ */
+export function layoutPawnLabels(labels) {
+  const out = new Map();
+  const list = Array.isArray(labels) ? labels.slice() : [];
+  list.sort((a, b) => {
+    if (!!a.working !== !!b.working) return a.working ? -1 : 1;
+    const ka = String(a.cid), kb = String(b.cid);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const claimed = []; // every rect already taken, as [x0,x1,y0,y1]
+  for (const l of list) {
+    let row = -1;
+    let rect = null;
+    for (let r = 0; r < LABEL_MAX_ROWS; r += 1) {
+      const cand = labelRect(l, r);
+      if (!claimed.some((s) => cand[0] < s[1] && cand[1] > s[0] && cand[2] < s[3] && cand[3] > s[2])) {
+        row = r; rect = cand; break;
+      }
+    }
+    const full = row < 0;
+    if (full) { row = LABEL_MAX_ROWS - 1; rect = labelRect(l, row); }
+    claimed.push(rect);
+    out.set(String(l.cid), { row, crowded: full && !l.working });
+  }
+  return out;
+}
 
 function pawnLayer(crew, deck, t, selectedCid, id) {
   const list = Array.isArray(crew) ? crew : [];
-  const out = [];
+  // Pass 1 — every on-deck pawn's geometry + label text, so the de-clutter sweep sees them all at once.
+  const pawns = [];
   for (const c of list) {
     if (!c || c.deck !== deck) continue; // off-deck / fogged crew simply do not render (VS-O-48)
     const [fx, fy] = t.project(c.x + 0.5, c.y + 0.5); // feet on the tile centre
     const S = Math.max(0.6, t.tileSize * 2.2 / 24);   // pawn box ≈ 2.2 tiles tall (viewBox 24)
+    const sur = surnameOf(c.name);
+    const tag = taskTag(c.task);                      // null ⇒ idle / walking / en route (no tag)
+    const text = tag ? sur + ' · ' + tag : sur;
+    pawns.push({
+      c, fx, fy, S, sur, tag,
+      cid: c.cid, cx: fx, working: tag != null,
+      // The pill's UNLIFTED text baseline, derived from this pawn's own feet — so it is part of what
+      // the sweep must know: two pawns a tile apart vertically are further apart than a row step.
+      baseY: fy - 24 * S - 4,
+      w: Math.max(16, text.length * 5 + 8),           // same metric the surname pill always used
+    });
+  }
+  const layout = layoutPawnLabels(pawns);
+
+  const out = [];
+  for (const p of pawns) {
+    const { c, fx, fy, S } = p;
     const selected = selectedCid != null && String(c.cid) === String(selectedCid);
     const body = pawnSprite(
       { cid: c.cid, role: c.role },
@@ -397,14 +517,24 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
     }
     // seat the pawn so its feet (local 8,23 in the 16×24 viewBox) land on (fx,fy)
     g += `<g transform="translate(${n(fx - 8 * S)} ${n(fy - 23 * S)}) scale(${n(S)})">${body}</g>`;
-    // surname tag above the head (VS-O-47)
+    // identity + WORK label above the head (VS-O-47 + IX-103)
+    const lay = layout.get(String(c.cid)) || { row: 0, crowded: false };
+    const baseY = p.baseY;
+    const tagY = baseY - lay.row * LABEL_ROW_STEP;
     const tagC = selected ? '#f2b563' : 'rgba(220,210,195,.7)';
-    const sur = surnameOf(c.name);
-    const tagW = Math.max(16, sur.length * 5 + 8);
-    const tagY = fy - 24 * S - 4;
-    g += `<g class="pl-tag">`
-      + `<rect x="${n(fx - tagW / 2)}" y="${n(tagY - 8)}" width="${n(tagW)}" height="11" rx="2" fill="rgba(12,10,8,.72)"/>`
-      + `<text x="${n(fx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${tagC}" text-anchor="middle" dominant-baseline="central" font-family="'Space Mono', ui-monospace, monospace">${esc(sur)}</text></g>`;
+    const cls = 'pl-tag' + (p.tag ? ' pl-tag-work' : '') + (lay.crowded ? ' pl-tag-crowded' : '');
+    g += `<g class="${cls}">`
+      // leader line: a lifted pill would otherwise be ambiguous about which pawn it belongs to
+      + (lay.row > 0
+        ? `<line x1="${n(fx)}" y1="${n(tagY + 3)}" x2="${n(fx)}" y2="${n(baseY + 3)}" stroke="rgba(220,210,195,.3)" stroke-width="1"/>`
+        : '')
+      // The pill box comes from the SAME two constants the sweep reasoned about (LABEL_PILL_*), so a
+      // change to either cannot silently make the sweep certify a box that is no longer emitted.
+      + `<rect x="${n(fx - p.w / 2)}" y="${n(tagY - LABEL_PILL_RISE)}" width="${n(p.w)}" height="${LABEL_PILL_H}" rx="2" fill="rgba(12,10,8,${p.tag ? '.86' : '.72'})"/>`
+      + `<text x="${n(fx)}" y="${n(tagY - 2)}" font-size="7.5" letter-spacing=".5" fill="${tagC}" text-anchor="middle" dominant-baseline="central" font-family="'Space Mono', ui-monospace, monospace">`
+      + `${esc(p.sur)}`
+      + (p.tag ? `<tspan fill="#f2b563"> · ${esc(p.tag)}</tspan>` : '')
+      + `</text></g>`;
     g += `</g>`;
     out.push(g);
   }
