@@ -340,12 +340,26 @@ function paintLayers(frame, crew, designs, decor) {
   // underneath it. Authored floors are material 0 and are skipped, which is the only reason the
   // original order looked correct in a screenshot.
   body += zoneLayerSvg(_zoneTiles, _focus);
+  body += decorSvg(roomDecor(decor, _focus));
+  body += furnitureSvg(roomCells(frame, _focus));
   // WP-2 — debris + dig/strip marks, read off the frame's `cell[1]`. ABOVE the material layer, which
   // paints an opaque U*1.2 swatch over any built wall (so a strip mark under it would be invisible),
   // and above the zone layer, whose tiles this one deliberately skips (room-model.js markLayerSvg).
+  //
+  // MOVED ABOVE `furnitureSvg` (and `decorSvg`) when the device-strip emitter landed, and the move is
+  // load-bearing, not tidying: a condemned DESK now carries fg 26, and drawn underneath its own
+  // furniture sprite the amber ✕ sits behind an opaque item — the player would have condemned it and
+  // still seen nothing, which is the very bug being fixed. THE REORDER IS PROVABLY INERT FOR EVERY
+  // PRE-EXISTING MARK: debris (fg 4) and dig (fg 15) only ever ride glyph code 37 (`'%'`), which is
+  // in `NON_FURNITURE`, so `roomCells` never emits a furniture item on a marked tile and the two
+  // layers were disjoint; stockpile is skipped by `markLayerSvg` outright. `room-model.test.js` pins
+  // that disjointness on the real capture rather than leaving it as an argument.
+  //
+  // STILL BELOW `pawnSvg`, deliberately: a crew member must never be hidden by a mark. (The converse
+  // — a mark hidden UNDER a crew member — is not a layer problem and cannot be fixed here: pass 5 of
+  // `GlyphMapper` overwrites the fg byte, so the mark never reaches the client at all. That one needs
+  // the `strips`/`designations` channel, HANDOVER §4g.)
   body += markLayerSvg(roomMarkTiles(frame, _focus), _focus);
-  body += decorSvg(roomDecor(decor, _focus));
-  body += furnitureSvg(roomCells(frame, _focus));
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();

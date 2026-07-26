@@ -623,8 +623,13 @@ export function overviewScene(state) {
   const body = ''
     + hullLayer(id)
     + `<g class="pl-rooms">${rooms.join('')}</g>`
-    + markLayer(st.frame, deck, t)
+    // `markLayer` sits ABOVE `furnitureLayer` — the same order, for the same reason, as the Room
+    // Zoom's `markLayerSvg` (roomzoom-view.js, which carries the full argument): a condemned DEVICE
+    // now carries fg 26, and beneath its own furniture sprite its amber ✕ would be invisible. Inert
+    // for debris/dig, whose glyph code 37 is in `NON_FURNITURE` so `furnitureLayer`'s
+    // `if (!itemId) continue` never draws on a marked tile; stockpile is drawn by neither.
     + furnitureLayer(st.frame, deck, t, id)
+    + markLayer(st.frame, deck, t)
     + glowPools(slots, t, id)
     + ghostLayer(st.designs, deck, t)
     + terminalLayer(st.terminals, deck, t, id)

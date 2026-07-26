@@ -144,6 +144,39 @@ export function orderHintLine(armed, deck) {
   return 'ORDERS APPLY TO DECK ' + (deck | 0) + ' · BUILDING AND ▦ STOCKPILE ARE ZOOM-ONLY';
 }
 
+/**
+ * WHAT A PLACED ORDER SAYS BACK, as a toast line. The Overview used to say NOTHING at all when an
+ * order landed: the bar's hint (`orderHintLine`) states what a click WILL do and never changes when
+ * one happens, `#ov-toast` stayed empty and hidden, and `orderSuppressionToast` fires only on the
+ * two hits where a room refused to open. So the whole gesture — arm STRIP, click a bed — produced
+ * no feedback anywhere on this surface, while the Room Zoom has shown a 2.6 s toast for the same
+ * gesture since WP-2. This is that parity, and it is the surface half of the same report that found
+ * the invisible device mark (HANDOVER §4g): a verb the player cannot see working is a verb they
+ * report as broken.
+ *
+ * IT NAMES THE TILE AND THE DECK. The verb is deck-scoped and carries no z on the wire, so "which
+ * deck did that land on" is exactly the question `orderHintLine`'s doc says is otherwise invisible;
+ * a toast that answered it only before the click would be a strange place to stop. The label comes
+ * from `ORDER_LABEL` with its `[G]`/`[V]` hotkey prefix stripped — a toast is a report, not an
+ * affordance, and re-teaching the key at the moment the key was just used is noise.
+ *
+ * DELIBERATELY NOT A CLAIM THAT THE SIM ACCEPTED IT. `orderPayloads` promises the ATTEMPT (the sim
+ * re-validates at the tick boundary and an illegal tile is a silent no-op), so the wording is
+ * `ORDERED`, not `CONDEMNED` — the same distinction `GameSession.HandleStrip` now draws on the
+ * status line. Overstating this would rebuild, on the client, the exact lie just removed from the
+ * host. PURE: ASCII + the verb icons, no locale APIs, no clock.
+ *
+ * @param {string} tool  an ORDER_TOOLS verb
+ * @param {number} x @param {number} y  the designated tile
+ * @param {number} deck
+ * @returns {string} the toast line, or '' for a tool this bar does not lower
+ */
+export function orderPlacedLine(tool, x, y, deck) {
+  if (!isOrderTool(tool)) return '';
+  const label = String(ORDER_LABEL[tool] || tool).replace(/^\[[A-Z]\]\s*/, '');
+  return label + ' ORDERED ▸ ' + (x | 0) + ',' + (y | 0) + ' ON DECK ' + (deck | 0);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Click classification (IX-O-11/12/13/15/19). One rule for a floor click: an armed tool decides
 // everything; with no tool armed, the DOM hit (pawn > add-room chip > bound room > hall) decides.

@@ -36,7 +36,7 @@ import { makeNudge } from './paused-nudge.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
-  ORDER_TOOLS, ORDER_LABEL, orderHintLine,
+  ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -791,7 +791,18 @@ function onSceneGesture(e) {
         Hud.toolUsed(action.tool, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
         nudgeOnIntent(); // a designation nobody will come and act on while the ship is stopped
       }
-      orderSuppressionToast(action.tool, hit);
+      // EXACTLY ONE TOAST PER CLICK, and the suppression line WINS when it applies. The two say
+      // different things — "your click did not open this room" versus "your order landed" — and the
+      // refusal is the one the player did not expect, so it is the one worth the 2.6 s. Firing both
+      // would race for the same element and the second would simply erase the first.
+      if (!orderSuppressionToast(action.tool, hit) && t) {
+        // `orderPlacedLine` returns '' for a tool this bar does not lower. `toast('')` would
+        // UN-HIDE an empty box for 2.6 s, which reads as a glitch rather than as silence — so an
+        // empty line stays silent. Unreachable today (the 'order' action only fires for
+        // ORDER_TOOLS), and kept because the two functions' vocabularies could drift apart.
+        const line = orderPlacedLine(action.tool, t.x, t.y, _ctx.frame ? _ctx.frame.deck : 0);
+        if (line) toast(line);
+      }
       break;
     }
     case 'select': Hud.selectCrewByCid(action.cid); break;
@@ -816,10 +827,23 @@ function onSceneGesture(e) {
  * §4b limit 2), so a pawn-hit toast would fire on nearly every click of DIG's hot path and train the
  * player to ignore the toast. Designating OVER a pawn or a device is the intended use of the verb
  * (`overviewClickAction`'s precedence exists for exactly that); being refused a room is not.
+ *
+ * ⚠️ "NARROW" NOW MEANS NARROW IN WORDING, NOT IN SILENCE. When this function declines, the caller
+ * writes `orderPlacedLine` instead, so a pawn hit is no longer mute — it CONFIRMS. That is the
+ * Overview's half of the owner's report (HANDOVER §4g): arming STRIP and clicking a MedBed sent the
+ * command and left `#ov-toast` empty and hidden, while the Room Zoom has toasted every committed
+ * order since WP-2. The measured argument above survives intact and is what still keeps THIS
+ * function narrow: a REFUSAL fired over every pawn would fire on nearly every click of DIG's hot
+ * path, and a refusal is a claim that nothing happened — which, over a pawn, is false.
+ *
+ * RETURNS WHETHER IT FIRED, so the caller can fall through to the order-placed toast without the
+ * two of them racing for `#ov-toast`. It is a boolean and not an implicit `undefined` because the
+ * caller's choice is a real one — see the call site.
  */
 function orderSuppressionToast(tool, hit) {
-  if (!hit || (hit.roomAnchor == null && hit.addRoomSlot == null)) return;
+  if (!hit || (hit.roomAnchor == null && hit.addRoomSlot == null)) return false;
   toast(String(tool).toUpperCase() + ' ARMED — ESC TO DISARM');
+  return true;
 }
 
 /**
