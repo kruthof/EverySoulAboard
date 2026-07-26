@@ -454,7 +454,29 @@ what a semantic RED looks like.
 3. **Sanity-check the failure set, not just the count.** A mutation to one call site that reddens a
    suspiciously broad or suspiciously narrow set of tests is worth reading before believing.
 
-### 4. Two shell traps that produced findings out of nothing
+### 4. When a guard must pin *how* an API was called, record the argument at the seam — do not scan for it
+
+Found 2026-07-26 (BUG-B). **This is the first countermeasure in this section that REMOVES the need for
+a text scan rather than hardening one**, and it generalises well beyond its package.
+
+A source scan for `addEventListener(…, true)` is defeated three ways: by a comment (trap 1), by
+whitespace, and — decisively — by the **equivalent `{ capture: true }` options form**, which is a
+different string for the same call. **A stub that records the argument at registration and asserts on
+it is runtime state**: it needs no comment stripping, it catches every spelling, and it catches a
+*partial* regression on one binding of several.
+
+The bug it was written for: the Overview's window latch clear must stay **bubble** phase; a third
+argument moves it to capture, where it runs before the element's own handler and **silently kills the
+entire room-entry gesture with the suite green** (`docs/HANDOVER.md` §4h). Live implementation to copy:
+the window stub + phase assertion in `client/test/overview-model.test.js`. **Verified by mutation: the
+`{capture:true}` spelling reddens it and would have escaped a text scan.**
+
+Corollary, from the same package: **if a harness cannot model the thing your guard needs to see, fix
+the harness.** `client/test/dom-lite.js` had no concept of event phase, which is *why* the regression
+was invisible; it now dispatches window capture → element path → window bubble with **one shared event
+object** (three objects would leave only the middle phase able to `stopPropagation`).
+
+### 5. Two shell traps that produced findings out of nothing
 
 - **An unquoted `$flags` in a loop** made three "stockpile" measurement legs run **flagless**, and
   they produced baseline-identical output that looked like a real finding.
@@ -466,8 +488,8 @@ what a semantic RED looks like.
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  stockpile-zoom merge (2026-07-26): 996 dotnet + 649 node, `./ci.sh` exit 0**
-  (dotnet unchanged — WP-2/WP-4/WP-5 and the stockpile move are all client-only). Every "560 dotnet + 188
+  BUG-B merge (2026-07-26): 996 dotnet + 657 node, `./ci.sh` exit 0**
+  (dotnet unchanged — WP-2/WP-4/WP-5, the stockpile move and BUG-B are all client-only). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that

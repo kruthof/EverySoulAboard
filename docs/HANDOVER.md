@@ -16,8 +16,8 @@ history, newest first.** The section immediately after this one is E0-4's landed
 - **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
   **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
   The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 649 node**, re-measured on `main` after the stockpile-zoom
-  merge (+8 node; dotnet unchanged — every package in this run is client-only). Twin hash
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 657 node**, re-measured on `main` after the BUG-B merge
+  (+8 node; dotnet unchanged — every package in this run is client-only). Twin hash
   `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
   WP-4, WP-5 and the stockpile move are all pin-neutral.
 - **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
@@ -659,6 +659,74 @@ and `armTool` toggles (the second call silently disarmed). **Any live Overview t
 **4. ~~WP-5 — the deck-scoped ORDERS bar on the Overview.~~ — ✅ LANDED, see §4e, AMENDED by §4f.
 Next actionable step is 5, WP-6 — but read §4g first: the `designations` channel is arguably ahead of
 it, because it fixes a verb that currently looks broken to a player.**
+
+### 4h. BUG-B — the Overview room gesture resolves on `pointerup`, not `click` (`ce44a3b`, merged 2026-07-26)
+
+**Owner report, twice:** *"Opening the zoom view is still not perfect. Often, entering zoom view
+requires multiple clicks on a room to respond."*
+
+`paintScene` does `_stage.innerHTML = svg` **unconditionally** at the wire's 10 Hz render rate
+(`hosts/web/GameSession.cs:35` `RenderSeconds = 1.0/10.0`). A click spans mousedown→mouseup; a rebuild
+between them **detaches the pressed node**, Chrome finds no common ancestor and **fires no `click` at
+all**. Not a wrong action — **no action**, because no handler runs. **The same bug was fixed once in
+this file for the HUD islands** (the *"MOSS button doesn't work"* report, `overview-view.js:85-96`)
+**and the SVG scene was explicitly exempted on the false premise that its clicks are "resolved
+synchronously before the next repaint."** That clause is quoted-and-negated in place, under a
+**⛔ DO NOT ADD A THIRD ARGUMENT** warning.
+
+**Measured three times by three different agents — diagnosis, implementation, and an independent
+reviewer on its own CDP rig** (fresh page load per trial, `#onboarding`.hidden and `body.overview-open`
+asserted, down/up dispatched from one connection so latency cannot smuggle a repaint into a control
+leg):
+
+| leg | shipped (`click`) | fixed (`pointerup`) |
+|---|---|---|
+| one rebuild strictly between down and up | **0/10**, *0 native `click` delivered* | **10/10** |
+| **long press 300 ms — the owner's gesture** | **0/10**, 0 clicks | **10/10** |
+| long press 800 ms | **0/5**, 0 clicks | **5/5** |
+| instant press, no forced rebuild | **4/5** | 5/5 |
+
+**The `0 native clicks delivered` column is what settles the mechanism rather than the outcome**:
+Chrome delivers nothing in every failing leg, and *also* nothing in every passing treatment leg — the
+fix works because it **no longer needs a click**, not because it recovers one. **The 4/5 row is why
+this read as flakiness**: without an intervening repaint the shipped build usually does work.
+⚠️ **The earlier control figure of 19/20 does NOT reproduce** — two independent rigs measured 4/5 and
+6/10, i.e. the shipped bug is **worse** than first recorded, because natural repaints land inside even
+an instant press.
+
+**The pointer-down repaint deferral was ARGUED AWAY, not deferred, and the argument was verified.**
+The seam removes the dependency on node identity **by construction**, so the deferral is belt-and-braces
+over a hazard this surface no longer has — and a stuck flag would **freeze the ship**, which is worse
+than the bug. Measured support: the only hover/active rule touching a scene node is
+`.pl-pawn:hover .pl-tag-crowded` (`client/styles.css:875`), and `overview-scene.js` emits **zero
+focusable nodes**, so a rebuild drops neither visual press state nor keyboard focus.
+
+**⚠️ The keyed reconcile for the scene is a SCHEDULED ITEM, not a known-better fix.** It solves a
+different problem — node identity across a repaint — which this gesture no longer has. **It becomes
+REQUIRED the moment this surface grows anything needing node identity across a repaint: a drag, or a
+`<title>` tooltip** (the scene emits none today; `zone-overlay`'s four live on the Room Zoom).
+Converting `overview-scene.js` from a string builder is a rewrite, not an edit, and it would move the
+widget counts `surface-boundary.test.js` pins by equality.
+
+**Closed in review — a ONE-WORD regression that killed the whole gesture with the suite green.** The
+window latch clear must stay **bubble** phase; a third argument moves it to **capture**, where it runs
+before `_stage`'s handler and the latch is always empty. `dom-lite` could not model event phase at all,
+so the harness now dispatches pointer events in the browser's own order — **window capture → element
+path → window bubble, one shared event object** (three objects would leave only the middle phase able
+to `stopPropagation`). Reintroducing the regression as `true`, as `{capture:true}`, **or on only one of
+the two bindings** each redden **17** tests, and a named phase assertion reports the *cause* rather than
+"the room did not open". The reviewer probed the harness in the dangerous direction: dropping the window
+bubble phase, and running bubble before the element path, **both redden** — the new phases are
+load-bearing, not decorative.
+
+**Two further silent "the room will not open" paths — one fixed, one deliberately left.** An armed
+order owns the click and now toasts `<TOOL> ARMED — ESC TO DISARM`, **deliberately only on room and
+＋ADD-ROOM hits**, never a pawn or terminal: on `--ship grid` the crew stand exactly on the dig debris
+(§4b limit 2), so a pawn-hit toast would fire on DIG's hot path and train the player to ignore it. And
+a **MOSS terminal chip outranks the room it sits inside** (`term_hydro`, ~15.5×13.5 px inside
+hydroponics) — left alone because it is *not* silent (MOSS takes the whole window) and demoting it
+would make map consoles unreachable at Level 1. **Comment only; the `hitTest` diff adds no executable
+line.**
 
 ### 4g. ⚠️ NEXT, AND ARGUABLY AHEAD OF WP-6 — the `designations` channel
 
