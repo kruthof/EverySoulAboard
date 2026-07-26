@@ -239,8 +239,15 @@ namespace Perilune.Gen
             // pair): eight crew who only move on need would all reach thirst at the same
             // moment and pile onto the single nearest water tile, breathing one small room
             // down to hypoxia together (a real deadlock seen in testing). Wandering
-            // desynchronises them — they disperse across the ship between needs, so no room
-            // ever holds all eight. Names/order here are the persona-match key in SliceCrew().
+            // desynchronises them — they disperse between needs, so no room ever holds all eight.
+            // ⚠️ "Across the SHIP" until 2026-07-25; it is now "across their own DECK", because the
+            // idle sampler is deck-confined (PathService.TryRandomWalkableTileNear pins the draw to
+            // origin.Z). The mechanism is unaffected — dispersal within a deck is what breaks the
+            // pile-on, and the ladder was never load-bearing for it. MEASURED after the change,
+            // 3 sim-days: 8/8 alive, Eat/Drink occupancy unchanged. This DID move the slice's
+            // tick-3000 golden (1f8f2225ee568de9 -> c565a68b810f588d) — the state differs even
+            // though the aggregate occupancy does not.
+            // Names/order here are the persona-match key in SliceCrew().
             plan.Citizens.Clear();
             var starts = new (string name, Int3 pos)[]
             {
@@ -742,18 +749,35 @@ namespace Perilune.Gen
         // GridWreckSlots. Debris in the airless decks 2..7 would have looked identical in a
         // screenshot and been undiggable in play.
         //
-        // The crew stay AutoWander=false, and the honest reason is the WANDER SAMPLER, not lethality.
-        // PathService.TryRandomWalkableTileNear boxes Z along with X and Y, and the default
-        // wander_radius_tiles (8) is >= this ship's depth (8) — so the box saturates every deck and a
-        // SINGLE idle draw can land a crew member in any of the six VACUUM spines the ladder trunk
-        // makes walkable from tick 0. MEASURED with AutoWander=true over one sim-day, it is
-        // survivable rather than fatal — 8/8 alive, work 24.990 % against 24.938 %, the crew flee
-        // back out — but 4.46 % of all crew-ticks go to JobKind.Flee, walking out of vacuum for
-        // nothing, on the ship a new player is watching. What AutoWander bought the slice —
-        // desynchronising eight crew so they never crowd one small room into hypoxia — this ship
-        // gets from its geometry instead: deck 0's eight room doors all boot OPEN, so the deck is
-        // one ~570-tile air mass and no single room can be breathed down (75 h of eight-crew O2
-        // draw in the mess alone, before any flow from next door).
+        // The crew are AutoWander=TRUE (2026-07-25), and they can be because the WANDER SAMPLER is now
+        // deck-confined. Read the two halves together — the flag alone was never safe on this ship.
+        //
+        //   WHY THEY WERE FALSE. PathService.TryRandomWalkableTileNear used to box Z along with X and
+        //   Y, and the default wander_radius_tiles (8) is >= this ship's depth (GridDepth = 8) — so the
+        //   box saturated every deck and a SINGLE idle draw could land a crew member in any of the six
+        //   VACUUM spines the ladder trunk makes walkable from tick 0.
+        //
+        //   WHAT THAT ACTUALLY COST — measured, one sim-day, `occupancy --ship grid --days 1`, and NOT
+        //   the "death sentence" this note used to claim. With AutoWander=true and the OLD unbounded
+        //   sampler: 8/8 alive, work 24.990 % against 24.938 % shipped — survivable — but 4.46 % of all
+        //   crew-ticks went to JobKind.Flee, crew walking out of vacuum for nothing on the ship a new
+        //   player is watching. The argument was WASTE, not lethality, and it is the weaker, honest one.
+        //
+        //   WHAT CHANGED. The sampler pins Z to the origin's own deck (a literal, not a def field: idle
+        //   crew do not climb ladders for nothing). Same run with both halves in place: Flee 0.00 %,
+        //   8/8 alive, work 24.990 %, idle None 67.19 % -> 67.15 %. The X/Y box is untouched, so local
+        //   dispersal is exactly what it was.
+        //
+        // What AutoWander bought the slice — desynchronising eight crew so they never crowd one small
+        // room into hypoxia — this ship gets from its geometry anyway: deck 0's eight room doors all
+        // boot OPEN, so the deck is one ~570-tile air mass and no single room can be breathed down
+        // (75 h of eight-crew O2 draw in the mess alone, before any flow from next door). Wander here
+        // buys LIFE ON SCREEN, not safety.
+        //
+        // ⚠️ Deck confinement is the sampler's, not this ship's. A crew member who takes a JOB on
+        // another deck still walks the ladder and then wanders THAT deck while idle — deck 1 (the
+        // wreck) is pressurised, so that is fine here. It is the idle draw, not the crew member, that
+        // is bounded.
 
         /// <summary>The grid ship's own seed — a DISTINCT identity from Perilune (20260718)
         /// and the slice (20260721).</summary>
@@ -944,10 +968,13 @@ namespace Perilune.Gen
             // anyone, and HoldPosition remains the strict-control escape hatch for a player who
             // wants one (E0-1's player-control note).
             //
-            // AutoWander=false for all eight, deliberately AGAINST the slice's setting: this ship's
-            // ladder trunk makes six VACUUM decks walkable from tick 0, so an idle wander is a
-            // death sentence here. See the header note for why the slice's pile-on argument does
-            // not transfer.
+            // AutoWander=true for all eight, matching the slice — the standard play ship should not
+            // read as dead while its crew are idle (and they are idle ~67 % of a sim-day). Safe only
+            // because TryRandomWalkableTileNear pins the idle draw to the crew member's own deck; with
+            // the old deck-crossing sampler this flag sent them into the six airless decks the ladder
+            // trunk makes walkable, at a measured 4.46 % of crew-ticks in JobKind.Flee. See the header
+            // note above for the full before/after, and for why the slice's pile-on argument does not
+            // transfer to this ship's geometry.
             //
             // They stand along the deck-0 spine — the pressurised, life-supported, food-and-water
             // deck — and walk to work: the wreck is up one ladder at the spine's centre column.
@@ -964,7 +991,7 @@ namespace Perilune.Gen
                 ("Ito",      40, SlotGridPlanner.SpineY1),
             };
             foreach (var c in crewStarts)
-                plan.Citizens.Add(new CitizenSpec { Name = c.Name, Pos = new Int3(c.X, c.Y, 0), AutoWander = false, RevealsFog = true, HoldPosition = false });
+                plan.Citizens.Add(new CitizenSpec { Name = c.Name, Pos = new Int3(c.X, c.Y, 0), AutoWander = true, RevealsFog = true, HoldPosition = false });
 
             // -------------------------------------------------------- opening stock
             var storage = rects[0]["storage"];

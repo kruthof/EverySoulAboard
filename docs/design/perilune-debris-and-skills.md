@@ -101,6 +101,10 @@ measured.** WP-1 wreck-filled three grid halls, added a goal and went from three
 crew fields *are* hashed, so this is a strictly stronger change than debris alone — and **all five
 pins came back byte-identical**: scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice
 `1f8f2225ee568de9`, defs-defaults `5a471d12643b64f9`, defs-rules `3f23ce5bd40283c8`.
+*(⚠️ Those are WP-1's values. The **slice** pin has since moved to **`c565a68b810f588d`** — the
+deck-confined wander, 2026-07-25 — so use that one when you re-check. The other four are still
+current. The paragraph's conclusion is unaffected: what moved the slice was a change to the shared
+wander SAMPLER, not anything confined to `PeriluneGrid()`.)*
 
 The reason is that **no golden covers the grid ship**: the scenario pin is a seed-42 *procedural*
 ship (`ci.sh`), `perilune_tick3000_hash.txt` is `Perilune()`, `slice_tick3000_hash.txt` is the

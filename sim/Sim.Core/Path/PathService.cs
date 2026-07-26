@@ -152,8 +152,23 @@ namespace Perilune.Sim
         /// bounded and zero-alloc. Manhattan would either reject out-of-range draws (variable draw
         /// count, RNG-stream-fragile) or need a triangular remap; the corners a box admits and a
         /// diamond would not are harmless for local dispersal. A <paramref name="radius"/> ≥ the
-        /// ship extent saturates the box to the whole world, reproducing
-        /// <see cref="TryRandomWalkableTile"/>'s global wander exactly.</summary>
+        /// ship's X/Y extent saturates the box to the whole DECK — never more; see the Z rule below.
+        ///
+        /// ⚠️ <b>Z IS NOT BOUNDED BY THE RADIUS — it is pinned to <c>origin.Z</c>.</b> The draw is
+        /// two-dimensional: an idle wander never changes deck. This is a RULE, not a tunable, which
+        /// is why it is a literal and not a def field — idle crew do not climb ladders for nothing.
+        /// Before 2026-07-25 Z was boxed by <paramref name="radius"/> like X and Y, and because the
+        /// default <c>wander_radius_tiles</c> (8) is ≥ the grid ship's depth (8) the box saturated
+        /// every deck: ONE idle draw could land a crew member on any of the six decks that boot
+        /// airless but walkable from the ladder trunk. Measured on the grid ship over one sim-day
+        /// with that box and <c>AutoWander=true</c>: survivable (8/8 alive) but <b>4.46 % of all
+        /// crew-ticks went to <c>JobKind.Flee</c></b> — crew walking out of vacuum for nothing.
+        /// With Z pinned that is <b>0.00 %</b>, and productive work is unchanged (24.990 %).
+        /// The X/Y box is deliberately untouched: local dispersal, the fixed 3-draw shape and the
+        /// corner behaviour above are all unchanged. Deliberate consequence: the sampler can no
+        /// longer reproduce <see cref="TryRandomWalkableTile"/>'s global wander at any radius.
+        /// Pinned by <c>DeckConfinedWanderTests</c> (driven against the real grid ship, with a
+        /// non-vacuity control that replays the old Z box and shows it did leave the deck).</summary>
         public bool TryRandomWalkableTileNear(Simulation sim, SimRng rng, Int3 origin, int radius, out Int3 result)
         {
             var world = sim.World;
@@ -164,11 +179,18 @@ namespace Perilune.Sim
             int xHi = origin.X + radius; if (xHi >= world.Width)  xHi = world.Width  - 1;
             int yLo = origin.Y - radius; if (yLo < 0) yLo = 0;
             int yHi = origin.Y + radius; if (yHi >= world.Height) yHi = world.Height - 1;
-            int zLo = origin.Z - radius; if (zLo < 0) zLo = 0;
-            int zHi = origin.Z + radius; if (zHi >= world.Depth)  zHi = world.Depth  - 1;
+            // Z is NOT boxed by the radius: an idle wander stays on the origin's own deck.
+            int zLo = origin.Z, zHi = origin.Z;
 
             for (int attempt = 0; attempt < 10; attempt++)
             {
+                // ⚠️ THE THIRD DRAW IS NOW ALWAYS NextInt(1) == 0, AND IT MUST STAY. It looks like
+                // dead code and it is not: this method's contract is a FIXED THREE DRAWS PER ATTEMPT
+                // (see the doc comment), and the RNG here is the shared sim stream. Deleting the Z
+                // draw would re-shape that stream, shifting every subsequent consumer's values and
+                // moving the slice tick-3000 golden — and the ONLY thing that catches it is that
+                // golden, as a bare hash mismatch indistinguishable from an unrelated draw-order
+                // change. Keep the draw; the deck confinement lives in zLo/zHi above.
                 var p = new Int3(xLo + rng.NextInt(xHi - xLo + 1),
                                  yLo + rng.NextInt(yHi - yLo + 1),
                                  zLo + rng.NextInt(zHi - zLo + 1));
