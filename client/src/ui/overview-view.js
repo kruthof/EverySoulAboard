@@ -88,9 +88,33 @@ let _pickSlot = 0;
 // hover/active/armed highlight and clicks that spanned a rebuild were swallowed (the "MOSS button
 // doesn't work" report). Now the islands' skeletons are built ONCE (buildSkeleton) and the paint
 // helpers MUTATE existing nodes through guarded setters; DOM is only created/removed/reordered when
-// the underlying SET changes. Mirrors the console HUD's `reconcileRows` pattern (hud.js). The SVG
-// scene (paintScene) is still rebuilt as one string — it holds no interactive focus (its clicks are
-// one-shot, resolved synchronously before the next repaint).
+// the underlying SET changes. Mirrors the console HUD's `reconcileRows` pattern (hud.js).
+//
+// ⚠️ THE SVG SCENE WAS EXEMPTED FROM THAT FIX ON A FALSE PREMISE, AND THE EXEMPTION RE-SHIPPED THE
+// VERY BUG (BUG-B, owner report 2026-07-26: *"entering zoom view requires multiple clicks on a
+// room"*). The exemption used to read, in this comment, verbatim:
+//
+//     "The SVG scene (paintScene) is still rebuilt as one string — it holds no interactive focus
+//      (its clicks are one-shot, RESOLVED SYNCHRONOUSLY BEFORE THE NEXT REPAINT)."
+//
+// **A click is not synchronous, and that clause is false.** A click spans mousedown→mouseup;
+// `paintScene` does `_stage.innerHTML = svg` UNCONDITIONALLY on every repaint, at the wire's render
+// rate (100 ms — `hosts/web/GameSession.cs` `RenderSeconds = 1.0/10.0`); and when a rebuild lands
+// between the two, the mousedown target is detached, Chrome finds no common ancestor for down/up
+// and FIRES NO `click` EVENT AT ALL. Not a wrong action — NO action, which is why it presented as
+// "the room ignores me". Measured in Chrome on `--ship grid` with `body.overview-open` asserted:
+// **19/20** room entries with no repaint during the press, **0/10** with exactly one
+// `stage.innerHTML = stage.innerHTML` strictly between down and up. A 50 ms press failed ~50 % of
+// the time; the owner's ordinary press, comfortably over 100 ms, failed essentially always.
+//
+// The scene is STILL rebuilt as one string. What changed is that the gesture no longer depends on
+// the pressed node surviving: it resolves on `pointerup` (`onScenePointerUp` below), hit-testing
+// whatever is live under the pointer at release. THE KNOWN-BETTER FIX IS THE KEYED RECONCILE —
+// extend the pattern above to the scene so its nodes persist across a repaint — and it is
+// deliberately NOT built here: `overview-scene.js` is a string builder, converting it is a rewrite
+// rather than an edit, and it would move the widget counts `client/test/surface-boundary.test.js`
+// pins by equality. Anything that ever needs node identity across a repaint on this surface (a
+// drag) must do that work first — `pointerup` alone will not carry it.
 const _el = {};                 // cached skeleton element references
 const _pips = new Map();        // deck key → {el}
 const _crew = new Map();        // cid key → {el, nameEl, roleEl, fill}
@@ -193,9 +217,30 @@ function buildSkeleton() {
 
   buildIslands();
 
-  // Map clicks: project + classify (IX-O-11..19). Only the scene surface routes here.
-  _stage.addEventListener('click', onSceneClick);
-  // HUD buttons: one delegated handler, ignoring the scene (which has its own above).
+  // Map gestures: project + classify (IX-O-11..19). Only the scene surface routes here.
+  //
+  // POINTERUP, NOT `click` — see the ⚠️ BUG-B note above `_el`. `click` is precisely the event this
+  // surface never receives when a repaint lands mid-press, and at 10 Hz that is most presses.
+  _stage.addEventListener('pointerdown', onScenePointerDown);
+  _stage.addEventListener('pointerup', onScenePointerUp);
+  // …and a release ANYWHERE clears the press latch, so a press begun on the schematic and released
+  // off it (a drag out onto a HUD island) cannot leave the latch armed for somebody else's gesture.
+  //
+  // ⛔ BUBBLE PHASE. DO NOT ADD A THIRD ARGUMENT TO THESE TWO CALLS. `_stage`'s own handler sits
+  // below window on the same event, so it must read the latch first; passing `true` moves the clear
+  // to CAPTURE, where it runs BEFORE `_stage` and empties `_downOnScene` every single time — the
+  // whole room-entry gesture then dies SILENTLY, which is this package's own bug reintroduced by one
+  // word. Found in review, when the mutation survived a green suite because the test harness could
+  // not model event phase. It is guarded now, by name and by driving: `overview-model.test.js`,
+  // "a press that ENDS off the schematic", whose `firePointer` dispatches window capture → target →
+  // window bubble the way the browser does.
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('pointerup', clearScenePress);
+    window.addEventListener('pointercancel', clearScenePress);
+  }
+  // HUD buttons: one delegated handler, ignoring the scene (which has its own above). It is still
+  // bound to `click` and still needs its `.ov-stage` bail: the browser fires the trailing `click`
+  // after our pointerup on every press that did NOT span a repaint, and it bubbles to `_root`.
   _root.addEventListener('click', onHudClick);
 }
 
@@ -684,7 +729,43 @@ function paintSensor() {
 // Input.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-function onSceneClick(e) {
+/** A primary press that STARTED on the schematic and has not yet been resolved. The gesture stays
+ *  "press AND release both on the scene" — the shape `click` used to give us for free — so a release
+ *  over the schematic after pressing a HUD button must not enter a room. */
+let _downOnScene = false;
+
+/** True for the primary button, and for an event carrying no `button` at all. A secondary button
+ *  never produced a `click` here and must not produce a gesture now. */
+function isPrimaryPointer(e) { return ((e && e.button) || 0) === 0; }
+
+function onScenePointerDown(e) {
+  if (!isPrimaryPointer(e)) return;
+  _downOnScene = true;
+}
+
+function onScenePointerUp(e) {
+  if (!isPrimaryPointer(e)) return;
+  if (!_downOnScene) return;
+  _downOnScene = false;
+  onSceneGesture(e);
+}
+
+/** Any release or cancel, wherever it lands: the latch is one-shot and never survives its press. */
+function clearScenePress() { _downOnScene = false; }
+
+/**
+ * Resolve one scene gesture. Called from `onScenePointerUp` and NOT from a `click` listener — the
+ * whole point of BUG-B. Two consequences worth knowing, both deliberate:
+ *
+ *  · The hit is taken from the RELEASE target, so a repaint between press and release is harmless:
+ *    the room rects are geometry, not state, and the live node under the pointer at release is the
+ *    same room the player pressed. (If a `decks` frame genuinely re-slots the deck mid-press, the
+ *    release resolves against what is on screen NOW, which is the more defensible of the two.)
+ *  · A short drag from a hall into a room now enters that room, where `click` would have resolved
+ *    to the common ancestor and done nothing. That is strictly more forgiving on a surface whose
+ *    complaint was "it takes several clicks", and this surface has no drag gesture to confuse it.
+ */
+function onSceneGesture(e) {
   const svg = _stage.querySelector('svg.pl-overview');
   if (!svg) return;
   const armed = Hud.getArmedTool();
@@ -710,6 +791,7 @@ function onSceneClick(e) {
         Hud.toolUsed(action.tool, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
         nudgeOnIntent(); // a designation nobody will come and act on while the ship is stopped
       }
+      orderSuppressionToast(action.tool, hit);
       break;
     }
     case 'select': Hud.selectCrewByCid(action.cid); break;
@@ -718,6 +800,26 @@ function onSceneClick(e) {
     case 'enterRoom': _onEnterRoom(action.anchor); break;
     default: break; // bare space / hall → no-op (IX-O-18)
   }
+}
+
+/**
+ * THE ORDER BRANCH'S POINT-OF-FAILURE FEEDBACK. An armed order tool OWNS the click (`'order'` is
+ * second only to `'move'` in `overviewClickAction`), so with DIG armed a click on a room designates
+ * its tile and the room DOES NOT OPEN. That was silent: the ORDERS bar says `⛏ DIG ▸ CLICK DEBRIS ON
+ * DECK 0` up in the command bar, and `#ov-toast` stayed empty and hidden at the moment of the click,
+ * so nothing anywhere said why the room refused. Measured 2026-07-26 alongside BUG-B, and reported
+ * as the same symptom by the owner — this is the SECOND silent way a room "will not open".
+ *
+ * DELIBERATELY NARROW: only the two hits where the surface would otherwise have NAVIGATED — entering
+ * a bound room, opening the ＋ADD ROOM picker. It does NOT fire on a pawn or a terminal hit, and that
+ * is measured rather than tidy: on `--ship grid` the crew stand exactly on the dig debris (HANDOVER
+ * §4b limit 2), so a pawn-hit toast would fire on nearly every click of DIG's hot path and train the
+ * player to ignore the toast. Designating OVER a pawn or a device is the intended use of the verb
+ * (`overviewClickAction`'s precedence exists for exactly that); being refused a room is not.
+ */
+function orderSuppressionToast(tool, hit) {
+  if (!hit || (hit.roomAnchor == null && hit.addRoomSlot == null)) return;
+  toast(String(tool).toUpperCase() + ' ARMED — ESC TO DISARM');
 }
 
 /**
@@ -762,6 +864,14 @@ function hitTest(target) {
   if (!target || !target.closest) return {};
   const pawn = target.closest('.pl-pawn');
   if (pawn && pawn.dataset.cid != null) return { pawnCid: Number(pawn.dataset.cid) };
+  // ⚠️ A TERMINAL OUTRANKS THE ROOM IT SITS INSIDE — RECORDED, NOT FIXED. `term_hydro` is a
+  // ~15.5×13.5 px chip drawn INSIDE the hydroponics room's rect, so a press on that one spot opens
+  // MOSS instead of entering the room. That is a THIRD way a room "does not open" (measured
+  // 2026-07-26 alongside BUG-B and the armed-order suppression above), and it is deliberately left
+  // alone: unlike the other two it is not silent — MOSS takes over the whole window, so the player
+  // sees exactly what happened — the precedence is the documented richest-first rule
+  // (IX-O-11/13/15), and demoting it would make the map's consoles unreachable at Level 1. Changing
+  // it is a design decision about what a console chip is FOR, not a bug fix.
   const term = target.closest('.pl-terminal');
   if (term && term.dataset.tid != null) return { terminalId: term.dataset.tid };
   const add = target.closest('.pl-addroom');

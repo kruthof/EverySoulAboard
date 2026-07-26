@@ -403,7 +403,68 @@ function makeOvDoc() {
 
 const ovDoc = makeOvDoc();
 globalThis.document = ovDoc;
-globalThis.window = { addEventListener() {}, removeEventListener() {} };
+/** A window stub that RECORDS its listeners WITH THEIR PHASE. `overview-view.js` binds
+ *  `pointerup`/`pointercancel` there — the clear for the press latch that stops a release beginning
+ *  off the schematic from resolving on it — so the shared no-op stub would leave that half of the
+ *  gesture undrivable and the guard below unfalsifiable. Same shape and same reason as
+ *  `room-model.test.js`'s `makeRzWindow`. ONE bag is right here because there is exactly one mount.
+ *
+ *  ⚠️ THE PHASE IS RECORDED BECAUSE IT IS LOAD-BEARING, and a phase-blind stub let a one-word
+ *  regression through review with the whole suite green: adding a third argument `true` to those two
+ *  `window.addEventListener` calls moves the clear to CAPTURE, where it runs BEFORE `_stage`'s own
+ *  handler, empties the latch every time, and kills the entire room-entry gesture SILENTLY.
+ *  `dom-lite`'s `fire` walks parents only and cannot model phase at all, which is why `firePointer`
+ *  below exists and why nothing in this file dispatches a pointer event any other way. */
+const ovWinListeners = {};
+globalThis.window = {
+  addEventListener(t, fn, opts) {
+    const capture = opts === true || !!(opts && opts.capture === true);
+    (ovWinListeners[t] = ovWinListeners[t] || []).push({ fn, capture });
+  },
+  removeEventListener() {},
+};
+
+/**
+ * Dispatch a pointer event IN THE BROWSER'S OWN PHASE ORDER: window CAPTURE listeners first, then
+ * the element path from the target up through its ancestors, then window BUBBLE listeners. One
+ * shared event object throughout, so `stopPropagation` behaves.
+ *
+ * It re-implements `dom-lite`'s `fire` walk rather than calling it, deliberately: `fire` builds its
+ * OWN event and knows nothing about window, so sandwiching it between two window phases would hand
+ * the three phases three different event objects — and the middle one would be the only one that
+ * could stop propagation. Eight lines is the cheaper honesty.
+ */
+function firePointer(target, type, extra) {
+  const e = {
+    type, target, defaultPrevented: false, propagationStopped: false,
+    preventDefault() { e.defaultPrevented = true; },
+    stopPropagation() { e.propagationStopped = true; },
+    ...(extra || {}),
+  };
+  const windowPhase = (capture) => {
+    for (const l of (ovWinListeners[type] || []).slice()) {
+      if (l.capture !== capture) continue;
+      l.fn(e);
+      if (e.propagationStopped) return true;
+    }
+    return false;
+  };
+  if (windowPhase(true)) return e;             // …runs BEFORE the target. This is the mutation trap.
+  let n = target;
+  while (n) {
+    for (const fn of ((n.listeners && n.listeners[type]) || []).slice()) {
+      fn(e);
+      if (e.propagationStopped) return e;
+    }
+    n = n.parentNode;
+  }
+  windowPhase(false);                          // …runs AFTER the target, which is what the fix wants.
+  return e;
+}
+
+/** A node that is NOT under the schematic — a HUD island. A release here is how a press that began
+ *  on the scene ends somewhere else, and it reaches window through the ordinary bubble path. */
+const ovOffScene = new OvEl(ovDoc, 'div');
 // A SYNCHRONOUS rAF: `scheduleRepaint` coalesces into one frame, and every assertion below wants to
 // read the surface immediately after the state change that should have repainted it.
 //
@@ -442,13 +503,29 @@ function mountOverview(doc, opts) {
   Hud.renderDecks(FIX.decks);
   Hud.renderRooms(FIX.rooms);
   Hud.renderFrame(FIX.frame);   // …and this repaint is what populates the click transform
-  return { root, stage, cmd: doc.getElementById('ov-cmd'), svg };
+  return { root, stage, cmd: doc.getElementById('ov-cmd'), svg, toast: doc.getElementById('ov-toast') };
 }
 
-/** Click the centre of sim tile (tx,ty) on `stage`'s surface, targeted at `target`. */
-function clickTile(target, tx, ty, deck = FIX.frame.deck) {
+/** The pointer payload for a press at the CENTRE of sim tile (tx,ty). */
+function tileAtEvent(tx, ty, deck = FIX.frame.deck) {
   const [sx, sy] = ovTransform(deck).project(tx + 0.5, ty + 0.5);
-  fire(target, 'click', { clientX: sx, clientY: sy, detail: 1 });
+  return { clientX: sx, clientY: sy, detail: 1, button: 0 };
+}
+
+/**
+ * Press AND release at the centre of sim tile (tx,ty) on `stage`'s surface, targeted at `target`.
+ *
+ * ⚠️ THIS USED TO FIRE A BARE `click`, AND THAT IS THE CHANGE, NOT AN ACCIDENT (BUG-B, 2026-07-26).
+ * The scene resolves its gesture on `pointerup` now, because `paintScene` rebuilds the whole SVG on
+ * every 10 Hz repaint and Chrome fires NO `click` at all when that lands between mousedown and
+ * mouseup. Every assertion these helpers carry is unchanged; what changed is that they now drive
+ * the gesture a player actually makes rather than the event the browser was failing to deliver.
+ * Two legs below drive the halves separately.
+ */
+function clickTile(target, tx, ty, deck = FIX.frame.deck) {
+  const at = tileAtEvent(tx, ty, deck);
+  firePointer(target, 'pointerdown', at);
+  firePointer(target, 'pointerup', at);
 }
 
 // ── the harness ──
@@ -461,7 +538,7 @@ function clickTile(target, tx, ty, deck = FIX.frame.deck) {
 const ovSent = [];
 let ovEntered = [];          // onEnterRoom calls
 let ovAdded = [];            // onAddRoom calls
-const { root: ovRoot, stage: ovStage, cmd: ovCmd } = mountOverview(makeOvDoc(), {
+const { root: ovRoot, stage: ovStage, cmd: ovCmd, toast: ovToast } = mountOverview(makeOvDoc(), {
   send: (o) => ovSent.push(o),
   onEnterRoom: (anchor) => ovEntered.push(anchor),
   onAddRoom: (deck, slot) => ovAdded.push([deck, slot]),
@@ -750,6 +827,203 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
   assert.deepEqual(ovEntered, ['reactor']);
   assert.deepEqual(ovClick(ovStage, 12, 5), [], 'bare space must stay a no-op');
   assert.deepEqual(ovEntered, []);
+});
+
+// ── BUG-B: the scene gesture resolves on POINTERUP, because `click` is not delivered ───────────
+//
+// THE BUG, AS MEASURED IN CHROME (2026-07-26, `--ship grid`, deck 0, `body.overview-open` asserted
+// before every trial — §4f's boot-window artifact). `paintScene` assigns `_stage.innerHTML` on EVERY
+// repaint, at the wire's 10 Hz. A click spans mousedown→mouseup; when a rebuild lands between them
+// the mousedown target is detached, Chrome finds no common ancestor for the pair and fires NO
+// `click` EVENT AT ALL — so `hitTest` is never reached and the click produces nothing, not a wrong
+// action.
+//
+//   control   — no repaint during the press ................................ 19/20 entered
+//   treatment — ONE `stage.innerHTML = stage.innerHTML` strictly between down and up ...... 0/10
+//
+// ⚠️ AN HONEST LIMIT, STATED RATHER THAN FAKED. `dom-lite` DOES NOT IMPLEMENT CHROME'S CLICK-TARGET
+// RULE — it synthesises no `click` from a press pair at all — so it CANNOT reproduce "the click is
+// never delivered", and nothing below claims to. What these legs pin is the two things node can
+// prove, and which together make the browser's behaviour moot: (1) the seam IS `pointerup`, so a
+// surviving `click` binding reddens, and (2) a release on the node that REPLACED the pressed one
+// still resolves — which is precisely what the browser hands the surface after a mid-press rebuild.
+// The browser half of the proof is the re-run measurement recorded in `overview-view.js`'s header.
+
+test('BUG-B: the scene gesture is bound to POINTERUP — a bare `click` on a room does nothing', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  ovEntered = [];
+  fire(room, 'click', tileAtEvent(12, 5));
+  assert.deepEqual(ovEntered, [],
+    'a bare `click` entered the room, so the scene is still listening on `click` — the one event ' +
+    'Chrome does not deliver when a repaint lands mid-press (measured 0/10 in that case).');
+  // NON-VACUITY: the same node at the same coordinates, driven as a real press → release, enters.
+  clickTile(room, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'],
+    'the press/release gesture does not enter either, so this node is not being hit-tested at all ' +
+    'and the assertion above proves nothing');
+});
+
+test('BUG-B regression: a scene REBUILD strictly between press and release keeps the gesture', () => {
+  const pressed = ovTarget('pl-room', { anchor: 'hold' });
+  firePointer(pressed, 'pointerdown', tileAtEvent(12, 5));
+  // The 10 Hz repaint the player cannot avoid: `paintScene` assigns `_stage.innerHTML`, which empties
+  // the stage. Then detach the pressed node, which is what that assignment does to it in a browser.
+  Hud.renderFrame(FIX.frame);
+  pressed.remove();
+  assert.equal(pressed.parentNode, null,
+    'the pressed node was NOT detached, so this test never reproduces a mid-press rebuild and would ' +
+    'pass against the shipped bug');
+  const live = ovTarget('pl-room', { anchor: 'hold' });   // the node the rebuild put back in its place
+  assert.notEqual(live, pressed, 'the release is landing on the very node that was pressed');
+  ovEntered = [];
+  firePointer(live, 'pointerup', tileAtEvent(12, 5));
+  assert.deepEqual(ovEntered, ['hold'],
+    'the release on the REBUILT node did not enter the room. This is the owner\'s report: a press ' +
+    'longer than the 100 ms render period spans a rebuild essentially always.');
+});
+
+test('BUG-B: a release over the schematic whose press began ELSEWHERE resolves nothing', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  ovEntered = [];
+  firePointer(room, 'pointerup', tileAtEvent(12, 5));      // the press landed on a HUD island, not here
+  assert.deepEqual(ovEntered, [],
+    'a bare release entered a room. Moving off `click` must not throw away its one real guarantee — ' +
+    'that press and release belong to the same surface — or dragging off a HUD button onto the ' +
+    'schematic enters whatever it happens to land on.');
+  // NON-VACUITY: the identical release, this time with its press in front of it, must enter.
+  clickTile(room, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'], 'the harness cannot enter this room at all');
+});
+
+test('BUG-B: a press that ENDS off the schematic cannot arm a later release', () => {
+  const ups = ovWinListeners.pointerup || [];
+  const cancels = ovWinListeners.pointercancel || [];
+  assert.ok(ups.length > 0,
+    'nothing is bound to window `pointerup`, so the off-scene release below reaches nothing and ' +
+    'every assertion after it is vacuous');
+  assert.ok(cancels.length > 0, 'nothing is bound to window `pointercancel`');
+  // ⚠️ THE PHASE, ASSERTED BY NAME. The driven legs below DO catch a capture-phase registration —
+  // `firePointer` runs window capture before the target — but they fail as "the room did not open",
+  // which sends the next author hunting through the hit rule. This one names the actual cause. It
+  // reads the phase the SOURCE passed to `addEventListener`, recorded at registration; it is not a
+  // source scan and a comment cannot satisfy it.
+  assert.ok(ups.every((l) => l.capture === false) && cancels.every((l) => l.capture === false),
+    'the window latch clear is registered in CAPTURE phase. It then runs BEFORE `_stage`\'s own ' +
+    'pointerup handler, empties `_downOnScene` every time, and the entire room-entry gesture dies ' +
+    'SILENTLY — the exact bug this package fixed, reintroduced by a third argument. It must stay ' +
+    'bubble phase: `_stage` sits below window on the same event and must read the latch first.');
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+
+  firePointer(room, 'pointerdown', tileAtEvent(12, 5));
+  firePointer(ovOffScene, 'pointerup', tileAtEvent(12, 5));                     // released over a HUD island; the stage never saw it
+  ovEntered = [];
+  firePointer(room, 'pointerup', tileAtEvent(12, 5));     // …and later, an unrelated release over the scene
+  assert.deepEqual(ovEntered, [],
+    'the press latch survived a release that happened off the schematic, so a stale press arms ' +
+    'somebody else\'s gesture');
+
+  firePointer(room, 'pointerdown', tileAtEvent(12, 5));
+  firePointer(ovOffScene, 'pointercancel', tileAtEvent(12, 5));                 // the browser taking the pointer away mid-press
+  firePointer(room, 'pointerup', tileAtEvent(12, 5));
+  assert.deepEqual(ovEntered, [], 'pointercancel did not clear the press latch');
+
+  clickTile(room, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'], 'the harness cannot enter this room at all');
+});
+
+// ⚠️ THE RELEASE TARGET IS WHAT IS HIT-TESTED, AND NOTHING PINNED THAT UNTIL THIS TEST. The
+// regression test above presses and releases on two different nodes that resolve to THE SAME ROOM,
+// so an implementation that stashed the press target and hit-tested that instead SURVIVED it — the
+// load-bearing mechanism there is the seam, not the choice of target. That choice is a separate
+// behavioural claim `onSceneGesture`'s doc makes out loud ("a short drag from a hall into a room now
+// enters that room"), and a claim in a comment that no test exercises is the shape this repo keeps
+// paying for. Both directions are driven, because only the pair distinguishes the two designs:
+// press-target hit-testing fails the first leg AND wrongly passes the second.
+test('BUG-B: the RELEASE target decides — a press dragged hall→room enters, room→hall does not', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  const hall = ovTarget('pl-hall', { slot: 6 });
+  const at = tileAtEvent(12, 5);
+
+  ovEntered = [];
+  firePointer(hall, 'pointerdown', at);          // …the press begins on bare hall
+  firePointer(room, 'pointerup', at);            // …and is released over a bound room
+  assert.deepEqual(ovEntered, ['hold'],
+    'a press dragged from a hall into a room did not enter it, so the gesture is resolving against ' +
+    'the PRESS target. `onSceneGesture` claims the opposite in its own doc.');
+
+  ovEntered = [];
+  firePointer(room, 'pointerdown', at);          // …and the exact inverse
+  firePointer(hall, 'pointerup', at);
+  assert.deepEqual(ovEntered, [],
+    'a press that began on a room but was RELEASED over bare hall still entered the room — which is ' +
+    'what stashing the press target looks like from the outside. A hall has no anchor and is not ' +
+    'enterable (`overviewClickAction` has no hallSlot branch).');
+
+  // NON-VACUITY: the ordinary same-node gesture still works, so neither leg above is measuring a
+  // harness that simply cannot enter rooms.
+  clickTile(room, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'], 'the harness cannot enter this room at all');
+});
+
+test('BUG-B: a SECONDARY-button press/release on the schematic resolves nothing', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  const at = tileAtEvent(12, 5);
+  ovEntered = [];
+  firePointer(room, 'pointerdown', { ...at, button: 2 });
+  firePointer(room, 'pointerup', { ...at, button: 2 });
+  assert.deepEqual(ovEntered, [],
+    'a right-button press entered the room. `click` never fired for a secondary button, and moving ' +
+    'to the pointer seam must not widen the gesture.');
+  clickTile(room, 12, 5);
+  assert.deepEqual(ovEntered, ['hold'], 'the harness cannot enter this room at all');
+});
+
+// ── the armed-order refusal, said out loud (the second silent way a room "will not open") ──────
+
+test('an armed order that REFUSES a room says so at the point of the click', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  const hall = ovTarget('pl-hall', { slot: 6 });
+  const chip = new OvEl(ovDoc, 'div');
+  chip.className = 'pl-addroom';
+  hall.appendChild(chip);
+  ovArm('dig');
+
+  // A SENTINEL rather than an empty toast: "the toast is empty" is also what deleting the feature
+  // produces, and it is what the toast already holds. Only a CHANGE off the sentinel is evidence.
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  const sent = ovClick(room, 12, 5);
+  assert.deepEqual(sent, paletteOrders('dig', 12, 5), 'the designation itself stopped working');
+  assert.deepEqual(ovEntered, [], 'the room opened after all — there would be nothing to explain');
+  assert.equal(ovToast.hidden, false, 'the toast was written but never un-hidden');
+  assert.match(ovToast.textContent, /DIG ARMED/,
+    'the refusal did not name the verb that caused it — "nothing happened" is the bug being fixed');
+  assert.match(ovToast.textContent, /ESC/, 'the refusal did not say how to get out of the mode');
+
+  // ＋ADD ROOM is refused by the same rule and must explain itself the same way.
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  assert.deepEqual(ovClick(chip, 12, 5), paletteOrders('dig', 12, 5));
+  assert.deepEqual(ovAdded, [], 'the picker opened, so the suppression under test did not happen');
+  assert.match(ovToast.textContent, /DIG ARMED/, 'a suppressed ＋ADD ROOM click stayed silent');
+  ovArm('dig');
+});
+
+test('the armed-order toast is NARROW: a pawn hit designates in silence, a room hit explains', () => {
+  const pawn = ovTarget('pl-pawn', { cid: '4' });
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  ovArm('dig');
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  assert.deepEqual(ovClick(pawn, 28, 16), paletteOrders('dig', 28, 16),
+    'the pawn designation broke, so the silence below is not the rule being tested');
+  assert.equal(ovToast.textContent, 'SENTINEL',
+    'DIG toasted over a pawn. On --ship grid the crew stand exactly ON the dig debris (HANDOVER ' +
+    '§4b limit 2), so this would fire on nearly every click of the verb\'s hot path and train the ' +
+    'player to ignore the toast.');
+  assert.equal(ovToast.hidden, true, 'the toast was shown over a pawn');
+  // NON-VACUITY: the same armed tool over a ROOM does write it, so "silent" is the rule here and
+  // not a toast that never fires.
+  assert.deepEqual(ovClick(room, 12, 5), paletteOrders('dig', 12, 5));
+  assert.notEqual(ovToast.textContent, 'SENTINEL', 'the toast never fires at all');
+  ovArm('dig');
 });
 
 // ── the wiring main.js owns (a declared STRUCTURAL guard, and why it has to be one) ──
