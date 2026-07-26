@@ -1,26 +1,40 @@
-# The character simulation — Big Five substrate, marks, and behaviour that surfaces — implementation plan
+# The character simulation — marks as the engine, axes as the prior, behaviour that surfaces — implementation plan (r2)
 
-**Status:** PLAN ONLY. Nothing in this document is built. The branch carries this file and nothing
-else. Three independent reviews (architecture/determinism, game-design/legibility,
-psychological-validity/governance) gate it before any work package is chartered.
+**Status:** PLAN ONLY, **revision 2**. Nothing in this document is built. Revision 1 (`a592e5e`)
+was reviewed by three independent Opus lenses (architecture/determinism, game-design/legibility,
+psychological-validity/governance); unanimous verdict **ADOPT WITH CHANGES**. This revision is the
+response. §13 is the ledger of what changed shape, what was adopted, and what was **rejected with
+argument**; §12 collects the questions that are the owner's to take, not this plan's. Retractions
+from r1 use the house quoted-and-negated form at the place the claim lived.
 
 **The brief it serves (Garvin, verbatim in substance):** an *in-depth character simulation* —
 possibly using **Big Five personality traits**; **personal history that shapes the way the person
-thinks and acts now**; and **how incidents and current relationships impact him or her**.
+thinks and acts now**; and **how incidents and current relationships impact him or her.**
 
-**The one-line answer this plan gives:** adopt the Big Five as the **hashed generative substrate**
-of a crew member's disposition, reject it as the **player-facing surface**, and make **every axis
-buy a behaviour the player can watch on the standard play ship** — while personal history and
-incidents live in a second, separate kind of state (**marks**) that history-blind `Mood` reads but
-never stores. The whole thing runs in the deterministic offline sim core; an LLM may *narrate* a
-personality, it never *is* one.
+**The one-line answer, revised:** the engine of character is **history and relationship — marks
+and the opinion graph — carried on the ship's one high-bandwidth observable channel (idle
+movement, 51 % of a sim-day)**; the Big Five is adopted as the hashed **prior** that disposes how
+events land and how people move, rejected as the player-facing surface, and bound by a mechanised
+warrant — no hashed field this plan adds may ship without a driven test proving its behaviour can
+fire and be seen. The whole thing runs in the deterministic offline sim core; an LLM may *narrate*
+a personality (through derived words only, never numbers), it never *is* one.
+
+> **r1 framing, retracted.** r1 led with *"adopt the Big Five as the hashed generative substrate"*
+> and titled the axes "layer 1", marks "layer 2". Two reviewers independently inverted this —
+> the validity lens from the isolated/confined/extreme-environment literature (behavioural
+> variance there is dominated by *state* trajectories — stress, loss, friction — not by stable
+> trait variance), the design lens from drama (marks are your story generator; axes are
+> disposition knobs) — and the third proved r1's marks could not fire on the standard ship at
+> all (§0.2). The inversion is adopted: **marks are the engine; axes are the prior.** What
+> survives of r1's position on Big Five survives intact in §2.
 
 ---
 
-## 0. What was verified vs what is assumed
+## 0. What was verified vs assumed
 
-The reviewers should check this section first. Every claim below was read in this worktree
-(`main` @ `96221cc`) at the cited line; the assumptions are separated and numbered.
+Reviewers should check this section first. Every claim in §0.1 was read in this worktree
+(`main` @ `96221cc`); §0.2 is the event-supply audit r1 lacked; §0.3 grades the psychological
+claims; §0.4 lists what is still assumed.
 
 ### 0.1 Verified
 
@@ -28,683 +42,858 @@ The reviewers should check this section first. Every claim below was read in thi
 - `sim/Sim.Core/Citizens/PersonaSheet.cs:26-32` — `Traits` is `string[]` (*"3 from the trait
   pool"*), beside `Values`, `Fears`, `Secrets`, `RaidBackstory`, `SpeechStyle`,
   `RelationshipNotes`. The trait pool is twelve words (`PersonaSheet.cs:100-105`).
-- The whole mind layer is **host-owned and unhashed**: `CitizenMemory.cs:165-166` — *"minds are
-  not covered by Simulation.StateHash"*; `PersonaSheet.cs:36-37` — `RelationshipSecrets` is
-  *"NOT hashed (excluded from the MEMS StateChecksum)"*. The MEMS checksum deliberately folds
-  **structure only**, never prose (`CitizenMemory.cs:227-231`, `:470-517`).
+- The whole mind layer is **host-owned and unhashed**: `CitizenMemory.cs:163-164` — *"minds are
+  not covered by Simulation.StateHash"* (r1 cited `:165-166`; off by two — the one citation error
+  the architecture review found in ~50 checked); `PersonaSheet.cs:36-37` — `RelationshipSecrets`
+  is *"NOT hashed"*. The MEMS checksum folds **structure only**, never prose
+  (`CitizenMemory.cs:227-231`, `:470-517`).
 - Consumers of `Traits`: dialogue prompt assembly and the roster wire
-  (`hosts/web/GameSession.cs:1216` puts `traits` on the roster). **No sim system reads a trait.**
-  A "meticulous" crew member and a "cowardly" one behave identically.
+  (`hosts/web/GameSession.cs:1216`), rendered as chips in the shipped readout
+  (`client/src/ui/overview-view.js:580-586`). **No sim system reads a trait.** A "meticulous"
+  crew member and a "cowardly" one behave identically.
 
 **`Mood` is hashed but deliberately memoryless.**
-- Folded into the state hash at `sim/Sim.Core/Simulation.cs:404`; recomputed **fully every pass**
-  at `sim/Sim.Core/Systems/NeedsSystem.cs:163-167`, with the contract stated at `:157-158`:
-  *"Mood holds no history of its own, so nothing else may write it and expect the value to survive
-  a second."* Its real range is −135..+20, *"NOT a percentage and NOT centred on zero"*
-  (`NeedsSystem.cs:159-161`).
-- Mood's consumers: `SocialSystem.RollPair`'s argument gate (`SocialSystem.cs:147-149`) and the
-  Director chain — `ShipMetrics.cs:86` turns mean mood into `Morale`, `DirectorSystem.cs:82`
-  weights tension with it, and `DirectorSystem.cs:41-46` names `WearPressure` *"the one sanctioned
-  path by which crew mood reaches the economy."*
-- `docs/MECHANICS.md` §13.4: `Fatigue` saturates at 1.0 after ~16 h with **no reducer anywhere**,
-  so **mood is permanently ≤ −5 for every crew member from day 1 onward** — measured slice
-  crew-mean −37.7 to −26.4. This compresses any mood-differentiation a character system builds,
-  and this plan accounts for it (§5.3).
+- Folded at `sim/Sim.Core/Simulation.cs:404`; recomputed **fully every pass** at
+  `NeedsSystem.cs:163-167`, contract at `:157-158` (*"Mood holds no history of its own"*); range
+  −135..+20 (`:159-161`). Consumers: the SocialSystem argument gate (`SocialSystem.cs:147-149`)
+  and the Director chain (`ShipMetrics.cs:86` → `DirectorSystem.cs:82`; `:41-46` names
+  `WearPressure` *"the one sanctioned path by which crew mood reaches the economy"*).
+- `docs/MECHANICS.md` §13.4: `Fatigue` saturates at ~16 h with no reducer, flooring mood ≤ −5
+  for everyone from day 1 — so the argument gate's mood half is **permanently open** for all crew
+  (§13.7's own compounding note), and mood-mediated differentiation is compressed (§5.3 there;
+  accounted for throughout).
+- **Mood has zero player-visible per-crew surface today.** The CREW WATCH bars render
+  `e.morale` (`overview-view.js:539-543`), which is `Citizen.Morale` off the roster
+  (`GameSession.cs:1216`) — **1.00 for every crew member at all times** (`MECHANICS.md` §13.4:
+  *"The visible morale bar is a constant."*). Nothing on either modern surface renders any
+  mood-derived value per crew member. §8.2 fixes this.
 
-**The social/memory layer exists and is real sim machinery, not prose.**
-- `SocialSystem.cs` — a sparse directed opinion graph, SYSS-saved, `'SOCL'`-checksummed
+**The social layer exists, and on the standard ship it is statically frozen.**
+- `SocialSystem.cs` — sparse directed opinion graph, SYSS-saved, `'SOCL'`-checksummed
   (`:289-310`); deterministic argument/bond rolls from a forked stream (`:85`, `:144-163`);
-  hysteresis relationship tiers (`:171-192`); one clamp entry point `Nudge` (`:206-226`).
-- `CitizenMemory.cs` — capped episodic memory (`Cap = 120`, `:29`), rule-table event→memory writes
-  (`MemorySystem.Tick`, `:263-309`), and the note that its importances are **consts, not defs**,
-  because `SimDefs.cs` is an integrator-gated spine file (`:219-221`).
-- `Chronicle.cs` / `HistorySystem.cs` — deterministic templated ship log with a hash-exempt
-  `ProseOverride` slot for later LLM prose (`Chronicle.cs:19-26`); events are readable for exactly
-  one tick after publish, so 1 Hz readers register `IntervalTicks => 1`
-  (`HistorySystem.cs:72-75`).
+  hysteresis tiers (`:171-192`); one clamp entry `Nudge` (`:206-226`).
+- **The only `Nudge` caller outside the system itself is authored relationship seeding**
+  (`sim/Sim.Gen/AuthoredShips.cs:699`), and the grid eight are bare `CitizenSpec`s with **no**
+  authored relationships (`AuthoredShips.cs:982-994`; the `Relationships` arrays at `:476-658`
+  belong to the slice). Familiarize is +2/h, decay relaxes **toward zero**
+  (`SocialSystem.cs:107-114`), bonds are positive. **On the grid ship, opinion is monotone
+  non-decreasing: the argument gate (`opinion ≤ −20`) can never open and `Enemy` can never be
+  entered.** §0.2 draws the consequence.
+- `docs/MECHANICS.md` §13.7 (measured, slice, one sim-day): **2,611 bond events, 720 argument
+  events; every authored edge at its ±100 clamp within 24 h; every stranger pair at ≈ +8.** The
+  graph saturates in a day, so anything that *weights by opinion* is weighing a constant by day
+  2. **This is a named blocking dependency of §5** (the relationship-carrier seam), not a
+  footnote.
+- `CitizenMemory.cs` — capped episodic prose memory (`Cap = 120`, `:29`); rule-table
+  event→memory writes (`:263-309`); importances are consts because `SimDefs.cs` is
+  integrator-gated (`:219-221`). `Chronicle.cs:19-26` — hash-exempt `ProseOverride`.
 
-**The cautionary precedent is already in the codebase: hashed personality-adjacent state that
-nothing reads.** `Citizen.Health`, `Citizen.Morale` and `Citizen.Archetype` are saved and hashed
-(`Simulation.cs:415-417`, CITZ v5) and **never written or read by any system**
-(`docs/MECHANICS.md` §13.4, measured: Health and Morale are 1.00 for everyone always, and Morale
-is what the CREW WATCH morale bar displays — a constant). `CitizenMind.FollowingPlayer` is the
-same defect in the mind layer (§13.3). **This plan's central discipline — no axis ships without
-its behaviour — exists because the repo has already shipped this failure three times.**
+**The event bus and the event inventory.**
+- `EventBus.cs:30` — `Read()` returns the **previous** tick's buffer; buffers swap once per tick
+  (`:32-37`). *Nothing published this tick is readable this tick*, regardless of registration
+  order. r1's §6 comment claimed otherwise and is retracted (§6). Readers that must not miss
+  events register `IntervalTicks => 1` (`HistorySystem.cs:72-75`, `CitizenMemory.cs:216-217`).
+- The full event inventory (`SimEvents.cs`): Tile/Rooms/Fog/DoorState changed, AlarmRaised,
+  CitizenDied, GoalCompleted, BrownoutChanged, RelationshipChanged, Argument, Bond,
+  **PromiseBroken (`SimEvents.cs:93` — defined, published by nothing)**, ConstructionCompleted
+  (`:100`), DeconstructCompleted (`:121`), plus effect/MOSS events. **There is no
+  `JobCompletedEvent`**; only build and deconstruct completions are evented. §4.2-C specifies
+  the completion signal accordingly.
 
-**The seams this plan hooks, verified individually:**
-- Job recruitment gate: `JobSystem.cs:140` — `if (citizen.IsRecruitableForWork) TryAssign(...)`;
-  `Citizen.cs:73` (`IsIdleForWork`), `:103` (`IsRecruitableForWork`). `JobSystem.cs` is
-  integrator-owned by its own doc (`:11`) though not on the `CLAUDE.md` spine list.
-- The selection pass is per-citizen and its refusal stamps are per-pass scratch:
-  `JobSystem.cs:229` (`NextGen()` per `TryAssign`), `IJobSource.cs:125-132` (stamping contract),
-  so a per-citizen candidate veto that stamps what it skips is contract-legal.
-- Self-serve threshold: `SustenanceSystem.cs:100`, `:214`, `:228` compare Hunger/Thirst against
-  `sim.Defs.Sustenance.NeedThreshold` (0.5, `SimDefs.cs:569`).
-- Flee threshold: `SafetySystem.cs:61` reads `needs.FleeSuffocation` (0.5, `SimDefs.cs:562`);
-  SafetySystem *"owns no saved state"* (its class doc) and returns to work below **half** the flee
-  threshold.
-- Wander cadence and radius: `CitizenSystem.cs:72-74` (`IdleCooldown`,
-  `TryRandomWalkableTileNear`), `SimDefs.cs:260-283` (`CitizenDefs`; the deck confinement is a
-  literal, `:273-281`, and this plan does not touch it).
-- Social gates: `SocialSystem.cs:149-161` (`ArgumentChancePerPass` / `BondChancePerPass` behind
-  mood + opinion gates); familiarize accrual at `:101-102`.
-- The hoisted-instance pattern for cross-system reads: `SystemStack.cs:22-24` (Director built
-  once, passed to `MachineWearSystem`, ticked at `:61`; consumers read *"the previous cadenced
-  pass's value"*, `DirectorSystem.cs:38-39`). Lazy by-type resolution of an optional stack system
-  is also an established pattern (`IJobSource.cs:74-76`). Registration order is load-bearing and
-  fixes the SYSS fold order (`SystemStack.cs:40-49`).
-- The parallel-store + `IStatefulSystem` route adds save + hash **without touching SaveWriter/
-  SaveReader or `Simulation.StateHash`**: `CitizenMemory.cs:222-231` (MEMS *"rides the existing
-  SYSS chapter — no SaveWriter/Reader edit"*), `Simulation.cs:385-390` (SYSS systems own their own
-  checksums).
-- Relationship seeding as a separate boot step after the stack exists is precedent
-  (`PersonaSheet.cs:238-239`); authored-persona construction is RNG-free by contract
-  (`PersonaSheet.cs:234-238`); generated-persona construction forks per citizen id and never
-  advances `sim.Rng` (`PersonaSheet.cs:90-94`, `:176`).
-- Death events survive the dead citizen's store removal by carrying the name, and the SOCL edges
-  of a dead citizen persist (nothing removes edges on death; `SocialSystem` only skips `Dead` in
-  accrual, `:92`) — so "how did the survivor feel about the dead" is readable one tick after a
-  death (`HistorySystem.cs:92-97` documents the same-tick-removal hazard and its fix).
-- The five determinism pins and the ritual for moving them: `CLAUDE.md` "Determinism proof"
-  (scenario `00e0a2dadb8e5076`, tick-3000 `4be2e77864fb7409`, slice `c565a68b810f588d`, defs
-  defaults `5a471d12643b64f9`, defs rules-inclusive `3f23ce5bd40283c8`). The def-field ritual:
-  `content/core/SimDefs/README.def` "HANDOVER INVARIANT" (default + parser + checksum fold
-  appended at END + equivalence test, one commit).
-- The E2 charter this must mesh with: `docs/ECONOMY-PLAN.md:100-115` — *"Skills as new hashed
-  `Citizen` state (never an extension of the unhashed persona)"*; mood as the second yield/defect
-  modulator; *"the modulation is a pure function, never RNG."* And the governing principle doc:
-  `docs/design/perilune-automation-and-souls.md` §4.1 (*material, not cosmetic*; *mood mostly
-  emergent, never a meter you top up*) and §4.2 (*a mistake is a computed consequence, not luck*).
-- The display surface is deferred by owner decision: the Persona window seam,
-  `docs/design/perilune-console-retirement.plan.md` §1.5.4 (*"marked, not designed"*), and the
-  `CREW_INTERACTION` pin in `client/test/surface-boundary.test.js` (CLAUDE.md "ONE door" invariant).
-- Crew rosters this plan will differentiate: the grid ship's eight
-  (`sim/Sim.Gen/AuthoredShips.cs:982-994`, all `AutoWander=true`, idle ~67 % of a sim-day per the
-  CLAUDE.md snapshot — **idle time is the canvas most of this feature paints on**) and the slice's
-  eight authored personas (`AuthoredShips.cs:452-673`).
+**The cautionary precedent: hashed personality-adjacent state nothing reads.** `Citizen.Health`,
+`Citizen.Morale`, `Citizen.Archetype` — saved and hashed (`Simulation.cs:415-417`), never written
+or read by any system (`MECHANICS.md` §13.4); `CitizenMind.FollowingPlayer` (§13.3). The warrant
+rule (§9.4) exists because this repo has shipped this failure at least four times — and r1
+enforced the rule with process ("the integrator holds the merge"), which is the exact control
+that failed E0-4's WP-5. §9.4 mechanises it instead.
 
-### 0.2 Assumed (each is a review target)
+**The RNG topography of the wander — r1's assumption A-4 was FALSE.**
+- `CitizenSystem.cs:29` — `var rng = sim.Rng`: the idle wander draws from the **raw shared sim
+  stream**, not a fork. `PathService.cs:172-197` — `TryRandomWalkableTileNear` is a **fixed
+  three draws per attempt, up to 10 attempts** (3–30 draws per call), and its own warning
+  comment (`:187-193`) records that reshaping this stream moves the slice golden *as a bare
+  hash mismatch indistinguishable from an unrelated change*. `Rng.State` folds directly into
+  `StateHash` (`Simulation.cs:370-374`). Consequences drawn in §4.1 (the PSYC stream is a WP-A
+  decision, not a WP-F retrofit). Verified mitigating fact worth claiming: **`CitizenSystem` is
+  the only raw in-tick `sim.Rng` consumer** — every other in-tick user forks (SocialSystem
+  `:85`, PersonaGenerator `:176`) — so the blast radius is contained to the wander.
 
-- **A-1.** Registering one new `IStatefulSystem` whose seed folds unconditionally moves exactly
-  the three StateHash pins (scenario, tick-3000, slice) and no golden else — by the W0-6 precedent
-  (`CLAUDE.md`, four empty economy systems, *"Exactly 2 goldens moved each fold"* plus the
-  scenario hash). **Predicted, not measured.** The deck-wander lane's lesson (*two pins held
-  against expectation — so measure, never predict*) applies; WP-A measures.
-- **A-2.** Float arithmetic in the new system is deterministic on the project's targets to the
-  same degree the existing float state (`Mood`, opinions, needs) already relies on. No new class
-  of float use is introduced (no transcendental functions on the tick path; decay uses a
-  precomputed per-pass multiplier, §4.4).
-- **A-3.** A host/worldgen boot step can reach the registered `PsycheSystem` instance the same way
-  hosts reach other stack systems today (the `IJobSource.cs:74-76` lazy-resolution pattern, or the
-  hoist). If no by-type lookup helper exists, the hoist alone suffices — `SystemStack` already
-  demonstrates it — at the cost of one more integrator-reviewed line.
-- **A-4.** The wander RNG consumed in `CitizenSystem.cs:74` is the per-concern forked stream E0-1
-  introduced (not `sim.Rng` directly), so the extraversion re-draw (§3.2-E) perturbs no other
-  system's stream. Verify at implementation; if it is `sim.Rng`, the seam forks its own stream
-  first.
-- **A-5.** Effect sizes proposed in §3.2 (the ±20–35 % bands) are **starting values for
-  measurement**, not tuned truth. Every one is a def field; the acceptance protocol (§9.3) is what
-  decides them.
+**Seams verified as in r1** (unchanged, spot-checked again): recruit gate `JobSystem.cs:140`;
+per-pass refusal stamps `JobSystem.cs:229` + `IJobSource.cs:125-132`; self-serve threshold
+`SustenanceSystem.cs:100,214,228` (`NeedThreshold` 0.5, `SimDefs.cs:569`); flee threshold
+`SafetySystem.cs:61` (`FleeSuffocation` 0.5, `SimDefs.cs:562`) — **and `:75`: the return-to-work
+level is `0.5f * fleeAt`, so modulating `fleeAt` moves BOTH the trip point and the rest point;
+§4.2-N and §3.2 own this coupling explicitly**; wander cadence `CitizenSystem.cs:72-74`; social
+gates `SocialSystem.cs:149-161`; the hoisted-instance pattern `SystemStack.cs:22-24` + lazy
+by-type resolution `IJobSource.cs:74-76`; SYSS parallel-store save/hash without touching
+SaveWriter/Reader/`Simulation.StateHash` (`CitizenMemory.cs:222-231`, `Simulation.cs:385-390`);
+RNG-free authored construction (`PersonaSheet.cs:234-238`) and the boot-step seeding precedent
+(`:238-239`); the `CitizenEffect` whitelist (`CitizenEffects.cs:15-19`); the five pins and both
+rituals (`CLAUDE.md` "Determinism proof"; `README.def` "HANDOVER INVARIANT"); the E2 charter
+(`ECONOMY-PLAN.md:100-115`); the operator-model guardrails
+(`automation-and-souls.md` §4.1–4.2); the Persona seam (`console-retirement.plan.md` §1.5.4).
+
+**Lifecycle facts r1 missed (architecture review; verified here):**
+- `Simulation.AddCitizen` (`Simulation.cs:197-202`) has no hook — a runtime-spawned citizen
+  would have no psyche unless access is lazy.
+- `SaveReader.ReadSystemState` (`SaveReader.cs:160-173`) skips a chapter with no matching
+  system; conversely a pre-PSYC save never calls the new system's `RestoreState` — every citizen
+  from an old save has no psyche entry.
+- `NeedsSystem.Kill` removes the dead from the citizen store (`NeedsSystem.cs:205`); nothing
+  would remove a dead citizen's `PsycheState`, which is **hashed** state. §6.2 states the
+  lifecycle policy all three facts demand.
+
+**Client facts that bound what "visible" can mean (design review; verified here):**
+- Idle pawn labels lose to the de-clutter sweep: `overview-scene.js:454-478` marks colliding
+  *idle* labels `crowded`, and `styles.css:874-875` renders a crowded tag at **opacity 0**
+  (hover to reveal); only the current deck's crew render at all (`overview-scene.js:485`,
+  *"off-deck / fogged crew simply do not render"*). Crew who cluster — exactly what §5 makes
+  friends do — become anonymous at the moment the seam fires. §8.3 names the ~20 lines of
+  client work as a **dependency**, retracting r1's "no UI work".
+- The traits chips row hides when empty (`overview-view.js:586`) — the surface r1's word
+  projection would have blanked for ~42 % of generated crew (§2.2).
+- `DefsParser.cs` carries **117** value keys today (counted); r1's ~20 across six packages was
+  +17 % of the def surface in six defs-pin-moving commits. §7 batches them.
+
+### 0.2 The event-supply audit (new; the Tier-1 finding and its resolution)
+
+r1 designed seams and marks without asking **how often their triggering events occur on the ship
+the player actually plays**. The review did the arithmetic; this section adopts it, grounds it in
+measured numbers where they exist, and draws the design consequence. Frequencies are per crew per
+sim-hour on `--ship grid` unless noted; "review-estimate" values must be **re-measured by the
+owning WP before any tuning decision cites them** (A-6).
+
+| channel | frequency on grid | source | verdict |
+|---|---|---|---|
+| idle wander decisions | **high — the only high-bandwidth channel.** 51.07 % of the entire sim-day is idle crew walking (3 529 866 crew-ticks measured; 76 % of idle time) | `CLAUDE.md` snapshot (measured) | **the carrier.** Whatever this plan wants seen must ride this channel (§5) |
+| job completions (C-dawdle trigger) | ~0.5–3, **and only when the board is non-empty at completion** — on a ~75 %-idle ship the dawdle is otherwise absorbed by idle time invisibly | review-estimate | seam kept, r1's claim retracted (§4.2-C); guaranteed visibility rides §8, not the map alone |
+| self-serve threshold crossings (C's 2nd seam) | ~0.13 (hunger ~1/day + thirst ~2/day per crew, from the needs-rate defs) | derived from `SimDefs.cs` rates | below floor as a *watchable* seam; kept as a mealtime-ordering tell, claimed as nothing more |
+| flee onsets (N seam; NearDeath source) | **exactly 0** — 0 of 6 912 000 crew-ticks in `Flee` | `CLAUDE.md` (measured) | N seam and NearDeath are **latent on grid** by design of the ship, not dead code: they fire on hazard, and hazard is player-caused or future content (§3.2) |
+| deaths (Bereavement source) | 0 (8/8 alive every measured day) | `CLAUDE.md` (measured) | same verdict as flee |
+| arguments (A seam; Feud source) | **0, structurally**: gate needs opinion ≤ −20; grid opinion is monotone non-decreasing (§0.1) | code analysis | **unreachable until seeded.** §5.4 charters the grid social ignition (owner decision §12.2) |
+| bonds | high once co-located (slice: 2 611/day — saturating) | `MECHANICS.md` §13.7 (measured) | usable only after the §13.7 retune (§5.2 dependency) |
+
+**The audit rule this plan adopts, and its scope:** a **disposition seam** (an axis modulation)
+must produce, at authored axis spreads, on the order of **≥ 1 observable, attributable event per
+crew per sim-hour** on the standard ship — or it may ship only with its §8 surface carrying the
+visibility, and may never be *claimed* as map-visible. **Marks are deliberately exempted from the
+frequency floor** — a considered disagreement with the review, argued in §13.3: a mark is
+valuable *because* it is rare (rare-but-memorable is the register `automation-and-souls.md` §9
+demands); what a mark owes instead is a **reachability warrant** — a driven test proving a
+concrete path exists, on the standard surface or behind a named content dependency, on which the
+mark forms and its behavioural consequence fires (§9.4).
+
+**The design consequence, which reshaped this plan:** the only channel wide enough to carry
+character to a watching player is idle movement. The relationship-carrying wander (§5) is
+therefore not an enrichment of the E seam — **it is the load-bearing visibility mechanism of the
+whole feature** — and the §13.7 saturation retune graduates from confound to prerequisite.
+
+### 0.3 Psychological claims and their standing (new)
+
+r1 had categories for code-verified and engineering-assumed and none for psychological claims,
+at least four of which it made in the register of established fact. This table grades every
+claim the plan still relies on. "Design-depends" = the mechanism breaks if the claim is false;
+"colour" = the claim only motivates.
+
+| claim | standing | design-depends? |
+|---|---|---|
+| Big Five is the best-replicated descriptive taxonomy of adult personality variation | well-replicated | colour (it is the *prior*, §2) |
+| C ↔ industriousness/impulse control; N ↔ threat sensitivity/stress reactivity; E ↔ social approach; A ↔ interpersonal conflict | well-replicated directional findings | yes — the seams borrow these signs |
+| O ↔ workplace learning/training proficiency | **contested** — the classic finding is for training proficiency, confounded with *g*, and C predicts training success at least as well. r1's *"validated signs"* heading covered this mapping and overstated it; **retracted.** O's distinctive signature is novelty-seeking and breadth | was design-depends in r1 (O→E2 learning rate); r2 replaces that charter with breadth (§4.2-O) |
+| adult trait stability | **overstated in r1.** ~~r1: "axes are FIXED at generation — personality is stable … psychologically defensible (rank-order stability of Big Five in adults)"~~ — retracted as stated. Rank-order stability is high (r ≈ .5–.7 across decades) but is not fixity; mean-level change is systematic and lifelong; and bereavement, unemployment and trauma exposure show measurable Big Five change in large panel studies (SOEP). Fixed axes are a defensible *simplification*; r2 specifies the drift mechanism (§3.5) and hands the charter timing to the owner (§12.1) |
+| in isolated/confined/extreme environments, state trajectories dominate behavioural variance over trait variance; trait screening predicts poorly, state monitoring predicts well | replicated in the ICE literature | yes — one of the two arguments for the marks-first inversion |
+| resilience is the modal outcome after a potentially traumatic event | well-replicated | yes — §3.2 makes RaidTrauma a minority outcome, retracting r1's universal seeding |
+| grief resilience is predicted by C | **folk.** r1 gave high-C grief-damping as a payoff; the actual predictors are N and social support | retracted; C's grief-damping is removed (§3.4.3) |
+| introversion = social avoidance | **wrong.** Low E is lower approach motivation; avoidance is anxiety-adjacent or relationship-specific | retracted; the E ≤ 0 argmin branch is cut (§4.2-E) |
+| person–situation interactionism: strong situations flatten trait expression | well-replicated | yes — G-2, now scoped to survival (§4.3) |
+
+Also adopted from the governance lens: **the psychometric-vocabulary ban extends from UI to every
+external-facing artifact** — store copy, patch notes, prompts. "Big Five"/"OCEAN" are internal
+words (§10.2, §11 W-13).
+
+### 0.4 Assumed (each a review target)
+
+- **A-1.** One new unconditionally-folding `IStatefulSystem` moves exactly the three StateHash
+  pins, fold-only (W0-6 precedent). Predicted, not measured; WP-A measures all five.
+- **A-2.** No new class of float use (no transcendentals on tick paths; decay is a precomputed
+  per-pass multiplier).
+- **A-3.** Boot-step access to the registered `PsycheSystem` per the hoist / lazy-resolution
+  patterns (both verified as patterns; the accessor is implementation detail).
+- ~~**A-4** (r1: "the wander RNG … is the per-concern forked stream E0-1 introduced")~~ —
+  **FALSE, verified** (§0.1); no longer an assumption but a design input (§4.1).
+- **A-5.** Effect-size defaults are priors for measurement, not tuned truth — with the r2
+  correction that the *default direction* of error is now known: at this game's observation
+  bandwidth **the risk is invisibility, not caricature** (design review), so dispositional
+  defaults start loud and G-2 tightness is reserved for survival behaviours (§4.3).
+- **A-6 (new).** The review-estimated frequencies in §0.2 are correct within a factor of ~2;
+  WP-B re-measures before citing.
 
 ---
 
 ## 1. The central architectural fact, and the shape of the move
 
-The gap between the brief and the code is **not** "add more traits". Personality today lives
-entirely in the host-owned prose layer and feeds *what a crew member says* (dialogue prompts) and
-*what a tooltip shows* (roster traits) — and **nothing about what they do**. The brief asks for
-character that *acts*: history shaping present behaviour, incidents and relationships changing what
-a person does *now*. That state must therefore live where behaviour lives: in the deterministic,
-hashed, saved sim core, consumed by the systems that decide movement, work, safety, eating and
-arguing.
+Unchanged from r1 in substance: the gap between the brief and the code is **not** "add more
+traits" — personality today feeds what a crew member *says* and *shows*, nothing they *do*, so
+character must move into the deterministic, hashed, saved sim core, consumed by the systems that
+decide movement, work, safety, eating and arguing. And `Mood` must stay memoryless: history gets
+a **stateful input** to mood (marks → `MoodPressure`), never a stateful mood.
 
-Equally important is what must **not** move: `Mood` stays memoryless. Its contract
-(`NeedsSystem.cs:157-158`) is load-bearing — every consumer can trust that mood is a pure function
-of the present, recomputed at 1 Hz. A design about history must not quietly turn mood into a
-stateful accumulator; instead it gives mood a **stateful input**. History lives in a place designed
-to hold it (marks, §4), and mood reads it the same way it reads hunger: as one more term in a full
-recomputation.
-
-So the model is two layers plus a projection:
+What r2 adds to the fact: **the standard ship's social field is statically frozen** (§0.1 — no
+authored edges, monotone opinion, unreachable argument gate) **and its only wide observable
+channel is idle movement** (§0.2). So the move is not just prose→sim; it is prose→sim **plus
+igniting the social field the sim already owns, plus routing the result through the one channel
+a player actually watches.**
 
 ```
-PSYCHE AXES  (hashed, fixed at generation)  ──┐
-                                              ├── deterministic modulations at 7 named seams (§3, §5)
-MARKS        (hashed, event-written, decaying)┘        │
-                                                       ▼
-PROSE        (unhashed, host-owned: PersonaSheet, MEMS, Chronicle)
-             becomes a VIEW of the two layers above — narration, never authority
+MARKS        (hashed, event-written, event-modulated decay)   ── the ENGINE: history & incident
+OPINIONS     (hashed, SOCL — already shipped, needs ignition) ── the RELATIONSHIPS
+AXES         (hashed, generation-set, rare bounded drift)     ── the PRIOR: how events land,
+                                                                 how people move & choose
+        │ deterministic modulations at named seams (§4, §5)
+        ▼
+BEHAVIOUR    on the idle-movement channel + work/safety/social seams ── what the player watches
+        ▼
+PROSE        (unhashed, host-owned: PersonaSheet words, MEMS, Chronicle)
+             a VIEW of the layers above — narration, never authority, never numbers outbound
 ```
-
-The prose layer is not demoted — it is finally *grounded*. Today the twelve trait words are rolled
-independently of everything; after this plan they are derived from the axes, so the word the
-tooltip shows and the behaviour the map shows can never disagree.
 
 ---
 
-## 2. Position on Big Five — adopted as substrate, rejected as surface, bound by warrant
+## 2. Position on Big Five — substrate and prior, not surface, not engine
 
-The owner suggested Big Five; this section argues it rather than accepting it.
+### 2.1 The argument, revised
 
-### 2.1 What it buys here
+**Adopted, as in r1:** continuous variation (a 100-crew ship never repeats), a validated
+directional prior for exactly the decision points this sim has (§0.3 — with O's mapping
+downgraded honestly), and trait–state discipline (axes stable-with-rare-drift; history is
+marks).
 
-1. **Continuous variation.** The current trait pool draws 3 of 12 words; a 100-crew ship repeats
-   itself within the first two dozen. Five continuous axes give every generated crew member a
-   distinct disposition, cheaply (20 bytes), forever.
-2. **Principled coverage with validated signs.** Big Five is the best-replicated *descriptive*
-   taxonomy of adult personality variation. We use it exactly descriptively: as a **prior over
-   behavioural parameters** — the literature's directional claims (conscientiousness ↔
-   industriousness and impulse control; neuroticism ↔ threat sensitivity and stress reactivity;
-   extraversion ↔ social approach; agreeableness ↔ interpersonal conflict; openness ↔
-   exploration/learning) map one-to-one onto decision points this sim already has (job initiation,
-   need deferral, flee threshold, proximity seeking, argument gates, wander scope, and — at E2 —
-   learning rate). It is not asked to *generate* behaviour; it parameterises behaviour the sim
-   already generates.
-3. **Trait–state discipline for free.** The model was built to describe *stable* dispositions. That
-   maps cleanly onto the design split this plan needs anyway: axes are stable (fixed at
-   generation, §3.3), and everything the brief calls "history" and "incidents" is *state* — marks
-   (§4) — which is also the psychologically defensible reading (adult trait rank-order stability
-   is high; life events move states and specific behaviours far more than they move traits).
+**Demoted, against r1:** the axes are no longer the primary carrier of character.
+~~r1 §3.2-C: "this is the single most visible differentiator"~~ — the event-supply audit (§0.2)
+shows the disposition seams collectively supply at most a few attributable events per crew-hour,
+while the marks/relationship layer, once ignited, owns the high-bandwidth channel. The axes'
+honest jobs: (a) **disposing how events land** (N scales mark pressure; relationship tier scales
+bereavement), (b) **colouring the high-bandwidth channel** (E and O shape idle movement), (c)
+**generating coherent prose** (§2.2). The warrant rule survives and is mechanised (§9.4): every
+axis still must own consumers — it just no longer claims the headline.
 
-### 2.2 Where it fails alone, and the hybrid that follows
+**Rejected, as in r1:** Big Five as the player-facing surface. Five sliders read as "slightly
+more or less likely anyway"; players remember words and incidents. RimWorld's discrete traits
+are legible because each owns a visible behaviour; DF's continuous facets are deep and
+illegible. The surface is derived words, mark-derived state lines, and prediction lines (§8).
 
-A naive OCEAN→action mapping produces five sliders that all read as "slightly more or less likely
-to do the thing anyway" — invisible depth, which fails the project's thesis outright. Players
-remember **words and incidents**, not scalar vectors. RimWorld's discrete traits are legible
-because each owns a visible behaviour; Dwarf Fortress's continuous facets are deep and famously
-illegible. The two genre data points bracket the answer:
+**Not adopted:** facets, HEXACO, player-visible psychometric vocabulary anywhere (§0.3), and —
+pending the owner — axis drift (mechanism §3.5, timing §12.1).
 
-- **Axes are hashed truth** (continuous, generative, never player-facing as bare numbers).
-- **The surface is derived language and derived behaviour flags**: the existing twelve-word pool
-  becomes a deterministic projection of axis extremes (e.g. `meticulous` ⇔ C ≥ +0.6, `restless` ⇔
-  C ≤ −0.6, `garrulous` ⇔ E ≥ +0.6, `quiet…` speech ⇔ E ≤ −0.6, `haunted`/`cowardly` ⇔ N ≥ +0.6,
-  `unbending` ⇔ A ≤ −0.6, `stoic` ⇔ N ≤ −0.6 — full table in the WP), plus mark-derived state
-  lines ("Grieving — Tomas died two days ago") and prediction lines ("breaks for meals early";
-  "will not work deck 5").
-- **The axis-warrant rule (binding on every WP):** *an axis does not ship until at least one sim
-  system reads it and a player-visible behaviour differs because of it.* This is the direct lesson
-  of `Citizen.Health`/`Morale`/`Archetype` (§0.1): hashed state without a consumer is not depth,
-  it is a lie with a checksum. Openness has the weakest v1 warrant and is therefore scheduled
-  last and explicitly allowed to slip to E2 (§3.2-O) rather than shipping unread.
+### 2.2 The word projection, redesigned (r1's failed twice, independently)
 
-### 2.3 What is deliberately not adopted
+~~r1: word thresholds at |axis| ≥ 0.6 over the triangular roll~~ — **retracted; it fails
+arithmetically and expressively.** Arithmetic: P(|axis| ≥ 0.6) ≈ 0.16 per axis ⇒ ~0.8 expected
+words per generated crew member and **P(zero words) = 0.84⁵ ≈ 42 %** — four in ten crew would
+render an *empty* traits row on the shipped readout (`overview-view.js:586` hides it): a
+legibility regression delivered by the legibility feature, where today every crew member has
+exactly 3 words. Expressive: the r1 table made `stoic` and `haunted` contradictory — but
+**Volkov is authored with both** (`AuthoredShips.cs:511`), Okonkwo is `gentle` + `unbending`
+(`:459`), and both sheets are *truthful about people* — so r1's WP-G lint would have failed on
+shipped content and invited "fixing" the personas backwards. And five of the twelve pool words
+(`devout`, `superstitious`, `sardonic`, `wry`, arguably `gentle`) have no honest OCEAN mapping,
+so r1 §1's *"the word the tooltip shows and the behaviour the map shows can never disagree"* was
+false as stated.
 
-No facets, no HEXACO/Honesty-Humility, no axis drift over a campaign, no player-visible
-psychometric vocabulary ("your crew member is high in neuroticism" never appears in UI — the
-derived words carry it). And one epistemic line for the governance reviewer: **this is not a claim
-to simulate human psychology.** It is a claim to generate *legible, consistent characters* whose
-variation borrows the sign structure of a validated descriptive model. Determinism makes them
-predictable; predictability is the point (the player must be able to *know* a crew member), and it
-is also precisely what real personality is not.
+**The r2 projection — three word classes, five words always:**
+
+1. **Axis-words.** Every axis contributes exactly one word from a three-band split (low / mid /
+   high at ±0.33 — near-equal thirds under the triangular roll, so no empty rows; 3⁵ = 243
+   combinations, comparable variety to today's 220). The invariant: **every crew member always
+   renders five identity words, one per axis.** The table lives here in the plan (structure
+   fixed; final word choice is WP-G's one degree of freedom):
+
+   | axis | low | mid | high |
+   |---|---|---|---|
+   | O | routine-bound | practical | curious |
+   | C | easygoing | steady | meticulous |
+   | E | quiet | reserved | garrulous |
+   | A | unbending | fair-minded | gentle |
+   | N | stoic | level | jumpy |
+
+   `cowardly` is **removed** from every projection — a moral-judgement word bound to a trait the
+   design also prices economically (validity lens). `jumpy`/`wary` carry high N.
+2. **Mark-words.** `haunted` is not an axis-word — it is a **mark-word**, worn while a heavy
+   RaidTrauma/Bereavement mark is active. Volkov becomes representable *mechanically*: low-N
+   (`stoic`) **and** heavy RaidTrauma (`haunted`) — a man holding a great deal down. Mark-words
+   render beside the five axis-words while active (§8.1).
+3. **Free prose.** `devout`, `superstitious`, `sardonic`, `wry` project from nothing and say so —
+   flavour the generator may still roll, the lint ignores, and no system reads. This class exists
+   without embarrassment; pretending every word is mechanical was r1's overreach.
+
+**`SpeechStyle` is dropped from the projection entirely** (~~r1: "axis extremes also bias …
+`SpeechStyle` selection"~~): encoding "avoids eye contact" as low E is a contested, culturally
+variable marker, and it would land worst on the crew member the economy already scores lower.
+Speech stays free prose.
+
+WP-G's lint checks **axis-words only** (an authored sheet may not carry an axis-word from a band
+its authored axis contradicts) and is expected to pass shipped content unmodified.
 
 ---
 
-## 3. The model, layer 1: `PsycheState` axes
+## 3. The engine: marks — history and incident as state
 
-### 3.1 State, storage, save, hash
+### 3.1 What a mark is
 
-Per citizen, in a new parallel store owned by a new **`PsycheSystem : ISimSystem,
-IStatefulSystem`** (seed `'PSYC'`), mirroring the `CitizenMinds`/`SocialSystem` store patterns
-(list for deterministic iteration, dictionary for lookup only):
+One bounded, hashed record of something that happened to this person and still weighs on them:
+`{Kind, Deck, Subject, Tick, Weight}` (24 B). Numbers, never prose — MEMS keeps remembering in
+words for dialogue and the eulogy (`CitizenMemory.cs`); marks remember in weights for behaviour.
+*MEMS is what they say about it; PSYC is what it does to them.* Capacity 16 per citizen, fixed;
+eviction in §3.6.
 
-```
-sealed class PsycheState {
-    uint  CitizenId;
-    float O, C, E, A, N;          // fixed at generation; [-1, +1]; 0 = neutral
-    // -- marks (layer 2, §4) --
-    List<Mark> Marks;             // capacity 16, fixed; lowest-weight eviction
-    float PeakSuffocation;        // near-death tracker (§4.2), reset on recovery
-    sbyte PeakDeck;
-    // -- derived, recomputed each 1 Hz pass, hashed (they are read cross-system
-    //    with one-pass latency, so they are state, not scratch) --
-    float MoodPressure;           // Σ mark weight × kind mood-weight (× N gain)
-    long  NextWorkReadyTick;      // conscientiousness dawdle (§3.2-C)
-}
-struct Mark { byte Kind; sbyte Deck; uint Subject; long Tick; float Weight; }
-```
+### 3.2 v1 kinds — bound to events that exist, with reachability warrants
 
-- **Why floats:** `Mood`, opinions and needs are all `float` (`Citizen.cs:46-50`,
-  `OpinionEdge.Opinion`); axes in [−1, +1] match the house representation and multiply cleanly
-  against def scalars. Hash folds bit patterns via the existing `XxHash64.Combine(float)`.
-- **Why a parallel store and not fields on `Citizen`:** the `IStatefulSystem` route ships save +
-  hash with **zero** edits to `SaveWriter`/`SaveReader`/`Simulation.StateHash` (the MEMS precedent,
-  `CitizenMemory.cs:222-231`) — three spine files untouched. The one spine edit is the
-  `SystemStack` registration + hoist. E2's charter (*"skills as new hashed `Citizen` state"*,
-  `ECONOMY-PLAN.md:102`) is satisfied in spirit — hashed, saved, deterministic sim state, never an
-  extension of the unhashed persona — and the store is documented as migratable onto `Citizen` if
-  the integrator later prefers one CITZ chapter (an explicit reversibility note, not a hidden
-  fork of E2's plan).
-- **Checksum:** `'PSYC'` folds count, then per state: CitizenId, the five axis bit patterns,
-  PeakSuffocation, PeakDeck, MoodPressure, NextWorkReadyTick, Marks.Count, then per mark Kind,
-  Deck, Subject, Tick, Weight. Count-before-entries per the prefix-free fold doctrine
-  (`Simulation.cs:299-308`). No strings anywhere in the state — prose belongs to MEMS.
-- **Save:** SYSS chapter, `StateVersion => 1`, capture/restore field order mirrored 1:1, future
-  version skipped cleanly (the `DirectorSystem.cs:113-115` pattern). Round-trip test in the same
-  commit — the "add a field ⇒ save + hash + round-trip in the SAME commit" invariant applies to
-  every field above from day one.
-
-### 3.2 The seams — one axis, one owned behaviour, bounded
-
-Every modulation below obeys three global guardrails, each with its own test:
-
-- **G-1 Neutral is identity.** At axis value 0 and no marks, every multiplier is exactly 1.0 and
-  every shift exactly 0.0. A sim full of neutral psyches is behaviour-identical to a sim without
-  the system (§9.2's twin test). This is the property that lets the scenario and tick-3000 pins
-  hold through the behavioural WPs (their crew stay neutral) and makes every modulation auditable.
-- **G-2 The situation dominates.** Modulations are bounded shifts inside survivable bands; **no
-  axis or mark value may disable a survival behaviour** — flee still fires for everyone
-  (§3.2-N bounds), self-serve eating/drinking still fires for everyone (§3.2-C bounds), vacuum
-  kills everyone at the same rate. Personality tilts choices; physics settles arguments. (This is
-  also the psych-validity position: person–situation interactionism, with strong situations
-  flattening trait expression.)
-- **G-3 No dice.** `PsycheSystem` forks no RNG stream and rolls nothing. Every consequence is a
-  computed function of hashed state — `automation-and-souls.md` §4.2 verbatim. (The one existing
-  roll it *modulates* — SocialSystem's argument/bond chance — already has its own forked stream;
-  the modulation moves the threshold, not the dice.)
-
-| axis | seam (file:line today) | mechanism | the player sees |
+| kind | written when (verified sources) | reachability on the standard surface | initial weight |
 |---|---|---|---|
-| **C** conscientiousness | `JobSystem.cs:140` recruit gate | on job completion, `PsycheSystem` stamps `NextWorkReadyTick = now + dawdle`, where `dawdle = max(0, −C) × work_dawdle_max_s` (default 240 s at C=−1). **Deliberately one-sided:** today's job pickup is same-tick, so the identity point (C=0 ⇒ dawdle 0) *is* the shipped behaviour and there is nothing for C>0 to shorten — high C expresses through the second seam and grief resistance instead (§4.6). The gate becomes `IsRecruitableForWork && psyche.WantsWork(citizen)` — one integrator-reviewed line | after finishing a job the diligent crew member walks straight to the next; the lax one wanders a few minutes first. On a ship that is idle 67 % of the day, this is the single most visible differentiator |
-| **C** (2nd) | `SustenanceSystem.cs:214,228` | effective self-serve threshold = `NeedThreshold + C × selfserve_shift_max`, clamped to [0.3, 0.85] (0.85 keeps a wide margin below starvation — hunger is mood-only until 1.0 and eating resets it, `NeedsSystem.cs:20-27`) | who drops work for lunch first, who finishes the weld hungry |
-| **N** neuroticism | `SafetySystem.cs:61` | `fleeAt = FleeSuffocation × (1 − N × flee_shift_max)`, `flee_shift_max ≤ 0.3` so the band is [0.35, 0.65] around the shipped 0.5 — always well under lethal 1.0 with travel margin (the SafetySystem doc's own safety argument still holds at 0.65) | when air goes bad, the anxious one runs first; the steady one works longest — and *both always run* |
-| **N** (2nd) | `NeedsSystem.cs:163-167` | the mark term (§4.5) enters mood as `− MoodPressure`, and `MoodPressure` is computed with gain `(1 + N × stress_gain_max)` — the same loss wounds the sensitive crew member more deeply and for longer | mood divergence after a shared incident; downstream, who ends up in arguments |
-| **E** extraversion | `CitizenSystem.cs:74` wander target | **at E = 0: exactly one draw, taken as-is — today's code path and today's RNG-stream consumption, so a neutral crew member's wander trajectory is bit-identical** (G-1 includes the stream). At E ≠ 0: K draws (K = `wander_social_draws`, a fixed count whenever the branch is taken, for boundedness), each scored by same-room living-crew occupancy; pick argmax (E>0) / argmin (E<0); ties → first drawn. Deck confinement untouched (the Z pin is a literal and stays one) | who idles in the mess with the others, who idles alone at the far end of the spine |
-| **E** (2nd) | `SocialSystem.cs:101-102` | per-direction familiarize accrual × `(1 + E_from × familiarize_gain_max)` | the extravert's RELATIONS web fills in faster |
-| **A** agreeableness | `SocialSystem.cs:149-161` | argument chance × `(1 − min(A_a,A_b) × argument_gate_gain_max)`; bond chance × `(1 + max-based symmetric form)`. The mood/opinion gates are untouched — A modulates *propensity inside an open gate*, and note honestly: with fatigue-saturated mood the argument mood gate is permanently open for all crew today (§0.1), so A is the *effective* differentiator until beds exist | over days, who feuds and who bonds — directly visible on the RELATIONS web |
-| **O** openness | `CitizenSystem` wander radius; **charter: E2** | v1 (weak, stated as weak): wander radius × `(1 + O × wander_radius_gain_max)`, X/Y only. The **real** consumer is chartered, not built: E2 skill acquisition rate × `(1 + O × learning_gain)` — written into this plan as a contract line for the E2 lane | rovers vs homebodies now; fast cross-trainers at E2 |
+| **Bereavement** | `CitizenDiedEvent` read next tick; weight from the survivor's SOCL tier toward the dead at death (`GetRelation`, `SocialSystem.cs:74-75`; edges persist past death, §0.1) | latent until a death — player-caused or future content; warrant: a driven kill fixture on a grid-derived map (§9.4) | tier-scaled: `bereavement_weight_{closefriend,friend,other}` (1.0 / 0.6 / 0.15) |
+| **NearDeath** | 1 Hz peak tracker (`PeakSuffocation`/`PeakDeck`); mark written on recovery below **the def value** `FleeSuffocation / 2` — the def, **not** the per-citizen modulated value, so a high-N crew member's earlier flee does not also redefine what counted as a close call (this confines the `SafetySystem.cs:75` coupling, §0.1, to the flee behaviour itself; named per review) — after a peak ≥ `near_death_threshold` (0.8) | latent until hazard; same warrant class as Bereavement | `near_death_weight` (0.8) |
+| **Feud** | `RelationshipChangedEvent` with `NewRel == Enemy` (`SocialSystem.cs:123-129`); removed (not decayed) if the pair later leaves Enemy | **unreachable today** (§0.1 monotone opinion) — reachable only after §5.4's grid social ignition, which is this kind's named dependency, pinned by a red-until-then negative control (§9.4) | `feud_weight` (0.5) |
+| **RaidTrauma** | seeded at generation/authoring **as a minority outcome**. ~~r1: "every survivor of the Lien raid carries one … floor > 0 (the backstory is permanent)"~~ — **retracted**: resilience is the modal post-trauma outcome (§0.3); a universal mark differentiates nobody (the `Citizen.Morale` lesson in emotional clothing); and it priced trauma into every crew member's throughput permanently with no exit. r2: a def-tunable minority (`raid_trauma_incidence`, default 0.3) of generated crew, rolled on the persona fork; authored per-crew on slice/grid; **wide weight spread [0.3, 1.0] and a recovery path** (§3.3); a small floor **only** for the heaviest carriers. The *event* stays universal where it lives today — `RaidBackstory` prose and MEMS | authored / rolled |
 
-**Why the C seam is not a distance bias in job selection:** the dispatcher's argmin is a threaded
-running minimum with a strict-`<` contract and registration-order tie-breaks
-(`JobSystem.cs:234-247`, `IJobSource.cs:115-124`); injecting per-citizen distance scaling there
-corrupts the filtering of every source after the biased one and is exactly the class of change the
-dispatcher exists to refuse. The recruit-gate delay achieves the visible behaviour ("slow to start
-work") without touching arbitration. The mark-driven deck veto (§4.6) likewise uses the sanctioned
-stamp-and-skip path, not distance.
+**Reserved, defined, never written in v1:** Betrayal, Rescue, PromiseBroken. No mechanics emit
+them — note `PromiseBrokenEvent` already exists as an **unpublished struct**
+(`SimEvents.cs:93`), so that mark kind waits on a *publisher*, not a schema. A v1 code path
+writing any reserved kind is a defect (W-9).
 
-### 3.3 Generation, authoring, and the prose projection
+### 3.3 Decay — event-modulated, with a residue (r1's timer-only decay retracted twice over)
 
-- **Generated crew:** axes rolled at worldgen from a **forked** stream (`Fork(PSYC_STREAM +
-  citizen.Id)` — the `PersonaGenerator.CreateMind` pattern, `PersonaSheet.cs:90-94`, `:176`),
-  advancing `sim.Rng` never. Distribution: sum of two uniform draws, scaled to [−1,1] (cheap
-  triangular — mild central tendency so extremes are notable, not the norm; no Gaussian machinery).
-- **Authored crew:** `CitizenSpec` (`Sim.Gen`) gains five optional axis fields; `AuthoredShips`
-  sets them for the slice and grid eight, RNG-free (the `CreateAuthoredMind` contract,
-  `PersonaSheet.cs:234-238`). Grid crew are authored to *spread* — the standard play ship is the
-  legibility acceptance rig (§9.3). Scenario-host `AddCitizen` crew stay neutral (identity).
-- **The prose projection:** `PersonaGenerator.CreateMind` stops rolling `Traits` independently and
-  derives them from the citizen's axes via the fixed table (§2.2); axis extremes also bias (not
-  determine) `SpeechStyle` selection. Authored personas are checked the other way: a lint-style
-  test asserts each slice crew member's authored trait words are *consistent* with their authored
-  axes under the same table (a "meticulous" sheet over C=−0.8 fails the build). Fears/Values stay
-  pooled prose. All of this is host/mind-layer work — unhashed, pin-free — and it is what makes
-  the tooltip stop lying.
-- **The LLM boundary is unchanged:** backends still reach the sim only through the validated
-  `CitizenEffect` whitelist (`CitizenEffects.cs:15-19` — *"anything not representable here is
-  unrepresentable"*), and **this plan adds no effect kind**. Axes and marks are never writable by
-  any narrative source; the dialogue layer may *read* them (prompt colour: "you are grieving") the
-  same way it reads mood today. Fully playable offline, by construction.
+- **Slow timer baseline**, per-kind half-life defs. ~~r1: one `mark_half_life_hours` (default
+  48 h) for all kinds~~ — retracted: at 48 h the deck-aversion threshold (0.4 against an initial
+  0.8) is crossed in **one sim-day**, so the one player-facing decision the plan created expired
+  before the player had to solve it (design review). Behaviourally-consuming kinds get long
+  half-lives (`neardeath_half_life_hours` 96, `bereavement_half_life_hours` 96); pressure-only
+  kinds may fade faster (`feud_half_life_hours` 48).
+- **Events accelerate healing.** A `BondEvent` involving the marked citizen applies a relief
+  step (`Weight ×= grief_event_relief`, default 0.9) — grief eases *because something good
+  happened with someone*, which is a story; a timer is a statistic (design review, adopted).
+  Deterministic: the bus is deterministic and the step is a pure multiply. **The slow timer is
+  retained alongside** — argued in §13.3: purely event-gated grief on an isolated crew member
+  never heals and taxes them forever; "never got over it because nothing good ever happened" is
+  a story the *long* timer still tells, just slowly.
+- **Expiry leaves a residue.** ~~r1: "A mark below `mark_epsilon` with floor 0 is removed"~~ —
+  retracted as stated: that deletes exactly the record `VISION.md`'s "a person you can know"
+  names as the payload. r2: on expiry, `Weight = 0` and the entry **persists as an inert
+  residue** — no behaviour, no mood, still hashed, still shown (*"Lost Novak, D14"* stays in the
+  Persona window, §8.1). Eviction (§3.6) consumes residues first; MEMS/Chronicle remain the
+  unbounded archive of record.
+
+### 3.4 What marks do
+
+1. **Mood pressure** — `MoodPressure = Σ Weight × mood_weight[Kind] × (1 + N × stress_gain_max)`,
+   entering `NeedsSystem`'s full recompute as one subtracted term (memoryless contract kept, doc
+   comment updated same commit; §6). Now **visible**, because §8.2 finally gives per-crew mood a
+   surface.
+2. **Deck aversion (NearDeath)** — while Weight ≥ `deck_aversion_min_weight` (0.4), auto-work
+   targeting the marked deck is refused via stamp-and-skip in each source's `Select`
+   (contract-legal, §0.1). The three bounds stand: never vetoes Flee, never Eat/Drink, never the
+   citizen's current deck; player orders override. At the 96 h half-life the aversion lasts ~4
+   sim-days — long enough that the player must actually route around a person, or override them
+   and watch the mood cost.
+3. **Grief slows the hand (Bereavement)** — an **additive** dawdle term
+   (`Weight × grief_dawdle_s`), independent of C. ~~r1: "conscientiousness could damp it:
+   × (1 − C × grief_damp)"~~ — **retracted**: C-predicts-grief-resilience is folk (§0.3). What
+   *does* modulate grief here, mechanically and defensibly: N (via the pressure gain) and social
+   support (via §3.3's bond-relief — the crew member with friends heals faster). That is a
+   better sentence than the one it replaces.
+4. **Narration** — `MarkFormedEvent`/`MarkFadedEvent`; HistorySystem lines ("Okonjo has not been
+   the same since Novak died"); MEMS consumption stays a contract request
+   (`CitizenMemory.cs:219-221`); mark-words in the identity row (§2.2).
+
+### 3.5 Drift — history that makes you who you are (mechanism specified; charter = owner call)
+
+~~r1 §10: "Axis drift (personality change over a campaign) — not designed; axes are fixed."~~
+Withdrawn as a refusal; the reviews are right that without it, history is a transient
+perturbation on a fixed person — close to the opposite of the brief's *"personal history that
+shapes the way the person thinks and acts now"*. The mechanism, fully specified so the owner's
+decision is about *timing, not shape*:
+
+- When a mark **retires to residue** (§3.3) after having spent ≥ `drift_dwell_days` above
+  `drift_min_weight`, it deposits a **permanent axis delta** per a small (kind → axis) def
+  table — e.g. Bereavement → N +0.05; NearDeath → N +0.05; Feud → A −0.04; a future Rescue →
+  A +0.04. Deposits are **bounded twice**: per event (≤ 0.05) and per life — a per-axis monotone
+  `DriftSpent` tracker (5 × float, hashed) caps lifetime |drift| at `drift_lifetime_cap` (0.3).
+- Deterministic, event-sourced, rare — a person changed by their life, by a bounded amount, in
+  the direction the life pushed. Identity holds (no marks ⇒ no drift). Cost if chartered:
+  +20 B/citizen, ~6 def rows, one WP.
+- **Owner question §12.1** — with this plan's recommendation to charter it now: it is the
+  cheapest honest answer to the brief's second clause, and deferring re-opens the §0.3 stability
+  overstatement this revision just retracted.
+
+### 3.6 Bounds and eviction
+
+Capacity 16, fixed at store creation. Eviction: residues first (oldest first), then the
+lowest-weight live mark unless the newcomer is lower (the `CitizenMemory.Add` policy, `:37-44`).
+Order-preserving removal (order is hashed), O(16), off the hot path.
 
 ---
 
-## 4. The model, layer 2: marks — history that acts
+## 4. The prior: axes and their seams
 
-### 4.1 What a mark is
+### 4.1 The PSYC stream — decided in WP-A, because A-4 was false
 
-A **mark** is one bounded, hashed record of something that happened to this person and still
-weighs on them: `{Kind, Deck, Subject, Tick, Weight}`. Marks are the durable state the brief's
-"personal history" and "incidents" clauses require, and they are deliberately **numbers, not
-prose**: the MEMS episodic memory (`CitizenMemory.cs`) keeps remembering in words for dialogue and
-the eulogy; marks remember in weights for behaviour. One event may write both — through the same
-event bus, into two stores with two jobs. *MEMS is what they say about it; PSYC is what it does to
-them.*
+The wander consumes the **raw shared sim stream** in fixed 3-draw packets (§0.1). Consequences,
+and the design that absorbs them:
 
-### 4.2 v1 kinds — strictly bound to events and state that exist
+- **Any psyche-driven change in draw *count* on `sim.Rng` moves `StateHash` with no field
+  changed** (`Rng.State` folds, `Simulation.cs:370-374`) and de-aligns every downstream
+  consumer — seed-paired measurement legs (§9.5) and the neutral-identity property both die.
+  Therefore: **WP-A forks a dedicated PSYC stream** (`sim.Rng.Fork(PSYC_STREAM)` once; state
+  saved + hashed exactly like SocialSystem's roll stream, `SocialSystem.cs:246-256`), and
+  **every psyche-added draw comes from it; no psyche code path ever draws from `sim.Rng`.** The
+  base wander draw stays on `sim.Rng` untouched — a neutral ship's `sim.Rng` trajectory is
+  bit-identical to today's.
+- ~~r1 §3.2-E: "At E ≠ 0: K draws (… a fixed count whenever the branch is taken)"~~ — the shape
+  survives; the *cost* was wrong by an order of magnitude: each candidate is a
+  `TryRandomWalkableTileNear` call consuming **3–30 draws** (`PathService.cs:185-196`), so the
+  E/mark-avoidance branch costs 3K–30K draws — from the PSYC stream, where that is a cost note,
+  not a hash hazard. K (`wander_social_draws`) defaults small (4).
+- **Retrofit is forbidden:** deciding the stream at WP-F would move the slice pin twice and void
+  every measurement taken between (architecture review, adopted verbatim). WP-A lands the fork
+  even though WP-A itself draws from it only in tests.
+- Honest scope of identity after the fix: an **all-neutral ship is trajectory-identical** to
+  today, stream included. On a *mixed* ship, a non-neutral crew member's differently-chosen tile
+  changes the world every other crew member reacts to — divergence **through the world is the
+  feature working**; divergence through accidental stream-reshuffling is the bug the fork
+  removes. W-1 is reworded accordingly.
 
-| kind | written when (all verified sources) | Subject / Deck | initial weight |
+### 4.2 The seams — two-sided, with signals specified
+
+r1's payoff structure was morally priced: three of five axes were pure-dominance, and with mood
+wired toward throughput the shipped game would have computed *"high-C, low-N, high-A people are
+better people, and here is the number"* (validity review). r2 gives every axis a real benefit
+**and** a real cost, and specifies the trigger signal where r1 hand-waved one.
+
+| axis | benefit | cost | signal & notes |
 |---|---|---|---|
-| **Bereavement** | `CitizenDiedEvent` read next tick; weight from the survivor's SOCL tier toward the dead at death — `GetRelation` (`SocialSystem.cs:74-75`; edges persist past death, §0.1) | dead cid / 0 | `bereavement_weight_{closefriend,friend,other}` (defaults 1.0 / 0.6 / 0.15 — a stranger's death is a ship-wide MEMS memory already, `CitizenMemory.cs:206-207`; the *mark* is for losing someone who mattered) |
-| **NearDeath** | `PsycheSystem`'s 1 Hz pass tracks `PeakSuffocation`/`PeakDeck`; when Suffocation recovers below `FleeSuffocation/2` (SafetySystem's own return-to-work level) after a peak ≥ `near_death_threshold` (default 0.8), write and reset | 0 / peak deck | `near_death_weight` (default 0.8) |
-| **Feud** | `RelationshipChangedEvent` with `NewRel == Enemy` (`SocialSystem.cs:123-129`) | other cid / 0 | `feud_weight` (default 0.5); removed (not decayed) if the pair later leaves Enemy |
-| **RaidTrauma** | seeded at generation/authoring — every survivor of the Lien raid carries one, weight rolled from the persona fork (generated) or authored (slice/grid) | 0 / 0 | authored; floor > 0 (the backstory is permanent) |
+| **C** | prompt work start (no dawdle); **E2 contract: personal maintenance quality** — the charter line *"a stranger restores to 0.85, the specialist to 1.0"* (`ECONOMY-PLAN.md:104-105`) gains "…scaled by C" | defers self-serve (works hungrier → deeper mood dips); **perseveration chartered**: slower to abandon an invalid job, resists re-tasking — chartered beside the assignment verb (§5.5), because no re-tasking verb exists yet to resist | **the completion signal (r1 left it unspecified; review flagged it):** there is no `JobCompletedEvent` (§0.1). r2: each job source's *completion site* calls `psyche.NotifyCompleted(citizen)` — one line each at `DigJobSource.cs:135-145`, `BuildJobSource.cs:405-409`, `DeconstructJobSource.cs:180-188`, HaulJobSource's delivery completion, and the `CraftingSystem`/`MaintenanceSystem` completion paths (~6 sites). This **naturally excludes abandonment** — `CancelJob`/flee paths never call it, so a crew member who fled lethal air collects no dawdle — and needs **no** new hashed `PrevJobKind` byte and no event. Alternatives rejected: edge-detecting `JobKind→None` conflates completion with abandonment (`SafetySystem.cs:96` cancels on flee); a `Citizen` flag touches the CITZ fold. Dawdle = `max(0, −C) × work_dawdle_max_s` (one-sided; identity at C ≥ 0 *is* today's same-tick pickup) + the grief term (§3.4.3). Frequency and the retracted headline: §0.2 |
+| **N** | flees early — and wherever air actually fails, early flee is **correct** (`SafetySystem` exists because fleeing is right); lower NearDeath exposure | higher mark pressure (grieves harder), more argument exposure via lower mood | `fleeAt = FleeSuffocation × (1 − N × flee_shift_max)`, band **[0.35, 0.80]** — widened *upward* from r1's [0.35, 0.65] so the trade is real: a **low-N** crew member's late flee, deep in a bad section, can genuinely be the one that kills them (G-2 as re-scoped: survival behaviours always *fire*; success is not guaranteed). ~~r1: "the anxious one runs first; the steady one works longest — and both always run"~~ — retracted as quietly valorising low N; both still always *run*, but the steady one runs later on thinner margin, and the plan says so. The `:75` coupling is owned: modulated `fleeAt` also moves the rest point — high-N crew flee earlier **and** rest longer, coherent and stated. Owner tone question §12.3 |
+| **E** | E > 0 biases idle co-location toward people — with §5.1, toward *liked* people — and familiarize gain `(1 + E⁺ × familiarize_gain_max)`: the social map fills | high E (with high A) **lingers** (§5.3): sociability has a throughput price; low E "gets more done alone" becomes mechanically true | ~~r1: "score … pick argmax(E>0)/argmin(E<0)"~~ — **the argmin branch is retracted**: introversion-as-avoidance encodes the wrong construct (§0.3). **E ≤ 0 takes the unbiased draw** (today's exact code path and stream). Avoidance exists — emitted by Feud marks (§5.1), where it belongs and is legible ("she avoids *him*", not "she avoids people") |
+| **A** | fewer arguments, more bonds inside open gates (`SocialSystem.cs:149-161` scaling); heals faster socially (more bond-relief events, §3.3) | high A lingers with friends (§5.3) and its opinion-weighted wander over-concentrates on liked company. **Low A buys**: no linger, and the §5.1 feud-avoidance term is scaled by `(1 + A)/2` — the disagreeable walk right past their enemy and take the nearby job the agreeable would shun | the review's "takes the job nobody wants" lands on mark-avoidance, without inventing a mood-contagion system that doesn't exist |
+| **O** | idle range: wander radius × `(1 + O × wander_radius_gain_max)` (X/Y only; the deck-Z literal untouchable, `SimDefs.cs:273-281`); **E2 contract re-pointed: breadth, not rate** — O biases *which* skills accrue (variety / cross-training) | roams far — longer walk back when work appears (a real, measurable recruitment-latency cost); the homebody is on the spot | ~~r1: "openness's strong consumer is E2 skill acquisition (learning-rate multiplier)"~~ — **retracted**, the weakest mapping of the five (§0.3); the review is right that r1 had O's two seams backwards — wander breadth is the *good* one. **Kept in v1**, a considered partial rejection of "cut O entirely" (§13.3; owner may overrule, §12.4) |
 
-**What the brief names that has NO sim event yet — stated, not smuggled:** *betrayal* and *rescue*
-have no mechanical source (no combat, no rescue verb, no promise-breaking signal — the latter is
-already a known deferral, `CitizenMemory.cs:211-213`). Their `MarkKind` values are **reserved in
-the enum and not written by v1**. They arrive when a system can emit them (raiders, the
-promise-window contract request), and reserving the ids now is what keeps the save format stable
-then. A reviewer should treat any v1 code path that *writes* them as a defect.
+### 4.3 Guardrails, re-scoped
 
-### 4.3 Bounds
+- **G-1 Neutral is identity — trajectory and stream.** At axis 0 / no marks every formula is
+  identity **and no psyche code path consumes a `sim.Rng` draw** (§4.1), so an all-neutral
+  ship's trajectory, stream included, is bit-identical. Asserted by the twin test and the
+  all-neutral leg (§9.5).
+- **G-2 The situation dominates — scoped to survival.** ~~r1 applied G-2's band-tightness to
+  every modulation~~ — retracted: at this game's observation bandwidth (8 pawns, 810-tile decks,
+  3 px bars, surname pills) **the risk is invisibility, not caricature** (design review;
+  RimWorld's loud, frankly caricatured traits are the genre proof that rich surrounding story
+  absorbs magnitude). r2: survival behaviours (flee, eat, drink) always fire for everyone and
+  keep tight bands — though *success* within them is not guaranteed (§4.2-N) — while
+  **dispositional** behaviours (dawdle, linger, range, co-location) default loud and are tuned
+  *down* against measurement, never up from timidity.
+- **G-3 No dice.** `PsycheSystem` computes, never rolls; its one stream (§4.1) serves *sampling*
+  (candidate tiles), never outcomes; every consequence is a computed function of hashed state
+  (`automation-and-souls.md` §4.2).
 
-Capacity 16 per citizen, fixed; on overflow the lowest-weight mark is evicted unless the newcomer
-is the lowest (the `CitizenMemory.Add` policy, `:37-44`). At 24 bytes a mark, the whole mark store
-for a 200-crew ship is < 80 KB. Unbounded history is unhashable and unaffordable; 16 weighted,
-decaying slots is a *character*, not an archive — the archive is MEMS and the Chronicle.
+### 4.4 Generation, authoring, projection
 
-### 4.4 Decay
-
-Per 1 Hz pass: `Weight *= decay_per_pass`, where `decay_per_pass` is precomputed from
-`mark_half_life_hours` (default 48 h — matching the MEMS recency half-life of 2 sim-days,
-`CitizenMemory.cs:30`) once per tick from defs (parallel-sim safety: read each pass like
-`NeedsSystem` reads its defs, `NeedsSystem.cs:78`). Per-kind floors: `bereavement_floor_closefriend`
-(default 0.15) and the RaidTrauma floor — grief for a close friend never fully leaves; it becomes
-a quiet permanent term, which is both honest and cheap. A mark below `mark_epsilon` with floor 0 is
-removed (swap-remove is forbidden — order is hashed; remove-at preserving order, off the tick hot
-path and O(16)).
-
-### 4.5 Marks → mood: the memoryless contract, kept
-
-`PsycheSystem`'s 1 Hz pass recomputes `MoodPressure = Σ Weight × mood_weight[Kind] ×
-(1 + N × stress_gain_max)` per citizen. `NeedsSystem.cs:163-167` gains one term:
-
-```
-citizen.Mood = MoodBase − …existing four terms… − psyche.MoodPressure(citizen)   // 0 when absent
-```
-
-Mood remains **fully recomputed every pass from current state** — `MoodPressure` is current state
-(the durable thing is the mark, not the mood). The contract sentence at `NeedsSystem.cs:157-158`
-stays true and its doc comment is updated to name the new input in the same commit. Latency: one
-1 Hz pass (the Director-hoist convention, `DirectorSystem.cs:38-39`); `PsycheSystem` registers
-**between `SocialSystem` and `ExplorationSystem`** (§6), so NeedsSystem reads last pass's pressure.
-Downstream, this is how history reaches the economy **through the one sanctioned channel and no
-other**: mark → mood → `ShipMetrics.Morale` → Director tension → `WearPressure`
-(`DirectorSystem.cs:41-46`). This plan opens no second private channel into the economy; the
-behavioural seams act on *labour supply through visible behaviour* (a person walking, resting,
-refusing), which is the operator-model spirit — and at E2 the operator's yield function consumes
-`Mood`, which marks already feed.
-
-### 4.6 Marks → behaviour: the two v1 consequences
-
-1. **Deck aversion (NearDeath).** While a NearDeath mark's weight ≥ `deck_aversion_min_weight`
-   (default 0.4), the citizen refuses auto-work whose `JobTarget.Z` equals the mark's deck: each
-   `IJobSource.Select` calls a shared static `PsycheVeto.Blocks(psyche, citizen, pos)` where it
-   already checks backoffs, stamping what it skips — per-pass scratch stamps, contract-legal
-   (`JobSystem.cs:229`, `IJobSource.cs:125-132`). Bounds, all three load-bearing:
-   the veto never applies to `Flee` (SafetySystem doesn't dispatch through sources anyway),
-   never to Eat/Drink (SustenanceSystem doesn't either — verified seam list §0.1), and never to
-   the citizen's **current** deck (a person cannot be trapped by their own fear). A player
-   `MoveCitizenCommand` overrides it — orders are orders; what the player cannot do is make the
-   auto-dispatcher send them back. The job a fearful citizen refuses stays on the board for
-   everyone else — no livelock, just visible, explicable labour allocation: *"Sato won't go back
-   to deck 5."* It decays away as the mark does.
-2. **Grief slows the hand (Bereavement).** Active Bereavement weight adds its own dawdle term:
-   `dawdle += Weight × grief_dawdle_s × (1 − C × grief_damp)` — **additive**, not a multiplier on
-   the C-dawdle, so grief visibly slows *everyone* (a high-C crew member's base dawdle is zero,
-   §3.2-C, and a multiplier would make their grief invisible); conscientiousness damps it rather
-   than erasing it. Identity holds: no mark ⇒ no term. A grieving crew member takes longer to
-   return to work, scaled by how much the dead person mattered *to them* (the SOCL tier at death).
-   This is the brief's third clause closing the loop: **a current relationship changes how an
-   incident lands, and the incident changes present behaviour.**
-
-### 4.7 Marks → narration
-
-`PsycheSystem` publishes `MarkFormedEvent {CitizenId, Kind, Subject, Weight}` (and
-`MarkFadedEvent` when a floor-less mark expires). Consumers in this plan: `HistorySystem` adds one
-templated line per formation ("Okonjo has not been the same since Novak died") — `HistorySystem` is
-not a spine file and already owns the event→line pattern. MEMS consumption (an episodic memory per
-mark) is filed as a **contract request**, not done here, because MemorySystem's importances are
-integrator-gated consts (`CitizenMemory.cs:219-221`). The eulogy and Chronicle get mark-aware prose
-for free through HistorySystem's entries.
+As r1: axes rolled at worldgen on a forked stream (`Fork(PSYC_STREAM + id)`, the
+`PersonaGenerator` pattern, advancing `sim.Rng` never), sum-of-two-uniforms triangular in
+[−1, 1]; authored `CitizenSpec` axes for slice/grid, RNG-free; scenario `AddCitizen` crew
+neutral. Plus r2: RaidTrauma minority incidence (§3.2), the word projection (§2.2), and the grid
+eight's axes designed together with their §5.4 relationships so the standard ship's cast is a
+*cast* (pairings proposed in WP-F's charter; owner-approved, §12.2).
 
 ---
 
-## 5. Incidents and current relationships acting NOW — the assembled loops
+## 5. Relationships as behaviour — the carrier channel
 
-Reading §3 and §4 together, the brief's three clauses become five closed, watchable loops:
+r1 gestured at relationships (a bereavement coefficient, a gate scalar) and directed **no
+behaviour at any specific person** — both reviews' sharpest structural criticism, and the
+event-supply audit says the fix must ride idle movement. This section is r2's centrepiece.
 
-1. **Disposition → daily texture.** C/E/O shape the idle 67 % of the grid ship's day: who starts
-   work instantly, who lingers, who idles in company, who roams far. No event needed; visible in
-   the first watched hour.
-2. **Disposition → social structure.** A and E shape the SOCL web's growth and conflict rate; over
-   days the RELATIONS view shows *this* crew's particular web, not a generic one.
-3. **Relationship × incident → history.** A death writes Bereavement scaled by the survivor's
-   actual relationship tier at that moment. Eight crew get eight different marks from one event —
-   the difference IS the relationship.
-4. **History → present behaviour.** Marks push mood (through the memoryless recompute), slow the
-   grieving, and keep the nearly-killed off the deck that nearly killed them — each with a
-   one-line, player-legible explanation the Persona window can show.
-5. **History → economy, through the one door.** Mark pressure → mood → Morale → Director →
-   `WearPressure` today; mood → operator yield at E2. No new channel.
+### 5.1 Opinion-weighted co-location (the load-bearing seam)
 
-### 5.3 The fatigue confound, named
+The §4.2-E candidate scoring weighs **who**, not **how many**: for E > 0, candidate tile score =
+Σ over living co-located crew of `w(opinion(me→them))` (`w` positive, increasing, def-scaled),
+**minus** a feud-avoidance term for any occupant who is the Subject of my active Feud mark,
+scaled by `(1 + A)/2` (§4.2-A) — mark-driven and E-independent, so avoidance reads as *about a
+person*. E ≤ 0 crew take the unbiased draw; feud-avoidance still applies to them via one
+post-draw PSYC-stream re-draw, so "won't share a room with him" holds for introverts too.
 
-`docs/MECHANICS.md` §13.4: fatigue saturates for everyone at ~16 h and never recovers, flooring
-mood at ≤ −5 permanently. Two consequences this plan owns rather than hides: (a) mood-mediated
-differentiation is compressed until a fatigue reducer exists (beds are inert furniture today), so
-v1's *visible* differentiation deliberately rides behaviour seams (dawdle, flee, wander, veto)
-more than mood; (b) the argument gate's mood condition is already permanently open for all crew,
-so the A-axis modulation is measurable immediately (§9.3). The plan does **not** fix fatigue — out
-of scope, already a §13 known gap — but any reviewer measuring mood spreads must control for the
-saturated floor.
+This single term converts the wander channel — order of 10² decisions per crew per sim-hour
+(from the measured 51 % walking share; WP-F re-measures the count) — into a live rendering of
+the opinion graph. *"Okonjo keeps ending up wherever Novak is, and Sato eats alone at the far
+end of the spine"* is a sentence a player says out loud; it names two people and needs no panel,
+tooltip or text.
 
----
+### 5.2 The saturation prerequisite (blocking, named)
 
-## 6. The seams in tick order
+`MECHANICS.md` §13.7, measured: every authored edge at its ±100 clamp within 24 h, strangers at
+≈ +8, 2 611 bonds/day. **A graph pinned at the clamp weights nothing** — §5.1 over a saturated
+graph renders uniform mush by day 2. This lane therefore carries a **social-decay retune** as a
+prerequisite def change (candidates: `bond_chance_per_pass` down, `DecayPerHour` up, familiarize
+shaped; def-only, so defs pins + slice golden move; exact values are WP-F's measured
+deliverable, with §13.7's own numbers as the before-leg). Graduated from r1's unnamed confound
+to a chartered dependency: **if the retune is refused, §5.1 must not ship**, and the plan says
+so rather than shipping a seam that decays into noise.
 
-`SystemStack.CreateDefault` (`SystemStack.cs:20-67`), one hoisted instance, registration between
-`SocialSystem` and `ExplorationSystem`:
+### 5.3 Lingering (the sociability price)
 
-```
-var psyche = new PsycheSystem();                    // hoisted (Director precedent, :22-24)
-...
-new CitizenSystem(psyche),        // reads: E wander bias, O radius scale (prev-pass state)
-new JobSystem(psyche),            // reads: WantsWork gate (:140) + PsycheVeto via sources
-new SustenanceSystem(psyche),     // reads: C self-serve shift
-...
-new NeedsSystem(psyche),          // reads: MoodPressure (prev pass) in the mood recompute
-new SafetySystem(psyche),         // reads: N flee shift
-new SocialSystem(psyche),         // reads: E familiarize gain, A gate gains
-psyche,                           // ← ticks HERE: consumes events (deaths, relationship
-                                  //   changes) published up-stack this tick readable now;
-                                  //   reads this tick's settled Suffocation (NeedsSystem
-                                  //   already ran); recomputes MoodPressure/decay at 1 Hz;
-                                  //   IntervalTicks = 1 for the event reads (bus is
-                                  //   double-buffered — HistorySystem.cs:72-75), decay and
-                                  //   derived-state work gated to the 1 Hz boundary
-new ExplorationSystem(), ...
-```
+An idle crew member sharing a room with positive-opinion company extends idle dwell
+(`IdleCooldown × (1 + linger_gain × (E⁺ + A⁺)/2 × mean w(opinion))`, bounded ×3, no extra
+draws). Friends cluster and *stay*, visibly — and it costs recruitment latency, which is
+§4.2-E/A's cost column made real. Identity at neutral.
 
-Every consumer takes the instance as an **optional constructor parameter defaulting to null** and
-is exactly identity when absent (the "inert, not throw, when the system it needs is absent"
-convention, `IJobSource.cs:76`) — so every existing test that builds partial stacks is untouched,
-and the null-psyche path *is* the G-1 identity leg. All consumers read **previous-pass** derived
-state; one second of latency on a disposition is imperceptible and buys freedom from ordering
-fights. Registration position is load-bearing for the SYSS fold order and is therefore fixed here,
-in the plan, not chosen by the implementing lane (`SystemStack.cs:47-49` precedent).
+### 5.4 The grid ship's social ignition (content; owner-gated)
 
-**Spine inventory for the whole plan:** `SystemStack.cs` (registration + hoist + consumer
-params) — one integrator-reviewed package touch. `Simulation.cs`, save chapters, `Commands`,
-`GlyphColor`, `WireFormat`, `CitizenEffect` set: **untouched** (WireFormat only if a later
-Persona-window lane wants a `psyche` channel — not this plan). `JobSystem.cs` is integrator-owned
-by file doc and gets the one-line gate change in the same integrator package.
+The standard eight get **authored relationships including at least one genuinely negative pair**
+(opinion ≤ −40, comfortably inside the −20 argument ceiling) and a minority RaidTrauma spread
+(2–3 of 8, varied weights) — otherwise Feud is unreachable (§0.1), arguments never fire, and the
+marks layer is inert exactly where players look. A *feel* change to the flagship ship: **owner
+decision §12.2**, recommendation yes — the authored-web machinery is already proven
+(`AuthoredShips.cs:690-702`), and the grid ship is currently a cast with no play.
+
+### 5.5 The player's verb (named, not built)
+
+Watching plus overriding a veto is observation, not decision — and `automation-and-souls.md`
+§3.1 requires features to *add* decisions. The verb this substrate exists to enable is
+**assignment** (RimWorld's priorities grid is the genre's trait-legibility engine; `RoleNow` is
+cosmetic today, `MECHANICS.md` §13.5). Assignment consumes everything here: C (who starts), O
+(who cross-trains), Feud (who cannot crew a station together — the operator model's own §4
+example), deck aversion (who refuses the deck), E2 skills. **Not built in this lane**; named as
+the destination the way O names E2, so no WP optimises against it. Owner ack §12.5.
 
 ---
 
-## 7. Costs, stated honestly
+## 6. The seams in tick order — corrected
 
-- **Per-citizen bytes (hashed state):** axes 20 + peak tracker 5 + derived 12 + marks ≤ 16 × 24 =
-  384 → **≈ 421 B/citizen** hashed and saved; 8 crew ≈ 3.4 KB, a 200-crew ship ≈ 84 KB. The MEMS
-  store already carries ~120 prose entries per minded citizen; PSYC is small beside it.
-- **Per-tick work:** every tick — event span reads (usually empty). Per 1 Hz pass — O(citizens ×
-  marks) float multiplies (8 × 16 on the slice), the mood-pressure sums, and the dawdle stamps.
-  Zero steady-state allocation: fixed-capacity mark lists, struct entries, no dictionary
-  iteration, no LINQ; a mark *formation* allocates only if the list grows past its prebuilt
-  capacity, which it cannot (capacity 16 built at store creation).
-- **StateChecksum cost:** ~(10 + 5 × marks) Combines per citizen ≈ 90 worst-case — noise against
-  the measured 14,657 device-name Combines already in the fold (`Simulation.cs:341-345`), and
-  `StateHash` is not a tick path (`:278`).
-- **Def fields:** one new `[psyche]` scalar section, **~20 fields** (the §3.2/§4 named knobs:
-  9 axis scalars, ~11 mark/decay/veto scalars). Each ships under the four-part one-commit ritual
-  (`README.def` "HANDOVER INVARIANT"), appended to the checksum fold — so **both defs pins move
-  with each def-adding WP**, and the WP table says which.
-- **Pins, predicted (measure per WP, never quote the prediction):** WP-A moves scenario +
-  tick-3000 + slice (unconditional `'PSYC'` fold; A-1) and neither defs pin (no fields yet).
-  Behavioural WPs move the defs pins (new fields) and the **slice** golden (authored non-neutral
-  axes + AutoWander crew); scenario and tick-3000 are *predicted* to hold — scenario crew are
-  neutral `AddCitizen` crew, Perilune's two are neutral and `HoldPosition = true`
-  (`AuthoredShips.cs:170-171`) — but the deck-wander lane held two pins against expectation for
-  two *different* reasons, so each WP measures all five and records why each moved or held.
+Registration (one hoisted instance, between `SocialSystem` and `ExplorationSystem`; consumers
+take an optional ctor param defaulting null = identity):
 
----
+~~r1 §6: "ticks HERE: consumes events (deaths, relationship changes) published up-stack this
+tick readable now"~~ — **FALSE and retracted.** `EventBus.Read<T>()` returns the **previous**
+tick's buffer (`EventBus.cs:30`; one swap per tick). What registration position actually buys:
+(a) `PsycheSystem` reads **this** tick's settled `Suffocation` (NeedsSystem has run — the peak
+tracker is honest), and (b) the SYSS fold position is fixed. Event-driven mark formation reads
+*yesterday's tick* like every other event consumer, and therefore lives in the **every-tick**
+half of the pass (`IntervalTicks => 1`; the 1 Hz-gated half does decay, pressure and dawdle
+bookkeeping) — the `HistorySystem.cs:72-75` lesson applied rather than re-learned. Consumers
+read previous-pass derived state (the Director-hoist convention, `DirectorSystem.cs:38-39`).
 
-## 8. What the Persona window must be able to show (not designed here)
+### 6.2 Lifecycle (new; closes the three §0.1 holes with one policy)
 
-The window itself is deferred by owner decision (`console-retirement.plan.md` §1.5.4; the
-`CREW_INTERACTION` pin). This plan's obligation is that the model be *showable* in one. Everything
-below is derivable from PSYC + SOCL + MEMS with **no further sim state**:
-
-1. **Identity line** — the derived trait words (the axis projection, §3.3), speech style, roles.
-2. **State line** — the top active marks rendered: *"Grieving Novak — two days"*, *"Shaken — a
-   close call on deck 5"*, with weight-driven emphasis and honest fading.
-3. **Prediction lines** — behaviour flags computed from the same functions the sim runs:
-   *"Slow to return to work"* (dawdle > threshold), *"Will not take work on deck 5"* (veto
-   active), *"Breaks for meals early"*, *"Flees danger early"*. These are the legibility payoff:
-   the player can check a prediction against the map within minutes.
-4. **Relationships** — the existing RELATIONS data (tiers, opinions), plus which marks reference
-   which people (Bereavement/Feud subjects).
-5. **History** — MEMS top-k memories and the Chronicle/eulogy lines, including the
-   mark-formation lines (§4.7).
-
-A future `psyche` wire channel (or roster extension) carries 1–3; it is a `WireFormat` change and
-belongs to the Persona-window lane, not this one.
+**Access is `GetOrCreate`-lazy, and a missing entry IS the neutral psyche.** Consequences, each
+tested: a runtime-`AddCitizen`d citizen behaves neutrally with zero setup (`Simulation.cs:
+197-202` needs no hook); a **pre-PSYC save** loads with an empty store and every citizen neutral
+— old saves keep playing and their characters simply *begin* accruing history from load (stated,
+not silent); allocation occurs on first non-neutral touch only, so §7 carries the qualifier
+honestly. **Death prunes:** the every-tick half consumes `CitizenDiedEvent` and removes the dead
+citizen's `PsycheState` (order-preserving) — it is hashed state, and an immortal roster of dead
+minds is both a leak and a hash-surface lie. The dead persist where they belong: in the
+survivors' marks, MEMS, the Chronicle and the eulogy.
 
 ---
 
-## 9. Work packages
+## 7. Costs, restated
 
-House format: disjoint file sets, one reviewable claim each, spine flags explicit, small enough
-for one Opus implementer and one independent reviewer to kill. Per the standing orchestration
-rules: each package in its own worktree, private log filenames, every named mutation physically
-applied and watched to go red.
+- **Hashed bytes/citizen:** axes 20 + peak tracker 5 + derived 12 + marks ≤ 384 = **≈ 421 B**;
+  **+20 B `DriftSpent` if §3.5 is chartered** (~441 B). 8 crew ≈ 3.4 KB; 200 crew ≈ 84–88 KB.
+- **Per-tick:** every tick — event span reads (usually empty) + completion notifications
+  (§4.2-C call sites). 1 Hz — O(citizens × marks) multiplies + the wander scoring's extra
+  PSYC-stream draws when a biased branch is taken (3–30 per candidate, K ≤ 4; bounded, measured
+  in WP-F). ~~r1: "Zero steady-state alloc"~~ — qualified: zero **after** first touch per
+  citizen; `GetOrCreate` allocates once per citizen ever (§6.2).
+- **Checksum:** ~(12 + 5 × marks) Combines/citizen + the PSYC stream state — noise against the
+  measured 14 657 device-name Combines (`Simulation.cs:341-345`); not a tick path (`:278`).
+- **Def fields: one `[psyche]` section, ~26 keys, landing in ONE defs commit (WP-B).**
+  ~~r1: def "tranches" across WP-B..G, each marked "spine? no"~~ — retracted as
+  self-contradictory (r1 itself cited `CitizenMemory.cs:219-221` calling the def registry
+  integrator-gated) and as six defs-pin moves in one lane against a 117-key surface
+  (`DefsParser.cs`, counted). r2: WP-B ships the whole section with later-seam scalars defaulted
+  inert (the W0-6 batch-the-fold precedent); later WPs *read* existing keys and move no defs
+  pin. The one exception: WP-F's §5.2 retune changes the *values* of existing social keys —
+  called out in §9.2.
+- **Pins per WP:** §9.2's last column — predictions to be measured, never quoted as results
+  (A-1, W-11).
 
-| WP | what | files (disjoint) | reviewable claim | spine? | pins (measure!) |
-|---|---|---|---|---|---|
-| **WP-A** | `PsycheSystem` + store + save/hash/round-trip + registration + hoist + null-param consumers (all identity) + generation fork (axes rolled, nothing read yet) | `sim/Sim.Core/Citizens/PsycheSystem.cs` (new); `sim/Sim.Core/SystemStack.cs`; one-line optional ctor params in the 6 consumer systems; `tests/…/PsycheStateTests.cs` (new) | save/load round-trips byte-identically; `'PSYC'` folds; **twin test: a stack with neutral PsycheSystem vs without it — every `Citizen` field identical over 3 000 ticks** (G-1); axis roll advances `sim.Rng` by zero draws | **yes** (`SystemStack`) | scenario + tick-3000 + slice (fold-only, predicted); defs pins hold |
-| **WP-B** | the C seam: dawdle + self-serve shift + `[psyche]` defs (first tranche) + slice/grid authored axes | `PsycheSystem.cs`†; `JobSystem.cs` (the one gate line — integrator); `SustenanceSystem.cs`; `SimDefs.cs`/`DefsParser.cs` (def ritual); `AuthoredShips.cs` (CitizenSpec axes); tests | on the slice with authored C-spread, per-citizen idle share spreads measurably (§9.3-M1) and the all-neutral leg is byte-identical to WP-A; identity at axis 0 holds *by construction* (one-sided/shift forms, §3.2), asserted per seam — def defaults may be non-zero | **yes** (integrator gate line; defs are spine-adjacent) | slice + both defs move; scenario/tick-3000 predicted hold |
-| **WP-C** | the N seam: flee shift + stress gain | `PsycheSystem.cs`†; `SafetySystem.cs`; `NeedsSystem.cs` (the one mood term + doc-comment update, same commit); defs tranche; tests incl. a **bounds test: N=±1 never disables flee and never exceeds the [0.35, 0.65] band** (G-2) | flee onset ticks differ by authored N in a bad-air fixture; identical at N=0 | no | slice + defs move |
-| **WP-D** | marks: formation (Bereavement/NearDeath/Feud/RaidTrauma), decay, floors, eviction, `MoodPressure`, `MarkFormedEvent` → HistorySystem line | `PsycheSystem.cs`†; `HistorySystem.cs`; events file; defs tranche; tests | a death writes tier-scaled marks to survivors (driven: befriend, kill, assert weights); decay halves on schedule; cap evicts lowest; **reserved kinds are never written** (§4.2) | no | slice + defs move |
-| **WP-E** | marks → behaviour: deck veto (`PsycheVeto` + the four `Select` call sites) + grief dawdle gain | `PsycheSystem.cs`†; `Jobs/PsycheVeto.cs` (new); one-line calls in `DigJobSource.cs`/`HaulJobSource.cs`/`BuildJobSource.cs`/`DeconstructJobSource.cs`; tests | a marked citizen never auto-takes marked-deck work while others do (driven both ways); the three veto bounds (§4.6) each have a test whose mutation bites; no dispatcher throw (stamping proven under exhaustion) | no | slice + defs move |
-| **WP-F** | the E + A social seams + E wander bias | `PsycheSystem.cs`†; `SocialSystem.cs`; `CitizenSystem.cs`; defs tranche; tests | argument/bond counts over 3 sim-days differ by authored A pairing (§9.3-M3); extravert idles co-located more than introvert (measured room-share); neutral leg identical | no | slice + defs move |
-| **WP-G** | the prose projection: traits derived from axes; authored-consistency lint; O wander scale (the weak seam, labelled weak) + the E2 contract note in `ECONOMY-PLAN.md` | `PersonaSheet.cs` (generator only); `AuthoredShips.cs`†; `CitizenSystem.cs`†; `docs/ECONOMY-PLAN.md`; tests | generated trait words are a pure function of axes; every slice sheet passes the consistency lint; O=±1 changes wander spread | no | slice + defs move (O field); mind-layer parts pin-free |
-| **WP-H** | docs + re-pin: `MECHANICS.md` (new § + §13 updates — including striking the "no sim system reads a trait" sentence this plan makes false), `CLAUDE.md` pins table, `HANDOVER.md`, memory | docs only, integrator on main | every quoted number re-measured on the merged tree | re-pin commit | — |
+---
 
-† sequential on the shared file; {WP-C, WP-D} may run in parallel after WP-B only if `PsycheSystem.cs`
-is pre-split (formation vs modulation partials); default is the serial chain.
+## 8. The surface — v1 ships its own visibility (r1's deferral retracted)
 
-**Order and dependency reasoning:** A → B → C → D → E → F → G → H.
-- **A first, and it is deliberately *almost* a violation of its own axis-warrant rule:** it ships
-  axes nothing reads. It is tolerated for exactly one review cycle because (i) it is the
-  fold-only pin move, batched once (the W0-6 precedent), and (ii) the rule is enforced at the
-  *lane* level: **the lane may not merge to main until WP-B and WP-C are green** — the plan's
-  own acceptance says so, and the integrator holds the merge.
-- **B before C–F:** B carries the def-section scaffolding, the `CitizenSpec` authoring channel and
-  the first behavioural proof; every later seam reuses all three.
-- **D before E:** the veto consumes marks.
-- **G last:** the projection should describe axes that already act; deriving prose from inert
-  axes would re-create today's lie in a new form.
+~~r1 §10 item 8: "No new wire channel, no UI work — … v1's visibility is behaviour on the map
+plus HistorySystem lines."~~ **Retracted.** The review showed (a) the map channel under-delivers
+for half the seams (§0.2), (b) mood has literally no per-crew surface (§0.1), and (c) the one
+strong seam is undercut by label de-cluttering. Three cheap, in-scope fixes:
 
-### 9.2 The identity gate (runs in every WP)
+1. **Identity, state and prediction lines ride `roster.traits` — no wire shape change.** The
+   field is already a string array rendered as chips (`overview-view.js:580-586`). v1 ships:
+   five axis-words + active mark-words (§2.2) + **prediction chips** computed sim-side from the
+   same functions the behaviour runs (*"slow to start"*, *"won't work deck 5"*, *"flees
+   early"*, *"lingers with friends"*). W-12 already demanded the flags as proof of the words;
+   they now ship with each seam's own package. Chips are host-composed strings; the *numbers*
+   never cross the wire (W-13).
+2. **The CREW WATCH bar repoints to mood.** One host change: the roster's `morale` field emits
+   normalized `Mood` (the `ShipMetrics.cs:86` mapping, clamped) instead of the constant
+   `Citizen.Morale`. Eight always-visible per-crew bars stop being a shipped lie (`MECHANICS.md`
+   §13.4) and become the mark layer's ambient display — a bar dipping after a death IS the
+   history feature, visible from across the room. Wire field name unchanged; client untouched
+   for this item.
+3. **The label-collision dependency, named:** ~20 lines in `overview-scene.js`/`styles.css` so
+   clustered *idle* crew keep identity (crowded tags cycle visibility, or a dot+initial
+   fallback) — without it, §5.1 clusters friends and the de-clutter sweep
+   (`overview-scene.js:454-478`, `styles.css:874-875`) hides exactly who they are at the moment
+   the seam fires. Room-Zoom pawn identity, off-deck visibility and a deck indicator remain out
+   of scope and are listed in §10.8.
 
-Two legs, both driven: (1) the WP-A twin test (neutral system vs no system, field-identical
-citizens at tick 3 000); (2) from WP-B on, an **all-neutral occupancy leg** — `--ship slice
---days 1` with authored axes zeroed by a test hook must produce byte-identical occupancy tables
-and StateHash trajectory to the same build with the seam code paths compiled in and the shipped
-(non-zero) def scalars — identity must come from the axis-0/no-mark construction, not from
-zeroed defs. Any drift in a neutral leg is a G-1 violation and blocks the WP.
+The Persona window itself stays deferred (owner decision); r1 §8's showables list stands as its
+contract, now with residues (§3.3) guaranteeing *"Lost Novak, D14"* survives behavioural expiry.
 
-### 9.3 Acceptance measurements (the depth-that-surfaces gate)
+---
 
-- **M1 (C):** slice, 1 sim-day, authored C spread [−0.8 … +0.8]: per-citizen idle-`None` share
-  spread ≥ 5 pp between C extremes (idle is ~67 % of the day; a dawdle that does not move whole
-  percentage points is cosmetic — `automation-and-souls.md` §4.1). Expect the *ship* A1/occupancy
-  aggregate to move; that is the feature, and the A1 trap note applies: do not read A1 as the
-  success metric, read the per-citizen spread.
-- **M2 (N):** bad-air fixture: flee onset tick strictly ordered by N across three crew; all three
-  survive.
-- **M3 (A/E):** slice, 3 sim-days: argument events per low-A pair ≥ 2× the high-A pair count at
-  equal co-location (measured, seed-paired); extravert co-located idle share ≥ 1.5× introvert's.
-- **M4 (marks):** kill one slice crew member at a scripted tick; assert the CloseFriend survivor's
-  MoodPressure, dawdle and History line, and their decay curve at day boundaries.
-- **M5 (the legibility protocol, the one that matters):** grid ship, one observed sim-day, the
-  eight authored crew spread across the axes. A person given the axis sheet and the running game
-  — not the logs — matches **≥ 6 of 8** crew to their descriptions from behaviour alone. This is
-  a human gate, like the console-retirement play-through gate, and it is the project's thesis
-  ("a person you can know") made falsifiable.
+## 9. Work packages, gates, measurements
+
+### 9.1 The lane is SERIAL
+
+~~r1: "disjoint file sets" (and a parallel-safe set in the order note)~~ — retracted:
+`SimDefs`/`DefsParser`, `AuthoredShips`, `CitizenSystem` and the consumer ctors cross-cut the
+table (architecture review). One worktree, one serial chain; each package still carries one
+reviewable claim, one Opus implementer, one independent reviewer, private log filenames, every
+named mutation physically applied.
+
+### 9.2 The chain
+
+| WP | what | reviewable claim | spine? | pins (predict → measure) |
+|---|---|---|---|---|
+| **A** | store + save/hash/round-trip + registration + hoist + null-param consumers + **the PSYC stream fork** (§4.1) + generation + lifecycle (§6.2) | twin test (neutral system vs none: every `Citizen` field identical at tick 3 000 **and `sim.Rng.State` identical**); round-trip incl. a pre-PSYC save; death prunes; axis roll advances `sim.Rng` zero draws | **yes** (`SystemStack`) | scenario + tick-3000 + slice fold-only; defs hold |
+| **B** | the whole `[psyche]` def section (once, §7) + C seam (completion-site notifications, dawdle, self-serve shift) + slice/grid authored axes | per-axis differential test for C (§9.4); §0.2 completion frequency re-measured (A-6); abandonment never dawdles (flee fixture); all-neutral leg byte-identical | **yes** (defs; the `JobSystem.cs:140` gate line) | slice + BOTH defs move (the once); scenario/tick-3000 predicted hold |
+| **C** | N seam (flee band [0.35, 0.80] + stress gain), the `:75` coupling owned, prediction chips for C/N (§8.1) | flee onset strictly ordered by N; the late-flee-can-die case demonstrated in a deep-hazard fixture (and its survival twin at higher N); differential test N | no | slice moves |
+| **D** | marks: formation, decay (event-modulated + residue), pressure, `MarkFormedEvent` → History, RaidTrauma minority; **CREW WATCH mood repoint** (§8.2) | per-kind **fireability** tests (§9.4) incl. the Feud negative control; bond-relief accelerates decay (driven); residue persists at Weight 0; the morale bar varies (the constant-1.0 assertion inverted) | no | slice moves |
+| **D2** *(if §12.1 = now)* | drift deposits + `DriftSpent` caps | drift only on qualifying retirement; lifetime cap binds; identity with no marks | no | slice moves |
+| **E** | deck veto (`PsycheVeto` + 4 `Select` sites) + grief dawdle + veto prediction chip | veto fires/expires on the 96 h curve; the three bounds each mutation-tested; no dispatcher throw under exhaustion | no | slice moves |
+| **F** | **the §13.7 social-decay retune (prerequisite, measured against §13.7's own numbers)** + §5.1 opinion-weighted wander + feud avoidance + §5.3 lingering + E/A gate scaling + **grid social ignition** (§5.4, owner-gated) + the label fix (§8.3) | post-retune the slice web is unsaturated at day 3 (edges off-clamp, tiers still move); co-location tracks opinion (driven pairs); linger costs measurable recruitment latency; differential tests E/A | no | slice + BOTH defs move (retune of *existing* keys — the §7 exception) |
+| **G** | word projection (§2.2 table) + axis-word lint + O seams (v1 breadth; E2 breadth contract note in `ECONOMY-PLAN.md`) | five words always; lint passes shipped slice content unmodified (Volkov keeps `stoic` + `haunted`); differential test O | no | slice moves (O seam); prose parts pin-free |
+| **H** | docs + re-pin (`MECHANICS.md` incl. striking the now-false *"no sim system reads a trait"*, `CLAUDE.md`, `HANDOVER.md`, memory) | every quoted number re-measured on the merged tree | re-pin | — |
+
+### 9.4 The warrant, mechanised (r1's process gate retracted)
+
+~~r1: "the rule is enforced at the lane level: … the integrator holds the merge"~~ — retracted;
+that is the control that failed E0-4's WP-5. Three mechanised layers, each landing with the
+field it guards:
+
+1. **Per-axis differential test:** same seed, one crew member at +1 vs −1 on that axis alone,
+   assert a named `Citizen`-field trajectory divergence within N ticks. An unread axis cannot
+   pass it; a consumer *census* can (a discarded read) — hence trajectory, not census.
+2. **Per-mark fireability test:** a driven fixture (grid-derived where possible) in which the
+   mark forms **and its behavioural consequence fires** — plus, for Feud, a negative control
+   asserting it *cannot* fire on the unseeded grid ship, so §5.4's dependency is a red test,
+   not prose, until ignition lands.
+3. **Warrant scope = every hashed field this plan adds.** ~~r1 bound the warrant to axes
+   only~~ — which is exactly how three of four mark kinds nearly shipped unfireable. A hashed
+   field with no test in which its value changes an outcome is W-2.
+
+Evidence standard: **a named event a naive observer can point at**, not an aggregate spread —
+aggregates remain as instrumentation, never as proof of visibility.
+
+### 9.5 The observability gates (r1's M5 retracted)
+
+~~r1 §9.3-M5: "A person given the axis sheet and the running game … matches ≥ 6 of 8 crew"~~ —
+retracted: unachievable at v1 seam count (chance expectation ≈ 1; realistic ceiling 2–4),
+protocol-free (an informed subject has expectancy bias), no failure action — and identification
+is the wrong construct: the thesis is *"a person you can know"* (`VISION.md`), and knowing is
+**prediction**, not recognition.
+
+- **Tier 1 (blocks the WP; mechanical):** per-seam **event-level** separation on seed-paired
+  legs — e.g. *"across ≥ N observed completion events with a non-empty board, the C = +0.8 crew
+  member started sooner than the C = −0.8 one in ≥ X % of cases"*; *"across ≥ N wander
+  settlements, the E = +0.8 crew member co-located with liked crew ≥ X pp more often"*.
+  Thresholds set per WP from the loud-default priors (A-5), reported with N.
+- **Tier 2 (blocks the LANE at merge; human):** a **naive** observer — has not read this plan,
+  recorded in the protocol — watches the grid ship and answers **forced-choice predictions
+  registered before observation** (*"the next job appears on deck 1: does Sato or Vega reach it
+  first?"*, *"a death just occurred: whose bar drops furthest?"*), scored against chance at
+  stated N and p (≥ 20 questions, binomial p < 0.05). **Failing Tier 2 blocks the merge.** That
+  sentence is the gate.
+- The identity legs run in every WP: the twin test, and the all-neutral occupancy leg (axes
+  zeroed by test hook, shipped non-zero defs, byte-identical trajectory **and** `sim.Rng`
+  stream — identity from construction, never from zeroed defs).
 
 ---
 
 ## 10. Honest limits, and what is deliberately not designed
 
-1. **The Persona window** — deferred by owner decision; §8 is the contract, not the design.
-2. **Skills and the operator yield function** — E2's, untouched; this plan writes the O→learning
-   and mood→yield contract lines into E2's charter and stops there.
-3. **Betrayal, rescue, broken promises** as mark sources — no emitting mechanics exist; kinds
-   reserved, unwritten (§4.2).
-4. **Axis drift** (personality change over a campaign) — not designed; axes are fixed. If ever
-   wanted, it is a new design decision, not a tuning knob.
-5. **The fatigue confound** (§5.3) — named, controlled for in measurement, not fixed here.
-6. **Mood stays a linear sum** — no diminishing returns, no interaction terms beyond the N gain;
-   the formula's shape is NeedsSystem's, this plan only adds a term.
-7. **`Faction`/`Health`/`Morale`/`Archetype`** stay dead — this plan does not adopt or repair the
-   raider-groundwork fields; it only cites them as the warning.
-8. **No new wire channel, no UI work** — the modern surfaces show nothing new until the
-   Persona-window lane; v1's visibility is *behaviour on the map* plus HistorySystem lines, which
-   the Chronicle and eulogy already surface.
-9. **Effect sizes are priors** (A-5) — every band in §3.2 is a def default awaiting M1–M5; the
-   plan commits to the *mechanisms* and the *bounds*, not the numbers.
-10. **Crew-scale ceiling untested** — the pass is O(n × marks) and the social pass is already
-    O(n²); nothing here worsens the asymptotics, but no 200-crew measurement exists and none is
-    claimed.
+1. **The conversation surface is stood down and stays down — an explicit non-goal.** No work
+   package in this plan touches it. Every mention of "the dialogue layer" in this document
+   describes the **opt-in integration surface** (`console-retirement.plan.md` §1.5.5), not a
+   shipping deliverable; the shipping build has no reachable free-text conversation (owner
+   decision, §1.5 there). r1 used the live present tense and sanctioned prompt enrichment
+   without this frame; corrected here and enforced by W-13.
+2. **The liability surface grows, and the mitigation is structural.** After this plan the sim
+   holds a stable machine-readable psychological profile per crew member — five dimensions, a
+   bereavement weight naming a dead crewmate, a trauma weight, a feud record naming a person.
+   Two named exposures: it makes the stood-down conversation feature cheaper to rebuild (a
+   pressure; unnamed pressures are how stand-downs erode), and a *quantified* profile invites
+   the reading that the product administers a psychometric instrument. Mitigations: **the
+   prompt-assembly layer may read only the derived WORDS (§2.2), never axis or mark numbers**
+   (W-13); psychometric vocabulary stays out of every external artifact (§0.3); and this
+   paragraph exists so the pressure cannot erode the stand-down silently.
+3. **The Persona window** — deferred (owner); §8's showables are its contract.
+4. **Skills / operator yield** — E2's; this plan adds two contract lines (C → maintenance
+   quality, O → breadth) and stops.
+5. ~~r1 §5 loop 5: "History → economy, through the one door … Mark pressure → mood → Morale →
+   Director → WearPressure today"~~ — **withdrawn as a claim of significance.** Traced
+   honestly: 8 moods → arithmetic mean → 0.4-weighted clamped tension → a [1, 1.35] wear
+   multiplier, over a mood already floored ≤ −5 by saturating fatigue — a whisper, not a
+   channel. The *architecture* stands (marks → mood → the one sanctioned path, no second
+   channel); the **economic significance is deferred to E2 in words**, where mood becomes an
+   operator yield input.
+6. **Betrayal / Rescue / PromiseBroken marks** — reserved, unwritten, awaiting publishers
+   (§3.2; `PromiseBrokenEvent` exists unpublished).
+7. **The fatigue confound** — named (§0.1), controlled for in measurement, not fixed here.
+8. **Room-Zoom pawn identity, off-deck crew visibility, a deck indicator** — real §8.3-adjacent
+   gaps, out of scope, listed so nobody meets them as surprises.
+9. **Crew-scale ceiling untested** (the O(n²) social pass pre-exists; nothing here worsens
+   asymptotics; no 200-crew claim is made).
+10. **Effect sizes are priors** (A-5), with the loud-default direction now stated.
 
 ---
 
-## 11. Wrong if — the ways an implementer could satisfy the letter and betray the plan
+## 11. Wrong if — revised
 
-- **W-1 Neutral is not identity.** Any modulation whose value at axis 0 / no marks differs from
-  shipped behaviour. Two subtle forms both count: a formula whose neutral point is not the shipped
-  behaviour (e.g. a symmetric `(1−C)/2 × max` dawdle, which is max/2 at C=0 — the reason §3.2-C is
-  the one-sided `max(0,−C)` form), and a seam that changes **RNG-stream consumption** at neutral
-  (e.g. always drawing K wander candidates — the reason §3.2-E branches before the extra draws).
-  Identity must hold in the *trajectory*, streams included, not merely in the formula's output.
-  The identity legs (§9.2) exist to catch exactly this; deleting or weakening them to make a leg
-  pass is the betrayal.
-- **W-2 An axis ships unread.** Hashed axes with no consumer = `Citizen.Health` again. The lane
-  gate (§9 order note) is the enforcement; an implementer who lands WP-A and stalls has shipped
-  the defect this plan was written against.
-- **W-3 Cosmetic magnitudes — or unbounded ones.** A dawdle of 3 seconds nobody can see satisfies
-  every unit test and is theatre (`automation-and-souls.md` §4.1); a flee shift that can reach
-  1.0 disables survival (G-2). Both directions are wrong; M1–M3 and the bounds tests are the
-  fence, and both must have mutations that bite.
-- **W-4 Personality in the arbitration.** Implementing C or the veto as a per-citizen distance
-  bias inside the argmin (`JobSystem.cs:234-247`) breaks the strict-`<` threading contract for
-  every source downstream. Sanctioned forms only: the recruit gate, and stamp-and-skip in
-  `Select`.
-- **W-5 Dice in the psyche.** Any `SimRng` use inside `PsycheSystem.Tick` or its helpers.
-  Generation forks at worldgen; the tick path computes.
-- **W-6 Prose in the hash.** A mark that carries a string, or an unbounded mark list. Prose
-  belongs to MEMS; PSYC folds numbers only.
-- **W-7 The LLM writes the psyche.** Any new `CitizenEffect` kind touching axes or marks, or any
-  host path that does. Narration reads; it never writes.
-- **W-8 Mood grows memory.** Writing history into `Citizen.Mood` directly, or making the mood
-  recompute read anything but current-pass/previous-pass state. The contract comment at
-  `NeedsSystem.cs:157-158` must remain true and updated in the same commit as the new term.
-- **W-9 Reserved mark kinds written.** v1 code emitting Betrayal/Rescue/BrokenPromise (§4.2).
-- **W-10 Guard tests that cannot bite.** Raw-text grepping without comment-stripping, mutations
-  described but never applied, `git checkout` in a mutation loop, unquoted flag variables in
-  measurement scripts — the four repo traps (`CLAUDE.md` "Traps"), each of which has already
-  produced green-confident-wrong results in this repo. Every WP review applies its named
-  mutations physically.
-- **W-11 Predicted pins quoted as measured.** Every WP measures all five pins and records the
-  *reason* each moved or held; "predicted hold" appearing in a commit message as "held" without a
-  run is the deck-wander lane's lesson ignored.
-- **W-12 Numbers instead of character.** Surfacing the axes as five bare sliders with no derived
-  words and no prediction lines satisfies "showable" and fails legibility; §8's items 1–3 are the
-  contract. Conversely, hiding the *behaviour flags* while showing prose reduces the sim to
-  tooltip depth — the flags are the proof the words are true.
+- **W-1 Neutral is not identity — trajectory and stream.** Any modulation whose value at
+  axis 0 / no marks differs from shipped behaviour, **or any psyche code path that consumes a
+  `sim.Rng` draw** (the fork is total, §4.1). r1's subtle forms (a symmetric formula's non-zero
+  neutral point; changed draw counts) both remain live examples; the second is now structurally
+  prevented, not merely forbidden.
+- **W-2 A hashed field ships unwarranted** — scope widened from axes to **every** hashed field
+  (§9.4.3). The `Citizen.Health` precedent.
+- **W-3 Cosmetic or unbounded magnitudes** — with the r2 asymmetry: dispositional seams tuned
+  timid (invisible) violate this exactly as survival seams tuned loose do. §4.3 states which
+  direction each class errs toward.
+- **W-4 Personality in the arbitration** — recruit gate and stamp-and-skip only; never the
+  argmin (`JobSystem.cs:234-247`).
+- **W-5 Dice in the psyche** — sampling draws from the PSYC stream are not outcomes; an outcome
+  roll anywhere is the violation.
+- **W-6 Prose in the hash** — marks are numbers; residues too.
+- **W-7 The LLM writes the psyche** — no new `CitizenEffect` kind; no host path.
+- **W-8 Mood grows memory** — `NeedsSystem.cs:157-158` stays true and is updated in the same
+  commit that adds the term.
+- **W-9 Reserved mark kinds written in v1.**
+- **W-10 Guard tests that cannot bite** — the four repo traps (`CLAUDE.md` "Traps"); every
+  named mutation physically applied, watched red, reverted.
+- **W-11 Predicted pins quoted as measured** — §9.2's last column is a prediction ledger, not a
+  result; every WP measures all five and records why each moved or held.
+- **W-12 Numbers instead of character / words without flags** — both directions; §8.1 makes the
+  flags a v1 deliverable rather than an aspiration.
+- **W-13 (new) Raw psyche numbers cross an external boundary.** No axis value, mark weight,
+  `MoodPressure` or drift figure may appear in a prompt, in store copy or patch notes, or on
+  the wire beyond §8's defined surface (derived word/flag strings and the normalized mood
+  scalar); no external artifact uses psychometric vocabulary. The prompt layer reads words
+  (§2.2) — "you are grieving" survives intact. A boundary on *representation*, not on the
+  narration §3.4.4 sanctions.
+- **W-14 (new) The frequency floor misapplied to marks.** Deleting Bereavement/NearDeath
+  because they fire rarely on a healthy ship inverts §0.2's rule: disposition seams owe
+  frequency; marks owe reachability and salience. Shipping an unfireable mark and cutting a
+  fireable-but-rare one are failures against the same audit.
 
 ---
 
-*Companion docs: `perilune-automation-and-souls.md` (the operator model this feeds),
-`perilune-console-retirement.plan.md` §1.5 (the Persona seam this will one day fill),
-`docs/ECONOMY-PLAN.md` E2 (the skills lane this must mesh with), `docs/MECHANICS.md` §13.3–13.4
-(the dead-state precedents this plan is designed never to repeat).*
+## 12. Open questions for the owner
+
+Nothing below is resolved by this plan; each has a stated recommendation and a bounded blast
+radius, and nothing gets built without the owner's word.
+
+1. **Axis drift (§3.5): charter now (WP-D2) or defer to a named later lane?** Recommendation:
+   now — the cheapest honest answer to *"history that shapes the way the person thinks and acts
+   now"*; the mechanism is fully specified either way. Cost if now: +20 B/citizen, ~6 def rows,
+   one WP.
+2. **The grid ship's social ignition (§5.4): may the standard eight gain authored relationships
+   (including a negative pair) and a minority RaidTrauma spread?** Changes the flagship's feel
+   on day one. Recommendation: yes — without it the Feud/argument machinery is unreachable
+   where players look. If refused: the marks layer ships **explicitly labelled latent** on grid
+   (the §9.4 negative control standing as documentation), and Tier-2 questions avoid social
+   predictions.
+3. **The N band's upper end (§4.2-N): may a low-N crew member's late flee be
+   survivable-only-sometimes (band to 0.80)?** A tone decision — personality-correlated death
+   risk on hazard ships (never on the healthy grid ship, where flee is measured 0).
+   Recommendation: yes; the alternative keeps N pure-cost, which the validity review correctly
+   called moral pricing.
+4. **Openness in v1 (§4.2-O): keep the wander-breadth seam (recommendation), or cut O's seams
+   entirely** (two reviewers' preference) while still rolling and projecting the axis? Cutting
+   costs nothing now but makes O a word with no warrant until E2 — which W-2 tolerates only if
+   the axis-word table drops its O row until then. Argued in §13.3.
+5. **The assignment verb (§5.5):** acknowledge it as the substrate's intended player verb (a
+   direction, not a commitment), so E2/UI lanes design toward it rather than around it.
+
+---
+
+## 13. Review-response ledger
+
+### 13.1 Findings that changed the plan's shape
+
+The inversion (marks engine / axes prior — title, §1–§3); the event-supply audit as §0.2 and
+its carrier conclusion (§5 as centrepiece; the §13.7 retune from confound to prerequisite); the
+PSYC stream fork moved into WP-A on the falsified A-4; the two-sided repricing of every axis
+and the G-2 re-scoping (§4.2–4.3); the word-projection redesign (§2.2); RaidTrauma to
+minority-with-recovery; decay to event-modulated-with-residue and longer behavioural
+half-lives; def batching and the serial lane (§7, §9.1); the mechanised warrant and the
+two-tier observability gate with a merge-blocking human protocol (§9.4–9.5); v1 surface work in
+scope (§8); the governance frame (§10.1–10.2, W-13, §0.3).
+
+### 13.2 Findings adopted as stated
+
+The `:163-164` citation fix; the §6 event-ordering correction; the completion-signal gap —
+closed via source-site notification, which also dissolves the reviewer's abandonment-conflation
+*and* avoids their proposed `PrevJobKind` hashed byte (adopted in substance, improved in
+mechanism); the lifecycle policy (§6.2); the `SafetySystem.cs:75` coupling owned and the
+NearDeath threshold pinned to the def value; the §5-loop-5 withdrawal; veto-expiry lengthening;
+the `cowardly` and `SpeechStyle` removals; the E-argmin cut; the O-seam inversion; the
+C-grief-damping removal; the CREW WATCH mood repoint; the label-collision dependency; the
+naive-observer protocol.
+
+### 13.3 Findings rejected or narrowed, with argument
+
+1. **"Drop or redesign anything below ~1 event per crew per sim-hour" — narrowed to disposition
+   seams; marks exempted (W-14).** A mark's value is concentrated, not amortised: one
+   Bereavement that visibly bends a named person for four days is worth more character than a
+   thousand biased wander draws, and `automation-and-souls.md` §9 explicitly asks for
+   rare-but-memorable over constant. The audit's real lesson for marks is *reachability*, and
+   §9.4.2 enforces that with driven fixtures and a negative control instead of a frequency
+   floor. Applying the floor as written would delete Bereavement and NearDeath — i.e. the
+   brief.
+2. **"Cut Openness from v1 entirely" — partially rejected.** The axis stays rolled and worded
+   and keeps the wander-breadth seam, *because the review's own analysis upgraded that seam*
+   (breadth is O's honest signature, §0.3; and §0.2 rates the wander channel the only
+   high-bandwidth carrier). Cutting O's seams while keeping its word violates W-2; cutting the
+   word leaves four-word rows and a permanently silent lane in a five-axis state. The cheap,
+   warranted seam beats both. Owner may overrule (§12.4).
+3. **"Decay grief on events rather than a timer" — hybrid, not replacement.** The event term is
+   adopted as the dominant, story-carrying mechanism (§3.3), but a *purely* event-gated decay
+   lets an isolated crew member carry a full-weight behavioural tax indefinitely with no
+   counterplay — a permanent character state created by the absence of bond luck rather than by
+   design. The slow timer bounds the tax; the event term carries the story; the residue keeps
+   the memory either way.
+4. **"Six defs-pin commits" — the count was right; the implied remedy (fewer knobs) wrong.**
+   The scalars are the honest tunable surface A-5 depends on; the fix is batching (§7), with
+   WP-F's retune of existing keys as the one flagged exception.
+
+### 13.4 Standing corrections to r1 quotable claims
+
+For grep-ability, every retracted r1 sentence appears quoted-and-struck at the section that
+owned it: the substrate-first framing (header); *"the single most visible differentiator"*
+(§2.1, §4.2-C); assumption A-4 (§0.4, §4.1); *"published up-stack this tick"* (§6); *"No new
+wire channel, no UI work"* (§8); *"zero steady-state allocation"* (§7); *"disjoint file sets"*
+(§9.1); the ≥ 6/8 identification gate (§9.5); universal RaidTrauma (§3.2); the ±0.6 word
+thresholds and *"can never disagree"* (§2.2); the E argmin (§4.2-E); the O learning-rate
+charter (§4.2-O); C grief-damping (§3.4.3); *"history reaches the economy today"* (§10.5);
+*"axes are fixed … psychologically defensible"* (§0.3); timer-only decay and delete-on-expiry
+(§3.3); *"the anxious one runs first; the steady one works longest"* (§4.2-N); the
+axes-only warrant and the process-enforced merge gate (§9.4); *"the integrator holds the
+merge"* as an enforcement mechanism (§9.4).
+
+---
+
+*Companion docs: `perilune-automation-and-souls.md` (operator model; §3.1's decision test and
+§9's rare-but-memorable register are both load-bearing here), `perilune-console-retirement.plan.md`
+§1.5 (the stand-down and the Persona seam), `docs/ECONOMY-PLAN.md` E2 (skills; two contract
+lines added by this plan), `docs/MECHANICS.md` §13.3–13.7 (the dead-state precedents and the
+two measured confounds — fatigue saturation and social saturation — this plan builds against).*
