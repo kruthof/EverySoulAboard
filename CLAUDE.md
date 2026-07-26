@@ -437,9 +437,9 @@ look inert when it is not.
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
-  lane and are re-measured per commit; **re-measure before quoting**. **Measured on
-  `lane/deck-wander` (2026-07-25, base `39dfae3`): 996 dotnet + 589 node, `./ci.sh` exit 0**
-  (+3 dotnet, the deck-confined wander's own driven tests; node untouched). Every "560 dotnet + 188
+  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` @ `38ff68b`
+  (2026-07-25, after the WP-2 merge): 996 dotnet + 607 node, `./ci.sh` exit 0**
+  (+18 node, WP-2's own tests; dotnet unchanged — WP-2 is client-only). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that

@@ -382,11 +382,26 @@ ritual from the critical path. It must still be measured, not asserted — see �
 
 **(ii) "a designation wire channel" — WRONG for the three verbs, RIGHT for two other things.**
 The designations are already on the wire. `GlyphMapper.Project` recolours the terrain that carries
-them — `sim/Sim.Glyph/GlyphMapper.cs:82-85`: `TileFlags.Designated` → `GlyphColor.Designate`,
+them — `sim/Sim.Glyph/GlyphMapper.cs:83-86` *(corrected 2026-07-25 by WP-2's review; this doc said
+`:82-85`, which starts on a comment and **excludes the Deconstruct line the same sentence names**)*:
+`TileFlags.Designated` → `GlyphColor.Designate`,
 `TileFlags.Stockpile` → `GlyphColor.Stockpile`, and the deconstruct registry → `GlyphColor.Deconstruct`
 — and those bytes ride every frame as `cell[1]` (`client/src/wire/messages.js:7-8`:
 *"A frame cell: [glyphCode, fgColorId, bgColorId, attrBits]"*). Indices are stable and appended:
 `Designate` = 15, `Stockpile` = 16, `Deconstruct` = 26 (`sim/Sim.Glyph/GlyphColor.cs:28,29,39`).
+
+> **⚠️ AMENDED 2026-07-25 by WP-2, which built on this paragraph and found it TRUE BUT NARROWER THAN
+> IT READS.** A designation reaches the wire only if **no later `GlyphMapper` pass repaints the tile**.
+> Pass 1 writes the designation colour (`:83-86`), but pass 3 (items, `:110`), pass 4 (devices, `:123`)
+> and pass 5 (citizens, `:138`) each overwrite `fg` wholesale. Measured consequences, all three live:
+> a **strip mark on a device NEVER reaches the wire** (so WP-2 shipped strip marks for **walls only**);
+> a **crew member standing on a designated tile hides its mark** — and on `--ship grid` the crew
+> cluster in the hold at x25-32 y15-16, exactly where the dig designations are; and a **stockpile tint
+> vanishes the moment an item is stored on the tile**, which is the *normal* state of a working
+> stockpile. The last of these is why the Overview and the Room Zoom will visibly disagree about a
+> full stockpile until **WP-6** has the Overview read the `zones` channel (which already exists and is
+> immune, being fed from the job board rather than from `cell[1]`). **The fix for all three is a
+> channel, not a better reader** — `cell[1]` is lossy by construction here.
 
 Both SVG surfaces throw the byte away. `room-model.js:223-239` `roomCells` reads only `cell[0]` and
 **skips** `NON_FURNITURE` — which includes `37`, i.e. `'%'`, i.e. `Glyphs.Debris`

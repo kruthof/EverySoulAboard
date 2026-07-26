@@ -13,10 +13,12 @@ history, newest first.** The section immediately after this one is E0-4's landed
 
 ### 1. The tree, measured — not quoted
 
-- **`main` is at `98f0e63`**, working tree clean. **Nothing is in flight** (§3). The deck-confined
-  wander (§4 step 1) **LANDED** as `61dea33`, merged `--no-ff` at `98f0e63`; its record is §4a.
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 589 node**, re-measured on `main` @ `98f0e63` after the merge
-  (the +3 is the deck-wander lane's own tests, exactly additive this time — which is luck, not a rule).
+- **`main` is at `38ff68b`**, working tree clean. **WP-2 LANDED** (`9c71878` + `fd02799`, merged
+  `--no-ff` at `38ff68b`); its record is §4b. The deck-confined wander (§4 step 1) landed before it as
+  `61dea33`, merged `98f0e63`; its record is §4a.
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 607 node**, re-measured on `main` @ `38ff68b` after the merge
+  (+18 node, all WP-2; dotnet unchanged — WP-2 is client-only). Twin hash `00e0a2dadb8e5076`.
+- *(Superseded:* 996 dotnet + 589 node on `main` @ `98f0e63`, the deck-wander merge.*)*
 - *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
   (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
   gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
@@ -110,10 +112,20 @@ input.
 
 ### 3. In flight right now
 
-**Nothing. The tree is settled.** The day's three lanes — WP-3 (`e26a56c`), WP-8 (`3aecf4b`) and the
-**deck-confined wander** (`61dea33`, merged `98f0e63`) — are each reviewed, merged and gated on `main`.
-Each took **one send-back** before PASS; the pattern is now three-for-three and E0-4/E0-5 were
-eight-for-eight before that. **Start at §4 step 2** — step 1 has landed, and its record is §4a.
+**`main` is settled and gated at `38ff68b`.** WP-2 is merged (§4b). Two lanes are running in worktrees
+as of the 2026-07-25 overnight session, neither on `main`:
+
+- **`lane/character-sim-design`** — a **docs-only** design for an in-depth character simulation
+  (Big Five argued rather than assumed, personal history biasing present action, incidents and
+  relationships modulating behaviour). Fable plans it; **three** independent Opus 5 reviewers then read
+  it from three lenses — architecture/determinism, game-design/legibility, and psychological-validity
+  /governance. Its file set is `docs/design/perilune-character-simulation.plan.md` alone, so it does
+  **not** contend with the console-retirement chain.
+- the next console-retirement package in the serial chain (WP-4, then WP-5).
+
+**Every day's lane so far has taken exactly one send-back before PASS** — WP-3, WP-8, the deck-confined
+wander, and now WP-2; E0-4/E0-5 were eight-for-eight before that. **Treat a first-round PASS as a
+suspicious result, not a fast one.** **Start at §4 step 3** — steps 1 and 2 have landed (§4a, §4b).
 
 ### 4. NEXT STEPS — in this order. Do not infer the order; it is written down.
 
@@ -265,9 +277,9 @@ explanation of itself was wrong in four places.* Retractions were then written a
 text rather than deletions, so that someone grepping the old wording lands on the retraction — that is
 now the house technique, and it is how this defect was found in the first place.
 
-**2. WP-2 — make debris and designations visible.** *This and WP-4 are the first two packages that
-change what a player can DO, as opposed to what the game tells them. **This is the next actionable
-step.***
+**2. ~~WP-2 — make debris and designations visible.~~ — ✅ LANDED `9c71878`+`fd02799`, merged `38ff68b`.
+Read §4b before building on it: three of its six recorded outcomes are LIMITS, not wins.** The charter
+below is kept because WP-4 and WP-5 inherit its file set. **Next actionable step is 3, WP-4.**
 - **Do:** read `cell[1]` (the projected `GlyphColor` foreground byte) in both SVG surfaces and render
   a designated tile differently from an undesignated one — debris, stockpile zone tint, strip mark.
 - **Files:** `client/src/ui/room-model.js`, `client/src/ui/overview-scene.js`, plus their two node
@@ -280,6 +292,77 @@ step.***
   acceptance is asserted over hand-crafted cells instead of the real fixture — WP-1 recaptured
   `client/test/fixtures/overview-grid.json` specifically so this test could be driven from a live
   capture carrying both fg byte 4 (Debris) and 15 (Designate).
+
+### 4b. WP-2 — debris and designations made visible — LANDED (`9c71878` + `fd02799`, merged `38ff68b`)
+
+**What shipped.** A new shared `client/src/ui/mark-overlay.js` holds the fg-byte table
+(`4→debris, 15→dig, 16→stockpile, 26→strip`) plus one rect-parameterised SVG cell builder, used by
+**both** surfaces so a byte cannot come to mean two things by hand-mirror drift. It draws as a **floor
+layer** — `overview-scene.js`'s `markLayer()` between `pl-rooms` and `pl-furniture`; `room-model.js`'s
+`roomMarkTiles()` + `markLayerSvg()`, wired into `roomzoom-view.js` with the accepted WP-3 footprint
+(one import + one `body +=`). Debris renders as rubble; **a designation is the same rubble plus an
+amber dashed order ring** — reusing the dialect the build ghosts already speak. **Gate: 996 dotnet
+(unchanged, client-only) + 607 node, `./ci.sh` exit 0 on `main`. No pin moved**; no golden and no
+`ci.sh` line is in the lane's diff.
+
+**Why a separate layer and not simply un-skipping the glyph — the reason on record was WRONG and is
+corrected in place.** All 33 debris/designation cells share glyph code **37 (`%`)**, which sits in
+`NON_FURNITURE` on both surfaces, so both rendered as nothing. The first draft justified the new layer
+by claiming that removing 37 from that set *"would still draw nothing"*. **Measured, by physically
+removing it: `roomCells` then yields 33 cells at code 37 and `furnitureSvg`'s else-branch
+(`roomzoom-view.js:429-438`) draws the VS-Z-25 dashed unknown-glyph chip carrying a literal `%` for
+each.** It does not draw nothing — it draws 33 junk chips, which is a *worse* lie than invisibility: a
+chip claims "something here we don't skin yet" about a tile whose meaning the client knows exactly.
+Two further claims in that sentence (that `itemForGlyph` and `demolishTarget`'s device branch get
+reclassified) are also false — both are unchanged either way. The decision was right and its stated
+reason was wrong; the correction is **quoted-and-negated** at `room-model.js:342`/`:345`, so a grep for
+the old wording lands on it. **The twin comment in `overview-scene.js:342` is TRUE for its own
+surface** (`furnitureLayer` does `if (!itemId) continue`) and now says why the two differ.
+
+**The review is why this is worth reading.** Round 1 shipped with 5 of the reviewer's 15 mutations
+**surviving the full 605-test suite green**. The worst: dropping the room-local transform in
+`markLayerSvg` draws every mark at 800–1024 inside a **384-unit viewBox** — the Room Zoom's entire mark
+layer **invisible in the running game**, with nothing red. Cause: the geometry assertion recomputed the
+transform *in the test* and never read the emitted SVG, so it re-asserted clamping already covered
+three tests above. The fix copies `zone-overlay.test.js:106-111` — parse the emitted
+`<rect x= y= width= height=>` and pin the numbers. Round-2 re-review applied **29 mutations, 29 red**,
+including two that settle the obvious objection that the new test merely restates constants both sides
+import: an **off-by-one tile** (stays inside the viewBox, so the bound cannot catch it) and an inset
+changed **in the implementation only** — both RED. It is a transform pin, not a constants restatement.
+The stockpile swatch's "reused verbatim from WP-3" is likewise *measured*: drifting `ZONE_FILL` on the
+**`zone-overlay.js` side only** goes red, which a copied literal could not do.
+
+**⚠️ Three of the six outcomes are LIMITS, not wins — do not inherit them as capability.**
+1. **Strip marks are delivered for WALLS ONLY.** A strip mark on a **device** never reaches the wire:
+   `GlyphMapper` pass 4 (`sim/Sim.Glyph/GlyphMapper.cs:123`) repaints the device's colour over
+   `GlyphColor.Deconstruct`. The charter said "strip mark"; what shipped is narrower.
+2. **A crew member standing on a designated tile hides its mark** (pass 5, `:138`). Not hypothetical —
+   on `--ship grid` the crew cluster in the hold at x25-32 y15-16, exactly where the dig designations
+   are.
+3. **`stockpile` (16) and `strip` (26) rendering is covered by SYNTHETIC cells only.** Neither byte
+   appears anywhere in the fixture, so nothing proves the *shipped game* draws them. The tests label
+   this honestly and separate it from the fixture-driven acceptance — but it is coverage by
+   construction, not by capture.
+
+**Carried forward to WP-6 (recorded here so it is not rediscovered):** the two surfaces will **visibly
+disagree about a stockpile that has things in it.** The Overview's fg-16 tint vanishes the moment an
+item is stored on the tile (`GlyphMapper` pass 3); the Room Zoom's `zones`-fed tint does not, because
+it comes from a strictly better source. The `zones` channel already exists and the Overview could read
+it. The Room Zoom's deliberate suppression of fg-16 is **de-duplication, not inconsistency** — its rect
+is geometrically and stylistically identical to `zone-overlay.js:72-74`, verified.
+
+**Two smaller things worth knowing.** The new geometry test is **deliberately over-tight** — it
+duplicates `rubble()`'s `0.12`/`0.76` insets, so a purely cosmetic change to the rubble shape now
+reddens a *geometry* test. That is the safe direction, but someone will hit it. And the `fd02799`
+commit message claims **"+18 net assertions"**; measured, it is **+12** (268 → 280 `assert.*`, tests
+61 → 63). Both removals were replaced by strictly more, and all 17 round-1 mutations were re-run to
+confirm no old coverage left with them.
+
+**⚠️ An inherited pointer that has now rotted twice: `client/test/fixtures/overview-grid.json`'s own
+`note` tells a maintainer to regenerate it with `scratchpad/wp8-capture.mjs`, which exists NOWHERE in
+the repo.** WP-2's two new failure messages were reworded to warn rather than propagate it, but
+**regenerating that fixture is now an undocumented manual procedure**, and WP-4/WP-5/WP-6 all depend on
+it. Whoever next needs a recapture should write the script into the repo, not the scratchpad.
 
 **3. WP-4 — DIG + STRIP in the Room Zoom palette.**
 - **Do:** two new `ROOM_TOOLS` (`client/src/ui/room-model.js:27`) classed `'order'` in `PALETTE_CMD`,
