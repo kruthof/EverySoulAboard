@@ -4,6 +4,444 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
+## ⇒ START HERE — a fresh instance's orientation (2026-07-25, end of day)
+
+**This block is the only thing you must read before you touch anything. Everything below it is
+history, newest first.** The section immediately after this one is E0-4's landed record, and it is a
+**RETRACTION** — read it before you quote any stockpile number from anywhere, but do not read it as
+"what to do next". What to do next is §4 of this block.
+
+### 1. The tree, measured — not quoted
+
+- **`main` is at `3aecf4b`**, working tree clean. **Nothing is in flight** (§3).
+- **Gate: `./ci.sh` exit 0, 993 dotnet + 589 node**, measured in a fresh worktree off `3aecf4b`
+  (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
+  gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
+  branches read 918–928 apiece and the merged lane read 943. (Today's last two packages *were* exactly
+  additive, which is luck, not a rule: WP-3 landed 993 + 564, WP-8 took node to 589.)
+- **Five pins, all gate-enforced, all byte-identical at `3aecf4b`:**
+
+  | pin | value | enforced by |
+  |---|---|---|
+  | scenario `--days 3 --seed 42` | `00e0a2dadb8e5076` | `ci.sh:31` (+ twin-run equality) |
+  | tick-3000 golden | `4be2e77864fb7409` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
+  | slice tick-3000 golden | `1f8f2225ee568de9` | `Golden/slice_tick3000_hash.txt` |
+  | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
+  | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
+
+  The last two are **different values for different things** and have been confused repeatedly:
+  `3f23ce5bd40283c8` is what every occupancy run prints at the top of its output — never paste it into
+  the defaults pin. **Nothing that landed today moved any of the five.**
+
+**Landed on `main` today, in merge order** (`git log --first-parent`), all 2026-07-25:
+
+| # | commit | what |
+|---|---|---|
+| 1 | `0be9d70` | **E0-4** filtered stockpile zones — chartered as six packages, shipped **eight** |
+| 2 | `fd73d1b` | the **economy-modularity audit** + `ArchitectureBoundaryTests.cs` + the two defs pins |
+| 3 | `d43f545` | the architecture-allowlist fix — **deliberately merged with no review round** (recorded below) |
+| 4 | `da90e36` | **WP-7** RELATIONS re-homed as a body-level sibling — fixed a **live** regression |
+| 5 | `5708151` | **WP-0** the surface-boundary guard (the `KNOWN_GAPS` ledger lives here) |
+| 6 | `7d24ff5` | **WP-1** `--ship grid` made playable: a wreck to dig, a goal, eight crew |
+| 7 | `2316c58` | the **E0-4 record retraction** (the section below this block) |
+| 8 | `8d5aebf` | the **console-retirement plan**, `docs/design/perilune-console-retirement.plan.md` (docs only) |
+| 9 | `7ba1ec9` | **one game, one command**: `./play.sh`, and `hosts/web` defaults to `--ship grid` |
+| 10 | `e26a56c` | **WP-3** the `zones` wire channel + the zone overlay, key and tooltips |
+| 11 | `3aecf4b` | **WP-8** on-map work markers, the crew-watch task line, the paused-ship nudge — **and a host pause bug** |
+
+**How WP-3 touched a SPINE file, and the pattern to copy.** `hosts/web/WireFormat.cs` is on the spine
+list (`CLAUDE.md` "Invariants": integrator lane only). WP-3 needed a whole new `zones` channel there.
+**Its entire diff to that file is ONE TOKEN** — `class` → `partial class` — with the channel itself in
+a sibling `hosts/web/WireFormat.Zones.cs`. That is the cleanest example in this repo of how to touch a
+spine file: make the spine edit trivially reviewable and put the substance next door. Copy it.
+
+**A shipped bug fixed in passing, worth knowing about because it made the game lie.** WP-8 found that
+**pause was applied to the sim and never broadcast**: the ship stopped while the top bar still read
+`❚❚ HOLD`. The mechanism is worth remembering because it will recur in any throttled render loop —
+`viewChanged` was a **per-iteration local** that was discarded whenever the render throttled, and only
+a *tick* reopened the render gate, which a paused sim never produces. It is now folded into a sticky
+`_viewDirty` (`hosts/web/GameSession.cs:89`, folded `:226`, gated `:227`, cleared `:230`).
+Independently re-measured: **every pause was lost and every unpause was delivered** — unpausing
+restarts ticking, which reopens the gate — and that single mechanism reconciles the three different
+loss rates quoted while the work was in progress (7/8, 9/10, 5/10; they differ only in how many trials
+happened to be pauses). **No over-broadcast**: 9.88 → 9.92 msgs/s, and 0 msgs while paused with no
+input.
+
+### 2. What the game *is*, in five facts. Get these wrong and you will build the wrong thing.
+
+1. **There is ONE game and ONE command: `./play.sh`.** No `--ship`, no ports to pick, one URL, Ctrl+C
+   stops both processes (`play.sh`; `hosts/web/Program.cs:44` `var ship = ShipChoice.Grid`).
+   **`--ship slice` and `--ship perilune` are TEST FIXTURES, not games** — slice is the headless
+   economy measurement fixture driven by `hosts/scenario`, perilune is the ship behind the tick-3000
+   goldens. Never offer either to a player.
+2. **The standard surface is the Level-1 Overview (`client/src/ui/overview-view.js`) + the Level-2
+   Room Zoom (`client/src/ui/roomzoom-view.js`).** The console `.app` shell (`client/index.html:11-128`
+   + `client/src/ui/hud.js`) is **deprecated, closed to new work, and scheduled for deletion**. This is
+   a binding `CLAUDE.md` invariant ("THE STANDARD SURFACE"), mechanised in
+   `client/test/surface-boundary.test.js` and `tests/Perilune.Tests/SurfaceBoundaryTests.cs`. **Altitude
+   rule: BUILDING is Room-Zoom-scoped; ORDERS are deck-scoped** (plan §4.2).
+3. **DIG, STOCKPILE, STRIP and the ACCEPTS chips DO NOT EXIST on the standard surface.** Blunt version:
+   on the ship a player actually plays you can build and decorate and you **cannot dig, zone or strip**.
+   That is the debt ledger `KNOWN_GAPS` (`client/test/surface-boundary.test.js:132`), and it holds
+   exactly three entries — `dig` → WP-4, `stockpile` → WP-5, `strip` → WP-4. Garvin hit this twice in
+   one day looking for menu items that were never ported. The verbs are fully built in the sim and on
+   two *other* surfaces (the deprecated console and the TUI); only the standard surface lacks them.
+   **What WP-3 did change:** the game can now **explain why a stockpile zone is not filling** — floor
+   marks, a visible key (`STOCKPILE` / `ACCEPTS FOOD` / `NO HAULER REACHED THIS RECENTLY`) and a
+   per-tile tooltip, verified in Chrome at five viewports. So a zone is now legible on the standard
+   surface; it is still not *creatable* there. Reading came before writing, deliberately.
+4. **LLM-ready, not LLM-powered** (owner decision, binding, plan §1.5). The game must ship **fully
+   playable with no free-text conversation surface reachable** — a governance/liability stance, and it
+   is *stronger* than the old "playable offline (TemplateBackend)" invariant, which removed the cloud
+   dependency and not the conversation. All crew interaction later consolidates into **one Persona
+   window whose design is deferred**; the seam is `openPersonaForSelected` and `CREW_INTERACTION`
+   (`client/test/surface-boundary.test.js:793`) fails a lane that scatters a second door to a person.
+   Vocabulary discipline in every doc, commit and UI string: "LLM ready", "opt-in integration",
+   "character simulation" — never "LLM-powered", never "talk to your crew" as a shipped promise.
+5. **Automation & souls is the binding principle for all economic/automation work**
+   (`docs/design/perilune-automation-and-souls.md`; the play-experience reading is
+   `docs/design/perilune-automation-player-journey.md`): control-not-conveyance, the operator model
+   (mood + skill = throughput), gated by scarcity. **Measured state: 0 % implemented** — see §6 item 4.
+
+### 3. In flight right now
+
+**Nothing. The tree is settled.** Both of the day's parallel lanes — WP-3 (`e26a56c`) and WP-8
+(`3aecf4b`) — are reviewed, merged and gated on `main`. Each took **one send-back** before PASS. Start
+at §4 step 1.
+
+### 4. NEXT STEPS — in this order. Do not infer the order; it is written down.
+
+Most of what follows is the **console-retirement programme**,
+`docs/design/perilune-console-retirement.plan.md` (826 lines, on `main` at `8d5aebf`). It is 11
+packages; WP-0, WP-1, WP-3, WP-7 and WP-8 are landed. **Its dependency graph is §6 "Order, and why";
+its per-package file sets are §6's table; its honest limits are §10.** Read §6 before dispatching
+anything — a package taken out of order produces a vacuous acceptance test, which is this repo's most
+common review failure. **Step 1 below is NOT part of that programme** — it is a standalone `sim/` lane
+that goes ahead of it by decision, because it is the cheapest change that makes the standard play ship
+look alive, and it is the only step here that moves determinism pins.
+
+> **⚠️ STANDING RULE — if a module has an injectable seam, a source scan is not an acceptable
+> instrument.** A text scan asserts that tokens are **co-present**; it can never assert that token A
+> *causes* behaviour B. **Five instances of that defect landed in one package today — and the fifth was
+> introduced by the fix for the previous four.** Tightening the patterns cannot close the class, only
+> that shape of it. What worked, twice, on the first try: **replace the scan with a driven test.**
+> `client/test/dom-lite.js` already exists (four tests use it; `getElementById`, `dataset`, `closest`,
+> `addEventListener`) and `initOverview({ send })` already injects the sender, so **a dozen lines can
+> drive a handler and assert the command that comes out.** This is **binding for WP-9**, the riskiest
+> remaining change.
+
+> **And the through-line of the whole session: every significant defect today was found by *doing*,
+> not by reasoning.** Physically applying the mutation; opening the browser; measuring with a `Range`
+> instead of trusting `getClientRects`. In each case the reasoning was competent, the result was wrong,
+> and the suite was green. **A mutation you only described is not evidence.**
+
+> **The review discipline is not optional, and it is what caught real defects in every single package
+> that landed today: one agent implements, a *separate* agent reviews, and the reviewer physically
+> applies every mutation the tests name and watches it go red.** Every E0-4 and E0-5 package failed its
+> first independent review, most of them on "a test whose named mutation cannot bite"; both of today's
+> final two packages took one send-back each. The two traps that have cost this project real work are
+> written up with `file:line` countermeasures in **`CLAUDE.md`, "Traps that have each cost this project
+> real work"** — read that section before you write a guard test or a mutation harness.
+
+> **⚠️ The plan's `client/` line numbers have DRIFTED, because WP-1, WP-7 and WP-8 landed after it was
+> written. Re-locate every symbol by NAME, never by line.** Measured examples: `hud.js` is **1210**
+> lines, not the plan's 1291 (WP-7 lifted ~90 out, WP-8 put ~10 back); `overview-view.js`'s TALK button
+> is `:241` with its handler at `:652`, not `:234`/`:645`; `overviewClickAction` is `:67`, not `:66`;
+> the stale `MECHANICS.md` line the plan cites as `:1829` is now `:2090`. The plan's *reasoning* has
+> held up under verification everywhere it was checked; only its coordinates rotted.
+
+**1. THE DECK-CONFINED WANDER — bound the sampler to the crew member's own deck. DECIDED (Garvin,
+2026-07-25): do it, and do it FIRST.** It is not part of the console programme; it is a sim change
+that gets its own lane, and it goes first because it is the cheapest thing that makes the standard
+play ship stop looking dead.
+- **The problem, and why it is a cause and not a symptom.** All eight grid crew are
+  `AutoWander = false` (`sim/Sim.Gen/AuthoredShips.cs:967`), so idle crew stand still and the ship
+  reads as lifeless. Simply flipping the flag walks them into vacuum:
+  `PathService.TryRandomWalkableTileNear` (`sim/Sim.Core/Path/PathService.cs:157`) boxes **Z** along
+  with X and Y (`:167-168`), and the default `wander_radius_tiles` (8) is **≥ the grid ship's depth
+  (8)** (`AuthoredShips.cs:764` `GridDepth = 8`), so the box saturates the whole world and **one idle
+  draw can land a crew member on any of the eight decks** — six of them airless from tick 0, walkable
+  because the ladder trunk reaches them. **Bounding the Z extent of the sampler to the crew member's
+  own deck fixes the cause.** Flipping `AutoWander` without it treats the symptom and adds a hazard.
+- **Record the overstatement, so it is not inherited.** *"An idle wander is a death sentence here"* was
+  **wrong**. Measured with `AutoWander = true` over one sim-day: **8/8 alive**, work **24.990 %** against
+  **24.938 %**, and **4.46 % of all crew-ticks in `JobKind.Flee`** (`AuthoredShips.cs:745-756`).
+  Survivable but **wasteful** — crew walking out of vacuum for nothing, on the ship a new player is
+  watching. That is the real argument, and it is a weaker and more honest one.
+- **Files:** `sim/Sim.Core/Path/PathService.cs` (the sampler's Z bounds), the def side if the deck
+  confinement is expressed as a def rather than a literal, and `sim/Sim.Gen/AuthoredShips.cs` for the
+  `AutoWander` flip and its header note. A new def field ships in **ONE** commit — default + parser key
+  + checksum fold + equivalence coverage (`CLAUDE.md` invariant, `content/core/SimDefs/README.def`).
+- **⚠️ THIS WILL MOVE PINS, AND THE PIN MOVE IS THE POINT OF THE COMMIT — not an accident inside it.**
+  Expect the slice golden and the scenario hash to move; a def field also moves the defs checksum(s).
+  The full ritual in the **same** commit: measure, then update `ci.sh` + the golden files + `CLAUDE.md`
+  ("Determinism proof") + this file + memory, each stating the old value, the new value and **why**.
+  **This is normal here** — E0-1, E0-2 and E0-5 each took a deliberate pin move. A pin that moves
+  without a stated reason is the failure; a pin that moves with one is the ritual working.
+- **Discipline:** its own worktree, its own branch, one implementer and a **separate** reviewer.
+- **Wrong if:** it flips `AutoWander = true` without bounding the sampler (that is the hazard, measured
+  above); if it bounds X/Y as a side effect and changes local dispersal (the box's corner behaviour and
+  the fixed 3-draw, zero-alloc, RNG-stream-stable shape are deliberate — see the method's own doc
+  comment); if it re-pins without re-measuring; or if it changes pins and `ci.sh` in **different**
+  commits.
+- ⚠️ **One number to re-measure rather than inherit.** The whole-day idle share on the grid ship was
+  quoted in conversation as **`None` = 67.19 % of crew-ticks** and that figure is **recorded nowhere in
+  this repo** — do not cite it until it is measured. What *is* on record: the standard play ship reads
+  **A1 FAIL — 24.938 % busy at sim-hour 24**, and that floor is **Craft 31.00 %**, not the wreck (dig is
+  1.77 % of crew-ticks and finishes around h13; see `8159e6f`'s attribution correction). Those are the
+  numbers a before/after belongs against.
+
+**2. WP-2 — make debris and designations visible.** *This and WP-4 are the first two packages that
+change what a player can DO, as opposed to what the game tells them.*
+- **Do:** read `cell[1]` (the projected `GlyphColor` foreground byte) in both SVG surfaces and render
+  a designated tile differently from an undesignated one — debris, stockpile zone tint, strip mark.
+- **Files:** `client/src/ui/room-model.js`, `client/src/ui/overview-scene.js`, plus their two node
+  test files. Both surfaces today take `cell[0]` and throw `cell[1]` away
+  (`room-model.js:233`, `:321`, `:345`; `overview-scene.js:314`) — **the designations already ride the
+  wire**; no new channel is needed for these three.
+- **Unblocks:** WP-4 and WP-5. Arming a DIG tool over invisible debris is not a portable verb.
+- **Wrong if:** it invents a new wire channel for dig/stockpile/strip (they are already on the frame);
+  it touches `GlyphColor` (a spine file, deliberately untouched by the whole programme); or its
+  acceptance is asserted over hand-crafted cells instead of the real fixture — WP-1 recaptured
+  `client/test/fixtures/overview-grid.json` specifically so this test could be driven from a live
+  capture carrying both fg byte 4 (Debris) and 15 (Designate).
+
+**3. WP-4 — DIG + STRIP in the Room Zoom palette.**
+- **Do:** two new `ROOM_TOOLS` (`client/src/ui/room-model.js:27`) classed `'order'` in `PALETTE_CMD`,
+  joining `isStructuralTool`'s sibling set so they inherit drag-sweep clipped to `roomBounds()`.
+- **Files:** `client/src/ui/room-model.js`, `client/src/ui/roomzoom-view.js`,
+  `client/test/room-model.test.js`.
+- **⚠️ WP-3 is already sitting in `roomzoom-view.js`, nominally WP-4's file, and that is ACCEPTED, not
+  a trespass** (decided 2026-07-25). It was forced, not casual: `SurfaceBoundaryTests` requires every
+  `WireFormat` channel to have a **real** consumer in the client and a stub `case` was explicitly
+  forbidden, so the new `zones` channel needed a genuine renderer, and the Room Zoom was the
+  least-contended home. The footprint is deliberately minimal — **one import, one `body +=` line, and
+  one self-contained function**. Expect to merge over it rather than escalate it. **WP-6 may replace
+  that zone layer wholesale** when it lands the filtered/unreachable badges; it is a first home, not a
+  contract.
+- **Unblocks:** deletes **two** `KNOWN_GAPS` entries (`dig`, `strip`).
+- **Wrong if:** it routes an order through `Cmd.build` (BuildSystem knows nothing about designations —
+  `client/src/input/controls.js:54-55` spells this out); if it emits a payload that differs from what
+  `paletteOrders` already emits; or if it lands without deleting its ledger lines.
+
+> **⚠️ THE LEDGER RATCHET — the one mechanical rule every porting package obeys.**
+> `KNOWN_GAPS` (`client/test/surface-boundary.test.js:132`) holds exactly `dig`, `stockpile`, `strip`.
+> **Each porting package DELETES ITS OWN ENTRY in the same commit that lands the verb.** A ported verb
+> whose entry is left behind **fails as stale**; a new entry fails against `KNOWN_GAPS_SEALED`
+> (`:142`), the WP-0 high-water census — because a new entry means somebody just built a verb on the
+> surface we are deleting, which is the exact WP-5 mistake this guard exists to prevent. The ledger
+> shrinks or it fails. When WP-9 lands it must be **empty**, and that is asserted too.
+
+**4. WP-5 — the deck-scoped ORDERS bar on the Overview.**
+- **Do:** STOCKPILE (+ ACCEPTS) and, for convenience, DIG/STRIP on the Level-1 Overview, deck-scoped.
+  `overviewClickAction` (`client/src/ui/overview-model.js:67`) gains an `'order'` branch **ahead of**
+  `'enterRoom'`, so an armed order tool suppresses room entry exactly as `armed === 'move'` already
+  does. Hit-testing already exists and is tested (`overview-view.js:616-624` → `tileAt` → the shared
+  `makeTransform` invert) — **no new hit-testing.**
+- **Files:** `client/src/ui/overview-model.js`, `client/src/ui/overview-view.js`,
+  `client/test/overview-model.test.js`. The test registry entry is already waiting:
+  `MODERN_TOOL_TABLES` names `['../src/ui/overview-model.js', 'ORDER_TOOLS']`
+  (`surface-boundary.test.js:153`) and an absent export is skipped, not an error — **`ORDER_TOOLS` is
+  the seam WP-5 fills.**
+- **Unblocks:** deletes the `stockpile` ledger entry. Plan §9.2: **after WP-6 the owner decision's
+  "verify the game is playable there" milestone is met**, and only then is WP-9 safe to schedule.
+- **Wrong if:** it puts *building* on the Overview. The amended rule is narrow and must be written
+  into `overview-model.js`'s own doc comment: **"BUILDING is zoom-only; ORDERS are deck-scoped"**, on
+  the grounds that a designation consumes no material and changes no geometry — it marks intent.
+
+**5. WP-6 — ACCEPTS chips on the ORDERS bar + the three missing indicators.**
+- **Do:** the accept-mask chips, plus the three feedback gaps E0-4 shipped without (plan §5): a
+  **filtered** tile carries a corner badge (`stockFilterLabel` already exists,
+  `client/src/ui/stock-filter-model.js`); the chips **say** they apply to tiles painted next, with a
+  count of already-painted tiles that differ; and an **UNREACHABLE** tile renders dim + hatched with a
+  one-line reason. **WP-3 already shipped the channel and a first rendering of all three** — WP-6 is
+  free to replace that layer wholesale rather than extend it.
+- **Files:** `client/src/ui/stock-filter-model.js`, `client/src/ui/overview-view.js`,
+  `client/src/ui/zone-badge.js` (new), `client/styles.css`; **and flip WP-0's parity test to strict.**
+- **Wrong if:** it labels the back-off bit as proof of permanent unreachability. `_tileRetryAt` is a
+  **retry stamp**, cleared wholesale on any tile-board rebuild
+  (`sim/Sim.Core/Jobs/Sources/HaulJobSource.cs:453`) and per-tile on proof of reachability (`:503`),
+  so the honest label is *"no hauler has reached this recently"* — which is exactly what WP-3's key
+  already says. A real reachability query is a sim change and out of scope. Also wrong if it weakens
+  `client/test/stock-filter-model.test.js:130` — the live cross-skin tripwire that parses
+  `hosts/tui/Ui/StockFilterModel.cs` and compares its labels to the JS `STOCK_KINDS`.
+
+**6. WP-C — the conversation stand-down + the onboarding rewrite + the Persona seam.** Plan §1.5.3.
+- **Must land after WP-5 and before WP-9, and that position is a constraint, not a preference:** it
+  *removes* a verb from the onboarding card, so the card needs a replacement verb to teach, and ORDERS
+  only exists after WP-5.
+- **Do:** unbind `T` (`client/src/input/controls.js:231`) and the Enter-on-selected-crew branch
+  (`:271`); retarget the `[T] OPEN CHANNEL — TALK` button (`client/src/ui/overview-view.js:241`,
+  handler `:652`) to `openPersonaForSelected`; drop the dossier's CONVERSATION LOG section; **rewrite
+  `client/src/ui/onboarding.js`** — it teaches TALK as one of the game's two verbs (`:20`, `:40-42`)
+  and is also the only help screen (`?`).
+- **Wrong if it deletes anything host-side or sim-side.** Plan §1.5.5 is the keep-list and it is a
+  *floor*: `sim/Sim.Llm/`, `hosts/web/ConversationHub.cs`, `sim/Sim.Core/Effects/`,
+  `CitizenMemory.cs` (**hashed sim state**), `PersonaSheet.cs`, `Eulogy.cs`, the host's
+  `talk`/`say`/`bye` parse, `client/src/ui/chat.js`. `client/test/dialogue.test.js` (7) and the chat
+  half of `client/test/ui.test.js` **must still be green afterwards** — that is the evidence "LLM
+  ready" was preserved rather than gutted. Also wrong if it declares the stand-down complete without
+  grepping `talk`/`say`/`bye`/`Conversation` across `content/`, `hosts/tui/` and the docs (plan §10
+  flags §1.5.1's finding as a search result, not a proof of absence), and without checking whether any
+  host path can originate a `chat` message unprompted.
+- **The one thing that genuinely falls away:** `AgreeTask` — asking a crew member to do something and
+  having them agree is today a conversation-only pathway into memory and relationships
+  (`sim/Sim.Core/Citizens/CitizenMemory.cs:210`). Nothing breaks; a capability goes quiet, and the
+  Persona window will have to carry it.
+
+**7. WP-9 — delete the console shell. THE PROGRAMME'S SINGLE RISKIEST CHANGE. Last, and only after a
+human has played `--ship grid` end to end** against plan §7.6's written checklist.
+- **Why it is the riskiest:** it is a **split of `hud.js`, not a deletion of it.** That file is the
+  authoritative wire-message cache *and* the single armed-tool/tab/selection state machine *and* the
+  console's DOM chrome, all fused — **both modern surfaces import it** (`overview-view.js:18`,
+  `roomzoom-view.js:14`). Eight writers dereference `$(id)` with **no null guard**, so pulling `.app`
+  out of `index.html` without doing the split gives a **white page**.
+- **And it has almost no test net.** Precisely: `client/test/relations-view.test.js:331` imports it at
+  runtime to drive the RELATIONS/STATE seam, and `surface-boundary.test.js` / `ui.test.js` /
+  `dialogue.test.js` read it as **text** (id census, four widget counts pinned by equality, import
+  specifiers). Nothing exercises its console chrome or its wire cache. **This corrects the plan**,
+  whose §0 finding 2 says *"NO node test imports `hud.js` at all"* — true when it was written and
+  false since WP-7. The conclusion is unchanged and is the plan's own: the deletion is nearly
+  test-free, and **that is the risk, not the relief.** The standing rule above is **binding here**: the
+  split must be verified by driven tests through `dom-lite.js`, not by source scans.
+- **The specification for the split already exists**: `SHIP_STATE_REACH`
+  (`client/test/surface-boundary.test.js:780`) is the exact set of `hud.js` symbols a modern surface
+  may reach, pinned by equality — it is simultaneously the bridge allowlist and the contract for
+  `hud.js` → `ship-state.js`.
+- **⚠️ Plan §7.3's line-number map is STALE and will send you to the wrong lines** — see the drift
+  warning above. **Re-locate every symbol by name.**
+- **Wrong if:** it deletes the render stack (keep `client/src/render/` — ~100 node tests and the
+  executor-parity harness live there; the canvas moves into a `?legacy=1` dev container); if it
+  deletes `console-model.js` (misnamed, imported by six modules, **not** console-only); if it deletes
+  `renderChat`/the `chat.js` import (plan §7.3 — those are the opt-in integration surface and a
+  reviewer *will* flag them as dead); or if it leaves `KNOWN_GAPS` non-empty.
+- **A recommendation from the plan, against the literal brief, and it is sound:** treat **WP-6 as the
+  finish line for the decision** and WP-9 as cleanup that can wait for a quiet week. The
+  anti-recurrence goal was met at **WP-0**, not at WP-9 — a lane cannot accidentally build on the
+  console once a test says so, whether or not the file still exists.
+
+### 5. Decisions TAKEN on 2026-07-25 — settled, not open. Do not reopen without the owner.
+
+**Nothing in this section is parked.** Each was an open question at the end of the day and each was
+decided; they are recorded here so a fresh instance does not spend a round re-arguing them.
+
+**(a) The deck-confined wander — DO IT, and first.** Decided; it is **§4 step 1** above, with the
+mechanism, the files, the measured overstatement it corrects, and the deliberate re-pin. Not repeated
+here.
+
+**(b) The `--ship slice` RELATIONS behaviour change — ACCEPTED. Do not revert it.** WP-7 re-homed
+`#relations-view` as a body-level sibling with its own switch, so `body.relations-open` now hides
+`.app` **and** `#overview-view` outright (`client/styles.css:1176-1178`). On the standard ship that
+*is* the fix — it is what stopped the deprecated console reappearing over the modern game. On
+`--ship slice`, where the console *is* the surface, RELATIONS therefore changes from an in-stage
+overlay (tab bar still visible) to a **full-window takeover**. **That consequence is accepted:**
+`slice` is a **test fixture, not a game** (§2 fact 1), and spending work to preserve a nicety on a
+deprecated surface is waste. A later lane that "fixes" this is doing negative work.
+
+**(c) WP-3's footprint in `roomzoom-view.js` — ACCEPTED.** Nominally WP-4's file; it was forced, not
+casual. See §4 step 3.
+
+**(d) The missing `materials` replay — a real bug, fixed as a FOLLOW-UP, not now.** WP-3 found it while
+adding its own channel, added `"zones"` to the snapshot list and deliberately left `materials` alone
+rather than widen its own diff. See §6 item 2. Correct call: it is small, real, and unrelated to the
+current chain, so it does not jump the queue.
+
+### 6. Owed follow-ups — real work, nobody owns any of it
+
+These are not nice-to-haves; each is a known-wrong thing in the tree or the record.
+
+1. **`docs/design/perilune-economy-modularity.md` §1.4 is stale and was NOT re-audited.** Its LOC
+   ledger predates E0-4: it lists `HaulJobSource.cs` at **257** lines (now **512**) and
+   `StockZoneSystem.cs` at **58** (now **300**, `sim/Sim.Core/Stock/StockZoneSystem.cs`), and its
+   claim that *"four of the six economy systems are empty stubs"* (`:222-228`) is now **false** —
+   `StockZoneSystem` is a real registry with a packed-sorted store. **Owner-shaped job:** re-run the
+   §1.4 inventory against `main`, restate the "real economy" total and the 16 %-of-`Sim.Core` figure,
+   and say which stubs actually remain (`ProductionSystem`, `OreRegistrySystem`, `TradeSystem`). Also
+   correct §7 step 1's *"All four pins must hold"* — there are five.
+2. **`materials` is never replayed to a reconnecting tab — a real bug, deliberately deferred.**
+   `GameSession.Snapshot()` (`hosts/web/GameSession.cs:159`) catches a freshly-connected tab up from
+   its channel list — and **`materials` is not in it**, even though the channel is broadcast like any
+   other at `:1074`. **Consequence:** a tab that reconnects does not get the wall/floor material layer
+   back **until the next material change**, so built walls render in the default skin until someone
+   builds again. Found by WP-3 while adding `zones` to that same list; it added its own key and
+   **deliberately left `materials` alone** rather than widen its diff, which was the right call.
+   **Owner-shaped job:** add `"materials"`, and assert the replay — the honest test is that *every*
+   channel a client consumes appears in `Snapshot()`, which generalises the bug instead of patching one
+   instance of it.
+3. **The WP-5 cost disclosure is wrong in BOTH halves.** `hosts/tui/GameLoop.cs:56-60` and
+   `client/src/ui/stock-filter-model.js:38-45` both claim zoning any tile *"permanently arms"* the
+   `filtered` fast path in `HaulJobSource` — **WP-6 killed that**, because an accept-all mask now
+   stores **no** registry entry. And both give the exponent as `O(items × stockpile-tiles)`; it was
+   `O(items × tiles²)`. Recorded rather than fixed at the time because the correcting package was
+   docs-only. **Owner-shaped job:** two comment edits, one commit, no behaviour change; verify against
+   `StockZoneSystem`'s current collapse behaviour rather than against the comments.
+4. **The `ApplyWork` / `WorkRate` seam** — the modularity audit's **highest payoff-per-cost move**
+   (§6, §7 step 1): a ~40-line, **pin-neutral** change replacing five independent copies of the same
+   work decrement (`DigJobSource.cs:135`, `BuildJobSource.cs:405`, `DeconstructJobSource.cs:180`,
+   `MachineWearSystem.cs:248`, `CraftingSystem.cs:173`) with one helper whose `WorkRate` returns the
+   literal `1` today. It satisfies three requirements at once — maintainability, portability, and the
+   binding operator model E2 cannot ship without. **Held deliberately until the console programme
+   settles**: it touches `Jobs/`, and the audit itself says land it after E0-4 rather than beside it.
+   **Its honest limit, so nobody over-claims the precedent:** the shipped `MachineWearSystem` channel
+   (`Citizen.Mood` → `ShipMetrics.Morale` → `DirectorSystem.WearPressure` → wear, injected,
+   def-weighted, degrading to `× 1f` when absent) gives the **signature** and not the **signal** — it
+   reads a **crew-wide mean** off a pure aggregate report at **~0.1 Hz** through a **deliberately
+   smoothed** lever, while the operator model needs **this citizen's mood at this workbench, per tick,
+   un-smoothed**. That per-citizen read is itself the crossing
+   `Economy_KnowsNothingAboutSoulsPresentationOrPhysiology` guards, and the precedent does **not**
+   pre-authorise it (`MachineWearSystem` never touches `Citizen.Mood`). **Budget step 1 as the
+   signature and E2 as the signal.** Two traps at the sites: `MachineWearSystem.cs:248` decrements by
+   `Interval`, not 1, so the helper needs a `ticks` argument; `CraftingSystem.cs:173` is a **read**,
+   not a decrement.
+5. **WP-3: the zone key's DOM mount is unguarded, and no sim-produced back-off has been seen.** Two
+   source assertions guard the key's *presence*, but **nothing drives the mount** — removing the
+   skeleton div, or forcing `hidden = true`, was caught only because the reviewer asked for it. And
+   nobody has watched a **sim-produced** back-off hatch in a browser: the on-screen state was injected
+   through the same `Hud.renderZones` door the wire uses, and every link in the chain is pinned
+   separately, but the end-to-end path has not been observed. **First E0-6 backlog line.** This is a
+   textbook case for the standing rule in §4 — drive it, do not scan it.
+6. **WP-8: `C1` proves co-presence, not routing.** It asserts the nudge's click handler and
+   `Cmd.pause()` are *both present*, not that one reaches the other: **two mutations pass the entire
+   node suite** (554 tests as it stood mid-package; 589 on `main` today) — `if (false && …)`, and
+   re-pointing the Overview branch at `Cmd.deck(0)`. The cause is C1's
+   own `||` fallback, which the skeleton attribute satisfies. **Fix: drop the fallback, or drive it**
+   through `dom-lite.js` and assert the command that comes out.
+7. **WP-8: the overlap acceptance excludes crowded pills**, so "hide it" satisfies "don't overlap it".
+   The exclusion is the right call, but nothing pins that the roomy cases produce **no** crowded
+   labels. **One `assert.ok(!l.crowded)` inside the existing loop closes it.**
+8. **A player-facing unreachable-zone indicator** — WP-7's own recommendation. WP-7 traded an
+   expensive-and-visible bug for a **cheap-and-invisible** one: a zone painted where no crew can reach
+   simply never fills. **WP-3 has now paid most of this down** (the key, the hatch, the tooltip); what
+   remains is the MOSS fault row and a log line.
+9. **The five E0-4 follow-ups nobody owns**, listed in full in the section below this block
+   ("Follow-ups this lane owes"): `bench` mode should skip `HasDevice` tiles (moves a published row);
+   collapse the three `AcceptAllMask` derivations into one and **delete** the cross-derivation bridge
+   test; `BenchStockpile_StillFills`'s coupling to `SelectStockpile`; **a labour-bound ship** — the
+   honest prerequisite for ever quoting a wrong-deck cost again; and the uncovered
+   `Console.WriteLine` call site at `hosts/scenario/Program.cs:491` (the warning's *text* is pinned,
+   but deleting the *call* leaves the gate green).
+10. **`docs/MECHANICS.md:2090`** still says *"`Stockpile` is one boolean tile flag with no filters"* —
+    stale since E0-4. One-line fix, flagged by the plan's §10 (which cites it as `:1829`, itself
+    already drifted) and never taken.
+11. **Wording nit, not a defect.** The nudge reads "CLICK OR PRESS SPACE TO RUN THE SHIP". That is true
+    on every *pointer* path (verified on both surfaces with real key events) and false on exactly one
+    *keyboard* path, by deliberate design: a keyboard user who arms a tool with Enter keeps focus on
+    that button, so SPACE re-activates the tool. **That user is not stranded** — the chip is
+    keyboard-reachable (visible focusable 35 of 36). Recorded so nobody "discovers" it as a bug.
+
+### 7. Worktree hygiene
+
+`perilune-wt/` is **already pruned to four**: `main`, `handover` (this lane), `wp3-zones-channel` and
+`wp8-markers`. **The last two are merged and safe to remove** —
+`git worktree remove ../perilune-wt/<lane>` then `git branch -d lane/<lane>`.
+
+- **Do not prune on someone else's behalf.** The hard rule (`CLAUDE.md` "Work in a worktree") exists
+  because two instances once shared a checkout and a measurement was taken against a tree another
+  session was editing. Removing a worktree that looks idle is the same class of mistake. Confirm with
+  the owner, or leave it.
+- One branch is genuinely unmerged and has no worktree: **`lane/e0-4-haul-diagnosis`** (`487d924`,
+  "BUG STILL OPEN"), whose bug WP-7 has since fixed. Superseded — read it before deleting it.
+
 ## E0-4 — filtered stockpile zones: **LANDED on `main` (2026-07-25), and its headline claim is RETRACTED**
 
 **⚠️ Before quoting ANY `--stockpile far` number from this file, from `ECONOMY.md` §8, or from any
@@ -266,9 +704,17 @@ nobody noticed until the running game was opened.** Plan:
 `docs/design/perilune-console-retirement.plan.md` (826 lines, on `lane/console-retirement` — it is
 **not on `main`**, though `CLAUDE.md` already cites it).
 
+> **⇒ CORRECTED later the same day: the plan IS on `main`**, merged at `8d5aebf`. The sentence above
+> was true when written and is kept only so the sequence is traceable.
+
 Landed on `main`: WP-0 surface guard, WP-1 grid playability, WP-7 RELATIONS re-home. **Not yet
 dispatched, deliberately:** WP-3 zones wire channel (**touches `WireFormat`, a SPINE file — integrator
 lane only**, and it is the serial critical path for WP-2/WP-6) and WP-8 markers/task-line/nudge.
+
+> **⇒ CORRECTED later the same day: WP-3 and WP-8 were both dispatched, reviewed and merged**
+> (`e26a56c`, `3aecf4b`), each after one send-back. WP-3's `WireFormat` edit came out to **one token**
+> (`class` → `partial class`), with the channel in a sibling `hosts/web/WireFormat.Zones.cs`. See
+> **⇒ START HERE** at the top of this file for the settled state and the next steps.
 **Key findings:** `hud.js` is 1291 lines of *fused* shared-state + console chrome that **both** modern
 surfaces import, so retirement is a **split, not a delete**, and 8 writers deref `$(id)` unguarded
 (pull `.app` without the split ⇒ white page); designations **already ride the wire** (both SVG
@@ -303,7 +749,11 @@ apiece, the merged lane read 943 passing of 946.
 binding automation-&-souls principle. Opus-written + independently Opus-reviewed. No code, no pins.
 (Not part of E0-4; a standalone reference. See memory `automation-player-journey-doc`.)
 
-## Orientation for a fresh session
+## Orientation — the E0-4-era version (2026-07-25, midday). **SUPERSEDED by ⇒ START HERE at the top.**
+
+> **Kept, not current.** The block at the top of this file is the orientation a fresh instance should
+> read; this one is retained for its detail on the five pins and on how to read the retraction. Its
+> points 0–4 are still accurate. **Its closing "In flight" line is not** — see the correction there.
 
 0. **⚠️ E0-4 IS LANDED on `main`, and its published far-leg thesis is RETRACTED.** Read the
    **top section of this file** in full before quoting any stockpile number — it is a retraction, not
@@ -352,6 +802,11 @@ top section) + wall drag-build & materials + drifting starfield + the **A1 measu
 **economy-modularity audit** + the **automation & souls** design principle.
 **In flight (NOT complete on `main`):** the **console-retirement programme** — WP-0/WP-1/WP-7 landed,
 WP-3 (a `WireFormat` SPINE edit) and WP-8 not yet dispatched.
+
+> **⇒ CORRECTED later the same day: WP-3 (`e26a56c`) and WP-8 (`3aecf4b`) have landed too, and
+> NOTHING is in flight.** Five of the programme's 11 packages are done (WP-0, WP-1, WP-3, WP-7, WP-8);
+> the remaining order is WP-2 → WP-4 → WP-5 → WP-6 → WP-C → WP-9, behind one non-programme sim lane.
+> **⇒ START HERE** at the top of this file is the authority on all of it.
 
 ## ⛔ SUPERSEDED HISTORY (2026-07-24) — E0-4 as it looked mid-lane. Kept so old numbers can be traced.
 
