@@ -14,7 +14,8 @@
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones } from '../wire/messages.js';
-import { roomZoneTiles, zoneLegendRows } from './zone-model.js';
+import { roomZoneTiles, zoneLegendRows, acceptsLabel } from './zone-model.js';
+import { ACCEPT_ALL, defaultStockFilter } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
 import { decksView } from './decks-model.js';
 import { buildItem } from '../items/index.js';
@@ -41,7 +42,7 @@ const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch lar
 const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
 const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
-  'DIG [G] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · DEMOLISH REMOVES A GHOST';
+  'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -64,11 +65,26 @@ let _wasPaused = false;   // previous run state — the edge that dismisses the 
 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
-let _armed = null;        // the ONE Level-2 input slot (12 tools + null)
+let _armed = null;        // the ONE Level-2 input slot (15 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
 let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
+// The STOCKPILE accept-mask, read at COMMIT time (one read per sweep, not one per tile).
+//
+// A GETTER, injected, exactly as `client/src/input/controls.js:118-122` takes it and for the same
+// stated reason: reading module state would make the lowering impure and untestable. It arrived here
+// with the verb — WP-5 wired it into `initOverview`, and when `stockpile` came down to this palette
+// the mask had to come with it, because a zone command that does not assert its filter leaves the
+// tile wearing whatever filter it wore before. `main.js` wires it to `Hud.getStockFilter()`, the one
+// slot beside the one armed tool, so while the console still exists both surfaces paint with ONE
+// mask rather than two that drift. Default is the shared `defaultStockFilter()` (ACCEPT-ALL), never
+// a literal — see stock-filter-model.js.
+//
+// WP-6 OWNS THE CHIPS, AND ITS TARGET MOVED WITH THIS PACKAGE: the ACCEPTS row it was to add to the
+// Overview's ORDERS bar belongs on THIS palette now. That is still a one-line change here, because
+// this getter is the only reader.
+let _getStockFilter = () => defaultStockFilter();
 
 // ── keyed in-place reconciliation state (ROOM-ZOOM stability fix) ─────────────────────────────
 // The chrome (palette buttons, breadcrumb links, minimap, caption) used to rebuild wholesale
@@ -92,6 +108,7 @@ function setCls(node, cls, on) { if (node && node.classList.contains(cls) !== !!
 export function initRoomZoom(opts) {
   _send = (opts && opts.send) || (() => {});
   _onExit = (opts && opts.onExit) || (() => {});
+  if (opts && typeof opts.getStockFilter === 'function') _getStockFilter = opts.getStockFilter;
   _root = document.getElementById('roomzoom-view');
   if (!_root) return { enter: () => {}, exit: () => {}, isOpen: () => false };
   buildSkeleton();
@@ -137,7 +154,7 @@ function buildSkeleton() {
   _toast = $('rz-toast');
   _nudge = makeNudge({ el: () => $('rz-nudge') });
   buildChrome();
-  // Structural tools (WALL/FLOOR/DOOR) and the two ORDER tools (DIG/STRIP) use a press-drag-release
+  // Structural tools (WALL/FLOOR/DOOR) and the three ORDER tools (DIG/STOCKPILE/STRIP) use a press-drag-release
   // gesture (RimWorld sweep) — the `isSweepTool` sibling set; a plain click is the degenerate 1-tile
   // drag. Every other tool stays on the click handler.
   _canvas.addEventListener('mousedown', onCanvasDown);
@@ -648,7 +665,7 @@ function onCanvasClick(e) {
     return;
   }
 
-  // Every SWEPT tool (WALL/FLOOR/DOOR + DIG/STRIP) is committed by the press-drag-release gesture
+  // Every SWEPT tool (WALL/FLOOR/DOOR + DIG/STOCKPILE/STRIP) is committed by the press-drag-release gesture
   // (onCanvasDown/Move/Up), so the browser's trailing click after a release must not commit again.
   //
   // THIS IS THE SECOND GUARD, NOT THE FIRST, and saying so is worth three lines because a test
@@ -705,7 +722,7 @@ function tileAt(e) {
   return tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
 }
 
-/** Begin a sweep. WALL/FLOOR/DOOR + DIG/STRIP; a plain click is the degenerate 1-tile drag. */
+/** Begin a sweep. WALL/FLOOR/DOOR + DIG/STOCKPILE/STRIP; a plain click is the degenerate 1-tile drag. */
 function onCanvasDown(e) {
   if (e.button !== 0 || !isSweepTool(_armed)) return; // non-swept tool → the click handler
   const tile = tileAt(e);
@@ -732,29 +749,52 @@ function onCanvasMove(e) {
 }
 
 /**
- * Lower an ORDER-class tool + tile to its wire payload. THE ONE PLACE this surface turns a
- * designation into a message, and deliberately NOT `Cmd.build`: an order goes to the designation
- * boards (`DigJobSource` / `DeconstructSystem`), whereas `Cmd.build` goes to `BuildSystem`, which
- * knows nothing about designations and would silently swallow it.
+ * Lower an ORDER-class tool + tile to its wire payloads — a LIST, 1 or 2 long. THE ONE PLACE this
+ * surface turns a designation into a message, and deliberately NOT `Cmd.build`: an order goes to the
+ * designation boards (`DigJobSource` / `StockZoneSystem` / `DeconstructSystem`), whereas `Cmd.build`
+ * goes to `BuildSystem`, which knows nothing about designations and would silently swallow it.
  *
  * It must stay byte-identical to what the console's `paletteOrders`
- * (`client/src/input/controls.js:69`) already emits for the same verb — two independent lowering
- * paths now exist for the same two verbs, and the day they disagree is the day one surface starts
- * sending a message the host understands differently. `client/test/room-model.test.js` pins that by
- * IMPORTING `paletteOrders` and comparing, so a drift on EITHER side reddens; a copied literal here
- * could not do that.
+ * (`client/src/input/controls.js:69`) already emits for the same verb — independent lowering paths
+ * exist for these verbs, and the day they disagree is the day one surface starts sending a message
+ * the host understands differently. `client/test/room-model.test.js` pins that by IMPORTING
+ * `paletteOrders` and comparing, so a drift on EITHER side reddens; a copied literal here could not
+ * do that. It deliberately does NOT call `paletteOrders`: if it did, a drift there would move both
+ * sides together and the comparison would stay green through it.
+ *
+ * STOCKPILE EMITS TWO, ALWAYS IN THIS ORDER: zone the tile, THEN assert its complete accept-set.
+ * Both land in the same command drain before any system runs, so the intermediate state is
+ * unobservable — but `DesignateStockpileCommand` OFF *clears* the filter, so the reverse order would
+ * break the day an OFF path is added. A missing/garbage mask defaults to ACCEPT-ALL and NEVER to
+ * silence: sending nothing would let a tile keep an earlier restrictive filter that the player has
+ * just repainted as accept-all. Every repaint re-asserts the whole truth
+ * (`client/src/input/controls.js:74-90`).
+ *
+ * ⚠️ IT RETURNS A LIST AND THE CALLER SPREADS IT — the single most likely regression here is a
+ * caller that goes back to `_send(orderPayloads(...))` and sends an ARRAY down the wire, or one that
+ * sends only `[0]` and silently drops every filter. A sweep must emit a correct PAIR PER TILE.
  *
  * `on` is always true: the Room Zoom paints intent and never erases it. UN-designating is a KNOWN GAP
  * — the wire carries it (`Cmd.dig(x, y, false)`) and no surface in the client sends it, the console
- * included, so WP-4 ports the capability the game actually has rather than inventing a verb here.
+ * included, so this ports the capability the game actually has rather than inventing a verb here.
+ *
+ * @param {string} verb  the PALETTE_CMD wire verb name ('dig' | 'stockpile' | 'strip')
+ * @param {number} x @param {number} y
+ * @param {number} [mask] the stockpile accept-mask; ignored by every other verb
+ * @returns {object[]} 1..2 Cmd payloads, in send order
  */
-function orderCmd(verb, x, y) {
-  if (verb === 'strip') return Cmd.strip(x, y, true);
-  return Cmd.dig(x, y, true);
+function orderPayloads(verb, x, y, mask) {
+  if (verb === 'strip') return [Cmd.strip(x, y, true)];
+  if (verb === 'stockpile') {
+    const m = Number.isFinite(mask) ? mask : ACCEPT_ALL;
+    return [Cmd.stockpile(x, y, true), Cmd.filter(x, y, m)];
+  }
+  return [Cmd.dig(x, y, true)];
 }
 
 /** Commit the sweep on release: one payload per previewed tile — `Cmd.build` (carrying the active
- *  material) for a structural tool, `Cmd.dig`/`Cmd.strip` for an ORDER tool.
+ *  material) for a structural tool, `Cmd.dig`/`Cmd.strip` (and `Cmd.stockpile` + `Cmd.filter`, a
+ *  pair) for an ORDER tool.
  *  Bound on window so a release that ends off-canvas still commits (IX-Z spirit). */
 function onCanvasUp(e) {
   if (!_drag || e.button !== 0) return;
@@ -763,12 +803,22 @@ function onCanvasUp(e) {
   const res = buildDragTiles(drag.start, drag.end, drag.mode, roomBounds());
   const pc = paletteCommand(drag.tool);
   const material = activeMaterial(_materials, drag.tool);
+  // ONE mask read for the whole sweep, and only for an ORDER — a getter called per tile could
+  // observe a mask change mid-commit and paint one rectangle with two different filters, and a WALL
+  // sweep has no business reading a stockpile filter at all.
+  const mask = pc.cls === 'order' ? _getStockFilter() : 0;
   // sim decides legality per tile, for both classes — an illegal order is a silent no-op, never a ghost
-  if (pc.cls === 'order') for (const t of res.tiles) _send(orderCmd(pc.verb, t.x, t.y));
-  else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
+  if (pc.cls === 'order') {
+    for (const t of res.tiles) for (const o of orderPayloads(pc.verb, t.x, t.y, mask)) _send(o);
+  } else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
-    toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res));
+    // STOCKPILE's caption names the mask it just painted, because nothing else on this surface can:
+    // the ACCEPTS chips are still on the console (WP-6 brings them here), and a zone that silently
+    // refuses every item looks exactly like one nothing has been hauled to yet. `acceptsLabel` is
+    // the SHARED spelling the zone key uses, so the toast and the key cannot word it differently.
+    const accepts = pc.verb === 'stockpile' ? ' · ' + acceptsLabel(mask) : '';
+    toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res) + accepts);
     nudgeOnIntent(); // designations placed on a stopped ship — nobody will come and build them
   }
   scheduleRepaint();
@@ -806,6 +856,8 @@ function onKey(e) {
     arm('demolish'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'g' || k === 'G') {         // WP-4: G toggles DIG — the console's own binding
     arm('dig'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'z' || k === 'Z') {         // Z toggles STOCKPILE — the console's own binding
+    arm('stockpile'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'v' || k === 'V') {         // WP-4: V toggles STRIP (salVage; see controls.js:264)
     arm('strip'); e.stopPropagation(); e.preventDefault();
   }

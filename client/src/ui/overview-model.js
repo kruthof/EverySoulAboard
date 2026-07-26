@@ -11,33 +11,52 @@
 // (no locale APIs): round + ASCII only.
 //
 // ═════════════════════════════════════════════════════════════════════════════════════════════
-// THE AMENDED SCHEMATIC RULE — **BUILDING is zoom-only; ORDERS are deck-scoped.** BINDING.
-// (console-retirement plan §4.2, amended and adopted; this file is where the plan says it lives.)
+// THE SCHEMATIC ALTITUDE RULE — **ORDERS THAT POINT AT AN EXISTING THING are deck-scoped; ORDERS
+// THAT AUTHOR A REGION are zoom-only, exactly like BUILDING.** BINDING (owner decision, Garvin).
+// (console-retirement plan §4.2, amended twice; this file is where the plan says the rule lives.)
+//
+//   deck-scoped, HERE:      DIG · STRIP          — you point at debris, a wall, a device
+//   zoom-only, ROOM ZOOM:   WALL/FLOOR/DOOR · **STOCKPILE**  — you author an extent out of nothing
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// The rule this replaces was "nothing is placed on the ship schematic". Its justification was always
-// about WALLS: a wall is a physical thing with a footprint, a material cost and a geometry
-// consequence, and placing one at a scale where a tile is a handful of pixels is a mis-click waiting
-// to happen. That argument does not reach a designation. **A designation consumes no material and
-// changes no geometry — it marks intent.** `Cmd.dig` / `Cmd.stockpile` / `Cmd.strip` write a flag the
-// sim's job board reads; the sim re-validates every tile and silently no-ops an illegal one, so the
-// worst a fat-fingered order can do is nothing. A stockpile in particular is a *logistics decision
-// about the ship* — you zone the storage room because crew hauling from deck 3 need somewhere to put
-// things — and painting it one room at a time, having entered that room from this very schematic, is
-// the wrong altitude.
+// ⚠️ THE PREVIOUS WORDING IS QUOTED HERE RATHER THAN DELETED — someone grepping it must land on the
+// correction, not on a hole. WP-5 wrote: **"BUILDING is zoom-only; ORDERS are deck-scoped"**, on the
+// grounds that *"a designation consumes no material and changes no geometry — it marks intent"*, and
+// it drew an ORDERS bar with THREE buttons: DIG, STOCKPILE, STRIP.
 //
-// So the amended rule is SHARPER than the one it replaces, not looser: it names the property that
-// does the work (material + geometry) instead of naming the surface. The code already spoke this
-// distinction — `console-model.js` `isOrderTool` vs `isBuildTool`, and `controls.js:53-58` ("Same
-// gesture, different verb — routing an order tool through `Cmd.build` would hand it to BuildSystem,
-// which knows nothing about designations"). WP-5 only makes the schematic honour it.
+// **The justification is true of dig and strip, FALSE of stockpile, and it names the wrong axis.**
+// The axis that does the work is not "does it consume material" — it is **"does the player choose
+// the extent?"**
+//   · DIG and STRIP mark a thing the world ALREADY CONTAINS: this rubble, this wall, this device.
+//     The extent was decided by the ship. You point, and the tile you pointed at is the whole
+//     decision — which is why a single click at schematic altitude is an honest gesture for them.
+//   · A STOCKPILE has nothing to point at. **You author a region out of nothing, and its extent IS
+//     the decision** — the same category as building a room, which is already zoom-only.
 //
-// WRONG IF THIS FILE EVER RETURNS A 'build' ACTION. There is no build branch below and there must
-// not be one: an armed wall/floor/door/cancel leaking in from the shared console armed slot is
-// IGNORED here and the click resolves by the ordinary hit rule (pinned by test).
+// And the extent is not a matter of taste, it is the mechanic: `JobWork.IsFreeStockpileTile` asks
+// "Stockpile + Walkable + empty", **ONE STACK PER TILE**, so the area literally is the capacity —
+// 40 tiles is 40 stacks. Choosing x×y is not incidental to the verb, it is the verb. Meanwhile this
+// surface **has no drag gesture at all** (zero mousedown/mousemove/pointerdown in `overview-view.js`
+// — it is click-only), so painting a 5×8 zone here is FORTY CLICKS, while the Room Zoom has swept
+// filled rectangles since WP-4. The verb that most needs area-painting was the only one that could
+// not be swept anywhere. That is what this amendment fixes.
+//
+// The older rule this all replaces was "nothing is placed on the ship schematic", justified about
+// WALLS: a wall has a footprint, a material cost and a geometry consequence, and placing one where a
+// tile is a handful of pixels is a mis-click waiting to happen. That reasoning still stands for
+// building, and the material/geometry observation about designations is still TRUE — it is simply
+// not the thing that decides altitude. Note what did NOT change: dig and strip stay on BOTH
+// surfaces, because pointing at an existing thing is a legitimate gesture at either scale.
+//
+// WRONG IF THIS FILE EVER RETURNS A 'build' ACTION, or if `stockpile` reappears in `ORDER_TOOLS`.
+// There is no build branch below and there must not be one: an armed wall/floor/door/cancel leaking
+// in from the shared console armed slot is IGNORED here and the click resolves by the ordinary hit
+// rule (pinned by test). `stockpile` is likewise not an order tool HERE any more: the Room Zoom owns
+// its own armed slot, so the only way the string reaches this surface is the console's surviving Z
+// key, and when it does the click falls through to the hit rule — clicking a room ENTERS it, which
+// is where the tool now lives. That is the right outcome, not a leak.
 
 import { makeTransform } from './overview-scene.js';
-import { stockFilterLabel } from './stock-filter-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -70,20 +89,27 @@ export { makeTransform };
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The three ORDER verbs the Overview arms, in the bar's visual order — the SAME order and the same
- * three names as the console's own `ORDER_KINDS` (`console-model.js`), because they are the same
- * verbs on a different surface and a divergence here would be a divergence in the game.
+ * The ORDER verbs the Overview arms, in the bar's visual order — a SUBSET of the console's own
+ * `ORDER_KINDS` (`console-model.js`), in its order, because they are the same verbs on a different
+ * surface and a divergence in NAME or SPELLING here would be a divergence in the game.
+ *
+ * ⚠️ IT IS TWO, NOT THREE. `stockpile` was here from WP-5 until the altitude rule was corrected (see
+ * the module header): it authors a region, so it lives in the Room Zoom palette (`room-model.js`
+ * `ROOM_TOOLS`) where a drag sweeps a filled rectangle. Putting it back would ship a verb whose
+ * whole content is an extent onto the one surface that cannot express an extent.
  *
  * This is also the table `client/test/surface-boundary.test.js` MODERN_TOOL_TABLES resolves to prove
- * verb parity with the dying console. Renaming it is a one-line edit THERE, in the same commit.
+ * verb parity with the dying console — and parity is satisfied by the UNION of the modern tables, so
+ * moving a verb from here to `ROOM_TOOLS` keeps the ledger empty. Renaming this export is a one-line
+ * edit THERE, in the same commit.
  */
-export const ORDER_TOOLS = Object.freeze(['dig', 'stockpile', 'strip']);
+export const ORDER_TOOLS = Object.freeze(['dig', 'strip']);
 
 /** Tool → the bar's button label. The hotkey prefix is the console's own binding (`controls.js`
- *  G/Z/V), which still arms through the one shared slot while the Overview is on screen; the ⛏ / ⚒
+ *  G/V), which still arms through the one shared slot while the Overview is on screen; the ⛏ / ⚒
  *  icons are the Room Zoom's (`room-model.js` TOOL_LABEL), so one verb reads the same on both. */
 export const ORDER_LABEL = Object.freeze({
-  dig: '[G] ⛏ DIG', stockpile: '[Z] ▦ STOCKPILE', strip: '[V] ⚒ STRIP',
+  dig: '[G] ⛏ DIG', strip: '[V] ⚒ STRIP',
 });
 
 /** True for a tool the Overview lowers to a DESIGNATION rather than resolving as a hit. PURE. */
@@ -99,21 +125,23 @@ export function isOrderTool(tool) {
  * only thing standing between a player and a designation on a deck they are not looking at is that
  * the schematic shows one deck at a time. Saying so is the affordance.
  *
- * `stockFilterLabel` is the shared authority for naming a mask in words (the console's armed hint
- * and the Room Zoom's zone key read the same function), so a label change lands everywhere at once.
- * Only STOCKPILE carries it — dig and strip ignore the mask entirely. PURE, ASCII + the two verb
+ * ⚠️ NO MASK PARAMETER ANY MORE. WP-5's third branch read `stockFilterLabel(mask)` to name the
+ * accept-set in words; that branch — and the whole accept-mask seam on this surface — moved to the
+ * Room Zoom with the verb. Naming a filter here would be worse than silent: it would advertise a
+ * setting for a tool this bar cannot arm.
+ *
+ * THE UN-ARMED LINE NAMES WHERE STOCKPILE WENT, and that sentence is the migration: a player who
+ * knew the bar had three buttons must not conclude the verb was deleted. PURE, ASCII + the verb
  * icons, no locale APIs.
  *
  * @param {null|string} armed  the shared armed-tool slot
  * @param {number} deck        the deck currently on screen (frame.deck)
- * @param {number} [mask]      the stockpile accept-mask
  */
-export function orderHintLine(armed, deck, mask) {
+export function orderHintLine(armed, deck) {
   const d = ' ON DECK ' + (deck | 0);
   if (armed === 'dig') return '⛏ DIG ▸ CLICK DEBRIS' + d;
   if (armed === 'strip') return '⚒ STRIP ▸ CLICK A WALL OR DEVICE' + d;
-  if (armed === 'stockpile') return '▦ STOCKPILE ▸ CLICK A TILE' + d + ' · ACCEPTS ' + stockFilterLabel(mask);
-  return 'ORDERS APPLY TO DECK ' + (deck | 0) + ' · BUILDING IS ZOOM-ONLY';
+  return 'ORDERS APPLY TO DECK ' + (deck | 0) + ' · BUILDING AND ▦ STOCKPILE ARE ZOOM-ONLY';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -126,9 +154,10 @@ export function orderHintLine(armed, deck, mask) {
  * (null | 'move' | an ORDER tool | a build tool that leaked in); `hit` is the DOM hit-test result:
  *   { pawnCid?, terminalId?, addRoomSlot?, roomAnchor?, hallSlot? }  (all optional; absent = miss)
  *
- * BUILDING IS ZOOM-ONLY; ORDERS ARE DECK-SCOPED (the module header, binding). So there is NO 'build'
- * action here — an armed wall/door/cancel leaking in from the shared console slot is ignored and the
- * click falls through to the hit rule — but there IS an 'order' action, and it sits at the TOP.
+ * ORDERS THAT POINT AT AN EXISTING THING ARE DECK-SCOPED; BUILDING AND STOCKPILE ARE ZOOM-ONLY (the
+ * module header, binding). So there is NO 'build' action here — an armed wall/door/cancel/stockpile
+ * leaking in from the shared console slot is ignored and the click falls through to the hit rule —
+ * but there IS an 'order' action, and it sits at the TOP.
  *
  * Precedence (single disambiguation rule):
  *   1. the MOVE order armed → 'move' (the move target tile — IX-O-41)

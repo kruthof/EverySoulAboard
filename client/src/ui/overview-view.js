@@ -38,7 +38,6 @@ import {
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine,
 } from './overview-model.js';
-import { ACCEPT_ALL, defaultStockFilter } from './stock-filter-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -75,18 +74,13 @@ let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + 
 let _onAddRoom = (deck, slot) => showRoomPicker(deck, slot);
 let _pickDeck = 0;
 let _pickSlot = 0;
-// The STOCKPILE accept-mask, read at CLICK time (WP-5).
-//
-// A GETTER, injected, exactly as `client/src/input/controls.js:118-122` takes it and for the same
-// stated reason: reading module state would make the lowering impure and untestable, which is the
-// whole reason that seam exists. main.js wires it to `Hud.getStockFilter()`, so while the console
-// still exists both surfaces paint with ONE mask rather than two that drift. The default is the
-// shared `defaultStockFilter()` (ACCEPT-ALL), never a literal — see stock-filter-model.js.
-//
-// WP-6 OWNS THE CHIPS. This package deliberately ships the mask and no way to change it from the
-// Overview: WP-6's ACCEPTS row is what re-points this getter at the bar's own chips, and that is a
-// one-line change here because the seam is already the only reader.
-let _getStockFilter = () => defaultStockFilter();
+// ⚠️ THERE IS NO STOCKPILE ACCEPT-MASK SEAM ON THIS SURFACE ANY MORE, and its absence is deliberate
+// rather than an omission. WP-5 held `_getStockFilter`, an injected getter read at click time, and
+// `initOverview` took it as an option. It moved to `roomzoom-view.js` with the verb: the mask is
+// meaningless without a tool that can paint it, and a getter left standing here would be a live
+// injection point that nothing reads — the shape a later package mistakes for a wiring bug and
+// "fixes" by adding the button back. If a stockpile seam ever seems wanted here, read
+// `overview-model.js`'s header first: authoring a region is zoom-only.
 
 // ── keyed in-place reconciliation state (BUG-A fix) ──────────────────────────────────────────
 // The HUD islands used to rebuild wholesale (`innerHTML =`) on EVERY coalesced wire rebroadcast
@@ -149,7 +143,6 @@ export function initOverview(opts) {
   // Optional injection point for the room-zoom lane.
   if (opts && typeof opts.onEnterRoom === 'function') _onEnterRoom = opts.onEnterRoom;
   if (opts && typeof opts.onAddRoom === 'function') _onAddRoom = opts.onAddRoom;
-  if (opts && typeof opts.getStockFilter === 'function') _getStockFilter = opts.getStockFilter;
   repaint();
 }
 
@@ -297,17 +290,19 @@ function buildIslands() {
       (i + 1) + ' ' + LENS_SHORT[i] + '</button>').join('') + '</div>';
   _el.lensBtns = Array.from(_root.querySelectorAll('.ov-lensbtn'));
 
-  // command bar — the BUILD tab + a FIXED tab set. BUILDING IS ZOOM-ONLY; ORDERS ARE DECK-SCOPED
-  // (overview-model.js's header holds the rule and its justification). So the BUILD tab carries no
-  // tile-BUILD tools — just a hint pointing the player into a room — and beside it the ORDERS bar,
-  // whose three tools are DESIGNATIONS: they consume no material and change no geometry, which is
-  // exactly why they are allowed at this altitude. (＋ADD ROOM to open a new hall still lives on the
-  // scene's hall slots.)
+  // command bar — the BUILD tab + a FIXED tab set. ORDERS THAT POINT AT AN EXISTING THING ARE
+  // DECK-SCOPED; BUILDING AND STOCKPILE ARE ZOOM-ONLY (overview-model.js's header holds the rule and
+  // its justification). So the BUILD tab carries no tile-BUILD tools — just a hint pointing the
+  // player into a room — and beside it the ORDERS bar, whose TWO tools each aim at something the
+  // ship already contains: DIG at debris, STRIP at a wall or a device. You point, and the tile you
+  // pointed at is the whole decision, which is what makes a single click honest at this altitude.
+  // STOCKPILE is not here: its extent IS the decision, and this surface has no drag gesture at all.
+  // (＋ADD ROOM to open a new hall still lives on the scene's hall slots.)
   //
   // The buttons carry `data-ov-tool`, so they route through the EXISTING `onHudClick` branch and the
   // EXISTING `paintCommand` reflection — the ORDERS bar adds no second arming path, it fills the one
   // that was already wired and empty. Arming is `Hud.armTool`, the ONE mutually-exclusive slot, so
-  // the bar, the console palette and the G/Z/V keys cannot disagree about what is armed.
+  // the bar, the console palette and the G/V keys cannot disagree about what is armed.
   $('ov-cmd').innerHTML =
     '<div class="hud ov-place" hidden><span class="ov-hdr">BUILD ▸</span>' +
       '<span class="ov-buildhint">CLICK A ROOM TO BUILD INSIDE IT · ＋ADD ROOM OPENS A NEW HALL</span></div>' +
@@ -643,9 +638,9 @@ function paintCommand(activeDeck) {
   // The header names the deck as well as the hint line: the header is what a player reads when
   // NOTHING is armed and they are deciding whether to arm at all, which is the moment "which deck
   // is this?" actually matters. `armTool` forces the tab to BUILD, so the bar is on screen whenever
-  // an order is armed, including when the G/Z/V keys did the arming.
+  // an order is armed, including when the G/V keys did the arming.
   setText(_el.ordersHdr, 'ORDERS ▸ DECK ' + (activeDeck | 0));
-  setText(_el.orderHint, orderHintLine(armed, activeDeck, _getStockFilter()));
+  setText(_el.orderHint, orderHintLine(armed, activeDeck));
   for (const b of _el.toolBtns) setCls(b, 'on', armed === b.dataset.ovTool);
   for (const b of _el.tabBtns) setCls(b, 'on', tab === b.dataset.ovTab);
 }
@@ -711,7 +706,7 @@ function onSceneClick(e) {
     case 'order': {
       const t = pointToTile(svg, e);
       if (t) {
-        for (const o of orderPayloads(action.tool, t.x, t.y, _getStockFilter())) _send(o);
+        for (const o of orderPayloads(action.tool, t.x, t.y)) _send(o);
         Hud.toolUsed(action.tool, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
         nudgeOnIntent(); // a designation nobody will come and act on while the ship is stopped
       }
@@ -728,37 +723,37 @@ function onSceneClick(e) {
 /**
  * Lower an ORDER tool + tile to its wire payloads. THE ONE PLACE this surface turns a designation
  * into a message, and deliberately NOT `Cmd.build`: an order goes to the designation boards
- * (`DigJobSource` / `StockZoneSystem` / `DeconstructSystem`), whereas `Cmd.build` goes to
- * `BuildSystem`, which knows nothing about designations and would silently swallow it.
+ * (`DigJobSource` / `DeconstructSystem`), whereas `Cmd.build` goes to `BuildSystem`, which knows
+ * nothing about designations and would silently swallow it.
  *
- * IT MUST STAY BYTE-IDENTICAL TO `paletteOrders` (`client/src/input/controls.js:69`). There are now
+ * IT MUST STAY BYTE-IDENTICAL TO `paletteOrders` (`client/src/input/controls.js:69`). There are
  * THREE independent lowering paths for these verbs — the console's `paletteOrders`, the Room Zoom's
- * `orderCmd`, and this one — and the day any two disagree is the day one surface starts sending a
- * message the host reads differently. `client/test/overview-model.test.js` pins that by IMPORTING
+ * `orderPayloads`, and this one — and the day any two disagree is the day one surface starts sending
+ * a message the host reads differently. `client/test/overview-model.test.js` pins that by IMPORTING
  * `paletteOrders` and comparing what came out of the injected `send`, so a drift on EITHER side
  * reddens. This function deliberately does NOT call `paletteOrders`: if it did, a drift there would
  * move both sides together and the comparison would stay green through it — the same reasoning
  * `room-model.test.js` records for the Room Zoom's copy.
  *
- * STOCKPILE EMITS TWO, ALWAYS IN THIS ORDER: zone the tile, THEN assert its complete accept-set.
- * Both land in the same command drain before any system runs, so the intermediate state is
- * unobservable — but `DesignateStockpileCommand` OFF *clears* the filter, so the reverse order would
- * break the day an OFF path is added. A missing/garbage mask defaults to ACCEPT-ALL and NEVER to
- * silence: sending nothing would let a tile keep an earlier restrictive filter the player has just
- * repainted as accept-all. Every repaint re-asserts the whole truth.
+ * ⚠️ IT STILL RETURNS A LIST THOUGH EVERY BRANCH IS NOW LENGTH 1, and that is not vestigial. The
+ * shape is `paletteOrders`' contract, this function is pinned against it by `deepEqual`, and a
+ * stockpile paint — the one verb that lowers to TWO commands — is a `Cmd.stockpile` followed by a
+ * `Cmd.filter`. That verb lives in the Room Zoom now (`roomzoom-view.js` `orderPayloads`, which
+ * owns the pair and the mask); narrowing this to a single payload would make the two lowerings
+ * different shapes for no gain and would have to be undone by anything that ever adds a
+ * two-command order verb here.
+ *
+ * NO `stockpile` BRANCH, AND AN ARMED `stockpile` NEVER REACHES THIS FUNCTION: `isOrderTool` no
+ * longer classes it (`overview-model.js`), so `overviewClickAction` never returns an `'order'`
+ * action for it. A stray call would fall to the empty list — silence, not a wrong message.
  *
  * `on` is always true: this surface paints intent and never erases it. UN-DESIGNATING IS A KNOWN
  * CLIENT GAP — `Cmd.dig(x, y, false)` rides the wire and the TUI sends it (`GameLoop.cs:322`), but
- * no surface in `client/` does, the console included (`docs/HANDOVER.md` §4d limit 1). WP-5 ports
- * the capability the client actually has rather than inventing a verb on one surface only.
+ * no surface in `client/` does, the console included (`docs/HANDOVER.md` §4d limit 1).
  */
-function orderPayloads(tool, x, y, mask) {
+function orderPayloads(tool, x, y) {
   if (tool === 'dig') return [Cmd.dig(x, y, true)];
   if (tool === 'strip') return [Cmd.strip(x, y, true)];
-  if (tool === 'stockpile') {
-    const m = Number.isFinite(mask) ? mask : ACCEPT_ALL;
-    return [Cmd.stockpile(x, y, true), Cmd.filter(x, y, m)];
-  }
   return [];
 }
 

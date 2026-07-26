@@ -255,18 +255,24 @@ function onMessage(m) {
 // order now, IX-52 — M / shift-click remain the instant expert paths).
 Hud.initConsole({ send: (o) => session.send(o), getCanvas: () => canvas, camera });
 // The warm Level-2 Room Zoom: the single-room build/decorate takeover, entered from the Overview.
-const roomZoom = initRoomZoom({ send: (o) => session.send(o) });
+// Its STOCKPILE tool paints with the SAME accept-mask the console's ACCEPTS chips set
+// (`Hud.getStockFilter`, the one slot beside the one armed tool), so no two surfaces can zone the
+// same tile with two different filters. A getter, read once per committed sweep — see
+// roomzoom-view.js. (WP-5 wired this into `initOverview`; it moved here with the verb, because the
+// extent of a zone is the decision and only this surface can drag one.)
+const roomZoom = initRoomZoom({
+  send: (o) => session.send(o),
+  getStockFilter: () => Hud.getStockFilter(),
+});
 // The warm Level-1 Overview: the default SHIP surface when the wire carries a `decks` grid. It
 // reads authoritative state back from the HUD caches and lowers every action to an existing Cmd /
 // HUD seam, so the console (tabs, selection, armed tool) stays the single source of truth. Clicking
 // an occupied room enters the Room Zoom (Level 2) through the injectable hook.
-// WP-5: the ORDERS bar's STOCKPILE paints with the SAME accept-mask the console's ACCEPTS chips set
-// (`Hud.getStockFilter`, the one slot beside the one armed tool), so the two surfaces cannot zone
-// the same tile with two different filters. A getter, read at click time — see overview-view.js.
+// ⚠️ NO `getStockFilter` HERE, deliberately: the ORDERS bar arms DIG and STRIP, neither of which
+// carries a mask. It moved to `initRoomZoom` above with the STOCKPILE verb itself.
 initOverview({
   send: (o) => session.send(o),
   onEnterRoom: (anchor) => roomZoom.enter(anchor),
-  getStockFilter: () => Hud.getStockFilter(),
 });
 // RELATIONS: the crew relationship web, a body-level takeover of its own (`body.relations-open`)
 // rather than an overlay inside the console stage — as an overlay it dropped `body.overview-open`
