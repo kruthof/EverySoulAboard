@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { isTextEntryTarget } from '../src/input/controls.js';
+import { codeOnly, callBlocks } from './code-only.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -204,7 +205,12 @@ test('click and Enter emit the IDENTICAL order sequence for the same tile', () =
 // single-canvas behavioural test can reach.
 test('the filter order is constructed ONLY in the palette seam, and BOTH inputs are wired', () => {
   const src = (rel) => readFileSync(join(here, rel), 'utf8');
-  const controls = src('../src/input/controls.js');
+  // CODE ONLY, everywhere below (CLAUDE.md trap 1). These two files carry long explanatory comments
+  // that NAME both tokens counted here — `Cmd.filter` and `paletteOrders` — so a raw count is one
+  // edited comment away from a wrong number, and the assertion would then read as a real finding.
+  // Measured at the switch: every count below is unchanged (1 / 2 / 2 / 3), so this strictly
+  // strengthens and moves nothing.
+  const controls = codeOnly(src('../src/input/controls.js'));
   const main = src('../src/main.js');
   const count = (s, needle) => s.split(needle).length - 1;
 
@@ -212,27 +218,21 @@ test('the filter order is constructed ONLY in the palette seam, and BOTH inputs 
     'exactly one Cmd.filter construction in controls.js — the seam');
   assert.equal(count(controls, '= paletteOrders('), 2,
     'exactly two call sites (mouse-up and Enter) lower a tool through the seam');
-  // Each `installInput({ … })` ARGUMENT OBJECT must carry `getStockFilter`, read by matching the
+  // Each `installInput({ … })` ARGUMENT OBJECT must carry `getStockFilter`, matched over that
   // block's own braces rather than by counting the token across the whole file.
   //
   // WHY NOT A WHOLE-FILE COUNT (which is what this was, and it broke on the first legitimate second
-  // reader): `count(main, 'getStockFilter:') === count(main, 'installInput({')` silently assumed
-  // that `installInput` is the ONLY thing in main.js that takes a stock filter. Console-retirement
-  // WP-5 gave `initOverview` the same getter — the ORDERS bar paints with the SAME mask, which is
-  // the point — and the count went 3 vs 2 with every install site correctly wired. A guard that
-  // fires on a correct change is a guard that gets edited away in a hurry, so it is scoped instead.
-  // MUTATION B (drop the getter from the fallback re-install only) still reddens; verified.
-  const blocks = [];
-  for (let i = main.indexOf('installInput({'); i >= 0; i = main.indexOf('installInput({', i + 1)) {
-    let depth = 0;
-    const from = main.indexOf('{', i);
-    let j = from;
-    for (; j < main.length; j++) {
-      if (main[j] === '{') depth += 1;
-      else if (main[j] === '}') { depth -= 1; if (depth === 0) break; }
-    }
-    blocks.push(main.slice(from, j + 1));
-  }
+  // reader). `count(main, 'getStockFilter:') === count(main, 'installInput({')` was both TOO BROAD
+  // and TOO WEAK. Too broad: it silently assumed `installInput` is the only thing in main.js that
+  // takes a stock filter, and console-retirement WP-5 gave `initOverview` the same getter — the
+  // ORDERS bar paints with the SAME mask, which is the point — so the count went 3 vs 2 with every
+  // install site correctly wired. Too weak: 2 === 2 is equally satisfied by BOTH getters sitting in
+  // one block and NONE in the other, which is precisely the miss it was written to catch. Per-block
+  // matching fixes both and says WHICH block is wrong. MUTATION B still reddens; verified.
+  //
+  // `callBlocks` strips comments and string literals FIRST (CLAUDE.md trap 1): a `{` in a comment
+  // and a `}` in a string each derail a raw brace walk, silently, while green.
+  const blocks = callBlocks(main, 'installInput');
   assert.ok(blocks.length >= 2, 'main.js really does install input twice');
   for (const [i, block] of blocks.entries()) {
     assert.ok(block.includes('getStockFilter:'),

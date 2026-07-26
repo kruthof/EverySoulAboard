@@ -81,6 +81,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { codeOnly } from './code-only.js';
 import { dirname, join, relative } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -203,46 +204,11 @@ async function modernToolSet() {
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
 /**
- * Strip JS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte. The scans below
- * must not fire on prose (a comment mentioning `#stockfilter` is documentation), and they must not
- * be BLINDED by a quoted comment marker (`'//'` inside a string must not swallow the rest of the
- * file — the exact hole an earlier hand-verified version of the C# equivalent shipped with,
- * ArchitectureBoundaryTests.cs `CodeOnly_IsStringLiteralAware…`).
- *
- * Handles '…', "…", `…` (including `${}` only insofar as it stays inside the template — good enough,
- * since an id in a template is a CONSTRUCTED id and already disclosed as invisible) and both comment
- * forms. NOT handled: regex literals — a `/…/` containing a quote could confuse it. Disclosed rather
- * than fixed, and bounded: a '…'/"…" scan terminates at the newline, so the worst it can do is
- * damage its own line (asserted below).
+ * THE COMMENT STRIPPER lives in `client/test/code-only.js` — imported, not re-derived, because three
+ * other guards in this suite need the identical function and copying it is three chances to copy it
+ * wrong (CLAUDE.md trap 1). ITS BEHAVIOUR IS STILL PINNED HERE, beside the scans that depend on it:
+ * the string-literal-awareness test and the unbalanced-quote bound at the bottom of this file.
  */
-function codeOnly(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') {
-      while (i < n && src[i] !== '\n') i += 1;          // drop to EOL, keep the \n
-    } else if (c === '/' && src[i + 1] === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
-      i += 2;
-    } else if (c === '\'' || c === '"' || c === '`') {
-      const q = c;
-      out += c; i += 1;
-      while (i < n) {
-        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
-        out += src[i];
-        const done = src[i] === q || (q !== '`' && src[i] === '\n');
-        i += 1;
-        if (done) break;
-      }
-    } else {
-      out += c; i += 1;
-    }
-  }
-  return out;
-}
 
 /** Every .js file under client/src, repo-relative-ish (relative to client/). */
 function srcFiles(dir = SRC, out = []) {

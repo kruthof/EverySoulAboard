@@ -17,7 +17,8 @@ import {
   deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine,
 } from '../src/ui/overview-model.js';
-import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
+import { ACCEPT_ALL, defaultStockFilter, stockFilterLabel } from '../src/ui/stock-filter-model.js';
+import { codeOnly, callBlocks } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl, fire } from './dom-lite.js';
 
 const FIX = JSON.parse(
@@ -350,13 +351,19 @@ const OV_IDS = [
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
 ];
 
-const ovDoc = new OvDoc();
-for (const id of OV_IDS) {
-  const e = new OvEl(ovDoc, 'div');
-  e._id = id;
-  if (id.startsWith('ov-')) e.className = id;   // `#ov-stage` really does carry `.ov-stage`
-  ovDoc.register(id, e);
+/** A fresh document carrying every id the controller looks up. */
+function makeOvDoc() {
+  const d = new OvDoc();
+  for (const id of OV_IDS) {
+    const e = new OvEl(d, 'div');
+    e._id = id;
+    if (id.startsWith('ov-')) e.className = id;   // `#ov-stage` really does carry `.ov-stage`
+    d.register(id, e);
+  }
+  return d;
 }
+
+const ovDoc = makeOvDoc();
 globalThis.document = ovDoc;
 globalThis.window = { addEventListener() {}, removeEventListener() {} };
 // A SYNCHRONOUS rAF: `scheduleRepaint` coalesces into one frame, and every assertion below wants to
@@ -373,43 +380,74 @@ const Hud = await import('../src/ui/hud.js');
 const Overview = await import('../src/ui/overview-view.js');
 const { paletteOrders } = await import('../src/input/controls.js');
 
+/** The live deck transform for the deck currently on screen — the same one the controller caches. */
+const ovTransform = (deck = FIX.frame.deck) =>
+  makeTransform(view.find((d) => d.deck === deck).slots, FIX.frame);
+
+/**
+ * Mount the real controller onto `doc` and give the scene the two SVG APIs `pointToTile` needs.
+ * IDENTITY CTM ⇒ viewBox units are client pixels, so a tile centre is `transform.project(x+.5,y+.5)`.
+ *
+ * Feeding the shared HUD caches the SAME capture the pure assertions above run on means the surface
+ * shows the real grid ship, not a hand-built one. NO roster is dispatched: `renderRoster` builds the
+ * CONSOLE's crew rows, which dom-lite cannot host.
+ */
+function mountOverview(doc, opts) {
+  globalThis.document = doc;
+  Overview.initOverview(opts);
+  const root = doc.getElementById('overview-view');
+  const stage = doc.getElementById('ov-stage');
+  root.appendChild(stage);   // in the real page `#ov-stage` is inside `#overview-view`
+  const svg = stage.querySelector('svg.pl-overview');
+  svg.getScreenCTM = () => ({ inverse: () => ({}) });
+  svg.createSVGPoint = () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y }; } });
+  Hud.renderDecks(FIX.decks);
+  Hud.renderRooms(FIX.rooms);
+  Hud.renderFrame(FIX.frame);   // …and this repaint is what populates the click transform
+  return { root, stage, cmd: doc.getElementById('ov-cmd'), svg };
+}
+
+/** Click the centre of sim tile (tx,ty) on `stage`'s surface, targeted at `target`. */
+function clickTile(target, tx, ty, deck = FIX.frame.deck) {
+  const [sx, sy] = ovTransform(deck).project(tx + 0.5, ty + 0.5);
+  fire(target, 'click', { clientX: sx, clientY: sy, detail: 1 });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// PROBE FIRST, on a THROWAWAY document: what does the ORDERS bar paint with when NOBODY injects a
+// mask? `initOverview` only overrides `_getStockFilter` when handed a function, so the un-injected
+// default is unreachable once the real harness below mounts — and a reviewer's mutation (default →
+// 0, i.e. ACCEPT-NOTHING) therefore survived a green suite. It is unreachable in PRODUCTION too
+// (main.js wires it, pinned separately), but `overview-view.js` states the default as a property, so
+// it gets a test rather than a claim.
+//
+// It runs at module scope, BEFORE the real mount, so nothing later depends on the throwaway: the
+// real `initOverview` overwrites every module-level handle. The one residue is a second
+// `Hud.onShipUpdate(scheduleRepaint)` subscription — the same function twice, so a notification
+// repaints twice. Idempotent, and worth naming.
+const probeSent = [];
+mountOverview(makeOvDoc(), { send: (o) => probeSent.push(o) });   // NO getStockFilter
+Hud.armTool('stockpile');
+clickTile(globalThis.document.getElementById('ov-stage'), 12, 5);
+const PROBE_DEFAULT = probeSent.slice();
+Hud.armTool('stockpile');                                          // disarm
+
+// ── the real harness ──
 const ovSent = [];
 let ovEntered = [];          // onEnterRoom calls
 let ovAdded = [];            // onAddRoom calls
 let ovMask = ACCEPT_ALL;     // the injected accept-mask, read at click time
-Overview.initOverview({
+const { root: ovRoot, stage: ovStage, cmd: ovCmd } = mountOverview(makeOvDoc(), {
   send: (o) => ovSent.push(o),
   onEnterRoom: (anchor) => ovEntered.push(anchor),
   onAddRoom: (deck, slot) => ovAdded.push([deck, slot]),
   getStockFilter: () => ovMask,
 });
 
-const ovRoot = ovDoc.getElementById('overview-view');
-const ovStage = ovDoc.getElementById('ov-stage');
-const ovCmd = ovDoc.getElementById('ov-cmd');
-ovRoot.appendChild(ovStage);   // in the real page `#ov-stage` is inside `#overview-view`
-
-// The scene's <svg>, with the two SVG APIs `pointToTile` needs. IDENTITY CTM ⇒ viewBox = client px.
-const ovSvg = ovStage.querySelector('svg.pl-overview');
-ovSvg.getScreenCTM = () => ({ inverse: () => ({}) });
-ovSvg.createSVGPoint = () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y }; } });
-
-// Feed the shared HUD caches the SAME capture the pure assertions above run on, so the surface is
-// showing the real grid ship rather than a hand-built one. NO roster is dispatched: `renderRoster`
-// builds the CONSOLE's crew rows, which dom-lite cannot host.
-Hud.renderDecks(FIX.decks);
-Hud.renderRooms(FIX.rooms);
-Hud.renderFrame(FIX.frame);
-
-/** The live deck transform for the deck currently on screen — the same one the controller caches. */
-const ovTransform = (deck = FIX.frame.deck) =>
-  makeTransform(view.find((d) => d.deck === deck).slots, FIX.frame);
-
 /** A scene click at the CENTRE of sim tile (tx,ty), targeted at `target`. Returns what `send` got. */
 function ovClick(target, tx, ty, deck = FIX.frame.deck) {
-  const [sx, sy] = ovTransform(deck).project(tx + 0.5, ty + 0.5);
   ovSent.length = 0; ovEntered = []; ovAdded = [];
-  fire(target, 'click', { clientX: sx, clientY: sy, detail: 1 });
+  clickTile(target, tx, ty, deck);
   return ovSent.slice();
 }
 
@@ -474,6 +512,36 @@ test('WP-5 driven: the command bar PAINTS an ORDERS island with all three verbs,
   assert.match(html, /CLICK A ROOM TO BUILD INSIDE IT/);
 });
 
+// MUTATIONS this one catches, BOTH of which survived a 639-green suite before it existed:
+//   · `setHidden(_el.orders, true)` — the bar is painted and NEVER SHOWN. Every other assertion in
+//     this file reads the markup string or the readback node, and both survive an invisible bar.
+//   · `setHidden(_el.orders, tab !== 'build' || armed != null)` — the bar vanishes exactly when an
+//     order is armed, i.e. at the one moment its readback has something to say.
+// The BUILD-tab leg is the non-vacuity: a stand-in element starts `hidden === false`, so "it is
+// shown" alone is also satisfied by deleting the `setHidden` call outright. Something must PROVE the
+// call happens, and hiding with the tab is that proof.
+test('WP-5 driven: the ORDERS bar is SHOWN on the BUILD tab, armed or not — and leaves with it', () => {
+  const bar = ovRoot.querySelector('.ov-orders');
+  const buildHint = ovRoot.querySelector('.ov-place');
+  assert.equal(Hud.getTab(), 'build');
+  assert.equal(bar.hidden, false, 'the ORDERS bar is painted but never shown — the whole verb is ' +
+    'unreachable, and the markup/readback assertions in this file all survive that');
+  ovArm('stockpile');
+  assert.equal(Hud.getArmedTool(), 'stockpile');       // non-vacuity: it really is armed
+  assert.equal(bar.hidden, false,
+    'the ORDERS bar vanishes while an order is ARMED — the one moment its readback matters');
+  ovArm('stockpile');
+  assert.equal(bar.hidden, false);
+  // …and it leaves with the BUILD tab, exactly as the BUILD hint beside it does. This leg is what
+  // proves `setHidden` is called at all rather than the stub merely defaulting to visible.
+  Hud.selectTab('crew');
+  assert.equal(bar.hidden, true, 'the ORDERS bar outlives the BUILD tab it belongs to');
+  assert.equal(buildHint.hidden, true, 'its sibling BUILD hint no longer hides either — the tab ' +
+    'gating is gone from the whole command bar, not just from the ORDERS island');
+  Hud.selectTab('build');
+  assert.equal(bar.hidden, false, 'the ORDERS bar never comes back');
+});
+
 test('WP-5 driven: the bar arms and disarms through the ONE shared slot, and says so', () => {
   assert.equal(Hud.getArmedTool(), null);
   assert.match(ovHint(), /BUILDING IS ZOOM-ONLY/, 'the un-armed readback should teach the rule');
@@ -512,6 +580,19 @@ test('WP-5 driven: STOCKPILE emits BOTH commands, in order, byte-equal to palett
   assert.equal(sent[0].cmd, 'stockpile', 'the ZONE must precede the FILTER — an OFF path clears it');
   // The mask is genuinely READ, not defaulted: a non-default mask must survive to the wire.
   assert.notEqual(sent[1].mask, ACCEPT_ALL);
+});
+
+test('WP-5: an UN-INJECTED ORDERS bar paints ACCEPT-ALL — never silence, never accept-nothing', () => {
+  // Captured at module scope from a throwaway mount with no `getStockFilter` (see the probe above).
+  assert.deepEqual(PROBE_DEFAULT, paletteOrders('stockpile', 12, 5, defaultStockFilter()),
+    'with nobody injecting a mask the ORDERS bar no longer falls back to the SHARED ' +
+    '`defaultStockFilter()`. Accept-nothing is the dangerous direction — a zone that silently ' +
+    'refuses every item looks exactly like one nothing has been hauled to yet.');
+  assert.equal(PROBE_DEFAULT.length, 2, 'the un-injected default sent no filter at all');
+  assert.equal(PROBE_DEFAULT[1].mask, ACCEPT_ALL);
+  assert.equal(defaultStockFilter(), ACCEPT_ALL);          // …and the shared default IS accept-all
+  // Non-vacuity: the probe must have exercised the real lowering, not an empty array.
+  assert.equal(PROBE_DEFAULT[0].cmd, 'stockpile');
 });
 
 test('WP-5 driven: DIG and STRIP each emit exactly one order, byte-equal to paletteOrders', () => {
@@ -653,20 +734,12 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
 // with a negative control below proving a commented-out wiring does NOT satisfy it.
 test('WP-5: main.js wires the ORDERS bar to the SHARED accept-mask, not to the default', () => {
   const main = readFileSync(fileURLToPath(new URL('../src/main.js', import.meta.url)), 'utf8');
-  const code = main.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
-  const block = (src) => {
-    const i = src.indexOf('initOverview({');
-    if (i < 0) return null;
-    const from = src.indexOf('{', i);
-    let depth = 0;
-    for (let j = from; j < src.length; j++) {
-      if (src[j] === '{') depth += 1;
-      else if (src[j] === '}') { depth -= 1; if (depth === 0) return src.slice(from, j + 1); }
-    }
-    return null;
-  };
-  const call = block(code);
-  assert.ok(call, 'no initOverview({…}) call found in main.js — this guard is vacuous');
+  // `callBlocks` (client/test/code-only.js) brace-matches the argument object over CODE ONLY — a
+  // `{` in a comment or a `}` in a string derails a raw walk silently, which is CLAUDE.md trap 1.
+  const calls = callBlocks(main, 'initOverview');
+  assert.equal(calls.length, 1, 'expected exactly one initOverview({…}) call in main.js, found ' +
+    calls.length + ' — this guard reads the first, so a second one would go unchecked');
+  const call = calls[0];
   assert.ok(call.includes('send:'), `the initOverview block did not parse (${call.length} chars)`);
   assert.match(call, /getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/,
     'main.js no longer hands the Overview the shared stockpile accept-mask, so the ORDERS bar ' +
@@ -679,10 +752,9 @@ test('WP-5: main.js wires the ORDERS bar to the SHARED accept-mask, not to the d
   // the wrong reason.
   const blinded = main.replace(/^(\s*)(getStockFilter: \(\) => Hud\.getStockFilter\(\),)/gm, '$1// $2');
   assert.notEqual(blinded, main, 'the negative control did not comment anything out — it proves nothing');
-  const blindedCode = blinded.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
-  const blindedCall = block(blindedCode);
-  assert.ok(blindedCall, 'the blinded source lost its initOverview call entirely');
-  assert.ok(!/getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/.test(blindedCall),
+  const blindedCalls = callBlocks(blinded, 'initOverview');
+  assert.equal(blindedCalls.length, 1, 'the blinded source lost its initOverview call entirely');
+  assert.ok(!/getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/.test(blindedCalls[0]),
     'the scan passes on a source where the wiring is COMMENTED OUT, so it proves nothing at all — ' +
     'this is CLAUDE.md trap #1, which shipped in four packages on one day');
 });
@@ -691,13 +763,15 @@ test('WP-5: main.js wires the ORDERS bar to the SHARED accept-mask, not to the d
 
 test('WP-5: the porting ledger is EMPTY — the standard surface is verb-complete', async () => {
   const src = readFileSync(fileURLToPath(new URL('./surface-boundary.test.js', import.meta.url)), 'utf8');
-  const block = /const KNOWN_GAPS = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(src);
+  // Stripped FIRST, with the shared quote-aware stripper — the ledger's own explanatory comment
+  // names `stockpile`, so a raw match would read the prose as a live entry.
+  const block = /const KNOWN_GAPS = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(codeOnly(src));
   assert.ok(block, 'KNOWN_GAPS could not be located in surface-boundary.test.js — this check is vacuous');
-  const entries = block[1].replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
+  const entries = block[1].trim();
   assert.equal(entries, '',
     `KNOWN_GAPS still holds ${JSON.stringify(entries)}. WP-5 was the last porting package; every ` +
     'verb the player can reach on the deprecated console is now on the standard surface.');
   // Non-vacuity: the comment-stripper must not be what makes this pass — a real entry must survive it.
   const seeded = 'stockpile: \'WP-5\',\n  // a comment\n';
-  assert.notEqual(seeded.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '').trim(), '');
+  assert.notEqual(codeOnly(seeded).trim(), '');
 });
