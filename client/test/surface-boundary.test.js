@@ -419,6 +419,36 @@ test('the legacy-verb parse is not vacuous — both of its sources are still the
       "room-model.js entry in MODERN_TOOL_TABLES is not resolving to the module's real export");
   }
 
+  // ⚠️ THE SAME LEG FOR `ORDER_TOOLS`, ADDED 2026-07-26, AND THE REASON MATTERS. When `stockpile`
+  // moved off the Overview ORDERS bar into the Room Zoom palette, `ORDER_TOOLS` became a strict
+  // SUBSET of `ROOM_TOOLS` (dig, strip — both surfaces carry them, because pointing at a thing that
+  // already exists is honest at either scale). So the union no longer needs it, and deleting the
+  // `ORDER_TOOLS` registry line was MEASURED to leave the whole suite green: the parity assertion
+  // it feeds is now carried entirely by `ROOM_TOOLS`.
+  //
+  // That is not a hole in parity — every console verb is still covered by `ROOM_TOOLS` — but it does
+  // mean one thing that must be said plainly rather than papered over:
+  //
+  // ⛔ DELETING THE `ORDER_TOOLS` LINE FROM `MODERN_TOOL_TABLES` SURVIVES THIS WHOLE SUITE, MEASURED,
+  //    AND NO BEHAVIOURAL TEST IN THIS FILE CAN CATCH IT while ORDER_TOOLS ⊆ ROOM_TOOLS — there is
+  //    no verb whose coverage depends on it, so nothing observable changes. The only "guard" that
+  //    would fire is a literal re-statement of the registry beside the registry, which is the
+  //    tautological shape this repo throws packages back for. It is therefore DISCLOSED, not
+  //    mechanised. It stops surviving the moment a deck-scoped verb exists that is not also a
+  //    Room-Zoom tool, which is the only situation in which it matters.
+  //
+  // What IS pinned below is the half that can rot silently in the OTHER direction and is caught:
+  // `modernToolSet()` swallows a missing module or a renamed export on purpose, so a rename of
+  // `ORDER_TOOLS` would quietly drop the Overview from the union. `requireExport` fails loudly on
+  // that, with a message naming what the export was for.
+  const orderTools = await requireExport('../src/ui/overview-model.js', 'ORDER_TOOLS');
+  assert.ok(Array.isArray(orderTools) && orderTools.length > 0,
+    'ORDER_TOOLS is empty or not an array — the Overview ORDERS bar would render no buttons');
+  for (const t of orderTools) {
+    assert.ok(modern.has(t), `ORDER_TOOLS contains '${t}' but modernToolSet() does not — the ` +
+      "overview-model.js entry in MODERN_TOOL_TABLES is not resolving to the module's real export");
+  }
+
   // The parses only have to exist while there is a console to parse. WP-9 removes the console
   // chrome from hud.js and may prune console-model.js, and this test must not be the thing that
   // goes red on the day the programme finishes — the endgame gate belongs on EVERY branch that

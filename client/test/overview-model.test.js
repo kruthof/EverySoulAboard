@@ -17,7 +17,9 @@ import {
   deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine,
 } from '../src/ui/overview-model.js';
-import { ACCEPT_ALL, defaultStockFilter, stockFilterLabel } from '../src/ui/stock-filter-model.js';
+// ACCEPT_ALL + stockFilterLabel are used ONLY to prove this surface names NO accept-set any more:
+// `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
+import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
 import { codeOnly, callBlocks } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl, fire } from './dom-lite.js';
 
@@ -66,17 +68,44 @@ test('with no tool: pawn > terminal > add-room > room > space (the single disamb
 
 // ---- WP-5: the ORDERS bar, PURE half (the precedence decision + the readback) ----
 
-test('WP-5: ORDER_TOOLS is the three console order verbs, in the console\'s own order', () => {
-  assert.deepEqual([...ORDER_TOOLS], ['dig', 'stockpile', 'strip']);
+test('the ORDERS bar arms the two POINT-AT-A-THING verbs, in the console\'s own order', () => {
+  assert.deepEqual([...ORDER_TOOLS], ['dig', 'strip']);
   for (const t of ORDER_TOOLS) {
     assert.equal(isOrderTool(t), true, t + ' must classify as an order tool');
     assert.ok(ORDER_LABEL[t], t + ' has no bar label');
   }
   // BUILDING IS ZOOM-ONLY: no build kind may sneak into the bar. `move` is a crew order, not a
   // designation, and it has its own branch — it must not be an order tool either.
-  for (const t of ['wall', 'floor', 'door', 'cancel', 'move', null, undefined, '']) {
+  //
+  // AND NEITHER IS `stockpile`, WHICH IS THE POINT OF THIS PACKAGE. A stockpile authors a REGION out
+  // of nothing and its extent is the whole decision (one stack per zoned tile, so area == capacity),
+  // while this surface has no drag gesture at all — so it lives on the Room Zoom palette, where a
+  // drag sweeps a filled rectangle. `ROOM_TOOLS` is asserted to hold it in room-model.test.js, and
+  // `surface-boundary.test.js` proves the union of the two tables still covers every console verb.
+  for (const t of ['wall', 'floor', 'door', 'cancel', 'move', 'stockpile', null, undefined, '']) {
     assert.equal(isOrderTool(t), false, String(t) + ' must NOT classify as an order tool');
   }
+  // …and the LABEL table went with it: a leftover label is how a button comes back by accident.
+  assert.equal(ORDER_LABEL.stockpile, undefined,
+    'ORDER_LABEL still carries a STOCKPILE label. The bar renders one button per ORDER_TOOLS entry, ' +
+    'so a stale label is inert TODAY — and it is exactly the thing a future author reads as ' +
+    'evidence that the verb belongs here.');
+});
+
+// The counterpart of the pure assertion above, and the one that would catch the whole package being
+// reverted by hand: `stockpile` armed must fall through to the ORDINARY HIT RULE rather than
+// designating a single tile at schematic altitude. Clicking a room ENTERS it — which is where the
+// tool now is, so the fall-through is also the migration path.
+test('an armed STOCKPILE is not an order HERE — the click resolves by the hit rule', () => {
+  assert.deepEqual(overviewClickAction('stockpile', { roomAnchor: 'hold' }),
+    { type: 'enterRoom', anchor: 'hold' },
+    'STOCKPILE armed on the Overview still designates a tile. It must fall through: the verb moved ' +
+    'to the Room Zoom, and a click on a room should take the player there.');
+  assert.deepEqual(overviewClickAction('stockpile', { pawnCid: 9 }), { type: 'select', cid: 9 });
+  assert.deepEqual(overviewClickAction('stockpile', {}), { type: 'none' });
+  // NON-VACUITY: the same hits under a verb that DID stay produce 'order', so the assertions above
+  // are about `stockpile` and not about a classifier that stopped working altogether.
+  assert.deepEqual(overviewClickAction('dig', { roomAnchor: 'hold' }), { type: 'order', tool: 'dig' });
 });
 
 test('WP-5: an armed ORDER tool takes the click from EVERY hit — pawn, terminal, ＋ADD ROOM, room', () => {
@@ -126,28 +155,37 @@ test('WP-5: the order branch changes NOTHING for move, build tools, or the un-ar
   assert.ok(seen.size >= 6, `only ${seen.size} action types produced — the sweep is not exercising the ladder`);
 });
 
-test('WP-5: the ORDERS readback names the DECK in every branch, and the mask only for STOCKPILE', () => {
+test('the ORDERS readback names the DECK in every branch, and NAMES NO MASK in any', () => {
   // The deck is the whole point: the order verbs carry no z on the wire, so "which deck does this
   // land on?" is answerable only by what the surface says.
-  for (const armed of [null, 'move', 'wall', ...ORDER_TOOLS]) {
-    assert.match(orderHintLine(armed, 5, ACCEPT_ALL), /DECK 5/,
-      `the hint for armed=${armed} does not name the deck`);
-    assert.match(orderHintLine(armed, 0, ACCEPT_ALL), /DECK 0/);
+  for (const armed of [null, 'move', 'wall', 'stockpile', ...ORDER_TOOLS]) {
+    assert.match(orderHintLine(armed, 5), /DECK 5/, `the hint for armed=${armed} does not name the deck`);
+    assert.match(orderHintLine(armed, 0), /DECK 0/);
   }
-  assert.match(orderHintLine('dig', 1, ACCEPT_ALL), /DIG/);
-  assert.match(orderHintLine('strip', 1, ACCEPT_ALL), /STRIP/);
-  // The mask is named through the SHARED authority, so a label change lands on every surface at
-  // once — asserted by calling stockFilterLabel rather than by re-spelling 'FOOD' here.
+  assert.match(orderHintLine('dig', 1), /DIG/);
+  assert.match(orderHintLine('strip', 1), /STRIP/);
+  // NO BRANCH NAMES AN ACCEPT-SET ANY MORE — the mask moved to the Room Zoom with the verb, and a
+  // readback that still advertised a filter would be advertising a setting for a tool this bar
+  // cannot arm. The extra `FOOD` argument is passed on purpose: a surviving third parameter would
+  // show up here as an accept-set in the output.
   const FOOD = 1 << 3;
-  assert.match(orderHintLine('stockpile', 2, FOOD), new RegExp('ACCEPTS ' + stockFilterLabel(FOOD) + '$'));
-  assert.match(orderHintLine('stockpile', 2, ACCEPT_ALL), /ACCEPTS ALL$/);
-  assert.notEqual(stockFilterLabel(FOOD), stockFilterLabel(ACCEPT_ALL)); // …and the two differ
-  // Only STOCKPILE reads the mask — dig/strip must not claim an accept-set they do not carry.
-  assert.equal(orderHintLine('dig', 2, FOOD), orderHintLine('dig', 2, ACCEPT_ALL));
-  assert.equal(orderHintLine('strip', 2, FOOD), orderHintLine('strip', 2, ACCEPT_ALL));
-  assert.ok(!/ACCEPTS/.test(orderHintLine('dig', 2, FOOD)));
+  for (const armed of [null, 'move', 'dig', 'strip', 'stockpile']) {
+    assert.ok(!/ACCEPTS/.test(orderHintLine(armed, 2, FOOD)),
+      `the ORDERS readback for armed=${armed} still names an accept-set. The mask seam left this ` +
+      'surface with the STOCKPILE verb (overview-model.js header); naming a filter here promises a ' +
+      'setting the bar has no tool for.');
+    assert.equal(orderHintLine(armed, 2, FOOD), orderHintLine(armed, 2, ACCEPT_ALL),
+      `orderHintLine still READS a third argument for armed=${armed}`);
+  }
+  // NON-VACUITY, both halves: `stockFilterLabel` still spells masks differently (so "no ACCEPTS" is
+  // a fact about this function and not about a dead label function), and the un-armed line points
+  // the player at where the verb went rather than silently dropping it.
+  assert.notEqual(stockFilterLabel(FOOD), stockFilterLabel(ACCEPT_ALL));
+  assert.match(orderHintLine(null, 2), /STOCKPILE ARE ZOOM-ONLY/,
+    'the un-armed readback no longer says where STOCKPILE went. A player who used this bar three ' +
+    'times will read a missing button as a deleted verb.');
   // InvariantCulture-safe: no thousands separators / locale digits leak in from a big deck number.
-  assert.match(orderHintLine(null, 1234, ACCEPT_ALL), /DECK 1234/);
+  assert.match(orderHintLine(null, 1234), /DECK 1234/);
 });
 
 test('a MOSS terminal hit classifies as `terminal` (opens MOSS); pawn wins, terminal beats the room', () => {
@@ -413,35 +451,20 @@ function clickTile(target, tx, ty, deck = FIX.frame.deck) {
   fire(target, 'click', { clientX: sx, clientY: sy, detail: 1 });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// PROBE FIRST, on a THROWAWAY document: what does the ORDERS bar paint with when NOBODY injects a
-// mask? `initOverview` only overrides `_getStockFilter` when handed a function, so the un-injected
-// default is unreachable once the real harness below mounts — and a reviewer's mutation (default →
-// 0, i.e. ACCEPT-NOTHING) therefore survived a green suite. It is unreachable in PRODUCTION too
-// (main.js wires it, pinned separately), but `overview-view.js` states the default as a property, so
-// it gets a test rather than a claim.
+// ── the harness ──
 //
-// It runs at module scope, BEFORE the real mount, so nothing later depends on the throwaway: the
-// real `initOverview` overwrites every module-level handle. The one residue is a second
-// `Hud.onShipUpdate(scheduleRepaint)` subscription — the same function twice, so a notification
-// repaints twice. Idempotent, and worth naming.
-const probeSent = [];
-mountOverview(makeOvDoc(), { send: (o) => probeSent.push(o) });   // NO getStockFilter
-Hud.armTool('stockpile');
-clickTile(globalThis.document.getElementById('ov-stage'), 12, 5);
-const PROBE_DEFAULT = probeSent.slice();
-Hud.armTool('stockpile');                                          // disarm
-
-// ── the real harness ──
+// ⚠️ WP-5's THROWAWAY PROBE MOUNT IS GONE, and its absence is the package. It existed to reach the
+// un-injected `_getStockFilter` default that `initOverview` only overrode when handed a function.
+// There is no such option and no such default on this surface any more — the whole mask seam moved
+// to the Room Zoom with the STOCKPILE verb — so the probe would now be measuring a variable that
+// does not exist. The equivalent probe lives in `room-model.test.js`, against `initRoomZoom`.
 const ovSent = [];
 let ovEntered = [];          // onEnterRoom calls
 let ovAdded = [];            // onAddRoom calls
-let ovMask = ACCEPT_ALL;     // the injected accept-mask, read at click time
 const { root: ovRoot, stage: ovStage, cmd: ovCmd } = mountOverview(makeOvDoc(), {
   send: (o) => ovSent.push(o),
   onEnterRoom: (anchor) => ovEntered.push(anchor),
   onAddRoom: (deck, slot) => ovAdded.push([deck, slot]),
-  getStockFilter: () => ovMask,
 });
 
 /** A scene click at the CENTRE of sim tile (tx,ty), targeted at `target`. Returns what `send` got. */
@@ -484,7 +507,6 @@ const ovOrdersHdr = () => ovRoot.querySelector('.ov-ordershdr').textContent;
 afterEach(() => {
   if (typeof Hud === 'undefined') return;
   for (let i = 0; i < 8 && Hud.getArmedTool() != null; i++) Hud.armTool(Hud.getArmedTool());
-  ovMask = ACCEPT_ALL;
   Hud.renderFrame(FIX.frame);
   ovSent.length = 0; ovEntered = []; ovAdded = [];
 });
@@ -503,11 +525,17 @@ test('WP-5 driven: the command bar PAINTS an ORDERS island with all three verbs,
     assert.ok(html.includes('>' + ORDER_LABEL[tool] + '<'),
       `the '${tool}' button is missing its label '${ORDER_LABEL[tool]}'`);
   }
-  // BUILDING IS ZOOM-ONLY — the bar must not have grown a build kind.
-  for (const kind of ['wall', 'floor', 'door', 'cancel']) {
+  // BUILDING IS ZOOM-ONLY — the bar must not have grown a build kind — AND NEITHER MAY STOCKPILE
+  // COME BACK. This is the assertion that fails if someone "restores" the third button: everything
+  // else in this file is driven through `data-ov-tool` nodes the tests construct themselves, so a
+  // re-added button would be invisible to all of them.
+  for (const kind of ['wall', 'floor', 'door', 'cancel', 'stockpile']) {
     assert.ok(!html.includes('data-ov-tool="' + kind + '"'),
-      `the Overview command bar arms '${kind}' — building is ZOOM-ONLY (overview-model.js header)`);
+      `the Overview command bar arms '${kind}'. Building AND stockpile are ZOOM-ONLY: a stockpile ` +
+      'authors a region and this surface cannot drag one (overview-model.js header).');
   }
+  assert.ok(!html.includes('STOCKPILE'),
+    'the ORDERS bar still SAYS "STOCKPILE" somewhere in its markup — a label with no tool');
   // …and the BUILD hint that points into the Room Zoom is still there beside it.
   assert.match(html, /CLICK A ROOM TO BUILD INSIDE IT/);
 });
@@ -526,11 +554,11 @@ test('WP-5 driven: the ORDERS bar is SHOWN on the BUILD tab, armed or not — an
   assert.equal(Hud.getTab(), 'build');
   assert.equal(bar.hidden, false, 'the ORDERS bar is painted but never shown — the whole verb is ' +
     'unreachable, and the markup/readback assertions in this file all survive that');
-  ovArm('stockpile');
-  assert.equal(Hud.getArmedTool(), 'stockpile');       // non-vacuity: it really is armed
+  ovArm('dig');
+  assert.equal(Hud.getArmedTool(), 'dig');             // non-vacuity: it really is armed
   assert.equal(bar.hidden, false,
     'the ORDERS bar vanishes while an order is ARMED — the one moment its readback matters');
-  ovArm('stockpile');
+  ovArm('dig');
   assert.equal(bar.hidden, false);
   // …and it leaves with the BUILD tab, exactly as the BUILD hint beside it does. This leg is what
   // proves `setHidden` is called at all rather than the stub merely defaulting to visible.
@@ -544,16 +572,16 @@ test('WP-5 driven: the ORDERS bar is SHOWN on the BUILD tab, armed or not — an
 
 test('WP-5 driven: the bar arms and disarms through the ONE shared slot, and says so', () => {
   assert.equal(Hud.getArmedTool(), null);
-  assert.match(ovHint(), /BUILDING IS ZOOM-ONLY/, 'the un-armed readback should teach the rule');
-  ovArm('stockpile');
-  assert.equal(Hud.getArmedTool(), 'stockpile', 'the bar button did not arm the shared slot');
-  assert.match(ovHint(), /STOCKPILE/, 'the readback does not reflect the armed tool');
+  assert.match(ovHint(), /ZOOM-ONLY/, 'the un-armed readback should teach the rule');
+  ovArm('strip');
+  assert.equal(Hud.getArmedTool(), 'strip', 'the bar button did not arm the shared slot');
+  assert.match(ovHint(), /STRIP/, 'the readback does not reflect the armed tool');
   ovArm('dig');                                  // a different tool REPLACES, never stacks
   assert.equal(Hud.getArmedTool(), 'dig');
   assert.match(ovHint(), /DIG/);
   ovArm('dig');                                  // the same button again → disarm
   assert.equal(Hud.getArmedTool(), null);
-  assert.match(ovHint(), /BUILDING IS ZOOM-ONLY/);
+  assert.match(ovHint(), /ZOOM-ONLY/);
   // The KEY path (controls.js G/Z/V) writes the SAME slot through `armFromKey`, so the bar reflects
   // it too — the two arming paths cannot drift because there is only one slot.
   Hud.armFromKey('strip');
@@ -563,36 +591,40 @@ test('WP-5 driven: the bar arms and disarms through the ONE shared slot, and say
 
 // ── the lowering, and its parity with the other two surfaces ──
 
-test('WP-5 driven: STOCKPILE emits BOTH commands, in order, byte-equal to paletteOrders', () => {
-  ovMask = 1 << 3;                                 // FOOD only — NOT the accept-all default
+// ⚠️ THIS TEST REPLACES TWO WP-5 TESTS THAT NO LONGER HAVE A SUBJECT — "STOCKPILE emits BOTH
+// commands, byte-equal to paletteOrders" and "an UN-INJECTED ORDERS bar paints ACCEPT-ALL". Both
+// moved to `room-model.test.js` with the verb and the mask seam. What is left HERE is the negative,
+// and it is the load-bearing half of this package: an armed STOCKPILE must send NOTHING from the
+// schematic.
+//
+// IT DRIVES THE REAL CONTROLLER rather than asserting on `ORDER_TOOLS`, because there are two
+// independent ways the verb could come back — the table, and a `stockpile` branch left standing in
+// `orderPayloads`. The pure test above covers the first. This covers the pair.
+//
+// NON-VACUITY IS EXPLICIT AND NECESSARY (the WP-5 "starts-in-the-asserted-state" lesson): "sent
+// nothing" is also what a broken harness produces, so the same click under DIG must send exactly
+// one order, and the same click under STOCKPILE must still ENTER THE ROOM — proof the click was
+// delivered and resolved, not swallowed.
+test('an armed STOCKPILE designates NOTHING from the Overview — and still enters the room', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
   ovArm('stockpile');
-  const sent = ovClick(ovStage, 12, 5);
-  assert.deepEqual(sent, paletteOrders('stockpile', 12, 5, ovMask),
-    'the ORDERS bar and the console lower STOCKPILE differently — one surface is now sending a ' +
-    'message the host reads differently from the other');
-  // Absolute wire shape too: equality alone would stay green through a change to Cmd.stockpile
-  // itself, which moves both paths at once.
-  assert.deepEqual(sent, [
-    { cmd: 'stockpile', x: 12, y: 5, on: 1 },
-    { cmd: 'filter', x: 12, y: 5, mask: 1 << 3 },
-  ]);
-  assert.equal(sent.length, 2, 'zone-then-filter is two commands, always');
-  assert.equal(sent[0].cmd, 'stockpile', 'the ZONE must precede the FILTER — an OFF path clears it');
-  // The mask is genuinely READ, not defaulted: a non-default mask must survive to the wire.
-  assert.notEqual(sent[1].mask, ACCEPT_ALL);
-});
+  assert.equal(Hud.getArmedTool(), 'stockpile', 'the shared slot did not take stockpile at all — ' +
+    'the assertions below would then be about a click with nothing armed');
+  const sent = ovClick(room, 12, 5);
+  assert.deepEqual(sent, [],
+    'the Overview zoned a tile. STOCKPILE moved to the Room Zoom because a zone\'s EXTENT is its ' +
+    'capacity (one stack per tile) and this surface has no drag gesture — a single-tile zone from ' +
+    'the schematic is the affordance that decision removed.');
+  assert.deepEqual(ovEntered, ['hold'],
+    'the click did not reach the hit rule either — so "sent nothing" here proves nothing');
+  // …and no `filter` leaked out on its own, which is the shape a half-reverted lowering would make.
+  assert.deepEqual(sent.filter((o) => o.cmd === 'filter'), []);
+  ovArm('stockpile');
 
-test('WP-5: an UN-INJECTED ORDERS bar paints ACCEPT-ALL — never silence, never accept-nothing', () => {
-  // Captured at module scope from a throwaway mount with no `getStockFilter` (see the probe above).
-  assert.deepEqual(PROBE_DEFAULT, paletteOrders('stockpile', 12, 5, defaultStockFilter()),
-    'with nobody injecting a mask the ORDERS bar no longer falls back to the SHARED ' +
-    '`defaultStockFilter()`. Accept-nothing is the dangerous direction — a zone that silently ' +
-    'refuses every item looks exactly like one nothing has been hauled to yet.');
-  assert.equal(PROBE_DEFAULT.length, 2, 'the un-injected default sent no filter at all');
-  assert.equal(PROBE_DEFAULT[1].mask, ACCEPT_ALL);
-  assert.equal(defaultStockFilter(), ACCEPT_ALL);          // …and the shared default IS accept-all
-  // Non-vacuity: the probe must have exercised the real lowering, not an empty array.
-  assert.equal(PROBE_DEFAULT[0].cmd, 'stockpile');
+  // POSITIVE CONTROL: the identical gesture under a verb that DID stay lowers exactly one order.
+  ovArm('dig');
+  assert.deepEqual(ovClick(room, 12, 5), paletteOrders('dig', 12, 5),
+    'DIG stopped designating too — the harness is broken, not the boundary');
 });
 
 test('WP-5 driven: DIG and STRIP each emit exactly one order, byte-equal to paletteOrders', () => {
@@ -611,13 +643,13 @@ test('WP-5 driven: DIG and STRIP each emit exactly one order, byte-equal to pale
 test('WP-5 driven: an order tool STAYS armed — painting a zone is many clicks, not one', () => {
   // Only MOVE is one-shot (`Hud.toolUsed` disarms it). A designation tool that disarmed itself
   // would make zoning a storage room a click-arm-click-arm grind, and the console does not do that.
-  ovArm('stockpile');
+  ovArm('strip');
   const first = ovClick(ovStage, 12, 5);
-  assert.equal(Hud.getArmedTool(), 'stockpile', 'the tool disarmed itself after one designation');
+  assert.equal(Hud.getArmedTool(), 'strip', 'the tool disarmed itself after one designation');
   const second = ovClick(ovStage, 13, 5);
-  assert.deepEqual(first, paletteOrders('stockpile', 12, 5, ovMask));
-  assert.deepEqual(second, paletteOrders('stockpile', 13, 5, ovMask));
-  assert.equal(Hud.getArmedTool(), 'stockpile');
+  assert.deepEqual(first, paletteOrders('strip', 12, 5));
+  assert.deepEqual(second, paletteOrders('strip', 13, 5));
+  assert.equal(Hud.getArmedTool(), 'strip');
 });
 
 test('WP-5 driven: a designation carries NO deck coordinate — it lands on the deck being shown', () => {
@@ -628,15 +660,15 @@ test('WP-5 driven: a designation carries NO deck coordinate — it lands on the 
     'session\'s CURRENT deck, which is the deck the schematic is showing, and that is what makes ' +
     'the ORDERS bar deck-scoped rather than ship-wide.');
   ovArm('dig');
-  ovArm('stockpile');
-  const zoned = ovClick(ovStage, 30, 12);
-  assert.deepEqual(Object.keys(zoned[0]).sort(), ['cmd', 'on', 'x', 'y']);
-  assert.deepEqual(Object.keys(zoned[1]).sort(), ['cmd', 'mask', 'x', 'y']);
+  ovArm('strip');
+  const stripped = ovClick(ovStage, 30, 12);
+  assert.deepEqual(Object.keys(stripped[0]).sort(), ['cmd', 'on', 'x', 'y']);
+  assert.equal(stripped.length, 1, 'a STRIP order grew a second payload');
 });
 
 test('WP-5 driven: the bar follows the deck on screen — header and readback both re-point', () => {
   assert.match(ovOrdersHdr(), /DECK 0$/);
-  ovArm('stockpile');
+  ovArm('dig');
   assert.match(ovHint(), /ON DECK 0/);
   Hud.renderFrame({ ...FIX.frame, deck: 3 });      // the player rides the deck rail up
   assert.match(ovOrdersHdr(), /DECK 3$/, 'the ORDERS header still names the deck the player left');
@@ -673,7 +705,7 @@ test('WP-5 driven: an armed order suppresses ROOM ENTRY (and un-armed still ente
     ovArm(tool);
     const sent = ovClick(room, 12, 5);
     assert.deepEqual(ovEntered, [], `${tool} armed, and the click ENTERED THE ROOM as well`);
-    assert.deepEqual(sent, paletteOrders(tool, 12, 5, ovMask), `${tool} did not designate the tile`);
+    assert.deepEqual(sent, paletteOrders(tool, 12, 5), `${tool} did not designate the tile`);
     ovArm(tool);
   }
 });
@@ -722,18 +754,23 @@ test('WP-5 driven: with NOTHING armed the schematic still behaves exactly as bef
 
 // ── the wiring main.js owns (a declared STRUCTURAL guard, and why it has to be one) ──
 
-// The driven tests above inject `getStockFilter` and prove the Overview paints with WHATEVER mask it
-// is given. What they cannot reach is the one line in `main.js` that decides what it is given — and
-// a mutation harness found exactly that hole: deleting `getStockFilter` from the `initOverview` call
-// left all 638 tests green while every zone painted from the ORDERS bar silently accepted
-// everything, on a client whose ACCEPTS chips are on the other surface.
+// ⚠️ THIS TEST IS THE INVERSE OF THE ONE WP-5 SHIPPED. WP-5 asserted that `initOverview` IS handed
+// `Hud.getStockFilter()`, because the ORDERS bar's STOCKPILE painted with it. The verb moved to the
+// Room Zoom and the mask moved with it, so the assertion here is that the Overview is handed NO mask
+// — and the POSITIVE half (the Room Zoom really does get it, plus the commented-out negative
+// control) lives in `room-model.test.js`, beside the surface that now reads it.
+//
+// AN ABSENCE ASSERTION IS THE DANGEROUS KIND: a typo'd regex, a call block that failed to parse, or
+// a renamed getter all produce "absent" and all pass. So the SAME regex must be shown to match
+// somewhere in the SAME file — the `initRoomZoom` block — before the absence means anything. That is
+// what makes this a guard rather than a wish.
 //
 // It is STRUCTURAL and says so, exactly as `input.test.js:204` does for the sibling claim about the
 // two `installInput` blocks: main.js is the composition root, it takes no injection of its own, and
-// importing it would boot a WebSocket. Trap 1 is handled — comments are stripped before matching,
-// with a negative control below proving a commented-out wiring does NOT satisfy it.
-test('WP-5: main.js wires the ORDERS bar to the SHARED accept-mask, not to the default', () => {
+// importing it would boot a WebSocket. Trap 1 is handled — comments are stripped before matching.
+test('main.js hands the Overview NO accept-mask — the seam went to the Room Zoom with the verb', () => {
   const main = readFileSync(fileURLToPath(new URL('../src/main.js', import.meta.url)), 'utf8');
+  const WIRE = /getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/;
   // `callBlocks` (client/test/code-only.js) brace-matches the argument object over CODE ONLY — a
   // `{` in a comment or a `}` in a string derails a raw walk silently, which is CLAUDE.md trap 1.
   const calls = callBlocks(main, 'initOverview');
@@ -741,22 +778,21 @@ test('WP-5: main.js wires the ORDERS bar to the SHARED accept-mask, not to the d
     calls.length + ' — this guard reads the first, so a second one would go unchecked');
   const call = calls[0];
   assert.ok(call.includes('send:'), `the initOverview block did not parse (${call.length} chars)`);
-  assert.match(call, /getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/,
-    'main.js no longer hands the Overview the shared stockpile accept-mask, so the ORDERS bar ' +
-    'falls back to ACCEPT-ALL and paints a filter the player did not choose — silently, because ' +
-    'the ACCEPTS chips live on the other surface. (WP-6 replaces this getter with the bar\'s own ' +
-    'chips; it must not simply be removed.)');
-  // NEGATIVE CONTROL — the same scan over a source whose wiring is COMMENTED OUT must FAIL.
-  // …every occurrence: main.js wires the SAME getter into the two `installInput` blocks as well, and
-  // blinding only the first would leave the initOverview one standing and the control passing for
-  // the wrong reason.
-  const blinded = main.replace(/^(\s*)(getStockFilter: \(\) => Hud\.getStockFilter\(\),)/gm, '$1// $2');
-  assert.notEqual(blinded, main, 'the negative control did not comment anything out — it proves nothing');
-  const blindedCalls = callBlocks(blinded, 'initOverview');
-  assert.equal(blindedCalls.length, 1, 'the blinded source lost its initOverview call entirely');
-  assert.ok(!/getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/.test(blindedCalls[0]),
-    'the scan passes on a source where the wiring is COMMENTED OUT, so it proves nothing at all — ' +
-    'this is CLAUDE.md trap #1, which shipped in four packages on one day');
+  assert.ok(!WIRE.test(call),
+    'main.js still hands the Overview the shared stockpile accept-mask. Nothing on that surface ' +
+    'reads it: the ORDERS bar arms DIG and STRIP, neither of which carries a filter. A live ' +
+    'injection point with no reader is what a later package mistakes for a wiring bug and "fixes" ' +
+    'by putting the STOCKPILE button back — see overview-model.js\'s header for why it left.');
+  assert.ok(!/stockpile/i.test(call),
+    'the initOverview call block still mentions stockpile in code — the ORDERS bar has no such tool');
+  // NON-VACUITY, and it is the whole reason this test can be trusted: the identical regex MUST match
+  // the initRoomZoom block. Without this leg, renaming `Hud.getStockFilter` (or breaking `callBlocks`)
+  // would make the absence above true for entirely the wrong reason and the guard would go quiet.
+  const rz = callBlocks(main, 'initRoomZoom');
+  assert.equal(rz.length, 1, 'expected exactly one initRoomZoom({…}) call in main.js, found ' + rz.length);
+  assert.match(rz[0], WIRE,
+    'the accept-mask is on NEITHER surface. It did not move, it VANISHED — every zone painted in ' +
+    'the Room Zoom now silently accepts everything, on a client whose ACCEPTS chips are elsewhere.');
 });
 
 // ── the ledger ──

@@ -2,7 +2,7 @@
 // (client/src/ui/deck-minimap.js). Proves: the focused-room tile-rect lookup, the
 // fit transform + responsive click hit-testing (incl. letterbox-margin + out-of-room rejection),
 // the in-room channel clamps (cells → items, crew, designs, decor), the palette tool → command-class
-// map (exhaustive over all fourteen tools), the demolish classifier + its precedence over every layer,
+// map (exhaustive over all fifteen tools), the demolish classifier + its precedence over every layer,
 // the armed-tool reducer, the local decor transforms, and the ESC rung.
 //
 // ⚠️ THE LAST SECTION IS DIFFERENT, and the "no DOM" line that used to open this file is no longer
@@ -28,6 +28,9 @@ import {
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
+import { ACCEPT_ALL, defaultStockFilter } from '../src/ui/stock-filter-model.js';
+import { acceptsLabel } from '../src/ui/zone-model.js';
+import { codeOnly, callBlocks } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { MARK_FOR_FG, markForFg, markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
@@ -106,9 +109,9 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the fourteen tools to a class + verb', () => {
+test('paletteCommand maps every one of the fifteen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
-  assert.equal(ROOM_TOOLS.length, 14);
+  assert.equal(ROOM_TOOLS.length, 15);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -120,19 +123,26 @@ test('paletteCommand maps every one of the fourteen tools to a class + verb', ()
   assert.deepEqual(byTool.rug, { cls: 'cosmetic', verb: 'decor', itemId: 'rug' });
   assert.deepEqual(byTool.shelf, { cls: 'cosmetic', verb: 'decor', itemId: 'bookshelf' });
   assert.deepEqual(byTool.demolish, { cls: 'demolish', verb: null });
-  // WP-4 — the two ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a
-  // designation, and routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58).
+  // The THREE ORDER verbs. `verb` is the WIRE verb name, not 'build': an order is a designation, and
+  // routing it through Cmd.build would hand it to BuildSystem (controls.js:52-58). STOCKPILE joined
+  // dig/strip when the altitude rule was corrected — its extent IS its capacity (one stack per zoned
+  // tile), and this is the only surface that can drag an extent.
   assert.deepEqual(byTool.dig, { cls: 'order', verb: 'dig' });
+  assert.deepEqual(byTool.stockpile, { cls: 'order', verb: 'stockpile' });
   assert.deepEqual(byTool.strip, { cls: 'order', verb: 'strip' });
+  assert.ok(ROOM_TOOLS.includes('stockpile'),
+    'ROOM_TOOLS lost STOCKPILE. It is not on the Overview either (overview-model.js ORDER_TOOLS), ' +
+    'so the verb would be unreachable on the whole standard surface — surface-boundary.test.js ' +
+    'would then need a KNOWN_GAPS entry, and the ledger is asserted EMPTY.');
   assert.deepEqual(paletteCommand('nope'), { cls: 'none', verb: null });
   // isStructuralTool: wall/floor/door drag-build; everything else false — INCLUDING the two order
   // tools, which sweep but carry no material and never reach the material strip.
   for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
-  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'strip', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', null, 'nope']) assert.equal(isStructuralTool(t), false);
   // isOrderTool / isSweepTool: the two sibling sets the three gesture sites gate on.
-  for (const t of ['dig', 'strip']) assert.equal(isOrderTool(t), true);
+  for (const t of ['dig', 'stockpile', 'strip']) assert.equal(isOrderTool(t), true);
   for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', null, 'nope']) assert.equal(isOrderTool(t), false);
-  for (const t of ['wall', 'floor', 'door', 'dig', 'strip']) assert.equal(isSweepTool(t), true);
+  for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip']) assert.equal(isSweepTool(t), true);
   for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', null, 'nope']) {
     assert.equal(isSweepTool(t), false);
   }
@@ -145,6 +155,9 @@ test('paletteCommand maps every one of the fourteen tools to a class + verb', ()
 test('WP-4: roomDragMode sweeps an ORDER tool as a FILLED region, and defers otherwise', () => {
   assert.equal(roomDragMode('dig'), 'fill');
   assert.equal(roomDragMode('strip'), 'fill');
+  // For STOCKPILE `fill` is the MECHANIC, not a taste: `JobWork.IsFreeStockpileTile` is one stack per
+  // zoned tile, so a 3×3 drag is 9 stacks and a `perimeter` sweep would silently deliver 8.
+  assert.equal(roomDragMode('stockpile'), 'fill');
   // Every non-order tool is passed through to build-drag-model UNCHANGED — asserted against the real
   // function, not against re-typed literals, so a change to either side reddens.
   for (const t of [...ROOM_TOOLS.filter((x) => !isOrderTool(x)), null, 'nope', 'move']) {
@@ -155,9 +168,12 @@ test('WP-4: roomDragMode sweeps an ORDER tool as a FILLED region, and defers oth
   assert.equal(roomDragMode('door'), 'single');
 });
 
-test('WP-4: the armed-tool reducer arms and disarms the two order tools like any other', () => {
+test('the armed-tool reducer arms and disarms the three order tools like any other', () => {
   assert.equal(nextRoomTool(null, { t: 'toggle', tool: 'dig' }), 'dig');
   assert.equal(nextRoomTool('dig', { t: 'toggle', tool: 'dig' }), null);
+  assert.equal(nextRoomTool(null, { t: 'toggle', tool: 'stockpile' }), 'stockpile');
+  assert.equal(nextRoomTool('stockpile', { t: 'toggle', tool: 'stockpile' }), null);
+  assert.equal(nextRoomTool('dig', { t: 'toggle', tool: 'stockpile' }), 'stockpile');
   assert.equal(nextRoomTool('dig', { t: 'toggle', tool: 'strip' }), 'strip');
   assert.equal(nextRoomTool('strip', { t: 'toggle', tool: 'wall' }), 'wall');
   assert.equal(nextRoomTool('strip', { t: 'clear' }), null);
@@ -596,45 +612,20 @@ test('WP-2 (synthetic): markVariant is deterministic, in range, and actually var
 // `roomzoom-view.js` is DOM glue with no DOM in this suite, so nothing above can prove the Room Zoom
 // actually concatenates the layer: `markLayerSvg` could be perfect and never called, and every
 // assertion here would stay green (exactly the hole `zone-overlay.js`'s header records WP-3 falling
-// into). The scan therefore runs over COMMENT-STRIPPED source — `codeOnly` is copied verbatim from
-// client/test/surface-boundary.test.js:205 rather than re-derived, because a stripper that is not
+// into). The scan therefore runs over COMMENT-STRIPPED source — `codeOnly` is IMPORTED from the
+// shared `client/test/code-only.js` rather than re-derived, because a stripper that is not
 // string-literal aware is blinded by a quoted `//` and silently passes everything after it. The two
-// controls below test the stripper instead of trusting it.
+// controls below test the shared stripper instead of trusting it.
 
-/** Strip JS comments, STRING-LITERAL AWARE.
- *  ⚠️ POINTER CORRECTED 2026-07-26 (WP-5): this said "Copied verbatim from
- *  surface-boundary.test.js:205". That is no longer where the function lives — WP-5 extracted it to
- *  the shared `client/test/code-only.js`, and `:205` is now a comment about the extraction. This
- *  local copy is kept rather than switched to the import only to leave the WP-4 test file's diff
- *  alone; **new consumers must IMPORT the shared module, not copy this.** */
-function codeOnly(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') {
-      while (i < n && src[i] !== '\n') i += 1;          // drop to EOL, keep the \n
-    } else if (c === '/' && src[i + 1] === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
-      i += 2;
-    } else if (c === '\'' || c === '"' || c === '`') {
-      const q = c;
-      out += c; i += 1;
-      while (i < n) {
-        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
-        out += src[i];
-        const done = src[i] === q || (q !== '`' && src[i] === '\n');
-        i += 1;
-        if (done) break;
-      }
-    } else {
-      out += c; i += 1;
-    }
-  }
-  return out;
-}
+/** ⚠️ THE LOCAL COPY OF `codeOnly` IS GONE FROM THIS FILE (2026-07-26). It carried a note saying
+ *  "new consumers must IMPORT the shared module, not copy this", kept local "only to leave the WP-4
+ *  test file's diff alone" — and this package is a new consumer (the `main.js` wiring guard below
+ *  uses `callBlocks`, which is built on the same stripper). Keeping one copy for the old scans and
+ *  importing the shared one for the new is the exact shape CLAUDE.md trap 1 warns about: two
+ *  strippers, one of which can silently rot. Both now come from `client/test/code-only.js`, whose
+ *  behaviour is pinned in `surface-boundary.test.js` AND by the two controls immediately below,
+ *  which are unchanged and now exercise the shared function.
+ */
 
 test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body', () => {
   const src = codeOnly(readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8'));
@@ -733,22 +724,93 @@ class RzDoc extends DomDocument {
   querySelectorAll() { return []; }
 }
 
-const rzDoc = new RzDoc();
-for (const id of RZ_IDS) { const e = new RzEl(rzDoc, 'div'); e._id = id; rzDoc.register(id, e); }
+/** A fresh document carrying every id the controller looks up. */
+function makeRzDoc() {
+  const d = new RzDoc();
+  for (const id of RZ_IDS) { const e = new RzEl(d, 'div'); e._id = id; d.register(id, e); }
+  return d;
+}
+/** A window stub that RECORDS its listeners — `mouseup` (a release that ends off-canvas still
+ *  commits) and `keydown` are bound there, so a shared no-op stub would make half this section
+ *  undrivable. Each mount gets its OWN bag: `initRoomZoom` adds listeners every call, and a second
+ *  mount sharing one bag would double-fire every release and toggle every hotkey twice. */
+function makeRzWindow(bag) {
+  return { addEventListener(t, fn) { (bag[t] = bag[t] || []).push(fn); }, removeEventListener() {} };
+}
+
+const rzDoc = makeRzDoc();
 globalThis.document = rzDoc;
 const rzWinListeners = {};
-globalThis.window = {
-  addEventListener(t, fn) { (rzWinListeners[t] = rzWinListeners[t] || []).push(fn); },
-  removeEventListener() {},
-};
+globalThis.window = makeRzWindow(rzWinListeners);
 
 // Resolved AFTER the globals above are in place — these modules touch `document` at init.
 const Hud = await import('../src/ui/hud.js');
 const RoomZoom = await import('../src/ui/roomzoom-view.js');
 const { paletteOrders } = await import('../src/input/controls.js');
 
+/** THE ROOM UNDER TEST is the fixture's own live wreck: deck-1 slot 6, anchor 'hold' (roomType 14),
+ *  the room the capture's note calls "the LIVE WRECK". Its rect is read from the fixture, never
+ *  hand-written, so a recapture that moves the room moves these tests with it. Derived BEFORE any
+ *  mount because it is pure fixture geometry — the probe below needs it too. */
+const HOLD = slotFocus('hold');
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// PROBE FIRST, on a THROWAWAY document + window: what mask does a STOCKPILE sweep paint with when
+// NOBODY injects a getter? `initRoomZoom` only overrides `_getStockFilter` when handed a function,
+// so the un-injected default is unreachable once the real harness below mounts — and the exact
+// mutation that hole hides (default → 0, i.e. ACCEPT-NOTHING, a zone that silently refuses every
+// item and looks precisely like one nothing has been hauled to yet) survived a fully green suite on
+// the Overview until WP-5's review found it. The seam moved here with the verb; so did the probe.
+//
+// IT MUST BE ITS OWN DOCUMENT **AND** ITS OWN WINDOW. `initRoomZoom` binds mousedown/mousemove/click
+// on the canvas, `mouseup` + capture-phase `keydown` on the window, and a delegated click on the
+// root — every call, unconditionally. A second mount over the same nodes would double-commit every
+// sweep and make every hotkey a no-op (arm twice = disarm). Nothing is dispatched to the probe's DOM
+// after this block, and the real mount overwrites every module-level handle. The one residue is a
+// second `Hud.onShipUpdate` subscription — the same closure body twice over the same module state,
+// so a notification schedules one already-coalesced repaint. Idempotent, and worth naming.
+const probeDoc = makeRzDoc();
+const probeWinListeners = {};
+globalThis.document = probeDoc;
+globalThis.window = makeRzWindow(probeWinListeners);
+const probeSent = [];
+const probeApi = RoomZoom.initRoomZoom({ send: (o) => probeSent.push(o) });   // NO getStockFilter
+Hud.renderDecks(FIX.decks);
+Hud.renderRooms(FIX.rooms);
+Hud.renderFrame(wreck);
+probeApi.enter('hold');
+probeDoc.getElementById('rz-layers')._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+{
+  const probeCanvas = probeDoc.getElementById('rz-canvas');
+  const probeRoot = probeDoc.getElementById('roomzoom-view');
+  const at = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
+  const btn = new RzEl(probeDoc, 'button');
+  btn.dataset.rztool = 'stockpile';
+  btn.setAttribute('data-rztool', 'stockpile');
+  probeRoot.appendChild(btn);
+  rzFire(btn, 'click', {});                                   // arm STOCKPILE the way a player does
+  probeSent.length = 0;
+  rzFire(probeCanvas, 'mousedown', { button: 0, ...at(24, 11) });
+  rzFire(probeCanvas, 'mousemove', { button: 0, ...at(24, 11) });
+  for (const fn of (probeWinListeners.mouseup || []).slice()) fn({ button: 0 });
+}
+/** What one un-injected STOCKPILE tile emitted (cursor chatter dropped). */
+const PROBE_DEFAULT = probeSent.filter((o) => o.cmd !== 'cursor');
+
+// ── the real harness ──
+globalThis.document = rzDoc;
+globalThis.window = makeRzWindow(rzWinListeners);
 const rzSent = [];
-const rzApi = RoomZoom.initRoomZoom({ send: (o) => rzSent.push(o) });
+let rzMask = ACCEPT_ALL;     // the injected accept-mask, read once per committed sweep
+// ONE INDIRECTION, and it is load-bearing rather than tidy: `_getStockFilter` is a GETTER, so
+// "read once per sweep" and "read once per tile" are indistinguishable while the getter returns a
+// constant. Routing through a swappable function lets one test install a getter whose value CHANGES
+// on every call, which is the only way to make the per-tile mutation bite.
+let rzMaskGet = () => rzMask;
+const rzApi = RoomZoom.initRoomZoom({
+  send: (o) => rzSent.push(o),
+  getStockFilter: () => rzMaskGet(),
+});
 Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 // The SAME capture the pure assertions above run on — so the driven half sees the real wreck
@@ -757,10 +819,6 @@ Hud.renderRooms(FIX.rooms);
 // dom-lite cannot host, and the crew layer is not what this package changed.
 Hud.renderFrame(wreck);
 
-/** THE ROOM UNDER TEST is the fixture's own live wreck: deck-1 slot 6, anchor 'hold' (roomType 14),
- *  the room the capture's note calls "the LIVE WRECK". Its rect is read from the fixture, never
- *  hand-written, so a recapture that moves the room moves these tests with it. */
-const HOLD = slotFocus('hold');
 rzApi.enter('hold');                       // the Overview's own entry point, by anchorName
 const rzLayers = rzDoc.getElementById('rz-layers');
 const rzCanvas = rzDoc.getElementById('rz-canvas');
@@ -817,6 +875,8 @@ afterEach(() => {
   rzApi.exit();
   rzApi.enter('hold');
   rzSent.length = 0;
+  rzMask = ACCEPT_ALL;
+  rzMaskGet = () => rzMask;
 });
 
 /** Arm a tool the way a player does — a click on a palette button carrying `data-rztool`, dispatched
@@ -942,6 +1002,163 @@ test('WP-4: a STRIP sweep does the same for the deconstruct verb', () => {
   assert.deepEqual(sent, sent.map((o) => paletteOrders('strip', o.x, o.y)[0]));
   assert.deepEqual(sent[0], { cmd: 'strip', x: 24, y: 11, on: 1 });
   rzArm('strip');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// STOCKPILE ON THE ROOM ZOOM PALETTE — the verb that came down from the Overview
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY IT MOVED, in one line, because it is the only justification for the two tests below being
+// different in shape from DIG's: `JobWork.IsFreeStockpileTile` is "Stockpile + Walkable + empty",
+// ONE STACK PER TILE, so a zone's AREA is its CAPACITY. The extent is not incidental to the verb, it
+// is the verb — and the Overview has no drag gesture at all (zero mousedown/mousemove/pointerdown in
+// `overview-view.js`), so painting a 5×8 zone there was forty clicks.
+//
+// THE DRAG IS 3×3 AND THAT IS LOAD-BEARING, exactly as it is for DIG (WP-4's send-back): a 3×2 sweep
+// has every tile on the border, so `fill` and `perimeter` COINCIDE and a test claiming to pin a fill
+// cannot see it. 3×3 is the smallest rectangle with an interior — fill = 9, perimeter = 8 — and the
+// interior tile is asserted by name.
+//
+// MUTATIONS this one catches: `roomDragMode → 'single'` or `→ 'perimeter'` for stockpile; the
+// `Cmd.filter` half dropped from `orderPayloads`; the pair emitted in the WRONG ORDER; `Cmd.build`
+// in the order branch; a mask read per-tile instead of once per sweep.
+test('a STOCKPILE sweep zones the FILLED rectangle, and emits BOTH commands per tile', () => {
+  rzMask = 1 << 3;                                    // FOOD only — NOT the accept-all default
+  rzArm('stockpile');
+  const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 }));
+  assert.equal(sent.length, 18, 'a 3×3 stockpile sweep is NINE tiles × TWO commands. Anything else ' +
+    'is a dropped filter, a perimeter sweep, or a single-tile click.');
+  const zones = sent.filter((o) => o.cmd === 'stockpile');
+  const filters = sent.filter((o) => o.cmd === 'filter');
+  assert.deepEqual(zones.map(xy), [
+    [24, 11], [25, 11], [26, 11],
+    [24, 12], [25, 12], [26, 12],
+    [24, 13], [25, 13], [26, 13]],
+    'the zone must sweep the FILLED rectangle in row-major order (roomDragMode → fill). The centre ' +
+    'tile (25,12) is the one a `perimeter` sweep drops — and dropping it means the zone the player ' +
+    'painted holds 8 stacks instead of 9.');
+  assert.ok(zones.some((o) => o.x === 25 && o.y === 12),
+    'the INTERIOR tile is missing — the sweep traced an outline, so the zone is hollow');
+  assert.deepEqual(filters.map(xy), zones.map(xy), 'a filter is missing (or misplaced) for some tile');
+  // ORDER, PER TILE, not merely in aggregate: `DesignateStockpileCommand` OFF *clears* the filter, so
+  // an interleaving that put `filter` first would break the day an OFF path is added.
+  for (let i = 0; i < sent.length; i += 2) {
+    assert.equal(sent[i].cmd, 'stockpile', `payload ${i} is not the zone — the pair is out of order`);
+    assert.equal(sent[i + 1].cmd, 'filter', `payload ${i + 1} is not the filter`);
+    assert.deepEqual([sent[i].x, sent[i].y], [sent[i + 1].x, sent[i + 1].y],
+      'a zone and the filter beside it name different tiles');
+  }
+  // (a) PARITY BY IMPORT — the console's lowering is the contract, and it is asked, not restated.
+  assert.deepEqual(sent, zones.flatMap((o) => paletteOrders('stockpile', o.x, o.y, rzMask)),
+    'the Room Zoom emitted a different payload than paletteOrders() does for the same verb, tile '
+    + 'and mask. Three independent lowering paths exist for these verbs; they must not drift.');
+  // (b) THE ABSOLUTE WIRE SHAPE — a change to Cmd.stockpile/Cmd.filter moves BOTH paths together, so
+  // (a) would stay green through it.
+  assert.deepEqual(sent.slice(0, 2), [
+    { cmd: 'stockpile', x: 24, y: 11, on: 1 },
+    { cmd: 'filter', x: 24, y: 11, mask: 1 << 3 },
+  ]);
+  // The mask is genuinely READ, not defaulted: a non-default mask must survive to every tile.
+  for (const f of filters) assert.notEqual(f.mask, ACCEPT_ALL, `tile (${f.x},${f.y}) lost the mask`);
+  assert.equal(new Set(filters.map((f) => f.mask)).size, 1,
+    'one sweep painted two different masks');
+  rzArm('stockpile');
+});
+
+// MUTATION: move the `const mask = _getStockFilter();` read from above the loop INTO it (i.e.
+// `orderPayloads(pc.verb, t.x, t.y, _getStockFilter())`) ⇒ RED.
+//
+// ⚠️ THIS TEST EXISTS BECAUSE THE OBVIOUS VERSION CANNOT BITE. Asserting "all nine filters carry one
+// mask" against a getter that returns a CONSTANT is satisfied by reading it once or nine times —
+// they are indistinguishable. So this installs a getter whose value changes on every call. A sweep
+// that reads once still paints one mask across the rectangle; a sweep that reads per tile paints
+// nine different ones, which on a real client is a zone silently split into nine filters the moment
+// anything (a WP-6 chip, a wire rebroadcast) moves the mask under a drag.
+test('one sweep reads the mask ONCE — nine tiles cannot end up with nine filters', () => {
+  let calls = 0;
+  rzMaskGet = () => [1 << 0, 1 << 1, 1 << 2, 1 << 3][calls++ % 4];
+  rzArm('stockpile');
+  const filters = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 })).filter((o) => o.cmd === 'filter');
+  assert.equal(filters.length, 9, 'the sweep did not commit nine filters — this test would be vacuous');
+  assert.equal(new Set(filters.map((f) => f.mask)).size, 1,
+    `one sweep painted ${new Set(filters.map((f) => f.mask)).size} different masks. The accept-mask ` +
+    'getter is being read PER TILE instead of once per committed sweep, so one dragged rectangle can ' +
+    'come out wearing several different filters.');
+  assert.ok(calls >= 1, 'the getter was never called at all — the mask is not being read');
+  assert.equal(calls, 1, `the getter was called ${calls} times for one sweep`);
+  rzArm('stockpile');
+
+  // …and a NON-order sweep must not read it at all. A WALL has no business consulting a stockpile
+  // accept-filter, and once WP-6 points this getter at live chips an unconditional read is a
+  // needless coupling between the build gesture and the zoning UI.
+  calls = 0;
+  rzArm('wall');
+  rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 });
+  assert.equal(calls, 0, `a WALL sweep read the stockpile accept-mask ${calls} time(s)`);
+  rzArm('wall');
+});
+
+// MUTATION: `let _getStockFilter = () => 0;` (ACCEPT-NOTHING) ⇒ RED here and NOWHERE ELSE — that is
+// the whole reason the probe mount exists, and the identical hole survived a green suite on the
+// Overview until WP-5's review found it. Also caught: dropping the `Number.isFinite` fallback (the
+// dangerous version of which is returning `[Cmd.stockpile(…)]` alone — silence, which lets a tile
+// keep an earlier restrictive filter the player has just repainted as accept-all).
+test('an UN-INJECTED palette zones ACCEPT-ALL — never silence, never accept-nothing', () => {
+  // Captured at module scope from a throwaway mount with no `getStockFilter` (see the probe above).
+  assert.deepEqual(PROBE_DEFAULT, paletteOrders('stockpile', 24, 11, defaultStockFilter()),
+    'with nobody injecting a mask the Room Zoom no longer falls back to the SHARED ' +
+    '`defaultStockFilter()`. Accept-nothing is the dangerous direction — a zone that silently ' +
+    'refuses every item looks exactly like one nothing has been hauled to yet.');
+  assert.equal(PROBE_DEFAULT.length, 2, 'the un-injected default sent no filter at all');
+  assert.equal(PROBE_DEFAULT[1].mask, ACCEPT_ALL);
+  assert.equal(defaultStockFilter(), ACCEPT_ALL);          // …and the shared default IS accept-all
+  // Non-vacuity: the probe must have exercised the real lowering, not an empty array.
+  assert.equal(PROBE_DEFAULT[0].cmd, 'stockpile');
+  assert.deepEqual([PROBE_DEFAULT[0].x, PROBE_DEFAULT[0].y], [24, 11]);
+});
+
+// A garbage mask is NOT the same hole as an un-injected one, and both are reachable: the probe covers
+// "nobody wired a getter", this covers "the wired getter returned nonsense". Silence is the failure
+// that matters — a zone repainted as accept-all that sends no filter keeps its old restriction.
+test('a garbage mask still asserts ACCEPT-ALL — the repaint re-asserts the whole truth', () => {
+  for (const junk of [undefined, null, NaN, 'nonsense']) {
+    rzMask = junk;
+    rzArm('stockpile');
+    const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 }));
+    assert.equal(sent.length, 2, `mask=${String(junk)} sent ${sent.length} commands, not the pair — ` +
+      'a stockpile paint that says nothing about its filter leaves the tile wearing the last one');
+    assert.equal(sent[1].cmd, 'filter');
+    assert.equal(sent[1].mask, ACCEPT_ALL, `mask=${String(junk)} painted something other than ACCEPT-ALL`);
+    rzArm('stockpile');
+  }
+});
+
+// The palette BAR itself, read out of the markup `buildChrome` actually wrote — the same reasoning as
+// WP-4's palette test: every test above arms through a `data-rztool` node it constructs itself, so
+// they would all pass against a palette the player has no STOCKPILE button on.
+test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its hotkey', () => {
+  const html = rzDoc.getElementById('rz-palette').innerHTML;
+  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
+  assert.ok(html.includes('data-rztool="stockpile"'), 'no palette button for stockpile');
+  assert.ok(html.includes('>' + TOOL_LABEL.stockpile + '<'),
+    `the stockpile button is missing its label '${TOOL_LABEL.stockpile}'`);
+  assert.match(rzRoot.innerHTML, /STOCKPILE \[Z\]/,
+    'the palette hint does not name the Z hotkey — and nothing else on this surface can');
+});
+
+// MUTATION: drop the `z`/`Z` branch from onKey ⇒ the sweep after it sends nothing ⇒ RED.
+test('Z arms STOCKPILE, the console\'s own binding, and swallows the key', () => {
+  const z = rzKey('Z');
+  assert.ok(z.defaultPrevented && z.propagationStopped, 'the Room Zoom must swallow its own hotkey');
+  assert.equal(rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 }))[0].cmd, 'stockpile');
+  rzKey('z');                                       // lowercase too — 'h' was silently dead once
+  assert.deepEqual(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 }), [], 'the second Z did not disarm');
+  // …and it is the ONE exclusive slot, shared with the other two order hotkeys.
+  rzKey('z');
+  rzKey('G');
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'dig',
+    'G did not replace the armed STOCKPILE — the slot is not exclusive');
+  rzKey('G');
 });
 
 // THE SINGLE WORST THING THIS PACKAGE COULD DO (charter's "wrong if"): an order that reaches
@@ -1099,6 +1316,79 @@ test('WP-4: a room that SHRINKS mid-sweep clips the committed order to its new r
     Hud.renderDecks(FIX.decks);
     await new Promise((r) => setTimeout(r, 40));
   }
+});
+
+// The ACCEPTS caption. It is not decoration: the ACCEPTS chips are still on the deprecated console
+// (WP-6 brings them to this palette), so the toast is the ONLY place on the standard surface that
+// says which filter the sweep just painted — and a zone that silently refuses every item looks
+// exactly like one nothing has been hauled to yet. WP-5 shipped this readback on the Overview's hint
+// line; it must not simply evaporate because the verb moved.
+//
+// MUTATION: drop the `accepts` concatenation ⇒ RED. It is worded through the SHARED `acceptsLabel`
+// (zone-model.js), which is also what the zone key says, so the two cannot spell one mask two ways —
+// asserted by calling that function rather than by re-typing 'FOOD' here.
+test('a STOCKPILE sweep says which filter it painted, in the zone key\'s own words', () => {
+  const FOOD = 1 << 3;
+  rzMask = FOOD;
+  rzArm('stockpile');
+  rzSweep({ x: 24, y: 11 }, { x: 25, y: 12 });
+  const msg = rzDoc.getElementById('rz-toast').textContent;
+  assert.match(msg, /STOCKPILE/, 'the toast does not name the verb');
+  assert.ok(msg.endsWith(acceptsLabel(FOOD)),
+    `the sweep toast (${JSON.stringify(msg)}) does not end with the shared accept-set wording ` +
+    `${JSON.stringify(acceptsLabel(FOOD))}. Nothing else on this surface can tell the player which ` +
+    'filter they just painted — the ACCEPTS chips are still on the console.');
+  assert.notEqual(acceptsLabel(FOOD), acceptsLabel(ACCEPT_ALL));   // non-vacuity: the label varies
+  rzArm('stockpile');
+
+  // CONTROL: DIG carries no mask, so its toast must NOT claim an accept-set. Without this leg the
+  // assertion above is satisfiable by appending the label to every sweep.
+  rzArm('dig');
+  rzSweep({ x: 28, y: 14 }, { x: 29, y: 15 });
+  assert.ok(!/ACCEPTS/.test(rzDoc.getElementById('rz-toast').textContent),
+    'a DIG sweep claims an accept-set it does not carry');
+  rzArm('dig');
+});
+
+// ── the wiring main.js owns (a declared STRUCTURAL guard, and why it has to be one) ──
+
+// The driven tests above inject `getStockFilter` and prove the palette paints with WHATEVER mask it
+// is given. What they cannot reach is the one line in `main.js` that decides what it is given — and
+// on the Overview a mutation harness found exactly that hole: deleting `getStockFilter` from the
+// `initOverview` call left the whole suite green while every zone silently accepted everything, on a
+// client whose ACCEPTS chips are on another surface. The verb moved here, so the guard moved with it;
+// `overview-model.test.js` holds the mirror assertion that the Overview is handed NO mask.
+//
+// It is STRUCTURAL and says so, exactly as `input.test.js` does for the two `installInput` blocks:
+// main.js is the composition root, it takes no injection of its own, and importing it would boot a
+// WebSocket. Trap 1 is handled — comments are stripped before matching, with a negative control
+// below proving a commented-out wiring does NOT satisfy it.
+test('main.js wires the Room Zoom palette to the SHARED accept-mask, not to the default', () => {
+  const main = readFileSync(join(HERE, '../src/main.js'), 'utf8');
+  const WIRE = /getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/;
+  // `callBlocks` (client/test/code-only.js) brace-matches the argument object over CODE ONLY — a
+  // `{` in a comment or a `}` in a string derails a raw walk silently, which is CLAUDE.md trap 1.
+  const calls = callBlocks(main, 'initRoomZoom');
+  assert.equal(calls.length, 1, 'expected exactly one initRoomZoom({…}) call in main.js, found ' +
+    calls.length + ' — this guard reads the first, so a second one would go unchecked');
+  const call = calls[0];
+  assert.ok(call.includes('send:'), `the initRoomZoom block did not parse (${call.length} chars)`);
+  assert.match(call, WIRE,
+    'main.js no longer hands the Room Zoom the shared stockpile accept-mask, so every zone painted ' +
+    'from the palette falls back to ACCEPT-ALL and paints a filter the player did not choose — ' +
+    'silently, because the ACCEPTS chips are on the deprecated console. (WP-6 replaces this getter ' +
+    'with chips on this palette; it must not simply be removed.)');
+  // NEGATIVE CONTROL — the same scan over a source whose wiring is COMMENTED OUT must FAIL.
+  // …every occurrence: main.js wires the SAME getter into the two `installInput` blocks as well, and
+  // blinding only the first would leave the initRoomZoom one standing and the control passing for
+  // the wrong reason.
+  const blinded = main.replace(/^(\s*)(getStockFilter: \(\) => Hud\.getStockFilter\(\),)/gm, '$1// $2');
+  assert.notEqual(blinded, main, 'the negative control did not comment anything out — it proves nothing');
+  const blindedCalls = callBlocks(blinded, 'initRoomZoom');
+  assert.equal(blindedCalls.length, 1, 'the blinded source lost its initRoomZoom call entirely');
+  assert.ok(!WIRE.test(blindedCalls[0]),
+    'the scan passes on a source where the wiring is COMMENTED OUT, so it proves nothing at all — ' +
+    'this is CLAUDE.md trap #1, which shipped in four packages on one day');
 });
 
 // MUTATION: leave the demolish toast at its pre-WP-4 wording ⇒ RED. A built wall used to be a dead

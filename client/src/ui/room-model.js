@@ -19,24 +19,28 @@ import { dragModeForTool } from './build-drag-model.js';
 export const U = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Palette (VS-Z-46 / IX-Z-14). The fourteen tools in visual order; each maps to exactly one command
+// Palette (VS-Z-46 / IX-Z-14). The fifteen tools in visual order; each maps to exactly one command
 // class + wire verb (IX-Z-15). `deviceKind` is the sim DeviceKind name for functional furniture
 // (Device.cs); `itemId` is the item-set piece for cosmetic decor.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** The palette tools, in the visual order the bar renders them (VS-Z-46). WALL + FLOOR carry a
- *  material picker and drag-build; DOOR is a single structural placement; DIG + STRIP are the two
- *  ORDER verbs (console-retirement WP-4), grouped at the destructive end beside DEMOLISH. */
+ *  material picker and drag-build; DOOR is a single structural placement; DIG, STOCKPILE and STRIP
+ *  are the three ORDER verbs (WP-4 brought dig/strip; stockpile came down from the Overview when
+ *  the altitude rule was corrected — `overview-model.js`'s header holds the argument), kept in the
+ *  console's own `ORDER_KINDS` order and grouped at the destructive end beside DEMOLISH. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
-  'dig', 'strip', 'demolish',
+  'dig', 'stockpile', 'strip', 'demolish',
 ]);
 
-/** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). */
+/** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). The ▦ is the same glyph the
+ *  Overview's bar used and the console's hint uses, so the verb reads identically wherever it is
+ *  named; the hotkey is NOT in the label here (the palette states hotkeys in its hint line). */
 export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
   locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT',
-  dig: '⛏ DIG', strip: '⚒ STRIP', demolish: '⌫ DEMOLISH',
+  dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', demolish: '⌫ DEMOLISH',
 });
 
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
@@ -59,10 +63,17 @@ const PALETTE_CMD = Object.freeze({
   shelf: { cls: 'cosmetic',   verb: 'decor',  itemId: 'bookshelf' },
   // ORDER class (console-retirement WP-4) — a DESIGNATION, not a build. It consumes no material and
   // changes no geometry: it marks a tile as intent and the sim's job board picks it up. `verb` is the
-  // wire verb NAME (`dig`/`strip`), which is what makes it emphatically NOT a build: routing an order
-  // through `Cmd.build` would hand it to `BuildSystem`, which knows nothing about designations
-  // (`client/src/input/controls.js:52-58` spells this out for the console's own lowering).
+  // wire verb NAME (`dig`/`stockpile`/`strip`), which is what makes it emphatically NOT a build:
+  // routing an order through `Cmd.build` would hand it to `BuildSystem`, which knows nothing about
+  // designations (`client/src/input/controls.js:52-58` spells this out for the console's own
+  // lowering).
+  //
+  // ⚠️ STOCKPILE IS THE ONE ORDER THAT LOWERS TO **TWO** WIRE COMMANDS — `Cmd.stockpile` then
+  // `Cmd.filter`, always both, always that order. Its `cls` is what routes it through the sweep, and
+  // `roomzoom-view.js`'s `orderPayloads` is what knows about the pair; this table deliberately does
+  // not, so that "which class sweeps" and "what does one tile emit" stay separable.
   dig:   { cls: 'order',      verb: 'dig' },
+  stockpile: { cls: 'order',  verb: 'stockpile' },
   strip: { cls: 'order',      verb: 'strip' },
   demolish: { cls: 'demolish', verb: null },
 });
@@ -83,14 +94,14 @@ export function isStructuralTool(tool) {
   return paletteCommand(tool).cls === 'structural';
 }
 
-/** True for the ORDER tools (dig / strip) — designations, never builds (WP-4). PURE. */
+/** True for the ORDER tools (dig / stockpile / strip) — designations, never builds. PURE. */
 export function isOrderTool(tool) {
   return paletteCommand(tool).cls === 'order';
 }
 
 /**
  * True for every tool committed by the press-drag-release SWEEP gesture rather than by a plain
- * click: the structural trio plus the two order verbs. This is the sibling set the Room Zoom's
+ * click: the structural trio plus the three order verbs. This is the sibling set the Room Zoom's
  * `onCanvasDown`/`onCanvasUp` gate on, and it is a FUNCTION rather than a literal list precisely so
  * that adding a tool to `PALETTE_CMD` with a swept class cannot leave one of the three gesture sites
  * behind — that drift is what `paletteOrders` was extracted to prevent on the console. PURE.
@@ -106,7 +117,12 @@ export function isSweepTool(tool) {
  * which is the opposite of what a player dragging across rubble asks for. Every other tool defers to
  * `dragModeForTool` unchanged. The sim re-validates every tile and silently no-ops an illegal one
  * (`Cmd.dig`'s contract, `client/src/wire/session.js:67-77`), so a fill that crosses clean floor
- * costs nothing. PURE.
+ * costs nothing.
+ *
+ * FOR STOCKPILE `fill` IS NOT A PREFERENCE, IT IS THE MECHANIC. `JobWork.IsFreeStockpileTile` asks
+ * "Stockpile + Walkable + empty" — ONE STACK PER TILE — so the swept AREA is the zone's capacity:
+ * a 5×8 drag is 40 stacks. A `perimeter` sweep would silently deliver a hollow zone of 22, and a
+ * `single` sweep would make the verb's only real parameter a matter of clicking forty times. PURE.
  */
 export function roomDragMode(tool) {
   return isOrderTool(tool) ? 'fill' : dragModeForTool(tool);
