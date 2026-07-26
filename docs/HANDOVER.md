@@ -13,25 +13,30 @@ history, newest first.** The section immediately after this one is E0-4's landed
 
 ### 1. The tree, measured — not quoted
 
-- **`main` is at `3aecf4b`**, working tree clean. **Nothing is in flight** (§3).
-- **Gate: `./ci.sh` exit 0, 993 dotnet + 589 node**, measured in a fresh worktree off `3aecf4b`
+- **`main` is at `98f0e63`**, working tree clean. **Nothing is in flight** (§3). The deck-confined
+  wander (§4 step 1) **LANDED** as `61dea33`, merged `--no-ff` at `98f0e63`; its record is §4a.
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 589 node**, re-measured on `main` @ `98f0e63` after the merge
+  (the +3 is the deck-wander lane's own tests, exactly additive this time — which is luck, not a rule).
+- *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
   (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
   gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
   branches read 918–928 apiece and the merged lane read 943. (Today's last two packages *were* exactly
-  additive, which is luck, not a rule: WP-3 landed 993 + 564, WP-8 took node to 589.)
-- **Five pins, all gate-enforced, all byte-identical at `3aecf4b`:**
+  additive, which is luck, not a rule: WP-3 landed 993 + 564, WP-8 took node to 589.)*
+- **Five pins, all gate-enforced, all measured on `main` @ `98f0e63`:**
 
   | pin | value | enforced by |
   |---|---|---|
   | scenario `--days 3 --seed 42` | `00e0a2dadb8e5076` | `ci.sh:31` (+ twin-run equality) |
   | tick-3000 golden | `4be2e77864fb7409` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
-  | slice tick-3000 golden | `1f8f2225ee568de9` | `Golden/slice_tick3000_hash.txt` |
+  | slice tick-3000 golden | **`c565a68b810f588d`** | `Golden/slice_tick3000_hash.txt` |
   | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
   | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
 
   The last two are **different values for different things** and have been confused repeatedly:
   `3f23ce5bd40283c8` is what every occupancy run prints at the top of its output — never paste it into
-  the defaults pin. **Nothing that landed today moved any of the five.**
+  the defaults pin. **Last mover: the deck-confined wander** (`61dea33`), which moved the slice golden
+  `1f8f2225ee568de9`→`c565a68b810f588d` and **held the other four**. `ci.sh` needed no edit, and §4a
+  records why — the reason is not the obvious one.
 
 **Landed on `main` today, in merge order** (`git log --first-parent`), all 2026-07-25:
 
@@ -105,9 +110,10 @@ input.
 
 ### 3. In flight right now
 
-**Nothing. The tree is settled.** Both of the day's parallel lanes — WP-3 (`e26a56c`) and WP-8
-(`3aecf4b`) — are reviewed, merged and gated on `main`. Each took **one send-back** before PASS. Start
-at §4 step 1.
+**Nothing. The tree is settled.** The day's three lanes — WP-3 (`e26a56c`), WP-8 (`3aecf4b`) and the
+**deck-confined wander** (`61dea33`, merged `98f0e63`) — are each reviewed, merged and gated on `main`.
+Each took **one send-back** before PASS; the pattern is now three-for-three and E0-4/E0-5 were
+eight-for-eight before that. **Start at §4 step 2** — step 1 has landed, and its record is §4a.
 
 ### 4. NEXT STEPS — in this order. Do not infer the order; it is written down.
 
@@ -143,6 +149,19 @@ look alive, and it is the only step here that moves determinism pins.
 > written up with `file:line` countermeasures in **`CLAUDE.md`, "Traps that have each cost this project
 > real work"** — read that section before you write a guard test or a mutation harness.
 
+> **⚠️ THE ORCHESTRATION RULE — binding, owner decision (Garvin, 2026-07-25). The session instance does
+> NOT implement.** Every work package is executed by **two Opus 5 subagents: one implements, a second
+> and separate one reviews.** The instance that reads this file **orchestrates only** — it charters the
+> package, creates the worktree, dispatches the two agents, adjudicates send-backs, and does the
+> integration (merge, re-pin, `HANDOVER.md`, memory). It does not write the package's code and it does
+> not review its own dispatch. *Why it is a rule and not a preference:* the implement-then-independently-
+> review discipline caught a real defect in **every** package that landed on 2026-07-25, and the defects
+> it caught were overwhelmingly of one shape — a test whose named mutation cannot bite — which is
+> precisely the shape an author cannot see in their own work. An orchestrator who implements has
+> silently collapsed the two roles back into one. **Give the implementer its own worktree and its own
+> log filenames** (E0-4's lesson: shared filenames across parallel packages corrupt measurements), and
+> tell it explicitly that a separate reviewer will physically apply every mutation its tests name.
+
 > **⚠️ The plan's `client/` line numbers have DRIFTED, because WP-1, WP-7 and WP-8 landed after it was
 > written. Re-locate every symbol by NAME, never by line.** Measured examples: `hud.js` is **1210**
 > lines, not the plan's 1291 (WP-7 lifted ~90 out, WP-8 put ~10 back); `overview-view.js`'s TALK button
@@ -150,10 +169,11 @@ look alive, and it is the only step here that moves determinism pins.
 > the stale `MECHANICS.md` line the plan cites as `:1829` is now `:2090`. The plan's *reasoning* has
 > held up under verification everywhere it was checked; only its coordinates rotted.
 
-**1. THE DECK-CONFINED WANDER — bound the sampler to the crew member's own deck. DECIDED (Garvin,
-2026-07-25): do it, and do it FIRST.** It is not part of the console programme; it is a sim change
-that gets its own lane, and it goes first because it is the cheapest thing that makes the standard
-play ship stop looking dead.
+**1. ~~THE DECK-CONFINED WANDER~~ — ✅ LANDED `61dea33`, merged `98f0e63`. Do not re-do it; read §4a
+for what it measured and for the one number in it that is a known property rather than a win.** The
+charter below is kept because its *reasoning* is the model for the next sim lane — and because one of
+its predictions was wrong in an instructive way (it predicted the scenario pin would move; it could
+not have). **Next actionable step is 2, WP-2.**
 - **The problem, and why it is a cause and not a symptom.** All eight grid crew are
   `AutoWander = false` (`sim/Sim.Gen/AuthoredShips.cs:967`), so idle crew stand still and the ship
   reads as lifeless. Simply flipping the flag walks them into vacuum:
@@ -191,8 +211,63 @@ play ship stop looking dead.
   1.77 % of crew-ticks and finishes around h13; see `8159e6f`'s attribution correction). Those are the
   numbers a before/after belongs against.
 
+### 4a. The deck-confined wander — LANDED (`61dea33`, merged `98f0e63`, 2026-07-25)
+
+**What shipped.** `PathService.TryRandomWalkableTileNear` bounds Z to `origin.Z` (a **literal, not a
+def field** — owner decision: deck confinement is a rule, not a tunable), and the eight grid crew are
+`AutoWander = true`. The X/Y box, the 10-attempt loop and the **fixed 3-draw RNG shape are
+byte-identical** — the reviewer checked that at `SimRng.NextInt(1)` rather than trusting the comment,
+because a 2-draw version would silently re-roll every wander stream.
+
+**Measured, grid ship, `occupancy --ship grid --days 1`, default seed, n = 1** — three legs, because
+the middle one is what makes the case:
+
+| leg | alive | `Flee` | A1 work @ h24 | idle `None` |
+|---|---|---|---|---|
+| A shipped (`AutoWander=false`) | 8/8 | 0 / 6 912 000 | 24.938 % FAIL | 67.19 % |
+| B flag flipped only, old sampler | 8/8 | **308 120 / 6 912 000 = 4.46 %** | 24.990 % FAIL | 62.73 % |
+| C landed (flag + deck-bounded) | 8/8 | **0 / 6 912 000, exactly** | 24.990 % FAIL | 67.15 % |
+
+Leg B reproduces the previously-recorded 4.46 % / 24.990 % / 24.938 % **exactly**, which is the
+harness self-check that makes leg C's zero believable. Both legs were re-measured independently by the
+reviewer at raw crew-tick precision, not from the rounded prints.
+
+**The headline is not the `Flee` zero — it is that the ship is now alive, and that was MEASURED, not
+inferred.** Instrumented idle crew-ticks with a live path: **0 → 3 529 866** over one sim-day —
+**76.06 % of idle time spent walking, 51.07 % of the entire sim-day.** The implementer had honestly
+flagged "I did not open a browser"; the reviewer closed the gap with a number instead. **A1 is
+unmoved at 24.990 % FAIL** — wandering is not work, and this lane never claimed it was.
+
+**⚠️ A known property, not a win, and it will bite a future ship.** An idle crew member never wanders
+*back* to a deck it left, so crew slowly accumulate on their last job's deck (deck-0 crew-ticks
+2 161 920 → 1 702 000). Harmless *here* because deck 1 is pressurised and because jobs, sustenance and
+flee all path through the **unbounded** `FindPath` — `TryRandomWalkableTileNear` has exactly one
+production caller (`CitizenSystem.cs:74`, the idle wander). **On a ship whose upper decks are not
+survivable, re-examine this before authoring crew there.**
+
+**Pins: the slice golden moved `1f8f2225ee568de9`→`c565a68b810f588d`; the other four held, and
+`ci.sh` correctly received no edit.** The charter predicted the scenario hash would move and **it could
+not have** — and the first draft's stated reason for that was *wrong* in a way worth keeping on record,
+because it is the exact failure mode the "measure, never predict" rule exists to catch. The `--days 3
+--seed 42` run is **not** the 2-crew ship with `HoldPosition = true`; it is `BuildScenario`
+(`hosts/scenario/Program.cs:648`), a hand-built **single-deck** ASCII map whose crew come from
+`sim.AddCitizen` with **no flags set at all**. At `world.Depth == 1` the *old* bounds already evaluated
+to `zLo = zHi = 0`, so that pin was provably immune. `HoldPosition = true` is the correct reason for
+the **tick-3000** golden — a different ship (`AuthoredShips.cs:170-171`). Two ships, two reasons; the
+draft had chained them into one.
+
+**Process note worth inheriting.** Review found **zero** code or test defects — twelve mutations
+applied (the implementer's five plus seven the reviewer invented), none survived — and **four
+prose-truth defects**, including the pin reasoning above and the fact that the exact sentence the
+commit declared retracted was **still standing verbatim in `SimDefs.cs`**, the def field's own
+canonical documentation. The lesson is narrow and real: *this lane's code was right and its
+explanation of itself was wrong in four places.* Retractions were then written as **quoted-and-negated**
+text rather than deletions, so that someone grepping the old wording lands on the retraction — that is
+now the house technique, and it is how this defect was found in the first place.
+
 **2. WP-2 — make debris and designations visible.** *This and WP-4 are the first two packages that
-change what a player can DO, as opposed to what the game tells them.*
+change what a player can DO, as opposed to what the game tells them. **This is the next actionable
+step.***
 - **Do:** read `cell[1]` (the projected `GlyphColor` foreground byte) in both SVG surfaces and render
   a designated tile differently from an undesignated one — debris, stockpile zone tint, strip mark.
 - **Files:** `client/src/ui/room-model.js`, `client/src/ui/overview-scene.js`, plus their two node
