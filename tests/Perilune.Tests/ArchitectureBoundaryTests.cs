@@ -998,7 +998,7 @@ namespace Perilune.Tests
                 "  order is unspecified, and the dispatcher's global argmin breaks ties on BOARD\n" +
                 "  ORDER, so one unordered walk makes job assignment irreproducible — intermittently,\n" +
                 "  which is the worst way for a determinism bug to arrive. It would move the pins\n" +
-                "  (scenario 00e0a2dadb8e5076 · tick-3000 4be2e77864fb7409 · slice 1f8f2225ee568de9).\n" +
+                "  (scenario 00e0a2dadb8e5076 · tick-3000 4be2e77864fb7409 · slice c565a68b810f588d).\n" +
                 "  Zero-alloc matters too: foreach over a generic interface boxes its enumerator,\n" +
                 "  and JobDispatchTests asserts 3000 dirty-every-tick rescans allocate ZERO bytes.\n" +
                 "FIX: an indexed `for` over a List whose order you DECLARED. Every shipped board does\n" +

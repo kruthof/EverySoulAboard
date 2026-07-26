@@ -356,10 +356,13 @@ namespace Perilune.Tests
 
         /// <summary>
         /// Eight crew, all recruitable. Three (one of them held) could not exercise the economy
-        /// verbs; eight is the slice's number and what deck 0's loops are sized for. AutoWander stays
-        /// FALSE against the slice's setting because this ship's ladder trunk makes six VACUUM decks
-        /// walkable from tick 0. Mutation: restore the three-crew roster, or flip a HoldPosition, and
-        /// the count/flag assertions fail.
+        /// verbs; eight is the slice's number and what deck 0's loops are sized for. AutoWander is
+        /// TRUE (2026-07-25, matching the slice) — the standard play ship should not read as dead
+        /// while its crew are idle, and that is only safe because the idle sampler is now confined to
+        /// the crew member's own deck, putting the ladder trunk's six airless decks out of one draw's
+        /// reach. <see cref="DeckConfinedWanderTests"/> drives that end to end; this only pins the
+        /// authored flag. Mutation: restore the three-crew roster, or flip a HoldPosition, and the
+        /// count/flag assertions fail.
         /// </summary>
         [Test]
         public void Crew_AreEight_AllWorkable_AndStartInBreathableAir()
@@ -373,8 +376,9 @@ namespace Perilune.Tests
                 Assert.That(c.HoldPosition, Is.False,
                     $"{c.Name} is held: a held crew member is never offered work (IsIdleForWork) and reads " +
                     "in play as 'my crew ignores me'");
-                Assert.That(c.AutoWander, Is.False,
-                    $"{c.Name} may wander: the ladder trunk makes six vacuum decks walkable from tick 0");
+                Assert.That(c.AutoWander, Is.True,
+                    $"{c.Name} stands still while idle: the standard play ship reads as dead. Safe since " +
+                    "the idle sampler became deck-confined (PathService.TryRandomWalkableTileNear)");
                 Assert.That(c.Pos.Z, Is.EqualTo(0), $"{c.Name} must start on the pressurised, provisioned deck 0");
                 Assert.That(seen.Add(c.Pos), Is.True, $"two crew are authored onto {c.Pos}");
             }

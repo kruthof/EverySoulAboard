@@ -612,7 +612,10 @@ Three behaviour switches:
 - `AutoWander` (`:14`) — **off by default**; an institution's crew stands at their station
   when idle. The authored slice sets it **true** for all eight
   (`Sim.Gen/AuthoredShips.cs:255`, with a comment explaining that eight non-wandering crew
-  all reached thirst simultaneously and asphyxiated in one small room).
+  all reached thirst simultaneously and asphyxiated in one small room). **The grid ship — the
+  ONE standard play ship — sets it true for all eight too as of 2026-07-25**, for a different
+  reason: a ship whose idle crew (≈67 % of a sim-day) stand on their boot tiles reads as dead.
+  That flip was only safe once the wander sampler became deck-confined; see §5.4.
 - `HoldPosition` (`:20`) — strict player control: never wanders, never picks up a job,
   never self-serves by travelling.
 - `RevealsFog` (`:23`) — hidden survivors don't lift fog until found.
@@ -673,13 +676,26 @@ Idle (`:54-78`): a citizen with `AutoWander && !HoldPosition && JobKind == None`
 `idle_ticks_between_wanders = 30` (3 s), `wander_radius_tiles = 8` (E0-1; the idle-wander scope).
 
 **`TryRandomWalkableTileNear` (`Path/PathService.cs`) samples up to 10 random tiles from a
-Chebyshev box of half-width `wander_radius_tiles` around the citizen (clamped to the world)
-and returns the first walkable one (E0-1).** It bounds wandering LOCALLY so crew disperse
-near their work instead of roaming ship-wide, WITHOUT reducing wander cadence — the slice
-depends on wandering to desynchronise needs (§5.1 `AutoWander` note), so E0-1 bounds reach,
-not frequency. The default 8 is UNTUNED, pending A1 measurement; a radius ≥ the ship extent
-reproduces the pre-E0-1 global wander. The un-bounded `TryRandomWalkableTile` remains in
-`PathService` (no longer called by the sim).
+Chebyshev box of half-width `wander_radius_tiles` around the citizen **in X and Y only**
+(clamped to the world) and returns the first walkable one (E0-1).** It bounds wandering
+LOCALLY so crew disperse near their work instead of roaming ship-wide, WITHOUT reducing wander
+cadence — the slice depends on wandering to desynchronise needs (§5.1 `AutoWander` note), so
+E0-1 bounds reach, not frequency. The default 8 is UNTUNED, pending A1 measurement. The
+un-bounded `TryRandomWalkableTile` remains in `PathService` (no longer called by the sim).
+
+**⚠️ Z IS NOT IN THE BOX — the draw is pinned to `origin.Z` (the deck-confined wander,
+2026-07-25).** An idle wander never changes deck. This is a LITERAL, not a def field: it is a
+rule (idle crew do not climb ladders for nothing), not a tunable, so it adds no hashed state
+and moves neither defs checksum. **Consequence, and it invalidates a sentence that stood here
+until today: no radius reproduces the pre-E0-1 global wander any more** — a radius ≥ the ship
+extent now saturates the box to the whole DECK and no further. Why it was needed: the default
+`wander_radius_tiles` (8) is ≥ the grid ship's depth (`GridDepth = 8`), so the old 3-D box
+saturated all eight decks and ONE idle draw could put a crew member on any of the six that boot
+airless-but-walkable off the ladder trunk. Measured on `--ship grid`, one sim-day, with
+`AutoWander = true`: the old box sent **4.46 % of all crew-ticks to `JobKind.Flee`** (8/8 alive
+— it was waste, not lethality); the deck-pinned draw sends **0.00 %**, at identical productive
+work (24.990 %). It moved the slice tick-3000 golden and nothing else. Driven pins in
+`tests/Perilune.Tests/DeckConfinedWanderTests.cs`.
 
 The pre-E0-1 global sampler produced, on the shipping slice, a mean wander leg of ~21 tiles
 (~21 s at the E0-2 `ticks_per_tile = 10`; was ~10.7 s at the pre-E0-2 5) with ~46 % of picks on a different deck — i.e. crew

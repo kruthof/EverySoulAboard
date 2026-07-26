@@ -27,6 +27,59 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-25) — **the DECK-CONFINED IDLE WANDER: the standard play ship is alive**
+
+The eight crew of `--ship grid` — the one standard play ship — are now **`AutoWander = true`**
+(`sim/Sim.Gen/AuthoredShips.cs`), so an idle crew member moves instead of standing on its boot tile.
+They are idle **~67 % of a sim-day**, so this is most of what the ship looks like. It is safe only
+because of the change underneath it: **`PathService.TryRandomWalkableTileNear` no longer boxes Z by
+the wander radius — it pins the sampled Z to `origin.Z`.** An idle wander cannot change deck. That is
+a **LITERAL, not a def field**, deliberately: it is a rule (idle crew do not climb ladders for
+nothing), not a tunable, and it therefore adds no hashed state and moves neither defs checksum. The
+X/Y box is **untouched** — same fixed 3-draw zero-alloc shape, same corner behaviour, same local
+dispersal.
+
+**Why the flag could not simply be flipped.** The default `wander_radius_tiles` (8) is **≥ the grid
+ship's depth** (`GridDepth = 8`), so the old box saturated the whole world and a **single idle draw**
+could land a crew member on any of the eight decks — six of which boot airless but are walkable from
+the ladder trunk. **Measured, `occupancy --ship grid --days 1`, three legs:**
+
+| leg | crew alive | `Flee` share of crew-ticks | idle crew-ticks SPENT WALKING | A1 work @ h24 | idle `None` |
+|---|---|---|---|---|---|
+| shipped (`AutoWander=false`) | 8/8 | 0.00 % | **0** | 24.938 % | 67.19 % |
+| flag flipped only (old sampler) | 8/8 | **4.46 %** | — | 24.990 % | 62.73 % |
+| **this change** (flag + deck-bounded) | 8/8 | **0.00 %** — *exactly* 0 of 6 912 000 crew-ticks | **3 529 866** | 24.990 % | 67.15 % |
+
+**Two results, and the second one is the point of the feature.** (1) The **4.46 % → 0.00 %** `Flee`
+collapse. (2) **THE SHIP IS VISIBLY ALIVE: jobless movement goes 0 → 3 529 866 crew-ticks over one
+sim-day — 76.06 % of all idle time spent walking, 51.07 % of the entire sim-day** (measured in
+independent review by instrumenting idle crew-ticks carrying a live path; this is a direct
+measurement, not the earlier inference from `None` holding at ~67 %).
+
+Note what result (1) is *not*: the older claim that *"an idle wander is a death sentence here"* was
+**wrong and is retracted** — the middle leg keeps 8/8 crew alive and its productive work is *higher*
+than shipped. The argument was always **waste**, not lethality: crew walking out of vacuum for nothing
+on the ship a new player is watching. A1 is unchanged at **24.990 % (still FAIL)** and that is
+expected — wander is not a labour lever.
+
+⚠️ **One consequence future ships will meet: an idle crew member never wanders BACK to the deck it
+came from, so crew slowly accumulate on their last job's deck** (deck-0 crew-ticks 2 161 920 →
+1 702 000 over the same day, also measured in review). Harmless on the grid ship — deck 1 is
+pressurised, and self-serve/jobs route through `FindPath`, which is unbounded — but **not** harmless
+on a ship whose upper decks are not survivable. Confinement bounds the idle DRAW, never the crew
+member.
+
+Pins: **one moved, four held, and two of those held against expectation** (see "Determinism proof").
+Slice tick-3000 golden `1f8f2225ee568de9`→`c565a68b810f588d` (the slice's crew wander too). The
+scenario `--days 3 --seed 42` pin was *predicted* to move and did not — **and the reason is the map,
+not the crew: that run is `hosts/scenario/Program.cs`'s hand-built `BuildScenario`, one `string[]` to
+`AsciiWorld.Build`, so `world.Depth == 1` and the old Z bounds already collapsed to `zLo = zHi = 0`.
+It could not have moved under any crew flags** (its 2 crew come from `sim.AddCitizen`, which sets no
+flags: `AutoWander = false`, `HoldPosition = false`). So **`ci.sh` was not edited**. Tests:
+`tests/Perilune.Tests/DeckConfinedWanderTests.cs`, all three **driven, never scanned**, with a
+non-vacuity control that replays the old Z box and measures it leaving the deck on
+**87.5 % of 3 200 draws**.
+
 ## Status snapshot (2026-07-25) — **E0-4 LANDED on `main`, and its headline claim is RETRACTED**
 
 **Read `docs/HANDOVER.md`'s top section before quoting any stockpile number from anywhere.**
@@ -384,8 +437,9 @@ look inert when it is not.
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
-  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main`
-  @ `7d24ff5` (2026-07-25): 979 dotnet + 529 node, `./ci.sh` exit 0.** Every "560 dotnet + 188
+  lane and are re-measured per commit; **re-measure before quoting**. **Measured on
+  `lane/deck-wander` (2026-07-25, base `39dfae3`): 996 dotnet + 589 node, `./ci.sh` exit 0**
+  (+3 dotnet, the deck-confined wander's own driven tests; node untouched). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that
@@ -397,7 +451,7 @@ look inert when it is not.
   |---|---|---|
   | scenario `--days 3 --seed 42` | `00e0a2dadb8e5076` | `ci.sh:31` (also twin-run equality) |
   | tick-3000 golden | `4be2e77864fb7409` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
-  | slice tick-3000 golden | `1f8f2225ee568de9` | `Golden/slice_tick3000_hash.txt` |
+  | slice tick-3000 golden | `c565a68b810f588d` | `Golden/slice_tick3000_hash.txt` |
   | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
   | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
 
@@ -411,7 +465,25 @@ look inert when it is not.
   `docs/design/perilune-economy-modularity.md` §0.2). The two are **different values for different
   things** and have been confused repeatedly: `3f23ce5bd40283c8` is what every occupancy run prints
   at the top of its output; **never paste it into the defaults pin.** Both are now asserted by name.
-  **Last mover: E0-5** (deconstruct/strip) for the first four. **E0-4 moved nothing** — no hashed
+  **Last mover: the DECK-CONFINED WANDER (2026-07-25) — ONE pin, the slice golden,
+  `1f8f2225ee568de9`→`c565a68b810f588d`.** `PathService.TryRandomWalkableTileNear` no longer boxes Z
+  by the radius; it pins the idle draw to `origin.Z`. The slice's crew are `AutoWander = true`, so
+  their cross-deck draws changed and their tick-3000 state with them. **The other four HELD, and two
+  of them held against expectation — so measure, never predict.** **They held for two DIFFERENT
+  reasons, and conflating them is a mistake this lane made and had corrected in review.** The scenario
+  `--days 3 --seed 42` pin was *expected* to move and did **not**, because of the MAP: that run is
+  `hosts/scenario/Program.cs`'s hand-built `BuildScenario`, a single-deck 22×6 ASCII map, and
+  `AsciiWorld.Build` over one `string[]` gives `world.Depth == 1` — so the old `origin.Z ± radius`
+  bounds already clamped to `zLo = zHi = 0` and **that pin could not have moved under any crew
+  flags**. (Its 2 crew come from `sim.AddCitizen`, which sets no flags, so they are
+  `AutoWander = false` **and `HoldPosition = false`** — *not* held. Do not repeat the earlier draft's
+  claim that they are.) `ci.sh:31` needed no edit at all. The tick-3000 golden held for the OTHER
+  reason, on a different ship: `AuthoredShips.Perilune()`'s two crew really are
+  `HoldPosition = true` (`AuthoredShips.cs:170-171`), so nothing there wanders.
+  Both defs checksums held because the deck confinement is
+  a **literal, not a def field** — it is a rule (idle crew do not climb ladders for nothing), not a
+  tunable, and it deliberately buys no new hashed state. Before that: **E0-5** (deconstruct/strip)
+  moved the first four. **E0-4 moved nothing** — no hashed
   field, no def scalar, and its whole measurement surface is opt-in host-side flags. Before that,
   **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 +
   a crew-safety `SafetySystem`/`JobKind.Flee` guard) was the last REAL behaviour

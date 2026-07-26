@@ -264,12 +264,20 @@ namespace Perilune.Sim
             /// <summary>CitizenSystem.IdleTicksBetweenWanders — idle ticks before a wander. Current: 30.</summary>
             public int IdleTicksBetweenWanders;
             /// <summary>CitizenSystem wander scope — an idle-wander target is drawn within this
-            /// Chebyshev radius (in tiles) of the citizen's current position (E0-1). Bounds the
-            /// wander LOCALLY so crew disperse near their work (short job paths, bounded need
-            /// drag) instead of roaming ship-wide, WITHOUT reducing wander cadence — the slice
-            /// depends on wandering to desynchronise needs (AuthoredShips.cs:235-241), so we bound
-            /// reach, not frequency. A radius ≥ the ship extent reproduces the pre-E0-1 global
-            /// wander (the sample box saturates to the whole world). UNTUNED default pending A1
+            /// Chebyshev radius (in tiles) of the citizen's current position, <b>in X and Y
+            /// ONLY</b> (E0-1). Bounds the wander LOCALLY so crew disperse near their work (short
+            /// job paths, bounded need drag) instead of roaming ship-wide, WITHOUT reducing wander
+            /// cadence — the slice depends on wandering to desynchronise needs
+            /// (AuthoredShips.cs:235-241), so we bound reach, not frequency.
+            ///
+            /// ⚠️ <b>THIS FIELD DOES NOT SCOPE Z, AND NO VALUE OF IT EVER WILL.</b> The deck
+            /// confinement (2026-07-25) pins the sampled Z to the citizen's own deck as a LITERAL in
+            /// <see cref="PathService.TryRandomWalkableTileNear"/> — it is a rule (idle crew do not
+            /// climb ladders for nothing), not a tunable, which is why it is deliberately NOT a def
+            /// field. <b>The sentence that stood here until then — "a radius ≥ the ship extent
+            /// reproduces the pre-E0-1 global wander (the sample box saturates to the whole world)"
+            /// — is now FALSE and is retracted.</b> A radius ≥ the ship's X/Y extent saturates the
+            /// box to the whole DECK and never further. UNTUNED default pending A1
             /// measurement. Current: 8.</summary>
             public int WanderRadiusTiles;
         }
