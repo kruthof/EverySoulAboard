@@ -1,11 +1,13 @@
 # The character simulation — marks as the engine, axes as the prior, behaviour that surfaces — implementation plan (r2)
 
-**Status:** PLAN ONLY, **revision 2**. Nothing in this document is built. Revision 1 (`a592e5e`)
+**Status:** PLAN ONLY, **revision 3**. Nothing in this document is built. Revision 1 (`a592e5e`)
 was reviewed by three independent Opus lenses (architecture/determinism, game-design/legibility,
-psychological-validity/governance); unanimous verdict **ADOPT WITH CHANGES**. This revision is the
-response. §13 is the ledger of what changed shape, what was adopted, and what was **rejected with
-argument**; §12 collects the questions that are the owner's to take, not this plan's. Retractions
-from r1 use the house quoted-and-negated form at the place the claim lived.
+psychological-validity/governance); unanimous verdict **ADOPT WITH CHANGES**. Revision 2
+(`bf54b1d`) was the response; two focused re-reviews of it upheld the verdict and shrank the
+remainder, and **this revision (r3) closes those findings** — §13.5 is their ledger. §13 overall
+records what changed shape, what was adopted, and what was **rejected with argument**; §12
+collects the questions that are the owner's to take, not this plan's. Retractions from earlier
+revisions use the house quoted-and-negated form at the place each claim lived.
 
 **The brief it serves (Garvin, verbatim in substance):** an *in-depth character simulation* —
 possibly using **Big Five personality traits**; **personal history that shapes the way the person
@@ -108,8 +110,8 @@ enforced the rule with process ("the integrator holds the merge"), which is the 
 that failed E0-4's WP-5. §9.4 mechanises it instead.
 
 **The RNG topography of the wander — r1's assumption A-4 was FALSE.**
-- `CitizenSystem.cs:29` — `var rng = sim.Rng`: the idle wander draws from the **raw shared sim
-  stream**, not a fork. `PathService.cs:172-197` — `TryRandomWalkableTileNear` is a **fixed
+- `CitizenSystem.cs:30` — `var rng = sim.Rng` (r2 cited `:29`, off by one; r3 fix): the idle
+  wander draws from the **raw shared sim stream**, not a fork. `PathService.cs:172-197` — `TryRandomWalkableTileNear` is a **fixed
   three draws per attempt, up to 10 attempts** (3–30 draws per call), and its own warning
   comment (`:187-193`) records that reshaping this stream moves the slice golden *as a bare
   hash mismatch indistinguishable from an unrelated change*. `Rng.State` folds directly into
@@ -213,8 +215,14 @@ words (§10.2, §11 W-13).
 
 ### 0.4 Assumed (each a review target)
 
-- **A-1.** One new unconditionally-folding `IStatefulSystem` moves exactly the three StateHash
-  pins, fold-only (W0-6 precedent). Predicted, not measured; WP-A measures all five.
+- ~~**A-1** (r1/r2: "Predicted, not measured")~~ — **promoted to derived + verified (r3)**: the
+  pin move is *certain*, not predicted — `Simulation.cs:504-506` folds every registered
+  `IStatefulSystem` checksum unconditionally, so all three StateHash pins move by construction;
+  and the "no golden else" half is now counted — of the **18** files in
+  `tests/Perilune.Tests/Golden/`, exactly **two** are StateHash-derived
+  (`perilune_tick3000_hash.txt`, `slice_tick3000_hash.txt`); the rest are
+  boot-frame/layout/persona surfaces a passive registration cannot touch. WP-A still *measures*
+  all five pins — the ritual is confirmation and recording, no longer the source of the claim.
 - **A-2.** No new class of float use (no transcendentals on tick paths; decay is a precomputed
   per-pass multiplier).
 - **A-3.** Boot-step access to the registered `PsycheSystem` per the hoist / lazy-resolution
@@ -352,7 +360,7 @@ eviction in §3.6.
 |---|---|---|---|
 | **Bereavement** | `CitizenDiedEvent` read next tick; weight from the survivor's SOCL tier toward the dead at death (`GetRelation`, `SocialSystem.cs:74-75`; edges persist past death, §0.1) | latent until a death — player-caused or future content; warrant: a driven kill fixture on a grid-derived map (§9.4) | tier-scaled: `bereavement_weight_{closefriend,friend,other}` (1.0 / 0.6 / 0.15) |
 | **NearDeath** | 1 Hz peak tracker (`PeakSuffocation`/`PeakDeck`); mark written on recovery below **the def value** `FleeSuffocation / 2` — the def, **not** the per-citizen modulated value, so a high-N crew member's earlier flee does not also redefine what counted as a close call (this confines the `SafetySystem.cs:75` coupling, §0.1, to the flee behaviour itself; named per review) — after a peak ≥ `near_death_threshold` (0.8) | latent until hazard; same warrant class as Bereavement | `near_death_weight` (0.8) |
-| **Feud** | `RelationshipChangedEvent` with `NewRel == Enemy` (`SocialSystem.cs:123-129`); removed (not decayed) if the pair later leaves Enemy | **unreachable today** (§0.1 monotone opinion) — reachable only after §5.4's grid social ignition, which is this kind's named dependency, pinned by a red-until-then negative control (§9.4) | `feud_weight` (0.5) |
+| **Feud** | `RelationshipChangedEvent` with `NewRel == Enemy` (`SocialSystem.cs:123-129`); removed (not decayed) if the pair later leaves Enemy | **unreachable today** (§0.1 monotone opinion) — reachable only after §5.4's grid social ignition, pinned by a **positive warrant on the shipped ship**: a test that a Feud mark forms and its avoidance fires within N sim-days of `--ship grid` boot, **red until ignition lands, gating the lane merge** (§9.4.2). If §12.2 refuses ignition, Feud and everything downstream of it are **cut from v1**, not labelled | `feud_weight` (0.5) |
 | **RaidTrauma** | seeded at generation/authoring **as a minority outcome**. ~~r1: "every survivor of the Lien raid carries one … floor > 0 (the backstory is permanent)"~~ — **retracted**: resilience is the modal post-trauma outcome (§0.3); a universal mark differentiates nobody (the `Citizen.Morale` lesson in emotional clothing); and it priced trauma into every crew member's throughput permanently with no exit. r2: a def-tunable minority (`raid_trauma_incidence`, default 0.3) of generated crew, rolled on the persona fork; authored per-crew on slice/grid; **wide weight spread [0.3, 1.0] and a recovery path** (§3.3); a small floor **only** for the heaviest carriers. The *event* stays universal where it lives today — `RaidBackstory` prose and MEMS | authored / rolled |
 
 **Reserved, defined, never written in v1:** Betrayal, Rescue, PromiseBroken. No mechanics emit
@@ -368,13 +376,26 @@ writing any reserved kind is a defect (W-9).
   before the player had to solve it (design review). Behaviourally-consuming kinds get long
   half-lives (`neardeath_half_life_hours` 96, `bereavement_half_life_hours` 96); pressure-only
   kinds may fade faster (`feud_half_life_hours` 48).
-- **Events accelerate healing.** A `BondEvent` involving the marked citizen applies a relief
-  step (`Weight ×= grief_event_relief`, default 0.9) — grief eases *because something good
-  happened with someone*, which is a story; a timer is a statistic (design review, adopted).
-  Deterministic: the bus is deterministic and the step is a pure multiply. **The slow timer is
-  retained alongside** — argued in §13.3: purely event-gated grief on an isolated crew member
-  never heals and taxes them forever; "never got over it because nothing good ever happened" is
-  a story the *long* timer still tells, just slowly.
+- **Events accelerate healing — rate-limited, because the raw event rate annihilates
+  everything.** ~~r2: "A `BondEvent` involving the marked citizen applies a relief step
+  (`Weight ×= grief_event_relief`, default 0.9)"~~ — **retracted as tuned; the mechanism
+  stands, the constant was wrong by ~30 orders of magnitude** (r3 review): the measured bond
+  rate is 2 611/day across 8 slice crew ≈ **650 involvements per citizen per day**
+  (`MECHANICS.md` §13.7), and `0.9^650 ≈ 10⁻³⁰` — which would have silently restored the
+  one-day veto expiry §3.4.2 exists to prevent *and* made §3.5's drift undepositable (no mark
+  would ever survive `drift_dwell_days`). r3: relief triggers on **positive
+  `RelationshipChangedEvent` tier crossings** involving the citizen (29/day ship-wide measured,
+  §13.7 — the *meaningful* social milestones, not every co-location tick), **and** is
+  rate-limited by a per-citizen `LastReliefTick` (hashed, +8 B) to at most one application per
+  `relief_cooldown_hours` (default 24). Defaults shown with their arithmetic, house-style: at
+  `grief_event_relief = 0.95`, cooldown 24 h, half-life 96 h, the daily factor is
+  `0.5^(24/96) × 0.95 ≈ 0.80`, so a 0.8-weight Bereavement crosses the 0.4 aversion threshold
+  in **≈ 3.1 sim-days** on a socially active ship — and WP-D carries the driven test asserting
+  **no sooner than ~3**. Grief still eases *because something good happened with someone*; it
+  just takes the days it should. **The slow timer is retained alongside** — argued in §13.3:
+  purely event-gated grief on an isolated crew member never heals and taxes them forever;
+  "never got over it because nothing good ever happened" is a story the *long* timer still
+  tells, just slowly.
 - **Expiry leaves a residue.** ~~r1: "A mark below `mark_epsilon` with floor 0 is removed"~~ —
   retracted as stated: that deletes exactly the record `VISION.md`'s "a person you can know"
   names as the payload. r2: on expiry, `Weight = 0` and the entry **persists as an inert
@@ -386,7 +407,12 @@ writing any reserved kind is a defect (W-9).
 
 1. **Mood pressure** — `MoodPressure = Σ Weight × mood_weight[Kind] × (1 + N × stress_gain_max)`,
    entering `NeedsSystem`'s full recompute as one subtracted term (memoryless contract kept, doc
-   comment updated same commit; §6). Now **visible**, because §8.2 finally gives per-crew mood a
+   comment updated same commit; §6). **Defaults, which r2 omitted entirely** (r3 review: the one
+   scalar deciding whether the ambient display shows anything had no number anywhere):
+   `mood_weight_bereavement = 25`, `_neardeath = 15`, `_raidtrauma = 10`, `_feud = 8` — sized
+   against the shipped mood terms (hunger 40, fatigue 25, `NeedsSystem.cs:163-167`), so a
+   full-weight CloseFriend bereavement costs 25 mood (34 at N = +1): comparable to starving,
+   which is the intended register. Now **visible**, because §8.2 finally gives per-crew mood a
    surface.
 2. **Deck aversion (NearDeath)** — while Weight ≥ `deck_aversion_min_weight` (0.4), auto-work
    targeting the marked deck is refused via stamp-and-skip in each source's `Select`
@@ -416,10 +442,17 @@ decision is about *timing, not shape*:
   `drift_min_weight`, it deposits a **permanent axis delta** per a small (kind → axis) def
   table — e.g. Bereavement → N +0.05; NearDeath → N +0.05; Feud → A −0.04; a future Rescue →
   A +0.04. Deposits are **bounded twice**: per event (≤ 0.05) and per life — a per-axis monotone
-  `DriftSpent` tracker (5 × float, hashed) caps lifetime |drift| at `drift_lifetime_cap` (0.3).
+  `DriftSpent` tracker caps lifetime |drift| at `drift_lifetime_cap` (0.3).
+- **The state ships unconditionally; only the mechanism is the owner's call.** ~~r2 §7: "+20 B
+  `DriftSpent` if §3.5 is chartered"~~ — retracted: conditional hashed state is two possible
+  save shapes and an uncosted migration (r3 review; the one r2 change judged worse than what it
+  replaced). r3: `DriftSpent` (5 × float, hashed, saved, round-tripped) is part of
+  `PsycheState` **from WP-A**, permanently zero until WP-D2 lands — the same
+  inert-until-consumed pattern as every later-seam def scalar (§7). §12.1 thereby becomes a
+  purely behavioural decision with zero save-format consequence either way.
 - Deterministic, event-sourced, rare — a person changed by their life, by a bounded amount, in
-  the direction the life pushed. Identity holds (no marks ⇒ no drift). Cost if chartered:
-  +20 B/citizen, ~6 def rows, one WP.
+  the direction the life pushed. Identity holds (no marks ⇒ no drift). Cost of the mechanism if
+  chartered now: ~6 def rows, one WP.
 - **Owner question §12.1** — with this plan's recommendation to charter it now: it is the
   cheapest honest answer to the brief's second clause, and deferring re-opens the §0.3 stability
   overstatement this revision just retracted.
@@ -470,7 +503,7 @@ better people, and here is the number"* (validity review). r2 gives every axis a
 
 | axis | benefit | cost | signal & notes |
 |---|---|---|---|
-| **C** | prompt work start (no dawdle); **E2 contract: personal maintenance quality** — the charter line *"a stranger restores to 0.85, the specialist to 1.0"* (`ECONOMY-PLAN.md:104-105`) gains "…scaled by C" | defers self-serve (works hungrier → deeper mood dips); **perseveration chartered**: slower to abandon an invalid job, resists re-tasking — chartered beside the assignment verb (§5.5), because no re-tasking verb exists yet to resist | **the completion signal (r1 left it unspecified; review flagged it):** there is no `JobCompletedEvent` (§0.1). r2: each job source's *completion site* calls `psyche.NotifyCompleted(citizen)` — one line each at `DigJobSource.cs:135-145`, `BuildJobSource.cs:405-409`, `DeconstructJobSource.cs:180-188`, HaulJobSource's delivery completion, and the `CraftingSystem`/`MaintenanceSystem` completion paths (~6 sites). This **naturally excludes abandonment** — `CancelJob`/flee paths never call it, so a crew member who fled lethal air collects no dawdle — and needs **no** new hashed `PrevJobKind` byte and no event. Alternatives rejected: edge-detecting `JobKind→None` conflates completion with abandonment (`SafetySystem.cs:96` cancels on flee); a `Citizen` flag touches the CITZ fold. Dawdle = `max(0, −C) × work_dawdle_max_s` (one-sided; identity at C ≥ 0 *is* today's same-tick pickup) + the grief term (§3.4.3). Frequency and the retracted headline: §0.2 |
+| **C** | prompt work start (no dawdle); **E2 contract: personal maintenance quality** — the charter line *"a stranger restores to 0.85, the specialist to 1.0"* (`ECONOMY-PLAN.md:104-105`) gains "…scaled by C" | defers self-serve (works hungrier → deeper mood dips); **perseveration chartered**: slower to abandon an invalid job, resists re-tasking — chartered beside the assignment verb (§5.5), because no re-tasking verb exists yet to resist | **the completion signal:** there is no `JobCompletedEvent` (§0.1). Each *completion site* calls `psyche.NotifyCompleted(citizen)`. ~~r2: "~6 sites … the `CraftingSystem`/`MaintenanceSystem` completion paths"~~ — the count and one file name were wrong (r3 review, enumeration of all 19 `JobKind = None` writes; re-verified here). **The nine sites:** `DigJobSource.cs:144` · `BuildJobSource.cs:375` (cargo consumed into site) **and** `:408` · `DeconstructJobSource.cs:187` · `HaulJobSource.cs:389` · `CraftingSystem.cs:198`, `:437`, `:607` · **`MachineWearSystem.cs:263`** (maintenance completes in MachineWear, not "MaintenanceSystem"). **Explicit ruling on the Sustenance three** (`SustenanceSystem.cs:268`, `:283`, `:300`): they do **NOT** notify — finishing lunch is not finishing work, per the house doctrine *"suppresses WORK, never SURVIVAL"* (`Citizen.cs:90-93`); silence here would have let an implementer decide. (`MachineWearSystem.cs:404` and `SustenanceSystem.cs:253`, `:292` are abandon/failure paths — excluded by construction.) This **naturally excludes abandonment** — `CancelJob`/flee paths never call it (verified sound at `Simulation.cs:190`, `JobContext.cs:80-84`, `SafetySystem.cs:96`) — and needs no new hashed byte and no event. **The structural guard (r3, adopted):** source-site notification trades a correctness problem for a *coverage* problem, and coverage rots silently when a 7th job source lands — the exact failure `JobSystem.cs:150-154` documents for kind-ownership and solves with a construction throw + a coverage assertion. WP-B therefore ships a **notification-coverage test**: for every work `JobKind` with an owner, a driven completion fixture must observe `NotifyCompleted` (Eat/Drink asserted as the sanctioned exceptions) — so a new source that forgets the call goes red, not quiet. Dawdle = `max(0, −C) × work_dawdle_max_s` (one-sided; identity at C ≥ 0 *is* today's same-tick pickup) + the grief term (§3.4.3). Frequency and the retracted headline: §0.2 |
 | **N** | flees early — and wherever air actually fails, early flee is **correct** (`SafetySystem` exists because fleeing is right); lower NearDeath exposure | higher mark pressure (grieves harder), more argument exposure via lower mood | `fleeAt = FleeSuffocation × (1 − N × flee_shift_max)`, band **[0.35, 0.80]** — widened *upward* from r1's [0.35, 0.65] so the trade is real: a **low-N** crew member's late flee, deep in a bad section, can genuinely be the one that kills them (G-2 as re-scoped: survival behaviours always *fire*; success is not guaranteed). ~~r1: "the anxious one runs first; the steady one works longest — and both always run"~~ — retracted as quietly valorising low N; both still always *run*, but the steady one runs later on thinner margin, and the plan says so. The `:75` coupling is owned: modulated `fleeAt` also moves the rest point — high-N crew flee earlier **and** rest longer, coherent and stated. Owner tone question §12.3 |
 | **E** | E > 0 biases idle co-location toward people — with §5.1, toward *liked* people — and familiarize gain `(1 + E⁺ × familiarize_gain_max)`: the social map fills | high E (with high A) **lingers** (§5.3): sociability has a throughput price; low E "gets more done alone" becomes mechanically true | ~~r1: "score … pick argmax(E>0)/argmin(E<0)"~~ — **the argmin branch is retracted**: introversion-as-avoidance encodes the wrong construct (§0.3). **E ≤ 0 takes the unbiased draw** (today's exact code path and stream). Avoidance exists — emitted by Feud marks (§5.1), where it belongs and is legible ("she avoids *him*", not "she avoids people") |
 | **A** | fewer arguments, more bonds inside open gates (`SocialSystem.cs:149-161` scaling); heals faster socially (more bond-relief events, §3.3) | high A lingers with friends (§5.3) and its opinion-weighted wander over-concentrates on liked company. **Low A buys**: no linger, and the §5.1 feud-avoidance term is scaled by `(1 + A)/2` — the disagreeable walk right past their enemy and take the nearby job the agreeable would shun | the review's "takes the job nobody wants" lands on mark-avoidance, without inventing a mood-contagion system that doesn't exist |
@@ -537,12 +570,33 @@ deliverable, with §13.7's own numbers as the before-leg). Graduated from r1's u
 to a chartered dependency: **if the retune is refused, §5.1 must not ship**, and the plan says
 so rather than shipping a seam that decays into noise.
 
+**The retune and the ignition pull in opposite directions, and WP-F must measure both (r3,
+adopted).** Decay relaxes edges **toward zero symmetrically** (`SocialSystem.cs:107-114`) — so
+raising `DecayPerHour` to keep the positive graph off the +100 clamp *also* drags §5.4's
+authored −40 pair back toward zero, and `Enemy` needs ≤ −60 to enter and ≥ −45 to hold. A
+retune tuned only on the positive leg can silently make Feud unreachable again — un-doing the
+one thing ignition exists for. WP-F's acceptance therefore has **two legs, both on the shipped
+grid ship** (not the slice — §0.2 made grid the acceptance rig, and r2's slice-stated criterion
+is corrected here): (a) the positive graph is still differentiated (edges off-clamp, tiers
+still moving) at day 3, and (b) the authored negative pair **reaches and holds `Enemy`**,
+firing the §3.2 Feud warrant.
+
 ### 5.3 Lingering (the sociability price)
 
-An idle crew member sharing a room with positive-opinion company extends idle dwell
-(`IdleCooldown × (1 + linger_gain × (E⁺ + A⁺)/2 × mean w(opinion))`, bounded ×3, no extra
-draws). Friends cluster and *stay*, visibly — and it costs recruitment latency, which is
-§4.2-E/A's cost column made real. Identity at neutral.
+~~r2: "extends idle dwell (`IdleCooldown × (1 + …)`, bounded ×3)"~~ — **retracted as
+immaterial**: `IdleTicksBetweenWanders` is 30 ticks = 3 s (`SimDefs.cs:264-265`), so the ×3
+bound capped the entire "cost" of high sociability at ~9 seconds — no cost at all, which
+hollowed r2's own two-sided-repricing headline for E and A (r3 review). r3, material in both
+halves: while idle among `Friend`+ company, a lingering crew member (scaled by
+`(E⁺ + A⁺)/2 × mean w(opinion)`) (a) **re-targets wander draws within the current room** — they
+stay with the company, visibly — and (b) **defers work claims** through the same
+`NextWorkReadyTick` gate the dawdle uses, up to `linger_max_s` (default 300 s) per linger
+episode: they are chatting, and the board can wait five minutes. Never blocks self-serve or
+flee (survival doctrine, `Citizen.cs:90-93`); identity at neutral (gain 0 ⇒ neither half
+engages); episode-bounded so a low-C *and* sociable crew member cannot chain dawdle and linger
+into permanent idleness (one `NextWorkReadyTick`, max of the two, never a sum). This is a real
+recruitment-latency cost mirroring the dawdle's mechanics, and it is the E/A cost column of
+§4.2 made true.
 
 ### 5.4 The grid ship's social ignition (content; owner-gated)
 
@@ -589,15 +643,23 @@ tested: a runtime-`AddCitizen`d citizen behaves neutrally with zero setup (`Simu
 not silent); allocation occurs on first non-neutral touch only, so §7 carries the qualifier
 honestly. **Death prunes:** the every-tick half consumes `CitizenDiedEvent` and removes the dead
 citizen's `PsycheState` (order-preserving) — it is hashed state, and an immortal roster of dead
-minds is both a leak and a hash-surface lie. The dead persist where they belong: in the
+minds is both a leak and a hash-surface lie. One boundary, stated so a test does not flake on
+it (r3): `NeedsSystem.Kill` removes the citizen from the store the same tick it publishes
+(`NeedsSystem.cs:205`), and the prune reads the event at T+1 — so for exactly one tick the
+citizen is gone from `sim.Citizens` while its `PsycheState` still folds. Deterministic and
+harmless; **any invariant test asserting "one `PsycheState` per living citizen" must be written
+as "…except within one tick of a death"**. (Bereavement is unaffected: `GetRelation` is
+id-keyed and SOCL edges are never touched on death.) The dead persist where they belong: in the
 survivors' marks, MEMS, the Chronicle and the eulogy.
 
 ---
 
 ## 7. Costs, restated
 
-- **Hashed bytes/citizen:** axes 20 + peak tracker 5 + derived 12 + marks ≤ 384 = **≈ 421 B**;
-  **+20 B `DriftSpent` if §3.5 is chartered** (~441 B). 8 crew ≈ 3.4 KB; 200 crew ≈ 84–88 KB.
+- **Hashed bytes/citizen — one unconditional shape (§3.5):** axes 20 + `DriftSpent` 20 + peak
+  tracker 5 + derived 12 + `LastReliefTick` 8 + marks ≤ 384 = **≈ 449 B**. 8 crew ≈ 3.6 KB;
+  200 crew ≈ 90 KB. No "if chartered" rows — conditional hashed state was r2's worst idea and
+  is gone (§3.5).
 - **Per-tick:** every tick — event span reads (usually empty) + completion notifications
   (§4.2-C call sites). 1 Hz — O(citizens × marks) multiplies + the wander scoring's extra
   PSYC-stream draws when a biased branch is taken (3–30 per candidate, K ≤ 4; bounded, measured
@@ -605,7 +667,9 @@ survivors' marks, MEMS, the Chronicle and the eulogy.
   citizen; `GetOrCreate` allocates once per citizen ever (§6.2).
 - **Checksum:** ~(12 + 5 × marks) Combines/citizen + the PSYC stream state — noise against the
   measured 14 657 device-name Combines (`Simulation.cs:341-345`); not a tick path (`:278`).
-- **Def fields: one `[psyche]` section, ~26 keys, landing in ONE defs commit (WP-B).**
+- **Def fields: one `[psyche]` section, ~28 keys, landing in ONE defs commit (WP-B)** —
+  including the four `mood_weight_*` (25/15/10/8, §3.4.1) and `relief_cooldown_hours` (24,
+  §3.3), both of which r2 used without defaults.
   ~~r1: def "tranches" across WP-B..G, each marked "spine? no"~~ — retracted as
   self-contradictory (r1 itself cited `CitizenMemory.cs:219-221` calling the def registry
   integrator-gated) and as six defs-pin moves in one lane against a 117-key surface
@@ -632,12 +696,15 @@ strong seam is undercut by label de-cluttering. Three cheap, in-scope fixes:
    early"*, *"lingers with friends"*). W-12 already demanded the flags as proof of the words;
    they now ship with each seam's own package. Chips are host-composed strings; the *numbers*
    never cross the wire (W-13).
-2. **The CREW WATCH bar repoints to mood.** One host change: the roster's `morale` field emits
-   normalized `Mood` (the `ShipMetrics.cs:86` mapping, clamped) instead of the constant
-   `Citizen.Morale`. Eight always-visible per-crew bars stop being a shipped lie (`MECHANICS.md`
-   §13.4) and become the mark layer's ambient display — a bar dipping after a death IS the
-   history feature, visible from across the room. Wire field name unchanged; client untouched
-   for this item.
+2. **The CREW WATCH bar repoints to mood — normalized over the OPERATING band.** ~~r2: "the
+   `ShipMetrics.cs:86` mapping"~~ — corrected (r3 review): that maps −100..+100 across the bar,
+   and with mood floored ≤ −5 by saturated fatigue and living in roughly [−60, 0] in practice
+   (§0.1; `MECHANICS.md` §13.4's measured envelope), a 25-point bereavement dip would be a few
+   pixels — not *"visible from across the room"*, and too small to support §9.5's own Tier-2
+   question ("whose bar drops furthest?"). r3: the host emits mood normalized over
+   **[−60, 0] clamped** (display-only literal, host-side), so a full bereavement dip is ~40 %
+   of the bar. Absolute, not delta-from-crew-mean — shared grief should visibly lower the whole
+   row. Wire field name unchanged; client untouched for this item.
 3. **The label-collision dependency, named:** ~20 lines in `overview-scene.js`/`styles.css` so
    clustered *idle* crew keep identity (crowded tags cycle visibility, or a dot+initial
    fallback) — without it, §5.1 clusters friends and the de-clutter sweep
@@ -664,14 +731,14 @@ named mutation physically applied.
 
 | WP | what | reviewable claim | spine? | pins (predict → measure) |
 |---|---|---|---|---|
-| **A** | store + save/hash/round-trip + registration + hoist + null-param consumers + **the PSYC stream fork** (§4.1) + generation + lifecycle (§6.2) | twin test (neutral system vs none: every `Citizen` field identical at tick 3 000 **and `sim.Rng.State` identical**); round-trip incl. a pre-PSYC save; death prunes; axis roll advances `sim.Rng` zero draws | **yes** (`SystemStack`) | scenario + tick-3000 + slice fold-only; defs hold |
-| **B** | the whole `[psyche]` def section (once, §7) + C seam (completion-site notifications, dawdle, self-serve shift) + slice/grid authored axes | per-axis differential test for C (§9.4); §0.2 completion frequency re-measured (A-6); abandonment never dawdles (flee fixture); all-neutral leg byte-identical | **yes** (defs; the `JobSystem.cs:140` gate line) | slice + BOTH defs move (the once); scenario/tick-3000 predicted hold |
+| **A** | store (incl. `DriftSpent`, zero until D2 — §3.5) + save/hash/round-trip + registration + hoist + null-param consumers + **the PSYC stream fork** (§4.1) + generation + lifecycle (§6.2, incl. the one-tick prune-window caveat) | twin test (neutral system vs none: every `Citizen` field identical at tick 3 000 **and `sim.Rng.State` identical**); round-trip incl. a pre-PSYC save; death prunes; axis roll advances `sim.Rng` zero draws | **yes** (`SystemStack`) | scenario + tick-3000 + slice move by construction (§0.4 A-1, derived); defs hold; measured + recorded regardless |
+| **B** | the whole `[psyche]` def section (once, §7) + C seam (the 9 completion-site notifications + the Sustenance exclusion + **the notification-coverage test**, §4.2-C; dawdle; self-serve shift) + slice/grid authored axes | per-axis differential test for C, signed, with its stub control (§9.4); §0.2 completion frequency re-measured (A-6); abandonment never dawdles (flee fixture); coverage test red on a source that forgets to notify; all-neutral leg byte-identical | **yes** (defs; the `JobSystem.cs:140` gate line) | slice + BOTH defs move (the once); scenario/tick-3000 predicted hold |
 | **C** | N seam (flee band [0.35, 0.80] + stress gain), the `:75` coupling owned, prediction chips for C/N (§8.1) | flee onset strictly ordered by N; the late-flee-can-die case demonstrated in a deep-hazard fixture (and its survival twin at higher N); differential test N | no | slice moves |
-| **D** | marks: formation, decay (event-modulated + residue), pressure, `MarkFormedEvent` → History, RaidTrauma minority; **CREW WATCH mood repoint** (§8.2) | per-kind **fireability** tests (§9.4) incl. the Feud negative control; bond-relief accelerates decay (driven); residue persists at Weight 0; the morale bar varies (the constant-1.0 assertion inverted) | no | slice moves |
+| **D** | marks: formation, decay (rate-limited relief + residue, §3.3), pressure (§3.4.1 defaults), `MarkFormedEvent` → History, RaidTrauma minority; **CREW WATCH mood repoint** (§8.2, [−60, 0] band) | per-kind **fireability** tests (§9.4; the Feud warrant lands here **red**, and stays red until WP-F's ignition); relief is rate-limited (driven: a Bereavement on a socially active ship crosses the aversion threshold **no sooner than ~3 sim-days**); residue persists at Weight 0; the morale bar varies (the constant-1.0 assertion inverted) | no | slice moves |
 | **D2** *(if §12.1 = now)* | drift deposits + `DriftSpent` caps | drift only on qualifying retirement; lifetime cap binds; identity with no marks | no | slice moves |
 | **E** | deck veto (`PsycheVeto` + 4 `Select` sites) + grief dawdle + veto prediction chip | veto fires/expires on the 96 h curve; the three bounds each mutation-tested; no dispatcher throw under exhaustion | no | slice moves |
-| **F** | **the §13.7 social-decay retune (prerequisite, measured against §13.7's own numbers)** + §5.1 opinion-weighted wander + feud avoidance + §5.3 lingering + E/A gate scaling + **grid social ignition** (§5.4, owner-gated) + the label fix (§8.3) | post-retune the slice web is unsaturated at day 3 (edges off-clamp, tiers still move); co-location tracks opinion (driven pairs); linger costs measurable recruitment latency; differential tests E/A | no | slice + BOTH defs move (retune of *existing* keys — the §7 exception) |
-| **G** | word projection (§2.2 table) + axis-word lint + O seams (v1 breadth; E2 breadth contract note in `ECONOMY-PLAN.md`) | five words always; lint passes shipped slice content unmodified (Volkov keeps `stoic` + `haunted`); differential test O | no | slice moves (O seam); prose parts pin-free |
+| **F** | **the §13.7 social-decay retune (prerequisite, BOTH legs on grid — §5.2)** + §5.1 opinion-weighted wander + feud avoidance + §5.3 lingering (respec'd) + E/A gate scaling + **grid social ignition** (§5.4, owner-gated) + the label fix (§8.3) + **the E/A prediction chips** (*"lingers with friends"*, *"avoids ⟨name⟩"* — r3: r2 paired chips with C/N/E-veto only and left the load-bearing seam without one) | retune leg (a): the **grid** web differentiated at day 3 (edges off-clamp, tiers moving); leg (b): the authored negative pair reaches and **holds** `Enemy` — which flips WP-D's Feud warrant green; co-location tracks opinion **on the shipped grid ship, post-retune, post-ignition, over ≥ 1 sim-day** (~~r2: "driven pairs"~~ — a driven-pair fixture seeds opinions directly and passes over a saturated shipped graph, the same fixture-vs-ship gap as Feud); linger costs measured recruitment latency (§5.3); differential tests E/A, signed, with stub controls | no | slice + BOTH defs move (retune of *existing* keys — the §7 exception) |
+| **G** | word projection (§2.2 table) + axis-word lint + O seams (v1 breadth; E2 breadth contract note in `ECONOMY-PLAN.md`) + the O prediction chip (*"roams far"* / *"stays close"*) | five words always; lint passes shipped slice content unmodified (Volkov keeps `stoic` + `haunted`); **O's Tier-1 is the recruitment-latency test** (§13.3.2): *"when a job appears, the low-O crew member reaches it before the high-O one in ≥ X % of N cases"* — and **if it cannot pass at loud defaults, O's seams are cut then**, which replaces §12.4's abstract fork with a decision rule; differential test O, signed, with stub control | no | slice moves (O seam); prose parts pin-free |
 | **H** | docs + re-pin (`MECHANICS.md` incl. striking the now-false *"no sim system reads a trait"*, `CLAUDE.md`, `HANDOVER.md`, memory) | every quoted number re-measured on the merged tree | re-pin | — |
 
 ### 9.4 The warrant, mechanised (r1's process gate retracted)
@@ -680,13 +747,34 @@ named mutation physically applied.
 that is the control that failed E0-4's WP-5. Three mechanised layers, each landing with the
 field it guards:
 
-1. **Per-axis differential test:** same seed, one crew member at +1 vs −1 on that axis alone,
-   assert a named `Citizen`-field trajectory divergence within N ticks. An unread axis cannot
-   pass it; a consumer *census* can (a discarded read) — hence trajectory, not census.
-2. **Per-mark fireability test:** a driven fixture (grid-derived where possible) in which the
-   mark forms **and its behavioural consequence fires** — plus, for Feud, a negative control
-   asserting it *cannot* fire on the unseeded grid ship, so §5.4's dependency is a red test,
-   not prose, until ignition lands.
+1. **Per-axis differential test — with a SIGN and a negative control.** Same seed, one crew
+   member at +1 vs −1 on that axis alone, assert the **directional** claim within N ticks (the
+   C = −1 leg's first post-completion claim is *later*; the N = +1 leg flees *first*; the
+   E = +1 leg's settled tile has *higher* liked-occupancy; the O = +1 leg's wander spread is
+   *wider*) — ~~r2: "assert a named `Citizen`-field trajectory divergence"~~ retracted as a
+   bare difference assertion, which any perturbation satisfies, including a sign-flipped
+   implementation (r3 review). And per axis, the **stub negative control, stated here rather
+   than delegated to W-10**: physically stub the axis read to 0 in its consumer, watch the
+   differential test go red, revert. **Why the PSYC fork does not make these vacuous —
+   structural, so it is written down (r3):** the fork lands in WP-A and is common-mode in both
+   legs, and a differential test compares +1 vs −1, so *both* legs are non-neutral and take the
+   same branch — the branch-taken-vs-not draw-count asymmetry can only arise in a
+   neutral-vs-non-neutral comparison, which is the *identity* gate's job, not the warrant's.
+   The two gates are asymmetric on purpose, and that asymmetry is what keeps both honest.
+   (Seam by seam: C and N involve no RNG; E draws a fixed K in both legs, only the argmax
+   choice differs; A's draw sits behind the short-circuiting gates; only O changes the sampling
+   box — and that divergence *is* the axis being read.)
+2. **Per-mark fireability test — positive, on the shipped ship.** A driven fixture
+   (grid-derived where possible) in which the mark forms **and its behavioural consequence
+   fires**. For Feud: ~~r2: "a negative control asserting it *cannot* fire on the unseeded grid
+   ship, so §5.4's dependency is a red test … until ignition lands"~~ — **retracted; the
+   polarity was inverted** (r3 review). A cannot-fire control is *green today* and reddens when
+   ignition lands — it certifies the hole instead of blocking it, and would have let a hashed
+   `MarkKind.Feud`, its defs and §5.1's avoidance term ship to the standard ship with a passing
+   test proving none of it can ever fire (W-2 under this section's own clause 3). r3: the Feud
+   warrant is a **positive test on the shipped `--ship grid`** — a Feud mark forms and its
+   avoidance fires within N sim-days of boot — **red until §5.4's ignition lands, gating the
+   lane merge**. If ignition is refused (§12.2), Feud and its downstream are cut, not labelled.
 3. **Warrant scope = every hashed field this plan adds.** ~~r1 bound the warrant to axes
    only~~ — which is exactly how three of four mark kinds nearly shipped unfireable. A hashed
    field with no test in which its value changes an outcome is W-2.
@@ -711,8 +799,11 @@ is the wrong construct: the thesis is *"a person you can know"* (`VISION.md`), a
   recorded in the protocol — watches the grid ship and answers **forced-choice predictions
   registered before observation** (*"the next job appears on deck 1: does Sato or Vega reach it
   first?"*, *"a death just occurred: whose bar drops furthest?"*), scored against chance at
-  stated N and p (≥ 20 questions, binomial p < 0.05). **Failing Tier 2 blocks the merge.** That
-  sentence is the gate.
+  stated N and p (≥ 20 questions, binomial p < 0.05). **The protocol tells the observer which
+  deck to watch** (deck 0, the crew spine — r3: off-deck crew do not render,
+  `overview-scene.js:485`, and idle crew pool on their last job's deck, so an unguided observer
+  would be measuring deck-switching UI, not the psyche). **Failing Tier 2 blocks the merge.**
+  That sentence is the gate.
 - The identity legs run in every WP: the twin test, and the all-neutral occupancy leg (axes
   zeroed by test hook, shipped non-zero defs, byte-identical trajectory **and** `sim.Rng`
   stream — identity from construction, never from zeroed defs).
@@ -804,23 +895,30 @@ radius, and nothing gets built without the owner's word.
 
 1. **Axis drift (§3.5): charter now (WP-D2) or defer to a named later lane?** Recommendation:
    now — the cheapest honest answer to *"history that shapes the way the person thinks and acts
-   now"*; the mechanism is fully specified either way. Cost if now: +20 B/citizen, ~6 def rows,
-   one WP.
+   now"*; the mechanism is fully specified either way, and since r3 the **state ships
+   unconditionally in WP-A regardless** (§3.5) — so this is a purely behavioural call with zero
+   save-format consequence. Cost if now: ~6 def rows, one WP.
 2. **The grid ship's social ignition (§5.4): may the standard eight gain authored relationships
    (including a negative pair) and a minority RaidTrauma spread?** Changes the flagship's feel
    on day one. Recommendation: yes — without it the Feud/argument machinery is unreachable
-   where players look. If refused: the marks layer ships **explicitly labelled latent** on grid
-   (the §9.4 negative control standing as documentation), and Tier-2 questions avoid social
-   predictions.
+   where players look. If refused: **Feud, feud-avoidance and their defs are CUT from v1** —
+   not shipped-but-labelled. ~~r2: "the marks layer ships explicitly labelled latent on
+   grid"~~ — retracted (r3): labelling is a prose control, and prose controls are what §9.4
+   exists to replace; unfireable hashed state with a document beside it is still W-2.
+   Bereavement/NearDeath survive a refusal (their warrants are driven hazard fixtures, not the
+   social graph); Tier-2 questions then avoid social predictions. **So the actual choice is:
+   an authored social texture on the flagship, or no feud dimension in v1 at all.**
 3. **The N band's upper end (§4.2-N): may a low-N crew member's late flee be
    survivable-only-sometimes (band to 0.80)?** A tone decision — personality-correlated death
    risk on hazard ships (never on the healthy grid ship, where flee is measured 0).
    Recommendation: yes; the alternative keeps N pure-cost, which the validity review correctly
    called moral pricing.
 4. **Openness in v1 (§4.2-O): keep the wander-breadth seam (recommendation), or cut O's seams
-   entirely** (two reviewers' preference) while still rolling and projecting the axis? Cutting
-   costs nothing now but makes O a word with no warrant until E2 — which W-2 tolerates only if
-   the axis-word table drops its O row until then. Argued in §13.3.
+   entirely** (two reviewers' r1 preference)? r3 turned this from an abstract fork into a
+   **decision rule** (WP-G's Tier-1): O ships iff its recruitment-latency test — an
+   event-level, attributable claim, not a spread statistic — passes at loud defaults; if it
+   cannot, O's seams are cut *at that point*, and the axis-word table drops its O row until E2
+   (W-2). The owner may still pre-empt the rule either way; absent a ruling, the rule decides.
 5. **The assignment verb (§5.5):** acknowledge it as the substrate's intended player verb (a
    direction, not a commitment), so E2/UI lanes design toward it rather than around it.
 
@@ -857,15 +955,18 @@ naive-observer protocol.
    Bereavement that visibly bends a named person for four days is worth more character than a
    thousand biased wander draws, and `automation-and-souls.md` §9 explicitly asks for
    rare-but-memorable over constant. The audit's real lesson for marks is *reachability*, and
-   §9.4.2 enforces that with driven fixtures and a negative control instead of a frequency
-   floor. Applying the floor as written would delete Bereavement and NearDeath — i.e. the
-   brief.
-2. **"Cut Openness from v1 entirely" — partially rejected.** The axis stays rolled and worded
-   and keeps the wander-breadth seam, *because the review's own analysis upgraded that seam*
-   (breadth is O's honest signature, §0.3; and §0.2 rates the wander channel the only
-   high-bandwidth carrier). Cutting O's seams while keeping its word violates W-2; cutting the
-   word leaves four-word rows and a permanently silent lane in a five-axis state. The cheap,
-   warranted seam beats both. Owner may overrule (§12.4).
+   §9.4.2 enforces that with driven positive fireability warrants (red until reachable, since
+   r3) instead of a frequency floor. Applying the floor as written would delete Bereavement and
+   NearDeath — i.e. the brief.
+2. **"Cut Openness from v1 entirely" — partially rejected; reasoning replaced in r3.**
+   ~~r2's argument leaned on "five words always … cutting the word leaves four-word rows"~~ —
+   circular, as the r3 review noted: it justified the seam by an invariant this plan itself
+   wrote two sections earlier. The non-circular ground was already in §4.2-O: the breadth
+   seam's cost is **recruitment latency** — an event-level, attributable observable ("the job
+   appeared and the far-roaming crew member arrived second"), which is precisely the evidence
+   class §9.4 demands and the original cut-O argument said O lacked. That claim is now O's own
+   Tier-1 gate with a built-in decision rule (WP-G, §12.4): pass at loud defaults or be cut.
+   Rejection maintained; reasons upgraded from definitional to falsifiable.
 3. **"Decay grief on events rather than a timer" — hybrid, not replacement.** The event term is
    adopted as the dominant, story-carrying mechanism (§3.3), but a *purely* event-gated decay
    lets an isolated crew member carry a full-weight behavioural tax indefinitely with no
@@ -889,6 +990,46 @@ charter (§4.2-O); C grief-damping (§3.4.3); *"history reaches the economy toda
 (§3.3); *"the anxious one runs first; the steady one works longest"* (§4.2-N); the
 axes-only warrant and the process-enforced merge gate (§9.4); *"the integrator holds the
 merge"* as an enforcement mechanism (§9.4).
+
+### 13.5 The r3 corrections (after the two focused re-reviews of r2)
+
+Both r1 verdicts stood; r2's inversion, audit, §5 centrepiece and mechanised gates were
+confirmed. What r3 fixed, each quoted-and-struck in place:
+
+- **The bond-relief constant** — right mechanism, wrong by ~30 orders of magnitude at the
+  measured bond rate; now tier-crossing-gated + rate-limited with the arithmetic shown and a
+  no-sooner-than-~3-days driven test (§3.3). This defect was silently re-killing the 96 h veto
+  and making §3.5's drift undepositable — the r3 review's most valuable catch.
+- **The Feud control's polarity was inverted** — a cannot-fire "control" certifies the hole it
+  was meant to block; replaced by a positive red-until-ignition warrant on the shipped ship,
+  and §12.2's refusal branch now **cuts** rather than labels (§9.4.2, §3.2, §12.2).
+- **The differential tests gained a sign and per-axis stub controls**, plus the structural
+  paragraph on why the WP-A fork is common-mode and cannot make them vacuous (§9.4.1).
+- **The completion-site list corrected to nine** (BuildJobSource's second site; the three
+  CraftingSystem sites enumerated; `MachineWearSystem.cs:263`, not "MaintenanceSystem"), the
+  **Sustenance three ruled OUT explicitly** on the survival doctrine, and a
+  **notification-coverage test** chartered so the mechanism cannot rot silently when a 7th
+  source lands (§4.2-C).
+- **The retune/ignition conflict named and double-gated on grid** — symmetric decay drags the
+  authored negative pair toward zero too; WP-F measures both legs on the shipped ship, and the
+  co-location Tier-1 moved off driven-pair fixtures for the same fixture-vs-ship reason
+  (§5.2, §9.2-F).
+- **`DriftSpent` made unconditional state** (mechanism stays the owner's call) — conditional
+  hashed state was r2's worst idea (§3.5, §7).
+- **`mood_weight_*` given defaults with sizing rationale** (§3.4.1); **the CREW WATCH
+  normalization moved to the [−60, 0] operating band** so a bereavement dip is ~40 % of the
+  bar, not pixels (§8.2); **linger respec'd to a material cost** — the ×3 `IdleCooldown` bound
+  was ~9 seconds (§5.3); **prediction chips extended to WP-F and WP-G** (§9.2); **Tier-2's
+  protocol pins the watched deck** (§9.5); **the one-tick prune window documented** so an
+  invariant test cannot flake on it (§6.2); **O's keep-reasoning de-circularised into WP-G's
+  latency decision rule** (§13.3.2, §12.4); **A-1 promoted from assumption to derivation**
+  (`Simulation.cs:504-506`; 18 goldens, exactly 2 StateHash-derived) (§0.4); **`CitizenSystem`
+  citation fixed `:29`→`:30`** (§0.1).
+
+Nothing in r3 was rejected. One nuance held rather than conceded: r3's Tier-2.2 itself
+confirmed that r2's *worry* about fork-induced vacuity was unfounded for the reason now written
+into §9.4.1 — the asymmetry between the identity gate and the warrant gate is load-bearing, and
+r3 asked only that the plan say so, which it now does.
 
 ---
 
