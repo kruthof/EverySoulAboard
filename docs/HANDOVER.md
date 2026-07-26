@@ -27,8 +27,16 @@ history, newest first.** The section immediately after this one is E0-4's landed
   swept, so a mis-drag costs a rectangle for all three.
 - **⚠️ Two things wait on the owner** — §4f's hall-zoning decision (recommendation: option **(c)**, ＋ADD
   ROOM already is the path) and the five §12 decisions in the character-sim design (§4c).
-- **⚠️ §4g is arguably the next package, ahead of WP-6:** STRIP on a device **works and renders
-  nothing**, which a player hit within a day and read as a broken verb.
+- **✅ §4g's FIRST defect is FIXED (`lane/strip-visible`, 2026-07-26): a condemned device is now
+  visible.** `GlyphMapper` pass 4 re-applies `GlyphColor.Deconstruct` over a condemned device's own
+  colour (keeping its glyph), so a strip order on a desk/bed/locker/lamp/plant ships fg 26 and draws
+  the amber ring + ✕ exactly as a condemned wall always did; both surfaces now draw their mark layer
+  **above** their furniture layer so the recovered byte is not then hidden by the desk's own sprite.
+  The lying status line and the Overview's total silence on a placed order went with it.
+  **§4g's `designations`/`strips` CHANNEL IS STILL UNBUILT AND STILL WORTH BUILDING** — the fg byte
+  cannot survive a crew member standing on a condemned tile (pass 5) or an item landing on one
+  (pass 3), and it is still the complete source for all three `cell[1]` limits. It is no longer
+  URGENT, because the verb a player reported as broken now visibly works.
 - *(Superseded:* 996 + 641 @ the WP-5 merge; 996 + 621 @ WP-4; 996 + 607 @ `38ff68b`; 996 + 589 @
   `98f0e63`.*)*
 - *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
@@ -343,9 +351,16 @@ The stockpile swatch's "reused verbatim from WP-3" is likewise *measured*: drift
 **`zone-overlay.js` side only** goes red, which a copied literal could not do.
 
 **⚠️ Three of the six outcomes are LIMITS, not wins — do not inherit them as capability.**
-1. **Strip marks are delivered for WALLS ONLY.** A strip mark on a **device** never reaches the wire:
-   `GlyphMapper` pass 4 (`sim/Sim.Glyph/GlyphMapper.cs:123`) repaints the device's colour over
-   `GlyphColor.Deconstruct`. The charter said "strip mark"; what shipped is narrower.
+1. ~~**Strip marks are delivered for WALLS ONLY.**~~ **✅ CLOSED 2026-07-26 (`lane/strip-visible`).**
+   *As recorded here:* a strip mark on a **device** never reached the wire — `GlyphMapper` pass 4
+   (`sim/Sim.Glyph/GlyphMapper.cs:123`) repainted the device's colour over `GlyphColor.Deconstruct`;
+   the charter said "strip mark" and what shipped was narrower.
+   **⚠️ AND IT WAS FILED AS A LIMIT WHEN IT WAS A BUG.** Listing it here — accurately — is what let it
+   sit for a package while the owner reported the verb as broken **three times**. The diagnosis was
+   correct and complete on this line the whole time. *The lesson is not "write better limits": it is
+   that a limit which makes a shipped verb indistinguishable from a broken one is a **bug**, and
+   belongs in the next package rather than in a list.* Pass 4 now re-applies the strip colour over a
+   condemned device while keeping its glyph (§4g).
 2. **A crew member standing on a designated tile hides its mark** (pass 5, `:138`). Not hypothetical —
    on `--ship grid` the crew cluster in the hold at x25-32 y15-16, exactly where the dig designations
    are.
@@ -353,6 +368,13 @@ The stockpile swatch's "reused verbatim from WP-3" is likewise *measured*: drift
    appears anywhere in the fixture, so nothing proves the *shipped game* draws them. The tests label
    this honestly and separate it from the fixture-driven acceptance — but it is coverage by
    construction, not by capture.
+   **Partly narrowed 2026-07-26, and the remaining half is the honest one.** The **sim** half of
+   fg 26 is now driven end to end against the real projection — `StripVerbTests` designates through
+   the real command, reads the real registry and asserts the real `GlyphMapper` output, for a device
+   AND a wall in one sim. The **client** half is still synthetic: the node tests plant fg 26 into a
+   cell of the real capture rather than capturing a frame that already carries one, because no
+   authored ship condemns anything at boot. Closing that needs a capture taken *after* a designation,
+   which nothing in the pipeline produces today.
 
 **Carried forward to WP-6 (recorded here so it is not rediscovered):** the two surfaces will **visibly
 disagree about a stockpile that has things in it.** The Overview's fg-16 tint vanishes the moment an
@@ -728,7 +750,42 @@ hydroponics) — left alone because it is *not* silent (MOSS takes the whole win
 would make map consoles unreachable at Level 1. **Comment only; the `hitTest` diff adds no executable
 line.**
 
-### 4g. ⚠️ NEXT, AND ARGUABLY AHEAD OF WP-6 — the `designations` channel
+### 4g. THE THREE DEFECTS — two FIXED on `lane/strip-visible`, the channel still open
+
+> ### ✅ FIXED 2026-07-26 (`lane/strip-visible`) — read this before the diagnosis below
+>
+> The owner reported this **three times**, the last time precisely: *"I can see the button, I can see
+> the square when I hover over the furniture, but after clicking, the square disappears."* (The square
+> is the tool's hover **preview**, which correctly clears on release; what should have replaced it is
+> the persistent condemned mark.)
+>
+> **Defect 1 — the invisible device mark: FIXED.** `GlyphMapper` pass 4 now re-applies
+> `GlyphColor.Deconstruct` over a condemned device's own colour while **keeping its glyph**, mirroring
+> pass 1's wall emitter. Route chosen deliberately over the `strips` channel (defect 3 below): ~4 lines
+> in the mapper, no client change, no spine file, no new hashed state, **no pin moved**. `anyStrip`
+> short-circuits so a strip-free frame pays one bool per device. Both surfaces additionally moved their
+> mark layer **above** their furniture layer — a recovered byte drawn under an opaque desk sprite would
+> reproduce the reported symptom exactly. That reorder is **measured inert** for every pre-existing
+> mark (debris/dig ride glyph 37, which is in both `NON_FURNITURE` sets, so the layers were disjoint).
+> Pinned by `tests/Perilune.Tests/StripVerbTests.cs` (device + **wall non-vacuity control** in one sim)
+> and `client/test/room-model.test.js`.
+>
+> **Defect 2 — the lying status line: FIXED.** `HandleStrip` now reports `designate strip` /
+> `cannot strip <kind>` / `cannot strip this tile` / `already condemned` / `clear strip` /
+> `nothing to clear here`. The `CanDesignate` pre-check **never gates the command** — the sim stays
+> the only authority and the command is enqueued either way.
+>
+> **Also fixed, same report:** the **Overview gave no feedback at all** for a placed order
+> (`#ov-toast` stayed empty and hidden). It now toasts `⚒ STRIP ORDERED ▸ x,y ON DECK n` through the
+> existing toast idiom; the narrower **refusal** toast (`… ARMED — ESC TO DISARM`) still wins when a
+> room actually refused to open, so exactly one toast fires per click.
+>
+> **Defect 3 — the `designations`/`strips` channel: STILL UNBUILT, still the right long-term fix**,
+> just no longer urgent. See the remaining-limits paragraph below.
+>
+> **Not touched, deliberately:** `shelf` and `rug` are client-local decor with no `deviceKind`, so
+> strip can never touch them — giving them one is a design decision, not a bug fix. The palette
+> overflow that clips STRIP below ~1140 px is also still open.
 
 **Reported by Garvin from live play, 2026-07-26: *"strip means deconstruct and recycle? if so it does
 not work — I cannot place the command on a table."* Diagnosed: the verb WORKS and the feedback does
@@ -738,10 +795,13 @@ device kind except a Door**. So the order registers and the crew will service it
 pass 4 repaints the device's own colour over `GlyphColor.Deconstruct`, so the designation never reaches
 the client.** §4b recorded that as "strip marks are delivered for walls only" and treated it as
 cosmetic. **It is not cosmetic: invisible feedback is indistinguishable from a broken verb, and a
-player hit it within a day.**
+player hit it within a day.** *(Both sentences are the ORIGINAL diagnosis, kept verbatim as the
+record of what was wrong; pass 4 no longer behaves this way — see the fix box above.)*
 
-**One channel closes all three recorded `cell[1]` limits** (§4b, and the plan §4.1 ii amendment): the
-invisible device strip; a mark **hidden under a standing crew member** (and on `--ship grid` the crew
+**One channel closes all three recorded `cell[1]` limits** (§4b, and the plan §4.1 ii amendment) —
+**of which the first is now closed by other means, so the channel's remaining prize is the other
+two**: ~~the invisible device strip~~ *(fixed in the mapper, see the box above)*; a mark **hidden
+under a standing crew member** (and on `--ship grid` the crew
 cluster *exactly* where the dig designations are); and the **stockpile tint that vanishes the moment an
 item is stored on the tile** — the normal state of a working stockpile, and the Overview/Room-Zoom
 disagreement §4b carried to WP-6. Feed it from the `DeconstructSystem`/dig registries, **not** from the
@@ -752,6 +812,10 @@ glyph fg byte. `WireFormat` is a spine file — use WP-3's pattern: the spine ed
 produces no feedback anywhere.** `DeconstructSystem.Designate` returns `false` on refusal, `HandleStrip`
 **discards the result** and sets `_status = "designate strip"` either way. Accepted and silently-refused
 are indistinguishable to the player. This matters most for the third finding below.
+*(**FIXED** — see the box at the top of this section. The implementation asks
+`DeconstructSystem.CanDesignate` rather than reading `Designate`'s return, because the command lands at
+the next tick boundary and the host has no return value to read at click time; the pre-check reports
+and never gates.)*
 
 **⚠️ And a third, which is a genuine trap for a player:** `shelf` and `rug` are **`cosmetic` in
 `PALETTE_CMD` with `verb: 'decor'` — view-only, client-local, NOT sim devices at all.** So there is no

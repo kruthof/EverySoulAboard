@@ -674,16 +674,47 @@ namespace Perilune.Web
         ///
         /// Like <see cref="HandlePlace"/>, this bridge promises only the ATTEMPT: an illegal or hull
         /// tile is a silent sim no-op and the condemned marker only appears once the sim confirms it.
+        ///
+        /// THE STATUS LINE USED TO LIE, and that is fixed here (HANDOVER §4g's second defect). It
+        /// read <c>"designate strip"</c> unconditionally — set BEFORE the sim ever saw the command —
+        /// so a refused tile (a floor, a hull wall, a Door, a shelf/rug, which are client-local decor
+        /// and not sim devices at all) reported success. Accepted and silently-refused were
+        /// indistinguishable to the player, which is exactly the failure mode that made the
+        /// invisible device strip so expensive to diagnose: TWO different failures wearing one face.
+        ///
+        /// THE PRE-CHECK NEVER GATES THE COMMAND. <see cref="DeconstructSystem.CanDesignate"/> is a
+        /// pure deterministic query, so it is safe to ask, but the sim stays the ONLY authority on
+        /// what actually happens: the command is enqueued either way and the sim re-validates at the
+        /// tick boundary. Making the host a second gate would be two owners for one decision — the
+        /// bug this file's doc comments keep warning about.
+        ///
+        /// HONEST RESIDUAL RACE, stated rather than hidden: the query answers for the sim state the
+        /// PLAYER WAS LOOKING AT when they clicked, and the command lands at the next tick boundary.
+        /// A tick in between could change the answer. That is a far narrower and more useful claim
+        /// than "always succeeded", and it is the claim the player actually wants — the status line
+        /// describes their click, not the future.
         /// </summary>
         private void HandleStrip(WebCommand cmd)
         {
             var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
                                Clamp(cmd.Y, 0, _sim.World.Height - 1), _deck);
             bool on = cmd.I != 0;
-            var kind = _sim.TryGetDeviceAt(pos, out _)
-                ? DeconstructKind.Device : DeconstructKind.Wall;
+            bool isDevice = _sim.TryGetDeviceAt(pos, out var target);
+            var kind = isDevice ? DeconstructKind.Device : DeconstructKind.Wall;
             _sim.EnqueueCommand(new DesignateDeconstructCommand(pos, kind, on));
-            _status = on ? "designate strip" : "clear strip";
+
+            var strip = _sim.Deconstruct;
+            if (strip == null) { _status = on ? "designate strip" : "clear strip"; return; }
+            bool already = strip.TryGet(pos, out _);
+            if (!on)
+            {
+                _status = already ? "clear strip" : "nothing to clear here";
+                return;
+            }
+            if (already) { _status = "already condemned"; return; }
+            _status = strip.CanDesignate(_sim, pos, kind)
+                ? "designate strip"
+                : "cannot strip " + (isDevice ? target.Kind.ToString().ToLowerInvariant() : "this tile");
         }
 
         /// <summary>

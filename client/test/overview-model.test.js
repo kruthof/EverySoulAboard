@@ -15,7 +15,7 @@ import { makeTransform } from '../src/ui/overview-scene.js';
 import {
   tileAt, overviewClickAction, lensGrade, lensSlotTint, GRADE_TINT, currentRoom,
   deckPips, deckDelta, overviewEscape, fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
-  ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine,
+  ORDER_TOOLS, ORDER_LABEL, isOrderTool, orderHintLine, orderPlacedLine,
 } from '../src/ui/overview-model.js';
 // ACCEPT_ALL + stockFilterLabel are used ONLY to prove this surface names NO accept-set any more:
 // `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
@@ -186,6 +186,38 @@ test('the ORDERS readback names the DECK in every branch, and NAMES NO MASK in a
     'times will read a missing button as a deleted verb.');
   // InvariantCulture-safe: no thousands separators / locale digits leak in from a big deck number.
   assert.match(orderHintLine(null, 1234), /DECK 1234/);
+});
+
+// `orderPlacedLine` — the readback the Overview had no equivalent of at all until the owner reported
+// that a strip order there produced no feedback anywhere (HANDOVER §4g). PURE, so it is pinned here
+// next to the hint line it answers; the wiring is driven in the DOM section below.
+test('orderPlacedLine names the verb, the tile and the deck — and never re-teaches the hotkey', () => {
+  for (const tool of ORDER_TOOLS) {
+    const line = orderPlacedLine(tool, 24, 1, 3);
+    assert.match(line, /ORDERED/, `${tool}: the line does not say an order was placed`);
+    assert.match(line, /24,1/, `${tool}: the line does not name the tile`);
+    assert.match(line, /DECK 3/, `${tool}: the line does not name the deck the verb is scoped to`);
+    // The label is ORDER_LABEL minus its `[G]`/`[V]` prefix — the verb, not the affordance.
+    assert.ok(!/\[[A-Z]\]/.test(line), `${tool}: the hotkey prefix leaked into the toast`);
+    assert.ok(line.includes(ORDER_LABEL[tool].replace(/^\[[A-Z]\]\s*/, '')),
+      `${tool}: the toast spells the verb differently from the bar button beside it`);
+  }
+  // The two verbs are DISTINGUISHABLE — a line that read the same for both would tell the player
+  // nothing about which tool was armed, which is the state this whole surface makes easy to lose.
+  assert.notEqual(orderPlacedLine('dig', 1, 1, 0), orderPlacedLine('strip', 1, 1, 0));
+
+  // NOT A CLAIM THAT THE SIM ACCEPTED IT. `orderPayloads` promises only the attempt (the sim
+  // re-validates and an illegal tile is a silent no-op), so the wording must stay `ORDERED` and must
+  // never assert the outcome — that would rebuild on the client the exact lie just removed from
+  // `GameSession.HandleStrip`.
+  assert.ok(!/CONDEMNED|DESIGNATED|DONE/.test(orderPlacedLine('strip', 1, 1, 0)));
+
+  // A tool this bar does not lower says nothing at all rather than inventing a line for it.
+  assert.equal(orderPlacedLine('stockpile', 1, 1, 0), '', 'STOCKPILE is zoom-only on this surface');
+  assert.equal(orderPlacedLine('wall', 1, 1, 0), '');
+  assert.equal(orderPlacedLine(null, 1, 1, 0), '');
+  // InvariantCulture-safe: integers only, no locale digits or separators.
+  assert.match(orderPlacedLine('dig', 1234, 5678, 90), /1234,5678 ON DECK 90/);
 });
 
 test('a MOSS terminal hit classifies as `terminal` (opens MOSS); pawn wins, terminal beats the room', () => {
@@ -1007,23 +1039,63 @@ test('an armed order that REFUSES a room says so at the point of the click', () 
   ovArm('dig');
 });
 
-test('the armed-order toast is NARROW: a pawn hit designates in silence, a room hit explains', () => {
+// ⚠️ THIS TEST CHANGED WHEN THE OVERVIEW GAINED ORDER FEEDBACK (2026-07-26), and the change is a
+// narrowing, not a weakening. It used to assert that a pawn hit designates in TOTAL SILENCE. That
+// silence was never the rule worth having — it was a side effect of this surface having no
+// order-placed toast at all, which is the other half of the owner's report: arm STRIP on the
+// Overview, click a MedBed, and NOTHING anywhere said the order had been placed, while the Room Zoom
+// has toasted every committed order since WP-2.
+//
+// What the original test actually protected, and what is still protected here: the REFUSAL wording
+// (`… ARMED — ESC TO DISARM`) must stay narrow. It explains why a room did not open, and on
+// `--ship grid` the crew stand exactly ON the dig debris (HANDOVER §4b limit 2), so firing a refusal
+// over every pawn would fire on nearly every click of DIG's hot path and train the player to ignore
+// the toast. That reasoning is about the REFUSAL, never about confirmation — a confirmation that
+// fires whenever an order lands is exactly the Room Zoom's behaviour and exactly the parity asked
+// for. So: a pawn hit now CONFIRMS and must never REFUSE.
+test('the REFUSAL wording stays narrow: a pawn hit confirms the order, a room hit explains the refusal', () => {
   const pawn = ovTarget('pl-pawn', { cid: '4' });
   const room = ovTarget('pl-room', { anchor: 'hold' });
   ovArm('dig');
   ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
   assert.deepEqual(ovClick(pawn, 28, 16), paletteOrders('dig', 28, 16),
-    'the pawn designation broke, so the silence below is not the rule being tested');
-  assert.equal(ovToast.textContent, 'SENTINEL',
-    'DIG toasted over a pawn. On --ship grid the crew stand exactly ON the dig debris (HANDOVER ' +
-    '§4b limit 2), so this would fire on nearly every click of the verb\'s hot path and train the ' +
-    'player to ignore the toast.');
-  assert.equal(ovToast.hidden, true, 'the toast was shown over a pawn');
-  // NON-VACUITY: the same armed tool over a ROOM does write it, so "silent" is the rule here and
-  // not a toast that never fires.
+    'the pawn designation broke, so the wording below is not the rule being tested');
+  assert.ok(!/ARMED/.test(ovToast.textContent),
+    'DIG claimed a REFUSAL over a pawn. Nothing was refused — the designation landed — and on '
+    + '--ship grid the crew stand exactly ON the dig debris (HANDOVER §4b limit 2), so this would '
+    + 'fire on nearly every click of the verb\'s hot path and train the player to ignore the toast.');
+  assert.match(ovToast.textContent, /DIG ORDERED/,
+    'a designation that LANDED said nothing at all — the Overview\'s half of the owner\'s report');
+  assert.equal(ovToast.hidden, false, 'the confirmation was written but never un-hidden');
+
+  // NON-VACUITY, both directions: the same armed tool over a ROOM writes the REFUSAL instead, so
+  // "confirms" above is a real discrimination and not a toast that says one thing everywhere.
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
   assert.deepEqual(ovClick(room, 12, 5), paletteOrders('dig', 12, 5));
-  assert.notEqual(ovToast.textContent, 'SENTINEL', 'the toast never fires at all');
+  assert.match(ovToast.textContent, /DIG ARMED/, 'a refused room stopped explaining itself');
+  assert.ok(!/ORDERED/.test(ovToast.textContent),
+    'both toasts fired for one click and raced for the same element — one of them is invisible');
   ovArm('dig');
+});
+
+// The Overview's half of the owner-reported bug, on the verb he reported it with.
+test('THE LIVE BUG: arming STRIP and clicking furniture on the Overview says something', () => {
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  ovArm('strip');
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  // Deliberately NOT a room/＋ADD ROOM hit — a bare stage click, which is what a click on a device
+  // inside the schematic is. Measured before the fix: the command went out and `#ov-toast` stayed
+  // empty and hidden, so the ORDERS bar's `⚒ STRIP ▸ CLICK A WALL OR DEVICE ON DECK 0` was the only
+  // thing on screen and it says the same thing before and after the click.
+  const sent = ovClick(ovStage, 24, 1);
+  assert.deepEqual(sent, paletteOrders('strip', 24, 1), 'the strip designation itself stopped working');
+  assert.equal(ovToast.hidden, false, 'the Overview still gives NO feedback for a placed strip order');
+  assert.match(ovToast.textContent, /STRIP ORDERED/, 'the confirmation does not name the verb');
+  assert.match(ovToast.textContent, /24,1/, 'the confirmation does not name the tile');
+  assert.match(ovToast.textContent, /DECK/, 'the confirmation does not name the deck it landed on');
+  assert.ok(!/\[V\]/.test(ovToast.textContent),
+    're-teaching the hotkey at the moment it was just used is noise, not an affordance');
+  ovArm('strip');
 });
 
 // ── the wiring main.js owns (a declared STRUCTURAL guard, and why it has to be one) ──

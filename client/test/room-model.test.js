@@ -639,8 +639,15 @@ test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body
   const iZone = src.indexOf('zoneLayerSvg(');
   const iMark = src.indexOf('markLayerSvg(');
   const iPawn = src.indexOf('pawnSvg(roomCrew(');
+  const iFurn = src.indexOf('furnitureSvg(roomCells(');
   assert.ok(iMat > 0 && iZone > 0 && iMark > iMat && iMark > iZone, 'the mark layer must draw last of the floor layers');
   assert.ok(iPawn > iMark, 'the mark layer must draw UNDER the pawns');
+  // …and ABOVE the furniture, since the device-strip fix landed: a condemned DESK now carries fg 26,
+  // and beneath its own opaque sprite the amber ✕ is invisible — the owner's exact reported symptom,
+  // with the byte present and correct. Inert for debris/dig (glyph 37 is in NON_FURNITURE, so the
+  // two layers never share a tile); the disjointness is MEASURED on the real capture further down.
+  assert.ok(iFurn > 0, 'the furniture layer call is gone — this ordering assertion is vacuous');
+  assert.ok(iMark > iFurn, 'the mark layer must draw OVER the furniture it condemns');
 });
 
 test('NEGATIVE CONTROL: the wiring scan does not fire on a commented-out call', () => {
@@ -1402,4 +1409,131 @@ test('WP-4: the built-wall dead end now points at STRIP', () => {
   assert.match(rzDoc.getElementById('rz-toast').textContent, /STRIP/,
     'DEMOLISH on a built wall must name the verb that CAN take it apart, now that STRIP exists here');
   rzArm('demolish');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE LIVE BUG (2026-07-26, reported by the owner three times): a condemned DEVICE was invisible.
+//
+// *"I can see the button, I can see the square when I hover over the furniture, but after clicking,
+// the square disappears."* The square is the tool's hover preview, which correctly clears on
+// release; what should replace it is the persistent condemned mark, and for a DEVICE that mark
+// never reached the client at all — `GlyphMapper` pass 4 repainted the device's own colour over
+// `GlyphColor.Deconstruct` (fixed in `sim/Sim.Glyph/GlyphMapper.cs`; pinned by
+// `tests/Perilune.Tests/StripVerbTests.cs`).
+//
+// THE CLIENT HALF, which is what these two tests own. Once fg 26 arrives on a FURNITURE tile the
+// byte→mark table already handles it — `roomMarkTiles` keys on `cell[1]` and has never looked at the
+// glyph. What did NOT work is that the mark layer was concatenated BELOW `furnitureSvg`, so the
+// recovered byte would have drawn its amber ✕ underneath the desk's own opaque sprite: the player
+// condemns a desk, the sim agrees, the byte arrives, and he still sees nothing. Both surfaces now
+// draw marks above their furniture layer.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+test('THE LIVE BUG (driven): a condemned DEVICE tile renders its strip mark in the real Room Zoom', () => {
+  // A glyph code the Room Zoom actually skins as furniture — DERIVED from the shipped table, so this
+  // cannot rot into a code that stopped being furniture (and the assert makes the scan non-vacuous).
+  let code = 0;
+  for (let c = 33; c < 127 && !code; c += 1) if (itemForGlyph(c)) code = c;
+  assert.ok(code, 'no glyph code maps to a furniture item — the derivation found nothing to test with');
+
+  // A tile INSIDE the hold, carrying furniture AND the condemned byte — i.e. exactly the cell the
+  // fixed `GlyphMapper` now emits for a condemned desk, and exactly the cell the whole ship used to
+  // be incapable of producing.
+  const tx = HOLD.rx + 1, ty = HOLD.ry + 1;
+  const cells = wreck.cells.slice();
+  cells[ty * wreck.w + tx] = [code, 26, 0, 0];
+
+  try {
+    // PRECONDITION, and it is the non-vacuity control for the whole test: with the SAME tile
+    // carrying the same furniture and an ordinary device colour, no strip mark is drawn. Without
+    // this leg a `rz-marks` group produced by some unrelated tile of the wreck would satisfy the
+    // assertion below and prove nothing.
+    const plain = wreck.cells.slice();
+    plain[ty * wreck.w + tx] = [code, 8, 0, 0];
+    Hud.renderFrame({ ...wreck, cells: plain });
+    rzApi.exit(); rzApi.enter('hold');
+    assert.ok(!rzLayers.innerHTML.includes('mk-strip'),
+      'precondition: an UNCONDEMNED furniture tile draws no strip mark');
+
+    Hud.renderFrame({ ...wreck, cells });
+    rzApi.exit(); rzApi.enter('hold');
+    const html = rzLayers.innerHTML;
+
+    assert.ok(html.includes('class="rz-marks"'), 'the mark layer must reach the DOM');
+    assert.ok(html.includes('mk mk-strip'),
+      'a condemned DEVICE must draw the strip mark. This is the owner-reported bug: the order '
+      + 'registered and was serviced, and the player was never told.');
+    assert.ok(html.includes('mk-condemn'), 'the strip mark must carry its ✕, not just the order ring');
+
+    // AND IT MUST NOT BE BURIED. The furniture sprite for THIS tile carries `rz-f-<tx>-<ty>` in its
+    // generated ids, so the two layers can be located independently and their order asserted rather
+    // than assumed. Painted under the desk the mark is present in the DOM and invisible on screen —
+    // which would reproduce the reported symptom exactly while every assertion above stayed green.
+    const iFurn = html.indexOf('rz-f-' + tx + '-' + ty);
+    const iMark = html.indexOf('mk mk-strip');
+    assert.ok(iFurn > 0, 'the furniture sprite for the condemned tile is not in the DOM — '
+      + 'the ordering assertion below would be vacuous');
+    assert.ok(iMark > iFurn,
+      'the strip mark is drawn BEFORE (i.e. underneath) the furniture sprite it condemns, so the '
+      + 'player sees the desk and not the ✕ — the reported symptom, with the byte present');
+  } finally {
+    Hud.renderFrame(wreck);   // never leave a doctored frame in the shared HUD cache
+    rzApi.exit(); rzApi.enter('hold');
+  }
+});
+
+test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, and mark ABOVE it', () => {
+  // A code BOTH surfaces skin as furniture. The two keep independent glyph→item tables
+  // (`itemForGlyph` here, `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` in overview-scene.js), so the code is
+  // derived against BOTH rather than assumed shared — and the existence assert is what stops this
+  // test degrading into a vacuous pass if the tables ever diverge completely.
+  const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+  let code = 0;
+  for (let c = 33; c < 127 && !code; c += 1) {
+    if (!itemForGlyph(c)) continue;
+    const probe = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[c, 8, 0, 0]] };
+    if (overviewScene({ deck: 0, decksView: fixView, frame: probe, crew: [] }).includes('pl-furniture')) code = c;
+  }
+  assert.ok(code, 'no glyph code is furniture on BOTH surfaces — the ordering assertion would be vacuous');
+
+  const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 26, 0, 0]] };
+
+  // The Room Zoom's pure model reports it and its pure layer draws it…
+  assert.deepEqual(roomMarkTiles(frame, focus).map((t) => t.mark), ['strip']);
+  assert.ok(markLayerSvg(roomMarkTiles(frame, focus), focus).includes('mk-strip'));
+
+  // …and the Overview's real composer agrees, byte for byte, on the same cell. The two surfaces
+  // share `mark-overlay.js` precisely so a condemned desk cannot read one way in the schematic and
+  // another in the room.
+  const ov = overviewScene({ deck: 0, decksView: fixView, frame, crew: [] });
+  assert.deepEqual(marks(ov).map((k) => k.kind), ['strip']);
+
+  // ORDER on the Overview, driven rather than scanned, and now unconditional.
+  const iFurn = ov.indexOf('<g class="pl-furniture"');
+  const iMark = ov.indexOf('mk mk-strip');
+  assert.ok(iFurn > 0, 'the Overview drew no furniture for the condemned tile');
+  assert.ok(iMark > iFurn,
+    'the Overview draws the condemned mark UNDER its own furniture layer — same defect, other surface');
+});
+
+// MOVING THE MARK LAYER ABOVE THE FURNITURE LAYER IS INERT FOR EVERY PRE-EXISTING MARK, and this is
+// the measurement rather than the argument. Debris (fg 4) and dig (fg 15) only ever ride glyph code
+// 37 (`'%'`), which is in both surfaces' `NON_FURNITURE`, so no tile in the shipped capture carries
+// a mark AND a furniture sprite — the two layers were disjoint and their order could not matter. If
+// a future frame ever breaks that, this test says so instead of a screenshot doing it later.
+test('THE LIVE BUG: the layer reorder changes NOTHING on the real capture (measured disjointness)', () => {
+  let marked = 0, furnished = 0, both = 0;
+  for (const cell of wreck.cells) {
+    if (!Array.isArray(cell)) continue;
+    const isMark = markForFg(cell[1] | 0) !== '';
+    const isFurn = !!itemForGlyph(cell[0] | 0);
+    if (isMark) marked += 1;
+    if (isFurn) furnished += 1;
+    if (isMark && isFurn) both += 1;
+  }
+  assert.ok(marked > 0, 'the capture carries no marks at all — the disjointness claim is vacuous');
+  assert.ok(furnished > 0, 'the capture carries no furniture at all — the disjointness claim is vacuous');
+  assert.equal(both, 0,
+    'a tile in the shipped capture carries BOTH a mark byte and a furniture glyph, so moving the '
+    + 'mark layer above the furniture layer is NOT the inert reorder it was justified as');
 });

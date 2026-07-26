@@ -14,7 +14,8 @@ namespace Perilune.Glyph
     ///   1. terrain + lens background (per tile)
     ///   2. utility overlays (Conduit under Power, Pipe under Water)
     ///   3. ground item stacks (topmost by store order)
-    ///   4. devices (Door state / broken / unpowered colouring)
+    ///   4. devices (Door state / broken / unpowered colouring; a CONDEMNED device keeps its
+    ///      glyph but reads GlyphColor.Deconstruct, mirroring pass 1's wall emitter)
     ///   5. living citizens ('@', coloured by faction)
     ///   6. cursor (Inverse attr)
     /// The fog gate is FIRST in pass 1: an unexplored tile is a blank Unknown cell, and
@@ -131,6 +132,35 @@ namespace Perilune.Glyph
 
                 char glyph = DeviceGlyph(device);
                 var (fg, attr) = DeviceColour(device, lens, sim.Defs);
+                // A CONDEMNED DEVICE KEEPS ITS GLYPH AND LOSES ITS COLOUR. Pass 1 already wrote
+                // GlyphColor.Deconstruct into this tile's fg; the line above has just overwritten it
+                // with the device's own colour, and that overwrite is the whole of the bug the owner
+                // reported three times — a strip order on a desk/bed/locker registered, was serviced,
+                // and NEVER reached the client, so it was indistinguishable from a broken verb
+                // (docs/HANDOVER.md §4g; §4b recorded it as cosmetic, which it was not).
+                //
+                // Recolouring rather than re-glyphing is deliberate and matches the wall emitter in
+                // pass 1: a designation says "this is condemned", not "this is no longer a desk". The
+                // player must still recognise what they condemned, and `mark-overlay.js` draws the
+                // amber ring + ✕ from the fg byte alone, so the glyph is free to stay itself.
+                //
+                // The Dim/attr layer is deliberately KEPT: an unpowered condemned machine is still
+                // unpowered, and attr rides in a different field from fg, so nothing is being
+                // overwritten twice.
+                //
+                // `anyStrip` short-circuits before the registry probe, so a ship with nothing
+                // condemned — the overwhelmingly common frame — pays one bool test per device and no
+                // lookup at all. `p` is the device's own Int3 struct, already in hand: no allocation
+                // is added to this per-visible-tile loop. The registry itself was resolved ONCE at
+                // Simulation construction (`Simulation.Deconstruct`), never per device.
+                //
+                // KNOWN-BETTER FIX, deliberately not taken here: a `strips` wire channel mirroring
+                // `DeconstructSystem.Pending`, built like `hosts/web/WireFormat.Zones.cs`. It would
+                // also survive pass 3 (a ground item landing on a condemned device's tile) and pass 5
+                // (a crew member standing on a condemned tile), neither of which this fg-byte route
+                // can. It is a bigger package and touches the `WireFormat` spine file; this is the
+                // smallest change that makes the reported bug go away. See HANDOVER §4g.
+                if (anyStrip && strip.TryGet(p, out _)) fg = GlyphColor.Deconstruct;
                 var prev = dst[p.X, p.Y];
                 dst[p.X, p.Y] = new GlyphCell(glyph, fg, prev.Bg, prev.Attr | attr);
             }

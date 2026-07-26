@@ -41,12 +41,25 @@
 //
 // HONEST LIMIT OF READING `cell[1]`, and it is worth knowing before trusting a mark's absence.
 // `GlyphMapper` writes the designation colour in pass 1 and then passes 3/4/5 OVERWRITE the cell's
-// fg for ground item stacks, grid-resident devices and living citizens (`GlyphMapper.cs:113-149`).
-// So: a crew member standing on a designated tile hides its mark; a stored item on a stockpile tile
-// hides that tile's zone tint; and a strip mark on a DEVICE never reaches the wire at all, because
-// pass 4 repaints the device's own colour over it (a strip mark on a WALL does survive — nothing
-// stands on a wall). The marks are therefore an honest view of the frame, not a complete census of
-// the designation registries. The `zones` channel (WP-3) is the complete source for stockpiles.
+// fg for ground item stacks, grid-resident devices and living citizens. So: a crew member standing
+// on a designated tile hides its mark; a stored item on a stockpile tile hides that tile's zone
+// tint; and a device standing on a DIG or STOCKPILE tile hides that tile's mark too — EVERY device
+// kind is non-blocking (`MachineDefs`, `blocks = false` in all 26 rows), so a device tile is
+// walkable and `DesignateStockpileCommand` will happily zone it. The marks are therefore an honest
+// view of the frame, not a complete census of the designation registries. The `zones` channel
+// (WP-3) is the complete source for stockpiles.
+//
+// ⚠️ PASS 4 NOW HAS EXACTLY ONE EXCEPTION, and the correction matters because this comment was the
+// place the defect sat recorded-and-unfixed. It used to read: *"a strip mark on a DEVICE never
+// reaches the wire at all, because pass 4 repaints the device's own colour over it"*. THAT IS NO
+// LONGER TRUE OF THE STRIP MARK — and note the exception is narrow: pass 4 still overwrites a dig
+// or stockpile designation on a device tile (above), because only the DECONSTRUCT case was fixed. `GlyphMapper` pass 4 now re-applies `GlyphColor.Deconstruct` over a condemned
+// device's own colour while keeping its glyph, so a condemned desk/bed/locker/lamp/plant ships fg 26
+// and draws the `strip` mark below exactly as a condemned wall always did. The owner reported the
+// invisible device strip THREE times before it was fixed (`docs/HANDOVER.md` §4g), and every one of
+// those reports was against a codebase where this paragraph already described the cause — which is
+// why it is corrected here in place rather than quietly deleted. Both surfaces draw the mark layer
+// ABOVE their furniture layer so the recovered byte is not then hidden by the desk's own sprite.
 
 /* eslint-disable no-multi-spaces */
 

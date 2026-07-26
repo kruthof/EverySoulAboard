@@ -613,17 +613,33 @@ test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one on th
   assert.ok(debris.every((k) => k.body.includes('<path d="M')));
 });
 
-test('WP-2: marks are placed on their own tiles, under the furniture and the pawns', () => {
+// ⚠️ THE FURNITURE HALF OF THIS PIN WAS DELIBERATELY REVERSED (2026-07-26, `lane/strip-visible`).
+// It read `iFurn > iMarks` — "marks must draw UNDER the furniture" — on the stated grounds that *"a
+// mark is a fact about the FLOOR, so a machine or a crew member standing on it must not be hidden
+// behind it."*
+//
+// THAT PREMISE WAS TRUE ONLY BECAUSE OF A BUG. A mark could only ever be a floor fact here because a
+// DEVICE tile could not carry a mark byte at all: `GlyphMapper` pass 4 repainted the device's own
+// colour over `GlyphColor.Deconstruct`, so a condemned desk shipped fg 8 and the two layers were
+// disjoint by construction. That is the owner-reported bug (HANDOVER §4g), reported three times, and
+// it is now fixed in the mapper — so a mark CAN now be a fact about the device it sits on, and
+// "under the furniture" would mean the amber ✕ is drawn behind the very desk it condemns: the byte
+// present, correct, and invisible. Exactly the reported symptom, one layer lower.
+//
+// THE PAWN HALF IS UNCHANGED AND STILL LOAD-BEARING — a crew member must never be hidden by a mark.
+// The two halves had one justification and now have two; splitting them is the point of this note.
+test('WP-2: marks are placed on their own tiles, OVER the furniture and under the pawns', () => {
   const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
   assert.match(svg, /<g class="pl-marks" pointer-events="none">/);
-  // Layer order: floors → marks → furniture → … → pawns. A mark is a fact about the FLOOR, so a
-  // machine or a crew member standing on it must not be hidden behind it.
+  // Layer order: floors → furniture → marks → … → pawns.
   const iRooms = svg.indexOf('<g class="pl-rooms">');
   const iMarks = svg.indexOf('<g class="pl-marks"');
   const iFurn = svg.indexOf('<g class="pl-furniture"');
   const iPawns = svg.indexOf('<g class="pl-pawns">');
   assert.ok(iRooms >= 0 && iMarks > iRooms, 'marks must draw over the room floors');
-  assert.ok(iFurn > iMarks, 'marks must draw UNDER the furniture');
+  assert.ok(iFurn >= 0 && iMarks > iFurn,
+    'marks must draw OVER the furniture — a condemned DEVICE now carries fg 26, and beneath its own '
+    + 'sprite its ✕ is invisible (the owner-reported symptom, one layer lower)');
   assert.ok(iPawns > iMarks, 'marks must draw UNDER the pawns');
 
   // Geometry: each mark lands inside the projected box of a cell that really carries its byte.
@@ -671,7 +687,11 @@ test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () =>
   // `ov-*` namespace however many marks a deck carries. (The first draft compared id COUNTS against
   // a `frame: null` scene — which has no furniture ids either, so the comparison was vacuous: adding
   // 33 ids to the mark layer would still have passed it.)
-  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-furniture"/.exec(svg);
+  // The slice runs from the mark layer's open tag to the layer that follows it. That neighbour is
+  // `pl-glow` since the mark layer moved ABOVE `pl-furniture` (see the note on the layer-order test
+  // above); the extraction is anchored on the FOLLOWING layer rather than on a fixed count of `</g>`
+  // so that it fails loudly if the order shifts again instead of silently slicing the wrong bytes.
+  const layer = /<g class="pl-marks"[^>]*>([\s\S]*?)<\/g><g class="pl-glow"/.exec(svg);
   assert.ok(layer, 'the mark layer was not found where the layer order puts it — this pin has rotted');
   assert.ok(layer[1].includes('class="mk mk-'), 'the extracted slice is not the mark layer');
   assert.equal((layer[1].match(/\bid="/g) || []).length, 0,
