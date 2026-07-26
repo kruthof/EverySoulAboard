@@ -394,7 +394,9 @@ its suite.
 **The countermeasure, both halves required:**
 1. **Strip comments before matching, quote-aware** so string literals survive (a quoted `//` or
    `/* */` must not blind the stripper and swallow the rest of the file). Live implementations to
-   copy, not re-derive: `client/test/surface-boundary.test.js:205` (JS, `codeOnly`) and `:264`
+   copy, not re-derive: **`client/test/code-only.js` (JS, `codeOnly` — the SHARED module since
+   WP-5, 2026-07-26; it used to live at `surface-boundary.test.js:205`, which is now only a comment
+   about the extraction, so IMPORT it rather than copying)** and `surface-boundary.test.js:264`
    (HTML `<!-- … -->` — a commented-out `<div` also corrupts a depth tracker),
    `client/test/relations-view.test.js:45` (JS) and `:78` (CSS),
    `tests/Perilune.Tests/SurfaceBoundaryTests.cs:82` (`CodeOnly`, C#/JS).
@@ -464,8 +466,8 @@ what a semantic RED looks like.
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  WP-4 merge (2026-07-26): 996 dotnet + 621 node, `./ci.sh` exit 0**
-  (+14 node, WP-4's own tests; dotnet unchanged — WP-4 is client-only, as WP-2 was). Every "560 dotnet + 188
+  WP-5 merge (2026-07-26): 996 dotnet + 641 node, `./ci.sh` exit 0**
+  (+20 node, WP-5's own tests; dotnet unchanged — WP-2/WP-4/WP-5 are all client-only). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that

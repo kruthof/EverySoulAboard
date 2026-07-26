@@ -601,8 +601,12 @@ test('WP-2 (synthetic): markVariant is deterministic, in range, and actually var
 // string-literal aware is blinded by a quoted `//` and silently passes everything after it. The two
 // controls below test the stripper instead of trusting it.
 
-/** Strip JS comments, STRING-LITERAL AWARE. Copied verbatim from surface-boundary.test.js:205 —
- *  see the note there for what each branch is defending against. */
+/** Strip JS comments, STRING-LITERAL AWARE.
+ *  ⚠️ POINTER CORRECTED 2026-07-26 (WP-5): this said "Copied verbatim from
+ *  surface-boundary.test.js:205". That is no longer where the function lives — WP-5 extracted it to
+ *  the shared `client/test/code-only.js`, and `:205` is now a comment about the extraction. This
+ *  local copy is kept rather than switched to the import only to leave the WP-4 test file's diff
+ *  alone; **new consumers must IMPORT the shared module, not copy this.** */
 function codeOnly(src) {
   let out = '';
   let i = 0;

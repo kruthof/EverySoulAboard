@@ -16,13 +16,14 @@ history, newest first.** The section immediately after this one is E0-4's landed
 - **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
   **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
   The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 621 node**, re-measured on `main` after the WP-4 merge
-  (+14 node, all WP-4; dotnet unchanged — WP-4 is client-only, as WP-2 was). Twin hash
-  `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane and
-  WP-4 are all pin-neutral.
-- **`KNOWN_GAPS` is down to ONE entry** (`stockpile` → WP-5). `dig` and `strip` were deleted by WP-4's
-  ledger ratchet. **On the standard surface a player can now dig and strip; they still cannot zone.**
-- *(Superseded:* 996 + 607 @ `38ff68b`; 996 + 589 @ `98f0e63`.*)*
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 641 node**, re-measured on `main` after the WP-5 merge
+  (+20 node, all WP-5; dotnet unchanged — every package in this run is client-only). Twin hash
+  `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
+  WP-4 and WP-5 are all pin-neutral.
+- **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
+  player can now dig, strip AND zone.** The honest phrasing of the milestone is **"verb-complete with
+  no undo"** — see §4e; nothing in `client/` can un-designate, though the TUI can.
+- *(Superseded:* 996 + 621 @ the WP-4 merge; 996 + 607 @ `38ff68b`; 996 + 589 @ `98f0e63`.*)*
 - *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
   (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
   gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
@@ -510,7 +511,76 @@ WP-5.**
 > surface we are deleting, which is the exact WP-5 mistake this guard exists to prevent. The ledger
 > shrinks or it fails. When WP-9 lands it must be **empty**, and that is asserted too.
 
-**4. WP-5 — the deck-scoped ORDERS bar on the Overview.**
+### 4e. WP-5 — the ORDERS bar — LANDED (`f5b70ee` + `c39b66a`, merged 2026-07-26). **THE LEDGER IS EMPTY.**
+
+**What shipped.** STOCKPILE (with its ACCEPTS mask), DIG and STRIP on the Level-1 Overview command
+bar, **deck-scoped**, filling the `ORDER_TOOLS` seam WP-0 registered and left absent. New pure exports
+in `overview-model.js`: `ORDER_TOOLS`, `ORDER_LABEL`, `isOrderTool`, `orderHintLine`. The buttons carry
+`data-ov-tool` and route through the **existing** `onHudClick` branch — the bar adds no second arming
+path, it fills one that was already wired and empty, so arming stays `Hud.armTool`'s single exclusive
+slot and bar / palette / keys cannot disagree. **Gate on `main`: 996 dotnet (unchanged) + 641 node,
+`./ci.sh` exit 0, twin hash `00e0a2dadb8e5076`, no pin moved.**
+
+**`KNOWN_GAPS` IS NOW EMPTY**, and `surface-boundary.test.js` asserts it. Every designation the console
+can express, the standard surface can express — with better affordances than the console had.
+
+**The precedence decision overrode the charter, and the override was right.** `'order'`
+short-circuits **everything**, second only to `'move'` — not merely ahead of `'enterRoom'` as the
+charter's minimum said. An armed tool is a **mode**, and a mode owns the click (the console's IX-32/33
+and the Room Zoom's `isSweepTool` bail already do exactly this). The minimum would have shipped three
+**measured** holes: crew cluster at x25-32 y15-16 **exactly where the dig designations are** (§4b limit
+2), so select-wins makes the debris you most want dug undiggable; **a device is precisely what STRIP
+targets**, so terminal-wins ships the verb inert over its own subject matter; and WP-1 put the debris in
+the **halls**, where ＋ADD ROOM is the only interactive thing — so addroom-wins would block the dig
+**and commission a room**, which is the loudest possible wrong outcome. Accepted cost, stated: with an
+order armed you cannot select, open MOSS or enter a room. Escape disarms; a second click un-arms.
+
+**The review found one hole and the fix is better than the ask.** The ORDERS bar's **visibility was
+pinned by nothing** — two mutations survived a fully green 639-test suite, the worse one hiding the bar
+**exactly when an order is armed**, i.e. at the only moment its readback matters. The instructive part
+is the fix: a dom-lite stand-in starts `hidden === false`, so asserting *"the bar is shown"* would
+**itself have survived deleting the `setHidden` call outright**. The load-bearing leg is therefore the
+opposite direction — switch tabs and assert the bar goes hidden — which proves the call happens at all.
+Confirmed in re-review by a third mutation (delete the call): **RED**.
+
+**A debt paid down that outlives this package.** `codeOnly` — the quote-aware comment stripper
+`CLAUDE.md` trap 1 names as the thing to copy — is now the **shared `client/test/code-only.js`**,
+imported rather than re-derived, and proven by a **matched pair**: a poisoned comment (stray `{`, lone
+`'`) stays **GREEN**, the same poison **plus** dropped wiring goes **RED**, and (re-review's third leg)
+dropping the wiring with **no** poison reddens identically — so the poison neither creates nor masks the
+failure. Blinding the shared stripper reddens **6 tests across four guards**. ⚠️ **Two test files still
+carry their own copy** (`room-model.test.js`, `zone-model.test.js`); their stale "copied from
+`surface-boundary.test.js:205`" pointers and `CLAUDE.md`'s were corrected in the integration commit.
+**New consumers must IMPORT the shared module.**
+
+**⚠️ Limits, not wins — the reviewer's wording, and item 1 is the biggest hole in the milestone:**
+1. **No client surface can un-designate.** `Cmd.dig/stockpile/strip(x,y,false)` ride the wire and the
+   **TUI sends them** (`hosts/tui/GameLoop.cs:322`); no client surface does. A mis-placed order has no
+   undo on the standard surface — **one tile from the Overview, a swept rectangle from the Room Zoom.**
+   A *client* gap, not a game gap: it is one new lowering on a wire command that already exists.
+2. **`Enter` with an order armed fires at a tile the Overview never shows.** `controls.js:273-277`
+   lowers `paletteOrders` at the console's **inspection cursor**; `overview-view.js` moves that cursor
+   only on the move path (`:704`), never on hover or on an order. **Pre-existing**, but WP-5 widened
+   exposure by making arming reachable without ever touching the console. Cheap fix for WP-6/WP-9: move
+   the cursor on Overview hover, or make `Enter` a no-op while `body.overview-open`.
+3. **Deck-scoping is asserted, not demonstrated.** All 8 decks of `--ship grid` share **one** slot
+   geometry (measured: one distinct slot-extent signature across 8 decks), so no test can show a click
+   resolving differently per deck. The suite pins that **equality** — so it reddens the day a ship
+   differs — and pins that order payloads carry **no deck/z key**. The real guarantee is the host
+   applying orders to the session's current deck.
+
+**⇒ THE MILESTONE, in the reviewer's words — it drove all three verbs against a live host on both
+surfaces: the standard surface is "VERB-COMPLETE WITH NO UNDO", and that phrasing is deliberate.**
+*"A player does not experience a verb set; they experience a loop. Every one of these three verbs is a
+one-way door: you can tell the crew to dig, zone or strip, and you cannot tell them to stop. The sim
+has the capability and the TUI uses it. So the surface is complete in the sense that it can say
+everything the game can hear, and incomplete in the sense that it can only ever say yes. That is a real
+gap and it will be the first thing a playtester hits — most likely by zoning a room they meant to walk
+into, which is now easier precisely because arming is easier."* It does **not** block plan §9.2's
+milestone; it is written down so the missing half is a **scheduled item and not a discovery**.
+
+**4. ~~WP-5 — the deck-scoped ORDERS bar on the Overview.~~ — ✅ LANDED, see §4e. Next actionable step
+is 5, WP-6.**
 - **Do:** STOCKPILE (+ ACCEPTS) and, for convenience, DIG/STRIP on the Level-1 Overview, deck-scoped.
   `overviewClickAction` (`client/src/ui/overview-model.js:67`) gains an `'order'` branch **ahead of**
   `'enterRoom'`, so an armed order tool suppresses room entry exactly as `armed === 'move'` already

@@ -43,8 +43,11 @@ const REPO = join(CLIENT, '..');
 const read = (abs) => readFileSync(abs, 'utf8');
 
 /**
- * Strip JS/C# comments, STRING-LITERAL AWARE — verbatim port of `codeOnly` in
- * surface-boundary.test.js (which is itself mirrored by `CodeOnly` in SurfaceBoundaryTests.cs). A
+ * Strip JS/C# comments, STRING-LITERAL AWARE — a port of `codeOnly`.
+ * ⚠️ POINTER CORRECTED 2026-07-26 (WP-5): this cited `surface-boundary.test.js` as the source. The
+ * function now lives in the shared `client/test/code-only.js`; that line is only a comment about the
+ * extraction. **New consumers must IMPORT the shared module.** (`CodeOnly` in
+ * `SurfaceBoundaryTests.cs` remains the separate C#-side mirror.) A
  * '…'/"…" scan terminates at the newline, so an unbalanced quote can damage at most its own line and
  * can never blind a scan to end of file. Not re-derived: CLAUDE.md names the live implementations to
  * copy precisely because the hand-rolled ones keep shipping with holes.
