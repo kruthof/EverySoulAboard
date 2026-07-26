@@ -466,8 +466,8 @@ what a semantic RED looks like.
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  WP-5 merge (2026-07-26): 996 dotnet + 641 node, `./ci.sh` exit 0**
-  (+20 node, WP-5's own tests; dotnet unchanged — WP-2/WP-4/WP-5 are all client-only). Every "560 dotnet + 188
+  stockpile-zoom merge (2026-07-26): 996 dotnet + 649 node, `./ci.sh` exit 0**
+  (dotnet unchanged — WP-2/WP-4/WP-5 and the stockpile move are all client-only). Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that

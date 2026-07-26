@@ -16,14 +16,21 @@ history, newest first.** The section immediately after this one is E0-4's landed
 - **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
   **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
   The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 996 dotnet + 641 node**, re-measured on `main` after the WP-5 merge
-  (+20 node, all WP-5; dotnet unchanged — every package in this run is client-only). Twin hash
+- **Gate: `./ci.sh` exit 0, 996 dotnet + 649 node**, re-measured on `main` after the stockpile-zoom
+  merge (+8 node; dotnet unchanged — every package in this run is client-only). Twin hash
   `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
-  WP-4 and WP-5 are all pin-neutral.
+  WP-4, WP-5 and the stockpile move are all pin-neutral.
 - **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
-  player can now dig, strip AND zone.** The honest phrasing of the milestone is **"verb-complete with
-  no undo"** — see §4e; nothing in `client/` can un-designate, though the TUI can.
-- *(Superseded:* 996 + 621 @ the WP-4 merge; 996 + 607 @ `38ff68b`; 996 + 589 @ `98f0e63`.*)*
+  player can now dig, strip AND zone** — dig/strip at either altitude, **stockpile in the Room Zoom
+  only** (§4f rewrote the altitude rule; §4e's version is superseded). The honest phrasing of the
+  milestone is **"verb-complete with no undo"**, and §4f **widened** that gap: every order verb is now
+  swept, so a mis-drag costs a rectangle for all three.
+- **⚠️ Two things wait on the owner** — §4f's hall-zoning decision (recommendation: option **(c)**, ＋ADD
+  ROOM already is the path) and the five §12 decisions in the character-sim design (§4c).
+- **⚠️ §4g is arguably the next package, ahead of WP-6:** STRIP on a device **works and renders
+  nothing**, which a player hit within a day and read as a broken verb.
+- *(Superseded:* 996 + 641 @ the WP-5 merge; 996 + 621 @ WP-4; 996 + 607 @ `38ff68b`; 996 + 589 @
+  `98f0e63`.*)*
 - *(Superseded, kept for the counts' provenance:* **993 dotnet + 589 node**, measured off `3aecf4b`
   (~8 min wall; the dotnet stage alone is ~6.5 min). **Re-measure before you quote this.** Counts have
   gone stale in this file repeatedly, and per-branch counts **do not add on merge** — E0-4's five side
@@ -579,8 +586,111 @@ gap and it will be the first thing a playtester hits — most likely by zoning a
 into, which is now easier precisely because arming is easier."* It does **not** block plan §9.2's
 milestone; it is written down so the missing half is a **scheduled item and not a discovery**.
 
-**4. ~~WP-5 — the deck-scoped ORDERS bar on the Overview.~~ — ✅ LANDED, see §4e. Next actionable step
-is 5, WP-6.**
+### 4f. STOCKPILE moved to the Room Zoom — LANDED (`971413a`, merged 2026-07-26). **AMENDS §4e.**
+
+**Owner decision (Garvin), taken hours after WP-5 landed, and he was right on every count.** *"A
+stockpile is an area x×y where a certain amount of items can be stored — that is naturally a zoom-area
+task."* Verified before chartering: **`JobWork.IsFreeStockpileTile` asks "Stockpile + Walkable + empty"
+— ONE STACK PER TILE, so the AREA IS THE CAPACITY**; `client/src/ui/overview-view.js` has **zero**
+drag handlers, so painting a 5×8 zone there was **40 clicks**; and `ROOM_TOOLS` **lacked `stockpile`
+entirely**, so the verb that most needs area-painting was absent from the only surface that sweeps.
+
+**What shipped.** `stockpile` left `ORDER_TOOLS` and joined `ROOM_TOOLS` classed `'order'`, inheriting
+`isSweepTool` + `roomDragMode`'s **filled rectangle clipped to `roomBounds()`**; **Z** arms it. Dig and
+strip stay on both surfaces. The ACCEPTS mask moved with the verb — a swept tile emits `Cmd.stockpile`
+**then** `Cmd.filter`, always both, always that order, garbage/missing mask → **ACCEPT-ALL, never
+silence** — and the mask is read **once per committed sweep, not per tile**, because a per-tile read
+could paint one rectangle with two filters. **Gate: 996 dotnet (unchanged) + 649 node, exit 0, no pin
+moved. PASS on the first review round — the first package in this programme to manage it.**
+
+**⇒ THE ALTITUDE RULE IS REWRITTEN ON A DIFFERENT AXIS. This supersedes §4e's version.**
+
+> **ORDERS THAT POINT AT AN EXISTING THING are deck-scoped; ORDERS THAT AUTHOR A REGION are zoom-only,
+> exactly like BUILDING.**
+> *deck-scoped:* DIG · STRIP — you point at debris, a wall, a device.
+> *zoom-only:* WALL/FLOOR/DOOR · **STOCKPILE** — you author an extent out of nothing.
+
+WP-5's wording — *"a designation consumes no material and changes no geometry"* — is **quoted-and-negated
+in place** in `overview-model.js`'s header. It is true of dig and strip and **false of stockpile**, and
+it named the wrong axis: the axis is **"does the player choose the extent?"**
+
+**⚠️ AN OPEN DECISION FOR THE OWNER — NOT A LIMIT, and it has a defensible answer already in the game.**
+A stockpile can now only be painted **inside a bound room**: `enterRoom` resolves by anchor name, halls
+have none (`overviewClickAction` has no `hallSlot` branch, and a slot with no `anchorName` cannot be
+entered at all), so **a bare hall or corridor cannot be zoned from any client surface** — the Overview
+could do it until this package. Three options, the third being the reviewer's and the one it argues for:
+- **(c) ＋ADD ROOM already IS the path** — commissioning a room in a hall makes that slot bound and
+  named, hence enterable, hence zonable. Under the new rule this is not a workaround but **the rule
+  being consistent with itself: a stockpile is an authored region, and so is a room.** It costs the
+  player one extra step in exactly the case where they were authoring a region anyway, and **neither
+  (a) nor (b) needs building.**
+- **(b) a hall-scoped Overview gesture** — *cheaper than it looks*: reuses `pointToTile` (exists,
+  tested) and `buildDragTiles` (pure, already bounds-clippable) plus three listeners. Its real cost is
+  the precision caveat plan §4.2 already records (fine for sweeping a zone, marginal for one wall) — and
+  sweeping a zone is precisely the case. But it **partly re-opens the altitude rule**, so it needs the
+  owner.
+- **(a) enterable hall pseudo-rooms** — *dearer than it looks*: a new "enter an unnamed slot" action,
+  chrome tolerating a nameless room, and a decision on whether the full build palette is legal in a
+  hall, which reopens "building is zoom-only *inside a room*".
+
+**⚠️ Limits — the reviewer's wording. Item 1 is now WORSE than it was, and that is this package's cost.**
+1. **No client surface can un-designate**, and **after this package EVERY order verb is swept**, so the
+   blast radius is a rectangle for all three — **a mis-dragged stockpile is now as expensive to get
+   wrong as a mis-dragged strip.** The surface remains **verb-complete with no undo**, and this package
+   **widened** the cost of that gap rather than narrowing it.
+2. **`Enter` with an order armed fires at a tile the Overview never shows** (`controls.js:273-277`).
+   Pre-existing; **narrowed slightly** here, since stockpile — the verb with the largest silent blast
+   radius — is no longer armable from the Overview's own bar.
+3. **Deck-scoping is asserted, not demonstrated** (§4e item 3, unchanged).
+4. **The `ORDER_TOOLS` line in `MODERN_TOOL_TABLES` is currently deletable with the suite green** — with
+   `stockpile` gone, `ORDER_TOOLS` ⊆ `ROOM_TOOLS`. **Disclosed in source rather than mechanised**, and
+   the reviewer *measured* that it re-arms automatically: a deck-scoped verb that is not also a
+   Room-Zoom tool makes deletion RED (n=3) against an intact-registry control (n=2). **A documented
+   dormancy, not a hole** — a literal restatement would be the tautological shape and would need editing
+   on every legitimate table change.
+
+**⚠️ An instrument note that will bite the next live browser test.** The reviewer's first attempt at the
+Overview leg *appeared to contradict the package* — a stockpile pair was sent and no room was entered.
+It was a **boot-window artifact**: the console is briefly the live surface before `overview-open` is
+applied, so the click went to `controls.js`'s canvas. Two tells caught it — `body.className` was `""`,
+and `armTool` toggles (the second call silently disarmed). **Any live Overview test must assert
+`body.overview-open` before clicking.**
+
+**4. ~~WP-5 — the deck-scoped ORDERS bar on the Overview.~~ — ✅ LANDED, see §4e, AMENDED by §4f.
+Next actionable step is 5, WP-6 — but read §4g first: the `designations` channel is arguably ahead of
+it, because it fixes a verb that currently looks broken to a player.**
+
+### 4g. ⚠️ NEXT, AND ARGUABLY AHEAD OF WP-6 — the `designations` channel
+
+**Reported by Garvin from live play, 2026-07-26: *"strip means deconstruct and recycle? if so it does
+not work — I cannot place the command on a table."* Diagnosed: the verb WORKS and the feedback does
+not.** `HandleStrip` (`hosts/web/GameSession.cs:678-687`) auto-detects — `TryGetDeviceAt` → 
+`DeconstructKind.Device`, else `Wall` — and `DeconstructSystem.CanDesignate` (`:331`) accepts **every
+device kind except a Door**. So the order registers and the crew will service it. **But `GlyphMapper`
+pass 4 repaints the device's own colour over `GlyphColor.Deconstruct`, so the designation never reaches
+the client.** §4b recorded that as "strip marks are delivered for walls only" and treated it as
+cosmetic. **It is not cosmetic: invisible feedback is indistinguishable from a broken verb, and a
+player hit it within a day.**
+
+**One channel closes all three recorded `cell[1]` limits** (§4b, and the plan §4.1 ii amendment): the
+invisible device strip; a mark **hidden under a standing crew member** (and on `--ship grid` the crew
+cluster *exactly* where the dig designations are); and the **stockpile tint that vanishes the moment an
+item is stored on the tile** — the normal state of a working stockpile, and the Overview/Room-Zoom
+disagreement §4b carried to WP-6. Feed it from the `DeconstructSystem`/dig registries, **not** from the
+glyph fg byte. `WireFormat` is a spine file — use WP-3's pattern: the spine edit is **one token**
+(`class` → `partial class`) with the channel in a sibling file.
+
+**A SECOND, SEPARATE DEFECT found in the same investigation, and it is cheap:** **a rejected designation
+produces no feedback anywhere.** `DeconstructSystem.Designate` returns `false` on refusal, `HandleStrip`
+**discards the result** and sets `_status = "designate strip"` either way. Accepted and silently-refused
+are indistinguishable to the player. This matters most for the third finding below.
+
+**⚠️ And a third, which is a genuine trap for a player:** `shelf` and `rug` are **`cosmetic` in
+`PALETTE_CMD` with `verb: 'decor'` — view-only, client-local, NOT sim devices at all.** So there is no
+device on the tile, `HandleStrip` falls back to `Wall`, `GetWall(pos)` is not a wall, and the
+designation is **silently rejected**. Stripping a shelf or a rug is genuinely a no-op, and it looks
+exactly like stripping a desk (which works but is invisible). **Two different failures wearing the same
+face.**
 - **Do:** STOCKPILE (+ ACCEPTS) and, for convenience, DIG/STRIP on the Level-1 Overview, deck-scoped.
   `overviewClickAction` (`client/src/ui/overview-model.js:67`) gains an `'order'` branch **ahead of**
   `'enterRoom'`, so an armed order tool suppresses room entry exactly as `armed === 'move'` already
