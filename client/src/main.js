@@ -255,14 +255,19 @@ function onMessage(m) {
 // order now, IX-52 — M / shift-click remain the instant expert paths).
 Hud.initConsole({ send: (o) => session.send(o), getCanvas: () => canvas, camera });
 // The warm Level-2 Room Zoom: the single-room build/decorate takeover, entered from the Overview.
-// Its STOCKPILE tool paints with the SAME accept-mask the console's ACCEPTS chips set
+//
+// ⚠️ NO `getStockFilter` HERE ANY MORE (WP-6), and the sentence that used to justify one is quoted
+// and negated: *"Its STOCKPILE tool paints with the SAME accept-mask the console's ACCEPTS chips set
 // (`Hud.getStockFilter`, the one slot beside the one armed tool), so no two surfaces can zone the
-// same tile with two different filters. A getter, read once per committed sweep — see
-// roomzoom-view.js. (WP-5 wired this into `initOverview`; it moved here with the verb, because the
-// extent of a zone is the decision and only this surface can drag one.)
+// same tile with two different filters."* Sharing that slot meant sharing a value NO PLAYER COULD
+// CHANGE — the only writer of `hud.js`'s `_stockFilter` is the `onclick` on the console shell's
+// chips, and the console is deprecated and unreachable in normal play — so every zone painted on the
+// standard surface accepted everything, permanently, and the per-tile filtering the sim has supported
+// since E0-4 was unreachable. The Room Zoom now owns the mask and shows the chips that set it, beside
+// the tool that paints with it. `Hud.getStockFilter` survives for the console's own canvas path
+// (the two `installInput` blocks below); WP-9 takes both away together.
 const roomZoom = initRoomZoom({
   send: (o) => session.send(o),
-  getStockFilter: () => Hud.getStockFilter(),
 });
 // The warm Level-1 Overview: the default SHIP surface when the wire carries a `decks` grid. It
 // reads authoritative state back from the HUD caches and lowers every action to an existing Cmd /

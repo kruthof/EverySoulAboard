@@ -89,15 +89,48 @@ test('each mark appears only on the tile whose fact it states', () => {
   const plain = zoneLayerSvg(tilesFor(row(10, 5, ACCEPT_ALL, 0)), FOCUS);
   assert.equal(count(plain, /class="rz-zone-wedge"/g), 0, 'an unfiltered tile has no restriction wedge');
   assert.equal(count(plain, /class="rz-zone-hatch"/g), 0, 'a reached tile has no back-off hatch');
+  assert.equal(count(plain, /class="rz-zone-dim"/g), 0, 'nor is a reached tile dimmed');
   assert.equal(count(plain, /rz-zone-restricted|rz-zone-backedoff/g), 0, 'nor either state class');
 
   const restrictedOnly = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, 0)), FOCUS);
   assert.equal(count(restrictedOnly, /class="rz-zone-wedge"/g), 1);
   assert.equal(count(restrictedOnly, /class="rz-zone-hatch"/g), 0);
+  assert.equal(count(restrictedOnly, /class="rz-zone-dim"/g), 0,
+    'a filtered-but-REACHED tile must not be dimmed — the dim means "nothing is arriving", and a ' +
+    'zone that is merely picky is working exactly as ordered');
 
   const backedOffOnly = zoneLayerSvg(tilesFor(row(10, 5, ACCEPT_ALL, ZONE_FLAG_BACKED_OFF)), FOCUS);
   assert.equal(count(backedOffOnly, /class="rz-zone-wedge"/g), 0);
   assert.equal(count(backedOffOnly, /class="rz-zone-hatch"/g), 1);
+  assert.equal(count(backedOffOnly, /class="rz-zone-dim"/g), 1);
+});
+
+// WP-6 — the DIM half of plan §5 gap 3 ("the tile renders dim + hatch + a one-line reason"). WP-3
+// shipped the hatch and the reason; this is the piece that was specified and not built, and it is the
+// whole of WP-6's change to this layer — the rest was EXTENDED, not replaced.
+//
+// MUTATION: drop the `rz-zone-dim` rect ⇒ fails. MUTATION 2: draw it OVER the hatch and the ring ⇒
+// fails on the ordering leg, and in a browser it mutes the one mark that is meant to shout.
+test('a backed-off tile is DIMMED as well as hatched, under its own alarm marks', () => {
+  const svg = zoneLayerSvg(tilesFor(row(10, 5, 1 << 3, ZONE_FLAG_BACKED_OFF)), FOCUS);
+  const dim = /<rect class="rz-zone-dim"[^>]*fill="([^"]+)"/.exec(svg);
+  assert.ok(dim, 'a backed-off tile draws no dimming scrim at all');
+  // It must actually be DARK and actually be translucent — a transparent or opaque scrim is not a
+  // dim. Parsed out of the emitted colour rather than restated as a constant both sides import.
+  const rgba = /rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(dim[1]);
+  assert.ok(rgba, `the scrim fill ${JSON.stringify(dim[1])} is not an rgba() colour`);
+  const [r, g, b, a] = rgba.slice(1).map(Number);
+  assert.ok(r + g + b < 150, `the scrim is not dark (rgb ${r},${g},${b}) — it would BRIGHTEN the tile`);
+  assert.ok(a > 0.15 && a < 0.85, `the scrim alpha ${a} is either invisible or opaque`);
+  // ORDER: under the alarm marks, over the zone tint. The dim says "inert"; the hatch and the wedge
+  // say what to DO about it, and muting those would be the wrong half of the tile to darken.
+  const iTint = svg.indexOf('stroke-dasharray="2 2"');
+  const iDim = svg.indexOf('class="rz-zone-dim"');
+  const iHatch = svg.indexOf('class="rz-zone-hatch"');
+  const iWedge = svg.indexOf('class="rz-zone-wedge"');
+  assert.ok(iTint >= 0 && iHatch > 0 && iWedge > 0, 'the fixture must draw all three or this is vacuous');
+  assert.ok(iDim > iTint, 'the scrim must be drawn OVER the zone tint it is dimming');
+  assert.ok(iHatch > iDim && iWedge > iDim, 'the alarm marks must be drawn OVER the scrim, not under it');
 });
 
 // MUTATION: drop the `- focus.rx` / `- focus.ry` from the local transform ⇒ every mark lands off the

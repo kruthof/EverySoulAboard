@@ -28,9 +28,11 @@ import {
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
-import { ACCEPT_ALL, defaultStockFilter } from '../src/ui/stock-filter-model.js';
-import { acceptsLabel } from '../src/ui/zone-model.js';
-import { codeOnly, callBlocks } from './code-only.js';
+import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
+import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
+import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
+import { ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
+import { codeOnly } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { MARK_FOR_FG, markForFg, markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
@@ -619,9 +621,8 @@ test('WP-2 (synthetic): markVariant is deterministic, in range, and actually var
 
 /** ⚠️ THE LOCAL COPY OF `codeOnly` IS GONE FROM THIS FILE (2026-07-26). It carried a note saying
  *  "new consumers must IMPORT the shared module, not copy this", kept local "only to leave the WP-4
- *  test file's diff alone" — and this package is a new consumer (the `main.js` wiring guard below
- *  uses `callBlocks`, which is built on the same stripper). Keeping one copy for the old scans and
- *  importing the shared one for the new is the exact shape CLAUDE.md trap 1 warns about: two
+ *  test file's diff alone" — and a later package became a new consumer. Keeping one copy for the old
+ *  scans and importing the shared one for the new is the exact shape CLAUDE.md trap 1 warns about: two
  *  strippers, one of which can silently rot. Both now come from `client/test/code-only.js`, whose
  *  behaviour is pinned in `surface-boundary.test.js` AND by the two controls immediately below,
  *  which are unchanged and now exercise the shared function.
@@ -696,7 +697,7 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
-  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-minimap',
+  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   // hud.js writes these unconditionally on a roster/status dispatch (see relations-view.test.js).
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
@@ -763,11 +764,18 @@ const HOLD = slotFocus('hold');
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // PROBE FIRST, on a THROWAWAY document + window: what mask does a STOCKPILE sweep paint with when
-// NOBODY injects a getter? `initRoomZoom` only overrides `_getStockFilter` when handed a function,
-// so the un-injected default is unreachable once the real harness below mounts — and the exact
-// mutation that hole hides (default → 0, i.e. ACCEPT-NOTHING, a zone that silently refuses every
-// item and looks precisely like one nothing has been hauled to yet) survived a fully green suite on
-// the Overview until WP-5's review found it. The seam moved here with the verb; so did the probe.
+// the player never touches a chip? WP-6 removed the injected getter — the palette owns `_stockFilter`
+// and the chips are its only writer — so this is now the FRESH-MOUNT default rather than the
+// un-injected one, and it is the leg that pins `let _stockFilter = defaultStockFilter()`. The
+// mutation it hides is unchanged: default → 0, i.e. ACCEPT-NOTHING, a zone that silently refuses
+// every item and looks precisely like one nothing has been hauled to yet. That exact hole survived a
+// fully green suite on the Overview until WP-5's review found it.
+//
+// ⚠️ IT IS HALF OF A PAIR AND MUST NEVER BE READ ALONE (CLAUDE.md's "starts-in-the-asserted-state"
+// trap). Deleting this whole package — chips, row, handler — leaves a palette that still paints
+// ACCEPT-ALL, so this test passes just as well against no WP-6 at all. The leg that catches THAT is
+// `the ACCEPTS chips CHANGE the mask the next sweep paints with`, below: it drives a chip and watches
+// the emitted `Cmd.filter` move off the default.
 //
 // IT MUST BE ITS OWN DOCUMENT **AND** ITS OWN WINDOW. `initRoomZoom` binds mousedown/mousemove/click
 // on the canvas, `mouseup` + capture-phase `keydown` on the window, and a delegated click on the
@@ -781,7 +789,7 @@ const probeWinListeners = {};
 globalThis.document = probeDoc;
 globalThis.window = makeRzWindow(probeWinListeners);
 const probeSent = [];
-const probeApi = RoomZoom.initRoomZoom({ send: (o) => probeSent.push(o) });   // NO getStockFilter
+const probeApi = RoomZoom.initRoomZoom({ send: (o) => probeSent.push(o) });   // chips never touched
 Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 Hud.renderFrame(wreck);
@@ -808,16 +816,15 @@ const PROBE_DEFAULT = probeSent.filter((o) => o.cmd !== 'cursor');
 globalThis.document = rzDoc;
 globalThis.window = makeRzWindow(rzWinListeners);
 const rzSent = [];
-let rzMask = ACCEPT_ALL;     // the injected accept-mask, read once per committed sweep
-// ONE INDIRECTION, and it is load-bearing rather than tidy: `_getStockFilter` is a GETTER, so
-// "read once per sweep" and "read once per tile" are indistinguishable while the getter returns a
-// constant. Routing through a swappable function lets one test install a getter whose value CHANGES
-// on every call, which is the only way to make the per-tile mutation bite.
-let rzMaskGet = () => rzMask;
-const rzApi = RoomZoom.initRoomZoom({
-  send: (o) => rzSent.push(o),
-  getStockFilter: () => rzMaskGet(),
-});
+// ⚠️ NO `getStockFilter` INJECTION ANY MORE (WP-6), and the note that stood here is quoted and
+// negated: *"ONE INDIRECTION, and it is load-bearing rather than tidy … Routing through a swappable
+// function lets one test install a getter whose value CHANGES on every call, which is the only way to
+// make the per-tile mutation bite."* True, and it bought a mask NO PLAYER COULD SET: main.js wired
+// that getter to `Hud.getStockFilter()`, whose only writer anywhere in the client is the `onclick` on
+// the DEPRECATED console shell's chips. The palette owns the mask now and the chips on it are the
+// only writer, so every test below drives the mask the way a player does — by clicking a chip — and
+// what replaced the changing-getter trick is written out at that test.
+const rzApi = RoomZoom.initRoomZoom({ send: (o) => rzSent.push(o) });
 Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 // The SAME capture the pure assertions above run on — so the driven half sees the real wreck
@@ -881,9 +888,15 @@ afterEach(() => {
   rzMouseUp();
   rzApi.exit();
   rzApi.enter('hold');
+  // The accept-mask is module state with NO setter — the chips are its only writer, which is the
+  // whole point of the package — so the reset drives them, arming STOCKPILE first because the row is
+  // hidden (and therefore unclickable) otherwise. `rzSetMask` reads the row back rather than
+  // mirroring what it thinks it toggled, so a broken toggle shows up here as a hang-free failure in
+  // the NEXT test rather than as a silently wrong starting mask.
+  rzArm('stockpile');
+  rzSetMask(ACCEPT_ALL);
+  rzArm('stockpile');
   rzSent.length = 0;
-  rzMask = ACCEPT_ALL;
-  rzMaskGet = () => rzMask;
 });
 
 /** Arm a tool the way a player does — a click on a palette button carrying `data-rztool`, dispatched
@@ -899,6 +912,49 @@ function rzArm(tool) {
     rzToolBtns.set(tool, b);
   }
   rzFire(b, 'click', {});
+}
+
+// ── WP-6: driving the ACCEPTS chips ────────────────────────────────────────────────────────────
+// `dom-lite` parses no markup, so `_el.accepts`'s real chips (written as one `innerHTML` string) are
+// not clickable nodes here — exactly as `_el.toolBtns` is empty and `rzArm` builds its own
+// `data-rztool` node. The chips are resolved by the SAME delegated `closest('[data-rzaccept]')`
+// handler the real ones go through, so what is driven is the shipped resolution path. That the row
+// really EMITS those nodes is asserted separately, off the innerHTML string the builder wrote.
+
+/** Click one ItemKind chip the way a player does, through the surface root's delegated handler. */
+const rzAccChips = new Map();
+function rzAccept(kind) {
+  let b = rzAccChips.get(kind);
+  if (!b) {
+    b = new RzEl(rzDoc, 'button');
+    b.dataset.rzaccept = String(kind);
+    b.setAttribute('data-rzaccept', String(kind));
+    rzRoot.appendChild(b);
+    rzAccChips.set(kind, b);
+  }
+  rzFire(b, 'click', {});
+}
+
+/** The mask the ACCEPTS row is currently SHOWING, read back out of the markup it emitted.
+ *  OBSERVATION, NOT A MIRROR: the test never tracks what it believes it toggled, so a toggle that
+ *  flips the wrong bit cannot be hidden by a bookkeeping variable that flips the same wrong bit. */
+function rzShownMask() {
+  const html = rzDoc.getElementById('rz-accepts').innerHTML;
+  let m = 0;
+  for (const mt of html.matchAll(/data-rzaccept="(\d+)"[^>]*aria-pressed="(true|false)"/g)) {
+    if (mt[2] === 'true') m |= 1 << Number(mt[1]);
+  }
+  return m;
+}
+
+/** Drive the chips until the row shows exactly `target`, and return what it then shows. STOCKPILE
+ *  must be armed (the row is hidden otherwise) — which is how a player reaches them too. */
+function rzSetMask(target) {
+  for (const { kind } of STOCK_KINDS) {
+    const want = ((target | 0) & (1 << kind)) !== 0;
+    if (want !== ((rzShownMask() & (1 << kind)) !== 0)) rzAccept(kind);
+  }
+  return rzShownMask();
 }
 
 /** Press at `from`, drag to `to`, release. Returns everything `send` received, oldest first. */
@@ -1030,8 +1086,11 @@ test('WP-4: a STRIP sweep does the same for the deconstruct verb', () => {
 // `Cmd.filter` half dropped from `orderPayloads`; the pair emitted in the WRONG ORDER; `Cmd.build`
 // in the order branch; a mask read per-tile instead of once per sweep.
 test('a STOCKPILE sweep zones the FILLED rectangle, and emits BOTH commands per tile', () => {
-  rzMask = 1 << 3;                                    // FOOD only — NOT the accept-all default
   rzArm('stockpile');
+  const FOOD = 1 << 3;
+  assert.equal(rzSetMask(FOOD), FOOD,               // FOOD only — NOT the accept-all default
+    'the chips did not settle on FOOD-only; every mask assertion below would then be checking the ' +
+    'wrong number against itself');
   const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 }));
   assert.equal(sent.length, 18, 'a 3×3 stockpile sweep is NINE tiles × TWO commands. Anything else ' +
     'is a dropped filter, a perimeter sweep, or a single-tile click.');
@@ -1056,7 +1115,7 @@ test('a STOCKPILE sweep zones the FILLED rectangle, and emits BOTH commands per 
       'a zone and the filter beside it name different tiles');
   }
   // (a) PARITY BY IMPORT — the console's lowering is the contract, and it is asked, not restated.
-  assert.deepEqual(sent, zones.flatMap((o) => paletteOrders('stockpile', o.x, o.y, rzMask)),
+  assert.deepEqual(sent, zones.flatMap((o) => paletteOrders('stockpile', o.x, o.y, FOOD)),
     'the Room Zoom emitted a different payload than paletteOrders() does for the same verb, tile '
     + 'and mask. Three independent lowering paths exist for these verbs; they must not drift.');
   // (b) THE ABSOLUTE WIRE SHAPE — a change to Cmd.stockpile/Cmd.filter moves BOTH paths together, so
@@ -1072,37 +1131,43 @@ test('a STOCKPILE sweep zones the FILLED rectangle, and emits BOTH commands per 
   rzArm('stockpile');
 });
 
-// MUTATION: move the `const mask = _getStockFilter();` read from above the loop INTO it (i.e.
-// `orderPayloads(pc.verb, t.x, t.y, _getStockFilter())`) ⇒ RED.
+// ⚠️ THE MUTATION THIS TEST USED TO NAME IS GONE, AND SO IS THE HAZARD IT NAMED. Its predecessor
+// installed a getter whose value CHANGED on every call, because a per-tile read and a per-sweep read
+// of a CONSTANT getter are indistinguishable. WP-6 removed the getter: the mask is module state whose
+// only writer is a DOM click handler, and `onCanvasUp`'s commit loop is synchronous, so no value can
+// change between tile 1 and tile 9 and a per-tile read could not be observed to differ. That is
+// stated in `roomzoom-view.js` beside the read, NOT tested, because there is no longer a mechanism by
+// which it could fail. Pretending otherwise would be a test whose named mutation cannot bite.
 //
-// ⚠️ THIS TEST EXISTS BECAUSE THE OBVIOUS VERSION CANNOT BITE. Asserting "all nine filters carry one
-// mask" against a getter that returns a CONSTANT is satisfied by reading it once or nine times —
-// they are indistinguishable. So this installs a getter whose value changes on every call. A sweep
-// that reads once still paints one mask across the rectangle; a sweep that reads per tile paints
-// nine different ones, which on a real client is a zone silently split into nine filters the moment
-// anything (a WP-6 chip, a wire rebroadcast) moves the mask under a drag.
-test('one sweep reads the mask ONCE — nine tiles cannot end up with nine filters', () => {
-  let calls = 0;
-  rzMaskGet = () => [1 << 0, 1 << 1, 1 << 2, 1 << 3][calls++ % 4];
+// WHAT REPLACES IT IS A DIFFERENT AND STILL-REACHABLE PROPERTY: the mask is read at COMMIT, not at
+// PRESS. A player who starts a drag, changes their mind about FOOD and releases gets the rectangle
+// the chips are showing when they let go. MUTATION (applied, RED): stash the mask on `_drag` in
+// `onCanvasDown` and read `drag.mask` in `onCanvasUp` — the plausible refactor — and all nine tiles
+// come out wearing the pre-toggle filter.
+test('the mask is read at COMMIT, not at press — a chip flipped mid-drag lands on the whole sweep', () => {
   rzArm('stockpile');
-  const filters = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 })).filter((o) => o.cmd === 'filter');
+  const FOOD = 1 << 3;
+  assert.equal(rzSetMask(FOOD), FOOD);
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'mousedown', { button: 0, ...atTile(24, 11) });
+  rzFire(rzCanvas, 'mousemove', { button: 0, ...atTile(26, 13) });
+  // …mid-drag, the player also wants PARTS in this zone.
+  rzAccept(5);
+  const WANT = FOOD | (1 << 5);
+  assert.equal(rzShownMask(), WANT, 'the chip click did not reach the row — the rest is vacuous');
+  rzMouseUp();
+
+  const filters = rzOrders(rzSent).filter((o) => o.cmd === 'filter');
   assert.equal(filters.length, 9, 'the sweep did not commit nine filters — this test would be vacuous');
   assert.equal(new Set(filters.map((f) => f.mask)).size, 1,
-    `one sweep painted ${new Set(filters.map((f) => f.mask)).size} different masks. The accept-mask ` +
-    'getter is being read PER TILE instead of once per committed sweep, so one dragged rectangle can ' +
-    'come out wearing several different filters.');
-  assert.ok(calls >= 1, 'the getter was never called at all — the mask is not being read');
-  assert.equal(calls, 1, `the getter was called ${calls} times for one sweep`);
+    'one dragged rectangle came out wearing several different filters');
+  assert.equal(filters[0].mask, WANT,
+    `the sweep painted ${filters[0].mask}, not ${WANT}. The accept-mask is being captured when the ` +
+    'drag STARTS rather than when it is committed, so the rectangle wears a filter the chips stopped ' +
+    'showing before the player released.');
+  assert.notEqual(WANT, FOOD);            // non-vacuity: the two masks really differ
+  assert.notEqual(WANT, ACCEPT_ALL);      // …and neither is the default
   rzArm('stockpile');
-
-  // …and a NON-order sweep must not read it at all. A WALL has no business consulting a stockpile
-  // accept-filter, and once WP-6 points this getter at live chips an unconditional read is a
-  // needless coupling between the build gesture and the zoning UI.
-  calls = 0;
-  rzArm('wall');
-  rzSweep({ x: 24, y: 11 }, { x: 26, y: 13 });
-  assert.equal(calls, 0, `a WALL sweep read the stockpile accept-mask ${calls} time(s)`);
-  rzArm('wall');
 });
 
 // MUTATION: `let _getStockFilter = () => 0;` (ACCEPT-NOTHING) ⇒ RED here and NOWHERE ELSE — that is
@@ -1124,20 +1189,50 @@ test('an UN-INJECTED palette zones ACCEPT-ALL — never silence, never accept-no
   assert.deepEqual([PROBE_DEFAULT[0].x, PROBE_DEFAULT[0].y], [24, 11]);
 });
 
-// A garbage mask is NOT the same hole as an un-injected one, and both are reachable: the probe covers
-// "nobody wired a getter", this covers "the wired getter returned nonsense". Silence is the failure
-// that matters — a zone repainted as accept-all that sends no filter keeps its old restriction.
-test('a garbage mask still asserts ACCEPT-ALL — the repaint re-asserts the whole truth', () => {
-  for (const junk of [undefined, null, NaN, 'nonsense']) {
-    rzMask = junk;
-    rzArm('stockpile');
-    const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 }));
-    assert.equal(sent.length, 2, `mask=${String(junk)} sent ${sent.length} commands, not the pair — ` +
-      'a stockpile paint that says nothing about its filter leaves the tile wearing the last one');
-    assert.equal(sent[1].cmd, 'filter');
-    assert.equal(sent[1].mask, ACCEPT_ALL, `mask=${String(junk)} painted something other than ACCEPT-ALL`);
-    rzArm('stockpile');
+// A JUNK CHIP CANNOT POISON THE MASK. The predecessor of this test fed garbage through the injected
+// getter (`undefined`, `NaN`, `'nonsense'`) to prove `orderPayloads`' `Number.isFinite` fallback. With
+// the getter gone, `_stockFilter` can only ever be what `toggleStockKind` returned, so that fallback
+// is now UNREACHABLE FROM THE UI — kept as defence-in-depth (the wire contract still says a stockpile
+// paint must assert a filter and never fall silent), and honestly no longer driven from here.
+//
+// The reachable hazard moved to the chip's own attribute, and it BIT THIS PACKAGE'S FIRST DRAFT.
+// `onAcceptChip` parsed with `parseInt(raw, 10)`; `parseInt('nonsense', 10)` is `NaN`, `NaN | 0` is
+// `0`, and `0` is a perfectly valid ItemKind — so a chip with a missing, blanked or corrupted
+// attribute silently toggled REGOLITH on every click, a filter change the player never asked for and
+// could not see the cause of. MUTATION: restore `parseInt` ⇒ RED on the first two rows below.
+test('a chip with a junk kind attribute changes nothing — NaN must not read as REGOLITH', () => {
+  rzArm('stockpile');
+  for (const junk of ['nonsense', '', '-1', '7', '32', '3.5']) {
+    const before = rzShownMask();
+    const b = new RzEl(rzDoc, 'button');
+    b.dataset.rzaccept = junk;
+    b.setAttribute('data-rzaccept', junk);
+    rzRoot.appendChild(b);
+    rzFire(b, 'click', {});
+    b.remove();
+    assert.equal(rzShownMask(), before,
+      `a chip carrying data-rzaccept="${junk}" moved the mask from ${before} to ${rzShownMask()}`);
   }
+  // Non-vacuity: the same machinery DOES move the mask for a real kind, so the six no-ops above are
+  // not merely a handler that never runs.
+  rzAccept(3);
+  assert.notEqual(rzShownMask(), ACCEPT_ALL, 'a REAL chip click did not move the mask either');
+  rzArm('stockpile');
+});
+
+// Silence is still the failure that matters — a zone repainted as accept-all that sends no filter
+// keeps its old restriction — so the PAIR is pinned directly, at both ends of the mask range.
+test('every zoned tile asserts a filter, accept-all and accept-nothing alike — never silence', () => {
+  rzArm('stockpile');
+  for (const target of [ACCEPT_ALL, 0, 1 << 6]) {
+    assert.equal(rzSetMask(target), target, `the chips could not be driven to ${target}`);
+    const sent = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 }));
+    assert.equal(sent.length, 2, `mask=${target} sent ${sent.length} commands, not the pair — a ` +
+      'stockpile paint that says nothing about its filter leaves the tile wearing the last one');
+    assert.equal(sent[1].cmd, 'filter');
+    assert.equal(sent[1].mask, target, `mask=${target} painted ${sent[1].mask} instead`);
+  }
+  rzArm('stockpile');
 });
 
 // The palette BAR itself, read out of the markup `buildChrome` actually wrote — the same reasoning as
@@ -1325,19 +1420,19 @@ test('WP-4: a room that SHRINKS mid-sweep clips the committed order to its new r
   }
 });
 
-// The ACCEPTS caption. It is not decoration: the ACCEPTS chips are still on the deprecated console
-// (WP-6 brings them to this palette), so the toast is the ONLY place on the standard surface that
-// says which filter the sweep just painted — and a zone that silently refuses every item looks
-// exactly like one nothing has been hauled to yet. WP-5 shipped this readback on the Overview's hint
-// line; it must not simply evaporate because the verb moved.
+// The ACCEPTS caption. Its original justification — "the chips are still on the deprecated console,
+// so the toast is the ONLY place on the standard surface that says which filter the sweep painted" —
+// is SPENT as of WP-6, and the test is kept for the better reason: the chips state INTENT and the
+// toast states what was COMMITTED, and a zone that silently refuses every item looks exactly like one
+// nothing has been hauled to yet.
 //
 // MUTATION: drop the `accepts` concatenation ⇒ RED. It is worded through the SHARED `acceptsLabel`
 // (zone-model.js), which is also what the zone key says, so the two cannot spell one mask two ways —
 // asserted by calling that function rather than by re-typing 'FOOD' here.
 test('a STOCKPILE sweep says which filter it painted, in the zone key\'s own words', () => {
   const FOOD = 1 << 3;
-  rzMask = FOOD;
   rzArm('stockpile');
+  assert.equal(rzSetMask(FOOD), FOOD);
   rzSweep({ x: 24, y: 11 }, { x: 25, y: 12 });
   const msg = rzDoc.getElementById('rz-toast').textContent;
   assert.match(msg, /STOCKPILE/, 'the toast does not name the verb');
@@ -1357,45 +1452,190 @@ test('a STOCKPILE sweep says which filter it painted, in the zone key\'s own wor
   rzArm('dig');
 });
 
-// ── the wiring main.js owns (a declared STRUCTURAL guard, and why it has to be one) ──
-
-// The driven tests above inject `getStockFilter` and prove the palette paints with WHATEVER mask it
-// is given. What they cannot reach is the one line in `main.js` that decides what it is given — and
-// on the Overview a mutation harness found exactly that hole: deleting `getStockFilter` from the
-// `initOverview` call left the whole suite green while every zone silently accepted everything, on a
-// client whose ACCEPTS chips are on another surface. The verb moved here, so the guard moved with it;
-// `overview-model.test.js` holds the mirror assertion that the Overview is handed NO mask.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// WP-6 — THE ACCEPTS CHIPS, on the palette that paints the zone
+// ═════════════════════════════════════════════════════════════════════════════════════════════
 //
-// It is STRUCTURAL and says so, exactly as `input.test.js` does for the two `installInput` blocks:
-// main.js is the composition root, it takes no injection of its own, and importing it would boot a
-// WebSocket. Trap 1 is handled — comments are stripped before matching, with a negative control
-// below proving a commented-out wiring does NOT satisfy it.
-test('main.js wires the Room Zoom palette to the SHARED accept-mask, not to the default', () => {
-  const main = readFileSync(join(HERE, '../src/main.js'), 'utf8');
-  const WIRE = /getStockFilter:\s*\(\)\s*=>\s*Hud\.getStockFilter\(\)/;
-  // `callBlocks` (client/test/code-only.js) brace-matches the argument object over CODE ONLY — a
-  // `{` in a comment or a `}` in a string derails a raw walk silently, which is CLAUDE.md trap 1.
-  const calls = callBlocks(main, 'initRoomZoom');
-  assert.equal(calls.length, 1, 'expected exactly one initRoomZoom({…}) call in main.js, found ' +
-    calls.length + ' — this guard reads the first, so a second one would go unchecked');
-  const call = calls[0];
-  assert.ok(call.includes('send:'), `the initRoomZoom block did not parse (${call.length} chars)`);
-  assert.match(call, WIRE,
-    'main.js no longer hands the Room Zoom the shared stockpile accept-mask, so every zone painted ' +
-    'from the palette falls back to ACCEPT-ALL and paints a filter the player did not choose — ' +
-    'silently, because the ACCEPTS chips are on the deprecated console. (WP-6 replaces this getter ' +
-    'with chips on this palette; it must not simply be removed.)');
-  // NEGATIVE CONTROL — the same scan over a source whose wiring is COMMENTED OUT must FAIL.
-  // …every occurrence: main.js wires the SAME getter into the two `installInput` blocks as well, and
-  // blinding only the first would leave the initRoomZoom one standing and the control passing for
-  // the wrong reason.
-  const blinded = main.replace(/^(\s*)(getStockFilter: \(\) => Hud\.getStockFilter\(\),)/gm, '$1// $2');
-  assert.notEqual(blinded, main, 'the negative control did not comment anything out — it proves nothing');
-  const blindedCalls = callBlocks(blinded, 'initRoomZoom');
-  assert.equal(blindedCalls.length, 1, 'the blinded source lost its initRoomZoom call entirely');
-  assert.ok(!WIRE.test(blindedCalls[0]),
-    'the scan passes on a source where the wiring is COMMENTED OUT, so it proves nothing at all — ' +
-    'this is CLAUDE.md trap #1, which shipped in four packages on one day');
+// ⚠️ A SOURCE-SCAN GUARD WAS DELETED HERE, DELIBERATELY, and the reason is worth reading before
+// anyone puts it back. It asserted that `main.js` hands `initRoomZoom` a
+// `getStockFilter: () => Hud.getStockFilter()`, with the message *"main.js no longer hands the Room
+// Zoom the shared stockpile accept-mask, so every zone painted from the palette falls back to
+// ACCEPT-ALL … (WP-6 replaces this getter with chips on this palette; it must not simply be
+// removed.)"* WP-6 replaced it, as instructed. The hole it guarded — the composition root forgetting
+// to wire the mask — no longer exists, because there is no wiring: the palette owns the mask and the
+// chips beside it are its only writer. A structural scan for a line that must not exist would be a
+// guard over air. What replaces it is strictly stronger and DRIVEN: click a chip, watch the emitted
+// `Cmd.filter` move.
+//
+// (The mirror assertion in `overview-model.test.js` — "the Overview is handed NO mask" — survives,
+// with its non-vacuity leg re-pointed at the two `installInput` blocks, which still carry the getter
+// for the console's own canvas path.)
+
+// THE TEST THIS WHOLE PACKAGE EXISTS FOR. Before it, the mask was per-tile in the sim, correct on the
+// wire, and UNREACHABLE: the only writer of a stockpile accept-mask anywhere in the client was the
+// `onclick` at `hud.js:312`, on the deprecated console shell. Every zone a player painted on the
+// standard surface accepted everything, for ever.
+//
+// It is also the leg that makes the PROBE above mean something (CLAUDE.md's
+// "starts-in-the-asserted-state" trap): "an untouched palette paints ACCEPT-ALL" is equally true of a
+// client with no chips at all, so the pair is "…and a touched one does not".
+//
+// MUTATION: `onAcceptChip` returning early / never bound in `onHudClick` ⇒ RED here and green
+// everywhere else in this file.
+test('WP-6: the ACCEPTS chips CHANGE the mask the next sweep paints with', () => {
+  rzArm('stockpile');
+  // Baseline through the SAME path, so the contrast is between two driven sweeps and not between a
+  // driven sweep and a remembered constant.
+  const before = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 })).filter((o) => o.cmd === 'filter');
+  assert.deepEqual(before.map((f) => f.mask), [ACCEPT_ALL], 'the untouched palette is not accept-all');
+
+  rzAccept(3);                                       // the player does not want FOOD in this zone
+  const want = ACCEPT_ALL & ~(1 << 3);
+  assert.equal(rzShownMask(), want, 'the chip row does not show the kind as excluded');
+  const after = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 })).filter((o) => o.cmd === 'filter');
+  assert.deepEqual(after.map((f) => f.mask), [want],
+    `the sweep still painted ${after.map((f) => f.mask)} after a chip was toggled. The ACCEPTS chips ` +
+    'do not reach the brush, which is the exact defect this package exists to fix: a filter UI that ' +
+    'is present, clickable, and inert.');
+
+  // …and toggling back restores it, so the chip is a TOGGLE and not a one-way switch.
+  rzAccept(3);
+  const back = rzOrders(rzSweep({ x: 24, y: 11 }, { x: 24, y: 11 })).filter((o) => o.cmd === 'filter');
+  assert.deepEqual(back.map((f) => f.mask), [ACCEPT_ALL]);
+  rzArm('stockpile');
+});
+
+// The chips the PLAYER can actually click, read out of the markup `paintAccepts` wrote — the same
+// reasoning as the palette-button test above. Every driven test in this section clicks a
+// `data-rzaccept` node it constructs itself, so all of them would pass against a row that renders
+// nothing at all. MUTATION: `acceptsRowHtml` returning '' ⇒ RED here and NOWHERE ELSE.
+test('WP-6: the palette PAINTS one real, labelled, keyboard-reachable chip per ItemKind', () => {
+  rzArm('stockpile');
+  const html = rzDoc.getElementById('rz-accepts').innerHTML;
+  assert.ok(html.length > 0, 'the ACCEPTS row painted nothing');
+  for (const { kind, label } of STOCK_KINDS) {
+    assert.ok(html.includes('data-rzaccept="' + kind + '"'), `no chip for ItemKind ${kind} (${label})`);
+    assert.ok(html.includes('>' + label + '<'), `the chip for kind ${kind} is missing its label '${label}'`);
+  }
+  // Real <button>s, so they land in the tab order and Enter/Space activate them natively — the same
+  // decision (and the same stated reason) as the console's own chips at hud.js:300-304. Bettered
+  // here with an explicit type and a state a screen reader can read: `.on` is a CSS class, which is
+  // invisible to assistive tech. MUTATION: drop `type="button"` or `aria-pressed` ⇒ RED.
+  assert.equal((html.match(/<button type="button"/g) || []).length, STOCK_KINDS.length,
+    'every chip must be an explicit type="button" — an implicit one SUBMITS inside a form');
+  assert.equal((html.match(/aria-pressed="true"/g) || []).length, STOCK_KINDS.length,
+    'an untouched palette accepts every kind, so every chip must read as pressed');
+  rzAccept(3);
+  const off = rzDoc.getElementById('rz-accepts').innerHTML;
+  assert.equal((off.match(/aria-pressed="false"/g) || []).length, 1,
+    'toggling one kind off must flip exactly one chip\'s aria-pressed AND its class');
+  assert.equal((off.match(/class="rz-acc-chip"/g) || []).length, 1,
+    'exactly one chip must lose the `on` class');
+  rzArm('stockpile');
+});
+
+// PLAN §5 GAP 2 — "chips affect only future paints, with nothing saying so". The wording is the fix;
+// the COUNT is the honest part, because the sentence is a rule and the count is the player's actual
+// situation. MUTATION: drop the `mismatch` argument from `acceptsRowHtml` (so it always renders the
+// bare rule) ⇒ RED on the count legs; drop the whole `.rz-acc-note` ⇒ RED on the first.
+test('WP-6: the row SAYS the chips apply to tiles painted next, and counts the ones that differ', async () => {
+  const accepts = () => rzDoc.getElementById('rz-accepts').innerHTML;
+  const settle = () => new Promise((r) => setTimeout(r, 40));   // the coalesced repaint
+  rzArm('stockpile');
+  assert.ok(accepts().includes(APPLIES_NEXT_LABEL),
+    'the ACCEPTS row does not say that the chips apply to tiles painted NEXT — which is the whole ' +
+    'of plan §5 gap 2, and was previously said only in a title= attribute nobody hovers');
+
+  // ABSENT when nothing differs. Without this leg the count assertion below is satisfiable by always
+  // rendering a count, including a wrong one.
+  Hud.renderZones({ type: 'zones', cells: [] });
+  await settle();
+  assert.ok(!/KEEP A DIFFERENT FILTER/.test(accepts()),
+    'the row claims already-painted tiles disagree when the room has no zones at all');
+
+  // …and PRESENT, with the right number, when they do. Three zoned tiles in the hold: two carrying
+  // FOOD-only, one carrying accept-all. With the chips at accept-all, exactly two differ.
+  Hud.renderZones({ type: 'zones', cells: [
+    [24, 11, DECK1, 1 << 3, 0], [25, 11, DECK1, 1 << 3, 0], [26, 11, DECK1, ACCEPT_ALL, 0],
+    [4, 6, DECK1, 1 << 3, 0],   // OUTSIDE the focused room, same deck — must not be counted
+  ] });
+  await settle();
+  const html = accepts();
+  assert.ok(html.includes(mismatchLabel(2)),
+    `the row does not carry ${JSON.stringify(mismatchLabel(2))}. It said ${JSON.stringify(html)}`);
+  assert.match(mismatchLabel(2), /^2 ZONED TILES IN THIS ROOM/, 'the wording drifted');
+  // The count is ROOM-scoped and the words say so: the fourth row above is a zoned tile on the same
+  // deck outside the focused rect, and counting it would make the sentence a lie.
+  assert.ok(!html.includes(mismatchLabel(3)), 'a zoned tile outside the focused room was counted');
+  // …and it tracks the chips, not just the map: excluding FOOD makes the two FOOD tiles agree and
+  // the accept-all one the odd tile out. It also moves WITHOUT a repaint, because a chip click is
+  // the one thing on this surface that changes the answer with no wire traffic behind it.
+  // MUTATION: recompute the count against a constant mask ⇒ RED.
+  rzAccept(3);
+  assert.ok(accepts().includes(mismatchLabel(3)),
+    'the count did not move when the chips did — it is being computed against the wrong mask');
+  Hud.renderZones({ type: 'zones', cells: [] });
+  await settle();
+  rzArm('stockpile');
+});
+
+// PLAN §5 GAPS 1 + 3 — the per-tile indicators. `zone-overlay.test.js` pins the BUILDER to the
+// character; nothing anywhere pinned that its output reaches this surface's SVG, which is precisely
+// the hole WP-3's own header records (a builder returning '' left 546/546 green). So this reads the
+// layer the running controller actually mounted.
+//
+// MUTATION: drop `body += zoneLayerSvg(_zoneTiles, _focus);` from paintLayers ⇒ RED.
+test('WP-6: a restricted tile and a backed-off tile are VISIBLY marked in the mounted layer', async () => {
+  Hud.renderZones({ type: 'zones', cells: [
+    [24, 11, DECK1, ACCEPT_ALL, 0],                       // plain zone
+    [25, 11, DECK1, 1 << 3, 0],                           // RESTRICTED
+    [26, 11, DECK1, ACCEPT_ALL, ZONE_FLAG_BACKED_OFF],    // BACKED OFF
+  ] });
+  await new Promise((r) => setTimeout(r, 40));            // the coalesced repaint
+  const svg = rzLayers.innerHTML;
+  assert.match(svg, /class="rz-zones"/, 'the zone layer never reached the mounted SVG');
+  assert.equal((svg.match(/class="rz-zone-wedge"/g) || []).length, 1,
+    'exactly one tile is filtered, so exactly one corner badge must be drawn');
+  assert.equal((svg.match(/class="rz-zone-hatch"/g) || []).length, 1, 'one hatched tile');
+  // The DIM half of plan §5's "dim + hatch + a one-line reason" — WP-3 shipped the other two.
+  assert.equal((svg.match(/class="rz-zone-dim"/g) || []).length, 1,
+    'a backed-off tile must be DIMMED as well as hatched (plan §5 gap 3)');
+  // THE ONE-LINE REASON, and it must be the HONEST wording. `_tileRetryAt` is a retry stamp wiped on
+  // any tile-board rebuild (HaulJobSource.cs:453), so "UNREACHABLE" would be a claim the data cannot
+  // support. MUTATION: strengthen BACKED_OFF_LABEL to 'UNREACHABLE' ⇒ RED.
+  assert.match(svg, /NO HAULER REACHED THIS RECENTLY/,
+    'the back-off reason is missing from the mounted layer');
+  assert.ok(!/UNREACHABLE/.test(svg),
+    'the back-off bit is being labelled as proof of permanent unreachability. It is a RETRY STAMP: ' +
+    '`_tileRetryAt` is cleared wholesale on any tile-board rebuild and per-tile on proof of ' +
+    'reachability, so the strongest honest wording is "no hauler has reached this recently".');
+  // …and the key beside the floor says the same words without needing a hover.
+  assert.match(rzDoc.getElementById('rz-zonekey').innerHTML, /NO HAULER REACHED THIS RECENTLY/);
+  Hud.renderZones({ type: 'zones', cells: [] });
+  await new Promise((r) => setTimeout(r, 40));
+});
+
+// The row is the ARMED TOOL's options, exactly like the material strip — so it must not be on screen
+// while the player is building a wall. MUTATION: drop the `_armed !== 'stockpile'` branch ⇒ RED.
+test('WP-6: the ACCEPTS row belongs to STOCKPILE — hidden for every other tool, and on disarm', () => {
+  const row = rzDoc.getElementById('rz-accepts');
+  assert.equal(row.hidden, true, 'the row is showing with nothing armed');
+  rzArm('stockpile');
+  assert.equal(row.hidden, false, 'arming STOCKPILE did not reveal the ACCEPTS row');
+  rzArm('wall');                       // a different tool REPLACES the armed slot
+  assert.equal(row.hidden, true, 'the ACCEPTS row survived arming WALL');
+  assert.equal(row.innerHTML, '', 'a hidden row must also be emptied, or its buttons stay tabbable');
+  rzArm('wall');
+  rzArm('stockpile');
+  assert.equal(row.hidden, false);
+  rzArm('stockpile');                  // same button again → disarm
+  assert.equal(row.hidden, true, 'disarming did not hide the ACCEPTS row');
+  // …and the material strip is the mutually-exclusive sibling this row was placed beside, which is
+  // what makes reveal-on-arm cost no net height.
+  rzArm('stockpile');
+  assert.equal(rzDoc.getElementById('rz-matstrip').hidden, true,
+    'the material strip is showing for STOCKPILE — the two rows would then stack');
+  rzArm('stockpile');
 });
 
 // MUTATION: leave the demolish toast at its pre-WP-4 wording ⇒ RED. A built wall used to be a dead

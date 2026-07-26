@@ -1233,6 +1233,30 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-mat-name{font-size:8px;letter-spacing:.03em;color:var(--ink-mute,#8c8377);white-space:nowrap}
 .rz-mat-chip.on .rz-mat-name{color:#f2b563}
 
+/* ACCEPTS chip row (WP-6) — shown when STOCKPILE is armed. A SIBLING of .rz-matstrip in the same
+   wrapper and by the same rule: the options belonging to the armed tool. The two are mutually
+   exclusive (materials are wall/floor, this is stockpile), so it costs no net height on a palette
+   that already clips below ~1140px. Column, because the row carries a caption the chips do not: the
+   chips apply to tiles painted NEXT, and that has to be readable without hovering anything. */
+.rz-accepts{display:flex;flex-direction:column;gap:5px;align-items:stretch;padding:7px 10px;
+  border-radius:11px;max-width:100%}
+.rz-accepts[hidden]{display:none}
+.rz-acc-chips{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:none;max-width:100%}
+.rz-acc-chips::-webkit-scrollbar{display:none}
+.rz-acc-label{font-size:9px;letter-spacing:.14em;color:var(--ink-faint,#57503f);flex:none;
+  padding-right:2px;white-space:nowrap}
+/* Lit = accepted, dark = kept out. Same on/off vocabulary as .rz-tool and .rz-mat-chip, because a
+   filter toggle IS an on/off tool — the reason hud.js reused .tool for the console's own chips. */
+.rz-acc-chip{flex:none;padding:5px 9px;border-radius:7px;font-size:9.5px;letter-spacing:.06em;
+  cursor:pointer;background:rgba(26,22,17,.5);color:var(--ink-faint,#57503f);border:1px solid #3a332a;
+  white-space:nowrap}
+.rz-acc-chip:hover{color:#b3aa9c;border-color:#cf7a33}
+.rz-acc-chip.on{background:#3a2a12;color:#f2b563;border-color:#cf7a33}
+.rz-acc-note{font-size:8.5px;letter-spacing:.08em;color:var(--ink-faint,#57503f);white-space:normal}
+/* The count of already-painted tiles that DISAGREE gets the alarm colour the back-off hatch uses:
+   it is the one line in this row that is about the map rather than about the brush. */
+.rz-acc-diff{color:#f2b563}
+
 /* transient toast (deferrals / honest limits) */
 .rz-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:22;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
