@@ -27,6 +27,33 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-26) — **the `marks` channel: a designation no longer blinks out**
+
+Both modern surfaces now source their mark layer from a new sparse view-only **`marks`** channel
+(`hosts/web/WireFormat.Marks.cs`) read from `TileFlags.Designated` / `TileFlags.Stockpile` /
+`DeconstructSystem.Pending` / the debris terrain planes — **never from the projection**. `MARK_FOR_FG`
+is retired. **`GlyphMapper` passes 3/4/5 can no longer erase a mark**, so a designation survives a
+crew member standing on it, an item stored on it and a device occupying it. This is the channel
+`docs/HANDOVER.md` calls *the `designations` channel*; it shipped as **`marks`** because it carries
+**debris**, which is terrain and not an order. **Gate: `./ci.sh` exit 0, 1018 dotnet + 694 node, all
+five pins HELD** — the lane's entire `sim/` diff is comment-only, verified mechanically.
+
+**⚠️ THE LESSON: PASS 1 IS NOT THE FRAME.** The first draft mirrored `GlyphMapper` pass 1's
+precedence "deliberately and exactly" — but `GlyphMapper.cs:163` re-applies `Deconstruct` **after**
+pass 1, unconditionally, so pass 1 never gets the last word on a condemned device. A condemned device
+**inside a stockpile zone** therefore drew **no strip mark at all**: a fresh instance of the bug that
+cost three owner reports, introduced by the package built to remove it, and **hidden behind a header
+asserting as a design guarantee that the kinds "cannot legally coexist on one tile"** (they coexist
+after two commands). Precedence is now **dig ▸ strip ▸ stockpile ▸ debris — an order outranks a
+zone**. **Verified in a browser, not only in assertions** (`client/tools/marks-shot.mjs`, committed).
+Cost, accepted: **+61 µs/render forever** — unlike `zones` this channel is **never empty**.
+
+**Also open, found the same day from live play and NOT caused by any lane:** GrowBed `"`, Terminal
+`T` and Telescope `x` have **no client sprite**, so the Room Zoom draws a debug placeholder carrying
+the raw letter in the shipping game (`docs/HANDOVER.md` §4l). No test can see it — the client is
+honestly reporting it has no art — and the two surfaces mirror that table by hand, so the gap reopens
+with the next `DeviceKind`. Fix it with a guard, not three sprites.
+
 ## Status snapshot (2026-07-25) — **the DECK-CONFINED IDLE WANDER: the standard play ship is alive**
 
 The eight crew of `--ship grid` — the one standard play ship — are now **`AutoWander = true`**
@@ -488,9 +515,11 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  WP-6 merge (2026-07-26): 1002 dotnet + 678 node, `./ci.sh` exit 0**
+  `marks` merge (2026-07-26, `11b2ffb`): 1018 dotnet + 694 node, `./ci.sh` exit 0, all five pins
+  held.** *(Superseded, and kept because the paragraph below reasons about it:* **measured on `main`
+  after the WP-6 merge (2026-07-26): 1002 dotnet + 678 node, `./ci.sh` exit 0**
   (+6 dotnet — strip-visible touched `sim/Sim.Glyph/GlyphMapper.cs`, the first sim-side change since
-  the deck-confined wander; **all five pins held and no golden moved**). Every "560 dotnet + 188
+  the deck-confined wander; **all five pins held and no golden moved**).*) Every "560 dotnet + 188
   node" below is a 2026-07-21 historical figure, true only of that date — do not quote it as
   current. Per-branch counts measured in isolation **do not add on merge**: E0-4's five side
   branches read 918–928 apiece and the merged lane read 943 passing of 946: three tests that
@@ -516,6 +545,10 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   `docs/design/perilune-economy-modularity.md` §0.2). The two are **different values for different
   things** and have been confused repeatedly: `3f23ce5bd40283c8` is what every occupancy run prints
   at the top of its output; **never paste it into the defaults pin.** Both are now asserted by name.
+  **The `marks` channel (2026-07-26) moved NONE of the five** — worth stating because it **does touch
+  `sim/`**: its entire `sim/` diff is comment-only (a `GlyphMapper.cs` retraction note), verified
+  mechanically with `git diff main...HEAD -- sim/ | grep '^+' | grep -v '^+\s*//'` → empty. That is
+  the check to copy when a lane must edit a sim file for prose reasons.
   **Last mover: the DECK-CONFINED WANDER (2026-07-25) — ONE pin, the slice golden,
   `1f8f2225ee568de9`→`c565a68b810f588d`.** `PathService.TryRandomWalkableTileNear` no longer boxes Z
   by the radius; it pins the idle draw to `origin.Z`. The slice's crew are `AutoWander = true`, so

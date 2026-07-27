@@ -13,7 +13,15 @@ history, newest first.** The section immediately after this one is E0-4's landed
 
 ### 1. The tree, measured — not quoted
 
-- **`main` is at `b464842`, working tree clean, no worktrees open, nothing in flight.**
+- **`main` is at `11b2ffb`** — the **`marks` channel** landed 2026-07-26 (§4k), the ninth package of
+  this run and the first since WP-6. It is the *"biggest un-owned piece"* this block used to point at
+  under the name **`designations`**; it shipped as **`marks`** because it carries debris, which is
+  terrain and not an order. **Gate re-run on `main` after the merge: `./ci.sh` exit 0, node 694/694,
+  twin hash `00e0a2dadb8e5076` MATCH, all five pins held.** *(The dotnet count is **1018**, measured
+  by the reviewer on a tree `git diff` proves byte-identical to this merge; the integrator's own
+  `ci.sh` run piped the count away, so treat 1018 as verified-by-identity rather than re-read here.)*
+- *(Superseded, kept because everything below §4k still describes it:* **`main` was at `b464842`**,
+  working tree clean, no worktrees open, nothing in flight.*)*
   **Landed 2026-07-25→26, in merge order — EIGHT packages:** **WP-2** (§4b) · the
   **character-simulation design** (§4c — docs-only, **five owner decisions open**) · **WP-4** (§4d) ·
   **WP-5** (§4e, the ledger reached empty) · **the stockpile move** (§4f, owner decision, rewrote the
@@ -168,13 +176,22 @@ next.
 >
 > | what | needs the owner? | where |
 > |---|---|---|
-> | **The `designations` channel** — the biggest un-owned piece, and the one a player would notice | **no**, only a charter | §4g / §4i |
+> | ~~**The `designations` channel**~~ — ✅ **LANDED 2026-07-26 as the `marks` channel** | — | **§4k** |
+> | **Unskinned device glyphs** — GrowBed `"`, Terminal `T`, Telescope `x` have **no client sprite**, so the Room Zoom draws a debug placeholder with the raw letter in it. Found by Garvin from live play; pre-existing; no test can see it | **no** | §4l |
 > | **The palette clips below ~1140 px** — STOCKPILE/STRIP/DEMOLISH scroll off with **no affordance** (`scrollbar-width:none` + a `::-webkit-scrollbar{display:none}` rule hide it deliberately) | **no** | §4g |
 > | `shelf`/`rug` are client-local decor that STRIP can never touch — a trap on a palette where everything else is real | **yes** (design) | §4g |
 > | **WP-C** — the conversation stand-down + onboarding rewrite | **not to AUTHORISE** — that decision is taken and binding — but it rewrites the game's ONLY help screen, the first thing a new player reads, and **no test can check it** | step 6 |
 > | **WP-9** — delete the console shell | **YES, HARD GATE.** The plan's own words: *"only after a human has played `--ship grid` end to end"*. **No agent can be that human**, and the package is a SPLIT of `hud.js` (wire cache + armed-tool state machine + console chrome, fused; both modern surfaces import it) with almost no test net | step 7 |
 > | The character-sim design's **five §12 decisions** | **YES** | §4c |
 > | §4f's **hall-zoning** decision | **YES** | §4f |
+>
+> **⇒ ✅ THE PARAGRAPH BELOW IS DISCHARGED — the channel LANDED on 2026-07-26 as `marks` (§4k), and
+> it did close what it promised: passes 3, 4 and 5 can no longer erase a mark, photographed on the
+> standard surface. Read it for the reasoning, which held up, not as a thing still to do. Its ONE
+> wrong prediction is instructive and is recorded in §4k: it said the channel closes "plan §5's gap 1
+> on the Overview". It does NOT — gap 1 needs the accept MASK, which lives on `zones`, not here. What
+> the channel actually did for gap 1 is UNBLOCK it, by removing the second-producer objection §4j
+> declined it on. Nothing reads fg-16 any more.**
 >
 > **The `designations` channel is what I would charter next.** It is not urgent — the verb the owner
 > reported as broken now visibly works (§4g) — but it is the single change that closes the most
@@ -909,6 +926,119 @@ face.**
 - **Wrong if:** it puts *building* on the Overview. The amended rule is narrow and must be written
   into `overview-model.js`'s own doc comment: **"BUILDING is zoom-only; ORDERS are deck-scoped"**, on
   the grounds that a designation consumes no material and changes no geometry — it marks intent.
+
+### 4k. The `marks` channel — a designation no longer blinks out — LANDED (`11b2ffb`, 2026-07-26)
+
+**What shipped.** Both modern surfaces now source their mark layer from a new sparse view-only wire
+channel — `marks {"type":"marks","cells":[[x,y,deck,kind],..]}` — read from `TileFlags.Designated`,
+`TileFlags.Stockpile`, `DeconstructSystem.Pending` and the debris terrain planes, **never from the
+projection**. `MARK_FOR_FG`/`markForFg` are retired quoted-and-negated. **This closes §4b's limits:**
+passes 3, 4 and 5 can no longer erase a mark, so a designation survives a crew member standing on it,
+an item stored on it, and a device occupying it. New: `hosts/web/WireFormat.Marks.cs`,
+`tests/Perilune.Tests/MarksChannelTests.cs`, `client/test/marks-model.test.js`,
+`client/tools/capture-marks.mjs`, `client/tools/marks-shot.mjs`.
+
+**Gate: `./ci.sh` exit 0, 1018 dotnet + 694 node, all five pins HELD** and re-measured after the
+precedence fix rather than assumed. **The lane touches `sim/` and its entire `sim/` diff is
+comment-only** — verified mechanically (`git diff main...HEAD -- sim/ | grep '^+' | grep -v '^+\s*//'`
+→ empty), which is why a `GlyphMapper` edit moved no pin.
+
+**Named `marks`, not `designations`.** Every earlier reference in this file (§4g, §4j, the START HERE
+block) calls it *the `designations` channel*. It carries **debris**, which is terrain and not an
+order, so that name would have been a lie for a quarter of the payload — and splitting debris off
+would have left the mark layer with two sources forever, which is the defect being removed. The
+rename is recorded in `WireFormat.Marks.cs`'s header where a grep for the old word lands on it.
+
+**⚠️ THE LESSON — PASS 1 IS NOT THE FRAME, and it nearly re-shipped the invisible-strip bug.** The
+first draft ranked stockpile above strip, mirroring `GlyphMapper` pass 1 *"deliberately and exactly"*.
+But `GlyphMapper.cs:163` re-applies `GlyphColor.Deconstruct` **after** pass 1, unconditionally, so
+pass 1's ranking **never gets the last word on a condemned device**. Result: a condemned device
+**inside a stockpile zone** drew no strip mark at all — the channel said `stockpile`, `markLayerSvg`
+skips stockpile because `zones` owns that tile, and no ✕ was drawn anywhere. On `main` it had worked,
+via the fg-26 byte. **A fresh instance of the exact bug that cost three owner reports, introduced by
+the package built to remove it.** Precedence is now **dig ▸ strip ▸ stockpile ▸ debris — an order
+outranks a zone.**
+
+**Why it survived to review is the part to inherit.** The header asserted, as a *design guarantee*,
+that the kinds *"cannot legally coexist on one tile"* and that the channel *"cannot come to disagree
+with the frame about what a tile IS"*. Both are false — a device sits on a walkable tile, so two
+commands produce the collision. **The false guarantee is what stopped anyone looking.** Same species
+as §4a's four prose-truth defects: correct-looking code with a wrong explanation of itself, where the
+explanation is the thing that hides the bug. Retracted in place; `GlyphMapper.cs:80` now carries a
+note that its own identical clause is false for stockpile and that **pass 4, not that block, decides
+a condemned device** — with an explicit *"do not copy this again"*.
+
+**⚠️ IT WAS PHOTOGRAPHED, and that is why the fix is trusted.** `client/tools/marks-shot.mjs` (**in
+the repo**, not a scratchpad — the `wp8-capture.mjs` pointer has already rotted once) drives a live
+`--ship grid` host over CDP, dismisses onboarding with a real click and enters a room with a real
+`pointerdown`/`pointerup`. Verified by eye at both altitudes: a 3×3 zone reads as slate fill with
+**blue** dashed borders, the condemned tile in it swaps to an **amber** dashed ring plus a heavy ✕
+**drawn over its locker sprite** (live DOM `furnitureIdx 373 < marksIdx 420`), and crew stand on
+dig-marked tiles with the rubble and rings fully drawn — the pass-5 case that no fg byte could ever
+survive. Container measured live: `.pl-marks` 729.8 × 238.4 px, `visibility: visible`, `opacity: 1`.
+**Two runs were needed to answer honestly** — the first picked a tile the Room Zoom does not skin, so
+there was no sprite for the ✕ to be buried by and the picture answered the question vacuously.
+
+**Two mutation SURVIVORS that are NOT holes**, both settled by argument against the reviewer's
+finding: `markVariant(tx,ty) = (tx*7 + ty*13) % 3` and **7 ≡ 13 ≡ 1 (mod 3)**, so it reduces to
+`(tx+ty) % 3` — commutative, so an argument swap is **provably unkillable**, an equivalent mutant and
+not untested code. (The killable half is pinned byte-for-byte, and both tests assert the
+commutativity, so retuning those coefficients breaks loudly — measured: 7→8 goes RED.) Likewise a
+wrong-plane debris read: no shipped verb can produce a standing wall over a debris floor
+(`AsciiWorld.cs:40-41` writes `Debris` to both planes; `DigJobSource.cs:138-139` and
+`DeconstructSystem.cs:487-488` clear to `Floor`; `BuildSystem.cs:106` refuses a wall build over a
+non-zero wall). Both pinned synthetically instead.
+
+**⚠️ Cost, measured and accepted — this channel is NOT `zones`.** `zones` is free because nobody zones
+a stockpile; **`marks` is never empty** (the Perilune ship ships 48 debris marks at boot, and an early
+test asserting the channel was inert on the default ship was **wrong and was retracted mid-package**).
+`GameSession.Send` dedupes by string equality, so the payload is rebuilt and compared every render:
+**+61 µs per render, forever** (345.2 vs 284.0 µs over 4 000 renders) — ~0.06 % of one core at 10 Hz.
+Revisit if a future ship has a much larger wreck; the census test is where the number lives.
+**The payload COUNT is a snapshot, not a constant** — the fog gate keeps revealing, so 35/446 B and
+50/626 B were both measured minutes apart. **60 (fully revealed) is the only stable number.**
+
+**Three findings recorded, none blocking** (the reviewer's G1/G3/G5). **G1:** `MarksChannelTests.cs`
+says *"drop `MarkIc` from **any of the four** `ToString` calls ⇒ this fails"* — it fails for X, Y and
+Deck, but `Kind` is non-negative so that one survives. **A named mutation that cannot bite, inside the
+test written to fix a named mutation that could not bite.** One word too broad; zero practical impact.
+**G3:** the dig × strip unreachability argument cites `CanDesignate`, which is the **Wall** path only —
+`DeconstructSystem.cs:335-348`'s Device path checks nothing about the tile. The conclusion holds for a
+different reason (`Commands.cs:330-331` `PlaceDeviceCommand` requires `Walkable` **and** `wall == Void`),
+measured at **0 of 50** rubble tiles accepting a strip order. **Cite `PlaceDeviceCommand`, not only
+`CanDesignate`.** **G5:** a dead local + `GC.KeepAlive` at the end of `MarksChannelTests.cs`.
+
+**⚠️ A FOLLOW-UP LEFT OPEN DELIBERATELY, and it is not this package's bug.**
+`ZonesChannelTests.Zones_Serialization_Is_InvariantCulture:66-80` is an **unbiteable test** — every
+field is a non-negative `int`/`ulong`, `int.ToString()` uses "G" which never groups, and .NET renders
+Latin digits for **every** built-in culture, so **no culture can perturb it**. The only reachable knob
+is `NegativeSign`. It is confirmed to be **the ancestor the marks version was copied from**, and it was
+left untouched to keep this package's scope tight. Whoever fixes it should check for further copies.
+
+**Plan §5 gap 1 is UNBLOCKED, not closed.** A restriction indicator on the Overview needs the accept
+**mask**, which rides `zones`, not this channel. What changed is that §4j's objection is gone: nothing
+reads the fg-16 byte any more, so having the Overview read `zones` no longer creates a second producer
+for the same tint. That is now a small, clean package.
+
+### 4l. Unskinned device glyphs — OPEN, found from live play (2026-07-26)
+
+**Garvin, from a screenshot of the running game: dashed boxes containing raw ASCII letters where
+furniture should be.** They are `roomzoom-view.js`'s VS-Z-25 *unknown glyph* chip — a development
+stopgap — **shipping to the player**. The sim gives each device a letter (`sim/Sim.Glyph/Glyphs.cs:35`
+`ForDevice`) and the client maps letters to art (`client/src/render/glyphs.js:13` `SPRITE_FOR_GLYPH`).
+**Three kinds have no entry: GrowBed `"`, Terminal `T`, Telescope `x`.** Everything else maps.
+
+**Not obscure:** hydroponics is the food loop and the Terminal is the door into the whole MOSS CRT.
+**Pre-existing** — nothing in the `marks` lane touches it; it has looked like this since the SVG
+surfaces were built.
+
+**⚠️ Why no test caught it, and why the fix should be a guard and not three sprites.** The client is
+emitting *correct* text — it is honestly reporting that it has no art. Nothing is broken, so nothing
+goes red; it reads as wrong only when a person looks at the screen. **And the two surfaces mirror that
+sprite table BY HAND**, so the same gap reopens the next time a `DeviceKind` is added. Charter it as:
+enumerate `ForDevice` against `SPRITE_FOR_GLYPH` **mechanically** (do not trust the list above), add
+the missing art, and add the assertion that every `DeviceKind` resolves to a real sprite. **Third
+instance in one day of the "no test can see this" shape** — see §4g and §4k.
 
 ### 4j. WP-6 — the ACCEPTS chips, and the accept-mask made reachable at last (merged 2026-07-26)
 
