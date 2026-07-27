@@ -74,8 +74,9 @@ namespace Perilune.Tui.Ui
         /// THIS array out of THIS file and compares it label-for-label so the two cannot drift.
         ///
         /// E0-7: parallel to <see cref="Kinds"/> (declaration order), NOT indexed by the ItemKind
-        /// byte — the enum has a hole at 7 and a positional array would have to carry a fake row
-        /// for it.
+        /// byte. Those coincide only while the enum is contiguous — it was not while E0-7 developed
+        /// against a hole at 7, where a positional array would have needed a fake row — and the
+        /// wave merge closed the hole. The parallel reading is the one that survives the next one.
         /// </summary>
         public static readonly string[] Labels =
         {
@@ -99,14 +100,16 @@ namespace Perilune.Tui.Ui
             return -1;
         }
 
-        /// <summary>True for a kind the sim actually has — a DECLARED byte, which after E0-7 is not
-        /// the same thing as "below the member count" (7 is below it and does not exist; 8 is above
-        /// it and does).</summary>
+        /// <summary>True for a kind the sim actually has — a DECLARED byte. That is the same set as
+        /// "below the member count" only while the enum is contiguous; against E0-7's development
+        /// tree it was not (7 was below the count and did not exist, 8 was above it and did), and
+        /// this predicate is what does not care either way.</summary>
         private static bool InRange(int kind) => IndexOfKind(kind) >= 0;
 
         /// <summary>Advance the kind cursor to the next DECLARED ItemKind, wrapping at the last.
-        /// Wrapping on a count would let the player select a kind the sim has no name for — and
-        /// after E0-7 it would also make Ice unreachable.</summary>
+        /// Wrapping on a count would let the player select a kind the sim has no name for the moment
+        /// the enum gains a hole — as it had while E0-7 was built, where it also made Ice
+        /// unreachable.</summary>
         public static int NextKind(int kind)
         {
             int at = IndexOfKind(kind);
@@ -127,7 +130,7 @@ namespace Perilune.Tui.Ui
         /// harmless, because <b>C# shift counts are reduced modulo the operand width</b> — for a
         /// <c>ulong</c> that is <c>&amp; 63</c>, so <c>1UL &lt;&lt; 64</c> is <c>1UL</c>, not 0, and
         /// <c>Toggle(0x7F, 64)</c> silently returned <c>0x7E</c> (measured): it flipped Regolith. The
-        /// wrapped bit lands back INSIDE the valid range where the mask cannot remove it. Kinds 7-63
+        /// wrapped bit lands back INSIDE the valid range where the mask cannot remove it. Kinds 9-63
         /// are truncated, which is why the old claim looked true. Not a live bug — the only caller
         /// feeds a cursor <see cref="NextKind"/> keeps in range — but this type exists to be the
         /// auditable half of an untestable GameLoop, so it is total.
