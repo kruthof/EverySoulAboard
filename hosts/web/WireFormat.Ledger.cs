@@ -38,17 +38,27 @@ namespace Perilune.Web
     /// the numbers on purpose: the limit has to travel with the figure, or a surface renders a bare
     /// "DAYS OF AIR" and the player reads it as an oxygen supply this ship does not have. It is
     /// static text repeated at the channel's ≤1 Hz cadence, which is ~3 KB/s against a
-    /// <c>frame</c> channel already carrying the whole glyph map at 10 Hz — a rounding error, and
-    /// cheaper than a second request/response seam.</para>
+    /// <c>frame</c> channel already carrying the whole glyph map at 10 Hz — a rounding error.
+    /// <b>⚠️ THE SECOND HALF OF THAT JUSTIFICATION WAS WRONG AND IS WITHDRAWN.</b> It used to add
+    /// "and cheaper than a second request/response seam". A sibling <c>ledger-notes</c> channel would
+    /// need NO request/response seam at all: <c>GameSession.Send</c> dedupes by payload, so static
+    /// notes would go out once on the prime and never again — strictly cheaper on the wire than what
+    /// ships here. The shipped arrangement is still the one we want (one channel, the limit
+    /// physically inseparable from the number it qualifies), but it is a deliberate ~3 KB/s purchase
+    /// and not a saving.</para>
+    ///
+    /// <para>The last <c>notes</c> entry is <c>caveat</c>, which is NOT a member: it is the one line
+    /// the surface must show WITHOUT a hover. Every other limit rides a row's <c>title</c>, which is
+    /// the channel a player is least likely to read.</para>
     ///
     ///   ledger {"type":"ledger","tick":N,"window":N,"total":N,"stacks":N,"unknown":N,
     ///           "matter":[["Potato",699],..],"partsPerDay":x,"matterPerDay":x,
-    ///           "daysOfWater":x,"daysOfAir":x,"tankL":x,"tankCapL":x,"greyL":x,"o2mol":x,
-    ///           "crew":N,"notes":[["matter",".."],..]}
+    ///           "daysOfWater":x,"o2TrendDays":x,"tankL":x,"tankCapL":x,"greyL":x,"o2mol":x,
+    ///           "crewO2PerDay":x,"crew":N,"notes":[["matter",".."],..,["caveat",".."]]}
     ///
     /// <para>SENTINELS, and a client MUST honour them or it will print a confident zero:
     /// <c>window == 0</c> ⇒ no rate on this payload means anything (render "measuring");
-    /// <c>daysOfWater</c>/<c>daysOfAir</c> <c>&lt; 0</c> ⇒ NOT DEPLETING, which is the healthy answer,
+    /// <c>daysOfWater</c>/<c>o2TrendDays</c> <c>&lt; 0</c> ⇒ NOT DEPLETING, which is the healthy answer,
     /// not a missing value. <c>partsPerDay</c> is signed and 0 is a real reading.</para>
     /// </summary>
     public static partial class WireFormat
@@ -95,11 +105,15 @@ namespace Perilune.Web
             Field(sb, "partsPerDay", r.PartsPerDay);
             Field(sb, "matterPerDay", r.MatterUnitsPerDay);
             Field(sb, "daysOfWater", r.DaysOfWater);
-            Field(sb, "daysOfAir", r.DaysOfAir);
+            Field(sb, "o2TrendDays", r.O2TrendDays);
             Field(sb, "tankL", r.Now.TankLiters);
             Field(sb, "tankCapL", r.Now.TankCapacityLiters);
             Field(sb, "greyL", r.Now.GreywaterLiters);
             Field(sb, "o2mol", r.Now.BreathableO2Moles);
+            // The reference point for `o2mol`. A mole count has nothing aboard to be compared
+            // against — no capacity, no target, no reserve — so the crew's own daily draw travels
+            // with it and the client renders CREW-DAYS.
+            Field(sb, "crewO2PerDay", r.Now.CrewO2MolesPerDay);
 
             sb.Append(",\"notes\":[");
             for (int i = 0; i < ShipLedger.Ids.Length; i++)

@@ -29,6 +29,23 @@ namespace Perilune.Tools
     /// applies). It is emphatically NOT the metric's own expression re-evaluated, which would make
     /// this table assert that a function equals itself — the anti-tautology rule at
     /// `ECONOMY-PLAN.md` §5.2.1.</para>
+    ///
+    /// <para><b>WHY THE LIARS ARE REPORTED HERE AND NOT FIXED IN <see cref="ShipMetrics"/>.</b>
+    /// <c>ShipMetrics.cs:20</c> says "call from UI at ~1 Hz, never per tick" and
+    /// <c>DirectorSystem.cs:80</c> calls it inside <c>Tick</c>, feeding Morale/Water/Food/Power into
+    /// a tension term that moves the wear lever — and <c>DirectorSystem</c> is an
+    /// <c>IStatefulSystem</c> whose <c>StateChecksum()</c> folds straight into
+    /// <c>Simulation.StateHash</c>. So every metric below is already load-bearing, and correcting any
+    /// of them is a determinism pin move rather than a display change.</para>
+    ///
+    /// <para>⚠️ THAT COUPLING IS NOT A NEW FINDING and this file should not be read as claiming one:
+    /// it is documented at <c>DirectorSystem.cs:41-46</c>, in <c>MECHANICS.md</c> (§ around
+    /// lines 653-654 and 1057) and in <c>docs/design/perilune-economy-modularity.md</c> §1.5.1, which
+    /// treats it as the reference pattern for wiring a soul-derived modulator into an economy system.
+    /// What IS new is the consequence for this package: the metrics riding that path are measurably
+    /// wrong (see the rows below), so the coupling is currently carrying bad numbers into hashed
+    /// state, and the ledger had to be built beside <see cref="ShipMetrics"/> rather than inside
+    /// it.</para>
     /// </summary>
     public static class LedgerHarness
     {
@@ -228,10 +245,18 @@ namespace Perilune.Tools
               .Append(' ').Append(Rate(r.PartsPerDay, r.WindowTicks))
               .Append("   water ").Append(r.Now.TankLiters.ToString("0.0", Ic).PadLeft(7)).Append(" L ")
               .Append(Runway(r.DaysOfWater, r.WindowTicks))
-              .Append("   air ").Append(r.Now.BreathableO2Moles.ToString("0.0", Ic).PadLeft(7)).Append(" mol ")
-              .Append(Runway(r.DaysOfAir, r.WindowTicks));
+              .Append("   O2 ").Append(CrewDays(r.Now)).Append(' ')
+              .Append(Runway(r.O2TrendDays, r.WindowTicks));
             return sb.ToString();
         }
+
+        /// <summary>Standing O2 in CREW-DAYS — the stock over what the living crew breathe in a day.
+        /// A bare mole count has no reference point anywhere on this ship. "n/a" when nobody is alive
+        /// to breathe it, never a division by zero.</summary>
+        private static string CrewDays(in ShipLedgerSample s) =>
+            s.CrewO2MolesPerDay > 0
+                ? (s.BreathableO2Moles / s.CrewO2MolesPerDay).ToString("0.0", Ic).PadLeft(6) + " crew-d"
+                : "   n/a crew-d";
 
         private static string Rate(double perDay, long window) =>
             window <= 0 ? "[measuring]" : "(" + (perDay >= 0 ? "+" : "") + perDay.ToString("0.0", Ic) + "/d)";

@@ -1072,6 +1072,10 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 .ov-ledrow.warn .ov-ledsub{color:#e8934a}
 .ov-ledrow.crit .ov-ledsub{color:#f2b563;font-weight:700}
 .ov-ledcensus{margin-top:6px;font-size:9.5px;white-space:normal;overflow-wrap:anywhere}
+/* The always-visible caveat. Deliberately NOT `.ov-faint`: it is the one line on this island a
+   player who never hovers a row must still read, so it is legible rather than decorative. */
+.ov-ledcaveat{margin-top:6px;font-size:9px;line-height:1.5;white-space:normal;
+  color:var(--ink-mute,#8c8377);border-top:1px solid rgba(58,51,42,.8);padding-top:5px}
 
 @media (max-width:1359px){
   #overview-view .ov-ledger{display:none} /* same narrow-viewport drop as the sensor log */

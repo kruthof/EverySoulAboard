@@ -312,9 +312,160 @@ namespace Perilune.Tests
 
             Assert.That(report.WindowTicks, Is.EqualTo(0));
             Assert.That(report.DaysOfWater, Is.EqualTo(-1));
-            Assert.That(report.DaysOfAir, Is.EqualTo(-1));
+            Assert.That(report.O2TrendDays, Is.EqualTo(-1));
             Assert.That(report.Now.Valid, Is.True, "the STOCK half is available immediately — only the rates wait");
             Assert.That(report.Now.TotalUnits, Is.GreaterThanOrEqualTo(0));
+        }
+
+        // ═════════════════════════════════════════════════════════════════════════════════════
+        // The room pass — the guard, and the stock fields that reach the screen
+        // ═════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// THE NaN ROOM GUARD, DRIVEN. Until this test existed the guard was ARGUED FOR AT LENGTH in
+        /// a comment and touched by nothing — the exact shape this repo pays most for.
+        ///
+        /// <para>What it prevents is not a loud failure. <c>WireFormat.Num</c> clamps NaN to "0", so
+        /// an unguarded non-finite room ships <c>o2TrendDays: 0</c>, which the island renders as a
+        /// CRITICAL oxygen alarm — silently, off a compartment whose oxygen is undefined.</para>
+        ///
+        /// MUTATION (applied, RED, reverted): delete the <c>double.IsFinite</c> branch from
+        /// <c>ShipLedger.Sample</c>'s room pass ⇒ the NaN room slips past the pressure gate
+        /// (<c>NaN &lt; 50</c> is false), <c>NonFiniteRooms</c> stays 0, the O2 sum becomes NaN and
+        /// the runway stops refusing to band. Both assertions fail.
+        /// MUTATION 2 (applied, RED, reverted): drop the <c>now.NonFiniteRooms &gt; 0</c> test from
+        /// <c>ShipLedger.Report</c> ⇒ the second assertion fails on its own.
+        /// </summary>
+        [Test]
+        public void ANonFiniteRoomIsExcluded_AndTheO2TrendRefusesToBand()
+        {
+            var sim = Fresh();
+            var rooms = sim.Rooms.Rooms;
+            Assert.That(rooms.Count, Is.GreaterThan(1),
+                "PRECONDITION: the reference ship must have a real room, or this test corrupts nothing");
+
+            var clean = ShipLedger.Sample(sim);
+            Assert.That(clean.NonFiniteRooms, Is.EqualTo(0), "PRECONDITION: the ship starts finite");
+            Assert.That(clean.BreathableO2Moles, Is.GreaterThan(0),
+                "PRECONDITION: there is real oxygen to poison, or the NaN below has nothing to reach");
+
+            // ⚠️ THE CLOCK MUST ADVANCE, and the first draft of this test did not advance it. With
+            // both samples at the same tick, `Report` short-circuits on `window <= 0` and returns -1
+            // for the WINDOWLESS reason — so the assertion at the bottom passed with the guard
+            // deleted, and the mutation this test is named for SURVIVED. The window has to be open
+            // for the guard to be the thing that produces -1.
+            Advance(sim, TicksPerDay / 2);
+
+            // The biggest compartment, so the oxygen it takes with it is unmistakably material —
+            // picked rather than assumed, because on a ship whose room 1 happened to be a cupboard
+            // the induced drop would clear the 999-day horizon and -1 would come back for a THIRD
+            // unrelated reason.
+            int biggest = 1;
+            for (int i = 2; i < rooms.Count; i++)
+                if (rooms[i] != null && rooms[i].O2Moles > rooms[biggest].O2Moles) biggest = i;
+
+            // A room whose pressure is undefined: PressureKPa is derived as nRT/V, so a NaN
+            // temperature is how a real one would arrive (a divide-by-zero, an uninitialised thermal
+            // pass), rather than by writing to a computed property.
+            rooms[biggest].TemperatureK = double.NaN;
+
+            var poisoned = ShipLedger.Sample(sim);
+            Assert.That(poisoned.NonFiniteRooms, Is.EqualTo(1),
+                "the non-finite room must be COUNTED and excluded. Unguarded, `NaN < 50` is false, so " +
+                "it slips past the pressure gate as 'pressurised' and its NaN moles land in the sum.");
+            Assert.That(double.IsFinite(poisoned.BreathableO2Moles), Is.True,
+                "the O2 total must stay finite — a NaN here reaches the wire as 0 (WireFormat.Num " +
+                "clamps it), and 0 renders as a CRITICAL alarm on the island");
+
+            var report = ShipLedger.Report(poisoned, clean);
+            Assert.That(report.WindowTicks, Is.EqualTo(TicksPerDay / 2),
+                "PRECONDITION: a REAL window must be open, or the -1 below proves only that there " +
+                "was nothing to measure");
+
+            // NON-VACUITY, and it is the whole reason this block exists: show that an UNGUARDED
+            // Report would have produced a real, small, plausible number here. Without this the
+            // assertion below can pass because the drop cleared the 999-day horizon, which is a
+            // different branch and not the one under test.
+            double lossPerDay = (clean.BreathableO2Moles - poisoned.BreathableO2Moles) / 0.5;
+            Assert.That(lossPerDay, Is.GreaterThan(0),
+                "excluding the ship's largest compartment must LOWER the O2 total; if it does not, " +
+                "this test can no longer discriminate the guard");
+            Assert.That(poisoned.BreathableO2Moles / lossPerDay, Is.LessThan(ShipLedger.MaxMeaningfulDays),
+                "an unguarded Report would publish this many days — it must be inside the horizon, " +
+                "or -1 comes back for the clamp's reason instead of the guard's");
+
+            Assert.That(report.O2TrendDays, Is.EqualTo(-1),
+                "with a compartment's atmosphere unreadable the trend must REFUSE to band rather than " +
+                "publish a number derived from a partial ship");
+        }
+
+        /// <summary>
+        /// THE STOCK HALF OF THE CENSUS, PINNED. Every field here reaches the player's screen, and
+        /// before this test each one SURVIVED BEING ZEROED — the item census and the rate arithmetic
+        /// were pinned well, the water/air stock was pinned only by hand-written JS payloads, so a
+        /// host-side <c>Sample</c> regression would have shipped green.
+        ///
+        /// <para>This is a different defect class from the ones this package spent its review budget
+        /// on: not a test that cannot bite, but shipped surface with NO TEST AT ALL. Same
+        /// consequence.</para>
+        ///
+        /// MUTATIONS (each applied, RED, reverted): return 0 for <c>Stacks</c>; return 0 for
+        /// <c>GreywaterLiters</c>; return 0 for <c>TankCapacityLiters</c>; return 0 for
+        /// <c>BreathableO2Moles</c>; return 0 for <c>CrewO2MolesPerDay</c>.
+        /// </summary>
+        [Test]
+        public void TheStockCensusReportsTanks_Greywater_Oxygen_CrewDraw_AndItsOwnSize()
+        {
+            var sim = Fresh();
+            var pos = SomeFloor(sim);
+            ZeroExistingStacks(sim);
+
+            // Stacks counts ENTITIES, not units — 3 stacks of 5 is 3 stacks and 15 units. The two
+            // are asserted together because a `Stacks` that silently returned TotalUnits would agree
+            // with any single-stack fixture.
+            var before = ShipLedger.Sample(sim);
+            sim.AddItem(ItemKind.Potato, 5, pos);
+            sim.AddItem(ItemKind.Potato, 5, pos);
+            sim.AddItem(ItemKind.Potato, 5, pos);
+            var after = ShipLedger.Sample(sim);
+            Assert.That(after.Stacks - before.Stacks, Is.EqualTo(3), "three stacks were added");
+            Assert.That(after.TotalUnits - before.TotalUnits, Is.EqualTo(15), "…carrying fifteen units");
+
+            // Tanks: an independently SET level and a capacity derived from the def, not from the level.
+            var tank = FirstTank(sim);
+            SetOnlyTank(sim, tank, 137.5f);
+            int tankCount = 0;
+            foreach (var d in sim.Devices.Items) if (d.Kind == DeviceKind.WaterTank) tankCount++;
+            var tanked = ShipLedger.Sample(sim);
+            Assert.That(tanked.TankLiters, Is.EqualTo(137.5f).Within(1e-3), "the drinkable stock is what is in the tanks");
+            Assert.That(tanked.TankCapacityLiters,
+                Is.EqualTo(tankCount * sim.Defs.Water.TankCapacityLiters).Within(1e-3),
+                "capacity is tank_capacity_liters x the tanks aboard — it must not track the level");
+
+            // Greywater: the pool is reported BESIDE the tanks and never folded into them.
+            sim.WastewaterLiters = 42.25f;
+            var greyed = ShipLedger.Sample(sim);
+            Assert.That(greyed.GreywaterLiters, Is.EqualTo(42.25f).Within(1e-3));
+            Assert.That(greyed.TankLiters, Is.EqualTo(137.5f).Within(1e-3),
+                "greywater is NOT drinkable and must never be added to the tank stock");
+
+            // Oxygen and its reference point. The crew draw is derived from the LIVING crew and the
+            // shipped def; the expectation is built from the enum-free facts (who is alive, the def
+            // value, seconds in a day) rather than from the implementation's expression.
+            int living = 0;
+            foreach (var c in sim.Citizens.Items) if (!c.Dead) living++;
+            Assert.That(living, Is.GreaterThan(0), "PRECONDITION: somebody must be alive to breathe");
+            Assert.That(greyed.BreathableO2Moles, Is.GreaterThan(0),
+                "a pressurised ship holds oxygen — a zero here is what a dropped room pass looks like");
+            Assert.That(greyed.CrewO2MolesPerDay,
+                Is.EqualTo(living * sim.Defs.Atmosphere.O2PerPersonPerSecond * 86400.0).Within(1e-9),
+                "the crew draw is the ONE reference point a mole count has on this ship");
+
+            // …and it is the LIVING crew, so it must move when somebody dies.
+            sim.Citizens.Items[0].Dead = true;
+            Assert.That(ShipLedger.Sample(sim).CrewO2MolesPerDay,
+                Is.LessThan(greyed.CrewO2MolesPerDay),
+                "a corpse does not breathe; the denominator must fall with the living crew");
         }
 
         // ═════════════════════════════════════════════════════════════════════════════════════
@@ -487,10 +638,28 @@ namespace Perilune.Tests
                         Is.LessThan(json.IndexOf("\"ControllerModule\"", StringComparison.Ordinal)),
                 "the matter list walks the ItemKind ordinals ascending, so a new kind lands at the end");
 
-            // The limits travel with the numbers (DA-M3) — a bare "DAYS OF AIR" is read as an oxygen
-            // supply this ship does not have.
+            // The limits travel with the numbers (DA-M3) — a bare "O2" is read as an oxygen supply
+            // this ship does not have.
             StringAssert.Contains("\"notes\":[", json);
             StringAssert.Contains("THIS SHIP HAS NO AIR RESERVE", json);
+
+            // …and the ONE caveat that must not need a hover rides the same channel, under its own
+            // id, so the surface can render it as always-visible text.
+            StringAssert.Contains("[\"caveat\",", json);
+            StringAssert.Contains(ShipLedger.HeadlineCaveat, json);
+
+            // THE STOCK FIELDS REACH THE WIRE. Each of these survived being zeroed before it was
+            // asserted here; `crew` in particular is the only place the LIVING crew count is
+            // published, and the client shows it nowhere else.
+            var sample = ShipLedger.Sample(sim);
+            int living = 0;
+            foreach (var c in sim.Citizens.Items) if (!c.Dead) living++;
+            StringAssert.Contains("\"crew\":" + living.ToString(CultureInfo.InvariantCulture), json);
+            StringAssert.Contains("\"stacks\":" + sample.Stacks.ToString(CultureInfo.InvariantCulture), json);
+            foreach (var field in new[] { "tankL", "tankCapL", "greyL", "o2mol", "crewO2PerDay", "o2TrendDays" })
+                StringAssert.Contains("\"" + field + "\":", json,
+                    "the `" + field + "` field must reach the wire — the island reads it, and nothing " +
+                    "else on the client can derive it");
         }
 
         /// <summary>

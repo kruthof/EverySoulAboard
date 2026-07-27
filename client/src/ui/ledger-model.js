@@ -11,7 +11,7 @@
 //     for long enough (10 sim-minutes minimum) or a save was just loaded, which restarts the
 //     window. Every rate row renders MEASURING. Rendering "+0.0/d" here would state, confidently,
 //     that nothing is being produced — about a ship the host has not yet looked at.
-//   • `daysOfWater`/`daysOfAir` < 0 ... NOT DEPLETING. This is the ORDINARY HEALTHY ANSWER, not a
+//   • `daysOfWater`/`o2TrendDays` < 0 ... NOT DEPLETING. This is the ORDINARY HEALTHY ANSWER, not a
 //     missing value: a stock that is steady or rising has no runway, and neither does one that
 //     would outlast the host's 999-day horizon. Rendering it as 0 would read as "runs out today".
 //   • `partsPerDay` is SIGNED and 0 IS A REAL READING (a ship that neither makes nor spends Parts).
@@ -100,9 +100,8 @@ export function ledgerRows(msg) {
   if (!msg) return [];
   const w = msg.window;
   const water = runwayText(msg.daysOfWater, w);
-  const air = runwayText(msg.daysOfAir, w);
+  const air = runwayText(msg.o2TrendDays, w);
   const tank = fixed(msg.tankL, 0);
-  const o2 = num(msg.o2mol);
   return [
     {
       id: 'matter',
@@ -129,14 +128,45 @@ export function ledgerRows(msg) {
       note: noteFor(msg, 'days_of_water'),
     },
     {
-      id: 'days_of_air',
-      label: 'AIR',
-      value: o2 === null ? '–' : (o2 / 1000).toFixed(1) + ' kmol',
+      // ⚠️ LABELLED O2 TREND, NOT "AIR", and the row's value is CREW-DAYS, not a mole count.
+      // Both are the same correction. A row called AIR states that there is air aboard to run out
+      // of, and this sim has NO air reserve at all — a powered vent injects gas from nothing. And
+      // "18.9 kmol" was uninterpretable: nothing on the ship is a capacity, a target or a reserve to
+      // compare it against, so the one always-visible number was the one a player could not read.
+      // The host ships its own denominator (`crewO2PerDay`) and the row states how long the people
+      // actually aboard would take to breathe the standing oxygen.
+      id: 'o2_trend',
+      label: 'O₂ TREND',
+      value: crewDaysOfO2(msg),
       sub: air.text,
       level: air.level,
-      note: noteFor(msg, 'days_of_air'),
+      note: noteFor(msg, 'o2_trend'),
     },
   ];
+}
+
+/**
+ * The standing oxygen expressed in CREW-DAYS — stock ÷ what the living crew breathe in a sim-day.
+ * '–' when the host sent no denominator or nobody is alive to breathe it: an empty ship has no
+ * crew-days, and rendering ∞ or 0 would both be statements the data does not support.
+ */
+export function crewDaysOfO2(msg) {
+  const o2 = num(msg && msg.o2mol);
+  const per = num(msg && msg.crewO2PerDay);
+  if (o2 === null || per === null || !(per > 0)) return '–';
+  return (o2 / per).toFixed(1) + ' crew-d';
+}
+
+/**
+ * The ONE caveat rendered without a hover, straight from the host's own notes.
+ *
+ * Every other limit on this island rides a row's `title`, which is the channel a player is least
+ * likely to read. For a package whose doctrine is "the limit must travel with the number", that is
+ * the weakest available delivery, so the single most misreadable fact gets its own always-visible
+ * line. '' when the host sent none — never an invented sentence.
+ */
+export function caveatLine(msg) {
+  return noteFor(msg, 'caveat');
 }
 
 /** Units of Parts aboard, read out of the sparse matter list — 0 when the kind is absent, which is

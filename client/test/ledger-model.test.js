@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { codeOnly } from './code-only.js';
 import {
-  ledgerRows, matterLine, noteFor, rateText, runwayText, partsUnits,
+  ledgerRows, matterLine, noteFor, rateText, runwayText, partsUnits, crewDaysOfO2, caveatLine,
   MEASURING, NOT_DEPLETING, RUNWAY_CRITICAL_DAYS, RUNWAY_WARN_DAYS,
 } from '../src/ui/ledger-model.js';
 
@@ -28,11 +28,11 @@ const read = (rel) => readFileSync(join(here, '..', rel), 'utf8');
 function payload(over = {}) {
   return Object.assign({
     type: 'ledger', tick: 864000, window: 36000, total: 731, stacks: 710, unknown: 0, crew: 8,
-    matter: [['Corpse', 1], ['Potato', 699], ['ControllerModule', 31]],
-    partsPerDay: 0, matterPerDay: 9, daysOfWater: -1, daysOfAir: -1,
-    tankL: 1000, tankCapL: 1000, greyL: 20, o2mol: 18885.6,
+    matter: [['Corpse', 1], ['Potato', 699], ['Parts', 12], ['ControllerModule', 31]],
+    partsPerDay: 0, matterPerDay: 9, daysOfWater: -1, o2TrendDays: -1,
+    tankL: 1000, tankCapL: 1000, greyL: 20, o2mol: 18885.6, crewO2PerDay: 210.2,
     notes: [['matter', 'M NOTE'], ['parts_per_day', 'P NOTE'],
-            ['days_of_water', 'W NOTE'], ['days_of_air', 'A NOTE']],
+            ['days_of_water', 'W NOTE'], ['o2_trend', 'A NOTE'], ['caveat', 'C NOTE']],
   }, over);
 }
 
@@ -52,9 +52,9 @@ test('window === 0 means MEASURING on every rate, never a confident zero', () =>
 // MUTATION: `if (n === null || n < 0) return { text: NOT_DEPLETING …}` → `n.toFixed(2) + ' d'` ⇒ the
 // healthy ship renders "-1.00 d" ⇒ RED.
 test('a negative runway is STEADY, not a missing value and not zero', () => {
-  const rows = ledgerRows(payload({ daysOfWater: -1, daysOfAir: -1 }));
+  const rows = ledgerRows(payload({ daysOfWater: -1, o2TrendDays: -1 }));
   const water = rows.find((r) => r.id === 'days_of_water');
-  const air = rows.find((r) => r.id === 'days_of_air');
+  const air = rows.find((r) => r.id === 'o2_trend');
   assert.equal(water.sub, NOT_DEPLETING);
   assert.equal(air.sub, NOT_DEPLETING);
   assert.equal(water.level, '', 'a ship that is not losing water is not in an alarm state');
@@ -112,11 +112,55 @@ test('a kind at zero is not news, and an empty ship renders nothing rather than 
   assert.deepEqual(ledgerRows(null), [], 'no payload ⇒ no rows, so the island shows its empty state');
 });
 
-// MUTATION: `partsUnits` returning `null` for an absent kind ⇒ the PARTS row renders "null" ⇒ RED.
-test('Parts absent from the sparse list means zero aboard, not an unknown reading', () => {
+// ⚠️ THE PRESENT CASE IS THE LOAD-BEARING HALF, AND IT WAS MISSING. This test used to check only
+// the ABSENT case — which returns 0 whether `partsUnits` works or has been deleted entirely — so
+// `partsUnits` → `() => 0` SURVIVED the whole suite while the PARTS row silently read 0 on every
+// ship that had any. Found by mutation, not by reading.
+//
+// MUTATION: `partsUnits` → `() => 0` ⇒ the first two assertions fail.
+// MUTATION 2: `partsUnits` returning `null` for an absent kind ⇒ the row renders "null" ⇒ fails.
+test('Parts PRESENT is read out of the sparse list, and Parts absent means zero aboard', () => {
+  // present — the case the row exists for
+  assert.equal(partsUnits(payload()), 12);
+  const live = ledgerRows(payload()).find((r) => r.id === 'parts_per_day');
+  assert.equal(live.value, '12', 'the PARTS row shows the units actually aboard');
+
+  // absent — a sparse list omits a zero kind; that means none, not unknown
   assert.equal(partsUnits(payload({ matter: [['Potato', 4]] })), 0);
-  const parts = ledgerRows(payload({ matter: [['Potato', 4]] })).find((r) => r.id === 'parts_per_day');
-  assert.equal(parts.value, '0');
+  const empty = ledgerRows(payload({ matter: [['Potato', 4]] })).find((r) => r.id === 'parts_per_day');
+  assert.equal(empty.value, '0');
+});
+
+// ── the O2 row: the rename and its reference point ──
+
+// MUTATION: `value: crewDaysOfO2(msg)` → `(o2/1000).toFixed(1) + ' kmol'` (what shipped first) ⇒ the
+// crew-days assertion fails. That number is uninterpretable: this sim has no air capacity, no target
+// and no reserve, so there is nothing aboard to compare a mole count against.
+test('the O2 row is labelled a TREND and its number carries a reference point', () => {
+  const air = ledgerRows(payload()).find((r) => r.id === 'o2_trend');
+  assert.equal(air.label, 'O₂ TREND',
+    'a row called AIR states there is air aboard to run out of; this ship has no air reserve at all');
+  // 18885.6 mol ÷ 210.2 mol/crew-day = 89.8 crew-days
+  assert.equal(air.value, '89.8 crew-d');
+  assert.equal(crewDaysOfO2(payload({ o2mol: 420.4, crewO2PerDay: 210.2 })), '2.0 crew-d');
+});
+
+// MUTATION: return `'0.0 crew-d'` instead of '–' when the denominator is missing or zero ⇒ RED.
+// An empty ship has no crew-days; 0 and ∞ are both statements the data does not support.
+test('with nobody aboard, or no denominator, the O2 row shows a dash rather than a number', () => {
+  assert.equal(crewDaysOfO2(payload({ crewO2PerDay: 0 })), '–');
+  assert.equal(crewDaysOfO2(payload({ crewO2PerDay: undefined })), '–');
+  assert.equal(crewDaysOfO2(payload({ o2mol: undefined })), '–');
+  assert.equal(crewDaysOfO2(null), '–');
+});
+
+// MUTATION: `caveatLine` → `() => ''` ⇒ RED. It is the ONE limit on this island a player who never
+// hovers a row must still be told, so it is text on the surface and not a `title`.
+test('the caveat is host text, always available, and never invented client-side', () => {
+  assert.equal(caveatLine(payload()), 'C NOTE');
+  assert.equal(caveatLine(payload({ notes: [] })), '',
+    'no caveat from the host means no caveat — the client must not write one of its own');
+  assert.equal(caveatLine(null), '');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════
@@ -128,7 +172,8 @@ test('Parts absent from the sparse list means zero aboard, not an unknown readin
 test('each row carries the HOST derivation note, matched by id', () => {
   const rows = ledgerRows(payload());
   assert.deepEqual(rows.map((r) => r.note), ['M NOTE', 'P NOTE', 'W NOTE', 'A NOTE']);
-  assert.equal(noteFor(payload(), 'days_of_air'), 'A NOTE');
+  assert.equal(caveatLine(payload()), 'C NOTE', 'the always-visible caveat comes from the HOST too');
+  assert.equal(noteFor(payload(), 'o2_trend'), 'A NOTE');
   assert.equal(noteFor(payload(), 'nope'), '', 'an unknown id is empty, never undefined');
   assert.deepEqual(ledgerRows(payload({ notes: undefined })).map((r) => r.note), ['', '', '', ''],
     'a payload without notes must not crash the island');
@@ -140,7 +185,7 @@ test('a malformed payload degrades to dashes instead of throwing', () => {
   assert.equal(rows.length, 4);
   for (const r of rows) {
     assert.equal(typeof r.value, 'string');
-    assert.ok(!/NaN|undefined/.test(r.value + r.sub), `"${r.value}" / "${r.sub}"`);
+    assert.ok(!/NaN|undefined|null/.test(r.value + r.sub), `"${r.value}" / "${r.sub}"`);
   }
 });
 

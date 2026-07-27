@@ -73,11 +73,26 @@ namespace Perilune.Sim
         /// <c>ShipMetrics.cs:64</c> 50 kPa gate, verbatim). The standing air the crew are breathing.</summary>
         public readonly double BreathableO2Moles;
 
-        /// <summary>Rooms that cleared the 50 kPa gate.</summary>
+        /// <summary>
+        /// Oxygen the LIVING crew breathe in one sim-day
+        /// (<c>atmosphere.def o2_per_person_per_second</c> × <see cref="LivingCrew"/> × 86,400).
+        ///
+        /// <para><b>THE REFERENCE POINT, and it is why this field exists.</b> "18.9 kmol" is a number
+        /// no player can interpret: this sim has no air capacity, no target and no reserve, so there
+        /// is nothing on the ship to compare a mole count against. The crew's own draw is the one
+        /// honest denominator available — it is derived from live state (who is alive) and a shipped
+        /// def, and it turns the stock into CREW-DAYS, which is interpretable. It is NOT a supply
+        /// forecast: see <see cref="ShipLedger.O2TrendDerivation"/>.</para>
+        /// </summary>
+        public readonly double CrewO2MolesPerDay;
+
+        /// <summary>Rooms that cleared the 50 kPa gate. ⚠️ UNPINNED: no test constructs a sub-50 kPa
+        /// room, so the gate itself is not driven. It does real work — <c>--ship grid</c> boots six
+        /// airless decks — so a lane that widens or narrows it will not be caught here.</summary>
         public readonly int PressurizedRooms;
 
         /// <summary>Rooms excluded because a gas field was NaN/∞. Non-zero ⇒ the air numbers above
-        /// are incomplete and <see cref="ShipLedgerReport.DaysOfAir"/> refuses to band.</summary>
+        /// are incomplete and <see cref="ShipLedgerReport.O2TrendDays"/> refuses to band.</summary>
         public readonly int NonFiniteRooms;
 
         /// <summary>False on <c>default(ShipLedgerSample)</c> — i.e. "no census has been taken".
@@ -87,13 +102,13 @@ namespace Perilune.Sim
         internal ShipLedgerSample(long tick, int[] units, long unknownUnits, long totalUnits, int stacks,
                                   int livingCrew, float tankLiters, float tankCapacityLiters,
                                   float greywaterLiters, double breathableO2Moles,
-                                  int pressurizedRooms, int nonFiniteRooms)
+                                  double crewO2MolesPerDay, int pressurizedRooms, int nonFiniteRooms)
         {
             Tick = tick; Units = units; UnknownUnits = unknownUnits; TotalUnits = totalUnits;
             Stacks = stacks; LivingCrew = livingCrew;
             TankLiters = tankLiters; TankCapacityLiters = tankCapacityLiters;
             GreywaterLiters = greywaterLiters;
-            BreathableO2Moles = breathableO2Moles;
+            BreathableO2Moles = breathableO2Moles; CrewO2MolesPerDay = crewO2MolesPerDay;
             PressurizedRooms = pressurizedRooms; NonFiniteRooms = nonFiniteRooms;
             Valid = true;
         }
@@ -119,10 +134,21 @@ namespace Perilune.Sim
     /// <item><see cref="PartsPerDay"/> is SIGNED and 0 is a real answer (a ship that neither makes
     /// nor spends Parts), so -1 is NOT its sentinel. <see cref="WindowTicks"/> is the only thing that
     /// says whether it means anything.</item>
-    /// <item><see cref="DaysOfWater"/> / <see cref="DaysOfAir"/> are -1 when the stock is NOT
+    /// <item><see cref="DaysOfWater"/> / <see cref="O2TrendDays"/> are -1 when the stock is NOT
     /// DEPLETING (steady or rising), when it would outlast <see cref="ShipLedger.MaxMeaningfulDays"/>,
-    /// or when there is no window. The first two are the ordinary healthy-ship answer.</item>
+    /// when it is ALREADY AT ZERO, or when there is no window. The first two are the ordinary
+    /// healthy-ship answer. ⚠️ UNPINNED: the already-at-zero branch (<c>Runway</c>'s
+    /// <c>stockNow &lt;= 0</c>) is deliberate — 0 would read as "runs out today", a forecast, when
+    /// what is true is that it ALREADY ran out — but no test constructs it, so a lane that changes
+    /// it will not be caught.</item>
     /// </list>
+    ///
+    /// <para>⚠️ ONE KNOWN INCONSISTENCY, RECORDED RATHER THAN FIXED: <see cref="ShipLedger.Report"/>
+    /// returns <c>default</c> when the CURRENT sample is invalid, which yields 0 for the two runways
+    /// where this struct documents -1. Unreachable through <see cref="ShipLedgerTracker"/> (which
+    /// always supplies a fresh sample) and harmless on the client (the same <c>window == 0</c> gate
+    /// suppresses every rate either way) — but it is an inconsistency, and it is written down here
+    /// rather than left to be rediscovered.</para>
     /// </summary>
     public readonly struct ShipLedgerReport
     {
@@ -137,10 +163,14 @@ namespace Perilune.Sim
         /// production MINUS consumption, not gross output. Negative is normal and correct on a ship
         /// spending Parts (<c>MachineShop</c> eats 2 per <c>ControllerModule</c>;
         /// <c>PlaceDeviceCommand</c> charges <c>device_place_cost</c>).
-        /// <para><b>Gross production is NOT derivable</b> without a lifetime counter, and a lifetime
-        /// counter is saved state, which is hashed state, which moves a determinism pin. E0-8 is
-        /// chartered pin-neutral, so the honest member is the net one and it says so in its name's
-        /// documentation rather than in a footnote nobody reads.</para>
+        /// <para><b>Gross production is NOT BUILT YET</b> — and the first draft of this note said
+        /// "not derivable", which is wrong and is corrected here. What is true: nothing in the sim
+        /// counts completed batches, and <c>CraftingSystem</c> publishes no completion event, so
+        /// there is nothing to read today. What is NOT true is that a pin move is required to get it:
+        /// the <c>EventBus</c> is TRANSIENT and folds into no hash, so a transient
+        /// <c>CraftCompletedEvent</c> plus host-side accumulation — exactly the shape
+        /// <c>DirectorSystem</c> already uses for <c>AlarmRaisedEvent</c> — would give gross
+        /// production with zero hashed state. It is a future package, not an impossibility.</para>
         /// </summary>
         public readonly double PartsPerDay;
 
@@ -158,17 +188,24 @@ namespace Perilune.Sim
 
         /// <summary>
         /// Sim-days until the pressurised compartments hold no oxygen at the measured net loss, or -1.
-        /// ⚠️ THIS IS NOT AN AIR SUPPLY — this sim has no air reserve at all. Read
-        /// <see cref="ShipLedger.DaysOfAirDerivation"/> before quoting it anywhere.
+        ///
+        /// <para>⚠️ <b>RENAMED FROM THE CHARTER'S <c>DaysOfAir</c>, on this package's own rule.</b>
+        /// <c>MassLedger</c> became MATTER because a sim with no kilogram must not ship a field
+        /// called mass; the same rule bites here and harder. A member called "days of air" states
+        /// that there is air to run out of, and THIS SIM HAS NO AIR RESERVE AT ALL — a powered, open
+        /// vent injects gas from nothing. What is measured is the TREND in the standing oxygen, which
+        /// is a leak detector, not a supply. Keeping the honest name on the field and the caveat only
+        /// in prose would have been exactly the arrangement this package exists to end. Read
+        /// <see cref="ShipLedger.O2TrendDerivation"/> before quoting it anywhere.</para>
         /// </summary>
-        public readonly double DaysOfAir;
+        public readonly double O2TrendDays;
 
         internal ShipLedgerReport(in ShipLedgerSample now, long windowTicks, double partsPerDay,
-                                  double matterUnitsPerDay, double daysOfWater, double daysOfAir)
+                                  double matterUnitsPerDay, double daysOfWater, double o2TrendDays)
         {
             Now = now; WindowTicks = windowTicks;
             PartsPerDay = partsPerDay; MatterUnitsPerDay = matterUnitsPerDay;
-            DaysOfWater = daysOfWater; DaysOfAir = daysOfAir;
+            DaysOfWater = daysOfWater; O2TrendDays = o2TrendDays;
         }
     }
 
@@ -196,10 +233,23 @@ namespace Perilune.Sim
     /// <see cref="ShipLedgerTracker.DefaultMinWindowTicks"/> ticks of a session, and they measure NET
     /// change rather than gross flow.</para>
     ///
+    /// <para><b>THE PIN-NEUTRALITY IS DEFERRED, NOT PERMANENT — write that down before quoting it.</b>
+    /// The charter's own stated destination for these aggregates is "the new MOSS <c>ship.*</c>
+    /// bindings and Director tension inputs". A Director tension input is read inside
+    /// <c>DirectorSystem.Tick</c> and folded into hashed lever state, so THE MOMENT that destination
+    /// is built, the pin moves. E0-8 does not avoid that cost; it separates it from the instrument,
+    /// so the ledger can be corrected and refined for free until somebody deliberately spends the pin
+    /// move on wiring it into the sim.</para>
+    ///
     /// <para><b>Cost.</b> O(items + devices + citizens + rooms) per call, allocating one
     /// <see cref="int"/>[<see cref="KindCount"/>]. <see cref="ShipMetrics.Compute"/> already walks
     /// the same four stores at the same cadence (its potato count is a full item pass), so this adds
-    /// no new asymptotic cost and NOTHING at all to the tick path.</para>
+    /// no new asymptotic cost and NOTHING at all to the tick path.
+    /// <b>⚠️ AND IT MUST NEVER GO NEAR ONE.</b> <see cref="ShipMetrics.Compute"/> is zero-alloc,
+    /// which is precisely why it may legally sit in <c>DirectorSystem.Tick</c>;
+    /// <see cref="Sample"/> ALLOCATES, so it may not — and the charter's stated destination is
+    /// exactly there. Enforced by <c>ArchitectureBoundaryTests.TheLedgerIsNotReachableFromAnyTickPath</c>,
+    /// because prose alone would not survive that lane.</para>
     /// </summary>
     public static class ShipLedger
     {
@@ -295,6 +345,11 @@ namespace Perilune.Sim
             int living = 0;
             for (int i = 0; i < citizens.Count; i++) if (!citizens[i].Dead) living++;
 
+            // The one honest denominator for a mole count on a ship with no air capacity and no
+            // target: what the people aboard actually breathe. `AtmosphereSystem`'s own rate, times
+            // the LIVING crew, times a sim-day in seconds.
+            double crewO2PerDay = living * sim.Defs.Atmosphere.O2PerPersonPerSecond * 86400.0;
+
             // --- devices (one pass) --- the tank ledger.
             float stored = 0f, capacity = 0f;
             var devices = sim.Devices.Items;
@@ -309,12 +364,24 @@ namespace Perilune.Sim
 
             // --- rooms (one pass) --- the standing breathable air.
             //
-            // The NaN guard is NOT belt-and-braces: NaN loses every comparison silently, so an
-            // unguarded room would slip PAST the pressure gate (`NaN < 50` is false ⇒ "pressurised")
-            // and then poison the O2 sum, turning DaysOfAir into NaN — which serialises onto the wire
-            // as a token no JSON parser accepts. `ShipSystems.Census` carries the identical guard and
-            // states the identical reason; `ShipMetrics` carries NONE, which is finding L5 of this
-            // package's audit.
+            // ⚠️ THE 50 kPa GATE IS UNPINNED. No test constructs a sub-50 kPa room, so nothing here
+            // catches a lane that widens or narrows it — and it does real work: `--ship grid` boots
+            // SIX airless decks, every one of which this gate is what keeps out of the O2 total.
+            //
+            // ⚠️ THE NaN GUARD IS NOT BELT-AND-BRACES, AND THE REASON WRITTEN HERE FIRST WAS WRONG IN
+            // THE DIRECTION THAT STOPS PEOPLE WORRYING. It used to say an unguarded NaN "serialises
+            // onto the wire as a token no JSON parser accepts", i.e. that the failure would be LOUD.
+            // It would not be. `WireFormat.Num` (`WireFormat.cs:940-942`) explicitly clamps NaN and
+            // ∞ to "0", so the payload stays valid JSON and `o2TrendDays` arrives as 0 — and 0 is
+            // below `ledger-model.js`'s critical threshold, so the island raises a SILENT FALSE
+            // CRITICAL O2 ALARM off a compartment whose oxygen is undefined. A confident wrong
+            // number, inside the package written to delete confident wrong numbers.
+            //
+            // The mechanism is the ordinary one: NaN loses every comparison silently, so an
+            // unguarded room slips PAST the pressure gate (`NaN < 50` is false ⇒ "pressurised") and
+            // then poisons the O2 sum. `ShipSystems.Census` carries the identical guard and states
+            // the identical reason; `ShipMetrics` carries NONE, which is finding L5 of this package's
+            // audit. Driven by `ANonFiniteRoomIsExcluded_AndTheO2TrendRefusesToBand`.
             var rooms = sim.Rooms.Rooms;
             double o2 = 0;
             int pressurized = 0, nonFinite = 0;
@@ -330,7 +397,7 @@ namespace Perilune.Sim
             }
 
             return new ShipLedgerSample(sim.TickCount, units, unknown, total, items.Count, living,
-                                        stored, capacity, sim.WastewaterLiters, o2,
+                                        stored, capacity, sim.WastewaterLiters, o2, crewO2PerDay,
                                         pressurized, nonFinite);
         }
 
@@ -344,6 +411,11 @@ namespace Perilune.Sim
         /// </summary>
         public static ShipLedgerReport Report(in ShipLedgerSample now, in ShipLedgerSample then)
         {
+            // ⚠️ RECORDED INCONSISTENCY (not fixed here, deliberately): `default` gives 0 for the two
+            // runways where ShipLedgerReport documents -1. Unreachable through ShipLedgerTracker,
+            // which never hands over an invalid CURRENT sample, and inert on the client, where the
+            // same `window == 0` gate suppresses every rate either way. Written down so the next
+            // reader finds it stated rather than discovers it.
             if (!now.Valid) return default;
 
             long window = then.Valid ? now.Tick - then.Tick : 0;
@@ -356,11 +428,11 @@ namespace Perilune.Sim
             double matterPerDay = (now.TotalUnits - then.TotalUnits) / days;
 
             double daysOfWater = Runway(now.TankLiters, then.TankLiters, days);
-            double daysOfAir = now.NonFiniteRooms > 0 || then.NonFiniteRooms > 0
+            double o2TrendDays = now.NonFiniteRooms > 0 || then.NonFiniteRooms > 0
                 ? -1
                 : Runway(now.BreathableO2Moles, then.BreathableO2Moles, days);
 
-            return new ShipLedgerReport(now, window, partsPerDay, matterPerDay, daysOfWater, daysOfAir);
+            return new ShipLedgerReport(now, window, partsPerDay, matterPerDay, daysOfWater, o2TrendDays);
         }
 
         /// <summary>
@@ -370,7 +442,9 @@ namespace Perilune.Sim
         ///
         /// <para>"Already zero" is -1 rather than 0 ON PURPOSE: 0 would read as "runs out today",
         /// a forecast, when what is true is that it ALREADY ran out and there is no runway left to
-        /// forecast. The surface says EMPTY off the stock, not off this.</para>
+        /// forecast. The surface says EMPTY off the stock, not off this.
+        /// ⚠️ UNPINNED: no test constructs an already-empty stock, so that one branch is a decision
+        /// with no guard behind it.</para>
         /// </summary>
         private static double Runway(double stockNow, double stockThen, double days)
         {
@@ -390,12 +464,23 @@ namespace Perilune.Sim
 
         /// <summary>Stable snake_case ids, in fixed presentation order — a host decision, not a
         /// client sort (same rule as <c>ShipSystems.Ids</c>).</summary>
-        public static readonly string[] Ids = { IdMatter, IdPartsPerDay, IdDaysOfWater, IdDaysOfAir };
+        public static readonly string[] Ids = { IdMatter, IdPartsPerDay, IdDaysOfWater, IdO2Trend, IdCaveat };
 
         public const string IdMatter = "matter";
         public const string IdPartsPerDay = "parts_per_day";
         public const string IdDaysOfWater = "days_of_water";
-        public const string IdDaysOfAir = "days_of_air";
+        public const string IdO2Trend = "o2_trend";
+
+        /// <summary>
+        /// NOT A MEMBER — the ONE caveat that must be visible without a hover.
+        ///
+        /// <para>Every other limit on this ledger rides its row's <c>title</c>, which is the channel a
+        /// player is least likely to read; for a package whose whole doctrine is "the limit must
+        /// travel with the number", that is the weakest available delivery. This id exists so the
+        /// single most misreadable fact — that there is no air aboard to run out of — is delivered on
+        /// the surface itself, in text that is always on screen.</para>
+        /// </summary>
+        public const string IdCaveat = "caveat";
 
         /// <summary>The derivation note for a ledger member id, or "" for an unknown id.</summary>
         public static string Derivation(string id)
@@ -405,10 +490,17 @@ namespace Perilune.Sim
                 case IdMatter: return MatterDerivation;
                 case IdPartsPerDay: return PartsPerDayDerivation;
                 case IdDaysOfWater: return DaysOfWaterDerivation;
-                case IdDaysOfAir: return DaysOfAirDerivation;
+                case IdO2Trend: return O2TrendDerivation;
+                case IdCaveat: return HeadlineCaveat;
                 default: return "";
             }
         }
+
+        /// <summary>The always-visible line under the ledger island. ONE sentence, because a caveat
+        /// nobody finishes reading is a caveat nobody read.</summary>
+        public const string HeadlineCaveat =
+            "No air reserve aboard: vents make O2 from nothing, so O2 TREND is a leak detector, "
+          + "not a supply.";
 
         /// <summary>
         /// The charter's <b>MassLedger</b> (<c>ECONOMY-PLAN.md</c> §1, E0-8), RENAMED to "matter"
@@ -425,17 +517,23 @@ namespace Perilune.Sim
           + "LIMIT 2: IT COUNTS ITEMS, NOT THE SHIP. Matter bound into walls, floors and installed "
           + "devices is invisible to this census — it becomes countable only when a strip order "
           + "turns it back into stacks. A ship that deconstructs a bulkhead has not gained matter, "
-          + "it has moved matter into the only place this ledger can see.";
+          + "it has moved matter into the only place this ledger can see. "
+          + "LIMIT 3: A CORPSE IS COUNTED AS MATTER, because it is an ItemKind like any other. So a "
+          + "crew death RAISES the total and pushes MATTER/DAY positive. That is arithmetically "
+          + "correct and reads exactly wrong; do not take a rising total as a healthy ship without "
+          + "checking the per-kind census beside it.";
 
         public const string PartsPerDayDerivation =
             "PARTS/DAY is the NET change in the Parts stock over the measured window, scaled to a "
           + "sim-day. Negative means the ship spent more Parts than it made, which is an ordinary "
           + "state: a MachineShop eats 2 Parts per ControllerModule and placing a device is charged "
           + "in Parts. "
-          + "LIMIT: THIS IS NOT PRODUCTION. Gross output cannot be read anywhere in this sim — "
-          + "nothing counts completed batches — and a lifetime counter would be saved state, which "
-          + "is hashed state, which moves a determinism pin this report is forbidden to move. A busy "
-          + "fabricator whose output is consumed as fast as it appears reads 0 here. "
+          + "LIMIT: THIS IS NOT PRODUCTION, AND IT IS NOT BUILT YET RATHER THAN IMPOSSIBLE. Nothing "
+          + "in the sim counts completed batches and CraftingSystem publishes no completion event, "
+          + "so there is nothing to read today; but the EventBus is TRANSIENT and folds into no hash, "
+          + "so a CraftCompletedEvent plus host-side accumulation (the shape DirectorSystem already "
+          + "uses for AlarmRaisedEvent) would give gross output with no hashed state and no pin move. "
+          + "A busy fabricator whose output is consumed as fast as it appears reads 0 here. "
           + "LIMIT 2: it is a WINDOW, so it lags. A window shorter than the measurement window shows "
           + "nothing at all rather than a number built from too little evidence.";
 
@@ -450,11 +548,18 @@ namespace Perilune.Sim
           + "emptying faster than its reclaimer refills it — measured on the shipping slice, "
           + "tank_hydro reaches 0.02 L. "
           + "LIMIT 2: it is a NET rate, so a reclaimer that fails mid-window is averaged with the "
-          + "healthy half of that window and the runway reads longer than it is.";
+          + "healthy half of that window and the runway reads longer than it is. "
+          + "LIMIT 3: IT IS A SHIP TOTAL, AND A FILL HIDES A DRY TANK — the same weakness this "
+          + "package's audit names in ShipMetrics.Water. A crew member drinks at ONE tank, so a full "
+          + "main tank beside an empty hydro tank averages to a comfortable runway while the bay it "
+          + "feeds is dry. That is not hypothetical: it is exactly the tank_hydro case named above.";
 
-        public const string DaysOfAirDerivation =
-            "DAYS OF AIR is the oxygen standing in the pressurised compartments divided by the net "
-          + "rate at which it is falling. "
+        public const string O2TrendDerivation =
+            "O2 TREND is the oxygen standing in the pressurised compartments divided by the net rate "
+          + "at which it is falling, and the number beside it is that stock expressed in CREW-DAYS: "
+          + "how long the people actually aboard would take to breathe it. That denominator exists "
+          + "because a bare mole count has NOTHING on this ship to compare it against — no capacity, "
+          + "no target, no reserve. "
           + "⚠️ LIMIT 1, AND READ IT BEFORE QUOTING THE NUMBER: THIS SHIP HAS NO AIR RESERVE. A "
           + "powered, open vent injects gas FROM NOTHING (AtmosphereSystem's own class doc says so), "
           + "so there is no tank to run down and this is not a supply figure. What it actually "

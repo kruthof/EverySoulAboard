@@ -1194,9 +1194,10 @@ test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview
   Hud.renderLedger({
     type: 'ledger', tick: 864000, window: 36000, total: 731, stacks: 710, unknown: 0, crew: 8,
     matter: [['Corpse', 1], ['Potato', 699], ['ControllerModule', 31]],
-    partsPerDay: 0, matterPerDay: 9, daysOfWater: 0.5, daysOfAir: -1,
+    partsPerDay: 0, matterPerDay: 9, daysOfWater: 0.5, o2TrendDays: -1,
     tankL: 12, tankCapL: 1000, greyL: 20, o2mol: 18885.6,
-    notes: [['matter', 'MATTER NOTE'], ['days_of_water', 'WATER NOTE']],
+    notes: [['matter', 'MATTER NOTE'], ['days_of_water', 'WATER NOTE'],
+            ['caveat', 'NO AIR RESERVE ABOARD']],
   });
 
   const island = ovRoot.querySelector('.ov-ledger .ov-hdr');
@@ -1214,6 +1215,12 @@ test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview
   const census = ovRoot.querySelector('.ov-ledcensus');
   assert.match(census.textContent, /Potato 699/, 'the per-kind census is the check on a saturated bar');
   assert.equal(census.hidden, false);
+
+  // The caveat is ALWAYS-VISIBLE TEXT, not a hover title. Every other limit on this island rides a
+  // row's `title`, which is the channel a player is least likely to read; this one does not.
+  const caveat = ovRoot.querySelector('.ov-ledcaveat');
+  assert.equal(caveat.textContent, 'NO AIR RESERVE ABOARD');
+  assert.equal(caveat.hidden, false);
 
   // …and the empty state is the honest alternative, not four rows of zero.
   Hud.renderLedger(null);

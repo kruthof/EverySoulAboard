@@ -437,6 +437,68 @@ namespace Perilune.Tests
         /// It is currently guaranteed by nothing but this test. There is no `Sim.Core.csproj`, so
         /// the compiler cannot help (see the class doc).
         /// </summary>
+        /// <summary>
+        /// THE LEDGER MUST NEVER BE REACHABLE FROM A TICK PATH (E0-8).
+        ///
+        /// <para><see cref="ShipMetrics.Compute"/> is ZERO-ALLOC, and that is precisely why it may
+        /// legally sit inside <c>DirectorSystem.Tick</c>, which it does.
+        /// <see cref="ShipLedger.Sample"/> ALLOCATES — one <c>int[]</c> per census — so the same move
+        /// would break the zero-alloc tick invariant that eight test files assert with
+        /// <c>GC.GetAllocatedBytesForCurrentThread()</c> deltas.</para>
+        ///
+        /// <para><b>This is not a hypothetical.</b> The charter's own stated destination for these
+        /// aggregates is "the new MOSS <c>ship.*</c> bindings and Director tension inputs"
+        /// (<c>ECONOMY-PLAN.md</c> §1, E0-8). A Director tension input is read inside <c>Tick</c>. So
+        /// the single most likely next edit to this code is the one edit it must not receive, and
+        /// prose in a doc comment would not survive that lane. When that work is genuinely wanted it
+        /// needs a zero-alloc census (a caller-supplied buffer) plus a deliberate pin move — and
+        /// editing the list below in the same commit is how it gets argued for.</para>
+        /// </summary>
+        [Test]
+        public void TheLedgerIsNotReachableFromAnyTickPath()
+        {
+            // The ledger's own file legitimately mentions its own type names; nothing else in
+            // Sim.Core may.
+            var owners = new[] { "sim/Sim.Core/ShipLedger.cs" };
+            var offenders = new List<string>();
+            int scanned = 0, sawSimSystem = 0;
+
+            foreach (var path in ModuleFiles("Sim.Core"))
+            {
+                string rel = Rel(path);
+                if (Array.IndexOf(owners, rel) >= 0) continue;
+                string code = CodeOnly(File.ReadAllText(path));
+                scanned++;
+                // Only files that ARE a system can put something on a tick path.
+                if (!code.Contains(": ISimSystem") && !code.Contains(", ISimSystem") &&
+                    !code.Contains("ISimSystem,")) continue;
+                sawSimSystem++;
+                if (code.Contains("ShipLedger")) offenders.Add(rel);
+            }
+
+            Assert.That(offenders, Is.Empty,
+                "BOUNDARY CROSSED: an ISimSystem references ShipLedger.\n" +
+                "  found: " + string.Join("\n         ", offenders) + "\n" +
+                "WHY: ShipLedger.Sample ALLOCATES (one int[] per census). ShipMetrics.Compute does\n" +
+                "  not, which is the only reason DirectorSystem is allowed to call IT from Tick. The\n" +
+                "  sim core is zero-alloc in tick paths and that is test-enforced, not aspirational.\n" +
+                "  E0-8's charter names 'Director tension inputs' as a destination for these\n" +
+                "  aggregates, so this is the mistake most likely to be made, by someone reading the\n" +
+                "  plan and doing what it says.\n" +
+                "FIX: read the ledger from a HOST, at <=1 Hz, exactly as GameSession and the scenario\n" +
+                "  `ledger` verb do. ShipLedgerTracker is deliberately not an ISimSystem.\n" +
+                "IF DELIBERATE: it needs a zero-alloc census (caller-supplied buffer) AND a determinism\n" +
+                "  pin move, because a sim system reading it makes it hashed state. Edit `owners` in\n" +
+                "  this test in the SAME commit and say why in the commit message.");
+
+            // Non-vacuity, both halves: the scan must have read real files, and it must have found
+            // real ISimSystem implementations. A denylist that matches nothing guards nothing.
+            Assert.That(scanned, Is.GreaterThan(20), "the Sim.Core scan read only " + scanned + " files");
+            Assert.That(sawSimSystem, Is.GreaterThan(10),
+                "the scan recognised only " + sawSimSystem + " ISimSystem implementations — the " +
+                "detection changed and this boundary now passes because it is looking at nothing");
+        }
+
         [Test]
         public void SimCore_DependsOnNothingElseInTheRepo()
         {

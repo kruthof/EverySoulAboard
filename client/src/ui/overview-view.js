@@ -33,7 +33,7 @@ import {
   selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
-import { ledgerRows, matterLine } from './ledger-model.js';
+import { ledgerRows, matterLine, caveatLine } from './ledger-model.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
@@ -387,6 +387,8 @@ function buildIslands() {
       '<span class="ov-ledlabel"></span><span class="ov-ledval"></span><span class="ov-ledsub"></span></div>';
   }
   ledger += '<div class="ov-ledcensus ov-faint" hidden></div>' +
+            // The one caveat that does NOT ride a row's hover title. See caveatLine().
+            '<div class="ov-ledcaveat" hidden></div>' +
             '<div class="ov-ledempty ov-faint" hidden>— no ledger yet —</div>';
   $('ov-ledger').innerHTML = ledger;
   _el.ledgerHdr = _root.querySelector('.ov-ledger .ov-hdr');
@@ -398,6 +400,7 @@ function buildIslands() {
     level: '',
   }));
   _el.ledgerCensus = _root.querySelector('.ov-ledcensus');
+  _el.ledgerCaveat = _root.querySelector('.ov-ledcaveat');
   _el.ledgerEmpty = _root.querySelector('.ov-ledempty');
 }
 
@@ -489,7 +492,7 @@ function repaint() {
 // ── bottom-left LEDGER (E0-8) ──
 
 /**
- * The ship's ledger: matter census, PARTS/DAY, DAYS OF WATER, DAYS OF AIR.
+ * The ship's ledger: matter census, PARTS/DAY, DAYS OF WATER, O2 TREND.
  *
  * Every string here comes from `ledger-model.js`, which owns the SENTINELS — `window === 0` reads
  * MEASURING and a negative runway reads STEADY. This function must never substitute a zero for
@@ -523,6 +526,11 @@ function paintLedger() {
   const census = matterLine(msg);
   setHidden(_el.ledgerCensus, !census);
   setText(_el.ledgerCensus, census);
+  // The caveat is ALWAYS VISIBLE, never a title: it is the one fact on this island a player who
+  // never hovers must still be told.
+  const caveat = caveatLine(msg);
+  setHidden(_el.ledgerCaveat, !caveat);
+  setText(_el.ledgerCaveat, caveat);
 }
 
 // ── the scene (schematic) + the lens wash overlay ──
