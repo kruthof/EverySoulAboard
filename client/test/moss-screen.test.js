@@ -896,11 +896,42 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
     'control on the control: the raw text DOES still contain the rule, so the line above is '
     + 'measuring the stripper and not a typo in the fixture');
 
-  // 2. quote-awareness: a comment marker inside a CSS string must not open a comment.
-  const quoted = '.a::before{content:"/*"}\n.moss-crt{pointer-events:none}\n';
+  // 2. QUOTE-AWARENESS. A comment marker inside a CSS string must not open a comment.
+  //
+  // ⚠️ THE TRAILING COMMENT IN THIS FIXTURE IS LOAD-BEARING AND THE FIRST VERSION OF THIS LEG DID
+  // NOT HAVE IT, so the leg could not fail — this control's own named mutation was dead, inside the
+  // package written to hunt dead named mutations. The fixture was
+  // `'.a::before{content:"/*"}\n.moss-crt{pointer-events:none}\n'`, which contains NO closing `*/`
+  // ANYWHERE. The naive `replace(/\/\*[\s\S]*?\*\//g, '')` the prose names therefore found no match
+  // at all, returned the string untouched, and the assertion passed. Measured: substituting that
+  // regex for `cssCodeOnly` left the whole client suite green, 280 pass / 0 fail.
+  //
+  // THE GENERAL RULE, worth more than this fixture: A NEGATIVE CONTROL FOR A COMMENT STRIPPER MUST
+  // CONTAIN A LATER REAL COMMENT. The characteristic failure of a non-quote-aware stripper is that
+  // it opens a comment at the quoted marker and runs forward to the NEXT terminator, swallowing
+  // everything between. With no later terminator there is nothing to run to, so the bug cannot
+  // occur and the control measures nothing. (The prose in `code-only.js` is CORRECT about the naive
+  // regex in general; it was the fixture that failed to exercise it.)
+  const quoted = [
+    '.a::before{content:"/*"}',
+    '.moss-crt{pointer-events:none}',
+    '/* a later, real comment — the terminator a naive stripper runs forward to */',
+    '.z{color:red}',
+    '',
+  ].join('\n');
+
   assert.ok(CRT.exec(cssCodeOnly(quoted)),
-    'a `content: "/*"` string swallowed the rule after it — the stripper is not quote-aware, and '
-    + 'every scan downstream of it would pass vacuously on a sheet that contains one');
+    'a `content: "/*"` string swallowed the rule after it — the stripper is not quote-aware, so it '
+    + 'opened a comment inside a string and ran to the next `*/`, deleting real rules on the way. '
+    + 'Every scan downstream would then pass vacuously on a sheet containing one such string.');
+  assert.match(cssCodeOnly(quoted), /\.z\{color:red\}/,
+    'the rule AFTER the later comment was eaten too — same defect, the far end of the same swallow');
+
+  // …and the converse, or a "stripper" that gives up on quotes by stripping NOTHING satisfies the
+  // two assertions above while doing no work at all.
+  assert.doesNotMatch(cssCodeOnly(quoted), /a later, real comment/,
+    'the later, genuinely-commented-out text SURVIVED the stripper. A stripper that strips nothing '
+    + 'passes the quote-awareness legs above trivially — this is what makes them mean something.');
 
   // 3. and it must not over-reach: ordinary declarations come through untouched.
   assert.equal(cssCodeOnly('.x{color:red}'), '.x{color:red}');
