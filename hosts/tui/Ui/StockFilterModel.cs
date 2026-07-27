@@ -21,7 +21,8 @@ namespace Perilune.Tui.Ui
         /// reads it in its own initializer, and C# runs static field initializers in source order.</summary>
         public static readonly int KindCount = Enum.GetValues(typeof(ItemKind)).Length;
 
-        /// <summary>Every kind accepted (0x7F today). DERIVED from the enum, never a literal, so it
+        /// <summary>Every kind accepted (0xFF today; 0x7F before E0-6 added Seals). DERIVED from the
+        /// enum, never a literal, so it
         /// widens with <see cref="ItemKind"/> instead of silently covering a stale subset. The web
         /// host derives its own the same way — the two host projects share no assembly, and a derived
         /// value cannot drift where a copied literal would.</summary>

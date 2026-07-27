@@ -746,7 +746,8 @@ namespace Perilune.Web
 
         /// <summary>
         /// Every <see cref="ItemKind"/> accepted — the canonical "accept all" mask, DERIVED from the
-        /// enum rather than written as a literal (0x7F today). A literal would silently stop covering
+        /// enum rather than written as a literal (0xFF today; 0x7F before E0-6 added Seals — it widened
+        /// on its own). A literal would silently stop covering
         /// the whole set the day an eighth kind is added; the derived form widens with the enum, and
         /// <c>AcceptAllMaskIsDerivedFromItemKind_NotALiteral</c> pins that. Reflection is fine here:
         /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
@@ -785,7 +786,7 @@ namespace Perilune.Web
         ///    SINCE E0-4 WP-6 THIS MASK IS BELT TO THE SIM'S BRACES, AND UN-BITABLE BY A TEST — but
         ///    only conditionally, which is why it stays. <c>StockZoneSystem.SetFilter</c> now performs
         ///    the same <c>mask &amp;= AcceptAllMask</c> at the sim write door, so while the two derived
-        ///    masks are EQUAL the operation is idempotent and the stored value is <c>v &amp; 0x7F</c>
+        ///    masks are EQUAL the operation is idempotent and the stored value is <c>v &amp; 0xFF</c>
         ///    whether or not this line ran — no test can observe its deletion, and
         ///    <c>StockpileFilterVerbTests.BitsAboveTheLastItemKindAreCanonicalisedAway</c> says so in
         ///    its own doc rather than pretending otherwise.

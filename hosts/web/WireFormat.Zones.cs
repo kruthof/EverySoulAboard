@@ -101,7 +101,7 @@ namespace Perilune.Web
         /// are exact only to 2^53−1, so a mask with a bit at 53 or above would lose precision in the
         /// browser. <see cref="Perilune.Sim.StockZoneSystem.SetFilter"/> masks every stored value down
         /// to <c>AcceptAllMask</c>, which covers only DECLARED <see cref="Perilune.Sim.ItemKind"/>s
-        /// (7 today ⇒ 0x7F), so this is safe until the enum passes 53 members — at which point the
+        /// (8 today ⇒ 0xFF), so this is safe until the enum passes 53 members — at which point the
         /// tuple needs a string or a hi/lo pair, and the pinned test is what will say so.
         ///
         /// InvariantCulture on every number (its own <see cref="ZoneIc"/>, so this file is readable in

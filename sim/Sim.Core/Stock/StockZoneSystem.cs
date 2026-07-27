@@ -79,10 +79,11 @@ namespace Perilune.Sim
 
         /// <summary>
         /// WP-6 — the mask that accepts EVERY declared <see cref="ItemKind"/>: bit <c>k</c> set for
-        /// each declared kind, and nothing else (today kinds 0–6 ⇒ <c>0x7F</c>). DERIVED FROM THE
+        /// each declared kind, and nothing else (today kinds 0–7 ⇒ <c>0xFF</c>; it was <c>0x7F</c> until
+        /// E0-6 added Seals, and it widened on its own). DERIVED FROM THE
         /// ENUM, never hard-coded, so an 8th kind widens it automatically instead of silently
         /// turning "accept everything" into "accept everything except the new kind" — the exact way
-        /// a hard-coded <c>0x7F</c> would rot. Computed once at type-init (the
+        /// a hard-coded <c>0x7F</c> would have rotted the day E0-6 landed. Computed once at type-init (the
         /// <c>JobSystem.KindCount</c> precedent, <c>JobSystem.cs:57</c>); no tick path touches it.
         ///
         /// Kinds ≥ 64 are skipped, not shifted: <c>1UL &lt;&lt; 64</c> silently aliases to bit 0 in
