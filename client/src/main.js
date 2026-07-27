@@ -250,6 +250,10 @@ function onMessage(m) {
     // shared state layer; drawn by BOTH the Overview and the Room Zoom. HANDOVER §4g calls this "the
     // `designations` channel" — it is `marks` because debris is terrain, not an order.
     case 'marks': Hud.renderMarks(m); break;
+    // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
+    // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
+    // island. Read-only — it commands nothing.
+    case 'ledger': Hud.renderLedger(m); break;
     default: break;
   }
 }

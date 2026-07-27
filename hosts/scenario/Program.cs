@@ -30,6 +30,8 @@ namespace Perilune.Tools
             if (args.Length > 0 && args[0] == "dump-personas") return RunDumpPersonas(args);
             // A1: the "are the crew actually working?" measurement (ECONOMY-PLAN §E0).
             if (args.Length > 0 && args[0] == "occupancy") return RunOccupancy(args);
+            // E0-8: the ledger + the ShipMetrics honesty table (LedgerHarness).
+            if (args.Length > 0 && args[0] == "ledger") return RunLedger(args);
             // P2 live-provider smoke: env-gated, spends real money, NEVER in ci.sh.
             if (args.Length > 0 && args[0] == "llm-smoke") return LlmSmoke.Run(args);
 
@@ -579,6 +581,78 @@ namespace Perilune.Tools
                 ? $"=> all {count} variants pass every gate"
                 : $"=> {failures} of {count} variants failed a gate");
             return failures == 0 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// <c>ledger [--ship perilune|slice|grid] [--days D] [--seed N] [--data DIR]</c>: E0-8's
+        /// measurement fixture. Ticks a ship and prints, hourly, the four new
+        /// <see cref="ShipLedger"/> members, then the <see cref="ShipMetrics"/> HONESTY TABLE at the
+        /// end — every existing HUD metric beside an independently derived truth.
+        ///
+        /// <para>Read-only: no designation, no command, no file. The CI-pinned verb-less path is
+        /// untouched.</para>
+        /// </summary>
+        private static int RunLedger(string[] args)
+        {
+            string shipName = ArgString(args, "--ship", "slice");
+            bool slice = shipName == "slice";
+            bool grid = shipName == "grid";
+            int days = ArgInt(args, "--days", 3);
+            ulong seed = ArgULong(args, "--seed",
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 42UL);
+            string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
+            var defs = LoadDefs(dataDir, out _, out _, out _);
+
+            GenSimHost host;
+            if (slice)
+            {
+                host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs);
+                AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
+            }
+            else if (grid)
+            {
+                host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            }
+            else
+            {
+                host = GenSimHost.Build(ProceduralShips.Generate(ShipRecipe.FromSeed(seed)), defs);
+            }
+
+            var sim = host.Sim;
+            Console.WriteLine($"ledger — {shipName} ship, {sim.Citizens.Items.Count} crew, {days} day(s), seed {seed}");
+            Console.WriteLine($"defs: {defs.Checksum:x16}");
+            Console.WriteLine($"item kinds known to the ledger: {ShipLedger.KindCount}");
+            Console.WriteLine();
+
+            const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
+            var tracker = new ShipLedgerTracker();
+            long totalTicks = (long)days * TicksPerDay;
+            for (long t = 0; t < totalTicks; t++)
+            {
+                sim.Tick();
+                if ((t + 1) % TicksPerHour != 0) continue;
+                var report = tracker.Observe(sim);
+                Console.WriteLine($"h{(t + 1) / TicksPerHour,-3}" + LedgerHarness.FormatLedgerLine(report));
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("matter census at end of run (units per ItemKind):");
+            var final = ShipLedger.Sample(sim);
+            for (int k = 0; k < ShipLedger.KindCount; k++)
+                Console.WriteLine($"  {ShipLedger.KindName(k),-18} {final.Units[k],8}");
+            Console.WriteLine($"  {"(unknown kind)",-18} {final.UnknownUnits,8}");
+            Console.WriteLine($"  {"TOTAL",-18} {final.TotalUnits,8}   in {final.Stacks} stacks");
+            Console.WriteLine($"  greywater pool     {final.GreywaterLiters,8:0.0} L   " +
+                              $"tanks {final.TankLiters:0.0} / {final.TankCapacityLiters:0.0} L");
+
+            Console.WriteLine();
+            Console.WriteLine("ShipMetrics HONESTY TABLE — what the HUD shows vs an independent derivation:");
+            foreach (var a in LedgerHarness.Audit(sim))
+            {
+                Console.WriteLine($"  {a.Name,-14} shown {a.Shown,-12} true: {a.Truth}");
+                Console.WriteLine($"                 => {a.Verdict}");
+            }
+            return 0;
         }
 
         private static bool HasFlag(string[] args, string name)

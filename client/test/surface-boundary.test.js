@@ -795,7 +795,13 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  DOM), and it is read by BOTH modern surfaces rather than one: it is where the debris/dig/stockpile/
  *  strip layer comes from now that neither surface derives it from the frame's `cell[1]` byte. */
 const SHIP_STATE_REACH = Object.freeze([
-  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame', 'getLlm',
+  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame',
+  // E0-8: the Overview's LEDGER island reads the `ledger` channel's cache. SHIP STATE, not console
+  // chrome — `renderLedger`/`getLedger` touch no DOM, create no element and write no innerHTML, so
+  // they add nothing to the four pinned console-DOM counts and move to ship-state.js at WP-9 with
+  // the rest of the wire cache.
+  'getLedger',
+  'getLlm',
   'getLog', 'getMarks', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster',
   'getStatus', 'getTab', 'getTerminals', 'getZones', 'isMossActive', 'onShipUpdate',
   'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
