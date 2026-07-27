@@ -1900,10 +1900,14 @@ test('THE LIVE BUG, generalised (driven): a mark SURVIVES a crew member standing
 });
 
 test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, and mark ABOVE it', () => {
-  // A code BOTH surfaces skin as furniture. The two keep independent glyph→item tables
-  // (`itemForGlyph` here, `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` in overview-scene.js), so the code is
-  // derived against BOTH rather than assumed shared — and the existence assert is what stops this
-  // test degrading into a vacuous pass if the tables ever diverge completely.
+  // A code BOTH surfaces skin as furniture, derived against BOTH rather than assumed shared — the
+  // existence assert is what stops this test degrading into a vacuous pass if they ever diverge.
+  // ⚠️ THE REASON WEAKENED 2026-07-26 and the old wording is quoted so the change is visible: *"The
+  // two keep independent glyph→item tables (`itemForGlyph` here, `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM`
+  // in overview-scene.js)"*. They no longer do — both call `itemIdForGlyphChar` off the one `ITEMS`
+  // derivation (`client/src/items/glyph-map.js`), which is the whole of that package. Deriving
+  // against both is now belt-and-braces rather than load-bearing, and it is kept precisely because a
+  // future surface could stop reading the shared table without this test noticing otherwise.
   const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
   let code = 0;
   for (let c = 33; c < 127 && !code; c += 1) {

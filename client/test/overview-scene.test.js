@@ -487,7 +487,7 @@ test('terminals on the shown deck render as clickable pl-terminal markers; other
   assert.equal(overviewScene(baseState({ deck: 0, terminals })), svg);
 });
 
-test('furniture maps from frame glyphs via SPRITE_FOR_GLYPH → item builder', () => {
+test('furniture maps from frame glyphs via itemIdForGlyphChar → item builder', () => {
   const svg = overviewScene(baseState({ deck: 0 }));
   assert.match(svg, /class="pl-furniture"/);
   // the grid deck's frame has scrubbers/beds/tables/etc — several pl-item groups must appear
@@ -524,8 +524,16 @@ test('unknown roomType and unknown glyphs degrade gracefully (no throw, no furni
   assert.match(svg, /weird/);
   assert.equal((svg.match(/id="ov-glow-0"/g) || []).length, 1); // still gets its glow
 
-  // A frame full of glyphs NOT in SPRITE_FOR_GLYPH (e.g. '"','T','f') yields no furniture, no throw.
-  const junkFrame = { deck: 0, w: 2, h: 1, lens: 'none', cells: [[34, 0, 0, 0], [84, 0, 0, 0]] };
+  // A frame full of glyphs NOTHING skins yields no furniture, no throw.
+  //
+  // ⚠️ THE GLYPHS CHANGED 2026-07-26 and the old ones are quoted because they are the whole point:
+  // this read *"glyphs NOT in SPRITE_FOR_GLYPH (e.g. '\"','T','f')"* with cells `[[34,…],[84,…]]` —
+  // `"` (GrowBed) and `T` (Terminal). Those two ARE skinned now (hydroponics and the research
+  // console; HANDOVER §4l), so the fixture had quietly become a test that the Overview draws no
+  // hydroponics. `f` (102, a ground potato) and `z` (122, nothing at all) are unclaimed by any
+  // ITEMS row, and `client/test/device-sprite-coverage.test.js` is what keeps THIS assertion from
+  // silently becoming "the surface lost its furniture layer": it fails if any DeviceKind lands here.
+  const junkFrame = { deck: 0, w: 2, h: 1, lens: 'none', cells: [[102, 0, 0, 0], [122, 0, 0, 0]] };
   const svg2 = overviewScene({ deck: 0, decksView: view, frame: junkFrame, crew: [] });
   assert.equal((svg2.match(/class="pl-furniture"/g) || []).length, 0);
 });

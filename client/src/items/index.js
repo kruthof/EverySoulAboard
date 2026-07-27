@@ -6,6 +6,19 @@
 //   deviceKind  the sim DeviceKind name, for FUNCTIONAL pieces (Device.cs). Present on NEW kinds too,
 //               flagged via `deviceStatus: 'new'` — those need a real sim change before they place.
 //   glyph       the sim glyph char the piece maps to, or null (— in mapping.md)
+//
+// ⚠️ `glyph` IS LOAD-BEARING SINCE 2026-07-26: `items/glyph-map.js` derives the ONE glyph → itemId
+// table both SVG surfaces skin from, straight out of this column. A FUNCTIONAL piece left at
+// `glyph: null` whose `DeviceKind` the sim really projects draws a dashed VS-Z-25 "unknown" box with
+// a raw ASCII letter in it, in the shipping game. `hydroponics` (`"`), `research-console` (`T`) and
+// `sensor-array` (`x`) shipped exactly that way and were filled in here.
+//   Their `—` in `docs/design/perilune-item-mapping.md` was NOT a decision to leave them unskinned:
+// that column is cross-checked against `render/glyphs.js` `SPRITE_FOR_GLYPH`, the WebGL skin's
+// table, and growbed/terminal are drawn by that skin's own executor switch instead
+// (`hosts/web/Client.html:630,634`). The SVG surfaces have no executor switch, so the `—` silently
+// meant "no art" there. (`sensor-array`'s row carried no such note at all — `x` was never drawn by
+// anything.) Doors, `power-conduit` and `pipe-run` stay `null` on purpose: those ARE drawn by other
+// layers on every surface, and `items/glyph-map.js` + its guard record that decision by name.
 //   decor       the non-hashed decor channel key, for COSMETIC pieces
 //   material    'wall' | 'floor', for MATERIAL pieces
 //   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock)
@@ -41,7 +54,7 @@ export const ITEMS = Object.freeze({
   'o2-scrubber':      { build: O.o2Scrubber,      size: { w: 66, h: 60 }, ...dev('Scrubber', 'S') },
   'oxygen-tank':      { build: O.oxygenTank,      size: { w: 38, h: 70 }, ...dev('OxygenTank', null, 'new') },
   'water-recycler':   { build: O.waterRecycler,   size: { w: 60, h: 66 }, ...dev('Reclaimer', 'R') },
-  'hydroponics':      { build: O.hydroponics,     size: { w: 92, h: 48 }, ...dev('GrowBed', null) },
+  'hydroponics':      { build: O.hydroponics,     size: { w: 92, h: 48 }, ...dev('GrowBed', '"') },
   'cooker':           { build: O.cooker,          size: { w: 66, h: 52 }, ...dev('Cooker', null, 'new') },
   'cooler':           { build: O.cooler,          size: { w: 52, h: 70 }, ...cos('cooler') },
   'paste-dispenser':  { build: O.pasteDispenser,  size: { w: 58, h: 64 }, ...cos('paste_dispenser') },
@@ -55,9 +68,9 @@ export const ITEMS = Object.freeze({
   'potted-plant':     { build: O.pottedPlant,     size: { w: 58, h: 68 }, ...dev('PlantPot', 'P') },
   'bookshelf':        { build: O.bookshelf,       size: { w: 80, h: 66 }, ...cos('bookshelf') },
   'med-bed':          { build: O.medBed,          size: { w: 52, h: 78 }, ...dev('MedBed', 'd') },
-  'research-console': { build: O.researchConsole, size: { w: 80, h: 52 }, ...dev('Terminal', null) },
+  'research-console': { build: O.researchConsole, size: { w: 80, h: 52 }, ...dev('Terminal', 'T') },
   'comms-dish':       { build: O.commsDish,       size: { w: 90, h: 90 }, ...cos('comms_dish') },
-  'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', null) },
+  'sensor-array':     { build: O.sensorArray,     size: { w: 88, h: 88 }, ...dev('Telescope', 'x') },
   'workbench':        { build: O.workbench,       size: { w: 92, h: 48 }, ...dev('MachineShop', 'M') },
   'fabricator':       { build: O.fabricator,      size: { w: 70, h: 64 }, ...dev('Fabricator', 'F') },
   'storage-crate':    { build: O.storageCrate,    size: { w: 64, h: 60 }, ...cos('storage_crate') },

@@ -22,7 +22,10 @@
 // `overview-scene.js`. The binding constraint on WP-2 is *"the same fg byte must not mean two
 // different things in the Overview and the Room Zoom"*. Those two files mirror each other by hand
 // today (`NON_FURNITURE`, `ROLE_TO_ITEM`, each carrying a "mirrors the other" comment), and a hand
-// mirror keeps that constraint only for as long as someone remembers it. Sharing one table and one
+// mirror keeps that constraint only for as long as someone remembers it. ⚠️ NOTE 2026-07-26: that
+// argument was PROVED by `ROLE_TO_ITEM`, which is now gone — the mirror had a hole in it (GrowBed,
+// Terminal and Telescope reached no art at all, HANDOVER §4l) and is replaced by a derivation off
+// the `ITEMS` registry, `client/src/items/glyph-map.js`. `NON_FURNITURE` is still hand-mirrored. Sharing one table and one
 // shape builder makes the constraint hold BY CONSTRUCTION rather than by a guard that has to be
 // written and maintained. The precedent is house style and one package old: WP-3 extracted
 // `zone-overlay.js` out of the view for exactly the neighbouring reason (a builder that cannot be
