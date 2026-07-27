@@ -88,9 +88,15 @@ namespace Perilune.Web
         private double _systemsAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
 
-        /// <summary>Last <c>Simulation.DeviceTopologyVersion</c> the MOSS adapter set was derived
-        /// from (E0-6). Starts at the value the host booted with, because
-        /// <c>SimHost.Build</c> already ran <c>MossBindings.RegisterAdapters</c> once.</summary>
+        /// <summary>
+        /// Last <c>Simulation.DeviceTopologyVersion</c> the MOSS adapter set was derived from
+        /// (E0-6). Deliberately left at its default 0 rather than seeded from the booted sim: the
+        /// host already ran <c>MossBindings.RegisterAdapters</c> once during
+        /// <c>SimHost.Build</c>, so the extra re-derive this causes on the first frame of a ship
+        /// that has any devices at all is a REDUNDANT no-op (Register REPLACES by name, and the
+        /// binding is a pure function of sim state). Seeding it would couple this field to how many
+        /// devices authoring happened to add, for no behavioural gain.
+        /// </summary>
         private int _deviceTopology;
         private Thread _thread;
         private volatile bool _running;
