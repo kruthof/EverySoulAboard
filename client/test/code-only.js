@@ -41,22 +41,36 @@
  * `\` escapes inside a string survive. NOT handled: comments inside unquoted `url()` tokens, which
  * CSS does not permit anyway.
  *
- * ⚠️ A COMMENT BECOMES WHITESPACE, NOT NOTHING, AND IT KEEPS ITS LINE BREAKS. Two properties, from
+ * ⚠️ A COMMENT BECOMES A SPACE, NOT NOTHING, AND IT KEEPS ITS LINE BREAKS. Two properties, from
  * two independently-written implementations of this function that met in a merge — `lane/palette-
  * overflow` and the test-hygiene lane each added a `cssCodeOnly`, git combined them without a
  * conflict because they landed at different offsets, and the result was a duplicate export that
  * crashed eight test files. Measured against each other before one was kept, and NEITHER WAS A
  * SUPERSET:
  *
- *   • whitespace, not nothing — `.a/*x*\/.b` must become `.a .b` (a DESCENDANT, which is what CSS
- *     means) and not `.a.b` (a compound, a different selector). The lane version emitted nothing
- *     and silently fabricated compounds; this is the hygiene lane's behaviour and it is correct.
+ *   • a space, not nothing — and ⚠️ **NOT** for the reason this comment used to give. It said
+ *     *"`.a/*x*\/.b` must become `.a .b` (a DESCENDANT, which is what CSS means)"*. **That claim is
+ *     FALSE and is retracted.** A CSS comment is not whitespace: the tokenizer consumes and DISCARDS
+ *     it, emitting no whitespace token (CSS Syntax L3 §4.3.2), so it separates tokens without
+ *     joining anything. Verified in Chrome: `.a/*x*\/.b{color:red}` has `selectorText` `".a.b"` — a
+ *     COMPOUND, one element — and it colours `<i class="a b">`, NOT `<i class="a"><u class="b">`.
+ *     `div/*x*\/span{…}` and `.rz/*x*\/-palette{…}` are both invalid and Chrome DROPS the rule.
+ *
+ *     The space is still correct, for a different reason, and the reason is an ASYMMETRY in what
+ *     this function is — a TEXT FILTER feeding selector-shaped guards. Emitting nothing FUSES
+ *     adjacent identifiers: `.rz/*x*\/-palette` becomes the string `.rz-palette`, and
+ *     `.rz-palette/*x*\/-wrap` becomes `.rz-palette-wrap`. Chrome drops both of those rules as
+ *     invalid, so a guard reading nothing-stripped text would fire on a rule that does NOTHING —
+ *     a false positive that FABRICATES this package's own guarded selector out of thin air. A space
+ *     can only ever SPLIT a token, yielding a selector the guard ignores (and a rule the browser was
+ *     dropping anyway). Fabricating a match is unsafe; splitting one is not. The lane version
+ *     emitted nothing; this is the hygiene lane's behaviour and it is the one that is safe.
  *   • line breaks kept — the lane version re-emitted each `\n` inside a comment, so the stripped
  *     sheet keeps the raw sheet's line numbering. Measured on the real `styles.css`: 1457 newlines
  *     preserved against 1301 for the space-only version, i.e. 156 lines of drift in a file whose
  *     guards quote `file:line`.
  *
- * Both are kept, both are pinned: the whitespace rule by `moss-screen.test.js`'s "the CSS stripper"
+ * Both are kept, both are pinned: the space rule by `moss-screen.test.js`'s "the CSS stripper"
  * tests, the line-fidelity rule beside them (it was previously untested on BOTH sides, which is why
  * it nearly vanished in the merge).
  *
@@ -76,7 +90,7 @@ export function cssCodeOnly(src) {
       // numbering; then one space, so the tokens either side of it stay separate.
       while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
       i += 2;                                            // past the terminator (or past EOF)
-      out += ' ';                                        // a comment is whitespace, not nothing
+      out += ' ';                                        // never fuse the tokens either side (header)
       continue;
     }
     if (c === '"' || c === "'") {

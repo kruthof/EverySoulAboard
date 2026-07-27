@@ -964,12 +964,19 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
 // MUTATION: drop `out += ' '` from the comment branch ⇒ RED on leg 1 (and on the pin above).
 // MUTATION: drop the `if (src[i] === '\n') out += '\n'` from the comment branch ⇒ RED on leg 2.
 test('the CSS stripper: a comment leaves WHITESPACE behind, and keeps its own line breaks', () => {
-  // 1. WHITESPACE, NOT NOTHING. `.a/*x*/.b` is a DESCENDANT selector in CSS. A stripper that emits
-  //    nothing turns it into the compound `.a.b`, which selects a different element entirely — and
-  //    every selector-shaped guard downstream then reads a selector the sheet does not contain.
+  // 1. A SPACE, NOT NOTHING. ⚠️ This leg used to justify itself with *"`.a/*x*/.b` is a DESCENDANT
+  //    selector in CSS"* — FALSE, and retracted. A CSS comment is not whitespace: the tokenizer
+  //    discards it and emits no whitespace token (CSS Syntax L3 §4.3.2), so `.a/*x*/.b` is the
+  //    COMPOUND `.a.b` (Chrome: `selectorText === '.a.b'`; it colours `<i class="a b">`, not a
+  //    nested pair). The assertion is unchanged and still right, for the OTHER reason: `cssCodeOnly`
+  //    is a TEXT FILTER feeding selector-shaped guards, and emitting nothing FUSES identifiers —
+  //    `.rz/*x*/-palette` becomes the string `.rz-palette`, a rule Chrome DROPS as invalid, handed
+  //    to the palette guard as the very selector it watches. That is a false positive fabricated out
+  //    of thin air. A space can only SPLIT a token, into a selector the guard ignores. Fabricating a
+  //    match is unsafe; splitting one is not.
   assert.equal(cssCodeOnly('.a/*x*/.b{color:red}'), '.a .b{color:red}',
-    'a comment between two class selectors was deleted rather than replaced with whitespace, ' +
-    'fusing a descendant selector into a compound one');
+    'a comment between two class selectors was deleted rather than replaced with a space, ' +
+    'fusing the identifiers either side of it into one');
 
   // 2. LINE FIDELITY. The stripped sheet must keep the raw sheet's line numbering, or every
   //    `file:line` a guard quotes off it is wrong. Measured on the real styles.css, where the

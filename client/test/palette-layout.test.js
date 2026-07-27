@@ -391,6 +391,17 @@ test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => 
     'and every wrapper guard is now also (wrongly) a row guard');
   assert.equal(lastValue(wrapOnly, '.rz-palette-wrap', 'max-height'), '54px',
     'the wrapper\'s own declarations are not being read at all — its guard is vacuous');
+
+  // …and the OTHER direction of the same property, which was a SURVIVOR: neutering `subject()` to
+  // `s => s` — no combinator split at all — left the whole suite green, because `simples()` runs
+  // over the entire selector and still finds `.rz-palette` somewhere in it. The matcher would then
+  // be over-eager rather than fused: `.rz-palette .rz-tool{overflow:hidden}`, a legitimate rule
+  // clipping the TOOL, would be read as a rule on the ROW and fail the CLIP guard with a message
+  // naming the wrong element. The shipped `subject()` gets this right; nothing tested it.
+  // MUTATION: `subject = s => s` ⇒ RED here (and, measured, only here).
+  assert.ok(!clips(cssRules(cssCodeOnly('.rz-palette .rz-tool{overflow-x:auto}'))),
+    'a rule whose SUBJECT is `.rz-tool` was read as a rule on `.rz-palette` — the matcher has ' +
+    'stopped resolving the subject and now fires on any selector merely CONTAINING the row');
 });
 
 // …and the same property demonstrated ON THE REAL FILE rather than on synthetic input, which is the
