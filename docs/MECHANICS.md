@@ -2249,12 +2249,17 @@ day 1→2 is 78.72 of 188.70 mol, **≈42 %**.*
 
 #### The replacement numbers
 
+A1 is the harness's own `A1 (busy at sim-hour 24)` line, not the hourly curve's h24 bucket
+(which is printed to 1 dp). "Last busy hour" is the last hour of the OPENING contiguous run with
+work ≥ 5 %; the sporadic post-cliff maintenance spikes are not part of it.
+
 | leg | A1 @ h24 (work) | throughput (`ControllerModule`) | mean work % h1–h28 | floor h29–h72 | last busy hour |
 |---|---|---|---|---|---|
-| pre-E0-6 (what §13.15 measured) | 25.000 % | 31 | 35.404 | 1.482 | h28 |
-| **E0-6, no flags** | **0.000 %** | **11** | 18.900 | 0.902 | **h18** |
-| E0-6 with the recycler ratio reverted | 25.000 % | 31 | 35.404 | 0.902 | h28 |
+| pre-E0-6 (what §13.15 measured) | 24.979 % FAIL | 31 | 35.404 | 1.482 | h28 |
+| **E0-6, no flags** | **0.000 % FAIL** | **11** | 18.900 | 0.902 | **h18** |
+| E0-6 with the recycler ratio reverted | 24.979 % FAIL | 31 | 35.404 | 0.902 | h28 |
 | E0-6 `--strip 40` | 28.771 % PASS | 19 | 29.779 | 2.577 | h32 |
+| E0-6 ratio reverted, `--strip 40` | 37.368 % PASS | 51 | 40.864 | 12.975 | h49 |
 
 End-of-run ground stock, slice, 3 days: `Corpse=1 Potato=699 ControllerModule=31` →
 `Regolith=2 Corpse=1 Potato=699 Scrap=1 ControllerModule=11 Seals=12`.
