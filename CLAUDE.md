@@ -27,6 +27,63 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-27) — **the E0-6/E0-7 WAVE + E0-8: the economy's faucet was fake**
+
+**Gate on `main`: `./ci.sh` exit 0. ALL FIVE PINS MOVED** — the wave is the biggest determinism
+change since E0-5, and the re-pin is in the same commit as this text (the ritual).
+
+**E0-6 — the shipped `SalvageRecycler` was `1 Regolith → 2 Scrap`. Mass creation, in the production
+table since before the programme started.** 62 Regolith became 124 Scrap became 31 modules; **every
+unit past the first 62 was conjured.** Now 4:3, with `work_s` scaled so the per-unit work rate is
+byte-identical. Arithmetic predicts the sim to the unit (0.375× ⇒ 11.6, measured **11**).
+⚠️ **IT MAKES THE STANDARD PLAY SHIP MEASURABLY WORSE — A1 24.990 % → 0.000 %, work stops after h16
+— and E0-7 DOES NOT REPAIR THAT**, because the ice is authored into `--ship slice` only
+(`MECHANICS.md` §13.20). **Whether `--ship grid` gets its own ice is OPEN ON THE OWNER.** Also
+shipped: `Seals` as a maintenance rung, and `ControllerModule`'s first consumer (commissioning a
+device for MOSS) — **which has NO BUTTON and is provably inert in every unattended run.**
+
+**E0-7 — ice → melter → water**, 1 600 authored units ⇒ **~22.5 sim-days**. ⚠️ **That runway is a
+property of an UNCAPPED greywater pool, not of the ice economy: ~66 % of every litre melted is
+warehoused and never used** (filed as an OPEN DEFECT). Review found a **priority inversion** — the
+melter claimed tank headroom ahead of free recycled water — worth **−33 % ice burned** for identical
+food and tanks, **and it had no test at all**.
+
+**E0-8 — the ledger**, pin-neutral. Its audit is the lasting part: **`ShipMetrics` is read inside
+`DirectorSystem.Tick` and folded into `StateHash`**, so the lying metrics already drive device wear
+and correcting one is a pin move. `Power` reads **0.833 where the truth is 1.000** on the standard
+play ship, and **the error's sign flips by ship**. `Food` is clamped so 699 potatoes and 40 both read
+1.000 — the food term contributes **exactly zero** to Director tension. **The charter's own premise
+is stale**: production is alive (76 → 731 units), the clamp is the liar.
+
+### ⚠️ A1 IN A FIFTH COSTUME — never quote it without throughput beside it
+
+The merged `--strip 40` leg reads A1 **28.771 PASS → 21.153 FAIL** while **throughput is identical at
+19** and both robust statistics **improve** (mean 29.779 → 33.261; floor 2.577 → 6.198). Neighbouring
+hours: **h23 30.7 % · h24 21.2 % · h25 34.4 %** — a 13.2 pp swing across three hours and **A1 samples
+the trough**. It nearly shipped as a published regression.
+
+### ⚠️ THE FOURTH TRAP SHAPE — a guard whose SCOPE FILTER excludes the violation
+
+E0-8 added a guard that the ledger can never be called from a tick path, finding systems by scanning
+for `": ISimSystem"`. Review built the violation — a plain helper (not a system) calling it, plus one
+line in `DirectorSystem.Tick` calling the helper. **The ledger was on the tick path and the guard was
+GREEN.** Over 20 files scanned, every non-vacuity floor passed, and **the violation was never in
+scope.** ⇒ **Non-vacuity by POPULATION COUNT proves a matcher matched something; it never proves it
+would match the thing. Make non-vacuity an INCLUSION test — plant a known violation and require it be
+caught.** The other three shapes: a guard satisfied by its own subject commented out; a mutation red
+for the wrong reason (a crash); **and a correct assertion satisfied by an unrelated code path** — a
+right answer from the wrong branch, which lives wherever several paths return one sentinel.
+
+### ⚠️ TWO LANES FIXING THE SAME FUNCTION DIFFERENTLY MERGE TEXTUALLY AND ARE WRONG TOGETHER
+
+Both E0-6 and E0-7 fixed `DefsParser`'s `[production]` handling. **They do not compose — the seeding
+supersedes the guard**, measured: deleting E0-6's guard leaves its own test GREEN; reverting E0-7's
+seeding reddens 8. Git flagged **14** conflicts and the semantic ones were elsewhere: twelve tests
+broken by a station name, a mask guard that had inverted into asserting the opposite of the truth, a
+test whose subject evaporated (it probed bits that are now real kinds), and a player-visible label
+where one lane's item got a name and the other's silently read `"cargo"`. **Git's conflict markers
+are the floor, not the ceiling.**
+
 ## Status snapshot (2026-07-27) — **three packages: the player-visible gaps, and a sweep for dead guards**
 
 Landed overnight on top of the `marks` channel, each Opus-implemented and independently
@@ -591,11 +648,11 @@ object** (three objects would leave only the middle phase able to `stopPropagati
 
   | pin | value | enforced by |
   |---|---|---|
-  | scenario `--days 3 --seed 42` | `00e0a2dadb8e5076` | `ci.sh:31` (also twin-run equality) |
-  | tick-3000 golden | `4be2e77864fb7409` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
-  | slice tick-3000 golden | `c565a68b810f588d` | `Golden/slice_tick3000_hash.txt` |
-  | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
-  | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
+  | scenario `--days 3 --seed 42` | `43345ff0c9d62684` | `ci.sh:31` (also twin-run equality) |
+  | tick-3000 golden | `5a7224821810b478` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
+  | slice tick-3000 golden | `7d846c14c5901e4d` | `Golden/slice_tick3000_hash.txt` |
+  | defs **defaults** (`SimDefs.Default.Checksum`) | `62a1bb2633c447be` | `DefsChecksumTests.cs:69` |
+  | defs **rules-inclusive** (the host's `defs:` print) | `4c15dffe98a2cda8` | `DefsChecksumTests.cs:146` |
 
   Run it with `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`. Adding hashed
   state moves a pin ⇒ update `ci.sh` + here + `MECHANICS.md` + memory in the SAME commit.

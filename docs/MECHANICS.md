@@ -1658,7 +1658,7 @@ These *look* suspicious and are actually fine:
 - `EffectPump` and `MemorySystem` not being in the scenario stack is why the pure-sim
   determinism pin is stable.
 
-### 13.12 The `[production]` node table is consumed, and ships TWO ROWS (W0-5, retitled by E0-6)
+### 13.12 The `[production]` node table is consumed, and ships THREE ROWS (W0-5, retitled by E0-6, corrected by the E0-6/E0-7 wave)
 
 > **⚠️ SUPERSEDED IN PART, 2026-07-27 (E0-6).** The title of this section said *"and ships empty"*
 > and that is now **false**. `content/core/SimDefs/production.def` ships **two rows** —
@@ -2100,6 +2100,79 @@ call site (`hosts/scenario/Program.cs:491`) is UNCOVERED** — the tests project
 `Program.cs` — so **deleting the call leaves the gate green**. The message is pinned; its emission is
 not. This intentionally adds exactly **one line** to that
 report; the other 100 lines are byte-identical.
+
+### 13.20 E0-7 — ice → melter → water, and the water the ship never uses (the E0-6/E0-7 wave, 2026-07-27)
+
+**What shipped.** `ItemKind.Ice = 8`, a `DeviceKind.IceMelter` whose bill is a `[production]` node
+(`melt_ice`, `Ice:1 → none` — litres, so it cannot be a `[recipes]` row), meltwater buffered in the
+already-hashed `Device.StoredLiters`, and **1 600 units of authored forward-hold cargo = 40 000 L**.
+**The chain adds zero new hashed state.** B-2's makeup floor is now **suppressed per-ship on the
+existence of a melter** — not deleted, because `--ship grid`, the 2-crew reference and every
+procedural ship have no ice and would re-kill the food loop on day 1.2. Both directions are pinned.
+
+**⚠️ THE RUNWAY IS NOT A PROPERTY OF THE ICE ECONOMY.** `sim.WastewaterLiters` has **no cap**, so
+**~66 % of every litre melted, in steady state, is warehoused in an abstract pool nothing uses.**
+That is filed in `WaterSystem.cs` as **"⚠ OPEN DEFECT, NOT A LIMIT"**. Two-thirds of the burn funds a
+pool. Measured on the merged tree (slice, seed 20260721, n = 1): **1 382 units left at day 3, 888 at
+day 10, 71.2–72.7 units/day ⇒ ~22.5 sim-days from boot.** The loop is **demand-limited, not
+supply-limited** — tanks sit at 1000/1000 and the melter buffer rests at 80.6–83.1 L against a 100 L
+cap, above the 75 L recruit gate.
+
+**A priority inversion found by review, not by the suite.** `RunMelters` ran **before**
+`RunReclaimers`, so finite hauled ice claimed tank headroom ahead of free recycled greywater.
+Swapping two lines: ice burned over 3 days **335 → 224 units (−33 %)**, runway **14.3 → 21.4 days**,
+pool **7 051 → 4 049 L**, with **identical food and identical full tanks**. **The ordering had no
+test at all** — that is why a reviewer's sweep found it and the gate did not. It is pinned now.
+
+**⚠️ E0-7 IS INERT ON `--ship grid`, THE ONE STANDARD PLAY SHIP.** `AddIceMelterOnHydroLoop` /
+`AddIceAtTheForwardHold` are called only from `AddSliceMatter`; `PeriluneGrid()` is a separate
+builder; and `IsPlaceableFurniture` does not list `IceMelter`, so **a player can never build one**.
+Grid still reports *"B-2 makeup floor is ACTIVE at 20 L — water is being conjured"*. **So the wave
+does NOT repair what §13.19 records E0-6 breaking on the standard surface** — grid remains A1
+**0.000 % FAIL** with throughput 8 and, at 10 days, `None` 95.50 %. Whether grid gets its own
+authored ice is a **content decision and it is open on the owner.**
+
+**⚠️ §13.19 item 6 IS NOW FALSE and is struck.** It reads *"a defs set that declares an empty
+`[production]` section still empties the table and falls back to `[recipes]`."* E0-7 **seeds**
+`[production]` from the compiled defaults (`DefsParser.cs:74`), so an empty section removes nothing.
+Measured at the merge: E0-6's `sawProductionSection` guard **no longer bites** (deleting it leaves
+its own test green) while reverting the seeding reddens 8 tests. **The two lanes' fixes did not
+compose — the seeding supersedes the guard**, and E0-6's assertion was inverted with the reason at
+the site. That is the shape `CLAUDE.md` warns about: two lanes fixing the same function differently
+merge textually and are wrong together.
+
+**⚠️ §13.19 item 2's Seals surplus is a 3-DAY ARTEFACT.** Measured across horizons on the merged
+tree: **grid — which has no melter and no ice anywhere — produces 16 Seals by day 1 and burns them
+16 → 5 → 2 → 0 by day 4.** The slice runs 23 → 14 → 11 → 0 by day 5. `ControllerModule` is **flat at
+8 (grid) / 11 (slice) at every horizon**, so the matter ceiling never moves and only the Seals stock
+decays. "Nothing burns the surplus" was true of a 3-day window and false of the game. The one clean
+like-for-like moved **12 → 11** with a named mechanism (the melter is a new wearing device, wear
+0.012, therefore a new maintenance customer and a new Seals consumer) — but one unit at n = 1 is not
+a measurement of size.
+
+**⚠️ A1 IN A FIFTH COSTUME, and it nearly shipped as a regression.** The merged `--strip 40` leg
+reads A1 **28.771 PASS → 21.153 FAIL** — while **throughput is identical at 19** and *both* robust
+statistics **improve**: mean h1–h28 **29.779 → 33.261**, floor h29–h72 **2.577 → 6.198**. The
+neighbouring hours are **h23 30.7 % · h24 21.2 % · h25 34.4 %** — a 13.2 pp swing across three
+adjacent hours, and **A1 samples the trough**. The melter re-times work. **A1 moved down while the
+economy moved up.** Never quote it without throughput beside it.
+
+**A performance defect found while measuring a disclosure, NOT fixed.** `HasIceChain` runs only when
+`RunMakeup`'s cheap pool check fails — so it is **heaviest on exactly the ship that can never benefit
+from it**. `--ship grid` walks **91 721 250 device slots per sim-day** across 73 377 scans (42.5 % of
+`RunMakeup` passes — *a share of passes, not of CPU*; the honest cost is low single-digit percent of
+wall clock), every scan returning false, because its pool sits pinned at the 20 L floor. The slice
+measures **0 scans** on a 1-day run, because its ice chain keeps the pool high. Reordering cannot
+help — the cheap check is already first. The fix is one field memoised against
+`sim.DeviceTopologyVersion`, which `WaterSystem.Tick` **already tracks 14 lines away**: pin-neutral,
+inherits `RebuildNetworks`' correctness. **Charter it on the 91.7 M figure, not on "42.5 %".**
+
+**Known and disclosed:** 400 of the 1 600 authored ice units are **invisible** (one pile lands under
+a Light; `IsOpenFloor` tests the deck raster only). The melter's `machines.def` row is a **verbatim
+Scrubber copy**, so it inherits **0.4 kW of waste heat** — physically inverted for a device absorbing
+heat, on a ship whose thermal loop is documented as freezing. And `ECONOMY-PLAN §5.1`'s mandated
+slice-level conservation test arrived with E0-6, not here — it is what would have surfaced the 66 %
+surplus from inside the suite instead of from a reviewer's arithmetic.
 
 ---
 
