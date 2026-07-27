@@ -177,71 +177,87 @@ namespace Perilune.Tests
         /// is caught by <see cref="EqualDistance_DigBeatsHaul"/> instead. A recorded sequence is a
         /// good canary and a bad proof; the constructed ties below are the proof.
         ///
+        /// RE-RECORDED FOR E0-7 (ice -> melter -> water), and the reason is stated so a reader can
+        /// check it rather than trust it. E0-7 authors ONE new device (the ice melter, on the hydro
+        /// loop) and 200 new ItemSpecs (the forward hold's ice) onto the slice. Three consequences,
+        /// all visible in the diff:
+        ///   * every citizen id moves up by ONE (c932..c939 -> c933..c940): entity ids are handed
+        ///     out in plan order and citizens come after devices, so a single DeviceSpec shifts the
+        ///     whole crew. This is the same shift that rebinds the portrait keys — see
+        ///     SlicePortraitKeysTests.
+        ///   * the melter is a CRAFTING STATION, so it competes for idle crew from tick 1. The dig
+        ///     and build work is unchanged in kind but RE-TIMED, because CraftingSystem recruits the
+        ///     nearest idle citizen and there is now one more bench asking.
+        ///   * the count moves 59 -> 58, last assignment at t66202.
+        /// The melter's own recruitments do NOT appear here: this fixture records the JOB BOARD's
+        /// assignments, and CraftingSystem stamps JobKind.Craft itself rather than going through the
+        /// dispatcher (see its class comment). So what this sequence shows is the melter's SHADOW on
+        /// the other sources, which is exactly the property worth pinning.
+        ///
         /// This is a BEHAVIOUR PIN, like a golden: any lane that deliberately changes labour
         /// assignment (E0-2 work rates, a new job source) will move it, and must re-record it in
         /// the same commit and say why. It must never be re-recorded to make a red build green.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
-            "t1 c932 HaulToBuild 30,10,0",
-            "t1 c933 HaulPickup 29,6,0",
+            "t1 c933 HaulToBuild 30,10,0",
             "t1 c934 HaulPickup 29,6,0",
-            "t1 c935 Dig 57,9,0",
-            "t252 c932 HaulToBuild 30,10,0",
-            "t373 c932 Build 30,10,0",
-            "t6002 c932 HaulPickup 24,14,1",
-            "t6002 c933 HaulPickup 22,14,1",
-            "t6002 c934 HaulPickup 20,14,1",
-            "t6251 c935 Dig 57,8,0",
-            "t6251 c936 Dig 58,9,0",
-            "t6251 c939 Dig 57,10,0",
-            "t12012 c933 HaulPickup 24,14,1",
-            "t12012 c934 HaulPickup 22,14,1",
-            "t12012 c938 HaulPickup 20,14,1",
-            "t12261 c935 Dig 57,7,0",
-            "t12471 c936 Dig 58,8,0",
-            "t12513 c938 Dig 58,10,0",
-            "t12541 c939 Dig 59,9,0",
-            "t12543 c934 Dig 57,11,0",
-            "t18283 c933 Dig 57,6,0",
-            "t18283 c935 Dig 58,7,0",
-            "t18481 c936 Dig 59,8,0",
-            "t18551 c939 Dig 60,9,0",
-            "t18612 c932 Dig 59,10,0",
-            "t18763 c938 Dig 58,11,0",
-            "t18793 c934 Dig 57,12,0",
-            "t24293 c935 Dig 58,6,0",
-            "t24491 c936 Dig 59,7,0",
-            "t24543 c933 Dig 60,8,0",
-            "t24561 c939 Dig 61,9,0",
-            "t24773 c938 Dig 60,10,0",
-            "t24803 c934 Dig 59,11,0",
-            "t30303 c935 Dig 59,6,0",
-            "t30501 c936 Dig 60,7,0",
-            "t30571 c939 Dig 61,8,0",
-            "t30573 c933 Dig 62,9,0",
-            "t30803 c938 Dig 61,10,0",
-            "t30813 c934 Dig 58,12,0",
-            "t36313 c935 Dig 60,6,0",
-            "t36511 c936 Dig 61,7,0",
-            "t36581 c939 Dig 62,8,0",
-            "t36603 c933 Dig 62,10,0",
-            "t36813 c938 Dig 60,11,0",
-            "t36833 c934 Dig 57,13,0",
-            "t37552 c937 Dig 59,12,0",
-            "t40652 c932 Dig 58,13,0",
-            "t42323 c935 Dig 61,6,0",
-            "t42521 c936 Dig 62,7,0",
-            "t42591 c939 Dig 61,11,0",
-            "t42613 c933 Dig 62,11,0",
-            "t42833 c938 Dig 60,12,0",
-            "t47062 c932 Dig 59,13,0",
-            "t48333 c935 Dig 62,6,0",
-            "t48631 c933 Dig 62,12,0",
-            "t48631 c936 Dig 61,12,0",
-            "t48881 c938 Dig 60,13,0",
-            "t54681 c933 Dig 62,13,0",
-            "t54681 c935 Dig 61,13,0",
+            "t1 c935 HaulPickup 29,6,0",
+            "t1 c936 Dig 57,9,0",
+            "t252 c933 HaulToBuild 30,10,0",
+            "t373 c933 Build 30,10,0",
+            "t6002 c933 HaulPickup 24,14,1",
+            "t6002 c934 HaulPickup 22,14,1",
+            "t6002 c935 HaulPickup 20,14,1",
+            "t6251 c936 Dig 57,8,0",
+            "t6251 c937 Dig 58,9,0",
+            "t6462 c938 Dig 57,10,0",
+            "t12012 c935 HaulPickup 24,14,1",
+            "t12012 c939 HaulPickup 20,14,1",
+            "t12261 c936 Dig 57,7,0",
+            "t12471 c937 Dig 58,8,0",
+            "t12513 c939 Dig 58,10,0",
+            "t12583 c935 Dig 59,9,0",
+            "t12902 c938 Dig 57,11,0",
+            "t18271 c936 Dig 57,6,0",
+            "t18481 c937 Dig 58,7,0",
+            "t18612 c933 Dig 59,8,0",
+            "t18763 c939 Dig 59,10,0",
+            "t18833 c935 Dig 60,9,0",
+            "t18842 c934 Dig 58,11,0",
+            "t24281 c936 Dig 58,6,0",
+            "t24491 c937 Dig 59,7,0",
+            "t24773 c939 Dig 60,10,0",
+            "t24843 c935 Dig 60,8,0",
+            "t28302 c940 Dig 57,12,0",
+            "t28762 c934 Dig 58,12,0",
+            "t30291 c936 Dig 59,6,0",
+            "t30501 c937 Dig 60,7,0",
+            "t30783 c939 Dig 59,11,0",
+            "t30853 c935 Dig 61,9,0",
+            "t36301 c936 Dig 60,6,0",
+            "t36511 c937 Dig 61,7,0",
+            "t36803 c939 Dig 60,11,0",
+            "t36854 c935 Dig 61,8,0",
+            "t37462 c938 Dig 57,13,0",
+            "t38702 c934 Dig 58,13,0",
+            "t42311 c936 Dig 61,6,0",
+            "t42521 c937 Dig 62,7,0",
+            "t42813 c939 Dig 59,12,0",
+            "t42864 c935 Dig 62,8,0",
+            "t44102 c933 Dig 60,12,0",
+            "t48321 c936 Dig 62,6,0",
+            "t48531 c937 Dig 62,9,0",
+            "t48833 c939 Dig 59,13,0",
+            "t48874 c935 Dig 61,10,0",
+            "t53682 c938 Dig 60,13,0",
+            "t54331 c936 Dig 61,11,0",
+            "t54551 c937 Dig 62,10,0",
+            "t54843 c939 Dig 61,12,0",
+            "t60182 c938 Dig 61,13,0",
+            "t60402 c936 Dig 62,11,0",
+            "t60882 c937 Dig 62,12,0",
+            "t66202 c938 Dig 62,13,0",
         };
 
         [Test]

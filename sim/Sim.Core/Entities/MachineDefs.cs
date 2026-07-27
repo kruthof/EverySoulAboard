@@ -62,13 +62,20 @@ namespace Perilune.Sim
             /* Desk            */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* PlantPot        */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* Telescope       */ new(0.4f,  0f,  PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
-            // Water chain (E0-7). Mirrors the Reclaimer row deliberately: the melter IS life
-            // support on a ship whose only water source is ice, so it must be the LAST thing a
-            // brownout sheds, not the first. Draw is 1.0 kW rather than a physically honest
-            // resistive-heater figure because PowerSystem.IsWanting makes every device pay its
-            // full draw around the clock (ECONOMY.md §1.2) — a 6 kW melter would deepen the
-            // shipped 12 kW-vs-19.1 kW deficit for every hour it is NOT melting.
-            /* IceMelter       */ new(1.0f,  0f,  PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
+            // Water chain (E0-7). LifeSupport tier deliberately: the melter IS life support on a
+            // ship whose only water source is ice, so it must be the LAST thing a brownout sheds,
+            // not the first.
+            // Draw is 0.4 kW — the Scrubber's figure, and NOT a physically honest one for melting
+            // ice. PowerSystem.IsWanting makes every device pay its full draw around the clock
+            // (ECONOMY.md §1.2) on a ship generating 12 kW against 19.1 kW of demand, so a draw is
+            // really a tax on the brownout sawtooth that is the game's whole industrial throttle —
+            // a bug shape, not a knob. MEASURED on the slice, 3 sim-days, one seed, melter draw
+            // 0.0 / 0.4 / 1.0 kW: end-of-run Potato 699 / 696 / 504 and A1 29.913 % / 29.628 % /
+            // 40.681 %. At 1.0 kW the melter costs 28 % of the ship's food AND inflates A1 by
+            // ~11 pp of pure slowdown — the same work taking longer reads as busier crew. Tuning a
+            // new device against that is tuning against a bug. Revisit upward when the power model
+            // is fixed.
+            /* IceMelter       */ new(0.4f,  0f,  PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];

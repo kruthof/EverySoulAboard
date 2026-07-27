@@ -537,8 +537,8 @@ namespace Perilune.Sim
                     /* Desk            */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* PlantPot        */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* Telescope       */ new MachineDef(0.4f,  0f, PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
-                    // E0-7 water chain; see MachineDefs.Table for why draw is 1.0 kW / LifeSupport.
-                    /* IceMelter       */ new MachineDef(1.0f,  0f, PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
+                    // E0-7 water chain; see MachineDefs.Table for the measured reason draw is 0.4 kW.
+                    /* IceMelter       */ new MachineDef(0.4f,  0f, PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs

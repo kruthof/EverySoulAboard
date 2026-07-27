@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Perilune.Dsl;
+using Perilune.Gen;
 using Perilune.Sim;
 using Perilune.Glyph;
 using NUnit.Framework;
@@ -544,6 +545,63 @@ namespace Perilune.Tests
                 "PRECONDITION: RunMelters really moved litres inside the measured window");
             Assert.That(delta, Is.EqualTo(0L),
                 "the melter passes allocated " + delta + " bytes over 3000 ticks");
+        }
+
+        // ══════════════════════════════════════════════════ 6b. the AUTHORED chain, on the fixture
+
+        /// <summary>
+        /// THE CHAIN IS REALLY WIRED ON THE SHIP THAT SHIPS. Everything above drives a four-tile
+        /// test scenario; this drives <c>--ship slice</c>, the economy programme's measurement
+        /// fixture, and asserts the three things that make the authoring correct rather than merely
+        /// present. It exists because the failure mode here is SILENT: a melter placed one tile off
+        /// the pipe run is unplumbed, fills its 100 L buffer, stops recruiting, and says nothing on
+        /// any surface — the ship would simply be back on a dying water loop with a decorative
+        /// machine in the hydro bay. (MECHANICS §13.17's unreachable-stockpile shape, again.)
+        ///
+        /// 6 000 ticks is 10 sim-minutes: two 300 s batches plus the cross-deck haul from the
+        /// forward hold up the ladder to the hydro bay, with margin.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: in <c>AuthoredShips.AddIceMelterOnHydroLoop</c>, offset
+        /// the melter by one tile (<c>Pos.Y + 2</c>) so it lands off the pipe run — it is still on
+        /// the ship, still powered, still visible, and the fluid-network assertion fails, followed
+        /// by the tank assertion. SECOND MUTATION: drop <c>AddIceAtTheForwardHold</c> entirely — the
+        /// melter is plumbed and idle, and the ice-consumed assertion fails. (Both applied, observed
+        /// red, reverted.)
+        /// </summary>
+        [Test]
+        public void TheAuthoredSlice_MeltsHoldIceIntoTheHydroLoop()
+        {
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice()).Sim;
+
+            Device melter = null, hydroTank = null;
+            foreach (var d in sim.Devices.Items)
+            {
+                if (d.Kind == DeviceKind.IceMelter) melter = d;
+                else if (d.Name == "tank_hydro") hydroTank = d;
+            }
+            Assert.That(melter, Is.Not.Null, "the slice authors exactly one ice melter");
+            Assert.That(hydroTank, Is.Not.Null, "PRECONDITION: the hydro tank is still named tank_hydro");
+
+            int iceAtBoot = UnitsAnywhere(sim, ItemKind.Ice);
+            Assert.That(iceAtBoot, Is.GreaterThan(0), "PRECONDITION: the forward hold is stocked");
+
+            Run(sim, 20);
+            // (1) PLUMBED, and plumbed to the loop that is actually dying — the hydro loop, not the
+            //     potable one. This is the assertion an off-by-one placement fails.
+            Assert.That(melter.FluidNetworkId, Is.Not.EqualTo(0), "the melter is on a fluid network");
+            Assert.That(melter.FluidNetworkId, Is.EqualTo(hydroTank.FluidNetworkId),
+                "and it is the HYDRO loop's network — the melter must feed the loop that loses the water");
+            Assert.That(melter.Powered, Is.True, "and it is powered at boot");
+
+            float tankAtBoot = hydroTank.StoredLiters;
+            Run(sim, 6000);
+
+            // (2) The crew really haul and melt: the hold is smaller than it was.
+            Assert.That(UnitsAnywhere(sim, ItemKind.Ice), Is.LessThan(iceAtBoot),
+                "the crew fetched hold ice up the ladder and melted it");
+            // (3) ...and the water landed where it was needed.
+            Assert.That(hydroTank.StoredLiters + melter.StoredLiters, Is.GreaterThan(tankAtBoot),
+                "meltwater reached the hydro loop (tank plus the melter's own buffer)");
         }
 
         // ══════════════════════════════════════════════════════ 7. the enum gap

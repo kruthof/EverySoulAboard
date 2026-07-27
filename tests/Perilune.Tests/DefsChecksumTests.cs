@@ -44,7 +44,7 @@ namespace Perilune.Tests
         /// It is **NOT** the scenario host's `defs:` print (`hosts/scenario/Program.cs:50`), which
         /// parses `content/core/SimDefs/*.def` **plus** `rules/*.moss` and folds each rule's
         /// name+source bytes into the same field — a different, larger value
-        /// (`19946e590bea32df` at the time of writing). The two are not interchangeable and the
+        /// (`15bcab6491220861` at the time of writing). The two are not interchangeable and the
         /// difference is exactly the shipped rules. `CLAUDE.md` calls this out too; this test's name
         /// says `SimDefsDefault` so the two can never be confused in a failure report again.
         ///
@@ -72,7 +72,7 @@ namespace Perilune.Tests
             // SIBLING LANE (E0-6) IS APPENDING TO ComputeChecksum AHEAD OF THIS ONE, so the merged
             // value on `main` will be neither lane's — the integrator re-pins after the merge
             // (ECONOMY-PLAN §2.1 rule 4). Do not treat this literal as authoritative until then.
-            const ulong Pinned = 0x590B3FD60FD9B438UL; // E0-7 (ice -> melter -> water)
+            const ulong Pinned = 0x1988A72DCDC055D0UL; // E0-7 (ice -> melter -> water)
 
             Assert.That(SimDefs.Default.Checksum, Is.EqualTo(Pinned),
                 "DETERMINISM PIN MOVED: SimDefs.Default.Checksum is " +
@@ -100,10 +100,10 @@ namespace Perilune.Tests
         ///
         /// This is the number a human actually sees. `./ci.sh` runs the determinism proof, and
         /// `hosts/scenario/Program.cs:50` prints
-        /// <c>defs: 19946e590bea32df (18 files, 0 problems, 1 rules)</c>. That is the value lanes
+        /// <c>defs: 15bcab6491220861 (18 files, 0 problems, 1 rules)</c>. That is the value lanes
         /// copy into handovers — and it is NOT
         /// <see cref="SimDefsDefaultChecksum_IsPinned_NotTheScenarioHostsRulesInclusiveValue"/>'s
-        /// `590b3fd60fd9b438`, which is the compiled-in defaults with no rules. Pinning only one of
+        /// `1988a72dcdc055d0`, which is the compiled-in defaults with no rules. Pinning only one of
         /// the two left the confusion alive; pinning both, adjacently, with the difference spelled
         /// out, is what ends it.
         ///
@@ -112,8 +112,8 @@ namespace Perilune.Tests
         /// `SimDefs.Checksum` field (`SimDefs.cs:913-919`). `CreateDefault()` leaves `Rules` null
         /// and folds nothing, so:
         ///
-        ///   SimDefs.Default.Checksum      = 590b3fd60fd9b438   compiled-in defaults, no rules
-        ///   shipped .def + rules/*.moss   = 19946e590bea32df   what the console prints
+        ///   SimDefs.Default.Checksum      = 1988a72dcdc055d0   compiled-in defaults, no rules
+        ///   shipped .def + rules/*.moss   = 15bcab6491220861   what the console prints
         ///   (both MEASURED in the lane/e0-7-ice worktree and stale the moment the sibling E0-6
         ///    lane merges ahead of it — the integrator re-pins on main, ECONOMY-PLAN §2.1 rule 4)
         ///
@@ -153,7 +153,7 @@ namespace Perilune.Tests
         {
             // ⚠ MEASURED IN THE `lane/e0-7-ice` WORKTREE — see the sibling pin above for why this is
             // stale the moment E0-6 merges, and who re-pins it.
-            const ulong Pinned = 0x19946E590BEA32DFUL; // E0-7 (ice -> melter -> water)
+            const ulong Pinned = 0x15BCAB6491220861UL; // E0-7 (ice -> melter -> water)
 
             string dir = FindShippedSimDefsDir();
             Assert.That(dir, Is.Not.Null,
@@ -182,7 +182,7 @@ namespace Perilune.Tests
                 ", pinned at " + Pinned.ToString("x16", CultureInfo.InvariantCulture) + ".\n" +
                 "THIS IS THE NUMBER THE SCENARIO HOST PRINTS (`defs: …`, " + ruleFiles.Count +
                 " rules, " + files.Count + " files). It is NOT SimDefs.Default.Checksum\n" +
-                "  (590b3fd60fd9b438), which folds no designer rules — see the sibling test.\n" +
+                "  (1988a72dcdc055d0), which folds no designer rules — see the sibling test.\n" +
                 "NOW CHECK THE OTHER TWO ASSERTIONS — the three of them localise the change:\n" +
                 "  • DefsEquivalenceTests …ChecksumEqualsDefault ALSO RED\n" +
                 "      ⇒ a shipped .def value and its compiled default disagree. The ONE-commit def\n" +

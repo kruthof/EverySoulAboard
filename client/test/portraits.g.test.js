@@ -41,8 +41,36 @@ test('every manifest entry points at an existing PNG on disk', () => {
   }
 });
 
-test('the registry glue exposes exactly the manifest keys', () => {
-  assert.deepEqual(Object.keys(portraitRegistry).sort(), Object.keys(PORTRAITS).sort());
+// E0-7 widened this from "exactly the manifest keys" to "the manifest keys, plus a remap that only
+// ever points at manifest FILES". The glue gained SLICE_ID_SHIFT_REMAP: authoring one new device
+// onto --ship slice moved every crew id by one, and a portrait key is pk_fnv1a32(seed, citizenId),
+// so eight new keys had to resolve to the eight already-baked PNGs or the crew would wear each
+// other's faces. Equality was the right assertion while the glue was a pure rename of the manifest;
+// it is the wrong one now, and the two properties below are what actually matter.
+test('the registry glue exposes the manifest keys, and every extra key reuses a manifest file', () => {
+  const manifest = Object.keys(PORTRAITS).sort();
+  const exposed = Object.keys(portraitRegistry).sort();
+  // 1. NOTHING IS LOST: every generated entry is still reachable under its own key.
+  for (const key of manifest) assert.ok(key in portraitRegistry, `manifest key ${key} vanished from the glue`);
+  // 2. NOTHING IS INVENTED: EVERY exposed key — remapped or not — must resolve to a file the
+  //    generated manifest names, so the glue can never conjure a portrait with no committed PNG
+  //    behind it. Compared against PORTRAITS[*].file rather than against portraitRegistry's own
+  //    values, because a remap deliberately OVERRIDES the entry for a key it shares with the
+  //    manifest (pk_99a431bd is both a baked key and a remap target), and a check written the
+  //    lazy way would have compared the override with itself.
+  const manifestFiles = Object.values(PORTRAITS).map((e) => e.file);
+  for (const key of exposed) {
+    const src = portraitRegistry[key];
+    assert.ok(manifestFiles.some((f) => src.endsWith(f)),
+      `key ${key} points at ${src}, which is not any manifest entry's file`);
+  }
+  const extra = exposed.filter((k) => !(k in PORTRAITS));
+  // 3. NON-VACUITY: the remap is expected to be non-empty today. If it is ever emptied because the
+  //    portrait pipeline was re-run against the current ship, this says so instead of silently
+  //    degrading to the old equality check.
+  assert.ok(extra.length > 0,
+    'SLICE_ID_SHIFT_REMAP is empty — if the portraits were regenerated, delete the remap and this ' +
+    'assertion together; until then an empty remap means the slice crew have lost their faces');
   for (const src of Object.values(portraitRegistry)) {
     assert.equal(typeof src, 'string');
     assert.ok(src.length > 0);
