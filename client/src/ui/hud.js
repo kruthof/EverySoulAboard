@@ -72,6 +72,7 @@ let _decor = null;        // latest decor message (cosmetic view-only furniture 
 let _materials = null;    // latest materials message (sparse wall/floor material variants → tile skins)
 let _zones = null;        // latest zones message (sparse stockpile zones: accept mask + back-off bit)
 let _marks = null;        // latest marks message (sparse debris/dig/stockpile/strip mark layer)
+let _ledger = null;       // latest ledger message (E0-8: matter census + the runway/rate members)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -108,6 +109,12 @@ export function getZones() { return _zones; }
  *  on BOTH standard surfaces. It replaces reading the projected `cell[1]` byte off `getFrame()`,
  *  which no later GlyphMapper pass can be stopped from overwriting. */
 export function getMarks() { return _marks; }
+/** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
+ *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
+ *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
+ *  negative runway means NOT DEPLETING, not "missing". Rendering either as a zero would put a
+ *  confident wrong number on screen, which is the exact defect this channel exists to remove. */
+export function getLedger() { return _ledger; }
 export function getStatus() { return _status; }
 export function getMetrics() { return _metrics; }
 export function getLog() { return _log; }
@@ -434,6 +441,13 @@ export function renderZones(m) { _zones = m; notifyShip(); }
  *  draws nothing, reaches no DOM, so it survives the console deletion with the rest of the cache
  *  (see SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
 export function renderMarks(m) { _marks = m; notifyShip(); }
+
+/** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
+ *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.
+ *  STATE-LAYER ONLY: draws nothing, reaches no DOM, creates no element, so it adds nothing to the
+ *  four pinned console-DOM counts and survives the console deletion with the rest of the cache (see
+ *  SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
+export function renderLedger(m) { _ledger = m; notifyShip(); }
 
 /** Relations dispatch (IX-R3): cache the directed graph and notify. The RELATIONS surface reads the
  *  cache back through `getRelations()` and repaints itself off `notifyShip` (relations-view.js);

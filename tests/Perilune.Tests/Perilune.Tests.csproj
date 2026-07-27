@@ -49,6 +49,13 @@
     <!-- the `marks` channel: another sibling partial, and this time WireFormat.cs takes NO diff at
          all — WP-3 already paid the one-token `partial`. Same hand-added rule as above. -->
     <Compile Include="../../hosts/web/WireFormat.Marks.cs" />
+    <!-- E0-8: the `ledger` channel — a third sibling partial, same hand-added rule as above. Without
+         this line GameSession.cs does not compile here at all, which is the loud version of the
+         failure the comment above warns about. -->
+    <Compile Include="../../hosts/web/WireFormat.Ledger.cs" />
+    <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
+         Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
+    <Compile Include="../../hosts/scenario/LedgerHarness.cs" />
     <Compile Include="../../hosts/web/GameSession.cs" />
     <!-- L6: the conversation runtime (sockets-free) — GameSession delegates talk/say/bye to it,
          so the headless host needs it to compile and to drive the offline dialogue tests. -->

@@ -417,7 +417,7 @@ class OvDoc extends DomDocument {
  *  (`setChip` / `reflectLens` — see `room-model.test.js`, which registers the same five). */
 const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
-  'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-picker',
+  'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', 'ov-picker',
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
 ];
 
@@ -1177,4 +1177,47 @@ test('WP-5: the porting ledger is EMPTY — the standard surface is verb-complet
   // Non-vacuity: the comment-stripper must not be what makes this pass — a real entry must survive it.
   const seeded = 'stockpile: \'WP-5\',\n  // a comment\n';
   assert.notEqual(codeOnly(seeded).trim(), '');
+});
+
+// ── the E0-8 LEDGER island, DRIVEN ──
+//
+// ⚠️ THIS TEST EXISTS BECAUSE A SCAN WAS NOT ENOUGH, and the gap was found by mutation, not by
+// reading. `ledger-model.test.js` scans `overview-view.js` for `ledgerRows`, and that scan SURVIVED
+// the mutation `const rows = ledgerRows(msg);` → `const rows = [];` — the island stops painting, the
+// identifier is still in the file, and the suite stayed green. A scan can only ever prove the
+// controller MENTIONS the model. Only driving it proves the player sees a number.
+//
+// dom-lite gives ONE memoised stand-in per selector, so `querySelectorAll('.ov-ledrow')` is a single
+// slot and the controller paints row 0 (MATTER) into it. That is enough: the mutation above empties
+// the row list, so row 0 goes hidden and its label never gets written.
+test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview', () => {
+  Hud.renderLedger({
+    type: 'ledger', tick: 864000, window: 36000, total: 731, stacks: 710, unknown: 0, crew: 8,
+    matter: [['Corpse', 1], ['Potato', 699], ['ControllerModule', 31]],
+    partsPerDay: 0, matterPerDay: 9, daysOfWater: 0.5, daysOfAir: -1,
+    tankL: 12, tankCapL: 1000, greyL: 20, o2mol: 18885.6,
+    notes: [['matter', 'MATTER NOTE'], ['days_of_water', 'WATER NOTE']],
+  });
+
+  const island = ovRoot.querySelector('.ov-ledger .ov-hdr');
+  assert.equal(island.textContent, 'LEDGER', 'the island must render its header from live state');
+
+  const row = ovRoot.querySelectorAll('.ov-ledger .ov-ledrow')[0];
+  assert.equal(row.hidden, false, 'row 0 must be SHOWN when the wire carried a ledger');
+  assert.equal(row.querySelector('.ov-ledlabel').textContent, 'MATTER');
+  assert.equal(row.querySelector('.ov-ledval').textContent, '731 u');
+  assert.equal(row.querySelector('.ov-ledsub').textContent, '+9.0/d');
+  assert.equal(row.title, 'MATTER NOTE',
+    'the host derivation note must ride the row as its title — a limit that does not travel with ' +
+    'its number gets read off (DA-M3)');
+
+  const census = ovRoot.querySelector('.ov-ledcensus');
+  assert.match(census.textContent, /Potato 699/, 'the per-kind census is the check on a saturated bar');
+  assert.equal(census.hidden, false);
+
+  // …and the empty state is the honest alternative, not four rows of zero.
+  Hud.renderLedger(null);
+  assert.equal(ovRoot.querySelector('.ov-ledempty').hidden, false,
+    'with no ledger on the wire the island says so instead of painting zeroes');
+  assert.equal(ovRoot.querySelectorAll('.ov-ledger .ov-ledrow')[0].hidden, true);
 });

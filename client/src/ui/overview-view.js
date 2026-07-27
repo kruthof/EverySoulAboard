@@ -33,6 +33,7 @@ import {
   selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
+import { ledgerRows, matterLine } from './ledger-model.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
@@ -194,6 +195,10 @@ function buildSkeleton() {
     '<div class="hud ov-lens" id="ov-lens"></div>' +
     '<div class="ov-cmd" id="ov-cmd"></div>' +
     '<div class="hud ov-sensor" id="ov-sensor"></div>' +
+    // E0-8 LEDGER — the ship's matter census and its three rate members, sitting above the LENS
+    // island in the bottom-left. It is on THE STANDARD SURFACE (CLAUDE.md), never on the deprecated
+    // console shell: E0-4's WP-5 built a whole feature onto that shell and nobody noticed.
+    '<div class="hud ov-ledger" id="ov-ledger"></div>' +
     '<div class="ov-toast" id="ov-toast" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). It sits directly under
     // the top bar's HOLD/RESUME chip, because that chip is the fix for what it is complaining about.
@@ -372,6 +377,28 @@ function buildIslands() {
   _el.sensorLines = Array.from(_root.querySelectorAll('.ov-sensor .ov-logline')).map((line) => ({
     el: line, ts: line.querySelector('.ov-ts'), rest: line.querySelector('.ov-rest'),
   }));
+
+  // LEDGER — a fixed header, four fixed row slots and one census line. FIXED SLOTS, not a keyed
+  // reconcile: `ledgerRows` returns the same four ids in the same order for every payload, so there
+  // is nothing to key on and nothing to create per repaint.
+  let ledger = '<div class="ov-hdr"></div>';
+  for (let i = 0; i < 4; i++) {
+    ledger += '<div class="ov-ledrow" hidden>' +
+      '<span class="ov-ledlabel"></span><span class="ov-ledval"></span><span class="ov-ledsub"></span></div>';
+  }
+  ledger += '<div class="ov-ledcensus ov-faint" hidden></div>' +
+            '<div class="ov-ledempty ov-faint" hidden>— no ledger yet —</div>';
+  $('ov-ledger').innerHTML = ledger;
+  _el.ledgerHdr = _root.querySelector('.ov-ledger .ov-hdr');
+  _el.ledgerRows = Array.from(_root.querySelectorAll('.ov-ledger .ov-ledrow')).map((row) => ({
+    el: row,
+    label: row.querySelector('.ov-ledlabel'),
+    val: row.querySelector('.ov-ledval'),
+    sub: row.querySelector('.ov-ledsub'),
+    level: '',
+  }));
+  _el.ledgerCensus = _root.querySelector('.ov-ledcensus');
+  _el.ledgerEmpty = _root.querySelector('.ov-ledempty');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -456,6 +483,46 @@ function repaint() {
   paintLens(lens);
   paintCommand(activeDeck);
   paintSensor();
+  paintLedger();
+}
+
+// ── bottom-left LEDGER (E0-8) ──
+
+/**
+ * The ship's ledger: matter census, PARTS/DAY, DAYS OF WATER, DAYS OF AIR.
+ *
+ * Every string here comes from `ledger-model.js`, which owns the SENTINELS — `window === 0` reads
+ * MEASURING and a negative runway reads STEADY. This function must never substitute a zero for
+ * either: a metric the player can read but cannot trust is the thing E0-8 exists to remove.
+ *
+ * The host's derivation note rides each row as its `title`. That is the DA-M3 rule (`ShipSystems`
+ * ships the same prose beside the same kind of number): DAYS OF AIR is not an oxygen supply — this
+ * ship has no air reserve at all — and a bare label would be read as one.
+ */
+function paintLedger() {
+  const msg = Hud.getLedger();
+  const rows = ledgerRows(msg);
+  setText(_el.ledgerHdr, 'LEDGER');
+  setHidden(_el.ledgerEmpty, rows.length > 0);
+  const slots = _el.ledgerRows;
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    const r = rows[i];
+    if (!r) { setHidden(s.el, true); continue; }
+    setHidden(s.el, false);
+    setText(s.label, r.label);
+    setText(s.val, r.value);
+    setText(s.sub, r.sub);
+    if (s.level !== r.level) { // alarm ramp class: swap only when the level actually changes
+      setCls(s.el, 'warn', r.level === 'warn');
+      setCls(s.el, 'crit', r.level === 'crit');
+      s.level = r.level;
+    }
+    if (r.note && s.el.title !== r.note) s.el.title = r.note;
+  }
+  const census = matterLine(msg);
+  setHidden(_el.ledgerCensus, !census);
+  setText(_el.ledgerCensus, census);
 }
 
 // ── the scene (schematic) + the lens wash overlay ──

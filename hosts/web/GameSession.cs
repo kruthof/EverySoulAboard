@@ -86,6 +86,13 @@ namespace Perilune.Web
         // render. Send() still dedupes, so the wire sees it only when a row actually moves.
         private ShipSystemsReport _systems;
         private double _systemsAtWall = double.NegativeInfinity;
+        // E0-8's ledger. Same "call at <=1 Hz, never per tick" contract as the two above — and one
+        // stricter reason: ShipLedger.Sample ALLOCATES (one int[] per census), so it must never come
+        // near a tick path. The tracker is the HOST's rate window; it holds no sim state, is never
+        // saved and folds into no hash, so nothing here can move a determinism pin.
+        private readonly ShipLedgerTracker _ledgerWindow = new ShipLedgerTracker();
+        private ShipLedgerReport _ledger;
+        private double _ledgerAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
         private Thread _thread;
         private volatile bool _running;
@@ -1117,6 +1124,17 @@ namespace Perilune.Web
                 _systemsAtWall = nowWall;
             }
             Send("systems", WireFormat.Systems(_hull, _systems), force);
+
+            // E0-8 ledger: matter census + the three rate members. Refreshed on the same <=1 Hz
+            // cadence as metrics/systems (it is a full item+device+room+citizen scan and it
+            // allocates). An extra census on a forced prime is harmless: the tracker's baseline
+            // survives every Observe, so re-sampling widens no window and resets no rate.
+            if (force || nowWall - _ledgerAtWall >= 1.0)
+            {
+                _ledger = _ledgerWindow.Observe(_sim);
+                _ledgerAtWall = nowWall;
+            }
+            Send("ledger", WireFormat.Ledger(_ledger), force);
 
             // Warm-SVG view channels (view-only, not fog-gated, move no determinism hash): the
             // per-deck compartment grid, per-room atmosphere, and the cosmetic decor layer.

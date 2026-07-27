@@ -1061,6 +1061,22 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
 .ov-ts.new{color:#e8934a}
 .ov-faint{color:var(--ink-faint,#57503f)}
 
+/* bottom-left LEDGER (E0-8) — sits ABOVE the LENS island, which owns left:26px;bottom:24px. Same
+   left margin so the two read as one column; `bottom` clears the lens card's own height. */
+.ov-ledger{position:absolute;left:26px;bottom:104px;width:250px;padding:11px 13px;border-radius:12px;
+  font-size:10px;line-height:1.6;color:var(--ink-mute,#8c8377);z-index:11}
+.ov-ledrow{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.ov-ledlabel{flex:0 0 52px;letter-spacing:.08em;color:var(--ink-mute,#8c8377)}
+.ov-ledval{flex:1 1 auto;text-align:right;color:var(--amber-light,#f2b563)}
+.ov-ledsub{flex:0 0 84px;text-align:right;color:var(--ink-faint,#57503f)}
+.ov-ledrow.warn .ov-ledsub{color:#e8934a}
+.ov-ledrow.crit .ov-ledsub{color:#f2b563;font-weight:700}
+.ov-ledcensus{margin-top:6px;font-size:9.5px;white-space:normal;overflow-wrap:anywhere}
+
+@media (max-width:1359px){
+  #overview-view .ov-ledger{display:none} /* same narrow-viewport drop as the sensor log */
+}
+
 /* transient toast (add-room / room-zoom stubs) */
 .ov-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:12;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
