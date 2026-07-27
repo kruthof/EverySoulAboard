@@ -52,14 +52,48 @@ namespace Perilune.Tests
             StringAssert.Contains("\"möchte \\\"reden\\\"\\\\weg\"", json);
         }
 
+        /// <summary>
+        /// THE INVARIANTCULTURE GUARD, MADE TO BITE — and this one got CLOSER than its siblings,
+        /// which is exactly why it is worth writing down.
+        ///
+        /// ⚠️ THE VERSION THAT SHIPPED FIRST COULD NOT FAIL. Its author reached for the right lever:
+        /// the fixture already carries a NEGATIVE opinion (<c>-40</c>), and
+        /// <see cref="NumberFormatInfo.NegativeSign"/> really is the one knob that reaches a bare
+        /// "G"-formatted integer (<c>int.ToString()</c> never groups, and .NET renders Latin digits
+        /// for every built-in culture). But the culture was <c>new CultureInfo("de-DE")</c>
+        /// UNMODIFIED — and de-DE's negative sign is U+002D HYPHEN-MINUS, byte-identical to the
+        /// invariant one. So the lever was there and nothing was pulling it. VERIFIED by physically
+        /// applying the mutation: dropping <c>Ic</c> from <c>e.Opinion.ToString(Ic)</c> left this test
+        /// GREEN. <b>A negative fixture is necessary and not sufficient; the culture has to differ on
+        /// the sign as well.</b> One line — cloning the culture and bending
+        /// <c>NegativeSign</c> — is the whole fix.
+        ///
+        /// ⚠️ <c>RelationEdge.From</c>/<c>.To</c> ARE <c>uint</c> AND <c>.Tier</c> IS <c>byte</c>:
+        /// none can be negative, so no fixture makes their <c>ToString(Ic)</c> differ from
+        /// <c>ToString()</c>. Dropping <c>Ic</c> from those three is an EQUIVALENT MUTANT — provably
+        /// unkillable, not untested code. The claim below is scoped to <c>Opinion</c> deliberately.
+        ///
+        /// MUTATION: drop <c>Ic</c> from <c>e.Opinion.ToString(Ic)</c> in
+        /// <see cref="WireFormat.Relations"/> ⇒ this fails.
+        /// </summary>
         [Test]
         public void Relations_Serialization_Is_InvariantCulture()
         {
             var edges = new[] { new WireFormat.RelationEdge(1u, 2u, -40, 4, "", false) };
+            var loud = (CultureInfo)CultureInfo.GetCultureInfo("de-DE").Clone();
+            loud.NumberFormat.NegativeSign = "MINUS";   // plain de-DE's is '-', same as invariant
+
             var prev = Thread.CurrentThread.CurrentCulture;
             try
             {
-                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE"); // comma decimal, etc.
+                Thread.CurrentThread.CurrentCulture = loud;
+
+                // NON-VACUITY, FIRST: the culture must actually change what a bare ToString() emits,
+                // or everything below is the test that could not fail, again.
+                Assert.AreEqual("MINUS3", (-3).ToString(),
+                    "the ambient culture does not perturb a bare int.ToString(), so this guard is " +
+                    "decoration. Pick a culture knob that DOES reach an integer before trusting it.");
+
                 string de = WireFormat.Relations(edges);
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
                 string inv = WireFormat.Relations(edges);

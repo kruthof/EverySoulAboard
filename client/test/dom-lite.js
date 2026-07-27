@@ -122,19 +122,46 @@ class DocumentLite {
   register(id, el) { this.byId.set(id, el); return el; }
 }
 
-/** A window stand-in that records capture/bubble keydown listeners in registration order. */
+/**
+ * A window stand-in that records capture/bubble keydown listeners in registration order.
+ *
+ * ⚠️ `isCapture` IS NOT `!!useCapture`, AND THE DIFFERENCE WAS A LIVE HOLE. This stub used to file
+ * listeners with a bare truthiness test — `(useCapture ? capture : bubble).push(fn)`. The DOM's
+ * third argument has two spellings: the legacy boolean and the modern options object, and
+ * `{ capture: false }` is an OBJECT, therefore TRUTHY, therefore filed as CAPTURE by that test —
+ * while a real browser registers it in the BUBBLE phase. So the two spellings of one regression
+ * behaved differently here:
+ *
+ *   MEASURED on `moss-screen.js:271` (`this.win.addEventListener('keydown', this._onKey, true)`):
+ *     • drop the third argument entirely      ⇒ RED  (IX-M11 caught it)
+ *     • rewrite it as `{ capture: false }`    ⇒ GREEN — the SAME regression, invisible
+ *
+ * That matters because MOSS's keydown handler must run in CAPTURE: `controls.js:225` binds
+ * `keydown` on `window` with no third argument (bubble) AT BOOT, i.e. before MOSS ever opens, so a
+ * bubble-phase MOSS handler runs SECOND and the game sees every keystroke while the terminal is up
+ * — the exact regression IX-M11 exists to forbid, with the suite green.
+ *
+ * This is `CLAUDE.md`'s trap 4 ("record the argument at the seam — do not scan for it") biting the
+ * RECORDING STUB rather than a text scan: recording is necessary and not sufficient, because the
+ * recorder can still normalise the argument wrongly. The normalisation below is the one
+ * `overview-model.test.js`'s window stub already uses; the two are now the same rule.
+ * `client/test/moss-screen.test.js`'s "the MOSS key handler is registered in the CAPTURE phase"
+ * asserts the phase BY NAME, so the guard no longer rests only on the indirect `gameSawIt` path.
+ */
+const isCapture = (opts) => opts === true || !!(opts && opts.capture === true);
+
 export function makeWindow() {
   const capture = [];
   const bubble = [];
   return {
     capture, bubble,
-    addEventListener(t, fn, useCapture) {
+    addEventListener(t, fn, opts) {
       if (t !== 'keydown') return;
-      (useCapture ? capture : bubble).push(fn);
+      (isCapture(opts) ? capture : bubble).push(fn);
     },
-    removeEventListener(t, fn, useCapture) {
+    removeEventListener(t, fn, opts) {
       if (t !== 'keydown') return;
-      const a = useCapture ? capture : bubble;
+      const a = isCapture(opts) ? capture : bubble;
       const i = a.indexOf(fn);
       if (i >= 0) a.splice(i, 1);
     },

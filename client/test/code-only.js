@@ -18,6 +18,92 @@
 //  moving a guard is only free when its tests move with it.)
 
 /**
+ * The CSS half of the same rule: strip `/* … *\/` comments, STRING-LITERAL AWARE, leaving everything
+ * else byte-for-byte.
+ *
+ * ⚠️ WHY IT EXISTS. `moss-screen.test.js`'s five `styles.css` scans were all `assert.match(rawCss,
+ * /…/)`, and their own header claimed *"what node CAN pin is that the rules exist at all, so
+ * deleting one is red"*. Commenting a rule out — the ordinary way a rule gets disabled during a
+ * layout experiment, and the ordinary way one gets LEFT disabled — does not change the substring, so
+ * every one of those guards was green with the rule inert in the browser. `styles.css` carries 160
+ * `/*` tokens, so this is not a contrived shape for that file. `CLAUDE.md` trap 1, in CSS.
+ *
+ * QUOTE-AWARE for the same reason `codeOnly` is: `content: "/*"` is legal CSS, and a naive
+ * `replace(/\/\*[\s\S]*?\*\//g, '')` would start a comment inside that string and eat forward to the
+ * next `*\/`, silently deleting real rules and making a scan pass vacuously. Strings terminate at a
+ * newline here (CSS strings may not span one unescaped), so the blast radius of an unbalanced quote
+ * is its own line — the same bound `codeOnly` documents.
+ *
+ * ⚠️ IT MUST NOT STRIP `//`. CSS has no line comments, and `url(http://…)` and `@import "//host/x"`
+ * are ordinary values — the JS stripper above would eat the rest of those lines. That asymmetry is
+ * exactly why this is a separate function rather than a flag on `codeOnly`.
+ *
+ * `\` escapes inside a string survive. NOT handled: comments inside unquoted `url()` tokens, which
+ * CSS does not permit anyway.
+ *
+ * ⚠️ A COMMENT BECOMES WHITESPACE, NOT NOTHING, AND IT KEEPS ITS LINE BREAKS. Two properties, from
+ * two independently-written implementations of this function that met in a merge — `lane/palette-
+ * overflow` and the test-hygiene lane each added a `cssCodeOnly`, git combined them without a
+ * conflict because they landed at different offsets, and the result was a duplicate export that
+ * crashed eight test files. Measured against each other before one was kept, and NEITHER WAS A
+ * SUPERSET:
+ *
+ *   • whitespace, not nothing — `.a/*x*\/.b` must become `.a .b` (a DESCENDANT, which is what CSS
+ *     means) and not `.a.b` (a compound, a different selector). The lane version emitted nothing
+ *     and silently fabricated compounds; this is the hygiene lane's behaviour and it is correct.
+ *   • line breaks kept — the lane version re-emitted each `\n` inside a comment, so the stripped
+ *     sheet keeps the raw sheet's line numbering. Measured on the real `styles.css`: 1457 newlines
+ *     preserved against 1301 for the space-only version, i.e. 156 lines of drift in a file whose
+ *     guards quote `file:line`.
+ *
+ * Both are kept, both are pinned: the whitespace rule by `moss-screen.test.js`'s "the CSS stripper"
+ * tests, the line-fidelity rule beside them (it was previously untested on BOTH sides, which is why
+ * it nearly vanished in the merge).
+ *
+ * Behaviour pinned by `moss-screen.test.js`'s "the CSS stripper" tests, beside the scans it protects,
+ * and by `palette-layout.test.js`'s three-marker negative control (double-quoted, single-quoted and
+ * escaped-quote markers — both of the latter were survivors when only `"` was tested).
+ */
+export function cssCodeOnly(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      // Re-emit the comment's own line breaks, so the stripped sheet keeps the raw sheet's line
+      // numbering; then one space, so the tokens either side of it stay separate.
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
+      i += 2;                                            // past the terminator (or past EOF)
+      out += ' ';                                        // a comment is whitespace, not nothing
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const q = c;
+      out += c;
+      i += 1;
+      while (i < n && src[i] !== q && src[i] !== '\n') {
+        if (src[i] === '\\' && i + 1 < n) { out += src[i] + src[i + 1]; i += 2; continue; }
+        out += src[i];
+        i += 1;
+      }
+      if (i < n) { out += src[i]; i += 1; }
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * ⚠️ THIS DOCSTRING WAS STRANDED. It sat above `cssCodeOnly` — describing the JS stripper while
+ * attached to the CSS one — after the two lanes' additions were combined. Moved back onto its own
+ * function during that merge resolution: two near-identical strippers in one file is already the
+ * shape that mis-targeted a mutation harness, and a misfiled docstring is how the next person
+ * hardens the wrong twin.
+ *
  * Strip JS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte. Scans over the
  * result must not fire on prose (a comment mentioning `#stockfilter` is documentation, not a
  * dependency), and they must not be BLINDED by a quoted comment marker (`'//'` inside a string must
@@ -49,51 +135,6 @@ export function codeOnly(src) {
         if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
         out += src[i];
         const done = src[i] === q || (q !== '`' && src[i] === '\n');
-        i += 1;
-        if (done) break;
-      }
-    } else {
-      out += c; i += 1;
-    }
-  }
-  return out;
-}
-
-/**
- * Strip CSS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte.
- *
- * The CSS twin of `codeOnly`, and it exists for the identical reason: a guard that greps a
- * stylesheet is satisfied by the declaration it forbids sitting inside `/* … *\/`. That is not
- * hypothetical here — the `.rz-palette` rules this repo's palette-overflow guard watches are
- * introduced by a thirty-line block comment that QUOTES the exact declarations it removed, so a
- * naive scan of `styles.css` fires on the explanation of the fix and calls it the bug.
- *
- * ⚠️ IT MUST NOT STRIP `//`. CSS has no line comments, and `url(http://…)` and `@import "//host/x"`
- * are ordinary values — the JS stripper above would eat the rest of those lines. That asymmetry is
- * exactly why this is a separate function rather than a flag on `codeOnly`.
- *
- * Quote handling matches CSS: `'…'` and `"…"` do not span a raw newline (an unterminated string is
- * an error the browser recovers from at end of line), so a stray quote can damage its own line and
- * no more. `\` escapes survive. NOT handled: comments inside `url()` tokens without quotes, which
- * CSS does not permit anyway.
- */
-export function cssCodeOnly(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
-      i += 2;
-    } else if (c === '\'' || c === '"') {
-      const q = c;
-      out += c; i += 1;
-      while (i < n) {
-        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
-        out += src[i];
-        const done = src[i] === q || src[i] === '\n';
         i += 1;
         if (done) break;
       }

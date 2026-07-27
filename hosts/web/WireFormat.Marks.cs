@@ -79,9 +79,25 @@ namespace Perilune.Web
     ///     at (21,1): channel <c>stockpile</c>, frame fg 26, <c>mk-strip</c> drawn: no.
     ///     (The other pairs really are unreachable, and that was checked rather than assumed: a dig
     ///     target is a Debris WALL — unwalkable, so it cannot be zoned, and <c>DigJobSource</c> clears
-    ///     <c>Designated</c> when the dig completes so a dug-out floor cannot keep the flag; and
-    ///     <c>CanDesignate</c> refuses any wall that is not <c>TileDefs.Wall</c>, so strip and dig
-    ///     cannot share a tile either.)
+    ///     <c>Designated</c> when the dig completes so a dug-out floor cannot keep the flag.
+    ///
+    ///     ⚠️ THE DIG × STRIP HALF OF THIS ARGUMENT WAS CITED WRONG AND IS CORRECTED HERE
+    ///     (<c>docs/HANDOVER.md</c> §4k, finding G3). It used to read *"<c>CanDesignate</c> refuses
+    ///     any wall that is not <c>TileDefs.Wall</c>, so strip and dig cannot share a tile either"*.
+    ///     That covers the <b>Wall</b> path ONLY. <see cref="Perilune.Sim.DeconstructSystem"/>'s
+    ///     <b>Device</b> path returns before that check ever runs and asks NOTHING about the tile —
+    ///     it asks only whether a device is present and is not a Door. So the conclusion is right and
+    ///     the reason was incomplete: what actually closes dig × strip is that
+    ///     <b>NO DEVICE CAN BE ON A RUBBLE TILE</b>.
+    ///     <see cref="Perilune.Sim.PlaceDeviceCommand"/> — the only runtime device spawner a player
+    ///     can reach — requires <c>TileFlags.Walkable</c> AND <c>GetWall(pos) == TileDefs.Void</c>,
+    ///     and a Debris wall fails BOTH. MEASURED across all three authored ships (Perilune 48,
+    ///     Grid 60, Slice 48 Debris-wall tiles): every one is non-walkable, none carries an authored
+    ///     device, <c>CanDesignate(…, Device)</c> accepts 0 of them, and
+    ///     <c>PlaceDeviceCommand</c> placed 0 of 146 attempts. Pinned by
+    ///     <c>MarksChannelTests.No_Device_Can_Stand_On_A_Rubble_Tile_So_Dig_And_Strip_Cannot_Meet</c>,
+    ///     which is a guard rather than a sentence — a prose guarantee is exactly what hid the
+    ///     stockpile × strip regression above.)
     ///
     /// (2) "IDENTICAL TO PASS 1 ⇒ CANNOT DISAGREE WITH THE FRAME" IS A NON-SEQUITUR, and it is exactly
     ///     how (1) got in. PASS 1 IS NOT THE FRAME. <c>GlyphMapper</c> pass 4 re-applies
