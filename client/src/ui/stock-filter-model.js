@@ -12,7 +12,13 @@
 // Potato → FOOD (the kind is "raw food", not one vegetable) and MetalOre → ORE (it is the only ore).
 // `name` is the exact member name, and the tripwire compares THAT.
 
-/** The eight item kinds, in ItemKind order. `kind` === the sim ItemKind byte. */
+/**
+ * The nine item kinds, in ItemKind DECLARATION order. `kind` === the sim ItemKind byte. Read every
+ * `kind` here as a BIT POSITION, never as an array offset: the two are equal only while ItemKind is
+ * contiguous, and it was not while this wave was in flight (E0-7 developed against a tree where slot
+ * 7 was reserved for E0-6's `Seals` but absent, and took `Ice = 8`). The merge closed the hole; the
+ * bit-position reading is what stays correct the next time one opens.
+ */
 export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 0, name: 'Regolith', label: 'REGOLITH' }),
   Object.freeze({ kind: 1, name: 'MetalOre', label: 'ORE' }),
@@ -22,15 +28,22 @@ export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 5, name: 'Parts', label: 'PARTS' }),
   Object.freeze({ kind: 6, name: 'ControllerModule', label: 'CTRL MOD' }),
   Object.freeze({ kind: 7, name: 'Seals', label: 'SEALS' }),
+  Object.freeze({ kind: 8, name: 'Ice', label: 'ICE' }),
 ]);
 
 /**
- * Every kind accepted — DERIVED from the list, never a literal (255 today; it was 127 before E0-6
- * added `Seals`, which is exactly why it is derived). The host derives the
- * same value from `Enum.GetValues(typeof(ItemKind)).Length`; both widen together when a kind is
- * added, and neither can drift into covering a stale subset the way a copied 0x7F would.
+ * Every kind accepted — DERIVED from the list's `kind` VALUES, never from its length and never a
+ * literal. 511 (0x1FF) today; it was 127 before E0-6 added `Seals` and 255 before E0-7 added `Ice`,
+ * which is why it is derived at all. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the
+ * same number only while ItemKind is contiguous: with the hole at 7 that E0-7 developed against, the
+ * length form gives 0xFF, which sets the bit of a kind that does not exist and CLEARS Ice's —
+ * "accept everything" silently refusing the newest kind, on every stockpile. The merge closed the
+ * hole, so the length form would now agree again by accident; the value form is kept because it is
+ * right for a reason. The sim (`StockZoneSystem.ComputeAcceptAllMask`) and both C# hosts derive
+ * theirs the same way; `stock-filter-model.test.js` parses `ItemStack.cs` and pins that this list
+ * still mirrors it.
  */
-export const ACCEPT_ALL = (1 << STOCK_KINDS.length) - 1;
+export const ACCEPT_ALL = STOCK_KINDS.reduce((m, e) => m | (1 << e.kind), 0);
 
 /**
  * The starting filter: ACCEPT EVERYTHING. This makes the very first stockpile paint BEHAVIOURALLY
@@ -65,9 +78,9 @@ export function stockKindAccepted(mask, kind) {
  * opposite. `& ACCEPT_ALL` alone does NOT make an out-of-range kind harmless, because **JS shift
  * counts are reduced modulo 32**: `1 << 32` is `1`, not `0`, so `toggleStockKind(127, 32)` silently
  * flipped REGOLITH (measured: it returned 126) and `stockKindAccepted(1, 32)` returned true. The
- * wrapped bit lands back INSIDE the valid range, exactly where the mask cannot remove it. Kinds 8-31
+ * wrapped bit lands back INSIDE the valid range, exactly where the mask cannot remove it. Kinds 9-31
  * do get truncated by `& ACCEPT_ALL`, which is why the old claim survived a test that only probed 9
- * and -1. Not a live bug — both call sites feed 0..7 — but this is a pure exported model whose whole
+ * and -1. Not a live bug — both call sites feed 0..8 — but this is a pure exported model whose whole
  * value is being an auditable contract, so it is total rather than "undefined past the enum".
  */
 export function toggleStockKind(mask, kind) {
@@ -76,8 +89,21 @@ export function toggleStockKind(mask, kind) {
   return ((mask | 0) ^ (1 << k)) & ACCEPT_ALL;
 }
 
-/** True for a kind the sim actually has. The one range predicate, so the guard cannot drift. PURE. */
-function inKindRange(kind) { return kind >= 0 && kind < STOCK_KINDS.length; }
+/**
+ * True for a kind the sim actually DECLARES. The one range predicate, so the guard cannot drift.
+ * PURE.
+ *
+ * E0-7: a membership test, not `kind < STOCK_KINDS.length`. Against the tree E0-7 developed on, with
+ * a hole at 7, the length form was wrong in both directions at once — it accepted 7 (a kind the sim
+ * did not have, whose bit the sim masks away, so the UI would show a chip the game silently ignores)
+ * and rejected 8 (Ice, which the player then could not filter on at all). The wave merge landed
+ * E0-6's `Seals = 7` and closed the hole, so the length form would agree again today; the membership
+ * test stays because it is the form that does not depend on that coincidence holding.
+ */
+function inKindRange(kind) {
+  for (let i = 0; i < STOCK_KINDS.length; i += 1) if (STOCK_KINDS[i].kind === kind) return true;
+  return false;
+}
 
 /**
  * The armed hint's readable rendering of a mask: 'ALL', 'NOTHING', or the accepted labels joined

@@ -12,7 +12,28 @@ namespace Perilune.Sim
         Seals = 7,      // E0-6: the cheap, high-turnover maintenance tier (ECONOMY.md §3.2 row 7 —
                         // "filters and gaskets"). Produced by the Fabricator beside Parts; consumed
                         // by MaintenanceSystem as the rung between a Parts overhaul and a jury-rig.
+        Ice = 8,        // E0-7: hold cargo / comet harvest. Melted to potable water by an IceMelter.
+                        // The integrator pre-assigned 7 to E0-6 and 8 to E0-7 before the two lanes
+                        // spawned; E0-7 developed against a tree where 7 was reserved-but-absent and
+                        // deliberately left the hole rather than renumbering, because a byte enum in
+                        // a hashed save is append-only and a renumber silently re-labels every stack
+                        // in every existing save. The wave merge closed the hole: 0..8 contiguous.
     }
+
+    // ⚠ EVERY MASK OVER THIS ENUM MUST BE DERIVED FROM ITS VALUES, NEVER FROM ITS MEMBER COUNT.
+    // Bit k of a stockpile accept mask means "kind k". While the wave was in flight the enum had a
+    // hole at 7 (E0-6 unlanded), and a count-derived "accept everything" ((1<<8)-1 = 0xFF) set bit 7
+    // (nothing) and cleared bit 8 (Ice) — every stockpile would have silently refused Ice. E0-7
+    // measured that and corrected it to OR the declared values. All four independent derivations in
+    // the tree are value-derived and were verified so on the merged tree:
+    //   sim/Sim.Core/Stock/StockZoneSystem.cs   ComputeAcceptAllMask  (already was)
+    //   hosts/web/GameSession.cs                ComputeAcceptAllMask  (corrected by E0-7)
+    //   hosts/tui/Ui/StockFilterModel.cs        BuildAcceptAllMask    (corrected by E0-7)
+    //   client/src/ui/stock-filter-model.js     ACCEPT_ALL            (corrected by E0-7)
+    // (client/src/ui/zone-model.js has no derivation of its own — it imports ACCEPT_ALL.)
+    // The merge made the enum contiguous, so a count-derived mask now works BY ACCIDENT — the defect
+    // is invisible rather than fixed, and the next appended kind that leaves a hole (a deprecated
+    // slot, another two-lane wave) resurrects it. Keep them value-derived.
 
     /// <summary>An item stack lying on a tile (or carried — then Pos mirrors the carrier).</summary>
     public sealed class ItemStack : IEntity

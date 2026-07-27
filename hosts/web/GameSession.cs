@@ -776,9 +776,28 @@ namespace Perilune.Web
         /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
         /// into a static. The TUI host derives its own copy the same way — the two host projects share
         /// no assembly, and a derived value cannot drift where a copied literal would.
+        ///
+        /// E0-7 CORRECTION — derived from the enum's VALUES, not its member COUNT. The count form
+        /// <c>(1UL &lt;&lt; Length) - 1</c> is only right while <see cref="ItemKind"/> is CONTIGUOUS,
+        /// and it stopped being contiguous the moment E0-7 took <c>Ice = 8</c> over the slot 7 the
+        /// integrator had reserved for E0-6's <c>Seals</c>. With the gap, the count form sets bit 7
+        /// (nothing) and clears bit 8 (Ice): "accept everything" would have silently refused the
+        /// one kind the package adds, on every stockpile in the game. This form is
+        /// <see cref="StockZoneSystem.AcceptAllMask"/>'s, and the two are pinned equal by
+        /// <c>StockZoneSystemTests</c>.
         /// </summary>
-        internal static readonly ulong AcceptAllMask =
-            (1UL << Enum.GetValues(typeof(ItemKind)).Length) - 1UL;
+        internal static readonly ulong AcceptAllMask = ComputeAcceptAllMask();
+
+        private static ulong ComputeAcceptAllMask()
+        {
+            ulong m = 0;
+            foreach (ItemKind kind in Enum.GetValues(typeof(ItemKind)))
+            {
+                int k = (int)kind;
+                if (k < 64) m |= 1UL << k;   // kinds >= 64 are unrepresentable; see StockZone.AcceptMask
+            }
+            return m;
+        }
 
         /// <summary>
         /// The E0-4 FILTER bridge — set the complete accept-set of a stockpile tile on the current
@@ -814,17 +833,22 @@ namespace Perilune.Web
         ///    <c>StockpileFilterVerbTests.BitsAboveTheLastItemKindAreCanonicalisedAway</c> says so in
         ///    its own doc rather than pretending otherwise.
         ///
-        ///    THE TWO MASKS ARE DERIVED INDEPENDENTLY AND CAN DIVERGE. <see cref="AcceptAllMask"/> here
-        ///    is COUNT-based (<c>(1UL &lt;&lt; Length) - 1</c>, which assumes <see cref="ItemKind"/> is
-        ///    contiguous from 0); <c>StockZoneSystem.AcceptAllMask</c> is per-enum-VALUE. Give
-        ///    <see cref="ItemKind"/> a gap — say a kind 9 with 7 and 8 undefined — and this mask sets
-        ///    phantom bits the sim's does not, at which point this line is load-bearing again and its
-        ///    deletion IS observable. That contiguity assumption is pinned by
-        ///    <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
+        ///    ⚠ THE DIVERGENCE THIS PARAGRAPH USED TO WARN ABOUT HAS HAPPENED, AND WAS FIXED (E0-7).
+        ///    <see cref="AcceptAllMask"/> here WAS count-based (<c>(1UL &lt;&lt; Length) - 1</c>, which
+        ///    assumes <see cref="ItemKind"/> is contiguous from 0) while
+        ///    <c>StockZoneSystem.AcceptAllMask</c> was per-enum-VALUE. E0-7 took <c>Ice = 8</c> over the
+        ///    slot 7 the integrator had reserved for E0-6's <c>Seals</c>, so the gap is REAL now — and
+        ///    the count form would have set bit 7 (nothing) and cleared bit 8 (Ice), making
+        ///    "accept everything" silently refuse the newest kind on every stockpile in the game.
+        ///    So this site was converted to the per-VALUE derivation too. The two masks are therefore
+        ///    EQUAL again, by construction rather than by luck, and this line is once more redundant
+        ///    for stored state. DO NOT "simplify" it back to the count form: that is the bug, and it
+        ///    is pinned by <c>StockZoneSystemTests.AcceptAllMask_IsTheOrOfDeclaredItemKindValues_InEveryHostSpelling</c>
+        ///    (which asserts, by name, that this constant equals the OR of the declared values).
         ///
-        ///    THE REAL RESOLUTION, LOGGED AND NOT DONE HERE: have every site consume
-        ///    <c>StockZoneSystem.AcceptAllMask</c> — this bridge, <c>Tui.Ui.StockFilterModel</c> and the
-        ///    client's <c>ACCEPT_ALL</c> — after which the two derivations cannot diverge, this line is
+        ///    STILL LOGGED AND NOT DONE: have every site consume
+        ///    <c>StockZoneSystem.AcceptAllMask</c> itself — this bridge, <c>Tui.Ui.StockFilterModel</c>
+        ///    and the client's <c>ACCEPT_ALL</c> — after which there is only ONE derivation, this line is
         ///    provably the same operation as the sim's, and it can simply be deleted along with the
         ///    cross-derivation bridge test. Three host files and a JS constant; its own package.
         /// </summary>
@@ -1929,6 +1953,7 @@ namespace Perilune.Web
             ItemKind.Scrap => "scrap",
             ItemKind.Parts => "parts",
             ItemKind.ControllerModule => "a controller module",
+            ItemKind.Ice => "ice",
             _ => "cargo",
         };
 

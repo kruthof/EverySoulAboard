@@ -173,7 +173,7 @@ test('the emitted markup is well-formed, and every entity in it is deliberate', 
 // Every assertion above is about a row rendered from a mask; if the shared model were broken (or if
 // this file's own reader were), several of them would be trivially true.
 test('the fixture really is the shared model, and the reader really reads', () => {
-  assert.equal(STOCK_KINDS.length, 8, 'the ItemKind table is no longer eight kinds');
+  assert.equal(STOCK_KINDS.length, 9, 'the ItemKind table is no longer nine kinds');
   assert.equal(defaultStockFilter(), ACCEPT_ALL, 'the palette default is not accept-all');
   assert.notEqual(shownMask(acceptsRowHtml(ACCEPT_ALL, 0)), shownMask(acceptsRowHtml(0, 0)),
     'the mask reader returns the same answer for accept-all and accept-nothing — it is broken, and ' +

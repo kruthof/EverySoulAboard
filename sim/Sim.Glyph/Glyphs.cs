@@ -60,6 +60,7 @@ namespace Perilune.Glyph
             DeviceKind.Desk => 'D',
             DeviceKind.PlantPot => 'P',
             DeviceKind.Telescope => 'x',
+            DeviceKind.IceMelter => 'I',   // E0-7 (upper case, like every other machine)
             _ => '?',
         };
 
@@ -75,6 +76,7 @@ namespace Perilune.Glyph
             ItemKind.ControllerModule => 'c',
             ItemKind.Seals => 'g',   // E0-6: 'g' for gasket. 's' is Scrap and 'S' is the Scrubber
                                      // device, so neither initial of "seals" was free.
+            ItemKind.Ice => 'i',     // E0-7 (lower case, like every other ground item)
             _ => '?',
         };
     }

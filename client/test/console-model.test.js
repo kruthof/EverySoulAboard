@@ -16,6 +16,7 @@ import {
   terminalList, terminalLabel, escapeTarget, taskTag, watchTask, workMarkers,
 } from '../src/ui/console-model.js';
 import { Cmd } from '../src/wire/session.js';
+import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
 
 // ---------------- clock (IX-81) ----------------
 
@@ -364,8 +365,12 @@ test('Cmd.filter carries the WHOLE mask for a tile, canonical and never negative
   assert.deepEqual(Cmd.filter(3, 4, 8), { cmd: 'filter', x: 3, y: 4, mask: 8 });
   // Accept-nothing is a real value, not a falsy omission.
   assert.deepEqual(Cmd.filter(3, 4, 0), { cmd: 'filter', x: 3, y: 4, mask: 0 });
-  assert.equal(Cmd.filter(1, 1, -1).mask, 255, 'a negative can never reach the wire');
-  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 255, 'bits above the last ItemKind are dropped');
+  // 0x1FF once both lanes landed: bits 0-6, plus bit 7 (E0-6's Seals) and bit 8 (E0-7's Ice).
+  // Asserted against ACCEPT_ALL *and* spelled out, so a drift in either the clamp or the palette is
+  // named rather than absorbed.
+  assert.equal(Cmd.filter(1, 1, -1).mask, ACCEPT_ALL, 'a negative can never reach the wire');
+  assert.equal(ACCEPT_ALL, 0x1FF, 'and the clamp is the real accept-all, spelled out here');
+  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 0x1FF, 'bits belonging to no ItemKind are dropped');
   // Its OWN verb — never the presence verb, which carries no mask at all.
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'stockpile');
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'build');

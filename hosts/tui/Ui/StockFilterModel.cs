@@ -17,16 +17,52 @@ namespace Perilune.Tui.Ui
     /// </summary>
     public static class StockFilterModel
     {
-        /// <summary>How many <see cref="ItemKind"/>s exist. Textually first — <see cref="AcceptAllMask"/>
-        /// reads it in its own initializer, and C# runs static field initializers in source order.</summary>
-        public static readonly int KindCount = Enum.GetValues(typeof(ItemKind)).Length;
+        /// <summary>
+        /// Every declared <see cref="ItemKind"/> BYTE, in enum order. Textually first — everything
+        /// below reads it in its own initializer, and C# runs static field initializers in source
+        /// order.
+        ///
+        /// E0-7 CORRECTION, KEPT BY THE WAVE MERGE: this type used to work off the member COUNT and
+        /// treat a kind as an index in <c>0..KindCount-1</c>. That is only right while
+        /// <see cref="ItemKind"/> is CONTIGUOUS, and it stopped being contiguous while E0-7 developed
+        /// against a tree where slot 7 (E0-6's <c>Seals</c>) was reserved but absent and E0-7 took
+        /// <c>Ice = 8</c>. Under the count form the TUI's cursor would have offered a kind 7 that
+        /// does not exist, refused to reach Ice at all, and <see cref="AcceptAllMask"/> would have
+        /// set bit 7 and cleared bit 8 — "accept everything" silently refusing the one kind the
+        /// package added.
+        ///
+        /// The merge landed E0-6, so the enum is contiguous again and the count form would now work
+        /// BY ACCIDENT. The value form stays: it is the form that is correct for a reason rather than
+        /// by coincidence, and the next appended kind that leaves a hole resurrects the defect.
+        /// </summary>
+        public static readonly int[] Kinds = BuildKinds();
 
-        /// <summary>Every kind accepted (0xFF today; 0x7F before E0-6 added Seals). DERIVED from the
-        /// enum, never a literal, so it
-        /// widens with <see cref="ItemKind"/> instead of silently covering a stale subset. The web
-        /// host derives its own the same way — the two host projects share no assembly, and a derived
-        /// value cannot drift where a copied literal would.</summary>
-        public static readonly ulong AcceptAllMask = (1UL << KindCount) - 1UL;
+        private static int[] BuildKinds()
+        {
+            var values = (ItemKind[])Enum.GetValues(typeof(ItemKind));
+            var kinds = new int[values.Length];
+            for (int i = 0; i < values.Length; i++) kinds[i] = (int)values[i];
+            return kinds;
+        }
+
+        /// <summary>How many <see cref="ItemKind"/>s exist. NOT the highest byte — see
+        /// <see cref="Kinds"/>.</summary>
+        public static readonly int KindCount = Kinds.Length;
+
+        /// <summary>Every kind accepted. DERIVED from the enum's VALUES, never from its member count
+        /// and never a literal, so it widens with <see cref="ItemKind"/> and tolerates a gap instead
+        /// of silently covering the wrong set. The web host derives its own the same way — the two
+        /// host projects share no assembly, and a derived value cannot drift where a copied literal
+        /// would.</summary>
+        public static readonly ulong AcceptAllMask = BuildAcceptAllMask();
+
+        private static ulong BuildAcceptAllMask()
+        {
+            ulong m = 0;
+            for (int i = 0; i < Kinds.Length; i++)
+                if (Kinds[i] < 64) m |= 1UL << Kinds[i];   // >= 64 is unrepresentable (StockZone.AcceptMask)
+            return m;
+        }
 
         /// <summary>
         /// The PLAYER-FACING name of each kind, indexed by the ItemKind byte. Deliberately not
@@ -36,26 +72,47 @@ namespace Perilune.Tui.Ui
         /// for one filter bit. Kept identical to <c>STOCK_KINDS</c> in
         /// <c>client/src/ui/stock-filter-model.js</c>, and <c>stock-filter-model.test.js</c> parses
         /// THIS array out of THIS file and compares it label-for-label so the two cannot drift.
+        ///
+        /// E0-7: parallel to <see cref="Kinds"/> (declaration order), NOT indexed by the ItemKind
+        /// byte — the enum has a hole at 7 and a positional array would have to carry a fake row
+        /// for it.
         /// </summary>
         public static readonly string[] Labels =
         {
-            "REGOLITH",  // ItemKind.Regolith
-            "ORE",       // ItemKind.MetalOre
-            "CORPSE",    // ItemKind.Corpse
-            "FOOD",      // ItemKind.Potato
-            "SCRAP",     // ItemKind.Scrap
-            "PARTS",     // ItemKind.Parts
-            "CTRL MOD",  // ItemKind.ControllerModule
-            "SEALS",     // ItemKind.Seals (E0-6)
+            "REGOLITH",  // ItemKind.Regolith          (0)
+            "ORE",       // ItemKind.MetalOre          (1)
+            "CORPSE",    // ItemKind.Corpse            (2)
+            "FOOD",      // ItemKind.Potato            (3)
+            "SCRAP",     // ItemKind.Scrap             (4)
+            "PARTS",     // ItemKind.Parts             (5)
+            "CTRL MOD",  // ItemKind.ControllerModule  (6)
+            "SEALS",     // ItemKind.Seals             (7 — E0-6)
+            "ICE",       // ItemKind.Ice               (8 — E0-7)
         };
 
-        /// <summary>True for a kind the sim actually has. The ONE range predicate, so every guard
-        /// below agrees by construction.</summary>
-        private static bool InRange(int kind) => kind >= 0 && kind < KindCount;
+        /// <summary>Position of <paramref name="kind"/> in <see cref="Kinds"/>, or -1 for a byte the
+        /// sim does not declare. The ONE range predicate, so every guard below agrees by
+        /// construction.</summary>
+        private static int IndexOfKind(int kind)
+        {
+            for (int i = 0; i < Kinds.Length; i++) if (Kinds[i] == kind) return i;
+            return -1;
+        }
 
-        /// <summary>Advance the kind cursor, wrapping at the LAST REAL ItemKind. Wrapping at a
-        /// literal would let the player select a kind the sim has no name for.</summary>
-        public static int NextKind(int kind) => ((kind + 1) % KindCount + KindCount) % KindCount;
+        /// <summary>True for a kind the sim actually has — a DECLARED byte, which after E0-7 is not
+        /// the same thing as "below the member count" (7 is below it and does not exist; 8 is above
+        /// it and does).</summary>
+        private static bool InRange(int kind) => IndexOfKind(kind) >= 0;
+
+        /// <summary>Advance the kind cursor to the next DECLARED ItemKind, wrapping at the last.
+        /// Wrapping on a count would let the player select a kind the sim has no name for — and
+        /// after E0-7 it would also make Ice unreachable.</summary>
+        public static int NextKind(int kind)
+        {
+            int at = IndexOfKind(kind);
+            if (at < 0) return Kinds[0];             // cursor on a kind the sim dropped: restart
+            return Kinds[(at + 1) % Kinds.Length];
+        }
 
         /// <summary>True when <paramref name="mask"/> accepts <paramref name="kind"/>; false for any
         /// kind the sim does not have.</summary>
@@ -80,8 +137,11 @@ namespace Perilune.Tui.Ui
 
         /// <summary>The player-facing name of a kind, or "?" for a kind the sim does not have (the
         /// unguarded form returned the raw number, e.g. "64", which reads as a real kind).</summary>
-        public static string KindName(int kind) =>
-            InRange(kind) && kind < Labels.Length ? Labels[kind] : "?";
+        public static string KindName(int kind)
+        {
+            int at = IndexOfKind(kind);
+            return at >= 0 && at < Labels.Length ? Labels[at] : "?";
+        }
 
         /// <summary>The pending mask in words: ALL, NOTHING, or the accepted kind names — the same
         /// vocabulary and the same separator as the web client's <c>stockFilterLabel</c>. The TUI has
@@ -93,11 +153,11 @@ namespace Perilune.Tui.Ui
             if (m == AcceptAllMask) return "ALL";
             if (m == 0UL) return "NOTHING";
             var sb = new StringBuilder();
-            for (int k = 0; k < KindCount; k++)
+            for (int i = 0; i < Kinds.Length; i++)
             {
-                if (!Accepts(m, k)) continue;
+                if (!Accepts(m, Kinds[i])) continue;
                 if (sb.Length > 0) sb.Append(" · ");
-                sb.Append(KindName(k));
+                sb.Append(KindName(Kinds[i]));
             }
             return sb.ToString();
         }

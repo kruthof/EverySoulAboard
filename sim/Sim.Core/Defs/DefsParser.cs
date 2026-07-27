@@ -57,16 +57,44 @@ namespace Perilune.Sim
             // [recipes] arrays), so rows accumulate across every file in file order and are
             // installed once at the end. A repeated node id REPLACES in place — the overlay
             // contract, without disturbing table order.
-            var production = new List<ProductionNode>();
-            // ...but "no [production] SECTION anywhere" is not the same as "an empty [production]
-            // section", and E0-6 is where the difference started to matter. Until E0-6 the compiled
-            // default table was EMPTY, so overwriting it unconditionally was invisible; now the
-            // defaults carry the two lossy nodes, and a data dir with no production.def would have
-            // silently restored the SalvageRecycler's pre-E0-6 1 Regolith -> 2 Scrap row, i.e. put
-            // matter creation back (ECONOMY.md §2.1) with nothing anywhere saying so. Omitting the
-            // file now falls back to the compiled defaults exactly as README.def's contract promises
-            // for every other section. Behaviour-identical for every pre-E0-6 data dir, whose
-            // defaults were empty either way.
+            //
+            // E0-7: SEEDED FROM THE COMPILED DEFAULTS, where W0-5 started from an empty list. That
+            // was indistinguishable while CreateDefault's table was itself empty, and wrong the
+            // moment it was not: every other section in this file overlays CreateDefault, and
+            // [production] alone REPLACED it — so `Parse("")` returned a graph missing the compiled
+            // `melt_ice` node while claiming (via zero problems) that nothing had been overridden,
+            // and the shipped .def and the compiled defaults could not both be right. Seeding makes
+            // the section behave like the rest: a row with an existing id retunes it in place, a new
+            // id appends, and content that mentions no node changes nothing.
+            //
+            // The cost, stated: content can no longer REMOVE a compiled node, only retune it. That
+            // is exactly the contract [machines] and [recipes] already have (there is no way to
+            // un-declare a machine row either), and it is the reason a compiled node must be one
+            // the base game genuinely wants everywhere.
+            var production = new List<ProductionNode>(d.Production?.Nodes ?? Array.Empty<ProductionNode>());
+
+            // E0-6's guard, KEPT, and what it is worth now that E0-7 seeds (wave merge). E0-6 added
+            // `sawProductionSection` because "no [production] SECTION anywhere" is not the same as
+            // "an empty [production] section": until E0-6 the compiled table was EMPTY, so
+            // overwriting it unconditionally was invisible, and once the defaults carried the two
+            // lossy nodes a data dir with no production.def would have installed an empty table,
+            // dropped CraftingSystem onto the [recipes] fallback leg, and silently restored the
+            // SalvageRecycler's pre-E0-6 1 Regolith -> 2 Scrap row — matter creation (ECONOMY.md
+            // §2.1) with nothing anywhere saying so.
+            //
+            // THE TWO FIXES COMPOSE, and the seeding is the stronger of the two: with `production`
+            // seeded, the table can never come out empty, so the counterfeit-restoring path E0-6
+            // closed is closed on BOTH legs of this branch. What the guard still buys is the
+            // no-section case leaving `d.Production` as CreateDefault's own instance rather than a
+            // freshly allocated equal one. Content-visible behaviour on the no-section path is
+            // therefore identical either way — the guard is retained because it states the intent
+            // at the site, not because it is load-bearing.
+            //
+            // ONE E0-6 BEHAVIOUR THE SEEDING DELIBERATELY OVERRIDES: an EMPTY `[production]` section
+            // used to WIPE the table to zero nodes. It cannot any more — seeding means content may
+            // retune a compiled node but never remove one (the cost E0-7 states above). That is a
+            // real semantic change to E0-6's branch and it is intended: the wipe was the same
+            // counterfeit-restoring hazard reached by a different route.
             bool sawProductionSection = false;
 
             if (files != null)
@@ -271,6 +299,8 @@ namespace Perilune.Sim
                 case "reclaimer_liters_per_second": if (F(v, k, loc, p, out var b)) d.Water.ReclaimerLitersPerSecond = b; return true;
                 case "reclaim_efficiency": if (F(v, k, loc, p, out var c)) d.Water.ReclaimEfficiency = c; return true;
                 case "makeup_floor_liters": if (F(v, k, loc, p, out var e)) d.Water.MakeupFloorLiters = e; return true;
+                case "ice_liters_per_unit": if (F(v, k, loc, p, out var f)) d.Water.IceLitersPerUnit = f; return true;
+                case "melter_buffer_liters": if (F(v, k, loc, p, out var g)) d.Water.MelterBufferLiters = g; return true;
                 default: return false;
             }
         }

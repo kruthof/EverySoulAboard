@@ -30,6 +30,9 @@ namespace Perilune.Sim
         PlantPot = 24,   // decorative plant (cabins, commons, observatory)
         // Sensors (space layer, WS-NAV).
         Telescope = 25,  // resolves space contacts by SNR while powered (NavSystem)
+        // Water chain (E0-7). Appended at the END of the enum, never inserted.
+        IceMelter = 26,  // crafting station: consumes ItemKind.Ice, buffers the meltwater in
+                         // StoredLiters, and WaterSystem pushes that buffer onto its fluid network
     }
 
     /// <summary>Brownout shed order: lowest tier is shed first (TDD §3.7).</summary>
@@ -62,7 +65,9 @@ namespace Perilune.Sim
         public bool Powered = true; // owned by PowerSystem once the device is on a network
         public float Rate = 1f; // generic throughput multiplier (0..1)
         public float StoredKWh;    // batteries
-        public float StoredLiters; // water tanks
+        public float StoredLiters; // water tanks; ALSO an IceMelter's meltwater buffer (E0-7 —
+                                   // reusing this already-saved, already-hashed field is why the
+                                   // whole ice chain adds no new hashed state)
         public float Progress;     // generic work/growth progress 0..1 (grow beds, crafting)
         public float Condition = 1f; // machine wear state 1=pristine..0=wrecked (MachineDefs thresholds)
         public ushort NetworkId;   // 0 = not on any power network

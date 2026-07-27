@@ -62,6 +62,22 @@ namespace Perilune.Sim
             /* Desk            */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* PlantPot        */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* Telescope       */ new(0.4f,  0f,  PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
+            // Water chain (E0-7). LifeSupport tier deliberately: the melter IS life support on a
+            // ship whose only water source is ice, so it must be the LAST thing a brownout sheds,
+            // not the first.
+            // Draw is 0.4 kW — the Scrubber's figure, and NOT a physically honest one for melting
+            // ice. PowerSystem.IsWanting makes every device pay its full draw around the clock
+            // (ECONOMY.md §1.2) on a ship generating 12 kW against 19.1 kW of demand, so a draw is
+            // really a tax on the brownout sawtooth that is the game's whole industrial throttle —
+            // a bug shape, not a knob. MEASURED on HEAD, slice, 3 sim-days, one seed, melter draw
+            // 0.0 / 0.4 / 1.0 kW: end-of-run Potato 699 / 696 / 504 and A1 28.146 % / 27.715 % /
+            // 39.635 %. At 1.0 kW the melter costs 28 % of the ship's food AND inflates A1 by
+            // ~11.9 pp of pure slowdown — the same work taking longer reads as busier crew.
+            // Note 0.4 kW reads LOWER than 0.0 kW, which is the tell that the 1.0 figure was
+            // slowdown and not work: nobody tuning a number upward lands on the smaller one.
+            // Tuning a new device against a bug is still tuning against a bug — revisit upward when
+            // the power model is fixed.
+            /* IceMelter       */ new(0.4f,  0f,  PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];
