@@ -296,11 +296,17 @@ namespace Perilune.Tests
             // E0-6 REPLACED THE SUBJECT OF THIS TRIPWIRE, and the replacement is the point.
             // Until E0-6 the Fabricator ran its legacy [recipes] row, so doubling
             // Recipes[Fabricator].WorkSeconds diverged the twins. It now runs the [production] node
-            // `fab_components`, so that mutation is INERT on the Fabricator — the old test would
-            // have gone quietly vacuous, passing while proving nothing, which is precisely the
-            // failure mode §5.2 exists to stop. (Measured: with the node in place, the old
-            // mutation's twins stayed hash-equal for all 8000 ticks.) The node's WorkSeconds is
-            // doubled instead.
+            // `fab_components`, so that mutation is INERT on the Fabricator. The node's WorkSeconds
+            // is doubled instead.
+            //
+            // ⚠️ CORRECTION, and it matters because the first draft of this comment got it exactly
+            // backwards. The old test did NOT go quietly vacuous. Its assertion is "the twins
+            // DIVERGE", so an inert mutation makes it FAIL, loudly, which is what happened
+            // (measured: `AssertDivergesWithin` reported Expected True / But was False on the first
+            // full run after the [production] rows landed). Verified again by mutation: reverting
+            // the body below to the old Recipes[Fabricator] mutation turns this test RED, not
+            // green. A tripwire whose subject moves under it is a maintenance cost here, not a
+            // silent hole — do not repeat the stronger claim.
             //
             // Device.Progress (part of StateHash) advances at 1/WorkSeconds per work pass, so the
             // twins drift on the first work pass after the batch starts.

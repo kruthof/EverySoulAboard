@@ -256,8 +256,16 @@ namespace Perilune.Tests
         ///
         /// Without this leg, "condition == 0.9" could be a machine that was never serviced at all.
         ///
-        /// NAMED MUTATION: make <c>RestoredCondition</c>'s fallthrough return 1f — this fails while
-        /// the Seals test above still passes.
+        /// NAMED MUTATION: in <c>MaintenanceSystem.DriveWorker</c>'s work phase, change the
+        /// empty-handed branch to <c>device.Condition = 1f;</c> — this fails while the Seals test
+        /// above still passes.
+        ///
+        /// ⚠️ AN EARLIER DRAFT NAMED A MUTATION THAT COULD NOT BITE, and the harness caught it:
+        /// "make RestoredCondition's fallthrough return 1f" is GREEN, because that arm is
+        /// UNREACHABLE — an empty-handed servicer never calls RestoredCondition at all
+        /// (<c>consumable == null</c> takes the else branch). The fallthrough is defence against a
+        /// future kind reaching the ladder, it is deliberately kept, and it is deliberately
+        /// recorded here as untested rather than covered by a mutation that does nothing.
         /// </summary>
         [Test]
         public void NoConsumableAboard_StillJuryRigs_ExactlyAsBeforeE0_6()
