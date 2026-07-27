@@ -209,10 +209,43 @@ namespace Perilune.Tests
 
         // ------------------------------------------------------------------ culture
 
+        /// <summary>
+        /// ⚠️ RETRACTED IN PLACE. THIS WAS NAMED <c>DayNumberFormatsUnderInvariantCulture</c> AND ITS
+        /// COMMENT TAUGHT A FALSE FACT ABOUT .NET — which is worse than the dead guard itself,
+        /// because a wrong explanation is how this idiom keeps propagating (<c>docs/HANDOVER.md</c>
+        /// §4k: "correct-looking code with a wrong explanation of itself, where the explanation is
+        /// the thing that hides the bug"). The comment said:
+        ///
+        ///   *"On a de-DE machine a naive ToString() would render "1.234"; InvariantCulture must
+        ///   not."*
+        ///
+        /// IT WOULD NOT. <c>day</c> is an integer and <c>int.ToString()</c> uses the "G" format,
+        /// which NEVER emits a group separator under ANY culture; <c>1234.ToString(de-DE)</c> is
+        /// <c>"1234"</c>. Only an explicit <c>"N0"</c>/<c>"#,##0"</c> would produce <c>"1.234"</c>,
+        /// and <c>Chronicle.Render</c> uses neither. Compounding it, this test NEVER SET
+        /// <c>CurrentCulture</c> at all — there is no probe here and no <c>[SetUp]</c> in the suite —
+        /// so it asserted, under the ambient culture, a property that holds under every culture.
+        ///
+        /// ⚠️ AND IT CANNOT BE FIXED THE WAY ITS SIBLINGS WERE. The one
+        /// <see cref="System.Globalization.NumberFormatInfo"/> knob that reaches a bare "G" integer
+        /// is <c>NegativeSign</c>, and a chronicle day number is non-negative by construction. So
+        /// dropping the <c>InvariantCulture</c> argument at <c>Chronicle.cs:91</c> is an EQUIVALENT
+        /// MUTANT — provably unkillable, not untested code — and it is recorded as such rather than
+        /// dressed up as a guard. VERIFIED: that mutation was physically applied and this whole file
+        /// stayed GREEN (11 passed, 0 failed).
+        ///
+        /// WHAT SURVIVES, AND IT IS REAL: the HEADLINE FORMAT. The day number, the separator and the
+        /// headline text must compose to exactly <c>"Day N — text"</c>, with plain ASCII digits and
+        /// no thousands punctuation of any kind. That is what the assertions below actually measure,
+        /// and the test is renamed to say so.
+        ///
+        /// MUTATION: change <c>Chronicle.cs:91</c>'s format to <c>day.ToString("N0", Ic)</c>, or
+        /// change the em-dash separator ⇒ this fails. MUTATION 2: drop the <c>InvariantCulture</c>
+        /// argument ⇒ GREEN, by construction, as argued above.
+        /// </summary>
         [Test]
-        public void DayNumberFormatsUnderInvariantCulture()
+        public void DayNumberFormatsAsPlainAsciiWithNoThousandsSeparator()
         {
-            // On a de-DE machine a naive ToString() would render "1.234"; InvariantCulture must not.
             var days = Chronicle.Render(new List<HistoryEntry>
             {
                 E(1234 * TPD + 7, "the ship endures", HistoryKind.Generic),

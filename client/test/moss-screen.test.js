@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { DocumentLite, makeWindow, keyEvent, dispatchKey, fire, editable } from './dom-lite.js';
+import { cssCodeOnly } from './code-only.js';
 import * as FAKE from './moss-model-fake.js';
 import {
   MossScreen, COLS, COL_AT, HEAD_LINE, NO_TELEMETRY, DEV_COLS, applyTakeover, wireForEffect,
@@ -117,7 +118,7 @@ test('IX-M1: EVERY top-level game-chrome root index.html declares is display:non
   // index.html, not hand-listed here — so adding a new top-level chrome root without covering it
   // in the takeover rules turns this test red, whatever tag it uses and however it is indented.
   const html = readFileSync(join(CLIENT, 'index.html'), 'utf8');
-  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   const roots = topLevelBodyRoots(html);
   const tags = roots.map((r) => r.tag);
   assert.ok(tags.includes('script'), 'the scanner sees the module script, i.e. it reached the end');
@@ -199,6 +200,44 @@ test('IX-M2: MOSS ESC is a stack — prompt, then screen, then out to the ship',
 });
 
 // ---------------- IX-M8 / IX-M11: key routing + typing isolation ----------------
+
+/**
+ * THE PHASE, ASSERTED BY NAME — `CLAUDE.md` trap 4, and it is here because the indirect guard below
+ * had a hole that a runtime-recording stub did NOT close by itself.
+ *
+ * IX-M11 infers the phase: it pushes a handler onto `win.bubble` and asserts the game never sees a
+ * key. That inference is only as good as `dom-lite`'s filing rule, and the filing rule used a bare
+ * truthiness test on the third argument. MEASURED, before `dom-lite.js` was fixed: dropping the
+ * argument from `moss-screen.js:271` went RED, but rewriting it as `{ capture: false }` — the SAME
+ * regression in the modern options spelling — stayed GREEN, because an object is truthy and was
+ * filed as capture.
+ *
+ * So this test says the thing out loud instead of inferring it: MOSS's keydown handler must land in
+ * the CAPTURE list, and nothing of MOSS's may land in the BUBBLE list. `controls.js:225` binds
+ * `keydown` on `window` with no third argument at BOOT, so a bubble-phase MOSS handler runs second
+ * and the game reads every keystroke while the terminal is up.
+ *
+ * MUTATION: any of `moss-screen.js:271` → drop the `true`, → `{ capture: false }`, → `false`
+ * ⇒ this fails (all three verified). MUTATION 2: `{ capture: true }` ⇒ GREEN, correctly — it is the
+ * same registration in a different spelling, which is precisely the pair a text scan cannot tell
+ * apart and this assertion can.
+ */
+test('IX-M11b: the MOSS key handler is registered in the CAPTURE phase, by name', () => {
+  const s = setup();
+  assert.equal(s.win.capture.length, 0, 'precondition: nothing is registered before MOSS opens');
+  assert.equal(s.win.bubble.length, 0, 'precondition: and the bubble list starts empty too');
+
+  s.screen.open();
+  assert.equal(s.win.capture.length, 1,
+    'MOSS must register its keydown handler in the CAPTURE phase. controls.js binds window keydown '
+    + 'in BUBBLE at boot, so a bubble-phase MOSS handler runs SECOND and the game shortcut handler '
+    + 'reads every keystroke while the terminal is up.');
+  assert.equal(s.win.bubble.length, 0,
+    'MOSS put a handler in the BUBBLE phase, where controls.js has already been listening since boot');
+
+  s.screen.close();
+  assert.equal(s.win.capture.length, 0, 'and it lets the window go again on close');
+});
 
 test('IX-M11: while MOSS holds the window, no key reaches the game shortcut handler', () => {
   const s = openWithSystems();
@@ -818,16 +857,65 @@ test('IX-M12: a row set that changes length must not move the cursor under the p
 // ---------------- VS-M9 / VS-M10: the stylesheet obligations ----------------
 // A stylesheet cannot be proven by node — client/tools/moss-shot.mjs renders these in real Chrome
 // at 1440px and 1024px. What node CAN pin is that the rules exist at all, so deleting one is red.
+//
+// ⚠️ AND "DELETING ONE IS RED" WAS ONLY HALF TRUE UNTIL THE STRIPPER WENT IN. Every scan below read
+// styles.css RAW, so COMMENTING a rule out — the ordinary way a rule is disabled during a layout
+// experiment, and the ordinary way one gets left disabled — kept the substring present and the
+// assertion green with the rule inert in the browser. `CLAUDE.md` trap 1, in CSS, five times in one
+// section. Both other CSS readers in this suite already stripped (`relations-view.test.js:78`,
+// `console-carryover.test.js:74`); this file was the outlier. Every read now goes through the
+// SHARED `cssCodeOnly`, and the negative control below is what stops the fix from rotting — without
+// it, the next person to widen a scan has nothing telling them prose must not satisfy it.
+
+/**
+ * THE NEGATIVE CONTROL for the stripper the four scans below now share. `CLAUDE.md` trap 1 says the
+ * countermeasure has TWO required halves — strip comments quote-aware, AND prove a commented-out
+ * occurrence does not trip the scan — because a stripper with no control is a claim, and because a
+ * guard that fires on prose teaches people to delete explanatory comments to appease a test.
+ *
+ * Leg 1 is the one that matters: it takes the REAL stylesheet, comments out the real `.moss-crt`
+ * rule the way a person would, and asserts VS-M5's own matcher no longer finds it. Leg 2 is the
+ * quote-awareness bound — `content: "/*"` must not open a comment and eat the rule after it, which
+ * a naive `replace(/\/\*[\s\S]*?\*\//g,'')` does. Leg 3 is the anti-over-reach half: real rules
+ * survive byte-for-byte.
+ */
+test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes do not blind it', () => {
+  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const CRT = /\.moss-crt\{([^}]*)\}/;
+
+  // NON-VACUITY FIRST: the matcher must find the rule in the real sheet, or leg 1 proves nothing.
+  assert.ok(CRT.exec(cssCodeOnly(raw)), 'precondition: VS-M5 matches the live .moss-crt rule');
+
+  // 1. blind the real rule the way a layout experiment would, and watch the scan stop finding it.
+  const live = CRT.exec(raw)[0];
+  const blinded = raw.replace(live, '/* ' + live + ' */');
+  assert.ok(!CRT.exec(cssCodeOnly(blinded)),
+    'a COMMENTED-OUT .moss-crt rule still satisfied VS-M5. The rule is inert in the browser and '
+    + 'the guard is green — CLAUDE.md trap 1, which is why every read here is stripped.');
+  assert.ok(CRT.exec(blinded),
+    'control on the control: the raw text DOES still contain the rule, so the line above is '
+    + 'measuring the stripper and not a typo in the fixture');
+
+  // 2. quote-awareness: a comment marker inside a CSS string must not open a comment.
+  const quoted = '.a::before{content:"/*"}\n.moss-crt{pointer-events:none}\n';
+  assert.ok(CRT.exec(cssCodeOnly(quoted)),
+    'a `content: "/*"` string swallowed the rule after it — the stripper is not quote-aware, and '
+    + 'every scan downstream of it would pass vacuously on a sheet that contains one');
+
+  // 3. and it must not over-reach: ordinary declarations come through untouched.
+  assert.equal(cssCodeOnly('.x{color:red}'), '.x{color:red}');
+  assert.equal(cssCodeOnly('.x{/*c*/color:red}'), '.x{ color:red}');
+});
 
 test('VS-M10: reduced motion turns the block cursor steady', () => {
-  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   const block = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.moss-cursor\s*\{([^}]*)\}/.exec(css);
   assert.ok(block, 'the MOSS reduced-motion block exists');
   assert.match(block[1], /animation\s*:\s*none/);
 });
 
 test('VS-M9: the responsive floor drops LAST FAULT before any other column, and never scrolls x', () => {
-  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   const mq = /@media\s*\(max-width:\s*1023px\)\s*\{([\s\S]*?)\n\}/.exec(css);
   assert.ok(mq, 'a below-1024 breakpoint exists');
   assert.match(mq[1], /\.c-fault\s*\{[^}]*display\s*:\s*none/, 'the fault column is what drops');
@@ -839,7 +927,7 @@ test('VS-M9: the responsive floor drops LAST FAULT before any other column, and 
 });
 
 test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the columns after it', () => {
-  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   // The block/stipple glyphs come from a fallback face, so `[████▒▒▒▒]` and `[        ]` do not
   // advance identically; without this pin every column after the bar sat ~1.2px out on the `load:-1`
   // row. Measured, not reasoned — and it was the one recorded deviation with no guard, so a future
@@ -849,7 +937,7 @@ test('VS-M4a: the bar cell stays width-pinned, so a `--` row does not drift the 
 });
 
 test('VS-M5: the CRT treatment is ONE non-interactive overlay, never a per-character effect', () => {
-  const css = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   const crt = /\.moss-crt\{([^}]*)\}/.exec(css);
   assert.ok(crt);
   assert.match(crt[1], /pointer-events:none/);

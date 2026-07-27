@@ -363,6 +363,14 @@ test('SURFACE PARITY: every console order verb exists on the standard surface, o
 });
 
 // MUTATION: add `haul: 'someday'` to KNOWN_GAPS ⇒ not in the seal ⇒ fails.
+//
+// ⚠️ THE LOOP BELOW IS VACUOUS TODAY AND THAT IS DISCLOSED, NOT HIDDEN. `KNOWN_GAPS` is `{}`, so
+// `Object.entries` is `[]` and the loop runs ZERO assertions; only the `KNOWN_GAPS_SEALED.length`
+// line below actually executes. Both named mutations are edits to THIS file, so these are a ratchet
+// ARMING for the first new entry rather than live production coverage — worth keeping for that, and
+// worth saying so rather than letting a reader count it as protection it is not providing. The
+// EMPTINESS itself is pinned from outside, in `overview-model.test.js`'s KNOWN_GAPS cross-check,
+// which carries its own non-vacuity leg.
 test('the KNOWN_GAPS ledger can only pay down — every entry is drawn from the WP-0 seal', () => {
   for (const verb of Object.keys(KNOWN_GAPS)) {
     assert.ok(KNOWN_GAPS_SEALED.includes(verb),
@@ -378,14 +386,20 @@ test('the KNOWN_GAPS ledger can only pay down — every entry is drawn from the 
       `  (2) If the debt is genuinely being accepted, add '${verb}' to KNOWN_GAPS_SEALED in the SAME ` +
       'COMMIT and say why in the commit message. Editing the seal is meant to be the loud part.');
   }
-  assert.ok(KNOWN_GAPS_SEALED.length <= 3,
-    'KNOWN_GAPS_SEALED itself grew past its WP-0 size of 3. That is a surface decision, not a ' +
+  // EQUALITY, not `<=`. This file's own header (§ "Every numeric pin is EQUALITY") forbids a
+  // ceiling because a ceiling silently banks the headroom a re-home frees — and this was the one
+  // un-ratcheted number in a file whose entire thesis is ratchets.
+  assert.equal(KNOWN_GAPS_SEALED.length, 3,
+    'KNOWN_GAPS_SEALED moved off its WP-0 size of 3. That is a surface decision, not a ' +
     'cleanup — it belongs in a commit message and in docs/design/perilune-console-retirement.plan.md.');
 });
 
 // MUTATION: add 'wall' (which IS on the standard surface, in ROOM_TOOLS) to KNOWN_GAPS ⇒ fails as
 // stale. This is what stops the ledger from rotting: a porting package that forgets to delete its
 // line is caught by the very test it was supposed to satisfy.
+//
+// ⚠️ VACUOUS TODAY, same as its sibling above and for the same reason: `KNOWN_GAPS` is `{}`, so this
+// test executes NO assertions at all. It is the ratchet's second arm, kept armed and labelled.
 test('the KNOWN_GAPS ledger cannot rot — a ported verb may not keep its entry', async () => {
   const modern = await modernToolSet();
   for (const [verb, owner] of Object.entries(KNOWN_GAPS)) {
