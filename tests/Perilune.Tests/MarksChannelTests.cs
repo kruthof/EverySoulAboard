@@ -559,5 +559,61 @@ namespace Perilune.Tests
                     ship + ": an authored ship condemned something at boot");
             }
         }
+
+
+        /// <summary>
+        /// THE TWO TERRAIN PLANES, and the ONE case that separates them. <c>IsDebrisTile</c> mirrors
+        /// <c>GlyphMapper</c> pass 1: the WALL plane is consulted first and a standing wall wins
+        /// outright, so a wall over a debris floor is a WALL and not a mark; only a tile whose wall is
+        /// neither Wall nor Debris falls through to its floor.
+        ///
+        /// ⚠️ THIS TEST EXISTS BECAUSE TWO MUTATIONS OF THAT LOGIC SURVIVED THE WHOLE SUITE, and the
+        /// reason is worth recording rather than hiding. MEASURED across both authored ships:
+        /// <c>Wall == Debris</c> and <c>Floor == Debris</c> are the SAME 48 / 60 tiles (both planes
+        /// are written together), and there is NOT ONE standing wall over a debris floor anywhere.
+        /// So on shipped content the wall-first read and a floor-first read are EQUIVALENT — reading
+        /// the floor plane where the wall plane is read changes nothing at all. The behaviour is real
+        /// and the ships simply cannot exhibit it, which is exactly the situation a synthetic fixture
+        /// is for: the planes are set to disagree here, by hand, on a real world.
+        ///
+        /// MUTATION: read <c>level.Floor[i]</c> where <c>level.Wall[i]</c> is read ⇒ the first leg
+        /// fails. MUTATION 2: drop the <c>wall == TileDefs.Wall</c> early-out ⇒ the same leg fails.
+        /// </summary>
+        [Test]
+        public void A_Standing_Wall_Beats_A_Debris_Floor_Under_It()
+        {
+            var (gs, host) = Boot();
+            var sim = host.Sim;
+            var probe = EmptyWalkable(sim);
+            Reveal(sim, probe.Z);
+            var level = sim.World.Levels[probe.Z];
+            int i = level.Index(probe.X, probe.Y);
+            ushort wall0 = level.Wall[i], floor0 = level.Floor[i];
+            try
+            {
+                Assert.That(KindAt(gs, probe), Is.Null, "precondition: the probe tile starts unmarked");
+
+                // (a) A STANDING WALL over a DEBRIS FLOOR is a wall. This is the leg no authored ship
+                //     can produce, and the one both surviving mutations turn green.
+                level.Wall[i] = TileDefs.Wall; level.Floor[i] = TileDefs.Debris;
+                Assert.That(KindAt(gs, probe), Is.Null,
+                    "a tile with a STANDING WALL on it shipped a debris mark because its floor happens " +
+                    "to be rubble. GlyphMapper pass 1 draws that tile as a wall, so the mark layer " +
+                    "would be marking rubble the player cannot see under a wall they can.");
+
+                // (b) A DEBRIS WALL is rubble — the wreck case, which is what actually ships.
+                level.Wall[i] = TileDefs.Debris; level.Floor[i] = TileDefs.Void;
+                Assert.That(KindAt(gs, probe), Is.EqualTo(WireFormat.MarkDebris));
+
+                // (c) An OPEN tile falls through to its floor, and a debris floor is rubble too.
+                level.Wall[i] = TileDefs.Void; level.Floor[i] = TileDefs.Debris;
+                Assert.That(KindAt(gs, probe), Is.EqualTo(WireFormat.MarkDebris));
+
+                // (d) …and an ordinary open floor is not.
+                level.Wall[i] = TileDefs.Void; level.Floor[i] = TileDefs.Floor;
+                Assert.That(KindAt(gs, probe), Is.Null);
+            }
+            finally { level.Wall[i] = wall0; level.Floor[i] = floor0; }
+        }
     }
 }

@@ -1600,11 +1600,21 @@ namespace Perilune.Web
         /// <c>GlyphMapper</c> pass 1 emits <c>GlyphColor.Debris</c>, restated here rather than shared
         /// because the mapper's version is fused into a glyph+colour decision inside the projection.
         ///
-        /// THE WALL PLANE WINS AND THE ORDER IS LOAD-BEARING: a standing wall is a wall whatever is
-        /// under it, so <c>Wall</c> returns false before the floor is ever consulted; a Debris WALL is
-        /// rubble; and only a tile whose wall is neither (an open tile) falls through to its floor,
-        /// where a Debris FLOOR is also rubble. Swap the two plane reads and every wall-choked wreck
-        /// tile on the grid ship stops being a mark.
+        /// THE WALL PLANE WINS: a standing wall is a wall whatever is under it, so <c>Wall</c> returns
+        /// false before the floor is ever consulted; a Debris WALL is rubble; and only a tile whose
+        /// wall is neither (an open tile) falls through to its floor, where a Debris FLOOR is also
+        /// rubble.
+        ///
+        /// ⚠️ AN EARLIER DRAFT OF THIS COMMENT CLAIMED *"Swap the two plane reads and every
+        /// wall-choked wreck tile on the grid ship stops being a mark."* THAT IS FALSE, MEASURED: on
+        /// both authored ships <c>Wall == Debris</c> and <c>Floor == Debris</c> are the SAME tiles
+        /// (48 of each on Perilune, 60 on Grid, intersection 48 / 60 — the two planes are written
+        /// together), and there is NOT ONE standing wall over a debris floor anywhere. So on shipped
+        /// content a floor-first read is an EQUIVALENT MUTANT and swapping the planes changes nothing.
+        /// The ordering still matters as a RULE — pass 1 draws a walled tile as a wall, so marking
+        /// rubble underneath it would mark something the player cannot see — and it is pinned on a
+        /// synthetic disagreement instead of on content that cannot produce one
+        /// (<c>MarksChannelTests.A_Standing_Wall_Beats_A_Debris_Floor_Under_It</c>).
         /// </summary>
         private static bool IsDebrisTile(ZLevel level, int i)
         {

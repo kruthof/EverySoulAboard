@@ -1806,6 +1806,34 @@ test('THE LIVE BUG (driven): a condemned DEVICE tile renders its strip mark in t
   }
 });
 
+// ⚠️ ADDED AFTER A MUTATION SURVIVED. `renderMarks(m) { _marks = m; }` — the cache written, the
+// surfaces never told — passed the whole suite green. It is not a theoretical hole: `marks` is
+// deduped by `GameSession.Send`, so on a quiet ship it is sent ONCE, and a designation the player
+// just placed would sit in the cache until some other channel happened to move. The test therefore
+// dispatches ONLY the marks channel and lets the coalesced repaint land.
+//
+// MUTATION: drop `notifyShip()` from `renderMarks` in hud.js ⇒ RED.
+test('a marks dispatch ALONE repaints the surfaces — the cache is not enough', async () => {
+  const tx = HOLD.rx + 3, ty = HOLD.ry + 3;
+  const condemned = { type: 'marks', cells: WRECK_MARKS_MSG.cells.concat([[tx, ty, DECK1, 3]]) };
+  try {
+    rzApi.exit(); rzApi.enter('hold');
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok(!rzLayers.innerHTML.includes('mk-strip'), 'precondition: nothing is condemned yet');
+
+    // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
+    Hud.renderMarks(condemned);
+    await new Promise((r) => setTimeout(r, 40));            // the coalesced repaint
+    assert.ok(rzLayers.innerHTML.includes('mk mk-strip'),
+      'a `marks` message reached the cache and the Room Zoom never repainted. The channel is '
+      + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a designation the player '
+      + 'just placed would then sit invisible until some unrelated channel moved.');
+  } finally {
+    Hud.renderMarks(WRECK_MARKS_MSG);
+    await new Promise((r) => setTimeout(r, 40));
+  }
+});
+
 // THE CASE THE PASS-4 PATCH COULD NEVER REACH, driven through the same real controller: a CREW
 // MEMBER STANDING ON THE CONDEMNED TILE. `GlyphMapper` pass 5 paints the citizen's own colour over
 // `cell[1]` unconditionally, so under the old source this tile's mark was gone for as long as anyone
