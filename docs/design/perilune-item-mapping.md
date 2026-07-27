@@ -12,10 +12,34 @@
   (`perilune-wire-channels.spec.md` §3). Never a `Device`; never hashed.
 - **MATERIAL** — a buildable wall/floor tint → material tables + buildable variants; not a device.
 
-The **sim glyph** column is the semantic glyph the piece maps to, cross-checked against
-`client/src/render/glyphs.js` `SPRITE_FOR_GLYPH` (glyph → sprite role) — the WebGL skin's
-existing mapping. `—` = no glyph entry (door/pawn/growbed/terminal/conduit/pipe are handled
-directly in the executor switch, not via `SPRITE_FOR_GLYPH`; cosmetics and materials have none).
+The **sim glyph** column is the semantic glyph the piece maps to. **⚠️ IT IS LOAD-BEARING SINCE
+2026-07-26 and it is no longer cross-checked against `SPRITE_FOR_GLYPH`.** `client/src/items/glyph-map.js`
+derives the one glyph → itemId table BOTH SVG surfaces skin from straight out of this column, as it is
+transcribed into `client/src/items/index.js`.
+
+⚠️ **The original sentence is quoted because it caused a shipped bug**: *"cross-checked against
+`client/src/render/glyphs.js` `SPRITE_FOR_GLYPH` (glyph → sprite role) — the WebGL skin's existing
+mapping. `—` = no glyph entry (door/pawn/growbed/terminal/conduit/pipe are handled directly in the
+executor switch, not via `SPRITE_FOR_GLYPH`)."* That is true **of the WebGL/canvas skin only**
+(`hosts/web/Client.html:630,634` really do draw growbed and terminal in the executor switch). The SVG
+Overview and Room Zoom have **no executor switch**, so for them a `—` silently meant *no art*: GrowBed,
+Terminal and Telescope rendered as dashed boxes with a raw ASCII letter in them, in the shipping game,
+until the owner photographed it (`docs/HANDOVER.md` §4l). Rows 7, 21 and 23 now carry their real glyphs.
+
+`—` today means only: **no `DeviceKind` projects this piece** (cosmetics, materials, and FUNCTIONAL
+**[NEW]** rows whose kind does not exist yet), **or** the piece is drawn by a layer other than furniture
+(doors, conduits, pipes). The second case is an allowlist with a per-entry reason in
+`client/test/device-sprite-coverage.test.js`, and that test fails if any *other* `DeviceKind` ends up
+here.
+
+⚠️ **Five `DeviceKind`s are drawn wearing another piece's art**, and this table does not say so on the
+substitute's own row. `WaterTank` → OXYGEN TANK (#5), `Radiator` → SPACE HEATER (#40), `SalvageRecycler`
+→ WATER RECYCLER (#6), `MedCabinet` → LOCKER (#15), `Light` → WALL LAMP (#37). The warm set has no piece
+for any of those five kinds, and every one of these substitutions predates this note — they are inherited
+verbatim from the two hand-mirrored `ROLE_TO_ITEM` tables the derivation replaced, so nothing new started
+wearing borrowed art. Two consequences worth knowing: rows 5 and 40 are marked FUNCTIONAL **[NEW]** and
+so read as unreachable, but they are **on screen today** standing in for a live kind; and the ledger
+(`GLYPH_SUBSTITUTE`) is pinned to shrink only, so growing a real piece is the way out.
 
 DeviceKind reference (`Device.cs`): Door 0, AirVent 1, Scrubber 2, Ladder 3, Terminal 4,
 SolarWing 5, Battery 6, Conduit 7, Light 8, GrowBed 9, WaterTank 10, Pipe 11, Reclaimer 12,
@@ -34,7 +58,7 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 | 4 | O₂ SCRUBBER | FUNCTIONAL [exists] | Scrubber (2) | `S` → scrubber | Removes CO2 while powered. |
 | 5 | OXYGEN TANK | FUNCTIONAL **[NEW]** | (new) O2/gas store | — | No gas-storage device. `AirVent` (1) is the sim's live O2 *source* (injects mix); a tank as buffered store needs a new kind. If descoped, render as an `AirVent` variant, not decor. |
 | 6 | WATER RECYCLER | FUNCTIONAL [exists] | Reclaimer (12) | `R` → reclaimer | Recycles wastewater back to the tank network. |
-| 7 | HYDROPONICS | FUNCTIONAL [exists] | GrowBed (9) | — (growbed) | Grows crops while powered + watered; growbed drawn in the executor switch, not `SPRITE_FOR_GLYPH`. |
+| 7 | HYDROPONICS | FUNCTIONAL [exists] | GrowBed (9) | `"` → hydroponics | Grows crops while powered + watered. **Was `— (growbed)`** — true of the WebGL executor switch, but it left the food loop drawing an unknown-glyph chip on both SVG surfaces (HANDOVER §4l). |
 | 8 | COOKER | FUNCTIONAL **[NEW]** | (new) Stove/Cooker | — | No cooker/stove device; food is a ship metric, not a station. New kind (food prep). |
 | 9 | COOLER | COSMETIC | decor `cooler` | — | No food-storage mechanic. View-only fridge/freezer prop. |
 | 10 | PASTE DISPENSER | COSMETIC | decor `paste_dispenser` | — | No food-dispenser device; decorative. Promote to FUNCTIONAL only if a food-station mechanic lands. |
@@ -48,9 +72,9 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 | 18 | POTTED PLANT | FUNCTIONAL [exists] | PlantPot (24) | `P` → plant | Inert furniture but a real `DeviceKind` (dresser-placed). |
 | 19 | BOOKSHELF | COSMETIC | decor `bookshelf` | — | |
 | 20 | MED BED | FUNCTIONAL [exists] | MedBed (20) | `d` → medbed | Clinical bed. |
-| 21 | RESEARCH CONSOLE | FUNCTIONAL [exists] | Terminal (4) | — (terminal) | Hosts MOSS programs; drawn in the executor switch. |
+| 21 | RESEARCH CONSOLE | FUNCTIONAL [exists] | Terminal (4) | `T` → research-console | Hosts MOSS programs. **Was `— (terminal)`** — drawn in the WebGL executor switch, but nowhere on the standard surface, so the door into the entire MOSS CRT was a dashed box reading `T` (HANDOVER §4l). |
 | 22 | COMMS DISH | COSMETIC | decor `comms_dish` | — | No comms device in the sim (MECHANICS: comms inert). Decor. |
-| 23 | SENSOR ARRAY | FUNCTIONAL [exists] | Telescope (25) | — | Maps to the live `Telescope` (NavSystem NAV-SENSORS). NOTE: the import plan listed this cosmetic, but a `Telescope` `DeviceKind` already exists — treat as functional. |
+| 23 | SENSOR ARRAY | FUNCTIONAL [exists] | Telescope (25) | `x` → sensor-array | Maps to the live `Telescope` (NavSystem NAV-SENSORS). NOTE: the import plan listed this cosmetic, but a `Telescope` `DeviceKind` already exists — treat as functional. **Was `—` with no note at all**, and unlike rows 7/21 it was not drawn by the executor switch either: `x` was drawn by *nothing*, on any surface. |
 | 24 | WORKBENCH | FUNCTIONAL [exists] | MachineShop (14) | `M` → machineshop | parts → devices / controller modules. |
 | 25 | FABRICATOR | FUNCTIONAL [exists] | Fabricator (13) | `F` → fabricator | scrap → parts. |
 | 26 | STORAGE CRATE | COSMETIC | decor `storage_crate` | — | `Storage` is a RoomType, not a device; item stacks aren't a placeable crate. Decor. |

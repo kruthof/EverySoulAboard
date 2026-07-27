@@ -28,7 +28,10 @@
 
 import { buildItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
-import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
+// The ONE glyph → itemId derivation, straight out of the `ITEMS` registry and SHARED verbatim with
+// the Level-2 Room Zoom (`room-model.js` itemForGlyph), so the two SVG surfaces cannot come to skin
+// the same glyph differently. (It used to be `SPRITE_FOR_GLYPH` plus a local hand mirror.)
+import { itemIdForGlyphChar } from '../items/glyph-map.js';
 // The work-tag classifier (console-model.js is misnamed, not console-only — see the retirement plan
 // §1: `taskTag` is a PURE roster-label → tag mapping and is the SAME source the console's on-map
 // WORK markers used, so the two surfaces cannot disagree about who is working).
@@ -47,16 +50,13 @@ export const VIEW_W = 1300;
 export const VIEW_H = 561;
 export const DECK = Object.freeze({ x: 205, y: 168, w: 705, h: 234 });
 
-// SPRITE_FOR_GLYPH role → an itemId in the warm ITEM registry. A glyph absent from
-// SPRITE_FOR_GLYPH, or a role with no mapped item, renders NO furniture (graceful skip).
-const ROLE_TO_ITEM = Object.freeze({
-  scrubber: 'o2-scrubber', watertank: 'oxygen-tank', radiator: 'space-heater',
-  solar: 'solar-panel', battery: 'battery-bank', vent: 'air-vent', light: 'wall-lamp',
-  ladder: 'hatch-ladder', reclaimer: 'water-recycler', recycler: 'water-recycler',
-  fabricator: 'fabricator', machineshop: 'workbench',
-  bed: 'bunk-bed', table: 'dining-table', chair: 'chair', medbed: 'med-bed',
-  medcab: 'locker', locker: 'locker', desk: 'desk', plant: 'potted-plant',
-});
+// ⚠️ `ROLE_TO_ITEM` IS GONE FROM THIS FILE (2026-07-26), quoted so a grep lands on the reason: it was
+// a hand-written role → itemId object headed *"SPRITE_FOR_GLYPH role → an itemId in the warm ITEM
+// registry"*, and `room-model.js` carried the mirror-image copy. Two hand mirrors of a mapping the
+// `ITEMS` registry already states once, reached through a third table. The chain had a hole —
+// `GrowBed` `"`, `Terminal` `T`, `Telescope` `x` mapped to no role at all — which on the Room Zoom
+// shipped as dashed unknown chips and HERE was silently inert (`if (!itemId) continue`: hydroponics
+// and the MOSS terminal simply were not on the schematic). See `items/glyph-map.js`.
 
 // Glyph code points handled by the floor/wall/structure layers or otherwise not furniture.
 const NON_FURNITURE = new Set([46, 35, 32, 37, 64, 47, 38]); // . # space % @ / &
@@ -310,7 +310,8 @@ function glowPools(slots, t, id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 5 — furniture: frame cells → SPRITE_FOR_GLYPH → itemId → buildItem (VS-O-30).
+// Layer 5 — furniture: frame cells → itemIdForGlyphChar → buildItem (VS-O-30). (Was a three-hop
+// glyph → role → itemId walk through `SPRITE_FOR_GLYPH` + a local hand mirror; see line 54.)
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 function furnitureLayer(frame, deck, t, id) {
@@ -323,9 +324,8 @@ function furnitureLayer(frame, deck, t, id) {
       if (!Array.isArray(cell)) continue;
       const code = cell[0];
       if (NON_FURNITURE.has(code)) continue;
-      const role = SPRITE_FOR_GLYPH[String.fromCharCode(code)];
-      const itemId = role && ROLE_TO_ITEM[role];
-      if (!itemId) continue; // unknown glyph / unmapped role → graceful skip
+      const itemId = itemIdForGlyphChar(String.fromCharCode(code));
+      if (!itemId) continue; // glyph nothing skins → graceful skip
       const [cx, cy] = t.project(tx + 0.5, ty + 0.5);
       const g = buildItem(itemId, { w: side, h: side, idPrefix: `${id}-f${tx}-${ty}` });
       out.push(`<g transform="translate(${n(cx - side / 2)} ${n(cy - side / 2)})">${g}</g>`);
@@ -350,7 +350,8 @@ function furnitureLayer(frame, deck, t, id) {
 // It is still a layer of its own rather than a change to `furnitureLayer`, and that reason has NOT
 // changed with the source: every debris and dig cell rides glyph 37 (`'%'`), which is in
 // `NON_FURNITURE` above and must stay there. Removing it would push debris through
-// `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so `furnitureLayer`'s
+// `itemIdForGlyphChar` (then: `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM`) — which has no mapping for `'%'`,
+// so `furnitureLayer`'s
 // `if (!itemId) continue` would still draw nothing — while changing what "furniture" means for the
 // Room Zoom's mirrored copy of that set. ⚠️ THAT LAST STEP IS WHERE THE TWO SURFACES PART, and it is
 // worth knowing before copying this paragraph back the other way: the Room Zoom has NO `continue`

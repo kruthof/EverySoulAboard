@@ -9,7 +9,10 @@
 // InvariantCulture-safe throughout (round + ASCII string concat only; no locale APIs). Nothing here
 // is hashed, touches the sim, or mutates its arguments.
 
-import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
+// The ONE glyph → itemId derivation, straight out of the `ITEMS` registry and SHARED verbatim with
+// the Level-1 Overview, so the two SVG surfaces cannot come to skin the same glyph differently.
+// (It used to be `SPRITE_FOR_GLYPH` from `../render/glyphs.js` plus a local hand mirror — see below.)
+import { itemIdForGlyphChar } from '../items/glyph-map.js';
 // ⚠️ `markForFg` is GONE (the `marks` channel): the kind arrives on the wire, decoded once by
 // `roomzoom-view.js` and handed to `roomMarkTiles`. The vocabulary itself is unchanged.
 import { markVariant, markCellSvg } from './mark-overlay.js';
@@ -253,22 +256,20 @@ export function clampTileToRoom(tx, ty, focusRoom) {
 // overview-scene's NON_FURNITURE (. # space % @ / &).
 const NON_FURNITURE = new Set([46, 35, 32, 37, 64, 47, 38]);
 
-// SPRITE_FOR_GLYPH role → a warm ITEM id (mirrors overview-scene's ROLE_TO_ITEM so the two SVG
-// views skin the same glyph identically). A role with no mapped item renders nothing.
-const ROLE_TO_ITEM = Object.freeze({
-  scrubber: 'o2-scrubber', watertank: 'oxygen-tank', radiator: 'space-heater',
-  solar: 'solar-panel', battery: 'battery-bank', vent: 'air-vent', light: 'wall-lamp',
-  ladder: 'hatch-ladder', reclaimer: 'water-recycler', recycler: 'water-recycler',
-  fabricator: 'fabricator', machineshop: 'workbench',
-  bed: 'bunk-bed', table: 'dining-table', chair: 'chair', medbed: 'med-bed',
-  medcab: 'locker', locker: 'locker', desk: 'desk', plant: 'potted-plant',
-});
+// ⚠️ `ROLE_TO_ITEM` IS GONE FROM THIS FILE (2026-07-26), quoted here so a grep for it lands on the
+// reason: it was a hand-written `{scrubber:'o2-scrubber', watertank:'oxygen-tank', …}` object with a
+// comment saying it *"mirrors overview-scene's ROLE_TO_ITEM so the two SVG views skin the same glyph
+// identically"* — and the Overview carried the mirror-image copy with the mirror-image comment. Two
+// hand mirrors of a table `ITEMS` already states once, reached through a THIRD table
+// (`SPRITE_FOR_GLYPH`, glyph → sprite role). The chain had a hole in it — `GrowBed` `"`, `Terminal`
+// `T` and `Telescope` `x` reached no role, so hydroponics and the MOSS terminal drew the VS-Z-25
+// dashed unknown chip in the shipping game (HANDOVER §4l). The derivation lives in
+// `items/glyph-map.js` and both surfaces now call the same function.
 
 /** The warm itemId a glyph code maps to, or '' (unmapped → the unknown chip, VS-Z-25). PURE. */
 export function itemForGlyph(code) {
   if (NON_FURNITURE.has(code)) return '';
-  const role = SPRITE_FOR_GLYPH[String.fromCharCode(code)];
-  return (role && ROLE_TO_ITEM[role]) || '';
+  return itemIdForGlyphChar(String.fromCharCode(code));
 }
 
 /**
@@ -411,8 +412,9 @@ export function roomMaterialTiles(frame, focusRoom, materials) {
 //     emits 33 cells at code 37 with `itemId:''`, and `furnitureSvg`'s else-branch
 //     (`roomzoom-view.js:429-438`) renders the VS-Z-25 dashed "unknown" chip for each, carrying a
 //     literal `%` glyph. That is the OPPOSITE of the claim, in the very file the claim was in.
-//   • `itemForGlyph(37)` returns `''` either way — there is no `'%'` key in `SPRITE_FOR_GLYPH`
-//     (`render/glyphs.js:13-19`), so it is UNCHANGED, not reclassified.
+//   • `itemForGlyph(37)` returns `''` either way — no item claims the glyph `'%'` (then: there was
+//     no `'%'` key in `SPRITE_FOR_GLYPH`, `render/glyphs.js:13-19`), so it is UNCHANGED, not
+//     reclassified.
 //   • `demolishTarget` at such a tile returns `{kind:'empty', verb:null}` either way — its device
 //     branch (below) requires a truthy `itemForGlyph(code)`, and 37 is not in `STRUCTURE_CODES`.
 //     Also UNCHANGED.
