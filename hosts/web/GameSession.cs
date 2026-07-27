@@ -166,7 +166,7 @@ namespace Perilune.Web
                 // next Render changes it. `zones` is listed because a reconnect must not silently drop
                 // the only surface that says WHY a zone never fills; fixing `materials` belongs to
                 // whoever owns that channel.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1120,6 +1120,7 @@ namespace Perilune.Web
             Send("decor", WireFormat.Decor(BuildDecor()), force);
             Send("materials", WireFormat.Materials(BuildMaterials()), force);
             Send("zones", WireFormat.Zones(BuildZones()), force);
+            Send("marks", WireFormat.Marks(BuildMarks()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1531,6 +1532,86 @@ namespace Perilune.Web
                     }
             }
             return _zonesScratch;
+        }
+
+        /// <summary>
+        /// The sparse MARK layer for the standard surface — one <see cref="WireFormat.MarkCell"/> per
+        /// tile carrying debris, a dig order, a stockpile zone or a strip order, read from the
+        /// AUTHORITATIVE registries rather than from the projected <c>cell[1]</c> byte. See
+        /// <c>WireFormat.Marks.cs</c> for what this channel is, why it is called <c>marks</c> and not
+        /// <c>designations</c>, and the three live defects on <c>--ship grid</c> it removes.
+        ///
+        /// PRECEDENCE AND THE FOG GATE ARE <c>GlyphMapper</c> PASS 1'S, LINE FOR LINE — fog first,
+        /// then dig ▸ stockpile ▸ strip ▸ debris. That is not tidiness: it is what keeps this channel
+        /// and the frame from ever disagreeing about what a tile IS. They may now disagree only about
+        /// whether someone is standing on it, which is the entire point of the package.
+        ///
+        /// ORDER — z, y, x, GUARANTEED BY THE WALK AND BY NOTHING ELSE, exactly as
+        /// <see cref="BuildZones"/> and <see cref="BuildMaterials"/>. The one non-plane source, the
+        /// deconstruct registry, is queried by KEY (<see cref="DeconstructSystem.TryGet"/>), never
+        /// enumerated, so no container layout reaches the socket. Re-ordering the loops is the only
+        /// way to change the byte order, which is what <c>MarksChannelTests</c> pins.
+        ///
+        /// COST, AND IT IS THE ONE HONEST WORRY ON THIS CHANNEL. This is a third full pass over the
+        /// world per render (≤10 Hz, on the sim thread inside <see cref="Render"/>, NOT a tick path),
+        /// and unlike <c>zones</c> and <c>materials</c> it is NOT empty on an untouched ship: the grid
+        /// ship boots a wreck, so the payload has real volume from tick 0 and <see cref="Send"/> then
+        /// rebuilds and string-compares it every render for as long as the game runs. Measured
+        /// numbers are in the package report; the scratch list is reused so a steady state allocates
+        /// only the payload string, and the registry probe is short-circuited by <c>anyStrip</c> so a
+        /// ship with nothing condemned pays one bool per tile and no lookup at all.
+        /// </summary>
+        private readonly List<WireFormat.MarkCell> _marksScratch = new List<WireFormat.MarkCell>();
+        private List<WireFormat.MarkCell> BuildMarks()
+        {
+            _marksScratch.Clear();
+            var world = _sim.World;
+            var strip = _sim.Deconstruct;                 // may be null on a reduced system stack
+            bool anyStrip = strip != null && strip.Pending.Count > 0;
+            int w = world.Width, h = world.Height;
+            for (int z = 0; z < world.Depth; z++)
+            {
+                var level = world.Levels[z];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int i = level.Index(x, y);
+                        byte flags = level.Flags[i];
+                        // FOG FIRST, mirroring GlyphMapper pass 1. An unexplored tile emits nothing:
+                        // debris is TERRAIN, and shipping it through fog would turn a rendering fix
+                        // into a fog-of-war change.
+                        if ((flags & (byte)TileFlags.Explored) == 0) continue;
+
+                        int kind;
+                        if ((flags & (byte)TileFlags.Designated) != 0) kind = WireFormat.MarkDig;
+                        else if ((flags & (byte)TileFlags.Stockpile) != 0) kind = WireFormat.MarkStockpile;
+                        else if (anyStrip && strip.TryGet(new Int3(x, y, z), out _)) kind = WireFormat.MarkStrip;
+                        else if (IsDebrisTile(level, i)) kind = WireFormat.MarkDebris;
+                        else continue;
+
+                        _marksScratch.Add(new WireFormat.MarkCell(x, y, z, kind));
+                    }
+            }
+            return _marksScratch;
+        }
+
+        /// <summary>
+        /// True when the tile's TERRAIN reads as rubble — the exact condition under which
+        /// <c>GlyphMapper</c> pass 1 emits <c>GlyphColor.Debris</c>, restated here rather than shared
+        /// because the mapper's version is fused into a glyph+colour decision inside the projection.
+        ///
+        /// THE WALL PLANE WINS AND THE ORDER IS LOAD-BEARING: a standing wall is a wall whatever is
+        /// under it, so <c>Wall</c> returns false before the floor is ever consulted; a Debris WALL is
+        /// rubble; and only a tile whose wall is neither (an open tile) falls through to its floor,
+        /// where a Debris FLOOR is also rubble. Swap the two plane reads and every wall-choked wreck
+        /// tile on the grid ship stops being a mark.
+        /// </summary>
+        private static bool IsDebrisTile(ZLevel level, int i)
+        {
+            ushort wall = level.Wall[i];
+            if (wall == TileDefs.Wall) return false;
+            if (wall == TileDefs.Debris) return true;
+            return level.Floor[i] == TileDefs.Debris;
         }
 
         /// <summary>The live <see cref="HaulJobSource"/> out of the running stack, resolved ONCE
