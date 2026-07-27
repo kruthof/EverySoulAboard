@@ -588,71 +588,84 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// THE CROSS-DERIVATION PIN — four independent spellings of "accept everything" will exist
-        /// once WP-5 lands, and NOTHING else asserts they agree. The sim ORs <c>1UL &lt;&lt; k</c> over
-        /// each declared enum VALUE (<c>StockZoneSystem.ComputeAcceptAllMask</c>); WP-5's three
-        /// host/client sites each use a COUNT instead. FORWARD REFERENCE — none of these DERIVATION
-        /// SITES exists in this tree yet (they are on the WP-5 branch; <c>GameSession.cs</c> itself is
-        /// here but has no <c>AcceptAllMask</c> and no filter bridge). The paths and expressions below
-        /// are as reported by this package's independent review, not as verified here:
-        /// <c>hosts/tui/Ui/StockFilterModel.cs</c> (<c>(1UL &lt;&lt; KindCount) - 1UL</c>),
-        /// <c>hosts/web/GameSession.cs</c> (<c>(1UL &lt;&lt; Enum.GetValues(typeof(ItemKind)).Length) - 1UL</c>)
-        /// and <c>client/src/ui/stock-filter-model.js</c> (<c>(1 &lt;&lt; STOCK_KINDS.length) - 1</c>).
+        /// THE CROSS-DERIVATION PIN — four independent spellings of "accept everything" exist (the
+        /// sim, the TUI host, the web host, the browser client) and NOTHING else asserts they agree.
         ///
-        /// Those agree ONLY while <see cref="ItemKind"/> is contiguous from 0. Give it a gap or a
-        /// non-zero base — a kind retired, or explicit values assigned — and they diverge: the hosts
-        /// send a mask that covers the hole and misses the top kind, so the collapse never fires (the
-        /// fast path dies permanently) AND the stored mask silently rejects a real kind while both UIs
-        /// read back "ALL". This assertion is the tripwire; if it goes red, those three files are what
-        /// to look at, and the answer is to make every site derive from
-        /// <see cref="StockZoneSystem.AcceptAllMask"/> rather than to widen this test.
+        /// ⚠ THE HAZARD THIS TEST WAS WRITTEN FOR HAS NOW HAPPENED, so read the history: WP-6 pinned
+        /// that <see cref="ItemKind"/> must stay CONTIGUOUS FROM 0, because three of the four sites
+        /// derived their mask from the enum's member COUNT (<c>(1 &lt;&lt; Length) - 1</c>), which
+        /// only equals the sim's per-VALUE OR while there is no hole. E0-7 put a hole in it: the
+        /// integrator pre-assigned <c>Seals = 7</c> to the sibling E0-6 lane and <c>Ice = 8</c> to
+        /// this one, so the two lanes could not collide on a slot (ECONOMY-PLAN §2.1 rule 2). This
+        /// test went RED, exactly as designed, and named the three files.
         ///
-        /// INTEGRATION NOTE — and its EXPIRY. This assertion must SURVIVE the merge with the WP-5
-        /// branch (which owns those three sites): until then it is the only thing pinning the sim's
-        /// door to what WP-5's UI actually sends. But it is a bridge, not a fixture — the moment every
-        /// site consumes <see cref="StockZoneSystem.AcceptAllMask"/> directly, there is only ONE
-        /// derivation left, nothing to cross-check, and this test should be DELETED rather than
-        /// maintained. Do not read "must survive the merge" as "keep forever".
+        /// E0-7 took the resolution the old doc comment prescribed — "make every site derive from
+        /// <see cref="StockZoneSystem.AcceptAllMask"/> rather than widen this test" — in its only
+        /// available form: the two host sites now OR the declared VALUES, the same way the sim does
+        /// (they cannot literally reference the sim's constant without either a new dependency or a
+        /// duplicated cast, and the client cannot reference it at all). So the cross-check still has
+        /// something real to compare, and it is now inverted: the property pinned is that the count
+        /// derivation is WRONG and that nobody uses it.
         ///
-        /// SHAPE — the contiguity assertion is FIRST and stands on the ENUM, not on the constant. The
-        /// mask-equality assertion alone is latently vacuous: rewrite <c>ComputeAcceptAllMask</c>'s
-        /// body as the hosts' own <c>(1UL &lt;&lt; Enum.GetValues(typeof(ItemKind)).Length) - 1UL</c> —
-        /// a plausible tidy-up — and it degenerates to <c>x == x</c>, silently disarming the tripwire
-        /// (row 3 of <see cref="AcceptAllFilter_StoresNoEntry_SoTheHaulFastPathStaysReachable"/> does
-        /// not backstop it: both spellings are 0x7F while the enum is contiguous). The per-index
-        /// assertion cannot degenerate that way — it names the actual constraint the hosts depend on.
+        /// SHAPE, and why each assertion is not vacuous:
+        ///   1. the enum HAS a gap — a premise stated on the enum itself, so a future contiguous
+        ///      enum makes this test say so out loud instead of quietly measuring nothing;
+        ///   2. the count derivation differs from the sim's, and differs in the two specific bits
+        ///      predicted (sets 7, clears 8) — this is the assertion that fails if someone
+        ///      "simplifies" a host back to the count form;
+        ///   3. the sim's mask equals the OR of the declared values, SPELLED FROM THE ENUM here, so
+        ///      rewriting <c>ComputeAcceptAllMask</c> can never make this compare a value with
+        ///      itself (the disarming tidy-up WP-6 warned about);
+        ///   4. both host constants equal that same independently-spelled value.
         ///
-        /// MUTATION (verified): append <c>m |= 1UL &lt;&lt; 7;</c> to <c>ComputeAcceptAllMask</c> (the
-        /// too-WIDE divergence) ⇒ the count-based derivation is 0x7F, the sim's is 0xFF, and the mask
-        /// assertion fails.
-        ///
-        /// MUTATION (verified) for the contiguity assertion — it takes a change to the ENUM, because
-        /// that is what it pins: give <see cref="ItemKind"/> a gap (<c>ControllerModule = 7</c>) ⇒ RED
-        /// at index 6. MEASURED, so the claim is exact: applying the disarming tidy-up ALONE leaves all
-        /// 22 tests GREEN — correctly, since rewriting the derivation to the count expression
-        /// introduces no defect while the enum is contiguous. The tidy-up is dangerous only because it
-        /// would make the MASK assertion vacuous; the pair (gap + tidy-up) is therefore the real
-        /// measurement, and there this test still goes RED on the contiguity assertion. That is the
-        /// property being bought: the tripwire cannot be silently disabled by a plausible refactor.
+        /// MUTATION (applied, observed red, reverted): revert <c>hosts/tui/Ui/StockFilterModel.cs</c>
+        /// to <c>AcceptAllMask = (1UL &lt;&lt; KindCount) - 1UL</c> ⇒ assertion 4 fails naming that
+        /// file. SECOND MUTATION: rewrite <c>StockZoneSystem.ComputeAcceptAllMask</c> as the count
+        /// expression ⇒ assertions 2 and 3 both fail (this is the tidy-up that used to disarm the
+        /// tripwire silently and now cannot).
         /// </summary>
         [Test]
-        public void AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous()
+        public void AcceptAllMask_IsValueDerived_NowThatItemKindHasAGap()
         {
-            // The constraint itself, pinned on the enum — no reference to AcceptAllMask, so no
-            // rewrite of its derivation can make this assertion compare something with itself.
+            // ── 1. NON-VACUITY: the enum really does have a hole. Without this the rest of the test
+            //       would still pass on a contiguous enum while proving nothing about the hazard.
             var kinds = AllKinds();
-            for (int i = 0; i < kinds.Length; i++)
-                Assert.That((int)kinds[i], Is.EqualTo(i),
-                    "ItemKind must stay contiguous from 0 — the hosts derive accept-all from the COUNT " +
-                    "((1 << Length) - 1), so a gap or a non-zero base makes their mask cover the hole " +
-                    "and miss the top kind");
+            bool hasGap = false;
+            for (int i = 0; i < kinds.Length; i++) if ((int)kinds[i] != i) { hasGap = true; break; }
+            Assert.That(hasGap, Is.True,
+                "PREMISE: ItemKind is expected to be NON-contiguous (E0-7 took Ice = 8 over the slot 7 " +
+                "the integrator reserved for E0-6's Seals). If E0-6 has landed and closed the hole, " +
+                "this test is measuring nothing and should be revisited, not deleted — the next " +
+                "reserved slot will reopen it.");
 
-            Assert.That(StockZoneSystem.AcceptAllMask,
-                Is.EqualTo((1UL << System.Enum.GetValues(typeof(ItemKind)).Length) - 1UL),
-                "the sim's per-value derivation and the hosts' count derivation must agree — they do " +
-                "only while ItemKind is contiguous from 0, and a divergence silently un-fires the " +
-                "collapse (see hosts/tui/Ui/StockFilterModel.cs, hosts/web/GameSession.cs, " +
-                "client/src/ui/stock-filter-model.js)");
+            // ── 2. THE OLD DERIVATION IS NOW WRONG, and by exactly the predicted amount: it covers
+            //       the hole (bit 7) and misses the top kind (bit 8). This is the assertion that
+            //       would have caught the bug had the hosts been left alone.
+            ulong countDerived = (1UL << kinds.Length) - 1UL;
+            Assert.That(countDerived, Is.Not.EqualTo(StockZoneSystem.AcceptAllMask),
+                "a count-based accept-all no longer means 'every kind'");
+            Assert.That(countDerived & (1UL << 7), Is.Not.EqualTo(0UL),
+                "...it sets the bit of a kind that does not exist");
+            Assert.That(countDerived & (1UL << (int)ItemKind.Ice), Is.EqualTo(0UL),
+                "...and clears the bit of one that does — an 'accept everything' stockpile that " +
+                "silently refuses Ice");
+
+            // ── 3. THE SIM'S MASK IS THE OR OF THE DECLARED VALUES, spelled here from the enum rather
+            //       than read off the constant, so rewriting ComputeAcceptAllMask cannot make this
+            //       compare something with itself.
+            ulong valueDerived = 0;
+            for (int i = 0; i < kinds.Length; i++) valueDerived |= 1UL << (int)kinds[i];
+            Assert.That(StockZoneSystem.AcceptAllMask, Is.EqualTo(valueDerived));
+
+            // ── 4. EVERY HOST DERIVATION AGREES WITH IT. These are separate assemblies with separate
+            //       copies of the same idea; before E0-7 two of the three were count-based, and this
+            //       is what stops one of them drifting back.
+            Assert.That(Perilune.Tui.Ui.StockFilterModel.AcceptAllMask, Is.EqualTo(valueDerived),
+                "hosts/tui/Ui/StockFilterModel.cs");
+            Assert.That(Perilune.Web.GameSession.AcceptAllMask, Is.EqualTo(valueDerived),
+                "hosts/web/GameSession.cs");
+            // client/src/ui/stock-filter-model.js is pinned on the node side by
+            // client/test/stock-filter-model.test.js, which parses ItemStack.cs directly.
         }
 
         /// <summary>

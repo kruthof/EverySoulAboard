@@ -57,7 +57,21 @@ namespace Perilune.Sim
             // [recipes] arrays), so rows accumulate across every file in file order and are
             // installed once at the end. A repeated node id REPLACES in place — the overlay
             // contract, without disturbing table order.
-            var production = new List<ProductionNode>();
+            //
+            // E0-7: SEEDED FROM THE COMPILED DEFAULTS, where W0-5 started from an empty list. That
+            // was indistinguishable while CreateDefault's table was itself empty, and wrong the
+            // moment it was not: every other section in this file overlays CreateDefault, and
+            // [production] alone REPLACED it — so `Parse("")` returned a graph missing the compiled
+            // `melt_ice` node while claiming (via zero problems) that nothing had been overridden,
+            // and the shipped .def and the compiled defaults could not both be right. Seeding makes
+            // the section behave like the rest: a row with an existing id retunes it in place, a new
+            // id appends, and content that mentions no node changes nothing.
+            //
+            // The cost, stated: content can no longer REMOVE a compiled node, only retune it. That
+            // is exactly the contract [machines] and [recipes] already have (there is no way to
+            // un-declare a machine row either), and it is the reason a compiled node must be one
+            // the base game genuinely wants everywhere.
+            var production = new List<ProductionNode>(d.Production?.Nodes ?? Array.Empty<ProductionNode>());
 
             if (files != null)
             {
@@ -256,6 +270,8 @@ namespace Perilune.Sim
                 case "reclaimer_liters_per_second": if (F(v, k, loc, p, out var b)) d.Water.ReclaimerLitersPerSecond = b; return true;
                 case "reclaim_efficiency": if (F(v, k, loc, p, out var c)) d.Water.ReclaimEfficiency = c; return true;
                 case "makeup_floor_liters": if (F(v, k, loc, p, out var e)) d.Water.MakeupFloorLiters = e; return true;
+                case "ice_liters_per_unit": if (F(v, k, loc, p, out var f)) d.Water.IceLitersPerUnit = f; return true;
+                case "melter_buffer_liters": if (F(v, k, loc, p, out var g)) d.Water.MelterBufferLiters = g; return true;
                 default: return false;
             }
         }

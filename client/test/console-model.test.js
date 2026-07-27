@@ -16,6 +16,7 @@ import {
   terminalList, terminalLabel, escapeTarget, taskTag, watchTask, workMarkers,
 } from '../src/ui/console-model.js';
 import { Cmd } from '../src/wire/session.js';
+import { ACCEPT_ALL } from '../src/ui/stock-filter-model.js';
 
 // ---------------- clock (IX-81) ----------------
 
@@ -364,8 +365,12 @@ test('Cmd.filter carries the WHOLE mask for a tile, canonical and never negative
   assert.deepEqual(Cmd.filter(3, 4, 8), { cmd: 'filter', x: 3, y: 4, mask: 8 });
   // Accept-nothing is a real value, not a falsy omission.
   assert.deepEqual(Cmd.filter(3, 4, 0), { cmd: 'filter', x: 3, y: 4, mask: 0 });
-  assert.equal(Cmd.filter(1, 1, -1).mask, 127, 'a negative can never reach the wire');
-  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 127, 'bits above the last ItemKind are dropped');
+  // 0x17F, not 0x7F, since E0-7: bits 0-6 plus bit 8 (Ice). Bit 7 is the slot the integrator
+  // reserved for E0-6's Seals and is NOT a kind, so it is dropped from an over-wide mask like any
+  // other undeclared bit — which is the case a `(1 << length) - 1` clamp would have let through.
+  assert.equal(Cmd.filter(1, 1, -1).mask, ACCEPT_ALL, 'a negative can never reach the wire');
+  assert.equal(ACCEPT_ALL, 0x17F, 'and the clamp is the real accept-all, spelled out here');
+  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 0x17F, 'bits belonging to no ItemKind are dropped');
   // Its OWN verb — never the presence verb, which carries no mask at all.
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'stockpile');
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'build');

@@ -13,10 +13,19 @@ namespace Perilune.Tests
     /// <c>SimDefs.Recipes</c> could never be (one row per DeviceKind, single-in/single-out,
     /// second bill overwrites the first).
     ///
-    /// The load-bearing claim of this package is <b>additive</b>: the table ships EMPTY,
-    /// so shipped crafting still runs the legacy <c>Recipes[]</c> row through
-    /// <see cref="ProductionDefs.TryGetBill"/>'s fallback leg, and the defs checksum is
-    /// byte-identical to pre-W0-5. Every test below is paired with a NAMED MUTATION in its
+    /// The load-bearing claim of W0-5 was <b>additive</b>: the table shipped EMPTY, so shipped
+    /// crafting still ran the legacy <c>Recipes[]</c> row through
+    /// <see cref="ProductionDefs.TryGetBill"/>'s fallback leg, and the defs checksum was
+    /// byte-identical to pre-W0-5.
+    ///
+    /// E0-7 put the first node in it — <c>melt_ice</c>, the ice melter's bill, which
+    /// <c>[recipes]</c> cannot express because the melter's product is litres and not a stack.
+    /// The additive claim is unchanged for every OTHER station and is now asserted by name in
+    /// <see cref="CompiledDefault_ShipsExactlyTheMelterBill"/>; the defs checksum DID move, which
+    /// is expected and is the integrator's to re-pin. Every count/index assertion below is
+    /// expressed relative to <c>Compiled</c> rather than to a literal.
+    ///
+    /// Every test below is paired with a NAMED MUTATION in its
     /// doc comment that makes it fail (§5.2 rule 2) — each was applied, observed red, and
     /// reverted.
     ///
@@ -103,38 +112,74 @@ namespace Perilune.Tests
         // ------------------------------------------------- default equivalence / checksum
 
         /// <summary>
-        /// The container ships EMPTY, and an empty table is a checksum no-op — so W0-5 does
-        /// not move the defs fingerprint (which is written into every save header,
-        /// SaveWriter.cs:344) at all.
+        /// How many nodes <see cref="SimDefs.CreateDefault"/> compiles in before any content is
+        /// parsed. W0-5 shipped ZERO; E0-7 added <c>melt_ice</c>. Every count/index assertion below
+        /// is expressed relative to this rather than to a literal, so the next lane that compiles a
+        /// node in does not have to re-touch a dozen tests — and, more to the point, so none of
+        /// those assertions can be "fixed" by bumping a number without noticing what moved.
+        /// </summary>
+        private static int Compiled => SimDefs.Default.Production.Nodes.Length;
+
+        /// <summary>The <paramref name="i"/>-th node a parsed text DECLARED, i.e. skipping the
+        /// compiled prefix the parser now seeds the table with.</summary>
+        private static ProductionNode Declared(SimDefs d, int i) => d.Production.Nodes[Compiled + i];
+
+        /// <summary>
+        /// The compiled table is EXACTLY the ice melter's bill and nothing else — the one node the
+        /// base game wants on every ship, compiled in rather than left to content so that a host
+        /// booting with no <c>--data</c> directory still has a melter that works.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: in SimDefs.CreateDefault, ship one node —
-        /// <c>d.Production = new ProductionDefs { Nodes = new[] { new ProductionNode("x",
-        /// DeviceKind.Fabricator, 30, new[] { new ProductionPort(ItemKind.Scrap, 2) },
-        /// new[] { new ProductionPort(ItemKind.Parts, 1) }) } };</c> — the Nodes.Length
-        /// assertion fails. (Applied, observed red, reverted.)
+        /// Every OTHER shipped station is still on its legacy [recipes] row: the three
+        /// <c>CountFor</c> assertions are what make "E0-7 changed only the melter" checkable by
+        /// reading the test rather than by trusting the diff.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: in SimDefs.CreateDefault change the melt_ice node's
+        /// station to <c>DeviceKind.Fabricator</c> — CountFor(IceMelter) drops to 0 and
+        /// CountFor(Fabricator) rises to 1, and both named assertions fail. (Applied, observed red,
+        /// reverted.)
         /// </summary>
         [Test]
-        public void CompiledDefault_ShipsAnEmptyTable()
+        public void CompiledDefault_ShipsExactlyTheMelterBill()
         {
             Assert.That(SimDefs.Default.Production, Is.Not.Null);
             Assert.That(SimDefs.Default.Production.Nodes, Is.Not.Null);
-            Assert.That(SimDefs.Default.Production.Nodes.Length, Is.EqualTo(0),
-                "W0-5 ships the container, not content: shipped crafting still runs [recipes]");
+            Assert.That(SimDefs.Default.Production.Nodes.Length, Is.EqualTo(1),
+                "the compiled table is the ice melter's bill and nothing else");
+
+            var node = SimDefs.Default.Production.Nodes[0];
+            Assert.That(node.Id, Is.EqualTo("melt_ice"));
+            Assert.That(node.Station, Is.EqualTo(DeviceKind.IceMelter));
+            Assert.That(node.WorkSeconds, Is.EqualTo(300));
+            Assert.That(node.Inputs.Length, Is.EqualTo(1));
+            Assert.That(node.Inputs[0].Kind, Is.EqualTo(ItemKind.Ice));
+            Assert.That(node.Inputs[0].Count, Is.EqualTo(1));
+            Assert.That(node.Outputs.Length, Is.EqualTo(0),
+                "the melter's product is LITRES, not a stack — that is why it cannot be a [recipes] row");
+
+            // The legacy benches are untouched: they still resolve through the Recipes array.
             Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(0));
+            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.MachineShop), Is.EqualTo(0));
+            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.SalvageRecycler), Is.EqualTo(0));
+            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.IceMelter), Is.EqualTo(1));
         }
 
         /// <summary>
-        /// The shipped production.def is verbatim equal to the compiled default — it declares
-        /// the section and no rows — so parsing it yields the same empty table AND the same
-        /// checksum as CreateDefault. This is the def-field ritual's "shipped .def line equals
-        /// the compiled default" step for a table whose default is empty.
+        /// The shipped production.def row is verbatim equal to the compiled default: parsing it
+        /// yields the SAME table (one node, same values, same table position — it overlays the
+        /// compiled row by id rather than appending beside it) AND the same checksum as
+        /// CreateDefault. This is the def-field ritual's "shipped .def line equals the compiled
+        /// default" step, for a table whose default is no longer empty.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: uncomment the <c>fab_parts</c> worked example in
-        /// <c>content/core/SimDefs/production.def</c> — the parsed table gains a node and the
-        /// checksum diverges from SimDefs.Default. (Applied, observed red, reverted.)
+        /// MUTATION THAT MAKES THIS FAIL: change `melt_ice`'s work_s from 300 to 301 in
+        /// <c>content/core/SimDefs/production.def</c> — the parsed node's WorkSeconds and the
+        /// checksum both diverge from SimDefs.Default. (Applied, observed red, reverted.)
+        ///
+        /// SECOND MUTATION: rename the shipped row's id to `melt_ice2` — it stops overlaying and
+        /// APPENDS, so Nodes.Length becomes 2, the parser warns about a shadowed node, and the
+        /// problems-are-empty assertion fails too. (Applied, observed red, reverted.)
         /// </summary>
         [Test]
-        public void ShippedProductionDef_IsEmpty_AndLeavesTheChecksumUnmoved()
+        public void ShippedProductionDef_EqualsTheCompiledTable_AndLeavesTheChecksumUnmoved()
         {
             string dir = FindSimDefsDir();
             Assert.That(dir, Is.Not.Null, "content/core/SimDefs must be discoverable");
@@ -148,9 +193,13 @@ namespace Perilune.Tests
             Assert.That(problems, Is.Empty,
                 "the shipped production.def must parse with zero problems (a typo'd section name " +
                 "would show up here as 'unknown section'): " + string.Join(" | ", problems));
-            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(Compiled),
+                "the shipped row RETUNES the compiled node in place; it must not append a second one");
+            Assert.That(parsed.Production.Nodes[0].Id, Is.EqualTo("melt_ice"));
+            Assert.That(parsed.Production.Nodes[0].WorkSeconds,
+                        Is.EqualTo(SimDefs.Default.Production.Nodes[0].WorkSeconds));
             Assert.That(parsed.Checksum, Is.EqualTo(SimDefs.Default.Checksum),
-                "an empty [production] table folds nothing — the shipped defs checksum is unmoved");
+                "shipped == compiled, so the defs checksum is unmoved by loading content");
         }
 
         private static string FindSimDefsDir()
@@ -218,7 +267,7 @@ namespace Perilune.Tests
                 "scrap_corpse    SalvageRecycler  60      Corpse:1             none\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(3));
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 3));
             Assert.That(d.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(2),
                 "two bills on one station must COEXIST — that is the whole point of the table");
 
@@ -275,7 +324,7 @@ namespace Perilune.Tests
                 "fab_seals Fabricator 15 Regolith:1 Parts:2\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(2), "the row still lands");
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the row still lands");
             Assert.That(problems.Count, Is.EqualTo(1));
             Assert.That(problems[0], Does.Contain("2 nodes are declared on Fabricator"));
             Assert.That(problems[0], Does.Contain("'fab_parts' (the first in table order)"),
@@ -299,7 +348,7 @@ namespace Perilune.Tests
                 "b Fabricator      40 Scrap:3    Parts:2\n",
                 out var problems2);
 
-            Assert.That(e.Production.Nodes.Length, Is.EqualTo(2), "the overlay replaces in place");
+            Assert.That(e.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the overlay replaces in place");
             Assert.That(e.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(2),
                 "premise: the retarget really did put a second node on the Fabricator");
             Assert.That(e.Production.CountFor(DeviceKind.SalvageRecycler), Is.EqualTo(0),
@@ -315,7 +364,7 @@ namespace Perilune.Tests
                 "n2 Fabricator 31 Scrap:3    Parts:1\n" +
                 "n3 Fabricator 32 Regolith:1 Parts:1\n",
                 out var problems3);
-            Assert.That(f.Production.Nodes.Length, Is.EqualTo(3));
+            Assert.That(f.Production.Nodes.Length, Is.EqualTo(Compiled + 3));
             Assert.That(problems3.Count, Is.EqualTo(1), "one problem per STATION, not per row");
             Assert.That(problems3[0], Does.Contain("3 nodes are declared on Fabricator"));
             Assert.That(problems3[0], Does.Contain("shadowed: 'n2', 'n3'"));
@@ -370,21 +419,21 @@ namespace Perilune.Tests
         public void PortCounts_AreBounded_AndASameKindGainIsRefused()
         {
             var huge = Parse("[production]\nbig Fabricator 30 Scrap:1 Parts:2000000000\n", out var p1);
-            Assert.That(huge.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(huge.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(p1, Has.Some.Contains("count must be in [1, 10000]"));
 
             var mint = Parse("[production]\nmint Fabricator 30 Scrap:1 Scrap:5\n", out var p2);
-            Assert.That(mint.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(mint.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(p2, Has.Some.Contains("same-kind gain is unambiguous matter creation"));
 
             // Same kind on both sides is fine when it LOSES — that is what a lossy loop is.
             var lossy = ParseClean("[production]\nlossy SalvageRecycler 20 Scrap:20 Scrap:17\n");
-            Assert.That(lossy.Production.Nodes.Length, Is.EqualTo(1));
+            Assert.That(lossy.Production.Nodes.Length, Is.EqualTo(Compiled + 1));
 
             // ...and a CROSS-kind gain stays legal: Regolith:1 -> Seals:2 is ECONOMY.md §4's
             // own design, and units of different kinds are not comparable without a mass model.
             var cross = ParseClean("[production]\ncross Fabricator 30 Regolith:1 Parts:2\n");
-            Assert.That(cross.Production.Nodes.Length, Is.EqualTo(1));
+            Assert.That(cross.Production.Nodes.Length, Is.EqualTo(Compiled + 1));
         }
 
         /// <summary>
@@ -406,10 +455,10 @@ namespace Perilune.Tests
                 "rec_scrap SalvageRecycler 20 Regolith:1 Scrap:2\n" +
                 "fab_parts Fabricator 99 Scrap:4 Parts:3\n");
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(2), "the repeat overlays, it does not append");
-            Assert.That(d.Production.Nodes[0].Id, Is.EqualTo("fab_parts"), "order preserved");
-            Assert.That(d.Production.Nodes[0].WorkSeconds, Is.EqualTo(99), "the later row's values win");
-            Assert.That(d.Production.Nodes[1].Id, Is.EqualTo("rec_scrap"));
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the repeat overlays, it does not append");
+            Assert.That(Declared(d, 0).Id, Is.EqualTo("fab_parts"), "order preserved");
+            Assert.That(Declared(d, 0).WorkSeconds, Is.EqualTo(99), "the later row's values win");
+            Assert.That(Declared(d, 1).Id, Is.EqualTo("rec_scrap"));
         }
 
         /// <summary>
@@ -430,13 +479,13 @@ namespace Perilune.Tests
         public void DuplicateKindWithinOneSide_IsRejected_BecauseItWouldCreateMatter()
         {
             var d = Parse("[production]\ndup Fabricator 5 Scrap:1+Scrap:1 Parts:1\n", out var problems);
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(0), "the row must not land");
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(problems, Has.Some.Contains("names Scrap twice in inputs"));
             Assert.That(problems, Has.Some.Contains("create matter"));
 
             // Outputs too — same rule, same reason to keep the invariant one-sided-free.
             var e = Parse("[production]\ndup2 Fabricator 5 Scrap:2 Parts:1+Parts:1\n", out var problems2);
-            Assert.That(e.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(e.Production.Nodes.Length, Is.EqualTo(Compiled));
             Assert.That(problems2, Has.Some.Contains("names Parts twice in outputs"));
 
             // ...and the behavioural half: with the row refused, the bench falls back to the
@@ -476,9 +525,9 @@ namespace Perilune.Tests
                 "too_few    Fabricator  30          Scrap:2\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(1), "only the good row lands: "
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 1), "only the good row lands: "
                 + string.Join(" | ", problems));
-            Assert.That(d.Production.Nodes[0].Id, Is.EqualTo("ok_row"));
+            Assert.That(Declared(d, 0).Id, Is.EqualTo("ok_row"));
             Assert.That(problems.Count, Is.EqualTo(8), "every bad row warns exactly once: "
                 + string.Join(" | ", problems));
             Assert.That(problems, Has.Some.Contains("work_s must be in [1, 86400]"));
@@ -525,21 +574,21 @@ namespace Perilune.Tests
                 Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
 
                 var badCount = Parse("[production]\nlossy SalvageRecycler 20 Scrap:1.000 Regolith:17\n", out var problems);
-                Assert.That(badCount.Production.Nodes.Length, Is.EqualTo(0),
+                Assert.That(badCount.Production.Nodes.Length, Is.EqualTo(Compiled),
                     "de-DE must not turn a port count '1.000' into 1000 — the row is refused");
                 Assert.That(problems, Has.Some.Contains("count expects an integer, got '1.000'"));
 
                 // The same guarantee on work_s, which had no culture/style coverage at all.
                 var badWork = Parse("[production]\nslow SalvageRecycler 1.000 Scrap:20 Regolith:17\n", out var problems2);
-                Assert.That(badWork.Production.Nodes.Length, Is.EqualTo(0),
+                Assert.That(badWork.Production.Nodes.Length, Is.EqualTo(Compiled),
                     "de-DE must not turn work_s '1.000' into 1000 — the row is refused");
                 Assert.That(problems2, Has.Some.Contains("work_s expects an integer, got '1.000'"));
 
                 // The plain row still parses identically under de-DE, values and all.
                 var good = ParseClean("[production]\nlossy SalvageRecycler 20 Scrap:20 Regolith:17\n");
-                Assert.That(good.Production.Nodes[0].Inputs[0].Count, Is.EqualTo(20));
-                Assert.That(good.Production.Nodes[0].Outputs[0].Count, Is.EqualTo(17));
-                Assert.That(good.Production.Nodes[0].WorkSeconds, Is.EqualTo(20));
+                Assert.That(Declared(good, 0).Inputs[0].Count, Is.EqualTo(20));
+                Assert.That(Declared(good, 0).Outputs[0].Count, Is.EqualTo(17));
+                Assert.That(Declared(good, 0).WorkSeconds, Is.EqualTo(20));
             }
             finally
             {

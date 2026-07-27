@@ -62,6 +62,16 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   // Light (8). The set's luminaires are all COSMETIC (`wall-lamp`, `floodlight`, `sun-lamp`); there
   // is no functional light piece. WALL LAMP is the closest and is what both surfaces already drew.
   '*': 'wall-lamp',
+  // IceMelter (26, E0-7). No melter piece. COOKER is the set's only heat-into-a-box machine — a
+  // dark steel cabinet with glowing elements, which is exactly what a melter is — and it is
+  // otherwise unreachable art (`deviceStatus: 'new'`; no `DeviceKind.Cooker` exists). Chosen over
+  // `water-recycler`, which is thematically closer but already stands in for SalvageRecycler AND
+  // has its own Reclaimer row, so a third use would put three different machines on one silhouette.
+  // NOTE this is the FIRST entry added to this ledger since it was written, and the header says the
+  // ledger only shrinks. It grows here for the reason the header itself names as legitimate: a new
+  // DeviceKind shipped and a stand-in was chosen over drawing new art, which is a decision with a
+  // reason rather than a chore. Drawing a real melter piece is a job for the art lane.
+  I: 'cooker',
 });
 
 /** Build the glyph → itemId table from `ITEMS`, then fill the gaps from `GLYPH_SUBSTITUTE`. */

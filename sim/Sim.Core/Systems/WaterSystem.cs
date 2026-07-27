@@ -90,7 +90,111 @@ namespace Perilune.Sim
                 RebuildNetworks(sim);
             }
             RunMakeup(sim);      // floor the pool BEFORE reclaimers read it, same pass
+            RunMelters(sim);     // ...and land meltwater in the tanks before they are drawn from
             RunReclaimers(sim);
+        }
+
+        /// <summary>
+        /// E0-7. Drain each melter's meltwater buffer (<see cref="Device.StoredLiters"/>) into the
+        /// least-full tank on its fluid network, exactly mirroring <see cref="RunReclaimers"/>'s
+        /// selection (device store order, strict '&lt;' so ties keep the earlier tank) — the two
+        /// passes are deliberately the same shape so they cannot drift apart.
+        ///
+        /// A melter is NOT a reclaimer, and the difference is the point: reclaimed water is
+        /// recovered greywater and pays <c>ReclaimEfficiency</c>; meltwater is clean and pays
+        /// nothing. A melter is also not throttled by a rate — the rate is the crew: how fast they
+        /// haul and melt ice is what sets the ship's water income.
+        ///
+        /// UNPOWERED/BROKEN/UNPLUMBED melters do not drain. A melter with no fluid network keeps
+        /// its buffer, fills it, and then (by <see cref="HasMeltHeadroom"/>) stops recruiting
+        /// workers — an unplumbed melter wastes labour once and then stands idle rather than
+        /// silently boiling the hold away. The stalled buffer is the only symptom; nothing on any
+        /// surface says "this melter is not plumbed" (an honest limit, and the same shape as
+        /// MECHANICS §13.17's unreachable stockpile).
+        ///
+        /// Determinism/allocation: device store order, no RNG, no allocation.
+        /// </summary>
+        private static void RunMelters(Simulation sim)
+        {
+            var water = sim.Defs.Water;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var melter = devices[i];
+                if (melter.Kind != DeviceKind.IceMelter || melter.StoredLiters <= 0f ||
+                    !melter.Powered || !melter.IsOperational(sim.Defs) || melter.FluidNetworkId == 0)
+                    continue;
+
+                Device target = null;
+                for (int j = 0; j < devices.Count; j++)
+                {
+                    var tank = devices[j];
+                    if (tank.Kind != DeviceKind.WaterTank || tank.FluidNetworkId != melter.FluidNetworkId)
+                        continue;
+                    if (target == null || tank.StoredLiters < target.StoredLiters) target = tank;
+                }
+                if (target == null) continue;
+
+                float room = water.TankCapacityLiters - target.StoredLiters;
+                if (room <= 0f) continue;                       // network full: hold it in the buffer
+                float move = melter.StoredLiters < room ? melter.StoredLiters : room;
+                melter.StoredLiters -= move;
+                target.StoredLiters += move;                    // no efficiency term: meltwater is clean
+            }
+        }
+
+        /// <summary>
+        /// E0-7. Could this melter accept one more batch's worth of meltwater? Read by
+        /// <see cref="CraftingSystem"/> before it recruits a worker to a melter, so a ship whose
+        /// tanks and buffer are both full stops burning ice instead of boiling it away.
+        ///
+        /// Deliberately a buffer-only test and NOT a network survey: <see cref="RunMelters"/> runs
+        /// at 2 Hz, so the buffer is only still full when the network is full, absent, unpowered or
+        /// broken. That keeps the gate O(1) on the 1 Hz crafting pass and keeps it honest at every
+        /// one of those four causes at once.
+        ///
+        /// Returns true for anything that is not a melter, so CraftingSystem's call site is a
+        /// no-op for every other station — Fabricator, MachineShop and SalvageRecycler behave
+        /// bit-identically to before E0-7.
+        /// </summary>
+        public static bool HasMeltHeadroom(Simulation sim, Device station)
+        {
+            if (station.Kind != DeviceKind.IceMelter) return true;
+            var water = sim.Defs.Water;
+            return station.StoredLiters + water.IceLitersPerUnit <= water.MelterBufferLiters;
+        }
+
+        /// <summary>
+        /// E0-7. A crafting batch just completed at <paramref name="station"/>: if it is a melter,
+        /// turn the units of <see cref="ItemKind.Ice"/> the bill consumed into litres in the
+        /// melter's own buffer.
+        ///
+        /// This lives in WaterSystem and not in CraftingSystem because water is this system's
+        /// business, and it is a no-op for every other station kind — the entire cost to the
+        /// crafting path is one call whose first line returns.
+        ///
+        /// The litres are read off the BILL, not off a constant, so retuning `melt_ice` to
+        /// <c>Ice:4</c> scales the yield without touching code. The buffer clamps at
+        /// <c>MelterBufferLiters</c>: with <see cref="HasMeltHeadroom"/> gating recruitment the
+        /// clamp is normally unreachable, but a batch already in flight when the tanks fill can
+        /// still overflow, and those litres are LOST. That is the one place the ice chain destroys
+        /// matter, it is bounded by one batch per melter, and it is deliberate — the alternative is
+        /// un-consuming an input, which the crafting system has no concept of.
+        /// </summary>
+        public static void OnBatchComplete(Simulation sim, Device station, in ProductionBill bill)
+        {
+            if (station.Kind != DeviceKind.IceMelter) return;
+            int units = 0;
+            for (int i = 0; i < bill.InputPortCount; i++)
+            {
+                var port = bill.Input(i);
+                if (port.Kind == ItemKind.Ice) units += port.Count;
+            }
+            if (units <= 0) return;
+
+            var water = sim.Defs.Water;
+            float filled = station.StoredLiters + water.IceLitersPerUnit * units;
+            station.StoredLiters = filled < water.MelterBufferLiters ? filled : water.MelterBufferLiters;
         }
 
         /// <summary>
@@ -109,15 +213,50 @@ namespace Perilune.Sim
         /// can never inflate without bound, unlike a constant drip. It injects into the pool,
         /// not a tank, so recaptured transpiration still routes through <c>reclaimer_hydro</c>.
         ///
-        /// Conservation note: this is the ONE place water is created at runtime (air is not
-        /// conserved; water otherwise is). It is deliberate and bounded — read it as an
-        /// abstract shipwide condensate/ice makeup, the litres a real closed loop tops up.
+        /// Conservation note: this WAS the ONE place water is created at runtime (air is not
+        /// conserved; water otherwise is). B-2 called it "an abstract shipwide condensate/ice
+        /// makeup, the litres a real closed loop tops up", and that phrasing was a promissory
+        /// note: the real thing is the melter/ice chain, which E0-7 built.
+        ///
+        /// ─── THE B-2 DECISION (E0-7) ────────────────────────────────────────────────────────
+        /// A ship that owns an <see cref="DeviceKind.IceMelter"/> gets NO makeup at all. The
+        /// stand-in and the real chain must never both run: leaving both is a double faucet, in
+        /// which the ice chain is decorative because the floor already guarantees the water, and
+        /// no measurement of the chain would mean anything. Deleting the floor outright is the
+        /// other wrong answer — the grid ship (the one standard play ship), the 2-crew reference
+        /// and every procedural ship have no melter and no ice, and B-2 exists because without
+        /// makeup their hydro loop dies for good on day 1.2.
+        ///
+        /// So the rule is per-ship and automatic rather than a global constant: the abstraction
+        /// steps aside exactly where the concrete mechanism exists. Note what this makes the
+        /// melter — not a bonus, but the assumption of a supply the ship was already living on.
+        /// Build one and the ship's water is your crew's problem from that moment.
+        ///
+        /// The scan is over the device store (deterministic order, no allocation) and is O(devices)
+        /// at 2 Hz. It deliberately does NOT test Powered/Operational/plumbed: an unpowered melter
+        /// must not silently re-arm the stand-in, or a brownout would quietly refill the tanks and
+        /// the player would never learn that the melter is what feeds them.
+        ///
+        /// A player can NEVER build a melter today (it is not in PlaceDeviceCommand's furniture
+        /// whitelist), so this branch is reachable only on a ship that authors one — the slice.
+        /// Every other ship's water behaviour is byte-identical to before E0-7.
         /// </summary>
         private static void RunMakeup(Simulation sim)
         {
             var water = sim.Defs.Water;
-            if (sim.WastewaterLiters < water.MakeupFloorLiters)
-                sim.WastewaterLiters = water.MakeupFloorLiters;
+            if (sim.WastewaterLiters >= water.MakeupFloorLiters) return;
+            if (HasIceChain(sim)) return;
+            sim.WastewaterLiters = water.MakeupFloorLiters;
+        }
+
+        /// <summary>Does this ship own an ice melter at all? (Existence, not readiness — see
+        /// <see cref="RunMakeup"/> for why a broken or unpowered melter still counts.)</summary>
+        private static bool HasIceChain(Simulation sim)
+        {
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+                if (devices[i].Kind == DeviceKind.IceMelter) return true;
+            return false;
         }
 
         /// <summary>

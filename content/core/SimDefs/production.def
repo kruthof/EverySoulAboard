@@ -7,11 +7,16 @@
 # first. A [production] row is keyed by its own node ID instead, so many nodes may
 # name one station, and it takes MANY inputs and MANY outputs.
 #
-# SHIPPED STATE: this table is deliberately EMPTY. Every shipped station still runs
-# its legacy [recipes] row — ProductionDefs.TryGetBill prefers a station's node and
-# FALLS BACK to the recipe array, and with no nodes declared the fallback is what
-# runs. An empty table also folds nothing into the defs checksum, so this file
-# changes nothing at all: same behaviour, same checksum, byte for byte.
+# SHIPPED STATE (since E0-7): ONE node — `melt_ice`. Every OTHER shipped station still
+# runs its legacy [recipes] row, because ProductionDefs.TryGetBill prefers a station's
+# node and FALLS BACK to the recipe array, and no node names SalvageRecycler, Fabricator
+# or MachineShop. The melter is here and not in [recipes] because [recipes] cannot say
+# what it needs to say: a melter's output is LITRES, not a stack, and only a [production]
+# row may declare `none` outputs. The water arrives through WaterSystem off
+# water.def's `ice_liters_per_unit` — see CraftingSystem's completion hook.
+#
+# Every row here must stay verbatim-equal to SimDefs.CreateDefault()'s Production table
+# (DefsEquivalenceTests compares the two sources bit for bit).
 #
 # -----------------------------------------------------------------------------
 # COLUMNS (whitespace-aligned; five of them)
@@ -98,3 +103,5 @@
 # station is NOT silent — the parser emits a problem line pointing here.
 
 [production]
+# id        station    work_s  inputs  outputs
+melt_ice    IceMelter  300     Ice:1   none

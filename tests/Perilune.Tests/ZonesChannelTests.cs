@@ -143,7 +143,7 @@ namespace Perilune.Tests
         /// browser silently WRONG (a filter that accepts kinds nobody chose, or refuses kinds they
         /// did). <see cref="StockZoneSystem.SetFilter"/> masks every stored value down to
         /// <see cref="StockZoneSystem.AcceptAllMask"/>, which covers only DECLARED
-        /// <see cref="ItemKind"/>s, so today's ceiling is 0x7F and the channel is safe.
+        /// <see cref="ItemKind"/>s, so today's ceiling is 0x17F and the channel is safe.
         ///
         /// This assertion is the thing that will SAY SO on the day it stops being true: an ItemKind
         /// enum that passes 53 members needs the tuple to carry a string or a hi/lo pair, and nothing
@@ -164,8 +164,12 @@ namespace Perilune.Tests
             // Non-vacuity: a mask of 0 would satisfy the bound while meaning the registry is broken.
             Assert.That(StockZoneSystem.AcceptAllMask, Is.GreaterThan(0UL),
                 "AcceptAllMask is 0 — the bound above is then guarding nothing");
-            Assert.AreEqual(0x7FUL, StockZoneSystem.AcceptAllMask,
-                "seven ItemKinds today; if this changed on purpose, re-measure the bound above with it");
+            // 0x17F = bits 0-6 (Regolith..ControllerModule) plus bit 8 (Ice). Bit 7 is CLEAR: the
+            // integrator reserved that slot for E0-6's Seals and E0-7 deliberately left the hole
+            // rather than renumbering a byte enum that is written into every save (E0-7).
+            Assert.AreEqual(0x17FUL, StockZoneSystem.AcceptAllMask,
+                "eight ItemKinds today, with a hole at 7; if this changed on purpose, re-measure the " +
+                "bound above with it");
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge

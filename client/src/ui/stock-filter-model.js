@@ -12,7 +12,11 @@
 // Potato → FOOD (the kind is "raw food", not one vegetable) and MetalOre → ORE (it is the only ore).
 // `name` is the exact member name, and the tripwire compares THAT.
 
-/** The seven item kinds, in ItemKind order. `kind` === the sim ItemKind byte. */
+/**
+ * The item kinds, in ItemKind DECLARATION order. `kind` === the sim ItemKind byte — which since
+ * E0-7 is NOT the array index: the enum has a hole at 7 (reserved for E0-6's `Seals`) and `Ice` is
+ * 8. Read every `kind` here as a bit position, never as an offset.
+ */
 export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 0, name: 'Regolith', label: 'REGOLITH' }),
   Object.freeze({ kind: 1, name: 'MetalOre', label: 'ORE' }),
@@ -21,14 +25,20 @@ export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 4, name: 'Scrap', label: 'SCRAP' }),
   Object.freeze({ kind: 5, name: 'Parts', label: 'PARTS' }),
   Object.freeze({ kind: 6, name: 'ControllerModule', label: 'CTRL MOD' }),
+  // 7 = Seals, reserved for E0-6 and deliberately absent — see the header.
+  Object.freeze({ kind: 8, name: 'Ice', label: 'ICE' }),
 ]);
 
 /**
- * Every kind accepted — DERIVED from the list, never a literal (127 today). The host derives the
- * same value from `Enum.GetValues(typeof(ItemKind)).Length`; both widen together when a kind is
- * added, and neither can drift into covering a stale subset the way a copied 0x7F would.
+ * Every kind accepted — DERIVED from the list's `kind` VALUES, never from its length and never a
+ * literal. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the same number only while
+ * ItemKind is contiguous: with the hole at 7 the length form gives 0xFF, which sets the bit of a
+ * kind that does not exist and CLEARS Ice's — "accept everything" silently refusing the newest
+ * kind, on every stockpile. The sim (`StockZoneSystem.ComputeAcceptAllMask`) and both C# hosts
+ * derive theirs the same way; `stock-filter-model.test.js` parses `ItemStack.cs` and pins that this
+ * list still mirrors it.
  */
-export const ACCEPT_ALL = (1 << STOCK_KINDS.length) - 1;
+export const ACCEPT_ALL = STOCK_KINDS.reduce((m, e) => m | (1 << e.kind), 0);
 
 /**
  * The starting filter: ACCEPT EVERYTHING. This makes the very first stockpile paint BEHAVIOURALLY
@@ -74,8 +84,19 @@ export function toggleStockKind(mask, kind) {
   return ((mask | 0) ^ (1 << k)) & ACCEPT_ALL;
 }
 
-/** True for a kind the sim actually has. The one range predicate, so the guard cannot drift. PURE. */
-function inKindRange(kind) { return kind >= 0 && kind < STOCK_KINDS.length; }
+/**
+ * True for a kind the sim actually DECLARES. The one range predicate, so the guard cannot drift.
+ * PURE.
+ *
+ * E0-7: a membership test, not `kind < STOCK_KINDS.length`. With the hole at 7 the length form is
+ * wrong in both directions at once — it accepts 7 (a kind the sim does not have, whose bit the sim
+ * masks away, so the UI would show a chip the game silently ignores) and rejects 8 (Ice, which the
+ * player then cannot filter on at all).
+ */
+function inKindRange(kind) {
+  for (let i = 0; i < STOCK_KINDS.length; i += 1) if (STOCK_KINDS[i].kind === kind) return true;
+  return false;
+}
 
 /**
  * The armed hint's readable rendering of a mask: 'ALL', 'NOTHING', or the accepted labels joined

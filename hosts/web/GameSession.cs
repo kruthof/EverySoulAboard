@@ -725,9 +725,28 @@ namespace Perilune.Web
         /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
         /// into a static. The TUI host derives its own copy the same way — the two host projects share
         /// no assembly, and a derived value cannot drift where a copied literal would.
+        ///
+        /// E0-7 CORRECTION — derived from the enum's VALUES, not its member COUNT. The count form
+        /// <c>(1UL &lt;&lt; Length) - 1</c> is only right while <see cref="ItemKind"/> is CONTIGUOUS,
+        /// and it stopped being contiguous the moment E0-7 took <c>Ice = 8</c> over the slot 7 the
+        /// integrator had reserved for E0-6's <c>Seals</c>. With the gap, the count form sets bit 7
+        /// (nothing) and clears bit 8 (Ice): "accept everything" would have silently refused the
+        /// one kind the package adds, on every stockpile in the game. This form is
+        /// <see cref="StockZoneSystem.AcceptAllMask"/>'s, and the two are pinned equal by
+        /// <c>StockZoneSystemTests</c>.
         /// </summary>
-        internal static readonly ulong AcceptAllMask =
-            (1UL << Enum.GetValues(typeof(ItemKind)).Length) - 1UL;
+        internal static readonly ulong AcceptAllMask = ComputeAcceptAllMask();
+
+        private static ulong ComputeAcceptAllMask()
+        {
+            ulong m = 0;
+            foreach (ItemKind kind in Enum.GetValues(typeof(ItemKind)))
+            {
+                int k = (int)kind;
+                if (k < 64) m |= 1UL << k;   // kinds >= 64 are unrepresentable; see StockZone.AcceptMask
+            }
+            return m;
+        }
 
         /// <summary>
         /// The E0-4 FILTER bridge — set the complete accept-set of a stockpile tile on the current
@@ -1841,6 +1860,7 @@ namespace Perilune.Web
             ItemKind.Scrap => "scrap",
             ItemKind.Parts => "parts",
             ItemKind.ControllerModule => "a controller module",
+            ItemKind.Ice => "ice",
             _ => "cargo",
         };
 

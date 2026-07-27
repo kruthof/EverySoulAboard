@@ -223,8 +223,31 @@ namespace Perilune.Sim
             /// would otherwise fall below it, and never otherwise — so it conjures exactly the
             /// water the closed loop destroys (irrigation's ~0.256 L/L, drinking's ~7%) and
             /// nothing when the loop is healthy. This is the fix for B-2 (the hydro loop drank
-            /// its pool dry ~day 1.2, then every grow bed stalled forever). Current: 20.</summary>
+            /// its pool dry ~day 1.2, then every grow bed stalled forever). Current: 20.
+            ///
+            /// E0-7: this floor is the STAND-IN for the ice chain (WaterSystem.cs read "an abstract
+            /// shipwide condensate/ice makeup" long before the chain existed), and RunMakeup now
+            /// suppresses it on any ship that owns an <see cref="DeviceKind.IceMelter"/>. Ships with
+            /// no melter — the grid ship, the 2-crew reference, every procedural ship — keep the
+            /// B-2 fix byte-for-byte; a ship that has chosen the ice economy lives on what its crew
+            /// actually haul and melt. Setting this to 0 disables the stand-in everywhere.</summary>
             public float MakeupFloorLiters;
+
+            /// <summary>E0-7. Litres of potable water one unit of <see cref="ItemKind.Ice"/> yields
+            /// at an <see cref="DeviceKind.IceMelter"/>. The melter is the one conversion in the
+            /// game whose output is a FLUID rather than a stack, so it cannot state its ratio the
+            /// way the [production] table does ("loss IS the integer input:output ratio",
+            /// ProductionDefs) — this scalar is that ratio's missing half, and the bill's Ice input
+            /// count is the other. Current: 25.</summary>
+            public float IceLitersPerUnit;
+
+            /// <summary>E0-7. Capacity of a melter's own meltwater buffer, L, held in the melter's
+            /// <see cref="Device.StoredLiters"/> — an already-saved, already-hashed field, which is
+            /// why the whole ice chain adds NO new hashed state. WaterSystem drains the buffer onto
+            /// the melter's fluid network every pass; CraftingSystem refuses to recruit a worker to
+            /// a melter that could not hold another batch, so a ship with full tanks stops burning
+            /// ice instead of boiling it away. Current: 100.</summary>
+            public float MelterBufferLiters;
         }
 
         /// <summary>HydroponicsSystem constants (public consts there today). Excludes Dt (1 s).</summary>
@@ -514,6 +537,8 @@ namespace Perilune.Sim
                     /* Desk            */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* PlantPot        */ new MachineDef(0f,    0f, PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
                     /* Telescope       */ new MachineDef(0.4f,  0f, PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
+                    // E0-7 water chain; see MachineDefs.Table for why draw is 1.0 kW / LifeSupport.
+                    /* IceMelter       */ new MachineDef(1.0f,  0f, PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs
@@ -575,6 +600,8 @@ namespace Perilune.Sim
                     ReclaimerLitersPerSecond = 0.05f,
                     ReclaimEfficiency = 0.93f,
                     MakeupFloorLiters = 20f,
+                    IceLitersPerUnit = 25f,
+                    MelterBufferLiters = 100f,
                 },
 
                 Hydro = new HydroDefs
@@ -681,9 +708,25 @@ namespace Perilune.Sim
             d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 900);
             d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 1800);
 
-            // W0-5: the conversion-graph container ships EMPTY. Shipped crafting is still
-            // the three legacy rows above, reached through TryGetBill's fallback leg.
-            d.Production = new ProductionDefs { Nodes = Array.Empty<ProductionNode>() };
+            // W0-5 shipped this container EMPTY; E0-7 puts the FIRST node in it, because the ice
+            // melter is the first station [recipes] cannot express. [recipes] is single-in /
+            // single-out and keyed by DeviceKind, and the melter's output is not a stack at all —
+            // it is litres. A [production] node may declare NO outputs (ProductionNode.Outputs "may
+            // be EMPTY: a pure sink"), which is exactly the item-side truth: the Ice is consumed and
+            // nothing lands on the floor. The water arrives through WaterSystem, off
+            // WaterDefs.IceLitersPerUnit — see CraftingSystem's completion hook.
+            //
+            // Verbatim-equal to the [production] row shipped in content/core/SimDefs/production.def
+            // (DefsEquivalenceTests compares the two sources bit for bit).
+            d.Production = new ProductionDefs
+            {
+                Nodes = new[]
+                {
+                    new ProductionNode("melt_ice", DeviceKind.IceMelter, 300,
+                                       new[] { new ProductionPort(ItemKind.Ice, 1) },
+                                       Array.Empty<ProductionPort>()),
+                },
+            };
 
             d.ComputeChecksum();
             return d;
@@ -913,6 +956,18 @@ namespace Perilune.Sim
             // HANDOVER INVARIANT #3), and inserting it beside its siblings would renumber the
             // fold order of everything after it and invalidate every recorded checksum.
             h = XxHash64.Combine(h, (ulong)(uint)Build.DevicePlaceCost);
+
+            // Water chain (E0-7), appended at the END for the same reason every field since
+            // Social-S1 is: append-at-END is the invariant (README.def HANDOVER INVARIANT #3), and
+            // folding these two beside their WaterDefs siblings above would renumber the fold order
+            // of everything after them and invalidate every recorded checksum.
+            //
+            // ⚠ APPEND SLOT: the integrator pre-assigned E0-6 the slot BEFORE this one and E0-7 the
+            // slot after it (ECONOMY-PLAN §2.1 rule 2 — two lanes appending independently produce a
+            // merged order matching neither lane's locally measured checksum). On merge, keep E0-6's
+            // folds above these two; do not reorder to minimise the diff.
+            h = XxHash64.Combine(h, Water.IceLitersPerUnit);
+            h = XxHash64.Combine(h, Water.MelterBufferLiters);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

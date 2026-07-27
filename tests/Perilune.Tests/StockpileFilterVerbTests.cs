@@ -247,13 +247,23 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x1F3));
             host.Sim.Tick();
 
-            const ulong canonical = 0x1F3UL & 0x7FUL;   // 0x73 — spelled as the operation, not a literal
+            // 0x17F, not 0x7F: ItemKind gained Ice = 8 and left a hole at 7 (E0-7). Still spelled as
+            // the operation rather than as its result, so the expectation cannot silently absorb a
+            // change in what the sim considers canonical.
+            const ulong canonical = 0x1F3UL & 0x17FUL;
             Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask),
                 "a real restriction stores a real entry");
             Assert.AreNotEqual(0x1F3UL, mask, "the over-wide mask was NOT stored verbatim");
             Assert.AreEqual(canonical, mask);
-            Assert.AreEqual(0UL, mask >> Enum.GetValues(typeof(ItemKind)).Length,
-                "no bit above the last ItemKind survives into hashed state");
+            // Per-BIT, not a single shift: with a hole in the enum "above the last kind" is no longer
+            // the same thing as "not a declared kind", and the shift form would have let bit 7 — a
+            // kind that does not exist — through unnoticed.
+            ulong declared = 0;
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind))) declared |= 1UL << (int)k;
+            Assert.AreEqual(0UL, mask & ~declared,
+                "no bit belonging to an undeclared ItemKind survives into hashed state");
+            Assert.AreNotEqual(0UL, mask & (1UL << (int)ItemKind.Ice),
+                "...and a bit belonging to a REAL kind above the member count is KEPT");
             Assert.IsFalse(host.Sim.StockZones.Accepts(pos, ItemKind.Potato),
                 "and the restriction the player asked for is really in force — the canonicalisation " +
                 "removed only the undefined bits, not a meaningful one");
@@ -436,7 +446,11 @@ namespace Perilune.Tests
             Assert.AreEqual(1UL, 1UL << sixtyFour,
                 "C# really does reduce the shift count modulo 64 — this is why the guard is needed");
 
-            foreach (int bad in new[] { 64, 71, 128, -1, -64, StockFilterModel.KindCount })
+            // 7 is the interesting one after E0-7: it is BELOW the member count and still does not
+            // exist (the slot is reserved for E0-6's Seals), so a guard written as "kind < KindCount"
+            // would wave it through. KindCount itself is no longer a safe stand-in for "unreal" —
+            // ItemKind.Ice IS 8 — which is why it is asserted reachable in the positive control below.
+            foreach (int bad in new[] { 7, 64, 71, 128, -1, -64, 9 })
             {
                 Assert.AreEqual(all, StockFilterModel.Toggle(all, bad),
                     "Toggle is a no-op for kind " + bad);
@@ -444,6 +458,14 @@ namespace Perilune.Tests
                     "no mask accepts kind " + bad);
                 Assert.AreEqual("?", StockFilterModel.KindName(bad),
                     "an unreal kind has no name (the unguarded form returned the raw number)");
+            }
+            // POSITIVE CONTROL: every DECLARED kind is reachable, named and toggleable. Without it the
+            // loop above is satisfied by a model that rejects everything.
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
+            {
+                Assert.IsTrue(StockFilterModel.Accepts(all, (int)k), "accept-all accepts " + k);
+                Assert.AreNotEqual("?", StockFilterModel.KindName((int)k), k + " has a player-facing name");
+                Assert.AreNotEqual(all, StockFilterModel.Toggle(all, (int)k), "Toggle really flips " + k);
             }
             // Labels stay in step with the enum, or KindName would read off the end of the table.
             Assert.AreEqual(StockFilterModel.KindCount, StockFilterModel.Labels.Length);

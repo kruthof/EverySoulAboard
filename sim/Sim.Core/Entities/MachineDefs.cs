@@ -62,6 +62,13 @@ namespace Perilune.Sim
             /* Desk            */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* PlantPot        */ new(0f,    0f,  PowerTier.Comfort,     false, 0f,    0f,     0f,   0f),
             /* Telescope       */ new(0.4f,  0f,  PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
+            // Water chain (E0-7). Mirrors the Reclaimer row deliberately: the melter IS life
+            // support on a ship whose only water source is ice, so it must be the LAST thing a
+            // brownout sheds, not the first. Draw is 1.0 kW rather than a physically honest
+            // resistive-heater figure because PowerSystem.IsWanting makes every device pay its
+            // full draw around the clock (ECONOMY.md §1.2) — a 6 kW melter would deepen the
+            // shipped 12 kW-vs-19.1 kW deficit for every hour it is NOT melting.
+            /* IceMelter       */ new(1.0f,  0f,  PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];

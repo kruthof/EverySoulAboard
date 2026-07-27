@@ -60,6 +60,7 @@ namespace Perilune.Glyph
             DeviceKind.Desk => 'D',
             DeviceKind.PlantPot => 'P',
             DeviceKind.Telescope => 'x',
+            DeviceKind.IceMelter => 'I',   // E0-7 (upper case, like every other machine)
             _ => '?',
         };
 
@@ -73,6 +74,7 @@ namespace Perilune.Glyph
             ItemKind.Scrap => 's',
             ItemKind.Parts => 'p',
             ItemKind.ControllerModule => 'c',
+            ItemKind.Ice => 'i',           // E0-7 (lower case, like every other ground item)
             _ => '?',
         };
     }
