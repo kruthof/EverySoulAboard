@@ -223,24 +223,55 @@ namespace Perilune.Tests
         /// running the ship rather than by reading a defs row. Measured with main's ratio restored: it
         /// fires at tick 30 000 (50 sim-minutes), holding 32 units against a budget of 31.
         ///
-        /// THE SECOND ASSERTION IS THE NON-VACUITY ONE and it is the more interesting half: the
-        /// ladder must end STRICTLY BELOW its budget. An invariant of the form "never more than X"
-        /// is satisfied by a ship that never converts anything at all.
+        /// NON-VACUITY IS TWO ASSERTIONS, NOT ONE, AND THE FIRST DRAFT GOT THIS WRONG. It claimed
+        /// that "ends strictly below budget" closes the do-nothing hole because <i>"never more than
+        /// X is satisfied by a ship that never converts anything"</i>. True in the abstract,
+        /// <b>false of this ship</b>, and measured: with the recycler's <c>work_s</c> multiplied by
+        /// 1000 so that NO BATCH COMPLETES in three sim-days, the strict-below assertion stays
+        /// GREEN. Two structural reasons, both real:
         ///
-        /// LIMITS, meant literally and in the name: ONE SEED, ONE SHIP, ONE RUN, and it samples
-        /// every <c>SampleEvery</c> ticks rather than continuously — a violation that opened and
-        /// closed entirely inside one sampling window would be missed. It also does not cover
-        /// build (which consumes Regolith into walls) or strip (which returns it): the shipped
-        /// slice designates neither, so both are out of the measured window and are named here
-        /// rather than implied.
+        ///   1. <c>MaintenanceSystem</c> burns <see cref="ItemKind.Parts"/> — a genuine drain with
+        ///      nothing to do with conversion — so the ledger falls below budget on a ship whose
+        ///      ladder never runs at all.
+        ///   2. <c>CraftingSystem</c> consumes staged inputs at batch START (<c>Progress &lt;= 0f</c>),
+        ///      so a batch that never completes has already destroyed its 4 Regolith into an
+        ///      in-flight void that <see cref="MetalUnits"/> cannot see.
+        ///
+        /// So strict-below excludes an INERT ship but does not require the CONVERSION LADDER to
+        /// have run, which is what the claim needed. The assertion that actually closes it is the
+        /// third one: the ladder's COMPOSITION must have changed — a terminal
+        /// <see cref="ItemKind.ControllerModule"/> exists, which no amount of maintenance or
+        /// in-flight staging can produce and which requires all three hops
+        /// (Regolith → Scrap → Parts → ControllerModule) to have completed at least once.
+        ///
+        /// LIMITS, meant literally and in the name:
+        ///   * ONE SEED, ONE SHIP, ONE RUN.
+        ///   * It samples every <c>SampleEvery</c> ticks rather than continuously, so a violation
+        ///     that opened and closed inside one window would be missed.
+        ///   * <b>THE IN-FLIGHT WINDOW.</b> Reason 2 above is not only a non-vacuity problem: a
+        ///     batch's inputs leave the ledger at START and its outputs arrive at COMPLETION, so
+        ///     every mid-batch sample UNDERCOUNTS by up to 4 units for up to 24 000 ticks — longer
+        ///     than the 10 000-tick sampling interval, so it affects most in-batch samples. It
+        ///     makes <c>≤ budget</c> conservative and can never produce a false red, but it
+        ///     correspondingly WEAKENS <c>worstSlack &gt; 0</c> as evidence that real loss occurred:
+        ///     some of that slack is matter in transit, not matter destroyed. The composition
+        ///     assertion is what carries the "loss really happened" claim; <c>worstSlack</c> is a
+        ///     bound, not a measurement.
+        ///   * It does not cover build (which consumes Regolith into walls) or strip (which returns
+        ///     it): the shipped slice designates neither, so both are outside the measured window
+        ///     and are named here rather than implied.
         ///
         /// COST: ~70 s of wall clock, the single most expensive test in the suite. That is the
         /// price of the window ECONOMY-PLAN §5.1 asks for; a ten-sim-minute version of this test
         /// would be the <c>EconomyIsSustainable</c> lie its §5.2 rule 4 names.
         ///
-        /// NAMED MUTATION: restore the pre-E0-6 recycler row (<c>Regolith:1 → Scrap:2</c>, 600 s)
-        /// in <see cref="SimDefs.CreateDefault"/> — the budget assertion fails, naming the tick and
-        /// the overshoot. (Applied, observed red, reverted.)
+        /// NAMED MUTATIONS, both applied and both observed red:
+        ///   * restore the pre-E0-6 recycler row (<c>Regolith:1 → Scrap:2</c>, 600 s) in
+        ///     <see cref="SimDefs.CreateDefault"/> — the BUDGET assertion fails, naming the tick and
+        ///     the overshoot (tick 30 000, 32 against 31);
+        ///   * multiply <c>recycle_stock</c>'s <c>work_s</c> by 1000 so no batch ever completes —
+        ///     the COMPOSITION assertion fails. Before that assertion existed this mutation left
+        ///     the whole test green, which is how the strictness claim above was found to be false.
         /// </summary>
         [Test]
         public void MetalLedger_NeverExceedsOpeningStockPlusDigYield_OverThreeSimDaysOnTheSlice()
@@ -280,10 +311,25 @@ namespace Perilune.Tests
             }
 
             Assert.That(MetalUnits(sim), Is.LessThan(opening + (debrisAtStart - DebrisTiles(sim))),
-                "NON-VACUITY, and the real claim: three sim-days of conversion must end STRICTLY " +
-                "below the budget. A ship that converted nothing at all would satisfy the loop above.");
+                "the ledger must end STRICTLY below its budget. NOTE what this does and does not " +
+                "exclude: it rules out an inert ship, but NOT a ship whose ladder never ran — " +
+                "maintenance burns Parts, and a never-completing batch has already eaten its " +
+                "staged inputs. The composition assertion below is what carries that.");
             Assert.That(worstSlack, Is.GreaterThan(0),
-                "and the ledger was strictly under budget at every sample, not merely at the end");
+                "and the ledger was strictly under budget at every sample, not merely at the end " +
+                "(a BOUND, not a measurement of loss — see the in-flight window in the limits)");
+
+            // THE ASSERTION THAT ACTUALLY CLOSES THE DO-NOTHING HOLE. A ControllerModule is the
+            // ladder's terminal product: it cannot be dug, cannot be maintained into existence and
+            // cannot be sitting in an in-flight batch, so holding one at the end proves all THREE
+            // hops (Regolith -> Scrap -> Parts -> ControllerModule) completed at least once inside
+            // the window. Measured: with recycle_stock's work_s x1000 so that no batch ever
+            // finishes, every assertion above still passes and only this one fails.
+            Assert.That(Units(sim, ItemKind.ControllerModule), Is.GreaterThan(0),
+                "THE LADDER NEVER RAN. Three sim-days ended with no ControllerModule aboard, so " +
+                "the conservation assertions above are about a ship that converted nothing — they " +
+                "are satisfied by maintenance burning Parts and by inputs staged into a batch that " +
+                "never completed, neither of which is a conversion.");
         }
 
         /// <summary>Units of the CONVERSION LADDER aboard, carried and loose alike. Deliberately
