@@ -60,6 +60,51 @@ export function codeOnly(src) {
 }
 
 /**
+ * Strip CSS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte.
+ *
+ * The CSS twin of `codeOnly`, and it exists for the identical reason: a guard that greps a
+ * stylesheet is satisfied by the declaration it forbids sitting inside `/* … *\/`. That is not
+ * hypothetical here — the `.rz-palette` rules this repo's palette-overflow guard watches are
+ * introduced by a thirty-line block comment that QUOTES the exact declarations it removed, so a
+ * naive scan of `styles.css` fires on the explanation of the fix and calls it the bug.
+ *
+ * ⚠️ IT MUST NOT STRIP `//`. CSS has no line comments, and `url(http://…)` and `@import "//host/x"`
+ * are ordinary values — the JS stripper above would eat the rest of those lines. That asymmetry is
+ * exactly why this is a separate function rather than a flag on `codeOnly`.
+ *
+ * Quote handling matches CSS: `'…'` and `"…"` do not span a raw newline (an unterminated string is
+ * an error the browser recovers from at end of line), so a stray quote can damage its own line and
+ * no more. `\` escapes survive. NOT handled: comments inside `url()` tokens without quotes, which
+ * CSS does not permit anyway.
+ */
+export function cssCodeOnly(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
+      i += 2;
+    } else if (c === '\'' || c === '"') {
+      const q = c;
+      out += c; i += 1;
+      while (i < n) {
+        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
+        out += src[i];
+        const done = src[i] === q || src[i] === '\n';
+        i += 1;
+        if (done) break;
+      }
+    } else {
+      out += c; i += 1;
+    }
+  }
+  return out;
+}
+
+/**
  * The argument-object source of every `NAME({ … })` call in `src`, brace-matched over CODE ONLY.
  *
  * The naive version of this — count a token across the whole file — is what `input.test.js` shipped
