@@ -254,6 +254,25 @@ namespace Perilune.Sim
             public int MaintenanceWorkSeconds;
             /// <summary>MaintenanceSystem.JuryRigCondition — condition after a parts-less repair. Current: 0.6.</summary>
             public float JuryRigCondition;
+
+            /// <summary>
+            /// E0-6 — condition after a service performed with <see cref="ItemKind.Seals"/> instead of
+            /// <see cref="ItemKind.Parts"/>. Current: 0.9.
+            ///
+            /// The MIDDLE RUNG of a three-rung ladder that used to have two: a Parts overhaul
+            /// restores 1.0, a Seals service restores this, and empty hands jury-rig to
+            /// <see cref="JuryRigCondition"/>. It is bounded by both neighbours BY DESIGN and that
+            /// bound is test-enforced (<c>DefsDefaultTests</c>): at 1.0 a Seal would be a free Part
+            /// and the tier would be pointless; at or below <see cref="JuryRigCondition"/> a servicer
+            /// would be walking to fetch a consumable that buys him nothing over empty hands, which
+            /// is strictly worse than not having the rung.
+            ///
+            /// Why a shorter cycle rather than a worse one: ECONOMY.md §3.2 calls Seals "cheap,
+            /// high-turnover — the drain that never stops". 0.9 against a Parts overhaul's 1.0 means
+            /// a sealed machine falls back below <c>maintain_below</c> sooner, so the SAME machine
+            /// asks for service more often. The recurrence is the mechanic; the 0.1 is the dial.
+            /// </summary>
+            public float SealServiceCondition;
         }
 
         /// <summary>CitizenSystem movement constants.</summary>
@@ -591,6 +610,7 @@ namespace Perilune.Sim
                     MaxHeatMultiplier = 3f,
                     MaintenanceWorkSeconds = 900,
                     JuryRigCondition = 0.6f,
+                    SealServiceCondition = 0.9f, // E0-6 (the middle rung: Parts 1.0 > Seals 0.9 > hands 0.6)
                 },
 
                 Citizen = new CitizenDefs
@@ -681,9 +701,44 @@ namespace Perilune.Sim
             d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 900);
             d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 1800);
 
-            // W0-5: the conversion-graph container ships EMPTY. Shipped crafting is still
-            // the three legacy rows above, reached through TryGetBill's fallback leg.
-            d.Production = new ProductionDefs { Nodes = Array.Empty<ProductionNode>() };
+            // E0-6 (conversion loss + Seals). W0-5 shipped this table EMPTY; it is now the
+            // authority for the two hops that changed, and the MachineShop still takes the
+            // legacy fallback leg above (Parts:2 -> ControllerModule:1 is already a 50 % hop
+            // and E0-6 does not retune it). Mirrored verbatim in production.def.
+            //
+            // WHAT CHANGED AND WHY, one row at a time:
+            //
+            //  recycle_stock — the shipped SalvageRecycler row turned 1 Regolith into 2 Scrap.
+            //  That is MASS CREATION (ECONOMY.md §2.1: "the hull is a closed box"), and it is
+            //  where roughly half of the pre-E0-6 economy came from: 62 Regolith became 124
+            //  Scrap became 62 Parts became 31 ControllerModules, and every unit past the first
+            //  62 was counterfeit. 4:3 is 75 % recovery — the COARSEST ratio near ECONOMY.md
+            //  §10's proposed 85 % (production.def: "prefer the coarsest ratio that says what
+            //  you mean"; 85 % exactly would be Regolith:20 -> Scrap:17, twenty staging trips
+            //  per batch). work_s is scaled WITH the batch (600 -> 2400) so the per-unit work
+            //  rate is byte-identical to shipped and the ONLY variable is the yield.
+            //
+            //  fab_components — input, count and work_s are UNCHANGED from the legacy row
+            //  (Scrap:2, 900 s). The shipped row destroyed one of those two units with no
+            //  stated reason; E0-6 gives the destroyed unit a name. The hop's unit efficiency
+            //  is therefore exactly what it always was, and Seals cost Parts one for one —
+            //  ECONOMY.md §3.2's "two turnover speeds" made mechanical rather than added on
+            //  top. This is also the only shape the Fabricator can take today: CraftingSystem
+            //  resolves a station's bill at ORDINAL 0 (MECHANICS §13.12), so a SECOND Fabricator
+            //  node would parse, checksum and never run — Seals have to be a co-output, not a
+            //  second bill, until E-PROD lands bill selection.
+            d.Production = new ProductionDefs
+            {
+                Nodes = new[]
+                {
+                    new ProductionNode("recycle_stock", DeviceKind.SalvageRecycler, 2400,
+                        new[] { new ProductionPort(ItemKind.Regolith, 4) },
+                        new[] { new ProductionPort(ItemKind.Scrap, 3) }),
+                    new ProductionNode("fab_components", DeviceKind.Fabricator, 900,
+                        new[] { new ProductionPort(ItemKind.Scrap, 2) },
+                        new[] { new ProductionPort(ItemKind.Parts, 1), new ProductionPort(ItemKind.Seals, 1) }),
+                },
+            };
 
             d.ComputeChecksum();
             return d;
@@ -703,7 +758,8 @@ namespace Perilune.Sim
         /// → Director (12 fields, appended) → Production nodes (W0-5, appended; a no-op
         /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended)
         /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
-        /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended).
+        /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended)
+        /// → Wear.SealServiceCondition (E0-6 WP-2, appended).
         /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
@@ -913,6 +969,13 @@ namespace Perilune.Sim
             // HANDOVER INVARIANT #3), and inserting it beside its siblings would renumber the
             // fold order of everything after it and invalidate every recorded checksum.
             h = XxHash64.Combine(h, (ulong)(uint)Build.DevicePlaceCost);
+
+            // E0-6 WP-2 (conversion loss + Seals), appended at the END for the reason every field
+            // since Social-S1 has been: append-at-END is the invariant (README.def HANDOVER
+            // INVARIANT #3). The package's OTHER defs-checksum mover is the [production] table
+            // above — its two new rows fold through the W0-5 loop and need no new call here, which
+            // is exactly what that container was built for.
+            h = XxHash64.Combine(h, Wear.SealServiceCondition);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

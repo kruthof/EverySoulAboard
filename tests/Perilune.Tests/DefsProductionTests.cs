@@ -103,38 +103,70 @@ namespace Perilune.Tests
         // ------------------------------------------------- default equivalence / checksum
 
         /// <summary>
-        /// The container ships EMPTY, and an empty table is a checksum no-op — so W0-5 does
-        /// not move the defs fingerprint (which is written into every save header,
-        /// SaveWriter.cs:344) at all.
+        /// The compiled default table is E0-6's TWO NODES, and nothing else. It shipped EMPTY from
+        /// W0-5 until E0-6; this test used to be called <c>CompiledDefault_ShipsAnEmptyTable</c> and
+        /// asserted <c>Nodes.Length == 0</c>. What replaced it is not a weaker assertion — it pins
+        /// every field of both rows, because those fields ARE the conversion-loss claim:
+        /// <c>Regolith:4 -&gt; Scrap:3</c> is the 75 % recycler, and the shipped row it replaced
+        /// (<c>Regolith:1 -&gt; Scrap:2</c>) was minting matter.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: in SimDefs.CreateDefault, ship one node —
-        /// <c>d.Production = new ProductionDefs { Nodes = new[] { new ProductionNode("x",
-        /// DeviceKind.Fabricator, 30, new[] { new ProductionPort(ItemKind.Scrap, 2) },
-        /// new[] { new ProductionPort(ItemKind.Parts, 1) }) } };</c> — the Nodes.Length
-        /// assertion fails. (Applied, observed red, reverted.)
+        /// MUTATION THAT MAKES THIS FAIL: change <c>ProductionPort(ItemKind.Scrap, 3)</c> to
+        /// <c>4</c> in <see cref="SimDefs.CreateDefault"/> — a lossless recycler — and the ratio
+        /// assertion fails by name. (Applied, observed red, reverted.)
         /// </summary>
         [Test]
-        public void CompiledDefault_ShipsAnEmptyTable()
+        public void CompiledDefault_ShipsTheTwoE06Nodes_AndTheMachineShopStillFallsBackToRecipes()
         {
-            Assert.That(SimDefs.Default.Production, Is.Not.Null);
-            Assert.That(SimDefs.Default.Production.Nodes, Is.Not.Null);
-            Assert.That(SimDefs.Default.Production.Nodes.Length, Is.EqualTo(0),
-                "W0-5 ships the container, not content: shipped crafting still runs [recipes]");
-            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(0));
+            var p = SimDefs.Default.Production;
+            Assert.That(p, Is.Not.Null);
+            Assert.That(p.Nodes, Is.Not.Null);
+            Assert.That(p.Nodes.Length, Is.EqualTo(2),
+                "E0-6 ships exactly two nodes; a third would shadow one of them at ordinal 0");
+
+            Assert.That(p.CountFor(DeviceKind.SalvageRecycler), Is.EqualTo(1));
+            Assert.That(p.CountFor(DeviceKind.Fabricator), Is.EqualTo(1));
+            Assert.That(p.CountFor(DeviceKind.MachineShop), Is.EqualTo(0),
+                "the MachineShop deliberately has NO node — it takes TryGetBill's legacy fallback " +
+                "leg, which is the half of W0-5 that must keep working");
+
+            Assert.That(p.TryGetNode(DeviceKind.SalvageRecycler, 0, out var rec), Is.True);
+            Assert.That(rec.Id, Is.EqualTo("recycle_stock"));
+            Assert.That(rec.WorkSeconds, Is.EqualTo(2400), "600 s per Regolith unit — the shipped rate");
+            Assert.That(rec.Inputs.Length, Is.EqualTo(1));
+            Assert.That(rec.Inputs[0].Kind, Is.EqualTo(ItemKind.Regolith));
+            Assert.That(rec.Inputs[0].Count, Is.EqualTo(4));
+            Assert.That(rec.Outputs.Length, Is.EqualTo(1));
+            Assert.That(rec.Outputs[0].Kind, Is.EqualTo(ItemKind.Scrap));
+            Assert.That(rec.Outputs[0].Count, Is.EqualTo(3));
+            Assert.That(rec.Outputs[0].Count, Is.LessThan(rec.Inputs[0].Count),
+                "THE CONVERSION-LOSS CLAIM ITSELF: the recycler must return strictly less than it " +
+                "took. The row it replaced returned 2 for 1 — ECONOMY.md §2.1's closed box, open.");
+
+            Assert.That(p.TryGetNode(DeviceKind.Fabricator, 0, out var fab), Is.True);
+            Assert.That(fab.Id, Is.EqualTo("fab_components"));
+            Assert.That(fab.WorkSeconds, Is.EqualTo(900), "unchanged from the legacy Fabricator row");
+            Assert.That(fab.Inputs.Length, Is.EqualTo(1));
+            Assert.That(fab.Inputs[0].Kind, Is.EqualTo(ItemKind.Scrap));
+            Assert.That(fab.Inputs[0].Count, Is.EqualTo(2), "unchanged from the legacy Fabricator row");
+            Assert.That(fab.Outputs.Length, Is.EqualTo(2), "Parts AND Seals — the co-output");
+            Assert.That(fab.Outputs[0].Kind, Is.EqualTo(ItemKind.Parts));
+            Assert.That(fab.Outputs[0].Count, Is.EqualTo(1));
+            Assert.That(fab.Outputs[1].Kind, Is.EqualTo(ItemKind.Seals));
+            Assert.That(fab.Outputs[1].Count, Is.EqualTo(1));
         }
 
         /// <summary>
-        /// The shipped production.def is verbatim equal to the compiled default — it declares
-        /// the section and no rows — so parsing it yields the same empty table AND the same
-        /// checksum as CreateDefault. This is the def-field ritual's "shipped .def line equals
-        /// the compiled default" step for a table whose default is empty.
+        /// The shipped production.def is verbatim equal to the compiled default — same two rows,
+        /// same order, same counts — so parsing it yields the same table AND the same checksum as
+        /// CreateDefault. This is the def-field ritual's "shipped .def line equals the compiled
+        /// default" step for a table.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: uncomment the <c>fab_parts</c> worked example in
-        /// <c>content/core/SimDefs/production.def</c> — the parsed table gains a node and the
-        /// checksum diverges from SimDefs.Default. (Applied, observed red, reverted.)
+        /// MUTATION THAT MAKES THIS FAIL: change <c>Regolith:4</c> to <c>Regolith:3</c> in
+        /// <c>content/core/SimDefs/production.def</c> — the parsed table diverges from
+        /// SimDefs.Default and the checksum assertion fails. (Applied, observed red, reverted.)
         /// </summary>
         [Test]
-        public void ShippedProductionDef_IsEmpty_AndLeavesTheChecksumUnmoved()
+        public void ShippedProductionDef_EqualsTheCompiledDefault_AndLeavesTheChecksumUnmoved()
         {
             string dir = FindSimDefsDir();
             Assert.That(dir, Is.Not.Null, "content/core/SimDefs must be discoverable");
@@ -148,9 +180,45 @@ namespace Perilune.Tests
             Assert.That(problems, Is.Empty,
                 "the shipped production.def must parse with zero problems (a typo'd section name " +
                 "would show up here as 'unknown section'): " + string.Join(" | ", problems));
-            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(2));
             Assert.That(parsed.Checksum, Is.EqualTo(SimDefs.Default.Checksum),
-                "an empty [production] table folds nothing — the shipped defs checksum is unmoved");
+                "the shipped rows are the compiled rows — the defs checksum is the default one");
+        }
+
+        /// <summary>
+        /// OMITTING production.def falls back to the COMPILED DEFAULTS, not to an empty table.
+        ///
+        /// Until E0-6 this distinction was invisible (the default WAS empty) and the parser simply
+        /// overwrote <c>d.Production</c> unconditionally. With lossy nodes in the defaults, that
+        /// same line would have let a content pack with no production.def silently restore the
+        /// SalvageRecycler's pre-E0-6 <c>Regolith:1 -&gt; Scrap:2</c> row — matter creation, back,
+        /// with nothing anywhere saying so.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: delete the <c>if (sawProductionSection)</c> guard in
+        /// <see cref="DefsParser"/> so the assignment is unconditional again — the node count drops
+        /// to 0 and the bill resolves to the legacy 1→2 row. (Applied, observed red, reverted.)
+        /// </summary>
+        [Test]
+        public void OmittingProductionDef_KeepsTheCompiledNodes_RatherThanEmptyingTheTable()
+        {
+            var problems = new List<string>();
+            // A defs set with no [production] section anywhere — the shape a content pack that
+            // only retunes thermals would ship.
+            var parsed = DefsParser.Parse(
+                new[] { ("thermal.def", "[thermal]\ncitizen_heat_w = 100\n") }, problems);
+
+            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(2),
+                "a defs set that never mentions [production] keeps the compiled table");
+            Assert.That(ProductionDefs.TryGetBill(parsed, DeviceKind.SalvageRecycler, out var bill), Is.True);
+            Assert.That(bill.IsGraphNode, Is.True,
+                "and the recycler still runs the LOSSY node, not the mass-creating legacy row");
+            Assert.That(bill.Output(0).Count, Is.LessThan(bill.Input(0).Count));
+
+            // Non-vacuity: an EXPLICITLY EMPTY [production] section still empties the table, so the
+            // guard above distinguishes "not mentioned" from "declared empty" rather than pinning
+            // the table open.
+            var cleared = DefsParser.Parse(new[] { ("p.def", "[production]\n") }, new List<string>());
+            Assert.That(cleared.Production.Nodes.Length, Is.EqualTo(0));
         }
 
         private static string FindSimDefsDir()
@@ -550,9 +618,11 @@ namespace Perilune.Tests
         // ------------------------------------------------------------------ the lookup
 
         /// <summary>
-        /// The additive lookup's FALLBACK leg — the one shipped content actually takes. With
-        /// an empty table the Fabricator resolves to its legacy Scrap→Parts recipe, one input
-        /// port, one output port.
+        /// The additive lookup's FALLBACK leg. It is still the leg the shipped MACHINE SHOP takes
+        /// — E0-6 gave the SalvageRecycler and the Fabricator [production] nodes and deliberately
+        /// left the MachineShop on its legacy row — but the Fabricator half of this test now has to
+        /// EMPTY the table by hand to reach the leg it is measuring, and that is stated rather than
+        /// hidden.
         ///
         /// MUTATION THAT MAKES THIS FAIL: in <c>ProductionDefs.TryGetBill</c>, return false
         /// instead of consulting <c>defs.Recipes</c> when no node matches — every assertion
@@ -561,10 +631,19 @@ namespace Perilune.Tests
         [Test]
         public void EmptyTable_TryGetBill_FallsBackToTheLegacyRecipeArray()
         {
+            // The SHIPPED MachineShop takes the fallback leg with no help at all — the live proof
+            // that W0-5's fallback is still load-bearing after E0-6.
+            var shipped = SimDefs.CreateDefault();
+            Assert.That(ProductionDefs.TryGetBill(shipped, DeviceKind.MachineShop, out var shop), Is.True);
+            Assert.That(shop.IsGraphNode, Is.False, "the MachineShop has no node — this IS the fallback");
+            Assert.That(shop.Input(0).Kind, Is.EqualTo(ItemKind.Parts));
+            Assert.That(shop.Output(0).Kind, Is.EqualTo(ItemKind.ControllerModule));
+
             var defs = SimDefs.CreateDefault();
+            defs.Production = new ProductionDefs { Nodes = System.Array.Empty<ProductionNode>() };
 
             Assert.That(ProductionDefs.TryGetBill(defs, DeviceKind.Fabricator, out var fab), Is.True);
-            Assert.That(fab.IsGraphNode, Is.False, "shipped content declares no nodes — this must be the fallback");
+            Assert.That(fab.IsGraphNode, Is.False, "no node declared — this must be the fallback");
             Assert.That(fab.WorkSeconds, Is.EqualTo(900)); // E0-2 L1 rebase (was 30)
             Assert.That(fab.InputPortCount, Is.EqualTo(1));
             Assert.That(fab.Input(0).Kind, Is.EqualTo(ItemKind.Scrap));
@@ -779,6 +858,9 @@ namespace Perilune.Tests
             // Legacy leg: the shipped Scrap→Parts recipe, slowed so no batch completes in the
             // measured window. Still the FALLBACK leg — no [production] node exists.
             var legacy = SimDefs.CreateDefault();
+            // E0-6 gave the Fabricator a [production] node, so the table has to be emptied to reach
+            // the fallback leg this half of the test exists to measure.
+            legacy.Production = new ProductionDefs { Nodes = System.Array.Empty<ProductionNode>() };
             legacy.Recipes[(int)DeviceKind.Fabricator] =
                 new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 3600);
             Assert.That(ProductionDefs.TryGetBill(legacy, DeviceKind.Fabricator, out var legacyBill), Is.True);

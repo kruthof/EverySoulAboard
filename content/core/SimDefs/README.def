@@ -54,8 +54,9 @@
 #                   Conversion LOSS is the integer input:output ratio (Scrap:20 ->
 #                   Regolith:17 is exactly 85%); there is no yield column and no
 #                   decimal anywhere in this table.
-#                   SHIPPED EMPTY: a station with no node falls back to its [recipes]
-#                   row. UNLIKE every other section this one is an ORDERED, ADDITIVE
+#                   SHIPPED WITH TWO ROWS SINCE E0-6 (recycle_stock, fab_components);
+#                   a station with no node — the MachineShop today — still falls back
+#                   to its [recipes] row. UNLIKE every other section this one is an ORDERED, ADDITIVE
 #                   list — rows accumulate across files in filename order, a repeated
 #                   ID replaces in place, and the checksum folds row order.
 #                   See production.def for the full column reference.

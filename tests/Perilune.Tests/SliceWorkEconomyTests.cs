@@ -195,7 +195,7 @@ namespace Perilune.Tests
 
         private static readonly Int3 StubSite = new Int3(5, 3, 0);
 
-        private static Simulation NewShop(bool withBuildSystem, out BuildSystem build)
+        private static Simulation NewShop(bool withBuildSystem, out BuildSystem build, SimDefs defs = null)
         {
             var full = SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
             build = null;
@@ -217,13 +217,26 @@ namespace Perilune.Tests
             if (!withBuildSystem) build = null;
             ISimSystem[] systems = keptNeeds.ToArray();
 
-            var sim = new Simulation(AsciiWorld.Build(ShopMap), 7, systems);
+            var sim = new Simulation(AsciiWorld.Build(ShopMap), 7, systems, defs);
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit_a");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 2, 0), "conduit_b");
             sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(2, 2, 0), "recycler");
             sim.AddCitizen("Worker", new Int3(3, 2, 0));
             return sim;
+        }
+
+        /// <summary>Units of Regolith one SalvageRecycler batch consumes, READ OFF THE SHIPPED
+        /// BILL rather than typed as a literal (E0-6 moved it 1 -> 4, and a literal here would have
+        /// to be chased again the next time the ratio is retuned). Every shop test that wants the
+        /// bench to actually run stages exactly this much.</summary>
+        private static int RecyclerBatch
+        {
+            get
+            {
+                Assert.That(ProductionDefs.TryGetBill(SimDefs.Default, DeviceKind.SalvageRecycler, out var bill), Is.True);
+                return bill.Input(0).Count;
+            }
         }
 
         private static int RegolithUnits(Simulation sim)
@@ -253,10 +266,11 @@ namespace Perilune.Tests
             // the standing bill still recruits, fetches and eats its input.
             var sim = NewShop(withBuildSystem: false, out var build);
             Assert.That(build, Is.Null, "precondition: no BuildSystem in this stack");
-            sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0));
+            // E0-6: the recycler's batch is FOUR Regolith (Regolith:4 -> Scrap:3), not one.
+            sim.AddItem(ItemKind.Regolith, RecyclerBatch, new Int3(4, 2, 0));
 
             for (int t = 0; t < 3000 && RegolithUnits(sim) > 0; t++) sim.Tick();
-            Assert.That(RegolithUnits(sim), Is.LessThan(2), "the recycler still consumes its input");
+            Assert.That(RegolithUnits(sim), Is.Zero, "the recycler still consumes its input");
         }
 
         [Test]
@@ -266,10 +280,10 @@ namespace Perilune.Tests
             // not to the mere presence of the system.
             var sim = NewShop(withBuildSystem: true, out var build);
             Assert.That(build.Pending, Is.Empty);
-            sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0));
+            sim.AddItem(ItemKind.Regolith, RecyclerBatch, new Int3(4, 2, 0));
 
             for (int t = 0; t < 3000 && RegolithUnits(sim) > 0; t++) sim.Tick();
-            Assert.That(RegolithUnits(sim), Is.LessThan(2), "an idle BuildSystem changes nothing");
+            Assert.That(RegolithUnits(sim), Is.Zero, "an idle BuildSystem changes nothing");
         }
 
         [Test]
@@ -338,15 +352,29 @@ namespace Perilune.Tests
             // Complete or a player Cancel. One wall (needs two) and one loose unit was enough:
             // recycler dead, so Fabricator and MachineShop dead, so no Parts, so MachineWear
             // jury-rigs every repair at 0.6 forever. No player signal, no way back.
-            var sim = NewShop(withBuildSystem: true, out var build);
+            // E0-6 FORCED THIS SETUP TO CHANGE, and the change is stated rather than tuned away.
+            // The scenario needs free stock that is ENOUGH FOR A RECYCLE BATCH and STILL NOT ENOUGH
+            // FOR THE WALL. Before E0-6 a batch was one unit and a wall two, so "1 loose unit" said
+            // both at once; a batch is now four (Regolith:4 -> Scrap:3), so the wall has to be the
+            // expensive side. wall_material is raised to batch+1 — the smallest value that keeps the
+            // site strictly unfundable — and NOTHING ELSE about the test moves.
+            var defs = SimDefs.CreateDefault();
+            defs.Build.WallMaterial = RecyclerBatch + 1;
+            var sim = NewShop(withBuildSystem: true, out var build, defs);
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True);
             Assert.That(build.TryGet(StubSite, out var site), Is.True);
-            Assert.That(site.Required, Is.GreaterThan(1), "precondition: a wall costs more than one unit");
-            sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0)); // strictly less than the site needs
+            sim.AddItem(ItemKind.Regolith, RecyclerBatch, new Int3(6, 2, 0));
+            Assert.That(site.Required, Is.GreaterThan(RegolithUnits(sim)),
+                "precondition: the ship's whole free stock is STRICTLY LESS than the site needs, so " +
+                "JobSystem can never work it — the state the gate must not hold matter hostage in");
+            Assert.That(RegolithUnits(sim), Is.GreaterThanOrEqualTo(RecyclerBatch),
+                "precondition: ...and yet it IS enough for one recycle batch, or the bench could " +
+                "never run and 'scrap > 0' would be measuring the batch size, not the gate");
 
-            // E0-2: SalvageRecycler WorkSeconds 20→600 (a batch is 6000 work ticks), so widen the budget.
+            // E0-2: SalvageRecycler WorkSeconds 20→600; E0-6: the batch is 4 units at 2400 s, so a
+            // completed batch is 24 000 work ticks. Widen the budget to match.
             int scrap = 0;
-            for (int t = 0; t < 12000 && scrap == 0; t++) { sim.Tick(); scrap = ScrapUnits(sim); }
+            for (int t = 0; t < 40000 && scrap == 0; t++) { sim.Tick(); scrap = ScrapUnits(sim); }
 
             Assert.That(scrap, Is.GreaterThan(0),
                 "an under-funded designation must not stop the recycler — the salvage chain has to keep running");
@@ -524,23 +552,29 @@ namespace Perilune.Tests
             // The warm-up feeds it a single unit first, so the full fetch/carry/craft cycle
             // (the allocating paths, if any) is behind us before the counter starts.
             var build = new BuildSystem();
+            var gateDefs = SimDefs.CreateDefault();
+            gateDefs.Build.WallMaterial = RecyclerBatch + 1;
             var sim = new Simulation(AsciiWorld.Build(ShopMap), 5,
-                new ISimSystem[] { new CitizenSystem(), new JobSystem(), build, new CraftingSystem() });
+                new ISimSystem[] { new CitizenSystem(), new JobSystem(), build, new CraftingSystem() },
+                gateDefs);
             var bench = sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(2, 2, 0), "recycler");
             sim.AddCitizen("Idle", new Int3(3, 2, 0)); // AutoWander false → never self-moves
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True); // standing demand
-            sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0)); // one unit: the wall needs two
+            // Same E0-6 adjustment as UnderFundedSite above: enough for one batch, never enough for
+            // the wall, so the warm-up really completes a batch and the measured window really sits
+            // in the both-scans state.
+            sim.AddItem(ItemKind.Regolith, RecyclerBatch, new Int3(6, 2, 0));
 
             Assert.That(bench.Powered && bench.IsOperational(sim.Defs), Is.True,
                 "precondition: the bench must be live, or TickStation returns before the gate");
 
-            // E0-2: SalvageRecycler WorkSeconds 20→600 (a batch is 6000 work ticks), so the
-            // warm-up must run long enough to fetch and complete one recycle batch.
-            for (int i = 0; i < 9000; i++) sim.Tick(); // warm-up: the lone unit is fetched and recycled
+            // E0-2: SalvageRecycler WorkSeconds 20→600; E0-6: 4 units at 2400 s = 24 000 work
+            // ticks per batch, so the warm-up must run long enough to fetch and complete one.
+            for (int i = 0; i < 30000; i++) sim.Tick(); // warm-up: the stock is fetched and recycled
             Assert.That(ScrapUnits(sim), Is.GreaterThan(0),
                 "the bench really ran — the gate was reached, evaluated and released");
             Assert.That(build.TryGet(StubSite, out var still), Is.True);
-            Assert.That(still.Delivered, Is.Zero, "steady state: a 0/2 site with nothing to fund it");
+            Assert.That(still.Delivered, Is.Zero, "steady state: a 0/N site with nothing to fund it");
 
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 3000; i++) sim.Tick();

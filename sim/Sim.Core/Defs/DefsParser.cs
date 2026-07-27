@@ -58,6 +58,16 @@ namespace Perilune.Sim
             // installed once at the end. A repeated node id REPLACES in place — the overlay
             // contract, without disturbing table order.
             var production = new List<ProductionNode>();
+            // ...but "no [production] SECTION anywhere" is not the same as "an empty [production]
+            // section", and E0-6 is where the difference started to matter. Until E0-6 the compiled
+            // default table was EMPTY, so overwriting it unconditionally was invisible; now the
+            // defaults carry the two lossy nodes, and a data dir with no production.def would have
+            // silently restored the SalvageRecycler's pre-E0-6 1 Regolith -> 2 Scrap row, i.e. put
+            // matter creation back (ECONOMY.md §2.1) with nothing anywhere saying so. Omitting the
+            // file now falls back to the compiled defaults exactly as README.def's contract promises
+            // for every other section. Behaviour-identical for every pre-E0-6 data dir, whose
+            // defaults were empty either way.
+            bool sawProductionSection = false;
 
             if (files != null)
             {
@@ -78,6 +88,7 @@ namespace Perilune.Sim
                         if (line[0] == '[')
                         {
                             section = OpenSection(line, loc, problems);
+                            if (section == Section.Production) sawProductionSection = true;
                             continue;
                         }
                         if (section == Section.None) { problems.Add(loc + ": content before any [section] — ignored"); continue; }
@@ -102,11 +113,15 @@ namespace Perilune.Sim
                 }
             }
 
-            d.Production = new ProductionDefs
+            if (sawProductionSection)
             {
-                Nodes = production.Count == 0 ? Array.Empty<ProductionNode>() : production.ToArray(),
-            };
-            if (production.Count > 1) WarnOnShadowedNodes(d.Production, problems);
+                d.Production = new ProductionDefs
+                {
+                    Nodes = production.Count == 0 ? Array.Empty<ProductionNode>() : production.ToArray(),
+                };
+            }
+            if (d.Production != null && d.Production.Nodes != null && d.Production.Nodes.Length > 1)
+                WarnOnShadowedNodes(d.Production, problems);
 
             if (ruleFiles != null && ruleFiles.Count > 0)
             {
@@ -280,6 +295,7 @@ namespace Perilune.Sim
                 case "max_heat_multiplier": if (F(v, k, loc, p, out var c)) d.Wear.MaxHeatMultiplier = c; return true;
                 case "maintenance_work_seconds": if (I(v, k, loc, p, out var e)) d.Wear.MaintenanceWorkSeconds = e; return true;
                 case "jury_rig_condition": if (F(v, k, loc, p, out var f)) d.Wear.JuryRigCondition = f; return true;
+                case "seal_service_condition": if (F(v, k, loc, p, out var g)) d.Wear.SealServiceCondition = g; return true; // E0-6
                 default: return false;
             }
         }
