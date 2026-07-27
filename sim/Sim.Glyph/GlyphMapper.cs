@@ -81,6 +81,21 @@ namespace Perilune.Glyph
                     // but ranking it last keeps a corrupt-state tile deterministic. The registry is
                     // queried only when something is actually condemned (anyStrip), so the common
                     // strip-free frame never touches it.
+                    //
+                    // ⚠️ THE CLAUSE "it cannot legally share a tile with either flag" IS FALSE FOR
+                    // STOCKPILE, and this comment survives only by accident. `CanDesignate` also
+                    // accepts a DEVICE (`DeconstructKind.Device`), every device kind is non-blocking,
+                    // so a condemned device stands on a WALKABLE tile that `DesignateStockpileCommand`
+                    // will happily zone — two ordinary clicks. The ranking below then chooses
+                    // Stockpile(16) for that tile and PASS 4 SILENTLY REPAIRS IT, re-applying
+                    // GlyphColor.Deconstruct unconditionally a hundred lines down. So the frame is
+                    // right and the reason written here is not; whoever relies on this precedence
+                    // must know that pass 4, not this block, is what decides a condemned device.
+                    // It is left ranked as-is deliberately — reordering it would move the projection,
+                    // and therefore every golden and pin, for no visible gain. The `marks` wire
+                    // channel, which has no pass 4 to save it, ranks strip ABOVE stockpile and says
+                    // why (hosts/web/WireFormat.Marks.cs). Copying this block without pass 4 shipped
+                    // exactly one live regression; do not copy it again.
                     byte flags = level.Flags[i];
                     if ((flags & (byte)TileFlags.Designated) != 0) fg = GlyphColor.Designate;
                     else if ((flags & (byte)TileFlags.Stockpile) != 0) fg = GlyphColor.Stockpile;

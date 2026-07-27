@@ -24,7 +24,7 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { selectedCrewCid, decodeDecks, decodeRooms } from '../wire/messages.js';
+import { selectedCrewCid, decodeDecks, decodeRooms, decodeMarks } from '../wire/messages.js';
 import { decksView } from './decks-model.js';
 import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
 import { pawnChip } from '../render/pawn-svg.js';
@@ -465,6 +465,12 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid) {
     deck, decksView: dView, frame, crew,
     designs: designsMsg && Array.isArray(designsMsg.cells) ? designsMsg.cells : [],
     terminals: terminalList(Hud.getTerminals()),
+    // The mark layer comes off the `marks` channel, NOT off `frame`. The sentence this replaces was
+    // never written down here, but it was the assumption: *"the marks ride the frame's `cell[1]`
+    // byte"*. They did, and GlyphMapper passes 3/4/5 overwrote it — a crew member crossing a
+    // designated tile blanked its mark on this very surface, where the grid crew cluster exactly on
+    // top of the dig orders.
+    marks: decodeMarks(Hud.getMarks()) || [],
     selectedCid: selCid, lens,
   };
   let svg = overviewScene(state);

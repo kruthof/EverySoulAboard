@@ -31,10 +31,10 @@ import { dragModeForTool } from '../src/ui/build-drag-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
 import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
-import { ZONE_FLAG_BACKED_OFF } from '../src/wire/messages.js';
+import { ZONE_FLAG_BACKED_OFF, MARK_KIND_NAMES, markKindName, decodeMarks } from '../src/wire/messages.js';
 import { codeOnly } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
-import { MARK_FOR_FG, markForFg, markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
+import { markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 import { deckPlanSvg, yahDotPos, deckMinimap } from '../src/ui/deck-minimap.js';
@@ -359,6 +359,40 @@ function slotFocus(anchorOrIndex) {
 /** The whole deck as one focus rect — for the census tests, where clamping is not the subject. */
 const WHOLE_DECK1 = { deck: DECK1, rx: 0, ry: 0, rw: wreck.w, rh: wreck.h };
 
+/**
+ * ⚠️ THE FIXTURE ADAPTER — read this before scoring anything below as evidence about the channel.
+ *
+ * `overview-grid.json` predates the `marks` channel: it carries a captured FRAME and no `marks`
+ * message. Rather than throw away the WP-2 acceptance — which is about the wreck's REAL geometry, 30
+ * debris and 3 dig cells at real coordinates inside real rooms — this rebuilds a `marks`-shaped
+ * input from that frame's fg bytes, using the table `mark-overlay.js` used to export.
+ *
+ * WHAT IT IS: a way to keep driving the pure mark model (clamping, layer geometry, vocabulary) from
+ * real captured wreck geometry.
+ * WHAT IT IS NOT: evidence about the `marks` channel. It CANNOT be — it is derived from `cell[1]`,
+ * the lossy byte the channel replaces, so every mark the projection erased is missing from it too.
+ * The channel's own evidence is `client/test/fixtures/marks-grid.json`, a LIVE capture whose write
+ * predicate REQUIRES at least one occluded mark, driven in `client/test/marks-model.test.js`.
+ */
+const FG_TO_KIND = { 4: 0, 15: 1, 16: 2, 26: 3 };
+function marksFromFrame(frame) {
+  const out = [];
+  if (!frame || !Array.isArray(frame.cells)) return out;
+  for (let ty = 0; ty < frame.h; ty += 1) {
+    for (let tx = 0; tx < frame.w; tx += 1) {
+      const cell = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const kind = FG_TO_KIND[cell[1] | 0];
+      if (kind === undefined) continue;
+      out.push({ x: tx, y: ty, deck: frame.deck | 0, kind, mark: MARK_KIND_NAMES[kind] });
+    }
+  }
+  return out;
+}
+const wreckMarks = marksFromFrame(wreck);
+/** The same adapted marks as a WIRE MESSAGE, for the driven rigs (which read `Hud.getMarks()`). */
+const WRECK_MARKS_MSG = { type: 'marks', cells: wreckMarks.map((m) => [m.x, m.y, m.deck, m.kind]) };
+
 /** Every `<g class="mk mk-KIND">…</g>` in an SVG string, as `{kind, body}`. */
 function marks(svg) {
   return [...svg.matchAll(/<g class="mk mk-([a-z]+)">([\s\S]*?)<\/g>/g)].map((m) => ({ kind: m[1], body: m[2] }));
@@ -388,48 +422,57 @@ test('WP-2: the fixture can actually DRIVE the designation acceptance (the anti-
   assert.deepEqual(roomCells(wreck, WHOLE_DECK1).filter((c) => c.code === 37), []);
 });
 
-test('WP-2: roomMarkTiles reads cell[1] and reports every marked tile on the deck', () => {
-  const all = roomMarkTiles(wreck, WHOLE_DECK1);
+// ⚠️ RENAMED, and the old title is quoted because it named the SOURCE and the source moved:
+// *"WP-2: roomMarkTiles reads cell[1] and reports every marked tile on the deck"*. It reads the
+// decoded `marks` channel now; `fg` and `code` left the output with the frame they came from.
+test('roomMarkTiles reports every marked tile on the deck, from the marks channel', () => {
+  const all = roomMarkTiles(wreckMarks, WHOLE_DECK1);
   assert.equal(all.length, 33);
   assert.equal(all.filter((m) => m.mark === 'debris').length, 30);
   assert.equal(all.filter((m) => m.mark === 'dig').length, 3);
-  // every reported tile really carries the byte it claims, at the coordinates it claims
+  // every reported tile carries the kind it claims, at the coordinates it claims, and the kind and
+  // its name agree — a row whose numeric kind and name disagreed would draw one thing and be
+  // censused as another.
+  const byXy = new Map(wreckMarks.map((m) => [m.x + ',' + m.y, m]));
   for (const m of all) {
-    const cell = wreck.cells[m.ty * wreck.w + m.tx];
-    assert.equal(cell[1], m.fg);
-    assert.equal(cell[0], m.code);
-    assert.equal(markForFg(cell[1]), m.mark);
+    const src = byXy.get(m.tx + ',' + m.ty);
+    assert.ok(src, `roomMarkTiles invented a tile at ${m.tx},${m.ty} that is not on the channel`);
+    assert.equal(src.mark, m.mark);
+    assert.equal(markKindName(m.kind), m.mark);
   }
   // and nothing unmarked leaked in
-  assert.equal(all.filter((m) => m.fg !== 4 && m.fg !== 15).length, 0);
+  assert.equal(all.filter((m) => !MARK_KIND_NAMES.includes(m.mark)).length, 0);
+  // NON-VACUITY: the adapter must actually have found the wreck, or every count above is a claim
+  // about the empty set dressed as a census.
+  assert.equal(wreckMarks.length, 33);
 });
 
 test('WP-2: marks are clamped to the focused room and its deck, like every other channel', () => {
   // The 3 designated tiles sit in the authored 'hold' (deck 1 slot 6, the live wreck room); the
   // debris lies in the halls either side of it. Both rects come from the fixture's own `decks`.
-  const hold = roomMarkTiles(wreck, slotFocus('hold'));
+  const hold = roomMarkTiles(wreckMarks, slotFocus('hold'));
   assert.equal(hold.length, 3);
   assert.ok(hold.every((m) => m.mark === 'dig'));
 
   const halls = deckSlots(fixView, DECK1)
     .filter((s) => !s.anchorName)
-    .map((s) => roomMarkTiles(wreck, { deck: DECK1, rx: s.rect.x, ry: s.rect.y, rw: s.rect.w, rh: s.rect.h }));
+    .map((s) => roomMarkTiles(wreckMarks, { deck: DECK1, rx: s.rect.x, ry: s.rect.y, rw: s.rect.w, rh: s.rect.h }));
   const withDebris = halls.filter((h) => h.length);
   assert.equal(withDebris.length, 2, 'the wreck fills exactly two deck-1 halls in this capture');
   assert.deepEqual(withDebris.map((h) => h.length).sort((a, b) => a - b), [14, 16]);
   assert.ok(withDebris.every((h) => h.every((m) => m.mark === 'debris')));
 
   // off-deck frame → nothing (the deck gate), and a room off the wreck → nothing
-  assert.deepEqual(roomMarkTiles(wreck, { ...slotFocus('hold'), deck: 0 }), []);
-  assert.deepEqual(roomMarkTiles(wreck, slotFocus('command')), []);
+  assert.deepEqual(roomMarkTiles(wreckMarks, { ...slotFocus('hold'), deck: 0 }), []);
+  assert.deepEqual(roomMarkTiles(wreckMarks, slotFocus('command')), []);
   assert.deepEqual(roomMarkTiles(null, WHOLE_DECK1), []);
 });
 
 test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one in the Room Zoom', () => {
   const holdFocus = slotFocus('hold');
   const hallFocus = slotFocus(5); // the hall the wreck's debris fills
-  const digSvg = markLayerSvg(roomMarkTiles(wreck, holdFocus), holdFocus);
-  const debSvg = markLayerSvg(roomMarkTiles(wreck, hallFocus), hallFocus);
+  const digSvg = markLayerSvg(roomMarkTiles(wreckMarks, holdFocus), holdFocus);
+  const debSvg = markLayerSvg(roomMarkTiles(wreckMarks, hallFocus), hallFocus);
 
   const dig = marks(digSvg);
   const deb = marks(debSvg);
@@ -455,9 +498,9 @@ test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one in th
   assert.match(digSvg, /^<g class="rz-marks" pointer-events="none">/);
   assert.ok(digSvg.endsWith('</g>'));
   // deterministic + empty-safe
-  assert.equal(markLayerSvg(roomMarkTiles(wreck, holdFocus), holdFocus), digSvg);
+  assert.equal(markLayerSvg(roomMarkTiles(wreckMarks, holdFocus), holdFocus), digSvg);
   assert.equal(markLayerSvg([], holdFocus), '');
-  assert.equal(markLayerSvg(roomMarkTiles(wreck, slotFocus('command')), slotFocus('command')), '');
+  assert.equal(markLayerSvg(roomMarkTiles(wreckMarks, slotFocus('command')), slotFocus('command')), '');
 });
 
 // The geometry pin, READ OUT OF THE EMITTED STRING — the `zone-overlay.test.js:106-111` shape, and
@@ -473,7 +516,7 @@ test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one in th
 // from the fixture's own tile coordinates rather than copied out of the current output.
 test('WP-2: the Room Zoom places each mark in ROOM-LOCAL space, one U per tile', () => {
   const holdFocus = slotFocus('hold');
-  const tiles = roomMarkTiles(wreck, holdFocus);
+  const tiles = roomMarkTiles(wreckMarks, holdFocus);
   const svg = markLayerSvg(tiles, holdFocus);
   assert.equal(tiles.length, 3);
 
@@ -505,6 +548,35 @@ test('WP-2: the Room Zoom places each mark in ROOM-LOCAL space, one U per tile',
   assert.deepEqual(half, tiles.map((m) => [
     (m.tx - holdFocus.rx) * (U / 2) + (U / 2) * 0.12, (m.ty - holdFocus.ry) * (U / 2) + (U / 2) * 0.12,
   ]));
+});
+
+// THE VARIANT ARGUMENT, the Room Zoom's half. See the long note in `overview-scene.test.js` for the
+// measurement behind it: `markVariant(tx,ty) = (tx*7 + ty*13) % 3` and 7 ≡ 13 ≡ 1 (mod 3), so it is
+// COMMUTATIVE and an argument-order swap is a true equivalent mutant that no test can kill. What is
+// killable — and is killed here — is passing the wrong tile's coordinates at all. The Room Zoom's box
+// is exact (`(tx-rx)*U, (ty-ry)*U, U, U`), so this is a byte-for-byte comparison against the shared
+// builder with no geometry reconstructed in the test.
+//
+// MUTATION: `markVariant(m.tx, m.ty)` -> `markVariant(0, 0)` in room-model.js ⇒ RED.
+test('the Room Zoom draws each mark with ITS OWN tile\'s variant', () => {
+  const hallFocus = slotFocus(5);                   // the hall the wreck's debris fills
+  const tiles = roomMarkTiles(wreckMarks, hallFocus);
+  assert.ok(tiles.length >= 10, `only ${tiles.length} marks in the hall — the pin is thin`);
+  const drawn = marks(markLayerSvg(tiles, hallFocus));
+  const shown = tiles.filter((t) => t.mark !== 'stockpile');
+  assert.equal(drawn.length, shown.length);
+
+  const rx = hallFocus.rx | 0, ry = hallFocus.ry | 0;
+  for (let i = 0; i < shown.length; i += 1) {
+    const m = shown[i];
+    const expect = markCellSvg(m.mark, (m.tx - rx) * U, (m.ty - ry) * U, U, U, markVariant(m.tx, m.ty));
+    assert.equal('<g class="mk mk-' + drawn[i].kind + '">' + drawn[i].body + '</g>', expect,
+      `the mark at ${m.tx},${m.ty} was not drawn by markCellSvg with its own tile's variant`);
+  }
+  // …and the variants really vary here, or a constant-variant mutation would pass the comparison.
+  assert.equal(new Set(shown.map((m) => markVariant(m.tx, m.ty))).size, 3,
+    'this room no longer spans all three rubble arrangements, so `markVariant(...) -> 0` would '
+    + 'survive the comparison above');
 });
 
 // The mark colours, pinned. `zone-overlay.test.js` pins its equivalent, and without this the dialect
@@ -542,43 +614,53 @@ test('WP-2: amber means an order; rubble does not; the zone swatch is WP-3\'s ow
 // behaviour is therefore covered by hand-built single cells, and it is labelled as such: these tests
 // prove the table and the builder, NOT that the shipped ship draws them.
 
-test('WP-2 (synthetic): all four GlyphColor bytes map to their mark, and no other byte does', () => {
-  assert.deepEqual(MARK_FOR_FG, { 4: 'debris', 15: 'dig', 16: 'stockpile', 26: 'strip' });
-  for (let fg = 0; fg <= 40; fg += 1) {
-    const expect = { 4: 'debris', 15: 'dig', 16: 'stockpile', 26: 'strip' }[fg] || '';
-    assert.equal(markForFg(fg), expect, `fg ${fg}`);
+// ⚠️ REPLACES *"WP-2 (synthetic): all four GlyphColor bytes map to their mark, and no other byte
+// does"*, which asserted `MARK_FOR_FG`. That table is retired: a projected fg byte no longer names a
+// mark anywhere in the client. The property that survives is the WIRE kind → name table, and it is
+// pinned against the C# constants themselves in `client/test/marks-model.test.js`.
+test('(synthetic): the four wire kinds map to their mark, and no other kind does', () => {
+  assert.deepEqual([...MARK_KIND_NAMES], ['debris', 'dig', 'stockpile', 'strip']);
+  for (let kind = -3; kind <= 40; kind += 1) {
+    assert.equal(markKindName(kind), MARK_KIND_NAMES[kind] || '', `kind ${kind}`);
   }
   // an unknown mark name draws nothing rather than throwing
   assert.equal(markCellSvg('nonsense', 0, 0, 32, 32), '');
   assert.equal(markCellSvg('debris', 0, 0, 0, 32), ''); // a degenerate box draws nothing
 });
 
-test('WP-2 (synthetic): the Room Zoom REPORTS a stockpile tile but leaves the drawing to WP-3', () => {
+test('the Room Zoom REPORTS a stockpile tile but leaves the drawing to WP-3', () => {
   const focus = { deck: 0, rx: 0, ry: 0, rw: 2, rh: 1 };
-  const frame = { deck: 0, w: 2, h: 1, lens: 'none', cells: [[46, 16, 0, 0], [35, 26, 0, 0]] };
-  const tiles = roomMarkTiles(frame, focus);
+  const chan = [{ x: 0, y: 0, deck: 0, kind: 2, mark: 'stockpile' },
+    { x: 1, y: 0, deck: 0, kind: 3, mark: 'strip' }];
+  const tiles = roomMarkTiles(chan, focus);
   assert.deepEqual(tiles.map((t) => t.mark), ['stockpile', 'strip']);
   const svg = markLayerSvg(tiles, focus);
   // The strip mark draws; the stockpile one does not — zoneLayerSvg already paints that tile from
   // the `zones` channel, one line above this layer in roomzoom-view.js, and stacking two slate tints
-  // on one tile is a visible artefact. Semantics are unchanged: fg 16 still means "stockpile zone".
+  // on one tile is a visible artefact. Semantics are unchanged: a stockpile kind still means
+  // "stockpile zone"; only the layer that draws it differs.
   assert.deepEqual(marks(svg).map((k) => k.kind), ['strip']);
   assert.ok(svg.includes('mk-condemn'), 'a condemned wall must carry the strip mark');
   // and a stockpile-only room emits no layer at all rather than an empty group
   assert.equal(markLayerSvg([{ tx: 0, ty: 0, mark: 'stockpile' }], focus), '');
 });
 
-test('WP-2 (synthetic): the two surfaces speak ONE vocabulary — same fg byte, same mark', () => {
-  // Drives BOTH real composers over the same single-cell frame, byte by byte, so the tables cannot
-  // drift apart. The Overview draws all four kinds; the Room Zoom draws three by design (above).
+// ⚠️ RETITLED from *"the two surfaces speak ONE vocabulary — same fg byte, same mark"*: the sweep is
+// over WIRE KINDS now, not fg bytes. The property is unchanged and is the reason `mark-overlay.js`
+// exists — one kind must not draw two different things on the two surfaces.
+test('the two surfaces speak ONE vocabulary — same wire kind, same mark', () => {
+  // Drives BOTH real composers over the same single-cell marks payload, kind by kind, so the two
+  // surfaces cannot drift apart. The Overview draws all four kinds; the Room Zoom draws three by
+  // design (above).
   const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+  const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[46, 2, 0, 0]] };
   let sawMark = 0;
-  for (let fg = 0; fg <= 30; fg += 1) {
-    const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[46, fg, 0, 0]] };
-    const ovKinds = marks(overviewScene({ deck: 0, decksView: fixView, frame, crew: [] })).map((k) => k.kind);
-    const rzKinds = roomMarkTiles(frame, focus).map((t) => t.mark);
-    assert.deepEqual(ovKinds, rzKinds, `fg ${fg}: the Overview and the Room Zoom disagree about what `
-      + 'this byte means. They share mark-overlay.js precisely so they cannot.');
+  for (let kind = -2; kind <= 30; kind += 1) {
+    const chan = decodeMarks({ type: 'marks', cells: [[0, 0, 0, kind]] });
+    const ovKinds = marks(overviewScene({ deck: 0, decksView: fixView, frame, crew: [], marks: chan })).map((k) => k.kind);
+    const rzKinds = roomMarkTiles(chan, focus).map((t) => t.mark);
+    assert.deepEqual(ovKinds, rzKinds, `kind ${kind}: the Overview and the Room Zoom disagree about `
+      + 'what this kind means. They share mark-overlay.js precisely so they cannot.');
     if (rzKinds.length) {
       sawMark += 1;
       // …and the drawn cell is byte-identical for the same box, so "different surface" can never
@@ -587,7 +669,9 @@ test('WP-2 (synthetic): the two surfaces speak ONE vocabulary — same fg byte, 
         markCellSvg(ovKinds[0], 0, 0, 10, 10, markVariant(0, 0)));
     }
   }
-  assert.equal(sawMark, 4, 'exactly four bytes in 0..30 carry a mark; the sweep found a different number');
+  assert.equal(sawMark, 4,
+    'exactly four wire kinds carry a mark; the sweep found a different number. An out-of-range kind '
+    + 'must be DROPPED by decodeMarks, not drawn as a blank.');
 });
 
 test('WP-2 (synthetic): markVariant is deterministic, in range, and actually varies', () => {
@@ -630,8 +714,17 @@ test('WP-2 (synthetic): markVariant is deterministic, in range, and actually var
 
 test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body', () => {
   const src = codeOnly(readFileSync(join(HERE, '../src/ui/roomzoom-view.js'), 'utf8'));
-  assert.match(src, /body\s*\+=\s*markLayerSvg\(\s*roomMarkTiles\(/,
-    'client/src/ui/roomzoom-view.js must concatenate markLayerSvg(roomMarkTiles(...)) into the layer '
+  // ⚠️ THE SCANNED SHAPE CHANGED WITH THE SOURCE. The old single expression
+  // `body += markLayerSvg(roomMarkTiles(frame, _focus), _focus)` is now two statements — the marks
+  // are decoded off the wire in `repaint()` into `_markTiles`, beside the zone tiles, and the layer
+  // consumes that. BOTH halves are scanned: a derivation nobody consumes and a consumer of a value
+  // nobody derives are two different ways to draw nothing.
+  assert.match(src, /_markTiles\s*=\s*roomMarkTiles\(\s*decodeMarks\(/,
+    'client/src/ui/roomzoom-view.js must derive its mark tiles from the decoded `marks` channel. '
+    + 'Reading them back off `frame` is the defect the channel exists to remove: GlyphMapper passes '
+    + '3/4/5 overwrite `cell[1]` for an item, a device and a standing crew member.');
+  assert.match(src, /body\s*\+=\s*markLayerSvg\(\s*_markTiles/,
+    'client/src/ui/roomzoom-view.js must concatenate markLayerSvg(_markTiles, …) into the layer '
     + 'body. A perfect builder nobody calls satisfies every other assertion in this file and draws '
     + 'nothing on screen — the exact failure zone-overlay.js was extracted to stop.');
   // ORDER: above the material layer (which paints an OPAQUE swatch over every built wall, so a strip
@@ -653,20 +746,24 @@ test('WP-2: the Room Zoom actually CONCATENATES the mark layer into its SVG body
 
 test('NEGATIVE CONTROL: the wiring scan does not fire on a commented-out call', () => {
   const prose = [
-    '// body += markLayerSvg(roomMarkTiles(frame, _focus), _focus);  // reverted, see WP-6',
-    '/* an older draft called body += markLayerSvg(roomMarkTiles(f, r), r); here */',
+    '// body += markLayerSvg(_markTiles, _focus);  // reverted, see WP-6',
+    '/* an older draft called _markTiles = roomMarkTiles(decodeMarks(m), r); here */',
     'const real = 1;',
   ].join('\n');
-  assert.doesNotMatch(codeOnly(prose), /body\s*\+=\s*markLayerSvg\(\s*roomMarkTiles\(/,
+  assert.doesNotMatch(codeOnly(prose), /body\s*\+=\s*markLayerSvg\(\s*_markTiles/,
     'a COMMENTED-OUT call satisfied the wiring scan — the guard would then be green with the layer '
     + 'switched off, which is precisely the defect this repo has shipped four times in one day');
+  assert.doesNotMatch(codeOnly(prose), /_markTiles\s*=\s*roomMarkTiles\(\s*decodeMarks\(/,
+    'a COMMENTED-OUT derivation satisfied the other half of the wiring scan');
 });
 
 test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly is quote-aware', () => {
-  assert.match(codeOnly('  body += markLayerSvg(roomMarkTiles(frame, _focus), _focus);\n'),
-    /body\s*\+=\s*markLayerSvg\(\s*roomMarkTiles\(/, 'the scan missed a real call — it is vacuous');
+  assert.match(codeOnly('  body += markLayerSvg(_markTiles, _focus);\n'),
+    /body\s*\+=\s*markLayerSvg\(\s*_markTiles/, 'the scan missed a real call — it is vacuous');
+  assert.match(codeOnly('  _markTiles = roomMarkTiles(decodeMarks(Hud.getMarks()), _focus);\n'),
+    /_markTiles\s*=\s*roomMarkTiles\(\s*decodeMarks\(/, 'the scan missed a real derivation');
   // a quoted `//` must not swallow the rest of the file (the blinding failure mode)
-  const src = 'const u = "http://x//y";\nbody += markLayerSvg(roomMarkTiles(f, r), r);\n';
+  const src = 'const u = "http://x//y";\nbody += markLayerSvg(_markTiles, r);\n';
   assert.match(codeOnly(src), /body\s*\+=\s*markLayerSvg\(/,
     'a quoted "//" blinded the stripper, so every scan using it passes for the wrong reason');
 });
@@ -793,6 +890,7 @@ const probeApi = RoomZoom.initRoomZoom({ send: (o) => probeSent.push(o) });   //
 Hud.renderDecks(FIX.decks);
 Hud.renderRooms(FIX.rooms);
 Hud.renderFrame(wreck);
+Hud.renderMarks(WRECK_MARKS_MSG);   // the mark layer is wire-fed now, not derived from the frame
 probeApi.enter('hold');
 probeDoc.getElementById('rz-layers')._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
 {
@@ -832,6 +930,10 @@ Hud.renderRooms(FIX.rooms);
 // a local). NO roster is dispatched: `renderRoster` builds the CONSOLE's CREW WATCH rows, which
 // dom-lite cannot host, and the crew layer is not what this package changed.
 Hud.renderFrame(wreck);
+// …and the mark layer's own channel, which is NOT part of the frame. A rig that dispatched only the
+// frame would draw no marks at all now, and every mark assertion below would pass vacuously if it
+// were phrased as an absence.
+Hud.renderMarks(WRECK_MARKS_MSG);
 
 rzApi.enter('hold');                       // the Overview's own entry point, by anchorName
 const rzLayers = rzDoc.getElementById('rz-layers');
@@ -970,7 +1072,7 @@ const rzOrders = (sent) => sent.filter((o) => o.cmd !== 'cursor');
 const xy = (o) => [o.x, o.y];
 
 // The fixture's three ALREADY-DESIGNATED dig tiles (fg 15) — read out of the capture, not typed.
-const FIX_DIG = roomMarkTiles(wreck, { ...HOLD, deck: DECK1 }).filter((m) => m.mark === 'dig');
+const FIX_DIG = roomMarkTiles(wreckMarks, { ...HOLD, deck: DECK1 }).filter((m) => m.mark === 'dig');
 
 test('WP-4 fixture check: the room under test is the live wreck, with real designations in it', () => {
   assert.equal(HOLD.rw * HOLD.rh, 96, 'the hold should be the fixture\'s 12×8 slot');
@@ -1661,12 +1763,18 @@ test('WP-4: the built-wall dead end now points at STRIP', () => {
 // `GlyphColor.Deconstruct` (fixed in `sim/Sim.Glyph/GlyphMapper.cs`; pinned by
 // `tests/Perilune.Tests/StripVerbTests.cs`).
 //
-// THE CLIENT HALF, which is what these two tests own. Once fg 26 arrives on a FURNITURE tile the
-// byte→mark table already handles it — `roomMarkTiles` keys on `cell[1]` and has never looked at the
-// glyph. What did NOT work is that the mark layer was concatenated BELOW `furnitureSvg`, so the
-// recovered byte would have drawn its amber ✕ underneath the desk's own opaque sprite: the player
-// condemns a desk, the sim agrees, the byte arrives, and he still sees nothing. Both surfaces now
-// draw marks above their furniture layer.
+// THE CLIENT HALF, which is what these two tests own. The mark layer draws ABOVE `furnitureSvg`; it
+// used to be concatenated below it, so the condemned mark would have drawn its amber ✕ underneath
+// the desk's own opaque sprite — the player condemns a desk, the sim agrees, the mark arrives, and
+// he still sees nothing.
+//
+// ⚠️ THE SENTENCE THAT USED TO OPEN THIS PARAGRAPH IS FALSE AND IS QUOTED: *"Once fg 26 arrives on a
+// FURNITURE tile the byte→mark table already handles it — `roomMarkTiles` keys on `cell[1]` and has
+// never looked at the glyph."* There is no byte→mark table any more, and it is the DEVICE case that
+// makes the point: pass 4 was patched in `GlyphMapper` to re-apply the strip colour over a condemned
+// device, and that patch is the ONLY reason fg 26 ever reached a furniture tile. The `marks` channel
+// needs no such patch — and the test below now drives the case that patch could never reach, a crew
+// member STANDING on the condemned tile (pass 5), which no fg byte can survive.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 test('THE LIVE BUG (driven): a condemned DEVICE tile renders its strip mark in the real Room Zoom', () => {
@@ -1676,26 +1784,30 @@ test('THE LIVE BUG (driven): a condemned DEVICE tile renders its strip mark in t
   for (let c = 33; c < 127 && !code; c += 1) if (itemForGlyph(c)) code = c;
   assert.ok(code, 'no glyph code maps to a furniture item — the derivation found nothing to test with');
 
-  // A tile INSIDE the hold, carrying furniture AND the condemned byte — i.e. exactly the cell the
-  // fixed `GlyphMapper` now emits for a condemned desk, and exactly the cell the whole ship used to
-  // be incapable of producing.
+  // A tile INSIDE the hold carrying FURNITURE in the frame and a STRIP mark on the channel — the two
+  // now travel separately, which is the point. THE FRAME CELL IS DELIBERATELY LEFT AS AN ORDINARY
+  // DEVICE (fg 8): under the old fg-byte path that is precisely the "invisible condemned device" the
+  // owner reported three times, so if anything here still read `cell[1]` this test would go red.
   const tx = HOLD.rx + 1, ty = HOLD.ry + 1;
   const cells = wreck.cells.slice();
-  cells[ty * wreck.w + tx] = [code, 26, 0, 0];
+  cells[ty * wreck.w + tx] = [code, 8, 0, 0];
+  const condemned = {
+    type: 'marks',
+    cells: WRECK_MARKS_MSG.cells.concat([[tx, ty, DECK1, 3]]),
+  };
 
   try {
-    // PRECONDITION, and it is the non-vacuity control for the whole test: with the SAME tile
-    // carrying the same furniture and an ordinary device colour, no strip mark is drawn. Without
-    // this leg a `rz-marks` group produced by some unrelated tile of the wreck would satisfy the
-    // assertion below and prove nothing.
-    const plain = wreck.cells.slice();
-    plain[ty * wreck.w + tx] = [code, 8, 0, 0];
-    Hud.renderFrame({ ...wreck, cells: plain });
+    // PRECONDITION, and it is the non-vacuity control for the whole test: with the SAME frame and
+    // the SAME furniture but NO strip on the channel, no strip mark is drawn. Without this leg a
+    // `rz-marks` group produced by some unrelated tile of the wreck would satisfy the assertion
+    // below and prove nothing.
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderMarks(WRECK_MARKS_MSG);
     rzApi.exit(); rzApi.enter('hold');
     assert.ok(!rzLayers.innerHTML.includes('mk-strip'),
       'precondition: an UNCONDEMNED furniture tile draws no strip mark');
 
-    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderMarks(condemned);
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
 
@@ -1718,6 +1830,71 @@ test('THE LIVE BUG (driven): a condemned DEVICE tile renders its strip mark in t
       + 'player sees the desk and not the ✕ — the reported symptom, with the byte present');
   } finally {
     Hud.renderFrame(wreck);   // never leave a doctored frame in the shared HUD cache
+    Hud.renderMarks(WRECK_MARKS_MSG);
+    rzApi.exit(); rzApi.enter('hold');
+  }
+});
+
+// ⚠️ ADDED AFTER A MUTATION SURVIVED. `renderMarks(m) { _marks = m; }` — the cache written, the
+// surfaces never told — passed the whole suite green. It is not a theoretical hole: `marks` is
+// deduped by `GameSession.Send`, so on a quiet ship it is sent ONCE, and a designation the player
+// just placed would sit in the cache until some other channel happened to move. The test therefore
+// dispatches ONLY the marks channel and lets the coalesced repaint land.
+//
+// MUTATION: drop `notifyShip()` from `renderMarks` in hud.js ⇒ RED.
+test('a marks dispatch ALONE repaints the surfaces — the cache is not enough', async () => {
+  const tx = HOLD.rx + 3, ty = HOLD.ry + 3;
+  const condemned = { type: 'marks', cells: WRECK_MARKS_MSG.cells.concat([[tx, ty, DECK1, 3]]) };
+  try {
+    rzApi.exit(); rzApi.enter('hold');
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok(!rzLayers.innerHTML.includes('mk-strip'), 'precondition: nothing is condemned yet');
+
+    // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
+    Hud.renderMarks(condemned);
+    await new Promise((r) => setTimeout(r, 40));            // the coalesced repaint
+    assert.ok(rzLayers.innerHTML.includes('mk mk-strip'),
+      'a `marks` message reached the cache and the Room Zoom never repainted. The channel is '
+      + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a designation the player '
+      + 'just placed would then sit invisible until some unrelated channel moved.');
+  } finally {
+    Hud.renderMarks(WRECK_MARKS_MSG);
+    await new Promise((r) => setTimeout(r, 40));
+  }
+});
+
+// THE CASE THE PASS-4 PATCH COULD NEVER REACH, driven through the same real controller: a CREW
+// MEMBER STANDING ON THE CONDEMNED TILE. `GlyphMapper` pass 5 paints the citizen's own colour over
+// `cell[1]` unconditionally, so under the old source this tile's mark was gone for as long as anyone
+// stood on it — and on `--ship grid` the crew cluster in the hold at x25-32 y15-16, exactly where the
+// designations are, so it blinked out and back as people crossed. The channel does not ride the
+// projection, so it cannot be overwritten.
+//
+// MUTATION: point `_markTiles` back at `roomMarkTiles(frame, _focus)` ⇒ this goes red (the frame
+// cell says fg 5 = Crew, which was never a mark).
+test('THE LIVE BUG, generalised (driven): a mark SURVIVES a crew member standing on the tile', () => {
+  const tx = HOLD.rx + 2, ty = HOLD.ry + 2;
+  const cells = wreck.cells.slice();
+  // '@' at GlyphColor.Crew (5) — byte-for-byte what pass 5 writes over whatever was there.
+  cells[ty * wreck.w + tx] = [64, 5, 0, 0];
+  const condemned = { type: 'marks', cells: WRECK_MARKS_MSG.cells.concat([[tx, ty, DECK1, 3]]) };
+  try {
+    // NON-VACUITY: the doctored cell really does carry no mark byte, so a client still reading
+    // `cell[1]` genuinely could not draw this mark. Without this the test proves nothing about the
+    // source — it would just be "a mark on the channel draws".
+    assert.equal(FG_TO_KIND[cells[ty * wreck.w + tx][1]], undefined,
+      'the planted crew cell carries a mark fg byte after all — the old path would have drawn it '
+      + 'too, so this test no longer distinguishes the two sources');
+
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderMarks(condemned);
+    rzApi.exit(); rzApi.enter('hold');
+    assert.ok(rzLayers.innerHTML.includes('mk mk-strip'),
+      'a condemned tile with a crew member standing on it drew NO mark — the mark layer is reading '
+      + 'the projection again, and the designation blinks out whenever anyone walks over it');
+  } finally {
+    Hud.renderFrame(wreck);
+    Hud.renderMarks(WRECK_MARKS_MSG);
     rzApi.exit(); rzApi.enter('hold');
   }
 });
@@ -1732,20 +1909,24 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
   for (let c = 33; c < 127 && !code; c += 1) {
     if (!itemForGlyph(c)) continue;
     const probe = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[c, 8, 0, 0]] };
-    if (overviewScene({ deck: 0, decksView: fixView, frame: probe, crew: [] }).includes('pl-furniture')) code = c;
+    if (overviewScene({ deck: 0, decksView: fixView, frame: probe, crew: [], marks: [] }).includes('pl-furniture')) code = c;
   }
   assert.ok(code, 'no glyph code is furniture on BOTH surfaces — the ordering assertion would be vacuous');
 
-  const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 26, 0, 0]] };
+  // The frame carries the FURNITURE at an ordinary device colour; the condemnation travels on the
+  // `marks` channel beside it. (It used to be `[[code, 26, 0, 0]]` — one cell carrying both — and
+  // that cell only existed because pass 4 was patched to produce it.)
+  const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 8, 0, 0]] };
+  const chan = decodeMarks({ type: 'marks', cells: [[0, 0, 0, 3]] });
 
   // The Room Zoom's pure model reports it and its pure layer draws it…
-  assert.deepEqual(roomMarkTiles(frame, focus).map((t) => t.mark), ['strip']);
-  assert.ok(markLayerSvg(roomMarkTiles(frame, focus), focus).includes('mk-strip'));
+  assert.deepEqual(roomMarkTiles(chan, focus).map((t) => t.mark), ['strip']);
+  assert.ok(markLayerSvg(roomMarkTiles(chan, focus), focus).includes('mk-strip'));
 
-  // …and the Overview's real composer agrees, byte for byte, on the same cell. The two surfaces
+  // …and the Overview's real composer agrees, byte for byte, on the same tile. The two surfaces
   // share `mark-overlay.js` precisely so a condemned desk cannot read one way in the schematic and
   // another in the room.
-  const ov = overviewScene({ deck: 0, decksView: fixView, frame, crew: [] });
+  const ov = overviewScene({ deck: 0, decksView: fixView, frame, crew: [], marks: chan });
   assert.deepEqual(marks(ov).map((k) => k.kind), ['strip']);
 
   // ORDER on the Overview, driven rather than scanned, and now unconditional.
@@ -1763,13 +1944,17 @@ test('THE LIVE BUG (synthetic): both surfaces mark a condemned FURNITURE tile, a
 // a future frame ever breaks that, this test says so instead of a screenshot doing it later.
 test('THE LIVE BUG: the layer reorder changes NOTHING on the real capture (measured disjointness)', () => {
   let marked = 0, furnished = 0, both = 0;
-  for (const cell of wreck.cells) {
-    if (!Array.isArray(cell)) continue;
-    const isMark = markForFg(cell[1] | 0) !== '';
-    const isFurn = !!itemForGlyph(cell[0] | 0);
-    if (isMark) marked += 1;
-    if (isFurn) furnished += 1;
-    if (isMark && isFurn) both += 1;
+  const markedXy = new Set(wreckMarks.map((m) => m.x + ',' + m.y));
+  for (let ty = 0; ty < wreck.h; ty += 1) {
+    for (let tx = 0; tx < wreck.w; tx += 1) {
+      const cell = wreck.cells[ty * wreck.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const isMark = markedXy.has(tx + ',' + ty);
+      const isFurn = !!itemForGlyph(cell[0] | 0);
+      if (isMark) marked += 1;
+      if (isFurn) furnished += 1;
+      if (isMark && isFurn) both += 1;
+    }
   }
   assert.ok(marked > 0, 'the capture carries no marks at all — the disjointness claim is vacuous');
   assert.ok(furnished > 0, 'the capture carries no furniture at all — the disjointness claim is vacuous');

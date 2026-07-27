@@ -13,7 +13,7 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones } from '../wire/messages.js';
+import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks } from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
@@ -71,6 +71,7 @@ let _decor = [];          // session-local cosmetic decor (never hashed, never w
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
 let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
+let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks` channel (NOT the frame)
 // THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
 // ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
@@ -325,6 +326,9 @@ function repaint() {
   // WP-3: derived ONCE per repaint and shared by the floor layer and the key beside it, so the marks
   // on the floor and the words explaining them can never disagree about what is in the room.
   _zoneTiles = roomZoneTiles(decodeZones(Hud.getZones()), _focus);
+  // The mark layer, from the `marks` channel rather than the frame's `cell[1]` byte. Derived here
+  // beside the zone tiles for the same reason: one decode per repaint, one truth for the layer.
+  _markTiles = roomMarkTiles(decodeMarks(Hud.getMarks()), _focus);
 
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor);
@@ -378,24 +382,30 @@ function paintLayers(frame, crew, designs, decor) {
   body += zoneLayerSvg(_zoneTiles, _focus);
   body += decorSvg(roomDecor(decor, _focus));
   body += furnitureSvg(roomCells(frame, _focus));
-  // WP-2 — debris + dig/strip marks, read off the frame's `cell[1]`. ABOVE the material layer, which
-  // paints an opaque U*1.2 swatch over any built wall (so a strip mark under it would be invisible),
-  // and above the zone layer, whose tiles this one deliberately skips (room-model.js markLayerSvg).
+  // WP-2 — debris + dig/strip marks. ⚠️ The old lead *"read off the frame's `cell[1]`"* is FALSE: the
+  // kinds come from the `marks` channel now, decoded in `repaint()` into `_markTiles`. ABOVE the
+  // material layer, which paints an opaque U*1.2 swatch over any built wall (so a strip mark under it
+  // would be invisible), and above the zone layer, whose tiles this one deliberately skips
+  // (room-model.js markLayerSvg).
   //
   // MOVED ABOVE `furnitureSvg` (and `decorSvg`) when the device-strip emitter landed, and the move is
-  // load-bearing, not tidying: a condemned DESK now carries fg 26, and drawn underneath its own
+  // load-bearing, not tidying: a condemned DESK carries a strip mark, and drawn underneath its own
   // furniture sprite the amber ✕ sits behind an opaque item — the player would have condemned it and
   // still seen nothing, which is the very bug being fixed. THE REORDER IS PROVABLY INERT FOR EVERY
-  // PRE-EXISTING MARK: debris (fg 4) and dig (fg 15) only ever ride glyph code 37 (`'%'`), which is
-  // in `NON_FURNITURE`, so `roomCells` never emits a furniture item on a marked tile and the two
-  // layers were disjoint; stockpile is skipped by `markLayerSvg` outright. `room-model.test.js` pins
-  // that disjointness on the real capture rather than leaving it as an argument.
+  // PRE-EXISTING MARK: debris and dig tiles only ever ride glyph code 37 (`'%'`), which is in
+  // `NON_FURNITURE`, so `roomCells` never emits a furniture item on a marked tile and the two layers
+  // were disjoint; stockpile is skipped by `markLayerSvg` outright. `room-model.test.js` pins that
+  // disjointness on the real capture rather than leaving it as an argument.
   //
-  // STILL BELOW `pawnSvg`, deliberately: a crew member must never be hidden by a mark. (The converse
-  // — a mark hidden UNDER a crew member — is not a layer problem and cannot be fixed here: pass 5 of
-  // `GlyphMapper` overwrites the fg byte, so the mark never reaches the client at all. That one needs
-  // the `strips`/`designations` channel, HANDOVER §4g.)
-  body += markLayerSvg(roomMarkTiles(frame, _focus), _focus);
+  // STILL BELOW `pawnSvg`, deliberately: a crew member must never be hidden by a mark.
+  // ⚠️ AND THE PARENTHESIS THAT FOLLOWED IS NOW OBSOLETE — quoted, because it named the fix this
+  // package is: *"(The converse — a mark hidden UNDER a crew member — is not a layer problem and
+  // cannot be fixed here: pass 5 of `GlyphMapper` overwrites the fg byte, so the mark never reaches
+  // the client at all. That one needs the `strips`/`designations` channel, HANDOVER §4g.)"* That
+  // channel is built, it is called `marks`, and a mark under a crew member now reaches the client and
+  // is drawn under the pawn — visible around them, which is what "the pawn is on a condemned tile"
+  // should look like.
+  body += markLayerSvg(_markTiles, _focus);
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();

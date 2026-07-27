@@ -166,7 +166,7 @@ namespace Perilune.Web
                 // next Render changes it. `zones` is listed because a reconnect must not silently drop
                 // the only surface that says WHY a zone never fills; fixing `materials` belongs to
                 // whoever owns that channel.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -970,6 +970,11 @@ namespace Perilune.Web
         /// broadcasts to the test sink) without starting the sim thread.</summary>
         internal void RenderForTest() => Render(0.0, force: true);
 
+        /// <summary>Test-only hook: run one render WITHOUT the force flag, so <see cref="Send"/>'s
+        /// dedupe is live. The forced hook above cannot see a dedupe bug and cannot see a channel that
+        /// ignores <c>force</c>; a test that cares which of the two it is needs both.</summary>
+        internal void RenderUnforcedForTest() => Render(0.0, force: false);
+
         // Conversation-runtime test hooks: block until the in-flight turn lands, drain the chat
         // outbox to the broadcast sink (Render does this live), dispatch any queued say, and read
         // the llmstatus / chronicle payloads — all on the calling (test = sim) thread.
@@ -1120,6 +1125,7 @@ namespace Perilune.Web
             Send("decor", WireFormat.Decor(BuildDecor()), force);
             Send("materials", WireFormat.Materials(BuildMaterials()), force);
             Send("zones", WireFormat.Zones(BuildZones()), force);
+            Send("marks", WireFormat.Marks(BuildMarks()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1531,6 +1537,114 @@ namespace Perilune.Web
                     }
             }
             return _zonesScratch;
+        }
+
+        /// <summary>
+        /// The sparse MARK layer for the standard surface — one <see cref="WireFormat.MarkCell"/> per
+        /// tile carrying debris, a dig order, a stockpile zone or a strip order, read from the
+        /// AUTHORITATIVE registries rather than from the projected <c>cell[1]</c> byte. See
+        /// <c>WireFormat.Marks.cs</c> for what this channel is, why it is called <c>marks</c> and not
+        /// <c>designations</c>, and the three live defects on <c>--ship grid</c> it removes.
+        ///
+        /// PRECEDENCE AND THE FOG GATE ARE <c>GlyphMapper</c> PASS 1'S, LINE FOR LINE — fog first,
+        /// then dig ▸ stockpile ▸ strip ▸ debris. That is not tidiness: it is what keeps this channel
+        /// and the frame from ever disagreeing about what a tile IS. They may now disagree only about
+        /// whether someone is standing on it, which is the entire point of the package.
+        ///
+        /// ORDER — z, y, x, GUARANTEED BY THE WALK AND BY NOTHING ELSE, exactly as
+        /// <see cref="BuildZones"/> and <see cref="BuildMaterials"/>. The one non-plane source, the
+        /// deconstruct registry, is queried by KEY (<see cref="DeconstructSystem.TryGet"/>), never
+        /// enumerated, so no container layout reaches the socket. Re-ordering the loops is the only
+        /// way to change the byte order, which is what <c>MarksChannelTests</c> pins.
+        ///
+        /// COST, AND IT IS THE ONE HONEST WORRY ON THIS CHANNEL. This is a third full pass over the
+        /// world per render (≤10 Hz, on the sim thread inside <see cref="Render"/>, NOT a tick path),
+        /// and unlike <c>zones</c> and <c>materials</c> it is NOT empty on an untouched ship: the grid
+        /// ship boots a wreck, so the payload has real volume from tick 0 and <see cref="Send"/> then
+        /// rebuilds and string-compares it every render for as long as the game runs. MEASURED, on the
+        /// fully-revealed grid ship (the worst case for the walk): <b>+61 microseconds per render</b>
+        /// — 345.2 vs 284.0 µs over 4 000 renders — i.e. ~0.06 % of one core at 10 Hz. The scratch
+        /// list is reused so a steady state allocates only the payload string, and the registry probe
+        /// is short-circuited by <c>anyStrip</c> so a ship with nothing condemned pays one bool per
+        /// tile and no lookup at all. The PAYLOAD size is deliberately not quoted here: it is
+        /// fog-dependent and therefore a moving snapshot, not a constant (see
+        /// <c>MarksChannelTests.The_Boot_Payload_Census_Per_Ship_Is_Pinned</c>).
+        /// </summary>
+        private readonly List<WireFormat.MarkCell> _marksScratch = new List<WireFormat.MarkCell>();
+        private List<WireFormat.MarkCell> BuildMarks()
+        {
+            _marksScratch.Clear();
+            var world = _sim.World;
+            var strip = _sim.Deconstruct;                 // may be null on a reduced system stack
+            bool anyStrip = strip != null && strip.Pending.Count > 0;
+            int w = world.Width, h = world.Height;
+            for (int z = 0; z < world.Depth; z++)
+            {
+                var level = world.Levels[z];
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                    {
+                        int i = level.Index(x, y);
+                        byte flags = level.Flags[i];
+                        // FOG FIRST, mirroring GlyphMapper pass 1. An unexplored tile emits nothing:
+                        // debris is TERRAIN, and shipping it through fog would turn a rendering fix
+                        // into a fog-of-war change.
+                        if ((flags & (byte)TileFlags.Explored) == 0) continue;
+
+                        // PRECEDENCE: dig ▸ strip ▸ stockpile ▸ debris. AN ORDER OUTRANKS A ZONE, AND
+                        // THAT IS THE WHOLE RULE. Ranking stockpile above strip — which is what pass 1
+                        // does, and what the first draft of this file copied — makes a CONDEMNED DEVICE
+                        // INSIDE A STOCKPILE ZONE draw no ✕ anywhere: the Room Zoom's mark layer skips
+                        // the stockpile kind on purpose (the `zones` channel owns that tile) and the
+                        // Overview draws a slate tint instead of the order. That is a live regression
+                        // of the exact bug that cost three owner reports, and it is reachable with two
+                        // ordinary clicks. See the retraction in WireFormat.Marks.cs's header.
+                        //
+                        // NOTE WHY COPYING PASS 1 WAS WRONG EVEN THOUGH PASS 1 IS RIGHT: pass 4 of
+                        // GlyphMapper RE-APPLIES GlyphColor.Deconstruct over a condemned device
+                        // unconditionally, AFTER pass 1's ranking, so pass 1's stockpile-over-strip
+                        // order never gets the last word on the tile that matters. The frame's real
+                        // behaviour is strip-over-stockpile; this now matches it.
+                        int kind;
+                        if ((flags & (byte)TileFlags.Designated) != 0) kind = WireFormat.MarkDig;
+                        else if (anyStrip && strip.TryGet(new Int3(x, y, z), out _)) kind = WireFormat.MarkStrip;
+                        else if ((flags & (byte)TileFlags.Stockpile) != 0) kind = WireFormat.MarkStockpile;
+                        else if (IsDebrisTile(level, i)) kind = WireFormat.MarkDebris;
+                        else continue;
+
+                        _marksScratch.Add(new WireFormat.MarkCell(x, y, z, kind));
+                    }
+            }
+            return _marksScratch;
+        }
+
+        /// <summary>
+        /// True when the tile's TERRAIN reads as rubble — the exact condition under which
+        /// <c>GlyphMapper</c> pass 1 emits <c>GlyphColor.Debris</c>, restated here rather than shared
+        /// because the mapper's version is fused into a glyph+colour decision inside the projection.
+        ///
+        /// THE WALL PLANE WINS: a standing wall is a wall whatever is under it, so <c>Wall</c> returns
+        /// false before the floor is ever consulted; a Debris WALL is rubble; and only a tile whose
+        /// wall is neither (an open tile) falls through to its floor, where a Debris FLOOR is also
+        /// rubble.
+        ///
+        /// ⚠️ AN EARLIER DRAFT OF THIS COMMENT CLAIMED *"Swap the two plane reads and every
+        /// wall-choked wreck tile on the grid ship stops being a mark."* THAT IS FALSE, MEASURED: on
+        /// both authored ships <c>Wall == Debris</c> and <c>Floor == Debris</c> are the SAME tiles
+        /// (48 of each on Perilune, 60 on Grid, intersection 48 / 60 — the two planes are written
+        /// together), and there is NOT ONE standing wall over a debris floor anywhere. So on shipped
+        /// content a floor-first read is an EQUIVALENT MUTANT and swapping the planes changes nothing.
+        /// The ordering still matters as a RULE — pass 1 draws a walled tile as a wall, so marking
+        /// rubble underneath it would mark something the player cannot see — and it is pinned on a
+        /// synthetic disagreement instead of on content that cannot produce one
+        /// (<c>MarksChannelTests.A_Standing_Wall_Beats_A_Debris_Floor_Under_It</c>).
+        /// </summary>
+        private static bool IsDebrisTile(ZLevel level, int i)
+        {
+            ushort wall = level.Wall[i];
+            if (wall == TileDefs.Wall) return false;
+            if (wall == TileDefs.Debris) return true;
+            return level.Floor[i] == TileDefs.Debris;
         }
 
         /// <summary>The live <see cref="HaulJobSource"/> out of the running stack, resolved ONCE

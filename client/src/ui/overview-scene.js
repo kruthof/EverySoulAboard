@@ -34,9 +34,11 @@ import { SPRITE_FOR_GLYPH } from '../render/glyphs.js';
 // WORK markers used, so the two surfaces cannot disagree about who is working).
 import { taskTag } from './console-model.js';
 // The debris/designation mark vocabulary (console-retirement WP-2). SHARED verbatim with the Level-2
-// Room Zoom (`room-model.js` markLayerSvg) so one projected fg byte cannot come to mean two different
+// Room Zoom (`room-model.js` markLayerSvg) so one mark kind cannot come to mean two different
 // things on the two surfaces — see mark-overlay.js's header for why it is its own module.
-import { markForFg, markVariant, markCellSvg } from './mark-overlay.js';
+// ⚠️ `markForFg` is GONE (the `marks` channel): the kind now arrives on the wire, decoded once by the
+// view and handed in. The vocabulary — which mark looks like what — is unchanged.
+import { markVariant, markCellSvg } from './mark-overlay.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -333,39 +335,44 @@ function furnitureLayer(frame, deck, t, id) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 5b — DEBRIS + DESIGNATION MARKS (console-retirement WP-2). The only layer in this file that
-// reads `cell[1]`, the projected `GlyphColor` foreground byte, instead of `cell[0]`.
+// Layer 5b — DEBRIS + DESIGNATION MARKS (console-retirement WP-2; re-sourced by the `marks` channel).
 //
-// It is a layer of its own rather than a change to `furnitureLayer` because every debris and dig
-// cell rides glyph 37 (`'%'`), which is in `NON_FURNITURE` above and must stay there: removing it
-// would push debris through `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so
-// `furnitureLayer`'s `if (!itemId) continue` would still draw nothing — while changing what
-// "furniture" means for the Room Zoom's mirrored copy of that set. ⚠️ THAT LAST STEP IS WHERE THE
-// TWO SURFACES PART, and it is worth knowing before copying this paragraph back the other way: the
-// Room Zoom has NO `continue` there. `furnitureSvg` (`roomzoom-view.js:429-438`) falls through to a
-// VS-Z-25 dashed "unknown" chip, so the same loosening that is merely inert here would draw 33 junk
-// chips over the wreck in the Room Zoom — measured, not reasoned. See `room-model.js`'s copy of this
-// note, which records the corrected version and the wrong first draft it replaced.
-// Keying on the fg byte is also what lets a STRIP mark land on a wall (code 35).
+// ⚠️ IT NO LONGER READS THE FRAME AT ALL. The paragraph that used to head this block is quoted and
+// negated, because it was true when written and describing a source that is now the wrong one:
+// *"The only layer in this file that reads `cell[1]`, the projected `GlyphColor` foreground byte,
+// instead of `cell[0]`."* — FALSE SINCE THE `marks` CHANNEL. `GlyphMapper` writes that byte in pass 1
+// and OVERWRITES it in pass 3 (ground items), pass 4 (devices) and pass 5 (citizens), so on
+// `--ship grid` a crew member walking over a designation made its mark blink out and back, an item
+// stored on a stockpile tile erased the tint, and a device on a dig tile hid the order. The kinds now
+// come from the sim's own registries over the wire, decoded once by `overview-view.js` and handed in.
+// See `hosts/web/WireFormat.Marks.cs`.
 //
-// It draws BELOW the furniture and the pawns and above the room floors: a mark is a fact about the
-// floor, and a crew member or a machine standing on it must not be hidden by it. Stockpile marks ARE
-// drawn here, unlike in the Room Zoom, because this surface has no `zones` overlay of its own.
+// It is still a layer of its own rather than a change to `furnitureLayer`, and that reason has NOT
+// changed with the source: every debris and dig cell rides glyph 37 (`'%'`), which is in
+// `NON_FURNITURE` above and must stay there. Removing it would push debris through
+// `SPRITE_FOR_GLYPH`/`ROLE_TO_ITEM` — which have no mapping for it, so `furnitureLayer`'s
+// `if (!itemId) continue` would still draw nothing — while changing what "furniture" means for the
+// Room Zoom's mirrored copy of that set. ⚠️ THAT LAST STEP IS WHERE THE TWO SURFACES PART, and it is
+// worth knowing before copying this paragraph back the other way: the Room Zoom has NO `continue`
+// there. `furnitureSvg` falls through to a VS-Z-25 dashed "unknown" chip, so the same loosening that
+// is merely inert here would draw 33 junk chips over the wreck in the Room Zoom — measured, not
+// reasoned. See `room-model.js`'s copy of this note.
+//
+// Stockpile marks ARE drawn here, unlike in the Room Zoom, because this surface has no `zones`
+// overlay of its own.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-function markLayer(frame, deck, t) {
-  if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) return '';
+/**
+ * @param {{x:number,y:number,deck:number,mark:string}[]|null} marks  decodeMarks() output
+ */
+function markLayer(marks, deck, t) {
+  if (!Array.isArray(marks) || !marks.length) return '';
   const out = [];
-  for (let ty = 0; ty < frame.h; ty++) {
-    for (let tx = 0; tx < frame.w; tx++) {
-      const cell = frame.cells[ty * frame.w + tx];
-      if (!Array.isArray(cell)) continue;
-      const mark = markForFg(cell[1] | 0);
-      if (!mark) continue;
-      const r = t.rect({ x: tx, y: ty, w: 1, h: 1 });
-      const g = markCellSvg(mark, r.x, r.y, r.w, r.h, markVariant(tx, ty));
-      if (g) out.push(g);
-    }
+  for (const m of marks) {
+    if (!m || (m.deck | 0) !== (deck | 0)) continue;
+    const r = t.rect({ x: m.x, y: m.y, w: 1, h: 1 });
+    const g = markCellSvg(m.mark, r.x, r.y, r.w, r.h, markVariant(m.x, m.y));
+    if (g) out.push(g);
   }
   return out.length ? `<g class="pl-marks" pointer-events="none">${out.join('')}</g>` : '';
 }
@@ -598,6 +605,8 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
  * @param {Array}  [state.crew]          roster crew [{cid,name,role,deck,x,y}].
  * @param {Array}  [state.designs]       build-ghost design cells (or a {cells} message).
  * @param {Array}  [state.terminals]     MOSS terminal directory [{tid,deck,x,y}] — clickable markers.
+ * @param {Array}  [state.marks]         decoded `marks` cells [{x,y,deck,kind,mark}] — the debris /
+ *                                       dig / stockpile / strip layer. NOT derived from `frame`.
  * @param {*}      [state.selectedCid]   the selected crew cid (selection glow + amber tag).
  * @param {string} [state.lens]          the active lens (accepted; resting look only for now).
  * @param {string} [state.idPrefix]      def-id namespace (default 'ov') so many scenes can coexist.
@@ -629,7 +638,7 @@ export function overviewScene(state) {
     // for debris/dig, whose glyph code 37 is in `NON_FURNITURE` so `furnitureLayer`'s
     // `if (!itemId) continue` never draws on a marked tile; stockpile is drawn by neither.
     + furnitureLayer(st.frame, deck, t, id)
-    + markLayer(st.frame, deck, t)
+    + markLayer(st.marks, deck, t)
     + glowPools(slots, t, id)
     + ghostLayer(st.designs, deck, t)
     + terminalLayer(st.terminals, deck, t, id)
