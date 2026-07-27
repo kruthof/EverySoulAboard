@@ -18,6 +18,14 @@ namespace Perilune.Dsl
             {
                 var device = devices[i];
                 if (string.IsNullOrEmpty(device.Name)) continue;
+                // E0-6 — a device MOSS can address is a device with a CONTROLLER MODULE fitted.
+                // `Device.Scriptable` defaults TRUE, so every authored/generated/loaded device is
+                // registered exactly as before and this line is inert on every shipped ship; the
+                // only devices it excludes are the ones the PLAYER placed and has not yet paid a
+                // ControllerModule to commission (PlaceDeviceCommand clears the flag,
+                // CommissionDeviceCommand sets it). Still derived purely from sim state, so both
+                // twins bind identically.
+                if (!device.Scriptable) continue;
                 switch (device.Kind)
                 {
                     case DeviceKind.Door:

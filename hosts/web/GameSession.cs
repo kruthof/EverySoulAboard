@@ -87,6 +87,11 @@ namespace Perilune.Web
         private ShipSystemsReport _systems;
         private double _systemsAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
+
+        /// <summary>Last <c>Simulation.DeviceTopologyVersion</c> the MOSS adapter set was derived
+        /// from (E0-6). Starts at the value the host booted with, because
+        /// <c>SimHost.Build</c> already ran <c>MossBindings.RegisterAdapters</c> once.</summary>
+        private int _deviceTopology;
         private Thread _thread;
         private volatile bool _running;
 
@@ -213,6 +218,21 @@ namespace Perilune.Web
                 }
                 else acc = 0.0;
 
+                // E0-6 — the MOSS DeviceRegistry is HOST state, derived from sim state by
+                // MossBindings.RegisterAdapters and, until now, only ever at boot. A device that
+                // becomes MOSS-scriptable mid-game (CommissionDeviceCommand fitting a controller
+                // module) therefore could not be addressed until the next load, which would have
+                // made the whole ControllerModule sink invisible to the player who paid for it.
+                // DeviceTopologyVersion is the counter the sim already bumps on every device
+                // add/remove and on a commission; re-deriving on a bump is idempotent (Register
+                // REPLACES by name) and costs one pass over the device list, only on the frames
+                // where the ship's device set actually changed.
+                if (_sim.DeviceTopologyVersion != _deviceTopology)
+                {
+                    _deviceTopology = _sim.DeviceTopologyVersion;
+                    MossBindings.RegisterAdapters(_sim, _host.Registry);
+                }
+
                 // A view change must SURVIVE a throttled frame. `viewChanged` is a per-iteration local:
                 // if the render is skipped because we are inside the RenderSeconds window, it used to be
                 // dropped on the floor, and the only thing that re-opened the gate was `ticked` — which a
@@ -266,6 +286,7 @@ namespace Perilune.Web
                 case CmdKind.Filter: HandleFilter(cmd); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
+                case CmdKind.Commission: HandleCommission(cmd); return true;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
@@ -828,6 +849,32 @@ namespace Perilune.Web
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
             _sim.EnqueueCommand(new RemoveDeviceCommand(pos));
             _status = "remove furniture";
+        }
+
+        /// <summary>
+        /// The commissioning bridge (E0-6): fit a <see cref="ItemKind.ControllerModule"/> to the
+        /// device on a tile so MOSS can address it. Enqueues blind exactly as place/remove do —
+        /// <see cref="CommissionDeviceCommand"/> re-validates everything at the tick boundary and
+        /// is a silent no-op when the tile has no device, the device is already commissioned, or
+        /// the ship cannot pay.
+        ///
+        /// The status line is written from what is affordable RIGHT NOW rather than from the
+        /// command's outcome (which is not known until the next tick), so an unaffordable click
+        /// says so instead of looking like nothing happened — the "invisible feedback is
+        /// functional" rule. It is a hint, not a result: a module claimed between this line and
+        /// the drain still refuses.
+        /// </summary>
+        private void HandleCommission(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+            _sim.EnqueueCommand(new CommissionDeviceCommand(pos));
+            int have = CommissionDeviceCommand.Affordable(_sim);
+            int cost = _sim.Defs.Build.CommissionCost;
+            _status = have >= cost
+                ? "commission device (-" + cost.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ctrl mod)"
+                : "no controller module aboard";
         }
 
         /// <summary>
@@ -1906,7 +1953,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -1982,6 +2029,9 @@ namespace Perilune.Web
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
                     // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.
                     case "remove": return new WebCommand(CmdKind.Remove, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
+                    // E0-6 — fit a ControllerModule to the device on a tile, making it
+                    // MOSS-scriptable. Same {x,y,deck} shape as place/remove.
+                    case "commission": return new WebCommand(CmdKind.Commission, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
                     // {"cmd":"addroom","deck":..,"slot":..,"type":"medbay|.."} — commission an empty hall
                     // into a live typed room (Overview ＋ADD ROOM). X=deck, Y=slot, name=roomType string.
                     case "addroom": return new WebCommand(CmdKind.AddRoom, Int(json, "deck"), Int(json, "slot"), name: Str(json, "type"));

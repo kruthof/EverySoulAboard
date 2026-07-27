@@ -371,6 +371,7 @@ namespace Perilune.Sim
                 case "max_staged": if (I(v, k, loc, p, out var f)) d.Build.MaxStaged = f; return true;
                 // E0-5 WP-3: PlaceDeviceCommand's price, in whole Parts — I(), no culture hazard.
                 case "device_place_cost": if (I(v, k, loc, p, out var g)) d.Build.DevicePlaceCost = g; return true;
+                case "commission_cost": if (I(v, k, loc, p, out var h)) d.Build.CommissionCost = h; return true;        // E0-6
                 default: return false;
             }
         }

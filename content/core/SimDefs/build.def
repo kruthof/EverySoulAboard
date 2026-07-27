@@ -34,3 +34,7 @@ door_material         = 1     # Regolith units a Door stages before it can build
 door_construct_ticks  = 1800  # work ticks to hang a Door once materialed (180 s; E0-2 L1 rebase, was 40)
 max_staged            = 64    # cap on concurrent pending designations (queue guard)
 device_place_cost     = 3     # PARTS consumed to place one furniture device (PlaceDeviceCommand)
+commission_cost       = 1     # CONTROLLER MODULES consumed to make one device MOSS-scriptable
+                              # (CommissionDeviceCommand, E0-6). ControllerModule's ONE consumer —
+                              # before E0-6 it had a producer and none, which is what made the
+                              # conversion ladder terminate for good at ~sim-hour 28.

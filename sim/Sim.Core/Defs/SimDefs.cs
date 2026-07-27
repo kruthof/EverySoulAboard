@@ -417,6 +417,24 @@ namespace Perilune.Sim
             /// <c>DefsDefaultTests.Build_DevicePlaceCost_StrictlyExceedsTheBestPossibleStripYield</c>.
             /// </summary>
             public int DevicePlaceCost;
+
+            /// <summary>
+            /// <see cref="CommissionDeviceCommand"/> (E0-6) — <see cref="ItemKind.ControllerModule"/>
+            /// units consumed to make ONE device MOSS-scriptable. Current: 1.
+            ///
+            /// THIS IS THE ONE AND ONLY CONSUMER OF <see cref="ItemKind.ControllerModule"/>
+            /// (ECONOMY.md §11: "No second job for ControllerModule. It gates MOSS scriptability.
+            /// One job."). Before E0-6 the kind had a producer and no consumer anywhere, which is
+            /// what made the whole conversion ladder a matter incinerator terminating at sim-hour 28
+            /// (MECHANICS §13.15).
+            ///
+            /// Priced at ONE because a module already costs 2 Parts = 4 Scrap = ~6 Regolith and
+            /// ~50 minutes of bench work at the shipped rates; the scarcity is upstream, in the
+            /// ladder, not in this number. A zero or negative value makes commissioning free, which
+            /// is the pre-E0-6 world (every device scriptable, nothing spent) and is a legal thing
+            /// for a content pack to ask for.
+            /// </summary>
+            public int CommissionCost;
         }
 
         /// <summary>DeconstructSystem (E0-5) strip costs — build's inverse. A stripped WALL returns
@@ -667,6 +685,7 @@ namespace Perilune.Sim
                     DoorConstructTicks = 1800,
                     MaxStaged = 64,
                     DevicePlaceCost = 3,
+                    CommissionCost = 1,          // E0-6 — ControllerModule's ONE consumer
                 },
 
                 Deconstruct = new DeconstructDefs
@@ -759,7 +778,7 @@ namespace Perilune.Sim
         /// while the table is empty) → Atmosphere.DiffusionCoefficient (B-3, appended)
         /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
         /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended)
-        /// → Wear.SealServiceCondition (E0-6 WP-2, appended).
+        /// → Wear.SealServiceCondition + Build.CommissionCost (E0-6, 2 fields, appended).
         /// Appending a field
         /// ⇒ append one fold at the END (before the rules fold, which stays last so an
         /// empty rule set remains a no-op) so existing checksums stay comparable.
@@ -970,12 +989,13 @@ namespace Perilune.Sim
             // fold order of everything after it and invalidate every recorded checksum.
             h = XxHash64.Combine(h, (ulong)(uint)Build.DevicePlaceCost);
 
-            // E0-6 WP-2 (conversion loss + Seals), appended at the END for the reason every field
-            // since Social-S1 has been: append-at-END is the invariant (README.def HANDOVER
-            // INVARIANT #3). The package's OTHER defs-checksum mover is the [production] table
-            // above — its two new rows fold through the W0-5 loop and need no new call here, which
-            // is exactly what that container was built for.
+            // E0-6 (conversion loss + Seals + the ControllerModule sink), appended at the END for
+            // the reason every field since Social-S1 has been: append-at-END is the invariant
+            // (README.def HANDOVER INVARIANT #3). The lane's THIRD defs-checksum mover is the
+            // [production] table above — its two new rows fold through the W0-5 loop and need no
+            // new call here, which is exactly what that container was built for.
             h = XxHash64.Combine(h, Wear.SealServiceCondition);
+            h = XxHash64.Combine(h, (ulong)(uint)Build.CommissionCost);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).
