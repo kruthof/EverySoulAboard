@@ -769,9 +769,9 @@ namespace Perilune.Web
 
         /// <summary>
         /// Every <see cref="ItemKind"/> accepted — the canonical "accept all" mask, DERIVED from the
-        /// enum rather than written as a literal (0xFF today; 0x7F before E0-6 added Seals — it widened
-        /// on its own). A literal would silently stop covering
-        /// the whole set the day an eighth kind is added; the derived form widens with the enum, and
+        /// enum rather than written as a literal (0x1FF today; 0xFF before E0-7 added Ice, 0x7F before
+        /// E0-6 added Seals — it widened on its own both times). A literal would silently stop covering
+        /// the whole set the day another kind is added; the derived form widens with the enum, and
         /// <c>AcceptAllMaskIsDerivedFromItemKind_NotALiteral</c> pins that. Reflection is fine here:
         /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
         /// into a static. The TUI host derives its own copy the same way — the two host projects share
@@ -1953,6 +1953,7 @@ namespace Perilune.Web
             ItemKind.Scrap => "scrap",
             ItemKind.Parts => "parts",
             ItemKind.ControllerModule => "a controller module",
+            ItemKind.Seals => "seals",
             ItemKind.Ice => "ice",
             _ => "cargo",
         };

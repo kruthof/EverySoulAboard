@@ -41,15 +41,21 @@ namespace Perilune.Sim
     ///     against the hold.
     ///
     /// ⚠ OPEN DEFECT, NOT A LIMIT — <see cref="Simulation.WastewaterLiters"/> HAS NO CAP, and on an
-    /// ice ship that turns hauled hold cargo into an inert abstract stock. MEASURED on HEAD (slice,
-    /// one seed): the pool holds 4,049 L at day 3 and 12,363 L at day 10, a slope of ~1,188 L/day
-    /// against a melt rate of ~1,782 L/day — so roughly TWO THIRDS of everything the crew melt is
-    /// surplus that the loop never needed. Matter is conserved (every litre is melted ice; nothing
-    /// is created), but the hold's runway is therefore a property of what bounds the pool, which is
-    /// nothing, and NOT of the ice economy.
+    /// ice ship that turns hauled hold cargo into an inert abstract stock. RE-MEASURED ON THE
+    /// E0-6 x E0-7 MERGED TREE (`--ship slice`, seed 20260721, n = 1); the figures this paragraph
+    /// used to carry — 4,049 L and 12,363 L — were taken on `lane/e0-7-ice` and moved when E0-6's
+    /// bills landed underneath them. The conclusion did not move.
+    ///
+    /// The pool holds 3,896 L at day 3 and 12,077 L at day 10: a gain of 8,181 L (~1,169 L/day)
+    /// against 494 units of ice melted over the same seven days (12,350 L, ~1,764 L/day). So
+    /// 66.2 % — roughly TWO THIRDS — of everything the crew melt is surplus the loop never needed.
+    /// Matter is conserved (every litre is melted ice; nothing is created), but the hold's runway is
+    /// therefore a property of what bounds the pool, which is nothing, and NOT of the ice economy.
     ///
     /// Reclaim-first ordering (see <see cref="RunMelters"/>) is a partial fix and was worth ~a third
-    /// of the ice: before it the surplus was ~78 % in steady state. The rest needs the melter's
+    /// of the ice: before it the surplus was ~78 % in steady state. THAT 78 % IS A PRE-MERGE
+    /// `lane/e0-7-ice` FIGURE and is deliberately left as one — reproducing it needs the melter
+    /// ordering reverted, which is not a flag. The rest needs the melter's
     /// backpressure to see loop saturation rather than only tank headroom, which is a new def field
     /// and a design decision — and E1's per-crop irrigation retune (ECONOMY.md §10) changes the
     /// whole balance it would be tuned against, so it is deliberately not guessed at here.

@@ -430,12 +430,17 @@ namespace Perilune.Gen
         /// anything is appended, so a second call is an authoring error rather than a quietly
         /// doubled hold.
         ///
-        /// SIZING, MEASURED rather than reasoned, and RE-MEASURED after review moved the number by
-        /// half. The slice burns ~75 units/day (3 sim-days, one seed: 1,600 units went to 1,376;
-        /// 72/day over 10 days), because the hydro loop destroys roughly 0.256 L per litre irrigated
-        /// and irrigation is per-SECOND until ECONOMY.md §10's per-crop retune lands in E1. 4 tiles
-        /// x 50 stacks x 8 units = 1,600 units is therefore about TWENTY-ONE sim-days — call it 7x
-        /// the standard 3-day measurement window.
+        /// SIZING, MEASURED rather than reasoned, RE-MEASURED after review moved the number by half,
+        /// and RE-MEASURED AGAIN ON THE E0-6 x E0-7 MERGED TREE — the figures below are the merged
+        /// ones, because the numbers this comment carried were taken on `lane/e0-7-ice` and moved
+        /// when E0-6's bills landed underneath them (they said 1,376 left at day 3 and ~75/day).
+        ///
+        /// Merged, `--ship slice`, seed 20260721, n = 1: 4 tiles x 50 stacks x 8 units = 1,600 units
+        /// at boot; 1,382 left at day 3 and 888 at day 10, i.e. 72.7 units/day over three days and
+        /// 71.2 over ten. The burn is that high because the hydro loop destroys roughly 0.256 L per
+        /// litre irrigated and irrigation is per-SECOND until ECONOMY.md §10's per-crop retune lands
+        /// in E1. So 1,600 units is about TWENTY-TWO AND A HALF sim-days (1,600 / 71.2) — call it
+        /// 7x the standard 3-day measurement window.
         ///
         /// ⚠ THE FIRST DRAFT OF THIS COMMENT SAID FOURTEEN, and that was not a rounding error: the
         /// melter ran BEFORE the reclaimer, so finite hauled ice was claiming tank headroom ahead of

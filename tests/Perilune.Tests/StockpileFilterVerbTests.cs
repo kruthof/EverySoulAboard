@@ -205,7 +205,7 @@ namespace Perilune.Tests
         /// evaporated with the suite green. It is now <c>0x3F3</c>: bit 9 belongs to no kind and is
         /// canonicalised away, leaving <c>0x1F3</c> (everything except Corpse and Potato), which is a
         /// REAL restriction and therefore a real stored entry. Whoever adds ItemKind 9 must move it
-        /// again — the "NOT stored verbatim" assertion below is what will say so.
+        /// again — the PRECONDITION assertion below is what says so, and it says so first.
         ///
         /// THE THREE ROWS AND THE MUTATION EACH ONE ANSWERS FOR. Measured full-suite, not asserted:
         ///
@@ -262,25 +262,36 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: (int)Probe));
             host.Sim.Tick();
 
-            // Spelled as the OPERATION, not as its result, so the expectation cannot silently absorb
-            // a change in what the sim considers canonical. 0x1FF once both wave lanes landed
-            // (E0-6's Seals = 7, E0-7's Ice = 8); the literal is deliberately NOT written here.
-            const ulong canonical = Probe & 0x1FFUL;
+            // THE EXPECTATION IS SPELLED FROM THE ENUM AT RUNTIME, and it must be, for two separate
+            // reasons that pull in opposite directions:
+            //   * NOT from a literal (this was `Probe & 0x1FFUL`, and the adjacent comment claimed
+            //     "the literal is deliberately NOT written here" while writing it). Both operands
+            //     were then compile-time constants, so the PRECONDITION below compared two consts
+            //     and could not fail for any enum — a tautology advertised as a tripwire.
+            //   * NOT from <see cref="StockZoneSystem.AcceptAllMask"/> either. `SetFilter` does
+            //     `mask &= AcceptAllMask`, so borrowing that constant would re-derive the subject
+            //     with the subject's own expression (§5.2 rule 1) and the equality would move with
+            //     any change to it.
+            // Per-BIT off Enum.GetValues, hoisted here because two assertions below need it: with a
+            // hole in the enum, "above the last kind" is not the same set as "not a declared kind",
+            // and a single shift would have let bit 7 — while it was nobody's — through unnoticed.
+            ulong declared = 0;
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind))) declared |= 1UL << (int)k;
+            ulong canonical = Probe & declared;
+
             Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask),
                 "a real restriction stores a real entry");
-            // NON-VACUITY, and it is the assertion that fails on the day ItemKind grows past 9: if the
-            // probe has no undefined bit left in it, canonicalisation removes nothing, the mask IS
-            // stored verbatim and this test would otherwise pass while measuring nothing.
+            // NON-VACUITY, and it really is the assertion that fires on the day ItemKind grows past
+            // 9: `declared` widens with the enum, so a probe whose every bit has become a real kind
+            // makes canonical == Probe. Canonicalisation would then remove nothing, the mask WOULD be
+            // stored verbatim, and every assertion below would pass while measuring nothing.
+            // VERIFIED by mutation (ItemKind.Junk = 9 appended, observed red, reverted): this line is
+            // the first to fail and it names the reason.
             Assert.AreNotEqual(canonical, Probe,
                 "PRECONDITION: the probe must carry at least one bit belonging to no ItemKind, or " +
                 "there is nothing for canonicalisation to remove — pick a higher probe");
             Assert.AreNotEqual(Probe, mask, "the over-wide mask was NOT stored verbatim");
             Assert.AreEqual(canonical, mask);
-            // Per-BIT, not a single shift: with a hole in the enum "above the last kind" is no longer
-            // the same thing as "not a declared kind", and the shift form would have let bit 7 — a
-            // kind that does not exist — through unnoticed.
-            ulong declared = 0;
-            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind))) declared |= 1UL << (int)k;
             Assert.AreEqual(0UL, mask & ~declared,
                 "no bit belonging to an undeclared ItemKind survives into hashed state");
             Assert.AreNotEqual(0UL, mask & (1UL << (int)ItemKind.Ice),

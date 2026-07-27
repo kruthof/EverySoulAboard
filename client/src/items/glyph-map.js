@@ -21,9 +21,13 @@
 // which reach the same `roomCells` → `furnitureSvg` else-branch and which this table does not
 // address at all. What deriving removes is the HAND-MIRROR class: two view files that could drift
 // from each other and from `ITEMS`. The unskinned-glyph class is still open on the item side, is
-// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger (8
-// entries since E0-7 added `Ice`, 7 of them visibly chipping, both pinned by equality), and is
-// chartered separately.
+// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger, and is
+// chartered separately. THE LEDGER HAS 9 ENTRIES, 8 OF THEM VISIBLY CHIPPING — one per declared
+// ItemKind, all but Corpse (whose '&' is in NON_FURNITURE on both SVG surfaces and so draws
+// nothing at all). Both numbers are pinned by EQUALITY over there (`EXPECT_ITEM_KINDS` and
+// `EXPECT_CHIPPING_ITEM_KINDS`), so this sentence is prose ABOUT a pin and must be re-COUNTED
+// against it, never incremented: it read "8 entries, 7 chipping" through the E0-6 x E0-7 wave,
+// which was already off by one before the wave and off by two after it.
 //
 // `SPRITE_FOR_GLYPH` is NOT retired: it is the *WebGL/canvas* skin's table (`render/compose.js`,
 // `render/webgl/batch.js`, the frozen `hosts/web/Client.html`), where roles carry facing and the
