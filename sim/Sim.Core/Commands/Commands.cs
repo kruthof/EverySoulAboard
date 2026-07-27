@@ -516,15 +516,23 @@ namespace Perilune.Sim
             _pos = pos;
         }
 
+        /// <summary>
+        /// ⚠️ TWO OF THE FOUR GUARDS BELOW ARE UNTESTED, AND THAT IS RECORDED RATHER THAN HIDDEN
+        /// (the same disclosure <c>MaintenanceSystem.RestoredCondition</c>'s unreachable arm gets).
+        /// <c>InBounds</c> and the nameless-device check are DEFENSIVE: the host clamps every
+        /// coordinate before enqueueing (<c>GameSession.HandleCommission</c>), and every device
+        /// <c>Simulation.AddDevice</c> creates through a player path is given a deterministic name,
+        /// so neither guard is reachable from any surface that exists today. No mutation in the
+        /// package's harness turns them red, because no mutation can. They are kept because a
+        /// future authoring path could produce either shape and a module spent on a nameless device
+        /// would buy the player nothing — but nobody should read them as covered.
+        /// </summary>
         public void Execute(Simulation sim)
         {
-            if (!sim.World.InBounds(_pos)) return;
+            if (!sim.World.InBounds(_pos)) return;                  // UNTESTED — see above
             if (!sim.TryGetDeviceAt(_pos, out var device)) return;
             if (device.Scriptable) return;            // already fitted — never charge twice
-            if (string.IsNullOrEmpty(device.Name)) return; // MOSS addresses devices BY NAME; a
-                                                           // nameless device could never be
-                                                           // registered, so a module spent on one
-                                                           // would buy the player nothing.
+            if (string.IsNullOrEmpty(device.Name)) return;          // UNTESTED — see above
             // CHARGED LAST, so every rejection above leaves the ship's matter untouched.
             if (!LooseMatter.TryPay(sim, Currency, sim.Defs.Build.CommissionCost)) return;
             device.Scriptable = true;

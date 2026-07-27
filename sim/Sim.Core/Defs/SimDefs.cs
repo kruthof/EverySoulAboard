@@ -267,10 +267,24 @@ namespace Perilune.Sim
             /// would be walking to fetch a consumable that buys him nothing over empty hands, which
             /// is strictly worse than not having the rung.
             ///
-            /// Why a shorter cycle rather than a worse one: ECONOMY.md §3.2 calls Seals "cheap,
-            /// high-turnover — the drain that never stops". 0.9 against a Parts overhaul's 1.0 means
-            /// a sealed machine falls back below <c>maintain_below</c> sooner, so the SAME machine
-            /// asks for service more often. The recurrence is the mechanic; the 0.1 is the dial.
+            /// ⚠️ WHAT THIS RUNG ACTUALLY DOES, CORRECTED FROM MEASUREMENT. An earlier draft of this
+            /// comment argued "a shorter cycle": 0.9 against a Parts overhaul's 1.0 means the same
+            /// machine asks for service sooner, so the drain recurs faster. <b>That reasoning
+            /// describes a comparison the rung cannot reach.</b> Parts outrank Seals
+            /// (<c>MaintenanceSystem.FindNearestConsumable</c>), so whenever a Part exists the
+            /// service is an overhaul and this value is never consulted. The rung is only ever
+            /// reached with NO Parts aboard, where the live comparison is
+            /// <b>0.6-vs-0.9, not 1.0-vs-0.9</b> — and against a jury-rig it is a LONGER cycle, so
+            /// maintenance recurs LESS.
+            ///
+            /// Measured on the slice, 3 sim-days, one seed: the post-cliff h29–h72 busy floor falls
+            /// <b>1.482 % → 0.902 %</b> and <c>Maintain</c> <b>0.90 % → 0.55 %</b> with the rung in
+            /// and every other E0-6 change reverted. That is the rung working, not failing: ten
+            /// services that used to leave a machine at 0.6 now leave it at 0.9, and the ship needs
+            /// fewer of them. What the value buys is CONDITION on a ship that has run out of Parts,
+            /// which is the state the shipped economy spends most of its life in; the cheap
+            /// high-turnover framing of ECONOMY.md §3.2 belongs to a ship that has BOTH tiers in
+            /// stock at once, and nothing in E0 produces that yet.
             /// </summary>
             public float SealServiceCondition;
         }
@@ -427,6 +441,15 @@ namespace Perilune.Sim
             /// One job."). Before E0-6 the kind had a producer and no consumer anywhere, which is
             /// what made the whole conversion ladder a matter incinerator terminating at sim-hour 28
             /// (MECHANICS §13.15).
+            ///
+            /// SCHEDULE NOTE: ECONOMY.md §3.2's staging table puts ControllerModule's consumer in
+            /// <b>E2</b>, gated behind <c>Circuits</c>. E0-6 pulls the CONSUMER forward and leaves
+            /// the Circuits gate where it is. That is consistent rather than contrary: §11 fixes
+            /// the JOB ("one job", MOSS scriptability) and E0-6 implements exactly that job, while
+            /// §3.2's E2 row is about what it costs to MAKE a module, not about what a module is
+            /// FOR — E2 adding <c>Circuits:1</c> to the MachineShop's bill needs nothing here to
+            /// change. The forward pull is the point of the package: leaving the sink until E2
+            /// leaves the terminal accumulator in place for two more phases.
             ///
             /// Priced at ONE because a module already costs 2 Parts = 4 Scrap = ~6 Regolith and
             /// ~50 minutes of bench work at the shipped rates; the scarcity is upstream, in the
@@ -716,7 +739,14 @@ namespace Perilune.Sim
 
             // Index = (int)DeviceKind — verbatim copy of CraftingSystem.TryGetRecipe.
             d.Recipes = new RecipeDef[d.Machines.Length];
-            d.Recipes[(int)DeviceKind.SalvageRecycler] = new RecipeDef(ItemKind.Regolith, 1, ItemKind.Scrap, 2, 600);
+            // E0-6: the LEGACY row moves WITH the [production] node, and it has to. The node is
+            // what runs, but the [recipes] array is still the fallback leg for any defs set that
+            // declares an EMPTY [production] section (a legal thing for a content pack to do, and
+            // a path DefsProductionTests drives), and this row shipped as
+            // Regolith:1 -> Scrap:2 — the mass creation E0-6 exists to remove, sitting one
+            // reachable branch away from the fix. Same ratio, same work_s, so the two spellings of
+            // the recycler can no longer disagree about whether the hull is a closed box.
+            d.Recipes[(int)DeviceKind.SalvageRecycler] = new RecipeDef(ItemKind.Regolith, 4, ItemKind.Scrap, 3, 2400);
             d.Recipes[(int)DeviceKind.Fabricator] = new RecipeDef(ItemKind.Scrap, 2, ItemKind.Parts, 1, 900);
             d.Recipes[(int)DeviceKind.MachineShop] = new RecipeDef(ItemKind.Parts, 2, ItemKind.ControllerModule, 1, 1800);
 
@@ -731,11 +761,23 @@ namespace Perilune.Sim
             //  That is MASS CREATION (ECONOMY.md §2.1: "the hull is a closed box"), and it is
             //  where roughly half of the pre-E0-6 economy came from: 62 Regolith became 124
             //  Scrap became 62 Parts became 31 ControllerModules, and every unit past the first
-            //  62 was counterfeit. 4:3 is 75 % recovery — the COARSEST ratio near ECONOMY.md
-            //  §10's proposed 85 % (production.def: "prefer the coarsest ratio that says what
-            //  you mean"; 85 % exactly would be Regolith:20 -> Scrap:17, twenty staging trips
-            //  per batch). work_s is scaled WITH the batch (600 -> 2400) so the per-unit work
-            //  rate is byte-identical to shipped and the ONLY variable is the yield.
+            //  62 was counterfeit. work_s is scaled WITH the batch (600 -> 2400) so the per-unit
+            //  work rate is byte-identical to shipped and the ONLY variable is the yield.
+            //
+            //  WHY 75 % AND NOT ECONOMY.md §10's 85 %, three reasons and none is a compromise.
+            //  (1) §10 quotes 85 % for the REVERSE hop — "recycler 1 Scrap -> 0.85 Stock", Scrap
+            //  going UP into Stock, which is §4's graph direction and NOT the direction shipped
+            //  content runs; this row is Stock going DOWN into Scrap, so there is no §10 figure
+            //  here to disobey. (2) Because fab_components is unit-lossless by construction, this
+            //  is the ladder's ONE efficiency dial: 1 Regolith buys 0.75 units of component, full
+            //  stop — one legible number instead of two silent loss points a player would have to
+            //  multiply together. (3) It is the COARSEST ratio that says that (production.def:
+            //  "prefer the coarsest ratio that says what you mean"); 85 % exactly is
+            //  Regolith:20 -> Scrap:17, twenty staging trips per batch.
+            //  MEASURED MAGNITUDE, so nobody has to guess: 4:3 ends the 3-day slice on 11
+            //  ControllerModules, 8:7 (87.5 %) on ~13, against the pre-E0-6 31. THE RATIO IS NOT
+            //  THE LEVER — removing the x2 is. Any ratio <= 1 caps Scrap at the 62 Regolith
+            //  aboard, so no choice available in this column restores the shipped economy's size.
             //
             //  fab_components — input, count and work_s are UNCHANGED from the legacy row
             //  (Scrap:2, 900 s). The shipped row destroyed one of those two units with no

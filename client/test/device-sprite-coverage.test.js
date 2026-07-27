@@ -395,7 +395,7 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
 const EXPECT_CHIPPING_ITEM_KINDS = 7;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
 
-test('THE OPEN GAP, MEASURED: exactly six ItemKinds still draw a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly seven ItemKinds still draw a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];

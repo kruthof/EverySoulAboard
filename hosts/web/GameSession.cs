@@ -98,6 +98,35 @@ namespace Perilune.Web
         /// devices authoring happened to add, for no behavioural gain.
         /// </summary>
         private int _deviceTopology;
+
+        /// <summary>
+        /// E0-6 — re-derive the MOSS adapter set when the ship's device set has changed. Returns
+        /// true when it actually rebound, so a caller (and a test) can tell a rebind from a no-op.
+        ///
+        /// The MOSS <c>DeviceRegistry</c> is HOST state, derived from sim state by
+        /// <c>MossBindings.RegisterAdapters</c> and, until E0-6, only ever at boot. A device that
+        /// becomes MOSS-scriptable mid-game — <see cref="CommissionDeviceCommand"/> fitting a
+        /// controller module — therefore could not be addressed until the next load, which would
+        /// have made the whole ControllerModule sink invisible to the player who paid for it.
+        /// <c>DeviceTopologyVersion</c> is the counter the sim already bumps on every device
+        /// add/remove and on a commission; re-deriving on a bump is idempotent (<c>Register</c>
+        /// REPLACES by name) and costs one pass over the device list, only on the frames where the
+        /// ship's device set actually changed.
+        ///
+        /// <para>EXTRACTED FROM THE RUN LOOP so it can be driven (E0-6 review). Inline, both this
+        /// block and <c>CommissionDeviceCommand</c>'s <c>DeviceTopologyVersion++</c> were
+        /// SURVIVORS — measured: deleting either left the whole suite green, because the only test
+        /// that observed a mid-game rebind called <c>RegisterAdapters</c> by hand. The run loop is
+        /// the sole caller and it is a one-line call now, so a deletion is a one-line diff rather
+        /// than a silent behaviour loss.</para>
+        /// </summary>
+        internal bool SyncMossAdaptersIfTopologyChanged()
+        {
+            if (_sim.DeviceTopologyVersion == _deviceTopology) return false;
+            _deviceTopology = _sim.DeviceTopologyVersion;
+            MossBindings.RegisterAdapters(_sim, _host.Registry);
+            return true;
+        }
         private Thread _thread;
         private volatile bool _running;
 
@@ -224,20 +253,7 @@ namespace Perilune.Web
                 }
                 else acc = 0.0;
 
-                // E0-6 — the MOSS DeviceRegistry is HOST state, derived from sim state by
-                // MossBindings.RegisterAdapters and, until now, only ever at boot. A device that
-                // becomes MOSS-scriptable mid-game (CommissionDeviceCommand fitting a controller
-                // module) therefore could not be addressed until the next load, which would have
-                // made the whole ControllerModule sink invisible to the player who paid for it.
-                // DeviceTopologyVersion is the counter the sim already bumps on every device
-                // add/remove and on a commission; re-deriving on a bump is idempotent (Register
-                // REPLACES by name) and costs one pass over the device list, only on the frames
-                // where the ship's device set actually changed.
-                if (_sim.DeviceTopologyVersion != _deviceTopology)
-                {
-                    _deviceTopology = _sim.DeviceTopologyVersion;
-                    MossBindings.RegisterAdapters(_sim, _host.Registry);
-                }
+                SyncMossAdaptersIfTopologyChanged();
 
                 // A view change must SURVIVE a throttled frame. `viewChanged` is a per-iteration local:
                 // if the render is skipped because we are inside the RenderSeconds window, it used to be

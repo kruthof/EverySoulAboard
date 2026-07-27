@@ -5,6 +5,8 @@ using System.IO;
 using System.Threading;
 using Perilune.Dsl;
 using Perilune.Gen;
+using Perilune.Tui;      // SimHost
+using Perilune.Web;      // GameSession, WebCommand, CmdKind
 using Perilune.Sim;
 using NUnit.Framework;
 
@@ -180,6 +182,146 @@ namespace Perilune.Tests
             Assert.That(seen, Is.EqualTo(3), "non-vacuity: all three crafting stations were measured");
             Assert.That(strictlyLossy, Is.GreaterThan(0),
                 "a ladder in which every hop merely BREAKS EVEN is not a lossy ladder");
+
+            // AND THE LEGACY ARRAY ON ITS OWN. TryGetBill prefers the [production] node, so the
+            // loop above never reads Recipes[SalvageRecycler] — and that row shipped as
+            // Regolith:1 -> Scrap:2, i.e. the mass creation E0-6 removed, still reachable through
+            // the fallback leg by any defs set that declares an EMPTY [production] section. The
+            // DefsParser guard does NOT cover that case (it covers "no [production] SECTION at
+            // all"), so the row itself had to move, and this is what says it did.
+            int legacySeen = 0;
+            for (int k = 0; k < defs.Recipes.Length; k++)
+            {
+                var r = defs.Recipes[k];
+                if (!r.Defined) continue;
+                legacySeen++;
+                Assert.That(r.OutputCount, Is.LessThanOrEqualTo(r.InputCount),
+                    "[recipes] row for " + (DeviceKind)k + " returns " +
+                    r.OutputCount.ToString(CultureInfo.InvariantCulture) + " for " +
+                    r.InputCount.ToString(CultureInfo.InvariantCulture) +
+                    ". The fallback leg is as much of the shipped ladder as the node table is.");
+            }
+            Assert.That(legacySeen, Is.EqualTo(3), "non-vacuity: all three legacy rows were measured");
+        }
+
+        /// <summary>
+        /// THE CONSERVATION PROPERTY TEST (ECONOMY-PLAN §5.1, mandatory and until now written
+        /// nowhere). Driven on the shipped slice for THREE SIM-DAYS: at no sample does the ship
+        /// hold more units of the metal ladder than it started with plus everything it has dug.
+        ///
+        /// WHY IT IS SCOPED TO THE METAL LADDER, stated rather than glossed. "Total units aboard"
+        /// is NOT non-increasing and never was: hydroponics grows <c>Potato</c> and a death mints a
+        /// <c>Corpse</c>, both genuine sources with nothing to do with conversion. The closed-box
+        /// axiom (ECONOMY.md §2.1) is a claim about the CONVERSION LADDER, so that is what is
+        /// measured — Regolith · MetalOre · Scrap · Parts · Seals · ControllerModule — against its
+        /// one in-sim source, the debris field (<c>DigJobSource</c>, one Regolith per cleared
+        /// tile).
+        ///
+        /// THIS IS THE TEST THAT WOULD HAVE CAUGHT THE PRE-E0-6 DEFECT AT THE SYSTEM LEVEL. The
+        /// shipped SalvageRecycler row turned 1 Regolith into 2 Scrap; against this invariant that
+        /// is a runaway — the ladder mints a unit per batch out of nothing — and it is caught by
+        /// running the ship rather than by reading a defs row. Measured with main's ratio restored: it
+        /// fires at tick 30 000 (50 sim-minutes), holding 32 units against a budget of 31.
+        ///
+        /// THE SECOND ASSERTION IS THE NON-VACUITY ONE and it is the more interesting half: the
+        /// ladder must end STRICTLY BELOW its budget. An invariant of the form "never more than X"
+        /// is satisfied by a ship that never converts anything at all.
+        ///
+        /// LIMITS, meant literally and in the name: ONE SEED, ONE SHIP, ONE RUN, and it samples
+        /// every <c>SampleEvery</c> ticks rather than continuously — a violation that opened and
+        /// closed entirely inside one sampling window would be missed. It also does not cover
+        /// build (which consumes Regolith into walls) or strip (which returns it): the shipped
+        /// slice designates neither, so both are out of the measured window and are named here
+        /// rather than implied.
+        ///
+        /// COST: ~70 s of wall clock, the single most expensive test in the suite. That is the
+        /// price of the window ECONOMY-PLAN §5.1 asks for; a ten-sim-minute version of this test
+        /// would be the <c>EconomyIsSustainable</c> lie its §5.2 rule 4 names.
+        ///
+        /// NAMED MUTATION: restore the pre-E0-6 recycler row (<c>Regolith:1 → Scrap:2</c>, 600 s)
+        /// in <see cref="SimDefs.CreateDefault"/> — the budget assertion fails, naming the tick and
+        /// the overshoot. (Applied, observed red, reverted.)
+        /// </summary>
+        [Test]
+        public void MetalLedger_NeverExceedsOpeningStockPlusDigYield_OverThreeSimDaysOnTheSlice()
+        {
+            const int ThreeSimDays = 3 * 24 * 60 * 60 * Simulation.TicksPerSecond;
+            const int SampleEvery = 10_000;
+
+            var host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default);
+            AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
+            var sim = host.Sim;
+
+            int opening = MetalUnits(sim);
+            int debrisAtStart = DebrisTiles(sim);
+            Assert.That(opening, Is.GreaterThan(0), "non-vacuity: the slice really boots with stock");
+            Assert.That(debrisAtStart, Is.GreaterThan(0), "non-vacuity: the slice really boots with debris");
+
+            int worstSlack = int.MaxValue;
+            for (int t = 1; t <= ThreeSimDays; t++)
+            {
+                sim.Tick();
+                if (t % SampleEvery != 0) continue;
+
+                int dug = debrisAtStart - DebrisTiles(sim);   // the ladder's ONE in-sim source
+                int budget = opening + dug;
+                int held = MetalUnits(sim);
+                int slack = budget - held;
+                if (slack < worstSlack) worstSlack = slack;
+
+                Assert.That(held, Is.LessThanOrEqualTo(budget),
+                    "MATTER CREATED. At tick " + t.ToString(CultureInfo.InvariantCulture) + " the ship holds " +
+                    held.ToString(CultureInfo.InvariantCulture) + " units of the metal ladder against a budget of " +
+                    budget.ToString(CultureInfo.InvariantCulture) + " (" +
+                    opening.ToString(CultureInfo.InvariantCulture) + " aboard at boot + " +
+                    dug.ToString(CultureInfo.InvariantCulture) + " dug). ECONOMY.md §2.1: the hull is a closed box " +
+                    "and the voyage is the only faucet — a conversion that returns more than it took is the " +
+                    "defect E0-6 exists to remove, and the shipped ladder had one.");
+            }
+
+            Assert.That(MetalUnits(sim), Is.LessThan(opening + (debrisAtStart - DebrisTiles(sim))),
+                "NON-VACUITY, and the real claim: three sim-days of conversion must end STRICTLY " +
+                "below the budget. A ship that converted nothing at all would satisfy the loop above.");
+            Assert.That(worstSlack, Is.GreaterThan(0),
+                "and the ledger was strictly under budget at every sample, not merely at the end");
+        }
+
+        /// <summary>Units of the CONVERSION LADDER aboard, carried and loose alike. Deliberately
+        /// not "all items": Potato is grown and Corpse is minted by death, neither through a
+        /// conversion, so folding them in would measure the biological loop instead of the
+        /// closed-box axiom.</summary>
+        private static int MetalUnits(Simulation sim)
+        {
+            int n = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                switch (items[i].Kind)
+                {
+                    case ItemKind.Regolith:
+                    case ItemKind.MetalOre:
+                    case ItemKind.Scrap:
+                    case ItemKind.Parts:
+                    case ItemKind.Seals:
+                    case ItemKind.ControllerModule:
+                        n += items[i].Count;
+                        break;
+                }
+            }
+            return n;
+        }
+
+        /// <summary>Debris tiles left in the world — the ladder's one in-sim source, one Regolith
+        /// per tile cleared (DigJobSource).</summary>
+        private static int DebrisTiles(Simulation sim)
+        {
+            int n = 0;
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                        if (w.GetWall(new Int3(x, y, z)) == TileDefs.Debris) n++;
+            return n;
         }
 
         // ══════════════════════════════════════════════════════ 2. SEALS — producer + consumer
@@ -301,22 +443,39 @@ namespace Perilune.Tests
 
         /// <summary>
         /// TIER BEFORE DISTANCE, and it is the property that makes the new rung strictly additive:
-        /// a Seals stack lies AT the servicer's staging tile and a Parts stack lies at the far end
-        /// of the bay, and the servicer walks past the Seals to fetch the Part.
+        /// the Seals stack lies UNDER THE SERVICER'S FEET and the Part lies at the far end of the
+        /// bay, and he walks past the Seals to fetch the Part.
         ///
         /// If the preference were nearest-first-across-kinds, this ship would burn its cheap tier
         /// while a full overhaul was available, and every pre-E0-6 maintenance decision on a ship
         /// holding both would silently change.
         ///
-        /// NAMED MUTATION: swap the two legs of <c>FindNearestConsumable</c> (Seals first) — the
-        /// Seals count drops to 2 and the Parts count stays 1, and both assertions fail.
+        /// ⚠️ THE GEOMETRY IS THE TEST, and the first draft of this file got it BACKWARDS — Parts
+        /// at the servicer's tile (distance 0) and Seals three tiles away, so nearest-across-kinds
+        /// picked Parts too and the test could not see the difference. Independent review measured
+        /// the hole: with the tier order replaced by a single nearest-across-kinds scan, the whole
+        /// suite stayed green. Distance is measured from the SERVICER (FindNearestConsumable takes
+        /// <c>worker.Pos</c>), not from the machine, which is why the stack that has to be nearer
+        /// is the one at (1,2,0) — where BuildBench puts the crew member.
+        ///
+        /// NAMED MUTATIONS, both applied: swap the two legs of <c>FindNearestConsumable</c> (Seals
+        /// first), and — the one that actually matters — replace it with a single nearest-across-
+        /// kinds scan over both kinds. Each turns this red.
         /// </summary>
         [Test]
         public void PartsOutrankSeals_EvenWhenTheSealsAreNearer()
         {
             var (sim, machine) = BuildNeedyMachine();
-            sim.AddItem(ItemKind.Seals, 3, new Int3(4, 2, 0)); // right beside the machine
-            sim.AddItem(ItemKind.Parts, 1, new Int3(1, 2, 0)); // the far end of the bay
+            sim.AddItem(ItemKind.Seals, 3, new Int3(1, 2, 0)); // UNDER the servicer's feet
+            sim.AddItem(ItemKind.Parts, 1, new Int3(5, 2, 0)); // the far end of the bay
+
+            // The premise the whole test rests on, asserted rather than assumed: the SEALS really
+            // are the nearer stack from where the servicer stands.
+            var servicer = sim.Citizens.Items[0];
+            Assert.That(Int3.Manhattan(servicer.Pos, new Int3(1, 2, 0)),
+                Is.LessThan(Int3.Manhattan(servicer.Pos, new Int3(5, 2, 0))),
+                "premise: the Seals stack is strictly nearer the servicer than the Part, or a " +
+                "nearest-first-across-kinds implementation would pass this test too");
 
             Run(sim, MaintainableKindTicks);
 
@@ -355,6 +514,85 @@ namespace Perilune.Tests
         }
 
         // ═══════════════════════════════════════════ 3. CONTROLLERMODULE'S ONE CONSUMER
+
+        /// <summary>
+        /// THE HOST-SIDE REBIND, DRIVEN — the leg that was a pair of SURVIVORS until independent
+        /// review measured them: deleting <c>DeviceTopologyVersion++</c> from
+        /// <see cref="CommissionDeviceCommand"/>, or deleting the whole re-derive block from
+        /// <c>GameSession</c>'s run loop, both left the entire suite green. The only test that
+        /// observed a mid-game rebind called <c>MossBindings.RegisterAdapters</c> BY HAND, so it
+        /// proved the binding recipe honours the flag and proved nothing at all about the host ever
+        /// running it.
+        ///
+        /// This drives the REAL <c>GameSession</c> against a REAL <c>SimHost</c>: the same
+        /// <c>{"cmd":"commission"}</c> path a client would use, then the host's own
+        /// <c>SyncMossAdaptersIfTopologyChanged</c>, then the host's own
+        /// <c>DeviceRegistry</c> — the one the MOSS interpreter and the <c>&gt;</c> prompt resolve
+        /// through. Nothing is registered by hand anywhere in it.
+        ///
+        /// NAMED MUTATIONS, both applied: delete <c>sim.DeviceTopologyVersion++</c> from
+        /// <see cref="CommissionDeviceCommand"/> (the sync returns false and the device is never
+        /// addressable), and make <c>SyncMossAdaptersIfTopologyChanged</c> return false without
+        /// rebinding (same). Each turns this red; before this test, neither turned anything red.
+        /// </summary>
+        [Test]
+        public void TheHostItselfRebindsMoss_WhenADeviceIsCommissionedMidGame()
+        {
+            var sink = new List<string>();
+            var host = SimHost.Build(SimHost.DefaultSeed);
+            var gs = new GameSession(host, sink.Add); // NOT started ⇒ no sim thread
+            var sim = host.Sim;
+
+            // Boot already bound the adapters once, so drain that first transition before
+            // measuring — otherwise "it rebound" could be the boot bump, not the commission.
+            gs.SyncMossAdaptersIfTopologyChanged();
+            Assert.That(gs.SyncMossAdaptersIfTopologyChanged(), Is.False,
+                "premise: with the device set unchanged the host does NOT rebind — so the true " +
+                "below is caused by the commission and not by a counter that always differs");
+
+            var spot = FirstFreeFloor(sim);
+            sim.AddItem(ItemKind.Parts, sim.Defs.Build.DevicePlaceCost, spot);
+            sim.AddItem(ItemKind.ControllerModule, sim.Defs.Build.CommissionCost, spot);
+            gs.ApplyForTest(new WebCommand(CmdKind.Place, spot.X, spot.Y, i: spot.Z, name: "growbed"));
+            sim.Tick();
+            Assert.That(sim.TryGetDeviceAt(spot, out var placed), Is.True, "premise: the device was placed");
+            Assert.That(placed.Scriptable, Is.False, "premise: it arrives uncommissioned");
+
+            // Placing bumped the topology too, so drain that transition as well: what we are
+            // measuring is the COMMISSION's rebind.
+            gs.SyncMossAdaptersIfTopologyChanged();
+            Assert.That(host.Registry.TryResolve(placed.Name, out _), Is.False,
+                "the host's own registry cannot address an uncommissioned device");
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Commission, spot.X, spot.Y, i: spot.Z));
+            sim.Tick();
+            Assert.That(placed.Scriptable, Is.True, "premise: the module was fitted");
+
+            Assert.That(gs.SyncMossAdaptersIfTopologyChanged(), Is.True,
+                "THE SURVIVOR: the commission must move DeviceTopologyVersion, or the host never " +
+                "re-derives and the module the player spent buys nothing until the next load");
+            Assert.That(host.Registry.TryResolve(placed.Name, out var target), Is.True,
+                "and the HOST's registry — the one MOSS resolves through — can now address it");
+            Assert.That(target, Is.Not.Null);
+        }
+
+        /// <summary>First walkable, device-free, wall-free floor tile on deck 0 (scan order).</summary>
+        private static Int3 FirstFreeFloor(Simulation sim)
+        {
+            for (int y = 0; y < sim.World.Height; y++)
+                for (int x = 0; x < sim.World.Width; x++)
+                {
+                    var p = new Int3(x, y, 0);
+                    if ((sim.World.GetFlags(p) & TileFlags.Walkable) == 0) continue;
+                    if (sim.World.GetWall(p) != TileDefs.Void) continue;
+                    if ((sim.World.GetFlags(p) & TileFlags.HasDevice) != 0) continue;
+                    if (sim.TryGetDeviceAt(p, out _)) continue;
+                    return p;
+                }
+            Assert.Fail("no free floor tile on deck 0");
+            return default;
+        }
+
 
         /// <summary>
         /// THE SINK, END TO END. A player-placed device is NOT MOSS-addressable; commissioning it
@@ -523,14 +761,28 @@ namespace Perilune.Tests
         /// nothing but that flag must not hash equal.
         ///
         /// It shares a WORD with Kind / IsOpen / IsLocked / Powered / NetworkId / Rate, so the
-        /// single-field probe is paired with a COLLISION PAIR (ECONOMY-PLAN §5.1: a per-field table
-        /// finds dropped and truncated fields; only a constructed pair finds an ALIAS). The pair
-        /// here moves the same bit-count between Scriptable and its two nearest neighbours.
+        /// single-field probe is paired with CONSTRUCTED COLLISION PAIRS (ECONOMY-PLAN §5.1: a
+        /// per-field table finds dropped and truncated fields; only a constructed pair finds an
+        /// ALIAS). The division of labour between them is precise, and an earlier draft of this
+        /// comment stated it BACKWARDS — corrected here from measurement:
         ///
-        /// NAMED MUTATION: delete the <c>d.Scriptable ? 1UL &lt;&lt; 11 : 0</c> term from
-        /// <see cref="Simulation.StateHash"/> — the single-field probe fails. Change the shift to
-        /// <c>10</c> (aliasing Powered) — the COLLISION PAIR fails while the single-field probe
-        /// still passes, which is exactly why both shapes are here.
+        ///   * An alias onto a bit that is SET in the probe's own state — <c>Powered</c>, which is
+        ///     true on a live bench — makes the field INVISIBLE (<c>true|false</c> and
+        ///     <c>true|true</c> are both 1), so the SINGLE-FIELD PROBE catches it, first and by
+        ///     name. Measured: shifting 11→10 reddens the single-field assertion, not the pair.
+        ///   * An alias onto a bit that is CLEAR — <c>IsLocked</c>, false on a fresh device — is
+        ///     INVISIBLE TO THE SINGLE-FIELD PROBE (the flag still moves a bit, just the wrong
+        ///     one) and is caught only by a pair constructed so the two states differ in WHICH of
+        ///     the two flags is set. Independent review measured that an 11→9 alias survives all
+        ///     111 hash/save tests in the suite against the older, weaker pair; the pairs below
+        ///     are built to close it rather than to record it.
+        ///
+        /// The pairs are therefore genuine collisions: under the named alias each pair's two
+        /// states are bit-identical in the packed word, while at HEAD they differ.
+        ///
+        /// NAMED MUTATIONS, all three applied: delete the <c>d.Scriptable ? 1UL &lt;&lt; 11 : 0</c>
+        /// term (single-field probe red); change the shift to <c>10</c> (single-field probe red);
+        /// change the shift to <c>9</c> (the IsLocked PAIR red, and nothing else in the suite).
         /// </summary>
         [Test]
         public void DeviceScriptable_IsHashed_AndDoesNotAliasItsNeighbours()
@@ -543,21 +795,29 @@ namespace Perilune.Tests
             Assert.That(a.StateHash(), Is.Not.EqualTo(b.StateHash()),
                 "a saved field that does not move the hash makes the determinism canary blind to it");
 
-            // COLLISION PAIR: same device, one flag off in each sim, different flags.
+            // COLLISION PAIR 1 — against IsLocked (bit 9, CLEAR on a fresh device). Under an 11→9
+            // alias both states are "bit 9 set, nothing else moved" and hash EQUAL.
             var p = BuildBench(DeviceKind.Scrubber);
             var q = BuildBench(DeviceKind.Scrubber);
             var pd = DeviceNamed(p, "bench");
             var qd = DeviceNamed(q, "bench");
-            pd.Scriptable = false;   // bit 11 cleared
-            qd.Powered = false;      // bit 10 cleared
+            pd.IsLocked = true;  pd.Scriptable = false;
+            qd.IsLocked = false; qd.Scriptable = true;
             Assert.That(p.StateHash(), Is.Not.EqualTo(q.StateHash()),
-                "Scriptable and Powered must occupy DIFFERENT bits — an alias makes an " +
-                "uncommissioned device and an unpowered one hash the same");
+                "COLLISION: 'locked but uncommissioned' and 'unlocked and commissioned' are " +
+                "different ships. If they hash equal, Scriptable is sharing IsLocked's bit and " +
+                "the canary is blind to BOTH of them in exactly the states that differ.");
 
+            // COLLISION PAIR 2 — against Powered (bit 10, SET on a live bench). Same construction.
             var r = BuildBench(DeviceKind.Scrubber);
-            DeviceNamed(r, "bench").IsLocked = true;   // bit 9 set
-            Assert.That(p.StateHash(), Is.Not.EqualTo(r.StateHash()),
-                "...and different from IsLocked's bit too");
+            var t = BuildBench(DeviceKind.Scrubber);
+            var rd = DeviceNamed(r, "bench");
+            var td = DeviceNamed(t, "bench");
+            rd.Powered = true;  rd.Scriptable = false;
+            td.Powered = false; td.Scriptable = true;
+            Assert.That(r.StateHash(), Is.Not.EqualTo(t.StateHash()),
+                "COLLISION: 'powered but uncommissioned' and 'unpowered but commissioned' must " +
+                "not hash equal");
         }
 
         /// <summary>

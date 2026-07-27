@@ -181,17 +181,32 @@ namespace Perilune.Tests
         /// assignment (E0-2 work rates, a new job source) will move it, and must re-record it in
         /// the same commit and say why. It must never be re-recorded to make a red build green.
         ///
-        /// RE-RECORDED BY E0-6 (conversion loss), and here is the why, because "the sequence moved"
-        /// is not a reason. The SalvageRecycler's bill went from <c>Regolith:1</c> to
-        /// <c>Regolith:4</c>, and CraftingSystem's fetcher carries ONE STACK PER TRIP — so a batch
-        /// now costs the bench's worker up to four fetch round-trips where it used to cost one.
-        /// <c>JobKind.Craft</c> is NOT a dispatcher kind and never appears in this log, but a crew
-        /// member inside it is not available to the dispatcher, so the visible effect is FEWER
-        /// DISPATCHER ASSIGNMENTS INSIDE THE SAME WINDOW: <b>73 → 57</b>, of which the Dig column
-        /// carries essentially all of the loss (the aft dig field is simply not finished inside
-        /// 90 000 ticks any more). Saturation, the four-source coverage and the last-assignment
-        /// tick (t54681 → t54763) are all substantially unchanged, which is what says this is a
-        /// labour-availability shift and not a dispatcher regression.
+        /// RE-RECORDED BY E0-6 (conversion loss). The justification below is the MEASURED DIFF,
+        /// and it replaces a first draft that was wrong on every specific — it claimed 73 → 57,
+        /// blamed the Dig column, and asserted the aft dig field no longer finishes. Independent
+        /// review checked all three and none survived. Recorded here because a moved behaviour pin
+        /// defended by a story nobody diffed is exactly what the pin exists to prevent.
+        ///
+        /// THE ACTUAL DIFF, counted off both arrays:
+        ///
+        ///   * <b>59 → 57 assignments.</b> The "73" was inherited from this method's own stale
+        ///     name on main (<c>AllSeventyThreeJobs…</c>) and was never re-derived; main's array
+        ///     is 59 entries.
+        ///   * <b>Dig is 48 → 48.</b> Every one of the 48 dig targets is still assigned, in both
+        ///     runs, inside the same 90 000-tick window. Nothing stops being dug.
+        ///   * <b>The whole loss is HaulPickup, 8 → 6.</b> Three deck-1 re-pickups that main
+        ///     issued together at t12012 (tiles 24,14,1 · 22,14,1 · 20,14,1) are replaced by ONE
+        ///     earlier deck-0 pickup at t9202 (23,6,0).
+        ///   * Dig TIMINGS shift by roughly +2…+2000 ticks from t12261 onward and the crew ids
+        ///     holding them reshuffle; the last assignment moves t54681 → t54763, i.e. +82.
+        ///
+        /// The only bill change upstream of any of this is the SalvageRecycler's batch size
+        /// (<c>Regolith:1</c> → <c>Regolith:4</c>, at 4× the work time), which changes WHEN the
+        /// bench's fetcher is occupied — <c>JobKind.Craft</c> is not a dispatcher kind and never
+        /// appears in this log, but a crew member inside it is not available to the dispatcher.
+        /// That is as far as the evidence goes: the diff is small, benign, and confined to haul
+        /// timing. It is deliberately NOT dressed up as a mechanism for a 16-assignment drop that
+        /// never happened.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
