@@ -129,21 +129,63 @@ test('every palette row WRAPS, so a control that does not fit moves down instead
 });
 
 // MUTATION: drop `width:max-content` from `.rz-palette` ⇒ RED.
+// MUTATION: drop it from `.rz-matstrip` ⇒ RED (added in review — only the palette's copy was pinned,
+//           which was asymmetric: both rows carry the property for the same measured reason).
 // MUTATION: drop `max-width:100%` from `.rz-palette` ⇒ RED.
 //
-// Both were MEASURED, not reasoned. `flex-wrap:wrap` on its own made the palette wrap at EVERY
-// width — two rows at 1600px, where one row had always fitted — because a wrapping flex container in
-// this shrink-to-fit slot stopped offering its single-line sum as its preferred width (798px offered
+// All MEASURED, not reasoned. `flex-wrap:wrap` on its own made the palette wrap at EVERY width — two
+// rows at 1600px, where one row had always fitted — because a wrapping flex container in this
+// shrink-to-fit slot stopped offering its single-line sum as its preferred width (798px offered
 // against 1225px of content, read off the live layout). `max-content` restores that sum; `max-width`
 // is what still forces the wrap once the wrapper is narrower than it. Either one alone is wrong in a
 // different direction, which is why they are pinned together.
-test('the palette states its single-line width AND its ceiling — one without the other regresses', () => {
-  assert.equal(lastValue(RULES, '.rz-palette', 'width'), 'max-content',
-    'the palette lost `width:max-content` — without it a wrapping flex container in this slot ' +
-    'under-reports its preferred width and wraps at 1600px, where nothing was ever wrong');
+//
+// `.rz-acc-chips` is deliberately NOT in this list and the asymmetry is correct: it is not a
+// shrink-to-fit child of the wrapper but a stretched row inside `.rz-accepts`
+// (`align-items:stretch`), so it is already given a definite width and `max-content` would fight it.
+const MAXCONTENT_ROWS = ['.rz-palette', '.rz-matstrip'];
+test('the wrapper\'s two shrink-to-fit rows state their single-line width', () => {
+  for (const sel of MAXCONTENT_ROWS)
+    assert.equal(lastValue(RULES, sel, 'width'), 'max-content',
+      `${sel} lost \`width:max-content\` — without it a wrapping flex container in this slot ` +
+      'under-reports its preferred width and wraps at 1600px, where nothing was ever wrong');
+});
+
+test('the palette states its ceiling too — the width without it regresses the other way', () => {
   assert.equal(lastValue(RULES, '.rz-palette', 'max-width'), '100%',
     'the palette lost `max-width:100%` — with `width:max-content` and no ceiling it simply ' +
     'overflows the wrapper again, which is the original bug with extra steps');
+});
+
+// ⚠️ THE WRAPPER, added in review, and the second half of it is a failure mode THIS PACKAGE CREATED.
+//
+// `.rz-palette-wrap` is what hands every row its width budget and its height. Two mutations were
+// applied to it during review and BOTH were green against the guards above, because those guards
+// only ever looked at the rows:
+//   * `max-width:calc(100vw - 900px)` — the budget silently tightened. Every row still wraps, still
+//     hides no scrollbar, and still fits its box; the box is simply far too small, and tools go off
+//     the bottom of a very tall column instead of off the right of a short one.
+//   * `max-height:54px;overflow:hidden` — the exact regression the fix invites. Before this package
+//     the palette was one row and a height cap was harmless; it now GROWS DOWNWARD-INTO-UPWARD as it
+//     wraps, so a cap re-creates the original bug in the other axis, and the CLIP test above cannot
+//     see it because it is on the wrapper, not on a row.
+//
+// MUTATION: tighten the wrapper's `max-width` ⇒ RED.  MUTATION: add `max-height` or a clipping
+//           `overflow` to the wrapper ⇒ RED.
+test('the palette WRAPPER keeps its width budget and never caps the height the wrap now needs', () => {
+  assert.equal(lastValue(RULES, '.rz-palette-wrap', 'max-width'), 'calc(100vw - 64px)',
+    'the wrapper\'s width budget changed. It is what every row\'s `max-width:100%` resolves ' +
+    'against, so narrowing it moves the wrap point without touching a single rule the other ' +
+    'guards in this file read. If the margin is genuinely being retuned, re-measure the wrap ' +
+    'point with client/tools/palette-shot.mjs and update this pin in the same commit.');
+  for (const prop of ['overflow', 'overflow-x', 'overflow-y', 'max-height']) {
+    const v = lastValue(RULES, '.rz-palette-wrap', prop);
+    assert.equal(v, null,
+      `.rz-palette-wrap declares ${prop}:${v}. The palette GROWS IN HEIGHT as it wraps — that is ` +
+      'the whole mechanism of the fix — so a height cap or a clipping overflow on the wrapper ' +
+      'reproduces the original bug rotated ninety degrees: tools present, focusable, and not on ' +
+      'the screen. This is the one new failure mode the wrap introduced.');
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -207,12 +249,36 @@ test('NEGATIVE CONTROL: cssCodeOnly leaves `//` alone — it is a URL, not a com
 
 // And the blinding hole in the other direction: a quoted `/*` must not open a comment and swallow
 // the rest of the file. This is the CSS twin of the exact defect `codeOnly`'s header records.
+//
+// ⚠️ THE TRAILING REAL COMMENT IS THE WHOLE CONTROL, AND WITHOUT IT THIS TEST COULD NOT BITE. The
+// fixture originally ended at the `.rz-palette` rule, and against the realistic naive stripper —
+// `src.replace(/\/\*[\s\S]*?\*\//g, '')`, the exact non-quote-aware implementation this control
+// exists to reject — it stayed GREEN. The lazy match needs a CLOSING `*/` to fire, the fixture had
+// none, so the characteristic failure could not occur and the control was asserting that a broken
+// stripper works. Both stripper implementations were run against both fixtures, all four legs, and
+// this 2×2 is why the two `.b` lines below are load-bearing rather than decorative:
+//
+//                        fixture without `/* … */`   fixture as it now stands
+//     naive stripper     0 fail (VACUOUS)            1 fail (bites, on this test)
+//     cssCodeOnly        0 fail                      0 fail
+//
+// It matters on the file this guard actually watches: `styles.css` is full of later `*/`s, so a
+// naive stripper WOULD be blinded there — and the control, as first written, said it would not.
 test('NEGATIVE CONTROL: a quoted `/*` does not blind cssCodeOnly', () => {
-  const css = '.a::before{content:"/*"}\n.rz-palette{overflow-x:auto}';
+  const css = '.a::before{content:"/*"}\n.rz-palette{overflow-x:auto}\n'
+            + '/* a later, real comment */\n.b{color:red}';
   const rules = cssRules(cssCodeOnly(css));
   assert.ok(clips(rules),
     'a `/*` inside a string literal opened a comment and swallowed the rule after it — every scan ' +
     'in this file would go silently green against a stylesheet with one such string in it');
+  // …and the stripper must still be a stripper: the LATER comment is genuinely removed, and the
+  // rule after it survives. A "stripper" that gave up on quotes by stripping nothing would pass the
+  // assertion above and fail these two.
+  assert.equal(lastValue(rules, '.b', 'color'), 'red',
+    'the rule after the later comment was lost — the quoted marker still swallowed the file, just ' +
+    'from a different starting point');
+  assert.doesNotMatch(cssCodeOnly(css), /a later, real comment/,
+    'the later, genuinely-commented text survived stripping — this is not a comment stripper at all');
 });
 
 // …and the same property demonstrated ON THE REAL FILE rather than on synthetic input, which is the

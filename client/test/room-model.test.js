@@ -1493,6 +1493,67 @@ test('arming a tool through its own button moves aria-pressed, and only ever ont
     'disarmed by its own button, yet a click still designated');
 });
 
+// ⚠️ THE `<span>` HALF OF THE TAG SCANNER, added in review because NOTHING COVERED IT: narrowing
+// `TAG_RE` to `button` alone reddened not one test, even though four chrome handles resolve through
+// it and all four are written by shipping code on every repaint. That is the "cannot bite" shape
+// pointed at the harness instead of at the subject — the scanner would have been free to rot back
+// into the `querySelector() { return null }` stub it replaced, and the driven aria tests above would
+// have gone on passing while `paintCaption`/`paintBreadcrumb`/`paintPalette` wrote into nulls.
+//
+// It is deliberately phrased against the TEXT THE PAINTERS WROTE rather than against the handles
+// themselves: `setText` is null-guarded, so a null handle is silent, and the observable difference
+// between "resolved and written" and "never resolved" is exactly this text.
+//
+// MUTATION: narrow `TAG_RE` to `/<(button)\b([^>]*)>/g` ⇒ RED (all four read '').
+// MUTATION: drop the `.rz-place-label` span from `buildChrome`'s palette markup ⇒ RED.
+// MUTATION: stop passing `class` through to `className` in the scanner ⇒ RED (nothing resolves).
+test('the chrome SPANS resolve and the painters write through them — caption, crumb, palette label', () => {
+  // Read out of the fixture through the SAME lookup the controller uses, never typed here — `HOLD`
+  // is the test's own trimmed rect and deliberately carries no name.
+  const name = roomTileRect(fixView, 'hold').displayName;
+  assert.ok(name, 'the fixture room has no display name — every assertion below would be vacuous');
+  const label = rzPalette.querySelector('.rz-place-label');
+  assert.ok(label, 'the palette has no `.rz-place-label` handle');
+  assert.equal(label.textContent, 'BUILD ▸ ' + name,
+    'the palette\'s room label is not what `paintPalette` writes — either the span did not resolve ' +
+    '(so `setText` no-opped on null) or the wording moved');
+
+  const cap = rzDoc.getElementById('rz-caption');
+  assert.equal(cap.querySelector('.rz-cap-name').textContent, name,
+    'the caption\'s room name did not arrive — `_el.capName` resolved to null');
+  assert.match(cap.querySelector('.rz-placed').textContent, /^\d+ PLACED$/,
+    'the caption\'s placed-count did not arrive — `_el.capPlaced` resolved to null');
+
+  const bc = rzDoc.getElementById('rz-breadcrumb');
+  assert.equal(bc.querySelector('.rz-crumb-leaf').textContent, name,
+    'the breadcrumb leaf did not arrive — `_el.crumbLeaf` resolved to null');
+});
+
+// The material swatches get `type="button"` for the same reason the tool buttons do — one palette,
+// one button vocabulary — and DELIBERATELY NOT `aria-pressed`: `activeMaterial` guarantees exactly
+// one is lit, which is a radio group (`role="radio"`/`aria-checked` + roving focus), not six
+// independent toggles. Asserting the ABSENCE as well as the presence is what stops a later package
+// reaching for the nearest attribute instead of the right one.
+//
+// MUTATION: emit the chips without `type="button"` ⇒ RED.
+// MUTATION: add `aria-pressed` to a material chip ⇒ RED on the second leg.
+test('the material swatches are typed buttons, and are NOT dressed as independent toggles', () => {
+  rzArm('wall');                                  // the strip is populated on arm, not before
+  const html = rzDoc.getElementById('rz-matstrip').innerHTML;
+  const chips = (html.match(/class="rz-mat-chip/g) || []).length;
+  assert.ok(chips >= 2, `the material strip painted ${chips} chips — this assertion would be vacuous`);
+  assert.equal((html.match(/<button type="button" class="rz-mat-chip/g) || []).length, chips,
+    'a material swatch is not a `<button type="button">` — inside a form its default type is ' +
+    '`submit`, and the tool buttons and ACCEPTS chips on this same palette both spell it out');
+  assert.doesNotMatch(html, /aria-pressed/,
+    'a material swatch claims `aria-pressed`. Exactly one swatch is ever lit (`activeMaterial`), ' +
+    'so these are a RADIO GROUP: the honest spelling is role="radio" + aria-checked inside a ' +
+    'radiogroup with roving tab focus, which is a keyboard-interaction change and not an ' +
+    'attribute. Announcing six independent toggles where the player has one choice is worse than ' +
+    'announcing nothing.');
+  rzArm('wall');                                  // disarm — afterEach normalises, but not silently
+});
+
 // MUTATION: drop the `z`/`Z` branch from onKey ⇒ the sweep after it sends nothing ⇒ RED.
 test('Z arms STOCKPILE, the console\'s own binding, and swallows the key', () => {
   const z = rzKey('Z');

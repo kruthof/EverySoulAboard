@@ -668,7 +668,15 @@ function paintMatStrip() {
   let html = '<span class="rz-mat-label">' + esc(TOOL_LABEL[tool]) + ' ▸</span>';
   for (const m of materialsForTool(tool)) {
     const swatch = buildItem(m.id, { w: 26, h: 26, idPrefix: 'rz-mc-' + tool + '-' + m.mat });
-    html += '<button class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
+    // `type="button"` and DELIBERATELY NOT `aria-pressed`. The type is the same argument as the tool
+    // buttons' — one palette, one button vocabulary, and inside a form the default is `submit`. The
+    // pressed state is a different question and is left open on purpose: `activeMaterial` guarantees
+    // exactly ONE swatch is `on`, which is a radio group, not six independent toggles. The right
+    // spelling is `role="radio"`/`aria-checked` inside a `radiogroup` with roving tab focus, and
+    // that is a keyboard-interaction change (arrow keys move the selection) rather than an attribute
+    // — too much to bolt onto a layout fix, and guessing `aria-pressed` here would announce six
+    // toggles where the player has one choice.
+    html += '<button type="button" class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
       '" title="' + esc(m.label) + '">' +
       '<svg class="rz-mat-sw" viewBox="0 0 26 26" width="26" height="26" xmlns="http://www.w3.org/2000/svg">' +
       swatch + '</svg><span class="rz-mat-name">' + esc(m.label) + '</span></button>';

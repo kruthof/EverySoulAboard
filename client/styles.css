@@ -1238,12 +1238,22 @@ body.moss-open #roomzoom-view{display:none !important}
  * point the row is byte-identical to what shipped — measured 1 row / palH 54 / 1225px of content at
  * both 1600 and 1440, the same numbers as before the change.
  *
- * ⚠️ ONE HONEST OVERSHOOT, disclosed rather than tuned away: the wrap fires when the content is wider
- * than the wrapper, and the content includes the row's own 12px of trailing padding. So between
- * roughly 1250 and 1290px (room-name dependent — the label reads `BUILD ▸ <ROOM>`) the palette now
- * takes two rows at a width where the old one still showed all fifteen tools and clipped only
- * padding. Two rows instead of one is a layout the player can see and act on; a missing STRIP button
- * is not, so the overshoot is the right side to err on.
+ * ⚠️ ONE HONEST OVERSHOOT, disclosed rather than tuned away, and MEASURED rather than estimated: the
+ * wrap fires when the content is wider than the wrapper, and the content includes the row's own 12px
+ * of trailing padding. So there is a narrow band where the palette now takes two rows at a width
+ * where the old one still showed all fifteen tools and clipped only padding. Swept in 2px steps in
+ * ONE room (MESS, 1197px) with both builds in the same browser session:
+ *
+ *     this build     1 row down to 1264px, two rows from 1262px
+ *     pre-fix build  15/15 down to 1250px, loses DEMOLISH at 1248px
+ *     ⇒ the band is 1250–1262px: TWELVE pixels.
+ *
+ * ⚠️ AND IT TRAVELS RATHER THAN WIDENING. An earlier draft of this comment quoted "roughly 1250 to
+ * 1290px", i.e. ~40px — that was two DIFFERENT rooms' onsets subtracted from each other. Both
+ * numbers move together with the length of `BUILD ▸ <ROOM>`, so the band stays ~12px wherever it
+ * sits. Two rows instead of one is a layout the player can see and act on; a missing STRIP button is
+ * not, so the overshoot is the right side to err on — and it is a twelfth of what was first written
+ * down, which is worth correcting even though the error was in the unflattering direction.
  *
  * `justify-content:center` so a short trailing row sits under the middle of the one above it rather
  * than hanging off the left.
