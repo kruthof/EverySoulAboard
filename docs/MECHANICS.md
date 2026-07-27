@@ -1658,7 +1658,17 @@ These *look* suspicious and are actually fine:
 - `EffectPump` and `MemorySystem` not being in the scenario stack is why the pure-sim
   determinism pin is stable.
 
-### 13.12 The `[production]` node table is consumed, and ships empty (W0-5)
+### 13.12 The `[production]` node table is consumed, and ships TWO ROWS (W0-5, retitled by E0-6)
+
+> **⚠️ SUPERSEDED IN PART, 2026-07-27 (E0-6).** The title of this section said *"and ships empty"*
+> and that is now **false**. `content/core/SimDefs/production.def` ships **two rows** —
+> `recycle_stock` (SalvageRecycler, `Regolith:4 → Scrap:3`) and `fab_components` (Fabricator,
+> `Scrap:2 → Parts:1+Seals:1`). What is still true, and is the part worth keeping, is the rest of
+> this section: **the MachineShop has no row and still takes `TryGetBill`'s fallback leg**, and the
+> **ordinal-0 selection limit below is unchanged and is now load-bearing** — it is why E0-6 ships
+> `Seals` as a *co-output* of the Fabricator's one bill rather than as a second bill of its own. A
+> second Fabricator node would parse, checksum and never run.
+
 
 `SimDefs.Production` — the `[production]` conversion-graph node table
 (`Defs/ProductionDefs.cs`) — is parsed, folded into the defs checksum, and read on every
@@ -1730,6 +1740,15 @@ real state without another pin site to find, `SystemStack` reorder, or save chap
   chapter — none of those are registered here.
 
 ### 13.15 The economy is finite and TERMINATES — measured A1 (2026-07-23)
+
+> **⚠️ SUPERSEDED 2026-07-27 by E0-6. Every number in this section is a PRE-E0-6 measurement and
+> roughly half of the matter behind it did not exist.** The shipped `SalvageRecycler` row turned
+> **1 Regolith into 2 Scrap** — mass creation against `ECONOMY.md` §2.1 — so the 62 Regolith aboard
+> became 124 Scrap, 62 Parts and the 31 `ControllerModule` this section treats as the ship's matter
+> ceiling. E0-6 made every hop lossy; the replacement figures are in **§13.19**, and the cliff this
+> section describes at h28 **moves EARLIER, to h18**. Do not quote 24.979 %, `ControllerModule=31`
+> or the 1.480 % post-cliff floor as current.
+
 
 **This supersedes §13.6's `None 99.92 %` occupancy table**, which was pre-E0-1. Measured with
 `dotnet run --project hosts/scenario -- occupancy --ship slice --days 3`, sampling every live
@@ -2219,3 +2238,81 @@ as ranges because the draw is unseeded, §6.4 `StagedUnits`, §13.2 first-alarm 
 two more role readers). One reviewer figure was **not** reproduced and is not used: a
 claimed "~20 % of production reaches the scrubbers" — the measured ship-wide balance over
 day 1→2 is 78.72 of 188.70 mol, **≈42 %**.*
+
+---
+
+### 13.19 E0-6 conversion loss + `Seals` + the `ControllerModule` sink — what is wired but not connected (2026-07-27)
+
+**Supersedes §13.15's table and cliff narrative; retitles §13.12.** Measured with
+`dotnet run --project hosts/scenario -- occupancy --ship slice --days 3` and
+`--ship grid --days 1`. **One seed, one run per leg, n = 1** throughout.
+
+#### The replacement numbers
+
+| leg | A1 @ h24 (work) | throughput (`ControllerModule`) | mean work % h1–h28 | floor h29–h72 | last busy hour |
+|---|---|---|---|---|---|
+| pre-E0-6 (what §13.15 measured) | 25.000 % | 31 | 35.404 | 1.482 | h28 |
+| **E0-6, no flags** | **0.000 %** | **11** | 18.900 | 0.902 | **h18** |
+| E0-6 with the recycler ratio reverted | 25.000 % | 31 | 35.404 | 0.902 | h28 |
+| E0-6 `--strip 40` | 28.771 % PASS | 19 | 29.779 | 2.577 | h32 |
+
+End-of-run ground stock, slice, 3 days: `Corpse=1 Potato=699 ControllerModule=31` →
+`Regolith=2 Corpse=1 Potato=699 Scrap=1 ControllerModule=11 Seals=12`.
+
+**The regression is 100 % the recycler ratio, measured by isolation**: with `Regolith:1 → Scrap:2`
+restored and every other E0-6 change intact, A1, throughput and the whole h1–h28 curve are
+identical to pre-E0-6 to the digit. The `Seals` rung and the `ControllerModule` sink cost nothing.
+Arithmetic predicts the sim to the unit: 31 × 0.375 = 11.6 → measured **11**; on `--strip 40`,
+51 × 0.375 = 19.1 → measured **19**.
+
+**It is not confined to the measurement fixture.** On **`--ship grid`, the ship `./play.sh` opens**,
+`--days 1`: A1 **24.990 % → 0.000 %**, `Craft` **31.05 % → 15.35 %**, idle `None`
+**67.15 % → 82.85 %**, modules 19 → 8, and **work stops after h16** — crew idle for the last third
+of the day. Same isolation result: reverting the ratio restores `CLAUDE.md`'s published
+deck-confined-wander figures exactly.
+
+#### Wired but NOT connected
+
+1. **`CommissionDeviceCommand` has no affordance on the standard surface, and is INERT in every
+   unattended run.** Nothing in `sim/`, `client/`, `hosts/tui/`, MOSS or the designer-rule layer
+   constructs it; its only issuer is `GameSession.HandleCommission`, reachable only by a
+   `{"cmd":"commission"}` wire message **nothing in `client/` ever sends**. Every module in every
+   published leg above is unspent, and E0-6's third leg contributes exactly zero to every number in
+   this section. **What would connect it:** a Room Zoom `COMMISSION` tool plus the feedback that
+   says which devices are commissioned — chartered separately, deliberately not in this package.
+   The plumbing underneath it *is* covered
+   (`ConversionLossSealsTests.TheHostItselfRebindsMoss_WhenADeviceIsCommissionedMidGame` drives the
+   real `GameSession` → real `DeviceRegistry` path); what is missing is only the button.
+
+2. **`Seals` are a new terminal product one rung down — structurally the same defect this package
+   removed.** You cannot make `Parts` without making `Seals` (the Fabricator's single bill emits
+   both, and it must, because `CraftingSystem` resolves at ordinal 0 — §13.12). `Seals` have exactly
+   one consumer, `MaintenanceSystem`, whose demand is bounded by machine wear. Measured: the
+   ratio-reverted 3-day slice leg ends holding **52 `Seals` on the ground**, and the `--strip 40`
+   leg 26. Nothing burns the surplus. **What would connect it:** a second `Seals` consumer, or
+   E-PROD's bill selection so the Fabricator can be told to make Parts *or* Seals.
+
+3. **The `Seals` rung is reachable only on a ship with no `Parts`, so its published rationale was
+   about the wrong comparison.** `Parts` outrank `Seals` by tier, so the live comparison is
+   **0.6-vs-0.9 (jury-rig vs seal), never 1.0-vs-0.9** — and against a jury-rig the rung makes
+   maintenance recur **less**, not more. Measured on the slice: with the rung in and everything else
+   reverted, **12 of 72 hours change, all post-cliff** — the h29–h72 floor falls
+   **1.482 % → 0.902 %** (−39 % relative), `Maintain` **0.90 % → 0.55 %**, and the h62/h68 spikes
+   (19.5 % / 6.4 %) vanish. That is the rung *working*: ten services that used to leave a machine at
+   0.6 now leave it at 0.9, so the ship needs fewer of them. **`CLAUDE.md`'s E0-5 record publishes
+   the 1.480 % floor; it moves.**
+
+4. **`MetalOre` is still dead** — no producer, no consumer. **A6 goes 2 → 1, not 0.** `ECONOMY.md`
+   §3.2 revives it in E3; E0-6 cannot.
+
+5. **Two guards in `CommissionDeviceCommand` are unreachable and therefore untested**
+   (`InBounds`, the nameless-device check): the host clamps every coordinate and every
+   player-created device is given a deterministic name. Recorded, not covered — the same disclosure
+   `MaintenanceSystem.RestoredCondition`'s unreachable fallthrough arm carries.
+
+6. **The `DefsParser` fallback guard is narrower than it reads.** Omitting `production.def`
+   entirely now keeps the compiled defaults, but a defs set that declares an **empty**
+   `[production]` section still empties the table and falls back to `[recipes]`. E0-6 therefore
+   moved the legacy `Recipes[SalvageRecycler]` row to `Regolith:4 → Scrap:3` as well, so both
+   spellings of the recycler agree; without that, the mass creation stayed reachable one branch
+   away from the fix that removed it.
