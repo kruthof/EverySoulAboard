@@ -97,6 +97,23 @@ const setWidth = async (w) => {
   await sleep(900);
 };
 
+/**
+ * ⚠️ IS THE SOCKET STILL UP? — a FALSE RED guard, and it is here because it happened.
+ *
+ * When the host dies mid-run, `main.js:198` raises `#disc` ("LINK LOST — RECONNECTING…") and
+ * `hud.js:529` DISARMS the armed tool. The arm legs below then report `aria-pressed=[]` and
+ * `accepts=false`, and this tool exits non-zero with a message about the palette not announcing its
+ * armed tool — a red that looks exactly like a real defect and is nothing of the kind. That is
+ * `CLAUDE.md` trap 4 wearing a dead process instead of a `ReferenceError`. Checked explicitly so the
+ * failure names its own cause.
+ */
+const assertLinked = async (where) => {
+  const down = await evaluate(`(()=>{const d=document.getElementById('disc');` +
+    `return !!(d && getComputedStyle(d).display !== 'none');})()`);
+  if (down) die(10, `the client lost its socket to the host (${where}). Nothing measured after this ` +
+    'point is about the palette — a disconnect disarms the tool. Restart the host and re-run.');
+};
+
 await call('Page.enable');
 await call('Runtime.enable');
 await setWidth(Math.max(...WIDTHS));
@@ -198,6 +215,7 @@ const MEASURE = `(() => {
 const results = [];
 for (const w of WIDTHS) {
   await setWidth(w);
+  await assertLinked('width sweep @ ' + w);
   const m = await evalJson(MEASURE);
   if (!m) die(9, 'no .rz-palette in the Room Zoom DOM at width ' + w);
   results.push({ w, ...m });
@@ -221,6 +239,7 @@ for (const tool of ['wall', 'stockpile']) {
   if (!(btn.w > 0 && btn.h > 0)) die(9, `the ${tool.toUpperCase()} button has no box`);
   await clickAt(btn.x, btn.y);
   await sleep(1200);
+  await assertLinked('after arming ' + tool);
   const m = await evalJson(MEASURE);
   log(`ARMED ${tool.toUpperCase()} @ w=${NARROW}: aria-pressed=${JSON.stringify(m.pressed)} ` +
       `accepts=${m.acceptsShown}/${m.accChips} clipped=${JSON.stringify(m.accClipped)} ` +
