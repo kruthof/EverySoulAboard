@@ -225,18 +225,20 @@ namespace Perilune.Tests
         ///     asserted to have landed.
         ///
         /// HONEST LIMIT on <c>GameSession.HandleFilter</c>'s own <c>&amp; AcceptAllMask</c>: it is
-        /// redundant for stored state, and therefore un-bitable there, **while the two derivations
-        /// agree** — <c>GameSession.AcceptAllMask</c> is count-based
-        /// (<c>(1UL &lt;&lt; Enum.GetValues(typeof(ItemKind)).Length) - 1</c>) and
-        /// <see cref="StockZoneSystem.AcceptAllMask"/> is per-enum-VALUE, so they coincide only while
-        /// <see cref="ItemKind"/> is contiguous from 0. Add a kind 9 with 7 and 8 undefined and they
-        /// diverge, at which point the host mask is load-bearing again and its deletion is observable.
-        /// That divergence condition is itself pinned, by
-        /// <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
-        /// The real resolution is to make every site consume
-        /// <see cref="StockZoneSystem.AcceptAllMask"/>, after which the host line is provably the same
-        /// operation and can simply be deleted — LOGGED, not done here (it touches three host files
-        /// and is outside this fix's remit).
+        /// redundant for stored state, and therefore un-bitable there, because both derivations now
+        /// produce the same value. ⚠ THAT USED TO BE A CONDITIONAL CLAIM ("while the enum is
+        /// contiguous") and the condition has since been broken and repaired: E0-7 took
+        /// <c>Ice = 8</c> over the reserved slot 7, which is exactly the gap this paragraph
+        /// predicted, and the host's count-based mask WOULD have diverged — setting bit 7 and
+        /// clearing Ice's — so it was converted to the per-enum-VALUE derivation the sim uses.
+        /// The masks agree by construction now, not by luck.
+        /// The property is pinned by
+        /// <c>StockZoneSystemTests.AcceptAllMask_IsValueDerived_NowThatItemKindHasAGap</c>, which
+        /// asserts the count form is WRONG and that no site uses it.
+        /// The real resolution remains to make every site consume
+        /// <see cref="StockZoneSystem.AcceptAllMask"/> itself, after which there is one derivation
+        /// and the host line can simply be deleted — LOGGED, not done here (it touches three host
+        /// files and is outside this fix's remit).
         /// </summary>
         [Test]
         public void BitsAboveTheLastItemKindAreCanonicalisedAway()

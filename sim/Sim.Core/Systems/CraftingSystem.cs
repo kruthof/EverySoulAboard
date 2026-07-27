@@ -142,7 +142,7 @@ namespace Perilune.Sim
             // which on a 2 Hz drain can only be true when the fluid network is full, absent,
             // unpowered or broken. Without it a ship with full tanks would keep recruiting crew to
             // burn finite hold ice into an overflow that is thrown away.
-            if (!WaterSystem.HasMeltHeadroom(sim, station)) return;
+            if (!WaterSystem.HasMeltHeadroom(sim, station, recipe)) return;
 
             bool canStart = station.Progress > 0f || AllInputsStaged(sim, station.Pos, recipe);
             if (!canStart)

@@ -25,12 +25,34 @@ namespace Perilune.Sim
     /// out of <see cref="Simulation.WastewaterLiters"/> (a single abstract shipwide
     /// greywater pool, saved and hashed) into a tank, losing the inefficiency; the pool is
     /// filled by drinking (SustenanceSystem), grow-bed transpiration (HydroponicsSystem)
-    /// and a starting buffer authored on the slice. The ONE runtime source is
-    /// <see cref="RunMakeup"/> — a self-throttling floor that tops the pool up only when it
-    /// would otherwise fall below <c>MakeupFloorLiters</c>, replacing exactly the water the
-    /// lossy loop destroys and nothing more (B-2 fix; see that method). Before it, a ship
-    /// whose pool ran dry had reclaimers that spun and produced nothing, stalling every
-    /// grow bed on the network forever.
+    /// and a starting buffer authored on the slice.
+    ///
+    /// There are TWO runtime water sources, and exactly one of them is ever live on a given ship
+    /// (E0-7 — this sentence used to say "the ONE runtime source is RunMakeup", which is now false
+    /// twice over):
+    ///   * <see cref="RunMakeup"/> — B-2's self-throttling floor, which tops the greywater pool up
+    ///     only when it would otherwise fall below <c>MakeupFloorLiters</c>. It CREATES water, and
+    ///     it is a stand-in: it runs only on a ship with no <see cref="DeviceKind.IceMelter"/>.
+    ///     Before it, a ship whose pool ran dry had reclaimers that spun and produced nothing,
+    ///     stalling every grow bed on the network forever.
+    ///   * <see cref="RunMelters"/> — the real chain. It creates NO water: it moves litres the crew
+    ///     already paid for out of a melter's buffer, where they arrived by consuming a unit of
+    ///     <see cref="ItemKind.Ice"/> a crew member hauled. On an ice ship the water ledger closes
+    ///     against the hold.
+    ///
+    /// ⚠ OPEN DEFECT, NOT A LIMIT — <see cref="Simulation.WastewaterLiters"/> HAS NO CAP, and on an
+    /// ice ship that turns hauled hold cargo into an inert abstract stock. MEASURED on HEAD (slice,
+    /// one seed): the pool holds 4,049 L at day 3 and 12,363 L at day 10, a slope of ~1,188 L/day
+    /// against a melt rate of ~1,782 L/day — so roughly TWO THIRDS of everything the crew melt is
+    /// surplus that the loop never needed. Matter is conserved (every litre is melted ice; nothing
+    /// is created), but the hold's runway is therefore a property of what bounds the pool, which is
+    /// nothing, and NOT of the ice economy.
+    ///
+    /// Reclaim-first ordering (see <see cref="RunMelters"/>) is a partial fix and was worth ~a third
+    /// of the ice: before it the surplus was ~78 % in steady state. The rest needs the melter's
+    /// backpressure to see loop saturation rather than only tank headroom, which is a new def field
+    /// and a design decision — and E1's per-crop irrigation retune (ECONOMY.md §10) changes the
+    /// whole balance it would be tuned against, so it is deliberately not guessed at here.
     ///
     /// What it mutates: <see cref="Device.FluidNetworkId"/> and
     /// <see cref="Device.StoredLiters"/> (both DEVC v2, saved and hashed by Simulation)
@@ -90,8 +112,8 @@ namespace Perilune.Sim
                 RebuildNetworks(sim);
             }
             RunMakeup(sim);      // floor the pool BEFORE reclaimers read it, same pass
-            RunMelters(sim);     // ...and land meltwater in the tanks before they are drawn from
-            RunReclaimers(sim);
+            RunReclaimers(sim);  // FREE recycled greywater claims tank headroom first...
+            RunMelters(sim);     // ...and FINITE hauled ice only fills what is left (see below)
         }
 
         /// <summary>
@@ -104,6 +126,18 @@ namespace Perilune.Sim
         /// recovered greywater and pays <c>ReclaimEfficiency</c>; meltwater is clean and pays
         /// nothing. A melter is also not throttled by a rate — the rate is the crew: how fast they
         /// haul and melt ice is what sets the ship's water income.
+        ///
+        /// ⚠ ORDERING IS A PRIORITY DECISION, not a plumbing detail, and E0-7 got it wrong once.
+        /// This pass runs AFTER <see cref="RunReclaimers"/>, so free recycled greywater claims tank
+        /// headroom before finite hauled ice does. The first draft ran melters first ("land
+        /// meltwater before the tanks are drawn from"), which reads harmless and is a priority
+        /// inversion between a resource the crew carry up a ladder and one the ship gets for
+        /// nothing: the melter kept topping tanks the reclaimer would have filled anyway, the
+        /// reclaimer then found no headroom, and the displaced greywater piled up in the uncapped
+        /// pool. MEASURED on the slice, 3 sim-days, one seed, melter-first vs reclaim-first:
+        /// ice consumed 335 → 224 units (−33 %), greywater pool 7 051 → 4 049 L (−43 %), and the
+        /// hold's runway at 1 600 units 14.3 → 21.4 sim-days — with end-of-run Potato IDENTICAL at
+        /// 696 and both tanks still full. Nothing was traded for it.
         ///
         /// UNPOWERED/BROKEN/UNPLUMBED melters do not drain. A melter with no fluid network keeps
         /// its buffer, fills it, and then (by <see cref="HasMeltHeadroom"/>) stops recruiting
@@ -157,11 +191,36 @@ namespace Perilune.Sim
         /// no-op for every other station — Fabricator, MachineShop and SalvageRecycler behave
         /// bit-identically to before E0-7.
         /// </summary>
-        public static bool HasMeltHeadroom(Simulation sim, Device station)
+        public static bool HasMeltHeadroom(Simulation sim, Device station, in ProductionBill bill)
         {
             if (station.Kind != DeviceKind.IceMelter) return true;
+            int units = IceUnitsIn(bill);
+            if (units <= 0) return true;   // a melter whose bill consumes no Ice makes no water
             var water = sim.Defs.Water;
-            return station.StoredLiters + water.IceLitersPerUnit <= water.MelterBufferLiters;
+            return station.StoredLiters + water.IceLitersPerUnit * units <= water.MelterBufferLiters;
+        }
+
+        /// <summary>
+        /// Units of <see cref="ItemKind.Ice"/> one batch of <paramref name="bill"/> consumes. THE
+        /// ONE reader of the bill's ice ports, so <see cref="HasMeltHeadroom"/> and
+        /// <see cref="OnBatchComplete"/> cannot disagree about what a batch is worth.
+        ///
+        /// They did disagree in E0-7's first draft: the gate tested ONE unit's yield while the
+        /// completion added <c>IceLitersPerUnit × units</c>. The two agreed only because the shipped
+        /// bill is <c>Ice:1</c> — and the very doc comment promising that retuning to <c>Ice:4</c>
+        /// "scales the yield without touching code" was the thing that made them disagree, because
+        /// at <c>Ice:4</c> the gate admits a batch whose 100 L the buffer cannot hold and 75 L of
+        /// hauled ice is silently clamped away. Found in review, closed here.
+        /// </summary>
+        private static int IceUnitsIn(in ProductionBill bill)
+        {
+            int units = 0;
+            for (int i = 0; i < bill.InputPortCount; i++)
+            {
+                var port = bill.Input(i);
+                if (port.Kind == ItemKind.Ice) units += port.Count;
+            }
+            return units;
         }
 
         /// <summary>
@@ -174,22 +233,18 @@ namespace Perilune.Sim
         /// crafting path is one call whose first line returns.
         ///
         /// The litres are read off the BILL, not off a constant, so retuning `melt_ice` to
-        /// <c>Ice:4</c> scales the yield without touching code. The buffer clamps at
-        /// <c>MelterBufferLiters</c>: with <see cref="HasMeltHeadroom"/> gating recruitment the
-        /// clamp is normally unreachable, but a batch already in flight when the tanks fill can
-        /// still overflow, and those litres are LOST. That is the one place the ice chain destroys
-        /// matter, it is bounded by one batch per melter, and it is deliberate — the alternative is
-        /// un-consuming an input, which the crafting system has no concept of.
+        /// <c>Ice:4</c> scales the yield without touching code — and, since review,
+        /// <see cref="HasMeltHeadroom"/> scales with it through the same
+        /// <see cref="IceUnitsIn"/> reader, so the gate cannot admit a batch the buffer could not
+        /// hold. The buffer still clamps at <c>MelterBufferLiters</c>, but only for a batch already
+        /// IN FLIGHT when the network fills, and those litres are LOST. That is the one place the
+        /// ice chain destroys matter, it is bounded by one batch per melter, and it is deliberate —
+        /// the alternative is un-consuming an input, which the crafting system has no concept of.
         /// </summary>
         public static void OnBatchComplete(Simulation sim, Device station, in ProductionBill bill)
         {
             if (station.Kind != DeviceKind.IceMelter) return;
-            int units = 0;
-            for (int i = 0; i < bill.InputPortCount; i++)
-            {
-                var port = bill.Input(i);
-                if (port.Kind == ItemKind.Ice) units += port.Count;
-            }
+            int units = IceUnitsIn(bill);   // the SAME reader HasMeltHeadroom gates on
             if (units <= 0) return;
 
             var water = sim.Defs.Water;

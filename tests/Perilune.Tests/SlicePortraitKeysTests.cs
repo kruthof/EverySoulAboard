@@ -32,12 +32,35 @@ namespace Perilune.Tests
         /// that matches raw source is satisfied by the thing it guards against, COMMENTED OUT
         /// (CLAUDE.md trap 1), and this file's remap table is surrounded by prose that names every
         /// key in it.</summary>
-        private static HashSet<string> RemapKeys()
+        /// <summary>
+        /// The remap, as pairs: crew member's NEW key → the manifest key whose PNG they keep.
+        ///
+        /// ⚠ BOTH HALVES MATTER, and an earlier draft collected only the left. Pointing an entry at
+        /// a key the manifest does not contain left the whole gate green while one crew member wore
+        /// somebody else's face: the adapter silently DROPS an unresolvable target (its
+        /// <c>.filter(([, baked]) =&gt; PORTRAITS[baked])</c>), so the JS "nothing is invented"
+        /// check never sees it, and a left-hand-side-only completeness check passes while the key
+        /// still resolves — through the generated manifest, to that person's predecessor's face.
+        /// Found by independent review as survivor C19.
+        /// </summary>
+        private static Dictionary<string, string> Remap()
         {
             string assets = FindClientAssetsDir();
             string registry = CodeOnly(File.ReadAllText(Path.Combine(assets, "portraits-registry.js")));
-            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var pairs = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (Match m in Regex.Matches(registry, @"(pk_[0-9a-f]{8})\s*:\s*'(pk_[0-9a-f]{8})'"))
+                pairs[m.Groups[1].Value] = m.Groups[2].Value;
+            return pairs;
+        }
+
+        /// <summary>Keys the GENERATED manifest declares — the only keys with a committed PNG
+        /// behind them, and therefore the only legal remap targets.</summary>
+        private static HashSet<string> ManifestKeys()
+        {
+            string assets = FindClientAssetsDir();
+            string manifest = CodeOnly(File.ReadAllText(Path.Combine(assets, "portraits.g.js")));
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Match m in Regex.Matches(manifest, "\"(pk_[0-9a-f]{8})\"\\s*:"))
                 keys.Add(m.Groups[1].Value);
             return keys;
         }
@@ -88,14 +111,46 @@ namespace Perilune.Tests
         [Test]
         public void EverySliceCrewMembersPortraitKeyResolvesToACommittedImage()
         {
+            // ── STRUCTURE OF THE TWO ASSET FILES FIRST. These run before anything derived from
+            //    them, because a derived set can be short for two very different reasons — a broken
+            //    reader, or a dangling remap target — and the generic "reader is broken"
+            //    precondition used to fire first and blame the wrong one.
+            var remap = Remap();
+            var manifestKeySet = ManifestKeys();
+            Assert.That(manifestKeySet.Count, Is.GreaterThan(8),
+                "PRECONDITION: portraits.g.js parsed to " + manifestKeySet.Count + " keys — reader broken");
+            Assert.That(remap.Count, Is.EqualTo(8),
+                "PRECONDITION: the remap table parsed to " + remap.Count + " entries, expected 8 " +
+                "(one per slice crew member) — a broken reader or a comment stripper that swallowed " +
+                "the table looks exactly like this");
+
+            // THE SECOND DOOR (survivor C19): an entry whose TARGET is not a manifest key is
+            // silently dropped by the adapter, so the remapped crew member falls through to whatever
+            // the generated manifest happens to say for that key — their predecessor's face — and
+            // every other guard stays green.
+            var danglingTargets = new List<string>();
+            foreach (var pair in remap)
+                if (!manifestKeySet.Contains(pair.Value))
+                    danglingTargets.Add($"{pair.Key} → {pair.Value}");
+            danglingTargets.Sort(StringComparer.Ordinal);
+            Assert.That(danglingTargets, Is.Empty,
+                "A REMAP ENTRY POINTS AT A KEY THE GENERATED MANIFEST DOES NOT DECLARE. The adapter\n" +
+                "  drops such an entry silently, so that crew member keeps resolving through the\n" +
+                "  manifest to somebody else's baked face. Dangling: " + string.Join(", ", danglingTargets));
+
+            // ...and no two crew may be sent to the SAME baked face, which a permutation typo does.
+            var targets = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in remap)
+            {
+                Assert.That(targets.ContainsKey(pair.Value), Is.False,
+                    $"remap targets {pair.Value} twice ({targets.GetValueOrDefault(pair.Value)} and {pair.Key})");
+                targets[pair.Value] = pair.Key;
+            }
+
             var keys = ResolvableKeys(out int manifestKeys, out int remapKeys);
-            // NON-VACUITY: the parsers must actually have parsed something, or an empty set would
-            // make the loop below assert nothing at all.
             Assert.That(manifestKeys, Is.GreaterThan(8),
                 "PRECONDITION: portraits.g.js parsed to " + manifestKeys + " keys — the reader is broken");
-            Assert.That(remapKeys, Is.GreaterThan(0),
-                "PRECONDITION: the adapter's remap parsed to nothing — the reader is broken, or a " +
-                "comment stripper swallowed the table");
+            Assert.That(remapKeys, Is.GreaterThanOrEqualTo(0));
 
             var host = GenSimHost.Build(AuthoredShips.PeriluneSlice());
             var citizens = host.Sim.Citizens.Items;
@@ -125,14 +180,11 @@ namespace Perilune.Tests
             //    AMARA's face. That fact lives only in the baking, and the remap table IS the
             //    record of it. What is mechanised is "there is a decision recorded for every crew
             //    member, and no two of them collide"; reading the faces is a human job, once.
-            var remap = RemapKeys();
-            Assert.That(remap.Count, Is.EqualTo(8),
-                "PRECONDITION: the remap table parsed to " + remap.Count + " entries, expected 8");
             var unremapped = new List<string>();
             for (int i = 0; i < citizens.Count; i++)
             {
                 string key = PersonaDump.PersonaKey(AuthoredShips.SliceSeed, citizens[i].Id);
-                if (!remap.Contains(key)) unremapped.Add($"{citizens[i].Name} → {key}");
+                if (!remap.ContainsKey(key)) unremapped.Add($"{citizens[i].Name} → {key}");
             }
             Assert.That(unremapped, Is.Empty,
                 "NOT EVERY SLICE CREW MEMBER HAS A REMAP ENTRY. Their key may still RESOLVE — the\n" +

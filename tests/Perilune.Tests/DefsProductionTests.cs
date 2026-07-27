@@ -143,10 +143,15 @@ namespace Perilune.Tests
         {
             Assert.That(SimDefs.Default.Production, Is.Not.Null);
             Assert.That(SimDefs.Default.Production.Nodes, Is.Not.Null);
-            Assert.That(SimDefs.Default.Production.Nodes.Length, Is.EqualTo(1),
-                "the compiled table is the ice melter's bill and nothing else");
+            // CROSS-LANE: relative to Compiled, not a literal 1. E0-6 merges FIRST and compiles in
+            // its own node, at which point a literal here fails for a reason that has nothing to do
+            // with the melter. What this test owns is that the melter's node is present and correct
+            // and that no OTHER station gained one — asserted by the CountFor block below.
+            Assert.That(SimDefs.Default.Production.Nodes.Length, Is.EqualTo(Compiled));
+            Assert.That(Compiled, Is.GreaterThanOrEqualTo(1), "the melter's bill is compiled in");
 
-            var node = SimDefs.Default.Production.Nodes[0];
+            Assert.That(SimDefs.Default.Production.TryGetNode(DeviceKind.IceMelter, 0, out var node), Is.True,
+                "the compiled table declares the ice melter's bill");
             Assert.That(node.Id, Is.EqualTo("melt_ice"));
             Assert.That(node.Station, Is.EqualTo(DeviceKind.IceMelter));
             Assert.That(node.WorkSeconds, Is.EqualTo(300));

@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -61,6 +61,11 @@ test('the registry glue exposes the manifest keys, and every extra key reuses a 
   const manifestFiles = Object.values(PORTRAITS).map((e) => e.file);
   for (const key of exposed) {
     const src = portraitRegistry[key];
+    // `undefined` is the shape a remap entry takes when its TARGET is not a manifest key. It used
+    // to be filtered out of existence, which is how a dangling target stayed invisible here while
+    // one crew member wore another's face (E0-7 review, survivor C19).
+    assert.equal(typeof src, 'string',
+      `key ${key} resolves to ${src} — a remap entry is pointing at a key the manifest does not declare`);
     assert.ok(manifestFiles.some((f) => src.endsWith(f)),
       `key ${key} points at ${src}, which is not any manifest entry's file`);
   }
@@ -68,9 +73,23 @@ test('the registry glue exposes the manifest keys, and every extra key reuses a 
   // 3. NON-VACUITY: the remap is expected to be non-empty today. If it is ever emptied because the
   //    portrait pipeline was re-run against the current ship, this says so instead of silently
   //    degrading to the old equality check.
-  assert.ok(extra.length > 0,
+  // The slice crews EIGHT, and all eight were displaced by the same one-device id shift, so all
+  // eight need an entry. `> 0` pinned only whichever line happened to introduce a key the manifest
+  // did not already contain — one of the eight — which is not the property anybody wants.
+  assert.equal(exposed.length, Object.keys(PORTRAITS).length + extra.length);
+  assert.equal(Object.keys(portraitRegistry).length - Object.keys(PORTRAITS).length, extra.length);
+  assert.ok(extra.length >= 1,
     'SLICE_ID_SHIFT_REMAP is empty — if the portraits were regenerated, delete the remap and this ' +
     'assertion together; until then an empty remap means the slice crew have lost their faces');
+  // The count that actually pins every line: the remap must carry one entry per slice crew member.
+  // Parsed from the source, because the exported registry cannot distinguish a remapped key that
+  // shadows a manifest key from the manifest entry it shadows.
+  const remapSrc = readFileSync(join(assetsDir, 'portraits-registry.js'), 'utf8');
+  const remapBody = remapSrc.slice(remapSrc.indexOf('SLICE_ID_SHIFT_REMAP'));
+  const entries = remapBody.slice(0, remapBody.indexOf('});')).match(/pk_[0-9a-f]{8}\s*:\s*'pk_[0-9a-f]{8}'/g) || [];
+  assert.equal(entries.length, 8,
+    `SLICE_ID_SHIFT_REMAP has ${entries.length} entries; the slice crews eight and all eight were ` +
+    'displaced by the same id shift');
   for (const src of Object.values(portraitRegistry)) {
     assert.equal(typeof src, 'string');
     assert.ok(src.length > 0);

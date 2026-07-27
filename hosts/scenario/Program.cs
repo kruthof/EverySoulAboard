@@ -529,13 +529,28 @@ namespace Perilune.Tools
                     if (d.StoredLiters < sim.Defs.Sustenance.DrinkLiters) dryTanks++;
                 }
                 else if (d.Kind == DeviceKind.IceMelter) { melters++; melterBuffered += d.StoredLiters; }
-                else if (d.Kind == DeviceKind.GrowBed)
-                {
-                    growBeds++;
-                    // A bed with no progress at all after a multi-day run is a STALLED bed: the
-                    // all-or-nothing irrigation draw failed and it has been frozen mid-crop.
-                    if (d.Progress <= 0f) dryBeds++;
-                }
+                else if (d.Kind == DeviceKind.GrowBed) growBeds++;
+            }
+            // A bed is DRY when its own fluid network cannot cover one second of irrigation — the
+            // all-or-nothing draw HydroponicsSystem actually makes, evaluated read-only, exactly as
+            // ShipSystems does it. NOT `Progress <= 0`: that was the first spelling and it carried
+            // no information, because a bed frozen mid-crop keeps whatever progress it had, so the
+            // dead-loop leg (--makeup 0, tanks run down) reported "3 of 3 still turning" alongside
+            // the healthy one. This test separates them.
+            foreach (var bed in sim.Devices.Items)
+            {
+                if (bed.Kind != DeviceKind.GrowBed) continue;
+                // Deliberately NOT gated on bed.Powered. A shed grow bed is a POWER fault, and on
+                // this ship power flaps on a one-second brownout sawtooth (ECONOMY.md §1.2), so
+                // folding it in here made this line report the instant the run happened to end
+                // instead of the state of the water loop. Unplumbed still counts: a bed on no
+                // network can never irrigate, whatever the tanks hold.
+                if (bed.FluidNetworkId == 0) { dryBeds++; continue; }
+                float onNetwork = 0f;
+                foreach (var t in sim.Devices.Items)
+                    if (t.Kind == DeviceKind.WaterTank && t.FluidNetworkId == bed.FluidNetworkId)
+                        onNetwork += t.StoredLiters;
+                if (onNetwork < sim.Defs.Hydro.GrowBedWaterPerSecond) dryBeds++;
             }
             stock.TryGetValue(ItemKind.Ice, out int iceLeft);
             Console.WriteLine();
@@ -543,8 +558,9 @@ namespace Perilune.Tools
             Console.WriteLine($"  tanks                  {tankLiters,8:0.0} / {tankCapacity:0.0} L across {tanks} tank(s), " +
                               $"{dryTanks} below one drink");
             Console.WriteLine($"  greywater pool         {sim.WastewaterLiters,8:0.0} L");
-            Console.WriteLine($"  grow beds              {growBeds - dryBeds,8} of {growBeds} still turning " +
-                              "(a bed at 0 progress after days is STALLED, not merely between crops)");
+            Console.WriteLine($"  grow beds              {growBeds - dryBeds,8} of {growBeds} can irrigate " +
+                              "(its own network holds at least one second of the all-or-nothing draw; " +
+                              "a bed that cannot is frozen mid-crop, however much progress it kept)");
             if (melters > 0)
             {
                 Console.WriteLine($"  ice melters            {melters,8}   (B-2 makeup floor SUPPRESSED — this ship " +
@@ -555,8 +571,14 @@ namespace Perilune.Tools
             }
             else
             {
-                Console.WriteLine($"  ice melters            {melters,8}   (no ice chain ⇒ the B-2 makeup floor is " +
-                                  $"ACTIVE at {sim.Defs.Water.MakeupFloorLiters:0.###} L — water is being conjured)");
+                // Say which of the two things is true, rather than asserting the conjuring in the
+                // one leg that exists to disprove it: `--makeup 0` turns the stand-in OFF, and this
+                // line used to announce it as ACTIVE at 0 L in exactly that run.
+                Console.WriteLine(sim.Defs.Water.MakeupFloorLiters > 0f
+                    ? $"  ice melters            {melters,8}   (no ice chain ⇒ the B-2 makeup floor is " +
+                      $"ACTIVE at {sim.Defs.Water.MakeupFloorLiters:0.###} L — water is being conjured)"
+                    : $"  ice melters            {melters,8}   (no ice chain AND no makeup floor ⇒ NOTHING " +
+                      "sources water on this ship — the loop can only run down)");
             }
 
             int alive = 0;

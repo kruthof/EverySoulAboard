@@ -21,8 +21,9 @@
 // which reach the same `roomCells` → `furnitureSvg` else-branch and which this table does not
 // address at all. What deriving removes is the HAND-MIRROR class: two view files that could drift
 // from each other and from `ITEMS`. The unskinned-glyph class is still open on the item side, is
-// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger (7
-// entries, 6 of them visibly chipping, both pinned by equality), and is chartered separately.
+// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger (8
+// entries since E0-7 added `Ice`, 7 of them visibly chipping, both pinned by equality), and is
+// chartered separately.
 //
 // `SPRITE_FOR_GLYPH` is NOT retired: it is the *WebGL/canvas* skin's table (`render/compose.js`,
 // `render/webgl/batch.js`, the frozen `hosts/web/Client.html`), where roles carry facing and the
@@ -36,13 +37,22 @@ import { ITEMS } from './index.js';
 /**
  * Device glyphs with NO dedicated piece in the 60-piece warm set, and the piece that stands in.
  *
- * ⚠️ THIS LEDGER ONLY SHRINKS. Every entry is a substitution the player can see — a real device
- * wearing another device's art — so each one is a decision with a reason, not a chore. Deleting an
- * entry means the set grew a real piece for that kind (draw it, give the entry's `glyph` field in
- * `ITEMS` the char, delete the line here); adding one means a `DeviceKind` shipped without art and
- * you chose a stand-in rather than drawing it. Every entry is inherited from the two hand-mirrored
- * `ROLE_TO_ITEM` tables this module replaces, so this list starts as a faithful record of what the
- * game already drew — it does not introduce a single new substitution.
+ * ⚠️ THIS LEDGER SHRINKS BY DEFAULT AND GROWS ONLY DELIBERATELY. Every entry is a substitution the
+ * player can see — a real device wearing another device's art — so each one is a decision with a
+ * reason, not a chore. Deleting an entry means the set grew a real piece for that kind (draw it,
+ * give the entry's `glyph` field in `ITEMS` the char, delete the line here). ADDING one means a new
+ * `DeviceKind` shipped and a stand-in was chosen over drawing art: legitimate, but only with the
+ * reason written beside the entry and the equality pin in
+ * `device-sprite-coverage.test.js` bumped in the same commit, so the decision lands in a commit
+ * message instead of a default.
+ *
+ * (The headline read "ONLY SHRINKS" until E0-7, whose `IceMelter` is the first addition. The rule
+ * it was really expressing is the one above — the pin forces the decision to be made out loud —
+ * and leaving the absolute wording over a live counter-example would have handed the next lane a
+ * contradiction.)
+ *
+ * Every entry below `wall-lamp` is inherited from the two hand-mirrored `ROLE_TO_ITEM` tables this
+ * module replaces, so this list started as a faithful record of what the game already drew.
  *
  * The guard (`client/test/device-sprite-coverage.test.js`) asserts every value is a real item with
  * a real builder, and that no entry here shadows a glyph a real piece already claims.

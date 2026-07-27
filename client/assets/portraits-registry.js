@@ -49,9 +49,15 @@ export const portraitRegistry = Object.fromEntries(
   Object.entries(PORTRAITS)
     .map(([key, entry]) => [key, new URL(entry.file, import.meta.url).href])
     .concat(
+      // NOT `.filter(([, baked]) => PORTRAITS[baked])`. That spelling silently DROPPED an entry
+      // whose target the manifest does not declare, which meant a typo'd target left the crew
+      // member resolving through the manifest to their predecessor's face with every guard green
+      // (E0-7 review, survivor C19). An unresolvable target is now a visible `undefined`, which
+      // portraits.g.test.js asserts against and `resolvePortrait` treats as "no portrait".
       Object.entries(SLICE_ID_SHIFT_REMAP)
-        .filter(([, baked]) => PORTRAITS[baked])
-        .map(([key, baked]) => [key, new URL(PORTRAITS[baked].file, import.meta.url).href]),
+        .map(([key, baked]) => [key, PORTRAITS[baked]
+          ? new URL(PORTRAITS[baked].file, import.meta.url).href
+          : undefined]),
     ),
 );
 

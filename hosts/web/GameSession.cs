@@ -782,17 +782,22 @@ namespace Perilune.Web
         ///    <c>StockpileFilterVerbTests.BitsAboveTheLastItemKindAreCanonicalisedAway</c> says so in
         ///    its own doc rather than pretending otherwise.
         ///
-        ///    THE TWO MASKS ARE DERIVED INDEPENDENTLY AND CAN DIVERGE. <see cref="AcceptAllMask"/> here
-        ///    is COUNT-based (<c>(1UL &lt;&lt; Length) - 1</c>, which assumes <see cref="ItemKind"/> is
-        ///    contiguous from 0); <c>StockZoneSystem.AcceptAllMask</c> is per-enum-VALUE. Give
-        ///    <see cref="ItemKind"/> a gap — say a kind 9 with 7 and 8 undefined — and this mask sets
-        ///    phantom bits the sim's does not, at which point this line is load-bearing again and its
-        ///    deletion IS observable. That contiguity assumption is pinned by
-        ///    <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
+        ///    ⚠ THE DIVERGENCE THIS PARAGRAPH USED TO WARN ABOUT HAS HAPPENED, AND WAS FIXED (E0-7).
+        ///    <see cref="AcceptAllMask"/> here WAS count-based (<c>(1UL &lt;&lt; Length) - 1</c>, which
+        ///    assumes <see cref="ItemKind"/> is contiguous from 0) while
+        ///    <c>StockZoneSystem.AcceptAllMask</c> was per-enum-VALUE. E0-7 took <c>Ice = 8</c> over the
+        ///    slot 7 the integrator had reserved for E0-6's <c>Seals</c>, so the gap is REAL now — and
+        ///    the count form would have set bit 7 (nothing) and cleared bit 8 (Ice), making
+        ///    "accept everything" silently refuse the newest kind on every stockpile in the game.
+        ///    So this site was converted to the per-VALUE derivation too. The two masks are therefore
+        ///    EQUAL again, by construction rather than by luck, and this line is once more redundant
+        ///    for stored state. DO NOT "simplify" it back to the count form: that is the bug, and it
+        ///    is pinned by <c>StockZoneSystemTests.AcceptAllMask_IsValueDerived_NowThatItemKindHasAGap</c>
+        ///    (which asserts, by name, that this constant equals the OR of the declared values).
         ///
-        ///    THE REAL RESOLUTION, LOGGED AND NOT DONE HERE: have every site consume
-        ///    <c>StockZoneSystem.AcceptAllMask</c> — this bridge, <c>Tui.Ui.StockFilterModel</c> and the
-        ///    client's <c>ACCEPT_ALL</c> — after which the two derivations cannot diverge, this line is
+        ///    STILL LOGGED AND NOT DONE: have every site consume
+        ///    <c>StockZoneSystem.AcceptAllMask</c> itself — this bridge, <c>Tui.Ui.StockFilterModel</c>
+        ///    and the client's <c>ACCEPT_ALL</c> — after which there is only ONE derivation, this line is
         ///    provably the same operation as the sim's, and it can simply be deleted along with the
         ///    cross-derivation bridge test. Three host files and a JS constant; its own package.
         /// </summary>

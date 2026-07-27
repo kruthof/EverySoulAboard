@@ -430,11 +430,18 @@ namespace Perilune.Gen
         /// anything is appended, so a second call is an authoring error rather than a quietly
         /// doubled hold.
         ///
-        /// SIZING, MEASURED rather than reasoned. The slice burns ~112 units/day (3 sim-days,
-        /// one seed: 800 units went to 465), because the hydro loop destroys roughly 0.256 L per
-        /// litre irrigated and irrigation is per-SECOND until ECONOMY.md §10's per-crop retune
-        /// lands in E1. 4 tiles x 50 stacks x 8 units = 1,600 units is therefore about FOURTEEN
-        /// sim-days — call it 4.7x the standard 3-day measurement window.
+        /// SIZING, MEASURED rather than reasoned, and RE-MEASURED after review moved the number by
+        /// half. The slice burns ~75 units/day (3 sim-days, one seed: 1,600 units went to 1,376;
+        /// 72/day over 10 days), because the hydro loop destroys roughly 0.256 L per litre irrigated
+        /// and irrigation is per-SECOND until ECONOMY.md §10's per-crop retune lands in E1. 4 tiles
+        /// x 50 stacks x 8 units = 1,600 units is therefore about TWENTY-ONE sim-days — call it 7x
+        /// the standard 3-day measurement window.
+        ///
+        /// ⚠ THE FIRST DRAFT OF THIS COMMENT SAID FOURTEEN, and that was not a rounding error: the
+        /// melter ran BEFORE the reclaimer, so finite hauled ice was claiming tank headroom ahead of
+        /// free recycled greywater and the hold drained a third faster than it had to. Ordering is a
+        /// priority decision (WaterSystem.RunMelters). Read any runway figure as a property of that
+        /// ordering and of the uncapped greywater pool, not of the ice economy alone.
         ///
         /// That margin is the point: a faucet that empties inside the window is a boot window
         /// wearing a faucet's costume, the exact failure ECONOMY-PLAN §7.7 names. It is still

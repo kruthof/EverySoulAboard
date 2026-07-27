@@ -45,7 +45,8 @@ namespace Perilune.Tests
         /// the three pipes are contiguous so they flood into one component.
         /// </summary>
         private static Simulation BuildMelterScenario(SimDefs defs, int iceUnits, float tankLiters = 0f,
-                                                      bool plumbed = true)
+                                                      bool plumbed = true, bool secondTank = false,
+                                                      bool reclaimer = false)
         {
             string[] map =
             {
@@ -64,6 +65,15 @@ namespace Perilune.Tests
 
             sim.AddDevice(DeviceKind.IceMelter, new Int3(3, 2, 0), "melter");
             sim.AddDevice(DeviceKind.WaterTank, new Int3(5, 2, 0), "tank").StoredLiters = tankLiters;
+            // A SECOND tank on the SAME fluid network, at the SAME level, later in device store
+            // order. Only built when asked for: it exists to make the least-full tie-break in
+            // RunMelters observable, and it is observable only when two tanks tie.
+            if (secondTank)
+                sim.AddDevice(DeviceKind.WaterTank, new Int3(4, 2, 0), "tank_b").StoredLiters = tankLiters;
+
+            // A reclaimer on the SAME network, when asked for: the only way to make the two water
+            // sources compete for one tank's headroom, which is what the pass ordering decides.
+            if (reclaimer) sim.AddDevice(DeviceKind.Reclaimer, new Int3(4, 2, 0), "reclaimer");
 
             sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false ⇒ recruitable
             if (iceUnits > 0) sim.AddItem(ItemKind.Ice, iceUnits, new Int3(1, 2, 0));
@@ -396,7 +406,9 @@ namespace Perilune.Tests
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(2, 2, 0)));
 
-            Assert.That(WaterSystem.HasMeltHeadroom(sim, fab), Is.True,
+            Assert.That(ProductionDefs.TryGetBill(defs, DeviceKind.Fabricator, out var fabBill), Is.True,
+                "PRECONDITION: the fabricator still resolves a bill");
+            Assert.That(WaterSystem.HasMeltHeadroom(sim, fab, fabBill), Is.True,
                 "the backpressure gate is transparent to every station that is not a melter");
 
             Run(sim, 30_000);   // the legacy Scrap→Parts bill is 900 s of work
@@ -419,10 +431,12 @@ namespace Perilune.Tests
         /// float accumulation into <c>Device.StoredLiters</c>; this is what says none of them
         /// depends on anything but store order.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: make <c>RunMelters</c> pick its target tank with
-        /// <c>&lt;=</c> instead of <c>&lt;</c> AND give the scenario a second tank — ties would then
-        /// resolve to the LAST tank in store order. (With one tank the mutation is inert, which is
-        /// why the divergence leg below runs a two-tank ship.)
+        /// MUTATION THAT MAKES THIS FAIL: nothing here, on its own — with ONE tank the tie-break
+        /// cannot be exercised at all. See
+        /// <see cref="TheTankTieBreak_KeepsTheEARLIERTank_OnATwoTankNetwork"/>, which is the leg
+        /// that pins it. ⚠ AN EARLIER DRAFT OF THIS COMMENT CLAIMED THE TWO-TANK LEG EXISTED AND IT
+        /// DID NOT: the <c>&lt;=</c> mutation survived the entire gate. Found in independent review;
+        /// the named mutation is now attached to a test that can actually fail on it.
         /// </summary>
         [Test]
         public void TwoIdenticalMelterShips_StayHashEqual()
@@ -545,6 +559,176 @@ namespace Perilune.Tests
                 "PRECONDITION: RunMelters really moved litres inside the measured window");
             Assert.That(delta, Is.EqualTo(0L),
                 "the melter passes allocated " + delta + " bytes over 3000 ticks");
+        }
+
+        /// <summary>
+        /// THE TANK TIE-BREAK, ON A NETWORK THAT CAN ACTUALLY SHOW IT. <c>RunMelters</c> picks the
+        /// least-full tank with a strict <c>&lt;</c>, so a tie keeps the EARLIER tank in device
+        /// store order — the same rule <c>RunReclaimers</c> uses, deliberately, so the two passes
+        /// cannot drift apart.
+        ///
+        /// This needs TWO tanks at the SAME level on ONE fluid network, which no other fixture in
+        /// this file (or the repo) builds: with a single tank the argmin has nothing to choose
+        /// between and a <c>&lt;=</c> would be inert. That is exactly why this test exists — the
+        /// mutation was NAMED by the determinism test above and pinned by nothing, and it survived
+        /// the full 1034-test gate.
+        ///
+        /// It is not a style point. Store order IS the hash order (ECONOMY-PLAN §4.1), so a
+        /// non-strict argmin moves which tank holds the litres, which moves <c>StateHash</c>, on
+        /// every ship whose water loop has redundant tankage.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: in <c>WaterSystem.RunMelters</c>, change
+        /// <c>tank.StoredLiters &lt; target.StoredLiters</c> to <c>&lt;=</c> — the meltwater lands
+        /// in <c>tank_b</c> instead. (Applied, observed red, reverted.)
+        /// </summary>
+        [Test]
+        public void TheTankTieBreak_KeepsTheEARLIERTank_OnATwoTankNetwork()
+        {
+            var defs = SimDefs.CreateDefault();
+            var sim = BuildMelterScenario(defs, iceUnits: 0, secondTank: true);
+            var melter = Dev(sim, "melter");
+            var first = Dev(sim, "tank");
+            var second = Dev(sim, "tank_b");
+
+            Run(sim, 20);
+            // PRECONDITIONS — without all four the argmin has nothing to choose between and this
+            // test would pass under either spelling.
+            Assert.That(first.FluidNetworkId, Is.Not.EqualTo(0), "tank is plumbed");
+            Assert.That(second.FluidNetworkId, Is.EqualTo(first.FluidNetworkId),
+                "and BOTH tanks are on the melter's ONE network");
+            Assert.That(second.StoredLiters, Is.EqualTo(first.StoredLiters),
+                "and they are exactly TIED, which is the only case a tie-break decides");
+            var devices = sim.Devices.Items;
+            int iFirst = devices.IndexOf(first), iSecond = devices.IndexOf(second);
+            Assert.That(iFirst, Is.LessThan(iSecond),
+                "and 'tank' really is the EARLIER of the two in device store order");
+
+            // ONE drain, from a primed buffer, with no crew in the loop. The tie-break decides only
+            // the FIRST delivery — after it the earlier tank is no longer tied and the argmin
+            // legitimately moves on — so a multi-batch run would fill both tanks under either
+            // spelling and prove nothing. This is the single decision, isolated.
+            melter.StoredLiters = 10f;
+            Run(sim, 10);   // one 2 Hz Water pass, with margin
+
+            Assert.That(first.StoredLiters, Is.EqualTo(10f).Within(0.001f),
+                "a tie keeps the EARLIER tank — strict '<', exactly as RunReclaimers does");
+            Assert.That(second.StoredLiters, Is.EqualTo(0f),
+                "...and the later tank got nothing from this pass");
+            Assert.That(melter.StoredLiters, Is.EqualTo(0f).Within(0.001f),
+                "PRECONDITION (after the fact): the buffer really drained, so a decision was made");
+        }
+
+        /// <summary>
+        /// THE GATE AND THE COMPLETION AGREE ON WHAT A BATCH IS WORTH, on a bill that is not
+        /// <c>Ice:1</c>. <c>OnBatchComplete</c> adds <c>IceLitersPerUnit × units</c>; the first
+        /// draft's <c>HasMeltHeadroom</c> tested ONE unit's yield, and the two agreed only because
+        /// the shipped bill happens to consume one. The doc comment promising that retuning to
+        /// <c>Ice:4</c> "scales the yield without touching code" was itself the thing that broke
+        /// them: at <c>Ice:4</c> the gate admitted a batch the buffer could not hold, and 4 units of
+        /// hauled hold ice bought 30 L instead of 100.
+        ///
+        /// The arithmetic is chosen to be checkable by eye: 25 L/unit × 4 units = 100 L a batch,
+        /// against a 130 L buffer. One batch fits. A second does not, and must never start.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: in <c>HasMeltHeadroom</c>, drop the <c>* units</c> (back
+        /// to the one-unit test) — a second batch starts, 8 units of ice are consumed instead of 4,
+        /// and the buffer clamps at 130 L having destroyed 70 L. (Applied, observed red, reverted.)
+        /// </summary>
+        [Test]
+        public void AMultiUnitBill_IsGatedOnTheWHOLEBatchsYield_NotOnOneUnits()
+        {
+            var problems = new List<string>();
+            var defs = DefsParser.Parse(
+                new[] { ("test.def", "[production]\nmelt_ice IceMelter 300 Ice:4 none\n") }, problems);
+            Assert.That(problems, Is.Empty, string.Join(" | ", problems));
+            defs.Water.IceLitersPerUnit = 25f;
+            defs.Water.MelterBufferLiters = 130f;   // exactly one 100 L batch, with 30 L to spare
+            defs.ComputeChecksum();
+
+            Assert.That(ProductionDefs.TryGetBill(defs, DeviceKind.IceMelter, out var bill), Is.True);
+            Assert.That(bill.Input(0).Count, Is.EqualTo(4),
+                "PRECONDITION: the overlay really retuned melt_ice to a four-unit bill");
+
+            // Unplumbed on purpose: the buffer is then the ONLY thing the gate can be reading.
+            var sim = BuildMelterScenario(defs, iceUnits: 12, plumbed: false);
+            var melter = Dev(sim, "melter");
+            Run(sim, TwoBatchTicks * 3);   // time for three batches, if they were allowed
+
+            Assert.That(melter.StoredLiters, Is.EqualTo(100f).Within(0.001f),
+                "one batch landed WHOLE — nothing was clamped away");
+            Assert.That(UnitsAnywhere(sim, ItemKind.Ice), Is.EqualTo(8),
+                "and exactly ONE batch ran: 4 of 12 units spent, the other 8 still hold cargo");
+        }
+
+        /// <summary>
+        /// FREE WATER IS CLAIMED BEFORE FINITE WATER. <c>WaterSystem.Tick</c> runs
+        /// <c>RunReclaimers</c> before <c>RunMelters</c>, so recycled greywater — which the ship
+        /// gets for nothing — takes tank headroom ahead of meltwater the crew hauled up a ladder as
+        /// finite hold cargo.
+        ///
+        /// This is a PRIORITY decision dressed as a plumbing detail, and E0-7 shipped it the wrong
+        /// way round in its first draft ("land meltwater before the tanks are drawn from"). The cost
+        /// was not a rounding error: measured on the slice, melter-first burned 335 units of hold
+        /// ice over 3 sim-days against 224 reclaim-first (−33 %), for identical food and identical
+        /// full tanks. Nothing was traded for it. It survived review's whole mutation sweep because
+        /// NOTHING PINNED IT — this test is that pin.
+        ///
+        /// Driven on one Water pass with both sources primed and exactly one tank's worth of
+        /// headroom to compete for, so the outcome is the ordering and nothing else.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: swap the two calls in <c>WaterSystem.Tick</c> back —
+        /// the melter drains into the headroom first and the pool is left holding the greywater.
+        /// (Applied, observed red, reverted.)
+        /// </summary>
+        [Test]
+        public void TheReclaimerClaimsTankHeadroomBeforeTheMelterDoes()
+        {
+            var defs = SimDefs.CreateDefault();
+            // 10 L of headroom: less than either source could fill on its own, so exactly one of
+            // them gets it and which one IS the assertion.
+            var sim = BuildMelterScenario(defs, iceUnits: 0, tankLiters: defs.Water.TankCapacityLiters - 10f,
+                                          reclaimer: true);
+            var tank = Dev(sim, "tank");
+            var melter = Dev(sim, "melter");
+            var recl = Dev(sim, "reclaimer");
+
+            Run(sim, 20);
+            Assert.That(recl.FluidNetworkId, Is.EqualTo(tank.FluidNetworkId),
+                "PRECONDITION: the reclaimer is on the tank's network");
+            Assert.That(melter.FluidNetworkId, Is.EqualTo(tank.FluidNetworkId),
+                "PRECONDITION: and so is the melter — they are competing for ONE tank");
+            Assert.That(recl.Powered, Is.True, "PRECONDITION: the reclaimer can run");
+
+            // Prime both sources. The greywater pool is the reclaimer's input; the buffer is the
+            // melter's. Both are re-primed each pass so neither runs out and 'who got there first'
+            // stays the only variable.
+            // The headroom is RESET every pass as well, because a reclaimer fills 0.025 L a pass and
+            // would otherwise close the 10 L gap once and leave every later pass measuring a full
+            // tank — which is a no-op for BOTH sources and would make this test vacuous.
+            float reclaimed = 0f, meltedAway = 0f;
+            for (int pass = 0; pass < 6; pass++)
+            {
+                tank.StoredLiters = defs.Water.TankCapacityLiters - 10f;
+                sim.WastewaterLiters = 200f;
+                melter.StoredLiters = 200f;
+                Run(sim, 5);                       // exactly one 2 Hz Water pass
+                reclaimed += 200f - sim.WastewaterLiters;
+                meltedAway += 200f - melter.StoredLiters;
+            }
+
+            // THE DISCRIMINATOR. A melter drains min(buffer, headroom) — with 200 L buffered against
+            // 10 L of headroom it takes ALL of it — so under melter-first the reclaimer finds a full
+            // tank every pass and moves exactly nothing. Reclaim-first, the reclaimer takes its
+            // rate-limited share FIRST and the melter fills only the remainder.
+            Assert.That(reclaimed, Is.GreaterThan(0f),
+                "THE RECLAIMER GOT NOTHING. Free recycled greywater must claim tank headroom before " +
+                "finite hauled meltwater does — check the call order in WaterSystem.Tick.");
+            Assert.That(meltedAway, Is.GreaterThan(0f),
+                "PRECONDITION: the melter was draining too, or 'the reclaimer went first' is a " +
+                "statement about a race with only one runner");
+            Assert.That(reclaimed + meltedAway, Is.EqualTo(60f).Within(0.05f),
+                "and between them they filled exactly the headroom offered (6 passes x 10 L) — so " +
+                "the split above is a PRIORITY, not one source simply being absent");
         }
 
         // ══════════════════════════════════════════════════ 6b. the AUTHORED chain, on the fixture
