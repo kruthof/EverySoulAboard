@@ -36,12 +36,13 @@ function itemKindMembers() {
 }
 
 // MUTATION: swap `Potato = 3` and `Scrap = 4` in sim/Sim.Core/Entities/ItemStack.cs ⇒ this fails and
-// names the client file that has to follow. It is also the tripwire that stops an eighth ItemKind
+// names the client file that has to follow. It is also the tripwire that stops a NINTH ItemKind
 // from shipping with no chip in the palette — a kind the player can never filter on, and which a
-// stored accept-all mask would silently refuse (see MECHANICS §13).
+// stored accept-all mask would silently refuse (see MECHANICS §13). It did its job once already:
+// E0-6's `Seals = 7` landed here first, and the palette followed in the same commit.
 test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', () => {
   const members = itemKindMembers();
-  assert.equal(members.length, 7, `parsed ${members.length} ItemKind members, expected 7`);
+  assert.equal(members.length, 8, `parsed ${members.length} ItemKind members, expected 8`);
   assert.equal(STOCK_KINDS.length, members.length,
     'the palette lists exactly as many kinds as the sim has');
   members.forEach(([name, index], i) => {
@@ -56,20 +57,20 @@ test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', ()
   for (const l of labels) assert.ok(l && l.length, 'every kind has a label');
   assert.equal(new Set(labels).size, labels.length, 'labels are distinct');
   // ACCEPT_ALL covers exactly one bit per kind — derived, never a copied 0x7F.
-  assert.equal(ACCEPT_ALL, 127);
+  assert.equal(ACCEPT_ALL, 255);   // 0x7F before E0-6 added Seals
   for (const { kind } of STOCK_KINDS) assert.ok(stockKindAccepted(ACCEPT_ALL, kind), `bit ${kind} set`);
   assert.equal(ACCEPT_ALL >> members.length, 0, 'and no bit above the last kind');
 });
 
 // MUTATION: `mask ^ kind` instead of `mask ^ (1 << kind)` in toggleStockKind ⇒ toggling kind 3 off
-// ACCEPT_ALL yields 124, not 119 (it clears kinds 0 and 1 and leaves Potato accepted).
+// ACCEPT_ALL yields 252, not 247 (it clears kinds 0 and 1 and leaves Potato accepted).
 test('toggleStockKind flips exactly one bit, never mutates, and the default accepts everything', () => {
   assert.equal(defaultStockFilter(), ACCEPT_ALL,
     'a player who never opens the filter gets exactly E0-3 behaviour');
 
   const before = ACCEPT_ALL;
   const noPotato = toggleStockKind(before, 3);
-  assert.equal(noPotato, 0b1110111);
+  assert.equal(noPotato, 0b11110111);
   assert.equal(before, ACCEPT_ALL, 'the input mask is not mutated');
   assert.equal(stockKindAccepted(noPotato, 3), false);
   assert.equal(stockKindAccepted(noPotato, 4), true, 'exactly ONE bit moved');
@@ -87,7 +88,7 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 // which is FALSE, because JS shift counts are reduced modulo 32: `1 << 32` is 1, not 0, so the
 // "out-of-range" bit wraps back INSIDE the valid range where the mask cannot touch it. Measured
 // before the fix: toggleStockKind(127, 32) === 126 (it flipped REGOLITH) and
-// stockKindAccepted(1, 32) === true. Kinds 7..31 ARE truncated, which is precisely how the false
+// stockKindAccepted(1, 32) === true. Kinds 8..31 ARE truncated, which is precisely how the false
 // claim survived a test that only probed 9 and -1.
 //
 // MUTATION: delete the `if (!inKindRange(k))` line from toggleStockKind ⇒ the kind-32 assertion
@@ -95,7 +96,7 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 test('the mask helpers are TOTAL: a kind the sim does not have flips nothing and is accepted by nothing', () => {
   assert.equal(1 << 32, 1, 'JS reduces the shift count modulo 32 — this is why the guard exists');
 
-  for (const bad of [7, 9, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
+  for (const bad of [8, 9, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
     assert.equal(toggleStockKind(ACCEPT_ALL, bad), ACCEPT_ALL, `toggle is a no-op for kind ${bad}`);
     assert.equal(toggleStockKind(0, bad), 0, `toggle is a no-op for kind ${bad} on an empty mask`);
     assert.equal(stockKindAccepted(ACCEPT_ALL, bad), false, `no mask accepts kind ${bad}`);

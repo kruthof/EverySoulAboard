@@ -1365,7 +1365,9 @@ test('an UN-INJECTED palette zones ACCEPT-ALL — never silence, never accept-no
 // could not see the cause of. MUTATION: restore `parseInt` ⇒ RED on the first two rows below.
 test('a chip with a junk kind attribute changes nothing — NaN must not read as REGOLITH', () => {
   rzArm('stockpile');
-  for (const junk of ['nonsense', '', '-1', '7', '32', '3.5']) {
+  // '8' is the first index PAST the last ItemKind (E0-6 made 7 = Seals real, so '7' moved out of
+  // this list and into the real-kind case below).
+  for (const junk of ['nonsense', '', '-1', '8', '32', '3.5']) {
     const before = rzShownMask();
     const b = new RzEl(rzDoc, 'button');
     b.dataset.rzaccept = junk;

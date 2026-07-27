@@ -23,7 +23,7 @@
 //
 // So this file now enumerates **BOTH** switches. `ForDevice` is CLOSED — every kind resolves to art
 // or is in `NO_FURNITURE_SPRITE`. `ForItem` is **OPEN AND MEASURED**: no ground item has art, all
-// seven are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
+// eight are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
 // equality. That ledger is the gap made mechanical instead of prose — a *new* `ItemKind` cannot join
 // it silently, and the number can only be paid down. **Ground-item art is chartered separately and
 // is deliberately NOT in this package.**
@@ -207,7 +207,7 @@ const NO_FURNITURE_SPRITE = Object.freeze({
  * equality below, so this ledger only ever pays DOWN.
  */
 const NO_GROUND_ITEM_SPRITE = Object.freeze({
-  // The six that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
+  // The seven that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
   // set has no ground-pile, ore, crop, scrap, part or module piece to skin any of them with, and the
   // three generic containers it does have (`storage-crate`, `supply-barrel`, `fuel-drum`) are
   // COSMETIC decor pieces, not stack art — standing one in would say "a crate is here", which is a
@@ -218,6 +218,10 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   Scrap: { glyph: 's', chips: true, why: 'salvage stack; no scrap piece in the warm set' },
   Parts: { glyph: 'p', chips: true, why: 'parts stack; no parts piece in the warm set' },
   ControllerModule: { glyph: 'c', chips: true, why: 'module stack; no module piece in the warm set' },
+  // E0-6 added `Seals` (ItemKind 7). The question this ledger forces was answered NO: the warm
+  // 60-piece set has no gasket/seal/consumable piece either, and ground-item art is chartered
+  // separately, so it joins the ledger rather than pretending to art it does not have.
+  Seals: { glyph: 'g', chips: true, why: 'seal/gasket stack; no consumable piece in the warm set' },
   // The one that does NOT chip, and it is the reason this ledger records `chips` per entry instead
   // of just listing names: `'&'` (38) is in `NON_FURNITURE` on BOTH surfaces, so a corpse reaches
   // neither furniture layer. It draws nothing at all here. (The frozen canvas skin has a real
@@ -258,8 +262,8 @@ const COVERED = DEVICE_KINDS.filter(
 const EXPECT_DEVICE_KINDS = 26;
 const EXPECT_FOR_DEVICE_ARMS = 26;
 const EXPECT_COVERED = 23;    // 26 kinds − 3 allowlisted (Door, Conduit, Pipe)
-const EXPECT_ITEM_KINDS = 7;
-const EXPECT_FOR_ITEM_ARMS = 7;
+const EXPECT_ITEM_KINDS = 8;   // E0-6 added Seals
+const EXPECT_FOR_ITEM_ARMS = 8;   // E0-6 added Seals
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -389,7 +393,7 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 6;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
+const EXPECT_CHIPPING_ITEM_KINDS = 7;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
 
 test('THE OPEN GAP, MEASURED: exactly six ItemKinds still draw a raw-letter chip', () => {
   const chipping = [];

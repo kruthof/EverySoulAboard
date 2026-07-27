@@ -12,7 +12,7 @@
 // Potato → FOOD (the kind is "raw food", not one vegetable) and MetalOre → ORE (it is the only ore).
 // `name` is the exact member name, and the tripwire compares THAT.
 
-/** The seven item kinds, in ItemKind order. `kind` === the sim ItemKind byte. */
+/** The eight item kinds, in ItemKind order. `kind` === the sim ItemKind byte. */
 export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 0, name: 'Regolith', label: 'REGOLITH' }),
   Object.freeze({ kind: 1, name: 'MetalOre', label: 'ORE' }),
@@ -21,10 +21,12 @@ export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 4, name: 'Scrap', label: 'SCRAP' }),
   Object.freeze({ kind: 5, name: 'Parts', label: 'PARTS' }),
   Object.freeze({ kind: 6, name: 'ControllerModule', label: 'CTRL MOD' }),
+  Object.freeze({ kind: 7, name: 'Seals', label: 'SEALS' }),
 ]);
 
 /**
- * Every kind accepted — DERIVED from the list, never a literal (127 today). The host derives the
+ * Every kind accepted — DERIVED from the list, never a literal (255 today; it was 127 before E0-6
+ * added `Seals`, which is exactly why it is derived). The host derives the
  * same value from `Enum.GetValues(typeof(ItemKind)).Length`; both widen together when a kind is
  * added, and neither can drift into covering a stale subset the way a copied 0x7F would.
  */
@@ -63,9 +65,9 @@ export function stockKindAccepted(mask, kind) {
  * opposite. `& ACCEPT_ALL` alone does NOT make an out-of-range kind harmless, because **JS shift
  * counts are reduced modulo 32**: `1 << 32` is `1`, not `0`, so `toggleStockKind(127, 32)` silently
  * flipped REGOLITH (measured: it returned 126) and `stockKindAccepted(1, 32)` returned true. The
- * wrapped bit lands back INSIDE the valid range, exactly where the mask cannot remove it. Kinds 7-31
+ * wrapped bit lands back INSIDE the valid range, exactly where the mask cannot remove it. Kinds 8-31
  * do get truncated by `& ACCEPT_ALL`, which is why the old claim survived a test that only probed 9
- * and -1. Not a live bug — both call sites feed 0..6 — but this is a pure exported model whose whole
+ * and -1. Not a live bug — both call sites feed 0..7 — but this is a pure exported model whose whole
  * value is being an auditable contract, so it is total rather than "undefined past the enum".
  */
 export function toggleStockKind(mask, kind) {
@@ -88,7 +90,7 @@ function inKindRange(kind) { return kind >= 0 && kind < STOCK_KINDS.length; }
  * for one)". That channel now exists (`zones`), and a filtered tile carries both a mark and a named
  * key. Note the HALF-HONOURED CEILING flagged in zone-model.js's header: the reduction below uses
  * `(mask | 0)`, a 32-bit operation, so a mask with a bit at index 32 or above would be mis-NAMED here
- * even though `decodeZones` delivers it intact. Unreachable with 7 ItemKinds; fix both halves together.
+ * even though `decodeZones` delivers it intact. Unreachable with 8 ItemKinds; fix both halves together.
  */
 export function stockFilterLabel(mask) {
   const m = (mask | 0) & ACCEPT_ALL;

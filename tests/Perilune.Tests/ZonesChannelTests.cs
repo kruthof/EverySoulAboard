@@ -164,8 +164,9 @@ namespace Perilune.Tests
             // Non-vacuity: a mask of 0 would satisfy the bound while meaning the registry is broken.
             Assert.That(StockZoneSystem.AcceptAllMask, Is.GreaterThan(0UL),
                 "AcceptAllMask is 0 — the bound above is then guarding nothing");
-            Assert.AreEqual(0x7FUL, StockZoneSystem.AcceptAllMask,
-                "seven ItemKinds today; if this changed on purpose, re-measure the bound above with it");
+            Assert.AreEqual(0xFFUL, StockZoneSystem.AcceptAllMask,
+                "eight ItemKinds today (0x7F before E0-6 added Seals); if this changed on purpose, " +
+                "re-measure the bound above with it");
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge

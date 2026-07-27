@@ -364,8 +364,8 @@ test('Cmd.filter carries the WHOLE mask for a tile, canonical and never negative
   assert.deepEqual(Cmd.filter(3, 4, 8), { cmd: 'filter', x: 3, y: 4, mask: 8 });
   // Accept-nothing is a real value, not a falsy omission.
   assert.deepEqual(Cmd.filter(3, 4, 0), { cmd: 'filter', x: 3, y: 4, mask: 0 });
-  assert.equal(Cmd.filter(1, 1, -1).mask, 127, 'a negative can never reach the wire');
-  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 127, 'bits above the last ItemKind are dropped');
+  assert.equal(Cmd.filter(1, 1, -1).mask, 255, 'a negative can never reach the wire');
+  assert.equal(Cmd.filter(1, 1, 0xFFFF).mask, 255, 'bits above the last ItemKind are dropped');
   // Its OWN verb — never the presence verb, which carries no mask at all.
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'stockpile');
   assert.notEqual(Cmd.filter(1, 1, 5).cmd, 'build');

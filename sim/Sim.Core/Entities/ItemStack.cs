@@ -9,6 +9,9 @@ namespace Perilune.Sim
         Scrap = 4,      // salvage input (from debris via SalvageRecycler)
         Parts = 5,      // Fabricator output, MachineShop input
         ControllerModule = 6, // makes one device MOSS-scriptable (GDD §6 ladder step 4)
+        Seals = 7,      // E0-6: the cheap, high-turnover maintenance tier (ECONOMY.md §3.2 row 7 —
+                        // "filters and gaskets"). Produced by the Fabricator beside Parts; consumed
+                        // by MaintenanceSystem as the rung between a Parts overhaul and a jury-rig.
     }
 
     /// <summary>An item stack lying on a tile (or carried — then Pos mirrors the carrier).</summary>

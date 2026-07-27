@@ -45,6 +45,7 @@ namespace Perilune.Tui.Ui
             "SCRAP",     // ItemKind.Scrap
             "PARTS",     // ItemKind.Parts
             "CTRL MOD",  // ItemKind.ControllerModule
+            "SEALS",     // ItemKind.Seals (E0-6)
         };
 
         /// <summary>True for a kind the sim actually has. The ONE range predicate, so every guard

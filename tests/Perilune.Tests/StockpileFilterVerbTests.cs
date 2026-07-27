@@ -247,7 +247,8 @@ namespace Perilune.Tests
             gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x1F3));
             host.Sim.Tick();
 
-            const ulong canonical = 0x1F3UL & 0x7FUL;   // 0x73 — spelled as the operation, not a literal
+            const ulong canonical = 0x1F3UL & 0xFFUL;   // 0xF3 — spelled as the operation, not a literal
+                                                        // (0x7F before E0-6 added ItemKind.Seals)
             Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask),
                 "a real restriction stores a real entry");
             Assert.AreNotEqual(0x1F3UL, mask, "the over-wide mask was NOT stored verbatim");
