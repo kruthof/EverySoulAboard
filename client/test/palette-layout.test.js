@@ -52,20 +52,66 @@ function cssRules(css) {
   }));
 }
 
-/** The LAST value `prop` is given for any rule whose selector list contains exactly `sel`. */
+/**
+ * ⚠️ SELECTOR MATCHING IS BY **SUBJECT**, NOT BY EXACT STRING, AND THAT IS A BUG FIX.
+ *
+ * This used to be `r.sels.includes(sel)` and `s.startsWith(sel + '::')` — exact-string tests against
+ * one compound. Adding ONE rule to `styles.css` restored the pre-fix declaration set VERBATIM and
+ * left all 710 node tests green:
+ *
+ *     #roomzoom-view .rz-palette{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+ *
+ * Those are the same three declarations this file's own header quotes as the cause of the bug, and
+ * that configuration was measured at 900px losing PLANT, DIG, STOCKPILE, STRIP and DEMOLISH. The
+ * same trick re-capped the wrapper's height. **A guard that cannot see the exact declarations it
+ * names, written under a compound selector, is a defect in the matcher — not a limit of the
+ * approach.** (The limits are real and are declared in the file header: a font swap, a sixteenth
+ * tool, a `max-height` nobody imagined. Those are differently-SHAPED regressions. This was the named
+ * subject walking back in through a door left open.)
+ *
+ * The fix is to ask what a rule TARGETS: the rightmost compound — the selector's *subject* — is the
+ * element the declarations land on, whatever ancestry is written to its left. `#roomzoom-view
+ * .rz-palette`, `.rz-palette-wrap>.rz-palette` and `body.roomzoom-open .hud.rz-palette` all target
+ * the palette; `.rz-palette-wrap` does NOT, so the two pins stay distinct (verified by a control
+ * below, because "these two selectors do not collide" is exactly the kind of thing that is obvious
+ * and wrong).
+ */
+
+/** The rightmost compound of a selector — the element it actually styles. */
+function subject(s) {
+  return s.split(/\s*[>+~]\s*|\s+/).filter(Boolean).pop() || '';
+}
+
+/** A compound split into simple selectors: `.hud.rz-palette:hover` → ['.hud','.rz-palette',':hover']. */
+function simples(compound) {
+  return compound.match(/::?[a-zA-Z-]+(?:\([^)]*\))?|[.#][\w-]+|\[[^\]]*\]|^[a-zA-Z*][\w-]*/g) || [];
+}
+
+/** Does this selector style the element `sel` names — as its subject, under any ancestry? */
+const targetsEl = (s, sel) => simples(subject(s)).includes(sel);
+/** …and does it style a PSEUDO-ELEMENT of it (`::-webkit-scrollbar`) rather than the element itself? */
+const isPseudoElement = (s) => /::/.test(subject(s));
+
+/**
+ * The LAST value `prop` is given to the element `sel` names, by any rule that targets it.
+ *
+ * Pseudo-ELEMENT rules are excluded (a `::-webkit-scrollbar{display:none}` is not the row's own
+ * `display`); pseudo-CLASS rules are deliberately INCLUDED, because `.rz-palette:hover{overflow-x:
+ * auto}` is a real regression and there is no reason to be blind to it.
+ */
 function lastValue(rules, sel, prop) {
   const re = new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)', 'g');
   let v = null;
   for (const r of rules) {
-    if (!r.sels.includes(sel)) continue;
+    if (!r.sels.some((s) => targetsEl(s, sel) && !isPseudoElement(s))) continue;
     for (const m of r.decls.matchAll(re)) v = m[1].trim();
   }
   return v;
 }
 
-/** Every rule whose selector list contains a selector starting with `sel` and carrying a `::` pseudo. */
+/** Every rule styling a `::` pseudo-element of `sel`, under any ancestry. */
 function pseudoRules(rules, sel) {
-  return rules.filter((r) => r.sels.some((s) => s.startsWith(sel + '::')));
+  return rules.filter((r) => r.sels.some((s) => targetsEl(s, sel) && isPseudoElement(s)));
 }
 
 /**
@@ -140,9 +186,16 @@ test('every palette row WRAPS, so a control that does not fit moves down instead
 // is what still forces the wrap once the wrapper is narrower than it. Either one alone is wrong in a
 // different direction, which is why they are pinned together.
 //
-// `.rz-acc-chips` is deliberately NOT in this list and the asymmetry is correct: it is not a
-// shrink-to-fit child of the wrapper but a stretched row inside `.rz-accepts`
-// (`align-items:stretch`), so it is already given a definite width and `max-content` would fight it.
+// `.rz-acc-chips` is deliberately NOT in this list, and the asymmetry is correct FOR A MEASURED
+// REASON rather than a deduced one: it is not a shrink-to-fit child of the wrapper but a stretched
+// row inside `.rz-accepts` (`align-items:stretch`). Driven in Chrome with STOCKPILE armed, its box
+// is FIXED at 494px across an 832px range of viewport widths and is WIDER THAN ITS OWN CONTENT — so
+// it has no under-reported-preferred-width failure mode for `max-content` to fix.
+//
+// ⚠️ ONE CLAIM WITHDRAWN: an earlier draft said `max-content` "would fight it". That is NOT
+// demonstrated — forcing `width:max-content` onto this row changed nothing, because there the
+// max-content width and the stretched width coincide. The exclusion rests on the measured stretch
+// behaviour above, which is the better argument anyway.
 const MAXCONTENT_ROWS = ['.rz-palette', '.rz-matstrip'];
 test('the wrapper\'s two shrink-to-fit rows state their single-line width', () => {
   for (const sel of MAXCONTENT_ROWS)
@@ -255,8 +308,7 @@ test('NEGATIVE CONTROL: cssCodeOnly leaves `//` alone — it is a URL, not a com
 // `src.replace(/\/\*[\s\S]*?\*\//g, '')`, the exact non-quote-aware implementation this control
 // exists to reject — it stayed GREEN. The lazy match needs a CLOSING `*/` to fire, the fixture had
 // none, so the characteristic failure could not occur and the control was asserting that a broken
-// stripper works. Both stripper implementations were run against both fixtures, all four legs, and
-// this 2×2 is why the two `.b` lines below are load-bearing rather than decorative:
+// stripper works. Both stripper implementations were run against both fixtures, all four legs:
 //
 //                        fixture without `/* … */`   fixture as it now stands
 //     naive stripper     0 fail (VACUOUS)            1 fail (bites, on this test)
@@ -264,21 +316,81 @@ test('NEGATIVE CONTROL: cssCodeOnly leaves `//` alone — it is a URL, not a com
 //
 // It matters on the file this guard actually watches: `styles.css` is full of later `*/`s, so a
 // naive stripper WOULD be blinded there — and the control, as first written, said it would not.
-test('NEGATIVE CONTROL: a quoted `/*` does not blind cssCodeOnly', () => {
-  const css = '.a::before{content:"/*"}\n.rz-palette{overflow-x:auto}\n'
-            + '/* a later, real comment */\n.b{color:red}';
-  const rules = cssRules(cssCodeOnly(css));
-  assert.ok(clips(rules),
-    'a `/*` inside a string literal opened a comment and swallowed the rule after it — every scan ' +
-    'in this file would go silently green against a stylesheet with one such string in it');
-  // …and the stripper must still be a stripper: the LATER comment is genuinely removed, and the
-  // rule after it survives. A "stripper" that gave up on quotes by stripping nothing would pass the
-  // assertion above and fail these two.
-  assert.equal(lastValue(rules, '.b', 'color'), 'red',
-    'the rule after the later comment was lost — the quoted marker still swallowed the file, just ' +
-    'from a different starting point');
-  assert.doesNotMatch(cssCodeOnly(css), /a later, real comment/,
-    'the later, genuinely-commented text survived stripping — this is not a comment stripper at all');
+//
+// ⚠️ THE 2×2 ABOVE IS ABOUT THE TRAILING COMMENT AND NOTHING ELSE. An earlier draft of this note
+// offered it as the justification for the two `.b` assertions below, and that was wrong: review
+// re-ran it as a 3×2 and showed the control is MINIMAL — the comment alone is what makes it bite
+// (drop the trailing rule and it still bites; drop the comment and it goes vacuous again). The `.b`
+// assertions earn their place for the different reason given at their own line: they catch the
+// OPPOSITE cheat, a "stripper" that dodges the quote problem by stripping nothing at all.
+//
+// ⚠️ AND ALL THREE MARKERS ARE RUN, NOT ONE. `cssCodeOnly` is a SHARED helper with a second consumer
+// as of tonight, and `styles.css` really does contain single-quoted strings
+// (`:779 content:'— no audit lines —'`, `:815 content:''`). Testing `"` alone left the `'` branch
+// AND the backslash-escape branch of a live shared code path uncovered — both were survivors.
+test('NEGATIVE CONTROL: neither quote character, escaped or not, blinds cssCodeOnly', () => {
+  const MARKERS = [
+    ['a double-quoted marker', '.a::before{content:"/*"}'],
+    ['a single-quoted marker', '.a::before{content:\'/*\'}'],
+    ['an ESCAPED quote before the marker', '.a::before{content:"x\\"/*"}'],
+  ];
+  for (const [what, head] of MARKERS) {
+    const css = head + '\n.rz-palette{overflow-x:auto}\n/* a later, real comment */\n.b{color:red}';
+    const rules = cssRules(cssCodeOnly(css));
+    assert.ok(clips(rules),
+      `${what} opened a comment and swallowed the rule after it — every scan in this file would go ` +
+      'silently green against a stylesheet containing one such string');
+    // …and the stripper must still BE a stripper: the LATER comment is genuinely removed and the
+    // rule after it survives. A "stripper" that dodged the quote problem by stripping nothing would
+    // pass the assertion above and fail both of these.
+    assert.equal(lastValue(rules, '.b', 'color'), 'red',
+      `${what}: the rule after the later comment was lost — the marker still swallowed the file, ` +
+      'just from a different starting point');
+    assert.doesNotMatch(cssCodeOnly(css), /a later, real comment/,
+      `${what}: genuinely-commented text survived — this is not a comment stripper at all`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE MATCHER'S OWN CONTROLS — added in review, and these are what would have caught the hole.
+//
+// Every guard in this file resolves its subject through `lastValue`/`pseudoRules`. While those
+// matched by exact string, `#roomzoom-view .rz-palette{overflow-x:auto;scrollbar-width:none;
+// flex-wrap:nowrap}` restored the pre-fix declaration set VERBATIM and the whole suite stayed green.
+// The variants below are the realistic spellings: a descendant, both child-combinator spacings, a
+// compound sharing the `hud` class the palette element actually carries, a pseudo-class, and the
+// media-query form this file's own header advertises as covered.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+test('NEGATIVE CONTROL: a violation written under a COMPOUND selector is still seen', () => {
+  const VARIANTS = [
+    '#roomzoom-view .rz-palette{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}',
+    '.rz-palette-wrap>.rz-palette{overflow-x:auto}',
+    '.rz-palette-wrap > .rz-palette{overflow-x:auto}',
+    'body.roomzoom-open .hud.rz-palette{overflow-x:auto}',
+    '.rz-palette:hover{overflow-x:auto}',
+    '@media (max-width:1200px){#roomzoom-view .rz-palette{overflow-x:auto}}',
+  ];
+  for (const v of VARIANTS) {
+    assert.ok(clips(cssRules(cssCodeOnly(v))),
+      `NOT SEEN: ${v}\nThe matcher is back to exact-string comparison, so the exact declarations ` +
+      'this file names can be re-introduced under any ancestry with the suite green.');
+  }
+  assert.ok(hidesScrollbar(cssRules(cssCodeOnly(
+    '#roomzoom-view .rz-palette::-webkit-scrollbar{display:none}'))),
+  'a pseudo-element rule under a compound ancestry is not seen by pseudoRules');
+});
+
+// The other half of the same change: subject matching must not FUSE the two pins. `.rz-palette-wrap`
+// is a different element from `.rz-palette` and its guard says different things about it, so a
+// matcher treating one as the other would silently move both. Obvious — and exactly the kind of
+// obvious that is worth one assertion, since `.rz-palette-wrap` literally begins with `.rz-palette`.
+test('NEGATIVE CONTROL: `.rz-palette-wrap` is NOT read as `.rz-palette`', () => {
+  const wrapOnly = cssRules(cssCodeOnly('.rz-palette-wrap{overflow:hidden;max-height:54px}'));
+  assert.ok(!clips(wrapOnly),
+    'a rule on `.rz-palette-wrap` was read as a rule on `.rz-palette` — the two pins have fused, ' +
+    'and every wrapper guard is now also (wrongly) a row guard');
+  assert.equal(lastValue(wrapOnly, '.rz-palette-wrap', 'max-height'), '54px',
+    'the wrapper\'s own declarations are not being read at all — its guard is vacuous');
 });
 
 // …and the same property demonstrated ON THE REAL FILE rather than on synthetic input, which is the

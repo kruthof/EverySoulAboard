@@ -1493,6 +1493,28 @@ test('arming a tool through its own button moves aria-pressed, and only ever ont
     'disarmed by its own button, yet a click still designated');
 });
 
+// D2 — THE SHARED HARNESS CAPABILITY ITSELF, and it is not navel-gazing. `removeAttribute` exists in
+// `dom-lite.js` for exactly one reason: so that `if (on) setAttribute(…) else removeAttribute(…)` —
+// the realistic form of the aria-pressed mistake — can be APPLIED as a mutation instead of dying on
+// a `TypeError` and reddening the wrong thing. Replacing it with a no-op left the whole suite green,
+// which is precisely how a shared stub silently stops working and turns the NEXT reviewer's mutation
+// into a false green: the failure mode the method was added to prevent, reproduced by its absence of
+// coverage. One assertion, in the file that uses the stub hardest.
+//
+// MUTATION: make `dom-lite`'s `removeAttribute` a no-op ⇒ RED.
+test('the shared dom-lite stub can really REMOVE an attribute — the mutation depends on it', () => {
+  const el = new RzEl(rzDoc, 'button');
+  el.setAttribute('aria-pressed', 'true');
+  assert.equal(el.getAttribute('aria-pressed'), 'true', 'setAttribute did not take — vacuous below');
+  el.removeAttribute('aria-pressed');
+  assert.equal(el.getAttribute('aria-pressed'), null,
+    'dom-lite.removeAttribute did not remove the attribute. Every "the tool loses its aria-pressed" ' +
+    'mutation now passes silently: the stub keeps reporting the old value, so the harness reports ' +
+    'GREEN for a change that would strip the armed state in a real browser.');
+  el.removeAttribute('never-set');   // total: removing an absent attribute is not an error
+  assert.equal(el.getAttribute('never-set'), null);
+});
+
 // ⚠️ THE `<span>` HALF OF THE TAG SCANNER, added in review because NOTHING COVERED IT: narrowing
 // `TAG_RE` to `button` alone reddened not one test, even though four chrome handles resolve through
 // it and all four are written by shipping code on every repaint. That is the "cannot bite" shape
