@@ -288,8 +288,20 @@ namespace Perilune.Sim
             for (int i = 0; i < names.Length; i++)
             {
                 var kind = (ItemKind)i;
-                // Defined() rather than ToString(): an undeclared ordinal stringifies to its NUMBER,
-                // which reads on a wire exactly like a kind name and would hide a gap.
+                // IsDefined rather than a bare ToString(): an undeclared ordinal stringifies to its
+                // NUMBER, which reads on a wire of ["Potato",699] pairs exactly like a kind name and
+                // would hide a gap.
+                //
+                // ⚠️ THIS BRANCH IS UNREACHABLE IN *THIS* TREE AND REACHABLE UNDER A MERGE ORDER —
+                // "never" would be the wrong word and it is not used. ItemKind is contiguous 0..6
+                // today, so no index can be both inside KindCount and undeclared, and no test drives
+                // this arm (recorded in ShipLedgerTests). But the two live sibling lanes append to
+                // that enum: E0-6 adds `Seals = 7`, E0-7 adds `Ice = 8`. **If E0-7 merged FIRST**,
+                // ordinal 7 would be undefined while KindCount became 9, this arm would fire for
+                // real, and the wire would carry `Kind7` until E0-6 landed. E0-6-then-E0-7 keeps the
+                // enum contiguous at every point and is the intended order — but the next person to
+                // reorder a wave needs to know this is a live branch under some orderings, not dead
+                // code they may delete.
                 names[i] = Enum.IsDefined(typeof(ItemKind), kind) ? kind.ToString() : "Kind" + i;
             }
             return names;
