@@ -924,14 +924,27 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
     'a `content: "/*"` string swallowed the rule after it — the stripper is not quote-aware, so it '
     + 'opened a comment inside a string and ran to the next `*/`, deleting real rules on the way. '
     + 'Every scan downstream would then pass vacuously on a sheet containing one such string.');
+  // B measures the OPPOSITE direction from A, and its first message said otherwise — corrected
+  // rather than quietly reworded, because the wrong version described a swallow that provably
+  // cannot reach this rule. `.z` sits PAST the later comment's `*/`, and every stripper defect
+  // known to this fixture (naive non-greedy, greedy, and the real scanner with its quote branch
+  // removed) terminates AT that `*/` — measured, all three leave `.z` intact. So B cannot catch an
+  // over-swallow from the quoted marker; what it catches is a stripper that runs to EOF instead of
+  // stopping at the terminator.
+  //
+  // MEASURED, and recorded so nobody re-derives it: B is DECORATIVE. Deleting it changes no verdict
+  // under any of the four mutations. It is kept because an explicit "does not over-reach" assertion
+  // reads well beside an "over-reaches" one, not because it is load-bearing.
   assert.match(cssCodeOnly(quoted), /\.z\{color:red\}/,
-    'the rule AFTER the later comment was eaten too — same defect, the far end of the same swallow');
+    'a rule sitting AFTER the later comment\'s terminator was stripped. The stripper ran past the '
+    + '`*/` it should have stopped at — the over-reach direction, opposite to the assertion above.');
 
-  // …and the converse, or a "stripper" that gives up on quotes by stripping NOTHING satisfies the
-  // two assertions above while doing no work at all.
+  // C: the converse of A — a "stripper" that gives up on quotes by stripping NOTHING would satisfy
+  // A and B trivially. MEASURED: C is also DECORATIVE, because leg 1 (five lines up) already fails
+  // under strips-nothing, so C never executes in that case. Kept deliberately as belt-and-braces on
+  // a control that has already been wrong once; do not read it as the catcher for that mutation.
   assert.doesNotMatch(cssCodeOnly(quoted), /a later, real comment/,
-    'the later, genuinely-commented-out text SURVIVED the stripper. A stripper that strips nothing '
-    + 'passes the quote-awareness legs above trivially — this is what makes them mean something.');
+    'the later, genuinely-commented-out text SURVIVED the stripper — it is not stripping at all');
 
   // 3. and it must not over-reach: ordinary declarations come through untouched.
   assert.equal(cssCodeOnly('.x{color:red}'), '.x{color:red}');
