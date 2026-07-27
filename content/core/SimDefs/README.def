@@ -32,7 +32,8 @@
 #   [atmosphere]    gas flow / diffusion / consumption / vents / scrubbers (AtmosphereSystem)
 #   [needs]         survival thresholds + accumulation rates (NeedsSystem)
 #   [sustenance]    eat/drink values (SustenanceSystem)
-#   [water]         tank capacity, reclaimer rate + efficiency, greywater makeup floor (WaterSystem)
+#   [water]         tank capacity, reclaimer rate + efficiency, greywater makeup floor,
+#                   ice->water yield + melter buffer (WaterSystem)
 #   [hydro]         hydroponics irrigation + grow rate (HydroponicsSystem)
 #   [wear]          machine wear + maintenance (MachineWear/MaintenanceSystem)
 #   [citizen]       movement cadence + idle-wander scope (CitizenSystem)
@@ -54,9 +55,12 @@
 #                   Conversion LOSS is the integer input:output ratio (Scrap:20 ->
 #                   Regolith:17 is exactly 85%); there is no yield column and no
 #                   decimal anywhere in this table.
-#                   SHIPPED WITH TWO ROWS SINCE E0-6 (recycle_stock, fab_components);
-#                   a station with no node — the MachineShop today — still falls back
-#                   to its [recipes] row. UNLIKE every other section this one is an ORDERED, ADDITIVE
+#                   SHIPPED WITH THREE ROWS SINCE THE E0-6 x E0-7 WAVE (recycle_stock,
+#                   fab_components, melt_ice); a station with no node — the MachineShop
+#                   today — still falls back to its [recipes] row. SINCE E0-7 the section
+#                   OVERLAYS the compiled defaults rather than replacing them: a repeated
+#                   id retunes in place, a new id appends, and content can no longer
+#                   REMOVE a compiled node. UNLIKE every other section this one is an ORDERED, ADDITIVE
 #                   list — rows accumulate across files in filename order, a repeated
 #                   ID replaces in place, and the checksum folds row order.
 #                   See production.def for the full column reference.

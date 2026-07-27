@@ -137,7 +137,12 @@ namespace Perilune.Sim
 
         private static readonly DeviceKind[] ReactorKinds = { DeviceKind.SolarWing, DeviceKind.Battery };
         private static readonly DeviceKind[] LifeSupportKinds = { DeviceKind.AirVent, DeviceKind.Scrubber };
-        private static readonly DeviceKind[] WaterKinds = { DeviceKind.WaterTank, DeviceKind.Reclaimer };
+        // E0-7 puts the melter in WATER, not FABRICATION, even though CraftingSystem drives it: this
+        // row is a census of the ship's water hardware, and on a ship whose only water source is ice
+        // a failed melter is a WATER fault. It also makes the row honest about the wear/failure a
+        // player has to act on — a broken melter and a broken reclaimer are the same emergency.
+        private static readonly DeviceKind[] WaterKinds =
+            { DeviceKind.WaterTank, DeviceKind.Reclaimer, DeviceKind.IceMelter };
         private static readonly DeviceKind[] HydroKinds = { DeviceKind.GrowBed };
         private static readonly DeviceKind[] ThermalKinds = { DeviceKind.Radiator };
         private static readonly DeviceKind[] FabricationKinds =
@@ -857,6 +862,13 @@ namespace Perilune.Sim
                             break;
                         case DeviceKind.Reclaimer:
                             c.Reclaimers++;
+                            if (!operational) c.WaterFailed++; else if (worn) c.WaterWorn++;
+                            break;
+                        case DeviceKind.IceMelter:
+                            // E0-7. No dedicated counter — the melter has no rate of its own to
+                            // report (its throughput is the crew's haul rate), so what the WATER row
+                            // needs from it is exactly what it needs from a reclaimer: is it broken,
+                            // and is it wearing out.
                             if (!operational) c.WaterFailed++; else if (worn) c.WaterWorn++;
                             break;
                         case DeviceKind.GrowBed:

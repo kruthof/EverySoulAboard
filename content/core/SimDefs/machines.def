@@ -49,3 +49,8 @@ Locker          0      0    Comfort       false   0      0       0      0
 Desk            0      0    Comfort       false   0      0       0      0
 PlantPot        0      0    Comfort       false   0      0       0      0
 Telescope       0.4    0    Industry      false   0.2    0.004   0.4    0.1
+# Water chain (E0-7): LifeSupport tier on purpose — on a ship whose only water source is ice,
+# the melter is the last thing a brownout may shed, not the first. The 0.4 kW draw is measured,
+# not physical — see MachineDefs.cs (at 1.0 kW the melter cost 28% of the slice's food and
+# inflated A1 by ~11 pp of pure brownout slowdown).
+IceMelter       0.4    0    LifeSupport   false   0.4    0.012   0.4    0.10

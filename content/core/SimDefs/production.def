@@ -7,15 +7,25 @@
 # first. A [production] row is keyed by its own node ID instead, so many nodes may
 # name one station, and it takes MANY inputs and MANY outputs.
 #
-# SHIPPED STATE (E0-6): this table is NO LONGER EMPTY. It was empty from W0-5 until
-# E0-6, and the two rows at the bottom of this file are now the authority for the
-# SalvageRecycler and the Fabricator. The MachineShop still has NO row and therefore
-# still takes ProductionDefs.TryGetBill's fallback leg into [recipes]
+# SHIPPED STATE (E0-6 + E0-7): this table is NO LONGER EMPTY. It was empty from W0-5
+# until E0-6, and the THREE rows at the bottom of this file are now the authority for
+# the SalvageRecycler, the Fabricator and the IceMelter. The MachineShop still has NO
+# row and therefore still takes ProductionDefs.TryGetBill's fallback leg into [recipes]
 # (Parts:2 -> ControllerModule:1, already a 50 % hop — E0-6 did not retune it).
 #
+# The melter is here and not in [recipes] because [recipes] cannot say what it needs to
+# say: a melter's output is LITRES, not a stack, and only a [production] row may declare
+# `none` outputs. The water arrives through WaterSystem off water.def's
+# `ice_liters_per_unit` — see CraftingSystem's completion hook.
+#
 # The rows are VERBATIM equal to SimDefs.CreateDefault()'s d.Production, as the def
-# contract requires; the reasoning for each ratio is written out there and is not
-# repeated here.
+# contract requires (DefsEquivalenceTests compares the two sources bit for bit); the
+# reasoning for each ratio is written out there and is not repeated here.
+#
+# SINCE E0-7 THIS SECTION IS AN OVERLAY, NOT A REPLACEMENT: DefsParser seeds the table
+# from the compiled defaults, so a row whose id already exists RETUNES it in place, a new
+# id APPENDS, and a data dir that omits this file keeps the compiled table. Content can no
+# longer REMOVE a compiled node — the same contract [machines] and [recipes] already have.
 #
 # -----------------------------------------------------------------------------
 # COLUMNS (whitespace-aligned; five of them)
@@ -73,8 +83,9 @@
 # -----------------------------------------------------------------------------
 # ECONOMY.md §4/§10 shapes in this syntax, so the next lane has a concrete target.
 # Uncommenting any of them CHANGES the game and the defs checksum — and the ones
-# marked (E0+) also need ItemKind rows that do not exist yet (§3.2 stages Seals,
-# Ice, Swarf, Circuits ... each landing with its consumer).
+# marked (E1+/E2+) also need ItemKind rows that do not exist yet. §3.2 staged Seals,
+# Ice, Swarf and Circuits, each landing with its consumer: Seals landed with E0-6 and
+# Ice with E0-7, so only Swarf and Circuits are still absent.
 #
 # [production]
 # # id             station          work_s  inputs              outputs
@@ -106,3 +117,4 @@
 # id             station          work_s  inputs      outputs
 recycle_stock    SalvageRecycler  2400    Regolith:4  Scrap:3
 fab_components   Fabricator       900     Scrap:2     Parts:1+Seals:1
+melt_ice         IceMelter        300     Ice:1       none

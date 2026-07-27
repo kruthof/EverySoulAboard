@@ -201,6 +201,65 @@ namespace Perilune.Tests
             Assert.AreEqual("Hauling cargo to 9,2", TaskOf(gs, c.Id));
         }
 
+        /// <summary>
+        /// EVERY declared <see cref="ItemKind"/> has a plain-English name, and none of them falls
+        /// through to the <c>"cargo"</c> catch-all. Driven end to end — a real stack on a real map,
+        /// carried by a real citizen, read off the rendered roster channel — not a scan of the
+        /// switch, so an arm that exists but is unreachable would fail here just as loudly.
+        ///
+        /// WHY THIS EXISTS. <c>GameSession.ItemKindLabel</c> is a switch with a
+        /// <c>_ =&gt; "cargo"</c> default, so a kind added without an arm is SILENT: the player is
+        /// told a crew member is "Hauling cargo" and nothing anywhere says which kind lost its name.
+        /// Both economy-wave lanes appended to <see cref="ItemKind"/> and only one of them appended
+        /// here — E0-7 added <c>Ice</c>, E0-6 did not add <c>Seals</c> — and because the two edits
+        /// were in the same file but different arms, git merged them CLEANLY and preserved the
+        /// asymmetry. `Seals` shipped nameless. Nothing in the suite could see it; this test is what
+        /// closes that.
+        ///
+        /// Corpse is the one kind whose label is not the switch's: <c>ItemLabel</c> intercepts it to
+        /// use the dead crew member's name, which is why the assertion is "not the fallback" rather
+        /// than a table of expected strings — a table here would have to be hand-mirrored and would
+        /// rot the same way the switch did.
+        ///
+        /// NAMED MUTATION (applied, observed red, reverted): delete
+        /// <c>ItemKind.Seals =&gt; "seals",</c> from <c>GameSession.ItemKindLabel</c> ⇒ this fails
+        /// naming Seals. The non-vacuity control is the row above: an unresolvable id really does
+        /// produce "cargo", so "never the fallback" is not a string the code can never emit.
+        /// </summary>
+        [Test]
+        public void EveryDeclaredItemKindHasAName_NoneFallsThroughToCargo()
+        {
+            var (gs, host) = Boot();
+            var c = Parked(host);
+            c.JobKind = JobKind.HaulDeliver;
+            c.ReservedItemId = 0;
+            c.JobTarget = new Int3(9, 2, c.Pos.Z);
+
+            var kinds = (ItemKind[])Enum.GetValues(typeof(ItemKind));
+            Assert.That(kinds.Length, Is.GreaterThan(1),
+                "precondition: the enum has kinds to walk — an empty loop would pass vacuously");
+
+            var nameless = new List<string>();
+            var seen = new List<string>();
+            foreach (var kind in kinds)
+            {
+                var stack = host.Sim.AddItem(kind, 1, new Int3(4, 4, c.Pos.Z));
+                c.CarryingItemId = stack.Id;
+                string task = TaskOf(gs, c.Id);
+                Assert.That(task, Does.StartWith("Hauling "),
+                    "precondition: the HaulDeliver arm was reached for " + kind);
+                string label = task.Substring("Hauling ".Length);
+                label = label.Substring(0, label.IndexOf(" to ", StringComparison.Ordinal));
+                seen.Add(kind + "=" + label);
+                if (label == "cargo") nameless.Add(kind.ToString());
+            }
+
+            Assert.That(nameless, Is.Empty,
+                "these ItemKinds have no arm in GameSession.ItemKindLabel and are shown to the "
+                + "player as the \"cargo\" catch-all: " + string.Join(", ", nameless)
+                + "\n  (all labels seen: " + string.Join(" | ", seen) + ")");
+        }
+
         [Test]
         public void Eat_Names_The_Food_Tile_Only_While_Travelling()
         {

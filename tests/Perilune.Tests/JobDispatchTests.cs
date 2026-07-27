@@ -177,6 +177,23 @@ namespace Perilune.Tests
         /// is caught by <see cref="EqualDistance_DigBeatsHaul"/> instead. A recorded sequence is a
         /// good canary and a bad proof; the constructed ties below are the proof.
         ///
+        /// RE-RECORDED FOR E0-7 (ice -> melter -> water), and the reason is stated so a reader can
+        /// check it rather than trust it. E0-7 authors ONE new device (the ice melter, on the hydro
+        /// loop) and 200 new ItemSpecs (the forward hold's ice) onto the slice. Three consequences,
+        /// all visible in the diff:
+        ///   * every citizen id moves up by ONE (c932..c939 -> c933..c940): entity ids are handed
+        ///     out in plan order and citizens come after devices, so a single DeviceSpec shifts the
+        ///     whole crew. This is the same shift that rebinds the portrait keys — see
+        ///     SlicePortraitKeysTests.
+        ///   * the melter is a CRAFTING STATION, so it competes for idle crew from tick 1. The dig
+        ///     and build work is unchanged in kind but RE-TIMED, because CraftingSystem recruits the
+        ///     nearest idle citizen and there is now one more bench asking.
+        ///   * the count moves 59 -> 58, last assignment at t66402.
+        /// The melter's own recruitments do NOT appear here: this fixture records the JOB BOARD's
+        /// assignments, and CraftingSystem stamps JobKind.Craft itself rather than going through the
+        /// dispatcher (see its class comment). So what this sequence shows is the melter's SHADOW on
+        /// the other sources, which is exactly the property worth pinning.
+        ///
         /// This is a BEHAVIOUR PIN, like a golden: any lane that deliberately changes labour
         /// assignment (E0-2 work rates, a new job source) will move it, and must re-record it in
         /// the same commit and say why. It must never be re-recorded to make a red build green.
@@ -207,70 +224,102 @@ namespace Perilune.Tests
         /// That is as far as the evidence goes: the diff is small, benign, and confined to haul
         /// timing. It is deliberately NOT dressed up as a mechanism for a 16-assignment drop that
         /// never happened.
+        ///
+        /// ═══ RE-RECORDED BY THE E0-6 × E0-7 WAVE MERGE, and the array below is NEITHER PARENT'S.
+        /// Both blocks above describe a BRANCH; this one describes the tree that shipped. Every
+        /// figure here was counted off the three arrays with a script, not inferred.
+        ///
+        ///   * <b>57 assignments</b> — the same COUNT as E0-6's, one fewer than E0-7's 58. A count
+        ///     that matches a parent is NOT evidence that the sequence does: only <b>16 of the 57
+        ///     rows are identical to E0-6's</b> (after normalising the id shift below) and <b>13 of
+        ///     57 to E0-7's</b>. Neither parent's array would pass here.
+        ///   * <b>Every citizen id is +1 against main</b> (c932..c939 → c933..c940). E0-7's, not the
+        ///     merge's: entity ids are handed out in plan order, citizens come after devices, and
+        ///     E0-7 authors one new DeviceSpec (the ice melter). It is the same shift that rebinds
+        ///     the portrait keys — see SlicePortraitKeysTests.
+        ///   * <b>The KIND MIX is E0-6's exactly: 48 Dig · 6 HaulPickup · 2 HaulToBuild · 1 Build.</b>
+        ///     E0-7's branch recorded 7 HaulPickups; the merged tree records 6. The haul ROWS are
+        ///     E0-6's row-for-row (two at t1 on 29,6,0; three at t6002 on deck 1; one at t9202 on
+        ///     23,6,0), where E0-7's branch instead re-picked two deck-1 stacks at t12012. E0-6's
+        ///     conversion-loss bills are what decide when a bench's fetcher is busy, so the haul
+        ///     shape follows E0-6 and not E0-7.
+        ///   * <b>Dig is 48 → 48 → 48, and the 48 TARGETS are the same SET in all three runs.</b>
+        ///     Nothing stops being dug; the aft field still finishes inside the window.
+        ///   * <b>What the melter does is RE-TIME the dig column.</b> First divergence from E0-6 is
+        ///     at index 11 (Dig 57,10,0 moves t6251 → t6462 and changes hands), and the per-row tick
+        ///     delta against E0-6 runs min −50 / median +10 / max +5950. The last assignment moves
+        ///     t54763 → <b>t55113</b> (+350), well inside the 90 000-tick window.
+        ///   * The melter's own recruitments still do NOT appear here — CraftingSystem stamps
+        ///     JobKind.Craft itself rather than going through the dispatcher. What this sequence
+        ///     shows is the melter's SHADOW on the other sources, on top of E0-6's bill timings.
+        ///
+        /// NOT a determinism pin, and it is not one of the five: no authored ship zones a stockpile,
+        /// so this fixture zones three corridor tiles by hand. The five pins moved for their own
+        /// reasons and the integrator re-pins them.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
-            "t1 c932 HaulToBuild 30,10,0",
-            "t1 c933 HaulPickup 29,6,0",
+            "t1 c933 HaulToBuild 30,10,0",
             "t1 c934 HaulPickup 29,6,0",
-            "t1 c935 Dig 57,9,0",
-            "t252 c932 HaulToBuild 30,10,0",
-            "t373 c932 Build 30,10,0",
-            "t6002 c932 HaulPickup 24,14,1",
-            "t6002 c933 HaulPickup 22,14,1",
-            "t6002 c934 HaulPickup 20,14,1",
-            "t6251 c935 Dig 57,8,0",
-            "t6251 c936 Dig 58,9,0",
-            "t6251 c939 Dig 57,10,0",
-            "t9202 c932 HaulPickup 23,6,0",
-            "t12263 c932 Dig 57,7,0",
-            "t12263 c933 Dig 58,8,0",
-            "t12513 c934 Dig 58,10,0",
-            "t12513 c935 Dig 59,9,0",
-            "t12563 c936 Dig 57,11,0",
-            "t18513 c932 Dig 57,6,0",
-            "t18513 c938 Dig 58,7,0",
-            "t18563 c933 Dig 59,8,0",
-            "t18563 c935 Dig 60,9,0",
-            "t18563 c939 Dig 59,10,0",
-            "t18573 c936 Dig 58,11,0",
-            "t18773 c934 Dig 57,12,0",
-            "t24523 c932 Dig 58,6,0",
-            "t24573 c933 Dig 59,7,0",
-            "t24573 c935 Dig 60,8,0",
-            "t24583 c936 Dig 59,11,0",
-            "t24583 c939 Dig 61,9,0",
-            "t24803 c934 Dig 58,12,0",
-            "t25013 c938 Dig 60,10,0",
-            "t30533 c932 Dig 59,6,0",
-            "t30583 c933 Dig 60,7,0",
-            "t30583 c935 Dig 61,8,0",
-            "t30593 c936 Dig 60,11,0",
-            "t30593 c939 Dig 62,9,0",
-            "t30813 c934 Dig 57,13,0",
-            "t31063 c938 Dig 61,10,0",
-            "t34842 c937 Dig 59,12,0",
-            "t36543 c932 Dig 60,6,0",
-            "t36593 c933 Dig 61,7,0",
-            "t36593 c935 Dig 62,8,0",
-            "t36603 c936 Dig 61,11,0",
-            "t36603 c939 Dig 62,10,0",
-            "t36814 c934 Dig 58,13,0",
-            "t37073 c938 Dig 60,12,0",
-            "t42553 c932 Dig 61,6,0",
-            "t42603 c933 Dig 62,7,0",
-            "t42603 c935 Dig 59,13,0",
-            "t42653 c939 Dig 62,11,0",
-            "t42824 c934 Dig 61,12,0",
-            "t43083 c938 Dig 60,13,0",
-            "t48563 c932 Dig 62,6,0",
-            "t48713 c933 Dig 62,12,0",
-            "t48913 c934 Dig 61,13,0",
-            "t54763 c932 Dig 62,13,0",
+            "t1 c935 HaulPickup 29,6,0",
+            "t1 c936 Dig 57,9,0",
+            "t252 c933 HaulToBuild 30,10,0",
+            "t373 c933 Build 30,10,0",
+            "t6002 c933 HaulPickup 24,14,1",
+            "t6002 c934 HaulPickup 22,14,1",
+            "t6002 c935 HaulPickup 20,14,1",
+            "t6251 c936 Dig 57,8,0",
+            "t6251 c937 Dig 58,9,0",
+            "t6462 c938 Dig 57,10,0",
+            "t9202 c933 HaulPickup 23,6,0",
+            "t12263 c933 Dig 57,7,0",
+            "t12263 c935 Dig 58,8,0",
+            "t12513 c936 Dig 59,9,0",
+            "t12513 c937 Dig 58,10,0",
+            "t12913 c938 Dig 57,11,0",
+            "t18513 c933 Dig 57,6,0",
+            "t18513 c939 Dig 58,7,0",
+            "t18523 c935 Dig 59,8,0",
+            "t18523 c936 Dig 60,9,0",
+            "t18523 c937 Dig 59,10,0",
+            "t18923 c938 Dig 58,11,0",
+            "t19222 c934 Dig 57,12,0",
+            "t24523 c933 Dig 58,6,0",
+            "t24533 c935 Dig 59,7,0",
+            "t24533 c936 Dig 60,8,0",
+            "t24533 c937 Dig 60,10,0",
+            "t24933 c938 Dig 59,11,0",
+            "t25013 c939 Dig 61,9,0",
+            "t30533 c933 Dig 59,6,0",
+            "t30543 c935 Dig 60,7,0",
+            "t30543 c936 Dig 61,8,0",
+            "t30543 c937 Dig 61,10,0",
+            "t30943 c938 Dig 58,12,0",
+            "t31063 c939 Dig 62,9,0",
+            "t36543 c933 Dig 60,6,0",
+            "t36553 c935 Dig 61,7,0",
+            "t36553 c936 Dig 62,8,0",
+            "t36553 c937 Dig 60,11,0",
+            "t36963 c938 Dig 57,13,0",
+            "t37073 c939 Dig 62,10,0",
+            "t37972 c940 Dig 58,13,0",
+            "t42553 c933 Dig 61,6,0",
+            "t42563 c935 Dig 62,7,0",
+            "t42563 c936 Dig 61,11,0",
+            "t42573 c937 Dig 59,12,0",
+            "t42964 c938 Dig 60,12,0",
+            "t43083 c939 Dig 62,11,0",
+            "t48563 c933 Dig 62,6,0",
+            "t48573 c935 Dig 59,13,0",
+            "t48623 c937 Dig 61,12,0",
+            "t49004 c938 Dig 60,13,0",
+            "t49093 c939 Dig 62,12,0",
+            "t54663 c935 Dig 61,13,0",
+            "t55113 c937 Dig 62,13,0",
         };
 
         [Test]
-        public void SliceAssignmentSequence_AllFiftySevenJobsToSaturation_IsStableAfterE0_6ConversionLoss()
+        public void SliceAssignmentSequence_AllFiftySevenJobsToSaturation_IsStableAfterTheE0_6xE0_7Wave()
         {
             var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
             BuildSystem build = null;

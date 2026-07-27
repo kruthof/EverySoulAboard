@@ -154,8 +154,9 @@ namespace Perilune.Tests
         /// tile stays accept-all BY ABSENCE. <c>WebCommand.Int</c> has an explicit sign branch, so a
         /// hand-crafted socket line can deliver one. MUTATION: delete the <c>if (cmd.I &lt; 0)
         /// return;</c> line ⇒ an entry appears and this test fails. Both shapes of the underlying
-        /// bug are covered: with the canonicalising mask still in place -1 becomes 0x7F (accept
-        /// everything), and with the naive <c>(ulong)cmd.I</c> the spec warns about it becomes
+        /// bug are covered: with the canonicalising mask still in place -1 becomes AcceptAllMask
+        /// (0x1FF today — accept everything), and with the naive <c>(ulong)cmd.I</c> the spec warns
+        /// about it becomes
         /// <c>ulong.MaxValue</c> (accept everything, plus phantom bits in the hash). Either way
         /// "restrict this zone" has silently become "accept absolutely everything" — the inversion
         /// this guard exists for, which is why a negative is DROPPED rather than clamped to 0 or to
@@ -185,32 +186,40 @@ namespace Perilune.Tests
         /// high bit perturbs HASHED state while changing no behaviour whatsoever — two byte-different
         /// sims that play identically.
         ///
-        /// WHY THE WIRE VALUE IS 0x1F3 AND NOT 0x1FF — the wp5 × wp6 interaction. As written on the
-        /// WP-5 branch this test sent <c>0x1FF</c>, whose canonical form is <c>0x7F</c>, i.e. exactly
-        /// <see cref="StockZoneSystem.AcceptAllMask"/>. WP-6 then made an accept-EVERYTHING mask store
-        /// NO entry (<c>SetFilter</c> collapses it to <c>ClearFilter</c>, so that
-        /// <c>HaulJobSource</c>'s <c>Zones.Count &gt; 0</c> fast path stays reachable on a ship that
-        /// restricts nothing), and the "an entry is stored" assertion started failing. Nothing is
+        /// WHY THE WIRE VALUE IS 0x3F3 AND NOT AN ACCEPT-ALL — the wp5 × wp6 interaction, restated
+        /// after the wave merge. As written on the WP-5 branch this test sent <c>0x1FF</c>, whose
+        /// canonical form was then exactly <see cref="StockZoneSystem.AcceptAllMask"/>. WP-6 made an
+        /// accept-EVERYTHING mask store NO entry (<c>SetFilter</c> collapses it to <c>ClearFilter</c>,
+        /// so that <c>HaulJobSource</c>'s <c>Zones.Count &gt; 0</c> fast path stays reachable on a ship
+        /// that restricts nothing), and the "an entry is stored" assertion started failing. Nothing is
         /// wrong with either package: the canonicalisation this test names still happens, it is just
         /// no longer OBSERVABLE through a mask whose canonical form is accept-all, because that mask's
-        /// correct resting state is now absence. So the wire value moved to <c>0x1F3</c> — high bits
-        /// 7 and 8 set, and a canonical form of <c>0x73</c> (Regolith · MetalOre · Scrap · Parts ·
-        /// ControllerModule; Corpse and Potato refused) which is a REAL restriction and therefore a
-        /// real stored entry. The second row below pins the collapse case that used to be row one.
+        /// correct resting state is now absence. So the wire value must be a mask that is BOTH
+        /// over-wide AND a real restriction.
+        ///
+        /// ⚠ THE PROBE IS A MOVING TARGET AND HAS MOVED TWICE. It was <c>0x1F3</c> while ItemKind
+        /// topped out at 7 kinds and again at 8; the wave merge landed <b>two</b> new kinds (E0-6's
+        /// <c>Seals = 7</c> and E0-7's <c>Ice = 8</c>), <see cref="StockZoneSystem.AcceptAllMask"/>
+        /// became <c>0x1FF</c>, and <c>0x1F3</c> stopped having a single undefined bit in it — the
+        /// mask would have been stored VERBATIM and this test's whole subject would have quietly
+        /// evaporated with the suite green. It is now <c>0x3F3</c>: bit 9 belongs to no kind and is
+        /// canonicalised away, leaving <c>0x1F3</c> (everything except Corpse and Potato), which is a
+        /// REAL restriction and therefore a real stored entry. Whoever adds ItemKind 9 must move it
+        /// again — the PRECONDITION assertion below is what says so, and it says so first.
         ///
         /// THE THREE ROWS AND THE MUTATION EACH ONE ANSWERS FOR. Measured full-suite, not asserted:
         ///
-        ///  1. VIA THE WIRE (0x1F3 ⇒ stored 0x73). Bitten by NO single-site deletion of the
+        ///  1. VIA THE WIRE (0x3F3 ⇒ stored 0x1F3). Bitten by NO single-site deletion of the
         ///     canonicalisation, and this is stated because an earlier revision of this comment
         ///     claimed otherwise four lines above its own refutation. Deleting
         ///     <c>mask &amp;= AcceptAllMask</c> from <see cref="StockZoneSystem.SetFilter"/> leaves this
         ///     row GREEN, because <c>HandleFilter</c> already masked; deleting <c>HandleFilter</c>'s
         ///     leaves it green too, because <c>SetFilter</c> masks. Row 1 pins the end-to-end outcome
         ///     the player gets, and rows 2–3 are what make the individual doors answerable.
-        ///  2. DIRECT TO THE SIM DOOR (<c>SetFilter(0x1F3)</c> on a second host, bypassing the bridge
-        ///     entirely) ⇒ stored 0x73, and the SAME hashed state as row 1 reached through the wire.
+        ///  2. DIRECT TO THE SIM DOOR (<c>SetFilter(0x3F3)</c> on a second host, bypassing the bridge
+        ///     entirely) ⇒ stored 0x1F3, and the SAME hashed state as row 1 reached through the wire.
         ///     MUTATION: delete <c>mask &amp;= AcceptAllMask;</c> from <see cref="StockZoneSystem.SetFilter"/>
-        ///     ⇒ this row stores 0x1F3, and the checksum equality — one representation per meaning,
+        ///     ⇒ this row stores 0x3F3, and the checksum equality — one representation per meaning,
         ///     whichever door the mask arrives through — breaks. This is the row that makes the file
         ///     bite the sim door on its own.
         ///  3. THE COLLAPSE (a real restriction, then an accept-all repaint over it). Two mutations,
@@ -225,36 +234,68 @@ namespace Perilune.Tests
         ///     asserted to have landed.
         ///
         /// HONEST LIMIT on <c>GameSession.HandleFilter</c>'s own <c>&amp; AcceptAllMask</c>: it is
-        /// redundant for stored state, and therefore un-bitable there, **while the two derivations
-        /// agree** — <c>GameSession.AcceptAllMask</c> is count-based
-        /// (<c>(1UL &lt;&lt; Enum.GetValues(typeof(ItemKind)).Length) - 1</c>) and
-        /// <see cref="StockZoneSystem.AcceptAllMask"/> is per-enum-VALUE, so they coincide only while
-        /// <see cref="ItemKind"/> is contiguous from 0. Add a kind 9 with 7 and 8 undefined and they
-        /// diverge, at which point the host mask is load-bearing again and its deletion is observable.
-        /// That divergence condition is itself pinned, by
-        /// <c>StockZoneSystemTests.AcceptAllMask_MatchesTheHostsCountBasedDerivation_WhichNeedsItemKindContiguous</c>.
-        /// The real resolution is to make every site consume
-        /// <see cref="StockZoneSystem.AcceptAllMask"/>, after which the host line is provably the same
-        /// operation and can simply be deleted — LOGGED, not done here (it touches three host files
-        /// and is outside this fix's remit).
+        /// redundant for stored state, and therefore un-bitable there, because both derivations now
+        /// produce the same value. ⚠ THAT USED TO BE A CONDITIONAL CLAIM ("while the enum is
+        /// contiguous") and the condition has since been broken and repaired: E0-7 took
+        /// <c>Ice = 8</c> over the reserved slot 7, which is exactly the gap this paragraph
+        /// predicted, and the host's count-based mask WOULD have diverged — setting bit 7 and
+        /// clearing Ice's — so it was converted to the per-enum-VALUE derivation the sim uses.
+        /// The masks agree by construction now, not by luck.
+        /// The property is pinned by
+        /// <c>StockZoneSystemTests.AcceptAllMask_IsTheOrOfDeclaredItemKindValues_InEveryHostSpelling</c>, which
+        /// asserts the count form is WRONG and that no site uses it.
+        /// The real resolution remains to make every site consume
+        /// <see cref="StockZoneSystem.AcceptAllMask"/> itself, after which there is one derivation
+        /// and the host line can simply be deleted — LOGGED, not done here (it touches three host
+        /// files and is outside this fix's remit).
         /// </summary>
         [Test]
         public void BitsAboveTheLastItemKindAreCanonicalisedAway()
         {
+            // The over-wide wire value, ONE definition for all three rows: bits 0,1,4..9 — i.e. bit 9
+            // (no kind owns it) on top of a restriction that refuses Corpse and Potato.
+            const ulong Probe = 0x3F3UL;
+
             var (gs, host) = Boot();
             var pos = FirstWalkable(host.Sim, 0);
             gs.ApplyForTest(new WebCommand(CmdKind.Stockpile, pos.X, pos.Y, i: 1));
-            gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: 0x1F3));
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, pos.X, pos.Y, i: (int)Probe));
             host.Sim.Tick();
 
-            const ulong canonical = 0x1F3UL & 0xFFUL;   // 0xF3 — spelled as the operation, not a literal
-                                                        // (0x7F before E0-6 added ItemKind.Seals)
+            // THE EXPECTATION IS SPELLED FROM THE ENUM AT RUNTIME, and it must be, for two separate
+            // reasons that pull in opposite directions:
+            //   * NOT from a literal (this was `Probe & 0x1FFUL`, and the adjacent comment claimed
+            //     "the literal is deliberately NOT written here" while writing it). Both operands
+            //     were then compile-time constants, so the PRECONDITION below compared two consts
+            //     and could not fail for any enum — a tautology advertised as a tripwire.
+            //   * NOT from <see cref="StockZoneSystem.AcceptAllMask"/> either. `SetFilter` does
+            //     `mask &= AcceptAllMask`, so borrowing that constant would re-derive the subject
+            //     with the subject's own expression (§5.2 rule 1) and the equality would move with
+            //     any change to it.
+            // Per-BIT off Enum.GetValues, hoisted here because two assertions below need it: with a
+            // hole in the enum, "above the last kind" is not the same set as "not a declared kind",
+            // and a single shift would have let bit 7 — while it was nobody's — through unnoticed.
+            ulong declared = 0;
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind))) declared |= 1UL << (int)k;
+            ulong canonical = Probe & declared;
+
             Assert.IsTrue(host.Sim.StockZones.TryGetFilter(pos, out ulong mask),
                 "a real restriction stores a real entry");
-            Assert.AreNotEqual(0x1F3UL, mask, "the over-wide mask was NOT stored verbatim");
+            // NON-VACUITY, and it really is the assertion that fires on the day ItemKind grows past
+            // 9: `declared` widens with the enum, so a probe whose every bit has become a real kind
+            // makes canonical == Probe. Canonicalisation would then remove nothing, the mask WOULD be
+            // stored verbatim, and every assertion below would pass while measuring nothing.
+            // VERIFIED by mutation (ItemKind.Junk = 9 appended, observed red, reverted): this line is
+            // the first to fail and it names the reason.
+            Assert.AreNotEqual(canonical, Probe,
+                "PRECONDITION: the probe must carry at least one bit belonging to no ItemKind, or " +
+                "there is nothing for canonicalisation to remove — pick a higher probe");
+            Assert.AreNotEqual(Probe, mask, "the over-wide mask was NOT stored verbatim");
             Assert.AreEqual(canonical, mask);
-            Assert.AreEqual(0UL, mask >> Enum.GetValues(typeof(ItemKind)).Length,
-                "no bit above the last ItemKind survives into hashed state");
+            Assert.AreEqual(0UL, mask & ~declared,
+                "no bit belonging to an undeclared ItemKind survives into hashed state");
+            Assert.AreNotEqual(0UL, mask & (1UL << (int)ItemKind.Ice),
+                "...and a bit belonging to a REAL kind above the member count is KEPT");
             Assert.IsFalse(host.Sim.StockZones.Accepts(pos, ItemKind.Potato),
                 "and the restriction the player asked for is really in force — the canonicalisation " +
                 "removed only the undefined bits, not a meaningful one");
@@ -267,13 +308,13 @@ namespace Perilune.Tests
             // byte-identical hashed state. (The previous revision of this row re-set the entry on the
             // SAME host to the value the assertion above had just pinned, which could not fail.)
             var (_, direct) = Boot();
-            direct.Sim.StockZones.SetFilter(direct.Sim, pos, 0x1F3UL);
+            direct.Sim.StockZones.SetFilter(direct.Sim, pos, Probe);
             Assert.IsTrue(direct.Sim.StockZones.TryGetFilter(pos, out ulong straight),
                 "the sim door stores the entry");
             Assert.AreEqual(canonical, straight,
                 "StockZoneSystem.SetFilter canonicalises on its own — with no host in front of it");
             Assert.AreEqual(direct.Sim.StockZones.StateChecksum(), host.Sim.StockZones.StateChecksum(),
-                "0x1F3 through the wire bridge and 0x1F3 through the sim door must land in the SAME "
+                "0x3F3 through the wire bridge and 0x3F3 through the sim door must land in the SAME "
                 + "hashed state — one representation per meaning, whichever door it arrives through");
 
             // ROW 3 — THE COLLAPSE, OVER A LIVE RESTRICTION. A real filter is painted and asserted to
@@ -297,11 +338,11 @@ namespace Perilune.Tests
             Assert.IsFalse(host.Sim.StockZones.Accepts(second, ItemKind.Scrap),
                 "precondition: and the restriction really refuses a kind");
 
-            gs.ApplyForTest(new WebCommand(CmdKind.Filter, second.X, second.Y, i: 0x1FF));
+            gs.ApplyForTest(new WebCommand(CmdKind.Filter, second.X, second.Y, i: 0x3FF));
             host.Sim.Tick();
 
             Assert.IsFalse(host.Sim.StockZones.TryGetFilter(second, out ulong wide),
-                "0x1FF canonicalises to AcceptAllMask, and an accept-all paint REMOVES the entry — a "
+                "0x3FF canonicalises to AcceptAllMask, and an accept-all paint REMOVES the entry — a "
                 + "collapse that merely returned would leave the stale restriction in place "
                 + "(mask read back: 0x" + wide.ToString("X", CultureInfo.InvariantCulture) + ")");
             foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
@@ -428,6 +469,12 @@ namespace Perilune.Tests
         /// <c>InRange(kind) &amp;&amp;</c> in <c>Accepts</c> ⇒ <c>Accepts(0x01, 64)</c> is true.
         /// 64 is the value that bites; 9 and -1 are truncated either way, which is exactly how the
         /// false claim survived its first test.
+        ///
+        /// <c>StockFilterModel.KindCount</c> is in the bad list DERIVED rather than as a literal, so
+        /// the list widens with the enum. It is 9 today and 9 is not a kind; it stopped being a safe
+        /// stand-in for "unreal" once during this wave — while E0-7 had taken Ice = 8 over an empty
+        /// slot 7, KindCount was 8 and 8 WAS a kind — which is why the positive control below is not
+        /// optional.
         /// </summary>
         [Test]
         public void StockFilterModel_IsTotal_ForKindsTheSimDoesNotHave()
@@ -437,7 +484,10 @@ namespace Perilune.Tests
             Assert.AreEqual(1UL, 1UL << sixtyFour,
                 "C# really does reduce the shift count modulo 64 — this is why the guard is needed");
 
-            foreach (int bad in new[] { 64, 71, 128, -1, -64, StockFilterModel.KindCount })
+            // Post-merge ItemKind is contiguous 0..8, so 7 (E0-7's live case against the hole) and 8
+            // are BOTH real kinds and have moved to the positive control below. 64 is the value that
+            // actually bites — the modulo-64 wrap — and 9 is the first byte above the enum.
+            foreach (int bad in new[] { 9, 64, 71, 128, -1, -64, StockFilterModel.KindCount })
             {
                 Assert.AreEqual(all, StockFilterModel.Toggle(all, bad),
                     "Toggle is a no-op for kind " + bad);
@@ -445,6 +495,14 @@ namespace Perilune.Tests
                     "no mask accepts kind " + bad);
                 Assert.AreEqual("?", StockFilterModel.KindName(bad),
                     "an unreal kind has no name (the unguarded form returned the raw number)");
+            }
+            // POSITIVE CONTROL: every DECLARED kind is reachable, named and toggleable. Without it the
+            // loop above is satisfied by a model that rejects everything.
+            foreach (ItemKind k in Enum.GetValues(typeof(ItemKind)))
+            {
+                Assert.IsTrue(StockFilterModel.Accepts(all, (int)k), "accept-all accepts " + k);
+                Assert.AreNotEqual("?", StockFilterModel.KindName((int)k), k + " has a player-facing name");
+                Assert.AreNotEqual(all, StockFilterModel.Toggle(all, (int)k), "Toggle really flips " + k);
             }
             // Labels stay in step with the enum, or KindName would read off the end of the table.
             Assert.AreEqual(StockFilterModel.KindCount, StockFilterModel.Labels.Length);

@@ -13,10 +13,19 @@ namespace Perilune.Tests
     /// <c>SimDefs.Recipes</c> could never be (one row per DeviceKind, single-in/single-out,
     /// second bill overwrites the first).
     ///
-    /// The load-bearing claim of this package is <b>additive</b>: the table ships EMPTY,
-    /// so shipped crafting still runs the legacy <c>Recipes[]</c> row through
-    /// <see cref="ProductionDefs.TryGetBill"/>'s fallback leg, and the defs checksum is
-    /// byte-identical to pre-W0-5. Every test below is paired with a NAMED MUTATION in its
+    /// The load-bearing claim of W0-5 was <b>additive</b>: the table shipped EMPTY, so shipped
+    /// crafting still ran the legacy <c>Recipes[]</c> row through
+    /// <see cref="ProductionDefs.TryGetBill"/>'s fallback leg, and the defs checksum was
+    /// byte-identical to pre-W0-5.
+    ///
+    /// E0-7 put the first node in it — <c>melt_ice</c>, the ice melter's bill, which
+    /// <c>[recipes]</c> cannot express because the melter's product is litres and not a stack.
+    /// The additive claim is unchanged for every OTHER station and is now asserted by name in
+    /// <see cref="CompiledDefault_ShipsExactlyTheMelterBill"/>; the defs checksum DID move, which
+    /// is expected and is the integrator's to re-pin. Every count/index assertion below is
+    /// expressed relative to <c>Compiled</c> rather than to a literal.
+    ///
+    /// Every test below is paired with a NAMED MUTATION in its
     /// doc comment that makes it fail (§5.2 rule 2) — each was applied, observed red, and
     /// reverted.
     ///
@@ -33,6 +42,27 @@ namespace Perilune.Tests
     {
         // ------------------------------------------------------------------ helpers
 
+        /// <summary>
+        /// THE STATION A PARSER TEST DECLARES ITS OWN NODE ON, and it is deliberately NOT the
+        /// Fabricator, the SalvageRecycler or the IceMelter.
+        ///
+        /// Since E0-7 <see cref="DefsParser"/> SEEDS the table from the compiled defaults, and since
+        /// the wave merge those three stations CARRY compiled nodes (E0-6's <c>recycle_stock</c> and
+        /// <c>fab_components</c>, E0-7's <c>melt_ice</c>). A test row declared on one of them is
+        /// therefore a SECOND node on that station: it lands at ordinal 1, is shadowed by the
+        /// compiled node, and drags a <c>"2 nodes are declared on X"</c> line into <c>problems</c>.
+        /// That is correct parser behaviour and it broke twelve tests here on the wave merge — every
+        /// one of them because the station was arbitrary and happened to collide, never because the
+        /// property under test changed.
+        ///
+        /// <see cref="TestStation"/> keeps a LEGACY <c>[recipes]</c> row (Parts:2 →
+        /// ControllerModule:1), which the fallback-leg tests need; <see cref="TestStation2"/> has
+        /// neither a node nor a recipe and exists only to be a second, distinct station.
+        /// If a future lane compiles a node onto either, move these — do not move the tests back.
+        /// </summary>
+        private const DeviceKind TestStation = DeviceKind.MachineShop;
+        private const DeviceKind TestStation2 = DeviceKind.Reclaimer;
+
         private static SimDefs Parse(string text, out List<string> problems)
         {
             problems = new List<string>();
@@ -46,13 +76,17 @@ namespace Perilune.Tests
             return d;
         }
 
-        /// <summary>A powered Fabricator with a citizen and whatever cargo the caller stages
+        /// <summary>A powered workstation with a citizen and whatever cargo the caller stages
         /// on the bench's +x neighbour. Same shape as DefsEquivalenceTests' craft scenario, so
         /// CraftingSystem really recruits, stages, consumes and spawns.
         ///
         /// Bench at (3,2,0). Its 4-neighbours are (4,2), (2,2) and the conduit row above;
-        /// (5,2) and (1,2) are NOT adjacent, so cargo placed there must genuinely be FETCHED.</summary>
-        private static Simulation BuildBenchScenario(SimDefs defs)
+        /// (5,2) and (1,2) are NOT adjacent, so cargo placed there must genuinely be FETCHED.
+        ///
+        /// <paramref name="bench"/> defaults to the Fabricator, which is what the LEGACY-recipe
+        /// tests want. A test that declares its own [production] node must pass
+        /// <see cref="TestStation"/> instead — see that field's comment for why.</summary>
+        private static Simulation BuildBenchScenario(SimDefs defs, DeviceKind bench = DeviceKind.Fabricator)
         {
             string[] map =
             {
@@ -66,7 +100,7 @@ namespace Perilune.Tests
 
             for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 1, 0), $"c{x}");
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
-            sim.AddDevice(DeviceKind.Fabricator, new Int3(3, 2, 0), "fab");
+            sim.AddDevice(bench, new Int3(3, 2, 0), "bench");
 
             sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false → recruitable
 
@@ -103,28 +137,59 @@ namespace Perilune.Tests
         // ------------------------------------------------- default equivalence / checksum
 
         /// <summary>
-        /// The compiled default table is E0-6's TWO NODES, and nothing else. It shipped EMPTY from
-        /// W0-5 until E0-6; this test used to be called <c>CompiledDefault_ShipsAnEmptyTable</c> and
-        /// asserted <c>Nodes.Length == 0</c>. What replaced it is not a weaker assertion — it pins
-        /// every field of both rows, because those fields ARE the conversion-loss claim:
-        /// <c>Regolith:4 -&gt; Scrap:3</c> is the 75 % recycler, and the shipped row it replaced
-        /// (<c>Regolith:1 -&gt; Scrap:2</c>) was minting matter.
+        /// How many nodes <see cref="SimDefs.CreateDefault"/> compiles in before any content is
+        /// parsed. W0-5 shipped ZERO; E0-6 added <c>recycle_stock</c> and <c>fab_components</c>, E0-7
+        /// added <c>melt_ice</c>. Every count/index assertion below is expressed relative to this
+        /// rather than to a literal, so the next lane that compiles a node in does not have to
+        /// re-touch a dozen tests — and, more to the point, so none of those assertions can be
+        /// "fixed" by bumping a number without noticing what moved.
+        /// </summary>
+        private static int Compiled => SimDefs.Default.Production.Nodes.Length;
+
+        /// <summary>The <paramref name="i"/>-th node a parsed text DECLARED, i.e. skipping the
+        /// compiled prefix the parser now seeds the table with.</summary>
+        private static ProductionNode Declared(SimDefs d, int i) => d.Production.Nodes[Compiled + i];
+
+        /// <summary>How many nodes the COMPILED table puts on <paramref name="station"/>. A parsed
+        /// table's own rows sit AFTER these (the parser seeds from the compiled defaults), so a test
+        /// that wants "the first node MY text declared on this station" must ask for ordinal
+        /// <c>CompiledOn(station)</c>, never 0.</summary>
+        private static int CompiledOn(DeviceKind station) => SimDefs.Default.Production.CountFor(station);
+
+        /// <summary>
+        /// The compiled default table is the wave's THREE NODES, and nothing else. It shipped EMPTY
+        /// from W0-5 until E0-6; this test used to be called <c>CompiledDefault_ShipsAnEmptyTable</c>
+        /// and asserted <c>Nodes.Length == 0</c>. What replaced it is not a weaker assertion — it
+        /// pins every field of all three rows, because those fields ARE the two lanes' claims:
+        /// <c>Regolith:4 -&gt; Scrap:3</c> is E0-6's 75 % recycler (the shipped row it replaced,
+        /// <c>Regolith:1 -&gt; Scrap:2</c>, was minting matter), <c>Scrap:2 -&gt; Parts:1+Seals:1</c>
+        /// is E0-6's co-output, and <c>Ice:1 -&gt; none</c> is E0-7's melter, whose product is LITRES
+        /// and therefore cannot be a <c>[recipes]</c> row at all.
+        ///
+        /// ORDER IS PART OF THE ASSERTION. The table is an ordered list, the checksum folds it in that
+        /// order, and the integrator pre-assigned E0-6 the earlier append slot (ECONOMY-PLAN §2.1
+        /// rule 2). A merge that reordered these rows would produce a checksum neither lane measured.
         ///
         /// MUTATION THAT MAKES THIS FAIL: change <c>ProductionPort(ItemKind.Scrap, 3)</c> to
         /// <c>4</c> in <see cref="SimDefs.CreateDefault"/> — a lossless recycler — and the ratio
-        /// assertion fails by name. (Applied, observed red, reverted.)
+        /// assertion fails by name. SECOND MUTATION: swap the melt_ice row above the E0-6 rows in
+        /// CreateDefault ⇒ the id-by-position assertions fail.
         /// </summary>
         [Test]
-        public void CompiledDefault_ShipsTheTwoE06Nodes_AndTheMachineShopStillFallsBackToRecipes()
+        public void CompiledDefault_ShipsTheThreeWaveNodes_AndTheMachineShopStillFallsBackToRecipes()
         {
             var p = SimDefs.Default.Production;
             Assert.That(p, Is.Not.Null);
             Assert.That(p.Nodes, Is.Not.Null);
-            Assert.That(p.Nodes.Length, Is.EqualTo(2),
-                "E0-6 ships exactly two nodes; a third would shadow one of them at ordinal 0");
+            Assert.That(p.Nodes.Length, Is.EqualTo(3),
+                "the wave ships exactly three nodes: E0-6's two and E0-7's one");
+            Assert.That(p.Nodes[0].Id, Is.EqualTo("recycle_stock"), "E0-6's append slot is FIRST");
+            Assert.That(p.Nodes[1].Id, Is.EqualTo("fab_components"));
+            Assert.That(p.Nodes[2].Id, Is.EqualTo("melt_ice"), "E0-7's append slot is SECOND");
 
             Assert.That(p.CountFor(DeviceKind.SalvageRecycler), Is.EqualTo(1));
             Assert.That(p.CountFor(DeviceKind.Fabricator), Is.EqualTo(1));
+            Assert.That(p.CountFor(DeviceKind.IceMelter), Is.EqualTo(1));
             Assert.That(p.CountFor(DeviceKind.MachineShop), Is.EqualTo(0),
                 "the MachineShop deliberately has NO node — it takes TryGetBill's legacy fallback " +
                 "leg, which is the half of W0-5 that must keep working");
@@ -156,14 +221,67 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// The shipped production.def is verbatim equal to the compiled default — same two rows,
+        /// E0-7's melter bill, on its own station, and NOTHING ELSE GAINED ONE. The three
+        /// <c>CountFor</c> assertions are what make "E0-7 changed only the melter" checkable by
+        /// reading the test rather than by trusting a diff — restated after the wave merge, which
+        /// landed E0-6's two nodes and therefore moved two of those counts from 0 to 1. That is the
+        /// merge's own claim, not a weakening: the recycler and the fabricator have nodes because
+        /// E0-6 gave them nodes, and the assertions below say exactly which node each one has.
+        ///
+        /// RENAMED. It was <c>CompiledDefault_ShipsExactlyTheMelterBill</c>, which was true only on
+        /// E0-7's branch and stopped being true the moment E0-6 merged — the compiled table is no
+        /// longer "exactly the melter bill". §5.2 rule 4: name the test after what it proves.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL: in SimDefs.CreateDefault change the melt_ice node's
+        /// station to <c>DeviceKind.MachineShop</c> — CountFor(IceMelter) drops to 0 and
+        /// CountFor(MachineShop) rises to 1, and both named assertions fail.
+        /// </summary>
+        [Test]
+        public void CompiledDefault_ShipsTheMelterBill_OnItsOwnStation()
+        {
+            Assert.That(SimDefs.Default.Production, Is.Not.Null);
+            Assert.That(SimDefs.Default.Production.Nodes, Is.Not.Null);
+            Assert.That(Compiled, Is.GreaterThanOrEqualTo(1), "the melter's bill is compiled in");
+
+            Assert.That(SimDefs.Default.Production.TryGetNode(DeviceKind.IceMelter, 0, out var node), Is.True,
+                "the compiled table declares the ice melter's bill");
+            Assert.That(node.Id, Is.EqualTo("melt_ice"));
+            Assert.That(node.Station, Is.EqualTo(DeviceKind.IceMelter));
+            Assert.That(node.WorkSeconds, Is.EqualTo(300));
+            Assert.That(node.Inputs.Length, Is.EqualTo(1));
+            Assert.That(node.Inputs[0].Kind, Is.EqualTo(ItemKind.Ice));
+            Assert.That(node.Inputs[0].Count, Is.EqualTo(1));
+            Assert.That(node.Outputs.Length, Is.EqualTo(0),
+                "the melter's product is LITRES, not a stack — that is why it cannot be a [recipes] row");
+
+            // Exactly one station carries the melter's node, and the melter carries exactly one node.
+            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.IceMelter), Is.EqualTo(1));
+            Assert.That(SimDefs.Default.Production.CountFor(DeviceKind.MachineShop), Is.EqualTo(0),
+                "the MachineShop is the station NEITHER lane gave a node — the legacy [recipes] leg");
+            // The two E0-6 stations: they have nodes, and they are E0-6's, not a stray melter row.
+            Assert.That(SimDefs.Default.Production.TryGetNode(DeviceKind.Fabricator, 0, out var fab), Is.True);
+            Assert.That(fab.Id, Is.EqualTo("fab_components"));
+            Assert.That(SimDefs.Default.Production.TryGetNode(DeviceKind.SalvageRecycler, 0, out var rec), Is.True);
+            Assert.That(rec.Id, Is.EqualTo("recycle_stock"));
+        }
+
+        /// <summary>
+        /// The shipped production.def is verbatim equal to the compiled default — same three rows,
         /// same order, same counts — so parsing it yields the same table AND the same checksum as
         /// CreateDefault. This is the def-field ritual's "shipped .def line equals the compiled
         /// default" step for a table.
         ///
+        /// Since E0-7 the parser SEEDS the table from the compiled defaults, so each shipped row
+        /// RETUNES its compiled row in place rather than appending beside it. That is what the
+        /// length assertion is really testing.
+        ///
         /// MUTATION THAT MAKES THIS FAIL: change <c>Regolith:4</c> to <c>Regolith:3</c> in
         /// <c>content/core/SimDefs/production.def</c> — the parsed table diverges from
-        /// SimDefs.Default and the checksum assertion fails. (Applied, observed red, reverted.)
+        /// SimDefs.Default and the checksum assertion fails.
+        ///
+        /// SECOND MUTATION: rename the shipped `melt_ice` row's id to `melt_ice2` — it stops
+        /// overlaying and APPENDS, so Nodes.Length becomes Compiled + 1, the parser warns about a
+        /// shadowed node on IceMelter, and the problems-are-empty assertion fails too.
         /// </summary>
         [Test]
         public void ShippedProductionDef_EqualsTheCompiledDefault_AndLeavesTheChecksumUnmoved()
@@ -180,7 +298,16 @@ namespace Perilune.Tests
             Assert.That(problems, Is.Empty,
                 "the shipped production.def must parse with zero problems (a typo'd section name " +
                 "would show up here as 'unknown section'): " + string.Join(" | ", problems));
-            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(2));
+            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(Compiled),
+                "each shipped row RETUNES its compiled node in place; none may append a second one");
+            for (int i = 0; i < Compiled; i++)
+            {
+                Assert.That(parsed.Production.Nodes[i].Id,
+                            Is.EqualTo(SimDefs.Default.Production.Nodes[i].Id),
+                            "row " + i + " keeps its compiled id AND its compiled table position");
+                Assert.That(parsed.Production.Nodes[i].WorkSeconds,
+                            Is.EqualTo(SimDefs.Default.Production.Nodes[i].WorkSeconds));
+            }
             Assert.That(parsed.Checksum, Is.EqualTo(SimDefs.Default.Checksum),
                 "the shipped rows are the compiled rows — the defs checksum is the default one");
         }
@@ -194,9 +321,18 @@ namespace Perilune.Tests
         /// SalvageRecycler's pre-E0-6 <c>Regolith:1 -&gt; Scrap:2</c> row — matter creation, back,
         /// with nothing anywhere saying so.
         ///
-        /// MUTATION THAT MAKES THIS FAIL: delete the <c>if (sawProductionSection)</c> guard in
-        /// <see cref="DefsParser"/> so the assignment is unconditional again — the node count drops
-        /// to 0 and the bill resolves to the legacy 1→2 row. (Applied, observed red, reverted.)
+        /// ⚠ THE MUTATION THIS TEST NAMES CHANGED AT THE WAVE MERGE, AND THE OLD ONE NO LONGER BITES.
+        /// E0-6 shipped a <c>sawProductionSection</c> guard and named "delete the guard" as the
+        /// mutation. E0-7 independently made the parser SEED <c>production</c> from the compiled
+        /// defaults, and seeding is the stronger of the two: with it, deleting the guard leaves this
+        /// test GREEN, because the unconditional assignment now installs the seeded table rather than
+        /// an empty one. Measured on the merged tree, not reasoned. So the honest mutation is the
+        /// seeding, and it is the one written below.
+        ///
+        /// MUTATION THAT MAKES THIS FAIL (applied on the merged tree, observed red, reverted):
+        /// in <see cref="DefsParser"/> revert the seed to <c>new List&lt;ProductionNode&gt;()</c> —
+        /// the compiled prefix is gone, the node count drops to 0, and the recycler's bill resolves
+        /// to the legacy mass-creating 1→2 row.
         /// </summary>
         [Test]
         public void OmittingProductionDef_KeepsTheCompiledNodes_RatherThanEmptyingTheTable()
@@ -207,18 +343,26 @@ namespace Perilune.Tests
             var parsed = DefsParser.Parse(
                 new[] { ("thermal.def", "[thermal]\ncitizen_heat_w = 100\n") }, problems);
 
-            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(2),
+            Assert.That(parsed.Production.Nodes.Length, Is.EqualTo(Compiled),
                 "a defs set that never mentions [production] keeps the compiled table");
+            Assert.That(Compiled, Is.GreaterThan(0),
+                "non-vacuity: if the compiled table were empty this test would assert 0 == 0");
             Assert.That(ProductionDefs.TryGetBill(parsed, DeviceKind.SalvageRecycler, out var bill), Is.True);
             Assert.That(bill.IsGraphNode, Is.True,
                 "and the recycler still runs the LOSSY node, not the mass-creating legacy row");
             Assert.That(bill.Output(0).Count, Is.LessThan(bill.Input(0).Count));
 
-            // Non-vacuity: an EXPLICITLY EMPTY [production] section still empties the table, so the
-            // guard above distinguishes "not mentioned" from "declared empty" rather than pinning
-            // the table open.
+            // AND SO DOES AN EXPLICITLY EMPTY [production] SECTION — a deliberate behaviour change at
+            // the wave merge, recorded here because E0-6's version of this test asserted the OPPOSITE
+            // (an empty section emptied the table). Seeding means content may RETUNE a compiled node
+            // but never REMOVE one, the same contract [machines] and [recipes] already have. The old
+            // wipe was the counterfeit-restoring hazard above, reached by a different route.
             var cleared = DefsParser.Parse(new[] { ("p.def", "[production]\n") }, new List<string>());
-            Assert.That(cleared.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(cleared.Production.Nodes.Length, Is.EqualTo(Compiled),
+                "an empty [production] section overrides nothing, so it removes nothing");
+            Assert.That(ProductionDefs.TryGetBill(cleared, DeviceKind.SalvageRecycler, out var bill2), Is.True);
+            Assert.That(bill2.IsGraphNode, Is.True,
+                "and in particular it cannot drop the recycler back onto the legacy 1→2 row");
         }
 
         private static string FindSimDefsDir()
@@ -245,19 +389,19 @@ namespace Perilune.Tests
         [Test]
         public void DeclaredNodes_ChangeTheChecksum_AndSoDoesRowOrder()
         {
-            var one = ParseClean("[production]\nfab_parts Fabricator 30 Scrap:2 Parts:1\n");
+            var one = ParseClean("[production]\nshop_parts MachineShop 30 Scrap:2 Parts:1\n");
             Assert.That(one.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum),
                 "a declared production node must move the defs checksum");
 
             // Two stations, so no ordinal-0 warning fires and both graphs parse clean.
             var orderA = ParseClean(
                 "[production]\n" +
-                "fab_parts Fabricator 30 Scrap:2 Parts:1\n" +
-                "rec_scrap SalvageRecycler 20 Regolith:1 Scrap:2\n");
+                "shop_parts MachineShop 30 Scrap:2 Parts:1\n" +
+                "rec_scrap  Reclaimer   20 Regolith:1 Scrap:2\n");
             var orderB = ParseClean(
                 "[production]\n" +
-                "rec_scrap SalvageRecycler 20 Regolith:1 Scrap:2\n" +
-                "fab_parts Fabricator 30 Scrap:2 Parts:1\n");
+                "rec_scrap  Reclaimer   20 Regolith:1 Scrap:2\n" +
+                "shop_parts MachineShop 30 Scrap:2 Parts:1\n");
             Assert.That(orderB.Checksum, Is.Not.EqualTo(orderA.Checksum),
                 "[production] row order is a VALUE (it decides ordinal-0 selection), not formatting");
         }
@@ -271,7 +415,7 @@ namespace Perilune.Tests
         ///
         /// MUTATION THAT MAKES THIS FAIL: in <c>DefsParser.ApplyProductionRow</c>, key the
         /// table by station instead of id (replace the id comparison with
-        /// <c>nodes[i].Station == station</c>) — the second Fabricator row overwrites the
+        /// <c>nodes[i].Station == station</c>) — the second MachineShop row overwrites the
         /// first and both the Nodes.Length and CountFor assertions fail.
         /// (Applied, observed red, reverted.)
         /// </summary>
@@ -280,22 +424,22 @@ namespace Perilune.Tests
         {
             var d = Parse(
                 "[production]\n" +
-                "# id            station          work_s  inputs               outputs\n" +
-                "fab_parts       Fabricator       30      Scrap:2              Parts:1\n" +
-                "fab_composite   Fabricator       45      Scrap:3+Regolith:1   Parts:2+Scrap:1\n" +
-                "scrap_corpse    SalvageRecycler  60      Corpse:1             none\n",
+                "# id            station      work_s  inputs               outputs\n" +
+                "shop_parts      MachineShop  30      Scrap:2              Parts:1\n" +
+                "shop_composite  MachineShop  45      Scrap:3+Regolith:1   Parts:2+Scrap:1\n" +
+                "scrap_corpse    Reclaimer    60      Corpse:1             none\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(3));
-            Assert.That(d.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(2),
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 3));
+            Assert.That(d.Production.CountFor(TestStation), Is.EqualTo(2),
                 "two bills on one station must COEXIST — that is the whole point of the table");
 
-            Assert.That(d.Production.TryGetNode(DeviceKind.Fabricator, 0, out var first), Is.True);
-            Assert.That(first.Id, Is.EqualTo("fab_parts"));
+            Assert.That(d.Production.TryGetNode(TestStation, 0, out var first), Is.True);
+            Assert.That(first.Id, Is.EqualTo("shop_parts"));
             Assert.That(first.WorkSeconds, Is.EqualTo(30));
 
-            Assert.That(d.Production.TryGetNode(DeviceKind.Fabricator, 1, out var second), Is.True);
-            Assert.That(second.Id, Is.EqualTo("fab_composite"));
+            Assert.That(d.Production.TryGetNode(TestStation, 1, out var second), Is.True);
+            Assert.That(second.Id, Is.EqualTo("shop_composite"));
             Assert.That(second.Inputs.Length, Is.EqualTo(2));
             Assert.That(second.Inputs[0].Kind, Is.EqualTo(ItemKind.Scrap));
             Assert.That(second.Inputs[0].Count, Is.EqualTo(3));
@@ -305,11 +449,11 @@ namespace Perilune.Tests
             Assert.That(second.Outputs[0].Kind, Is.EqualTo(ItemKind.Parts));
             Assert.That(second.Outputs[0].Count, Is.EqualTo(2));
 
-            Assert.That(d.Production.TryGetNode(DeviceKind.SalvageRecycler, 0, out var sink), Is.True);
+            Assert.That(d.Production.TryGetNode(TestStation2, 0, out var sink), Is.True);
             Assert.That(sink.Outputs.Length, Is.EqualTo(0), "'none' outputs = a pure sink");
 
             // ...and coexisting-in-the-data is NOT the same as both running. See the next test.
-            Assert.That(problems, Has.Some.Contains("2 nodes are declared on Fabricator"));
+            Assert.That(problems, Has.Some.Contains("2 nodes are declared on MachineShop"));
         }
 
         /// <summary>
@@ -339,53 +483,53 @@ namespace Perilune.Tests
             // Case 1: two fresh declarations on one station.
             var d = Parse(
                 "[production]\n" +
-                "fab_parts Fabricator 30 Scrap:2 Parts:1\n" +
-                "fab_seals Fabricator 15 Regolith:1 Parts:2\n",
+                "shop_parts MachineShop 30 Scrap:2 Parts:1\n" +
+                "shop_seals MachineShop 15 Regolith:1 Parts:2\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(2), "the row still lands");
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the row still lands");
             Assert.That(problems.Count, Is.EqualTo(1));
-            Assert.That(problems[0], Does.Contain("2 nodes are declared on Fabricator"));
-            Assert.That(problems[0], Does.Contain("'fab_parts' (the first in table order)"),
+            Assert.That(problems[0], Does.Contain("2 nodes are declared on MachineShop"));
+            Assert.That(problems[0], Does.Contain("'shop_parts' (the first in table order)"),
                 "name the node that actually RUNS");
-            Assert.That(problems[0], Does.Contain("shadowed: 'fab_seals'"), "name the dead one");
+            Assert.That(problems[0], Does.Contain("shadowed: 'shop_seals'"), "name the dead one");
             Assert.That(problems[0], Does.Contain("13.12"), "point at the §13 entry that records it");
 
             // The warning is honest: ordinal 1 really is never selected.
-            Assert.That(ProductionDefs.TryGetBill(d, DeviceKind.Fabricator, out var bill), Is.True);
-            Assert.That(bill.Id, Is.EqualTo("fab_parts"));
+            Assert.That(ProductionDefs.TryGetBill(d, TestStation, out var bill), Is.True);
+            Assert.That(bill.Id, Is.EqualTo("shop_parts"));
 
-            // Case 2: THE OVERLAY-RETARGET ROUTE. 'b' is declared on SalvageRecycler, then
-            // re-declared (same id ⇒ overlay, in place) onto Fabricator, which already has a
-            // node. Before the whole-table scan this produced nodes=2, CountFor(Fabricator)=2
+            // Case 2: THE OVERLAY-RETARGET ROUTE. 'b' is declared on the Reclaimer, then
+            // re-declared (same id ⇒ overlay, in place) onto the MachineShop, which already has a
+            // node. Before the whole-table scan this produced nodes=2, CountFor(MachineShop)=2
             // and problems=[] — a silent dead node, by the exact contract production.def
             // advertises the overlay for.
             var e = Parse(
                 "[production]\n" +
-                "a Fabricator      30 Scrap:2    Parts:1\n" +
-                "b SalvageRecycler 20 Regolith:1 Scrap:2\n" +
-                "b Fabricator      40 Scrap:3    Parts:2\n",
+                "a MachineShop 30 Scrap:2    Parts:1\n" +
+                "b Reclaimer   20 Regolith:1 Scrap:2\n" +
+                "b MachineShop 40 Scrap:3    Parts:2\n",
                 out var problems2);
 
-            Assert.That(e.Production.Nodes.Length, Is.EqualTo(2), "the overlay replaces in place");
-            Assert.That(e.Production.CountFor(DeviceKind.Fabricator), Is.EqualTo(2),
-                "premise: the retarget really did put a second node on the Fabricator");
-            Assert.That(e.Production.CountFor(DeviceKind.SalvageRecycler), Is.EqualTo(0),
+            Assert.That(e.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the overlay replaces in place");
+            Assert.That(e.Production.CountFor(TestStation), Is.EqualTo(2),
+                "premise: the retarget really did put a second node on the MachineShop");
+            Assert.That(e.Production.CountFor(TestStation2), Is.EqualTo(0),
                 "premise: and really did leave the station it came from");
             Assert.That(problems2.Count, Is.EqualTo(1), "the retarget must NOT be silent");
-            Assert.That(problems2[0], Does.Contain("2 nodes are declared on Fabricator"));
+            Assert.That(problems2[0], Does.Contain("2 nodes are declared on MachineShop"));
             Assert.That(problems2[0], Does.Contain("shadowed: 'b'"));
 
             // Case 3: three on one station — every shadowed node is named, once per station.
             var f = Parse(
                 "[production]\n" +
-                "n1 Fabricator 30 Scrap:2    Parts:1\n" +
-                "n2 Fabricator 31 Scrap:3    Parts:1\n" +
-                "n3 Fabricator 32 Regolith:1 Parts:1\n",
+                "n1 MachineShop 30 Scrap:2    Parts:1\n" +
+                "n2 MachineShop 31 Scrap:3    Parts:1\n" +
+                "n3 MachineShop 32 Regolith:1 Parts:1\n",
                 out var problems3);
-            Assert.That(f.Production.Nodes.Length, Is.EqualTo(3));
+            Assert.That(f.Production.Nodes.Length, Is.EqualTo(Compiled + 3));
             Assert.That(problems3.Count, Is.EqualTo(1), "one problem per STATION, not per row");
-            Assert.That(problems3[0], Does.Contain("3 nodes are declared on Fabricator"));
+            Assert.That(problems3[0], Does.Contain("3 nodes are declared on MachineShop"));
             Assert.That(problems3[0], Does.Contain("shadowed: 'n2', 'n3'"));
         }
 
@@ -437,22 +581,22 @@ namespace Perilune.Tests
         [Test]
         public void PortCounts_AreBounded_AndASameKindGainIsRefused()
         {
-            var huge = Parse("[production]\nbig Fabricator 30 Scrap:1 Parts:2000000000\n", out var p1);
-            Assert.That(huge.Production.Nodes.Length, Is.EqualTo(0));
+            var huge = Parse("[production]\nbig MachineShop 30 Scrap:1 Parts:2000000000\n", out var p1);
+            Assert.That(huge.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(p1, Has.Some.Contains("count must be in [1, 10000]"));
 
-            var mint = Parse("[production]\nmint Fabricator 30 Scrap:1 Scrap:5\n", out var p2);
-            Assert.That(mint.Production.Nodes.Length, Is.EqualTo(0));
+            var mint = Parse("[production]\nmint MachineShop 30 Scrap:1 Scrap:5\n", out var p2);
+            Assert.That(mint.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(p2, Has.Some.Contains("same-kind gain is unambiguous matter creation"));
 
             // Same kind on both sides is fine when it LOSES — that is what a lossy loop is.
-            var lossy = ParseClean("[production]\nlossy SalvageRecycler 20 Scrap:20 Scrap:17\n");
-            Assert.That(lossy.Production.Nodes.Length, Is.EqualTo(1));
+            var lossy = ParseClean("[production]\nlossy Reclaimer 20 Scrap:20 Scrap:17\n");
+            Assert.That(lossy.Production.Nodes.Length, Is.EqualTo(Compiled + 1));
 
             // ...and a CROSS-kind gain stays legal: Regolith:1 -> Seals:2 is ECONOMY.md §4's
             // own design, and units of different kinds are not comparable without a mass model.
-            var cross = ParseClean("[production]\ncross Fabricator 30 Regolith:1 Parts:2\n");
-            Assert.That(cross.Production.Nodes.Length, Is.EqualTo(1));
+            var cross = ParseClean("[production]\ncross MachineShop 30 Regolith:1 Parts:2\n");
+            Assert.That(cross.Production.Nodes.Length, Is.EqualTo(Compiled + 1));
         }
 
         /// <summary>
@@ -470,14 +614,14 @@ namespace Perilune.Tests
         {
             var d = ParseClean(
                 "[production]\n" +
-                "fab_parts Fabricator 30 Scrap:2 Parts:1\n" +
-                "rec_scrap SalvageRecycler 20 Regolith:1 Scrap:2\n" +
-                "fab_parts Fabricator 99 Scrap:4 Parts:3\n");
+                "shop_parts MachineShop 30 Scrap:2 Parts:1\n" +
+                "rec_scrap  Reclaimer   20 Regolith:1 Scrap:2\n" +
+                "shop_parts MachineShop 99 Scrap:4 Parts:3\n");
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(2), "the repeat overlays, it does not append");
-            Assert.That(d.Production.Nodes[0].Id, Is.EqualTo("fab_parts"), "order preserved");
-            Assert.That(d.Production.Nodes[0].WorkSeconds, Is.EqualTo(99), "the later row's values win");
-            Assert.That(d.Production.Nodes[1].Id, Is.EqualTo("rec_scrap"));
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 2), "the repeat overlays, it does not append");
+            Assert.That(Declared(d, 0).Id, Is.EqualTo("shop_parts"), "order preserved");
+            Assert.That(Declared(d, 0).WorkSeconds, Is.EqualTo(99), "the later row's values win");
+            Assert.That(Declared(d, 1).Id, Is.EqualTo("rec_scrap"));
         }
 
         /// <summary>
@@ -498,13 +642,13 @@ namespace Perilune.Tests
         public void DuplicateKindWithinOneSide_IsRejected_BecauseItWouldCreateMatter()
         {
             var d = Parse("[production]\ndup Fabricator 5 Scrap:1+Scrap:1 Parts:1\n", out var problems);
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(0), "the row must not land");
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled), "the row must not land");
             Assert.That(problems, Has.Some.Contains("names Scrap twice in inputs"));
             Assert.That(problems, Has.Some.Contains("create matter"));
 
             // Outputs too — same rule, same reason to keep the invariant one-sided-free.
             var e = Parse("[production]\ndup2 Fabricator 5 Scrap:2 Parts:1+Parts:1\n", out var problems2);
-            Assert.That(e.Production.Nodes.Length, Is.EqualTo(0));
+            Assert.That(e.Production.Nodes.Length, Is.EqualTo(Compiled));
             Assert.That(problems2, Has.Some.Contains("names Parts twice in outputs"));
 
             // ...and the behavioural half: with the row refused, the bench falls back to the
@@ -533,20 +677,20 @@ namespace Perilune.Tests
         {
             var d = Parse(
                 "[production]\n" +
-                "ok_row     Fabricator  30          Scrap:2       Parts:1\n" +
-                "zero_work  Fabricator  0           Scrap:2       Parts:1\n" +
-                "huge_work  Fabricator  300000000   Scrap:2       Parts:1\n" +
-                "no_inputs  Fabricator  30          none          Parts:1\n" +
-                "bad_port   Fabricator  30          Scrap         Parts:1\n" +
-                "bad_kind   Fabricator  30          Unobtanium:1  Parts:1\n" +
-                "stray_plus Fabricator  30          Scrap:2+      Parts:1\n" +
-                "bad_count  Fabricator  30          Scrap:0x2     Parts:1\n" +
-                "too_few    Fabricator  30          Scrap:2\n",
+                "ok_row     MachineShop  30          Scrap:2       Parts:1\n" +
+                "zero_work  MachineShop  0           Scrap:2       Parts:1\n" +
+                "huge_work  MachineShop  300000000   Scrap:2       Parts:1\n" +
+                "no_inputs  MachineShop  30          none          Parts:1\n" +
+                "bad_port   MachineShop  30          Scrap         Parts:1\n" +
+                "bad_kind   MachineShop  30          Unobtanium:1  Parts:1\n" +
+                "stray_plus MachineShop  30          Scrap:2+      Parts:1\n" +
+                "bad_count  MachineShop  30          Scrap:0x2     Parts:1\n" +
+                "too_few    MachineShop  30          Scrap:2\n",
                 out var problems);
 
-            Assert.That(d.Production.Nodes.Length, Is.EqualTo(1), "only the good row lands: "
+            Assert.That(d.Production.Nodes.Length, Is.EqualTo(Compiled + 1), "only the good row lands: "
                 + string.Join(" | ", problems));
-            Assert.That(d.Production.Nodes[0].Id, Is.EqualTo("ok_row"));
+            Assert.That(Declared(d, 0).Id, Is.EqualTo("ok_row"));
             Assert.That(problems.Count, Is.EqualTo(8), "every bad row warns exactly once: "
                 + string.Join(" | ", problems));
             Assert.That(problems, Has.Some.Contains("work_s must be in [1, 86400]"));
@@ -592,22 +736,22 @@ namespace Perilune.Tests
             {
                 Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
 
-                var badCount = Parse("[production]\nlossy SalvageRecycler 20 Scrap:1.000 Regolith:17\n", out var problems);
-                Assert.That(badCount.Production.Nodes.Length, Is.EqualTo(0),
+                var badCount = Parse("[production]\nlossy Reclaimer 20 Scrap:1.000 Regolith:17\n", out var problems);
+                Assert.That(badCount.Production.Nodes.Length, Is.EqualTo(Compiled),
                     "de-DE must not turn a port count '1.000' into 1000 — the row is refused");
                 Assert.That(problems, Has.Some.Contains("count expects an integer, got '1.000'"));
 
                 // The same guarantee on work_s, which had no culture/style coverage at all.
-                var badWork = Parse("[production]\nslow SalvageRecycler 1.000 Scrap:20 Regolith:17\n", out var problems2);
-                Assert.That(badWork.Production.Nodes.Length, Is.EqualTo(0),
+                var badWork = Parse("[production]\nslow Reclaimer 1.000 Scrap:20 Regolith:17\n", out var problems2);
+                Assert.That(badWork.Production.Nodes.Length, Is.EqualTo(Compiled),
                     "de-DE must not turn work_s '1.000' into 1000 — the row is refused");
                 Assert.That(problems2, Has.Some.Contains("work_s expects an integer, got '1.000'"));
 
                 // The plain row still parses identically under de-DE, values and all.
-                var good = ParseClean("[production]\nlossy SalvageRecycler 20 Scrap:20 Regolith:17\n");
-                Assert.That(good.Production.Nodes[0].Inputs[0].Count, Is.EqualTo(20));
-                Assert.That(good.Production.Nodes[0].Outputs[0].Count, Is.EqualTo(17));
-                Assert.That(good.Production.Nodes[0].WorkSeconds, Is.EqualTo(20));
+                var good = ParseClean("[production]\nlossy Reclaimer 20 Scrap:20 Regolith:17\n");
+                Assert.That(Declared(good, 0).Inputs[0].Count, Is.EqualTo(20));
+                Assert.That(Declared(good, 0).Outputs[0].Count, Is.EqualTo(17));
+                Assert.That(Declared(good, 0).WorkSeconds, Is.EqualTo(20));
             }
             finally
             {
@@ -661,21 +805,26 @@ namespace Perilune.Tests
         /// The additive lookup's PREFERENCE leg: declare a node on a station that ALSO has a
         /// legacy recipe, and the node wins — with its own ports, not the recipe's.
         ///
+        /// The station is the MachineShop, not the Fabricator, because since the wave merge the
+        /// Fabricator carries a COMPILED node and a second one there would be shadowed at ordinal 0
+        /// (see <see cref="TestStation"/>). The MachineShop is the one bench with a legacy recipe
+        /// and no compiled node, which is exactly the shape this test needs.
+        ///
         /// MUTATION THAT MAKES THIS FAIL: in <c>TryGetBill</c>, check the legacy array first
         /// and only consult Production when the recipe is undefined — IsGraphNode is false and
-        /// WorkSeconds reads 900 (the E0-2 legacy value, not the node's 7). (Applied, observed red, reverted.)
+        /// WorkSeconds reads 1800 (the MachineShop's legacy value, not the node's 7).
         /// </summary>
         [Test]
         public void DeclaredNode_TryGetBill_PrefersItOverTheLegacyRecipe()
         {
             // Scrap out (1) must not exceed Scrap in (1) — a same-kind gain is refused now.
-            var defs = ParseClean("[production]\nfab_alt Fabricator 7 Regolith:3+Scrap:1 Parts:4+Scrap:1\n");
+            var defs = ParseClean("[production]\nshop_alt MachineShop 7 Regolith:3+Scrap:1 Parts:4+Scrap:1\n");
 
-            Assert.That(defs.Recipes[(int)DeviceKind.Fabricator].Defined, Is.True,
-                "test premise: the Fabricator still has its legacy recipe to be preferred OVER");
-            Assert.That(ProductionDefs.TryGetBill(defs, DeviceKind.Fabricator, out var bill), Is.True);
+            Assert.That(defs.Recipes[(int)TestStation].Defined, Is.True,
+                "test premise: the MachineShop still has its legacy recipe to be preferred OVER");
+            Assert.That(ProductionDefs.TryGetBill(defs, TestStation, out var bill), Is.True);
             Assert.That(bill.IsGraphNode, Is.True);
-            Assert.That(bill.Id, Is.EqualTo("fab_alt"));
+            Assert.That(bill.Id, Is.EqualTo("shop_alt"));
             Assert.That(bill.WorkSeconds, Is.EqualTo(7));
             Assert.That(bill.InputPortCount, Is.EqualTo(2));
             Assert.That(bill.OutputPortCount, Is.EqualTo(2));
@@ -693,15 +842,15 @@ namespace Perilune.Tests
         ///
         /// MUTATION THAT MAKES THIS FAIL: in <c>CraftingSystem.TryGetBill</c>, ignore the
         /// lookup and return <c>new ProductionBill(defs.Recipes[(int)kind])</c> directly — the
-        /// bench produces 1 Parts (the legacy recipe) instead of 3 Regolith and the test fails.
-        /// (Applied, observed red, reverted.)
+        /// bench produces the legacy recipe's output instead of 3 Regolith and the test fails.
         /// </summary>
         [Test]
         public void CraftingSystem_RunsADeclaredProductionNode_NotTheLegacyRecipe()
         {
-            // A Fabricator node that is deliberately NOTHING like the shipped Scrap→Parts row.
-            var defs = ParseClean("[production]\nfab_odd Fabricator 5 Scrap:2 Regolith:3\n");
-            var sim = BuildBenchScenario(defs);
+            // A MachineShop node that is deliberately NOTHING like that bench's shipped
+            // Parts:2→ControllerModule:1 row. (MachineShop, not Fabricator: see TestStation.)
+            var defs = ParseClean("[production]\nshop_odd MachineShop 5 Scrap:2 Regolith:3\n");
+            var sim = BuildBenchScenario(defs, TestStation);
             sim.AddItem(ItemKind.Scrap, 2, new Int3(4, 2, 0)); // staged on the bench's +x neighbour
 
             Assert.That(UnitsAnywhere(sim, ItemKind.Regolith), Is.EqualTo(0), "premise: no Regolith aboard");
@@ -715,8 +864,8 @@ namespace Perilune.Tests
             // Outcome: the NODE's output, not the legacy recipe's.
             Assert.That(UnitsOnGround(sim, ItemKind.Regolith), Is.EqualTo(3),
                 "the [production] node's output port must be what spawned");
-            Assert.That(UnitsAnywhere(sim, ItemKind.Parts), Is.EqualTo(0),
-                "the legacy Scrap→Parts recipe must NOT have run");
+            Assert.That(UnitsAnywhere(sim, ItemKind.ControllerModule), Is.EqualTo(0),
+                "the legacy Parts→ControllerModule recipe must NOT have run");
         }
 
         /// <summary>
@@ -738,8 +887,8 @@ namespace Perilune.Tests
             // 4 Scrap + 2 Regolith → 1 Parts + 2 ControllerModule. Deliberately lossy in the
             // RATIO (6 units in, 3 out) — that is what conversion loss looks like now.
             var defs = ParseClean(
-                "[production]\nfab_multi Fabricator 5 Scrap:4+Regolith:2 Parts:1+ControllerModule:2\n");
-            var sim = BuildBenchScenario(defs);
+                "[production]\nshop_multi MachineShop 5 Scrap:4+Regolith:2 Parts:1+ControllerModule:2\n");
+            var sim = BuildBenchScenario(defs, TestStation);
             sim.AddItem(ItemKind.Scrap, 4, new Int3(4, 2, 0)); // staged: (4,2) is a 4-neighbour of (3,2)
             // (5,2) is NOT a 4-neighbour of the bench, so port 1 genuinely has to be FETCHED.
             // Putting it on an adjacent tile instead would silently stage it and the multi-port
@@ -793,9 +942,9 @@ namespace Perilune.Tests
         [Test]
         public void ProductionNodes_AreDeterministic_AndAffectTheStateHash()
         {
-            const string text = "[production]\nfab_a Fabricator 9 Scrap:2 Parts:1\n";
-            var twinA = BuildBenchScenario(ParseClean(text));
-            var twinB = BuildBenchScenario(ParseClean(text));
+            const string text = "[production]\nshop_a MachineShop 9 Scrap:2 Parts:1\n";
+            var twinA = BuildBenchScenario(ParseClean(text), TestStation);
+            var twinB = BuildBenchScenario(ParseClean(text), TestStation);
             twinA.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));
             twinB.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));
 
@@ -808,8 +957,9 @@ namespace Perilune.Tests
                         $"identical production tables must stay identical (tick {t})");
             }
 
-            var slow = BuildBenchScenario(ParseClean("[production]\nfab_a Fabricator 90 Scrap:2 Parts:1\n"));
-            var fast = BuildBenchScenario(ParseClean(text));
+            var slow = BuildBenchScenario(
+                ParseClean("[production]\nshop_a MachineShop 90 Scrap:2 Parts:1\n"), TestStation);
+            var fast = BuildBenchScenario(ParseClean(text), TestStation);
             slow.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));
             fast.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));
             Assert.That(slow.StateHash(), Is.EqualTo(fast.StateHash()), "defs are not in the hash — twins start equal");
@@ -866,22 +1016,26 @@ namespace Perilune.Tests
             Assert.That(ProductionDefs.TryGetBill(legacy, DeviceKind.Fabricator, out var legacyBill), Is.True);
             Assert.That(legacyBill.IsGraphNode, Is.False, "premise: this measures the fallback leg");
 
+            // The graph leg is declared on the MachineShop, not the Fabricator: since the wave
+            // merge the Fabricator carries a COMPILED node, and a second one there parses with a
+            // shadowed-node warning that ParseClean refuses (see TestStation). The bench built for
+            // this leg is that same station, so the node under measurement is the one that runs.
             var graph = ParseClean(
-                "[production]\nfab_multi Fabricator 3600 Scrap:2+Regolith:1 Parts:1+Scrap:1\n");
-            Assert.That(ProductionDefs.TryGetBill(graph, DeviceKind.Fabricator, out var graphBill), Is.True);
+                "[production]\nshop_multi MachineShop 3600 Scrap:2+Regolith:1 Parts:1+Scrap:1\n");
+            Assert.That(ProductionDefs.TryGetBill(graph, TestStation, out var graphBill), Is.True);
             Assert.That(graphBill.IsGraphNode, Is.True, "premise: this measures the graph-node leg");
 
-            AssertIdleScanZeroAlloc(legacy, "legacy fallback leg");
-            AssertIdleScanZeroAlloc(graph, "graph-node leg (2 in, 2 out)");
-            AssertWorkingZeroAlloc(legacy, "legacy fallback leg");
-            AssertWorkingZeroAlloc(graph, "graph-node leg (2 in, 2 out)");
+            AssertIdleScanZeroAlloc(legacy, "legacy fallback leg", DeviceKind.Fabricator);
+            AssertIdleScanZeroAlloc(graph, "graph-node leg (2 in, 2 out)", TestStation);
+            AssertWorkingZeroAlloc(legacy, "legacy fallback leg", DeviceKind.Fabricator);
+            AssertWorkingZeroAlloc(graph, "graph-node leg (2 in, 2 out)", TestStation);
         }
 
         /// <summary>Window (a): a powered station with a bill and NO inputs — the per-pass
         /// staging/fetch scans run every second and find nothing.</summary>
-        private static void AssertIdleScanZeroAlloc(SimDefs defs, string what)
+        private static void AssertIdleScanZeroAlloc(SimDefs defs, string what, DeviceKind benchKind)
         {
-            var sim = BuildBenchScenario(defs); // no items added at all
+            var sim = BuildBenchScenario(defs, benchKind); // no items added at all
             Run(sim, 500);                      // burn-in
 
             Assert.That(sim.TryGetDeviceAt(new Int3(3, 2, 0), out var bench), Is.True);
@@ -905,9 +1059,9 @@ namespace Perilune.Tests
 
         /// <summary>Window (b): a worker at the bench driving Progress under a 3600 s bill, so
         /// the work phase runs every pass and no batch completes inside the window.</summary>
-        private static void AssertWorkingZeroAlloc(SimDefs defs, string what)
+        private static void AssertWorkingZeroAlloc(SimDefs defs, string what, DeviceKind benchKind)
         {
-            var sim = BuildBenchScenario(defs);
+            var sim = BuildBenchScenario(defs, benchKind);
             sim.AddItem(ItemKind.Scrap, 8, new Int3(4, 2, 0));
             sim.AddItem(ItemKind.Regolith, 8, new Int3(2, 2, 0));
 

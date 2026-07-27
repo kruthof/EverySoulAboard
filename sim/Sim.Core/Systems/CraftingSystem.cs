@@ -137,6 +137,12 @@ namespace Perilune.Sim
             // Standing bill: only powered stations recruit. (A station that loses power
             // mid-batch keeps its worker — DriveWorker holds them at the bench.)
             if (!hasStaging || !station.Powered || !station.IsOperational(sim.Defs)) return;
+            // E0-7 backpressure. TRUE for every station that is not an ice melter, so nothing else
+            // changes; for a melter it means "your buffer could not hold another batch's meltwater",
+            // which on a 2 Hz drain can only be true when the fluid network is full, absent,
+            // unpowered or broken. Without it a ship with full tanks would keep recruiting crew to
+            // burn finite hold ice into an overflow that is thrown away.
+            if (!WaterSystem.HasMeltHeadroom(sim, station, recipe)) return;
 
             bool canStart = station.Progress > 0f || AllInputsStaged(sim, station.Pos, recipe);
             if (!canStart)
@@ -195,6 +201,11 @@ namespace Perilune.Sim
                     var port = recipe.Output(pIdx);
                     sim.AddItem(port.Kind, port.Count, worker.Pos); // sets JobsDirty → haulable
                 }
+                // E0-7: a station whose product is a FLUID has no output port to spawn. The ice
+                // melter's `melt_ice` bill declares `none` outputs (the loop above runs zero times)
+                // and the litres land in the melter's own buffer instead. A no-op for every other
+                // station kind — see WaterSystem.OnBatchComplete.
+                WaterSystem.OnBatchComplete(sim, station, recipe);
                 worker.JobKind = JobKind.None;
                 worker.JobWorkTicks = 0;
                 return;

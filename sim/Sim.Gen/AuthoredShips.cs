@@ -369,6 +369,131 @@ namespace Perilune.Gen
             // waiting on the aft dig. They ride the two authored Regolith tiles (proven open
             // storage floor) — no coordinate guessing.
             AddRegolithAtStores(plan, stacksPerTile: 3, unitsPerStack: 2);
+
+            // ------------------------------------------------ water: the ice chain (E0-7)
+            // The MSV Perilune is a GDD-canonical ice-and-concentrate hauler, and until now that
+            // was fiction with no mechanism behind it. Two authored facts turn it into the ship's
+            // water supply, and BOTH are needed:
+            //   * an ICE MELTER on the hydroponics fluid loop. It has to be THAT loop and not the
+            //     potable one: the hydro bay is where the water actually dies (irrigation returns
+            //     0.8 x 0.93 = 0.744, so ~1,327 L/day of the slice's water is destroyed there and
+            //     `tank_hydro` read 0.0 L from day 1.2 before B-2's stand-in propped it up).
+            //   * ICE in the forward hold, on deck 0, a LADDER CLIMB away from the melter. The
+            //     distance is the feature, not an oversight: this is the durable recurring haul
+            //     source E0's charter asks for, and it is the training-wheels version of the comet
+            //     loop — the same haul/melt/store cycle with the drill left out (ECONOMY.md §9.6).
+            //
+            // ⚠ THE MELTER IS THE FIRST DEVICE ADDED TO THE SLICE SINCE THE PORTRAITS WERE BAKED.
+            // Entity ids are handed out in plan order and citizens come after devices, so this ONE
+            // DeviceSpec shifts every citizen id by one, and the portrait pipeline keys on
+            // pk_fnv1a32(seed, citizenId) (see the vent note above, which declines to add a device
+            // for exactly this reason). It is paid for in the same commit: client/assets/
+            // portraits.g.js gains the eight new keys pointing at the SAME PNGs, so every crew
+            // member keeps their own face, and SlicePortraitKeysResolveTests pins that they do.
+            AddIceMelterOnHydroLoop(plan);
+            AddIceAtTheForwardHold(plan, stacksPerTile: 50, unitsPerStack: 8);
+        }
+
+        private const string HoldIceLabel = "forward hold ice";
+
+        /// <summary>
+        /// Put the melter ON a hydroponics pipe tile. Utility overlays share tiles freely (the
+        /// conduit tray under every corridor tile is the same trick), and standing on the pipe is
+        /// what guarantees <c>WaterSystem</c> attaches it to the hydro network — there is no
+        /// coordinate to guess and no way for a later geometry change to leave it unplumbed
+        /// somewhere it merely LOOKS connected.
+        ///
+        /// The first <c>pipe_h*</c> in plan order, deterministically. Authoring error if the hydro
+        /// bay has no pipe run: that would mean the melter is silently inert, which is the one
+        /// failure mode this whole package must not ship (an unplumbed melter fills its buffer and
+        /// stops, saying nothing).
+        /// </summary>
+        private static void AddIceMelterOnHydroLoop(ShipPlan plan)
+        {
+            for (int i = 0; i < plan.Devices.Count; i++)
+            {
+                if (plan.Devices[i].Kind != DeviceKind.Pipe) continue;
+                if (!plan.Devices[i].Name.StartsWith("pipe_h", StringComparison.Ordinal)) continue;
+                Dev(plan, DeviceKind.IceMelter, plan.Devices[i].Pos.X, plan.Devices[i].Pos.Y,
+                    plan.Devices[i].Pos.Z, "melter_hydro");
+                return;
+            }
+            throw new InvalidOperationException(
+                "AddIceMelterOnHydroLoop found no hydroponics pipe run — the melter would be " +
+                "unplumbed, which is silently inert rather than loudly broken.");
+        }
+
+        /// <summary>
+        /// Stack the hold's ice on the tiles that already hold authored cargo — proven open storage
+        /// floor, the same "no coordinate guessing" rule <see cref="AddRegolithAtStores"/> follows.
+        /// SINGLE-SHOT and order-sensitive by construction: the source tiles are gathered BEFORE
+        /// anything is appended, so a second call is an authoring error rather than a quietly
+        /// doubled hold.
+        ///
+        /// SIZING, MEASURED rather than reasoned, RE-MEASURED after review moved the number by half,
+        /// and RE-MEASURED AGAIN ON THE E0-6 x E0-7 MERGED TREE — the figures below are the merged
+        /// ones, because the numbers this comment carried were taken on `lane/e0-7-ice` and moved
+        /// when E0-6's bills landed underneath them (they said 1,376 left at day 3 and ~75/day).
+        ///
+        /// Merged, `--ship slice`, seed 20260721, n = 1: 4 tiles x 50 stacks x 8 units = 1,600 units
+        /// at boot; 1,382 left at day 3 and 888 at day 10, i.e. 72.7 units/day over three days and
+        /// 71.2 over ten. The burn is that high because the hydro loop destroys roughly 0.256 L per
+        /// litre irrigated and irrigation is per-SECOND until ECONOMY.md §10's per-crop retune lands
+        /// in E1. So 1,600 units is about TWENTY-TWO AND A HALF sim-days (1,600 / 71.2) — call it
+        /// 7x the standard 3-day measurement window.
+        ///
+        /// ⚠ THE FIRST DRAFT OF THIS COMMENT SAID FOURTEEN, and that was not a rounding error: the
+        /// melter ran BEFORE the reclaimer, so finite hauled ice was claiming tank headroom ahead of
+        /// free recycled greywater and the hold drained a third faster than it had to. Ordering is a
+        /// priority decision (WaterSystem.RunMelters). Read any runway figure as a property of that
+        /// ordering and of the uncapped greywater pool, not of the ice economy alone.
+        ///
+        /// That margin is the point: a faucet that empties inside the window is a boot window
+        /// wearing a faucet's costume, the exact failure ECONOMY-PLAN §7.7 names. It is still
+        /// FINITE, which is also the point — the hold runs out, and going to get more is E3's
+        /// comet run. Nothing here is sized against ECONOMY.md §10's designed 36.6 L/day: that
+        /// number assumes the E1 irrigation retune, and the two rates differ by ~35x, so a hold
+        /// sized for the design would be empty before the first sim-day was out.
+        /// </summary>
+        private static void AddIceAtTheForwardHold(ShipPlan plan, int stacksPerTile, int unitsPerStack)
+        {
+            var hold = new List<Int3>(4);
+            for (int i = 0; i < plan.Items.Count; i++)
+            {
+                if (plan.Items[i].Label == HoldIceLabel)
+                    throw new InvalidOperationException("AddIceAtTheForwardHold is single-shot — the hold is already stocked.");
+                var kind = plan.Items[i].Kind;
+                if (kind != ItemKind.Regolith && kind != ItemKind.Potato && kind != ItemKind.Corpse) continue;
+                if (!hold.Contains(plan.Items[i].Pos)) hold.Add(plan.Items[i].Pos);
+            }
+            if (hold.Count == 0)
+                throw new InvalidOperationException("AddIceAtTheForwardHold found no authored cargo tile to ride.");
+
+            // Stack the ice one row FORWARD of the cargo it rides, when that tile is open floor.
+            // GlyphMapper draws only the TOPMOST stack on a tile, so ice piled onto the rations and
+            // onto Ensign Rojas would erase both from the map — a hold that reads as nothing but
+            // ice. The offset is checked against the deck raster rather than assumed, and falls
+            // back to the cargo tile itself, so a geometry change can never put a stack in a wall.
+            for (int i = 0; i < hold.Count; i++)
+            {
+                var pos = hold[i];
+                var forward = new Int3(pos.X, pos.Y - 1, pos.Z);
+                if (IsOpenFloor(plan, forward)) pos = forward;
+                for (int s = 0; s < stacksPerTile; s++)
+                    plan.Items.Add(new ItemSpec { Kind = ItemKind.Ice, Count = unitsPerStack, Pos = pos, Label = HoldIceLabel });
+            }
+        }
+
+        /// <summary>Is this tile plain open floor in the plan's own raster? (Authoring-time check
+        /// against <see cref="ShipPlan.DeckRows"/> — the same source ShipPlanBuilder validates
+        /// devices against, so it cannot disagree with the built world.)</summary>
+        private static bool IsOpenFloor(ShipPlan plan, Int3 p)
+        {
+            if (plan.DeckRows == null || p.Z < 0 || p.Z >= plan.DeckRows.Length) return false;
+            var rows = plan.DeckRows[p.Z];
+            if (p.Y < 0 || p.Y >= rows.Length) return false;
+            var row = rows[p.Y];
+            return p.X >= 0 && p.X < row.Length && row[p.X] == '.';
         }
 
         /// <summary>Open/close a named device spec in place (doors, vents — struct-in-list ⇒

@@ -23,7 +23,7 @@
 //
 // So this file now enumerates **BOTH** switches. `ForDevice` is CLOSED — every kind resolves to art
 // or is in `NO_FURNITURE_SPRITE`. `ForItem` is **OPEN AND MEASURED**: no ground item has art, all
-// eight are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
+// nine are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
 // equality. That ledger is the gap made mechanical instead of prose — a *new* `ItemKind` cannot join
 // it silently, and the number can only be paid down. **Ground-item art is chartered separately and
 // is deliberately NOT in this package.**
@@ -207,7 +207,7 @@ const NO_FURNITURE_SPRITE = Object.freeze({
  * equality below, so this ledger only ever pays DOWN.
  */
 const NO_GROUND_ITEM_SPRITE = Object.freeze({
-  // The seven that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
+  // The eight that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
   // set has no ground-pile, ore, crop, scrap, part or module piece to skin any of them with, and the
   // three generic containers it does have (`storage-crate`, `supply-barrel`, `fuel-drum`) are
   // COSMETIC decor pieces, not stack art — standing one in would say "a crate is here", which is a
@@ -227,6 +227,7 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // neither furniture layer. It draws nothing at all here. (The frozen canvas skin has a real
   // `corpse` sprite role; the SVG surfaces never grew one.)
   Corpse: { glyph: '&', chips: false, why: "'&' is in NON_FURNITURE on both SVG surfaces — draws nothing" },
+  Ice: { glyph: 'i', chips: true, why: 'hold cargo / comet ice (E0-7); no loose-pile piece in the warm set, and ground-item art is its own chartered package' },
 });
 
 /**
@@ -259,11 +260,18 @@ const COVERED = DEVICE_KINDS.filter(
 //
 // A sim that legitimately adds a DeviceKind now fails here FIRST, with instructions. That is
 // intended: adding a kind is the moment to decide whether it has art.
-const EXPECT_DEVICE_KINDS = 26;
-const EXPECT_FOR_DEVICE_ARMS = 26;
-const EXPECT_COVERED = 23;    // 26 kinds − 3 allowlisted (Door, Conduit, Pipe)
-const EXPECT_ITEM_KINDS = 8;   // E0-6 added Seals
-const EXPECT_FOR_ITEM_ARMS = 8;   // E0-6 added Seals
+// The wave moved all five. DEVICE side (E0-7 only): DeviceKind gained IceMelter (byte 26, so 27
+// members). The melter is COVERED, not allowlisted — it wears the COOKER piece through
+// GLYPH_SUBSTITUTE (see glyph-map.js for why that piece and not another).
+// ITEM side (both lanes): ItemKind gained Seals (7, E0-6) and Ice (8, E0-7), so 9 members. BOTH are
+// GROUND ITEMS and both join the NO_GROUND_ITEM_SPRITE ledger below: ground-item art is a separately
+// chartered package and the warm set has no loose-pile builder at all, so each would have been drawn
+// as a dashed letter box either way.
+const EXPECT_DEVICE_KINDS = 27;
+const EXPECT_FOR_DEVICE_ARMS = 27;
+const EXPECT_COVERED = 24;    // 27 kinds − 3 allowlisted (Door, Conduit, Pipe)
+const EXPECT_ITEM_KINDS = 9;
+const EXPECT_FOR_ITEM_ARMS = 9;
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -393,9 +401,9 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 7;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
+const EXPECT_CHIPPING_ITEM_KINDS = 8;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
 
-test('THE OPEN GAP, MEASURED: exactly seven ItemKinds still draw a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly eight ItemKinds still draw a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
@@ -413,7 +421,9 @@ test('THE OPEN GAP, MEASURED: exactly seven ItemKinds still draw a raw-letter ch
   assert.equal(chipping.length, EXPECT_CHIPPING_ITEM_KINDS,
     'THE NUMBER OF RAW-LETTER CHIPS MOVED: ' + chipping.join(', ') + '\n\n' +
     'Measured live by independent review on --ship grid deck 0, room STORAGE, after the device fix:\n' +
-    "seven chips on one floor — ',' six times and 'f' once. If this number went UP, a new ItemKind\n" +
+    "seven chips on one floor — ',' six times and 'f' once. It is EIGHT kinds now, not seven: the\n" +
+    'wave added Seals (E0-6) and Ice (E0-7), both ground items with no art, and the number only\n' +
+    'ever goes up when a kind ships without art. If this number went UP, a new ItemKind\n' +
     'shipped without art. If it went DOWN, an item got art — lower this constant and delete its\n' +
     'ledger entry in the same commit. It only ever pays down.');
 });
@@ -530,7 +540,11 @@ test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
     assert.equal(GLYPH_TO_ITEM[g], id, 'the derivation did not pick the substitute up');
   }
   // ONLY SHRINKS. Each entry is a device wearing another device's art, visible to the player.
-  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 5,
+  // 5 → 6 (E0-7): DeviceKind.IceMelter wears the COOKER piece. This is the ledger GROWING, which
+  // its own header says is legitimate only when a new DeviceKind ships and a stand-in is chosen
+  // over drawing art — the reason is in glyph-map.js beside the entry, and drawing a real melter
+  // is a job for the art lane.
+  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 6,
     'GLYPH_SUBSTITUTE CHANGED SIZE. It only shrinks — an entry goes away when the warm set grows a\n' +
     'real piece for that kind. Adding one means a device now wears art that is not its own, on the\n' +
     'one standard surface; that is a decision for a commit message, not a default.');

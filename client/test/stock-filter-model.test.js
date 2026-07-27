@@ -42,7 +42,7 @@ function itemKindMembers() {
 // E0-6's `Seals = 7` landed here first, and the palette followed in the same commit.
 test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', () => {
   const members = itemKindMembers();
-  assert.equal(members.length, 8, `parsed ${members.length} ItemKind members, expected 8`);
+  assert.equal(members.length, 9, `parsed ${members.length} ItemKind members, expected 9`);
   assert.equal(STOCK_KINDS.length, members.length,
     'the palette lists exactly as many kinds as the sim has');
   members.forEach(([name, index], i) => {
@@ -56,10 +56,21 @@ test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', ()
   const labels = STOCK_KINDS.map((e) => e.label);
   for (const l of labels) assert.ok(l && l.length, 'every kind has a label');
   assert.equal(new Set(labels).size, labels.length, 'labels are distinct');
-  // ACCEPT_ALL covers exactly one bit per kind — derived, never a copied 0x7F.
-  assert.equal(ACCEPT_ALL, 255);   // 0x7F before E0-6 added Seals
+  // ACCEPT_ALL covers exactly one bit per DECLARED kind — derived from the `kind` VALUES, never a
+  // copied 0x7F and (since E0-7) never from the list's LENGTH either. 0x1FF once BOTH lanes landed:
+  // E0-6's Seals took bit 7 and E0-7's Ice took bit 8.
+  assert.equal(ACCEPT_ALL, 0x1FF);
   for (const { kind } of STOCK_KINDS) assert.ok(stockKindAccepted(ACCEPT_ALL, kind), `bit ${kind} set`);
-  assert.equal(ACCEPT_ALL >> members.length, 0, 'and no bit above the last kind');
+  // No bit belongs to anything the sim does not declare — checked per BIT, not as 'everything below
+  // the member count', because those are the same set only while ItemKind is CONTIGUOUS. It was not
+  // while this wave was in flight (E0-7 built against a hole at 7), and the per-bit form is what
+  // survives the next hole. Derived from the parsed enum, so it cannot be satisfied by a stale list.
+  const declared = members.reduce((m, [, index]) => m | (1 << index), 0);
+  assert.equal(ACCEPT_ALL & ~declared, 0, 'no bit belongs to an undeclared ItemKind');
+  assert.ok((ACCEPT_ALL & (1 << 7)) !== 0, 'bit 7 (Seals, E0-6) is set — the hole is CLOSED');
+  assert.ok((ACCEPT_ALL & (1 << 8)) !== 0, 'bit 8 (Ice, E0-7) is set');
+  assert.equal(ACCEPT_ALL & (1 << members.length), 0,
+    'and the first bit ABOVE the declared set is clear — no accept-all bit is invented');
 });
 
 // MUTATION: `mask ^ kind` instead of `mask ^ (1 << kind)` in toggleStockKind ⇒ toggling kind 3 off
@@ -70,7 +81,7 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 
   const before = ACCEPT_ALL;
   const noPotato = toggleStockKind(before, 3);
-  assert.equal(noPotato, 0b11110111);
+  assert.equal(noPotato, 0b111110111);   // bits 0..8 set (Seals 7, Ice 8), bit 3 (Potato) off
   assert.equal(before, ACCEPT_ALL, 'the input mask is not mutated');
   assert.equal(stockKindAccepted(noPotato, 3), false);
   assert.equal(stockKindAccepted(noPotato, 4), true, 'exactly ONE bit moved');
@@ -88,7 +99,7 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 // which is FALSE, because JS shift counts are reduced modulo 32: `1 << 32` is 1, not 0, so the
 // "out-of-range" bit wraps back INSIDE the valid range where the mask cannot touch it. Measured
 // before the fix: toggleStockKind(127, 32) === 126 (it flipped REGOLITH) and
-// stockKindAccepted(1, 32) === true. Kinds 8..31 ARE truncated, which is precisely how the false
+// stockKindAccepted(1, 32) === true. Kinds 9..31 ARE truncated, which is precisely how the false
 // claim survived a test that only probed 9 and -1.
 //
 // MUTATION: delete the `if (!inKindRange(k))` line from toggleStockKind ⇒ the kind-32 assertion
@@ -96,10 +107,21 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 test('the mask helpers are TOTAL: a kind the sim does not have flips nothing and is accepted by nothing', () => {
   assert.equal(1 << 32, 1, 'JS reduces the shift count modulo 32 — this is why the guard exists');
 
-  for (const bad of [8, 9, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
+  // Post-merge the enum is contiguous 0..8, so 7 (E0-7's live case against the hole) and 8 are both
+  // real kinds and moved to the POSITIVE control below. `STOCK_KINDS.length` is kept as a derived
+  // entry so this list widens with the palette instead of pinning a literal that goes stale the next
+  // time a kind lands; 9 is the same value spelled out, so a regression names the number.
+  for (const bad of [9, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
     assert.equal(toggleStockKind(ACCEPT_ALL, bad), ACCEPT_ALL, `toggle is a no-op for kind ${bad}`);
     assert.equal(toggleStockKind(0, bad), 0, `toggle is a no-op for kind ${bad} on an empty mask`);
     assert.equal(stockKindAccepted(ACCEPT_ALL, bad), false, `no mask accepts kind ${bad}`);
+  }
+  // POSITIVE CONTROL: every DECLARED kind really does flip and really is accepted. Without it the
+  // loop above is satisfied by helpers that reject everything — and this is where Seals (7) and Ice
+  // (8) are proved reachable, the two kinds the two lanes added.
+  for (const { kind, label } of STOCK_KINDS) {
+    assert.notEqual(toggleStockKind(ACCEPT_ALL, kind), ACCEPT_ALL, `toggle really flips ${label}`);
+    assert.equal(stockKindAccepted(ACCEPT_ALL, kind), true, `accept-all accepts ${label}`);
   }
   // The specific pre-fix failures, pinned by value so a regression names itself.
   assert.notEqual(toggleStockKind(127, 32), 126, 'kind 32 must not flip REGOLITH');
@@ -118,6 +140,10 @@ test('stockFilterLabel names the accepted kinds, with ALL / NOTHING at the ends'
   assert.equal(stockFilterLabel((1 << 5) | (1 << 0)), 'REGOLITH · PARTS');
   // Bits above the last kind are ignored, so a stray one can never render a phantom chip name.
   assert.equal(stockFilterLabel(ACCEPT_ALL | (1 << 9)), 'ALL');
+  assert.equal(stockFilterLabel(1 << 9), 'NOTHING', 'kind 9 does not exist and names nothing');
+  // The two kinds this wave added, each named by its own bit.
+  assert.equal(stockFilterLabel(1 << 7), 'SEALS');
+  assert.equal(stockFilterLabel(1 << 8), 'ICE');
 });
 
 // The TUI and the web client must speak ONE vocabulary — a filter bit the console calls FOOD and the

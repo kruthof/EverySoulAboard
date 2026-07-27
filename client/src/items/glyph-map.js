@@ -21,8 +21,13 @@
 // which reach the same `roomCells` → `furnitureSvg` else-branch and which this table does not
 // address at all. What deriving removes is the HAND-MIRROR class: two view files that could drift
 // from each other and from `ITEMS`. The unskinned-glyph class is still open on the item side, is
-// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger (7
-// entries, 6 of them visibly chipping, both pinned by equality), and is chartered separately.
+// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger, and is
+// chartered separately. THE LEDGER HAS 9 ENTRIES, 8 OF THEM VISIBLY CHIPPING — one per declared
+// ItemKind, all but Corpse (whose '&' is in NON_FURNITURE on both SVG surfaces and so draws
+// nothing at all). Both numbers are pinned by EQUALITY over there (`EXPECT_ITEM_KINDS` and
+// `EXPECT_CHIPPING_ITEM_KINDS`), so this sentence is prose ABOUT a pin and must be re-COUNTED
+// against it, never incremented: it read "8 entries, 7 chipping" through the E0-6 x E0-7 wave,
+// which was already off by one before the wave and off by two after it.
 //
 // `SPRITE_FOR_GLYPH` is NOT retired: it is the *WebGL/canvas* skin's table (`render/compose.js`,
 // `render/webgl/batch.js`, the frozen `hosts/web/Client.html`), where roles carry facing and the
@@ -36,13 +41,22 @@ import { ITEMS } from './index.js';
 /**
  * Device glyphs with NO dedicated piece in the 60-piece warm set, and the piece that stands in.
  *
- * ⚠️ THIS LEDGER ONLY SHRINKS. Every entry is a substitution the player can see — a real device
- * wearing another device's art — so each one is a decision with a reason, not a chore. Deleting an
- * entry means the set grew a real piece for that kind (draw it, give the entry's `glyph` field in
- * `ITEMS` the char, delete the line here); adding one means a `DeviceKind` shipped without art and
- * you chose a stand-in rather than drawing it. Every entry is inherited from the two hand-mirrored
- * `ROLE_TO_ITEM` tables this module replaces, so this list starts as a faithful record of what the
- * game already drew — it does not introduce a single new substitution.
+ * ⚠️ THIS LEDGER SHRINKS BY DEFAULT AND GROWS ONLY DELIBERATELY. Every entry is a substitution the
+ * player can see — a real device wearing another device's art — so each one is a decision with a
+ * reason, not a chore. Deleting an entry means the set grew a real piece for that kind (draw it,
+ * give the entry's `glyph` field in `ITEMS` the char, delete the line here). ADDING one means a new
+ * `DeviceKind` shipped and a stand-in was chosen over drawing art: legitimate, but only with the
+ * reason written beside the entry and the equality pin in
+ * `device-sprite-coverage.test.js` bumped in the same commit, so the decision lands in a commit
+ * message instead of a default.
+ *
+ * (The headline read "ONLY SHRINKS" until E0-7, whose `IceMelter` is the first addition. The rule
+ * it was really expressing is the one above — the pin forces the decision to be made out loud —
+ * and leaving the absolute wording over a live counter-example would have handed the next lane a
+ * contradiction.)
+ *
+ * Every entry below `wall-lamp` is inherited from the two hand-mirrored `ROLE_TO_ITEM` tables this
+ * module replaces, so this list started as a faithful record of what the game already drew.
  *
  * The guard (`client/test/device-sprite-coverage.test.js`) asserts every value is a real item with
  * a real builder, and that no entry here shadows a glyph a real piece already claims.
@@ -62,6 +76,16 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   // Light (8). The set's luminaires are all COSMETIC (`wall-lamp`, `floodlight`, `sun-lamp`); there
   // is no functional light piece. WALL LAMP is the closest and is what both surfaces already drew.
   '*': 'wall-lamp',
+  // IceMelter (26, E0-7). No melter piece. COOKER is the set's only heat-into-a-box machine — a
+  // dark steel cabinet with glowing elements, which is exactly what a melter is — and it is
+  // otherwise unreachable art (`deviceStatus: 'new'`; no `DeviceKind.Cooker` exists). Chosen over
+  // `water-recycler`, which is thematically closer but already stands in for SalvageRecycler AND
+  // has its own Reclaimer row, so a third use would put three different machines on one silhouette.
+  // NOTE this is the FIRST entry added to this ledger since it was written, and the header says the
+  // ledger only shrinks. It grows here for the reason the header itself names as legitimate: a new
+  // DeviceKind shipped and a stand-in was chosen over drawing new art, which is a decision with a
+  // reason rather than a chore. Drawing a real melter piece is a job for the art lane.
+  I: 'cooker',
 });
 
 /** Build the glyph → itemId table from `ITEMS`, then fill the gaps from `GLYPH_SUBSTITUTE`. */

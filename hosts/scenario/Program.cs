@@ -230,6 +230,26 @@ namespace Perilune.Tools
             // first N legal interior walls for deconstruct at t=0 via the same command the client
             // issues, so the h29+ flatline has something to lift. --strip 0 (the default) touches
             // nothing and keeps the CI-pinned verb-less path byte-identical. See StripHarness.
+            // OPT-IN E0-7 measurement lever (--makeup <liters>, default: leave the shipped value
+            // alone). B-2's greywater makeup floor is the STAND-IN the ice chain replaces, and
+            // WaterSystem now suppresses it on any ship that owns a melter — so on a melter ship
+            // this flag changes nothing and on every other ship it is how you ask "what did B-2
+            // actually buy?". Host-side and opt-in: with no flag the defs are untouched, so the
+            // CI-pinned verb-less path stays byte-identical. NOTE it mutates the PARSED defs graph
+            // after the checksum was printed, so a run with this flag reports a `defs:` line that no
+            // longer describes it — deliberately, so the number stays comparable to every other run.
+            string makeupArg = ArgString(args, "--makeup", null);
+            if (makeupArg != null)
+            {
+                float makeup = float.Parse(makeupArg, System.Globalization.NumberStyles.Float,
+                                           System.Globalization.CultureInfo.InvariantCulture);
+                float wasMakeup = defs.Water.MakeupFloorLiters;
+                defs.Water.MakeupFloorLiters = makeup;
+                Console.WriteLine($"--makeup {makeup:0.###}: greywater makeup floor overridden " +
+                                  $"(shipped {wasMakeup:0.###} L; 0 = the B-2 stand-in is OFF)");
+                Console.WriteLine();
+            }
+
             int stripN = ArgInt(args, "--strip", 0);
             int stripped = 0;
             if (stripN > 0)
@@ -492,6 +512,76 @@ namespace Perilune.Tools
             // ci.sh pins that report's text, and no determinism pin is affected (host printing only).
             string headroom = StockpileHarness.MatterHeadroomWarning(stripN);
             if (headroom != null) Console.WriteLine(headroom);
+
+            // E0-7 — THE WATER LEDGER. Unconditional, because "the crew are busy" was never the
+            // question the water loop asks: the slice's food production died on day 1.2 with the
+            // HUD still reading full (ECONOMY.md §1.4), and no occupancy number would ever have
+            // said so. Every figure here is read off live state at the end of the run.
+            float tankLiters = 0f, tankCapacity = 0f, melterBuffered = 0f;
+            int tanks = 0, dryTanks = 0, melters = 0, growBeds = 0, dryBeds = 0;
+            foreach (var d in sim.Devices.Items)
+            {
+                if (d.Kind == DeviceKind.WaterTank)
+                {
+                    tanks++;
+                    tankLiters += d.StoredLiters;
+                    tankCapacity += sim.Defs.Water.TankCapacityLiters;
+                    // "Dry" is the SIM'S OWN test, the one SustenanceSystem gates drinking on —
+                    // not a round number, and not `<= 0`, which would call a 0.02 L tank full.
+                    if (d.StoredLiters < sim.Defs.Sustenance.DrinkLiters) dryTanks++;
+                }
+                else if (d.Kind == DeviceKind.IceMelter) { melters++; melterBuffered += d.StoredLiters; }
+                else if (d.Kind == DeviceKind.GrowBed) growBeds++;
+            }
+            // A bed is DRY when its own fluid network cannot cover one second of irrigation — the
+            // all-or-nothing draw HydroponicsSystem actually makes, evaluated read-only, exactly as
+            // ShipSystems does it. NOT `Progress <= 0`: that was the first spelling and it carried
+            // no information, because a bed frozen mid-crop keeps whatever progress it had, so the
+            // dead-loop leg (--makeup 0, tanks run down) reported "3 of 3 still turning" alongside
+            // the healthy one. This test separates them.
+            foreach (var bed in sim.Devices.Items)
+            {
+                if (bed.Kind != DeviceKind.GrowBed) continue;
+                // Deliberately NOT gated on bed.Powered. A shed grow bed is a POWER fault, and on
+                // this ship power flaps on a one-second brownout sawtooth (ECONOMY.md §1.2), so
+                // folding it in here made this line report the instant the run happened to end
+                // instead of the state of the water loop. Unplumbed still counts: a bed on no
+                // network can never irrigate, whatever the tanks hold.
+                if (bed.FluidNetworkId == 0) { dryBeds++; continue; }
+                float onNetwork = 0f;
+                foreach (var t in sim.Devices.Items)
+                    if (t.Kind == DeviceKind.WaterTank && t.FluidNetworkId == bed.FluidNetworkId)
+                        onNetwork += t.StoredLiters;
+                if (onNetwork < sim.Defs.Hydro.GrowBedWaterPerSecond) dryBeds++;
+            }
+            stock.TryGetValue(ItemKind.Ice, out int iceLeft);
+            Console.WriteLine();
+            Console.WriteLine("end-of-run WATER (E0-7 — the loop occupancy cannot see):");
+            Console.WriteLine($"  tanks                  {tankLiters,8:0.0} / {tankCapacity:0.0} L across {tanks} tank(s), " +
+                              $"{dryTanks} below one drink");
+            Console.WriteLine($"  greywater pool         {sim.WastewaterLiters,8:0.0} L");
+            Console.WriteLine($"  grow beds              {growBeds - dryBeds,8} of {growBeds} can irrigate " +
+                              "(its own network holds at least one second of the all-or-nothing draw; " +
+                              "a bed that cannot is frozen mid-crop, however much progress it kept)");
+            if (melters > 0)
+            {
+                Console.WriteLine($"  ice melters            {melters,8}   (B-2 makeup floor SUPPRESSED — this ship " +
+                                  "lives on what its crew haul and melt)");
+                Console.WriteLine($"  hold ice left          {iceLeft,8} unit(s)  ⇒ {iceLeft * sim.Defs.Water.IceLitersPerUnit:0} L still in the hold");
+                Console.WriteLine($"  buffered in melters    {melterBuffered,8:0.0} L   (a buffer stuck at capacity = the " +
+                                  "network is full, absent, unpowered or broken)");
+            }
+            else
+            {
+                // Say which of the two things is true, rather than asserting the conjuring in the
+                // one leg that exists to disprove it: `--makeup 0` turns the stand-in OFF, and this
+                // line used to announce it as ACTIVE at 0 L in exactly that run.
+                Console.WriteLine(sim.Defs.Water.MakeupFloorLiters > 0f
+                    ? $"  ice melters            {melters,8}   (no ice chain ⇒ the B-2 makeup floor is " +
+                      $"ACTIVE at {sim.Defs.Water.MakeupFloorLiters:0.###} L — water is being conjured)"
+                    : $"  ice melters            {melters,8}   (no ice chain AND no makeup floor ⇒ NOTHING " +
+                      "sources water on this ship — the loop can only run down)");
+            }
 
             int alive = 0;
             foreach (var c in sim.Citizens.Items) if (!c.Dead) alive++;
