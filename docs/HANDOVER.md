@@ -13,20 +13,31 @@ history, newest first.** The section immediately after this one is E0-4's landed
 
 ### 1. The tree, measured — not quoted
 
-- **Working tree clean.** Landed overnight 2026-07-25→26, in merge order: **WP-2** (§4b), the
-  **character-simulation design** (§4c, docs-only, five owner decisions open), and **WP-4** (§4d).
-  The deck-confined wander landed before them (§4a).
-- **Gate: `./ci.sh` exit 0, 1002 dotnet + 678 node**, re-measured on `main` after the WP-6 merge
-  (+16 node, client-only; dotnet unchanged — every package in this run is client-only). Twin hash
-  `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — WP-2, the design lane,
-  WP-4, WP-5 and the stockpile move are all pin-neutral.
+- **`main` is at `b464842`, working tree clean, no worktrees open, nothing in flight.**
+  **Landed 2026-07-25→26, in merge order — EIGHT packages:** **WP-2** (§4b) · the
+  **character-simulation design** (§4c — docs-only, **five owner decisions open**) · **WP-4** (§4d) ·
+  **WP-5** (§4e, the ledger reached empty) · **the stockpile move** (§4f, owner decision, rewrote the
+  altitude rule) · **BUG-B** the Overview click loss (§4h) · **strip-visible** (§4g) · **WP-6** (§4j).
+  The deck-confined wander landed before all of them (§4a).
+- **Gate: `./ci.sh` exit 0, 1002 dotnet + 678 node**, re-measured on `main` after the WP-6 merge.
+  Twin hash `00e0a2dadb8e5076`. **No pin has moved since the deck-confined wander** — all eight
+  packages are pin-neutral, **including `strip-visible`, which DID touch `sim/`**
+  (`GlyphMapper.cs`, +6 dotnet tests). It held because `anyStrip` is false on every authored ship, so
+  its new branch cannot fire in a golden scenario — **verified, not assumed.** Everything else in the
+  run was client-only.
 - **`KNOWN_GAPS` IS EMPTY**, and `surface-boundary.test.js` asserts it. **On the standard surface a
   player can now dig, strip AND zone** — dig/strip at either altitude, **stockpile in the Room Zoom
   only** (§4f rewrote the altitude rule; §4e's version is superseded). The honest phrasing of the
   milestone is **"verb-complete with no undo"**, and §4f **widened** that gap: every order verb is now
   swept, so a mis-drag costs a rectangle for all three.
-- **⚠️ Two things wait on the owner** — §4f's hall-zoning decision (recommendation: option **(c)**, ＋ADD
-  ROOM already is the path) and the five §12 decisions in the character-sim design (§4c).
+- **⚠️ THREE THINGS WAIT ON THE OWNER — do not resolve any of them by implementing.**
+  **(i)** §4f's **hall-zoning** decision — a stockpile can only be painted inside a bound room;
+  recommendation is option **(c)**, ＋ADD ROOM already is the path, and the reviewer's argument is that
+  this is the altitude rule being consistent with itself. **(ii)** the **five §12 decisions** in the
+  character-sim design (§4c). **(iii)** **WP-9** (§4 step 7) — its own gate is *"only after a human
+  has played `--ship grid` end to end"*, which no agent can satisfy. **WP-C is NOT in this list** — its
+  decision is already taken and binding, so it is buildable now; it is flagged in §4's table only
+  because it rewrites the game's one help screen and no test can check that writing.
 - **✅ §4g's FIRST defect is FIXED (`lane/strip-visible`, 2026-07-26): a condemned device is now
   visible.** `GlyphMapper` pass 4 re-applies `GlyphColor.Deconstruct` over a condemned device's own
   colour (keeping its glyph), so a strip order on a desk/bed/locker/lamp/plant ships fg 26 and draws
@@ -54,13 +65,16 @@ history, newest first.** The section immediately after this one is E0-4's landed
   | defs **defaults** (`SimDefs.Default.Checksum`) | `5a471d12643b64f9` | `DefsChecksumTests.cs:69` |
   | defs **rules-inclusive** (the host's `defs:` print) | `3f23ce5bd40283c8` | `DefsChecksumTests.cs:146` |
 
+  *(All five re-verified on `main` @ `b464842` after the WP-6 merge — the "measured on `98f0e63`"
+  above is the value's provenance, not the last time it was checked.)*
   The last two are **different values for different things** and have been confused repeatedly:
   `3f23ce5bd40283c8` is what every occupancy run prints at the top of its output — never paste it into
   the defaults pin. **Last mover: the deck-confined wander** (`61dea33`), which moved the slice golden
   `1f8f2225ee568de9`→`c565a68b810f588d` and **held the other four**. `ci.sh` needed no edit, and §4a
   records why — the reason is not the obvious one.
 
-**Landed on `main` today, in merge order** (`git log --first-parent`), all 2026-07-25:
+**Landed on `main` on 2026-07-25** (`git log --first-parent`) — the run BEFORE the overnight one.
+For the 2026-07-26 run see §1's eight-package list and §4a–§4j:
 
 | # | commit | what |
 |---|---|---|
@@ -132,24 +146,52 @@ input.
 
 ### 3. In flight right now
 
-**`main` is settled and gated at `38ff68b`.** WP-2 is merged (§4b). Two lanes are running in worktrees
-as of the 2026-07-25 overnight session, neither on `main`:
+**NOTHING. `main` is settled and gated at `b464842`, the working tree is clean, and `git worktree
+list` shows only the main checkout.** All eight packages of the 2026-07-25→26 run are merged,
+re-gated and recorded (§4a–§4j). **No lane is open and no agent is running.**
 
-- the next console-retirement package in the serial chain (WP-4, then WP-5).
+**The porting chain is DONE through WP-6.** What remains in the console-retirement programme is
+**WP-C** and **WP-9** (§4 steps 6 and 7), and **both need the owner** — see §1's three-things list.
+The largest *un-owned* piece of work is the **`designations` channel** (§4g/§4i), which is
+unscheduled and does not need a decision, only a charter.
 
-**Landed overnight, docs-only: the CHARACTER SIMULATION design** (`0a630ec`, plan at
-`docs/design/perilune-character-simulation.plan.md`). **DESIGN ONLY — NOTHING IS BUILT, and §12 holds
-FIVE decisions left open for the owner.** Read §4c below before quoting it.
-
-**Every day's lane so far has taken exactly one send-back before PASS** — WP-3, WP-8, the deck-confined
-wander, and now WP-2; E0-4/E0-5 were eight-for-eight before that. **Treat a first-round PASS as a
-suspicious result, not a fast one.** **Start at §4 step 3** — steps 1 and 2 have landed (§4a, §4b).
+**Two-thirds of the packages in this run took exactly one send-back before PASS** — WP-2, WP-4, WP-5,
+BUG-B; the stockpile move, strip-visible and WP-6 passed first time, which is the first time that has
+happened in this repo. **Treat a first-round PASS as a result to check, not a fast one** — of the three
+that passed first time, two were reviewed on the reviewer's own live rig and the third had its
+headline claim re-measured independently. **Start at §4 step 8**, the summary of what is actually
+next.
 
 ### 4. NEXT STEPS — in this order. Do not infer the order; it is written down.
 
+> **⇒ READ THIS FIRST — STEPS 1–5 HAVE ALL LANDED. As of 2026-07-26 the actionable list is short:**
+>
+> | what | needs the owner? | where |
+> |---|---|---|
+> | **The `designations` channel** — the biggest un-owned piece, and the one a player would notice | **no**, only a charter | §4g / §4i |
+> | **The palette clips below ~1140 px** — STOCKPILE/STRIP/DEMOLISH scroll off with **no affordance** (`scrollbar-width:none` + a `::-webkit-scrollbar{display:none}` rule hide it deliberately) | **no** | §4g |
+> | `shelf`/`rug` are client-local decor that STRIP can never touch — a trap on a palette where everything else is real | **yes** (design) | §4g |
+> | **WP-C** — the conversation stand-down + onboarding rewrite | **not to AUTHORISE** — that decision is taken and binding — but it rewrites the game's ONLY help screen, the first thing a new player reads, and **no test can check it** | step 6 |
+> | **WP-9** — delete the console shell | **YES, HARD GATE.** The plan's own words: *"only after a human has played `--ship grid` end to end"*. **No agent can be that human**, and the package is a SPLIT of `hud.js` (wire cache + armed-tool state machine + console chrome, fused; both modern surfaces import it) with almost no test net | step 7 |
+> | The character-sim design's **five §12 decisions** | **YES** | §4c |
+> | §4f's **hall-zoning** decision | **YES** | §4f |
+>
+> **The `designations` channel is what I would charter next.** It is not urgent — the verb the owner
+> reported as broken now visibly works (§4g) — but it is the single change that closes the most
+> outstanding limits at once: the strip mark **blinking out** when a crew member crosses a condemned
+> tile (pass 5) or an item lands on one (pass 3), **and** plan §5's gap 1 on the Overview, which
+> §4j had to record as *narrowed* precisely because no byte-level fix can carry restriction at
+> ship scale. Model it on `hosts/web/WireFormat.Zones.cs`, mirroring `DeconstructSystem.Pending`.
+> `WireFormat` is a **spine file** — use WP-3's pattern: the spine edit is **one token**
+> (`class` → `partial class`) with the substance in a sibling file.
+>
+> **Do NOT re-offer** having the Overview read the `zones` channel — declined with reasons in §4j, and
+> the reviewer asked specifically that it not be raised again; offer the `designations` channel instead.
+
 Most of what follows is the **console-retirement programme**,
 `docs/design/perilune-console-retirement.plan.md` (826 lines, on `main` at `8d5aebf`). It is 11
-packages; WP-0, WP-1, WP-3, WP-7 and WP-8 are landed. **Its dependency graph is §6 "Order, and why";
+packages; **WP-0, WP-1, WP-2, WP-3, WP-4, WP-5, WP-6, WP-7 and WP-8 are landed — only WP-C and WP-9
+remain, and both need the owner.** **Its dependency graph is §6 "Order, and why";
 its per-package file sets are §6's table; its honest limits are §10.** Read §6 before dispatching
 anything — a package taken out of order produces a vacuous acceptance test, which is this repo's most
 common review failure. **Step 1 below is NOT part of that programme** — it is a standalone `sim/` lane
