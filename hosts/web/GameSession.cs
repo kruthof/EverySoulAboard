@@ -94,6 +94,46 @@ namespace Perilune.Web
         private ShipLedgerReport _ledger;
         private double _ledgerAtWall = double.NegativeInfinity;
         private bool _viewDirty = true;
+
+        /// <summary>
+        /// Last <c>Simulation.DeviceTopologyVersion</c> the MOSS adapter set was derived from
+        /// (E0-6). Deliberately left at its default 0 rather than seeded from the booted sim: the
+        /// host already ran <c>MossBindings.RegisterAdapters</c> once during
+        /// <c>SimHost.Build</c>, so the extra re-derive this causes on the first frame of a ship
+        /// that has any devices at all is a REDUNDANT no-op (Register REPLACES by name, and the
+        /// binding is a pure function of sim state). Seeding it would couple this field to how many
+        /// devices authoring happened to add, for no behavioural gain.
+        /// </summary>
+        private int _deviceTopology;
+
+        /// <summary>
+        /// E0-6 — re-derive the MOSS adapter set when the ship's device set has changed. Returns
+        /// true when it actually rebound, so a caller (and a test) can tell a rebind from a no-op.
+        ///
+        /// The MOSS <c>DeviceRegistry</c> is HOST state, derived from sim state by
+        /// <c>MossBindings.RegisterAdapters</c> and, until E0-6, only ever at boot. A device that
+        /// becomes MOSS-scriptable mid-game — <see cref="CommissionDeviceCommand"/> fitting a
+        /// controller module — therefore could not be addressed until the next load, which would
+        /// have made the whole ControllerModule sink invisible to the player who paid for it.
+        /// <c>DeviceTopologyVersion</c> is the counter the sim already bumps on every device
+        /// add/remove and on a commission; re-deriving on a bump is idempotent (<c>Register</c>
+        /// REPLACES by name) and costs one pass over the device list, only on the frames where the
+        /// ship's device set actually changed.
+        ///
+        /// <para>EXTRACTED FROM THE RUN LOOP so it can be driven (E0-6 review). Inline, both this
+        /// block and <c>CommissionDeviceCommand</c>'s <c>DeviceTopologyVersion++</c> were
+        /// SURVIVORS — measured: deleting either left the whole suite green, because the only test
+        /// that observed a mid-game rebind called <c>RegisterAdapters</c> by hand. The run loop is
+        /// the sole caller and it is a one-line call now, so a deletion is a one-line diff rather
+        /// than a silent behaviour loss.</para>
+        /// </summary>
+        internal bool SyncMossAdaptersIfTopologyChanged()
+        {
+            if (_sim.DeviceTopologyVersion == _deviceTopology) return false;
+            _deviceTopology = _sim.DeviceTopologyVersion;
+            MossBindings.RegisterAdapters(_sim, _host.Registry);
+            return true;
+        }
         private Thread _thread;
         private volatile bool _running;
 
@@ -220,6 +260,8 @@ namespace Perilune.Web
                 }
                 else acc = 0.0;
 
+                SyncMossAdaptersIfTopologyChanged();
+
                 // A view change must SURVIVE a throttled frame. `viewChanged` is a per-iteration local:
                 // if the render is skipped because we are inside the RenderSeconds window, it used to be
                 // dropped on the floor, and the only thing that re-opened the gate was `ticked` — which a
@@ -273,6 +315,7 @@ namespace Perilune.Web
                 case CmdKind.Filter: HandleFilter(cmd); return true;
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
+                case CmdKind.Commission: HandleCommission(cmd); return true;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
@@ -726,7 +769,8 @@ namespace Perilune.Web
 
         /// <summary>
         /// Every <see cref="ItemKind"/> accepted — the canonical "accept all" mask, DERIVED from the
-        /// enum rather than written as a literal (0x7F today). A literal would silently stop covering
+        /// enum rather than written as a literal (0xFF today; 0x7F before E0-6 added Seals — it widened
+        /// on its own). A literal would silently stop covering
         /// the whole set the day an eighth kind is added; the derived form widens with the enum, and
         /// <c>AcceptAllMaskIsDerivedFromItemKind_NotALiteral</c> pins that. Reflection is fine here:
         /// this is host command-handling code (not the zero-alloc tick path) and it is computed once
@@ -765,7 +809,7 @@ namespace Perilune.Web
         ///    SINCE E0-4 WP-6 THIS MASK IS BELT TO THE SIM'S BRACES, AND UN-BITABLE BY A TEST — but
         ///    only conditionally, which is why it stays. <c>StockZoneSystem.SetFilter</c> now performs
         ///    the same <c>mask &amp;= AcceptAllMask</c> at the sim write door, so while the two derived
-        ///    masks are EQUAL the operation is idempotent and the stored value is <c>v &amp; 0x7F</c>
+        ///    masks are EQUAL the operation is idempotent and the stored value is <c>v &amp; 0xFF</c>
         ///    whether or not this line ran — no test can observe its deletion, and
         ///    <c>StockpileFilterVerbTests.BitsAboveTheLastItemKindAreCanonicalisedAway</c> says so in
         ///    its own doc rather than pretending otherwise.
@@ -835,6 +879,32 @@ namespace Perilune.Web
                                Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
             _sim.EnqueueCommand(new RemoveDeviceCommand(pos));
             _status = "remove furniture";
+        }
+
+        /// <summary>
+        /// The commissioning bridge (E0-6): fit a <see cref="ItemKind.ControllerModule"/> to the
+        /// device on a tile so MOSS can address it. Enqueues blind exactly as place/remove do —
+        /// <see cref="CommissionDeviceCommand"/> re-validates everything at the tick boundary and
+        /// is a silent no-op when the tile has no device, the device is already commissioned, or
+        /// the ship cannot pay.
+        ///
+        /// The status line is written from what is affordable RIGHT NOW rather than from the
+        /// command's outcome (which is not known until the next tick), so an unaffordable click
+        /// says so instead of looking like nothing happened — the "invisible feedback is
+        /// functional" rule. It is a hint, not a result: a module claimed between this line and
+        /// the drain still refuses.
+        /// </summary>
+        private void HandleCommission(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+            _sim.EnqueueCommand(new CommissionDeviceCommand(pos));
+            int have = CommissionDeviceCommand.Affordable(_sim);
+            int cost = _sim.Defs.Build.CommissionCost;
+            _status = have >= cost
+                ? "commission device (-" + cost.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ctrl mod)"
+                : "no controller module aboard";
         }
 
         /// <summary>
@@ -1924,7 +1994,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -2000,6 +2070,9 @@ namespace Perilune.Web
                     case "place": return new WebCommand(CmdKind.Place, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"), name: Str(json, "kind"));
                     // {"cmd":"remove","x":..,"y":..,"deck":..} — remove a placed furniture device at a tile.
                     case "remove": return new WebCommand(CmdKind.Remove, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
+                    // E0-6 — fit a ControllerModule to the device on a tile, making it
+                    // MOSS-scriptable. Same {x,y,deck} shape as place/remove.
+                    case "commission": return new WebCommand(CmdKind.Commission, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
                     // {"cmd":"addroom","deck":..,"slot":..,"type":"medbay|.."} — commission an empty hall
                     // into a live typed room (Overview ＋ADD ROOM). X=deck, Y=slot, name=roomType string.
                     case "addroom": return new WebCommand(CmdKind.AddRoom, Int(json, "deck"), Int(json, "slot"), name: Str(json, "type"));

@@ -180,6 +180,33 @@ namespace Perilune.Tests
         /// This is a BEHAVIOUR PIN, like a golden: any lane that deliberately changes labour
         /// assignment (E0-2 work rates, a new job source) will move it, and must re-record it in
         /// the same commit and say why. It must never be re-recorded to make a red build green.
+        ///
+        /// RE-RECORDED BY E0-6 (conversion loss). The justification below is the MEASURED DIFF,
+        /// and it replaces a first draft that was wrong on every specific — it claimed 73 → 57,
+        /// blamed the Dig column, and asserted the aft dig field no longer finishes. Independent
+        /// review checked all three and none survived. Recorded here because a moved behaviour pin
+        /// defended by a story nobody diffed is exactly what the pin exists to prevent.
+        ///
+        /// THE ACTUAL DIFF, counted off both arrays:
+        ///
+        ///   * <b>59 → 57 assignments.</b> The "73" was inherited from this method's own stale
+        ///     name on main (<c>AllSeventyThreeJobs…</c>) and was never re-derived; main's array
+        ///     is 59 entries.
+        ///   * <b>Dig is 48 → 48.</b> Every one of the 48 dig targets is still assigned, in both
+        ///     runs, inside the same 90 000-tick window. Nothing stops being dug.
+        ///   * <b>The whole loss is HaulPickup, 8 → 6.</b> Three deck-1 re-pickups that main
+        ///     issued together at t12012 (tiles 24,14,1 · 22,14,1 · 20,14,1) are replaced by ONE
+        ///     earlier deck-0 pickup at t9202 (23,6,0).
+        ///   * Dig TIMINGS shift by roughly +2…+2000 ticks from t12261 onward and the crew ids
+        ///     holding them reshuffle; the last assignment moves t54681 → t54763, i.e. +82.
+        ///
+        /// The only bill change upstream of any of this is the SalvageRecycler's batch size
+        /// (<c>Regolith:1</c> → <c>Regolith:4</c>, at 4× the work time), which changes WHEN the
+        /// bench's fetcher is occupied — <c>JobKind.Craft</c> is not a dispatcher kind and never
+        /// appears in this log, but a crew member inside it is not available to the dispatcher.
+        /// That is as far as the evidence goes: the diff is small, benign, and confined to haul
+        /// timing. It is deliberately NOT dressed up as a mechanism for a 16-assignment drop that
+        /// never happened.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
@@ -195,57 +222,55 @@ namespace Perilune.Tests
             "t6251 c935 Dig 57,8,0",
             "t6251 c936 Dig 58,9,0",
             "t6251 c939 Dig 57,10,0",
-            "t12012 c933 HaulPickup 24,14,1",
-            "t12012 c934 HaulPickup 22,14,1",
-            "t12012 c938 HaulPickup 20,14,1",
-            "t12261 c935 Dig 57,7,0",
-            "t12471 c936 Dig 58,8,0",
-            "t12513 c938 Dig 58,10,0",
-            "t12541 c939 Dig 59,9,0",
-            "t12543 c934 Dig 57,11,0",
-            "t18283 c933 Dig 57,6,0",
-            "t18283 c935 Dig 58,7,0",
-            "t18481 c936 Dig 59,8,0",
-            "t18551 c939 Dig 60,9,0",
-            "t18612 c932 Dig 59,10,0",
-            "t18763 c938 Dig 58,11,0",
-            "t18793 c934 Dig 57,12,0",
-            "t24293 c935 Dig 58,6,0",
-            "t24491 c936 Dig 59,7,0",
-            "t24543 c933 Dig 60,8,0",
-            "t24561 c939 Dig 61,9,0",
-            "t24773 c938 Dig 60,10,0",
-            "t24803 c934 Dig 59,11,0",
-            "t30303 c935 Dig 59,6,0",
-            "t30501 c936 Dig 60,7,0",
-            "t30571 c939 Dig 61,8,0",
-            "t30573 c933 Dig 62,9,0",
-            "t30803 c938 Dig 61,10,0",
-            "t30813 c934 Dig 58,12,0",
-            "t36313 c935 Dig 60,6,0",
-            "t36511 c936 Dig 61,7,0",
-            "t36581 c939 Dig 62,8,0",
-            "t36603 c933 Dig 62,10,0",
-            "t36813 c938 Dig 60,11,0",
-            "t36833 c934 Dig 57,13,0",
-            "t37552 c937 Dig 59,12,0",
-            "t40652 c932 Dig 58,13,0",
-            "t42323 c935 Dig 61,6,0",
-            "t42521 c936 Dig 62,7,0",
-            "t42591 c939 Dig 61,11,0",
-            "t42613 c933 Dig 62,11,0",
-            "t42833 c938 Dig 60,12,0",
-            "t47062 c932 Dig 59,13,0",
-            "t48333 c935 Dig 62,6,0",
-            "t48631 c933 Dig 62,12,0",
-            "t48631 c936 Dig 61,12,0",
-            "t48881 c938 Dig 60,13,0",
-            "t54681 c933 Dig 62,13,0",
-            "t54681 c935 Dig 61,13,0",
+            "t9202 c932 HaulPickup 23,6,0",
+            "t12263 c932 Dig 57,7,0",
+            "t12263 c933 Dig 58,8,0",
+            "t12513 c934 Dig 58,10,0",
+            "t12513 c935 Dig 59,9,0",
+            "t12563 c936 Dig 57,11,0",
+            "t18513 c932 Dig 57,6,0",
+            "t18513 c938 Dig 58,7,0",
+            "t18563 c933 Dig 59,8,0",
+            "t18563 c935 Dig 60,9,0",
+            "t18563 c939 Dig 59,10,0",
+            "t18573 c936 Dig 58,11,0",
+            "t18773 c934 Dig 57,12,0",
+            "t24523 c932 Dig 58,6,0",
+            "t24573 c933 Dig 59,7,0",
+            "t24573 c935 Dig 60,8,0",
+            "t24583 c936 Dig 59,11,0",
+            "t24583 c939 Dig 61,9,0",
+            "t24803 c934 Dig 58,12,0",
+            "t25013 c938 Dig 60,10,0",
+            "t30533 c932 Dig 59,6,0",
+            "t30583 c933 Dig 60,7,0",
+            "t30583 c935 Dig 61,8,0",
+            "t30593 c936 Dig 60,11,0",
+            "t30593 c939 Dig 62,9,0",
+            "t30813 c934 Dig 57,13,0",
+            "t31063 c938 Dig 61,10,0",
+            "t34842 c937 Dig 59,12,0",
+            "t36543 c932 Dig 60,6,0",
+            "t36593 c933 Dig 61,7,0",
+            "t36593 c935 Dig 62,8,0",
+            "t36603 c936 Dig 61,11,0",
+            "t36603 c939 Dig 62,10,0",
+            "t36814 c934 Dig 58,13,0",
+            "t37073 c938 Dig 60,12,0",
+            "t42553 c932 Dig 61,6,0",
+            "t42603 c933 Dig 62,7,0",
+            "t42603 c935 Dig 59,13,0",
+            "t42653 c939 Dig 62,11,0",
+            "t42824 c934 Dig 61,12,0",
+            "t43083 c938 Dig 60,13,0",
+            "t48563 c932 Dig 62,6,0",
+            "t48713 c933 Dig 62,12,0",
+            "t48913 c934 Dig 61,13,0",
+            "t54763 c932 Dig 62,13,0",
         };
 
         [Test]
-        public void SliceAssignmentSequence_AllSeventyThreeJobsToSaturation_IsStableAfterE0_1Recruitability()
+        public void SliceAssignmentSequence_AllFiftySevenJobsToSaturation_IsStableAfterE0_6ConversionLoss()
         {
             var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
             BuildSystem build = null;

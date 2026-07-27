@@ -201,8 +201,15 @@ namespace Perilune.Tests
             Assert.That(salvage.Defined, Is.True);
             Assert.That(salvage.Input, Is.EqualTo(ItemKind.Regolith));
             Assert.That(salvage.Output, Is.EqualTo(ItemKind.Scrap));
-            Assert.That(salvage.OutputCount, Is.EqualTo(2));
-            Assert.That(salvage.WorkSeconds, Is.EqualTo(600)); // E0-2 L1 rebase (was 20)
+            // E0-6: 4 -> 3 (75%), was 1 -> 2. The legacy row is the fallback leg for a defs set
+            // with an EMPTY [production] section, so leaving it at 1 -> 2 would have kept the
+            // mass creation reachable one branch away from the fix that removed it.
+            Assert.That(salvage.InputCount, Is.EqualTo(4));
+            Assert.That(salvage.OutputCount, Is.EqualTo(3));
+            Assert.That(salvage.OutputCount, Is.LessThan(salvage.InputCount),
+                "the legacy recycler row must be lossy too — ECONOMY.md §2.1 is a property of the " +
+                "ladder, not of whichever container happens to express it");
+            Assert.That(salvage.WorkSeconds, Is.EqualTo(2400)); // E0-6 (600 per Regolith unit, unchanged)
 
             var fab = D.Recipes[(int)DeviceKind.Fabricator];
             Assert.That(fab.Input, Is.EqualTo(ItemKind.Scrap));

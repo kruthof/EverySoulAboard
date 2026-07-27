@@ -687,7 +687,7 @@ function paintMatStrip() {
 }
 
 /**
- * The ACCEPTS chip row (WP-6): shown only when STOCKPILE is armed, listing the seven ItemKinds with
+ * The ACCEPTS chip row (WP-6): shown only when STOCKPILE is armed, listing every ItemKind with
  * the accepted ones lit, plus the line saying the chips apply to tiles painted NEXT and how many
  * already-zoned tiles in this room disagree.
  *

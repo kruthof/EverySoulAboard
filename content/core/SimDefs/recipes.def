@@ -17,6 +17,6 @@
 
 [recipes]
 #               input     in_count  output            out_count  work_s
-SalvageRecycler Regolith  1         Scrap             2          600
+SalvageRecycler Regolith  4         Scrap             3          2400   # E0-6: 75%, mirrors the [production] node (was 1->2, i.e. mass creation)
 Fabricator      Scrap     2         Parts             1          900
 MachineShop     Parts     2         ControllerModule  1          1800

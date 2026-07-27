@@ -105,11 +105,25 @@ namespace Perilune.Sim
     ///                    stack or carrying it over; sub-phase by CarryingItemId),
     ///                    &gt; 0 = servicing adjacent to the machine (counts down by
     ///                    IntervalTicks per pass from WorkSeconds).
-    ///   - CarryingItemId = the Parts stack in hand. It stays in hand THROUGH the work
-    ///                    phase — at completion it is the mode switch: parts in hand
-    ///                    means full overhaul (consume one, Condition = 1), empty hands
-    ///                    mean jury-rig (Condition = 0.6). Only reachable when no Parts
-    ///                    existed anywhere at decision time.
+    ///   - CarryingItemId = the CONSUMABLE stack in hand. It stays in hand THROUGH the
+    ///                    work phase — at completion it is the mode switch, and since E0-6
+    ///                    there are THREE rungs, not two:
+    ///                      Parts in hand  -> full overhaul,  Condition = 1
+    ///                      Seals in hand  -> routine service, Condition = seal_service_condition
+    ///                      empty hands    -> jury-rig,        Condition = jury_rig_condition
+    ///                    Exactly one unit of exactly one kind is consumed per service —
+    ///                    a crew member carries ONE stack (ECONOMY.md §11 forbids multi-stack
+    ///                    inventories), so "burn a Seal AND fit a Part" is not expressible
+    ///                    and the tiers are a LADDER rather than a co-consumption.
+    ///
+    ///   FETCH PREFERENCE IS BY TIER, NOT BY DISTANCE (E0-6): a Parts stack on the far
+    ///   side of the ship beats a Seals stack at the servicer's feet. That is deliberate
+    ///   and it is what makes the rung strictly additive — whenever ANY unreserved Parts
+    ///   stack exists anywhere, every decision this system makes is byte-identical to its
+    ///   pre-E0-6 self, so the new rung can only be reached in a state that used to
+    ///   jury-rig. Seals therefore become the maintenance currency exactly when the ship
+    ///   has run its Parts out, which on the slice is the post-cliff window E0-6 is
+    ///   measured on.
     ///
     /// Reservations: NEVER sets ItemStack.ReservedBy (Simulation.CancelJob could
     /// not release it for Maintain). Instead everything re-validates from ground truth
@@ -118,7 +132,8 @@ namespace Perilune.Sim
     /// re-recruits and the dropped stack re-enters the pool. Nothing leaks.
     ///
     /// Determinism: needy machines picked by strict-&lt; lowest Condition (ties: device
-    /// store order), citizens/items scanned in store order with strict-&lt; nearest-first,
+    /// store order), consumable TIER before distance (Parts, then Seals),
+    /// citizens/items scanned in store order with strict-&lt; nearest-first,
     /// staging via canonical Neighbor4 order, no RNG, no LINQ. Steady state (nothing
     /// below MaintainBelow) allocates nothing.
     /// </summary>
@@ -233,28 +248,32 @@ namespace Perilune.Sim
                     return;
                 }
 
-                ItemStack parts = null;
+                ItemStack consumable = null;
                 if (worker.CarryingItemId != 0)
                 {
-                    if (!sim.Items.TryGet(worker.CarryingItemId, out parts) || parts.CarriedBy != worker.Id)
+                    if (!sim.Items.TryGet(worker.CarryingItemId, out consumable) || consumable.CarriedBy != worker.Id)
                     {
                         worker.CarryingItemId = 0; // stack vanished under us
                         Abandon(worker);
                         return;
                     }
-                    parts.Pos = worker.Pos; // glue at our 1 Hz cadence
+                    consumable.Pos = worker.Pos; // glue at our 1 Hz cadence
                 }
 
                 worker.JobWorkTicks -= Interval;
                 if (worker.JobWorkTicks > 0) return;
 
-                if (parts != null)
+                if (consumable != null)
                 {
-                    parts.Count--; // one unit per overhaul
-                    if (parts.Count <= 0) sim.Items.Remove(parts.Id);
-                    else parts.CarriedBy = 0; // remainder set down where we stand
+                    // Read the RESTORE LEVEL off the stack in hand BEFORE consuming it — the kind
+                    // is the only thing that distinguishes an overhaul from a service, and the
+                    // stack may be removed on the next line.
+                    float restored = RestoredCondition(sim.Defs, consumable.Kind);
+                    consumable.Count--; // one unit per service, whichever tier it was
+                    if (consumable.Count <= 0) sim.Items.Remove(consumable.Id);
+                    else consumable.CarriedBy = 0; // remainder set down where we stand
                     worker.CarryingItemId = 0;
-                    device.Condition = 1f; // full overhaul
+                    device.Condition = restored;
                 }
                 else
                 {
@@ -290,8 +309,8 @@ namespace Perilune.Sim
 
             if (worker.HasPath) return; // ...or en route to a Parts stack / the machine
 
-            // --- Settled and empty-handed: fetch Parts, or jury-rig if none exist. ---
-            var best = FindNearestParts(sim, worker.Pos);
+            // --- Settled and empty-handed: fetch a consumable, or jury-rig if none exist. ---
+            var best = FindNearestConsumable(sim, worker.Pos);
             if (best != null)
             {
                 if (best.Pos == worker.Pos)
@@ -316,7 +335,7 @@ namespace Perilune.Sim
                 return;
             }
 
-            // No Parts anywhere in the colony: jury-rig with what's on hand.
+            // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand.
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
             {
                 worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond;
@@ -360,8 +379,39 @@ namespace Perilune.Sim
             return best;
         }
 
-        /// <summary>Nearest unreserved ground Parts stack (ties: item store order).</summary>
-        private static ItemStack FindNearestParts(Simulation sim, Int3 from)
+        /// <summary>
+        /// What a service restores the machine to, given the consumable actually in the
+        /// servicer's hand. The ladder in ONE place so the work phase and every test read the
+        /// same rule (E0-6). A kind that is neither Parts nor Seals cannot reach here —
+        /// <see cref="FindNearestConsumable"/> is the only thing that puts a stack in a
+        /// maintainer's hand — but it maps to the jury-rig floor rather than to 1.0 so an
+        /// unforeseen carry can never become a free overhaul.
+        /// </summary>
+        private static float RestoredCondition(SimDefs defs, ItemKind kind)
+        {
+            if (kind == ItemKind.Parts) return 1f;                          // full overhaul
+            if (kind == ItemKind.Seals) return defs.Wear.SealServiceCondition; // routine service
+            return defs.Wear.JuryRigCondition;
+        }
+
+        /// <summary>
+        /// Nearest unreserved ground stack of a maintenance consumable — <b>Parts first, and
+        /// only if the ship has none anywhere, Seals</b> (ties within a tier: item store order).
+        ///
+        /// TIER BEFORE DISTANCE, and that is the whole reason E0-6's new rung is additive: the
+        /// first loop is character-for-character the pre-E0-6 <c>FindNearestParts</c>, so on any
+        /// ship holding a free Parts stack this function returns exactly what it always returned
+        /// and the Seals loop is never entered. The second loop is only reachable in the state
+        /// that used to produce a jury-rig at Condition 0.6.
+        /// </summary>
+        private static ItemStack FindNearestConsumable(Simulation sim, Int3 from)
+        {
+            var best = FindNearest(sim, from, ItemKind.Parts);
+            return best ?? FindNearest(sim, from, ItemKind.Seals);
+        }
+
+        /// <summary>Nearest unreserved ground stack of one kind (ties: item store order).</summary>
+        private static ItemStack FindNearest(Simulation sim, Int3 from, ItemKind kind)
         {
             ItemStack best = null;
             int bestDist = int.MaxValue;
@@ -369,7 +419,7 @@ namespace Perilune.Sim
             for (int i = 0; i < items.Count; i++)
             {
                 var item = items[i];
-                if (item.Kind != ItemKind.Parts || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
+                if (item.Kind != kind || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
                 int d = Int3.Manhattan(from, item.Pos);
                 if (d < bestDist)
                 {

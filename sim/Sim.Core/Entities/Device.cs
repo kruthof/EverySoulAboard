@@ -68,6 +68,29 @@ namespace Perilune.Sim
         public ushort NetworkId;   // 0 = not on any power network
         public ushort FluidNetworkId; // 0 = not on any water network
 
+        /// <summary>
+        /// E0-6 — has a <see cref="ItemKind.ControllerModule"/> been fitted to this device?
+        /// <c>MossBindings.RegisterAdapters</c> registers a MOSS adapter ONLY for a scriptable
+        /// device, and <see cref="SetScriptCommand"/> refuses to install a program on a terminal
+        /// that is not one. Saved DEVC v5, hashed (bit 11 of the device state word).
+        ///
+        /// <b>DEFAULTS TRUE, and that is a decision rather than an oversight.</b> Every device the
+        /// ship was AUTHORED or GENERATED with came commissioned — the fiction is that the ship
+        /// left the yard with its own automation fitted — so `--ship grid`, `--ship slice`,
+        /// `--ship perilune`, every procedural ship, every existing MOSS program, every designer
+        /// rule and every pre-E0-6 save behave exactly as they did. What is NOT commissioned is
+        /// what the PLAYER bolts on: <see cref="PlaceDeviceCommand"/> clears this flag, so a
+        /// growbed the player places is a working growbed that MOSS cannot see until a
+        /// <see cref="CommissionDeviceCommand"/> spends a module on it. That is the whole sink,
+        /// and it is why the default cannot be false: a false default would silently unbind every
+        /// adapter on every ship in the repo and read as a catastrophic regression.
+        ///
+        /// A pre-v5 save reads TRUE for the same reason (SaveReader): those devices were all
+        /// addressable when the save was written, and restoring them un-addressable would delete
+        /// the player's automation on load with no error anywhere.
+        /// </summary>
+        public bool Scriptable = true;
+
         public const float BatteryCapacityKWh = 40f;
 
         /// <summary>Below the fail threshold a machine is inoperative until maintained.

@@ -95,7 +95,43 @@ namespace Perilune.Sim
             _terminalId = terminalId; _source = source;
         }
 
-        public void Execute(Simulation sim) => sim.SetScript(_terminalId, _source);
+        /// <summary>
+        /// E0-6 — refuses on a terminal that is not <see cref="Device.Scriptable"/>: installing a
+        /// program IS scripting the device, so the two doors into MOSS agree. Silent, like every
+        /// other command's rejection.
+        ///
+        /// <b>A terminal id with no device behind it is still allowed</b>, and deliberately: the
+        /// id is a free-text key (<c>hosts/scenario</c> and several tests drive `term_main` with no
+        /// device at all), and refusing those would turn "no device" into "no automation" for
+        /// callers that never had a device to commission. The gate bites exactly where there IS a
+        /// device to fit a module to.
+        /// </summary>
+        public void Execute(Simulation sim)
+        {
+            if (TryFindNamedDevice(sim, _terminalId, out var terminal) && !terminal.Scriptable) return;
+            sim.SetScript(_terminalId, _source);
+        }
+
+        /// <summary>The device whose <see cref="Device.Name"/> is <paramref name="name"/> (device
+        /// store order, first match — the same identity MOSS resolves adapters by). Ordinal
+        /// comparison: MOSS lowercases identifiers, device names are authored lowercase, and a
+        /// culture-sensitive compare on a de-DE machine is exactly the bug class this repo keeps
+        /// finding.</summary>
+        internal static bool TryFindNamedDevice(Simulation sim, string name, out Device device)
+        {
+            if (!string.IsNullOrEmpty(name))
+            {
+                var devices = sim.Devices.Items;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    if (!string.Equals(devices[i].Name, name, System.StringComparison.Ordinal)) continue;
+                    device = devices[i];
+                    return true;
+                }
+            }
+            device = null;
+            return false;
+        }
     }
 
     /// <summary>Mark/unmark a rock tile for digging.</summary>
@@ -337,7 +373,13 @@ namespace Perilune.Sim
             // Deterministic name (kind + tile) — no counters, no RNG; InvariantCulture ints.
             string name = System.FormattableString.Invariant(
                 $"{_kind.ToString().ToLowerInvariant()}_{_pos.X}_{_pos.Y}_{_pos.Z}");
-            sim.AddDevice(_kind, _pos, name); // marks rooms + power dirty
+            var placed = sim.AddDevice(_kind, _pos, name); // marks rooms + power dirty
+            // E0-6 — what the PLAYER bolts on is not commissioned. The device works physically the
+            // instant it is placed; what it does not have is a controller module, so MOSS cannot
+            // see it (MossBindings.RegisterAdapters skips it) until a CommissionDeviceCommand
+            // spends one. Authored and generated devices keep Device.Scriptable's true default, so
+            // no shipped ship, program or rule changes.
+            placed.Scriptable = false;
         }
 
         /// <summary>
@@ -347,18 +389,7 @@ namespace Perilune.Sim
         /// maintainer's overhaul Part — and taking them would strand the job that claimed them
         /// (the B-1 bug class).
         /// </summary>
-        public static int Affordable(Simulation sim)
-        {
-            int units = 0;
-            var items = sim.Items.Items;
-            for (int i = 0; i < items.Count; i++)
-            {
-                var it = items[i];
-                if (it.Kind != Currency || it.CarriedBy != 0 || it.ReservedBy != 0) continue;
-                units += it.Count;
-            }
-            return units;
-        }
+        public static int Affordable(Simulation sim) => LooseMatter.Affordable(sim, Currency);
 
         /// <summary>
         /// Consume exactly <paramref name="cost"/> units of <see cref="Currency"/>, or NOTHING.
@@ -376,17 +407,63 @@ namespace Perilune.Sim
         /// A zero or negative cost is free and consumes nothing, so a content pack that unsets
         /// the price gets the pre-E0-5 behaviour rather than an exception.
         /// </summary>
-        private static bool TryPay(Simulation sim, int cost)
+        private static bool TryPay(Simulation sim, int cost) =>
+            LooseMatter.TryPay(sim, Currency, cost);
+    }
+
+    /// <summary>
+    /// The ship's loose matter, and the ONE way a command spends it (E0-6 extracted this from
+    /// <see cref="PlaceDeviceCommand"/>; the semantics below are that command's, verbatim, because
+    /// a second copy of an all-or-nothing spend is a second chance to write a matter leak).
+    ///
+    /// "Loose" means on the ground (<c>CarriedBy == 0</c>) and unclaimed (<c>ReservedBy == 0</c>).
+    /// Carried and reserved stacks belong to somebody — a builder's haul, a station's staged input,
+    /// a maintainer's overhaul Part — and taking them strands the job that claimed them (the B-1
+    /// bug class).
+    /// </summary>
+    internal static class LooseMatter
+    {
+        /// <summary>Free units of <paramref name="kind"/> lying loose aboard.</summary>
+        public static int Affordable(Simulation sim, ItemKind kind)
+        {
+            int units = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                if (it.Kind != kind || it.CarriedBy != 0 || it.ReservedBy != 0) continue;
+                units += it.Count;
+            }
+            return units;
+        }
+
+        /// <summary>
+        /// Consume exactly <paramref name="cost"/> units of <paramref name="kind"/>, or NOTHING.
+        /// Two passes on purpose: pass one counts, and only if the whole price is affordable does
+        /// pass two spend. A single greedy pass that ran out halfway would destroy matter and
+        /// deliver nothing.
+        ///
+        /// DETERMINISTIC: stacks are drained in ITEM-STORE ORDER (insertion order, the sim's
+        /// canonical entity order — the same order <c>Simulation.StateHash</c> folds them in), so
+        /// two identical sims spend the same stacks. No distance term, no nearest-first tie-break,
+        /// no RNG, no Dictionary iteration, and no allocation: emptied stacks are removed in place
+        /// and the cursor simply does not advance over the shift
+        /// (<see cref="EntityStore{T}.Remove"/> is an order-preserving <c>List.Remove</c>).
+        ///
+        /// A zero or negative cost is free and consumes nothing, so a content pack that unsets a
+        /// price gets the un-priced behaviour rather than an exception.
+        /// </summary>
+        public static bool TryPay(Simulation sim, ItemKind kind, int cost)
         {
             if (cost <= 0) return true;
-            if (Affordable(sim) < cost) return false; // all or nothing — never a partial spend
+            if (Affordable(sim, kind) < cost) return false; // all or nothing — never a partial spend
 
             int remaining = cost;
             var items = sim.Items.Items;
             for (int i = 0; i < items.Count && remaining > 0; )
             {
                 var it = items[i];
-                if (it.Kind != Currency || it.CarriedBy != 0 || it.ReservedBy != 0 || it.Count <= 0)
+                if (it.Kind != kind || it.CarriedBy != 0 || it.ReservedBy != 0 || it.Count <= 0)
                 {
                     i++;
                     continue;
@@ -400,6 +477,71 @@ namespace Perilune.Sim
             sim.JobsDirty |= JobBoardDirty.Items; // ground stacks were spent — the haul board shrinks
             return true;
         }
+    }
+
+    /// <summary>
+    /// Fit a <see cref="ItemKind.ControllerModule"/> to the device on a tile, making it
+    /// MOSS-scriptable (E0-6). <b>This is the only consumer of ControllerModule in the game</b>,
+    /// and giving it one is the whole point of the package: until E0-6 every scrap of finite matter
+    /// aboard converted up the ladder into modules that nothing could spend, so the economy
+    /// terminated permanently at ~sim-hour 28 (MECHANICS §13.15) with 31 of them stacked on one
+    /// tile. ECONOMY.md §11 fixes the scope of the fix in one sentence: "No second job for
+    /// ControllerModule. It gates MOSS scriptability. One job."
+    ///
+    /// <para><b>ALL OR NOTHING, and charged LAST</b> — <see cref="PlaceDeviceCommand"/>'s contract,
+    /// through the same <see cref="LooseMatter"/> spend. A tile with no device, a device already
+    /// commissioned, or a ship that cannot pay: nothing changes and nothing is consumed. Refusal is
+    /// the same silent no-op every other designate/place command uses, so a host can enqueue blind.</para>
+    ///
+    /// <para><b>It bumps <c>DeviceTopologyVersion</c>.</b> The MOSS <c>DeviceRegistry</c> is HOST
+    /// state, not sim state, and is populated by <c>MossBindings.RegisterAdapters</c> — so a device
+    /// that becomes scriptable mid-game needs the host to re-derive its adapters, and the topology
+    /// counter is the signal hosts already watch. Nothing in the deterministic sim depends on it.</para>
+    ///
+    /// <para><b>Not reversible, on purpose.</b> There is no un-commission: the module is fitted, and
+    /// the only way to get it back is E0-5's strip, which destroys the device (and un-registers its
+    /// adapter — "you can break your own automation by selling a valve", ECONOMY.md §9.3). Placing a
+    /// fresh device and commissioning it again costs another module, which is what makes this a
+    /// SINK rather than a toggle.</para>
+    /// </summary>
+    public sealed class CommissionDeviceCommand : ISimCommand
+    {
+        private readonly Int3 _pos;
+
+        /// <summary>What commissioning is paid in. One kind, one job (ECONOMY.md §11).</summary>
+        public const ItemKind Currency = ItemKind.ControllerModule;
+
+        public CommissionDeviceCommand(Int3 pos)
+        {
+            _pos = pos;
+        }
+
+        /// <summary>
+        /// ⚠️ TWO OF THE FOUR GUARDS BELOW ARE UNTESTED, AND THAT IS RECORDED RATHER THAN HIDDEN
+        /// (the same disclosure <c>MaintenanceSystem.RestoredCondition</c>'s unreachable arm gets).
+        /// <c>InBounds</c> and the nameless-device check are DEFENSIVE: the host clamps every
+        /// coordinate before enqueueing (<c>GameSession.HandleCommission</c>), and every device
+        /// <c>Simulation.AddDevice</c> creates through a player path is given a deterministic name,
+        /// so neither guard is reachable from any surface that exists today. No mutation in the
+        /// package's harness turns them red, because no mutation can. They are kept because a
+        /// future authoring path could produce either shape and a module spent on a nameless device
+        /// would buy the player nothing — but nobody should read them as covered.
+        /// </summary>
+        public void Execute(Simulation sim)
+        {
+            if (!sim.World.InBounds(_pos)) return;                  // UNTESTED — see above
+            if (!sim.TryGetDeviceAt(_pos, out var device)) return;
+            if (device.Scriptable) return;            // already fitted — never charge twice
+            if (string.IsNullOrEmpty(device.Name)) return;          // UNTESTED — see above
+            // CHARGED LAST, so every rejection above leaves the ship's matter untouched.
+            if (!LooseMatter.TryPay(sim, Currency, sim.Defs.Build.CommissionCost)) return;
+            device.Scriptable = true;
+            sim.DeviceTopologyVersion++; // hosts re-derive MOSS adapters off this
+        }
+
+        /// <summary>Free <see cref="Currency"/> units aboard — what a host needs to grey out the
+        /// affordance rather than let the player click into a silent refusal.</summary>
+        public static int Affordable(Simulation sim) => LooseMatter.Affordable(sim, Currency);
     }
 
     /// <summary>

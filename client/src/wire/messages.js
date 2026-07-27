@@ -215,7 +215,8 @@
  * ZoneTuple = [x, y, deck, mask, flags]. Append-only.
  *
  *   mask   the EFFECTIVE accept mask: bit k ⇒ the tile accepts ItemKind k. A tile with no filter
- *          entry ships accept-all (127 today), never 0 — "restricted" is `mask !== ACCEPT_ALL`, and
+ *          entry ships accept-all (255 today; 127 before E0-6 added Seals), never 0 —
+ *          "restricted" is `mask !== ACCEPT_ALL`, and
  *          there is deliberately no absence sentinel to special-case.
  *   flags  bitfield; bit 0 (`ZONE_FLAG_BACKED_OFF`) = a live haul back-off sits on the tile.
  *

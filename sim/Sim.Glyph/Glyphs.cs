@@ -73,6 +73,8 @@ namespace Perilune.Glyph
             ItemKind.Scrap => 's',
             ItemKind.Parts => 'p',
             ItemKind.ControllerModule => 'c',
+            ItemKind.Seals => 'g',   // E0-6: 'g' for gasket. 's' is Scrap and 'S' is the Scrubber
+                                     // device, so neither initial of "seals" was free.
             _ => '?',
         };
     }

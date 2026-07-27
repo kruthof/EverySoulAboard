@@ -14,7 +14,7 @@
 //
 // TWO FACTS, BOTH LEGIBLE, NEITHER SUPPRESSING THE OTHER. A tile can be restricted AND backed off, and
 // that is the state a player most needs to tell apart: "nothing is arriving" reads very differently
-// when the zone is also refusing six of the seven kinds. So `label` carries BOTH, with the back-off
+// when the zone is also refusing all but one of the kinds. So `label` carries BOTH, with the back-off
 // first because it is the more urgent, and the two visual marks are deliberately different colours
 // (zone-overlay.js). An earlier draft let the back-off wording REPLACE the filter list; on a both-tile
 // the filter was then unreadable by any means.
@@ -27,7 +27,7 @@
 //
 // KNOWN, DISCLOSED: the 32-bit ceiling is only HALF honoured downstream. `decodeZones` keeps the mask
 // exact (see its note), but `stockFilterLabel` reduces with `(mask | 0) & ACCEPT_ALL`, so a mask with a
-// bit at 32+ would be mis-NAMED even though it arrived intact. Harmless while ItemKind has 7 members,
+// bit at 32+ would be mis-NAMED even though it arrived intact. Harmless while ItemKind has 8 members,
 // and out of this package's file set (stock-filter-model.js is WP-6's); flagged here so the eventual
 // widening fixes both halves. `zoneRestricted` below does NOT use `| 0`, so the BADGE stays correct
 // even where the name would not be.

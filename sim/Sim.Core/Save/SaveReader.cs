@@ -278,7 +278,11 @@ namespace Perilune.Sim
 
         // --- DEVC v1 (mirrors SaveWriter.WriteDevices) ---
 
-        private static void ReadDevices(Simulation sim, BinaryReader reader, ushort version)
+        // internal (not private) so the pre-v5 legacy DEVC path — which no live save in the repo
+        // exercises — can be driven directly by a unit test. Exactly the precedent ReadItems set for
+        // its own pre-v3 leg (SaveReader.cs, ReadItems), and for the same reason: an
+        // old-save-compat branch nothing can reach is a branch nothing can test.
+        internal static void ReadDevices(Simulation sim, BinaryReader reader, ushort version)
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
@@ -302,6 +306,11 @@ namespace Perilune.Sim
                 }
                 if (version >= 3) d.Condition = reader.ReadSingle();
                 if (version >= 4) d.LockOwner = reader.ReadByte();
+                // v5 (E0-6). A pre-v5 save predates commissioning: every device in it WAS
+                // MOSS-addressable when it was written, so the behaviour-preserving read is the
+                // field's default (true), which `new Device()` already gave it. Reading false here
+                // would unbind every adapter on load — the player's automation deleted, silently.
+                if (version >= 5) d.Scriptable = reader.ReadBoolean();
                 sim.Devices.Add(d, id);
                 // Re-index the device grid (utility overlays never enter it); the
                 // tile's HasDevice flag is already in the saved Flags array.

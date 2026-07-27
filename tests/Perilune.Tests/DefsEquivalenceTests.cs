@@ -291,22 +291,67 @@ namespace Perilune.Tests
         }
 
         [Test]
-        public void MutatedRecipeWorkSeconds_Diverge_ProvingCraftingReadsDefs()
+        public void MutatedProductionNodeWorkSeconds_Diverge_ProvingCraftingReadsTheGraphTable()
         {
-            // The Fabricator recipe's WorkSeconds doubled: once a citizen is crafting,
-            // Device.Progress (part of StateHash) advances at 1/WorkSeconds per work tick,
-            // so it drifts on the first work pass. Needs a dedicated bench scenario with a
-            // powered Fabricator, staged Scrap and an idle citizen so crafting actually runs.
+            // E0-6 REPLACED THE SUBJECT OF THIS TRIPWIRE, and the replacement is the point.
+            // Until E0-6 the Fabricator ran its legacy [recipes] row, so doubling
+            // Recipes[Fabricator].WorkSeconds diverged the twins. It now runs the [production] node
+            // `fab_components`, so that mutation is INERT on the Fabricator. The node's WorkSeconds
+            // is doubled instead.
+            //
+            // ⚠️ CORRECTION, and it matters because the first draft of this comment got it exactly
+            // backwards. The old test did NOT go quietly vacuous. Its assertion is "the twins
+            // DIVERGE", so an inert mutation makes it FAIL, loudly, which is what happened
+            // (measured: `AssertDivergesWithin` reported Expected True / But was False on the first
+            // full run after the [production] rows landed). Verified again by mutation: reverting
+            // the body below to the old Recipes[Fabricator] mutation turns this test RED, not
+            // green. A tripwire whose subject moves under it is a maintenance cost here, not a
+            // silent hole — do not repeat the stronger claim.
+            //
+            // Device.Progress (part of StateHash) advances at 1/WorkSeconds per work pass, so the
+            // twins drift on the first work pass after the batch starts.
             var mutated = SimDefs.CreateDefault();
-            int fi = (int)DeviceKind.Fabricator;
-            var r = mutated.Recipes[fi];
-            Assert.That(r.Defined, Is.True, "test premise: Fabricator has a recipe");
-            mutated.Recipes[fi] = new RecipeDef(r.Input, r.InputCount, r.Output, r.OutputCount, r.WorkSeconds * 2);
+            Assert.That(mutated.Production.TryGetNode(DeviceKind.Fabricator, 0, out var node), Is.True,
+                "test premise: the Fabricator runs a [production] node, not the legacy row");
+            mutated.Production.Nodes[IndexOfNode(mutated, node.Id)] = new ProductionNode(
+                node.Id, node.Station, node.WorkSeconds * 2, node.Inputs, node.Outputs);
             mutated.ComputeChecksum();
             Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
 
             AssertDivergesWithin(BuildCraftScenario, SimDefs.CreateDefault(), mutated, 8000,
-                "doubled Fabricator recipe WorkSeconds");
+                "doubled fab_components WorkSeconds");
+        }
+
+        [Test]
+        public void MutatedRecipeWorkSeconds_Diverge_ProvingTheLEGACYFallbackStillReadsDefs()
+        {
+            // The other half of the same tripwire, kept alive on the station that still TAKES the
+            // fallback leg. E0-6 gave the SalvageRecycler and the Fabricator [production] nodes and
+            // deliberately left the MachineShop on its legacy [recipes] row, so this is a live
+            // proof that ProductionDefs.TryGetBill's fallback is still wired to defs — the half
+            // that would otherwise be covered by nothing at all once every station has a node.
+            var mutated = SimDefs.CreateDefault();
+            int mi = (int)DeviceKind.MachineShop;
+            var r = mutated.Recipes[mi];
+            Assert.That(r.Defined, Is.True, "test premise: the MachineShop has a legacy recipe");
+            Assert.That(mutated.Production.CountFor(DeviceKind.MachineShop), Is.EqualTo(0),
+                "test premise: ...and NO [production] node, or this would measure the wrong leg");
+            mutated.Recipes[mi] = new RecipeDef(r.Input, r.InputCount, r.Output, r.OutputCount, r.WorkSeconds * 2);
+            mutated.ComputeChecksum();
+            Assert.That(mutated.Checksum, Is.Not.EqualTo(SimDefs.Default.Checksum));
+
+            AssertDivergesWithin(BuildMachineShopScenario, SimDefs.CreateDefault(), mutated, 8000,
+                "doubled MachineShop recipe WorkSeconds (the legacy fallback leg)");
+        }
+
+        /// <summary>Table index of a node by id — the mutation above rewrites a row in place, and
+        /// the table is an ordered list whose order is itself a value.</summary>
+        private static int IndexOfNode(SimDefs defs, string id)
+        {
+            for (int i = 0; i < defs.Production.Nodes.Length; i++)
+                if (defs.Production.Nodes[i].Id == id) return i;
+            Assert.Fail("no [production] node with id '" + id + "'");
+            return -1;
         }
 
         [Test]
@@ -401,6 +446,33 @@ namespace Perilune.Tests
             sim.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));             // staged on the bench's +x neighbor
 
             sim.AddCitizen("Smith", new Int3(1, 2, 0)); // idle (AutoWander false) → recruitable to craft
+
+            sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
+            sim.Rooms.RecomputeIfDirty(sim);
+            RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(2, 2, 0)));
+            return sim;
+        }
+
+        /// <summary>BuildCraftScenario's twin for the LEGACY fallback leg: a powered MachineShop
+        /// with staged Parts, so the station under test is the one E0-6 left on its [recipes] row.</summary>
+        private static Simulation BuildMachineShopScenario(ulong seed, SimDefs defs)
+        {
+            string[] map =
+            {
+                "#######",
+                "#.....#",
+                "#.....#",
+                "#######",
+            };
+            var moss = new ScriptRuntime(new DeviceRegistry());
+            var sim = new Simulation(AsciiWorld.Build(map), seed, SystemStack.CreateDefault(moss), defs);
+
+            for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 1, 0), $"c{x}");
+            sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
+            sim.AddDevice(DeviceKind.MachineShop, new Int3(3, 2, 0), "shop");
+            sim.AddItem(ItemKind.Parts, 6, new Int3(4, 2, 0));
+
+            sim.AddCitizen("Smith", new Int3(1, 2, 0));
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);

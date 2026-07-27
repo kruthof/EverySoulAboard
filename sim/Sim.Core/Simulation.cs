@@ -290,7 +290,8 @@ namespace Perilune.Sim
         /// ReservedBy (own word, full 32 bits — the owner id, 0 = free) · Count (own word,
         /// full 32 bits) · Pack(Pos) · CarriedBy · Label.
         ///
-        /// Per device: Id · Pack(Pos) · the audited state word · LockOwner · StoredKWh ·
+        /// Per device: Id · Pack(Pos) · the audited state word (Kind b0-7, IsOpen b8, IsLocked
+        /// b9, Powered b10, Scriptable b11, NetworkId b16-31, Rate b32-63) · LockOwner · StoredKWh ·
         /// StoredLiters · Progress · FluidNetworkId · Condition · Name.
         ///
         /// Per room anchor: Pack(Probe)|Type&lt;&lt;60 · Name. Then, after WastewaterLiters,
@@ -453,6 +454,7 @@ namespace Perilune.Sim
                               | (d.IsOpen ? 1UL << 8 : 0)
                               | (d.IsLocked ? 1UL << 9 : 0)
                               | (d.Powered ? 1UL << 10 : 0)
+                              | (d.Scriptable ? 1UL << 11 : 0)   // E0-6 (DEVC v5)
                               | ((ulong)d.NetworkId << 16)
                               | ((ulong)(uint)BitConverter.SingleToInt32Bits(d.Rate) << 32);
                 h = XxHash64.Combine(h, state);

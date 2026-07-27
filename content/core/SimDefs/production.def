@@ -7,11 +7,15 @@
 # first. A [production] row is keyed by its own node ID instead, so many nodes may
 # name one station, and it takes MANY inputs and MANY outputs.
 #
-# SHIPPED STATE: this table is deliberately EMPTY. Every shipped station still runs
-# its legacy [recipes] row — ProductionDefs.TryGetBill prefers a station's node and
-# FALLS BACK to the recipe array, and with no nodes declared the fallback is what
-# runs. An empty table also folds nothing into the defs checksum, so this file
-# changes nothing at all: same behaviour, same checksum, byte for byte.
+# SHIPPED STATE (E0-6): this table is NO LONGER EMPTY. It was empty from W0-5 until
+# E0-6, and the two rows at the bottom of this file are now the authority for the
+# SalvageRecycler and the Fabricator. The MachineShop still has NO row and therefore
+# still takes ProductionDefs.TryGetBill's fallback leg into [recipes]
+# (Parts:2 -> ControllerModule:1, already a 50 % hop — E0-6 did not retune it).
+#
+# The rows are VERBATIM equal to SimDefs.CreateDefault()'s d.Production, as the def
+# contract requires; the reasoning for each ratio is written out there and is not
+# repeated here.
 #
 # -----------------------------------------------------------------------------
 # COLUMNS (whitespace-aligned; five of them)
@@ -74,18 +78,19 @@
 #
 # [production]
 # # id             station          work_s  inputs              outputs
-# scrap_to_stock   SalvageRecycler  20      Scrap:20            Regolith:17          # exactly 85%
 # recycle_swarf    SalvageRecycler  20      Swarf:5             Regolith:3           # exactly 60%  (E1+)
-# fab_parts        Fabricator       30      Scrap:2             Parts:1
-# fab_seals        Fabricator       15      Regolith:1          Seals:2              # (E0+)
+# fab_seals        Fabricator       15      Regolith:1          Seals:2              # (a SECOND bill — never runs, see below)
 # shop_controller  MachineShop      40      Parts:2+Circuits:1  ControllerModule:1   # (E2+)
 # scrap_corpse     SalvageRecycler  60      Corpse:1            none                 # a pure SINK
 #
-# Note 'fab_parts' and 'fab_seals': two bills on ONE station, coexisting — the
-# single thing this table exists to make expressible (but read the next section:
-# only the first is RUN today, and the parser will tell you so).
 # Note 'shop_controller': two INPUT ports. Note 'scrap_corpse': 'none' outputs.
 # Note the ratios: matter leaves the ship at every hop, in exact whole units.
+#
+# ⚠️ 'fab_seals' above is the trap this section used to advertise as a feature. Two
+# bills on ONE station parse and checksum, but only ORDINAL 0 is ever RUN (see NOT
+# YET CONNECTED below), so declaring it would make Seals unreachable while looking
+# correct. That is exactly why E0-6 ships Seals as a CO-OUTPUT of the Fabricator's
+# one bill instead of as a second bill of its own.
 #
 # -----------------------------------------------------------------------------
 # NOT YET CONNECTED (MECHANICS.md §13.12)
@@ -98,3 +103,6 @@
 # station is NOT silent — the parser emits a problem line pointing here.
 
 [production]
+# id             station          work_s  inputs      outputs
+recycle_stock    SalvageRecycler  2400    Regolith:4  Scrap:3
+fab_components   Fabricator       900     Scrap:2     Parts:1+Seals:1
