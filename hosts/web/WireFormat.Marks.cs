@@ -55,13 +55,49 @@ namespace Perilune.Web
     ///   strip      <see cref="Perilune.Sim.DeconstructSystem"/>'s pending registry (NOT a tile flag)
     ///   debris     the terrain planes (<c>Wall</c>/<c>Floor</c> == <see cref="Perilune.Sim.TileDefs.Debris"/>)
     ///
-    /// PRECEDENCE IS <c>GlyphMapper</c> PASS 1'S, DELIBERATELY AND EXACTLY — dig ▸ stockpile ▸ strip ▸
-    /// debris. The first three cannot legally coexist on one tile (dig marks only a Debris wall,
-    /// stockpile only a walkable tile, strip only a standing wall or a device), so the ordering only
-    /// ever decides a corrupt-state tile; keeping it identical to the projection means this channel
-    /// cannot come to disagree with the frame about what a tile IS, only about whether a passer-by is
-    /// standing on it. Debris ranks last because a dig order sits ON debris and must win — which is
-    /// also pass 1's behaviour (it computes the terrain colour first and then overwrites it).
+    /// ─────────────────────────────────────────────────────────────────────────────────────────
+    /// ⚠️ PRECEDENCE — dig ▸ strip ▸ stockpile ▸ debris. AN ORDER OUTRANKS A ZONE.
+    ///
+    /// THE PARAGRAPH THAT STOOD HERE WAS FALSE IN BOTH ITS HALVES AND IS KEPT QUOTED, because it is
+    /// the sentence that hid a live regression through implementation AND independent review:
+    ///
+    ///   *"PRECEDENCE IS `GlyphMapper` PASS 1'S, DELIBERATELY AND EXACTLY — dig ▸ stockpile ▸ strip ▸
+    ///   debris. The first three cannot legally coexist on one tile (dig marks only a Debris wall,
+    ///   stockpile only a walkable tile, strip only a standing wall or a device), so the ordering only
+    ///   ever decides a corrupt-state tile; keeping it identical to the projection means this channel
+    ///   cannot come to disagree with the frame about what a tile IS, only about whether a passer-by
+    ///   is standing on it."*
+    ///
+    /// (1) "CANNOT LEGALLY COEXIST" IS FALSE, and trivially so. **STOCKPILE AND STRIP COEXIST**: every
+    ///     device kind is non-blocking, so a device stands on a WALKABLE tile, which
+    ///     <see cref="Perilune.Sim.DesignateStockpileCommand"/> will zone and
+    ///     <see cref="Perilune.Sim.DeconstructSystem.CanDesignate"/> will condemn. Two ordinary player
+    ///     clicks. Under the old ranking that tile shipped <c>stockpile</c>, the Room Zoom's mark layer
+    ///     SKIPS the stockpile kind on purpose (the <c>zones</c> channel owns that tile) and the
+    ///     Overview drew a slate tint — so the ✕ appeared NOWHERE. That is the invisible-condemned-
+    ///     device bug that cost three owner reports, reintroduced. Measured live on <c>--ship grid</c>
+    ///     at (21,1): channel <c>stockpile</c>, frame fg 26, <c>mk-strip</c> drawn: no.
+    ///     (The other pairs really are unreachable, and that was checked rather than assumed: a dig
+    ///     target is a Debris WALL — unwalkable, so it cannot be zoned, and <c>DigJobSource</c> clears
+    ///     <c>Designated</c> when the dig completes so a dug-out floor cannot keep the flag; and
+    ///     <c>CanDesignate</c> refuses any wall that is not <c>TileDefs.Wall</c>, so strip and dig
+    ///     cannot share a tile either.)
+    ///
+    /// (2) "IDENTICAL TO PASS 1 ⇒ CANNOT DISAGREE WITH THE FRAME" IS A NON-SEQUITUR, and it is exactly
+    ///     how (1) got in. PASS 1 IS NOT THE FRAME. <c>GlyphMapper</c> pass 4 re-applies
+    ///     <c>GlyphColor.Deconstruct</c> over a condemned device UNCONDITIONALLY, after pass 1 has
+    ///     ranked — so on the one tile where the ranking is reachable, pass 1 never gets the last word
+    ///     and the frame's real behaviour is strip-over-stockpile. Copying pass 1 alone therefore
+    ///     copied a rule the projection does not actually follow.
+    ///
+    /// THE RULE THAT REPLACES IT, and it is a rule rather than a mirror: dig and strip are ORDERS —
+    /// queued work the player must be able to see they queued — and stockpile is a ZONE, a standing
+    /// policy that the Room Zoom deliberately renders from <c>zones</c> instead. An order that a zone
+    /// can hide is an order the player cannot verify. Debris stays last because it is terrain and any
+    /// order sits on top of it. A tile that is both zoned and condemned now draws its ✕ on both
+    /// surfaces, and on the Room Zoom it ALSO keeps its zone tint, because that tint comes from the
+    /// independent <c>zones</c> channel — strictly more information than <c>main</c> showed.
+    /// ─────────────────────────────────────────────────────────────────────────────────────────
     ///
     /// FOG-GATED, unlike <c>zones</c>. A tile with no <see cref="Perilune.Sim.TileFlags.Explored"/>
     /// emits nothing, mirroring pass 1's fog gate, which is FIRST. This is the one place the channel

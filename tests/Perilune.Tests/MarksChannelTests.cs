@@ -80,19 +80,63 @@ namespace Perilune.Tests
                 "order. A gap or a reorder silently renames every mark on the standard surface.");
         }
 
+        /// <summary>
+        /// THE INVARIANTCULTURE GUARD, MADE TO BITE.
+        ///
+        /// ⚠️ THE VERSION THAT SHIPPED FIRST COULD NOT FAIL, and the reason is worth writing down
+        /// because it will be true of every "is it InvariantCulture?" test anyone writes about integer
+        /// fields. It set <c>CurrentCulture</c> to de-DE and compared the output with the invariant
+        /// one. <b>Those are byte-identical no matter what the emitter does</b>: <c>int.ToString()</c>
+        /// uses the "G" format, which NEVER emits a group separator, and .NET renders Latin digits for
+        /// every built-in culture. The only <c>NumberFormatInfo</c> knob that can reach a bare integer
+        /// is <see cref="NumberFormatInfo.NegativeSign"/> — and today's four fields (two tile
+        /// coordinates, a deck index and a kind id) are all non-negative. So the property was true by
+        /// construction and the guard was decoration wearing the name of a guard, which is this repo's
+        /// signature defect.
+        ///
+        /// WHAT THIS PINS INSTEAD, and why it is worth pinning at all: THE EMITTER'S DISCIPLINE. The
+        /// tuple is append-only, and the day it grows a field that can be negative or fractional, a
+        /// bare <c>ToString()</c> starts producing locale bytes on a de-DE dev machine and nothing
+        /// else in the tree would notice. The culture below carries a custom negative sign and the
+        /// cell carries negative coordinates — a shape the sim never produces, chosen precisely
+        /// because it is the only shape that makes the property observable. The non-vacuity leg proves
+        /// the culture really does perturb a bare <c>ToString()</c>, so this cannot silently rot back
+        /// into the version it replaced.
+        ///
+        /// MUTATION: drop <c>MarkIc</c> from any of the four <c>ToString</c> calls in
+        /// <see cref="WireFormat.Marks"/> ⇒ this fails.
+        /// </summary>
         [Test]
         public void Marks_Serialization_Is_InvariantCulture()
         {
-            var cells = new[] { new WireFormat.MarkCell(1234, 7, 2, 3) };
+            var loud = (CultureInfo)CultureInfo.GetCultureInfo("de-DE").Clone();
+            loud.NumberFormat.NegativeSign = "MINUS";
+
             var prev = Thread.CurrentThread.CurrentCulture;
             try
             {
-                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE"); // group separator '.'
-                string de = WireFormat.Marks(cells);
+                Thread.CurrentThread.CurrentCulture = loud;
+
+                // NON-VACUITY, FIRST: the culture must actually change what a bare ToString() emits,
+                // or everything below is the test that could not fail, again.
+                Assert.AreEqual("MINUS3", (-3).ToString(),
+                    "the ambient culture does not perturb a bare int.ToString(), so this guard is " +
+                    "decoration. Pick a culture knob that DOES reach an integer before trusting it.");
+
+                var negative = new[] { new WireFormat.MarkCell(-3, -4, -1, 2) };
+                StringAssert.Contains("[-3,-4,-1,2]", WireFormat.Marks(negative),
+                    "the marks emitter picked up the ambient culture's negative sign. Every number on " +
+                    "this channel must go through InvariantCulture — the dev machine is de-DE, and a " +
+                    "wire payload that changes with the operator's locale is not a wire payload.");
+
+                // …and the ordinary, non-negative case is unchanged under the same loud culture, which
+                // is the honest statement of today's position: the fields in use cannot express the
+                // difference, and the discipline is what protects the field that one day will.
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-                string inv = WireFormat.Marks(cells);
-                Assert.AreEqual(inv, de, "marks bytes are culture-independent (the dev machine is de-DE)");
-                StringAssert.Contains("[1234,7,2,3]", de, "no group separators, no locale digits");
+                string inv = WireFormat.Marks(new[] { new WireFormat.MarkCell(1234, 7, 2, 3) });
+                Thread.CurrentThread.CurrentCulture = loud;
+                Assert.AreEqual(inv, WireFormat.Marks(new[] { new WireFormat.MarkCell(1234, 7, 2, 3) }));
+                StringAssert.Contains("[1234,7,2,3]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -101,12 +145,21 @@ namespace Perilune.Tests
 
         private static (GameSession gs, SimHost host) Boot(ShipChoice ship = ShipChoice.Perilune)
         {
+            var (gs, host, _) = BootWithSink(ship);
+            return (gs, host);
+        }
+
+        /// <summary>As <see cref="Boot"/>, but hands back the BROADCAST SINK — every payload the
+        /// session actually put on the socket, in order. Needed by the forced-render test, which is
+        /// about what is BROADCAST rather than about what is cached.</summary>
+        private static (GameSession gs, SimHost host, List<string> sink) BootWithSink(ShipChoice ship)
+        {
             var sink = new List<string>();
             var host = ship == ShipChoice.Perilune
                 ? SimHost.Build(SimHost.DefaultSeed)
                 : SimHost.Build(ship == ShipChoice.Slice ? SimHost.SliceSeed : SimHost.DefaultSeed, ship: ship);
             var gs = new GameSession(host, sink.Add); // NOT started ⇒ no sim thread
-            return (gs, host);
+            return (gs, host, sink);
         }
 
         /// <summary>The cached <c>marks</c> payload after a render, taken from the Snapshot a
@@ -383,10 +436,16 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// PRECEDENCE, which is <c>GlyphMapper</c> pass 1's line for line: dig ▸ stockpile ▸ strip ▸
-        /// debris. The first three cannot legally coexist, so what this really pins is that DIG
-        /// outranks DEBRIS — an order on a rubble tile must read as an order, not as more rubble, and
-        /// getting that backwards makes every dig designation on the standard surface invisible.
+        /// PRECEDENCE, half of it: DIG outranks the DEBRIS it sits on. An order on a rubble tile must
+        /// read as an order, not as more rubble, and getting that backwards makes every dig
+        /// designation on the standard surface invisible. The other three rankings —
+        /// dig ▸ strip ▸ stockpile — are pinned by
+        /// <see cref="The_Full_Precedence_Order_Is_Pinned_Including_The_Pair_That_Is_REACHABLE"/>.
+        ///
+        /// ⚠️ THIS TEST'S OLD SUMMARY CLAIMED THE ORDER WAS *"`GlyphMapper` pass 1's line for line"*
+        /// and that *"the first three cannot legally coexist"*. Both are retracted — see
+        /// <c>WireFormat.Marks.cs</c>'s header. Stockpile and strip coexist with two ordinary clicks,
+        /// and the channel now ranks strip ABOVE stockpile, which is NOT pass 1's order.
         ///
         /// MUTATION: test debris before dig in <c>BuildMarks</c> ⇒ this fails.
         /// </summary>
@@ -522,18 +581,22 @@ namespace Perilune.Tests
         /// until the player paints" and this channel's is NOT that: debris is terrain, every authored
         /// ship has some, and the payload therefore has real volume from tick 0 and is rebuilt and
         /// string-compared by <see cref="GameSession.Send"/> on every render for as long as the game
-        /// runs. The measured cost is small (see the package report: 446 bytes / 35 cells on the grid
-        /// ship at boot, 0.34 msg/s on the socket), but it is not zero and it must not be described
-        /// as zero.
+        /// runs. The measured cost is small (see the package report: ~0.3 msg/s and ~160 B/s on the
+        /// socket, +61 microseconds per render), but it is not zero and it must not be described as
+        /// zero.
         ///
         /// The numbers are pinned by EQUALITY so that a change to an authored ship's wreck says so
         /// here instead of quietly changing what every player's socket carries.
         ///
-        /// ⚠️ THESE ARE FULLY-REVEALED COUNTS AND A LIVE HOST SHIPS FEWER. <see cref="Reveal"/> is
-        /// called for every deck first, deliberately, so the census measures the ship and not the
-        /// crew's exploration history. On a real boot of <c>--ship grid</c> the fog gate cuts the grid
-        /// ship's 40 debris to 16-18, which is a genuine property of the channel (it is fog-gated) and
-        /// the reason the measured live payload — 35 cells / 446 bytes — is smaller than 60.
+        /// ⚠️ THESE ARE FULLY-REVEALED COUNTS AND A LIVE HOST SHIPS FEWER — AND A LIVE COUNT IS NOT A
+        /// CONSTANT. <see cref="Reveal"/> is called for every deck first, deliberately, so the census
+        /// measures the SHIP and not the crew's exploration history, which is the only way to pin a
+        /// number at all. On a real boot of <c>--ship grid</c> the fog gate cuts these 60 down, and
+        /// then the crew keep exploring: the payload was measured at 35 cells / 446 bytes shortly
+        /// after boot in one session and 50 cells / 626 bytes in another, both rising toward 60 as
+        /// tiles are revealed (and falling again as digs complete). Any live figure is a SNAPSHOT
+        /// and must be quoted as one — the fully-revealed 60 is the ceiling and the only stable
+        /// number.
         /// </summary>
         [Test]
         public void The_Boot_Payload_Census_Per_Ship_Is_Pinned()
@@ -614,6 +677,149 @@ namespace Perilune.Tests
                 Assert.That(KindAt(gs, probe), Is.Null);
             }
             finally { level.Wall[i] = wall0; level.Floor[i] = floor0; }
+        }
+
+        /// <summary>
+        /// THE FULL PRECEDENCE ORDER — dig ▸ strip ▸ stockpile ▸ debris — AND THE ONE PAIR A PLAYER
+        /// CAN ACTUALLY REACH.
+        ///
+        /// ⚠️ THIS TEST EXISTS BECAUSE THE ORDER SHIPPED WRONG AND NOTHING CAUGHT IT. The first draft
+        /// copied <c>GlyphMapper</c> pass 1 (stockpile above strip) on the strength of a header
+        /// claiming the kinds "cannot legally coexist". They can:
+        ///
+        ///   ZONE A TILE THAT HAS A DEVICE ON IT, THEN CONDEMN THE DEVICE. Two ordinary clicks. Every
+        ///   device kind is non-blocking, so the tile is walkable, zonable AND condemnable. Under the
+        ///   old ranking that tile shipped <c>stockpile</c> — and the Room Zoom's mark layer SKIPS the
+        ///   stockpile kind on purpose (the `zones` channel owns that tile) while the Overview draws a
+        ///   slate tint, so THE ✕ APPEARED NOWHERE. That is the invisible-condemned-device bug that
+        ///   cost three owner reports, reintroduced by a rendering fix.
+        ///
+        /// Leg (a) is therefore driven entirely through REAL COMMANDS on a real ship — no hand-set
+        /// flags — because it is a state the game produces. The rest are set by hand, and are labelled
+        /// SYNTHETIC because no legal command sequence reaches them: a dig target is an unwalkable
+        /// Debris wall (so it cannot be zoned, and <c>DigJobSource</c> clears <c>Designated</c> on
+        /// completion so a dug-out floor cannot keep it), and <c>CanDesignate</c> refuses any wall that
+        /// is not <c>TileDefs.Wall</c> (so dig and strip cannot share a tile). They are pinned anyway
+        /// for the reason the wall-vs-floor test gives: an ordering rule that only shipped content can
+        /// exercise is an ordering rule with no guard, and this file already learned that once.
+        ///
+        /// MUTATION: swap the dig and strip branches ⇒ leg (c) fails. MUTATION 2: swap strip and
+        /// stockpile back to pass 1's order ⇒ leg (a) fails — the regression, caught. MUTATION 3: swap
+        /// dig and stockpile ⇒ leg (b) fails.
+        /// </summary>
+        [Test]
+        public void The_Full_Precedence_Order_Is_Pinned_Including_The_Pair_That_Is_REACHABLE()
+        {
+            var (gs, host) = Boot();
+            var sim = host.Sim;
+            var tile = EmptyWalkable(sim);
+            Reveal(sim, tile.Z);
+            var level = sim.World.Levels[tile.Z];
+            int i = level.Index(tile.X, tile.Y);
+
+            // ── (a) STOCKPILE + STRIP, THE REACHABLE PAIR, through the real commands only. ──
+            sim.AddDevice(DeviceKind.Locker, tile, "marks_test_precedence");
+            sim.Tick();
+            sim.EnqueueCommand(new DesignateStockpileCommand(tile, true));
+            sim.Tick();
+            Assert.That((level.Flags[i] & (byte)TileFlags.Stockpile), Is.Not.Zero,
+                "precondition: DesignateStockpileCommand really zoned a tile with a device on it — " +
+                "if it refused, the reachable pair is not reachable and this leg is vacuous");
+            Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkStockpile), "zoned, not yet condemned");
+
+            sim.EnqueueCommand(new DesignateDeconstructCommand(tile, DeconstructKind.Device, true));
+            sim.Tick();
+            Assert.That(sim.Deconstruct.Pending.Count, Is.EqualTo(1),
+                "precondition: the strip order registered on the zoned device, through the real command");
+            Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkStrip),
+                "A CONDEMNED DEVICE INSIDE A STOCKPILE ZONE SHIPPED 'stockpile'. The Room Zoom skips " +
+                "the stockpile kind (the `zones` channel owns that tile) and the Overview draws a " +
+                "tint, so the player's strip order is invisible on BOTH surfaces — the exact bug that " +
+                "cost three owner reports. An ORDER outranks a ZONE.");
+
+            // …and the FRAME agrees, which is the claim the old header asserted and never checked.
+            // Pass 4 re-applies the condemned colour over the device unconditionally, so the frame
+            // says Deconstruct here too: the channel and the projection now tell the same story.
+            Assert.That(ProjectedFg(sim, tile), Is.EqualTo(GlyphColor.Deconstruct),
+                "the frame and the channel disagree about a condemned, zoned device");
+
+            // ── (b) DIG + STOCKPILE (SYNTHETIC — no command sequence reaches it). ──
+            sim.EnqueueCommand(new DesignateDeconstructCommand(tile, DeconstructKind.Device, false));
+            sim.Tick();
+            Assert.That(sim.Deconstruct.Pending.Count, Is.EqualTo(0), "precondition: the strip cleared");
+            level.Flags[i] |= (byte)TileFlags.Designated;
+            Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkDig),
+                "SYNTHETIC: a dig order must outrank a stockpile zone on the same tile");
+
+            // ── (c) DIG + STRIP (SYNTHETIC). ──
+            sim.EnqueueCommand(new DesignateDeconstructCommand(tile, DeconstructKind.Device, true));
+            sim.Tick();
+            Assert.That(sim.Deconstruct.Pending.Count, Is.EqualTo(1), "precondition: condemned again");
+            Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkDig),
+                "SYNTHETIC: a dig order must outrank a strip order on the same tile");
+
+            // ── (d) STRIP + DEBRIS terrain (SYNTHETIC) and (e) STOCKPILE + DEBRIS (SYNTHETIC). ──
+            ushort wall0 = level.Wall[i], floor0 = level.Floor[i];
+            try
+            {
+                level.Flags[i] &= unchecked((byte)~(byte)TileFlags.Designated);
+                level.Wall[i] = TileDefs.Debris;
+                Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkStrip),
+                    "SYNTHETIC: a strip order must outrank the debris terrain under it");
+
+                sim.EnqueueCommand(new DesignateDeconstructCommand(tile, DeconstructKind.Device, false));
+                sim.Tick();
+                Assert.That(KindAt(gs, tile), Is.EqualTo(WireFormat.MarkStockpile),
+                    "SYNTHETIC: a stockpile zone must outrank the debris terrain under it");
+            }
+            finally { level.Wall[i] = wall0; level.Floor[i] = floor0; }
+        }
+
+        /// <summary>
+        /// THE <c>force</c> FLAG. <see cref="GameSession.Send"/> dedupes by string equality, so an
+        /// UNCHANGED payload is normally not broadcast at all — which is the whole reason this channel
+        /// is cheap. A forced render must override that: it is what primes a newly-connected client
+        /// and what re-asserts every channel after a state jump.
+        ///
+        /// ⚠️ WRITTEN BECAUSE THE MUTATION SURVIVED. Passing <c>false</c> instead of <c>force</c> at
+        /// the <c>Send("marks", …)</c> call site left the whole 1016-test suite green: every other
+        /// assertion in this file reads the payload out of <see cref="GameSession.Snapshot"/>, which is
+        /// fed by the CACHE and is written even when nothing is broadcast. So the cache tests could not
+        /// see it. This one counts what actually reached the socket.
+        ///
+        /// MUTATION: <c>Send("marks", …, false)</c> ⇒ the second forced render broadcasts nothing and
+        /// this fails.
+        /// </summary>
+        [Test]
+        public void A_Forced_Render_Rebroadcasts_Marks_Even_When_Nothing_Changed()
+        {
+            var (gs, host, sink) = BootWithSink(ShipChoice.Grid);
+            for (int z = 0; z < host.Sim.World.Depth; z++) Reveal(host.Sim, z);
+
+            gs.RenderForTest();                       // Render(force: true)
+            int after1 = sink.Count(p => p.Contains("\"type\":\"marks\""));
+            gs.RenderForTest();                       // same sim state, same payload
+            int after2 = sink.Count(p => p.Contains("\"type\":\"marks\""));
+
+            Assert.That(after1, Is.GreaterThanOrEqualTo(1), "the first forced render broadcast no marks at all");
+            Assert.That(after2, Is.EqualTo(after1 + 1),
+                "a FORCED render did not re-broadcast the marks channel. Send() dedupes unchanged " +
+                "payloads, and `force` is what overrides that — it is how a newly-connected client is " +
+                "primed. Dropping it makes the channel invisible to anything that is not reading the " +
+                "Snapshot cache, and every other test here reads the cache.");
+
+            // …and the dedupe itself still works, or the assertion above would pass for the wrong
+            // reason (a channel that broadcasts unconditionally also satisfies it).
+            var unforced = new List<string>();
+            var (gs2, host2, sink2) = BootWithSink(ShipChoice.Grid);
+            for (int z = 0; z < host2.Sim.World.Depth; z++) Reveal(host2.Sim, z);
+            gs2.RenderForTest();
+            sink2.Clear();
+            gs2.RenderUnforcedForTest();
+            Assert.That(sink2.Count(p => p.Contains("\"type\":\"marks\"")), Is.EqualTo(0),
+                "an UNCHANGED marks payload was broadcast on an unforced render — Send()'s dedupe is " +
+                "not holding, and this channel would then be on the socket every single frame");
+            GC.KeepAlive(unforced);
         }
     }
 }

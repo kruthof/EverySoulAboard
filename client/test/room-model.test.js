@@ -550,6 +550,35 @@ test('WP-2: the Room Zoom places each mark in ROOM-LOCAL space, one U per tile',
   ]));
 });
 
+// THE VARIANT ARGUMENT, the Room Zoom's half. See the long note in `overview-scene.test.js` for the
+// measurement behind it: `markVariant(tx,ty) = (tx*7 + ty*13) % 3` and 7 ≡ 13 ≡ 1 (mod 3), so it is
+// COMMUTATIVE and an argument-order swap is a true equivalent mutant that no test can kill. What is
+// killable — and is killed here — is passing the wrong tile's coordinates at all. The Room Zoom's box
+// is exact (`(tx-rx)*U, (ty-ry)*U, U, U`), so this is a byte-for-byte comparison against the shared
+// builder with no geometry reconstructed in the test.
+//
+// MUTATION: `markVariant(m.tx, m.ty)` -> `markVariant(0, 0)` in room-model.js ⇒ RED.
+test('the Room Zoom draws each mark with ITS OWN tile\'s variant', () => {
+  const hallFocus = slotFocus(5);                   // the hall the wreck's debris fills
+  const tiles = roomMarkTiles(wreckMarks, hallFocus);
+  assert.ok(tiles.length >= 10, `only ${tiles.length} marks in the hall — the pin is thin`);
+  const drawn = marks(markLayerSvg(tiles, hallFocus));
+  const shown = tiles.filter((t) => t.mark !== 'stockpile');
+  assert.equal(drawn.length, shown.length);
+
+  const rx = hallFocus.rx | 0, ry = hallFocus.ry | 0;
+  for (let i = 0; i < shown.length; i += 1) {
+    const m = shown[i];
+    const expect = markCellSvg(m.mark, (m.tx - rx) * U, (m.ty - ry) * U, U, U, markVariant(m.tx, m.ty));
+    assert.equal('<g class="mk mk-' + drawn[i].kind + '">' + drawn[i].body + '</g>', expect,
+      `the mark at ${m.tx},${m.ty} was not drawn by markCellSvg with its own tile's variant`);
+  }
+  // …and the variants really vary here, or a constant-variant mutation would pass the comparison.
+  assert.equal(new Set(shown.map((m) => markVariant(m.tx, m.ty))).size, 3,
+    'this room no longer spans all three rubble arrangements, so `markVariant(...) -> 0` would '
+    + 'survive the comparison above');
+});
+
 // The mark colours, pinned. `zone-overlay.test.js` pins its equivalent, and without this the dialect
 // the whole rendering argument rests on — AMBER DASHED MEANS "an order is queued on this tile",
 // borrowed from the build ghosts — is unasserted: repainting the order ring rubble-grey survived the

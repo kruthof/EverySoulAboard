@@ -970,6 +970,11 @@ namespace Perilune.Web
         /// broadcasts to the test sink) without starting the sim thread.</summary>
         internal void RenderForTest() => Render(0.0, force: true);
 
+        /// <summary>Test-only hook: run one render WITHOUT the force flag, so <see cref="Send"/>'s
+        /// dedupe is live. The forced hook above cannot see a dedupe bug and cannot see a channel that
+        /// ignores <c>force</c>; a test that cares which of the two it is needs both.</summary>
+        internal void RenderUnforcedForTest() => Render(0.0, force: false);
+
         // Conversation-runtime test hooks: block until the in-flight turn lands, drain the chat
         // outbox to the broadcast sink (Render does this live), dispatch any queued say, and read
         // the llmstatus / chronicle payloads — all on the calling (test = sim) thread.
@@ -1556,10 +1561,14 @@ namespace Perilune.Web
         /// world per render (≤10 Hz, on the sim thread inside <see cref="Render"/>, NOT a tick path),
         /// and unlike <c>zones</c> and <c>materials</c> it is NOT empty on an untouched ship: the grid
         /// ship boots a wreck, so the payload has real volume from tick 0 and <see cref="Send"/> then
-        /// rebuilds and string-compares it every render for as long as the game runs. Measured
-        /// numbers are in the package report; the scratch list is reused so a steady state allocates
-        /// only the payload string, and the registry probe is short-circuited by <c>anyStrip</c> so a
-        /// ship with nothing condemned pays one bool per tile and no lookup at all.
+        /// rebuilds and string-compares it every render for as long as the game runs. MEASURED, on the
+        /// fully-revealed grid ship (the worst case for the walk): <b>+61 microseconds per render</b>
+        /// — 345.2 vs 284.0 µs over 4 000 renders — i.e. ~0.06 % of one core at 10 Hz. The scratch
+        /// list is reused so a steady state allocates only the payload string, and the registry probe
+        /// is short-circuited by <c>anyStrip</c> so a ship with nothing condemned pays one bool per
+        /// tile and no lookup at all. The PAYLOAD size is deliberately not quoted here: it is
+        /// fog-dependent and therefore a moving snapshot, not a constant (see
+        /// <c>MarksChannelTests.The_Boot_Payload_Census_Per_Ship_Is_Pinned</c>).
         /// </summary>
         private readonly List<WireFormat.MarkCell> _marksScratch = new List<WireFormat.MarkCell>();
         private List<WireFormat.MarkCell> BuildMarks()
@@ -1582,10 +1591,24 @@ namespace Perilune.Web
                         // into a fog-of-war change.
                         if ((flags & (byte)TileFlags.Explored) == 0) continue;
 
+                        // PRECEDENCE: dig ▸ strip ▸ stockpile ▸ debris. AN ORDER OUTRANKS A ZONE, AND
+                        // THAT IS THE WHOLE RULE. Ranking stockpile above strip — which is what pass 1
+                        // does, and what the first draft of this file copied — makes a CONDEMNED DEVICE
+                        // INSIDE A STOCKPILE ZONE draw no ✕ anywhere: the Room Zoom's mark layer skips
+                        // the stockpile kind on purpose (the `zones` channel owns that tile) and the
+                        // Overview draws a slate tint instead of the order. That is a live regression
+                        // of the exact bug that cost three owner reports, and it is reachable with two
+                        // ordinary clicks. See the retraction in WireFormat.Marks.cs's header.
+                        //
+                        // NOTE WHY COPYING PASS 1 WAS WRONG EVEN THOUGH PASS 1 IS RIGHT: pass 4 of
+                        // GlyphMapper RE-APPLIES GlyphColor.Deconstruct over a condemned device
+                        // unconditionally, AFTER pass 1's ranking, so pass 1's stockpile-over-strip
+                        // order never gets the last word on the tile that matters. The frame's real
+                        // behaviour is strip-over-stockpile; this now matches it.
                         int kind;
                         if ((flags & (byte)TileFlags.Designated) != 0) kind = WireFormat.MarkDig;
-                        else if ((flags & (byte)TileFlags.Stockpile) != 0) kind = WireFormat.MarkStockpile;
                         else if (anyStrip && strip.TryGet(new Int3(x, y, z), out _)) kind = WireFormat.MarkStrip;
+                        else if ((flags & (byte)TileFlags.Stockpile) != 0) kind = WireFormat.MarkStockpile;
                         else if (IsDebrisTile(level, i)) kind = WireFormat.MarkDebris;
                         else continue;
 
