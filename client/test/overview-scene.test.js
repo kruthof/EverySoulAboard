@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
+import { decode, decodeDecks, decodeRooms, MARK_KIND_NAMES } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
   overviewScene, makeTransform, starfield, DECK, layoutPawnLabels, LABEL_MAX_ROWS,
@@ -35,8 +35,34 @@ const frameDeck1 = FIX.frameDeck1;
 const crewDeck1 = FIX.rosterDeck1.crew;
 
 function baseState(over = {}) {
-  return { deck: 0, decksView: view, frame, crew, designs: FIX.designs.cells, ...over };
+  return { deck: 0, decksView: view, frame, crew, designs: FIX.designs.cells, marks: [], ...over };
 }
+
+/**
+ * ⚠️ THE FIXTURE ADAPTER — the same one `room-model.test.js` carries, and the same caveat.
+ * `overview-grid.json` predates the `marks` channel and carries no `marks` message, so this rebuilds
+ * a decoded-marks array from `frameDeck1`'s fg bytes in order to keep driving the mark layer from the
+ * wreck's REAL geometry (30 debris + 3 dig at real coordinates).
+ * IT IS NOT EVIDENCE ABOUT THE CHANNEL. It is derived from `cell[1]`, the lossy byte the channel
+ * replaces, so anything the projection erased is missing here too. The channel's own evidence is the
+ * live capture `client/test/fixtures/marks-grid.json`, driven in `client/test/marks-model.test.js`.
+ */
+const FG_TO_KIND = { 4: 0, 15: 1, 16: 2, 26: 3 };
+function marksFromFrame(f) {
+  const out = [];
+  if (!f || !Array.isArray(f.cells)) return out;
+  for (let ty = 0; ty < f.h; ty += 1) {
+    for (let tx = 0; tx < f.w; tx += 1) {
+      const cell = f.cells[ty * f.w + tx];
+      if (!Array.isArray(cell)) continue;
+      const kind = FG_TO_KIND[cell[1] | 0];
+      if (kind === undefined) continue;
+      out.push({ x: tx, y: ty, deck: f.deck | 0, kind, mark: MARK_KIND_NAMES[kind] });
+    }
+  }
+  return out;
+}
+const marksDeck1 = marksFromFrame(frameDeck1);
 
 /** The working state of a deck-1 fixture roster, read from the task STRINGS rather than from the
  *  classifier the code under test uses — so the fixture's own content is checked independently. */
@@ -231,7 +257,7 @@ test('WP-8: the fixture can actually DRIVE the work-marker acceptance (the anti-
 });
 
 test('WP-8: a WORKING pawn is tagged with its task; an idle one is NOT', () => {
-  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
   const labels = pawnLabels(svg);
   assert.equal(labels.size, crewDeck1.length, 'every on-deck crew member must carry a label');
 
@@ -428,7 +454,7 @@ test('WP-8: layoutPawnLabels is deterministic and machine-independent (no locale
 });
 
 test('WP-8: the work-marker scene is still byte-deterministic', () => {
-  const s = () => overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  const s = () => overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
   assert.equal(s(), s());
 });
 
@@ -586,7 +612,7 @@ test('WP-2: the fixture can actually DRIVE the designation acceptance (the anti-
 });
 
 test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one on the Overview', () => {
-  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
   const m = marks(svg);
   const debris = m.filter((k) => k.kind === 'debris');
   const dig = m.filter((k) => k.kind === 'dig');
@@ -629,7 +655,7 @@ test('WP-2: a DESIGNATED tile renders differently from an UNDESIGNATED one on th
 // THE PAWN HALF IS UNCHANGED AND STILL LOAD-BEARING — a crew member must never be hidden by a mark.
 // The two halves had one justification and now have two; splitting them is the point of this note.
 test('WP-2: marks are placed on their own tiles, OVER the furniture and under the pawns', () => {
-  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 }));
+  const svg = overviewScene(baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 }));
   assert.match(svg, /<g class="pl-marks" pointer-events="none">/);
   // Layer order: floors → furniture → marks → … → pawns.
   const iRooms = svg.indexOf('<g class="pl-rooms">');
@@ -644,13 +670,7 @@ test('WP-2: marks are placed on their own tiles, OVER the furniture and under th
 
   // Geometry: each mark lands inside the projected box of a cell that really carries its byte.
   const t = makeTransform(view.find((d) => d.deck === 1).slots, frameDeck1);
-  const boxes = [];
-  for (let ty = 0; ty < frameDeck1.h; ty++) {
-    for (let tx = 0; tx < frameDeck1.w; tx++) {
-      const c = frameDeck1.cells[ty * frameDeck1.w + tx];
-      if (Array.isArray(c) && (c[1] === 4 || c[1] === 15)) boxes.push(t.rect({ x: tx, y: ty, w: 1, h: 1 }));
-    }
-  }
+  const boxes = marksDeck1.map((mk) => t.rect({ x: mk.x, y: mk.y, w: 1, h: 1 }));
   assert.equal(boxes.length, 33);
   for (const k of marks(svg)) {
     // Points: every `M x y` / `L x y` in a path, plus every rect's own origin.
@@ -670,13 +690,17 @@ test('WP-2: a deck with no marked cell draws no mark layer at all', () => {
   const svg = overviewScene(baseState({ deck: 0 }));
   assert.equal((svg.match(/class="pl-marks"/g) || []).length, 0);
   assert.equal(marks(svg).length, 0);
-  // …and a frame for another deck is not borrowed
-  const svg7 = overviewScene(baseState({ deck: 7, frame: frameDeck1, crew: [] }));
+  // …and marks for another deck are not borrowed. NOTE the deck gate now lives on the MARKS, not on
+  // the frame: `marksDeck1` is handed in whole and every cell of it carries deck 1, so a scene drawn
+  // for deck 7 must draw none of them. (It used to be phrased as "a frame for another deck is not
+  // borrowed"; the frame no longer feeds this layer.)
+  const svg7 = overviewScene(baseState({ deck: 7, frame: frameDeck1, crew: [], marks: marksDeck1 }));
   assert.equal(marks(svg7).length, 0);
+  assert.equal(marksDeck1.length, 33, 'the adapter found no marks — the deck-gate leg above is vacuous');
 });
 
 test('WP-2: the mark layer keeps the scene deterministic and adds no ids', () => {
-  const st = () => baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1 });
+  const st = () => baseState({ deck: 1, frame: frameDeck1, crew: crewDeck1, marks: marksDeck1 });
   assert.equal(overviewScene(st()), overviewScene(st()));
   // No <defs>/gradient/pattern ⇒ no new id namespace to collide (the id-collision test above still
   // counts only ov-* ids). Measured rather than asserted by construction:

@@ -776,12 +776,15 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  Measured at the WP-7 merge (24: 23 via `Hud.*`, plus `LENSES` as a named import in controls.js).
  *  WP-3 (the `zones` channel) added `getZones` — 25. It is pure ship state in the same sense as
  *  `getMaterials`: one more sparse view-only wire cache, read by the Room Zoom's zone overlay, with no
- *  DOM of its own, so it moves to ship-state.js with the rest of the cache at WP-9. */
+ *  DOM of its own, so it moves to ship-state.js with the rest of the cache at WP-9.
+ *  The `marks` channel added `getMarks` — 26. Same shape again (a sparse view-only wire cache with no
+ *  DOM), and it is read by BOTH modern surfaces rather than one: it is where the debris/dig/stockpile/
+ *  strip layer comes from now that neither surface derives it from the frame's `cell[1]` byte. */
 const SHIP_STATE_REACH = Object.freeze([
   'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame', 'getLlm',
-  'getLog', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster', 'getStatus',
-  'getTab', 'getTerminals', 'getZones', 'isMossActive', 'onShipUpdate', 'openBioForSelected',
-  'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
+  'getLog', 'getMarks', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster',
+  'getStatus', 'getTab', 'getTerminals', 'getZones', 'isMossActive', 'onShipUpdate',
+  'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
 ]);
 
 /** ⚠️ THE DOM HATCHES. Exported by hud.js, and reachable by nobody outside it. `setChip(id, value)`

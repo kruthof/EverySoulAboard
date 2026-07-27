@@ -1,21 +1,22 @@
-// THE DEBRIS / DESIGNATION MARK VOCABULARY, PURE (console-retirement WP-2). One fg-byte table and
-// one rect-parameterised SVG cell builder, shared verbatim by BOTH modern surfaces — the Level-1
-// Overview (`overview-scene.js`) and the Level-2 Room Zoom (`room-model.js` → `roomzoom-view.js`).
+// THE DEBRIS / DESIGNATION MARK VOCABULARY, PURE (console-retirement WP-2). One rect-parameterised
+// SVG cell builder, shared verbatim by BOTH modern surfaces — the Level-1 Overview
+// (`overview-scene.js`) and the Level-2 Room Zoom (`room-model.js` → `roomzoom-view.js`).
 // No DOM, no wire, no state, no clock, no randomness: same arguments → byte-identical string.
 //
-// WHAT THIS FIXES. `GlyphMapper.Project` recolours the terrain a player designation sits on
-// (`sim/Sim.Glyph/GlyphMapper.cs:83-86` — the flags read plus all three writes. NOTE the
-// console-retirement plan §4.1 ii cites `:82-85`, which is off by one and, worse, ENDS BEFORE the
-// Deconstruct line the same sentence names; this file's range is the measured one):
-// `TileFlags.Designated` → `GlyphColor.Designate` (15),
+// ⚠️ THE fg-BYTE TABLE THAT USED TO LIVE HERE IS RETIRED (the `marks` channel). What this module
+// owns now is the SHAPE of a mark; where a mark COMES FROM is the wire's business. The retirement is
+// quoted and negated at the bottom of this header rather than deleted, because the paragraph it
+// replaces is the specific prose the channel falsifies.
+//
+// WHAT WP-2 FIXED, AND IT STILL STANDS. `GlyphMapper.Project` recolours the terrain a player
+// designation sits on: `TileFlags.Designated` → `GlyphColor.Designate` (15),
 // `TileFlags.Stockpile` → `Stockpile` (16), the deconstruct registry → `Deconstruct` (26); plain
-// rubble stays `Debris` (4). Those bytes ride every frame as `cell[1]`
-// (`client/src/wire/messages.js`) and BOTH SVG surfaces threw them away, reading only `cell[0]`.
-// Worse, the glyph they ride on — `'%'`, code 37 — is in each surface's `NON_FURNITURE` set, so
-// debris and dig designations rendered as *nothing at all*. Measured on the real capture
-// `client/test/fixtures/overview-grid.json` frame `frameDeck1`: 30 cells carry fg 4 and 3 carry
-// fg 15, and ALL 33 share glyph code 37. **The fg byte is the only thing that tells a designated
-// tile from an undesignated one**, which is why this module keys on it and never on the glyph.
+// rubble stays `Debris` (4). Those bytes ride every frame as `cell[1]` and BOTH SVG surfaces threw
+// them away, reading only `cell[0]`. Worse, the glyph they ride on — `'%'`, code 37 — is in each
+// surface's `NON_FURNITURE` set, so debris and dig designations rendered as *nothing at all*.
+// Measured on the real capture `client/test/fixtures/overview-grid.json` frame `frameDeck1`: 30
+// cells carry fg 4 and 3 carry fg 15, and ALL 33 share glyph code 37. WP-2 made them visible; the
+// `marks` channel changed where the truth is read from, not what it looks like.
 //
 // WHY A THIRD MODULE, when the plan's WP-2 file set named only `room-model.js` +
 // `overview-scene.js`. The binding constraint on WP-2 is *"the same fg byte must not mean two
@@ -29,7 +30,10 @@
 // surfaces and imports nothing — in particular it does NOT import `U` from `room-model.js`, which
 // would make the pair cyclic; the caller passes the tile box it wants filled.
 //
-// THE FOUR MARKS, and the two-colour language they speak.
+// THE FOUR MARKS, and the two-colour language they speak. (The wire kinds are 0..3 in that order —
+// `MARK_KIND_NAMES` in `client/src/wire/messages.js`, mirroring `hosts/web/WireFormat.Marks.cs`. The
+// fg bytes in brackets are the PROJECTION's colours for the same four facts; they still ride every
+// frame and no longer feed this module.)
 //   debris     (fg 4)   warm rubble chunks           — a thing in the world. NO order on it.
 //   dig        (fg 15)  rubble chunks + AMBER ring   — the same rubble, with an order queued.
 //   stockpile  (fg 16)  slate tint + dotted boundary — a zone, not an order (different family).
@@ -39,47 +43,40 @@
 // WP-3's zone colour (`zone-overlay.js` ZONE_FILL/ZONE_EDGE), reused byte-for-byte so a stockpile
 // tile reads the same on both surfaces even though the Room Zoom draws it from a richer source.
 //
-// HONEST LIMIT OF READING `cell[1]`, and it is worth knowing before trusting a mark's absence.
-// `GlyphMapper` writes the designation colour in pass 1 and then passes 3/4/5 OVERWRITE the cell's
-// fg for ground item stacks, grid-resident devices and living citizens. So: a crew member standing
-// on a designated tile hides its mark; a stored item on a stockpile tile hides that tile's zone
-// tint; and a device standing on a DIG or STOCKPILE tile hides that tile's mark too — EVERY device
-// kind is non-blocking (`MachineDefs`, `blocks = false` in all 26 rows), so a device tile is
-// walkable and `DesignateStockpileCommand` will happily zone it. The marks are therefore an honest
-// view of the frame, not a complete census of the designation registries. The `zones` channel
-// (WP-3) is the complete source for stockpiles.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// ⚠️ THE RETIREMENT OF `MARK_FOR_FG` / `markForFg`. Everything below this line is the prose the
+// `marks` channel falsified, KEPT VERBATIM AND NEGATED so a grep for any of it lands on the fix
+// instead of on a table that no longer exists. Read it as history, not as guidance.
 //
-// ⚠️ PASS 4 NOW HAS EXACTLY ONE EXCEPTION, and the correction matters because this comment was the
-// place the defect sat recorded-and-unfixed. It used to read: *"a strip mark on a DEVICE never
-// reaches the wire at all, because pass 4 repaints the device's own colour over it"*. THAT IS NO
-// LONGER TRUE OF THE STRIP MARK — and note the exception is narrow: pass 4 still overwrites a dig
-// or stockpile designation on a device tile (above), because only the DECONSTRUCT case was fixed. `GlyphMapper` pass 4 now re-applies `GlyphColor.Deconstruct` over a condemned
-// device's own colour while keeping its glyph, so a condemned desk/bed/locker/lamp/plant ships fg 26
-// and draws the `strip` mark below exactly as a condemned wall always did. The owner reported the
-// invisible device strip THREE times before it was fixed (`docs/HANDOVER.md` §4g), and every one of
-// those reports was against a codebase where this paragraph already described the cause — which is
-// why it is corrected here in place rather than quietly deleted. Both surfaces draw the mark layer
-// ABOVE their furniture layer so the recovered byte is not then hidden by the desk's own sprite.
+//   *"HONEST LIMIT OF READING `cell[1]`, and it is worth knowing before trusting a mark's absence.
+//   `GlyphMapper` writes the designation colour in pass 1 and then passes 3/4/5 OVERWRITE the cell's
+//   fg for ground item stacks, grid-resident devices and living citizens. So: a crew member standing
+//   on a designated tile hides its mark; a stored item on a stockpile tile hides that tile's zone
+//   tint; and a device standing on a DIG or STOCKPILE tile hides that tile's mark too — EVERY device
+//   kind is non-blocking (`MachineDefs`, `blocks = false` in all 26 rows), so a device tile is
+//   walkable and `DesignateStockpileCommand` will happily zone it. The marks are therefore an honest
+//   view of the frame, not a complete census of the designation registries. The `zones` channel
+//   (WP-3) is the complete source for stockpiles."*
+//
+//   *"⚠️ PASS 4 NOW HAS EXACTLY ONE EXCEPTION … pass 4 still overwrites a dig or stockpile
+//   designation on a device tile, because only the DECONSTRUCT case was fixed."*
+//
+// NONE OF THAT LIMITS THIS MODULE ANY MORE, because nothing here reads `cell[1]`. The four kinds
+// arrive on the `marks` wire channel, read host-side from `TileFlags.Designated`,
+// `TileFlags.Stockpile`, the `DeconstructSystem` registry and the terrain planes — sources no
+// projection pass can overwrite. Concretely, on `--ship grid`: a crew member crossing a condemned
+// tile no longer blinks its ✕ out and back; an item stored on a stockpile tile no longer erases the
+// tint (the normal state of a WORKING stockpile); and a device on a dig or stockpile tile no longer
+// hides the mark. `hosts/web/WireFormat.Marks.cs` is the channel; `MARK_KIND_NAMES` in
+// `client/src/wire/messages.js` is the kind→name table that replaced `MARK_FOR_FG`.
+//
+// WHAT IS STILL TRUE from that paragraph, and worth keeping: `GlyphMapper` really does overwrite the
+// fg byte in passes 3/4/5, and pass 4's narrow strip re-apply really is still there. So `cell[1]`
+// remains a LOSSY mark source and no future surface should go back to it — which is exactly why the
+// table was removed rather than left exported for "one more caller".
+// ══════════════════════════════════════════════════════════════════════════════════════════════
 
 /* eslint-disable no-multi-spaces */
-
-/**
- * Projected `GlyphColor` foreground byte → mark kind. THE table; both surfaces import it rather
- * than mirroring it. Indices are the enum's own, which are append-only and therefore stable
- * (`sim/Sim.Glyph/GlyphColor.cs`): Debris 4, Designate 15, Stockpile 16, Deconstruct 26.
- * Every other byte is terrain/crew/device colour and means "no mark".
- */
-export const MARK_FOR_FG = Object.freeze({
-  4: 'debris',      // GlyphColor.Debris     — rubble, no order
-  15: 'dig',        // GlyphColor.Designate  — TileFlags.Designated
-  16: 'stockpile',  // GlyphColor.Stockpile  — TileFlags.Stockpile
-  26: 'strip',      // GlyphColor.Deconstruct — E0-5 condemned wall / device
-});
-
-/** The mark kind a projected fg byte carries, or '' when it carries none. PURE. */
-export function markForFg(fg) {
-  return MARK_FOR_FG[fg | 0] || '';
-}
 
 /**
  * Which of the three rubble arrangements a tile uses, from the tile's OWN coordinates. Deliberately

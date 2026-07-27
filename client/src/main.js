@@ -245,6 +245,11 @@ function onMessage(m) {
     // Stockpile zones (console-retirement WP-3): per-tile accept mask + the haul back-off bit. Cached
     // in the shared state layer; drawn by the Room Zoom's zone overlay.
     case 'zones': Hud.renderZones(m); break;
+    // The mark layer (debris / dig / stockpile / strip), read from the sim's own registries rather
+    // than off the projected `cell[1]` byte, which GlyphMapper passes 3/4/5 overwrite. Cached in the
+    // shared state layer; drawn by BOTH the Overview and the Room Zoom. HANDOVER §4g calls this "the
+    // `designations` channel" — it is `marks` because debris is terrain, not an order.
+    case 'marks': Hud.renderMarks(m); break;
     default: break;
   }
 }

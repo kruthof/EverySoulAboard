@@ -264,7 +264,81 @@ export function decodeZones(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg} WireMsg */
+/**
+ * The sparse MARK layer — debris, dig orders, stockpile zones and strip orders, one entry per marked
+ * tile, in the host's canonical z,y,x order (never re-sorted client-side).
+ * MarkTuple = [x, y, deck, kind]. Append-only.
+ *
+ * ⚠️ THIS IS THE CHANNEL `docs/HANDOVER.md` §4g/§4i/§4j CALL "the `designations` channel". It is
+ * named `marks` because DEBRIS IS TERRAIN, not an order — "designations" would be a lie for a
+ * quarter of the payload — and it carries all four kinds because splitting debris off would leave
+ * the mark layer with two sources forever, which is the defect this channel removes.
+ * `hosts/web/WireFormat.Marks.cs` carries the full argument.
+ *
+ * WHY IT EXISTS. Both SVG surfaces used to derive their mark layer from the projected `cell[1]`
+ * foreground byte, and `GlyphMapper` writes that byte in pass 1 and then OVERWRITES it in pass 3
+ * (ground items), pass 4 (devices) and pass 5 (citizens). So on `--ship grid`: a crew member
+ * crossing a condemned tile made its ✕ blink out and back; an item stored on a stockpile tile
+ * erased the tint — the normal state of a WORKING stockpile; and a device on a dig or stockpile
+ * tile hid the mark. This channel is read from the sim's own registries and no projection pass can
+ * reach it.
+ *
+ * EXACTLY ONE kind per tile: the host resolves precedence (dig ▸ stockpile ▸ strip ▸ debris,
+ * `GlyphMapper` pass 1's own order), so a tile never appears twice and no surface arbitrates.
+ * FOG-GATED host-side (unlike `zones`) — debris is terrain, and an unexplored tile emits nothing.
+ * Snapshot-cached, so a reconnect replays the layer.
+ * @typedef {[number,number,number,number]} MarkTuple
+ * @typedef {{type:'marks', cells:MarkTuple[]}} MarksMsg
+ */
+
+/** Mark kinds, mirroring `WireFormat.MarkDebris`/`MarkDig`/`MarkStockpile`/`MarkStrip` in
+ *  hosts/web/WireFormat.Marks.cs. Pinned equal to the host by client/test/marks-model.test.js,
+ *  which parses that file — there is no compiler across this seam. */
+export const MARK_KIND_DEBRIS = 0;
+export const MARK_KIND_DIG = 1;
+export const MARK_KIND_STOCKPILE = 2;
+export const MARK_KIND_STRIP = 3;
+
+/** Wire kind → the mark-vocabulary name `mark-overlay.js` draws. Index IS the wire value, so this
+ *  array is APPEND-ONLY exactly as the C# constants are. */
+export const MARK_KIND_NAMES = Object.freeze(['debris', 'dig', 'stockpile', 'strip']);
+
+/** The vocabulary name for a wire kind, or '' when this client has never heard of it. PURE. */
+export function markKindName(kind) {
+  return MARK_KIND_NAMES[kind | 0] || '';
+}
+
+/**
+ * Decode the sparse `marks` channel. Mirrors WireFormat.Marks:
+ * {type:'marks',cells:[[x,y,deck,kind],..]}. Tolerant: a malformed message → null, a malformed row
+ * is dropped, never throws (the receive-path contract at the top of this file). ORDER IS PRESERVED —
+ * the host emits z,y,x and that order is the wire contract; a client sort would be a second,
+ * silently divergent authority.
+ *
+ * A ROW WHOSE KIND THIS CLIENT DOES NOT KNOW IS DROPPED, and that is a decision worth stating
+ * because the alternative looks kinder and is not. The kind enum is append-only, so an unknown kind
+ * means a NEWER host: this client cannot draw it and cannot reason about it. Keeping the row with an
+ * empty name would put a cell into `roomMarkTiles`' census that every downstream `mark === 'dig'`
+ * test silently answers "no" to — a lie wearing the shape of data. Dropping it means such a tile is
+ * simply absent, which is what "we do not know about this" honestly looks like. Nothing in the tree
+ * emits a kind above 3 today; this is the contract for the day something does.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{x:number,y:number,deck:number,kind:number,mark:string}[]|null}
+ */
+export function decodeMarks(msg) {
+  if (!msg || msg.type !== 'marks' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 4) continue;
+    const kind = t[3] | 0;
+    const mark = markKindName(kind);
+    if (!mark) continue; // a kind from a newer host — see above
+    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind, mark });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
