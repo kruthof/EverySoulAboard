@@ -228,6 +228,26 @@ namespace Perilune.Tools
             // first N legal interior walls for deconstruct at t=0 via the same command the client
             // issues, so the h29+ flatline has something to lift. --strip 0 (the default) touches
             // nothing and keeps the CI-pinned verb-less path byte-identical. See StripHarness.
+            // OPT-IN E0-7 measurement lever (--makeup <liters>, default: leave the shipped value
+            // alone). B-2's greywater makeup floor is the STAND-IN the ice chain replaces, and
+            // WaterSystem now suppresses it on any ship that owns a melter — so on a melter ship
+            // this flag changes nothing and on every other ship it is how you ask "what did B-2
+            // actually buy?". Host-side and opt-in: with no flag the defs are untouched, so the
+            // CI-pinned verb-less path stays byte-identical. NOTE it mutates the PARSED defs graph
+            // after the checksum was printed, so a run with this flag reports a `defs:` line that no
+            // longer describes it — deliberately, so the number stays comparable to every other run.
+            string makeupArg = ArgString(args, "--makeup", null);
+            if (makeupArg != null)
+            {
+                float makeup = float.Parse(makeupArg, System.Globalization.NumberStyles.Float,
+                                           System.Globalization.CultureInfo.InvariantCulture);
+                float wasMakeup = defs.Water.MakeupFloorLiters;
+                defs.Water.MakeupFloorLiters = makeup;
+                Console.WriteLine($"--makeup {makeup:0.###}: greywater makeup floor overridden " +
+                                  $"(shipped {wasMakeup:0.###} L; 0 = the B-2 stand-in is OFF)");
+                Console.WriteLine();
+            }
+
             int stripN = ArgInt(args, "--strip", 0);
             int stripped = 0;
             if (stripN > 0)
@@ -490,6 +510,54 @@ namespace Perilune.Tools
             // ci.sh pins that report's text, and no determinism pin is affected (host printing only).
             string headroom = StockpileHarness.MatterHeadroomWarning(stripN);
             if (headroom != null) Console.WriteLine(headroom);
+
+            // E0-7 — THE WATER LEDGER. Unconditional, because "the crew are busy" was never the
+            // question the water loop asks: the slice's food production died on day 1.2 with the
+            // HUD still reading full (ECONOMY.md §1.4), and no occupancy number would ever have
+            // said so. Every figure here is read off live state at the end of the run.
+            float tankLiters = 0f, tankCapacity = 0f, melterBuffered = 0f;
+            int tanks = 0, dryTanks = 0, melters = 0, growBeds = 0, dryBeds = 0;
+            foreach (var d in sim.Devices.Items)
+            {
+                if (d.Kind == DeviceKind.WaterTank)
+                {
+                    tanks++;
+                    tankLiters += d.StoredLiters;
+                    tankCapacity += sim.Defs.Water.TankCapacityLiters;
+                    // "Dry" is the SIM'S OWN test, the one SustenanceSystem gates drinking on —
+                    // not a round number, and not `<= 0`, which would call a 0.02 L tank full.
+                    if (d.StoredLiters < sim.Defs.Sustenance.DrinkLiters) dryTanks++;
+                }
+                else if (d.Kind == DeviceKind.IceMelter) { melters++; melterBuffered += d.StoredLiters; }
+                else if (d.Kind == DeviceKind.GrowBed)
+                {
+                    growBeds++;
+                    // A bed with no progress at all after a multi-day run is a STALLED bed: the
+                    // all-or-nothing irrigation draw failed and it has been frozen mid-crop.
+                    if (d.Progress <= 0f) dryBeds++;
+                }
+            }
+            stock.TryGetValue(ItemKind.Ice, out int iceLeft);
+            Console.WriteLine();
+            Console.WriteLine("end-of-run WATER (E0-7 — the loop occupancy cannot see):");
+            Console.WriteLine($"  tanks                  {tankLiters,8:0.0} / {tankCapacity:0.0} L across {tanks} tank(s), " +
+                              $"{dryTanks} below one drink");
+            Console.WriteLine($"  greywater pool         {sim.WastewaterLiters,8:0.0} L");
+            Console.WriteLine($"  grow beds              {growBeds - dryBeds,8} of {growBeds} still turning " +
+                              "(a bed at 0 progress after days is STALLED, not merely between crops)");
+            if (melters > 0)
+            {
+                Console.WriteLine($"  ice melters            {melters,8}   (B-2 makeup floor SUPPRESSED — this ship " +
+                                  "lives on what its crew haul and melt)");
+                Console.WriteLine($"  hold ice left          {iceLeft,8} unit(s)  ⇒ {iceLeft * sim.Defs.Water.IceLitersPerUnit:0} L still in the hold");
+                Console.WriteLine($"  buffered in melters    {melterBuffered,8:0.0} L   (a buffer stuck at capacity = the " +
+                                  "network is full, absent, unpowered or broken)");
+            }
+            else
+            {
+                Console.WriteLine($"  ice melters            {melters,8}   (no ice chain ⇒ the B-2 makeup floor is " +
+                                  $"ACTIVE at {sim.Defs.Water.MakeupFloorLiters:0.###} L — water is being conjured)");
+            }
 
             int alive = 0;
             foreach (var c in sim.Citizens.Items) if (!c.Dead) alive++;
