@@ -1,4 +1,5 @@
-// THE GUARD: every DeviceKind the sim can project resolves to a real item with a real builder.
+// THE GUARD: every glyph the sim can project is either skinned by a real item with a real builder,
+// or named in a ledger that only ever shrinks.
 //
 // WHY IT EXISTS (HANDOVER §4l). Garvin, from a screenshot of the running game: dashed boxes with raw
 // ASCII letters where furniture should be — `roomzoom-view.js`'s VS-Z-25 "unknown glyph" chip, a
@@ -8,9 +9,24 @@
 // text, honestly reporting that it had no art. Nothing threw, nothing was red; it read as wrong only
 // when a person looked at the screen.
 //
-// So the fix is not three sprites, it is this file. It enumerates `Glyphs.ForDevice` MECHANICALLY
-// out of the C# source, and for every kind it drives the real builders and the real composers. The
-// next `DeviceKind` added without art fails here instead of shipping a placeholder.
+// ⚠️ THE CLAIM THIS FILE SHIPPED WITH WAS FALSE, AND IT IS QUOTED HERE RATHER THAN DELETED. It read:
+// *"So the fix is not three sprites, it is this file… The next `DeviceKind` added without art fails
+// here instead of shipping a placeholder"*, and the package's commit message said deriving the table
+// **"removes the class of bug, not just the three instances"**. **IT DOES NOT.** Independent review
+// photographed `--ship grid` deck 0, room STORAGE, *after* this package: **seven dashed unknown chips
+// carrying raw ASCII — `,` six times and `f` once.** The owner's exact reported symptom, on the
+// owner's ship, on the standard surface, one room away from the three that were fixed.
+//
+// They are GROUND ITEMS, not devices: `Glyphs.ForItem` (`Regolith ','`, `Potato 'f'`, and four more)
+// lands in the *same* `roomCells` → `furnitureSvg` else-branch, and `NON_FURNITURE` filters only
+// `'&'` of the seven. A guard that enumerated `ForDevice` alone could not see them **structurally**.
+//
+// So this file now enumerates **BOTH** switches. `ForDevice` is CLOSED — every kind resolves to art
+// or is in `NO_FURNITURE_SPRITE`. `ForItem` is **OPEN AND MEASURED**: no ground item has art, all
+// seven are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
+// equality. That ledger is the gap made mechanical instead of prose — a *new* `ItemKind` cannot join
+// it silently, and the number can only be paid down. **Ground-item art is chartered separately and
+// is deliberately NOT in this package.**
 //
 // ⚠️ IT IS DRIVEN, NOT SCANNED, wherever it can be. `assert(TABLE has key)` is the weak form of this
 // guard — it passes for an entry pointing at a builder that does not exist. Every coverage assertion
@@ -60,14 +76,33 @@ function blockAfter(src, needle) {
   return '';
 }
 
-/** `enum DeviceKind : byte { Door = 0, … }` → ['Door', 'AirVent', …] in declaration order. */
-export function parseDeviceKinds(csSrc) {
-  const body = blockAfter(codeOnly(csSrc), 'enum DeviceKind');
+/**
+ * `enum <Name> : byte { Door = 0, … }` → ['Door', 'AirVent', …] in declaration order.
+ *
+ * ⚠️ THE FIRST VERSION OF THIS FUNCTION HAD A SURVIVOR, and it is quoted because the hole was in the
+ * exact case the guard exists for. It matched `/(\w+)\s*=\s*(\d+)\s*,/g` — a member was only seen if
+ * it had **both** an explicit `= <digits>` **and** a trailing comma. Measured by independent review,
+ * both with the whole suite green: a new `DeviceKind` added as `Ghost = 26` (no trailing comma — it
+ * is the last member, so this is the *natural* way to add one) **survived**, and `Ghost,` (implicit
+ * value, idiomatic C#) **survived**. Both had a `ForDevice` arm and no art. The same addition written
+ * `Ghost = 26,` reddened four tests, which is what proved it a parser hole rather than a dead guard.
+ *
+ * Now: the value clause is OPTIONAL and not restricted to digits, and a member may be terminated by
+ * a comma **or by the end of the enum body** (`blockAfter` returns the body without its closing
+ * brace, so end-of-string *is* the closing brace).
+ */
+export function parseEnumMembers(csSrc, enumName) {
+  const body = blockAfter(codeOnly(csSrc), 'enum ' + enumName);
   const out = [];
-  const re = /(\w+)\s*=\s*(\d+)\s*,/g;
+  const re = /(\w+)\s*(?:=\s*[^,\n}]+?)?\s*(?:,|$)/g;
   for (let m = re.exec(body); m; m = re.exec(body)) out.push(m[1]);
   return out;
 }
+
+/** `enum DeviceKind : byte { … }` → its member names. */
+export const parseDeviceKinds = (csSrc) => parseEnumMembers(csSrc, 'DeviceKind');
+/** `enum ItemKind : byte { … }` → its member names. */
+export const parseItemKinds = (csSrc) => parseEnumMembers(csSrc, 'ItemKind');
 
 /** `public const char Foo = 'x';` → { Foo: 'x' }. */
 function parseCharConsts(code) {
@@ -78,17 +113,17 @@ function parseCharConsts(code) {
 }
 
 /**
- * `Glyphs.ForDevice` → { DeviceKindName: glyphChar }. Arms are either a char literal
+ * A `Glyphs.For*` switch expression → { EnumMemberName: glyphChar }. Arms are either a char literal
  * (`DeviceKind.AirVent => '^',`) or a named `const char` (`DeviceKind.Door => DoorClosed,`), and the
- * named form is RESOLVED — three of the twenty-six arms use it, so a parser that skipped it would
- * silently under-report Door, Conduit and Pipe: the exact three kinds the allowlist below excuses.
+ * named form is RESOLVED — three of the twenty-six `ForDevice` arms use it, so a parser that skipped
+ * it would silently under-report Door, Conduit and Pipe: the exact three the allowlist excuses.
  */
-export function parseForDevice(csSrc) {
+function parseGlyphSwitch(csSrc, header, enumName) {
   const code = codeOnly(csSrc);
   const consts = parseCharConsts(code);
-  const body = blockAfter(code, 'ForDevice(DeviceKind kind) => kind switch');
+  const body = blockAfter(code, header);
   const out = Object.create(null);
-  const re = /DeviceKind\.(\w+)\s*=>\s*(?:'((?:\\.|[^'])+)'|(\w+))\s*,/g;
+  const re = new RegExp(enumName + '\\.(\\w+)\\s*=>\\s*(?:\'((?:\\\\.|[^\'])+)\'|(\\w+))\\s*(?:,|$)', 'g');
   for (let m = re.exec(body); m; m = re.exec(body)) {
     const lit = m[2];
     const named = m[3];
@@ -99,10 +134,20 @@ export function parseForDevice(csSrc) {
   return out;
 }
 
+/** `Glyphs.ForDevice` → { DeviceKindName: glyphChar }. */
+export const parseForDevice = (csSrc) =>
+  parseGlyphSwitch(csSrc, 'ForDevice(DeviceKind kind) => kind switch', 'DeviceKind');
+/** `Glyphs.ForItem` → { ItemKindName: glyphChar } — the GROUND-ITEM half (the §4l-adjacent gap). */
+export const parseForItem = (csSrc) =>
+  parseGlyphSwitch(csSrc, 'ForItem(ItemKind kind) => kind switch', 'ItemKind');
+
 const DEVICE_CS = read('sim/Sim.Core/Entities/Device.cs');
+const ITEM_CS = read('sim/Sim.Core/Entities/ItemStack.cs');
 const GLYPHS_CS = read('sim/Sim.Glyph/Glyphs.cs');
 const DEVICE_KINDS = parseDeviceKinds(DEVICE_CS);
+const ITEM_KINDS = parseItemKinds(ITEM_CS);
 const FOR_DEVICE = parseForDevice(GLYPHS_CS);
+const FOR_ITEM = parseForItem(GLYPHS_CS);
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 2. THE ALLOWLIST — kinds with NO furniture sprite, and why. IT ONLY EVER SHRINKS.
@@ -120,11 +165,24 @@ const FOR_DEVICE = parseForDevice(GLYPHS_CS);
  * quietly; removing an entry means that kind grew a real piece.
  */
 const NO_FURNITURE_SPRITE = Object.freeze({
-  // Doors ride glyphs '+' / '/' / 'X' and are drawn by the Room Zoom's STRUCTURE layer and the
-  // Overview's wall layer, from the frame's own wall/door codes. `ITEMS` does carry door pieces
-  // (`blast-door`, `sliding-door`, `airlock`) and they stay at `glyph: null` on purpose: routing a
-  // door through the furniture layer would draw it TWICE, once per layer.
-  Door: 'drawn by the structure/wall layer, not the furniture layer',
+  // Doors ride glyphs '+' (closed) / '/' (open) / 'X' (locked) and are drawn by the Room Zoom's
+  // STRUCTURE layer and the Overview's wall layer, from the frame's own wall/door codes. `ITEMS`
+  // does carry door pieces (`blast-door`, `sliding-door`, `airlock`) and they stay at `glyph: null`
+  // on purpose: routing a door through the furniture layer would draw it TWICE, once per layer.
+  //
+  // ⚠️ THE JUSTIFICATION ABOVE IS INCOMPLETE, and the shortfall is LATENT rather than live (found in
+  // review). It holds fully on the Overview. On the Room Zoom the structure layer is fed by
+  // `STRUCTURE_CODES` while the furniture layer is filtered by `NON_FURNITURE`, and those two sets
+  // DISAGREE: `NON_FURNITURE` contains `'/'` (47) but **not `'+'` (43) and not `'X'` (88)**. So a
+  // CLOSED or LOCKED door standing inside a room rect would reach `roomCells`, resolve to no item,
+  // and draw the VS-Z-25 chip — the §4l symptom, from the one kind this list excuses. Measured on
+  // `--ship grid` deck 0: **zero such tiles today** (the ship's doors sit on room boundaries, which
+  // are outside every room rect), which is why it is latent and not a live bug. The real fix is to
+  // make those two sets agree in `room-model.js`; deliberately out of scope here, and recorded so
+  // that "Door is allowlisted" is not read as "Door is safe on both surfaces".
+  Door: 'drawn by the structure/wall layer, not the furniture layer (Room Zoom: latent gap — '
+    + "NON_FURNITURE omits '+' 43 and 'X' 88, so a closed/locked door inside a room rect would chip; "
+    + '0 such tiles on --ship grid deck 0 today)',
   // Conduit and Pipe share the glyph '~' — an intentional, documented collision in Glyphs.cs (they
   // are the same service-tray line). They are UTILITY-LENS OVERLAYS, drawn only under a lens, never
   // as an object on a tile; `power-conduit` / `pipe-run` therefore stay at `glyph: null` too. A
@@ -133,21 +191,96 @@ const NO_FURNITURE_SPRITE = Object.freeze({
   Pipe: 'utility-lens overlay line, shares glyph ~ with Conduit',
 });
 
-const COVERED = DEVICE_KINDS.filter((k) => !(k in NO_FURNITURE_SPRITE));
+/**
+ * `ItemKind`s with NO ground-item sprite — THE OPEN GAP, made mechanical.
+ *
+ * ⚠️ THIS LEDGER IS NOT LIKE `NO_FURNITURE_SPRITE`. Every entry there is "another layer draws this".
+ * Every entry HERE is **"the player sees a dashed box with a raw letter in it"**, six times out of
+ * seven, right now, on `--ship grid`. It is written down because independent review photographed
+ * room STORAGE on deck 0 after this package landed and counted **seven chips: `,` ×6 and `f` ×1**.
+ * Ground-item art is chartered separately and is deliberately not in this package; what this ledger
+ * buys is that the gap is COUNTED rather than described, and that a NEW `ItemKind` cannot join it
+ * silently — it would have to be added here, by name, in a commit.
+ *
+ * `chips: true` means the tile draws the VS-Z-25 unknown chip in the Room Zoom today (and nothing at
+ * all on the Overview, which `continue`s instead). The count of `chips: true` entries is pinned by
+ * equality below, so this ledger only ever pays DOWN.
+ */
+const NO_GROUND_ITEM_SPRITE = Object.freeze({
+  // The six that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
+  // set has no ground-pile, ore, crop, scrap, part or module piece to skin any of them with, and the
+  // three generic containers it does have (`storage-crate`, `supply-barrel`, `fuel-drum`) are
+  // COSMETIC decor pieces, not stack art — standing one in would say "a crate is here", which is a
+  // different and wrong claim about the tile.
+  Regolith: { glyph: ',', chips: true, why: 'loose spoil; no ground-pile piece in the warm set' },
+  MetalOre: { glyph: 'o', chips: true, why: 'ore stack; no ore piece in the warm set' },
+  Potato: { glyph: 'f', chips: true, why: 'raw food stack; no crop piece in the warm set' },
+  Scrap: { glyph: 's', chips: true, why: 'salvage stack; no scrap piece in the warm set' },
+  Parts: { glyph: 'p', chips: true, why: 'parts stack; no parts piece in the warm set' },
+  ControllerModule: { glyph: 'c', chips: true, why: 'module stack; no module piece in the warm set' },
+  // The one that does NOT chip, and it is the reason this ledger records `chips` per entry instead
+  // of just listing names: `'&'` (38) is in `NON_FURNITURE` on BOTH surfaces, so a corpse reaches
+  // neither furniture layer. It draws nothing at all here. (The frozen canvas skin has a real
+  // `corpse` sprite role; the SVG surfaces never grew one.)
+  Corpse: { glyph: '&', chips: false, why: "'&' is in NON_FURNITURE on both SVG surfaces — draws nothing" },
+});
+
+/**
+ * The DeviceKinds this file holds to the art standard. Kinds in the allowlist are excused; kinds
+ * whose `ForDevice` arm did not RESOLVE are excluded too, and that exclusion is deliberate — see the
+ * test immediately below, which is what fails for them.
+ *
+ * ⚠️ WHY THE SECOND FILTER EXISTS (found in review, `CLAUDE.md` trap 4). Without it, a kind with no
+ * arm left `FOR_DEVICE[k] === undefined` and three driven tests died on
+ * `TypeError: Cannot read properties of undefined (reading 'charCodeAt')`. The named guard still
+ * fired, so the guard bit — but three of the failures were CRASHES wearing the costume of semantic
+ * REDs, which is precisely the failure mode a harness must not produce. A missing arm is now
+ * reported by exactly one test, by name, and every driven test below stays a semantic assertion.
+ */
+const COVERED = DEVICE_KINDS.filter(
+  (k) => !(k in NO_FURNITURE_SPRITE) && typeof FOR_DEVICE[k] === 'string' && FOR_DEVICE[k].length === 1,
+);
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 3. NON-VACUITY. Every assertion below is over a parsed set; a parser that silently returned
 //    nothing would make the whole file pass while proving nothing. This runs first and by name.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
+// ⚠️ THESE THREE COUNTS ARE PINNED BY EQUALITY, NOT BY A `>=` FLOOR, and the change is the whole
+// point of the fix. They shipped as `>= 26` / `>= 26` / `>= 23`, and a floor is satisfied by a
+// CORRELATED parse failure: grow the enum to 27 and drop one kind *and* its arm together, and every
+// floor still holds while the guard silently stops covering something. Independent review measured
+// exactly that surviving. Both ledgers in this same file were already pinned by equality; the parse
+// counts were not, and the inconsistency was the tell.
+//
+// A sim that legitimately adds a DeviceKind now fails here FIRST, with instructions. That is
+// intended: adding a kind is the moment to decide whether it has art.
+const EXPECT_DEVICE_KINDS = 26;
+const EXPECT_FOR_DEVICE_ARMS = 26;
+const EXPECT_COVERED = 23;    // 26 kinds − 3 allowlisted (Door, Conduit, Pipe)
+const EXPECT_ITEM_KINDS = 7;
+const EXPECT_FOR_ITEM_ARMS = 7;
+
+const COUNT_MOVED = (what, n, expected) =>
+  `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
+  'This is an EQUALITY pin, deliberately — a `>=` floor is satisfied by a correlated parse failure\n' +
+  '(enum grows by one, one kind silently stops being seen, floor still holds).\n' +
+  'TWO CASES:\n' +
+  '  (1) THE SIM REALLY GREW. Good — that is the moment to decide whether the new kind has art.\n' +
+  '      Give it art (or a ledger entry with a reason), then raise this constant in the SAME commit.\n' +
+  '  (2) THE PARSER BROKE. It has form: the first version of `parseEnumMembers` required BOTH an\n' +
+  '      explicit `= <digits>` AND a trailing comma, so `Ghost = 26` (last member, no comma) and\n' +
+  '      `Ghost,` (implicit value) were both invisible — with the whole suite green.';
+
 test('the C# parse is non-vacuous and resolves the named-const arms', () => {
-  assert.ok(DEVICE_KINDS.length >= 26,
-    `parsed only ${DEVICE_KINDS.length} DeviceKinds from Device.cs — the parser is broken, not the sim`);
+  assert.equal(DEVICE_KINDS.length, EXPECT_DEVICE_KINDS,
+    COUNT_MOVED('DeviceKind', DEVICE_KINDS.length, EXPECT_DEVICE_KINDS));
   assert.ok(DEVICE_KINDS.includes('GrowBed') && DEVICE_KINDS.includes('Terminal')
     && DEVICE_KINDS.includes('Telescope'), 'the three §4l kinds are missing from the parse');
 
   const arms = Object.keys(FOR_DEVICE);
-  assert.ok(arms.length >= 26, `parsed only ${arms.length} ForDevice arms — the parser is broken`);
+  assert.equal(arms.length, EXPECT_FOR_DEVICE_ARMS,
+    COUNT_MOVED('ForDevice arm', arms.length, EXPECT_FOR_DEVICE_ARMS));
 
   // The three NAMED-const arms, resolved through `const char` declarations elsewhere in the file. A
   // parser that dropped them would leave Door/Conduit/Pipe unresolved and the allowlist would then
@@ -166,7 +299,34 @@ test('the C# parse is non-vacuous and resolves the named-const arms', () => {
   for (const [k, g] of Object.entries(FOR_DEVICE)) {
     assert.ok(typeof g === 'string' && g.length === 1, `ForDevice arm ${k} did not resolve to a char`);
   }
-  assert.ok(COVERED.length >= 23, 'the covered set is suspiciously small — check the allowlist');
+  assert.equal(COVERED.length, EXPECT_COVERED, COUNT_MOVED('covered kind', COVERED.length, EXPECT_COVERED));
+
+  // …and the ITEM half, parsed the same way from the same file. `ForItem` has no named-const arms.
+  assert.equal(ITEM_KINDS.length, EXPECT_ITEM_KINDS,
+    COUNT_MOVED('ItemKind', ITEM_KINDS.length, EXPECT_ITEM_KINDS));
+  const iArms = Object.keys(FOR_ITEM);
+  assert.equal(iArms.length, EXPECT_FOR_ITEM_ARMS,
+    COUNT_MOVED('ForItem arm', iArms.length, EXPECT_FOR_ITEM_ARMS));
+  assert.equal(FOR_ITEM.Regolith, ',');
+  assert.equal(FOR_ITEM.Potato, 'f');
+  assert.equal(FOR_ITEM.Corpse, '&');
+  for (const [k, g] of Object.entries(FOR_ITEM)) {
+    assert.ok(typeof g === 'string' && g.length === 1, `ForItem arm ${k} did not resolve to a char`);
+  }
+});
+
+test('no glyph means BOTH a device and a ground item', () => {
+  // A frame cell carries ONE glyph, so a shared char would leave the client unable to say which of
+  // the two a tile is. It holds today (device glyphs are upper-case where the item ones are lower:
+  // 'S' Scrubber vs 's' Scrap, 'P' PlantPot vs 'p' Parts, 'C' MedCabinet vs 'c' ControllerModule,
+  // 'F' Fabricator vs 'f' Potato, 'O' WaterTank vs 'o' MetalOre) — and it holds by CONVENTION, which
+  // is exactly the kind of thing that stops holding without anyone deciding to break it.
+  const dev = new Set(Object.values(FOR_DEVICE));
+  const clash = Object.entries(FOR_ITEM).filter(([, g]) => dev.has(g));
+  assert.deepEqual(clash, [],
+    'GLYPH CLAIMED BY A DEVICE **AND** AN ITEM: ' + JSON.stringify(clash) + '\n' +
+    'One frame cell carries one glyph. The client cannot tell the two apart, and whichever the\n' +
+    'furniture layer skins will be wrong half the time.');
 });
 
 test('every DeviceKind has a ForDevice arm — none falls through to the "?" fallback', () => {
@@ -194,6 +354,64 @@ test('the allowlist is real, justified, and pinned to its size', () => {
     'kind art (a builder in client/src/items/objects.js + a glyph on its ITEMS row), or (2) name a\n' +
     'stand-in in GLYPH_SUBSTITUTE (client/src/items/glyph-map.js). An unlisted, unskinned kind is\n' +
     'what the player sees as a dashed box with a raw letter in it — HANDOVER §4l.');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 3b. THE GROUND-ITEM GAP — every ItemKind accounted for, and the damage COUNTED.
+//     This half is OPEN by charter. What it must never be again is invisible.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () => {
+  const unaccounted = ITEM_KINDS.filter((k) => !(k in NO_GROUND_ITEM_SPRITE) && !itemIdForGlyphChar(FOR_ITEM[k]));
+  assert.deepEqual(unaccounted, [],
+    'ITEM KIND WITH NO ART AND NO LEDGER ENTRY: ' + unaccounted.join(', ') + '\n\n' +
+    'A ground item with no art draws the SAME VS-Z-25 dashed chip a device with no art draws — the\n' +
+    'symptom the owner reported (HANDOVER §4l), from the other switch. `Glyphs.ForItem` is as much a\n' +
+    'source of on-map glyphs as `Glyphs.ForDevice`.\n\n' +
+    'TWO EXITS: give it art (a builder + an ITEMS row carrying the glyph), or add it to\n' +
+    'NO_GROUND_ITEM_SPRITE in this file with a per-entry reason and whether it chips. The ledger is\n' +
+    'pinned by equality, so adding an entry is a decision someone has to write down.');
+
+  for (const [name, e] of Object.entries(NO_GROUND_ITEM_SPRITE)) {
+    assert.ok(ITEM_KINDS.includes(name), `STALE GROUND-ITEM LEDGER ENTRY "${name}" — no such ItemKind.`);
+    assert.equal(e.glyph, FOR_ITEM[name],
+      `ledger says ${name} rides ${JSON.stringify(e.glyph)}, Glyphs.ForItem says ${JSON.stringify(FOR_ITEM[name])}`);
+    assert.ok(typeof e.why === 'string' && e.why.length > 20, `ledger entry "${name}" has no real reason`);
+    assert.equal(itemIdForGlyphChar(e.glyph), '',
+      `LEDGER IS STALE: ${name} (${JSON.stringify(e.glyph)}) now HAS art (${itemIdForGlyphChar(e.glyph)}). ` +
+      'Delete the line and lower the pinned counts — this ledger only shrinks.');
+  }
+  assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_ITEM_KINDS,
+    'THE GROUND-ITEM LEDGER CHANGED SIZE. It only shrinks: an entry goes away when that kind gets\n' +
+    'art. Every entry is a tile the player currently reads as a dashed box with a letter in it.');
+});
+
+// THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
+// the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
+// This is the assertion that turns the reviewer's photograph into something the gate can hold.
+const EXPECT_CHIPPING_ITEM_KINDS = 6;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
+
+test('THE OPEN GAP, MEASURED: exactly six ItemKinds still draw a raw-letter chip', () => {
+  const chipping = [];
+  for (const k of ITEM_KINDS) {
+    const g = FOR_ITEM[k];
+    // Driven through the SHIPPING Room Zoom model: a 1x1 room whose only cell is this glyph.
+    const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+    const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[g.charCodeAt(0), 0, 0, 0]] };
+    const cells = roomCells(frame, focus);
+    // `roomCells` drops NON_FURNITURE codes entirely (no cell ⇒ no chip); an emitted cell with an
+    // empty itemId is exactly what `furnitureSvg` turns into the dashed letter box.
+    const chips = cells.length === 1 && !cells[0].itemId;
+    if (chips) chipping.push(`${k} (${JSON.stringify(g)})`);
+    assert.equal(chips, NO_GROUND_ITEM_SPRITE[k].chips,
+      `the ledger says ${k} chips=${NO_GROUND_ITEM_SPRITE[k].chips}, the real Room Zoom model says ${chips}`);
+  }
+  assert.equal(chipping.length, EXPECT_CHIPPING_ITEM_KINDS,
+    'THE NUMBER OF RAW-LETTER CHIPS MOVED: ' + chipping.join(', ') + '\n\n' +
+    'Measured live by independent review on --ship grid deck 0, room STORAGE, after the device fix:\n' +
+    "seven chips on one floor — ',' six times and 'f' once. If this number went UP, a new ItemKind\n" +
+    'shipped without art. If it went DOWN, an item got art — lower this constant and delete its\n' +
+    'ledger entry in the same commit. It only ever pays down.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -500,4 +718,49 @@ test('POSITIVE CONTROL: the uncommented forms ARE parsed (the controls are not v
     { DeviceKind.Ghost => 'q', _ => '?', };`;
   assert.deepEqual(parseDeviceKinds(live), ['Door', 'Ghost']);
   assert.deepEqual({ ...parseForDevice(live) }, { Ghost: 'q' });
+});
+
+test('THE TWO SURVIVORS: an enum member with no trailing comma, and one with an implicit value', () => {
+  // ⚠️ THIS TEST IS THE FIX FOR F1 AND IT EXISTS BECAUSE BOTH SHAPES SHIPPED PAST THE GUARD.
+  // Independent review added a real `DeviceKind` in each of these two spellings, gave it a
+  // `ForDevice` arm, gave it no art — and the whole 711-test suite stayed green, twice. Both are the
+  // NATURAL way to write it: no trailing comma is what you get appending a last member, and an
+  // implicit value is idiomatic C#. Neither is exotic.
+  const noComma = `
+    public enum DeviceKind : byte {
+      Door = 0,
+      Telescope = 25,
+      Ghost = 26
+    }`;
+  assert.deepEqual(parseDeviceKinds(noComma), ['Door', 'Telescope', 'Ghost'],
+    'SURVIVOR 1 IS BACK: a last enum member with no trailing comma is invisible to the parser');
+
+  const implicitValue = `
+    public enum DeviceKind : byte {
+      Door = 0,
+      Ghost,
+      Telescope = 25,
+    }`;
+  assert.deepEqual(parseDeviceKinds(implicitValue), ['Door', 'Ghost', 'Telescope'],
+    'SURVIVOR 2 IS BACK: an enum member with an implicit value is invisible to the parser');
+
+  // Both at once, plus a non-digit value expression — none of these three is special-cased.
+  const mixed = `
+    public enum DeviceKind : byte {
+      Door = 0,
+      Shifted = 1 << 3,
+      Ghost,
+      Last
+    }`;
+  assert.deepEqual(parseDeviceKinds(mixed), ['Door', 'Shifted', 'Ghost', 'Last']);
+
+  // …and the comment stripper still wins over all of it (the two must not trade off).
+  const commented = `
+    public enum DeviceKind : byte {
+      Door = 0,
+      // Ghost
+      /* Phantom, */
+      Last
+    }`;
+  assert.deepEqual(parseDeviceKinds(commented), ['Door', 'Last']);
 });

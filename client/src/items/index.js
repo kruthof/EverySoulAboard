@@ -12,13 +12,17 @@
 // `glyph: null` whose `DeviceKind` the sim really projects draws a dashed VS-Z-25 "unknown" box with
 // a raw ASCII letter in it, in the shipping game. `hydroponics` (`"`), `research-console` (`T`) and
 // `sensor-array` (`x`) shipped exactly that way and were filled in here.
-//   Their `—` in `docs/design/perilune-item-mapping.md` was NOT a decision to leave them unskinned:
-// that column is cross-checked against `render/glyphs.js` `SPRITE_FOR_GLYPH`, the WebGL skin's
-// table, and growbed/terminal are drawn by that skin's own executor switch instead
-// (`hosts/web/Client.html:630,634`). The SVG surfaces have no executor switch, so the `—` silently
-// meant "no art" there. (`sensor-array`'s row carried no such note at all — `x` was never drawn by
-// anything.) Doors, `power-conduit` and `pipe-run` stay `null` on purpose: those ARE drawn by other
-// layers on every surface, and `items/glyph-map.js` + its guard record that decision by name.
+//   Their `—` in `docs/design/perilune-item-mapping.md` was NOT a decision to leave them unskinned.
+// ⚠️ THE PRACTICE THAT PRODUCED THAT `—` IS RETIRED, and the past tense matters: this column USED TO
+// BE cross-checked against `render/glyphs.js` `SPRITE_FOR_GLYPH` — the WEBGL skin's table — and
+// growbed/terminal are drawn by that skin's own executor switch instead
+// (`hosts/web/Client.html:630,634`). The SVG surfaces have no executor switch, so a `—` justified
+// that way silently meant "no art" on the one standard surface. **It is NO LONGER cross-checked
+// against `SPRITE_FOR_GLYPH`** (`perilune-item-mapping.md` says so in bold); the authority is
+// `Glyphs.ForDevice`, mechanically, via `client/test/device-sprite-coverage.test.js`.
+// (`sensor-array`'s row carried no such note at all — `x` was never drawn by anything.) Doors,
+// `power-conduit` and `pipe-run` stay `null` on purpose: those ARE drawn by other layers on every
+// surface, and `items/glyph-map.js` + its guard record that decision by name.
 //   decor       the non-hashed decor channel key, for COSMETIC pieces
 //   material    'wall' | 'floor', for MATERIAL pieces
 //   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock)

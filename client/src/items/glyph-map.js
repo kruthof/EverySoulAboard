@@ -12,7 +12,17 @@
 // door into the whole MOSS terminal rendered as VS-Z-25 dashed boxes with a raw ASCII letter in
 // them — a development stopgap, shipped, found by the owner from a screenshot (HANDOVER §4l). The
 // art existed the whole time (`ITEMS['hydroponics' | 'research-console' | 'sensor-array']`); only
-// the `glyph` field was `null`. Deriving removes the class of bug, not just the three instances.
+// the `glyph` field was `null`.
+//
+// ⚠️ THE SENTENCE THAT STOOD HERE WAS FALSE AND IS QUOTED, NOT DELETED: *"Deriving removes the class
+// of bug, not just the three instances."* **IT DOES NOT.** Independent review photographed room
+// STORAGE on `--ship grid` deck 0 *after* this module landed: **seven dashed chips carrying `,` six
+// times and `f` once.** Those are GROUND ITEMS (`Glyphs.ForItem` — Regolith, Potato, and four more),
+// which reach the same `roomCells` → `furnitureSvg` else-branch and which this table does not
+// address at all. What deriving removes is the HAND-MIRROR class: two view files that could drift
+// from each other and from `ITEMS`. The unskinned-glyph class is still open on the item side, is
+// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger (7
+// entries, 6 of them visibly chipping, both pinned by equality), and is chartered separately.
 //
 // `SPRITE_FOR_GLYPH` is NOT retired: it is the *WebGL/canvas* skin's table (`render/compose.js`,
 // `render/webgl/batch.js`, the frozen `hosts/web/Client.html`), where roles carry facing and the

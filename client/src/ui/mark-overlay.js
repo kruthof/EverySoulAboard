@@ -25,7 +25,8 @@
 // mirror keeps that constraint only for as long as someone remembers it. ⚠️ NOTE 2026-07-26: that
 // argument was PROVED by `ROLE_TO_ITEM`, which is now gone — the mirror had a hole in it (GrowBed,
 // Terminal and Telescope reached no art at all, HANDOVER §4l) and is replaced by a derivation off
-// the `ITEMS` registry, `client/src/items/glyph-map.js`. `NON_FURNITURE` is still hand-mirrored. Sharing one table and one
+// the `ITEMS` registry, `client/src/items/glyph-map.js`. `NON_FURNITURE` is still hand-mirrored.
+// Sharing one table and one
 // shape builder makes the constraint hold BY CONSTRUCTION rather than by a guard that has to be
 // written and maintained. The precedent is house style and one package old: WP-3 extracted
 // `zone-overlay.js` out of the view for exactly the neighbouring reason (a builder that cannot be
