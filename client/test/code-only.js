@@ -30,6 +30,56 @@
  * than fixed, and bounded: a '…'/"…" scan terminates at the newline, so the worst it can do is
  * damage its own line (asserted in surface-boundary.test.js).
  */
+/**
+ * The CSS half of the same rule: strip `/* … *\/` comments, STRING-LITERAL AWARE, leaving everything
+ * else byte-for-byte.
+ *
+ * ⚠️ WHY IT EXISTS. `moss-screen.test.js`'s five `styles.css` scans were all `assert.match(rawCss,
+ * /…/)`, and their own header claimed *"what node CAN pin is that the rules exist at all, so
+ * deleting one is red"*. Commenting a rule out — the ordinary way a rule gets disabled during a
+ * layout experiment, and the ordinary way one gets LEFT disabled — does not change the substring, so
+ * every one of those guards was green with the rule inert in the browser. `styles.css` carries 160
+ * `/*` tokens, so this is not a contrived shape for that file. `CLAUDE.md` trap 1, in CSS.
+ *
+ * QUOTE-AWARE for the same reason `codeOnly` is: `content: "/*"` is legal CSS, and a naive
+ * `replace(/\/\*[\s\S]*?\*\//g, '')` would start a comment inside that string and eat forward to the
+ * next `*\/`, silently deleting real rules and making a scan pass vacuously. Strings terminate at a
+ * newline here (CSS strings may not span one unescaped), so the blast radius of an unbalanced quote
+ * is its own line — the same bound `codeOnly` documents.
+ *
+ * Behaviour pinned by `moss-screen.test.js`'s "the CSS stripper" tests, beside the scans it protects.
+ */
+export function cssCodeOnly(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
+      i += 2;                                            // past the terminator (or past EOF)
+      out += ' ';                                        // a comment is whitespace, not nothing
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const q = c;
+      out += c;
+      i += 1;
+      while (i < n && src[i] !== q && src[i] !== '\n') {
+        if (src[i] === '\\' && i + 1 < n) { out += src[i] + src[i + 1]; i += 2; continue; }
+        out += src[i];
+        i += 1;
+      }
+      if (i < n) { out += src[i]; i += 1; }
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 export function codeOnly(src) {
   let out = '';
   let i = 0;

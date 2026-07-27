@@ -62,19 +62,77 @@ namespace Perilune.Tests
                 "a null list is the same inert payload, not a crash on the render thread");
         }
 
+        /// <summary>
+        /// THE INVARIANTCULTURE GUARD, MADE TO BITE — and the ONE field on this tuple that no guard
+        /// can reach, said out loud instead of papered over.
+        ///
+        /// ⚠️ THE VERSION THAT SHIPPED FIRST COULD NOT FAIL. It set <c>CurrentCulture</c> to plain
+        /// de-DE and compared the output against the invariant one. <b>Those are byte-identical no
+        /// matter what the emitter does</b>: <c>int.ToString()</c> and <c>ulong.ToString()</c> use the
+        /// "G" format, which NEVER emits a group separator, and .NET renders Latin digits for every
+        /// built-in culture (measured: of every culture installed on this machine, ZERO render
+        /// <c>1234567</c> as anything but <c>1234567</c>). The only
+        /// <see cref="NumberFormatInfo"/> knob that reaches a bare "G"-formatted integer is
+        /// <see cref="NumberFormatInfo.NegativeSign"/>, and all five fields in the old fixture were
+        /// non-negative. So swapping <c>ZoneIc</c> for <c>CultureInfo.CurrentCulture</c> in
+        /// <see cref="WireFormat.Zones"/> SURVIVED the guard named after it — verified by physically
+        /// applying that mutation and watching this file stay green. This is the ANCESTOR the marks
+        /// version was copied from (<c>docs/HANDOVER.md</c> §4k), and it is fixed the same way.
+        ///
+        /// WHAT IT PINS INSTEAD: THE EMITTER'S DISCIPLINE. The tuple is append-only, and the day it
+        /// grows a field that can be negative or fractional a bare <c>ToString()</c> starts producing
+        /// locale bytes on a de-DE dev machine with nothing else in the tree noticing. The culture
+        /// below carries a custom negative sign and the cell carries negative coordinates and negative
+        /// flags — a shape the sim never produces, chosen precisely because it is the only shape that
+        /// makes the property observable. The non-vacuity leg proves the culture really does perturb a
+        /// bare <c>ToString()</c>, so this cannot rot back into the version it replaced.
+        ///
+        /// ⚠️ <see cref="WireFormat.ZoneTile.AcceptMask"/> IS UNREACHABLE BY ANY CULTURE, AND THAT IS
+        /// A LIMIT, NOT AN OVERSIGHT. It is a <c>ulong</c>: it cannot be negative, so the one knob that
+        /// reaches a "G"-formatted integer cannot reach it, and no fixture can make
+        /// <c>c.AcceptMask.ToString(ZoneIc)</c> differ from <c>c.AcceptMask.ToString()</c>. Dropping
+        /// <c>ZoneIc</c> from THAT call is an equivalent mutant — provably unkillable, not untested
+        /// code. The claim below is therefore scoped to the four SIGNED fields, deliberately; do not
+        /// widen it to "any of the five".
+        ///
+        /// MUTATION: drop <c>ZoneIc</c> from the <c>X</c>, <c>Y</c>, <c>Deck</c> or <c>Flags</c>
+        /// <c>ToString</c> call in <see cref="WireFormat.Zones"/> ⇒ this fails (all four verified).
+        /// MUTATION 2: replace <c>ZoneIc</c> with <c>CultureInfo.CurrentCulture</c> throughout ⇒ this
+        /// fails (it did NOT before this rewrite — that is the whole point).
+        /// </summary>
         [Test]
         public void Zones_Serialization_Is_InvariantCulture()
         {
-            var cells = new[] { new WireFormat.ZoneTile(12, 7, 2, 1234567UL, 1) };
+            var loud = (CultureInfo)CultureInfo.GetCultureInfo("de-DE").Clone();
+            loud.NumberFormat.NegativeSign = "MINUS";
+
             var prev = Thread.CurrentThread.CurrentCulture;
             try
             {
-                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE"); // group separator '.'
-                string de = WireFormat.Zones(cells);
+                Thread.CurrentThread.CurrentCulture = loud;
+
+                // NON-VACUITY, FIRST: the culture must actually change what a bare ToString() emits,
+                // or everything below is the test that could not fail, again.
+                Assert.AreEqual("MINUS3", (-3).ToString(),
+                    "the ambient culture does not perturb a bare int.ToString(), so this guard is " +
+                    "decoration. Pick a culture knob that DOES reach an integer before trusting it.");
+
+                var negative = new[] { new WireFormat.ZoneTile(-3, -4, -1, 1234567UL, -1) };
+                StringAssert.Contains("[-3,-4,-1,1234567,-1]", WireFormat.Zones(negative),
+                    "the zones emitter picked up the ambient culture's negative sign. Every number on " +
+                    "this channel must go through InvariantCulture — the dev machine is de-DE, and a " +
+                    "wire payload that changes with the operator's locale is not a wire payload.");
+
+                // …and the ordinary, non-negative case is unchanged under the same loud culture, which
+                // is the honest statement of today's position: the fields in use cannot express the
+                // difference, and the discipline is what protects the field that one day will.
+                var cells = new[] { new WireFormat.ZoneTile(12, 7, 2, 1234567UL, 1) };
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
                 string inv = WireFormat.Zones(cells);
-                Assert.AreEqual(inv, de, "zones bytes are culture-independent (the dev machine is de-DE)");
-                StringAssert.Contains("[12,7,2,1234567,1]", de, "no group separators, no locale digits");
+                Thread.CurrentThread.CurrentCulture = loud;
+                Assert.AreEqual(inv, WireFormat.Zones(cells),
+                    "zones bytes are culture-independent (the dev machine is de-DE)");
+                StringAssert.Contains("[12,7,2,1234567,1]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }

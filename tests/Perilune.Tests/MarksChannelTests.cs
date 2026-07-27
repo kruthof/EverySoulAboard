@@ -103,8 +103,18 @@ namespace Perilune.Tests
         /// the culture really does perturb a bare <c>ToString()</c>, so this cannot silently rot back
         /// into the version it replaced.
         ///
+        /// ⚠️ THE FIXTURE'S <c>Kind</c> IS NEGATIVE, AND THAT IS THE FIX FOR A NAMED MUTATION THAT
+        /// COULD NOT BITE. The first version of this test carried <c>kind: 2</c>, so of the four
+        /// <c>ToString</c> calls only three sat on a negative value and dropping <c>MarkIc</c> from
+        /// the <c>Kind</c> one SURVIVED — while the summary claimed "any of the four". A named
+        /// mutation that cannot bite, inside the test written to fix a named mutation that could not
+        /// bite (<c>docs/HANDOVER.md</c> §4k, finding G1). A negative kind is no more synthetic than
+        /// the negative coordinates beside it — the whole cell is a shape the sim never produces,
+        /// chosen because it is the only shape that makes the property observable — so the claim is
+        /// made TRUE rather than narrowed. Verified by physically applying all four mutations.
+        ///
         /// MUTATION: drop <c>MarkIc</c> from any of the four <c>ToString</c> calls in
-        /// <see cref="WireFormat.Marks"/> ⇒ this fails.
+        /// <see cref="WireFormat.Marks"/> ⇒ this fails (all four verified).
         /// </summary>
         [Test]
         public void Marks_Serialization_Is_InvariantCulture()
@@ -123,8 +133,10 @@ namespace Perilune.Tests
                     "the ambient culture does not perturb a bare int.ToString(), so this guard is " +
                     "decoration. Pick a culture knob that DOES reach an integer before trusting it.");
 
-                var negative = new[] { new WireFormat.MarkCell(-3, -4, -1, 2) };
-                StringAssert.Contains("[-3,-4,-1,2]", WireFormat.Marks(negative),
+                // Every one of the FOUR fields is negative — see the note above: with a non-negative
+                // kind, dropping MarkIc from that one call survived the guard named after it.
+                var negative = new[] { new WireFormat.MarkCell(-3, -4, -1, -2) };
+                StringAssert.Contains("[-3,-4,-1,-2]", WireFormat.Marks(negative),
                     "the marks emitter picked up the ambient culture's negative sign. Every number on " +
                     "this channel must go through InvariantCulture — the dev machine is de-DE, and a " +
                     "wire payload that changes with the operator's locale is not a wire payload.");
@@ -416,6 +428,119 @@ namespace Perilune.Tests
                 "that read only level.Flags would ship three kinds out of four");
         }
 
+        /// <summary>
+        /// THE DIG × STRIP UNREACHABILITY ARGUMENT, TURNED FROM A SENTENCE INTO A GUARD — and its
+        /// cited reason corrected (<c>docs/HANDOVER.md</c> §4k, finding G3).
+        ///
+        /// ⚠️ WHAT WAS WRONG WITH THE OLD CITATION. Both this file and <c>WireFormat.Marks.cs</c>
+        /// justified "dig and strip cannot share a tile" with *"<c>CanDesignate</c> refuses any wall
+        /// that is not <c>TileDefs.Wall</c>"*. That is the <b>Wall</b> path only.
+        /// <see cref="DeconstructSystem.CanDesignate"/>'s <b>Device</b> path returns BEFORE that check
+        /// and asks nothing whatever about the tile — only whether a device is present and is not a
+        /// Door. So a device sitting on a rubble tile would have made dig and strip collide, and the
+        /// published argument would not have noticed.
+        ///
+        /// WHAT ACTUALLY CLOSES IT: no device can be on a rubble tile.
+        /// <see cref="PlaceDeviceCommand"/> — the only device spawner a player can reach at runtime —
+        /// requires <see cref="TileFlags.Walkable"/> AND <c>GetWall(pos) == TileDefs.Void</c>, and a
+        /// Debris wall fails BOTH.
+        ///
+        /// ⚠️ HONEST MUTATION ACCOUNTING: THOSE TWO GUARDS ARE REDUNDANT, so a SINGLE-guard mutation
+        /// is a GREEN survivor and saying otherwise would be exactly the defect this package hunts.
+        /// Deleting only the <c>wall == Void</c> line leaves <c>Walkable</c> refusing the tile;
+        /// deleting only the <c>Walkable</c> line leaves <c>wall == Void</c> refusing it. The claim
+        /// below is therefore scoped to the CONJUNCTION.
+        ///
+        /// ⚠️ AND THE PARTS SEEDING BELOW IS NOT DECORATION — WITHOUT IT THIS TEST'S OWN NAMED
+        /// MUTATION COULD NOT BITE. Measured: deleting BOTH tile guards left this test GREEN,
+        /// because <see cref="PlaceDeviceCommand"/> has a THIRD refusal —
+        /// <c>TryPay(sim.Defs.Build.DevicePlaceCost)</c> — and no authored ship carries loose
+        /// <c>Parts</c> at boot, so every placement was already being refused for lack of money. The
+        /// leg was passing for the wrong reason: a guard over a fixture too weak to express the
+        /// failure, written INSIDE the package that exists to hunt exactly that. The fixture now
+        /// funds the purchase and ASSERTS IT CAN AFFORD ONE before scoring the refusal — the house
+        /// "assert the branch was REACHED before scoring its outcome" countermeasure
+        /// (<c>ZonesChannelTests</c>'s anti-tautology note sets the precedent).
+        ///
+        /// MUTATION: delete BOTH the <c>Walkable</c> and <c>wall == Void</c> checks from
+        /// <see cref="PlaceDeviceCommand"/>'s <c>Execute</c> ⇒ a device lands on rubble and this
+        /// fails (verified RED only AFTER the Parts seeding; verified GREEN before it). MUTATION 2:
+        /// make <see cref="DeconstructSystem.CanDesignate"/>'s Device path return <c>true</c> when no
+        /// device is present ⇒ rubble accepts a strip order and this fails (verified). MUTATION 3:
+        /// delete EITHER <see cref="PlaceDeviceCommand"/> tile guard alone ⇒ GREEN, by the redundancy
+        /// stated above (verified) — an equivalent-in-effect mutant, recorded rather than claimed.
+        /// </summary>
+        [Test]
+        public void No_Device_Can_Stand_On_A_Rubble_Tile_So_Dig_And_Strip_Cannot_Meet()
+        {
+            foreach (var ship in new[] { ShipChoice.Perilune, ShipChoice.Grid, ShipChoice.Slice })
+            {
+                var (_, host) = Boot(ship);
+                var sim = host.Sim;
+                var world = sim.World;
+
+                var rubble = new List<Int3>();
+                for (int z = 0; z < world.Depth; z++)
+                    for (int y = 0; y < world.Height; y++)
+                        for (int x = 0; x < world.Width; x++)
+                        {
+                            var p = new Int3(x, y, z);
+                            if (world.GetWall(p) == TileDefs.Debris) rubble.Add(p);
+                        }
+
+                // NON-VACUITY: a ship with no rubble would pass every loop below without executing
+                // one iteration — the zero-iteration guard that asserts nothing.
+                Assert.That(rubble.Count, Is.GreaterThan(0),
+                    ship + ": no Debris-wall tile at all, so this guard runs zero assertions");
+
+                foreach (var p in rubble)
+                {
+                    Assert.That(world.GetFlags(p) & TileFlags.Walkable, Is.EqualTo((TileFlags)0),
+                        ship + " " + p + ": a rubble tile is WALKABLE, so PlaceDeviceCommand's first " +
+                        "guard no longer refuses it — half the dig x strip argument is gone");
+                    Assert.That(sim.TryGetDeviceAt(p, out _), Is.False,
+                        ship + " " + p + ": an AUTHORED device stands on rubble. PlaceDeviceCommand " +
+                        "cannot produce this, but AuthoredShips calls sim.AddDevice directly, and a " +
+                        "device here makes the tile both dig-able and strip-able at once");
+                    Assert.That(sim.Deconstruct.CanDesignate(sim, p, DeconstructKind.Device), Is.False,
+                        ship + " " + p + ": rubble accepted a DEVICE strip order, so dig and strip " +
+                        "share a tile and the precedence between them stops being synthetic");
+                    Assert.That(sim.Deconstruct.CanDesignate(sim, p, DeconstructKind.Wall), Is.False,
+                        ship + " " + p + ": rubble accepted a WALL strip order — that is the half the " +
+                        "old citation covered, and it still holds");
+                }
+
+                // …and the command itself refuses, driven for real rather than argued from source.
+                // FUND IT FIRST. PlaceDeviceCommand's LAST guard is TryPay, and no authored ship
+                // carries loose Parts at boot — so without this the refusal below is a refusal for
+                // lack of money and the tile guards are never reached. See the note above: this is
+                // the difference between a leg that bites and a leg that only looks like it does.
+                int cost = sim.Defs.Build.DevicePlaceCost;
+                var sample = rubble.Take(12).ToList();
+                sim.AddItem(ItemKind.Parts, cost * (sample.Count + 1) + 1, EmptyWalkable(sim));
+                sim.Tick();
+                Assert.That(PlaceDeviceCommand.Affordable(sim), Is.GreaterThanOrEqualTo(cost),
+                    ship + ": the fixture cannot afford ONE device, so every placement below is " +
+                    "refused by TryPay and the tile guards this test names are never reached");
+
+                int placed = 0;
+                foreach (var p in sample)
+                {
+                    Assert.That(PlaceDeviceCommand.Affordable(sim), Is.GreaterThanOrEqualTo(cost),
+                        ship + " " + p + ": ran out of Parts mid-loop — from here on the refusals " +
+                        "are about money, not about the tile");
+                    sim.EnqueueCommand(new PlaceDeviceCommand(DeviceKind.Locker, p));
+                    sim.Tick();
+                    if (sim.TryGetDeviceAt(p, out _)) placed++;
+                }
+                Assert.AreEqual(0, placed,
+                    ship + ": PlaceDeviceCommand put " + placed + " device(s) on rubble out of " +
+                    sample.Count + " FUNDED attempts. It must refuse every one — Walkable and " +
+                    "wall == Void both fail on a Debris wall, and the dig x strip argument rests " +
+                    "on that.");
+            }
+        }
+
         /// <summary>The first interior wall the real <see cref="DeconstructSystem.CanDesignate"/>
         /// accepts. Asked of the sim rather than guessed, because the hull guardrail
         /// (<c>IsPressureHull</c>) refuses any wall adjacent to void or the map edge.</summary>
@@ -698,8 +823,11 @@ namespace Perilune.Tests
         /// flags — because it is a state the game produces. The rest are set by hand, and are labelled
         /// SYNTHETIC because no legal command sequence reaches them: a dig target is an unwalkable
         /// Debris wall (so it cannot be zoned, and <c>DigJobSource</c> clears <c>Designated</c> on
-        /// completion so a dug-out floor cannot keep it), and <c>CanDesignate</c> refuses any wall that
-        /// is not <c>TileDefs.Wall</c> (so dig and strip cannot share a tile). They are pinned anyway
+        /// completion so a dug-out floor cannot keep it), and no device can stand on a rubble tile
+        /// (so dig and strip cannot share a tile) — see
+        /// <see cref="No_Device_Can_Stand_On_A_Rubble_Tile_So_Dig_And_Strip_Cannot_Meet"/>, which
+        /// CORRECTS this sentence's old citation of <c>CanDesignate</c> (that is the Wall path only;
+        /// <c>docs/HANDOVER.md</c> §4k finding G3). They are pinned anyway
         /// for the reason the wall-vs-floor test gives: an ordering rule that only shipped content can
         /// exercise is an ordering rule with no guard, and this file already learned that once.
         ///
@@ -810,7 +938,6 @@ namespace Perilune.Tests
 
             // …and the dedupe itself still works, or the assertion above would pass for the wrong
             // reason (a channel that broadcasts unconditionally also satisfies it).
-            var unforced = new List<string>();
             var (gs2, host2, sink2) = BootWithSink(ShipChoice.Grid);
             for (int z = 0; z < host2.Sim.World.Depth; z++) Reveal(host2.Sim, z);
             gs2.RenderForTest();
@@ -819,7 +946,6 @@ namespace Perilune.Tests
             Assert.That(sink2.Count(p => p.Contains("\"type\":\"marks\"")), Is.EqualTo(0),
                 "an UNCHANGED marks payload was broadcast on an unforced render — Send()'s dedupe is " +
                 "not holding, and this channel would then be on the socket every single frame");
-            GC.KeepAlive(unforced);
         }
     }
 }

@@ -78,19 +78,73 @@ namespace Perilune.Tests
                 WireFormat.Terminals(new List<(string, int, int, int)>()));
         }
 
+        /// <summary>
+        /// THE INVARIANTCULTURE GUARD, MADE TO BITE.
+        ///
+        /// ⚠️ THE VERSION THAT SHIPPED FIRST COULD NOT FAIL, and it is the same defect as
+        /// <c>ZonesChannelTests</c>'s and <c>MarksChannelTests</c>'s (<c>docs/HANDOVER.md</c> §4k).
+        /// It set <c>CurrentCulture</c> to plain de-DE and compared against the invariant render of a
+        /// fixture whose every field was a NON-NEGATIVE integer. <b>Those are byte-identical no matter
+        /// what the emitter does</b>: <c>int.ToString()</c> uses the "G" format, which never emits a
+        /// group separator, and .NET renders Latin digits for every built-in culture (measured: of
+        /// every culture installed on this machine, ZERO render <c>1234567</c> as anything else). The
+        /// only <see cref="NumberFormatInfo"/> knob that reaches a bare "G" integer is
+        /// <see cref="NumberFormatInfo.NegativeSign"/>. VERIFIED by physically applying the mutation:
+        /// dropping <c>Ic</c> from the four <c>Designs</c> calls, and from <c>Terminals</c>'s
+        /// <c>t.Deck</c>, left this test GREEN.
+        ///
+        /// The fix is the house one: a CLONED de-DE carrying a loud negative sign, a fixture with
+        /// negative values, and a NON-VACUITY leg proving the culture really does perturb a bare
+        /// <c>ToString()</c> — without which this rots straight back into the version it replaced.
+        ///
+        /// ⚠️ <c>Design.Kind</c> AND <c>Design.Material</c> ARE <c>byte</c>: they cannot be negative,
+        /// so no fixture can make their <c>ToString(Ic)</c> differ from <c>ToString()</c>. Dropping
+        /// <c>Ic</c> from those two is an EQUIVALENT MUTANT — provably unkillable, not untested code.
+        /// The claim below is scoped to the SIGNED fields deliberately; do not widen it.
+        ///
+        /// MUTATION: drop <c>Ic</c> from <c>Designs</c>'s <c>d.X</c>, <c>d.Y</c>, <c>d.Deck</c>,
+        /// <c>d.Delivered</c> or <c>d.Required</c>, or from any of <c>Terminals</c>'s three
+        /// <c>ToString</c> calls ⇒ this fails.
+        /// </summary>
         [Test]
         public void Designs_And_Terminals_Serialization_Is_InvariantCulture()
         {
-            var designs = new[] { new WireFormat.Design(1, 2, 0, 1) };
-            var terms = new List<(string, int, int, int)> { ("t", 0, 1, 2) };
+            var loud = (CultureInfo)CultureInfo.GetCultureInfo("de-DE").Clone();
+            loud.NumberFormat.NegativeSign = "MINUS";
+
             var prev = Thread.CurrentThread.CurrentCulture;
             try
             {
-                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-                string dDe = WireFormat.Designs(designs), tDe = WireFormat.Terminals(terms);
+                Thread.CurrentThread.CurrentCulture = loud;
+
+                // NON-VACUITY, FIRST: the culture must actually change what a bare ToString() emits,
+                // or everything below is the test that could not fail, again.
+                Assert.AreEqual("MINUS3", (-3).ToString(),
+                    "the ambient culture does not perturb a bare int.ToString(), so this guard is " +
+                    "decoration. Pick a culture knob that DOES reach an integer before trusting it.");
+
+                // Negative on every SIGNED field of both tuples — a shape the sim never produces,
+                // chosen because it is the only shape that makes the property observable.
+                var loudDesigns = new[] { new WireFormat.Design(-1, -2, -3, 1, -4, -5) };
+                StringAssert.Contains("[-1,-2,-3,1,-4,-5,0]", WireFormat.Designs(loudDesigns),
+                    "the designs emitter picked up the ambient culture's negative sign. Every number " +
+                    "on this channel must go through InvariantCulture — the dev machine is de-DE, and " +
+                    "a wire payload that changes with the operator's locale is not a wire payload.");
+
+                var loudTerms = new List<(string, int, int, int)> { ("t", -1, -2, -3) };
+                StringAssert.Contains("[\"t\",-1,-2,-3]", WireFormat.Terminals(loudTerms),
+                    "the terminals emitter picked up the ambient culture's negative sign");
+
+                // …and the ordinary, non-negative case is unchanged under the same loud culture, which
+                // is the honest statement of today's position: the values the sim actually produces
+                // cannot express the difference, and the discipline protects the one that will.
+                var designs = new[] { new WireFormat.Design(1, 2, 0, 1) };
+                var terms = new List<(string, int, int, int)> { ("t", 0, 1, 2) };
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-                Assert.AreEqual(WireFormat.Designs(designs), dDe, "designs bytes are culture-independent");
-                Assert.AreEqual(WireFormat.Terminals(terms), tDe, "terminals bytes are culture-independent");
+                string dInv = WireFormat.Designs(designs), tInv = WireFormat.Terminals(terms);
+                Thread.CurrentThread.CurrentCulture = loud;
+                Assert.AreEqual(dInv, WireFormat.Designs(designs), "designs bytes are culture-independent");
+                Assert.AreEqual(tInv, WireFormat.Terminals(terms), "terminals bytes are culture-independent");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
