@@ -927,6 +927,71 @@ face.**
   into `overview-model.js`'s own doc comment: **"BUILDING is zoom-only; ORDERS are deck-scoped"**, on
   the grounds that a designation consumes no material and changes no geometry — it marks intent.
 
+### 4m. The overnight run — three packages LANDED (2026-07-27, `bfaa192` · `bb2e983` · `0f27412`)
+
+**Gate on `main` @ `0f27412`: `./ci.sh` exit 0, 1019 dotnet + 737 node, all five pins held.** Worktrees
+removed, nothing in flight. Each package Opus-implemented, independently Opus-reviewed, **every one
+took at least one send-back**, and two took three rounds.
+
+**1. Device sprites (`bfaa192`) — §4l closed for devices, NOT for ground items.** The art already
+existed; the defect was the hand-mirrored `ROLE_TO_ITEM` in two view files. Now derived from `ITEMS`
+via `client/src/items/glyph-map.js`, with a guard that reads the sim's own `DeviceKind`/`ForDevice`
+and calls the **real `buildItem`** per kind. **Review found the guard's first parser accepted only
+`Name = 26,`** — the two most natural ways to add an enum member (no trailing comma; implicit value)
+both **SURVIVED 711/711 green**. Closed, and the three count floors tightened to **equality**, so the
+enum growing is now the moment someone answers *"does it have art?"*.
+**⚠️ AND THE FIRST DRAFT CLAIMED THE CLASS WAS CLOSED.** Review photographed **seven more chips one
+room away in STORAGE** — `,`×6 and `f` — from `Glyphs.ForItem`, which the guard structurally could not
+see. Retracted in place; the guard now enumerates `ForItem` too and the **six chipping kinds** sit in
+`NO_GROUND_ITEM_SPRITE`, pinned by equality, each failing as **STALE** if its glyph gains art.
+**Corpse is genuinely exempt** (`'&'` is in `NON_FURNITURE` on both surfaces) and that was measured,
+not asserted. Numbers to keep straight: **7 chip instances** on the ship today from **2 kinds**;
+**6 kinds** that chip if present.
+
+**2. Palette overflow (`0f27412`).** See `CLAUDE.md`'s snapshot. **Filed severity was understated** —
+onset **1249 px, not ~1140**, and it **travels with the room name**. Two send-backs, both this repo's
+signature defect: a negative control that could not bite, then a matcher comparing selectors by exact
+string so the bug could be re-declared verbatim under `#roomzoom-view .rz-palette` with the suite
+green. **The `endsWith` fix the orchestrator proposed would itself have had a hole** — the palette
+carries `class="hud rz-palette"`, so matching is by **subject** (rightmost compound, split into simple
+selectors).
+
+**3. Test hygiene (`bb2e983`).** A systematic sweep for tests whose named mutation cannot bite. Four
+**already-shipped dead guards** found (two fixed, two retracted as genuinely unfixable — verified
+against a **1063-culture sweep** plus a hostile `NumberFormatInfo` clone), plus one live-bug shape at
+`moss-screen.js:271`. **Two self-disclosures worth more than a clean report:** its own named mutation
+could not bite, and its first harness **manufactured false greens** because its output parser did not
+match the runner's format.
+
+**⚠️ THE PATTERN OF THE NIGHT, and it is the reason the review discipline is not optional.** Every one
+of the three packages shipped a **guard that could not catch the thing it named**, and **not one was
+found by reading** — each took an independent agent physically substituting the broken implementation.
+Two were the *same* fixture defect in two lanes on the same day (see `CLAUDE.md`'s new trap). The
+third was a matcher that could not see its own named declarations in different syntax.
+
+**⚠️ OPEN, and needing the owner.** **(a) DEMOLISH destroys what STRIP recovers, one button away.**
+The sprite package made GrowBed a DEMOLISH target — one click, no confirmation, no undo on this
+surface, **no matter recovered** (`RemoveDeviceCommand` salvages nothing where STRIP pays
+`floor(device_parts × Condition)`), and **no `growbed` entry in `PALETTE_CMD`**, so it cannot be
+rebuilt. Kept because GrowBed joins `MedBed` and `Table`, already one-way demolishable — consistency,
+not a new capability. **(b) A lying affordance, pre-existing, now 12 kinds → 14:** the client offers
+DEMOLISH and fires the *success* pulse for kinds outside `PlaceDeviceCommand.IsPlaceableFurniture`
+(Terminal and Telescope among them), and the sim silently drops the command.
+
+**Follow-ups logged, none blocking:** ground-item art (**six new builders**, plus the **count channel**
+design question — `buildItem(id, opts)` cannot express stack size, so 1 unit and 40 render
+identically); a **capture-based** palette guard (commit `measurements.json` + pin a hash of its
+inputs) — deferred as a new mechanism deserving its own review; `:is()`/`:where()` spellings evade
+`simples()`; two byte-identical comment-scan lines now sit in `code-only.js`; `ci.sh` should print a
+dead child's exit reason; and the `DeconstructSystemTests.cs` ledger entries (`:1493` — a test that
+passes if `Reap` and `Tick` do nothing — and `:751`).
+
+**A gate flake, bounded rather than solved.** One `ci.sh` run failed at **file level** in
+`webgl.test.js`, a file untouched by any of this work. It did **not** reproduce in **24 runs**,
+including four rounds of 3× concurrent at load 21.60 on a 10-core box. Its signature — whole file
+uncollected, no assertion — is what `node --test` prints when a per-file **child process dies**.
+**Read: environmental contention, not a gate defect — and definitively not a one-in-five flake.**
+
 ### 4k. The `marks` channel — a designation no longer blinks out — LANDED (`11b2ffb`, 2026-07-26)
 
 **What shipped.** Both modern surfaces now source their mark layer from a new sparse view-only wire

@@ -27,6 +27,66 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-27) — **three packages: the player-visible gaps, and a sweep for dead guards**
+
+Landed overnight on top of the `marks` channel, each Opus-implemented and independently
+Opus-reviewed, **every one taking at least one send-back**. **Gate on `main` @ `0f27412`:
+`./ci.sh` exit 0, 1019 dotnet + 737 node, all five pins held.**
+
+1. **Device sprites** (`bfaa192`) — GrowBed `"`, Terminal `T`, Telescope `x` had no client art, so
+   the Room Zoom drew a **debug placeholder carrying the raw letter** in the shipping game (owner
+   report, §4l). The art already existed in `client/src/items/index.js`; the defect was that
+   glyph→itemId was **hand-mirrored** into two view files. Both `ROLE_TO_ITEM` tables deleted;
+   `client/src/items/glyph-map.js` derives it from `ITEMS`. **The guard is the point**: it reads the
+   sim's own `DeviceKind`/`ForDevice` and calls the real `buildItem` per kind.
+   ⚠️ **THE CLASS IS NOT CLOSED** — seven more chips (`,`×6, `f`) sit in STORAGE from
+   `Glyphs.ForItem`. Ledgered in `NO_GROUND_ITEM_SPRITE`, pinned by equality, **art is a separate
+   package** (no loose-pile builder exists among the 60 pieces, and a stack's **count** has no
+   channel in `buildItem` — 1 unit and 40 render identically).
+2. **Palette overflow** (`0f27412`) — the Room Zoom palette clipped with the scrollbar
+   **deliberately hidden**, so STOCKPILE/STRIP/DEMOLISH were unreachable *and* unadvertised. Onset
+   measured at **1249 px, not the filed ~1140**, and it **travels with the room name**. Fixed by
+   wrapping; `width:max-content` is load-bearing and was found only by re-measuring.
+3. **Test hygiene** (`bb2e983`) — a systematic sweep for **tests whose named mutation cannot bite**.
+   Fixed the three known, found **four more dead guards already shipped** (two fixed, two retracted
+   as genuinely unfixable), and one live-bug shape: `moss-screen.js:271`'s capture registration
+   survived `{capture:false}` while the legacy spelling went red. Ledger of the rest, with an
+   **honest scope boundary** — and review found two more survivors immediately inside it, including
+   **a test that passes if the system under test does nothing at all**.
+
+### ⚠️ NEW TRAP — a negative control for a comment stripper needs a LATER REAL COMMENT
+
+**This landed independently in TWO packages on the same day** and was caught both times only by
+physically substituting the broken stripper. A control asserting *"a quoted `/*` does not blind the
+stripper"* whose fixture contains **no closing `*/`** is **vacuous**: the naive
+`replace(/\/\*[\s\S]*?\*\//g,'')` finds no match, returns the input unchanged, and the control passes
+whether the stripper is correct or broken. The real `styles.css` has 160 `/*` tokens, so on the file
+being guarded the naive stripper **would** be blinded. **Fixture must contain a later real comment,
+and prefer mutating the SHIPPED stripper's own quote branch over substituting a stand-in** — the
+stand-in only proves you catch one spelling of the mistake. Live examples:
+`client/test/moss-screen.test.js`, `client/test/palette-layout.test.js`.
+
+### ⚠️ NEW TRAP — a clean auto-merge is NOT a clean merge when two lanes add the same exported name
+
+Both the palette and test-hygiene lanes independently added a `cssCodeOnly` to
+`client/test/code-only.js`. The definitions landed at **different offsets, so git reported NO
+CONFLICT** and produced two `export function cssCodeOnly` in one module — a SyntaxError that crashed
+**8 test files with 503 of 737 tests collected**. Worse than the crash: the two implementations
+**differed in 7 of 10 behaviours and neither was a superset**, and the property that would have
+vanished silently (line fidelity, 1457 vs 1301 newlines) was **pinned by neither parent**. Resolve
+by *measuring both against a case table*, never by textual precedence, and **re-run BOTH parents'
+negative controls against the survivor**.
+
+### ⚠️ A CSS COMMENT IS NOT WHITESPACE — the correction that nearly became folklore
+
+`.a/*x*/.b` is the **compound `.a.b`**, not a descendant (CSS Syntax L3 §4.3.2 consumes a comment and
+emits **no token**; verified in Chrome). Two shared-module comments asserted the opposite as the
+justification for `cssCodeOnly` emitting a space. **The decision is right for a different reason:** as
+a text filter, emitting nothing **FUSES** identifiers (`.rz/*x*/-palette` → the string
+`.rz-palette`, a rule Chrome discards as invalid, handed to the guard as the very selector it
+watches — a fabricated false positive), while a space can only **SPLIT** a token into something the
+guard ignores.
+
 ## Status snapshot (2026-07-26) — **the `marks` channel: a designation no longer blinks out**
 
 Both modern surfaces now source their mark layer from a new sparse view-only **`marks`** channel
@@ -515,8 +575,10 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  `marks` merge (2026-07-26, `11b2ffb`): 1018 dotnet + 694 node, `./ci.sh` exit 0, all five pins
-  held.** *(Superseded, and kept because the paragraph below reasons about it:* **measured on `main`
+  three-package overnight run (2026-07-27, `0f27412`): 1019 dotnet + 737 node, `./ci.sh` exit 0, all
+  five pins held.** **Per-branch counts do NOT add on merge — measured again this run:** the palette
+  branch read 713 node alone and the merged result is 737, a **union**, not 713 + anything.
+  *(Superseded:* **after the `marks` merge (2026-07-26, `11b2ffb`): 1018 dotnet + 694 node**.*)* *(Superseded, and kept because the paragraph below reasons about it:* **measured on `main`
   after the WP-6 merge (2026-07-26): 1002 dotnet + 678 node, `./ci.sh` exit 0**
   (+6 dotnet — strip-visible touched `sim/Sim.Glyph/GlyphMapper.cs`, the first sim-side change since
   the deck-confined wander; **all five pins held and no golden moved**).*) Every "560 dotnet + 188
