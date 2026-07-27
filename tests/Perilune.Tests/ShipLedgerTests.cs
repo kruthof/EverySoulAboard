@@ -108,6 +108,67 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// AN ITEM KIND THE ENUM DOES NOT NAME IS COUNTED, NOT DROPPED — the last unpinned half of
+        /// the "a ledger must never silently lose a resource" claim. <see cref="ItemKind"/> is a
+        /// <c>byte</c>, so an ordinal outside the declared set is one cast away, and this is the
+        /// cheapest possible proof that <see cref="ShipLedgerSample.UnknownUnits"/> and
+        /// <see cref="ShipLedger.KindName"/> behave rather than merely exist.
+        ///
+        /// <para>It should be unreachable in shipping code. It is pinned anyway because the failure
+        /// it guards against is silent: units vanishing from a total nobody can reconcile.</para>
+        ///
+        /// MUTATION (applied, RED, reverted): drop the <c>else unknown += count;</c> arm of the item
+        /// pass ⇒ the units disappear from both UnknownUnits and the roll-up, and this fails.
+        /// MUTATION 2 (applied, RED, reverted): make <c>ShipLedger.KindName</c>'s OUT-OF-RANGE
+        /// fallback return <c>index.ToString()</c> ⇒ an undeclared ordinal stringifies to a bare
+        /// NUMBER, which on a wire of <c>["Potato",699]</c> pairs reads exactly like a kind called
+        /// "200", and this fails.
+        ///
+        /// <para>⚠️ THE MUTATION FIRST NAMED HERE COULD NOT BITE, and is corrected rather than
+        /// quietly dropped. It was "make <c>BuildKindNames</c> fall through to
+        /// <c>kind.ToString()</c>" — applied, it SURVIVED, because <c>KindNamesCache</c> only holds
+        /// <c>KindCount</c> entries and ordinal 200 never reaches it; it comes back from
+        /// <c>KindName</c>'s own bounds check. Two different code paths produce a
+        /// <c>Kind&lt;n&gt;</c> string and only one of them is reachable from this test.</para>
+        ///
+        /// <para>⚠️ SO ONE BRANCH HERE IS DECLARED UNPINNED: <c>BuildKindNames</c>'s
+        /// <c>Enum.IsDefined</c> arm exists for an enum with a GAP in its ordinals, and
+        /// <see cref="ItemKind"/> is contiguous 0..N today, so nothing can construct an index that is
+        /// both inside <c>KindCount</c> and undeclared. It is defensive code for a shape the enum
+        /// does not yet have. It is kept — the two live sibling lanes are appending to that enum and
+        /// a gap costs nothing to survive — and it is written down here rather than left to look
+        /// tested.</para>
+        /// </summary>
+        [Test]
+        public void UnitsUnderAnUndeclaredKindAreCountedIntoTheTotal_AndNeverNamedLikeAKind()
+        {
+            var sim = Fresh();
+            var pos = SomeFloor(sim);
+            ZeroExistingStacks(sim);
+
+            var before = ShipLedger.Sample(sim);
+            Assert.That(before.UnknownUnits, Is.EqualTo(0), "PRECONDITION: nothing unnameable aboard yet");
+
+            // 200 is outside ItemKind's declared range and stays outside it however many kinds the
+            // two live sibling lanes add. The cast is legal — ItemKind is a byte enum.
+            sim.AddItem((ItemKind)200, 17, pos);
+
+            var after = ShipLedger.Sample(sim);
+            Assert.That(after.UnknownUnits, Is.EqualTo(17),
+                "units under an unnameable kind must be COUNTED. Dropping them is the exact defect " +
+                "this package exists to end: matter leaving a ledger with nothing anywhere saying so.");
+            Assert.That(after.TotalUnits - before.TotalUnits, Is.EqualTo(17),
+                "…and they must reach the roll-up, or the total silently disagrees with the ship");
+
+            // The NAME side: an undeclared ordinal must not stringify to a bare number, which on a
+            // wire of ["Potato",699] pairs would read as a kind called "200".
+            Assert.That(ShipLedger.KindName(200), Is.EqualTo("Kind200"));
+            for (int k = 0; k < ShipLedger.KindCount; k++)
+                Assert.That(ShipLedger.KindName(k), Does.Not.Match(@"^\d+$"),
+                    "no kind name may be a bare number");
+        }
+
+        /// <summary>
         /// The census counts a stack a crew member is CARRYING and a stack RESERVED for a job. This
         /// is a deliberate design decision, not an accident: matter in transit has not left the ship,
         /// and a census that dropped it would make the total dip every time somebody picked something
@@ -261,14 +322,30 @@ namespace Perilune.Tests
             var then = ShipLedger.Sample(sim);
             Advance(sim, TicksPerDay / 2);
             SetOnlyTank(sim, tank, 140f);            // rising
-            var rising = ShipLedger.Report(ShipLedger.Sample(sim), then);
+            var risingNow = ShipLedger.Sample(sim);
+            var rising = ShipLedger.Report(risingNow, then);
+            // Same non-vacuity discipline as the horizon test: pin which of Runway's six routes to
+            // -1 this fixture reaches. A window must be open (else it is the windowless route) and
+            // the stock must be ABOVE zero and RISING (else it is the already-empty route or the
+            // clamp).
+            Assert.That(rising.WindowTicks, Is.EqualTo(TicksPerDay / 2),
+                "PRECONDITION: a real window must be open");
+            Assert.That(risingNow.TankLiters, Is.GreaterThan(then.TankLiters),
+                "PRECONDITION: the tank must actually be RISING, or this proves nothing about the " +
+                "not-depleting branch");
             Assert.That(rising.DaysOfWater, Is.EqualTo(-1),
                 "a rising tank has no runway; -1 is the house 'no meaningful value' sentinel");
 
             var then2 = ShipLedger.Sample(sim);
             Advance(sim, TicksPerDay / 2);
             SetOnlyTank(sim, tank, 140f);            // steady
-            var steady = ShipLedger.Report(ShipLedger.Sample(sim), then2);
+            var steadyNow = ShipLedger.Sample(sim);
+            var steady = ShipLedger.Report(steadyNow, then2);
+            Assert.That(steady.WindowTicks, Is.EqualTo(TicksPerDay / 2), "PRECONDITION: a real window");
+            Assert.That(steadyNow.TankLiters, Is.EqualTo(then2.TankLiters).Within(1e-3),
+                "PRECONDITION: the tank must actually be STEADY");
+            Assert.That(steadyNow.TankLiters, Is.GreaterThan(0),
+                "PRECONDITION: above zero, or -1 comes from the already-empty route instead");
             Assert.That(steady.DaysOfWater, Is.EqualTo(-1), "a steady tank has no runway either");
         }
 
@@ -290,7 +367,24 @@ namespace Perilune.Tests
             var then = ShipLedger.Sample(sim);
             Advance(sim, TicksPerDay);
             SetOnlyTank(sim, tank, 999.9f);          // 0.1 L/day ⇒ ~9,999 days
-            var report = ShipLedger.Report(ShipLedger.Sample(sim), then);
+            var now = ShipLedger.Sample(sim);
+            var report = ShipLedger.Report(now, then);
+
+            // ⚠️ NON-VACUITY, and it is not optional: `Runway` has SIX routes to -1 (no window, a
+            // non-finite room, an already-empty stock, a steady stock, a rising stock, and this
+            // clamp). Asserting -1 without pinning WHICH route produced it is how the room-guard
+            // test in this same file passed with its guard deleted. Change the fixture's delta to
+            // zero, delete the clamp, and an unpinned version of this test still passes — the -1
+            // just arrives from the steady branch instead.
+            Assert.That(report.WindowTicks, Is.EqualTo(TicksPerDay),
+                "PRECONDITION: a real window must be open, or -1 comes back for the windowless reason");
+            double lossPerDay = then.TankLiters - now.TankLiters;   // window is exactly one sim-day
+            Assert.That(lossPerDay, Is.GreaterThan(0),
+                "PRECONDITION: the tank must actually be FALLING, or -1 comes back from the " +
+                "steady/rising branch and says nothing about the horizon clamp");
+            Assert.That(now.TankLiters / lossPerDay, Is.GreaterThan(ShipLedger.MaxMeaningfulDays),
+                "PRECONDITION: the unclamped runway must EXCEED the horizon, or this fixture cannot " +
+                "reach the branch it is named for");
 
             Assert.That(report.DaysOfWater, Is.EqualTo(-1),
                 "a ~10,000-day runway is float noise with a decimal point on it, not a forecast");
@@ -449,9 +543,16 @@ namespace Perilune.Tests
             Assert.That(greyed.TankLiters, Is.EqualTo(137.5f).Within(1e-3),
                 "greywater is NOT drinkable and must never be added to the tank stock");
 
-            // Oxygen and its reference point. The crew draw is derived from the LIVING crew and the
-            // shipped def; the expectation is built from the enum-free facts (who is alive, the def
-            // value, seconds in a day) rather than from the implementation's expression.
+            // Oxygen and its reference point.
+            //
+            // ⚠️ HONEST LABEL ON THE NEXT ASSERTION: the CrewO2MolesPerDay expectation IS the
+            // implementation's own expression, re-typed. An earlier comment here claimed otherwise
+            // and that claim was wrong. It still bites — it catches a dropped field, a wrong def, a
+            // wrong constant and (below) a dead-crew divisor — but it would NOT catch the formula
+            // being wrong in the same way twice, and calling it independent would have been the
+            // tautology this file's own header warns about. The independent facts asserted here are
+            // the ones on the lines around it: that the value is non-zero, and that it FALLS when a
+            // crew member dies.
             int living = 0;
             foreach (var c in sim.Citizens.Items) if (!c.Dead) living++;
             Assert.That(living, Is.GreaterThan(0), "PRECONDITION: somebody must be alive to breathe");
@@ -645,8 +746,20 @@ namespace Perilune.Tests
 
             // …and the ONE caveat that must not need a hover rides the same channel, under its own
             // id, so the surface can render it as always-visible text.
+            //
+            // ⚠️ THE LITERAL IS THE ASSERTION, AND `Contains(ShipLedger.HeadlineCaveat)` ALONE WAS
+            // NOT ONE. Every string contains the empty string, so emptying the const reddened
+            // nothing: the wire shipped ["caveat",""], caveatLine returned '', the island hid the
+            // line, and the gate stayed green — on the very feature added to fix "the caveat is
+            // invisible". The JS tests pin the plumbing with hand-written payloads; nothing pinned
+            // the HOST TEXT. This is that pin.
             StringAssert.Contains("[\"caveat\",", json);
-            StringAssert.Contains(ShipLedger.HeadlineCaveat, json);
+            StringAssert.Contains("No air reserve aboard", json,
+                "the caveat's TEXT must reach the wire — it is the one limit on the island that does " +
+                "not need a hover, so an empty one is a silently missing feature");
+            StringAssert.Contains("not a supply", json);
+            Assert.That(ShipLedger.HeadlineCaveat.Length, Is.GreaterThan(40),
+                "non-vacuity: the caveat const must actually hold a sentence");
 
             // THE STOCK FIELDS REACH THE WIRE. Each of these survived being zeroed before it was
             // asserted here; `crew` in particular is the only place the LIVING crew count is

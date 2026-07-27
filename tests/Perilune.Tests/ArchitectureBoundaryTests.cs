@@ -437,68 +437,6 @@ namespace Perilune.Tests
         /// It is currently guaranteed by nothing but this test. There is no `Sim.Core.csproj`, so
         /// the compiler cannot help (see the class doc).
         /// </summary>
-        /// <summary>
-        /// THE LEDGER MUST NEVER BE REACHABLE FROM A TICK PATH (E0-8).
-        ///
-        /// <para><see cref="ShipMetrics.Compute"/> is ZERO-ALLOC, and that is precisely why it may
-        /// legally sit inside <c>DirectorSystem.Tick</c>, which it does.
-        /// <see cref="ShipLedger.Sample"/> ALLOCATES — one <c>int[]</c> per census — so the same move
-        /// would break the zero-alloc tick invariant that eight test files assert with
-        /// <c>GC.GetAllocatedBytesForCurrentThread()</c> deltas.</para>
-        ///
-        /// <para><b>This is not a hypothetical.</b> The charter's own stated destination for these
-        /// aggregates is "the new MOSS <c>ship.*</c> bindings and Director tension inputs"
-        /// (<c>ECONOMY-PLAN.md</c> §1, E0-8). A Director tension input is read inside <c>Tick</c>. So
-        /// the single most likely next edit to this code is the one edit it must not receive, and
-        /// prose in a doc comment would not survive that lane. When that work is genuinely wanted it
-        /// needs a zero-alloc census (a caller-supplied buffer) plus a deliberate pin move — and
-        /// editing the list below in the same commit is how it gets argued for.</para>
-        /// </summary>
-        [Test]
-        public void TheLedgerIsNotReachableFromAnyTickPath()
-        {
-            // The ledger's own file legitimately mentions its own type names; nothing else in
-            // Sim.Core may.
-            var owners = new[] { "sim/Sim.Core/ShipLedger.cs" };
-            var offenders = new List<string>();
-            int scanned = 0, sawSimSystem = 0;
-
-            foreach (var path in ModuleFiles("Sim.Core"))
-            {
-                string rel = Rel(path);
-                if (Array.IndexOf(owners, rel) >= 0) continue;
-                string code = CodeOnly(File.ReadAllText(path));
-                scanned++;
-                // Only files that ARE a system can put something on a tick path.
-                if (!code.Contains(": ISimSystem") && !code.Contains(", ISimSystem") &&
-                    !code.Contains("ISimSystem,")) continue;
-                sawSimSystem++;
-                if (code.Contains("ShipLedger")) offenders.Add(rel);
-            }
-
-            Assert.That(offenders, Is.Empty,
-                "BOUNDARY CROSSED: an ISimSystem references ShipLedger.\n" +
-                "  found: " + string.Join("\n         ", offenders) + "\n" +
-                "WHY: ShipLedger.Sample ALLOCATES (one int[] per census). ShipMetrics.Compute does\n" +
-                "  not, which is the only reason DirectorSystem is allowed to call IT from Tick. The\n" +
-                "  sim core is zero-alloc in tick paths and that is test-enforced, not aspirational.\n" +
-                "  E0-8's charter names 'Director tension inputs' as a destination for these\n" +
-                "  aggregates, so this is the mistake most likely to be made, by someone reading the\n" +
-                "  plan and doing what it says.\n" +
-                "FIX: read the ledger from a HOST, at <=1 Hz, exactly as GameSession and the scenario\n" +
-                "  `ledger` verb do. ShipLedgerTracker is deliberately not an ISimSystem.\n" +
-                "IF DELIBERATE: it needs a zero-alloc census (caller-supplied buffer) AND a determinism\n" +
-                "  pin move, because a sim system reading it makes it hashed state. Edit `owners` in\n" +
-                "  this test in the SAME commit and say why in the commit message.");
-
-            // Non-vacuity, both halves: the scan must have read real files, and it must have found
-            // real ISimSystem implementations. A denylist that matches nothing guards nothing.
-            Assert.That(scanned, Is.GreaterThan(20), "the Sim.Core scan read only " + scanned + " files");
-            Assert.That(sawSimSystem, Is.GreaterThan(10),
-                "the scan recognised only " + sawSimSystem + " ISimSystem implementations — the " +
-                "detection changed and this boundary now passes because it is looking at nothing");
-        }
-
         [Test]
         public void SimCore_DependsOnNothingElseInTheRepo()
         {
@@ -520,6 +458,165 @@ namespace Perilune.Tests
                 "  in Sim.Dsl and is injected, never referenced).\n" +
                 "IF DELIBERATE: it almost certainly is not. Changing this inverts the architecture in\n" +
                 "  docs/ARCHITECTURE.md and CLAUDE.md; it is an integrator decision, not a lane's.");
+        }
+
+        /// <summary>
+        /// THE LEDGER MUST NEVER BE REACHABLE FROM A TICK PATH (E0-8).
+        ///
+        /// <para><see cref="ShipMetrics.Compute"/> is ZERO-ALLOC, and that is precisely why it may
+        /// legally sit inside <c>DirectorSystem.Tick</c>, which it does.
+        /// <see cref="ShipLedger.Sample"/> ALLOCATES — one <c>int[]</c> per census — so the same move
+        /// would break the zero-alloc tick invariant that eight test files assert with
+        /// <c>GC.GetAllocatedBytesForCurrentThread()</c> deltas.</para>
+        ///
+        /// <para><b>This is not a hypothetical.</b> The charter's own stated destination for these
+        /// aggregates is "the new MOSS <c>ship.*</c> bindings and Director tension inputs"
+        /// (<c>ECONOMY-PLAN.md</c> §1, E0-8). A Director tension input is read inside <c>Tick</c>, so
+        /// the single most likely next edit to this code is the one edit it must not receive, and
+        /// prose in a doc comment would not survive that lane. When that work is genuinely wanted it
+        /// needs a zero-alloc census (a caller-supplied buffer) plus a deliberate pin move.</para>
+        ///
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// ⚠️ A TRAP SHAPE THIS REPO HAD NOT SEEN, AND THE COUNTERMEASURE, WHICH GENERALISES WELL
+        /// PAST THIS TEST. The first version of this guard decided WHAT TO INSPECT by scanning each
+        /// file for <c>": ISimSystem"</c> — "only a system can put something on a tick path" — and
+        /// then looked for <c>ShipLedger</c> inside those files only. An independent reviewer built
+        /// the exact violation it exists to stop: a PLAIN HELPER (not a system) calling
+        /// <c>ShipLedger.Sample</c>, plus one line in <c>DirectorSystem.Tick</c> calling that helper.
+        /// The ledger was on the tick path and THIS TEST WAS GREEN — the helper was skipped because
+        /// it is not a system, and the system's own source never contains the string
+        /// <c>ShipLedger</c>. One level of indirection walked straight past it.
+        ///
+        /// It is none of the three shapes already written down in <c>CLAUDE.md</c>: not a fix
+        /// satisfied by a comment, not a false RED, not a right answer arriving from the wrong
+        /// branch. <b>The matcher matched plenty, both non-vacuity floors passed, and the violation
+        /// was never in scope.</b>
+        ///
+        /// <b>THE COUNTERMEASURE: where a guard must filter scope, make non-vacuity an INCLUSION
+        /// test — a known-violating fixture must be CAUGHT — never a population count.</b> A
+        /// population count ("the scan found 20 files and 10 systems") proves the filter matched
+        /// SOMETHING. It cannot prove the filter would match THE VIOLATION, and those are different
+        /// claims. Below, the scope filter is deleted outright rather than made cleverer: every file
+        /// in <c>Sim.Core</c> except the ledger's own is denied the identifier, which is simpler,
+        /// strictly stronger, and closes the indirection hole, the whitespace fragility and the
+        /// bogus <c>sawSimSystem</c> floor in one move. The inclusion test is
+        /// <see cref="TheTickPathGuardCatchesAViolationItIsShownOnDisk"/>.
+        /// ─────────────────────────────────────────────────────────────────────────────────────
+        /// </summary>
+        [Test]
+        public void TheLedgerIsNotReachableFromAnyTickPath()
+        {
+            var offenders = ScanSimCoreForLedgerReferences(out int scanned);
+
+            Assert.That(offenders, Is.Empty,
+                "BOUNDARY CROSSED: a Sim.Core file references ShipLedger.\n" +
+                "  found: " + string.Join("\n         ", offenders) + "\n" +
+                "WHY: ShipLedger.Sample ALLOCATES (one int[] per census). ShipMetrics.Compute does\n" +
+                "  not, which is the only reason DirectorSystem is allowed to call IT from Tick. The\n" +
+                "  sim core is zero-alloc in tick paths and that is test-enforced, not aspirational.\n" +
+                "  E0-8's charter names 'Director tension inputs' as a destination for these\n" +
+                "  aggregates, so this is the mistake most likely to be made, by someone reading the\n" +
+                "  plan and doing what it says.\n" +
+                "WHY THE WHOLE MODULE AND NOT JUST THE SYSTEMS: an earlier version scanned only files\n" +
+                "  declaring `: ISimSystem`, and a helper called from Tick walked straight past it.\n" +
+                "  Reachability is transitive; a scope filter is not. So nothing in Sim.Core may name\n" +
+                "  the ledger at all, which is a rule a reader can check by eye.\n" +
+                "FIX: read the ledger from a HOST, at <=1 Hz, exactly as GameSession and the scenario\n" +
+                "  `ledger` verb do. ShipLedgerTracker is deliberately not an ISimSystem.\n" +
+                "IF DELIBERATE: it needs a zero-alloc census (caller-supplied buffer) AND a determinism\n" +
+                "  pin move, because a sim system reading it makes it hashed state. Edit LedgerOwners\n" +
+                "  in this test file in the SAME COMMIT and say why in the commit message.");
+
+            Assert.That(scanned, Is.GreaterThan(20), "the Sim.Core scan read only " + scanned + " files");
+        }
+
+        /// <summary>The ONE file in <c>Sim.Core</c> allowed to name the ledger: the ledger.
+        /// MEASURED, not assumed — <see cref="TheTickPathGuardCatchesAViolationItIsShownOnDisk"/>
+        /// asserts the shipped tree has exactly this one.</summary>
+        private static readonly string[] LedgerOwners = { "sim/Sim.Core/ShipLedger.cs" };
+
+        /// <summary>Every <c>Sim.Core</c> file outside <see cref="LedgerOwners"/> that names
+        /// <c>ShipLedger</c> in CODE (comments stripped — a doc comment mentioning the ledger is
+        /// documentation, not a dependency).</summary>
+        private static List<string> ScanSimCoreForLedgerReferences(out int scanned)
+        {
+            var offenders = new List<string>();
+            scanned = 0;
+            foreach (var path in ModuleFiles("Sim.Core"))
+            {
+                string rel = Rel(path);
+                if (Array.IndexOf(LedgerOwners, rel) >= 0) continue;
+                scanned++;
+                if (CodeOnly(File.ReadAllText(path)).Contains("ShipLedger")) offenders.Add(rel);
+            }
+            return offenders;
+        }
+
+        /// <summary>
+        /// THE INCLUSION TEST — the countermeasure named in the guard above, applied to the guard
+        /// above. It does not argue that the scan would catch a violation; it WRITES ONE TO DISK,
+        /// runs the real scan, and asserts the violation is named.
+        ///
+        /// <para>The fixture is deliberately the shape that DEFEATED the previous version: a plain
+        /// helper class that is NOT an <c>ISimSystem</c>. Under the old scope filter this file was
+        /// skipped entirely; under the denylist it is caught. The file is written under a temp name
+        /// inside <c>sim/Sim.Core</c> (the scan reads the directory from disk, so it has to be there)
+        /// and is deleted in a <c>finally</c> — including on assertion failure.</para>
+        ///
+        /// <para>⚠️ THE PROBE IS A REAL <c>.cs</c> FILE IN A COMPILED SOURCE TREE for the few
+        /// milliseconds it exists, because <see cref="ScanSimCoreForLedgerReferences"/> reads the
+        /// directory from DISK — that is what makes this an inclusion test rather than another
+        /// argument. The window is inside one test method and the <c>finally</c> closes it, but a
+        /// <c>dotnet build</c> racing this exact instant would compile it. Under <c>ci.sh</c> the
+        /// build strictly precedes the test run, so it cannot happen there; it is stated because a
+        /// future parallel-build lane would need to know.</para>
+        ///
+        /// MUTATION (applied, RED, reverted): restore the <c>": ISimSystem"</c> scope filter ⇒ the
+        /// helper is skipped and this fails.
+        /// </summary>
+        [Test]
+        public void TheTickPathGuardCatchesAViolationItIsShownOnDisk()
+        {
+            // The clean tree first: exactly one file in Sim.Core names the ledger, and it is the
+            // ledger. That is what makes the denylist form legitimate rather than merely strict.
+            var clean = ScanSimCoreForLedgerReferences(out _);
+            Assert.That(clean, Is.Empty, "PRECONDITION: the shipped tree must be clean before a " +
+                                         "planted violation proves anything");
+
+            string probe = Path.Combine(RepoRoot(), "sim", "Sim.Core", "__LedgerTickPathProbe.cs");
+            try
+            {
+                File.WriteAllText(probe,
+                    "namespace Perilune.Sim\n" +
+                    "{\n" +
+                    "    // NOT an ISimSystem — a plain helper, which is exactly how the reviewer's\n" +
+                    "    // probe walked past the previous scope-filtered version of this guard.\n" +
+                    "    internal static class LedgerTickPathProbe\n" +
+                    "    {\n" +
+                    "        internal static long Total(Simulation sim) => ShipLedger.Sample(sim).TotalUnits;\n" +
+                    "    }\n" +
+                    "}\n");
+
+                var caught = ScanSimCoreForLedgerReferences(out _);
+                Assert.That(caught, Has.Some.EndsWith("__LedgerTickPathProbe.cs"),
+                    "THE GUARD DID NOT CATCH A VIOLATION PLANTED IN FRONT OF IT.\n" +
+                    "\n" +
+                    "This test is the one that decides whether TheLedgerIsNotReachableFromAnyTickPath " +
+                    "is worth anything. A population floor ('the scan read 40 files') proves the scan " +
+                    "matched SOMETHING; only this proves it would match THE VIOLATION. If the scan " +
+                    "grows a scope filter again — 'only systems can reach a tick path' — a helper " +
+                    "called from Tick walks straight past it and the guard goes green over a live " +
+                    "breach. That happened; it is why this test exists.");
+            }
+            finally
+            {
+                if (File.Exists(probe)) File.Delete(probe);
+            }
+
+            // …and the tree is clean again, so a failure here cannot leave a stray file poisoning
+            // every later run (or, worse, the next `dotnet build`).
+            Assert.That(ScanSimCoreForLedgerReferences(out _), Is.Empty,
+                "the planted probe was not removed — delete sim/Sim.Core/__LedgerTickPathProbe.cs");
         }
 
         /// <summary>

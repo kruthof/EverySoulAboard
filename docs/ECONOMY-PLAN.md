@@ -90,6 +90,37 @@ the measured four-hour economy into roughly fifteen.
 | **E0-7** | **Ice → melter → water**, with the GDD-canonical forward-hold cargo authored into the slice. | Highest-value single item in the external-supply review and it needs **zero** nav work: it repairs the measured water-loop failure, creates a durable recurring haul source, and is the exact training-wheels version of the comet loop. |
 | **E0-8** | **The ledger.** New `ShipMetrics` members (`MassLedger`, `PartsPerDay`, `DaysOfWater`, `DaysOfAir`), computed incrementally in the owning system, exposed as a snapshot; a read-only `ledger` wire channel and console panel. **Ships with a total-value roll-up** — E4's Appraisal lever sums it (`ECONOMY.md` §13.3). | Today `Food` reads 1.00 while food production is dead. The metrics must stop lying before anything else is tuned against them. Same aggregates become the new MOSS `ship.*` bindings and Director tension inputs. |
 
+> **⚠️ E0-8 LANDED 2026-07-27 (`lane/e0-8-ledger`), and TWO THINGS IN THE ROW ABOVE ARE NOW WRONG.**
+> The row is left verbatim because the whole programme quotes it; read this box before acting on it.
+>
+> **1. "Today `Food` reads 1.00 while food production is dead" — THE PREMISE IS STALE, THE
+> CONCLUSION STANDS.** Food production is **alive**: measured over 3 sim-days on `--ship slice`,
+> total matter aboard grows **76 → 731 units**, almost all `Potato`, because B-2's greywater makeup
+> floor fixed the hydro loop that used to die on day 1.2. `Food` still reads **1.000** — on the
+> slice (699 potatoes = 31.5 crew-days), on `--ship grid` (481 = 21.6) and on the procedural ship
+> (807 = 145.3) — because `ShipMetrics.cs:85` is `min(1, potatoes/(pop*5))` and **the clamp is the
+> liar**, not a dead loop. It also divides by `Citizens.Items.Count` (`:84`), which includes the
+> dead (`NeedsSystem.cs:198` sets a flag and nothing removes). So the sentence is right that the
+> metric lies and wrong about why, and anyone tuning food against it is tuning against a saturated
+> instrument.
+>
+> **2. THE METRICS COULD NOT BE FIXED IN PLACE, and that is why E0-8 shipped a ledger BESIDE
+> `ShipMetrics` rather than new members on it.** `ShipMetrics.cs:20` says "call from UI at ~1 Hz,
+> never per tick"; `DirectorSystem.cs:80` calls it *inside* `Tick`, feeding Morale/Water/Food/Power
+> into a tension term that moves the wear lever — and `DirectorSystem` is an `IStatefulSystem` whose
+> `StateChecksum()` folds into `Simulation.StateHash`. Correcting any of these metrics is therefore a
+> **determinism pin move**, not a display change. (The coupling itself is not news —
+> `DirectorSystem.cs:41-46`, `MECHANICS.md` and `perilune-economy-modularity.md` §1.5.1 all document
+> it. What is new is that the numbers riding it are measurably wrong.) One consequence for this
+> row's own last sentence: **making these aggregates "Director tension inputs" ends E0-8's
+> pin-neutrality.** The pin move is deferred, not avoided.
+>
+> **⚑ CARRIED TO E0-9 — THE FOOD GAP.** `Food` is the liar this row NAMES, and E0-8 shipped the four
+> members the row asks for, none of which is food. The honest number exists and is computed today by
+> `hosts/scenario`'s `ledger` verb (potatoes ÷ `sustenance.def potato_hunger_value` ÷ living crew =
+> **crew-days of food**), but **no honest food member reaches the player**. A reader of this row will
+> expect otherwise. It is one member on an existing channel plus one row on an existing island.
+
 ### E1 — Entropy bites
 
 Sleep (L2); spoilage on a temperature curve (couples free to the existing thermal sim); hull
