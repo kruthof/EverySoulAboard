@@ -1042,6 +1042,26 @@ test('codeOnly is STRING-LITERAL AWARE, so a quoted comment marker cannot blind 
   // Line/column drift would make any future line-numbered message wrong: newlines are preserved.
   assert.equal(codeOnly('a\n/* x\ny */\nb\n').split('\n').length, 'a\n/* x\ny */\nb\n'.split('\n').length,
     'codeOnly changed the line count');
+
+  // ⚠️ THE `\` ESCAPE BRANCH, AND IT WAS A SURVIVOR — found from its CSS twin, not from here.
+  //
+  // `code-only.js` holds two near-identical strippers whose string-literal branches differ by a few
+  // characters. While hardening `cssCodeOnly`'s controls, the same escape branch was removed from
+  // THIS function as a cross-check: the whole client suite stayed green, 713 pass / 0 fail. So the
+  // line that keeps `\"` from ending a string early was pinned by nothing at all, in the shared
+  // helper that every id/wiring scan in this file runs through.
+  //
+  // It matters because the failure is total, not partial: with the branch gone, `"a\"// b"` ends at
+  // the escaped quote, the `//` that follows opens a line comment, and everything to end of line
+  // vanishes — including whatever the scan downstream was looking for. That is the same "blinded
+  // stripper ⇒ every scan passes vacuously" shape the rest of this test exists to rule out.
+  //
+  // MUTATION: delete `if (src[i] === '\\') { … }` from `codeOnly` ⇒ RED here.
+  const escaped = 'const s = "a\\"// b"; const live = $(\'palette\');\n';
+  assert.ok(codeOnly(escaped).includes("$('palette')"),
+    'an ESCAPED quote inside a string ended that string early, the `//` after it opened a line ' +
+    'comment, and the rest of the line was dropped. Every scan in this file reads through this ' +
+    'function, so a source containing one `\\"` would silently blind them.');
 });
 
 // The property that makes an over-the-real-sources canary unnecessary, so it is asserted directly

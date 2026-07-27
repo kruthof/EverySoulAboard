@@ -76,6 +76,17 @@ class Element extends Node {
   }
   setAttribute(k, v) { this.attributes[k] = String(v); }
   getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; }
+  /**
+   * ⚠️ ADDED BECAUSE ITS ABSENCE PRODUCED A FALSE RED IN A REVIEW, and this is a SHARED harness so
+   * the next package would have met it too. The most realistic form of the "aria-pressed off" bug —
+   * `if (on) setAttribute(…) else removeAttribute(…)` — could not be applied as a mutation at all:
+   * it died on `TypeError: removeAttribute is not a function`, reddening 1 test while 31 others
+   * never ran. That is `CLAUDE.md` trap 4 exactly: a mutation that leaves the module unloadable
+   * proves nothing about the semantics it claims to pin, and a small plausible failure count is
+   * precisely what a real semantic red looks like. A stub that cannot express the realistic mistake
+   * cannot be used to rule it out.
+   */
+  removeAttribute(k) { delete this.attributes[k]; }
   addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
   removeEventListener(t, fn) {
     const a = this.listeners[t];

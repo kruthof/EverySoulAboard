@@ -788,9 +788,14 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 // (a `Cmd.dig` change moves BOTH paths together, so equality alone would stay green through it).
 //
 // THE DOM IS A STUB, and the limits are the same as `relations-view.test.js`'s: `dom-lite` does not
-// parse markup, so the chrome nodes are registered by hand and `querySelectorAll` returns nothing —
-// which means `_el.toolBtns` is empty and the visual `.on` toggle is NOT proven here. What is proven
-// is the state machine and the wire, which is where a designation can go wrong.
+// parse markup, so the chrome nodes are registered by hand. ⚠️ ONE HALF OF THAT SENTENCE IS NOW
+// FALSE AND IS QUOTED HERE RATHER THAN DELETED: it used to end *"and `querySelectorAll` returns
+// nothing — which means `_el.toolBtns` is empty and the visual `.on` toggle is NOT proven here."*
+// The palette-overflow package added a START-TAG SCANNER to `RzEl` (see its comment below), so
+// `_el.toolBtns` now holds the fifteen buttons `buildChrome` really wrote and `paintPalette`'s body
+// executes. What is STILL not proven here is anything about LAYOUT — whether those buttons are on
+// the screen is a question only a layout engine can answer, and `client/tools/palette-shot.mjs` is
+// where it is answered.
 
 const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
@@ -799,14 +804,62 @@ const RZ_IDS = [
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
 ];
 
+/**
+ * ⚠️ THE ELEMENT SCANNER — a harness upgrade, and it is the reason the paragraph above no longer
+ * ends at *"`_el.toolBtns` is empty and the visual `.on` toggle is NOT proven here"*.
+ *
+ * `querySelectorAll` returning `[]` meant `paintPalette`'s whole body was UNREACHABLE in node: the
+ * loop that lights the armed tool and (since the palette-overflow package) announces it with
+ * `aria-pressed` ran zero times, so any mutation to it was invisible to this suite. That is
+ * `CLAUDE.md` trap 1's cousin — not a guard satisfied by a comment, a guard that never executes the
+ * line it names — and trap 4's corollary is the remedy: **if a harness cannot model the thing your
+ * guard needs to see, fix the harness.**
+ *
+ * It is a TAG SCANNER, not an HTML parser, and the difference is deliberate. It lifts every
+ * `<button …>`/`<span …>` START TAG out of an assigned `innerHTML` into a real element carrying that
+ * tag's class list, `data-*` dataset and attributes — flat, ignoring nesting, ignoring text. That is
+ * exactly enough for `_el.toolBtns` / `_el.placeLabel` / `_el.capName` and no more; anything it
+ * cannot model (attribute selectors like `[data-rz="deck"]`) still resolves to `null`, which is what
+ * it resolved to before, so the breadcrumb handles keep their existing null-guarded path.
+ *
+ * IT DOES NOT TOUCH `childNodes`. The scanned nodes live in a separate `_scanned` list, so
+ * `textContent` — which every toast assertion in this file reads — keeps the exact behaviour it had
+ * before this existed. A parser that populated `childNodes` would have quietly changed the meaning
+ * of assertions written years apart from it.
+ */
+const TAG_RE = /<(button|span)\b([^>]*)>/g;
+const ATTR_RE = /([a-zA-Z-]+)\s*=\s*"([^"]*)"/g;
+
 /** dom-lite + the four extras roomzoom-view.js needs: innerHTML, querySelector(All), closest,
  *  getBoundingClientRect. Subclassed here so the shared helper keeps its narrow contract. */
 class RzEl extends DomEl {
-  constructor(doc, tag) { super(doc, tag); this._html = ''; this._rect = { left: 0, top: 0, width: 0, height: 0 }; }
+  constructor(doc, tag) {
+    super(doc, tag);
+    this._html = ''; this._rect = { left: 0, top: 0, width: 0, height: 0 };
+    this._scanned = [];
+  }
   get innerHTML() { return this._html; }
-  set innerHTML(v) { this._html = String(v); this.childNodes = []; }
-  querySelector() { return null; }            // no markup parser — chrome handles are null-guarded
-  querySelectorAll() { return []; }
+  set innerHTML(v) {
+    this._html = String(v); this.childNodes = [];
+    this._scanned = [];
+    for (const m of this._html.matchAll(TAG_RE)) {
+      const el = new RzEl(this.ownerDocument, m[1]);
+      for (const a of m[2].matchAll(ATTR_RE)) {
+        el.setAttribute(a[1], a[2]);
+        if (a[1] === 'class') el.className = a[2];
+        else if (a[1].startsWith('data-')) el.dataset[a[1].slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = a[2];
+      }
+      el.parentNode = this;   // so a click on a scanned button bubbles the way the real one does
+      this._scanned.push(el);
+    }
+  }
+  /** Class selectors only, over the scanned start tags. Anything else → null/[] , as before. */
+  querySelector(sel) { const a = this.querySelectorAll(sel); return a.length ? a[0] : null; }
+  querySelectorAll(sel) {
+    if (typeof sel !== 'string' || !sel.startsWith('.')) return [];
+    const cls = sel.slice(1);
+    return this._scanned.filter((e) => e.classList.contains(cls));
+  }
   getBoundingClientRect() { return this._rect; }
   closest(sel) {
     let n = this;
@@ -939,8 +992,15 @@ rzApi.enter('hold');                       // the Overview's own entry point, by
 const rzLayers = rzDoc.getElementById('rz-layers');
 const rzCanvas = rzDoc.getElementById('rz-canvas');
 const rzRoot = rzDoc.getElementById('roomzoom-view');
+const rzPalette = rzDoc.getElementById('rz-palette');
 // One logical unit per CSS px (fit scale s = 1), so a tile's centre is trivially invertible.
 rzLayers._rect = { left: 0, top: 0, width: HOLD.rw * U, height: HOLD.rh * U };
+// `makeRzDoc` registers every chrome node by id and parents NONE of them, so a click on a real
+// palette button would die at the palette instead of reaching the delegated handler on the root.
+// Parenting it is what the shipped DOM already does (`#rz-palette` lives inside `.rz-palette-wrap`
+// inside `#roomzoom-view`), and it is what lets the aria test below drive the SHIPPED button rather
+// than a stand-in it built itself.
+rzPalette.parentNode = rzRoot;
 
 /** The client-space point at the centre of tile (tx,ty), under the rect above. */
 const atTile = (tx, ty) => ({ clientX: (tx - HOLD.rx) * U + U / 2, clientY: (ty - HOLD.ry) * U + U / 2 });
@@ -1085,7 +1145,8 @@ test('WP-4 fixture check: the room under test is the live wreck, with real desig
 // The palette BAR itself, read out of the markup `buildChrome` actually wrote. Without this, every
 // assertion below could be satisfied by a tool the player has no button for: the tests arm through a
 // `data-rztool` node they construct themselves, so they would pass against an unrendered palette.
-// (`querySelectorAll` is stubbed out here, so this reads the innerHTML string, not parsed nodes.)
+// (This reads the innerHTML string the builder wrote, not the scanned nodes — deliberately kept as
+// a string assertion, because it is the MARKUP contract, and it predates the tag scanner.)
 test('WP-4: the palette actually PAINTS a DIG and a STRIP button, labelled and armable', () => {
   const html = rzDoc.getElementById('rz-palette').innerHTML;
   assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
@@ -1348,6 +1409,171 @@ test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its ho
     `the stockpile button is missing its label '${TOOL_LABEL.stockpile}'`);
   assert.match(rzRoot.innerHTML, /STOCKPILE \[Z\]/,
     'the palette hint does not name the Z hotkey — and nothing else on this surface can');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE PALETTE-OVERFLOW PACKAGE — the armed tool, said in words.
+//
+// The package's subject is a LAYOUT defect (three tools clipped off the right edge below ~1250px,
+// with the scrollbar deliberately hidden), and no assertion in node can see layout — that is what
+// `client/tools/palette-shot.mjs` is for, and this file must not pretend otherwise. What IS testable
+// here, and belongs to the same complaint from a different cause, is that the palette used to
+// announce its armed tool with a COLOUR AND NOTHING ELSE: fifteen buttons, no `aria-pressed`, so a
+// screen reader could read every label and not one word about which one is holding the cursor. The
+// ACCEPTS chips three pixels above them have carried `aria-pressed` since WP-6 (§4j).
+//
+// These are driven through the SHIPPED buttons — `_el.toolBtns`, the nodes `buildChrome` wrote —
+// and through the SHIPPED delegated click handler, not through a stand-in with the right dataset.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The scanned palette button for `tool`, or undefined. */
+const rzToolBtn = (tool) => rzPalette.querySelectorAll('.rz-tool').find((b) => b.dataset.rztool === tool);
+/** Every tool button's `aria-pressed`, keyed by tool — `null` where the attribute is absent. */
+const rzPressed = () => Object.fromEntries(
+  rzPalette.querySelectorAll('.rz-tool').map((b) => [b.dataset.rztool, b.getAttribute('aria-pressed')]));
+
+// MUTATION: emit `type="submit"` (or drop the attribute) ⇒ RED on the type leg.
+// MUTATION: drop `aria-pressed="false"` from the `buildChrome` markup ⇒ RED on the MARKUP leg.
+//
+// ⚠️ THE MARKUP LEG WAS ADDED BECAUSE THE NODE-VALUE LEG COULD NOT SEE THAT MUTATION — found by
+// physically applying it and watching the suite stay green, not by reading the test. Dropping the
+// attribute from the builder is invisible to a reader of the live nodes, because `paintPalette` runs
+// on entry and writes `'false'` onto all fifteen before any assertion gets to look. The two legs are
+// therefore about two different things and BOTH are needed: `html` is the string `buildChrome`
+// wrote (this stub never re-serialises it from attributes, so it stays the BUILDER's output), and
+// `rzPressed()` is what the PAINTER left on the nodes.
+test('every palette tool is a real <button type="button"> that starts UNPRESSED', () => {
+  const btns = rzPalette.querySelectorAll('.rz-tool');
+  assert.equal(btns.length, ROOM_TOOLS.length,
+    `the tag scanner found ${btns.length} tool buttons, not ${ROOM_TOOLS.length} — every assertion ` +
+    'below would be vacuous, so this is checked first');
+  const html = rzPalette.innerHTML;
+  assert.equal((html.match(/<button type="button" class="rz-tool/g) || []).length, ROOM_TOOLS.length,
+    'a palette tool is not a `<button type="button">`. Inside a form the default type is `submit`, ' +
+    'and the ACCEPTS chips beside these already spell it out — one palette, one button vocabulary');
+  assert.equal((html.match(/aria-pressed="false"/g) || []).length, ROOM_TOOLS.length,
+    'the palette MARKUP no longer declares `aria-pressed="false"` on every tool. The painter would ' +
+    'still write it on entry, so nothing on screen changes — but a toggle button that is born ' +
+    'without the attribute is a plain button until the first repaint, and the attribute is the ' +
+    'builder\'s statement about what kind of control this is.');
+  for (const [tool, v] of Object.entries(rzPressed()))
+    assert.equal(v, 'false', `'${tool}' does not start at aria-pressed="false" (it reads ${v})`);
+});
+
+// MUTATION: delete the `setAttr(b, 'aria-pressed', …)` line from `paintPalette` ⇒ RED (nothing moves
+//           off 'false' when a tool is armed).
+// MUTATION: write `'true'` unconditionally ⇒ RED (fifteen pressed buttons, not one).
+// MUTATION: write `on ? 'true' : null` — the realistic "just remove it when off" mistake ⇒ RED on
+//           the disarm leg, which is why the disarm leg asserts 'false' rather than "not true".
+test('arming a tool through its own button moves aria-pressed, and only ever onto ONE button', () => {
+  const dig = rzToolBtn('dig');
+  assert.ok(dig, 'no scanned DIG button — the rest of this test would be vacuous');
+
+  rzFire(dig, 'click', {});                       // the real node, the real delegated handler
+  const armed = rzPressed();
+  assert.equal(armed.dig, 'true', 'DIG was clicked and does not say it is pressed');
+  assert.equal(Object.values(armed).filter((v) => v === 'true').length, 1,
+    'more than one tool claims aria-pressed="true" — the palette has ONE exclusive slot');
+  // …and the attribute is not decoration: the same click really armed the verb.
+  assert.equal(rzOrders(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }))[0].cmd, 'dig',
+    'the button that says it is pressed did not arm DIG — the aria state is lying');
+
+  rzFire(rzToolBtn('strip'), 'click', {});        // a DIFFERENT tool replaces, never stacks
+  const moved = rzPressed();
+  assert.equal(moved.strip, 'true');
+  assert.equal(moved.dig, 'false', 'the previously armed tool still claims to be pressed');
+  assert.equal(Object.values(moved).filter((v) => v === 'true').length, 1);
+
+  rzFire(rzToolBtn('strip'), 'click', {});        // same button again → disarm
+  const off = rzPressed();
+  assert.equal(off.strip, 'false', 'a disarmed tool must read "false", not lose the attribute — an ' +
+    'absent aria-pressed turns a toggle back into a plain button');
+  assert.equal(Object.values(off).filter((v) => v === 'true').length, 0);
+  assert.deepEqual(rzSweep({ x: 28, y: 16 }, { x: 28, y: 16 }), [],
+    'disarmed by its own button, yet a click still designated');
+});
+
+// D2 — THE SHARED HARNESS CAPABILITY ITSELF, and it is not navel-gazing. `removeAttribute` exists in
+// `dom-lite.js` for exactly one reason: so that `if (on) setAttribute(…) else removeAttribute(…)` —
+// the realistic form of the aria-pressed mistake — can be APPLIED as a mutation instead of dying on
+// a `TypeError` and reddening the wrong thing. Replacing it with a no-op left the whole suite green,
+// which is precisely how a shared stub silently stops working and turns the NEXT reviewer's mutation
+// into a false green: the failure mode the method was added to prevent, reproduced by its absence of
+// coverage. One assertion, in the file that uses the stub hardest.
+//
+// MUTATION: make `dom-lite`'s `removeAttribute` a no-op ⇒ RED.
+test('the shared dom-lite stub can really REMOVE an attribute — the mutation depends on it', () => {
+  const el = new RzEl(rzDoc, 'button');
+  el.setAttribute('aria-pressed', 'true');
+  assert.equal(el.getAttribute('aria-pressed'), 'true', 'setAttribute did not take — vacuous below');
+  el.removeAttribute('aria-pressed');
+  assert.equal(el.getAttribute('aria-pressed'), null,
+    'dom-lite.removeAttribute did not remove the attribute. Every "the tool loses its aria-pressed" ' +
+    'mutation now passes silently: the stub keeps reporting the old value, so the harness reports ' +
+    'GREEN for a change that would strip the armed state in a real browser.');
+  el.removeAttribute('never-set');   // total: removing an absent attribute is not an error
+  assert.equal(el.getAttribute('never-set'), null);
+});
+
+// ⚠️ THE `<span>` HALF OF THE TAG SCANNER, added in review because NOTHING COVERED IT: narrowing
+// `TAG_RE` to `button` alone reddened not one test, even though four chrome handles resolve through
+// it and all four are written by shipping code on every repaint. That is the "cannot bite" shape
+// pointed at the harness instead of at the subject — the scanner would have been free to rot back
+// into the `querySelector() { return null }` stub it replaced, and the driven aria tests above would
+// have gone on passing while `paintCaption`/`paintBreadcrumb`/`paintPalette` wrote into nulls.
+//
+// It is deliberately phrased against the TEXT THE PAINTERS WROTE rather than against the handles
+// themselves: `setText` is null-guarded, so a null handle is silent, and the observable difference
+// between "resolved and written" and "never resolved" is exactly this text.
+//
+// MUTATION: narrow `TAG_RE` to `/<(button)\b([^>]*)>/g` ⇒ RED (all four read '').
+// MUTATION: drop the `.rz-place-label` span from `buildChrome`'s palette markup ⇒ RED.
+// MUTATION: stop passing `class` through to `className` in the scanner ⇒ RED (nothing resolves).
+test('the chrome SPANS resolve and the painters write through them — caption, crumb, palette label', () => {
+  // Read out of the fixture through the SAME lookup the controller uses, never typed here — `HOLD`
+  // is the test's own trimmed rect and deliberately carries no name.
+  const name = roomTileRect(fixView, 'hold').displayName;
+  assert.ok(name, 'the fixture room has no display name — every assertion below would be vacuous');
+  const label = rzPalette.querySelector('.rz-place-label');
+  assert.ok(label, 'the palette has no `.rz-place-label` handle');
+  assert.equal(label.textContent, 'BUILD ▸ ' + name,
+    'the palette\'s room label is not what `paintPalette` writes — either the span did not resolve ' +
+    '(so `setText` no-opped on null) or the wording moved');
+
+  const cap = rzDoc.getElementById('rz-caption');
+  assert.equal(cap.querySelector('.rz-cap-name').textContent, name,
+    'the caption\'s room name did not arrive — `_el.capName` resolved to null');
+  assert.match(cap.querySelector('.rz-placed').textContent, /^\d+ PLACED$/,
+    'the caption\'s placed-count did not arrive — `_el.capPlaced` resolved to null');
+
+  const bc = rzDoc.getElementById('rz-breadcrumb');
+  assert.equal(bc.querySelector('.rz-crumb-leaf').textContent, name,
+    'the breadcrumb leaf did not arrive — `_el.crumbLeaf` resolved to null');
+});
+
+// The material swatches get `type="button"` for the same reason the tool buttons do — one palette,
+// one button vocabulary — and DELIBERATELY NOT `aria-pressed`: `activeMaterial` guarantees exactly
+// one is lit, which is a radio group (`role="radio"`/`aria-checked` + roving focus), not six
+// independent toggles. Asserting the ABSENCE as well as the presence is what stops a later package
+// reaching for the nearest attribute instead of the right one.
+//
+// MUTATION: emit the chips without `type="button"` ⇒ RED.
+// MUTATION: add `aria-pressed` to a material chip ⇒ RED on the second leg.
+test('the material swatches are typed buttons, and are NOT dressed as independent toggles', () => {
+  rzArm('wall');                                  // the strip is populated on arm, not before
+  const html = rzDoc.getElementById('rz-matstrip').innerHTML;
+  const chips = (html.match(/class="rz-mat-chip/g) || []).length;
+  assert.ok(chips >= 2, `the material strip painted ${chips} chips — this assertion would be vacuous`);
+  assert.equal((html.match(/<button type="button" class="rz-mat-chip/g) || []).length, chips,
+    'a material swatch is not a `<button type="button">` — inside a form its default type is ' +
+    '`submit`, and the tool buttons and ACCEPTS chips on this same palette both spell it out');
+  assert.doesNotMatch(html, /aria-pressed/,
+    'a material swatch claims `aria-pressed`. Exactly one swatch is ever lit (`activeMaterial`), ' +
+    'so these are a RADIO GROUP: the honest spelling is role="radio" + aria-checked inside a ' +
+    'radiogroup with roving tab focus, which is a keyboard-interaction change and not an ' +
+    'attribute. Announcing six independent toggles where the player has one choice is worse than ' +
+    'announcing nothing.');
+  rzArm('wall');                                  // disarm — afterEach normalises, but not silently
 });
 
 // MUTATION: drop the `z`/`Z` branch from onKey ⇒ the sweep after it sends nothing ⇒ RED.

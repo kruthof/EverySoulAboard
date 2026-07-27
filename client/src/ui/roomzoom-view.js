@@ -115,6 +115,8 @@ let _miniSig = '';        // last-rendered minimap innerHTML — re-set only on 
 function setText(node, v) { if (node && node.textContent !== v) node.textContent = v; }
 /** Guarded class toggle (no attribute churn when already in the wanted state). */
 function setCls(node, cls, on) { if (node && node.classList.contains(cls) !== !!on) node.classList.toggle(cls, !!on); }
+/** Guarded attribute write — same contract as `setText`, so an idle repaint mutates nothing. */
+function setAttr(node, name, v) { if (node && node.getAttribute(name) !== v) node.setAttribute(name, v); }
 
 /** Mount the Room Zoom surface. Call once from main.js. Returns the { enter, exit } control API. */
 export function initRoomZoom(opts) {
@@ -219,11 +221,19 @@ function buildChrome() {
   // palette — a FIXED label + one FIXED button per ROOM_TOOLS entry (membership never changes, so the
   // set is built once from the table rather than counted here); repaint only toggles
   // the `.on` armed class, so the button under the cursor is never rebuilt.
+  //
+  // `type="button"` + `aria-pressed`, matching the ACCEPTS chips standing three pixels above them
+  // (WP-6 / §4j) rather than leaving two different button vocabularies on one palette. Until now the
+  // armed tool was announced by the `.on` class ALONE, i.e. by colour: a screen reader could read all
+  // fifteen labels and not one word about which of them is holding the cursor. That is the same
+  // complaint the clipping bug produced from a different cause — the control is present, and what it
+  // is doing is not on the surface — so it is fixed here rather than filed.
   const pal = $('rz-palette');
   let btns = '<span class="rz-place-label"></span>';
   for (const tool of ROOM_TOOLS) {
     const demo = tool === 'demolish' ? ' demo' : '';
-    btns += '<button class="rz-tool' + demo + '" data-rztool="' + tool + '">' + esc(TOOL_LABEL[tool]) + '</button>';
+    btns += '<button type="button" class="rz-tool' + demo + '" data-rztool="' + tool +
+      '" aria-pressed="false">' + esc(TOOL_LABEL[tool]) + '</button>';
   }
   pal.innerHTML = btns;
   _el.placeLabel = pal.querySelector('.rz-place-label');
@@ -631,7 +641,15 @@ function paintMinimap() {
 
 function paintPalette() {
   setText(_el.placeLabel, 'BUILD ▸ ' + _focus.displayName);
-  for (const b of _el.toolBtns) setCls(b, 'on', _armed === b.dataset.rztool);
+  for (const b of _el.toolBtns) {
+    const on = _armed === b.dataset.rztool;
+    setCls(b, 'on', on);
+    // The armed state, said in words as well as in colour. One exclusive slot, so exactly one button
+    // may read `true` — which is why this writes 'false' rather than removing the attribute: an
+    // absent `aria-pressed` turns a toggle back into a plain button, and fourteen plain buttons
+    // beside one pressed one is a different (and wrong) statement about the control set.
+    setAttr(b, 'aria-pressed', on ? 'true' : 'false');
+  }
 }
 
 /** The material swatch row: shown only when WALL or FLOOR is armed, listing that surface's 6
@@ -650,7 +668,15 @@ function paintMatStrip() {
   let html = '<span class="rz-mat-label">' + esc(TOOL_LABEL[tool]) + ' ▸</span>';
   for (const m of materialsForTool(tool)) {
     const swatch = buildItem(m.id, { w: 26, h: 26, idPrefix: 'rz-mc-' + tool + '-' + m.mat });
-    html += '<button class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
+    // `type="button"` and DELIBERATELY NOT `aria-pressed`. The type is the same argument as the tool
+    // buttons' — one palette, one button vocabulary, and inside a form the default is `submit`. The
+    // pressed state is a different question and is left open on purpose: `activeMaterial` guarantees
+    // exactly ONE swatch is `on`, which is a radio group, not six independent toggles. The right
+    // spelling is `role="radio"`/`aria-checked` inside a `radiogroup` with roving tab focus, and
+    // that is a keyboard-interaction change (arrow keys move the selection) rather than an attribute
+    // — too much to bolt onto a layout fix, and guessing `aria-pressed` here would announce six
+    // toggles where the player has one choice.
+    html += '<button type="button" class="rz-mat-chip' + (m.mat === active ? ' on' : '') + '" data-rzmat="' + m.mat +
       '" title="' + esc(m.label) + '">' +
       '<svg class="rz-mat-sw" viewBox="0 0 26 26" width="26" height="26" xmlns="http://www.w3.org/2000/svg">' +
       swatch + '</svg><span class="rz-mat-name">' + esc(m.label) + '</span></button>';

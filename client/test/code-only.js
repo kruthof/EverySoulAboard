@@ -18,19 +18,6 @@
 //  moving a guard is only free when its tests move with it.)
 
 /**
- * Strip JS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte. Scans over the
- * result must not fire on prose (a comment mentioning `#stockfilter` is documentation, not a
- * dependency), and they must not be BLINDED by a quoted comment marker (`'//'` inside a string must
- * not swallow the rest of the file — the exact hole an earlier hand-verified version of the C#
- * equivalent shipped with, ArchitectureBoundaryTests.cs `CodeOnly_IsStringLiteralAware…`).
- *
- * Handles '…', "…", `…` (including `${}` only insofar as it stays inside the template — good enough,
- * since an id in a template is a CONSTRUCTED id and already disclosed as invisible) and both comment
- * forms. NOT handled: regex literals — a `/…/` containing a quote could confuse it. Disclosed rather
- * than fixed, and bounded: a '…'/"…" scan terminates at the newline, so the worst it can do is
- * damage its own line (asserted in surface-boundary.test.js).
- */
-/**
  * The CSS half of the same rule: strip `/* … *\/` comments, STRING-LITERAL AWARE, leaving everything
  * else byte-for-byte.
  *
@@ -47,7 +34,49 @@
  * newline here (CSS strings may not span one unescaped), so the blast radius of an unbalanced quote
  * is its own line — the same bound `codeOnly` documents.
  *
- * Behaviour pinned by `moss-screen.test.js`'s "the CSS stripper" tests, beside the scans it protects.
+ * ⚠️ IT MUST NOT STRIP `//`. CSS has no line comments, and `url(http://…)` and `@import "//host/x"`
+ * are ordinary values — the JS stripper above would eat the rest of those lines. That asymmetry is
+ * exactly why this is a separate function rather than a flag on `codeOnly`.
+ *
+ * `\` escapes inside a string survive. NOT handled: comments inside unquoted `url()` tokens, which
+ * CSS does not permit anyway.
+ *
+ * ⚠️ A COMMENT BECOMES A SPACE, NOT NOTHING, AND IT KEEPS ITS LINE BREAKS. Two properties, from
+ * two independently-written implementations of this function that met in a merge — `lane/palette-
+ * overflow` and the test-hygiene lane each added a `cssCodeOnly`, git combined them without a
+ * conflict because they landed at different offsets, and the result was a duplicate export that
+ * crashed eight test files. Measured against each other before one was kept, and NEITHER WAS A
+ * SUPERSET:
+ *
+ *   • a space, not nothing — and ⚠️ **NOT** for the reason this comment used to give. It said
+ *     *"`.a/*x*\/.b` must become `.a .b` (a DESCENDANT, which is what CSS means)"*. **That claim is
+ *     FALSE and is retracted.** A CSS comment is not whitespace: the tokenizer consumes and DISCARDS
+ *     it, emitting no whitespace token (CSS Syntax L3 §4.3.2), so it separates tokens without
+ *     joining anything. Verified in Chrome: `.a/*x*\/.b{color:red}` has `selectorText` `".a.b"` — a
+ *     COMPOUND, one element — and it colours `<i class="a b">`, NOT `<i class="a"><u class="b">`.
+ *     `div/*x*\/span{…}` and `.rz/*x*\/-palette{…}` are both invalid and Chrome DROPS the rule.
+ *
+ *     The space is still correct, for a different reason, and the reason is an ASYMMETRY in what
+ *     this function is — a TEXT FILTER feeding selector-shaped guards. Emitting nothing FUSES
+ *     adjacent identifiers: `.rz/*x*\/-palette` becomes the string `.rz-palette`, and
+ *     `.rz-palette/*x*\/-wrap` becomes `.rz-palette-wrap`. Chrome drops both of those rules as
+ *     invalid, so a guard reading nothing-stripped text would fire on a rule that does NOTHING —
+ *     a false positive that FABRICATES this package's own guarded selector out of thin air. A space
+ *     can only ever SPLIT a token, yielding a selector the guard ignores (and a rule the browser was
+ *     dropping anyway). Fabricating a match is unsafe; splitting one is not. The lane version
+ *     emitted nothing; this is the hygiene lane's behaviour and it is the one that is safe.
+ *   • line breaks kept — the lane version re-emitted each `\n` inside a comment, so the stripped
+ *     sheet keeps the raw sheet's line numbering. Measured on the real `styles.css`: 1457 newlines
+ *     preserved against 1301 for the space-only version, i.e. 156 lines of drift in a file whose
+ *     guards quote `file:line`.
+ *
+ * Both are kept, both are pinned: the space rule by `moss-screen.test.js`'s "the CSS stripper"
+ * tests, the line-fidelity rule beside them (it was previously untested on BOTH sides, which is why
+ * it nearly vanished in the merge).
+ *
+ * Behaviour pinned by `moss-screen.test.js`'s "the CSS stripper" tests, beside the scans it protects,
+ * and by `palette-layout.test.js`'s three-marker negative control (double-quoted, single-quoted and
+ * escaped-quote markers — both of the latter were survivors when only `"` was tested).
  */
 export function cssCodeOnly(src) {
   let out = '';
@@ -57,9 +86,11 @@ export function cssCodeOnly(src) {
     const c = src[i];
     if (c === '/' && src[i + 1] === '*') {
       i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
+      // Re-emit the comment's own line breaks, so the stripped sheet keeps the raw sheet's line
+      // numbering; then one space, so the tokens either side of it stay separate.
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i += 1; }
       i += 2;                                            // past the terminator (or past EOF)
-      out += ' ';                                        // a comment is whitespace, not nothing
+      out += ' ';                                        // never fuse the tokens either side (header)
       continue;
     }
     if (c === '"' || c === "'") {
@@ -80,6 +111,25 @@ export function cssCodeOnly(src) {
   return out;
 }
 
+/**
+ * ⚠️ THIS DOCSTRING WAS STRANDED. It sat above `cssCodeOnly` — describing the JS stripper while
+ * attached to the CSS one — after the two lanes' additions were combined. Moved back onto its own
+ * function during that merge resolution: two near-identical strippers in one file is already the
+ * shape that mis-targeted a mutation harness, and a misfiled docstring is how the next person
+ * hardens the wrong twin.
+ *
+ * Strip JS comments, STRING-LITERAL AWARE, leaving everything else byte-for-byte. Scans over the
+ * result must not fire on prose (a comment mentioning `#stockfilter` is documentation, not a
+ * dependency), and they must not be BLINDED by a quoted comment marker (`'//'` inside a string must
+ * not swallow the rest of the file — the exact hole an earlier hand-verified version of the C#
+ * equivalent shipped with, ArchitectureBoundaryTests.cs `CodeOnly_IsStringLiteralAware…`).
+ *
+ * Handles '…', "…", `…` (including `${}` only insofar as it stays inside the template — good enough,
+ * since an id in a template is a CONSTRUCTED id and already disclosed as invisible) and both comment
+ * forms. NOT handled: regex literals — a `/…/` containing a quote could confuse it. Disclosed rather
+ * than fixed, and bounded: a '…'/"…" scan terminates at the newline, so the worst it can do is
+ * damage its own line (asserted in surface-boundary.test.js).
+ */
 export function codeOnly(src) {
   let out = '';
   let i = 0;

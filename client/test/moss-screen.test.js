@@ -951,6 +951,48 @@ test('the CSS stripper: a commented-out rule does not satisfy a scan, and quotes
   assert.equal(cssCodeOnly('.x{/*c*/color:red}'), '.x{ color:red}');
 });
 
+// ⚠️ THE TWO PROPERTIES THAT SURVIVED A MERGE, AND NEITHER WAS PINNED WHERE IT MATTERED.
+//
+// `lane/palette-overflow` and this lane each independently added a `cssCodeOnly` to `code-only.js`.
+// Git combined them WITHOUT A CONFLICT — they landed at different offsets — and the result was a
+// duplicate `export` that crashed eight test files. When the two were finally compared behaviourally
+// rather than textually, NEITHER WAS A SUPERSET: this lane's emitted a space for a comment and lost
+// its line breaks; the other's kept the line breaks and emitted nothing. One property was pinned
+// (the space, five lines above); the other was pinned by nobody, on either side, which is exactly
+// how it would have been dropped silently in the resolution.
+//
+// MUTATION: drop `out += ' '` from the comment branch ⇒ RED on leg 1 (and on the pin above).
+// MUTATION: drop the `if (src[i] === '\n') out += '\n'` from the comment branch ⇒ RED on leg 2.
+test('the CSS stripper: a comment leaves WHITESPACE behind, and keeps its own line breaks', () => {
+  // 1. A SPACE, NOT NOTHING. ⚠️ This leg used to justify itself with *"`.a/*x*/.b` is a DESCENDANT
+  //    selector in CSS"* — FALSE, and retracted. A CSS comment is not whitespace: the tokenizer
+  //    discards it and emits no whitespace token (CSS Syntax L3 §4.3.2), so `.a/*x*/.b` is the
+  //    COMPOUND `.a.b` (Chrome: `selectorText === '.a.b'`; it colours `<i class="a b">`, not a
+  //    nested pair). The assertion is unchanged and still right, for the OTHER reason: `cssCodeOnly`
+  //    is a TEXT FILTER feeding selector-shaped guards, and emitting nothing FUSES identifiers —
+  //    `.rz/*x*/-palette` becomes the string `.rz-palette`, a rule Chrome DROPS as invalid, handed
+  //    to the palette guard as the very selector it watches. That is a false positive fabricated out
+  //    of thin air. A space can only SPLIT a token, into a selector the guard ignores. Fabricating a
+  //    match is unsafe; splitting one is not.
+  assert.equal(cssCodeOnly('.a/*x*/.b{color:red}'), '.a .b{color:red}',
+    'a comment between two class selectors was deleted rather than replaced with a space, ' +
+    'fusing the identifiers either side of it into one');
+
+  // 2. LINE FIDELITY. The stripped sheet must keep the raw sheet's line numbering, or every
+  //    `file:line` a guard quotes off it is wrong. Measured on the real styles.css, where the
+  //    space-only implementation lost 156 lines.
+  const raw = readFileSync(join(CLIENT, 'styles.css'), 'utf8');
+  const nl = (s) => (s.match(/\n/g) || []).length;
+  assert.equal(nl(cssCodeOnly(raw)), nl(raw),
+    `the stripped stylesheet has ${nl(cssCodeOnly(raw))} newlines against the raw file's ${nl(raw)}. ` +
+    'A comment must re-emit its own line breaks, or line numbers taken off the stripped text drift ' +
+    'against the file a reader opens.');
+  // …and the same property in isolation, so a failure says WHICH behaviour broke rather than only
+  // that the totals disagree.
+  assert.equal(cssCodeOnly('.x{/*a\nb\nc*/color:red}'), '.x{\n\n color:red}',
+    'a multi-line comment did not re-emit its line breaks');
+});
+
 test('VS-M10: reduced motion turns the block cursor steady', () => {
   const css = cssCodeOnly(readFileSync(join(CLIENT, 'styles.css'), 'utf8'));
   const block = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.moss-cursor\s*\{([^}]*)\}/.exec(css);
