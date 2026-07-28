@@ -3,26 +3,50 @@
   Source: claude.ai/design project cb4b6b0f-… ("Perilune Item Set.dc.html"), imported via the
   claude_design MCP. READ AS A SPEC, NOT A LIVE PAGE (Design-Component runtime / static canvas).
 
-  ⚠ RE-IMPORTED 2026-07-27. The catalog is now **68 pieces, not 60**. Measured against the
-  2026-07-23 import, block by block, by label: **8 NEW**, **9 CHANGED**, 51 byte-identical,
-  0 removed.
+  ⚠ RE-IMPORTED 2026-07-28. The catalog is now **140 pieces: 70 pristine + 70 WRECKED**.
+  Measured against the 2026-07-27 import, block by block, BY LABEL (never by file order — that is
+  what caught the nine unannounced redraws last time): the 68 previous pieces are
+  **BYTE-IDENTICAL, 0 changed, 0 removed**. Only two prose lines moved, both the section heading
+  and its blurb ("Resources & loose items" → "Resources, loose items & cryo").
 
-    NEW — the "Resources & loose items" section, the GROUND-ITEM art the `items` channel was
-    built to carry (client/test/device-sprite-coverage.test.js `NO_GROUND_ITEM_SPRITE`):
-      REGOLITH (,) · POTATO (f) · SCRAP (s) · PARTS (p) · CONTROLLER MODULE (c) ·
-      SEALS (g) · ICE (i) · CORPSE (&).
-    ⚠ There is deliberately NO MetalOre piece. `ItemKind.MetalOre` has ZERO references
-    anywhere in sim/ outside the glyph table — nothing produces or consumes it — so it is
-    dead E3 mining vocabulary and must NOT be given art until it is real.
+    NEW STATIC (2) — appended to the resources section, but they are NOT resources (no `ItemKind`,
+    no count, nothing hauls them):
+      CRYO CAPSULE · OCCUPIED — upright navy capsule, frost-glass window with a frozen crew member
+        behind it, cyan `-196°` plate, a pulsing LED.
+      CRYO CAPSULE · OPEN — the same shell empty: padded bed, hinged glass lid swung open at
+        rotate(24deg), three icicles on the rim, a frost puddle, an amber `EMPTY` plate.
+    ⚠ These are DISTINCT from the pre-existing `CRYOPOD` piece, which is unchanged and still
+    present. CRYOPOD is a lozenge seen from above; the capsules are the same object with a STATE.
 
-    CHANGED — owner's reason, verbatim: "the current ones were difficult to understand".
-    Nine device pieces are REDRAWN and the new geometry supersedes the old:
-      REACTOR · O₂ SCRUBBER · OXYGEN TANK · WATER RECYCLER · COOLER · WORKBENCH ·
-      FABRICATOR · WEAPONS RACK · HATCH / LADDER.
+    NEW SECTION (70) — "Wrecked — post-raid state": one broken twin for EVERY piece above, in
+    desaturated colour with scorch / cracks / breach holes / hanging wire / rust / dead screens.
+    The design premise, verbatim from the mock: *"Day 1: the raid left every system dead… that the
+    thawed crew must repair or rebuild. Each keeps one identifying feature so it still reads as the
+    same object."*
 
-  WHAT IT DEFINES — pieces in the PERILUNE material language (navy-steel + amber trim, warm
-  wood, cyan/amber lit screens, soft practical glows; top-down, chunky, readable at tile size),
-  each as a CSS-div / inline-SVG object on a 150x132 stage:
+  ⚠ THE 70 WRECKED PIECES EXIST ONLY AFTER JS EXECUTION, and any extractor that greps
+  `class="lbl"` WILL SILENTLY MISS ALL OF THEM. They live in a `brokenD` array inside the
+  `<script type="text/x-dc" data-dc-script>` block at the foot of this file and are rendered
+  through `<sc-for>`; the only `lbl` in that section is the literal template text `{{b.name}}`.
+  To read them, evaluate `renderVals()` — it is pure — or read the array by eye. Each entry is
+  `{ name, state, layers: [{ s: cssStyleString }] }`, 501 layers across the 70.
+
+  ⚠ THE WRECKED NAMES COLLIDE WITH THE PRISTINE ONES, DELIBERATELY, AND NOT UNIFORMLY. A label is
+  unique only WITHIN a section. 62 wrecked pieces reuse the pristine label VERBATIM; the 8 loose
+  resources are renamed with a `· STATE` suffix — and `CONTROLLER · FRIED` also SHORTENS its stem
+  from `CONTROLLER MODULE`, so the suffix rule is NOT mechanical and a join must be written down
+  rather than computed. `state` is a remaining-condition percentage (`0%`–`35%`) for the 62
+  structural pieces and the literal em-dash `—` for the 8 resources (you cannot repair a pile).
+
+  ⚠ EACH WRECKED PIECE IS A FULL INDEPENDENT REDRAW — not an overlay on the pristine piece, not a
+  variant flag on it. Damage is drawn from a shared helper vocabulary defined in `renderVals()`:
+  `scorch(x,y,r)` · `crack(x,y,len,rot)` · `spark(x,y)` · `wire(x,y,rot)` · `rust(x,y,r)` ·
+  `hole(x,y,r)` · `dead(x,y,w,h)`, plus the `box`/`L`/`T` primitives and the palette constants
+  `STL` / `STLd` / `WOOD`.
+
+  WHAT IT DEFINES — pieces in the PERILUNE material language (navy-steel + amber trim, warm wood,
+  cyan/amber lit screens, soft practical glows; top-down, chunky, readable at tile size), each as a
+  CSS-div / inline-SVG object on a 150x132 stage:
     OBJECTS (30): REACTOR, SOLAR PANEL, BATTERY BANK, O2 SCRUBBER, OXYGEN TANK, WATER RECYCLER,
       HYDROPONICS, COOKER, COOLER, PASTE DISPENSER, DINING TABLE, BUNK BED, DESK, CHAIR, LOCKER,
       RUG, STANDING LAMP, POTTED PLANT, BOOKSHELF, MED BED, RESEARCH CONSOLE, COMMS DISH (svg),
@@ -32,7 +56,13 @@
     FIXTURES (18): SLIDING DOOR, AIRLOCK, HATCH/LADDER, POWER CONDUIT, AIR VENT, PIPE RUN,
       WALL LAMP, VIEWPORT, WALL SCREEN, SPACE HEATER, VENT FAN, SHELF RACK, SUPPLY BARREL,
       WEAPONS RACK, SUN LAMP, HERB PLANTER, DECK SIGN, FLOODLIGHT.
-    RESOURCES (8): the NEW section above.
+    RESOURCES (8): REGOLITH (,) · POTATO (f) · SCRAP (s) · PARTS (p) · CONTROLLER MODULE (c) ·
+      SEALS (g) · ICE (i) · CORPSE (&).
+    CRYO (2): CRYO CAPSULE · OCCUPIED, CRYO CAPSULE · OPEN — the NEW pieces above.
+    WRECKED (70): the NEW section above, one twin per piece.
+    ⚠ There is deliberately NO MetalOre piece. `ItemKind.MetalOre` has ZERO references
+    anywhere in sim/ outside the glyph table — nothing produces or consumes it — so it is
+    dead E3 mining vocabulary and must NOT be given art until it is real.
 
   IMPLEMENTATION NOTE (approved plan): this is the source geometry for a parametric SVG item
   library (client/src/items/*), one pure builder per piece. Split:
@@ -41,6 +71,9 @@
     - WALLS/FLOORS -> material tables + buildable variants.
     - RESOURCES -> ground stacks, keyed by `Glyphs.ForItem`, drawn from the `items` wire
       channel (hosts/web/WireFormat.Items.cs) which carries the COUNT the projection cannot.
+    - WRECKED -> client/src/items/wrecked.js, keyed by the PRISTINE itemId. NOT WIRED TO EITHER
+      SURFACE as of this import: there is no `condition` on the wire yet, so nothing can choose
+      between a piece and its twin. The registry and the join exist; the draw decision does not.
   The two files this canvas imports — `support.js` (the generated React dc-runtime) and
   `_ds/.../fonts/fonts.css` (@font-face only; Space Mono, already the game's font) — are VIEWER
   infrastructure and bear on nothing here.
@@ -500,8 +533,8 @@
   </div>
 
   <div style="display:flex;flex-direction:column;gap:8px;max-width:960px;margin-top:26px;">
-    <div style="color:#e8dcc9;font-size:21px;">Resources &amp; loose items</div>
-    <div style="color:#8c8377;font-size:11.5px;line-height:1.6;max-width:960px;">Haulable stack items — what sits on the floor and fills storage. Each reads as a small pile/crate at tile scale, with its ASCII glyph noted for the terminal view.</div>
+    <div style="color:#e8dcc9;font-size:21px;">Resources, loose items &amp; cryo</div>
+    <div style="color:#8c8377;font-size:11.5px;line-height:1.6;max-width:960px;">Haulable stacks — what sits on the floor and fills storage — plus the ship's cryo capsules, occupied and open. Each reads at tile scale.</div>
   </div>
 
   <div class="wrap">
@@ -583,8 +616,462 @@
       <div class="obj" style="transform:translate(-50%,-50%) translate(0,-42px);color:#8c8377;font:700 13px 'Space Mono',monospace;">&amp;</div>
     </div><div class="lbl">CORPSE</div></div>
 
+    <!-- CRYO CAPSULE — OCCUPIED -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:104px;border-radius:26px 26px 8px 8px;background:linear-gradient(90deg,#5a6672,#38424d 55%,#2b3742);box-shadow:inset 0 0 0 3px #232b33,0 3px 9px rgba(0,0,0,.5);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-6px);width:44px;height:80px;border-radius:20px 20px 5px 5px;background:linear-gradient(#183848,#102734);box-shadow:inset 0 0 12px rgba(0,0,0,.7);overflow:hidden;"></div>
+      <!-- frozen crew inside -->
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-28px);width:30px;height:32px;border-radius:12px 12px 3px 3px;background:#2b2018;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-26px);width:24px;height:27px;border-radius:10px 10px 3px 3px;background:#a97a4e;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-5px,-27px);width:4px;height:4px;background:#2a201a;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(5px,-27px);width:4px;height:4px;background:#2a201a;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(2px);width:34px;height:30px;border-radius:4px;background:#9ba1a6;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-20px,0px);width:8px;height:20px;border-radius:3px;background:#9ba1a6;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(20px,0px);width:8px;height:20px;border-radius:3px;background:#9ba1a6;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-8px,26px);width:11px;height:18px;border-radius:2px;background:#26201a;"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(8px,26px);width:11px;height:18px;border-radius:2px;background:#26201a;"></div>
+      <!-- frost glass over occupant -->
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-6px);width:44px;height:80px;border-radius:20px 20px 5px 5px;background:linear-gradient(135deg,rgba(200,238,250,.42),rgba(120,180,212,.24) 55%,rgba(200,238,250,.36));box-shadow:inset 0 0 14px rgba(255,255,255,.4);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-9px,-34px) rotate(-32deg);width:16px;height:3px;border-radius:2px;background:rgba(255,255,255,.7);"></div>
+      <!-- status -->
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(44px);width:44px;height:11px;border-radius:2px;background:#0b2a32;box-shadow:inset 0 0 0 1px #2f6a7a;display:flex;align-items:center;justify-content:center;color:#7fe4f2;font:700 7px 'Space Mono',monospace;letter-spacing:.06em;">-196°</div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(24px,-40px);width:7px;height:7px;border-radius:50%;background:#5a9fd4;box-shadow:0 0 9px 3px rgba(90,159,212,.7);animation:pulse 2.2s ease-in-out infinite;"></div>
+    </div><div class="lbl">CRYO CAPSULE · OCCUPIED</div></div>
+
+    <!-- CRYO CAPSULE — OPEN -->
+    <div class="item"><div class="stage">
+      <div class="obj" style="transform:translate(-50%,-50%);width:60px;height:104px;border-radius:26px 26px 8px 8px;background:linear-gradient(90deg,#4a5560,#333d47 55%,#262f38);box-shadow:inset 0 0 0 3px #232b33,0 3px 9px rgba(0,0,0,.5);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(-6px);width:44px;height:80px;border-radius:20px 20px 5px 5px;background:linear-gradient(#1d262e,#141b21);box-shadow:inset 0 0 14px rgba(0,0,0,.85);"></div>
+      <!-- empty padded bed -->
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(2px);width:32px;height:56px;border-radius:14px 14px 4px 4px;background:linear-gradient(#3d3730,#2c2823);box-shadow:inset 0 0 8px rgba(0,0,0,.6);"></div>
+      <!-- hinged lid swung open to the right -->
+      <div class="obj" style="transform:translate(-50%,-50%) translate(40px,-14px) rotate(24deg);width:26px;height:88px;border-radius:14px 14px 5px 5px;background:linear-gradient(90deg,rgba(190,230,245,.5),rgba(110,165,195,.32));box-shadow:inset 0 0 0 3px #4a5560,0 3px 8px rgba(0,0,0,.5);"></div>
+      <!-- icicles on the rim -->
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-14px,-42px);width:6px;height:20px;border-radius:0 0 3px 3px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(225,246,252,.95),rgba(150,205,232,.6));"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-4px,-40px);width:5px;height:14px;border-radius:0 0 3px 3px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(225,246,252,.9),rgba(150,205,232,.55));"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translate(6px,-44px);width:7px;height:24px;border-radius:0 0 3px 3px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(225,246,252,.95),rgba(150,205,232,.6));"></div>
+      <!-- frost puddle at the foot -->
+      <div class="obj" style="transform:translate(-50%,-50%) translate(-2px,34px);width:34px;height:12px;border-radius:50%;background:radial-gradient(ellipse,rgba(190,230,245,.5),transparent 70%);"></div>
+      <div class="obj" style="transform:translate(-50%,-50%) translateY(44px);width:44px;height:11px;border-radius:2px;background:#2a1e0c;box-shadow:inset 0 0 0 1px #a1591f;display:flex;align-items:center;justify-content:center;color:#f2b563;font:700 7px 'Space Mono',monospace;letter-spacing:.06em;">EMPTY</div>
+    </div><div class="lbl">CRYO CAPSULE · OPEN</div></div>
+
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:960px;margin-top:26px;">
+    <div style="color:#e8dcc9;font-size:21px;">Wrecked — post-raid state</div>
+    <div style="color:#8c8377;font-size:11.5px;line-height:1.6;max-width:960px;">Day 1: the raid left every system dead. Every item above has a broken twin here — scorched, cracked, breached, screens dark, wiring hanging loose — that the thawed crew must repair or rebuild. Each keeps one identifying feature so it still reads as the same object. The badge shows remaining condition; loose resources can't be "repaired", so they get a spoiled/slagged state instead of a percentage.</div>
+  </div>
+
+  <div class="wrap">
+    <sc-for list="{{brokenD}}" as="b" hint-placeholder-count="12">
+      <div class="item">
+        <div class="stage">
+          <sc-for list="{{b.layers}}" as="l" hint-placeholder-count="4">
+            <div class="obj" style="{{l.s}}"></div>
+          </sc-for>
+          <div style="position:absolute;left:8px;bottom:7px;padding:2px 6px;border-radius:3px;background:rgba(58,26,16,.92);color:#e07a5f;font:700 7px 'Space Mono',monospace;letter-spacing:.06em;">{{b.state}}</div>
+        </div>
+        <div class="lbl">{{b.name}}</div>
+      </div>
+    </sc-for>
   </div>
 </section>
 </x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const T = (x = 0, y = 0, rot = 0) => `transform:translate(-50%,-50%) translate(${x}px,${y}px)${rot ? ` rotate(${rot}deg)` : ''};`;
+    const L = (s) => ({ s });
+    const box = (x, y, w, h, bg, extra = '') => L(T(x, y) + `width:${w}px;height:${h}px;border-radius:5px;background:${bg};${extra}`);
+    const scorch = (x, y, r = 34) => L(T(x, y) + `width:${r}px;height:${r}px;border-radius:50%;background:radial-gradient(circle,rgba(16,11,8,.85),rgba(16,11,8,0) 70%);`);
+    const crack = (x, y, len, rot) => L(T(x, y, rot) + `width:${len}px;height:2px;background:rgba(14,10,7,.92);box-shadow:0 1px 0 rgba(255,255,255,.1);`);
+    const spark = (x, y) => L(T(x, y) + `width:6px;height:6px;border-radius:50%;background:#f2b563;box-shadow:0 0 10px 3px rgba(242,181,99,.7);`);
+    const wire = (x, y, rot) => L(T(x, y, rot) + `width:26px;height:3px;border-radius:2px;background:linear-gradient(90deg,#2b2018,#c9772f);`);
+    const rust = (x, y, r = 24) => L(T(x, y) + `width:${r}px;height:${Math.round(r * 0.7)}px;border-radius:50%;background:radial-gradient(circle,rgba(138,60,34,.7),transparent 70%);`);
+    const hole = (x, y, r = 20) => L(T(x, y) + `width:${r}px;height:${Math.round(r * 0.85)}px;border-radius:52% 42% 56% 44%;background:#0a0d11;box-shadow:inset 0 0 0 2px rgba(0,0,0,.85),0 0 0 1px rgba(120,90,60,.3);`);
+    const dead = (x, y, w, h) => L(T(x, y) + `width:${w}px;height:${h}px;border-radius:3px;background:linear-gradient(#1a1f24,#11151a);box-shadow:inset 0 0 0 1px #2b3742;`);
+    const STL = 'linear-gradient(#414b55,#2d353d)';
+    const STLd = 'linear-gradient(#39424c,#262e35)';
+    const WOOD = 'linear-gradient(#5f4a30,#463623)';
+
+    const brokenD = [
+      { name: 'REACTOR', state: '4%', layers: [
+        box(0, 0, 96, 88, STLd, 'border-radius:8px;box-shadow:inset 0 0 0 3px #232b33,0 3px 8px rgba(0,0,0,.5);'),
+        box(-40, 0, 14, 64, 'linear-gradient(90deg,#4a5560,#2d353d)', 'border-radius:5px;'),
+        box(40, 6, 14, 46, 'linear-gradient(90deg,#4a5560,#2d353d)', 'border-radius:5px;transform:translate(-50%,-50%) translate(40px,6px) rotate(14deg);'),
+        L(T(0, -4) + 'width:52px;height:52px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#3a3129,#1b1713);box-shadow:inset 0 0 0 4px #2b3742;'),
+        crack(-2, -4, 44, 28), crack(4, -10, 30, -46), scorch(18, 14, 46), hole(-18, 22, 22), wire(34, -26, 34), spark(-24, -22),
+        dead(0, 34, 66, 12) ] },
+      { name: 'SOLAR PANEL', state: '11%', layers: [
+        box(0, 0, 92, 56, 'linear-gradient(#26424f,#1d3541)', 'border-radius:4px;box-shadow:inset 0 0 0 4px #9e9074;'),
+        L(T(0, 0) + 'width:92px;height:56px;background-image:linear-gradient(rgba(0,0,0,.4) 2px,transparent 2px),linear-gradient(90deg,rgba(0,0,0,.4) 2px,transparent 2px);background-size:22px 18px;'),
+        hole(-22, -6, 26), crack(14, 6, 46, 24), crack(20, -12, 34, -32), scorch(30, 12, 34), rust(-34, 16) ] },
+      { name: 'BATTERY BANK', state: '0%', layers: [
+        box(-16, 0, 26, 56, STLd, 'border-radius:4px;box-shadow:inset 0 0 0 2px #1c242d;'),
+        box(17, 3, 26, 56, STLd, 'border-radius:4px;box-shadow:inset 0 0 0 2px #1c242d;transform:translate(-50%,-50%) translate(17px,3px) rotate(11deg);'),
+        box(-16, 8, 16, 30, '#2a3129', 'border-radius:2px;box-shadow:inset 0 0 0 1px #4a5560;'),
+        box(17, 12, 16, 22, '#2a3129', 'border-radius:2px;box-shadow:inset 0 0 0 1px #4a5560;transform:translate(-50%,-50%) translate(17px,12px) rotate(11deg);'),
+        scorch(18, -18, 26), crack(-16, -14, 20, 18), wire(-4, -32, -22), spark(22, -26), rust(-28, 24, 16) ] },
+      { name: 'O₂ SCRUBBER', state: '17%', layers: [
+        box(0, 0, 62, 66, STLd, 'border-radius:6px;box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(0, -14) + 'width:46px;height:22px;border-radius:3px;background:repeating-linear-gradient(90deg,#20272d 0 5px,#4a545e 5px 9px);'),
+        hole(8, -14, 20), dead(0, 14, 46, 13), crack(-14, 8, 26, -34), scorch(-20, -20, 32), wire(-36, -6, 12), rust(24, 22, 22) ] },
+      { name: 'OXYGEN TANK', state: '6%', layers: [
+        box(-19, 2, 36, 72, 'linear-gradient(90deg,#4f7d95,#2b4b5c 55%,#1f3946)', 'border-radius:18px;box-shadow:inset 0 0 0 3px #274f61;'),
+        box(20, 6, 36, 62, 'linear-gradient(90deg,#48737f,#26414f)', 'border-radius:18px;box-shadow:inset 0 0 0 3px #274f61;transform:translate(-50%,-50%) translate(20px,6px) rotate(18deg);'),
+        hole(-19, -6, 22), crack(20, 4, 40, 74), scorch(-2, 26, 34), rust(-30, 26, 22), wire(-19, -40, -40) ] },
+      { name: 'WATER RECYCLER', state: '13%', layers: [
+        box(0, 0, 64, 70, STLd, 'border-radius:6px;box-shadow:inset 0 0 0 2px #2b3742;'),
+        box(0, 6, 42, 34, 'linear-gradient(#274a58,#1b3540)', 'border-radius:4px;'),
+        L(T(0, 16) + 'width:42px;height:12px;background:rgba(120,170,190,.35);'),
+        crack(0, -2, 38, 16), hole(20, -18, 18), scorch(-22, 20, 32),
+        L(T(-16, 40) + 'width:30px;height:10px;border-radius:50%;background:radial-gradient(ellipse,rgba(120,170,190,.45),transparent 70%);'),
+        rust(30, 4, 20) ] },
+      { name: 'HYDROPONICS', state: '9%', layers: [
+        box(0, 0, 92, 48, '#3f3122', 'box-shadow:0 3px 7px rgba(0,0,0,.4);'),
+        L(T(-6, -9) + 'width:60px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#4a4530 0 11px,#3a3626 11px 20px);'),
+        L(T(2, 9) + 'width:44px;height:12px;border-radius:2px;background:repeating-linear-gradient(90deg,#54452a 0 11px,#42361f 11px 20px);'),
+        crack(24, -9, 30, 8), hole(34, 8, 18), scorch(-30, 10, 30), rust(30, -18, 20) ] },
+      { name: 'COOKER', state: '15%', layers: [
+        box(0, 0, 66, 52, 'linear-gradient(#2f363e,#22282e)', 'border-radius:6px;box-shadow:inset 0 0 0 2px #1c242d;'),
+        L(T(-14, 0) + 'width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#3a3129,#1b1713);'),
+        L(T(16, 0) + 'width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,#4a3a2a,#221a12);'),
+        crack(0, -16, 40, 12), scorch(20, 16, 38), wire(-32, 18, 26), spark(-6, -18) ] },
+      { name: 'COOLER', state: '8%', layers: [
+        box(0, 0, 56, 74, 'linear-gradient(#a8b2b8,#8b969f)', 'border-radius:6px;box-shadow:inset 0 0 0 3px #6f7c85;'),
+        box(0, -16, 40, 26, 'linear-gradient(#3f4c54,#2b353c)', 'border-radius:3px;'),
+        hole(6, -16, 22), box(0, 16, 40, 26, '#9aa6ae', 'border-radius:3px;box-shadow:inset 0 0 0 2px #6f7c85;'),
+        crack(-4, 16, 30, -22), scorch(-22, 30, 30), rust(24, 6, 22),
+        L(T(0, 44) + 'width:26px;height:8px;border-radius:50%;background:radial-gradient(ellipse,rgba(150,200,220,.4),transparent 70%);') ] },
+      { name: 'PASTE DISPENSER', state: '19%', layers: [
+        box(0, 0, 58, 64, STLd, 'border-radius:6px;box-shadow:inset 0 0 0 2px #2b3742;'),
+        dead(0, -8, 30, 12),
+        box(0, 22, 40, 8, '#7d7156', 'border-radius:2px;transform:translate(-50%,-50%) translate(0px,22px) rotate(-8deg);'),
+        crack(0, 6, 30, -18), hole(-20, 6, 14), scorch(22, -22, 24), wire(30, 14, -18) ] },
+      { name: 'DINING TABLE', state: '22%', layers: [
+        box(-4, 2, 74, 48, WOOD, 'border-radius:8px;box-shadow:0 3px 7px rgba(0,0,0,.4);transform:translate(-50%,-50%) translate(-4px,2px) rotate(-7deg);'),
+        crack(-4, 0, 60, 8), crack(6, 10, 30, -42), scorch(24, -14, 30),
+        L(T(-50, 6) + 'width:18px;height:18px;border-radius:50%;background:#33281b;'),
+        L(T(48, 12, 24) + 'width:18px;height:18px;border-radius:50%;background:#33281b;'), rust(-30, 22, 18) ] },
+      { name: 'BUNK BED', state: '25%', layers: [
+        box(0, 0, 56, 80, '#5f4a33', 'border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,.4);'),
+        L(T(-2, -4) + 'width:48px;height:52px;border-radius:5px;background:repeating-linear-gradient(90deg,#6e3a2a 0 11px,#5d3222 11px 22px);'),
+        L(T(2, -24) + 'width:34px;height:14px;border-radius:4px;background:#a89b85;transform:translate(-50%,-50%) translate(2px,-24px) rotate(-12deg);'),
+        crack(0, 8, 40, 14), hole(-16, 24, 18), scorch(18, 20, 30), rust(20, -26, 18) ] },
+      { name: 'DESK', state: '28%', layers: [
+        box(0, 4, 88, 44, WOOD, 'box-shadow:0 3px 7px rgba(0,0,0,.4);'),
+        dead(20, -16, 30, 18),
+        crack(-4, 4, 46, 6), crack(-20, 14, 22, -34), scorch(-34, -10, 22), wire(40, -8, 22), spark(36, -22) ] },
+      { name: 'CHAIR', state: '31%', layers: [
+        box(0, 4, 44, 44, '#3a2c1e', 'border-radius:8px;box-shadow:0 3px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%) translate(0px,4px) rotate(-14deg);'),
+        box(2, -20, 44, 14, '#4a3826', 'border-radius:6px;transform:translate(-50%,-50%) translate(2px,-20px) rotate(-26deg);'),
+        crack(0, 4, 30, 22), scorch(16, 18, 26), rust(-18, -6, 18) ] },
+      { name: 'LOCKER', state: '20%', layers: [
+        box(0, 0, 52, 80, 'linear-gradient(90deg,#414b55,#30383f)', 'box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(0, 0) + 'width:2px;height:80px;background:rgba(0,0,0,.5);'),
+        L(T(20, -6, 14) + 'width:24px;height:76px;border-radius:3px;background:linear-gradient(90deg,#39424c,#262e35);box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(-16, 4) + 'width:5px;height:12px;border-radius:2px;background:#8a7248;'),
+        hole(-8, 26, 14), crack(-14, -20, 22, 24), scorch(-22, 34, 22), rust(24, 30, 16) ] },
+      { name: 'RUG', state: '12%', layers: [
+        L(T(0, 0) + 'width:96px;height:64px;border-radius:8px;background:repeating-linear-gradient(90deg,#6b3226 0 14px,#5b2b1f 14px 28px);box-shadow:inset 0 0 0 5px #8a775a;'),
+        hole(-20, 6, 26), hole(24, -12, 20), scorch(18, 18, 34),
+        L(T(0, 26) + 'width:96px;height:8px;background:repeating-linear-gradient(90deg,#6b3226 0 6px,transparent 6px 12px);') ] },
+      { name: 'STANDING LAMP', state: '5%', layers: [
+        L(T(-8, -20, -34) + 'width:44px;height:44px;border-radius:50%;background:radial-gradient(circle,#3a3129,#1b1713);box-shadow:inset 0 0 0 2px #2b241c;'),
+        crack(-8, -20, 30, 18), L(T(0, 20) + 'width:6px;height:44px;background:#3a2c1e;'),
+        L(T(0, 42) + 'width:26px;height:6px;border-radius:3px;background:#3a2c1e;'), wire(20, -6, 40), spark(6, -34) ] },
+      { name: 'POTTED PLANT', state: '0%', layers: [
+        L(T(0, -12) + 'width:50px;height:44px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#6b6440,#40391f);'),
+        L(T(-14, -22, -30) + 'width:22px;height:5px;border-radius:2px;background:#5a5230;'),
+        L(T(16, -6, 40) + 'width:18px;height:4px;border-radius:2px;background:#4a4326;'),
+        L(T(4, 30, 12) + 'width:34px;height:28px;border-radius:0 0 10px 10px;background:linear-gradient(#5f3f26,#452c19);'),
+        crack(4, 26, 22, -10), L(T(-22, 40) + 'width:26px;height:10px;border-radius:50%;background:radial-gradient(ellipse,rgba(90,70,45,.6),transparent 70%);') ] },
+      { name: 'BOOKSHELF', state: '24%', layers: [
+        box(0, 0, 80, 66, '#3f3122', 'box-shadow:inset 0 0 0 3px #322718;'),
+        L(T(-14, -14) + 'width:34px;height:20px;background:repeating-linear-gradient(90deg,#5a3a2a 0 8px,#3a2a1e 8px 11px);'),
+        L(T(18, 12, 16) + 'width:26px;height:16px;background:repeating-linear-gradient(90deg,#4a4a32 0 8px,#33301f 8px 11px);'),
+        hole(22, -16, 20), crack(0, 0, 50, 6), scorch(-26, 20, 30) ] },
+      { name: 'MED BED', state: '18%', layers: [
+        box(0, 0, 52, 78, '#8f7f5c', 'border-radius:6px;box-shadow:inset 0 0 0 3px #6f6144;'),
+        L(T(2, -26, -14) + 'width:36px;height:14px;border-radius:4px;background:#a89b85;'),
+        crack(0, 6, 36, 12), hole(-14, 22, 18), scorch(16, 24, 30),
+        L(T(0, 6) + 'width:22px;height:5px;background:#6e3a2a;'), L(T(0, 6) + 'width:5px;height:22px;background:#6e3a2a;'), rust(20, -20, 18) ] },
+      { name: 'RESEARCH CONSOLE', state: '7%', layers: [
+        box(0, 0, 80, 52, 'linear-gradient(#2b333b,#1e242a)', 'border-radius:6px;'),
+        dead(0, -8, 66, 26), crack(-6, -8, 46, 14), crack(10, -16, 26, -40), hole(24, -6, 16),
+        L(T(0, 18) + 'width:66px;height:8px;border-radius:2px;background:#232b33;'), wire(-38, 12, 24), spark(28, -22) ] },
+      { name: 'COMMS DISH', state: '3%', layers: [
+        L(T(-6, -14, -28) + 'width:64px;height:34px;border-radius:50% 50% 8px 8px;background:linear-gradient(#8f8266,#5f5645);box-shadow:inset 0 0 0 2px #6f6552;'),
+        hole(-14, -18, 22), crack(4, -10, 34, 16),
+        L(T(6, 20, 18) + 'width:6px;height:44px;border-radius:3px;background:#2d353d;'),
+        L(T(2, 40) + 'width:28px;height:7px;border-radius:3px;background:#2d353d;'), wire(24, 6, -32), spark(-20, -30) ] },
+      { name: 'SENSOR ARRAY', state: '10%', layers: [
+        L(T(0, 0) + 'width:72px;height:72px;border-radius:50%;border:2px solid #2d353d;'),
+        L(T(0, 0) + 'width:48px;height:48px;border-radius:50%;border:2px solid #2d353d;'),
+        L(T(0, 0) + 'width:14px;height:14px;border-radius:50%;background:#1b1f24;box-shadow:inset 0 0 0 2px #2d353d;'),
+        crack(-8, -6, 46, 34), crack(14, 12, 30, -22), hole(24, -18, 18), scorch(-24, 22, 30), spark(18, 22) ] },
+      { name: 'WORKBENCH', state: '26%', layers: [
+        box(0, 6, 96, 44, WOOD, 'border-radius:4px;box-shadow:0 3px 7px rgba(0,0,0,.4);'),
+        box(0, -24, 96, 14, '#33281b', 'border-radius:3px;'),
+        L(T(-30, -24) + 'width:6px;height:22px;background:#5f6b74;'),
+        L(T(10, -26, 26) + 'width:18px;height:6px;background:#7d7156;'),
+        crack(0, 6, 56, 8), hole(30, 8, 18), scorch(-30, 18, 28), wire(38, -18, 30) ] },
+      { name: 'FABRICATOR', state: '2%', layers: [
+        box(0, 0, 78, 72, STLd, 'border-radius:6px;box-shadow:inset 0 0 0 3px #2b3742;'),
+        box(0, -6, 58, 38, 'linear-gradient(#141a20,#0c1014)', 'border-radius:3px;'),
+        hole(-10, -8, 24), crack(16, -4, 32, 26), L(T(0, 24) + 'width:58px;height:9px;border-radius:2px;background:#232b33;'),
+        scorch(24, 20, 34), wire(-34, 16, 20), spark(26, -26) ] },
+      { name: 'STORAGE CRATE', state: '30%', layers: [
+        box(0, 0, 64, 60, 'linear-gradient(#5f4a30,#42321f)', 'box-shadow:inset 0 0 0 2px #322718;'),
+        L(T(0, 0) + 'width:64px;height:9px;background:#322718;'), L(T(0, 0) + 'width:9px;height:60px;background:#322718;'),
+        crack(-6, -16, 32, 10), hole(20, 20, 14), scorch(-24, 22, 20), rust(-26, -20, 16) ] },
+      { name: 'BLAST DOOR', state: '14%', layers: [
+        box(0, 0, 78, 70, STLd, 'border-radius:4px;box-shadow:inset 0 0 0 3px #2b3742;'),
+        L(T(6, 0, 6) + 'width:8px;height:70px;background:#12171c;'),
+        L(T(0, -24) + 'width:78px;height:10px;background:repeating-linear-gradient(45deg,#7a5a34 0 8px,#241d17 8px 16px);'),
+        hole(-16, 8, 24), crack(20, -6, 34, 62), scorch(22, 22, 32), rust(-24, -22, 20) ] },
+      { name: 'TURRET', state: '0%', layers: [
+        box(0, 18, 48, 26, STLd, 'border-radius:8px;box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(-2, -4) + 'width:30px;height:30px;border-radius:50%;background:#2d353d;box-shadow:inset 0 0 0 3px #1f262c;'),
+        L(T(14, -26, 52) + 'width:9px;height:34px;border-radius:3px;background:#232b33;'),
+        crack(-2, -4, 26, 18), scorch(-4, -30, 40), hole(16, 10, 16), wire(-28, 6, -26), spark(22, -34) ] },
+      { name: 'CRYOPOD', state: '16%', layers: [
+        box(0, 0, 48, 82, 'linear-gradient(90deg,#414b55,#2d353d)', 'border-radius:24px;box-shadow:inset 0 0 0 3px #2b3742;'),
+        L(T(0, 0) + 'width:30px;height:62px;border-radius:15px;background:linear-gradient(#3f5c68,#26414f);'),
+        crack(0, -8, 44, 76), hole(6, 18, 18), scorch(-18, -26, 30),
+        L(T(-6, 44) + 'width:26px;height:9px;border-radius:50%;background:radial-gradient(ellipse,rgba(150,200,220,.4),transparent 70%);') ] },
+      { name: 'FUEL DRUM', state: '21%', layers: [
+        box(2, 2, 48, 64, 'linear-gradient(90deg,#7a5a34,#5c3f22 55%,#452e17)', 'border-radius:8px;box-shadow:inset 0 0 0 2px #33230f;transform:translate(-50%,-50%) translate(2px,2px) rotate(12deg);'),
+        L(T(0, -8, 12) + 'width:48px;height:12px;background:repeating-linear-gradient(45deg,#7a5a34 0 7px,#241d17 7px 14px);'),
+        hole(8, 10, 20), crack(-6, -14, 26, 26), scorch(-22, 22, 30),
+        L(T(-18, 38) + 'width:30px;height:10px;border-radius:50%;background:radial-gradient(ellipse,rgba(60,40,20,.7),transparent 70%);') ] },
+      { name: 'SLIDING DOOR', state: '23%', layers: [
+        box(0, 0, 96, 70, STLd, 'box-shadow:inset 0 0 0 3px #2b3742;'),
+        L(T(10, 0, 8) + 'width:6px;height:70px;background:#1a1f24;'),
+        hole(-22, 4, 22), crack(24, -10, 34, 68), scorch(26, 20, 30), wire(-38, -22, 18), spark(14, -26) ] },
+      { name: 'AIRLOCK', state: '1%', layers: [
+        L(T(0, 0) + 'width:80px;height:80px;border-radius:50%;background:linear-gradient(#414b55,#2d353d);box-shadow:inset 0 0 0 5px #2b3742;'),
+        L(T(0, 0) + 'width:46px;height:46px;border-radius:50%;background:#0a0d11;box-shadow:inset 0 0 0 3px #1c242d;'),
+        crack(0, 0, 56, 22), crack(4, -8, 40, -58), hole(-16, 18, 18), scorch(22, -20, 34), wire(30, 14, -24), spark(-22, -20) ] },
+      { name: 'HATCH / LADDER', state: '27%', layers: [
+        L(T(0, 0) + 'width:80px;height:80px;border-radius:50%;background:#0f151a;box-shadow:inset 0 0 0 6px #414b55,inset 0 0 22px rgba(0,0,0,.9);'),
+        L(T(-22, 0) + 'width:5px;height:74px;border-radius:3px;background:linear-gradient(#6f7c85,#2d353d);'),
+        L(T(24, 4, 14) + 'width:5px;height:60px;border-radius:3px;background:linear-gradient(#5f6b74,#262e35);'),
+        L(T(-2, -14, -12) + 'width:44px;height:7px;border-radius:3px;background:linear-gradient(#8f9aa2,#5f6b74);'),
+        L(T(2, 14) + 'width:30px;height:7px;border-radius:3px;background:linear-gradient(#6f7c85,#414b55);'),
+        rust(20, -24, 20), scorch(-20, 24, 28) ] },
+      { name: 'POWER CONDUIT', state: '9%', layers: [
+        L(T(-18, 0) + 'width:56px;height:14px;border-radius:7px;background:#232b33;'),
+        L(T(30, 4, 16) + 'width:34px;height:14px;border-radius:7px;background:#232b33;'),
+        L(T(-30, 0) + 'width:12px;height:12px;border-radius:50%;background:#3a3129;'),
+        L(T(0, 0) + 'width:12px;height:12px;border-radius:50%;background:#3a3129;'),
+        wire(12, -2, 28), spark(24, 8), scorch(6, 12, 30) ] },
+      { name: 'AIR VENT', state: '32%', layers: [
+        box(0, 0, 72, 56, STLd, 'box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(0, 0) + 'width:56px;height:40px;border-radius:3px;background:repeating-linear-gradient(0deg,#20272d 0 5px,#414b55 5px 9px);'),
+        L(T(12, -6, 22) + 'width:34px;height:6px;background:#5f6b74;'),
+        hole(-16, 8, 18), scorch(20, 16, 28), rust(-24, -16, 20) ] },
+      { name: 'WALL SCREEN', state: '0%', layers: [
+        box(0, 0, 92, 60, '#1b2127', 'box-shadow:inset 0 0 0 3px #2d353d;'),
+        dead(0, 0, 76, 44), crack(-6, 0, 62, 12), crack(12, -8, 40, -38), hole(26, 8, 16), scorch(-30, 16, 28), spark(-34, -20) ] },
+      { name: 'VENT FAN', state: '11%', layers: [
+        box(0, 0, 76, 76, '#2b333b', 'border-radius:8px;box-shadow:inset 0 0 0 3px #232b33;'),
+        L(T(0, 0) + 'width:60px;height:60px;border-radius:50%;background:conic-gradient(#414b55 0 25%,#2b333b 0 50%,#414b55 0 75%,#2b333b 0);box-shadow:inset 0 0 0 3px #232b33;'),
+        L(T(0, 0) + 'width:12px;height:12px;border-radius:50%;background:#5f6b74;'),
+        crack(-4, 0, 46, 28), hole(20, -16, 16), scorch(-18, 22, 28), wire(30, 20, -20) ] },
+      { name: 'VIEWPORT', state: '6%', layers: [
+        L(T(0, 0) + 'width:90px;height:64px;border-radius:8px;background:#07090d;box-shadow:0 0 0 6px #414b55,inset 0 0 16px rgba(0,0,0,.9);'),
+        crack(-6, -2, 70, 14), crack(10, 6, 46, -40), crack(-14, 10, 34, 62), hole(26, -12, 18),
+        L(T(-34, 22) + 'width:16px;height:5px;background:rgba(190,225,240,.5);'), rust(30, 22, 20) ] },
+      { name: 'WALL LAMP', state: '4%', layers: [
+        L(T(0, 14) + 'width:22px;height:34px;border-radius:4px;background:#39424c;box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(-4, -14, -18) + 'width:52px;height:34px;border-radius:26px 26px 6px 6px;background:radial-gradient(circle at 50% 80%,#3a3129,#1b1713);box-shadow:inset 0 0 0 2px #2b241c;'),
+        crack(-4, -14, 34, 14), wire(20, -24, 34), spark(14, -32), scorch(-20, 6, 26) ] },
+      { name: 'CRYO CAPSULE · OPEN', state: '10%', layers: [
+        box(0, 0, 60, 104, 'linear-gradient(90deg,#3d4650,#2a323a 55%,#20272e)', 'border-radius:26px 26px 8px 8px;box-shadow:inset 0 0 0 3px #232b33,0 3px 9px rgba(0,0,0,.5);'),
+        L(T(0, -6) + 'width:44px;height:80px;border-radius:20px 20px 5px 5px;background:linear-gradient(#161d23,#0d1216);box-shadow:inset 0 0 14px rgba(0,0,0,.85);'),
+        L(T(0, 2) + 'width:32px;height:56px;border-radius:14px 14px 4px 4px;background:linear-gradient(#33302a,#22201c);'),
+        L(T(42, -18, 38) + 'width:26px;height:88px;border-radius:14px 14px 5px 5px;background:linear-gradient(90deg,rgba(150,190,205,.34),rgba(90,135,160,.22));box-shadow:inset 0 0 0 3px #414b55;'),
+        crack(38, -18, 62, 38), hole(4, -22, 16), scorch(-18, 28, 30),
+        L(T(-14, -42) + 'width:6px;height:18px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(200,232,242,.8),rgba(120,175,205,.4));'),
+        L(T(4, -44) + 'width:5px;height:13px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(200,232,242,.75),rgba(120,175,205,.4));'),
+        wire(-30, 34, 26), dead(0, 44, 44, 11) ] },
+      { name: 'CRYO CAPSULE · OCCUPIED', state: '13%', layers: [
+        box(0, 0, 60, 104, 'linear-gradient(90deg,#414b55,#2d353d 55%,#232b33)', 'border-radius:26px 26px 8px 8px;box-shadow:inset 0 0 0 3px #232b33,0 3px 9px rgba(0,0,0,.5);'),
+        L(T(0, -6) + 'width:44px;height:80px;border-radius:20px 20px 5px 5px;background:linear-gradient(#182a34,#0e1a22);box-shadow:inset 0 0 12px rgba(0,0,0,.8);'),
+        L(T(0, 2) + 'width:32px;height:56px;border-radius:14px 14px 4px 4px;background:linear-gradient(#33302a,#22201c);'),
+        crack(0, -12, 60, 74), crack(-6, 10, 34, -34), hole(14, -30, 18), scorch(-18, 30, 32),
+        L(T(-14, -42) + 'width:6px;height:16px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(200,232,242,.8),rgba(120,175,205,.4));'),
+        L(T(4, -44) + 'width:5px;height:12px;clip-path:polygon(0 0,100% 0,50% 100%);background:linear-gradient(rgba(200,232,242,.75),rgba(120,175,205,.4));'),
+        dead(0, 44, 44, 11) ] },
+      { name: 'STEEL BULKHEAD', state: '8%', layers: [
+        box(0, 0, 106, 94, '#2f3d4a', 'border-radius:6px;box-shadow:inset 0 0 0 2px #232b33;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:radial-gradient(rgba(0,0,0,.4) 1.5px,transparent 2px);background-size:20px 20px;background-position:9px 22px;'),
+        hole(-14, 6, 40), crack(26, -16, 44, 58), crack(-30, -24, 30, -24), scorch(30, 24, 36), rust(-34, 30, 24) ] },
+      { name: 'TIMBER-LINED WALL', state: '17%', layers: [
+        box(0, 0, 106, 94, 'repeating-linear-gradient(0deg,#5f4227 0 15px,#4c3520 15px 17px)', 'border-radius:6px;box-shadow:inset 0 0 0 4px #3a2717;'),
+        hole(12, 10, 34), crack(-24, -12, 40, 74), scorch(-6, -30, 40), rust(34, 30, 22) ] },
+      { name: 'STEEL-TAN FLOOR', state: '35%', layers: [
+        box(0, 0, 106, 94, '#6b5f45', 'border-radius:5px;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:linear-gradient(rgba(0,0,0,.2) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.2) 1px,transparent 1px);background-size:22px 22px;'),
+        hole(-18, 14, 32), crack(20, -14, 48, 22), crack(-6, 26, 34, -34), scorch(26, 22, 34) ] },
+      { name: 'WOOD PLANK FLOOR', state: '29%', layers: [
+        box(0, 0, 106, 94, 'repeating-linear-gradient(90deg,#7d5730 0 21px,#6c4b28 21px 23px)', 'border-radius:5px;'),
+        hole(16, -10, 30), crack(-22, 12, 44, 12), scorch(-8, 30, 36),
+        L(T(30, 26, 14) + 'width:34px;height:9px;background:#5b3f21;') ] },
+      { name: 'CREAM TILE FLOOR', state: '33%', layers: [
+        box(0, 0, 106, 94, '#9a8b6c', 'border-radius:5px;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:linear-gradient(rgba(0,0,0,.16) 1px,transparent 1px),linear-gradient(90deg,rgba(0,0,0,.16) 1px,transparent 1px);background-size:26px 26px;'),
+        crack(-10, -6, 60, 18), crack(18, 18, 40, -30), hole(-26, 24, 24), scorch(28, -22, 30) ] },
+      { name: 'GROW MATTING', state: '5%', layers: [
+        box(0, 0, 106, 94, '#5e6440', 'border-radius:5px;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:radial-gradient(rgba(40,50,28,.6) 2px,transparent 3px);background-size:15px 15px;'),
+        hole(-16, -10, 30), scorch(20, 14, 40), rust(30, -24, 22),
+        L(T(-24, 28, 18) + 'width:36px;height:8px;background:#4a4a2c;') ] },
+      { name: 'BLAST WALL', state: '12%', layers: [
+        box(0, 0, 106, 94, 'linear-gradient(#242c33,#1c2329)', 'border-radius:6px;box-shadow:inset 0 0 0 4px #414b55;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:radial-gradient(rgba(0,0,0,.5) 2px,transparent 3px);background-size:26px 26px;background-position:13px 13px;'),
+        L(T(0, -34) + 'width:106px;height:14px;background:repeating-linear-gradient(45deg,#7a5a34 0 9px,#241d17 9px 18px);'),
+        hole(-10, 12, 30), crack(28, -8, 40, 62), scorch(30, 28, 30), rust(-34, 32, 20) ] },
+      { name: 'GLASS PARTITION', state: '2%', layers: [
+        box(0, 0, 106, 94, 'linear-gradient(135deg,rgba(120,170,190,.2),rgba(90,130,160,.08))', 'border-radius:6px;box-shadow:inset 0 0 0 5px #414b55;'),
+        crack(-6, -4, 88, 16), crack(14, 8, 62, -44), crack(-26, 18, 48, 58), hole(24, -18, 24), hole(-18, 26, 18),
+        L(T(-36, 34, 22) + 'width:24px;height:6px;background:rgba(190,225,240,.55);'),
+        L(T(30, 32, -14) + 'width:18px;height:5px;background:rgba(190,225,240,.45);') ] },
+      { name: 'INSULATED WALL', state: '21%', layers: [
+        box(0, 0, 106, 94, '#3a434c', 'border-radius:6px;box-shadow:inset 0 0 0 3px #2a3138;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:linear-gradient(rgba(0,0,0,.22) 2px,transparent 2px),linear-gradient(90deg,rgba(0,0,0,.22) 2px,transparent 2px);background-size:24px 24px;'),
+        hole(16, 8, 32),
+        L(T(16, 8) + 'width:22px;height:16px;border-radius:4px;background:#8a7f62;box-shadow:inset 0 0 0 1px #6b6149;'),
+        crack(-24, -14, 42, 68), scorch(-8, -30, 32), rust(34, 32, 20) ] },
+      { name: 'HULL PLATING', state: '7%', layers: [
+        box(0, 0, 106, 94, '#232c36', 'border-radius:6px;box-shadow:inset 0 0 0 2px #1a212a;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:linear-gradient(90deg,rgba(0,0,0,.35) 2px,transparent 2px),radial-gradient(rgba(0,0,0,.4) 1.5px,transparent 2px);background-size:35px 100%,20px 20px;background-position:0 0,10px 10px;'),
+        hole(-6, 2, 44),
+        L(T(-6, 2) + 'width:44px;height:38px;border-radius:52% 42% 56% 44%;box-shadow:inset 0 0 14px rgba(90,140,180,.35);'),
+        crack(30, -22, 38, 54), scorch(28, 26, 32), rust(-34, 32, 22) ] },
+      { name: 'METAL GRATING', state: '26%', layers: [
+        box(0, 0, 106, 94, '#443f34', 'border-radius:5px;'),
+        L(T(0, 0) + 'width:106px;height:94px;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.4) 0 2px,transparent 2px 9px),radial-gradient(rgba(0,0,0,.45) 1.5px,transparent 2px);background-size:100% 9px,18px 18px;'),
+        hole(18, 10, 34), crack(-24, -16, 40, 16),
+        L(T(-16, 30, 16) + 'width:40px;height:6px;background:#5f5a48;'), scorch(-30, 24, 28), rust(32, -26, 20) ] },
+      { name: 'CARPET FLOOR', state: '15%', layers: [
+        box(0, 0, 106, 94, 'repeating-linear-gradient(90deg,#6b3226 0 11px,#5b2b1f 11px 22px)', 'border-radius:5px;box-shadow:inset 0 0 0 5px #7d6c50;'),
+        hole(-20, 8, 30), hole(24, -16, 22), scorch(20, 24, 36),
+        L(T(0, 34) + 'width:106px;height:9px;background:repeating-linear-gradient(90deg,#6b3226 0 6px,transparent 6px 13px);') ] },
+      { name: 'PIPE RUN', state: '10%', layers: [
+        L(T(-14, 0) + 'width:62px;height:16px;border-radius:8px;background:linear-gradient(#4a5560,#2a323a);'),
+        L(T(34, 6, 18) + 'width:34px;height:16px;border-radius:8px;background:linear-gradient(#4a5560,#2a323a);'),
+        L(T(-28, 20) + 'width:16px;height:30px;border-radius:6px;background:linear-gradient(90deg,#4a5560,#2a323a);'),
+        crack(6, 0, 24, 8), scorch(12, 6, 28), rust(-30, -14, 22),
+        L(T(14, 26) + 'width:26px;height:9px;border-radius:50%;background:radial-gradient(ellipse,rgba(120,170,190,.4),transparent 70%);') ] },
+      { name: 'SPACE HEATER', state: '3%', layers: [
+        box(0, 0, 60, 64, STLd, 'border-radius:6px;box-shadow:inset 0 0 0 2px #2b3742;'),
+        L(T(0, -10) + 'width:40px;height:7px;border-radius:3px;background:#3a3129;'),
+        L(T(0, 2) + 'width:40px;height:7px;border-radius:3px;background:#3a3129;'),
+        L(T(-4, 14, -8) + 'width:34px;height:7px;border-radius:3px;background:#2f2b24;'),
+        crack(0, -22, 30, 12), scorch(20, 22, 28), wire(-32, 18, 22), spark(24, -24) ] },
+      { name: 'SHELF RACK', state: '24%', layers: [
+        box(0, 0, 88, 76, '#3a434c', 'box-shadow:inset 0 0 0 3px #2a3138;'),
+        L(T(-18, -18) + 'width:22px;height:16px;border-radius:2px;background:#5f4a30;'),
+        L(T(10, -20, 14) + 'width:22px;height:16px;border-radius:2px;background:#3f3122;'),
+        L(T(-6, 16) + 'width:22px;height:16px;border-radius:2px;background:#4a4a32;'),
+        hole(26, 12, 20), crack(-10, 0, 44, 8), scorch(-28, 24, 28), rust(28, -26, 18) ] },
+      { name: 'SUPPLY BARREL', state: '18%', layers: [
+        box(2, 4, 48, 64, 'linear-gradient(90deg,#3f6a80,#27505f 55%,#1e3d49)', 'border-radius:8px;box-shadow:inset 0 0 0 2px #274f61;transform:translate(-50%,-50%) translate(2px,4px) rotate(-14deg);'),
+        L(T(0, -8, -14) + 'width:48px;height:10px;background:repeating-linear-gradient(45deg,#8fa8b8 0 7px,#22333c 7px 14px);'),
+        hole(10, 12, 20), crack(-8, -14, 24, -30), scorch(-20, 24, 28),
+        L(T(-18, 38) + 'width:30px;height:10px;border-radius:50%;background:radial-gradient(ellipse,rgba(120,170,190,.4),transparent 70%);') ] },
+      { name: 'WEAPONS RACK', state: '14%', layers: [
+        box(0, 0, 96, 74, '#2f373f', 'box-shadow:inset 0 0 0 3px #232b33;'),
+        L(T(0, -30) + 'width:96px;height:8px;background:#232b33;'),
+        L(T(0, 30) + 'width:96px;height:8px;background:#3f3122;'),
+        L(T(-28, 0) + 'width:9px;height:56px;border-radius:2px;background:linear-gradient(#414b55,#242c33);'),
+        L(T(-28, 16) + 'width:15px;height:20px;border-radius:3px;background:#4a3520;'),
+        L(T(4, 6, 22) + 'width:9px;height:44px;border-radius:2px;background:linear-gradient(#39424c,#20272d);'),
+        crack(24, -8, 30, 40), hole(30, 16, 18), scorch(-24, 26, 26), rust(34, -26, 18) ] },
+      { name: 'SUN LAMP', state: '0%', layers: [
+        L(T(-4, -18, -22) + 'width:70px;height:40px;border-radius:8px 8px 4px 4px;background:linear-gradient(#3a352c,#1d1a15);box-shadow:inset 0 0 0 2px #2b241c;'),
+        crack(-4, -18, 46, 16), hole(12, -22, 18),
+        L(T(0, 20) + 'width:8px;height:40px;background:#39424c;'), wire(26, -2, 34), spark(-26, -30), scorch(-18, 16, 26) ] },
+      { name: 'HERB PLANTER', state: '4%', layers: [
+        L(T(4, 18, 14) + 'width:44px;height:30px;border-radius:0 0 8px 8px;background:linear-gradient(#5f3f26,#43290f);'),
+        crack(4, 14, 26, -12),
+        L(T(-2, -14) + 'width:50px;height:42px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#5f5b38,#38341c);'),
+        L(T(-20, -22, -34) + 'width:20px;height:5px;border-radius:2px;background:#4f4a2c;'),
+        L(T(18, -4, 38) + 'width:16px;height:4px;border-radius:2px;background:#443f24;'),
+        L(T(-24, 38) + 'width:28px;height:10px;border-radius:50%;background:radial-gradient(ellipse,rgba(80,62,38,.6),transparent 70%);') ] },
+      { name: 'DECK SIGN', state: '16%', layers: [
+        L(T(0, 20) + 'width:6px;height:40px;background:#39424c;transform:translate(-50%,-50%) translate(0px,20px) rotate(6deg);'),
+        L(T(-4, -8, -12) + 'width:80px;height:34px;border-radius:5px;background:linear-gradient(#2a2119,#1c150f);box-shadow:inset 0 0 0 2px #6b4526;'),
+        crack(-4, -8, 44, -12), hole(24, -12, 16), scorch(-26, 12, 24),
+        L(T(-16, -10, -12) + 'width:14px;height:12px;border-radius:2px;background:#5a4426;'), spark(28, -26) ] },
+      { name: 'FLOODLIGHT', state: '6%', layers: [
+        box(0, -16, 40, 30, '#39424c', 'border-radius:6px;box-shadow:inset 0 0 0 2px #2b3742;transform:translate(-50%,-50%) translate(0px,-16px) rotate(-16deg);'),
+        L(T(24, -18, -16) + 'width:30px;height:22px;border-radius:3px;background:linear-gradient(#2f2b24,#181510);box-shadow:inset 0 0 0 1px #4a5560;'),
+        crack(20, -18, 24, -16), L(T(0, 20) + 'width:8px;height:40px;background:#2a323a;'),
+        wire(-26, -4, 28), spark(-30, -18), scorch(14, 12, 26) ] },
+      { name: 'REGOLITH · CONTAMINATED', state: '—', layers: [
+        L(T(-16, 16) + 'width:22px;height:16px;border-radius:6px 8px 4px 7px;background:linear-gradient(#5f5a4c,#3f3b31);'),
+        L(T(14, 18) + 'width:26px;height:18px;border-radius:8px 5px 8px 5px;background:linear-gradient(#575345,#39352c);'),
+        L(T(-2, 2) + 'width:30px;height:22px;border-radius:9px 6px 9px 7px;background:linear-gradient(#68624f,#443f34);'),
+        L(T(18, -8) + 'width:16px;height:13px;border-radius:5px 7px 4px 6px;background:linear-gradient(#5f5a4c,#3f3b31);'),
+        scorch(0, 6, 44), L(T(-20, -8) + 'width:12px;height:10px;border-radius:6px 4px 6px 4px;background:#4a3226;'), rust(20, 20, 20) ] },
+      { name: 'POTATO · SPOILED', state: '—', layers: [
+        L(T(-16, 14) + 'width:30px;height:22px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#6f6142,#413720);'),
+        L(T(16, 16) + 'width:28px;height:21px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#5f5236,#38301c);'),
+        L(T(0, -4) + 'width:34px;height:25px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#756645,#463b22);'),
+        L(T(-6, -8) + 'width:10px;height:8px;border-radius:50%;background:rgba(40,50,26,.85);'),
+        L(T(10, 2) + 'width:8px;height:7px;border-radius:50%;background:rgba(40,50,26,.8);'),
+        L(T(-14, 18) + 'width:9px;height:7px;border-radius:50%;background:rgba(40,50,26,.75);'),
+        L(T(4, 26) + 'width:30px;height:9px;border-radius:50%;background:radial-gradient(ellipse,rgba(60,55,30,.65),transparent 70%);') ] },
+      { name: 'SCRAP · SLAGGED', state: '—', layers: [
+        L(T(-14, 14, -14) + 'width:40px;height:11px;border-radius:2px;background:linear-gradient(#5f5a52,#332f2a);'),
+        L(T(12, 8, 22) + 'width:34px;height:9px;border-radius:2px;background:linear-gradient(#57524a,#2c2924);'),
+        L(T(-4, -6, -40) + 'width:30px;height:8px;border-radius:2px;background:linear-gradient(#6b665c,#3a3630);'),
+        L(T(16, -12, 8) + 'width:20px;height:18px;border-radius:3px;background:linear-gradient(#4a463f,#292620);'),
+        scorch(0, 4, 46), rust(-22, -8, 22), rust(20, 20, 18) ] },
+      { name: 'PARTS · SEIZED', state: '—', layers: [
+        L(T(-16, 12) + 'width:28px;height:28px;border-radius:50%;background:conic-gradient(#5f5a52 0 12%,#38342e 0 25%,#5f5a52 0 37%,#38342e 0 50%,#5f5a52 0 62%,#38342e 0 75%,#5f5a52 0 87%,#38342e 0);'),
+        L(T(-16, 12) + 'width:11px;height:11px;border-radius:50%;background:#1e2226;'),
+        L(T(18, 16, 18) + 'width:22px;height:22px;border-radius:50%;background:conic-gradient(#6b5f45 0 12%,#443c2a 0 25%,#6b5f45 0 37%,#443c2a 0 50%,#6b5f45 0 62%,#443c2a 0 75%,#6b5f45 0 87%,#443c2a 0);'),
+        L(T(2, -14, -18) + 'width:34px;height:10px;border-radius:3px;background:linear-gradient(#6b665c,#3a3630);'),
+        crack(-16, 12, 22, 34), rust(18, -6, 22), rust(-24, 22, 18) ] },
+      { name: 'CONTROLLER · FRIED', state: '—', layers: [
+        box(0, 0, 60, 48, 'linear-gradient(#20342b,#14231c)', 'border-radius:4px;box-shadow:inset 0 0 0 2px #0d2019;'),
+        L(T(0, -4) + 'width:24px;height:20px;border-radius:2px;background:#171b1f;box-shadow:inset 0 0 0 1px #3a434c;'),
+        L(T(0, 14) + 'width:44px;height:3px;background:#7a6b42;'),
+        L(T(-12, 7) + 'width:3px;height:18px;background:#7a6b42;'),
+        L(T(-34, 0) + 'width:12px;height:4px;background:#7a6b42;'),
+        L(T(34, 0) + 'width:12px;height:4px;background:#5a4f31;'),
+        scorch(16, -10, 30), crack(-8, 8, 26, -22), spark(24, 14) ] },
+      { name: 'SEALS · PERISHED', state: '—', layers: [
+        L(T(-14, 12) + 'width:36px;height:36px;border-radius:50%;background:#22261f;box-shadow:inset 0 0 0 7px #3f4a36;'),
+        crack(-14, 12, 30, 26),
+        L(T(16, 16, 14) + 'width:30px;height:30px;border-radius:50%;background:#22261f;box-shadow:inset 0 0 0 6px #46523c;'),
+        L(T(4, -14, -10) + 'width:40px;height:26px;border-radius:4px;background:#6b6149;box-shadow:inset 0 0 0 2px #4f472f;'),
+        L(T(4, -14, -10) + 'width:40px;height:26px;border-radius:4px;background:repeating-linear-gradient(90deg,transparent 0 5px,rgba(0,0,0,.3) 5px 7px);'),
+        rust(22, -22, 20), scorch(-22, 26, 24) ] },
+      { name: 'ICE · MELTED', state: '—', layers: [
+        L(T(-12, 18) + 'width:20px;height:15px;border-radius:4px;background:linear-gradient(135deg,rgba(190,230,245,.75),rgba(120,175,205,.55));box-shadow:inset 0 0 0 2px rgba(255,255,255,.35);'),
+        L(T(12, 20, 16) + 'width:16px;height:12px;border-radius:4px;background:linear-gradient(135deg,rgba(175,220,240,.7),rgba(105,160,192,.5));'),
+        L(T(-2, 8) + 'width:24px;height:18px;border-radius:5px;background:linear-gradient(135deg,rgba(200,238,250,.8),rgba(130,185,215,.55));box-shadow:inset 0 0 0 2px rgba(255,255,255,.4);'),
+        L(T(0, 26) + 'width:80px;height:22px;border-radius:50%;background:radial-gradient(ellipse,rgba(140,195,225,.42),transparent 72%);'),
+        L(T(-26, 4) + 'width:14px;height:10px;border-radius:50%;background:rgba(180,220,238,.45);') ] },
+      { name: 'CORPSE · UNSHROUDED', state: '—', layers: [
+        L(T(0, 8) + 'width:52px;height:80px;border-radius:20px 20px 8px 8px;background:linear-gradient(#5f5a52,#403c36);box-shadow:0 3px 8px rgba(0,0,0,.5);'),
+        L(T(0, -22) + 'width:30px;height:30px;border-radius:12px 12px 4px 4px;background:#4a4238;'),
+        L(T(-6, -22) + 'width:5px;height:5px;background:#15120f;'),
+        L(T(6, -22) + 'width:5px;height:5px;background:#15120f;'),
+        L(T(0, 10) + 'width:36px;height:34px;border-radius:4px;background:#6b6459;'),
+        L(T(0, 10) + 'width:36px;height:34px;border-radius:4px;background:repeating-linear-gradient(90deg,transparent 0 7px,rgba(0,0,0,.22) 7px 9px);'),
+        L(T(-9, 38) + 'width:12px;height:18px;border-radius:2px;background:#2a241d;'),
+        L(T(9, 38) + 'width:12px;height:18px;border-radius:2px;background:#2a241d;'),
+        scorch(18, 0, 30), rust(-20, 22, 20) ] },
+    ];
+    return { brokenD };
+  }
+}
+</script>
 </body>
 </html>
