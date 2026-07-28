@@ -78,6 +78,37 @@ namespace Perilune.Sim
             // Tuning a new device against a bug is still tuning against a bug — revisit upward when
             // the power model is fixed.
             /* IceMelter       */ new(0.4f,  0f,  PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
+            // The wreck start (W3). A cryogenic sleeper capsule. INERT — no system reads this kind
+            // except the ones every kind goes through (power, thermal, wear, the glyph table).
+            //
+            // LifeSupport tier: a pod is life support for the person inside it, so it must be the
+            // LAST thing a brownout sheds, not the first. ⚠ THE COST OF THAT CHOICE IS REAL AND IS
+            // STATED RATHER THAN HIDDEN: the tier is served ALL-OR-NOTHING (PowerSystem.cs:203-215),
+            // so eight pods put 1.6 kW into the same bucket as the vents and scrubbers, and a ship
+            // whose LifeSupport want exceeds supply now loses its ATMOSPHERE as well as its
+            // sleepers. --ship wreck is authored with 18 kW of generation against ~12.6 kW of total
+            // demand for exactly this reason; a content pack that adds pods to a marginal ship must
+            // re-check its own power budget.
+            //
+            // draw 0.2 kW / heat 0.15 kW: the smallest non-trivial pair in the table. Deliberately
+            // low, and NOT a physical estimate — PowerSystem.IsWanting makes every device pay its
+            // full draw around the clock (ECONOMY.md §1.2), so a draw is a tax on the brownout
+            // sawtooth rather than a load, and eight of anything multiplies whatever number is put
+            // here. The heat is what keeps the wreck's cryo bay above hypothermia_c without a
+            // heater (there is no heater device in the game) — MEASURED, not argued: see
+            // AuthoredShips.PeriluneWreck's header for the driven day-1/3/10 temperature census.
+            //
+            // wear 0.001/h is the Terminal/Light/WaterTank figure, the lowest non-zero rate in the
+            // table: a dormant pressure vessel is the least demanding thing on a ship. An intact
+            // pod takes ~700 operating hours (~29 sim-days) to fall from 1.0 to `maint`, so pods do
+            // not compete for the crew's attention in the opening.
+            //
+            // maint 0.30 / fail 0.10 mirror Door and Battery. maint is ABOVE wear.wreck_threshold
+            // (0.25), so a pod has a non-empty free-jury-rig band [0.25, 0.30) — unlike Terminal,
+            // Light and WaterTank, whose maint of 0.20 sits below the floor and can therefore never
+            // be bodged for free. A pod the raid wrecked (below 0.10) is INOPERATIVE, which the
+            // glyph layer already paints as GlyphColor.Broken, and repairing it costs a consumable.
+            /* CryoPod         */ new(0.2f,  0f,  PowerTier.LifeSupport, false, 0.15f, 0.001f, 0.3f, 0.10f),
         };
 
         public static MachineDef Of(DeviceKind kind) => Table[(int)kind];

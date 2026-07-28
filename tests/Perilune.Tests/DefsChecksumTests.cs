@@ -44,7 +44,7 @@ namespace Perilune.Tests
         /// It is **NOT** the scenario host's `defs:` print (`hosts/scenario/Program.cs:50`), which
         /// parses `content/core/SimDefs/*.def` **plus** `rules/*.moss` and folds each rule's
         /// name+source bytes into the same field — a different, larger value
-        /// (`fc65c6682d5bee59` at the time of writing). The two are not interchangeable and the
+        /// (`bbd76cd7245fcf65` at the time of writing). The two are not interchangeable and the
         /// difference is exactly the shipped rules. `CLAUDE.md` calls this out too; this test's name
         /// says `SimDefsDefault` so the two can never be confused in a failure report again.
         ///
@@ -72,7 +72,11 @@ namespace Perilune.Tests
             // SIBLING LANE (E0-6) IS APPENDING TO ComputeChecksum AHEAD OF THIS ONE, so the merged
             // value on `main` will be neither lane's — the integrator re-pins after the merge
             // (ECONOMY-PLAN §2.1 rule 4). Do not treat this literal as authoritative until then.
-            const ulong Pinned = 0xDF93CBD628644785UL; // wreck start salvage half (device_swarf + swarf_service_condition)
+            // ⚠ MOVED BY THE WRECK START'S W3 (--ship wreck), and by exactly ONE thing: the new
+            // [machines] row for DeviceKind.CryoPod. ComputeChecksum folds all eight columns of
+            // every Machines row, so appending a kind moves this pin even though no shipped ship
+            // has one and nothing about the sim's behaviour changed. No def FIELD was added.
+            const ulong Pinned = 0xA2E633765DC7BEFAUL; // wreck start W3 (the CryoPod machines row)
 
             Assert.That(SimDefs.Default.Checksum, Is.EqualTo(Pinned),
                 "DETERMINISM PIN MOVED: SimDefs.Default.Checksum is " +
@@ -100,10 +104,10 @@ namespace Perilune.Tests
         ///
         /// This is the number a human actually sees. `./ci.sh` runs the determinism proof, and
         /// `hosts/scenario/Program.cs:50` prints
-        /// <c>defs: fc65c6682d5bee59 (18 files, 0 problems, 1 rules)</c>. That is the value lanes
+        /// <c>defs: bbd76cd7245fcf65 (18 files, 0 problems, 1 rules)</c>. That is the value lanes
         /// copy into handovers — and it is NOT
         /// <see cref="SimDefsDefaultChecksum_IsPinned_NotTheScenarioHostsRulesInclusiveValue"/>'s
-        /// `df93cbd628644785`, which is the compiled-in defaults with no rules. Pinning only one of
+        /// `a2e633765dc7befa`, which is the compiled-in defaults with no rules. Pinning only one of
         /// the two left the confusion alive; pinning both, adjacently, with the difference spelled
         /// out, is what ends it.
         ///
@@ -112,8 +116,8 @@ namespace Perilune.Tests
         /// `SimDefs.Checksum` field (`SimDefs.cs:913-919`). `CreateDefault()` leaves `Rules` null
         /// and folds nothing, so:
         ///
-        ///   SimDefs.Default.Checksum      = df93cbd628644785   compiled-in defaults, no rules
-        ///   shipped .def + rules/*.moss   = fc65c6682d5bee59   what the console prints
+        ///   SimDefs.Default.Checksum      = a2e633765dc7befa   compiled-in defaults, no rules
+        ///   shipped .def + rules/*.moss   = bbd76cd7245fcf65   what the console prints
         ///   (both MEASURED in the lane/e0-7-ice worktree and stale the moment the sibling E0-6
         ///    lane merges ahead of it — the integrator re-pins on main, ECONOMY-PLAN §2.1 rule 4)
         ///
@@ -153,7 +157,11 @@ namespace Perilune.Tests
         {
             // ⚠ MEASURED IN THE `lane/e0-7-ice` WORKTREE — see the sibling pin above for why this is
             // stale the moment E0-6 merges, and who re-pins it.
-            const ulong Pinned = 0xFC65C6682D5BEE59UL; // wreck start salvage half (device_swarf + swarf_service_condition)
+            // ⚠ MOVED BY THE WRECK START'S W3, for the same single reason as its twin above: the
+            // CryoPod row is present in BOTH SimDefs.CreateDefault and content/core/SimDefs/
+            // machines.def, so the parsed value tracks the compiled one and the equivalence test
+            // stays green (the "both, consistently" row of the diagnostic matrix below).
+            const ulong Pinned = 0xBBD76CD7245FCF65UL; // wreck start W3 (the CryoPod machines row)
 
             string dir = FindShippedSimDefsDir();
             Assert.That(dir, Is.Not.Null,
@@ -182,7 +190,7 @@ namespace Perilune.Tests
                 ", pinned at " + Pinned.ToString("x16", CultureInfo.InvariantCulture) + ".\n" +
                 "THIS IS THE NUMBER THE SCENARIO HOST PRINTS (`defs: …`, " + ruleFiles.Count +
                 " rules, " + files.Count + " files). It is NOT SimDefs.Default.Checksum\n" +
-                "  (df93cbd628644785), which folds no designer rules — see the sibling test.\n" +
+                "  (a2e633765dc7befa), which folds no designer rules — see the sibling test.\n" +
                 "NOW CHECK THE OTHER TWO ASSERTIONS — the three of them localise the change:\n" +
                 "  • DefsEquivalenceTests …ChecksumEqualsDefault ALSO RED\n" +
                 "      ⇒ a shipped .def value and its compiled default disagree. The ONE-commit def\n" +

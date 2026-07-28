@@ -54,3 +54,13 @@ Telescope       0.4    0    Industry      false   0.2    0.004   0.4    0.1
 # not physical — see MachineDefs.cs (at 1.0 kW the melter cost 28% of the slice's food and
 # inflated A1 by ~11 pp of pure brownout slowdown).
 IceMelter       0.4    0    LifeSupport   false   0.4    0.012   0.4    0.10
+# The wreck start (W3): a cryogenic sleeper capsule. INERT in the sim — no system reads the kind.
+# LifeSupport tier because a pod IS life support for whoever is inside it, and the tier is served
+# all-or-nothing, so eight pods share a bucket with the vents: budget generation before adding pods
+# to a marginal ship. draw/heat are deliberately the smallest non-trivial pair in the table (a draw
+# is a brownout tax, not a load — ECONOMY.md §1.2), and the 0.15 kW of waste heat is what holds the
+# wreck's cryo bay above hypothermia_c on a ship with no heater device. wear is the lowest non-zero
+# rate here: a dormant vessel asks nothing of the crew for ~29 sim-days. maint 0.30 sits ABOVE
+# wear.wreck_threshold 0.25, so a pod keeps a (narrow) free-jury-rig band; below fail 0.10 it is
+# inoperative and paints Broken.
+CryoPod         0.2    0    LifeSupport   false   0.15   0.001   0.3    0.10

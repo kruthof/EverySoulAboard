@@ -23,6 +23,23 @@ namespace Perilune.Glyph
         public const char DoorOpen = '/';
         public const char DoorLocked = 'X';
 
+        // --- Cryo pods: state picks the glyph, exactly as doors do (the wreck start, W3) ---
+        // A pod is the SECOND kind whose glyph comes from state rather than from ForDevice, and the
+        // reason is the same one that gives a door three chars: an OPEN capsule and an OCCUPIED one
+        // are different objects to a player, the warm item set ships a separate piece for each
+        // (CRYO CAPSULE · OPEN and CRYO CAPSULE · OCCUPIED), and colour cannot say which is which
+        // because GlyphColor is already spent on Broken/Dim by DeviceColour.
+        //
+        // `CryoPodClosed` is the ForDevice ARM (the kind's rest glyph, like DoorClosed); the open
+        // state is a GlyphMapper.DeviceGlyph override and appears in no switch arm at all. That is
+        // exactly the shape that let two door glyphs escape the client art guard for months, so it
+        // is called out here: `client/test/device-sprite-coverage.test.js` parses DeviceGlyph's own
+        // body as well as this switch, and both chars are in its pinned population.
+        //
+        // 'K' / 'k' were the free pair. 'C' is MedCabinet, 'c' is the ControllerModule ground stack.
+        public const char CryoPodClosed = 'K';
+        public const char CryoPodOpen = 'k';
+
         // --- Utility overlays: drawn only under the matching lens ---
         public const char Conduit = '~';
         public const char Pipe = '~';     // intentional share: both are service-tray lines
@@ -61,6 +78,10 @@ namespace Perilune.Glyph
             DeviceKind.PlantPot => 'P',
             DeviceKind.Telescope => 'x',
             DeviceKind.IceMelter => 'I',   // E0-7 (upper case, like every other machine)
+            // The wreck start: the REST glyph of a pod is the occupied capsule. The open state is
+            // GlyphMapper.DeviceGlyph's override, in the same way DoorClosed is the arm here while
+            // DoorOpen/DoorLocked live only in the mapper.
+            DeviceKind.CryoPod => CryoPodClosed,
             _ => '?',
         };
 

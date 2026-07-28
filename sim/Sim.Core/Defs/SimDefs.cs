@@ -734,6 +734,14 @@ namespace Perilune.Sim
                     /* Telescope       */ new MachineDef(0.4f,  0f, PowerTier.Industry,    false, 0.2f,  0.004f, 0.4f, 0.10f),
                     // E0-7 water chain; see MachineDefs.Table for the measured reason draw is 0.4 kW.
                     /* IceMelter       */ new MachineDef(0.4f,  0f, PowerTier.LifeSupport, false, 0.4f,  0.012f, 0.4f, 0.10f),
+                    // The wreck start (W3). ⚠ THIS IS A SECOND HAND-MAINTAINED LITERAL, NOT A COPY.
+                    // The comment above this array says "verbatim copy of MachineDefs.Table" and
+                    // MachineDefs.Table's own header says CreateDefault "copies" it — BOTH ARE
+                    // PROSE. Nothing joins the two tables at build time; they are kept equal only by
+                    // DefsDefaultTests.MachineTable_MatchesMachineDefs_EntireTable, which compares
+                    // them row for row. Change one, change the other, in the same commit.
+                    // See MachineDefs.Table for why every number here is what it is.
+                    /* CryoPod         */ new MachineDef(0.2f,  0f, PowerTier.LifeSupport, false, 0.15f, 0.001f, 0.3f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs

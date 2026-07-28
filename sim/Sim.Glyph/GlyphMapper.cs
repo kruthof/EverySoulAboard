@@ -213,7 +213,9 @@ namespace Perilune.Glyph
             return (level.Flags[y * level.Width + x] & (byte)TileFlags.Explored) != 0;
         }
 
-        /// <summary>Door glyph is chosen by state; every other kind uses its rest glyph.</summary>
+        /// <summary>Door and cryo-pod glyphs are chosen by state; every other kind uses its rest
+        /// glyph. Purely a read of <see cref="Device"/> state — no mutation, per the projection
+        /// invariant.</summary>
         private static char DeviceGlyph(Device device)
         {
             if (device.Kind == DeviceKind.Door)
@@ -221,6 +223,12 @@ namespace Perilune.Glyph
                 if (device.IsLocked) return Glyphs.DoorLocked;
                 return device.IsOpen ? Glyphs.DoorOpen : Glyphs.DoorClosed;
             }
+            // The wreck start (W3): an OPEN capsule and an OCCUPIED one are different objects to the
+            // player and the warm set ships a separate piece for each. `CryoPodClosed` is also the
+            // ForDevice arm, so only `CryoPodOpen` is genuinely an override — but both are written
+            // here rather than falling through, so the state rule reads in one place.
+            if (device.Kind == DeviceKind.CryoPod)
+                return device.IsOpen ? Glyphs.CryoPodOpen : Glyphs.CryoPodClosed;
             return Glyphs.ForDevice(device.Kind);
         }
 
