@@ -191,6 +191,61 @@ is renamed). Tag `v2-talking-ship`.
 >    `Device.Name`, and a thaw calls `sim.AddCitizen` — a frozen soul is not a `Citizen`. Only the two
 >    defs checksums move, because a new `DeviceKind` grows both the `Machines` and `Recipes` arrays.
 >
+> ### ⇒ ⚠️ REVISION 2 (2026-07-28, same day) — READ THE DOC'S TOP BOX BEFORE QUOTING ANY OF THE ABOVE
+>
+> **The owner then stated the THAW MECHANIC, and it re-premises the whole opening: all eight crew
+> start frozen, ONE thaws at boot and is the entire player force, and the other seven are released
+> ONE AT A TIME THROUGH THE MOSS TERMINAL.** *"This is an important game mechanic."* ⇒ **the beat
+> sheet is rewritten for a ONE-PAWN opening** and four lanes have since built parts of the charter
+> (`device-condition`, `wrecked-art`, `damaged-authoring` = W1, `recovery-economy` = W2 + the
+> salvage rule). **Six owner decisions landed; six claims above are corrected in the doc:**
+>
+> - **Item 1 is CLOSED** — OD-1 decided as option B: `ItemKind.Swarf = 9`, a stripped wreck pays 1
+>   Swarf where it paid nothing, and `wear.swarf_service_condition = 0.45` is the bottom repair
+>   rung. ⚠️ **But Swarf feeds REPAIR, not PRODUCTION** — `TryGetBill` resolves ordinal 0 only and
+>   all three benches are occupied, so **there is no Swarf → Parts path and none can be added by a
+>   def edit.** The live E1 question is now *"where does the fourth conversion run?"*
+> - **Item 2 is DECIDED** — `＋ADD ROOM` **splits: naming is free, AIR IS EARNED.** Pressurising and
+>   the door-forcing are deleted; a working, powered, repaired vent makes the air. ⚠️ **The
+>   load-bearing part is the rejection predicate, not the deletion** — the double-commission guard
+>   must move from `TotalMoles > 0` to the room's anchor, and `AddRoomCommandTests` has two
+>   assertions that change *meaning*. **W4 (the blocked channel) is a hard prerequisite, on grid as
+>   well as on the wreck.**
+> - **Item 3 stands and got stronger.** With one pawn, a refused order means the **entire ship** is
+>   motionless rather than one of eight crew.
+> - **⛔ Item 4 is PARTLY RETRACTED.** The *fields* claim survives — no new `Device` field. **The pin
+>   claim does not:** "one after the other" is enforced by a pod cycle, a cycle needs a `CryoSystem`,
+>   and **registering a system folds its seed** (the W0-6 precedent). ⇒ **W5 moves ALL FIVE PINS.**
+> - **⛔ Also retracted: the `-1f` sentinel for `DeviceSpec.Condition`.** `DeviceSpec` is a struct, so
+>   every shipped spec is **zeroed memory** (`0f`, never `-1f`) — the sentinel would have been missed
+>   on all ~1 250 specs that need it and hit only opt-ins, **booting the entire repo wrecked.**
+>   `float?` / `bool?` is what shipped. **General rule: a magic-value sentinel on a struct field is
+>   only safe if the magic value is the zero value.**
+> - **⛔ Also retracted: "the wreck's lit core will draw no doors at all."** `'+'` and `'X'` are
+>   skinned; `'/'` is **deliberately** a gap. The real defect was `AddRoomCommand`'s force-open, which
+>   the split deletes. **One command, two owner reports, one fix.**
+>
+> **The new headline finding, and it is source-measured:** ⭐ **the one-pawn schedule is a strict
+> priority ladder and it is upside-down for the wreck.** `SystemStack` fixes the order
+> **`JobSystem` ▸ `Sustenance` ▸ `Crafting` ▸ `Maintenance`**, and the dispatcher consults **no need
+> at all** — so a painted order outranks eating, crafting and maintenance. **MEASURED not to bite at
+> eight crew** (200 strip designations on grid: Maintain 0.782 % → 0.782 %, `None` still 72.86 %);
+> **UNMEASURED at one pawn, because no one-crew ship exists to drive.** Mitigated cheaply — a wreck
+> authors **no** designations — and fixed properly only by W7.
+>
+> **Also new:** ⭐ **the first thaw is the entire matter ladder — ≥ 12 330 crew-seconds ≈ 3.4
+> crew-hours of bench and strip work by one person**, because MOSS needs a commissioned `Terminal`
+> and that costs a `ControllerModule` three conversions deep. ⇒ **`thaw_cost` must be priced in
+> Parts, not modules.**
+>
+> **Still open on the owner (§7.1):** ⚠️ **OD-9 — what a WRECKED OCCUPIED POD means. INFERRED, NOT
+> STATED**: the working assumption is that the sleeper is alive and the pod must be repaired first;
+> the alternative (a dead sleeper) is a different game and **must not be built without asking
+> again.** Plus **OD-10** the minute-three hard lose (one pawn dies ⇒ seven stay frozen forever),
+> **OD-11** the thaw currency, **OD-5** authored personas (now the decision that sizes the
+> programme — without W7's skills, *who you wake* has no mechanical consequence), and **OD-8** the
+> ice hold.
+>
 > **On the economy programme the doc takes a position:** the wreck start does **not** answer E0's
 > failed gate — it makes A1 the wrong question. Grid at h24 is **demand-starved, not matter-starved**
 > (measured: `None 82.85 %`, matter *rising* 63 u → 236 u over the same 24 h, `stockpile tiles zoned 0`,
