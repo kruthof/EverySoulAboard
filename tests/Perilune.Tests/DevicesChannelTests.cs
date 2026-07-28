@@ -156,8 +156,9 @@ namespace Perilune.Tests
         /// <summary>The cached <c>devices</c> payload after a render, taken from the Snapshot a
         /// reconnecting client is caught up from — so every assertion below also proves the channel
         /// survives a reconnect. (A channel absent from <c>Snapshot</c>'s key list renders empty until
-        /// the next Render happens to change it, and this channel is deduped for thousands of ticks at
-        /// a time, so "the next change" can be a very long time. <c>materials</c> and <c>ledger</c> are
+        /// the next Render happens to change it, and this channel's payload can go unchanged for a
+        /// long stretch — one machine's condition byte moves ~5 steps per operating hour — so "the next
+        /// change" is not immediate. <c>materials</c> and <c>ledger</c> are
         /// exactly that pre-existing gap, recorded in <c>GameSession.Snapshot</c> and deliberately not
         /// fixed by this lane.)</summary>
         private static string DevicesJson(GameSession gs)
@@ -575,9 +576,9 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE <c>force</c> FLAG. <see cref="GameSession.Send"/> dedupes by string equality, so an
-        /// UNCHANGED payload is normally not broadcast — and on this channel that is the normal case for
-        /// thousands of ticks at a time, because Condition moves at ≤0.02 per operating HOUR. A forced
-        /// render must override it; that is what primes a newly-connected client.
+        /// UNCHANGED payload is normally not broadcast, and on this channel the payload can go unchanged
+        /// for a long stretch (Condition moves at ≤0.02 per operating HOUR per machine). A forced render
+        /// must override it; that is what primes a newly-connected client.
         ///
         /// Written because the equivalent mutation SURVIVED the whole suite on the <c>marks</c> channel:
         /// every other assertion here reads the payload out of <see cref="GameSession.Snapshot"/>, which

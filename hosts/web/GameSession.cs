@@ -219,8 +219,9 @@ namespace Perilune.Web
                 // does not own, which is exactly the scope creep that has cost this repo merges.
                 // ⚠️ THIS LIST IS THE ONLY THING THAT MAKES A CHANNEL SURVIVE A RECONNECT. A channel
                 // absent from it renders empty until the next Render happens to change it — and for a
-                // channel that `Send` dedupes for thousands of ticks at a time (`devices`, whose
-                // Condition byte is near-static), "the next change" can be a very long time.
+                // channel whose payload can go unchanged for a long stretch (`devices`, whose condition
+                // bytes move ~5 quantiser steps per operating hour per machine), "the next change" is
+                // not immediate.
                 foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
@@ -1849,11 +1850,19 @@ namespace Perilune.Web
         /// need a consumer to justify them; this lane ships the simple, complete, self-describing
         /// version and records the number so the decision can be taken on evidence.
         ///
-        /// What keeps the SOCKET cost near zero already is <see cref="Send"/>'s dedupe:
-        /// <see cref="Device.Condition"/> moves at ≤0.02 per operating HOUR, so the quantised byte is
-        /// unchanged across thousands of ticks and the payload is normally not broadcast at all. That
-        /// is exactly why the volatile fields (<c>Powered</c>, <c>Progress</c>, <c>StoredLiters</c>)
-        /// are off the tuple — see the header. The ~26 µs is CPU that is spent either way.
+        /// ⚠️ THE SOCKET COST IS SMALLER THAN THE CPU COST, BUT NOT BY AS MUCH AS THE PER-DEVICE
+        /// FIGURE SUGGESTS, and the first draft of this paragraph overstated it. <see cref="Send"/>
+        /// dedupes by whole-payload string equality, so the window is the MINIMUM over every row, not
+        /// the per-device rate. One device is enough: the fastest-wearing kinds lose 0.020 Condition
+        /// per operating hour (<c>machines.def</c>), which is ~5 quantiser steps an hour, so ONE
+        /// machine changes its byte about every 7 200 ticks — but grid runs tens of them at once, and
+        /// they are not in phase. The payload therefore changes far more often than any single row
+        /// does, and at 100×/1000× speed it changes on most renders. The volatile fields
+        /// (<c>Powered</c>, <c>Progress</c>, <c>StoredLiters</c>) are still off the tuple for the same
+        /// reason — they would make it change on EVERY render, on a ship where nothing is wearing at
+        /// all — but "normally deduped away entirely" would have been a comfortable claim rather than
+        /// a measured one, and it is retracted rather than softened. The ~26 µs is CPU spent either
+        /// way; only the ~2.5 KB is at stake here.
         ///
         /// The scratch list is reused, so a steady state allocates only the payload string.
         ///

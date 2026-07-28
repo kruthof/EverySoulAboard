@@ -157,10 +157,13 @@ namespace Perilune.Web
         /// MOSS directory — which already has its own <c>terminals</c> channel), none is needed to pick
         /// a wrecked sprite, and the volatile ones would be actively harmful here: <c>Powered</c>,
         /// <c>Progress</c> and <c>StoredLiters</c> change on most ticks, so carrying them would make
-        /// this payload differ on nearly every render and defeat <c>GameSession.Send</c>'s dedupe on
-        /// every one of grid's 146 rows. <c>Condition</c> moves at ≤0.02 per operating HOUR, so the
-        /// quantised byte is stable across thousands of ticks and the channel is normally deduped
-        /// away entirely. Adding a field is one trailing element; adding it for no consumer is not.</para>
+        /// this payload differ on EVERY render even on a ship where nothing is wearing at all.
+        /// <c>Condition</c> moves at ≤0.02 per operating hour, so one device's byte is stable across
+        /// roughly 7 200 ticks. (⚠️ That is a PER-DEVICE figure and it does NOT mean the channel is
+        /// normally deduped away — <c>Send</c> compares the WHOLE payload, grid runs tens of wearing
+        /// machines out of phase, and one row is enough. The honest version of the dedupe story is in
+        /// <c>GameSession.BuildDevices</c>.) Adding a field is one trailing element; adding it for no
+        /// consumer is not.</para>
         /// </summary>
         public readonly struct DeviceCell
         {
