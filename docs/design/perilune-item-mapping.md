@@ -160,6 +160,42 @@ the game does not have.
 
 ---
 
+## Cryo (2) — COSMETIC
+
+Added by the **2026-07-28 mock re-import**. Both are `client/src/items/cryo.js`.
+
+| # | Piece | Class | Placement | Sim glyph | Notes |
+|---|-------|-------|-----------|-----------|-------|
+| 69 | CRYO CAPSULE · OCCUPIED | COSMETIC | decor `cryo_capsule_occupied` | — | A crew member frozen behind frost glass; cyan `-196°` plate, live LED. |
+| 70 | CRYO CAPSULE · OPEN | COSMETIC | decor `cryo_capsule_open` | — | The same shell empty: padded bed, lid hinged open at 24°, icicles, frost puddle, amber `EMPTY` plate. |
+
+⚠️ **The `—` in the glyph column here is a DECISION, not an omission**, and this is the one place in
+this file where that has to be said out loud — `index.js`'s header records that a `—` justified the
+wrong way is how `hydroponics`, `research-console` and `sensor-array` shipped unskinned. There is
+**no cryo-capsule `DeviceKind`** in `sim/Sim.Core/Device.cs`, so there is no `Glyphs.ForDevice` char
+to claim and no tile the sim would ever project one onto. Giving either a glyph it does not own
+would make `items/glyph-map.js` skin a tile with art for a device that is not there.
+
+⚠️ **Neither replaces CRYOPOD (29).** That piece is a 48×82 lozenge seen from directly above and is
+unchanged; these are 60×104 upright capsules that state which of two things is true of the tile. The
+mock ships all three.
+
+---
+
+## Wrecked — post-raid twins (70)
+
+The same re-import added **one broken twin for every piece in this document**, in a separate mock
+section. They are NOT in this table and never will be: a twin is not a thing a player places, it is
+the same registry row in a state. They live in `client/src/items/wrecked.js`, keyed by the PRISTINE
+`itemId`, and the join is asserted against this document's own ordering by
+`client/test/wrecked.test.js`.
+
+⚠️ **Not wired to either surface.** Nothing on the wire carries a device *condition*, so no client
+code can choose between a piece and its twin. The art and the join exist; the draw decision does
+not. See `docs/design/shots/README.md` for the rendered evidence.
+
+---
+
 ## Tally
 
 | Class | Count |
@@ -167,10 +203,16 @@ the game does not have.
 | FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 23 |
 | FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 4 |
 | **FUNCTIONAL total** | **27** |
-| COSMETIC (view-only `decor`, non-hashed) | 21 |
+| COSMETIC (view-only `decor`, non-hashed) | 23 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 8 |
-| **Total** | **68** |
+| **Total** | **70** |
+
+⚠️ **21 → 23 COSMETIC and 68 → 70 on 2026-07-28**, from the two CRYO CAPSULE pieces. Re-counted off
+the shipped registry, not derived from this table — `client/test/items.test.js` asserts the four
+class numbers as an OBJECT rather than as a sum, so a class that moves names itself. A separate
+**70 WRECKED twins** ship alongside and are deliberately absent from this tally: they are the same
+70 rows in a state, not 70 more things.
 
 **The 4 items needing a NEW `DeviceKind`:** REACTOR (1), OXYGEN TANK (5), COOKER (8),
 SPACE HEATER (52). Each is a real sim change — enum id + `MachineDefs` row + save/hash +
