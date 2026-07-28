@@ -31,6 +31,27 @@ namespace Perilune.Gen
                 device.IsOpen = spec.IsOpen;
                 device.StoredKWh = spec.StoredKWh;
                 device.StoredLiters = spec.StoredLiters;
+
+                // W1 (the wreck start): OPTIONAL damage authoring. `null` means the author said
+                // nothing, so NOTHING is written and Device's own initialisers stand — Condition
+                // = 1f, Scriptable = true. Every DeviceSpec on grid/slice/perilune omits both, so
+                // these two lines are a no-op on every shipped ship BY CONSTRUCTION rather than by
+                // coincidence; that is pinned by AuthoredDamageTests' census (0 non-pristine
+                // devices on all three ships), whose non-vacuity is an inclusion test that plants
+                // a wrecked device and requires the same census to catch it.
+                // See DeviceSpec.Condition for why the encoding is Nullable and not a sentinel.
+                if (spec.Condition.HasValue)
+                {
+                    float condition = spec.Condition.Value;
+                    // Domain check, in the same spirit as the bounds/wall/debris/anchor checks
+                    // around it: a broken plan fails at boot, not mid-game. `!(a && b)` rather
+                    // than `<0 || >1` so NaN is refused too.
+                    if (!(condition >= 0f && condition <= 1f))
+                        throw new ArgumentException(
+                            $"plan '{plan.Name}': device {spec.Name} authors Condition {condition.ToString(System.Globalization.CultureInfo.InvariantCulture)} outside 0..1");
+                    device.Condition = condition;
+                }
+                if (spec.Scriptable.HasValue) device.Scriptable = spec.Scriptable.Value;
             }
 
             for (int i = 0; i < plan.Citizens.Count; i++)
