@@ -6,9 +6,27 @@ is renamed). Tag `v2-talking-ship`.
 
 ## ⇒⇒ START HERE — THE WRECK START (2026-07-28, later). Everything below this block is history.
 
-> **Design of record: `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`).**
-> **Gate on `main`: `./ci.sh` exit 0, 1181 dotnet + 876 node, twin hashes MATCH `43345ff0c9d62684`;
-> P1–P3 held, P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`.**
+> **Design of record: `docs/design/perilune-wreck-start.plan.md`, ON `main`.** Read its **REVISION 4
+> correction box first** — the roster is EIGHT and several figures below it in that file are void.
+> **Gate on `main`: `./ci.sh` exit 0, 1197 dotnet + 905 node, twin hashes MATCH `43345ff0c9d62684`;
+> P1–P3 held, P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`. RE-MEASURE BEFORE QUOTING.**
+>
+> ### ⇒ IF YOU ARE A FRESH INSTANCE, THIS IS WHAT TO DO NEXT
+>
+> 1. **Check whether `lane/wreck-ship` has landed.** It was the only lane in flight at the end of
+>    this run: `--ship wreck` + `DeviceKind.CryoPod`. If it is unmerged, **read its report, review it
+>    independently, and merge it** — that is the next action, and it is the first thing the owner can
+>    actually *see*. It will move **P4 and P5** (a new `Machines` row), so it needs a re-pin commit.
+> 2. **`./play.sh` still opens `--ship grid`, deliberately.** Flipping the default is **W8** and it is
+>    gated on the wreck being playable. Until then the wreck is `--ship wreck` explicitly.
+> 3. **Then W4b** — `＋ADD ROOM` splits so air is EARNED (`Commands.cs:600-666` currently force-opens
+>    every bordering door and pressurises for free). It runs ALONE and it is what turns the pressure
+>    frontier from a formality into the loop.
+> 4. **Then W5** — `CryoSystem` + the MOSS thaw console + the emergency thaw. **Two owner questions
+>    are still open and both belong to W5** (below).
+> 5. **Do not start `Regolith → Rubble` or the `Degraded` bit casually.** The rename runs ALONE (it
+>    touches sim, content defs, client art ids and tests at once); the `Degraded` bit is **spine
+>    files — integrator lane only** and moves P1–P3.
 >
 > **THE OPENING IS RE-PREMISED, on the owner's design.** A bay of cryo capsules; everyone frozen;
 > **ONE pawn thaws at boot and is the entire player force.** The ship was raided, the unfrozen are
@@ -23,8 +41,12 @@ is renamed). Tag `v2-talking-ship`.
 > **jury-rig refused below `wear.wreck_threshold`** (0.25, kept after measurement) · a wrecked
 > machine strips to **`Swarf`** · **`＋ADD ROOM` splits — naming is free, AIR IS EARNED** · one
 > **`Degraded` bit** on `ItemStack` for the 8 spoiled resources · **`Regolith` → `Rubble`** ·
-> **a wrecked occupied pod holds a DEAD sleeper** (so fewer than eight are recoverable — *how many
-> is unset; W3 must set it and say the number*) · **an EMERGENCY THAW** when `LivingCrew == 0`,
+> **EIGHT living crew, and that is NOT tunable** — 12 capsules: 8 intact (1 open at boot + **7
+> thawable**) + **4 wrecked holding bodies**, the wrecked being *additional* to the eight (⛔ an
+> earlier draft said "fewer than eight are recoverable" — **that was my error, twice over**: the
+> owner's answer about what the ART DEPICTS was spent as an answer about the ROSTER. Size life
+> support against eight ⇒ **three** O₂ scrubbers at the measured ~3.66 crew each) ·
+> **an EMERGENCY THAW** when `LivingCrew == 0`,
 > living in `CryoSystem` and **not as a hole in `ThawCommand`** · **authored people with real
 > mechanical differences**, which promotes the skill / work-priority lane from optional to
 > **REQUIRED**.
@@ -54,9 +76,30 @@ is renamed). Tag `v2-talking-ship`.
 > That is what `Swarf` exists to answer. Also **retracted**: my inference that a wrecked occupied pod
 > held a *living* sleeper; the owner chose the opposite.
 >
-> **Open on the owner:** how many pods hold bodies · the thaw currency (recommend Parts; the first
-> thaw is ≥ 3.4 crew-hours of ladder for one person) · authored personas' depth · an ice hold behind
-> the frontier.
+> **Landed since:** the **`blocked` channel** — an order that cannot proceed now says so on the Room
+> Zoom, asking `WorksiteSafety.CanStageWorkerAt` itself rather than re-deriving it. It found that
+> **`--ship grid` has always shipped 20 dig designations of which TEN are unreachable at boot**
+> (transient — they self-clear by ~35 sim-minutes, which is why a suppression rule was proposed,
+> measured against and **withdrawn**), and it fixed a real crash: `Simulation.IsWalkable` does **no
+> bounds checking**, so a corner designation indexes at −1 — and away from the corner that is *worse*
+> than a crash, because `(−1,y,z)` is a valid index into the previous row.
+>
+> **⇒ OPEN ON THE OWNER — both belong to W5, neither blocks the wreck ship:**
+> 1. **Does `thaw_cost` ESCALATE?** It must, and this is now measured, not aesthetic: OD-9 (dead
+>    sleepers) deleted the only naturally-escalating term, and nothing else escalates — O₂ is a STEP
+>    function, food stops biting forever once a grow bed is repaired (grid: 2.07 d → 18.36 d and
+>    *rising*), and a flat price is identical on thaw 7 and thaw 2 against a production chain that is
+>    *faster* by thaw 7. ⇒ **thaws 5–7 arrive back-to-back** and the bay empties in a rush.
+>    **Recommendation: `thaw_cost_base + LivingCrew × thaw_cost_step`, in Parts** — two def scalars,
+>    no new state, rides free inside W5's pins.
+> 2. **Does the wreck get an ice hold behind the frontier?** Recommend yes — and size it against
+>    **eight** crew, not six.
+>
+> **⇒ OWED, nobody owns it:** a machine below the wreck floor with no consumable **stays needy
+> forever** and is re-evaluated at 1 Hz through up to **three full item-store scans**. Invisible on
+> grid (8→51 machines); **the wreck authors hundreds by design.** W3 was told to publish tick-rate
+> against grid. If it is bad, the remedy is to memoise the "no consumable aboard" answer against an
+> item-store version, the way `HasIceChain` was memoised — **a sim change needing its own review.**
 
 ## ⇒⇒ SUPERSEDED — the earlier 2026-07-28 orientation. History from here down.
 

@@ -1,6 +1,39 @@
 # The wreck start — premise, opening, core loop, and a wave charter
 
-**Status: DESIGN ONLY. 2026-07-28 — REVISION 3. This is the PLAN OF RECORD.**
+> ## ⛔⛔ REVISION 4 CORRECTION — THE ROSTER IS **EIGHT**, AND IT IS NOT TUNABLE
+>
+> **Read this before any pod, crew-ceiling, thaw-count or life-support number below.** Everything in
+> this file that says *"TWO wrecked pods / ceiling 6 / five thaws"* — §1, §4 W3's headline decision,
+> OD-12, and every figure derived from them — is **SUPERSEDED**. Struck, not deleted: the *reasoning*
+> is still the best analysis of the dial, only its inputs were wrong.
+>
+> **The owner's decision, stated repeatedly and again on 2026-07-28:** *"8, because that should be
+> the amount of people we want to work with later… we will have 8 pawns at some point living in the
+> ship."* ⇒ **EIGHT living crew is the design target. ONE opens at boot; the OTHER SEVEN are all
+> thawable. SEVEN thaws, not five.**
+>
+> **How the two owner answers reconcile — this is where the integrator (me) went wrong, twice.**
+> The owner *did* choose "a wrecked occupied pod holds a DEAD sleeper". I then treated an answer
+> about **what the art depicts** as an answer about **how many crew are recoverable**, and cut the
+> roster to six. It is not: **the wrecked pods are IN ADDITION to the eight.** The ship carried a
+> larger complement than survived — the raid killed everyone awake and wrecked some capsules too.
+>
+> ⇒ **Author TWELVE capsules: 8 intact (1 open + 7 thawable) + 4 wrecked holding bodies.**
+> **The 4 is tunable. The 8 is not.**
+>
+> **What this changes downstream, and W3/W5 must carry it:**
+> - **Size life support against EIGHT, not six.** At the measured ~3.66 crew per O₂ scrubber that is
+>   **three** working scrubbers. The hardware must EXIST on the ship to be repaired — most of it
+>   below the wreck floor at boot — because that scrubber curve is the spine of the thaw pacing.
+> - **Seven thaws makes §3.4's escalation MORE load-bearing, not less.** With a flat `thaw_cost` the
+>   last three arrive together, at the point the production chain is fastest.
+> - Any census, test or runway figure computed at six crew is **wrong** — recompute at eight.
+>
+> **The durable lesson:** an answer about *fiction* is not an answer about *numbers*. When an owner
+> decision arrives in one register, do not spend it in another.
+
+**Status: DESIGN ONLY. 2026-07-28 — REVISION 3, plus the REVISION 4 correction box above (which
+wins wherever they disagree). This is the PLAN OF RECORD.**
 **Lane:** `lane/wreck-design`. The whole diff is **this file and nothing else** — revision 2's
 `docs/HANDOVER.md` pointer block was deleted on the merge from `main`, because `HANDOVER.md` now
 carries its own orientation block and two competing orientation blocks is worse than none.
@@ -1310,7 +1343,14 @@ publish. 146 is a bound, not a census.**
 
 ---
 
-#### ⭐⛔ W3's HEADLINE DECISION: **HOW MANY PODS ARE WRECKED.** Unset. **Recommendation: TWO.**
+#### ⭐⛔ W3's HEADLINE DECISION — ⛔ **ANSWERED BY THE OWNER; THE RECOMMENDATION BELOW IS SUPERSEDED**
+
+> **DECIDED: 12 capsules — 8 intact (1 open at boot + 7 thawable) + 4 wrecked holding bodies.**
+> **EIGHT living crew is the design target and is NOT tunable; the 4 wrecked IS.** See the
+> REVISION 4 box at the top of this file. ~~Recommendation: TWO, ceiling 6, five thaws.~~
+> The analysis below is kept because its *method* is sound — the scrubber-gate argument in
+> particular still applies, it simply resolves to **three** scrubbers at eight crew rather than
+> two at six. **Every "five thaws" and "ceiling 6" figure in it is void.**
 
 > **The owner decided that a wrecked occupied pod holds a DEAD sleeper. They did not say how many
 > are wrecked, and that number is not a detail — it fixes the crew ceiling, the LENGTH OF THE
