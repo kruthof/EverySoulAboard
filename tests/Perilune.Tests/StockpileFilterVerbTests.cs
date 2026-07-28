@@ -155,7 +155,7 @@ namespace Perilune.Tests
         /// hand-crafted socket line can deliver one. MUTATION: delete the <c>if (cmd.I &lt; 0)
         /// return;</c> line ⇒ an entry appears and this test fails. Both shapes of the underlying
         /// bug are covered: with the canonicalising mask still in place -1 becomes AcceptAllMask
-        /// (0x1FF today — accept everything), and with the naive <c>(ulong)cmd.I</c> the spec warns
+        /// (0x3FF today — accept everything), and with the naive <c>(ulong)cmd.I</c> the spec warns
         /// about it becomes
         /// <c>ulong.MaxValue</c> (accept everything, plus phantom bits in the hash). Either way
         /// "restrict this zone" has silently become "accept absolutely everything" — the inversion
@@ -475,7 +475,9 @@ namespace Perilune.Tests
         /// false claim survived its first test.
         ///
         /// <c>StockFilterModel.KindCount</c> is in the bad list DERIVED rather than as a literal, so
-        /// the list widens with the enum. It is 9 today and 9 is not a kind; it stopped being a safe
+        /// the list widens with the enum. It is 10 today and 10 is not a kind — it was 9 until the
+        /// wreck start made 9 (Swarf) real, which is the second time in two waves that the derived
+        /// entry saved the list; it stopped being a safe
         /// stand-in for "unreal" once during this wave — while E0-7 had taken Ice = 8 over an empty
         /// slot 7, KindCount was 8 and 8 WAS a kind — which is why the positive control below is not
         /// optional.

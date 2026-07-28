@@ -321,22 +321,26 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // DeconstructSystem drops it whenever a stripped machine's Parts yield floors to 0, and
   // MaintenanceSystem consumes it as the rung below a jury-rig. On the wreck start it is the single
   // most common thing on the floor, because cannibalising the dead half of the ship IS the opening
-  // loop. It has no piece only because the warm set has none yet — the wrecked-art package owns
-  // `client/src/items/` and was in flight in a sibling worktree when this landed, so drawing it here
-  // would have been two lanes editing one registry.
+  // loop.
+  //
+  // ⚠️ THE PIECE IS OWED AND NOBODY IS SCHEDULED TO PAY IT. An earlier draft of this entry blamed
+  // the in-flight wrecked-art lane for holding `client/src/items/` and implied the debt would clear
+  // with it. THAT LANE HAS MERGED AND IT ADDS NO SWARF PIECE — measured on this tree, zero `swarf`
+  // hits anywhere under `client/src/items/`. So there is no owner: until someone draws a loose-swarf
+  // pile and an `ITEMS` row for it, a dashed `w` chip is what the player sees on the wreck start,
+  // constantly, and the "it should be the last entry" hope below has nothing behind it.
   //
   // ⚠️ THIS LEDGER IS DOCUMENTED AS ONLY EVER SHRINKING, and this commit grows it. That is the
   // decision the ledger exists to force, written down: the alternative was to ship a live economy
-  // item invisibly, or to reach into another lane's files mid-flight. It is the FIRST entry added
-  // since the ledger was created and it should be the last — it pays down the moment a loose-swarf
-  // pile joins the item set.
+  // item invisibly. It is the FIRST entry added since the ledger was created, and it stays until
+  // a loose-swarf pile joins the item set.
   Swarf: {
     glyph: 'w',
     chips: true,
     why: 'REAL AND UNSKINNED, not dead vocabulary: DeconstructSystem creates Swarf on every wreck '
       + 'strip and MaintenanceSystem consumes it, so a player WILL see this chip — on the wreck '
-      + 'start, constantly. Unskinned only because client/src/items/ belonged to the in-flight '
-      + 'wrecked-art lane when the salvage half landed. Draw it and delete this entry.',
+      + 'start, constantly. The piece is OWED AND UNOWNED: the wrecked-art lane has merged and adds '
+      + 'no Swarf piece. Draw it and delete this entry.',
   },
   MetalOre: {
     glyph: 'o',
@@ -606,9 +610,10 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
       'Delete the line and lower the pinned counts — this ledger only shrinks.');
   }
   assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_GROUND_ITEM_LEDGER,
-    'THE GROUND-ITEM LEDGER CHANGED SIZE. It only shrinks: an entry goes away when that kind gets\n' +
-    'art. It went 9 → 1 when the ground-item art landed, and the one that stayed (MetalOre) is not\n' +
-    'a backlog item — nothing in sim/ produces or consumes that kind. If you are ADDING one, the\n' +
+    'THE GROUND-ITEM LEDGER CHANGED SIZE. It went 9 → 1 when the ground-item art landed (MetalOre\n' +
+    'stayed, and it is not a backlog item — nothing in sim/ produces or consumes that kind), then\n' +
+    '1 → 2 when the wreck start added Swarf, which IS a backlog item and is owed art nobody has\n' +
+    'scheduled. Growing it is the exception, not the rule. If you are ADDING one, the\n' +
     'question the ledger exists to force is: does this kind exist in the game, or only in the enum?');
 });
 
@@ -655,7 +660,7 @@ test('EVERY skinned ItemKind builds REAL art (driven through buildItem)', () => 
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
 const EXPECT_CHIPPING_ITEM_KINDS = 2;   // MetalOre + Swarf — see the ledger
 
-test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly TWO ItemKinds (MetalOre, Swarf) still draw a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
@@ -680,9 +685,12 @@ test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip
     'THE NUMBER OF RAW-LETTER CHIPS MOVED: ' + chipping.join(', ') + '\n\n' +
     'It was EIGHT until 2026-07-27 — measured live by independent review on --ship grid deck 0, room\n' +
     "STORAGE: seven chips on one floor, ',' six times and 'f' once, plus Seals and Ice from the\n" +
-    'E0-6/E0-7 wave. The ground-item art paid seven of them down and MetalOre is the one left,\n' +
-    'deliberately. If this number went UP, a new ItemKind shipped without art. If it went DOWN,\n' +
-    'a kind got art — lower this constant and delete its ledger entry in the same commit.');
+    'E0-6/E0-7 wave. The ground-item art paid seven of them down, leaving MetalOre; the wreck\n' +
+    "start's salvage half then added Swarf, so TWO chip today and they chip for OPPOSITE reasons —\n" +
+    'MetalOre is dead vocabulary nobody owes art for, Swarf is a live economy item that is OWED art\n' +
+    'and has nobody scheduled to draw it. If this number went UP, a new ItemKind shipped without\n' +
+    'art. If it went DOWN, a kind got art — lower this constant and delete its ledger entry in the\n' +
+    'same commit.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

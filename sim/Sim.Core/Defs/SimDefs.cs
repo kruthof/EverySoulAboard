@@ -314,8 +314,10 @@ namespace Perilune.Sim
             /// <summary>
             /// The WRECK FLOOR — below this <see cref="Device.Condition"/>, an empty-handed
             /// jury-rig is REFUSED and the machine needs a real consumable
-            /// (<see cref="ItemKind.Parts"/> → 1.0 or <see cref="ItemKind.Seals"/> →
-            /// <see cref="SealServiceCondition"/>). At or above it, maintenance is byte-identical
+            /// (<see cref="ItemKind.Parts"/> → 1.0, <see cref="ItemKind.Seals"/> →
+            /// <see cref="SealServiceCondition"/>, or <see cref="ItemKind.Swarf"/> →
+            /// <see cref="SwarfServiceCondition"/> — the rung built for exactly this band, and the
+            /// only one gated ON it). At or above it, maintenance is byte-identical
             /// to the pre-2026-07-28 game. Current: 0.25.
             ///
             /// <b>WHY IT EXISTS.</b> <c>MaintenanceSystem</c> restores ANY device to
@@ -327,12 +329,42 @@ namespace Perilune.Sim
             ///
             /// <b>0.25 IS A STARTING VALUE THE OWNER EXPECTS TO BE MEASURED, NOT A LAW.</b> It is
             /// deliberately ABOVE every <c>maint</c> threshold's failure companion (max
-            /// <c>fail</c> = 0.10) and BELOW every <c>maint</c> threshold (max 0.40), so the band
-            /// [0.25, 0.40) — a machine that has merely rotted — keeps today's free jury-rig, while
-            /// [0, 0.25) — a machine that has been SHOT — does not. Rot stays cheap; damage costs
-            /// matter. Raising it past 0.40 would make every routine service demand a consumable and
-            /// is a different game; lowering it to 0 makes the field inert everywhere (and a def
-            /// that is inert everywhere is a def nobody tests).
+            /// <c>fail</c> = 0.10), so a machine this rule refuses is still a machine that RUNS.
+            ///
+            /// <b>⚠️ IT IS NOT BELOW EVERY <c>maint</c> THRESHOLD, AND AN EARLIER DRAFT OF THIS
+            /// DOC SAID IT WAS.</b> That draft read "BELOW every <c>maint</c> threshold (max 0.40),
+            /// so the band [0.25, 0.40) — a machine that has merely rotted — keeps today's free
+            /// jury-rig". <c>maint</c> is PER KIND; <c>(max 0.40)</c> is the tell — the maximum was
+            /// taken as if it were universal. Hand-counted off <c>MachineDefs.cs:38-80</c>, the
+            /// free-jury-rig band [0.25, <c>maint</c>) is:
+            /// <list type="bullet">
+            /// <item><c>Terminal</c>, <c>Light</c>, <c>WaterTank</c> — <c>maint</c> 0.20, so the
+            /// band is <b>EMPTY</b>: these three can never be fixed for free on ANY ship, shipped
+            /// or wrecked. A shipped-economy consequence of the default, not a wreck-only one.</item>
+            /// <item><c>Door</c> <b>and</b> <c>Battery</c> — <c>maint</c> 0.30, band width
+            /// <b>0.05</b>. Neither is narrower than the other; they are identical.</item>
+            /// <item>everything else — <c>maint</c> 0.40, band [0.25, 0.40).</item>
+            /// </list>
+            /// Both sets are pinned BY NAME in
+            /// <c>WreckThresholdTests.KindsWhoseFreeJuryRigBandIsEmptyAtTheShippedFloor_ArePinnedByName</c>,
+            /// which asserted the correct sets while the prose above it said otherwise.
+            ///
+            /// <b>⚠️ AND "rot stays cheap, damage costs matter" IS WRONG ABOUT WHAT ACTUALLY
+            /// FIRES.</b> Measured on <c>--ship grid</c> over 45 sim-days: nothing there is authored
+            /// damaged, and at sim-hour 630 a Terminal/Light/WaterTank still sits near 0.37 — the
+            /// starved kinds are not what crosses the floor. What crosses it are HIGH-WEAR machines
+            /// whose service was <b>BACKLOGGED</b>: a <c>Fabricator</c> (0.020/h) jury-rigged to 0.6
+            /// reaches <c>maint</c> 0.40 in 10 h and 0.25 in 7.5 h more. On the shipped ship the
+            /// rule's real trigger is <b>rot plus backlog</b>, not damage.
+            ///
+            /// <b>COST, measured A/B over those same 45 sim-days</b> (<c>occupancy --ship grid
+            /// --maint-audit</c>): <c>Maintain</c> job starts <b>1285 → 1098</b> (−187), <c>Flee</c>
+            /// 657 → 601, and <b>services completed 678 → 678 — zero cost</b>, with a byte-identical
+            /// end state and first divergence at sim-hour 630.
+            ///
+            /// Raising it past 0.40 would make every routine service demand a consumable and is a
+            /// different game; lowering it to 0 makes the field inert everywhere (and a def that is
+            /// inert everywhere is a def nobody tests).
             ///
             /// <b>THE REFUSAL IS SILENT, AND THAT IS AN ACCEPTED COST, NOT AN OVERSIGHT</b> — the
             /// same shape as <c>MECHANICS.md</c> §13.21's worksite rule. It lives in
@@ -365,7 +397,16 @@ namespace Perilune.Sim
             /// <item>STRICTLY BELOW <see cref="JuryRigCondition"/> (0.6), or salvage would beat free
             /// labour and the tier order would invert.</item>
             /// </list>
-            /// The bounds are test-enforced, not merely written down.
+            /// The bounds are test-enforced, not merely written down. ⚠️ THEY ARE NOT SUFFICIENT:
+            /// they leave the open interval (0.40, 0.60), and every driven assertion compares
+            /// against this field, so 0.45 itself was UNPINNED until
+            /// <c>SwarfSalvageTests.SwarfServiceCondition_IsPinnedAtTheLiteral_FromBothSides</c>
+            /// landed (measured: retuning it 0.45 → 0.55 reddened only the two checksum pins, which
+            /// redden for any def change at all). Why not lower: the worst <c>maint</c> is 0.40 and
+            /// the worst wear 0.06/h at the heat cap, so 0.45 buys ~50 sim-minutes of
+            /// serviceability where 0.41 buys ~10 and the re-service loop returns. Why not higher:
+            /// this is what a WRECK comes back as, and at 0.55 a scrap patch-up lands within 0.05 of
+            /// free labour on a healthy machine while costing matter.
             ///
             /// <b>WHY THE RUNG IS THE SINK AT ALL.</b> ECONOMY.md's `recycle_swarf` would convert
             /// Swarf back up the ladder at a bench. It cannot ship: <c>ProductionDefs.TryGetBill</c>

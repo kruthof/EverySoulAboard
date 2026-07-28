@@ -88,8 +88,12 @@
 # E0-7 and SWARF with the wreck start — so only Circuits is still absent. Swarf's consumer is
 # MaintenanceSystem, not a bench; see the block below.
 #
-# ⚠️ `recycle_swarf` BELOW IS NOT MERELY UNBUILT — IT IS UNBUILDABLE HERE, and the wreck
-# start's salvage half is the package that found out. ItemKind.Swarf now EXISTS and a
+# ⚠️ `recycle_swarf` BELOW IS NOT MERELY UNBUILT — IT IS UNBUILDABLE HERE. (An earlier draft
+# added "and the wreck start's salvage half is the package that found out". IT DID NOT: this
+# file already carried the `fab_seals` warning before that lane started, and MECHANICS.md
+# §13.12 records the ordinal-0 trap. What the wreck start contributed is the JUDGEMENT below
+# — refusing to open bill selection and feeding salvage to repair instead — not the
+# discovery.) ItemKind.Swarf now EXISTS and a
 # stripped wreck produces it, so the only thing between this row and a live swarf economy
 # looks like uncommenting it. It is not:
 #

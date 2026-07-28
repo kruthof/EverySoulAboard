@@ -224,16 +224,23 @@ namespace Perilune.Sim
                     // consumable anywhere aboard there is no service to perform — skip it for
                     // this pass, exactly as "nowhere to stand" does, and for the same reasons:
                     // nothing is remembered, so the machine becomes serviceable on the very pass
-                    // a Seals or Parts stack appears.
+                    // a Parts, Seals or SWARF stack appears — Swarf counts here, and it is the rung
+                    // built for exactly this band (IsUnfixableWreck asks with allowSwarf: true).
                     //
-                    // ⚠ THE REFUSAL BELONGS HERE AND NOT IN THE WORK PHASE, and that is a
-                    // measured rule rather than a preference. DriveWorker's work phase is reached
-                    // only after a crew member has walked to the machine and counted down
-                    // maintenance_work_seconds = 900 s; discovering the refusal there would burn
-                    // 15 sim-minutes of a crew member's life per attempt and re-offer the same
-                    // machine on the next pass forever — a fresh instance of exactly the
-                    // MaintenanceSystem livelock the worksite-safety package closed (47 640 job
-                    // starts for 2 services). Refusing at RECRUITMENT costs one item scan.
+                    // ⚠ THE REFUSAL BELONGS HERE AND NOT IN THE WORK PHASE. DriveWorker's work
+                    // phase is reached only after a crew member has walked to the machine and
+                    // counted down maintenance_work_seconds = 900 s; discovering the refusal there
+                    // would throw those 15 sim-minutes away. Refusing at RECRUITMENT costs one item
+                    // scan and no crew time at all.
+                    //
+                    // ⚠ IT IS *NOT* A LIVELOCK ARGUMENT, and an earlier draft of this comment said
+                    // it was — it claimed a work-phase guard would "re-offer the same machine on
+                    // the next pass forever". It would not. After such an abandon the machine is
+                    // still below the floor with no consumable aboard, so IsUnfixableWreck refuses
+                    // it right here on the very next pass; and if a consumable HAS appeared in the
+                    // meantime, re-offering it is the correct behaviour. The cost is a single
+                    // wasted service, not an unbounded one. Do not re-import the worksite-safety
+                    // package's 47 640-job-starts figure as if it applied to this branch.
                     _recruitSkip.Add(needy.Id);
                     continue;
                 }
@@ -305,13 +312,17 @@ namespace Perilune.Sim
                     // NO WRECK GUARD HERE, DELIBERATELY — the wreck rule is decided BEFORE any work
                     // starts (the recruit gate and the fetch-phase guard below), never after. A
                     // guard on this line would fire only for a machine that drifted below
-                    // wear.wreck_threshold DURING its own 900 s service, and it would pay for that
-                    // by throwing 15 sim-minutes of a crew member's life away — the walk-work-refuse
-                    // shape the worksite-safety lane spent a whole package closing. The leak it
-                    // would plug is bounded by one service's worth of wear: at the highest wear rate
-                    // in machines.def (0.020/h) times the heat cap (3x), 900 s is 0.015 of
-                    // Condition, so a machine can be jury-rigged from at most 0.015 below the
-                    // threshold and never further. Bounded and monotone beats a wasted service.
+                    // wear.wreck_threshold DURING its own 900 s service, and the trade is a pure
+                    // arithmetic one: it would DISCARD 900 s of a crew member's life ALREADY SPENT
+                    // in order to recover at most 0.015 of Condition. That bound is exact — the
+                    // highest wear rate in machines.def (0.020/h) times the heat cap (3x) is
+                    // 0.06/h, and 900 s of it is 0.015 — and the leak is MONOTONE: a machine can be
+                    // jury-rigged from at most 0.015 below the floor and never further, because the
+                    // next pass starts from the recruit gate again. 0.015 of Condition is not worth
+                    // 15 sim-minutes.
+                    //
+                    // ⚠ NOT a livelock argument (see the recruit gate above, which used to make one
+                    // and was wrong): a work-phase guard here would not loop.
                     device.Condition = sim.Defs.Wear.JuryRigCondition; // patched, not fixed
                 }
                 worker.JobKind = JobKind.None;
@@ -477,8 +488,15 @@ namespace Perilune.Sim
         }
 
         /// <summary>
-        /// Nearest unreserved ground stack of a maintenance consumable — <b>Parts first, and
-        /// only if the ship has none anywhere, Seals</b> (ties within a tier: item store order).
+        /// Nearest unreserved ground stack of a maintenance consumable — <b>Parts first; only if
+        /// the ship has none anywhere, Seals; and only then, and only when <paramref name="allowSwarf"/>,
+        /// Swarf</b> (ties within a tier: item store order). THREE tiers, not two — the summary said
+        /// two after the wreck start added the third.
+        ///
+        /// <para>⚠️ COST, unmeasured and owed: this is up to THREE full item-store scans, and the
+        /// worst case is exactly the permanently-refused wreck — no Parts, no Seals, no Swarf — which
+        /// <c>IsUnfixableWreck</c> re-evaluates at 1 Hz for as long as the machine stays needy.
+        /// Unmeasurable on <c>--ship grid</c>; a wreck ship authors hundreds of such machines.</para>
         ///
         /// TIER BEFORE DISTANCE, and that is the whole reason E0-6's new rung is additive: the
         /// first loop is character-for-character the pre-E0-6 <c>FindNearestParts</c>, so on any

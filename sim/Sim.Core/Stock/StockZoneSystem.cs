@@ -79,8 +79,9 @@ namespace Perilune.Sim
 
         /// <summary>
         /// WP-6 — the mask that accepts EVERY declared <see cref="ItemKind"/>: bit <c>k</c> set for
-        /// each declared kind, and nothing else (today kinds 0–8 ⇒ <c>0x1FF</c>; <c>0xFF</c> until
-        /// E0-7 added Ice, <c>0x7F</c> until E0-6 added Seals, and it widened on its own both times).
+        /// each declared kind, and nothing else (today kinds 0–9 ⇒ <c>0x3FF</c>; <c>0x1FF</c> until
+        /// the wreck start added Swarf, <c>0xFF</c> until E0-7 added Ice, <c>0x7F</c> until E0-6
+        /// added Seals, and it widened on its own all three times).
         /// DERIVED FROM THE ENUM, never hard-coded, so a new kind widens it automatically instead of
         /// silently turning "accept everything" into "accept everything except the new kind" — the
         /// exact way a hard-coded <c>0x7F</c> would have rotted the day E0-6 landed. Computed once at type-init (the

@@ -34,9 +34,9 @@ export const STOCK_KINDS = Object.freeze([
 
 /**
  * Every kind accepted — DERIVED from the list's `kind` VALUES, never from its length and never a
- * literal. 1023 (0x3FF) today; it was 255 before E0-6 added `Seals`, 511 before E0-7 added `Ice` and
- * 511 again before the wreck start added `Swarf`,
- * which is why it is derived at all. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the
+ * literal. 1023 (0x3FF) today; it was 511 before the wreck start added `Swarf`, 255 before E0-7
+ * added `Ice`, and 127 before E0-6 added `Seals` — one bit per kind, so every step DOUBLES the mask
+ * plus one, which is why it is derived at all. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the
  * same number only while ItemKind is contiguous: with the hole at 7 that E0-7 developed against, the
  * length form gives 0xFF, which sets the bit of a kind that does not exist and CLEARS Ice's —
  * "accept everything" silently refusing the newest kind, on every stockpile. The merge closed the

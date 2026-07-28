@@ -494,9 +494,10 @@ namespace Perilune.Tests
             door.IsOpen = true;
             // 0.28: below the Door row's maintain 0.3, above its fail 0.05, and AT OR ABOVE
             // wear.wreck_threshold (0.25) so an empty-handed service is still legal (wreck start
-            // W2). ⚠️ THE DOOR'S FREE-SERVICE BAND IS ONLY [0.25, 0.30) WIDE — the narrowest of any
-            // kind that has one at all, and three kinds (Terminal, Light, WaterTank, all maint 0.2)
-            // have NO such band. See WreckThresholdTests.
+            // W2). ⚠️ THE DOOR'S FREE-SERVICE BAND IS ONLY [0.25, 0.30) WIDE — joint-narrowest, NOT
+            // the narrowest: Battery (maint 0.3) is IDENTICAL, as WreckThresholdTests' starved-set
+            // assertion lists by name. Three further kinds (Terminal, Light, WaterTank, all maint
+            // 0.2) have NO such band at all. See WreckThresholdTests.
             door.Condition = 0.28f;
             Assert.That(door.Condition, Is.GreaterThanOrEqualTo(sim.Defs.Wear.WreckThreshold),
                 "premise: the door must be serviceable with empty hands, or this test measures the " +

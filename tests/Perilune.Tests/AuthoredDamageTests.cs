@@ -249,28 +249,83 @@ namespace Perilune.Tests
         public void AuthoredDamage_IsRecruitedByMaintenance_AndPristineIsNot()
         {
             // End-to-end past the builder: an authored Condition is not merely stored, it changes
-            // what the sim DOES. Scrubber maintain_below is 0.4 (machines.def), so 0.2 wants a
+            // what the sim DOES. Scrubber maintain_below is 0.4 (machines.def), so 0.3 wants a
             // service and 1.0 does not. No MachineWearSystem in the stack, so nothing else can
             // move Condition and nothing can make a pristine machine drift into the needy set.
+            //
+            // ⚠️ THIS LEG READ 0.2 UNTIL THE RECOVERY-ECONOMY LANE MERGED, AND 0.2 STOPPED
+            // MEANING WHAT IT MEANT. wear.wreck_threshold = 0.25 refuses an empty-handed jury-rig
+            // below the floor, and this fixture holds no Parts, Seals or Swarf — so at 0.2 the
+            // machine is correctly NEVER RECRUITED FOR and this leg went red on a clean auto-merge
+            // that git reported no conflict on. 0.3 is above the wreck floor and below maint, which
+            // is the band this leg was always measuring: "an authored Condition changes what the
+            // sim does". The subject is unchanged; only the value that expresses it moved.
+            // The behaviour that displaced it is not lost — it is pinned by the sibling leg below.
             var systems = new ISimSystem[]
             {
                 new CitizenSystem(), new JobSystem(), new MaintenanceSystem(),
             };
 
-            int damaged = MaintainTicks(condition: 0.2f, systems: systems);
+            int damaged = MaintainTicks(condition: 0.3f, systems: systems);
             int pristine = MaintainTicks(condition: null, systems: systems);
 
             Assert.That(damaged, Is.GreaterThan(0),
-                "a device authored at Condition 0.2 must be recruited for by MaintenanceSystem — " +
+                "a device authored at Condition 0.3 must be recruited for by MaintenanceSystem — " +
                 "if this is 0 the field reached the Device object but means nothing to the sim");
             Assert.That(pristine, Is.EqualTo(0),
                 "the SAME fixture with no authored damage must never be serviced — this is what " +
                 "makes the leg above a measurement of the authored value rather than of the fixture");
         }
 
-        private static int MaintainTicks(float? condition, ISimSystem[] systems)
+        /// <summary>
+        /// <b>THE MERGE, PINNED.</b> Two lanes landed within a day of each other: authored damage
+        /// (a ship can boot wrecked) and the recovery economy (a wrecked machine cannot be wished
+        /// better). <b>Git reported no conflict and they still disagreed</b> — the sibling leg above
+        /// authored 0.2, which the wreck floor at 0.25 now refuses, and it went red on the merge.
+        ///
+        /// <para>This leg states the merged truth so it can never be discovered by accident again:
+        /// authored damage BELOW <c>wear.wreck_threshold</c> is <b>inert on a ship with no
+        /// consumable</b> — never recruited for, never serviced — and becomes serviceable the
+        /// instant one exists. Both halves are needed. Without the second, "never recruited" is
+        /// indistinguishable from a fixture that could not maintain anything at all (the fourth
+        /// trap shape: an inclusion control, not a population count).</para>
+        ///
+        /// <para><b>THIS IS THE DESIGNED BEHAVIOUR AND ALSO A LIVE CONSEQUENCE FOR THE WRECK
+        /// SHIP.</b> A ship authored at 0.02–0.35 boots with most of its machines below the floor,
+        /// so nothing services them until the player salvages — which is the premise. It is
+        /// recorded here because the two lanes were written without knowledge of each other.</para>
+        /// </summary>
+        [Test]
+        public void AuthoredDamageBelowTheWreckFloor_IsInertUntilAConsumableExists()
+        {
+            var systems = new ISimSystem[]
+            {
+                new CitizenSystem(), new JobSystem(), new MaintenanceSystem(),
+            };
+            float floor = SimDefs.Default.Wear.WreckThreshold;
+            const float Wrecked = 0.2f;   // the value the sibling leg used to carry
+            Assert.That(Wrecked, Is.LessThan(floor), "premise: the fixture really is below the floor");
+
+            int bareHanded = MaintainTicks(condition: Wrecked, systems: systems);
+            int withParts = MaintainTicks(condition: Wrecked, systems: systems, seedParts: true);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(bareHanded, Is.EqualTo(0),
+                    "a machine authored BELOW wear.wreck_threshold on a ship holding no Parts, " +
+                    "Seals or Swarf must never be recruited for — that is the wreck rule, and it " +
+                    "is what silently displaced the sibling leg's 0.2");
+                Assert.That(withParts, Is.GreaterThan(0),
+                    "INCLUSION CONTROL: the IDENTICAL fixture with one Parts stack on the floor " +
+                    "MUST be serviced. Without this, the assertion above would also pass on a " +
+                    "fixture where maintenance could never run — wrong systems, no crew, no room.");
+            });
+        }
+
+        private static int MaintainTicks(float? condition, ISimSystem[] systems, bool seedParts = false)
         {
             var sim = ShipPlanBuilder.Build(BayPlan(condition), systems);
+            if (seedParts) sim.AddItem(ItemKind.Parts, 1, CrewTile);
             sim.JobsDirty = JobBoardDirty.All;
             var crew = sim.Citizens.Items;
             int ticks = 0;

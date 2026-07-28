@@ -480,6 +480,126 @@ namespace Perilune.Tests
             });
         }
 
+        // ══════════ 3a. THE VALUE ITSELF — pinned ABSOLUTELY, and read THROUGH the def when driven
+
+        /// <summary>A defs instance with the bottom rung retuned, checksum recomputed — the
+        /// <c>WreckThresholdTests.DefsWithThreshold</c> shape, so a driven leg can prove the sim
+        /// READS the field instead of restating its value.</summary>
+        private static SimDefs DefsWithSwarfRung(float rung)
+        {
+            var d = SimDefs.CreateDefault();
+            d.Wear.SwarfServiceCondition = rung;
+            d.ComputeChecksum();
+            return d;
+        }
+
+        /// <summary>
+        /// <b>THE ABSOLUTE PIN, WITH A DESIGN REASON ON EACH SIDE.</b>
+        /// <see cref="TheSwarfRungIsBoundedOnAllFourSides_AgainstTheShippedMachineTable"/> above
+        /// only constrains the rung to the OPEN INTERVAL (0.40, 0.60), and every driven assertion in
+        /// this file compares against <c>sim.Defs.Wear.SwarfServiceCondition</c> — i.e. re-derives
+        /// the answer from the field under test. So the shipped 0.45 was, until this test,
+        /// <b>unpinned</b>.
+        ///
+        /// <para><b>MEASURED, not assumed</b> (full suite, 1140 tests, before this test existed):
+        /// mutating the default <c>0.45f → 0.55f</c> reddened exactly <b>2</b> —
+        /// <c>ShippedDefs_Parse_ZeroProblems_ChecksumEqualsDefault</c> and the defs-checksum pin.
+        /// Both redden for ANY def change whatsoever, so by this repo's own standard they are not a
+        /// pin on this value: <c>device_swarf</c> also moves the checksum and still got a literal.
+        /// ZERO behavioural tests could see a 22 % move in the bottom rung.</para>
+        ///
+        /// <para><b>WHY NOT LOWER.</b> The rung must buy real TIME above the machine's maintain
+        /// threshold or the ship re-services the same machine out of its salvage stock. The worst
+        /// <c>maint</c> is 0.40 and the worst wear is 0.020/h × the 3× heat cap = 0.06/h, so 0.45
+        /// buys ~50 sim-minutes of serviceability. At 0.41 — still legal under the bounds test —
+        /// it buys ~10 minutes, and the "matter-consuming livelock" that test names is excluded in
+        /// name only.</para>
+        ///
+        /// <para><b>WHY NOT HIGHER.</b> The rung is offered ONLY below <c>wreck_threshold</c>, so it
+        /// is what a WRECK comes back as. At 0.55 a wreck patched with scrap would come back within
+        /// 0.05 of what free labour gives a healthy machine (<c>jury_rig_condition</c> = 0.6) —
+        /// while COSTING a unit of matter. The tier order would survive arithmetically and die as
+        /// design: "a wrecked machine stays wrecked until you invest real Parts" is the premise the
+        /// whole wreck start rests on, and a near-jury-rig patch-up erases it.</para>
+        ///
+        /// <para>NAMED MUTATION (applied, observed red, reverted): <c>SimDefs.cs</c>
+        /// <c>SwarfServiceCondition = 0.45f → 0.55f</c>.</para>
+        /// </summary>
+        [Test]
+        public void SwarfServiceCondition_IsPinnedAtTheLiteral_FromBothSides()
+        {
+            float rung = SimDefs.Default.Wear.SwarfServiceCondition;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(rung, Is.GreaterThanOrEqualTo(0.45f),
+                    "THE BOTTOM RUNG WAS LOWERED. It must clear the worst maint threshold (0.40) by " +
+                    "enough to buy real time: at the worst wear rate (0.020/h x 3x heat cap = " +
+                    "0.06/h) 0.45 is ~50 sim-minutes of serviceability, 0.41 is ~10, and a rung that " +
+                    "buys minutes is the salvage-burning re-service loop the four-sided bounds test " +
+                    "excludes by name only. Lower it deliberately, with a measurement, or not at all.");
+                Assert.That(rung, Is.LessThanOrEqualTo(0.45f),
+                    "THE BOTTOM RUNG WAS RAISED. It is what a WRECK comes back as — it is offered " +
+                    "only below wear.wreck_threshold. Raise it toward jury_rig_condition (0.6) and a " +
+                    "scrap patch-up costs matter to reach nearly what free labour gives a healthy " +
+                    "machine, which erases the wreck start's premise that a wreck stays wrecked " +
+                    "until you invest real Parts. The bounds test would not notice: 0.55 passes it.");
+            });
+        }
+
+        /// <summary>
+        /// <b>THE SIM READS THE FIELD — DRIVEN, with the def RETUNED.</b> Every other Swarf
+        /// assertion in this file compares a driven outcome against
+        /// <c>sim.Defs.Wear.SwarfServiceCondition</c>, which is true whether
+        /// <see cref="MachineWearSystem"/> reads the def or has <c>0.45f</c> written into it. This
+        /// leg breaks that circle: the same fixture on a defs instance whose rung is 0.52 must come
+        /// back at <b>0.52</b>, so a hard-coded literal in <c>RestoredCondition</c> fails here even
+        /// though it agrees with the shipped default everywhere else.
+        ///
+        /// <para>0.52 is chosen inside every bound the ladder requires — above the worst
+        /// <c>maint</c> (0.40) so the serviced machine stops being needy, above
+        /// <c>wreck_threshold</c> (0.25) so it leaves the wrecked band, below
+        /// <c>jury_rig_condition</c> (0.6) so the tier order holds — and 0.07 away from the shipped
+        /// value, which is 700× the 1e-4 tolerance.</para>
+        ///
+        /// <para>NAMED MUTATION (applied, observed red, reverted): in
+        /// <c>MachineWearSystem.RestoredCondition</c>, replace
+        /// <c>defs.Wear.SwarfServiceCondition</c> with the literal <c>0.45f</c>. Every other test in
+        /// this file stays green; this one fails.</para>
+        /// </summary>
+        [Test]
+        public void ASwarfService_RestoresTheDEFVALUE_NotAHardCodedLiteral()
+        {
+            const float Retuned = 0.52f;
+            var sim = NewBay(DefsWithSwarfRung(Retuned));
+            Assert.That(sim.Defs.Wear.SwarfServiceCondition, Is.EqualTo(Retuned).Within(1e-6f),
+                "premise: the retuned defs instance actually reached the simulation");
+
+            var machine = sim.AddDevice(DeviceKind.Scrubber, new Int3(5, 2, 0), "subject");
+            machine.Condition = 0.05f;
+            sim.AddItem(ItemKind.Swarf, 2, new Int3(2, 2, 0));
+
+            float peak = machine.Condition;
+            for (int t = 0; t < 20000; t++)
+            {
+                sim.Tick();
+                if (machine.Condition > peak) peak = machine.Condition;
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(peak, Is.EqualTo(Retuned).Within(1e-4f),
+                    "the service must restore to the DEF's rung. Coming back at the shipped 0.45 " +
+                    "here means MachineWearSystem carries the number instead of reading it, and " +
+                    "every other assertion in this file would still be green.");
+                Assert.That(peak, Is.Not.EqualTo(SimDefs.Default.Wear.SwarfServiceCondition).Within(1e-4f),
+                    "and it must NOT be the shipped default — that is the whole point of retuning it");
+                Assert.That(Units(sim, ItemKind.Swarf), Is.EqualTo(1),
+                    "exactly one unit consumed, as at the shipped value — retuning the rung must " +
+                    "not change the price");
+            });
+        }
+
         // ══════════ 4. WHY THERE IS NO BENCH BILL — the ordinal-0 block, DRIVEN not read off source
 
         /// <summary>

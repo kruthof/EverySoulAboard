@@ -143,7 +143,7 @@ namespace Perilune.Tests
         /// browser silently WRONG (a filter that accepts kinds nobody chose, or refuses kinds they
         /// did). <see cref="StockZoneSystem.SetFilter"/> masks every stored value down to
         /// <see cref="StockZoneSystem.AcceptAllMask"/>, which covers only DECLARED
-        /// <see cref="ItemKind"/>s, so today's ceiling is 0x1FF and the channel is safe.
+        /// <see cref="ItemKind"/>s, so today's ceiling is 0x3FF and the channel is safe.
         ///
         /// This assertion is the thing that will SAY SO on the day it stops being true: an ItemKind
         /// enum that passes 53 members needs the tuple to carry a string or a hi/lo pair, and nothing
