@@ -2165,15 +2165,34 @@ neighbouring hours are **h23 30.7 % · h24 21.2 % · h25 34.4 %** — a 13.2 pp 
 adjacent hours, and **A1 samples the trough**. The melter re-times work. **A1 moved down while the
 economy moved up.** Never quote it without throughput beside it.
 
-**A performance defect found while measuring a disclosure, NOT fixed.** `HasIceChain` runs only when
-`RunMakeup`'s cheap pool check fails — so it is **heaviest on exactly the ship that can never benefit
-from it**. `--ship grid` walks **91 721 250 device slots per sim-day** across 73 377 scans (42.5 % of
-`RunMakeup` passes — *a share of passes, not of CPU*; the honest cost is low single-digit percent of
-wall clock), every scan returning false, because its pool sits pinned at the 20 L floor. The slice
-measures **0 scans** on a 1-day run, because its ice chain keeps the pool high. Reordering cannot
-help — the cheap check is already first. The fix is one field memoised against
-`sim.DeviceTopologyVersion`, which `WaterSystem.Tick` **already tracks 14 lines away**: pin-neutral,
-inherits `RebuildNetworks`' correctness. **Charter it on the 91.7 M figure, not on "42.5 %".**
+**A performance defect found while measuring a disclosure — ✅ FIXED 2026-07-27
+(`WaterSystem.HasIceChain`).** `HasIceChain` runs only when `RunMakeup`'s cheap pool check fails —
+so it was **heaviest on exactly the ship that can never benefit from it**. `--ship grid` walked
+**91 721 250 device slots per sim-day** across 73 377 scans (42.5 % of `RunMakeup` passes — *a share
+of passes, not of CPU*; the honest cost is low single-digit percent of wall clock), every scan
+returning false, because its pool sits pinned at the 20 L floor. The slice measures **0 scans** on a
+1-day run, because its ice chain keeps the pool high. Reordering could not help — the cheap check is
+already first. The fix is one field memoised against `sim.DeviceTopologyVersion`, which
+`WaterSystem.Tick` **already tracks 14 lines away**: pin-neutral (all five pins held, `--ship grid`
+occupancy output byte-identical), inherits `RebuildNetworks`' correctness.
+
+**Both halves of the original charter's warning survive the fix and are now measured, so keep
+quoting them:** 91 721 250 slots per sim-day → **1 250** (one scan), but that is **~90 ms of an
+~8.2 s sim-day, ~1.1 %** (Release, n = 5, the scan replayed 73 377 times over the real 1 250-device
+store — a *lower* bound). A paired A/B/B/A of the whole harness (n = 8 per arm) reads 8.78 s
+pre-memo vs 8.71 s memoised: right sign, **not separated from noise**. **The 91.7 M is a count of
+slots, not of CPU — charter on it, never quote it as a speed-up.** ⚠️ **CONDITIONS, so this does not
+become the next inherited figure:** every timing above was taken on a machine running **up to four
+concurrent `dotnet test` suites from other worktrees** (the same-session gate took 9 m 58 s against a
+~6.5 min norm). Contention widens the noise band on both arms of a paired A/B and can only make a
+1 % separation *harder* to resolve, so the conclusion is conservative and does not move — but the
+absolute seconds are not a quiet-machine baseline and the slot counts (which are exact counters, not
+timings) are the only figures here that are contention-proof. The memo's key is sufficient
+because `Simulation.AddDevice`/`RemoveDevice` are production's only doors into the device store and
+both bump the version; the load path does not bump it and does not need to (a load builds a fresh
+sim with fresh systems, so the memo is uncomputed) — pinned by
+`tests/Perilune.Tests/IceChainMemoTests.cs`, which drives the flip in both directions because **a
+stale answer is invisible on grid by construction**.
 
 **Known and disclosed:** 400 of the 1 600 authored ice units are **invisible** (one pile lands under
 a Light; `IsOpenFloor` tests the deck raster only). The melter's `machines.def` row is a **verbatim
