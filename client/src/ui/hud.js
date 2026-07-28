@@ -75,6 +75,7 @@ let _marks = null;        // latest marks message (sparse debris/dig/stockpile/s
 let _items = null;        // latest items message (sparse ground item stacks: kind + COUNT per stack)
 let _ledger = null;       // latest ledger message (E0-8: matter census + the runway/rate members)
 let _devices = null;      // latest devices message (sparse per-device wear: kind + CONDITION + oper)
+let _blocked = null;      // latest blocked message (sparse refused orders: which order, and WHY)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -123,6 +124,13 @@ export function getItems() { return _items; }
  *  `GlyphMapper` pass 5 overwrites whenever a crew member stands on the tile
  *  (`hosts/web/WireFormat.Devices.cs`). Utility overlays (Conduit/Pipe) are absent host-side. */
 export function getDevices() { return _devices; }
+/** The cached `blocked` message (the sparse refused-order layer): for each dig/strip/build site the
+ *  player queued that the sim's worksite staging rule refuses, WHICH order it is and WHY it is stuck.
+ *  There is no other route to this fact — `CanStageWorkerAt` is a live predicate the sim asks and
+ *  discards, it stamps nothing on the tile, and the frame carries no trace of a refusal at all. The
+ *  refusal is otherwise completely silent, which is what makes a stuck order indistinguishable from a
+ *  broken verb (`hosts/web/WireFormat.Blocked.cs`). */
+export function getBlocked() { return _blocked; }
 /** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
  *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
  *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
@@ -473,6 +481,14 @@ export function renderItems(m) { _items = m; notifyShip(); }
  *  the console deletion with the rest of the cache (see SHIP_STATE_REACH in
  *  client/test/surface-boundary.test.js). */
 export function renderDevices(m) { _devices = m; notifyShip(); }
+
+/** Blocked dispatch (the `blocked` channel): cache the sparse refused-order layer — one row per
+ *  dig/strip/build site the player queued that the sim's worksite staging rule will not staff, with
+ *  the reason — and notify the SVG surfaces so a compartment that has just been vented clears its
+ *  badges on the next repaint. Drawn by the Room Zoom's blocked layer. View-only; never touches the
+ *  sim. STATE-LAYER ONLY: draws nothing, reaches no DOM, so it survives the console deletion with the
+ *  rest of the cache (see SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
+export function renderBlocked(m) { _blocked = m; notifyShip(); }
 
 /** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
  *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.

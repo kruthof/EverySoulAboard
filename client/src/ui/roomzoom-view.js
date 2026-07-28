@@ -15,11 +15,12 @@ import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import {
   decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems,
-  decodeDevices,
+  decodeDevices, decodeBlocked,
 } from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
+import { blockedLayerSvg, blockedKeyHtml } from './blocked-overlay.js';
 import { acceptsRowHtml } from './accepts-row.js';
 import { decksView } from './decks-model.js';
 import { buildItem, isResourceItem } from '../items/index.js';
@@ -32,6 +33,7 @@ import {
   nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
+  roomBlockedTiles,
   demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
@@ -78,6 +80,7 @@ let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per rep
 let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks` channel (NOT the frame)
 let _itemTiles = [];      // this room's ground stacks, from the `items` channel (NOT the frame's glyph)
 let _deviceCond = new Map(); // this room's per-device wear, from the `devices` channel — SEE deviceConditionAt
+let _blockedTiles = [];   // this room's REFUSED orders + why, from the `blocked` channel
 // THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
 // ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
@@ -377,6 +380,11 @@ function repaint() {
   // ~29.4 µs of a ~425 µs render (~6 %), and the delta scheme that removes it is a CONDITION on the
   // art package, not an option for it (see the header of `hosts/web/WireFormat.Devices.cs`).
   _deviceCond = roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus);
+  // The REFUSED orders, from the `blocked` channel — which dig/strip/build sites in this room the sim
+  // will not staff, and why. Derived here with the other four for the same reason: one decode per
+  // repaint, one truth for the room, so the badges on the floor and the words in the key beside them
+  // can never disagree about what is stuck.
+  _blockedTiles = roomBlockedTiles(decodeBlocked(Hud.getBlocked()), _focus);
 
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor);
@@ -466,6 +474,18 @@ function paintLayers(frame, crew, designs, decor) {
   // the tile.
   // STILL BELOW `pawnSvg`, for the same reason the marks are: a crew member is never hidden.
   body += itemStackSvg(_itemTiles, _focus);
+  // The REFUSED-ORDER layer: a scrim + a fault badge on every tile the sim will not staff.
+  //
+  // ABOVE the mark and item layers, and that ordering is load-bearing rather than incidental. The
+  // scrim's whole job is to make an ORDER read as inert, and the order it is dimming is drawn by
+  // `markLayerSvg` twelve lines up — under the scrim it is dimmed (correct), over it the amber ring
+  // would sit at full brightness on a tile that is going nowhere, which is the misreading the layer
+  // exists to prevent. It is ADDITIVE, never a replacement: the rubble, the ring and the ✕ all
+  // survive, because telling the player their order VANISHED is a worse lie than the silence.
+  //
+  // STILL BELOW `pawnSvg`, for exactly the reason the marks and the stacks are: a crew member is
+  // never hidden by a layer that is explaining the floor.
+  body += blockedLayerSvg(_blockedTiles, _focus);
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();
@@ -675,12 +695,21 @@ function paintCaption(frame, designs) {
   setText(_el.capPlaced, (nDesigns + nDevices) + ' PLACED');
 }
 
-/** WP-3 — paint the zone key from the PURE row list, hiding the box when the room has no zones.
+/** WP-3 — paint the key box from the PURE row lists, hiding it when the room has nothing to explain.
  *  Guarded by a signature like the minimap: an idle repaint (5–10×/s) touches no DOM, so a player
- *  reading the key is not fighting a node that is being torn down under them. */
+ *  reading the key is not fighting a node that is being torn down under them.
+ *
+ *  ⚠️ IT CARRIES TWO LEGENDS NOW — zones first, then the BLOCKED orders — and the header sentence
+ *  above was corrected with it: the box is hidden when BOTH halves are empty, not "when the room has
+ *  no zones". That difference is the whole feature on most rooms. Nearly no room has a stockpile, so
+ *  the old condition would have taken the blocked legend down with it everywhere, and the legend is
+ *  the half that actually discharges the invisibility — a `<title>` needs a hover nobody knows to
+ *  try, can be suppressed by one attribute three layers up, and does not exist on a touch device
+ *  (the finding `zone-overlay.js`'s own header records). One box rather than two because they explain
+ *  the same floor and a second floating panel would fight the first for the same corner. */
 function paintZoneKey() {
   if (!_zoneKey) return;
-  const html = zoneKeyHtml(zoneLegendRows(_zoneTiles));
+  const html = zoneKeyHtml(zoneLegendRows(_zoneTiles)) + blockedKeyHtml(_blockedTiles);
   if (html !== _zoneKeySig) { _zoneKeySig = html; _zoneKey.innerHTML = html; }
   _zoneKey.hidden = !html;
 }

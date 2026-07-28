@@ -437,7 +437,110 @@ export function decodeDevices(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg} WireMsg */
+/**
+ * The sparse `blocked` channel — WHY AN ORDER THE PLAYER PAINTED IS DOING NOTHING. One row per
+ * queued site (dig / strip / build) that the sim's worksite staging rule refuses.
+ * BlockedTuple = [x, y, deck, order, reason]. Append-only.
+ *
+ * WHY IT EXISTS. `WorksiteSafety.CanStageWorkerAt` will not park a worker on a tile whose air would
+ * pull it off the job. That closed a real livelock, and its own header records what it cost: the
+ * failure went from expensive-and-visible to CHEAP-AND-INVISIBLE — a designation painted in an
+ * airless compartment simply never progresses, silently, with nothing on any surface saying why.
+ * This repo has already paid three owner reports for the general rule that a designation the player
+ * cannot understand is indistinguishable from a broken verb.
+ *
+ * THE REASON SET IS SMALLER THAN IT LOOKS AND THAT IS DELIBERATE. `AtmosphereSafety.IsBreathable`
+ * has four branches — vacuum, thin air, CO₂, thermal — behind ONE bool, and there is no way to ask
+ * which one fired. Splitting `air` into four client-side would mean re-deriving the sim's
+ * breathability rule out of room numbers, i.e. a second authority that drifts the day a def moves.
+ * So `air` is worded to be true of all four, including the one people forget: a room at full
+ * pressure with perfect O₂ that is merely FREEZING refuses all work. `hosts/web/WireFormat.Blocked.cs`
+ * carries the full argument and the one-line remedy for a future sim lane.
+ *
+ * WHAT IS NOT HERE: a stockpile that no crew can reach — already on `zones` as the back-off bit and
+ * already drawn (`zone-overlay.js`); an unreachable-but-breathable site — the sim keeps that answer
+ * private to its job sources; automatic maintenance — the player never painted it.
+ *
+ * FOG-GATED host-side, like `marks`/`items`/`devices`. Snapshot-cached, so a reconnect replays it —
+ * which matters more here than on most channels: this payload can sit unchanged for hours.
+ * @typedef {[number,number,number,number,number]} BlockedTuple
+ * @typedef {{type:'blocked', cells:BlockedTuple[]}} BlockedMsg
+ */
+
+/** Blocked ORDER kinds, mirroring `WireFormat.OrderDig`/`OrderStrip`/`OrderBuild` in
+ *  hosts/web/WireFormat.Blocked.cs. Pinned equal to the host by client/test/blocked-model.test.js,
+ *  which parses that file — there is no compiler across this seam. */
+export const BLOCKED_ORDER_DIG = 0;
+export const BLOCKED_ORDER_STRIP = 1;
+export const BLOCKED_ORDER_BUILD = 2;
+
+/** Blocked REASON codes, mirroring `WireFormat.ReasonAir`/`ReasonNoApproach`/`ReasonNoConsumable`.
+ *  `no_consumable` is RESERVED: the host declares it so two lanes cannot both claim the value, and
+ *  deliberately never emits it — the predicate behind it (`IsUnfixableWreck`) lands with a different
+ *  package. It is named here so that package is a one-line host change. */
+export const BLOCKED_REASON_AIR = 0;
+export const BLOCKED_REASON_NO_APPROACH = 1;
+export const BLOCKED_REASON_NO_CONSUMABLE = 2;
+
+/** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is. */
+export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build']);
+
+/** Wire reason → vocabulary name. Index IS the wire value; APPEND-ONLY. */
+export const BLOCKED_REASON_NAMES = Object.freeze(['air', 'no_approach', 'no_consumable']);
+
+/** Reason → the SHORT sentence a surface shows the player. Deliberately phrased as what is wrong
+ *  with the WORLD, not as what the dispatcher did: "the crew cannot breathe where they would have to
+ *  stand" is actionable (vent it, heat it); "no adjacent staging tile satisfied the predicate" is
+ *  not. `air` covers all four branches of the sim's breathability test on purpose — see the channel
+ *  header above; claiming "vacuum" when the room is merely freezing would be a confident lie. */
+export const BLOCKED_REASON_TEXT = Object.freeze({
+  air: 'NO BREATHABLE AIR WHERE THE CREW MUST STAND',
+  no_approach: 'NO WAY TO STAND NEXT TO IT',
+  no_consumable: 'NO PARTS OR SEALS ABOARD',
+});
+
+/** The vocabulary name for a wire order, or '' when this client has never heard of it. PURE. */
+export function blockedOrderName(order) {
+  return BLOCKED_ORDER_NAMES[order | 0] || '';
+}
+
+/** The vocabulary name for a wire reason, or '' when this client has never heard of it. PURE. */
+export function blockedReasonName(reason) {
+  return BLOCKED_REASON_NAMES[reason | 0] || '';
+}
+
+/**
+ * Decode the sparse `blocked` channel. Mirrors WireFormat.Blocked:
+ * {type:'blocked',cells:[[x,y,deck,order,reason],..]}. Tolerant: a malformed message → null, a
+ * malformed row is dropped, never throws (the receive-path contract at the top of this file). ORDER
+ * IS PRESERVED — the host emits digs on a z,y,x walk then strips then builds, and that order is the
+ * wire contract; a client sort would be a second, silently divergent authority.
+ *
+ * ⚠️ A ROW WITH AN UNKNOWN REASON IS **KEPT**; A ROW WITH AN UNKNOWN ORDER IS **KEPT** TOO. This
+ * client follows `decodeItems`, not `decodeMarks`, and the reason is specific to what the row MEANS:
+ * the payload of a blocked row is "THIS TILE IS STUCK", and that fact survives intact even when the
+ * why or the what comes from a newer host. Dropping such a row would draw a clear tile over a stuck
+ * one — silence, which is the exact failure this channel exists to remove, arriving through the
+ * decoder instead of through the sim. The names come back as '' and the layer that draws decides how
+ * to say "stuck, reason unknown"; that is a display decision and it is made where display lives.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{x:number,y:number,deck:number,order:number,reason:number,orderName:string,reasonName:string}[]|null}
+ */
+export function decodeBlocked(msg) {
+  if (!msg || msg.type !== 'blocked' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 5) continue;
+    const order = t[3] | 0, reason = t[4] | 0;
+    out.push({
+      x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, order, reason,
+      orderName: blockedOrderName(order), reasonName: blockedReasonName(reason),
+    });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
