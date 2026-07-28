@@ -26,6 +26,11 @@ import { dragModeForTool } from './build-drag-model.js';
 // stock-filter-model.test.js). Imported for its labels rather than re-declared — a second table here
 // would be a hand mirror of a hand mirror, which is the defect `items/glyph-map.js` removed.
 import { STOCK_KINDS } from './stock-filter-model.js';
+// The ONE reason→sentence table, beside the reason codes it belongs to. Imported rather than
+// re-written here: a second copy of the wording is a second thing to update when a reason is added,
+// and a surface that says something different from the decoder about the same code is the two-source
+// defect the `blocked` channel itself exists to argue against.
+import { BLOCKED_REASON_TEXT } from '../wire/messages.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -762,6 +767,70 @@ export function roomDeviceConditions(devices, focusRoom) {
     const tx = d.x | 0, ty = d.y | 0;
     if (tx < rx || tx >= x1 || ty < ry || ty >= y1) continue;
     out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0 });
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE BLOCKED-ORDER LAYER (the `blocked` channel).
+//
+// WHAT IT REPLACES: NOTHING, and that is the point. `WorksiteSafety.CanStageWorkerAt` is a LIVE
+// PREDICATE the sim asks and then discards — it stamps no tile, saves no state, and leaves no trace
+// in the projection. So an order painted where the crew cannot breathe was not merely drawn badly;
+// there was no fact anywhere on the client to draw. The order sat there wearing its ordinary amber
+// ring, looking exactly like an order that is about to be done, forever.
+//
+// This is the invisible-feedback rule the repo has already paid three owner reports for: a
+// designation the player cannot understand is indistinguishable from a broken verb. It is also the
+// specific follow-up `sim/Sim.Core/Systems/SafetySystem.cs`'s own header files against itself —
+// *"CanStageWorkerAt is public so a future wire channel can ask it per tile and finally say so."*
+//
+// ONE BADGE PER TILE, so this returns a de-duplicated LIST rather than the raw rows. The host emits
+// one row per queued SITE and does not arbitrate (see `hosts/web/WireFormat.Blocked.cs`: two orders
+// on one tile is believed unreachable and deliberately not relied upon). Two rows on a tile would say
+// the same actionable thing twice and stack two scrims, so the FIRST wins here. That is not the same
+// call `roomMarkTiles` makes — marks keeps every row because a caller asks it "what is on this tile?"
+// as a census — and the difference is that this list exists ONLY to be drawn.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * This room's blocked orders, one entry per TILE, in the host's emission order.
+ *
+ * Each entry carries the wire codes, both vocabulary names, the player-facing `reasonText` and a
+ * composed `label` for the `<title>`. The text comes from `BLOCKED_REASON_TEXT` in
+ * `wire/messages.js` — the ONE table — rather than being written again here.
+ *
+ * ⚠️ A ROW THIS CLIENT CANNOT NAME IS STILL DRAWN, with a "reason unknown to this client" text.
+ * `decodeBlocked` deliberately keeps such a row and the reasoning carries straight through: the
+ * payload of a blocked row is "THIS TILE IS STUCK", and that survives a reason code from a newer
+ * host. Dropping it would draw a clear tile over a stuck one — silence, which is the exact failure
+ * this channel exists to remove, arriving through the client instead of through the sim. PURE.
+ *
+ * @param {{x:number,y:number,deck:number,order:number,reason:number,orderName:string,reasonName:string}[]|null} blocked
+ *        decodeBlocked() output
+ * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
+ * @returns {{tx:number,ty:number,order:number,reason:number,orderName:string,reasonName:string,reasonText:string,label:string}[]}
+ */
+export function roomBlockedTiles(blocked, focusRoom) {
+  const out = [];
+  if (!Array.isArray(blocked) || !focusRoom) return out;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  const seen = new Set();
+  for (const b of blocked) {
+    if (!b || (b.deck | 0) !== (focusRoom.deck | 0)) continue;
+    const tx = b.x | 0, ty = b.y | 0;
+    if (tx < rx || tx >= x1 || ty < ry || ty >= y1) continue;
+    const key = tx + ',' + ty;
+    if (seen.has(key)) continue;   // one badge per tile — see the header above
+    seen.add(key);
+    const reasonName = b.reasonName || '';
+    const reasonText = BLOCKED_REASON_TEXT[reasonName] || 'STUCK — REASON UNKNOWN TO THIS CLIENT';
+    const orderName = b.orderName || 'ORDER';
+    out.push({
+      tx, ty, order: b.order | 0, reason: b.reason | 0, orderName, reasonName, reasonText,
+      label: orderName.toUpperCase() + ' BLOCKED — ' + reasonText,
+    });
   }
   return out;
 }

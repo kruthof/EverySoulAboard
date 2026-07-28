@@ -805,9 +805,24 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  `Device.Condition` was on no channel at all, so this is not "a better source for a fact the frame
  *  already carried" but the fact's ONLY route to the client. Read by the Room Zoom's
  *  `deviceConditionAt` seam; nothing draws it yet, because the wrecked-art join is a separate package
- *  (`hosts/web/WireFormat.Devices.cs`). */
+ *  (`hosts/web/WireFormat.Devices.cs`).
+ *  The `blocked` channel added `getBlocked` — 30 (RE-COUNTED off the frozen array below, never
+ *  computed from the line above: the `getItems — 27` annotation was already stale when the `devices`
+ *  lane wrote its own, and "29 + 1" is exactly the arithmetic that produced that error. Count the
+ *  literals.) Same shape a SIXTH time — a sparse view-only wire cache with no DOM, moving to
+ *  ship-state.js at WP-9 — and, like `getDevices`, it is the fact's ONLY route to the client rather
+ *  than a better source for one the frame already carried: `WorksiteSafety.CanStageWorkerAt` is a live
+ *  predicate the sim asks and discards, so a refused order leaves no trace on any tile, in any
+ *  registry or in the projection. Unlike `getDevices` it IS drawn, by the Room Zoom's blocked layer
+ *  (`client/src/ui/blocked-overlay.js`) — a channel whose whole purpose is player feedback would be
+ *  pointless shipped data-only. */
 const SHIP_STATE_REACH = Object.freeze([
-  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns',
+  'LENSES', 'armTool', 'getArmedTool',
+  // The `blocked` channel's cache — which of the player's dig/strip/build orders the sim refuses to
+  // staff, and why. Sorted here by the same rule the list already follows (`shipStateReach()` returns
+  // a sorted array, so `getBlocked` lands before `getDecks`).
+  'getBlocked',
+  'getDecks', 'getDecor', 'getDesigns',
   // The `devices` channel's cache — per-device wear (kind + condition byte + the sim's `oper` bit).
   // Same shape a fifth time (a sparse view-only wire cache, no DOM, moves to ship-state.js at WP-9),
   // read by the Room Zoom's `deviceConditionAt` seam. It is where `Device.Condition` reaches this
