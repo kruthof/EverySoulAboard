@@ -351,13 +351,21 @@ namespace Perilune.Gen
             }
 
             /// <summary>Append the furniture device (stable MOSS-style name
-            /// {kind}_{anchor}[_{n}]) and mark its tile occupied.</summary>
-            public void Place(DeviceKind kind, Int3 pos, string prefix)
+            /// {kind}_{anchor}[_{n}]) and mark its tile occupied.
+            /// <paramref name="condition"/>/<paramref name="scriptable"/> are W1's optional damage
+            /// authoring and default to <c>null</c> = "say nothing", which emits a DeviceSpec
+            /// byte-identical to the one this helper emitted before W1.</summary>
+            public void Place(DeviceKind kind, Int3 pos, string prefix,
+                              float? condition = null, bool? scriptable = null)
             {
                 _counters.TryGetValue(prefix, out int n);
                 _counters[prefix] = n + 1;
                 string name = n == 0 ? prefix + "_" + Spec.Anchor : prefix + "_" + Spec.Anchor + "_" + (n + 1);
-                var spec = new DeviceSpec { Kind = kind, Pos = pos, Name = name };
+                var spec = new DeviceSpec
+                {
+                    Kind = kind, Pos = pos, Name = name,
+                    Condition = condition, Scriptable = scriptable,
+                };
                 Plan.Devices.Add(spec);
                 Placed.Add(spec);
                 _occupied.Add(pos);

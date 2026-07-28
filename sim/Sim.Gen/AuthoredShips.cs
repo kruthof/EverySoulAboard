@@ -1240,8 +1240,17 @@ namespace Perilune.Gen
 
         // ------------------------------------------------------------ small helpers
 
-        private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name) =>
-            plan.Devices.Add(new DeviceSpec { Kind = kind, Pos = new Int3(x, y, z), Name = name });
+        /// <summary>Append a device. <paramref name="condition"/>/<paramref name="scriptable"/> are
+        /// W1's optional damage authoring and default to <c>null</c> = "say nothing", which emits a
+        /// DeviceSpec byte-identical to the one this helper emitted before W1. A wreck ship passes
+        /// them; a ship that wants today's behaviour simply does not mention them.</summary>
+        private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name,
+                                float? condition = null, bool? scriptable = null) =>
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = kind, Pos = new Int3(x, y, z), Name = name,
+                Condition = condition, Scriptable = scriptable,
+            });
 
         private static void Door(ShipPlan plan, string name, int x, int y, int z, bool open) =>
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.Door, Pos = new Int3(x, y, z), Name = name, IsOpen = open });
