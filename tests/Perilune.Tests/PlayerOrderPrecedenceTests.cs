@@ -32,7 +32,20 @@ namespace Perilune.Tests
         private static Simulation Build()
         {
             var moss = new ScriptRuntime(new DeviceRegistry());
-            return new Simulation(AsciiWorld.Build(Deck), 42, SystemStack.CreateDefault(moss));
+            var sim = new Simulation(AsciiWorld.Build(Deck), 42, SystemStack.CreateDefault(moss));
+            // GIVE THE CORRIDOR AIR. AsciiWorld.Build leaves every room at 0 kPa, and since the
+            // worksite staging rule (docs/HANDOVER.md §5 item 2, MECHANICS §13.21) the dispatcher
+            // will not park a worker where it would suffocate — so on a full stack this fixture
+            // would offer NO work at all, and the tests below are entirely about what happens to a
+            // crew member while work IS on offer. Note what an unpressurised fixture does to
+            // AnOrderedWalkIsNotHijackedByAutoWork in particular: it asserts JobKind stays None for
+            // twenty ticks, which a workless board satisfies for free. That test was NOT broken
+            // before — its sibling proves work was on offer — but THIS PACKAGE is what would have
+            // made it untestable, so the fixture is fixed in the same commit rather than left to be
+            // rediscovered. Room 0 is the vacuum sink; skip it.
+            sim.Tick(); // rooms computed
+            for (int i = 1; i < sim.Rooms.Rooms.Count; i++) RoomState.Pressurize(sim.Rooms.Rooms[i]);
+            return sim;
         }
 
         [Test]

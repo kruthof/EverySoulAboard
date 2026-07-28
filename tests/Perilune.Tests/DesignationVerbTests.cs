@@ -33,6 +33,14 @@ namespace Perilune.Tests
             var moss = new ScriptRuntime(new DeviceRegistry());
             var sim = new Simulation(AsciiWorld.Build(Deck), 42, SystemStack.CreateDefault(moss));
             sim.Tick(); // rooms computed
+            // GIVE THE DECK AIR. AsciiWorld.Build leaves every room at 0 kPa, and since the
+            // worksite staging rule (docs/HANDOVER.md §5 item 2) the dispatcher will not park a
+            // worker on a tile where it would suffocate — so on a full stack (NeedsSystem +
+            // SafetySystem, both in CreateDefault) an unpressurised fixture offers no work at all.
+            // That is the correct sim behaviour and the wrong fixture: a sealed interior strip in
+            // which the crew are expected to work is a strip with atmosphere in it. Room 0 is the
+            // vacuum sink and is deliberately left alone.
+            for (int i = 1; i < sim.Rooms.Rooms.Count; i++) RoomState.Pressurize(sim.Rooms.Rooms[i]);
             return sim;
         }
 

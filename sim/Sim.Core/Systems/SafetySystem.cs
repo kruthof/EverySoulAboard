@@ -18,6 +18,143 @@ namespace Perilune.Sim
             if (tempC > needs.HeatStrokeC || tempC < needs.HypothermiaC) return false; // thermal injury
             return true;
         }
+
+        /// <summary>Is the air at <paramref name="tile"/> survivable? The tile form of
+        /// <see cref="IsBreathable"/>, resolving the room the way every other caller does.</summary>
+        public static bool IsBreathable(Simulation sim, Int3 tile) =>
+            IsBreathable(sim.Rooms.RoomAt(sim.World, tile), sim.Defs.Needs);
+    }
+
+    /// <summary>
+    /// THE WORKSITE STAGING RULE — <b>a crew member is only ever staged where it can survive.</b>
+    /// One predicate, asked by the two places in the whole sim that stage a worker for a JOB:
+    /// <see cref="JobWork.TryPathToAdjacent"/> (dig, build, deconstruct) and
+    /// <c>MaintenanceSystem.TryFindStagingTile</c>.
+    ///
+    /// ⚠️ THERE IS A THIRD COPY OF THE SHAPE AND IT IS DELIBERATELY LEFT OPEN.
+    /// <c>SustenanceSystem.cs:307</c> has its own private <c>TryPathToAdjacent</c>, which stages a
+    /// crew member at a <see cref="DeviceKind.WaterTank"/> to drink, and it is NOT guarded. That is
+    /// a decision, not an oversight: denying a thirsty crew member the only water aboard because
+    /// the tank sits in a cold or thin-aired compartment kills them for certain, where the
+    /// walk/flee/recover cycle only wastes their time. Survival outranks the cycle — the same
+    /// precedence <see cref="Citizen.IsRecruitableForWork"/> already encodes (a player move order
+    /// suppresses WORK, never eating and drinking). If a future lane guards it, it must add a
+    /// deadline or a last-resort override, not simply copy this rule.
+    ///
+    /// WHY IT EXISTS — the maintenance/deconstruct LIVELOCK (docs/HANDOVER.md §5 item 2). A
+    /// dispatcher that stages a worker in unbreathable air gets a crew member who walks there,
+    /// suffocates to <c>flee_suffocation</c>, is pulled off the job by <see cref="SafetySystem"/>,
+    /// recovers in good air, is re-offered the SAME job by the very next pass, and repeats forever.
+    /// Nothing anywhere remembers that the last attempt ended in a flee, and the target never stops
+    /// being needy because no work ever lands on it. Measured, <c>--ship grid</c>, seed 20260723,
+    /// 14 sim-days: from ~h270 the eight deck-2 doors sit in vacuum below <c>maintain_below</c> and
+    /// the crew burn ~70 % of every crew-tick on Maintain with ~21 % on Flee, completing 2 services
+    /// in the last hour against 643 job starts. It reads as 91 % busy and scores A1 PASS.
+    ///
+    /// ⛔ WHAT IT COSTS — and the first version of this comment got this WRONG, so read it before
+    /// quoting the arithmetic. It claimed the rule "denies only work that could never have landed",
+    /// on the ground that the flee threshold arrives in 45 s (vacuum) / 120 s (thin air, CO2, or
+    /// thermal injury) while the shortest fixed-tile job is a 90 s device strip. <b>That claim is
+    /// RETRACTED.</b> Two things falsify it and both are recorded here rather than patched:
+    ///
+    ///  1. <b>A FLOOR BUILD IS 20 TICKS — 2 SECONDS</b> (<c>BuildSystem.cs:254
+    ///     FloorConstructTicks</c>), dispatched through <see cref="JobWork.TryPathToAdjacent"/>. It
+    ///     fits inside the vacuum deadline with 43 s to spare. MEASURED both ways by
+    ///     <c>UnbreathableWorksiteLivelockTests.AFloorBuildInVacuum_…</c>: planted by hand it
+    ///     COMPLETES in hard vacuum with the builder alive and never fleeing; through the dispatcher
+    ///     it is never offered. This rule denies real, achievable work.
+    ///  2. <b>"UNBREATHABLE" INCLUDES THERMAL.</b> <see cref="AtmosphereSafety.IsBreathable"/> is
+    ///     false for <c>tempC &gt; HeatStrokeC || tempC &lt; HypothermiaC</c>, and
+    ///     <see cref="NeedsSystem"/> puts thermal injury in the SLOW (1/240) band. So a room that is
+    ///     fully pressurised and perfectly breathable but freezing or roasting refuses ALL work,
+    ///     including jobs that would finish well inside its 120 s deadline. <c>CLAUDE.md</c> records
+    ///     a live freezing thermal loop on the slice, so this is not hypothetical.
+    ///
+    /// THE COST IS ACCEPTED, NOT PATCHED, and the reason is worth stating: making the rule
+    /// duration-aware re-opens every marginal case (does the job fit *after* the walk? *after* the
+    /// suffocation the crew member arrived with? at the vacuum rate or the slow one?) in exchange
+    /// for a bounded loss. <c>BuildSystem.CanDesignate</c> refuses a floor on
+    /// <see cref="TileDefs.Void"/>, so what is denied is a floor RE-MATERIAL on existing deck
+    /// plating — never sealing a breach. The argument that survives is the weaker, true one:
+    /// <b>every LONG job in bad air is unachievable, the long jobs are where the livelock lived, and
+    /// the short ones are paid for deliberately.</b>
+    ///
+    /// IT IS A LIVE PREDICATE, NOT A BLACKLIST AND NOT A BACKOFF. Nothing is remembered, nothing is
+    /// saved, nothing is hashed: every staging attempt re-reads the room, so repressurising a
+    /// compartment makes its work available again on the very next pass with no timer to wait out.
+    /// That is why this is a gate and not a WP-7-style per-tile stamp.
+    ///
+    /// INERT WITHOUT <see cref="SafetySystem"/>, which is the whole reason it can be a hard refusal
+    /// rather than a rate limiter. The livelock is not caused by bad air; it is caused by the flee
+    /// guard pulling a worker off a job that the dispatcher then hands straight back. On a stack
+    /// with no <see cref="SafetySystem"/> nothing pulls a worker off, so there is no cycle to break
+    /// — and, just as important, a bare test sim or a host that models no atmosphere has every room
+    /// at 0 kPa, where an unconditional rule would stop ALL work everywhere. Same shape as
+    /// <c>MachineWearSystem</c>'s injected Director: absent sibling ⇒ byte-identical prior
+    /// behaviour.
+    ///
+    /// ⚠️ THE COST, taken deliberately and recorded (MECHANICS.md §13.21): the bug goes from
+    /// expensive-and-visible to CHEAP-AND-INVISIBLE, exactly as E0-4 WP-7's haul backoff did
+    /// (MECHANICS.md §13.17). A designation painted in an airless compartment now simply never
+    /// progresses, silently, with nothing on any surface saying why. <see cref="CanStageWorkerAt"/>
+    /// is public so a future wire channel can ask it per tile and finally say so.
+    ///
+    /// Allocation-free; no RNG, no dictionary/set iteration, no order of its own.
+    /// </summary>
+    public static class WorksiteSafety
+    {
+        /// <summary>
+        /// May a worker be parked on <paramref name="tile"/> for the length of a job? True when
+        /// this stack cannot produce the cycle at all (see <see cref="CanCycle"/>), when the tile
+        /// is a DOORWAY, or when its air is survivable.
+        ///
+        /// ⚠️ A DOOR TILE IS NOT VACUUM, and reading it as vacuum is the single most expensive
+        /// mistake this rule can make. A door tile is a room EDGE, not a room member, so it carries
+        /// <see cref="RoomState.DoorMarker"/> and <see cref="RoomState.RoomAt"/> resolves it to
+        /// <c>Rooms[0]</c> — the vacuum sink — which reads 0 kPa and therefore "lethal". But
+        /// <see cref="NeedsSystem"/> SKIPS a crew member standing on a door marker outright
+        /// (<c>NeedsSystem.cs:105</c>), so no suffocation ever accrues there, no flee can follow,
+        /// and no cycle can start. The question this rule asks is "would a worker parked here be
+        /// pulled off the job?", and on a doorway the sim's own answer is no.
+        ///
+        /// MEASURED, because the first draft got this wrong and the gate caught it: without the
+        /// door-marker clause the rule refused the **entire 48-tile aft dig field of the shipped
+        /// slice** — its only approach tile is <c>door_aft</c> at (56,9,0) — taking slice Dig
+        /// occupancy to 0.00 %, moving the slice tick-3000 golden and reddening five tests.
+        /// </summary>
+        public static bool CanStageWorkerAt(Simulation sim, Int3 tile) =>
+            !CanCycle(sim) ||
+            sim.Rooms.RoomIdAt(sim.World, tile) == RoomState.DoorMarker ||
+            AtmosphereSafety.IsBreathable(sim, tile);
+
+        /// <summary>
+        /// Can this stack produce the walk/flee/recover/walk cycle at all? It takes BOTH halves and
+        /// the rule is inert unless both are present:
+        ///   • a <see cref="NeedsSystem"/>, or <see cref="Citizen.Suffocation"/> never rises and a
+        ///     worker in vacuum simply works;
+        ///   • a <see cref="SafetySystem"/>, or nothing ever pulls that worker off its job.
+        /// Requiring both is not defensive coding — it is the precise statement of what the bug
+        /// needs, and it is what keeps the rule out of the way of every sim that models no
+        /// atmosphere. Such a sim has EVERY room at 0 kPa, where an unconditional rule would stop
+        /// all work everywhere; several shipped test fixtures build exactly that (a full stack
+        /// minus NeedsSystem, on an ASCII map nobody pressurised).
+        ///
+        /// Resolved by scanning <see cref="Simulation.Systems"/> — deliberately NOT cached in a
+        /// static (parallel sims with different stacks must never cross-talk) and not cached on the
+        /// caller (three call sites, three lifetimes). The array is a handful of entries and this
+        /// runs only while a job is being claimed or a servicer staged, never per tile per tick.
+        /// </summary>
+        private static bool CanCycle(Simulation sim)
+        {
+            bool needs = false, guard = false;
+            var systems = sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+            {
+                if (systems[i] is NeedsSystem) needs = true;
+                else if (systems[i] is SafetySystem) guard = true;
+            }
+            return needs && guard;
+        }
     }
 
     /// <summary>

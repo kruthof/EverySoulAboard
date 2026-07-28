@@ -253,6 +253,24 @@ namespace Perilune.Tests
         ///     JobKind.Craft itself rather than going through the dispatcher. What this sequence
         ///     shows is the melter's SHADOW on the other sources, on top of E0-6's bill timings.
         ///
+        /// ⚠️ RE-RECORDED 2026-07-28 by the WORKSITE STAGING RULE (docs/HANDOVER.md §5 item 2,
+        /// MECHANICS §13.21). The KIND MIX AND THE 48 DIG TARGETS ARE UNCHANGED — same 57 rows,
+        /// same set of tiles, the aft field still finishes inside the window — and the first NINE
+        /// rows are byte-identical (row 10, t6251 → t6301, is the first divergence), which is why
+        /// the slice tick-3000 golden HELD.
+        ///
+        /// WHAT MOVED, and the mechanism: from t6251 the dig column is RE-TIMED and re-handed. A
+        /// freshly dug tile opens a pocket of the aft field that has not yet filled with air
+        /// through `door_aft`, and the rule will not park a worker in it — so the next tile waits
+        /// on the atmosphere instead of on the worker. The first divergence is exactly +50 ticks,
+        /// which is JobWork.UnreachableRetryTicks: one refused claim, one backoff, one retry. The
+        /// last assignment moves t55113 → t61073 (+5960, ~11 % slower to saturate), still well
+        /// inside the 90 000-tick window, and slice `occupancy --days 1` clears all 48 debris tiles
+        /// either way.
+        ///
+        /// This is a BEHAVIOUR pin and re-recording it is the ritual; it is not one of the five
+        /// determinism pins, all of which held.
+        ///
         /// NOT a determinism pin, and it is not one of the five: no authored ship zones a stockpile,
         /// so this fixture zones three corridor tiles by hand. The five pins moved for their own
         /// reasons and the integrator re-pins them.
@@ -268,54 +286,54 @@ namespace Perilune.Tests
             "t6002 c933 HaulPickup 24,14,1",
             "t6002 c934 HaulPickup 22,14,1",
             "t6002 c935 HaulPickup 20,14,1",
-            "t6251 c936 Dig 57,8,0",
-            "t6251 c937 Dig 58,9,0",
+            "t6301 c936 Dig 57,8,0",
+            "t6301 c937 Dig 58,9,0",
             "t6462 c938 Dig 57,10,0",
             "t9202 c933 HaulPickup 23,6,0",
-            "t12263 c933 Dig 57,7,0",
-            "t12263 c935 Dig 58,8,0",
-            "t12513 c936 Dig 59,9,0",
-            "t12513 c937 Dig 58,10,0",
+            "t12363 c933 Dig 57,7,0",
+            "t12363 c935 Dig 58,8,0",
+            "t12563 c936 Dig 59,9,0",
+            "t12563 c937 Dig 58,10,0",
             "t12913 c938 Dig 57,11,0",
-            "t18513 c933 Dig 57,6,0",
-            "t18513 c939 Dig 58,7,0",
-            "t18523 c935 Dig 59,8,0",
-            "t18523 c936 Dig 60,9,0",
-            "t18523 c937 Dig 59,10,0",
+            "t18663 c933 Dig 57,6,0",
+            "t18663 c935 Dig 58,7,0",
+            "t18663 c936 Dig 59,8,0",
+            "t18663 c937 Dig 60,9,0",
+            "t18663 c939 Dig 59,10,0",
             "t18923 c938 Dig 58,11,0",
             "t19222 c934 Dig 57,12,0",
-            "t24523 c933 Dig 58,6,0",
-            "t24533 c935 Dig 59,7,0",
-            "t24533 c936 Dig 60,8,0",
-            "t24533 c937 Dig 60,10,0",
+            "t24723 c935 Dig 58,6,0",
+            "t24723 c936 Dig 59,7,0",
+            "t24723 c937 Dig 60,8,0",
             "t24933 c938 Dig 59,11,0",
-            "t25013 c939 Dig 61,9,0",
-            "t30533 c933 Dig 59,6,0",
-            "t30543 c935 Dig 60,7,0",
-            "t30543 c936 Dig 61,8,0",
-            "t30543 c937 Dig 61,10,0",
+            "t25163 c939 Dig 60,10,0",
+            "t28142 c933 Dig 57,13,0",
+            "t30733 c935 Dig 59,6,0",
+            "t30733 c936 Dig 60,7,0",
+            "t30733 c937 Dig 61,8,0",
             "t30943 c938 Dig 58,12,0",
-            "t31063 c939 Dig 62,9,0",
-            "t36543 c933 Dig 60,6,0",
-            "t36553 c935 Dig 61,7,0",
-            "t36553 c936 Dig 62,8,0",
-            "t36553 c937 Dig 60,11,0",
-            "t36963 c938 Dig 57,13,0",
-            "t37073 c939 Dig 62,10,0",
-            "t37972 c940 Dig 58,13,0",
-            "t42553 c933 Dig 61,6,0",
-            "t42563 c935 Dig 62,7,0",
-            "t42563 c936 Dig 61,11,0",
-            "t42573 c937 Dig 59,12,0",
-            "t42964 c938 Dig 60,12,0",
-            "t43083 c939 Dig 62,11,0",
-            "t48563 c933 Dig 62,6,0",
-            "t48573 c935 Dig 59,13,0",
-            "t48623 c937 Dig 61,12,0",
-            "t49004 c938 Dig 60,13,0",
-            "t49093 c939 Dig 62,12,0",
-            "t54663 c935 Dig 61,13,0",
-            "t55113 c937 Dig 62,13,0",
+            "t31173 c939 Dig 61,10,0",
+            "t34762 c940 Dig 61,9,0",
+            "t36743 c935 Dig 60,6,0",
+            "t36743 c936 Dig 61,7,0",
+            "t36743 c937 Dig 62,8,0",
+            "t36963 c938 Dig 59,12,0",
+            "t37183 c939 Dig 60,11,0",
+            "t38082 c933 Dig 58,13,0",
+            "t42753 c935 Dig 61,6,0",
+            "t42753 c936 Dig 62,7,0",
+            "t42753 c937 Dig 62,9,0",
+            "t42973 c938 Dig 60,12,0",
+            "t43203 c939 Dig 61,11,0",
+            "t48242 c933 Dig 59,13,0",
+            "t48763 c935 Dig 62,6,0",
+            "t48763 c936 Dig 62,10,0",
+            "t48983 c938 Dig 61,12,0",
+            "t49213 c939 Dig 62,11,0",
+            "t52252 c937 Dig 60,13,0",
+            "t55023 c936 Dig 62,12,0",
+            "t55023 c938 Dig 61,13,0",
+            "t61073 c936 Dig 62,13,0",
         };
 
         [Test]

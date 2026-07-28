@@ -2203,6 +2203,111 @@ surplus from inside the suite instead of from a reviewer's arithmetic.
 
 ---
 
+### 13.21 The worksite staging rule — the maintenance/deconstruct livelock, and its invisible cost (2026-07-28)
+
+**The bug.** Nothing in the dispatcher asked whether a crew member could SURVIVE at the tile it was
+about to be parked on. `MaintenanceSystem.RecruitForNeediest` picked the neediest machine and paths a
+recruit there; `SafetySystem` pulled it off at `flee_suffocation` (45 s of vacuum, 120 s of thin air
+or CO2 narcosis); it recovered in good air, returned to `JobKind.None`, and the very next 1 Hz pass
+re-recruited it for the **same** machine, which was still needy because no work had ever landed on
+it. `DeconstructJobSource` is the same shape, and its `_retryAt` backoff could not see it: that stamp
+is written only when `FindPath` **fails**, and here the path succeeds every time.
+
+**Measured on `--ship grid`, seed 20260723, `occupancy --maint-audit`** (the flag is new and
+opt-in — with no flag the report is byte-identical):
+
+| | before | after |
+|---|---|---|
+| 14 sim-days: Maintain occupancy | 16.245 % | **2.974 %** |
+| 14 sim-days: Flee occupancy | 4.325 % | **0.000 %** |
+| 14 sim-days: Maintain job starts | 47 640 | **298** |
+| …of which ended in a flee | 18 301 | **0** |
+| **14 sim-days: SERVICES COMPLETED** | **311** | **309** |
+| final sim-hour: starts / services | 643 / 2 | 0 / 1 |
+| 14 sim-days: wall clock | 173.7 s | 120.1 s |
+| 2 days `--strip 20 --strip-deck 2`: Deconstruct / Flee | 24.653 % / 19.072 % | **0.000 % / 0.000 %** |
+| …Deconstruct starts, of which fled | 7 429 / 7 427 | **0 / 0** |
+| …walls torn down | 0 of 20 | 0 of 20 |
+| …wall clock | 275.6 s | **22.5 s** |
+
+**Read the SERVICES row before anything else: 311 → 309.** The 47 342 job starts the rule removed
+produced essentially nothing; the two-service difference is chaotic divergence on a 14-day run, not
+lost capability. From ~h270 the old hourly curve read **91 % busy / 70 % "productive" forever** and
+would have scored **A1 PASS** while completing 2 services an hour. It is the clearest instance yet of
+`docs/HANDOVER.md` §6's rule: A1 counts busy crew.
+
+**Who the needy machines are, and why it starts at h270:** the **eight deck-2 doors**. Deck 2 boots
+airless; a Door wears 0.002/h scaled by the Director's `WearPressure`, so it crosses
+`maintain_below` 0.3 at about h270 and then sits between `maintain` and `fail` **forever** — a
+permanent demand nobody can serve.
+
+**The fix.** One rule, `WorksiteSafety.CanStageWorkerAt` (`sim/Sim.Core/Systems/SafetySystem.cs`),
+asked by the only two places in the sim that choose the tile a worker will stand on:
+`JobWork.TryPathToAdjacent` (dig, build, deconstruct) and `MaintenanceSystem.TryFindStagingTile`
+(which also gates the consumable fetch, or the cycle simply moves upstream to a Parts stack a
+mid-carry flee left in vacuum). **No field, no save, no hash fold, no def, and all five pins held.**
+
+**⛔ RETRACTED — "the rule denies only work that could never have landed."** That was this package's
+load-bearing claim, from the arithmetic that the flee threshold arrives in 45 s (vacuum) / 120 s
+(thin air, CO2 or thermal) while the shortest fixed-tile job is a 90 s device strip. **It is false,
+in two independent ways, and both are accepted costs rather than patched bugs:**
+
+1. **A floor build is 20 ticks — 2 seconds** (`BuildSystem.cs:254 FloorConstructTicks`), dispatched
+   through the guarded seam, and it fits inside the vacuum deadline with 43 s to spare. **Measured
+   both ways** (`UnbreathableWorksiteLivelockTests.AFloorBuildInVacuum_…`): planted by hand the build
+   **completes in hard vacuum** with the builder alive and never fleeing; through the dispatcher it
+   is **never offered**. Real, achievable work is denied — silently, forever.
+2. **"Unbreathable" includes THERMAL.** `AtmosphereSafety.IsBreathable` is false for
+   `tempC > HeatStrokeC || tempC < HypothermiaC`, and `NeedsSystem` puts thermal injury in the slow
+   (1/240) band. So a **fully pressurised, perfectly breathable but freezing or roasting** room now
+   refuses **all** work, including jobs that would finish inside its 120 s deadline. `CLAUDE.md`
+   records a live freezing thermal loop, so this is not hypothetical.
+
+**Not patched, deliberately.** Making the rule duration-aware re-opens every marginal case (does the
+job fit *after* the walk, *after* the suffocation already carried, at which rate?) for a bounded
+loss: `CanDesignate` refuses a floor on `TileDefs.Void`, so what is denied is a floor **re-material
+on existing deck plating**, never sealing a breach. The surviving argument is the weaker, true one:
+**every LONG job in bad air is unachievable, the long jobs are where the livelock lived, and the
+short ones are paid for on purpose.**
+
+**A third copy of the staging shape is deliberately left OPEN.** `SustenanceSystem.cs:307` has its
+own private `TryPathToAdjacent` and stages crew at a `WaterTank`; it is **not** guarded, because
+denying a thirsty crew member the only water aboard kills them for certain where the cycle only
+wastes their time. Survival outranks the cycle — the same precedence `IsRecruitableForWork` already
+encodes.
+
+**Inert unless BOTH `NeedsSystem` and `SafetySystem` are registered** — the precise statement of what
+the cycle needs. Without the first, suffocation never rises; without the second, nothing pulls a
+worker off. It also keeps every atmosphere-free fixture and host working: such a sim has *every*
+room at 0 kPa, where an unconditional rule would stop all work everywhere.
+
+**⚠️ THE COST, taken deliberately — the E0-4 WP-7 trade again (§13.17).** The bug went from
+**expensive-and-visible to cheap-and-invisible**. A dig, build or strip painted in an airless
+compartment now simply never progresses, silently, with nothing on any surface saying why — and on
+`--ship grid` that is reachable in play: the two unopened wreck slots hold 40 debris tiles behind
+sealed, airless doors. `CanStageWorkerAt` is public precisely so a wire channel can one day say so.
+
+**⚠️ Two shipped test fixtures had to change, and both were arranging the impossible.**
+`CrewSafetyTests` booted its work room at vacuum and designated a dig in it — dispatch into
+already-lethal air can no longer happen, so it now pressurises the room and **blows it once the crew
+is settled on the dig**, which is the case `SafetySystem`'s own doc comment describes.
+`DesignationVerbTests` built a full stack on an unpressurised ASCII strip and expected a dig to be
+taken; it now gives the deck air.
+
+**Not covered, recorded:** `BuildJobSource`'s `_needMat` list is a HAUL to the site, not a countdown
+at it, so material can still be carried into an airless compartment and set down once per site and
+then never built. `HaulJobSource` is untouched — a haul has no work timer and cannot pin a worker.
+
+**New latent harm, recorded not hidden.** `MaintenanceSystem.DriveWorker` calls the same staging
+picker every pass, so a servicer whose compartment loses air mid-service now abandons *at that
+moment* rather than at the flee threshold — earlier and safer, but it sets any carried `Parts`/
+`Seals` stack down where it stands, and the fetch gate then refuses that stack because its tile is
+unbreathable. A consumable can therefore be **stranded** in a compartment until the player
+repressurises it. It is bounded (one stack per interrupted service), it is visible on the ground, and
+the alternative — leaving the fetch ungated — is the livelock one leg upstream.
+
+---
+
 ## 14. Where GDD.md / TDD.md disagree with the code
 
 `docs/legacy/GDD.md` §4 and §5 are **aspiration**, and `CLAUDE.md` still marks legacy docs

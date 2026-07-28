@@ -889,6 +889,7 @@ namespace Perilune.Tests
                 ("Atmosphere",     "ship physiology — AtmosphereSystem owns gas"),
                 ("Oxygen",         "ship physiology"),
                 ("Suffocation",    "physiology — SafetySystem owns fleeing lethal air, not the job board"),
+                ("WorksiteSafety", "the crew-survivability staging rule — ONE seam is carved out below"),
                 ("Fatigue",        "physiology — and note Citizen.cs's claim that it 'slows work' is FALSE"),
                 // ---- spatial vocabulary the sim does not actually have.
                 ("Deck",           "the sim has z-levels, not 'decks'; hauling is deck-agnostic"),
@@ -906,6 +907,34 @@ namespace Perilune.Tests
                     ["Director"] = 2,
                     // `_director.WearPressure` — the single read.
                     ["WearPressure"] = 1,
+                    // THE WORKSITE STAGING RULE (docs/HANDOVER.md §5 item 2, MECHANICS §13.21).
+                    // TryFindStagingTile (the servicer's tile) and FindNearest (the consumable's
+                    // tile) — the two places this system parks a crew member. The doc-comment
+                    // mention is stripped by CodeOnly.
+                    ["WorksiteSafety"] = 2,
+                },
+                // The job board's ONE crossing: JobWork.TryPathToAdjacent, where dig, build and
+                // deconstruct all choose the tile a worker will stand on.
+                //
+                // WHY THIS IS DECLARED HERE AT ALL, since `WorksiteSafety` names no forbidden
+                // identifier and the scan would have passed in silence. That silence is the defect:
+                // this test exists to make a crossing DELIBERATE, and a crossing that slips through
+                // because it was given a name off the list is the fourth trap shape (a guard whose
+                // scope filter excludes the violation) seen from the other side. Listing it turns a
+                // silent pass into a bounded one — a SECOND call site anywhere in economy code now
+                // fails this test and has to be argued for.
+                //
+                // WHAT THE CROSSING IS. The job board does not read physiology: it asks the module
+                // that owns lethal air one question — "may a worker be parked here?" — in the shape
+                // this test's own failure text prescribes ("SafetySystem owns lethal air"). The gas
+                // thresholds, the flee threshold and the inertness rule all stay behind the seam,
+                // and the question itself is generic colony logic (a pawn does not take a job it
+                // cannot survive), not spaceship vocabulary. It is ONE seam per
+                // economy-modularity §7 step 1's shape rule, and the reason it is one seam and not
+                // four is that TryPathToAdjacent is where all three tile-work sources already stage.
+                ["sim/Sim.Core/Jobs/JobContext.cs"] = new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    ["WorksiteSafety"] = 1,
                 },
             };
 
