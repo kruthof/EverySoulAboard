@@ -57,6 +57,10 @@ namespace Perilune.Web
                             string shipArg = args[++i];
                             if (shipArg == "slice") ship = ShipChoice.Slice;
                             else if (shipArg == "grid") ship = ShipChoice.Grid;
+                            // The wreck start (W3). NOT the default and deliberately not: it has
+                            // no `blocked` channel yet, so an order painted in vacuum on this ship
+                            // is a silent no-op forever. Flipping the player-facing default is W8.
+                            else if (shipArg == "wreck") ship = ShipChoice.Wreck;
                             // Explicit now that Grid is the default: without this branch
                             // `--ship perilune` would silently hand back the grid.
                             else if (shipArg == "perilune") ship = ShipChoice.Perilune;

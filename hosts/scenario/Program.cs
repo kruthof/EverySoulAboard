@@ -103,8 +103,10 @@ namespace Perilune.Tools
             string shipName = ArgString(args, "--ship", "perilune");
             bool slice = shipName == "slice";
             bool grid = shipName == "grid";
+            bool wreck = shipName == "wreck";   // the wreck start (W3)
             ulong seed = ArgULong(args, "--seed",
-                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 7UL);
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed :
+                wreck ? AuthoredShips.WreckSeed : 7UL);
             int crew = ArgInt(args, "--crew", 8);
             string outPath = ArgString(args, "--out", null);
             string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
@@ -127,6 +129,11 @@ namespace Perilune.Tools
                 // the dump emits whatever PersonaGenerator produces for the built citizens.
                 host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
             }
+            else if (wreck)
+            {
+                // The authored wreck start (--ship wreck): one crew member, no authored personas.
+                host = GenSimHost.Build(AuthoredShips.PeriluneWreck(), defs);
+            }
             else
             {
                 var recipe = ShipRecipe.FromSeed(seed);
@@ -139,7 +146,7 @@ namespace Perilune.Tools
             {
                 File.WriteAllText(outPath, json);
                 Console.WriteLine($"dump-personas: {host.Sim.Citizens.Items.Count} personas " +
-                                  $"({(slice ? "slice" : grid ? "grid" : "procedural")}, seed {seed}) -> {outPath}");
+                                  $"({(slice ? "slice" : grid ? "grid" : wreck ? "wreck" : "procedural")}, seed {seed}) -> {outPath}");
             }
             else
             {
@@ -200,9 +207,11 @@ namespace Perilune.Tools
             string shipName = ArgString(args, "--ship", "slice");
             bool slice = shipName == "slice";
             bool grid = shipName == "grid";
+            bool wreck = shipName == "wreck";   // the wreck start (W3)
             int days = ArgInt(args, "--days", 1);
             ulong seed = ArgULong(args, "--seed",
-                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 42UL);
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed :
+                wreck ? AuthoredShips.WreckSeed : 42UL);
             string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
             var defs = LoadDefs(dataDir, out _, out _, out _);
 
@@ -215,6 +224,13 @@ namespace Perilune.Tools
             else if (grid)
             {
                 host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            }
+            else if (wreck)
+            {
+                // The wreck start: ONE crew member, a mostly-airless ship. Every occupancy
+                // percentage here is over a single pawn, so the denominator is 1/8th of grid's and
+                // a single job start moves it by whole points — read the raw counts, not the rates.
+                host = GenSimHost.Build(AuthoredShips.PeriluneWreck(), defs);
             }
             else
             {
@@ -871,9 +887,11 @@ namespace Perilune.Tools
             string shipName = ArgString(args, "--ship", "slice");
             bool slice = shipName == "slice";
             bool grid = shipName == "grid";
+            bool wreck = shipName == "wreck";   // the wreck start (W3)
             int days = ArgInt(args, "--days", 3);
             ulong seed = ArgULong(args, "--seed",
-                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed : 42UL);
+                slice ? AuthoredShips.SliceSeed : grid ? AuthoredShips.GridSeed :
+                wreck ? AuthoredShips.WreckSeed : 42UL);
             string dataDir = ArgString(args, "--data", null) ?? DefaultDataDir();
             var defs = LoadDefs(dataDir, out _, out _, out _);
 
@@ -886,6 +904,13 @@ namespace Perilune.Tools
             else if (grid)
             {
                 host = GenSimHost.Build(AuthoredShips.PeriluneGrid(), defs);
+            }
+            else if (wreck)
+            {
+                // The wreck start: ONE crew member, a mostly-airless ship. Every occupancy
+                // percentage here is over a single pawn, so the denominator is 1/8th of grid's and
+                // a single job start moves it by whole points — read the raw counts, not the rates.
+                host = GenSimHost.Build(AuthoredShips.PeriluneWreck(), defs);
             }
             else
             {

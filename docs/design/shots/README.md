@@ -9,6 +9,49 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `wreck-*` — `--ship wreck`, the wreck start, ON THE RUNNING GAME (2026-07-28)
+
+Tool: **`client/tools/wreck-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
+It needs a live host on the wreck, which `play.sh` does not offer:
+
+```
+~/.dotnet/dotnet run --project hosts/web -- --port 8390 --ship wreck
+python3 client/serve.py 8391
+node client/tools/wreck-shot.mjs --out docs/design/shots
+```
+
+⚠️ **UNLIKE `wrecked-*`, THESE ARE SHOTS OF THE RUNNING GAME.** The registry gallery above renders
+pieces onto the mock's own stage; these are real pointer clicks on the real Overview and Room Zoom,
+against a real `hosts/web` on `--ship wreck`. The tool prints a CAPSULE CENSUS read off the live wire
+before it opens Chrome, and refuses to shoot if a capsule glyph resolves to no piece — so a set of
+pretty pictures of the wrong ship, or of dashed placeholder chips, cannot be produced by accident.
+
+| file | what it shows |
+|---|---|
+| `wreck-1-overview-deck0.png` | the surviving deck. CRYO BAY and REACTOR lit and labelled; six sealed halls dark, each offering ＋ADD ROOM. CREW WATCH reads **1 SOUL**. The SENSOR LOG carries the boot ship's-log lines — *"Sokolov did not survive the raid — capsule breached"*. |
+| `wreck-2-overview-deck1.png` | the dead deck: eight sealed halls, nothing pressurised, nothing lit. |
+| `wreck-3-cryobay.png` | the Room Zoom on the cryo bay — **twelve capsules, eleven closed and one hinged OPEN** with the single pawn beside it. |
+| `wreck-4-cryobay-crop.png` | a 3× crop of the capsule rows, so the two pieces are separable at a glance. |
+| `wreck-5-reactor.png` | the reactor bay: three solar wings, two batteries, the water reserve, and the opening stock on the floor. |
+
+### What these pictures DO and DO NOT claim
+
+- ✅ **The two cryo pieces reach the standard surface and are distinguishable.** `'K'` (occupied) and
+  `'k'` (open) are different glyphs from `GlyphMapper.DeviceGlyph`, and the warm set ships a piece for
+  each. This is the first time a device's STATE picks between two real `ITEMS` rows.
+- ✅ **`RoomType.Cryo` renders as `CRYO BAY`**, not as an internal anchor id.
+- ⛔ **CONDITION IS INVISIBLE.** All eleven closed capsules draw identically whether the sleeper
+  inside is alive at `Condition 0.94` or dead at `0.04`. The `devices` wire channel carries condition
+  and **deliberately draws nothing yet**; wiring the wrecked twins to it is a separate package. So a
+  player cannot currently see which capsules failed — they can only read it in the SENSOR LOG.
+- ⛔ **The corpses are not visible on the capsule tiles.** A device glyph is written after the item
+  pass in `GlyphMapper`, and the `items` channel skips nothing here — but the Room Zoom's furniture
+  layer draws the capsule on that tile. The bodies are in the `items` channel and in the ledger
+  (`Corpse 4`); they are not in the picture.
+- These are one run, one seed, one machine. They claim the ship RENDERS. **The owner judges the art.**
+
+---
+
 ## `wrecked-*` — the post-raid twin set + the two new cryo capsules (2026-07-28)
 
 Tool: **`client/tools/wrecked-gallery.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
