@@ -248,8 +248,9 @@ namespace Perilune.Tests
         /// <summary>
         /// LOSS 1 — NOT A GRADIENT, AND THIS IS THE CHARTER'S OWN TEST. Two identical machines, one at
         /// <c>Condition = 0.1f</c> and one at <c>1f</c>, project a BYTE-IDENTICAL <see cref="GlyphCell"/>
-        /// (both are above <c>Fabricator</c>'s <c>fail = 0.10</c>, so neither reads Broken) — and the
-        /// channel carries 26 against 255.
+        /// (both are above a Light's <c>fail = 0.02</c>, so neither reads <c>GlyphColor.Broken</c>) — and
+        /// the channel carries 26 against 255. The kind is a Light rather than a machine on purpose;
+        /// the reason is in the body, beside the fixture.
         ///
         /// THE CONTROL IS THE FIRST HALF, deliberately: without it this test would pass against a
         /// projection that never lost anything, and would prove nothing about the channel.
