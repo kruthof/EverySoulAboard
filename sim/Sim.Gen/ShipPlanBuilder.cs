@@ -46,6 +46,17 @@ namespace Perilune.Gen
                     // Domain check, in the same spirit as the bounds/wall/debris/anchor checks
                     // around it: a broken plan fails at boot, not mid-game. `!(a && b)` rather
                     // than `<0 || >1` so NaN is refused too.
+                    //
+                    // ⚠️ THIS IS AN AUTHORING-TIME TYPO-CATCH, NOT AN INVARIANT ON
+                    // `Device.Condition`, AND NOTHING SHOULD LATER BE BUILT ON IT AS IF IT WERE.
+                    // It sees exactly one of the field's several writers — this one. Condition
+                    // arrives out of range by other routes with nothing to stop it:
+                    // `SaveReader.cs:307` reads a raw Single straight off the stream with no
+                    // clamp (a hand-edited or corrupt save is unfiltered), and
+                    // `MachineWearSystem.cs:280/284` assign `RestoredCondition`/`JuryRigCondition`
+                    // — def scalars — unguarded, so a bad `wear.def` puts a device above 1
+                    // without passing through here at all. Making this an invariant would mean
+                    // clamping at the field, which is a different (and unchartered) change.
                     if (!(condition >= 0f && condition <= 1f))
                         throw new ArgumentException(
                             $"plan '{plan.Name}': device {spec.Name} authors Condition {condition.ToString(System.Globalization.CultureInfo.InvariantCulture)} outside 0..1");

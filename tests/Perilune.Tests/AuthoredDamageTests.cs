@@ -40,6 +40,22 @@ namespace Perilune.Tests
     /// <c>PeriluneGrid()</c> plan and require the SAME <see cref="NonPristineDevices"/> matcher to
     /// return it. "The matcher walked 1250 devices" proves it matched something; only planting the
     /// violation proves it would match the thing (CLAUDE.md, the fourth trap shape).
+    ///
+    /// ⚠️ THE HONEST COUNT IS 19 GUARDS + 1 CHARACTERISATION TEST, NOT 20 GUARDS.
+    /// (17 + 1 before the two §5 MOSS legs below were added.)
+    /// <see cref="DefaultDeviceSpec_SaysNothingAboutEitherField"/> documents the premise the
+    /// encoding rests on and NO source mutation can redden it — every way of breaking that premise
+    /// stops this file compiling, which is a crash and not a semantic red. It is labelled in place
+    /// rather than counted. <see cref="RoomDresserPlace_DefaultsToSayingNothing"/> is a guard, but a
+    /// hedging one: nothing reddens it alone on today's ships (see its own note).
+    ///
+    /// ⚠️ BOTH FIELDS ARE DRIVEN TO A CONSUMER, AND THAT SYMMETRY IS THE POINT OF §5.
+    /// <see cref="DeviceSpec.Condition"/> changes what the sim DOES (MaintenanceSystem recruits at
+    /// 0.2 and not at 1.0); <see cref="DeviceSpec.Scriptable"/> changes what it CAN BE TOLD (an
+    /// authored-dark device gets no MOSS adapter through the real host boot). Without the second,
+    /// every Scriptable leg here would stop at "the bool reached the Device object" —
+    /// present-and-INERT, which CLAUDE.md's verb-parity lesson says is indistinguishable from
+    /// working.
     /// </summary>
     public class AuthoredDamageTests
     {
@@ -65,6 +81,12 @@ namespace Perilune.Tests
         private static readonly Int3 MachineTile = new Int3(7, 1, 0);
         private static readonly Int3 CrewTile = new Int3(1, 3, 0);
 
+        /// <summary>The fixture device's name. Hoisted to a constant because §5's MOSS legs look
+        /// it up in the DeviceRegistry by name, and a plan/lookup name that drifted apart would
+        /// make the dark leg pass for the wrong reason (an unregistered name never resolves) —
+        /// which is exactly what the control leg exists to catch.</summary>
+        private const string MachineName = "scrubber_bay";
+
         /// <summary>The fixture plan. <paramref name="condition"/>/<paramref name="scriptable"/>
         /// are passed STRAIGHT THROUGH to the one <see cref="DeviceSpec"/>, including null — which
         /// is what makes the control legs below a control: the unspecified case travels the exact
@@ -76,7 +98,7 @@ namespace Perilune.Tests
             plan.PressurizedAnchors.Add("bay");
             plan.Devices.Add(new DeviceSpec
             {
-                Kind = DeviceKind.Scrubber, Pos = MachineTile, Name = "scrubber_bay",
+                Kind = DeviceKind.Scrubber, Pos = MachineTile, Name = MachineName,
                 Condition = condition, Scriptable = scriptable,
             });
             plan.Citizens.Add(new CitizenSpec { Name = "Adeyemi", Pos = CrewTile });
@@ -190,6 +212,14 @@ namespace Perilune.Tests
         }
 
         // ------------------------------------------------------------ 4. the domain check
+        //
+        // ⚠️ WHAT THESE THREE LEGS PIN, AND WHAT THEY DO NOT. They pin an AUTHORING-TIME TYPO-CATCH
+        // — the builder refuses a plan whose Condition is outside 0..1, in the same spirit as its
+        // bounds/wall/anchor checks. They are NOT an invariant on `Device.Condition`, and reading
+        // them as one would be wrong: `SaveReader.cs:307` reads Condition as a raw Single with no
+        // clamp, and `MachineWearSystem.cs:280/284` write def scalars unguarded, so an out-of-range
+        // Condition can still reach a live device by a route that never passes the builder. See the
+        // comment beside the check in ShipPlanBuilder for the full list of writers.
 
         [Test]
         public void ConditionAboveOne_IsAnAuthoringError()
@@ -251,6 +281,62 @@ namespace Perilune.Tests
                     if (crew[i].JobKind == JobKind.Maintain) ticks++;
             }
             return ticks;
+        }
+
+        // ---- and the same for Scriptable: does an authored `false` change what the sim CAN BE TOLD?
+
+        /// <summary>Boot <see cref="BayPlan"/> through the REAL host pipeline —
+        /// <see cref="GenSimHost.Build"/>, which is <see cref="ShipPlanBuilder.Build"/> followed by
+        /// <see cref="MossBindings.RegisterAdapters"/>, in that order, the same four steps
+        /// <c>SimHost</c> takes — and report whether MOSS can address the fixture device by name.
+        ///
+        /// ⚠️ IT MUST BE THE HOST AND NOT A HAND-ORDERED PAIR OF CALLS. The hazard this leg exists
+        /// for is an ORDERING one: <see cref="ShipPlanBuilder.Build"/> creates the device with
+        /// <c>sim.AddDevice</c> and writes <c>device.Scriptable</c> a couple of dozen lines LATER,
+        /// so a pipeline that registered adapters any earlier would leave an authored-dark device
+        /// silently MOSS-addressable. A test that called <c>RegisterAdapters</c> itself would be
+        /// asserting about the order IT chose, which is the one order that cannot be wrong.
+        /// Registration is also not a one-time boot step in this repo — <c>GameSession</c> re-runs
+        /// it mid-game, for commissioning — so the seam is live, not theoretical.</summary>
+        private static bool IsMossAddressable(bool? scriptable)
+        {
+            var host = GenSimHost.Build(BayPlan(scriptable: scriptable));
+            Assert.That(host.Sim.Devices.Items.Count, Is.EqualTo(1),
+                "fixture: exactly one device, so the registry lookup below cannot resolve a bystander");
+            return host.Registry.TryResolve(MachineName, out _);
+        }
+
+        [Test]
+        public void AuthoredScriptableFalse_KeepsTheDeviceOutOfTheMossRegistry()
+        {
+            // The counterpart to the Maintenance leg above, and the reason this section is called
+            // "driven to a consumer": without it every Scriptable assertion in this file stops at
+            // "the bool reached the Device object", which is the present-and-INERT shape CLAUDE.md's
+            // verb-parity lesson is about. `MossBindings.cs:28`'s `if (!device.Scriptable) continue;`
+            // is the consumer; this is the leg that says the authored value reaches it.
+            Assert.That(IsMossAddressable(scriptable: false), Is.False,
+                "an authored Scriptable = false device must get NO MOSS adapter. If this resolves, " +
+                "the builder writes the flag after adapters are already registered, a wreck's MOSS " +
+                "is addressable at boot when the whole premise is that it is dark — and no shipped " +
+                "ship authors the field, so ShippedShips_BootPristine cannot see it.");
+        }
+
+        [Test]
+        public void UnauthoredDevice_IsMossAddressable()
+        {
+            // THE CONTROL, and it is its own [Test] rather than a second leg of the one above
+            // because `Assert` throws: a second leg only ever reports when the first one passes,
+            // so a dead control is indistinguishable from a live one (the fifth trap shape). Split
+            // this way, each fires on its own by construction — measured as M11/M12 in the harness,
+            // where each mutation reddens exactly one of the two.
+            //
+            // Without it the leg above would pass for any reason a name fails to resolve: a typo in
+            // the fixture name, a DeviceKind dropped from MossBindings' switch, a host that stopped
+            // calling RegisterAdapters at all. Same fixture, same code path, one field different.
+            Assert.That(IsMossAddressable(scriptable: null), Is.True,
+                "the SAME fixture with no authored Scriptable must be MOSS-addressable — this is " +
+                "what makes the leg above a measurement of the authored value rather than of a " +
+                "device that was never registrable in the first place");
         }
 
         // ------------------------------------------------------------ 6. the shipped ships did not move
@@ -381,10 +467,18 @@ namespace Perilune.Tests
         {
             // The eight furniture kinds below are placed EXCLUSIVELY by RoomDresser.Place — they
             // appear nowhere else in sim/Sim.Gen — so a census restricted to them is a census of
-            // Place()'s output. Without this leg, "no shipped ship authors either field" is a
-            // claim about the union of three helpers with no evidence that Place() is in the
-            // union at all: if Place's defaults changed and the grid ship happened to carry no
-            // furniture, the plan census would stay green.
+            // Place()'s output.
+            //
+            // ⚠️ HONEST SCOPE: THIS LEG CLOSES NO GAP THAT IS OPEN TODAY, AND NO MUTATION REDDENS
+            // IT ALONE. On today's ships the grid DOES carry RoomDresser furniture, so every
+            // mutation that reaches Place's defaults (harness RM4) reddens this leg and
+            // ShippedShipPlans_AuthorNeitherField together — that broader census already covers
+            // Place, and this one adds nothing to it. It is a HEDGE AGAINST A FUTURE SHIP, not a
+            // load-bearing guard: the day the grid ship stops carrying RoomDresser furniture, the
+            // broader census would go silent about Place() while staying green, and this leg's
+            // `dressed > 0` fixture assertion is what says so out loud instead of passing
+            // vacuously. Keep it for that day; do not count it among the guards that bite on
+            // today's tree.
             var plan = AuthoredShips.PeriluneGrid();
             var offenders = new List<string>();
             int dressed = 0;

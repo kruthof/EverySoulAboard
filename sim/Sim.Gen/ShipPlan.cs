@@ -91,8 +91,13 @@ namespace Perilune.Gen
         ///
         /// <b>THE NULL IS THE WHOLE SAFETY ARGUMENT, AND IT IS WHY THIS IS A <c>float?</c> RATHER
         /// THAN A <c>float</c> WITH A MAGIC SENTINEL.</b> <see cref="DeviceSpec"/> is a struct and
-        /// C# 9 forbids instance field initialisers on one, so every spec an authored ship emits
-        /// starts life as zeroed memory — whether it is written
+        /// C# 9 forbids instance field initialisers on one — <b>while <c>&lt;LangVersion&gt;9.0
+        /// &lt;/LangVersion&gt;</c> holds</b>, which all four csproj currently pin (net8.0's own
+        /// default is C# 12, where a struct field initialiser IS legal; a lane that bumps the pin
+        /// falsifies this clause and nothing else here). <b>And independently of the language
+        /// version:</b> <c>default(T)</c> and array elements bypass any initialiser that might
+        /// exist, so the conclusion below stands whatever <c>LangVersion</c> says. Every spec an
+        /// authored ship emits therefore starts life as zeroed memory — whether it is written
         /// <c>new DeviceSpec { Kind = …, Pos = … }</c> (an object initialiser runs the implicit
         /// parameterless ctor, which zeroes), <c>default(DeviceSpec)</c>, or an element of a
         /// <c>DeviceSpec[]</c>. A plain <c>float Condition</c> would therefore read <c>0f</c> on
