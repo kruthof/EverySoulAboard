@@ -36,6 +36,29 @@ namespace Perilune.Gen
         public readonly List<ScriptSpec> Scripts = new List<ScriptSpec>();
 
         /// <summary>
+        /// Ship's-log lines the plan boots with — written into <see cref="HistorySystem"/> at tick
+        /// 0, so they are the first entries in the Chronicle the player opens. Empty on every ship
+        /// that does not use them (Perilune/slice/grid), so this list is a no-op by construction.
+        ///
+        /// ⚠️ IT EXISTS BECAUSE OF A HOLE, AND THE HOLE IS WORTH RECORDING RATHER THAN ROUTING
+        /// ROUND. The wreck start authors two DEAD sleepers, and the sim has no way to say someone
+        /// died before the game began: <see cref="ItemKind.Corpse"/> has art, a label and ZERO
+        /// consumers, and the eulogy/Chronicle path fires on <c>CitizenDiedEvent</c>, which a
+        /// sleeper who was never a <see cref="Citizen"/> cannot raise. Synthesising one would put a
+        /// false death into the hashed event stream and would make <see cref="EulogySystem"/> try to
+        /// quote a mind that does not exist. A log line is a FACT and needs neither; a eulogy is a
+        /// RELATIONSHIP and these people never existed as entities. So the body is an item and the
+        /// death is one line, and nothing pretends to be more than that.
+        ///
+        /// Routed exactly as <see cref="Goals"/> is: <see cref="ShipPlanBuilder"/> finds the
+        /// <see cref="HistorySystem"/> in the system stack and throws if a plan carries lines and
+        /// the stack has none. Plan-level and never serialized; <c>HistorySystem</c> folds an
+        /// entry's KIND and TICK (never its text) into its own SYSS checksum, so a ship that
+        /// authors lines moves its own StateHash and no other ship's.
+        /// </summary>
+        public readonly List<string> LogLines = new List<string>();
+
+        /// <summary>
         /// AUTHORING/VIEW-ONLY slot grid — the per-deck 2×4 compartment layout the warm
         /// SVG Overview/Room-Zoom consume via the <c>decks</c> wire channel (geometry +
         /// binding + roomType per slot). This is a PLAN-LEVEL field: it is NEVER copied

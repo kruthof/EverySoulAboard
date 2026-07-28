@@ -129,6 +129,23 @@ namespace Perilune.Gen
             for (int i = 0; i < plan.Scripts.Count; i++)
                 sim.SetScript(plan.Scripts[i].TerminalId, plan.Scripts[i].Source);
 
+            // Boot ship's-log lines (the wreck start). Same shape as the Goals block above, and
+            // for the same reason: the plan states the content, the builder finds the system that
+            // owns it, and a plan carrying content the stack cannot hold is an AUTHORING ERROR
+            // rather than a silent drop. HistoryKind.Generic is deliberate — the categorised kinds
+            // (Death, Goal, …) are what the event ingestion writes when the thing actually HAPPENED
+            // in the sim, and a boot line did not happen, it was already true.
+            if (plan.LogLines.Count > 0)
+            {
+                HistorySystem history = null;
+                for (int i = 0; i < systems.Length; i++)
+                    if (systems[i] is HistorySystem h) history = h;
+                if (history == null)
+                    throw new ArgumentException($"plan '{plan.Name}' has log lines but the system stack has no HistorySystem");
+                for (int i = 0; i < plan.LogLines.Count; i++)
+                    history.Record(0, plan.LogLines[i], HistoryKind.Generic);
+            }
+
             return sim;
         }
 
