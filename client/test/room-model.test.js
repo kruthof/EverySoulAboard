@@ -25,7 +25,7 @@ import {
   U, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isStructuralTool, isOrderTool, isSweepTool, roomDragMode,
   roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
-  addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
+  addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
 } from '../src/ui/room-model.js';
 import { ITEMS, isDeviceItem } from '../src/items/index.js';
 import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM } from '../src/items/glyph-map.js';
@@ -35,6 +35,7 @@ import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
 import { APPLIES_NEXT_LABEL, mismatchLabel } from '../src/ui/accepts-row.js';
 import { ZONE_FLAG_BACKED_OFF, MARK_KIND_NAMES, markKindName, decodeMarks } from '../src/wire/messages.js';
 import { codeOnly } from './code-only.js';
+import { Cmd } from '../src/wire/session.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 import { markVariant, markCellSvg } from '../src/ui/mark-overlay.js';
 import { zoneLayerSvg } from '../src/ui/zone-overlay.js';
@@ -363,18 +364,41 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
     + 'with its own palette tool and RoomOutfitter puts one in every room on --ship grid: this is a '
     + 'lamp the player can build and can never remove, and the click is dropped in silence.');
 
-  // THE WHOLE LEDGER. Every key of GLYPH_SUBSTITUTE is a `Glyphs.ForDevice` char — the substitution
-  // is about the ART, never about what stands on the tile — so every one of them must classify as a
-  // device no matter what kind of row it borrows from.
+  // THE WHOLE LEDGER. Every key of GLYPH_SUBSTITUTE is a glyph a DEVICE puts on a tile — the
+  // substitution is about the ART, never about what stands there — so every one of them must
+  // classify as a device no matter what kind of row it borrows from.
+  //
+  // ⚠️ ONE EXCEPTION, AND IT IS NOT A WEAKENING: a glyph in `STRUCTURE_CODE_LIST` classifies
+  // `built-wall` BEFORE the device branch is reached, on purpose. The door package added
+  // `'X'` (DoorLocked → blast-door), and a door is exactly the thing that is a device wearing art
+  // AND built structure DEMOLISH must not take apart — STRIP does that. The exception is read out of
+  // the SHIPPED set rather than written down here, so widening `STRUCTURE_CODES` cannot silently
+  // excuse a new glyph from this loop.
+  const STRUCTURE = new Set(STRUCTURE_CODE_LIST.map((c) => String.fromCharCode(c)));
   const subs = Object.keys(GLYPH_SUBSTITUTE);
   assert.ok(subs.length >= 6, `GLYPH_SUBSTITUTE parsed as ${subs.length} entries — the loop below is vacuous`);
+  let checkedDevices = 0;
   for (const g of subs) {
-    assert.deepEqual(demolishTarget(5, 7, [], [], frameWith([[5, 7, g]])), { kind: 'device', verb: 'remove' },
+    const got = demolishTarget(5, 7, [], [], frameWith([[5, 7, g]]));
+    if (STRUCTURE.has(g)) {
+      assert.deepEqual(got, { kind: 'built-wall', verb: null },
+        `the substituted STRUCTURE glyph '${g}' classified as ${got.kind}. A door is furniture the `
+        + 'surfaces draw and structure DEMOLISH cannot remove; losing the second half sends '
+        + 'Cmd.remove at a tile the sim expects STRIP to take.');
+      continue;
+    }
+    checkedDevices += 1;
+    assert.deepEqual(got, { kind: 'device', verb: 'remove' },
       `the substituted glyph '${g}' (art: ${GLYPH_SUBSTITUTE[g]}, a `
       + `${ITEMS[GLYPH_SUBSTITUTE[g]].kind} row) does not classify as a device. A substitution means `
       + "a device wearing another piece's art; the borrowed piece's registry kind says nothing about "
       + 'the tile.');
   }
+  // …and the exception did not eat the loop. Without this, moving every substitute into
+  // STRUCTURE_CODES would leave the whole ledger unchecked and this test green.
+  assert.ok(checkedDevices >= 5,
+    `only ${checkedDevices} substituted glyphs were held to the device rule — the STRUCTURE `
+    + 'exception has swallowed the loop this test exists to run.');
 });
 
 // The predicate above is a COMPLEMENT — "resolves to a piece that is not a `resource`" — so every
@@ -385,11 +409,17 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
 //
 // MUTATION (physically applied, RED): let `deriveGlyphToItem` admit `cosmetic` rows and give `cos()`
 // a glyph in items/index.js ⇒ this fails by name.
-test('every glyph the table resolves is a device or a pile — no third thing has appeared', () => {
+// ⚠️ THE PARTITION IS THREE-WAY SINCE THE DOOR PACKAGE (2026-07-27) — device · pile · STRUCTURE —
+// and the title's "no third thing" is kept because the test still does that job: the third thing is
+// now named and pinned rather than assumed away. `'+'` and `'X'` resolve to real door art AND are in
+// `STRUCTURE_CODE_LIST`, which `demolishTarget` consults before its device branch, so they classify
+// `built-wall`. That is deliberate: a door is taken apart with STRIP, never with `Cmd.remove`.
+test('every glyph the table resolves is a device, a pile or built structure — nothing else', () => {
+  const STRUCTURE = new Set(STRUCTURE_CODE_LIST.map((c) => String.fromCharCode(c)));
   const subs = new Set(Object.values(GLYPH_SUBSTITUTE));
   const glyphs = Object.keys(GLYPH_TO_ITEM);
   assert.ok(glyphs.length >= 32, `GLYPH_TO_ITEM parsed as ${glyphs.length} glyphs — this test is vacuous`);
-  let devices = 0, piles = 0;
+  let devices = 0, piles = 0, structure = 0;
   for (const g of glyphs) {
     const id = GLYPH_TO_ITEM[g], kind = ITEMS[id].kind;
     const got = demolishTarget(5, 7, [], [], frameWith([[5, 7, g]]));
@@ -398,10 +428,19 @@ test('every glyph the table resolves is a device or a pile — no third thing ha
       `glyph '${g}' resolves to '${id}', a ${kind} row that is NOT a substitution. DEMOLISH will `
       + 'treat it as a device because the predicate asks "not a resource". Decide what it is: give '
       + 'it a GLYPH_SUBSTITUTE entry if a device wears it, or widen the predicate.');
+    if (STRUCTURE.has(g)) {
+      structure += 1;
+      assert.equal(got.kind, 'built-wall',
+        `structure glyph '${g}' classified as ${got.kind}. It resolves to real art AND is in `
+        + 'STRUCTURE_CODES; the second fact must win, or DEMOLISH sends Cmd.remove at a door.');
+      continue;
+    }
     devices += 1;
     assert.equal(got.kind, 'device', `device glyph '${g}' stopped being demolishable`);
   }
-  assert.ok(devices > 0 && piles > 0, `partition is one-sided (${devices} devices, ${piles} piles)`);
+  assert.ok(devices > 0 && piles > 0 && structure > 0,
+    `partition is one-sided (${devices} devices, ${piles} piles, ${structure} structure). All three `
+    + 'must be populated or one arm of this test is unexercised.');
 });
 
 // ---- local decor transforms ----
@@ -2549,5 +2588,404 @@ test('an items dispatch ALONE repaints the surfaces — the cache is not enough'
   } finally {
     Hud.renderItems(NO_ITEMS);
     await new Promise((r) => setTimeout(r, 40));
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE DOOR — a closed door inside a room rect drew a dashed box with a `+` in it (door package,
+// 2026-07-27). Everything here is DRIVEN through the shipping controller or the shipping composer.
+//
+// WHAT WAS ACTUALLY WRONG, measured rather than inherited. `docs/HANDOVER.md` says the fix is "to
+// make the two `NON_FURNITURE` sets agree". THERE IS ONLY ONE SET — `NON_FURNITURE_CODES` in
+// `room-model.js`, imported by `overview-scene.js` — since the ground-item art package unified them.
+// The disagreement that remained was between that set and `STRUCTURE_CODES`, and forcing THOSE to
+// agree would have made a closed door draw NOTHING, which is worse than the chip and is the failure
+// this package exists to end. `device-sprite-coverage.test.js`'s allowlist excused `Door` from the
+// art guard entirely, on two claims that are both false:
+//   • "drawn by the Room Zoom's STRUCTURE layer and the Overview's wall layer" — there is no such
+//     layer on either surface (`roomMaterialTiles` emits glyph 35 and 46 and nothing else; the
+//     Overview's compartments come from the `decks` slot rects). Nothing drew a door at all.
+//   • "zero such tiles on --ship grid deck 0 today (the ship's doors sit on room boundaries, which
+//     are outside every room rect)" — refuted by the census immediately below, over the committed
+//     capture, on both decks.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Every door tile on a captured deck: `[tx, ty, char, insideARoomRect]`. */
+function doorCensus(frame) {
+  const rects = deckSlots(fixView, frame.deck).map((s) => s.rect);
+  const out = [];
+  for (let ty = 0; ty < frame.h; ty += 1) {
+    for (let tx = 0; tx < frame.w; tx += 1) {
+      const c = frame.cells[ty * frame.w + tx];
+      if (!Array.isArray(c)) continue;
+      const ch = String.fromCharCode(c[0] | 0);
+      if (ch !== '+' && ch !== '/' && ch !== 'X') continue;
+      out.push([tx, ty, ch, rects.some((r) => tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h)]);
+    }
+  }
+  return out;
+}
+
+// ⚠️ THE RETRACTION, MEASURED. The allowlist entry this package deleted said the ship's doors sit
+// OUTSIDE every room rect and that there were therefore zero exposed door tiles. Both decks of the
+// committed capture say otherwise, and they say it about EVERY door: the door sits on the room's own
+// rect edge, so it is in-rect by construction on a ship whose rooms are all built the same way.
+// MUTATION: `deckSlots(fixView, frame.deck)` → `[]` (a rect list that finds nothing) ⇒ RED.
+test('THE RETRACTION: every door tile on the captured grid ship is INSIDE a room rect', () => {
+  for (const [name, fr] of [['deck 0', FIX.frame], ['deck 1', wreck]]) {
+    const doors = doorCensus(fr);
+    assert.equal(doors.length, 8,
+      `${name} carries ${doors.length} door tiles, not 8 — re-derive before adjusting, because this `
+      + 'number is the size of the surface the allowlist claimed was empty');
+    const outside = doors.filter((d) => !d[3]);
+    assert.deepEqual(outside, [],
+      `${name}: the allowlist claimed the ship's doors "sit on room boundaries, which are outside `
+      + 'every room rect". These are inside one: ' + JSON.stringify(outside));
+  }
+  // …and the closed ones are real, not hypothetical: the state the projection picks is
+  // `GlyphMapper.DeviceGlyph`, which returns '+' whenever the door is shut.
+  const closed = doorCensus(wreck).filter((d) => d[2] === '+');
+  assert.equal(closed.length, 3,
+    'deck 1 of the capture no longer carries exactly three CLOSED door tiles. It carried three when '
+    + 'the door package measured it, and each one drew a dashed box with a raw `+` in it.');
+});
+
+/** The client-space point at the centre of (tx,ty) for an arbitrary focus rect. */
+const atTileIn = (focus, tx, ty) => ({ clientX: (tx - focus.rx) * U + U / 2, clientY: (ty - focus.ry) * U + U / 2 });
+/** Enter `anchor`, size the layer rect to it, and return the focus. */
+function rzEnter(anchor) {
+  const f = slotFocus(anchor);
+  rzApi.exit();
+  rzApi.enter(anchor);
+  rzLayers._rect = { left: 0, top: 0, width: f.rw * U, height: f.rh * U };
+  return f;
+}
+
+// THE BUG, DRIVEN THROUGH THE SHIPPING CONTROLLER, on a tile a player reaches by pressing DOOR.
+// `sim/Sim.Core/Systems/BuildSystem.cs:226` says in its own comment "the door starts closed", and
+// the DOOR tool is on this palette — so a closed door inside a room is one gesture away, not a
+// fixture curiosity.
+//
+// ⚠️ THE NON-VACUITY CONTROL IS FIRST AND IS HALF THE TEST: an unskinned glyph on the SAME tile must
+// still chip. Without it, "no `+` chip" is satisfied just as well by a Room Zoom that lost its
+// furniture layer, or by a tile the room rect does not contain.
+// MUTATION: `dev('Door', '+')` → `dev('Door', null)` in items/index.js ⇒ RED.
+test('THE DOOR BUG (driven): a CLOSED door in a room rect draws a door, not a dashed `+`', () => {
+  const f = slotFocus('hold');
+  const tx = f.rx + 5, ty = f.ry + 3;
+  const cells = wreck.cells.slice();
+  try {
+    // control — a glyph nothing skins, on the tile under test
+    cells[ty * wreck.w + tx] = ['z'.charCodeAt(0), 8, 0, 0];
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const control = rzLayers.innerHTML;
+    assert.equal(chipAt(control, tx, ty), 'z',
+      'the VS-Z-25 unknown chip did not render for an unskinned glyph on this tile — the rig cannot '
+      + 'see the bug, so nothing below means anything');
+
+    cells[ty * wreck.w + tx] = ['+'.charCodeAt(0), 8, 0, 0];   // Glyphs.DoorClosed
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const html = rzLayers.innerHTML;
+
+    assert.equal(chipAt(html, tx, ty), null,
+      'A CLOSED DOOR STILL DRAWS THE DASHED BOX WITH A RAW `+` IN IT. That is HANDOVER §4l, on the '
+      + 'kind the art guard used to excuse, reachable by pressing DOOR inside a room.');
+    assert.ok(html.includes(furnId(tx, ty)),
+      'the door tile drew NOTHING. That is the other half of the defect and it is worse than the '
+      + 'chip: "make the NON_FURNITURE sets agree" would have shipped exactly this.');
+    assert.equal(itemForGlyph('+'.charCodeAt(0)), 'sliding-door',
+      "the closed-door glyph must resolve to the set's own door leaf, not to some other piece");
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
+  }
+});
+
+// The LOCKED state is a SEPARATE decision and a separate piece, because the SVG furniture layer
+// reads `cell[0]` only — `GlyphColor.Locked` (GlyphMapper.cs:243) reaches neither surface, so the
+// art is the one channel left that can say "locked" rather than merely "shut".
+// MUTATION: delete the `X: 'blast-door'` entry from GLYPH_SUBSTITUTE ⇒ RED.
+test('a LOCKED door draws a DIFFERENT door — the only channel left that can say locked', () => {
+  const f = slotFocus('hold');
+  const tx = f.rx + 5, ty = f.ry + 3;
+  const cells = wreck.cells.slice();
+  try {
+    cells[ty * wreck.w + tx] = ['X'.charCodeAt(0), 8, 0, 0];   // Glyphs.DoorLocked
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    assert.equal(chipAt(rzLayers.innerHTML, tx, ty), null,
+      'a LOCKED door drew the dashed box with a raw `X` in it');
+    assert.ok(rzLayers.innerHTML.includes(furnId(tx, ty)), 'a locked door drew nothing at all');
+    assert.equal(itemForGlyph('X'.charCodeAt(0)), 'blast-door');
+    assert.notEqual(itemForGlyph('X'.charCodeAt(0)), itemForGlyph('+'.charCodeAt(0)),
+      'LOCKED and CLOSED collapsed onto one piece. `cell[1]` never reaches this layer, so a player '
+      + 'would then have no way at all to tell a sealed door from a shut one.');
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
+  }
+});
+
+// THE DELIBERATE ASYMMETRY — and it is asserted because it is the half a reviewer will read as an
+// oversight. An OPEN doorway is a GAP: `'/'` stays in NON_FURNITURE, the wall run shows a hole, and
+// the player can therefore see at a glance which doors are shut. Ledgered as `NO_DEVICE_GLYPH_ART`.
+// MUTATION: remove 47 from NON_FURNITURE_CODES ⇒ RED (the open tile starts drawing).
+test('an OPEN door still draws NOTHING, and that is the decision — with a control that proves it', () => {
+  const f = slotFocus('hold');
+  const tx = f.rx + 5, ty = f.ry + 3;
+  const cells = wreck.cells.slice();
+  try {
+    cells[ty * wreck.w + tx] = ['/'.charCodeAt(0), 8, 0, 0];   // Glyphs.DoorOpen
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    const open = rzLayers.innerHTML;
+    assert.equal(chipAt(open, tx, ty), null, 'an open doorway drew the dashed chip');
+    assert.ok(!open.includes(furnId(tx, ty)),
+      'an OPEN doorway drew a door leaf. That asserts the door is shut, on the one tile a crew '
+      + 'member walks through.');
+    // THE CONTROL, on the same tile in the same room: closed DOES draw. Without it this test passes
+    // against a surface that draws no doors in any state, which is the bug it sits next to.
+    cells[ty * wreck.w + tx] = ['+'.charCodeAt(0), 8, 0, 0];
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    assert.ok(rzLayers.innerHTML.includes(furnId(tx, ty)),
+      'the CLOSED state draws nothing either — "open draws nothing" is then vacuous');
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
+  }
+});
+
+// THE DOUBLY-LATENT HARM the `items` channel layered on top, closed by the art rather than by
+// narrowing the suppression. `furnitureSvg` drops a cell on a stocked tile when it is `!itemId` OR a
+// RESOURCE piece; a door is a `functional` piece, so it survives. Both halves are driven here,
+// because "the door survives" is only meaningful beside "a pile does not".
+// MUTATION: `(!c.itemId || isResourceItem(c.itemId))` → `true` in roomzoom-view.js ⇒ RED.
+test('a ground stack on a door tile does NOT erase the door (and still erases a pile)', () => {
+  const f = slotFocus('hold');
+  const door = { x: f.rx + 5, y: f.ry + 3 };
+  const pile = { x: f.rx + 6, y: f.ry + 3 };
+  const cells = wreck.cells.slice();
+  try {
+    cells[door.y * wreck.w + door.x] = ['+'.charCodeAt(0), 8, 0, 0];
+    cells[pile.y * wreck.w + pile.x] = [44, 6, 0, 0];             // ',' Regolith, a RESOURCE piece
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderItems(NO_ITEMS);
+    rzEnter('hold');
+    const before = rzLayers.innerHTML;
+    assert.ok(before.includes(furnId(door.x, door.y)), 'precondition: the door is not drawn unstocked');
+    assert.ok(before.includes(furnId(pile.x, pile.y)), 'precondition: the frame-derived pile is absent');
+
+    Hud.renderItems(itemsMsg([[door.x, door.y, 0, 12], [pile.x, pile.y, 0, 12]]));
+    rzEnter('hold');
+    const after = rzLayers.innerHTML;
+    assert.ok(after.includes(furnId(door.x, door.y)),
+      'THE DOOR WAS ERASED BY A GROUND STACK. The `items` channel suppresses the frame-derived '
+      + 'drawing on a stocked tile, and before the door had art its cell was `itemId:""` — so a door '
+      + 'with stock on it drew NOTHING, not even the wrong letter. Real furniture must survive: the '
+      + 'stack says what is LYING there, the door says what is INSTALLED there.');
+    assert.ok(!after.includes(furnId(pile.x, pile.y)),
+      'the suppression stopped working for a RESOURCE piece — the pile is now drawn twice, once '
+      + 'from the countless projection and once from the channel');
+  } finally {
+    Hud.renderFrame(wreck);
+    Hud.renderItems(NO_ITEMS);
+    rzEnter('hold');
+  }
+});
+
+// THE OTHER SURFACE. The Overview `continue`s on `!itemId`, so an unskinned glyph there is not a
+// chip — it is silently absent, which is worse to find. Same fix, different failure mode.
+// MUTATION: `dev('Door', '+')` → `dev('Door', null)` in items/index.js ⇒ RED.
+test('the OVERVIEW composer draws a closed door too — it was silently absent, not chipped', () => {
+  const probe = (ch) => overviewScene({
+    deck: DECK1, decksView: fixView, crew: [], marks: [],
+    frame: { deck: DECK1, w: 1, h: 1, lens: 'none', cells: [[ch.charCodeAt(0), 8, 0, 0]] },
+  });
+  assert.ok(!probe('z').includes('class="pl-furniture"'),
+    'control: an unskinned glyph drew a furniture layer on the Overview — the probe proves nothing');
+  assert.ok(probe('+').includes('class="pl-furniture"'),
+    'THE OVERVIEW DREW NOTHING for a closed door. `furnitureLayer` does `if (!itemId) continue`, so '
+    + 'the tile is not a chip here, it is absent from the schematic entirely.');
+  assert.ok(probe('X').includes('class="pl-furniture"'), 'nor for a locked one');
+  assert.ok(!probe('/').includes('class="pl-furniture"'),
+    'an OPEN doorway drew a leaf on the Overview — see NO_DEVICE_GLYPH_ART for why it must not');
+});
+
+// ART MUST NOT MAKE A DOOR REMOVABLE. `demolishTarget`'s device branch excludes `STRUCTURE_CODES`,
+// and this is the assertion that keeps the two sets deliberately unequal: a door is now furniture
+// the surfaces DRAW and structure DEMOLISH cannot take apart, and both are true at once.
+// MUTATION: delete 43 and 88 from STRUCTURE_CODES ⇒ RED (they classify as `device`).
+test('a door is still BUILT STRUCTURE for DEMOLISH — the art did not make it Cmd.remove-able', () => {
+  const at = (ch) => {
+    const cells = wreck.cells.slice();
+    cells[(HOLD.ry + 3) * wreck.w + (HOLD.rx + 5)] = [ch.charCodeAt(0), 8, 0, 0];
+    return demolishTarget(HOLD.rx + 5, HOLD.ry + 3, [], [], { ...wreck, cells });
+  };
+  for (const ch of ['+', '/', 'X']) {
+    assert.deepEqual(at(ch), { kind: 'built-wall', verb: null },
+      `DEMOLISH on a ${JSON.stringify(ch)} door no longer classifies as built structure. Giving the `
+      + 'door glyphs art made `itemForGlyph` truthy for them, and `STRUCTURE_CODES` is the only '
+      + 'thing standing between that and a `Cmd.remove` at a door the sim expects STRIP to take.');
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// DEMOLISH → `Cmd.remove`, DRIVEN. Until now NOTHING anywhere pinned that a device DEMOLISH emits a
+// command at all: `roomzoom-view.js:875`'s `case 'device'` arm was unreached by any test, and every
+// assertion about the Light regression stopped at `demolishTarget`'s RETURN VALUE.
+//
+// ⚠️ WHY THE GAP MATTERS RATHER THAN BEING A TIDINESS ITEM. `demolishTarget` returning
+// `{kind:'device'}` and the player actually removing a device are two different claims, and the
+// second one broke: for one commit DEMOLISH was dead on every lamp on `--ship grid` — the switch hit
+// `default: break`, so no command, no toast and no pulse — and the suite was 796-GREEN BEFORE AND
+// AFTER THE FIX. A classifier assertion cannot see a dropped `case`, a renamed verb, a `Cmd.remove`
+// that stopped existing, or a payload with the wrong deck on it.
+//
+// RECORDED AT THE SEAM, NOT SCANNED (`CLAUDE.md` trap 4): the assertions read what came out of the
+// injected `send`, so they catch every spelling of the mistake and no comment stripper is involved.
+// PARITY IS BY IMPORT: expectations are compared against what `Cmd.remove(...)` actually returns, so
+// a drift on either side reddens — with one absolute wire-shape pin beside it, because equality
+// alone stays green through a change that moves both.
+//
+// EACH LEG IS ITS OWN `test()` (`CLAUDE.md` trap 5 — `assert` throws, so a multi-leg test reports
+// only its first failing leg and a dead second leg is indistinguishable from a live one).
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Everything the controller sent, cursor chatter dropped. */
+const sentOrders = () => rzSent.filter((o) => o && o.cmd !== 'cursor');
+
+// THE SUBSTITUTED-ART CASE, ON THE REAL SHIP — the exact tile the regression shipped broken. Not a
+// synthetic frame: the committed `--ship grid` deck-1 capture puts a Light at (5,13), inside the
+// FABRICATION room rect, and `RoomOutfitter` puts one at the centre of every room. `'*'` resolves
+// through `GLYPH_SUBSTITUTE` to `wall-lamp`, a COSMETIC row, which is what made a predicate over the
+// borrowed art's registry `kind` classify a real placeable device as `empty`.
+//
+// MUTATIONS (physically applied, semantic REDs, module left loadable):
+//   • `!isResourceItem(_id)` → `isDeviceItem(_id)` in room-model.js ⇒ RED (the shipped defect).
+//   • delete `case 'device':` from `doDemolish`'s switch in roomzoom-view.js ⇒ RED (the arm that
+//     no test reached before this one).
+test('DEMOLISH on a real LAMP on the captured grid ship SENDS Cmd.remove (the seam, driven)', () => {
+  const f = rzEnter('fabrication');
+  const tile = { x: 5, y: 13 };
+  assert.equal(wreck.cells[tile.y * wreck.w + tile.x][0], '*'.charCodeAt(0),
+    'the captured ship no longer has a Light at (5,13) — re-derive the tile, do not delete the test');
+  assert.ok(clampTileToRoom(tile.x, tile.y, f), 'that lamp is not inside the FABRICATION rect');
+
+  // CONTROL FIRST: the same click with NO tool armed must send nothing. Without it, "a remove was
+  // sent" is satisfied by a canvas that emits one on every click.
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  assert.deepEqual(sentOrders(), [], 'an UNARMED click on the lamp sent a command');
+
+  rzArm('demolish');
+  rzSent.length = 0;
+  rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+  const orders = sentOrders();
+  rzArm('demolish');
+
+  assert.equal(orders.length, 1,
+    'DEMOLISH on a LIGHT emitted ' + orders.length + ' commands, not 1: ' + JSON.stringify(orders)
+    + '\nZERO is the regression that shipped — `roomzoom-view.js`\'s switch hit `default: break` and '
+    + 'the click was dropped with no command, no toast and no pulse, on a device the player can '
+    + 'build from this very palette.');
+  assert.deepEqual(orders[0], Cmd.remove(tile.x, tile.y, f.deck),
+    'the payload is not what `Cmd.remove` lowers to. Compared against the shipped lowering by '
+    + 'IMPORT, so a drift on either side reddens.');
+  // …and one ABSOLUTE pin beside it, because equality-by-import stays green through a change that
+  // moves both sides together — the deck in particular is invisible to it.
+  assert.deepEqual(orders[0], { cmd: 'remove', x: 5, y: 13, deck: 1 },
+    'THE WIRE SHAPE MOVED. `RemoveDeviceCommand` reads {cmd,x,y,deck}; a wrong deck removes a device '
+    + 'on another floor, which no equality-by-import assertion can see.');
+});
+
+// The same arm, reached by a device that wears its OWN art — so "DEMOLISH removes devices" is not a
+// claim about substitutions only. Driven on a synthetic tile because the hold has no device in it.
+// MUTATION: delete `case 'device':` from `doDemolish` ⇒ RED.
+test('DEMOLISH on a device wearing its OWN art sends Cmd.remove too', () => {
+  const f = slotFocus('hold');
+  const tile = { x: f.rx + 5, y: f.ry + 3 };
+  const cells = wreck.cells.slice();
+  cells[tile.y * wreck.w + tile.x] = ['S'.charCodeAt(0), 8, 0, 0];   // Scrubber — a plain functional row
+  try {
+    assert.equal(ITEMS[itemForGlyph('S'.charCodeAt(0))].kind, 'functional',
+      "'S' no longer resolves to a functional row, so this test no longer contrasts with the lamp");
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    rzArm('demolish');
+    rzSent.length = 0;
+    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    const orders = sentOrders();
+    rzArm('demolish');
+    assert.deepEqual(orders, [Cmd.remove(tile.x, tile.y, f.deck)],
+      'DEMOLISH on an ordinary device did not lower to Cmd.remove: ' + JSON.stringify(orders));
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
+  }
+});
+
+// THE COMPLEMENT, and it is what stops the two tests above being satisfied by "always send remove".
+// A ground pile classifies `empty`, the switch hits `default: break`, and NOTHING is sent — which is
+// correct, because there is no device on the tile and `RemoveDeviceCommand` would have nothing to
+// act on. This is the leg the ground-item art created the need for.
+// MUTATION: `!isResourceItem(_id)` → bare `_id` in room-model.js ⇒ RED.
+test('DEMOLISH on a ground PILE sends nothing — the art did not make spoil removable', () => {
+  const f = slotFocus('hold');
+  const tile = { x: f.rx + 5, y: f.ry + 3 };
+  const cells = wreck.cells.slice();
+  cells[tile.y * wreck.w + tile.x] = [44, 6, 0, 0];   // ',' Regolith — a RESOURCE row with real art
+  try {
+    assert.ok(itemForGlyph(44), "precondition: ',' resolves to nothing, so this pins nothing");
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    rzArm('demolish');
+    rzSent.length = 0;
+    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    const orders = sentOrders();
+    rzArm('demolish');
+    assert.deepEqual(orders, [],
+      'DEMOLISH on a SPOIL PILE sent ' + JSON.stringify(orders) + '. `Cmd.remove` lowers to '
+      + 'RemoveDeviceCommand and there is no device on that tile; the pile only resolves to art '
+      + 'because the ground-item package gave resource rows glyphs.');
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
+  }
+});
+
+// A DOOR is the case the door package created and it belongs in this section rather than only in the
+// classifier tests, because what a reviewer needs to know is what LEAVES THE CLIENT. A door now
+// resolves to real art, so the only thing keeping it out of the `device` arm is `STRUCTURE_CODES` —
+// and if that ever slips the player gets a `Cmd.remove` at a tile the sim expects STRIP to take.
+// MUTATION: delete 43 from STRUCTURE_CODE_LIST in room-model.js ⇒ RED.
+test('DEMOLISH on a CLOSED DOOR sends nothing and names STRIP — art did not make it removable', () => {
+  const f = slotFocus('hold');
+  const tile = { x: f.rx + 5, y: f.ry + 3 };
+  const cells = wreck.cells.slice();
+  cells[tile.y * wreck.w + tile.x] = ['+'.charCodeAt(0), 8, 0, 0];
+  try {
+    assert.ok(itemForGlyph('+'.charCodeAt(0)),
+      'precondition: the closed door resolves to no art, so this test is not guarding the new risk');
+    Hud.renderFrame({ ...wreck, cells });
+    rzEnter('hold');
+    rzArm('demolish');
+    rzSent.length = 0;
+    rzDoc.getElementById('rz-toast').textContent = '';
+    rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
+    const orders = sentOrders();
+    const toast = rzDoc.getElementById('rz-toast').textContent;
+    rzArm('demolish');
+    assert.deepEqual(orders, [],
+      'DEMOLISH on a DOOR sent ' + JSON.stringify(orders) + '. Giving the door glyphs art made '
+      + '`itemForGlyph` truthy for them; STRUCTURE_CODES is the only thing that keeps them out of '
+      + 'the device arm.');
+    assert.match(toast, /STRIP/,
+      'and the player must be told which verb DOES take a door apart, or the tool reads as broken');
+  } finally {
+    Hud.renderFrame(wreck);
+    rzEnter('hold');
   }
 });

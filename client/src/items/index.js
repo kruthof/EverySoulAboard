@@ -34,9 +34,22 @@
 // that way silently meant "no art" on the one standard surface. **It is NO LONGER cross-checked
 // against `SPRITE_FOR_GLYPH`** (`perilune-item-mapping.md` says so in bold); the authority is
 // `Glyphs.ForDevice`, mechanically, via `client/test/device-sprite-coverage.test.js`.
-// (`sensor-array`'s row carried no such note at all — `x` was never drawn by anything.) Doors,
+// (`sensor-array`'s row carried no such note at all — `x` was never drawn by anything.)
 // `power-conduit` and `pipe-run` stay `null` on purpose: those ARE drawn by other layers on every
 // surface, and `items/glyph-map.js` + its guard record that decision by name.
+//
+// ⚠️ "DOORS" USED TO BE IN THAT LAST SENTENCE AND IT WAS FALSE — quoted, not deleted, because the
+// claim survived three packages and a guard was built on top of it. It read *"Doors, `power-conduit`
+// and `pipe-run` stay `null` on purpose: those ARE drawn by other layers on every surface"*.
+// **NO LAYER ON EITHER SVG SURFACE DRAWS A DOOR.** The Room Zoom's so-called structure layer is
+// `roomMaterialTiles` → `materialLayerSvg`, which emits `kind:'wall'` for glyph 35 and
+// `kind:'floor'` for glyph 46 and NOTHING else; the Overview's compartments come from the `decks`
+// slot rects, not from frame codes at all. So a CLOSED door (`'+'`) inside a room rect drew the
+// VS-Z-25 dashed chip carrying a raw `+`, and a LOCKED one (`'X'`) the same — and the DOOR tool on
+// the Room Zoom palette builds a door that `BuildSystem.cs:226` starts CLOSED, so this was reachable
+// by one first-class player gesture, not by a corner case. `sliding-door` now claims `'+'`;
+// `'X'` is in `GLYPH_SUBSTITUTE`. See `client/src/items/glyph-map.js` for why `'/'` (open) is the one
+// door state that correctly draws nothing.
 //   decor       the non-hashed decor channel key, for COSMETIC pieces
 //   material    'wall' | 'floor', for MATERIAL pieces
 //   size        {w,h} — the piece's design footprint in mock px (a placement hint; from the mock)
@@ -118,7 +131,10 @@ export const ITEMS = Object.freeze({
   'carpet-floor':     { build: S.carpetFloor,     size: { w: 106, h: 94 }, ...floor() },
 
   // ── FIXTURES (18) ──
-  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', null) },
+  // `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(DeviceKind.Door)` — the rest glyph of the
+  // kind, so this row is an ordinary `ForDevice` claim and needs no exception anywhere. The piece is
+  // a steel leaf with a lit centre strip: a shut door, which is what the tile means.
+  'sliding-door':     { build: F.slidingDoor,     size: { w: 96, h: 70 }, ...dev('Door', '+') },
   'airlock':          { build: F.airlock,         size: { w: 80, h: 80 }, ...dev('Door', null) },
   'hatch-ladder':     { build: F.hatchLadder,     size: { w: 64, h: 74 }, ...dev('Ladder', 'H') },
   'power-conduit':    { build: F.powerConduit,    size: { w: 96, h: 14 }, ...dev('Conduit', null) },
