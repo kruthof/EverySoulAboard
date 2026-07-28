@@ -43,6 +43,44 @@ is renamed). Tag `v2-talking-ship`.
 > A 2× over-statement of `DaysOfFood` passed the **entire gate green**, in the very package that exists
 > to fix a 2× error.
 >
+> ### ⚠️⚠️ OWNER REPORT FROM LIVE PLAY (2026-07-28), AND THE CAUSE IS FOUND — READ BEFORE TOUCHING DOOR ART
+>
+> **The report, verbatim:** *"doors are only drawn in front of empty rooms; as soon as I allocate
+> them, they become overwritten."*
+>
+> **It is NOT a rendering bug and NOT a layer-order bug.** `Commands.cs:630-646` — the
+> commission/allocate path — **force-opens and unlocks every door bordering the compartment**, by
+> design and with a comment saying why (*"so the room is enterable and its air joins the ship"*). An
+> open door is `Glyphs.DoorOpen` `'/'`, and the door package **DELIBERATELY LEFT `'/'` UNSKINNED**
+> (`client/src/items/glyph-map.js:130-134`, ledgered as `NO_DEVICE_GLYPH_ART`) on the rationale that
+> *"an open doorway is a gap, and the asymmetry is what lets a player see which doors are shut."*
+>
+> ⇒ **Allocate a room ⇒ its doors open ⇒ their glyph becomes `'/'` ⇒ no art ⇒ the door draws nothing.
+> Permanently, because nothing ever closes them again.**
+>
+> **This was measured on the merge night and NOBODY CONNECTED IT.** The review's own boot census reads:
+> deck 0 — **8 doors, all OPEN, all in NAMED (allocated) rooms**; deck 1 — **3 CLOSED, all in
+> blank-`anchorName` (unallocated) halls**. That is precisely the correlation the owner is describing,
+> sitting in the review report as two neutral rows. **The census was read as geometry ("are doors
+> inside room rects?") and never as a JOIN against door STATE.**
+>
+> ⚠️ **THE RATIONALE FOR LEAVING `'/'` UNSKINNED IS THEREFORE REFUTED BY PLAY, not by argument.** On a
+> ship anyone has actually played, **almost every door is open**, so the "asymmetry" does not
+> communicate "which doors are shut" — it communicates "this ship has no doors". The art is visible
+> only in the compartments the player has *not* commissioned yet.
+>
+> **The fix is a piece, not a predicate:** skin `'/'` (a recessed leaf / open door pocket — something
+> that reads as *a doorway with its door retracted*, not as a wall gap), then retire `'/'` from
+> `NO_DEVICE_GLYPH_ART` and from `NON_FURNITURE_CODES`. **It is an ART decision and therefore the
+> owner's** — the third of three door pieces, beside `sliding-door` (closed) and `blast-door` (locked).
+> Do **not** "fix" it by making commissioning leave doors shut: that would change hashed sim state
+> (`Device.IsOpen`), move pins, and break the air-joining the comment exists to guarantee.
+>
+> ⚠️ **Lesson worth keeping, and it is a NEW shape:** a census that measures *geometry* cannot see a
+> defect that lives in *state*. Both halves were measured, on the same night, by the same review — and
+> the join between them was never made. **When you census tiles for an art gap, join against every
+> state the art keys on.**
+>
 > ### ⇒ NEW, OPEN ON THE OWNER — added by this run
 >
 > 1. **A built door has NO removal verb on any surface** ("DOOR-NO-REMOVAL"). DEMOLISH refuses it,
@@ -52,6 +90,9 @@ is renamed). Tag `v2-talking-ship`.
 > 2. **The door art has had no human eye on it.** Doors now draw on the **Level-1 Overview for the
 >    first time** (three pieces at boot, deck 1 only). `blast-door` for LOCKED vs `sliding-door` for
 >    CLOSED is an aesthetic call; the LOCKED state is **unphotographed**. Shots: `docs/design/shots/`.
+> 3. **The OPEN-doorway piece (`'/'`) — the owner report above.** This is now the *first* door
+>    question, ahead of item 2: on a played ship almost every door is open, so **this is the piece the
+>    player actually sees**, and today it does not exist.
 >
 > ### ⇒ THE FOLLOW-UP THIS RUN CREATED — the honest cost of closing the livelock
 >
