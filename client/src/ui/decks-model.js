@@ -10,14 +10,14 @@
 import { roomMaterial, ROOM_TYPE } from '../theme/warm-tokens.js';
 
 /**
- * RoomType id → UPPERCASE display label. Covers all 16 members of the enum (mirrors
+ * RoomType id → UPPERCASE display label. Covers all 17 members of the enum (mirrors
  * sim/Sim.Core/Rooms/RoomType.cs). `None` (0) is deliberately blank — an unassigned slot / empty
  * hall shows no room label, only its anchor fallback (which is itself "" for an empty hall).
  */
 export const ROOM_LABEL_BY_ID = Object.freeze({
   0: '', 1: 'CORRIDOR', 2: 'BRIDGE', 3: 'COMMAND', 4: 'MEDBAY', 5: 'QUARTERS', 6: 'OBSERVATORY',
   7: 'HYDROPONICS', 8: 'MESS', 9: 'WORKSHOP', 10: 'COMMONS', 11: 'REACTOR', 12: 'ENGINEERING',
-  13: 'FABRICATION', 14: 'STORAGE', 15: 'LIFE SUPPORT',
+  13: 'FABRICATION', 14: 'STORAGE', 15: 'LIFE SUPPORT', 16: 'CRYO BAY',
 });
 
 /**

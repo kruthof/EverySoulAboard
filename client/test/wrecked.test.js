@@ -106,7 +106,7 @@ test('the spec really carries 70 wrecked pieces and 70 pristine labels', () => {
 // number. This one is a per-class OBJECT so a class that moves names itself, and the four numbers
 // were re-counted off the shipped registry (they are `items.test.js`'s tally, which is the point:
 // every registry row, of every class, has exactly one twin).
-test('the class census of the twin set: 27 functional, 23 cosmetic, 12 material, 8 resource', () => {
+test('the class census of the twin set: 29 functional, 21 cosmetic, 12 material, 8 resource', () => {
   // ⚠️ MOVED ABOVE THE LOOP DELIBERATELY (CLAUDE.md trap 5). It used to sit AFTER the `deepEqual`
   // below, where it could never fire on its own: the four class counts sum to 70 and every id
   // contributes exactly one, so a 69-row twin set fails the `deepEqual` first and `assert` throws.
@@ -121,7 +121,12 @@ test('the class census of the twin set: 27 functional, 23 cosmetic, 12 material,
     assert.ok(ITEMS[id], `${id} is a twin with no registry row behind it`);
     by[ITEMS[id].kind] += 1;
   }
-  assert.deepEqual(by, { functional: 27, cosmetic: 23, material: 12, resource: 8 });
+  // ⚠️ RE-COUNTED AGAIN AFTER THE WRECK START (W3): `DeviceKind.CryoPod` now exists, so the two
+  // cryo-capsule pieces moved COSMETIC → FUNCTIONAL [exists] and claimed the two state glyphs
+  // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
+  // at 70 because nothing was added or removed, only reclassified — which is exactly the shape a
+  // single total would have hidden, and the reason this census is a per-class object.
+  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 8 });
 });
 
 test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () => {

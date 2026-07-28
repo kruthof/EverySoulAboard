@@ -155,7 +155,7 @@ function room(material) {
 }
 
 /**
- * RoomType name → material row. Covers ALL 16 members of the enum. Judgment calls documented:
+ * RoomType name → material row. Covers ALL 17 members of the enum. Judgment calls documented:
  *   - None          → steel-tan : unassigned/neutral deck (same as the fallback).
  *   - Bridge/Command→ cream      : helm/command instrument rooms (task rule).
  *   - Medbay        → cream      : clinical (task rule).
@@ -165,6 +165,9 @@ function room(material) {
  *   - Mess/Commons  → wood       : galley / common room, social (bible §2.4).
  *   - Hydro         → grow       : hydroponics (task rule).
  *   - Corridor      → steel-tan  : spine/utility (task rule).
+ *   - Cryo          → cream      : the sleeper bay is a clinical room in every way that matters —
+ *                                  sealed vessels, sterile surfaces, bodies under supervision — so it
+ *                                  takes Medbay's cream rather than the utility steel-tan (JUDGMENT).
  *   - Workshop/Fabrication/Reactor/Engineering/LifeSupport/Storage → steel-tan : work + utility.
  *                                  §5 offers METAL GRATING for reactor/engineering, but the material
  *                                  CATEGORY is the utility steel-tan (JUDGMENT: grating is a floor
@@ -187,13 +190,14 @@ export const ROOM_MATERIAL = Object.freeze({
   Fabrication: room('steel-tan'),
   Storage:     room('steel-tan'),
   LifeSupport: room('steel-tan'),
+  Cryo:        room('cream'),
 });
 
 /** RoomType name → stable enum id (mirrors sim/Sim.Core/Rooms/RoomType.cs; never reorder). */
 export const ROOM_TYPE = Object.freeze({
   None: 0, Corridor: 1, Bridge: 2, Command: 3, Medbay: 4, Quarters: 5, Observatory: 6, Hydro: 7,
   Mess: 8, Workshop: 9, Commons: 10, Reactor: 11, Engineering: 12, Fabrication: 13, Storage: 14,
-  LifeSupport: 15,
+  LifeSupport: 15, Cryo: 16,
 });
 
 /** id → RoomType name (reverse of ROOM_TYPE), for the tolerant numeric helper path. */

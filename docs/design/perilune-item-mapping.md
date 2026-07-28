@@ -166,15 +166,22 @@ Added by the **2026-07-28 mock re-import**. Both are `client/src/items/cryo.js`.
 
 | # | Piece | Class | Placement | Sim glyph | Notes |
 |---|-------|-------|-----------|-----------|-------|
-| 69 | CRYO CAPSULE · OCCUPIED | COSMETIC | decor `cryo_capsule_occupied` | — | A crew member frozen behind frost glass; cyan `-196°` plate, live LED. |
-| 70 | CRYO CAPSULE · OPEN | COSMETIC | decor `cryo_capsule_open` | — | The same shell empty: padded bed, lid hinged open at 24°, icicles, frost puddle, amber `EMPTY` plate. |
+| 69 | CRYO CAPSULE · OCCUPIED | FUNCTIONAL [exists] | CryoPod (27) | `K` → occupied capsule | A crew member frozen behind frost glass; cyan `-196°` plate, live LED. The kind's REST glyph (`Glyphs.ForDevice`). |
+| 70 | CRYO CAPSULE · OPEN | FUNCTIONAL [exists] | CryoPod (27) | `k` → open capsule | The same shell empty: padded bed, lid hinged open at 24°, icicles, frost puddle, amber `EMPTY` plate. A STATE glyph, from `GlyphMapper.DeviceGlyph`, in no `ForDevice` arm. |
 
-⚠️ **The `—` in the glyph column here is a DECISION, not an omission**, and this is the one place in
-this file where that has to be said out loud — `index.js`'s header records that a `—` justified the
-wrong way is how `hydroponics`, `research-console` and `sensor-array` shipped unskinned. There is
-**no cryo-capsule `DeviceKind`** in `sim/Sim.Core/Device.cs`, so there is no `Glyphs.ForDevice` char
-to claim and no tile the sim would ever project one onto. Giving either a glyph it does not own
-would make `items/glyph-map.js` skin a tile with art for a device that is not there.
+⛔ **THE PARAGRAPH THAT STOOD HERE IS RETRACTED BY THE WRECK START (W3), AND IT IS QUOTED RATHER
+THAN DELETED BECAUSE ITS REASONING WAS CORRECT ON THE DAY.** It read: *"The `—` in the glyph column
+here is a DECISION, not an omission … There is no cryo-capsule `DeviceKind` in
+`sim/Sim.Core/Device.cs`, so there is no `Glyphs.ForDevice` char to claim and no tile the sim would
+ever project one onto."* **`DeviceKind.CryoPod = 27` now exists** and `--ship wreck` authors twelve
+of them, so both clauses are false and both pieces are `functional`.
+
+⭐ **ONE KIND, TWO PIECES, TWO GLYPHS — the shape doors already use.** A pod's glyph comes from its
+STATE: `GlyphMapper.DeviceGlyph` returns `'k'` for an open capsule and `'K'` for an occupied one.
+Only `'K'` is a `Glyphs.ForDevice` arm; `'k'` appears in no switch anywhere, which is the same
+blind spot that hid `'X'` (a locked door) from the art guard for months.
+`client/test/device-sprite-coverage.test.js` now parses `DeviceGlyph`'s body PER KIND for exactly
+this reason.
 
 ⚠️ **Neither replaces CRYOPOD (29).** That piece is a 48×82 lozenge seen from directly above and is
 unchanged; these are 60×104 upright capsules that state which of two things is true of the tile. The
@@ -213,10 +220,10 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 
 | Class | Count |
 |-------|------:|
-| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 23 |
+| FUNCTIONAL — [exists] (map to a live `DeviceKind`, pure re-skin) | 25 |
 | FUNCTIONAL — [NEW] (needs a new `DeviceKind`) | 4 |
-| **FUNCTIONAL total** | **27** |
-| COSMETIC (view-only `decor`, non-hashed) | 23 |
+| **FUNCTIONAL total** | **29** |
+| COSMETIC (view-only `decor`, non-hashed) | 21 |
 | MATERIAL (wall/floor tint) | 12 |
 | RESOURCE (ground stack, a sim `ItemKind`) | 8 |
 | **Total** | **70** |
@@ -227,6 +234,11 @@ row") reads the seven rows above out of this markdown and compares every number 
 four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
 changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
 shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
+⚠️ **THEN 23 → 21 COSMETIC and 27 → 29 FUNCTIONAL, later the same day**, when the wreck start
+shipped `DeviceKind.CryoPod` and the two CRYO CAPSULE pieces were reclassified. **The TOTAL did not
+move**, because nothing was added or removed — only reclassified, which is precisely the change a
+single total would have hidden and the reason the guard asserts a per-class object.
 
 ⚠️ **21 → 23 COSMETIC and 68 → 70 on 2026-07-28**, from the two CRYO CAPSULE pieces. Re-counted off
 the shipped registry, not derived from this table — `client/test/items.test.js` asserts the four

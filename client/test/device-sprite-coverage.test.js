@@ -170,13 +170,45 @@ export const parseForItem = (csSrc) =>
  * @returns {string[]} the glyph chars `DeviceGlyph` can return without consulting `ForDevice`
  */
 export function parseDeviceGlyphOverrides(mapperSrc, glyphsSrc) {
+  const byKind = parseDeviceGlyphOverridesByKind(mapperSrc, glyphsSrc);
+  const out = [];
+  for (const chars of Object.values(byKind)) for (const c of chars) if (!out.includes(c)) out.push(c);
+  return out;
+}
+
+/**
+ * The same population, ATTRIBUTED TO ITS KIND — `{ Door: ['X','/','+'], CryoPod: ['k','K'] }`.
+ *
+ * ⚠️ WHY THIS EXISTS, AND IT IS THE DOOR LESSON ARRIVING FROM THE OTHER SIDE. `DeviceGlyph` is now
+ * a two-kind switch: the wreck start's `DeviceKind.CryoPod` projects `'k'` for an OPEN capsule and
+ * `'K'` for an occupied one, and the warm set ships a separate piece for each. So for the first
+ * time a state glyph is claimed by a real `ITEMS` row rather than by a `GLYPH_SUBSTITUTE` entry —
+ * and two guards below compared a row's glyph against `Glyphs.ForDevice[kind]`, the kind's REST
+ * glyph, which `'k'` is not. Both went red on a CORRECT registry. That is the shape
+ * `GLYPH_SUBSTITUTE`'s own test already records in its header: *"A guard that cannot express the
+ * fix is part of the bug."*
+ *
+ * PARSED, NOT TRANSCRIBED, like everything else here. The attribution rule is positional: every
+ * `Glyphs.<Const>` in `DeviceGlyph`'s body belongs to the most recent `DeviceKind.<Name>` before
+ * it, which is exactly how the shipped body reads (one `if (device.Kind == DeviceKind.X)` guard per
+ * kind, then its chars). `Glyphs.ForDevice(device.Kind)` at the tail contributes nothing: `ForDevice`
+ * is not a `const char`, and `device.Kind` has no dot after `Kind` so it cannot re-bind the kind.
+ * A future body that interleaves kinds differently would need this rule revisited — which is why
+ * the rule is written down here rather than left implicit.
+ * @returns {Object<string,string[]>} DeviceKind name → the glyph chars it can project from state
+ */
+export function parseDeviceGlyphOverridesByKind(mapperSrc, glyphsSrc) {
   const consts = parseCharConsts(codeOnly(glyphsSrc));
   const body = blockAfter(codeOnly(mapperSrc), 'char DeviceGlyph(Device device)');
-  const out = [];
-  const re = /Glyphs\.(\w+)/g;
+  const out = Object.create(null);
+  let kind = null;
+  const re = /DeviceKind\.(\w+)|Glyphs\.(\w+)/g;
   for (let m = re.exec(body); m; m = re.exec(body)) {
-    const v = consts[m[1]];
-    if (typeof v === 'string' && v.length === 1 && !out.includes(v)) out.push(v);
+    if (m[1] !== undefined) { kind = m[1]; continue; }
+    const v = consts[m[2]];
+    if (typeof v !== 'string' || v.length !== 1 || kind === null) continue;
+    if (out[kind] === undefined) out[kind] = [];
+    if (!out[kind].includes(v)) out[kind].push(v);
   }
   return out;
 }
@@ -189,8 +221,10 @@ const DEVICE_KINDS = parseDeviceKinds(DEVICE_CS);
 const ITEM_KINDS = parseItemKinds(ITEM_CS);
 const FOR_DEVICE = parseForDevice(GLYPHS_CS);
 const FOR_ITEM = parseForItem(GLYPHS_CS);
-/** The door state chars `GlyphMapper.DeviceGlyph` returns instead of calling `ForDevice`. */
+/** The state chars `GlyphMapper.DeviceGlyph` returns instead of calling `ForDevice`. */
 const DEVICE_GLYPH_OVERRIDES = parseDeviceGlyphOverrides(MAPPER_CS, GLYPHS_CS);
+/** The same, attributed to the kind that projects them: `{ Door: [...], CryoPod: [...] }`. */
+const DEVICE_GLYPH_OVERRIDES_BY_KIND = parseDeviceGlyphOverridesByKind(MAPPER_CS, GLYPHS_CS);
 /**
  * EVERY glyph a device can put on a tile: the switch's arms PLUS the mapper's state overrides.
  * This is the population the art standard is held against, and the union is the whole fix.
@@ -392,15 +426,20 @@ const COVERED = DEVICE_KINDS.filter(
 // The door package retired the `Door` allowlist entry, so COVERED went 24 → 25 (27 kinds − 2
 // allowlisted). `EXPECT_FOR_DEVICE_ARMS` did NOT move and that is the point of the package: the
 // switch always had 27 arms, and two of the glyphs a device can project were never in any of them.
-const EXPECT_DEVICE_KINDS = 27;
-const EXPECT_FOR_DEVICE_ARMS = 27;
-const EXPECT_COVERED = 25;    // 27 kinds − 2 allowlisted (Conduit, Pipe)
-// `GlyphMapper.DeviceGlyph`'s state overrides: 'X' locked, '/' open, '+' closed. Equality, not a
-// floor — a floor is satisfied by a parser that finds the block and resolves nothing.
-const EXPECT_DEVICE_GLYPH_OVERRIDES = 3;
-// Projected device glyphs = 27 arms, of which Conduit and Pipe share '~' (26 distinct) and Door's
-// '+' is one of them, PLUS the two override chars 'X' and '/' that are in no arm at all.
-const EXPECT_PROJECTED_DEVICE_GLYPHS = 28;
+// The wreck start (W3) added `DeviceKind.CryoPod` (byte 27, so 28 members) with a `ForDevice` arm
+// and a two-state override in `GlyphMapper.DeviceGlyph`, and gave BOTH its chars real art
+// (`cryo-capsule-occupied` → 'K', `cryo-capsule-open` → 'k'), so nothing joined a ledger.
+const EXPECT_DEVICE_KINDS = 28;
+const EXPECT_FOR_DEVICE_ARMS = 28;
+const EXPECT_COVERED = 26;    // 28 kinds − 2 allowlisted (Conduit, Pipe)
+// `GlyphMapper.DeviceGlyph`'s state overrides: Door 'X' locked, '/' open, '+' closed; CryoPod 'k'
+// open, 'K' occupied. Equality, not a floor — a floor is satisfied by a parser that finds the block
+// and resolves nothing.
+const EXPECT_DEVICE_GLYPH_OVERRIDES = 5;
+// Projected device glyphs = 28 arms, of which Conduit and Pipe share '~' (27 distinct) and Door's
+// '+' and CryoPod's 'K' are among them, PLUS the three override chars 'X', '/' and 'k' that are in
+// no arm at all.
+const EXPECT_PROJECTED_DEVICE_GLYPHS = 30;
 const EXPECT_DEVICE_GLYPH_LEDGER = 1;   // '/' alone — an open doorway is a gap
 const EXPECT_ITEM_KINDS = 10;
 const EXPECT_FOR_ITEM_ARMS = 10;
@@ -792,7 +831,13 @@ test('every glyph an ITEMS row claims is a glyph the sim actually projects', () 
   // `"` would leave GrowBed unskinned again while every count above stayed the same. Each half is
   // checked against ITS OWN switch: a resource row claiming a DEVICE glyph is not "fine", it is a
   // pile wearing a machine's char.
-  const devGlyphs = new Set(Object.values(FOR_DEVICE));
+  // ⚠️ `PROJECTED_DEVICE_GLYPHS`, NOT `Object.values(FOR_DEVICE)`, and for the reason
+  // `GLYPH_SUBSTITUTE`'s own test already learned from the door package: a glyph a real device puts
+  // on a real tile is not always a switch arm. `cryo-capsule-open` correctly claims `'k'`, which
+  // `GlyphMapper.DeviceGlyph` projects for an OPEN capsule and which appears in no arm — the
+  // narrower set rejected a correct row. Nothing is lost: a functional row claiming a deliberately
+  // unskinned char is caught by the `NO_DEVICE_GLYPH_ART` test below.
+  const devGlyphs = new Set(PROJECTED_DEVICE_GLYPHS);
   const itemGlyphs = new Set(Object.values(FOR_ITEM));
   const orphans = [
     ...FUNCTIONAL_GLYPHS.filter(([, g]) => !devGlyphs.has(g))
@@ -815,7 +860,11 @@ test('every ITEMS row that claims a glyph names the sim kind that projects it', 
     const kind = ITEMS[id].deviceKind;
     if (!kind) { wrong.push(`${id} claims ${JSON.stringify(g)} with no deviceKind`); continue; }
     if (!(kind in FOR_DEVICE)) continue;       // a NEW kind not yet in the sim — deviceStatus:'new'
-    if (FOR_DEVICE[kind] !== g) wrong.push(`${id}: deviceKind ${kind} projects ${JSON.stringify(FOR_DEVICE[kind])}, row says ${JSON.stringify(g)}`);
+    // The kind's REST glyph plus any STATE glyphs `GlyphMapper.DeviceGlyph` gives it. A kind with
+    // two pieces (CryoPod: occupied 'K', open 'k'; Door: closed '+') has two legal answers here,
+    // and pinning only the rest glyph would reject the second piece as a typo.
+    const projects = new Set([FOR_DEVICE[kind], ...(DEVICE_GLYPH_OVERRIDES_BY_KIND[kind] || [])]);
+    if (!projects.has(g)) wrong.push(`${id}: deviceKind ${kind} projects ${JSON.stringify([...projects].join(''))}, row says ${JSON.stringify(g)}`);
   }
   for (const [id, g] of RESOURCE_GLYPHS) {
     const kind = ITEMS[id].itemKind;
@@ -865,7 +914,7 @@ test('the derived table is a function of ITEMS — not of a hand mirror', () => 
   for (const [id, g] of CLAIMED_GLYPHS) {
     assert.equal(GLYPH_TO_ITEM[g], id, `ITEMS["${id}"].glyph is ${JSON.stringify(g)} but the table says ${GLYPH_TO_ITEM[g]}`);
   }
-  // BOTH halves, and the sum is the pin: 19 device rows + 8 resource rows + 7 substitutes = 34.
+  // BOTH halves, and the sum is the pin: 21 device rows + 8 resource rows + 7 substitutes = 36.
   // Written as a sum of the three sources rather than as 34 so that it stays a statement about the
   // DERIVATION — a literal would still hold if the resource half stopped being read and seven other
   // glyphs appeared from somewhere.
@@ -877,6 +926,12 @@ test('the derived table is a function of ITEMS — not of a hand mirror', () => 
   // "18 + 8 + 7 = 33" and is WRONG: `sliding-door` claiming `'+'` moved the DEVICE-ROW count too,
   // 18 → 19. The real numbers were measured off the shipped registry (19 / 8 / 7 / 34); the
   // assertion below is a sum, so it stayed green through both wrong versions of this comment.
+  //
+  // ⚠️ IT HAPPENED A THIRD TIME AND THE COUNTERMEASURE HELD. The wreck start added ONE `DeviceKind`
+  // (`CryoPod`) and TWO device rows, because the kind has two state glyphs and the warm set ships a
+  // piece for each. Adjusting "19 + 8 + 7 = 34" by the remembered change (+1 kind) gives 35 and is
+  // wrong; the numbers below were RE-COUNTED off the shipped registry with a script, not derived:
+  // 21 functional rows carry a glyph, 8 resource rows do, 7 substitutes, `GLYPH_TO_ITEM` is 36.
   assert.equal(Object.keys(GLYPH_TO_ITEM).length,
     CLAIMED_GLYPHS.length + Object.keys(GLYPH_SUBSTITUTE).length);
   assert.ok(RESOURCE_GLYPHS.every(([, g]) => GLYPH_TO_ITEM[g]),
