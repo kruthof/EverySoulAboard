@@ -58,6 +58,31 @@ namespace Perilune.Sim
         /// which is the bug this file's audit found in <see cref="ShipMetrics"/>.</summary>
         public readonly int LivingCrew;
 
+        /// <summary>
+        /// Units of <see cref="ShipLedger.FoodKind"/> aboard — the numerator of
+        /// <see cref="DaysOfFood"/>, carried beside it so the ratio is never a bare quotient.
+        ///
+        /// <para>It is <see cref="Units"/>[<c>FoodKind</c>], so every limit on the matter census
+        /// applies: it counts CARRIED and RESERVED stacks too, and a carried potato is not food a
+        /// hungry crew member can reach (<c>SustenanceSystem</c> skips <c>CarriedBy != 0</c>). This
+        /// is therefore an UPPER BOUND on what is edible at this instant.</para>
+        /// </summary>
+        public readonly int FoodUnits;
+
+        /// <summary>
+        /// SIM-DAYS THE CURRENT LIVING CREW CAN BE FED from the food aboard, or -1 when there is no
+        /// denominator to divide by (nobody alive, or a def that makes the crew never hungry).
+        /// <see cref="ShipLedger.DaysOfFoodDerivation"/> is the contract — read it before quoting it.
+        ///
+        /// <para><b>⚠️ IT LIVES ON THE SAMPLE, NOT ON <see cref="ShipLedgerReport"/> BESIDE
+        /// <see cref="ShipLedgerReport.DaysOfWater"/>, AND THAT PLACEMENT IS THE WARNING.</b> DAYS OF
+        /// WATER is MEASURED — two censuses, a real drain, a real window. This is MODELLED: one
+        /// census divided by the consumption the shipped defs imply. It needs no window because it
+        /// never looks at the ship's behaviour, which is exactly its limitation: it cannot see the
+        /// growbeds filling the larder back up, and it cannot see a crew that has stopped eating.</para>
+        /// </summary>
+        public readonly double DaysOfFood;
+
         /// <summary>Litres standing in <see cref="DeviceKind.WaterTank"/>s. THE DRINKABLE STOCK —
         /// greywater is not drinkable and reaches a tank only through a powered reclaimer.</summary>
         public readonly float TankLiters;
@@ -100,12 +125,14 @@ namespace Perilune.Sim
         public readonly bool Valid;
 
         internal ShipLedgerSample(long tick, int[] units, long unknownUnits, long totalUnits, int stacks,
-                                  int livingCrew, float tankLiters, float tankCapacityLiters,
+                                  int livingCrew, int foodUnits, double daysOfFood,
+                                  float tankLiters, float tankCapacityLiters,
                                   float greywaterLiters, double breathableO2Moles,
                                   double crewO2MolesPerDay, int pressurizedRooms, int nonFiniteRooms)
         {
             Tick = tick; Units = units; UnknownUnits = unknownUnits; TotalUnits = totalUnits;
             Stacks = stacks; LivingCrew = livingCrew;
+            FoodUnits = foodUnits; DaysOfFood = daysOfFood;
             TankLiters = tankLiters; TankCapacityLiters = tankCapacityLiters;
             GreywaterLiters = greywaterLiters;
             BreathableO2Moles = breathableO2Moles; CrewO2MolesPerDay = crewO2MolesPerDay;
@@ -320,6 +347,44 @@ namespace Perilune.Sim
         public static string KindName(int index) =>
             (uint)index < (uint)KindNamesCache.Length ? KindNamesCache[index] : "Kind" + index;
 
+        // ---------------------------------------------------------------- food
+        //
+        // ⚠️ THE ONE PLACE THAT DECIDES WHAT "FOOD" IS. `ItemKind.Potato` is the only edible kind in
+        // this simulation — `SustenanceSystem` reduces Hunger from nothing else, on either of its two
+        // serve paths — so the ledger names it once, here, and every reader (the wire, the scenario
+        // harness) takes it from this constant instead of restating it. E1's charter adds a cooked
+        // `Meal`; when it lands this becomes a set and there is exactly one edit site.
+
+        /// <summary>The only <see cref="ItemKind"/> that reduces <see cref="Citizen.Hunger"/>.</summary>
+        public const ItemKind FoodKind = ItemKind.Potato;
+
+        /// <summary>
+        /// Food units ONE living crew member eats per sim-day in the long run: the rate Hunger fills
+        /// (<c>needs.def hunger_per_second</c> over a sim-day) divided by the Hunger one unit removes
+        /// (<c>sustenance.def potato_hunger_value</c>). 0 when either def makes the question
+        /// meaningless — a crew that never gets hungry has no consumption rate, and a food that
+        /// removes no hunger is not food.
+        ///
+        /// <para><b>⚠️ THE SHIPPED TUNING IS NOT WHAT <c>sustenance.def</c>'s COMMENT SAYS, and this
+        /// is where the difference bites.</b> That comment reads "800/2200 kcal per day", i.e. one
+        /// full Hunger meter per sim-day; the shipped <c>hunger_per_second</c> is 1/172 800, which
+        /// fills the meter in TWO sim-days. So the true consumption is HALF the value the design
+        /// intent implies, and a derivation written from the comment rather than from the tuning
+        /// under-reports the ship's food runway by exactly 2×. <c>LedgerHarness</c> shipped that
+        /// mistake (<c>1 / potato_hunger_value</c>, no hunger rate at all) and now reads this instead.
+        /// Both defs are read live off the passed sim, so a content pack that retunes either one moves
+        /// this number with it.</para>
+        /// </summary>
+        public static double FoodUnitsPerCrewPerDay(SimDefs defs)
+        {
+            if (defs == null) return 0;
+            double perUnit = defs.Sustenance.PotatoHungerValue;
+            if (!(perUnit > 0)) return 0;
+            double hungerPerDay = defs.Needs.HungerPerSecond * 86400.0;
+            if (!(hungerPerDay > 0)) return 0;
+            return hungerPerDay / perUnit;
+        }
+
         // ---------------------------------------------------------------- thresholds
 
         /// <summary>The <c>ShipMetrics.cs:64</c> pressurised-room gate, verbatim — a room below this
@@ -370,6 +435,17 @@ namespace Perilune.Sim
             // the LIVING crew, times a sim-day in seconds.
             double crewO2PerDay = living * sim.Defs.Atmosphere.O2PerPersonPerSecond * 86400.0;
 
+            // --- food --- the same shape as the O2 denominator directly above, with ONE deliberate
+            // difference: the division happens HERE rather than on the client. The O2 row ships its
+            // stock and its denominator separately and divides in two languages (C# in
+            // LedgerHarness, JS in ledger-model), which is two places for one quotient to drift. Food
+            // ships the quotient, and every reader — wire, harness, island — prints what this line
+            // computed.
+            int foodUnits = (int)FoodKind < units.Length ? units[(int)FoodKind] : 0;
+            double crewFoodPerDay = living * FoodUnitsPerCrewPerDay(sim.Defs);
+            double daysOfFood = crewFoodPerDay > 0 ? foodUnits / crewFoodPerDay : -1;
+            if (!double.IsFinite(daysOfFood)) daysOfFood = -1;
+
             // --- devices (one pass) --- the tank ledger.
             float stored = 0f, capacity = 0f;
             var devices = sim.Devices.Items;
@@ -417,6 +493,7 @@ namespace Perilune.Sim
             }
 
             return new ShipLedgerSample(sim.TickCount, units, unknown, total, items.Count, living,
+                                        foodUnits, daysOfFood,
                                         stored, capacity, sim.WastewaterLiters, o2, crewO2PerDay,
                                         pressurized, nonFinite);
         }
@@ -484,11 +561,13 @@ namespace Perilune.Sim
 
         /// <summary>Stable snake_case ids, in fixed presentation order — a host decision, not a
         /// client sort (same rule as <c>ShipSystems.Ids</c>).</summary>
-        public static readonly string[] Ids = { IdMatter, IdPartsPerDay, IdDaysOfWater, IdO2Trend, IdCaveat };
+        public static readonly string[] Ids =
+            { IdMatter, IdPartsPerDay, IdDaysOfWater, IdDaysOfFood, IdO2Trend, IdCaveat };
 
         public const string IdMatter = "matter";
         public const string IdPartsPerDay = "parts_per_day";
         public const string IdDaysOfWater = "days_of_water";
+        public const string IdDaysOfFood = "days_of_food";
         public const string IdO2Trend = "o2_trend";
 
         /// <summary>
@@ -510,6 +589,7 @@ namespace Perilune.Sim
                 case IdMatter: return MatterDerivation;
                 case IdPartsPerDay: return PartsPerDayDerivation;
                 case IdDaysOfWater: return DaysOfWaterDerivation;
+                case IdDaysOfFood: return DaysOfFoodDerivation;
                 case IdO2Trend: return O2TrendDerivation;
                 case IdCaveat: return HeadlineCaveat;
                 default: return "";
@@ -573,6 +653,35 @@ namespace Perilune.Sim
           + "package's audit names in ShipMetrics.Water. A crew member drinks at ONE tank, so a full "
           + "main tank beside an empty hydro tank averages to a comfortable runway while the bay it "
           + "feeds is dry. That is not hypothetical: it is exactly the tank_hydro case named above.";
+
+        /// <summary>
+        /// E0-9 — the honest food number, and the note is half the feature.
+        /// <c>ECONOMY-PLAN.md</c> §1's E0-8 row names Food as the metrics' liar and E0-8 shipped four
+        /// members, none of which was food. This is that member. It exists BESIDE
+        /// <c>ShipMetrics.Food</c>, which is still clamped and still what the Director reads.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ DELIBERATELY TERSE, AND THE LENGTH WAS MEASURED RATHER THAN EYEBALLED. The first draft
+        /// of this note was 1 659 B — 25 % of the whole ledger payload, which goes out at ~1 Hz — and
+        /// the <c>ledger</c> channel is already the LARGEST on the wire (see the budget recorded in
+        /// <c>WireFormat.Ledger.cs</c>). Every limit below survived the trim; only the prose went.
+        /// </remarks>
+        public const string DaysOfFoodDerivation =
+            "DAYS OF FOOD is the food aboard over what the LIVING crew eat in a sim-day. That rate is "
+          + "derived, not guessed: needs.def hunger_per_second fills the Hunger meter (once per TWO "
+          + "sim-days as shipped) and sustenance.def potato_hunger_value is what one unit removes. "
+          + "Potato is the only edible kind here. "
+          + "⚠️ LIMIT 1, AND IT IS WHY THIS ROW NEVER ALARMS: IT IS MODELLED, NOT MEASURED. It never "
+          + "watches the ship, so it cannot see the growbeds — which on the standard ship out-produce "
+          + "the crew. A low reading beside a working hydroponics bay is a small pantry; beside a dead "
+          + "one it is a famine. This number cannot tell you which. "
+          + "LIMIT 2: it counts CARRIED and RESERVED units, so it is an upper bound on what a hungry "
+          + "crew member can actually reach. "
+          + "LIMIT 3: it is a ship total — food behind a sealed door counts like food underfoot. "
+          + "LIMIT 4: nothing spoils in this sim yet. "
+          + "LIMIT 5: crew eat in lumps above need_threshold, so this is a long-run average. "
+          + "⚠️ IT IS NOT THE FOOD BAR: ShipMetrics.Food is the clamped min(1, potatoes/(crew*5)), and "
+          + "IT is what the Director reads. This is the unclamped truth printed beside it.";
 
         public const string O2TrendDerivation =
             "O2 TREND is the oxygen standing in the pressurised compartments divided by the net rate "

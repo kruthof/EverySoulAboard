@@ -47,19 +47,36 @@ namespace Perilune.Web
     /// physically inseparable from the number it qualifies), but it is a deliberate ~3 KB/s purchase
     /// and not a saving.</para>
     ///
+    /// <para><b>⚠️ E0-9 MEASURED THE WIRE AND THE "ROUNDING ERROR" JUSTIFICATION ABOVE IS WITHDRAWN
+    /// TOO.</b> Ten seconds of a live <c>--ship grid</c> socket, every channel counted: total
+    /// <b>13.3 KB/s</b>, of which <c>ledger</c> is <b>5.79 KB/s</b> — the LARGEST channel on the
+    /// wire, and <b>6.6×</b> the <c>frame</c> channel it was compared against (0.88 KB/s; the glyph
+    /// map is small and RLE'd, so "the whole map at 10 Hz" was never the big number). The
+    /// <c>notes</c> block is most of it. That does not make this channel a problem — 5.79 KB/s on
+    /// localhost is nothing — but the STATED reason was false and is corrected here rather than
+    /// re-derived by the next reader.
+    /// <b>E0-9's own cost, measured the same way:</b> the two food numbers are <b>32 B</b> per
+    /// payload; the <c>days_of_food</c> note was 1 659 B in its first draft and was TRIMMED on this
+    /// measurement (see <see cref="ShipLedger.DaysOfFoodDerivation"/>) — no limit was dropped, only
+    /// prose.</para>
+    ///
     /// <para>The last <c>notes</c> entry is <c>caveat</c>, which is NOT a member: it is the one line
     /// the surface must show WITHOUT a hover. Every other limit rides a row's <c>title</c>, which is
     /// the channel a player is least likely to read.</para>
     ///
     ///   ledger {"type":"ledger","tick":N,"window":N,"total":N,"stacks":N,"unknown":N,
     ///           "matter":[["Potato",699],..],"partsPerDay":x,"matterPerDay":x,
-    ///           "daysOfWater":x,"o2TrendDays":x,"tankL":x,"tankCapL":x,"greyL":x,"o2mol":x,
+    ///           "daysOfWater":x,"foodUnits":N,"daysOfFood":x,
+    ///           "o2TrendDays":x,"tankL":x,"tankCapL":x,"greyL":x,"o2mol":x,
     ///           "crewO2PerDay":x,"crew":N,"notes":[["matter",".."],..,["caveat",".."]]}
     ///
     /// <para>SENTINELS, and a client MUST honour them or it will print a confident zero:
     /// <c>window == 0</c> ⇒ no rate on this payload means anything (render "measuring");
     /// <c>daysOfWater</c>/<c>o2TrendDays</c> <c>&lt; 0</c> ⇒ NOT DEPLETING, which is the healthy answer,
-    /// not a missing value. <c>partsPerDay</c> is signed and 0 is a real reading.</para>
+    /// not a missing value. <c>partsPerDay</c> is signed and 0 is a real reading.
+    /// <c>daysOfFood &lt; 0</c> is a THIRD meaning again — NO DENOMINATOR (nobody alive to eat, or a
+    /// def that makes the crew never hungry) — and it is NOT gated by <c>window</c> at all, because
+    /// it is modelled from a single census rather than measured across two.</para>
     /// </summary>
     public static partial class WireFormat
     {
@@ -105,6 +122,12 @@ namespace Perilune.Web
             Field(sb, "partsPerDay", r.PartsPerDay);
             Field(sb, "matterPerDay", r.MatterUnitsPerDay);
             Field(sb, "daysOfWater", r.DaysOfWater);
+            // E0-9 — the food pair. Both come off the SAMPLE, not the report: DAYS OF FOOD is
+            // modelled from one census plus two defs, so unlike daysOfWater it is meaningful on the
+            // very first payload and is NOT gated by `window`. The client must not suppress it when
+            // `window == 0`, and its -1 means "no denominator" (nobody alive), not "not depleting".
+            sb.Append(",\"foodUnits\":").Append(r.Now.FoodUnits.ToString(LedgerIc));
+            Field(sb, "daysOfFood", r.Now.DaysOfFood);
             Field(sb, "o2TrendDays", r.O2TrendDays);
             Field(sb, "tankL", r.Now.TankLiters);
             Field(sb, "tankCapL", r.Now.TankCapacityLiters);

@@ -87,7 +87,10 @@ namespace Perilune.Tools
 
             // ---- items ------------------------------------------------------------------------
             var sample = ShipLedger.Sample(sim);
-            int potatoes = sample.UnitsOf(ItemKind.Potato);
+            // `FoodUnits`, not `UnitsOf(ItemKind.Potato)`: which kind is food is a decision, and
+            // ShipLedger.FoodKind is where it is made. E1 adds a cooked `Meal`; naming Potato here
+            // would make this harness the file that quietly kept counting only the raw crop.
+            int potatoes = sample.FoodUnits;
 
             // ---- power: PowerSystem.Balance's OWN gates ----------------------------------------
             // Balance skips NetworkId == 0 outright, and a vent only WANTS power while open. A device
@@ -149,14 +152,15 @@ namespace Perilune.Tools
             if (tanks == 0) driest = 0f;
 
             // ---- how much food is that, really? -------------------------------------------------
-            // A potato removes `potato_hunger_value` of hunger and hunger fills once per sim-day, so
-            // one crew member eats 1/potato_hunger_value potatoes a day. That is the number a bar
-            // called FOOD is implicitly promising, and it is derivable — unlike the metric's own
-            // "5 per head comfort target", which is a literal with no consumer anywhere else.
-            double perHeadPerDay = defs.Sustenance.PotatoHungerValue > 0
-                ? 1.0 / defs.Sustenance.PotatoHungerValue : 0;
-            double foodDays = living > 0 && perHeadPerDay > 0
-                ? potatoes / (living * perHeadPerDay) : -1;
+            // ⚠️ THIS USED TO BE A SECOND, WRONG DERIVATION and E0-9 deleted it rather than moving it.
+            // It read `1 / potato_hunger_value` potatoes per crew per day, justified in a comment as
+            // "hunger fills once per sim-day". IT DOES NOT: `needs.def hunger_per_second` is
+            // 1/172,800, which fills the meter in TWO sim-days, so this harness UNDER-REPORTED the
+            // ship's food runway by exactly 2× — 211 potatoes on `--ship grid` read 9.5 days where
+            // the truth is 19.0. The number now comes off `ShipLedgerSample`, which is also what the
+            // wire and the Overview's LEDGER island print, so there is one derivation and it cannot
+            // drift from the one the player sees.
+            double foodDays = sample.DaysOfFood;
 
             return new[]
             {
@@ -199,7 +203,8 @@ namespace Perilune.Tools
 
                 new MetricAudit("Food", F3(m.Food),
                     potatoes + " potatoes = " + (foodDays < 0 ? "n/a" : foodDays.ToString("0.0", Ic)) +
-                    " crew-days for " + living + " living crew",
+                    " days for " + living + " living crew (ShipLedger.DaysOfFood — the number the " +
+                    "LEDGER island shows)",
                     m.Food >= 1f && potatoes > living * 5
                         ? "SATURATED — THE CHARTER'S NAMED LIAR. min(1, potatoes/(pop*5)) is CLAMPED, so " +
                           potatoes + " potatoes and " + (living * 5) + " potatoes both read 1.000, and the " +
@@ -245,6 +250,12 @@ namespace Perilune.Tools
               .Append(' ').Append(Rate(r.PartsPerDay, r.WindowTicks))
               .Append("   water ").Append(r.Now.TankLiters.ToString("0.0", Ic).PadLeft(7)).Append(" L ")
               .Append(Runway(r.DaysOfWater, r.WindowTicks))
+              // Food takes NO window argument, and that asymmetry is the point: DAYS OF FOOD is
+              // modelled from this one census, so it is readable on the very first line of the run
+              // where every measured runway still says [measuring].
+              .Append("   food ").Append(r.Now.FoodUnits.ToString(Ic).PadLeft(5)).Append(" u ")
+              .Append(r.Now.DaysOfFood < 0 ? "[no crew]"
+                      : "[" + r.Now.DaysOfFood.ToString("0.00", Ic) + " d]")
               .Append("   O2 ").Append(CrewDays(r.Now)).Append(' ')
               .Append(Runway(r.O2TrendDays, r.WindowTicks));
             return sb.ToString();

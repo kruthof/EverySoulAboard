@@ -33,7 +33,7 @@ import {
   selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
-import { ledgerRows, matterLine, caveatLine } from './ledger-model.js';
+import { ledgerRows, matterLine, caveatLine, LEDGER_ROW_IDS } from './ledger-model.js';
 import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
@@ -378,11 +378,15 @@ function buildIslands() {
     el: line, ts: line.querySelector('.ov-ts'), rest: line.querySelector('.ov-rest'),
   }));
 
-  // LEDGER — a fixed header, four fixed row slots and one census line. FIXED SLOTS, not a keyed
-  // reconcile: `ledgerRows` returns the same four ids in the same order for every payload, so there
-  // is nothing to key on and nothing to create per repaint.
+  // LEDGER — a fixed header, one fixed row slot PER MODEL ROW, and one census line. FIXED SLOTS, not
+  // a keyed reconcile: `ledgerRows` returns the same ids in the same order for every payload, so
+  // there is nothing to key on and nothing to create per repaint.
+  //
+  // ⚠️ THE COUNT COMES FROM THE MODEL, NOT FROM A LITERAL. `paintLedger` walks the SLOTS and reads
+  // `rows[i]`, so a row the model gained beyond a hard-coded 4 would never be painted — green model
+  // tests, nothing on screen. E0-9's FOOD row is the fifth and would have been the first casualty.
   let ledger = '<div class="ov-hdr"></div>';
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < LEDGER_ROW_IDS.length; i++) {
     ledger += '<div class="ov-ledrow" hidden>' +
       '<span class="ov-ledlabel"></span><span class="ov-ledval"></span><span class="ov-ledsub"></span></div>';
   }
@@ -492,7 +496,7 @@ function repaint() {
 // ── bottom-left LEDGER (E0-8) ──
 
 /**
- * The ship's ledger: matter census, PARTS/DAY, DAYS OF WATER, O2 TREND.
+ * The ship's ledger: matter census, PARTS/DAY, DAYS OF WATER, DAYS OF FOOD, O2 TREND.
  *
  * Every string here comes from `ledger-model.js`, which owns the SENTINELS — `window === 0` reads
  * MEASURING and a negative runway reads STEADY. This function must never substitute a zero for

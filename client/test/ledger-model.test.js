@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { codeOnly } from './code-only.js';
 import {
   ledgerRows, matterLine, noteFor, rateText, runwayText, partsUnits, crewDaysOfO2, caveatLine,
+  foodDaysText, LEDGER_ROW_IDS,
   MEASURING, NOT_DEPLETING, RUNWAY_CRITICAL_DAYS, RUNWAY_WARN_DAYS,
 } from '../src/ui/ledger-model.js';
 
@@ -30,9 +31,11 @@ function payload(over = {}) {
     type: 'ledger', tick: 864000, window: 36000, total: 731, stacks: 710, unknown: 0, crew: 8,
     matter: [['Corpse', 1], ['Potato', 699], ['Parts', 12], ['ControllerModule', 31]],
     partsPerDay: 0, matterPerDay: 9, daysOfWater: -1, o2TrendDays: -1,
+    foodUnits: 699, daysOfFood: 62.91,
     tankL: 1000, tankCapL: 1000, greyL: 20, o2mol: 18885.6, crewO2PerDay: 210.2,
     notes: [['matter', 'M NOTE'], ['parts_per_day', 'P NOTE'],
-            ['days_of_water', 'W NOTE'], ['o2_trend', 'A NOTE'], ['caveat', 'C NOTE']],
+            ['days_of_water', 'W NOTE'], ['days_of_food', 'F NOTE'],
+            ['o2_trend', 'A NOTE'], ['caveat', 'C NOTE']],
   }, over);
 }
 
@@ -42,11 +45,19 @@ function payload(over = {}) {
 
 // MUTATION: `if (!(num(windowTicks) > 0)) return MEASURING;` → `return '+0.0/d'` ⇒ RED. That is the
 // bug in its natural form: a confident zero about a ship the host has not looked at yet.
-test('window === 0 means MEASURING on every rate, never a confident zero', () => {
+test('window === 0 means MEASURING on every MEASURED rate, never a confident zero', () => {
   const rows = ledgerRows(payload({ window: 0, partsPerDay: 0, matterPerDay: 0 }));
-  const subs = rows.map((r) => r.sub);
-  assert.deepEqual(subs, [MEASURING, MEASURING, MEASURING, MEASURING]);
-  for (const s of subs) assert.ok(!/0/.test(s), `a windowless rate must not render a digit, got "${s}"`);
+  // ⚠️ DAYS OF FOOD IS DELIBERATELY EXEMPT and this is the assertion that says so. Every other row's
+  // sub is measured across two censuses and is meaningless without a window; food is MODELLED from
+  // one census plus two defs, so it is already true on the very first payload. Suppressing it here
+  // would withhold a correct number for the first ten sim-minutes of every session.
+  const measured = rows.filter((r) => r.id !== 'days_of_food').map((r) => r.sub);
+  assert.deepEqual(measured, [MEASURING, MEASURING, MEASURING, MEASURING]);
+  for (const s of measured) assert.ok(!/0/.test(s), `a windowless rate must not render a digit, got "${s}"`);
+
+  const food = rows.find((r) => r.id === 'days_of_food');
+  assert.equal(food.sub, '62.9 d',
+    'DAYS OF FOOD needs no window — gating it on one would hide a number the host can already state');
 });
 
 // MUTATION: `if (n === null || n < 0) return { text: NOT_DEPLETING …}` → `n.toFixed(2) + ' d'` ⇒ the
@@ -154,6 +165,56 @@ test('with nobody aboard, or no denominator, the O2 row shows a dash rather than
   assert.equal(crewDaysOfO2(null), '–');
 });
 
+// ── the FOOD row (E0-9): the honest food number the metrics never carried ──
+
+// MUTATION: `value: (num(msg.foodUnits) || 0) + ' u'` → `String(msg.total)` ⇒ RED.
+// MUTATION 2: `sub: foodDaysText(msg)` → `runwayText(msg.daysOfFood, msg.window).text` ⇒ the
+// windowless payload leg below renders MEASURING ⇒ RED.
+test('the FOOD row shows the stock aboard and the days it feeds the crew', () => {
+  const food = ledgerRows(payload()).find((r) => r.id === 'days_of_food');
+  assert.equal(food.label, 'FOOD');
+  assert.equal(food.value, '699 u', 'the stock goes in the value slot, exactly like WATER‘s litres');
+  assert.equal(food.sub, '62.9 d');
+  assert.equal(food.note, 'F NOTE', 'the host limits ride the row, or the number is read as a forecast');
+});
+
+// ⚠️ THE ROW MUST NOT ALARM, IN ANY STATE. `--ship grid` boots with 8 units and 8 crew — well under
+// one day — while its growbeds out-produce the crew from the first minute (measured: 8 → 211 units
+// over one sim-day). DAYS OF FOOD cannot see production, so an alarm here would open the game with a
+// red emergency on the one ship a new player is watching.
+//
+// MUTATION: give the row `level: runwayText(msg.daysOfFood, 1).level` ⇒ the 0.4-day leg goes 'crit'
+// ⇒ RED.
+test('the FOOD row never raises an alarm, because it cannot see the growbeds', () => {
+  for (const days of [0, 0.4, 2, 62.91, -1]) {
+    const food = ledgerRows(payload({ daysOfFood: days })).find((r) => r.id === 'days_of_food');
+    assert.equal(food.level, '', `daysOfFood ${days} must not colour the row`);
+  }
+});
+
+// MUTATION: `if (d === null || d < 0) return '–'` → `return d.toFixed(1) + ' d'` ⇒ the crewless ship
+// renders "-1.0 d" ⇒ RED.
+// MUTATION 2: treat the negative as NOT_DEPLETING like `runwayText` does ⇒ RED — a ship with nobody
+// alive is not "steady", it has no denominator at all, and STEADY reads as the healthy answer.
+test('daysOfFood < 0 means NO DENOMINATOR — a dash, not STEADY and not a negative number', () => {
+  assert.equal(foodDaysText({ daysOfFood: -1 }), '–');
+  assert.equal(foodDaysText({ daysOfFood: undefined }), '–');
+  assert.equal(foodDaysText(null), '–');
+  assert.notEqual(foodDaysText({ daysOfFood: -1 }), NOT_DEPLETING,
+    'STEADY is the HEALTHY answer for a measured runway; "nobody aboard to eat" is a different fact');
+  assert.equal(foodDaysText({ daysOfFood: 0 }), '0.0 d', 'an empty larder with living crew IS zero days');
+  assert.equal(foodDaysText({ daysOfFood: 62.91 }), '62.9 d');
+});
+
+// The surface sizes its fixed row slots off this list. A row appended to `ledgerRows` without a slot
+// would never be painted, with every model test still green — model right, player sees nothing.
+//
+// MUTATION: drop 'days_of_food' from LEDGER_ROW_IDS ⇒ RED here, and in the running game the O2 row
+// would fall off the bottom of the island instead.
+test('LEDGER_ROW_IDS is exactly what ledgerRows returns, in order', () => {
+  assert.deepEqual(ledgerRows(payload()).map((r) => r.id), [...LEDGER_ROW_IDS]);
+});
+
 // MUTATION: `caveatLine` → `() => ''` ⇒ RED. It is the ONE limit on this island a player who never
 // hovers a row must still be told, so it is text on the surface and not a `title`.
 test('the caveat is host text, always available, and never invented client-side', () => {
@@ -171,18 +232,19 @@ test('the caveat is host text, always available, and never invented client-side'
 // ship does not have — the note is the feature, not decoration.
 test('each row carries the HOST derivation note, matched by id', () => {
   const rows = ledgerRows(payload());
-  assert.deepEqual(rows.map((r) => r.note), ['M NOTE', 'P NOTE', 'W NOTE', 'A NOTE']);
+  assert.deepEqual(rows.map((r) => r.note), ['M NOTE', 'P NOTE', 'W NOTE', 'F NOTE', 'A NOTE']);
   assert.equal(caveatLine(payload()), 'C NOTE', 'the always-visible caveat comes from the HOST too');
   assert.equal(noteFor(payload(), 'o2_trend'), 'A NOTE');
+  assert.equal(noteFor(payload(), 'days_of_food'), 'F NOTE');
   assert.equal(noteFor(payload(), 'nope'), '', 'an unknown id is empty, never undefined');
-  assert.deepEqual(ledgerRows(payload({ notes: undefined })).map((r) => r.note), ['', '', '', ''],
+  assert.deepEqual(ledgerRows(payload({ notes: undefined })).map((r) => r.note), ['', '', '', '', ''],
     'a payload without notes must not crash the island');
 });
 
 // A hostile payload must not throw: the wire is authoritative but a version skew is a real thing.
 test('a malformed payload degrades to dashes instead of throwing', () => {
   const rows = ledgerRows({ type: 'ledger' });
-  assert.equal(rows.length, 4);
+  assert.equal(rows.length, LEDGER_ROW_IDS.length);
   for (const r of rows) {
     assert.equal(typeof r.value, 'string');
     assert.ok(!/NaN|undefined|null/.test(r.value + r.sub), `"${r.value}" / "${r.sub}"`);
