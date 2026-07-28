@@ -65,17 +65,27 @@
 // Six CSS features needed a decision, each made once, here:
 //
 // 1. `transform: translate(-50%,-50%) translate(Xpx,Ypx) rotate(Ndeg)` → an SVG `<g transform>`.
-//    ⚠️ The mock's `box(…, extra)` sometimes RE-DECLARES `transform` inside `extra`, and in CSS the
-//    LAST declaration wins — so the helper's own translate is silently discarded. Nine layers do
-//    this (they are the rotated bodies: BATTERY BANK ×2, DINING TABLE, FUEL DRUM, SUPPLY BARREL,
-//    FLOODLIGHT, PASTE DISPENSER, DECK SIGN, LOCKER). Rotation is an explicit `rot` option here, so
-//    that override cannot exist and cannot be mis-read.
+//    ⚠️ The mock's `box(…, extra)` / `L(T(…) + css)` sometimes RE-DECLARES `transform` in the CSS
+//    tail, and in CSS the LAST declaration wins — so the helper's own translate is silently
+//    discarded and only the tail's counts. **THIRTEEN layers do this**, MEASURED off the shipped
+//    array (`transform:` appearing twice in one style string), not counted by eye: REACTOR ·
+//    BATTERY BANK ×2 · OXYGEN TANK · PASTE DISPENSER · DINING TABLE · BUNK BED · CHAIR ×2 ·
+//    FUEL DRUM · SUPPLY BARREL · DECK SIGN · FLOODLIGHT. Rotation is an explicit `rot` option here,
+//    so that override cannot exist and cannot be mis-read.
+//    ⚠️ THE FIRST DRAFT OF THIS NOTE SAID "NINE" AND NAMED THE WRONG SET — it invented LOCKER
+//    (whose rotation comes from `T`'s own third argument, not from an override) and missed five.
+//    Kept as a correction rather than silently fixed: this is `CLAUDE.md`'s **re-count, never
+//    compute** in miniature, and a wrong number in a comment is how the next reader learns a wrong
+//    rule.
 // 2. `box-shadow` splits three ways, exactly as resources.js found:
 //      • `inset 0 0 0 Npx <c>`      → `inset: [N, c]`   — a hard inner ring (an SVG inset stroke)
 //      • `0 0 0 Npx <c>`            → `outset: [N, c]`  — a hard OUTER ring (VIEWPORT's frame)
-//      • `inset 0 0 Npx <c>` (blur) → `shade: [N, c]`   — a soft inner vignette, drawn as a wide
-//        low-opacity inner stroke. SVG blur is a filter; filters are not in this set's vocabulary
-//        and a filter on 501 layers would cost more than the effect is worth.
+//      • `inset 0 0 Npx <c>` (blur) → `shade: [N, c]`   — a soft inner vignette, drawn as a RADIAL
+//        FILL from transparent at the middle to the colour at the rim. SVG blur is a filter; filters
+//        are not in this set's vocabulary and a filter on 501 layers would cost more than the effect
+//        is worth. ⚠️ It WAS a wide low-opacity inner STROKE, and that was wrong on screen rather
+//        than merely approximate — see `shadeFill`, which records what the gallery's mock-versus-SVG
+//        column showed and why two constants in it are measured rather than chosen.
 //      • `0 3px 8px rgba(0,0,0,.5)` (drop shadow) → DROPPED. The 70 pristine furniture pieces drop
 //        theirs too; only `resources.js`'s loose piles keep a contact shadow, because a pile has no
 //        outline of its own. Dropping it here keeps the two halves of the set consistent.
