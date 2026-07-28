@@ -43,6 +43,57 @@ is renamed). Tag `v2-talking-ship`.
 > A 2× over-statement of `DaysOfFood` passed the **entire gate green**, in the very package that exists
 > to fix a 2× error.
 >
+> ### ⇒⇒ WHERE THE ECONOMY PROGRAMME ACTUALLY IS (2026-07-28) — read this before opening `ECONOMY-PLAN.md`
+>
+> **E0 IS PACKAGE-COMPLETE. ALL NINE WORK PACKAGES HAVE LANDED** — E0-1 labour supply · E0-2
+> work-rate rebase + movement retune · E0-3 player verbs · E0-4 filtered stockpiles · E0-5
+> deconstruct/strip · E0-6 conversion loss + `Seals` · E0-7 ice → melter → water · E0-8 the ledger ·
+> **E0-9 the food gap (2026-07-28)**. Nothing in `ECONOMY-PLAN.md` §1's E0 table is outstanding.
+>
+> **AND E0'S OWN EXIT GATE IS FAILED ON THE SHIP THAT IS THE GAME.** E0 is defined by a number —
+> *"A1 ≥ 25 % busy at sim-hour 24, and A3 'can build a wall at day 3'"*. **Re-measured on `main`
+> AFTER all four lanes merged** (`occupancy --ship grid --days 2`, Release, n=1):
+>
+> ```
+> A1 (busy at sim-hour 24, target >= 25 %):  any 0.000 %   work 0.000 %   FAIL
+> debris tiles left 40 (dig work remaining: 0) · stockpile tiles zoned 0
+> ground stock: Potato=342  Scrap=1  ControllerModule=8  Seals=5
+> ice melters 0 (no ice chain ⇒ the B-2 makeup floor is ACTIVE at 20 L — water is being conjured)
+> ```
+>
+> Grid flatlines from ~h20 with two isolated spikes (h41 30.8 %, h48 6.8 % — maintenance that now
+> *completes*, post-livelock-fix). **⇒ The checklist is done and the thing the checklist was for did
+> not happen.** Say that plainly to anyone who asks whether E0 is finished.
+>
+> **WHY, and it is not mysterious:** E0-6 closed the fake faucet (the recycler was `1 Regolith →
+> 2 Scrap`, conjuring matter); **E0-7 built the real faucet and authored it into `--ship slice` ONLY.**
+> The measurement fixture got the fix; the game did not. Grid converts its whole finite matter budget
+> into `ControllerModule` by ~h28 and idles forever — which is exactly what that ground-stock line is.
+>
+> ⚠️ **AND GRID'S WATER IS STILL CONJURED.** `ice melters 0` means **B-2's greywater makeup floor is
+> holding the pool at 20 L out of nothing**. We closed the fake *matter* faucet on the standard ship
+> and left a fake *water* faucet running on it. Recorded here because no other document says it.
+>
+> **⇒ THE SEQUENCING CONSEQUENCE, which is the reason this section exists.** The next phase, **E1
+> "Entropy bites", is ENTIRELY DRAINS** — spoilage on a temperature curve, hull leak, `Swarf` and the
+> metal cycle's real loss, the finite bottled-air reserve, carbonate. **Starting E1 against a ship that
+> already dies at h28 with no faucet makes a dead economy die faster and teaches nothing.**
+>
+> ⇒ **E1 IS GATED BEHIND §4 ITEM 1 — "does `--ship grid` get its own ice hold (or another faucet)?"**
+> That single **content decision, which is the OWNER'S**, is what stands between "E0's packages are
+> done" and "E0's goal is met". Everything technical is already in place: the ice chain works, the
+> melter works, ground-item art means 1 600 units would render as ice and not as dashed letter-boxes,
+> and E0-9's ledger can now honestly report the runway. **Do not open E1 before this is decided.**
+>
+> Two things to fold into that same decision: (a) should **B-2's makeup floor stay** on a ship that has
+> a real water chain — it is a second faucet and an invisible one; (b) are grid's **40 debris tiles
+> behind sealed airless doors** meant to be reachable work — after the worksite-safety rule, painting
+> them does **nothing, silently** (see the follow-up below).
+>
+> ⚠️ **A3 ("can build a wall at day 3") HAS NEVER BEEN MEASURED.** Not by this run, not by any earlier
+> one that I can find. **Do not report E0's gate as "half met" — one criterion is measured FAIL and the
+> other is UNKNOWN.**
+>
 > ### ⚠️⚠️ OWNER REPORT FROM LIVE PLAY (2026-07-28), AND THE CAUSE IS FOUND — READ BEFORE TOUCHING DOOR ART
 >
 > **The report, verbatim:** *"doors are only drawn in front of empty rooms; as soon as I allocate
