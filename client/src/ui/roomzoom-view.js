@@ -369,8 +369,8 @@ function repaint() {
   // this client at all. Derived here beside the other three for the same reason: one decode per
   // repaint, one truth for the room.
   // ⚠️ DELIBERATELY NOT DRAWN BY THIS PACKAGE. The wrecked-art join lives in `client/src/items/`,
-  // which a parallel lane owns; `deviceConditionAt` below is the seam it reads. Wiring the data to
-  // the surface and drawing it are two packages on purpose — the data has never existed before now.
+  // which a parallel lane owns; the exported `deviceConditionAt` above is the seam it reads. Wiring
+  // the data to the surface and DRAWING it are two packages on purpose — the data never existed before.
   _deviceCond = roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus);
 
   paintCanvas(frame);
