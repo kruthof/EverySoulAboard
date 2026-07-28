@@ -798,9 +798,26 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  no DOM, moves to ship-state.js at WP-9), read by the Room Zoom's ground-item layer. It is where a
  *  ground stack's KIND AND COUNT come from now that no surface derives them from the frame's glyph
  *  byte — which carries no count at all, keeps only the last stack on a tile, and is overwritten by any
- *  device standing there (`hosts/web/WireFormat.Items.cs`). */
+ *  device standing there (`hosts/web/WireFormat.Items.cs`).
+ *  The `devices` channel added `getDevices` — 29 (RE-COUNTED off the frozen array, not computed from
+ *  the line above: the `getItems — 27` annotation was already stale when this one was written, so
+ *  "27 + 1" gave 28 and the list holds 29). Same shape a FIFTH time, and the strongest case yet:
+ *  `Device.Condition` was on no channel at all, so this is not "a better source for a fact the frame
+ *  already carried" but the fact's ONLY route to the client. Read by the Room Zoom's
+ *  `deviceConditionAt` seam; nothing draws it yet, because the wrecked-art join is a separate package
+ *  (`hosts/web/WireFormat.Devices.cs`). */
 const SHIP_STATE_REACH = Object.freeze([
-  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame',
+  'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns',
+  // The `devices` channel's cache — per-device wear (kind + condition byte + the sim's `oper` bit).
+  // Same shape a fifth time (a sparse view-only wire cache, no DOM, moves to ship-state.js at WP-9),
+  // read by the Room Zoom's `deviceConditionAt` seam. It is where `Device.Condition` reaches this
+  // client AT ALL: the projection's only trace of it is a `GlyphColor.Broken` foreground byte that
+  // neither standard surface reads, that carries one bit rather than a gradient, and that
+  // `GlyphMapper` pass 5 overwrites the moment a crew member stands on the tile
+  // (`hosts/web/WireFormat.Devices.cs`). NOTHING DRAWS IT YET — the wrecked-art join is a separate
+  // package against `client/src/items/`, and the data had to exist before it could be written.
+  'getDevices',
+  'getFrame',
   // The `items` channel's cache — the Room Zoom's ground-stack layer. Sorted here beside the other
   // getters by the same rule the list already follows (`shipStateReach()` returns a sorted array).
   'getItems',

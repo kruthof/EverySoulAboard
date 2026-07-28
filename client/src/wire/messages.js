@@ -394,7 +394,50 @@ export function decodeItems(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg} WireMsg */
+/**
+ * The sparse `devices` channel (PLURAL) — per-device WEAR STATE, one row per tile-resident device,
+ * read host-side from `sim.Devices` and never from the projection.
+ *
+ * ⚠️ NOT `DeviceMsg`. `{type:'device'}` (SINGULAR) is the one-shot reply that opens a MOSS terminal
+ * and is dispatched separately in main.js. These are two different messages and the near-miss is
+ * deliberate: every other sparse channel is a plural noun naming what the payload is a list of.
+ *
+ * `cond` is `Device.Condition` quantised to a byte, `0 = wrecked … 255 = pristine`. `oper` is the
+ * sim's own `IsOperational` — 1/0 — and is NOT derivable here: the failure threshold is per-kind and
+ * lives in `content/core/SimDefs/machines.def`, which this client has no copy of. Comparing `cond`
+ * to a threshold of our own would be a second authority on "is this machine dead?".
+ *
+ * UTILITY OVERLAYS (Conduit, Pipe) ARE ABSENT, host-side: they are not tile-resident, no surface
+ * draws them, they are wear-free in the defs, and they are 88% of the device store. FOG-GATED
+ * host-side, like `marks` and `items`. Snapshot-cached, so a reconnect replays the layer.
+ * @typedef {[number,number,number,number,number,number]} DeviceTuple
+ * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
+ */
+
+/**
+ * Decode the sparse `devices` channel. Mirrors WireFormat.Devices:
+ * {type:'devices',cells:[[x,y,deck,kind,cond,oper],..]}. Tolerant: a malformed message → null, a
+ * malformed row is dropped, never throws (the receive-path contract at the top of this file). ORDER
+ * IS PRESERVED — the host emits entity-store order and that order is the wire contract.
+ *
+ * A ROW WHOSE KIND THIS CLIENT DOES NOT KNOW IS **KEPT**, following `decodeItems` and not
+ * `decodeMarks`, and for the same reason `decodeItems` gives: on this channel the kind is one of six
+ * facts, and "something on this tile is at condition 26 and inoperative" is true and useful even
+ * when the kind byte comes from a newer host. Dropping it would hide a wreck.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null}
+ */
+export function decodeDevices(msg) {
+  if (!msg || msg.type !== 'devices' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 6) continue;
+    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, cond: t[4] | 0, oper: t[5] | 0 });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
