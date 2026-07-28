@@ -85,7 +85,14 @@ is renamed). Tag `v2-talking-ship`.
 
 ### 1. The tree
 
-**`main` @ `af46d4f`. Working tree clean, no worktrees, nothing in flight. `./ci.sh` exit 0.**
+> ⚠️ **UPDATED 2026-07-27 — `main` is now at `d67daa1`, three packages past `af46d4f`.** Working
+> tree clean, no worktrees, nothing in flight, `./ci.sh` exit 0, **1097 dotnet + 801 node**. Landed
+> since: the **`items` channel**, the **ground-item art**, and their two re-pin commits. **The five
+> values in the table below are STILL CORRECT** — but read the heading as **HELD, not MOVED**:
+> nothing has moved a pin since `af46d4f`, because both later packages are client-side
+> (`git diff -- sim/ hosts/ content/ tests/ ci.sh` measured at 0 lines for each).
+
+**`main` @ `af46d4f` *(superseded — see the box above)*. `./ci.sh` exit 0.**
 **ALL FIVE PINS MOVED** — the biggest determinism change since E0-5, re-pinned in `af46d4f` together
 with `ci.sh`, both goldens, both checksum literals and the prose (the ritual):
 
