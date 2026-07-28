@@ -126,8 +126,8 @@ namespace Perilune.Web
         /// (those name a set the <c>marks</c> channel invented; this one already exists).</para>
         ///
         /// <para>IT IS CARRIED RATHER THAN LEFT TO THE FRAME'S GLYPH, and the reason is measured in
-        /// <c>GlyphMapper</c> rather than assumed. <c>Glyphs.ForDevice</c> is injective over the 25
-        /// TILE-RESIDENT kinds and NOT over all 27 — Conduit and Pipe deliberately share <c>'~'</c>,
+        /// <c>GlyphMapper</c> rather than assumed. <c>Glyphs.ForDevice</c> is injective over the 26
+        /// TILE-RESIDENT kinds and NOT over all 28 — Conduit and Pipe deliberately share <c>'~'</c>,
         /// which is a documented collision in <c>Glyphs.cs</c> and is one more reason those two do not
         /// belong here. So "the glyph identifies the kind" is very nearly true for the rows this
         /// channel carries (pinned by
@@ -165,12 +165,19 @@ namespace Perilune.Web
         /// <para><see cref="Oper"/> is <c>1</c> when <see cref="Perilune.Sim.Device.IsOperational"/>,
         /// else <c>0</c>. IT IS NOT REDUNDANT WITH <see cref="Cond"/> AND THE CLIENT CANNOT DERIVE IT.
         /// The failure threshold is PER KIND and lives in <c>machines.def</c>. COUNTED off the shipped
-        /// table, not estimated: the 25 tile-resident kinds carry FOUR distinct thresholds — <c>0</c>
+        /// table, not estimated — and RE-COUNTED off it, never adjusted by arithmetic, after the
+        /// wreck start appended <c>CryoPod</c>: the 26 tile-resident kinds carry FOUR distinct
+        /// thresholds — <c>0</c>
         /// (9 kinds: Ladder and every furniture piece, which can therefore never be inoperative at
         /// all), <c>0.02</c> (3: Terminal, Light, WaterTank), <c>0.05</c> (2: Door, Battery) and
-        /// <c>0.10</c> (11: the machines). A client comparing <c>cond</c> to ONE threshold of its own
+        /// <c>0.10</c> (12: the machines, <c>CryoPod</c> among them). A client comparing <c>cond</c>
+        /// to ONE threshold of its own
         /// would be a SECOND AUTHORITY on "is this machine dead?", and the best it could do is pick
-        /// 0.10 and be wrong for the other 14 of 25. That is the duplicate-authority defect this repo
+        /// 0.10 and be wrong for the other 14 of 26. (⚠️ 14 is unchanged from this paragraph's
+        /// previous "14 of 25" and that is a COINCIDENCE, not a licence to leave the sentence
+        /// alone: the population and the largest group each grew by one, so the difference
+        /// cancelled. This repo has already shipped one stale census that survived precisely
+        /// because it was written as a difference.) That is the duplicate-authority defect this repo
         /// has already paid for in the glyph→item tables and the mark layer. One element, computed
         /// where the defs are. The census is pinned by
         /// <c>DevicesChannelTests.The_Failure_Threshold_Really_Is_Per_Kind</c>, so this paragraph

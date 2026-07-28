@@ -479,7 +479,15 @@ namespace Perilune.Sim
             wear = ClampNonNeg(wear, "wear", loc, p);
             maint = ClampNonNeg(maint, "maint", loc, p);
             fail = ClampNonNeg(fail, "fail", loc, p);
-            if (fail > maint) { p.Add(loc + ": [machines] row '" + c[0] + "' fail (" + fail.ToString(CultureInfo.InvariantCulture) + ") > maint (" + maint.ToString(CultureInfo.InvariantCulture) + ") — clamped fail to maint"); fail = maint; }
+            // `maint = 0` is NOT a threshold of zero — it is the OPT-OUT. MaintenanceSystem skips
+            // any device whose Condition is >= maint, and Condition is never negative, so a row at
+            // 0 is never recruited for at all (Ladder, Conduit, Pipe and every furniture piece have
+            // always been such rows). The fail<=maint clamp exists to catch a row that would fail
+            // BEFORE the crew were ever sent to service it; on an opt-out row there is no service
+            // to come before anything, and clamping there would silently rewrite `fail` to 0 and
+            // make the kind permanently operational. That is exactly what it did to the wreck
+            // start's CryoPod — a capsule the raid cracked would have stopped reading as broken.
+            if (maint > 0f && fail > maint) { p.Add(loc + ": [machines] row '" + c[0] + "' fail (" + fail.ToString(CultureInfo.InvariantCulture) + ") > maint (" + maint.ToString(CultureInfo.InvariantCulture) + ") — clamped fail to maint"); fail = maint; }
 
             d.Machines[(int)kind] = new MachineDef(draw, gen, tier, blocks, heat, wear, maint, fail);
         }

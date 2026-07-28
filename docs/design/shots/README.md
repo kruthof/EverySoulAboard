@@ -40,14 +40,26 @@ pretty pictures of the wrong ship, or of dashed placeholder chips, cannot be pro
   `'k'` (open) are different glyphs from `GlyphMapper.DeviceGlyph`, and the warm set ships a piece for
   each. This is the first time a device's STATE picks between two real `ITEMS` rows.
 - ✅ **`RoomType.Cryo` renders as `CRYO BAY`**, not as an internal anchor id.
-- ⛔ **CONDITION IS INVISIBLE.** All eleven closed capsules draw identically whether the sleeper
-  inside is alive at `Condition 0.94` or dead at `0.04`. The `devices` wire channel carries condition
-  and **deliberately draws nothing yet**; wiring the wrecked twins to it is a separate package. So a
-  player cannot currently see which capsules failed — they can only read it in the SENSOR LOG.
-- ⛔ **The corpses are not visible on the capsule tiles.** A device glyph is written after the item
-  pass in `GlyphMapper`, and the `items` channel skips nothing here — but the Room Zoom's furniture
-  layer draws the capsule on that tile. The bodies are in the `items` channel and in the ledger
-  (`Corpse 4`); they are not in the picture.
+- ⛔ **THE CAPSULE *PIECE* IS CONDITION-BLIND — the capsules are not.** ⚠️ This bullet and the one
+  below it used to claim *"all eleven closed capsules draw identically"* and *"the corpses are not
+  visible on the capsule tiles"*. **Both were false, and false in the flattering direction** — the
+  ship reads better than the claim. Corrected against a live host rather than re-reasoned:
+  - The `devices` channel's `cond` byte draws nothing, so **the capsule ART is the same art at
+    `Condition 0.94` and at `0.04`.** That much stands, and wiring the wrecked twins to it is still
+    a separate package.
+  - But **the projection already distinguishes them**: the fg byte is `GlyphColor.Broken` for
+    exactly the four wrecked pods (`pod_vance` 0.04, `pod_sokolov` 0.07, `pod_iqbal` 0.03,
+    `pod_osei` 0.06) and `Device` for the other eight — driven, tick 0.
+  - And **the corpses ARE on screen in the Room Zoom.** The `items` channel carries a `Corpse`
+    stack on exactly those four tiles, and `roomzoom-view.js`'s `itemStackSvg` (`:476`) draws
+    **after** `furnitureSvg` (`:444`) — so the body renders **over** the capsule, as
+    `resources.js:311`'s brown bag with an amber ID tag. Those are precisely the four distinct
+    capsules visible in `wreck-4-cryobay-crop.png`; the picture had been showing the thing the
+    caption said it did not show.
+- ⛔ **ON THE OVERVIEW the original claim DOES hold, and only there.** `overview-view.js` has no
+  ground-item layer at all, so at Level 1 the twelve capsules really are indistinguishable and the
+  four deaths are readable only in the SENSOR LOG. That is the honest scope of "condition is
+  invisible": **it is a Level-1 statement, not a Level-2 one.**
 - These are one run, one seed, one machine. They claim the ship RENDERS. **The owner judges the art.**
 
 ---

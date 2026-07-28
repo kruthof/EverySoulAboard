@@ -76,7 +76,7 @@ namespace Perilune.Tests
             // [machines] row for DeviceKind.CryoPod. ComputeChecksum folds all eight columns of
             // every Machines row, so appending a kind moves this pin even though no shipped ship
             // has one and nothing about the sim's behaviour changed. No def FIELD was added.
-            const ulong Pinned = 0xA2E633765DC7BEFAUL; // wreck start W3 (the CryoPod machines row)
+            const ulong Pinned = 0x0C5DDBC07E41F07DUL; // wreck start W3 send-back (CryoPod maint 0.30 -> 0)
 
             Assert.That(SimDefs.Default.Checksum, Is.EqualTo(Pinned),
                 "DETERMINISM PIN MOVED: SimDefs.Default.Checksum is " +
@@ -107,7 +107,7 @@ namespace Perilune.Tests
         /// <c>defs: bbd76cd7245fcf65 (18 files, 0 problems, 1 rules)</c>. That is the value lanes
         /// copy into handovers — and it is NOT
         /// <see cref="SimDefsDefaultChecksum_IsPinned_NotTheScenarioHostsRulesInclusiveValue"/>'s
-        /// `a2e633765dc7befa`, which is the compiled-in defaults with no rules. Pinning only one of
+        /// `0c5ddbc07e41f07d`, which is the compiled-in defaults with no rules. Pinning only one of
         /// the two left the confusion alive; pinning both, adjacently, with the difference spelled
         /// out, is what ends it.
         ///
@@ -116,10 +116,9 @@ namespace Perilune.Tests
         /// `SimDefs.Checksum` field (`SimDefs.cs:913-919`). `CreateDefault()` leaves `Rules` null
         /// and folds nothing, so:
         ///
-        ///   SimDefs.Default.Checksum      = a2e633765dc7befa   compiled-in defaults, no rules
-        ///   shipped .def + rules/*.moss   = bbd76cd7245fcf65   what the console prints
-        ///   (both MEASURED in the lane/e0-7-ice worktree and stale the moment the sibling E0-6
-        ///    lane merges ahead of it — the integrator re-pins on main, ECONOMY-PLAN §2.1 rule 4)
+        ///   SimDefs.Default.Checksum      = 0c5ddbc07e41f07d   compiled-in defaults, no rules
+        ///   shipped .def + rules/*.moss   = 09900b9a44119272   what the console prints
+        ///   (both MEASURED on the wreck lane after the send-back's CryoPod `maint` change)
         ///
         /// The shipped `.def` files are separately asserted to reproduce the DEFAULTS exactly
         /// (`DefsEquivalenceTests.ShippedDefs_Parse_ZeroProblems_ChecksumEqualsDefault`), so the
@@ -161,7 +160,13 @@ namespace Perilune.Tests
             // CryoPod row is present in BOTH SimDefs.CreateDefault and content/core/SimDefs/
             // machines.def, so the parsed value tracks the compiled one and the equivalence test
             // stays green (the "both, consistently" row of the diagnostic matrix below).
-            const ulong Pinned = 0xBBD76CD7245FCF65UL; // wreck start W3 (the CryoPod machines row)
+            // ⚠ MOVED AGAIN BY THE W3 SEND-BACK: CryoPod's `maint` went 0.30 -> 0, the OPT-OUT, so
+            // MaintenanceSystem never targets a capsule. That one column is the whole delta. Note
+            // it also required DefsParser to stop clamping `fail` to `maint` on a maint = 0 row —
+            // the clamp was rewriting this row's fail to 0 on every host that reads the .def, i.e.
+            // the parsed and compiled values would otherwise have DISAGREED and the equivalence
+            // test would have gone red instead of this pin.
+            const ulong Pinned = 0x09900B9A44119272UL; // wreck start W3 send-back (CryoPod maint 0.30 -> 0)
 
             string dir = FindShippedSimDefsDir();
             Assert.That(dir, Is.Not.Null,
@@ -190,7 +195,7 @@ namespace Perilune.Tests
                 ", pinned at " + Pinned.ToString("x16", CultureInfo.InvariantCulture) + ".\n" +
                 "THIS IS THE NUMBER THE SCENARIO HOST PRINTS (`defs: …`, " + ruleFiles.Count +
                 " rules, " + files.Count + " files). It is NOT SimDefs.Default.Checksum\n" +
-                "  (a2e633765dc7befa), which folds no designer rules — see the sibling test.\n" +
+                "  (0c5ddbc07e41f07d), which folds no designer rules — see the sibling test.\n" +
                 "NOW CHECK THE OTHER TWO ASSERTIONS — the three of them localise the change:\n" +
                 "  • DefsEquivalenceTests …ChecksumEqualsDefault ALSO RED\n" +
                 "      ⇒ a shipped .def value and its compiled default disagree. The ONE-commit def\n" +

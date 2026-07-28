@@ -893,7 +893,7 @@ But the identities are all code:
 | device/machine kinds | **C# enum, 26 members** (properties are a def table) | `Device.cs:3-33` |
 | job kinds | **C# enum, 12 members** | `Citizen.cs:125-140` |
 | tile kinds | **code consts + static table, 4 rows** | `TileDefs.cs:34-45` |
-| room types | **C# enum, 16 members** | `RoomType.cs:9-27` |
+| room types | **C# enum, 17 members** (`Cryo = 16` appended by the wreck start; it was the 17th that the anchor hash fold used to alias onto `None` — fixed, see `MECHANICS.md` "What is hashed") | `RoomType.cs:9-40` |
 | recipes | **def table over a code-fixed keyspace** — `RecipeDef[]` indexed by `(int)DeviceKind`, so single-in/single-out and one bill per station; a second row *overwrites* | `SimDefs.cs:671-674`, `:953-969` |
 | production graph | **fully data-driven, additive, and shipped EMPTY** | `ProductionDefs.cs`; `Production.Nodes = Array.Empty<>()` at `SimDefs.cs:678`; `content/core/SimDefs/production.def` is 99 lines of comment and a bare `[production]` header at line 100 |
 | deconstruct yields | **hybrid: amounts def'd, item kind compiled in** | `DeconstructSystem.cs:91` `WallSalvage = ItemKind.Regolith`, `:96` `DeviceSalvage = ItemKind.Parts`; amounts at `:270,290` |

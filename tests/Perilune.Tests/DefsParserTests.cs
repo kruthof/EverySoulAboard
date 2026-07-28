@@ -122,6 +122,35 @@ namespace Perilune.Tests
             Assert.That(door.FailBelow, Is.EqualTo(door.MaintainBelow));
         }
 
+        /// <summary>
+        /// ⚠️ `maint = 0` IS THE OPT-OUT, NOT A THRESHOLD, and the clamp must not touch such a row.
+        /// <c>MaintenanceSystem</c> skips every device whose Condition is at or above `maint`, and
+        /// Condition is never negative, so a 0 row is never recruited for. The wreck start's
+        /// CryoPod is the first row in the table that is BOTH never-serviced AND able to fail
+        /// (0 / 0.10): a capsule the raid cracked must stay inoperative and paint Broken, but the
+        /// crew must not spend the opening's only Parts nursing a coffin. Before this carve-out the
+        /// clamp rewrote its `fail` to 0 the moment <c>content/core/SimDefs/machines.def</c> was
+        /// loaded — i.e. on every host — and the wrecked pods silently became working ones.
+        ///
+        /// The second half is the CONTROL: the ordinary clamp still fires on a row with a real
+        /// threshold, so this is a carve-out and not a deletion.
+        /// </summary>
+        [Test]
+        public void FailAboveMaintain_IsNotClamped_WhenMaintainIsTheZeroOptOut()
+        {
+            var d = Parse("[machines]\nCryoPod 0.2 0 LifeSupport false 0.15 0.001 0 0.10\n", out var problems);
+            Assert.That(problems, Is.Empty, "an opt-out row is not a malformed row: " + string.Join(" | ", problems));
+            var pod = d.Machines[(int)DeviceKind.CryoPod];
+            Assert.That(pod.MaintainBelow, Is.EqualTo(0f), "maint stays the opt-out");
+            Assert.That(pod.FailBelow, Is.EqualTo(0.10f),
+                "fail was clamped to maint on an opt-out row — a wrecked capsule would read as working");
+
+            // CONTROL: the clamp is intact wherever `maint` is a real threshold.
+            var e = Parse("[machines]\nCryoPod 0.2 0 LifeSupport false 0.15 0.001 0.3 0.9\n", out var alsoProblems);
+            Assert.That(alsoProblems, Has.Some.Contains("clamped fail to maint"));
+            Assert.That(e.Machines[(int)DeviceKind.CryoPod].FailBelow, Is.EqualTo(0.3f));
+        }
+
         [Test]
         public void ValidMachineRow_OverridesEntireRow()
         {

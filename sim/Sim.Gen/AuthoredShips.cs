@@ -1401,7 +1401,7 @@ namespace Perilune.Gen
         //
         // FIVE scrubbers are authored, and their boot states are the pacing:
         //   scrubber_cryo    0.55  WORKING  cryo bay        — the one that keeps the first pawn alive
-        //   scrubber_spine   0.11  wrecked  deck-0 spine    — reachable at boot; a Swarf-priced repair
+        //   scrubber_spine   0.09  wrecked  deck-0 spine    — reachable at boot; a Swarf-priced repair
         //   scrubber_reactor 0.09  wrecked  reactor bay     — reachable at boot; a Swarf-priced repair
         //   scrubber_ls      0.08  wrecked  hall_d0_s3      — behind the frontier (airless)
         //   scrubber_d1      0.06  wrecked  deck 1          — behind the frontier AND off-network
@@ -1456,10 +1456,21 @@ namespace Perilune.Gen
         //   * BOOT STOCK: 12 Regolith, 3 Scrap, 1 Parts, 2 Seals, in the reactor bay, in air.
         //     ⇒ 3 free services from Parts+Seals before any salvage is needed, and 12 Regolith is
         //     already 1.5× the 8 the module wants.
-        //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. This ship authors
-        //     22 such devices, of which 4 are in the boot core (radiator_cryo 0.07, battery_cryo
-        //     0.11, light_cryo 0.18, term_moss 0.14) and 6 more in the reactor bay. So the salvage
-        //     rung can bootstrap without opening a single door.
+        //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
+        //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
+        //     recomputed from a previous draft's arithmetic — the first version of this paragraph
+        //     was wrong in every figure. This ship authors 44 such devices (the census's
+        //     "worth SWARF if stripped" line), of which NINETEEN stand in the boot core:
+        //       cryobay        8 — the four wrecked pods, light_cryo 0.18, radiator_cryo 0.36,
+        //                          battery_cryo 0.11, term_moss 0.14
+        //       wreck_spine_0  2 — scrubber_spine 0.09, light_spine_0 0.16
+        //       reactor        9 — wing_a/b/c, battery_1, battery_2, tank_reserve,
+        //                          radiator_reactor, light_reactor, scrubber_reactor
+        //     So the salvage rung can bootstrap without opening a single door, by a wide margin.
+        //     (Two of the nineteen must NOT be stripped in practice — radiator_cryo and
+        //     radiator_reactor are the survivable core's thermostats — and four of them are the
+        //     dead sleepers' capsules, which `DeconstructSystem` now REFUSES outright. Call the
+        //     freely-strippable core stock thirteen.)
         //   * 80 debris tiles pay Regolith on top of that, once the player can breathe next to them.
         //
         // ⇒ The floor is 4 consumables and 8 Regolith; the ship authors 3 free services, 12
@@ -1546,11 +1557,17 @@ namespace Perilune.Gen
         /// badly the raid treated it.
         ///
         /// ⚠️ THE `Condition` COLUMN IS THE WHOLE FICTION. Below `machines.def`'s CryoPod `fail`
-        /// (0.10) a pod is INOPERATIVE and the glyph layer paints it `GlyphColor.Broken`, so the two
-        /// wrecked capsules read as dead on the map without any new channel. Below
-        /// `wear.wreck_threshold` (0.25) `MaintenanceSystem` refuses to bodge them for free, so
-        /// bringing one back costs salvage — which is the pacing lever the plan's OD-9 wants, and it
-        /// falls out of the shipped rules with nothing new built.
+        /// (0.10) a pod is INOPERATIVE and the glyph layer paints it `GlyphColor.Broken`, so the
+        /// FOUR wrecked capsules read as dead on the map without any new channel. (Driven, tick 0,
+        /// `--ship wreck`: the fg byte is `Broken` for exactly `pod_vance`, `pod_sokolov`,
+        /// `pod_iqbal` and `pod_osei` and `Device` for the other eight.)
+        ///
+        /// ⚠️ AND IT STAYS THAT WAY ONLY BECAUSE CryoPod's `maint` IS 0. At the first draft's
+        /// `maint = 0.30` the wrecked pods were the four neediest devices on the ship, so
+        /// `MaintenanceSystem` sent the only crew member to nurse them with the opening's entire
+        /// consumable stock — measured over one unattended sim-day: Parts 1 → 0, Seals 2 → 0, three
+        /// of the four back above `fail`. "The wrecked pods read as dead" is a tick-0 property and
+        /// the sim used to erase it inside a day; `WreckShipTests` now asserts it at day 1 too.
         /// </summary>
         private struct PodSpec
         {
@@ -1666,7 +1683,9 @@ namespace Perilune.Gen
                     // who was never a `Citizen` cannot raise. Synthesising one would write a false
                     // death into the hashed event stream and send `EulogySystem` looking for a mind
                     // that does not exist. A log line is a fact; a eulogy is a relationship, and
-                    // these eight people have no relationships because they have never been entities.
+                    // these FOUR people have no relationships because they have never been entities.
+                    // (Four, not eight: this block runs inside `if (pod.Dead)`. The eight are the
+                    // LIVING sleepers, who get no log line at all.)
                     plan.Items.Add(new ItemSpec
                     {
                         Kind = ItemKind.Corpse, Count = 1, Pos = new Int3(pod.X, pod.Y, 0), Label = pod.Who,
@@ -1691,7 +1710,14 @@ namespace Perilune.Gen
             // working scrubbers (~3.66 crew each) and these are the other two — reachable in air
             // from tick 0, so the ship's eight-crew ceiling is a SALVAGE problem and not a
             // frontier problem. See the header's life-support block for the whole census.
-            Dev(plan, DeviceKind.Scrubber, 8, SlotGridPlanner.SpineY1, 0, "scrubber_spine", 0.11f);
+            // ⚠️ 0.09 AND NOT 0.11, AND THE TABLE ABOVE WAS WRONG UNTIL IT WAS DRIVEN. Scrubber
+            // `fail` is 0.10, so at 0.11 this scrubber booted OPERATIONAL while every line of this
+            // file called it wrecked — the core booted with TWO working scrubbers, not the one the
+            // pacing rests on, and it then wore through `fail` unattended within about a sim-hour,
+            // so the player would have watched a machine they never touched die for no visible
+            // reason. 0.09 puts it in the same band as its three siblings and makes the boot state
+            // unambiguous: one working scrubber in the core, four wrecked ones on the ship.
+            Dev(plan, DeviceKind.Scrubber, 8, SlotGridPlanner.SpineY1, 0, "scrubber_spine", 0.09f);
 
             // Everything else in the bay is wrecked, and three of the four are the bootstrap: they
             // are the strippable devices standing in breathable air, so the salvage rung can start
@@ -1712,6 +1738,17 @@ namespace Perilune.Gen
             //     41.9 °C by day 1 and 48.7 °C by day 3, at which point WorksiteSafety refuses
             //     every job in the bay, so the vent and scrubber are never serviced either and
             //     BOTH decay to their own `fail` by h72. Life support then dies of overheating.
+            //
+            // ⚠️ AND UNTIL THE SEND-BACK NOTHING ENFORCED ANY OF THAT — the rule above was OBSERVED,
+            // not guarded. Measured by mutation, full `WreckShipTests` (the only suite in the repo
+            // that boots this ship, so the scope is complete): with `radiator_cryo` at 0.14 the
+            // file was 34/34 GREEN, and with `radiator_reactor` at 0.13 it was 34/34 GREEN.
+            // ⇒ The paragraph above is right that 0.14 "went GREEN"; what it does not say is that
+            // EVERY value went green, including the one it calls the single most load-bearing
+            // scalar on the ship. Both radiators are now named in
+            // `MostOfTheShip_IsAuthoredDamaged_AndTheCoresLifeSupportIsNot`, and both mutations go
+            // RED there. A number that was found by driving and then left unpinned is a number the
+            // next lane re-derives from scratch.
             //
             // 0.36 sits in the free-jury-rig band [wreck_threshold 0.25, Radiator maint 0.40), so
             // the ship's one crew member repairs it for FREE, forever, on the 0.6 → 0.4 → 0.6 cycle

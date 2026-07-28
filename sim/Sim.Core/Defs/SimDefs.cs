@@ -741,7 +741,9 @@ namespace Perilune.Sim
                     // DefsDefaultTests.MachineTable_MatchesMachineDefs_EntireTable, which compares
                     // them row for row. Change one, change the other, in the same commit.
                     // See MachineDefs.Table for why every number here is what it is.
-                    /* CryoPod         */ new MachineDef(0.2f,  0f, PowerTier.LifeSupport, false, 0.15f, 0.001f, 0.3f, 0.10f),
+                    // maint 0 = the OPT-OUT: a pod is not ship plant and the standing maintenance
+                    // rule never targets one. See MachineDefs.cs for the measured reason.
+                    /* CryoPod         */ new MachineDef(0.2f,  0f, PowerTier.LifeSupport, false, 0.15f, 0.001f, 0f, 0.10f),
                 },
 
                 Thermal = new ThermalDefs

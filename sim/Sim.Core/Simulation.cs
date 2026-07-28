@@ -294,7 +294,9 @@ namespace Perilune.Sim
         /// b9, Powered b10, Scriptable b11, NetworkId b16-31, Rate b32-63) · LockOwner · StoredKWh ·
         /// StoredLiters · Progress · FluidNetworkId · Condition · Name.
         ///
-        /// Per room anchor: Pack(Probe)|Type&lt;&lt;60 · Name. Then, after WastewaterLiters,
+        /// Per room anchor: Pack(Probe) · Type (its OWN word since the wreck start — packing it
+        /// into the probe word aliased <c>RoomType.Cryo = 16</c> onto <c>None</c>) · Name.
+        /// Then, after WastewaterLiters,
         /// the DSLS script list: Scripts.Count · (TerminalId · Source) per entry.
         ///
         /// <b>Every variable-length member folds its COUNT (or length) before its
@@ -483,7 +485,21 @@ namespace Perilune.Sim
             var anchors = Rooms.Anchors;
             for (int i = 0; i < anchors.Count; i++)
             {
-                h = XxHash64.Combine(h, Pack(anchors[i].Probe) | ((ulong)anchors[i].Type << 60));
+                // ⚠️ `Type` USED TO RIDE THE PROBE WORD AS `| (Type << 60)` AND THAT WAS A LIVE
+                // ALIAS, not a latent one. `RoomType` has 4 usable bits up there, its 16 members
+                // filled them exactly, and the wreck start's `Cryo = 16` shifted clean off the top
+                // of the word: `(ulong)16 << 60 == 0`, so a CRYO BAY hashed IDENTICALLY to an
+                // untyped room. Measured on `--ship wreck` before the fix — Cryo and None both
+                // `fdcb64eb5b094f75`, Medbay `b5e6a0f45102c979`. `StateHashHonestyTests` predicted
+                // exactly this in prose ("a 17th would fold onto None") and the 17th arrived.
+                //
+                // Type now folds as its OWN word. `RoomType : byte` cannot alias in 64 bits at any
+                // future member count, and the fix simultaneously retires the OTHER half of that
+                // bullet: `Probe.Z` reaches bit 63 through `Pack(Int3)`, so `Type`'s bits sat on
+                // Z's bits 20–23 and `anchor(z = 2^20, None)` equalled `anchor(z = 0, Corridor)`.
+                // Nothing shares a word with anything here any more.
+                h = XxHash64.Combine(h, Pack(anchors[i].Probe));
+                h = XxHash64.Combine(h, (ulong)anchors[i].Type);
                 // W0-1b — the anchor name is the MOSS ROOM NAMESPACE (Save/SaveWriter.cs:218).
                 // Exactly the Device.Name argument on a different field: a restore that renamed
                 // an anchor unbinds every `room.<name>` reference with no error.

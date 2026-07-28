@@ -1090,24 +1090,39 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE LEGALITY RULE (lane plan §5): <b>any device is strippable EXCEPT a
-        /// <see cref="DeviceKind.Door"/></b> — walked over EVERY grid-addressable kind rather than
+        /// <see cref="DeviceKind.Door"/> and an OCCUPIED <see cref="DeviceKind.CryoPod"/></b> —
+        /// walked over EVERY grid-addressable kind rather than
         /// a sample, so a kind added later is refused-or-accepted by a rule and not by luck. Life
         /// support (<see cref="DeviceKind.Scrubber"/>, <see cref="DeviceKind.AirVent"/>) is
         /// deliberately INCLUDED: stripping the scrubber to make rent is the game.
+        ///
+        /// <para>⚠️ THE SECOND EXCLUSION ARRIVED WITH THE WRECK START AND THIS TEST IS HOW IT WAS
+        /// NOTICED — it went red on a lane that had only meant to touch one ship. That is the guard
+        /// working: "the exclusion set is exactly {Door}" was a claim, and widening the set has to
+        /// be a deliberate edit here rather than a silent one in <c>CanDesignate</c>.
+        ///
+        /// The two exclusions rest on DIFFERENT arguments and the test keeps them separable. A door
+        /// is excluded by KIND, because it has another owner (<c>BuildSystem</c> spawns it, so its
+        /// inverse is build-cancel). A capsule is excluded by STATE, because there is a person
+        /// inside it — so a CryoPod is walked TWICE here, refused while closed and then accepted
+        /// once opened, which is what stops the rule degenerating into "CryoPod is un-strippable"
+        /// and quietly deleting a verb.</para>
         ///
         /// Also pins the two things <see cref="DeconstructSystem.Designate"/> resolves SIM-SIDE:
         /// the device id (from the tile — the player clicks a tile, never an entity id) and the
         /// kind-dependent def-frozen work budget.
         ///
-        /// MUTATION: change <c>return device.Kind != DeviceKind.Door;</c> to <c>return true;</c> →
-        /// the Door row fails, and build's output acquires a second owner for its lifetime.
+        /// MUTATION: drop the <c>Kind == Door</c> refusal → the Door row fails, and build's output
+        /// acquires a second owner for its lifetime.
+        /// MUTATION: drop the <c>Kind == CryoPod &amp;&amp; !IsOpen</c> refusal → the closed-capsule
+        /// row fails, and a sleeper can be condemned with a drag of the STRIP palette.
         /// MUTATION: set <c>targetId = 0</c> in <c>Designate</c> → the TargetId row fails and every
         /// device site becomes unfinishable. MUTATION: drop the <c>kind == Wall ? … : …</c> ternary
         /// on <c>WorkTicks</c> → the 900-vs-1200 row fails and <c>device_work_ticks</c> is
         /// decoration.
         /// </summary>
         [Test]
-        public void Designate_AcceptsEveryGridDeviceKindExceptDoor_AndResolvesTargetIdFromTheTile()
+        public void Designate_AcceptsEveryGridDeviceKindExceptDoorAndAnOccupiedCapsule_AndResolvesTargetIdFromTheTile()
         {
             int accepted = 0, refused = 0;
             foreach (var kind in GridAddressableKinds())
@@ -1128,7 +1143,25 @@ namespace Perilune.Tests
                     continue;
                 }
 
-                Assert.That(ok, Is.True, $"{kind} must be strippable — the rule is 'anything but a door'");
+                // A CAPSULE IS EXCLUDED BY STATE, NOT BY KIND. `AddDevice` leaves IsOpen false, so
+                // the device above is an OCCUPIED pod and must be refused; opening it makes it
+                // empty furniture and it then walks the accepted path below like every other kind.
+                // Both halves matter: without the first the sleeper is strippable, without the
+                // second "refuse CryoPod" would pass and a verb would have been deleted.
+                if (kind == DeviceKind.CryoPod)
+                {
+                    Assert.That(ok, Is.False,
+                        "an OCCUPIED cryo capsule holds a person — stripping it deletes a crew " +
+                        "member for 1 Part, with no undo on any client surface");
+                    Assert.That(strip.Pending, Is.Empty);
+                    refused++;
+
+                    device.IsOpen = true;
+                    ok = strip.Designate(sim, MachineTile, DeconstructKind.Device);
+                }
+
+                Assert.That(ok, Is.True,
+                    $"{kind} must be strippable — the rule is 'anything but a door or an occupied capsule'");
                 Assert.That(strip.TryGet(MachineTile, out var site), Is.True);
                 Assert.That(site.Kind, Is.EqualTo(DeconstructKind.Device));
                 Assert.That(site.TargetId, Is.EqualTo(device.Id),
@@ -1138,9 +1171,14 @@ namespace Perilune.Tests
                 accepted++;
             }
 
-            Assert.That(refused, Is.EqualTo(1), "exactly one kind is excluded, and it is the Door");
+            Assert.That(refused, Is.EqualTo(2),
+                "exactly two things are excluded: the Door (by KIND) and an occupied CryoPod (by " +
+                "STATE). A third refusal means someone widened the rule — say why, here, in the " +
+                "same commit.");
             Assert.That(accepted, Is.EqualTo(Enum.GetValues(typeof(DeviceKind)).Length - 3),
-                "every kind except Door, Conduit and Pipe (the two overlays are not grid-addressable)");
+                "every kind except Door, Conduit and Pipe (the two overlays are not grid-addressable) " +
+                "— CryoPod counts once here, via its OPEN form, which is why the refusal above did " +
+                "not cost the accepted census a row");
             Assert.That(SimDefs.Default.Deconstruct.DeviceWorkTicks,
                 Is.Not.EqualTo(SimDefs.Default.Deconstruct.WallWorkTicks),
                 "precondition on the WorkTicks row above: the two budgets must differ, or it proves nothing");
@@ -1300,7 +1338,10 @@ namespace Perilune.Tests
         /// or corrupts state, report it as a finding." This is that probe, run as a test so a kind
         /// added later cannot quietly break it. Every grid-addressable kind except the Door is
         /// stood up on a live default stack, stripped through the registry's own completion path,
-        /// and the sim is ticked 60 further ticks with every system running.
+        /// and the sim is ticked 60 further ticks with every system running. (A
+        /// <see cref="DeviceKind.CryoPod"/> is OPENED first: an occupied one is refused at
+        /// designate time, and a kind that cannot be designated would drop out of this probe
+        /// without failing it — which is how a removal bug would hide.)
         ///
         /// RESULT AT WP-2: none of them throws and none corrupts. Every device lookup in the repo
         /// is <c>TryGet</c>-guarded, and the two systems that hold a device across ticks
@@ -1322,6 +1363,11 @@ namespace Perilune.Tests
                 sim.AddCitizen("Probe", new Int3(2, 2, 0));
                 sim.Tick();
                 var device = sim.AddDevice(kind, MachineTile, "unit_" + kind.ToString().ToLowerInvariant());
+                // An OCCUPIED capsule is refused by CanDesignate (a person is inside it), so open
+                // it first — this test is about whether REMOVAL corrupts state for each kind, and a
+                // kind that could never be designated would silently drop out of the probe. The
+                // refusal itself is pinned next door, in the legality test.
+                if (kind == DeviceKind.CryoPod) device.IsOpen = true;
                 Assert.That(strip.Designate(sim, MachineTile, DeconstructKind.Device), Is.True, kind.ToString());
 
                 Assert.DoesNotThrow(() => strip.Complete(sim, MachineTile, 0u),

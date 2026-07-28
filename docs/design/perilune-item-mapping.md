@@ -47,10 +47,13 @@ wearing borrowed art. Two consequences worth knowing: rows 5 and 40 are marked F
 so read as unreachable, but they are **on screen today** standing in for a live kind; and the ledger
 (`GLYPH_SUBSTITUTE`) is pinned to shrink only, so growing a real piece is the way out.
 
-DeviceKind reference (`Device.cs`): Door 0, AirVent 1, Scrubber 2, Ladder 3, Terminal 4,
+DeviceKind reference (`Device.cs`, **all 28** — the list used to stop at 25 and was two members
+stale): Door 0, AirVent 1, Scrubber 2, Ladder 3, Terminal 4,
 SolarWing 5, Battery 6, Conduit 7, Light 8, GrowBed 9, WaterTank 10, Pipe 11, Reclaimer 12,
 Fabricator 13, MachineShop 14, SalvageRecycler 15, Radiator 16, Bed 17, Table 18, Chair 19,
-MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
+MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25, **IceMelter 26**
+(E0-7, the water chain), **CryoPod 27** (W3, the wreck start — the first kind whose glyph is
+picked from STATE rather than kind: `'K'` occupied, `'k'` open).
 
 ---
 

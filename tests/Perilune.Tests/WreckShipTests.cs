@@ -23,9 +23,15 @@ namespace Perilune.Tests
     ///
     /// ⚠️ EVERY LEG IS ITS OWN <c>[Test]</c> WHEREVER IT CAN BE. <c>Assert</c> throws, so only the
     /// first failing leg of a multi-leg test ever reports and a leg that cannot bite is
-    /// indistinguishable from one that can (CLAUDE.md, the fifth trap shape). The few tests that do
-    /// loop accumulate offenders into one list and assert ONCE, so nothing hides behind an earlier
-    /// failure.
+    /// indistinguishable from one that can (CLAUDE.md, the fifth trap shape). Every test that does
+    /// loop accumulates offenders into one list and asserts ONCE, so nothing hides behind an
+    /// earlier failure.
+    ///
+    /// ⚠️ THAT SENTENCE WAS FALSE WHEN IT WAS FIRST WRITTEN, in this very file, and independent
+    /// review found it: FOUR loops asserted per-iteration, so a second offender was invisible until
+    /// the first was fixed. One of those per-iteration assertions could not fail at all — the loop
+    /// guard had already established a stricter bound than the assertion checked. A claim about
+    /// test hygiene in a header is worth exactly as much as any other unmeasured claim.
     ///
     /// ⚠️ THE SHIP IS DRIVEN, NOT ONLY READ. A plan census proves what was authored; it proves
     /// nothing about whether the one crew member lives through the night, whether the cryo bay
@@ -98,7 +104,7 @@ namespace Perilune.Tests
             Assert.That(WreckThreshold, Is.EqualTo(SimDefs.Default.Wear.WreckThreshold),
                 "wear.wreck_threshold moved — this ship is authored against it, re-read the header");
             Assert.That(CryoPodFailBelow, Is.EqualTo(SimDefs.Default.Machines[(int)DeviceKind.CryoPod].FailBelow),
-                "the CryoPod fail threshold moved — the two wrecked pods may no longer read as dead");
+                "the CryoPod fail threshold moved — the FOUR wrecked pods may no longer read as dead");
         }
 
         // ---------------------------------------------------------------------- 1. the pods
@@ -121,7 +127,8 @@ namespace Perilune.Tests
         [Test]
         public void PodCensus_IsOneOpen_FourWrecked_SevenIntact()
         {
-            var pods = Pods(Boot());
+            var sim = Boot();
+            var pods = Pods(sim);
             int open = 0, wrecked = 0, intact = 0;
             var oddities = new List<string>();
             foreach (var p in pods)
@@ -139,44 +146,240 @@ namespace Perilune.Tests
             Assert.That(open, Is.EqualTo(PodsOpen), "open pods");
             Assert.That(wrecked, Is.EqualTo(PodsWreckedDead), "wrecked pods (dead sleepers)");
             Assert.That(intact, Is.EqualTo(PodsIntactOccupied), "intact occupied pods");
-            Assert.That(open + intact, Is.EqualTo(LivingSouls),
+
+            // ⚠️ THE ⭐ LINE USED TO READ `open + intact == LivingSouls` AND COULD NEVER REPORT. The
+            // three assertions above already pin open = 1 and intact = 7, so the sum was arithmetic
+            // over two facts the test had just proved — the roster was really pinned by
+            // 1 ∧ 7 ∧ 12 and by nothing that names LivingSouls at all. Found in review, not by
+            // reading it.
+            //
+            // Counted INDEPENDENTLY now, and by the only thing on this ship that actually says
+            // somebody died: a corpse on the pod's own tile. That routes through the item store
+            // rather than through Condition, so it bites on changes the three counts above cannot
+            // see — a fifth corpse, a pod authored dead but above `fail`, a corpse deleted from a
+            // wrecked pod — and it is the sentence "eight people are still alive in here" rather
+            // than a restatement of the census.
+            int souls = 0;
+            foreach (var p in pods)
+            {
+                bool hasBody = false;
+                var items = sim.Items.Items;
+                for (int i = 0; i < items.Count; i++)
+                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos) hasBody = true;
+                if (!hasBody) souls++;
+            }
+            Assert.That(souls, Is.EqualTo(LivingSouls),
                 "⭐ EIGHT LIVING SOULS is the owner's design target: the pawn who is already awake " +
-                "plus the seven W5 will thaw one at a time. A wrecked capsule is set dressing with " +
-                "a body in it and must never be counted against this number.");
+                "plus the seven W5 will thaw one at a time. Counted here as capsules with NO body " +
+                "on their tile. A wrecked capsule is set dressing with a body in it and must never " +
+                "be counted against this number.");
         }
 
+        /// <summary>
+        /// ⚠️ THIS TEST'S SECOND LEG USED TO BE UNFALSIFIABLE AND ITS PREMISE WAS WRONG.
+        ///
+        /// The old second assertion was <c>Condition &lt; WreckThreshold</c> (0.25) inside a loop
+        /// whose own guard had already established <c>Condition &lt; CryoPodFailBelow</c> (0.10).
+        /// 0.10 &lt; 0.25 by construction, so the leg could not fail under any authoring of this
+        /// ship — a dead guard sitting directly beneath a live one, which is why it read as fine.
+        ///
+        /// And what it was TRYING to say was not true anyway. Being below the wreck floor does not
+        /// stop <c>MaintenanceSystem</c> touching a pod; it only stops it being bodged with EMPTY
+        /// HANDS. The wreck's opening stock is 1 Parts + 2 Seals, the four wrecked pods are the
+        /// four lowest-Condition devices on the ship, and the system recruits neediest-first — so
+        /// unattended it spent every last consumable on the coffins. The real guard is the DEF:
+        /// <c>CryoPod</c>'s <c>maint</c> is 0, the opt-out, so a pod is never on the board at all.
+        /// Mutating it back to 0.30 reddens this and <see cref="WreckedPods_StillReadAsDead_AfterASimDayUnattended"/>.
+        /// </summary>
         [Test]
-        public void WreckedPods_ReadAsDead_AndCannotBeBodgedForFree()
+        public void WreckedPods_ReadAsDead_AndAreNotOnTheMaintenanceBoardAtAll()
         {
+            var alive = new List<string>();
             foreach (var p in Pods(Boot()))
             {
                 if (p.IsOpen || p.Condition >= CryoPodFailBelow) continue;
-                Assert.That(p.IsOperational(SimDefs.Default), Is.False,
-                    $"{p.Name}: a wrecked capsule must be INOPERATIVE, which is what paints it Broken");
-                Assert.That(p.Condition, Is.LessThan(WreckThreshold),
-                    $"{p.Name}: a wrecked capsule must be below the wreck floor, or MaintenanceSystem " +
-                    "would bodge it back for free with empty hands and the loss would cost nothing");
+                if (p.IsOperational(SimDefs.Default))
+                    alive.Add($"{p.Name} (Condition {p.Condition.ToString("R", CultureInfo.InvariantCulture)})");
             }
+            Assert.That(alive, Is.Empty,
+                "a wrecked capsule must be INOPERATIVE, which is what paints it Broken: " +
+                string.Join(", ", alive));
+
+            Assert.That(SimDefs.Default.Machines[(int)DeviceKind.CryoPod].MaintainBelow, Is.EqualTo(0f),
+                "CryoPod's `maint` must be the ZERO OPT-OUT. MaintenanceSystem skips any device at " +
+                "or above `maint` and Condition is never negative, so 0 takes pods off the board " +
+                "entirely. Any positive value puts the four wrecked capsules at the TOP of the " +
+                "board — they are the lowest-Condition devices on the ship — and the opening's " +
+                "whole consumable stock goes into dead sleepers' coffins with no player input.");
         }
+
+        /// <summary>
+        /// ⚠️ A PROPERTY THE SIM ERASES IS NOT A PROPERTY. Everything above is a tick-0 census, and
+        /// tick 0 is exactly where this ship used to be right: driven for one unattended sim-day
+        /// with <c>maint = 0.30</c>, the first <c>Maintain</c> job started at TICK 201 and by the
+        /// end of day 1 Parts had gone 1 → 0, Seals 2 → 0, <c>pod_iqbal</c> 0.03 → 1.00,
+        /// <c>pod_vance</c> 0.04 → 0.90 and <c>pod_osei</c> 0.06 → 0.90. Three of the four wrecked
+        /// capsules had stopped reading as wrecked and the player had not pressed anything.
+        ///
+        /// WHERE THE STOCK GOES NOW, measured on the same run so the fix is not just a deletion:
+        /// the day-1 consumables are spent on SHIP PLANT — <c>wing_c</c> 0.06 → 0.99 (the Parts
+        /// overhaul), <c>battery_2</c> 0.09 → 0.89 and <c>light_reactor</c> 0.09 → 0.90 (the two
+        /// Seals) — and the two radiators take the free jury-rig to 0.59. That is the maintenance
+        /// ladder doing exactly what it is for. The defect was never "the crew maintain things", it
+        /// was "the crew maintain CORPSES' CAPSULES first, because a wrecked pod is the neediest
+        /// thing on the ship".
+        ///
+        /// ⚠️ THE SECOND LEG IS THE NON-VACUITY CONTROL AND IT IS NOT OPTIONAL. The pod leg is a
+        /// statement that nothing happened, and "nothing happened" passes just as well on a sim
+        /// where <c>MaintenanceSystem</c> never ran at all — an unregistered system, a stack change,
+        /// a livelock. Requiring that the consumables WERE spent proves the window under test was
+        /// live. Measured together, the pair is the four-cell shape: pods untouched AND maintenance
+        /// demonstrably running.
+        ///
+        /// This is the slowest test in the file (86 400 ticks through the real stack) and it earns
+        /// it: it is the only assertion in the repo that the wreck's opening is still the wreck's
+        /// opening after a day of nobody playing.
+        /// </summary>
+        [Test]
+        public void WreckedPods_StillReadAsDead_AfterASimDayUnattended()
+        {
+            var sim = Boot();
+            var conditionAtBoot = new Dictionary<uint, float>();
+            var wreckedAtBoot = new List<uint>();
+            foreach (var p in Pods(sim))
+            {
+                conditionAtBoot[p.Id] = p.Condition;
+                if (!p.IsOpen && p.Condition < CryoPodFailBelow) wreckedAtBoot.Add(p.Id);
+            }
+            Assert.That(wreckedAtBoot.Count, Is.EqualTo(PodsWreckedDead), "fixture: four wrecked capsules at boot");
+            int partsAtBoot = Ground(sim, ItemKind.Parts), sealsAtBoot = Ground(sim, ItemKind.Seals);
+            Assert.That(partsAtBoot + sealsAtBoot, Is.EqualTo(3), "fixture: the opening carries 1 Parts + 2 Seals");
+
+            for (int t = 0; t < 86400; t++) sim.Tick();   // one sim-day, no player input at all
+
+            // LEG 1 — no capsule was serviced. Written as "Condition did not RISE" rather than as
+            // "is still inoperative": a pod nursed from 0.03 to 0.09 is still inoperative and would
+            // pass the weaker form, while being exactly the behaviour this test exists to forbid.
+            var serviced = new List<string>();
+            foreach (var p in Pods(sim))
+                if (p.Condition > conditionAtBoot[p.Id] + 1e-4f)
+                    serviced.Add($"{p.Name} {conditionAtBoot[p.Id].ToString("R", CultureInfo.InvariantCulture)} " +
+                                 $"-> {p.Condition.ToString("R", CultureInfo.InvariantCulture)}");
+            Assert.That(serviced, Is.Empty,
+                "a capsule gained Condition overnight, which means MaintenanceSystem is recruiting " +
+                "for pods again — set CryoPod's `maint` back to 0. On this ship that costs the " +
+                "opening its whole consumable stock and stops three of the four dead sleepers " +
+                "reading as dead: " + string.Join(", ", serviced));
+
+            var stillWrecked = new List<string>();
+            foreach (var p in Pods(sim))
+                if (wreckedAtBoot.Contains(p.Id) && p.IsOperational(SimDefs.Default))
+                    stillWrecked.Add($"{p.Name} -> {p.Condition.ToString("R", CultureInfo.InvariantCulture)}");
+            Assert.That(stillWrecked, Is.Empty,
+                "a wrecked capsule that came back to life overnight is a dead sleeper who stopped " +
+                "reading as dead: " + string.Join(", ", stillWrecked));
+
+            // LEG 2 — NON-VACUITY. Maintenance really did run in the window leg 1 measures.
+            Assert.That(Ground(sim, ItemKind.Parts) + Ground(sim, ItemKind.Seals),
+                Is.LessThan(partsAtBoot + sealsAtBoot),
+                "CONTROL: no consumable was spent all day, so MaintenanceSystem was not running and " +
+                "leg 1 above proved nothing. Measured, the day-1 stock goes into wing_c, battery_2 " +
+                "and light_reactor — ship plant, which is the ladder working.");
+        }
+
+        /// <summary>Total ground units of a kind — carried stacks included, since a stack in a
+        /// crew member's hands has left the floor but not the ship.</summary>
+        private static int Ground(Simulation sim, ItemKind kind)
+        {
+            int n = 0;
+            var items = sim.Items.Items;
+            for (int i = 0; i < items.Count; i++) if (items[i].Kind == kind) n += items[i].Count;
+            return n;
+        }
+
+        /// <summary>
+        /// ⚠️ STRIP MUST REFUSE AN OCCUPIED CAPSULE. Seven of the eight souls a won game ends with
+        /// are asleep in closed pods, and before this rule one drag of the STRIP palette across the
+        /// cryo bay condemned every one of them — driven, with a passing Door control:
+        /// <c>CanDesignate(pod_ozawa, 0.91, closed)</c> returned True and <c>Designate</c> accepted
+        /// it, paying 1 Part. The header of this ship says "nothing here may reduce that number";
+        /// nothing enforced it.
+        ///
+        /// The OPEN control is the whole shape of the rule: an empty capsule is furniture and stays
+        /// strippable, so this is a rule about OCCUPANCY and not a blanket exclusion of the kind.
+        /// </summary>
+        [Test]
+        public void StripRefusesAnOccupiedCapsule_ButNotAnEmptyOne()
+        {
+            var sim = Boot();
+            DeconstructSystem dec = null;
+            for (int i = 0; i < sim.Systems.Length; i++) if (sim.Systems[i] is DeconstructSystem d) dec = d;
+            Assert.That(dec, Is.Not.Null, "fixture: the default stack must carry a DeconstructSystem");
+
+            var condemnable = new List<string>();
+            Device openPod = null;
+            foreach (var p in Pods(sim))
+            {
+                if (p.IsOpen) { openPod = p; continue; }
+                if (dec.CanDesignate(sim, p.Pos, DeconstructKind.Device))
+                    condemnable.Add($"{p.Name} (Condition {p.Condition.ToString("R", CultureInfo.InvariantCulture)})");
+            }
+            Assert.That(condemnable, Is.Empty,
+                "these closed capsules can be STRIPPED, which permanently deletes the sleeper " +
+                "inside for 1 Part, with no undo on any client surface: " +
+                string.Join(", ", condemnable));
+
+            // CONTROL — the rule is about occupancy, not about the kind. Without this leg, "STRIP
+            // refuses CryoPod" would pass just as well and would have quietly removed a verb.
+            Assert.That(openPod, Is.Not.Null, "fixture: one capsule boots open");
+            Assert.That(dec.CanDesignate(sim, openPod.Pos, DeconstructKind.Device), Is.True,
+                $"{openPod.Name} is OPEN and therefore empty furniture — it must still be strippable");
+        }
+
+        /// <summary>The four dead sleepers, BY NAME. Hand-written like every other literal here.
+        /// ⚠️ The label used to be checked with <c>!string.IsNullOrEmpty</c>, i.e. the test named
+        /// the sleepers in its own title and then verified only that SOMEBODY was in the bag —
+        /// swapping every name on the ship left it green. The walk through the bay is meant to be
+        /// "a reading of who did not make it" (this ship's header), so who is the assertion.</summary>
+        private static readonly (string Pod, string Sleeper)[] DeadSleepers =
+        {
+            ("pod_vance", "Vance"), ("pod_sokolov", "Sokolov"),
+            ("pod_iqbal", "Iqbal"), ("pod_osei", "Osei"),
+        };
 
         [Test]
         public void EachWreckedPod_CarriesACorpseOnItsOwnTile_NamedForTheSleeper()
         {
             var sim = Boot();
-            var missing = new List<string>();
+            var wrong = new List<string>();
+            var seen = new List<string>();
             foreach (var p in Pods(sim))
             {
                 if (p.IsOpen || p.Condition >= CryoPodFailBelow) continue;
-                bool found = false;
+                seen.Add(p.Name);
+
+                string expected = null;
+                for (int i = 0; i < DeadSleepers.Length; i++)
+                    if (DeadSleepers[i].Pod == p.Name) expected = DeadSleepers[i].Sleeper;
+                if (expected == null) { wrong.Add($"{p.Name}: a capsule wrecked that this test does not name"); continue; }
+
+                string label = null;
                 var items = sim.Items.Items;
                 for (int i = 0; i < items.Count; i++)
-                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos &&
-                        !string.IsNullOrEmpty(items[i].Label)) found = true;
-                if (!found) missing.Add(p.Name);
+                    if (items[i].Kind == ItemKind.Corpse && items[i].Pos == p.Pos) label = items[i].Label;
+                if (label == null) wrong.Add($"{p.Name}: no body on the capsule's own tile");
+                else if (label != expected) wrong.Add($"{p.Name}: the body is labelled '{label}', not '{expected}'");
             }
-            Assert.That(missing, Is.Empty,
+            Assert.That(wrong, Is.Empty,
                 "a wrecked occupied pod holds a DEAD sleeper (owner decision) and the corpse item is " +
-                "the only way the sim has to say so: " + string.Join(", ", missing));
+                "the only way the sim has to say so — and it must say WHOSE:\n  " +
+                string.Join("\n  ", wrong));
+
+            var expectedPods = new List<string>();
+            for (int i = 0; i < DeadSleepers.Length; i++) expectedPods.Add(DeadSleepers[i].Pod);
+            CollectionAssert.AreEquivalent(expectedPods, seen,
+                "the set of WRECKED capsules moved — the four named above are the ship's content, " +
+                "hand-written here on purpose so a content change cannot pass silently");
 
             int corpses = 0;
             var all = sim.Items.Items;
@@ -225,11 +428,21 @@ namespace Perilune.Tests
             var buffer = new GlyphBuffer(sim.World.Width, sim.World.Height);
             GlyphMapper.Project(sim, 0, Lens.None, null, buffer);
 
-            var seen = new List<char>();
-            foreach (var p in Pods(sim)) seen.Add((char)buffer[p.Pos.X, p.Pos.Y].Glyph);
-
-            Assert.That(seen, Does.Contain('k'), "the OPEN capsule must project Glyphs.CryoPodOpen");
-            Assert.That(seen, Does.Contain('K'), "an OCCUPIED capsule must project Glyphs.CryoPodClosed");
+            // ⚠️ ASSERTED PER CAPSULE, NOT AS `Does.Contain` OVER THE SET. The first draft collected
+            // every pod's glyph and asked whether 'k' and 'K' both appeared, which is satisfied by
+            // an INVERSION: swap the two arms of GlyphMapper.DeviceGlyph's CryoPod branch and the
+            // same two characters are still present, one apiece, and the test stays green while
+            // every capsule on the ship draws the wrong piece.
+            var wrong = new List<string>();
+            foreach (var p in Pods(sim))
+            {
+                char g = (char)buffer[p.Pos.X, p.Pos.Y].Glyph;
+                char want = p.IsOpen ? 'k' : 'K';
+                if (g != want) wrong.Add($"{p.Name} (IsOpen={p.IsOpen}) projects '{g}', wanted '{want}'");
+            }
+            Assert.That(wrong, Is.Empty,
+                "each capsule must project the glyph for ITS OWN state — 'k' open, 'K' occupied:\n  " +
+                string.Join("\n  ", wrong));
             Assert.That(Glyphs.ForDevice(DeviceKind.CryoPod), Is.Not.EqualTo('?'),
                 "the kind must have a rest glyph or the vocabulary test is the only thing that sees it");
         }
@@ -406,15 +619,35 @@ namespace Perilune.Tests
                 $"a WRECK: most wear-bearing devices must be below the wreck floor " +
                 $"({wrecked} wrecked vs {pristine} not)");
 
-            // and the two that keep the pawn alive must NOT be among them
-            foreach (var name in new[] { "vent_cryo", "scrubber_cryo" })
+            // ⚠️ THE FOUR THAT KEEP THE CORE HABITABLE MUST NOT BE AMONG THEM — and until review
+            // drove it, this list named only the two AIR devices. `radiator_reactor` could be moved
+            // from 0.33 to 0.13 and the ENTIRE 1229-test suite stayed green, though this ship's own
+            // header calls the reactor bay "the other half of the survivable core" and spends two
+            // paragraphs on the measured cascade that a sub-floor radiator causes (dead at hour ~5,
+            // the compartment past heat_stroke_c, WorksiteSafety then refusing every job in it, so
+            // the vent and scrubber are never serviced either). THE RULE WAS OBSERVED, NOT ENFORCED.
+            //
+            // Below `wear.wreck_threshold` a Radiator cannot be jury-rigged back for free, and it
+            // wears at 0.006/h — so authoring one under the floor puts a fuse on its compartment
+            // measured in hours. That is the general rule this ship's header states; these four
+            // names are it, enforced.
+            //
+            // Accumulated and asserted ONCE: the old shape asserted inside the loop, so a run in
+            // which BOTH radiators had been dropped under the floor would have reported one.
+            var unfixable = new List<string>();
+            foreach (var name in new[] { "vent_cryo", "scrubber_cryo", "radiator_cryo", "radiator_reactor" })
             {
                 Device d = null;
                 for (int i = 0; i < devices.Count; i++) if (devices[i].Name == name) d = devices[i];
-                Assert.That(d, Is.Not.Null, name);
-                Assert.That(d.Condition, Is.GreaterThan(WreckThreshold),
-                    $"{name} keeps the only crew member breathing; it cannot boot unfixable");
+                if (d == null) { unfixable.Add($"{name}: absent from the ship entirely"); continue; }
+                if (d.Condition <= WreckThreshold)
+                    unfixable.Add($"{name}: Condition {d.Condition.ToString("R", CultureInfo.InvariantCulture)} " +
+                                  $"is at or below the wreck floor {WreckThreshold.ToString(CultureInfo.InvariantCulture)}");
             }
+            Assert.That(unfixable, Is.Empty,
+                "these devices keep the survivable core survivable — the two that keep the only " +
+                "crew member breathing and the two that stop the cryo and reactor bays cooking. " +
+                "None of them may boot below the free-jury-rig floor:\n  " + string.Join("\n  ", unfixable));
         }
 
         [Test]
@@ -668,6 +901,9 @@ namespace Perilune.Tests
             {
                 DeviceKind.SalvageRecycler, DeviceKind.Fabricator, DeviceKind.MachineShop,
             };
+            // Accumulated and asserted ONCE (the old shape asserted per-iteration, so a ship that
+            // had moved TWO benches into the core reported one and looked like a one-line fix).
+            var offenders = new List<string>();
             foreach (var kind in wanted)
             {
                 Device best = null;
@@ -675,14 +911,17 @@ namespace Perilune.Tests
                 for (int i = 0; i < devices.Count; i++)
                     if (devices[i].Kind == kind && (best == null || devices[i].Condition > best.Condition))
                         best = devices[i];
-                Assert.That(best, Is.Not.Null, $"the ship needs a {kind} or the matter ladder has a missing rung");
-                Assert.That(AtmosphereSafety.IsBreathable(sim, best.Pos), Is.False,
-                    $"{kind} must start BEHIND the frontier — a bench the player can already reach " +
-                    "removes the reason to make air");
-                Assert.That(best.Condition, Is.LessThan(WreckThreshold),
-                    $"{kind} must start below the wreck floor, or it repairs itself for free and " +
-                    "the salvage rung never gets used");
+                if (best == null) { offenders.Add($"{kind}: absent — the matter ladder has a missing rung"); continue; }
+                if (AtmosphereSafety.IsBreathable(sim, best.Pos))
+                    offenders.Add($"{kind} ({best.Name}) starts in BREATHABLE air — a bench the player " +
+                                  "can already reach removes the reason to make any");
+                if (best.Condition >= WreckThreshold)
+                    offenders.Add($"{kind} ({best.Name}) starts at Condition " +
+                                  best.Condition.ToString("R", CultureInfo.InvariantCulture) +
+                                  ", at or above the wreck floor — it repairs itself for free and the " +
+                                  "salvage rung never gets used");
             }
+            Assert.That(offenders, Is.Empty, string.Join("\n  ", offenders));
         }
 
         [Test]
@@ -806,19 +1045,25 @@ namespace Perilune.Tests
         [Test]
         public void NoOtherAuthoredShip_GainedAPodOrACryoRoom()
         {
+            // Accumulated and asserted ONCE. Asserting inside the loop meant the FIRST ship to
+            // have grown a pod ended the run, so "the wreck start leaked into the shipped ships"
+            // reported as a one-ship problem when it could be a three-ship one.
+            var leaks = new List<string>();
             foreach (var plan in new[]
             {
                 AuthoredShips.Perilune(), AuthoredShips.PeriluneSlice(), AuthoredShips.PeriluneGrid(),
             })
             {
                 for (int i = 0; i < plan.Devices.Count; i++)
-                    Assert.That(plan.Devices[i].Kind, Is.Not.EqualTo(DeviceKind.CryoPod),
-                        $"{plan.Name} grew a cryo pod");
+                    if (plan.Devices[i].Kind == DeviceKind.CryoPod)
+                        leaks.Add($"{plan.Name} grew a cryo pod ({plan.Devices[i].Name})");
                 for (int i = 0; i < plan.Rooms.Count; i++)
-                    Assert.That(plan.Rooms[i].Type, Is.Not.EqualTo(RoomType.Cryo),
-                        $"{plan.Name} grew a cryo bay");
-                Assert.That(plan.LogLines, Is.Empty, $"{plan.Name} grew boot log lines");
+                    if (plan.Rooms[i].Type == RoomType.Cryo)
+                        leaks.Add($"{plan.Name} grew a cryo bay ({plan.Rooms[i].Anchor})");
+                if (plan.LogLines.Count != 0)
+                    leaks.Add($"{plan.Name} grew {plan.LogLines.Count} boot log lines");
             }
+            Assert.That(leaks, Is.Empty, string.Join("\n  ", leaks));
         }
 
         // --------------------------------------------------------------------- 10. the census

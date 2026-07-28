@@ -141,14 +141,26 @@ alias-free at W0-1). **Not** fixed and still known-lossy, both out of W0-1's sco
 - **The room-anchor word shares bits with `Pack`.** It is
   `Pack(Probe) | ((ulong)Type << 60)`, and because Z reaches bits 40–63 (above), `Type`'s
   bits 60–63 sit on top of Z's bits 20–23. Measured: `anchor(z = 2^20, Type = None)` and
-  `anchor(z = 0, Type = Corridor)` both pack to `0x1000000000000000`, and
-  `anchor(z = -1, Type = None)` corrupts the `Type` bits outright. **It is safe today only
-  because `Probe.Z` is a deck index (≤ 3), not because the fields were given disjoint
-  lanes.** Separately, `Type` has exactly 4 usable bits before it runs off the top of the
-  word: `RoomType` (`Rooms/RoomType.cs:9-26`) declares 16 members, `None = 0` …
-  `LifeSupport = 15`, which fills them exactly — every shipping member is fine, and it is
-  the **17th** that would silently fold onto `None` (measured: `anchor(Type = 16) ==
-  anchor(Type = 0)`).
+  `anchor(z = 0, Type = Corridor)` both packed to `0x1000000000000000`, and
+  `anchor(z = -1, Type = None)` corrupted the `Type` bits outright.
+
+  ⚠️ **THE 17TH ROOM TYPE ARRIVED AND THE PREDICTED ALIAS WENT LIVE ON THE SHIPPING SHIP.**
+  `Type` had exactly 4 usable bits before running off the top of the word, `RoomType` declared
+  16 members which filled them exactly, and this paragraph said in as many words that a 17th
+  would fold onto `None`. The wreck start appended `RoomType.Cryo = 16`, `(ulong)16 << 60 == 0`,
+  and a **CRYO BAY hashed identically to an untyped room** — measured on `--ship wreck`, Cryo
+  and None both `fdcb64eb5b094f75`, Medbay `b5e6a0f45102c979`. **A predicted alias is not a
+  guarded one:** nothing in `StateHashHonestyTests` drove `RoomAnchor.Type` at all, so the
+  prediction sat there being right while the fold went wrong underneath it.
+
+  **Fixed** (wreck lane, 2026-07-28): `Type` folds as its **own word**, `RoomType : byte`
+  cannot alias in 64 bits at any future member count, and the Z-overlap half of the old
+  problem is retired with it — nothing shares a word with anything in the anchor fold any
+  more. It moved three of the five pins. `RoomType` now declares **17** members. Guarded by
+  `StateHashHonestyTests`' `RoomAnchor.Type` row (which mutates to the enum's own *last*
+  member, read off the enum, so an 18th inherits the guard) and by
+  `Aliased_RoomTypeAboveFifteen_DoesNotFoldOntoNone`, which builds the exact collision pair
+  with a Medbay non-vacuity control.
 
 `sim.Defs` is deliberately **not** hashed (`Simulation.cs:26`) — both determinism twins
 share one instance; the defs identity rides the `DEFS` save chapter instead
@@ -2443,6 +2455,66 @@ as ranges because the draw is unseeded, §6.4 `StagedUnits`, §13.2 first-alarm 
 two more role readers). One reviewer figure was **not** reproduced and is not used: a
 claimed "~20 % of production reaches the scrubbers" — the measured ship-wide balance over
 day 1→2 is 78.72 of 188.70 mol, **≈42 %**.*
+
+---
+
+### 13.22 `--ship wreck` (W3) — what is wired but not connected (2026-07-28)
+
+The wreck start's authoring lane. Everything here is **measured by driving the ship**, not read
+off the plan.
+
+**a. A CLOSED CRYO CAPSULE NOW REFUSES STRIP, AND THE PLAYER IS NOT TOLD WHY.**
+`DeconstructSystem.CanDesignate` gained a second device exclusion beside `Door`: a
+`DeviceKind.CryoPod` with `IsOpen == false`. Before it, `CanDesignate(pod_ozawa, Condition 0.91,
+occupied)` returned **True** and `Designate` accepted it (driven, with a passing `Door` control at
+False) — **one drag of the STRIP palette across the cryo bay permanently deleted seven of the eight
+souls a won game ends with**, and paid 1 Part for it. There is no undo on any client surface and no
+way to build a pod back.
+The refusal is **silent**: it is E0-4 WP-7's trade again (§13.17) — the failure moved from
+*expensive-and-visible* to *cheap-and-invisible*. The `blocked` channel is the surface that should
+carry it; **filed, not fixed.** An OPEN pod is still strippable (empty furniture), and that control
+is asserted, so the rule is about occupancy rather than about the kind.
+
+**b. THE PODS STILL DO NOTHING.** No `CryoSystem`, no thaw command, no MOSS verb. `CryoPod` is a
+prop with a Condition, a glyph pair (`'K'` occupied / `'k'` open — the first device whose glyph is
+picked from STATE) and a power draw. **A pod that will not open is CORRECT today**; the thaw is W5.
+
+**c. AND NOTHING REPAIRS ONE EITHER, DELIBERATELY.** `CryoPod`'s `maint` is **0**, the opt-out, so
+`MaintenanceSystem` never targets a capsule. That closes a live defect rather than opening one: at
+the first draft's `maint = 0.30` the four wrecked pods were the ship's lowest-Condition devices, so
+the standing rule sent the lone pawn to nurse them with the opening's **entire** consumable stock —
+driven, one unattended sim-day, first `Maintain` job at **tick 201**: Parts 1 → 0, Seals 2 → 0,
+`pod_iqbal` 0.03 → 1.00, `pod_vance` 0.04 → 0.90, `pod_osei` 0.06 → 0.90. **Three of the four dead
+sleepers stopped reading as dead inside a day, with no player input.** With `maint = 0` the same day
+spends the same stock on ship plant (`wing_c` 0.06 → 0.99, `battery_2` 0.09 → 0.89, `light_reactor`
+0.09 → 0.90) and all four capsules hold. ⇒ **Repairing a capsule is a player act.** The cost, stated:
+a pod has no free-jury-rig band at all now, so W5 must supply the repair path along with the thaw.
+`DefsParser` had to learn that `maint = 0` is an opt-out and not a threshold — its `fail <= maint`
+clamp was rewriting this row's `fail` to 0 on every host that reads `machines.def`.
+
+**d. CONDITION IS INVISIBLE ON THE OVERVIEW, AND ONLY THERE.** The `devices` channel carries `cond`
+and no surface draws it, so the capsule **art** is identical at 0.94 and at 0.04. But the projection
+already paints the four wrecked pods `GlyphColor.Broken`, and the Room Zoom draws the `Corpse` stack
+**over** the capsule (`roomzoom-view.js:476` after `:444`), so at Level 2 the four deaths are on
+screen. `overview-view.js` has no ground-item layer, so at Level 1 they are not. Wiring the wrecked
+twins to `cond` is a separate package.
+
+**e. THE SHIP FREEZES OUTSIDE THE CRYO BAY AND NO AUTHORED VALUE FIXES IT** — there is **no heater
+device in the game**; a radiator can only take heat out. Measured in the ship's own header.
+
+**f. ⛔ NOT REPRODUCED — a review figure of `Suffocation` 0.496 on day 7.** It was filed as a 0.8 %
+margin against the day-1 test's `< 0.5` on a day nothing tests, which would have been worth acting
+on. **Driven on the merged tree it does not appear at all**: seven sim-days, unattended, sampling
+**every tick** and not only the day boundary, the lone pawn's `Suffocation` is **exactly 0.000
+throughout** — and it is still 0.000 with `CryoPod`'s `maint` forced back to the pre-fix 0.30, so
+this lane's own changes are not what removed it. `vent_cryo` and `scrubber_cryo` both stay
+operational all week (0.43–0.60, riding the jury-rig sawtooth). ⇒ **Recorded as unreproduced, with
+the instrument stated**, rather than repeated. Anyone who sees it again should say which tree and
+which sampling.
+
+**g. RECORDED, not re-driven by this lane.** The wreck inherits B-2's conjured water, and the
+ledger counts the four corpses as **matter** (82 u includes 4). Both are review findings carried
+forward; neither was re-measured here.
 
 ---
 

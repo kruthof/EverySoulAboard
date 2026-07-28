@@ -468,13 +468,16 @@ namespace Perilune.Tests
                     "0.25 these three (maint = 0.20) have an EMPTY free-jury-rig band on EVERY ship. " +
                     "That is a shipped-economy consequence of the default, not a wreck-only one. If " +
                     "you retuned the floor, decide and record what the new set means.");
-                // ⚠️ `CryoPod` JOINS THIS SET, and that is a decision rather than a side effect. The
-                // wreck start gives the pod `maint = 0.30`, i.e. a free-jury-rig band of exactly
-                // 0.05 — narrow, but NOT empty, unlike the three above. A pod the raid merely
-                // scuffed can still be nursed back with empty hands; a pod it CRACKED (authored
-                // below 0.10, inoperative) cannot, and costs salvage. That is the pacing lever the
-                // wreck-start plan's OD-9 asks for, and it falls out of the shipped rules.
-                Assert.That(narrowest, Is.EquivalentTo(new[] { "Door", "Battery", "CryoPod" }),
+                // ⚠️ `CryoPod` IS NOT IN EITHER SET, AND THAT IS THE POINT — it is the table's first
+                // row that is never maintained (`maint = 0`, the opt-out, so the `maint <= 0f`
+                // guard above skips it) and can still FAIL (`fail = 0.10`). A draft of the wreck
+                // start gave it `maint = 0.30` and this assertion listed it here; driving one
+                // unattended sim-day showed why that was wrong — the four wrecked capsules are the
+                // lowest-Condition devices on the ship, so `MaintenanceSystem` spent the opening's
+                // entire consumable stock (1 Parts, 2 Seals) nursing dead sleepers' coffins before
+                // the player pressed anything. Repairing a pod is a PLAYER act. The cost, stated:
+                // a pod now has NO free-jury-rig band at all, and nothing repairs one today.
+                Assert.That(narrowest, Is.EquivalentTo(new[] { "Door", "Battery" }),
                     "THE NARROW-BAND SET CHANGED — kinds with less than 0.06 of Condition between " +
                     "the wreck floor and their maintain threshold. These are the kinds a small " +
                     "increase in wreck_threshold starves next.");
