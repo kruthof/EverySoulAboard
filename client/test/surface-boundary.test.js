@@ -799,7 +799,9 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  ground stack's KIND AND COUNT come from now that no surface derives them from the frame's glyph
  *  byte — which carries no count at all, keeps only the last stack on a tile, and is overwritten by any
  *  device standing there (`hosts/web/WireFormat.Items.cs`).
- *  The `devices` channel added `getDevices` — 28. Same shape a FIFTH time, and the strongest case yet:
+ *  The `devices` channel added `getDevices` — 29 (RE-COUNTED off the frozen array, not computed from
+ *  the line above: the `getItems — 27` annotation was already stale when this one was written, so
+ *  "27 + 1" gave 28 and the list holds 29). Same shape a FIFTH time, and the strongest case yet:
  *  `Device.Condition` was on no channel at all, so this is not "a better source for a fact the frame
  *  already carried" but the fact's ONLY route to the client. Read by the Room Zoom's
  *  `deviceConditionAt` seam; nothing draws it yet, because the wrecked-art join is a separate package
