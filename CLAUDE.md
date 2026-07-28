@@ -32,8 +32,10 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 > **Read `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`) before touching
 > gameplay or economy work, and the `wreck-start-decided` memory before quoting any of it.**
 
-**Gate on `main`: `./ci.sh` exit 0, 1181 dotnet + 876 node, twin hashes MATCH `43345ff0c9d62684`,
-P1–P3 HELD, and P4/P5 MOVED** (see the pin table — two new def fields). Four lanes, each
+**Gate on `main`: `./ci.sh` exit 0, 1197 dotnet + 905 node, twin hashes MATCH `43345ff0c9d62684`,
+P1–P3 HELD, and P4/P5 MOVED** (see the pin table — two new def fields). *(1181 + 876 at the re-pin
+commit; the **`blocked` channel** merged after it, pin-neutral, taking the counts to 1197 + 905 —
+**re-measure before quoting either**.)* Five lanes, each
 Opus-implemented and **independently** Opus-reviewed, **every one taking a send-back**, every
 send-back verified by the integrator in the tree before merge. Counts are a **UNION, not a sum**:
 the branches read 1142 / 1140 / 1122 apiece.
