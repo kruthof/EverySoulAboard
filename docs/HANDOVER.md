@@ -6,6 +6,53 @@ is renamed). Tag `v2-talking-ship`.
 
 ## ⇒⇒ START HERE — the 2026-07-27 orientation. READ THIS BLOCK ONLY; everything below is history.
 
+> ### ⇒ LATEST: the `items` channel LANDED (2026-07-27, after the block below was written)
+>
+> **Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 783 node, twin hashes MATCH `43345ff0c9d62684`,
+> all five pins HELD, `sim/` diff EMPTY.** Opus-implemented, independently Opus-reviewed, one
+> send-back, both fixes re-verified by the integrator.
+>
+> **What it changes for §5's roadmap.** Step 1 (ground-item art) was chartered on the premise that
+> the hard part is `buildItem` having no count channel. **That premise was half wrong in each
+> direction.** Easier: `buildItem(id, opts)` already forwards arbitrary `opts` to builders, so a
+> `count` key is not a signature change. Harder: **the client never RECEIVED a count at all** —
+> ground stacks reached both SVG surfaces only as one glyph char, and that projection loses the
+> count, loses all but the topmost stack on a tile (**including two stacks of the same kind** —
+> nothing merges them), and loses any stack sharing a tile with a device (pass 4 overwrites pass 3).
+> **No builder work could have recovered data that never left the sim.** So the art package was
+> split, and this is its first half.
+>
+> **Step 1 is now UNBLOCKED but NOT DONE.** The channel ships an honest **label plate** (`REGO 40`)
+> — a **new visual vocabulary, ratified deliberately**, not sprite art. Room STORAGE on `--ship
+> grid` went from seven dashed placeholder chips to **7 plates and zero chips**. What remains is the
+> art itself, and it opens with a **design question that is the owner's, not an agent's**: the warm
+> 60-piece set has **no** pile, ore, crop, scrap, part or module piece, and its three containers are
+> *cosmetic decor* — standing one in would assert "a crate is here" about spilled spoil.
+> `docs/design/perilune-art-direction.md` governs the **raster** pipeline and says nothing about the
+> SVG set, so **nobody has yet decided what loose stock looks like.**
+>
+> **A constraint the art package must not discover late:** every builder is a **pure** function,
+> "no DOM, no clock, no randomness — same input ⇒ byte-identical output"
+> (`client/src/items/helpers.js:1-7`). A pile that reads as scattered must derive its scatter from
+> `opts` (index, tile position), **never** from RNG — otherwise it surfaces as a golden-frame flake
+> rather than an obvious bug.
+>
+> **Corpse is NOT a builder problem and should stay out of the art package:** `'&'` is in
+> `NON_FURNITURE` on *both* SVG surfaces, so a corpse reaches neither furniture layer and draws
+> nothing. That is a surface change.
+>
+> **Also new, recorded not hidden:** a ground stack on an in-rect door tile now suppresses the
+> door's placeholder chip, so the door draws *nothing*. Doubly latent (0 such tiles on grid today);
+> the real fix is to make the two `NON_FURNITURE` sets agree.
+>
+> **A fifth trap shape is now in `CLAUDE.md`** — `assert` throws, so only the FIRST leg of a
+> multi-leg test reports, and a second leg that cannot bite is indistinguishable from one that can.
+> Blind each leg and require it to fire alone.
+>
+> **Everything else in §5 is unchanged and still the order I would take it** — the
+> `MaintenanceSystem` livelock (a real bug on the game, invisible to A1) is now the largest
+> un-owned piece.
+
 ### 1. The tree
 
 **`main` @ `af46d4f`. Working tree clean, no worktrees, nothing in flight. `./ci.sh` exit 0.**

@@ -27,6 +27,54 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-27) — **the `items` channel: a ground stack has a COUNT**
+
+**Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 783 node, twin hashes MATCH `43345ff0c9d62684`,
+all five pins HELD.** `git diff` to `sim/` is **empty** (not comment-only). Opus-implemented,
+independently Opus-reviewed, **one send-back**, and both send-back fixes re-verified by the
+integrator before the merge.
+
+**Ground item stacks reached both SVG surfaces ONLY as a single glyph char in the projection**
+(`GlyphMapper.cs:136`), which is lossy **three** ways — all three confirmed by driving the sim:
+**(1) no count** (a 1-stack and a 40-stack produce a byte-identical `GlyphCell`); **(2) topmost-only**,
+and **worse than filed** — `EntityStore.Items` is a plain list and nothing merges stacks, so two
+stacks of **ONE kind** also collapse; **(3) devices erase items** — pass 4 assigns the device glyph
+unconditionally *after* pass 3. **The fix is a channel, not a better reader** (the `marks` lesson).
+
+New sparse view-only **`items`** channel (`hosts/web/WireFormat.Items.cs`), read from `sim.Items`
+**directly, never from the projection**. Tuple `[x,y,deck,kind,count]` — deliberately NOT the
+charter's deck-first, because `materials`/`zones`/`marks` are all x-first (checked in source).
+**`WireFormat.cs` has a ZERO diff** — it was already `partial`, which is better than WP-3's
+one-token pattern. Carried items are **skipped** (their `Pos` mirrors the carrier: a carried stack
+is a fact about a *person*), pinned by a control that clears `CarriedBy` and requires the row to
+appear. `SHIP_STATE_REACH` 26 → 27 (`getItems`), ratified in review.
+
+**The Room Zoom draws a label PLATE (`REGO 40`) — a NEW VISUAL VOCABULARY, ratified deliberately,
+not sprite art.** Room STORAGE on `--ship grid` — the room that showed seven dashed placeholder
+chips — now shows **7 plates and ZERO unknown-glyph chips**, verified in a browser by two agents
+independently. **Ground-item art remains a separate package**; `NO_GROUND_ITEM_SPRITE` is untouched.
+**Cost is MEASURED, not argued** — grid **7 rows / 124 B / ~0.9 µs** against a ~392 µs render
+(**0.2 %**), slice 212 rows / 2.8 KB / ~14 µs (~4.5 %); both upper bounds, n=1, Debug. Compare
+`marks`' +61 µs.
+
+⚠️ **New latent harm, recorded not hidden:** `NON_FURNITURE` omits `'+'` and `'X'`, so a closed door
+inside a room rect chips — and a ground stack on that tile now **suppresses the chip**, so the door
+draws *nothing*. Doubly latent (0 such tiles on grid today). The real fix is to make the two
+`NON_FURNITURE` sets agree, not to narrow the suppression.
+
+### ⚠️ THE FIFTH TRAP SHAPE — `assert` throws, so only the FIRST leg of a multi-leg test reports
+
+A test whose name claims two guarantees ("deck **and** rect") reports only its **first** failing
+leg, because `assert` throws. **A second leg that cannot bite is therefore indistinguishable from
+one that can** — the suite is green either way and the name asserts both. This shipped here: the
+wrong-deck fixture row sat on the **same tile** as an in-room row, so it folded into an existing
+entry and moved only an invisible aggregate; deleting the deck filter outright left **782/782
+green** while the rect halves *did* bite. **Countermeasure: run each leg with the others BLINDED
+and require each to fire on its own.** A fixture must also carry **both failure shapes** — a
+wrong-deck row on a *free* tile (caught by the tile list) and one on an *occupied* tile (caught
+only by the aggregate); a fixture with only the first still misses the fold. The other four shapes
+are below.
+
 ## Status snapshot (2026-07-27) — **the E0-6/E0-7 WAVE + E0-8: the economy's faucet was fake**
 
 **Gate on `main`: `./ci.sh` exit 0. ALL FIVE PINS MOVED** — the wave is the biggest determinism
@@ -632,8 +680,15 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  three-package overnight run (2026-07-27, `0f27412`): 1019 dotnet + 737 node, `./ci.sh` exit 0, all
-  five pins held.** **Per-branch counts do NOT add on merge — measured again this run:** the palette
+  `items` channel merge (2026-07-27): 1097 dotnet + 783 node, `./ci.sh` exit 0, all five pins held.**
+  ⚠️ **A STALE COUNT SURVIVED IN THIS FILE FOR A WHOLE RUN, and it is the reason "re-measure" is in
+  bold.** The line below read **737 node** and was quoted as current; the `items` lane measured `main`
+  itself from a pristine `git archive` copy and found **755**, independently confirmed by review. The
+  18-test gap was never explained — nothing in the run that wrote 737 accounts for it. **A count you
+  did not measure yourself is not evidence, even when this file states it.**
+  *(Superseded:* **after the three-package overnight run (2026-07-27, `0f27412`): 1019 dotnet + 737
+  node** — the node figure is now known to have been WRONG or already stale when written.*)*
+  **Per-branch counts do NOT add on merge — measured again this run:** the palette
   branch read 713 node alone and the merged result is 737, a **union**, not 713 + anything.
   *(Superseded:* **after the `marks` merge (2026-07-26, `11b2ffb`): 1018 dotnet + 694 node**.*)* *(Superseded, and kept because the paragraph below reasons about it:* **measured on `main`
   after the WP-6 merge (2026-07-26): 1002 dotnet + 678 node, `./ci.sh` exit 0**
