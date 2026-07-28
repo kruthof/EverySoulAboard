@@ -1,6 +1,13 @@
-// The warm ITEM LIBRARY registry — all 68 pieces of docs/design/perilune-item-set.dc.html, keyed by
-// a stable kebab-case itemId. Each entry pairs the pure SVG builder with its sim classification from
-// docs/design/perilune-item-mapping.md:
+// The warm ITEM LIBRARY registry — all 70 STATIC pieces of docs/design/perilune-item-set.dc.html,
+// keyed by a stable kebab-case itemId. Each entry pairs the pure SVG builder with its sim
+// classification from docs/design/perilune-item-mapping.md:
+//
+// ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
+// `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
+// separate thing a player places — it is the same registry row in a state. Nothing in this file
+// needs to know they exist; `wrecked.js` imports FROM here, never the other way round, so the
+// wrecked set reverts by deleting one file. See its header for the join and why it is derived.
+//
 //
 //   kind       'functional' | 'cosmetic' | 'material' | 'resource'  (mapping.md class column)
 //   deviceKind  the sim DeviceKind name, for FUNCTIONAL pieces (Device.cs). Present on NEW kinds too,
@@ -62,6 +69,7 @@ import * as O from './objects.js';
 import * as S from './structures.js';
 import * as F from './fixtures.js';
 import * as R from './resources.js';
+import * as C from './cryo.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -167,6 +175,13 @@ export const ITEMS = Object.freeze({
   'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...res('Seals', 'g') },
   'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...res('Ice', 'i') },
   'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...res('Corpse', '&') },
+
+  // ── CRYO (2) — COSMETIC, added by the 2026-07-28 mock re-import ──
+  // ⚠️ NEITHER CLAIMS A GLYPH. There is no cryo-capsule `DeviceKind` in the sim, so there is no
+  // `Glyphs.ForDevice` char to claim and no tile the sim would project one onto. They sit in the
+  // same COSMETIC class as `cryopod`, which they do NOT replace — the mock ships all three.
+  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...cos('cryo_capsule_occupied') },
+  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...cos('cryo_capsule_open') },
 });
 
 /** The full list of registered itemIds, in mock order. */
