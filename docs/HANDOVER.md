@@ -1,10 +1,122 @@
 # HANDOVER — Every Soul Aboard *(codename PERILUNE)*
 
-**Last updated 2026-07-25.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
+**Last updated 2026-07-27.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒ START HERE — a fresh instance's orientation (2026-07-25, end of day)
+## ⇒⇒ START HERE — the 2026-07-27 orientation. READ THIS BLOCK ONLY; everything below is history.
+
+### 1. The tree
+
+**`main` @ `af46d4f`. Working tree clean, no worktrees, nothing in flight. `./ci.sh` exit 0.**
+**ALL FIVE PINS MOVED** — the biggest determinism change since E0-5, re-pinned in `af46d4f` together
+with `ci.sh`, both goldens, both checksum literals and the prose (the ritual):
+
+| pin | value |
+|---|---|
+| scenario `--days 3 --seed 42` | `43345ff0c9d62684` |
+| tick-3000 golden | `5a7224821810b478` |
+| slice tick-3000 golden | `7d846c14c5901e4d` |
+| defs **defaults** | `62a1bb2633c447be` |
+| defs **rules-inclusive** (host's `defs:` print) | `4c15dffe98a2cda8` |
+
+**Re-measure counts before quoting them.** They moved every package this run.
+
+### 2. ⚠️ THE ONE THING THAT REORDERS THE ROADMAP
+
+**`--ship grid` IS THE GAME.** `play.sh` → `hosts/web` → `Program.cs:44 var ship = ShipChoice.Grid`.
+There is no ship to choose. `--ship slice` is a **headless measurement fixture with no UI**, and
+`--ship perilune` backs the tick-3000 goldens. **Nearly every economy number in this file was measured
+on the slice.** Two separate claims were published this run by extrapolating slice → game; both were
+wrong. **When you report a number, say which ship.**
+
+**The consequence, discovered by the owner asking "where do I see the ice?":** E0-7's ice chain is
+authored inside `AddSliceMatter` only, `IceMelter` is not in `IsPlaceableFurniture`, and `Ice` is in
+`NO_GROUND_ITEM_SPRITE` with `chips: true`. So on the game: **the ice is not there, cannot be built,
+and would render as a dashed box with an `i` in it if it were.** The melter wears the **cooker**
+sprite as a stand-in.
+
+⇒ **GROUND-ITEM ART IS A PREREQUISITE FOR THE ECONOMY WORK BEING VISIBLE AT ALL, not a follow-up to
+it.** Authoring ice into grid today would put 1 600 units of dashed letter boxes in a cargo hold. The
+previously-recorded ordering (economy first, art later) is **inverted**.
+
+### 3. What landed (seven packages, 2026-07-26→27)
+
+Each Opus-implemented and independently Opus-reviewed. **Every one took at least one send-back;
+several took three.** Newest first: **the E0-6/E0-7 wave** (`7935c2c`, re-pin `af46d4f`) ·
+**E0-8 the ledger** (pin-neutral) · **palette overflow** · **device sprites** · **test hygiene** ·
+**the `marks` channel** · (see §4k–§4m and `MECHANICS.md` §13.19–§13.20 for the records).
+
+**The headline: the economy's faucet was fake.** The shipped `SalvageRecycler` was
+`1 Regolith → 2 Scrap` — mass creation, in the table since before the programme started. Half of
+everything the ship produced was conjured. Closed; the arithmetic now predicts the sim to the unit.
+
+### 4. ⚠️ OPEN ON THE OWNER — do not resolve these by implementing
+
+1. **Does `--ship grid` get its own ice hold (or another faucet)?** E0-6 closed the fake one and
+   **E0-7 does not repair the game** — grid is A1 **0.000 %** with work stopping after **h16**, worse
+   than before this run. This is the biggest open item and it is a **content** decision. **Read §2
+   first** — it probably needs ground-item art before it needs a decision.
+2. **The five §12 character-simulation decisions** (§4c).
+3. **§4f's hall-zoning decision.**
+4. **WP-9** (delete the console shell) — hard gate: *"only after a human has played `--ship grid` end
+   to end"*. No agent can be that human.
+
+### 5. Next, in the order I would take it
+
+1. **Ground-item art** — six builders (Regolith, MetalOre, Potato, Scrap, Parts, ControllerModule);
+   Corpse is a separate decision. **The real design question is the COUNT CHANNEL**: `buildItem(id,
+   opts)` cannot express stack size, so 1 unit and 40 render identically — a registry-signature change
+   touching every builder's call path. Nothing in the 60-piece set is a loose pile; crates would
+   assert "a container is here" about loose spoil.
+2. **The `MaintenanceSystem` livelock — a real bug on the game, invisible to A1.** From ~h265 on grid,
+   crew burn **70–80 % of all crew-time forever** in `Maintain → Flee → Maintain` against machines in
+   unbreathable compartments: measured **278 transitions in one hour, 0 services completed**. It reads
+   as **91 % busy** and would score **A1 PASS**. Same class as the haul livelock fixed by E0-4 WP-7,
+   never fixed for maintenance. **A second instance exists on `Deconstruct`** (stripping airless decks
+   livelocks at 71 % / 25 % Flee with zero progress).
+3. **`HasIceChain` perf** — walks **91 721 250 device slots per sim-day on grid**, the ship that can
+   never benefit, because its pool sits at the 20 L floor. Fix is one field memoised against
+   `sim.DeviceTopologyVersion`, which `WaterSystem.Tick` already tracks 14 lines away; pin-neutral.
+   **Charter it on the 91.7 M figure — "42.5 %" is a share of passes, not of CPU.**
+4. **Cap `sim.WastewaterLiters`** — filed as an OPEN DEFECT in `WaterSystem.cs`. ~66 % of every litre
+   melted is warehoused and never used, so the ice runway is a property of that pool and not of the
+   ice economy. Needs a def field and a design call.
+5. **E0-9's FOOD GAP** — Food is the charter's named liar, the honest number exists in the harness
+   (31.5 crew-days), and nothing reaches the player.
+
+### 6. ⚠️ MEASUREMENT DISCIPLINE — this run's most expensive lessons
+
+- **A1 counts BUSY crew and haul is busywork. NEVER quote it without throughput beside it.** It has
+  now fooled this project **five** times. The fifth nearly shipped as a published regression: the
+  merged `--strip 40` leg reads **28.771 PASS → 21.153 FAIL** with **throughput IDENTICAL at 19** and
+  both robust statistics *improving*, because A1 samples the trough of a curve swinging **13.2 pp
+  across three adjacent hours**. **A1 moved down while the economy moved up.**
+- **Four distinct shapes of test-that-cannot-bite are now in `CLAUDE.md`.** The fourth generalises:
+  **non-vacuity by POPULATION COUNT proves a matcher matched something; it never proves it would match
+  the thing.** Make non-vacuity an **INCLUSION test** — plant a known violation, require it be caught.
+- **Git's conflict markers are the floor, not the ceiling.** Two lanes fixing the same function
+  differently merge textually and are wrong together (this wave: the `[production]` seeding
+  *supersedes* the guard; git flagged 14 conflicts and the semantic ones were elsewhere).
+- **The design docs describe intent; the mechanics are in the code and in what the sim does when you
+  run it.** Three published claims this run came from reasoning over `ECONOMY.md`'s vocabulary instead
+  of measuring. All three were wrong. The agent that put it best, after finding four in its own work:
+  *"I have been wrong about which line my test reaches every time I did not run the mutation."*
+
+### 7. Claims RETRACTED this run — do not re-inherit them
+
+- ~~"Half the runway was counterfeit."~~ Closing the faucet changes **duration** by ~+3 %; it removes
+  ~44 % of the **output**. The recycler's seconds-per-unit owns the clock, not the ratio.
+- ~~"A degradation spiral ends the game."~~ Jury-rig is free, infinite, and sets Condition 0.6 — above
+  every failure threshold. **461 jury-rigs / 0 overhauls over 19 sim-days.**
+- ~~"The Seals surplus proves nothing burns it."~~ A **3-day artefact**. Grid — no melter, no ice
+  anywhere — produces 16 and burns them **16 → 5 → 2 → 0 by day 4**.
+- ~~"`ControllerModule` needs a consumer to extend supply."~~ **A sink is not a faucet.** It gives the
+  player something to spend on; it does not add matter.
+- ~~"The ice buys ~15 sim-days."~~ **~22.5**, after a priority inversion was fixed — and that number
+  is a property of the uncapped pool (item 4 above), not of the ice.
+
+## ⇒ START HERE — the SUPERSEDED 2026-07-25 orientation (kept: §4a–§4m are still the package records)
 
 **This block is the only thing you must read before you touch anything. Everything below it is
 history, newest first.** The section immediately after this one is E0-4's landed record, and it is a
