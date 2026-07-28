@@ -187,8 +187,21 @@ mock ships all three.
 The same re-import added **one broken twin for every piece in this document**, in a separate mock
 section. They are NOT in this table and never will be: a twin is not a thing a player places, it is
 the same registry row in a state. They live in `client/src/items/wrecked.js`, keyed by the PRISTINE
-`itemId`, and the join is asserted against this document's own ordering by
-`client/test/wrecked.test.js`.
+`itemId`.
+
+⛔ **CORRECTION — this paragraph used to end *"and the join is asserted against this document's own
+ordering by `client/test/wrecked.test.js`"*. That was false and is retracted. NO TEST ANYWHERE READS
+THIS DOCUMENT'S PROSE.** What `client/test/wrecked.test.js` actually asserts, and against what:
+
+| claim | asserted against |
+|---|---|
+| the twin key set is exactly `ITEM_IDS`, in order | `client/src/items/index.js` (ordered `deepEqual`) |
+| every twin's label and condition badge | the mock's own `brokenD` array in `perilune-item-set.dc.html`, parsed at test time |
+| every row's painter is the one named after that row | the builders themselves (`fn.name`), on both registries |
+
+The only part of **this file** any test reads is the **Tally** table below, which
+`client/test/items.test.js` parses and checks against the shipped registry. Everything else here is
+unpinned prose — including this sentence. Treat a number in it as a claim, not as evidence.
 
 ⚠️ **Not wired to either surface.** Nothing on the wire carries a device *condition*, so no client
 code can choose between a piece and its twin. The art and the join exist; the draw decision does
@@ -208,11 +221,19 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 | RESOURCE (ground stack, a sim `ItemKind`) | 8 |
 | **Total** | **70** |
 
+⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
+`client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
+row") reads the seven rows above out of this markdown and compares every number against `ITEMS`: the
+four class counts, the `[NEW]` split (from `deviceStatus`) and the total. Change the registry without
+changing this table and the gate goes red naming the row. **Keep the row labels and the `| … | N |`
+shape** — the reader also asserts the seven labels, so a reformat is a deliberate change to both.
+
 ⚠️ **21 → 23 COSMETIC and 68 → 70 on 2026-07-28**, from the two CRYO CAPSULE pieces. Re-counted off
 the shipped registry, not derived from this table — `client/test/items.test.js` asserts the four
 class numbers as an OBJECT rather than as a sum, so a class that moves names itself. A separate
 **70 WRECKED twins** ship alongside and are deliberately absent from this tally: they are the same
-70 rows in a state, not 70 more things.
+70 rows in a state, not 70 more things. *(Before this run that sentence described the ONLY guard;
+the table itself was unpinned, which is why it had already been wrong once.)*
 
 **The 4 items needing a NEW `DeviceKind`:** REACTOR (1), OXYGEN TANK (5), COOKER (8),
 SPACE HEATER (52). Each is a real sim change — enum id + `MachineDefs` row + save/hash +
