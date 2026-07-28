@@ -72,6 +72,7 @@ let _decor = null;        // latest decor message (cosmetic view-only furniture 
 let _materials = null;    // latest materials message (sparse wall/floor material variants → tile skins)
 let _zones = null;        // latest zones message (sparse stockpile zones: accept mask + back-off bit)
 let _marks = null;        // latest marks message (sparse debris/dig/stockpile/strip mark layer)
+let _items = null;        // latest items message (sparse ground item stacks: kind + COUNT per stack)
 let _ledger = null;       // latest ledger message (E0-8: matter census + the runway/rate members)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
@@ -109,6 +110,11 @@ export function getZones() { return _zones; }
  *  on BOTH standard surfaces. It replaces reading the projected `cell[1]` byte off `getFrame()`,
  *  which no later GlyphMapper pass can be stopped from overwriting. */
 export function getMarks() { return _marks; }
+/** The cached `items` message (the sparse ground item stacks), for the Room Zoom's item layer. It
+ *  replaces reading a ground stack off the frame's glyph byte, which cannot carry the COUNT at all,
+ *  keeps only the LAST stack on a tile, and is overwritten wholesale by any device on that tile
+ *  (`GlyphMapper` passes 3 and 4 — `hosts/web/WireFormat.Items.cs`). */
+export function getItems() { return _items; }
 /** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
  *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
  *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
@@ -441,6 +447,14 @@ export function renderZones(m) { _zones = m; notifyShip(); }
  *  draws nothing, reaches no DOM, so it survives the console deletion with the rest of the cache
  *  (see SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
 export function renderMarks(m) { _marks = m; notifyShip(); }
+
+/** Items dispatch (the `items` channel): cache the sparse ground-item-stack layer — kind AND COUNT
+ *  per stack, read from `sim.Items` rather than from the one lossy glyph the projection writes — and
+ *  notify the SVG surfaces so a delivered haul, a second kind landing on a tile, or a stack sitting on
+ *  a device becomes visible on the next repaint. View-only; never touches the sim. STATE-LAYER ONLY:
+ *  draws nothing, reaches no DOM, so it survives the console deletion with the rest of the cache (see
+ *  SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
+export function renderItems(m) { _items = m; notifyShip(); }
 
 /** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
  *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.

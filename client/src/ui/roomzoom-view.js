@@ -13,7 +13,7 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks } from '../wire/messages.js';
+import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems } from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
@@ -28,7 +28,8 @@ import {
   U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
   nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
-  roomMarkTiles, markLayerSvg, demolishTarget, addDecor, removeDecor, escStackRung,
+  roomMarkTiles, markLayerSvg, roomItemTiles, itemPlateSvg, itemPlateTileKeys,
+  demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
 import { taskTag } from './console-model.js';
@@ -72,6 +73,7 @@ let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, 
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
 let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
 let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks` channel (NOT the frame)
+let _itemTiles = [];      // this room's ground stacks, from the `items` channel (NOT the frame's glyph)
 // THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
 // ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
@@ -339,6 +341,9 @@ function repaint() {
   // The mark layer, from the `marks` channel rather than the frame's `cell[1]` byte. Derived here
   // beside the zone tiles for the same reason: one decode per repaint, one truth for the layer.
   _markTiles = roomMarkTiles(decodeMarks(Hud.getMarks()), _focus);
+  // The ground stacks, from the `items` channel — kind AND count, one row per stack, aggregated per
+  // tile here. Derived beside the other two for the same reason: one decode per repaint, one truth.
+  _itemTiles = roomItemTiles(decodeItems(Hud.getItems()), _focus);
 
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor);
@@ -391,7 +396,12 @@ function paintLayers(frame, crew, designs, decor) {
   // original order looked correct in a screenshot.
   body += zoneLayerSvg(_zoneTiles, _focus);
   body += decorSvg(roomDecor(decor, _focus));
-  body += furnitureSvg(roomCells(frame, _focus));
+  // The tiles the item layer will label. Handed to `furnitureSvg` so the VS-Z-25 unknown chip — the
+  // dashed box with the raw glyph letter, which for a ground stack is the very "one lossy letter box"
+  // the `items` channel replaces — is NOT drawn underneath a plate that says the same thing better.
+  // It suppresses ONLY that fallback branch; real furniture art is never suppressed, so a stack on a
+  // device tile keeps the device's sprite and gains a plate above it.
+  body += furnitureSvg(roomCells(frame, _focus), itemPlateTileKeys(_itemTiles));
   // WP-2 — debris + dig/strip marks. ⚠️ The old lead *"read off the frame's `cell[1]`"* is FALSE: the
   // kinds come from the `marks` channel now, decoded in `repaint()` into `_markTiles`. ABOVE the
   // material layer, which paints an opaque U*1.2 swatch over any built wall (so a strip mark under it
@@ -416,6 +426,13 @@ function paintLayers(frame, crew, designs, decor) {
   // is drawn under the pawn — visible around them, which is what "the pawn is on a condemned tile"
   // should look like.
   body += markLayerSvg(_markTiles, _focus);
+  // The ground-item plates. ABOVE the furniture layer, and that is the whole of loss 3 being fixed:
+  // `GlyphMapper` pass 4 paints the device glyph over pass 3's item, so a stack on a machine's tile
+  // reached the client nowhere at all — drawing the plate UNDER the device sprite would reproduce the
+  // erasure in the client after removing it from the wire. The plate is bottom-anchored and inset, so
+  // it labels the tile without covering what stands on it.
+  // STILL BELOW `pawnSvg`, for the same reason the marks are: a crew member is never hidden.
+  body += itemPlateSvg(_itemTiles, _focus);
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();
@@ -509,12 +526,20 @@ function materialLayerSvg(tiles) {
     (walls.length ? '<g class="rz-walls" pointer-events="none">' + walls.join('') + '</g>' : '');
 }
 
-/** The sim's own furniture cells → warm SVG items (VS-Z-19); unmapped glyph → the dashed chip. */
-function furnitureSvg(cells) {
+/** The sim's own furniture cells → warm SVG items (VS-Z-19); unmapped glyph → the dashed chip.
+ *
+ *  `plated` is the set of `"tx,ty"` keys the `items` layer labels. On those tiles the unknown-chip
+ *  FALLBACK is skipped — its raw glyph letter is the lossy rendering the plate replaces, and stacking
+ *  the two would put a `,` and a `REGO 40` on one tile. REAL ART IS NEVER SUPPRESSED: a device on a
+ *  plated tile still draws its sprite, because the plate is about what is lying there and the sprite is
+ *  about what is installed there, and both are true. */
+function furnitureSvg(cells, plated) {
   const out = [];
+  const skip = plated instanceof Set ? plated : new Set();
   for (const c of cells) {
     const [lx, ly] = localXY(c.tx, c.ty);
     const cx = lx + U / 2, cy = ly + U / 2;
+    if (!c.itemId && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
       const g = buildItem(c.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-' + c.tx + '-' + c.ty });
       out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
