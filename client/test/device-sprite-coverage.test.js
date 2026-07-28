@@ -141,13 +141,64 @@ export const parseForDevice = (csSrc) =>
 export const parseForItem = (csSrc) =>
   parseGlyphSwitch(csSrc, 'ForItem(ItemKind kind) => kind switch', 'ItemKind');
 
+/**
+ * ⚠️ THE SWITCH IS NOT THE POPULATION — `GlyphMapper.DeviceGlyph` OVERRIDES IT (door package,
+ * 2026-07-27). This whole file was built on "`Glyphs.ForDevice` is THE authority on which letter
+ * stands for which device", which its own header says, and which is FALSE for one kind:
+ *
+ *     private static char DeviceGlyph(Device device) {
+ *         if (device.Kind == DeviceKind.Door) {
+ *             if (device.IsLocked) return Glyphs.DoorLocked;      // 'X'  ← not a switch arm
+ *             return device.IsOpen ? Glyphs.DoorOpen              // '/'  ← not a switch arm
+ *                                  : Glyphs.DoorClosed;           // '+'  ← IS the switch arm
+ *         }
+ *         return Glyphs.ForDevice(device.Kind);
+ *     }
+ *
+ * So two chars a real device really does put on a real tile were **out of scope of every assertion
+ * in this file** — `CLAUDE.md` trap 4, a guard whose scope filter excludes the violation, and this
+ * time the excluded thing was already broken: `'+'` drew the VS-Z-25 dashed chip in the shipping
+ * game, reachable by pressing the DOOR tool inside a room (`BuildSystem.cs:226` — "the door starts
+ * closed"). The allowlist entry that excused `Door` from the guard is what hid it, and its stated
+ * justification was false in both halves (see the retraction where that entry used to be).
+ *
+ * PARSED, NOT TRANSCRIBED, for the same reason everything else here is: a transcription is a hand
+ * mirror, and a hand mirror is the defect. `DeviceGlyph`'s body is brace-matched out of
+ * `GlyphMapper.cs` and every `Glyphs.<Const>` reference in it is resolved against `Glyphs.cs`'s own
+ * `const char` declarations, so a fourth door state — or a second kind that grows a state override —
+ * joins the guarded population by existing.
+ * @returns {string[]} the glyph chars `DeviceGlyph` can return without consulting `ForDevice`
+ */
+export function parseDeviceGlyphOverrides(mapperSrc, glyphsSrc) {
+  const consts = parseCharConsts(codeOnly(glyphsSrc));
+  const body = blockAfter(codeOnly(mapperSrc), 'char DeviceGlyph(Device device)');
+  const out = [];
+  const re = /Glyphs\.(\w+)/g;
+  for (let m = re.exec(body); m; m = re.exec(body)) {
+    const v = consts[m[1]];
+    if (typeof v === 'string' && v.length === 1 && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
 const DEVICE_CS = read('sim/Sim.Core/Entities/Device.cs');
 const ITEM_CS = read('sim/Sim.Core/Entities/ItemStack.cs');
 const GLYPHS_CS = read('sim/Sim.Glyph/Glyphs.cs');
+const MAPPER_CS = read('sim/Sim.Glyph/GlyphMapper.cs');
 const DEVICE_KINDS = parseDeviceKinds(DEVICE_CS);
 const ITEM_KINDS = parseItemKinds(ITEM_CS);
 const FOR_DEVICE = parseForDevice(GLYPHS_CS);
 const FOR_ITEM = parseForItem(GLYPHS_CS);
+/** The door state chars `GlyphMapper.DeviceGlyph` returns instead of calling `ForDevice`. */
+const DEVICE_GLYPH_OVERRIDES = parseDeviceGlyphOverrides(MAPPER_CS, GLYPHS_CS);
+/**
+ * EVERY glyph a device can put on a tile: the switch's arms PLUS the mapper's state overrides.
+ * This is the population the art standard is held against, and the union is the whole fix.
+ */
+const PROJECTED_DEVICE_GLYPHS = [...new Set([
+  ...Object.values(FOR_DEVICE).filter((g) => typeof g === 'string' && g.length === 1),
+  ...DEVICE_GLYPH_OVERRIDES,
+])];
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // 2. THE ALLOWLIST — kinds with NO furniture sprite, and why. IT ONLY EVER SHRINKS.
@@ -165,35 +216,64 @@ const FOR_ITEM = parseForItem(GLYPHS_CS);
  * quietly; removing an entry means that kind grew a real piece.
  */
 const NO_FURNITURE_SPRITE = Object.freeze({
-  // Doors ride glyphs '+' (closed) / '/' (open) / 'X' (locked) and are drawn by the Room Zoom's
-  // STRUCTURE layer and the Overview's wall layer, from the frame's own wall/door codes. `ITEMS`
-  // does carry door pieces (`blast-door`, `sliding-door`, `airlock`) and they stay at `glyph: null`
-  // on purpose: routing a door through the furniture layer would draw it TWICE, once per layer.
+  // ⚠️ `Door` WAS HERE AND IS GONE (door package, 2026-07-27). The entry is not deleted quietly,
+  // because it is the reason a LIVE bug shipped and stayed invisible, and BOTH halves of its stated
+  // justification were false. It read:
   //
-  // ⚠️ THE JUSTIFICATION ABOVE IS INCOMPLETE, and the shortfall is LATENT rather than live (found in
-  // review). It holds fully on the Overview. On the Room Zoom the structure layer is fed by
-  // `STRUCTURE_CODES` while the furniture layer is filtered by `NON_FURNITURE`, and those two sets
-  // DISAGREE: `NON_FURNITURE` contains `'/'` (47) but **not `'+'` (43) and not `'X'` (88)**. So a
-  // CLOSED or LOCKED door standing inside a room rect would reach `roomCells`, resolve to no item,
-  // and draw the VS-Z-25 chip — the §4l symptom, from the one kind this list excuses. Measured on
-  // `--ship grid` deck 0: **zero such tiles today** (the ship's doors sit on room boundaries, which
-  // are outside every room rect), which is why it is latent and not a live bug. The real fix is to
-  // make those two sets agree in `room-model.js`; deliberately out of scope here, and recorded so
-  // that "Door is allowlisted" is not read as "Door is safe on both surfaces".
-  Door: 'drawn by the structure/wall layer, not the furniture layer (Room Zoom: latent gap — '
-    + "NON_FURNITURE omits '+' 43 and 'X' 88, so a closed/locked door inside a room rect would chip; "
-    + '0 such tiles on --ship grid deck 0 today. ⚠️ THE `items` CHANNEL LAYERED NEW HARM ON THIS '
-    + 'LATENT BUG: a ground stack on such a door tile now SUPPRESSES that chip (roomzoom-view.js '
-    + 'furnitureSvg + itemStackTileKeys), so the door would draw nothing at all rather than a wrong '
-    + 'letter. Doubly latent — it needs an in-rect door AND stock on it, and there are still 0 such '
-    + 'tiles — but the real fix is unchanged and is to make the two NON_FURNITURE sets agree in '
-    + 'room-model.js, not to narrow the suppression.)',
+  //   *"Doors ride glyphs '+' (closed) / '/' (open) / 'X' (locked) and are drawn by the Room Zoom's
+  //   STRUCTURE layer and the Overview's wall layer, from the frame's own wall/door codes… Measured
+  //   on `--ship grid` deck 0: zero such tiles today (the ship's doors sit on room boundaries, which
+  //   are outside every room rect), which is why it is latent and not a live bug."*
+  //
+  //   (1) THERE IS NO SUCH LAYER, on either surface. The Room Zoom's "structure layer" is
+  //       `roomMaterialTiles` → `materialLayerSvg`, which emits `kind:'wall'` for glyph 35 and
+  //       `kind:'floor'` for glyph 46 and nothing else. The Overview's compartments are drawn from
+  //       the `decks` slot rects and never from frame codes. NOTHING drew a door, so "it would draw
+  //       TWICE" was backwards: it drew a dashed chip, or nothing.
+  //   (2) THERE ARE NOT ZERO SUCH TILES. Driven over the committed `--ship grid` capture
+  //       (`client/test/fixtures/overview-grid.json`): deck 0 carries **8 door tiles and all 8 are
+  //       inside a room rect**; deck 1 the same 8, of which **3 are CLOSED (`'+'`)**. Every room's
+  //       door sits on that room's own rect edge — the "doors sit on room boundaries" premise
+  //       describes the WALL, not the rect. Pinned by `parseDeviceGlyphOverrides`' census test.
+  //   (3) And it is reachable by a first-class player gesture, which is what makes it live rather
+  //       than a fixture curiosity: the DOOR tool is on the Room Zoom palette, and
+  //       `sim/Sim.Core/Systems/BuildSystem.cs:226` says in its own comment "the door starts
+  //       closed". Build a door inside a room ⇒ a dashed box with a `+` in it.
+  //
+  // `Door` is now COVERED like every other kind: `'+'` → `sliding-door` (an ordinary `ForDevice`
+  // claim in `ITEMS`), `'X'` → `blast-door` via `GLYPH_SUBSTITUTE`, `'/'` deliberately unskinned and
+  // ledgered in `NO_DEVICE_GLYPH_ART` below. Because `sliding-door` is a `functional` row rather
+  // than an empty `itemId`, `furnitureSvg`'s ground-stack suppression no longer applies to it, so
+  // the second harm the old entry recorded — a stack on a door tile erasing the chip and leaving
+  // nothing — is closed by the same change and not by narrowing the suppression.
+  //
   // Conduit and Pipe share the glyph '~' — an intentional, documented collision in Glyphs.cs (they
   // are the same service-tray line). They are UTILITY-LENS OVERLAYS, drawn only under a lens, never
   // as an object on a tile; `power-conduit` / `pipe-run` therefore stay at `glyph: null` too. A
   // single glyph could not disambiguate them even if the furniture layer wanted to.
   Conduit: 'utility-lens overlay line, shares glyph ~ with Pipe',
   Pipe: 'utility-lens overlay line, shares glyph ~ with Conduit',
+});
+
+/**
+ * Projected device GLYPHS that are deliberately unskinned, keyed by the char rather than by
+ * `DeviceKind` — because the population this draws from is `GlyphMapper.DeviceGlyph`'s state arms,
+ * and one kind can put three chars on a tile which are three separate decisions.
+ *
+ * ⚠️ EVERY ENTRY IS "DRAWING NOTHING IS THE CORRECT DRAWING", never "no art yet". A kind with no art
+ * belongs in `GLYPH_SUBSTITUTE` with a named stand-in, or gets a piece. Size pinned by equality.
+ */
+const NO_DEVICE_GLYPH_ART = Object.freeze({
+  // Door, OPEN. `'/'` (47) is in `NON_FURNITURE` on both surfaces, so the Room Zoom's wall run
+  // (`materialLayerSvg`, glyph 35 only) simply has a HOLE where the door tile is — which is the
+  // truth about a tile a crew member walks through. A leaf drawn there would assert the door is shut.
+  //
+  // THE ASYMMETRY IS THE FEATURE and it is why `'/'` was not taken out of `NON_FURNITURE` when `'+'`
+  // got art: closed draws a leaf, open draws a hole, so a player can see at a glance which doors are
+  // shut. "Make the sets agree" by adding 43 and 88 to `NON_FURNITURE` would have made all three
+  // states draw nothing, i.e. it would have shipped the closed-door tile as silently empty.
+  '/': 'an OPEN doorway is a gap; the wall run correctly shows a hole through it. The closed and '
+    + 'locked states carry the art (sliding-door, blast-door), so shut vs open stays legible.',
 });
 
 /**
@@ -284,9 +364,19 @@ const COVERED = DEVICE_KINDS.filter(
 // GROUND ITEMS and both join the NO_GROUND_ITEM_SPRITE ledger below: ground-item art is a separately
 // chartered package and the warm set has no loose-pile builder at all, so each would have been drawn
 // as a dashed letter box either way.
+// The door package retired the `Door` allowlist entry, so COVERED went 24 → 25 (27 kinds − 2
+// allowlisted). `EXPECT_FOR_DEVICE_ARMS` did NOT move and that is the point of the package: the
+// switch always had 27 arms, and two of the glyphs a device can project were never in any of them.
 const EXPECT_DEVICE_KINDS = 27;
 const EXPECT_FOR_DEVICE_ARMS = 27;
-const EXPECT_COVERED = 24;    // 27 kinds − 3 allowlisted (Door, Conduit, Pipe)
+const EXPECT_COVERED = 25;    // 27 kinds − 2 allowlisted (Conduit, Pipe)
+// `GlyphMapper.DeviceGlyph`'s state overrides: 'X' locked, '/' open, '+' closed. Equality, not a
+// floor — a floor is satisfied by a parser that finds the block and resolves nothing.
+const EXPECT_DEVICE_GLYPH_OVERRIDES = 3;
+// Projected device glyphs = 27 arms, of which Conduit and Pipe share '~' (26 distinct) and Door's
+// '+' is one of them, PLUS the two override chars 'X' and '/' that are in no arm at all.
+const EXPECT_PROJECTED_DEVICE_GLYPHS = 28;
+const EXPECT_DEVICE_GLYPH_LEDGER = 1;   // '/' alone — an open doorway is a gap
 const EXPECT_ITEM_KINDS = 9;
 const EXPECT_FOR_ITEM_ARMS = 9;
 // The ledger below, pinned SEPARATELY from the enum size since the ground-item art landed. Those two
@@ -349,6 +439,83 @@ test('the C# parse is non-vacuous and resolves the named-const arms', () => {
   }
 });
 
+// ⚠️ NON-VACUITY BY INCLUSION, NOT BY COUNT (`CLAUDE.md` trap 4's own countermeasure). The three
+// legs below do not merely check that `parseDeviceGlyphOverrides` found SOMETHING — they name the
+// two chars that were out of scope before this package and require both to be present, and they
+// require the union to actually contain them. A population count would be satisfied by a parser that
+// found `'+'` three times.
+//
+// THE LEGS ARE INDEPENDENT ON PURPOSE (`CLAUDE.md` trap 5 — `assert` throws, so only the first
+// failing leg of a multi-leg test reports). Each is its own `test()` so each can fire alone.
+test('parseDeviceGlyphOverrides finds the door states GlyphMapper returns instead of ForDevice', () => {
+  assert.equal(DEVICE_GLYPH_OVERRIDES.length, EXPECT_DEVICE_GLYPH_OVERRIDES,
+    COUNT_MOVED('DeviceGlyph override', DEVICE_GLYPH_OVERRIDES.length, EXPECT_DEVICE_GLYPH_OVERRIDES)
+    + '\n\nA THIRD CASE HERE: `GlyphMapper.DeviceGlyph` was renamed or its body restructured, and\n'
+    + 'the block match silently returned nothing. That would put every door state back out of scope\n'
+    + 'of this whole file, which is the bug the door package fixed.');
+  for (const g of ['X', '/', '+']) {
+    assert.ok(DEVICE_GLYPH_OVERRIDES.includes(g),
+      `the parse lost ${JSON.stringify(g)}. GlyphMapper.cs's DeviceGlyph returns Glyphs.DoorLocked / `
+      + 'DoorOpen / DoorClosed; each must resolve through Glyphs.cs\'s `const char` declarations.');
+  }
+});
+
+test('the guarded population is the UNION — the two chars no ForDevice arm carries are IN it', () => {
+  // The whole defect in one assertion. `'X'` and `'/'` are glyphs a real device puts on a real tile
+  // and they are in NO switch arm, so every guard in this file whose population was `FOR_DEVICE`
+  // could not see them.
+  const arms = new Set(Object.values(FOR_DEVICE));
+  for (const g of ['X', '/']) {
+    assert.ok(!arms.has(g),
+      `${JSON.stringify(g)} is now a ForDevice arm. The union below is then redundant for it — but `
+      + 'do NOT delete the union: check whether the sim moved the state switch into Glyphs.cs.');
+    assert.ok(PROJECTED_DEVICE_GLYPHS.includes(g),
+      `${JSON.stringify(g)} is missing from PROJECTED_DEVICE_GLYPHS — the union is not being taken.`);
+  }
+  assert.equal(PROJECTED_DEVICE_GLYPHS.length, EXPECT_PROJECTED_DEVICE_GLYPHS,
+    COUNT_MOVED('projected device glyph', PROJECTED_DEVICE_GLYPHS.length, EXPECT_PROJECTED_DEVICE_GLYPHS));
+});
+
+test('EVERY projected device glyph is skinned or ledgered — the guard the Door entry escaped', () => {
+  // The coverage assertion re-pointed at the RIGHT population. `COVERED` iterates DeviceKinds and so
+  // can only ever ask about one glyph per kind; this iterates GLYPHS, which is what a tile carries.
+  const unskinned = [];
+  for (const g of PROJECTED_DEVICE_GLYPHS) {
+    if (g in NO_DEVICE_GLYPH_ART) continue;
+    // Conduit/Pipe's '~' is excused by DeviceKind, not by glyph — both kinds are allowlisted.
+    // ⚠️ `kindsFor.length &&` is load-bearing: an OVERRIDE char ('X', '/') is projected by no switch
+    // arm at all, so a bare `.every()` over an empty list is vacuously true and would skip exactly
+    // the two glyphs this test exists for.
+    const kindsFor = Object.keys(FOR_DEVICE).filter((k) => FOR_DEVICE[k] === g);
+    if (kindsFor.length && kindsFor.every((k) => k in NO_FURNITURE_SPRITE)) continue;
+    const id = itemIdForGlyphChar(g);
+    if (!id) { unskinned.push(`${JSON.stringify(g)}: nothing claims it`); continue; }
+    // DRIVEN, not "the table has a key": call the real builder and reject the neutral placeholder.
+    const svg = buildItem(id, OPTS);
+    if (svg === PLACEHOLDER) unskinned.push(`${JSON.stringify(g)} → "${id}": PLACEHOLDER`);
+  }
+  assert.deepEqual(unskinned, [],
+    'PROJECTED DEVICE GLYPH WITH NO ART: ' + unskinned.join('; ') + '\n' +
+    "This is the guard the old `Door` allowlist entry escaped. `'+'` (a door the player just built,\n" +
+    'which BuildSystem starts CLOSED) drew the VS-Z-25 dashed chip in the shipping game.');
+});
+
+test('the device-glyph ledger is real, justified, and pinned to its size', () => {
+  for (const [g, why] of Object.entries(NO_DEVICE_GLYPH_ART)) {
+    assert.ok(PROJECTED_DEVICE_GLYPHS.includes(g),
+      `STALE LEDGER ENTRY ${JSON.stringify(g)} — no device projects that glyph. Delete the line.`);
+    assert.ok(!itemIdForGlyphChar(g),
+      `LEDGER ENTRY ${JSON.stringify(g)} now resolves to "${itemIdForGlyphChar(g)}". It is skinned; ` +
+      'the ledger has gone stale — delete the line.');
+    assert.ok(typeof why === 'string' && why.length > 20,
+      `ledger entry ${JSON.stringify(g)} has no real justification`);
+  }
+  assert.equal(Object.keys(NO_DEVICE_GLYPH_ART).length, EXPECT_DEVICE_GLYPH_LEDGER,
+    'NO_DEVICE_GLYPH_ART CHANGED SIZE. Every entry claims DRAWING NOTHING IS CORRECT for that glyph.\n'
+    + 'Adding one is a decision for a commit message; "no art yet" is not a reason and belongs in\n'
+    + 'GLYPH_SUBSTITUTE with a stand-in instead.');
+});
+
 test('no glyph means BOTH a device and a ground item', () => {
   // A frame cell carries ONE glyph, so a shared char would leave the client unable to say which of
   // the two a tile is. It holds today (device glyphs are upper-case where the item ones are lower:
@@ -381,7 +548,9 @@ test('the allowlist is real, justified, and pinned to its size', () => {
   }
   // PINNED BY EQUALITY so the ledger cannot grow quietly (the house pattern: KNOWN_GAPS in
   // surface-boundary.test.js, ClientlessChannelAllowlist in SurfaceBoundaryTests.cs).
-  assert.equal(Object.keys(NO_FURNITURE_SPRITE).length, 3,
+  // 3 → 2: the door package retired `Door`. It is the first entry this ledger has ever paid down,
+  // and it was paid down by giving the kind art, which is exit (1) below.
+  assert.equal(Object.keys(NO_FURNITURE_SPRITE).length, 2,
     'THE NO-FURNITURE ALLOWLIST CHANGED SIZE.\n' +
     'It only ever shrinks. If you removed an entry because that kind grew a real piece — lower this\n' +
     'number in the same commit. If you ADDED one, stop: the two legitimate exits are (1) give the\n' +
@@ -631,7 +800,11 @@ test('every ITEMS row that claims a glyph names the sim kind that projects it', 
 test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
   const realGlyphs = new Set(CLAIMED_GLYPHS.map(([, g]) => g));
   for (const [g, id] of Object.entries(GLYPH_SUBSTITUTE)) {
-    assert.ok(Object.values(FOR_DEVICE).includes(g),
+    // ⚠️ `PROJECTED_DEVICE_GLYPHS`, NOT `Object.values(FOR_DEVICE)`. The narrower test was here
+    // until the door package and it is what made `'X'` (DoorLocked) unrepresentable: the glyph is
+    // projected by `GlyphMapper.DeviceGlyph`, never by a switch arm, so a correct substitution for
+    // it was rejected as "stale". A guard that cannot express the fix is part of the bug.
+    assert.ok(PROJECTED_DEVICE_GLYPHS.includes(g),
       `STALE SUBSTITUTE ${JSON.stringify(g)}: no DeviceKind projects that glyph. Delete the line.`);
     assert.ok(!realGlyphs.has(g),
       `SHADOWED SUBSTITUTE ${JSON.stringify(g)}: a real ITEMS row now claims it (${GLYPH_TO_ITEM[g]}).\n` +
@@ -646,7 +819,11 @@ test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
   // its own header says is legitimate only when a new DeviceKind ships and a stand-in is chosen
   // over drawing art — the reason is in glyph-map.js beside the entry, and drawing a real melter
   // is a job for the art lane.
-  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 6,
+  // 6 → 7 (door package): `'X'` (DoorLocked) wears the BLAST DOOR piece. Legitimate under the
+  // ledger's own header — a device glyph with no dedicated piece and a named stand-in with a reason
+  // — with the twist that the glyph is a STATE of a kind whose rest glyph already has a piece, so
+  // one `ITEMS` row could not express it. The reason is in glyph-map.js beside the entry.
+  assert.equal(Object.keys(GLYPH_SUBSTITUTE).length, 7,
     'GLYPH_SUBSTITUTE CHANGED SIZE. It only shrinks — an entry goes away when the warm set grows a\n' +
     'real piece for that kind. Adding one means a device now wears art that is not its own, on the\n' +
     'one standard surface; that is a decision for a commit message, not a default.');
@@ -659,10 +836,18 @@ test('the derived table is a function of ITEMS — not of a hand mirror', () => 
   for (const [id, g] of CLAIMED_GLYPHS) {
     assert.equal(GLYPH_TO_ITEM[g], id, `ITEMS["${id}"].glyph is ${JSON.stringify(g)} but the table says ${GLYPH_TO_ITEM[g]}`);
   }
-  // BOTH halves, and the sum is the pin: 18 device rows + 8 resource rows + 6 substitutes = 32.
-  // Written as a sum of the three sources rather than as 32 so that it stays a statement about the
-  // DERIVATION — a literal would still hold if the resource half stopped being read and six other
+  // BOTH halves, and the sum is the pin: 19 device rows + 8 resource rows + 7 substitutes = 34.
+  // Written as a sum of the three sources rather than as 34 so that it stays a statement about the
+  // DERIVATION — a literal would still hold if the resource half stopped being read and seven other
   // glyphs appeared from somewhere.
+  //
+  // ⚠️ THIS SENTENCE IS PROSE ABOUT A PIN AND MUST BE RE-COUNTED, NEVER EDITED BY ARITHMETIC —
+  // exactly as `glyph-map.js`'s header says of its own ledger counts, and the door package proved
+  // the warning is not theoretical TWICE in one file. It read "18 + 8 + 6 = 32" before the door
+  // package. Adjusting it by arithmetic from the one change you remember (substitutes 6 → 7) gives
+  // "18 + 8 + 7 = 33" and is WRONG: `sliding-door` claiming `'+'` moved the DEVICE-ROW count too,
+  // 18 → 19. The real numbers were measured off the shipped registry (19 / 8 / 7 / 34); the
+  // assertion below is a sum, so it stayed green through both wrong versions of this comment.
   assert.equal(Object.keys(GLYPH_TO_ITEM).length,
     CLAIMED_GLYPHS.length + Object.keys(GLYPH_SUBSTITUTE).length);
   assert.ok(RESOURCE_GLYPHS.every(([, g]) => GLYPH_TO_ITEM[g]),

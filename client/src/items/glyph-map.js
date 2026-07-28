@@ -45,6 +45,20 @@ import { ITEMS } from './index.js';
 /**
  * Device glyphs with NO dedicated piece in the 60-piece warm set, and the piece that stands in.
  *
+ * ⚠️ ITS KEYS ARE NOT ALL `Glyphs.ForDevice` CHARS, AND THE SENTENCE BELOW THAT SAYS THEY ARE IS
+ * QUOTED RATHER THAN DELETED — it was true until the door package (2026-07-27) and it is the exact
+ * assumption that let a whole device glyph escape the coverage guard. It reads: *"Every key here is
+ * a `Glyphs.ForDevice` char, so the KEY always means 'a device stands on this tile'."* The first
+ * clause is now false; **the second is still true and is the one that matters.**
+ *
+ * `Glyphs.ForDevice` is NOT the set of device glyphs the sim projects. `GlyphMapper.DeviceGlyph`
+ * (`sim/Sim.Glyph/GlyphMapper.cs:217-224`) intercepts `DeviceKind.Door` BEFORE calling `ForDevice`
+ * and returns one of three chars from state — `DoorLocked 'X'`, `DoorOpen '/'`, `DoorClosed '+'` —
+ * of which only `'+'` is a switch arm. So `'X'` and `'/'` are glyphs a real device really does put
+ * on a real tile while being invisible to any guard whose population is `ForDevice`. That is
+ * `CLAUDE.md` trap 4 (a guard whose SCOPE FILTER excludes the violation) and it is why
+ * `device-sprite-coverage.test.js` now parses `DeviceGlyph`'s own body as well as the switch.
+ *
  * ⚠️ THIS LEDGER SHRINKS BY DEFAULT AND GROWS ONLY DELIBERATELY. Every entry is a substitution the
  * player can see — a real device wearing another device's art — so each one is a decision with a
  * reason, not a chore. Deleting an entry means the set grew a real piece for that kind (draw it,
@@ -100,7 +114,24 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   // DeviceKind shipped and a stand-in was chosen over drawing new art, which is a decision with a
   // reason rather than a chore. Drawing a real melter piece is a job for the art lane.
   I: 'cooker',
+  // Door, LOCKED (`Glyphs.DoorLocked`). ⚠️ NOT A `ForDevice` ARM — see the header. A locked door is
+  // the SAME DeviceKind as a closed one, in a state `GlyphMapper.DeviceGlyph` gives its own char;
+  // `sliding-door` already claims the closed char `'+'`, and one ITEMS row can claim one glyph, so
+  // the second state has to be expressed here. BLAST DOOR is the set's other real door piece —
+  // reinforced steel with two hazard bands — and "sealed, do not pass" is exactly what locked means.
+  // Using a DIFFERENT piece rather than the same one is deliberate: the SVG furniture layer ignores
+  // `cell[1]` entirely, so `GlyphColor.Locked` (GlyphMapper.cs:243) reaches neither surface, and the
+  // art is the only channel left that can tell a player a door is locked rather than merely shut.
+  // Reachable today through `SetDoorStateCommand(locked:)` — the TUI's lock key and the MOSS/DSL
+  // device adapters — so this is live vocabulary, not a hypothetical.
+  X: 'blast-door',
 });
+
+// `'/'` (`Glyphs.DoorOpen`) is the third state and it is DELIBERATELY UNSKINNED — an open doorway is
+// a gap, and a gap is what both surfaces already draw (`'/'` 47 is in `NON_FURNITURE`, so the Room
+// Zoom's wall run has a hole in it where the door tile is). It is ledgered by name, with the reason
+// and an equality pin, as `NO_DEVICE_GLYPH_ART` in `client/test/device-sprite-coverage.test.js` —
+// beside `NO_FURNITURE_SPRITE`, where this repo keeps its "allowed to be unskinned" ledgers.
 
 /**
  * Build the glyph → itemId table from `ITEMS`, then fill the gaps from `GLYPH_SUBSTITUTE`.

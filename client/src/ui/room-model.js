@@ -275,6 +275,28 @@ export function clampTileToRoom(tx, ty, focusRoom) {
  * untouched, and the change is exactly one number in exactly two files, deliberately: `'%'` (37,
  * debris) in particular MUST stay — removing it fills a wreck with 33 dashed unknown chips, measured
  * (see the DEBRIS block below).
+ *
+ * ⚠️ "MAKE THE TWO `NON_FURNITURE` SETS AGREE" IS A STALE INSTRUCTION AND `docs/HANDOVER.md` STILL
+ * CARRIES IT — MEASURE BEFORE ACTING ON IT. There has been exactly ONE set since the ground-item art
+ * package: this frozen list, imported by `overview-scene.js:47`. The disagreement that actually
+ * remained was between THIS set and `STRUCTURE_CODES` (`[35, 43, 47, 88]`, further down this file),
+ * which contains `'+'` (43) and `'X'` (88) while this one does not.
+ *
+ * ⚠️ AND FORCING THOSE TWO TO AGREE WOULD HAVE BEEN THE WRONG FIX. They answer different questions:
+ * this set is "which layer owns the tile's drawing", `STRUCTURE_CODES` is "is this built structure
+ * DEMOLISH cannot take apart" (it is read by `demolishTarget` and by nothing else — there is no
+ * structure LAYER, see below). Adding 43/88 here would have made a closed door draw NOTHING, which
+ * is the failure the door package (2026-07-27) exists to end. The door glyphs are now skinned
+ * instead: `'+'` by `sliding-door`, `'X'` by `blast-door` through `GLYPH_SUBSTITUTE`. `'/'` (47)
+ * stays here on purpose — an open doorway is a gap, ledgered as `NO_DEVICE_GLYPH_ART`.
+ *
+ * ⚠️ THE CLAIM THAT A "STRUCTURE LAYER" DRAWS DOORS WAS FALSE ON BOTH SURFACES, and it stood in
+ * `device-sprite-coverage.test.js`'s allowlist as the reason `Door` was excused from the art guard.
+ * `roomMaterialTiles` (below) emits `kind:'wall'` for glyph 35 and `kind:'floor'` for glyph 46 and
+ * nothing else; the Overview's compartments come from the `decks` slot rects, not from frame codes.
+ * Nothing anywhere drew a door. The same entry claimed **zero** in-rect door tiles on `--ship grid`;
+ * driven over the committed capture, deck 0 has **8 door tiles and all 8 are inside a room rect**,
+ * deck 1 likewise 8 with **3 of them CLOSED**. The "doors sit on room boundaries" premise was wrong.
  */
 export const NON_FURNITURE_CODES = Object.freeze([46, 35, 32, 37, 64, 47]); // . # space % @ /
 const NON_FURNITURE = new Set(NON_FURNITURE_CODES);
@@ -847,7 +869,43 @@ export function itemStackTileKeys(tiles) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // Built structure glyphs (walls + doors) — demolishing these is v1-honest no-op (IX-Z-24).
-const STRUCTURE_CODES = new Set([35, 43, 47, 88]); // # + / X
+//
+// ⚠️ IT IS NOT A RENDER LAYER AND NEVER WAS. This set is read by `demolishTarget` below and by
+// NOTHING else in the client — grep it. `device-sprite-coverage.test.js` used to excuse `Door` from
+// the art guard on the strength of "drawn by the Room Zoom's STRUCTURE layer"; there is no such
+// layer, and the doors drew a dashed chip for it. It deliberately does NOT equal `NON_FURNITURE`:
+// `'+'` (43) and `'X'` (88) are structure the player cannot DEMOLISH *and* furniture the surfaces
+// must DRAW, and both facts are true at once. Keeping them here is what stops a door classifying as
+// a `device` now that its glyph resolves to real art, and that precedence is pinned in
+// `room-model.test.js`.
+//
+// ⚠️ THE REASON THIS COMMENT GAVE FOR THAT WAS FALSE, and it is quoted rather than deleted because
+// the package that wrote it exists to retract exactly this species of claim. It read: *"a door is
+// taken apart with STRIP, not with `Cmd.remove`"*. **STRIP EXPLICITLY REFUSES DOORS.**
+// `sim/Sim.Core/Systems/DeconstructSystem.cs:345` is `return device.Kind != DeviceKind.Door;`, and
+// the doc comment above it (`:320`) says why: *"a door is `BuildSystem`'s OUTPUT, so its inverse is
+// build-cancel, not strip. Two owners for one object's lifetime is the bug."* Driven against a live
+// host, a closed door answers `"cannot strip door"` where a wall and a Scrubber both answer
+// `"designate strip"`.
+//
+// THE DECISION IS UNCHANGED AND IS BETTER SUPPORTED THAN IT WAS ARGUED. Keeping the door codes here
+// is right because `Cmd.remove` lowers to `RemoveDeviceCommand`, which gates on
+// `PlaceDeviceCommand.IsPlaceableFurniture` (`Commands.cs:566`, switch at `:342-357`) — a nine-kind
+// decor whitelist that excludes `Door` INDEPENDENTLY of anything the client believes. So a
+// `Cmd.remove` at a door would be a **silent sim no-op**: a click that costs a round trip, changes
+// nothing, and tells the player nothing. This set is what keeps the client from sending it.
+//
+// ⚠️ AND THE HONEST CONSEQUENCE, RECORDED RATHER THAN HIDDEN: **a BUILT door has no removal verb at
+// all, on any surface.** DEMOLISH refuses it (here), STRIP refuses it (`DeconstructSystem.cs:345`),
+// and build-cancel only revokes a *pending* order — once `BuildSystem.Complete` has spawned the
+// device there is nothing left to cancel. A player can build a door with the DOOR tool and then
+// never remove it. That is a real gap in the sim's verb set, not a client bug, and it is not this
+// package's to close; the client's job is to stop lying about which verb would do it.
+//
+// Exported as a list for the same reason `NON_FURNITURE_CODES` is: so a test can pin the partition
+// against the SHIPPED set instead of a transcription of it. Nothing outside this module reads it.
+export const STRUCTURE_CODE_LIST = Object.freeze([35, 43, 47, 88]); // # + / X
+const STRUCTURE_CODES = new Set(STRUCTURE_CODE_LIST);
 
 /** The glyph code at (tx,ty) in the frame, or -1 (off-grid / no frame). PURE. */
 function codeAt(frame, tx, ty) {

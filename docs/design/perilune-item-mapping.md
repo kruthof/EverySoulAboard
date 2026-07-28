@@ -38,7 +38,9 @@ here.
 
 ⚠️ **Five `DeviceKind`s are drawn wearing another piece's art**, and this table does not say so on the
 substitute's own row. `WaterTank` → OXYGEN TANK (#5), `Radiator` → SPACE HEATER (#40), `SalvageRecycler`
-→ WATER RECYCLER (#6), `MedCabinet` → LOCKER (#15), `Light` → WALL LAMP (#37). The warm set has no piece
+→ WATER RECYCLER (#6), `MedCabinet` → LOCKER (#15), `Light` → WALL LAMP (#37), and — since the door package (2026-07-27) —
+`Glyphs.DoorLocked` `'X'` → BLAST DOOR (#27), which is the FIRST entry keyed by a glyph the
+`Glyphs.ForDevice` switch does not carry (`GlyphMapper.DeviceGlyph` returns it from door STATE). The warm set has no piece
 for any of those five kinds, and every one of these substitutions predates this note — they are inherited
 verbatim from the two hand-mirrored `ROLE_TO_ITEM` tables the derivation replaced, so nothing new started
 wearing borrowed art. Two consequences worth knowing: rows 5 and 40 are marked FUNCTIONAL **[NEW]** and
@@ -82,7 +84,7 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 | 24 | WORKBENCH | FUNCTIONAL [exists] | MachineShop (14) | `M` → machineshop | parts → devices / controller modules. |
 | 25 | FABRICATOR | FUNCTIONAL [exists] | Fabricator (13) | `F` → fabricator | scrap → parts. |
 | 26 | STORAGE CRATE | COSMETIC | decor `storage_crate` | — | `Storage` is a RoomType, not a device; item stacks aren't a placeable crate. Decor. |
-| 27 | BLAST DOOR | FUNCTIONAL [exists] | Door (0) | — (door) | Structural — edited in the plan, not hand-layouted (`DeviceLayout` guard). Reinforced-door skin. |
+| 27 | BLAST DOOR | FUNCTIONAL [exists] | Door (0) | `X` → sliding-door's LOCKED sibling | Structural — edited in the plan, not hand-layouted (`DeviceLayout` guard). Reinforced-door skin. ⚠️ The `—` here USED TO SAY "(door)", meaning *drawn by another layer*; **no layer on either SVG surface ever drew a door** (door package, 2026-07-27). `'X'` is `Glyphs.DoorLocked`, which `GlyphMapper.DeviceGlyph` returns instead of calling `ForDevice`, so it is carried in `GLYPH_SUBSTITUTE` rather than on this row's `glyph` field — one `ITEMS` row can claim one glyph and `sliding-door` claims the closed one. |
 | 28 | TURRET | COSMETIC | decor `turret` | — | No turret `DeviceKind` yet. Becomes FUNCTIONAL when AccessSystem/raiders land (`LockOwner` milestone). |
 | 29 | CRYOPOD | COSMETIC | decor `cryopod` | — | No cryo mechanic. Decor. |
 | 30 | FUEL DRUM | COSMETIC | decor `fuel_drum` | — | No fuel mechanic. Decor. |
@@ -113,8 +115,8 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 
 | # | Item label | Class | DeviceKind / target | Sim glyph | Notes |
 |---|------------|-------|---------------------|-----------|-------|
-| 43 | SLIDING DOOR | FUNCTIONAL [exists] | Door (0) | — (door) | Standard door skin. Structural (plan-edited). |
-| 44 | AIRLOCK | FUNCTIONAL [exists] | Door (0) | — (door) | Vacuum-boundary door variant; no separate `Airlock` kind. |
+| 43 | SLIDING DOOR | FUNCTIONAL [exists] | Door (0) | `+` → sliding-door | Standard door skin. Structural (plan-edited). ⚠️ Its `—` read "(door)" until 2026-07-27 on the false premise that a structure layer drew doors; a CLOSED door inside a room rect drew the VS-Z-25 dashed chip with a raw `+` in it, live on `--ship grid`. `'+'` is `Glyphs.DoorClosed`, i.e. `Glyphs.ForDevice(Door)`, so this is an ordinary registry claim. |
+| 44 | AIRLOCK | FUNCTIONAL [exists] | Door (0) | — | Vacuum-boundary door variant; no separate `Airlock` kind. Genuinely unclaimed: the sim projects three door chars and `sliding-door`/`blast-door` take the two that are drawn (`'/'`, open, deliberately draws nothing — `NO_DEVICE_GLYPH_ART`). |
 | 45 | HATCH / LADDER | FUNCTIONAL [exists] | Ladder (3) | `H` → ladder | Links its tile to the tile above; structural. |
 | 46 | POWER CONDUIT | FUNCTIONAL [exists] | Conduit (7) | — (conduit) | Power-line tile; networks are connected components. Overlay, not a `SPRITE_FOR_GLYPH` sprite. |
 | 47 | AIR VENT | FUNCTIONAL [exists] | AirVent (1) | `^` → vent | Injects breathable mix while open. |
