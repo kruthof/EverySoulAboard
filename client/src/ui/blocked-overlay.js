@@ -149,18 +149,33 @@ export function blockedLayerSvg(tiles, focus, unit = U) {
  * the zone key off the bottom of the canvas. The first row carries the count, because "3 ORDERS
  * STUCK" is the fact that makes a player look, and it is a fact no tooltip aggregates.
  *
- * @param {{reasonName:string, label:string, reasonText:string}[]} tiles roomBlockedTiles output
+ * ⚠️ THE TITLE NAMES THE ORDER KINDS, and that is a send-back fix rather than decoration. The wire
+ * tuple carries `order` for a reason argued at length in `WireFormat.Blocked.cs` — and until this
+ * line existed, `order` reached the player ONLY through the `<title>` label, i.e. through the exact
+ * channel this module's own header calls inadequate ("needs a hover nobody knows to try and does not
+ * exist on a touch device"). Half the justification for the tuple element was being delivered by the
+ * surface the file argues against. So: "10 DIG ORDERS STUCK", or "12 DIG/BUILD ORDERS STUCK" when
+ * more than one kind is stuck, in FIRST-SEEN order (the host's emission order — dig, strip, build),
+ * never sorted, so the words track the wire. A row whose order this client cannot name contributes
+ * nothing to the prefix and the title falls back to the bare "N ORDERS STUCK".
+ *
+ * @param {{orderName:string, reasonName:string, label:string, reasonText:string}[]} tiles
+ *        roomBlockedTiles output
  * @returns {string}
  */
 export function blockedKeyHtml(tiles) {
   if (!Array.isArray(tiles) || !tiles.length) return '';
   const seen = new Map();
+  const orders = [];
   for (const t of tiles) {
     if (!t) continue;
     const key = t.reasonName || '?';
     if (!seen.has(key)) seen.set(key, t.reasonText || 'STUCK — REASON UNKNOWN TO THIS CLIENT');
+    const o = t.orderName ? String(t.orderName).toUpperCase() : '';
+    if (o && o !== 'ORDER' && !orders.includes(o)) orders.push(o);
   }
-  const out = ['<span class="rz-key-title">' + tiles.length + ' ORDER'
+  const kinds = orders.length ? esc(orders.join('/')) + ' ' : '';
+  const out = ['<span class="rz-key-title">' + tiles.length + ' ' + kinds + 'ORDER'
     + (tiles.length === 1 ? '' : 'S') + ' STUCK</span>'];
   for (const [kind, text] of seen) {
     out.push('<span class="rz-key-row"><i class="rz-key-sw rz-key-sw-blocked-' + esc(kind) +

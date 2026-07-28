@@ -485,6 +485,12 @@ function paintLayers(frame, crew, designs, decor) {
   //
   // STILL BELOW `pawnSvg`, for exactly the reason the marks and the stacks are: a crew member is
   // never hidden by a layer that is explaining the floor.
+  //
+  // ⚠️ BOTH HALVES OF THAT SANDWICH ARE PINNED NOW, and the upper half was a send-back: moving this
+  // line below `pawnSvg` left all 27 node tests green while a near-black scrim washed over every
+  // pawn standing on a blocked tile — which they do, constantly, since the grid crew work the hold's
+  // dig field. `client/test/blocked-model.test.js` → "the blocked layer is ADDITIVE — over the mark,
+  // under the pawns" drives a roster into the room and asserts the index order both ways.
   body += blockedLayerSvg(_blockedTiles, _focus);
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));

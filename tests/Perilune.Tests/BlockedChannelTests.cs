@@ -464,6 +464,190 @@ namespace Perilune.Tests
                 "'walled in is not an AIR refusal', and the player's remedy differs.");
         }
 
+        /// <summary>
+        /// ⭐ THE MAP EDGE. A designation on the world's corner tile has neighbours OFF THE MAP, and
+        /// <see cref="Simulation.IsWalkable"/> does <b>no</b> bounds checking of its own — it indexes
+        /// <c>World.Levels[p.Z]</c> and then <c>level.Index(x, y) = y * Width + x</c> directly. So the
+        /// <c>InBounds</c> test inside <c>BlockedReason</c> is not defensive tidiness: without it
+        /// <c>(−1, 0, z)</c> indexes at <c>−1</c> and <c>(0, −1, z)</c> at <c>−Width</c>, and the
+        /// channel throws <b>on the render thread</b>, which takes the whole socket down for a tile
+        /// the player painted.
+        ///
+        /// ⚠️ IT WAS FILED IN REVIEW AS "PURELY DEFENSIVE, NOTHING PLANTS AN OUT-OF-RANGE SITE" AND
+        /// THAT IS ONLY HALF TRUE. Nothing plants an out-of-range SITE (that is the OTHER bounds test,
+        /// in <c>AddIfBlocked</c>, and it stays deliberately unpinned — see the header). But an
+        /// in-range site at the edge produces out-of-range NEIGHBOURS on any map, and this one is
+        /// reachable by ordinary play the day a ship puts diggable matter against the hull. Away from
+        /// the corner the same mutation is WORSE than a crash: <c>(−1, y, z)</c> is a perfectly valid
+        /// flat index into the PREVIOUS ROW, so the rule would silently be asked about the wrong tile.
+        ///
+        /// MUTATION: delete <c>if (!_sim.World.InBounds(n)) continue;</c> from <c>BlockedReason</c> ⇒
+        /// red (an <c>IndexOutOfRangeException</c> out of the render).
+        /// </summary>
+        [Test]
+        public void A_Designation_On_The_Map_Corner_Does_Not_Reach_Off_The_Map()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var w = sim.World;
+            var site = new Int3(0, 0, 0);
+
+            // The two IN-range neighbours are walled, so the loop is forced to reach the two that are
+            // off the map — otherwise an early accept would hide the whole point of the test.
+            for (int i = 0; i < 4; i++)
+            {
+                var n = Int3.Neighbor4(site, i);
+                if (w.InBounds(n)) w.SetWall(n, TileDefs.Wall);
+            }
+            w.SetFlag(site, TileFlags.Explored, true);
+            w.SetFlag(site, TileFlags.Designated, true);
+
+            var row = RowAt(gs, site);
+            Assert.IsNotNull(row, "the corner designation is not on the channel at all");
+            Assert.AreEqual(WireFormat.ReasonNoApproach, row.Value.Reason,
+                "a tile whose only in-range neighbours are walls and whose other two are off the map " +
+                "has no approach; anything else means an off-map read produced an answer");
+        }
+
+        // ══════════════════════════════ THE PREDICATE ITSELF IS PINNED, not merely "some air rule"
+
+        /// <summary>
+        /// ⭐⭐ <b>THE CHANNEL ASKS <c>WorksiteSafety.CanStageWorkerAt</c> AND NOT A LOOKALIKE.</b> This
+        /// is the test for the package's CENTRAL claim — *"the identical call
+        /// <c>JobWork.TryPathToAdjacent</c> makes, on the identical tile, so the channel and the
+        /// dispatcher cannot come to disagree"* — and until it existed that claim was <b>unpinned</b>:
+        /// independent review swapped the call for its own inner test,
+        /// <c>AtmosphereSafety.IsBreathable(_sim, n)</c>, and <b>all fourteen tests in this file stayed
+        /// green</b>. That is exactly the drift a future edit makes, because the two read as synonyms.
+        ///
+        /// THEY ARE NOT SYNONYMS, AND THE DIFFERENCE IS THE DOOR-MARKER CLAUSE:
+        /// <code>
+        ///   CanStageWorkerAt = !CanCycle(sim) || RoomIdAt(tile) == RoomState.DoorMarker || IsBreathable(tile)
+        /// </code>
+        /// <c>SafetySystem.cs</c> calls that middle clause *"the single most expensive mistake this rule
+        /// can make"* and records what its omission cost when the rule itself was written: it refused
+        /// <b>the entire 48-tile aft dig field of the shipped slice</b>, whose only approach is
+        /// <c>door_aft</c>. A door tile resolves to <c>Rooms[0]</c>, the vacuum sink, so it reads 0 kPa
+        /// and <c>IsBreathable</c> is FALSE on every door aboard — while <c>NeedsSystem</c> skips a crew
+        /// member standing there outright, so no suffocation accrues and the dispatcher stages there
+        /// happily.
+        ///
+        /// ⇒ A SITE WHOSE ONLY APPROACH IS A DOORWAY IS <b>NOT</b> BLOCKED, and this channel must be
+        /// silent about it. Under the lookalike it grows a badge that says "the air where a worker would
+        /// have to stand is not survivable" over an order the crew are about to do — and <b>a false
+        /// badge is worse than the silence this channel removes</b>, because it teaches the player to
+        /// ignore the layer. Divergence on shipped content today is small — <b>independent review
+        /// measured</b> <c>--ship grid</c> 0 sites and <c>--ship slice</c> 1 (attributed, not
+        /// re-measured here) — but it is structural on a wreck threaded with doorways, and the fixture
+        /// below CONSTRUCTS the case rather than depending on either ship containing it.
+        ///
+        /// THE CONTROL COMES FIRST, deliberately: a genuinely refused site must be PRESENT in the same
+        /// payload, or this test would pass on a builder that emits nothing at all.
+        ///
+        /// MUTATION: <c>WorksiteSafety.CanStageWorkerAt(_sim, n)</c> → <c>AtmosphereSafety.IsBreathable(_sim, n)</c>
+        /// in <c>GameSession.BlockedReason</c> ⇒ RED here, and green everywhere else in this file.
+        /// </summary>
+        [Test]
+        public void A_Site_Approached_Only_Through_A_DOORWAY_Is_Not_Blocked()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+
+            // CONTROL FIRST: a real refusal must be on the channel in this same render, or an emitter
+            // that returned nothing would satisfy the claim below by accident.
+            var (airless, _) = FindAirlessSite(sim);
+            sim.World.SetFlag(airless, TileFlags.Designated, true);
+            Assert.IsNotNull(RowAt(gs, airless),
+                "CONTROL FAILED: the known-refused site is not on the channel, so the ABSENCE asserted " +
+                "below would prove nothing — an emitter that produced no rows at all would pass it.");
+
+            var (site, door) = MakeDoorApproachSite(sim);
+
+            // The premises, stated in the order that makes the mutation legible.
+            Assert.AreEqual(RoomState.DoorMarker, sim.Rooms.RoomIdAt(sim.World, door),
+                "premise: the only approach tile is a DOOR MARKER");
+            Assert.That(AtmosphereSafety.IsBreathable(sim, door), Is.False,
+                "premise: the doorway's AIR reads as lethal (it resolves to the vacuum sink). If this " +
+                "ever becomes true the fixture stops separating the two predicates and the mutation " +
+                "this test exists for would survive again — so it fails here rather than passing.");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, door), Is.True,
+                "premise: the SIM'S OWN rule accepts the doorway anyway — the door-marker clause");
+
+            sim.World.SetFlag(site, TileFlags.Explored, true);
+            sim.World.SetFlag(site, TileFlags.Designated, true);
+
+            Assert.IsNull(RowAt(gs, site),
+                "A DIG AT " + site + " IS BADGED AS BLOCKED, and the job board will staff it: its only " +
+                "approach is the doorway at " + door + ", which WorksiteSafety.CanStageWorkerAt accepts. " +
+                "The channel is asking something OTHER than the dispatcher's own predicate — almost " +
+                "certainly AtmosphereSafety.IsBreathable, which is CanStageWorkerAt minus the " +
+                "door-marker clause. A badge over work that is about to happen is worse than the " +
+                "silence this channel exists to remove.");
+        }
+
+        /// <summary>
+        /// Build the door-approach fixture: a site whose ONLY walkable 4-neighbour is a walkable
+        /// <see cref="RoomState.DoorMarker"/> tile. Found on the shipped ship (the doorway is real,
+        /// not planted) and then CONSTRUCTED by walling the site's other three neighbours — the same
+        /// technique <see cref="A_Site_With_No_Walkable_Neighbour_Reports_NoApproach_Not_Air"/> uses,
+        /// and for the same reason: the shipped ship does not happen to contain the exact case, and
+        /// deleting the leg would leave the package's central claim unpinned.
+        ///
+        /// Candidates whose other neighbours are themselves doorways are skipped, so the walls this
+        /// plants can never destroy the very clause under test.
+        /// </summary>
+        private static (Int3 Site, Int3 Door) MakeDoorApproachSite(Simulation sim)
+        {
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var d = new Int3(x, y, z);
+                        if (!sim.IsWalkable(d)) continue;
+                        if (sim.Rooms.RoomIdAt(w, d) != RoomState.DoorMarker) continue;
+                        if (AtmosphereSafety.IsBreathable(sim, d)) continue;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var s = Int3.Neighbor4(d, i);
+                            if (!w.InBounds(s)) continue;
+                            bool usable = true;
+                            for (int j = 0; j < 4 && usable; j++)
+                            {
+                                var n = Int3.Neighbor4(s, j);
+                                if (Same(n, d) || !w.InBounds(n)) continue;
+                                if (sim.Rooms.RoomIdAt(w, n) == RoomState.DoorMarker) usable = false;
+                            }
+                            if (!usable) continue;
+                            for (int j = 0; j < 4; j++)
+                            {
+                                var n = Int3.Neighbor4(s, j);
+                                if (Same(n, d) || !w.InBounds(n)) continue;
+                                w.SetWall(n, TileDefs.Wall);
+                            }
+                            for (int j = 0; j < 4; j++)
+                            {
+                                var n = Int3.Neighbor4(s, j);
+                                if (!w.InBounds(n)) continue;
+                                if (Same(n, d)) continue;
+                                Assert.That(sim.IsWalkable(n), Is.False,
+                                    "premise: the fixture really did leave the doorway as the site's ONLY " +
+                                    "walkable neighbour");
+                            }
+                            Assert.That(sim.IsWalkable(d), Is.True,
+                                "premise: walling the other three neighbours did not close the doorway");
+                            return (s, d);
+                        }
+                    }
+            Assert.Fail("PREMISE FAILED: --ship grid has no walkable DoorMarker tile with a usable " +
+                        "neighbour, so the door-marker clause — the difference between " +
+                        "CanStageWorkerAt and AtmosphereSafety.IsBreathable — cannot be exercised and " +
+                        "the package's central claim would be unpinned. Fails here rather than quietly.");
+            return default;
+        }
+
+        private static bool Same(Int3 a, Int3 b) => a.X == b.X && a.Y == b.Y && a.Z == b.Z;
+
         // ═════════════════════════════════════════════════ the channel tracks the SIM, not a stamp
 
         /// <summary>
@@ -525,14 +709,18 @@ namespace Perilune.Tests
         /// So this test now pins BOTH halves — the empty tick-0 payload AND the authored census it was
         /// silently riding on — because a green whose premise is false is worse than no test at all.
         ///
-        /// ⚠️ THE PLAYER-FACING CONSEQUENCE IS REPORTED HERE, NOT SOLVED HERE: on the one standard
-        /// ship, the hold shows ten "no way to stand next to it" badges from the first frame the crew
-        /// light it. They are HONEST (nothing is happening on those tiles) and self-resolving in
-        /// principle (the outer row is designated too), but ten fault badges on a new player's first
-        /// screen is a crying-wolf risk. The two candidate remedies — suppress <c>no_approach</c> when
-        /// a 4-neighbour carries the same order, or drop <c>no_approach</c> for dig entirely — both
-        /// hide a real permanent failure in the isolated-tile case, so they are owner decisions rather
-        /// than something this lane resolves on its own.
+        /// ⚠️ THE PLAYER-FACING CONSEQUENCE, AND IT IS NOW SETTLED RATHER THAN OPEN. On the one
+        /// standard ship the hold shows ten "no way to stand next to it" badges from the first frame
+        /// the crew light it. Driven at default speed (this lane's own run, sampled every 3 000 ticks;
+        /// review measured the same shape): 10 rows by t=3000 (5 sim-min), 2 by t=9000 (15 sim-min),
+        /// <b>0 by t=15000 (25 sim-min)</b>, and the last designation is gone by t=21000 —
+        /// <c>DigJobSource.DigWorkTicks = 6000</c> is ten sim-minutes per tile, so nothing can complete
+        /// sooner. <b>They are not ten permanent faults; they are the layer narrating a dig block being
+        /// eaten from the outside in, which is what the player is watching.</b> DECIDED (owner): ship
+        /// it. The suppress-when-a-neighbour-carries-the-same-order remedy is WITHDRAWN — it pays a
+        /// permanent silence (the isolated walled-in order) for a temporary cosmetic cost.
+        /// ⛔ A contemporaneous note claiming this field "never progressed — 0 dug in ~75 sim-minutes"
+        /// is RETRACTED; it was a measurement artefact, not a bug on <c>main</c>.
         ///
         /// MUTATION: emit a row per unstageable TILE rather than per queued ORDER ⇒ red on the first
         /// assertion (grid is mostly airless, so hundreds of rows appear).
@@ -683,16 +871,76 @@ namespace Perilune.Tests
         /// <c>StateHash</c> is byte-identical across a render, over a fixture that has orders on all
         /// three registries so every code path in the builder actually runs.
         ///
+        /// ⚠️ THAT SENTENCE USED TO BE FALSE OF THE BODY BELOW, and independent review caught it: the
+        /// fixture planted a DIG and nothing else, so the strip and build walks — the two that
+        /// dereference a registry — were never entered by the test that claims to have entered them.
+        /// It now plants all three, <b>and the coverage is ASSERTED rather than described</b>: the
+        /// payload must carry one row of each order kind before the hash is compared. A doc comment
+        /// that describes a fixture the body does not build is the same defect as a guard whose scope
+        /// filter excludes the violation (trap 4), wearing prose instead of a matcher.
+        ///
         /// MUTATION: have <c>BuildBlocked</c> write anything to the sim (set a flag, clear a
-        /// designation) ⇒ red.
+        /// designation) ⇒ red on the hash. MUTATION 2: empty the strip or the build walk ⇒ red on the
+        /// COVERAGE premise, which is what makes the "all three registries" claim a fact rather than
+        /// prose.
         /// </summary>
         [Test]
         public void Rendering_The_Blocked_Channel_Never_Touches_The_Sim()
         {
             var (gs, host) = BootGrid();
             var sim = host.Sim;
+            var w = sim.World;
+
+            // 1) DIG — the tile-flag walk.
             var (airless, _) = FindAirlessSite(sim);
             sim.World.SetFlag(airless, TileFlags.Designated, true);
+
+            // 2) STRIP and 3) BUILD — the two registry walks. Both sites are found by asking the
+            // owning system's own CanDesignate, exactly as their inclusion tests do.
+            var strip = sim.Deconstruct;
+            Assert.IsNotNull(strip, "premise: --ship grid runs a DeconstructSystem");
+            BuildSystem build = null;
+            foreach (var s in sim.Systems) if (s is BuildSystem bs) { build = bs; break; }
+            Assert.IsNotNull(build, "premise: --ship grid runs a BuildSystem");
+
+            Int3? stripSite = null, buildSite = null;
+            for (int z = 0; z < w.Depth && (stripSite == null || buildSite == null); z++)
+                for (int y = 0; y < w.Height && (stripSite == null || buildSite == null); y++)
+                    for (int x = 0; x < w.Width && (stripSite == null || buildSite == null); x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        bool anyWalkable = false, allRefused = true;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            anyWalkable = true;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { allRefused = false; break; }
+                        }
+                        if (!anyWalkable || !allRefused) continue;
+                        if (stripSite == null && strip.CanDesignate(sim, p, DeconstructKind.Wall)) stripSite = p;
+                        else if (buildSite == null && build.CanDesignate(sim, p, BuildKind.Wall)) buildSite = p;
+                    }
+            Assert.IsNotNull(stripSite, "PREMISE FAILED: no refused condemnable wall on --ship grid");
+            Assert.IsNotNull(buildSite, "PREMISE FAILED: no refused buildable tile on --ship grid");
+
+            sim.EnqueueCommand(new DesignateDeconstructCommand(stripSite.Value, DeconstructKind.Wall, true));
+            sim.EnqueueCommand(new DesignateBuildCommand(buildSite.Value, BuildKind.Wall, on: true, material: 0));
+            sim.Tick();
+
+            // ⭐ THE COVERAGE PREMISE. Without this the "all three registries" claim above is prose:
+            // emptying either registry walk would leave the hash comparison green.
+            var rows = Rows(gs);
+            foreach (var (kind, name) in new[]
+                     {
+                         (WireFormat.OrderDig, "DIG"), (WireFormat.OrderStrip, "STRIP"),
+                         (WireFormat.OrderBuild, "BUILD"),
+                     })
+                Assert.That(rows.Any(r => r.Order == kind), Is.True,
+                    "COVERAGE PREMISE FAILED: no " + name + " row on the channel, so the purity claim " +
+                    "below does not cover that registry walk at all — the fixture would be asserting " +
+                    "purity of code it never runs.");
 
             ulong before = sim.StateHash();
             for (int i = 0; i < 3; i++) gs.RenderForTest();

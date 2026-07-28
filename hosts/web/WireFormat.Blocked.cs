@@ -89,6 +89,26 @@ namespace Perilune.Web
     /// <b>Stated as the residual: a designated tile in breathable air that no crew can reach is still
     /// silent.</b>
     ///
+    /// <b>⚡ AND THE SAME EXPOSURE IS THIS CHANNEL'S CHEAPEST OPEN WIN — named for the next lane rather
+    /// than accepted forever.</b> <c>DigJobSource</c> already keeps its designated tiles in a private
+    /// <c>_sites</c> list, filled by the dispatcher's own tile pass, and already publishes
+    /// <c>CandidateCount</c>. Making the LIST readable turns the dig walk below from a whole-world flag
+    /// scan into O(orders) — and that scan is <b>the entire cost this channel pays on an untouched
+    /// ship</b> (re-measured: <b>8.45 µs of a ~517 µs render, ~1.6 %, for ZERO rows</b>). One accessor
+    /// on one job source takes the idle cost to approximately nothing, and it composes with the
+    /// <c>IsBackedOff</c> mirror above — the same lane can do both. It is a <c>sim/</c> change and this
+    /// lane's <c>sim/</c> diff is empty by construction.
+    ///
+    /// <b>⚠️ ONE PLACE WHERE "THE SAME PREDICATE" IS NOT LITERALLY TRUE, recorded rather than
+    /// smoothed over.</b> The dig <b>site</b> test here is the <c>TileFlags.Designated</c> flag alone;
+    /// <c>DigJobSource.VisitTile</c> requires <c>Designated <b>&amp;&amp;</b> wall == TileDefs.Debris</c>.
+    /// The two can only diverge on a designated tile that is not debris, which no shipped path
+    /// produces — <c>DesignateDigCommand</c> refuses a non-debris tile and <c>DigJobSource</c>'s
+    /// completion clears the flag as it clears the wall — and the <c>marks</c> channel has had exactly
+    /// the same shape since it shipped. It is recorded because the DAY that becomes reachable (an LLM
+    /// effect, a save from a newer host, a wreck generator that paints orders directly) this channel
+    /// would badge a tile the dig board never even enumerates.
+    ///
     /// <b>⛔ NOT DUPLICATED (3) — the stockpile haul back-off.</b> The charter listed stockpile zones
     /// among the things to cover. They are already covered, authoritatively, and adding them here would
     /// be the two-sources-for-one-layer defect the <c>marks</c> channel exists to remove:
@@ -120,25 +140,52 @@ namespace Perilune.Web
     /// (<c>DeconstructSystem.Pending</c>) and <see cref="OrderBuild"/> (<c>BuildSystem.Pending</c>) —
     /// and only those of them the staging rule actually refuses.
     ///
-    /// ⛔ <b>"EMPTY ON A HEALTHY SHIP" IS WHAT THIS PARAGRAPH USED TO CLAIM, AND IT IS RETRACTED.</b>
-    /// The claim came from the wreck charter (*"this channel is empty on a healthy ship — measured:
-    /// unstageable dig/strip/build 0 / 0 / 0 on grid at 12 days"*) and it is true only of the AIR
-    /// reason: the scenario host's livelock audit explicitly excludes walled-in sites on the grounds
-    /// that *"walled in is not an AIR refusal"*, so its zeros never counted the class this channel's
-    /// second reason reports. MEASURED against a LIVE <c>--ship grid</c> host, and pinned by
+    /// ⛔ <b>"EMPTY ON A HEALTHY SHIP" IS WHAT THIS PARAGRAPH USED TO CLAIM, AND IT IS RETRACTED —
+    /// A DEVELOPMENT-TIME RETRACTION, NOT A SHIPPED ONE.</b> Both versions live inside commit
+    /// <c>c7309d6</c>: the false premise was found and corrected before the package was ever gated, so
+    /// no green ever stood over it on any branch. It is written down anyway, because the reason it was
+    /// false is reusable. The claim came from the wreck charter (*"this channel is empty on a healthy
+    /// ship — measured: unstageable dig/strip/build 0 / 0 / 0 on grid at 12 days"*) and it is true only
+    /// of the AIR reason: the scenario host's livelock audit explicitly excludes walled-in sites on the
+    /// grounds that *"walled in is not an AIR refusal"*, so its zeros never counted the class this
+    /// channel's second reason reports. MEASURED against a LIVE <c>--ship grid</c> host, and pinned by
     /// <c>BlockedChannelTests.The_Tick_Zero_Payload_Is_Empty_But_Grid_Really_Does_Author_Blocked_Digs</c>:
     /// <b>grid AUTHORS 20 dig designations</b> (a 10×2 rubble block in the hold, x 23–32, y 15–16,
     /// deck 1) <b>and TEN of them ship on this channel as <see cref="ReasonNoApproach"/></b> from the
-    /// first frame the crew light that corner. The TICK-0 payload is empty, but only because those
-    /// tiles are unexplored — the fog gate, not an untouched ship.
+    /// first frame the crew light that corner. The TICK-0 payload is empty because the ten BLOCKED
+    /// tiles — the inner row — are unexplored at boot; the outer ten are explored at tick 0 already and
+    /// are simply not blocked. The fog gate, not an untouched ship.
     ///
     /// ⚠️ SO THE HONEST SHAPE IS: <c>zones</c>-like on the AIR reason, and NOT empty on the standard
-    /// ship. Those ten badges are truthful (nothing is happening on those tiles) and self-resolving in
-    /// principle (their approach row is designated too) — but ten fault badges on a new player's first
-    /// screen is a crying-wolf risk, and it is REPORTED rather than quietly tuned away. The two
-    /// candidate remedies (suppress <see cref="ReasonNoApproach"/> when a 4-neighbour carries the same
-    /// order; or drop it for dig entirely) each hide a genuinely permanent failure in the
-    /// isolated-tile case, so both are owner decisions.
+    /// ship. <b>AND THE BADGES ARE TRANSIENT — SELF-CLEARING, WITH NO PLAYER ACTION — WHICH IS THE
+    /// FACT THAT SETTLES WHAT TO DO ABOUT THEM.</b> Driven on a live <c>--ship grid</c> at default
+    /// speed, boot seed, sampled every 3 000 ticks (this lane's own run; independent review measured
+    /// the same shape on a coarser grid):
+    /// <code>
+    ///   t=0      (  0 min)  designated=20  exploredDig=10  blockedRows= 0  jobs=[None x8]
+    ///   t=3000   (  5 min)  designated=20  exploredDig=20  blockedRows=10  jobs=[Dig x8]
+    ///   t=6000   ( 10 min)  designated=20                  blockedRows=10  jobs=[Dig x8]
+    ///   t=9000   ( 15 min)  designated=12                  blockedRows= 2  jobs=[Dig x8]
+    ///   t=15000  ( 25 min)  designated= 4                  blockedRows= 0
+    ///   t=21000  ( 35 min)  designated= 0                  blockedRows= 0   (0 for the next 5 sim-hours)
+    /// </code>
+    /// <c>DigJobSource.DigWorkTicks = 6000</c> — TEN SIM-MINUTES PER TILE — so nothing can complete
+    /// before ~10 min and the whole field is gone by ~35. The ten badges are the layer honestly
+    /// narrating a dig block being eaten from the outside in, which is exactly what the player is
+    /// watching happen. <b>⛔ A CONTEMPORANEOUS NOTE CLAIMING THE FIELD "NEVER PROGRESSED — 0 dug in
+    /// ~75 sim-minutes at 100×" IS RETRACTED IN FULL: it was a measurement artefact of a speed command
+    /// that did not take, the shipped dig field is fine, and it is corrected here rather than left to
+    /// send the next agent hunting a bug on <c>main</c> that does not exist.</b>
+    ///
+    /// ⇒ <b>DECISION (owner, after the measurement): SHIP THE BEHAVIOUR AS IT IS.</b> The earlier
+    /// proposal to suppress a <see cref="ReasonNoApproach"/> badge when a same-order 4-neighbour is
+    /// unblocked is WITHDRAWN and must not be implemented — it pays a permanent silent price (an
+    /// isolated walled-in order goes quiet forever) for a temporary cosmetic one. The only sanctioned
+    /// alternative was client-side GROUPING — one badge per contiguous block, same rows on the wire,
+    /// same key line — and this lane declined it: it is reversible and lies about nothing, but it adds
+    /// a clustering pass and its own test surface to soften a condition that resolves itself in ~35
+    /// sim-minutes, and the key box ALREADY aggregates ("10 DIG ORDERS STUCK" is one sentence, not ten).
+    /// If the owner later wants it, group in <c>blocked-overlay.js</c> and change nothing here.
     ///
     /// ⚠️ A TILE CARRYING TWO ORDERS WOULD EMIT TWO ROWS, and that is deliberate rather than
     /// arbitrated host-side. <c>marks</c> ranks its four kinds because the client draws ONE mark per
@@ -153,6 +200,29 @@ namespace Perilune.Web
     /// consistency rather than a live filter — and it is here so that the day a designation arrives
     /// from somewhere else (an LLM effect, a saved game, a script) this channel does not become the one
     /// that leaks the map.
+    ///
+    /// ⚠️ <b>A JUSTIFICATION IN THE SIM IS NOW STALE BECAUSE OF THIS CHANNEL — filed, not fixed, and
+    /// it is the one thing here a reader should carry to a sim lane.</b> <c>SafetySystem.cs:145</c>
+    /// declines to cache <c>WorksiteSafety.CanCycle</c> (a linear scan of <c>Simulation.Systems</c> for
+    /// a <c>NeedsSystem</c> and a <c>SafetySystem</c>) on the stated ground that it *"runs only while a
+    /// job is being claimed or a servicer staged, never per tile per tick"*. <b>That sentence stopped
+    /// being true the moment this file shipped:</b> <c>CanStageWorkerAt</c> — and therefore
+    /// <c>CanCycle</c> — is now called up to FOUR times per designated tile per render, at 5–10 Hz.
+    /// It is the likeliest explanation for why the painted case (<c>GameSession.BuildBlocked</c>'s cost
+    /// note) costs ~6–7× the empty one, but <b>that attribution is inferred and was NOT isolated by a
+    /// measurement</b> — say so if you quote it. It cannot be fixed from here (this lane's <c>sim/</c>
+    /// diff is empty and <c>SafetySystem.cs</c> belongs to whichever lane owns it), and the fix is not
+    /// obviously "add a cache" — the comment explains why a static is wrong (parallel sims with
+    /// different stacks). Recorded so the next reader of that comment knows its premise has moved.
+    ///
+    /// ⚠️ <b>ONE GUARD HERE IS DELIBERATELY UNPINNED AND SAYS SO.</b> <c>BlockedReason</c>'s per-NEIGHBOUR
+    /// <c>InBounds</c> is pinned by an inclusion test (a corner designation reaches off the map, and
+    /// <c>Simulation.IsWalkable</c> does no bounds checking of its own — it would index at −1). The
+    /// SITE-level <c>InBounds</c> in <c>AddIfBlocked</c> is NOT pinned, because no shipped path can
+    /// produce an out-of-range <c>Pos</c> in either registry: reaching it would mean poking a registry's
+    /// internals, and a test that plants an impossible state pins a fiction. It stays because the two
+    /// sibling builders (<c>BuildItems</c>, <c>BuildDevices</c>) take the same guard for the same
+    /// reason, and because the failure mode is a throw on the render thread.
     ///
     /// VIEW-ONLY, PROJECTION-PURE, PIN-NEUTRAL. Every value is READ from state that is already saved
     /// and hashed (the TILE chapter's flags, the <c>'STRP'</c> and build registries) or computed by a

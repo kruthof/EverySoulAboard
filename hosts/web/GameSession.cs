@@ -1274,7 +1274,9 @@ namespace Perilune.Web
             // park a worker in air that would pull it off the job, and its own header records that this
             // took the failure from expensive-and-visible to CHEAP-AND-INVISIBLE: a designation painted
             // in an airless compartment simply never progresses, silently. This is the channel that
-            // header asks for. Empty on a healthy ship. See hosts/web/WireFormat.Blocked.cs.
+            // header asks for. NOT empty on the standard ship — grid authors 20 digs in the hold and
+            // ten are badged for the first ~35 sim-minutes, then the field clears itself and this
+            // channel goes quiet for good. See hosts/web/WireFormat.Blocked.cs.
             Send("blocked", WireFormat.Blocked(BuildBlocked()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
@@ -2023,24 +2025,38 @@ namespace Perilune.Web
         /// tile whether or not anything is designated; only tiles that ARE designated pay for
         /// <see cref="BlockedReason"/>. Method: a delegate bound once to this builder (NOT
         /// <c>MethodInfo.Invoke</c> per call, which costs more than the method and would be charged to
-        /// the channel), 200 iterations per sample, median of n = 5 WITHIN a run, repeated over FIVE
-        /// process runs, DEBUG build, one machine, <c>--ship grid</c>:
+        /// the channel), 400-call warm-up, then 200 iterations per sample, median of n = 5 WITHIN a
+        /// run, repeated over THREE process runs, DEBUG build, one machine, <c>--ship grid</c> fully
+        /// explored, with the render measured by the same method in the same process:
         ///
-        ///   nothing painted     <b>0 rows, 29 B, ~12.0 µs</b> against a ~430–480 µs render — <b>~2.6 %</b>
-        ///   24 digs in vacuum   <b>24 rows, 331 B, 25–56 µs</b> against the same render — <b>~6–12 %</b>
+        ///   nothing painted   <b>0 rows, 29 B, 8.45 / 8.45 / 8.45 µs</b> of a ~517 µs render — <b>~1.6 %</b>
+        ///   44 digs painted   <b>34 rows, 480 B, 58.0 / 57.2 / 57.5 µs</b> of a ~446 µs render — <b>~12.9 %</b>
         ///
-        /// ⚠️ HOW TO READ THEM HONESTLY, AND TWO THINGS ARE NOT COMFORTABLE. <b>(1) The empty figure is
-        /// stable and the painted one is BIMODAL</b> — five runs read 26.6, 55.8, 55.0, 26.4, 55.6 µs
-        /// with a median of 5 inside each, so it is not sampling noise within a run but something
-        /// between runs (tiered JIT is the likeliest; it was not chased). The RANGE is quoted rather
-        /// than the friendlier number. <b>(2) The empty case was 26.3 µs / ~5.3 % before the dig walk
-        /// was flattened</b> (see the walk itself), so half of what this channel costs an untouched
-        /// ship was removed by a two-line change and the remainder is real.
+        /// ⚠️ <b>THE PUBLISHED "BIMODAL 25–56 µs" IS RETRACTED. There is no bimodality</b> — both
+        /// configurations are flat within a run and across runs (spread &lt; 1.5 %), re-measured here
+        /// and independently by review. The earlier run's alternating 26/56 pattern was never
+        /// explained; the machine was carrying concurrent suites, which that write-up noted elsewhere
+        /// and then set aside in favour of a guess about tiered JIT. <b>The lesson is the ordering: a
+        /// hypothesis about the CODE was published ahead of a known confound in the MEASUREMENT.</b>
+        ///
+        /// ⚠️ <b>AND THE LEVEL IS NOT PORTABLE, WHICH IS THE MORE USEFUL FINDING.</b> Independent
+        /// review re-measured the SAME row count on the SAME machine and read a flat <b>~24.2 µs</b>
+        /// where this run reads a flat ~57.6 µs — a 2.4× disagreement between two careful runs of the
+        /// same code, unexplained. The empty case moved too (~12.0 µs published, 8.45 µs here). <b>Only
+        /// the SHAPE is durable: empty is cheap and flat, painted is ~5–7× empty, and the likeliest
+        /// term behind that multiple is <c>CanCycle</c>'s linear scan of <c>Simulation.Systems</c>
+        /// inside <c>CanStageWorkerAt</c> — INFERRED, not isolated by a measurement</b> (see
+        /// <c>WireFormat.Blocked.cs</c> on that comment's own justification going stale).
+        /// Do not quote a single microsecond figure from this file as a fact about a player's machine.
+        /// <b>The empty case was ~26 µs before the dig walk was flattened</b> (see the walk itself), so
+        /// most of what this channel costs an untouched ship was removed by a two-line change — and the
+        /// rest of it is removable outright by exposing <c>DigJobSource._sites</c> (named in the header
+        /// as the next lane's cheap win).
         ///
         /// FOR COMPARISON, from the same programme's own records: <c>devices</c> is ~26 µs (~6.1 %) on
         /// grid, <c>marks</c> is +61 µs forever, <c>items</c> is ~0.9 µs. The honest placement is
-        /// BETWEEN <c>items</c> and <c>devices</c> with nothing painted, and around <c>devices</c> once
-        /// the player has painted — <b>not</b> "nearly free".
+        /// BELOW <c>items</c>+<c>devices</c> with nothing painted, and around <c>marks</c> once the
+        /// player has painted — <b>not</b> "nearly free".
         ///
         /// ⚠️ AND THE SOCKET IS NOT FREE EITHER, WHICH AN EARLIER DRAFT OF THIS PARAGRAPH CLAIMED. It
         /// said <see cref="Send"/> "dedupes the empty payload forever after the first render, so the
@@ -2049,8 +2065,10 @@ namespace Perilune.Web
         /// ship's steady-state payload is 10 rows, not zero (see <c>WireFormat.Blocked.cs</c>'s
         /// retraction and <c>BlockedChannelTests</c>). It is still deduped — the payload does not
         /// change while the geometry does not — so the socket sees it once; but "empty" was wrong and
-        /// is corrected rather than softened. Wall-clock is soft under concurrency and this machine
-        /// ran other suites during the run.
+        /// is corrected rather than softened. <b>It is also TEMPORARY: driven, the ten rows clear
+        /// themselves by ~35 sim-minutes and the channel is empty from then on</b>, so the standard
+        /// ship's true steady state is 0 rows and the 10-row state is the opening. Wall-clock is soft
+        /// under concurrency and this machine ran other suites during the run.
         ///
         /// The scratch list is reused, so a steady state allocates only the payload string.
         ///
@@ -2074,10 +2092,13 @@ namespace Perilune.Web
             //
             // It is written this way because this walk is THE ONE COST THIS CHANNEL PAYS WHEN ITS
             // PAYLOAD IS EMPTY, which is the normal state of a healthy ship, and the empty case was
-            // MEASURED before and after rather than argued: 26.3 µs → 12.0 µs of a ~430–480 µs render on
+            // MEASURED before and after rather than argued: ~26 µs → ~12 µs of a ~430–480 µs render on
             // `--ship grid` (median n = 5, 200 iterations/sample, DEBUG, delegate-bound builder),
-            // i.e. ~5.3 % → ~2.6 % of every render for zero rows. It is still not free, and the
-            // honest comparison is in this method's doc comment.
+            // i.e. it roughly HALVED the empty-payload cost. ⚠️ Re-measured on the same machine after
+            // the send-back, the flattened walk reads 8.45 µs of a ~517 µs render (~1.6 %) — the same
+            // improvement, a different absolute level. LEVELS FROM THIS FILE ARE NOT PORTABLE and the
+            // method's doc comment says why; the RATIO is what this paragraph claims. It is still not
+            // free, and it is removable outright — see the header's note on `DigJobSource._sites`.
             for (int z = 0; z < world.Depth; z++)
             {
                 var flags = world.Levels[z].Flags;

@@ -265,7 +265,10 @@ test('blockedKeyHtml counts the stuck orders and gives ONE row per distinct reas
     row(ROOM.rx + 2, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_APPROACH),
   ]);
   const html = blockedKeyHtml(tiles);
-  assert.match(html, /3 ORDERS STUCK/, 'the count is the fact that makes a player look');
+  assert.match(html, /3 DIG\/STRIP ORDERS STUCK/,
+    'the count is the fact that makes a player look — and the ORDER KINDS are named beside it, in '
+    + 'the host\'s emission order, because otherwise the tuple\'s `order` element reaches the player '
+    + 'ONLY through a <title> this module\'s own header calls inadequate');
   assert.equal((html.match(/rz-key-row/g) || []).length, 2,
     'three tiles with two distinct reasons must produce TWO rows — one per tile would push the zone '
     + 'key off the canvas and explain nothing');
@@ -279,6 +282,23 @@ test('blockedKeyHtml singularises one order and stays escaped', () => {
   const html = blockedKeyHtml([{ reasonName: 'air', reasonText: '<b>' }]);
   assert.match(html, /1 ORDER STUCK/);
   assert.ok(!html.includes('<b>'), 'the key interpolates model text and must escape it');
+});
+
+// The order-kind prefix is written from MODEL TEXT, so it takes the same escape as everything else,
+// and a row whose order this client cannot NAME must not put a placeholder word in the title.
+// MUTATION: drop the `esc(...)` around the joined kinds ⇒ red on the first assertion.
+test('the key title escapes the order kinds and omits an unnameable one', () => {
+  // ⚠️ THE FIXTURE IS UPPER-CASE ON PURPOSE. The prefix is upper-cased before it is escaped, so a
+  // lower-case `<b>` fixture tests nothing: `'<b>x'.toUpperCase()` is `'<B>X'` and an assertion
+  // against the literal `<b>` passes with the escape REMOVED. Measured — that first version of this
+  // test survived the mutation it names. (The general shape: a negative control must be written in
+  // the casing the code under test actually produces.)
+  const html = blockedKeyHtml([{ orderName: '<B>X', reasonName: 'air', reasonText: 'T' }]);
+  assert.ok(!html.includes('<B>X'), 'the order-kind prefix is model text and reached the key unescaped');
+  assert.ok(html.includes('&lt;B&gt;X'), 'and it must still be SHOWN, escaped, not silently dropped');
+  assert.match(blockedKeyHtml([{ orderName: 'ORDER', reasonName: 'air', reasonText: 'T' }]),
+    /^<span class="rz-key-title">1 ORDER STUCK</,
+    'roomBlockedTiles\' fallback orderName (\'ORDER\') must not print as "1 ORDER ORDER STUCK"');
 });
 
 // The stylesheet must actually carry the swatch classes the key emits, or the legend rows are
@@ -306,6 +326,13 @@ class BlkEl extends DomEl {
   querySelectorAll() { return []; }
   getBoundingClientRect() { return this._rect; }
   closest() { return null; }
+  // ⚠️ THE RIG WAS EXTENDED RATHER THAN THE GUARD WEAKENED (CLAUDE.md trap 4's corollary: if a
+  // harness cannot model the thing your guard needs to see, fix the harness). The pawn-ordering
+  // assertion needs a ROSTER, `renderRoster` reconciles the console's CREW WATCH rows, and
+  // `dom-lite.js` models no sibling API. These two stubs are the whole gap; `dom-lite.js` itself is
+  // deliberately NOT edited — it is shared with every other client suite and a parallel lane.
+  get firstElementChild() { return null; }
+  insertBefore(el) { return this.appendChild(el); }
 }
 class BlkDoc extends DomDocument {
   constructor() { super(); this.body = new BlkEl(this, 'body'); }
@@ -413,7 +440,43 @@ test('DRIVEN: the key box is shown for blocked orders even in a room with no zon
     'the key box is hidden. This room has no stockpile zone, and before this channel the box was '
     + 'hidden whenever the ZONE legend was empty — which is nearly every room, so the words '
     + 'explaining the badges would never be seen.');
-  assert.match(box.innerHTML, /1 ORDER STUCK/);
+  assert.match(box.innerHTML, /1 BUILD ORDER STUCK/,
+    'the visible key must name WHICH order is stuck — the `order` tuple element otherwise reaches '
+    + 'the player only through a <title>');
+});
+
+// ⚠️ ADDED AFTER A MUTATION SURVIVED (independent review, J25). Dropping `notifyShip()` from
+// `renderBlocked` in hud.js left the whole suite green, because every test above forces its repaint
+// with `exitRoom()/enterRoom()` and so never exercises the notify path at all. It is the exact hole
+// the `marks` lane closed for `renderMarks` (client/test/room-model.test.js) and it matters for the
+// same reason: `GameSession.Send` DEDUPES, so on a quiet ship this payload is sent ONCE — a badge
+// that arrived while nothing else moved would sit in the cache, invisible, until some unrelated
+// channel happened to change. Silence again, one layer further out.
+//
+// NOTHING ELSE IS DISPATCHED, and the repaint is the SHIPPING coalesced one (`scheduleRepaint` falls
+// back to setTimeout(…,16) with no rAF), not a re-entry.
+// MUTATION: `export function renderBlocked(m) { _blocked = m; }` in hud.js ⇒ RED.
+test('a blocked dispatch ALONE repaints the surface — the cache is not enough', async () => {
+  prime();
+  driveBlocked([]);                                   // enter the room, nothing stuck
+  // ⚠️ FLUSH FIRST, AND THIS LINE IS THE TEST. `enterRoom()` repaints synchronously AND schedules a
+  // coalesced one; that pending timer would fire ~16 ms later — i.e. AFTER the dispatch below — and
+  // repaint from the cache with no notification involved at all. Measured: without this wait the
+  // mutation named below SURVIVED, and the test read as a perfectly convincing guard.
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(!layers().includes('rz-blocked'), 'precondition: nothing is badged yet');
+
+  Hud.renderBlocked(decode(JSON.stringify({
+    type: 'blocked',
+    cells: [[RECT.rx + 3, RECT.ry + 1, RECT.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_NO_APPROACH]],
+  })));
+  await new Promise((r) => setTimeout(r, 60));        // the coalesced repaint
+
+  assert.ok(layers().includes('rz-blocked'),
+    'a `blocked` message reached the cache and the Room Zoom never repainted. The channel is deduped '
+    + 'by GameSession.Send, so on a quiet ship it is sent ONCE — the badge explaining a stuck order '
+    + 'would then never appear until some unrelated channel moved.');
+  driveBlocked([]);
 });
 
 // The wrong-deck row is the one a careless fixture misses (the fifth trap shape), so it is driven too
@@ -426,10 +489,24 @@ test('DRIVEN: a row on another deck does not reach the drawn layer', () => {
 
 // The whole design of the layer is that it is ADDITIVE — telling the player their order VANISHED is
 // a worse lie than the silence being fixed.
-// MUTATION: have blockedLayerSvg replace the mark layer instead of overlaying it ⇒ red.
-test('DRIVEN: the blocked layer is ADDITIVE — the order\'s own mark survives under it', () => {
+//
+// ⚠️ IT PINS BOTH SIDES OF THE SANDWICH, and the upper half was a send-back: `roomzoom-view.js`
+// states "STILL BELOW `pawnSvg` … a crew member is never hidden by a layer that is explaining the
+// floor" as load-bearing, `blocked-overlay.js` repeats the argument, and NOTHING TESTED IT — moving
+// `blockedLayerSvg` after `pawnSvg` left all 27 node tests green while a near-black scrim washed over
+// every pawn standing on a blocked tile (which they do: the grid crew cluster on the hold's dig
+// field, and the committed shots show crew sitting partly over badges).
+//
+// MUTATION A: have blockedLayerSvg replace the mark layer instead of overlaying it ⇒ red.
+// MUTATION B: move `body += blockedLayerSvg(...)` AFTER `body += pawnSvg(...)` ⇒ red on the last leg.
+test('DRIVEN: the blocked layer is ADDITIVE — over the mark, under the pawns', () => {
   prime();
   const t = [RECT.rx + 1, RECT.ry + 2];
+  // A crew member standing ON the blocked tile — the case the ordering guarantee is about.
+  Hud.renderRoster({
+    type: 'roster',
+    crew: [{ id: 1, name: 'ADA', deck: RECT.deck, x: t[0], y: t[1], task: 'None' }],
+  });
   Hud.renderMarks(decode(JSON.stringify({ type: 'marks', cells: [[t[0], t[1], RECT.deck, 1]] })));
   driveBlocked([[t[0], t[1], RECT.deck, BLOCKED_ORDER_DIG, BLOCKED_REASON_AIR]]);
   const svg = layers();
@@ -440,6 +517,12 @@ test('DRIVEN: the blocked layer is ADDITIVE — the order\'s own mark survives u
   assert.ok(svg.indexOf('mk mk-dig') < svg.indexOf('rz-blocked'),
     'the scrim must be drawn ABOVE the order mark — under it, the amber ring sits at full brightness '
     + 'on a tile that is going nowhere, which is the misreading the layer exists to prevent');
+  assert.ok(svg.includes('rz-pawns'),
+    'no pawn layer in the output — the ordering assertion below would be vacuous (indexOf(-1))');
+  assert.ok(svg.indexOf('rz-blocked') < svg.indexOf('rz-pawns'),
+    'the blocked layer is drawn ABOVE the pawns, so a near-black scrim washes over every crew member '
+    + 'standing on a blocked tile. Both view files state this ordering as load-bearing: a layer that '
+    + 'explains the floor must never hide a person.');
 });
 
 // ═════════════════════════════════════════════════════════════════════ the scan controls, both ways
