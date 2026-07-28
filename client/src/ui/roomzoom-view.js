@@ -371,6 +371,11 @@ function repaint() {
   // ⚠️ DELIBERATELY NOT DRAWN BY THIS PACKAGE. The wrecked-art join lives in `client/src/items/`,
   // which a parallel lane owns; the exported `deviceConditionAt` above is the seam it reads. Wiring
   // the data to the surface and DRAWING it are two packages on purpose — the data never existed before.
+  // ⚠️ AND IT IS PAID FOR ON EVERY REPAINT, FOR ZERO CONSUMERS TODAY. Measured in independent
+  // review: `decodeDevices` + `roomDeviceConditions` cost ~2.62 µs per repaint at 146 rows
+  // (`--ship grid`, median n = 5). Small, real, and stated rather than omitted — the host half is
+  // ~29.4 µs of a ~425 µs render (~6 %), and the delta scheme that removes it is a CONDITION on the
+  // art package, not an option for it (see the header of `hosts/web/WireFormat.Devices.cs`).
   _deviceCond = roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus);
 
   paintCanvas(frame);

@@ -74,6 +74,32 @@ namespace Perilune.Web
     /// on a tile with no <see cref="Perilune.Sim.TileFlags.Explored"/> emits nothing — the same line
     /// <c>marks</c> and <c>items</c> drew: a rendering fix must not become a fog-of-war change.
     ///
+    /// ⛔ A CONDITION ON THE NEXT LANE, NOT AN OPTION — THE DELTA SCHEME LANDS *WITH* THE ART.
+    /// This channel is rebuilt AND RE-SERIALIZED on every render, ten times a second, whether or not
+    /// a single byte moved. <c>GameSession.Send</c> dedupes by whole-payload string equality, so it
+    /// saves the SOCKET and never the CPU — and two-thirds of that CPU is the serialization rather
+    /// than the build: independent review measured the builder at <b>~10.7 µs of a ~29.4 µs total</b>
+    /// on <c>--ship grid</c>. At boot all 146 grid rows read <c>cond = 255, oper = 1</c>, so TODAY the
+    /// channel spends ~6 % of every render regenerating <b>2 562 bytes of constant for no consumer</b>.
+    /// The client is charged too, smaller but just as consumerless: <c>decodeDevices</c> +
+    /// <c>roomDeviceConditions</c> cost <b>~2.62 µs per Room Zoom repaint</b> at 146 rows (median
+    /// n = 5, independent review).
+    ///
+    /// Shipping it whole was the right call for THIS lane — a delta contract with no consumer is a
+    /// wire format nobody can check, and the job here was to make <see cref="Perilune.Sim.Device.Condition"/>
+    /// reachable at all. THE TRADE EXPIRES THE MOMENT THE DATA IS DRAWN. So it is written here as a
+    /// condition rather than as an option: <b>the delta / dirty-version scheme MUST land in the SAME
+    /// package as the art that first draws this channel — not in a follow-up after it.</b> A drawn
+    /// channel is a channel with a reason to be correct, which is exactly when the contract can be
+    /// pinned; a follow-up is how a 6 % render cost becomes permanent.
+    ///
+    /// Sketch, so the next lane does not re-derive it: keep the previous build's
+    /// <c>(cond, oper)</c> pair per device, emit only rows whose pair moved, and emit EVERYTHING on a
+    /// forced render — which is what <c>Snapshot</c> and a reconnect already are, so the resync path
+    /// exists and needs no invention. A coarser quantisation (a 4-bit bucket) is the cheaper
+    /// half-measure and is NOT a substitute: it halves the payload and leaves the per-render rebuild
+    /// exactly where it is.
+    ///
     /// VIEW-ONLY, PROJECTION-PURE, PIN-NEUTRAL. Every value is READ from state that is already saved
     /// and hashed (the DEVC chapter's kind/pos/condition, the TILE chapter's Explored flag). Nothing
     /// here mutates, allocates into the sim, mints a <see cref="Perilune.Glyph.GlyphColor"/> id
@@ -177,10 +203,24 @@ namespace Perilune.Web
         /// <c>0 = wrecked … 255 = pristine</c>. Clamped first (the field is a public mutable float),
         /// then rounded HALF-UP with integer arithmetic rather than <c>MathF.Round</c>, whose default
         /// is banker's rounding — 0.1 must land on 26, not 25, and "the number moved by one because a
-        /// midpoint tied" is not a thing anyone should have to debug through a sprite.</summary>
+        /// midpoint tied" is not a thing anyone should have to debug through a sprite.
+        ///
+        /// ⚠️ A CLAIM THIS METHOD USED TO MAKE IS RETRACTED, and the retraction is here rather than
+        /// deleted. The low clamp was commented *"also catches NaN, which would otherwise pass
+        /// <c>&lt; 0</c>"*, and the test asserting it said <c>!(x &gt; 0)</c> was WHY NaN maps to 0.
+        /// It is not. NaN does fall through <c>&lt; 0</c> — and lands on 0 anyway, because .NET's
+        /// float→int conversion is saturating (NaN ⇒ 0). <b>NO INPUT DISTINGUISHES THE TWO
+        /// SPELLINGS</b>, so <c>condition &lt; 0f</c> is a NO-OP MUTATION and its survival is not a
+        /// hole in a guard. Pinned as an equivalence, not as folklore, by
+        /// <c>DevicesChannelTests.ConditionByte_Maps_Zero_To_Zero_And_Pristine_To_255</c>. What this
+        /// line DOES decide is the negative clamp: delete it and <c>ConditionByte(-1f)</c> returns
+        /// −254, which is the mutation that reddens.</summary>
         public static int ConditionByte(float condition)
         {
-            if (!(condition > 0f)) return 0;        // also catches NaN, which would otherwise pass `< 0`
+            // THE LOW CLAMP. `!(condition > 0f)` over `condition < 0f` is a READABILITY choice and not
+            // a behavioural one — see the retraction above; both spellings agree on every input,
+            // NaN included. Deleting the line outright is what changes an answer.
+            if (!(condition > 0f)) return 0;
             if (condition >= 1f) return 255;
             return (int)(condition * 255f + 0.5f);
         }

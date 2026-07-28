@@ -213,15 +213,24 @@ namespace Perilune.Web
                 // next Render changes it. `zones` is listed because a reconnect must not silently drop
                 // the only surface that says WHY a zone never fills; fixing `materials` belongs to
                 // whoever owns that channel.
-                // ⚠️ `ledger` (E0-8) is the SECOND channel missing from this list, for the same reason
-                // and with the same consequence. Both are REPORTED, not fixed, by the `devices` lane:
-                // adding them would change what a reconnecting tab sees on two channels this package
-                // does not own, which is exactly the scope creep that has cost this repo merges.
                 // ⚠️ THIS LIST IS THE ONLY THING THAT MAKES A CHANNEL SURVIVE A RECONNECT. A channel
                 // absent from it renders empty until the next Render happens to change it — and for a
                 // channel whose payload can go unchanged for a long stretch (`devices`, whose condition
                 // bytes move ~5 quantiser steps per operating hour per machine), "the next change" is
-                // not immediate.
+                // not immediate. Which is why `devices` is ON the list.
+                //
+                // ⚠️ `ledger` (E0-8) IS ALSO ABSENT, AND IT IS NOT THE SAME GAP — a claim this lane
+                // shipped and now retracts. It said `ledger` was missing "for the same reason and with
+                // the same consequence" as `materials`. The reason is the same; THE CONSEQUENCE IS
+                // NOT, and it was settled by MEASURING a live reconnect rather than by reasoning about
+                // the list: over 4 s of a reconnected tab, `materials` arrived **0 times** — a real
+                // gap, because that payload only changes when a player picks a material — while
+                // `ledger` arrived **4 times**, because its payload moves on essentially every render
+                // and it therefore self-heals in ~100 ms. `devices` is like `materials`, NOT like
+                // `ledger`: at boot every row reads a constant `cond = 255, oper = 1`, so an omitted
+                // `devices` would stay empty for as long as nothing on the ship wears. Both omissions
+                // are still REPORTED and not fixed here — adding them changes what a reconnecting tab
+                // sees on channels this package does not own — but they are not one finding.
                 foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
@@ -1843,12 +1852,16 @@ namespace Perilune.Web
         /// ~146 µs</b> on grid — ~34 % of the render and ~190 KB/s on the socket — to carry a byte that
         /// <c>machines.def</c> makes a constant.
         ///
-        /// NOT PROPOSED HERE, AND DELIBERATELY NOT IMPLEMENTED: if 6 % is later judged too much, the
-        /// two obvious schemes are (a) a DELTA channel — emit only rows whose quantised byte moved
-        /// since the last render, with a periodic full resync for reconnects — or (b) a coarser
-        /// quantisation (a 4-bit bucket halves the payload). Both change the wire contract and both
-        /// need a consumer to justify them; this lane ships the simple, complete, self-describing
-        /// version and records the number so the decision can be taken on evidence.
+        /// TWO-THIRDS OF THAT COST IS THE SERIALIZATION, NOT THIS BUILDER — measured separately in
+        /// independent review, which read <b>~10.7 µs for the build against a ~29.4 µs total</b> on
+        /// grid. That matters for what the fix has to be: a cheaper loop here buys a third of it at
+        /// most, and only emitting fewer rows removes the rest.
+        ///
+        /// ⛔ AND IT IS A CONDITION ON THE NEXT LANE RATHER THAN AN OPTION FOR IT: the delta /
+        /// dirty-version scheme MUST land in the SAME package as the art that first draws this
+        /// channel. The full statement, with the sketch and why a coarser quantisation is not a
+        /// substitute, is in the header of <c>hosts/web/WireFormat.Devices.cs</c> — it is written there
+        /// because that header is the wire contract, and a delta scheme changes it.
         ///
         /// ⚠️ THE SOCKET COST IS SMALLER THAN THE CPU COST, BUT NOT BY AS MUCH AS THE PER-DEVICE
         /// FIGURE SUGGESTS, and the first draft of this paragraph overstated it. <see cref="Send"/>
