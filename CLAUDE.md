@@ -27,6 +27,69 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-28, later) — **THE WRECK START: the game is being re-premised**
+
+> **Read `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`) before touching
+> gameplay or economy work, and the `wreck-start-decided` memory before quoting any of it.**
+
+**Gate on `main`: `./ci.sh` exit 0, 1181 dotnet + 876 node, twin hashes MATCH `43345ff0c9d62684`,
+P1–P3 HELD, and P4/P5 MOVED** (see the pin table — two new def fields). Four lanes, each
+Opus-implemented and **independently** Opus-reviewed, **every one taking a send-back**, every
+send-back verified by the integrator in the tree before merge. Counts are a **UNION, not a sum**:
+the branches read 1142 / 1140 / 1122 apiece.
+
+**THE OWNER HAS RE-PREMISED THE OPENING.** The old start — 8 crew all sprinting to dig regolith
+because `DigJobSource` is the only non-empty board at tick 0 — is retired as fiction *and* as a first
+impression. The new one: a bay of cryo capsules, everyone frozen, **ONE pawn thaws and is the entire
+player force**; the ship was raided, the unfrozen are dead or gone, the infrastructure is wrecked.
+The rest thaw **one at a time THROUGH THE MOSS TERMINAL** — which is what finally gives "restore
+MOSS" a job. ⚠️ **"Regolith" was never lunar soil**: `ItemStack.cs:5` calls it *"legacy name: debris
+spoil from cleared sections"* — the fiction was always cutting a collapsed deckhead out of a wrecked
+hold. It is being renamed **`Rubble`**.
+
+**⇒ THE CORE LOOP IS A PRESSURE FRONTIER, and it falls out of a rule that already shipped.**
+`WorksiteSafety.CanStageWorkerAt` hard-refuses staging a worker on a non-breathable tile — **thermal
+counts** — so on a raided ship **work is only possible where the crew can already breathe**. Design
+with it. ⚠️ **And the refusal is SILENT**, which on the wreck is the *default* experience, not an edge
+case: the `blocked` channel is therefore a REQUIREMENT, not a follow-up.
+
+**What landed:** `DeviceSpec.Condition`/`.Scriptable` so a ship can be authored wrecked (nothing
+shipped moved a bit) · the **`devices` wire channel** — the client had *never* been told a machine's
+condition, both SVG surfaces read only `cell[0]` · **70 wrecked art twins + 2 cryo capsules** ·
+**`wear.wreck_threshold = 0.25`** (a wrecked machine can no longer be wished better) and
+**`ItemKind.Swarf = 9`** (a stripped wreck is finally worth something).
+
+### ⚠️ A CLEAN AUTO-MERGE IS NOT A CLEAN MERGE — the trap fired again, in this run
+
+The damaged-authoring lane seeds a test Scrubber at Condition **0.2** and asserts maintenance
+recruits it; the recovery lane's floor at **0.25** correctly refuses it. Two lanes, no overlapping
+lines, **git reported NO CONFLICT and the tree was still wrong** — one red test, caught only because
+the lane merged `main` into itself and re-ran the FULL gate instead of trusting the auto-merge.
+
+### ⚠️ THE RUN'S OTHER STANDING LESSONS
+
+- **A package's code can be right and its JUSTIFICATION false — that was 4 of 5 required fixes on one
+  lane.** `wreck_threshold`'s prose claimed the floor sits below every `maint` threshold; **three
+  kinds sit at 0.20 and lose their free band entirely**, and the lane's own test in the same commit
+  asserted the opposite of the prose beside it. `(max 0.40)` was the tell: **taking the max is valid
+  for a `>` bound over all kinds and invalid for a `<` bound.**
+- **A def field pinned only by the checksum is NOT pinned.** `swarf_service_condition` moved 0.45 →
+  0.55 with **zero behavioural tests seeing it** — its only assertion was `Is.EqualTo(the field under
+  test)`. Self-derivation is the seventh trap wearing a new coat, and it shipped in the very commit
+  that fixed it on the sibling field.
+- **`verb parity is NOT sufficient`, for the third time.** `deviceConditionAt` — the seam its whole
+  package exists to deliver — could `return null` for everything with all 843 node tests green,
+  because it was pinned by a scan for its own signature.
+- **A hand-maintained id→implementation join is invisible when wrong.** Swapping two art painters
+  left the entire suite green (and **still does on `main`'s pristine registry**). Fixed by DERIVING
+  the join from the painter naming convention, with the pristine set as its non-vacuity floor.
+- ⚠️ **`MachineDefs.Table` is a DEAD DUPLICATE.** Its header claims `SimDefs.CreateDefault` copies it
+  verbatim; **it does not** — `SimDefs.cs:570` holds a second hand-maintained literal and nothing
+  joins them. A mutation to that table changes nothing and **looks exactly like a passing guard**.
+- **A measurement harness needs its own non-vacuity check.** One lane's parser looked for
+  `Fehlgeschlagen`; the real de-DE line is `Fehler <Name>`. It matched nothing and reported that as
+  "no failures" — a green meaning "my instrument is broken".
+
 ## Status snapshot (2026-07-28) — **FOUR LANES: the livelock, the food lie, the invisible door, the memo**
 
 **Gate on `main`: `./ci.sh` exit 0, 1122 dotnet + 821 node, twin hashes MATCH `43345ff0c9d62684`,
@@ -838,8 +901,17 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   | scenario `--days 3 --seed 42` | `43345ff0c9d62684` | `ci.sh:31` (also twin-run equality) |
   | tick-3000 golden | `5a7224821810b478` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
   | slice tick-3000 golden | `7d846c14c5901e4d` | `Golden/slice_tick3000_hash.txt` |
-  | defs **defaults** (`SimDefs.Default.Checksum`) | `62a1bb2633c447be` | `DefsChecksumTests.cs:69` |
-  | defs **rules-inclusive** (the host's `defs:` print) | `4c15dffe98a2cda8` | `DefsChecksumTests.cs:146` |
+  | defs **defaults** (`SimDefs.Default.Checksum`) | `df93cbd628644785` | `DefsChecksumTests.cs:75` |
+  | defs **rules-inclusive** (the host's `defs:` print) | `fc65c6682d5bee59` | `DefsChecksumTests.cs:156` |
+
+  **Last mover: THE WRECK START's recovery economy (2026-07-28) — P4 and P5 only.** Two def fields
+  in one wave (`wear.wreck_threshold` + `wear.swarf_service_condition`, and `deconstruct.device_swarf`)
+  took P4 `62a1bb2633c447be`→`df93cbd628644785` and P5 `4c15dffe98a2cda8`→`fc65c6682d5bee59`.
+  **P1–P3 HELD and that is measured, not predicted**: no shipped ship has a device below the 0.25
+  floor inside the pinned windows, and the first behavioural divergence on `--ship grid` is at
+  **sim-hour 630** — 630 hours of byte-identical output. `ci.sh` needed no edit (it pins P1 only).
+  The three lanes merged beside it (`devices` channel, damaged-device authoring, wrecked art) moved
+  **nothing**, verified mechanically.
 
   Run it with `~/.dotnet/dotnet run --project hosts/scenario -- --days 3 --seed 42`. Adding hashed
   state moves a pin ⇒ update `ci.sh` + here + `MECHANICS.md` + memory in the SAME commit.

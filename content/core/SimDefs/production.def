@@ -84,8 +84,39 @@
 # ECONOMY.md §4/§10 shapes in this syntax, so the next lane has a concrete target.
 # Uncommenting any of them CHANGES the game and the defs checksum — and the ones
 # marked (E1+/E2+) also need ItemKind rows that do not exist yet. §3.2 staged Seals,
-# Ice, Swarf and Circuits, each landing with its consumer: Seals landed with E0-6 and
-# Ice with E0-7, so only Swarf and Circuits are still absent.
+# Ice, Swarf and Circuits, each landing with its consumer: Seals landed with E0-6, Ice with
+# E0-7 and SWARF with the wreck start — so only Circuits is still absent. Swarf's consumer is
+# MaintenanceSystem, not a bench; see the block below.
+#
+# ⚠️ `recycle_swarf` BELOW IS NOT MERELY UNBUILT — IT IS UNBUILDABLE HERE. (An earlier draft
+# added "and the wreck start's salvage half is the package that found out". IT DID NOT: this
+# file already carried the `fab_seals` warning before that lane started, and MECHANICS.md
+# §13.12 records the ordinal-0 trap. What the wreck start contributed is the JUDGEMENT below
+# — refusing to open bill selection and feeding salvage to repair instead — not the
+# discovery.) ItemKind.Swarf now EXISTS and a
+# stripped wreck produces it, so the only thing between this row and a live swarf economy
+# looks like uncommenting it. It is not:
+#
+#   ProductionDefs.TryGetBill resolves a station's bill at ORDINAL 0 and nothing else, and
+#   ALL THREE benches already carry one — recycle_stock (SalvageRecycler), fab_components
+#   (Fabricator), and the MachineShop's [recipes] row. A second node on any of them parses,
+#   checksums, is reachable through TryGetNode and IS NEVER RUN. That is the `fab_seals`
+#   trap this file already warns about, and it bites identically here.
+#
+#   Displacing an existing bill is not an option either: dropping recycle_stock kills
+#   Regolith -> Scrap and with it every Part on every ship, and taking the MachineShop kills
+#   ControllerModule. There are three stations and three conversions; a fourth conversion
+#   needs a fourth station or a bill-SELECTION rule, and selection needs per-station save
+#   state (which bill is mid-batch) — E-PROD's PROD blob, not a def edit.
+#
+#   DRIVEN, not read off the source: DefsProductionTests / SwarfSalvageTests plant a second
+#   SalvageRecycler node with its inputs on the bench and measure that the batch never runs,
+#   with the same node at ordinal 0 as the inclusion control.
+#
+# So the wreck's salvage feeds REPAIR instead of PRODUCTION: Swarf is consumed directly by
+# MaintenanceSystem as the rung below a jury-rig (wear.swarf_service_condition). That is the
+# stricter conservation story of the two — there is no Swarf -> Parts path at all — and the
+# row below stays commented until one of the two exits above is built.
 #
 # [production]
 # # id             station          work_s  inputs              outputs

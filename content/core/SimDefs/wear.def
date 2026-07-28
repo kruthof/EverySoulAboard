@@ -20,3 +20,52 @@ seal_service_condition   = 0.9    # Condition after a SEALS service (E0-6). The 
                                   #   Parts in hand -> 1.0, Seals in hand -> 0.9, empty hands -> 0.6.
                                   # Must stay strictly between jury_rig_condition and 1.0 or the
                                   # tier is either a free Part or a wasted walk.
+wreck_threshold          = 0.25   # THE WRECK FLOOR (wreck start W2). Below this Condition an
+                                  # empty-handed jury-rig is REFUSED: the machine needs Parts,
+                                  # Seals or Swarf. At or above it, maintenance is byte-identical
+                                  # to before. Sits ABOVE every machines.def `fail` (max 0.10), so
+                                  # a machine this rule refuses is still a machine that RUNS.
+                                  #
+                                  # ⚠️ IT IS *NOT* BELOW EVERY `maint`, AND AN EARLIER DRAFT OF
+                                  # THIS COMMENT SAID IT WAS. `maint` is PER KIND, and taking its
+                                  # maximum as if it were universal is what produced that error.
+                                  # Hand-counted off MachineDefs.cs:38-80, the free-jury-rig band
+                                  # [0.25, maint) is:
+                                  #   Terminal, Light, WaterTank   maint 0.20 -> band EMPTY. These
+                                  #     three can NEVER be fixed for free on ANY ship, shipped or
+                                  #     wrecked. That is a live consequence of the default.
+                                  #   Door, Battery                maint 0.30 -> band width 0.05.
+                                  #   everything else              maint 0.40 -> band [0.25, 0.40).
+                                  # Pinned BY NAME (both sets) in WreckThresholdTests.cs:450.
+                                  #
+                                  # ⚠️ AND THE "damage, not rot" FRAMING IS WRONG ABOUT WHAT
+                                  # ACTUALLY FIRES. Measured on --ship grid, 45 sim-days: nothing
+                                  # there is authored damaged, and at sim-hour 630 a Terminal /
+                                  # Light / WaterTank still sits near 0.37. What crossed the floor
+                                  # were HIGH-WEAR machines whose service was BACKLOGGED — a
+                                  # Fabricator (0.020/h) jury-rigged to 0.6 reaches maint 0.4 in
+                                  # 10 h and 0.25 in 7.5 h more. The real trigger on the shipped
+                                  # ship is ROT PLUS BACKLOG, not damage.
+                                  #
+                                  # COST, measured A/B over those 45 sim-days: Maintain starts
+                                  # 1285 -> 1098 (-187), Flee 657 -> 601, services completed
+                                  # 678 -> 678 (ZERO cost), end state byte-identical, first
+                                  # divergence at sim-hour 630.
+                                  #
+                                  # 0 makes the field inert on every ship; > 0.40 makes every
+                                  # routine service demand a consumable, which is a different game.
+swarf_service_condition  = 0.45   # Condition after a SWARF service (wreck start). THE BOTTOM RUNG,
+                                  # and the only one with a PRECONDITION: Swarf is offered ONLY to a
+                                  # machine below wreck_threshold, i.e. one the free jury-rig has
+                                  # already been refused to. Full ladder:
+                                  #   Parts -> 1.0 | Seals -> 0.9 | hands -> 0.6 | Swarf -> 0.45
+                                  # Bounds, three of them hard:
+                                  #   > every machines.def `maint` (max 0.40) or a swarf service
+                                  #     leaves the machine still needy and the ship burns its whole
+                                  #     salvage stock re-servicing one machine forever;
+                                  #   > wreck_threshold (0.25) or the repair does not lift the
+                                  #     machine out of the wrecked band and buys nothing;
+                                  #   > every `fail` (max 0.10) or the machine is fixed and still
+                                  #     inoperative;
+                                  #   < jury_rig_condition (0.6) or salvage beats free labour and
+                                  #     the tier order inverts.

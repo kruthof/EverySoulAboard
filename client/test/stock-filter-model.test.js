@@ -42,7 +42,7 @@ function itemKindMembers() {
 // E0-6's `Seals = 7` landed here first, and the palette followed in the same commit.
 test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', () => {
   const members = itemKindMembers();
-  assert.equal(members.length, 9, `parsed ${members.length} ItemKind members, expected 9`);
+  assert.equal(members.length, 10, `parsed ${members.length} ItemKind members, expected 10`);
   assert.equal(STOCK_KINDS.length, members.length,
     'the palette lists exactly as many kinds as the sim has');
   members.forEach(([name, index], i) => {
@@ -57,9 +57,9 @@ test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', ()
   for (const l of labels) assert.ok(l && l.length, 'every kind has a label');
   assert.equal(new Set(labels).size, labels.length, 'labels are distinct');
   // ACCEPT_ALL covers exactly one bit per DECLARED kind — derived from the `kind` VALUES, never a
-  // copied 0x7F and (since E0-7) never from the list's LENGTH either. 0x1FF once BOTH lanes landed:
-  // E0-6's Seals took bit 7 and E0-7's Ice took bit 8.
-  assert.equal(ACCEPT_ALL, 0x1FF);
+  // copied 0x7F and (since E0-7) never from the list's LENGTH either. 0x1FF once BOTH lanes landed
+  // (E0-6's Seals took bit 7, E0-7's Ice took bit 8); 0x3FF since the wreck start added Swarf at 9.
+  assert.equal(ACCEPT_ALL, 0x3FF);
   for (const { kind } of STOCK_KINDS) assert.ok(stockKindAccepted(ACCEPT_ALL, kind), `bit ${kind} set`);
   // No bit belongs to anything the sim does not declare — checked per BIT, not as 'everything below
   // the member count', because those are the same set only while ItemKind is CONTIGUOUS. It was not
@@ -69,6 +69,7 @@ test('STOCK_KINDS mirrors the sim ItemKind enum member-for-member, in order', ()
   assert.equal(ACCEPT_ALL & ~declared, 0, 'no bit belongs to an undeclared ItemKind');
   assert.ok((ACCEPT_ALL & (1 << 7)) !== 0, 'bit 7 (Seals, E0-6) is set — the hole is CLOSED');
   assert.ok((ACCEPT_ALL & (1 << 8)) !== 0, 'bit 8 (Ice, E0-7) is set');
+  assert.ok((ACCEPT_ALL & (1 << 9)) !== 0, 'bit 9 (Swarf, wreck start) is set');
   assert.equal(ACCEPT_ALL & (1 << members.length), 0,
     'and the first bit ABOVE the declared set is clear — no accept-all bit is invented');
 });
@@ -81,7 +82,7 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 
   const before = ACCEPT_ALL;
   const noPotato = toggleStockKind(before, 3);
-  assert.equal(noPotato, 0b111110111);   // bits 0..8 set (Seals 7, Ice 8), bit 3 (Potato) off
+  assert.equal(noPotato, 0b1111110111);  // bits 0..9 set (Seals 7, Ice 8, Swarf 9), bit 3 (Potato) off
   assert.equal(before, ACCEPT_ALL, 'the input mask is not mutated');
   assert.equal(stockKindAccepted(noPotato, 3), false);
   assert.equal(stockKindAccepted(noPotato, 4), true, 'exactly ONE bit moved');
@@ -107,18 +108,20 @@ test('toggleStockKind flips exactly one bit, never mutates, and the default acce
 test('the mask helpers are TOTAL: a kind the sim does not have flips nothing and is accepted by nothing', () => {
   assert.equal(1 << 32, 1, 'JS reduces the shift count modulo 32 — this is why the guard exists');
 
-  // Post-merge the enum is contiguous 0..8, so 7 (E0-7's live case against the hole) and 8 are both
-  // real kinds and moved to the POSITIVE control below. `STOCK_KINDS.length` is kept as a derived
+  // Post-merge the enum is contiguous 0..9, so 7 (E0-7's live case against the hole), 8 and 9 are all
+  // real kinds and live in the POSITIVE control below. `STOCK_KINDS.length` is kept as a derived
   // entry so this list widens with the palette instead of pinning a literal that goes stale the next
-  // time a kind lands; 9 is the same value spelled out, so a regression names the number.
-  for (const bad of [9, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
+  // time a kind lands; 10 is the same value spelled out, so a regression names the number — and it
+  // WAS 9 until the wreck start added Swarf, which is exactly the staleness the derived entry
+  // covers and the literal does not.
+  for (const bad of [10, 31, 32, 33, 39, 64, -1, -32, STOCK_KINDS.length]) {
     assert.equal(toggleStockKind(ACCEPT_ALL, bad), ACCEPT_ALL, `toggle is a no-op for kind ${bad}`);
     assert.equal(toggleStockKind(0, bad), 0, `toggle is a no-op for kind ${bad} on an empty mask`);
     assert.equal(stockKindAccepted(ACCEPT_ALL, bad), false, `no mask accepts kind ${bad}`);
   }
   // POSITIVE CONTROL: every DECLARED kind really does flip and really is accepted. Without it the
-  // loop above is satisfied by helpers that reject everything — and this is where Seals (7) and Ice
-  // (8) are proved reachable, the two kinds the two lanes added.
+  // loop above is satisfied by helpers that reject everything — and this is where Seals (7), Ice (8)
+  // and Swarf (9) are proved reachable.
   for (const { kind, label } of STOCK_KINDS) {
     assert.notEqual(toggleStockKind(ACCEPT_ALL, kind), ACCEPT_ALL, `toggle really flips ${label}`);
     assert.equal(stockKindAccepted(ACCEPT_ALL, kind), true, `accept-all accepts ${label}`);
@@ -139,11 +142,12 @@ test('stockFilterLabel names the accepted kinds, with ALL / NOTHING at the ends'
   // Listed in ItemKind order regardless of which bit was set first.
   assert.equal(stockFilterLabel((1 << 5) | (1 << 0)), 'REGOLITH · PARTS');
   // Bits above the last kind are ignored, so a stray one can never render a phantom chip name.
-  assert.equal(stockFilterLabel(ACCEPT_ALL | (1 << 9)), 'ALL');
-  assert.equal(stockFilterLabel(1 << 9), 'NOTHING', 'kind 9 does not exist and names nothing');
-  // The two kinds this wave added, each named by its own bit.
+  assert.equal(stockFilterLabel(ACCEPT_ALL | (1 << 10)), 'ALL');
+  assert.equal(stockFilterLabel(1 << 10), 'NOTHING', 'kind 10 does not exist and names nothing');
+  // The kinds the economy lanes added, each named by its own bit.
   assert.equal(stockFilterLabel(1 << 7), 'SEALS');
   assert.equal(stockFilterLabel(1 << 8), 'ICE');
+  assert.equal(stockFilterLabel(1 << 9), 'SWARF');
 });
 
 // The TUI and the web client must speak ONE vocabulary — a filter bit the console calls FOOD and the

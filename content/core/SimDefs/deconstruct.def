@@ -20,7 +20,41 @@
 # outside MachineWearSystem where Device.Condition changes an outcome. Parts feed
 # the ship's one never-ending sink (an overhaul consumes ONE Part), so 2 Parts is
 # exactly two overhauls: stripping a machine in good repair pays to keep two others
-# alive, and a wreck below Condition 0.5 is worth nothing at all.
+# alive.
+#
+# ⚠️ THE LAST CLAUSE OF THAT PARAGRAPH IS RETRACTED (wreck start, owner decision 3).
+# It used to read "...and a wreck below Condition 0.5 is worth nothing at all", and
+# that WAS the design: DeviceYield floors to 0 below half condition. It made the dead
+# half of a raided ship worth exactly zero, and the wreck start's whole premise is
+# that you cannibalise it. So the cliff is no longer the end of the curve — it is a
+# CHANGE OF CURRENCY:
+#
+#     Condition       yield              unchanged?
+#     1.00            2 Parts            yes, byte-identical
+#     0.50 .. 0.99    1 Part             yes, byte-identical
+#     0.00 .. 0.49    device_swarf Swarf NEW — was 0
+#
+# The Parts arm is untouched at every Condition, so letting a working machine ROT
+# still costs you the difference between 2 Parts and 1 — the cliff stays honest for
+# rot, and only its far side stopped being empty.
+#
+# THE BOUNDARY IS DERIVED, NOT WRITTEN DOWN. DeconstructSystem asks DeviceYield for
+# the Parts figure and pays Swarf only when it comes out 0, so the split tracks
+# device_parts automatically: at 2 the cliff is Condition 0.5, at 3 it would be
+# 0.334. There is no 0.5 anywhere in the code or in this file.
+#
+# device_swarf DOES NOT RE-OPEN THE device_parts/device_place_cost PAIR, because
+# Swarf converts to NOTHING: it has one source (this yield) and one sink (a
+# MaintenanceSystem service at wear.swarf_service_condition), and no production node,
+# recipe or command turns it into Parts, Scrap or Regolith. The place->strip round
+# trip is still 3 Parts out and at most 2 back. Raising device_swarf prices REPAIR,
+# never production — a different pair, and a much less dangerous one.
+#
+# WHY 1 AND NOT 2 — monotonicity. The ladder must never reward letting a machine rot
+# further: 2 Parts > 1 Part > 1 Swarf. At device_swarf = 2 a wreck would pay TWO
+# services at 0.45 against a half-condition machine's ONE overhaul at 1.0, which on a
+# ship trying to get machines over their `fail` threshold is worth MORE — the cliff
+# would invert and optimal play would be to let everything rot before stripping it.
 #
 # THE ROUND TRIP IS LOSSY, AND IT IS ONLY LOSSY BECAUSE PLACING COSTS (E0-5 WP-3):
 # device_parts is read against [build] device_place_cost = 3 PARTS, in the same
@@ -41,3 +75,7 @@ wall_work_ticks   = 1200  # work ticks to tear a Wall down (120 s; half build's 
 max_staged        = 64    # cap on concurrent pending deconstruct designations (queue guard)
 device_parts      = 2     # base Parts a stripped device returns, before floor(x Condition)
 device_work_ticks = 900   # work ticks to strip a device (90 s; between maintenance and a wall)
+device_swarf      = 1     # Swarf a stripped device returns when its PARTS yield floors to 0 —
+                          # i.e. a machine too far gone to give anything back up the ladder.
+                          # CONDITION-INDEPENDENT on purpose: 8% and 34% are both "shot", and
+                          # metering the remains would pretend to a precision the fiction lacks.

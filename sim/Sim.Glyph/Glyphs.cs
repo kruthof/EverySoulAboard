@@ -77,6 +77,8 @@ namespace Perilune.Glyph
             ItemKind.Seals => 'g',   // E0-6: 'g' for gasket. 's' is Scrap and 'S' is the Scrubber
                                      // device, so neither initial of "seals" was free.
             ItemKind.Ice => 'i',     // E0-7 (lower case, like every other ground item)
+            ItemKind.Swarf => 'w',   // wreck start: 's' is Scrap, 'S' is the Scrubber and 'c' is the
+                                     // ControllerModule, so 'w' (swarf/waste metal) is the free char.
             _ => '?',
         };
     }

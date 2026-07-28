@@ -255,6 +255,11 @@ function onMessage(m) {
     // tile, and is overwritten by any device standing there. Cached in the shared state layer; drawn
     // by the Room Zoom's item layer.
     case 'items': Hud.renderItems(m); break;
+    // Per-device WEAR STATE (`devices`, PLURAL — distinct from the one-shot `device` reply above that
+    // opens a MOSS terminal). Kind + condition byte + the sim's own operational bit, read from
+    // `sim.Devices` rather than off a projection that has never carried `Device.Condition` in any
+    // form. Cached in the shared state layer; the wrecked-art join that draws it is a later package.
+    case 'devices': Hud.renderDevices(m); break;
     // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.

@@ -1563,9 +1563,10 @@ test('an UN-INJECTED palette zones ACCEPT-ALL — never silence, never accept-no
 // could not see the cause of. MUTATION: restore `parseInt` ⇒ RED on the first two rows below.
 test('a chip with a junk kind attribute changes nothing — NaN must not read as REGOLITH', () => {
   rzArm('stockpile');
-  // '9' is the first index PAST the last ItemKind: the wave merge made 7 (Seals, E0-6) and 8 (Ice,
-  // E0-7) both real, so each in turn moved out of this list and into the real-kind case below.
-  for (const junk of ['nonsense', '', '-1', '9', '32', '3.5']) {
+  // '10' is the first index PAST the last ItemKind: 7 (Seals, E0-6), 8 (Ice, E0-7) and 9 (Swarf,
+  // the wreck start) each became real in turn and moved out of this list into the real-kind case
+  // below. A literal here goes stale every time a kind lands — which is exactly what happened.
+  for (const junk of ['nonsense', '', '-1', '10', '32', '3.5']) {
     const before = rzShownMask();
     const b = new RzEl(rzDoc, 'button');
     b.dataset.rzaccept = junk;

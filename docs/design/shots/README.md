@@ -9,6 +9,55 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `wrecked-*` — the post-raid twin set + the two new cryo capsules (2026-07-28)
+
+Tool: **`client/tools/wrecked-gallery.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
+
+⚠️ **THESE ARE NOT SHOTS OF THE RUNNING GAME, and that is not laziness.** The wrecked set is
+deliberately **not wired to either surface**: nothing on the wire carries a device *condition*, so no
+surface can choose between a piece and its twin yet, and there is no running game in which to
+photograph one. The tool renders the registry directly onto the mock's own 150×132 stage. That is
+**weaker evidence** than `door-*` or `items-*`: it proves the pieces DRAW, not that they read
+correctly in a room. When the `devices` condition channel lands and the twins are wired, these want
+re-shooting from the live Room Zoom.
+
+**Each row is three stages: pristine SVG · THE MOCK'S OWN CSS DIVS · wrecked SVG.** The middle stage
+is read out of `docs/design/perilune-item-set.dc.html`'s `brokenD` array and laid out on the mock's
+own geometry, so the middle-versus-right comparison is a real fidelity diff rather than an argument
+about one. The SVG is rendered at 128×128 — `helpers.js` `TILE`, i.e. scale exactly 1:1 with the
+mock — for the same reason.
+
+| file | what it shows |
+|---|---|
+| `wrecked-0-cryo-new.png` | the **two NEW static pieces**, CRYO CAPSULE · OCCUPIED and · OPEN, pristine and wrecked, at 300 px. The only pieces in this package a player could ever see undamaged, so they are shown big enough to see the occupant. |
+| `wrecked-1-objects.png` | the 30 objects |
+| `wrecked-2-walls-floors.png` | the 6 walls + 6 floors |
+| `wrecked-3-fixtures.png` | the 18 fixtures |
+| `wrecked-4-resources.png` | the 8 loose resources (the ones the mock renames and badges `—`) |
+| `wrecked-5-cryo.png` | the 2 cryo capsules at tile size |
+
+### The deliberate departures you will SEE in the middle-versus-right diff
+
+Each is argued in `client/src/items/wrecked.js`'s header; none is a mistake.
+
+- **PARTS · SEIZED** — the mock's two cogs are `conic-gradient` pies; the SVG draws **real teeth**
+  (`gearPath`, reused from `resources.js`). At tile size a pie of grey wedges is a grey disc.
+- **VENT FAN** — the same `conic-gradient`, translated the *other* way, to four quarter **sectors**,
+  matching what the pristine `fixtures.js` `ventFan` already does. A fan is a disc with alternating
+  quadrants; teeth would make it a cog.
+- **Blurred `box-shadow`s** become hard rings or radial vignettes — SVG blur is a filter, and filters
+  are not in this set's vocabulary. The vignette is flattened to 0.7 alpha over a 0.6 ramp; without
+  that, HULL PLATING's breach wore a crisp cyan ring instead of a cold bloom.
+- **Drop shadows are dropped**, exactly as the 70 pristine pieces drop theirs.
+- **45° hazard-stripe handedness is not pinned** (CSS measures the gradient axis anticlockwise from
+  "up"; SVG `patternTransform` rotates clockwise with y down). Every 45° use is hazard tape.
+
+⚠️ **Nothing here has had owner review.** The state badges (`0%`–`35%`, `—`) come from the mock and
+are carried through, but no threshold anywhere decides when a tile wears its twin — that decision
+does not exist yet.
+
+---
+
 ## `door-*` — the door package (2026-07-27)
 
 Tool: **`client/tools/door-shot.mjs`**. Live `--ship grid` host, real Chrome over CDP, real pointer

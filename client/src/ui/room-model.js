@@ -727,6 +727,45 @@ export function itemIdForStockKind(kind) {
   return id === undefined ? '' : id;
 }
 
+/**
+ * The per-device WEAR STATE inside the room, keyed by tile. Every in-rect, on-deck row of the decoded
+ * `devices` channel becomes `'tx,ty' → {tx, ty, kind, cond, oper}`; everything else is dropped. PURE.
+ *
+ * ⚠️ NOTHING DRAWS THIS YET, ON PURPOSE. The join it exists for — "pick the wrecked art piece when
+ * `cond` is low" — is a SEPARATE PACKAGE against `client/src/items/`, a directory a parallel lane
+ * owns, and doing it here would be a textual merge collision with that lane on exactly the shape that
+ * has already broken this repo once (`CLAUDE.md`, "a clean auto-merge is NOT a clean merge"). What
+ * this lane ships is the DATA reaching the surface: `Device.Condition` has never been on the wire at
+ * all, so no art package was possible before it.
+ *
+ * A MAP AND NOT A LIST, unlike `roomMarkTiles`/`roomItemTiles`. Those two layers can legitimately hold
+ * several rows per tile (an order and a zone; several stacks), so a list is their honest shape. A
+ * tile-resident device is ONE PER TILE by construction — `Simulation.AddDevice` writes `_deviceGrid`
+ * for every non-overlay kind and the overlays are not on this channel — so the consumer's question is
+ * always "what is on THIS tile?", and a list would make every caller write the same linear scan.
+ * LAST ROW WINS on the impossible duplicate, matching `GlyphMapper` pass 4, which assigns rather than
+ * merges; it is not silently dropped, because a channel that disagreed with the sim about one-per-tile
+ * is a fact worth being able to see rather than one to paper over.
+ *
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null} devices
+ *        decodeDevices() output
+ * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number}>}
+ */
+export function roomDeviceConditions(devices, focusRoom) {
+  const out = new Map();
+  if (!Array.isArray(devices) || !focusRoom) return out;
+  const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
+  const x1 = rx + (focusRoom.rw | 0), y1 = ry + (focusRoom.rh | 0);
+  for (const d of devices) {
+    if (!d || (d.deck | 0) !== (focusRoom.deck | 0)) continue;
+    const tx = d.x | 0, ty = d.y | 0;
+    if (tx < rx || tx >= x1 || ty < ry || ty >= y1) continue;
+    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0 });
+  }
+  return out;
+}
+
 // Layer geometry, in tile-fraction-free logical units (the tile is `unit` on a side and the caller's
 // viewBox scales the whole layer, so small numbers here are large on screen).
 const STACK_MAX_SLOTS = 2;      // beyond this the last slot summarises — a 32-unit tile holds two

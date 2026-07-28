@@ -553,9 +553,17 @@ namespace Perilune.Tests
             var sim = BuildBench(DeviceKind.Scrubber, defs);
             var machine = DeviceNamed(sim, "bench");
             Assert.That(machine, Is.Not.Null);
-            machine.Condition = 0.2f;
+            // 0.30, not the 0.2 this fixture used before the wreck rule (wreck start W2). The
+            // needy band has TWO ends now: below maintain_below (0.4) so the standing rule
+            // recruits, and AT OR ABOVE wear.wreck_threshold (0.25) so an EMPTY-HANDED service is
+            // still legal. At 0.2 the empty-handed leg below measured the wreck rule's refusal
+            // instead of E0-6's jury-rig floor and went red — the right failure, in the wrong file.
+            machine.Condition = 0.3f;
             Assert.That(machine.Condition, Is.LessThan(defs.Machines[k].MaintainBelow),
                 "premise: the machine is below maintain_below, so the standing rule recruits");
+            Assert.That(machine.Condition, Is.GreaterThanOrEqualTo(defs.Wear.WreckThreshold),
+                "premise: the machine is NOT a wreck, so the empty-handed rung is reachable — " +
+                "otherwise this fixture silently measures wear.wreck_threshold");
             return (sim, machine);
         }
 

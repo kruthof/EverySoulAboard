@@ -143,7 +143,7 @@ namespace Perilune.Tests
         /// browser silently WRONG (a filter that accepts kinds nobody chose, or refuses kinds they
         /// did). <see cref="StockZoneSystem.SetFilter"/> masks every stored value down to
         /// <see cref="StockZoneSystem.AcceptAllMask"/>, which covers only DECLARED
-        /// <see cref="ItemKind"/>s, so today's ceiling is 0x1FF and the channel is safe.
+        /// <see cref="ItemKind"/>s, so today's ceiling is 0x3FF and the channel is safe.
         ///
         /// This assertion is the thing that will SAY SO on the day it stops being true: an ItemKind
         /// enum that passes 53 members needs the tuple to carry a string or a hi/lo pair, and nothing
@@ -164,12 +164,11 @@ namespace Perilune.Tests
             // Non-vacuity: a mask of 0 would satisfy the bound while meaning the registry is broken.
             Assert.That(StockZoneSystem.AcceptAllMask, Is.GreaterThan(0UL),
                 "AcceptAllMask is 0 — the bound above is then guarding nothing");
-            // 0x1FF = bits 0-8: Regolith..ControllerModule, plus bit 7 (Seals, E0-6) and bit 8
-            // (Ice, E0-7). The two lanes were pre-assigned those two slots by the integrator, and the
-            // wave merge is what made the enum contiguous again.
-            Assert.AreEqual(0x1FFUL, StockZoneSystem.AcceptAllMask,
-                "nine ItemKinds today (0xFF before E0-7 added Ice, 0x7F before E0-6 added Seals); " +
-                "if this changed on purpose, re-measure the bound above with it");
+            // 0x3FF = bits 0-9: Regolith..ControllerModule, plus bit 7 (Seals, E0-6), bit 8 (Ice,
+            // E0-7) and bit 9 (Swarf, the wreck start's salvage half).
+            Assert.AreEqual(0x3FFUL, StockZoneSystem.AcceptAllMask,
+                "ten ItemKinds today (0x1FF before Swarf, 0xFF before E0-7 added Ice, 0x7F before " +
+                "E0-6 added Seals); if this changed on purpose, re-measure the bound above with it");
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge

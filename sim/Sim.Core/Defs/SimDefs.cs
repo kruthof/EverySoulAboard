@@ -310,6 +310,113 @@ namespace Perilune.Sim
             /// stock at once, and nothing in E0 produces that yet.
             /// </summary>
             public float SealServiceCondition;
+
+            /// <summary>
+            /// The WRECK FLOOR — below this <see cref="Device.Condition"/>, an empty-handed
+            /// jury-rig is REFUSED and the machine needs a real consumable
+            /// (<see cref="ItemKind.Parts"/> → 1.0, <see cref="ItemKind.Seals"/> →
+            /// <see cref="SealServiceCondition"/>, or <see cref="ItemKind.Swarf"/> →
+            /// <see cref="SwarfServiceCondition"/> — the rung built for exactly this band, and the
+            /// only one gated ON it). At or above it, maintenance is byte-identical
+            /// to the pre-2026-07-28 game. Current: 0.25.
+            ///
+            /// <b>WHY IT EXISTS.</b> <c>MaintenanceSystem</c> restores ANY device to
+            /// <see cref="JuryRigCondition"/> = 0.6 with EMPTY HANDS in one 900 s pass, and 0.6 is
+            /// above every <c>maint</c> threshold in <c>machines.def</c> (max 0.4). So a raid-wrecked
+            /// ship — every machine authored at 0.02–0.35 — heals itself to full serviceability in
+            /// ~45 sim-minutes with ZERO player input and ZERO matter. The wreck premise evaporates
+            /// before the player has done anything. A wrecked machine must not be wishable better.
+            ///
+            /// <b>0.25 IS A STARTING VALUE THE OWNER EXPECTS TO BE MEASURED, NOT A LAW.</b> It is
+            /// deliberately ABOVE every <c>maint</c> threshold's failure companion (max
+            /// <c>fail</c> = 0.10), so a machine this rule refuses is still a machine that RUNS.
+            ///
+            /// <b>⚠️ IT IS NOT BELOW EVERY <c>maint</c> THRESHOLD, AND AN EARLIER DRAFT OF THIS
+            /// DOC SAID IT WAS.</b> That draft read "BELOW every <c>maint</c> threshold (max 0.40),
+            /// so the band [0.25, 0.40) — a machine that has merely rotted — keeps today's free
+            /// jury-rig". <c>maint</c> is PER KIND; <c>(max 0.40)</c> is the tell — the maximum was
+            /// taken as if it were universal. Hand-counted off <c>MachineDefs.cs:38-80</c>, the
+            /// free-jury-rig band [0.25, <c>maint</c>) is:
+            /// <list type="bullet">
+            /// <item><c>Terminal</c>, <c>Light</c>, <c>WaterTank</c> — <c>maint</c> 0.20, so the
+            /// band is <b>EMPTY</b>: these three can never be fixed for free on ANY ship, shipped
+            /// or wrecked. A shipped-economy consequence of the default, not a wreck-only one.</item>
+            /// <item><c>Door</c> <b>and</b> <c>Battery</c> — <c>maint</c> 0.30, band width
+            /// <b>0.05</b>. Neither is narrower than the other; they are identical.</item>
+            /// <item>everything else — <c>maint</c> 0.40, band [0.25, 0.40).</item>
+            /// </list>
+            /// Both sets are pinned BY NAME in
+            /// <c>WreckThresholdTests.KindsWhoseFreeJuryRigBandIsEmptyAtTheShippedFloor_ArePinnedByName</c>,
+            /// which asserted the correct sets while the prose above it said otherwise.
+            ///
+            /// <b>⚠️ AND "rot stays cheap, damage costs matter" IS WRONG ABOUT WHAT ACTUALLY
+            /// FIRES.</b> Measured on <c>--ship grid</c> over 45 sim-days: nothing there is authored
+            /// damaged, and at sim-hour 630 a Terminal/Light/WaterTank still sits near 0.37 — the
+            /// starved kinds are not what crosses the floor. What crosses it are HIGH-WEAR machines
+            /// whose service was <b>BACKLOGGED</b>: a <c>Fabricator</c> (0.020/h) jury-rigged to 0.6
+            /// reaches <c>maint</c> 0.40 in 10 h and 0.25 in 7.5 h more. On the shipped ship the
+            /// rule's real trigger is <b>rot plus backlog</b>, not damage.
+            ///
+            /// <b>COST, measured A/B over those same 45 sim-days</b> (<c>occupancy --ship grid
+            /// --maint-audit</c>): <c>Maintain</c> job starts <b>1285 → 1098</b> (−187), <c>Flee</c>
+            /// 657 → 601, and <b>services completed 678 → 678 — zero cost</b>, with a byte-identical
+            /// end state and first divergence at sim-hour 630.
+            ///
+            /// Raising it past 0.40 would make every routine service demand a consumable and is a
+            /// different game; lowering it to 0 makes the field inert everywhere (and a def that is
+            /// inert everywhere is a def nobody tests).
+            ///
+            /// <b>THE REFUSAL IS SILENT, AND THAT IS AN ACCEPTED COST, NOT AN OVERSIGHT</b> — the
+            /// same shape as <c>MECHANICS.md</c> §13.21's worksite rule. It lives in
+            /// <c>RecruitForNeediest</c>'s per-pass skip branch, so nothing is remembered and the
+            /// machine becomes serviceable on the very pass a consumable appears; but the player is
+            /// told nothing. The <c>blocked</c> channel (wreck-start W4) is where that is repaired.
+            /// </summary>
+            public float WreckThreshold;
+
+            /// <summary>
+            /// THE BOTTOM RUNG — condition after a service performed with <see cref="ItemKind.Swarf"/>
+            /// (wreck start, owner decision 3). Current: 0.45.
+            ///
+            /// <b>It is the only rung with a PRECONDITION rather than just a price.</b> Parts and
+            /// Seals are offered to any needy machine; Swarf is offered ONLY below
+            /// <see cref="WreckThreshold"/> — i.e. exactly where the free jury-rig has been refused.
+            /// Without that gate a servicer would fetch Swarf and leave a merely-rotted machine at
+            /// 0.45 where empty hands would have left it at 0.6, which is strictly worse than not
+            /// having the rung (the same trap <see cref="SealServiceCondition"/>'s comment records).
+            ///
+            /// <b>0.45 IS BOUNDED ON FOUR SIDES AND THREE OF THEM ARE HARD:</b>
+            /// <list type="bullet">
+            /// <item>STRICTLY ABOVE every <c>maint</c> threshold in <c>machines.def</c> (max 0.40),
+            /// or a swarf service leaves the machine still needy and the ship burns its whole salvage
+            /// stock re-servicing one machine forever — a matter-consuming livelock.</item>
+            /// <item>STRICTLY ABOVE <see cref="WreckThreshold"/> (0.25), or the machine is still a
+            /// wreck after being repaired and the rung buys nothing it can build on.</item>
+            /// <item>ABOVE every <c>fail</c> threshold (max 0.10), or the machine is repaired and
+            /// still inoperative.</item>
+            /// <item>STRICTLY BELOW <see cref="JuryRigCondition"/> (0.6), or salvage would beat free
+            /// labour and the tier order would invert.</item>
+            /// </list>
+            /// The bounds are test-enforced, not merely written down. ⚠️ THEY ARE NOT SUFFICIENT:
+            /// they leave the open interval (0.40, 0.60), and every driven assertion compares
+            /// against this field, so 0.45 itself was UNPINNED until
+            /// <c>SwarfSalvageTests.SwarfServiceCondition_IsPinnedAtTheLiteral_FromBothSides</c>
+            /// landed (measured: retuning it 0.45 → 0.55 reddened only the two checksum pins, which
+            /// redden for any def change at all). Why not lower: the worst <c>maint</c> is 0.40 and
+            /// the worst wear 0.06/h at the heat cap, so 0.45 buys ~50 sim-minutes of
+            /// serviceability where 0.41 buys ~10 and the re-service loop returns. Why not higher:
+            /// this is what a WRECK comes back as, and at 0.55 a scrap patch-up lands within 0.05 of
+            /// free labour on a healthy machine while costing matter.
+            ///
+            /// <b>WHY THE RUNG IS THE SINK AT ALL.</b> ECONOMY.md's `recycle_swarf` would convert
+            /// Swarf back up the ladder at a bench. It cannot ship: <c>ProductionDefs.TryGetBill</c>
+            /// resolves a station's bill at ORDINAL 0 only, all three benches already carry one, and
+            /// a second node is parsed, checksummed and never run (the `fab_seals` trap
+            /// <c>production.def</c> documents). Choosing among bills needs per-station save state,
+            /// which is E-PROD's lane. So the wreck's salvage feeds REPAIR rather than PRODUCTION —
+            /// which is also the stricter conservation story: there is no Swarf → Parts path at all.
+            /// </summary>
+            public float SwarfServiceCondition;
         }
 
         /// <summary>CitizenSystem movement constants.</summary>
@@ -517,6 +624,34 @@ namespace Perilune.Sim
             /// 10 Hz). Between a maintenance service (900) and a wall tear-down (1200): pulling a
             /// machine is quicker than cutting structure. Current: 900.</summary>
             public int DeviceWorkTicks;
+
+            /// <summary>
+            /// DeconstructSystem (wreck start, owner decision 3) — <see cref="ItemKind.Swarf"/> units
+            /// a stripped device returns when it is WORTH NO PARTS, i.e. when
+            /// <c>floor(<see cref="DeviceParts"/> × Condition)</c> is 0. Condition-INDEPENDENT: a
+            /// machine at 8 % and one at 34 % are both "shot", and metering their remains would be
+            /// pretending to a precision the fiction does not have. Current: 1.
+            ///
+            /// <para><b>THE BOUNDARY IS DERIVED, NOT A LITERAL 0.5.</b> The split is "the Parts yield
+            /// came out 0", so it tracks <see cref="DeviceParts"/> automatically: at the shipped 2 the
+            /// cliff is Condition 0.5, and a designer who retunes DeviceParts to 3 moves it to 0.334
+            /// without touching this field. Hard-coding 0.5 here would silently decouple the two the
+            /// first time either moved.</para>
+            ///
+            /// <para><b>1, NOT 2, AND THE REASON IS MONOTONICITY.</b> The yield ladder must never
+            /// reward letting a machine rot further: 2 Parts (pristine) → 1 Part (Condition ≥ 0.5) →
+            /// 1 Swarf (below). At 2 Swarf a wrecked machine would pay TWO services at
+            /// <c>swarf_service_condition</c> against a half-condition machine's ONE overhaul at 1.0,
+            /// which on a ship trying to get machines above their <c>fail</c> threshold is worth more
+            /// — the cliff would invert and the optimal play would be to let everything rot.</para>
+            ///
+            /// <para><b>IT CANNOT MINT MATTER IN ANY EXISTING CURRENCY.</b> Swarf converts to nothing
+            /// (see <see cref="ItemKind.Swarf"/>), so the Parts round trip is untouched:
+            /// <see cref="BuildDefs.DevicePlaceCost"/> = 3 out, <see cref="DeviceParts"/> = 2 back at
+            /// best. This field can be raised without re-opening that pair — it prices REPAIR, not
+            /// production.</para>
+            /// </summary>
+            public int DeviceSwarf;
         }
 
         /// <summary>DirectorSystem (WS-NARRATIVE N6) tension curve + one lever. The Director
@@ -679,6 +814,8 @@ namespace Perilune.Sim
                     MaintenanceWorkSeconds = 900,
                     JuryRigCondition = 0.6f,
                     SealServiceCondition = 0.9f, // E0-6 (the middle rung: Parts 1.0 > Seals 0.9 > hands 0.6)
+                    WreckThreshold = 0.25f,     // the wreck floor: below this, empty hands are refused
+                    SwarfServiceCondition = 0.45f, // the bottom rung, offered ONLY below the wreck floor
                 },
 
                 Citizen = new CitizenDefs
@@ -744,6 +881,7 @@ namespace Perilune.Sim
                     WallWorkTicks = 1200,
                     MaxStaged = 64,
                     DeviceParts = 2,
+                    DeviceSwarf = 1,   // Swarf a device below the Parts cliff returns (wreck start)
                     DeviceWorkTicks = 900,
                 },
 
@@ -863,7 +1001,10 @@ namespace Perilune.Sim
         /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
         /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended)
         /// → Wear.SealServiceCondition + Build.CommissionCost (E0-6, 2 fields, appended)
-        /// → Water.IceLitersPerUnit + Water.MelterBufferLiters (E0-7, 2 fields, appended).
+        /// → Water.IceLitersPerUnit + Water.MelterBufferLiters (E0-7, 2 fields, appended)
+        /// → Wear.WreckThreshold (wreck-start W2 half A, 1 field, appended)
+        /// → Deconstruct.DeviceSwarf + Wear.SwarfServiceCondition (wreck-start salvage half,
+        /// 2 fields, appended).
         /// E0-6's pair and E0-7's pair are in the integrator's pre-assigned slot order
         /// (ECONOMY-PLAN §2.1 rule 2); the wave merge kept it, so neither lane's locally
         /// measured fingerprint survives and the integrator re-measures on main.
@@ -1097,6 +1238,18 @@ namespace Perilune.Sim
             // integrator re-measures). E0-6's two folds are above; do not reorder to minimise a diff.
             h = XxHash64.Combine(h, Water.IceLitersPerUnit);
             h = XxHash64.Combine(h, Water.MelterBufferLiters);
+
+            // The RECOVERY ECONOMY (wreck start W2), appended at the END for the same reason every
+            // field since Social-S1 is: append-at-END is the invariant (README.def HANDOVER
+            // INVARIANT #3). ONE field, folded alone, because Half A ships alone and must be
+            // revertable alone — the salvage half's folds append AFTER this line, never beside it.
+            h = XxHash64.Combine(h, Wear.WreckThreshold);
+
+            // The SALVAGE half of the recovery economy (wreck start, owner decision 3), appended
+            // AFTER half A's single fold and never beside it: the two halves ship as two commits so
+            // either reverts alone, and an append-at-END order is what keeps a revert a tail edit.
+            h = XxHash64.Combine(h, (ulong)(uint)Deconstruct.DeviceSwarf);
+            h = XxHash64.Combine(h, Wear.SwarfServiceCondition);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

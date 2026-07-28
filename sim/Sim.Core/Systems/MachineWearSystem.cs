@@ -217,6 +217,34 @@ namespace Perilune.Sim
                     continue;
                 }
 
+                if (IsUnfixableWreck(sim, needy))
+                {
+                    // A WRECKED machine cannot be wished better (wreck start W2). Below
+                    // wear.wreck_threshold an empty-handed jury-rig is refused, so with no
+                    // consumable anywhere aboard there is no service to perform — skip it for
+                    // this pass, exactly as "nowhere to stand" does, and for the same reasons:
+                    // nothing is remembered, so the machine becomes serviceable on the very pass
+                    // a Parts, Seals or SWARF stack appears — Swarf counts here, and it is the rung
+                    // built for exactly this band (IsUnfixableWreck asks with allowSwarf: true).
+                    //
+                    // ⚠ THE REFUSAL BELONGS HERE AND NOT IN THE WORK PHASE. DriveWorker's work
+                    // phase is reached only after a crew member has walked to the machine and
+                    // counted down maintenance_work_seconds = 900 s; discovering the refusal there
+                    // would throw those 15 sim-minutes away. Refusing at RECRUITMENT costs one item
+                    // scan and no crew time at all.
+                    //
+                    // ⚠ IT IS *NOT* A LIVELOCK ARGUMENT, and an earlier draft of this comment said
+                    // it was — it claimed a work-phase guard would "re-offer the same machine on
+                    // the next pass forever". It would not. After such an abandon the machine is
+                    // still below the floor with no consumable aboard, so IsUnfixableWreck refuses
+                    // it right here on the very next pass; and if a consumable HAS appeared in the
+                    // meantime, re-offering it is the correct behaviour. The cost is a single
+                    // wasted service, not an unbounded one. Do not re-import the worksite-safety
+                    // package's 47 640-job-starts figure as if it applied to this branch.
+                    _recruitSkip.Add(needy.Id);
+                    continue;
+                }
+
                 var recruit = FindNearestIdle(sim, staging);
                 if (recruit == null) return; // no idle hands — retried next second
 
@@ -281,6 +309,20 @@ namespace Perilune.Sim
                 }
                 else
                 {
+                    // NO WRECK GUARD HERE, DELIBERATELY — the wreck rule is decided BEFORE any work
+                    // starts (the recruit gate and the fetch-phase guard below), never after. A
+                    // guard on this line would fire only for a machine that drifted below
+                    // wear.wreck_threshold DURING its own 900 s service, and the trade is a pure
+                    // arithmetic one: it would DISCARD 900 s of a crew member's life ALREADY SPENT
+                    // in order to recover at most 0.015 of Condition. That bound is exact — the
+                    // highest wear rate in machines.def (0.020/h) times the heat cap (3x) is
+                    // 0.06/h, and 900 s of it is 0.015 — and the leak is MONOTONE: a machine can be
+                    // jury-rigged from at most 0.015 below the floor and never further, because the
+                    // next pass starts from the recruit gate again. 0.015 of Condition is not worth
+                    // 15 sim-minutes.
+                    //
+                    // ⚠ NOT a livelock argument (see the recruit gate above, which used to make one
+                    // and was wrong): a work-phase guard here would not loop.
                     device.Condition = sim.Defs.Wear.JuryRigCondition; // patched, not fixed
                 }
                 worker.JobKind = JobKind.None;
@@ -314,7 +356,10 @@ namespace Perilune.Sim
             if (worker.HasPath) return; // ...or en route to a Parts stack / the machine
 
             // --- Settled and empty-handed: fetch a consumable, or jury-rig if none exist. ---
-            var best = FindNearestConsumable(sim, worker.Pos);
+            // The Swarf rung is offered only to a machine the wreck rule has already refused a free
+            // repair to — read off the device's CURRENT condition, at the moment of the fetch.
+            var best = FindNearestConsumable(sim, worker.Pos,
+                                             allowSwarf: device.Condition < sim.Defs.Wear.WreckThreshold);
             if (best != null)
             {
                 if (best.Pos == worker.Pos)
@@ -339,7 +384,13 @@ namespace Perilune.Sim
                 return;
             }
 
-            // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand.
+            // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand —
+            // UNLESS the machine is a wreck, which cannot be wished better (wreck start W2).
+            if (device.Condition < sim.Defs.Wear.WreckThreshold)
+            {
+                Abandon(worker); // no consumable, no free fix; the recruit gate will not re-offer it
+                return;
+            }
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
             {
                 worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond;
@@ -384,6 +435,43 @@ namespace Perilune.Sim
         }
 
         /// <summary>
+        /// THE WRECK RULE (wreck start W2): is this machine below <c>wear.wreck_threshold</c> with
+        /// nothing aboard that could repair it? Such a machine has no service to offer — the
+        /// empty-handed jury-rig that would otherwise restore it to
+        /// <c>wear.jury_rig_condition</c> is refused.
+        ///
+        /// <para><b>PUBLIC on purpose.</b> The refusal is silent, exactly like
+        /// <see cref="WorksiteSafety.CanStageWorkerAt"/>'s (<c>MECHANICS.md</c> §13.21), and a
+        /// view-only <c>blocked</c> wire channel needs to be able to ask the same question the
+        /// dispatcher asks rather than re-deriving it — re-deriving is how the two answers drift
+        /// apart.</para>
+        ///
+        /// <para><b>Byte-identical above the threshold.</b> The first term is
+        /// <c>Condition &lt; threshold</c>, so on a ship whose machines are all above it this
+        /// method never reaches the item scan and never changes an outcome. With
+        /// <c>wreck_threshold = 0</c> it is false for every device and the whole rule is inert.</para>
+        ///
+        /// <para><b>The consumable test is the DISPATCHER'S OWN, not a re-implementation.</b> It
+        /// calls <see cref="FindNearestConsumable"/>, which is the only thing in the sim that puts
+        /// a stack in a maintainer's hand, so "the gate said yes" and "the worker found something"
+        /// cannot disagree. Its null-ness is position-independent — <see cref="FindNearest"/>
+        /// filters on kind, carry, reservation and the stack tile's own breathability, and uses
+        /// <paramref name="device"/>'s position only to break distance ties — so passing the
+        /// machine's tile rather than the eventual worker's tile cannot change the ANSWER, only
+        /// which stack would be chosen.</para>
+        /// </summary>
+        public static bool IsUnfixableWreck(Simulation sim, Device device)
+        {
+            if (device == null) return false;
+            if (device.Condition >= sim.Defs.Wear.WreckThreshold) return false;
+            // allowSwarf: TRUE unconditionally here, and it is not a shortcut — the line above has
+            // already established that this machine is below the wreck floor, which IS the Swarf
+            // rung's precondition. Salvage from the dead half of the ship is what makes a wreck
+            // fixable at all, so a ship holding Swarf and nothing else has a service to offer.
+            return FindNearestConsumable(sim, device.Pos, allowSwarf: true) == null;
+        }
+
+        /// <summary>
         /// What a service restores the machine to, given the consumable actually in the
         /// servicer's hand. The ladder in ONE place so the work phase and every test read the
         /// same rule (E0-6). A kind that is neither Parts nor Seals cannot reach here —
@@ -395,12 +483,20 @@ namespace Perilune.Sim
         {
             if (kind == ItemKind.Parts) return 1f;                          // full overhaul
             if (kind == ItemKind.Seals) return defs.Wear.SealServiceCondition; // routine service
+            if (kind == ItemKind.Swarf) return defs.Wear.SwarfServiceCondition; // salvage patch-up
             return defs.Wear.JuryRigCondition;
         }
 
         /// <summary>
-        /// Nearest unreserved ground stack of a maintenance consumable — <b>Parts first, and
-        /// only if the ship has none anywhere, Seals</b> (ties within a tier: item store order).
+        /// Nearest unreserved ground stack of a maintenance consumable — <b>Parts first; only if
+        /// the ship has none anywhere, Seals; and only then, and only when <paramref name="allowSwarf"/>,
+        /// Swarf</b> (ties within a tier: item store order). THREE tiers, not two — the summary said
+        /// two after the wreck start added the third.
+        ///
+        /// <para>⚠️ COST, unmeasured and owed: this is up to THREE full item-store scans, and the
+        /// worst case is exactly the permanently-refused wreck — no Parts, no Seals, no Swarf — which
+        /// <c>IsUnfixableWreck</c> re-evaluates at 1 Hz for as long as the machine stays needy.
+        /// Unmeasurable on <c>--ship grid</c>; a wreck ship authors hundreds of such machines.</para>
         ///
         /// TIER BEFORE DISTANCE, and that is the whole reason E0-6's new rung is additive: the
         /// first loop is character-for-character the pre-E0-6 <c>FindNearestParts</c>, so on any
@@ -408,10 +504,23 @@ namespace Perilune.Sim
         /// and the Seals loop is never entered. The second loop is only reachable in the state
         /// that used to produce a jury-rig at Condition 0.6.
         /// </summary>
-        private static ItemStack FindNearestConsumable(Simulation sim, Int3 from)
+        private static ItemStack FindNearestConsumable(Simulation sim, Int3 from, bool allowSwarf)
         {
             var best = FindNearest(sim, from, ItemKind.Parts);
-            return best ?? FindNearest(sim, from, ItemKind.Seals);
+            if (best != null) return best;
+            best = FindNearest(sim, from, ItemKind.Seals);
+            if (best != null) return best;
+            // THE BOTTOM RUNG (wreck start, owner decision 3), and the ONLY tier with a
+            // precondition. `allowSwarf` is true exactly when the machine is below
+            // wear.wreck_threshold — i.e. when the free jury-rig has already been refused.
+            //
+            // ⚠️ IT MUST BE GATED OR IT IS A REGRESSION, not a feature. swarf_service_condition
+            // (0.45) is BELOW jury_rig_condition (0.6), so offering Swarf to a merely-ROTTED machine
+            // would send a crew member on a fetch to end up WORSE than empty hands — the exact trap
+            // WearDefs.SealServiceCondition's comment records from the other direction. Above the
+            // wreck floor this loop is never entered and the function is character-for-character the
+            // pre-wreck-start FindNearestConsumable.
+            return allowSwarf ? FindNearest(sim, from, ItemKind.Swarf) : null;
         }
 
         /// <summary>Nearest unreserved ground stack of one kind (ties: item store order).</summary>

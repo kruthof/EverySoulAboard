@@ -4,7 +4,61 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒⇒ START HERE — the 2026-07-28 orientation. READ THIS BLOCK ONLY; everything below is history.
+## ⇒⇒ START HERE — THE WRECK START (2026-07-28, later). Everything below this block is history.
+
+> **Design of record: `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`).**
+> **Gate on `main`: `./ci.sh` exit 0, 1181 dotnet + 876 node, twin hashes MATCH `43345ff0c9d62684`;
+> P1–P3 held, P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`.**
+>
+> **THE OPENING IS RE-PREMISED, on the owner's design.** A bay of cryo capsules; everyone frozen;
+> **ONE pawn thaws at boot and is the entire player force.** The ship was raided, the unfrozen are
+> dead or gone, the infrastructure is wrecked. The rest thaw **one at a time through the MOSS
+> terminal**, so the player is never handed eight pawns at once. Life support, food and a repaired
+> bed come first. The old start — 8 crew sprinting to dig because `DigJobSource` is the only
+> non-empty board at tick 0 — is retired.
+>
+> **OWNER DECISIONS, all binding, none to be reopened by an implementing lane:** a new
+> **`--ship wreck`** becomes the default and **`--ship grid` stays untouched as the economy
+> baseline** · thaw gated on **life-support headroom, priced in Parts**, performed **at MOSS** ·
+> **jury-rig refused below `wear.wreck_threshold`** (0.25, kept after measurement) · a wrecked
+> machine strips to **`Swarf`** · **`＋ADD ROOM` splits — naming is free, AIR IS EARNED** · one
+> **`Degraded` bit** on `ItemStack` for the 8 spoiled resources · **`Regolith` → `Rubble`** ·
+> **a wrecked occupied pod holds a DEAD sleeper** (so fewer than eight are recoverable — *how many
+> is unset; W3 must set it and say the number*) · **an EMERGENCY THAW** when `LivingCrew == 0`,
+> living in `CryoSystem` and **not as a hole in `ThawCommand`** · **authored people with real
+> mechanical differences**, which promotes the skill / work-priority lane from optional to
+> **REQUIRED**.
+>
+> **⇒ THE CORE LOOP IS A PRESSURE FRONTIER**, and it falls out of `WorksiteSafety.CanStageWorkerAt`
+> (`SafetySystem.cs:104-128`), which hard-refuses a non-breathable worksite — **thermal included**.
+> Work is only possible where the crew can already breathe. ⚠️ **The refusal is SILENT, and on the
+> wreck that is the DEFAULT experience** — there are now **three** silent refusals (unbreathable
+> worksite · unreachable stockpile · a machine below the wreck floor with no Parts/Seals). **The
+> `blocked` channel is a requirement, not a follow-up**, and it gates the wreck ship.
+>
+> **Landed:** `DeviceSpec.Condition`/`.Scriptable` (a ship *can* be authored wrecked; none is) · the
+> **`devices` channel** — the client had never been told a machine's condition · **70 wrecked art
+> twins + 2 cryo capsules**, drawn by nobody yet · the **recovery economy**.
+>
+> ⚠️ **None of it is visible in the running game yet, deliberately.** The first thing the owner will
+> *see* is `--ship wreck`, and it is gated behind the `blocked` channel on purpose: shipping a wreck
+> the player gets no feedback from would be worse than not shipping it.
+>
+> ⚠️ **A CLEAN AUTO-MERGE IS NOT A CLEAN MERGE — it fired again.** Damaged-authoring seeds a Scrubber
+> at Condition 0.2 and asserts maintenance recruits it; the recovery lane's 0.25 floor refuses it.
+> No overlapping lines, **no conflict markers, red test.** Caught only by merging `main` into the
+> lane and re-running the FULL gate.
+>
+> ⚠️ **RETRACTED, mine:** *"the wreck IS the faucet"* — `DeconstructSystem.cs:280` pays **zero below
+> Condition 0.5** (*"a wreck is worth nothing, which is the point"*) against art badged 0 %–35 %.
+> That is what `Swarf` exists to answer. Also **retracted**: my inference that a wrecked occupied pod
+> held a *living* sleeper; the owner chose the opposite.
+>
+> **Open on the owner:** how many pods hold bodies · the thaw currency (recommend Parts; the first
+> thaw is ≥ 3.4 crew-hours of ladder for one person) · authored personas' depth · an ice hold behind
+> the frontier.
+
+## ⇒⇒ SUPERSEDED — the earlier 2026-07-28 orientation. History from here down.
 
 > ### ⇒ FOUR LANES LANDED OVERNIGHT (2026-07-28) — §5 items 2, 3 and 5 are DONE
 >

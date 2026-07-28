@@ -326,6 +326,8 @@ namespace Perilune.Sim
                 case "maintenance_work_seconds": if (I(v, k, loc, p, out var e)) d.Wear.MaintenanceWorkSeconds = e; return true;
                 case "jury_rig_condition": if (F(v, k, loc, p, out var f)) d.Wear.JuryRigCondition = f; return true;
                 case "seal_service_condition": if (F(v, k, loc, p, out var g)) d.Wear.SealServiceCondition = g; return true; // E0-6
+                case "wreck_threshold": if (F(v, k, loc, p, out var h)) d.Wear.WreckThreshold = h; return true; // wreck start W2
+                case "swarf_service_condition": if (F(v, k, loc, p, out var i)) d.Wear.SwarfServiceCondition = i; return true; // wreck start salvage
                 default: return false;
             }
         }
@@ -419,6 +421,7 @@ namespace Perilune.Sim
                 // E0-5 WP-2 device strip. Both are whole ticks / whole units, so I() and no
                 // culture hazard — wall_recovery remains the section's only decimal.
                 case "device_parts": if (I(v, k, loc, p, out var e)) d.Deconstruct.DeviceParts = e; return true;
+                case "device_swarf": if (I(v, k, loc, p, out var f2)) d.Deconstruct.DeviceSwarf = f2; return true; // wreck start salvage
                 case "device_work_ticks": if (I(v, k, loc, p, out var f)) d.Deconstruct.DeviceWorkTicks = f; return true;
                 default: return false;
             }
