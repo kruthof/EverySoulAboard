@@ -1192,6 +1192,14 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-key-sw-restricted{background:#dbe6f2;border:1px solid rgba(16,22,32,.85)}
 .rz-key-sw-backedoff{background:repeating-linear-gradient(45deg,#f2b563 0 1.5px,transparent 1.5px 4px);
   border:1px solid #f2b563}
+/* The `blocked` channel's key swatches — the refused-order legend. One class per reason NAME
+   (blocked-air / blocked-no_approach / …), so a reason this stylesheet has never heard of falls back
+   to the bare `.rz-key-sw` box and its row still reads: the wording is the payload, the swatch is the
+   colour cue. #c25a3f is STATUS.bad (theme/warm-tokens.js §2.5) — the FAULT colour, deliberately not
+   the queue-amber the zone key's back-off swatch uses. */
+.rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable{
+  background:rgba(10,13,20,.82);border:1px solid #c25a3f}
+.rz-key-sw-blocked-no_approach{background:repeating-linear-gradient(45deg,#c25a3f 0 1.5px,transparent 1.5px 4px)}
 .rz-pulse{position:absolute;inset:6px;pointer-events:none}
 .rz-pulse-tile{position:absolute;box-sizing:border-box;border:2px solid #f2b563;border-radius:3px;
   animation:rzPulse .16s ease-out forwards;pointer-events:none}

@@ -260,6 +260,12 @@ function onMessage(m) {
     // `sim.Devices` rather than off a projection that has never carried `Device.Condition` in any
     // form. Cached in the shared state layer; the wrecked-art join that draws it is a later package.
     case 'devices': Hud.renderDevices(m); break;
+    // WHY AN ORDER IS DOING NOTHING (`blocked`). One row per dig/strip/build site the player queued
+    // that the sim's worksite staging rule refuses to staff — no breathable air where a crew member
+    // would have to stand, or nothing walkable next to it. Read host-side from the order registries
+    // and `WorksiteSafety.CanStageWorkerAt` itself, never from a projection that carries no trace of
+    // a refusal. Cached in the shared state layer; drawn by the Room Zoom's blocked layer.
+    case 'blocked': Hud.renderBlocked(m); break;
     // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.
