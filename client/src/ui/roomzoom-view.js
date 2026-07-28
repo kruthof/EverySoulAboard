@@ -13,7 +13,10 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems } from '../wire/messages.js';
+import {
+  decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems,
+  decodeDevices,
+} from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
@@ -28,7 +31,7 @@ import {
   U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
   nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
-  roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys,
+  roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
@@ -74,6 +77,7 @@ let _materials = defaultMaterials(); // per-tool active material byte (wall/floo
 let _zoneTiles = [];      // WP-3: this room's zoned tiles, derived once per repaint (floor layer + key)
 let _markTiles = [];      // this room's debris/dig/strip marks, from the `marks` channel (NOT the frame)
 let _itemTiles = [];      // this room's ground stacks, from the `items` channel (NOT the frame's glyph)
+let _deviceCond = new Map(); // this room's per-device wear, from the `devices` channel — SEE deviceConditionAt
 // THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
 // ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
@@ -276,6 +280,23 @@ export function exitRoom() {
   _onExit();
 }
 
+/**
+ * THE WEAR SEAM. The `devices` channel's row for a room-local tile — `{tx, ty, kind, cond, oper}` —
+ * or `null` when no tile-resident device stands there. `cond` is `Device.Condition` quantised to a
+ * byte, `0 = wrecked … 255 = pristine`; `oper` is the sim's own `IsOperational`, which the client
+ * cannot derive (the failure threshold is per-kind and lives in `machines.def`).
+ *
+ * ⚠️ IT HAS NO CALLER IN THIS PACKAGE, AND THAT IS THE POINT. The wrecked-art join — "select the
+ * damaged piece when `cond` is low" — belongs to the parallel lane that owns `client/src/items/`, and
+ * doing it here would be a merge collision with that lane on the exact shape that has already broken
+ * this repo once. This lane's whole job was to make `Device.Condition` REACHABLE: until now it was on
+ * no channel, in no cache and behind no accessor, so no art package could have been written at all.
+ * Read from `_deviceCond`, which `repaint()` refreshes once per frame from the live channel.
+ */
+export function deviceConditionAt(tx, ty) {
+  return _deviceCond.get((tx | 0) + ',' + (ty | 0)) || null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Repaint (coalesced). Re-resolves the focus room each time so a vanished room pops (IX-Z-51) and a
 // resized rect stays correct.
@@ -344,6 +365,13 @@ function repaint() {
   // The ground stacks, from the `items` channel — kind AND count, one row per stack, aggregated per
   // tile here. Derived beside the other two for the same reason: one decode per repaint, one truth.
   _itemTiles = roomItemTiles(decodeItems(Hud.getItems()), _focus);
+  // The per-device WEAR STATE, from the `devices` channel — the only place `Device.Condition` reaches
+  // this client at all. Derived here beside the other three for the same reason: one decode per
+  // repaint, one truth for the room.
+  // ⚠️ DELIBERATELY NOT DRAWN BY THIS PACKAGE. The wrecked-art join lives in `client/src/items/`,
+  // which a parallel lane owns; `deviceConditionAt` below is the seam it reads. Wiring the data to
+  // the surface and drawing it are two packages on purpose — the data has never existed before now.
+  _deviceCond = roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus);
 
   paintCanvas(frame);
   paintLayers(frame, crew, designs, decor);
