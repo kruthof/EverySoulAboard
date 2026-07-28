@@ -105,6 +105,49 @@ namespace Perilune.Sim
         // unchanged and the fluid topology stale until the count next changes.
         private int _lastTopologyVersion = -1;
 
+        // ── HasIceChain memo (PERF, no behaviour change) ────────────────────────────────────────
+        // The answer to "does this ship own a melter?" changes ONLY when a device enters or leaves
+        // the store. In PRODUCTION code there are exactly two doors into the store, and both bump
+        // DeviceTopologyVersion: Simulation.AddDevice and Simulation.RemoveDevice. And in
+        // production code a live device never changes kind — Device.Kind is written in exactly two
+        // places, AddDevice's object initialiser and SaveReader on a LOCAL before Devices.Add. So
+        // the version is a SUFFICIENT key, not merely a cheap proxy; IceChainMemoTests drives the
+        // flip in both directions, and deleting either bump reddens it.
+        //
+        // THE EXCEPTION, named because "exactly twice" is false of the repo as a whole: TESTS reach
+        // further than production does. StateHashHonestyTests.cs:486 writes Kind in place on a
+        // device already in sim.Devices (`second.Kind = (DeviceKind)1;`). It is harmless twice
+        // over — (DeviceKind)1 is AirVent and the device already IS an AirVent, and its fixture is
+        // built with `new ISimSystem[0]`, so no WaterSystem exists to hold a memo — but a reader
+        // who greps and finds a third write deserves to be told which one it is.
+        //
+        // ⚠ THIS HOLDS BY INSPECTION AND IS PINNED BY NOTHING. EntityStore<T>.Items is a public
+        // mutable List<T> and EntityStore<T>.Remove is public (only Add is internal), so a future
+        // lane can open a third door without a single test firing — and a stale answer here is
+        // INVISIBLE on --ship grid by construction, because that ship's answer never changes. If
+        // this key is ever widened, widen it from the store's API, not from this comment.
+        // (Narrowing EntityStore<T>.Remove to internal would close it; deliberately NOT done here,
+        // it is a cross-lane compile risk while other lanes are live. Recorded as a suggestion.)
+        //
+        // Over-invalidation is harmless and happens: CommissionDeviceCommand (Commands.cs:539)
+        // bumps DeviceTopologyVersion without changing the device set at all, so the memo takes one
+        // extra scan per commissioning. That costs a scan; a MISSED bump would cost correctness.
+        //
+        // -1 is the same "never computed" sentinel _lastTopologyVersion uses, and it carries the
+        // same contract: a WaterSystem instance belongs to ONE Simulation. SaveReader loads into a
+        // fresh sim with fresh systems (its own doc comment: "the fresh system instances hold no
+        // per-sim caches"), which is why the load path needs no version bump — the memo is
+        // uncomputed on the instance that reads it. Reusing one WaterSystem across two sims would
+        // already leave the fluid networks stale; this memo adds no new requirement.
+        private int _iceChainVersion = -1;
+        private bool _hasIceChain;
+
+        /// <summary>Test seam (internal, read-only): the memoised answer and the
+        /// <see cref="Simulation.DeviceTopologyVersion"/> it was taken at. Adds no saved and no
+        /// hashed state — it is a cache over a question the device store already answers.</summary>
+        internal bool IceChainMemo => _hasIceChain;
+        internal int IceChainMemoVersion => _iceChainVersion;
+
         private readonly Dictionary<Int3, ushort> _pipeNetwork = new Dictionary<Int3, ushort>();
         private readonly Dictionary<Int3, byte> _overlayAt = new Dictionary<Int3, byte>(); // lookup only
         private readonly Queue<Int3> _floodQueue = new Queue<Int3>(64);
@@ -302,7 +345,7 @@ namespace Perilune.Sim
         /// whitelist), so this branch is reachable only on a ship that authors one — the slice.
         /// Every other ship's water behaviour is byte-identical to before E0-7.
         /// </summary>
-        private static void RunMakeup(Simulation sim)
+        private void RunMakeup(Simulation sim)
         {
             var water = sim.Defs.Water;
             if (sim.WastewaterLiters >= water.MakeupFloorLiters) return;
@@ -310,9 +353,54 @@ namespace Perilune.Sim
             sim.WastewaterLiters = water.MakeupFloorLiters;
         }
 
-        /// <summary>Does this ship own an ice melter at all? (Existence, not readiness — see
-        /// <see cref="RunMakeup"/> for why a broken or unpowered melter still counts.)</summary>
-        private static bool HasIceChain(Simulation sim)
+        /// <summary>
+        /// Does this ship own an ice melter at all? (Existence, not readiness — see
+        /// <see cref="RunMakeup"/> for why a broken or unpowered melter still counts.)
+        ///
+        /// MEMOISED against <see cref="Simulation.DeviceTopologyVersion"/>, which
+        /// <see cref="Tick"/> already reads 14 lines above for the fluid-network rebuild. The scan
+        /// itself is unchanged and still runs whenever the key moves, so the answer is identical to
+        /// the un-memoised one on every tick of every ship — this is a cache, not a rule change,
+        /// and it moves no determinism pin.
+        ///
+        /// The work it removes, MEASURED (Release, `--ship grid --days 1`, n = 1, by a counter
+        /// inside the scan; the instrumentation was reverted): 73 377 calls × 1 250 devices =
+        /// 91 721 250 device slots per sim-day, now 1 250 (one scan, at the first pass). The scan
+        /// is O(devices) on the 2 Hz pass of EVERY ship, and only a ship with NO melter walks the
+        /// whole store — the loop returns at the first melter — so the ship paying the most is the
+        /// standard play ship, which can never act on the answer. (73 377 is 42.5 % of the day's
+        /// 172 800 passes: the rest return at the pool-level line above and never reach here. That
+        /// share is why the honest headline is the slot count and not "42.5 % of passes".)
+        ///
+        /// ⚠ WHAT THAT IS AND IS NOT WORTH, because the slot count reads bigger than it costs.
+        /// The removed loop is ~90 ms per grid sim-day (Release, n = 5, an inlined copy of this
+        /// scan run 73 377 times over the real 1 250-device store; a LOWER bound — a tight loop
+        /// keeps the store hotter in cache than the live tick does). Against an ~8.2 s sim-day that
+        /// is ~1.1 %. A paired A/B/B/A of the whole harness (n = 8 per arm, means 8.78 s pre-memo
+        /// vs 8.71 s memoised) moves in the right direction by 0.07 s and is NOT separated from
+        /// run-to-run noise. So: a real, permanent, correctly-signed ~1 % — not a speed-up anyone
+        /// will feel, and nobody should quote 91.7 M as though it were 91.7 M of anything but slots.
+        ///
+        /// ⚠ CONDITIONS: every timing above was taken while up to FOUR concurrent `dotnet test`
+        /// suites from other worktrees were running on the same machine (the session's own gate took
+        /// 9 m 58 s against a ~6.5 min norm). Contention only widens the noise band on both arms of a
+        /// paired A/B, so "not separated from noise" is the conservative reading and does not move —
+        /// but these seconds are NOT a quiet-machine baseline. The slot counts are exact counters and
+        /// are the only contention-proof figures here.
+        /// </summary>
+        private bool HasIceChain(Simulation sim)
+        {
+            if (_iceChainVersion != sim.DeviceTopologyVersion)
+            {
+                _iceChainVersion = sim.DeviceTopologyVersion;
+                _hasIceChain = ScanForIceChain(sim);
+            }
+            return _hasIceChain;
+        }
+
+        /// <summary>The un-memoised scan, kept whole and separate so a test can compare the memo
+        /// against ground truth (and so the memo has nothing to get subtly wrong but its key).</summary>
+        internal static bool ScanForIceChain(Simulation sim)
         {
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
