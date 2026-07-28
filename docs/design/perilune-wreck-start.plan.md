@@ -1,9 +1,61 @@
 # The wreck start — premise, opening, core loop, and a wave charter
 
-**Status: DESIGN ONLY. 2026-07-28 — REVISION 2.**
-**Lane:** `lane/wreck-design`. The whole diff is this file plus a pointer in `docs/HANDOVER.md`.
+**Status: DESIGN ONLY. 2026-07-28 — REVISION 3. This is the PLAN OF RECORD.**
+**Lane:** `lane/wreck-design`. The whole diff is **this file and nothing else** — revision 2's
+`docs/HANDOVER.md` pointer block was deleted on the merge from `main`, because `HANDOVER.md` now
+carries its own orientation block and two competing orientation blocks is worse than none.
 
-> ## ⚠️ REVISION 2 — read this box before anything else
+> ## ⚠️⚠️ REVISION 3 — read this box before anything else. Three owner decisions changed waves.
+>
+> **Rebased on `main` @ `50e6778`.** W0, W1 and W2 are **LANDED**, not "built, unmerged".
+> **Gate on `main`: 1181 dotnet + 876 node** *(reported by the integrator; not re-measured by this
+> lane — this lane runs no gate)*. Pins on `main`: **P1/P2/P3 held** at `43345ff0c9d62684` /
+> `5a7224821810b478` / `7d846c14c5901e4d`; **P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`**
+> — both **re-verified in this worktree by reading the pinned files** (Appendix A row 13).
+> **W4 (the `blocked` channel) is IN FLIGHT on `lane/blocked-channel`** — this document charters
+> *that it must exist* and **does not design its internals**.
+>
+> ### THE THREE NEW OWNER DECISIONS
+>
+> **1. ⛔ A WRECKED OCCUPIED POD HOLDS A DEAD SLEEPER.** OD-9's working assumption — occupant
+> alive, pod repaired before cycling — is **explicitly rejected**. The diagnosis is struck, not
+> deleted (§7.0 OD-9). **Consequences, worked through in §2 beat 0, §3.4 and §4 W3/W5:**
+> **fewer than eight crew are recoverable**; **how many pods are wrecked is UNSET and W3 must set
+> it and say the number out loud** (this document recommends **two**, §4 W3, and shows the
+> reasoning); a corpse in a pod meets a `Corpse` item kind that **has art, no haul, no disposal
+> verb and no eulogy path**; and — the consequential one — **the thaw gate has LOST its per-pawn
+> matter price**, which was the only naturally escalating term. §3.4 re-derives what paces thaw N
+> vs N+1 and the honest answer is **"not enough as it stands"**.
+>
+> **2. ✅ EMERGENCY THAW — OD-10 decided as recommended (option B).** When `LivingCrew == 0`, one
+> more pod cycles **automatically, once**. **It lives in `CryoSystem`, NOT as a hole in
+> `ThawCommand`** — a bypass in the command is reachable by the player. Chartered in §4 W5.5,
+> including what happens when the emergency pod is itself wrecked.
+>
+> **3. ✅ AUTHORED PEOPLE WITH REAL MECHANICAL DIFFERENCES — OD-5 decided.** Who you wake
+> **matters**. ⇒ **W7 (skills / work priorities) is PROMOTED from optional to REQUIRED and moves
+> AHEAD of W8.** Waking someone is only a decision if the people differ, and today they do not
+> differ **at all** (`ECONOMY.md:474-482`: no skills, no aptitudes, ties resolve by entity-store
+> order — *"the only differentiation the system has, and it is an accident"*). **Skills must be new
+> hashed `Citizen` state, not an extension of the host-side persona**, so W7 moves all five pins and
+> needs the full def/save/hash ritual. §4 W7.
+>
+> ### FOUR THINGS FOLDED IN FROM THE MERGED LANES' REVIEWS
+>
+> - **`MachineDefs.Table` is a dead duplicate and its header is false** — §6 R-15. Any wave that
+>   retunes a machine value (W6's `Bed.fail`, W5's `CryoPod` row) must know this **before** it
+>   writes a mutation harness.
+> - **`wreck_threshold = 0.25` starves three kinds on every ship**, and the rule's real trigger on
+>   the shipped ship is **rot-plus-backlog, not damage** — §4 W2, now measured rather than argued.
+> - **No `Swarf` → `Parts` path exists and none can be added by a def edit.** §5.4 states what that
+>   does to the salvage economy's ceiling.
+> - **`NO_GROUND_ITEM_SPRITE.Swarf` is owed and unowned** — assigned to **W0b**, §4.
+> - **A permanently-refused wreck stays needy forever**, re-scanned at 1 Hz. **W3 owes that
+>   measurement before it lands** — §4 W3 acceptance, §6 R-16.
+>
+> ---
+>
+> ### Revision 2's box, kept because its retractions are still the record
 >
 > Revision 1 was written before the owner stated the **thaw mechanic**, and before four lanes
 > built parts of this charter. **The premise of §2 has changed and §2 is rewritten from scratch.**
@@ -21,6 +73,7 @@
 > **What is now BUILT (four lanes, gated, none merged):** `lane/device-condition` (the `devices`
 > wire channel), `lane/wrecked-art` (70 twins + 2 capsules), `lane/damaged-authoring` (**W1**),
 > `lane/recovery-economy` (**W2** + the salvage rule + `ItemKind.Swarf`).
+> **⇒ rev 3: ALL FOUR ARE ON `main` @ `50e6778`. Every `lane/...` name below is HISTORY.**
 >
 > **What this revision CORRECTS in itself.** Struck text is kept, not deleted — the diagnosis is
 > the point. Six claims of revision 1 are now falsified: the `-1f` sentinel (§4 W1), *"a cryo pod
@@ -31,24 +84,66 @@
 > dispatcher).
 >
 > **Six owner decisions have landed and are no longer open** — OD-1, OD-2, OD-3, OD-4, OD-6 and
-> OD-7 move to §7.0 as a decision record. **One new open item is INFERRED, not stated, and is
-> flagged as such throughout: what a WRECKED OCCUPIED POD means** (§7 OD-9).
+> OD-7 move to §7.0 as a decision record. ~~**One new open item is INFERRED, not stated, and is
+> flagged as such throughout: what a WRECKED OCCUPIED POD means** (§7 OD-9).~~
+> **⛔ ANSWERED IN REVISION 3, AND THE INFERENCE WAS WRONG.** The sleeper is **dead**.
 
 **Owner decisions 1–4 of the original brief are settled and designed to**, not re-argued.
 
 > **Every number in this document is either (a) MEASURED by a command quoted beside it, or
 > (b) labelled UNMEASURED.** This repo's most expensive recurring failure is reasoning over
 > design vocabulary instead of driving the sim, so the two are kept typographically apart.
-> All measurements were taken in this worktree, Release, `n = 1`, on `main` @ `d4b860a`.
-> **Revision 2's measurements are in Appendix A rows 8–11 and were taken on a machine running
-> nothing else; every wall-clock number is soft.**
+> Revision 1 and 2's measurements were taken in this worktree, Release, `n = 1`, on
+> `main` @ `d4b860a`; **revision 3's are on `main` @ `50e6778`** and are Appendix A rows 13–16.
+> **Every wall-clock number is soft.**
+>
+> ⚠️ **A NUMBER MEASURED ON `d4b860a` IS NOT AUTOMATICALLY TRUE ON `50e6778`.** Four lanes merged
+> in between, one of which (`recovery-economy`) changed what maintenance does. **Revision 3
+> re-drove the ledger** and it reproduces (Appendix A row 14); the occupancy rows are **NOT**
+> re-driven and are labelled `d4b860a` where they are quoted.
 
 ---
 
 ## 0. Executive summary — what changed in my head while measuring
 
-Five findings reordered the plan in revision 1. **Revision 2 adds three more, and the first of
-them is the largest single result in this document.** Read all eight before the beat sheet.
+Five findings reordered the plan in revision 1. **Revision 2 added three more. Revision 3 adds
+three, and the first of them is the one that changes the shape of the game.** Read all eleven
+before the beat sheet.
+
+### Revision 3's three findings — read these first, they supersede where they conflict
+
+**A. ⭐⛔ THE THAW LOST ITS PACER, AND NOTHING SHIPPED REPLACES IT.** OD-9 is decided: a wrecked
+pod holds a **dead** sleeper. Revision 2's pacing rested on the opposite — *"a damaged pod must be
+repaired before its sleeper can be cycled"* — which gave **every successive thaw a per-pawn matter
+price the owner could author**. That price is now gone, and what remains is *life-support headroom
++ a flat `thaw_cost` in Parts*. **MEASURED, that is not enough**, and the arithmetic is in §3.4:
+the scrubber term is a **step function that unlocks three thaws at once** (0.001 ÷ 2.73e-4 =
+**3.66 crew per scrubber**, so one scrubber caps you at 3 living and two caps you at 7 — a
+6-crew ship therefore has **exactly one** scrubbing gate in the whole run), and a **flat** price is
+by construction the same on thaw 6 as on thaw 2. ⇒ **Once production runs, thaws 4–6 arrive
+back-to-back, limited only by the pod-cycle timer.** That is §3.4 option A's *"a prepared player
+empties the bay"* failure arriving through the back door. ⇒ **`thaw_cost` must ESCALATE with
+`LivingCrew`** — two def scalars, no new state, reading a number the gate already computes. It is
+folded into **OD-11, which is therefore no longer a question about currency alone.**
+
+**B. THE ONE NUMBER THAT SIZES THE OPENING IS UNSET, AND IT IS "HOW MANY PODS ARE WRECKED".**
+It fixes the crew ceiling, the length of the thaw curve, *and* how many scrubbing gates the run
+contains. **Recommendation: TWO — ceiling 6, five thaws after the boot pawn** (§4 W3 shows the
+working, including why 1 and 4 are both worse). It is a **content dial with no code behind it**,
+which is exactly the kind of decision that gets defaulted silently, so W3's acceptance requires it
+to be **printed**, not merely authored.
+
+**C. THE CORPSE MACHINERY DOES NOT EXIST, AND THE DEAD-SLEEPER DECISION NEEDS IT.**
+MEASURED-BY-SOURCE, exhaustively: `ItemKind.Corpse` has art and a name field
+(`ItemStack.Label`), and `AuthoredShips.cs:158` already authors a named one. But
+**`HaulJobSource.cs:243` hard-excludes corpses from hauling** (*"the dead are not cargo; funerals
+are M3+"*), **nothing anywhere consumes one**, and the eulogy path (`Memory/Eulogy.cs`) fires on a
+`CitizenDiedEvent` — **which a sleeper who was never a `Citizen` can never raise.** ⇒ **A corpse
+in a pod is an immovable, unremovable, unmournable ground object**, and the game's whole narrative
+apparatus will be silent about the two people the raid killed. §2 beat 0 and §4 W3 say what to do
+about it and what NOT to build.
+
+### Revision 1's five and revision 2's three, unchanged except where struck
 
 1. **The opening loop the owner wants is already expressible in the shipped sim, except for
    one verb.** Vent, door, power, breathability, flee, worksite-refusal, maintenance, salvage,
@@ -159,7 +254,7 @@ The sim's vocabulary is small and I have not invented anything outside it.
 |---|---|---|
 | MSV *Perilune*, boarded and stripped while under way | the ship | — |
 | The crew who were awake are dead or taken | `ItemKind.Corpse` stacks, authored with `Label` = a name | `ItemStack.cs:7`, `ShipPlan.cs:97-103` |
-| The crew who were frozen survived — **ALL EIGHT, one thawed at boot, seven through MOSS** | `DeviceKind.CryoPod` (new), `IsOpen = false`, `Name = "pod_<who>"`, `Progress` = the cycle | §4 W5 |
+| ~~The crew who were frozen survived — **ALL EIGHT**~~ ⛔ **rev 3: SOME of the frozen survived** — one thaws at boot, the intact remainder come through MOSS, **and a wrecked pod's sleeper is DEAD** | `DeviceKind.CryoPod` (new), `IsOpen = false`, `Name = "pod_<who>"`, `Progress` = the cycle; a wrecked pod is authored with a named `Corpse` | §4 W3, W5 |
 | The raiders vented most compartments | `plan.PressurizedAnchors` omits them | `ShipPlanBuilder.cs:87-95` |
 | They shot up the machinery | `DeviceSpec.Condition` (**`float?`**, 🟢 shipped) at 0.0–0.35 | §4 W1 |
 | They cut through bulkheads | `'R'` debris terrain (`AsciiWorld.cs:39-42`) — collapsed deckhead |
@@ -219,7 +314,7 @@ maintained (`machines.def:29`, `:33`, `:36`) — which is what keeps the wreck t
 > they do first (§0 finding 6).
 
 **Reading key.** ✅ = the verb and the answering system exist today, unmodified.
-🟢 = **BUILT this run on an unmerged lane** (named). 🔶 = the verb exists but answers wrongly on
+🟢 = **BUILT on an unmerged lane** *(rev 3: EVERY 🟢 IN THIS DOCUMENT IS NOW LANDED ON `main` @ `50e6778` — read it as ✅)*. 🔶 = the verb exists but answers wrongly on
 a wreck. ❌ = must be built. "sim-min" is simulation time; the crew work at the E0-2 human-pace
 rebase (a wall is 4 min, a device strip is 90 s, a maintenance service is **900 s = 15 sim-min**,
 `wear.def:17`).
@@ -271,25 +366,76 @@ should know the tension exists. §6 R-12.
 
 ---
 
-### Beat 0 — cold open. One pod cycles. Seven do not.
+### Beat 0 — cold open. One pod cycles. Some never will.
+
+> ### ⛔ **REWRITTEN IN REVISION 3 — THE OWNER DECIDED THE POD QUESTION AND THE ANSWER IS BLEAK.**
+> **A wrecked occupied pod holds a DEAD sleeper.** Revision 2's working assumption (occupant
+> alive, pod repaired first) is **rejected**. §7.0 OD-9 keeps the struck diagnosis.
 
 **What the player sees.** One deck. One lit, pressurised compartment — the cryo bay. **Eight
-`CRYO CAPSULE · OCCUPIED`.** Everything else on the deck is a wrecked twin at 0 %–35 %. One
-capsule's badge counts down; it opens; **one** pawn steps out onto the deck plate. The other
-seven stay shut, and they stay shut until the player earns them.
+capsules.** One's badge counts down; it opens; **one** pawn steps out onto the deck plate. Of the
+seven still shut, some are intact and dark and will open later — **and some are wrecked, and what
+is inside them is a body with a name on it.** Everything else on the deck is a wrecked twin at
+0 %–35 %.
+
+**⇒ THE PLAYER LEARNS THE PREMISE FROM THE FURNITURE, NOT FROM A CUTSCENE.** They will count the
+capsules before they do anything else, and the count is the story: *this many of us made it.*
+That is the strongest thing this decision buys and it costs nothing to author.
 
 **Verb:** none — the player does nothing.
 **System:** ❌ **must be built**, and the honest shape has not changed: there is no boot-time
 scripted event of any kind. Author **pod 0 `IsOpen = true` with its citizen present**
-(`CitizenSpec`) and **pods 1–7 `IsOpen = false`** with the sleeper's name in `Device.Name`.
-The game opens one tick after the first thaw rather than staging it; the countdown badge is a
-client-side flourish over `Device.Progress`, which W5 gives a real meaning anyway.
-⇒ **Recommendation unchanged: author the first crew member awake.** §4 W3 + W5.
+(`CitizenSpec`); **the intact pods `IsOpen = false`, `Condition = 1f`**, sleeper's name in
+`Device.Name`; **the wrecked pods `IsOpen = false` at a low `Condition`, with a named `Corpse`
+`ItemSpec` on or beside the pod's tile.** The game opens one tick after the first thaw rather than
+staging it; the countdown badge is a client-side flourish over `Device.Progress`, which W5 gives a
+real meaning anyway.
 
-⚠️ **This is the first place the INFERRED owner item bites.** If a wrecked pod's sleeper is
-alive-but-unreachable (§7 OD-9's working assumption), pods 1–7 are authored at a low `Condition`
-and each must be **repaired before it can be cycled** — which is a per-pawn matter price and is
-the cleanest available pacing lever. **Do not build it as settled.**
+**⇒ HOW MANY ARE WRECKED IS THE ONE NUMBER THIS DOCUMENT CANNOT DEFAULT.** It is unset, W3 must
+set it, and **W3's acceptance requires the number to be PRINTED by the ship, not merely
+authored** — a content dial with no code behind it is exactly the kind of decision that gets
+chosen by whoever types the array. **This document recommends TWO; the working is in §4 W3.**
+
+---
+
+#### ⚠️ What a corpse in a pod means MECHANICALLY — measured, and it is mostly a hole
+
+**MEASURED-BY-SOURCE, exhaustively** (Appendix A row 15). `ItemKind.Corpse = 2` is real, shipped,
+**and nearly inert**:
+
+| question | answer today | consequence for the wreck |
+|---|---|---|
+| Does it have art? | ✅ **yes** — the glyph is `'&'` (`Glyphs.cs:72`), tinted `GlyphColor.Broken` (`GlyphMapper.cs:135`), and the wrecked-art lane shipped a **`CORPSE · UNSHROUDED`** twin | the two bodies will **draw**, on both surfaces, with no new art |
+| Does it carry a name? | ✅ **yes** — `ItemStack.Label`, *"identity for corpses (\"Okafor\")"*, and `AuthoredShips.cs:158` already authors `Label = "Ensign Rojas"` | **author the sleeper's real name**; the host already renders it as `"<name>'s body"` (`GameSession.cs:2124`) |
+| Can it be hauled? | ⛔ **no, hard-excluded.** `HaulJobSource.cs:243` — `if (item.Kind == ItemKind.Corpse) continue;`, header *"the dead are not cargo; funerals are M3+"* | **there is NO body-disposal verb**, on any surface |
+| Does anything consume it? | ⛔ **no.** Zero producers outside `NeedsSystem.cs:201` (a citizen dying) and **zero consumers anywhere** | a corpse is a **permanent, immovable ground object** for the rest of the run |
+| Does it reach the Chronicle / eulogy? | ⛔ **no.** `Memory/Eulogy.cs` renders on a **`CitizenDiedEvent`** | **a sleeper who was never a `Citizen` can never raise one.** The machinery exists and this death cannot reach it |
+
+**⇒ THREE THINGS FALL OUT, AND THE THIRD IS THE ONE TO GET RIGHT.**
+
+1. **The body is recovered in the only sense the sim has: it is visible, named, and in the way.**
+   That is enough for the fiction and it needs no code. **Author it and stop.**
+2. ⚠️ **A body-disposal verb is NOT in scope and must not be invented here.** The exclusion is
+   deliberate and load-bearing (`StockpileHarness.cs:361` relies on it — a corpse is hard-excluded
+   from every haul board, which is what keeps it out of stockpile arithmetic). Adding a `Corpse`
+   haul path touches the dispatcher, the accept masks and a shipped measurement fixture.
+   **A funeral is M3+ by the sim's own comment. Leave it there.**
+3. ⭐ **BUT THE SILENCE IS WRONG, AND IT IS CHEAP TO FIX.** Two named people died in the raid and
+   **nothing in the game will ever say so** — no Chronicle line, no eulogy, no log entry. The
+   ship's whole narrative apparatus is built and this event routes past all of it. ⇒ **W3 writes
+   ONE authored history line per dead sleeper at boot** — a ship's-log entry, not a eulogy (a
+   eulogy needs a *mourner* with real memories of the deceased, and nobody aboard has any).
+   **Do NOT synthesise a `CitizenDiedEvent` for someone who was never alive in the sim** — that
+   fabricates a death the sim never simulated, and `EulogyRenderer` would then look for a friend
+   who does not exist. **This is the boundary: a log line is a fact; a eulogy is a relationship.**
+
+   **The API exists and is public**: `HistorySystem.Record(tick, text, HistoryKind.Death, …)`
+   (`HistorySystem.cs:189`), and `HistoryKind.Death = 2` is a shipped, append-only value.
+   ⚠️ **AND IT IS HASHED — but only on the wreck.** `HistorySystem` folds **kind and tick, not
+   text** (`Simulation.cs:386-388`), so an authored boot line changes `--ship wreck`'s
+   `StateChecksum` **and nothing else**: P1/P2/P3 pin the scenario map, `--ship perilune` and
+   `--ship slice`, none of which grows a pod or a log line. **W3 stays pin-neutral. Verify it
+   rather than assuming it** — that is the whole discipline of §4's pin column.
 
 ---
 
@@ -300,7 +446,7 @@ the cleanest available pacing lever. **Do not build it as settled.**
 **Verbs:** deck change ✅, room entry ✅, crew select ✅, pause/speed ✅
 (`GameSession.cs:2129-2132`).
 **System:** the `map`/`crew`/`materials`/`marks`/`items` wire channels, all shipping, plus
-🟢 `devices` (`lane/device-condition`) — which **carries `Condition` to the client for the first
+✅ `devices` (landed, was `lane/device-condition`) — which **carries `Condition` to the client for the first
 time and deliberately draws nothing yet.**
 
 ⚠️ **The `devices` channel arrives with a written CONDITION attached, and the wreck is the lane
@@ -342,12 +488,15 @@ player in minute three.
 saves a crew member who *can* reach air; a player who walks their only pawn deep into vacuum
 past the flee margin loses it — **and cannot thaw a replacement, because thawing needs a
 repaired, powered, commissioned MOSS terminal and the pawn was the only pair of hands.**
-**Seven people stay frozen forever and the game is over in minute three, with no message.**
-This is not a bug in any shipped system; it is a property of a one-pawn opening, and it is
-**§7 OD-10, open on the owner.** The two honest shapes are *(a)* accept it and say so loudly
-(a real lose screen), or *(b)* an **emergency thaw**: pod 1 cycles automatically, once, when the
-living crew count reaches zero. I recommend **(b) plus a lose screen when the pods run out** —
-it protects minute three without protecting hour three.
+**The rest stay frozen forever and the game is over in minute three, with no message.**
+This is not a bug in any shipped system; it is a property of a one-pawn opening.
+
+✅ **DECIDED (rev 3) — OD-10 is closed as recommended: the EMERGENCY THAW.** When `LivingCrew`
+reaches 0, **one more pod cycles automatically, once.** ⚠️ **It lives in `CryoSystem` and NOT as a
+hole in `ThawCommand`** — those were revision 2's own words and they are the load-bearing half of
+the decision: a bypass inside the command is a code path the player can reach, and the first
+player to find it uses it as the normal route. **The charter is §4 W5.5**, including what happens
+when the emergency pod is itself wrecked and what the player is told.
 
 ---
 
@@ -395,7 +544,7 @@ already modelled, and this is the loop:
 | 1 | Doors shut, or it bleeds to vacuum | `FlowAcrossDoor`, `AtmosphereSystem.cs:206-274` | ✅ door open/close |
 | 2 | A vent in the room, **open** | `AtmosphereSystem.cs:123-150`, 30 mol/s from an unmodelled reserve | 🔶 see below |
 | 3 | The vent **powered** | `PowerSystem`; needs conduit → network → SolarWing | ✅ indirectly |
-| 4 | The vent `Condition ≥ fail` (0.10 for an AirVent, `machines.def:27`) | `Device.IsOperational`, `Device.cs:104` | 🟢 `lane/recovery-economy` |
+| 4 | The vent `Condition ≥ fail` (0.10 for an AirVent, `machines.def:27`) | `Device.IsOperational`, `Device.cs:104` | ✅ **landed** (W2) |
 | 5 | Temperature ≥ −10 °C (`needs.def:22`) | `ThermalSystem` — **there is no heater in the game** | ❌ see §6 R-4 |
 
 🔶 **Requirement 2 has no verb on the standard surface.** `SetDeviceStateCommand`
@@ -436,7 +585,7 @@ second, for any device below its `maint` threshold (`MachineWearSystem.cs:200`).
 threshold in `machines.def` (max 0.4), so **one 900 s pass with nothing in hand took any
 wrecked device permanently out of the needy set.**
 
-**What happens now:** 🟢 **BUILT on `lane/recovery-economy`.** `wear.wreck_threshold = 0.25`:
+**What happens now:** ✅ **LANDED on `main`** (W2, `df84b11`). `wear.wreck_threshold = 0.25`:
 below it an empty-handed jury-rig is **refused at RECRUITMENT**, not in the work phase — which
 is the right seam and for a measured reason (refusing after the 900 s countdown would recreate
 the `MaintenanceSystem` livelock the worksite-safety package just closed, 47 640 job starts for
@@ -464,7 +613,7 @@ MEASURED anchor: `occupancy --ship grid --days 6 --maint-audit` → **88 service
 **1.999 % Maintain occupancy** with 8 crew; `--days 12` → **272 services**, **3.063 %**. The
 system is nowhere near saturated. **The wreck's damaged set is now BOUNDED rather than guessed:**
 `--ship grid` boots **1 250 devices of which 1 104 are utility overlays** (1 088 Conduit +
-16 Pipe — measured by `lane/device-condition`, and conduits/pipes/ladders are `wear = 0` and
+16 Pipe — measured by the devices-channel lane, and conduits/pipes/ladders are `wear = 0` and
 *must not* be wrecked, since they are what keeps the hull traversable and powerable). ⇒ **at most
 146 tile-resident devices on a grid-shaped ship**, and the wear-bearing subset of those is
 **UNMEASURED until W3 builds the ship**. Upper bound on the backlog: `146 × 900 s = 131 400`
@@ -498,7 +647,7 @@ in — and this is now, in play, roughly the *first* productive thing they do, b
 and 5 both need a consumable that does not otherwise exist.
 
 ~~**What happens today:** ⛔ **they get nothing.**~~ **⛔ RETRACTED — OWNER DECISION 3 SETTLED
-IT AND `lane/recovery-economy` BUILT IT.** The shipped rule was
+IT AND W2 BUILT IT, AND IT IS ON `main`.** The shipped rule was
 `floor(device_parts 2 × Condition)`, i.e. **0 Parts below Condition 0.5**, with the source
 comment *"a wreck is worth nothing, which is the point"* — against art that badges every wrecked
 twin at **0 %–35 %**. The cliff is now **a change of currency, not the end of the curve**:
@@ -563,9 +712,12 @@ powers any of it. It is a FLOOR, not an estimate.)*
 roughly sim-hour 4–6. **That is the opening, and it is a good one** — the player spends the
 first hours alone, and the reward is another person.
 
-⇒ ⚠️ **THEREFORE `thaw_cost` MUST BE PRICED IN `Parts`, NOT IN `ControllerModule`s.** One module
-buys the console, once. If every *subsequent* thaw also cost a module, thaws 2–8 would be seven
-more 2.3-crew-hour bench chains — **~16 crew-hours of pure crafting to fill the ship**, and the
+⇒ ⚠️ **THEREFORE `thaw_cost` MUST BE PRICED IN `Parts`, NOT IN `ControllerModule`s** — **and,
+revision 3, IT MUST ESCALATE WITH `LivingCrew`, because OD-9 deleted the only other term that
+did (§3.4.1).** One module
+buys the console, once. If every *subsequent* thaw also cost a module, every remaining thaw would
+be another 2.3-crew-hour bench chain — **~11 crew-hours of pure crafting to fill the ship at
+OD-12's recommended five (was ~16 at seven)**, and the
 pacing stops being "one after the other" and becomes "one, and then you stop playing".
 **Recommendation: `thaw_cost` in Parts, tuned so a thaw costs meaningfully less than the console
 did.** §4 W5.
@@ -578,7 +730,7 @@ did.** §4 W5.
 
 ---
 
-### Beat 8 — "MOSS is dark". **The automation door — and now also the DOOR TO THE OTHER SEVEN.**
+### Beat 8 — "MOSS is dark". **The automation door — and now also the DOOR TO EVERYONE STILL FROZEN.**
 
 **What the player does.** Opens the MOSS terminal and finds it will not accept a program —
 **and, after this plan, will not thaw anyone either.**
@@ -607,7 +759,8 @@ until you have spent a ControllerModule on a terminal"*, and nothing more.**~~
 **⇒ REVISION 2 — "AND NOTHING MORE" IS NOW FALSE, BY OWNER DECISION. The thaw is the second
 thing `Scriptable` gates, and it is the more important one.** A darkened *screen* is still a
 client-side presentation over the same flag; what changes is that **the flag now stands between
-the player and seven people.** That makes the four ⛔ bullets above load-bearing rather than
+the player and **every soul still in a box** (⛔ rev 3: the intact ones — a wrecked pod's sleeper
+is dead and no console reaches them). That makes the four ⛔ bullets above load-bearing rather than
 pedantic, and W5 must close the ones that matter:
 
 | ⛔ shipped hole | does it matter for the THAW? | what W5 does |
@@ -632,21 +785,26 @@ automation-souls principle (`control, not conveyance`) landing on a concrete cas
 
 ### Beat-sheet summary — what must be built for the ONE-PAWN opening to work at all
 
-| # | Thing | Beat | Wave | State |
+| # | Thing | Beat | Wave | State *(rev 3)* |
 |---|---|---|---|---|
-| 1 | Author a device damaged (`Condition`, `Scriptable`) | 0, 5, 8 | W1 | 🟢 built, unmerged |
-| 2 | Refuse jury-rig below a wreck threshold; the `Swarf` rung | 5, 6 | W2 | 🟢 built, unmerged |
-| 3 | Carry `Condition` to the client | 1, 5 | W0 | 🟢 built, unmerged |
-| 4 | The wrecked twins + the two capsules | 0, 5 | W0 | 🟢 built, unmerged |
-| 5 | The wreck ship itself — **and no designations on it** | all | W3 | ❌ |
-| 6 | **Say why an order is refused** | 3, 4, 5 | W4 | ❌ blocking |
-| 7 | Split `＋ADD ROOM`; a `vent` verb on the Room Zoom | 4 | W4b | ❌ blocking |
-| 8 | Cryo pods + the MOSS thaw + the gate + the cycle | 0, 7, 8 | W5 | ❌ |
-| 9 | The `Degraded` bit (the eight spoiled resources) | 0, 5 | W9 | ❌ |
-| 10 | `Regolith` → `Rubble` | fiction | W10 | ❌ |
-| ~~11~~ | ~~Skin `'/'` (open door)~~ | ~~1~~ | ~~OD-7~~ | ✅ **closed — `'/'` is deliberately a gap** |
-| ~~12~~ | ~~Decide the salvage rule~~ | ~~6~~ | ~~OD-1~~ | ✅ **decided: `Swarf`** |
-| ~~13~~ | ~~Decide `＋ADD ROOM`~~ | ~~4~~ | ~~OD-2~~ | ✅ **decided: split it** |
+| 1 | Author a device damaged (`Condition`, `Scriptable`) | 0, 5, 8 | W1 | ✅ **LANDED** |
+| 2 | Refuse jury-rig below a wreck threshold; the `Swarf` rung | 5, 6 | W2 | ✅ **LANDED** (P4/P5 moved) |
+| 3 | Carry `Condition` to the client | 1, 5 | W0 | ✅ **LANDED** |
+| 4 | The wrecked twins + the two capsules | 0, 5 | W0 | ✅ **LANDED — drawn by nobody yet** |
+| 5 | **Draw them**: the `(kind, condition)` join + the delta scheme + the `Swarf` piece | 0, 1, 5, 6 | **W0b** | ❌ **NEW in rev 3** |
+| 6 | The wreck ship itself — **no designations, and IT SETS THE POD COUNT** | all | W3 | ❌ |
+| 7 | **Say why an order is refused** | 3, 4, 5 | W4 | 🔷 **IN FLIGHT** · blocking |
+| 8 | Split `＋ADD ROOM`; a `vent` verb on the Room Zoom | 4 | W4b | ❌ blocking, needs W4 |
+| 9 | Cryo pods + the MOSS thaw + the gate + the cycle + **the emergency thaw** | 0, 2, 7, 8 | W5 | ❌ |
+| 10 | ⭐ **Skills, so *who you wake* means something** | 7 | **W7** | ❌ **PROMOTED to REQUIRED (rev 3)** |
+| 11 | REST — a bed does something | 5 | W6 | ❌ |
+| 12 | The `Degraded` bit (the eight spoiled resources) | 0, 5 | W9 | ❌ |
+| 13 | `Regolith` → `Rubble` | fiction | W10 | ❌ |
+| ~~14~~ | ~~Skin `'/'` (open door)~~ | ~~1~~ | ~~OD-7~~ | ✅ **closed — `'/'` is deliberately a gap** |
+| ~~15~~ | ~~Decide the salvage rule~~ | ~~6~~ | ~~OD-1~~ | ✅ **decided: `Swarf`** |
+| ~~16~~ | ~~Decide `＋ADD ROOM`~~ | ~~4~~ | ~~OD-2~~ | ✅ **decided: split it** |
+| ~~17~~ | ~~Decide what a wrecked pod means~~ | ~~0, 7~~ | ~~OD-9~~ | ✅ **decided: the sleeper is DEAD** |
+| ~~18~~ | ~~Decide the minute-three lose~~ | ~~2~~ | ~~OD-10~~ | ✅ **decided: emergency thaw, in `CryoSystem`** |
 
 ---
 
@@ -661,7 +819,8 @@ supports one more soul, spend Parts through MOSS to thaw one — and now you hav
 and twice the draw.**
 
 **Revision 2's one-line version: `SALVAGE → REPAIR → AIR → SALVAGE MORE → MOSS → A PERSON`.**
-The person is the reward, seven times, and each one makes the next loop faster and the ship's
+The person is the reward — **five times at OD-12's recommended pod count, not seven (rev 3)** —
+and each one makes the next loop faster and the ship's
 draw higher. **The first pass of that loop is performed by ONE pair of hands and costs ~3.4
 crew-hours of bench time alone** (§2 beat 7).
 
@@ -707,10 +866,10 @@ One source of truth by *assertion*, not by call. Four terms, each already live s
 | **Scrubbing** | count of `DeviceKind.Scrubber` with `Powered && IsOperational`, × `scrubber_mol_per_second`, vs `(living + 1) × co2_per_person_per_second` | strict surplus |
 | **Water** | Σ `Device.StoredLiters` over `WaterTank` | ≥ a def'd per-crew floor |
 | **Food** | `Units[Potato]` ÷ `(living + 1) × FoodUnitsPerCrewPerDay` | ≥ a def'd day floor |
-| **The pod** | `IsOpen == false && Powered && Condition ≥ machines[CryoPod].fail` | all three (⚠️ **and see OD-9** — the working assumption is a stricter repair floor) |
+| **The pod** | `IsOpen == false && Powered && Condition ≥ machines[CryoPod].fail` | all three. ⛔ **rev 3: there is NO repair floor above `fail`** — OD-9 is decided, a wrecked pod's sleeper is dead, so a wrecked pod is **not thawable at all** and is never offered. **This row got SIMPLER and the plan got a pacing hole — §3.4.1.** |
 | **The console** *(rev 2)* | a `DeviceKind.Terminal` whose `Name == tid`, with `Powered && IsOperational && Scriptable` | all four |
 | **The cycle** *(rev 2)* | no pod anywhere with `Progress > 0` | one at a time |
-| **The price** | `LooseMatter.Affordable(sim, Parts, thaw_cost)` | all-or-nothing, charged last |
+| **The price** *(rev 3)* | `LooseMatter.Affordable(sim, Parts, thaw_cost_base + LivingCrew × thaw_cost_step)` | all-or-nothing, charged last. **The ESCALATION is not optional — §3.4.1.** |
 
 ⚠️ **THE CONSOLE TERM IS WHY THE GATE CANNOT LIVE IN THE HOST.** The MOSS screen is host-side
 (`GameSession.HandleMoss`), and it would be very easy to check "is this terminal alive?" there,
@@ -743,7 +902,7 @@ cannot act on. Four named terms, each of which independently says NO with a reas
 |---|---|---|---|
 | **WHERE** | *through what?* | the **console term** — a repaired, powered, commissioned `Terminal` | *"NO CONSOLE — MOSS is offline"* |
 | **WHEN** | *may I, now?* | the **headroom terms** + the **price** | *"THAW REFUSED — scrubbing covers 3 of 4"* |
-| **HOW MANY AT ONCE** | *can I do all seven?* | the **cycle** | *"POD 3 IS CYCLING — 4 min"* |
+| **HOW MANY AT ONCE** | *can I do them all at once?* | the **cycle** | *"POD 3 IS CYCLING — 4 min"* |
 
 **WHERE is a one-off matter price** (one `ControllerModule`, §2 beat 7) and once paid it stays
 paid. **WHEN is re-evaluated on every thaw** and is what makes the ship's state matter. **HOW
@@ -758,6 +917,101 @@ beginning." Is one-at-a-time a HARD RULE or an EMERGENT consequence of cost?**
 | **A — emergent only.** Price + headroom pace the thaws; nothing forbids two at once. | `thaw_cost` in Parts, and the four headroom terms. | **A prepared player empties the bay in one minute** — which revision 1 called "the reward for playing well" and which the owner has now, in effect, ruled against. And the failure is silent: nothing tells the player the pacing existed. |
 | **B — hard rule, no new state.** A pod is single-use; the pacing curve is the *number of pods*. | authoring. | Does not pace anything. Eight pods still open in eight seconds. **Revision 1 recommended this and it does not meet the brief.** |
 | **C — hard rule, a pod CYCLE.** Thawing sets `Device.Progress` on the pod; a `CryoSystem` counts it down; **no thaw is accepted while any pod is cycling.** | one existing hashed field + one new system. | Costs **P1/P2/P3** — registering a system folds its seed unconditionally (the W0-6 precedent, `CLAUDE.md`). |
+
+---
+
+#### ⭐⛔ 3.4.1 — RE-DERIVED IN REVISION 3: what paces thaw N vs thaw N+1, now that pod repair does not
+
+> **This subsection exists because OD-9 removed a pacing lever and nothing shipped replaces it.**
+> Revision 2's answer was *"a damaged pod must be repaired before its sleeper can be cycled"* —
+> **a per-pawn matter price the owner could author, eight numbers, no code.** The owner chose the
+> other reading, so that lever is gone. **The question has to be answered again from what is left.**
+
+**What is left, and what each term actually does.** Three levers survive, and **they do different
+jobs — only one of them paces, and it is the weakest.**
+
+| lever | shape | does it pace thaw N vs N+1? |
+|---|---|---|
+| **the cycle** (§3.4 option C) | a fixed countdown on one pod | ⛔ **no.** It forbids *simultaneity*. Thaw N+1 starts the tick thaw N finishes. |
+| **the headroom terms** (§3.3) | scrubbing · food · water · O₂ | **partly, and unevenly** — see below |
+| **`thaw_cost`** in Parts | a **flat** price | ⛔ **no, by construction.** The same number on thaw 6 as on thaw 2, against a production chain that is *faster* by thaw 6 because more hands are running it. |
+
+**⇒ THE HEADROOM TERMS, TERM BY TERM, AND ONLY ONE OF THEM ESCALATES SMOOTHLY.**
+
+- **O₂ — dead, already measured.** `ledger --ship grid` reads **99.0 crew-days** of standing
+  oxygen at h1 and **98.6** at h56 (Appendix A row 14, **re-driven on `50e6778`**). An O₂ gate
+  permits every thaw in the first minute. **It can never say no. Keep it in the report; never let
+  it be the binding term.**
+- **⛔ SCRUBBING IS A STEP FUNCTION, AND THAT IS THE FINDING.** `scrubber_mol_per_second = 0.001`
+  against `co2_per_person_per_second = 2.73e-4` (`atmosphere.def:19`, `:17`) ⇒
+  **0.001 ÷ 2.73e-4 = 3.663 crew per working scrubber.** With a strict-surplus gate:
+
+  | working scrubbers | `living + 1` permitted | crew ceiling it allows |
+  |---|---|---|
+  | 1 | ≤ 3 | **3** |
+  | 2 | ≤ 7 | **7** |
+  | 3 | ≤ 10 | 10 |
+
+  *(Arithmetic over the shipped defs. The sim itself states the same relation independently —
+  `AuthoredShips.cs:1063`: "three scrubbers … is the whole eight-crew CO2 load on this deck alone
+  (3 × 0.001 > 8 × 2.73e-4)". Grid carries **seven** in total, 4 on deck 0 + 3 on deck 1.)*
+
+  ⇒ **On a ship with a 6-crew ceiling there is EXACTLY ONE scrubbing gate in the entire run.**
+  Thaws 2 and 3 pass on the first scrubber; repairing the second unlocks **thaws 4, 5 and 6 all at
+  once**. That is a *tier unlock*, and as a tier unlock it is excellent — it makes repairing life
+  support feel like buying a rank. **It is not a pacer, and reading it as one is the mistake this
+  subsection exists to prevent.**
+- **✅ FOOD is the one continuous term.** `DaysOfFood = Units[Potato] ÷ (living × 1.389)`
+  (`ShipLedger.FoodUnitsPerCrewPerDay`, post-E0-9 — and **1.389 is confirmed by driving**: the
+  ledger reads 8 crew / 23 u as **2.07 d**, and 23 ÷ (8 × 2.07) = **1.389**, Appendix A row 14).
+  Each thaw raises the divisor, so thaw N+1 is strictly harder than thaw N **at constant stock**.
+  ⚠️ **But only until a grow bed is repaired**, after which the numerator grows faster than the
+  divisor and the term stops biting forever (grid: food 23 u @h1 → **204 u @h23**, runway 2.07 d →
+  **18.36 d**, *rising the whole way*). ⇒ **Food paces the EARLY thaws and nothing else.**
+- **Water** is the same shape as food and grid pins it at 1000 L `[not depleting]` from h11.
+
+> ### ⛔ **⇒ THE ANSWER TO THE QUESTION, PLAINLY: NO. "LIFE-SUPPORT HEADROOM + THE PARTS PRICE" IS
+> NOT ENOUGH TO PRODUCE THE OWNER'S ONE-AT-A-TIME CURVE.**
+>
+> It produces **a food-paced first pair, a hard block at 3 crew, and then a flat repeatable price**
+> for everything after the second scrubber. Thaws 4–6 arrive **back-to-back**, limited only by the
+> cycle timer. **That is §3.4 option A's "a prepared player empties the bay in one minute" failure
+> arriving through the back door** — the very failure option C was chosen to prevent — and it
+> arrives *silently*, because nothing tells the player that a pacing curve was ever intended.
+>
+> ⚠️ **AND NOTE HOW IT GOT HERE. Nobody removed the pacing.** It was carried by an assumption in a
+> section about *pod damage*, and the decision that deleted it was about *narrative* — whether a
+> sleeper lived. **A design lever can be load-bearing in a section nobody is reading when the
+> decision is taken.** That is the reusable part.
+
+**⇒ RECOMMENDATION (rev 3): `thaw_cost` MUST ESCALATE WITH `LivingCrew`.** Concretely
+`thaw_cost_base + LivingCrew × thaw_cost_step` Parts, resolved in `ThawCommand` at the moment of
+the charge.
+
+**Why this specific shape and not something cleverer:**
+1. **It restores exactly the property OD-9 deleted** — a per-pawn price that rises — and restores
+   it as a *dial the owner turns*, which is what the pod-condition array was going to be.
+2. **It costs NO new state.** `LivingCrew` is already computed by the gate for the scrubbing and
+   food terms; the escalation reads a number that is in hand. **Two def scalars, P4/P5 only** —
+   and W5 is a five-pin wave already, so it is free.
+3. **It composes with the step-block instead of fighting it.** The second scrubber still unlocks a
+   tier; the rising price is what stops the tier being spent in one gesture.
+4. **It fails legibly.** *"THAW REFUSED — needs 14 Parts, ship has 9"* is a sentence a player can
+   act on, and it is the same refusal shape §3.3 already requires.
+
+⚠️ **THIS IS AN OWNER DIAL AND IT IS FOLDED INTO OD-11**, which is therefore no longer a question
+about currency alone. **What must not happen is `thaw_cost` shipping as a single flat scalar
+because that is what revision 2's charter said** — revision 2 wrote that scalar under an
+assumption the owner has since overturned.
+
+⚠️ **AND A THIRD OPTION EXISTS THAT IS CONTENT, NOT CODE, AND SHOULD BE TAKEN AS WELL:
+AUTHOR THE WRECK FOOD-POOR.** Food is the only smoothly-escalating shipped term; a wreck whose
+grow beds are all wrecked and whose stores are `Degraded` (W9) makes *"another mouth"* the
+diegetic reason a thaw is refused, which is the best sentence this gate could possibly say.
+**It stops biting the moment a grow bed is repaired**, which is correct — that repair *should* be
+what buys the back half of the crew.
+
+---
 
 ⇒ ⭐ **RECOMMENDATION: C, and it is a hard rule.** Three reasons, in order of weight.
 **(1)** The owner called this *"an important game mechanic"* and named the shape
@@ -781,11 +1035,42 @@ to a wave that was budgeted as pin-neutral.
 
 ## 4. Wave charter
 
-**Determinism pins (all five, from `CLAUDE.md`), for the "which pin moves" column:**
-`P1` scenario `--days 3 --seed 42` = `43345ff0c9d62684` · `P2` tick-3000 golden
-`5a7224821810b478` · `P3` slice tick-3000 golden `7d846c14c5901e4d` · `P4` defs **defaults**
-`62a1bb2633c447be` · `P5` defs **rules-inclusive** `4c15dffe98a2cda8`.
-*(P1 and P5 verified holding in this worktree by running the twin and reading the `defs:` line.)*
+> ### ⭐ **THE WAVE TABLE — CURRENT AS OF `main` @ `50e6778` (rev 3)**
+>
+> | wave | what | state | pins |
+> |---|---|---|---|
+> | **W0** | condition wire + wrecked art | ✅ **LANDED** | none moved |
+> | **W0b** | the wrecked-twin art JOIN + the `Swarf` piece + the delta scheme | ❌ **NEW in rev 3** | none |
+> | **W1** | author a device damaged (`Condition`, `Scriptable`) | ✅ **LANDED** | none moved |
+> | **W2** | wreck threshold + `Swarf` recovery economy | ✅ **LANDED** | **P4 → `df93cbd628644785` · P5 → `fc65c6682d5bee59`** |
+> | **W3** | `--ship wreck` — **and it SETS THE POD COUNT** | ❌ | none *(verify)* |
+> | **W4** | the `blocked` channel | 🔷 **IN FLIGHT** — `lane/blocked-channel` | none |
+> | **W4b** | `＋ADD ROOM` splits + the vent verb | ❌ **blocking**, needs W4 | P1–P3 measure |
+> | **W5a** | `CryoPod` + `CryoSystem` + the cycle + authoring | ❌ | **ALL FIVE** |
+> | **W5b** | `ThawGate` + `ThawCommand` + the MOSS screen + **W5.5 emergency thaw** | ❌ | none on top of W5a |
+> | **W6** | REST — `Fatigue` gets a reducer | ❌ | all five |
+> | **W7** | ⭐ **skills + work priorities — PROMOTED TO REQUIRED (rev 3), now AHEAD of W8** | ❌ | all five |
+> | **W8** | flip the default to `--ship wreck` | ❌ **last** | none |
+> | **W9** | the `Degraded` bit on `ItemStack` | ❌ | P1–P3 (+P4/P5) |
+> | **W10** | `Regolith` → `Rubble` | ❌ | **none** |
+>
+> **⇒ THE ORDER (rev 3), and W7's promotion is the only re-ordering:**
+> **W0b · W4** *(in flight)* **→ W3 → W4b → W5a → W5b → W6 → W9 → W10 → W7 → W8.**
+> W0b, W6, W9 and W10 are independent and can be slotted wherever a lane is free, subject to
+> "MUST run alone" below. **W7 moved from *after* W8 to *before* it, because OD-5 makes it a
+> prerequisite of the thaw being a decision at all.**
+
+**Determinism pins (all five), MEASURED IN THIS WORKTREE at `main` @ `50e6778`
+(Appendix A row 13), NOT copied from `CLAUDE.md` — whose table predates the recovery-economy
+merge and is stale in two rows:**
+`P1` scenario `--days 3 --seed 42` = `43345ff0c9d62684` *(`ci.sh:31`)* ·
+`P2` tick-3000 golden `5a7224821810b478` · `P3` slice tick-3000 golden `7d846c14c5901e4d` ·
+**`P4` defs defaults = `df93cbd628644785`** *(was `62a1bb2633c447be`)* ·
+**`P5` defs rules-inclusive = `fc65c6682d5bee59`** *(was `4c15dffe98a2cda8`)*.
+
+⚠️ **REVISION 2 RECORDED THOSE TWO VALUES AS "BRANCH-LOCAL, RE-MEASURE" AND THEY LANDED
+UNCHANGED.** That is luck, not a method — nothing else moved a def in between. **The instruction
+stands: re-measure, do not copy, including from this line.**
 
 **Equality-pinned guards that a lane may have to bump:**
 `client/test/surface-boundary.test.js` (`KNOWN_GAPS`, `KNOWN_GAPS_SEALED`, the console id census,
@@ -797,17 +1082,18 @@ four `hud.js` widget counts, `SHIP_STATE_REACH`, `CREW_INTERACTION`) ·
 
 ---
 
-### **W0 — condition wire + wrecked art** 🟢 **BUILT, GATED, UNMERGED** *(rev 2)*
+### **W0 — condition wire + wrecked art** ✅ **LANDED on `main`** *(rev 3; was "built, unmerged")*
 
-~~Two lanes are building this in parallel with me.~~ **Both landed.** What revision 1 asked for
-as an interface, and what actually shipped:
+~~Two lanes are building this in parallel with me.~~ **Both landed, and both are now on `main`
+@ `50e6778`** (`15d80a9` the devices channel, `82eed41` the wrecked art). What revision 1 asked
+for as an interface, and what actually shipped:
 
 | revision 1 asked for | shipped |
 |---|---|
 | a view-only sparse channel carrying per-device `Condition`, x-first | ✅ `hosts/web/WireFormat.Devices.cs`, `[x,y,deck,kind,cond,oper]`, read from `sim.Devices` directly — **`WireFormat.cs` has a ZERO diff** (it was already `partial`) |
 | a client join from `(kind, condition)` derived from the registry | ⏸ **deliberately NOT built yet — nothing draws the data.** The channel is exposed to the Room Zoom as `deviceConditionAt(tx,ty)` and stops there. |
 | no sim-side change, P1–P5 hold | ✅ |
-| 70 wrecked twins + 2 capsules | ✅ `lane/wrecked-art`: `client/src/items/wrecked.js`, `client/src/items/cryo.js`, gallery shots in `docs/design/shots/` |
+| 70 wrecked twins + 2 capsules | ✅ **landed** (`82eed41`): `client/src/items/wrecked.js`, `client/src/items/cryo.js`, gallery shots in `docs/design/shots/` |
 
 ⚠️ ⭐ **A CONDITION CAME WITH IT, AND IT IS BINDING ON THIS PLAN, NOT ON THAT LANE.**
 `WireFormat.Devices.cs`'s header records that the channel costs **~6 % of every render, two
@@ -828,13 +1114,58 @@ pieces therefore have **no key to render off**. ~~§7 OD-3.~~ **DECIDED — this
 
 ---
 
-### **W1 — author a device damaged, and dark** 🟢 **BUILT, GATED, UNMERGED** (`lane/damaged-authoring`)
+### **W0b — the wrecked-twin ART JOIN, the `Swarf` piece, and the delta scheme** *(NEW in rev 3)*
+
+> **This wave was implicit in revision 2 — it lived inside W0's ⚠️ box and §6 R-10 as "the join".
+> It is broken out because revision 3 gives it a THIRD owed item and a hard prerequisite, and an
+> unnamed wave gets done by nobody.**
+
+**Goal.** The 70 wrecked twins and 2 capsules, which are **drawn but reachable by nothing**,
+become what the player actually sees on a wrecked tile — plus the one ground-item piece the
+recovery economy created and did not draw.
+
+**Three things it owes, and they are not negotiable individually:**
+
+1. **The `(DeviceKind, Condition)` → wrecked-twin join**, keyed **off the `devices` wire channel,
+   derived from the registry.** ⚠️ **Never off a glyph** — `GLYPH_SUBSTITUTE` lets a device wear
+   another piece's art and is **not homogeneous in registry `kind`** (5 `functional`, 1
+   `cosmetic`), which is the sixth trap shape and which shipped DEMOLISH dead on every lamp with
+   the suite green before *and* after the fix. **Never hand-mirrored into two view files** — that
+   was the device-sprite defect. §6 R-10.
+2. ⭐ **THE `devices` CHANNEL'S DELTA / DIRTY-VERSION SCHEME. This is a WRITTEN CONDITION OF THAT
+   CHANNEL'S MERGE, not a follow-up.** Its header records the channel costs **~6 % of every
+   render, two-thirds of that in serialization**, accepted on the understanding that **whichever
+   lane first DRAWS the data pays for it.** On this plan that lane is this one. **Budget it
+   inside the package; do not discover it there.**
+3. ⭐ **`NO_GROUND_ITEM_SPRITE.Swarf` — OWED AND, UNTIL NOW, UNOWNED.** MEASURED: the ledger in
+   `client/test/device-sprite-coverage.test.js` holds **exactly two** entries (`EXPECT_GROUND_ITEM_LEDGER = 2`,
+   `EXPECT_CHIPPING_ITEM_KINDS = 2`) and **they chip for opposite reasons** — the test says so
+   itself: *"MetalOre is dead vocabulary nobody owes art for, Swarf is a live economy item that is
+   OWED art"*. `Glyphs.ForItem` maps `Swarf => 'w'` (`Glyphs.cs:80`).
+   ⚠️ **ON THE WRECK THIS IS NOT A BACKLOG ITEM — IT IS THE FIRST THING THE PLAYER MAKES.**
+   Beat 6 says stripping a wrecked machine is, in play, roughly the first productive act; every
+   one of those strips drops a `Swarf` stack; **the player will watch a dashed `w` chip appear on
+   the deck plate over and over in the opening ten minutes.** Grid never shows it (nothing there
+   is below the wreck floor at boot); the wreck shows nothing else.
+   **⇒ Draw the piece and delete the entry.** The ledger is equality-pinned and only pays down.
+
+**Pins.** **NONE** — client-only, and that must be *measured*: `git diff -- sim/ hosts/ content/
+tests/ ci.sh` is 0 lines, the ground-item-art lane's own check.
+**Depends on:** nothing mechanically. **Blocked in PRACTICE on W3** for item 1 — there is no
+wrecked device on any ship to photograph until `--ship wreck` exists, and **the acceptance for
+this wave is photographs, not assertions** (`review seams, not art`: the owner judges art from
+browser shots). **Item 3 is unblocked today** and could ship first.
+**Must NOT.** Key off a glyph. Re-declare the registry in a view file. Ship the join without the
+delta scheme.
+
+---
+
+### **W1 — author a device damaged, and dark** ✅ **LANDED on `main`** (`ab12b1b`)
 
 **Goal.** Let a `ShipPlan` say a device boots at `Condition = 0.14` with `Scriptable = false`.
 **Shipped as** `float? Condition` and `bool? Scriptable` on `DeviceSpec` (`sim/Sim.Gen/ShipPlan.cs`),
 plumbed through `ShipPlanBuilder`, `RoomDresser`, `RoomOutfitter` and `AuthoredShips`.
-**Pins: NONE moved — MEASURED, not predicted.** `git diff main...lane/damaged-authoring --
-ci.sh tests/Perilune.Tests/Golden/ content/` is **0 lines**.
+**Pins: NONE moved — MEASURED on the branch, and CONFIRMED on `main`** (Appendix A rows 12–13).
 
 > ### ⛔ **THE `-1f` SENTINEL WAS WRONG AND IS RETRACTED — and the way it was wrong is worth
 > keeping, because it is a shape that will recur.**
@@ -869,7 +1200,7 @@ unmodified `PeriluneGrid()` and asserts every device reads `Condition == 1f` and
 
 ---
 
-### **W2 — the recovery rule + the salvage rule** 🟢 **BUILT, GATED, UNMERGED** (`lane/recovery-economy`)
+### **W2 — the recovery rule + the salvage rule** ✅ **LANDED on `main`** (`df84b11`, after a send-back)
 
 **Shipped as TWO commits**, and they are the halves this document called W2 and OD-1:
 
@@ -885,13 +1216,14 @@ unmodified `PeriluneGrid()` and asserts every device reads `Condition == 1f` and
 
 | pin | revision 1 predicted | measured |
 |---|---|---|
-| P1 scenario · P2 tick-3000 · P3 slice | *"must be MEASURED; entirely plausible they move"* | **HELD** — `git diff main...lane/recovery-economy -- ci.sh tests/Perilune.Tests/Golden/` is **0 lines** |
-| P4 defs defaults | move | **moved** `62a1bb2633c447be` → **`df93cbd628644785`** |
-| P5 defs rules-inclusive | move | **moved** `4c15dffe98a2cda8` → **`fc65c6682d5bee59`** |
+| P1 scenario · P2 tick-3000 · P3 slice | *"must be MEASURED; entirely plausible they move"* | **HELD**, and **still holding on `main` @ `50e6778`** — Appendix A row 13 |
+| P4 defs defaults | move | **moved** `62a1bb2633c447be` → **`df93cbd628644785`** — **CONFIRMED ON `main`** |
+| P5 defs rules-inclusive | move | **moved** `4c15dffe98a2cda8` → **`fc65c6682d5bee59`** — **CONFIRMED ON `main`** |
 
-⚠️ **Those two values are branch-local and go stale the moment anything else merges ahead of
-them.** They are recorded here so the integrator has a starting point, **not** so a later lane
-copies them. **Re-measure.**
+⚠️ ~~**Those two values are branch-local and go stale the moment anything else merges ahead of
+them.**~~ **They landed unchanged, and that is LUCK, not a method** — nothing else moved a def
+between the measurement and the merge. **The instruction is unchanged and applies to this row
+too: re-measure, do not copy.**
 
 **Three things the shipped package got right that revision 1 did not think of:**
 - **The Parts arm is untouched at every Condition**, so *letting a machine rot* still costs you
@@ -908,16 +1240,40 @@ copies them. **Re-measure.**
 the **third** one (worksite · no-consumable · thaw). **W4 must surface it, and W4 is blocking for
 this reason as much as for its own.** §6 R-1.
 
-⚠️ **OWNER DECISION 5 IS A REAL COST AND IT IS ACCEPTED, NOT PATCHED.** `wreck_threshold = 0.25`
-sits **above** `Terminal`, `Light` and `WaterTank`'s `maint = 0.20`, so all three have an
-**empty free-repair band on every ship in the game** and can never be bodged without matter. The
-owner took this knowingly: **a `Terminal` is the MOSS box, so restoring MOSS genuinely costs
-Parts** — and after the thaw mechanic that is a feature, not a wart (§2 beat 7). **Do not
-"fix" it by lowering the threshold without re-reading this paragraph.**
+⚠️ **OWNER DECISION 5 IS A REAL COST, IT IS ACCEPTED NOT PATCHED, AND REVISION 3 REPLACES THE
+ARGUMENT WITH THE MEASUREMENT.** Both halves are now on the record in `wear.def` itself, and both
+correct an earlier draft that said the opposite.
+
+**(a) THE BAND, per kind — `maint` is PER KIND and taking its maximum as if it were universal is
+what produced the earlier error.** The free-jury-rig band is `[0.25, maint)`:
+
+| kinds | `maint` | free-repair band |
+|---|---|---|
+| **Terminal · Light · WaterTank** | **0.20** | ⛔ **EMPTY.** Can never be fixed for free on **any** ship, shipped or wrecked |
+| **Door · Battery** | 0.30 | width **0.05** — the narrowest non-empty one |
+| everything else | 0.40 | `[0.25, 0.40)` |
+
+*(Read off `machines.def` in this worktree; **pinned BY NAME, both sets**, in
+`WreckThresholdTests.cs:450` — so this table is re-COUNTED against a pin, never computed.)*
+**A `Terminal` is the MOSS box**, so this is not an edge case on the wreck ship — **it is the
+price of the thaw console**, and it is why beat 7 costs what it costs.
+
+**(b) ⛔ THE "damage, not rot" FRAMING IS WRONG ABOUT WHAT ACTUALLY FIRES, AND THIS PLAN WROTE IT.**
+**MEASURED, `--ship grid`, 45 sim-days:** nothing there is authored damaged, and at sim-hour 630 a
+Terminal / Light / WaterTank still sits near **0.37** — *above* the floor. What crossed it were
+**high-wear machines whose service was BACKLOGGED**: a Fabricator (0.020/h) jury-rigged to 0.6
+reaches `maint` 0.4 in 10 h and 0.25 in 7.5 h more. ⇒ **On the shipped ship the rule's real
+trigger is ROT PLUS BACKLOG, not damage.**
+**Cost, measured A/B over those 45 sim-days: Maintain starts 1285 → 1098 (−187), Flee 657 → 601,
+services completed 678 → 678 — ZERO cost — end state byte-identical, first divergence at sim-hour
+630.** *(From `wear.def`'s own header, which records the merged lane's A/B; not re-driven by this
+revision — a 45-day run is ~2 orders of magnitude past this lane's budget.)*
+⇒ **Quote it as "rot plus backlog", never as "damage".** **Do not "fix" the threshold by lowering
+it without re-reading both halves of this paragraph.**
 
 ---
 
-### **W3 — `--ship wreck`**
+### **W3 — `--ship wreck`** — ⭐ **AND IT SETS THE POD COUNT (OD-12)**
 
 **Goal.** A new authored ship. **`--ship grid` is untouched** so every measured number in the
 economy docs stays comparable (owner decision 1).
@@ -930,7 +1286,10 @@ economy docs stays comparable (owner decision 1).
 - the grid lattice (`SlotGridPlanner`, 8 slots/deck) — reuse it; it is the standard surface's
   geometry and the Overview knows how to draw it;
 - **the cryo bay**: one typed, pressurised, powered compartment on deck 0 with 8 pods
-  *(pods need W5; author the bay in W3 and the pods in W5)*;
+  *(pods need W5; author the bay in W3 and the pods in W5)* — **and W3 SETS HOW MANY OF THEM ARE
+  WRECKED. See the box below; it is the wave's headline decision, not a detail of it**;
+- **the dead sleepers' bodies** — a named `Corpse` `ItemSpec` per wrecked pod, plus **one authored
+  ship's-log line each** (`HistorySystem.Record(…, HistoryKind.Death, …)`). §2 beat 0;
 - **every other compartment airless** — omit from `plan.PressurizedAnchors`;
 - **every wear-bearing device at 0.02–0.35 `Condition`, `Scriptable = false`** (W1);
 - **debris** in the compartments the raiders cut through — `'R'` in `DeckRows`, undesignated;
@@ -940,7 +1299,7 @@ economy docs stays comparable (owner decision 1).
 - **exactly one goal** (`GoalKind`), matching grid's single-goal precedent (`AuthoredShips.cs:1169`).
 **⚠️ The one thing to get right and the reason this wave is not trivial.** `--ship grid` boots
 **1 250 devices**, of which **1 104 are utility overlays — 1 088 Conduit + 16 Pipe** *(MEASURED
-by `lane/device-condition`, which built the census to justify excluding them from its channel;
+by the devices-channel lane, which built the census to justify excluding them from its channel;
 the 1 250 total is independently MEASURED — `occupancy --ship grid --days 2 --maint-audit`
 prints `devices in bad air 226 (of 1250)`, re-verified this revision)*. **Conduits, pipes and
 ladders must NOT be wrecked** — they are `0 0 0 0` in `machines.def`, they are what makes the
@@ -948,6 +1307,66 @@ ship traversable and powerable, and wrecking them would need a different mechani
 ~~The wreck's damaged set is the ~120 wear-bearing devices~~ ⇒ **the wreck's damaged set is at
 most 146 tile-resident devices, and the wear-bearing subset of THOSE is what W3 must count and
 publish. 146 is a bound, not a census.**
+
+---
+
+#### ⭐⛔ W3's HEADLINE DECISION: **HOW MANY PODS ARE WRECKED.** Unset. **Recommendation: TWO.**
+
+> **The owner decided that a wrecked occupied pod holds a DEAD sleeper. They did not say how many
+> are wrecked, and that number is not a detail — it fixes the crew ceiling, the LENGTH OF THE
+> ENTIRE THAW CURVE, and how many life-support gates the run contains.** It is a pure content
+> dial with no code behind it, which is precisely why it will otherwise be chosen by whoever
+> types the array. **W3 must set it and PRINT it.**
+
+**The arithmetic.** 8 pods · 1 opens at boot · therefore `recoverable = 1 + (7 − wrecked)` and
+`thaws after boot = 7 − wrecked`.
+
+| wrecked | crew ceiling | thaws after boot | scrubbers needed (§3.4.1) | reads as |
+|---|---|---|---|---|
+| 0 | 8 | 7 | 3 | ⛔ **deletes the decision.** The owner chose "dead sleeper" and nothing shows it |
+| 1 | 7 | 6 | 2 (at the very edge — 2 scrubbers cap at exactly 7) | one body reads as **an accident**, not a raid |
+| **2** | **6** | **5** | **2, with margin** | ⭐ **RECOMMENDED** |
+| 3 | 5 | 4 | 2 | defensible; the curve starts to feel short |
+| 4 | 4 | 3 | 2 | ⛔ half the crew gone to authoring, before the player touches anything |
+| 7 | 1 | **0** | 1 | ⛔ **deletes the thaw mechanic entirely.** The owner called it *"an important game mechanic"* |
+
+**Why TWO, in order of weight:**
+
+1. ⭐ **FIVE THAWS IS A CURVE; TWO OR THREE IS AN EVENT.** The thaw is the game's reward loop and
+   the whole opening is built to reach it (beat 7: the first one is **≥ 3.4 crew-hours** of ladder
+   for one person). A loop that fires **five** times has room to *change* between firings — the
+   first is the matter ladder, the middle two are food-gated, the last two are gated by the second
+   scrubber. A loop that fires twice is a cutscene with a price tag.
+2. ⭐ **IT MAKES THE SCRUBBING STEP LAND IN THE MIDDLE, WHICH IS THE ONLY PLACE IT IS ANY USE.**
+   MEASURED (§3.4.1): one working scrubber caps you at **3 living**, two at **7**. At a ceiling of
+   **6**, the player passes thaws 2 and 3 on the first scrubber and then **hits a wall they must
+   repair their way through** — and the second scrubber then covers the whole rest of the run with
+   margin. At a ceiling of 7 the second scrubber lands *exactly* on the boundary, which is a
+   floating-point coin-flip in a gate the player is supposed to be able to reason about. At a
+   ceiling of 4 or 5 the wall never arrives and life support never becomes a goal.
+3. **TWO BODIES IS THE SMALLEST NUMBER THAT READS AS A RAID.** One reads as an accident — a pod
+   failed. Two named capsules, dark, with bodies in them, is a *pattern*, and the player infers
+   the fiction from it without a line of text (§2 beat 0). Three starts reading as arithmetic
+   punishment.
+4. **IT LEAVES ROOM FOR THE EMERGENCY THAW TO COST SOMETHING REAL.** W5.5 burns a pod when the
+   player loses their last pawn. At a ceiling of 6, that grace costs **1 of 5** remaining souls —
+   painful and survivable. At a ceiling of 4 it costs a third of the run.
+5. **IT KEEPS THE WRECK COMPARABLE TO THE FIXTURE SHIPS.** Grid and slice are both 8-crew and
+   every economy number in every doc is measured at 8. A 6-crew ceiling is **one step** away, so a
+   wreck-vs-grid comparison is readable — subject to R-5's discipline of never putting the two
+   numbers in one sentence without naming the ship.
+
+⚠️ **WHAT THIS RECOMMENDATION IS NOT.** It is **not measured** — no wreck ship exists to drive, so
+every row of that table is arithmetic over shipped defs plus a judgement about pacing. **The
+scrubber column is measured; the "reads as" column is taste.** ⇒ **W3 must publish the number it
+chose and the measured curve it produced**, and the owner may move it on one line of authoring.
+
+⚠️ **AND ONE COUPLING TO STATE OUT LOUD: the pod count and `thaw_cost`'s escalation (§3.4.1) are
+the same dial seen twice.** A short curve with a steep price and a long curve with a shallow one
+land in the same place. **Set the count first — it is visible to the player at boot — then tune
+the price against it.** Do not let two waves each tune half of it.
+
+---
 
 **⚠️ FOUR AUTHORING PRECONDITIONS THE ONE-PAWN OPENING ADDS (rev 2), each of them checkable:**
 
@@ -967,46 +1386,104 @@ publish. 146 is a bound, not a census.**
    lone pawn starts in; if its air, power or thermal state can drift, the game ends while the
    player is reading the tutorial. **Census its temperature at day 1, 3 and 10** (§6 R-4).
 
+---
+
+#### ⭐ W3 OWES A MEASUREMENT NOBODY HAS TAKEN: **the cost of a permanently-refused wreck**
+
+**The shape, read from source (Appendix A row 16).** `MaintenanceSystem` recruits at **1 Hz** for
+every device below its `maint` threshold. For a device below `wreck_threshold` it calls
+`IsUnfixableWreck` (`MachineWearSystem.cs:463`), which — when the ship holds no consumable —
+runs `FindNearestConsumable(…, allowSwarf: true)`, and that is **up to THREE full item-store
+scans** (`Parts`, then `Seals`, then `Swarf` — `:507-523`, three sequential `FindNearest` calls,
+each a linear pass). Nothing is remembered between passes, **and that is deliberate and correct**:
+the machine must become serviceable on the very pass a consumable appears. `_recruitSkip` scopes
+one pass, not the next.
+
+⇒ **A wreck the ship cannot fix STAYS NEEDY FOREVER and is re-probed every second for the rest of
+the run.** On `--ship grid` this is unmeasurable — grid authors nothing below the floor, and
+`--days 12 --maint-audit` reports **`needy machines at end 9`** total. **A wreck ship authors
+HUNDREDS**, and the opening hour is *by design* the window in which the ship holds no consumable
+at all.
+
+⚠️ **THE ARITHMETIC IS NOT REASSURING AND MUST NOT BE WAVED THROUGH.** At the upper bound of 146
+wear-bearing devices, all below the floor, all unfixable: **146 devices × 3 scans × 1 Hz**, against
+an item store that is *also* growing as the player strips. That is the same shape as
+`HasIceChain`'s 91 721 250 device-slots/sim-day — **and the lesson from that package is the one to
+carry in: a COUNT OF SCANS IS NOT A SLOWDOWN.** `HasIceChain`'s memo was worth **~1 % and was not
+separated from noise.** ⇒ **Measure it. Do not fix it on the strength of the count, and do not
+dismiss it on the strength of that precedent either.**
+
+**⇒ W3's acceptance includes a wall-clock A/B**: `occupancy --ship wreck --days 1` against the
+same run with every device authored at `Condition = 1f`, same seed, paired, **and the ship's
+device count published beside it**. If the delta is inside noise, **write that down and move on** —
+that is a result. If it is not, the fix is a memo on `MaintenanceSystem`'s side (a "ship holds no
+consumable" flag invalidated on any item add), **not** a change to `IsUnfixableWreck`'s semantics.
+
+---
+
 **Must NOT.** Change `PeriluneGrid()`, `PeriluneSlice()` or `Perilune()` by one byte. Flip a
 default. Zone a stockpile. Paint a designation.
 **Acceptance.** `--ship wreck` boots; `occupancy --ship wreck --days 1` runs; **the ONE crew
 member survives day 1**; the four preconditions above are each asserted; all five pins held;
-`git diff` to the three existing authored ships is 0 lines. **Publish the wear-bearing device
-count** — every later wave's pacing arithmetic depends on it and it is UNMEASURED until this one.
-**Depends on:** W1 (merged). **This wave is large enough to split** into W3a (geometry + air +
-debris) and W3b (damage pass + stores) if the first `occupancy` run is a surprise.
+`git diff` to the three existing authored ships is 0 lines. Plus, new in rev 3:
+
+- ⭐ **PRINT THE POD CENSUS** — `pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`,
+  or whatever the chosen numbers are. **A content dial that is not printed is a dial nobody knows
+  was set.** Assert the identity `pods = open + intact + wrecked` so a later edit cannot drift it.
+- ⭐ **PUBLISH THE WEAR-BEARING DEVICE COUNT** — every later wave's pacing arithmetic depends on it
+  and it is UNMEASURED until this one. **146 is a BOUND, not a census.**
+- ⭐ **THE PERMANENTLY-REFUSED-WRECK A/B**, above.
+- **A temperature census at day 1, 3 and 10** (§6 R-4).
+- ⚠️ **READ THE OCCUPANCY OUTPUT FOR WHETHER THE LONE PAWN EVER EATS, BEFORE reading the A1 line**
+  (§6 R-12). That is the one-pawn ladder's only chance to be observed.
+
+**Depends on:** W1 (landed). **This wave is large enough to split** into W3a (geometry + air +
+debris) and W3b (damage pass + stores + pods/corpses) if the first `occupancy` run is a surprise.
 
 ---
 
-### **W4 — the invisible-failure channel** *(REQUIRED, not a follow-up)*
+### **W4 — the invisible-failure channel** 🔷 **IN FLIGHT on `lane/blocked-channel`** *(rev 3)*
+
+> ### ⛔ **THIS DOCUMENT NO LONGER DESIGNS W4's INTERNALS, AND ANY LATER READER SHOULD BELIEVE THE
+> LANE, NOT THIS SECTION.**
+> Revision 2 wrote a file list, a tuple shape and a reason vocabulary for a channel nobody had
+> built. **A lane is now building it.** Its choices supersede everything below — this repo has
+> been burned twice by a *charter* that went stale under the *package* it commissioned (E0-9's
+> premise; the door lane's, stale in every clause). **What survives here is WHY the wave exists
+> and WHAT depends on it. Nothing else.**
 
 **Goal.** The game says why an order is doing nothing.
-**Files.** `hosts/web/WireFormat.Blocked.cs` (new; `WireFormat` is already `partial`, so
-`WireFormat.cs` takes a **zero diff** — the `items` channel's pattern) ·
-`hosts/web/GameSession.cs` (one builder + one dispatch line) ·
-`client/src/ui/roomzoom-view.js`, `client/src/ui/overview-view.js` (a tint + a reason) ·
-`client/src/main.js` (the consumer `SurfaceBoundaryTests.cs` requires).
-**What it carries.** For every tile the player has designated (`Designated`, `Pending` strip,
-`PendingBuild`) whose four approach tiles all fail `CanStageWorkerAt`: `[x, y, deck, reason]`,
-x-first. Read from `sim.World` + `WorksiteSafety` **directly, never from the projection** (the
-`marks` lesson). Reasons, from `AtmosphereSafety.IsBreathable`'s four branches
-(`SafetySystem.cs:13-19`): `vacuum` · `thin` · `co2` · `cold`/`hot`. Add W2's reason as a fifth:
-`no_consumable`.
-**Pins.** **NONE** — view-only, host-side, nothing in `sim/` changes.
-**Guards.** `SHIP_STATE_REACH` and the WireFormat-consumer census both move by one; both are
-equality pins and both are ratified in review.
-**Cost, to be MEASURED not argued.** Compare `marks` (+61 µs/render forever) and `items`
-(grid 7 rows / 124 B / ~0.9 µs against a ~392 µs render). This channel is **empty on a healthy
-ship** — measured: `unstageable dig/strip/build 0 / 0 / 0` on grid at 12 days — which is the
-`zones` shape, not the `marks` shape.
-**Must NOT.** Read the projection. Change `CanStageWorkerAt`. Widen the channel to "every tile"
-(1 250-tile decks × 8).
-**⚠️ Trap warning, sixth shape.** Any predicate here over "what a glyph resolves to" is defeated
-by `GLYPH_SUBSTITUTE`. **Do not build this off glyphs.** It is a tile-state channel.
-**Acceptance.** Paint a dig in an airless compartment on `--ship wreck`, in a **browser**, and
-photograph the tile saying why. Assertions alone are not evidence for this one — that is the
-`marks` lesson and the invisible-feedback lesson, both binding.
-**Parallel:** with W1, W2, W6. **Blocking:** the wreck is not shippable without it.
+
+**Why it is REQUIRED and not a follow-up — this part is unchanged and is the whole argument.**
+There are now **THREE** silent refusals, and on the wreck all three are the *default* experience:
+
+| # | refusal | where | visible today |
+|---|---|---|---|
+| 1 | **unbreathable worksite** — thermal included | `WorksiteSafety.CanStageWorkerAt` | ⛔ nothing. 50-tick backoff, re-probed every 5 s, forever (`MECHANICS.md` §13.21) |
+| 2 | **no consumable aboard for a wrecked machine** | `IsUnfixableWreck` (W2, landed) | ⛔ nothing. The device stays needy and is silently skipped every second |
+| 3 | **thaw refused** | `ThawCommand` (W5b) — *if* it follows the `ISimCommand` house style of a bare `return;` | ⛔ would be nothing. **W5b must not.** |
+
+**⇒ With ONE pawn a refused order means the ENTIRE SHIP IS MOTIONLESS**, not one of eight crew.
+On `--ship grid` refusal 1 is reachable but rare — MEASURED, `--days 12 --maint-audit` still
+reports `unstageable dig/strip/build 0 / 0 / 0`. On a wreck, **most of what the player paints in
+the first hour is refused.** A refusal that looks identical to a broken verb, on a ship where
+nothing else is moving, reads as a broken game. `CanStageWorkerAt` was made `public` for exactly
+this. *Binding precedent: "invisible feedback is FUNCTIONAL" — it cost three owner reports.*
+
+**What this plan asks of the lane, and it is three things, not a design:**
+1. **Refusal 2 must be on the channel, not only refusal 1.** It is W2's, it landed after the
+   charter was written, and it is the one a wreck hits first.
+2. **Verify in a BROWSER, on a ship that actually refuses.** Assertions alone are not evidence
+   here — that is the `marks` lesson and the invisible-feedback lesson, both binding. ⚠️ **Which
+   means the honest acceptance surface is `--ship wreck`, and it does not exist yet.** If W4 lands
+   before W3, its browser evidence has to be a hand-vented compartment on grid, and the wreck
+   re-verifies it. **Say which was done.**
+3. **Do not read the projection** (the `marks` lesson) and **do not build any predicate off a
+   glyph** (the sixth trap shape — `GLYPH_SUBSTITUTE` defeats it). It is a tile-state channel.
+
+**Pins.** **NONE** expected — view-only, host-side. **The lane measures it.**
+**Blocking:** the wreck is not shippable without it, **and W4b ships a regression to the one
+standard surface without it** (§4 W4b).
 
 ### **W4b — ⭐ PROMOTED: `＋ADD ROOM` SPLITS. NAMING IS FREE, AIR IS EARNED.**
 
@@ -1093,13 +1570,17 @@ a pacing problem and the number must be found before the art is drawn, not after
 > and **it runs alone**: it moves **all five pins**, it touches a spine file (`Device.cs`'s enum
 > and `SystemStack`), and it is the one feature the whole opening is built to reach.
 
-**Goal.** Eight souls in boxes; **one thawed at boot**; the other seven released **one at a time,
-through a MOSS terminal the player had to repair, power and commission.**
+**Goal.** Eight boxes; **one thawed at boot**; ⛔ **rev 3: the INTACT remainder released one at a
+time, through a MOSS terminal the player had to repair, power and commission — and the WRECKED ones
+never, because their sleepers are dead** (OD-9). At OD-12's recommended count that is **five**
+thaws, not seven.
 
 **Files.** `sim/Sim.Core/Entities/Device.cs` (`CryoPod = 27`, **appended** — `IceMelter = 26` is
 the current tail, verified) · `sim/Sim.Core/Entities/MachineDefs.cs` +
-`sim/Sim.Core/Defs/SimDefs.cs` (a `Machines` row) · `content/core/SimDefs/machines.def` (a row) ·
-`content/core/SimDefs/build.def` (`thaw_cost`) · `sim/Sim.Glyph/Glyphs.cs` (a glyph) ·
+`sim/Sim.Core/Defs/SimDefs.cs` (a `Machines` row) · `content/core/SimDefs/machines.def` (a row —
+⚠️ **and `MachineDefs.Table` too, which is a THIRD hand-transcription, not a source; §6 R-15**) ·
+`content/core/SimDefs/build.def` (**`thaw_cost_base` + `thaw_cost_step`**, rev 3 — §3.4.1) ·
+`sim/Sim.Glyph/Glyphs.cs` (a glyph) ·
 **`sim/Sim.Core/Systems/CryoSystem.cs` (new)** · **`sim/Sim.Core/SystemStack.cs` (registration)**
 · `sim/Sim.Core/ThawGate.cs` (new) · `sim/Sim.Core/Commands/Commands.cs` (`ThawCommand`) ·
 `hosts/web/GameSession.cs` (a new `moss` op + a `CitizenThawedEvent` observer) ·
@@ -1116,9 +1597,20 @@ the current tail, verified) · `sim/Sim.Core/Entities/MachineDefs.cs` +
 |---|---|---|---|
 | occupied / open | `IsOpen` | `Simulation.cs:454` (b8) | DEVC v1 |
 | who is inside | `Name` | `:469` | DEVC v1 |
-| pod damaged (⚠️ **OD-9**) | `Condition` | `:466` | DEVC v3 |
+| **pod wrecked ⇒ its sleeper is DEAD** *(rev 3, OD-9 decided)* | `Condition` | `:466` | DEVC v3 |
 | pod unpowered | `Powered` | `:456` (b10) | DEVC v1 |
 | **the cycle** *(rev 2)* | **`Progress`** | **`:464`** | **DEVC v2** |
+
+⚠️ **REVISION 3 — `Condition` NOW MEANS SOMETHING DIFFERENT ON A POD, AND IT IS SIMPLER AND
+WORSE.** Under revision 2 a low `Condition` meant *"repair me first"* and the pod re-entered the
+maintenance loop like every other machine. Under OD-9 it means ***"the person inside is dead"*** —
+a **terminal** state with no repair path and no verb. ⇒ **W5 must ensure a wrecked pod is never
+offered as a thaw target and never enters `MaintenanceSystem`'s needy set** *(or, if it does,
+that repairing it is honestly inert — a repaired pod does not resurrect anyone)*. **Whichever you
+choose, choose it explicitly and assert it**, because the two read identically at the wire and
+`MaintenanceSystem` will happily service a `CryoPod` the moment `machines.def` gives it a
+non-zero `maint`. **The safe row is `maint = 0`** — the Ladder/furniture shape — and that also
+means a pod is never a maintenance target at all, which is the honest model of a sealed box.
 
 **A frozen soul is NOT a `Citizen`.** It is a named, closed pod. This avoids a `Frozen` bit on
 the citizen flag word — which would have moved all three state pins **and** bumped the CITZ save
@@ -1159,9 +1651,11 @@ reads, pinned by a test that requires the two to AGREE on a driven ship.** One s
 
 **The command's contract, in order, and every step resolves from sim state:**
 
-1. **the pod** — exists, `Kind == CryoPod`, `IsOpen == false`, `Powered`, `Condition ≥ fail`
-   ⚠️ **and, under OD-9's working assumption, `Condition ≥ a repair floor` — flag it, do not
-   settle it**
+1. **the pod** — exists, `Kind == CryoPod`, `IsOpen == false`, `Powered`, `Condition ≥ fail`.
+   ⛔ ~~*and, under OD-9's working assumption, `Condition ≥ a repair floor`*~~ **RETRACTED (rev 3):
+   OD-9 is decided the other way. A pod below `fail` holds a corpse and is refused PERMANENTLY —
+   the refusal reason is not "repair it", it is *"POD 4 — NO SIGNAL"*, and there is no verb that
+   changes it.** ⚠️ **This step lost the plan's per-pawn pacing price. §3.4.1.**
 2. **the console** — a `DeviceKind.Terminal` whose `Name == tid`, `Powered`, `IsOperational`,
    **`Scriptable == true`**. *This is the "MOSS is WHERE you thaw" gate and it is the whole
    reason `Scriptable` matters.*
@@ -1213,9 +1707,73 @@ NO adapter is registered for a `CryoPod`, and `MossBindings.cs`'s switch is not 
    **Round-trip a mid-cycle ship and require byte-identity** — that is the one state this feature
    invents and it is the one a save test will otherwise miss.
 
-**Must NOT.** Insert into `DeviceKind` (append only). Add a field to `Citizen` or to `Device`.
-Call `ShipLedger` from `ThawGate`. Register a `CryoPod` adapter in `MossBindings`. Put the
-console check host-side. **Price `thaw_cost` in `ControllerModule`s** (§2 beat 7).
+---
+
+#### W5.5 — ⭐ **THE EMERGENCY THAW** *(NEW in rev 3 — OD-10 decided as recommended)*
+
+**The decision.** When `LivingCrew` reaches **0**, one more pod cycles **automatically, once**.
+
+> ### ⛔ **IT LIVES IN `CryoSystem`. IT IS NOT A HOLE IN `ThawCommand`. THIS IS THE LOAD-BEARING
+> HALF OF THE DECISION AND IT IS THE HALF A LANE WILL BE TEMPTED TO GET WRONG.**
+> `ThawCommand` is a player-reachable `ISimCommand`. **Any bypass inside it — a `skipGate` flag, a
+> nullable pod argument, an early return before the term list — is a code path the player can
+> reach**, and the first player who finds it uses it as the normal route, which deletes every gate
+> §3.3 and §3.4.1 exist to build. The emergency is **not a thaw the player asks for**; it is
+> something the *ship* does when there is nobody left to ask. **That is a system's job, and the
+> system already exists in this wave.**
+>
+> ⇒ **`CryoSystem.Tick` owns it, and `ThawCommand` never learns it exists.** The two paths share
+> the *mechanism* (set `Progress`, cycle, `AddCitizen`) and share **none** of the gate.
+
+**What the emergency BYPASSES, stated so nobody has to infer it.** All of it: the console
+(`Scriptable`), the price (`thaw_cost`), the headroom terms, and the cycle exclusion. **That is
+correct and it is the point** — every one of those gates presumes a living crew member to satisfy
+them, and there is none. **But it must be a NAMED EXCEPTION with its own branch and its own test**,
+not an emergent consequence of a gate returning `true` on an empty ship.
+
+**⚠️ WHAT IF THE EMERGENCY POD IS ITSELF WRECKED?** The decision does not answer this, and the
+case is reachable **the moment the wrecked-pod count is non-zero** (§4 W3 recommends two).
+
+⇒ **The rule: the emergency cycles the nearest INTACT pod — a pod that a normal thaw would have
+accepted on the pod term alone** (`IsOpen == false && Condition ≥ fail`). **A wrecked pod is never
+selected**, because there is no one alive inside it to wake; selecting one would produce an
+automatic thaw that cycles, opens, and delivers **nothing**, leaving the player staring at an open
+capsule with a body in it and a still-empty ship. **Deterministic tie-break required** — the same
+requirement W5.4 step 2 already carries.
+
+⇒ **AND WHEN NO INTACT POD REMAINS, THE RUN IS OVER.** That is option A from OD-10's table and it
+was accepted alongside B: **a real lose screen fires**, at the one moment it is honest — the
+player has spent every soul aboard. It does **not** fire in minute three, which is the entire
+reason B exists.
+
+**What the player is told — three moments, and all three are REQUIRED, because the whole feature
+is a message:**
+
+| moment | what the player sees | why |
+|---|---|---|
+| **the last pawn dies** | the death, then — **without a pause** — a pod cycling | if the grace is silent the player believes the game ended and quits |
+| **the emergency pod opens** | a Chronicle line naming both people: *"With \<name\> dead, the ship woke \<name\>."* **`HistorySystem.Record(…, HistoryKind.Death, …)` for the death is already automatic** (`HistorySystem.cs:99`, on `CitizenDiedEvent` — a *real* citizen died here, unlike §2 beat 0's sleepers); the wake is the new line | this is the most narratively loaded event the game can produce and the machinery to say so is already built |
+| **it happens a second time** | ⛔ **it does not.** The grace is **once per run** | *"protects minute three without protecting hour three"* — the decision's own words |
+
+⚠️ **"ONCE" NEEDS SOMEWHERE TO LIVE, AND IT IS THE ONE PLACE THIS FEATURE COSTS STATE.** The
+honest options are **(a)** a hashed flag on the sim — **which is a new saved+hashed field and the
+full ritual**, or **(b)** derive it: *"the emergency has fired iff some pod is open whose sleeper
+never came from a `ThawCommand`"* — **which is not derivable, because an emergency-thawed pod and a
+normally-thawed pod are byte-identical afterwards.** ⇒ **(a). Budget one bit.** W5a is already a
+five-pin wave and this rides free inside it; **discovering it in W5b would be a second re-pin.**
+
+**Acceptance.** Kill the only pawn on a prepared ship, driven, and require: a pod cycles; the new
+citizen exists; the Chronicle carries both lines; **a second `LivingCrew == 0` does NOT cycle a
+second pod**; a wrecked pod is **never** the one selected (fixture: nearest pod wrecked, next-
+nearest intact — assert the *intact* one opened, and **run this leg with the others blinded**,
+fifth trap shape); and a save/load across the fired flag round-trips byte-identically.
+
+---
+
+**Must NOT.** Insert into `DeviceKind` (append only). Add a field to `Citizen`. Call `ShipLedger`
+from `ThawGate`. Register a `CryoPod` adapter in `MossBindings`. Put the console check host-side.
+**Price `thaw_cost` in `ControllerModule`s** (§2 beat 7). **Ship `thaw_cost` as a single flat
+scalar** (§3.4.1). **Put the emergency thaw anywhere near `ThawCommand`** (W5.5).
 
 **Acceptance.** Thaw refused with a **named** reason for each of the six contract steps, driven,
 one test per reason; permitted on a prepared ship; Parts charged exactly once and **not at all on
@@ -1278,9 +1836,50 @@ furniture pristine, but do not let the two waves each assume the other did it.
 
 ---
 
-### **W7 — the RimWorld work-priority grid** *(own lane, AFTER the start ships — owner decision 4)*
+### **W7 — ⭐ SKILLS + the work-priority grid** — **PROMOTED TO REQUIRED (rev 3), and it moves AHEAD of W8**
 
-**Goal.** A per-crew × work-type 1–4 priority table, RimWorld-shaped.
+> ### ⭐⛔ **RE-CHARTERED IN REVISION 3. OD-5 IS DECIDED: AUTHORED PEOPLE WITH REAL MECHANICAL
+> DIFFERENCES. WHO YOU WAKE MATTERS.**
+>
+> **That single decision changes this wave's status, its scope and its position in the order.**
+>
+> **Status: optional → REQUIRED.** Revision 2 said *"the wreck does not need it to be playable"*
+> and that is **still literally true and now beside the point.** The thaw is the game's reward
+> loop; the owner's mechanic makes *"who do I wake next?"* a choice the player makes **five
+> times** (§4 W3) in the first day, at a real and rising matter price. ⇒ **If the people are
+> identical, the choice is a name in a list.** MEASURED: they are identical. `ECONOMY.md:474-482`
+> — no skills, no aptitudes; ties resolve by **distance → source registration order → board order
+> → citizen entity-store order**, and the doc's own verdict is *"the only differentiation the
+> system has, and it is an accident."* **A player will notice by the third thaw**, and the third
+> thaw is inside the first sim-day.
+>
+> **Scope: a priority TABLE → a priority table AND SKILLS.** Revision 2 chartered the RimWorld
+> grid alone. A grid lets the player *say* who does what; it does not make anyone *better* at it.
+> **OD-5 asks for the second thing**, and a thaw decision needs it: waking the engineer has to
+> mean the benches run faster, not merely that you may point her at them.
+>
+> ⇒ ⚠️ **THE CONSTRAINT ALREADY ON RECORD, AND IT SIZES THE WAVE: SKILLS MUST BE NEW HASHED
+> `Citizen` STATE, NOT AN EXTENSION OF THE HOST-SIDE PERSONA.** The persona layer is host state,
+> **gate-proven out of determinism at P2** (`Simulation.cs:386-388` — the whole mind/persona/fact
+> layer is deliberately unhashed), and the sim must stay fully playable with no mind attached at
+> all. A skill that changes work rates is **sim-canonical by definition**. ⇒ **new `Citizen`
+> fields ⇒ the CITZ save chapter bumps ⇒ P1/P2/P3 ⇒ plus def'd defaults ⇒ P4/P5. ALL FIVE PINS,
+> and the full def-field ritual in ONE commit** (default + parser key + checksum fold +
+> equivalence coverage). **This is the largest wave in the document and that has not changed.**
+>
+> **Position: after W8 → BEFORE W8.** `--ship wreck` cannot become the default until the thaw is
+> a decision, and it is not a decision until the people differ. **W8 is the last wave and it now
+> waits on this one.**
+>
+> ⚠️ **AND ITS OTHER JUSTIFICATION IS NOW LIVE TOO.** §2.0's one-pawn ladder — the dispatcher
+> outranking eating, crafting and maintenance — has W7's veto as **the only real fix**, and
+> revision 2 accepted it as an unresolved risk *because W7 was far away*. It is not far away any
+> more. **The two arguments are independent and they now point the same way.**
+
+**Goal.** Per-crew skills that change work rates, plus a per-crew × work-type priority table,
+RimWorld-shaped. **The two halves are one wave** — a priority without a skill is a preference, a
+skill without a priority is an unusable strength.
+
 **What exists today: nothing.** `ECONOMY.md:474-482` calls the current arrangement *"the only
 differentiation the system has, and it is an accident"*, and it is right. Ties resolve, in this
 order: **distance** (strict `<`, `DigJobSource.cs:84-89` and three siblings) → **source
@@ -1298,23 +1897,27 @@ same veto — **that is three call sites, and forgetting the last two is how thi
 half-done.**
 **Pins.** All five. New per-citizen hashed state ⇒ CITZ save chapter version bump ⇒ P1/P2/P3;
 def'd defaults ⇒ P4/P5.
-**Must NOT** be started before the wreck start is playable. **Charter only.**
+**Must NOT** be started before `--ship wreck` boots (W3) — a skill system with no wreck to
+demonstrate it on is tuned against grid, which is the ship it is *not* for. **Must NOT** ship the
+priority half without the skill half, or OD-5 is unanswered while looking answered.
+**Depends on:** W3. **Blocks:** W8. **MUST run alone** (five pins).
 
-⚠️ **REVISION 2 — THE ONE-PAWN OPENING RAISES W7'S VALUE AND I AM STILL NOT MOVING IT.**
-§2.0 shows that with one pawn the dispatcher's four boards outrank eating, crafting and
-maintenance, and W7's veto is the only way a player could ever say *"stop stripping and go
-eat"*. **But W7 moves all five pins, needs three call sites, and is the biggest lane in this
-document; the wreck does not need it to be playable, because a wreck authors no designations and
-a lone pawn therefore falls through to the out-of-band claimants by default** (§4 W3
-precondition 1). ⇒ **W7 stays after W8. The owner should know the tension exists, and it is
-recorded in §6 R-12 rather than resolved here.**
+~~⚠️ **REVISION 2 — THE ONE-PAWN OPENING RAISES W7'S VALUE AND I AM STILL NOT MOVING IT.**
+… ⇒ **W7 stays after W8.**~~ **⛔ SUPERSEDED BY REVISION 3 — OD-5 MOVED IT.** Revision 2's
+reasoning was sound on its own terms (the wreck is *playable* without W7, because a wreck authors
+no designations and a lone pawn falls through to the out-of-band claimants by default, §4 W3
+precondition 1) — **and it weighed the wrong thing.** It asked whether the wreck could *run*
+without W7. OD-5 asks whether the wreck's core loop is a *decision* without it, and the answer is
+no. **Playable is not the bar; the thaw being a choice is.**
 
 ---
 
-### **W8 — flip the default to `--ship wreck`** *(last)*
+### **W8 — flip the default to `--ship wreck`** *(last, and it now waits on W7)*
 
 `hosts/web/Program.cs:44` and `play.sh`. Owner decision 1: **only when wreck is playable.**
 Pin-neutral. The banner and `CLAUDE.md`'s "Play" section change in the same commit.
+⭐ **rev 3: "playable" now includes W7** — flipping the default puts a new player in front of a
+thaw decision, and OD-5 says that decision must mean something.
 
 ---
 
@@ -1344,7 +1947,7 @@ spoiled food does not feed, seized Parts need reprocessing, perished Seals do no
 > **ordinal 0 only**, and all three benches already carry one (`recycle_stock` on the
 > SalvageRecycler, `fab_components` on the Fabricator, the `[recipes]` row on the MachineShop).
 > A fourth conversion node **parses, checksums, is reachable, and never runs** — driven, not
-> read, by `lane/recovery-economy`'s own tests. **Displacing an existing bill is not an option:**
+> read, by W2's own tests. **Displacing an existing bill is not an option:**
 > dropping `recycle_stock` kills Regolith → Scrap and with it every Part on every ship.
 >
 > ⇒ **Two exits, and they are not equal.**
@@ -1394,32 +1997,45 @@ provably invisible to a save.
 
 ---
 
-### Dependency graph *(rev 2)*
+### Dependency graph *(rev 3 — W7 moved, W0b added, W4 in flight)*
 
 ```
-🟢 W0  condition wire + wrecked art ─┐   BUILT, unmerged
-🟢 W1  damaged authoring ────────────┼──► W3 ──► W5a ──► W5b ──► W8
-🟢 W2  wreck rule + Swarf ───────────┘      ▲       ▲
-                                            │       │
-   W4   the "why nothing happens" channel ──┴───────┘   BLOCKING for both
-   W4b  ＋ADD ROOM splits + the vent verb ──┘           BLOCKING, and needs W4 first
-   W6   REST ───── independent; moves 3 pins; land it ALONE
-   W9   Degraded ─ independent; moves 3 pins; INTEGRATOR LANE; runs ALONE
+✅ W0   condition wire + wrecked art ─┐  LANDED  (main @ 50e6778)
+✅ W1   damaged authoring ────────────┼──► W3 ──► W5a ──► W5b ──► W7 ──► W8
+✅ W2   wreck rule + Swarf ───────────┘     ▲       ▲               ▲
+        (P4/P5 moved, re-pinned)            │       │               │
+                                            │       │               └─ OD-5: the thaw is only a
+🔷 W4   the `blocked` channel ──────────────┴───────┘                    DECISION if people differ
+        IN FLIGHT · lane/blocked-channel · BLOCKING for W3's play and for W4b
+   W4b  ＋ADD ROOM splits + the vent verb ──┘   BLOCKING · needs W4 FIRST (grid regression)
+
+   W0b  wrecked-twin art join + Swarf piece + the delta scheme   ← art acceptance needs W3
+   W6   REST ───── independent; moves ALL FIVE; runs ALONE
+   W9   Degraded ─ independent; moves 3 (+2); INTEGRATOR LANE; runs ALONE
    W10  Rubble ─── independent; moves 0 pins; runs ALONE (textual conflict, not determinism)
-   W7   work priorities ──── after W8
 ```
 
-**Merge order for what is already built:** W0 (client-only, safest) → W1 (pin-neutral) → W2
-(P4/P5 — **the integrator re-pins**). Doing W2 last means exactly one defs re-pin for the three.
+**⇒ THE ORDER:** **W4** *(in flight)* **→ W3 → W4b → W5a → W5b → W6 → W9 → W10 → W7 → W8**,
+with **W0b** slotted after W3 (its acceptance is browser photographs of a wrecked ship) and its
+**`Swarf` piece deliverable available to start today**.
 
-**Can run in parallel:** (W4, W6) · (W4, W3) once W1 is merged · (W3, W6).
+~~**Merge order for what is already built:** W0 → W1 → W2.~~ **Done — all three are on `main`,
+merged in that order, and the integrator's re-pin (`50e6778`) moved exactly the two defs pins.**
+
+**Can run in parallel:** (W4, W6) · (W4, W3) · (W3, W6) · (W0b item 3, anything).
 **MUST run alone:** **W4b** (it changes a shipped command's contract and inverts two existing
-tests) · **W5a** (five pins) · **W6** (three pins) · **W9** (three pins + spine files) ·
-**W10** (touches every layer textually).
-**NEVER parallel:** W2 with W6 (both change what maintenance does — the standing
-*"two lanes fixing the same function differently merge textually and are wrong together"*
-lesson) · **W5a with W6 or W9** (three concurrent state-pin moves cannot be attributed) ·
-**W4b before W4** (it ships a silent regression to the one standard surface).
+tests) · **W5a** (five pins) · **W6** (five pins) · **W7** (five pins) · **W9** (three pins +
+spine files) · **W10** (touches every layer textually).
+**NEVER parallel:** W2 with W6 — ⚠️ **now moot, W2 has landed, but the LESSON is why W6 and W7
+must not run together either**: both touch what a crew member does with an idle tick, and *"two
+lanes fixing the same function differently merge textually and are wrong together"* · **W5a with
+W6, W7 or W9** (concurrent state-pin moves cannot be attributed — a moved hash tells you *that*
+something changed, never *what*) · **W4b before W4** (it ships a silent regression to the one
+standard surface) · **W7 before W3** (a skill system tuned against grid is tuned against the wrong
+ship).
+
+⚠️ **REVISION 3 ADDS A FOURTH FIVE-PIN WAVE (W7) TO §6 R-14's PILE-UP.** The cheapest ordering is
+now **W5a → W6 → W9 → W7**, each with its own re-pin commit.
 
 ---
 
@@ -1459,7 +2075,7 @@ whether the game has a game in it.
 MEASURED anchors: grid completes **88 services in 6 sim-days** at **1.999 %** Maintain occupancy,
 and **272 in 12 days** at **3.063 %** — the maintenance subsystem is running at a few percent of
 capacity because grid boots every device at `Condition = 1f` (~~`DeviceSpec` has no Condition
-field~~ — 🟢 **it does now, `lane/damaged-authoring`; grid simply does not use it**). A wreck
+field~~ — ✅ **it does now, W1 landed; grid simply does not use it**). A wreck
 authoring **at most 146** wear-bearing devices below threshold puts up to
 `146 × 900 s = 36.5 crew-hours` of Maintain work on the board **before the player clicks
 anything** *(arithmetic over `wear.def:17`; the 146 bound is measured, the wear-bearing subset is
@@ -1485,7 +2101,7 @@ regardless of condition (`deconstruct.def:39`); dug debris pays Regolith; both f
 was `floor(device_parts 2 × Condition)`, **"0 below Condition 0.5 — a wreck is worth nothing,
 which is the point"**, against art badging the wrecked twins at **0 %–35 %**. **Under that rule
 the entire dead half of a wrecked ship yielded exactly zero.** The owner accepted the finding and
-`lane/recovery-economy` closed it with `ItemKind.Swarf` (§4 W2). **This paragraph is kept because
+W2 closed it with `ItemKind.Swarf`, and it is on `main`. **This paragraph is kept because
 the diagnosis is the reusable part: the shipped rule was not a bug, it was a correct rule for a
 different game, and it took driving the numbers to see that the premise had changed under it.**
 
@@ -1496,6 +2112,36 @@ but by `TryGetBill`'s ordinal-0 resolution with all three benches occupied (§4 
 ⇒ **"Salvaging the dead half feeds the living half" is TRUE of keeping machines alive and FALSE
 of building anything new.** The only faucet into *production* is still walls and debris →
 Regolith.
+
+> ### ⭐ **WHAT THAT DOES TO THE SALVAGE ECONOMY'S CEILING, SAID PLAINLY (rev 3)**
+>
+> **MEASURED-BY-SOURCE, and the sim states it about itself** (`ItemStack.cs:24-34`, the `Swarf`
+> comment): *"Swarf has exactly ONE source (DeconstructSystem's wreck yield) and exactly ONE sink
+> (MaintenanceSystem's bottom rung). No production node, no recipe and no command converts it into
+> Parts, Scrap or Regolith."* `production.def:91-123` carries the would-be `recycle_swarf` node
+> **commented out**, with the reason: `TryGetBill` resolves a station's bill at **ordinal 0 and
+> nothing else**, and all three benches already carry one.
+>
+> ⇒ **THE CEILING: the dead half of a wrecked ship can keep the living half RUNNING, and can never
+> make it BIGGER.** Every device the player strips buys maintenance and nothing else. The only
+> faucet into *production* on a wreck is the same one grid has — **walls and dug debris →
+> Regolith → Scrap → Parts** — and a wreck's wall stock is finite and structural
+> (`IsPressureHull` refuses the hull).
+>
+> ⚠️ **THIS IS A REAL BOUND ON THE PREMISE, NOT A TUNING GAP.** The fiction is *"salvage the dead
+> half to feed the living half"*, and half of that sentence is currently false. **A player who
+> strips the entire wreck has a maintenance surplus and no way to build anything.**
+>
+> ⚠️ **AND IT IS A CONSERVATION PROOF, WHICH IS WHY IT WAS BUILT THIS WAY.** Terminal-by-
+> construction is what keeps the place→strip round trip priced entirely in Parts — **3 out, at
+> most 2 back** — exactly as E0-5 WP-3 left it. **Opening the Swarf→Parts path re-opens that
+> ledger.** Whoever builds the fourth conversion owes the round-trip arithmetic again.
+>
+> ⇒ **The exit is §4 W9's box and it has not changed: a FOURTH STATION KIND (`Reprocessor`), one
+> appended `DeviceKind`, one bill, no selection rule, no new save state. RECOMMENDED.** It is also
+> good fiction — a wreck salvage bench is a thing you would build — **and both `Swarf` and W9's
+> `Degraded` goods need the same one.** **That is the live E1 question**, and it is now the only
+> thing standing between the wreck and its own premise.
 
 ⇒ **E1 remains gated, and the fork has moved twice.** `HANDOVER.md` framed it as *"does
 `--ship grid` get its own ice hold?"*; revision 1 re-framed it as *"what does a dead machine
@@ -1522,6 +2168,12 @@ Grid's water, meanwhile, is **still conjured** — measured this run: `ice melte
    work alone**), so the gate has a number to be measured *against* instead of only a
    pass/fail. **Publish the measured time-to-second-thaw beside the predicted floor.**
 4. **A3 ("can build a wall at day 3") has still never been measured. Measure it on the wreck.**
+5. ⭐ **REVISION 3 — MEASURE THE WHOLE CURVE, NOT ONLY THE SECOND THAW.** OD-12 fixes the number of
+   thaws (recommended five) and §3.4.1 shows the gate between them is currently **flat after the
+   second scrubber**. ⇒ **the gate's honest form is now *"one crew member, alone, reaches thaw 2 —
+   and thaws 3, 4 and 5 do NOT all arrive in the same sim-hour."*** A single second-thaw event
+   passes even when the pacing has collapsed. **That is A1's mistake in a sixth costume: a
+   milestone that is honest about *whether* and silent about *when*.**
 
 ---
 
@@ -1535,7 +2187,7 @@ deliberate three times). **Three invisible refusals in the first thirty minutes 
 the whole game being invisible.** W4 is the countermeasure and it is why W4 is blocking.
 *Binding precedent: "invisible feedback is FUNCTIONAL" — it cost three owner reports.*
 
-**R-2 — The self-healing ship. 🟢 CLOSED by `lane/recovery-economy`, and the trap it names is
+**R-2 — The self-healing ship. ✅ CLOSED by W2 (landed), and the trap it names is
 still live as a MERGE-ORDER risk.** Without W2 a wrecked ship repairs itself to `Condition 0.6`
 with empty hands in one 900 s pass per device and the premise evaporates in the first sim-hour.
 **The trap is that W3 without W2 will LOOK like it works**, because the ship comes back to
@@ -1589,10 +2241,12 @@ population count will not prove it. **Plant a known-refused tile and require it 
 `Fehler`/`erfolgreich`, and `^ *error CS` never matches because the token appears mid-line after
 the path. **Test your harness's parser against a real de-DE line before believing a red.**
 
-**R-10 — The art is 72 new pieces and the join is the risk, not the drawing. 🟢 THE DRAWING IS
-DONE (`lane/wrecked-art`); THE JOIN IS UNBUILT, WHICH IS EXACTLY THE HALF THIS RISK NAMED.**
+**R-10 — The art is 72 new pieces and the join is the risk, not the drawing. ✅ THE DRAWING IS
+DONE AND ON `main`; ❌ THE JOIN IS UNBUILT AND IS NOW ITS OWN WAVE, W0b — EXACTLY THE HALF THIS
+RISK NAMED, AND rev 3 GAVE IT A THIRD OWED ITEM (`NO_GROUND_ITEM_SPRITE.Swarf`, which a wreck
+player meets in the first ten minutes).**
 ⚠️ **And rev 2 adds a second condition to it: the join package also owes the `devices` channel's
-delta / dirty-version scheme** (§4 W0) — the channel was merged on the written understanding that
+delta / dirty-version scheme** (§4 W0b) — the channel was merged on the written understanding that
 whichever lane first *draws* the data pays for it, and on this plan that lane is this one.
 `GLYPH_SUBSTITUTE` is not homogeneous in registry `kind` (5 `functional`, 1 `cosmetic`), so any
 predicate over *what a glyph resolves to* is defeated by substitution — that shipped DEMOLISH
@@ -1600,7 +2254,7 @@ dead on every lamp with the suite **green before and after the fix**. The wrecke
 key off `(DeviceKind, Condition)` from the wire, **derived from the registry**, never off a
 glyph and never hand-mirrored into two view files.
 
-**R-11 — `AddRoomCommand` force-unlocks doors, including Lien-owned locks. 🟢 FIXED BY W4b, as a
+**R-11 — `AddRoomCommand` force-unlocks doors, including Lien-owned locks. ⏳ FIXED BY W4b, as a
 side effect.** `Commands.cs:640` sets `IsLocked = false` unconditionally, bypassing
 `SetDoorStateCommand`'s interlock (`:21`). Latent today; on a wreck with locked compartments it
 is a free skeleton key. **Deleting the door-forcing step removes it — note that W4b's value is
@@ -1624,28 +2278,82 @@ UNMEASURED, because no one-crew ship exists to drive.**
 ⚠️ **THE FIRST THING W3'S `occupancy --ship wreck --days 1` MUST BE READ FOR IS WHETHER THE LONE
 PAWN EVER EATS.** Do not read the A1 line first.
 
-**R-13 — THE MINUTE-THREE HARD LOSE.** §2 beat 2. A player who walks their only pawn into vacuum
-loses it, **and cannot thaw a replacement**, because thawing needs a repaired, powered,
-commissioned MOSS terminal and the pawn was the only pair of hands. **Seven people stay frozen
-and the game is over, silently, in minute three.** This is not a bug in any shipped system — it
-is a property of a one-pawn opening, and it is **§7 OD-10**. It is also the *only* risk in this
-document that a new player will meet before they understand any of the mechanics.
+**R-13 — THE MINUTE-THREE HARD LOSE. ✅ ANSWERED (rev 3) — OD-10 decided as B + A.** §2 beat 2.
+A player who walks their only pawn into vacuum loses it, and cannot thaw a replacement. **The
+emergency thaw closes it: `LivingCrew == 0` cycles one more pod, automatically, once**, and a real
+lose screen fires only when no intact pod remains. **The residual risk moved and is smaller but
+sharper: the grace must live in `CryoSystem` and not in `ThawCommand`** (§4 W5.5) — a bypass in
+the command is player-reachable and deletes every gate the plan builds. **That is what a lane will
+get wrong, because the command is where the thaw code already is.**
 
-**R-14 — THE FIVE-PIN PILE-UP.** Revision 2 turns one wave into four that each move state pins:
-**W5a** (the `CryoSystem` seed), **W6** (rest changes what everyone does), **W9** (a hashed bit
-on `ItemStack`), and W7 later. `CLAUDE.md`'s standing lesson is that **per-branch counts do not
-add on merge and three concurrent pin movers cannot be attributed** — a moved hash tells you
-*that* something changed, never *what*. ⇒ **§4's dependency graph marks all four "runs alone",
-and that is a hard constraint, not a preference.** The cheapest ordering is **W5a → W6 → W9**,
-each with its own re-pin commit, because W5a's move is the one everything else waits on.
+**R-14 — THE FIVE-PIN PILE-UP, now FOUR waves deep.** **W5a** (the `CryoSystem` seed), **W6**
+(rest changes what everyone does), **W9** (a hashed bit on `ItemStack`), **and — new in rev 3 —
+W7**, which OD-5 promoted and which needs new hashed `Citizen` state. `CLAUDE.md`'s standing
+lesson is that **per-branch counts do not add on merge and concurrent pin movers cannot be
+attributed** — a moved hash tells you *that* something changed, never *what*. ⇒ **§4's dependency
+graph marks all four "runs alone", and that is a hard constraint, not a preference.** The cheapest
+ordering is **W5a → W6 → W9 → W7**, each with its own re-pin commit, because W5a's move is the one
+everything else waits on.
+
+---
+
+### Revision 3's risks
+
+**R-15 — ⛔ `MachineDefs.Table` IS A DEAD DUPLICATE AND ITS OWN HEADER SAYS OTHERWISE.**
+**MEASURED-BY-SOURCE.** The header at `MachineDefs.cs:31-35` reads: *"This table is only the
+DEFAULT source that `SimDefs.CreateDefault` copies verbatim."* **`CreateDefault` copies nothing.**
+`SimDefs.cs:704-705` holds **its own hand-transcribed literal array** — the comment there says
+*"verbatim copy of `MachineDefs.Table`"*, which is a statement about the **numbers**, not the
+**code**. There is **no code path from one to the other.**
+
+**⇒ Three consequences, and the second is the trap:**
+1. **A machine value lives in THREE places** — `MachineDefs.Table`, `SimDefs.CreateDefault`, and
+   `content/core/SimDefs/machines.def`. **W6's `Bed.fail` and W5's `CryoPod` row each need all
+   three.** Editing one and shipping is how a row silently disagrees with itself.
+2. ⚠️ **A MUTATION TO `MachineDefs.Table` IS A FALSE RED — TRAP 3, IN A NEW PLACE.** It changes
+   **zero sim behaviour** (the only non-test reader is `Device.DrawKW`, the *frozen* `Game.View`
+   display path — `Device.cs:113`), so it can never redden a behavioural test. But it **does**
+   redden exactly one test: `DefsDefaultTests.MachineTable_MatchesMachineDefs_EntireTable`, which
+   asserts per-index equality with `SimDefs.Default`. ⇒ **A harness that mutates that table sees a
+   plausible, small, correctly-named-looking failure count and concludes its behavioural guard
+   bites. It does not. The red is a transcription mismatch.** *A false RED does not look like an
+   explosion — it looks like a plausible failure count.*
+3. **Mutate `SimDefs.CreateDefault` (or the `.def` row) instead** — that is the value determinism
+   consumers actually read (`sim.Defs.Machines`), and `MachineDefs.cs`'s own header says so in its
+   *next* sentence, which is true: *"Determinism consumers read `sim.Defs.Machines` — do NOT add
+   new sim reads here."*
+
+**R-16 — A PERMANENTLY-REFUSED WRECK IS RE-SCANNED FOREVER, AND NOBODY HAS MEASURED IT.**
+§4 W3. `MaintenanceSystem` recruits at 1 Hz; `IsUnfixableWreck` runs **up to three linear
+item-store scans** when the ship holds no consumable; nothing is remembered between passes, **by
+design** — the machine must become serviceable the moment a consumable appears. Unmeasurable on
+grid (`needy at end 9` at 12 days). **A wreck authors hundreds, and its opening hour is by design
+the window with no consumable aboard.**
+⚠️ **AND THE COUNTERMEASURE IS TO MEASURE, NOT TO OPTIMISE.** `HasIceChain` went 91 721 250
+slots/sim-day → 1 250 and was worth **~1 %, not separated from noise**. **A count of scans is not
+a slowdown.** W3's acceptance carries a paired A/B; if the delta is inside noise, **that is a
+result — write it down.**
+
+**R-17 — ⭐ THE PACING HOLE OD-9 OPENED, AND HOW IT OPENED.** §3.4.1. The per-pawn matter price
+that paced thaw N vs N+1 lived inside an *assumption about pod damage*; the decision that deleted
+it was about *whether a sleeper lived*. **Nobody removed the pacing and nobody would have noticed
+if the arithmetic had not been re-run.**
+⇒ **THE REUSABLE PART: a design lever can be load-bearing in a section nobody is reading when the
+decision is taken.** When an owner decision lands, **re-derive what the plan was relying on, do
+not only strike what the decision contradicts.**
+**The residual risk after §3.4.1's fix:** an escalating `thaw_cost` is a **new** dial with no
+measurement behind it — `thaw_cost_base` and `thaw_cost_step` are UNMEASURED and cannot be
+measured until W3 and W5 both exist. **W5b's acceptance must publish the measured
+time-to-each-thaw**, not merely that the gate refuses correctly.
 
 ---
 
 ## 7. OWNER DECISIONS — the record, and what is still open
 
-> **REWRITTEN IN REVISION 2.** Six of revision 1's eight items have been decided or closed. They
-> are kept as a **record** rather than deleted, because in three of them the *reason* the answer
-> came out the way it did is the reusable part. **What is still open is §7.1, and it is short.**
+> **REWRITTEN AGAIN IN REVISION 3.** Revision 2 closed six of eight. **Revision 3 closes three
+> more — OD-9, OD-10 and OD-5 — leaving TWO open items and one new dial.** They are kept as a
+> **record** rather than deleted, because in several of them the *reason* the answer came out the
+> way it did is the reusable part. **What is still open is §7.1, and it is now very short.**
 
 ---
 
@@ -1653,14 +2361,18 @@ each with its own re-pin commit, because W5a's move is the one everything else w
 
 | # | question | answer | where it lives now |
 |---|---|---|---|
-| **OD-1** | What does a wrecked machine yield when stripped? | **Option B — a new low-grade kind.** `ItemKind.Swarf = 9`; `deconstruct.device_swarf = 1`; the Parts arm untouched at every Condition. | 🟢 `lane/recovery-economy`; §4 W2 |
+| **OD-1** | What does a wrecked machine yield when stripped? | **Option B — a new low-grade kind.** `ItemKind.Swarf = 9`; `deconstruct.device_swarf = 1`; the Parts arm untouched at every Condition. | ✅ **landed** `df84b11`; §4 W2 |
 | **OD-2** | Does `＋ADD ROOM` survive on the wreck? | **Option C — SPLIT IT. Naming is free, air is earned.** `Pressurize` and the door-forcing are deleted; the vent becomes the tool. | §4 W4b — **promoted to a blocking wave** |
 | **OD-3** | What ARE the eight wrecked loose resources? | **Option B — one `Degraded` bit on `ItemStack`**, and the P1–P3 pin move is taken deliberately. | §4 W9 |
-| **OD-4** | Where does `wreck_threshold` live, and does it change existing ships? | **0.25, global, and the empty free-repair band on `Terminal`/`Light`/`WaterTank` is ACCEPTED knowingly.** | 🟢 `lane/recovery-economy`; §4 W2 |
+| **OD-4** | Where does `wreck_threshold` live, and does it change existing ships? | **0.25, global, and the empty free-repair band on `Terminal`/`Light`/`WaterTank` is ACCEPTED knowingly.** | ✅ **landed** `df84b11`; §4 W2 |
 | **OD-6** | Rename `ItemKind.Regolith`? | **Yes — `Rubble`.** | §4 W10, **runs alone** |
 | **OD-7** | Skin `'/'` (the open door)? | **CLOSED, and the question was malformed.** | §2 beat 1 |
+| **OD-9** *(rev 3)* | What is a wrecked, occupied pod? | ⛔ **A DEAD SLEEPER.** Fewer than eight crew are recoverable; a wrecked pod is never thawable and has no repair path. **How many are wrecked is UNSET — W3 sets it; this doc recommends TWO.** | §2 beat 0 · §3.4.1 · §4 W3 |
+| **OD-10** *(rev 3)* | The minute-three hard lose | ✅ **B + A — the EMERGENCY THAW**, once, at `LivingCrew == 0`, **in `CryoSystem` and NOT as a hole in `ThawCommand`**; the lose screen fires when no intact pod remains. | §4 W5.5 |
+| **OD-5** *(rev 3)* | Authored people, or generated? | ✅ **AUTHORED, WITH REAL MECHANICAL DIFFERENCES.** ⇒ **W7 is REQUIRED and moves ahead of W8**; skills are new hashed `Citizen` state, not a persona extension. | §4 W7 |
 
-**Three of those six are worth a sentence each on *why*, because the reasoning transfers.**
+**Three of revision 2's six are worth a sentence each on *why*, because the reasoning transfers —
+and revision 3 adds two more.**
 
 **OD-1 — the shipped rule was not a bug.** `"a wreck is worth nothing, which is the point"` was a
 correct rule for a game where you do not start on a wreck; it existed to stop a strip/rebuild
@@ -1691,107 +2403,173 @@ the pixel.**
 
 ---
 
-## 7.1 STILL OPEN
+### ⛔ OD-9's DIAGNOSIS — **STRUCK, KEPT, AND THE INFERENCE WAS WRONG.** *(closed in rev 3)*
 
----
+> ### **THE OWNER ANSWERED IT: A WRECKED OCCUPIED POD HOLDS A DEAD SLEEPER.**
+> Revision 2's working assumption was the opposite. **It is struck below rather than deleted,
+> because the reason it was wrong is the reusable part** — and because the *design* argument it
+> made was correct and is now a hole (§3.4.1).
 
-### **OD-9 — ⚠️ WHAT IS A WRECKED, OCCUPIED POD?** ⭐ *INFERRED, NOT STATED — the highest-stakes open item*
+**The question, as it was asked.** The owner's art has two capsule pieces and 70 wrecked twins
+badged 0 %–35 %. **A pod is a `Device` and W1 lets a plan author any device damaged. So what does
+a pod at `Condition = 0.08` mean?**
 
-> ### ⛔ **THE OWNER DID NOT ANSWER THIS. THEY ANSWERED THE THAW MECHANIC INSTEAD.**
-> Everything below is **my working assumption**, written so W5 has something to build against.
-> **It must not be treated as settled by any later wave, and the alternative must not be built
-> without asking again.**
-
-**The question.** The owner's art has two capsule pieces — `CRYO CAPSULE · OCCUPIED` and
-`CRYO CAPSULE · OPEN` — and 70 wrecked twins badged 0 %–35 %. **A pod is a `Device` and W1 lets a
-plan author any device damaged. So what does a pod at `Condition = 0.08` mean?**
-
-**THE WORKING ASSUMPTION, and why it fits.** All eight crew are stated to be recoverable
+~~**THE WORKING ASSUMPTION, and why it fits.** All eight crew are stated to be recoverable
 (*"we have 8 pawns all in the pods"*, and the other seven *"have to be defrosted"* — not *"if
 they survived"*). ⇒ **The occupant is ALIVE, and the POD is what is broken. A damaged pod must be
-REPAIRED before its sleeper can be cycled.**
+REPAIRED before its sleeper can be cycled.**~~
 
-**Why this reading is also the best design, if it is right.**
-- It gives **each successive thaw a per-pawn matter price** that is *authorable* — the owner can
-  pace the whole opening by choosing eight pod conditions, with no code and no def.
-- It reuses the entire repair loop the wreck already teaches. A pod below `wreck_threshold` needs
-  a consumable, exactly like every other machine.
-- It gives `ThawGate`'s **pod term** something to say beyond `Powered` — *"POD 4 IS DAMAGED —
-  needs Parts."*
+⛔ **REJECTED BY THE OWNER.** ⚠️ **And note WHERE the inference went wrong: it read the owner's
+framing of a DIFFERENT question — the thaw mechanic — as evidence about this one.** *"We have 8
+pawns all in the pods"* was a statement about the **opening's shape** (nobody starts awake), not a
+promise about the **ending's roster**. **A sentence answering one question is not evidence about
+its neighbour**, and this document treated it as such for a whole revision.
 
-**THE ALTERNATIVE, which is a different game and must not be built by accident.** A wrecked pod's
-sleeper is **dead**: the pod yields an `ItemKind.Corpse` with a name, and the ship's crew ceiling
-is whatever survived. That is a strong, bleak, entirely defensible design — the corpse art is
-already drawn (`CORPSE · UNSHROUDED`), and `AuthoredShips` already authors named corpses. **It is
-also unrecoverable: a player who loses four sleepers to authoring has lost half the game before
-touching anything.**
+**⇒ THE DECIDED ANSWER, and what it costs.** A wrecked pod's sleeper is **dead**: it holds a named
+`Corpse`, and the ship's crew ceiling is whatever survived. Bleak, strong, and entirely
+defensible — the corpse art is already drawn (`CORPSE · UNSHROUDED`) and `AuthoredShips` already
+authors named corpses.
 
-**⇒ THE ASK: one sentence from the owner.** *"A damaged pod is repaired before its sleeper wakes"*
-or *"a badly damaged pod's sleeper is dead."* **W5 builds the first; do not let it build the
-second by defaulting.**
+**What revision 2 correctly said this alternative costs, and it was right:**
+- ⛔ **It is unrecoverable.** *"A player who loses four sleepers to authoring has lost half the
+  game before touching anything."* ⇒ **that is exactly why §4 W3 recommends TWO and not four**,
+  and why the number must be printed rather than defaulted.
+- ⛔ **It deletes the per-pawn matter price.** The struck assumption was *"the cleanest available
+  pacing lever"* — an authorable, code-free dial. **Losing it is a real hole and §3.4.1 is the
+  re-derivation.** This is §6 R-17.
+
+**⇒ WHAT SURVIVES OF THE STRUCK TEXT.** Its three bullets argued the *design value* of a per-pawn
+price. **That value was real and is now unfunded.** The replacement — an escalating `thaw_cost` —
+buys the same property for two def scalars, and it is folded into OD-11.
 
 ---
 
-### **OD-10 — ⚠️ THE MINUTE-THREE HARD LOSE.** *(NEW in rev 2)*
+### ✅ OD-10 — THE MINUTE-THREE HARD LOSE. **DECIDED (rev 3): B plus A.**
 
 A one-pawn opening has a failure the eight-crew ship never had: **walk your only pawn into vacuum
-and the game is over, with seven people still frozen and nothing on screen to say so.** Thawing a
-replacement is impossible — it needs a repaired, powered, commissioned MOSS terminal, and the
-pawn was the only pair of hands. §6 R-13.
+and the game is over, with the rest still frozen and nothing on screen to say so.** §6 R-13.
 
-| option | what it does | cost |
+| option | what it does | outcome |
 |---|---|---|
-| **A — accept it, loudly.** A real lose screen the moment `LivingCrew == 0`. | Honest. Permadeath of the run is a legitimate genre choice. | One screen. But it fires in **minute three**, before the player has learned that vacuum kills. |
-| **B — the emergency thaw.** Pod 1 cycles automatically, once, when `LivingCrew` reaches 0. | Protects minute three without protecting hour three: it is a **one-time** grace, and when the pods run out the lose screen from (A) fires anyway. | A branch in `CryoSystem` and a Chronicle entry. **Recommended, with A.** |
-| **C — make the first pawn unkillable.** | ⛔ **Refuse.** It teaches the player that vacuum is survivable, which is the one lesson beat 2 exists to prevent. | — |
+| **A — accept it, loudly.** A real lose screen at `LivingCrew == 0`. | Honest; permadeath is a legitimate genre choice. But it fires in **minute three**, before the player has learned that vacuum kills. | ✅ **TAKEN — but moved to the END of the ladder**: it fires when **no intact pod remains**, not on the first death |
+| **B — the emergency thaw.** One pod cycles automatically, once, when `LivingCrew` reaches 0. | Protects minute three without protecting hour three. | ✅ **TAKEN, as recommended** |
+| **C — make the first pawn unkillable.** | ⛔ Teaches the player that vacuum is survivable, which is the one lesson beat 2 exists to prevent. | ⛔ **REFUSED** |
 
-**Recommendation: B plus A.** ⚠️ **And note B is not free of design content** — an automatic
-thaw bypasses the console, the price and the headroom gate, i.e. **every gate the plan just
-built.** That is defensible as an emergency, but it must be a *named exception in `CryoSystem`*,
-not a hole in `ThawCommand`, or the first player to find it will use it as the normal path.
+⚠️ **B IS NOT FREE OF DESIGN CONTENT AND THE DECISION CARRIED THAT FORWARD.** An automatic thaw
+bypasses the console, the price, the headroom gate and the cycle — **every gate the plan builds.**
+**⇒ IT IS A NAMED EXCEPTION IN `CryoSystem`, NOT A HOLE IN `ThawCommand`.** The full charter,
+including what happens when the emergency pod is itself wrecked and the three things the player
+must be told, is **§4 W5.5**.
 
 ---
 
-### **OD-11 — What does `thaw_cost` buy, and in what currency?** *(NEW in rev 2)*
+### ✅ **OD-5 — AUTHORED PEOPLE, WITH REAL MECHANICAL DIFFERENCES.** *(DECIDED in rev 3)*
 
-**Not whether to charge — the owner's brief already prices a thaw. The question is the
-currency**, and §2 beat 7's arithmetic makes it consequential rather than cosmetic.
+The slice has eight hand-written `AuthoredPersona`s (`AuthoredShips.cs:577-790`); grid has none
+and takes whatever `PersonaGenerator` produces.
+
+**⇒ DECIDED: authored, and written as a SET** — so that *who you wake* is a real choice, **and the
+choice is MECHANICAL, not only narrative.**
+
+⭐ **THIS IS THE DECISION THAT SIZED THE PROGRAMME, and it sized it upward.** Revision 2 put the
+fork exactly here: *"if the owner wants the choice to matter MECHANICALLY, W7 moves ahead of W8
+and the plan gets longer; if narrative differentiation is enough for v1, say so."* **The owner
+took the longer branch.**
+
+**⇒ WHAT IT COSTS, in two parts that must not be confused:**
+- **The writing** — persona sheets, one per sleeper. *Writing, not engineering.* Cheap.
+- ⭐ **THE ENGINEERING — W7, and it is the largest wave in this document.** *"Without skills, who
+  you wake has no mechanical consequence, only a narrative one"* — and **MEASURED, today they have
+  none at all**: `ECONOMY.md:474-482`, no skills, no aptitudes, ties resolving by **citizen
+  entity-store order**, *"the only differentiation the system has, and it is an accident."*
+  ⇒ **W7 is REQUIRED and moves ahead of W8** (§4 W7). **Skills must be new hashed `Citizen`
+  state, not an extension of the host-side persona** — the persona layer is gate-proven *out* of
+  determinism at P2, and a skill that changes work rates is sim-canonical by definition. **All
+  five pins, full def/save/hash ritual.**
+
+⚠️ **ONE THING THE DECISION DOES NOT SETTLE, AND IT IS DELIBERATELY LEFT TO W7: HOW MANY AXES.**
+A single "skilled at X" tag per person is enough to make five thaw decisions distinct and costs
+one hashed byte. A RimWorld-shaped 12-work-type × 0–20 grid is a different-sized object. **This
+document takes no position — but W7 must state which it built and why, because that choice is
+what the CITZ chapter carries forever.**
+
+---
+
+## 7.1 STILL OPEN — **three items, and two of them are the same dial**
+
+| # | question | state | recommendation |
+|---|---|---|---|
+| **OD-12** ⭐ | **How many pods are wrecked?** | **UNSET.** W3 sets it and must PRINT it | **TWO** — ceiling 6, five thaws. Working in §4 W3 |
+| **OD-11** ⭐ | `thaw_cost`: what currency, **and does it escalate?** | open, and **WIDENED in rev 3** — the escalation is no longer optional | **Parts**, `base + LivingCrew × step`. §3.4.1 |
+| **OD-8** | Does the wreck get an ice hold? | open | **yes, behind the frontier** |
+
+⚠️ **OD-12 AND OD-11 ARE THE SAME PACING DIAL SEEN TWICE.** A short curve with a steep price and a
+long curve with a shallow one land in the same place. **Set OD-12 first — the player counts the
+capsules at boot — then tune OD-11 against it.** Do not let two waves each tune half of it.
+
+---
+
+### **OD-12 — ⭐ HOW MANY PODS ARE WRECKED?** *(NEW in rev 3 — created by OD-9's answer)*
+
+**The owner decided that a wrecked occupied pod holds a dead sleeper. They did not say how many
+are wrecked**, and that number is not a detail: it fixes the crew ceiling, the length of the whole
+thaw curve, and how many life-support gates the run contains (§3.4.1).
+
+**⇒ RECOMMENDATION: TWO.** Ceiling **6**, **five** thaws after the boot pawn. **The full table,
+the arithmetic and the five reasons are in §4 W3** and are not repeated here.
+
+⚠️ **It is a pure content dial with no code behind it**, which is exactly the kind of decision that
+gets made by whoever types the array. **W3's acceptance requires the census to be PRINTED**
+(`pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`) with the identity asserted,
+so a later edit cannot drift it silently. **The owner can move it on one line of authoring.**
+
+⚠️ **The "reads as" half of the recommendation is TASTE, not measurement**, and is labelled so.
+The scrubber column is measured (0.001 ÷ 2.73e-4 = **3.66 crew per scrubber**); the judgement that
+two bodies reads as a raid and one reads as an accident is mine.
+
+---
+
+### **OD-11 — `thaw_cost`: what currency, AND ⭐ DOES IT ESCALATE?** *(rev 2; WIDENED in rev 3)*
+
+> ### ⭐ **REVISION 3 WIDENS THIS FROM A CURRENCY QUESTION INTO THE PLAN'S LAST PACING LEVER.**
+> **OD-9 deleted the per-pawn matter price** (a repaired pod), which was the only naturally
+> escalating term the design had. **MEASURED (§3.4.1), what remains cannot produce the owner's
+> one-at-a-time curve**: scrubbing is a **step function** (0.001 ÷ 2.73e-4 = **3.66 crew per
+> scrubber** ⇒ one scrubber caps you at 3 living, two at 7, so a 6-crew ship has **exactly one**
+> scrubbing gate); food escalates smoothly but **stops biting the moment a grow bed is repaired**;
+> and a **flat** `thaw_cost` is by construction the same on thaw 6 as on thaw 2, against a
+> production chain that is *faster* by thaw 6 because more hands run it.
+> ⇒ **Thaws 4–6 arrive back-to-back. §3.4 option A's failure, through the back door.**
+>
+> **⇒ RECOMMENDATION: `thaw_cost_base + LivingCrew × thaw_cost_step`, in Parts.** Two def scalars,
+> **no new state** (`LivingCrew` is already computed by the gate), P4/P5 only — and W5a is a
+> five-pin wave already, so the escalation rides free. **The owner sets both numbers; they are a
+> pacing dial and it is theirs.**
+>
+> ⚠️ **WHAT MUST NOT HAPPEN is `thaw_cost` shipping as a single flat scalar because revision 2's
+> charter said so.** Revision 2 wrote that scalar under an assumption the owner has since
+> overturned. **This is exactly the "stale charter" shape that has now bitten this repo three
+> times** (E0-9's premise, the door lane's every clause, and now this).
+>
+> ⚠️ **AND IT IS THE SAME DIAL AS THE POD COUNT, SEEN TWICE** (§4 W3). A short curve with a steep
+> price and a long curve with a shallow one land in the same place. **Set the pod count first —
+> the player sees it at boot — then tune the price against it.**
+
+**The currency question, unchanged and still the owner's.** §2 beat 7's arithmetic makes it
+consequential rather than cosmetic.
 
 - **One `ControllerModule` is ~2.3 crew-hours of bench time** (`Regolith:4 → Scrap:3` @ 2 400 s ·
   `Scrap:2 → Parts:1+Seals:1` @ 900 s · `Parts:2 → ControllerModule:1` @ 1 800 s, measured off
   the shipped bills). **One is already spent commissioning the terminal.**
-- **If every thaw also cost a module**, thaws 2–8 are seven more full chains — **~16 crew-hours
-  of pure crafting to fill the ship** — and the pacing stops being *"one after the other"* and
-  becomes *"one, and then you stop playing"*.
+- **If every thaw also cost a module**, every remaining thaw is another full chain — **~11
+  crew-hours of pure crafting to fill the ship at OD-12's recommended five** — and the pacing stops
+  being *"one after the other"* and becomes *"one, and then you stop playing"*. **The count fell
+  with OD-9; the shape of the objection did not.**
 
 **Recommendation: `thaw_cost` in `Parts`**, tuned so a thaw costs meaningfully less than the
 console did. **The console is the one-off gate; the thaw is the recurring one.**
 **The owner may prefer it slower** — this is a pacing dial and it is theirs. **What must not
 happen is the number being picked without this arithmetic in front of it.**
-
----
-
-### **OD-5 — Are the frozen crew authored people, or generated?** *(still open, and now MUCH more important)*
-
-The slice has eight hand-written `AuthoredPersona`s (`AuthoredShips.cs:577-790`); grid has none
-and takes whatever `PersonaGenerator` produces.
-
-⭐ **REVISION 2 RAISES THIS FROM A NICE-TO-HAVE TO A LOAD-BEARING QUESTION**, because the owner's
-mechanic makes *"who do I wake next?"* **a decision the player makes seven times**, in the game's
-first day, at a real matter price. Revision 1 called the eight "the emotional core of the
-premise"; the thaw mechanic makes them **the core loop's reward**.
-
-**Recommendation: authored, and written as a SET** — a medic, an engineer, a hydroponicist, a
-pilot — so that *who you wake* is a real choice. **Cost: eight persona sheets; it is writing, not
-engineering.**
-
-⚠️ **AND THE COLLISION WITH W7 IS NOW THE POINT, NOT A FOOTNOTE.** **Without skills, "who you
-wake" has no mechanical consequence, only a narrative one** — every thawed pawn is an identical
-pair of hands with a different name. The player will notice by the third thaw.
-⇒ **If the owner wants the choice to matter MECHANICALLY, W7 moves ahead of W8** and the plan
-gets longer. **If narrative differentiation is enough for v1, say so explicitly** — that is a
-legitimate answer, and it is much cheaper. **This is the decision that sizes the whole
-programme.**
 
 ---
 
@@ -1810,16 +2588,32 @@ question of whether B-2's makeup floor should stay on a ship that has a real wat
 the water runway**, or the recommendation is a death sentence rather than a goal. **W3 must
 measure the lone pawn's time-to-hold against the ship's authored water, and publish both.**
 
+⚠️ **Rev 3 note: OD-12 makes this cheaper to size.** The slice's hold buys ~22.5 sim-days at
+**8** crew; the same authoring on a **6**-crew ceiling buys ~30. ⇒ **the hold can be made SMALLER,
+or placed FURTHER**, and further is the better use of the slack — the whole point of the
+recommendation is that water becomes a *goal*. **Size it against the decided pod count, not
+against 8.**
+
 ---
 
 ## 8. What I did NOT settle, deliberately
 
 - ~~The two in-flight lanes' internals (condition wire, wrecked art)~~ — **both landed; §4 W0
   records what shipped and the one condition it carries.**
-- W7's data model. Charter only, per owner decision 4 — **and §2.0 raises its value without
-  moving it.**
-- The persona writing (OD-5) — **which revision 2 promotes to the decision that sizes the
-  programme.**
+- **W7's data model — and rev 3 narrows this to ONE question.** ~~Charter only, per owner
+  decision 4.~~ **OD-5 promoted W7 to REQUIRED and moved it ahead of W8**, so it is no longer
+  "charter only". What is still deliberately unsettled is **how many axes a skill has** — one
+  hashed byte per person versus a RimWorld 12×20 grid. **W7 states which it built and why**; the
+  CITZ chapter carries that choice forever. §7.0 OD-5.
+- **The exact `thaw_cost_base` / `thaw_cost_step` numbers.** §3.4.1 establishes that the price
+  **must** escalate and gives the shape; **the two scalars are UNMEASURED and cannot be measured
+  until W3 and W5 both exist.** W5b publishes the measured time-to-each-thaw.
+- **The persona WRITING.** OD-5 decided that they are authored and that they differ mechanically;
+  **who the eight people actually are is writing, and it is not in this document.**
+- **How many pods are wrecked (OD-12).** Recommended, reasoned, **not decided** — §4 W3.
+- **Whether a repaired-but-corpse-bearing pod can be reused.** OD-9 says the sleeper is dead; it
+  does not say whether the *box* could later hold someone else. **There is no mechanic that would
+  put a person into a pod**, so the question is inert today. **Do not build one to answer it.**
 - Any number in W3's damage pass — the count of wear-bearing devices on a wreck is
   **UNMEASURED** and must come from the built ship, not from me. **Revision 2 supplies only a
   BOUND: at most 146** (1 250 devices minus 1 104 utility overlays).
@@ -1868,6 +2662,22 @@ All in `/Users/garvin/Research/Code/perilune-wt/wreck-design`, `-c Release`, `n 
 | 11 | source, exhaustive read | `SystemStack.cs:27-62` claimant order · `JobSystem.cs:220-275` consults **no** need · `SustenanceSystem.Tick`'s and `MachineWearSystem.RecruitForNeediest`'s own comments stating the ordering as intent · `JobSystem.DefaultSources()` = **four** sources · `DeviceKind` tail = `IceMelter = 26` · `machines.def` `maint` for Terminal/Light/WaterTank = **0.20** · `production.def:118-119` + `recipes.def:22` bills · `content/core/SimDefs/rules/` holds **one** rule and it names only `ship.heat` |
 | 12 | `git diff --stat main...<branch> -- ci.sh tests/Perilune.Tests/Golden/ content/` | **`lane/damaged-authoring`: 0 lines (all five pins held).** **`lane/recovery-economy`: 0 lines for `ci.sh` + goldens (P1/P2/P3 held); P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`** (branch-local, stale on merge — **re-measure**) |
 
+### Revision 3's measurements (2026-07-28, same worktree, **base `main` @ `50e6778`**)
+
+| # | Command / method | What it gave |
+|---|---|---|
+| 13 | `dotnet run --project hosts/scenario -c Release -- --days 3 --seed 42` + reading the pinned files | **P1 HOLDS** — twin hashes MATCH `43345ff0c9d62684` · **P5 = `fc65c6682d5bee59`** (18 files, 0 problems, 1 rules) · `ci.sh:31` pins `43345ff0c9d62684` · `Golden/perilune_tick3000_hash.txt` = **`5a7224821810b478`** (P2) · `Golden/slice_tick3000_hash.txt` = **`7d846c14c5901e4d`** (P3) · `DefsChecksumTests.cs:115-116` names **P4 = `df93cbd628644785`**, **P5 = `fc65c6682d5bee59`**. ⇒ **the two defs pins the recovery economy moved are CONFIRMED ON `main`; `CLAUDE.md`'s five-pin table is stale in those two rows.** 2 592 000 ticks in 3.8 s |
+| 14 | `… ledger --ship grid` | **REPRODUCES revision 1's row 6 on the new base**, which is the point of re-driving it: matter **63 u / 38 stacks @h1 → 229 u / 222 @h23** · food **23 u [2.07 d] @h1 → 204 u [18.36 d] @h23** · water 613.4 L `[measuring]` → **`[0.64 d]` @h2** → 1000 L `[not depleting]` from h11 · **O2 99.0 → 99.0 crew-d, `[not depleting]` at nearly every hour.** ⇒ **`FoodUnitsPerCrewPerDay` = 23 ÷ (8 × 2.07) = 1.389 u/crew/day**, and **standing O₂ can never say no** |
+| 15 | source, exhaustive read (§2 beat 0's corpse table) | `Glyphs.cs:72` `Corpse => '&'` · `GlyphMapper.cs:135` tints it `GlyphColor.Broken` · `ItemStack.cs:33` `Label` = *"identity for corpses"* · `AuthoredShips.cs:158` authors `Label = "Ensign Rojas"` · **`HaulJobSource.cs:243` hard-excludes it** (*"the dead are not cargo; funerals are M3+"*) · **the ONLY producer is `NeedsSystem.cs:201`** (a citizen dying) and there are **ZERO consumers anywhere** · `Memory/Eulogy.cs:117,136` render on a **`CitizenDiedEvent`** · `HistorySystem.cs:189` `Record(…)` is **public**, `HistoryKind.Death = 2` · `Simulation.cs:386-388`: HistorySystem **folds kind/tick, not text**, and the persona layer is deliberately unhashed |
+| 16 | source, exhaustive read (R-15, R-16, §3.4.1) | **`MachineDefs.Table`'s header is FALSE** — `SimDefs.cs:704-705` holds an independent literal array, no code path between them; the only non-test reader of `Table` is `Device.cs:113` `DrawKW` (the frozen `Game.View` path); `DefsDefaultTests.cs:15-20` asserts per-index equality ⇒ **a mutation there is a FALSE RED** · `MachineWearSystem.cs:463-471` `IsUnfixableWreck` → `:507-523` **three sequential linear `FindNearest` scans**, at the 1 Hz recruit cadence, nothing memoised **by design** · `atmosphere.def:17,19` ⇒ **0.001 ÷ 2.73e-4 = 3.663 crew per scrubber**, independently stated by `AuthoredShips.cs:1063` (*"3 × 0.001 > 8 × 2.73e-4"*); grid carries **7 scrubbers**, 4 on deck 0 + 3 on deck 1 · `machines.def` `maint`: Terminal/Light/WaterTank **0.20**, Door/Battery **0.30**, rest **0.40**; `wear.def` `wreck_threshold` **0.25** ⇒ the band table in §4 W2 · `client/test/device-sprite-coverage.test.js:411,661` `EXPECT_GROUND_ITEM_LEDGER = EXPECT_CHIPPING_ITEM_KINDS = **2**` (MetalOre + **Swarf**) · `production.def:91-123` + `ProductionDefs.cs:192` ⇒ **no Swarf→Parts path** |
+
+⚠️ **WHAT REVISION 3 DID *NOT* RE-DRIVE, AND IT MATTERS.** The **occupancy** rows (2–5, 8–10) were
+taken on `main` @ `d4b860a`, **before four lanes merged — one of which changed what maintenance
+does.** They are quoted with their base attached and **must not be treated as current.** The
+ledger (row 14) was re-driven **precisely because** it is the one this revision reasons from, and
+it reproduces. **The 45-sim-day A/B in §4 W2 is `wear.def`'s own record and was not re-driven
+here** — a 45-day run is ~2 orders of magnitude past this lane's budget, and it is labelled so.
+
 **UNMEASURED and labelled as such in the text:** the vent fill time (≈208 s, arithmetic over
 `atmosphere.def:19` — **now W4b's acceptance**); the wreck's wear-bearing device count
 (**bounded at ≤ 146**, census pending W3); the repair backlog total (**≤ 36.5 crew-hours**,
@@ -1875,6 +2685,19 @@ arithmetic); **the first-thaw critical path (≥ 12 330 crew-seconds ≈ 3.4 cre
 over shipped bills, a FLOOR, excluding all walking)**; thermal drift on an unpowered wreck
 compartment; **and whether a lone pawn starves under a loaded board — the central open
 measurement, and it cannot be taken until `--ship wreck` exists.**
+
+**UNMEASURED, added in revision 3:**
+- ⭐ **`thaw_cost_base` and `thaw_cost_step`** (§3.4.1) — the escalation's *shape* is derived from
+  measured defs; the two numbers are pure pacing and need W3 + W5 to exist. **W5b publishes the
+  measured time-to-each-thaw beside them.**
+- ⭐ **The number of wrecked pods (OD-12)** — recommended at **two** from arithmetic plus taste;
+  the taste half is labelled as such and **W3 publishes the curve it actually produced.**
+- ⭐ **The cost of re-scanning permanently-refused wrecks** (R-16) — the *shape* is source-measured
+  (3 linear scans at 1 Hz, unmemoised by design); **the wall clock is W3's paired A/B.** ⚠️ **A
+  count of scans is not a slowdown** — `HasIceChain` went 91.7 M → 1 250 for ~1 %, not separated
+  from noise.
+- **The wreck's wear-bearing device count** — still bounded at **≤ 146** and still a bound, not a
+  census.
 
 ⚠️ **NOTHING IN THIS DOCUMENT WAS MEASURED WITH `./ci.sh`, DELIBERATELY** (this is a design lane
 and the instruction was not to run it). **Every pin claim above is a `git diff` against the
