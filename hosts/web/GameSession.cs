@@ -213,7 +213,15 @@ namespace Perilune.Web
                 // next Render changes it. `zones` is listed because a reconnect must not silently drop
                 // the only surface that says WHY a zone never fills; fixing `materials` belongs to
                 // whoever owns that channel.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items" })
+                // ⚠️ `ledger` (E0-8) is the SECOND channel missing from this list, for the same reason
+                // and with the same consequence. Both are REPORTED, not fixed, by the `devices` lane:
+                // adding them would change what a reconnecting tab sees on two channels this package
+                // does not own, which is exactly the scope creep that has cost this repo merges.
+                // ⚠️ THIS LIST IS THE ONLY THING THAT MAKES A CHANNEL SURVIVE A RECONNECT. A channel
+                // absent from it renders empty until the next Render happens to change it — and for a
+                // channel that `Send` dedupes for thousands of ticks at a time (`devices`, whose
+                // Condition byte is near-static), "the next change" can be a very long time.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1239,6 +1247,11 @@ namespace Perilune.Web
             Send("zones", WireFormat.Zones(BuildZones()), force);
             Send("marks", WireFormat.Marks(BuildMarks()), force);
             Send("items", WireFormat.Items(BuildItems()), force);
+            // Per-device WEAR STATE (`devices`, PLURAL — not the one-shot `device` terminal reply).
+            // `Device.Condition` has never reached the client in any form; the projection's only trace
+            // of it is a `GlyphColor.Broken` fg byte neither standard surface reads, and that byte is
+            // one bit rather than a gradient. See hosts/web/WireFormat.Devices.cs.
+            Send("devices", WireFormat.Devices(BuildDevices()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1793,6 +1806,88 @@ namespace Perilune.Web
                 _itemsScratch.Add(new WireFormat.ItemCell(p.X, p.Y, p.Z, (int)item.Kind, item.Count));
             }
             return _itemsScratch;
+        }
+
+        /// <summary>
+        /// The sparse DEVICE WEAR layer for the standard surface — one
+        /// <see cref="WireFormat.DeviceCell"/> per tile-resident <see cref="Device"/>, read from
+        /// <c>sim.Devices</c> DIRECTLY and never from the projection. See
+        /// <c>hosts/web/WireFormat.Devices.cs</c> for what the projected cell loses (a device's
+        /// <see cref="Device.Condition"/> has NEVER reached the client in any form), why utility
+        /// overlays are excluded, and what fields are deliberately absent.
+        ///
+        /// ORDER — STORE ORDER, the same choice <see cref="BuildItems"/> makes and for the same
+        /// reason: this is a per-ENTITY layer, not one of the per-TILE layers <see cref="BuildZones"/>
+        /// / <see cref="BuildMarks"/> / <see cref="BuildMaterials"/> emit on a z,y,x world walk. It is
+        /// the order <c>GlyphMapper</c> pass 4 walks, a plain <c>List</c> index walk rather than any
+        /// hash container's layout, and part of the saved, hashed state.
+        ///
+        /// ⚠️ COST — MEASURED, NOT ARGUED, AND THIS IS THE MOST EXPENSIVE SPARSE CHANNEL SHIPPED SO
+        /// FAR. It is stated plainly rather than framed favourably. Method: a delegate bound once to
+        /// this builder (NOT <c>MethodInfo.Invoke</c> per call, which costs more than the method and
+        /// would be charged to the channel), 200 iterations per sample, <b>median of n = 5</b>, DEBUG
+        /// build, one machine, at boot with no other suite running:
+        ///
+        ///   <c>--ship grid</c>   146 rows, 2 562 B, <b>~26 µs</b> against a ~425 µs render — <b>~6.1 %</b>
+        ///   <c>--ship slice</c> 104 rows, 1 870 B, <b>~13 µs</b> against a ~346 µs render — <b>~3.9 %</b>
+        ///
+        /// FOR COMPARISON the <c>items</c> channel is 0.2 % on grid and <c>marks</c> costs +61 µs, which
+        /// is the largest render cost this programme has previously judged worth accepting. This one is
+        /// smaller than <c>marks</c> in absolute terms (~26 µs) and larger as a share, because grid has
+        /// 146 devices and 7 ground stacks. In wall-clock terms it is ~0.26 ms per second at the ≤10 Hz
+        /// render cadence.
+        ///
+        /// THE COUNTERFACTUAL, measured the same way and the reason the overlay exclusion is not a
+        /// micro-optimisation: WITH conduits and pipes the same channel is <b>1 110 rows, 19 066 B and
+        /// ~146 µs</b> on grid — ~34 % of the render and ~190 KB/s on the socket — to carry a byte that
+        /// <c>machines.def</c> makes a constant.
+        ///
+        /// NOT PROPOSED HERE, AND DELIBERATELY NOT IMPLEMENTED: if 6 % is later judged too much, the
+        /// two obvious schemes are (a) a DELTA channel — emit only rows whose quantised byte moved
+        /// since the last render, with a periodic full resync for reconnects — or (b) a coarser
+        /// quantisation (a 4-bit bucket halves the payload). Both change the wire contract and both
+        /// need a consumer to justify them; this lane ships the simple, complete, self-describing
+        /// version and records the number so the decision can be taken on evidence.
+        ///
+        /// What keeps the SOCKET cost near zero already is <see cref="Send"/>'s dedupe:
+        /// <see cref="Device.Condition"/> moves at ≤0.02 per operating HOUR, so the quantised byte is
+        /// unchanged across thousands of ticks and the payload is normally not broadcast at all. That
+        /// is exactly why the volatile fields (<c>Powered</c>, <c>Progress</c>, <c>StoredLiters</c>)
+        /// are off the tuple — see the header. The ~26 µs is CPU that is spent either way.
+        ///
+        /// The scratch list is reused, so a steady state allocates only the payload string.
+        ///
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
+        /// </summary>
+        private readonly List<WireFormat.DeviceCell> _devicesScratch = new List<WireFormat.DeviceCell>();
+        private List<WireFormat.DeviceCell> BuildDevices()
+        {
+            _devicesScratch.Clear();
+            var world = _sim.World;
+            var defs = _sim.Defs;
+            var devices = _sim.Devices.Items;
+            for (int n = 0; n < devices.Count; n++)
+            {
+                var device = devices[n];
+                // UTILITY OVERLAYS ARE NOT TILE-RESIDENT — they never enter `_deviceGrid`, GlyphMapper
+                // pass 4 skips them by the same test, and neither standard surface draws them. They are
+                // also wear-free in machines.def and 88% of the device store on `--ship grid`. See the
+                // header of WireFormat.Devices.cs; the wear-free half is pinned by a test rather than
+                // restated here, so giving a conduit a wear rate fails loudly.
+                if (Simulation.IsUtilityOverlay(device.Kind)) continue;
+                var p = device.Pos;
+                // Bounds first, defensively: an out-of-range Pos would index the flag plane and throw
+                // on the render thread — the same guard BuildItems takes for the same reason.
+                if (!world.InBounds(p)) continue;
+                // FOG GATE, mirroring GlyphMapper pass 4 (whose gate is pass 1's, and is FIRST). A
+                // device in the dark emits nothing: shipping it would widen what the player knows.
+                if ((world.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                _devicesScratch.Add(new WireFormat.DeviceCell(
+                    p.X, p.Y, p.Z, (int)device.Kind,
+                    WireFormat.ConditionByte(device.Condition),
+                    device.IsOperational(defs) ? 1 : 0));
+            }
+            return _devicesScratch;
         }
 
         /// <summary>
