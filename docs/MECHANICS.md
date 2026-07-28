@@ -2255,6 +2255,14 @@ taken; it now gives the deck air.
 at it, so material can still be carried into an airless compartment and set down once per site and
 then never built. `HaulJobSource` is untouched — a haul has no work timer and cannot pin a worker.
 
+**New latent harm, recorded not hidden.** `MaintenanceSystem.DriveWorker` calls the same staging
+picker every pass, so a servicer whose compartment loses air mid-service now abandons *at that
+moment* rather than at the flee threshold — earlier and safer, but it sets any carried `Parts`/
+`Seals` stack down where it stands, and the fetch gate then refuses that stack because its tile is
+unbreathable. A consumable can therefore be **stranded** in a compartment until the player
+repressurises it. It is bounded (one stack per interrupted service), it is visible on the ground, and
+the alternative — leaving the fetch ungated — is the livelock one leg upstream.
+
 ---
 
 ## 14. Where GDD.md / TDD.md disagree with the code

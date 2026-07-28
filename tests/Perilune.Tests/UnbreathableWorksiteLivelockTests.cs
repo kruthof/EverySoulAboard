@@ -54,15 +54,19 @@ namespace Perilune.Tests
     ///     of the rule that is easy to leave out and that the grid ship's own needy machines (eight
     ///     DOORS) would have defeated;
     ///   • <see cref="WithoutNeedsOrSafety_TheRuleIsInertAndVacuumWorkIsStillDispatched"/> pins the
-    ///     inertness condition, which is what keeps every atmosphere-free fixture and host alive.
+    ///     inertness condition, which is what keeps every atmosphere-free fixture and host alive;
+    ///   • <see cref="ADigReachedOnlyThroughADoorway_IsStillWorked"/> pins that a DOOR TILE IS NOT
+    ///     VACUUM — the mistake the first draft made, which refused the shipped slice's whole aft
+    ///     dig field and moved the slice tick-3000 golden.
     ///
     /// THE NAMED MUTATIONS. Each was physically applied to the shipped source, the suite run, the
     /// failure set read, and the source restored from a copy taken before the first mutation (never
     /// from git — <c>CLAUDE.md</c> trap 2). Counts are failures within THIS file:
     ///   M-1  <c>JobWork.TryPathToAdjacent</c> drops its <c>CanStageWorkerAt</c> guard      → 1  (sole)
     ///   M-2  <c>MaintenanceSystem.TryFindStagingTile</c> drops its guard                   → 4
-    ///   M-3  <c>CanStageWorkerAt</c> refuses everything                                    → 5
+    ///   M-3  <c>CanStageWorkerAt</c> refuses every non-doorway tile                        → 4
     ///   M-4  <c>CanCycle</c> is always true (the rule stops being inert)                   → 1  (sole)
+    ///   M-5  the <c>DoorMarker</c> clause is dropped (a doorway reads as the vacuum sink)  → 1  (sole)
     /// "(sole)" = exactly one test in this file catches it. Every run was a SEMANTIC red: the
     /// harness fails the whole run if the mutated tree emits a single <c>CS</c> error, because a
     /// mutation that does not compile reddens for the wrong reason and proves nothing
@@ -499,6 +503,95 @@ namespace Perilune.Tests
                 "walkable neighbour' picks the vacuum side here");
             Assert.That(c.FleeStarts, Is.Zero, "so nothing ever flees");
             Assert.That(c.Services, Is.GreaterThan(0), "and the service completes");
+        }
+
+        // ------------------------------------------------------------------- the doorway
+
+        // A dig whose ONLY approach is a doorway: the debris at (4,2) has three wall neighbours and
+        // one walkable one, the door tile at (3,2). This is the shipped slice's aft field in
+        // miniature — its 48 tiles are reached only through `door_aft` at (56,9,0).
+        private static readonly string[] DiggingThroughADoorway =
+        {
+            "#######",
+            "#..####",
+            "#.....#",
+            "#..####",
+            "#######",
+        };
+
+        private static readonly Int3 DoorwayTile = new Int3(3, 2, 0);
+        private static readonly Int3 BehindTheDoorway = new Int3(4, 2, 0);
+
+        /// <summary>
+        /// ⚠️ A DOOR TILE IS NOT VACUUM — the mistake the first draft of this package made, and the
+        /// most expensive one available to it.
+        ///
+        /// A door tile is a room EDGE, not a room member: it carries <see cref="RoomState.DoorMarker"/>
+        /// and <c>RoomAt</c> resolves it to <c>Rooms[0]</c>, the vacuum sink, which reads 0 kPa and
+        /// therefore "lethal". But <see cref="NeedsSystem"/> SKIPS a crew member standing on a door
+        /// marker outright (<c>NeedsSystem.cs:105</c>), so no suffocation accrues there, no flee can
+        /// follow, and no cycle can start. Refusing a doorway refuses every worksite whose only
+        /// approach is a doorway — and on the shipped slice that is the ENTIRE 48-tile aft dig
+        /// field, which took slice Dig occupancy to 0.00 %, moved the slice tick-3000 golden and
+        /// reddened five tests before the clause was added.
+        ///
+        /// Both halves are asserted: that the naive reading really is wrong here (the sink DOES
+        /// report the doorway as unbreathable — otherwise this test would pass for a reason that has
+        /// nothing to do with the clause), and that the work happens anyway.
+        ///
+        /// NAMED MUTATION caught here: M-5 (drop the DoorMarker clause). This test is the SOLE guard
+        /// on it inside this file; on the wider suite it is also what `SliceDigLoopTests` and the
+        /// slice golden catch, at 3 s a run instead of 20 ms.
+        /// </summary>
+        [Test]
+        public void ADigReachedOnlyThroughADoorway_IsStillWorked()
+        {
+            var systems = new ISimSystem[]
+            {
+                new CitizenSystem(), new JobSystem(), new NeedsSystem(), new SafetySystem(),
+            };
+            var sim = new Simulation(AsciiWorld.Build(DiggingThroughADoorway), 5, systems);
+            sim.AddDevice(DeviceKind.Door, DoorwayTile, "door_only_way").IsOpen = true;
+            sim.World.SetWall(BehindTheDoorway, TileDefs.Debris);
+            sim.World.SetFloor(BehindTheDoorway, TileDefs.Debris);
+            sim.World.SetWall(new Int3(5, 2, 0), TileDefs.Wall); // seal the far side
+            sim.Rooms.RecomputeIfDirty(sim);
+            RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(1, 2, 0)));
+            var crew = sim.AddCitizen("Iqbal", new Int3(1, 2, 0));
+            sim.EnqueueCommand(new DesignateDigCommand(BehindTheDoorway, on: true));
+            sim.Tick();
+
+            Assert.That(sim.Rooms.RoomIdAt(sim.World, DoorwayTile), Is.EqualTo(RoomState.DoorMarker),
+                "premise: the approach tile really is a door marker");
+            Assert.That(sim.IsWalkable(DoorwayTile), Is.True, "premise: and it is walkable (the door is open)");
+            Assert.That(AtmosphereSafety.IsBreathable(sim, DoorwayTile), Is.False,
+                "premise, and THE TRAP: RoomAt sends a door marker to the vacuum sink, so the naive " +
+                "reading calls this doorway lethal. If this ever starts returning true, this test " +
+                "stops pinning anything and the DoorMarker clause is untested");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, DoorwayTile), Is.True,
+                "and the staging rule must nevertheless allow it — NeedsSystem never suffocates a " +
+                "crew member standing on a door marker, so there is no cycle to prevent");
+            for (int i = 0; i < 4; i++)
+            {
+                var n = Int3.Neighbor4(BehindTheDoorway, i);
+                if (n == DoorwayTile) continue;
+                Assert.That(sim.IsWalkable(n), Is.False,
+                    $"premise: {n} must not be walkable — the doorway has to be the ONLY approach, " +
+                    "or the dig could be staged from somewhere else and this test would pass without " +
+                    "the clause");
+            }
+
+            int digTicks = 0;
+            for (int t = 0; t < 9000; t++) // 600 s of dig plus travel
+            {
+                sim.Tick();
+                if (crew.JobKind == JobKind.Dig) digTicks++;
+            }
+
+            Assert.That(digTicks, Is.GreaterThan(0), "the dig must be claimed and worked");
+            Assert.That(sim.World.GetWall(BehindTheDoorway), Is.Not.EqualTo(TileDefs.Debris),
+                "and completed — the debris is gone");
+            Assert.That(crew.Dead, Is.False, "and nobody suffocated in the doorway doing it");
         }
 
         // ------------------------------------------------------------------- the inert case

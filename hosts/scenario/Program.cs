@@ -523,6 +523,58 @@ namespace Perilune.Tools
                                   $"| decon starts {deconStarts - lastHourDeconStarts}  decon->Flee {deconToFlee - lastHourDeconToFlee}");
                 Console.WriteLine($"  devices in bad air     {devicesUnbreathable,8}   (of {sim.Devices.Items.Count})");
                 Console.WriteLine($"  needy machines at end  {needy,8}   of which in UNBREATHABLE air {needyUnbreathable}");
+                // Designated tiles the worksite staging rule refuses (MECHANICS §13.21). This is the
+                // number that turns "the work silently never happens" into something an operator can
+                // read — the rule's own honest cost, printed.
+                int refusedTiles = 0, firstShown = 0;
+                var w = sim.World;
+                for (int z = 0; z < w.Depth; z++)
+                    for (int y = 0; y < w.Height; y++)
+                        for (int x = 0; x < w.Width; x++)
+                        {
+                            var p = new Int3(x, y, z);
+                            if ((w.GetFlags(p) & TileFlags.Designated) == 0) continue;
+                            bool stageable = false, anyWalkable = false;
+                            for (int i = 0; i < 4; i++)
+                            {
+                                var n = Int3.Neighbor4(p, i);
+                                if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                                anyWalkable = true;
+                                if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
+                            }
+                            if (stageable || !anyWalkable) continue; // walled in is not an AIR refusal
+                            refusedTiles++;
+                            if (firstShown++ >= 4) continue;
+                            for (int i = 0; i < 4; i++)
+                            {
+                                var n = Int3.Neighbor4(p, i);
+                                if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                                var nr = sim.Rooms.RoomAt(sim.World, n);
+                                Console.WriteLine($"    refused {p} staging {n}  roomId={sim.Rooms.RoomIdAt(sim.World, n)}  " +
+                                                  $"p={nr.PressureKPa:0.0} kPa  o2={nr.PressureKPa * nr.O2Fraction:0.0} kPa  " +
+                                                  $"co2={nr.CO2Ppm:0} ppm  T={nr.TemperatureK - 273.15:0.0} C");
+                            }
+                        }
+                // Deconstruct designations live in a REGISTRY, not in TileFlags.Designated, so the
+                // world pass above cannot see them. Counting them here is the difference between
+                // "the rule's honest cost" and "the rule's honest cost for digs only".
+                int refusedStrips = 0;
+                if (sim.Deconstruct != null)
+                    foreach (var site in sim.Deconstruct.Pending)
+                    {
+                        bool stageable = false, anyWalkable = false;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(site.Pos, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            anyWalkable = true;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
+                        }
+                        if (!stageable && anyWalkable) refusedStrips++;
+                    }
+                Console.WriteLine($"  unstageable dig/strip  {refusedTiles,6} / {refusedStrips}   (designations a player " +
+                                  "made that the worksite staging rule refuses — the rule's honest cost, " +
+                                  "MECHANICS §13.21; 'walled in' is excluded, this is AIR only)");
                 foreach (var d in sim.Devices.Items)
                 {
                     if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;

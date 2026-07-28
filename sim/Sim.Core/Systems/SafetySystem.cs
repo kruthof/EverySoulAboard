@@ -75,11 +75,29 @@ namespace Perilune.Sim
     /// </summary>
     public static class WorksiteSafety
     {
-        /// <summary>May a worker be parked on <paramref name="tile"/> for the length of a job?
-        /// True when this stack cannot produce the cycle at all (see <see cref="CanCycle"/>), or
-        /// when the tile's air is survivable.</summary>
+        /// <summary>
+        /// May a worker be parked on <paramref name="tile"/> for the length of a job? True when
+        /// this stack cannot produce the cycle at all (see <see cref="CanCycle"/>), when the tile
+        /// is a DOORWAY, or when its air is survivable.
+        ///
+        /// ⚠️ A DOOR TILE IS NOT VACUUM, and reading it as vacuum is the single most expensive
+        /// mistake this rule can make. A door tile is a room EDGE, not a room member, so it carries
+        /// <see cref="RoomState.DoorMarker"/> and <see cref="RoomState.RoomAt"/> resolves it to
+        /// <c>Rooms[0]</c> — the vacuum sink — which reads 0 kPa and therefore "lethal". But
+        /// <see cref="NeedsSystem"/> SKIPS a crew member standing on a door marker outright
+        /// (<c>NeedsSystem.cs:105</c>), so no suffocation ever accrues there, no flee can follow,
+        /// and no cycle can start. The question this rule asks is "would a worker parked here be
+        /// pulled off the job?", and on a doorway the sim's own answer is no.
+        ///
+        /// MEASURED, because the first draft got this wrong and the gate caught it: without the
+        /// door-marker clause the rule refused the **entire 48-tile aft dig field of the shipped
+        /// slice** — its only approach tile is <c>door_aft</c> at (56,9,0) — taking slice Dig
+        /// occupancy to 0.00 %, moving the slice tick-3000 golden and reddening five tests.
+        /// </summary>
         public static bool CanStageWorkerAt(Simulation sim, Int3 tile) =>
-            !CanCycle(sim) || AtmosphereSafety.IsBreathable(sim, tile);
+            !CanCycle(sim) ||
+            sim.Rooms.RoomIdAt(sim.World, tile) == RoomState.DoorMarker ||
+            AtmosphereSafety.IsBreathable(sim, tile);
 
         /// <summary>
         /// Can this stack produce the walk/flee/recover/walk cycle at all? It takes BOTH halves and
