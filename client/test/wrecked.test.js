@@ -52,12 +52,22 @@ const WRECKED_SRC = readFileSync(join(HERE, '..', 'src', 'items', 'wrecked.js'),
  * The mock's WRECKED pieces: `{ name, state }` per entry of `brokenD`, in file order.
  * Deliberately a REGEX over the array's source rather than an `eval` of `renderVals()`: a test that
  * executed the spec would be pinning the spec against itself.
+ *
+ * ⚠️ BOUNDED AT THE ARRAY'S OWN `];`, not run to end-of-file. The unbounded version happened to
+ * return the same 70 rows only because nothing LATER in the spec has the shape
+ * `{ name: '…', state: '…' }` — a dependence on a file this reader does not own and cannot see. The
+ * bound is measured, not assumed: the first `];` after the array's head is its terminator, and the
+ * row count either side of it is identical (70) today, which is exactly why the drift would be
+ * silent. If a future section grows a `state:` field, the unbounded reader would inflate the census
+ * and every downstream bijection would fail somewhere unrelated.
  */
 function mockWreckedRows() {
   const start = SPEC.indexOf('const brokenD = [');
   assert.ok(start > 0, 'brokenD array not found in the spec — the reader is broken, not the data');
-  const body = SPEC.slice(start);
-  return [...body.matchAll(/\{\s*name:\s*'([^']*)',\s*state:\s*'([^']*)'/g)]
+  const tail = SPEC.slice(start);
+  const end = tail.indexOf('];');
+  assert.ok(end > 0, 'the brokenD array is unterminated in the spec — the reader is broken');
+  return [...tail.slice(0, end).matchAll(/\{\s*name:\s*'([^']*)',\s*state:\s*'([^']*)'/g)]
     .map((m) => ({ name: m[1], state: m[2] }));
 }
 
@@ -97,6 +107,12 @@ test('the spec really carries 70 wrecked pieces and 70 pristine labels', () => {
 // were re-counted off the shipped registry (they are `items.test.js`'s tally, which is the point:
 // every registry row, of every class, has exactly one twin).
 test('the class census of the twin set: 27 functional, 23 cosmetic, 12 material, 8 resource', () => {
+  // ⚠️ MOVED ABOVE THE LOOP DELIBERATELY (CLAUDE.md trap 5). It used to sit AFTER the `deepEqual`
+  // below, where it could never fire on its own: the four class counts sum to 70 and every id
+  // contributes exactly one, so a 69-row twin set fails the `deepEqual` first and `assert` throws.
+  // A leg that cannot report is indistinguishable from one that can. Here it is the file's first
+  // absolute-scale statement and it bites alone.
+  assert.equal(WRECKED_IDS.length, 70);
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of WRECKED_IDS) {
     // ⚠️ NOT `by[ITEMS[id].kind]++`. An orphan twin (a key with no registry row) made that throw a
@@ -106,7 +122,6 @@ test('the class census of the twin set: 27 functional, 23 cosmetic, 12 material,
     by[ITEMS[id].kind] += 1;
   }
   assert.deepEqual(by, { functional: 27, cosmetic: 23, material: 12, resource: 8 });
-  assert.equal(WRECKED_IDS.length, 70);
 });
 
 test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () => {
@@ -119,6 +134,11 @@ test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () =
   assert.deepEqual(dash.sort(), [
     'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals',
   ]);
+  // ⚠️ AUDITED AND KEPT — this leg is NOT implied by the `deepEqual` above, though it looks it. The
+  // `deepEqual` pins WHICH eight ids carry the em-dash; this reads `ITEMS`, a different module, and
+  // fires if `index.js` ever re-classifies one of them (a `resource` demoted to `material` would
+  // leave the eight ids and their badges untouched). Its two siblings in this file were audited the
+  // same way and one was moved rather than kept — see the census above.
   for (const id of dash) assert.equal(ITEMS[id].kind, 'resource', `${id} carries — but is not a resource`);
 });
 
@@ -194,6 +214,11 @@ test('the 8 renames: seven keep the stem, CONTROLLER MODULE does not', () => {
     'exactly ONE rename changes its stem. If this list grew, a stem-preserving derivation is now\n'
     + 'wrong in more places; if it emptied, the mock became mechanical and this test should be\n'
     + 'RETIRED rather than relaxed — but check the mock, do not assume it.');
+  // ⚠️ REDUNDANT BY CONSTRUCTION, AND SAYING SO IS THE POINT. The loop above visits exactly eight
+  // ids and pushes each into one of two arrays, so `shortened === ['controller-module']` already
+  // forces `kept.length === 7`; this line CANNOT fail on its own. Kept as a statement of the split
+  // rather than deleted, but labelled — an unlabelled dead leg is the fifth trap shape, and the
+  // cost is that a reader believes two guarantees where there is one.
   assert.equal(kept.length, 7);
   assert.equal(WRECKED['controller-module'].mockLabel, 'CONTROLLER · FRIED');
   assert.equal(labels[ITEM_IDS.indexOf('controller-module')], 'CONTROLLER MODULE');
@@ -236,10 +261,18 @@ test('the join survives GLYPH_SUBSTITUTE: a borrowed row still resolves to its o
 
 // ── purity + fragment hygiene, mirroring items.test.js ───────────────────────────────────────
 
-test('every twin builds to a non-empty, balanced SVG <g> fragment (not a whole <svg>)', () => {
+// ⚠️ THE NAME USED TO OVER-CLAIM AND THE TEST HAS BEEN CORRECTED, NOT JUST RENAMED. Every clause it
+// asserts — non-empty, starts `<g`, ends `</g>`, balanced, no `undefined`/`NaN` — is satisfied by the
+// PLACEHOLDER, all 414 characters of it, so a twin whose lookup missed entirely read as a pass. That
+// is the fourth trap shape (a right answer from the wrong branch) and it lives wherever several
+// paths return one sentinel. The placeholder is now compared against directly, built with the SAME
+// opts, which is byte-for-byte what a missed lookup returns.
+test('every twin builds its OWN non-empty, balanced <g> fragment — never the placeholder', () => {
+  const missed = placeholderItem({});      // exactly what `buildWrecked(<unknown>)` returns
   for (const id of WRECKED_IDS) {
     const svg = buildWrecked(id);
     assert.equal(typeof svg, 'string', `${id} builds a string`);
+    assert.notEqual(svg, missed, `${id} fell back to the placeholder — its row has no live painter`);
     assert.ok(svg.length > 40, `${id} is non-trivial`);
     assert.ok(svg.startsWith('<g'), `${id} starts with <g`);
     assert.ok(svg.trimEnd().endsWith('</g>'), `${id} ends with </g>`);
@@ -293,8 +326,18 @@ test('the default def-id namespace is markup-safe, and the public id is namespac
 });
 
 // A twin is an INDEPENDENT REDRAW, not an overlay on the pristine piece and not a variant flag.
-// If any twin came out byte-identical to its pristine counterpart, a builder was wired to the wrong
-// painter — which is a copy-paste slip nothing else in this file would catch.
+// If any twin came out byte-identical to its pristine counterpart, a builder was wired to its own
+// PRISTINE painter.
+//
+// ⛔ CORRECTION, AND THE FALSE CLAIM WAS THE EXPENSIVE HALF. This comment used to end *"— which is a
+// copy-paste slip nothing else in this file would catch"*, naming this test as the guard for
+// wrong-painter wiring in general. IT IS NOT. It catches exactly one shape (a twin wired to its
+// pristine painter); `the 70 twins are 70 different pictures` catches exactly one other (two rows
+// SHARING one painter). A SWAP is neither, and swapping the `paint:` fields of the `reactor` and
+// `solar-panel` rows was MEASURED against this whole file: 20 pass / 0 fail. This repo has a scar
+// from precisely this shape — a package that wrote "a door is taken apart with STRIP" into six
+// places and asserted it in a test, when STRIP explicitly refuses doors. The swap is caught by the
+// painter-name guard below, and by nothing else.
 test('no twin is byte-identical to its pristine piece', () => {
   for (const id of WRECKED_IDS) {
     assert.notEqual(buildWrecked(id, { idPrefix: 'same' }), buildItem(id, { idPrefix: 'same' }),
@@ -312,6 +355,58 @@ test('the 70 twins are 70 different pictures', () => {
     seen.set(svg, id);
   }
   assert.equal(seen.size, 70);
+});
+
+// ⚠️ THE JOIN PINS WHICH ROWS EXIST — IT PINS NOTHING ABOUT WHICH PICTURE A ROW DRAWS.
+// `deepEqual(WRECKED_IDS, [...ITEM_IDS])` pins the ids, their order, their labels and their badges.
+// It says nothing about `paint`. Swapping the `paint:` fields of the `reactor` and `solar-panel`
+// rows — so `buildWrecked('reactor')` hands back the wrecked solar panel — leaves this file GREEN,
+// measured, because the swapped pair is still 70 distinct pictures and neither is its own pristine
+// piece. In the shipping game that is simply the wrong object on the tile, forever, silently.
+//
+// The convention that makes it checkable already holds unbroken in BOTH registries: every builder is
+// a `const <camelCaseOfItsOwnId> = (s) => …`, so `fn.name` IS the row's id. 70 of 70 in `WRECKED`,
+// 70 of 70 in `ITEMS` — re-measured here, not quoted.
+//
+// ⚠️ ASSUMPTION, STATED BECAUSE THE GUARD RESTS ENTIRELY ON IT: `Function.prototype.name` survives
+// to the browser. `client/serve.py` serves `client/src/*.js` RAW — this repo has no bundler and no
+// minifier anywhere in it — so name mangling would have to be introduced deliberately. If it ever
+// is, the PRISTINE floor below reddens first and names minification as the cause, instead of this
+// guard degrading quietly into a tautology.
+test('the paint on every row is the painter named after that row (a swap is invisible otherwise)', () => {
+  const camel = (id) => id.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+
+  // NON-VACUITY FLOOR — a SECOND POPULATION, not a count. `ITEMS` obeys the same convention through
+  // the same mechanism, and this package does not own a single one of its rows. A floor that counted
+  // `WRECKED_IDS.length` would prove only that the loop ran (CLAUDE.md trap 4: a population count
+  // proves a matcher matched something, never that it would match the thing); this one fails if
+  // `fn.name` is ever stripped or if `camel` is wrong, on evidence outside the subject.
+  //
+  // ⚠️ AND IT IS NOT ONLY A FLOOR — DISCLOSED, BECAUSE A SIDE EFFECT NOBODY WROTE DOWN IS THE NEXT
+  // READER'S SURPRISE. `client/src/items/index.js` has the IDENTICAL hole this whole test exists to
+  // close, and it predates this package: swapping the `build:` fields of the `desk` and `chair` rows
+  // leaves the entire node suite GREEN on `main` — MEASURED HERE, 843 pass / 0 fail with these four
+  // lines deleted, and exactly one RED with them present. So this floor is also, incidentally, the
+  // only guard in the repo against a pristine-row swap. That was NOT this lane's charter and the
+  // coverage is a by-product of the floor's shape; if the pristine set ever needs a guard of its
+  // own it should get an explicit one in `items.test.js` rather than lean on this.
+  const pristineBroken = ITEM_IDS
+    .filter((id) => ITEMS[id].build.name !== camel(id))
+    .map((id) => `${id} ← ${ITEMS[id].build.name || '<anonymous>'}`);
+  assert.deepEqual(pristineBroken, [],
+    'a PRISTINE registry row carries a builder that is not its own. Read the pairs above before\n'
+    + 'assuming which: two rows naming each other is a SWAP in client/src/items/index.js (the same\n'
+    + 'defect this file guards for the twins); all 70 at once is name mangling, in which case this\n'
+    + 'guard is unusable AS WRITTEN and must be REPLACED — not relaxed — by one that compares\n'
+    + 'rendered output; a single odd one is a renamed builder, so rename it back.');
+
+  const mismatched = WRECKED_IDS
+    .filter((id) => WRECKED[id].paint.name !== camel(id))
+    .map((id) => `${id} ← ${WRECKED[id].paint.name || '<anonymous>'}`);
+  assert.deepEqual(mismatched, [],
+    'a twin row carries a painter that is not its own — the SWAP shape. The ids, their order, the\n'
+    + 'labels, the badges, the 70-different-pictures check and the not-the-pristine-piece check are\n'
+    + 'ALL still green, and the shipping game draws the wrong object.');
 });
 
 // ⚠️ THE PURITY SCAN, AND WHY IT IS WORTH A TEST AT ALL. Damage LOOKS like scatter. A builder that
@@ -389,22 +484,82 @@ test('wreckedInfo derives size and kind from the pristine row, and carries no co
 // ⚠️ THIS PACKAGE IS ART AND A JOIN, AND NOTHING ELSE. Nothing on the wire carries a device
 // condition, so no surface could choose a twin even if it wanted to; a lane that quietly wired it in
 // would be shipping a draw decision nobody has made. Two directions, because they fail differently:
-// a UI file importing the twins is a premature wiring, and `index.js` importing them would invert
-// the dependency and make the set un-revertible.
-test('no UI surface imports the wrecked set, and index.js does not know it exists', () => {
-  const ui = join(HERE, '..', 'src', 'ui');
-  const files = readFileSync(join(HERE, '..', 'src', 'items', 'index.js'), 'utf8');
-  assert.ok(!codeOnly(files).includes('wrecked'),
+// a client file importing the twins is a premature wiring, and `index.js` importing them would
+// invert the dependency and make the set un-revertible.
+//
+// ⛔ THE FIRST VERSION OF THIS GUARD WAS TOO NARROW IN BOTH DIMENSIONS AT ONCE, and each failure was
+// measured with a planted violation rather than reasoned about.
+//
+// THE PARSER was `/from\s+['"][^'"]*items\/wrecked\.js['"]/` — ONE SPELLING:
+//   • `import { WRECKED } from '../items/wrecked.js';`   → RED   (the spelling it knew)
+//   • `import { WRECKED } from '../items/wrecked';`      → GREEN (no extension)
+//   • `const m = await import('../items/wrecked.js');`   → GREEN (dynamic import is not `from`)
+//   • `import '../items/wrecked.js';`                    → GREEN (a bare side-effect import)
+// THE SCOPE was `client/src/ui/` only, so the plain, known spelling planted in
+// `client/src/render/compose.js` or in `client/src/main.js` was GREEN on both counts.
+// THE FLOOR was `seen.length >= 5` — a POPULATION COUNT, which is `CLAUDE.md` trap 4 verbatim: it
+// proves the matcher matched something; it never proves it would match the thing.
+//
+// EVERY REGISTRY CONSUMER LIVES IN `ui/` TODAY, WHICH IS EXACTLY WHY THE SCOPE FILTER LOOKS
+// SUFFICIENT AND IS NOT. The wiring that would matter here is a DRAW decision, and a draw decision
+// lands in `render/` or in `main.js` at least as naturally as in a view — `ui/` is where the
+// registry is read now, not where a twin would first be reached for.
+//
+// So: every `.js` under `client/src/` except `items/` (the set's own home), and the needle is the
+// bare word `wrecked` over COMMENT-STRIPPED source. A module cannot reach this set without naming
+// it — the file, the exports and the id prefix all carry the word — so the weakest possible needle
+// is also the strongest available one, and stripping comments is what keeps it from firing on prose.
+test('no client surface reaches for the wrecked set, and index.js does not know it exists', () => {
+  const index = readFileSync(join(HERE, '..', 'src', 'items', 'index.js'), 'utf8');
+  assert.ok(!codeOnly(index).includes('wrecked'),
     'client/src/items/index.js references the wrecked set. The dependency must run ONE WAY\n'
     + '(wrecked.js → index.js) or the twins stop being revertible on their own.');
-  const seen = [];
-  for (const name of readdirSync(ui)) {
-    if (!name.endsWith('.js')) continue;
-    seen.push(name);
-    const src = codeOnly(readFileSync(join(ui, name), 'utf8'));
-    assert.ok(!/from\s+['"][^'"]*items\/wrecked\.js['"]/.test(src),
-      `client/src/ui/${name} imports the wrecked set. Wiring a twin to a surface needs a device\n`
+
+  const reaches = (src) => /wrecked/i.test(codeOnly(src));
+
+  // INCLUSION FLOOR, not a population count. Every spelling below is a real way to wire the set in,
+  // and the four marked ⨯ are the ones the retired parser missed. The predicate must catch each one
+  // on its own — that is the only form of non-vacuity that says anything about what a scan WOULD
+  // catch. (These were also planted in the real files and run; see the package report.)
+  for (const plant of [
+    "import { WRECKED } from '../items/wrecked.js';",
+    "import { WRECKED } from '../items/wrecked';",              // ⨯ no extension
+    "const m = await import('../items/wrecked.js');",           // ⨯ dynamic
+    "import '../items/wrecked.js';",                            // ⨯ bare side-effect
+    "import { buildWrecked } from '../../items/wrecked.js';",   // ⨯ from render/webgl/
+    'const art = buildWrecked(id);',                            // the import aliased away entirely
+  ]) assert.ok(reaches(plant), `the sweep predicate misses this wiring: ${plant}`);
+  // …and it must NOT fire on prose, or the way to satisfy it becomes deleting explanatory comments,
+  // which is worse than the bug (CLAUDE.md trap 1's second half). A LATER REAL COMMENT is included
+  // deliberately: a stripper fixture with no closing `*/` passes whether the stripper works or not.
+  assert.ok(!reaches('/* the wrecked twins are not wired here */\nconst x = 1; // and nor here\n'),
+    'the sweep fires on a comment. That is the stripper, not the scan — import `codeOnly`, never a\n'
+    + 're-derived one.');
+
+  const files = [];
+  (function walk(dir, rel) {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      if (ent.isDirectory()) {
+        if (ent.name !== 'items') walk(join(dir, ent.name), `${rel}${ent.name}/`);
+      } else if (ent.name.endsWith('.js')) {
+        files.push([rel + ent.name, join(dir, ent.name)]);
+      }
+    }
+  }(join(HERE, '..', 'src'), ''));
+
+  // Non-vacuity on the SWEEP is likewise structural, not a bare count: the three places the retired
+  // scope filter could not see must each be present.
+  assert.ok(files.some(([r]) => r.startsWith('ui/')), 'the sweep must reach client/src/ui/');
+  assert.ok(files.some(([r]) => r.startsWith('render/')), 'the sweep must reach client/src/render/');
+  assert.ok(files.some(([r]) => r.includes('/webgl/')), 'the sweep must recurse into nested dirs');
+  assert.ok(files.some(([r]) => r === 'main.js'), 'the sweep must reach client/src/main.js');
+  assert.ok(!files.some(([r]) => r.startsWith('items/')),
+    'items/ is the set\'s own home and is excluded — wrecked.js names itself on every line');
+  assert.ok(files.length >= 40, 'the client/src sweep found only ' + files.length + ' modules');
+
+  for (const [rel, path] of files) {
+    assert.ok(!reaches(readFileSync(path, 'utf8')),
+      `client/src/${rel} reaches for the wrecked set. Wiring a twin to a surface needs a device\n`
       + 'CONDITION on the wire and an owner decision about the threshold — neither exists yet.');
   }
-  assert.ok(seen.length >= 5, 'non-vacuity: the ui/ sweep found ' + seen.length + ' modules');
 });

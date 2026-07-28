@@ -1051,8 +1051,22 @@ export function isWreckedItemId(id) {
  * ⚠️ Keyed on the itemId ALONE. It never consults `ITEMS[id].kind`, and that is the trap-6
  * countermeasure spelled out in this file's header, not an accident of implementation.
  *
+ * ⚠️ `state` IS NOT IN THIS LIST, AND ITS ABSENCE IS A FACT ABOUT THE ART, NOT AN OVERSIGHT. An
+ * earlier draft of this line advertised `{ w, h, idPrefix, index, state }`, copied from `buildItem`.
+ * The harness does forward `state` — but MEASURED, and RE-COUNTED rather than computed: **0 of the
+ * 70 twins read it**, every one rendering byte-identically for `state:'on'` and `state:'off'`, while
+ * **17 of the 70 PRISTINE rows do respond** (`reactor`, `o2-scrubber`, `water-recycler`, `cooker`,
+ * `standing-lamp`, `workbench`, `fabricator`, `turret`, `sliding-door`, `airlock`, `power-conduit`,
+ * `wall-lamp`, `space-heater`, `sun-lamp`, `floodlight`, `controller-module`,
+ * `cryo-capsule-occupied`). So the contrast is real and it is 17-vs-0, not a rounding of two similar
+ * numbers. A wrecked piece is dead by construction (that is what the mock's `dead()` mark means), so
+ * there is no lit variant to ask for. Advertising an option that silently does nothing is how a call site gets written against
+ * a guarantee that was never there. Deliberately NOT pinned by a test: "no twin responds to state"
+ * is a property of today's 70 paintings, not a rule, and a future twin with a flickering emergency
+ * strip would be a correct change that a pin would call a regression.
+ *
  * @param {string} pristineId
- * @param {object} [opts] forwarded to the harness: `{ w, h, idPrefix, index, state }`
+ * @param {object} [opts] forwarded to the harness: `{ w, h, idPrefix, index }`
  * @returns {string} an SVG `<g>…</g>` fragment
  */
 export function buildWrecked(pristineId, opts = {}) {
