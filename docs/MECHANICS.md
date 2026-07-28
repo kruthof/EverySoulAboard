@@ -2228,10 +2228,34 @@ asked by the only two places in the sim that choose the tile a worker will stand
 (which also gates the consumable fetch, or the cycle simply moves upstream to a Parts stack a
 mid-carry flee left in vacuum). **No field, no save, no hash fold, no def, and all five pins held.**
 
-**Why a hard refusal is not a loss of capability:** the flee threshold arrives in 45 s / 120 s, and
-the shortest job that stands still at a tile is a 90 s device strip — the rest run 120 s (wall
-strip), 240 s (wall build), 600 s (dig) and 900 s (a maintenance service). A job staged in
-unbreathable air **cannot be completed by anyone**.
+**⛔ RETRACTED — "the rule denies only work that could never have landed."** That was this package's
+load-bearing claim, from the arithmetic that the flee threshold arrives in 45 s (vacuum) / 120 s
+(thin air, CO2 or thermal) while the shortest fixed-tile job is a 90 s device strip. **It is false,
+in two independent ways, and both are accepted costs rather than patched bugs:**
+
+1. **A floor build is 20 ticks — 2 seconds** (`BuildSystem.cs:254 FloorConstructTicks`), dispatched
+   through the guarded seam, and it fits inside the vacuum deadline with 43 s to spare. **Measured
+   both ways** (`UnbreathableWorksiteLivelockTests.AFloorBuildInVacuum_…`): planted by hand the build
+   **completes in hard vacuum** with the builder alive and never fleeing; through the dispatcher it
+   is **never offered**. Real, achievable work is denied — silently, forever.
+2. **"Unbreathable" includes THERMAL.** `AtmosphereSafety.IsBreathable` is false for
+   `tempC > HeatStrokeC || tempC < HypothermiaC`, and `NeedsSystem` puts thermal injury in the slow
+   (1/240) band. So a **fully pressurised, perfectly breathable but freezing or roasting** room now
+   refuses **all** work, including jobs that would finish inside its 120 s deadline. `CLAUDE.md`
+   records a live freezing thermal loop, so this is not hypothetical.
+
+**Not patched, deliberately.** Making the rule duration-aware re-opens every marginal case (does the
+job fit *after* the walk, *after* the suffocation already carried, at which rate?) for a bounded
+loss: `CanDesignate` refuses a floor on `TileDefs.Void`, so what is denied is a floor **re-material
+on existing deck plating**, never sealing a breach. The surviving argument is the weaker, true one:
+**every LONG job in bad air is unachievable, the long jobs are where the livelock lived, and the
+short ones are paid for on purpose.**
+
+**A third copy of the staging shape is deliberately left OPEN.** `SustenanceSystem.cs:307` has its
+own private `TryPathToAdjacent` and stages crew at a `WaterTank`; it is **not** guarded, because
+denying a thirsty crew member the only water aboard kills them for certain where the cycle only
+wastes their time. Survival outranks the cycle — the same precedence `IsRecruitableForWork` already
+encodes.
 
 **Inert unless BOTH `NeedsSystem` and `SafetySystem` are registered** — the precise statement of what
 the cycle needs. Without the first, suffocation never rises; without the second, nothing pulls a

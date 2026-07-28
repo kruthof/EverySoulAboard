@@ -27,9 +27,19 @@ namespace Perilune.Sim
 
     /// <summary>
     /// THE WORKSITE STAGING RULE — <b>a crew member is only ever staged where it can survive.</b>
-    /// One predicate, asked by the two places in the whole sim that choose the tile a worker will
-    /// stand on to do a job: <see cref="JobWork.TryPathToAdjacent"/> (dig, build, deconstruct) and
+    /// One predicate, asked by the two places in the whole sim that stage a worker for a JOB:
+    /// <see cref="JobWork.TryPathToAdjacent"/> (dig, build, deconstruct) and
     /// <c>MaintenanceSystem.TryFindStagingTile</c>.
+    ///
+    /// ⚠️ THERE IS A THIRD COPY OF THE SHAPE AND IT IS DELIBERATELY LEFT OPEN.
+    /// <c>SustenanceSystem.cs:307</c> has its own private <c>TryPathToAdjacent</c>, which stages a
+    /// crew member at a <see cref="DeviceKind.WaterTank"/> to drink, and it is NOT guarded. That is
+    /// a decision, not an oversight: denying a thirsty crew member the only water aboard because
+    /// the tank sits in a cold or thin-aired compartment kills them for certain, where the
+    /// walk/flee/recover cycle only wastes their time. Survival outranks the cycle — the same
+    /// precedence <see cref="Citizen.IsRecruitableForWork"/> already encodes (a player move order
+    /// suppresses WORK, never eating and drinking). If a future lane guards it, it must add a
+    /// deadline or a last-resort override, not simply copy this rule.
     ///
     /// WHY IT EXISTS — the maintenance/deconstruct LIVELOCK (docs/HANDOVER.md §5 item 2). A
     /// dispatcher that stages a worker in unbreathable air gets a crew member who walks there,
@@ -41,15 +51,33 @@ namespace Perilune.Sim
     /// the crew burn ~70 % of every crew-tick on Maintain with ~21 % on Flee, completing 2 services
     /// in the last hour against 643 job starts. It reads as 91 % busy and scores A1 PASS.
     ///
-    /// WHY REFUSING IS NOT A LOSS OF CAPABILITY, and this is the load-bearing argument. Suffocation
-    /// reaches the flee threshold in <c>flee_suffocation / suffocation_per_second_*</c> — 45 s in
-    /// vacuum, 120 s in thin air or CO2 narcosis at the shipped defaults — while the SHORTEST job
-    /// that stands still at a tile is a 90 s device strip, and the rest run 120 s (wall strip),
-    /// 240 s (wall build), 600 s (dig) and 900 s (a maintenance service). A job staged in
-    /// unbreathable air therefore cannot be completed by anyone, so this rule denies only work that
-    /// could never have landed. The single theoretical exception is a device strip in *thin* air
-    /// entered with zero accumulated suffocation (90 s of work against a 120 s deadline); it is
-    /// refused too, deliberately, rather than special-cased.
+    /// ⛔ WHAT IT COSTS — and the first version of this comment got this WRONG, so read it before
+    /// quoting the arithmetic. It claimed the rule "denies only work that could never have landed",
+    /// on the ground that the flee threshold arrives in 45 s (vacuum) / 120 s (thin air, CO2, or
+    /// thermal injury) while the shortest fixed-tile job is a 90 s device strip. <b>That claim is
+    /// RETRACTED.</b> Two things falsify it and both are recorded here rather than patched:
+    ///
+    ///  1. <b>A FLOOR BUILD IS 20 TICKS — 2 SECONDS</b> (<c>BuildSystem.cs:254
+    ///     FloorConstructTicks</c>), dispatched through <see cref="JobWork.TryPathToAdjacent"/>. It
+    ///     fits inside the vacuum deadline with 43 s to spare. MEASURED both ways by
+    ///     <c>UnbreathableWorksiteLivelockTests.AFloorBuildInVacuum_…</c>: planted by hand it
+    ///     COMPLETES in hard vacuum with the builder alive and never fleeing; through the dispatcher
+    ///     it is never offered. This rule denies real, achievable work.
+    ///  2. <b>"UNBREATHABLE" INCLUDES THERMAL.</b> <see cref="AtmosphereSafety.IsBreathable"/> is
+    ///     false for <c>tempC &gt; HeatStrokeC || tempC &lt; HypothermiaC</c>, and
+    ///     <see cref="NeedsSystem"/> puts thermal injury in the SLOW (1/240) band. So a room that is
+    ///     fully pressurised and perfectly breathable but freezing or roasting refuses ALL work,
+    ///     including jobs that would finish well inside its 120 s deadline. <c>CLAUDE.md</c> records
+    ///     a live freezing thermal loop on the slice, so this is not hypothetical.
+    ///
+    /// THE COST IS ACCEPTED, NOT PATCHED, and the reason is worth stating: making the rule
+    /// duration-aware re-opens every marginal case (does the job fit *after* the walk? *after* the
+    /// suffocation the crew member arrived with? at the vacuum rate or the slow one?) in exchange
+    /// for a bounded loss. <c>BuildSystem.CanDesignate</c> refuses a floor on
+    /// <see cref="TileDefs.Void"/>, so what is denied is a floor RE-MATERIAL on existing deck
+    /// plating — never sealing a breach. The argument that survives is the weaker, true one:
+    /// <b>every LONG job in bad air is unachievable, the long jobs are where the livelock lived, and
+    /// the short ones are paid for deliberately.</b>
     ///
     /// IT IS A LIVE PREDICATE, NOT A BLACKLIST AND NOT A BACKOFF. Nothing is remembered, nothing is
     /// saved, nothing is hashed: every staging attempt re-reads the room, so repressurising a

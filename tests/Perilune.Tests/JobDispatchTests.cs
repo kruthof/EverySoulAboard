@@ -255,8 +255,9 @@ namespace Perilune.Tests
         ///
         /// ⚠️ RE-RECORDED 2026-07-28 by the WORKSITE STAGING RULE (docs/HANDOVER.md §5 item 2,
         /// MECHANICS §13.21). The KIND MIX AND THE 48 DIG TARGETS ARE UNCHANGED — same 57 rows,
-        /// same set of tiles, the aft field still finishes inside the window — and the first ten
-        /// rows are byte-identical, which is why the slice tick-3000 golden HELD.
+        /// same set of tiles, the aft field still finishes inside the window — and the first NINE
+        /// rows are byte-identical (row 10, t6251 → t6301, is the first divergence), which is why
+        /// the slice tick-3000 golden HELD.
         ///
         /// WHAT MOVED, and the mechanism: from t6251 the dig column is RE-TIMED and re-handed. A
         /// freshly dug tile opens a pocket of the aft field that has not yet filled with air

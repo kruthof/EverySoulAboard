@@ -572,9 +572,31 @@ namespace Perilune.Tools
                         }
                         if (!stageable && anyWalkable) refusedStrips++;
                     }
-                Console.WriteLine($"  unstageable dig/strip  {refusedTiles,6} / {refusedStrips}   (designations a player " +
-                                  "made that the worksite staging rule refuses — the rule's honest cost, " +
-                                  "MECHANICS §13.21; 'walled in' is excluded, this is AIR only)");
+                // BUILD sites live in their own registry too, and this is the class where the rule
+                // genuinely destroys ACHIEVABLE work: a floor build is 20 ticks (2 s) against a 45 s
+                // vacuum deadline, so it would have landed. Leaving builds out would have made the
+                // one loss that matters invisible to the instrument built to measure the loss.
+                int refusedBuilds = 0;
+                BuildSystem buildSys = null;
+                foreach (var sysm in sim.Systems) if (sysm is BuildSystem bs) { buildSys = bs; break; }
+                if (buildSys != null)
+                    foreach (var site in buildSys.Pending)
+                    {
+                        bool stageable = false, anyWalkable = false;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(site.Pos, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            anyWalkable = true;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
+                        }
+                        if (!stageable && anyWalkable) refusedBuilds++;
+                    }
+                Console.WriteLine($"  unstageable dig/strip/build  {refusedTiles} / {refusedStrips} / {refusedBuilds}   " +
+                                  "(designations a player made that the worksite staging rule refuses — its honest " +
+                                  "cost, MECHANICS §13.21. 'Walled in' is excluded: this is AIR only. The BUILD " +
+                                  "column is the one that can destroy achievable work — a 20-tick floor build " +
+                                  "would have landed inside the 45 s flee deadline)");
                 foreach (var d in sim.Devices.Items)
                 {
                     if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;

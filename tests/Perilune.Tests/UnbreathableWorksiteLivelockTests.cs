@@ -35,12 +35,21 @@ namespace Perilune.Tests
     ///                           starts of which 7 427 ended in a flee; 0 of 20 walls torn down.
     /// After: 297 / 0 / 308 and 0 / 0 / 0 respectively — see the commit message for the table.
     ///
-    /// THE FIX. One rule — <see cref="WorksiteSafety.CanStageWorkerAt"/> — asked by the only two
-    /// places in the sim that choose the tile a worker will stand on: <see cref="JobWork"/>'s
-    /// <c>TryPathToAdjacent</c> (dig, build, deconstruct) and <c>MaintenanceSystem</c>'s
-    /// <c>TryFindStagingTile</c>. It adds no state, no save field, no hash fold and no def, and it
-    /// is INERT unless both a <see cref="NeedsSystem"/> and a <see cref="SafetySystem"/> are
-    /// registered.
+    /// THE FIX. One rule — <see cref="WorksiteSafety.CanStageWorkerAt"/> — asked by the two places
+    /// in the sim that stage a worker for a JOB: <see cref="JobWork"/>'s <c>TryPathToAdjacent</c>
+    /// (dig, build, deconstruct) and <c>MaintenanceSystem</c>'s <c>TryFindStagingTile</c> (which
+    /// also gates the consumable fetch). It adds no state, no save field, no hash fold and no def,
+    /// and it is INERT unless both a <see cref="NeedsSystem"/> and a <see cref="SafetySystem"/> are
+    /// registered. A THIRD copy of the shape — <c>SustenanceSystem.cs:307</c>, which stages crew at
+    /// a water tank — is deliberately left UNGUARDED: survival outranks the cycle.
+    ///
+    /// ⛔ THE PACKAGE'S LOAD-BEARING CLAIM IS RETRACTED. It said the rule "denies only work that
+    /// could never have landed" (45 s / 120 s flee deadlines against a 90 s shortest fixed-tile
+    /// job). FALSE twice over: a FLOOR BUILD IS 20 TICKS = 2 s and lands in hard vacuum
+    /// (<see cref="AFloorBuildInVacuum_WouldHaveCompletedInsideTheFleeDeadline_AndIsRefusedAnyway"/>
+    /// measures both halves), and "unbreathable" includes THERMAL, so a fully pressurised freezing
+    /// or roasting room refuses everything. Both are ACCEPTED costs — see MECHANICS §13.21 for why
+    /// a duration-aware rule is the worse trade.
     ///
     /// WHAT EACH TEST IS FOR, because "no churn" alone is satisfied by a dozen wrong fixes:
     ///   • the two REFUSAL tests pin that the cycle is gone;
@@ -57,20 +66,29 @@ namespace Perilune.Tests
     ///     inertness condition, which is what keeps every atmosphere-free fixture and host alive;
     ///   • <see cref="ADigReachedOnlyThroughADoorway_IsStillWorked"/> pins that a DOOR TILE IS NOT
     ///     VACUUM — the mistake the first draft made, which refused the shipped slice's whole aft
-    ///     dig field and moved the slice tick-3000 golden.
+    ///     dig field and moved the slice tick-3000 golden;
+    ///   • <see cref="AFloorBuildInVacuum_WouldHaveCompletedInsideTheFleeDeadline_AndIsRefusedAnyway"/>
+    ///     MEASURES the accepted cost instead of arguing it away;
+    ///   • <see cref="APartsStackStrandedInVacuum_IsNotFetched_AndTheMachineIsJuryRiggedInstead"/>
+    ///     plus its breathable-air control close the THIRD call site — the consumable fetch — which
+    ///     nothing else in the suite reaches (neutralised suite-wide it leaves 1107/1107 green).
     ///
     /// THE NAMED MUTATIONS. Each was physically applied to the shipped source, the suite run, the
     /// failure set read, and the source restored from a copy taken before the first mutation (never
     /// from git — <c>CLAUDE.md</c> trap 2). Counts are failures within THIS file:
-    ///   M-1  <c>JobWork.TryPathToAdjacent</c> drops its <c>CanStageWorkerAt</c> guard      → 1  (sole)
+    ///   M-1  <c>JobWork.TryPathToAdjacent</c> drops its <c>CanStageWorkerAt</c> guard      → 2
     ///   M-2  <c>MaintenanceSystem.TryFindStagingTile</c> drops its guard                   → 4
-    ///   M-3  <c>CanStageWorkerAt</c> refuses every non-doorway tile                        → 4
+    ///   M-3  <c>CanStageWorkerAt</c> refuses every non-doorway tile                        → 6
     ///   M-4  <c>CanCycle</c> is always true (the rule stops being inert)                   → 1  (sole)
     ///   M-5  the <c>DoorMarker</c> clause is dropped (a doorway reads as the vacuum sink)  → 1  (sole)
+    ///   M-6  <c>MaintenanceSystem.FindNearest</c> drops its consumable guard                → 1  (sole)
     /// "(sole)" = exactly one test in this file catches it. Every run was a SEMANTIC red: the
     /// harness fails the whole run if the mutated tree emits a single <c>CS</c> error, because a
     /// mutation that does not compile reddens for the wrong reason and proves nothing
-    /// (<c>CLAUDE.md</c> trap 3).
+    /// (<c>CLAUDE.md</c> trap 3). M-3 and M-6 are spelled as <c>&amp;&amp; false</c> rather than as
+    /// deletions, so the <c>WorksiteSafety</c> identifier COUNTS stay identical and
+    /// <c>ArchitectureBoundaryTests</c>' carve-out cannot supply a red from the boundary scan
+    /// instead of from the semantics under test.
     /// </summary>
     public class UnbreathableWorksiteLivelockTests
     {
@@ -95,6 +113,7 @@ namespace Perilune.Tests
         private static readonly Int3 RefugeStrip = new Int3(6, 2, 0);   // interior wall, right compartment
         private static readonly Int3 CrewHome = new Int3(7, 4, 0);      // right compartment
         private static readonly Int3 WorkSideTile = new Int3(2, 1, 0);  // left compartment, walkable
+        private static readonly Int3 WorkStripNeighbour = new Int3(1, 1, 0); // left compartment, beside it
 
         /// <summary>Neither wall may be pressure hull, or the strip legs below would be refused for
         /// a completely different reason and would pass while asserting nothing about air.</summary>
@@ -122,6 +141,7 @@ namespace Perilune.Tests
             if (withGuard) systems.Add(new SafetySystem());
             systems.Add(new MaintenanceSystem());
             systems.Add(new DeconstructSystem());
+            systems.Add(new BuildSystem()); // inert until something is designated
 
             var sim = new Simulation(AsciiWorld.Build(TwoCompartments), 7, systems.ToArray());
             sim.World.SetWall(WorkStrip, TileDefs.Wall);   // an interior partition in each compartment,
@@ -503,6 +523,178 @@ namespace Perilune.Tests
                 "walkable neighbour' picks the vacuum side here");
             Assert.That(c.FleeStarts, Is.Zero, "so nothing ever flees");
             Assert.That(c.Services, Is.GreaterThan(0), "and the service completes");
+        }
+
+        // ------------------------------------------------------- the cost, measured not argued
+
+        /// <summary>
+        /// ⛔ THE PACKAGE'S LOAD-BEARING CLAIM WAS FALSE, AND THIS TEST IS THE CORRECTION.
+        ///
+        /// It was published in four places that the rule "denies only work that could never have
+        /// landed", on the arithmetic that the shortest job standing still at a tile is a 90 s
+        /// device strip against a 45 s vacuum flee deadline. <b>A FLOOR BUILD IS 20 TICKS —
+        /// 2 SECONDS</b> (<c>BuildSystem.cs:254 FloorConstructTicks</c>), and it is dispatched
+        /// through the guarded seam. It fits inside the deadline with 43 s to spare, and the rule
+        /// refuses it forever, silently.
+        ///
+        /// Both halves are measured here rather than argued, which is the only way this cost can be
+        /// honest. The COUNTERFACTUAL half plants a builder on the vacuum site by hand — the exact
+        /// state the dispatcher used to produce — and shows the work COMPLETES with the crew member
+        /// alive and never fleeing. The REFUSAL half then shows the dispatcher never offers it.
+        ///
+        /// THE COST IS ACCEPTED, NOT PATCHED. Making the rule duration-aware would re-open every
+        /// marginal case (a job that fits the deadline only if the walk is short, only if the crew
+        /// member arrives rested, only if the air is thin rather than absent) for a bounded loss:
+        /// <c>CanDesignate</c> refuses a floor on <see cref="TileDefs.Void"/>, so what is denied is
+        /// a floor RE-MATERIAL on existing deck plating, never sealing a breach.
+        ///
+        /// NAMED MUTATIONS caught here: none, deliberately — a mutation that RESTORES the floor
+        /// build is a design change, not a regression. What this test guards is that the cost stays
+        /// TRUE: if someone later makes the rule duration-aware, the refusal half goes red and the
+        /// four corrected documents must be corrected again.
+        /// </summary>
+        [Test]
+        public void AFloorBuildInVacuum_WouldHaveCompletedInsideTheFleeDeadline_AndIsRefusedAnyway()
+        {
+            // --- the counterfactual: plant the builder, and watch a 2 s job land in hard vacuum ---
+            var planted = NewSim();
+            var build = BuildOf(planted);
+            Assert.That(build.Designate(planted, WorkSideTile, BuildKind.Floor, material: 3), Is.True,
+                "premise: a floor re-material is legal on existing deck plating in the vacuum compartment");
+            Assert.That(build.TryGet(WorkSideTile, out var site), Is.True);
+            Assert.That(site.WorkTicks, Is.EqualTo(20),
+                "premise, AND THE WHOLE POINT: a floor build is 20 ticks = 2 s, against a 45 s vacuum " +
+                "flee deadline. If this ever stops being under the deadline the claim this test " +
+                "corrects becomes true again and this test must be revisited");
+            build.Deposit(planted, WorkSideTile, site.Required); // fully materialed, so no haul leg
+            var planter = planted.Citizens.Items[0];
+            planter.Pos = WorkStripNeighbour;   // in the vacuum compartment, beside the site
+            planter.PrevPos = planter.Pos;
+            planter.ClearPath();
+            planter.JobKind = JobKind.Build;
+            planter.JobTarget = WorkSideTile;
+            planter.JobWorkTicks = site.WorkTicks;
+
+            // 100 ticks = 10 s: five times the job, and still a quarter of the 45 s vacuum flee
+            // deadline. The window is deliberately NOT longer — a builder left standing in vacuum
+            // AFTER its job does eventually flee (measured: at ~t450), and running past the job
+            // would score that instead of the thing under measurement.
+            bool plantedFled = false;
+            for (int t = 0; t < 100; t++)
+            {
+                planted.Tick();
+                if (planter.JobKind == JobKind.Flee) plantedFled = true;
+            }
+
+            Assert.That(build.TryGet(WorkSideTile, out _), Is.False,
+                "MEASURED: the 2 s floor build COMPLETES in hard vacuum — the site is consumed. So " +
+                "this is work that would have landed, and the rule denies it");
+            Assert.That(plantedFled, Is.False, "and the builder never even reached the flee threshold");
+            Assert.That(planter.Dead, Is.False, "let alone died");
+
+            // --- the refusal: through the dispatcher, it is never offered at all ---
+            var sim = NewSim();
+            var build2 = BuildOf(sim);
+            Assert.That(build2.Designate(sim, WorkSideTile, BuildKind.Floor, material: 3), Is.True);
+            build2.TryGet(WorkSideTile, out var site2);
+            build2.Deposit(sim, WorkSideTile, site2.Required);
+            sim.JobsDirty = JobBoardDirty.All;
+
+            var crew = sim.Citizens.Items[0];
+            int buildTicks = 0;
+            for (int t = 0; t < 3000; t++)
+            {
+                sim.Tick();
+                if (crew.JobKind == JobKind.Build) buildTicks++;
+            }
+
+            Assert.That(buildTicks, Is.Zero,
+                "THE ACCEPTED COST: the dispatcher refuses a job that would have finished, because " +
+                "the rule asks about the AIR and not about the clock");
+            Assert.That(build2.TryGet(WorkSideTile, out _), Is.True,
+                "and the player's designation sits there forever with nothing anywhere saying why");
+        }
+
+        /// <summary>The live <see cref="BuildSystem"/> out of the running stack.</summary>
+        private static BuildSystem BuildOf(Simulation sim)
+        {
+            foreach (var s in sim.Systems) if (s is BuildSystem b) return b;
+            Assert.Fail("no BuildSystem in the stack");
+            return null;
+        }
+
+        // ------------------------------------------------------- the consumable fetch guard
+
+        /// <summary>
+        /// THE THIRD CALL SITE, which nothing else in the suite reaches.
+        /// <c>MaintenanceSystem.FindNearest</c> refuses a consumable resting in unbreathable air,
+        /// or the livelock simply moves one leg upstream: the servicer of a perfectly breathable
+        /// machine walks to a <see cref="ItemKind.Parts"/> stack stranded in vacuum, suffocates,
+        /// flees, recovers and is sent for the same stack again. And a stack CAN end up there —
+        /// a flee mid-carry sets its cargo down wherever the crew member happened to be standing.
+        ///
+        /// The scoring is indirect on purpose and it is exact: with the guard the ship behaves as
+        /// though it holds NO Parts, so the service is a JURY-RIG (<c>jury_rig_condition</c>, 0.6);
+        /// without it the servicer goes for the Parts and would restore 1.0. The two outcomes are
+        /// different def values, so this cannot pass for a vague reason.
+        ///
+        /// The CONTROL below moves the identical stack into breathable air and requires the
+        /// overhaul to happen — without it, "the machine was jury-rigged" would be satisfied by a
+        /// fetch path that is broken for any reason at all.
+        ///
+        /// NAMED MUTATION caught here: M-6 (FindNearest drops its guard). This test is the SOLE
+        /// guard on that call site; the reviewer neutralised it suite-wide and got 1107/1107 green.
+        /// </summary>
+        [Test]
+        public void APartsStackStrandedInVacuum_IsNotFetched_AndTheMachineIsJuryRiggedInstead()
+        {
+            var sim = NewSim();
+            var machine = NeedyMachineAt(sim, RefugeMachine, "scrubber_bright"); // breathable side
+            var parts = sim.AddItem(ItemKind.Parts, 1, WorkSideTile);            // vacuum side
+            Assert.That(AtmosphereSafety.IsBreathable(sim, parts.Pos), Is.False,
+                "premise: the stack really is stranded in unbreathable air");
+            Assert.That(AtmosphereSafety.IsBreathable(sim, RefugeMachine), Is.True,
+                "premise: while the machine that wants it is perfectly serviceable");
+            var path = new List<Int3>(64);
+            Assert.That(sim.Paths.FindPath(sim, sim.Citizens.Items[0].Pos, parts.Pos, path), Is.True,
+                "premise: and the servicer COULD path to it — this is an air refusal, not a reachability one");
+
+            var c = Run(sim, 12000);
+
+            Assert.That(c.MaintainStarts, Is.GreaterThan(0), "premise: the machine was staffed");
+            Assert.That(c.FleeStarts, Is.Zero,
+                "nobody walked into the vacuum for the Parts — that walk is the livelock, one leg upstream");
+            Assert.That(machine.Condition, Is.EqualTo(sim.Defs.Wear.JuryRigCondition),
+                "and the service completed as a JURY-RIG (0.6), not an overhaul (1.0): with the " +
+                "stranded stack refused, the ship behaves as though it holds no Parts at all");
+            Assert.That(parts.Count, Is.EqualTo(1), "the stranded stack is untouched");
+            Assert.That(parts.CarriedBy, Is.Zero, "and was never picked up");
+        }
+
+        /// <summary>
+        /// The control for the test above, and it is not decoration: without it, "the machine was
+        /// jury-rigged" is satisfied by a fetch path broken for any reason whatever. Move the same
+        /// stack into breathable air and the overhaul must happen.
+        ///
+        /// NAMED MUTATION caught here: M-3 (refuse everything).
+        /// </summary>
+        [Test]
+        public void APartsStackInBreathableAir_IsStillFetched_AndOverhaulsTheMachine()
+        {
+            var sim = NewSim();
+            var machine = NeedyMachineAt(sim, RefugeMachine, "scrubber_bright");
+            var parts = sim.AddItem(ItemKind.Parts, 1, new Int3(5, 4, 0)); // refuge floor, breathable
+            Assert.That(AtmosphereSafety.IsBreathable(sim, parts.Pos), Is.True,
+                "premise: this time the stack is in air the servicer can breathe");
+
+            var c = Run(sim, 12000);
+
+            Assert.That(c.MaintainStarts, Is.GreaterThan(0), "the machine was staffed");
+            Assert.That(machine.Condition, Is.EqualTo(1f),
+                "and a reachable Parts stack must still produce a FULL OVERHAUL — the guard refuses " +
+                "stranded stacks, not the fetch path");
+            Assert.That(sim.Items.TryGet(parts.Id, out _), Is.False, "the single unit was consumed");
+            Assert.That(c.FleeStarts, Is.Zero, "with nobody in danger at any point");
         }
 
         // ------------------------------------------------------------------- the doorway
