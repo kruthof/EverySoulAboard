@@ -159,9 +159,18 @@ namespace Perilune.Tests
         private static Device NeedyMachineAt(Simulation sim, Int3 pos, string name)
         {
             var d = sim.AddDevice(DeviceKind.Scrubber, pos, name);
-            d.Condition = 0.2f; // below maintain_below (0.4), above fail_below (0.10)
+            // 0.30, not the 0.2 this fixture used before the wreck rule (wreck start W2). The band
+            // has TWO ends now: below maintain_below (0.4) so the machine wants service, and AT OR
+            // ABOVE wear.wreck_threshold (0.25) so it is a machine that merely ROTTED rather than
+            // one that was SHOT. At 0.2 every test in this file measured the wreck rule's refusal
+            // instead of the worksite rule's, and five of them went red — which is the right
+            // failure, in the wrong file.
+            d.Condition = 0.3f;
             Assert.That(d.Condition, Is.LessThan(sim.Defs.Machines[(int)DeviceKind.Scrubber].MaintainBelow),
                 "premise: the fixture machine must actually want service");
+            Assert.That(d.Condition, Is.GreaterThanOrEqualTo(sim.Defs.Wear.WreckThreshold),
+                "premise: the fixture machine must be serviceable WITH EMPTY HANDS, or this file " +
+                "measures the wreck rule (wear.wreck_threshold) instead of the worksite rule");
             return d;
         }
 
@@ -267,7 +276,7 @@ namespace Perilune.Tests
             Assert.That(c.FleeStarts, Is.Zero,
                 "and with no job to walk into, there is nothing to flee from");
             Assert.That(c.AnyoneDied, Is.False, "the crew member is alive and idle, not dead and busy");
-            Assert.That(machine.Condition, Is.EqualTo(0.2f),
+            Assert.That(machine.Condition, Is.EqualTo(0.3f), // NeedyMachineAt's authored value
                 "the machine is not repaired either — that is the honest cost, and it was never " +
                 "repairable: a 900 s service against a 45 s flee deadline cannot be completed");
         }
@@ -483,7 +492,15 @@ namespace Perilune.Tests
             var sim = new Simulation(AsciiWorld.Build(TwoCompartments), 11, systems);
             var door = sim.AddDevice(DeviceKind.Door, DoorTile, "door_boundary");
             door.IsOpen = true;
-            door.Condition = 0.2f; // below the Door row's maintain 0.3, above its fail 0.05
+            // 0.28: below the Door row's maintain 0.3, above its fail 0.05, and AT OR ABOVE
+            // wear.wreck_threshold (0.25) so an empty-handed service is still legal (wreck start
+            // W2). ⚠️ THE DOOR'S FREE-SERVICE BAND IS ONLY [0.25, 0.30) WIDE — the narrowest of any
+            // kind that has one at all, and three kinds (Terminal, Light, WaterTank, all maint 0.2)
+            // have NO such band. See WreckThresholdTests.
+            door.Condition = 0.28f;
+            Assert.That(door.Condition, Is.GreaterThanOrEqualTo(sim.Defs.Wear.WreckThreshold),
+                "premise: the door must be serviceable with empty hands, or this test measures the " +
+                "wreck rule instead of the worksite rule");
 
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, BoundaryCrewHome)); // left only

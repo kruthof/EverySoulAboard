@@ -217,6 +217,27 @@ namespace Perilune.Sim
                     continue;
                 }
 
+                if (IsUnfixableWreck(sim, needy))
+                {
+                    // A WRECKED machine cannot be wished better (wreck start W2). Below
+                    // wear.wreck_threshold an empty-handed jury-rig is refused, so with no
+                    // consumable anywhere aboard there is no service to perform — skip it for
+                    // this pass, exactly as "nowhere to stand" does, and for the same reasons:
+                    // nothing is remembered, so the machine becomes serviceable on the very pass
+                    // a Seals or Parts stack appears.
+                    //
+                    // ⚠ THE REFUSAL BELONGS HERE AND NOT IN THE WORK PHASE, and that is a
+                    // measured rule rather than a preference. DriveWorker's work phase is reached
+                    // only after a crew member has walked to the machine and counted down
+                    // maintenance_work_seconds = 900 s; discovering the refusal there would burn
+                    // 15 sim-minutes of a crew member's life per attempt and re-offer the same
+                    // machine on the next pass forever — a fresh instance of exactly the
+                    // MaintenanceSystem livelock the worksite-safety package closed (47 640 job
+                    // starts for 2 services). Refusing at RECRUITMENT costs one item scan.
+                    _recruitSkip.Add(needy.Id);
+                    continue;
+                }
+
                 var recruit = FindNearestIdle(sim, staging);
                 if (recruit == null) return; // no idle hands — retried next second
 
@@ -281,6 +302,16 @@ namespace Perilune.Sim
                 }
                 else
                 {
+                    // NO WRECK GUARD HERE, DELIBERATELY — the wreck rule is decided BEFORE any work
+                    // starts (the recruit gate and the fetch-phase guard below), never after. A
+                    // guard on this line would fire only for a machine that drifted below
+                    // wear.wreck_threshold DURING its own 900 s service, and it would pay for that
+                    // by throwing 15 sim-minutes of a crew member's life away — the walk-work-refuse
+                    // shape the worksite-safety lane spent a whole package closing. The leak it
+                    // would plug is bounded by one service's worth of wear: at the highest wear rate
+                    // in machines.def (0.020/h) times the heat cap (3x), 900 s is 0.015 of
+                    // Condition, so a machine can be jury-rigged from at most 0.015 below the
+                    // threshold and never further. Bounded and monotone beats a wasted service.
                     device.Condition = sim.Defs.Wear.JuryRigCondition; // patched, not fixed
                 }
                 worker.JobKind = JobKind.None;
@@ -339,7 +370,13 @@ namespace Perilune.Sim
                 return;
             }
 
-            // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand.
+            // Neither Parts nor Seals anywhere in the colony: jury-rig with what's on hand —
+            // UNLESS the machine is a wreck, which cannot be wished better (wreck start W2).
+            if (device.Condition < sim.Defs.Wear.WreckThreshold)
+            {
+                Abandon(worker); // no consumable, no free fix; the recruit gate will not re-offer it
+                return;
+            }
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
             {
                 worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond;
@@ -381,6 +418,39 @@ namespace Perilune.Sim
                 }
             }
             return best;
+        }
+
+        /// <summary>
+        /// THE WRECK RULE (wreck start W2): is this machine below <c>wear.wreck_threshold</c> with
+        /// nothing aboard that could repair it? Such a machine has no service to offer — the
+        /// empty-handed jury-rig that would otherwise restore it to
+        /// <c>wear.jury_rig_condition</c> is refused.
+        ///
+        /// <para><b>PUBLIC on purpose.</b> The refusal is silent, exactly like
+        /// <see cref="WorksiteSafety.CanStageWorkerAt"/>'s (<c>MECHANICS.md</c> §13.21), and a
+        /// view-only <c>blocked</c> wire channel needs to be able to ask the same question the
+        /// dispatcher asks rather than re-deriving it — re-deriving is how the two answers drift
+        /// apart.</para>
+        ///
+        /// <para><b>Byte-identical above the threshold.</b> The first term is
+        /// <c>Condition &lt; threshold</c>, so on a ship whose machines are all above it this
+        /// method never reaches the item scan and never changes an outcome. With
+        /// <c>wreck_threshold = 0</c> it is false for every device and the whole rule is inert.</para>
+        ///
+        /// <para><b>The consumable test is the DISPATCHER'S OWN, not a re-implementation.</b> It
+        /// calls <see cref="FindNearestConsumable"/>, which is the only thing in the sim that puts
+        /// a stack in a maintainer's hand, so "the gate said yes" and "the worker found something"
+        /// cannot disagree. Its null-ness is position-independent — <see cref="FindNearest"/>
+        /// filters on kind, carry, reservation and the stack tile's own breathability, and uses
+        /// <paramref name="device"/>'s position only to break distance ties — so passing the
+        /// machine's tile rather than the eventual worker's tile cannot change the ANSWER, only
+        /// which stack would be chosen.</para>
+        /// </summary>
+        public static bool IsUnfixableWreck(Simulation sim, Device device)
+        {
+            if (device == null) return false;
+            if (device.Condition >= sim.Defs.Wear.WreckThreshold) return false;
+            return FindNearestConsumable(sim, device.Pos) == null;
         }
 
         /// <summary>

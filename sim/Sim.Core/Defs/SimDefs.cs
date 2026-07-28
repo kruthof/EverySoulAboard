@@ -310,6 +310,37 @@ namespace Perilune.Sim
             /// stock at once, and nothing in E0 produces that yet.
             /// </summary>
             public float SealServiceCondition;
+
+            /// <summary>
+            /// The WRECK FLOOR — below this <see cref="Device.Condition"/>, an empty-handed
+            /// jury-rig is REFUSED and the machine needs a real consumable
+            /// (<see cref="ItemKind.Parts"/> → 1.0 or <see cref="ItemKind.Seals"/> →
+            /// <see cref="SealServiceCondition"/>). At or above it, maintenance is byte-identical
+            /// to the pre-2026-07-28 game. Current: 0.25.
+            ///
+            /// <b>WHY IT EXISTS.</b> <c>MaintenanceSystem</c> restores ANY device to
+            /// <see cref="JuryRigCondition"/> = 0.6 with EMPTY HANDS in one 900 s pass, and 0.6 is
+            /// above every <c>maint</c> threshold in <c>machines.def</c> (max 0.4). So a raid-wrecked
+            /// ship — every machine authored at 0.02–0.35 — heals itself to full serviceability in
+            /// ~45 sim-minutes with ZERO player input and ZERO matter. The wreck premise evaporates
+            /// before the player has done anything. A wrecked machine must not be wishable better.
+            ///
+            /// <b>0.25 IS A STARTING VALUE THE OWNER EXPECTS TO BE MEASURED, NOT A LAW.</b> It is
+            /// deliberately ABOVE every <c>maint</c> threshold's failure companion (max
+            /// <c>fail</c> = 0.10) and BELOW every <c>maint</c> threshold (max 0.40), so the band
+            /// [0.25, 0.40) — a machine that has merely rotted — keeps today's free jury-rig, while
+            /// [0, 0.25) — a machine that has been SHOT — does not. Rot stays cheap; damage costs
+            /// matter. Raising it past 0.40 would make every routine service demand a consumable and
+            /// is a different game; lowering it to 0 makes the field inert everywhere (and a def
+            /// that is inert everywhere is a def nobody tests).
+            ///
+            /// <b>THE REFUSAL IS SILENT, AND THAT IS AN ACCEPTED COST, NOT AN OVERSIGHT</b> — the
+            /// same shape as <c>MECHANICS.md</c> §13.21's worksite rule. It lives in
+            /// <c>RecruitForNeediest</c>'s per-pass skip branch, so nothing is remembered and the
+            /// machine becomes serviceable on the very pass a consumable appears; but the player is
+            /// told nothing. The <c>blocked</c> channel (wreck-start W4) is where that is repaired.
+            /// </summary>
+            public float WreckThreshold;
         }
 
         /// <summary>CitizenSystem movement constants.</summary>
@@ -679,6 +710,7 @@ namespace Perilune.Sim
                     MaintenanceWorkSeconds = 900,
                     JuryRigCondition = 0.6f,
                     SealServiceCondition = 0.9f, // E0-6 (the middle rung: Parts 1.0 > Seals 0.9 > hands 0.6)
+                    WreckThreshold = 0.25f,     // the wreck floor: below this, empty hands are refused
                 },
 
                 Citizen = new CitizenDefs
@@ -863,7 +895,8 @@ namespace Perilune.Sim
         /// → Deconstruct (E0-5, 3 fields, appended) → Deconstruct device fields (E0-5 WP-2,
         /// 2 fields, appended) → Build.DevicePlaceCost (E0-5 WP-3, 1 field, appended)
         /// → Wear.SealServiceCondition + Build.CommissionCost (E0-6, 2 fields, appended)
-        /// → Water.IceLitersPerUnit + Water.MelterBufferLiters (E0-7, 2 fields, appended).
+        /// → Water.IceLitersPerUnit + Water.MelterBufferLiters (E0-7, 2 fields, appended)
+        /// → Wear.WreckThreshold (wreck-start W2 half A, 1 field, appended).
         /// E0-6's pair and E0-7's pair are in the integrator's pre-assigned slot order
         /// (ECONOMY-PLAN §2.1 rule 2); the wave merge kept it, so neither lane's locally
         /// measured fingerprint survives and the integrator re-measures on main.
@@ -1097,6 +1130,12 @@ namespace Perilune.Sim
             // integrator re-measures). E0-6's two folds are above; do not reorder to minimise a diff.
             h = XxHash64.Combine(h, Water.IceLitersPerUnit);
             h = XxHash64.Combine(h, Water.MelterBufferLiters);
+
+            // The RECOVERY ECONOMY (wreck start W2), appended at the END for the same reason every
+            // field since Social-S1 is: append-at-END is the invariant (README.def HANDOVER
+            // INVARIANT #3). ONE field, folded alone, because Half A ships alone and must be
+            // revertable alone — the salvage half's folds append AFTER this line, never beside it.
+            h = XxHash64.Combine(h, Wear.WreckThreshold);
 
             // Designer rules (B5). Folded LAST so existing checksums stay comparable and
             // an empty/absent set is a no-op (CreateDefault's fingerprint is unchanged).

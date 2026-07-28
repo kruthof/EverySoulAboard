@@ -20,3 +20,11 @@ seal_service_condition   = 0.9    # Condition after a SEALS service (E0-6). The 
                                   #   Parts in hand -> 1.0, Seals in hand -> 0.9, empty hands -> 0.6.
                                   # Must stay strictly between jury_rig_condition and 1.0 or the
                                   # tier is either a free Part or a wasted walk.
+wreck_threshold          = 0.25   # THE WRECK FLOOR (wreck start W2). Below this Condition an
+                                  # empty-handed jury-rig is REFUSED: the machine needs Parts or
+                                  # Seals. At or above it, maintenance is byte-identical to before.
+                                  # Sits ABOVE every machines.def `fail` (max 0.10) and BELOW every
+                                  # `maint` (max 0.40), so a machine that merely ROTTED keeps its
+                                  # free jury-rig and a machine that was SHOT does not. 0 makes the
+                                  # field inert on every ship; > 0.40 makes every routine service
+                                  # demand a consumable, which is a different game.
