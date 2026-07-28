@@ -162,6 +162,40 @@ is renamed). Tag `v2-talking-ship`.
 > Item 1 (ground-item art) ✅ · **item 2 ✅** · **item 3 ✅** · **item 4 answered by measurement — do
 > not build it expecting an economy change** · **item 5 ✅**. What is left is §4's owner-open list, the
 > two new owner items above, and the invisible-failure channel.
+>
+> ### ⇒ THE WRECK START — a re-premise, designed 2026-07-28, DESIGN ONLY
+>
+> **`docs/design/perilune-wreck-start.plan.md`.** The owner's new opening: a room of cryo capsules,
+> one pawn thaws, the ship has been raided, every system is dead, and the player pushes air outward
+> one compartment at a time until the ship can support a second soul. Four owner decisions are
+> already settled inside it (a new default ship `--ship wreck` with `--ship grid` untouched as the
+> economy baseline; thaw gated on measurable life-support headroom and priced in Parts; jury-rig
+> refused below a wreck threshold; the work-priority grid chartered as its own later lane).
+>
+> **Four things in it change what other lanes should do, and they are measured, not argued:**
+>
+> 1. ⛔ **The shipped salvage rule makes a wreck worthless, on purpose.**
+>    `DeconstructSystem.cs:278-281` — `floor(device_parts × Condition)`, *"0 below Condition 0.5 — a
+>    wreck is worth nothing, which is the point"* — and the owner's art badges every wrecked twin at
+>    **0 %–35 %**. The faucet the premise assumes **does not exist**, and it is a rule rewrite, not a
+>    tuning tweak. This is the doc's OD-1 and it also unblocks E1.
+> 2. ⛔ **`＋ADD ROOM` is a free, instant, unconditional pressurisation wand** (`Commands.cs:600-666`:
+>    force-unlock, force-open every bordering door, `RoomState.Pressurize`). On a wreck it is a
+>    one-click win button for the core loop. OD-2, and it is the highest-stakes call in the document.
+> 3. ⭐ **The invisible-failure channel stops being a follow-up and becomes a launch blocker.** On grid
+>    it is rare — measured, `occupancy --ship grid --days 12 --maint-audit` prints
+>    `unstageable dig/strip/build 0 / 0 / 0`. On a wreck most first-hour orders are refused, silently,
+>    and the wreck adds a **second** silent refusal (jury-rig denied) and would add a **third** (thaw
+>    denied) if it followed the `ISimCommand` house style.
+> 4. ⭐ **A cryo pod needs NO new hashed sim state.** Occupied/open is `Device.IsOpen`, the soul is
+>    `Device.Name`, and a thaw calls `sim.AddCitizen` — a frozen soul is not a `Citizen`. Only the two
+>    defs checksums move, because a new `DeviceKind` grows both the `Machines` and `Recipes` arrays.
+>
+> **On the economy programme the doc takes a position:** the wreck start does **not** answer E0's
+> failed gate — it makes A1 the wrong question. Grid at h24 is **demand-starved, not matter-starved**
+> (measured: `None 82.85 %`, matter *rising* 63 u → 236 u over the same 24 h, `stockpile tiles zoned 0`,
+> `debris tiles left 40 (dig work remaining: 0)`). E1 stays gated, but the fork moves from *"does grid
+> get an ice hold?"* to *"what does a dead machine yield?"*.
 
 
 
