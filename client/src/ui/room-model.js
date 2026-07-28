@@ -13,6 +13,10 @@
 // the Level-1 Overview, so the two SVG surfaces cannot come to skin the same glyph differently.
 // (It used to be `SPRITE_FOR_GLYPH` from `../render/glyphs.js` plus a local hand mirror — see below.)
 import { itemIdForGlyphChar } from '../items/glyph-map.js';
+// The registry itself, for the three questions a glyph char cannot answer: is this piece a DEVICE
+// (demolishable), a RESOURCE (a pile, drawn by the item layer instead), and which piece skins a given
+// sim `ItemKind` NAME. Derived from `ITEMS`, never transcribed.
+import { RESOURCE_ITEM_BY_KIND_NAME, isDeviceItem, buildItem } from '../items/index.js';
 // ⚠️ `markForFg` is GONE (the `marks` channel): the kind arrives on the wire, decoded once by
 // `roomzoom-view.js` and handed to `roomMarkTiles`. The vocabulary itself is unchanged.
 import { markVariant, markCellSvg } from './mark-overlay.js';
@@ -256,9 +260,23 @@ export function clampTileToRoom(tx, ty, focusRoom) {
 // room" contract.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-// Glyph code points the floor / wall / structure layers own (never a furniture item) — mirrors
-// overview-scene's NON_FURNITURE (. # space % @ / &).
-const NON_FURNITURE = new Set([46, 35, 32, 37, 64, 47, 38]);
+/**
+ * Glyph code points the floor / wall / structure layers own (never an item on a tile) — mirrors
+ * overview-scene's NON_FURNITURE (`. # space % @ /`). Exported ONLY so the two surfaces can be
+ * pinned equal by a test; nothing outside this module and `overview-scene.js` should read it.
+ *
+ * ⚠️ `'&'` (38, CORPSE) WAS IN THIS SET UNTIL THE GROUND-ITEM ART PACKAGE (2026-07-27) AND ITS
+ * REMOVAL IS THE ONE SURFACE CHANGE THAT PACKAGE MADE. A corpse is not floor, not wall and not
+ * structure — it is a `ItemKind` lying on a tile, exactly like Regolith — but it was filtered here on
+ * BOTH SVG surfaces, so it reached neither furniture layer and drew NOTHING AT ALL: not a wrong
+ * thing, nothing (`NO_GROUND_ITEM_SPRITE`'s `Corpse` entry recorded that as the one kind that did not
+ * chip, and recorded WHY). Art alone could not have made it appear. The other six codes are
+ * untouched, and the change is exactly one number in exactly two files, deliberately: `'%'` (37,
+ * debris) in particular MUST stay — removing it fills a wreck with 33 dashed unknown chips, measured
+ * (see the DEBRIS block below).
+ */
+export const NON_FURNITURE_CODES = Object.freeze([46, 35, 32, 37, 64, 47]); // . # space % @ /
+const NON_FURNITURE = new Set(NON_FURNITURE_CODES);
 
 // ⚠️ `ROLE_TO_ITEM` IS GONE FROM THIS FILE (2026-07-26), quoted here so a grep for it lands on the
 // reason: it was a hand-written `{scrubber:'o2-scrubber', watertank:'oxygen-tank', …}` object with a
@@ -535,12 +553,29 @@ export function markLayerSvg(marks, focusRoom, unit = U) {
 // The fix is the channel, not a better reader (`hosts/web/WireFormat.Items.cs`), which is the same
 // lesson the `marks` channel recorded one package earlier.
 //
-// ⚠️ THIS IS NOT THE GROUND-ITEM ART PACKAGE, and the distinction is worth keeping sharp. There is
-// still no ground-pile piece in the warm 60-piece set, so what this layer draws is a LABEL PLATE —
-// kind and count in words and digits — not a sprite. That is deliberately in the same family as the
-// unknown chip it replaces ("we are telling you what is here, honestly, without art"), and it is
-// strictly more information than the letter it replaces. NO_GROUND_ITEM_SPRITE still counts the ART
-// gap and is untouched by this package.
+// ⚠️ THE PARAGRAPH THAT STOOD HERE IS NOW HISTORY AND IS QUOTED, BECAUSE THE THING IT DESCRIBES IS
+// WHAT CHANGED: *"THIS IS NOT THE GROUND-ITEM ART PACKAGE… There is still no ground-pile piece in the
+// warm 60-piece set, so what this layer draws is a LABEL PLATE — kind and count in words and digits —
+// not a sprite."* THE ART LANDED (2026-07-27, the re-imported 68-piece mock), so the plate has given
+// way to the piece.
+//
+// WHAT THE LAYER DRAWS NOW, and why the count did NOT go with the plate. The channel exists to carry
+// the one fact no projection byte could ever hold — a stack of 1 and a stack of 40 write the
+// identical `GlyphCell` — so dropping the number the moment art arrived would have discarded the
+// whole point of the channel. Each drawn stack is therefore SPRITE + COUNT BADGE: the piece says
+// WHAT, a small dark numeral badge says HOW MANY. The badge appears only for `count > 1`; a single
+// unit is what the sprite already means, and a `1` on every stack on a hold floor is noise that makes
+// the numbers that matter harder to find. THERE IS NO STACK CAP IN THE SIM (the slice boots with
+// stacks in the hundreds and `--strip 40` runs them up), so the badge's font is FITTED to its digits
+// exactly as the plate's was — a fixed size overflows into the neighbouring tile at three digits and
+// then misattributes stock to a tile that has none.
+//
+// THE PLATE IS NOT DELETED — IT IS DEMOTED TO THE NO-ART FALLBACK, which is why `itemKindLabel`
+// survives. Two cases still have no piece to draw: `ItemKind.MetalOre`, deliberately unskinned
+// (nothing in `sim/` produces or consumes it), and any kind byte a future host sends that this client
+// has never heard of — which `decodeItems` deliberately KEEPS rather than dropping. Both get the old
+// label chip (`ORE 12`, `? 3`). Falling back to nothing would put an empty tile over a full one,
+// which is the exact invisibility this channel removes.
 //
 // VERIFIED IN A BROWSER, NOT ONLY IN ASSERTIONS (`client/tools/items-shot.mjs`, committed — the
 // `marks-shot.mjs` rule: a perfectly formed SVG string paints nothing if its box is empty or its text
@@ -553,20 +588,28 @@ export function markLayerSvg(marks, focusRoom, unit = U) {
 // browser — there is no wire verb that spawns a stack, so a stack on a device tile is pinned by the
 // driven test in `room-model.test.js` and not by a photograph.
 //
-// ⚠️ THE LEVEL-1 OVERVIEW IS DELIBERATELY NOT CHANGED, and this is a KNOWN LIMIT rather than an
-// oversight, so it is written down instead of discovered later. `overview-scene.js`'s furniture layer
-// does `if (!itemId) continue`, so a ground stack has always drawn NOTHING there — not a wrong thing,
-// nothing — and the channel does not change that. At the Overview's ~15×13 design-px tile a plate
-// carrying four characters and a number is not legible, so porting this layer would need a different
-// vocabulary (a density dot, a per-room total in the room card), which is a design question and not
+// ⚠️ HALF OF THE OVERVIEW NOTE HAS EXPIRED, and it is quoted rather than deleted because the half
+// that survives is the one a future lane will trip over. It read: *"THE LEVEL-1 OVERVIEW IS
+// DELIBERATELY NOT CHANGED… `overview-scene.js`'s furniture layer does `if (!itemId) continue`, so a
+// ground stack has always drawn NOTHING there — not a wrong thing, nothing."*
+//   FALSE SINCE THE GROUND-ITEM ART (2026-07-27), and not because anything was ported: the Overview
+// reads the SAME `itemIdForGlyphChar` derivation, so the moment `,`/`f`/`&` resolved to real pieces
+// its furniture layer began drawing them off the FRAME. Measured in a browser on `--ship grid` deck
+// 0: room STORAGE drew nothing there before and now shows its piles.
+//   WHAT IS STILL TRUE, and is the KNOWN LIMIT: the Overview has no COUNT. Its art comes from the
+// projection, which carries none, keeps only the topmost stack and is erased by any device on the
+// tile — the three losses this channel exists to undo, still fully in force one altitude up. At its
+// ~15×13 design-px tile a badge of digits is not legible, so closing that would need a different
+// vocabulary (a density dot, a per-room total on the room card), which is a design question and not
 // this package's. The Overview's `main.js` dispatch feeds `Hud.getItems()` all the same, so whoever
 // takes that decision has the data waiting.
 //
 // IT SPEAKS A THIRD VISUAL LANGUAGE ON PURPOSE. Amber dashed = "an order is queued here"
 // (`mark-overlay.js`, the build ghosts); slate = "a zone" (`zone-overlay.js`). Stock is neither an
-// order nor a zone — it is a thing lying on the floor — so it gets its own plate: a dark panel with a
-// warm rubble-grey edge, the same grey the debris chunks use, because that is what loose matter looks
-// like on both surfaces already.
+// order nor a zone — it is a thing lying on the floor — so its BADGE (and the no-art label chip it
+// falls back to) is a dark panel with a warm rubble-grey edge, the same grey the debris chunks use,
+// because that is what loose matter looks like on both surfaces already. The pile itself now speaks a
+// fourth language, which is no language at all: it is just the thing, drawn.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Round to 2dp with no `-0` — the `n()` discipline both surfaces use (InvariantCulture-safe:
@@ -644,28 +687,66 @@ export function roomItemTiles(items, focusRoom) {
   return out;
 }
 
-// Plate geometry, in tile-fraction-free logical units (the tile is `unit` on a side and the caller's
-// viewBox scales the whole layer, so small numbers here are large on screen).
-const PLATE_ROW_H = 8;      // one text row
-const PLATE_PAD = 1.5;
-const PLATE_INSET = 2;      // left/right/bottom margin inside the tile
-const PLATE_MAX_ROWS = 2;   // beyond this the second row summarises — three rows fills a 32-unit tile
-const PLATE_FILL = 'rgba(10,13,20,.72)';
-const PLATE_EDGE = '#8a7d6e';   // the rubble grey from mark-overlay.js: loose matter, not an order
-const PLATE_TEXT = '#d8cbb4';
+/**
+ * Sim `ItemKind` BYTE → the warm resource itemId that skins it, or `''`. TWO derivations chained,
+ * neither of them a transcription: `STOCK_KINDS` maps the byte to the C# member NAME (and is pinned
+ * member-for-member against `ItemStack.cs` by `stock-filter-model.test.js`), and the `ITEMS` registry
+ * maps that name to a piece (`RESOURCE_ITEM_BY_KIND_NAME`). A kind with no piece — `MetalOre`, or a
+ * byte from a newer host — resolves to `''` and falls back to the label chip. PURE.
+ */
+const ITEM_ID_BY_KIND = Object.freeze(Object.fromEntries(
+  STOCK_KINDS.map((e) => [e.kind, RESOURCE_ITEM_BY_KIND_NAME[e.name] || '']),
+));
 
-/** The rows of text one tile's plate shows. Up to `PLATE_MAX_ROWS`; a tile with more kinds than that
- *  spends its last row saying how many are hidden rather than picking arbitrary winners. PURE. */
-export function itemPlateRows(stacks) {
+/** The warm itemId for a sim `ItemKind` byte, or `''` when nothing skins it. PURE. */
+export function itemIdForStockKind(kind) {
+  const id = ITEM_ID_BY_KIND[kind | 0];
+  return id === undefined ? '' : id;
+}
+
+// Layer geometry, in tile-fraction-free logical units (the tile is `unit` on a side and the caller's
+// viewBox scales the whole layer, so small numbers here are large on screen).
+const STACK_MAX_SLOTS = 2;      // beyond this the last slot summarises — a 32-unit tile holds two
+const SPRITE_SIDE_1 = 1.15;     // sprite box as a multiple of `unit`, one kind on the tile
+const SPRITE_SIDE_N = 0.72;     // …and two. (Furniture uses 1.6; a pile reads smaller than a machine.)
+const BADGE_H = 8;
+const BADGE_INSET = 1.5;        // margin from the tile edge
+const BADGE_FILL = 'rgba(10,13,20,.72)';
+const BADGE_EDGE = '#8a7d6e';   // the rubble grey from mark-overlay.js: loose matter, not an order
+const BADGE_TEXT = '#d8cbb4';
+const ADVANCE = 0.62;           // the advance width of this surface's monospace stack, in em
+
+/**
+ * What one tile's item layer draws, slot by slot: up to `STACK_MAX_SLOTS` entries, each either a
+ * `{kind, count}` or the summary `{more: n}`. A tile with more kinds than slots spends its last one
+ * saying how many are hidden rather than picking arbitrary winners — the same contract the label
+ * plate's `+N KINDS` row had, and for the same reason. PURE.
+ * @param {{kind:number,count:number}[]|null} stacks
+ * @returns {{kind?:number, count?:number, more?:number}[]}
+ */
+export function itemStackSlots(stacks) {
   const list = Array.isArray(stacks) ? stacks : [];
   if (!list.length) return [];
-  if (list.length <= PLATE_MAX_ROWS) {
-    return list.map((s) => itemKindLabel(s.kind) + ' ' + (s.count | 0));
-  }
-  const head = list.slice(0, PLATE_MAX_ROWS - 1)
-    .map((s) => itemKindLabel(s.kind) + ' ' + (s.count | 0));
-  head.push('+' + (list.length - (PLATE_MAX_ROWS - 1)) + ' KINDS');
+  const take = (s) => ({ kind: s.kind | 0, count: s.count | 0 });
+  if (list.length <= STACK_MAX_SLOTS) return list.map(take);
+  const head = list.slice(0, STACK_MAX_SLOTS - 1).map(take);
+  head.push({ more: list.length - (STACK_MAX_SLOTS - 1) });
   return head;
+}
+
+/** A dark fitted text chip centred on (cx, bottom-anchored at `bottom`), at most `maxW` wide. The
+ *  count badge and the no-art label chip are the same object at two lengths. PURE. */
+function chipSvg(text, cx, bottom, maxW) {
+  const len = text.length || 1;
+  const fs = Math.min(6.5, (maxW - 2.5) / (ADVANCE * len));
+  const w = Math.min(maxW, len * ADVANCE * fs + 2.5);
+  const x = cx - w / 2;
+  const y = bottom - BADGE_H;
+  return '<rect x="' + n2(x) + '" y="' + n2(y) + '" width="' + n2(w) + '" height="' + BADGE_H
+    + '" rx="2" fill="' + BADGE_FILL + '" stroke="' + BADGE_EDGE + '" stroke-width="1"/>'
+    + '<text x="' + n2(cx) + '" y="' + n2(y + BADGE_H / 2) + '" font-size="' + n2(fs)
+    + '" fill="' + BADGE_TEXT + '" text-anchor="middle" dominant-baseline="central" '
+    + 'font-family="\'Space Mono\', ui-monospace, monospace">' + text + '</text>';
 }
 
 /**
@@ -673,55 +754,87 @@ export function itemPlateRows(stacks) {
  * or ''. PURE — a string builder, no DOM, so the gate can see it draw. (That is the `zone-overlay.js`
  * lesson: a builder that lives inside the view can be made to return '' with the whole suite green.)
  *
- * THE FONT SIZE IS COMPUTED, NOT CHOSEN, and that is load-bearing rather than fussy. A fixed size
- * overflows the plate the moment a count reaches three digits — and the slice fixture boots with
- * stacks in the hundreds — so the row would spill across neighbouring tiles and misattribute stock to
- * a tile that has none. Fitting the size to the longest row means the plate can never lie about which
- * tile it belongs to, at the cost of small text on a busy tile. `0.62em` is the advance width of the
- * monospace stack this surface uses.
+ * Every slot is one of three things and never a fourth:
+ *   • a kind WITH art  → `buildItem(...)` + a count badge when `count > 1`
+ *   • a kind WITHOUT art (MetalOre, or a byte from a newer host) → the label chip, `ORE 12` / `? 3`
+ *   • the overflow slot → the chip `+N KINDS`
+ *
+ * THE FONT SIZE IS COMPUTED, NOT CHOSEN, and that is load-bearing rather than fussy — there is no
+ * stack cap in the sim, so a fixed size spills a four-digit count across the neighbouring tile and
+ * misattributes stock to a tile that has none. Fitting it means a badge can never lie about which
+ * tile it belongs to, at the cost of small text on a very full one.
  *
  * @param {{tx:number,ty:number,stacks:{kind:number,count:number}[]}[]} tiles  roomItemTiles output
  * @param {{rx:number, ry:number}} focusRoom  the room rect's origin, for the local transform
  * @param {number} [unit]
  * @returns {string}
  */
-export function itemPlateSvg(tiles, focusRoom, unit = U) {
+export function itemStackSvg(tiles, focusRoom, unit = U) {
   if (!Array.isArray(tiles) || !tiles.length || !focusRoom || !(unit > 0)) return '';
   const rx = focusRoom.rx | 0, ry = focusRoom.ry | 0;
   const out = [];
   for (const t of tiles) {
-    const rows = itemPlateRows(t && t.stacks);
-    if (!rows.length) continue;
+    const slots = itemStackSlots(t && t.stacks);
+    if (!slots.length) continue;
     const lx = ((t.tx | 0) - rx) * unit, ly = ((t.ty | 0) - ry) * unit;
-    const boxW = unit - PLATE_INSET * 2;
-    const boxH = rows.length * PLATE_ROW_H + PLATE_PAD * 2;
-    const boxX = lx + PLATE_INSET;
-    const boxY = ly + unit - PLATE_INSET - boxH;
-    const longest = rows.reduce((m, r) => (r.length > m ? r.length : m), 1);
-    const fs = Math.min(6.5, (boxW - 3) / (0.62 * longest));
-    let body = '<rect x="' + n2(boxX) + '" y="' + n2(boxY) + '" width="' + n2(boxW)
-      + '" height="' + n2(boxH) + '" rx="2" fill="' + PLATE_FILL + '" stroke="' + PLATE_EDGE
-      + '" stroke-width="1"/>';
-    for (let i = 0; i < rows.length; i++) {
-      const cy = boxY + PLATE_PAD + i * PLATE_ROW_H + PLATE_ROW_H / 2;
-      body += '<text x="' + n2(lx + unit / 2) + '" y="' + n2(cy) + '" font-size="' + n2(fs)
-        + '" fill="' + PLATE_TEXT + '" text-anchor="middle" dominant-baseline="central" '
-        + 'font-family="\'Space Mono\', ui-monospace, monospace">' + rows[i] + '</text>';
+    const n = slots.length;
+    const side = unit * (n === 1 ? SPRITE_SIDE_1 : SPRITE_SIDE_N);
+    const slotW = unit / n;
+    const bottom = ly + unit - BADGE_INSET;
+    let body = '';
+    for (let i = 0; i < n; i += 1) {
+      const slot = slots[i];
+      const cx = lx + slotW * (i + 0.5);
+      const cy = ly + unit * (n === 1 ? 0.46 : 0.42);
+      const maxW = slotW - BADGE_INSET * 2;
+      if (slot.more) {
+        body += '<g class="rz-stack" data-kind="more">'
+          + chipSvg('+' + slot.more + ' KINDS', cx, bottom, maxW) + '</g>';
+        continue;
+      }
+      const itemId = itemIdForStockKind(slot.kind);
+      body += '<g class="rz-stack" data-kind="' + (slot.kind | 0) + '">';
+      if (itemId) {
+        body += '<g transform="translate(' + n2(cx - side / 2) + ' ' + n2(cy - side / 2) + ')">'
+          + buildItem(itemId, {
+            w: side,
+            h: side,
+            idPrefix: 'rz-it-' + (t.tx | 0) + '-' + (t.ty | 0) + '-' + i,
+          })
+          + '</g>';
+        // THE COUNT. Only past 1: a single unit is what the sprite already says, and a `1` on every
+        // stack in a hold is noise over the numbers that matter.
+        if ((slot.count | 0) > 1) body += chipSvg(String(slot.count | 0), cx, bottom, maxW);
+      } else {
+        // No piece for this kind — the old label plate, kept as the honest fallback.
+        body += chipSvg(itemKindLabel(slot.kind) + ' ' + (slot.count | 0), cx, bottom, maxW);
+      }
+      body += '</g>';
     }
-    // No escaping: every character here comes from ITEM_LABEL (our own ASCII table) or from `| 0`
-    // arithmetic. Nothing on this layer is player- or host-authored text.
+    // No escaping: every character here comes from ITEM_LABEL (our own ASCII table), from `| 0`
+    // arithmetic, or from a pure builder. Nothing on this layer is player- or host-authored text.
     out.push('<g class="rz-item">' + body + '</g>');
   }
   return out.length ? '<g class="rz-items" pointer-events="none">' + out.join('') + '</g>' : '';
 }
 
-/** The `"tx,ty"` keys of every tile the item layer draws a plate on — what `furnitureSvg` uses to
- *  drop the VS-Z-25 unknown chip it would otherwise stack underneath one. PURE. */
-export function itemPlateTileKeys(tiles) {
+/**
+ * The `"tx,ty"` keys of every tile the item layer draws on — what `furnitureSvg` uses to drop what it
+ * would otherwise stack UNDERNEATH this layer. PURE.
+ *
+ * ⚠️ WHAT IT SUPPRESSES GREW WITH THE ART, AND THE GROWTH IS THE POINT. It used to suppress only the
+ * VS-Z-25 unknown chip, because that was the only thing a ground glyph could produce. Now `,` and `&`
+ * resolve to REAL PIECES through `itemForGlyph`, so the frame-derived furniture layer would draw the
+ * pile a SECOND time — from the projection, which has no count, keeps only the topmost stack and is
+ * erased by any device on the tile. Two piles on one tile, one of them lying. The authority for a
+ * ground stack is the `items` channel; `roomzoom-view.js`'s `furnitureSvg` therefore skips a
+ * RESOURCE piece (and the chip) on these tiles and never a device's own art.
+ */
+export function itemStackTileKeys(tiles) {
   const keys = new Set();
   if (!Array.isArray(tiles)) return keys;
   for (const t of tiles) {
-    if (t && itemPlateRows(t.stacks).length) keys.add((t.tx | 0) + ',' + (t.ty | 0));
+    if (t && itemStackSlots(t.stacks).length) keys.add((t.tx | 0) + ',' + (t.ty | 0));
   }
   return keys;
 }
@@ -766,7 +879,15 @@ export function demolishTarget(tx, ty, designs, decor, frame) {
     }
   }
   const code = codeAt(frame, tx, ty);
-  if (code >= 0 && !NON_FURNITURE.has(code) && !STRUCTURE_CODES.has(code) && itemForGlyph(code)) {
+  // ⚠️ `isDeviceItem` IS LOAD-BEARING AND IS NEW WITH THE GROUND-ITEM ART PACKAGE. The test used to be
+  // the bare truthiness of `itemForGlyph(code)`, which was a correct proxy for "a device stands here"
+  // only while the ONLY glyphs that resolved to a piece were `Glyphs.ForDevice` glyphs. The moment
+  // ground stacks got art, `,` (Regolith) and `&` (Corpse) started resolving too — so DEMOLISH on a
+  // spoil pile would have classified as `device` and sent `Cmd.remove` at a tile with no device on
+  // it. Asking the REGISTRY what the piece is, rather than whether a piece exists, is the fix; it
+  // also survives the next new `kind`, which a hard-coded glyph exclusion list would not.
+  if (code >= 0 && !NON_FURNITURE.has(code) && !STRUCTURE_CODES.has(code)
+      && isDeviceItem(itemForGlyph(code))) {
     return { kind: 'device', verb: 'remove' };
   }
   if (Array.isArray(decor)) {

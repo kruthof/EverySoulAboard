@@ -19,7 +19,7 @@ import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-
 import { zoneLayerSvg, zoneKeyHtml } from './zone-overlay.js';
 import { acceptsRowHtml } from './accepts-row.js';
 import { decksView } from './decks-model.js';
-import { buildItem } from '../items/index.js';
+import { buildItem, isResourceItem } from '../items/index.js';
 import { pawnSprite } from '../render/pawn-svg.js';
 import { isTextEntryTarget } from '../input/controls.js';
 import { roomMaterial } from '../theme/warm-tokens.js';
@@ -28,7 +28,7 @@ import {
   U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
   nextRoomTool, roomTileRect,
   deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
-  roomMarkTiles, markLayerSvg, roomItemTiles, itemPlateSvg, itemPlateTileKeys,
+  roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys,
   demolishTarget, addDecor, removeDecor, escStackRung,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
@@ -396,12 +396,11 @@ function paintLayers(frame, crew, designs, decor) {
   // original order looked correct in a screenshot.
   body += zoneLayerSvg(_zoneTiles, _focus);
   body += decorSvg(roomDecor(decor, _focus));
-  // The tiles the item layer will label. Handed to `furnitureSvg` so the VS-Z-25 unknown chip — the
-  // dashed box with the raw glyph letter, which for a ground stack is the very "one lossy letter box"
-  // the `items` channel replaces — is NOT drawn underneath a plate that says the same thing better.
-  // It suppresses ONLY that fallback branch; real furniture art is never suppressed, so a stack on a
-  // device tile keeps the device's sprite and gains a plate above it.
-  body += furnitureSvg(roomCells(frame, _focus), itemPlateTileKeys(_itemTiles));
+  // The tiles the item layer draws on. Handed to `furnitureSvg` so the frame-derived rendering of the
+  // same pile — the VS-Z-25 unknown chip, and, since the ground-item art landed, the RESOURCE PIECE
+  // itself — is not stacked underneath the authoritative one. Real furniture art is never suppressed,
+  // so a stack on a device tile keeps the device's sprite and gains its pile above it.
+  body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles));
   // WP-2 — debris + dig/strip marks. ⚠️ The old lead *"read off the frame's `cell[1]`"* is FALSE: the
   // kinds come from the `marks` channel now, decoded in `repaint()` into `_markTiles`. ABOVE the
   // material layer, which paints an opaque U*1.2 swatch over any built wall (so a strip mark under it
@@ -426,13 +425,14 @@ function paintLayers(frame, crew, designs, decor) {
   // is drawn under the pawn — visible around them, which is what "the pawn is on a condemned tile"
   // should look like.
   body += markLayerSvg(_markTiles, _focus);
-  // The ground-item plates. ABOVE the furniture layer, and that is the whole of loss 3 being fixed:
-  // `GlyphMapper` pass 4 paints the device glyph over pass 3's item, so a stack on a machine's tile
-  // reached the client nowhere at all — drawing the plate UNDER the device sprite would reproduce the
-  // erasure in the client after removing it from the wire. The plate is bottom-anchored and inset, so
-  // it labels the tile without covering what stands on it.
+  // The ground-item stacks — the warm resource pieces plus their count badges. ABOVE the furniture
+  // layer, and that is the whole of loss 3 being fixed: `GlyphMapper` pass 4 paints the device glyph
+  // over pass 3's item, so a stack on a machine's tile reached the client nowhere at all — drawing it
+  // UNDER the device sprite would reproduce the erasure in the client after removing it from the
+  // wire. The badge is bottom-anchored and inset, so the count reads without covering what stands on
+  // the tile.
   // STILL BELOW `pawnSvg`, for the same reason the marks are: a crew member is never hidden.
-  body += itemPlateSvg(_itemTiles, _focus);
+  body += itemStackSvg(_itemTiles, _focus);
   body += pawnSvg(roomCrew(crew, _focus));
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();
@@ -528,18 +528,24 @@ function materialLayerSvg(tiles) {
 
 /** The sim's own furniture cells → warm SVG items (VS-Z-19); unmapped glyph → the dashed chip.
  *
- *  `plated` is the set of `"tx,ty"` keys the `items` layer labels. On those tiles the unknown-chip
- *  FALLBACK is skipped — its raw glyph letter is the lossy rendering the plate replaces, and stacking
- *  the two would put a `,` and a `REGO 40` on one tile. REAL ART IS NEVER SUPPRESSED: a device on a
- *  plated tile still draws its sprite, because the plate is about what is lying there and the sprite is
- *  about what is installed there, and both are true. */
-function furnitureSvg(cells, plated) {
+ *  `stocked` is the set of `"tx,ty"` keys the `items` layer draws on. On those tiles TWO branches are
+ *  skipped, and the second one is new with the ground-item art:
+ *    • the unknown-glyph CHIP — its raw letter is the lossy rendering the channel replaces, and
+ *      stacking the two would put a `,` and a pile of Regolith on one tile;
+ *    • a RESOURCE piece — because `itemForGlyph(',')` now resolves to real art, the frame would draw
+ *      the pile a SECOND time from a source that has no count, keeps only the topmost stack and is
+ *      erased by any device on the tile. The `items` channel is the authority for what is lying on a
+ *      floor; the projection is not.
+ *  REAL FURNITURE ART IS NEVER SUPPRESSED: a device on a stocked tile still draws its sprite, because
+ *  the pile is about what is LYING there and the sprite about what is INSTALLED there, and both are
+ *  true. */
+function furnitureSvg(cells, stocked) {
   const out = [];
-  const skip = plated instanceof Set ? plated : new Set();
+  const skip = stocked instanceof Set ? stocked : new Set();
   for (const c of cells) {
     const [lx, ly] = localXY(c.tx, c.ty);
     const cx = lx + U / 2, cy = ly + U / 2;
-    if (!c.itemId && skip.has(c.tx + ',' + c.ty)) continue;
+    if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
       const g = buildItem(c.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-' + c.tx + '-' + c.ty });
       out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');

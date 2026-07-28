@@ -8,8 +8,11 @@
 //      against what `decodeItems` actually reads, driven.
 //   2. THE DECODER'S TOLERANCE, including the one place it deliberately DIVERGES from `decodeMarks`:
 //      a kind this client does not know is KEPT, not dropped.
-//   3. THE PLATE MODEL — what `roomItemTiles` aggregates, what `itemPlateRows` says, and that
-//      `itemPlateSvg` cannot overflow its own plate however large a count gets.
+//   3. THE GROUND-STACK LAYER — what `roomItemTiles` aggregates, which kinds `itemStackSlots` gives
+//      a slot to, that `itemStackSvg` draws the real registry PIECE, that it still draws the COUNT
+//      (the one fact no projection byte could carry), and that neither can overflow its own tile
+//      however large a count gets. The label plate this layer shipped with is now the NO-ART
+//      fallback — MetalOre, and any kind byte from a newer host — and that branch is tested too.
 //   4. THAT THE ROOM ZOOM DRAWS IT and that `main.js` dispatches the channel at all.
 //
 // (The DRIVEN acceptance — the real `roomzoom-view.js` controller over `dom-lite`, proving a stack on
@@ -30,8 +33,10 @@ import { dirname, join } from 'node:path';
 
 import { decode, decodeItems } from '../src/wire/messages.js';
 import {
-  U, roomItemTiles, itemKindLabel, itemPlateRows, itemPlateSvg, itemPlateTileKeys,
+  U, roomItemTiles, itemKindLabel, itemStackSlots, itemStackSvg, itemStackTileKeys,
+  itemIdForStockKind,
 } from '../src/ui/room-model.js';
+import { ITEMS } from '../src/items/index.js';
 import { STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { codeOnly } from './code-only.js';
 
@@ -243,132 +248,208 @@ test('roomItemTiles is PURE: inputs are neither mutated nor aliased', () => {
     + 'view-model silently rewrites the wire cache');
 });
 
-// ═════════════════════════════════════════════════════════════════════ the plate
+// ═════════════════════════════════════════════════════════════════ the ground-stack layer
+//
+// ⚠️ THE LABEL PLATE IS GONE AND THIS SECTION IS ITS SUCCESSOR. The `items` channel shipped a plate
+// (`REGO 40`) as an honest "we have no art" stand-in; the 68-piece mock re-import brought the eight
+// ground-item pieces, so the layer now draws SPRITE + COUNT BADGE. What did NOT change is the reason
+// the channel exists: the count is the one fact no projection byte could carry, so it is still drawn,
+// and the plate survives DEMOTED to the no-art fallback (MetalOre; a kind byte from a newer host).
 
-test('itemPlateRows names one kind per row, up to two', () => {
-  assert.deepEqual(itemPlateRows([{ kind: 0, count: 40 }]), ['REGO 40']);
-  assert.deepEqual(itemPlateRows([{ kind: 0, count: 40 }, { kind: 3, count: 2 }]),
-    ['REGO 40', 'FOOD 2']);
-  assert.deepEqual(itemPlateRows([]), []);
-  assert.deepEqual(itemPlateRows(null), []);
+test('itemStackSlots takes one slot per kind, up to two', () => {
+  assert.deepEqual(itemStackSlots([{ kind: 0, count: 40 }]), [{ kind: 0, count: 40 }]);
+  assert.deepEqual(itemStackSlots([{ kind: 0, count: 40 }, { kind: 3, count: 2 }]),
+    [{ kind: 0, count: 40 }, { kind: 3, count: 2 }]);
+  assert.deepEqual(itemStackSlots([]), []);
+  assert.deepEqual(itemStackSlots(null), []);
 });
 
-// MUTATION: `PLATE_MAX_ROWS = 3` ⇒ this fails (three kinds would then all be named).
+// MUTATION: `STACK_MAX_SLOTS = 3` ⇒ this fails (three kinds would then all get a slot).
 test('a tile with more kinds than fit says HOW MANY are hidden, rather than picking winners', () => {
-  const rows = itemPlateRows([
+  const slots = itemStackSlots([
     { kind: 0, count: 4 }, { kind: 3, count: 5 }, { kind: 8, count: 6 }, { kind: 5, count: 7 },
   ]);
-  assert.deepEqual(rows, ['REGO 4', '+3 KINDS'],
-    'a crowded tile must account for every kind on it. Naming two and silently dropping two would '
+  assert.deepEqual(slots, [{ kind: 0, count: 4 }, { more: 3 }],
+    'a crowded tile must account for every kind on it. Drawing two and silently dropping two would '
     + 'be the same class of lie as the projection keeping only the topmost stack.');
 });
 
-/** Every plate rect in an `itemPlateSvg` string, as `{x, y, width, height}`, in emission order. */
-function plateRects(svg) {
-  return [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
-    .map((m) => ({ x: +m[1], y: +m[2], width: +m[3], height: +m[4] }));
+/** Every BADGE/CHIP rect in an `itemStackSvg` string — matched on the badge fill, because the sprite
+ *  builders emit `<rect …>` in the identical attribute order and would otherwise be counted. */
+function badgeRects(svg) {
+  return [...svg.matchAll(
+    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" rx="2" fill="rgba\(10,13,20,\.72\)"/g,
+  )].map((m) => ({ x: +m[1], y: +m[2], width: +m[3], height: +m[4] }));
+}
+/** Every badge/chip text, in emission order (anchored on the badge's own text colour). */
+function badgeTexts(svg) {
+  return [...svg.matchAll(/fill="#d8cbb4"[^>]*>([^<]*)</g)].map((m) => m[1]);
+}
+/** The sprite `<g>` wrappers the layer emitted, as their translate offsets, in emission order. */
+function spriteAt(svg) {
+  return [...svg.matchAll(/<g transform="translate\(([-\d.]+) ([-\d.]+)\)"><g class="pl-item">/g)]
+    .map((m) => ({ x: +m[1], y: +m[2] }));
 }
 
-// ⚠️ THIS TEST USED TO ASSERT `x` AND NOTHING ELSE, and the omission is recorded rather than quietly
-// patched because the JUSTIFICATION for this layer is written in both axes and only one was guarded.
-// `itemPlateSvg`'s own doc says the fitted font size means "the plate can never lie about which tile
-// it belongs to", and `roomzoom-view.js` says the plate is "bottom-anchored and inset, so it labels
-// the tile without covering what stands on it". FOUR mutations survived 782/782 GREEN, all in
-// room-model.js and all plain arithmetic in a pure builder:
-//   • `boxH = 0`                       — a zero-height plate: the words are there, the panel is not
-//   • `boxY = ly`                      — TOP-anchored, i.e. covering exactly what it must not cover
-//   • `boxY = ly + 5 * unit`           — the plate drawn FIVE TILES BELOW the tile it describes
-//   • `ly = ((t.ty|0) - rx) * unit`    — every plate off by `ry - rx` ROWS (rx for ry: the classic)
-// All four are now RED. The two colour constants (`PLATE_TEXT`, `PLATE_FILL`) also survive and are
-// deliberately NOT pinned here — "is this legible against that background?" is a browser question and
-// `client/tools/items-shot.mjs` is where it is answered.
-//
-// THE GEOMETRY IS ASSERTED AS THE CONTRACT, not as four magic numbers: bottom-anchored means
-// `y + height === tileTop + unit - inset`, which stays true if the inset or the row height is
-// re-tuned, and fails for every mutation above.
-test('itemPlateSvg draws one group per tile inside the rz-items layer, in room-local space', () => {
+// ⚠️ THE PREDECESSOR OF THIS TEST HAD FOUR MUTATIONS SURVIVE 782/782 GREEN, all plain arithmetic in a
+// pure builder, because it asserted `x` and nothing else: a zero-height plate, a TOP-anchored one, one
+// drawn five tiles below its own tile, and `- rx` written for `- ry` (every plate off by rows). The
+// geometry is therefore asserted as the CONTRACT — bottom-anchored means
+// `y + height === tileTop + unit - inset`, which survives re-tuning the inset and fails all four.
+test('itemStackSvg draws one group per tile inside the rz-items layer, in room-local space', () => {
   const tiles = roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 3, 2]])), ROOM);
-  const svg = itemPlateSvg(tiles, ROOM);
+  const svg = itemStackSvg(tiles, ROOM);
   assert.match(svg, /^<g class="rz-items" pointer-events="none">/);
-  assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 2, 'one group per plated tile');
-  assert.ok(svg.includes('REGO 40') && svg.includes('FOOD 2'), 'both plates must carry their words');
+  assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 2, 'one group per stocked tile');
 
-  // ROOM-LOCAL, IN BOTH AXES. Tile (4,2) is the room's origin → local (0,0); tile (7,4) is three
-  // columns right and TWO ROWS DOWN → local (3U, 2U). An absolute-space bug, or a row/column mix-up,
-  // puts every plate somewhere the player is not looking, and every assertion above still passes.
-  const rects = plateRects(svg);
-  assert.equal(rects.length, 2, 'the rect parse found the wrong number of plates — the assertions '
+  // THE ART. Not "a string came back" — the real pieces, from the real registry, by kind.
+  assert.ok(svg.includes('data-kind="0"') && svg.includes('data-kind="3"'), 'both kinds named');
+  assert.equal(spriteAt(svg).length, 2, 'each stocked tile must draw a PIECE, not just a number');
+
+  // ROOM-LOCAL, IN BOTH AXES. Tile (4,2) is the room origin → local (0,0); tile (7,4) is three
+  // columns right and TWO ROWS DOWN → local (3U, 2U). A row/column mix-up puts every pile somewhere
+  // the player is not looking, and every assertion above still passes.
+  const rects = badgeRects(svg);
+  assert.equal(rects.length, 2, 'the badge parse found the wrong number of badges — the assertions '
     + 'below would be vacuous');
-  const INSET = 2;
-  for (const [i, [tx, ty, rowCount]] of [[4, 2, 1], [7, 4, 1]].entries()) {
+  const INSET = 1.5;
+  for (const [i, [tx, ty]] of [[4, 2], [7, 4]].entries()) {
     const left = (tx - ROOM.rx) * U, top = (ty - ROOM.ry) * U;
     const r = rects[i];
-    assert.equal(r.x, left + INSET, `plate ${i}: x is not its own tile's left edge + inset`);
-    assert.equal(r.width, U - INSET * 2, `plate ${i}: the plate must span its tile minus the insets`);
-    assert.equal(r.height, rowCount * 8 + 3, `plate ${i}: height must follow the ROW COUNT — a `
-      + 'zero-height plate draws the words with no panel behind them');
+    assert.ok(r.height > 0, `badge ${i}: a zero-height badge draws the number with no panel behind it`);
     assert.equal(r.y + r.height, top + U - INSET,
-      `plate ${i}: the plate is not BOTTOM-anchored inside its own tile. Top-anchored it covers the `
-      + 'device or crew member it is meant to label; off by a tile it describes the wrong floor.');
-    assert.ok(r.y >= top, `plate ${i}: the plate spills UP out of its tile`);
+      `badge ${i}: the badge is not BOTTOM-anchored inside its own tile. Top-anchored it covers the `
+      + 'pile it is counting; off by a tile it counts the wrong floor.');
+    assert.ok(r.x >= left && r.x + r.width <= left + U,
+      `badge ${i}: the badge spills sideways out of its own tile (x=${r.x} w=${r.width})`);
+    assert.ok(r.y >= top, `badge ${i}: the badge spills UP out of its tile`);
+    const sprite = spriteAt(svg)[i];
+    assert.ok(sprite.x >= left - U && sprite.x <= left + U,
+      `sprite ${i}: drawn outside the neighbourhood of its own tile`);
   }
 });
 
-// MUTATION: `boxH = rows.length * PLATE_ROW_H + PLATE_PAD * 2` → `boxH = PLATE_ROW_H + PLATE_PAD * 2`
-// ⇒ this fails. The leg above uses one-row plates only, so without this the height term is pinned to
-// a constant and a two-row plate could clip its own second line.
-test('a two-row plate is taller than a one-row plate, and still bottom-anchored', () => {
-  const one = plateRects(itemPlateSvg(
-    roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40]])), ROOM), ROOM))[0];
-  const two = plateRects(itemPlateSvg(
-    roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [4, 2, 1, 3, 2]])), ROOM), ROOM))[0];
-  assert.equal(two.height, one.height + 8, 'a second row must add exactly one row height');
-  assert.equal(two.y + two.height, one.y + one.height,
-    'the plate must grow UPWARD from its bottom edge — growing downward pushes it off its own tile');
-  assert.ok(two.y >= 0, 'a two-row plate on the origin tile must still sit inside that tile');
+// THE POINT OF THE WHOLE CHANNEL, and the thing the art must not have cost. MUTATION: delete the
+// `if ((slot.count | 0) > 1)` branch in room-model.js ⇒ this fails.
+test('THE COUNT SURVIVES THE ART: a stack of 40 draws 40, a stack of 1 draws no badge', () => {
+  const forty = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40]])), ROOM), ROOM);
+  assert.deepEqual(badgeTexts(forty), ['40'],
+    'the count is the ONE fact no projection byte could ever carry — a stack of 1 and a stack of 40 '
+    + 'write the identical GlyphCell. Drawing the piece and dropping the number would throw away the '
+    + 'entire reason the items channel was built.');
+  assert.equal(spriteAt(forty).length, 1, 'and the piece is still drawn beside it');
+
+  const one = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 1]])), ROOM), ROOM);
+  assert.deepEqual(badgeTexts(one), [],
+    'a single unit is what the sprite already means; a `1` on every stack in a hold is noise over '
+    + 'the numbers that matter');
+  assert.equal(spriteAt(one).length, 1, 'a stack of one still draws its piece');
 });
 
-test('itemPlateSvg is empty when there is nothing to draw', () => {
-  assert.equal(itemPlateSvg([], ROOM), '');
-  assert.equal(itemPlateSvg(null, ROOM), '');
-  assert.equal(itemPlateSvg([{ tx: 4, ty: 2, stacks: [] }], ROOM), '',
-    'a tile whose stack list is empty must produce no plate, not an empty box');
+// MUTATION: make `itemIdForStockKind` return `'regolith'` for every kind ⇒ this fails (ORE 12 would
+// become a regolith pile with a `12` badge, i.e. a material the game does not have, drawn as one it
+// does). THE FALLBACK IS NOT DEAD CODE: MetalOre is deliberately unskinned, and `decodeItems`
+// deliberately KEEPS a kind byte this client has never heard of.
+test('a kind with NO art falls back to the label chip — it is never drawn as something else', () => {
+  const ore = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 1, 12]])), ROOM), ROOM);
+  assert.equal(itemIdForStockKind(1), '', 'MetalOre must stay unskinned — nothing in sim/ makes it');
+  assert.deepEqual(badgeTexts(ore), ['ORE 12'], 'an unskinned kind keeps the old label plate');
+  assert.equal(spriteAt(ore).length, 0, 'and draws no piece at all — there is no ore piece to draw');
+
+  const alien = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 99, 7]])), ROOM), ROOM);
+  assert.deepEqual(badgeTexts(alien), ['? 7'],
+    'a kind byte from a NEWER host is still a real, located, counted pile. Drawing nothing would put '
+    + 'an empty tile over a full one, which is the invisibility this channel removes.');
 });
 
-// MUTATION: replace the computed `fs` with a constant 6.5 in itemPlateSvg ⇒ this fails on the
-// three-digit leg. The slice fixture boots with stacks in the hundreds, so this is a live shape.
-test('the plate text is sized to FIT — a three-digit count never overflows the box', () => {
-  const wide = itemPlateSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 6, 699]])), ROOM), ROOM);
-  const narrow = itemPlateSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 8, 1]])), ROOM), ROOM);
+test('itemIdForStockKind is the DERIVED join, byte → sim name → piece', () => {
+  // The three hops are: STOCK_KINDS (byte → C# member name, pinned against ItemStack.cs by
+  // stock-filter-model.test.js) then ITEMS.itemKind (name → piece). Nothing here is a byte literal in
+  // the registry, which is the whole reason a reordered enum cannot silently redraw every pile.
+  for (const e of STOCK_KINDS) {
+    const id = itemIdForStockKind(e.kind);
+    if (!id) { assert.equal(e.name, 'MetalOre', `${e.name} lost its art`); continue; }
+    assert.equal(ITEMS[id].itemKind, e.name, `kind ${e.kind} resolved to a piece for ${ITEMS[id].itemKind}`);
+    assert.equal(ITEMS[id].kind, 'resource', `kind ${e.kind} resolved to a ${ITEMS[id].kind} piece`);
+  }
+  assert.equal(itemIdForStockKind(99), '', 'a byte the sim does not have has no piece');
+  assert.equal(itemIdForStockKind(-1), '');
+});
+
+test('two kinds on one tile each get their own piece and their own count', () => {
+  const svg = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 7], [4, 2, 1, 3, 2]])), ROOM), ROOM);
+  assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 1, 'one tile, one group');
+  assert.equal(spriteAt(svg).length, 2, 'both kinds must be drawn — the projection could show one');
+  assert.deepEqual(badgeTexts(svg), ['7', '2'], 'and both counts');
+  const rects = badgeRects(svg);
+  assert.ok(rects[0].x + rects[0].width <= rects[1].x,
+    'the two slots overlap — one badge is drawn on top of the other and one count is unreadable');
+  assert.ok(rects[0].x >= 0 && rects[1].x + rects[1].width <= U,
+    'a two-slot tile spills out of its own tile');
+});
+
+test('itemStackSvg is empty when there is nothing to draw', () => {
+  assert.equal(itemStackSvg([], ROOM), '');
+  assert.equal(itemStackSvg(null, ROOM), '');
+  assert.equal(itemStackSvg([{ tx: 4, ty: 2, stacks: [] }], ROOM), '',
+    'a tile whose stack list is empty must produce no group, not an empty box');
+});
+
+// MUTATION: replace the computed `fs` in `chipSvg` with a constant 6.5 ⇒ this fails on the long legs.
+// THERE IS NO STACK CAP IN THE SIM — the slice fixture boots with stacks in the hundreds — so this is
+// a live shape and not a hypothetical.
+test('the badge text is sized to FIT — a four-digit count never overflows its own tile', () => {
   const fsOf = (svg) => Number(/font-size="([\d.]+)"/.exec(svg)[1]);
-  const textOf = (svg) => /dominant-baseline="central"[^>]*>([^<]*)</.exec(svg)[1];
+  const wide = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 6, 699]])), ROOM), ROOM);
+  const narrow = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 6, 12]])), ROOM), ROOM);
+  assert.deepEqual(badgeTexts(wide), ['699']);
+  assert.deepEqual(badgeTexts(narrow), ['12']);
 
-  assert.equal(textOf(wide), 'CTRL 699');
-  assert.equal(textOf(narrow), 'ICE 1');
-  assert.ok(fsOf(wide) < fsOf(narrow),
-    'the longer row was not shrunk. A fixed size spills the text across neighbouring tiles, which '
-    + 'misattributes stock to a tile that has none — worse than small text.');
-
-  // The hard property: rendered width ≤ the plate's inner width, for every row length the sim can
-  // produce. 0.62em is the monospace advance the builder assumes.
-  const boxW = U - 4;
-  for (const count of [1, 12, 345, 6789, 1234567]) {
-    const svg = itemPlateSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 6, count]])), ROOM), ROOM);
-    const width = fsOf(svg) * 0.62 * textOf(svg).length;
-    assert.ok(width <= boxW - 3 + 1e-9,
-      `a count of ${count} renders ${width.toFixed(2)} wide inside a ${boxW}-unit plate`);
+  // The hard property: the rendered text fits its badge, and the badge fits its tile, for every count
+  // the sim can produce — including the two-slot case, where each slot has HALF a tile.
+  for (const count of [2, 12, 345, 6789, 1234567]) {
+    for (const rows of [[[4, 2, 1, 6, count]], [[4, 2, 1, 6, count], [4, 2, 1, 0, count]]]) {
+      const svg = itemStackSvg(roomItemTiles(decodeItems(msg(rows)), ROOM), ROOM);
+      const texts = badgeTexts(svg);
+      const rects = badgeRects(svg);
+      const fs = fsOf(svg);
+      assert.equal(texts.length, rects.length, 'a badge lost its text or its panel');
+      for (const [k, r] of rects.entries()) {
+        assert.ok(fs * 0.62 * texts[k].length <= r.width + 1e-9,
+          `count ${count} (${rects.length} slots): text renders wider than its badge`);
+        assert.ok(r.x >= -1e-9 && r.x + r.width <= U + 1e-9,
+          `count ${count} (${rects.length} slots): the badge spills across the tile boundary, which `
+          + 'misattributes stock to a tile that has none');
+      }
+    }
   }
 });
 
-// MUTATION: return an empty Set from itemPlateTileKeys ⇒ the driven suppression test in
+// MUTATION: return an empty Set from itemStackTileKeys ⇒ the driven suppression test in
 // room-model.test.js fails (this leg only pins the key SHAPE the view joins on).
-test('itemPlateTileKeys names exactly the tiles that get a plate', () => {
+test('itemStackTileKeys names exactly the tiles the layer draws on', () => {
   const tiles = roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 3, 2]])), ROOM);
-  const keys = itemPlateTileKeys(tiles);
+  const keys = itemStackTileKeys(tiles);
   assert.deepEqual([...keys].sort(), ['4,2', '7,4']);
-  assert.deepEqual([...itemPlateTileKeys([{ tx: 1, ty: 1, stacks: [] }])], [],
-    'a tile that draws no plate must not suppress the chip that would otherwise explain it');
-  assert.deepEqual([...itemPlateTileKeys(null)], []);
+  assert.deepEqual([...itemStackTileKeys([{ tx: 1, ty: 1, stacks: [] }])], [],
+    'a tile that draws nothing must not suppress the frame rendering that would otherwise explain it');
+  assert.deepEqual([...itemStackTileKeys(null)], []);
+});
+
+test('the layer is PURE: same tiles → byte-identical output, and the input is not mutated', () => {
+  // The builders underneath are pure by contract (helpers.js:1-7) and this layer calls them with an
+  // idPrefix derived from the TILE, so two piles on one canvas cannot collide on a gradient id — and
+  // a golden-frame comparison cannot flake.
+  const tiles = roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 0, 40]])), ROOM);
+  const snapshot = JSON.stringify(tiles);
+  const a = itemStackSvg(tiles, ROOM);
+  const b = itemStackSvg(tiles, ROOM);
+  assert.equal(a, b, 'the layer is not deterministic');
+  assert.equal(JSON.stringify(tiles), snapshot, 'the layer mutated its input');
+  const ids = [...a.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(ids).size, ids.length,
+    'TWO PILES SHARE A GRADIENT id ON ONE CANVAS. The same kind on two tiles must namespace its defs '
+    + 'per tile, or the second placement re-points the first one\'s paint.');
 });
 
 // ═══════════════════════════════════════════════════════ the surface actually wires it up
@@ -381,28 +462,29 @@ test('the Room Zoom draws the item layer, and main.js dispatches the channel', (
     'roomzoom-view.js must derive its item tiles from the decoded `items` channel — not from the '
     + 'frame, whose glyph byte carries no count, keeps only the last stack, and is overwritten by '
     + 'any device on the tile');
-  assert.match(ROOMZOOM, /body \+= itemPlateSvg\(_itemTiles, _focus\);/,
-    'roomzoom-view.js must concatenate itemPlateSvg(_itemTiles, …) into the layer stack');
-  assert.match(ROOMZOOM, /furnitureSvg\(roomCells\(frame, _focus\), itemPlateTileKeys\(_itemTiles\)\)/,
-    'the furniture layer must be told which tiles the item layer plates, or the VS-Z-25 unknown '
-    + 'chip — the raw glyph letter this channel replaces — is stacked underneath the plate');
+  assert.match(ROOMZOOM, /body \+= itemStackSvg\(_itemTiles, _focus\);/,
+    'roomzoom-view.js must concatenate itemStackSvg(_itemTiles, …) into the layer stack');
+  assert.match(ROOMZOOM, /furnitureSvg\(roomCells\(frame, _focus\), itemStackTileKeys\(_itemTiles\)\)/,
+    'the furniture layer must be told which tiles the item layer draws on, or the frame-derived '
+    + 'rendering of the same pile — the unknown chip, and now the RESOURCE PIECE itself — is stacked '
+    + 'underneath the authoritative one');
 });
 
-// THE LAYER ORDER, as source positions rather than as a claim. The plate must be concatenated AFTER
-// the furniture layer (so a device cannot bury it — that is loss 3 being fixed in the client too) and
-// BEFORE the pawn layer (so a crew member is never hidden by stock).
+// THE LAYER ORDER, as source positions rather than as a claim. The stacks must be concatenated AFTER
+// the furniture layer (so a device cannot bury them — that is loss 3 being fixed in the client too)
+// and BEFORE the pawn layer (so a crew member is never hidden by stock).
 //
-// MUTATION: move the `itemPlateSvg` line above `furnitureSvg` ⇒ this fails.
-test('the item plate is drawn ABOVE furniture and BELOW pawns', () => {
+// MUTATION: move the `itemStackSvg` line above `furnitureSvg` ⇒ this fails.
+test('the item stacks are drawn ABOVE furniture and BELOW pawns', () => {
   const iFurn = ROOMZOOM.indexOf('body += furnitureSvg(');
-  const iItem = ROOMZOOM.indexOf('body += itemPlateSvg(');
+  const iItem = ROOMZOOM.indexOf('body += itemStackSvg(');
   const iPawn = ROOMZOOM.indexOf('body += pawnSvg(');
   assert.ok(iFurn > 0 && iItem > 0 && iPawn > 0, 'the three layer lines must all be found — '
     + 'this scan has rotted and the ordering below would compare -1s');
   assert.ok(iItem > iFurn,
-    'the item plate is concatenated BEFORE the furniture layer, so a device sprite is painted over '
+    'the item layer is concatenated BEFORE the furniture layer, so a device sprite is painted over '
     + 'it — reproducing GlyphMapper pass 4\'s erasure in the client after removing it from the wire');
-  assert.ok(iPawn > iItem, 'a crew member must never be hidden behind a stock plate');
+  assert.ok(iPawn > iItem, 'a crew member must never be hidden behind a stack');
 });
 
 // ═════════════════════════════════════════════════════════════════ the scans' own controls
@@ -410,8 +492,8 @@ test('the item plate is drawn ABOVE furniture and BELOW pawns', () => {
 test('NEGATIVE CONTROL: the scans read code, not comments', () => {
   assert.ok(!codeOnly("// case 'items': Hud.renderItems(m);\nconst live = 1;").includes('renderItems'),
     'a line comment survived codeOnly — the dispatch scan above could then be satisfied by a TODO');
-  assert.ok(!codeOnly("/* body += itemPlateSvg(_itemTiles, _focus); */ const live = 1;")
-    .includes('itemPlateSvg'),
+  assert.ok(!codeOnly("/* body += itemStackSvg(_itemTiles, _focus); */ const live = 1;")
+    .includes('itemStackSvg'),
     'a block comment survived codeOnly — the layer scan could then be satisfied by commented-out code');
 });
 

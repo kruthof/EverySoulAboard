@@ -27,6 +27,7 @@ import {
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
+import { isDeviceItem } from '../src/items/index.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
@@ -283,6 +284,28 @@ test('demolishTarget precedence: pending > device > decor > built (IX-Z-25)', ()
   assert.equal(demolishTarget(7, 7, designs, decor, frame).kind, 'pending'); // pending wins
   assert.equal(demolishTarget(7, 7, [], decor, frame).kind, 'device');       // then device
   assert.equal(demolishTarget(7, 7, [], decor, frameWith([])).kind, 'decor'); // then decor
+});
+
+// ⚠️ A GROUND STACK IS NOT A DEVICE, and this test exists because giving ground items art nearly
+// made it one. The device branch used to be `itemForGlyph(code)` truthy — a correct proxy for "a
+// device stands here" only while the ONLY glyphs resolving to a piece were `Glyphs.ForDevice` ones.
+// The moment `,` (Regolith) and `&` (Corpse) resolved, DEMOLISH on a spoil pile would have classified
+// `device` and sent `Cmd.remove` at a tile with no device on it. The fix asks the REGISTRY what the
+// piece IS (`isDeviceItem`), not whether one exists.
+//
+// MUTATION (physically applied, RED): drop `isDeviceItem(...)` back to a bare truthiness check in
+// room-model.js ⇒ both ground legs below report `device`.
+test('demolishTarget: a ground stack is EMPTY, not a device — art did not make piles removable', () => {
+  const piles = frameWith([[5, 7, ','], [6, 7, '&'], [7, 7, 'i'], [8, 7, 'b']]);
+  // NON-VACUITY FIRST: the very same frame's DEVICE tile still classifies as one, so a blanket
+  // "everything is empty" regression cannot satisfy the three legs below.
+  assert.deepEqual(demolishTarget(8, 7, [], [], piles), { kind: 'device', verb: 'remove' },
+    'the control device tile stopped classifying — the assertions below prove nothing');
+  for (const [tx, what] of [[5, 'Regolith'], [6, 'Corpse'], [7, 'Ice']]) {
+    assert.deepEqual(demolishTarget(tx, 7, [], [], piles), { kind: 'empty', verb: null },
+      `DEMOLISH on a ${what} pile classified as a device and would send Cmd.remove at a tile with `
+      + 'no device on it. A pile is hauled, never removed.');
+  }
 });
 
 // ---- local decor transforms ----
@@ -2237,43 +2260,63 @@ function chipAt(html, tx, ty) {
   return m ? m[1] : null;
 }
 
-test('THE LETTER BOX IS REPLACED (driven): a ground stack draws its KIND AND COUNT, not a raw glyph', () => {
-  // A tile inside the hold carrying the Regolith ground glyph `,` (code 44) in the frame — exactly
-  // what the projection writes for a spoil pile, and exactly what the owner saw as a dashed chip.
+/** The `idPrefix` the ITEM layer builds a stack's piece with, per tile and slot — so a test can say
+ *  WHICH layer drew a piece on a tile. The furniture layer's is `rz-f-<tx>-<ty>`. */
+const stackId = (tx, ty, slot = 0) => 'rz-it-' + tx + '-' + ty + '-' + slot;
+const furnId = (tx, ty) => 'rz-f-' + tx + '-' + ty;
+/** The badge/chip texts the item layer drew, in emission order (anchored on the badge text colour). */
+const badges = (html) => [...html.matchAll(/fill="#d8cbb4"[^>]*>([^<]*)</g)].map((m) => m[1]);
+
+// ⚠️ THIS TEST WAS CALLED "THE LETTER BOX IS REPLACED" AND ITS PRECONDITION HAS EXPIRED, which is
+// worth stating rather than quietly rewriting: it asserted that a `,` tile with no `items` data drew
+// the VS-Z-25 dashed chip carrying a raw `,`. It does not any more, and NOT because of this channel —
+// the ground-item ART landed, so `itemForGlyph(44)` resolves and the FRAME alone now draws a pile.
+// The letter box is gone from ground items entirely (`device-sprite-coverage.test.js` pins that only
+// MetalOre still chips).
+//
+// WHAT IS LEFT TO PROVE IS BETTER, and it is the thing the art created: the same pile can now be
+// drawn from TWO sources — the frame (no count, topmost stack only, erased by any device) and the
+// `items` channel (all of it) — and only one of them may win.
+test('THE PILE IS DRAWN ONCE, FROM THE CHANNEL (driven): count present, frame duplicate gone', () => {
   const tx = HOLD.rx + 1, ty = HOLD.ry + 1;
+  const other = { x: HOLD.rx + 4, y: HOLD.ry + 1 };   // a second spoil tile the channel says NOTHING about
   const cells = wreck.cells.slice();
-  cells[ty * wreck.w + tx] = [44, 6, 0, 0];   // ',' at GlyphColor.Item
+  cells[ty * wreck.w + tx] = [44, 6, 0, 0];                       // ',' at GlyphColor.Item
+  cells[other.y * wreck.w + other.x] = [44, 6, 0, 0];             // …and its neighbour
   try {
-    // PRECONDITION / NON-VACUITY: with the frame alone and no items channel, the surface really does
-    // draw the VS-Z-25 unknown chip carrying the raw letter. Without this leg every assertion below
-    // would be satisfied by a controller that had simply stopped drawing that tile.
+    // PRECONDITION / NON-VACUITY: with the frame alone, the surface really does draw a pile on BOTH
+    // tiles — from the projection, which has no count. Without this leg every assertion below would
+    // be satisfied by a controller that had simply stopped drawing these tiles.
     Hud.renderFrame({ ...wreck, cells });
     Hud.renderItems(NO_ITEMS);
     rzApi.exit(); rzApi.enter('hold');
     const before = rzLayers.innerHTML;
-    assert.equal(chipAt(before, tx, ty), ',',
-      'precondition: THIS tile does not draw the unknown chip carrying the raw `,` glyph, so '
-      + '"the letter box is replaced" is unmeasurable here — and it is the reported symptom');
-    assert.ok(!before.includes('REGO'), 'precondition: no plate before the channel arrives');
+    assert.ok(before.includes(furnId(tx, ty)), 'precondition: the FRAME draws no pile on this tile');
+    assert.ok(before.includes(furnId(other.x, other.y)), 'precondition: nor on its neighbour');
+    assert.equal(chipAt(before, tx, ty), null,
+      'precondition: the tile still draws the raw-letter chip, so the ground-item art is not wired');
+    assert.deepEqual(badges(before), [],
+      'precondition: a count appeared with no items channel — it could only be invented');
 
     Hud.renderItems(itemsMsg([[tx, ty, 0, 40]]));
     rzApi.exit(); rzApi.enter('hold');
     const after = rzLayers.innerHTML;
 
     assert.ok(after.includes('class="rz-items"'), 'the item layer must reach the DOM');
-    assert.ok(after.includes('REGO 40'),
-      'the plate must name the KIND and the COUNT. The count is the fact no projection byte could '
-      + 'ever have carried — a stack of 1 and a stack of 40 write the identical cell.');
-    assert.equal(chipAt(after, tx, ty), null,
-      'the raw-letter chip is STILL drawn under the plate on this tile. That letter is the lossy '
-      + 'rendering this channel replaces; stacking the two puts `,` and `REGO 40` on one tile.');
-    // …and the suppression is SURGICAL: another `,` tile elsewhere in the same room, which the
-    // channel says nothing about, must keep its chip. Without this leg, "suppress every unknown
-    // chip" would pass — and that would delete the honest signal on tiles with no stock data.
-    const other = [...after.matchAll(/fill="#57503f" text-anchor="middle"[^>]*>([^<]*)</g)];
-    assert.ok(other.length > 0,
-      'every unknown chip in the room vanished. Only the PLATED tiles may lose theirs; the chip is '
-      + 'still the honest thing to draw where the items channel reports nothing.');
+    assert.ok(after.includes(stackId(tx, ty)),
+      'the ITEM layer drew no piece on the stocked tile — the count has nothing to sit beside');
+    assert.deepEqual(badges(after), ['40'],
+      'the COUNT is the fact no projection byte could ever carry: a stack of 1 and a stack of 40 '
+      + 'write the identical cell. Art that dropped it would discard the whole channel.');
+    assert.ok(!after.includes(furnId(tx, ty)),
+      'THE PILE IS DRAWN TWICE. The frame-derived copy is still on this tile underneath the '
+      + 'authoritative one — same art, no count, topmost stack only, and erased by any device. Two '
+      + 'piles on one tile, one of them lying.');
+    // …and the suppression is SURGICAL. Without this leg, "suppress the frame everywhere" would pass
+    // — and that would blank every pile the channel happens not to mention.
+    assert.ok(after.includes(furnId(other.x, other.y)),
+      'the neighbouring spoil tile lost its frame-derived pile too. Only the tiles the channel '
+      + 'covers may lose theirs; the frame is still the honest source everywhere else.');
   } finally {
     Hud.renderFrame(wreck);
     Hud.renderItems(NO_ITEMS);
@@ -2281,7 +2324,7 @@ test('THE LETTER BOX IS REPLACED (driven): a ground stack draws its KIND AND COU
   }
 });
 
-test('LOSS 2 (driven): two kinds on one tile are BOTH named — the projection could show only one', () => {
+test('LOSS 2 (driven): two kinds on one tile are BOTH drawn — the projection could show only one', () => {
   const tx = HOLD.rx + 2, ty = HOLD.ry + 1;
   const cells = wreck.cells.slice();
   // The frame can only carry the LAST stack: pass 3 assigns the cell per item. Here that is Potato.
@@ -2290,14 +2333,20 @@ test('LOSS 2 (driven): two kinds on one tile are BOTH named — the projection c
     Hud.renderFrame({ ...wreck, cells });
     Hud.renderItems(NO_ITEMS);
     rzApi.exit(); rzApi.enter('hold');
-    assert.equal(chipAt(rzLayers.innerHTML, tx, ty), 'f',
-      'precondition: the frame carries only the topmost stack, as one letter, on THIS tile');
+    const before = rzLayers.innerHTML;
+    assert.ok(before.includes(furnId(tx, ty)),
+      'precondition: the frame draws nothing here, so "one kind became two" is unmeasurable');
+    assert.deepEqual(badges(before), [],
+      'precondition: the frame carries ONE letter and no number — that is the loss under test');
 
     Hud.renderItems(itemsMsg([[tx, ty, 0, 7], [tx, ty, 3, 2]]));
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
-    assert.ok(html.includes('REGO 7'), 'the stack the projection dropped must be named');
-    assert.ok(html.includes('FOOD 2'), 'and so must the one it kept');
+    assert.ok(html.includes(stackId(tx, ty, 0)), 'the stack the projection DROPPED must be drawn');
+    assert.ok(html.includes(stackId(tx, ty, 1)), 'and so must the one it kept');
+    assert.deepEqual(badges(html), ['7', '2'], 'with a count each — two piles, two numbers');
+    assert.ok(html.includes('data-kind="0"') && html.includes('data-kind="3"'),
+      'both KINDS must be named, or the two slots could be two drawings of the same pile');
   } finally {
     Hud.renderFrame(wreck);
     Hud.renderItems(NO_ITEMS);
@@ -2306,11 +2355,12 @@ test('LOSS 2 (driven): two kinds on one tile are BOTH named — the projection c
 });
 
 test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the device', () => {
-  // A glyph code the Room Zoom actually skins as furniture — DERIVED from the shipped table, so this
-  // cannot rot into a code that stopped being furniture (and the assert makes the scan non-vacuous).
+  // A glyph code the Room Zoom skins as a DEVICE — derived from the shipped registry rather than
+  // written down, and `isDeviceItem` is what keeps the derivation honest now that ground items have
+  // art too: without it this loop would happily pick `,` and the whole test would be a pile on a pile.
   let code = 0;
-  for (let c = 33; c < 127 && !code; c += 1) if (itemForGlyph(c)) code = c;
-  assert.ok(code, 'no glyph code maps to a furniture item — the derivation found nothing to test with');
+  for (let c = 33; c < 127 && !code; c += 1) if (isDeviceItem(itemForGlyph(c))) code = c;
+  assert.ok(code, 'no glyph code maps to a DEVICE item — the derivation found nothing to test with');
 
   const tx = HOLD.rx + 1, ty = HOLD.ry + 2;
   const cells = wreck.cells.slice();
@@ -2320,26 +2370,25 @@ test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the de
     Hud.renderItems(NO_ITEMS);
     rzApi.exit(); rzApi.enter('hold');
     const before = rzLayers.innerHTML;
-    assert.ok(before.includes('rz-f-' + tx + '-' + ty),
+    assert.ok(before.includes(furnId(tx, ty)),
       'precondition: the device sprite is not on this tile, so the burial test below is vacuous');
-    assert.ok(!before.includes('PART'), 'precondition: no plate before the channel arrives');
+    assert.deepEqual(badges(before), [], 'precondition: no stock before the channel arrives');
 
     Hud.renderItems(itemsMsg([[tx, ty, 5, 12]]));
     rzApi.exit(); rzApi.enter('hold');
     const html = rzLayers.innerHTML;
 
-    assert.ok(html.includes('PART 12'),
+    assert.ok(html.includes(stackId(tx, ty)),
       'a stack stored on a device tile drew nothing. Under the projection it reached the client '
       + 'nowhere at all — pass 4 painted the device glyph over it — and that is loss 3.');
-    assert.ok(html.includes('rz-f-' + tx + '-' + ty),
-      'THE DEVICE SPRITE WAS SUPPRESSED. Only the unknown-letter FALLBACK may be replaced by a '
-      + 'plate: real art says what is installed there, the plate says what is lying there, and both '
-      + 'are true.');
+    assert.deepEqual(badges(html), ['12'], 'and it must carry its count');
+    assert.ok(html.includes(furnId(tx, ty)),
+      'THE DEVICE SPRITE WAS SUPPRESSED. Only the frame\'s rendering of the PILE (and the unknown-'
+      + 'letter chip) may be dropped on a stocked tile: real furniture art says what is installed '
+      + 'there, the stack says what is lying there, and both are true.');
 
-    const iFurn = html.indexOf('rz-f-' + tx + '-' + ty);
-    const iPlate = html.indexOf('PART 12');
-    assert.ok(iPlate > iFurn,
-      'the plate is drawn BEFORE (i.e. underneath) the device sprite, so the player sees the machine '
+    assert.ok(html.indexOf(stackId(tx, ty)) > html.indexOf(furnId(tx, ty)),
+      'the stack is drawn BEFORE (i.e. underneath) the device sprite, so the player sees the machine '
       + 'and not the stock — the wire loss removed and the same loss reintroduced in the client');
   } finally {
     Hud.renderFrame(wreck);
@@ -2360,12 +2409,12 @@ test('an items dispatch ALONE repaints the surfaces — the cache is not enough'
   try {
     rzApi.exit(); rzApi.enter('hold');
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(!rzLayers.innerHTML.includes('ICE 9'), 'precondition: nothing is stocked yet');
+    assert.ok(!rzLayers.innerHTML.includes(stackId(tx, ty)), 'precondition: nothing is stocked yet');
 
     // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
     Hud.renderItems(itemsMsg([[tx, ty, 8, 9]]));
     await new Promise((r) => setTimeout(r, 40));
-    assert.ok(rzLayers.innerHTML.includes('ICE 9'),
+    assert.ok(rzLayers.innerHTML.includes(stackId(tx, ty)),
       'an `items` message reached the cache and the Room Zoom never repainted. The channel is '
       + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a haul that just landed '
       + 'would then sit invisible until some unrelated channel moved.');

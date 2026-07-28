@@ -18,16 +18,20 @@
 // of bug, not just the three instances."* **IT DOES NOT.** Independent review photographed room
 // STORAGE on `--ship grid` deck 0 *after* this module landed: **seven dashed chips carrying `,` six
 // times and `f` once.** Those are GROUND ITEMS (`Glyphs.ForItem` — Regolith, Potato, and four more),
-// which reach the same `roomCells` → `furnitureSvg` else-branch and which this table does not
-// address at all. What deriving removes is the HAND-MIRROR class: two view files that could drift
-// from each other and from `ITEMS`. The unskinned-glyph class is still open on the item side, is
-// counted by `client/test/device-sprite-coverage.test.js`'s `NO_GROUND_ITEM_SPRITE` ledger, and is
-// chartered separately. THE LEDGER HAS 9 ENTRIES, 8 OF THEM VISIBLY CHIPPING — one per declared
-// ItemKind, all but Corpse (whose '&' is in NON_FURNITURE on both SVG surfaces and so draws
-// nothing at all). Both numbers are pinned by EQUALITY over there (`EXPECT_ITEM_KINDS` and
+// which reach the same `roomCells` → `furnitureSvg` else-branch and which this table did not
+// address at all. What deriving removed was the HAND-MIRROR class: two view files that could drift
+// from each other and from `ITEMS`.
+//
+// ⇒ THE GROUND-ITEM HALF WAS CLOSED ON 2026-07-27 by the ground-item art package, and the closure is
+// STRUCTURAL rather than eight more rows: `deriveGlyphToItem` below now reads `Glyphs.ForItem`'s side
+// of the registry (`kind: 'resource'`) as well as `Glyphs.ForDevice`'s, so a new `ItemKind` with a
+// registry row is skinned by existing. THE LEDGER IS DOWN TO ONE ENTRY — `MetalOre`, which has ZERO
+// references anywhere in `sim/` outside the glyph table and is deliberately left unskinned until it
+// is a real material. Both counts are pinned by EQUALITY over in
+// `client/test/device-sprite-coverage.test.js` (`NO_GROUND_ITEM_SPRITE`'s size and
 // `EXPECT_CHIPPING_ITEM_KINDS`), so this sentence is prose ABOUT a pin and must be re-COUNTED
-// against it, never incremented: it read "8 entries, 7 chipping" through the E0-6 x E0-7 wave,
-// which was already off by one before the wave and off by two after it.
+// against it, never edited by arithmetic: it read "8 entries, 7 chipping" through the E0-6 × E0-7
+// wave, which was already off by one before the wave and off by two after it.
 //
 // `SPRITE_FOR_GLYPH` is NOT retired: it is the *WebGL/canvas* skin's table (`render/compose.js`,
 // `render/webgl/batch.js`, the frozen `hosts/web/Client.html`), where roles carry facing and the
@@ -88,14 +92,25 @@ export const GLYPH_SUBSTITUTE = Object.freeze({
   I: 'cooker',
 });
 
-/** Build the glyph → itemId table from `ITEMS`, then fill the gaps from `GLYPH_SUBSTITUTE`. */
+/**
+ * Build the glyph → itemId table from `ITEMS`, then fill the gaps from `GLYPH_SUBSTITUTE`.
+ *
+ * ⚠️ IT READS TWO KINDS, NOT ONE, SINCE THE GROUND-ITEM ART PACKAGE (2026-07-27). `functional` rows
+ * carry a `Glyphs.ForDevice` char; `resource` rows carry a `Glyphs.ForItem` char. Both switches write
+ * into the SAME `GlyphCell` byte and both reach the same `roomCells` → `furnitureSvg` branch, so a
+ * table that read only one of them was structurally unable to skin the other — which is exactly what
+ * the header above records as the thing deriving did NOT fix. `device-sprite-coverage.test.js`
+ * asserts the two switches never claim one char (they hold apart by upper/lower case today), so
+ * first-wins can never silently pick a device over a pile.
+ */
 function deriveGlyphToItem() {
   const out = Object.create(null);
   for (const id of Object.keys(ITEMS)) {
     const e = ITEMS[id];
-    // FUNCTIONAL only. Materials carry `'#'` / `'.'` — six wall variants and six floor variants all
-    // claiming one glyph — and those two codes belong to the wall/floor layers, never to furniture.
-    if (!e || e.kind !== 'functional') continue;
+    // FUNCTIONAL + RESOURCE only. Materials carry `'#'` / `'.'` — six wall variants and six floor
+    // variants all claiming one glyph — and those two codes belong to the wall/floor layers, never to
+    // furniture. Cosmetic decor is placed by itemId and never resolved from a glyph at all.
+    if (!e || (e.kind !== 'functional' && e.kind !== 'resource')) continue;
     if (typeof e.glyph !== 'string' || e.glyph.length !== 1) continue;
     // First registration wins, so the table is a deterministic function of `ITEMS` order rather
     // than of iteration luck. A collision is a registry bug; the guard fails on it by name.
