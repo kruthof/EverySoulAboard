@@ -63,6 +63,11 @@
          again exactly as promised — leaving this line out failed with `the type name 'DeviceCell'
          does not exist in the type 'WireFormat'`. -->
     <Compile Include="../../hosts/web/WireFormat.Devices.cs" />
+    <!-- the `blocked` channel (WHY an order the player painted is doing nothing): a SIXTH sibling
+         partial, WireFormat.cs again taking NO diff. Same hand-added rule, and it bit a THIRD time
+         exactly as the two comments above promise — leaving this line out failed with `the type name
+         'BlockedCell' does not exist in the type 'WireFormat'`. -->
+    <Compile Include="../../hosts/web/WireFormat.Blocked.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

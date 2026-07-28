@@ -231,7 +231,15 @@ namespace Perilune.Web
                 // `devices` would stay empty for as long as nothing on the ship wears. Both omissions
                 // are still REPORTED and not fixed here — adding them changes what a reconnecting tab
                 // sees on channels this package does not own — but they are not one finding.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices" })
+                //
+                // ⚠️ `blocked` IS ON THE LIST, and it is the `materials` case rather than the `ledger`
+                // case — which is why it is listed rather than left to self-heal. Its payload is a
+                // function of what the PLAYER painted and of compartment air, both of which can sit
+                // unchanged for hours: a reconnecting tab would show a screenful of orders with no
+                // explanation for exactly as long as nobody paints anything, and "the game does not say
+                // why" is the one failure this channel exists to remove. The measured `materials`
+                // consequence (0 messages in 4 s on a live reconnect) is the shape it would take.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "blocked" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1262,6 +1270,12 @@ namespace Perilune.Web
             // of it is a `GlyphColor.Broken` fg byte neither standard surface reads, and that byte is
             // one bit rather than a gradient. See hosts/web/WireFormat.Devices.cs.
             Send("devices", WireFormat.Devices(BuildDevices()), force);
+            // WHY AN ORDER IS DOING NOTHING (`blocked`). `WorksiteSafety.CanStageWorkerAt` refuses to
+            // park a worker in air that would pull it off the job, and its own header records that this
+            // took the failure from expensive-and-visible to CHEAP-AND-INVISIBLE: a designation painted
+            // in an airless compartment simply never progresses, silently. This is the channel that
+            // header asks for. Empty on a healthy ship. See hosts/web/WireFormat.Blocked.cs.
+            Send("blocked", WireFormat.Blocked(BuildBlocked()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1910,6 +1924,214 @@ namespace Perilune.Web
                     device.IsOperational(defs) ? 1 : 0));
             }
             return _devicesScratch;
+        }
+
+        /// <summary>
+        /// ⛔ NOT BLOCKED — the sentinel <see cref="BlockedReason"/> returns when the worksite staging
+        /// rule would accept this site. Deliberately a named constant and not <c>-1</c> scattered at
+        /// three call sites: the reason vocabulary is append-only and a bare literal is how a sentinel
+        /// eventually collides with a real value.
+        /// </summary>
+        private const int NotBlocked = -1;
+
+        /// <summary>
+        /// <b>WOULD THE JOB BOARD REFUSE TO STAGE A WORKER FOR THE SITE AT <paramref name="target"/>,
+        /// AND WHY?</b> Returns <see cref="WireFormat.ReasonAir"/>,
+        /// <see cref="WireFormat.ReasonNoApproach"/>, or <see cref="NotBlocked"/>.
+        ///
+        /// THIS IS <c>JobWork.TryPathToAdjacent</c>'S LOOP WITH THE <c>FindPath</c> REMOVED AND NOTHING
+        /// ELSE CHANGED (<c>sim/Sim.Core/Jobs/JobContext.cs:73-88</c>) — the same
+        /// <see cref="Int3.Neighbor4"/> order, the same <c>InBounds</c>, the same
+        /// <see cref="Simulation.IsWalkable"/>, the same <c>WorksiteSafety.CanStageWorkerAt</c>. That
+        /// is not a coincidence to be maintained by hand: all three of dig, build and deconstruct route
+        /// through that one method (checked in source — <c>DigJobSource.cs:97</c>,
+        /// <c>BuildJobSource.cs:199,324</c>, <c>DeconstructJobSource.cs:137</c>), so mirroring its
+        /// shape is the only way this channel can answer for all three.
+        ///
+        /// <b>THE PREDICATES ARE ASKED, NEVER RE-DERIVED.</b> The whole reason the atmosphere
+        /// sub-reasons are absent is that asking is impossible for them and re-deriving is a second
+        /// authority; see <c>WireFormat.Blocked.cs</c>'s header, omission (1).
+        ///
+        /// <b>THE ONE THING IT DOES NOT DO IS THE PATHFIND</b>, and that is omission (2) in the same
+        /// header: a site whose approach tile is walkable and breathable but unreachable from every
+        /// crew member is reported here as NOT blocked, because the sim's own answer to that question
+        /// is private to the three job sources and computing it fresh is a whole-region sweep per
+        /// neighbour per crew per render. The rows this channel does emit are therefore a SUBSET of the
+        /// truly-refused sites, never a superset — it under-claims, which is the safe direction for a
+        /// surface whose entire purpose is to be believed.
+        ///
+        /// Pure, allocation-free, and inert on a stack with no <see cref="SafetySystem"/> —
+        /// <c>CanStageWorkerAt</c> short-circuits there, so the air reason simply never fires and only
+        /// genuinely walled-in sites are reported. An honest "the rule is not running", not a
+        /// fabricated all-clear.
+        /// </summary>
+        private int BlockedReason(Int3 target)
+        {
+            bool anyWalkable = false;
+            for (int i = 0; i < 4; i++)
+            {
+                var n = Int3.Neighbor4(target, i);
+                if (!_sim.World.InBounds(n)) continue;
+                if (!_sim.IsWalkable(n)) continue;
+                anyWalkable = true;
+                if (WorksiteSafety.CanStageWorkerAt(_sim, n)) return NotBlocked;
+            }
+            return anyWalkable ? WireFormat.ReasonAir : WireFormat.ReasonNoApproach;
+        }
+
+        /// <summary>Add one refused site to the scratch list, fog-gated and bounds-gated. Returns
+        /// silently when the site is fine, out of the world, or in the dark — one place, so the three
+        /// registry walks below cannot come to disagree about the gates.</summary>
+        private void AddIfBlocked(Int3 p, int order)
+        {
+            // Bounds first, defensively: an out-of-range Pos would index the flag plane and throw on
+            // the render thread — the guard BuildItems and BuildDevices both take, for the same reason.
+            if (!_sim.World.InBounds(p)) return;
+            // FOG GATE, mirroring GlyphMapper pass 1 and every sparse channel since. See the header of
+            // WireFormat.Blocked.cs: a player can only designate what they can see, so this is
+            // consistency rather than a live filter — and it is what stops this channel becoming the
+            // one that leaks the map the day a designation arrives from somewhere that is not a click.
+            if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
+            int reason = BlockedReason(p);
+            if (reason == NotBlocked) return;
+            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z, order, reason));
+        }
+
+        /// <summary>
+        /// The sparse BLOCKED-ORDER layer — one <see cref="WireFormat.BlockedCell"/> per site the
+        /// player queued that <c>WorksiteSafety.CanStageWorkerAt</c> refuses, read from the two order
+        /// registries and the tile flag plane. See <c>hosts/web/WireFormat.Blocked.cs</c> for what this
+        /// channel is, which predicates it ASKS versus INFERS, and the four things it deliberately
+        /// leaves out.
+        ///
+        /// ORDER — digs on the z,y,x world walk (the <c>IJobSource</c> rule-3 scan order, identical in
+        /// shape to <see cref="BuildMaterials"/> / <see cref="BuildZones"/> / <see cref="BuildMarks"/>),
+        /// then strips in <c>DeconstructSystem.Pending</c> index order, then builds in
+        /// <c>BuildSystem.Pending</c> index order. Three deterministic walks over plain
+        /// <c>IReadOnlyList</c>s; nothing is enumerated out of a hash container, so no container layout
+        /// can reach the socket. Pinned by <c>BlockedChannelTests</c>.
+        ///
+        /// <b>WHY DIG NEEDS THE WORLD WALK AND THE OTHER TWO DO NOT</b>, since it is the one asymmetry
+        /// here: a dig order is a TILE FLAG (<c>TileFlags.Designated</c>) and has no registry to
+        /// enumerate, while strip and build both keep a <c>Pending</c> list. Walking the world for
+        /// strip/build as well would turn two O(orders) walks into two O(45×18×8) walks with a linear
+        /// registry probe inside each — which is the shape <see cref="BuildMarks"/> pays for and the
+        /// reason its cost is +61 µs.
+        ///
+        /// ⚠️ COST — MEASURED, NOT ARGUED, AND THE EMPTY CASE IS THE ONE THAT MATTERS, because it is
+        /// the normal state of a healthy ship. The world walk costs a flag read and one bit test per
+        /// tile whether or not anything is designated; only tiles that ARE designated pay for
+        /// <see cref="BlockedReason"/>. Method: a delegate bound once to this builder (NOT
+        /// <c>MethodInfo.Invoke</c> per call, which costs more than the method and would be charged to
+        /// the channel), 200 iterations per sample, median of n = 5 WITHIN a run, repeated over FIVE
+        /// process runs, DEBUG build, one machine, <c>--ship grid</c>:
+        ///
+        ///   nothing painted     <b>0 rows, 29 B, ~12.0 µs</b> against a ~430–480 µs render — <b>~2.6 %</b>
+        ///   24 digs in vacuum   <b>24 rows, 331 B, 25–56 µs</b> against the same render — <b>~6–12 %</b>
+        ///
+        /// ⚠️ HOW TO READ THEM HONESTLY, AND TWO THINGS ARE NOT COMFORTABLE. <b>(1) The empty figure is
+        /// stable and the painted one is BIMODAL</b> — five runs read 26.6, 55.8, 55.0, 26.4, 55.6 µs
+        /// with a median of 5 inside each, so it is not sampling noise within a run but something
+        /// between runs (tiered JIT is the likeliest; it was not chased). The RANGE is quoted rather
+        /// than the friendlier number. <b>(2) The empty case was 26.3 µs / ~5.3 % before the dig walk
+        /// was flattened</b> (see the walk itself), so half of what this channel costs an untouched
+        /// ship was removed by a two-line change and the remainder is real.
+        ///
+        /// FOR COMPARISON, from the same programme's own records: <c>devices</c> is ~26 µs (~6.1 %) on
+        /// grid, <c>marks</c> is +61 µs forever, <c>items</c> is ~0.9 µs. The honest placement is
+        /// BETWEEN <c>items</c> and <c>devices</c> with nothing painted, and around <c>devices</c> once
+        /// the player has painted — <b>not</b> "nearly free".
+        ///
+        /// ⚠️ AND THE SOCKET IS NOT FREE EITHER, WHICH AN EARLIER DRAFT OF THIS PARAGRAPH CLAIMED. It
+        /// said <see cref="Send"/> "dedupes the empty payload forever after the first render, so the
+        /// socket cost on a healthy ship is zero". The dedupe is real, but the premise is not:
+        /// <c>--ship grid</c> AUTHORS 20 dig designations and TEN of them are blocked, so the standard
+        /// ship's steady-state payload is 10 rows, not zero (see <c>WireFormat.Blocked.cs</c>'s
+        /// retraction and <c>BlockedChannelTests</c>). It is still deduped — the payload does not
+        /// change while the geometry does not — so the socket sees it once; but "empty" was wrong and
+        /// is corrected rather than softened. Wall-clock is soft under concurrency and this machine
+        /// ran other suites during the run.
+        ///
+        /// The scratch list is reused, so a steady state allocates only the payload string.
+        ///
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
+        /// </summary>
+        private readonly List<WireFormat.BlockedCell> _blockedScratch = new List<WireFormat.BlockedCell>();
+        private List<WireFormat.BlockedCell> BuildBlocked()
+        {
+            _blockedScratch.Clear();
+            var world = _sim.World;
+            int w = world.Width;   // only to recover x,y from a flat index — see the dig walk below
+
+            // 1) DIG — a tile flag, so this one has to be a world walk.
+            //
+            // ⚠️ A FLAT SCAN OF THE FLAG PLANE, NOT THE HOUSE z,y,x TRIPLE LOOP, AND THE ORDER IS
+            // IDENTICAL. `ZLevel.Index(x, y)` is `y * Width + x` (checked in source), so ascending
+            // index IS ascending y then x — the same emission order `BuildMarks`/`BuildZones`/
+            // `BuildMaterials` produce, and `BlockedChannelTests` pins it. What it removes is the
+            // per-tile multiply and the inner loop's bounds work, and `x`/`y` are recovered by a
+            // divide ONLY on the rare tile that is actually designated.
+            //
+            // It is written this way because this walk is THE ONE COST THIS CHANNEL PAYS WHEN ITS
+            // PAYLOAD IS EMPTY, which is the normal state of a healthy ship, and the empty case was
+            // MEASURED before and after rather than argued: 26.3 µs → 12.0 µs of a ~430–480 µs render on
+            // `--ship grid` (median n = 5, 200 iterations/sample, DEBUG, delegate-bound builder),
+            // i.e. ~5.3 % → ~2.6 % of every render for zero rows. It is still not free, and the
+            // honest comparison is in this method's doc comment.
+            for (int z = 0; z < world.Depth; z++)
+            {
+                var flags = world.Levels[z].Flags;
+                for (int i = 0; i < flags.Length; i++)
+                {
+                    if ((flags[i] & (byte)TileFlags.Designated) == 0) continue;
+                    AddIfBlocked(new Int3(i % w, i / w, z), WireFormat.OrderDig);
+                }
+            }
+
+            // 2) STRIP — the deconstruct registry, in its own list order. Null on a reduced stack.
+            var strip = _sim.Deconstruct;
+            if (strip != null)
+            {
+                var pending = strip.Pending;
+                for (int i = 0; i < pending.Count; i++) AddIfBlocked(pending[i].Pos, WireFormat.OrderStrip);
+            }
+
+            // 3) BUILD — the build registry, in its own list order. Null on a stack without a
+            // BuildSystem, in which case there are no build sites to be blocked at.
+            //
+            // ⚠️ A BUILD SITE IS THE CLASS WHERE THE STAGING RULE DESTROYS ACHIEVABLE WORK, and it is
+            // on this channel for exactly that reason. `BuildSystem.cs` FloorConstructTicks = 20 — a
+            // floor build is TWO SECONDS and completes in hard vacuum against a 45 s flee deadline, so
+            // the rule denies work that would have landed (SafetySystem.cs's own retraction says so).
+            // Leaving builds off would have made the one loss that matters invisible on the surface
+            // built to make losses visible — the same argument the scenario host's livelock audit makes
+            // for its own BUILD column.
+            var build = BuildSystemOfStack();
+            if (build != null)
+            {
+                var sites = build.Pending;
+                for (int i = 0; i < sites.Count; i++) AddIfBlocked(sites[i].Pos, WireFormat.OrderBuild);
+            }
+
+            return _blockedScratch;
+        }
+
+        /// <summary>The live <see cref="BuildSystem"/> out of the running stack, resolved ONCE — the
+        /// <see cref="HaulSource"/> precedent, and for the same reason: a reader owns its own dependency
+        /// rather than growing <see cref="Simulation"/> a convenience accessor (<c>Simulation.cs</c> is a
+        /// spine file, and this lane's <c>sim/</c> diff must be empty). An indexed loop over an array, so
+        /// nothing is enumerated out of a hash container. Null when the stack registers no
+        /// <see cref="BuildSystem"/>, in which case there are no pending builds to report at all.</summary>
+        private BuildSystem _buildSystem;
+        private bool _buildSystemResolved;
+        private BuildSystem BuildSystemOfStack()
+        {
+            if (_buildSystemResolved) return _buildSystem;
+            _buildSystemResolved = true;
+            var systems = _sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+                if (systems[i] is BuildSystem bs) { _buildSystem = bs; return _buildSystem; }
+            return null;
         }
 
         /// <summary>
