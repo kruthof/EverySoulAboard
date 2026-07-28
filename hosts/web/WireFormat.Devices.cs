@@ -138,13 +138,17 @@ namespace Perilune.Web
         ///
         /// <para><see cref="Oper"/> is <c>1</c> when <see cref="Perilune.Sim.Device.IsOperational"/>,
         /// else <c>0</c>. IT IS NOT REDUNDANT WITH <see cref="Cond"/> AND THE CLIENT CANNOT DERIVE IT.
-        /// The failure threshold is PER KIND and lives in <c>machines.def</c> — 0.02 for
-        /// Terminal/Light/WaterTank, 0.05 for Door/Battery, 0.10 for most machines, and 0 for every
-        /// furniture kind, which can therefore never be inoperative at all. A client that compared
-        /// <c>cond</c> to a threshold of its own would be a SECOND AUTHORITY on "is this machine
-        /// dead?", silently disagreeing with the sim for two kinds out of every three — the duplicate-
-        /// authority defect this repo has now paid for in the glyph→item tables and the mark layer. One
-        /// element, computed where the defs are.</para>
+        /// The failure threshold is PER KIND and lives in <c>machines.def</c>. COUNTED off the shipped
+        /// table, not estimated: the 25 tile-resident kinds carry FOUR distinct thresholds — <c>0</c>
+        /// (9 kinds: Ladder and every furniture piece, which can therefore never be inoperative at
+        /// all), <c>0.02</c> (3: Terminal, Light, WaterTank), <c>0.05</c> (2: Door, Battery) and
+        /// <c>0.10</c> (11: the machines). A client comparing <c>cond</c> to ONE threshold of its own
+        /// would be a SECOND AUTHORITY on "is this machine dead?", and the best it could do is pick
+        /// 0.10 and be wrong for the other 14 of 25. That is the duplicate-authority defect this repo
+        /// has already paid for in the glyph→item tables and the mark layer. One element, computed
+        /// where the defs are. The census is pinned by
+        /// <c>DevicesChannelTests.The_Failure_Threshold_Really_Is_Per_Kind</c>, so this paragraph
+        /// cannot quietly rot into a stale count.
         ///
         /// <para>WHAT IS DELIBERATELY LEFT OUT, so a later lane knows it was a decision:
         /// <c>Powered</c>, <c>IsOpen</c>, <c>IsLocked</c>, <c>Progress</c>, <c>StoredKWh</c>,
@@ -153,8 +157,8 @@ namespace Perilune.Web
         /// MOSS directory — which already has its own <c>terminals</c> channel), none is needed to pick
         /// a wrecked sprite, and the volatile ones would be actively harmful here: <c>Powered</c>,
         /// <c>Progress</c> and <c>StoredLiters</c> change on most ticks, so carrying them would make
-        /// this payload differ on nearly every render and defeat <c>GameSession.Send</c>'s dedupe for
-        /// the ~1 100-row grid case. <c>Condition</c> moves at ≤0.02 per operating HOUR, so the
+        /// this payload differ on nearly every render and defeat <c>GameSession.Send</c>'s dedupe on
+        /// every one of grid's 146 rows. <c>Condition</c> moves at ≤0.02 per operating HOUR, so the
         /// quantised byte is stable across thousands of ticks and the channel is normally deduped
         /// away entirely. Adding a field is one trailing element; adding it for no consumer is not.</para>
         /// </summary>

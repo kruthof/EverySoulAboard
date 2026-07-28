@@ -438,7 +438,12 @@ namespace Perilune.Tests
         [Test]
         public void Utility_Overlays_Are_Wear_Free_In_The_Defs_But_That_Is_Not_Why_They_Are_Excluded()
         {
-            var defs = SimDefs.Default;
+            // THE LIVE SIM'S DEFS, NOT `SimDefs.Default`, and the difference is not cosmetic:
+            // `sim.Defs` is the compiled default OVERLAID WITH content/core/SimDefs/*.def, and it is
+            // what BuildDevices actually reads. Asserting against the compiled table alone would leave
+            // a retuned .def file able to change the shipped behaviour with this test still green.
+            var (_, host) = Boot(ShipChoice.Grid);
+            var defs = host.Sim.Defs;
             Assert.AreEqual(0f, defs.Machines[(int)DeviceKind.Conduit].WearPerHour,
                 "a Conduit now wears. Its Condition can change, and it is off the `devices` channel — " +
                 "see the exclusion paragraph in hosts/web/WireFormat.Devices.cs, which is now false.");
@@ -635,6 +640,40 @@ namespace Perilune.Tests
                     ship + ": the devices channel row count moved. Tile-resident devices only; " +
                     "conduits and pipes are excluded (see WireFormat.Devices.cs).");
             }
+        }
+
+        /// <summary>
+        /// THE FAILURE THRESHOLD CENSUS, counted off the shipped table rather than restated. The
+        /// header of <c>WireFormat.Devices.cs</c> justifies the <c>oper</c> element with "the client
+        /// could not derive this, because the threshold is per-kind", and quotes FOUR distinct values
+        /// over the 25 tile-resident kinds. A prose count is exactly the kind of claim this repo keeps
+        /// finding stale — twice in one night, most recently a sum a review "corrected" by arithmetic
+        /// and got wrong in both versions. RE-COUNT, NEVER COMPUTE.
+        ///
+        /// The second assertion is the one that carries the argument: whichever SINGLE threshold a
+        /// client picked, it would disagree with the sim about a majority of kinds.
+        /// </summary>
+        [Test]
+        public void The_Failure_Threshold_Really_Is_Per_Kind()
+        {
+            var (_, host) = Boot(ShipChoice.Grid);
+            var defs = host.Sim.Defs;   // compiled default OVERLAID with content/core/SimDefs — see above
+            var resident = Enum.GetValues(typeof(DeviceKind)).Cast<DeviceKind>()
+                .Where(k => !Simulation.IsUtilityOverlay(k)).ToList();
+            var census = resident.GroupBy(k => defs.Machines[(int)k].FailBelow)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            CollectionAssert.AreEquivalent(
+                new Dictionary<float, int> { { 0f, 9 }, { 0.02f, 3 }, { 0.05f, 2 }, { 0.10f, 11 } },
+                census,
+                "the machines.def failure-threshold census moved. WireFormat.Devices.cs's `Oper` " +
+                "paragraph quotes these four groups by name and count; re-COUNT them there rather " +
+                "than computing the delta.");
+
+            int best = census.Values.Max();
+            Assert.That(resident.Count - best, Is.GreaterThan(resident.Count / 2),
+                "a single threshold would now get MOST kinds right, which would weaken the argument " +
+                "for carrying `oper` at all — re-read the header before assuming it still holds");
         }
 
         /// <summary>
