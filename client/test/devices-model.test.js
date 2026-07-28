@@ -16,8 +16,13 @@
 //      y-range) are each run with the others BLINDED and required to fire ALONE. `assert` throws, so
 //      a multi-leg test reports only its first failing leg and a leg that cannot bite is
 //      indistinguishable from one that can (CLAUDE.md, the fifth trap shape).
-//   5. THAT THE ROOM ZOOM DERIVES IT and that nothing draws it yet — which is this package's
-//      deliberate scope boundary, so it is pinned rather than left to a comment.
+//   5. `deviceConditionAt` — THE SEAM, DRIVEN through the shipping Room Zoom controller
+//      (`initRoomZoom` + `enter()` + a real repaint over dom-lite), because a scan for its SIGNATURE
+//      let it be COMPLETELY INERT with the whole gate green: independent review replaced its body
+//      with `return null` and with a constant tile lookup, and both read 843/843 PASS.
+//   6. THAT NOTHING DRAWS IT YET — this package's deliberate scope boundary, pinned as a REFERENCE
+//      COUNT over the seam's identifiers rather than as a guess at what a drawing layer would be
+//      called. The first version of that pin missed four of five realistic drawing shapes.
 //
 // EVERY SOURCE SCAN HERE READS CODE, NOT PROSE — `codeOnly` is IMPORTED from the shared
 // `client/test/code-only.js` (CLAUDE.md traps §1). Both directions are controlled at the bottom of
@@ -29,9 +34,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { decode, decodeDevices } from '../src/wire/messages.js';
-import { roomDeviceConditions } from '../src/ui/room-model.js';
+import { decode, decodeDecks, decodeDevices, decodeRooms } from '../src/wire/messages.js';
+import { roomDeviceConditions, roomTileRect } from '../src/ui/room-model.js';
+import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
+import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
@@ -209,29 +216,109 @@ test('one device per tile: the LAST row wins, matching GlyphMapper pass 4', () =
 
 // ══════════════════════════════════════════════════════ the surface wiring (and its boundary)
 
-// MUTATION: delete the `_deviceCond = roomDeviceConditions(...)` line ⇒ this fails.
+// MUTATION: delete the `_deviceCond = roomDeviceConditions(...)` line ⇒ this fails. (It also reddens
+// the DRIVEN seam test at the bottom of this file, which is the leg that proves the seam WORKS —
+// this one only proves where it reads from.)
 test('the Room Zoom derives the wear layer once per repaint, from the channel', () => {
   assert.match(ROOMZOOM, /_deviceCond = roomDeviceConditions\(decodeDevices\(Hud\.getDevices\(\)\), _focus\);/,
     'roomzoom-view.js no longer derives the per-device wear map from the `devices` channel. It must '
     + 'read Hud.getDevices() — NOT the frame, which has never carried Device.Condition at all.');
-  assert.match(ROOMZOOM, /export function deviceConditionAt\(/,
-    'the `deviceConditionAt` seam is gone. It is the entry point the wrecked-art package reads, and '
-    + 'it is the only reason this lane touches roomzoom-view.js at all.');
 });
 
-// ⚠️ THIS PACKAGE'S SCOPE BOUNDARY, PINNED. The wrecked-art join belongs to the parallel lane that
-// owns `client/src/items/`. Drawing here would be a textual merge collision with that lane on the
-// exact shape that has already broken this repo once (two lanes adding the same export, no git
-// conflict, a module that will not load).
+// ⚠️ THIS PACKAGE'S SCOPE BOUNDARY, PINNED — AND THE FIRST VERSION OF THIS PIN COULD NOT SEE FOUR OF
+// FIVE REALISTIC WAYS OF BREAKING IT. It read `!/body \+= \w*[Ww]ear\w*Svg\(/`, i.e. one naming
+// convention and one concatenation form. Independent review planted five drawing shapes and re-ran
+// the file: `wearLayerSvg` fired, and `wreckSvg(...)`, `damagedDeviceSvg(...)`, `_deviceCond` threaded
+// into the EXISTING `furnitureSvg(...)` call — the likeliest real shape, since that is where device
+// art already draws — and `parts.push(...)` + `body += parts.join('')` ALL SURVIVED. That is
+// CLAUDE.md's fourth trap shape: a guard whose scope filter excludes the violation. It also made this
+// package's claim that "the art lane deletes this test in the same commit as it adds the layer" FALSE
+// AS STATED — the boundary would have moved silently rather than as a line in a diff.
 //
-// This is a pin on a DECISION, not a permanent law: the lane that draws the art deletes this test in
-// the same commit as it adds the layer, and that deletion is then a visible line in a diff instead of
-// a silent scope change.
-test('nothing draws the wear layer yet — the art join is a separate package', () => {
-  assert.ok(!/body \+= \w*[Ww]ear\w*Svg\(/.test(ROOMZOOM) && !/body \+= \w*[Cc]ondition\w*Svg\(/.test(ROOMZOOM),
-    'a wear/condition SVG layer has been concatenated into the Room Zoom. If that is deliberate, '
-    + 'delete this test in the same commit — the boundary is a decision and its removal should be '
-    + 'a line in a diff.');
+// INVERTED TO A POSITIVE PROPERTY. Instead of enumerating what a drawing layer might be CALLED, pin
+// how many times the wear seam's four identifiers appear in the comment-stripped source. A layer that
+// draws this data has to reach it somehow, and there are only four routes: the `_deviceCond` map, the
+// exported `deviceConditionAt` accessor, or a re-derivation through `roomDeviceConditions` /
+// `decodeDevices`. Every route moves a count. The census below is MEASURED off the shipped file, not
+// computed (CLAUDE.md: re-count, never compute).
+//
+// This is a pin on a DECISION, not a permanent law: the lane that draws the art re-measures this
+// census in the same commit as it adds the layer, and that re-measure is then a visible line in a
+// diff instead of a silent scope change.
+const WEAR_SEAM_CENSUS = Object.freeze({
+  // the `let` declaration, the repaint assignment, and the accessor's own `.get`
+  _deviceCond: 3,
+  // the exported declaration — and NOTHING ELSE: there is no in-file caller, which IS the boundary
+  deviceConditionAt: 1,
+  roomDeviceConditions: 2,  // the import + the one repaint call
+  decodeDevices: 2,         // the import + the one repaint call
+  getDevices: 1,            // the single `Hud.getDevices()` inside that same repaint call
+});
+
+/** How many times each wear-seam identifier appears in `src` (which must already be comment-free). */
+function wearSeamCensus(src) {
+  const out = {};
+  for (const name of Object.keys(WEAR_SEAM_CENSUS)) {
+    out[name] = (src.match(new RegExp('\\b' + name + '\\b', 'g')) || []).length;
+  }
+  return out;
+}
+
+test('nothing draws the wear layer yet — pinned by REFERENCE COUNT, not by a naming convention', () => {
+  assert.deepEqual(wearSeamCensus(ROOMZOOM), { ...WEAR_SEAM_CENSUS },
+    'the wear seam has grown (or lost) a reference in roomzoom-view.js. If a layer now DRAWS this\n'
+    + 'data, that is a scope change this package deliberately left to the art lane: re-measure the\n'
+    + 'census in the same commit, so the boundary moves as a line in a diff. If the counts FELL, the\n'
+    + 'seam is being dismantled and `deviceConditionAt` is on its way to being inert.');
+});
+
+// ⚠️ INCLUSION CONTROL, not a population count. CLAUDE.md's fourth trap: "non-vacuity by population
+// count proves a matcher matched something; it never proves it would match the THING". Each row below
+// is a real drawing shape planted into a copy of the shipped source — including the four the previous
+// regex could not see — and each must move the census. The `furnitureSvg` row is a SUBSTITUTION into
+// the real call site, not an inserted line, because that is how the likeliest violation would arrive.
+const RAW_ROOMZOOM = read(join(CLIENT, 'src/ui/roomzoom-view.js'));
+const DRAW_ANCHOR = "  body += markLayerSvg(_markTiles, _focus);";
+const PLANTED_LAYERS = [
+  ['body += wearLayerSvg(...) — the ONE shape the old regex caught',
+    (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += wearLayerSvg(_deviceCond, _focus);")],
+  ['body += wreckSvg(...) — a different noun',
+    (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += wreckSvg(_deviceCond, _focus);")],
+  ['body += damagedDeviceSvg(...) — a different adjective',
+    (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += damagedDeviceSvg(_deviceCond, _focus);")],
+  ['_deviceCond threaded into the EXISTING furnitureSvg() call — where device art already draws',
+    (s) => s.replace('body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles));',
+      'body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles), _deviceCond);')],
+  ['parts.push(...) then body += parts.join(\'\') — not a `body +=` call at all',
+    (s) => s.replace(DRAW_ANCHOR,
+      DRAW_ANCHOR + "\n  const wearParts = [];\n  wearParts.push(wearLayerSvg(_deviceCond));\n  body += wearParts.join('');")],
+  ['a layer that calls the exported accessor instead of touching the map',
+    (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += wearSvg(deviceConditionAt(_focus.rx, _focus.ry));")],
+  ['a layer that RE-DERIVES from the channel, never touching _deviceCond',
+    (s) => s.replace(DRAW_ANCHOR,
+      DRAW_ANCHOR + "\n  body += wearSvg(roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus));")],
+];
+
+for (const [name, plant] of PLANTED_LAYERS) {
+  test(`INCLUSION CONTROL: a planted wear layer is CAUGHT — ${name}`, () => {
+    const mutated = plant(RAW_ROOMZOOM);
+    assert.notEqual(mutated, RAW_ROOMZOOM,
+      'the plant did not apply — the anchor text has moved, so this control is asserting nothing. '
+      + 'Re-find the call site in roomzoom-view.js; do NOT delete the row.');
+    assert.notDeepEqual(wearSeamCensus(codeOnly(mutated)), { ...WEAR_SEAM_CENSUS },
+      `A DRAWING LAYER OF THIS SHAPE WOULD NOT BE CAUGHT: ${name}. The census above is then the same `
+      + 'kind of guard the old regex was — one that passes for every violation it was not written to '
+      + 'imagine.');
+  });
+}
+
+test('CONTROL: the census does NOT fire on an unrelated edit to roomzoom-view.js', () => {
+  // Without this, the seven controls above are equally satisfied by a census that flags EVERYTHING,
+  // which would make the pin unmaintainable and would train the next lane to delete it.
+  const noise = RAW_ROOMZOOM.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += glowSvg(1, 2);");
+  assert.notEqual(noise, RAW_ROOMZOOM, 'the anchor text has moved — this control asserts nothing');
+  assert.deepEqual(wearSeamCensus(codeOnly(noise)), { ...WEAR_SEAM_CENSUS },
+    'the census moved for an edit that does not touch the wear seam at all');
 });
 
 // MUTATION: rename `getDevices` in hud.js without updating SHIP_STATE_REACH ⇒ surface-boundary.test.js
@@ -279,4 +366,155 @@ test('the scanned sources are non-empty', () => {
   for (const [name, src] of Object.entries({ WIRE_DEVICES_CS, GAME_SESSION_CS, MAIN, HUD, ROOMZOOM })) {
     assert.ok(src.length > 200, name + ' stripped to nothing — every scan over it is vacuous');
   }
+});
+
+// ═══════════════════════════════════ THE SEAM, DRIVEN through the SHIPPING Room Zoom controller
+//
+// ⚠️ THIS SECTION EXISTS BECAUSE `deviceConditionAt` COULD BE COMPLETELY INERT WITH THE WHOLE GATE
+// GREEN. It was pinned only by `assert.match(ROOMZOOM, /export function deviceConditionAt\(/)` — a
+// scan for the SIGNATURE. Independent review replaced its body with `return null;` and with
+// `return _deviceCond.get('0,0')`, and both times the node suite read 843/843 PASS, 0 FAIL. The one
+// seam this whole package exists to deliver was provably allowed not to work. That is the BINDING
+// "verb parity is NOT sufficient" lesson in its exact shape: the export is present, and its presence
+// is all anything checked.
+//
+// So the seam is now driven end to end: `initRoomZoom` + `enter()` + the real repaint over dom-lite,
+// fed by the real `Hud.renderDevices` receive path, and read back through the exported accessor. The
+// rig is the one `device-sprite-coverage.test.js` uses; it is REBUILT here rather than imported
+// because that file belongs to the ground-item art lane, and two lanes editing one test module is
+// the merge shape that has already broken this repo once.
+
+const RZ_IDS = [
+  'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
+  'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
+  'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
+];
+class DevEl extends DomEl {
+  constructor(doc, tag) { super(doc, tag); this._html = ''; this._rect = { left: 0, top: 0, width: 0, height: 0 }; }
+  get innerHTML() { return this._html; }
+  set innerHTML(v) { this._html = String(v); this.childNodes = []; }
+  querySelector() { return null; }
+  querySelectorAll() { return []; }
+  getBoundingClientRect() { return this._rect; }
+  closest() { return null; }
+}
+class DevDoc extends DomDocument {
+  constructor() { super(); this.body = new DevEl(this, 'body'); }
+  createElement(tag) { return new DevEl(this, tag); }
+  querySelector() { return null; }
+  querySelectorAll() { return []; }
+}
+const devDoc = new DevDoc();
+for (const id of RZ_IDS) { const e = new DevEl(devDoc, 'div'); e._id = id; devDoc.register(id, e); }
+globalThis.document = devDoc;
+globalThis.window = { addEventListener() {}, removeEventListener() {} };
+
+// Resolved AFTER the globals — both modules touch `document` at import time.
+const Hud = await import('../src/ui/hud.js');
+const RoomZoom = await import('../src/ui/roomzoom-view.js');
+
+const DECKS_JSON =
+  '{"type":"decks","decks":[{"deck":1,"slots":[[0,4,6,12,8,"quarters",5,true,true]]}]}';
+const ROOMS_JSON = '{"type":"rooms","rooms":[["quarters",1,0.209,512,101.3,293,96]]}';
+const RECT = roomTileRect(decksView(decodeDecks(decode(DECKS_JSON)), decodeRooms(decode(ROOMS_JSON))), 'quarters');
+
+/** An all-floor frame for `deck` — the Room Zoom repaints the canvas from it before the layers. */
+function floorFrame(deck, w = 24, h = 20) {
+  const cells = new Array(w * h);
+  for (let i = 0; i < cells.length; i += 1) cells[i] = [46, 0, 0, 0];
+  return { type: 'frame', deck, w, h, lens: 'none', cells };
+}
+
+/** Push a `devices` payload through the REAL receive path (a JSON string → `decode` → the dispatch
+ *  hud.js exposes), then force a synchronous repaint by re-entering the room. `scheduleRepaint` is
+ *  rAF-coalesced and this rig has no rAF, so re-entry is how a test gets a frame it can read. */
+function driveDevices(cells) {
+  Hud.renderDevices(decode(JSON.stringify({ type: 'devices', cells })));
+  RoomZoom.exitRoom();
+  RoomZoom.enterRoom('quarters');
+}
+
+test('deviceConditionAt returns the LIVE row for a tile — driven, not scanned', () => {
+  assert.ok(RECT && RECT.deck === 1, 'the room fixture did not resolve — the rig is not driving anything');
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  Hud.renderFrame(floorFrame(RECT.deck));
+
+  const worn = [RECT.rx + 1, RECT.ry + 1];
+  const fresh = [RECT.rx + 2, RECT.ry + 1];
+  const bare = [RECT.rx + 3, RECT.ry + 1];
+
+  driveDevices([
+    [worn[0], worn[1], RECT.deck, 8, 26, 0],      // a Light, nearly wrecked, inoperative
+    [fresh[0], fresh[1], RECT.deck, 13, 255, 1],  // a Fabricator, pristine, running
+  ]);
+
+  // NON-VACUITY: the repaint really ran. Without this, everything below is also satisfied by a rig
+  // in which `enter()` silently failed and `_deviceCond` was never refreshed at all.
+  assert.ok(devDoc.getElementById('rz-layers').innerHTML.length > 0,
+    'the Room Zoom drew nothing — `enter()` did not repaint, so this rig cannot see the seam');
+
+  // TWO DIFFERENT ROWS, so no constant return value satisfies both. `return null` and
+  // `return _deviceCond.get('0,0')` — the two mutations that survived the old signature scan — each
+  // fail on the first of these.
+  assert.deepEqual(RoomZoom.deviceConditionAt(worn[0], worn[1]),
+    { tx: worn[0], ty: worn[1], kind: 8, cond: 26, oper: 0 },
+    'deviceConditionAt did not return the worn device\'s row. This is THE seam the wrecked-art\n'
+    + 'package reads; a signature scan cannot tell an implementation from `return null`.');
+  assert.deepEqual(RoomZoom.deviceConditionAt(fresh[0], fresh[1]),
+    { tx: fresh[0], ty: fresh[1], kind: 13, cond: 255, oper: 1 },
+    'the second row disagrees — a constant or a single-tile lookup would pass the first leg alone');
+
+  assert.equal(RoomZoom.deviceConditionAt(bare[0], bare[1]), null,
+    'an EMPTY tile must answer null, not undefined and not a stale neighbour: the art join branches '
+    + 'on it, and `undefined` would read as "no device" only by accident of falsiness');
+});
+
+test('deviceConditionAt FOLLOWS the channel — it is not a snapshot taken at entry', () => {
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  Hud.renderFrame(floorFrame(RECT.deck));
+  const t = [RECT.rx + 1, RECT.ry + 2];
+
+  driveDevices([[t[0], t[1], RECT.deck, 8, 255, 1]]);
+  assert.equal(RoomZoom.deviceConditionAt(t[0], t[1]).cond, 255, 'the first payload did not arrive');
+
+  driveDevices([[t[0], t[1], RECT.deck, 8, 26, 0]]);   // the machine wore out
+  const after = RoomZoom.deviceConditionAt(t[0], t[1]);
+  assert.equal(after.cond, 26,
+    'the seam kept the FIRST payload\'s condition. `_deviceCond` is refreshed once per repaint from '
+    + 'the live channel; a latched map means the art would show wear that healed hours ago.');
+  assert.equal(after.oper, 0, 'the operational bit latched too');
+
+  driveDevices([]);   // …and the device was stripped
+  assert.equal(RoomZoom.deviceConditionAt(t[0], t[1]), null,
+    'a device REMOVED from the channel still answers. A map that only ever grows would keep drawing '
+    + 'a wreck on an empty tile.');
+});
+
+test('deviceConditionAt applies the room filter on the driven path too', () => {
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  Hud.renderFrame(floorFrame(RECT.deck));
+
+  const inside = [RECT.rx, RECT.ry];
+  // ⚠️ THE WRONG-DECK ROW SITS ON THE SAME TILE AND CARRIES A DIFFERENT `cond`, AND IT IS LAST.
+  // CLAUDE.md's fifth trap shape shipped from exactly this fixture built carelessly: a wrong-deck row
+  // on a FREE tile is caught by the tile list, but a wrong-deck row on an OCCUPIED tile folds into the
+  // existing entry and moves nothing visible — unless its payload differs and it wins the fold. With
+  // the deck filter dead, `cond` here reads 7.
+  driveDevices([
+    [inside[0], inside[1], RECT.deck, 8, 100, 1],
+    [RECT.rx + RECT.rw, RECT.ry, RECT.deck, 8, 100, 1], // one tile past the right edge
+    [inside[0], inside[1], RECT.deck + 1, 8, 7, 0],     // same tile, WRONG DECK, and LAST
+  ]);
+
+  assert.equal(RoomZoom.deviceConditionAt(inside[0], inside[1]).cond, 100,
+    'CONTROL + the deck filter: the in-rect on-deck row must survive AND must not be overwritten by '
+    + 'the wrong-deck row sharing its tile. A 7 here means the deck filter is dead on the driven path.');
+  assert.equal(RoomZoom.deviceConditionAt(RECT.rx + RECT.rw, RECT.ry), null,
+    'a row one tile past the focus rect reached the seam — the rect filter is dead on the driven path');
 });
