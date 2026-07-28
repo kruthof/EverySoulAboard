@@ -1,8 +1,8 @@
-# Perilune item mapping — the 60-piece warm set → sim reality
+# Perilune item mapping — the 68-piece warm set → sim reality
 
 **Status:** DATA CONTRACT (spec only). The authority for **Phase 1** (the item library,
 `client/src/items/*`) and **Phase 4** (furniture placement / decor). Maps every one of the
-60 pieces in `perilune-item-set.dc.html` to its class in the sim:
+68 pieces in `perilune-item-set.dc.html` to its class in the sim:
 
 - **FUNCTIONAL** — a real interactive machine → a `DeviceKind` (`sim/Sim.Core/Entities/Device.cs`).
   Placing it lowers to a sim command (`PlaceDeviceCommand`). Sub-flagged **[exists]** (map to a
@@ -11,6 +11,10 @@
 - **COSMETIC** — view-only decor → the non-hashed `decor` channel
   (`perilune-wire-channels.spec.md` §3). Never a `Device`; never hashed.
 - **MATERIAL** — a buildable wall/floor tint → material tables + buildable variants; not a device.
+- **RESOURCE** — a GROUND STACK → an `ItemKind` (`sim/Sim.Core/Entities/ItemStack.cs`), keyed by
+  `Glyphs.ForItem` rather than `Glyphs.ForDevice`. Hashed sim state, but nothing PLACES one: the haul
+  board moves it. Added 2026-07-27 with the mock's re-import (60 → 68 pieces). It is a fourth class
+  because the other three are each wrong for a pile — see `client/src/items/index.js`'s header.
 
 The **sim glyph** column is the semantic glyph the piece maps to. **⚠️ IT IS LOAD-BEARING SINCE
 2026-07-26 and it is no longer cross-checked against `SPRITE_FOR_GLYPH`.** `client/src/items/glyph-map.js`
@@ -128,6 +132,30 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 | 59 | DECK SIGN | COSMETIC | decor `deck_sign` | — | Wayfinding label. |
 | 60 | FLOODLIGHT | COSMETIC | decor `floodlight` | — | Glow decor; the functional luminaire is `Light` (8). |
 
+## Resources — ground stacks (8)
+
+Drawn from the `items` wire channel (`hosts/web/WireFormat.Items.cs`), which carries the COUNT the
+projection cannot. The **sim ItemKind** column is the exact C# member NAME, and it is load-bearing:
+`client/src/ui/room-model.js` joins it to `STOCK_KINDS` to turn a wire kind BYTE into a piece, so the
+byte → art mapping is derived rather than transcribed a fourth time.
+
+| # | Piece | Class | Sim ItemKind | Sim glyph | Notes |
+|---|-------|-------|--------------|-----------|-------|
+| 61 | REGOLITH | RESOURCE | `Regolith` (0) | `,` | Loose spoil — the ship's base matter. |
+| 62 | POTATO | RESOURCE | `Potato` (3) | `f` | Raw food; the label is FOOD, the kind is "raw food" not one vegetable. |
+| 63 | SCRAP | RESOURCE | `Scrap` (4) | `s` | Salvage plate offcuts. |
+| 64 | PARTS | RESOURCE | `Parts` (5) | `p` | Machine parts — the maintenance + placement currency. |
+| 65 | CONTROLLER MODULE | RESOURCE | `ControllerModule` (6) | `c` | The top of the production ladder (E0-6). |
+| 66 | SEALS | RESOURCE | `Seals` (7) | `g` | The maintenance rung added by E0-6. |
+| 67 | ICE | RESOURCE | `Ice` (8) | `i` | Comet ice → melter → water (E0-7). Authored into `--ship slice` only. |
+| 68 | CORPSE | RESOURCE | `Corpse` (2) | `&` | A sealed body bag. Its glyph was in `NON_FURNITURE` on BOTH SVG surfaces, so it drew NOTHING until 2026-07-27; art alone could not have fixed that. |
+
+⚠️ **`ItemKind.MetalOre` (1, glyph `o`) deliberately has NO piece.** It has zero references anywhere
+in `sim/` outside `Glyphs.ForItem` and the enum declaration — nothing produces or consumes it. It is
+dead E3 mining vocabulary and stays in `NO_GROUND_ITEM_SPRITE`
+(`client/test/device-sprite-coverage.test.js`) until ore is real. Drawing it would assert an economy
+the game does not have.
+
 ---
 
 ## Tally
@@ -139,7 +167,8 @@ MedBed 20, MedCabinet 21, Locker 22, Desk 23, PlantPot 24, Telescope 25.
 | **FUNCTIONAL total** | **27** |
 | COSMETIC (view-only `decor`, non-hashed) | 21 |
 | MATERIAL (wall/floor tint) | 12 |
-| **Total** | **60** |
+| RESOURCE (ground stack, a sim `ItemKind`) | 8 |
+| **Total** | **68** |
 
 **The 4 items needing a NEW `DeviceKind`:** REACTOR (1), OXYGEN TANK (5), COOKER (8),
 SPACE HEATER (52). Each is a real sim change — enum id + `MachineDefs` row + save/hash +

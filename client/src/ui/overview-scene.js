@@ -42,6 +42,9 @@ import { taskTag } from './console-model.js';
 // ⚠️ `markForFg` is GONE (the `marks` channel): the kind now arrives on the wire, decoded once by the
 // view and handed in. The vocabulary — which mark looks like what — is unchanged.
 import { markVariant, markCellSvg } from './mark-overlay.js';
+// The glyph codes that are NOT an item on a tile, OWNED by room-model.js and imported rather than
+// re-declared — see the NON_FURNITURE note below for the bug the second copy hid.
+import { NON_FURNITURE_CODES } from './room-model.js';
 
 /* eslint-disable no-multi-spaces */
 
@@ -58,8 +61,16 @@ export const DECK = Object.freeze({ x: 205, y: 168, w: 705, h: 234 });
 // shipped as dashed unknown chips and HERE was silently inert (`if (!itemId) continue`: hydroponics
 // and the MOSS terminal simply were not on the schematic). See `items/glyph-map.js`.
 
-// Glyph code points handled by the floor/wall/structure layers or otherwise not furniture.
-const NON_FURNITURE = new Set([46, 35, 32, 37, 64, 47, 38]); // . # space % @ / &
+// Glyph code points handled by the floor/wall/structure layers or otherwise not an item on a tile.
+//
+// ⚠️ IT IS NO LONGER A HAND MIRROR. It used to be a literal `new Set([46,35,32,37,64,47,38])` with a
+// comment saying it mirrored `room-model.js`'s copy — two literals, one meaning, exactly the shape
+// `ROLE_TO_ITEM` was deleted for. It is now IMPORTED from `room-model.js`, which owns the list, so
+// the two surfaces cannot come to disagree about what "not furniture" means. That mattered the day
+// `'&'` (38, CORPSE) was removed: a corpse is an `ItemKind` lying on a tile, not floor/wall/
+// structure, and while it sat in BOTH sets it reached NEITHER furniture layer and drew nothing at
+// all. Editing one copy would have fixed one surface. `NON_FURNITURE_CODES` carries the reasoning.
+const NON_FURNITURE = new Set(NON_FURNITURE_CODES); // . # space % @ /
 
 // ── tiny deterministic string helpers (no locale APIs, InvariantCulture-safe) ──
 function n(v) { const r = Math.round(v * 100) / 100; return Object.is(r, -0) ? 0 : r; }

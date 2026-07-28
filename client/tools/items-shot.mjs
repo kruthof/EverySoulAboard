@@ -12,9 +12,17 @@
 // WHAT IT DOES. Reads the `items` channel off a LIVE `--ship grid` host, picks the room with the most
 // ground stock on the chosen deck, then drives real Chrome over the DevTools protocol: navigates the
 // standard client, dismisses the onboarding card with a real pointer click, enters the room with the
-// real entry gesture, and screenshots Level 2 plus a tight crop of one plate. It reports the facts a
-// picture alone cannot be trusted for — plate count, the layer's client box, the plate's RENDERED
+// real entry gesture, and screenshots Level 2 plus a tight crop of one stack. It reports the facts a
+// picture alone cannot be trusted for — stack count, the layer's client box, the badge's RENDERED
 // font size in CSS px, and the DOM paint order of the item layer against the furniture layer.
+//
+// ⚠️ VOCABULARY, 2026-07-27: this tool was written when the layer drew a LABEL PLATE (`REGO 40`) on
+// every stocked tile. The ground-item art package replaced that with a SPRITE plus a count badge, and
+// demoted the plate to the no-art fallback (MetalOre; a kind byte from a newer host). The selectors
+// are unchanged and still right — `.rz-items .rz-item` is one group per stocked tile either way, and
+// `.rz-items text` is every badge or chip the layer emits — so what a run reports is now: how many
+// stacked tiles drew, and what text sits on them (mostly bare counts now, `+N KINDS` on a crowded
+// tile, a `REGO 40`-shaped chip only where a kind has no piece).
 //
 // NO SIM COMMANDS ARE SENT, unlike marks-shot: `--ship grid` boots with ground stock already on the
 // floor (measured: 7 stacks / 32 units, ItemsChannelTests.The_Boot_Census_Per_Ship_Is_Pinned), so
@@ -155,7 +163,7 @@ for (const type of ['mousePressed', 'mouseReleased'])
   await call('Input.dispatchMouseEvent', { type, x: cx, y: cy, button: 'left', clickCount: 1, buttons: type === 'mousePressed' ? 1 : 0 });
 await sleep(4000);
 
-const plates = await evaluate(`document.querySelectorAll('.rz-items .rz-item').length`);
+const stacks = await evaluate(`document.querySelectorAll('.rz-items .rz-item').length`);
 const words = await evaluate(`JSON.stringify([...document.querySelectorAll('.rz-items text')].map(t=>t.textContent))`);
 // THE LEGIBILITY NUMBER. `font-size` is authored in viewBox units; what matters is the CSS px the
 // browser actually paints after `preserveAspectRatio` scales the layer. Anything under ~9 px is a
@@ -166,9 +174,9 @@ const box = await evaluate(`JSON.stringify((()=>{const g=document.querySelector(
 const order = await evaluate(`JSON.stringify((()=>{const svg=document.querySelector('.rz-items')?.ownerSVGElement;if(!svg)return null;const all=[...svg.querySelectorAll('*')];const f=all.findIndex(n=>n.classList&&n.classList.contains('rz-furniture'));const g=all.findIndex(n=>n.classList&&n.classList.contains('rz-items'));const p=all.findIndex(n=>n.classList&&n.classList.contains('rz-pawns'));return {furnitureIdx:f,itemsIdx:g,pawnsIdx:p,itemsAfterFurniture:g>f};})())`);
 // THE CHIP THAT SHOULD BE GONE: any VS-Z-25 unknown chip left in the room, by its letter.
 const chips = await evaluate(`JSON.stringify([...document.querySelectorAll('#rz-layers text')].filter(t=>t.getAttribute('fill')==='#57503f').map(t=>t.textContent))`);
-log('ROOM ZOOM: .rz-item plates =', plates);
-log('  plate words =', words);
-log('  first plate text metrics =', px);
+log('ROOM ZOOM: .rz-item stacked tiles =', stacks);
+log('  badge/chip words =', words);
+log('  first badge text metrics =', px);
 log('  item layer box =', box);
 log('  DOM paint order =', order);
 log('  remaining unknown-glyph chips in the room =', chips);
@@ -178,7 +186,7 @@ const clip = await evaluate(`JSON.stringify((()=>{const e=document.querySelector
 if (clip && clip !== 'null') await png('roomzoom-crop.png', JSON.parse(clip));
 else log('  (no .rz-item in the Room Zoom DOM — no crop)');
 
-if (!plates) { console.error('FAIL: the item layer is not in the Room Zoom DOM at all'); chrome.kill('SIGKILL'); process.exit(9); }
+if (!stacks) { console.error('FAIL: the item layer is not in the Room Zoom DOM at all'); chrome.kill('SIGKILL'); process.exit(9); }
 
 cdp.close(); ws.close(); chrome.kill('SIGKILL');
 log('done');

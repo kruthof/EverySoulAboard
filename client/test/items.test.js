@@ -1,7 +1,11 @@
-// Item-library tests — the 60-piece warm SVG set (client/src/items/*). Pure builders: no DOM, no
+// Item-library tests — the 68-piece warm SVG set (client/src/items/*). Pure builders: no DOM, no
 // clock, no randomness. Asserts every registered item builds to a non-empty SVG `<g>` fragment,
 // is deterministic (same opts → identical bytes), collision-free across idPrefixes, correctly
-// classified, and that buildItem() falls back safely. The count is pinned at exactly 60.
+// classified, and that buildItem() falls back safely. The count is pinned at exactly 68.
+//
+// 60 → 68 on 2026-07-27: the mock was re-imported with a "Resources & loose items" section — the
+// eight GROUND STACKS the `items` wire channel was built to carry. They are a FOURTH `kind`
+// (`resource`); see index.js's header for why none of the other three fitted.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,6 +17,9 @@ import {
   buildItem,
   itemInfo,
   placeholderItem,
+  RESOURCE_ITEM_BY_KIND_NAME,
+  isResourceItem,
+  isDeviceItem,
 } from '../src/items/index.js';
 
 /** All gradient/pattern/filter ids referenced anywhere in an SVG fragment (url(#id) + id="..."). */
@@ -22,15 +29,70 @@ function idsIn(svg) {
   return { defIds, refIds };
 }
 
-test('the registry holds exactly 60 items', () => {
-  assert.equal(ITEM_IDS.length, 60);
-  assert.equal(Object.keys(ITEMS).length, 60);
+test('the registry holds exactly 68 items', () => {
+  assert.equal(ITEM_IDS.length, 68);
+  assert.equal(Object.keys(ITEMS).length, 68);
 });
 
-test('the mapping.md class tally holds: 27 functional, 21 cosmetic, 12 material', () => {
-  const by = { functional: 0, cosmetic: 0, material: 0 };
+test('the class tally holds: 27 functional, 21 cosmetic, 12 material, 8 resource', () => {
+  const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 27, cosmetic: 21, material: 12 });
+  assert.deepEqual(by, { functional: 27, cosmetic: 21, material: 12, resource: 8 });
+});
+
+test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value, no unlisted one', () => {
+  // Both directions. A `kind` value listed but never used is dead vocabulary that makes the next
+  // reader believe in a class that does not exist; a kind USED but not listed slips past the
+  // per-entry `ITEM_KINDS.includes(e.kind)` check below only because that check would then fail —
+  // which is the point, so this states the closure once rather than leaving it implied.
+  assert.deepEqual([...ITEM_KINDS].sort(),
+    [...new Set(ITEM_IDS.map((id) => ITEMS[id].kind))].sort());
+  assert.equal(ITEM_KINDS.length, 4, 'four kinds: functional, cosmetic, material, resource');
+});
+
+test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => {
+  const res = ITEM_IDS.filter((id) => ITEMS[id].kind === 'resource');
+  assert.deepEqual(res.sort(), [
+    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals',
+  ]);
+  const kinds = new Set();
+  const glyphs = new Set();
+  for (const id of res) {
+    const e = ITEMS[id];
+    assert.equal(typeof e.itemKind, 'string', `${id} carries the sim ItemKind NAME`);
+    assert.ok(e.itemKind.length > 2, `${id}: itemKind looks like a member name`);
+    assert.equal(typeof e.glyph, 'string', `${id} carries a glyph`);
+    assert.equal(e.glyph.length, 1, `${id}: one char`);
+    assert.ok(!kinds.has(e.itemKind), `two rows claim ItemKind ${e.itemKind}`);
+    assert.ok(!glyphs.has(e.glyph), `two rows claim glyph ${JSON.stringify(e.glyph)}`);
+    kinds.add(e.itemKind); glyphs.add(e.glyph);
+    assert.equal(e.deviceKind, undefined, `${id} is not a device`);
+    assert.equal(e.decor, undefined, `${id} is not decor`);
+  }
+  // …and MetalOre is deliberately absent. `ItemKind.MetalOre` has zero references anywhere in `sim/`
+  // outside the glyph table; giving it art would be inventing a material the game does not have.
+  assert.ok(!kinds.has('MetalOre'),
+    'MetalOre grew a piece. Nothing in sim/ produces or consumes it — it is dead E3 mining '
+    + 'vocabulary and must stay in NO_GROUND_ITEM_SPRITE until it is real.');
+});
+
+test('RESOURCE_ITEM_BY_KIND_NAME is derived from the registry, not transcribed', () => {
+  for (const id of ITEM_IDS) {
+    const e = ITEMS[id];
+    if (e.kind !== 'resource') continue;
+    assert.equal(RESOURCE_ITEM_BY_KIND_NAME[e.itemKind], id, `${e.itemKind} → ${id}`);
+  }
+  assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 8);
+  // and the two predicates the view layer classifies with
+  assert.equal(isResourceItem('regolith'), true);
+  assert.equal(isResourceItem('locker'), false, 'a device is not a resource');
+  assert.equal(isResourceItem('rug'), false, 'decor is not a resource');
+  assert.equal(isDeviceItem('locker'), true);
+  assert.equal(isDeviceItem('regolith'), false, 'a pile is not a device — DEMOLISH depends on this');
+  for (const junk of ['', 'nope', null, undefined, 42, {}]) {
+    assert.equal(isResourceItem(/** @type {any} */ (junk)), false);
+    assert.equal(isDeviceItem(/** @type {any} */ (junk)), false);
+  }
 });
 
 test('every item builds to a non-empty, balanced SVG <g> fragment (not a whole <svg>)', () => {
@@ -97,6 +159,7 @@ test('every registry entry has a valid kind + a callable builder + a size', () =
     if (e.kind === 'functional') assert.ok(e.deviceKind, `${id} functional ⇒ deviceKind`);
     if (e.kind === 'material') assert.ok(['wall', 'floor'].includes(e.material), `${id} material tag`);
     if (e.kind === 'cosmetic') assert.ok(e.decor, `${id} cosmetic ⇒ decor key`);
+    if (e.kind === 'resource') assert.ok(e.itemKind, `${id} resource ⇒ itemKind name`);
   }
 });
 

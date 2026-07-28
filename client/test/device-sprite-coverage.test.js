@@ -184,7 +184,7 @@ const NO_FURNITURE_SPRITE = Object.freeze({
     + "NON_FURNITURE omits '+' 43 and 'X' 88, so a closed/locked door inside a room rect would chip; "
     + '0 such tiles on --ship grid deck 0 today. ⚠️ THE `items` CHANNEL LAYERED NEW HARM ON THIS '
     + 'LATENT BUG: a ground stack on such a door tile now SUPPRESSES that chip (roomzoom-view.js '
-    + 'furnitureSvg + itemPlateTileKeys), so the door would draw nothing at all rather than a wrong '
+    + 'furnitureSvg + itemStackTileKeys), so the door would draw nothing at all rather than a wrong '
     + 'letter. Doubly latent — it needs an in-rect door AND stock on it, and there are still 0 such '
     + 'tiles — but the real fix is unchanged and is to make the two NON_FURNITURE sets agree in '
     + 'room-model.js, not to narrow the suppression.)',
@@ -211,44 +211,41 @@ const NO_FURNITURE_SPRITE = Object.freeze({
  * all on the Overview, which `continue`s instead). The count of `chips: true` entries is pinned by
  * equality below, so this ledger only ever pays DOWN.
  *
- * ⚠️ NOTE 2026-07-27, THE `items` CHANNEL — THE ART GAP IS UNCHANGED, THE SYMPTOM IS NOT.
+ * ⚠️ NOTE 2026-07-27, THE `items` CHANNEL THEN THE GROUND-ITEM ART — THE SYMPTOM HAS MOVED TWICE.
  * This ledger's headline sentence ("the player sees a dashed box with a raw letter in it") is now
  * true only where the `items` channel reports NOTHING. On a tile the channel does cover, the Room
- * Zoom draws a LABEL PLATE naming the kind and the count, and `roomzoom-view.js`'s `furnitureSvg`
- * suppresses the letter chip underneath it (`itemPlateTileKeys`) so the two do not stack. Since a
- * ground stack is exactly what puts a ground-item glyph in the frame, in practice that is most of
- * them on a live host.
+ * Zoom draws the kind's real SPRITE with a count badge beside it, and `roomzoom-view.js`'s
+ * `furnitureSvg` suppresses the letter chip underneath it (`itemStackTileKeys`) so the two do not
+ * stack. Since a ground stack is exactly what puts a ground-item glyph in the frame, in practice that
+ * is most of them on a live host. The LABEL PLATE the `items` channel shipped is no longer the normal
+ * case: it survives DEMOTED to the no-art fallback — a kind with no piece (MetalOre) or a kind byte
+ * from a newer host — which is precisely the population this ledger counts.
  *
  * NOTHING BELOW MOVES, and the reason is worth stating rather than assuming: every `chips` value
- * here is measured by DRIVING `roomCells` — the frame-derived model, which the `items` package did
- * not touch — so it still answers "does this glyph reach the unknown-chip branch?", which is still
- * exactly the ART question. The plate is a different layer with a different source. The gap this
- * ledger counts is "no ground-pile piece exists in the warm 60-piece set", and no channel can pay
- * that down; only art can.
+ * here is measured by DRIVING `roomCells` — the frame-derived model, which neither the `items`
+ * package nor the art package touched — so it still answers "does this glyph reach the unknown-chip
+ * branch?", which is still exactly the ART question. The item layer is a different layer with a
+ * different source. The gap this ledger counts is "no ground-pile piece exists in the warm set", and
+ * no channel can pay that down; only art can — and the art package did, for eight of the nine.
  */
 const NO_GROUND_ITEM_SPRITE = Object.freeze({
-  // The eight that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece
-  // set has no ground-pile, ore, crop, scrap, part or module piece to skin any of them with, and the
-  // three generic containers it does have (`storage-crate`, `supply-barrel`, `fuel-drum`) are
-  // COSMETIC decor pieces, not stack art — standing one in would say "a crate is here", which is a
-  // different and wrong claim about the tile.
-  Regolith: { glyph: ',', chips: true, why: 'loose spoil; no ground-pile piece in the warm set' },
-  MetalOre: { glyph: 'o', chips: true, why: 'ore stack; no ore piece in the warm set' },
-  Potato: { glyph: 'f', chips: true, why: 'raw food stack; no crop piece in the warm set' },
-  Scrap: { glyph: 's', chips: true, why: 'salvage stack; no scrap piece in the warm set' },
-  Parts: { glyph: 'p', chips: true, why: 'parts stack; no parts piece in the warm set' },
-  ControllerModule: { glyph: 'c', chips: true, why: 'module stack; no module piece in the warm set' },
-  // E0-6 added `Seals` (ItemKind 7). The question this ledger forces was answered NO: the warm
-  // 60-piece set has no gasket/seal/consumable piece either, and ground-item art is chartered
-  // separately, so it joins the ledger rather than pretending to art it does not have.
-  Seals: { glyph: 'g', chips: true, why: 'seal/gasket stack; no consumable piece in the warm set' },
-  // The one that does NOT chip, and it is the reason this ledger records `chips` per entry instead
-  // of just listing names: `'&'` (38) is in `NON_FURNITURE` on BOTH surfaces, so a corpse reaches
-  // neither furniture layer. It draws nothing at all here. (The frozen canvas skin has a real
-  // `corpse` sprite role; the SVG surfaces never grew one.)
-  Corpse: { glyph: '&', chips: false, why: "'&' is in NON_FURNITURE on both SVG surfaces — draws nothing" },
-  Ice: { glyph: 'i', chips: true, why: 'hold cargo / comet ice (E0-7); no loose-pile piece in the warm set, and ground-item art is its own chartered package' },
+  // ⚠️ ONE ENTRY LEFT, AND IT IS NOT A BACKLOG ITEM. `ItemKind.MetalOre` has **ZERO references
+  // anywhere in `sim/` outside the glyph table and the enum declaration itself** — measured on this
+  // tree, not assumed: no production node makes it, no recipe consumes it, no authored ship spawns
+  // it, no system names it. It is dead E3 mining vocabulary. Giving it art would assert that the
+  // game has an ore economy, which it does not, and would then make the drawing of a real ore — when
+  // E3 decides what one IS — a redraw rather than a decision. The mock's own header says the same
+  // ("There is deliberately NO MetalOre piece"). It therefore chips, and that is correct: a kind the
+  // sim can project but nothing can create is exactly the case the dashed chip was invented for.
+  MetalOre: {
+    glyph: 'o',
+    chips: true,
+    why: 'DEAD VOCABULARY, not missing art: ItemKind.MetalOre has zero references anywhere in sim/ '
+      + 'outside Glyphs.ForItem and the enum itself — nothing produces or consumes it. Deliberately '
+      + 'unskinned until E3 makes ore real; drawing it would assert an economy that does not exist.',
+  },
 });
+
 
 /**
  * The DeviceKinds this file holds to the art standard. Kinds in the allowlist are excused; kinds
@@ -292,6 +289,11 @@ const EXPECT_FOR_DEVICE_ARMS = 27;
 const EXPECT_COVERED = 24;    // 27 kinds − 3 allowlisted (Door, Conduit, Pipe)
 const EXPECT_ITEM_KINDS = 9;
 const EXPECT_FOR_ITEM_ARMS = 9;
+// The ledger below, pinned SEPARATELY from the enum size since the ground-item art landed. Those two
+// numbers were the same while NOTHING had art and one constant did both jobs — which meant "the sim
+// grew a kind" and "a kind lost its excuse" were indistinguishable. They are different facts and they
+// move for opposite reasons, so they are different constants.
+const EXPECT_GROUND_ITEM_LEDGER = 1;   // MetalOre, and see the ledger's own note for why it stays
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -413,17 +415,57 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
       `LEDGER IS STALE: ${name} (${JSON.stringify(e.glyph)}) now HAS art (${itemIdForGlyphChar(e.glyph)}). ` +
       'Delete the line and lower the pinned counts — this ledger only shrinks.');
   }
-  assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_ITEM_KINDS,
+  assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_GROUND_ITEM_LEDGER,
     'THE GROUND-ITEM LEDGER CHANGED SIZE. It only shrinks: an entry goes away when that kind gets\n' +
-    'art. Every entry is a tile the player currently reads as a dashed box with a letter in it.');
+    'art. It went 9 → 1 when the ground-item art landed, and the one that stayed (MetalOre) is not\n' +
+    'a backlog item — nothing in sim/ produces or consumes that kind. If you are ADDING one, the\n' +
+    'question the ledger exists to force is: does this kind exist in the game, or only in the enum?');
+});
+
+// THE OTHER DIRECTION, and it is the one that pays the ledger down rather than merely counting it: an
+// ItemKind that is NOT in the ledger must resolve to real art, DRIVEN through the real builder — not
+// "the table has a key". `buildItem` returns the neutral "?" placeholder for an id that is not in the
+// registry, byte-for-byte, so an entry pointing at a builder that does not exist fails exactly as
+// loudly as a missing one.
+test('EVERY skinned ItemKind builds REAL art (driven through buildItem)', () => {
+  const skinned = ITEM_KINDS.filter((k) => !(k in NO_GROUND_ITEM_SPRITE));
+  assert.equal(skinned.length, EXPECT_ITEM_KINDS - EXPECT_GROUND_ITEM_LEDGER,
+    'the skinned set changed size — re-count the ledger pins together');
+  const broken = [];
+  for (const kind of skinned) {
+    const glyph = FOR_ITEM[kind];
+    const itemId = itemIdForGlyphChar(glyph);
+    if (!itemId) { broken.push(`${kind} (glyph ${JSON.stringify(glyph)}): no item claims this glyph`); continue; }
+    const entry = ITEMS[itemId];
+    if (!entry) { broken.push(`${kind} → "${itemId}": no such entry in ITEMS`); continue; }
+    if (entry.kind !== 'resource') {
+      broken.push(`${kind} → "${itemId}": skinned by a ${entry.kind} piece, not a resource one`);
+      continue;
+    }
+    if (entry.itemKind !== kind) {
+      broken.push(`${kind} → "${itemId}": the row says itemKind ${JSON.stringify(entry.itemKind)}`);
+      continue;
+    }
+    const svg = buildItem(itemId, OPTS);
+    if (svg === PLACEHOLDER) { broken.push(`${kind} → "${itemId}": buildItem returned the PLACEHOLDER`); continue; }
+    if (!svg.includes('<g class="pl-item">') || svg.length < 80) {
+      broken.push(`${kind} → "${itemId}": buildItem returned no real fragment (${svg.length} chars)`);
+    }
+  }
+  assert.deepEqual(broken, [],
+    'ITEM KIND(S) WITH NO REAL ART:\n  ' + broken.join('\n  ') + '\n\n' +
+    'A ground item with no art draws the same VS-Z-25 dashed chip a device with no art draws.\n' +
+    'THE EXITS: draw it (a builder in client/src/items/resources.js + an ITEMS row carrying the\n' +
+    'sim ItemKind NAME and the Glyphs.ForItem char), or put it in NO_GROUND_ITEM_SPRITE with a\n' +
+    'reason that survives being read aloud.');
 });
 
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 8;   // all but Corpse ('&' is in NON_FURNITURE on both surfaces)
+const EXPECT_CHIPPING_ITEM_KINDS = 1;   // MetalOre alone — see the ledger
 
-test('THE OPEN GAP, MEASURED: exactly eight ItemKinds still draw a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
@@ -435,17 +477,22 @@ test('THE OPEN GAP, MEASURED: exactly eight ItemKinds still draw a raw-letter ch
     // empty itemId is exactly what `furnitureSvg` turns into the dashed letter box.
     const chips = cells.length === 1 && !cells[0].itemId;
     if (chips) chipping.push(`${k} (${JSON.stringify(g)})`);
-    assert.equal(chips, NO_GROUND_ITEM_SPRITE[k].chips,
-      `the ledger says ${k} chips=${NO_GROUND_ITEM_SPRITE[k].chips}, the real Room Zoom model says ${chips}`);
+    // A ledgered kind must chip exactly as its entry claims; a SKINNED kind must not chip at all —
+    // and that second half is not free. `Corpse` reaches this model only because `'&'` was taken OUT
+    // of NON_FURNITURE; with it back in, `roomCells` emits NOTHING for the tile, `chips` is false for
+    // the wrong reason, and this leg would still be green. That is why the corpse has a driven test
+    // of its own below that asserts the cell EXISTS and carries the art.
+    const expected = k in NO_GROUND_ITEM_SPRITE ? NO_GROUND_ITEM_SPRITE[k].chips : false;
+    assert.equal(chips, expected,
+      `${k}: expected chips=${expected}, the real Room Zoom model says ${chips}`);
   }
   assert.equal(chipping.length, EXPECT_CHIPPING_ITEM_KINDS,
     'THE NUMBER OF RAW-LETTER CHIPS MOVED: ' + chipping.join(', ') + '\n\n' +
-    'Measured live by independent review on --ship grid deck 0, room STORAGE, after the device fix:\n' +
-    "seven chips on one floor — ',' six times and 'f' once. It is EIGHT kinds now, not seven: the\n" +
-    'wave added Seals (E0-6) and Ice (E0-7), both ground items with no art, and the number only\n' +
-    'ever goes up when a kind ships without art. If this number went UP, a new ItemKind\n' +
-    'shipped without art. If it went DOWN, an item got art — lower this constant and delete its\n' +
-    'ledger entry in the same commit. It only ever pays down.');
+    'It was EIGHT until 2026-07-27 — measured live by independent review on --ship grid deck 0, room\n' +
+    "STORAGE: seven chips on one floor, ',' six times and 'f' once, plus Seals and Ice from the\n" +
+    'E0-6/E0-7 wave. The ground-item art paid seven of them down and MetalOre is the one left,\n' +
+    'deliberately. If this number went UP, a new ItemKind shipped without art. If it went DOWN,\n' +
+    'a kind got art — lower this constant and delete its ledger entry in the same commit.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -509,33 +556,62 @@ const FUNCTIONAL_GLYPHS = Object.keys(ITEMS)
   .filter((id) => ITEMS[id].kind === 'functional' && typeof ITEMS[id].glyph === 'string')
   .map((id) => [id, ITEMS[id].glyph]);
 
-test('no two functional ITEMS rows claim the same glyph', () => {
+/**
+ * The RESOURCE rows that claim a glyph: [itemId, glyph]. The `Glyphs.ForItem` half of the registry.
+ *
+ * ⚠️ THIS CONSTANT IS THE FIX FOR A SURVIVOR THIS PACKAGE FOUND IN ITS OWN FIRST DRAFT. Every
+ * assertion in this section filtered on `kind === 'functional'`, so the eight new resource rows were
+ * OUT OF SCOPE of all four of them: a typo in a resource glyph, two rows claiming one char, or a row
+ * whose `itemKind` named a kind the sim does not have would all have been invisible while the section
+ * that exists to catch exactly those stayed green. That is CLAUDE.md's fourth trap shape — a guard
+ * whose SCOPE FILTER excludes the violation — and it was reintroduced by the package that has the
+ * shape written at the top of it.
+ */
+const RESOURCE_GLYPHS = Object.keys(ITEMS)
+  .filter((id) => ITEMS[id].kind === 'resource' && typeof ITEMS[id].glyph === 'string')
+  .map((id) => [id, ITEMS[id].glyph]);
+
+/** Every row that claims a glyph, of either kind — what `GLYPH_TO_ITEM` is actually built from. */
+const CLAIMED_GLYPHS = [...FUNCTIONAL_GLYPHS, ...RESOURCE_GLYPHS];
+
+test('no two ITEMS rows claim the same glyph — across BOTH switches', () => {
   assert.ok(FUNCTIONAL_GLYPHS.length >= 18, 'the functional-glyph scan found almost nothing');
+  assert.ok(RESOURCE_GLYPHS.length >= 8, 'the resource-glyph scan found almost nothing');
   const seen = new Map();
   const clashes = [];
-  for (const [id, g] of FUNCTIONAL_GLYPHS) {
+  for (const [id, g] of CLAIMED_GLYPHS) {
     if (seen.has(g)) clashes.push(`${JSON.stringify(g)}: ${seen.get(g)} vs ${id}`);
     else seen.set(g, id);
   }
   assert.deepEqual(clashes, [],
     'TWO ITEMS CLAIM ONE GLYPH: ' + clashes.join('; ') + '\n' +
-    'glyph-map.js resolves first-wins, so one of these pieces would silently never render.');
+    'glyph-map.js resolves first-wins, so one of these pieces would silently never render. Across\n' +
+    'the two switches this is worse than a lost sprite: a device and a pile would be one drawing.');
 });
 
 test('every glyph an ITEMS row claims is a glyph the sim actually projects', () => {
   // The other direction, and it is the one that catches a TYPO. A row that claims `\`` instead of
-  // `"` would leave GrowBed unskinned again while every count above stayed the same.
-  const orphans = FUNCTIONAL_GLYPHS
-    .filter(([, g]) => !Object.values(FOR_DEVICE).includes(g))
-    .map(([id, g]) => `${id} claims ${JSON.stringify(g)}`);
+  // `"` would leave GrowBed unskinned again while every count above stayed the same. Each half is
+  // checked against ITS OWN switch: a resource row claiming a DEVICE glyph is not "fine", it is a
+  // pile wearing a machine's char.
+  const devGlyphs = new Set(Object.values(FOR_DEVICE));
+  const itemGlyphs = new Set(Object.values(FOR_ITEM));
+  const orphans = [
+    ...FUNCTIONAL_GLYPHS.filter(([, g]) => !devGlyphs.has(g))
+      .map(([id, g]) => `${id} claims ${JSON.stringify(g)}, which no DeviceKind projects`),
+    ...RESOURCE_GLYPHS.filter(([, g]) => !itemGlyphs.has(g))
+      .map(([id, g]) => `${id} claims ${JSON.stringify(g)}, which no ItemKind projects`),
+  ];
   assert.deepEqual(orphans, [],
-    'ITEMS ROW CLAIMS A GLYPH NO DeviceKind PROJECTS: ' + orphans.join('; ') + '\n' +
+    'ITEMS ROW CLAIMS A GLYPH THE SIM DOES NOT PROJECT: ' + orphans.join('; ') + '\n' +
     'Either the char is a typo, or the sim arm it mirrors was changed without this row.');
 });
 
-test('every ITEMS row that claims a glyph names the DeviceKind that projects it', () => {
-  // The registry carries `deviceKind` beside `glyph`. If the two disagree the registry is lying
-  // about what the piece is, and the lie is invisible because only `glyph` is read at runtime.
+test('every ITEMS row that claims a glyph names the sim kind that projects it', () => {
+  // The registry carries `deviceKind` / `itemKind` beside `glyph`. If the two disagree the registry
+  // is lying about what the piece is, and the lie is invisible because only `glyph` is read at
+  // runtime — which is precisely what makes `itemKind` worth asserting: `room-model.js` joins on the
+  // NAME to turn a wire kind BYTE into a piece, so a wrong name silently draws the wrong pile.
   const wrong = [];
   for (const [id, g] of FUNCTIONAL_GLYPHS) {
     const kind = ITEMS[id].deviceKind;
@@ -543,11 +619,17 @@ test('every ITEMS row that claims a glyph names the DeviceKind that projects it'
     if (!(kind in FOR_DEVICE)) continue;       // a NEW kind not yet in the sim — deviceStatus:'new'
     if (FOR_DEVICE[kind] !== g) wrong.push(`${id}: deviceKind ${kind} projects ${JSON.stringify(FOR_DEVICE[kind])}, row says ${JSON.stringify(g)}`);
   }
-  assert.deepEqual(wrong, [], 'ITEMS row disagrees with Glyphs.ForDevice: ' + wrong.join('; '));
+  for (const [id, g] of RESOURCE_GLYPHS) {
+    const kind = ITEMS[id].itemKind;
+    if (!kind) { wrong.push(`${id} claims ${JSON.stringify(g)} with no itemKind`); continue; }
+    if (!(kind in FOR_ITEM)) { wrong.push(`${id}: itemKind ${kind} is not an ItemKind the sim has`); continue; }
+    if (FOR_ITEM[kind] !== g) wrong.push(`${id}: itemKind ${kind} projects ${JSON.stringify(FOR_ITEM[kind])}, row says ${JSON.stringify(g)}`);
+  }
+  assert.deepEqual(wrong, [], 'ITEMS row disagrees with Glyphs.For*: ' + wrong.join('; '));
 });
 
 test('GLYPH_SUBSTITUTE is real, non-shadowing, and pinned to its size', () => {
-  const realGlyphs = new Set(FUNCTIONAL_GLYPHS.map(([, g]) => g));
+  const realGlyphs = new Set(CLAIMED_GLYPHS.map(([, g]) => g));
   for (const [g, id] of Object.entries(GLYPH_SUBSTITUTE)) {
     assert.ok(Object.values(FOR_DEVICE).includes(g),
       `STALE SUBSTITUTE ${JSON.stringify(g)}: no DeviceKind projects that glyph. Delete the line.`);
@@ -574,10 +656,18 @@ test('the derived table is a function of ITEMS — not of a hand mirror', () => 
   // The bug class this package removed: two view files each carrying their own copy. If the
   // derivation ever stops reading the registry, this goes red — every glyph is checked back against
   // its own ITEMS row rather than against a transcribed expectation.
-  for (const [id, g] of FUNCTIONAL_GLYPHS) {
+  for (const [id, g] of CLAIMED_GLYPHS) {
     assert.equal(GLYPH_TO_ITEM[g], id, `ITEMS["${id}"].glyph is ${JSON.stringify(g)} but the table says ${GLYPH_TO_ITEM[g]}`);
   }
-  assert.equal(Object.keys(GLYPH_TO_ITEM).length, FUNCTIONAL_GLYPHS.length + Object.keys(GLYPH_SUBSTITUTE).length);
+  // BOTH halves, and the sum is the pin: 18 device rows + 8 resource rows + 6 substitutes = 32.
+  // Written as a sum of the three sources rather than as 32 so that it stays a statement about the
+  // DERIVATION — a literal would still hold if the resource half stopped being read and six other
+  // glyphs appeared from somewhere.
+  assert.equal(Object.keys(GLYPH_TO_ITEM).length,
+    CLAIMED_GLYPHS.length + Object.keys(GLYPH_SUBSTITUTE).length);
+  assert.ok(RESOURCE_GLYPHS.every(([, g]) => GLYPH_TO_ITEM[g]),
+    'the derivation stopped reading the RESOURCE half of the registry — every ground stack would go\n' +
+    'back to being a dashed box with a raw letter in it, which is HANDOVER §4l on the item side.');
   // Non-glyph inputs are '' rather than a throw or an `undefined` leaking into an SVG string.
   for (const junk of ['', 'ab', null, undefined, 42, {}]) assert.equal(itemIdForGlyphChar(junk), '');
 });
@@ -693,6 +783,88 @@ test('THE OWNER\'S BUG, driven through the SHIPPING Room Zoom: no dashed letter 
   // A count, so "no chip" cannot be satisfied by "no tiles". Every covered kind drew a real piece.
   const pieces = (html.match(/<g class="pl-item">/g) || []).length;
   assert.ok(pieces >= COVERED.length, `only ${pieces} item groups for ${COVERED.length} devices`);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 6b. THE CORPSE, and the SET THAT HID IT. `'&'` (38) sat in `NON_FURNITURE` on BOTH SVG surfaces,
+//     so a dead crew member reached NEITHER furniture layer and drew NOTHING AT ALL — not a wrong
+//     thing, nothing. That is why `NO_GROUND_ITEM_SPRITE` recorded `chips: false` for the one kind
+//     that was invisible rather than merely unskinned, and it is why ART ALONE COULD NOT FIX IT.
+//
+//     The removal is one number in two files. These tests pin BOTH SURFACES separately, because the
+//     bug's whole shape was "the set is written twice and each copy hides it on its own surface".
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+const CORPSE_GLYPH = "&";
+
+test("the CORPSE glyph reaches the Room Zoom's furniture layer at all (roomCells, driven)", () => {
+  assert.equal(FOR_ITEM.Corpse, CORPSE_GLYPH, 'Glyphs.ForItem(Corpse) moved — re-derive this test');
+  const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+  const frame = { deck: 0, w: 1, h: 1, lens: 'none', cells: [[CORPSE_GLYPH.charCodeAt(0), 0, 0, 0]] };
+  const cells = roomCells(frame, focus);
+  // THE FIRST HALF IS THE ONE THAT WAS BROKEN, and it is asserted on its own because `!cells[0]` and
+  // `cells[0].itemId === ''` fail in the same direction while meaning opposite things: "the tile was
+  // filtered out" vs "the tile has no art". Only the first was true, and only art fixes the second.
+  assert.equal(cells.length, 1,
+    "roomCells DROPPED the corpse tile. `'&'` (38) is back in NON_FURNITURE, so a corpse reaches no\n"
+    + 'furniture layer on this surface and draws NOTHING — the state this package was written to end.');
+  assert.equal(cells[0].itemId, 'corpse', 'the corpse tile resolved to no art');
+});
+
+test('the CORPSE glyph reaches the OVERVIEW composer too (overviewScene, driven)', () => {
+  // The Overview has no unknown-chip fallback — `furnitureLayer` does `if (!itemId) continue` — so a
+  // corpse missing here is SILENT. The whole reason for the shared `NON_FURNITURE_CODES` import is
+  // that a fix applied to one file would leave this leg red and nobody looking.
+  const probe = { deck: 1, w: 1, h: 1, lens: 'none', cells: [[CORPSE_GLYPH.charCodeAt(0), 8, 0, 0]] };
+  const svg = overviewScene({ deck: 1, decksView: VIEW, frame: probe, crew: [], marks: [] });
+  assert.ok(svg.includes('class="pl-furniture"'),
+    'THE OVERVIEW DREW NOTHING for a corpse. Either 38 is back in this surface\'s NON_FURNITURE, or\n'
+    + 'the two surfaces have come to disagree about what "not furniture" means — which is exactly\n'
+    + 'the two-copies bug the shared NON_FURNITURE_CODES export exists to make impossible.');
+});
+
+test('EVERY glyph the registry skins is drawn by BOTH surfaces — no surface filters art away', () => {
+  // The general form of the corpse bug, and an INCLUSION test rather than a population count: it
+  // enumerates the glyphs that DO resolve to a piece and requires each to survive both filters.
+  // Planting the violation (putting 38 back in either set) reddens it by name.
+  const skinned = Object.keys(GLYPH_TO_ITEM);
+  assert.ok(skinned.length >= 32, 'the skinned-glyph set is suspiciously small');
+  const lost = { roomZoom: [], overview: [] };
+  for (const g of skinned) {
+    const code = g.charCodeAt(0);
+    const focus = { deck: 0, rx: 0, ry: 0, rw: 1, rh: 1 };
+    const cells = roomCells({ deck: 0, w: 1, h: 1, lens: 'none', cells: [[code, 0, 0, 0]] }, focus);
+    if (cells.length !== 1 || !cells[0].itemId) lost.roomZoom.push(JSON.stringify(g));
+    const probe = { deck: 1, w: 1, h: 1, lens: 'none', cells: [[code, 8, 0, 0]] };
+    const svg = overviewScene({ deck: 1, decksView: VIEW, frame: probe, crew: [], marks: [] });
+    if (!svg.includes('class="pl-furniture"')) lost.overview.push(JSON.stringify(g));
+  }
+  assert.deepEqual(lost, { roomZoom: [], overview: [] },
+    'A GLYPH WITH REAL ART IS FILTERED OUT BEFORE IT CAN BE DRAWN: ' + JSON.stringify(lost) + '\n'
+    + 'A code in NON_FURNITURE is claimed by the floor/wall/structure layers. A code with a registry\n'
+    + 'piece is claimed by the furniture layer. A code in both is drawn by neither, silently — that\n'
+    + 'is what happened to the corpse for the whole life of the two SVG surfaces.');
+});
+
+test('NON_FURNITURE is ONE list: overview-scene.js imports it and declares no second copy', () => {
+  // The structural half. The driven tests above catch a DIVERGENCE that costs art; this catches the
+  // re-introduction of the hand mirror itself, before it has had a chance to diverge. Comment-
+  // stripped (CLAUDE.md trap 1): the literal sitting in a comment must not satisfy it either way.
+  const src = codeOnly(read('client/src/ui/overview-scene.js'));
+  assert.ok(src.includes('NON_FURNITURE_CODES'),
+    'overview-scene.js no longer imports the shared list — it has a private one again.');
+  assert.ok(!/NON_FURNITURE\s*=\s*new Set\(\s*\[/.test(src),
+    'overview-scene.js declares a second NON_FURNITURE LITERAL. That is the hand mirror that hid\n'
+    + "the corpse: `'&'` had to be deleted from two places, and deleting it from one would have\n"
+    + 'fixed one surface and left the other silently blank.');
+  // NEGATIVE CONTROL, both directions, on synthetic sources so an edit to the real one cannot
+  // invalidate them: the literal in a COMMENT must not trip the scan, and a live one must.
+  const commented = codeOnly('// const NON_FURNITURE = new Set([46, 35]);\nconst live = 1;\n');
+  assert.ok(!/NON_FURNITURE\s*=\s*new Set\(\s*\[/.test(commented),
+    'a commented-out literal trips the scan — the guard fires on prose');
+  const real = codeOnly('const NON_FURNITURE = new Set([46, 35]);\n// and a later real comment\n');
+  assert.ok(/NON_FURNITURE\s*=\s*new Set\(\s*\[/.test(real),
+    'a LIVE literal does not trip the scan — the guard is vacuous');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

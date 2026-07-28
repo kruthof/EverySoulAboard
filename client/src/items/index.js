@@ -1,11 +1,25 @@
-// The warm ITEM LIBRARY registry — all 60 pieces of docs/design/perilune-item-set.dc.html, keyed by
+// The warm ITEM LIBRARY registry — all 68 pieces of docs/design/perilune-item-set.dc.html, keyed by
 // a stable kebab-case itemId. Each entry pairs the pure SVG builder with its sim classification from
 // docs/design/perilune-item-mapping.md:
 //
-//   kind       'functional' | 'cosmetic' | 'material'  (mapping.md class column)
+//   kind       'functional' | 'cosmetic' | 'material' | 'resource'  (mapping.md class column)
 //   deviceKind  the sim DeviceKind name, for FUNCTIONAL pieces (Device.cs). Present on NEW kinds too,
 //               flagged via `deviceStatus: 'new'` — those need a real sim change before they place.
+//   itemKind    the sim ItemKind name, for RESOURCE pieces (ItemStack.cs).
 //   glyph       the sim glyph char the piece maps to, or null (— in mapping.md)
+//
+// ⚠️ `resource` IS THE FOURTH KIND AND IT WAS ADDED BECAUSE THE OTHER THREE ARE ALL WRONG FOR A PILE.
+// A ground stack is not `functional` (it has no `DeviceKind`; nothing places it, the sim's haul board
+// moves it), not `cosmetic` (a decor piece is view-only and session-local — a pile of Regolith is
+// hashed sim state and the only reason the ship's economy is visible), and not `material` (that is a
+// wall/floor SKIN, not a thing on a tile). Filing one under any of the three would have made a real,
+// counted, hauled entity indistinguishable from decoration in the one table both SVG surfaces read.
+//
+// `itemKind` CARRIES THE SIM'S OWN ENUM MEMBER NAME so the kind-byte → art mapping is DERIVED and not
+// hand-mirrored: `room-model.js` joins this column to `STOCK_KINDS` (the client's one mirror of
+// `ItemStack.cs`, pinned member-for-member by `stock-filter-model.test.js`) to turn the `items` wire
+// channel's kind byte into a piece. Writing kind BYTES here instead would have been a fourth
+// transcription of the enum, which is the defect `items/glyph-map.js` was built to remove.
 //
 // ⚠️ `glyph` IS LOAD-BEARING SINCE 2026-07-26: `items/glyph-map.js` derives the ONE glyph → itemId
 // table both SVG surfaces skin from, straight out of this column. A FUNCTIONAL piece left at
@@ -34,6 +48,7 @@ import { scene } from './helpers.js';
 import * as O from './objects.js';
 import * as S from './structures.js';
 import * as F from './fixtures.js';
+import * as R from './resources.js';
 
 const fn = (kind, glyph = null) => ({ kind, glyph });
 const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
@@ -45,10 +60,13 @@ const dev = (deviceKind, glyph = null, deviceStatus = 'exists') => ({
 const cos = (decor) => ({ kind: 'cosmetic', decor, glyph: null });
 const wall = () => ({ kind: 'material', material: 'wall', glyph: '#' });
 const floor = () => ({ kind: 'material', material: 'floor', glyph: '.' });
+/** A GROUND STACK: `itemKind` is the sim `ItemKind` member name, `glyph` its `Glyphs.ForItem` char. */
+const res = (itemKind, glyph) => ({ kind: 'resource', itemKind, glyph });
 
 /**
  * ITEMS[itemId] = { build, size, kind, ... }. Order follows the mock (objects → walls → floors →
- * fixtures, #1–#60). Every `build` is a pure `(opts) -> string` SVG-`<g>`-fragment builder.
+ * fixtures → resources, #1–#68). Every `build` is a pure `(opts) -> string` SVG-`<g>`-fragment
+ * builder.
  */
 export const ITEMS = Object.freeze({
   // ── OBJECTS (30) ──
@@ -118,13 +136,52 @@ export const ITEMS = Object.freeze({
   'herb-planter':     { build: F.herbPlanter,     size: { w: 50, h: 60 }, ...cos('herb_planter') },
   'deck-sign':        { build: F.deckSign,        size: { w: 80, h: 74 }, ...cos('deck_sign') },
   'floodlight':       { build: F.floodlight,      size: { w: 40, h: 60 }, ...cos('floodlight') },
+
+  // ── RESOURCES (8) — GROUND STACKS, keyed by `Glyphs.ForItem` ──
+  // ⚠️ THERE IS DELIBERATELY NO `MetalOre` PIECE. The mock's own header says so, and it was verified
+  // against the tree: `ItemKind.MetalOre` has ZERO references anywhere in `sim/` outside the glyph
+  // table and the enum itself — nothing produces it, nothing consumes it, no recipe names it. It is
+  // dead E3 mining vocabulary and must not be given art until it is real, so it STAYS in
+  // `NO_GROUND_ITEM_SPRITE` (client/test/device-sprite-coverage.test.js) with that as its reason.
+  'regolith':         { build: R.regolith,        size: { w: 70, h: 46 }, ...res('Regolith', ',') },
+  'potato':           { build: R.potato,          size: { w: 68, h: 48 }, ...res('Potato', 'f') },
+  'scrap':            { build: R.scrap,           size: { w: 72, h: 48 }, ...res('Scrap', 's') },
+  'parts':            { build: R.parts,           size: { w: 68, h: 54 }, ...res('Parts', 'p') },
+  'controller-module':{ build: R.controllerModule, size: { w: 84, h: 50 }, ...res('ControllerModule', 'c') },
+  'seals':            { build: R.seals,           size: { w: 72, h: 62 }, ...res('Seals', 'g') },
+  'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...res('Ice', 'i') },
+  'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...res('Corpse', '&') },
 });
 
 /** The full list of registered itemIds, in mock order. */
 export const ITEM_IDS = Object.freeze(Object.keys(ITEMS));
 
 /** The valid `kind` values every registry entry carries. */
-export const ITEM_KINDS = Object.freeze(['functional', 'cosmetic', 'material']);
+export const ITEM_KINDS = Object.freeze(['functional', 'cosmetic', 'material', 'resource']);
+
+/** The registered RESOURCE pieces as `{ itemKind → itemId }` — the sim `ItemKind` NAME, never a
+ *  byte. Derived from the registry, so a new resource row joins it by existing. PURE. */
+export const RESOURCE_ITEM_BY_KIND_NAME = Object.freeze(
+  Object.keys(ITEMS).reduce((out, id) => {
+    const e = ITEMS[id];
+    if (e.kind === 'resource' && typeof e.itemKind === 'string' && out[e.itemKind] === undefined) {
+      out[e.itemKind] = id;
+    }
+    return out;
+  }, Object.create(null)),
+);
+
+/** True when `itemId` names a RESOURCE piece — a ground stack, not furniture. PURE, tolerant. */
+export function isResourceItem(itemId) {
+  const e = typeof itemId === 'string' ? ITEMS[itemId] : undefined;
+  return !!e && e.kind === 'resource';
+}
+
+/** True when `itemId` names a FUNCTIONAL piece — a real `DeviceKind` standing on a tile. PURE. */
+export function isDeviceItem(itemId) {
+  const e = typeof itemId === 'string' ? ITEMS[itemId] : undefined;
+  return !!e && e.kind === 'functional';
+}
 
 /**
  * A neutral steel placeholder tile with a "?" — used when an unknown itemId is requested. Pure and

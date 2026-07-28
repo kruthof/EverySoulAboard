@@ -37,9 +37,10 @@
 <body>
 <div class="page">
   <h1>PERILUNE — item library</h1>
-  <div class="sub">All 60 pieces of the warm item set, each drawn by its pure SVG builder
+  <div class="sub">All 68 pieces of the warm item set, each drawn by its pure SVG builder
     (<code>client/src/items/*</code>) on the mock's warm stage. Green = FUNCTIONAL (sim DeviceKind),
-    grey = COSMETIC (decor), blue = MATERIAL (wall/floor). <span class="new">amber tag</span> = a NEW
+    grey = COSMETIC (decor), blue = MATERIAL (wall/floor), tan = RESOURCE (sim ItemKind — a ground
+    stack). <span class="new">amber tag</span> = a NEW
     DeviceKind (not yet in the sim). Rendered live from <code>src/items/index.js</code>, no build step.</div>
   <div id="root"></div>
 </div>
@@ -58,6 +59,7 @@
     ['WALLS (6) — material', 30, 36],
     ['FLOORS (6) — material', 36, 42],
     ['FIXTURES (18)', 42, 60],
+    ['RESOURCES (8) — ground stacks', 60, 68],
   ];
 
   const root = document.getElementById('root');
@@ -74,7 +76,9 @@
           ? `${e.deviceKind}${e.deviceStatus === 'new' ? ' ·NEW' : ''}${e.glyph ? ' ·' + e.glyph : ''}`
           : e.kind === 'material'
             ? e.material
-            : 'decor';
+            : e.kind === 'resource'
+              ? `${e.itemKind} ·${e.glyph}`
+              : 'decor';
       const cell = document.createElement('div');
       cell.className = 'item';
       cell.innerHTML =

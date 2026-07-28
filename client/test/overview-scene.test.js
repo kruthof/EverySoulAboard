@@ -526,14 +526,17 @@ test('unknown roomType and unknown glyphs degrade gracefully (no throw, no furni
 
   // A frame full of glyphs NOTHING skins yields no furniture, no throw.
   //
-  // ⚠️ THE GLYPHS CHANGED 2026-07-26 and the old ones are quoted because they are the whole point:
-  // this read *"glyphs NOT in SPRITE_FOR_GLYPH (e.g. '\"','T','f')"* with cells `[[34,…],[84,…]]` —
-  // `"` (GrowBed) and `T` (Terminal). Those two ARE skinned now (hydroponics and the research
-  // console; HANDOVER §4l), so the fixture had quietly become a test that the Overview draws no
-  // hydroponics. `f` (102, a ground potato) and `z` (122, nothing at all) are unclaimed by any
-  // ITEMS row, and `client/test/device-sprite-coverage.test.js` is what keeps THIS assertion from
-  // silently becoming "the surface lost its furniture layer": it fails if any DeviceKind lands here.
-  const junkFrame = { deck: 0, w: 2, h: 1, lens: 'none', cells: [[102, 0, 0, 0], [122, 0, 0, 0]] };
+  // ⚠️ THIS FIXTURE HAS NOW ROTTED TWICE, IN THE SAME WAY, AND BOTH ROTS ARE QUOTED — because a
+  // "nothing skins these" fixture decays every single time the art set grows, and it decays SILENTLY
+  // INTO ITS OPPOSITE: an assertion that the Overview draws no furniture for glyphs that now have
+  // some. 2026-07-26 it read *"glyphs NOT in SPRITE_FOR_GLYPH (e.g. '\"','T','f')"* with cells
+  // `[[34,…],[84,…]]` — `"` (GrowBed) and `T` (Terminal) — and those became hydroponics and the
+  // research console (HANDOVER §4l). 2026-07-27 the replacement's `f` (102) became a POTATO: the
+  // ground-item art skinned all eight `Glyphs.ForItem` glyphs, so this test was asserting that the
+  // Overview draws no food. Now `q` (113) and `z` (122), which NO switch in the sim projects at all —
+  // and `device-sprite-coverage.test.js` is what keeps this from silently becoming "the surface lost
+  // its furniture layer": it fails if any DeviceKind OR ItemKind lands here.
+  const junkFrame = { deck: 0, w: 2, h: 1, lens: 'none', cells: [[113, 0, 0, 0], [122, 0, 0, 0]] };
   const svg2 = overviewScene({ deck: 0, decksView: view, frame: junkFrame, crew: [] });
   assert.equal((svg2.match(/class="pl-furniture"/g) || []).length, 0);
 });
