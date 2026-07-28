@@ -74,6 +74,7 @@ let _zones = null;        // latest zones message (sparse stockpile zones: accep
 let _marks = null;        // latest marks message (sparse debris/dig/stockpile/strip mark layer)
 let _items = null;        // latest items message (sparse ground item stacks: kind + COUNT per stack)
 let _ledger = null;       // latest ledger message (E0-8: matter census + the runway/rate members)
+let _devices = null;      // latest devices message (sparse per-device wear: kind + CONDITION + oper)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -115,6 +116,13 @@ export function getMarks() { return _marks; }
  *  keeps only the LAST stack on a tile, and is overwritten wholesale by any device on that tile
  *  (`GlyphMapper` passes 3 and 4 — `hosts/web/WireFormat.Items.cs`). */
 export function getItems() { return _items; }
+/** The cached `devices` message (the sparse per-device wear layer): kind, CONDITION (0..255) and the
+ *  sim's own `oper` bit per tile-resident device. `Device.Condition` reaches the client on this
+ *  channel and NOWHERE ELSE — the projection's only trace of it is a `GlyphColor.Broken` foreground
+ *  byte that neither standard surface reads, that carries one bit rather than a gradient, and that
+ *  `GlyphMapper` pass 5 overwrites whenever a crew member stands on the tile
+ *  (`hosts/web/WireFormat.Devices.cs`). Utility overlays (Conduit/Pipe) are absent host-side. */
+export function getDevices() { return _devices; }
 /** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
  *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
  *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
@@ -455,6 +463,16 @@ export function renderMarks(m) { _marks = m; notifyShip(); }
  *  draws nothing, reaches no DOM, so it survives the console deletion with the rest of the cache (see
  *  SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
 export function renderItems(m) { _items = m; notifyShip(); }
+
+/** Devices dispatch (the `devices` channel, PLURAL — not the one-shot `device` terminal reply):
+ *  cache the sparse per-device wear layer (kind + condition byte + the sim's `oper` bit, read from
+ *  `sim.Devices` rather than from a projection that never carried Condition at all) and notify the
+ *  SVG surfaces. NOTHING DRAWS IT YET, deliberately: the wrecked-art join is a separate package
+ *  against `client/src/items/`, and shipping the data first is what makes that package possible.
+ *  View-only; never touches the sim. STATE-LAYER ONLY: draws nothing, reaches no DOM, so it survives
+ *  the console deletion with the rest of the cache (see SHIP_STATE_REACH in
+ *  client/test/surface-boundary.test.js). */
+export function renderDevices(m) { _devices = m; notifyShip(); }
 
 /** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
  *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.

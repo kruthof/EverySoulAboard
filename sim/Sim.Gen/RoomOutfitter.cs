@@ -80,8 +80,16 @@ namespace Perilune.Gen
             Dev(plan, DeviceKind.Light, r.CenterX, r.Y0 + 1, z, "light_hydro");
         }
 
-        private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name) =>
-            plan.Devices.Add(new DeviceSpec { Kind = kind, Pos = new Int3(x, y, z), Name = name });
+        /// <summary>Append a device. <paramref name="condition"/>/<paramref name="scriptable"/> are
+        /// W1's optional damage authoring and default to <c>null</c> = "say nothing", which emits a
+        /// DeviceSpec byte-identical to the one this helper emitted before W1.</summary>
+        private static void Dev(ShipPlan plan, DeviceKind kind, int x, int y, int z, string name,
+                                float? condition = null, bool? scriptable = null) =>
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = kind, Pos = new Int3(x, y, z), Name = name,
+                Condition = condition, Scriptable = scriptable,
+            });
 
         private static void Vent(ShipPlan plan, int x, int y, int z, string name) =>
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(x, y, z), Name = name, IsOpen = false });

@@ -83,6 +83,55 @@ namespace Perilune.Gen
         public bool IsOpen;
         public float StoredKWh;
         public float StoredLiters;
+
+        /// <summary>
+        /// W1 (the wreck start) — the device's boot <see cref="Device.Condition"/>, 1 = pristine …
+        /// 0 = wrecked, or <c>null</c> for "the author said nothing; leave the device's own field
+        /// initialiser alone". <see cref="ShipPlanBuilder"/> writes it only when it has a value.
+        ///
+        /// <b>THE NULL IS THE WHOLE SAFETY ARGUMENT, AND IT IS WHY THIS IS A <c>float?</c> RATHER
+        /// THAN A <c>float</c> WITH A MAGIC SENTINEL.</b> <see cref="DeviceSpec"/> is a struct and
+        /// C# 9 forbids instance field initialisers on one — <b>while <c>&lt;LangVersion&gt;9.0
+        /// &lt;/LangVersion&gt;</c> holds</b>, which all four csproj currently pin (net8.0's own
+        /// default is C# 12, where a struct field initialiser IS legal; a lane that bumps the pin
+        /// falsifies this clause and nothing else here). <b>And independently of the language
+        /// version:</b> <c>default(T)</c> and array elements bypass any initialiser that might
+        /// exist, so the conclusion below stands whatever <c>LangVersion</c> says. Every spec an
+        /// authored ship emits therefore starts life as zeroed memory — whether it is written
+        /// <c>new DeviceSpec { Kind = …, Pos = … }</c> (an object initialiser runs the implicit
+        /// parameterless ctor, which zeroes), <c>default(DeviceSpec)</c>, or an element of a
+        /// <c>DeviceSpec[]</c>. A plain <c>float Condition</c> would therefore read <c>0f</c> on
+        /// every device of every existing ship and the builder would boot the whole repo WRECKED.
+        /// A "<c>-1f</c> means unset" sentinel does NOT fix that: zeroed memory is <c>0f</c>, not
+        /// <c>-1f</c>, so the sentinel would be missed on exactly the specs that need it and hit
+        /// only on the ones that opted in. <c>Nullable&lt;float&gt;</c> is the one encoding whose
+        /// "unspecified" state survives all three ways a struct comes into existence, and it costs
+        /// nothing: it is itself a struct (no allocation), the authoring path is not a tick path,
+        /// and <c>Condition = 0.14f</c> still reads verbatim at the call site.
+        ///
+        /// Precedent for the encoding, in this repo, meaning exactly this: <c>SetDoorStateCommand
+        /// (bool? open, bool? locked)</c> and <c>SetDeviceStateCommand(bool? open, float? rate)</c>.
+        ///
+        /// NOT hashed and NOT saved by this field: <c>Device.Condition</c> already folds into
+        /// <c>StateHash</c> and already persists (DEVC v3). A plan is never serialized. So
+        /// authoring damage moves no determinism pin — only the resulting sim state differs, on
+        /// ships that opt in.
+        /// </summary>
+        public float? Condition;
+
+        /// <summary>
+        /// W1 — the device's boot <see cref="Device.Scriptable"/> (has a ControllerModule been
+        /// fitted?), or <c>null</c> for "leave the device's own initialiser — <c>true</c> — alone".
+        /// A wreck authors <c>false</c> so MOSS is dark until a <c>CommissionDeviceCommand</c>
+        /// spends a module on the terminal.
+        ///
+        /// <b>A plain <c>bool</c> here would be precisely the regression <see cref="Device"/>'s own
+        /// header calls catastrophic</b>: <c>default</c> is <c>false</c>, so every device on every
+        /// ship would boot un-commissioned, <c>MossBindings.RegisterAdapters</c> would register no
+        /// adapter for any of them, and every authored program would silently stop binding. Same
+        /// encoding and same argument as <see cref="Condition"/> above.
+        /// </summary>
+        public bool? Scriptable;
     }
 
     public struct CitizenSpec
