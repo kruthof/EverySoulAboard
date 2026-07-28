@@ -13,10 +13,11 @@
 // the Level-1 Overview, so the two SVG surfaces cannot come to skin the same glyph differently.
 // (It used to be `SPRITE_FOR_GLYPH` from `../render/glyphs.js` plus a local hand mirror — see below.)
 import { itemIdForGlyphChar } from '../items/glyph-map.js';
-// The registry itself, for the three questions a glyph char cannot answer: is this piece a DEVICE
-// (demolishable), a RESOURCE (a pile, drawn by the item layer instead), and which piece skins a given
-// sim `ItemKind` NAME. Derived from `ITEMS`, never transcribed.
-import { RESOURCE_ITEM_BY_KIND_NAME, isDeviceItem, buildItem } from '../items/index.js';
+// The registry itself, for the two questions a glyph char cannot answer: is this piece a RESOURCE
+// (a pile, drawn by the item layer and never demolishable), and which piece skins a given sim
+// `ItemKind` NAME. Derived from `ITEMS`, never transcribed.
+// (`isDeviceItem` is deliberately NOT imported — see `demolishTarget`, which must not ask it.)
+import { RESOURCE_ITEM_BY_KIND_NAME, isResourceItem, buildItem } from '../items/index.js';
 // ⚠️ `markForFg` is GONE (the `marks` channel): the kind arrives on the wire, decoded once by
 // `roomzoom-view.js` and handed to `roomMarkTiles`. The vocabulary itself is unchanged.
 import { markVariant, markCellSvg } from './mark-overlay.js';
@@ -879,15 +880,26 @@ export function demolishTarget(tx, ty, designs, decor, frame) {
     }
   }
   const code = codeAt(frame, tx, ty);
-  // ⚠️ `isDeviceItem` IS LOAD-BEARING AND IS NEW WITH THE GROUND-ITEM ART PACKAGE. The test used to be
-  // the bare truthiness of `itemForGlyph(code)`, which was a correct proxy for "a device stands here"
-  // only while the ONLY glyphs that resolved to a piece were `Glyphs.ForDevice` glyphs. The moment
-  // ground stacks got art, `,` (Regolith) and `&` (Corpse) started resolving too — so DEMOLISH on a
-  // spoil pile would have classified as `device` and sent `Cmd.remove` at a tile with no device on
-  // it. Asking the REGISTRY what the piece is, rather than whether a piece exists, is the fix; it
-  // also survives the next new `kind`, which a hard-coded glyph exclusion list would not.
+  // ⚠️ ASK WHAT THE PIECE IS **NOT**. This branch was the bare truthiness of `itemForGlyph(code)`
+  // until the ground-item art package (2026-07-27), and on `main` that was CORRECT, not a latent
+  // bug: every glyph in `GLYPH_TO_ITEM` resolved to a device, either directly (a `functional` row
+  // carrying its own `Glyphs.ForDevice` char) or through `GLYPH_SUBSTITUTE`. THIS PACKAGE CREATED
+  // THE HAZARD by giving `resource` rows glyphs — `,` (Regolith), `&` (Corpse) and six more now
+  // resolve too, so bare truthiness would classify a spoil pile as `device` and send `Cmd.remove`
+  // at a tile with no device on it.
+  //
+  // AND ITS FIRST GUARD WAS OVER-BROAD, WHICH IS WHY THE PREDICATE READS THE WAY IT DOES. Asking
+  // `isDeviceItem(...)` — "is the piece skinning this glyph a `functional` row?" — silently broke
+  // DEMOLISH on a **Light**: `GLYPH_SUBSTITUTE` maps `'*'` (DeviceKind.Light) onto `wall-lamp`,
+  // which is a COSMETIC row, so a real, placeable, player-built device classified as `empty`,
+  // `roomzoom-view.js` hit its `default: break`, and the click was dropped with no command, no
+  // toast and no pulse. A substitution means "a device wearing another piece's art", so the
+  // BORROWED piece's registry `kind` says nothing about the tile. The only kind that means "no
+  // device stands here" is `resource`, so that is the one this asks about. Pinned both ways, over
+  // the whole ledger rather than the one glyph, in `room-model.test.js`.
+  const _id = itemForGlyph(code);
   if (code >= 0 && !NON_FURNITURE.has(code) && !STRUCTURE_CODES.has(code)
-      && isDeviceItem(itemForGlyph(code))) {
+      && _id && !isResourceItem(_id)) {
     return { kind: 'device', verb: 'remove' };
   }
   if (Array.isArray(decor)) {

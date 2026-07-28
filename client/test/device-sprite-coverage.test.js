@@ -184,7 +184,7 @@ const NO_FURNITURE_SPRITE = Object.freeze({
     + "NON_FURNITURE omits '+' 43 and 'X' 88, so a closed/locked door inside a room rect would chip; "
     + '0 such tiles on --ship grid deck 0 today. ⚠️ THE `items` CHANNEL LAYERED NEW HARM ON THIS '
     + 'LATENT BUG: a ground stack on such a door tile now SUPPRESSES that chip (roomzoom-view.js '
-    + 'furnitureSvg + itemPlateTileKeys), so the door would draw nothing at all rather than a wrong '
+    + 'furnitureSvg + itemStackTileKeys), so the door would draw nothing at all rather than a wrong '
     + 'letter. Doubly latent — it needs an in-rect door AND stock on it, and there are still 0 such '
     + 'tiles — but the real fix is unchanged and is to make the two NON_FURNITURE sets agree in '
     + 'room-model.js, not to narrow the suppression.)',
@@ -211,20 +211,22 @@ const NO_FURNITURE_SPRITE = Object.freeze({
  * all on the Overview, which `continue`s instead). The count of `chips: true` entries is pinned by
  * equality below, so this ledger only ever pays DOWN.
  *
- * ⚠️ NOTE 2026-07-27, THE `items` CHANNEL — THE ART GAP IS UNCHANGED, THE SYMPTOM IS NOT.
+ * ⚠️ NOTE 2026-07-27, THE `items` CHANNEL THEN THE GROUND-ITEM ART — THE SYMPTOM HAS MOVED TWICE.
  * This ledger's headline sentence ("the player sees a dashed box with a raw letter in it") is now
  * true only where the `items` channel reports NOTHING. On a tile the channel does cover, the Room
- * Zoom draws a LABEL PLATE naming the kind and the count, and `roomzoom-view.js`'s `furnitureSvg`
- * suppresses the letter chip underneath it (`itemPlateTileKeys`) so the two do not stack. Since a
- * ground stack is exactly what puts a ground-item glyph in the frame, in practice that is most of
- * them on a live host.
+ * Zoom draws the kind's real SPRITE with a count badge beside it, and `roomzoom-view.js`'s
+ * `furnitureSvg` suppresses the letter chip underneath it (`itemStackTileKeys`) so the two do not
+ * stack. Since a ground stack is exactly what puts a ground-item glyph in the frame, in practice that
+ * is most of them on a live host. The LABEL PLATE the `items` channel shipped is no longer the normal
+ * case: it survives DEMOTED to the no-art fallback — a kind with no piece (MetalOre) or a kind byte
+ * from a newer host — which is precisely the population this ledger counts.
  *
  * NOTHING BELOW MOVES, and the reason is worth stating rather than assuming: every `chips` value
- * here is measured by DRIVING `roomCells` — the frame-derived model, which the `items` package did
- * not touch — so it still answers "does this glyph reach the unknown-chip branch?", which is still
- * exactly the ART question. The plate is a different layer with a different source. The gap this
- * ledger counts is "no ground-pile piece exists in the warm 60-piece set", and no channel can pay
- * that down; only art can.
+ * here is measured by DRIVING `roomCells` — the frame-derived model, which neither the `items`
+ * package nor the art package touched — so it still answers "does this glyph reach the unknown-chip
+ * branch?", which is still exactly the ART question. The item layer is a different layer with a
+ * different source. The gap this ledger counts is "no ground-pile piece exists in the warm set", and
+ * no channel can pay that down; only art can — and the art package did, for eight of the nine.
  */
 const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // ⚠️ ONE ENTRY LEFT, AND IT IS NOT A BACKLOG ITEM. `ItemKind.MetalOre` has **ZERO references

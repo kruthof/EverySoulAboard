@@ -27,7 +27,8 @@ import {
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg,
 } from '../src/ui/room-model.js';
-import { isDeviceItem } from '../src/items/index.js';
+import { ITEMS, isDeviceItem } from '../src/items/index.js';
+import { GLYPH_SUBSTITUTE, GLYPH_TO_ITEM } from '../src/items/glyph-map.js';
 import { dragModeForTool } from '../src/ui/build-drag-model.js';
 import { ACCEPT_ALL, defaultStockFilter, STOCK_KINDS } from '../src/ui/stock-filter-model.js';
 import { acceptsLabel, zoneMaskMismatch } from '../src/ui/zone-model.js';
@@ -277,6 +278,21 @@ test('demolishTarget classifies each layer and its verb', () => {
   assert.deepEqual(demolishTarget(2, 2, designs, decor, frame), { kind: 'empty', verb: null });
 });
 
+// The device branch is a COMPLEMENT ("resolves to a piece that is not a `resource`"), so it has TWO
+// halves and this pins the other one. Found as a live survivor while mutation-testing the repair:
+// dropping the `_id &&` half left 799/799 green, and an UNMAPPED glyph — `''` is not a resource id —
+// would then classify as a device and send `Cmd.remove` at whatever the projection happened to draw.
+// MUTATION (physically applied, RED): delete `_id &&` from the predicate in room-model.js.
+test('demolishTarget: a glyph NOTHING skins is empty — the complement has two halves', () => {
+  const frame = frameWith([[5, 7, 'z'], [6, 7, 'b']]);
+  assert.equal(itemForGlyph('z'.charCodeAt(0)), '', "'z' gained a piece — pick another unmapped glyph");
+  assert.deepEqual(demolishTarget(6, 7, [], [], frame), { kind: 'device', verb: 'remove' },
+    'the control device tile stopped classifying — the assertion below proves nothing');
+  assert.deepEqual(demolishTarget(5, 7, [], [], frame), { kind: 'empty', verb: null },
+    'a glyph no registry piece skins classified as a DEVICE. The Room Zoom would send Cmd.remove at '
+    + 'a tile whose contents this client cannot even name.');
+});
+
 test('demolishTarget precedence: pending > device > decor > built (IX-Z-25)', () => {
   const frame = frameWith([[7, 7, 'b']]);                 // a device
   const designs = [[7, 7, 1, 0, 0, 1]];                   // a pending ghost on the same tile
@@ -291,10 +307,10 @@ test('demolishTarget precedence: pending > device > decor > built (IX-Z-25)', ()
 // device stands here" only while the ONLY glyphs resolving to a piece were `Glyphs.ForDevice` ones.
 // The moment `,` (Regolith) and `&` (Corpse) resolved, DEMOLISH on a spoil pile would have classified
 // `device` and sent `Cmd.remove` at a tile with no device on it. The fix asks the REGISTRY what the
-// piece IS (`isDeviceItem`), not whether one exists.
+// piece is NOT: a `resource` row is a pile, and nothing else in the glyph table is.
 //
-// MUTATION (physically applied, RED): drop `isDeviceItem(...)` back to a bare truthiness check in
-// room-model.js ⇒ both ground legs below report `device`.
+// MUTATION (physically applied, RED): drop `!isResourceItem(_id)` back to a bare truthiness check in
+// room-model.js ⇒ all three ground legs below report `device`.
 test('demolishTarget: a ground stack is EMPTY, not a device — art did not make piles removable', () => {
   const piles = frameWith([[5, 7, ','], [6, 7, '&'], [7, 7, 'i'], [8, 7, 'b']]);
   // NON-VACUITY FIRST: the very same frame's DEVICE tile still classifies as one, so a blanket
@@ -306,6 +322,86 @@ test('demolishTarget: a ground stack is EMPTY, not a device — art did not make
       `DEMOLISH on a ${what} pile classified as a device and would send Cmd.remove at a tile with `
       + 'no device on it. A pile is hauled, never removed.');
   }
+});
+
+// ⚠️ THE OTHER HALF, AND IT SHIPPED BROKEN FOR ONE COMMIT: A DEVICE WEARING BORROWED ART IS STILL A
+// DEVICE. The first guard against the pile-is-a-device hazard above asked `isDeviceItem(...)` — "is
+// the piece skinning this glyph a `functional` registry row?" — which is a question about the ART,
+// not about the tile. `GLYPH_SUBSTITUTE` exists precisely so a device can wear ANOTHER piece's art,
+// and one of its six entries points at a COSMETIC row: `'*'` (DeviceKind.Light) → `wall-lamp`, because
+// the warm set has no functional luminaire. So DEMOLISH on a Light classified `empty`,
+// `roomzoom-view.js`'s switch hit `default: break`, and the click was dropped with no command, no
+// toast and no pulse. `RoomOutfitter.Light` puts one at the centre of EVERY room on `--ship grid` and
+// `Light` is a placeable furniture kind with its own palette tool — so it was "the player builds a
+// lamp and then cannot remove it", live, on the one standard surface.
+//
+// NOTHING PINNED EITHER BEHAVIOUR: the regression AND its fix were both invisible to a 796-green
+// suite. This is that pin, and it is written over the WHOLE ledger rather than the one glyph, so the
+// next substitution chosen from the cosmetic shelf is covered by existing.
+//
+// MUTATIONS (all physically applied, all semantic REDs, none a crash — the `isDeviceItem` ones
+// restore the import in the same edit, or they would die on a ReferenceError and prove nothing):
+//   • `!isResourceItem(_id)` → `isDeviceItem(_id)` (the shipped defect) ⇒ RED here.
+//   • `!isResourceItem(_id)` → bare `_id` (`main`'s predicate) ⇒ RED on the pile test above.
+//   • the same, plus a SECOND cosmetic substitution (`C: 'wall-lamp'`) ⇒ RED here.
+// AND EACH LEG WAS BLINDED AND REQUIRED TO FIRE ALONE (`assert` throws, so only the first leg of a
+// test ever reports): with the named `'*'` leg replaced by a no-op the LEDGER LOOP fires by itself,
+// and with the loop replaced by a no-op the `'*'` leg fires by itself. Adding the second cosmetic
+// substitution on its own — without the bad predicate — is GREEN, which is the control saying the
+// loop pins the PREDICATE and is not merely re-asserting `'*'` under another name.
+test('demolishTarget: a device wearing BORROWED art is still a device (the Light regression)', () => {
+  // THE NAMED CASE. Both premises are asserted first: if the substitution moves or `wall-lamp` stops
+  // being cosmetic, this test is naming a trap that no longer exists and must say so out loud rather
+  // than pass quietly.
+  assert.equal(GLYPH_TO_ITEM['*'], 'wall-lamp',
+    "'*' (DeviceKind.Light) no longer resolves to wall-lamp — re-point this test at whatever the "
+    + 'cosmetic-substituted glyph is now, or drop it if there is none.');
+  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
+    'wall-lamp is no longer a cosmetic row, so the case below no longer exercises the trap it names');
+  assert.deepEqual(demolishTarget(5, 7, [], [], frameWith([[5, 7, '*']])), { kind: 'device', verb: 'remove' },
+    'DEMOLISH on a LIGHT classified as something other than a device. A Light is placeable furniture '
+    + 'with its own palette tool and RoomOutfitter puts one in every room on --ship grid: this is a '
+    + 'lamp the player can build and can never remove, and the click is dropped in silence.');
+
+  // THE WHOLE LEDGER. Every key of GLYPH_SUBSTITUTE is a `Glyphs.ForDevice` char — the substitution
+  // is about the ART, never about what stands on the tile — so every one of them must classify as a
+  // device no matter what kind of row it borrows from.
+  const subs = Object.keys(GLYPH_SUBSTITUTE);
+  assert.ok(subs.length >= 6, `GLYPH_SUBSTITUTE parsed as ${subs.length} entries — the loop below is vacuous`);
+  for (const g of subs) {
+    assert.deepEqual(demolishTarget(5, 7, [], [], frameWith([[5, 7, g]])), { kind: 'device', verb: 'remove' },
+      `the substituted glyph '${g}' (art: ${GLYPH_SUBSTITUTE[g]}, a `
+      + `${ITEMS[GLYPH_SUBSTITUTE[g]].kind} row) does not classify as a device. A substitution means `
+      + "a device wearing another piece's art; the borrowed piece's registry kind says nothing about "
+      + 'the tile.');
+  }
+});
+
+// The predicate above is a COMPLEMENT — "resolves to a piece that is not a `resource`" — so every
+// future registry kind that reaches the glyph table is silently treated as a device. That is correct
+// today for a reason worth pinning rather than assuming: `deriveGlyphToItem` admits only `functional`
+// and `resource` rows, and the only way anything else gets in is `GLYPH_SUBSTITUTE`, which by
+// construction means a device. This is the tripwire on that argument.
+//
+// MUTATION (physically applied, RED): let `deriveGlyphToItem` admit `cosmetic` rows and give `cos()`
+// a glyph in items/index.js ⇒ this fails by name.
+test('every glyph the table resolves is a device or a pile — no third thing has appeared', () => {
+  const subs = new Set(Object.values(GLYPH_SUBSTITUTE));
+  const glyphs = Object.keys(GLYPH_TO_ITEM);
+  assert.ok(glyphs.length >= 32, `GLYPH_TO_ITEM parsed as ${glyphs.length} glyphs — this test is vacuous`);
+  let devices = 0, piles = 0;
+  for (const g of glyphs) {
+    const id = GLYPH_TO_ITEM[g], kind = ITEMS[id].kind;
+    const got = demolishTarget(5, 7, [], [], frameWith([[5, 7, g]]));
+    if (kind === 'resource') { piles += 1; assert.equal(got.kind, 'empty', `pile glyph '${g}' is demolishable`); continue; }
+    assert.ok(kind === 'functional' || subs.has(id),
+      `glyph '${g}' resolves to '${id}', a ${kind} row that is NOT a substitution. DEMOLISH will `
+      + 'treat it as a device because the predicate asks "not a resource". Decide what it is: give '
+      + 'it a GLYPH_SUBSTITUTE entry if a device wears it, or widen the predicate.');
+    devices += 1;
+    assert.equal(got.kind, 'device', `device glyph '${g}' stopped being demolishable`);
+  }
+  assert.ok(devices > 0 && piles > 0, `partition is one-sided (${devices} devices, ${piles} piles)`);
 });
 
 // ---- local decor transforms ----
@@ -1163,6 +1259,38 @@ test('WP-4 fixture check: the room under test is the live wreck, with real desig
     'the fixture no longer carries exactly three fg-15 dig designations inside the hold; the sweep '
     + 'tests below are anchored on them, so re-derive their coordinates before adjusting anything');
   assert.deepEqual(FIX_DIG.map((m) => [m.tx, m.ty]), [[28, 16], [29, 16], [30, 16]]);
+});
+
+// ⚠️ THE LIGHT REGRESSION, COUNTED ON THE REAL SHIP RATHER THAN ARGUED FROM THE REGISTRY. The pure
+// test up in the demolish section builds its own one-tile frame; this one reads the COMMITTED
+// `--ship grid` deck-1 capture and finds the lamps in it. `RoomOutfitter.Light` puts one at the
+// centre of every room, so "a player can place a lamp and then never remove it" was a live, everyday
+// gesture on the one standard surface — not a corner case reachable only from a synthetic frame.
+// MUTATION (physically applied, RED): `!isResourceItem(_id)` → `isDeviceItem(_id)` in room-model.js.
+test('the Light regression is REAL on the captured grid ship — every lamp tile is demolishable', () => {
+  const lamps = [];
+  for (let ty = 0; ty < wreck.h; ty += 1) {
+    for (let tx = 0; tx < wreck.w; tx += 1) {
+      const c = wreck.cells[ty * wreck.w + tx];
+      if (Array.isArray(c) && c[0] === '*'.charCodeAt(0)) lamps.push([tx, ty]);
+    }
+  }
+  assert.equal(lamps.length, 5, `the capture carries ${lamps.length} Light glyphs, not 5 — re-count `
+    + 'before adjusting, because this number is the size of the regression');
+  for (const [tx, ty] of lamps) {
+    assert.deepEqual(demolishTarget(tx, ty, null, null, wreck), { kind: 'device', verb: 'remove' },
+      `the lamp at (${tx},${ty}) on the SHIPPED grid ship does not classify as a device. `
+      + "roomzoom-view.js's switch has no arm for anything else here, so the click is dropped with "
+      + 'no command, no toast and no pulse — the player sees the tool do nothing at all.');
+  }
+  // …and they are where the player can actually click them: inside a room rect, which is the only
+  // thing the Room Zoom draws. A lamp in the corridor gap between decks proves nothing.
+  const rects = deckSlots(fixView, DECK1).map((s) => s.rect);
+  const inRoom = lamps.filter(([tx, ty]) => rects.some(
+    (r) => tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h));
+  assert.equal(inRoom.length, 4, `${inRoom.length} of the ${lamps.length} lamps sit inside a deck-1 `
+    + 'room rect (the fifth is on the corridor row between the two room bands). If this drops to 0 '
+    + 'the assertions above stop describing anything a player can reach.');
 });
 
 // The palette BAR itself, read out of the markup `buildChrome` actually wrote. Without this, every

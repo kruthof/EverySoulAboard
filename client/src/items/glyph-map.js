@@ -59,6 +59,16 @@ import { ITEMS } from './index.js';
  * and leaving the absolute wording over a live counter-example would have handed the next lane a
  * contradiction.)
  *
+ * ⚠️ **THIS LEDGER IS NOT HOMOGENEOUS IN REGISTRY `kind`, AND THAT HAS ALREADY COST A LIVE BUG.**
+ * Five entries point at `functional` rows; `'*'` (Light) points at `wall-lamp`, which is
+ * **`cosmetic`** — the set has no functional luminaire. Every key here is a `Glyphs.ForDevice` char,
+ * so the KEY always means "a device stands on this tile"; the VALUE is only the art it borrows.
+ * ⇒ **A predicate over "what a glyph resolves to" must never read the borrowed piece's `kind`.**
+ * `demolishTarget` did exactly that for one commit and DEMOLISH stopped working on every lamp on
+ * `--ship grid` (a placeable device the player could build and then not remove); it now asks the
+ * complement — is the piece a `resource` — which is a question about the tile rather than the art.
+ * The same trap waits for the next reader.
+ *
  * Every entry below `wall-lamp` is inherited from the two hand-mirrored `ROLE_TO_ITEM` tables this
  * module replaces, so this list started as a faithful record of what the game already drew.
  *

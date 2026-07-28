@@ -388,6 +388,60 @@ test('two kinds on one tile each get their own piece and their own count', () =>
     'a two-slot tile spills out of its own tile');
 });
 
+// ⚠️ THE OVERFLOW SLOT IS NEW SURFACE AND IT WAS UNGUARDED. `itemStackSlots` has a test named for
+// this exact contract ("says HOW MANY are hidden, rather than picking winners") — but it stops at the
+// SLOT LIST. Nothing asserted that `itemStackSvg` ever DRAWS the summary, and the string `KINDS`
+// appeared in no SVG-level assertion anywhere. Measured: replacing the whole `slot.more` branch body
+// with an empty `<g>` left 796/796 GREEN. So did reporting the wrong number, and so did dropping the
+// `continue` (which draws a REGOLITH PILE where the summary belongs, because `slot.kind` is undefined
+// and `| 0` makes it 0). A tile with 3+ kinds would then draw pile #1 and silently swallow the rest —
+// the picking-arbitrary-winners lie the slot test is named against, re-introduced one layer down.
+// This is new surface because `main`'s `itemPlateSvg` printed `rows[i]` uniformly, with no
+// `more`-specific branch: the summary could not be dropped independently there.
+//
+// MUTATIONS — SEVEN, all physically applied, all semantic REDs (no crashes), and each named leg
+// blinded and required to fire on its own (`assert` throws, so only the first leg reports):
+//   • the branch body → an empty `<g>`            ⇒ the TEXT leg
+//   • the whole branch → `continue`               ⇒ the `data-kind="more"` leg
+//   • `slot.more` → `slot.more + 1`               ⇒ the TEXT leg
+//   • drop the `continue` (falls into the kind branch) ⇒ the SPRITE-COUNT leg
+//   • `bottom` → `bottom + 5`                     ⇒ the bottom-anchor leg
+//   • `cx` → `cx + slotW` / `cx - slotW`          ⇒ the tile-bounds leg / the overlap leg
+// The first four were GREEN at 796/796 before this test existed.
+test('THE OVERFLOW SUMMARY IS DRAWN: a 4-kind tile says +3 KINDS, and does not draw a 4th pile', () => {
+  const four = msg([[4, 2, 1, 0, 4], [4, 2, 1, 3, 5], [4, 2, 1, 8, 6], [4, 2, 1, 5, 7]]);
+  const svg = itemStackSvg(roomItemTiles(decodeItems(four), ROOM), ROOM);
+
+  // NON-VACUITY FIRST, as an INCLUSION test: the fixture really does overflow. If `itemStackSlots`
+  // stopped summarising, every assertion below would be measuring the wrong shape.
+  assert.deepEqual(itemStackSlots([{ kind: 0, count: 4 }, { kind: 3, count: 5 }, { kind: 8, count: 6 }, { kind: 5, count: 7 }]),
+    [{ kind: 0, count: 4 }, { more: 3 }], 'the fixture no longer overflows — the legs below are vacuous');
+
+  assert.ok(svg.includes('data-kind="more"'),
+    'the overflow slot emitted no group at all. Three of the four kinds on this tile are now '
+    + 'invisible AND uncounted — the player sees one pile and has no way to know four are there.');
+  assert.deepEqual(badgeTexts(svg), ['4', '+3 KINDS'],
+    'the tile must draw the first kind WITH its count and then say how many are hidden. A wrong '
+    + 'number here is worse than none: it is a specific false claim about what is on the floor.');
+  assert.equal(spriteAt(svg).length, 1,
+    'the summary slot drew a PIECE. `slot.kind` is undefined there, so `| 0` makes it 0 and the '
+    + 'player is shown a Regolith pile that is not on the tile — a fabricated stack.');
+
+  // The chip obeys the same tile geometry as a count badge: bottom-anchored, inside its own tile,
+  // in its own slot. A summary drawn over the neighbouring tile misattributes the whole overflow.
+  const rects = badgeRects(svg);
+  assert.equal(rects.length, 2, 'the badge parse found the wrong number of chips');
+  const left = (4 - ROOM.rx) * U, top = (2 - ROOM.ry) * U;
+  assert.equal(rects[1].y + rects[1].height, top + U - 1.5, 'the summary chip is not bottom-anchored in its tile');
+  assert.ok(rects[1].x >= left && rects[1].x + rects[1].width <= left + U, 'the summary chip spills out of its tile');
+  assert.ok(rects[0].x + rects[0].width <= rects[1].x, 'the summary chip is drawn on top of the count beside it');
+
+  // AND THE CONTROL: two kinds fit, so nothing is hidden and nothing must claim otherwise.
+  const two = itemStackSvg(roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 4], [4, 2, 1, 3, 5]])), ROOM), ROOM);
+  assert.ok(!two.includes('KINDS') && !two.includes('data-kind="more"'),
+    'a tile whose kinds all fit announced hidden kinds it does not have');
+});
+
 test('itemStackSvg is empty when there is nothing to draw', () => {
   assert.equal(itemStackSvg([], ROOM), '');
   assert.equal(itemStackSvg(null, ROOM), '');
