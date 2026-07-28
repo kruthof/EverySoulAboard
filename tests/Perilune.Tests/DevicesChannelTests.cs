@@ -58,12 +58,20 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE TUPLE LEADS WITH <c>x, y, deck</c>, like every other sparse channel. Measured against
-        /// the three siblings rather than asserted as a literal, so this cannot drift into agreeing
-        /// with a stale comment: all four channels are asked to place a row at x=7 y=3 deck=1 and the
-        /// first three elements must be <c>7,3,1</c> in all four.
+        /// the siblings rather than asserted as a literal, so this cannot drift into agreeing with a
+        /// stale comment: every channel is asked to place a row at x=7 y=3 deck=1 and the first three
+        /// elements must be <c>7,3,1</c> in all of them.
+        ///
+        /// ⚠️ THE FOURTH AND FIFTH SIBLINGS WERE ADDED ON A SEND-BACK, and the reason is worth the
+        /// two lines. This test's own docstring said "all four channels are asked" while the body
+        /// built THREE payloads (<c>devices</c> + two siblings). Nothing was false — the header of
+        /// <c>WireFormat.Devices.cs</c> names <c>materials</c>, <c>zones</c>, <c>marks</c> and
+        /// <c>items</c>, and all four really do lead with x,y,deck — but the TEST tested less than it
+        /// said, which is the same defect as a stale comment pointed the other way. All four are now
+        /// built here, so the claim and the coverage are the same size.
         ///
         /// MUTATION: swap X and Deck in <see cref="WireFormat.Devices"/> ⇒ this fails and names the
-        /// three siblings it now disagrees with.
+        /// four siblings it now disagrees with.
         /// </summary>
         [Test]
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
@@ -71,11 +79,15 @@ namespace Perilune.Tests
             string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1) });
             string items = WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) });
             string marks = WireFormat.Marks(new[] { new WireFormat.MarkCell(7, 3, 1, 2) });
+            string zones = WireFormat.Zones(new[] { new WireFormat.ZoneTile(7, 3, 1, 0UL, 0) });
+            string materials = WireFormat.Materials(new[] { (X: 7, Y: 3, Deck: 1, Kind: 0, Mat: 2) });
 
             StringAssert.Contains("[7,3,1,", dev,
-                "the devices tuple no longer leads with x,y,deck — the shape four sparse channels share");
+                "the devices tuple no longer leads with x,y,deck — the shape five sparse channels share");
             StringAssert.Contains("[7,3,1,", items, "control: the items channel leads with x,y,deck");
             StringAssert.Contains("[7,3,1,", marks, "control: the marks channel leads with x,y,deck");
+            StringAssert.Contains("[7,3,1,", zones, "control: the zones channel leads with x,y,deck");
+            StringAssert.Contains("[7,3,1,", materials, "control: the materials channel leads with x,y,deck");
         }
 
         /// <summary>
@@ -112,6 +124,26 @@ namespace Perilune.Tests
         /// write — <c>DeconstructSystem</c> clamps it before use for exactly the same reason.
         ///
         /// MUTATION: <c>(int)(condition * 255f)</c> (drop the +0.5f) ⇒ 0.1 lands on 25 and this fails.
+        /// MUTATION 2: DELETE the low-clamp line ⇒ <c>ConditionByte(-1f)</c> returns −254 and this
+        /// fails. That second one is the mutation the clamp actually decides — see below.
+        ///
+        /// ⚠️ A DEAD GUARD IS RETRACTED HERE RATHER THAN PATCHED, and the retraction is the point of
+        /// the last third of this test. The NaN assertion used to carry the message *"`!(x &gt; 0)` is
+        /// why the guard is written that way"*, and independent review mutated the clamp to
+        /// <c>condition &lt; 0f</c> and watched the whole suite stay green. <b>It was right to stay
+        /// green.</b> <c>(int)float.NaN</c> is 0 — .NET's float→int conversion saturates — so NaN
+        /// reaches 0 through the fall-through as well, and NO INPUT ANYWHERE DISTINGUISHES THE TWO
+        /// SPELLINGS. That is a NO-OP MUTATION, not a hole in a guard, and "make the mutation bite"
+        /// was therefore not available: there is nothing to catch.
+        ///
+        /// So the causal claim is withdrawn and replaced by two things that are true and that a test
+        /// can hold. (1) THE EQUIVALENCE IS PINNED, over a probe set that includes NaN and both
+        /// infinities, against a shadow written with the other spelling — so the next reader who
+        /// "fixes" the clamp to <c>&lt; 0f</c>, or who re-files the survivor as a hole, finds the
+        /// answer in the assertion instead of re-deriving it. The shadow is a full second
+        /// implementation, so it also fails if the shipped quantiser changes at all. (2) THE RUNTIME
+        /// FACT IS PROBED DIRECTLY rather than asserted in prose, because it is the whole reason (1)
+        /// holds and it is a property of the platform, not of this file.
         /// </summary>
         [Test]
         public void ConditionByte_Maps_Zero_To_Zero_And_Pristine_To_255()
@@ -121,10 +153,37 @@ namespace Perilune.Tests
             Assert.AreEqual(26, WireFormat.ConditionByte(0.1f), "0.1 rounds HALF-UP to 26, not 25");
             Assert.AreEqual(128, WireFormat.ConditionByte(0.5f));
             Assert.AreEqual(153, WireFormat.ConditionByte(0.6f), "the jury-rig condition");
-            Assert.AreEqual(0, WireFormat.ConditionByte(-1f), "clamped low: the field is a public float");
+            Assert.AreEqual(0, WireFormat.ConditionByte(-1f),
+                "clamped low: the field is a public float. THIS is what the low clamp decides — delete " +
+                "the line and this returns -254, which is the mutation that bites.");
             Assert.AreEqual(255, WireFormat.ConditionByte(2f), "clamped high");
-            Assert.AreEqual(0, WireFormat.ConditionByte(float.NaN),
-                "NaN must not fall through to a cast — `!(x > 0)` is why the guard is written that way");
+            Assert.AreEqual(0, WireFormat.ConditionByte(float.NaN), "NaN arrives as a wrecked byte");
+
+            // (2) THE RUNTIME FACT, probed rather than claimed. If this ever fails, the equivalence
+            // below stops holding and the clamp's spelling becomes load-bearing after all.
+            // ⚠️ THROUGH A LOCAL, DELIBERATELY: `(int)float.NaN` written inline is a CONSTANT
+            // conversion and the C# compiler REFUSES it (CS0221). The thing under test is the
+            // RUNTIME cast, which is what `ConditionByte` would perform.
+            float nan = float.NaN;
+            Assert.AreEqual(0, (int)nan,
+                "this platform's float->int conversion no longer saturates NaN to 0. The low clamp's " +
+                "spelling `!(x > 0)` vs `x < 0` was equivalent ONLY because of that; it is now a real " +
+                "behavioural choice and needs a real assertion, not this equivalence.");
+
+            // (1) THE EQUIVALENCE, pinned so the no-op mutation is EXPECTED rather than unexplained.
+            foreach (float probe in new[]
+            {
+                float.NaN, float.NegativeInfinity, -1f, -0.001f, -0f, 0f, 1e-6f,
+                0.002f, 0.1f, 0.5f, 0.6f, 0.999f, 1f, 2f, float.PositiveInfinity,
+            })
+            {
+                Assert.AreEqual(WireFormat.ConditionByte(probe), ConditionByteWithLessThanZeroClamp(probe),
+                    "the shipped quantiser and the `condition < 0f` spelling of its low clamp now " +
+                    "DISAGREE at " + probe.ToString(CultureInfo.InvariantCulture) + ". Either the two " +
+                    "spellings stopped being interchangeable (then pin the difference and delete this " +
+                    "loop), or the shipped quantiser changed and the shadow was not updated with it.");
+            }
+
             // Monotone, so a damage ramp can never read as a repair.
             int last = -1;
             for (int i = 0; i <= 100; i++)
@@ -133,6 +192,18 @@ namespace Perilune.Tests
                 Assert.That(b, Is.GreaterThanOrEqualTo(last), "the quantiser is not monotone at " + i);
                 last = b;
             }
+        }
+
+        /// <summary><see cref="WireFormat.ConditionByte"/> written with <c>condition &lt; 0f</c> as its
+        /// low clamp — the mutation independent review applied and watched survive. It is kept as a
+        /// SHADOW rather than described in a comment so the equivalence is asserted over real inputs
+        /// instead of argued. Every other line is a verbatim copy; if the shipped method changes and
+        /// this does not, the loop above fails, which is the intended cost of keeping it.</summary>
+        private static int ConditionByteWithLessThanZeroClamp(float condition)
+        {
+            if (condition < 0f) return 0;
+            if (condition >= 1f) return 255;
+            return (int)(condition * 255f + 0.5f);
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge
@@ -158,9 +229,12 @@ namespace Perilune.Tests
         /// survives a reconnect. (A channel absent from <c>Snapshot</c>'s key list renders empty until
         /// the next Render happens to change it, and this channel's payload can go unchanged for a
         /// long stretch — one machine's condition byte moves ~5 steps per operating hour — so "the next
-        /// change" is not immediate. <c>materials</c> and <c>ledger</c> are
-        /// exactly that pre-existing gap, recorded in <c>GameSession.Snapshot</c> and deliberately not
-        /// fixed by this lane.)</summary>
+        /// change" is not immediate. <c>materials</c> is exactly that pre-existing gap, recorded in
+        /// <c>GameSession.Snapshot</c> and deliberately not fixed by this lane. <c>ledger</c> is also
+        /// absent from the list but is NOT the same gap and this file used to say it was: measured on
+        /// a live reconnect, <c>materials</c> arrived 0 times in 4 s while <c>ledger</c> arrived 4,
+        /// because its payload moves on nearly every render and it self-heals in ~100 ms.
+        /// <c>devices</c> is like <c>materials</c>.)</summary>
         private static string DevicesJson(GameSession gs)
         {
             gs.RenderForTest();
@@ -387,6 +461,92 @@ namespace Perilune.Tests
                 "could be explained by the condition instead of by the per-kind threshold");
             Assert.AreEqual(1, rl.Value.Oper, "a Light at 0.06 is still operational (fail = 0.02)");
             Assert.AreEqual(0, rs.Value.Oper, "a Scrubber at 0.06 is NOT operational (fail = 0.10)");
+        }
+
+        /// <summary>
+        /// LOSS 3, PART TWO — <c>oper</c> IS BOUND TO THE LIVE <c>sim.Defs</c>, NOT TO THE COMPILED
+        /// <see cref="SimDefs.Default"/>. RECORDED AT THE SEAM, NEVER SCANNED (<c>CLAUDE.md</c> trap 4).
+        ///
+        /// ⚠️ WHY THIS EXISTS, stated plainly because it is a send-back. The defs SOURCE was pinned
+        /// only by a literal-text scan in <c>client/test/devices-model.test.js</c>, which looks for the
+        /// string <c>device.IsOperational(defs)</c>. Independent review defeated it with ONE LINE, and
+        /// without touching the pinned string: change <c>var defs = _sim.Defs;</c> to
+        /// <c>SimDefs.Default</c> the line above, and <b>843/843 node tests stayed green</b>. Writing
+        /// <c>IsOperational(SimDefs.Default)</c> at the call site left the filtered dotnet run at
+        /// <b>0 failures</b> as well. A text scan pins a SPELLING; only driving the thing pins a
+        /// BINDING. (This lane's own commit <c>d30390e</c> closed exactly this hole in the TESTS,
+        /// concluding "a retuned .def file cannot change shipped behaviour with the suite green" —
+        /// which was true of the tests and was not true of the production path.)
+        ///
+        /// The probe is a FLIP AND A FLIP BACK, on a def graph that belongs to this test's own host:
+        /// a Light sitting above the shipped threshold reads <c>oper = 1</c>; retune the LIVE
+        /// <c>FailBelow</c> above its condition and the next render must read 0; restore it and it
+        /// must read 1 again. <see cref="SimDefs.Default"/> is never written and is asserted
+        /// unchanged, because it is precisely the value the rebinding mutation would read instead.
+        ///
+        /// MUTATION: <c>var defs = _sim.Defs;</c> → <c>SimDefs.Default</c> in <c>BuildDevices</c>, or
+        /// <c>device.IsOperational(SimDefs.Default)</c> at the call site ⇒ the flip never happens and
+        /// this fails. Both applied and watched red.
+        /// </summary>
+        [Test]
+        public void The_Operational_Bit_Reads_The_LIVE_Defs_Not_The_Compiled_Defaults()
+        {
+            var (gs, host) = Boot(ShipChoice.Grid);
+            var sim = host.Sim;
+            RevealAll(sim);
+
+            // CONTROL, AND A SAFETY GATE, BEFORE ANYTHING IS WRITTEN. `SimHost.LoadDefs` falls back to
+            // the frozen `SimDefs.Default` INSTANCE when the content directory cannot be found — and
+            // if that happened here, retuning "the live defs" would be retuning the compiled defaults,
+            // the flip would happen under either binding, and this test would prove nothing while
+            // corrupting a static for every test after it. Both halves are asserted: the graph and the
+            // array inside it.
+            Assert.That(ReferenceEquals(sim.Defs, SimDefs.Default), Is.False,
+                "this host booted on the FROZEN compiled defaults (the content dir was not found), so " +
+                "the live graph and SimDefs.Default are the same object and this test cannot tell the " +
+                "two bindings apart. Do not weaken this — it also stops the write below from mutating " +
+                "a static that every other test shares.");
+            Assert.That(ReferenceEquals(sim.Defs.Machines, SimDefs.Default.Machines), Is.False,
+                "the live graph shares its Machines ARRAY with SimDefs.Default — same problem one " +
+                "level down, and the ReferenceEquals above would not have caught it");
+
+            var p = EmptyWalkable(sim);
+            var light = sim.AddDevice(DeviceKind.Light, p, "lamp-defs-probe");
+            var shipped = sim.Defs.Machines[(int)DeviceKind.Light];
+            light.Condition = 0.06f;
+
+            int OperNow()
+            {
+                var r = RowAt(gs, p);
+                Assert.IsNotNull(r, "the probe light is not on the channel at all — nothing below can " +
+                                    "be read as a statement about `oper`");
+                return r.Value.Oper;
+            }
+
+            Assert.That(shipped.FailBelow, Is.LessThan(0.06f),
+                "CONTROL BROKEN: a Light no longer clears 0.06 at the shipped threshold, so the " +
+                "fixture does not start operational and the flip below measures nothing");
+            Assert.AreEqual(1, OperNow(),
+                "the fixture must START operational, or `oper` could be a constant 0");
+
+            // RETUNE THE LIVE GRAPH ONLY — one field, by rebuilding the readonly struct in place.
+            sim.Defs.Machines[(int)DeviceKind.Light] = new MachineDef(
+                shipped.DrawKW, shipped.GenerationKW, shipped.Tier, shipped.Blocks,
+                shipped.HeatKW, shipped.WearPerHour, shipped.MaintainBelow, failBelow: 0.5f);
+            Assert.That(SimDefs.Default.Machines[(int)DeviceKind.Light].FailBelow, Is.LessThan(0.06f),
+                "SimDefs.Default was written too — it is the value the rebinding mutation reads, so " +
+                "moving it would hide exactly the defect this test exists to catch");
+
+            Assert.AreEqual(0, OperNow(),
+                "`oper` did NOT follow a retuned LIVE def. GameSession.BuildDevices is reading a def " +
+                "graph other than `_sim.Defs` — SimDefs.Default is the one that looks harmless — so a " +
+                "content pack that retunes machines.def cannot change what this channel reports.");
+
+            // …AND BACK. A one-way sentinel would also be satisfied by `oper` degrading to a constant 0
+            // after the first render, which is a real failure shape for a cached channel.
+            sim.Defs.Machines[(int)DeviceKind.Light] = shipped;
+            Assert.AreEqual(1, OperNow(),
+                "`oper` did not come back when the live def was restored — it is latching, not reading");
         }
 
         // ═════════════════════════════════════════════════ what is deliberately NOT on the channel
