@@ -2194,3 +2194,183 @@ test('THE LIVE BUG: the layer reorder changes NOTHING on the real capture (measu
     'a tile in the shipped capture carries BOTH a mark byte and a furniture glyph, so moving the '
     + 'mark layer above the furniture layer is NOT the inert reorder it was justified as');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// THE `items` CHANNEL, DRIVEN THROUGH THE REAL CONTROLLER.
+//
+// The pure model lives in `items-model.test.js`. What can only be shown HERE is that the layer
+// reaches the DOM of the real `roomzoom-view.js` — and, specifically, the two things the projected
+// glyph could not deliver:
+//
+//   • A COUNT AND A NAME instead of one raw ASCII letter in a dashed box. The letter chip is what
+//     independent review photographed on `--ship grid` deck 0, room STORAGE: seven of them, `,` ×6
+//     and `f` ×1, in the shipping game.
+//   • A STACK ON A DEVICE'S TILE AT ALL. `GlyphMapper` pass 4 writes the device glyph over pass 3's
+//     item unconditionally, so that stack reached the client nowhere. Drawing the plate UNDER the
+//     device sprite would reproduce the erasure in the client after removing it from the wire, so
+//     the layer order is asserted rather than assumed — the same trap the `marks` package hit.
+//
+// Every leg is a PAIR: the precondition half proves the fixture really is in the state being
+// measured, so none of these can pass against a controller that draws nothing at all.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** An `items` payload from `[x, y, kind, count]` on deck 1 (the wreck's deck). */
+const itemsMsg = (rows) => ({ type: 'items', cells: rows.map((r) => [r[0], r[1], DECK1, r[2], r[3]]) });
+/** The empty payload — the state a room with nothing on its floor is really in. */
+const NO_ITEMS = { type: 'items', cells: [] };
+
+/**
+ * The VS-Z-25 unknown chip's letter at ONE tile, or null when that tile draws no chip.
+ *
+ * ⚠️ PER-TILE, AND THE FIRST DRAFT WAS NOT — it asserted `!html.includes('>,</text>')` and went RED
+ * on its own correct implementation, because the real wreck carries OTHER `,` tiles inside the hold
+ * that are not the tile under test. A whole-document `includes` cannot say WHICH tile drew a chip,
+ * which is the only thing these tests are about. The chip branch is the one place `furnitureSvg`
+ * emits an INTEGER translate (every art branch uses `toFixed(1)`, so it carries a decimal point), and
+ * `fill="#57503f" text-anchor` is unique to the chip's text node.
+ */
+function chipAt(html, tx, ty) {
+  const key = '<g transform="translate(' + (tx - HOLD.rx) * U + ' ' + (ty - HOLD.ry) * U + ')">';
+  const i = html.indexOf(key);
+  if (i < 0) return null;
+  const m = /fill="#57503f" text-anchor="middle"[^>]*>([^<]*)</.exec(html.slice(i, i + 500));
+  return m ? m[1] : null;
+}
+
+test('THE LETTER BOX IS REPLACED (driven): a ground stack draws its KIND AND COUNT, not a raw glyph', () => {
+  // A tile inside the hold carrying the Regolith ground glyph `,` (code 44) in the frame — exactly
+  // what the projection writes for a spoil pile, and exactly what the owner saw as a dashed chip.
+  const tx = HOLD.rx + 1, ty = HOLD.ry + 1;
+  const cells = wreck.cells.slice();
+  cells[ty * wreck.w + tx] = [44, 6, 0, 0];   // ',' at GlyphColor.Item
+  try {
+    // PRECONDITION / NON-VACUITY: with the frame alone and no items channel, the surface really does
+    // draw the VS-Z-25 unknown chip carrying the raw letter. Without this leg every assertion below
+    // would be satisfied by a controller that had simply stopped drawing that tile.
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+    const before = rzLayers.innerHTML;
+    assert.equal(chipAt(before, tx, ty), ',',
+      'precondition: THIS tile does not draw the unknown chip carrying the raw `,` glyph, so '
+      + '"the letter box is replaced" is unmeasurable here — and it is the reported symptom');
+    assert.ok(!before.includes('REGO'), 'precondition: no plate before the channel arrives');
+
+    Hud.renderItems(itemsMsg([[tx, ty, 0, 40]]));
+    rzApi.exit(); rzApi.enter('hold');
+    const after = rzLayers.innerHTML;
+
+    assert.ok(after.includes('class="rz-items"'), 'the item layer must reach the DOM');
+    assert.ok(after.includes('REGO 40'),
+      'the plate must name the KIND and the COUNT. The count is the fact no projection byte could '
+      + 'ever have carried — a stack of 1 and a stack of 40 write the identical cell.');
+    assert.equal(chipAt(after, tx, ty), null,
+      'the raw-letter chip is STILL drawn under the plate on this tile. That letter is the lossy '
+      + 'rendering this channel replaces; stacking the two puts `,` and `REGO 40` on one tile.');
+    // …and the suppression is SURGICAL: another `,` tile elsewhere in the same room, which the
+    // channel says nothing about, must keep its chip. Without this leg, "suppress every unknown
+    // chip" would pass — and that would delete the honest signal on tiles with no stock data.
+    const other = [...after.matchAll(/fill="#57503f" text-anchor="middle"[^>]*>([^<]*)</g)];
+    assert.ok(other.length > 0,
+      'every unknown chip in the room vanished. Only the PLATED tiles may lose theirs; the chip is '
+      + 'still the honest thing to draw where the items channel reports nothing.');
+  } finally {
+    Hud.renderFrame(wreck);
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+  }
+});
+
+test('LOSS 2 (driven): two kinds on one tile are BOTH named — the projection could show only one', () => {
+  const tx = HOLD.rx + 2, ty = HOLD.ry + 1;
+  const cells = wreck.cells.slice();
+  // The frame can only carry the LAST stack: pass 3 assigns the cell per item. Here that is Potato.
+  cells[ty * wreck.w + tx] = [102, 6, 0, 0];   // 'f' = Glyphs.ForItem(Potato)
+  try {
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+    assert.equal(chipAt(rzLayers.innerHTML, tx, ty), 'f',
+      'precondition: the frame carries only the topmost stack, as one letter, on THIS tile');
+
+    Hud.renderItems(itemsMsg([[tx, ty, 0, 7], [tx, ty, 3, 2]]));
+    rzApi.exit(); rzApi.enter('hold');
+    const html = rzLayers.innerHTML;
+    assert.ok(html.includes('REGO 7'), 'the stack the projection dropped must be named');
+    assert.ok(html.includes('FOOD 2'), 'and so must the one it kept');
+  } finally {
+    Hud.renderFrame(wreck);
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+  }
+});
+
+test('LOSS 3 (driven): a stack on a DEVICE tile is drawn, and drawn ABOVE the device', () => {
+  // A glyph code the Room Zoom actually skins as furniture — DERIVED from the shipped table, so this
+  // cannot rot into a code that stopped being furniture (and the assert makes the scan non-vacuous).
+  let code = 0;
+  for (let c = 33; c < 127 && !code; c += 1) if (itemForGlyph(c)) code = c;
+  assert.ok(code, 'no glyph code maps to a furniture item — the derivation found nothing to test with');
+
+  const tx = HOLD.rx + 1, ty = HOLD.ry + 2;
+  const cells = wreck.cells.slice();
+  cells[ty * wreck.w + tx] = [code, 8, 0, 0];   // an ordinary powered device — what pass 4 writes
+  try {
+    Hud.renderFrame({ ...wreck, cells });
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+    const before = rzLayers.innerHTML;
+    assert.ok(before.includes('rz-f-' + tx + '-' + ty),
+      'precondition: the device sprite is not on this tile, so the burial test below is vacuous');
+    assert.ok(!before.includes('PART'), 'precondition: no plate before the channel arrives');
+
+    Hud.renderItems(itemsMsg([[tx, ty, 5, 12]]));
+    rzApi.exit(); rzApi.enter('hold');
+    const html = rzLayers.innerHTML;
+
+    assert.ok(html.includes('PART 12'),
+      'a stack stored on a device tile drew nothing. Under the projection it reached the client '
+      + 'nowhere at all — pass 4 painted the device glyph over it — and that is loss 3.');
+    assert.ok(html.includes('rz-f-' + tx + '-' + ty),
+      'THE DEVICE SPRITE WAS SUPPRESSED. Only the unknown-letter FALLBACK may be replaced by a '
+      + 'plate: real art says what is installed there, the plate says what is lying there, and both '
+      + 'are true.');
+
+    const iFurn = html.indexOf('rz-f-' + tx + '-' + ty);
+    const iPlate = html.indexOf('PART 12');
+    assert.ok(iPlate > iFurn,
+      'the plate is drawn BEFORE (i.e. underneath) the device sprite, so the player sees the machine '
+      + 'and not the stock — the wire loss removed and the same loss reintroduced in the client');
+  } finally {
+    Hud.renderFrame(wreck);
+    Hud.renderItems(NO_ITEMS);
+    rzApi.exit(); rzApi.enter('hold');
+  }
+});
+
+// ⚠️ THE SAME MUTATION THAT SURVIVED ON `marks`. `renderItems(m) { _items = m; }` — the cache
+// written, the surfaces never told — would pass every other test in this file, because they all
+// re-enter the room (which repaints unconditionally). `items` is deduped by `GameSession.Send`, so on
+// a quiet ship it is sent once; a haul that just landed would sit invisible until some unrelated
+// channel moved. This test dispatches ONLY the items channel and lets the coalesced repaint land.
+//
+// MUTATION: drop `notifyShip()` from `renderItems` in hud.js ⇒ RED.
+test('an items dispatch ALONE repaints the surfaces — the cache is not enough', async () => {
+  const tx = HOLD.rx + 3, ty = HOLD.ry + 2;
+  try {
+    rzApi.exit(); rzApi.enter('hold');
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok(!rzLayers.innerHTML.includes('ICE 9'), 'precondition: nothing is stocked yet');
+
+    // NOTHING ELSE IS DISPATCHED. No frame, no decks, no rooms — only the channel under test.
+    Hud.renderItems(itemsMsg([[tx, ty, 8, 9]]));
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok(rzLayers.innerHTML.includes('ICE 9'),
+      'an `items` message reached the cache and the Room Zoom never repainted. The channel is '
+      + 'deduped by GameSession.Send, so on a quiet ship it is sent ONCE — a haul that just landed '
+      + 'would then sit invisible until some unrelated channel moved.');
+  } finally {
+    Hud.renderItems(NO_ITEMS);
+    await new Promise((r) => setTimeout(r, 40));
+  }
+});

@@ -793,9 +793,17 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  DOM of its own, so it moves to ship-state.js with the rest of the cache at WP-9.
  *  The `marks` channel added `getMarks` — 26. Same shape again (a sparse view-only wire cache with no
  *  DOM), and it is read by BOTH modern surfaces rather than one: it is where the debris/dig/stockpile/
- *  strip layer comes from now that neither surface derives it from the frame's `cell[1]` byte. */
+ *  strip layer comes from now that neither surface derives it from the frame's `cell[1]` byte.
+ *  The `items` channel added `getItems` — 27. Same shape a fourth time (a sparse view-only wire cache,
+ *  no DOM, moves to ship-state.js at WP-9), read by the Room Zoom's ground-item layer. It is where a
+ *  ground stack's KIND AND COUNT come from now that no surface derives them from the frame's glyph
+ *  byte — which carries no count at all, keeps only the last stack on a tile, and is overwritten by any
+ *  device standing there (`hosts/web/WireFormat.Items.cs`). */
 const SHIP_STATE_REACH = Object.freeze([
   'LENSES', 'armTool', 'getArmedTool', 'getDecks', 'getDecor', 'getDesigns', 'getFrame',
+  // The `items` channel's cache — the Room Zoom's ground-stack layer. Sorted here beside the other
+  // getters by the same rule the list already follows (`shipStateReach()` returns a sorted array).
+  'getItems',
   // E0-8: the Overview's LEDGER island reads the `ledger` channel's cache. SHIP STATE, not console
   // chrome — `renderLedger`/`getLedger` touch no DOM, create no element and write no innerHTML, so
   // they add nothing to the four pinned console-DOM counts and move to ship-state.js at WP-9 with

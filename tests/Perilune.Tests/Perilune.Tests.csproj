@@ -53,6 +53,11 @@
          this line GameSession.cs does not compile here at all, which is the loud version of the
          failure the comment above warns about. -->
     <Compile Include="../../hosts/web/WireFormat.Ledger.cs" />
+    <!-- the `items` channel: a fourth sibling partial, WireFormat.cs again taking NO diff. Same
+         hand-added rule as above — and the rule bit immediately: leaving this line out failed the
+         build with `the type name 'ItemCell' does not exist in the type 'WireFormat'`, which is
+         exactly the loud failure the comment above promises. -->
+    <Compile Include="../../hosts/web/WireFormat.Items.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

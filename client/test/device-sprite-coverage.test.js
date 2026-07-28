@@ -205,6 +205,21 @@ const NO_FURNITURE_SPRITE = Object.freeze({
  * `chips: true` means the tile draws the VS-Z-25 unknown chip in the Room Zoom today (and nothing at
  * all on the Overview, which `continue`s instead). The count of `chips: true` entries is pinned by
  * equality below, so this ledger only ever pays DOWN.
+ *
+ * ⚠️ NOTE 2026-07-27, THE `items` CHANNEL — THE ART GAP IS UNCHANGED, THE SYMPTOM IS NOT.
+ * This ledger's headline sentence ("the player sees a dashed box with a raw letter in it") is now
+ * true only where the `items` channel reports NOTHING. On a tile the channel does cover, the Room
+ * Zoom draws a LABEL PLATE naming the kind and the count, and `roomzoom-view.js`'s `furnitureSvg`
+ * suppresses the letter chip underneath it (`itemPlateTileKeys`) so the two do not stack. Since a
+ * ground stack is exactly what puts a ground-item glyph in the frame, in practice that is most of
+ * them on a live host.
+ *
+ * NOTHING BELOW MOVES, and the reason is worth stating rather than assuming: every `chips` value
+ * here is measured by DRIVING `roomCells` — the frame-derived model, which the `items` package did
+ * not touch — so it still answers "does this glyph reach the unknown-chip branch?", which is still
+ * exactly the ART question. The plate is a different layer with a different source. The gap this
+ * ledger counts is "no ground-pile piece exists in the warm 60-piece set", and no channel can pay
+ * that down; only art can.
  */
 const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // The eight that visibly chip. All are ordinary loose stock lying on a floor tile; the warm 60-piece

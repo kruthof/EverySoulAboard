@@ -250,6 +250,11 @@ function onMessage(m) {
     // shared state layer; drawn by BOTH the Overview and the Room Zoom. HANDOVER §4g calls this "the
     // `designations` channel" — it is `marks` because debris is terrain, not an order.
     case 'marks': Hud.renderMarks(m); break;
+    // Ground item stacks (kind + COUNT, one row per stack), read from the sim's own item store rather
+    // than off the projected glyph — which carries no count at all, keeps only the LAST stack on a
+    // tile, and is overwritten by any device standing there. Cached in the shared state layer; drawn
+    // by the Room Zoom's item layer.
+    case 'items': Hud.renderItems(m); break;
     // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.

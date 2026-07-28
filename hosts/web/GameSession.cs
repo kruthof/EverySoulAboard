@@ -213,7 +213,7 @@ namespace Perilune.Web
                 // next Render changes it. `zones` is listed because a reconnect must not silently drop
                 // the only surface that says WHY a zone never fills; fixing `materials` belongs to
                 // whoever owns that channel.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks" })
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -1238,6 +1238,7 @@ namespace Perilune.Web
             Send("materials", WireFormat.Materials(BuildMaterials()), force);
             Send("zones", WireFormat.Zones(BuildZones()), force);
             Send("marks", WireFormat.Marks(BuildMarks()), force);
+            Send("items", WireFormat.Items(BuildItems()), force);
 
             // MOSS runtime-error transitions (one-shot rterror pushes; not a cached channel).
             PollRuntimeErrors();
@@ -1728,6 +1729,57 @@ namespace Perilune.Web
                     }
             }
             return _marksScratch;
+        }
+
+        /// <summary>
+        /// The sparse GROUND ITEM layer for the standard surface — one <see cref="WireFormat.ItemCell"/>
+        /// per <see cref="ItemStack"/> lying on a tile, read from <c>sim.Items</c> DIRECTLY and never
+        /// from the projection. See <c>hosts/web/WireFormat.Items.cs</c> for the three separate things
+        /// the projected glyph loses (the count, every stack but the last, and anything sharing a tile
+        /// with a device) and for why carried stacks are deliberately absent.
+        ///
+        /// ORDER — STORE ORDER, and NOT the z,y,x world walk <see cref="BuildZones"/>,
+        /// <see cref="BuildMarks"/> and <see cref="BuildMaterials"/> use. Those three are per-TILE
+        /// layers with at most one row per tile, so a geometric walk is their natural order. This one
+        /// is per-ENTITY and can carry several rows for one tile, so it emits in the order the entity
+        /// store holds them — which is exactly the order <c>GlyphMapper</c> pass 3 draws in (so
+        /// "topmost" and "last on the wire" mean the same thing), is a plain <c>List</c> index walk
+        /// rather than any hash container's layout, and is part of the saved, hashed state. Pinned by
+        /// <c>ItemsChannelTests.Items_Are_Emitted_In_Store_Order</c>.
+        ///
+        /// COST. One pass over the ITEM STORE per render (≤10 Hz, on the sim thread inside
+        /// <see cref="Render"/>, NOT a tick path) — O(items), not O(world), so it is strictly cheaper
+        /// than the three world walks above and is not worth the microsecond census
+        /// <c>marks</c> needed. The scratch list is reused, so a steady state allocates only the
+        /// payload string, and a ship with nothing on the floor ships
+        /// <c>{"type":"items","cells":[]}</c>, which <see cref="Send"/> then dedupes forever.
+        ///
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
+        /// </summary>
+        private readonly List<WireFormat.ItemCell> _itemsScratch = new List<WireFormat.ItemCell>();
+        private List<WireFormat.ItemCell> BuildItems()
+        {
+            _itemsScratch.Clear();
+            var world = _sim.World;
+            var items = _sim.Items.Items;
+            for (int n = 0; n < items.Count; n++)
+            {
+                var item = items[n];
+                // CARRIED STACKS RIDE THEIR CARRIER — `Pos` mirrors the person, not a place the item
+                // is. See WireFormat.Items.cs's header for why this channel refuses them rather than
+                // inheriting the rule from GlyphMapper pass 3.
+                if (item.CarriedBy != 0) continue;
+                var p = item.Pos;
+                // Bounds first, defensively: an out-of-range Pos would index the flag plane and throw
+                // on the render thread. GlyphMapper's own `Explored` helper checks bounds for the same
+                // reason.
+                if (!world.InBounds(p)) continue;
+                // FOG GATE, mirroring GlyphMapper pass 3 (whose gate is pass 1's, and is FIRST). An
+                // item in the dark emits nothing: shipping it would widen what the player knows.
+                if ((world.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                _itemsScratch.Add(new WireFormat.ItemCell(p.X, p.Y, p.Z, (int)item.Kind, item.Count));
+            }
+            return _itemsScratch;
         }
 
         /// <summary>

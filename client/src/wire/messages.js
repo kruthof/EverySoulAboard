@@ -339,7 +339,62 @@ export function decodeMarks(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg} WireMsg */
+/**
+ * The sparse GROUND ITEM layer — one entry per `ItemStack` lying on a tile, in the host's store
+ * order (never re-sorted client-side). ItemTuple = [x, y, deck, kind, count]. Append-only.
+ *
+ * WHY IT EXISTS. A ground stack reached both SVG surfaces as ONE CHARACTER — `GlyphMapper` pass 3
+ * writes `Glyphs.ForItem(kind)` into the tile's glyph byte — and that byte loses three separate
+ * things: the COUNT (never written at all, so a stack of 1 and a stack of 40 are the identical
+ * cell); EVERY STACK BUT THE LAST (pass 3 assigns per item, and the sim never merges stacks); and
+ * ANYTHING SHARING A TILE WITH A DEVICE (pass 4 overwrites the cell unconditionally, afterwards).
+ * `hosts/web/WireFormat.Items.cs` carries the full argument.
+ *
+ * `kind` IS THE SIM'S OWN `ItemKind` BYTE, not a wire vocabulary of its own — which is why there is
+ * no `ITEM_KIND_NAMES` table here beside `MARK_KIND_NAMES`. The client already mirrors that enum
+ * exactly ONCE, in `ui/stock-filter-model.js` (`STOCK_KINDS`), pinned member-for-member against
+ * `sim/Sim.Core/Entities/ItemStack.cs` by `stock-filter-model.test.js`. A second table here would
+ * be a hand mirror of a hand mirror.
+ *
+ * CARRIED STACKS ARE ABSENT (host-side): their `Pos` mirrors the CARRIER, so they are a fact about
+ * a person, not about a tile. FOG-GATED host-side, like `marks`. Snapshot-cached, so a reconnect
+ * replays the layer.
+ * @typedef {[number,number,number,number,number]} ItemTuple
+ * @typedef {{type:'items', cells:ItemTuple[]}} ItemsMsg
+ */
+
+/**
+ * Decode the sparse `items` channel. Mirrors WireFormat.Items:
+ * {type:'items',cells:[[x,y,deck,kind,count],..]}. Tolerant: a malformed message → null, a malformed
+ * row is dropped, never throws (the receive-path contract at the top of this file). ORDER IS
+ * PRESERVED — the host emits entity-store order and that order is the wire contract; a client sort
+ * would be a second, silently divergent authority.
+ *
+ * ⚠️ A ROW WHOSE KIND THIS CLIENT DOES NOT KNOW IS **KEPT**, and that is the OPPOSITE of what
+ * `decodeMarks` does one screen up. The divergence is deliberate and the reasoning is not
+ * transferable:
+ *   • On `marks`, the kind IS the payload. A cell whose kind is unknown carries no other fact, and
+ *     keeping it would put a row into `roomMarkTiles`' census that every `mark === 'dig'` test
+ *     silently answers "no" to — a lie wearing the shape of data.
+ *   • On `items`, the kind is ONE of five facts. A stack of an unknown kind is still a real, located,
+ *     counted pile: "40 of something on this tile" is true and useful, and DROPPING it would draw an
+ *     empty tile over a full one — the exact class of invisibility this channel exists to remove.
+ * So an unknown kind is rendered as unnamed rather than as absent; the naming decision belongs to
+ * the layer that draws (`room-model.js`).
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{x:number,y:number,deck:number,kind:number,count:number}[]|null}
+ */
+export function decodeItems(msg) {
+  if (!msg || msg.type !== 'items' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 5) continue;
+    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, count: t[4] | 0 });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel
