@@ -50,11 +50,13 @@ namespace Perilune.Tools
         /// the shortfall. PURE (a fresh list, no sim mutation, no RNG); allocation-tolerant because
         /// it is a measurement helper, not a tick path.
         /// </summary>
-        public static List<Int3> SelectWalls(World world, int n)
+        public static List<Int3> SelectWalls(World world, int n, int deck = -1)
         {
             var picks = new List<Int3>(n < 0 ? 0 : n);
             if (world == null || n <= 0) return picks;
             for (int z = 0; z < world.Depth && picks.Count < n; z++)
+            {
+                if (deck >= 0 && z != deck) continue; // --strip-deck: one deck only
                 for (int y = 0; y < world.Height && picks.Count < n; y++)
                     for (int x = 0; x < world.Width && picks.Count < n; x++)
                     {
@@ -64,6 +66,7 @@ namespace Perilune.Tools
                         if (!HasWalkableNeighbor(world, p)) continue;         // must be reachable to work
                         picks.Add(p);
                     }
+            }
             return picks;
         }
 
@@ -89,9 +92,9 @@ namespace Perilune.Tools
         /// so the designations are live before the measurement loop counts its first hour. Returns
         /// the count enqueued.
         /// </summary>
-        public static int EnqueueStrip(Simulation sim, int n)
+        public static int EnqueueStrip(Simulation sim, int n, int deck = -1)
         {
-            var walls = SelectWalls(sim.World, n);
+            var walls = SelectWalls(sim.World, n, deck);
             for (int i = 0; i < walls.Count; i++)
                 sim.EnqueueCommand(new DesignateDeconstructCommand(walls[i], DeconstructKind.Wall, on: true));
             return walls.Count;

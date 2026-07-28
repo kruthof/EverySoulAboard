@@ -251,12 +251,19 @@ namespace Perilune.Tools
             }
 
             int stripN = ArgInt(args, "--strip", 0);
+            // OPT-IN deck restriction for --strip (default -1 = every deck, the shipped behaviour).
+            // The grid ship's decks 2..7 boot AIRLESS, and a strip designated there is the second
+            // instance of the HANDOVER §5 item-2 livelock; the canonical z,y,x prefix can never
+            // reach them because deck 0 alone has hundreds of legal walls. Host-side selection
+            // only — the same DesignateDeconstructCommand a client click issues.
+            int stripDeck = ArgInt(args, "--strip-deck", -1);
             int stripped = 0;
             if (stripN > 0)
             {
-                stripped = StripHarness.EnqueueStrip(sim, stripN);
+                stripped = StripHarness.EnqueueStrip(sim, stripN, stripDeck);
                 Console.WriteLine($"--strip {stripN}: designated {stripped} interior wall(s) for " +
-                                  "deconstruct at t=0 (canonical z,y,x)" +
+                                  "deconstruct at t=0 (canonical z,y,x" +
+                                  (stripDeck >= 0 ? $", deck {stripDeck} only" : "") + ")" +
                                   (stripped < stripN ? $"  [ship had only {stripped} legal]" : ""));
                 Console.WriteLine();
             }
@@ -327,6 +334,26 @@ namespace Perilune.Tools
                 Console.WriteLine();
             }
 
+            // OPT-IN LIVELOCK AUDIT (--maint-audit). Host-side, printing only; no flag ⇒ the
+            // CI-comparable verb-less report is byte-identical.
+            //
+            // WHY IT EXISTS (HANDOVER §5 item 2). The occupancy table cannot tell a working ship
+            // from a livelocked one: `Maintain 40 %` reads as productive whether the crew are
+            // servicing machines or walking into vacuum, fleeing, recovering and walking back
+            // forever. A1 scores the livelock as a PASS. This block adds the number that
+            // separates them — SERVICES ACTUALLY COMPLETED — plus the churn that produces none.
+            //
+            // "Service completed" is measured, not inferred: a device's Condition is monotonically
+            // NON-INCREASING under MachineWearSystem, so the ONLY thing that raises it is
+            // MaintenanceSystem's restore. Sampled at the 1 Hz cadence both systems run at.
+            bool maintAudit = HasFlag(args, "--maint-audit");
+            var prevKind = new JobKind[sim.Citizens.Items.Count];
+            for (int i = 0; i < prevKind.Length; i++) prevKind[i] = sim.Citizens.Items[i].JobKind;
+            var prevCondition = new Dictionary<uint, float>();
+            long maintStarts = 0, maintToFlee = 0, deconStarts = 0, deconToFlee = 0, fleeStarts = 0, services = 0;
+            long lastHourMaintStarts = 0, lastHourMaintToFlee = 0, lastHourServices = 0;
+            long lastHourDeconStarts = 0, lastHourDeconToFlee = 0;
+
             const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
             int kindCount = Enum.GetValues(typeof(JobKind)).Length;
             var kindTicks = new long[kindCount];        // crew-ticks per JobKind, whole run
@@ -384,6 +411,51 @@ namespace Perilune.Tools
                         if (c.HasPath) onJobTravel++; else onJobWork++;
                     }
                 }
+
+                if (maintAudit)
+                {
+                    for (int i = 0; i < crew.Count && i < prevKind.Length; i++)
+                    {
+                        var c = crew[i];
+                        var now = c.Dead ? JobKind.None : c.JobKind;
+                        var was = prevKind[i];
+                        if (now != was)
+                        {
+                            if (now == JobKind.Maintain) maintStarts++;
+                            if (now == JobKind.Deconstruct) deconStarts++;
+                            if (now == JobKind.Flee)
+                            {
+                                fleeStarts++;
+                                if (was == JobKind.Maintain) maintToFlee++;
+                                if (was == JobKind.Deconstruct) deconToFlee++;
+                            }
+                            prevKind[i] = now;
+                        }
+                    }
+                    // 1 Hz — the cadence MachineWearSystem and MaintenanceSystem both run at, so no
+                    // restore can be missed and no wear step can be mistaken for one.
+                    if (t % Simulation.TicksPerSecond == 0)
+                    {
+                        var devs = sim.Devices.Items;
+                        for (int i = 0; i < devs.Count; i++)
+                        {
+                            var d = devs[i];
+                            if (prevCondition.TryGetValue(d.Id, out float before) && d.Condition > before) services++;
+                            prevCondition[d.Id] = d.Condition;
+                        }
+                    }
+                    // The last measured hour, captured while the loop still has the counters, so the
+                    // headline "N transitions in one hour, M services" is read off ONE hour rather
+                    // than divided out of a whole-run total that includes the pre-onset quiet.
+                    if (t == totalTicks - TicksPerHour)
+                    {
+                        lastHourMaintStarts = maintStarts;
+                        lastHourMaintToFlee = maintToFlee;
+                        lastHourServices = services;
+                        lastHourDeconStarts = deconStarts;
+                        lastHourDeconToFlee = deconToFlee;
+                    }
+                }
             }
             clock.Stop();
 
@@ -422,6 +494,44 @@ namespace Perilune.Tools
             {
                 Console.WriteLine();
                 Console.WriteLine("A1 needs --days 1 or more to reach sim-hour 24.");
+            }
+
+            if (maintAudit)
+            {
+                double maintPct = 100.0 * kindTicks[(int)JobKind.Maintain] / grandTotal;
+                double deconPct = 100.0 * kindTicks[(int)JobKind.Deconstruct] / grandTotal;
+                double fleePct = 100.0 * kindTicks[(int)JobKind.Flee] / grandTotal;
+                int needy = 0, needyUnbreathable = 0, devicesUnbreathable = 0;
+                foreach (var d in sim.Devices.Items)
+                {
+                    bool safe = AtmosphereSafety.IsBreathable(sim.Rooms.RoomAt(sim.World, d.Pos), sim.Defs.Needs);
+                    if (!safe) devicesUnbreathable++;
+                    if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;
+                    needy++;
+                    if (!safe) needyUnbreathable++;
+                }
+                Console.WriteLine();
+                Console.WriteLine("livelock audit (--maint-audit; HANDOVER §5 item 2):");
+                Console.WriteLine($"  Maintain occupancy     {maintPct,8:0.000} %   Deconstruct {deconPct:0.000} %   Flee {fleePct:0.000} %");
+                Console.WriteLine($"  Maintain job starts    {maintStarts,8}   of which Maintain->Flee aborts {maintToFlee}");
+                Console.WriteLine($"  Deconstruct starts     {deconStarts,8}   of which Deconstruct->Flee aborts {deconToFlee}");
+                Console.WriteLine($"  Flee starts            {fleeStarts,8}");
+                Console.WriteLine($"  SERVICES COMPLETED     {services,8}   (a device Condition that ROSE — wear only " +
+                                  "ever lowers it, so this is the one number a livelock cannot fake)");
+                Console.WriteLine($"  final sim-hour         starts {maintStarts - lastHourMaintStarts}   " +
+                                  $"Maintain->Flee {maintToFlee - lastHourMaintToFlee}   services {services - lastHourServices}   " +
+                                  $"| decon starts {deconStarts - lastHourDeconStarts}  decon->Flee {deconToFlee - lastHourDeconToFlee}");
+                Console.WriteLine($"  devices in bad air     {devicesUnbreathable,8}   (of {sim.Devices.Items.Count})");
+                Console.WriteLine($"  needy machines at end  {needy,8}   of which in UNBREATHABLE air {needyUnbreathable}");
+                foreach (var d in sim.Devices.Items)
+                {
+                    if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;
+                    var room = sim.Rooms.RoomAt(sim.World, d.Pos);
+                    bool safe = AtmosphereSafety.IsBreathable(room, sim.Defs.Needs);
+                    Console.WriteLine($"    {d.Kind,-16} {d.Pos}  cond {d.Condition:0.000}  " +
+                                      $"{(safe ? "breathable" : "UNBREATHABLE")}  " +
+                                      $"p={room.PressureKPa:0.0} kPa  co2={room.CO2Ppm:0} ppm  T={room.TemperatureK - 273.15:0.0} C");
+                }
             }
 
             // E0-4 measurement block — the numbers acceptance needs (plan §11 items 2/3/4). Gated on
