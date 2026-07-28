@@ -17,8 +17,20 @@ is renamed). Tag `v2-talking-ship`.
 >    this run: `--ship wreck` + `DeviceKind.CryoPod`. If it is unmerged, **read its report, review it
 >    independently, and merge it** — that is the next action, and it is the first thing the owner can
 >    actually *see*. It will move **P4 and P5** (a new `Machines` row), so it needs a re-pin commit.
-> 2. **`./play.sh` still opens `--ship grid`, deliberately.** Flipping the default is **W8** and it is
->    gated on the wreck being playable. Until then the wreck is `--ship wreck` explicitly.
+> 2. ~~**`./play.sh` still opens `--ship grid`, deliberately.**~~ ⛔ **SUPERSEDED BY AN OWNER
+>    DECISION, and the W8 gate is WITHDRAWN:** *"we decided to always ship the main version in
+>    play.sh"*. `hosts/web`'s player-facing default is **`ShipChoice.Wreck`** as of the wreck lane,
+>    so `./play.sh` opens the wreck. The reasoning is the feedback loop, not the polish: every
+>    serious player-visible defect this project has found came from the owner starting the game and
+>    looking, and a default that needs a remembered flag deletes that. **The wreck being rough is
+>    the point.** `--ship grid|slice|perilune` all still work by flag, none of their behaviour
+>    changed, and `SimHost.Build`'s own default parameter is still `ShipChoice.Perilune` because the
+>    goldens read it. Pinned by `WebHostDefaultShipTests` — the default is now a player-facing
+>    decision and may not move again without a test saying so.
+>    ⚠️ **`CLAUDE.md`'s "Play:" section still says *"There is no ship to choose — `hosts/web`
+>    defaults to `--ship grid`"*, and its THE STANDARD SURFACE invariant is phrased as
+>    "`--ship grid` wearing the Overview + Room Zoom". The wreck wears the same two modules, so the
+>    surface rule is intact and only the ship changed — but the wording is the integrator's to fix.**
 > 3. **Then W4b** — `＋ADD ROOM` splits so air is EARNED (`Commands.cs:600-666` currently force-opens
 >    every bordering door and pressurises for free). It runs ALONE and it is what turns the pressure
 >    frontier from a formality into the loop.

@@ -5,12 +5,15 @@
 #   ./play.sh --host-port 8390 --client-port 8391
 #   ./play.sh --no-open                          # don't launch a browser
 #
-# There is ONE game and it needs no options: the sim host serves `--ship grid` (its default),
+# There is ONE game and it needs no options: the sim host serves `--ship wreck` (its default),
 # this script also starts the client's static server, waits until both are really answering,
 # and prints a single URL. Ctrl+C stops both.
 #
-# `--ship slice` and `--ship perilune` are TEST FIXTURES, not games — run those against
-# hosts/scenario or hosts/web directly; play.sh does not offer them.
+# THE DEFAULT IS THE CURRENT GAME, BY OWNER DECISION — play.sh must always launch the version
+# being worked on, never the last one that happened to be finished. It moved from `grid` to
+# `wreck` when the wreck start landed. `--ship grid` is still the economy programme's
+# comparison baseline and `--ship slice` / `--ship perilune` are still TEST FIXTURES; run any
+# of them against hosts/web or hosts/scenario directly. play.sh does not offer them.
 set -eu
 DOTNET="${DOTNET:-$HOME/.dotnet/dotnet}"
 command -v "$DOTNET" >/dev/null 2>&1 || DOTNET=dotnet
