@@ -57,7 +57,19 @@ namespace Perilune.Sim
         /// <summary>Path to a walkable 4-neighbor of <paramref name="target"/>, tried in
         /// +x,−x,+y,−y order (<see cref="Int3.Neighbor4"/> — the canonical order shared with
         /// pathing, room flood, atmosphere and power, so they can never disagree). Walkability
-        /// goes through <see cref="Simulation.IsWalkable"/> so the rule is door-aware.</summary>
+        /// goes through <see cref="Simulation.IsWalkable"/> so the rule is door-aware.
+        ///
+        /// THE ONE JOB-BOARD SEAM OF THE WORKSITE STAGING RULE (docs/HANDOVER.md §5 item 2). This
+        /// is where dig, build and deconstruct all choose the tile the worker will stand on, so
+        /// <see cref="WorksiteSafety.CanStageWorkerAt"/> is asked here and NOWHERE ELSE in the job
+        /// board — read its doc comment for why a worker staged in unbreathable air produces an
+        /// unbounded walk/flee/recover/walk cycle instead of work. A refusal is not new machinery:
+        /// every caller already treats "no adjacent tile worked" as an unreachable target and stamps
+        /// its own <c>JobWork.UnreachableRetryTicks</c> backoff, so the site is simply re-probed
+        /// every 5 s until the compartment breathes again.
+        ///
+        /// The rule is inert on a stack without <see cref="SafetySystem"/>, which is what keeps
+        /// every atmosphere-free test sim and every pinned ship byte-identical.</summary>
         public static bool TryPathToAdjacent(Simulation sim, Citizen citizen, Int3 target)
         {
             for (int i = 0; i < 4; i++)
@@ -65,6 +77,7 @@ namespace Perilune.Sim
                 var n = Int3.Neighbor4(target, i);
                 if (!sim.World.InBounds(n)) continue;
                 if (!sim.IsWalkable(n)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;
                 if (sim.Paths.FindPath(sim, citizen.Pos, n, citizen.Path))
                 {
                     citizen.StartPath(sim.Defs.Citizen.TicksPerTile);

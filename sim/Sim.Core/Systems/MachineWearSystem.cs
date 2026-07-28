@@ -209,7 +209,11 @@ namespace Perilune.Sim
 
                 if (!TryFindStagingTile(sim, needy.Pos, out var staging))
                 {
-                    _recruitSkip.Add(needy.Id); // walled in — nowhere to stand
+                    // Walled in, or — since the livelock package — nowhere beside it a crew member
+                    // could survive the 900 s service. Both are "nowhere to stand"; both are skipped
+                    // for this pass and never remembered, so the machine becomes serviceable again
+                    // on the very pass its compartment is opened or repressurised.
+                    _recruitSkip.Add(needy.Id);
                     continue;
                 }
 
@@ -420,6 +424,12 @@ namespace Perilune.Sim
             {
                 var item = items[i];
                 if (item.Kind != kind || item.CarriedBy != 0 || item.ReservedBy != 0) continue;
+                // A consumable resting in unbreathable air is not fetchable. Without this the
+                // livelock simply moves one leg upstream: the servicer of a perfectly breathable
+                // machine walks to a stack stranded in vacuum, flees, recovers, and is sent for the
+                // same stack again — and a stack CAN end up there, because a flee mid-carry sets
+                // its cargo down wherever the crew member happened to be standing.
+                if (!WorksiteSafety.CanStageWorkerAt(sim, item.Pos)) continue;
                 int d = Int3.Manhattan(from, item.Pos);
                 if (d < bestDist)
                 {
@@ -430,13 +440,28 @@ namespace Perilune.Sim
             return best;
         }
 
-        /// <summary>First walkable 4-neighbor in canonical Neighbor4 order (+x,-x,+y,-y).</summary>
+        /// <summary>First walkable 4-neighbor in canonical Neighbor4 order (+x,-x,+y,-y) that a
+        /// worker may be STAGED on — <see cref="WorksiteSafety.CanStageWorkerAt"/>, the same rule
+        /// the job board applies in <see cref="JobWork.TryPathToAdjacent"/> and the second and last
+        /// place in the sim that picks a tile to park a worker on.
+        ///
+        /// A machine on a pressure boundary (a door, or a wall-side device between a live room and
+        /// an airless hall) has neighbours in two different rooms, so this both REFUSES a machine
+        /// with no survivable side and PREFERS the survivable side of one that has both — the
+        /// second half matters, because otherwise the first walkable neighbour plants the servicer
+        /// in vacuum one step away from breathable air and the livelock returns for exactly the
+        /// boundary machines that produced it.
+        ///
+        /// Returning false here needs no new branch upstream: both callers already handle "nowhere
+        /// to stand" — <see cref="RecruitForNeediest"/> skips the machine for the pass, and
+        /// <see cref="DriveWorker"/> drops any carried stack and releases the worker.</summary>
         private static bool TryFindStagingTile(Simulation sim, Int3 devicePos, out Int3 staging)
         {
             for (int i = 0; i < 4; i++)
             {
                 var n = Int3.Neighbor4(devicePos, i);
                 if (!sim.World.InBounds(n) || !sim.IsWalkable(n)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;
                 staging = n;
                 return true;
             }

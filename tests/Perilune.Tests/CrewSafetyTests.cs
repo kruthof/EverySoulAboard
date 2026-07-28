@@ -47,9 +47,21 @@ namespace Perilune.Tests
             // Open door joining the two rooms (a room boundary you can walk through).
             sim.AddDevice(DeviceKind.Door, DoorTile, "door").IsOpen = true;
 
-            // Derive rooms, then pressurize ONLY the refuge; the work room is left at vacuum.
+            // Derive rooms, then pressurize BOTH. The work room's air is blown LATER, by
+            // DigStartedThenVentTheWorkRoom, once the crew is actually standing at the dig.
+            //
+            // ⚠️ THIS FIXTURE USED TO BOOT THE WORK ROOM AT VACUUM, and it had to change when the
+            // worksite staging rule landed (docs/HANDOVER.md §5 item 2 — the maintenance/deconstruct
+            // livelock). The dispatcher no longer parks a worker on a tile where it would suffocate,
+            // so a dig designated in vacuum is never OFFERED and the crew member this file is about
+            // never starts work at all. That is not a weakening of the test: it is the arrival of
+            // the case SafetySystem's own doc comment describes — "a working crew member whose local
+            // air TURNS lethal" — and dispatch-into-already-lethal-air, which is what the old
+            // fixture arranged, is now a thing that cannot happen. The guard is still the only thing
+            // standing between the crew and death, and the mutation below still kills them.
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, RefugeTile));
+            RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, WorkTile));
 
             // A real job in the lethal air: designate a dig the crew will walk over to and work.
             sim.World.SetWall(DebrisTile, TileDefs.Debris);
@@ -58,6 +70,30 @@ namespace Perilune.Tests
 
             sim.AddCitizen("Ito", WorkTile);
             return sim;
+        }
+
+        /// <summary>
+        /// Tick until the crew member is settled ON the dig (working, not walking), then blow the
+        /// work room's atmosphere to hard vacuum. This stack carries no <c>AtmosphereSystem</c>, so
+        /// nothing refills it and nothing diffuses through the open door — the breach is permanent
+        /// and the refuge stays breathable. Returns false if the dig never started, which every
+        /// caller asserts on: a run where the crew never worked would make the rest vacuous.
+        /// </summary>
+        private static bool DigStartedThenVentTheWorkRoom(Simulation sim, Citizen crew, int budget = 600)
+        {
+            for (int t = 0; t < budget; t++)
+            {
+                sim.Tick();
+                if (crew.Dead) return false;
+                if (crew.JobKind != JobKind.Dig || crew.HasPath) continue;
+                if (!Int3.IsAdjacent4(crew.Pos, DebrisTile)) continue;
+                var room = sim.Rooms.RoomAt(sim.World, crew.Pos);
+                room.O2Moles = 0;
+                room.CO2Moles = 0;
+                room.N2Moles = 0;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -74,6 +110,9 @@ namespace Perilune.Tests
         {
             var sim = NewScenario(withGuard: true);
             var crew = sim.Citizens.Items[0];
+            Assert.That(DigStartedThenVentTheWorkRoom(sim, crew), Is.True,
+                "precondition: the crew took the dig while the work room still held air, and the " +
+                "room was then blown to vacuum under it");
 
             // Drive it for well over a full flee/recover cycle. Track the two facts that make this a
             // real escape rather than a lucky miss: the crew DID work in the lethal air (so the guard
@@ -97,6 +136,8 @@ namespace Perilune.Tests
             // The mutation, applied and asserted: with the guard removed the same crew dies.
             var noGuard = NewScenario(withGuard: false);
             var doomed = noGuard.Citizens.Items[0];
+            Assert.That(DigStartedThenVentTheWorkRoom(noGuard, doomed), Is.True,
+                "precondition: the control run reached the same state — digging, then vented");
             for (int t = 0; t < 3000 && !doomed.Dead; t++) noGuard.Tick();
             Assert.That(doomed.Dead, Is.True,
                 "control: without SafetySystem the crew keeps working in the vacuum and suffocates");
@@ -126,6 +167,8 @@ namespace Perilune.Tests
             var dies = NewScenario(withGuard: true, defs: unreachable); // 1.5, never trips
             var a = lives.Citizens.Items[0];
             var b = dies.Citizens.Items[0];
+            Assert.That(DigStartedThenVentTheWorkRoom(lives, a), Is.True, "precondition: dig started, then vented");
+            Assert.That(DigStartedThenVentTheWorkRoom(dies, b), Is.True, "precondition: dig started, then vented");
             for (int t = 0; t < 3000; t++) { lives.Tick(); if (!b.Dead) dies.Tick(); }
 
             Assert.That(a.Dead, Is.False, "at flee_suffocation = 0.5 the crew flees and lives");
