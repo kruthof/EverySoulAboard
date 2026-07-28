@@ -85,12 +85,19 @@ is renamed). Tag `v2-talking-ship`.
 
 ### 1. The tree
 
-> ⚠️ **UPDATED 2026-07-27 — `main` is now at `d67daa1`, three packages past `af46d4f`.** Working
-> tree clean, no worktrees, nothing in flight, `./ci.sh` exit 0, **1097 dotnet + 801 node**. Landed
-> since: the **`items` channel**, the **ground-item art**, and their two re-pin commits. **The five
-> values in the table below are STILL CORRECT** — but read the heading as **HELD, not MOVED**:
-> nothing has moved a pin since `af46d4f`, because both later packages are client-side
-> (`git diff -- sim/ hosts/ content/ tests/ ci.sh` measured at 0 lines for each).
+> ⚠️ **UPDATED 2026-07-27 — the table below is CORRECT; the two lines under it are NOT.**
+> **Read the bold heading as "ALL FIVE PINS HELD", not "MOVED".** Nothing has moved a pin since
+> `af46d4f`; the packages after it (the **`items` channel**, the **ground-item art**) are
+> client-side, measured — `git diff -- sim/ hosts/ content/ tests/ ci.sh` is **0 lines** for each.
+> Gate as of this edit: `./ci.sh` exit 0, **1097 dotnet + 801 node**, working tree clean, nothing in
+> flight.
+>
+> **⚠️ THIS BOX DELIBERATELY NAMES NO COMMIT — `git log --oneline -1` is the only answer that cannot
+> go stale.** The line it replaced named one, and a *blind-read audit found that stale within the
+> hour*, because the very next commit was the one fixing this paragraph. **That is the third
+> stale-pointer defect in this file in two days** (the others: a node count quoted forward for a
+> whole run while wrong by 18, and this section pointing three packages back). **A handover that
+> pins a SHA in prose is writing its own expiry date. Name the invariant, not the position.**
 
 **`main` @ `af46d4f` *(superseded — see the box above)*. `./ci.sh` exit 0.**
 **ALL FIVE PINS MOVED** — the biggest determinism change since E0-5, re-pinned in `af46d4f` together
@@ -148,11 +155,21 @@ everything the ship produced was conjured. Closed; the arithmetic now predicts t
 
 ### 5. Next, in the order I would take it
 
-1. **Ground-item art** — six builders (Regolith, MetalOre, Potato, Scrap, Parts, ControllerModule);
-   Corpse is a separate decision. **The real design question is the COUNT CHANNEL**: `buildItem(id,
-   opts)` cannot express stack size, so 1 unit and 40 render identically — a registry-signature change
-   touching every builder's call path. Nothing in the 60-piece set is a loose pile; crates would
-   assert "a container is here" about loose spoil.
+1. ~~**Ground-item art**~~ — ✅ **DONE 2026-07-27, in two packages** (the `items` channel, then the
+   art). **Every technical claim in the struck text below was wrong, which is why it is struck and
+   not merely ticked:** it said *six* builders (**eight** shipped), listed **MetalOre** (which
+   deliberately got **no** art — it has zero references in `sim/` outside the glyph table and cannot
+   appear in the game), called Corpse "a separate decision" (it shipped, and needed a **surface**
+   change, not a decision), and named the COUNT CHANNEL as *"a registry-signature change touching
+   every builder's call path"* — **wrong in both directions**: `buildItem(id, opts)` already
+   forwarded arbitrary opts so no signature changed, while the client was never **sent** a count at
+   all, so no builder work could have recovered it. **⇒ This is the roadmap's own warning about
+   reasoning from a design doc instead of measuring.**
+   > ~~six builders (Regolith, MetalOre, Potato, Scrap, Parts, ControllerModule); Corpse is a
+   > separate decision. The real design question is the COUNT CHANNEL: `buildItem(id, opts)` cannot
+   > express stack size, so 1 unit and 40 render identically — a registry-signature change touching
+   > every builder's call path. Nothing in the 60-piece set is a loose pile; crates would assert "a
+   > container is here" about loose spoil.~~
 2. **The `MaintenanceSystem` livelock — a real bug on the game, invisible to A1.** From ~h265 on grid,
    crew burn **70–80 % of all crew-time forever** in `Maintain → Flee → Maintain` against machines in
    unbreathable compartments: measured **278 transitions in one hour, 0 services completed**. It reads

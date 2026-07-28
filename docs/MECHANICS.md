@@ -1,6 +1,8 @@
 # PERILUNE — Mechanics, as implemented
 
-*Written 2026-07-21 against commit `0f88231`. **This document describes what the code
+*Originally written 2026-07-21 against commit `0f88231`, and **amended continuously since** — §13
+carries entries dated 2026-07-27. **Trust the PER-SECTION dates, not this line**; a blind-read audit
+flagged that the 07-21 header invites a reader to discount the whole file as stale. **This document describes what the code
 does, not what the design wants.** Every number below was read out of a source file or a
 `.def` file in one sitting and is cited `file:line` or `def-file:key`. Where
 `docs/legacy/GDD.md` or `docs/legacy/TDD.md` disagree with the code, the code is truth —
@@ -1646,7 +1648,13 @@ share) changes sim behaviour and moves every pin, so it is its own package.
   never cleared (`Systems/ExplorationSystem.cs:7-8`). There is no "greyed last-known-state"
   memory layer — a tile is either dark or fully live.
 
-### 13.12 Non-gaps worth not re-investigating
+### 13.12a Non-gaps worth not re-investigating
+
+> ⚠️ **RENUMBERED 2026-07-27 (was a second `§13.12`).** Two sections carried that number. All three
+> inbound citations — `:2319`, `:2367`, `HANDOVER.md:3211` — mean the **`[production]` node table**,
+> so **that** section keeps `§13.12` and this one moved. Found by a blind-orientation audit.
+> **Also note §13.20 is filed physically BEFORE §13.19** in this file; the numbers are correct and
+> only the order is odd, so search by number rather than scrolling.
 
 These *look* suspicious and are actually fine:
 
