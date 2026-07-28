@@ -38,9 +38,22 @@ export const airlock = (opts = {}) =>
 // 45 HATCH / LADDER — recessed steel frame with three rungs.
 export const hatchLadder = (opts = {}) =>
   item('hatch-ladder', opts, (s) => {
-    s.rect({ x: -32, y: -37, w: 64, h: 74, rx: 4, fill: '#2a323b' });
-    s.border({ x: -32, y: -37, w: 64, h: 74, rx: 4, color: '#4a5560', width: 4 });
-    for (const cy of [-13, 0, 13]) s.rect({ x: -20, y: cy - 2.5, w: 40, h: 5, rx: 2, fill: '#8fa2ad' });
+    // REDRAWN 2026-07-27. The old piece was a dark ROUNDED RECTANGLE with three grey bars across it —
+    // at tile size, a locker with a stripe, or an air vent. A deck hatch is a ROUND hole you look
+    // down: the circular rim is the whole read, and the rungs receding light-to-dark inside it are
+    // what say the hole has depth. The mock's `▼` deck marker is drawn as a triangle rather than set
+    // as 8-px text, so it survives the downscale (see objects.js's TEXT RULE note).
+    s.circle({ cx: 0, cy: 0, r: 40, fill: '#151d24' });
+    s.circle({ cx: 0, cy: 0, r: 37, fill: 'none', stroke: '#4a5560', sw: 6 });
+    for (const dx of [-24.5, 19.5]) {
+      s.rect({ x: dx, y: -37, w: 5, h: 74, rx: 3, fill: s.lin([['0', '#8fa2ad'], ['1', '#38424d']]) });
+    }
+    for (const [cy, a, b] of [[-18, '#b8c6cf', '#7d8b96'], [0, '#9fadb8', '#66737e'], [18, '#7d8b96', '#4f5c66']]) {
+      s.rect({ x: -22, y: cy - 3.5, w: 44, h: 7, rx: 3, fill: s.lin([['0', a], ['1', b]]) });
+    }
+    s.rect({ x: -13, y: -49, w: 26, h: 10, rx: 3, fill: '#3a2a12' });
+    s.border({ x: -13, y: -49, w: 26, h: 10, rx: 3, color: '#cf7a33', width: 1 });
+    s.path('M-4,-46.5L4,-46.5L0,-41.5Z', { fill: '#f2b563' });
   });
 
 // 46 POWER CONDUIT — dark bar with three glowing amber nodes.
@@ -222,15 +235,29 @@ export const supplyBarrel = (opts = {}) =>
 // 56 WEAPONS RACK — a steel rack holding four vertical rods.
 export const weaponsRack = (opts = {}) =>
   item('weapons-rack', opts, (s) => {
-    s.rect({ x: -44, y: -30, w: 88, h: 60, rx: 5, fill: '#38424d' });
-    s.border({ x: -44, y: -30, w: 88, h: 60, rx: 5, color: '#2b3742', width: 3 });
-    const gap = 8;
-    const total = 4 * 6 + 3 * gap;
-    let rx = -total / 2;
-    for (let i = 0; i < 4; i++) {
-      s.rect({ x: rx, y: -22, w: 6, h: 44, rx: 2, fill: '#8fa2ad' });
-      rx += 6 + gap;
+    // REDRAWN 2026-07-27. The old piece was four identical grey bars on a navy panel — a radiator, a
+    // shelf rack or a vent. A rack reads as a rack when the arms have BUTTS: a steel barrel above a
+    // wooden stock, resting on a top rail and standing on a timber shelf, with an ammunition crate at
+    // the end. Three arms of two different lengths, not four of one, so it does not re-average into
+    // a stripe pattern at tile size.
+    s.rect({ x: -48, y: -37, w: 96, h: 74, rx: 5, fill: '#38424d' });
+    s.border({ x: -48, y: -37, w: 96, h: 74, rx: 5, color: '#2b3742', width: 3 });
+    s.rect({ x: -48, y: -34, w: 96, h: 8, fill: '#2b3742' });    // the rail the barrels rest against
+    s.rect({ x: -48, y: 26, w: 96, h: 8, fill: '#5a442c' });     // the timber butt-shelf
+    // the barrels are LIGHT against the navy panel: at 40 px a #4a5560 barrel on a #38424d
+    // back-plate has almost no edge and the rack re-averages into a flat rectangle.
+    const barrel = s.lin([['0', '#b8c6cf'], ['1', '#6b7a85']]);
+    for (const [bx, by, bh, sx, sy, sw, sh] of [
+      [-32.5, -28, 56, -35.5, 6, 15, 20],
+      [-8.5, -28, 56, -11.5, 6, 15, 20],
+      [17.5, -26, 40, 15, 2, 14, 16],
+    ]) {
+      s.rect({ x: bx, y: by, w: 9, h: bh, rx: 2, fill: barrel });
+      s.rect({ x: sx, y: sy, w: sw, h: sh, rx: 3, fill: '#6b4a2a' });
     }
+    s.rect({ x: 30, y: -9, w: 20, h: 26, rx: 3, fill: '#4a5560' });   // ammunition crate
+    s.border({ x: 30, y: -9, w: 20, h: 26, rx: 3, color: '#2b3742', width: 2 });
+    s.rect({ x: 30, y: -7, w: 20, h: 6, fill: '#c14a32' });
   });
 
 // 57 SUN LAMP — a broad grow-light with a big warm glow.
