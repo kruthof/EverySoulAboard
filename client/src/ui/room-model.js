@@ -613,9 +613,16 @@ export function itemKindLabel(kind) {
  * here sorts: a client sort would be a second, silently divergent authority over what "topmost" means,
  * and the host's order is the same one `GlyphMapper` pass 3 draws in.
  *
+ * ⚠️ THERE IS NO `total` FIELD, and it is worth a line because there WAS one for a day. It summed
+ * every unit on the tile, NOTHING in the client ever read it, and a per-tile census nobody consumes
+ * is a second number that can silently disagree with `stacks` — the exact shape of the duplicate
+ * authorities this package exists to collapse. A caller that wants it can `reduce` over `stacks`,
+ * which is one expression and cannot drift. (Found in independent review; the field's only reader
+ * was a test asserting the field.)
+ *
  * @param {{x:number,y:number,deck:number,kind:number,count:number}[]|null} items  decodeItems() output
  * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}} focusRoom
- * @returns {{tx:number, ty:number, stacks:{kind:number,count:number}[], total:number}[]}
+ * @returns {{tx:number, ty:number, stacks:{kind:number,count:number}[]}[]}
  */
 export function roomItemTiles(items, focusRoom) {
   const out = [];
@@ -629,11 +636,10 @@ export function roomItemTiles(items, focusRoom) {
     if (tx < rx || tx >= x1 || ty < ry || ty >= y1) continue;
     const key = tx + ',' + ty;
     let tile = byTile.get(key);
-    if (!tile) { tile = { tx, ty, stacks: [], total: 0 }; byTile.set(key, tile); out.push(tile); }
+    if (!tile) { tile = { tx, ty, stacks: [] }; byTile.set(key, tile); out.push(tile); }
     const kind = it.kind | 0, count = it.count | 0;
     const seen = tile.stacks.find((s) => s.kind === kind);
     if (seen) seen.count += count; else tile.stacks.push({ kind, count });
-    tile.total += count;
   }
   return out;
 }

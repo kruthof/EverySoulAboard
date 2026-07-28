@@ -1747,12 +1747,25 @@ namespace Perilune.Web
         /// rather than any hash container's layout, and is part of the saved, hashed state. Pinned by
         /// <c>ItemsChannelTests.Items_Are_Emitted_In_Store_Order</c>.
         ///
-        /// COST. One pass over the ITEM STORE per render (≤10 Hz, on the sim thread inside
-        /// <see cref="Render"/>, NOT a tick path) — O(items), not O(world), so it is strictly cheaper
-        /// than the three world walks above and is not worth the microsecond census
-        /// <c>marks</c> needed. The scratch list is reused, so a steady state allocates only the
-        /// payload string, and a ship with nothing on the floor ships
-        /// <c>{"type":"items","cells":[]}</c>, which <see cref="Send"/> then dedupes forever.
+        /// COST — MEASURED, not argued. One pass over the ITEM STORE per render (≤10 Hz, on the sim
+        /// thread inside <see cref="Render"/>, NOT a tick path): O(items), not O(world), so it is
+        /// structurally cheaper than the three world walks above. The numbers, taken in independent
+        /// review by timing <c>BuildItems</c> + <see cref="WireFormat.Items"/> against a full
+        /// <see cref="Render"/> on the same machine:
+        ///
+        ///   <c>--ship grid</c>    7 rows,   124 B,  <b>~0.9 µs</b> against a ~392 µs render — <b>0.2 %</b>
+        ///   <c>--ship slice</c>  212 rows,  2.8 KB, <b>~14 µs</b>  against a ~312 µs render — <b>~4.5 %</b>
+        ///
+        /// HOW TO READ THEM HONESTLY: <b>n = 1, one machine, DEBUG build</b>, and both channel figures
+        /// are UPPER BOUNDS (the harness reached the private builder by reflection, which is charged to
+        /// the channel and not to the render). The playable ship pays two tenths of one percent; the
+        /// headless measurement fixture pays ~4.5 % because it boots two orders of magnitude more
+        /// stacks, and it has no UI at all. Both are well inside <c>marks</c>' +61 µs, which is the
+        /// only render cost this programme has previously judged worth accepting.
+        ///
+        /// The scratch list is reused, so a steady state allocates only the payload string, and a ship
+        /// with nothing on the floor ships <c>{"type":"items","cells":[]}</c>, which <see cref="Send"/>
+        /// then dedupes forever.
         ///
         /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
         /// </summary>

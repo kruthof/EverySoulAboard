@@ -153,6 +153,31 @@ test('every ItemKind has a DISTINCT short label, derived from the one enum mirro
 
 // ═════════════════════════════════════════════════════════════════════ roomItemTiles
 
+// ⚠️ THE DECK TERM WAS UNGUARDED IN THE TEST NAMED AFTER IT, and the first version is described here
+// rather than quietly replaced, because it is a shape that will recur on every per-tile channel.
+//
+// The old wrong-deck row was `[4, 2, 0, 0, 1]` — the SAME TILE `4,2` as the in-room row above it.
+// `roomItemTiles` keys its map by `tx,ty`, so a wrong-deck row on an ALREADY-PRESENT tile folds into
+// that tile's entry: it moves `stacks`, and it NEVER changes the tile list. The assertion mapped only
+// `[t.tx, t.ty]`, so both variants returned `[[4,2],[7,4]]`. MEASURED in independent review: deleting
+// the deck filter outright left 782/782 GREEN. The rect halves bit; the term the test is named after
+// did not. Real harm: stock on decks 1-7 plating into a deck-0 room.
+//
+// THE FIX IS BOTH SHAPES AT ONCE, because they fail differently:
+//   • a wrong-deck row on a tile NO in-room row occupies — caught by the TILE LIST;
+//   • a wrong-deck row on a SHARED tile — invisible to the tile list, caught only by `stacks`.
+// A fixture with just the first would still miss the fold, which is how the hole got in.
+//
+// MUTATION: `if (!it || (it.deck|0) !== (focusRoom.deck|0)) continue;` → `if (!it) continue;` in
+// room-model.js ⇒ RED.
+//
+// ⚠️ AND THE TWO LEGS WERE VERIFIED SEPARATELY, WHICH TOOK A SECOND MUTATION EACH. `assert` throws,
+// so with the whole fixture in place only the FIRST failing leg ever reports — a second leg that
+// could not bite would be indistinguishable from one that can, which is precisely how the original
+// hole hid. Each was therefore run with the OTHER one blinded (its fixture row removed):
+//   row `[5,3,0,…]` alone → the TILE-LIST message fires, the `stacks` message does not;
+//   row `[4,2,0,…]` alone → the `stacks` message fires, the TILE-LIST message does not.
+// Neither leg is carried by the other.
 test('roomItemTiles clips to the focused room — deck and rect, half-open', () => {
   const rows = [
     [4, 2, 1, 0, 1],   // top-left corner, inside
@@ -161,10 +186,16 @@ test('roomItemTiles clips to the focused room — deck and rect, half-open', () 
     [4, 5, 1, 0, 1],   // one past the bottom edge — OUT
     [3, 2, 1, 0, 1],   // one left of the left edge — OUT
     [4, 1, 1, 0, 1],   // one above the top edge — OUT
-    [4, 2, 0, 0, 1],   // right tile, WRONG DECK — OUT
-  ];
+    [5, 3, 0, 0, 1],   // WRONG DECK, INSIDE the rect, on a tile nothing else occupies — OUT
+    [4, 2, 0, 0, 9],   // WRONG DECK, on a tile an in-room row ALREADY holds — OUT, and invisible
+  ];                   //             to the tile list, so `stacks` below is what catches it
   const tiles = roomItemTiles(decodeItems(msg(rows)), ROOM);
-  assert.deepEqual(tiles.map((t) => [t.tx, t.ty]), [[4, 2], [7, 4]]);
+  assert.deepEqual(tiles.map((t) => [t.tx, t.ty]), [[4, 2], [7, 4]],
+    'a row from another deck created a tile in this room. Every deck shares one coordinate space, '
+    + 'so an unfiltered channel plates deck-7 stock onto a deck-0 floor.');
+  assert.deepEqual(tiles.map((t) => t.stacks), [[{ kind: 0, count: 1 }], [{ kind: 0, count: 1 }]],
+    'a row from another deck FOLDED INTO an existing tile. This is the leg the first version of '
+    + 'this test lacked: the tile list cannot see it, because the tile was already there.');
 });
 
 test('roomItemTiles tolerates a missing focus or a missing channel', () => {
@@ -184,7 +215,13 @@ test('roomItemTiles SUMS stacks of one kind per tile, and keeps different kinds 
   assert.deepEqual(tiles[0].stacks, [{ kind: 0, count: 27 }, { kind: 3, count: 2 }],
     'same-kind stacks must SUM (a player reading a floor wants "27 REGOLITH", not "7 + 20"), and '
     + 'the kind order must be first-appearance — the host order, not a client sort');
-  assert.equal(tiles[0].total, 29, 'total is every unit on the tile, whatever the kind');
+  // ⚠️ THERE IS NO `total` ANY MORE. This used to read `assert.equal(tiles[0].total, 29, …)` — and
+  // that assertion was the field's ONLY reader anywhere, which is the definition of a dead field
+  // dressed as a tested one. It is dropped from `roomItemTiles` rather than given a consumer,
+  // because a per-tile census nobody uses is a second number that can drift from `stacks`.
+  assert.equal(tiles[0].total, undefined,
+    'roomItemTiles grew a `total` back. Sum `stacks` at the call site instead — one expression, and '
+    + 'it cannot come to disagree with the list it is derived from.');
 });
 
 // MUTATION: sort `out` by tx/ty in roomItemTiles ⇒ this fails.
@@ -200,7 +237,7 @@ test('roomItemTiles is PURE: inputs are neither mutated nor aliased', () => {
   const snapshot = JSON.stringify(decoded);
   const tiles = roomItemTiles(decoded, ROOM);
   tiles[0].stacks[0].count = 999;
-  tiles[0].total = -1;
+  tiles[0].stacks.push({ kind: 99, count: -1 });
   assert.equal(JSON.stringify(decoded), snapshot,
     'roomItemTiles handed back objects that alias the decoded channel, so a caller editing its own '
     + 'view-model silently rewrites the wire cache');
@@ -226,6 +263,29 @@ test('a tile with more kinds than fit says HOW MANY are hidden, rather than pick
     + 'be the same class of lie as the projection keeping only the topmost stack.');
 });
 
+/** Every plate rect in an `itemPlateSvg` string, as `{x, y, width, height}`, in emission order. */
+function plateRects(svg) {
+  return [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+    .map((m) => ({ x: +m[1], y: +m[2], width: +m[3], height: +m[4] }));
+}
+
+// ⚠️ THIS TEST USED TO ASSERT `x` AND NOTHING ELSE, and the omission is recorded rather than quietly
+// patched because the JUSTIFICATION for this layer is written in both axes and only one was guarded.
+// `itemPlateSvg`'s own doc says the fitted font size means "the plate can never lie about which tile
+// it belongs to", and `roomzoom-view.js` says the plate is "bottom-anchored and inset, so it labels
+// the tile without covering what stands on it". FOUR mutations survived 782/782 GREEN, all in
+// room-model.js and all plain arithmetic in a pure builder:
+//   • `boxH = 0`                       — a zero-height plate: the words are there, the panel is not
+//   • `boxY = ly`                      — TOP-anchored, i.e. covering exactly what it must not cover
+//   • `boxY = ly + 5 * unit`           — the plate drawn FIVE TILES BELOW the tile it describes
+//   • `ly = ((t.ty|0) - rx) * unit`    — every plate off by `ry - rx` ROWS (rx for ry: the classic)
+// All four are now RED. The two colour constants (`PLATE_TEXT`, `PLATE_FILL`) also survive and are
+// deliberately NOT pinned here — "is this legible against that background?" is a browser question and
+// `client/tools/items-shot.mjs` is where it is answered.
+//
+// THE GEOMETRY IS ASSERTED AS THE CONTRACT, not as four magic numbers: bottom-anchored means
+// `y + height === tileTop + unit - inset`, which stays true if the inset or the row height is
+// re-tuned, and fails for every mutation above.
 test('itemPlateSvg draws one group per tile inside the rz-items layer, in room-local space', () => {
   const tiles = roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [7, 4, 1, 3, 2]])), ROOM);
   const svg = itemPlateSvg(tiles, ROOM);
@@ -233,13 +293,39 @@ test('itemPlateSvg draws one group per tile inside the rz-items layer, in room-l
   assert.equal([...svg.matchAll(/<g class="rz-item">/g)].length, 2, 'one group per plated tile');
   assert.ok(svg.includes('REGO 40') && svg.includes('FOOD 2'), 'both plates must carry their words');
 
-  // ROOM-LOCAL: the first tile is the room's origin, so its plate sits inside [0, U); the second is
-  // three tiles right and two down. Placement is asserted, not assumed — an absolute-space bug puts
-  // every plate off-screen and every assertion above still passes.
-  const xs = [...svg.matchAll(/<rect x="([-\d.]+)"/g)].map((m) => Number(m[1]));
-  assert.equal(xs.length, 2);
-  assert.ok(xs[0] >= 0 && xs[0] < U, 'the origin tile\'s plate must sit in the first tile column');
-  assert.ok(xs[1] >= 3 * U && xs[1] < 4 * U, 'the second tile\'s plate must sit three columns over');
+  // ROOM-LOCAL, IN BOTH AXES. Tile (4,2) is the room's origin → local (0,0); tile (7,4) is three
+  // columns right and TWO ROWS DOWN → local (3U, 2U). An absolute-space bug, or a row/column mix-up,
+  // puts every plate somewhere the player is not looking, and every assertion above still passes.
+  const rects = plateRects(svg);
+  assert.equal(rects.length, 2, 'the rect parse found the wrong number of plates — the assertions '
+    + 'below would be vacuous');
+  const INSET = 2;
+  for (const [i, [tx, ty, rowCount]] of [[4, 2, 1], [7, 4, 1]].entries()) {
+    const left = (tx - ROOM.rx) * U, top = (ty - ROOM.ry) * U;
+    const r = rects[i];
+    assert.equal(r.x, left + INSET, `plate ${i}: x is not its own tile's left edge + inset`);
+    assert.equal(r.width, U - INSET * 2, `plate ${i}: the plate must span its tile minus the insets`);
+    assert.equal(r.height, rowCount * 8 + 3, `plate ${i}: height must follow the ROW COUNT — a `
+      + 'zero-height plate draws the words with no panel behind them');
+    assert.equal(r.y + r.height, top + U - INSET,
+      `plate ${i}: the plate is not BOTTOM-anchored inside its own tile. Top-anchored it covers the `
+      + 'device or crew member it is meant to label; off by a tile it describes the wrong floor.');
+    assert.ok(r.y >= top, `plate ${i}: the plate spills UP out of its tile`);
+  }
+});
+
+// MUTATION: `boxH = rows.length * PLATE_ROW_H + PLATE_PAD * 2` → `boxH = PLATE_ROW_H + PLATE_PAD * 2`
+// ⇒ this fails. The leg above uses one-row plates only, so without this the height term is pinned to
+// a constant and a two-row plate could clip its own second line.
+test('a two-row plate is taller than a one-row plate, and still bottom-anchored', () => {
+  const one = plateRects(itemPlateSvg(
+    roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40]])), ROOM), ROOM))[0];
+  const two = plateRects(itemPlateSvg(
+    roomItemTiles(decodeItems(msg([[4, 2, 1, 0, 40], [4, 2, 1, 3, 2]])), ROOM), ROOM))[0];
+  assert.equal(two.height, one.height + 8, 'a second row must add exactly one row height');
+  assert.equal(two.y + two.height, one.y + one.height,
+    'the plate must grow UPWARD from its bottom edge — growing downward pushes it off its own tile');
+  assert.ok(two.y >= 0, 'a two-row plate on the origin tile must still sit inside that tile');
 });
 
 test('itemPlateSvg is empty when there is nothing to draw', () => {

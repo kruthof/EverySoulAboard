@@ -182,7 +182,12 @@ const NO_FURNITURE_SPRITE = Object.freeze({
   // that "Door is allowlisted" is not read as "Door is safe on both surfaces".
   Door: 'drawn by the structure/wall layer, not the furniture layer (Room Zoom: latent gap — '
     + "NON_FURNITURE omits '+' 43 and 'X' 88, so a closed/locked door inside a room rect would chip; "
-    + '0 such tiles on --ship grid deck 0 today)',
+    + '0 such tiles on --ship grid deck 0 today. ⚠️ THE `items` CHANNEL LAYERED NEW HARM ON THIS '
+    + 'LATENT BUG: a ground stack on such a door tile now SUPPRESSES that chip (roomzoom-view.js '
+    + 'furnitureSvg + itemPlateTileKeys), so the door would draw nothing at all rather than a wrong '
+    + 'letter. Doubly latent — it needs an in-rect door AND stock on it, and there are still 0 such '
+    + 'tiles — but the real fix is unchanged and is to make the two NON_FURNITURE sets agree in '
+    + 'room-model.js, not to narrow the suppression.)',
   // Conduit and Pipe share the glyph '~' — an intentional, documented collision in Glyphs.cs (they
   // are the same service-tray line). They are UTILITY-LENS OVERLAYS, drawn only under a lens, never
   // as an object on a tile; `power-conduit` / `pipe-run` therefore stay at `glyph: null` too. A
