@@ -252,9 +252,13 @@ namespace Perilune.Tests
         [Test]
         public void BitsAboveTheLastItemKindAreCanonicalisedAway()
         {
-            // The over-wide wire value, ONE definition for all three rows: bits 0,1,4..9 — i.e. bit 9
-            // (no kind owns it) on top of a restriction that refuses Corpse and Potato.
-            const ulong Probe = 0x3F3UL;
+            // The over-wide wire value, ONE definition for all three rows: bits 0,1,4..10 — i.e. bit
+            // 10 (no kind owns it) on top of a restriction that refuses Corpse and Potato.
+            // ⚠️ IT WAS 0x3F3 (bit 9) until the wreck start made 9 a real kind (Swarf), at which
+            // point the PRECONDITION below fired and said so: the probe carried no unreal bit left,
+            // so there was nothing for canonicalisation to remove. That precondition is why this is
+            // a one-line move rather than a silently vacuous test.
+            const ulong Probe = 0x7F3UL;
 
             var (gs, host) = Boot();
             var pos = FirstWalkable(host.Sim, 0);
@@ -484,10 +488,12 @@ namespace Perilune.Tests
             Assert.AreEqual(1UL, 1UL << sixtyFour,
                 "C# really does reduce the shift count modulo 64 — this is why the guard is needed");
 
-            // Post-merge ItemKind is contiguous 0..8, so 7 (E0-7's live case against the hole) and 8
-            // are BOTH real kinds and have moved to the positive control below. 64 is the value that
-            // actually bites — the modulo-64 wrap — and 9 is the first byte above the enum.
-            foreach (int bad in new[] { 9, 64, 71, 128, -1, -64, StockFilterModel.KindCount })
+            // ItemKind is contiguous 0..9, so 7 (E0-7's live case against the hole), 8 and 9 (the
+            // wreck start's Swarf) are ALL real kinds and live in the positive control below. 64 is
+            // the value that actually bites — the modulo-64 wrap — and 10 is the first byte above
+            // the enum. The spelled-out literal goes stale every time a kind lands, which is exactly
+            // what the derived KindCount entry beside it covers.
+            foreach (int bad in new[] { 10, 64, 71, 128, -1, -64, StockFilterModel.KindCount })
             {
                 Assert.AreEqual(all, StockFilterModel.Toggle(all, bad),
                     "Toggle is a no-op for kind " + bad);

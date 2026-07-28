@@ -317,6 +317,27 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // E3 decides what one IS — a redraw rather than a decision. The mock's own header says the same
   // ("There is deliberately NO MetalOre piece"). It therefore chips, and that is correct: a kind the
   // sim can project but nothing can create is exactly the case the dashed chip was invented for.
+  // ⚠️ THE SECOND ENTRY, AND IT IS A BACKLOG ITEM — unlike MetalOre. `ItemKind.Swarf` is REAL:
+  // DeconstructSystem drops it whenever a stripped machine's Parts yield floors to 0, and
+  // MaintenanceSystem consumes it as the rung below a jury-rig. On the wreck start it is the single
+  // most common thing on the floor, because cannibalising the dead half of the ship IS the opening
+  // loop. It has no piece only because the warm set has none yet — the wrecked-art package owns
+  // `client/src/items/` and was in flight in a sibling worktree when this landed, so drawing it here
+  // would have been two lanes editing one registry.
+  //
+  // ⚠️ THIS LEDGER IS DOCUMENTED AS ONLY EVER SHRINKING, and this commit grows it. That is the
+  // decision the ledger exists to force, written down: the alternative was to ship a live economy
+  // item invisibly, or to reach into another lane's files mid-flight. It is the FIRST entry added
+  // since the ledger was created and it should be the last — it pays down the moment a loose-swarf
+  // pile joins the item set.
+  Swarf: {
+    glyph: 'w',
+    chips: true,
+    why: 'REAL AND UNSKINNED, not dead vocabulary: DeconstructSystem creates Swarf on every wreck '
+      + 'strip and MaintenanceSystem consumes it, so a player WILL see this chip — on the wreck '
+      + 'start, constantly. Unskinned only because client/src/items/ belonged to the in-flight '
+      + 'wrecked-art lane when the salvage half landed. Draw it and delete this entry.',
+  },
   MetalOre: {
     glyph: 'o',
     chips: true,
@@ -377,13 +398,13 @@ const EXPECT_DEVICE_GLYPH_OVERRIDES = 3;
 // '+' is one of them, PLUS the two override chars 'X' and '/' that are in no arm at all.
 const EXPECT_PROJECTED_DEVICE_GLYPHS = 28;
 const EXPECT_DEVICE_GLYPH_LEDGER = 1;   // '/' alone — an open doorway is a gap
-const EXPECT_ITEM_KINDS = 9;
-const EXPECT_FOR_ITEM_ARMS = 9;
+const EXPECT_ITEM_KINDS = 10;
+const EXPECT_FOR_ITEM_ARMS = 10;
 // The ledger below, pinned SEPARATELY from the enum size since the ground-item art landed. Those two
 // numbers were the same while NOTHING had art and one constant did both jobs — which meant "the sim
 // grew a kind" and "a kind lost its excuse" were indistinguishable. They are different facts and they
 // move for opposite reasons, so they are different constants.
-const EXPECT_GROUND_ITEM_LEDGER = 1;   // MetalOre, and see the ledger's own note for why it stays
+const EXPECT_GROUND_ITEM_LEDGER = 2;   // MetalOre + Swarf — see each entry's own reason
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -632,7 +653,7 @@ test('EVERY skinned ItemKind builds REAL art (driven through buildItem)', () => 
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 1;   // MetalOre alone — see the ledger
+const EXPECT_CHIPPING_ITEM_KINDS = 2;   // MetalOre + Swarf — see the ledger
 
 test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip', () => {
   const chipping = [];

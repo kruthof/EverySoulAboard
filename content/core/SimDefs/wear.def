@@ -28,3 +28,18 @@ wreck_threshold          = 0.25   # THE WRECK FLOOR (wreck start W2). Below this
                                   # free jury-rig and a machine that was SHOT does not. 0 makes the
                                   # field inert on every ship; > 0.40 makes every routine service
                                   # demand a consumable, which is a different game.
+swarf_service_condition  = 0.45   # Condition after a SWARF service (wreck start). THE BOTTOM RUNG,
+                                  # and the only one with a PRECONDITION: Swarf is offered ONLY to a
+                                  # machine below wreck_threshold, i.e. one the free jury-rig has
+                                  # already been refused to. Full ladder:
+                                  #   Parts -> 1.0 | Seals -> 0.9 | hands -> 0.6 | Swarf -> 0.45
+                                  # Bounds, three of them hard:
+                                  #   > every machines.def `maint` (max 0.40) or a swarf service
+                                  #     leaves the machine still needy and the ship burns its whole
+                                  #     salvage stock re-servicing one machine forever;
+                                  #   > wreck_threshold (0.25) or the repair does not lift the
+                                  #     machine out of the wrecked band and buys nothing;
+                                  #   > every `fail` (max 0.10) or the machine is fixed and still
+                                  #     inoperative;
+                                  #   < jury_rig_condition (0.6) or salvage beats free labour and
+                                  #     the tier order inverts.

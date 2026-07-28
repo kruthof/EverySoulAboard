@@ -18,6 +18,21 @@ namespace Perilune.Sim
                         // deliberately left the hole rather than renumbering, because a byte enum in
                         // a hashed save is append-only and a renumber silently re-labels every stack
                         // in every existing save. The wave merge closed the hole: 0..8 contiguous.
+        Swarf = 9,      // The recovery economy (wreck start, owner decision 3): what a machine too
+                        // far gone for Parts pays when it is STRIPPED. ECONOMY.md §3.2 row 9 names it
+                        // "maintenance and machining residue"; here it is the shredded remains of a
+                        // shot-up machine, and it is the ONLY thing the dead half of a raided ship
+                        // yields.
+                        //
+                        // ⚠️ IT IS A TERMINAL CURRENCY BY CONSTRUCTION, AND THAT IS THE CONSERVATION
+                        // PROOF. Swarf has exactly ONE source (DeconstructSystem's wreck yield) and
+                        // exactly ONE sink (MaintenanceSystem's bottom rung). No production node, no
+                        // recipe and no command converts it into Parts, Scrap or Regolith, so the
+                        // place->strip round trip stays priced entirely in Parts — 3 out
+                        // (build.device_place_cost), at most 2 back — exactly as E0-5 WP-3 left it.
+                        // See production.def for why the bench bill that WOULD convert it (E1's
+                        // `recycle_swarf`) cannot ship yet: CraftingSystem runs ORDINAL 0 only, and
+                        // all three benches already have a bill.
     }
 
     // ⚠ EVERY MASK OVER THIS ENUM MUST BE DERIVED FROM ITS VALUES, NEVER FROM ITS MEMBER COUNT.

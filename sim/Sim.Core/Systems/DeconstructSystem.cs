@@ -95,6 +95,12 @@ namespace Perilune.Sim
         /// straight into the only demand that survives the economy's terminal cliff.</summary>
         public const ItemKind DeviceSalvage = ItemKind.Parts;
 
+        /// <summary>What a stripped device drops when it is worth NO Parts — a machine too far gone
+        /// to give anything back up the ladder (wreck start, owner decision 3). See
+        /// <see cref="WreckYield"/> for the boundary and <see cref="ItemKind.Swarf"/> for why this
+        /// currency is terminal.</summary>
+        public const ItemKind WreckSalvage = ItemKind.Swarf;
+
         // Canonical packed-position-sorted pending list. Never iterated for lookups (a small
         // linear scan by position is fine at v0 densities and stays alloc-free).
         private readonly List<PendingDeconstruct> _pending = new List<PendingDeconstruct>(32);
@@ -297,6 +303,31 @@ namespace Perilune.Sim
             return units < 0 ? 0 : units;
         }
 
+        /// <summary>
+        /// <see cref="ItemKind.Swarf"/> units a stripped device returns INSTEAD of Parts, when
+        /// <see cref="DeviceYield"/> came out 0 (wreck start, owner decision 3).
+        /// <c>deconstruct.device_swarf</c> = 1 at shipped values, and deliberately
+        /// CONDITION-INDEPENDENT: a machine at 8 % and one at 34 % are both shot.
+        ///
+        /// <para><b>THE BOUNDARY IS NOT A NUMBER IN THIS FILE.</b> "Worth no Parts" is asked of
+        /// <see cref="DeviceYield"/> itself at the one call site, so the split tracks
+        /// <c>deconstruct.device_parts</c> for free — at the shipped 2 the cliff falls at Condition
+        /// 0.5, and retuning device_parts moves it without anyone remembering to. A literal 0.5 here
+        /// would decouple the two silently the first time either moved.</para>
+        ///
+        /// <para><b>WHAT DID NOT CHANGE, AND IT IS THE HALF THAT MATTERS.</b>
+        /// <see cref="DeviceYield"/> is untouched — byte-identical Parts at every Condition — so a
+        /// machine in good repair still strips for exactly what it always did, the lossy round trip
+        /// against <c>build.device_place_cost</c> is untouched, and letting a machine ROT still
+        /// costs you. What changed is only that the far side of the cliff pays a currency that
+        /// cannot climb back up it.</para>
+        /// </summary>
+        public static int WreckYield(SimDefs defs)
+        {
+            int units = defs.Deconstruct.DeviceSwarf;
+            return units < 0 ? 0 : units;
+        }
+
         // ---------------------------------------------------------------- public API
 
         /// <summary>
@@ -457,10 +488,21 @@ namespace Perilune.Sim
                     // the id, not the tile, is the identity.
                     if (!TryGetLiveDevice(sim, site, out var device)) return true;
 
+                    // THE YIELD SPLIT (wreck start, owner decision 3). Ask for the Parts yield
+                    // first, unchanged; only when it comes out ZERO — a machine too far gone to give
+                    // anything back up the ladder — does the strip pay in Swarf instead. The
+                    // boundary is therefore DeviceYield's own arithmetic and not a second copy of
+                    // it, so the two can never disagree about where the cliff is.
                     int deviceYield = DeviceYield(sim.Defs, device);
+                    var yieldKind = DeviceSalvage;
+                    if (deviceYield == 0)
+                    {
+                        yieldKind = WreckSalvage;
+                        deviceYield = WreckYield(sim.Defs);
+                    }
                     byte deviceKind = (byte)device.Kind;
                     sim.RemoveDevice(site.TargetId); // grid + HasDevice + rooms + power + topology
-                    if (deviceYield > 0) sim.AddItem(DeviceSalvage, deviceYield, pos);
+                    if (deviceYield > 0) sim.AddItem(yieldKind, deviceYield, pos);
                     // A genuine TILE change: RemoveDevice cleared TileFlags.HasDevice, which is
                     // what BuildSystem.CanDesignate and PlaceDeviceCommand read to decide the tile
                     // is occupied. (It does NOT change walkability today — no shipped machine sets
@@ -474,6 +516,7 @@ namespace Perilune.Sim
                         Device = deviceKind,
                         WorkerId = workerId,
                         Yield = deviceYield,
+                        YieldKind = (byte)yieldKind,
                     });
                     sim.JobsDirty |= JobBoardDirty.Tiles;
                     return true;
@@ -497,6 +540,7 @@ namespace Perilune.Sim
                     Device = 0,          // not a device (Door is 0 and is never stripped)
                     WorkerId = workerId,
                     Yield = yield,
+                    YieldKind = (byte)WallSalvage,
                 });
                 sim.JobsDirty |= JobBoardDirty.Tiles;       // the tile board must re-derive
                 return true;

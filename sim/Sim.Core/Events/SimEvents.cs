@@ -125,5 +125,14 @@ namespace Perilune.Sim
         public byte Device;      // DeviceKind as byte; 0 when Kind == Wall (Door is never stripped)
         public uint WorkerId;
         public int Yield;        // units actually dropped (0 when a worn machine is worth nothing)
+        /// <summary>The <see cref="ItemKind"/> those units were, as a byte (wreck start, owner
+        /// decision 3). A device strip pays Parts above the Parts cliff and
+        /// <see cref="ItemKind.Swarf"/> below it, so <see cref="Yield"/> alone can no longer tell
+        /// the Chronicle what was recovered. Walls carry <see cref="ItemKind.Regolith"/>.
+        ///
+        /// This bus is TRANSIENT: events are neither saved nor folded into
+        /// <c>Simulation.StateHash</c> (HistorySystem folds kind and tick, never text), so the field
+        /// and the Chronicle line it feeds are pin-neutral.</summary>
+        public byte YieldKind;
     }
 }

@@ -813,11 +813,15 @@ namespace Perilune.Tests
             Assert.That((int)ItemKind.Seals, Is.EqualTo(7),
                 "slot 7 was RESERVED for E0-6's Seals and the wave merge is what filled it");
             Assert.That(Enum.IsDefined(typeof(ItemKind), (byte)7), Is.True,
-                "the hole is CLOSED — 0..8 contiguous. While it was open, three of the four " +
+                "the hole is CLOSED — 0..9 contiguous. While it was open, three of the four " +
                 "accept-all masks were count-derived and would have refused Ice; see " +
                 "StockZoneSystemTests.AcceptAllMask_IsTheOrOfDeclaredItemKindValues_InEveryHostSpelling");
-            Assert.That(Enum.IsDefined(typeof(ItemKind), (byte)9), Is.False,
-                "...and 9 is the next free slot — nothing was appended past Ice");
+            Assert.That((int)ItemKind.Swarf, Is.EqualTo(9),
+                "...and 9 went to the wreck start's Swarf, APPENDED past Ice. This line asserted " +
+                "`IsDefined(9) is False` until then, which was never the property worth pinning — " +
+                "the property is that Ice took 8 and nothing RENUMBERED it.");
+            Assert.That(Enum.IsDefined(typeof(ItemKind), (byte)10), Is.False,
+                "10 is the next free slot");
             Assert.That((int)DeviceKind.IceMelter, Is.EqualTo(26),
                 "the melter appends at the END of DeviceKind; nothing is renumbered");
             Assert.That(Glyphs.ForItem(ItemKind.Ice), Is.EqualTo('i'));

@@ -2020,6 +2020,7 @@ namespace Perilune.Web
             ItemKind.ControllerModule => "a controller module",
             ItemKind.Seals => "seals",
             ItemKind.Ice => "ice",
+            ItemKind.Swarf => "swarf",   // wreck start: what a machine too far gone for parts leaves
             _ => "cargo",
         };
 
