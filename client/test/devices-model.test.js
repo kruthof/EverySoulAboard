@@ -245,6 +245,15 @@ test('the Room Zoom derives the wear layer once per repaint, from the channel', 
 // This is a pin on a DECISION, not a permanent law: the lane that draws the art re-measures this
 // census in the same commit as it adds the layer, and that re-measure is then a visible line in a
 // diff instead of a silent scope change.
+//
+// ⚠️ ITS ONE KNOWN HOLE, DISCLOSED RATHER THAN LEFT TO BE FOUND: a census is a COUNT, so a change
+// that REMOVES one reference and ADDS one in the same commit aliases back to the pinned numbers.
+// This is not hypothetical — it was observed while mutating: with `deviceConditionAt`'s body replaced
+// by `return null` (one `_deviceCond` gone) a planted `body += wearLayerSvg(_deviceCond, _focus)`
+// restores the census exactly, and the seven controls below then correctly report that they cannot
+// see it. The removal half is covered by the DRIVEN seam tests at the bottom of this file, which is
+// the whole reason both guards exist rather than either alone. A count cannot be made
+// alias-proof; a count PLUS a behavioural test of the thing being counted can.
 const WEAR_SEAM_CENSUS = Object.freeze({
   // the `let` declaration, the repaint assignment, and the accessor's own `.get`
   _deviceCond: 3,
