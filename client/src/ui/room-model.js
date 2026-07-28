@@ -876,8 +876,31 @@ export function itemStackTileKeys(tiles) {
 // layer, and the doors drew a dashed chip for it. It deliberately does NOT equal `NON_FURNITURE`:
 // `'+'` (43) and `'X'` (88) are structure the player cannot DEMOLISH *and* furniture the surfaces
 // must DRAW, and both facts are true at once. Keeping them here is what stops a door classifying as
-// a `device` now that its glyph resolves to real art — a door is taken apart with STRIP, not with
-// `Cmd.remove`, and that precedence is pinned in `room-model.test.js`.
+// a `device` now that its glyph resolves to real art, and that precedence is pinned in
+// `room-model.test.js`.
+//
+// ⚠️ THE REASON THIS COMMENT GAVE FOR THAT WAS FALSE, and it is quoted rather than deleted because
+// the package that wrote it exists to retract exactly this species of claim. It read: *"a door is
+// taken apart with STRIP, not with `Cmd.remove`"*. **STRIP EXPLICITLY REFUSES DOORS.**
+// `sim/Sim.Core/Systems/DeconstructSystem.cs:345` is `return device.Kind != DeviceKind.Door;`, and
+// the doc comment above it (`:320`) says why: *"a door is `BuildSystem`'s OUTPUT, so its inverse is
+// build-cancel, not strip. Two owners for one object's lifetime is the bug."* Driven against a live
+// host, a closed door answers `"cannot strip door"` where a wall and a Scrubber both answer
+// `"designate strip"`.
+//
+// THE DECISION IS UNCHANGED AND IS BETTER SUPPORTED THAN IT WAS ARGUED. Keeping the door codes here
+// is right because `Cmd.remove` lowers to `RemoveDeviceCommand`, which gates on
+// `PlaceDeviceCommand.IsPlaceableFurniture` (`Commands.cs:566`, switch at `:342-357`) — a nine-kind
+// decor whitelist that excludes `Door` INDEPENDENTLY of anything the client believes. So a
+// `Cmd.remove` at a door would be a **silent sim no-op**: a click that costs a round trip, changes
+// nothing, and tells the player nothing. This set is what keeps the client from sending it.
+//
+// ⚠️ AND THE HONEST CONSEQUENCE, RECORDED RATHER THAN HIDDEN: **a BUILT door has no removal verb at
+// all, on any surface.** DEMOLISH refuses it (here), STRIP refuses it (`DeconstructSystem.cs:345`),
+// and build-cancel only revokes a *pending* order — once `BuildSystem.Complete` has spawned the
+// device there is nothing left to cancel. A player can build a door with the DOOR tool and then
+// never remove it. That is a real gap in the sim's verb set, not a client bug, and it is not this
+// package's to close; the client's job is to stop lying about which verb would do it.
 //
 // Exported as a list for the same reason `NON_FURNITURE_CODES` is: so a test can pin the partition
 // against the SHIPPED set instead of a transcription of it. Nothing outside this module reads it.

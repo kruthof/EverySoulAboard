@@ -371,9 +371,12 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
   // ⚠️ ONE EXCEPTION, AND IT IS NOT A WEAKENING: a glyph in `STRUCTURE_CODE_LIST` classifies
   // `built-wall` BEFORE the device branch is reached, on purpose. The door package added
   // `'X'` (DoorLocked → blast-door), and a door is exactly the thing that is a device wearing art
-  // AND built structure DEMOLISH must not take apart — STRIP does that. The exception is read out of
-  // the SHIPPED set rather than written down here, so widening `STRUCTURE_CODES` cannot silently
-  // excuse a new glyph from this loop.
+  // AND built structure DEMOLISH must not send `Cmd.remove` at — because that lowers to
+  // `RemoveDeviceCommand`, which gates on `IsPlaceableFurniture` (`Commands.cs:566`) and excludes
+  // `Door`, so the click would be a silent sim no-op. (An earlier draft of this comment said "STRIP
+  // does that". It does NOT: `DeconstructSystem.cs:345` refuses doors outright. See the retraction
+  // in `room-model.js` beside `STRUCTURE_CODE_LIST`.) The exception is read out of the SHIPPED set
+  // rather than written down here, so widening `STRUCTURE_CODES` cannot silently excuse a glyph.
   const STRUCTURE = new Set(STRUCTURE_CODE_LIST.map((c) => String.fromCharCode(c)));
   const subs = Object.keys(GLYPH_SUBSTITUTE);
   assert.ok(subs.length >= 6, `GLYPH_SUBSTITUTE parsed as ${subs.length} entries — the loop below is vacuous`);
@@ -383,8 +386,9 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
     if (STRUCTURE.has(g)) {
       assert.deepEqual(got, { kind: 'built-wall', verb: null },
         `the substituted STRUCTURE glyph '${g}' classified as ${got.kind}. A door is furniture the `
-        + 'surfaces draw and structure DEMOLISH cannot remove; losing the second half sends '
-        + 'Cmd.remove at a tile the sim expects STRIP to take.');
+        + 'surfaces draw and structure DEMOLISH must not send Cmd.remove at; losing the second half '
+        + 'sends a command RemoveDeviceCommand drops in silence (IsPlaceableFurniture, '
+        + 'Commands.cs:566, excludes Door).');
       continue;
     }
     checkedDevices += 1;
@@ -413,7 +417,11 @@ test('demolishTarget: a device wearing BORROWED art is still a device (the Light
 // and the title's "no third thing" is kept because the test still does that job: the third thing is
 // now named and pinned rather than assumed away. `'+'` and `'X'` resolve to real door art AND are in
 // `STRUCTURE_CODE_LIST`, which `demolishTarget` consults before its device branch, so they classify
-// `built-wall`. That is deliberate: a door is taken apart with STRIP, never with `Cmd.remove`.
+// `built-wall`. That is deliberate: `Cmd.remove` lowers to `RemoveDeviceCommand`, which gates on
+// `IsPlaceableFurniture` (`Commands.cs:566`) and excludes `Door`, so sending it would be a silent
+// sim no-op. (An earlier draft said "a door is taken apart with STRIP" — it is NOT;
+// `DeconstructSystem.cs:345` refuses doors. See the retraction beside `STRUCTURE_CODE_LIST`, and
+// the "DOOR-NO-REMOVAL" open defect recorded at `roomzoom-view.js`'s `built-wall` arm.)
 test('every glyph the table resolves is a device, a pile or built structure — nothing else', () => {
   const STRUCTURE = new Set(STRUCTURE_CODE_LIST.map((c) => String.fromCharCode(c)));
   const subs = new Set(Object.values(GLYPH_SUBSTITUTE));
@@ -2644,6 +2652,15 @@ test('THE RETRACTION: every door tile on the captured grid ship is INSIDE a room
   }
   // …and the closed ones are real, not hypothetical: the state the projection picks is
   // `GlyphMapper.DeviceGlyph`, which returns '+' whenever the door is shut.
+  //
+  // ⚠️ "INSIDE A ROOM RECT" IS NOT "IN A ROOM THE PLAYER CAN ENTER", and the two must not be
+  // conflated when this number is quoted. `deckSlots` yields every slot on the deck INCLUDING
+  // unoccupied halls, whose `anchorName` is blank — and `roomTileRect` refuses a blank anchor, so
+  // the Room Zoom cannot be opened on one. All three CLOSED doors below sit in blank-anchor slots,
+  // so at boot the number of closed doors in an ENTERABLE room is **zero**; the enterable case is
+  // reached by a player gesture (shutting a door, or building one — `BuildSystem.cs:226`). What the
+  // census refutes is the allowlist's geometric premise — "doors sit on room boundaries, which are
+  // outside every room rect" — and that premise is false for all 16 doors on both decks.
   const closed = doorCensus(wreck).filter((d) => d[2] === '+');
   assert.equal(closed.length, 3,
     'deck 1 of the capture no longer carries exactly three CLOSED door tiles. It carried three when '
@@ -2828,7 +2845,8 @@ test('a door is still BUILT STRUCTURE for DEMOLISH — the art did not make it C
     assert.deepEqual(at(ch), { kind: 'built-wall', verb: null },
       `DEMOLISH on a ${JSON.stringify(ch)} door no longer classifies as built structure. Giving the `
       + 'door glyphs art made `itemForGlyph` truthy for them, and `STRUCTURE_CODES` is the only '
-      + 'thing standing between that and a `Cmd.remove` at a door the sim expects STRIP to take.');
+      + 'thing standing between that and a `Cmd.remove` at a door — which `RemoveDeviceCommand` '
+      + 'would silently drop (`IsPlaceableFurniture`, Commands.cs:566, excludes Door).');
   }
 });
 
@@ -2959,9 +2977,29 @@ test('DEMOLISH on a ground PILE sends nothing — the art did not make spoil rem
 // A DOOR is the case the door package created and it belongs in this section rather than only in the
 // classifier tests, because what a reviewer needs to know is what LEAVES THE CLIENT. A door now
 // resolves to real art, so the only thing keeping it out of the `device` arm is `STRUCTURE_CODES` —
-// and if that ever slips the player gets a `Cmd.remove` at a tile the sim expects STRIP to take.
+// and if that ever slips the player gets a `Cmd.remove` at a door, which `RemoveDeviceCommand`
+// silently drops (`IsPlaceableFurniture`, `Commands.cs:566`, excludes `Door`).
+//
+// ⚠️ OPEN DEFECT, DELIBERATELY NOT ASSERTED HERE — "DOOR-NO-REMOVAL". This test used to end
+// `assert.match(toast, /STRIP/)` with the message *"the player must be told which verb DOES take a
+// door apart"*, which **named a verb that refuses doors**: `DeconstructSystem.cs:345` is
+// `return device.Kind != DeviceKind.Door;`, and driving a live host, a closed door answers
+// `"cannot strip door"`. So the shipped toast — `CANNOT DEMOLISH BUILT STRUCTURE … USE ⚒ STRIP [V]`
+// (`roomzoom-view.js`, the `built-wall` arm) — MISDIRECTS on a door, and asserting it would have
+// PINNED the misdirection into the gate.
+//
+// The toast is therefore left unasserted for doors. It is NOT left unrecorded:
+//   • A BUILT DOOR HAS NO REMOVAL VERB AT ALL, on any surface. DEMOLISH refuses it, STRIP refuses
+//     it, and build-cancel only revokes a *pending* order — after `BuildSystem.Complete` spawns the
+//     device there is nothing to cancel. The DOOR tool is on this palette, so a player can build a
+//     door and then never remove it. That is a gap in the SIM's verb set.
+//   • The toast's copy cannot honestly be fixed without deciding what to put there, and the honest
+//     text ("this door cannot be removed") advertises the gap above. That is an owner call.
+// ⚠️ THE PRE-EXISTING `/STRIP/` ASSERTION ON A **WALL** (test 'WP-4: the built-wall dead end now
+// points at STRIP') IS CORRECT AND MUST STAY — STRIP really does take a wall apart. The bug is the
+// one message serving two tile kinds, only one of which the named verb accepts.
 // MUTATION: delete 43 from STRUCTURE_CODE_LIST in room-model.js ⇒ RED.
-test('DEMOLISH on a CLOSED DOOR sends nothing and names STRIP — art did not make it removable', () => {
+test('DEMOLISH on a CLOSED DOOR sends NOTHING — art did not make it removable', () => {
   const f = slotFocus('hold');
   const tile = { x: f.rx + 5, y: f.ry + 3 };
   const cells = wreck.cells.slice();
@@ -2973,17 +3011,13 @@ test('DEMOLISH on a CLOSED DOOR sends nothing and names STRIP — art did not ma
     rzEnter('hold');
     rzArm('demolish');
     rzSent.length = 0;
-    rzDoc.getElementById('rz-toast').textContent = '';
     rzFire(rzCanvas, 'click', { button: 0, ...atTileIn(f, tile.x, tile.y) });
     const orders = sentOrders();
-    const toast = rzDoc.getElementById('rz-toast').textContent;
     rzArm('demolish');
     assert.deepEqual(orders, [],
       'DEMOLISH on a DOOR sent ' + JSON.stringify(orders) + '. Giving the door glyphs art made '
       + '`itemForGlyph` truthy for them; STRUCTURE_CODES is the only thing that keeps them out of '
-      + 'the device arm.');
-    assert.match(toast, /STRIP/,
-      'and the player must be told which verb DOES take a door apart, or the tool reads as broken');
+      + 'the device arm, and RemoveDeviceCommand would drop the command in silence anyway.');
   } finally {
     Hud.renderFrame(wreck);
     rzEnter('hold');

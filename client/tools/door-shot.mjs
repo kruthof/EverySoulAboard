@@ -32,6 +32,19 @@
 // Exits non-zero if the host will not answer, if no in-rect door tile can be found, if the door
 // will not shut, or if Chrome never paints — a green run with no pictures is the failure this tool
 // exists to prevent.
+//
+// ⚠️ A FAILURE AFTER THE CHROME SPAWN LEAKS. `die()` calls `process.exit` without killing the
+// browser, so exit codes 6/7 (and the `probe` paths below) leave a HEADLESS CHROME running, CDP port
+// 9345 bound and the `mkdtemp` profile dir behind; a re-run then fails to bind the port and looks
+// like a Chrome problem. Only the success path and the pre-spawn exits (2/3/5) are clean.
+// `marks-shot.mjs` has the identical shape, so this is the committed convention rather than a defect
+// this tool introduced — RECORDED, not re-engineered. If you hit it: `pkill -f "remote-debugging-
+// port=9345"` and re-run. Whoever fixes it should fix both tools in one package and give them a
+// shared teardown.
+//
+// ⚠️ THE PICTURES ARE THE DELIVERABLE, so they are committed rather than left in a scratchpad —
+// `docs/design/shots/door-*.png`, written by this tool. The owner is the one who judges the art, and
+// a path in the tree is the only thing that can be handed over.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';

@@ -836,10 +836,18 @@ test('the derived table is a function of ITEMS — not of a hand mirror', () => 
   for (const [id, g] of CLAIMED_GLYPHS) {
     assert.equal(GLYPH_TO_ITEM[g], id, `ITEMS["${id}"].glyph is ${JSON.stringify(g)} but the table says ${GLYPH_TO_ITEM[g]}`);
   }
-  // BOTH halves, and the sum is the pin: 18 device rows + 8 resource rows + 6 substitutes = 32.
-  // Written as a sum of the three sources rather than as 32 so that it stays a statement about the
-  // DERIVATION — a literal would still hold if the resource half stopped being read and six other
+  // BOTH halves, and the sum is the pin: 19 device rows + 8 resource rows + 7 substitutes = 34.
+  // Written as a sum of the three sources rather than as 34 so that it stays a statement about the
+  // DERIVATION — a literal would still hold if the resource half stopped being read and seven other
   // glyphs appeared from somewhere.
+  //
+  // ⚠️ THIS SENTENCE IS PROSE ABOUT A PIN AND MUST BE RE-COUNTED, NEVER EDITED BY ARITHMETIC —
+  // exactly as `glyph-map.js`'s header says of its own ledger counts, and the door package proved
+  // the warning is not theoretical TWICE in one file. It read "18 + 8 + 6 = 32" before the door
+  // package. Adjusting it by arithmetic from the one change you remember (substitutes 6 → 7) gives
+  // "18 + 8 + 7 = 33" and is WRONG: `sliding-door` claiming `'+'` moved the DEVICE-ROW count too,
+  // 18 → 19. The real numbers were measured off the shipped registry (19 / 8 / 7 / 34); the
+  // assertion below is a sum, so it stayed green through both wrong versions of this comment.
   assert.equal(Object.keys(GLYPH_TO_ITEM).length,
     CLAIMED_GLYPHS.length + Object.keys(GLYPH_SUBSTITUTE).length);
   assert.ok(RESOURCE_GLYPHS.every(([, g]) => GLYPH_TO_ITEM[g]),

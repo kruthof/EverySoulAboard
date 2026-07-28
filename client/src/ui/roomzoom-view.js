@@ -880,6 +880,27 @@ function doDemolish(tile, deck) {
       // WP-4 made this dead end reachable: DEMOLISH still only revokes a QUEUED order, but STRIP now
       // exists on this palette and is the verb that takes a built wall apart, so the message names it
       // instead of leaving the player at a wall with no next move.
+      //
+      // ⚠️ OPEN DEFECT "DOOR-NO-REMOVAL" (found in review of the door package, 2026-07-27, and left
+      // UNFIXED deliberately). `built-wall` is reached by walls AND by all three door glyphs, and
+      // this one message is honest for only the first. **STRIP EXPLICITLY REFUSES DOORS** —
+      // `sim/Sim.Core/Systems/DeconstructSystem.cs:345` is `return device.Kind != DeviceKind.Door;`,
+      // and a live host answers `"cannot strip door"` where a wall answers `"designate strip"`. So a
+      // player who clicks DEMOLISH on a door is sent to a verb that will refuse it.
+      //
+      // WHY IT IS NOT FIXED HERE. Behind the wrong signpost is a real gap in the SIM's verb set: a
+      // BUILT door has NO removal verb at all. DEMOLISH refuses it (`STRUCTURE_CODES`), STRIP
+      // refuses it (above), `Cmd.remove` would be dropped by `RemoveDeviceCommand`'s
+      // `IsPlaceableFurniture` gate (`Commands.cs:566`), and build-cancel only revokes a PENDING
+      // order — after `BuildSystem.Complete` spawns the device there is nothing left to cancel. The
+      // DOOR tool is on this palette, so a player can build a door and never remove it. The honest
+      // copy ("this door cannot be removed") therefore advertises that gap, which is an owner call
+      // and a sim change, not a string edit. Recorded here so the next reader of this line does not
+      // have to rediscover why it says STRIP.
+      //
+      // The wall case IS pinned (`room-model.test.js`, 'WP-4: the built-wall dead end now points at
+      // STRIP'). The door case is deliberately NOT pinned — asserting this text on a door would put
+      // the misdirection in the gate.
       toast('CANNOT DEMOLISH BUILT STRUCTURE — CANCEL ONLY REVOKES QUEUED ORDERS · USE ⚒ STRIP [V]');
       break;
     default: break; // empty → dropped no-op (IX-Z-24)
