@@ -89,10 +89,24 @@ export function noteFor(msg, id) {
 }
 
 /**
- * The four rows the LEDGER island paints, in fixed presentation order (a host-shaped decision, not a
+ * THE ROW IDS THIS ISLAND PAINTS, in fixed presentation order — exported so the surface can size its
+ * fixed slot list off the model instead of restating a count.
+ *
+ * ⚠️ IT EXISTS BECAUSE THE SURFACE SILENTLY TRUNCATES. `overview-view.js` builds N fixed row slots
+ * and paints `rows[i]` for `i < slots.length`; a row appended here beyond that count would simply
+ * never be drawn, with every model test still green — the model would be right and the player would
+ * see nothing, which is this repo's most expensive recurring failure. E0-9 added the FOOD row and
+ * would have hit exactly that.
+ */
+export const LEDGER_ROW_IDS = Object.freeze([
+  'matter', 'parts_per_day', 'days_of_water', 'days_of_food', 'o2_trend',
+]);
+
+/**
+ * The rows the LEDGER island paints, in fixed presentation order (a host-shaped decision, not a
  * client sort — the same rule as the MOSS ledger's eight rows and the relations ring).
  *
- * `null` message ⇒ `[]`, so the island renders its own empty state rather than four rows of zero.
+ * `null` message ⇒ `[]`, so the island renders its own empty state rather than rows of zero.
  * Every row is `{ id, label, value, sub, level, note }`; `note` is the host's derivation text and
  * belongs in the row's `title`, because a limit that does not travel with its number gets read off.
  */
@@ -128,6 +142,25 @@ export function ledgerRows(msg) {
       note: noteFor(msg, 'days_of_water'),
     },
     {
+      // ⚠️ E0-9 — THE FOOD ROW, AND IT DELIBERATELY CANNOT ALARM. `level` is '' in every state.
+      //
+      // Every other runway on this island is MEASURED across two censuses, so a falling number means
+      // the ship is actually losing the stock. DAYS OF FOOD is MODELLED — one census over the
+      // consumption the defs imply — and it cannot see the growbeds, which on `--ship grid`
+      // out-produce the crew from the first minute. The standard ship boots with 8 potatoes and 8
+      // crew, i.e. well under one day, and is in no danger whatever: an island that opened the game
+      // with a red FOOD alarm would be crying wolf on the one ship a new player is watching. The
+      // number is worth showing; the alarm would be a lie. The host's note says the same thing.
+      id: 'days_of_food',
+      label: 'FOOD',
+      // Stock in the value slot and the derived runway in the sub — the WATER row's shape exactly,
+      // so the two read as siblings.
+      value: (num(msg.foodUnits) || 0) + ' u',
+      sub: foodDaysText(msg),
+      level: '',
+      note: noteFor(msg, 'days_of_food'),
+    },
+    {
       // ⚠️ LABELLED O2 TREND, NOT "AIR", and the row's value is CREW-DAYS, not a mole count.
       // Both are the same correction. A row called AIR states that there is air aboard to run out
       // of, and this sim has NO air reserve at all — a powered vent injects gas from nothing. And
@@ -146,7 +179,34 @@ export function ledgerRows(msg) {
 }
 
 /**
+ * DAYS OF FOOD — sim-days the CURRENT living crew can be fed, straight from the host.
+ *
+ * ⚠️ THREE THINGS THIS FUNCTION MUST NOT DO, each of which was the obvious first draft.
+ *  1. It must NOT gate on `window`. Unlike every other runway on this island the host models this
+ *     one from a single census, so it is right on the very first payload — rendering MEASURING for
+ *     the first ten sim-minutes would withhold a number that is already true.
+ *  2. It must NOT render a negative as STEADY. `daysOfFood < 0` means NO DENOMINATOR (nobody alive
+ *     to eat), which is the opposite of the healthy answer `runwayText` gives that sign.
+ *  3. It must NOT divide anything. The host ships the quotient precisely so the O2 row's
+ *     divide-in-two-languages arrangement is not repeated here.
+ * '–' for the no-denominator case: an empty ship has no food runway, and both 0 and ∞ would be
+ * statements the data does not support.
+ */
+export function foodDaysText(msg) {
+  const d = num(msg && msg.daysOfFood);
+  if (d === null || d < 0) return '–';
+  return d.toFixed(1) + ' d';
+}
+
+/**
  * The standing oxygen expressed in CREW-DAYS — stock ÷ what the living crew breathe in a sim-day.
+ *
+ * ⚠️ THE UNIT ON THIS ROW IS LOOSE, filed by E0-9's review and deliberately NOT changed by it. A
+ * "crew-day" normally means one person for one day, and this denominator is the WHOLE living crew's
+ * daily draw — so the number is days at the CURRENT complement, and 18,885 mol reading "89.8 crew-d"
+ * is really 89.8 days for these eight people (718 crew-days). E0-9's FOOD row is labelled plain `d`
+ * for exactly that reason and the two rows now differ. Fixing it means relabelling a shipped row, so
+ * it belongs to whoever owns this island next, not to a food package.
  * '–' when the host sent no denominator or nobody is alive to breathe it: an empty ship has no
  * crew-days, and rendering ∞ or 0 would both be statements the data does not support.
  */

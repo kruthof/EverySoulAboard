@@ -20,6 +20,7 @@ import {
 // ACCEPT_ALL + stockFilterLabel are used ONLY to prove this surface names NO accept-set any more:
 // `defaultStockFilter` went with the seam (see `room-model.test.js`, which now imports it).
 import { ACCEPT_ALL, stockFilterLabel } from '../src/ui/stock-filter-model.js';
+import { LEDGER_ROW_IDS } from '../src/ui/ledger-model.js';
 import { codeOnly, callBlocks } from './code-only.js';
 import { DocumentLite as DomDocument, Element as DomEl, fire } from './dom-lite.js';
 
@@ -1222,9 +1223,30 @@ test('the LEDGER island paints the ship\'s matter census on the Level-1 Overview
   assert.equal(caveat.textContent, 'NO AIR RESERVE ABOARD');
   assert.equal(caveat.hidden, false);
 
-  // …and the empty state is the honest alternative, not four rows of zero.
+  // …and the empty state is the honest alternative, not rows of zero.
   Hud.renderLedger(null);
   assert.equal(ovRoot.querySelector('.ov-ledempty').hidden, false,
     'with no ledger on the wire the island says so instead of painting zeroes');
   assert.equal(ovRoot.querySelectorAll('.ov-ledger .ov-ledrow')[0].hidden, true);
+});
+
+// ⚠️ THE SLOT COUNT, DRIVEN — and it needed a DIFFERENT read of the stub than the test above.
+// `querySelectorAll` memoises ONE stand-in per selector, so it can never tell four row slots from
+// five; `innerHTML` is stored as a STRING, and that string is what the controller actually built at
+// init. This is the only observation in this harness that can see the count at all.
+//
+// It matters because `paintLedger` walks the SLOTS and reads `rows[i]`: a model row beyond the slot
+// count is silently dropped, the model tests stay green, and the player sees nothing. E0-9's FOOD
+// row is the fifth and would have been the first casualty of the hard-coded 4 that used to be here.
+//
+// MUTATION (applied, RED, reverted): `for (let i = 0; i < LEDGER_ROW_IDS.length; i++)` → `i < 4`
+// in `overview-view.js` ⇒ RED here and nowhere else in the suite.
+test('the LEDGER island builds one row slot per MODEL row, not a hard-coded count', () => {
+  const slots = (document.getElementById('ov-ledger').innerHTML.match(/ov-ledrow/g) || []).length;
+  assert.equal(slots, LEDGER_ROW_IDS.length,
+    `the island built ${slots} row slots for ${LEDGER_ROW_IDS.length} model rows. Rows past the ` +
+    'slot count are never painted — a green model and an invisible number.');
+  assert.equal(LEDGER_ROW_IDS.length, 5,
+    'EQUALITY, not a floor: a sixth row must be a deliberate edit here, because it is also a ' +
+    'decision about how tall this island may grow over the LENS card beneath it');
 });

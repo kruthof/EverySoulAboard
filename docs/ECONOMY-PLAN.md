@@ -116,10 +116,26 @@ the measured four-hour economy into roughly fifteen.
 > pin-neutrality.** The pin move is deferred, not avoided.
 >
 > **⚑ CARRIED TO E0-9 — THE FOOD GAP.** `Food` is the liar this row NAMES, and E0-8 shipped the four
-> members the row asks for, none of which is food. The honest number exists and is computed today by
+> members the row asks for, none of which is food. ~~The honest number exists and is computed today by
 > `hosts/scenario`'s `ledger` verb (potatoes ÷ `sustenance.def potato_hunger_value` ÷ living crew =
-> **crew-days of food**), but **no honest food member reaches the player**. A reader of this row will
+> **crew-days of food**)~~, but **no honest food member reaches the player**. A reader of this row will
 > expect otherwise. It is one member on an existing channel plus one row on an existing island.
+>
+> **⛔ CORRECTED 2026-07-28 BY E0-9, WHICH THIS ROW COMMISSIONED — THE STRUCK DERIVATION IS THE 2×
+> BUG, PUBLISHED IN THE CHARTER.** The number the `ledger` verb computed was **not** honest: dividing
+> only by `potato_hunger_value` assumes the Hunger meter fills once per sim-day, and the shipped
+> `needs.def hunger_per_second` is `1/172,800` — **two** sim-days. One crew member eats
+> `hunger_per_second × 86,400 ÷ potato_hunger_value` units a day, half the struck formula's answer, so
+> every food runway derived from this row **under-reported by exactly 2×**: 211 units on `--ship grid`
+> read 9.5 days where the truth is 19.0. Confirmed twice — from the defs by the implementing lane, and
+> **independently in review** by driving a probe ship (growbeds removed, 400-unit larder, 20 sim-days)
+> to a **measured 1.300 u/crew/day** against the corrected model's 1.3889 (ratio 0.936) and the struck
+> formula's 2.7778 (ratio 0.468); that figure is the reviewer's, not the lane's. The residual
+> ~6.4 % is lump quantisation plus a `NeedsSystem` skip for a citizen standing on a door tile; it
+> makes the shipped row read slightly LOW, never high. The one derivation now lives at
+> `ShipLedger.FoodUnitsPerCrewPerDay` and the harness quotes it. Note also that the struck text calls
+> the result **crew-days**; it is **days at the current complement**, and the shipped row is labelled
+> `d` for that reason.
 
 ### E1 — Entropy bites
 
