@@ -171,11 +171,22 @@ namespace Perilune.Sim
     /// </list>
     ///
     /// <para>⚠️ ONE KNOWN INCONSISTENCY, RECORDED RATHER THAN FIXED: <see cref="ShipLedger.Report"/>
-    /// returns <c>default</c> when the CURRENT sample is invalid, which yields 0 for the two runways
-    /// where this struct documents -1. Unreachable through <see cref="ShipLedgerTracker"/> (which
-    /// always supplies a fresh sample) and harmless on the client (the same <c>window == 0</c> gate
-    /// suppresses every rate either way) — but it is an inconsistency, and it is written down here
-    /// rather than left to be rediscovered.</para>
+    /// returns <c>default</c> when the CURRENT sample is invalid, which yields 0 where -1 is
+    /// documented. Unreachable through <see cref="ShipLedgerTracker"/> (which always supplies a fresh
+    /// sample) and harmless on the client for the two MEASURED runways (the same <c>window == 0</c>
+    /// gate suppresses every rate either way) — but it is an inconsistency, and it is written down
+    /// here rather than left to be rediscovered.</para>
+    ///
+    /// <para><b>⚠️ E0-9 MADE THAT PARAGRAPH WORSE AND IT SAID "the two runways" UNTIL REVIEW CAUGHT
+    /// IT. There are THREE affected quantities now, and the third does not have the others' safety
+    /// net.</b> <see cref="ShipLedgerSample.DaysOfFood"/> rides the SAMPLE and is deliberately NOT
+    /// gated on <c>window</c> — that is the point of it — so on a <c>default</c> report the client
+    /// has nothing suppressing it and would render <c>0.0 d</c>, i.e. "the crew run out of food
+    /// today", off a census that was never taken. Still unreachable through the tracker, so this is a
+    /// LEDGERED HAZARD and not a live bug; a lane that ever calls <see cref="ShipLedger.Report"/>
+    /// directly must not assume the <c>window</c> gate covers food. FOLLOW-UP, deliberately not taken
+    /// tonight: make <c>Report</c> preserve the sample's own sentinels instead of returning
+    /// <c>default</c>.</para>
     /// </summary>
     public readonly struct ShipLedgerReport
     {
@@ -349,13 +360,27 @@ namespace Perilune.Sim
 
         // ---------------------------------------------------------------- food
         //
-        // ⚠️ THE ONE PLACE THAT DECIDES WHAT "FOOD" IS. `ItemKind.Potato` is the only edible kind in
-        // this simulation — `SustenanceSystem` reduces Hunger from nothing else, on either of its two
-        // serve paths — so the ledger names it once, here, and every reader (the wire, the scenario
-        // harness) takes it from this constant instead of restating it. E1's charter adds a cooked
-        // `Meal`; when it lands this becomes a set and there is exactly one edit site.
+        // ⚠️ THE ONE PLACE THAT DECIDES WHAT "FOOD" IS *FOR THE LEDGER*. `ItemKind.Potato` is the
+        // only edible kind in this simulation — `SustenanceSystem` reduces Hunger from nothing else,
+        // on either of its two serve paths — so the ledger names it once, here, and every reader (the
+        // wire, the scenario harness) takes it from this constant instead of restating it.
+        //
+        // ⚠️ AND THAT IS THE WHOLE OF THE CLAIM. An earlier draft of this comment said "E1's charter
+        // adds a cooked `Meal`; when it lands this becomes a set and there is exactly one edit site."
+        // THAT IS FALSE and was corrected in review: the SIM hard-codes the kind in SEVEN places this
+        // constant cannot reach — `SustenanceSystem.cs:172,234,290,335` (four), plus
+        // `ShipMetrics.cs:80`, `ShipGates.cs:348` and `CitizenContext.cs:283`. `FoodKind` collapses
+        // the LEDGER's copies to one; it does not make the sim's notion of food single-sited, and a
+        // future lane that trusts the old sentence will ship a `Meal` nobody can eat.
+        // (The first correction of this comment said EIGHT and listed seven — counted, not eyeballed,
+        // on the second pass. A miscount inside a note about a miscount is worth exactly nothing.)
 
-        /// <summary>The only <see cref="ItemKind"/> that reduces <see cref="Citizen.Hunger"/>.</summary>
+        /// <summary>The only <see cref="ItemKind"/> that reduces <see cref="Citizen.Hunger"/>.
+        /// <para>⚠️ UNPINNED, filed in review and deliberately not built tonight: nothing drives this
+        /// constant against <c>SustenanceSystem</c>'s own four call sites, so a lane that teaches the
+        /// sim a second edible kind and forgets the ledger gets a silently under-counted larder. The
+        /// test to write reads the system's behaviour (feed a hungry crew member each declared kind
+        /// and see which ones move Hunger), not its source text.</para></summary>
         public const ItemKind FoodKind = ItemKind.Potato;
 
         /// <summary>

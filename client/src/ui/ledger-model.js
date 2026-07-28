@@ -200,6 +200,13 @@ export function foodDaysText(msg) {
 
 /**
  * The standing oxygen expressed in CREW-DAYS — stock ÷ what the living crew breathe in a sim-day.
+ *
+ * ⚠️ THE UNIT ON THIS ROW IS LOOSE, filed by E0-9's review and deliberately NOT changed by it. A
+ * "crew-day" normally means one person for one day, and this denominator is the WHOLE living crew's
+ * daily draw — so the number is days at the CURRENT complement, and 18,885 mol reading "89.8 crew-d"
+ * is really 89.8 days for these eight people (718 crew-days). E0-9's FOOD row is labelled plain `d`
+ * for exactly that reason and the two rows now differ. Fixing it means relabelling a shipped row, so
+ * it belongs to whoever owns this island next, not to a food package.
  * '–' when the host sent no denominator or nobody is alive to breathe it: an empty ship has no
  * crew-days, and rendering ∞ or 0 would both be statements the data does not support.
  */

@@ -101,14 +101,32 @@ namespace Perilune.Tests
         /// serving's worth of hunger is sitting in the meters rather than in the larder. The rate is
         /// a long-run average and this test says so.</para>
         ///
+        /// <para><b>⚠️ THIS LEG HAD A HOLE IN IT AND SHIPPED GREEN OVER A 2× ERROR.</b> Recorded here
+        /// as what it was, because the first write-up got it wrong in the direction that stops people
+        /// looking. That draft said a 2× mutation "only just bites, so the harness uses 4×" — filing a
+        /// DEFECT IN THE GUARD as a preference about mutation choice. It was not. With the HALF leg
+        /// asserting a bare <c>FoodUnits &gt; 0</c>, doubling <c>DaysOfFood</c> passed the WHOLE GATE
+        /// — independent review applied <c>86400.0 → 43200.0</c> to
+        /// <see cref="ShipLedger.FoodUnitsPerCrewPerDay"/> on a pristine copy and measured 1104 dotnet
+        /// + 806 node, all green. A 2× error in the one quantity this package exists to correct, and
+        /// the package's own anchor could not see it. The floor below closes it; the reasoning is at
+        /// the assertion.</para>
+        ///
+        /// <para><b>AND THE FLOOR IS PROVEN LOAD-BEARING, by INCLUSION rather than by argument</b> —
+        /// four cells, each run on this fixture: shipped tree GREEN · the 2× mutation alone RED (1/7)
+        /// · <b>the 2× mutation WITH the floor regressed to <c>&gt; 0</c> GREEN</b> · the floor
+        /// regressed alone GREEN. The third cell is the one that matters: it says nothing else in the
+        /// suite can see a 2× over-statement, so this assertion is the whole guard and not a
+        /// belt-and-braces addition. The fourth says the floor has real margin and is not a
+        /// tripwire waiting to fire on correct code.</para>
+        ///
         /// <para>BOTH LEGS PROVEN INDIVIDUALLY, which matters because <c>assert</c> throws and only
         /// the first failing leg ever reports:</para>
-        /// MUTATION A (applied, RED n=1, reverted): quarter <c>crewFoodPerDay</c> in
-        /// <c>ShipLedger.Sample</c> ⇒ the claim is 4× too long and the HALF leg fires on an
-        /// already-empty larder. (⚠️ merely DROPPING the crew multiplier — a 2× claim on this
-        /// two-crew fixture — SURVIVES this leg: half of a 2× claim is exactly the true runway, where
-        /// the larder is empty-but-within-tolerance. A leg proven by a mutation that only just bites
-        /// is a leg proven by luck, so the harness uses 4×.)
+        /// MUTATION A (applied, RED n=1, reverted): <c>86400.0 → 43200.0</c> in
+        /// <c>FoodUnitsPerCrewPerDay</c> — the 2× OVER-statement review found — ⇒ the HALF leg fires
+        /// on an empty larder. This is the mutation the leg exists for.
+        /// MUTATION A′ (applied, RED n=1, reverted): quarter <c>crewFoodPerDay</c> ⇒ the same leg,
+        /// from further away.
         /// MUTATION B (applied, RED n=1, reverted): double <c>crewFoodPerDay</c> ⇒ the claim is half
         /// what it should be, the HALF leg passes untouched, and the FULL leg fires on a larder still
         /// stocked.
@@ -153,12 +171,38 @@ namespace Perilune.Tests
             long claimedTicks = (long)(TicksPerDay * start.DaysOfFood);
             Assert.That(claimedTicks, Is.GreaterThan(1000), "PRECONDITION: a runway long enough to halve");
 
-            // HALF the claimed runway: food must still be aboard, or the claim is too LONG.
+            // HALF the claimed runway: MOST of the larder must remain, or the claim is too LONG.
+            //
+            // ⚠️ THE FLOOR IS PROPORTIONAL, AND `Is.GreaterThan(0)` — WHICH IS WHAT THIS LEG SAID
+            // FIRST — LEFT A 2× OVER-STATEMENT OF `DaysOfFood` PASSING THE ENTIRE GATE. Found in
+            // independent review, not here: the reviewer applied `86400.0 → 43200.0` to
+            // `FoodUnitsPerCrewPerDay` on a pristine copy and ran everything — 1104 dotnet, 806 node,
+            // all green. A 2× error in the exact quantity this package exists to correct.
+            //
+            // WHY A BARE `> 0` CANNOT CATCH IT, and why tightening the tolerance would not have
+            // helped either. Halving the modelled rate doubles the claim, so HALF of the claim is
+            // EXACTLY the true runway — the point at which the larder empties by construction. The
+            // leg then survives on float epsilon rather than on evidence. Every other assertion in
+            // this file is a RATIO (kill half the crew, double the runway; twice as hungry, half the
+            // runway) and a ratio is scale-invariant, so this anchor is the package's only
+            // absolute-scale pin and it was the one with the hole in it.
+            //
+            // THE FLOOR, DERIVED AND THEN MEASURED. Derived: at the fixture's declared tuning the
+            // crew eat 200 u/crew/sim-day and hold 0.1 sim-day of food, so at HALF the correct claim
+            // about half the larder is gone — ~50 %, rising toward 55 % once lump quantisation and
+            // the `NeedsSystem` door-tile skip are counted, both of which push consumption DOWN and
+            // so widen this margin rather than eat it. MEASURED, by raising the floor to 0.99 and
+            // reading the leg's own failure message: **22 of 40 units, 55.0 %** — the top of the
+            // derived range. Under the 2× mutation the larder is at 0 %. A 30 % floor therefore sits
+            // 25 points below the true value and 30 points above the mutant's.
             Advance(sim, claimedTicks / 2);
             var half = ShipLedger.Sample(sim);
-            Assert.That(half.FoodUnits, Is.GreaterThan(0),
-                "at half the claimed runway the larder is already empty, so DAYS OF FOOD OVER-STATES " +
-                "what the crew can eat — the row would be promising food that is not there");
+            int floor = (int)(stock * 0.30);
+            Assert.That(half.FoodUnits, Is.GreaterThan(floor),
+                "at half the claimed runway only " + half.FoodUnits + " of " + stock + " units are " +
+                "left, under the " + floor + "-unit floor. DAYS OF FOOD OVER-STATES what the crew can " +
+                "eat, so the row is promising food that is not there. A 2× over-statement lands here " +
+                "at ZERO and is invisible to a bare `> 0`.");
 
             // The FULL claimed runway: the larder is empty but for the servings still in the meters.
             Advance(sim, claimedTicks - claimedTicks / 2);
