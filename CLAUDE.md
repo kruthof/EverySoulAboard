@@ -27,6 +27,56 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-27) — **GROUND-ITEM ART: the piles have faces, and a lamp stopped being demolishable**
+
+**Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 801 node, twin hashes MATCH `43345ff0c9d62684`,
+all five pins HELD.** Pin-neutrality is **measured, not argued**:
+`git diff -- sim/ hosts/ content/ tests/ ci.sh` is **0 lines** — the whole package is client-side.
+
+**Imported from the owner's claude.ai/design project via the `claude_design` MCP** and diffed
+block-by-block **by label** (not by file order — that is what surfaced the redraws):
+**68 pieces — 8 NEW, 9 CHANGED, 51 byte-identical, 0 removed.** Spec:
+`docs/design/perilune-item-set.dc.html`. The 9 changed are device pieces redrawn on the owner's
+report that *"the current ones were difficult to understand"*, and they are a **separate commit**
+so any one of them reverts alone.
+
+**Shipped:** 8 builders in `client/src/items/resources.js`; a **fourth registry kind `resource`**
+whose kind-byte → art join is **derived from `ITEMS`**, not a fourth transcription of `ItemKind`;
+`NO_GROUND_ITEM_SPRITE` paid down **9 → 1**; and the corpse made visible *at all* by removing `'&'`
+from a `NON_FURNITURE` list now **shared** by both surfaces instead of re-declared in each.
+**`MetalOre` deliberately gets NO art** — zero references anywhere in `sim/` outside the glyph
+table, so it is dead E3 mining vocabulary. **The label plate is DEMOTED, not deleted:** it remains
+the no-art fallback for `MetalOre` and for a kind byte from a newer host.
+
+### ⚠️ THE SIXTH TRAP SHAPE — a predicate over "what a glyph resolves to" is defeated by SUBSTITUTION
+
+**A live, player-visible regression that shipped green and was caught only by independent review.**
+Ground art gave `resource` rows glyphs, so bare truthiness would have called a spoil pile a device.
+The guard asked instead *"is the piece skinning this glyph a `functional` row?"* — and
+**`GLYPH_SUBSTITUTE` exists precisely so a device can wear ANOTHER piece's art.** One of its six
+entries maps `'*'` (`DeviceKind.Light`) onto **`wall-lamp`, a COSMETIC row**. So every Light
+classified as `empty`, `roomzoom-view.js` hit its `default: break`, and **the click was dropped with
+no command, no toast and no pulse.** `RoomOutfitter` puts a Light at the centre of **every room on
+`--ship grid`** and lamps are player-placeable: **you could build a lamp and never remove it.**
+
+⇒ **A substitution means "a device wearing another piece's art", so the BORROWED row's `kind` is not
+a fact about the tile.** Ask what a piece is **NOT** (`_id && !isResourceItem(_id)`), never what it
+is. **`GLYPH_SUBSTITUTE` is not homogeneous in registry `kind`** — 5 `functional`, 1 `cosmetic` —
+and any future predicate over it has the same trap waiting.
+
+⚠️ **THE HAZARD WAS NOT PRE-EXISTING, and the first write-up of it here said otherwise.** On `main`
+bare truthiness was **correct**; this package's own art created the hazard and its first guard
+over-corrected. ⚠️ **THE SUITE WAS 796/796 GREEN BEFORE AND AFTER THE FIX** — nothing pinned either
+behaviour, so the gate could see neither the break nor the repair. Fixing it exposed a further hole
+review had not filed: dropping the `_id &&` half left **800/800 green** and would classify an
+unmapped glyph as a device.
+
+⚠️ **A FALSE RED, hit by the integrator while verifying the fix (`CLAUDE.md` trap 3, live).** The
+first mutation run reported **7 reds** and read like a strong confirmation; it was a
+`ReferenceError` from an import the mutation removed. Re-run with the module left loadable it is a
+clean semantic RED on **3** correctly-named tests. **A false RED does not look like an explosion —
+it looks like a plausible failure count.**
+
 ## Status snapshot (2026-07-27) — **the `items` channel: a ground stack has a COUNT**
 
 **Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 783 node, twin hashes MATCH `43345ff0c9d62684`,
@@ -680,7 +730,9 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
   lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
-  `items` channel merge (2026-07-27): 1097 dotnet + 783 node, `./ci.sh` exit 0, all five pins held.**
+  ground-item art merge (2026-07-27): 1097 dotnet + 801 node, `./ci.sh` exit 0, all five pins held**
+  (pin-neutrality measured: `git diff -- sim/ hosts/ content/ tests/ ci.sh` is 0 lines).
+  *(Superseded:* after the `items` channel merge, **1097 dotnet + 783 node**.*)*
   ⚠️ **A STALE COUNT SURVIVED IN THIS FILE FOR A WHOLE RUN, and it is the reason "re-measure" is in
   bold.** The line below read **737 node** and was quoted as current; the `items` lane measured `main`
   itself from a pristine `git archive` copy and found **755**, independently confirmed by review. The

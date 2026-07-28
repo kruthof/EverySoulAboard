@@ -6,7 +6,37 @@ is renamed). Tag `v2-talking-ship`.
 
 ## ⇒⇒ START HERE — the 2026-07-27 orientation. READ THIS BLOCK ONLY; everything below is history.
 
-> ### ⇒ LATEST: the `items` channel LANDED (2026-07-27, after the block below was written)
+> ### ⇒ LATEST: GROUND-ITEM ART LANDED (2026-07-27) — §5 step 1 is DONE
+>
+> **Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 801 node, twin hashes MATCH, all five pins HELD**
+> — pin-neutrality **measured**: `git diff -- sim/ hosts/ content/ tests/ ci.sh` is **0 lines**.
+>
+> Imported from the owner's claude.ai/design project via the `claude_design` MCP; diffed
+> block-by-block **by label**, which is what revealed that **9 existing device pieces had also been
+> redrawn** ("the current ones were difficult to understand"). **68 pieces: 8 new, 9 changed, 51
+> byte-identical.** The redraws are a separate commit and revert independently.
+>
+> **§5 step 1 is discharged.** Eight ground pieces ship; the owner reviewed and approved the art
+> from a rendered gallery. `MetalOre` deliberately has **no** art (dead kind). The label plate is
+> **demoted, not deleted** — still the no-art fallback. **This unblocks the grid-faucet decision
+> (§4 item 1): authoring ice into `--ship grid` would no longer put dashed letter-boxes in a hold.**
+>
+> ⚠️ **The remaining §5 order is UNCHANGED**, and step 2 — the **`MaintenanceSystem` livelock** — is
+> now the largest un-owned piece: a real bug on the game that reads as **91 % busy** and would score
+> **A1 PASS** while completing **0 services**.
+>
+> ⚠️ **A SIXTH TRAP SHAPE is in `CLAUDE.md`**: a predicate over *what a glyph resolves to* is
+> defeated by `GLYPH_SUBSTITUTE`, because a substitution means "a device wearing another piece's
+> art" — the borrowed row's `kind` is not a fact about the tile. It shipped as a **live regression**
+> (DEMOLISH dead on every lamp, click silently dropped) with the suite **green before AND after the
+> fix**. Caught by a review deliberately **scoped to code seams only**, the owner judging the art.
+>
+> ⚠️ **Six of the eight new pieces have NEVER been rendered in the running game** — nothing places
+> Scrap, Parts, ControllerModule, Seals, Ice or Corpse on `--ship grid`. Tests and gallery only.
+> Also **no driven test anywhere** pins that a device DEMOLISH sends `Cmd.remove`
+> (`roomzoom-view.js:875` is unpinned) — a real follow-up.
+>
+> ### ⇒ the `items` channel LANDED (2026-07-27, earlier the same day)
 >
 > **Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 783 node, twin hashes MATCH `43345ff0c9d62684`,
 > all five pins HELD, `sim/` diff EMPTY.** Opus-implemented, independently Opus-reviewed, one
