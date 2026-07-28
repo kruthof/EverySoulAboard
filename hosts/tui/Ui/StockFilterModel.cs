@@ -89,6 +89,7 @@ namespace Perilune.Tui.Ui
             "CTRL MOD",  // ItemKind.ControllerModule  (6)
             "SEALS",     // ItemKind.Seals             (7 — E0-6)
             "ICE",       // ItemKind.Ice               (8 — E0-7)
+            "SWARF",     // ItemKind.Swarf             (9 — wreck start salvage)
         };
 
         /// <summary>Position of <paramref name="kind"/> in <see cref="Kinds"/>, or -1 for a byte the

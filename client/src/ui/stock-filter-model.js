@@ -13,7 +13,7 @@
 // `name` is the exact member name, and the tripwire compares THAT.
 
 /**
- * The nine item kinds, in ItemKind DECLARATION order. `kind` === the sim ItemKind byte. Read every
+ * The ten item kinds, in ItemKind DECLARATION order. `kind` === the sim ItemKind byte. Read every
  * `kind` here as a BIT POSITION, never as an array offset: the two are equal only while ItemKind is
  * contiguous, and it was not while this wave was in flight (E0-7 developed against a tree where slot
  * 7 was reserved for E0-6's `Seals` but absent, and took `Ice = 8`). The merge closed the hole; the
@@ -29,12 +29,14 @@ export const STOCK_KINDS = Object.freeze([
   Object.freeze({ kind: 6, name: 'ControllerModule', label: 'CTRL MOD' }),
   Object.freeze({ kind: 7, name: 'Seals', label: 'SEALS' }),
   Object.freeze({ kind: 8, name: 'Ice', label: 'ICE' }),
+  Object.freeze({ kind: 9, name: 'Swarf', label: 'SWARF' }),
 ]);
 
 /**
  * Every kind accepted — DERIVED from the list's `kind` VALUES, never from its length and never a
- * literal. 511 (0x1FF) today; it was 127 before E0-6 added `Seals` and 255 before E0-7 added `Ice`,
- * which is why it is derived at all. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the
+ * literal. 1023 (0x3FF) today; it was 511 before the wreck start added `Swarf`, 255 before E0-7
+ * added `Ice`, and 127 before E0-6 added `Seals` — one bit per kind, so every step DOUBLES the mask
+ * plus one, which is why it is derived at all. It was `(1 << STOCK_KINDS.length) - 1` until E0-7, which is the
  * same number only while ItemKind is contiguous: with the hole at 7 that E0-7 developed against, the
  * length form gives 0xFF, which sets the bit of a kind that does not exist and CLEARS Ice's —
  * "accept everything" silently refusing the newest kind, on every stockpile. The merge closed the

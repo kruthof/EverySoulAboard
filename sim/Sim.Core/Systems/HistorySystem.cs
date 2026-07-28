@@ -131,18 +131,28 @@ namespace Perilune.Sim
                 Add(tick, StripText(sim, strip), HistoryKind.DeconstructCompleted, strip.WorkerId);
         }
 
-        /// <summary>"Ito stripped the scrubber for parts." / "Ito tore down a wall for salvage."
-        /// A zero yield is stated rather than hidden — stripping a wreck for nothing is exactly
-        /// the kind of decision the Chronicle exists to remember.</summary>
+        /// <summary>"Ito stripped the scrubber for salvage." / "Ito stripped the fabricator for
+        /// swarf." / "Ito stripped the light, and it was worth nothing."
+        ///
+        /// <para>THREE ARMS, NOT TWO, SINCE THE WRECK START. A device below the Parts cliff now pays
+        /// <see cref="ItemKind.Swarf"/> rather than nothing, so a yield of 1 no longer implies the
+        /// machine was worth keeping — the event carries the KIND and this line names it. Reading
+        /// only <c>Yield &gt; 0</c> would report a shredded machine as ordinary salvage, which is the
+        /// one thing the Chronicle is for on a wrecked ship: remembering what you cannibalised.</para>
+        ///
+        /// <para>A zero yield is still stated rather than hidden. It is now reachable only through a
+        /// content retune (<c>deconstruct.device_swarf = 0</c>, or a wall whose recovery floors to
+        /// nothing), not through condition.</para></summary>
         private static string StripText(Simulation sim, DeconstructCompletedEvent e)
         {
             string who = NameOf(sim, e.WorkerId);
             string what = e.Kind == (byte)DeconstructKind.Wall
                 ? "a wall"
                 : "the " + ((DeviceKind)e.Device).ToString().ToLowerInvariant();
-            return e.Yield > 0
-                ? $"{who} stripped {what} for salvage."
-                : $"{who} stripped {what}, and it was worth nothing.";
+            if (e.Yield <= 0) return $"{who} stripped {what}, and it was worth nothing.";
+            return (ItemKind)e.YieldKind == DeconstructSystem.WreckSalvage
+                ? $"{who} stripped {what} for swarf — it was too far gone for parts."
+                : $"{who} stripped {what} for salvage.";
         }
 
         /// <summary>Citizen name if the sim can still resolve the id, else a neutral placeholder.</summary>

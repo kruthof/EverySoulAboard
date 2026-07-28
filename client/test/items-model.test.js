@@ -368,7 +368,10 @@ test('itemIdForStockKind is the DERIVED join, byte → sim name → piece', () =
   // the registry, which is the whole reason a reordered enum cannot silently redraw every pile.
   for (const e of STOCK_KINDS) {
     const id = itemIdForStockKind(e.kind);
-    if (!id) { assert.equal(e.name, 'MetalOre', `${e.name} lost its art`); continue; }
+    // TWO kinds legitimately resolve to nothing: MetalOre (dead E3 vocabulary, deliberately never
+    // drawn) and Swarf (REAL and unskinned — the wreck start created it while the wrecked-art lane
+    // owned client/src/items/). Both are ledgered in device-sprite-coverage.test.js with a reason.
+    if (!id) { assert.ok(e.name === 'MetalOre' || e.name === 'Swarf', `${e.name} lost its art`); continue; }
     assert.equal(ITEMS[id].itemKind, e.name, `kind ${e.kind} resolved to a piece for ${ITEMS[id].itemKind}`);
     assert.equal(ITEMS[id].kind, 'resource', `kind ${e.kind} resolved to a ${ITEMS[id].kind} piece`);
   }

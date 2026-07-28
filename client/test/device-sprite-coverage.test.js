@@ -317,6 +317,31 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // E3 decides what one IS — a redraw rather than a decision. The mock's own header says the same
   // ("There is deliberately NO MetalOre piece"). It therefore chips, and that is correct: a kind the
   // sim can project but nothing can create is exactly the case the dashed chip was invented for.
+  // ⚠️ THE SECOND ENTRY, AND IT IS A BACKLOG ITEM — unlike MetalOre. `ItemKind.Swarf` is REAL:
+  // DeconstructSystem drops it whenever a stripped machine's Parts yield floors to 0, and
+  // MaintenanceSystem consumes it as the rung below a jury-rig. On the wreck start it is the single
+  // most common thing on the floor, because cannibalising the dead half of the ship IS the opening
+  // loop.
+  //
+  // ⚠️ THE PIECE IS OWED AND NOBODY IS SCHEDULED TO PAY IT. An earlier draft of this entry blamed
+  // the in-flight wrecked-art lane for holding `client/src/items/` and implied the debt would clear
+  // with it. THAT LANE HAS MERGED AND IT ADDS NO SWARF PIECE — measured on this tree, zero `swarf`
+  // hits anywhere under `client/src/items/`. So there is no owner: until someone draws a loose-swarf
+  // pile and an `ITEMS` row for it, a dashed `w` chip is what the player sees on the wreck start,
+  // constantly, and the "it should be the last entry" hope below has nothing behind it.
+  //
+  // ⚠️ THIS LEDGER IS DOCUMENTED AS ONLY EVER SHRINKING, and this commit grows it. That is the
+  // decision the ledger exists to force, written down: the alternative was to ship a live economy
+  // item invisibly. It is the FIRST entry added since the ledger was created, and it stays until
+  // a loose-swarf pile joins the item set.
+  Swarf: {
+    glyph: 'w',
+    chips: true,
+    why: 'REAL AND UNSKINNED, not dead vocabulary: DeconstructSystem creates Swarf on every wreck '
+      + 'strip and MaintenanceSystem consumes it, so a player WILL see this chip — on the wreck '
+      + 'start, constantly. The piece is OWED AND UNOWNED: the wrecked-art lane has merged and adds '
+      + 'no Swarf piece. Draw it and delete this entry.',
+  },
   MetalOre: {
     glyph: 'o',
     chips: true,
@@ -377,13 +402,13 @@ const EXPECT_DEVICE_GLYPH_OVERRIDES = 3;
 // '+' is one of them, PLUS the two override chars 'X' and '/' that are in no arm at all.
 const EXPECT_PROJECTED_DEVICE_GLYPHS = 28;
 const EXPECT_DEVICE_GLYPH_LEDGER = 1;   // '/' alone — an open doorway is a gap
-const EXPECT_ITEM_KINDS = 9;
-const EXPECT_FOR_ITEM_ARMS = 9;
+const EXPECT_ITEM_KINDS = 10;
+const EXPECT_FOR_ITEM_ARMS = 10;
 // The ledger below, pinned SEPARATELY from the enum size since the ground-item art landed. Those two
 // numbers were the same while NOTHING had art and one constant did both jobs — which meant "the sim
 // grew a kind" and "a kind lost its excuse" were indistinguishable. They are different facts and they
 // move for opposite reasons, so they are different constants.
-const EXPECT_GROUND_ITEM_LEDGER = 1;   // MetalOre, and see the ledger's own note for why it stays
+const EXPECT_GROUND_ITEM_LEDGER = 2;   // MetalOre + Swarf — see each entry's own reason
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -585,9 +610,10 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
       'Delete the line and lower the pinned counts — this ledger only shrinks.');
   }
   assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_GROUND_ITEM_LEDGER,
-    'THE GROUND-ITEM LEDGER CHANGED SIZE. It only shrinks: an entry goes away when that kind gets\n' +
-    'art. It went 9 → 1 when the ground-item art landed, and the one that stayed (MetalOre) is not\n' +
-    'a backlog item — nothing in sim/ produces or consumes that kind. If you are ADDING one, the\n' +
+    'THE GROUND-ITEM LEDGER CHANGED SIZE. It went 9 → 1 when the ground-item art landed (MetalOre\n' +
+    'stayed, and it is not a backlog item — nothing in sim/ produces or consumes that kind), then\n' +
+    '1 → 2 when the wreck start added Swarf, which IS a backlog item and is owed art nobody has\n' +
+    'scheduled. Growing it is the exception, not the rule. If you are ADDING one, the\n' +
     'question the ledger exists to force is: does this kind exist in the game, or only in the enum?');
 });
 
@@ -632,9 +658,9 @@ test('EVERY skinned ItemKind builds REAL art (driven through buildItem)', () => 
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 1;   // MetalOre alone — see the ledger
+const EXPECT_CHIPPING_ITEM_KINDS = 2;   // MetalOre + Swarf — see the ledger
 
-test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly TWO ItemKinds (MetalOre, Swarf) still draw a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
@@ -659,9 +685,12 @@ test('THE OPEN GAP, MEASURED: exactly ONE ItemKind still draws a raw-letter chip
     'THE NUMBER OF RAW-LETTER CHIPS MOVED: ' + chipping.join(', ') + '\n\n' +
     'It was EIGHT until 2026-07-27 — measured live by independent review on --ship grid deck 0, room\n' +
     "STORAGE: seven chips on one floor, ',' six times and 'f' once, plus Seals and Ice from the\n" +
-    'E0-6/E0-7 wave. The ground-item art paid seven of them down and MetalOre is the one left,\n' +
-    'deliberately. If this number went UP, a new ItemKind shipped without art. If it went DOWN,\n' +
-    'a kind got art — lower this constant and delete its ledger entry in the same commit.');
+    'E0-6/E0-7 wave. The ground-item art paid seven of them down, leaving MetalOre; the wreck\n' +
+    "start's salvage half then added Swarf, so TWO chip today and they chip for OPPOSITE reasons —\n" +
+    'MetalOre is dead vocabulary nobody owes art for, Swarf is a live economy item that is OWED art\n' +
+    'and has nobody scheduled to draw it. If this number went UP, a new ItemKind shipped without\n' +
+    'art. If it went DOWN, a kind got art — lower this constant and delete its ledger entry in the\n' +
+    'same commit.');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
