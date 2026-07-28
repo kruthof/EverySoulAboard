@@ -27,6 +27,86 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
+## Status snapshot (2026-07-28) — **FOUR LANES: the livelock, the food lie, the invisible door, the memo**
+
+**Gate on `main`: `./ci.sh` exit 0, 1122 dotnet + 821 node, twin hashes MATCH `43345ff0c9d62684`,
+ALL FIVE PINS HELD — and `git diff` to `tests/Perilune.Tests/Golden/`, `ci.sh` and `content/` is
+0 lines across the whole run.** Four lanes, each Opus-implemented and **independently** Opus-reviewed,
+**every one taking a send-back**. Counts are a **UNION, not a sum** — the four branches read
+1102/1104/1107/1097 apiece.
+
+**1. The `MaintenanceSystem` livelock is CLOSED** (§5 item 2). Nothing in the dispatcher asked whether
+a crew member could **survive** at the tile it was parked on. `WorksiteSafety.CanStageWorkerAt` now
+asks. `--ship grid`, 14 sim-days, reproduced to the digit by review: Maintain 16.245 → 2.974 %, Flee
+4.325 → **0.000 %**, job starts **47 640 → 298**, of which fled 18 301 → 0, and **services completed
+311 → 309**. ⇒ **47 342 removed job starts cost TWO services.** The old curve read **91 % busy and
+would have scored A1 PASS** at 2 services/hour.
+
+⚠️ **THE HARD REFUSAL'S JUSTIFICATION WAS FALSE, and only DRIVING the sim found it.** The package
+argued "the shortest fixed-tile job is a 90 s device strip, so the rule denies only work that could
+never land". **`BuildSystem.cs:254 FloorConstructTicks = 20` — a floor build is TWO SECONDS**, and it
+completes in vacuum in 6.9 s against a 45 s deadline. Also **"unbreathable" includes THERMAL**: a
+fully pressurised but freezing room now refuses all work. **The cost is ACCEPTED, not patched** —
+duration-awareness would couple the rule to job length and re-open every marginal case.
+
+⚠️ **The accepted cost is E0-4 WP-7's trade again (§13.17): expensive-and-visible → CHEAP-AND-INVISIBLE.**
+An order painted in airless air now never progresses, **silently**, and it is reachable in play on
+grid. No toast, no tint, no reason. `CanStageWorkerAt` is public so a wire channel can surface it —
+**filed as a follow-up, not fixed.**
+
+**2. E0-9's food gap — AND THE CHARTER WAS WRONG ABOUT ITS OWN PREMISE** (§5 item 5, pin-neutral).
+`ECONOMY-PLAN` commissioned this as *"surface the honest number that already exists in the `ledger`
+verb"*. **That number was not honest.** It divided only by `potato_hunger_value`, assuming Hunger
+fills once per sim-day; `needs.def hunger_per_second = 1/172800` fills it in **two**. Every runway was
+under-reported by **exactly half** — grid read **9.5 days where the truth is 19.0**. Corrected **in
+place, in the charter row that commissioned the package**. Confirmed by review by **driving** the sim,
+not re-checking arithmetic: 1.300 u/crew/day measured vs the new model's 1.389 (0.936) and the retired
+formula's 2.778 (0.468). `ShipMetrics.Food` is **untouched** — that pin move is deferred, not avoided.
+
+**3. A closed door drew a dashed box with a raw `+` in the shipping game — LIVE, not latent.** The
+charter (*"make the two `NON_FURNITURE` sets agree"*) was **stale in every clause**: there is only
+**one** set, and forcing agreement with the set that *does* differ would have made a door draw
+**nothing**. `NO_FURNITURE_SPRITE.Door`'s justification was false in **both** halves — no layer on
+either surface ever drew a door, and "0 such tiles on grid" is really **8 on deck 0, all inside a room
+rect**. **⇒ OPEN DEFECT "DOOR-NO-REMOVAL": a built door has NO removal verb on any surface.**
+**⇒ UNAPPROVED VISUAL SCOPE:** doors now draw on the Level-1 Overview for the first time (three at
+boot, deck 1 only); shots in `docs/design/shots/`, **LOCKED unphotographed**.
+
+**4. `HasIceChain` memoised** (§5 item 3, pin-neutral): 91 721 250 device slots/sim-day → **1 250**,
+worth **~90 ms of an ~8.2 s sim-day — ~1 %, NOT separated from noise** (paired A/B/B/A, n=8, on a
+machine running four concurrent suites). **A COUNT OF SLOTS IS NOT A SPEED-UP.** The key is sufficient
+**by inspection and pinned by nothing** — `EntityStore<T>.Items` is a public mutable `List<T>` — and
+**a stale answer is invisible on grid by construction**, which is why the tests pin the FLIP.
+
+### ⚠️ THE SEVENTH TRAP SHAPE — a suite of RATIO assertions cannot see a SCALE error
+
+E0-9 exists to fix a **2×** error. Review then mutated `DaysOfFood` to over-state by exactly 2× and
+ran the **full gate on a pristine copy: 1104 dotnet + 806 node, ALL GREEN.** Every other assertion in
+the file was a ratio, and **ratios are scale-invariant**; the one absolute-scale pin asserted
+`FoodUnits > 0` at half the claimed runway — and **halving the modelled rate doubles the claim, so
+HALF of the claim IS the true runway**. It survived on float epsilon, and no tolerance could fix it.
+⇒ **Only a PROPORTIONAL floor can pin scale.** ⚠️ **The implementer had DISCLOSED the survival and
+filed it as a preference about mutation choice, not as a hole in the guard** — that reframing is the
+thing to catch in your own work. Countermeasure: a **four-cell** inclusion table, whose decisive cell
+is *mutation + assertion regressed → GREEN* (proving nothing else in the suite sees it).
+
+### ⚠️ THIS RUN'S OTHER STANDING LESSONS
+
+- **A package repeated the exact defect it existed to retract.** The door lane wrote *"a door is taken
+  apart with STRIP"* into six places and **asserted it in a test**. STRIP **explicitly refuses doors**
+  (`DeconstructSystem.cs:345`; a live host answers `"cannot strip door"`).
+- **A review can be wrong in the same way.** It corrected a stale sum to "7 and 33"; the true count,
+  measured off the shipped registry, is **19 + 8 + 7 = 34** — giving a door art moved the *device-row*
+  count too. The assertion is written as a sum, so it stayed green through **both** wrong versions.
+  ⇒ **re-count, never compute.**
+- **Trap 3 (FALSE RED) bit three separate agents in one night**, twice through a build-error grep that
+  could not match this machine's **de-DE** MSBuild output (`erfolgreich` vs `Erfolgreich`; and `^ *error CS`
+  never matches, because the token appears mid-line after the path). **Test your harness's own parser
+  against a real de-DE line before you believe a red.**
+- **Concurrency has a cost you must state, not hide.** Four lanes on one machine took the dotnet stage
+  from ~6.5 min to ~10 min. Correctness is unaffected; **every wall-clock number taken that day is
+  soft**, and the packages say so beside their timings.
+
 ## Status snapshot (2026-07-27) — **GROUND-ITEM ART: the piles have faces, and a lamp stopped being demolishable**
 
 **Gate on `main`: `./ci.sh` exit 0, 1097 dotnet + 801 node, twin hashes MATCH `43345ff0c9d62684`,

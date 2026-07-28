@@ -4,7 +4,74 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒⇒ START HERE — the 2026-07-27 orientation. READ THIS BLOCK ONLY; everything below is history.
+## ⇒⇒ START HERE — the 2026-07-28 orientation. READ THIS BLOCK ONLY; everything below is history.
+
+> ### ⇒ FOUR LANES LANDED OVERNIGHT (2026-07-28) — §5 items 2, 3 and 5 are DONE
+>
+> **Gate on `main`: `./ci.sh` exit 0, 1122 dotnet + 821 node, twin hashes MATCH `43345ff0c9d62684`,
+> ALL FIVE PINS HELD.** `git diff` to `tests/Perilune.Tests/Golden/`, `ci.sh` and `content/` is
+> **0 lines across the entire run** — including the lane that changed job dispatch. Counts are a
+> **UNION, not a sum**: the four branches read 1102 / 1104 / 1107 / 1097 apiece.
+>
+> Each lane Opus-implemented, **independently** Opus-reviewed, **every one took a send-back**, and
+> every send-back was verified by the integrator in the tree before the merge.
+>
+> **§5 item 2 — the `MaintenanceSystem` livelock is CLOSED.** `WorksiteSafety.CanStageWorkerAt` asks
+> the question nothing in the dispatcher asked: can a crew member **survive** at the tile it is about
+> to be parked on. Grid, 14 sim-days, reproduced to the digit by review: **job starts 47 640 → 298,
+> services 311 → 309.** ⇒ 47 342 removed starts cost **two** services. The old curve read **91 % busy
+> and would have scored A1 PASS** at 2 services/hour.
+>
+> **§5 item 5 — E0-9's food gap, and the charter was wrong about its own premise.** The "honest"
+> number the charter pointed at was itself **2× wrong** (grid read 9.5 days where the truth is 19.0).
+> Corrected **in place, in the charter row that commissioned it**. `ShipMetrics.Food` untouched.
+>
+> **§5 item 3 — `HasIceChain` memoised.** 91.7 M slots/sim-day → 1 250, worth **~1 % and not separated
+> from noise**. **A count of slots is not a speed-up**, and that is now recorded in three places.
+>
+> **§5 item 4 — capping `WastewaterLiters` is MEASURABLY INERT** and was therefore **not built**. Ice
+> burn and food come out byte-identical at every cap from 4 000 L down to 100 L, at 3 and 10 days, on
+> slice and grid. The ~22.5-day runway reproduces and is **not a property of the pool**. ⇒ the cap is
+> **bookkeeping honesty, not an economy fix**. The lever that would move it — melter backpressure on
+> pool saturation rather than tank headroom — is **a design call, OPEN ON THE OWNER**.
+>
+> **Plus a live player-visible bug nobody had chartered:** a closed door drew a **dashed box with a raw
+> `+`** in the shipping game. One player gesture away, and the coverage guard **structurally could not
+> see it**.
+>
+> ⚠️ **A SEVENTH TRAP SHAPE is in `CLAUDE.md`: a suite of RATIO assertions cannot see a SCALE error.**
+> A 2× over-statement of `DaysOfFood` passed the **entire gate green**, in the very package that exists
+> to fix a 2× error.
+>
+> ### ⇒ NEW, OPEN ON THE OWNER — added by this run
+>
+> 1. **A built door has NO removal verb on any surface** ("DOOR-NO-REMOVAL"). DEMOLISH refuses it,
+>    STRIP refuses it, `Cmd.remove` is a silent no-op, build-cancel only revokes a *pending* order —
+>    and the toast currently points the player at STRIP, which is a dead end. Giving a door an un-build
+>    verb is a **design decision**, recorded not fixed.
+> 2. **The door art has had no human eye on it.** Doors now draw on the **Level-1 Overview for the
+>    first time** (three pieces at boot, deck 1 only). `blast-door` for LOCKED vs `sliding-door` for
+>    CLOSED is an aesthetic call; the LOCKED state is **unphotographed**. Shots: `docs/design/shots/`.
+>
+> ### ⇒ THE FOLLOW-UP THIS RUN CREATED — the honest cost of closing the livelock
+>
+> **An order painted in an airless compartment now never progresses, SILENTLY.** This is E0-4 WP-7's
+> trade again (`MECHANICS.md` §13.17): expensive-and-visible → **cheap-and-invisible**. It is
+> **reachable in play on grid** (two unopened wreck slots, 40 debris tiles behind sealed airless
+> doors). The player gets no toast, no tint, no reason — twenty strip marks and silence, forever.
+> The only instrument is a print inside a measurement harness the player never runs.
+>
+> ⇒ **Surface it on the wire.** `CanStageWorkerAt` was made **public for exactly this**. This is the
+> largest un-owned piece now, and it is the direct descendant of the lesson that cost three owner
+> reports: **a designation the player cannot understand is indistinguishable from a broken verb.**
+>
+> ### ⇒ what remains of §5, unchanged in order
+>
+> Item 1 (ground-item art) ✅ · **item 2 ✅** · **item 3 ✅** · **item 4 answered by measurement — do
+> not build it expecting an economy change** · **item 5 ✅**. What is left is §4's owner-open list, the
+> two new owner items above, and the invisible-failure channel.
+
+
 
 > ### ⇒ LATEST: GROUND-ITEM ART LANDED (2026-07-27) — §5 step 1 is DONE
 >
@@ -170,6 +237,16 @@ everything the ship produced was conjured. Closed; the arithmetic now predicts t
    > express stack size, so 1 unit and 40 render identically — a registry-signature change touching
    > every builder's call path. Nothing in the 60-piece set is a loose pile; crates would assert "a
    > container is here" about loose spoil.~~
+> ⚠️ **ITEMS 2–5 BELOW ARE ALL SETTLED AS OF 2026-07-28 — kept because their DIAGNOSES are still the
+> record, struck where the outcome differs from what they predicted. See the orientation block at the
+> top of this file.** 2 ✅ closed (and its *"278 transitions in one hour"* framing understates it:
+> **47 640 job starts over 14 days, and removing 47 342 of them cost TWO services**). 3 ✅ done, and
+> **its own charter oversold it — the win is ~1 %, not separated from noise**. 4 ⛔ **answered by
+> measurement and NOT BUILT: a cap is inert**, and *"the ice runway is a property of that pool"* is
+> **REFUTED** — the runway reproduces unchanged at every cap down to 100 L. 5 ✅ done, and its
+> parenthetical **"(31.5 crew-days)"** is **the 2× bug itself**, published in the backlog that
+> commissioned the fix.
+
 2. **The `MaintenanceSystem` livelock — a real bug on the game, invisible to A1.** From ~h265 on grid,
    crew burn **70–80 % of all crew-time forever** in `Maintain → Flee → Maintain` against machines in
    unbreathable compartments: measured **278 transitions in one hour, 0 services completed**. It reads
