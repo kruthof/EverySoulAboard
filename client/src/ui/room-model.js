@@ -771,6 +771,36 @@ export function roomDeviceConditions(devices, focusRoom) {
   return out;
 }
 
+/**
+ * The same layer for a WHOLE DECK — what the Level-1 Overview needs, which has no focus rect.
+ *
+ * ⚠️ A SEPARATE FUNCTION AND NOT A NULLABLE `focusRoom`, which was the first shape tried. A rect
+ * argument that means "everything" when omitted reads at every call site as "I forgot the rect", and
+ * the two surfaces would then differ by an absence rather than by a name. It is also not the Room
+ * Zoom's function with a full-deck rect passed in: the Overview never has a rect to pass, and
+ * inventing `{rx:0, ry:0, rw:frame.w, rh:frame.h}` at the call site would put frame geometry into a
+ * device query that does not otherwise need it.
+ *
+ * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
+ * `client/src/items/wear.js` sees one contract from both surfaces.
+ *
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null} devices
+ *        decodeDevices() output
+ * @param {number} deck
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number}>}
+ */
+export function deckDeviceConditions(devices, deck) {
+  const out = new Map();
+  if (!Array.isArray(devices)) return out;
+  const dz = deck | 0;
+  for (const d of devices) {
+    if (!d || (d.deck | 0) !== dz) continue;
+    const tx = d.x | 0, ty = d.y | 0;
+    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0 });
+  }
+  return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // THE BLOCKED-ORDER LAYER (the `blocked` channel).
 //

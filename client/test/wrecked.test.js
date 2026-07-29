@@ -546,7 +546,26 @@ test('wreckedInfo derives size and kind from the pristine row, and carries no co
 // bare word `wrecked` over COMMENT-STRIPPED source. A module cannot reach this set without naming
 // it — the file, the exports and the id prefix all carry the word — so the weakest possible needle
 // is also the strongest available one, and stripping comments is what keeps it from firing on prose.
-test('no client surface reaches for the wrecked set, and index.js does not know it exists', () => {
+// ⚠️ THIS TEST'S SUBJECT CHANGED WITH W0b AND ITS MACHINERY DID NOT, which is the only honest way to
+// move a boundary. It used to assert that NO module outside `items/` names the wrecked set, on the
+// grounds that *"wiring a twin to a surface needs a device CONDITION on the wire and an owner
+// decision about the threshold — neither exists yet."* Both exist now: the `devices` channel carries
+// `Condition`, and `client/src/items/wear.js` makes the threshold decision once, against
+// `wear.wreck_threshold`.
+//
+// ⛔ AND LEAVING THE TEST AS IT WAS WOULD HAVE BEEN A FALSE GREEN, not a stale pin. The sweep
+// EXCLUDES `items/`, so `wear.js` could import the whole twin set and every surface could draw it
+// through a name that does not contain the string "wrecked", with this assertion perfectly happy.
+// A guard whose scope filter excludes the violation is CLAUDE.md's fourth trap, and it would have
+// fired here on the very next commit.
+//
+// ⇒ THE INVARIANT IS NOW "ONE DOOR", which is the thing actually worth protecting: `wear.js` is the
+// only module that may name the wrecked set, and every surface goes through it. That keeps the
+// property the original was really defending — the twins revert by deleting two files — while making
+// the sweep able to see the shape that replaced the one it was written for.
+const WRECKED_DOOR = 'wear.js';
+
+test('the wrecked set has exactly ONE door (items/wear.js), and index.js does not know it exists', () => {
   const index = readFileSync(join(HERE, '..', 'src', 'items', 'index.js'), 'utf8');
   assert.ok(!codeOnly(index).includes('wrecked'),
     'client/src/items/index.js references the wrecked set. The dependency must run ONE WAY\n'
@@ -596,7 +615,33 @@ test('no client surface reaches for the wrecked set, and index.js does not know 
 
   for (const [rel, path] of files) {
     assert.ok(!reaches(readFileSync(path, 'utf8')),
-      `client/src/${rel} reaches for the wrecked set. Wiring a twin to a surface needs a device\n`
-      + 'CONDITION on the wire and an owner decision about the threshold — neither exists yet.');
+      `client/src/${rel} reaches for the wrecked set DIRECTLY. There is exactly one door and it is\n`
+      + `client/src/items/${WRECKED_DOOR}: a surface asks it for a tile's art and it answers with the\n`
+      + 'piece or its twin. A second reader is a second copy of "below what condition does a tile\n'
+      + 'wear its twin?", which is the hand-mirror defect that shipped the device-sprite bug.');
+  }
+
+  // ⇒ AND INSIDE `items/`, WHICH THE SWEEP ABOVE EXCLUDES: exactly TWO modules may name the set —
+  // the set itself (which names itself on every line) and its one door. Without this leg the
+  // exclusion is a hole big enough to drive the whole join through.
+  const inItems = readdirSync(join(HERE, '..', 'src', 'items'), { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.js'))
+    .map((e) => e.name)
+    .filter((name) => name !== 'wrecked.js'
+      && reaches(readFileSync(join(HERE, '..', 'src', 'items', name), 'utf8')));
+  assert.deepEqual(inItems, [WRECKED_DOOR],
+    'the modules inside client/src/items/ that reach for the wrecked set are not exactly\n'
+    + `[${WRECKED_DOOR}]. If this list GREW, the join has a second home. If it EMPTIED, the`
+    + ' door was renamed or the join was dismantled — in which case nothing draws the twins\n'
+    + 'at all and the whole set is unreachable again, which is the state W0b existed to end.');
+
+  // NON-VACUITY for that leg specifically: the door must really be a file, and it must really be
+  // the thing the surfaces import. A `deepEqual` against a one-element list is satisfied by a
+  // directory read that happened to return one match for the wrong reason.
+  const door = readFileSync(join(HERE, '..', 'src', 'items', WRECKED_DOOR), 'utf8');
+  assert.ok(codeOnly(door).includes('buildWrecked'), `items/${WRECKED_DOOR} does not call buildWrecked`);
+  for (const surface of ['ui/roomzoom-view.js', 'ui/overview-scene.js']) {
+    assert.ok(codeOnly(readFileSync(join(HERE, '..', 'src', surface), 'utf8')).includes('buildTileItem'),
+      `client/src/${surface} does not go through the door — it draws no twins at all`);
   }
 });

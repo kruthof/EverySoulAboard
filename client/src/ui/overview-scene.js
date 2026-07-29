@@ -27,6 +27,11 @@
 // min(KX,KY) so pieces stay square while their POSITION uses the full transform.
 
 import { buildItem } from '../items/index.js';
+// THE WEAR JOIN — the ONLY door from a surface to the 70 post-raid twins. The threshold and its
+// justification live in `client/src/items/wear.js`, once, for both surfaces: a second copy of
+// "below what condition does a tile wear its twin?" is how the two SVG views would come to disagree
+// about the same machine, each agreeing with itself and every test green.
+import { buildTileItem } from '../items/wear.js';
 import { pawnSprite } from '../render/pawn-svg.js';
 // The ONE glyph → itemId derivation, straight out of the `ITEMS` registry and SHARED verbatim with
 // the Level-2 Room Zoom (`room-model.js` itemForGlyph), so the two SVG surfaces cannot come to skin
@@ -325,9 +330,15 @@ function glowPools(slots, t, id) {
 // glyph → role → itemId walk through `SPRITE_FOR_GLYPH` + a local hand mirror; see line 54.)
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-function furnitureLayer(frame, deck, t, id) {
+/**
+ * @param {Map<string,{cond:number}>|null} [deviceCond]  this deck's `devices`-channel rows keyed
+ *        `"x,y"` (`deckDeviceConditions`). Absent / no row for a tile ⇒ the intact piece, which is
+ *        what this surface drew before the wear join existed.
+ */
+function furnitureLayer(frame, deck, t, id, deviceCond) {
   if (!frame || frame.deck !== deck || !Array.isArray(frame.cells)) return '';
   const side = Math.max(10, t.tileSize * 1.7);
+  const cond = deviceCond instanceof Map ? deviceCond : new Map();
   const out = [];
   for (let ty = 0; ty < frame.h; ty++) {
     for (let tx = 0; tx < frame.w; tx++) {
@@ -338,7 +349,11 @@ function furnitureLayer(frame, deck, t, id) {
       const itemId = itemIdForGlyphChar(String.fromCharCode(code));
       if (!itemId) continue; // glyph nothing skins → graceful skip
       const [cx, cy] = t.project(tx + 0.5, ty + 0.5);
-      const g = buildItem(itemId, { w: side, h: side, idPrefix: `${id}-f${tx}-${ty}` });
+      // THE WEAR JOIN, identical in both surfaces because it is ONE function: the tile's row from
+      // the `devices` channel, or `undefined` where nothing tile-resident stands there.
+      const row = cond.get(tx + ',' + ty);
+      const g = buildTileItem(itemId, { w: side, h: side, idPrefix: `${id}-f${tx}-${ty}` },
+                              row ? row.cond : undefined);
       out.push(`<g transform="translate(${n(cx - side / 2)} ${n(cy - side / 2)})">${g}</g>`);
     }
   }
@@ -619,6 +634,11 @@ function pawnLayer(crew, deck, t, selectedCid, id) {
  * @param {Array}  [state.terminals]     MOSS terminal directory [{tid,deck,x,y}] — clickable markers.
  * @param {Array}  [state.marks]         decoded `marks` cells [{x,y,deck,kind,mark}] — the debris /
  *                                       dig / stockpile / strip layer. NOT derived from `frame`.
+ * @param {Map}    [state.deviceCond]    `deckDeviceConditions(...)` for THIS deck — per-tile device
+ *                                       wear off the `devices` channel, which chooses a machine's
+ *                                       post-raid twin. NOT derived from `frame`, for the same
+ *                                       reason `marks` is not: the projection carries one bit of
+ *                                       condition at most and later passes overwrite it.
  * @param {*}      [state.selectedCid]   the selected crew cid (selection glow + amber tag).
  * @param {string} [state.lens]          the active lens (accepted; resting look only for now).
  * @param {string} [state.idPrefix]      def-id namespace (default 'ov') so many scenes can coexist.
@@ -649,7 +669,7 @@ export function overviewScene(state) {
     // now carries fg 26, and beneath its own furniture sprite its amber ✕ would be invisible. Inert
     // for debris/dig, whose glyph code 37 is in `NON_FURNITURE` so `furnitureLayer`'s
     // `if (!itemId) continue` never draws on a marked tile; stockpile is drawn by neither.
-    + furnitureLayer(st.frame, deck, t, id)
+    + furnitureLayer(st.frame, deck, t, id, st.deviceCond)
     + markLayer(st.marks, deck, t)
     + glowPools(slots, t, id)
     + ghostLayer(st.designs, deck, t)

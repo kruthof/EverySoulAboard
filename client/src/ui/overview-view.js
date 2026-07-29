@@ -24,7 +24,8 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { selectedCrewCid, decodeDecks, decodeRooms, decodeMarks } from '../wire/messages.js';
+import { selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices } from '../wire/messages.js';
+import { deckDeviceConditions } from './room-model.js';
 import { decksView } from './decks-model.js';
 import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
 import { pawnChip } from '../render/pawn-svg.js';
@@ -550,6 +551,11 @@ function paintScene(frame, dView, crew, designsMsg, deck, lens, selCid) {
     // designated tile blanked its mark on this very surface, where the grid crew cluster exactly on
     // top of the dig orders.
     marks: decodeMarks(Hud.getMarks()) || [],
+    // Per-tile device WEAR, off the `devices` channel — the only place `Device.Condition` reaches
+    // this client. Derived here beside `marks` and for the same reason: the projection's `cell[1]`
+    // carries one bit of it at most (`GlyphColor.Broken`) and GlyphMapper passes 3/4/5 overwrite
+    // that byte, so a machine with a crew member standing on it would flicker back to intact.
+    deviceCond: deckDeviceConditions(decodeDevices(Hud.getDevices()), deck),
     selectedCid: selCid, lens,
   };
   let svg = overviewScene(state);
