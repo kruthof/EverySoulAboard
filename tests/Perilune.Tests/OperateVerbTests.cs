@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using NUnit.Framework;
+using Perilune.Gen;   // AuthoredShips
 using Perilune.Sim;
 using Perilune.Tui;   // SimHost, ShipChoice
 using Perilune.Web;   // WireFormat, GameSession, WebCommand
@@ -220,69 +221,103 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// ⛔ <b>RETRACTION — THE PREMISE'S OPENING MOVE IS STILL NOT EXPRESSIBLE, AND THE TEST THAT
-        /// STOOD HERE CLAIMED OTHERWISE.</b> It was called
-        /// <c>The_Wrecks_Sealed_Vent_Opens_And_That_Is_The_Premises_First_Move</c> and billed "DRIVEN
-        /// END TO END". It drove <see cref="GameSession.ApplyForTest"/> and TOUCHED NEITHER CLIENT
-        /// GATE, so it proved a host bridge and was read as proving a player could do it.
+        /// <b>THE PREMISE'S OPENING MOVE, HOST-SIDE — <c>vent_ls</c> OPENS.</b>
         ///
-        /// <b>MEASURED, and this is the whole reason the claim is void.</b> <c>vent_ls</c> (35,6,0) on
-        /// <c>--ship wreck</c> reads <c>TileFlags.Explored == false</c> at tick 0, at tick 600 AND at
-        /// tick 36 000 — a full sim-hour. Three consequences, each independently fatal to the claim:
-        /// <list type="number">
-        /// <item><c>BuildDevices</c>'s fog gate keeps it off the <c>devices</c> channel, so
-        ///   <c>roomOperableTiles</c> gets no row and there is NO OPEN/SHUT CHIP on it.</item>
-        /// <item><c>doOperate</c> short-circuits on the same absent row, so the click is answered
-        ///   locally and never reaches this handler at all.</item>
-        /// <item><c>roomTileRect</c> needs an <c>anchorName</c>, and the wreck's deck-0 slot 3 — the
-        ///   slot holding <c>vent_ls</c> — is authored UNNAMED, so the Overview opens the ＋ADD ROOM
-        ///   picker there rather than a Room Zoom. The room cannot be entered.</item>
-        /// </list>
+        /// <para><b>THE HISTORY MATTERS, because this test has been wrong in both directions.</b> It
+        /// first shipped as <c>The_Wrecks_Sealed_Vent_Opens_And_That_Is_The_Premises_First_Move</c>,
+        /// billed "DRIVEN END TO END" — it drove <see cref="GameSession.ApplyForTest"/>, touched
+        /// NEITHER CLIENT GATE, and was read as proving a player could do it. It was then RETRACTED
+        /// and replaced by a test asserting the opposite: that <c>vent_ls</c> (35,6,0) reads
+        /// <c>Explored == false</c> at tick 0, tick 600 and tick 36 000, so <c>BuildDevices</c>'s fog
+        /// gate kept it off the <c>devices</c> channel, <c>doOperate</c> short-circuited on the
+        /// missing row, and the compartment could not even be entered because deck-0 slot 3 was
+        /// authored UNNAMED. That retraction was correct AND its subject is now fixed: M1-1 authors
+        /// the wreck's interior explored (OD-C) and names slot 3.</para>
         ///
-        /// ⇒ <b>The only operable vent a player can reach on <c>--ship wreck</c> today is
-        /// <c>vent_cryo</c>.</b> Making the opening move real needs W4b (naming the hall) AND something
-        /// that explores it — both outside this package, both filed in the report.
+        /// <para><b>WHAT THIS TEST IS AND IS NOT.</b> It is the HOST half — the verb accepts, and the
+        /// vent really opens on the next drain. It is NOT the acceptance criterion, which is a
+        /// BROWSER test (<i>"the player opens <c>vent_ls</c> in a running game"</i>) and lives in
+        /// <c>client/tools/operate-shot.mjs</c>, because no assertion here can tell a painted chip
+        /// from an invisible one. The two client preconditions that made the retraction necessary are
+        /// asserted below as PRECONDITIONS rather than left implicit — the tile must be on the
+        /// <c>devices</c> channel (or there is no chip and <c>doOperate</c> never sends), and its slot
+        /// must carry a live <c>anchorName</c> (or <c>roomTileRect</c> refuses and the room cannot be
+        /// entered). Both are pinned in their own right in <c>InteriorKnownAtBootTests</c>.</para>
         ///
-        /// What survives, and is asserted below, is the HONEST version: the two surfaces now give the
-        /// SAME answer on that tile. The asymmetry was live — the client toasted "NOTHING TO OPEN OR
-        /// SHUT HERE" on a tile holding a vent while this handler would have opened it — and a
-        /// confident wrong reason is the exact defect the CryoPod branch in <c>doOperate</c> exists to
-        /// remove, pointing the other way.
-        ///
-        /// MUTATION: delete <c>|| !IsExplored(pos)</c> from <c>HandleOperate</c> ⇒ this reddens.
+        /// <para>MUTATION APPLIED: <c>InteriorKnownAtBoot = false</c> on the wreck ⇒ RED at the fog
+        /// precondition; <c>Hall(0, 3)</c> restored ⇒ RED at the anchor precondition.</para>
         /// </summary>
         [Test]
-        public void The_Wrecks_Sealed_Vent_Is_FOGGED_So_BOTH_Surfaces_Refuse_It_Identically()
+        public void The_Wrecks_Sealed_Vent_OPENS_And_That_Is_The_Premises_First_Move()
         {
             var (gs, host, sink) = Boot();
             var vent = DeviceNamed(host.Sim, "vent_ls");
-            Assert.IsFalse(vent.IsOpen, "fixture drift: vent_ls is authored SHUT");
-            Assert.IsFalse((host.Sim.World.GetFlags(vent.Pos) & TileFlags.Explored) != 0,
-                "vent_ls's tile is EXPLORED at boot now. That is good news and it invalidates this " +
-                "test rather than breaking it: re-measure whether the premise's opening move has " +
-                "become reachable, and rewrite this as the end-to-end test it used to claim to be.");
+            Assert.IsFalse(vent.IsOpen, "fixture drift: vent_ls is authored SHUT — it is the player's first act");
 
-            // The device is really there — so a refusal here is about KNOWLEDGE, not about emptiness.
-            Assert.IsTrue(host.Sim.TryGetDeviceAt(vent.Pos, out _),
-                "the sim's own tile index has no device at vent_ls — this test is asserting nothing");
+            // PRECONDITION 1 — the fog gate. Both this handler and BuildDevices read it.
+            Assert.IsTrue((host.Sim.World.GetFlags(vent.Pos) & TileFlags.Explored) != 0,
+                "vent_ls's tile is FOGGED. The host will refuse the click, the channel will not carry " +
+                "the device, and the premise's opening move is unreachable — which is exactly the " +
+                "state this test was retracted into once already.");
+
+            // PRECONDITION 2 — the compartment is a ROOM the Overview can enter. A named slot is what
+            // `roomTileRect` needs; without it the click opens the ＋ADD ROOM picker instead.
+            gs.RenderForTest();
+            string decks = gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"decks\"")) ?? "";
+            StringAssert.Contains("\"" + AuthoredShips.WreckLifeSupportAnchor + "\"", decks,
+                "the decks channel carries no live anchor for the life-support bay, so roomTileRect " +
+                "refuses the slot and the Room Zoom cannot be opened on the vent at all");
 
             string reply = Operate(gs, sink, vent.Pos);
-            Assert.AreEqual(0, Field(reply, "ok"),
-                "the host accepted a click on an UNEXPLORED tile. That makes this verb a fog-of-war " +
-                "change — a player could open doors and vents in compartments they have never seen — " +
-                "and it disagrees with the client, which cannot even see the device. Reply: " + reply);
-            StringAssert.Contains("NOTHING KNOWN HERE", reply,
-                "the refusal must be about what is KNOWN. 'NOTHING TO OPERATE HERE' on a tile that " +
-                "holds a vent is a confident wrong reason.");
-
+            Assert.AreEqual(1, Field(reply, "ok"), "the host refused the opening move. Reply: " + reply);
             host.Sim.Tick();
-            Assert.IsFalse(vent.IsOpen, "the refusal must not have enqueued a command");
+            Assert.IsTrue(vent.IsOpen, "the reply said OK and the vent is still shut — the command never landed");
         }
 
         /// <summary>
-        /// CONTROL FOR THE FOG GATE, and without it the gate above is satisfied by refusing
-        /// EVERYTHING. The same verb on an EXPLORED tile — <c>vent_cryo</c>, in the boot core — is
-        /// accepted. The two tests together say "the gate is about fog", not "the gate is a wall".
+        /// CONTROL FOR THE FOG GATE, and without it the gate is satisfied by accepting EVERYTHING.
+        /// <b>The fixture moved to <c>--ship grid</c> when the wreck's interior became authored-known
+        /// (M1-1): there is no fogged tile left on the wreck to measure a refusal against.</b> A gate
+        /// with no ship that exercises it is a gate nothing pins.
+        ///
+        /// <para>NON-VACUITY is structural and asserted: the fixture device is REQUIRED to be fogged
+        /// and REQUIRED to exist in the sim's own tile index, so a refusal here is about KNOWLEDGE and
+        /// not about an empty tile.</para>
+        ///
+        /// <para>MUTATION APPLIED: delete <c>|| !IsExplored(pos)</c> from <c>HandleOperate</c> ⇒ RED.</para>
+        /// </summary>
+        [Test]
+        public void CONTROL_The_Fog_Gate_Still_Refuses_An_UNEXPLORED_Device_OnAShipThatHasFog()
+        {
+            var sink = new List<string>();
+            var host = SimHost.Build(SimHost.DefaultSeed);   // --ship perilune
+            var gs = new GameSession(host, sink.Add);   // NOT started ⇒ no sim thread
+
+            var fogged = host.Sim.Devices.Items.FirstOrDefault(
+                d => !Simulation.IsUtilityOverlay(d.Kind) && host.Sim.World.InBounds(d.Pos)
+                     && (host.Sim.World.GetFlags(d.Pos) & TileFlags.Explored) == 0);
+            Assert.IsNotNull(fogged,
+                "--ship perilune has NO fogged device, so this control measures nothing. If that is " +
+                "real rather than a fixture accident, the fog gate has no ship left to pin it and " +
+                "this test must be rewritten, not deleted.");
+            Assert.IsTrue(host.Sim.TryGetDeviceAt(fogged.Pos, out _),
+                "the sim's own tile index has no device there — the refusal below would be about " +
+                "emptiness, not about fog");
+
+            string reply = Operate(gs, sink, fogged.Pos);
+            Assert.AreEqual(0, Field(reply, "ok"),
+                "the host accepted a click on an UNEXPLORED tile. That makes this verb a fog-of-war " +
+                "change — a player could open doors in compartments they have never seen — and it " +
+                "disagrees with the client, which cannot even see the device. Reply: " + reply);
+            StringAssert.Contains("NOTHING KNOWN HERE", reply,
+                "the refusal must be about what is KNOWN. 'NOTHING TO OPERATE HERE' on a tile that " +
+                "holds a device is a confident wrong reason.");
+        }
+
+        /// <summary>
+        /// THE OTHER HALF OF THE GATE, kept on the wreck: the verb ACCEPTS an explored device. The two
+        /// controls together say "the gate is about fog", not "the gate is a wall" and not "the gate
+        /// is gone".
         /// </summary>
         [Test]
         public void CONTROL_The_Fog_Gate_Passes_An_EXPLORED_Device()
@@ -303,11 +338,21 @@ namespace Perilune.Tests
         /// ⚠️ NON-VACUITY IS AN INCLUSION TEST (trap 4): the deck is required to contain at least one
         /// device of EACH kind — on the channel and off it — or the loop below is a loop over an empty
         /// set that reports itself as agreement.
+        ///
+        /// <para><b>⚠️ IT RUNS ON <c>--ship perilune</c> AND NOT ON THE WRECK, AND THAT MOVE IS THE POINT
+        /// OF THIS PARAGRAPH.</b> M1-1 made the wreck's whole interior authored-known (OD-C), so on
+        /// that ship the "off the channel" half of the population is now EMPTY — the sweep would have
+        /// gone on passing while proving only that the channel lists everything. A guard whose
+        /// inclusion floor its own fixture can no longer meet is a guard that has quietly stopped
+        /// biting; the fixture moves, the guard does not weaken. The wreck keeps the two single-device
+        /// legs above (accept + refuse), which is where its own fog behaviour is pinned.</para>
         /// </summary>
         [Test]
         public void The_Verb_And_The_Devices_Channel_Have_The_Same_Population()
         {
-            var (gs, host, sink) = Boot();
+            var sink = new List<string>();
+            var host = SimHost.Build(SimHost.DefaultSeed);   // --ship perilune
+            var gs = new GameSession(host, sink.Add);   // NOT started ⇒ no sim thread
             gs.RenderForTest();
             string json = gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"devices\"")) ?? "";
             var onChannel = new HashSet<(int, int, int)>();
