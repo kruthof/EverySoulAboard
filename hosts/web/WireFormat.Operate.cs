@@ -36,11 +36,22 @@ namespace Perilune.Web
     /// ⚠️⚠️ AND IT IS WHY THE FEEDBACK CAN BE HONEST AT ALL. The three refusals that make a toggle look
     /// broken — <b>locked</b>, <b>inoperative</b>, <b>unfixably wrecked</b> — plus the one that makes it
     /// look accepted and do nothing — <b>unpowered</b> — are read HERE, from the device itself, at the
-    /// instant of the click. Not one of them could ride the <c>devices</c> channel:
-    /// <c>Powered</c> is rewritten by <c>PowerSystem.Balance</c> once a second on every drawing device
-    /// (it would make that payload differ on most renders, on every ship), and
-    /// <c>MaintenanceSystem.IsUnfixableWreck</c> is a whole-item-store scan whose answer changes when
-    /// a hauler drops a single Part. Asking once, when asked, costs nothing and cannot go stale.
+    /// instant of the click.
+    ///
+    /// <b>⚠️ THAT JUSTIFICATION IS SOFTENED FROM THE FIRST DRAFT'S, WHICH OVERSTATED IT.</b> The
+    /// load-bearing case is <c>MaintenanceSystem.IsUnfixableWreck</c>: a whole-item-store scan whose
+    /// answer flips the moment a hauler drops a single Part, so it genuinely cannot ride a cached
+    /// per-render channel and genuinely cannot go stale here. <c>Powered</c> was named beside it as a
+    /// second pillar, and it is a WEAKER one — measured, not argued. It WOULD make the <c>devices</c>
+    /// payload differ on most renders (<c>PowerSystem.Balance</c> rewrites it once a second on every
+    /// drawing device, on every ship), so keeping it off that channel is still right; but on the
+    /// SHIPPED CONTENT every vent reads <c>Powered = true</c>, so the clause it feeds is dead code
+    /// today and is pinned by a CONSTRUCTED fixture rather than by any ship. The measurement and the
+    /// guard are in <c>GameSession.OperateAdvisory</c>.
+    ///
+    /// So the reply's SHAPE is justified by <c>IsUnfixableWreck</c> alone, and <c>Powered</c> rides
+    /// along because it is free once the reply exists. One live reason is enough; two, when one of
+    /// them cannot fire, is the kind of prose this repo has had to retract before.
     ///
     /// <b>VERB PARITY IS NOT SUFFICIENT — the binding lesson (three instances) — so the REASON ships
     /// with the verb.</b> A door that will not move and a door that moved are otherwise the same

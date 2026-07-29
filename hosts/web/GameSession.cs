@@ -989,6 +989,32 @@ namespace Perilune.Web
         /// switch move and simply declines to inject air (<c>AtmosphereSystem.cs:123</c>), so refusing
         /// here would invent a rule. See the header of <c>WireFormat.Operate.cs</c>.</para>
         ///
+        /// <para><b>⚠️ IT IS FOG-GATED, AND THAT WAS A SEND-BACK.</b> The first draft resolved the tile
+        /// through <c>_deviceGrid</c> ALONE, while the client short-circuits on the <c>devices</c>
+        /// channel — which <see cref="BuildDevices"/> gates on <see cref="Perilune.Sim.TileFlags.Explored"/>.
+        /// The two populations therefore disagreed on every UNEXPLORED tile, and the disagreement was
+        /// live and measured on <c>--ship wreck</c>: the client toasted <i>"NOTHING TO OPEN OR SHUT
+        /// HERE"</i> on <c>vent_ls</c> (35,6,0) — a tile that holds a vent — while this handler would
+        /// have accepted the same click and opened it. That is a CONFIDENT WRONG REASON, the exact
+        /// defect the CryoPod fix in <c>doOperate</c> exists to remove, pointing the other way.</para>
+        ///
+        /// <para><b>The gate is here rather than removed from the client for a reason that is not
+        /// symmetry.</b> Accepting a click on an unexplored tile would make this verb a FOG-OF-WAR
+        /// CHANGE: a player could open doors and vents in compartments they have never seen. The
+        /// <c>devices</c> channel's own header states the rule it inherited from <c>marks</c> and
+        /// <c>items</c> — <i>"a rendering fix must not become a fog-of-war change"</i> — and a verb has
+        /// no more licence than a renderer. So the host refuses, in the same words the client uses, and
+        /// the two populations are now provably identical: tile-resident (both exclude the utility
+        /// overlays, which are not in <c>_deviceGrid</c>) ∧ in-bounds ∧ explored.</para>
+        ///
+        /// <para>⚠️ <b>WHAT THIS DOES NOT FIX, filed rather than fudged.</b> The premise's opening move
+        /// is still not expressible. <c>vent_ls</c> reads <c>Explored = false</c> at tick 0, tick 600
+        /// AND tick 36 000 (a full sim-hour) — measured — so it is on no channel and now honestly
+        /// refused rather than dishonestly refused. Its slot is also authored UNNAMED, so
+        /// <c>roomTileRect</c> cannot resolve it and the Overview opens the ＋ADD ROOM picker there
+        /// instead of a Room Zoom. Making that vent reachable needs W4b (naming the hall) AND something
+        /// that explores it; both are outside this package. See the report.</para>
+        ///
         /// <para>Runs on the sim thread (the command drain, between ticks), like every other handler
         /// here, so reading device fields is safe and the enqueued command lands in the same drain.</para>
         /// </summary>
@@ -1016,9 +1042,9 @@ namespace Perilune.Web
             // toggle, the only door/vent route that existed before this verb), and it is NOT fixed
             // here: that path is closed to new work and touching it would put a behaviour change on a
             // deprecated surface inside a package about a live one. Recorded in the package report.
-            if (!_sim.TryGetDeviceAt(pos, out var device))
+            if (!_sim.TryGetDeviceAt(pos, out var device) || !IsExplored(pos))
             {
-                EmitOperate(pos, WireFormat.OperateRefused, "-", "NOTHING TO OPERATE HERE");
+                EmitOperate(pos, WireFormat.OperateRefused, "-", "NOTHING KNOWN HERE TO OPERATE");
                 return;
             }
             if (!IsOperableKind(device.Kind))
@@ -1077,6 +1103,14 @@ namespace Perilune.Web
         internal static bool IsOperableKind(DeviceKind kind)
             => kind == DeviceKind.Door || kind == DeviceKind.AirVent;
 
+        /// <summary>Has the player seen this tile? The SAME predicate <see cref="BuildDevices"/> gates
+        /// the <c>devices</c> channel on, written once so the verb and the channel cannot come to
+        /// disagree about which devices exist as far as the player is concerned. Out of bounds counts
+        /// as unexplored rather than throwing — <c>HandleOperate</c> clamps first, so this is defence
+        /// against a future caller, not a live path.</summary>
+        private bool IsExplored(Int3 p)
+            => _sim.World.InBounds(p) && (_sim.World.GetFlags(p) & TileFlags.Explored) != 0;
+
         /// <summary>
         /// The advisory tail — why an ACCEPTED toggle may still change nothing on the ship. Empty
         /// string when there is nothing to warn about, so the ordinary case reads as one clean verb.
@@ -1102,6 +1136,24 @@ namespace Perilune.Web
         /// missing warning here does NOT promise the vent will run; a PRESENT one is certain (an
         /// unwired device has <c>NetworkId == 0</c> and can never be served). Worded to match: "NO
         /// POWER REACHES IT" is about the wire, not about the next second.</para>
+        ///
+        /// <para>⛔ <b>THE POWER CLAUSE CANNOT FIRE ON ANY SHIPPED SHIP TODAY, AND SAYING SO IS A
+        /// SEND-BACK CORRECTION.</b> Measured, 40 ticks in: every <c>AirVent</c> on <c>--ship wreck</c>
+        /// (2) and <c>--ship grid</c> (4) reads <c>Powered = true</c> with <c>NetworkId = 1</c>, and no
+        /// palette tool places a vent, so no player action can produce an unwired one. (Grid has 40
+        /// UNPOWERED doors — but a door is excluded by the <c>Kind</c> half of this branch, for the
+        /// reason above, so they cannot reach it either.) It is therefore DEAD CODE ON THE SHIPPED
+        /// CONTENT, kept because a wreck generator authoring an off-grid vent is one line away, and it
+        /// is pinned by a CONSTRUCTED fixture — <c>OperateVerbTests.An_Unpowered_Vent_Being_Opened_...</c>
+        /// — rather than by any ship. Before this was measured, the ONLY assertion naming the clause was
+        /// a <c>DoesNotContain</c> on a vent that boots OPEN, i.e. one that could never bite: deleting
+        /// the clause was a SURVIVOR at 1258/1258.</para>
+        ///
+        /// <para>⚠️ THE <c>else if</c> IS A DECISION, NOT AN ACCIDENT: a device that is BOTH wrecked and
+        /// unpowered says only WRECKED. Power is moot while the machine is dead, and the player's next
+        /// move is the repair either way; the power sentence appears once the repair lands. Pinned by
+        /// <c>A_Wrecked_And_Unpowered_Device_Reports_Only_The_Wreck</c> so the precedence cannot invert
+        /// silently.</para>
         /// </summary>
         private string OperateAdvisory(Device device, bool opening)
         {

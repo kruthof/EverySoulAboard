@@ -218,6 +218,10 @@ const RZ_IDS = [
   'roomzoom-view', 'rz-canvas', 'rz-layers', 'rz-pulse', 'rz-zonekey', 'rz-toast', 'rz-nudge',
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
+  // `Hud.renderStatus` writes these console-shell nodes unconditionally — the paused-ship leg below
+  // drives the REAL status dispatch (the only writer of `Hud.getStatus`, which `isPaused()` reads),
+  // and without them the dispatch throws before it reaches the state this test is about.
+  's-speed', 's-msg', 's-runstate', 's-pauselabel', 'b-pause', 's-speedchip', 's-nudge',
 ];
 class RzEl extends DomEl {
   constructor(doc, tag) {
@@ -373,9 +377,28 @@ test('clicking a BARE tile sends NOTHING and says so in words', () => {
   clickTile(BARE[0], BARE[1]);
   assert.deepEqual(opSent.filter((o) => o.cmd !== 'cursor'), [],
     'a click with no device under it must not reach the wire');
-  assert.match(opToast.textContent, /NOTHING TO OPEN OR SHUT HERE/,
+  assert.match(opToast.textContent, /NOTHING KNOWN HERE TO OPEN OR SHUT/,
     'silence is exactly the failure this verb exists to remove — a click that does nothing and says '
     + 'nothing is indistinguishable from a broken button');
+});
+
+// ⚠️ THE WORD "KNOWN" IS LOAD-BEARING AND IT IS A SEND-BACK CORRECTION. This branch is reached by an
+// EMPTY tile and by a FOGGED one — `GameSession.BuildDevices` gates the `devices` channel on
+// `TileFlags.Explored`, so a device the player has not seen produces no row here either. The first
+// draft said "NOTHING TO OPEN OR SHUT HERE", which is a confident lie on the second case, and it was
+// LIVE: `vent_ls` (35,6,0) on `--ship wreck` is unexplored at tick 0, tick 600 and tick 36000, so
+// this surface asserted the tile was empty while `HandleOperate` — then unfogged — would have opened
+// the vent standing on it.
+//
+// MUTATION: restore the word-free spelling ⇒ this reddens.
+test('the empty/fogged message speaks about KNOWLEDGE, not about emptiness', () => {
+  arm('operate');
+  clickTile(BARE[0], BARE[1]);
+  assert.ok(!/NOTHING TO OPEN OR SHUT HERE/.test(opToast.textContent),
+    'the message asserts the tile is EMPTY. It is also shown for a tile whose device is merely '
+    + 'FOGGED, where that is false — the same confident-wrong-reason defect the CryoPod branch above '
+    + 'exists to remove, pointing the other way.');
+  assert.match(opToast.textContent, /KNOWN/);
 });
 
 // ⚠️ THIS LEG WAS WRITTEN BY A BROWSER RUN, and it is the opposite of what the first draft asserted.
@@ -477,4 +500,45 @@ test('the scanned sources are non-empty', () => {
   for (const [name, src] of Object.entries({ DEVICE_CS, GAME_SESSION_CS, MAIN })) {
     assert.ok(src.length > 200, name + ' stripped to nothing — every scan over it is vacuous');
   }
+});
+
+// ═════════════════════════════════════════════════════════ 7. THE PAUSED SHIP (send-back R3)
+
+// ⚠️ WHY THIS EXISTS. `doOperate` originally SKIPPED `nudgeOnIntent()`, and its stated reason was
+// false: *"an operate order is applied by the command drain itself … so it does land while the ship
+// is on HOLD."* That conflates two drains. `GameSession.DrainCommands` — where `HandleOperate` runs —
+// only ENQUEUES an `ISimCommand`; `Simulation.Tick` is the ONLY drain of `Simulation._inbox`, and at
+// `tps == 0` the host never calls it. MEASURED on `--ship wreck`: a paused operate replies
+// `⇄ SHUT DOOR`, and the door does not move.
+//
+// ⇒ OPERATE is not the exception to the nudge, it is the WORST case for it — the only verb on this
+// palette that reports a confident SUCCESS while doing nothing.
+//
+// MUTATION: delete `nudgeOnIntent();` from `doOperate` ⇒ this reddens.
+test('a paused operate raises the paused-ship nudge — it reports success and does nothing', () => {
+  Hud.renderStatus(decode('{"type":"status","speed":0,"paused":true,"text":""}'));
+  const nudge = opDoc.getElementById('rz-nudge');
+  // ⚠️ ARM FIRST, THEN CLEAR, THEN CLICK — and the order is the whole test. `arm()` ALSO calls
+  // `nudgeOnIntent()` (arming is an intent), so clearing before arming leaves the nudge raised by the
+  // ARM and the CLICK's contribution invisible. Measured: with the clear before the arm, deleting
+  // `nudgeOnIntent()` from `doOperate` was a SURVIVOR at 933/933 — a guard that could not bite,
+  // hiding inside the very fix it was written for.
+  arm('operate');
+  nudge.hidden = true;
+  clickTile(VENT[0], VENT[1]);
+  assert.equal(nudge.hidden, false,
+    'the ship is on HOLD, the verb answered "OPEN AIRVENT", and NOTHING WILL MOVE until it runs. '
+    + 'Every other intent on this surface raises the nudge for a weaker reason — a queued order at '
+    + 'least stays queued. This one lies.');
+});
+
+test('CONTROL: a RUNNING ship raises no nudge — the trigger is the pause, not the click', () => {
+  Hud.renderStatus(decode('{"type":"status","speed":1,"paused":false,"text":""}'));
+  const nudge = opDoc.getElementById('rz-nudge');
+  arm('operate');
+  nudge.hidden = true;
+  clickTile(VENT[0], VENT[1]);
+  assert.equal(nudge.hidden, true,
+    'the nudge fired on a running ship — it would then be permanent chrome rather than an answer to '
+    + '"I did something and nothing happened"');
 });

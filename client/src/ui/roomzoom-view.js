@@ -983,9 +983,17 @@ function onCanvasClick(e) {
  * tile is answered locally. `isOperableKind` survives for the affordance layer, where it decides
  * which tiles get a chip and nothing else.
  *
- * The empty-tile case is kept local because it is free and cannot disagree: the `devices` channel and
- * `Simulation.TryGetDeviceAt` are the same one-device-per-tile population — both exclude the utility
- * overlays (Conduit, Pipe), which are not tile-resident.
+ * ⚠️ THE SENTENCE ABOVE — "the `devices` channel and `Simulation.TryGetDeviceAt` are the same
+ * one-device-per-tile population" — WAS FALSE WHEN FIRST WRITTEN, and the correction is the second
+ * thing a browser run found. `GameSession.BuildDevices` also gates on `TileFlags.Explored`, and
+ * `HandleOperate` did not. Measured on `--ship wreck`: `vent_ls` (35,6,0) is unexplored at tick 0,
+ * tick 600 AND tick 36000, so this branch toasted "NOTHING TO OPEN OR SHUT HERE" on a tile HOLDING A
+ * VENT while the host would have accepted the same click. `HandleOperate` is fog-gated now, in the
+ * same words, so the two populations really are identical — tile-resident ∧ in-bounds ∧ EXPLORED —
+ * and the message says KNOWN rather than claiming the tile is empty. A verb must not be able to
+ * operate what the player has never seen; that would make it a fog-of-war change.
+ *
+ * The empty-tile case is kept local because it is free and now provably cannot disagree.
  *
  * ⚠️ NO OPTIMISTIC ECHO, and this is the one place it would be tempting. The toast that names the
  * OUTCOME is `onOperateReply`; this one names only that the order was SENT. Flipping the local chip
@@ -996,18 +1004,27 @@ function onCanvasClick(e) {
 function doOperate(tile, deck) {
   const dev = deviceConditionAt(tile.x, tile.y);
   if (!dev) {
-    toast('NOTHING TO OPEN OR SHUT HERE — OPERATE TARGETS A DOOR OR A VENT');
+    toast('NOTHING KNOWN HERE TO OPEN OR SHUT — OPERATE TARGETS A DOOR OR A VENT');
     pulse(tile, false);
     return;
   }
   _send(Cmd.operate(tile.x, tile.y, deck));
   pulse(tile, false);
-  // NOT `nudgeOnIntent()`. Every other intent on this surface queues work for a CREW MEMBER, and on a
-  // stopped ship nobody comes — which is what the nudge exists to say. An operate order is applied by
-  // the command drain itself with nobody walking anywhere, so it does land while the ship is on HOLD;
-  // the atmosphere that follows does not. That is a real distinction and the paused ship's own
-  // chrome already states it, so raising the nudge here would be crying wolf on the one verb that
-  // works.
+  // ⚠️ `nudgeOnIntent()` — RESTORED, AND THE REASON IT WAS REMOVED WAS FALSE. The comment that stood
+  // here said: *"An operate order is applied by the command drain itself with nobody walking
+  // anywhere, so it does land while the ship is on HOLD."* That conflates TWO drains.
+  // `GameSession.DrainCommands` — where `HandleOperate` runs — only ENQUEUES an `ISimCommand`;
+  // `Simulation.Tick` is the ONLY thing that drains `Simulation._inbox`, and at `tps == 0` the host
+  // never calls it. Measured: on a paused ship the reply reads `⇄ SHUT DOOR` and the door does not
+  // move, the chip does not change, and nothing anywhere says why. This package's OWN
+  // `The_Order_Is_ENQUEUED_And_Not_Written_Straight_Onto_The_Device_*` tests prove it — they assert
+  // that nothing moves BEFORE `Tick()`.
+  //
+  // So OPERATE is not the exception; it is the WORST case, because it is the only verb on this
+  // palette that reports a confident success while doing nothing. Pausing to plan is a normal
+  // gesture and this surface grew a nudge for exactly this shape of "I did something and nothing
+  // happened".
+  nudgeOnIntent();
 }
 
 /** Show the host's verdict for the last OPERATE click. Called from main.js's `operate` dispatch. */
