@@ -96,6 +96,29 @@ namespace Perilune.Gen
             }
             if (plan.DigDesignations.Count > 0) sim.JobsDirty |= JobBoardDirty.Tiles; // boot dig designations
 
+            // OD-C — the ship's own interior is on file at boot. See ShipPlan.InteriorKnownAtBoot
+            // for the whole argument (why a plan flag and not an ExplorationSystem change, and why
+            // it is pin-neutral). Setting the bit, never clearing it: fog is a RATCHET everywhere
+            // else in this codebase and this is the one authored place it starts already up, so the
+            // host's later FogReveal.RevealReachable pass composes with it in either order.
+            //
+            // ⚠️ VOID IS SKIPPED, and that is not an optimisation — it is the SAME rule
+            // `ExplorationSystem.Tick` applies ("open space is never 'explored'"). Deviating from it
+            // would make the two writers of one flag disagree about what the flag means. It is
+            // provably a no-op on the only ship that sets the flag today: the wreck's canvases start
+            // solid '#' and are carved, so `plan.DeckRows` contains no ' ' at all — asserted, not
+            // assumed, by `InteriorKnownAtBootTests`.
+            if (plan.InteriorKnownAtBoot)
+                for (int z = 0; z < world.Depth; z++)
+                {
+                    var level = world.Levels[z];
+                    for (int i = 0; i < level.Flags.Length; i++)
+                    {
+                        if (level.Floor[i] == TileDefs.Void) continue;
+                        level.Flags[i] |= (byte)TileFlags.Explored;
+                    }
+                }
+
             for (int i = 0; i < plan.Rooms.Count; i++)
             {
                 var spec = plan.Rooms[i];

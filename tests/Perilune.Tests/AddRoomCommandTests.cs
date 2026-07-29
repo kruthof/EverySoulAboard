@@ -487,7 +487,8 @@ namespace Perilune.Tests
         /// CALLED IT "THE WRONG MODEL". THAT RETRACTION IS THE IMPORTANT PART OF THIS PARAGRAPH.</b>
         /// The claim was that the plan assumes a vent INSIDE the compartment and that no shipped ship
         /// has one. <b>The wreck has one:</b> <c>vent_ls</c> (<c>AuthoredShips.cs</c>, the
-        /// <c>hall_d0_s3</c> block) is a <see cref="DeviceKind.AirVent"/> authored INSIDE that
+        /// <c>lifesupport</c> block — that slot was the unnamed hall <c>hall_d0_s3</c> until M1-1
+        /// named it) is a <see cref="DeviceKind.AirVent"/> authored INSIDE that
         /// compartment, closed and at <c>Condition 0.15</c>, and its own authoring comment says the
         /// player's first act there is to open it. Driven — repaired, powered, opened, <b>with the
         /// compartment's door SHUT</b> — that 60-tile room reaches 90 kPa at tick 1 846 and 101 kPa at

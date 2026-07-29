@@ -1182,8 +1182,11 @@ namespace Perilune.Gen
             return plan;
         }
 
-        private static SlotGridPlanner.SlotAssign Slot(RoomType type, string anchor) =>
-            new SlotGridPlanner.SlotAssign { Type = type, Anchor = anchor };
+        /// <summary>A typed compartment. <paramref name="doorOpen"/> defaults to <c>null</c> =
+        /// "say nothing", which lets <see cref="SlotGridPlanner"/> derive the door from the type
+        /// exactly as it always has; pass <c>false</c> for a room that is NAMED but AIRLESS.</summary>
+        private static SlotGridPlanner.SlotAssign Slot(RoomType type, string anchor, bool? doorOpen = null) =>
+            new SlotGridPlanner.SlotAssign { Type = type, Anchor = anchor, DoorOpen = doorOpen };
 
         /// <summary>An empty hall: a real compartment with its own anchor but no room type
         /// and no furniture, for the player to build out.</summary>
@@ -1350,10 +1353,35 @@ namespace Perilune.Gen
         // ~3.5 sim-minutes, and a lesson ("shut the door") rather than a death.
         // The frontier is still 13 sealed compartments and one whole vacuum deck.
         //
-        // ⚠️ EVERY NON-CORE SLOT IS AN EMPTY HALL FOR A MECHANICAL REASON, NOT A FICTIONAL ONE.
-        // `SlotGridPlanner.Carve` boots a TYPED slot's door OPEN and an empty hall's door CLOSED
-        // (`IsOpen = !empty`). A typed airless slot would therefore vent the core through its own
-        // open door at tick 0. The two typed rooms are exactly the two that boot with air.
+        // ⚠️ EVERY NON-CORE SLOT WAS AN EMPTY HALL FOR A MECHANICAL REASON, NOT A FICTIONAL ONE —
+        // AND M1-1 REMOVED THE MECHANICAL HALF, SO READ THIS PARAGRAPH AS HISTORY PLUS ITS FIX.
+        // `SlotGridPlanner.Carve` derives a slot's door from its type — TYPED ⇒ OPEN, empty hall ⇒
+        // CLOSED (`IsOpen = !empty`) — so a typed airless slot would have had an open door onto
+        // vacuum at tick 0, and "the typed set and the pressurised set are the same set" was the
+        // way to guarantee that could not happen. It cost the ship something real: an unnamed slot
+        // is not a room to the Overview (`roomTileRect` refuses a blank `anchorName`), so the
+        // life-support bay could not be ENTERED and `vent_ls` — the premise's own opening move —
+        // had no reachable control.
+        //
+        // ⇒ `SlotAssign.DoorOpen` now separates the two decisions, and slot 3 is typed with its
+        // door held SHUT. The invariant that actually mattered is unchanged and is the one the
+        // tests assert: NO OPEN DOOR ON THIS SHIP FACES VACUUM AT BOOT
+        // (`EveryAirlessCompartment_BootsBehindAClosedDoor`). What is no longer true is the
+        // shorthand — the typed set is now THREE and the pressurised set is still TWO.
+        //
+        // ⚠️ AND THE HARM THAT OVERRIDE PREVENTS IS A DIFFUSION HARM, NOT A BOOT-TIME ONE — worth
+        // stating precisely, because the obvious wrong version ("the compartment would boot at
+        // 101.3 kPa") is both wrong and reassuring. Rooms NEVER merge across a door: `RoomState`
+        // marks the door tile `DoorMarker`, so with slot 3's door open the BOOT census is
+        // byte-identical — slot 3 is its own 60-tile room holding 0.0 mol, the spine is a separate
+        // 86-tile room of 8 945 mol, and `RoomState.Pressurize("wreck_spine_0")` never reaches it.
+        // What fills it is B-3's partial-pressure term (`AtmosphereSystem.DiffuseAcrossDoors`).
+        // MEASURED with the override dropped, driven, this tree, `ShipPlanBuilder.Build` + the
+        // default stack, NO PLAYER INPUT: 0.000 kPa at tick 0 · 14.459 at 100 · 52.998 at 600 ·
+        // BREATHABLE at tick 1 450 (~2.4 sim-minutes; ppO2 crosses hypoxia_ppo2_kpa = 16) · 90.042
+        // at 3 000 · 101.302 at 20 000. ⇒ the compartment breathes itself open in under three
+        // sim-minutes and `vent_ls` has nothing left to do. The door state is the only thing that
+        // differs at tick 0, which is exactly why the guard has to assert the DOOR and not the gas.
         //
         // ---------------------------------------------------------------------------------------
         // ⚠️ THE SHIP GOES COLD, IT IS MEASURED, AND IT IS NOT A KNOB ANY VALUE HERE CAN TURN
@@ -1407,7 +1435,7 @@ namespace Perilune.Gen
         //   scrubber_cryo    0.55  WORKING  cryo bay        — the one that keeps the first pawn alive
         //   scrubber_spine   0.09  wrecked  deck-0 spine    — reachable at boot; a Swarf-priced repair
         //   scrubber_reactor 0.09  wrecked  reactor bay     — reachable at boot; a Swarf-priced repair
-        //   scrubber_ls      0.08  wrecked  hall_d0_s3      — behind the frontier (airless)
+        //   scrubber_ls      0.08  wrecked  lifesupport     — behind the frontier (airless)
         //   scrubber_d1      0.06  wrecked  deck 1          — behind the frontier AND off-network
         // ⇒ THREE of them stand inside the survivable core, so a player who never opens a door can
         // still bring the ship to its eight-crew ceiling. The other two are headroom for later.
@@ -1545,6 +1573,26 @@ namespace Perilune.Gen
         /// SalvageRecycler and the MachineShop. Airless and sealed at boot.</summary>
         public const string WreckGoalAnchor = "hall_d0_s1";
 
+        /// <summary>
+        /// M1-1 — the life-support bay: deck 0, slot 3. <b>THE ONE SLOT ON THIS SHIP THAT IS NAMED
+        /// BUT AIRLESS</b>, and the only one that needs <see cref="SlotGridPlanner.SlotAssign.DoorOpen"/>.
+        ///
+        /// <para>It holds <c>scrubber_ls</c>, <c>reclaimer_ls</c> and — the reason this constant
+        /// exists — <c>vent_ls</c>, the closed vent the wreck start's fiction points the player at
+        /// as their first physical act. A slot with no <c>anchorName</c> is not a room to the
+        /// Overview: <c>roomTileRect</c> refuses a blank anchor, so clicking slot 3 opened the
+        /// ＋ADD ROOM picker and there was no way to reach the vent's OPEN/SHUT control at all.
+        /// Naming it makes the compartment ENTERABLE; it does not make it breathable, and the door
+        /// stays SHUT so the pressure frontier is exactly where it was.</para>
+        ///
+        /// <para><b>Named, not merely enterable, for a fictional reason too:</b> under OD-C the
+        /// ship's own hold is on file, and a crew that knows where its own life-support bay is
+        /// should not be shown a numbered hall.</para>
+        /// </summary>
+        public const int WreckLifeSupportSlot = 3;
+        public const string WreckLifeSupportAnchor = "lifesupport";
+        public const RoomType WreckLifeSupportType = RoomType.LifeSupport;
+
         /// <summary>Interior rows that collapse into debris in a wrecked bottom-row slot, counted
         /// from the hull side inward — the same depth the grid ship uses.</summary>
         public const int WreckDebrisRows = 2;
@@ -1621,18 +1669,33 @@ namespace Perilune.Gen
 
         public static ShipPlan PeriluneWreck()
         {
-            var plan = new ShipPlan { Name = "MSV Perilune (wreck)", Seed = WreckSeed };
+            // OD-C — THE SHIP'S INTERIOR IS KNOWN AT BOOT. This is the ONE ship in the repo that
+            // sets it, and it is the ship whose premise requires it: `ExplorationSystem` is crew
+            // vision, and thirteen of this ship's sixteen compartments are sealed vacuum that no
+            // crew member can enter, so under crew vision alone the fabricator, the machine shop,
+            // the recycler, both life-support machines and `vent_ls` — the opening move — are
+            // invisible and untargetable FOREVER, while the sensor log announces their failures by
+            // name. Fog is not deleted: it still ratchets, and every other ship is untouched.
+            // See ShipPlan.InteriorKnownAtBoot.
+            var plan = new ShipPlan { Name = "MSV Perilune (wreck)", Seed = WreckSeed, InteriorKnownAtBoot = true };
 
-            // Deck 0 — the surviving deck. TWO typed rooms (which boot with an open door) and six
-            // empty halls (which boot sealed). See the header: a typed airless slot would vent the
-            // core through its own door at tick 0, so the typed set and the pressurised set are the
-            // same set, by construction rather than by coincidence.
+            // Deck 0 — the surviving deck. THREE typed rooms and five empty halls (which boot
+            // sealed). ⚠️ THE TYPED SET AND THE PRESSURISED SET ARE NO LONGER THE SAME SET, and
+            // that sentence used to be an invariant of this ship — see the header block. Two typed
+            // rooms boot with air AND an open door; the third, LIFE SUPPORT, is typed for its NAME
+            // and holds its door SHUT via SlotAssign.DoorOpen, because the derived rule
+            // (`IsOpen = !empty`) cannot say "named but airless" and this compartment must be both.
+            // Everything the old invariant actually protected still holds and is still asserted by
+            // `EveryAirlessCompartment_BootsBehindAClosedDoor`: NO open door anywhere on this ship
+            // faces vacuum at tick 0.
             var deck0 = new[]
             {
                 Slot(RoomType.Cryo,    WreckCryoAnchor),      // slot 0 — the cryo bay
                 Hall(0, 1),                                   // slot 1 — workshop bones (the goal)
                 Hall(0, 2),                                   // slot 2 — fabrication bones
-                Hall(0, 3),                                   // slot 3 — life-support bones
+                // slot 3 — life support: NAMED (so the Overview enters it and `vent_ls` is
+                // reachable) and AIRLESS behind its own shut door. See WreckLifeSupportAnchor.
+                Slot(WreckLifeSupportType, WreckLifeSupportAnchor, doorOpen: false),
                 Slot(RoomType.Reactor, WreckReactorAnchor),   // slot 4 — power, water, stores
                 Hall(0, 5),                                   // slot 5 — stripped
                 Hall(0, 6),                                   // slot 6 — stripped
@@ -1818,7 +1881,12 @@ namespace Perilune.Gen
             AddWreckedHall(plan, rects[0]["hall_d0_s2"], 0,
                 (DeviceKind.Fabricator, "fabricator_1", 0.11f),
                 (DeviceKind.Light, "light_d0_s2", 0.07f));
-            AddWreckedHall(plan, rects[0]["hall_d0_s3"], 0,
+            // Slot 3 is a hall in every way except its NAME — typed only so the Overview can enter
+            // it (see WreckLifeSupportAnchor), still airless, still behind a shut door. It is
+            // dressed by the same AddWreckedHall the other frontier compartments use, deliberately:
+            // nothing about being named makes it less wrecked.
+            var lifeSupport = rects[0][WreckLifeSupportAnchor];
+            AddWreckedHall(plan, lifeSupport, 0,
                 (DeviceKind.Scrubber, "scrubber_ls", 0.08f),
                 (DeviceKind.Reclaimer, "reclaimer_ls", 0.12f),
                 (DeviceKind.Light, "light_d0_s3", 0.05f));
@@ -1827,7 +1895,7 @@ namespace Perilune.Gen
             // pressure loop is built on.
             plan.Devices.Add(new DeviceSpec
             {
-                Kind = DeviceKind.AirVent, Pos = new Int3(rects[0]["hall_d0_s3"].X0 + 1, rects[0]["hall_d0_s3"].Y1, 0),
+                Kind = DeviceKind.AirVent, Pos = new Int3(lifeSupport.X0 + 1, lifeSupport.Y1, 0),
                 Name = "vent_ls", IsOpen = false, Condition = 0.15f,
             });
             AddWreckedHall(plan, rects[0]["hall_d0_s5"], 0, (DeviceKind.Light, "light_d0_s5", 0.06f));
