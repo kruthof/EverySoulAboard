@@ -1231,8 +1231,11 @@ recruiters, as recommended.
 
 ### M1-J — the staging rule `CraftingSystem` still does not ask *(NEW IN REVISION 3; **RE-CHARTERED THE SAME DAY** — its original sentence was discharged by M1-H)*
 
-**CLASS: ⚠️ SEE THE CLASS QUESTION BELOW** · **LANE: `lane/craft-staging`** · **SIZE: S**
-· ⚠️ **INTEGRATOR LANE** · ⭐ **PIN M1-b PROVISIONAL — likely NEUTRAL; measure**
+**CLASS: ⛔ UNCLASSED — PENDING ONE MEASUREMENT.** *(Not `PLAYER`, not `INFRASTRUCTURE`. The class is
+an OUTPUT of the measurement chartered below, and the two outcomes produce different classes.
+⛔ **A lane picking one up cannot inherit the old class — there is none to inherit.**)*
+**LANE: `lane/craft-staging`** · **SIZE: S** · ⚠️ **INTEGRATOR LANE**
+· ⭐ **PIN M1-b PROVISIONAL — likely NEUTRAL; measure**
 
 > ## ⛔ ITS ORIGINAL PLAYER SENTENCE IS MEASURED FALSE ON MERGED `main`. RETRACTED, NOT QUIETLY EDITED.
 >
@@ -1271,22 +1274,51 @@ recruiters, as recommended.
 > core freezes from ~day 5"*, and a pressurised, reachable, freezing bench is exactly the residual —
 > **but that is an inference from two documents, not a measurement, and it must be labelled as one.**
 
-> ### ⛔ THE DECISION I AM NOT TAKING — this needs the integrator, and it is the honest output of the re-charter
+> ### ⛔⭐ RULING (integrator, 2026-07-29): **MEASURE FIRST — AND THE UNATTENDED RUN IS THE WRONG RUN**
 >
-> A package whose player sentence has been discharged is, by this document's own §6 rules, **either
-> re-classified or dropped.** Three options, and the recommendation is deliberately weak:
-> - **(a) DROP IT.** No measured occurrence; `CanStageWorkerAt` at a fifth site is guard work, and the
->   plan **capped guard-hardening as a programme.**
-> - **(b) KEEP IT AS `INFRASTRUCTURE`, SIZE S.** M1 now has cap 2 with 1 used, so **there is a slot** —
->   and its justification becomes *consistency of one rule across all staging sites*, which is honest
->   and carries **no player sentence** (writing a fake one is the exact failure §6 exists to stop).
-> - **(c) MEASURE FIRST, THEN DECIDE.** Drive `--ship wreck` past the day-5 freeze and see whether a
->   reachable-but-unsurvivable bench ever occurs. **If it never does, (a). If it does, it is a PLAYER
->   package again and its sentence writes itself.**
+> Option (c) is taken, **with the scope sharpened, because the obvious measurement is provably empty
+> and would waste the run.** The reasoning is written here rather than left to be re-derived:
 >
-> ***Recommend (c), then (a) or (b) on the result*** — ⚠️ **and note the cost of (c) honestly: it is a
-> driven measurement to justify a one-line change, which is a poor ratio.** ⛔ **What must NOT happen
-> is that it stays chartered `PLAYER` on a sentence this section has just retracted.**
+> - **M1-H's probe is a PATH check.** It refuses a bench the pawn **cannot reach**.
+> - **It does NOT refuse a bench the pawn CAN reach but CANNOT SURVIVE at.**
+> - **On the shipped wreck those two coincide at boot**, because everything unbreathable is also
+>   behind a shut door. ⇒ ⛔ ***That is why an unattended run measures nothing: the two conditions are
+>   CONFOUNDED BY THE SHIP'S GEOMETRY, not by the code being safe.*** **An empty unattended result
+>   would be a green meaning "my instrument cannot separate the variables"** — §13.4's shape, and the
+>   `--strip 40` saturated-instrument lesson wearing new clothes.
+> - ⭐⭐ **THE PLAYER DECOUPLES THEM WITH ONE CLICK.** OPERATE opens a door onto a vacuum compartment,
+>   and the two halls in question hold **all three of the wreck's benches**:
+>   `hall_d0_s1` → `recycler_1` + `machineshop_1` (`AuthoredShips.cs:1877-1879`), `hall_d0_s2` →
+>   `fabricator_1` (`:1881-1882`).
+>   ⛔ **AND IT IS NOT MERELY "a compartment" — `AuthoredShips.cs:1574` IS
+>   `public const string WreckGoalAnchor = "hall_d0_s1";`.** ⇒ ***The reachable, unsurvivable bench is
+>   one player action away, in the room the game names as its own goal.*** **That is the strongest form
+>   of this argument and it is a constant in the source, not an inference.**
+>
+> **⇒ THE CHARTERED MEASUREMENT IS THE PLAYER-CREATED CASE, NOT THE UNATTENDED ONE.**
+> Enqueue `SetDoorStateCommand` — **the command the shipped OPERATE verb enqueues**
+> (`hosts/web/GameSession.cs:1074`) — to open the door onto the vacuum hall, drive, and record:
+> **does `CraftingSystem` recruit a pawn to a bench in vacuum, and what happens when it does?**
+> Three things to distinguish, and they are not the same answer:
+> **(i)** she is recruited and the job **silently never progresses** · **(ii)** something downstream
+> already refuses her at a different gate · **(iii)** **she works in vacuum.**
+>
+> | outcome | class this produces | deliverable |
+> |---|---|---|
+> | **(i) recruited, then stalls silently** | ⭐ **`PLAYER`** — *"today the player opens the door the game told them to open, their one crew member walks to a bench and stands there doing nothing, and nothing says why"* — **the sentence writes itself, and it is the invisible-refusal class that has cost three owner reports** | the `CanStageWorkerAt` line + its driven fixture |
+> | **(iii) she works in vacuum** | ⭐ **`PLAYER`, and larger than this package** — a crew member working where `WorksiteSafety` says no worker may be staged is a rule with a hole, not a missing call | escalate before writing the line |
+> | **(ii) something downstream refuses her** | ⛔ **NO PACKAGE AT ALL** — a **latent asymmetry**, not a defect | a **§12 correction** plus a source comment at `CraftingSystem.cs:582-593` recording *why* the call is absent and what already covers it |
+>
+> ⚠️ **Outcome (ii) is the one that must not be talked past.** *"Something else already catches it"* is
+> the answer that deletes this package, and it is also the answer a lane wanting to ship a one-line
+> change is least motivated to look for. ⛔ **Look for it first.**
+> ⚠️ **AND THE MEASUREMENT IS THE DELIVERABLE UNTIL IT REPORTS.** Nobody writes the `CanStageWorkerAt`
+> line before the run says which of the three happened.
+>
+> *(Superseded by this ruling: the earlier option list — (a) drop · (b) `INFRASTRUCTURE` · (c) measure
+> first — and its weak recommendation. **Options (a) and (b) survive only as OUTCOMES of the run**, and
+> the earlier framing's suggestion to "drive past the day-5 freeze" is exactly the unattended run this
+> ruling refuses.)*
 
 > ### ⭐ THE CAUSE IS ONE MISSING LINE, AND THE SIM ALREADY KNOWS IT IS MISSING
 >
@@ -1878,14 +1910,30 @@ the capability to do so.**
 - **3 exclusions, outside the table and stated immediately after it:** two `SustenanceSystem` doors
   and `SafetySystem`'s flee.
 
-⇒ **`11 / 5 / 3`.** ⚠️ **The two non-sites are IN the table on purpose.** A census that silently omits
+⇒ **`11 / 5 / 3`.**
+
+> ### ✅ RE-COUNTED ON THE MERGED TREE AFTER M1-H LANDED — NOT INFERRED FROM ITS DIFF
+> `grep -rn --include='*.cs' "JobKind = JobKind\." sim/ | grep -v JobKind.None` returns **exactly
+> twelve writes**, and they partition the table without remainder: **nine counted**
+> (`DigJobSource.cs:99` · `HaulJobSource.cs:298` · `:365` · `BuildJobSource.cs:202` · `:263` ·
+> `DeconstructJobSource.cs:139` · `CraftingSystem.cs:203` · `MachineWearSystem.cs:289` ·
+> `EffectValidator.cs:141`) and **three excluded** (`SustenanceSystem.cs:147` Drink, `:194` Eat,
+> `SafetySystem.cs:234` Flee). The four rows that write nothing — `A1`, `A2`, `A11`, `B2′` — were each
+> re-read at their cited lines. ⇒ **`11 / 5 / 3` HOLDS after M1-H.**
+> ⚠️ **And the re-count paid for itself twice**, which is why it was not left as an inference:
+> **`EffectValidator`'s idleness gate is `:111`, not `:110`** (`:110` is the `e.Job != JobKind.Dig`
+> test), and **`TryAssign` opens at `:220`, not `:219`.** Both were quoted as part of a justification.
+> ⭐ ***An inference from a diff is weaker than a re-count, and this document has now had citations go
+> stale within a single day twice.***
+
+⚠️ **The two non-sites are IN the table on purpose.** A census that silently omits
 what it decided not to gate cannot distinguish *"we ruled on this"* from *"we never saw it"* — and
 `A5` is exactly the site a later lane "completing the set" will reach for.
 
 | # | `file:line` | what it does | gate |
 |---|---|---|---|
 | A1 | `sim/Sim.Core/Jobs/JobSystem.cs:140` | `if (citizen.IsRecruitableForWork) TryAssign(...)` — the only door into auto-work for the four `IJobSource`s | **G1** |
-| A2 | `sim/Sim.Core/Jobs/JobSystem.cs:219-273` | `TryAssign` — the argmin (`:237`), its guard (`:243`), then `TryClaim` (`:257`). Assigns nothing itself | **G1** |
+| A2 | `sim/Sim.Core/Jobs/JobSystem.cs:220-273` | `TryAssign` — the argmin (`:237`), its guard (`:243`), then `TryClaim` (`:257`). Assigns nothing itself | **G1** |
 | A3 | `Jobs/Sources/DigJobSource.cs:99` | `JobKind.Dig` in `TryClaim` (`:288`) | via G1 |
 | A4 | `Jobs/Sources/HaulJobSource.cs:298` | `JobKind.HaulPickup` in `TryClaim` (`:292`) | via G1 |
 | A5 | `Jobs/Sources/HaulJobSource.cs:365` | `JobKind.HaulDeliver` — ⚠️ **an IN-JOB TRANSITION inside `Progress`, not a claim** | ⛔ **not a gate — see the ruling below** |
@@ -1895,7 +1943,7 @@ what it decided not to gate cannot distinguish *"we ruled on this"* from *"we ne
 | A9 | `Systems/CraftingSystem.cs:203` | `recruit.JobKind = JobKind.Craft;` — recruit at `:164` via `FindNearestReachableIdle` (`:467`, gate `:565`). **Bypasses the dispatcher entirely** | **G2** |
 | A10 | `Systems/MachineWearSystem.cs:289` | `recruit.JobKind = JobKind.Maintain;` in `MaintenanceSystem.RecruitForNeediest` (`:189`, called from `MaintenanceSystem.Tick:160`) — recruit at `:248` via `FindNearestReachableIdle` (`:418`, gate `:426`). **Bypasses the dispatcher entirely** | **G3** |
 | A11 | `Systems/CitizenSystem.cs:70-79` | idle wander — sets a **path** and `JobKind` **stays `None`** | ⛔ **never gated — it is what an unassigned pawn DOES (OD-G). See M2-20** |
-| B2 | `sim/Sim.Core/Effects/EffectValidator.cs:141` | `citizen.JobKind = JobKind.Dig;` from the LLM `AgreeTask` effect. Its only idleness gate is `:110` `if (citizen.JobKind != JobKind.None) return false;` — **it does not consult `IsRecruitableForWork`, so it ignores `HoldPosition` AND `OrderedMove` today** | **G4** |
+| B2 | `sim/Sim.Core/Effects/EffectValidator.cs:141` | `citizen.JobKind = JobKind.Dig;` from the LLM `AgreeTask` effect. Its only idleness gate is `:111` `if (citizen.JobKind != JobKind.None) return false;` — **it does not consult `IsRecruitableForWork`, so it ignores `HoldPosition` AND `OrderedMove` today** | **G4** |
 | B2′ | `sim/Sim.Core/Effects/CapabilityComputer.cs:70-76` | ⭐ **THE FIFTH GATE, NAMED FOR THE FIRST TIME IN REVISION 3.** The mirror that decides whether the dig is **offered to the model at all**; its own comment reads *"mirrors the EffectValidator gate (wander path doesn't veto)"* | **G5** |
 
 ⛔ **G5 IS NOT OPTIONAL, AND OMITTING IT SHIPS A LYING CREW MEMBER.** Gate `EffectValidator` alone and
@@ -3531,15 +3579,34 @@ What follows is the package list and the seams; the charters get written at the 
 > stays `PLAYER`, which is **the one thing its own charter says must not happen by default.** The
 > arithmetic each way, so nobody has to redo it:
 >
-> | if M1-J… | M1 packages | PLAYER | INFRA | cap | headroom |
-> |---|---:|---:|---:|---:|---|
-> | is **dropped** | 9 | 8 | 1 | 1 | ⚠️ **AT CAP** |
-> | becomes **INFRASTRUCTURE** | 10 | 8 | **2** | 2 | ⚠️ **AT CAP** |
-> | stays **PLAYER** *(only if measurement finds the residual)* | 10 | 9 | 1 | 2 | 1 |
+> **M1-J is `UNCLASSED`, and its class is the OUTPUT of the driven measurement its charter now
+> specifies** (open the vacuum hall with `SetDoorStateCommand` and see what `CraftingSystem` does).
+> **The quarter total is conditional on that run**, so here is every outcome rather than a picked
+> number:
 >
-> ⛔ **Two of the three outcomes put M1 back AT CAP**, so *"M1 is no longer at cap"* is **not yet a
-> fact**. ⚠️ *Revision 3 published it as one earlier in this same document; corrected here rather than
-> in place, because the earlier statement was true of the tree it was written against.*
+> | measurement outcome | M1-J becomes | M1 pkgs | PLAYER | INFRA | cap | M1 headroom | **QUARTER** |
+> |---|---|---:|---:|---:|---:|---|---|
+> | **(i)** recruited, then stalls silently | **`PLAYER`** | 10 | 9 | 1 | 2 | 1 | **55 / 50 / 5** |
+> | **(iii)** she works in vacuum | **`PLAYER`**, and escalated beyond this package | 10 | 9 | 1 | 2 | 1 | **55 / 50 / 5** ⚠️ *plus whatever the escalation charters* |
+> | **(ii)** something downstream already refuses her | ⛔ **NO PACKAGE** — a §12 correction + a source comment | **9** | 8 | 1 | 1 | ⚠️ **AT CAP** | **54 / 49 / 5** |
+>
+> ⛔ **`INFRASTRUCTURE` is NOT among the outcomes any more**, and that is a change from this section's
+> first draft: under the sharpened ruling M1-J is either a real player defect or **not a package at
+> all**. *(The earlier draft offered "keep it as INFRASTRUCTURE" as a middle path. **A package kept
+> because deleting it feels wasteful is the thing the cap exists to refuse.**)*
+> ⇒ ⚠️ **Therefore *"M1 is no longer at cap"* is NOT YET A FACT** — outcome (ii) puts it straight back.
+> *Revision 3 published it as one earlier in this same document; corrected here rather than in place,
+> because the earlier statement was true of the tree it was written against.*
+
+> ### ⭐ A STANDING NOTE ON THIS SECTION, AND IT IS THE REASON THE TABLE ABOVE EXISTS
+> ⛔ **A COUNT IS A MEASUREMENT OF A TREE.** Every number in §9 is true of one tree at one moment, and
+> this section has now been wrong three separate ways in one quarter: **prose disagreeing with the
+> table beside it** (50/6 vs 51/5, through two revisions and a review); **a total that was correct and
+> stopped being correct two hours later** (M1's cap, when a sibling lane merged); and **a class
+> asserted before the measurement that decides it** (M1-J).
+> ⇒ **Re-derive §9 from the package list on the tree you are on, and never quote it from memory or
+> from an earlier revision.** That is `CLAUDE.md`'s bolded *"re-measure before quoting"* applied to
+> this document's own arithmetic — **the same rule, and this section is not exempt from it.**
 
 ⭐ **RE-COUNTED IN REVISION 3, FROM THE MERGED TREE, ROW BY ROW — not adjusted.** M1 gains **M1-J** and **M1-I**
 (**10** = A,B,C,D,E,F,G,H,**I**,**J**). ⭐ **`M1-I` is `lane/repair-consumables` (OD-F), chartered
@@ -3547,9 +3614,9 @@ elsewhere and already in flight — this document did not know it existed until 
 its id collided with the staging package and the NEWER one moved to `M1-J`.** M2 gains **M2-20** and
 **M2-21** (17 = M2-0,1,2,3,4,5,6,8,9,10,11,12,17,18,
 19,20,21 — M2-7 retracted, M2-13…M2-16 never existed, §11). ⚠️ **All four new packages are `PLAYER`
-and carry real sentences, so the infrastructure column does not move and no cap is breached.**
-⚠️ ⭐ **M1's "rises out of AT CAP" is CONDITIONAL — see the box above.** M1-J's class is open after
-M1-H's merge, and **two of its three outcomes put M1 straight back AT CAP.**
+and carry real sentences, so the infrastructure column does not move and no cap is breached** —
+⚠️ ⭐ **except that M1-J is now `UNCLASSED`, so M1's row is conditional on one driven measurement (see
+the box above). "M1 rises out of AT CAP" holds under outcomes (i) and (iii) and FAILS under (ii).**
 ⚠️ **`M2-21` is counted under M2 because that is whose budget it is chartered onto, even though it
 merges at position 7b** — see its charter.
 
@@ -3559,8 +3626,8 @@ not been recomputed since revision 1 added M1-H, retracted M2-7 and added M2-19.
 **Against the plan's projection (~76 packages, ≤15 infrastructure): this document charters 55 and 5.**
 The difference is not optimism — it is that M3/M4/M5 are outline and sketch, and **their charters will
 add packages when they are written.** ⚠️ **The infrastructure ratio, however, is the number to watch:
-at 5 of 55 the quarter is at 9.1 %, comfortably inside 20 %. ⚠️ **M1 is at cap OR one slot clear
-depending on M1-J's open class** — adding M1-I and M1-J took it to 10 packages and its cap to 2, but
+at 5 of 55 the quarter is at 9.1 % (**or 5 of 54 = 9.3 % under outcome (ii)**), comfortably inside
+20 % either way. ⚠️ **M1 is at cap OR one slot clear depending on M1-J's pending measurement** — adding M1-I and M1-J took it to 10 packages and its cap to 2, but
 **two of M1-J's three outcomes consume the slot again** (see the conditional box above).
 **M2 and M4 remain AT CAP unconditionally.** Chartering one more infrastructure package in any of those three is a **refusal**, and the
 only way past it is an explicit owner override recorded by name and date.
@@ -3813,7 +3880,7 @@ decides whether that capability is **offered to the model at all** lives at
 ships a crew member who AGREES IN DIALOGUE to work the player forbade and then does nothing** — the
 defect the 2026-07-21 playtest round closed under *"crew no longer promise physical work they cannot
 do"*. ⚠️ **Both halves also share a real hole today:** their only idleness test is
-`EffectValidator.cs:110` `if (citizen.JobKind != JobKind.None) return false;`, which **never consults
+`EffectValidator.cs:111` `if (citizen.JobKind != JobKind.None) return false;`, which **never consults
 `IsRecruitableForWork`**, so **a `HoldPosition` pawn can be given a dig by conversation.** *(That is a
 pre-existing defect, not one M2 creates; M2-2 closes it as a side effect and should say so rather
 than claim it.)*
