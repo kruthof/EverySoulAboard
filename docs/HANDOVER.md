@@ -4,7 +4,114 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒⇒ START HERE — THE WRECK IS PLAYABLE (2026-07-28, latest). Everything below this block is history.
+## ⇒⇒ START HERE — THE ROADMAP IS RE-PRIORITISED ON THE OWNER'S OWN LOOP (2026-07-29, latest)
+
+> **Read `docs/design/perilune-roadmap-q3.plan.md` (the shape) and
+> `docs/design/perilune-roadmap-q3.packages.md` (51 buildable packages, merge order, pin chain)
+> before touching anything. Both were independently reviewed and both took a send-back.**
+>
+> ### ⇒ WHY THIS EXISTS: the owner challenged how previous sessions prioritised
+>
+> Verbatim: *"sometimes I feel that you try to optimize things that I am at least not sure if they
+> are really important."* Then his statement of the loop: *"The player starts with **seeing the first
+> pawn coming out, being alive.** And from there on, he commands the pawn to **repair certain
+> machineries to start the power again**. And maybe to **build something**. … **we define tasks. We
+> define which player [pawn] can do what.** … it is **this balance between control and autonomy.
+> Very much orient yourself on the RimWorld gameplay.**"
+>
+> **The audit's verdict: the suspicion is substantially correct, but agents did not invent an
+> agenda.** Almost every large programme was approved by the owner by name. **What agents chose was
+> the METRIC, and the metric chose the work.** `A1` — an agent-authored crew-occupancy criterion —
+> was never put to the owner as a choice, and `ECONOMY-PLAN.md:574` calls it *"the number the whole
+> programme is judged on."* It has fooled this project five times and **scored a livelock producing
+> ZERO services at 91 % busy.**
+>
+> **Measured:** test/guard churn is **44 % of lifetime and 52 % of the last three days**, against
+> **6 %** for `sim/Sim.Core`. And `git log -- '*Skill*' '*Priority*' '*WorkType*' '*Assign*'` returns
+> **zero commits in 555** — the owner's named first-class player input has never been touched. It was
+> deferred **three times, never once by the owner**.
+>
+> ### ⇒ THREE BINDING OWNER DECISIONS, TAKEN 2026-07-29 (OD-A / OD-B / OD-C)
+>
+> - **OD-A — REPAIR IS A WORK TYPE, NOT A DESIGNATION.** RimWorld's model, both halves: a pawn with
+>   Repair enabled picks the neediest reachable machine itself (`MaintenanceSystem.RecruitForNeediest`
+>   is brought **under the grid**, not thrown away), **plus** a right-click *"Prioritise: repair X"*.
+>   A paint-it-yourself REPAIR designation is **rejected**. ⇒ **This makes the work-priority grid a
+>   PREREQUISITE, not the seventh lane.** It had been ordered by *pin cost* — a cost argument used as
+>   an ordering argument.
+> - **OD-B — THE ECONOMY IS PARKED AT E0-COMPLETE. E1 IS NOT OPENED.** **A1 is retired as a GOAL**
+>   (regression statistic only, never a gate). The gate is re-chartered as a player-visible event:
+>   *"one crew member, starting alone in a wrecked ship, can reach a second thaw — and thaws 3, 4 and
+>   5 do not all arrive in the same sim-hour."* The `ledger` readout **stays**. **A3 has still never
+>   been measured.**
+> - **OD-C — THE SHIP'S INTERIOR IS KNOWN AT BOOT** (authored-explored). Six of eight deck-0 slots
+>   rendered as blank `＋ADD ROOM` boxes while containing `fabricator_1` 0.11 … and **`vent_ls` 0.15,
+>   the premise's own opening move**.
+>
+> ### ⇒ THE SPIKE THAT REFUTED THE PLAN — read before designing any dispatch work
+>
+> `M2-0` (throwaway, `lane/spike-dispatch`) **built** the priority grid and measured it. A grid
+> implemented inside `JobSystem.TryAssign` — the shape two analyses and a reviewer agreed on — is a
+> **MEASURED NO-OP** for the owner's own case (`Decon@1 / Repair@4` mid-chain is **byte-identical to
+> baseline**). Instrumented cause: **`JobSystem` saw the pawn idle on ZERO of the 54 450
+> maintenance-chain ticks**, because `MaintenanceSystem.Tick` frees and re-claims the same pawn
+> **inside one tick**. ⇒ **Priority cannot live in the dispatcher: it is ONE arbitration point with
+> FIVE entry sites**, and defer-only / push-gate-only each fail one half. Both ⇒ **52 652 → 7 232.**
+>
+> - ⚠️ **The published "54 650-tick wait" is an ABSOLUTE TICK, not a wait.** Painted while the pawn is
+>   idle, the order wins at **tick 1**. *"Does Repair@1 beat a painted strip order"* was satisfiable
+>   **both ways** by the shipped sim depending on paint timing — a spike criterion the shipped game
+>   already met.
+> - ✅ **Pre-emption is the CHEAPEST and SAFEST leg, not the scariest** — zero lines in `sim/`, one
+>   tick. All four hard interrupt cases measured **safe** (mid-haul cargo dropped and re-boarded;
+>   mid-craft **station progress survives**; mid-build the site **keeps its material**). What is
+>   actually unbuilt is **HOLDING** a pawn on an ordered job.
+> - ⛔ **Equal band is deprioritisation, not a tie-break.** DECIDED on RimWorld's rule: **ties break
+>   by the work type's position in the work list.** The v1 order was derived to reproduce shipped
+>   precedence exactly, keeping the lane off the pin chain.
+>
+> ### ⛔ FOUND DEFECTS, all live on `main`, none previously filed
+>
+> 1. **Every light goes out permanently at sim-hour 7 on `--ship wreck`.** `AuthoredShips.cs:1429-1433`
+>    claims *"~12.6 kW of total demand … every tier served from tick 0 and stays served"* — **false in
+>    both halves**; true flat demand is **20.40 kW** against 18.00 kW. The 12.6 figure is what you get
+>    under a demand model **the sim never implemented**.
+> 2. **0 of 626 devices are off-network**, though `AuthoredShips.cs:1441-1443` believes deck 1 carries
+>    no conduit — `PowerSystem`'s claim rule is 6-way, so deck 1 claims the deck-0 conduit through −z.
+> 3. **A `Craft` recruit→abandon thrash burning 33 % of all crew-ticks**, invisible only because the
+>    maintenance monopoly absorbs the pawn — **which a priority grid removes. It surfaces on day one.**
+>    Root cause: `CraftingSystem` has **ten `Abandon` sites and no backoff at all**.
+> 4. **Save/load does not exist outside the test suite** — no host writes or reads one.
+> 5. **An `AirVent` INJECTS from an unmodelled reserve into its own room** and refuses to vent into
+>    vacuum (`AtmosphereSystem.cs:136-146`). ⇒ `CLAUDE.md`'s framing of the premise — *"open the vent,
+>    push the air outward"* — **has never been implemented.** An owner decision, not a code fix.
+> 6. **The wreck's repair economy is FINITE — three consumables.** Below `wreck_threshold = 0.25` even
+>    the free jury-rig is refused, so once spent, **`wing_b` (0.18) and `wing_c` (0.06) are permanently
+>    unfixable**. A soft-lock with no message. Owner batch item.
+>
+> ### ⇒ IN FLIGHT — nothing merged, `main` untouched
+>
+> | lane | package | state |
+> |---|---|---|
+> | `lane/wreck-visible` | **M1-1** OD-C + naming deck-0 slot 3 | gate green (1294+953), **all five pins HELD**, acceptance met — *the player opens `vent_ls` in a running game* — under review |
+> | `lane/first-screen` | **M1-b** the onboarding card | gate green (1286+967), pin-neutral, 12 mutations RED — under review |
+> | `lane/spike-dispatch` | **M2-0** | complete, **throwaway, never merges** |
+>
+> ⚠️ **`lane/wreck-visible` found the `＋ADD ROOM` air wand trying to return**: `Carve` derives a
+> door from the room type, so typing slot 3 the ordinary way would have **booted its door open onto
+> the pressurised spine and handed the compartment 101 kPa free**. Fixed with an explicit
+> `SlotAssign.DoorOpen` override.
+>
+> ### ⇒ OPEN ON THE OWNER
+>
+> 1. **The new onboarding card copy** — written, tested, never seen by a human.
+> 2. **The finite repair economy** (defect 6) — three options, no recommendation.
+> 3. **The `AirVent` premise contradiction** (defect 5) — fiction, not code.
+> 4. **`Haul` second in the v1 work-list order** — chosen for pin-neutrality, declared as a compromise.
+> 5. **Three unapproved choices in `lane/wreck-visible`**: `RoomType.LifeSupport` for slot 3 · whole-rect
+>    vs rooms-only reveal · **deck-1 machines now visible on the deck that can never hold air**.
+
+## ⇒⇒ SUPERSEDED — THE WRECK IS PLAYABLE (2026-07-28). Everything below this block is history.
 
 > **Gate on `main`: `./ci.sh` exit 0, 1286 dotnet + 953 node, twin hashes MATCH `02257f5bce961570`,
 > ALL FIVE PINS HELD, and `git diff` to `tests/Perilune.Tests/Golden/`, `ci.sh` and `content/` is
