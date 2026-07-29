@@ -911,8 +911,9 @@ function onSceneGesture(e) {
     }
     // UN-DESIGNATE (M1-C). Same tier as 'order' and the same shape, with one difference that is the
     // whole feature: WHICH command goes out is read off the tile, not off the tool. The mark list is
-    // decoded HERE rather than cached, so the erase acts on the newest wire state rather than on
-    // whatever the last repaint happened to leave behind.
+    // DECODED at click time from the same shared cache the surface draws from (`Hud.getMarks()`) —
+    // ⚠️ not a fresher SOURCE, which the first version of this comment implied: the gap it closes is
+    // one repaint, not one wire message, and the cache is identical either way.
     case 'erase': {
       const t = pointToTile(svg, e);
       if (t) {
@@ -925,10 +926,21 @@ function onSceneGesture(e) {
         for (const o of erasePayloads(target, t.x, t.y)) _send(o);
         Hud.toolUsed(ERASE_TOOL, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
         if (target) nudgeOnIntent(); // the crew must still be running to notice the order is gone
-        // ALWAYS A TOAST, INCLUDING THE MISS. Erasing an unordered tile correctly sends nothing, and
-        // "sent nothing" is indistinguishable from "the tool is broken" unless the surface says so.
-        // The suppression line still wins where it applies, for the reason the 'order' branch gives.
-        if (!orderSuppressionToast(ERASE_TOOL, hit)) toast(erasePlacedLine(target, t.x, t.y, deck));
+        // ⚠️ ERASE DOES NOT ROUTE THROUGH `orderSuppressionToast`, AND THAT IS A DECISION, NOT AN
+        // OVERSIGHT — it was one until independent review drove it (2026-07-29). Suppression replaces
+        // the verb's own line with "ERASE ARMED — ESC TO DISARM" on any room/＋ADD ROOM hit, and for
+        // an ORDER that is right: the mark appearing IS the confirmation, so the only thing left to
+        // explain is why the room did not open. ERASE HAS NO SUCH SECOND SIGNAL. Its miss sends no
+        // command and changes no pixel, so inside a room — which is where every device a player wants
+        // to un-condemn lives — suppression put the miss straight back into silence, which is the
+        // exact failure this package exists to remove (`invisible-feedback-is-FUNCTIONAL`).
+        //
+        // So the erase line ALWAYS wins, and the refusal is APPENDED rather than dropped: one toast
+        // carrying both facts. `orderClickSuppressed` is the same predicate the ORDER branch uses,
+        // shared rather than restated so the two cannot come to disagree about which hits navigate.
+        let line = erasePlacedLine(target, t.x, t.y, deck);
+        if (orderClickSuppressed(hit)) line += ' · ESC TO DISARM';
+        toast(line);
       }
       break;
     }
@@ -968,9 +980,20 @@ function onSceneGesture(e) {
  * caller's choice is a real one — see the call site.
  */
 function orderSuppressionToast(tool, hit) {
-  if (!hit || (hit.roomAnchor == null && hit.addRoomSlot == null)) return false;
+  if (!orderClickSuppressed(hit)) return false;
   toast(String(tool).toUpperCase() + ' ARMED — ESC TO DISARM');
   return true;
+}
+
+/**
+ * THE PREDICATE ALONE: did this click land on something the surface would otherwise have NAVIGATED
+ * to — a bound room, or the ＋ADD ROOM picker? Extracted from `orderSuppressionToast` (M1-C review)
+ * because ERASE needs the ANSWER without the toast: it appends the refusal to its own line instead
+ * of being replaced by it. One predicate, two callers, so "which hits navigate" cannot come to mean
+ * two different things on one surface. PURE (no DOM, no module state).
+ */
+function orderClickSuppressed(hit) {
+  return !!hit && (hit.roomAnchor != null || hit.addRoomSlot != null);
 }
 
 /**

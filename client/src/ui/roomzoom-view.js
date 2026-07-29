@@ -79,7 +79,7 @@ let _wasPaused = false;   // previous run state — the edge that dismisses the 
 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
-let _armed = null;        // the ONE Level-2 input slot (15 tools + null)
+let _armed = null;        // the ONE Level-2 input slot (17 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
@@ -1213,8 +1213,16 @@ function orderPayloads(verb, x, y, mask) {
  * exists to avoid. Making the two paths "symmetrical" is the most likely regression in this file.
  *
  * IT MUST STAY BYTE-IDENTICAL TO `overview-view.js`'s copy, for the same reason `orderPayloads` must
- * stay byte-identical to `paletteOrders`, and it is pinned the same way — by driving both surfaces
- * and comparing what came out of the injected `send`.
+ * stay byte-identical to `paletteOrders`.
+ *
+ * ⚠️ IT IS NOT PINNED THE SAME WAY, AND SAYING SO WAS AN OVERSTATEMENT — corrected in review
+ * (2026-07-29). `orderPayloads` has a real cross-surface pin because `paletteOrders` is a THIRD,
+ * shared producer both copies can be compared against by import; the OFF path has no such producer,
+ * and the two suites live in separate files with separate DOM globals, so nothing compares one
+ * emission to the other. What IS pinned is (a) the shared `eraseTarget`/`tileOrders` both surfaces
+ * run, by import, and (b) the ABSOLUTE wire shape `{cmd,x,y,on:0}` asserted independently in each
+ * file — so a drift on either side reddens against the host's contract even though the two are never
+ * compared to each other. That is weaker than the ON path and is stated rather than implied.
  *
  * @param {'dig'|'strip'|'stockpile'|null} target  `eraseTarget` output
  * @param {number} x @param {number} y
@@ -1228,10 +1236,15 @@ function erasePayloads(target, x, y) {
 }
 
 /** What an ERASE click on this room tile would take off, or null — the Room Zoom's half of the
- *  lookup. It reads BOTH layers the player can see: `_markTiles` (dig / strip, and stockpile where
- *  the host ranked it topmost) and `_zoneTiles` (the stockpile tint this surface draws from the
- *  `zones` channel instead). That second source is the whole reason the precedence is code — see
- *  `room-model.js`'s ERASE header. */
+ *  lookup. It reads BOTH channels: `_markTiles` (dig / strip, and stockpile where the host ranked it
+ *  topmost) and `_zoneTiles` (this surface's stockpile source, from the `zones` channel).
+ *
+ *  ⚠️ THE SECOND READ IS A FOG DEFENCE, NOT A ZONE DEFENCE — corrected in review (2026-07-29). On an
+ *  EXPLORED tile a zone reaches `marks` as well, so `_zoneTiles` adds nothing there; what it adds is
+ *  the FOGGED zone, because `BuildZones` has no fog gate and `BuildMarks` does
+ *  (`GameSession.cs:1974-1999` against `:2053`) and `DesignateStockpileCommand` needs only `Walkable`
+ *  (`Commands.cs:173`). So this surface can take back a zone the Overview cannot even see. That
+ *  asymmetry is a recorded limit, not a feature; `room-model.js`'s ERASE header carries it. */
 function eraseTargetAt(x, y) {
   return eraseTarget(tileOrders(roomMarkNameAt(_markTiles, x, y), roomTileZoned(_zoneTiles, x, y)));
 }

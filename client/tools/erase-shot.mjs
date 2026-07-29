@@ -226,6 +226,40 @@ if (ovDigBtn && ovEraseBtn && debris.length) {
     check(/NOTHING TO ERASE/.test(missLine) && !/HIDDEN/.test(missLine),
       'erasing an unordered tile says NOTHING TO ERASE, visibly');
     await toastCrop('07-overview-nothing-to-erase.png', 'ov-toast');
+
+    // ── THE CHARTER'S ACCEPTANCE STEP 3, ADDED IN REVIEW (2026-07-29): paint FOUR, erase ONE, and
+    // watch the other three STAY. It is the step that distinguishes "erase works" from "erase
+    // clears the deck", and it is done HERE rather than in the Room Zoom for the reason this file's
+    // header gives — every one of this ship's deck-0 debris tiles is in a hall.
+    if (debris.length >= 4) {
+      const four = debris.slice(0, 4);
+      log('  four debris tiles:', four.map((m) => `${m.x},${m.y}`).join(' '));
+      await clickAt(ovDigBtn.x, ovDigBtn.y); await sleep(700);
+      for (const d of four) { const q = ovScreenOf(d.x, d.y); await clickAt(q.x, q.y); await sleep(350); }
+      await sleep(1500);
+      const four4 = count('dig', null);
+      const painted4 = check(four4 === before + 4, `FOUR digs painted (${before} -> ${four4})`);
+      await png('12-overview-four-digs.png');
+      if (painted4) {
+        await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(700);
+        const q0 = ovScreenOf(four[0].x, four[0].y);
+        await clickAt(q0.x, q0.y);
+        await sleep(1600);
+        const left = count('dig', null);
+        check(left === before + 3,
+          `ONE erase took back exactly ONE order and left the other three (${four4} -> ${left})`);
+        // …and it took back the RIGHT one — the tile clicked, not simply "one of them".
+        const survivors = marksNow().filter((m) => m.mark === 'dig').map((m) => `${m.x},${m.y}`);
+        check(!survivors.includes(`${four[0].x},${four[0].y}`) && survivors.length === 3,
+          `the surviving orders are the three NOT clicked (${survivors.join(' ')})`);
+        await png('13-overview-one-erased-three-left.png');
+        // clear the rest so the tool leaves the ship as it found it
+        for (const d of four.slice(1)) { const q = ovScreenOf(d.x, d.y); await clickAt(q.x, q.y); await sleep(350); }
+        await sleep(1500);
+        check(count('dig', null) === before, `the remaining three were taken back (${count('dig', null)} left)`);
+        await png('14-overview-all-erased.png');
+      }
+    } else log(`  (SKIPPED acceptance step 3: only ${debris.length} debris tiles on this deck)`);
     await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(600);   // disarm before entering the room
   }
 } else check(false, 'the Overview leg could not run (no dig/erase button, or no debris on this deck)');
@@ -247,7 +281,7 @@ check(Array.isArray(clipped) && clipped.length === 0, `every palette button is i
 check((await evaluate(`document.querySelectorAll('#rz-palette .rz-tool').length`)) === 17, 'the palette paints 17 tools');
 check(!!(await centre('[data-rztool="erase"]')), 'the palette carries an ERASE button');
 const palCrop = await evalJson(`(()=>{const e=document.getElementById('rz-palette');const r=e.getBoundingClientRect();const pad=8;return {x:Math.max(0,r.x-pad),y:Math.max(0,r.y-pad),width:r.width+pad*2,height:r.height+pad*2};})()`);
-if (palCrop) await png('08-palette-17-tools.png', palCrop);
+if (palCrop) await png('20-palette-17-tools.png', palCrop);
 
 const L = await evalJson(`(()=>{const e=document.getElementById('rz-layers');const r=e.getBoundingClientRect();const vb=e.getAttribute('viewBox').split(' ').map(Number);return {x:r.x,y:r.y,w:r.width,h:r.height,vw:vb[2],vh:vb[3]};})()`);
 const U = 32;
@@ -271,26 +305,26 @@ await armTool('strip');
   await sleep(1800);
   const stripped = count('strip', room);
   const landed = check(stripped > stripBefore, `a STRIP order landed on the kind-${dev.kind} device at ${dev.x},${dev.y} (${stripBefore} -> ${stripped})`);
-  await png('09-strip-mark.png');
+  await png('21-strip-mark.png');
   await armTool('strip');       // disarm
   await armTool('erase');
-  await png('10-erase-armed.png');
+  await png('22-erase-armed.png');
   if (landed) {
     await clickAt(p.x, p.y);
     await sleep(1800);
     const tl = await toast('rz-toast');
     log('  TOAST:', JSON.stringify(tl));
-    await toastCrop('11-erase-strip-toast.png', 'rz-toast');
+    await toastCrop('23-erase-strip-toast.png', 'rz-toast');
     check(count('strip', room) === stripBefore, `ERASE took the STRIP order back (${stripped} -> ${count('strip', room)})`);
     check(/TAKEN BACK/.test(tl) && !/HIDDEN/.test(tl), 'the Room Zoom said the order was TAKEN BACK, visibly');
-    await png('12-erase-strip-done.png');
+    await png('24-erase-strip-done.png');
     // the MISS
     await clickAt(p.x, p.y);
     await sleep(1500);
     const miss = await toast('rz-toast');
     log('  TOAST on an already-clear tile:', JSON.stringify(miss));
     check(/NOTHING TO ERASE/.test(miss) && !/HIDDEN/.test(miss), 'an erase that cleared nothing says so, visibly');
-    await toastCrop('13-nothing-to-erase.png', 'rz-toast');
+    await toastCrop('25-nothing-to-erase.png', 'rz-toast');
   }
   await armTool('erase');       // disarm
 }
@@ -322,7 +356,7 @@ log('\n--- STOCKPILE a 3x3, then ERASE the region with a DRAG ---');
     const zoned = count('stockpile', room);
     const landed = check(zoned > zBefore, `a 3x3 STOCKPILE drag zoned ${zoned - zBefore} tile(s) (${zBefore} -> ${zoned})`);
     if (landed) check(zoned - zBefore > 1, `the drag SWEPT a region rather than one tile (${zoned - zBefore} tiles zoned)`);
-    await png('14-stockpile-zone.png');
+    await png('26-stockpile-zone.png');
     await armTool('stockpile');
     await armTool('erase');
     if (landed) {
@@ -330,10 +364,10 @@ log('\n--- STOCKPILE a 3x3, then ERASE the region with a DRAG ---');
       await sleep(2200);
       const tl = await toast('rz-toast');
       log('  TOAST:', JSON.stringify(tl));
-      await toastCrop('15-erase-zone-toast.png', 'rz-toast');
+      await toastCrop('27-erase-zone-toast.png', 'rz-toast');
       check(count('stockpile', room) === zBefore, `an ERASE DRAG took the whole zone back (${zoned} -> ${count('stockpile', room)})`);
       check(/ORDERS? TAKEN BACK/.test(tl), 'the toast reported the ORDERS cleared, not the tiles dragged over');
-      await png('16-erase-zone-done.png');
+      await png('28-erase-zone-done.png');
     }
     await armTool('erase');
   }

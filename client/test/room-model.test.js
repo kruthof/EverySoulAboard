@@ -1098,6 +1098,14 @@ const RZ_IDS = [
   'rz-caption', 'rz-breadcrumb', 'rz-palette', 'rz-matstrip', 'rz-accepts', 'rz-minimap',
   // hud.js writes these unconditionally on a roster/status dispatch (see relations-view.test.js).
   'crew-count', 'crewlist', 's-deck', 's-lens', 'legendcard',
+  // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29), and it is trap 4's corollary again:
+  // *"if a harness cannot model the thing your guard needs to see, fix the harness."* The Room Zoom's
+  // `isPaused()` reads `Hud.getStatus()`, whose ONLY writer is `renderStatus` — which paints six
+  // console-shell ids on its way past (`hud.js:246-262`) and threw `Cannot set properties of null`
+  // here. Without these the erase branch's paused-nudge guard is unreachable in node, and it was:
+  // deleting the condition left the whole suite green. These are console chrome, so they are inert
+  // scenery for every other test in this file and go with the shell at WP-9.
+  's-speed', 's-msg', 's-runstate', 's-pauselabel', 'b-pause', 's-speedchip',
 ];
 
 /**
@@ -1577,6 +1585,9 @@ test('WP-4: a STRIP sweep does the same for the deconstruct verb', () => {
 function rzSetLayers({ marks, zones }) {
   Hud.renderMarks(marks === undefined ? WRECK_MARKS_MSG : marks);
   Hud.renderZones(zones === undefined ? null : zones);
+  // Declared HERE, not at the call sites, so a leg cannot dirty the shared channels without arming
+  // the reset. Setting it on the restore call too is harmless — the hook clears it before running.
+  _layersDirty = true;
   rzApi.exit();
   rzApi.enter('hold');
 }
@@ -1592,7 +1603,15 @@ const rzToast = () => rzDoc.getElementById('rz-toast').textContent;
 // The layers are shared module state on `hud.js`, so every erase leg restores them. Registered ONCE,
 // beside the helpers, rather than repeated in each test — a leg that throws mid-way must not leave
 // the next test looking at a hand-built zone.
-afterEach(() => { if (rzApi) rzSetLayers({}); });
+//
+// ⚠️ IT IS GATED ON `_layersDirty`, ADDED IN REVIEW (2026-07-29). `afterEach` in node:test is
+// FILE-WIDE, so the first version of this hook re-dispatched both channels and exited-and-re-entered
+// the Room Zoom after ALL 103 tests in this file, not just the five erase legs — a fixture reset
+// silently imposed on every unrelated test, and the kind of thing that turns one lane's cleanup into
+// another lane's mysterious flake. The flag is set by `rzSetLayers` itself, so a leg cannot forget to
+// declare that it dirtied them.
+let _layersDirty = false;
+afterEach(() => { if (rzApi && _layersDirty) { _layersDirty = false; rzSetLayers({}); } });
 
 // MUTATION 1 (RESTATED — the charter phrased it as a round trip this suite cannot run): hard-code
 //   `true` in `erasePayloads`, i.e. `Cmd.dig(x, y, true)` ⇒ the recorded payload reads `on:1` ⇒ RED.
@@ -1666,21 +1685,33 @@ test('M1-C: an ERASE DRAG clears every ordered tile under the FILLED rectangle, 
 
 // MUTATION 3: reorder ERASE_PRECEDENCE so stockpile beats strip ⇒ RED — the tile emits `stockpile`.
 // MUTATION: make `eraseTargetAt` read only `_markTiles` (drop the `roomTileZoned` half) ⇒ RED on the
-//   ZONE-ONLY leg, which is the shape only the `zones` channel can see (`markLayerSvg` does not draw
-//   a stockpile mark on this surface at all).
+//   FOGGED-ZONE leg below.
 //
 // ⚠️ THE FIXTURE CARRIES BOTH FAILURE SHAPES, which is what makes the precedence visible: a tile with
-// ONE order (strip alone, and zone alone) and a tile with TWO (strip + zone). With only the one-order
-// shape a reordered precedence resolves each tile to itself and the leg is green either way.
+// ONE order and a tile with TWO (strip + zone). With only the one-order shape a reordered precedence
+// resolves each tile to itself and the leg is green either way.
 //
-// ⚠️ AND THIS IS THE ONLY PAIR A REAL SHIP CAN PRESENT. dig+strip and dig+stockpile are excluded by
-// the sim's own preconditions (debris vs. a wall/device vs. a walkable empty tile), so they are
-// covered in the PURE test above and cannot be driven here. Stated rather than left as a hole.
+// ⚠️ WHAT THE TWO-ORDER LEG IS ACTUALLY PROVING — RELABELLED IN REVIEW (2026-07-29). It is NOT that
+// the client must choose between two visible layers; on an explored tile a zone reaches `marks` too
+// (`roomMarkTiles` reports the stockpile kind even though `markLayerSvg` declines to draw it), so
+// `zoned` cannot change the answer there. What it proves is that the precedence makes `zoned`
+// HARMLESS: {strip, stockpile} must resolve to the same verb the Overview's singleton {strip} does,
+// or the two surfaces would peel a shared tile in different orders.
+//
+// ⚠️ AND THE THIRD LEG IS A FOGGED ZONE, NOT A "ZONE-ONLY TILE". A zone with no mark row is
+// impossible on an EXPLORED tile and ordinary on an unexplored one: `BuildZones` has no fog gate
+// (`GameSession.cs:1974-1999`), `BuildMarks` does (`:2053`), and `DesignateStockpileCommand` requires
+// only `Walkable` (`Commands.cs:173`). So this leg is the one case the `zones` read exists for — and
+// it is also the recorded limit, because the Overview reads no `zones` and can never clear it.
+//
+// ⚠️ dig+strip and dig+stockpile are excluded by the sim's own preconditions (debris vs. a
+// wall/device vs. a walkable empty tile), so they are covered in the PURE test above and cannot be
+// driven here. Stated rather than left as a hole.
 test('M1-C: on a tile carrying BOTH a strip order and a zone, ERASE takes the ORDER first', () => {
   const bx = HOLD.rx + 4, by = HOLD.ry + 4;
   const both = [bx, by];        // strip order INSIDE a stockpile zone — the two-order shape
   const stripOnly = [bx + 1, by];
-  const zoneOnly = [bx + 2, by];
+  const zoneOnly = [bx + 2, by]; // a zone with NO mark row: the FOGGED zone (see the note above)
   rzSetLayers({
     marks: rzMarksMsg([[both[0], both[1], 'strip'], [stripOnly[0], stripOnly[1], 'strip']]),
     zones: rzZonesMsg([both, zoneOnly]),
@@ -1694,9 +1725,10 @@ test('M1-C: on a tile carrying BOTH a strip order and a zone, ERASE takes the OR
     'silently delete the storage the player painted around it.');
   assert.deepEqual(at(stripOnly), [{ cmd: 'strip', x: stripOnly[0], y: stripOnly[1], on: 0 }]);
   assert.deepEqual(at(zoneOnly), [{ cmd: 'stockpile', x: zoneOnly[0], y: zoneOnly[1], on: 0 }],
-    'a ZONE-ONLY tile was not erased at all. This surface draws stockpile from the `zones` channel ' +
-    'and not from `marks`, so dropping the `roomTileZoned` half of the lookup makes the tint ' +
-    'un-erasable while every other leg here stays green.');
+    'a FOGGED zone — a `zones` row with no `marks` row — was not erased at all. That state is real: ' +
+    '`BuildZones` has no fog gate and `BuildMarks` does, and a stockpile can be painted on an ' +
+    'unexplored tile. Dropping the `roomTileZoned` half of the lookup makes such a zone un-erasable ' +
+    'on BOTH surfaces while every other leg here stays green.');
 
   // ⚠️ STOCKPILE OFF IS **ONE** COMMAND. The paint path always sends `Cmd.stockpile` THEN
   // `Cmd.filter`; the OFF path must not, because `DesignateStockpileCommand` clears the filter itself
@@ -1704,6 +1736,62 @@ test('M1-C: on a tile carrying BOTH a strip order and a zone, ERASE takes the OR
   assert.equal(at(zoneOnly).length, 1,
     'the erase sent a Cmd.filter after clearing the zone — an orphan mask in the ZONE hash');
   rzArm('erase');
+});
+
+// ⚠️ THE NUDGE CONDITION, PINNED — ADOPTED IN REVIEW (2026-07-29). `onCanvasUp` guards the paused
+// nudge with `pc.cls !== 'erase' || erased`, and it carries a paragraph explaining why: a command
+// only reaches the sim on a TICK, so on a paused ship the mark the player just cancelled stays on the
+// floor — but an erase that found nothing sent nothing, so it has nothing to nag about. The condition
+// SURVIVED DELETION with the whole suite green, i.e. the paragraph was justifying an untested line.
+// Pin the flip or drop the paragraph; this pins the flip.
+//
+// The reset is a MANUAL `hidden = true` between the arm and the gesture, because arming is itself an
+// intent and nudges (`arm()` line ~892). `paint()` writes only when the derived visibility differs
+// from the element, and nothing else on this surface repaints the nudge, so a manual hide is a clean
+// zero without reaching into the controller's private state.
+//
+// MUTATION: `if (true) nudgeOnIntent();` ⇒ RED on the "nothing erased" leg.
+// MUTATION: `if (false) nudgeOnIntent();` (or delete the call) ⇒ RED on the "something erased" leg.
+test('M1-C: a paused ship is nudged when an erase LANDS, and not when it clears nothing', () => {
+  const dig = FIX_DIG[0];
+  const nudge = rzDoc.getElementById('rz-nudge');
+  assert.ok(nudge, 'no #rz-nudge in the rig — every assertion below would be vacuous');
+  Hud.renderStatus({ type: 'status', paused: true });
+  try {
+    rzArm('erase');
+    // (a) an erase that CLEARS something nudges: the sim is stopped, so the mark is still on the floor.
+    nudge.hidden = true;
+    const sent = rzOrders(rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty }));
+    assert.equal(sent.length, 1, 'the fixture tile carries no order — this leg would be vacuous');
+    assert.equal(nudge.hidden, false,
+      'a designation was cancelled on a STOPPED ship and nothing said so. The command only reaches ' +
+      'the sim on a tick, so the mark the player just took back is still on the floor.');
+
+    // (b) an erase that clears NOTHING must not nudge — it sent no command, so nothing is waiting
+    //     on the sim and "press space to run the ship" would be the affordance firing with nothing
+    //     to say. This is the leg the guard exists for.
+    nudge.hidden = true;
+    let bare = null;
+    const marked = new Set(roomMarkTiles(wreckMarks, { ...HOLD, deck: DECK1 }).map((m) => m.tx + ',' + m.ty));
+    for (let y = HOLD.ry; y < HOLD.ry + HOLD.rh && !bare; y++) {
+      for (let x = HOLD.rx; x < HOLD.rx + HOLD.rw; x++) if (!marked.has(x + ',' + y)) { bare = { x, y }; break; }
+    }
+    assert.ok(bare, 'every tile in the hold carries a mark — this leg would be vacuous');
+    assert.deepEqual(rzOrders(rzSweep(bare, bare)), [], 'the "bare" tile was not bare');
+    assert.equal(nudge.hidden, true,
+      'an erase that cleared NOTHING still nudged about the pause. It sent no command, so there is ' +
+      'nothing for the sim to do and nothing for the nudge to be about.');
+
+    // (c) CONTROL: the non-erase path is untouched — a DIG sweep on the same stopped ship nudges.
+    rzArm('erase'); rzArm('dig');
+    nudge.hidden = true;
+    rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty });
+    assert.equal(nudge.hidden, false, 'the guard leaked out of the erase branch and silenced DIG too');
+    rzArm('dig');
+  } finally {
+    Hud.renderStatus({ type: 'status', paused: false });
+    nudge.hidden = true;
+  }
 });
 
 // MUTATION: drop the `c`/`C` branch from `onKey` ⇒ the sweep after it sends nothing ⇒ RED.

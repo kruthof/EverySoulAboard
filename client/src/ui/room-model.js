@@ -207,16 +207,37 @@ export function nextRoomTool(current, action) {
 // all take `on:false` and the TUI has sent it since E0-5 (`hosts/tui/GameLoop.cs`). This is the
 // client half, and it is deliberately three tiny pure functions rather than a branch in each view.
 //
-// ⚠️ WHY ERASE NEEDS A PRECEDENCE AT ALL, given that the HOST already has one. `BuildMarks`
-// (`hosts/web/GameSession.cs`) emits AT MOST ONE row per tile and ranks them dig ▸ strip ▸ stockpile
-// ▸ debris, so on the Overview — which reads `marks` and nothing else — the ranking arrives already
-// applied and this function only has to agree with it. THE ROOM ZOOM IS DIFFERENT AND THAT IS THE
-// WHOLE REASON THIS IS CODE: it draws stockpile tiles from the `zones` channel, not from `marks`
-// (`markLayerSvg` skips the stockpile kind on purpose — see its header), so a tile carrying a strip
-// order INSIDE a zone reaches that surface as TWO independently-drawn facts from TWO channels, and
-// which of them an erase click takes off is a decision no host ranking can make for it.
+// ⚠️ WHAT THE PRECEDENCE IS ACTUALLY FOR — CORRECTED IN REVIEW (2026-07-29), because the first
+// version of this header named a case that is measurably a NO-OP. It said: *"the Room Zoom draws
+// stockpile from `zones`, not from `marks`, so a strip order INSIDE a zone reaches that surface as
+// two independently-drawn facts and which one an erase takes off is a decision no host ranking can
+// make."* THE DRAWING IS FILTERED; THE REPORTING IS NOT. `markLayerSvg` skips the stockpile kind,
+// but `roomMarkTiles` still REPORTS it (its own header says so, in bold, and gives this exact
+// reason), so on an EXPLORED tile a zoned tile always arrives on `marks` too and `zoned` cannot
+// change the answer for it. Driven case table: `zoned` moves the result for `debris` and for an
+// EMPTY mark, and for nothing else.
 //
-// THE RULE IS THE HOST'S OWN, QUOTED: *"AN ORDER OUTRANKS A ZONE, AND THAT IS THE WHOLE RULE."*
+// SO THE PRECEDENCE'S REAL JOB IS THE OPPOSITE OF WHAT WAS WRITTEN: it is what makes `zoned`
+// HARMLESS. `tileOrders('strip', true)` is the two-element set {strip, stockpile}, and it must
+// resolve to the same verb the Overview's singleton {strip} resolves to, or the two surfaces would
+// peel a shared tile in different orders. Rank stockpile first and they do — which is why the
+// mutation bites. The rule is the host's own, quoted: *"AN ORDER OUTRANKS A ZONE, AND THAT IS THE
+// WHOLE RULE"* (`hosts/web/GameSession.cs` `BuildMarks`), and agreeing with it is the whole content.
+//
+// ⚠️ AND THE CASE `zones` REALLY COVERS IS FOG, NOT ZONES. `BuildMarks` is fog-gated
+// (`GameSession.cs:2053`, *"an unexplored tile emits nothing"*); `BuildZones` is NOT
+// (`GameSession.cs:1974-1999` walks every Stockpile-flagged tile); and `DesignateStockpileCommand`
+// has no Explored precondition — only `Walkable`, and only on the ON path (`Commands.cs:173`). So a
+// zone painted on an unexplored tile exists on `zones` and NOT on `marks`, and reading `zones` is
+// what lets the Room Zoom erase it.
+//
+// ⇒ KNOWN LIMIT, RECORDED RATHER THAN FIXED: **the two surfaces can disagree about a fogged zone.**
+// The Room Zoom clears it; the Overview reads only `marks`, sees nothing, and answers NOTHING TO
+// ERASE forever. Latent on `--ship wreck` (`InteriorKnownAtBoot = true`, so nothing is fogged) and
+// live in mechanism on any crew-vision ship. Closing it means either fog-gating `BuildZones` — a
+// fog-of-war change, which is what `BuildMarks`' own comment declines to make from a rendering fix —
+// or giving the Overview the `zones` channel. Both are decisions, not tidy-ups.
+//
 // Peeling one layer per click is deliberate over clearing everything at once: a player cancelling a
 // dig painted inside a stockpile zone means the dig, and a verb that also deleted their zone would
 // be a destructive surprise with no undo of its own.
@@ -232,12 +253,16 @@ export const ERASE_PRECEDENCE = Object.freeze(['dig', 'strip', 'stockpile']);
  * (`decodeMarks`' `mark`: 'dig' | 'strip' | 'stockpile' | 'debris' | '' | null) and whether the
  * `zones` channel lists the tile. `debris` and an absent mark contribute nothing.
  *
- * `zoned` IS NOT REDUNDANT WITH A 'stockpile' MARK and the difference is only visible on one tile
- * shape: the host ranks strip ABOVE stockpile, so a zoned tile that also carries a strip order
- * arrives on `marks` as 'strip' and its zone is invisible there. The Room Zoom passes the `zones`
- * answer and sees both; the Overview does not read `zones` and passes false, which is honest rather
- * than lossy — on that surface the host's ranking has already chosen, and a second erase click
- * clears the zone the moment the mark falls through to 'stockpile'. PURE.
+ * ⚠️ `zoned` CHANGES THE ANSWER FOR EXACTLY TWO MARK SHAPES — 'debris' and ABSENT — and for no
+ * other; the earlier claim that it was needed for a strip-inside-a-zone tile is FALSE and is
+ * corrected in the section header above. On an EXPLORED tile a zone always reaches `marks` too, so
+ * for every mark shape except those two the `zones` half is redundant and the precedence is what
+ * keeps it harmless. Its real subject is the FOGGED zone: `BuildZones` has no fog gate and
+ * `BuildMarks` does, so a zone on an unexplored tile exists only on `zones`.
+ *
+ * The Overview passes `false` because it does not read `zones` at all. That is NON-LOSSY for every
+ * EXPLORED tile — both surfaces produce the identical peel sequence, verified by driving them — and
+ * it is the fogged-zone limit recorded in the header for the rest. PURE.
  * @param {string|null} mark   a `decodeMarks` mark NAME, or '' / null for a tile with no mark
  * @param {boolean} [zoned]    true when the `zones` channel lists this tile
  * @returns {{dig:boolean, strip:boolean, stockpile:boolean}}

@@ -426,6 +426,12 @@ const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
   'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', 'ov-picker',
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
+  // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29) — trap 4's corollary: if the harness
+  // cannot model what the guard needs to see, fix the harness. `nudgeOnIntent` asks `isPaused()`,
+  // which reads `Hud.getStatus()`, whose only writer is `renderStatus` — and that paints six
+  // console-shell ids on the way past (`hud.js:246-262`). Without them the erase branch's `if
+  // (target)` guard is unreachable in node, and it was: deleting it left the whole suite green.
+  's-speed', 's-msg', 's-runstate', 's-pauselabel', 'b-pause', 's-speedchip',
 ];
 
 /** A fresh document carrying every id the controller looks up. */
@@ -542,7 +548,12 @@ function mountOverview(doc, opts) {
   Hud.renderDecks(FIX.decks);
   Hud.renderRooms(FIX.rooms);
   Hud.renderFrame(FIX.frame);   // …and this repaint is what populates the click transform
-  return { root, stage, cmd: doc.getElementById('ov-cmd'), svg, toast: doc.getElementById('ov-toast') };
+  // ⚠️ `nudge` comes from THIS doc, not from the module-level `ovDoc`. They are DIFFERENT
+  // documents — `mountOverview(makeOvDoc(), …)` builds its own — so `ovDoc.getElementById` hands
+  // back an element the controller has never seen, and a leg asserting on it fails for a reason
+  // that looks exactly like the feature being broken. (It did, once, in review.)
+  return { root, stage, cmd: doc.getElementById('ov-cmd'), svg, toast: doc.getElementById('ov-toast'),
+    nudge: doc.getElementById('ov-nudge') };
 }
 
 /** The pointer payload for a press at the CENTRE of sim tile (tx,ty). */
@@ -577,7 +588,7 @@ function clickTile(target, tx, ty, deck = FIX.frame.deck) {
 const ovSent = [];
 let ovEntered = [];          // onEnterRoom calls
 let ovAdded = [];            // onAddRoom calls
-const { root: ovRoot, stage: ovStage, cmd: ovCmd, toast: ovToast } = mountOverview(makeOvDoc(), {
+const { root: ovRoot, stage: ovStage, cmd: ovCmd, toast: ovToast, nudge: ovNudgeEl } = mountOverview(makeOvDoc(), {
   send: (o) => ovSent.push(o),
   onEnterRoom: (anchor) => ovEntered.push(anchor),
   onAddRoom: (deck, slot) => ovAdded.push([deck, slot]),
@@ -856,17 +867,98 @@ test('M1-C driven: an unordered tile sends NOTHING, and the surface SAYS so', ()
   ovArm(ERASE_TOOL);
 });
 
-test('M1-C driven: ERASE owns the click — it does not open the room under it — and STAYS armed', () => {
-  ovSetMarks([[12, 5, 'dig']]);
-  const room = ovTarget('pl-room', { anchor: 'hold' });
+// ⚠️ THE FOUR HIT SHAPES, ONE AT A TIME — WIDENED IN REVIEW (2026-07-29), and the narrow version it
+// replaces was a measured survivor, not a hypothetical: with the leg pinned only against a ROOM hit,
+// moving `isEraseTool` below `pawnCid` left 991/991 GREEN, and moving it below pawn + terminal +
+// ＋ADD ROOM left 991/991 GREEN as well. The sibling control (the same move on `isOrderTool`) reddens
+// 13, which is what a live guard looks like. The comment in `overviewClickAction` claims erase "sits
+// in the same tier as 'order'"; this is that claim, pinned to the same width WP-5 pins its own.
+//
+// It matters in play rather than in theory: on the standard ships crew stand ON the debris they are
+// digging, so "arm ERASE, click the tile a pawn is standing on" is the ORDINARY gesture, and losing
+// it to `select` would look exactly like a dead tool.
+test('M1-C: an armed ERASE takes the click from EVERY hit — pawn, terminal, ＋ADD ROOM, room', () => {
+  const everyHit = { pawnCid: 7, terminalId: 'con-3', addRoomSlot: 2, roomAnchor: 'hold', hallSlot: 2 };
+  assert.deepEqual(overviewClickAction(ERASE_TOOL, everyHit), { type: 'erase' });
+  for (const hit of [{ pawnCid: 7 }, { terminalId: 'con-3' }, { addRoomSlot: 2 }, { roomAnchor: 'hold' }, { hallSlot: 2 }, {}]) {
+    assert.deepEqual(overviewClickAction(ERASE_TOOL, hit), { type: 'erase' },
+      `ERASE lost the click to ${JSON.stringify(hit)}`);
+  }
+  // …and it changes nothing for the hits when erase is NOT armed — the fence around the new branch.
+  assert.deepEqual(overviewClickAction(null, { pawnCid: 7 }), { type: 'select', cid: 7 });
+  assert.deepEqual(overviewClickAction('move', everyHit), { type: 'move' });
+});
+
+// The same four shapes DRIVEN, because the pure test above cannot see whether the controller's
+// `case 'erase'` actually runs for them: `overviewClickAction` could classify perfectly while the
+// view resolved the click somewhere else.
+test('M1-C driven: ERASE owns the click over a pawn, a terminal, ＋ADD ROOM and a room', () => {
+  ovSetMarks([[12, 5, 'dig'], [28, 16, 'dig'], [22, 3, 'dig'], [30, 12, 'dig']]);
+  const targets = [
+    ['pawn', ovTarget('pl-pawn', { cid: '4' }), 28, 16],
+    ['terminal', ovTarget('pl-terminal', { tid: 'term_hydro' }), 22, 3],
+    ['＋ADD ROOM', ovTarget('pl-addroom', {}), 30, 12],
+    ['room', ovTarget('pl-room', { anchor: 'hold' }), 12, 5],
+  ];
   ovArm(ERASE_TOOL);
-  assert.deepEqual(ovClick(room, 12, 5), [{ cmd: 'dig', x: 12, y: 5, on: 0 }],
-    'an armed ERASE must beat the room hit-rect, exactly as an armed DIG does');
-  assert.deepEqual(ovEntered, [], 'the room opened as well — the click was resolved twice');
+  for (const [name, node, x, y] of targets) {
+    assert.deepEqual(ovClick(node, x, y), [{ cmd: 'dig', x, y, on: 0 }],
+      `an armed ERASE lost the click to the ${name} hit — the tool would read as dead there`);
+  }
+  assert.deepEqual(ovEntered, [], 'a room opened as well — the click was resolved twice');
   assert.equal(Hud.getArmedTool(), ERASE_TOOL,
     'ERASE disarmed itself after one click. Taking back a painted region is many clicks, not one; ' +
     'only MOVE is one-shot.');
   ovArm(ERASE_TOOL);
+});
+
+// ⚠️ R1 — THE MISS MUST NOT GO SILENT INSIDE A ROOM, which is where it went silent for the whole of
+// this package's first draft. `orderSuppressionToast` replaces the verb's own line with
+// "ERASE ARMED — ESC TO DISARM" on any room/＋ADD ROOM hit. For an ORDER that is right — the mark
+// appearing IS the confirmation — but an erase MISS sends no command and changes no pixel, so
+// suppression put it straight back into silence on exactly the tiles that matter (every device a
+// player wants to un-condemn is inside a room).
+//
+// ⭐ NOTHING CAUGHT IT, AND THE REASON IS THE LESSON: this package's own measured ship-fact — all 20
+// of the wreck's deck-0 debris tiles are in HALLS — is why the browser rig's Overview leg never lands
+// on a room rect at all. The correction that made the rig honest is what created the blind spot, and
+// the node leg that DOES hit a room rect asserted only the payload. A ship-shape finding that narrows
+// your instrument has to be followed by asking what the narrowed instrument can no longer see.
+//
+// MUTATION: restore `if (!orderSuppressionToast(ERASE_TOOL, hit)) toast(...)` ⇒ RED on the in-room
+//           legs and GREEN on the hall legs, which is precisely the shape of the shipped defect.
+test('M1-C driven: the erase line survives INSIDE a room — the miss is never silent', () => {
+  ovSetMarks([[12, 5, 'dig']]);
+  const room = ovTarget('pl-room', { anchor: 'hold' });
+  ovArm(ERASE_TOOL);
+
+  // (1) the MISS, inside a room. The line the player needs is the one that says nothing happened.
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  assert.deepEqual(ovClick(room, 13, 5), [], 'the fixture tile is not bare — the leg would be vacuous');
+  assert.equal(ovToast.hidden, false, 'the toast was written but never un-hidden');
+  assert.match(ovToast.textContent, /NOTHING TO ERASE/,
+    'inside a room the erase miss was replaced by the ARMED refusal, so a correct no-op is once ' +
+    'again indistinguishable from a broken tool — the exact defect this package exists to remove');
+  // …and the refusal is APPENDED, not dropped: the room did not open and that still needs saying.
+  assert.match(ovToast.textContent, /ESC TO DISARM/,
+    'the in-room refusal vanished with the suppression — a player who clicked a room and got ' +
+    'neither the room nor an explanation is the report `orderSuppressionToast` was written for');
+
+  // (2) the HIT, inside a room: the verb's own line, still with the refusal appended.
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  assert.equal(ovClick(room, 12, 5).length, 1);
+  assert.match(ovToast.textContent, /ERASED DIG/, 'a successful in-room erase did not confirm');
+  assert.match(ovToast.textContent, /ESC TO DISARM/);
+
+  // (3) THE CONTROL that proves (1) and (2) are about ERASE and not about the toast in general:
+  // an ORDER tool inside a room is STILL suppressed, and must be — its confirmation is the mark.
+  ovArm(ERASE_TOOL); ovArm('dig');
+  ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
+  ovClick(room, 12, 5);
+  assert.match(ovToast.textContent, /DIG ARMED/,
+    'the ORDER branch lost its suppression too — this fix must be narrow to ERASE');
+  assert.ok(!/ORDERED/.test(ovToast.textContent), 'the order branch now says both lines at once');
+  ovArm('dig');
 });
 
 // The two surfaces must lower an identical target identically. Byte-equality is asserted against the
@@ -888,6 +980,48 @@ test('M1-C driven: the Overview lowers the SHARED target, not a private one', ()
   // Non-vacuity: the helper this leg trusts really does discriminate.
   assert.equal(eraseTarget(tileOrders('debris', false)), null);
   ovArm(ERASE_TOOL);
+});
+
+// ⚠️ THE NUDGE CONDITION, PINNED — ADOPTED IN REVIEW (2026-07-29). The erase branch guards the
+// paused nudge with `if (target)`, carrying a sentence about why; the guard SURVIVED DELETION with
+// the whole suite green, so the sentence was justifying an untested line. Pin the flip or drop the
+// sentence; this pins the flip.
+//
+// The reset is a manual `hidden = true` between the arm and the click, because arming is itself an
+// intent and nudges (`afterToolToggle`). `paint()` writes only when the derived visibility differs
+// from the element and nothing else on this surface repaints the nudge, so a manual hide is a clean
+// zero that does not reach into the controller's private state.
+//
+// MUTATION: `nudgeOnIntent()` unconditionally ⇒ RED on the MISS leg.
+// MUTATION: delete the call ⇒ RED on the HIT leg.
+test('M1-C driven: a paused ship is nudged when an Overview erase LANDS, and not on a miss', () => {
+  const nudge = ovNudgeEl;
+  assert.ok(nudge, 'no #ov-nudge in the MOUNTED doc — every assertion below would be vacuous');
+  ovSetMarks([[12, 5, 'dig']]);
+  Hud.renderStatus({ type: 'status', paused: true });
+  try {
+    ovArm(ERASE_TOOL);
+    // (a) the HIT. A command only reaches the sim on a tick, so on a stopped ship the mark the
+    //     player just cancelled is still on the floor — which is what the nudge is for.
+    nudge.hidden = true;
+    assert.equal(ovClick(ovStage, 12, 5).length, 1, 'the fixture tile carries no order — leg vacuous');
+    assert.equal(nudge.hidden, false,
+      'a designation was cancelled on a STOPPED ship and nothing said so');
+    // (b) the MISS. No command went out, so nothing is waiting on the sim and "press space to run
+    //     the ship" would be the affordance firing with nothing to say.
+    nudge.hidden = true;
+    assert.deepEqual(ovClick(ovStage, 13, 5), [], 'the neighbouring tile was not bare');
+    assert.equal(nudge.hidden, true, 'an erase that cleared NOTHING still nudged about the pause');
+    // (c) CONTROL: the ORDER branch is untouched — a DIG on the same stopped ship still nudges.
+    ovArm(ERASE_TOOL); ovArm('dig');
+    nudge.hidden = true;
+    ovClick(ovStage, 12, 5);
+    assert.equal(nudge.hidden, false, 'the guard leaked out of the erase branch and silenced DIG too');
+    ovArm('dig');
+  } finally {
+    Hud.renderStatus({ type: 'status', paused: false });
+    nudge.hidden = true;
+  }
 });
 
 // PURE, and it belongs beside the driven legs because it is the wording they assert on.
