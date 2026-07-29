@@ -1522,7 +1522,23 @@ M2-3 must be chartered and scheduled inside M2 before this package is started.
 > two different fives, one of them previously written as four.** ⇒ **The tables below are the
 > authority for M2-2; do not reconcile them by picking a number.**
 
-**⭐ THE WORKING — every site in `sim/` that writes a non-`None` `JobKind` or commits a pawn.**
+**⭐ THE WORKING — every site in `sim/` that writes a non-`None` `JobKind`, commits a pawn, or offers
+the capability to do so.**
+
+⭐ **THE ARITHMETIC, WRITTEN OUT SO A REVIEWER CAN CHECK IT RATHER THAN TRUST IT** *(the
+`RoomType.Cryo = 16` discipline: do the counting in the open, not in your head)*:
+**13 rows in the table below = 11 sites behind 5 gates + 2 named NON-sites.**
+- **11 gated sites:** `A1 A2 A3 A4 A6 A7 A8` → **G1** *(one gate, seven sites — the dispatcher and its
+  four `IJobSource`s all funnel through `TryAssign`)* · `A9` → **G2** · `A10` → **G3** · `B2` → **G4** ·
+  `B2′` → **G5**.
+- **2 non-sites, ruled on rather than gated:** `A5` (an in-job transition) and `A11` (idle wander,
+  which writes no `JobKind` at all).
+- **3 exclusions, outside the table and stated immediately after it:** two `SustenanceSystem` doors
+  and `SafetySystem`'s flee.
+
+⇒ **`11 / 5 / 3`.** ⚠️ **The two non-sites are IN the table on purpose.** A census that silently omits
+what it decided not to gate cannot distinguish *"we ruled on this"* from *"we never saw it"* — and
+`A5` is exactly the site a later lane "completing the set" will reach for.
 
 | # | `file:line` | what it does | gate |
 |---|---|---|---|
