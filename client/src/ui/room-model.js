@@ -810,10 +810,10 @@ export function roomDeviceConditions(devices, focusRoom) {
  * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
  * `client/src/items/wear.js` sees one contract from both surfaces.
  *
- * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null} devices
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number}[]|null} devices
  *        decodeDevices() output
  * @param {number} deck
- * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number}>}
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number,open:number}>}
  */
 export function deckDeviceConditions(devices, deck) {
   const out = new Map();
@@ -822,7 +822,16 @@ export function deckDeviceConditions(devices, deck) {
   for (const d of devices) {
     if (!d || (d.deck | 0) !== dz) continue;
     const tx = d.x | 0, ty = d.y | 0;
-    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0 });
+    // `open` is carried for SHAPE PARITY with `roomDeviceConditions`, not because this deck-scoped
+    // model has a consumer for it — the OPERATE verb is Room-Zoom-only by a deliberate decision, and
+    // the Overview draws no OPEN⇄SHUT affordance. It is here because `client/src/items/wear.js` is
+    // the ONE join both surfaces call, and a field present on one model and absent on the other is
+    // two contracts wearing one name: the day anything in `wear.js` keys on `open`, the Overview
+    // would silently read `undefined` and draw a different picture from the Room Zoom for the same
+    // machine. ⚠️ ADDED AT THE MERGE of the OPERATE verb with the wear join — the verb added `open`
+    // to the room-scoped model only, and `wear-join.test.js`'s shape-parity assertion is what caught
+    // the divergence.
+    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0 });
   }
   return out;
 }

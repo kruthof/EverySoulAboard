@@ -271,14 +271,19 @@ test('DeviceKind → art is NOT a function, which is why the join keys on the it
 // ═════════════════════════════════════════════════════════ 4. THE TWO SURFACES, THROUGH THE MODELS
 
 test('deckDeviceConditions keeps this deck only, and keys by tile like its room-scoped sibling', () => {
+  // ⚠️ `open` ARRIVED AT THE MERGE with the OPERATE verb (the seventh tuple element) and is carried
+  // here DELIBERATELY rather than defaulted: this fixture predates the field, and a row that simply
+  // omitted it would let the model emit `open: 0` for everything while the test went on passing. The
+  // deck-1 row is OPEN and both wrong-deck/other rows are SHUT, so the blinded deck-filter leg below
+  // now bites on two fields instead of one.
   const rows = [
-    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0 },
-    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1 },
-    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1 },   // same TILE, other deck
+    { x: 3, y: 4, deck: 1, kind: 8, cond: 10, oper: 0, open: 1 },
+    { x: 5, y: 4, deck: 1, kind: 13, cond: 250, oper: 1, open: 0 },
+    { x: 3, y: 4, deck: 2, kind: 8, cond: 200, oper: 1, open: 0 },   // same TILE, other deck
   ];
   const d1 = deckDeviceConditions(rows, 1);
   assert.equal(d1.size, 2, 'two devices on deck 1');
-  assert.deepEqual(d1.get('3,4'), { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0 });
+  assert.deepEqual(d1.get('3,4'), { tx: 3, ty: 4, kind: 8, cond: 10, oper: 0, open: 1 });
   assert.equal(deckDeviceConditions(rows, 2).size, 1, 'the other deck carries its own one row');
   assert.equal(deckDeviceConditions(rows, 9).size, 0, 'an empty deck is empty, not everything');
   // ⚠️ THE DECK FILTER, BLINDED — CLAUDE.md's fifth trap in miniature. The wrong-deck row above sits
@@ -287,6 +292,10 @@ test('deckDeviceConditions keeps this deck only, and keys by tile like its room-
   assert.equal(d1.get('3,4').cond, 10,
     'the deck-2 row overwrote the deck-1 one — the deck filter is gone and every surface would draw\n'
     + 'another deck\'s wear on this one');
+  assert.equal(d1.get('3,4').open, 1,
+    'the deck-2 row overwrote the deck-1 one — same failure as the line above, caught on `open`\n'
+    + 'instead of `cond`. Kept as a SECOND witness because the two fields come from different lanes\n'
+    + 'and a future change is unlikely to break both the same way.');
   for (const junk of [null, undefined, 'x', 42, {}]) {
     assert.equal(deckDeviceConditions(/** @type {any} */ (junk), 1).size, 0);
   }
