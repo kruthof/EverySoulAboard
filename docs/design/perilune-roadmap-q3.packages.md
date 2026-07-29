@@ -1239,6 +1239,20 @@ written down and countable rather than applied silently.*
 > *(Plan §3.5's rule: anything unanswered after three days takes the recommendation, is marked
 > REVERSIBLE, and is listed in the milestone's record as such.)*
 >
+> ### ⚠️ ⭐ ELEVEN ITEMS IS TOO MANY FOR ONE MESSAGE, SO THEY ARE RANKED *(new in revision 3)*
+> Revision 3 added five (7–11) to an existing six. **Plan §3.5's own documented failure mode is that
+> open-on-owner items go stale**, and a wall of eleven is how that happens. ⇒ **Read in this order:**
+> - **BLOCKS THE CHAIN HEAD — needed before `lane/work-state` starts:** **8** *(do the fixtures default
+>   off too — it changes M2-1's file list and the shape of its pin move)*.
+> - **BLOCKS A PACKAGE ALREADY IN THE ORDER:** **10** *(what counts as "the first order" — M2-20's
+>   onboarding card cannot be written without it)* · **11** *(the vocabulary — same package)* ·
+>   **7** *(the work-list order — M2-5)*.
+> - **NEEDED BEFORE M3 FREEZES A SAVE CHAPTER:** **9** *(do new thaws boot off too)*.
+> - **ALREADY CARRIED SINCE REVISION 1/2, unchanged in substance:** **1 · 2 · 3 · 4 · 5 · 6.**
+>   ⚠️ **5 and 6 have moved in BLAST RADIUS without moving in content** — see their notes.
+> ⛔ **Only 8 genuinely stops work.** Everything else defaults to its recommendation after three days
+> and is marked REVERSIBLE, per §3.5's rule.
+>
 > 1. **How many work types, and their names.** *Recommend the six in M2-1.*
 > 2. **Does `HoldPosition` survive, or become "everything disabled"?** *Recommend: survives.*
 > 3. **May a priority ever override `CanStageWorkerAt`?** *Recommend: **never**.* (Pinned by M2-5
