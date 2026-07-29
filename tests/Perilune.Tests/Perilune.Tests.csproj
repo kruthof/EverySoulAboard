@@ -68,6 +68,13 @@
          exactly as the two comments above promise — leaving this line out failed with `the type name
          'BlockedCell' does not exist in the type 'WireFormat'`. -->
     <Compile Include="../../hosts/web/WireFormat.Blocked.cs" />
+    <!-- the `operate` REPLY (what the ship did with a door/vent toggle): a SEVENTH sibling partial,
+         WireFormat.cs again taking NO diff. It is a one-shot reply rather than a cached channel, but
+         it lives here for the same reason and under the same hand-added rule — and the rule bit a
+         FOURTH time exactly as the three comments above promise: leaving this line out failed with
+         `WireFormat enthält keine Definition für "OperateRefused"` on GameSession.cs, which does not
+         name this file at all. -->
+    <Compile Include="../../hosts/web/WireFormat.Operate.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

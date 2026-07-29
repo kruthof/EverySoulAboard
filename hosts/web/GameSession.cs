@@ -342,6 +342,11 @@ namespace Perilune.Web
                 case CmdKind.Place: HandlePlace(cmd); return true;
                 case CmdKind.Remove: HandleRemove(cmd); return true;
                 case CmdKind.Commission: HandleCommission(cmd); return true;
+                // The OPERATE verb. Returns FALSE — it changes no VIEW state (no cursor, no deck, no
+                // lens), and the return value of this switch is only "re-render even though the sim is
+                // paused". The reply is Emit-ted from inside the handler, exactly as Talk/Bio/Chron do
+                // on the three lines below, all of which return false for the same reason.
+                case CmdKind.Operate: HandleOperate(cmd); return false;
                 case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
@@ -957,6 +962,169 @@ namespace Perilune.Web
                 ? "commission device (-" + cost.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ctrl mod)"
                 : "no controller module aboard";
         }
+
+        /// <summary>
+        /// THE OPERATE BRIDGE — the Room Zoom's door/vent OPEN⇄SHUT verb.
+        ///
+        /// <para>It is the ONLY route from a standard surface to <see cref="SetDoorStateCommand"/> /
+        /// <see cref="SetDeviceStateCommand"/>. Before it, the toggle was reachable only through
+        /// <see cref="ContextAction"/>, driven by <c>Cmd.click</c> from the DEPRECATED console's
+        /// invisible inspection cursor — see the header of <c>hosts/web/WireFormat.Operate.cs</c> for
+        /// why that made the wreck premise's opening move inexpressible.</para>
+        ///
+        /// <para>⚠️ IT IS NOT A COPY OF <see cref="ContextAction"/> AND MUST NOT BECOME ONE. The two
+        /// share exactly one rule — a locked door refuses — and they differ in everything else:
+        /// ContextAction is a CURSOR action that resolves crew before devices, toggles ANY device kind
+        /// whatsoever, doubles as the MOSS-terminal opener, and reports through <c>_status</c>, a
+        /// console string this surface never shows. This is a TARGETED verb: it addresses one tile on
+        /// one deck, it operates only the two kinds that HAVE an open/shut control, and it answers on
+        /// the wire. Folding them together would drag the terminal-opening side effect and the
+        /// crew-selection precedence into a build palette.</para>
+        ///
+        /// <para><b>THE FEEDBACK IS THE FEATURE.</b> "Verb parity is not sufficient" is binding here
+        /// (three prior instances): a door that refuses and a door that moved are the same picture. So
+        /// every branch below ends in a sentence the player can read, and the four states that make a
+        /// toggle look broken are named — LOCKED (refused), INOPERATIVE, UNFIXABLE, UNPOWERED. The
+        /// last three are ADVISORIES on an ACCEPTED order, deliberately: the sim lets a wrecked vent's
+        /// switch move and simply declines to inject air (<c>AtmosphereSystem.cs:123</c>), so refusing
+        /// here would invent a rule. See the header of <c>WireFormat.Operate.cs</c>.</para>
+        ///
+        /// <para>Runs on the sim thread (the command drain, between ticks), like every other handler
+        /// here, so reading device fields is safe and the enqueued command lands in the same drain.</para>
+        /// </summary>
+        private void HandleOperate(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+
+            // ⚠️ `_sim.TryGetDeviceAt` AND EMPHATICALLY NOT THIS FILE'S OWN `TryDeviceAt`, and the
+            // difference is a LIVE DEFECT that only driving the wreck exposed. `TryDeviceAt` is a
+            // linear scan over `sim.Devices.Items` that returns the FIRST device sharing the tile —
+            // INCLUDING utility overlays. `Simulation.IsUtilityOverlay` deliberately keeps Conduits
+            // and Pipes out of `_deviceGrid` and off `TileFlags.HasDevice` because they are not
+            // tile-resident; they are also 88 % of the device store. So on any tile that also carries
+            // a conduit — which is where a vent USUALLY is, since a vent needs power — the scan
+            // returns the CONDUIT.
+            //
+            // Measured on `--ship wreck`: the very first attempt to open `vent_ls` (35,6,0), the
+            // device the premise's opening move points at, answered "CONDUIT HAS NO OPEN/SHUT
+            // CONTROL". `_deviceGrid` is the sim's own one-device-per-tile index and the same
+            // authority `GlyphMapper` pass 4 and the `devices` channel resolve through.
+            //
+            // ⇒ THIS IS A PRE-EXISTING BUG IN `ContextAction` TOO (the deprecated console's cursor
+            // toggle, the only door/vent route that existed before this verb), and it is NOT fixed
+            // here: that path is closed to new work and touching it would put a behaviour change on a
+            // deprecated surface inside a package about a live one. Recorded in the package report.
+            if (!_sim.TryGetDeviceAt(pos, out var device))
+            {
+                EmitOperate(pos, WireFormat.OperateRefused, "-", "NOTHING TO OPERATE HERE");
+                return;
+            }
+            if (!IsOperableKind(device.Kind))
+            {
+                EmitOperate(pos, WireFormat.OperateRefused, "-",
+                    device.Kind.ToString().ToUpperInvariant() + " HAS NO OPEN/SHUT CONTROL");
+                return;
+            }
+
+            bool opening = !device.IsOpen;
+            string target = opening ? "OPEN" : "SHUT";
+
+            // THE ONE REFUSAL. SetDoorStateCommand computes `target = open && !IsLocked` and then
+            // silently does nothing when that leaves the state unchanged — so a locked door is the
+            // single case where the sim accepts the command and the world does not move. Mirrored
+            // rather than re-derived: the same two fields, in the same order, ContextAction has read
+            // since M1. A locked door can still be SHUT (the lock resists opening, not closing),
+            // which is why this asks `opening` rather than `IsLocked` alone.
+            if (device.Kind == DeviceKind.Door && opening && device.IsLocked)
+            {
+                EmitOperate(pos, WireFormat.OperateRefused, "-",
+                    device.LockOwner != 0 ? "DOOR IS LOCKED — THE LIEN HOLDS THIS ZONE" : "DOOR IS LOCKED");
+                return;
+            }
+
+            if (device.Kind == DeviceKind.Door)
+                _sim.EnqueueCommand(new SetDoorStateCommand(device.Id, open: opening));
+            else
+                _sim.EnqueueCommand(new SetDeviceStateCommand(device.Id, open: opening));
+
+            EmitOperate(pos, WireFormat.OperateOk, target,
+                target + " " + device.Kind.ToString().ToUpperInvariant() + OperateAdvisory(device, opening));
+            _status = (opening ? "open " : "close ") + device.Kind;
+        }
+
+        /// <summary>
+        /// The kinds that HAVE an open/shut control. <b>THE ONE PLACE THAT KNOWS,</b> host-side.
+        ///
+        /// <para>It is derived from what the SIM reads <see cref="Device.IsOpen"/> for, not from a
+        /// taste about which machines feel switchable. <c>AtmosphereSystem.cs:123</c>,
+        /// <c>ThermalSystem.cs:106</c>, <c>PowerSystem.IsWanting</c>, <c>MachineWearSystem</c> and
+        /// <c>ShipSystems</c> all branch on an <c>AirVent</c>'s <c>IsOpen</c>; <c>Simulation.IsWalkable</c>,
+        /// <c>GlyphMapper.DeviceGlyph</c> and the room flood all branch on a <c>Door</c>'s. Nothing in
+        /// the sim reads <c>IsOpen</c> on any other kind — <c>SetDeviceStateCommand</c> will happily
+        /// set the bit on a Fabricator and NOTHING WILL EVER READ IT, which is precisely the invisible
+        /// no-op this verb exists to stop shipping.</para>
+        ///
+        /// <para>⚠️ <c>CryoPod</c> IS DELIBERATELY NOT HERE, and it is the one that will tempt the next
+        /// lane. W5 stores "occupied / open" on a pod's <c>IsOpen</c> — but opening a pod is a THAW,
+        /// gated on life-support headroom and priced in Parts, and it belongs to <c>ThawCommand</c>
+        /// through MOSS (<c>docs/design/perilune-wreck-start.plan.md</c> W5). Adding <c>CryoPod</c> to
+        /// this list would let a player thaw a sleeper by clicking a box with a build tool, bypassing
+        /// the gate entirely. The client mirrors this set and a node test derives the mirror from the
+        /// sim's own enum, so the two cannot drift silently.</para>
+        /// </summary>
+        internal static bool IsOperableKind(DeviceKind kind)
+            => kind == DeviceKind.Door || kind == DeviceKind.AirVent;
+
+        /// <summary>
+        /// The advisory tail — why an ACCEPTED toggle may still change nothing on the ship. Empty
+        /// string when there is nothing to warn about, so the ordinary case reads as one clean verb.
+        ///
+        /// <para>Order is worst-first and each clause is the SIM'S OWN predicate:
+        /// <see cref="Device.IsOperational"/> (the per-kind <c>machines.def</c> threshold — the client
+        /// cannot derive it, which is why the <c>devices</c> channel carries <c>oper</c>),
+        /// <see cref="MaintenanceSystem.IsUnfixableWreck"/> (the W2 wreck rule: below
+        /// <c>wear.wreck_threshold</c> with no Parts, Seals or Swarf anywhere aboard) and
+        /// <see cref="Device.Powered"/> (stamped by <c>PowerSystem.Balance</c>).</para>
+        ///
+        /// <para>⚠️ THE POWER CLAUSE IS ONLY ASKED WHEN <paramref name="opening"/>, and only of a VENT,
+        /// and both halves are load-bearing. Shutting something needs no power in this sim — the bit
+        /// is set by a command, not by a motor — so warning about power on the way shut would be a
+        /// fabricated worry. And on a DOOR, power says nothing about whether it moves:
+        /// <c>SetDoorStateCommand</c> ignores <c>Powered</c> entirely and so does
+        /// <c>Simulation.IsWalkable</c>, so an unpowered door opens and stays open.</para>
+        ///
+        /// <para>⚠️ AND IT IS AN ADVISORY, NOT A PREDICTION. <c>PowerSystem.IsWanting</c> makes a CLOSED
+        /// vent book no demand at all, so the vent the player is about to open was not in the last
+        /// balance pass's tally: <c>Powered</c> currently reads only "is this device wired to a network
+        /// whose tier is being served". Opening it adds draw, which can itself shed the tier. So a
+        /// missing warning here does NOT promise the vent will run; a PRESENT one is certain (an
+        /// unwired device has <c>NetworkId == 0</c> and can never be served). Worded to match: "NO
+        /// POWER REACHES IT" is about the wire, not about the next second.</para>
+        /// </summary>
+        private string OperateAdvisory(Device device, bool opening)
+        {
+            var sb = new System.Text.StringBuilder(64);
+            if (!device.IsOperational(_sim.Defs))
+            {
+                sb.Append(" · WRECKED (")
+                  .Append(((int)(device.Condition * 100f + 0.5f)).ToString(CultureInfo.InvariantCulture))
+                  .Append("%) — IT WILL DO NOTHING UNTIL IT IS REPAIRED");
+                if (MaintenanceSystem.IsUnfixableWreck(_sim, device))
+                    sb.Append(" · NO PARTS, SEALS OR SWARF ABOARD TO REPAIR IT");
+            }
+            else if (opening && device.Kind == DeviceKind.AirVent && !device.Powered)
+            {
+                sb.Append(" · NO POWER REACHES IT — IT WILL MOVE NO AIR");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Broadcast the operate reply. One-shot (<see cref="Emit"/>), never cached: it is a
+        /// direct answer to a click, not a fact about the world.</summary>
+        private void EmitOperate(Int3 pos, int ok, string state, string reason)
+            => Emit(WireFormat.Operate(pos.X, pos.Y, pos.Z, ok, state, reason));
 
         /// <summary>
         /// The room-commission bridge (Overview ＋ADD ROOM). Looks up the target slot in the plan's
@@ -1924,7 +2092,13 @@ namespace Perilune.Web
                 _devicesScratch.Add(new WireFormat.DeviceCell(
                     p.X, p.Y, p.Z, (int)device.Kind,
                     WireFormat.ConditionByte(device.Condition),
-                    device.IsOperational(defs) ? 1 : 0));
+                    device.IsOperational(defs) ? 1 : 0,
+                    // IsOpen — the OPERATE verb's label state. Read for EVERY kind, not only the two
+                    // that can be operated: the channel carries facts about devices, not answers to
+                    // one surface's question, and a kind filter here would be a second place that
+                    // knows which kinds have an open/shut control (GameSession.IsOperableKind is the
+                    // one place, and it gates the VERB, not the data).
+                    device.IsOpen ? 1 : 0));
             }
             return _devicesScratch;
         }
@@ -2447,7 +2621,7 @@ namespace Perilune.Web
     }
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission, Operate }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -2529,6 +2703,13 @@ namespace Perilune.Web
                     // {"cmd":"addroom","deck":..,"slot":..,"type":"medbay|.."} — commission an empty hall
                     // into a live typed room (Overview ＋ADD ROOM). X=deck, Y=slot, name=roomType string.
                     case "addroom": return new WebCommand(CmdKind.AddRoom, Int(json, "deck"), Int(json, "slot"), name: Str(json, "type"));
+                    // {"cmd":"operate","x":..,"y":..,"deck":..} — toggle the door/vent on a tile
+                    // OPEN⇄SHUT. Same {x,y,deck} shape as place/remove/commission, and DELIBERATELY
+                    // NOT an explicit `on` the way dig/stockpile/strip carry one: those are painted in
+                    // sweeps where idempotence matters, whereas this is one click on one device whose
+                    // current state the player is looking at. An explicit target would also let a
+                    // stale client re-assert a state the crew or MOSS has since changed.
+                    case "operate": return new WebCommand(CmdKind.Operate, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
                     default: return default;
                 }
             }
