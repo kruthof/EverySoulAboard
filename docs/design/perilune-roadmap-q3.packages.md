@@ -101,11 +101,18 @@ the approved plan · the invariants and the **Traps** section in `CLAUDE.md`.
 >
 > ### 5. ⛔ A NEW FOUND DEFECT, LIVE ON `main` TODAY — and the grid EXPOSES it on day one
 >
-> With Repair off, the pawn enters a **30-tick `Craft` recruit→abandon thrash forever — 33 % of all
-> crew-ticks.** Leg A's own baseline trace proves it exists on `main` unmodified. It is invisible
-> **only because the maintenance monopoly absorbs the pawn — which is exactly what shipping a
-> work-priority grid stops doing.** ⇒ **§0.1 below, and chartered as M1-H, to be fixed BEFORE or WITH
-> M2.**
+> With Repair off, the pawn enters a `Craft` recruit→abandon thrash. It is invisible **only because
+> the maintenance monopoly absorbs the pawn — which is exactly what shipping a work-priority grid
+> stops doing.** ⇒ **§0.1 below, and chartered as M1-H, to be fixed BEFORE or WITH M2.**
+>
+> ⚠️ **THE SIZE AND THE DURATION WRITTEN HERE WERE BOTH WRONG, and are corrected in place by M1-H's
+> own measurement** (`occupancy --ship wreck --days 1 --maint-audit --no-repair`, the harness M1-H
+> shipped for exactly this): it is **3.575 % of a sim-day, not 33 %**, and it **does not run
+> forever** — 1 468 abandons over ~1.2 sim-hours (75.3 % of sim-hour 1, 10.5 % of h2, **0.0 % from
+> h3 onward**), then it stops. **Why it stops was not investigated.** The 33 % figure is not
+> reproducible from committed code: the spike's own harness (`lane/spike-dispatch`,
+> `hosts/scenario/DispatchSpike.cs`) contains no `Craft` instrumentation at all. **The defect and
+> its single site are confirmed; its published magnitude and its "forever" are retracted.**
 >
 > ### 6. ⚠️ THE `54 650` FIGURE WAS DOING DOUBLE DUTY, AND *I* REPEATED THE ERROR
 >
@@ -183,14 +190,49 @@ the approved plan · the invariants and the **Traps** section in `CLAUDE.md`.
 
 ### 0.1 ⛔ A FOUND DEFECT, LIVE ON `main` TODAY, AND THE GRID EXPOSES IT ON DAY ONE
 
-> **With Repair disabled the pawn enters a 30-tick `Craft` recruit→abandon thrash, forever —
-> 33 % of all crew-ticks.** Measured by the M2-0 spike; **Leg A's own baseline trace proves it exists
-> on unmodified `main`**, where `MaintenanceSystem` can only take the pawn at t=201 *because
-> `CraftingSystem` had already abandoned it.*
+> **With Repair disabled the pawn enters a `Craft` recruit→abandon thrash.** Found by the M2-0
+> spike; **Leg A's own baseline trace proves it exists on unmodified `main`**, where
+> `MaintenanceSystem` can only take the pawn at t=201 *because `CraftingSystem` had already
+> abandoned it.*
+>
+> ✅ **RE-MEASURED AND CORRECTED BY M1-H (2026-07-29).** The spike's published figure — *"30-tick
+> loop, forever, 33 % of all crew-ticks"* — is **wrong in its size and wrong in its duration**, and
+> the corrected numbers are these (`occupancy --ship wreck --days 1 --maint-audit --no-repair`):
+>
+> | | Craft job starts | Craft share of crew-ticks | shape |
+> |---|---:|---:|---|
+> | **repair OFF** (the spike's condition) | **597** | **3.575 %** of a sim-day | 1 468 abandons, all in sim-hours 1–2; **h3+ is 0.0 %** |
+> | **repair ON** (the shipping wreck *today*) | **1** | **0.023 %** | — |
+> | after M1-H, either way | **0** | **0.000 %** | — |
+>
+> **Neither "33 %" nor "forever" survives.** The spike's harness carries no `Craft` instrumentation,
+> so 33 % is not reproducible from committed code; M1-H shipped the instrument (`--maint-audit`'s
+> Craft row) and the lever (`--no-repair`) so that every number above can be re-run in one command.
+> **Why the thrash stops after ~1.2 sim-hours was not investigated.** The defect, and its single
+> site, are confirmed.
 
 ⚠️ **It is invisible today for exactly one reason: the maintenance monopoly absorbs the pawn — which
 is precisely what a work-priority grid stops doing.** ⇒ **The grid does not cause it; the grid
-*reveals* it, on day one, as "my crew member vibrates in place and never works."**
+*reveals* it, as "my crew member vibrates in place and never works."**
+
+### ⛔ AND UNDER OD-H IT IS NO LONGER A PREDICTION
+
+**OD-G** (the pawn boots idle and waiting; the opening beat is the player giving an order) and
+**OD-H** (**the work-priority grid defaults OFF — work is opt-in**, reversing M2-1's chartered
+"default 3 for every pawn") were taken on 2026-07-29, after M1-H was chartered.
+
+⇒ **`--no-repair` stops being a laboratory lever the player cannot pull and becomes approximately
+the DEFAULT STATE of the shipping game.** The "repair OFF" row of the table above is therefore not a
+what-if: it is **the opening screen**, before the player has enabled anything — a pawn burning
+**3.575 % of a sim-day, 75.3 % of its first sim-hour**, in a futile recruit→abandon loop while
+appearing to do nothing. Everything below that reads *"the grid will expose this on day one"* was a
+**prediction** on the tree as it stood; under OD-H it is a **certainty**, and M1-H is what stands
+between the owner's chosen opening and a pawn vibrating in place.
+
+*(Provenance: OD-G and OD-H are cited here from the owner decisions relayed with M1-H's review. At
+the time this paragraph was written they were not yet recorded in any file in this repo — the M2
+re-charter lane owns that. If they are not in `§0` when you read this, that is the reason, and this
+citation should be checked against the owner record rather than trusted.)*
 
 ⇒ **Chartered as M1-H and scheduled BEFORE M2-1.** Filing it without a package is what this document
 exists to prevent. *(This is the sixth defect found by driving the sim rather than reading it, in a
@@ -237,18 +279,34 @@ quarter that has not started.)*
 > | **M1-H's backoff alone** | **3.333 %** — a **−6.8 %** improvement |
 > | **the reachability probe alone** | ⭐ **0.000 %** |
 >
-> ⇒ ⛔ **THE BACKOFF DOES ~7 % OF THE WORK AND THE PROBE DOES THE REST.** M1-H is chartered as the
-> backoff. **M1-J is the probe half** — `CanStageWorkerAt` at `CraftingSystem.cs:492`, the one staging
-> site in the sim that does not ask (§12.16).
-> ⚠️ **A CAUTION THE NUMBERS DO NOT SETTLE, AND IT MUST NOT BE PAPERED OVER:** *"the reachability
-> probe"* is M1-H's review's name for its intervention, and **whether it is the same mechanism as
-> M1-J's `CanStageWorkerAt` addition is NOT established in this document.** They are probes of the same
-> kind at the same function and are the obvious candidate for being one thing — **but a path check and
-> a breathability check are different questions, and merging two things because they occupy one slot is
-> the exact error this document keeps recording.** ⇒ **Whoever holds M1-H reconciles them by name
-> before either merges.**
-> ⇒ **This inverts M1-H ↔ M1-J's relative weight**: M1-J is not a tidy-up behind M1-H, it is the
-> majority of the fix. **It strengthens the standing instruction to FOLD THEM** (§2 row M1-b).
+> ⇒ ⛔ **THE BACKOFF DOES ~7 % OF THE WORK AND THE PROBE DOES THE REST.**
+>
+> ### ⛔⛔ AND THE PROBE IS M1-H's OWN, IT HAS MERGED, AND IT IS NOT WHAT M1-J DOES — RETRACTED WITHIN ONE DAY
+>
+> **This block's first draft said *"M1-J is the probe half."* ⛔ THAT IS WRONG AND IS RETRACTED.**
+> The caution printed beside it — *"a path check and a breathability check are different questions"* —
+> **was the correct half of that paragraph, and the confident sentence next to it was the wrong half.**
+> Verified on the merged tree at `ac6a17c`+M1-H:
+>
+> | | mechanism | question it asks | status |
+> |---|---|---|---|
+> | **M1-H's probe** | `sim.Paths.FindPath(sim, best.Pos, target, _probePath)` — **`CraftingSystem.cs:576`**, inside the recruiter M1-H renamed to **`FindNearestReachableIdle`** (`:553-579`) | *"can this crew member **reach** the bench?"* — **a PATH check** | ✅ **SHIPPED AND MERGED** |
+> | **M1-J** | `WorksiteSafety.CanStageWorkerAt` at `CraftingSystem.cs:587` | *"can a crew member **survive** on the staging tile?"* — **a BREATHABILITY (and thermal) check** | unbuilt |
+>
+> **The shipped code says so itself** (`CraftingSystem.cs:508-516`, M1-H's own doc comment):
+> *"⭐ **THIS IS THE LOAD-BEARING HALF OF M1-H, AND THE CHARTER DID NOT ASK FOR IT. DO NOT 'SIMPLIFY'
+> IT AWAY.** … backoff only 597 → 228 Craft starts and 3.575 % → 3.333 % (−6.8 %); **probe only 0 and
+> 0.000 %.**"* ⇒ **The 0.000 % belongs to M1-H entirely. M1-J inherits none of it.**
+>
+> ⇒ ⛔ **AND THAT DISCHARGES M1-J's PLAYER SENTENCE.** *"At tick 0 she is claimed for a bench in a
+> sealed hall **she can never reach**"* — **unreachable is exactly what the merged probe refuses**, and
+> probe-only measured **0 Craft starts** on `--ship wreck`. **The tick-0 claim is gone on merged
+> `main`.** See M1-J's charter, which is re-chartered rather than left standing on a sentence that is
+> no longer true.
+> ⚠️ **The standing FOLD instruction is also spent — M1-H has MERGED.** Folding is no longer available;
+> M1-J is now a separate decision about a **narrower, unmeasured** residual.
+> ⭐ ***The general form, and it is the third time in this revision: two mechanisms that occupy the same
+> slot in a sentence are not the same mechanism. The flag was right; the sentence beside it was not.***
 > ⚠️ **AND THE SHAPE IS THE REPO'S OWN:** *"a measurement carries its units and its baseline, or it is
 > not a measurement"* — written in **REVISION 2 §6**, about a different number, in this same file.
 
@@ -332,8 +390,8 @@ are for.
 
 | # | lane | package | expected to move | why | rollback point |
 |---|---|---|---|---|---|
-| **M1-a** | `lane/craft-thrash` | **M1-H** | **P1 P2 P3 — expected; measure.** | ⭐ **NEW IN REVISION 2.** The `Craft` recruit→abandon thrash is a real behaviour change on any ship with a bench and an unsatisfiable bill. **P4/P5 hold** — the backoff reuses `JobWork.UnreachableRetryTicks`, a literal already on the determinism path. ⛔ **Do not add a def field.** | — |
-| **M1-b** | `lane/craft-staging` | **M1-J** | ⭐ **UNKNOWN — MEASURE, AND EXPECT THEM TO HOLD.** *(Revision 3's first draft said "P1 P2 P3 expected". **Downgraded** — its sibling fix in the same file measured ALL FIVE HELD, and this row's prediction rested on the same refuted assumption.)* **P4/P5 hold — no def field.** | `CraftingSystem.TryFindStagingTile` (`:487-498`) tests walkability only where every other worker-staging site asks `WorksiteSafety.CanStageWorkerAt` (§12.16). ⭐ **§0.1 now measures this half as the MAJORITY of the craft-thrash fix** — probe → **0.000 %** vs backoff → **−6.8 %**. | ⭐ **IF PIN-NEUTRAL BY CHECK (A), IT LEAVES THE CHAIN** and becomes an ordinary lane serialized on `CraftingSystem.cs`. **State which, measured, at review.** ⚠️ **If `lane/craft-thrash` has not passed review, FOLD THIS IN and delete this row.** |
+| ~~**M1-a**~~ | ~~`lane/craft-thrash`~~ | ~~M1-H~~ | ✅ **RETRACTED — MEASURED, NO PIN MOVE.** | **All five pins HELD on the implemented lane**, and `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` is **0 lines** — no golden was rewritten and `ci.sh` was not edited. The prediction was wrong for a measurable reason: **no pinned window contains a refusal.** `--ship grid` and `--ship slice` hit **zero** path-failure abandons across a whole sim-day (measured per-site), the scenario ship (`hosts/scenario`'s hand-built 22×6 single-deck map) has no crafting station, and the tick-3000 ship's two crew are `HoldPosition`. ⚠️ **This row is retracted, not merely re-valued: M1-H does NOT run alone and must not serialize the chain.** *(Measured on `lane/craft-thrash` merged with `main` @ `48b29e7`; re-measure at merge — a pin claim is only evidence for the tree it was measured on.)* | — |
+| **M1-b** | `lane/craft-staging` | **M1-J** | ⭐ **LIKELY PIN-NEUTRAL — MEASURE.** *(Twice downgraded: first from "P1 P2 P3 expected" when M1-H measured all five HELD, then again when M1-H MERGED and discharged this package's driven case.)* **P4/P5 hold — no def field.** | ⛔ **RE-CHARTERED — READ ITS CHARTER BEFORE SCHEDULING IT.** M1-H shipped a **path** probe (`CraftingSystem.cs:576`); M1-J is a **breathability** check (`:587`) and they are different questions. Its original sentence is **measured false on merged `main`**; what remains is an **unmeasured** residual. | ⛔ **DO NOT SCHEDULE THIS ROW UNTIL ITS CLASS QUESTION IS ANSWERED** (drop / INFRASTRUCTURE / measure first — its charter recommends measure-first). ⚠️ **The FOLD instruction is SPENT: M1-H has merged.** |
 | **M1-c** | `lane/build-haul-backoff` | **M2-21** | ⭐ **UNKNOWN — MEASURE, AND EXPECT THEM TO HOLD.** *(Also downgraded: M1-H measured a backoff stamp on a push recruiter as pin-neutral, and this is a backoff stamp on a pull source.)* **P4/P5 hold** — reuses `JobWork.UnreachableRetryTicks`. | `ProgressBuildHaul`'s phase A abandons with **no stamp** (`BuildJobSource.cs:322-329`) while the claim path stamps twice (`:210`, `:223`) — *the original 480 000-tick livelock*, measured by M1-D's review at **3 000 ticks / 2 999 abandons / 0 stamps**. | ⭐ **IF PIN-NEUTRAL BY CHECK (A), IT LEAVES THE CHAIN.** ⚠️ Executes at merge position **7b** (after M1-D, whose `IsBackedOff` mirror it consumes) though its id is M2-range — **it must be measured while the fixtures still do work, i.e. before M2-e.** *That constraint is about MEASURABILITY and survives even if the row leaves the chain.* |
 | **M2-a** | `lane/work-state` | M2-1 | **P1 P2 P3** | New hashed `Citizen` state ⇒ CITZ chapter bump ⇒ `Simulation.StateHash` fold changes on every ship. ⭐ **REVISION 3: this is now true for TWO reasons, not one** — the chapter bump *and* the default value itself, which is hashed. Default-OFF and default-3 are different pins. **P4/P5 expected to HOLD** — see the note below. | ⭐ **tag `pin/m2-a`** on `main`, with all five values recorded in the tag's own commit |
 | **M2-e** | `lane/work-veto` | **M2-2** | ⭐ **P1 AND P3 EXPECTED TO MOVE. P2 MAY HOLD — measure, do not predict.** | ⭐ **NEW IN REVISION 3, and it is a DIRECT CONSEQUENCE OF OD-H.** Revision 2 chartered M2-2 pin-neutral because *"at the all-default grid the veto never fires"*. **Under OD-H the all-default grid is every work type OFF, so the veto fires on every pawn on every ship from tick 0.** P2 may hold because `AuthoredShips.Perilune()`'s two crew are `HoldPosition = true` and take no work today — ⚠️ **that is the deck-confined-wander shape exactly, where two pins held against expectation. MEASURE.** | ⭐ **tag `pin/m2-e`** — the first *behaviour* row of M2, and the one that can turn every measurement fixture inert. Record all five values in the tag's own commit |
@@ -360,33 +418,32 @@ are for.
 > one paragraph and only one of them was load-bearing; separating them is the *"code right,
 > justification false"* discipline (§13.11) applied to this document's own prose.
 
-> ## ⛔⭐ `PIN M1-a` IS RETRACTED — M1-H IS PIN-NEUTRAL, MEASURED *(2026-07-29)*
->
-> **`lane/craft-thrash`'s review completed after revision 3 was started and measured ALL FIVE PINS
-> HELD:** P1 twin MATCH via `ci.sh` · P2 `326c68e00f2df496` · P3 `3fb1798a3a50cba0` (golden files
-> byte-unchanged) · P4 `0c5ddbc07e41f07d` · P5 `09900b9a44119272`, with
-> `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` at **0 lines.**
-> ⇒ **M1-H is not a chain head and does not run alone.** Its own send-back carries required fix 3,
-> which is exactly this retraction.
->
-> ⚠️ **THE ROW ITSELF IS DELIBERATELY LEFT FOR M1-H's COMMIT TO EDIT, AND THIS NOTE SITS OUTSIDE THE
-> TABLE ON PURPOSE.** `lane/craft-thrash` is making the same correction in its own worktree right now.
-> **Two lanes editing one table row is the silent-auto-merge shape this document has recorded four
-> times** (`DeviceCell`'s field list; two `cssCodeOnly` exports; two honest census re-counts). **A note
-> that points at a retraction cannot collide with the retraction.** ⇒ **When M1-H merges, its commit is
-> the authority and this note becomes redundant — delete it then, not before.**
->
-> ### ⭐ AND THE MEASUREMENT REACHES TWO ROWS THAT ARE MINE, WHICH IS THE PART THAT MATTERS
->
+> ## ✅ `PIN M1-a` IS RETRACTED — AND M1-H HAS NOW MERGED, SO THE TABLE ABOVE CARRIES IT
+> 
+> **Measured on the implemented lane: ALL FIVE PINS HELD** (P1 twin MATCH via `ci.sh` · P2
+> `326c68e00f2df496` · P3 `3fb1798a3a50cba0` · P4 `0c5ddbc07e41f07d` · P5 `09900b9a44119272`, with
+> `git diff -- tests/Perilune.Tests/Golden/ ci.sh content/` at **0 lines**). **M1-H is not a chain
+> head and does not run alone.**
+> 
+> ⭐ **THE COORDINATION WORKED, AND IT IS WORTH ONE LINE BECAUSE IT USUALLY DOES NOT.** This lane
+> deliberately did **not** edit the `M1-a` row, leaving the retraction to M1-H's own commit and
+> stating it here instead. **Git then flagged a real conflict on that row when M1-H merged** — because
+> this lane's new rows sit against it — **and the resolution was mechanical: take M1-H's retracted row,
+> keep this lane's new ones.** Had both lanes rewritten the row, that same merge would have been a
+> silent pick between two hand-edited versions of one fact. *(The `DeviceCell` field list, two
+> `cssCodeOnly` exports, two honest census re-counts — this is the fourth instance and the first one
+> that cost nothing.)*
+> 
+> ### ⛔ AND THE MEASUREMENT REACHED TWO ROWS THAT ARE THIS LANE'S OWN
+> 
 > Rows **M1-b** and **M1-c** predicted `P1 P2 P3` on a shared, unstated assumption: *that a claim-path
 > write in the job system moves pins.* **M1-H is a claim-path write in the job system and it moved
-> nothing.** ⇒ **Both predictions are downgraded to `UNKNOWN — measure, and expect them to hold`**, each
-> with an explicit exit condition: prove pin-neutrality by check (A) and the row **leaves the chain.**
-> ⚠️ **This is not a small correction to make quietly.** The chain is the document's operational output;
-> a row on it costs a serialization slot, a re-pin commit and a rollback decision. **Two of the four
-> rows revision 3 added may not belong on it at all**, and the only reason anyone knows that is that a
-> sibling lane measured instead of predicting. ⭐ ***"Measure, never predict" is in `CLAUDE.md` because
-> of pins that held; this is the first time in this document it has cost a row its place.***
+> nothing.** ⇒ **Both downgraded to `measure, and expect them to hold`**, each with an explicit exit
+> condition: prove neutrality by check (A) and the row **leaves the chain.**
+> ⚠️ **M1-b was then downgraded a SECOND time**, when M1-H's merge discharged its driven case
+> outright — see its charter. ⭐ ***Two of the four rows revision 3 added to this chain may not belong
+> on it, and the only reason anyone knows that is that a sibling lane measured instead of
+> predicting.***
 
 > ⭐ **THE CHAIN'S LETTERS ARE HISTORICAL, NOT ORDINAL.** Execution order is
 > ~~**M1-a**~~ **→ M1-b? → M1-c? → M2-a → M2-e → M2-g → M2-c → M2-d → M3-a…**, where **`?` marks a row
@@ -418,8 +475,8 @@ Numbered, and this is the order the integrator merges `--no-ff` into `main` and 
 |---|---|---|---|
 | 1 | `lane/wreck-visible` | **M1-A** | ⏳ IN FLIGHT. Merge first — everything in M1/M2 that touches the wreck's visible machines assumes it. |
 | 2 | `lane/first-screen` | **M1-B** | ⏳ IN FLIGHT. Merge second so M1-C can rebase onto its `controls.js` / `overview-view.js` edits. |
-| 3 | `lane/craft-thrash` | **M1-H** | ⛔ **PIN M1-a. Runs alone.** ⭐ NEW IN REVISION 2 — a live `main` defect the grid exposes on day one. **Must precede 8.** |
-| **3b** | `lane/craft-staging` | **M1-J** | ⭐ NEW IN REVISION 3 — the tick-0 claim on an unreachable bench, and **§0.1 measures it as the MAJORITY of the craft-thrash fix** (probe → 0.000 % vs backoff → −6.8 %). **PIN M1-b is PROVISIONAL — measure; if pin-neutral it leaves the chain and need not run alone.** ⛔ **Same file as 3; strictly serialized behind it, and FOLD INTO 3 if 3 has not yet passed review.** |
+| 3 | `lane/craft-thrash` | **M1-H** | ✅ **NOT a pin row — `PIN M1-a` is retracted (measured: all five pins HELD, 0 lines of diff to `Golden/`, `ci.sh`, `content/`). It does NOT need to run alone.** ⭐ NEW IN REVISION 2 — a live `main` defect the grid exposes on day one, and under **OD-H** on the default screen. **Must still precede 8** (M2-1), which is an ORDERING constraint about the same recruiters, not a pin constraint. ⚠️ It renames and re-signatures `FindNearestReachableIdle` in **both** push recruiters → M2-2 / M2-5 work written against the old name conflicts TEXTUALLY, not just semantically. |
+| **3b** | `lane/craft-staging` | **M1-J** | ⛔ ⭐ **RE-CHARTERED AND NOT READY TO SCHEDULE.** M1-H merged a reachability probe that **discharges this package's driven case** (probe-only ⇒ 0 Craft starts). What survives is `CanStageWorkerAt` at a fifth staging site, with **no measured occurrence**. **Its class question is open — see its charter.** ⚠️ Folding into 3 is no longer possible. |
 | 3c | `lane/repair-consumables` | **M1-I** | ⭐ **ADDED TO THIS DOCUMENT IN REVISION 3 — it was chartered elsewhere and in flight, and nothing here knew it existed.** OD-F: author more consumables so the wreck's repair economy stops being a silent soft-lock. Expected **pin-neutral** (wreck-only authoring; the wreck is behind no pin) — **prove by check (A).** ⚠️ **Claims `AuthoredShips.cs` — serialize against 1 (M1-A).** ⭐ **It DISCHARGES owner batch item 6** and is measurement-coupled to the tick-0 investigation (below). |
 | 4 | `lane/blocked-reach` | **M1-D** | Can start tonight; merges here. ⚠️ **Integrator lane** (`WireFormat` + `IJobSource`). ⭐ **Semantically coupled to 1 — re-run its tests AND its browser acceptance after 1 merges.** |
 | 4 | `lane/undesignate` | **M1-C** | Rebase onto 2 before review. |
@@ -993,26 +1050,65 @@ M1-C and M2-3. Also `panels.js` — **serialize against M4-3/M4-4**, which rewri
 **CLASS: PLAYER** · **LANE: `lane/craft-thrash`** · **SIZE: M** · ⚠️ **INTEGRATOR LANE**
 ⛔ **MUST LAND BEFORE M2-1**
 
-> **TODAY THE PLAYER IS MISLED ABOUT** what their crew member is doing: measured by the M2-0 spike,
-> a pawn spends **33 % of all crew-ticks** in a **30-tick `Craft` recruit→abandon loop that never
-> ends** — claimed, released, re-claimed, forever, with the task line flickering and no work done.
-> **AFTER THIS** an impossible bill backs off instead of re-offering itself every second.
+> **TODAY THE PLAYER IS MISLED ABOUT** what their crew member is doing: she is claimed for a bench
+> she can never reach, walked all the way to an input stack, and released on arrival — over and over,
+> with the task line flickering and no work done. **AFTER THIS** an impossible bill refuses the claim
+> instead of re-offering it every second.
 
-> ### ⚠️ WHY IT IS URGENT RATHER THAN OLD
+> ### ✅ THE TWO NUMBERS, SEPARATED — the original sentence quoted only one and it was the wrong one
+> Measured by M1-H itself (`occupancy --ship wreck --days 1 --maint-audit [--no-repair]`), because the
+> M2-0 spike's harness carries no `Craft` instrumentation and its **33 % / 30-tick / forever** figure
+> is not reproducible from committed code:
+>
+> | configuration | Craft job starts / sim-day | share of crew-ticks | after M1-H |
+> |---|---:|---:|---:|
+> | **the shipping wreck AS IT SHIPS TODAY** (repair on) | **1** | **0.023 %** | 0 / 0.000 % |
+> | **repair off** | **597** (1 468 abandons) | **3.575 %** — 75.3 % of sim-hour 1, 10.5 % of h2, **0.0 % from h3** | 0 / 0.000 % |
+>
+> ⇒ **On the tree as it stands, the player-visible defect is 1 start a day.** The large number needs
+> repair disabled, and **it is not "forever": it burns out after ~1.2 sim-hours** (why was not
+> investigated). **Both halves of the retracted claim — the 33 % and the "never ends" — are
+> corrected here rather than quietly dropped.**
+
+> ### ⛔ WHY IT IS URGENT — AND UNDER **OD-H** THIS STOPPED BEING A PREDICTION
 > It is **live on `main` today** — Leg A's unmodified baseline trace proves it, because
 > `MaintenanceSystem` can only take the pawn at t=201 *once `CraftingSystem` has abandoned it*. It is
 > invisible **for exactly one reason: the maintenance monopoly absorbs the pawn**, and shipping a
-> work-priority grid is *precisely* the thing that stops that happening. ⇒ **M2 does not cause this
-> bug; M2 uncovers it, on day one, as "my one crew member vibrates in place and never works."**
-> Fixing it after M2 means the first bug report of the milestone is unfalsifiable — the same argument
-> that puts M1 before M2 at all.
+> work-priority grid is *precisely* the thing that stops that happening.
+>
+> The original charter said *"M2 uncovers it, on day one"*. **On the tree that sentence was written
+> against, that was a prediction.** Two owner decisions taken 2026-07-29 make it a certainty:
+> **OD-G** — the pawn boots **idle and waiting**, the opening beat being the player giving an order —
+> and **OD-H** — **the work-priority grid defaults OFF; work is opt-in**, reversing M2-1's chartered
+> "default 3 for every pawn".
+>
+> ⇒ **`--no-repair` is no longer a laboratory lever a player cannot pull. Under OD-H it is
+> approximately the DEFAULT STATE of the shipping game**, so the 3.575 % row above is not a what-if:
+> it is **the opening screen** — a pawn burning three quarters of its first sim-hour in a futile
+> recruit→abandon loop **before the player has enabled anything**. M1-H is what stands between the
+> owner's chosen opening and a pawn vibrating in place. *(OD-G/OD-H are cited from the owner
+> decisions relayed with M1-H's review; the M2 re-charter lane owns recording them — see §0.1.)*
 
 **SEAM — and the root cause is a one-line structural asymmetry, verified this session.**
-`CraftingSystem` recruits **outside the dispatcher** (`FindNearestIdle` at `:164`, `JobKind.Craft`
+`CraftingSystem` recruits **outside the dispatcher** (`FindNearestReachableIdle` at `:164`, `JobKind.Craft`
 set at `:167`) and has **TEN `Abandon` call sites** (`:130`, `:185`, `:220`, `:233`, `:259`, `:279`,
 `:285`, `:307`, `:324`, `:330`), several of whose own comments say *"retries next second"* /
 *"the standing bill retries next second"*. `Abandon` (`:616-620`) clears `JobKind` and
 `JobWorkTicks` — **and nothing else.**
+
+> ✅ **AS SHIPPED, the ten sites are `CraftingSystem.cs` `:149 :221 :256 :269 :295 :315 :321 :343
+> :360 :366`, the funnel is `:695-707`, the recruit gate is `:187-201` and the probe is `:537-575`.**
+> The `:130`-era numbers above are the pre-package tree and are kept as the charter's own record.
+>
+> ⛔ **ONE OF THE TEN IS STRUCTURALLY UNREACHABLE — `:321` (`:285` pre-package), "every port
+> satisfied".** `StepFetch` is called from one place, the `!canStart` tail of `DriveWorker`;
+> `!canStart` ⇒ `!AllInputsStaged` ⇒ some port is short — the *identical* predicate
+> `TryFirstShortPort` tests, with nothing mutating an item, a position or a port in between. With
+> zero input ports `AllInputsStaged` is vacuously true and `StepFetch` is never reached at all.
+> Independently confirmed by arming `throw new InvalidOperationException("SITE 6 REACHED")` there
+> and running the **whole** suite: 1 315 tests, nothing threw. ⇒ **NINE blinded legs, not ten**, and
+> the tenth is declared with its argument. Its test pins the one thing the argument rests on (the
+> parser's refusal of two ports of one kind) so it cannot rot silently.
 
 > ⭐ **`grep -n "RetryTicks\|_retryAt\|backoff" sim/Sim.Core/Systems/CraftingSystem.cs` RETURNS
 > NOTHING. Same for `MachineWearSystem.cs`.**
@@ -1025,87 +1121,207 @@ set at `:167`) and has **TEN `Abandon` call sites** (`:130`, `:185`, `:220`, `:2
 > forever. **The fix is to give the push recruiters the backoff the pull sources have had since W0-4**,
 > not to special-case a symptom.
 
-**PIN IMPACT: ⛔ P1, P2, P3 EXPECTED TO MOVE — MEASURE.** This is a real behaviour change on any ship
-with a bench and a reachable-but-unsatisfiable bill. **P4/P5 hold** if the backoff reuses
-`JobWork.UnreachableRetryTicks` (a literal already on the determinism path) — ⛔ **do not add a def
-field for it.** ⚠️ **It therefore JOINS THE PIN CHAIN as a new head row `M1-a`, ahead of `M2-a`.**
-See §2.
+**PIN IMPACT: ✅ MEASURED — NO PIN MOVE. ALL FIVE HELD.** *(The charter predicted P1 P2 P3 would
+move. They did not, and `PIN M1-a` is retracted in §2 — this package does NOT run alone and must not
+serialize the chain.)* `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` is
+**0 lines**; no golden was rewritten, `UPDATE_GOLDEN` was never run, `ci.sh` was not edited. The
+reason is measurable rather than lucky: **no pinned window contains a refusal** — `--ship grid` and
+`--ship slice` hit **zero** path-failure abandons over a whole sim-day, the scenario ship has no
+crafting station, and the tick-3000 ship's two crew are `HoldPosition`. P4/P5 hold because the
+backoff reuses `JobWork.UnreachableRetryTicks`, a literal already on the determinism path — ⛔ **do
+not add a def field for it**, and mutation 5 below proves both defs pins would catch one.
+⚠️ **Re-measure at merge; a pin claim is only evidence for the tree it was measured on.**
 
 **SPINE? Borderline; treat as integrator** (a sim system's claim protocol).
 
 **MUTATIONS.**
 
-| # | mutation | must go red |
-|---|---|---|
-| 1 | Delete the backoff stamp | ⭐ **the driven thrash leg: one pawn, Repair disabled, an unsatisfiable bill, 30 000 ticks — assert `Craft` claim COUNT is bounded** (single digits), not that the pawn is idle. ⚠️ *A test asserting "the pawn is idle" passes on the thrash, because the pawn IS idle on 29 of every 30 ticks* |
-| 2 | Stamp on only ONE of the ten `Abandon` sites | ⭐ **the site-coverage legs.** ⚠️ **Each of the ten reachable sites needs its own blinded leg, or nine can be missing with the suite green** — this is M2-2's four-site shape with ten sites. *(Sites unreachable on any authored ship are declared as such **in the package's record**, with the reason, rather than silently skipped.)* |
-| 3 | Stamp but never expire | the recovery leg: make the bill satisfiable and require work to start within `UnreachableRetryTicks + 1` |
-| 4 | Apply the backoff to a **satisfiable** bill | the no-regression leg: normal crafting throughput must be unchanged |
-| 5 | Add a def field for the interval | the P4/P5 pin — this package must not move them |
+| # | mutation | must go red | ✅ measured |
+|---|---|---|---|
+| 1 | Delete the backoff stamp | ⭐ the driven thrash leg | ⛔ **THE CHARTER WAS WRONG HERE. The thrash leg stays GREEN; nine SITE legs redden instead.** See the box below — this is the row that hides the load-bearing half. |
+| 2 | Stamp on only ONE `Abandon` site | ⭐ **the site-coverage legs.** ⚠️ **Each reachable site needs its own blinded leg, or nine can be missing with the suite green.** *(Unreachable sites are declared in the package record, with the reason, never silently skipped.)* | ✅ **9 runs, 9 one-test reds** — site k's mutation reddens `SiteK_…` and nothing else. The tenth site is structurally unreachable (see SEAM). |
+| 3 | Stamp but never expire | the recovery leg | ✅ RED 1 — `Backoff_Expires_AndTheStationRecruitsAgain` |
+| 4 | Apply the backoff to a **satisfiable** bill | the no-regression leg: normal crafting throughput unchanged | ✅ RED 7, incl. both no-regression legs. Independently: **grid and slice are identical to the digit** before and after (43 / 15.348 % and 140 / 21.777 %). |
+| 5 | Add a def field for the interval | the P4/P5 pin | ✅ RED 2 — both defs checksum pins. |
+| **6** | **Remove the recruit-time reachability probe** *(added by the package)* | ⭐ **the driven thrash leg** — this is what mutation 1 was meant to be | ✅ RED 3 |
+| **7** | **Delete the recruit probe's stamp** *(added)* | the probe leg | ✅ RED 2 |
+| **8 / 9** | **`MaintenanceSystem`'s funnel stamp / its probe** *(added)* | its own two legs | ✅ RED 1 each — **both were SURVIVORS on the first harness run** and are the run's real finding; see below. |
 
-**ACCEPTANCE (browser, < 5 min).**
-1. `./play.sh` → select Rell → watch the **task line**.
-2. Today: it flickers between a craft task and `Idle` on a ~3-second cycle, indefinitely.
+> ### ⭐ THE PROBE IS THE LOAD-BEARING HALF, AND THE CHARTER DID NOT ASK FOR IT
+> The chartered fix is the backoff alone. **Built and measured each half separately**
+> (`--ship wreck --days 1 --no-repair`, Craft share of crew-ticks):
+>
+> | | `main` | backoff only | probe only | both (shipped) |
+> |---|---:|---:|---:|---:|
+> | Craft job starts | 597 | **228** | 0 | **0** |
+> | Craft crew-ticks | 3.575 % | **3.333 %** | 0.000 % | **0.000 %** |
+>
+> ⇒ **The chartered half does ~7 % of the work; the unchartered half does 100 %.** The backoff cuts
+> *claims* by 62 % and the *burn* by 6.8 %, because **the walk is what costs**: the fetch leg paths
+> to the input STACK, never to the bench, so the crew member walks the whole way and only discovers
+> the impossibility on arrival. The probe belongs in this package because
+> *"`DigJobSource.TryClaim` proves the path before it writes `JobKind`"* **is** part of the contract
+> the charter said to port — but **it must be written down as the load-bearing half, not left as an
+> implementation detail**, or the next lane will "simplify" it away and reintroduce 100 % of the bug
+> while the site legs stay green.
+>
+> ⚠️ **AND THE SAME BLINDNESS BIT THE TESTS.** The first harness run reported both
+> `MaintenanceSystem` mutations **GREEN**: an abandon in the SAME TICK as the claim is invisible to a
+> claim counter sampled at tick boundaries, so *"never claimed"* and *"claimed and dropped a
+> microsecond later"* read identically. Closed by giving the unreachable-machine leg a **reachable**
+> consumable (which makes the servicer walk, and only then is the probe's absence observable) and by
+> adding a funnel-only leg. ⇒ **A claim counter under-reports this entire bug class; assert crew-TICKS
+> beside it.**
+
+**ACCEPTANCE — ⛔ THE BROWSER SEQUENCE BELOW IS RETIRED. IT DOES NOT DESCRIBE WHAT HAPPENS.**
+
+~~1. `./play.sh` → select Rell → watch the **task line**. 2. Today: it flickers … *indefinitely*.
 3. After: it settles — either she crafts, or she does something else and **stays** doing it.
-4. Open MOSS → the FABRICATION row's fault log stops churning.
+4. Open MOSS → the FABRICATION row's fault log stops churning.~~
 
-⚠️ **A SECOND, HONEST ACCEPTANCE, because step 2 is subtle at 1× speed:** run
-`hosts/scenario -- --dump --days 1 --metrics` before and after and compare the **Craft job-start
-count**. The spike's own instrument is the right one; a 33 % crew-tick share is not something a human
-reliably sees, and saying so is better than pretending the browser check is sufficient.
+Three of the four steps are false against the measured sim, and step 3 is the one that matters:
+
+- **Step 2 is false in its duration.** It flickers through sim-hours 1–2 and then **stops on its
+  own** (h3 onward is 0.0 %). And on the shipping wreck *with repair on* it is **1 start a sim-day**
+  — a human watching a task line will see nothing at all.
+- **Step 3 is false in its outcome. She does not "do something else and stay doing it" — she does
+  NOTHING.** Craft goes to 0 %, and under `--no-repair` the pawn goes from 75.3 % busy in sim-hour 1
+  to **0 %**. Nothing is lost by it: the end-of-run ground stock is unchanged, because every one of
+  those crew-ticks was a walk to an input that could never be delivered. **But it changes the opening
+  minutes**, one week after M1-B shipped *"a first screen that is true"*, and that is worth saying
+  out loud rather than discovering in a playtest.
+- ⇒ **AND IT IS NOW THE INTENDED OUTCOME, NOT A REGRESSION.** Under **OD-G** the pawn boots **idle
+  and waiting** and the opening beat is the player giving an order. A pawn standing still with
+  nothing to do is the design; a pawn *pretending* to work is the bug. See §0.1 and M1-B.
+
+✅ **THE ACCEPTANCE THAT WAS ACTUALLY PERFORMED, and the one to re-run:**
+
+```
+hosts/scenario -- occupancy --ship wreck --days 1 --maint-audit [--no-repair]
+```
+
+compare the **Craft job starts** row before and after. ⚠️ **The charter named
+`--dump --days 1 --metrics`; that path has no per-kind job-start counter and cannot answer the
+question.** M1-H added the row to `--maint-audit` (opt-in, so no unflagged run changes) and added
+`--no-repair` (forces every `[machines]` maint threshold to 0, so `MaintenanceSystem` can never
+recruit — the M2-0 spike's Repair-OFF leg without the spike's static mutable sim config). Both are
+host-side and off the determinism path.
+
+*A browser pass was deliberately NOT performed and the reason is measurable: with repair on there is
+nothing for a human to see (1 start → 0 per sim-day), and the flicker is only reachable with repair
+off, which no player can do today. Under OD-H that stops being true — **a browser pass becomes
+worthwhile the moment M2-1 lands**, and should be taken then.*
 
 **CONFLICTS.** `sim/Sim.Core/Systems/CraftingSystem.cs` — **serialize against M2-2 and M2-5**, which
-edit the same recruiter. Also `MachineWearSystem.cs` if the fix generalises to both push recruiters
-(**recommended**).
+edit the same recruiter. `MachineWearSystem.cs` too: the fix **was** generalised to both push
+recruiters, as recommended.
 
-**SIZE: M** — ten call sites, ten blinded legs, and a pin move.
+> ⚠️ **A TEXTUAL CONFLICT THE "serialize against" line does not cover.** `FindNearestReachableIdle` is
+> **renamed and re-signatured in BOTH push recruiters** → `FindNearestReachableIdle(sim, target, out
+> bool anyIdle)`. Any M2-2 / M2-5 work already written against the old name will fail to compile
+> after this merge — it is not merely a semantic overlap, and git will not always flag it as a
+> conflict if the edits sit at different offsets (trap 7). **Integrator: rebase those lanes, do not
+> auto-merge them.**
+
+**SIZE: M** — ten call sites (nine reachable), nine blinded legs, a declared-unreachable tenth, and
+**no pin move** (measured).
 
 ---
 
-### M1-J — the tick-0 claim on a bench she can never reach *(NEW IN REVISION 3)*
+### M1-J — the staging rule `CraftingSystem` still does not ask *(NEW IN REVISION 3; **RE-CHARTERED THE SAME DAY** — its original sentence was discharged by M1-H)*
 
-**CLASS: PLAYER** · **LANE: `lane/craft-staging`** · **SIZE: S** · ⚠️ **INTEGRATOR LANE**
-⛔ **PIN CHAIN M1-b — RUNS ALONE, IMMEDIATELY BEHIND M1-H**
+**CLASS: ⚠️ SEE THE CLASS QUESTION BELOW** · **LANE: `lane/craft-staging`** · **SIZE: S**
+· ⚠️ **INTEGRATOR LANE** · ⭐ **PIN M1-b PROVISIONAL — likely NEUTRAL; measure**
 
-> **TODAY THE PLAYER IS MISLED ABOUT** the very first thing their only crew member does. On
-> `--ship wreck` at **tick 0**, `CraftingSystem` claims her for `machineshop_1` — **a bench in a
-> sealed, airless hall she can never reach, for a bill needing 2 Parts against the ship's 1.**
-> *(Driven, reported by the tick-0 investigation, 2026-07-29.)* **AFTER THIS** the crafting recruiter
-> is held to the same staging rule as every other worker-staging site in the sim, and the claim does
-> not happen.
+> ## ⛔ ITS ORIGINAL PLAYER SENTENCE IS MEASURED FALSE ON MERGED `main`. RETRACTED, NOT QUIETLY EDITED.
+>
+> **It read:** *"TODAY THE PLAYER IS MISLED ABOUT the very first thing their only crew member does. On
+> `--ship wreck` at tick 0, `CraftingSystem` claims her for `machineshop_1` — a bench in a sealed,
+> airless hall **she can never reach**, for a bill needing 2 Parts against the ship's 1."*
+>
+> ⛔ **`M1-H` HAS MERGED AND IT SHIPPED A REACHABILITY PROBE** —
+> `sim.Paths.FindPath(sim, best.Pos, target, _probePath)` at `CraftingSystem.cs:576`, inside the
+> recruiter it renamed to `FindNearestReachableIdle`. ***"She can never reach it"* is precisely what
+> that probe refuses**, and M1-H measured **probe-only ⇒ 0 Craft starts, 0.000 % of crew-ticks** on
+> `--ship wreck --days 1 --no-repair`. ⇒ **The tick-0 claim this package was chartered to stop no
+> longer happens.**
+>
+> ⚠️ **THIS IS NOT A SMALL EDIT AND IT IS NOT M1-H's FAULT.** M1-H's charter asked for a backoff; its
+> implementer found the probe was the load-bearing half and shipped it, saying so in the code. **The
+> defect I chartered was real when I chartered it and was fixed by someone else before this document
+> was reviewed.** *(§13.8: "nothing calls this yet" is a statement about a TREE, which a merge changes.
+> So is "the player is misled about X.")*
+
+> ### ✅ WHAT IS STILL TRUE — verified on the merged tree, and it is narrower than a milestone
+>
+> **The asymmetry survives, exactly as §12.16 states it:** `CraftingSystem.TryFindStagingTile`
+> (`:582-593`) still tests `InBounds` + `IsWalkable` (`:587`) and **still never asks
+> `WorksiteSafety.CanStageWorkerAt`**, while `MachineWearSystem`'s equivalent (`:625-635`) asks it at
+> `:631`. **A path check and a breathability check are different questions and M1-H answered only the
+> first.**
+>
+> ⇒ **THE RESIDUAL CASE, stated precisely:** a bench that is **reachable** (so the probe passes) whose
+> staging tile is **not survivable** — unbreathable, or **freezing**, since `CanStageWorkerAt` counts
+> thermal. A crew member is then claimed, walks there, and stands somewhere she cannot work.
+>
+> ⛔⛔ **AND IT HAS NO MEASURED OCCURRENCE ON ANY SHIP. THAT IS STATED, NOT BURIED.** The tick-0 case
+> was the only driven instance this document ever had, and it belonged to the unreachable half.
+> ⚠️ **It is not fictional either:** `CLAUDE.md` records that on the wreck *"everything outside the
+> core freezes from ~day 5"*, and a pressurised, reachable, freezing bench is exactly the residual —
+> **but that is an inference from two documents, not a measurement, and it must be labelled as one.**
+
+> ### ⛔ THE DECISION I AM NOT TAKING — this needs the integrator, and it is the honest output of the re-charter
+>
+> A package whose player sentence has been discharged is, by this document's own §6 rules, **either
+> re-classified or dropped.** Three options, and the recommendation is deliberately weak:
+> - **(a) DROP IT.** No measured occurrence; `CanStageWorkerAt` at a fifth site is guard work, and the
+>   plan **capped guard-hardening as a programme.**
+> - **(b) KEEP IT AS `INFRASTRUCTURE`, SIZE S.** M1 now has cap 2 with 1 used, so **there is a slot** —
+>   and its justification becomes *consistency of one rule across all staging sites*, which is honest
+>   and carries **no player sentence** (writing a fake one is the exact failure §6 exists to stop).
+> - **(c) MEASURE FIRST, THEN DECIDE.** Drive `--ship wreck` past the day-5 freeze and see whether a
+>   reachable-but-unsurvivable bench ever occurs. **If it never does, (a). If it does, it is a PLAYER
+>   package again and its sentence writes itself.**
+>
+> ***Recommend (c), then (a) or (b) on the result*** — ⚠️ **and note the cost of (c) honestly: it is a
+> driven measurement to justify a one-line change, which is a poor ratio.** ⛔ **What must NOT happen
+> is that it stays chartered `PLAYER` on a sentence this section has just retracted.**
 
 > ### ⭐ THE CAUSE IS ONE MISSING LINE, AND THE SIM ALREADY KNOWS IT IS MISSING
 >
 > | site | asks `sim.IsWalkable`? | asks `WorksiteSafety.CanStageWorkerAt`? |
 > |---|---|---|
 > | `JobWork.TryPathToAdjacent` (`sim/Sim.Core/Jobs/JobContext.cs:73-80`) | yes | ✅ **yes** (`:80`) |
-> | `MaintenanceSystem.TryFindStagingTile` (`MachineWearSystem.cs:567-579`) | yes | ✅ **yes** (`:573`) |
-> | *(and `MachineWearSystem.cs:541`)* | — | ✅ yes |
-> | **`CraftingSystem.TryFindStagingTile` (`CraftingSystem.cs:487-498`)** | yes (`:492`) | ⛔ **NO** |
+> | `MaintenanceSystem.TryFindStagingTile` (`MachineWearSystem.cs:625-635`) | yes | ✅ **yes** (`:631`) |
+> | *(and `MachineWearSystem.cs:599`)* | — | ✅ yes |
+> | **`CraftingSystem.TryFindStagingTile` (`CraftingSystem.cs:582-593`)** | yes (`:587`) | ⛔ **NO** |
 >
-> **Line 573 is the entire difference.** ⚠️ **And the repo has already written down that this file is
+> **Line `:631` is the entire difference.** ⚠️ **And the repo has already written down that this file is
 > the exception without noticing it is a bug:** `JobContext.cs:64` says the rule *"is asked here and
 > NOWHERE ELSE in the job board"*, and `MachineWearSystem.cs:553-554` calls itself *"the second and
 > last"* place applying it. **Both statements are true and both are about the JOB BOARD** —
 > `CraftingSystem` recruits **outside** it, which is the same structural asymmetry §12.14 names and
 > M1-H fixes the other half of. ⇒ **One gap, three consequences** (§12.14), and this is the third.
 
-**SEAM.** `sim/Sim.Core/Systems/CraftingSystem.cs:487-498` — add
-`if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;` after the walkability test at `:492`,
-matching `MachineWearSystem.cs:573` **verbatim in shape and order**. `WorksiteSafety` is declared at
+**SEAM.** `sim/Sim.Core/Systems/CraftingSystem.cs:582-593` — add
+`if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;` after the walkability test at `:587`,
+matching `MachineWearSystem.cs:631` **verbatim in shape and order**. `WorksiteSafety` is declared at
 `sim/Sim.Core/Systems/SafetySystem.cs:104`, the predicate at `:125-128`.
 
 > ### ⚠️ WHY IT IS ITS OWN PACKAGE, AND WHEN IT SHOULD NOT BE
 >
-> **It belongs inside M1-H and the only thing stopping that is timing.** Same file, same recruiter,
-> same measured trace — and the two interact: M1-H gives the recruiter a backoff so it stops
-> re-offering an impossible bill, while this stops it *offering the bill at all* for an unstageable
-> bench. **Shipping M1-H alone leaves a pawn that politely backs off from a bench she could never have
-> used** — expensive-and-visible becoming cheap-and-invisible, this repo's named failure class
-> (`MECHANICS.md` §13.17). ⇒ **RULING: if `lane/craft-thrash` has not yet passed independent review
-> when this is read, FOLD THIS IN and delete both this package and chain row M1-b — the saving is one
-> entire re-pin.** It is chartered separately only because `lane/craft-thrash` was in flight and under
-> review on 2026-07-29, and **adding scope to a lane under review is how send-backs multiply.**
+> ⛔ **THE FOLD INSTRUCTION IS SPENT — `M1-H` HAS MERGED.** *(It read: "It belongs inside M1-H and the
+> only thing stopping that is timing… RULING: if `lane/craft-thrash` has not yet passed independent
+> review when this is read, FOLD THIS IN and delete both this package and chain row M1-b — the saving
+> is one entire re-pin." **The window closed the same day it was written.**)*
+>
+> ⭐ **AND ITS ARGUMENT WAS RIGHT FOR A REASON THAT NOW READS DIFFERENTLY.** It said *"shipping M1-H
+> alone leaves a pawn that politely backs off from a bench she could never have used"* —
+> **M1-H's implementer reached the same conclusion independently and shipped the probe to prevent
+> exactly that**, saying so in the code (`CraftingSystem.cs:508-516`). ⇒ **The coupling was real and it
+> has been discharged by the other lane, not by this one.** ⚠️ *What that leaves behind is a package
+> whose reasoning was correct and whose subject has evaporated — which is why the class question above
+> is the honest output, not a smaller version of the same charter.*
 >
 > ⛔ **AND IT MUST NOT RIDE INSIDE M2-2.** M2-2 is already an integrator lane at five sites carrying
 > its own pin move; a second, unrelated `sim/` behaviour change inside it would make M2-2's measured
@@ -1261,8 +1477,8 @@ window between pin-chain rows.
 > - the **dispatcher** never assigns her — the four `IJobSource` boards are empty at boot anyway
 >   (`AuthoredShips.cs:1514-1521`, pinned by `WreckShipTests.cs:780-799`), and *"a quiet board falls
 >   through to eat ▸ craft ▸ maintain"*;
-> - **`CraftingSystem`** does not claim her at tick 0 (the claim at `CraftingSystem.cs:167`);
-> - **`MaintenanceSystem`** does not take her at ~tick 201 (the claim at `MachineWearSystem.cs:251`).
+> - **`CraftingSystem`** does not claim her at tick 0 (the claim at `CraftingSystem.cs:203`);
+> - **`MaintenanceSystem`** does not take her at ~tick 201 (the claim at `MachineWearSystem.cs:289`).
 >
 > ⛔ **THAT IS WHY M2-2 MUST COVER THE TWO PUSH RECRUITERS OR OD-G IS NOT DELIVERED.** They are the
 > only two sites that put work on a pawn with zero player input *and* bypass the dispatcher entirely —
@@ -1465,7 +1681,7 @@ The answer is **neither** — it is a **different mechanism** from the one three
 > | **Pre-emption is 0 lines in `sim/`, and all three "hard cases" are already safe** | **M2-7 deleted**, M2-8 **L → S** and **off the pin chain** |
 > | **A hold, not a cancel, is the unbuilt part** | **M2-19 created** — and its bool batched into M2-1's chapter bump **for free**, which is only possible because the spike ran *before* the chain started |
 > | **An over-reporting defer query stalls a band silently for 40 000 ticks** | M2-5 gained a required multi-pawn leg for a class a one-pawn fixture cannot see |
-> | **A 30-tick `Craft` thrash burning 33 % of crew-ticks, live on `main`** | **M1-H created**, ahead of the whole chain |
+> | ~~**A 30-tick `Craft` thrash burning 33 % of crew-ticks, live on `main`**~~ **A `Craft` recruit→abandon thrash, live on `main`** — ⚠️ **the SIZE and the DURATION the spike published were both wrong; re-measured by M1-H at 3.575 % of a sim-day, burning out after ~1.2 sim-hours (§0.1)** | **M1-H created**, ahead of the whole chain — **and it is now LANDED with no pin move, so `PIN M1-a` is retracted** |
 > | **`Select`'s signature genuinely need not change; cost is ~0** | a ruling promoted from argued to measured |
 > | **`54 650` was an absolute tick, not a wait** | a number three documents had reasoned from, corrected |
 >
@@ -1675,8 +1891,8 @@ what it decided not to gate cannot distinguish *"we ruled on this"* from *"we ne
 | A6 | `Jobs/Sources/BuildJobSource.cs:202` | `JobKind.Build` in `TryClaim` (`:194`), ready-site branch | via G1 |
 | A7 | `Jobs/Sources/BuildJobSource.cs:263` | `JobKind.HaulToBuild` — same `TryClaim`, needs-material branch. **Same work type (`Construct`) as A6** | via G1 |
 | A8 | `Jobs/Sources/DeconstructJobSource.cs:139` | `JobKind.Deconstruct` in `TryClaim` (`:133`) | via G1 |
-| A9 | `Systems/CraftingSystem.cs:167` | `recruit.JobKind = JobKind.Craft;` — recruit at `:164` via `FindNearestIdle` (`:467`, gate `:475`). **Bypasses the dispatcher entirely** | **G2** |
-| A10 | `Systems/MachineWearSystem.cs:251` | `recruit.JobKind = JobKind.Maintain;` in `MaintenanceSystem.RecruitForNeediest` (`:189`, called from `MaintenanceSystem.Tick:160`) — recruit at `:248` via `FindNearestIdle` (`:418`, gate `:426`). **Bypasses the dispatcher entirely** | **G3** |
+| A9 | `Systems/CraftingSystem.cs:203` | `recruit.JobKind = JobKind.Craft;` — recruit at `:164` via `FindNearestReachableIdle` (`:467`, gate `:565`). **Bypasses the dispatcher entirely** | **G2** |
+| A10 | `Systems/MachineWearSystem.cs:289` | `recruit.JobKind = JobKind.Maintain;` in `MaintenanceSystem.RecruitForNeediest` (`:189`, called from `MaintenanceSystem.Tick:160`) — recruit at `:248` via `FindNearestReachableIdle` (`:418`, gate `:426`). **Bypasses the dispatcher entirely** | **G3** |
 | A11 | `Systems/CitizenSystem.cs:70-79` | idle wander — sets a **path** and `JobKind` **stays `None`** | ⛔ **never gated — it is what an unassigned pawn DOES (OD-G). See M2-20** |
 | B2 | `sim/Sim.Core/Effects/EffectValidator.cs:141` | `citizen.JobKind = JobKind.Dig;` from the LLM `AgreeTask` effect. Its only idleness gate is `:110` `if (citizen.JobKind != JobKind.None) return false;` — **it does not consult `IsRecruitableForWork`, so it ignores `HoldPosition` AND `OrderedMove` today** | **G4** |
 | B2′ | `sim/Sim.Core/Effects/CapabilityComputer.cs:70-76` | ⭐ **THE FIFTH GATE, NAMED FOR THE FIRST TIME IN REVISION 3.** The mirror that decides whether the dig is **offered to the model at all**; its own comment reads *"mirrors the EffectValidator gate (wander path doesn't veto)"* | **G5** |
@@ -1731,8 +1947,8 @@ treat it as settled and not re-open it as a design question.)*
 **SEAM.** One predicate — `bool CanTakeWorkType(Citizen, WorkType)` on `Citizen` — asked at **five**
 gates. **G1** asks it inside `TryAssign` via `IJobSource.HandledKinds`
 (`sim/Sim.Core/Jobs/IJobSource.cs:44-49`, already read once at registration into `JobSystem._byKind`,
-`:91-108`). **G2** and **G3** ask it inside their `FindNearestIdle` loops beside the existing
-`IsRecruitableForWork` check (`CraftingSystem.cs:475`, `MachineWearSystem.cs:426`). **G4** asks it in
+`:91-108`). **G2** and **G3** ask it inside their `FindNearestReachableIdle` loops beside the existing
+`IsRecruitableForWork` check (`CraftingSystem.cs:565`, `MachineWearSystem.cs:479`). **G4** asks it in
 `EffectValidator`'s guard chain (`:110-122`) before `:141`. **G5** asks it in
 `CapabilityComputer.cs:70-76`, so the capability is never offered.
 
@@ -1743,7 +1959,7 @@ it closes G1–G3 in one line. **Refuse it.** `IsRecruitableForWork` is a **per-
 **per-(citizen, work type)** question; collapsing them makes `Repair@1 / Haul@off` indistinguishable
 from `all off`, silently changes `PlayerOrderPrecedenceTests`' subject, and pre-empts M2-19's own use
 of the same property. ⚠️ **It has exactly three production callers today**
-(`JobSystem.cs:140`, `CraftingSystem.cs:475`, `MachineWearSystem.cs:426`) — *"only three"* is what
+(`JobSystem.cs:140`, `CraftingSystem.cs:565`, `MachineWearSystem.cs:479`) — *"only three"* is what
 makes the shortcut look safe and is not a reason it is correct.
 
 **SPINE? YES — integrator lane.** *(Corrected in revision 1: revision 0 said "No" while editing
@@ -1818,8 +2034,8 @@ completely and P1/P3 may hold too.** State which world you measured in.
 | # | mutation | must go red |
 |---|---|---|
 | 1 | Delete the veto at **`TryAssign` only** (G1) | the dispatcher leg |
-| 2 | Delete it at **`MachineWearSystem.cs:426` only** (G3) | the **Repair** leg — a pawn with Repair off must not be recruited for a Maintain service. ⭐ **This is half of OD-G**: it is what stops maintenance taking the boot pawn at ~tick 201 |
-| 3 | Delete it at **`CraftingSystem.cs:475` only** (G2) | the **Craft** leg. ⭐ **The other half of OD-G**: it is what stops the tick-0 claim on `machineshop_1` |
+| 2 | Delete it at **`MachineWearSystem.cs:479` only** (G3) | the **Repair** leg — a pawn with Repair off must not be recruited for a Maintain service. ⭐ **This is half of OD-G**: it is what stops maintenance taking the boot pawn at ~tick 201 |
+| 3 | Delete it at **`CraftingSystem.cs:565` only** (G2) | the **Craft** leg. ⭐ **The other half of OD-G**: it is what stops the tick-0 claim on `machineshop_1` |
 | 4 | Delete it at **`EffectValidator.cs:141` only** (G4) | the **LLM-effect** leg — drive an `ApplyCitizenEffectCommand` granting a dig at a pawn with Mine off |
 | 4b | ⭐ **NEW IN REVISION 3.** Delete it at **`CapabilityComputer.cs:70-76` only** (G5) | ⭐ **THE OFFER LEG — the gate no revision named.** Compute the capability set for a pawn with Mine off and require the dig **absent from it**. ⚠️ **G4 alone leaves a crew member who AGREES IN DIALOGUE to work the player forbade, and then does nothing** — the 2026-07-21 *"crew no longer promise physical work they cannot do"* defect, re-introduced. **Blind it of leg 4: gating one of a hand-mirrored pair is the failure, and a test that passes with either present cannot see it** |
 | 5 | Invert the predicate (`off` means enabled) | **all five** positive legs |
@@ -2212,8 +2428,8 @@ re-derive against M2-2's `11 / 5 / 3` table before writing either.
 
 `JobSystem.TryAssign` (`sim/Sim.Core/Jobs/JobSystem.cs:220-273`; the argmin at `:237`, its guard at
 `:243`) · `JobSystem.cs:118` (`BeginTick` fan-out — the model for the new one) ·
-`MaintenanceSystem.RecruitForNeediest` (`sim/Sim.Core/Systems/MachineWearSystem.cs:189`, recruiting at
-`:248` via `FindNearestIdle` `:418`) · `CraftingSystem` (`:164` via `FindNearestIdle` `:467`) ·
+`MaintenanceSystem.RecruitForNeediest` (`sim/Sim.Core/Systems/MachineWearSystem.cs:212`, recruiting at
+`:248` via `FindNearestReachableIdle` `:418`) · `CraftingSystem` (`:164` via `FindNearestReachableIdle` `:467`) ·
 `EffectValidator.cs:141`.
 ⚠️ **`JobKind.Maintain` and `JobKind.Craft` have NO `IJobSource`** — `JobSystem.DefaultSources()`
 (`:73-80`) registers Dig/Haul/Build/Deconstruct and `_byKind[6]`/`_byKind[7]` are **null**. That is
@@ -2481,8 +2697,8 @@ is published rather than quietly re-scored.)*
 
 **SEAM.**
 - **A second hashed bool on `Citizen`** (working name `HeldByOrder`), checked by
-  `IsRecruitableForWork` (`Citizen.cs:103`) **and** by both push recruiters' `FindNearestIdle`
-  (`MachineWearSystem.cs:426`, `CraftingSystem.cs:475`) — ⚠️ **the same five-site discipline as M2-2;
+  `IsRecruitableForWork` (`Citizen.cs:103`) **and** by both push recruiters' `FindNearestReachableIdle`
+  (`MachineWearSystem.cs:479`, `CraftingSystem.cs:565`) — ⚠️ **the same five-site discipline as M2-2;
   a hold enforced only in the dispatcher is re-claimed by a push recruiter in the same tick, which is
   the exact defect this package exists to fix.**
 - ⭐ **ITS STORAGE BATCHES INTO M2-1's COMMIT, ZEROED AND UNREAD** — beside the reserved skill byte.
@@ -2785,7 +3001,7 @@ expressed**, so the principle routes its wear to a place that does not exist.
 >    14.30 kW threshold that is a **0.10 kW margin** — ⚠️ **arithmetic, not a measurement. The driven
 >    check must confirm or refuse it, and a 0.7 % margin is not a design, it is a coincidence.**
 > 2. ⚠️ **THE STANDING MAINTENANCE RULE MAY SPEND THE THREE CONSUMABLES BEFORE THE PLAYER CAN DIRECT
->    THEM.** `RecruitForNeediest` (`MachineWearSystem.cs:189`) picks the **lowest-Condition** device on
+>    THEM.** `RecruitForNeediest` (`MachineWearSystem.cs:212`) picks the **lowest-Condition** device on
 >    the ship, and `wing_c` (0.06) is among the lowest on the wreck. **The package must MEASURE and
 >    STATE where the authored Parts and Seals actually go in an unattended 2-sim-hour run** — if the
 >    answer is "the wings", the risk is small; if it is "three scrubbers", the soft-lock is the default
@@ -3373,8 +3589,8 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 | **`tests/Perilune.Tests/BlockedChannelTests.cs`** | **M1-A** (semantically), M1-D, M1-E, M2-18 | ⭐ **New row — FOUR claimants and revision 0 had none.** It carries a **named tripwire** at `:351` and `:412`: *"they are UNEXPLORED at tick 0 and so fog-gated off this channel. **If boot fog ever changes, this assertion is the tripwire and the fix is to exclude them by name, not to weaken it.**"* M1-A changes boot fog. It also carries `:794-811`, the pin that `ReasonNoConsumable` is **never emitted** — **M1-E must leave it passing; M2-9 flips it.** ⛔ **Serialize, and re-derive every row count from the MERGED tree.** |
 | `client/test/surface-boundary.test.js` | M1-C, M2-3, M2-4, M2-10, M4-2 | ⚠️ **Every claimant moves an equality-pinned census.** **Re-derive the number from the MERGED file with the shipped `codeOnly` stripper; never adjust either branch's figure.** |
 | `sim/Sim.Core/Jobs/*` (sources + `IJobSource`) | M1-D, **M2-21**, M2-2, M2-5 | ⭐ **New row (revision 2); FOURTH CLAIMANT ADDED IN REVISION 3.** M1-D mirrors `IsBackedOff` onto three sources; ⭐ **M2-21 stamps a backoff in `BuildJobSource`'s phase A and CONSUMES M1-D's mirrored query — it must not invent a second predicate (§12.11)**; M2-2/M2-5 edit `TryAssign` and `HandledKinds` consumers. **Serialize — all four are integrator lanes, M1-D first, M2-21 second.** |
-| `sim/Sim.Core/Systems/CraftingSystem.cs` | **M1-H**, ⭐ **M1-J**, M2-2, M2-5, M2-19 | ⭐ **New row (revision 2); FIFTH CLAIMANT ADDED IN REVISION 3.** M1-H adds the backoff at ten `Abandon` sites; ⭐ **M1-J adds `CanStageWorkerAt` at `:492`**; M2-2 vetoes at `:475`; M2-5 adds the arbitration query at `:164`; M2-19 checks the hold at `:475`. ⛔ **FIVE claimants on one recruiter — strictly serialize; M1-H first, M1-J immediately behind it or folded into it.** ⚠️ **Three of the five edit `FindNearestIdle`'s loop body within a few lines of `:475`**, which is precisely the silent-auto-merge shape that produced the `DeviceCell` field-list defect. |
-| `sim/Sim.Core/Systems/MachineWearSystem.cs` | **M1-H** (if generalised), M2-2, M2-5, M2-9, **M2-12** (reads `IsUnfixableWreck`), M2-19 | Serialize. ⚠️ ⭐ **REVISION 3: `MachineWearSystem.cs:567-579` is M1-J's REFERENCE IMPLEMENTATION — M1-J copies its shape into `CraftingSystem` and does NOT edit this file.** A non-claim, recorded so a future reader can tell *excluded* from *missed*. |
+| `sim/Sim.Core/Systems/CraftingSystem.cs` | **M1-H**, ⭐ **M1-J**, M2-2, M2-5, M2-19 | ⭐ **New row (revision 2); FIFTH CLAIMANT ADDED IN REVISION 3.** M1-H adds the backoff at ten `Abandon` sites; ⭐ **M1-J adds `CanStageWorkerAt` at `:587`**; M2-2 vetoes at `:565`; M2-5 adds the arbitration query at `:164`; M2-19 checks the hold at `:565`. ⛔ **FIVE claimants on one recruiter — strictly serialize; M1-H first, M1-J immediately behind it or folded into it.** ⚠️ **Three of the five edit `FindNearestReachableIdle`'s loop body within a few lines of `:565`**, which is precisely the silent-auto-merge shape that produced the `DeviceCell` field-list defect. |
+| `sim/Sim.Core/Systems/MachineWearSystem.cs` | **M1-H** (if generalised), M2-2, M2-5, M2-9, **M2-12** (reads `IsUnfixableWreck`), M2-19 | Serialize. ⚠️ ⭐ **REVISION 3: `MachineWearSystem.cs:625-635` is M1-J's REFERENCE IMPLEMENTATION — M1-J copies its shape into `CraftingSystem` and does NOT edit this file.** A non-claim, recorded so a future reader can tell *excluded* from *missed*. |
 | `CLAUDE.md` / `MECHANICS.md` / `HANDOVER.md` | M1-G and **every re-pin commit** | ⛔ **Integrator only.** Land M1-G in a quiet window between pin-chain rows. |
 
 ### ⭐ THE COUPLINGS GIT CANNOT SEE — named, because a clean auto-merge is not a clean merge
@@ -3388,7 +3604,7 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 | **M2-2 ↔ M2-5** | `TryAssign`'s veto and its band loop are the same lines | Both are integrator lanes on the file whose own header says it is *"the only file in the job system the integrator reviews."* |
 | ⭐ **M2-20 ↔ M2-6 ↔ M2-18** *(NEW IN REVISION 3)* | **ONE VOCABULARY FOR "THIS PAWN IS DOING NOTHING", across three packages and two surfaces.** M2-20 owns the words; M2-6 adds the ranking clause to the same `TaskLabel` string; M2-18 says the tile-side half (*"nobody aboard is assigned that work"*). | **No conflicting lines — they conflict on MEANING, which git cannot see at all.** Three packages describing one player confusion is how a repo acquires two names for one predicate (`IsBackedOff`, `codeOnly`, the two `NON_FURNITURE` sets). ⛔ **M2-20 lands first; the other two consume it. A reviewer of M2-6 or M2-18 must check that no third word was invented.** |
 | ⭐ **M2-2 ↔ EVERY MEASUREMENT FIXTURE** *(NEW IN REVISION 3)* | **Not a file — a precondition.** From M2-2 onward `--ship slice`, `--ship grid` and the scenario ship boot with **no work enabled**, so anything driven unattended measures a ship where nobody works. | **`A1 = 0.000 %` becomes both the correct output AND the broken-harness output**, and `A1 = 0.000 %` on grid is already the measured post-E0 result — so the two causes are confusable by construction. ⛔ **Every occupancy number quoted after M2-2 must state the grid its crew had**, and M2-17 carries the non-vacuity check. ⚠️ **This is why M2-21 merges at 7b: it needs a fixture that still works.** |
-| ⭐ **M1-H ↔ M1-J ↔ M2-21** *(NEW IN REVISION 3)* | **One structural asymmetry in three costumes** (§12.14): two claim paths that refuse without recording the refusal, and one staging path that never asks. | Landing any one alone leaves a defect that *looks* fixed — **M1-H without M1-J gives a pawn who backs off politely from a bench she could never have used.** ⭐ **AND THE SPLIT IS NOW MEASURED (§0.1): backoff alone −6.8 %, the probe alone → 0.000 %** — M1-J is the majority of the fix, not the tidy-up. ⛔ **Measure the three against one another**, and if `lane/craft-thrash` has not passed review, **fold M1-J into it.** |
+| ⭐ **M1-H ↔ M1-J ↔ M2-21** *(NEW IN REVISION 3; **M1-H HAS MERGED**)* | **One structural asymmetry in three costumes** (§12.14): two claim paths that refuse without recording the refusal, and one staging path that never asks. | ✅ **M1-H discharged its own half AND M1-J's driven case**, by shipping a reachability probe its charter did not ask for (`CraftingSystem.cs:576`; measured backoff-only −6.8 %, probe-only → **0.000 %**). ⇒ **M1-J is re-chartered to an UNMEASURED residual and its class is an open question**; **M2-21 is unaffected** — it is a different file and a different source, and its 3 000-tick livelock has not been touched. ⛔ **Re-derive M2-21's seam against the merged tree before starting it**: M1-H renamed `FindNearestIdle` → `FindNearestReachableIdle` and moved every line in `CraftingSystem.cs`, which is how this document's citations went stale within one day. |
 | ⭐ **M1-I ↔ M2-5** *(NEW IN REVISION 3 — OD-F meets OD-J)* | **The wreck's consumable stock, from two ends.** M1-I authors **more** consumables; OD-J puts **`Repair` FIRST** in the equal-band tie-break, so an enabled pawn reaches the neediest machine sooner — and the tick-0 investigation measured all three authored consumables spent within sim-day 1, unattended. | **No shared file, no shared test.** M1-I changes how many exist; M2-5 changes how fast they are reached; **neither lane's suite would see the other's change.** ⛔ **This is the `0.2` vs `0.25` threshold collision exactly** — two lanes, no overlapping lines, git reports no conflict, tree still wrong. **Whichever lands second re-runs the other's driven consumable measurement.** |
 
 > ⚠️ **A CLEAN AUTO-MERGE IS NOT A CLEAN MERGE, and this repo has proved it four times.** Two lanes
@@ -3409,7 +3625,7 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 
 | # | lane | package | why tonight |
 |---|---|---|---|
-| **1** | **`lane/craft-thrash`** | **M1-H — the `Craft` thrash** | ⭐ **NEW IN REVISION 2, and it takes the landed spike's slot.** A pawn burns **33 % of all crew-ticks** in a 30-tick recruit→abandon loop **on `main` today**, and it is invisible only because the maintenance monopoly absorbs the pawn — **which the grid stops doing on day one.** ⛔ **It is PIN M1-a and must precede M2-1**, so starting it tonight is what keeps the chain from stalling in week 3. Seam is exact: `CraftingSystem.cs`'s ten `Abandon` sites have **no backoff**, while every `IJobSource` has stamped one since W0-4. |
+| **1** | **`lane/craft-thrash`** | **M1-H — the `Craft` thrash** | ⭐ **NEW IN REVISION 2, and it takes the landed spike's slot.** A pawn is claimed for a bench it can never reach, walked to an input and released on arrival, over and over, invisible only because the maintenance monopoly absorbs it — **which the grid stops doing.** ⚠️ ~~33 % of all crew-ticks in a 30-tick loop~~ **retracted: measured 3.575 % of a sim-day with repair off (0.023 % as the wreck ships today), burning out after ~1.2 sim-hours — §0.1.** ⇒ **Under OD-H, repair-off is approximately the DEFAULT, so the large figure is the opening screen.** ✅ ~~It is PIN M1-a~~ **`PIN M1-a` RETRACTED — all five pins measured HELD; it does NOT run alone.** It **must still precede M2-1** (same recruiters; it also renames `FindNearestReachableIdle` in both). Seam is exact: `CraftingSystem.cs`'s ten `Abandon` sites had **no backoff**, while every `IJobSource` has stamped one since W0-4. |
 | ~~1b~~ | ~~`lane/spike-dispatch`~~ | *(original charter, kept for the record)* **M2-0 — the R1 spike** | ⭐ **The highest-information hour available.** It answers the single largest uncertainty in the quarter (*is M2's dispatch rewrite three days or three weeks?*), it sizes M3/M4/M5, and it also settles M2-5's equal-band decision — the thing that determines whether M2-5 joins the pin chain. It is a **throwaway branch that never merges**, so it collides with nothing and can run beside everything. ⚠️ **Leg A is mandatory; without it the spike is uninterpretable, and the version without it returned a FALSE PASS.** |
 | **2** | **`lane/blocked-reach`** | **M1-D — the third question** | Closes the measured **480 000-tick silent stall** — the most legible defect on the shipping game. Its files (`GameSession.cs`, `WireFormat.Blocked.cs`, `blocked-overlay.js`, `sim/Sim.Core/Jobs/`) are **disjoint from both in-flight lanes' files**. ⚠️ **IT IS AN INTEGRATOR LANE** (it appends a `WireFormat` reason and lifts a method onto `IJobSource`) — see the reconciliation below. ⚠️ Start from `WireFormat.Blocked.cs:78-100` and `HaulJobSource.cs:137`, which **already contain the prescription and the API**; do not re-derive them. ⭐ **Semantically coupled to M1-A — re-run everything after M1-A merges.** |
 | **3** | **`lane/undesignate`** | **M1-C — un-designate** | The most-requested missing gesture, wire and sim already complete, and it unblocks M2 (*"the first thing a player does with a new frame is change their mind"*). ⚠️ **It shares `controls.js` and `overview-view.js` with `lane/first-screen`.** Start it now, but **rebase onto `lane/first-screen` before asking for review**, and expect the `ROOM_TOOLS.length === 16` census to move to 17 deliberately. |
@@ -3462,7 +3678,7 @@ M2.**
 
 **12.1 THERE IS NO `MaintenanceSystem.cs`.** `MaintenanceSystem` is a second class **inside**
 `sim/Sim.Core/Systems/MachineWearSystem.cs`, declared at `:140`. `RecruitForNeediest` is at `:189` and
-its recruiter `FindNearestIdle` at `:418-434`. An implementer told to open `MaintenanceSystem.cs` will
+its recruiter `FindNearestReachableIdle` at `:418-434`. An implementer told to open `MaintenanceSystem.cs` will
 not find it.
 
 **12.2 `EffectValidator.cs` IS NOT UNDER `sim/Sim.Llm/`.** It is
@@ -3551,7 +3767,8 @@ owner decision** (M2's batch item 6, stated in M2-12).
 dispatcher **throws** at a source that does not, calling it *"a SILENT HANG — no exception, no log,
 the sim just stops advancing"* (`JobSystem.cs:259-272`). ⇒ **`CraftingSystem` and `MaintenanceSystem`
 recruit outside that contract and are bound by none of it**, which is the root cause of §0.1's
-33 %-of-crew-ticks thrash. ⚠️ **This is the same structural asymmetry that makes M2-5 a five-site
+thrash *(§0.1 — the published "33 % of crew-ticks" is retracted; measured 3.575 % of a sim-day)*.
+⚠️ **This is the same structural asymmetry that makes M2-5 a five-site
 problem rather than a dispatcher problem, and M1-H a prerequisite rather than a nice-to-have — one
 gap, three consequences.**
 
@@ -3581,8 +3798,12 @@ pre-existing defect, not one M2 creates; M2-2 closes it as a side effect and sho
 than claim it.)*
 
 **12.16 ⭐ `CraftingSystem` IS THE ONLY WORKER-STAGING SITE IN THE SIM THAT DOES NOT ASK
-`WorksiteSafety.CanStageWorkerAt`.** Full census of the predicate's call sites in `sim/`:
-`JobContext.cs:80`, `MachineWearSystem.cs:541`, `MachineWearSystem.cs:573` — **three, and
+`WorksiteSafety.CanStageWorkerAt` — STILL TRUE AFTER M1-H MERGED, AND M1-H IS WHY IT IS NOW EASY TO
+MISREAD.** M1-H gave the crafting recruiter a **reachability** probe (`CraftingSystem.cs:576`, a
+`FindPath` inside `FindNearestReachableIdle`) — so the file now looks defended and is not, for this
+question. ⚠️ **A path check answers "can she get there"; `CanStageWorkerAt` answers "can she
+survive there". Do not read the presence of one as the presence of the other.** Full census of the predicate's call sites in `sim/`:
+`JobContext.cs:80`, `MachineWearSystem.cs:599`, `MachineWearSystem.cs:631` — **three, and
 `CraftingSystem.TryFindStagingTile` (`:487-498`) is not among them.** ⚠️ **Two shipped comments state
 the census correctly and neither is a bug report:** `JobContext.cs:64` says the rule *"is asked here
 and NOWHERE ELSE in the job board"* and `MachineWearSystem.cs:553-554` calls itself *"the second and
