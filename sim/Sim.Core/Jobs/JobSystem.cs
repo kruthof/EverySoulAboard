@@ -113,6 +113,47 @@ namespace Perilune.Sim
         /// <summary>The registered sources, in registration order. Read-only; not a tick path.</summary>
         public System.Collections.Generic.IReadOnlyList<IJobSource> Sources => _sources;
 
+        /// <summary>
+        /// <b>HAS ANY SOURCE BACKED OFF <paramref name="pos"/> AS OF <paramref name="tick"/>?</b> The
+        /// dispatcher-wide fan-out of <see cref="IJobSource.IsBackedOff"/>, so a caller asks ONE
+        /// question about a tile instead of walking <see cref="Sources"/> and knowing which concrete
+        /// classes exist. Read <see cref="IJobSource.IsBackedOff"/> for what a true answer means — it
+        /// is *"a claim was attempted here and failed recently"*, which is WEAKER than "unreachable"
+        /// and weaker still than "the world is impassable".
+        ///
+        /// <para>EVERY SOURCE IS ASKED, INCLUDING HAUL, and that is deliberate rather than an
+        /// oversight to be filtered. <c>HaulJobSource</c>'s map is keyed on STOCKPILE tiles, so it can
+        /// only answer true for a queued order that happens to sit on a zoned tile — in which case its
+        /// answer is the same fact about the same tile ("no crew pathed here recently"), not a
+        /// different one. Naming source types here to exclude one would be a second place that knows
+        /// which sources exist, and the <c>zones</c> channel already draws the haul back-off for
+        /// stockpile POLICY; this is about queued ORDERS, which is a different registry.</para>
+        ///
+        /// <para><paramref name="untilTick"/> is the LATEST live expiry across the sources that
+        /// answered true (0 when none did) — i.e. the tick at which this tile could next be attempted
+        /// at all, not the tick the first of several stamps happens to lift. The scan does not
+        /// short-circuit, for that reason. Registration order is fixed, and the answer is
+        /// order-independent anyway (a max over a set).</para>
+        ///
+        /// <para>PURE and allocation-free: an indexed loop over the source array plus one
+        /// <c>Dictionary.TryGetValue</c> per source. It reads transient job-board scratch that is
+        /// never saved, never hashed and never restored, so calling it — from a render thread, a
+        /// test, or a wire channel — cannot move a determinism pin. NOT a tick path.</para>
+        /// </summary>
+        public bool IsBackedOff(Int3 pos, long tick, out long untilTick)
+        {
+            bool any = false;
+            long latest = 0;
+            for (int s = 0; s < _sources.Length; s++)
+            {
+                if (!_sources[s].IsBackedOff(pos, tick, out long until)) continue;
+                if (!any || until > latest) latest = until;
+                any = true;
+            }
+            untilTick = any ? latest : 0;
+            return any;
+        }
+
         public void Tick(Simulation sim)
         {
             for (int s = 0; s < _sources.Length; s++) _sources[s].BeginTick(sim);

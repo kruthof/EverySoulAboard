@@ -47,6 +47,41 @@ namespace Perilune.Sim
         public JobKind[] HandledKinds => Kinds;
         public int CandidateCount => _ready.Count + _needMat.Count;
 
+        /// <summary>
+        /// <see cref="IJobSource.IsBackedOff"/> for the BUILD board — <b>and this source carries TWO
+        /// backoffs for one site, which is the one place the mirror is not a copy.</b> Both are keyed
+        /// on the SITE, both are what <see cref="TryClaim"/> stamps, and either one being live means
+        /// the same thing to a caller: nobody managed to start work on this site recently.
+        ///
+        /// <para><b>THEY ARE DIFFERENT FAILURES AND THE DIFFERENCE IS RECORDED HERE RATHER THAN
+        /// SMOOTHED OVER.</b> <c>_readyRetryAt</c> is the site's own approach failing — a fully
+        /// supplied build whose tile no worker could path to or stand at. <c>_matRetryAt</c> is
+        /// <see cref="TryReserveMaterialFor"/> finding no free material stack this citizen can reach,
+        /// which can fire on a site whose own approach is perfectly fine. So a true answer here means
+        /// "the crew could not get to it, OR to what it needs" — never "the tile is unreachable". Any
+        /// surface built on this must say the weaker thing; <c>WireFormat.Blocked.cs</c>'s
+        /// <c>ReasonUnreachable</c> is worded for exactly this.</para>
+        ///
+        /// <para>THE LATER EXPIRY WINS when both are live, so <paramref name="untilTick"/> is the tick
+        /// at which the site could next be attempted at all rather than the tick the first of two
+        /// stamps lifts — the same choice <see cref="JobSystem.IsBackedOff"/> makes across sources,
+        /// and made the same way in both places on purpose. Two <c>TryGetValue</c>s, no enumeration
+        /// (rule 4), no allocation.</para>
+        /// </summary>
+        public bool IsBackedOff(Int3 pos, long tick, out long untilTick)
+        {
+            // `any` is tracked explicitly rather than inferred from `best != 0`. A live stamp is
+            // always >= JobWork.UnreachableRetryTicks so the inference happens to hold today, and
+            // "happens to hold" is how a sentinel eventually collides with a real value (the same
+            // argument GameSession.NotBlocked makes about a bare -1).
+            bool any = false;
+            long best = 0;
+            if (_readyRetryAt.TryGetValue(pos, out long ready) && tick < ready) { any = true; best = ready; }
+            if (_matRetryAt.TryGetValue(pos, out long mat) && tick < mat && (!any || mat > best)) { any = true; best = mat; }
+            untilTick = any ? best : 0;
+            return any;
+        }
+
         /// <summary>Resolve the optional BuildSystem once. Must happen before any progress pass,
         /// not merely before a rescan: a citizen can be mid-job on a tick where nothing is
         /// dirty.</summary>

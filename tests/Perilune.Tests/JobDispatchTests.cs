@@ -529,6 +529,11 @@ namespace Perilune.Tests
             public bool TryClaim(Simulation sim, Citizen citizen, int c, long gen, JobContext ctx) => false;
             public void Progress(Simulation sim, Citizen citizen, JobContext ctx) { }
             public void OnGroundItemReserved(Simulation sim, ItemStack item) { }
+            // A test double keeps no backoff map: it never stamps one, so it can never be inside
+            // one. Written out per double rather than defaulted on the interface — a source that
+            // silently answered "never backed off" would put a hole in the `blocked` channel, and
+            // the compiler asking the question is the point (IJobSource.IsBackedOff).
+            public bool IsBackedOff(Int3 pos, long tick, out long untilTick) { untilTick = 0; return false; }
         }
 
         /// <summary>
@@ -937,6 +942,11 @@ namespace Perilune.Tests
             }
             public void Progress(Simulation sim, Citizen citizen, JobContext ctx) { }
             public void OnGroundItemReserved(Simulation sim, ItemStack item) { }
+            // A test double keeps no backoff map: it never stamps one, so it can never be inside
+            // one. Written out per double rather than defaulted on the interface — a source that
+            // silently answered "never backed off" would put a hole in the `blocked` channel, and
+            // the compiler asking the question is the point (IJobSource.IsBackedOff).
+            public bool IsBackedOff(Int3 pos, long tick, out long untilTick) { untilTick = 0; return false; }
         }
 
         /// <summary>
@@ -996,6 +1006,11 @@ namespace Perilune.Tests
             public bool TryClaim(Simulation sim, Citizen citizen, int c, long gen, JobContext ctx) => false;
             public void Progress(Simulation sim, Citizen citizen, JobContext ctx) { }
             public void OnGroundItemReserved(Simulation sim, ItemStack item) { }
+            // A test double keeps no backoff map: it never stamps one, so it can never be inside
+            // one. Written out per double rather than defaulted on the interface — a source that
+            // silently answered "never backed off" would put a hole in the `blocked` channel, and
+            // the compiler asking the question is the point (IJobSource.IsBackedOff).
+            public bool IsBackedOff(Int3 pos, long tick, out long untilTick) { untilTick = 0; return false; }
         }
 
         /// <summary>
