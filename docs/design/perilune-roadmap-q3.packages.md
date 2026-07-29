@@ -3744,7 +3744,9 @@ as an order argument"* mistake in reverse.
 > `AuthoredShips.cs`) and the shape of its pin move.** Starting it before the item is answered *or has
 > defaulted to its recommendation after three days* means measuring a pin twice.
 > ⭐ **AND TWO LANES BECAME STARTABLE IN REVISION 3, both because they are live `main` defects
-> independent of every M2 decision:** `lane/craft-staging` (**M1-J**, behind or folded into M1-H) and
+> independent of every M2 decision:** ⛔ ~~`lane/craft-staging` (**M1-J**, behind or folded into
+> M1-H)~~ — **STRUCK: M1-H merged and discharged its driven case; M1-J is now `UNCLASSED` and its
+> deliverable is a measurement, not a lane. Do not start it as a code lane.** — and
 > `lane/build-haul-backoff` (**M2-21**, behind M1-D). ⚠️ **Both are pin-chain rows, so neither runs
 > concurrently with another pin mover** — and **M2-21 must be measured before M2-2 turns the fixtures
 > inert.**
