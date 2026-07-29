@@ -1266,6 +1266,22 @@ body.moss-open #roomzoom-view{display:none !important}
  * point the row is byte-identical to what shipped — measured 1 row / palH 54 / 1225px of content at
  * both 1600 and 1440, the same numbers as before the change.
  *
+ * ⚠️ THE TWO SENTENCES ABOVE ARE STALE IN THEIR NUMBERS AND SOUND IN THEIR RULE, and are kept rather
+ * than rewritten because they are the measurement that justified `flex-wrap:wrap`. The palette has
+ * grown twice since: OPERATE (16th, 2026-07-28) and ERASE (17th, M1-C). Re-measured on the shipped
+ * tree with `client/tools/palette-shot.mjs` (2026-07-29, CRYO BAY, 17 tools, 1404px of content):
+ *
+ *     1600px  1 row   palH  54     1440px  2 rows  palH  95     1280px  2 rows  palH  95
+ *     1140px  2 rows  palH  95     1024px  2 rows  palH  95      900px  2 rows  palH  95
+ *      768px  3 rows  palH 136
+ *
+ * So "TWO rows all the way down to 768px" is now THREE at 768, and 1440 — which the old measurement
+ * records as one row — is two. **17/17 tools were reachable at every one of those widths**, which is
+ * the property that actually matters and the one the wrap was chosen for: adding tools costs HEIGHT
+ * and never HIDES one. That is why a growing palette needs no CSS change, and why the numbers above
+ * are a record rather than a bound. The 12px overshoot band measured below moves with the content
+ * width like everything else here; it was not re-measured for 17 tools and is not claimed to be.
+ *
  * ⚠️ ONE HONEST OVERSHOOT, disclosed rather than tuned away, and MEASURED rather than estimated: the
  * wrap fires when the content is wider than the wrapper, and the content includes the row's own 12px
  * of trailing padding. So there is a narrow band where the palette now takes two rows at a width

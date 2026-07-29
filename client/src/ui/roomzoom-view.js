@@ -39,6 +39,7 @@ import {
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles, roomOperableTiles, operateLayerSvg,
   demolishTarget, addDecor, removeDecor, escStackRung,
+  eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
 import { taskTag } from './console-model.js';
@@ -54,6 +55,7 @@ const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the t
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
 const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
   'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
+  'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
   'OPERATE [O]: CLICK A DOOR OR VENT TO OPEN/SHUT IT · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
@@ -77,7 +79,7 @@ let _wasPaused = false;   // previous run state — the edge that dismisses the 
 
 let _open = false;
 let _focus = null;        // roomTileRect result {anchor, deck, slotIndex, roomType, displayName, rx,ry,rw,rh}
-let _armed = null;        // the ONE Level-2 input slot (15 tools + null)
+let _armed = null;        // the ONE Level-2 input slot (17 tools + null)
 let _decor = [];          // session-local cosmetic decor (never hashed, never wired)
 let _drag = null;         // active drag-build session {start:{x,y}, end:{x,y}, tool, mode} or null
 let _materials = defaultMaterials(); // per-tool active material byte (wall/floor); default {wall:0,floor:0}
@@ -176,7 +178,7 @@ function buildSkeleton() {
       //      — so the reveal costs ZERO net height. An always-visible ACCEPTS row would be a third
       //      permanent band under a palette that already clips below ~1140 px (a known-open defect,
       //      not this package's to fix, but emphatically this package's not to worsen).
-      //   2. A permanently-visible seven-chip filter next to fifteen tools reads as fifteen more
+      //   2. A permanently-visible seven-chip filter next to seventeen tools reads as seventeen more
       //      tools. Arming STOCKPILE is what makes "which kinds?" a question the player is asking.
       //   3. The cost of hiding it — discoverability — is paid off elsewhere and cheaply: the hint
       //      line names STOCKPILE [Z], and the sweep toast already ends with the accept-set in the
@@ -240,7 +242,8 @@ function buildChrome() {
   // `type="button"` + `aria-pressed`, matching the ACCEPTS chips standing three pixels above them
   // (WP-6 / §4j) rather than leaving two different button vocabularies on one palette. Until now the
   // armed tool was announced by the `.on` class ALONE, i.e. by colour: a screen reader could read all
-  // fifteen labels and not one word about which of them is holding the cursor. That is the same
+  // fifteen labels (as it then was; seventeen today) and not one word about which of them is
+  // holding the cursor. That is the same
   // complaint the clipping bug produced from a different cause — the control is present, and what it
   // is doing is not on the surface — so it is fixed here rather than filed.
   const pal = $('rz-palette');
@@ -545,6 +548,13 @@ function previewSvg() {
   if (!res.tiles.length) return '';
   const tool = _drag.tool;
   const itemId = materialItemId(tool, activeMaterial(_materials, tool)); // '' for door (no material)
+  // ERASE PREVIEWS IN A DIFFERENT COLOUR, and that is not decoration. Every other sweep on this
+  // surface ADDS something and the amber preview reads as "this is what you are about to put here";
+  // a drag that is about to take four orders OFF the floor, previewed in the identical amber, reads
+  // as painting a fifth. Slate — the same cool family the zone tint uses for "already spoken for".
+  const isErase = paletteCommand(tool).cls === 'erase';
+  const ring = isErase ? '#9fb4cc' : '#f2b563';
+  const wash = isErase ? 'rgba(159,180,204,.18)' : 'rgba(232,147,74,.20)';
   const out = [];
   for (const t of res.tiles) {
     const [lx, ly] = localXY(t.x, t.y);
@@ -554,14 +564,14 @@ function previewSvg() {
         ' ' + (ly + U / 2 - MAT_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
     }
     out.push('<rect x="' + (lx + 0.5) + '" y="' + (ly + 0.5) + '" width="' + (U - 1) + '" height="' +
-      (U - 1) + '" rx="2" fill="' + (itemId ? 'none' : 'rgba(232,147,74,.20)') +
-      '" stroke="#f2b563" stroke-width="1.5" stroke-dasharray="3 2"/>');
+      (U - 1) + '" rx="2" fill="' + (itemId ? 'none' : wash) +
+      '" stroke="' + ring + '" stroke-width="1.5" stroke-dasharray="3 2"/>');
   }
   const [ex, ey] = localXY(_drag.end.x, _drag.end.y);
   out.push('<text x="' + (ex + U / 2).toFixed(1) + '" y="' + (ey - 5).toFixed(1) +
     '" font-size="9" text-anchor="middle" dominant-baseline="middle" ' +
     'font-family="\'Space Mono\', ui-monospace, monospace" stroke="rgba(10,13,20,.9)" stroke-width="2.5" ' +
-    'paint-order="stroke" fill="#f2b563">' + esc(dragCaption(res)) + '</text>');
+    'paint-order="stroke" fill="' + ring + '">' + esc(dragCaption(res)) + '</text>');
   return '<g class="rz-preview" pointer-events="none">' + out.join('') + '</g>';
 }
 
@@ -790,7 +800,7 @@ function paintPalette() {
     setCls(b, 'on', on);
     // The armed state, said in words as well as in colour. One exclusive slot, so exactly one button
     // may read `true` — which is why this writes 'false' rather than removing the attribute: an
-    // absent `aria-pressed` turns a toggle back into a plain button, and fourteen plain buttons
+    // absent `aria-pressed` turns a toggle back into a plain button, and sixteen plain buttons
     // beside one pressed one is a different (and wrong) statement about the control set.
     setAttr(b, 'aria-pressed', on ? 'true' : 'false');
   }
@@ -1169,9 +1179,11 @@ function onCanvasMove(e) {
  * caller that goes back to `_send(orderPayloads(...))` and sends an ARRAY down the wire, or one that
  * sends only `[0]` and silently drops every filter. A sweep must emit a correct PAIR PER TILE.
  *
- * `on` is always true: the Room Zoom paints intent and never erases it. UN-designating is a KNOWN GAP
- * — the wire carries it (`Cmd.dig(x, y, false)`) and no surface in the client sends it, the console
- * included, so this ports the capability the game actually has rather than inventing a verb here.
+ * `on` is always true HERE, and since M1-C that is a statement about THIS FUNCTION and not about the
+ * client: `erasePayloads` below sends the OFF half. The sentence it replaces was the gap — *"the Room
+ * Zoom paints intent and never erases it. UN-designating is a KNOWN GAP — the wire carries it
+ * (`Cmd.dig(x, y, false)`) and no surface in the client sends it, the console included"* — and it is
+ * quoted rather than deleted so a grep for it lands on the verb that closed it.
  *
  * @param {string} verb  the PALETTE_CMD wire verb name ('dig' | 'stockpile' | 'strip')
  * @param {number} x @param {number} y
@@ -1185,6 +1197,56 @@ function orderPayloads(verb, x, y, mask) {
     return [Cmd.stockpile(x, y, true), Cmd.filter(x, y, m)];
   }
   return [Cmd.dig(x, y, true)];
+}
+
+/**
+ * Lower an ERASE target + tile to its wire payloads (M1-C) — the OFF half of `orderPayloads`, and a
+ * separate function because its input is not a VERB but a TARGET: which order this particular tile
+ * carries, decided by `eraseTarget` from what the surface can see there. A null target is an empty
+ * list, never a message.
+ *
+ * ⚠️ STOCKPILE OFF IS **ONE** COMMAND, NOT THE PAIR ABOVE. A stockpile PAINT always sends
+ * `Cmd.stockpile` then `Cmd.filter` so that every repaint re-asserts the whole truth — but
+ * `DesignateStockpileCommand` with `on:false` clears the accept-filter itself
+ * (`sim/Sim.Core/Commands/Commands.cs:186`), so a trailing `Cmd.filter` here would write a mask onto
+ * a tile that is no longer a zone: an orphan in the ZONE hash, which is precisely what the OFF path
+ * exists to avoid. Making the two paths "symmetrical" is the most likely regression in this file.
+ *
+ * IT MUST STAY BYTE-IDENTICAL TO `overview-view.js`'s copy, for the same reason `orderPayloads` must
+ * stay byte-identical to `paletteOrders`.
+ *
+ * ⚠️ IT IS NOT PINNED THE SAME WAY, AND SAYING SO WAS AN OVERSTATEMENT — corrected in review
+ * (2026-07-29). `orderPayloads` has a real cross-surface pin because `paletteOrders` is a THIRD,
+ * shared producer both copies can be compared against by import; the OFF path has no such producer,
+ * and the two suites live in separate files with separate DOM globals, so nothing compares one
+ * emission to the other. What IS pinned is (a) the shared `eraseTarget`/`tileOrders` both surfaces
+ * run, by import, and (b) the ABSOLUTE wire shape `{cmd,x,y,on:0}` asserted independently in each
+ * file — so a drift on either side reddens against the host's contract even though the two are never
+ * compared to each other. That is weaker than the ON path and is stated rather than implied.
+ *
+ * @param {'dig'|'strip'|'stockpile'|null} target  `eraseTarget` output
+ * @param {number} x @param {number} y
+ * @returns {object[]} 0..1 Cmd payloads
+ */
+function erasePayloads(target, x, y) {
+  if (target === 'dig') return [Cmd.dig(x, y, false)];
+  if (target === 'strip') return [Cmd.strip(x, y, false)];
+  if (target === 'stockpile') return [Cmd.stockpile(x, y, false)];
+  return [];
+}
+
+/** What an ERASE click on this room tile would take off, or null — the Room Zoom's half of the
+ *  lookup. It reads BOTH channels: `_markTiles` (dig / strip, and stockpile where the host ranked it
+ *  topmost) and `_zoneTiles` (this surface's stockpile source, from the `zones` channel).
+ *
+ *  ⚠️ THE SECOND READ IS A FOG DEFENCE, NOT A ZONE DEFENCE — corrected in review (2026-07-29). On an
+ *  EXPLORED tile a zone reaches `marks` as well, so `_zoneTiles` adds nothing there; what it adds is
+ *  the FOGGED zone, because `BuildZones` has no fog gate and `BuildMarks` does
+ *  (`GameSession.cs:1974-1999` against `:2053`) and `DesignateStockpileCommand` needs only `Walkable`
+ *  (`Commands.cs:173`). So this surface can take back a zone the Overview cannot even see. That
+ *  asymmetry is a recorded limit, not a feature; `room-model.js`'s ERASE header carries it. */
+function eraseTargetAt(x, y) {
+  return eraseTarget(tileOrders(roomMarkNameAt(_markTiles, x, y), roomTileZoned(_zoneTiles, x, y)));
 }
 
 /** Commit the sweep on release: one payload per previewed tile — `Cmd.build` (carrying the active
@@ -1211,8 +1273,18 @@ function onCanvasUp(e) {
   // a mechanism by which it could differ.)
   const mask = pc.cls === 'order' ? _stockFilter : 0;
   // sim decides legality per tile, for both classes — an illegal order is a silent no-op, never a ghost
+  // ERASE is counted as it goes, and the count is the ONLY honest thing to say afterwards: the tiles
+  // in the rectangle are what the player dragged over, while the number of orders actually taken back
+  // is what happened. A sweep across a room to clear four dig marks touches thirty tiles.
+  let erased = 0;
   if (pc.cls === 'order') {
     for (const t of res.tiles) for (const o of orderPayloads(pc.verb, t.x, t.y, mask)) _send(o);
+  } else if (pc.cls === 'erase') {
+    for (const t of res.tiles) {
+      const target = eraseTargetAt(t.x, t.y);
+      if (target) erased++;
+      for (const o of erasePayloads(target, t.x, t.y)) _send(o);
+    }
   } else for (const t of res.tiles) _send(Cmd.build(pc.kind, t.x, t.y, material));
   if (res.tiles.length) {
     pulse(res.tiles[res.tiles.length - 1], false);
@@ -1224,8 +1296,19 @@ function onCanvasUp(e) {
     // `acceptsLabel` is the SHARED spelling the zone key uses, so the chips, the toast and the key
     // cannot word one mask three ways.
     const accepts = pc.verb === 'stockpile' ? ' · ' + acceptsLabel(mask) : '';
-    toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res) + accepts);
-    nudgeOnIntent(); // designations placed on a stopped ship — nobody will come and build them
+    // ERASE REPORTS ITS COUNT, AND SAYS SO WHEN THE COUNT IS ZERO. `dragCaption` describes the
+    // RECTANGLE, which for every other tool is what was committed and for this one is not: a sweep
+    // that finds nothing to take back sends no command at all, and silence there is
+    // indistinguishable from a broken tool (§4g, the reason the Overview grew a toast).
+    if (pc.cls === 'erase') {
+      toast(TOOL_LABEL[drag.tool] + ' ▸ ' + (erased ? erased + ' ORDER' + (erased === 1 ? '' : 'S') +
+        ' TAKEN BACK' : 'NOTHING TO ERASE HERE'));
+    } else toast(TOOL_LABEL[drag.tool] + ' ▸ ' + dragCaption(res) + accepts);
+    // The nudge applies to ERASE TOO, and that is not symmetry for its own sake: a command only
+    // reaches the sim on a TICK, so on a paused ship the mark the player just cancelled stays on the
+    // floor until they start it again — the same "nothing happened" the nudge exists for. An erase
+    // that found nothing to take back sent nothing, so it nudges about nothing.
+    if (pc.cls !== 'erase' || erased) nudgeOnIntent();
   }
   scheduleRepaint();
 }
@@ -1266,6 +1349,11 @@ function onKey(e) {
     arm('stockpile'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'v' || k === 'V') {         // WP-4: V toggles STRIP (salVage; see controls.js:264)
     arm('strip'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'c' || k === 'C') {         // M1-C: C toggles ERASE (Cancel) — the console's own
+    // binding too (`controls.js`), so the key means the same thing on both standard surfaces. X, the
+    // obvious letter for "cancel", is DEMOLISH three lines up and the console's cancel-a-build
+    // toggle; C is free on both keymaps.
+    arm('erase'); e.stopPropagation(); e.preventDefault();
   } else if (k === 'o' || k === 'O') {         // O toggles OPERATE — a NEW binding, see below
     // ⚠️ THE ONE NEW HOTKEY ON THIS SURFACE, and it is checked against the console's map rather than
     // picked: `client/src/input/controls.js` binds B/X/G/Z/V (tools), P (sprites), M (move), WASD +

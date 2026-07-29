@@ -6,7 +6,9 @@
 // The defect it was written for is a LAYOUT defect: `.rz-palette` was `overflow-x:auto` with
 // `scrollbar-width:none` + `::-webkit-scrollbar{display:none}`, so below ~1140 px the last tools —
 // STOCKPILE, STRIP, DEMOLISH — were clipped away **with no affordance of any kind**. The DOM was
-// byte-identical in the working and the broken case: fifteen `<button class="rz-tool">` nodes, all
+// byte-identical in the working and the broken case: fifteen `<button class="rz-tool">` nodes (the
+// palette wore fifteen tools on the day of the bug; it wears SEVENTEEN today, and every count this
+// tool prints is READ FROM THE DOM, never typed), all
 // present, all focusable, three of them simply not on the screen. No assertion in this repo can tell
 // those apart, for exactly the reason `marks-shot.mjs`'s header gives about a well-formed SVG string
 // that paints nothing. **Only a real layout engine can answer "can the player see this button".**
@@ -206,7 +208,7 @@ const MEASURE = `(() => {
     matChips: matChips.length,
     matClipped: matBox ? matChips.filter((c) => !inBox(c, matBox)).map((c) => (c.getAttribute('title') || '?')) : [],
     // aria-pressed, read off the LIVE buttons: the armed tool must say so in words, not only in
-    // colour, and exactly one of the fifteen may claim it.
+    // colour, and exactly one of them may claim it — however many there are.
     pressed: btns.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent.trim()),
     ariaMissing: btns.filter((b) => b.getAttribute('aria-pressed') === null).length,
   };

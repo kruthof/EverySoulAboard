@@ -9,6 +9,69 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `m1-c-*` — UN-DESIGNATE: the player takes an order back, ON THE RUNNING GAME (2026-07-29, M1-C)
+
+Tool: **`client/tools/erase-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
+
+```
+./play.sh --host-port 8442 --client-port 8443 --no-open      # play.sh opens --ship wreck
+node client/tools/erase-shot.mjs --out docs/design/shots --host-port 8442 --client-port 8443
+```
+
+⚠️ **THE PICTURES ARE THE HUMAN HALF; THE TOOL'S OWN CHECKS ARE THE MACHINE HALF.** Every assertion
+in `client/test/` about ERASE reads a payload out of an injected `send`, which proves the client
+*emits* `on:0` and proves nothing about whether the mark goes away. This tool counts the `marks`
+channel before and after each gesture, over the same WebSocket the game uses, and **exits non-zero
+if a designation survives an erase — or if the paint that was supposed to precede it never landed.**
+That second half is not decoration: the first draft printed `✓ ERASE took the STRIP order back
+(0 → 0)` because the strip had been *refused* (device kind 0 is a Door and `DeconstructSystem`
+refuses doors), which is the repo's own "a test that passes if the system under test does nothing".
+
+⭐ **AND THE SECOND DRAFT HAD A BLIND SPOT THIS SET NOW CLOSES — the lesson worth carrying.** Its own
+measured ship-fact is that **all 20 of the wreck's deck-0 debris tiles are in HALLS**, so every DIG
+leg clicks a hall tile and none of them ever lands on a room rect. A room rect is exactly where
+`orderSuppressionToast` replaced the erase line with *"ERASE ARMED — ESC TO DISARM"*, putting the
+miss back into silence on the tiles that matter most — every device a player wants to un-condemn is
+inside a room. **The correction that made the rig honest is what hid the defect from it.** Rows 08–10
+are the instrument re-pointed at what it could no longer see: STRIP is on the Overview bar too, and
+every device is in a room, so an in-room designation can be painted *and* taken back from Level 1.
+⇒ **a ship-shape finding that narrows your instrument must be followed by asking what the narrowed
+instrument can no longer see.**
+
+**What the shipped wreck can and cannot show, measured over the wire rather than assumed:** deck 1
+has no enterable rooms at all, so **DIG is exercised on the Overview** (deck-scoped, can designate a
+hall tile) and the Room Zoom's legs use **STRIP** on a non-door device and **STOCKPILE** — the more
+interesting verb anyway, since its paint is TWO commands per tile (`stockpile` + `filter`) and its
+erase is deliberately ONE.
+
+| file | what it shows |
+|---|---|
+| `m1-c-01-overview-orders-bar.png` | the Overview with the ORDERS bar open |
+| `m1-c-02-overview-orders-bar-crop.png` | the bar itself: `[G] ⛏ DIG` · `[V] ⚒ STRIP` · **`[C] ↺ ERASE`** |
+| `m1-c-03-overview-dig-painted.png` | a DIG painted on debris at 34,15 — `marks` went 0 → 1 |
+| `m1-c-04-overview-erase-armed.png` | ERASE armed; the hint line names what a click will take back |
+| `m1-c-05-overview-erase-toast.png` | **`↺ ERASED DIG ▸ 34,15 ON DECK 0`** — the confirmation, visible |
+| `m1-c-06-overview-erased.png` | the mark is gone — `marks` went 1 → 0 |
+| `m1-c-07-overview-nothing-to-erase.png` | **`↺ NOTHING TO ERASE ▸ 34,15 ON DECK 0`** — the MISS, said out loud. A correct erase on a bare tile sends nothing, and silence is indistinguishable from a broken tool |
+| `m1-c-08-overview-inroom-erase-toast.png` | **THE R1 FIX, INSIDE A ROOM**: `↺ ERASED STRIP ▸ 2,1 ON DECK 0 · ESC TO DISARM`. One toast, both facts — what was taken back, *and* why the room did not open |
+| `m1-c-09-overview-inroom-nothing-to-erase.png` | **the case that used to go silent**: `↺ NOTHING TO ERASE ▸ 2,1 ON DECK 0 · ESC TO DISARM`, on a room rect |
+| `m1-c-10-overview-inroom-erase.png` | the whole surface at that moment |
+| `m1-c-15-overview-four-digs.png` | the charter's acceptance step 3: FOUR digs painted |
+| `m1-c-16-overview-one-erased-three-left.png` | **one erase, one order gone, three still standing** — and the rig asserts *which* three survive, not merely how many |
+| `m1-c-17-overview-all-erased.png` | the remaining three taken back |
+| `m1-c-20-palette-17-tools.png` | the Room Zoom palette at a **1280×800 laptop viewport**: seventeen tools, two rows, none clipped. ERASE sits beside the three verbs it undoes and NOT beside DEMOLISH — `↺` against `⌫`, the most confusable pair on the bar |
+| `m1-c-21-strip-mark.png` | a STRIP ✕ on a cryo capsule at 2,1 |
+| `m1-c-22-erase-armed.png` | ERASE armed in the Room Zoom |
+| `m1-c-23-erase-strip-toast.png` | `↺ ERASE ▸ 1 ORDER TAKEN BACK` |
+| `m1-c-24-erase-strip-done.png` | the ✕ is gone — the capsule is no longer condemned |
+| `m1-c-25-nothing-to-erase.png` | `↺ ERASE ▸ NOTHING TO ERASE HERE` |
+| `m1-c-26-stockpile-zone.png` | a 3×3 STOCKPILE drag — 6 tiles zoned (three carry capsules, which the sim refuses) |
+| `m1-c-27-erase-zone-toast.png` | `↺ ERASE ▸ 6 ORDERS TAKEN BACK` — the count is the ORDERS cleared, not the 9 tiles dragged over |
+| `m1-c-28-erase-zone-done.png` | the zone is gone in ONE drag |
+| `m1-c-29-palette-768-three-rows.png` | the narrowest width swept — **768px, THREE rows, 17/17 tools reachable**. `client/tools/palette-shot.mjs` (the instrument that exists because the palette once hid three verbs behind a hidden scrollbar) was re-run at 1600/1440/1280/1140/1024/900/768: every tool reachable at every width. Adding a tool costs HEIGHT, never a hidden verb — the numbers are re-recorded in `client/styles.css` beside the wrap rule they update |
+
+---
+
 ## `wear-*` — THE WEAR JOIN: a wrecked machine wearing its twin, ON THE RUNNING GAME (2026-07-28, W0b)
 
 Tool: **`client/tools/wear-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.

@@ -281,7 +281,7 @@ if (bare) {
   await png('07-bare-tile.png');
 }
 
-// ── the palette, cropped, so the new button is legible next to its fifteen siblings ──
+// ── the palette, cropped, so the new button is legible next to its siblings ──
 const pal = await evaluate(`JSON.stringify((()=>{const e=document.getElementById('rz-palette');const r=e.getBoundingClientRect();const pad=8;return {x:Math.max(0,r.x-pad),y:Math.max(0,r.y-pad),width:r.width+pad*2,height:r.height+pad*2};})())`);
 if (pal && pal !== 'null') await png('08-palette.png', JSON.parse(pal));
 

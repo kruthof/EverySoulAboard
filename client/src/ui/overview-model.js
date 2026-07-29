@@ -118,6 +118,63 @@ export function isOrderTool(tool) {
 }
 
 /**
+ * ERASE — the un-designate tool (M1-C). It stands OUTSIDE `ORDER_TOOLS` on purpose, in one word: it
+ * is not an order. Every entry in that table paints intent and lowers to one named wire verb; erase
+ * paints nothing and the verb it sends is a property of the TILE (`room-model.js` `eraseTarget`).
+ * Folding it in would have made `orderHintLine`, `orderPlacedLine` and `overviewClickAction` all say
+ * "order" about a thing that cancels one, and `MODERN_TOOL_TABLES` would then report the Overview as
+ * owning a verb whose real home is the Room Zoom palette.
+ *
+ * It IS rendered in the same ORDERS bar, beside the two verbs it undoes, because that is where the
+ * player is when they change their mind.
+ */
+export const ERASE_TOOL = 'erase';
+
+/** The ORDERS bar's label for ERASE. `[C]` is `controls.js`'s binding (C for Cancel — X, the obvious
+ *  letter, has been the console's own cancel-a-build toggle since IX-11). */
+export const ERASE_LABEL = '[C] ↺ ERASE';
+
+/** True for the un-designate tool. PURE. */
+export function isEraseTool(tool) {
+  return tool === ERASE_TOOL;
+}
+
+/**
+ * The `marks` kind NAME at a deck tile, or '' — over `decodeMarks` output. The Overview's half of the
+ * erase lookup: it reads `marks` and NOT `zones` (it draws no zone layer), which `tileOrders`'
+ * header explains is honest rather than lossy. PURE.
+ * @param {{x:number,y:number,deck:number,mark:string}[]|null} marks  decodeMarks() output
+ * @param {number} x @param {number} y @param {number} deck
+ * @returns {string}
+ */
+export function markNameAt(marks, x, y, deck) {
+  if (!Array.isArray(marks)) return '';
+  for (const m of marks) {
+    if (!m || (m.deck | 0) !== (deck | 0)) continue;
+    if ((m.x | 0) === (x | 0) && (m.y | 0) === (y | 0)) return m.mark || '';
+  }
+  return '';
+}
+
+/**
+ * WHAT AN ERASE CLICK SAYS BACK, as a toast line — INCLUDING WHEN IT CLEARED NOTHING, which is the
+ * half that matters. Erase is the one verb on this surface whose commonest miss is INVISIBLE: click
+ * a tile that carries no order and the correct behaviour is to send nothing at all, which looks
+ * exactly like a broken tool. `docs/HANDOVER.md` §4g is the same complaint from the other direction.
+ *
+ * Names the tile and the deck for the same reason `orderPlacedLine` does — the verb is deck-scoped
+ * and carries no z on the wire. PURE: ASCII + the verb icon, no locale APIs, no clock.
+ * @param {'dig'|'strip'|'stockpile'|null} target  `eraseTarget` output
+ * @param {number} x @param {number} y @param {number} deck
+ * @returns {string} the toast line (never '')
+ */
+export function erasePlacedLine(target, x, y, deck) {
+  const where = ' ▸ ' + (x | 0) + ',' + (y | 0) + ' ON DECK ' + (deck | 0);
+  if (!target) return '↺ NOTHING TO ERASE' + where;
+  return '↺ ERASED ' + String(target).toUpperCase() + where;
+}
+
+/**
  * The ORDERS bar's one-line readback: what a click will do, and WHICH DECK it will do it on.
  *
  * The deck is in EVERY branch on purpose. "Deck-scoped" is otherwise an invisible property — the
@@ -141,6 +198,9 @@ export function orderHintLine(armed, deck) {
   const d = ' ON DECK ' + (deck | 0);
   if (armed === 'dig') return '⛏ DIG ▸ CLICK DEBRIS' + d;
   if (armed === 'strip') return '⚒ STRIP ▸ CLICK A WALL OR DEVICE' + d;
+  // ERASE names what it TAKES BACK rather than what it points at, because unlike DIG and STRIP its
+  // target is not a kind of thing on the map — it is any tile the player has already ordered.
+  if (isEraseTool(armed)) return '↺ ERASE ▸ CLICK A PAINTED ORDER TO TAKE IT BACK' + d;
   return 'ORDERS APPLY TO DECK ' + (deck | 0) + ' · BUILDING AND ▦ STOCKPILE ARE ZOOM-ONLY';
 }
 
@@ -195,6 +255,7 @@ export function orderPlacedLine(tool, x, y, deck) {
  * Precedence (single disambiguation rule):
  *   1. the MOVE order armed → 'move' (the move target tile — IX-O-41)
  *   2. an ORDER tool armed → 'order' (the designation target tile — WP-5)
+ *   2b. ERASE armed → 'erase' (the un-designate target tile — M1-C; same tier, see the branch)
  *   3. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
  *   4. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
  *   5. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
@@ -237,13 +298,18 @@ export function orderPlacedLine(tool, x, y, deck) {
  * PURE.
  * @param {null|'move'|string} armed
  * @param {{pawnCid?:*, terminalId?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
- * @returns {{type:'move'|'order'|'select'|'terminal'|'addroom'|'enterRoom'|'none',
+ * @returns {{type:'move'|'order'|'erase'|'select'|'terminal'|'addroom'|'enterRoom'|'none',
  *            tool?:string, cid?:*, tid?:*, slot?:number, anchor?:string}}
  */
 export function overviewClickAction(armed, hit) {
   const h = hit || {};
   if (armed === 'move') return { type: 'move' };
   if (isOrderTool(armed)) return { type: 'order', tool: armed };
+  // ERASE sits in the same tier as 'order' and for the same reason: an armed tool owns the click, so
+  // arming it and clicking a room takes the order off that tile instead of entering the room. Which
+  // of the two branches comes first is UNOBSERVABLE — `armed` is one string from one exclusive slot —
+  // exactly as the note above says of 'move' vs 'order'. Do not read a precedence into it.
+  if (isEraseTool(armed)) return { type: 'erase' };
   if (h.pawnCid != null) return { type: 'select', cid: h.pawnCid };
   if (h.terminalId != null) return { type: 'terminal', tid: h.terminalId };
   if (h.addRoomSlot != null) return { type: 'addroom', slot: h.addRoomSlot };

@@ -228,9 +228,27 @@ export function isBuildTool(t) { return BUILD_KINDS.indexOf(t) >= 0; }
 const ORDER_KINDS = ['dig', 'stockpile', 'strip'];
 export function isOrderTool(t) { return ORDER_KINDS.indexOf(t) >= 0; }
 
+// M1-C ERASE — the un-designate tool. It shares the one armed slot with the kinds above and it
+// lives in the BUILD tab beside them, so it belongs in `isPaletteTool`.
+//
+// ⚠️ DELIBERATELY NOT IN `ORDER_KINDS`, and that is a boundary and not a taxonomy quibble.
+// `client/test/surface-boundary.test.js` reads `ORDER_KINDS` as one of the two authorities on WHAT
+// THE DEPRECATED CONSOLE CAN DO; adding erase there would assert the console has an un-designate
+// verb it does not have, and would satisfy the parity guard with a fiction. ERASE exists only on the
+// standard surface (`ROOM_TOOLS` + the Overview's ORDERS bar). What lives here is the shared
+// ARMED-SLOT machine, which both modern surfaces drive through `hud.js`.
+const ERASE_KINDS = ['erase'];
+export function isEraseTool(t) { return ERASE_KINDS.indexOf(t) >= 0; }
+
 /** Tools that live in the BUILD tab's palette — i.e. everything that a tab switch away from BUILD
- *  should disarm. MOVE is deliberately NOT one: it is a crew order and survives the tab. PURE. */
-export function isPaletteTool(t) { return isBuildTool(t) || isOrderTool(t); }
+ *  should disarm. MOVE is deliberately NOT one: it is a crew order and survives the tab. PURE.
+ *
+ *  ERASE IS ONE, AND IT MUST BE. The Overview's ORDERS bar is hidden off the BUILD tab, so a tool
+ *  that could be armed without opening the tab would be armed with nothing anywhere on screen saying
+ *  so — the "invisible feedback is FUNCTIONAL" rule, which is what makes this a one-line correctness
+ *  fix rather than tidiness: `hud.js`'s `armTool`/`armFromKey` both switch to BUILD on the strength
+ *  of this predicate. */
+export function isPaletteTool(t) { return isBuildTool(t) || isOrderTool(t) || isEraseTool(t); }
 
 /**
  * The armed-tool transition table. Events:
@@ -240,6 +258,7 @@ export function isPaletteTool(t) { return isBuildTool(t) || isOrderTool(t); }
  *   {t:'keyG'}           G: 'dig' armed → disarm; else arm 'dig' (E0-3)
  *   {t:'keyZ'}           Z: 'stockpile' armed → disarm; else arm 'stockpile' (E0-3)
  *   {t:'keyV'}           V: 'strip' armed → disarm; else arm 'strip' (E0-5; V = salVage)
+ *   {t:'keyC'}           C: 'erase' armed → disarm; else arm 'erase' (M1-C; C = Cancel)
  *   {t:'escape'}         Esc: disarm (stack step 2)
  *   {t:'tab', tab}       bottom-bar tab switch: leaving BUILD disarms palette tools (move survives)
  *   {t:'selectionLost'}  selCid became null: the move order lost its subject → disarm move only
@@ -257,6 +276,7 @@ export function nextArmedTool(state, ev) {
     case 'keyG': return s === 'dig' ? null : 'dig';
     case 'keyZ': return s === 'stockpile' ? null : 'stockpile';
     case 'keyV': return s === 'strip' ? null : 'strip';
+    case 'keyC': return s === 'erase' ? null : 'erase';
     case 'escape': return null;
     case 'disconnect': return null;
     case 'tab': return ev.tab !== 'build' && isPaletteTool(s) ? null : s;

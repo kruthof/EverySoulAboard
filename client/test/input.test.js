@@ -155,6 +155,51 @@ function fakeCanvas(w, h) {
 
 function evt(type, props) { return Object.assign(new Event(type), props); }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// M1-C — the ERASE hotkey, driven through the SHIPPED keydown handler.
+//
+// The kind is RECORDED AT THE SEAM (`onBuildKey`) rather than scanned for in the source: a text scan
+// for `'c'` is defeated by a comment, by whitespace and by every equivalent spelling, and this
+// records what actually arrived. It is the repo's fourth countermeasure applied to a keymap.
+//
+// ⚠️ THE HALF-DONE VERSION OF THIS CHANGE DOES NOT PRODUCE AN INERT KEY. `hud.js`'s `KEY_EVENT` map
+// falls back to `'keyB'`, so binding C here while forgetting the `erase: 'keyC'` row arms WALL,
+// silently. That half is pinned in overview-model.test.js against the real `armFromKey`; this half
+// pins only that the key reaches the seam at all, in both cases, without stealing another binding.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// MUTATION: drop the `c`/`C` branch from installInput's keydown ⇒ no kind is delivered ⇒ RED.
+// MUTATION: bind only the uppercase spelling (the `h` mistake controls.js:262 records) ⇒ RED.
+test('M1-C: C routes to the ERASE kind in both cases, and steals no existing binding', () => {
+  const canvas = fakeCanvas(520, 520);
+  const kinds = [];
+  globalThis.window = new EventTarget();
+  const dispose = installInput({
+    canvas,
+    camera: { x: 0, y: 0, z: 1, viewW: 520, viewH: 520, tile: 26 },
+    session: { send() {} },
+    getFrame: () => ({ w: 64, h: 32, crew: [] }),
+    draw() {}, toggleSprites() {},
+    onBuildKey: (kind) => kinds.push(kind),
+  });
+  try {
+    const key = (k) => globalThis.window.dispatchEvent(evt('keydown', { key: k }));
+    key('c'); key('C');
+    assert.deepEqual(kinds, ['erase', 'erase'],
+      'C did not route to the erase kind in BOTH cases. Lowercase `h` was silently dead once for ' +
+      'exactly this reason (controls.js:262), which is why both are pressed here.');
+    // …and the letter was not taken from an existing tool: the five older keys still deliver theirs
+    // through the same handler. Without this the mutation "route EVERY key to erase" stays green.
+    kinds.length = 0;
+    for (const k of ['g', 'v', 'z', 'b', 'x']) key(k);
+    assert.deepEqual(kinds, ['dig', 'strip', 'stockpile', 'build', 'cancel'],
+      'binding C moved one of the existing tool keys');
+  } finally {
+    dispose();
+    delete globalThis.window;
+  }
+});
+
 // MUTATION: inline `session.send(Cmd.filter(t.x, t.y, getStockFilter()))` in the mouse-up branch
 // only (the precise defect the seam exists to forbid) ⇒ the mouse recording has 3 messages and the
 // Enter recording has 2 ⇒ the deepEqual between them fails.

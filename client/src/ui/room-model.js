@@ -38,7 +38,7 @@ import { BLOCKED_REASON_TEXT } from '../wire/messages.js';
 export const U = 32;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Palette (VS-Z-46 / IX-Z-14). The fifteen tools in visual order; each maps to exactly one command
+// Palette (VS-Z-46 / IX-Z-14). The seventeen tools in visual order; each maps to exactly one command
 // class + wire verb (IX-Z-15). `deviceKind` is the sim DeviceKind name for functional furniture
 // (Device.cs); `itemId` is the item-set piece for cosmetic decor.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -47,10 +47,14 @@ export const U = 32;
  *  material picker and drag-build; DOOR is a single structural placement; DIG, STOCKPILE and STRIP
  *  are the three ORDER verbs (WP-4 brought dig/strip; stockpile came down from the Overview when
  *  the altitude rule was corrected — `overview-model.js`'s header holds the argument), kept in the
- *  console's own `ORDER_KINDS` order and grouped at the destructive end beside DEMOLISH. */
+ *  console's own `ORDER_KINDS` order and grouped at the destructive end beside DEMOLISH.
+ *
+ *  ERASE sits IMMEDIATELY AFTER the three verbs it undoes and deliberately NOT beside DEMOLISH: the
+ *  two are the most confusable pair on this bar (DEMOLISH takes a THING off the floor, ERASE takes
+ *  an ORDER off a tile), and putting them adjacent would make a mis-click cost a building. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
-  'dig', 'stockpile', 'strip', 'operate', 'demolish',
+  'dig', 'stockpile', 'strip', 'erase', 'operate', 'demolish',
 ]);
 
 /** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). The ▦ is the same glyph the
@@ -59,8 +63,8 @@ export const ROOM_TOOLS = Object.freeze([
 export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
   locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT',
-  dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', operate: '⇄ OPERATE',
-  demolish: '⌫ DEMOLISH',
+  dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', erase: '↺ ERASE',
+  operate: '⇄ OPERATE', demolish: '⌫ DEMOLISH',
 });
 
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
@@ -107,6 +111,16 @@ const PALETTE_CMD = Object.freeze({
   //   3. IT IS THE ONLY TOOL WHOSE TARGET IS A SPECIFIC DEVICE rather than a tile. Everything else
   //      on this palette either builds on an empty tile or marks whatever is there.
   operate: { cls: 'operate',  verb: 'operate' },
+  // ERASE class — the un-designate verb (M1-C). Its OWN class, and emphatically NOT `order`, for the
+  // same shape of reason OPERATE gives above, but for one reason rather than three:
+  //   IT IS NOT A DESIGNATION AND IT CARRIES NO VERB OF ITS OWN. Every `order` row names the ONE
+  //   wire verb its tile emits; erase names none, because which verb it sends is a property of THE
+  //   TILE (`eraseTarget` below), not of the tool. Routing it through `orderPayloads` — whose whole
+  //   contract is "stay byte-identical to `paletteOrders`" — would either break that contract or
+  //   require `paletteOrders` to grow a branch the console can never reach.
+  // It IS swept and it IS tile-scoped, so `isSweepTool` and `roomDragMode` both name it explicitly
+  // rather than inferring it from the class, and both are pinned.
+  erase: { cls: 'erase',      verb: null },
   demolish: { cls: 'demolish', verb: null },
 });
 
@@ -131,6 +145,11 @@ export function isOrderTool(tool) {
   return paletteCommand(tool).cls === 'order';
 }
 
+/** True for the ERASE tool — the un-designate verb (M1-C). PURE. */
+export function isEraseTool(tool) {
+  return paletteCommand(tool).cls === 'erase';
+}
+
 /**
  * True for every tool committed by the press-drag-release SWEEP gesture rather than by a plain
  * click: the structural trio plus the three order verbs. This is the sibling set the Room Zoom's
@@ -139,7 +158,7 @@ export function isOrderTool(tool) {
  * behind — that drift is what `paletteOrders` was extracted to prevent on the console. PURE.
  */
 export function isSweepTool(tool) {
-  return isStructuralTool(tool) || isOrderTool(tool);
+  return isStructuralTool(tool) || isOrderTool(tool) || isEraseTool(tool);
 }
 
 /**
@@ -157,7 +176,7 @@ export function isSweepTool(tool) {
  * `single` sweep would make the verb's only real parameter a matter of clicking forty times. PURE.
  */
 export function roomDragMode(tool) {
-  return isOrderTool(tool) ? 'fill' : dragModeForTool(tool);
+  return (isOrderTool(tool) || isEraseTool(tool)) ? 'fill' : dragModeForTool(tool);
 }
 
 /**
@@ -177,6 +196,110 @@ export function nextRoomTool(current, action) {
     return current === a.tool ? null : a.tool;
   }
   return current;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ERASE — the un-designate verb (M1-C). SHARED BY BOTH STANDARD SURFACES.
+//
+// Until this landed the client could paint an order and never take it back: one STRIP drag across
+// the cryo bay condemned eight capsules and no gesture in `client/` undid it. Nothing below the
+// client was missing — `DesignateDigCommand`/`DesignateStockpileCommand`/`DesignateDeconstructCommand`
+// all take `on:false` and the TUI has sent it since E0-5 (`hosts/tui/GameLoop.cs`). This is the
+// client half, and it is deliberately three tiny pure functions rather than a branch in each view.
+//
+// ⚠️ WHAT THE PRECEDENCE IS ACTUALLY FOR — CORRECTED IN REVIEW (2026-07-29), because the first
+// version of this header named a case that is measurably a NO-OP. It said: *"the Room Zoom draws
+// stockpile from `zones`, not from `marks`, so a strip order INSIDE a zone reaches that surface as
+// two independently-drawn facts and which one an erase takes off is a decision no host ranking can
+// make."* THE DRAWING IS FILTERED; THE REPORTING IS NOT. `markLayerSvg` skips the stockpile kind,
+// but `roomMarkTiles` still REPORTS it (its own header says so, in bold, and gives this exact
+// reason), so on an EXPLORED tile a zoned tile always arrives on `marks` too and `zoned` cannot
+// change the answer for it. Driven case table: `zoned` moves the result for `debris` and for an
+// EMPTY mark, and for nothing else.
+//
+// SO THE PRECEDENCE'S REAL JOB IS THE OPPOSITE OF WHAT WAS WRITTEN: it is what makes `zoned`
+// HARMLESS. `tileOrders('strip', true)` is the two-element set {strip, stockpile}, and it must
+// resolve to the same verb the Overview's singleton {strip} resolves to, or the two surfaces would
+// peel a shared tile in different orders. Rank stockpile first and they do — which is why the
+// mutation bites. The rule is the host's own, quoted: *"AN ORDER OUTRANKS A ZONE, AND THAT IS THE
+// WHOLE RULE"* (`hosts/web/GameSession.cs` `BuildMarks`), and agreeing with it is the whole content.
+//
+// ⚠️ AND THE CASE `zones` REALLY COVERS IS FOG, NOT ZONES. `BuildMarks` is fog-gated
+// (`GameSession.cs:2053`, *"an unexplored tile emits nothing"*); `BuildZones` is NOT
+// (`GameSession.cs:1974-1999` walks every Stockpile-flagged tile); and `DesignateStockpileCommand`
+// has no Explored precondition — only `Walkable`, and only on the ON path (`Commands.cs:173`). So a
+// zone painted on an unexplored tile exists on `zones` and NOT on `marks`, and reading `zones` is
+// what lets the Room Zoom erase it.
+//
+// ⇒ KNOWN LIMIT, RECORDED RATHER THAN FIXED: **the two surfaces can disagree about a fogged zone.**
+// The Room Zoom clears it; the Overview reads only `marks`, sees nothing, and answers NOTHING TO
+// ERASE forever. Latent on `--ship wreck` (`InteriorKnownAtBoot = true`, so nothing is fogged) and
+// live in mechanism on any crew-vision ship. Closing it means either fog-gating `BuildZones` — a
+// fog-of-war change, which is what `BuildMarks`' own comment declines to make from a rendering fix —
+// or giving the Overview the `zones` channel. Both are decisions, not tidy-ups.
+//
+// Peeling one layer per click is deliberate over clearing everything at once: a player cancelling a
+// dig painted inside a stockpile zone means the dig, and a verb that also deleted their zone would
+// be a destructive surprise with no undo of its own.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The order kinds ERASE can clear, in the order it clears them (one per click). An ORDER outranks a
+ *  ZONE — `hosts/web/GameSession.cs` `BuildMarks`' own precedence, minus `debris`, which is TERRAIN
+ *  and not an order: nothing the player did put it there, so nothing they can do takes it back. */
+export const ERASE_PRECEDENCE = Object.freeze(['dig', 'strip', 'stockpile']);
+
+/**
+ * What ORDERS a tile carries, from the two facts a surface can see about it: the `marks` kind NAME
+ * (`decodeMarks`' `mark`: 'dig' | 'strip' | 'stockpile' | 'debris' | '' | null) and whether the
+ * `zones` channel lists the tile. `debris` and an absent mark contribute nothing.
+ *
+ * ⚠️ `zoned` CHANGES THE ANSWER FOR EXACTLY TWO MARK SHAPES — 'debris' and ABSENT — and for no
+ * other; the earlier claim that it was needed for a strip-inside-a-zone tile is FALSE and is
+ * corrected in the section header above. On an EXPLORED tile a zone always reaches `marks` too, so
+ * for every mark shape except those two the `zones` half is redundant and the precedence is what
+ * keeps it harmless. Its real subject is the FOGGED zone: `BuildZones` has no fog gate and
+ * `BuildMarks` does, so a zone on an unexplored tile exists only on `zones`.
+ *
+ * The Overview passes `false` because it does not read `zones` at all. That is NON-LOSSY for every
+ * EXPLORED tile — both surfaces produce the identical peel sequence, verified by driving them — and
+ * it is the fogged-zone limit recorded in the header for the rest. PURE.
+ * @param {string|null} mark   a `decodeMarks` mark NAME, or '' / null for a tile with no mark
+ * @param {boolean} [zoned]    true when the `zones` channel lists this tile
+ * @returns {{dig:boolean, strip:boolean, stockpile:boolean}}
+ */
+export function tileOrders(mark, zoned) {
+  const m = mark == null ? '' : String(mark);
+  return {
+    dig: m === 'dig',
+    strip: m === 'strip',
+    stockpile: m === 'stockpile' || zoned === true,
+  };
+}
+
+/**
+ * Which ONE order an erase click on this tile takes off, or null when the tile carries none. PURE.
+ * @param {{dig?:boolean, strip?:boolean, stockpile?:boolean}|null} orders  `tileOrders` output
+ * @returns {'dig'|'strip'|'stockpile'|null}
+ */
+export function eraseTarget(orders) {
+  if (!orders) return null;
+  for (const kind of ERASE_PRECEDENCE) if (orders[kind]) return kind;
+  return null;
+}
+
+/** The `marks` kind NAME at a room-local tile, or '' — over `roomMarkTiles` output (tx/ty are ORIGINAL
+ *  tile coordinates, so the caller passes world tiles, not local ones). PURE. */
+export function roomMarkNameAt(markTiles, tx, ty) {
+  if (!Array.isArray(markTiles)) return '';
+  for (const m of markTiles) if (m && (m.tx | 0) === (tx | 0) && (m.ty | 0) === (ty | 0)) return m.mark || '';
+  return '';
+}
+
+/** True when `roomZoneTiles` output lists this tile as zoned. Same coordinate contract. PURE. */
+export function roomTileZoned(zoneTiles, tx, ty) {
+  if (!Array.isArray(zoneTiles)) return false;
+  for (const z of zoneTiles) if (z && (z.tx | 0) === (tx | 0) && (z.ty | 0) === (ty | 0)) return true;
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
