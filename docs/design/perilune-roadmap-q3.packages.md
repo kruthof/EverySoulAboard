@@ -1205,12 +1205,14 @@ window between pin-chain rows.
 >    M2-2): the veto is a CLAIM-TIME gate; a running job completes.** Anything else drops cargo on the
 >    floor as a side effect of a settings change. **Pre-emption (M2-8) is the deliberate way to
 >    interrupt, and it is a different verb.**
-> 3. ⚠️ **AN UNASSIGNED PAWN MUST STILL BE ALIVE ON SCREEN.** Idle wander (`CitizenSystem.cs:70-79`)
->    sets a path and **never** a `JobKind`, so it is untouched by the veto and is what an unassigned
->    pawn *does*. **M2-20 must MEASURE whether the wreck's boot pawn has `AutoWander = true`** — this
->    document does not know, and the deck-confined-wander lane measured `--ship grid`'s crew standing
->    on their boot tile as *"most of what the ship looks like"*. **A pawn who is waiting and also
->    frozen reads as a hung game.**
+> 3. ✅ **AN UNASSIGNED PAWN IS STILL ALIVE ON SCREEN — CHECKED, AND THE ANSWER IS YES.** Idle wander
+>    (`CitizenSystem.cs:70-79`) sets a path and **never** a `JobKind`, so it is untouched by the veto
+>    and is what an unassigned pawn *does*; **the wreck's boot pawn is authored `AutoWander = true`**
+>    (`AuthoredShips.cs:1936-1941`, *"so the ship is not a still photograph while the pawn is idle"*).
+>    **A pawn who is waiting AND frozen would read as a hung game, and she is not frozen.** ⚠️ *This
+>    was written as an open measurement in this revision's first draft and closed by reading the file
+>    — recorded that way because a charter that asks for a measurement someone could have taken by
+>    opening one file is a charter wasting a lane's day.*
 >
 > ### ✅ 5. WHAT SURVIVES REVISION 3 UNCHANGED
 >
@@ -2796,25 +2798,28 @@ a two-pawn fixture on a one-pawn ship.**
 1. **TWO WORDS, NOT ONE.** One for *unassigned*, one for *idle*. ⚠️ **The exact strings are
    REVERSIBLE and are OWNER BATCH ITEM 11** — ship the recommendation if it is unanswered after three
    days, and mark it as such in the milestone record.
-2. ⭐ **THE PAWN MUST BE ALIVE ON SCREEN.** Idle wander (`CitizenSystem.cs:70-79`) sets a **path** and
-   never a `JobKind`, so it is untouched by M2-2's veto and is what an unassigned pawn *does*.
-   ⛔ **REQUIRED MEASUREMENT, NOT A FACT THIS DOCUMENT HAS: does the wreck's boot pawn have
-   `AutoWander = true`?** The deck-confined-wander lane measured `--ship grid`'s crew standing on their
-   boot tile as *"most of what the ship looks like"*, and the comment above says *"crew there do not
-   auto-wander"*. **A pawn who is waiting AND frozen reads as a hung game.** If the answer is `false`,
-   this package's finding is a **content** change (one flag on one authored citizen), and it must be
-   escalated rather than made silently — it is a wreck-only authoring change and therefore
-   pin-neutral, but it is still a design decision about how the opening looks.
+2. ✅ **THE PAWN IS ALREADY ALIVE ON SCREEN — VERIFIED, NOT ASSUMED, AND THE RISK IS DISCHARGED.**
+   Idle wander (`CitizenSystem.cs:70-79`) sets a **path** and never a `JobKind`, so it is untouched by
+   M2-2's veto and is what an unassigned pawn *does*. **The wreck's boot pawn is authored
+   `AutoWander = true`** (`sim/Sim.Gen/AuthoredShips.cs:1936-1941`, whose own comment reads
+   *"AutoWander so the ship is not a still photograph while the pawn is idle; deck-confined"*, and
+   `:1535` states it again). ⇒ **No content change, no `AuthoredShips.cs` claim, no escalation.**
+   ⚠️ ⭐ **BUT THE `overview-view.js:701-708` COMMENT IS STALE ABOUT THIS TOO, AND THAT MATTERS FOR THE
+   AMENDMENT:** it reasons from *"on `--ship grid` … crew there do not auto-wander"* — which was true
+   when it was written and **was reversed on 2026-07-25** by the deck-confined-wander lane
+   (`AuthoredShips.cs:1123`, grid crew are now `AutoWander = true`, *"the standard play ship should not
+   be a still photograph"*). ⇒ **The comment is wrong in TWO clauses, not one**, and a lane amending it
+   must fix both. **This package still owns the leg that PINS the behaviour** (a pawn with no work
+   enabled still moves), because *"it is authored true today"* is a statement about a tree.
+   ⛔ **Do not delete the wander to make "waiting" legible** — the words are deliverable 1's job.
 3. **THE FIRST ORDER MUST BE TEACHABLE.** The onboarding card must name the gesture that starts the
    game. ⚠️ **OWNER BATCH ITEM 10 defines what counts as "the first order"** — if it is *"any player
    command that results in the pawn taking a job"*, the card teaches the WORK tab; if it is *"a
    targeted order only"*, it teaches STRIP or *Prioritise*. **The card cannot be written before that
    item is answered, and that dependency is stated here rather than discovered by the lane.**
 
-**PIN IMPACT: PIN-NEUTRAL** — host-side prose and client rendering. Check (A).
-⚠️ **Unless deliverable 2 turns out to need `AutoWander` on an authored ship**, which touches
-`sim/Sim.Gen/AuthoredShips.cs` and is **wreck-only ⇒ still pin-neutral** (the wreck is behind no pin).
-**Prove it; do not assume it** — `AuthoredShips.cs` also authors the pinned ships from the same file.
+**PIN IMPACT: PIN-NEUTRAL** — host-side prose and client rendering, and **no `sim/` diff at all** now
+that deliverable 2 is discharged by verification rather than by a content change. Check (A).
 
 **SPINE? No** — `GameSession.TaskLabel` is not a spine file. ⚠️ **But it is the quarter's most
 contended file (six claimants, §10), so serialize.**
@@ -3091,7 +3096,7 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 
 | file / area | claimants | rule |
 |---|---|---|
-| `sim/Sim.Gen/AuthoredShips.cs` | **M1-A** (in flight), M2-11, M3-6, M3-11, ⭐ **M2-1 (CONDITIONAL)**, ⭐ **M2-20 (CONDITIONAL)** | ⛔ **Strictly serialized.** M1-A owns it now. ⭐ **REVISION 3 — two CONDITIONAL claimants, and both conditions are decisions not yet taken.** **M2-1** claims this file only if owner batch item 8 resolves to **(b)**, fixtures authored all-on. **M2-20** claims it only if its required measurement finds the wreck's boot pawn has `AutoWander = false` and the fix is a flag. ⚠️ **A conditional claim is still a claim** — recorded so the integrator is not surprised by a lane that was supposed to be client-only. |
+| `sim/Sim.Gen/AuthoredShips.cs` | **M1-A** (in flight), M2-11, M3-6, M3-11, ⭐ **M2-1 (CONDITIONAL)** | ⛔ **Strictly serialized.** M1-A owns it now. ⭐ **REVISION 3 — ONE conditional claimant, and its condition is a decision not yet taken: M2-1 claims this file only if owner batch item 8 resolves to (b)**, fixtures authored all-on. ⚠️ **A conditional claim is still a claim** — recorded so the integrator is not surprised by a lane that was supposed to touch only `Citizen.cs`. ✅ *(M2-20 was listed here in this revision's first draft and is **withdrawn**: the wreck's boot pawn is already `AutoWander = true` at `:1936-1941`, verified, so the package needs no content change. A conditional claim that resolves to "no claim" is deleted, not left standing as insurance.)* |
 | `sim/Sim.Core/Jobs/JobSystem.cs` | M2-2, M2-5, M2-8, **M2-19** | ⛔ **Strictly serialized.** Integrator-reviewed by its own doc comment. *(M2-19 added in revision 3 — its own charter names `JobSystem.cs` under CONFLICTS and the matrix had not recorded it.)* |
 | `sim/Sim.Core/Entities/Citizen.cs` | M2-1, M2-2, **M2-19** | M2-1 first, alone. *(M2-19 added in revision 3 — it lands `HeldByOrder`'s reader on the type whose storage M2-1 ships.)* ⚠️ ⭐ **And a standing refusal, recorded where a lane will be tempted by it: `IsRecruitableForWork` (`:103`) MUST NOT absorb the work grid.** See M2-2's SEAM. |
 | `Simulation.cs` / `SaveWriter.cs` / `SaveReader.cs` | M2-1, M2-8, M3-2 | ⛔ **SPINE — integrator lane only, one at a time.** |
