@@ -3516,12 +3516,29 @@ What follows is the package list and the seams; the charters get written at the 
 
 | milestone | packages | PLAYER | INFRASTRUCTURE | cap (⌊n/5⌋) | headroom |
 |---|---:|---:|---:|---:|---|
-| **M1** | ⭐ **10** | ⭐ **9** | **1** (M1-G) | **2** | ⭐ **1 — NO LONGER AT CAP** |
+| **M1** | ⭐ **10** ⚠️ | ⭐ **9** ⚠️ | **1** (M1-G) ⚠️ | **2** | ⚠️ **1 — BUT SEE THE NOTE** |
 | **M2** | ⭐ **17** | ⭐ **15** | **2** (M2-0 ✅ landed · M2-17) | 3 | **1** |
 | **M3** *(outline)* | 13 | 12 | **1** (M3-1) | 2 | 1 |
 | **M4** *(sketch)* | 8 | 7 | **1** (M4-1) | 1 | ⚠️ **AT CAP** |
 | **M5** *(sketch)* | 7 | 7 | **0** | 1 | 1 |
 | **QUARTER** | ⭐ **55** | ⭐ **50** | **5** | **11** | **6** |
+
+> ### ⚠️ ⭐ M1's ROW IS CONDITIONAL, AND THE CONDITION IS M1-J's OPEN CLASS
+>
+> **M1-J's player sentence was discharged by M1-H's merge**, so its charter now carries **three
+> options — drop · re-class `INFRASTRUCTURE` · measure first.** The M1 row above assumes it stays and
+> stays `PLAYER`, which is **the one thing its own charter says must not happen by default.** The
+> arithmetic each way, so nobody has to redo it:
+>
+> | if M1-J… | M1 packages | PLAYER | INFRA | cap | headroom |
+> |---|---:|---:|---:|---:|---|
+> | is **dropped** | 9 | 8 | 1 | 1 | ⚠️ **AT CAP** |
+> | becomes **INFRASTRUCTURE** | 10 | 8 | **2** | 2 | ⚠️ **AT CAP** |
+> | stays **PLAYER** *(only if measurement finds the residual)* | 10 | 9 | 1 | 2 | 1 |
+>
+> ⛔ **Two of the three outcomes put M1 back AT CAP**, so *"M1 is no longer at cap"* is **not yet a
+> fact**. ⚠️ *Revision 3 published it as one earlier in this same document; corrected here rather than
+> in place, because the earlier statement was true of the tree it was written against.*
 
 ⭐ **RE-COUNTED IN REVISION 3, FROM THE MERGED TREE, ROW BY ROW — not adjusted.** M1 gains **M1-J** and **M1-I**
 (**10** = A,B,C,D,E,F,G,H,**I**,**J**). ⭐ **`M1-I` is `lane/repair-consumables` (OD-F), chartered
@@ -3529,8 +3546,9 @@ elsewhere and already in flight — this document did not know it existed until 
 its id collided with the staging package and the NEWER one moved to `M1-J`.** M2 gains **M2-20** and
 **M2-21** (17 = M2-0,1,2,3,4,5,6,8,9,10,11,12,17,18,
 19,20,21 — M2-7 retracted, M2-13…M2-16 never existed, §11). ⚠️ **All four new packages are `PLAYER`
-and carry real sentences, so the infrastructure column does not move and no cap is breached** — and
-M1, at 10 packages, **rises out of AT CAP for the first time in the quarter.**
+and carry real sentences, so the infrastructure column does not move and no cap is breached.**
+⚠️ ⭐ **M1's "rises out of AT CAP" is CONDITIONAL — see the box above.** M1-J's class is open after
+M1-H's merge, and **two of its three outcomes put M1 straight back AT CAP.**
 ⚠️ **`M2-21` is counted under M2 because that is whose budget it is chartered onto, even though it
 merges at position 7b** — see its charter.
 
@@ -3540,8 +3558,10 @@ not been recomputed since revision 1 added M1-H, retracted M2-7 and added M2-19.
 **Against the plan's projection (~76 packages, ≤15 infrastructure): this document charters 55 and 5.**
 The difference is not optimism — it is that M3/M4/M5 are outline and sketch, and **their charters will
 add packages when they are written.** ⚠️ **The infrastructure ratio, however, is the number to watch:
-at 5 of 55 the quarter is at 9.1 %, comfortably inside 20 %. ⭐ **M1 is no longer at cap** — adding
-M1-I and M1-J took it to 10 packages, so its cap rose to 2 against 1 used. **M2 and M4 remain AT CAP.** Chartering one more infrastructure package in any of those three is a **refusal**, and the
+at 5 of 55 the quarter is at 9.1 %, comfortably inside 20 %. ⚠️ **M1 is at cap OR one slot clear
+depending on M1-J's open class** — adding M1-I and M1-J took it to 10 packages and its cap to 2, but
+**two of M1-J's three outcomes consume the slot again** (see the conditional box above).
+**M2 and M4 remain AT CAP unconditionally.** Chartering one more infrastructure package in any of those three is a **refusal**, and the
 only way past it is an explicit owner override recorded by name and date.
 ⚠️ ⭐ **THE STALE-PROSE-BESIDE-A-CORRECT-TABLE SHAPE IS THIS DOCUMENT'S OWN §13.11**, and it survived
 two revisions and one independent review. **A count in prose and a count in a table are two
