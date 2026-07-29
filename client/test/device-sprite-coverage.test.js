@@ -22,11 +22,15 @@
 // `'&'` of the seven. A guard that enumerated `ForDevice` alone could not see them **structurally**.
 //
 // So this file now enumerates **BOTH** switches. `ForDevice` is CLOSED — every kind resolves to art
-// or is in `NO_FURNITURE_SPRITE`. `ForItem` is **OPEN AND MEASURED**: no ground item has art, all
-// nine are in `NO_GROUND_ITEM_SPRITE`, and the count of kinds that visibly chip is pinned by
+// or is in `NO_FURNITURE_SPRITE`. `ForItem` is **OPEN AND MEASURED**: ~~no ground item has art, all
+// nine are in `NO_GROUND_ITEM_SPRITE`~~, and the count of kinds that visibly chip is pinned by
 // equality. That ledger is the gap made mechanical instead of prose — a *new* `ItemKind` cannot join
-// it silently, and the number can only be paid down. **Ground-item art is chartered separately and
-// is deliberately NOT in this package.**
+// it silently, and the number can only be paid down. ~~**Ground-item art is chartered separately and
+// is deliberately NOT in this package.**~~
+//   ⚠️ THE STRUCK CLAUSES ARE THE STATE OF THIS FILE ON THE DAY IT WAS WRITTEN, kept because the
+//   sentence around them still describes the machinery. Ground-item art landed 2026-07-27 (8 pieces)
+//   and the swarf pile in W0b, so **9 of the 10 `ItemKind`s have art today and ONE is ledgered**.
+//   Re-COUNT that against `EXPECT_GROUND_ITEM_LEDGER` below; never compute it from this paragraph.
 //
 // ⚠️ IT IS DRIVEN, NOT SCANNED, wherever it can be. `assert(TABLE has key)` is the weak form of this
 // guard — it passes for an entry pointing at a builder that does not exist. Every coverage assertion
@@ -351,31 +355,15 @@ const NO_GROUND_ITEM_SPRITE = Object.freeze({
   // E3 decides what one IS — a redraw rather than a decision. The mock's own header says the same
   // ("There is deliberately NO MetalOre piece"). It therefore chips, and that is correct: a kind the
   // sim can project but nothing can create is exactly the case the dashed chip was invented for.
-  // ⚠️ THE SECOND ENTRY, AND IT IS A BACKLOG ITEM — unlike MetalOre. `ItemKind.Swarf` is REAL:
-  // DeconstructSystem drops it whenever a stripped machine's Parts yield floors to 0, and
-  // MaintenanceSystem consumes it as the rung below a jury-rig. On the wreck start it is the single
-  // most common thing on the floor, because cannibalising the dead half of the ship IS the opening
-  // loop.
-  //
-  // ⚠️ THE PIECE IS OWED AND NOBODY IS SCHEDULED TO PAY IT. An earlier draft of this entry blamed
-  // the in-flight wrecked-art lane for holding `client/src/items/` and implied the debt would clear
-  // with it. THAT LANE HAS MERGED AND IT ADDS NO SWARF PIECE — measured on this tree, zero `swarf`
-  // hits anywhere under `client/src/items/`. So there is no owner: until someone draws a loose-swarf
-  // pile and an `ITEMS` row for it, a dashed `w` chip is what the player sees on the wreck start,
-  // constantly, and the "it should be the last entry" hope below has nothing behind it.
-  //
-  // ⚠️ THIS LEDGER IS DOCUMENTED AS ONLY EVER SHRINKING, and this commit grows it. That is the
-  // decision the ledger exists to force, written down: the alternative was to ship a live economy
-  // item invisibly. It is the FIRST entry added since the ledger was created, and it stays until
-  // a loose-swarf pile joins the item set.
-  Swarf: {
-    glyph: 'w',
-    chips: true,
-    why: 'REAL AND UNSKINNED, not dead vocabulary: DeconstructSystem creates Swarf on every wreck '
-      + 'strip and MaintenanceSystem consumes it, so a player WILL see this chip — on the wreck '
-      + 'start, constantly. The piece is OWED AND UNOWNED: the wrecked-art lane has merged and adds '
-      + 'no Swarf piece. Draw it and delete this entry.',
-  },
+  // ⚠️ `Swarf` STOOD HERE AS A SECOND ENTRY AND IS NOW PAID DOWN (W0b, 2026-07-28), quoted rather
+  // than deleted because the ledger's shrink/grow history is the record of what was DECIDED. It read:
+  // *"REAL AND UNSKINNED, not dead vocabulary: DeconstructSystem creates Swarf on every wreck strip
+  // and MaintenanceSystem consumes it, so a player WILL see this chip — on the wreck start,
+  // constantly. The piece is OWED AND UNOWNED … Draw it and delete this entry."* It was the FIRST
+  // entry ever added to a ledger documented as only shrinking, and it lasted one day.
+  // `client/src/items/resources.js` now carries a `swarf` builder and `ITEMS` a `swarf` row, so `'w'`
+  // resolves through the ordinary `deriveGlyphToItem` path and nothing about the ledger's machinery
+  // changed — which is the whole reason the derivation was built.
   MetalOre: {
     glyph: 'o',
     chips: true,
@@ -447,7 +435,7 @@ const EXPECT_FOR_ITEM_ARMS = 10;
 // numbers were the same while NOTHING had art and one constant did both jobs — which meant "the sim
 // grew a kind" and "a kind lost its excuse" were indistinguishable. They are different facts and they
 // move for opposite reasons, so they are different constants.
-const EXPECT_GROUND_ITEM_LEDGER = 2;   // MetalOre + Swarf — see each entry's own reason
+const EXPECT_GROUND_ITEM_LEDGER = 1;   // MetalOre alone — see its entry's own reason
 
 const COUNT_MOVED = (what, n, expected) =>
   `${what.toUpperCase()} COUNT MOVED: parsed ${n}, expected exactly ${expected}.\n` +
@@ -651,8 +639,8 @@ test('EVERY ItemKind is accounted for — skinned, or named in the ledger', () =
   assert.equal(Object.keys(NO_GROUND_ITEM_SPRITE).length, EXPECT_GROUND_ITEM_LEDGER,
     'THE GROUND-ITEM LEDGER CHANGED SIZE. It went 9 → 1 when the ground-item art landed (MetalOre\n' +
     'stayed, and it is not a backlog item — nothing in sim/ produces or consumes that kind), then\n' +
-    '1 → 2 when the wreck start added Swarf, which IS a backlog item and is owed art nobody has\n' +
-    'scheduled. Growing it is the exception, not the rule. If you are ADDING one, the\n' +
+    '1 → 2 when the wreck start added Swarf, then 2 → 1 the next day when W0b DREW the swarf pile.\n' +
+    'Growing it is the exception, not the rule. If you are ADDING one, the\n' +
     'question the ledger exists to force is: does this kind exist in the game, or only in the enum?');
 });
 
@@ -697,9 +685,9 @@ test('EVERY skinned ItemKind builds REAL art (driven through buildItem)', () => 
 // THE NUMBER, DRIVEN — not "some items are unskinned" but exactly how many chip, measured through
 // the real Room Zoom model on a real tile per kind. Pinned by equality so it can only be paid down.
 // This is the assertion that turns the reviewer's photograph into something the gate can hold.
-const EXPECT_CHIPPING_ITEM_KINDS = 2;   // MetalOre + Swarf — see the ledger
+const EXPECT_CHIPPING_ITEM_KINDS = 1;   // MetalOre alone — see the ledger
 
-test('THE OPEN GAP, MEASURED: exactly TWO ItemKinds (MetalOre, Swarf) still draw a raw-letter chip', () => {
+test('THE OPEN GAP, MEASURED: exactly ONE ItemKind (MetalOre) still draws a raw-letter chip', () => {
   const chipping = [];
   for (const k of ITEM_KINDS) {
     const g = FOR_ITEM[k];
@@ -725,9 +713,9 @@ test('THE OPEN GAP, MEASURED: exactly TWO ItemKinds (MetalOre, Swarf) still draw
     'It was EIGHT until 2026-07-27 — measured live by independent review on --ship grid deck 0, room\n' +
     "STORAGE: seven chips on one floor, ',' six times and 'f' once, plus Seals and Ice from the\n" +
     'E0-6/E0-7 wave. The ground-item art paid seven of them down, leaving MetalOre; the wreck\n' +
-    "start's salvage half then added Swarf, so TWO chip today and they chip for OPPOSITE reasons —\n" +
-    'MetalOre is dead vocabulary nobody owes art for, Swarf is a live economy item that is OWED art\n' +
-    'and has nobody scheduled to draw it. If this number went UP, a new ItemKind shipped without\n' +
+    "start's salvage half then added Swarf (TWO), and W0b drew the swarf pile the next day, so ONE\n" +
+    'chips today. The one that is left is dead vocabulary nobody owes art for — this number cannot\n' +
+    'reach zero until E3 decides what an ore IS. If it went UP, a new ItemKind shipped without\n' +
     'art. If it went DOWN, a kind got art — lower this constant and delete its ledger entry in the\n' +
     'same commit.');
 });

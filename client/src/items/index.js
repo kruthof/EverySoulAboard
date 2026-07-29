@@ -1,6 +1,11 @@
-// The warm ITEM LIBRARY registry — all 70 STATIC pieces of docs/design/perilune-item-set.dc.html,
-// keyed by a stable kebab-case itemId. Each entry pairs the pure SVG builder with its sim
-// classification from docs/design/perilune-item-mapping.md:
+// The warm ITEM LIBRARY registry — the 70 STATIC pieces of docs/design/perilune-item-set.dc.html
+// PLUS one repo-authored piece (`swarf`, last row), keyed by a stable kebab-case itemId. Each entry
+// pairs the pure SVG builder with its sim classification from docs/design/perilune-item-mapping.md:
+//
+// ⚠️ "ALL 70 PIECES OF THE MOCK" WAS THIS FILE'S OPENING CLAUSE AND IS NO LONGER TRUE. The registry
+// is 71: the mock is a SOURCE for it, not a definition of it. `swarf` is the first row drawn for a
+// sim fact the mock predates (`ItemKind.Swarf`, from the wreck start's salvage rule) and it is
+// deliberately LAST — see its own comment for why the position is load-bearing.
 //
 // ⚠️ THE MOCK ALSO CARRIES 70 *WRECKED* TWINS AND THEY ARE NOT IN THIS TABLE. They live in
 // `client/src/items/wrecked.js`, keyed by the PRISTINE itemId, because a wrecked piece is not a
@@ -161,7 +166,8 @@ export const ITEMS = Object.freeze({
   'deck-sign':        { build: F.deckSign,        size: { w: 80, h: 74 }, ...cos('deck_sign') },
   'floodlight':       { build: F.floodlight,      size: { w: 40, h: 60 }, ...cos('floodlight') },
 
-  // ── RESOURCES (8) — GROUND STACKS, keyed by `Glyphs.ForItem` ──
+  // ── RESOURCES (8, from the mock; `swarf` is a ninth at the end of the file) — GROUND STACKS,
+  //    keyed by `Glyphs.ForItem` ──
   // ⚠️ THERE IS DELIBERATELY NO `MetalOre` PIECE. The mock's own header says so, and it was verified
   // against the tree: `ItemKind.MetalOre` has ZERO references anywhere in `sim/` outside the glyph
   // table and the enum itself — nothing produces it, nothing consumes it, no recipe names it. It is
@@ -196,6 +202,19 @@ export const ITEMS = Object.freeze({
   // decision, which is exactly the kind of silent choice `deriveGlyphToItem`'s guard exists to stop.
   'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...dev('CryoPod', 'K') },
   'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', 'k') },
+
+  // ── SALVAGE (1) — REPO-AUTHORED, NOT FROM THE MOCK ──
+  // ⚠️ THIS ROW IS LAST FOR A REASON THAT IS NOT TIDINESS. Every row above it comes from
+  // `docs/design/perilune-item-set.dc.html` in the mock's own order, and `client/test/wrecked.test.js`
+  // walks that order POSITIONALLY — `mockPristineLabels()[i]` is asserted to be `ITEM_IDS[i]`'s label.
+  // Inserting a non-mock row anywhere but the end shifts every row after it onto the wrong label and
+  // the failure would read as a mislabelled twin rather than as a misplaced insertion.
+  //
+  // `ItemKind.Swarf` came from the wreck start's salvage rule (`deconstruct.device_swarf = 1`), after
+  // the mock was drawn, so there is no mock piece and no mock WRECKED twin for it. The missing twin is
+  // ledgered by name in `client/src/items/wrecked.js` (`NO_WRECKED_TWIN`) with its reason; it is not an
+  // omission to be filled in later.
+  'swarf':            { build: R.swarf,          size: { w: 74, h: 50 }, ...res('Swarf', 'w') },
 });
 
 /** The full list of registered itemIds, in mock order. */

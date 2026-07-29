@@ -38,8 +38,20 @@ import {
   wreckedInfo,
   itemsWithoutWreckedTwin,
   orphanWreckedTwins,
+  NO_WRECKED_TWIN,
 } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
+
+// The registry rows that come FROM THE MOCK, in the mock's own order — `ITEM_IDS` minus the ledger
+// of deliberate omissions. Every positional join in this file (label[i] ↔ id[i]) is against THIS
+// list and not against `ITEM_IDS`, because the mock is 70 pieces and the registry is no longer.
+//
+// ⚠️ DERIVED, NOT A SECOND LIST. Writing the 70 ids out here would be a transcription of `ITEMS`
+// that could fall out of step with it silently — the exact defect `glyph-map.js` exists to remove.
+// A ledgered row appended anywhere but the END would still break the positional join, and the
+// registry says so beside the row rather than here; `the ledger is exactly the rows with no twin`
+// below is what keeps the two definitions of "mock row" from drifting apart.
+const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPEC_PATH = join(HERE, '..', '..', 'docs', 'design', 'perilune-item-set.dc.html');
@@ -154,9 +166,29 @@ test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () =
 // `WRECKED_IDS.length === ITEM_IDS.length` perfectly true. `deepEqual` on the ORDERED id lists is
 // the only form that regresses on a rename, a reorder, a swap, an omission AND an extra.
 test('every registry row has exactly one wrecked twin, and no twin is an orphan', () => {
-  assert.deepEqual(WRECKED_IDS, [...ITEM_IDS], 'the twin key set is exactly ITEM_IDS, in order');
-  assert.deepEqual(itemsWithoutWreckedTwin(), [], 'registry rows with no twin');
+  assert.deepEqual(WRECKED_IDS, MOCK_IDS, 'the twin key set is exactly the mock rows, in order');
   assert.deepEqual(orphanWreckedTwins(), [], 'twins with no registry row');
+});
+
+// ⚠️ THE LEDGER IS THE ONLY WAY A ROW MAY HAVE NO TWIN, AND IT IS PINNED BOTH WAYS. `deepEqual` of
+// the two ORDERED lists — not a count, and not a subset check — so an unledgered omission fails
+// (a row silently missing its twin) AND a stale ledger entry fails (a row that has since been given
+// one). The size is pinned separately below because a swap of one omission for another leaves both
+// lists the same length.
+test('the ledger is exactly the rows with no twin, and its reasons are real prose', () => {
+  assert.deepEqual(itemsWithoutWreckedTwin(), Object.keys(NO_WRECKED_TWIN),
+    'a registry row has no wrecked twin and no NO_WRECKED_TWIN entry (or the ledger names a row\n'
+    + 'that has one). A missing twin is a decision — write it in the ledger with its reason.');
+  // NON-VACUITY: the ledger must not be trivially satisfiable by an empty reason.
+  for (const [id, why] of Object.entries(NO_WRECKED_TWIN)) {
+    assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row at all`);
+    assert.ok(typeof why === 'string' && why.length > 80, `${id}: the ledger entry has no reason`);
+  }
+  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 1,
+    'THE NO-TWIN LEDGER CHANGED SIZE. It went 0 → 1 when `swarf` landed — a piece drawn for a sim\n'
+    + 'fact the mock predates, so the mock has no twin for it. Growing it means another piece was\n'
+    + 'drawn outside the mock; SHRINKING it means the mock was re-imported with a twin, in which\n'
+    + 'case add the twin rather than deleting the reason.');
 });
 
 test('every twin label and condition badge matches the mock, row for row', () => {
@@ -181,10 +213,10 @@ test('every twin label and condition badge matches the mock, row for row', () =>
 // a second time.
 test('62 twins reuse the pristine label verbatim; the 8 resources are renamed', () => {
   const labels = mockPristineLabels();
-  assert.equal(labels.length, ITEM_IDS.length, 'positional alignment requires equal lengths');
+  assert.equal(labels.length, MOCK_IDS.length, 'positional alignment requires equal lengths');
   const verbatim = [];
   const renamed = [];
-  ITEM_IDS.forEach((id, i) => {
+  MOCK_IDS.forEach((id, i) => {
     // ⚠️ GUARDED, not `WRECKED[id].mockLabel` bare. Deleting one twin row made that throw a
     // TypeError, and a guard that crashes reports nothing — the mutation harness scores it as a
     // CRASH rather than a semantic RED, which is the third trap in reverse.
@@ -210,7 +242,7 @@ test('the 8 renames: seven keep the stem, CONTROLLER MODULE does not', () => {
   const kept = [];
   const shortened = [];
   for (const id of ['regolith', 'potato', 'scrap', 'parts', 'controller-module', 'seals', 'ice', 'corpse']) {
-    const i = ITEM_IDS.indexOf(id);
+    const i = MOCK_IDS.indexOf(id);
     const label = WRECKED[id].mockLabel;
     assert.ok(label.includes(' · '), `${id}: a renamed piece carries a " · STATE" suffix`);
     (stemOf(label) === labels[i] ? kept : shortened).push(id);
@@ -226,7 +258,7 @@ test('the 8 renames: seven keep the stem, CONTROLLER MODULE does not', () => {
   // cost is that a reader believes two guarantees where there is one.
   assert.equal(kept.length, 7);
   assert.equal(WRECKED['controller-module'].mockLabel, 'CONTROLLER · FRIED');
-  assert.equal(labels[ITEM_IDS.indexOf('controller-module')], 'CONTROLLER MODULE');
+  assert.equal(labels[MOCK_IDS.indexOf('controller-module')], 'CONTROLLER MODULE');
 });
 
 // ⚠️ CLAUDE.md TRAP 6, AS AN INCLUSION TEST RATHER THAN AN ASSERTION ABOUT INTENT.
