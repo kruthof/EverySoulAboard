@@ -59,18 +59,40 @@ mis-ported.
 | **60 ticks = 1 real second** at 1× speed | **Verified four independent times** in the wiki's own parenthetical conversions: `10,000 ticks (2.78 mins)` [Drafting], `3,000 ticks (50 secs)`, `1,200 ticks (20 secs)`, `300 ticks (5 secs)` [Vacuum]. |
 | **2 500 ticks = 1 in-game hour**; **60 000 ticks = 1 in-game day** | ⚠️ **DERIVED, not directly cited.** 24 × 2 500 = 60 000, which is 1 000 real seconds ≈ 16.7 real minutes per in-game day — the well-known figure, but I did not read it off a page. Every "half a day" / "in-game hour" claim below rests on it. |
 
-> ### ⚠️ The four things most likely to be got wrong from memory
+> ### ⚠️ The five things most likely to be got wrong from memory
 >
 > If you read nothing else, read these. Each is marked in place with **⚠️ CORRECTS**.
 >
 > 1. **§1.5 — a new colonist does NOT arrive with everything enabled.** Only its **top 6 work types by
->    relevant skill** are switched on, plus the `alwaysStartActive` ones. Everything else is blank.
+>    average relevant skill** are switched on, **plus the 6 `alwaysStartActive` ones** (Firefighter,
+>    Patient, PatientBedRest, BasicWorker, **Hauling, Cleaning**). Everything else is blank. The
+>    default *value* is 3; the default *grid* is skill-shaped and differs per pawn.
 > 2. **§1.3 — ties do NOT break "left to right".** They break on `WorkTypeDef.naturalPriority`. Left-to-right
 >    is a correct *prediction* because the columns are sorted by the same key; it is not the rule.
+>    (And **no two vanilla work types share a value**, so the tie case never arises in the base game.)
 > 3. **§5.1 — passion multipliers are 35 % / 100 % / 150 %, not ×1 / ×1.5 / ×2.** No passion is a
 >    **65 % penalty** against the reference case, not a neutral baseline.
-> 4. **§8.4 — RimWorld has vacuum, pressurisation and ships (Odyssey, 1.6, July 2025)** — and it
->    **does not gate work on air**. This contradicts an assumption this repo has been carrying.
+> 4. **§8.4 — RimWorld has vacuum, pressurisation and ships (Odyssey, 1.6, July 2025), and it GATES
+>    WORK ON AIR AT THE DISPATCHER, exactly as Perilune does.** The gate is not in
+>    `PawnCanUseWorkGiver` — it is in **region danger + `MaxPathDanger`**, threaded through the same
+>    scan. Autonomous work does not enter vacuum. What RimWorld adds on top is a **four-rung override
+>    ladder** Perilune does not have — and the same mechanism **also grades temperature**.
+> 5. **§6.1 — capability gating IS partly numeric.** `CapableOf` is `GetLevel(c) > c.minForCapable`,
+>    a real threshold on the job-assignment path (vanilla `Moving = 0.15`) — sitting *under* a smooth
+>    efficiency curve, not replacing it.
+>
+> ### ⛔ AND A WARNING ABOUT THIS FILE'S OWN FAILURE MODE
+>
+> The first draft of this document was reviewed adversarially. **§1–§3 held line for line. Every
+> single error was in the same shape: an ABSOLUTE NEGATIVE that overstated a true finding** — *"the
+> only seam", "nothing reads it", "no job is refused", "no numeric gate anywhere", "there is no
+> precedent"*. **In three cases the cited source contained the correctly-qualified sentence and the
+> qualifier was dropped in transcription.**
+>
+> That failure mode is uniquely damaging in a reference, because **a lane told "RimWorld has no X"
+> will not go looking for X.** Every absolute negative in this file has since been re-verified or
+> qualified. **If you find one that is not carrying a citation or a caveat, distrust it** — and
+> please do not add one.
 
 ---
 
@@ -134,8 +156,17 @@ public const int DefaultPriority = 3;
 | `4` | `4` | lowest |
 | — | **cell absent entirely** | **incapable** (see §1.6). Not a priority value. |
 
-`SetPriority` logs an error for anything outside `0..4` [src, `:148-151`], and refuses outright to
-set a non-zero priority on a work type the pawn is incapable of [src, `:143-147`].
+`SetPriority` handles its two bad inputs **asymmetrically**, and the difference is worth reading
+[src, `:140-158`]:
+
+| bad input | what happens |
+|---|---|
+| **non-zero priority on an incapable work type** | `Log.Error(…)` **and `return`** — the write is **refused** [src, `:143-147`] |
+| **priority outside `0..4`** | `Log.Message(…)` — a *message*, not an error — and **execution falls through: `priorities[w] = priority` at `:152` runs unconditionally. The out-of-range value IS STORED.** |
+
+⇒ **`0..4` is a convention the UI honours, not an invariant the setter enforces.** A mod or a hand-
+edited save can hold a priority of 9, and §1.3's sort key will still order it sensibly. This matters
+for anyone reasoning about what a *saved* priority field can legally contain.
 
 **"Blank" and "disabled" are the same stored value (0), but "incapable" is a different thing
 entirely** — see §1.6. This distinction is the one most often lost in re-derivation.
@@ -173,9 +204,10 @@ Read this carefully, because three separate facts fall out of it:
    implements "left-to-right" as the rule will have implemented the display, not the model.
 
 **`InsertionSort` is a stable sort**, so work types with equal `naturalPriority` *and* equal player
-priority retain `DefDatabase` (i.e. XML load) order. ⚠️ **UNVERIFIED** that any two vanilla work types
-share a `naturalPriority` — I could not obtain the vanilla `WorkTypes.xml` (see §1.7), so I cannot say
-whether this case ever arises in practice.
+priority retain `DefDatabase` (i.e. XML load) order. ✅ **SETTLED in review: no two vanilla work types
+share a `naturalPriority`** (§1.7's table), so **the stable-sort tie case does not arise in the base
+game at all.** It is reachable only with mods, which is exactly why a mod-added work type must pick an
+unused value.
 
 ### Within one work type: `priorityInType`, and the closest-target rule
 
@@ -217,10 +249,13 @@ priority `<= num`; otherwise it goes in the normal list [src, `:237, 250`].
 
 ⇒ An emergency work giver only gets its early scan **if the player has it at least as urgent as their
 most urgent ordinary work.** Set Firefight to 4 while Hauling is 1 and firefighting loses its
-emergency status entirely. ⚠️ **UNVERIFIED** which vanilla work givers carry `emergency="true"` — I
-could not obtain `WorkGivers.xml`. Firefighting and "tend to self (emergency)" are the near-certain
-members (the Work page lists "Tend to self (emergency)" above "Tend to patients" [wiki]), but I have
-not read the flag.
+emergency status entirely.
+
+✅ **SETTLED in review — there are exactly THREE `emergency` work givers out of 83:**
+`FightFires`, `PatientGoToBedEmergencyTreatment`, `DoctorTendEmergency`.
+⚠️ **Carry the version caveat:** the reviewer's defs source is a **2018 mirror (`0.19.2009`)**, not
+1.6. Treat as strong corroboration, **not a 1.6 citation** — anyone with the game installed settles it
+in thirty seconds at `Data/Core/Defs/WorkGiverDefs/`.
 
 ## 1.5 The default for a newly arrived colonist
 
@@ -277,10 +312,15 @@ So:
   capped at 6**, and Biotech mechs then get explicit per-work-type priorities from their race def
   [src, `:116-123`].
 
-⚠️ **UNVERIFIED which work types are `alwaysStartActive`.** From the field name and the wiki's
-recommendation that *"Firefight, Patient, Bed Rest, and Basic should be set to priority 1 on
-everyone"* [wiki], those four are the strong candidates — you would not want a new arrival unable to
-seek medical care because their doctoring skill was low. I could not read `WorkTypes.xml` to confirm.
+✅ **SETTLED in review — `alwaysStartActive` is SIX work types, not the four I guessed:**
+**`Firefighter`, `Patient`, `PatientBedRest`, `BasicWorker`, `Hauling`, `Cleaning`.** The two I missed
+are **Hauling and Cleaning** — the two "dumb labour" types, which makes sense: a colony where nobody
+hauls is a colony where nothing works, regardless of anyone's skills.
+
+⇒ **The arithmetic is therefore 6 skill-ranked + 6 always-active = up to 12 work types enabled**, not
+6 + 4. A pawn incapable of Dumb Labor gets fewer.
+⚠️ **Version caveat as §1.4:** the defs source is a **2018 mirror (`0.19.2009`)**. Strong
+corroboration, not a 1.6 citation.
 
 ## 1.6 Incapable vs disabled
 
@@ -335,13 +375,49 @@ evidence that vanilla does neither. I did not find a source file for the tab UI.
 **The shipped order, left to right** — this is the row order of the wiki's "Work types" table
 [wiki, Work].
 
-⚠️ **PROVENANCE CAVEAT, stated because it would be easy to overstate.** The wiki does **not** say in
-words that this table is in Work-tab column order. I am asserting it because (a) the tab is ordered by
-`naturalPriority` [src, §1.3], (b) the table's order matches the in-game order as widely reported, and
-(c) the table's own note — *"Tasks higher on the list will be prioritized over tasks lower on the list
-in the same work-type"* — is about tasks **within** a row, which implies the author was thinking in
-priority order throughout. **This is an inference, not a citation.** If the order is load-bearing for
-what you are building, open the game and read the tab.
+✅ **THE PROVENANCE CAVEAT THAT STOOD HERE IS DISCHARGED.** The first draft flagged as an *inference*
+that the wiki's table is in Work-tab column order. Review obtained the vanilla `naturalPriority`
+values and **the order matches across all 20 shared rows.** The inference was correct; the table below
+is the tab order.
+
+**The `naturalPriority` values** (descending = left to right; **no two are equal**, which is what
+settles §1.3's tie case):
+
+| work type | `naturalPriority` |
+|---|---|
+| Firefighter | **1400** |
+| Patient | 1350 |
+| Doctor | 1300 |
+| PatientBedRest | 1250 |
+| BasicWorker | 1200 |
+| Warden | 1150 |
+| Handling | 1100 |
+| Cooking | 1050 |
+| Hunting | 1000 |
+| Construction | 950 |
+| Growing | 900 |
+| Mining | 850 |
+| PlantCutting | 800 |
+| Smithing | 750 |
+| Tailoring | 700 |
+| Art | 650 |
+| Crafting | 600 |
+| Hauling | 500 |
+| Cleaning | 400 |
+| Research | **100** |
+
+⚠️ **VERSION CAVEAT, carry it if you quote the numbers.** This table comes from a **2018 defs mirror
+(`0.19.2009`)**, not from 1.6. Its credibility rests on three independent checks: the **order** matches
+the current wiki exactly across all 20 shared rows; the gaps are a regular 50 with deliberate jumps at
+the bottom; and a modder-quoted custom value of **1310** slots exactly between Doctor 1300 and Patient
+1350, which is what a modder wanting "just above Doctor" would pick. **Treat as strong corroboration,
+NOT a 1.6 citation.** The 1.6-only rows (Childcare, Fish, Dark study) are absent from it — which is
+also why §1.7's Childcare-position caveat below still stands. Anyone with the game installed settles
+the whole thing in thirty seconds at `Data/Core/Defs/WorkTypeDefs/WorkTypes.xml`.
+
+⇒ Note what the *spread* tells you: 1400 down to 100 is well inside the `0..10000` legal range
+[src, `Verse/WorkTypeDef.cs:95-99`] and **utterly dwarfed by §1.3's `× 100000`** — confirming by
+arithmetic, not just by reading, that the player's 1–4 can never be overridden by a tie-break.
 
 | # | work type | relevant skill | work tag category | notes |
 |---|---|---|---|---|
@@ -373,12 +449,7 @@ what you are building, open the game and read the tab.
 reading *"Reason: Add Childcare work in the right place"* [wiki] — i.e. the wiki editors themselves
 flag that row as possibly misplaced. Do not treat row 5 as load-bearing.
 
-⚠️ **UNVERIFIED: the actual `naturalPriority` integers.** I made five attempts to obtain vanilla
-`WorkTypes.xml` (GitHub raw across four candidate mirrors, GitHub code search — requires auth,
-searchcode — dead, grep.app — no response). The only value I saw quoted anywhere was `1310` for a
-*modded* work type. **The ordering above is from the wiki; the numbers behind it are not verified.**
-If a lane needs the numbers, they are in `Data/Core/Defs/WorkTypeDefs/WorkTypes.xml` in any RimWorld
-install.
+*(The `naturalPriority` integers are given above, with their version caveat.)*
 
 ## 1.8 How a pawn actually chooses its next job
 
@@ -608,6 +679,45 @@ exists **because** §1.8's "finish the job first" rule is real and is not patche
 | `QueuedNoLongerValid = 0x20` | |
 | `Errored = 0x40` / `ErroredPather = 0x80` | recovery paths; an errored job starts a 250-tick `Wait` [src, `Pawn_JobTracker.cs:450-453`] |
 
+### ⭐ `Danger` — the OTHER half of the vocabulary, and the half this document originally missed
+
+`JobCondition` says *why a job ended*. **`Danger` says what a pawn is willing to walk through to
+start one**, and it is threaded through the *same* scan `JobCondition` never touches. Its absence from
+the first draft of this file is the direct cause of the biggest error in it (§8.4).
+
+```csharp
+public enum Danger : byte { Unspecified, None, Some, Deadly }
+```
+[src, `Verse/Danger.cs`]
+
+**Where it comes from — a region's danger is computed per pawn** [src, `Verse/Region.cs:433-436`]:
+
+```csharp
+Danger danger = (value2.Includes(temperature) ? Danger.None
+               : (value2.ExpandedBy(80f).Includes(temperature) ? Danger.Some : Danger.Deadly));
+if (room.Vacuum > 0.5f && p.ConcernedByVacuum) { danger = Danger.Deadly; }
+```
+
+So **temperature is graded** (inside the pawn's `SafeTemperatureRange` → `None`; within ±80 °C of it →
+`Some`; beyond → `Deadly`) and **vacuum is binary and always `Deadly`** above 50 %.
+
+**What a pawn will tolerate** [src, `Verse/DangerUtility.cs:7-25`]:
+
+| condition | `NormalMaxDanger` |
+|---|---|
+| `pawn.CurJob.playerForced` | **`Deadly`** |
+| `FloatMenuMakerMap.makingFor == pawn` (the right-click menu is being *built* for this pawn) | **`Deadly`** |
+| player faction, with a minor temperature injury and a safe room available | `None` |
+| **anything else, including an ordinary working colonist** | **`Some`** |
+
+⇒ **An ordinary autonomous colonist tolerates `Some` and refuses `Deadly`.** That single line is the
+whole of §8.4.
+
+The `FloatMenuMakerMap.makingFor` clause is quietly elegant and worth carrying: **the right-click menu
+is built with the danger ceiling already raised**, which is *why* the menu offers you the job in a
+deadly room — the menu and the resulting forced job agree by construction, rather than by a
+duplicated rule.
+
 **Two grades of pre-emption is the design.** `CheckForJobOverride(minPriority)` will only swap the
 job if the new think result's node priority is `>= minPriority` [src, `:581`] — so a caller can say
 *"interrupt only for something at least this urgent."* This is exactly the seam Perilune's spike found
@@ -747,6 +857,8 @@ Everything below happens with the player having issued no order at all. This is 
 | **Socialise, form and break relationships, start social fights** | | [wiki] |
 | **Have mental breaks** | §4 | [wiki] |
 | **Flee fire; run wildly while burning** | overrides even drafting | [wiki, Drafting] |
+| ⭐ **REFUSE TO WALK INTO DANGER** — a region over 50 % vacuum, or beyond ±80 °C of the pawn's safe band, is simply not reachable for autonomous work | **the most important row in this table**, and the one the first draft of this file missed entirely. §2.4, §8.4 | [src, `Region.cs:433-436`; `DangerUtility.cs:7-25`; `WorkGiver_Scanner.cs:30-33`] |
+| ⭐ **WALK BACK OUT OF VACUUM** once actually taking damage — `JobGiver_FindOxygen` BFS-searches for the nearest room under 50 % vacuum and goes there | **suppressed by a player-forced job now or queued**, so the player can order a colonist to stay and suffocate. Odyssey only. §8.4 | [src, `RimWorld/JobGiver_FindOxygen.cs`; `PawnUtility.cs:378-390`] |
 | **Batch cleaning and harvesting** for efficiency | an engine-side optimisation the player never sees | [wiki, Work → Notes] |
 
 ## 3.3 What ONLY happens when told
@@ -1228,33 +1340,76 @@ The shallowest section, by instruction. What a colony sim needs to know:
   [wiki, [Doctoring](https://rimworldwiki.com/wiki/Doctoring)]. Both are counter-intuitive and both are
   stated explicitly by the wiki.
 
-## §6.1 ⚠️ The §6 finding that matters for §1: capacity gating is CATEGORICAL, not numeric
+## §6.1 ⭐ Capability gating: TWO mechanisms, and the second one IS a numeric threshold
 
-**There is no capacity threshold that forbids a work type.** This was searched for directly and not
-found.
+> ⚠️ **THIS SECTION WAS WRONG IN THE FIRST DRAFT AND IS NOW CORRECTED FROM SOURCE.** It claimed the
+> capacity gate was a *presence* test and that no numeric threshold existed. Both were false — and it
+> left open a question it already had the means to answer. Both fixed below.
 
-- **What forbids work is a `WorkTag`**, from **traits, backstories, titles, or slave status** — never
-  from a capacity *value* [wiki, Work].
-- **Capacity loss degrades work continuously, through stat weights.** A pawn at 20 % Manipulation is a
-  very slow crafter, **not a forbidden one**. Every work stat is published as
-  `(weight, max)` pairs against Manipulation / Sight / Consciousness / Moving — e.g. Construction
-  Speed is `Manipulation (1.0, no max) × Sight (0.2, cap 1.0)`; Medical Tend Quality is
-  `Manipulation (1.0, cap 1.4) × Sight (0.7, cap 1.4)` [wiki, per-capacity pages].
-- The one hard gate is `WorkGiver.MissingRequiredCapacity(pawn)` in `PawnCanUseWorkGiver`
-  [src, `JobGiver_Work.cs:286-289`], and it is a **presence** test — a work giver declares which
-  capacities it *requires at all*, not a minimum level.
+RimWorld has **two** gates on "may this pawn do this work", and it keeps them strictly separate.
 
-> ⇒ **A lane building Perilune's capability axis should note that RimWorld has TWO separate
-> mechanisms and does not confuse them: a categorical allow-list (`WorkTag`) that is binary and
-> permanent, and a continuous efficiency model (capacities → stats) that never says no.** The design
-> mistake this guards against is a numeric "fitness ≥ 0.4 to be assigned" rule, which is neither of
-> RimWorld's two mechanisms.
+### Gate 1 — `WorkTag`: categorical, binary, permanent
 
-⚠️ **UNVERIFIED, and it is the one thing I would most want checked**: whether a **0 %** capacity
-forbids specific work outright. The Manipulation and Sight wiki pages each carry an
-*"Pawns with 0 % X:"* bullet list that would not render through any fetch route tried. Those lists
-very likely hold real prohibitions. **Do not conclude "no capacity ever forbids work" from this
-document** — conclude "no *threshold* was found, and the 0 % case is unread."
+From **traits, backstories, royal titles, slave status, ideoligious role** (§1.6). Not a number, not
+degradable, not overridable by the player. Checked as `pawn.WorkTagIsDisabled(giver.def.workTags)`
+[src, `JobGiver_Work.cs:274-277`].
+
+### Gate 2 — `minForCapable`: a genuine numeric threshold
+
+```csharp
+public bool CapableOf(PawnCapacityDef capacity)
+{
+    return GetLevel(capacity) > capacity.minForCapable;
+}
+```
+[src, `Verse/PawnCapacitiesHandler.cs:78-81`] · `public float minForCapable;` [src, `Verse/PawnCapacityDef.cs:37`]
+
+It reaches the work scan directly [src, `RimWorld/WorkGiver.cs:20-30`]:
+
+```csharp
+public PawnCapacityDef MissingRequiredCapacity(Pawn pawn)
+{
+    for (int i = 0; i < def.requiredCapacities.Count; i++)
+        if (!pawn.health.capacities.CapableOf(def.requiredCapacities[i]))
+            return def.requiredCapacities[i];
+    return null;
+}
+```
+— called from `PawnCanUseWorkGiver` [src, `JobGiver_Work.cs:286-289`].
+
+⇒ **`GetLevel(c) > c.minForCapable` is a numeric fitness threshold gating job assignment.** It is a
+strict `>`, so **a capacity sitting exactly at `minForCapable` is NOT capable**; and because
+`minForCapable` is a `float` field defaulting to `0`, **a capacity at 0 % fails for every capacity** —
+`0 > 0` is false.
+
+✅ **This settles the first draft's own most-wanted open question** (*"does a 0 % capacity forbid
+specific work outright?"*): **yes** — and by the general rule, not by a special case.
+
+⚠️ **The one published `minForCapable` value: `Moving = 0.15`.** Version-caveated as §1.4/§1.5/§1.7
+(2018 defs mirror, `0.19.2009`) — but it **cross-corroborates against source read this run**: it is
+the same 0.15 as the *"Incapacitated: Moving capacity is 15 % or less"* downing threshold cited above
+from an entirely independent page. Two routes, one number.
+
+`CapableOf` is used well beyond work: hauling [src, `Verse.AI/HaulAIUtility.cs:85`], mental-state
+eligibility [src, `Verse.AI/MentalStateWorker.cs:46`], caravan carrying, book reading, pawn
+generation, and as a **live job-fail condition** [src, `Verse.AI/ToilFailConditions.cs:312`] that ends
+a running job `Incompletable` the moment the capacity drops.
+
+### Between the gates: continuous degradation
+
+Below the threshold nothing is refused — **capacity loss degrades work smoothly through stat
+weights.** A pawn at 20 % Manipulation is a very slow crafter, not a forbidden one. Every work stat is
+`(weight, max)` pairs against Manipulation / Sight / Consciousness / Moving: Construction Speed is
+`Manipulation (1.0, no max) × Sight (0.2, cap 1.0)`; Medical Tend Quality is
+`Manipulation (1.0, cap 1.4) × Sight (0.7, cap 1.4)` [wiki, per-capacity pages].
+
+> ⇒ **The shape worth carrying: a categorical allow-list, ONE low numeric floor per capacity, and a
+> smooth efficiency curve in between — with the floor set low enough (0.15 for Moving) that it catches
+> only pawns already effectively incapacitated.** The threshold is a *safety net under the curve*, not
+> a competence bar. Whether Perilune wants that shape is not a question this document answers.
+
+⚠️ **UNVERIFIED**: the `minForCapable` values for capacities other than Moving, and which capacities
+each work giver lists in `requiredCapacities` (both are XML).
 
 ⚠️ Also **UNVERIFIED**: per-body-part hit points beyond the representative set, bleed-rate units, and
 the `body_size_factor` (published only as an image).
@@ -1290,7 +1445,8 @@ but nothing in the work system I read carries a per-job energy cost.
 
 **5. There is no logistics network.** No routes, no carts, no conveyors, no throughput, no capacity
 graph. Hauling is *one pawn, one stack, one destination*, chosen by "is there a strictly
-higher-priority stockpile with space" (§2.5). Storage priority is a **5-value enum**, not a number.
+higher-priority stockpile with space" (§2.5). Storage priority is a **6-value enum with 5
+player-selectable levels** (§2.5), not a number.
 
 **6. There is no scheduling beyond 24 hourly slots × 5 assignment types.** No shift patterns, no
 multi-day rotations, no per-work-type time windows, no "night shift for the mining team". And the
@@ -1305,6 +1461,11 @@ player's intent back into the coarse, durable instrument.
 simply does not offer what cannot be done, and states the reason where it is close (*"Cannot operate
 (need material)"*). There is no "accepted, then silently never progresses" state for a direct order.
 (Designations *can* sit unsatisfiable — but a designation was never a promise to a person.)
+**And the offer and the acceptance are held together by construction, not by a duplicated rule:**
+`NormalMaxDanger` returns `Deadly` both when a job is `playerForced` **and** while
+`FloatMenuMakerMap.makingFor == p` [src, `Verse/DangerUtility.cs:7-25`] — the menu is built under
+exactly the tolerance the resulting job will run under (§2.4). Target validity is enforced in the
+work giver on the same pass (§8.4's `GrowerSow`/`PlantSeed`).
 
 **9. There is no undo stack and no order history.** Cancel is a designator you paint with, not an undo.
 
@@ -1324,18 +1485,28 @@ rooms and oxygen pumps — and modelled the whole thing as **a single "vacuum %"
 across a room** [wiki, Vacuum]. **No oxygen, no CO₂, no nitrogen, no partial pressures, no gas
 transport model.** RimWorld had every reason to build a chemistry and did not. (§8.4.)
 
-**14. Atmosphere does not gate work.** Even in Odyssey, no job is refused because of vacuum. A pawn
-walks into it and dies in 50 seconds, visibly. The consequence lands on the *pawn*, never on the
-*dispatcher*. (§8.4 — this is the sharpest collision in §8.)
+**14. Worker safety is ONE model, not one model per hazard.** Vacuum, temperature and everything else
+that can kill a pawn en route collapse into **one 4-value enum on a region** (`Danger`), compared
+against **one per-pawn tolerance** (`MaxPathDanger`), threaded through **one scan** (§2.4, §8.4). No
+separate air-safety subsystem, no duration-awareness, and no "is this job worth the risk" arithmetic —
+the only per-job dial is a single enum override.
+⚠️ **Qualified, because a bare "no per-hazard rule" would be false:** two work givers *do* test vacuum
+directly (`WorkGiver_GrowerSow.cs:51`, `WorkGiver_PlantSeed.cs:30, 52`). Those are **target validity**
+— *the plant would die there* — not worker safety, and RimWorld keeps the two in separate mechanisms
+even though both say "not in vacuum" (§8.4).
+⚠️ *The first draft of this file said "atmosphere does not gate work". That was **false** — see the
+warning box at the top.*
 
 **15. Skill decay is level-driven, not disuse-driven, and nothing about it is per-pawn-managed.**
 No training schedules, no practice assignments, no "keep this pawn sharp" instrument. A pawn above
 level 10 leaks XP on a fixed curve and the only counter is doing the work. (§5.1.)
 
-**16. There is no numeric capability gate.** RimWorld keeps two mechanisms and never blends them: a
-**categorical, binary, permanent** allow-list (`WorkTag` from backstory/trait/title/slavery) and a
-**continuous efficiency model** (capacities → stats) that never refuses. There is no
-"fitness ≥ 0.4 to be assigned" rule anywhere. (§6.1 — the most transferable thing in §6.)
+**16. There is no *per-work-type* capability tuning.** RimWorld has exactly **two** gates — a
+categorical `WorkTag` allow-list, and a **single numeric threshold per capacity** (`minForCapable`,
+§6.1) shared by every work giver that requires that capacity. There is **no** per-work-type minimum,
+no "you need Manipulation ≥ 0.6 to smith but ≥ 0.3 to cook", and no player-facing dial for either.
+⚠️ *The first draft said "there is no numeric capability gate … no 'fitness ≥ X' rule anywhere". That
+was **false** — see §6.1.*
 
 ---
 
@@ -1345,7 +1516,7 @@ level 10 leaks XP on a fixed curve and the only counter is doing the work. (§5.
 instruction *"do what RimWorld does"* runs out, and the resolution is the owner's. Repo facts here are
 `file:line`-cited from `lane/rimworld-ref` at `f9e4dbc`.
 
-## 8.1 Perilune has one dispatcher with no priority dimension at all — and four systems that bypass it
+## 8.1 Perilune has one dispatcher with no priority dimension — and FIVE `JobKind`s that bypass it
 
 `JobSystem.TryAssign` (`sim/Sim.Core/Jobs/JobSystem.cs:261-314`) is a **single global nearest-job
 argmin**: sum candidates across sources, take the Manhattan-nearest, `TryClaim`, retry on refusal. The
@@ -1353,118 +1524,248 @@ only ordering that exists is **job-source registration order as a distance tie-b
 `Build`, `Deconstruct` (`JobSystem.cs:71-80`), and the class comment says so explicitly: *"THE SOURCE
 PRIORITY ORDER […] is not a preference, it is a tie-break."*
 
-And **four of the twelve `JobKind`s never reach the dispatcher**: `Eat`/`Drink` (`SustenanceSystem`),
-`Craft` (`CraftingSystem`), `Maintain` (`MaintenanceSystem`) are **push-dispatched** by systems
-registered after `JobSystem` (`docs/MECHANICS.md:959-975`).
+And **FIVE of the twelve `JobKind`s never reach the dispatcher** — the first draft said four and
+omitted `Flee` [`sim/Sim.Core/Entities/Citizen.cs:125-140`]:
 
-> **⚠️ COLLISION.** RimWorld's priority grid works because **one node in one think tree issues all
-> work** (`JobGiver_Work`), and everything else in the tree is a *need* or a *reaction*, not a work
-> source. Perilune has **five arbitration entry sites**. The measured consequence is already on record:
-> a grid built inside `TryAssign` is **byte-identical to baseline** for the owner's own case, because
-> `MaintenanceSystem.Tick` frees and re-claims the same pawn *inside one tick*
-> (`MachineWearSystem.cs:175-178, 289-293, 366`) and `JobSystem` saw the pawn idle on **zero** of
-> 54 450 ticks. **A RimWorld-analogue grid presupposes a RimWorld-analogue single issuance point.
-> That refactor is the collision, and it is not named in OD-A.**
+| `JobKind` | issued by | note |
+|---|---|---|
+| `Eat = 4`, `Drink = 5` | `SustenanceSystem` | push-dispatched |
+| `Craft = 6` | `CraftingSystem` | push-dispatched |
+| `Maintain = 7` | `MaintenanceSystem` | push-dispatched |
+| **`Flee = 10`** | **`SafetySystem`** | **omitted from the first draft.** Its own source comment is the reason it matters: *"not None, so no dispatcher recruits a fleeing crew until it has recovered in safe air"* — it is a **suppression** channel as well as a job. |
+
+All are registered after `JobSystem` (`docs/MECHANICS.md:959-975`).
+
+**`Flee`'s omission was not cosmetic**: it is Perilune's `JobGiver_FindOxygen` (§8.4), and leaving it
+out of the bypass list is what made §8.4's original "the consequence never lands on the dispatcher"
+error look consistent.
+
+> **⚠️ COLLISION, re-grounded now that §8.4 is corrected.** RimWorld's priority grid works because
+> **one node in one think tree issues all work** (`JobGiver_Work`); everything else in the tree is a
+> *need* or a *reaction*, not a work source. And §8.4 shows that same single issuance point is also
+> where RimWorld hangs its **per-work-giver danger tolerance** — `MaxPathDanger` is a method on
+> `WorkGiver`, resolved at exactly the moment the grid is consulted.
+>
+> ⇒ **The collision is sharper than first written: Perilune's five entry sites leave NO SINGLE PLACE
+> to hang EITHER a priority OR a danger tolerance.** Both of RimWorld's per-job dials live on the same
+> seam, and Perilune has that seam five times over.
+>
+> The measured consequence is already on record: a grid built inside `TryAssign` is **byte-identical
+> to baseline** for the owner's own case, because `MaintenanceSystem.Tick` frees and re-claims the
+> same pawn *inside one tick* (`MachineWearSystem.cs:175-178, 289-293, 366`) and `JobSystem` saw the
+> pawn idle on **zero** of 54 450 ticks. **A RimWorld-analogue grid presupposes a RimWorld-analogue
+> single issuance point. That refactor is the collision, and it is not named in OD-A.**
 
 ## 8.2 Perilune has no skill, no work type, and no capability model
 
-`grep` over `sim/` returns **zero** hits for `Skill` and **zero** for `WorkType`. `Priority` hits only
-the LLM request queue, `PowerSystem` brownout tiers, and doc comments about registration order.
-`Prioritise`/`Prioritize`, `Draft` and `Forbid` are **zero** across `sim/`, `hosts/` and `client/src`.
-`git log --oneline -- '*Skill*' '*Priority*' '*WorkType*' '*Assign*'` returns **0 commits of 602**.
+Re-measured on `f9e4dbc` for this revision, because the first draft's version of this paragraph
+overstated one of its five greps:
+
+| term | `sim/` | `hosts/` | `client/src` |
+|---|---|---|---|
+| `Skill` | **0** | 0 | 0 |
+| `WorkType` | **0** | 0 | 0 |
+| `Prioriti` (`Prioritise`/`Prioritize`) | **0** | 0 | 0 |
+| `Forbid` | **0** | 0 | 0 |
+| **`Draft`** | 0 | 0 | ⚠️ **18 — and none of them are drafting.** They are the MOSS terminal editor's `editDraft` / `histDraft` / `program.draft` (`client/src/ui/moss-model.js:25, 180, 403, 416`, …). |
+
+`Priority` hits only the LLM request queue, `PowerSystem` brownout tiers, and doc comments about
+registration order. `git log --oneline -- '*Skill*' '*Priority*' '*WorkType*' '*Assign*'` returns
+**0 commits of 602**.
+
+⇒ **Four of five terms really are zero across all three trees; the fifth was a bad grep.** The
+substantive claim survives — *there is no drafting concept in Perilune* — but it survives as
+"18 hits, all unrelated", not as "zero".
 
 > **⚠️ COLLISION.** §1 is a document about a grid whose **rows are work types** and whose **cells are
 > gated by capability**. Perilune has neither axis. Adopting §1 means inventing both, and §1.5's
 > default algorithm — *rank work types by the pawn's average relevant skill, enable the top six* —
-> **cannot be ported at all** until a skill model exists. There is a *fictional* role model already
-> saved and hashed (`PersonaSheet.RoleNow`, `Citizen.Archetype`) which **nothing reads**
-> (`docs/MECHANICS.md:1544-1558`); whether that becomes the capability axis is an owner decision.
+> **cannot be ported until a skill model exists.**
+>
+> ⚠️ **CORRECTION: the fictional role model is NOT unread.** The first draft said
+> `PersonaSheet.RoleNow` is *"saved and hashed, and nothing reads it"*. It is read in at least four
+> places, and one of them is player-visible: **`client/src/theme/warm-tokens.js:247-260` holds a
+> `ROLE_MATCHERS` table that maps `RoleNow` phrases** (`'life-support'`, `'hydroponic'`, `'reactor'`,
+> `'damage control'`, `'medic'`, `'helm'`, `'stores'`, `'comms'`…) **to crew hues via `roleHue()`** —
+> the crew are already coloured by their role on screen. It is also written by the authored ships
+> (`AuthoredShips.cs:583, 609, 635, 661`) and round-tripped through `CitizenMemory.cs:553, 585`.
+>
+> ⇒ **The true statement is narrower and more useful: `RoleNow` is a free-text phrase with a
+> presentation consumer and no mechanical one.** Whether it becomes the capability axis is an owner
+> decision — but a lane doing so should know it is repurposing a field the renderer already reads,
+> not claiming an unused one.
 
-## 8.3 Perilune's hard refusal is silent and asynchronous; RimWorld's is legible and synchronous
+## 8.3 The refusal is asynchronous where RimWorld's is synchronous — and it has more seams than first written
 
 `WorksiteSafety.CanStageWorkerAt` (`sim/Sim.Core/Systems/SafetySystem.cs:125-128`) refuses to stage a
 worker on a tile that is not breathable — and **"unbreathable" includes thermal**
 (`SafetySystem.cs:11-20`: pressure < 5 kPa, ppO₂ < 16 kPa, CO₂ > 40 000 ppm, **temp > 45 °C or
-< −10 °C**). A fully pressurised, perfectly breathable but *freezing* room refuses **all** work. The
-refusal's only seam is a bare `continue` in `JobWork.TryPathToAdjacent`
-(`sim/Sim.Core/Jobs/JobContext.cs:73-87`), and every caller reads it as "unreachable".
+< −10 °C**). A fully pressurised, perfectly breathable but *freezing* room refuses **all** work.
 
-> **⚠️ COLLISION, and it is the sharpest one in this file.** §2.2 and §7-8: RimWorld refuses an
-> impossible order **at the click**, in the context menu, with a stated reason, and it does not offer
-> the option at all when the pawn cannot do it. Perilune **accepts the order and then never progresses
-> it, with nothing anywhere saying why** — and `SafetySystem.cs:96-100` records that this is
-> *accepted, not patched*. Any "prioritise" verb built as a RimWorld analogue inherits RimWorld's
-> promise (*if the menu offered it, it will be attempted*) on a substrate that cannot keep it. **The
-> `blocked` channel is the existing partial answer; whether that is sufficient is an owner decision.**
+> ⚠️ **TWO CORRECTIONS TO THE FIRST DRAFT, and the first is an object lesson in how this file went
+> wrong.**
+>
+> **(1) "The refusal's only seam" was false — and the qualifier was in my own cited source.**
+> `JobContext.cs:64` reads *"`CanStageWorkerAt` is asked here and NOWHERE ELSE **in the job board**"*.
+> **I dropped "in the job board."** Measured on `f9e4dbc`, the predicate is called at **seven** sites:
+>
+> | site | role |
+> |---|---|
+> | `sim/Sim.Core/Jobs/JobContext.cs:80` | the job-board seam — dig, build, deconstruct |
+> | **`sim/Sim.Core/Systems/MachineWearSystem.cs:599`** | **a second SIM seam** — maintenance item staging |
+> | **`sim/Sim.Core/Systems/MachineWearSystem.cs:631`** | **a third** — the adjacent-tile probe |
+> | `hosts/web/GameSession.cs:2310` | the `blocked` channel's air probe |
+> | `hosts/scenario/Program.cs:599, 627, 647` | the measurement harness |
+>
+> **(2) "With nothing anywhere saying why" was false, and my own text contradicted it three lines
+> later.** The `blocked` channel **already consumes this predicate**:
+> `WireFormat.Blocked.cs:43` maps `CanStageWorkerAt(sim, neighbour)` ⇒ `ReasonAir`, fed from
+> `GameSession.cs:2310`, drawn by `client/src/ui/blocked-overlay.js`. The refusal **is** surfaced
+> today, on the standard surface, with a reason code.
 
-## 8.4 ⭐ RIMWORLD SHIPPED A VACUUM SHIP SIM IN 2025 — and it made the opposite choice at the one seam that matters
+> **⚠️ THE COLLISION THAT SURVIVES — and it is narrower and truer than the one first written.**
+> RimWorld refuses an impossible order **at the click**: the context menu does not offer what cannot be
+> done, and states the reason where it is close (§2.2, §7-8). Perilune accepts the order and surfaces
+> the refusal **afterwards, on a separate channel the player must be looking at.**
+>
+> ⇒ **The gap is SYNCHRONY, not silence.** A "prioritise" verb built as a RimWorld analogue inherits
+> RimWorld's promise — *if the affordance was offered, the job will be attempted* — and §8.4 shows how
+> RimWorld keeps it: `FloatMenuMakerMap.makingFor` raises the danger ceiling **while the menu is being
+> built**, so the offer and the acceptance are one rule. Perilune has no equivalent binding between
+> what a palette tool offers and what `CanStageWorkerAt` will accept.
+>
+> Whether that binding is worth building is an owner decision. `SafetySystem.cs:96-100` records the
+> current cost as *accepted, not patched*.
 
-**This is the single most important finding in this document, and it corrects an assumption this repo
-has been carrying.** The **Odyssey DLC (1.6, July 2025)** added orbital maps, **gravships**, and a
-full vacuum/pressurisation model. RimWorld is no longer only a planet-surface game, and *"RimWorld has
-no analogue for a ship in vacuum"* is **false as of 1.6**.
+## 8.4 ⭐ RIMWORLD SHIPPED A VACUUM SHIP SIM IN 2025 — and it gates work on air, just like we do
+
+> ⚠️ **THE FIRST DRAFT OF THIS SECTION REACHED THE OPPOSITE CONCLUSION AND WAS WRONG.** It said
+> *"vacuum does not gate work in RimWorld; there is no `CanStageWorkerAt` equivalent"*. **There is
+> one.** It is not in `PawnCanUseWorkGiver`, which is where the first pass looked — it is in **region
+> danger threaded through the path search**. The correction reverses the section's advice.
+
+The **Odyssey DLC (1.6, July 2025)** added orbital maps, **gravships**, and a full
+vacuum/pressurisation model. RimWorld is no longer only a planet-surface game, and *"RimWorld has no
+analogue for a ship in vacuum"* is **false as of 1.6**.
 
 [wiki, [Vacuum](https://rimworldwiki.com/wiki/Vacuum) — Odyssey DLC]:
 
 | mechanic | RimWorld 1.6 (Odyssey) | Perilune |
 |---|---|---|
 | **representation** | **one scalar per cell: "vacuum %", 0 % = fully pressurised, 100 % = fully depressurised.** *"All tiles within a room share the same vacuum level."* | per-room **moles of O₂ / CO₂ / N₂ + temperature**, with partial pressures |
-| **gas species** | **none.** There is no oxygen, no CO₂, no nitrogen — one number | three species, ppO₂ and CO₂-ppm thresholds |
-| **on planet maps** | *"Vacuum is never a consideration on planet-bound maps. In such locations, all tiles are always considered to be fully pressurized."* | n/a |
-| **airtightness** | a room must be **fully enclosed by airtight buildings, entirely roofed, and free of Space gaps**. Walls/doors are airtight iff made of **metallic** stuff | rooms are flood-filled entities; a region touching Void or the map edge becomes **room 0, the vacuum sink** |
-| **repressurising** | **oxygen pumps**, archean trees, or immovable found **life support units** | `AirVent` (which currently *injects from an unmodelled reserve* and refuses to vent outward) |
-| **doors** | doors and vents exchange vacuum when open; **powered "vac barriers"** allow passage while holding pressure | doors, with an open/closed conduction and flow term |
-| **player readout** | a **toggleable vacuum overlay**, red (100 %) → green (0 %), plus a per-tile figure above the Architect menu, plus a visible in-room dust/cloud effect scaling with vacuum level | the `blocked` channel; no atmosphere overlay |
-| **vertical** | **none — one map, one Z.** Roofs are the only third dimension | decks are real, and **gas does not cross them at all** |
+| **gas species** | **none.** No oxygen, no CO₂, no nitrogen — one number | three species, ppO₂ and CO₂-ppm thresholds |
+| **on planet maps** | *"Vacuum is never a consideration on planet-bound maps."* | n/a |
+| **airtightness** | fully enclosed by airtight buildings, entirely roofed, no Space gaps; walls/doors airtight iff **metallic** | rooms are flood-filled; a region touching Void or the map edge becomes **room 0, the vacuum sink** |
+| **repressurising** | **oxygen pumps**, archean trees, immovable found **life support units** | `AirVent` (currently injects from an unmodelled reserve and refuses to vent outward) |
+| **doors** | doors/vents exchange vacuum when open; powered **vac barriers** pass pawns while holding pressure | doors, with an open/closed conduction and flow term |
+| **player readout** | toggleable **vacuum overlay** red→green, per-tile figure, in-room dust effect scaling with level | the `blocked` channel; no atmosphere overlay |
+| **vertical** | **none — one map, one Z.** Roofs are the only third dimension | decks are real, and gas does not cross them |
 
-### The seam where RimWorld chose the opposite thing — and it is exactly Perilune's open question
+### ⭐ THE SEAM — and RimWorld makes the SAME choice Perilune did
 
-**Vacuum does NOT gate work in RimWorld. There is no `CanStageWorkerAt` equivalent.** Nothing in
-`PawnCanUseWorkGiver` (§1.6) or the job scan (§1.8) refuses a job for atmospheric reasons. A colonist
-will walk into a hard vacuum to do a priority-1 haul, and **take damage until it dies**
-[wiki, Vacuum]:
+**Autonomous work does not enter vacuum. RimWorld refuses at the dispatcher.** The mechanism is §2.4's
+`Danger`, and it lands in the job scan in four steps:
 
-| | |
-|---|---|
-| exposure begins | any tile at **≥ 50 % vacuum**, without 100 % Vacuum Resistance |
-| rate | `severity += 0.02 × vacuum% × (1 − resistance)` **every 60 ticks (1 s)** |
-| unconscious | **85 % severity → 2 550 ticks (42.5 s)** at full vacuum |
-| dead | **100 % severity → 3 000 ticks (50 s)** at full vacuum |
-| rescue | a downed pawn **carried by another pawn** stops accruing exposure |
-| secondary | **vacuum burns** to random uncovered body parts, one per 1 200 ticks at 50 % scaling to one per 300 ticks at 100 %; flat 1–2 damage; **never scar, never infect** |
-| plants | die within roughly an hour at ≥ 50 % vacuum |
+| # | step | source |
+|---|---|---|
+| 1 | A room over 50 % vacuum makes its region **`Danger.Deadly`** for any pawn `ConcernedByVacuum` | `Verse/Region.cs:434-436` |
+| 2 | An ordinary player colonist's ceiling is **`Danger.Some`** | `Verse/DangerUtility.cs:7-25` |
+| 3 | `WorkGiver_Scanner.MaxPathDanger` defaults to exactly that ceiling | `RimWorld/WorkGiver_Scanner.cs:30-33` |
+| 4 | The scan threads it into every `ClosestThingReachable` / `CanReach` / `TraverseParms` | `RimWorld/JobGiver_Work.cs:121, 150, 165, 192, 205` |
 
-> **⚠️ THE COLLISION, stated precisely.** Both games face the identical question — *"what happens when
-> the player orders work in a room with no air?"* — and they answer it **oppositely**:
+⇒ **A vacuum room is simply not reachable for autonomous work.** Same outcome as
+`WorksiteSafety.CanStageWorkerAt`; different location in the pipeline (path search rather than
+staging-tile choice).
+
+### What RimWorld builds ON TOP — a four-rung override ladder
+
+This is the transferable part, and it is what Perilune does not have.
+
+| rung | mechanism | effect |
+|---|---|---|
+| **1. Per-work-giver override** | **24 of 83 work givers override `MaxPathDanger`** — repair, firefight, construction delivery + finish frames, rescue, tend, feed patient/baby, haul, haul-to-portal, merge, mine, deep drill, flick, strip, hunt, load transporters, operate scanner, plant cut, repair mech, take-to-bed-to-operate, administer hemogen | **23 return `Danger.Deadly`** — *"this job is worth dying for; go anyway."* |
+| ⚠️ **the 24th is the interesting one** | **`WorkGiver_DoBill` returns `Danger.Some`** — *below* the `Deadly` that `NormalMaxDanger` grants a forced job | ⇒ **a bill is the one job a player CANNOT force into a deadly room by prioritising it.** RimWorld ships an override that goes *down*. |
+| **2. `playerForced`** | `NormalMaxDanger` returns `Deadly` when `pawn.CurJob.playerForced` | the player's direct order overrides the refusal — §2.2 |
+| **3. Menu/job agreement** | `FloatMenuMakerMap.makingFor == p` also returns `Deadly` | **the right-click menu is built with the ceiling already raised**, so the menu offers exactly what the forced job will accept. One rule, not two. |
+| **4. Self-rescue** | **`RimWorld/JobGiver_FindOxygen.cs`** | see below |
+
+### ⭐ `JobGiver_FindOxygen` — the piece the first draft missed entirely
+
+A dedicated think-node that walks a pawn **out** of vacuum [src, `RimWorld/JobGiver_FindOxygen.cs`].
+Its guard sequence is the design, in order:
+
+```csharp
+if (!ModsConfig.OdysseyActive)                     return null;
+if (PawnUtility.PlayerForcedJobNowOrSoon(pawn))    return null;   // ⇐ the player wins
+if (!pawn.ConcernedByVacuum)                       return null;
+if (!…TryGetHediff(HediffDefOf.VacuumExposure, out var h) || h.CurStageIndex < 1) return null;
+…
+if (vacuum < 0.5f)                                 return null;
+Region region = ClosestOxygenatedRegion(…);        // BFS for a room with Vacuum < 0.5
+return JobMaker.MakeJob(JobDefOf.GotoOxygenatedArea, cell2);
+```
+
+Three things worth carrying:
+- **It is suppressed by `PlayerForcedJobNowOrSoon`** [src, `RimWorld/PawnUtility.cs:378-390`] — which
+  reads the current job **and the job queue**, so a *queued* forced job also suppresses self-rescue.
+  **The player can order a colonist to stay and suffocate**, and RimWorld implements that deliberately
+  as one clause.
+- It waits for **`CurStageIndex >= 1`** — the pawn must actually be taking damage, not merely be in a
+  dangerous room. It is a *recovery* behaviour, not an avoidance one; avoidance is rung 0 above.
+- It **guesses the destination of the current job** (`GuessJobDestination`) and evaluates the vacuum
+  *there*, not underfoot — so a pawn walking *into* vacuum bails early.
+
+⇒ **This is Perilune's `JobKind.Flee` / `SafetySystem`, and the two were arrived at independently.**
+
+> ### ⚠️ THE COLLISION, RESTATED CORRECTLY
 >
-> - **RimWorld: the order is accepted, the pawn goes, and the pawn is harmed.** The consequence is
->   *visible, diegetic, and on a 50-second clock the player can watch*. The player's instruments are a
->   vacuum overlay, a per-tile readout, EVA gear, and the ability to carry a downed pawn out.
-> - **Perilune: the order is accepted and then silently never progresses.** `WorksiteSafety.CanStageWorkerAt`
->   (`SafetySystem.cs:125-128`) refuses to stage, `JobWork.TryPathToAdjacent` swallows it with a bare
->   `continue` (`JobContext.cs:73-87`), and every caller reads it as "unreachable".
+> The first draft said RimWorld accepts the order and harms the pawn while Perilune refuses silently,
+> and concluded that the directive pointed *away* from `WorksiteSafety`. **That was backwards.**
 >
-> **Perilune's hard refusal has no RimWorld analogue, and the directive "do what RimWorld does" points
-> away from it.** ⛔ **That is a design decision and it belongs to the owner** — it interacts with
-> `SafetySystem`'s whole reason for existing (it closed a measured livelock: 47 640 job starts → 298
-> for the cost of **two** completed services), with the `blocked` channel, and with OD-A. **This
-> document names the collision and stops.**
+> **Both games refuse autonomous work in unbreathable air at the dispatcher.** Perilune's
+> `WorksiteSafety.CanStageWorkerAt` is the RimWorld-analogous choice and the directive points **toward
+> keeping it.** What Perilune lacks is everything RimWorld stacks on top:
+>
+> 1. a **per-work-giver danger tolerance** (repair goes anyway; a bill never does);
+> 2. a **`playerForced` bypass**, so a direct order can override the refusal;
+> 3. **menu/job agreement**, so the affordance offered and the job accepted share one rule;
+> 4. a **suppressible self-rescue** — Perilune has `JobKind.Flee`, but nothing gives the player's
+>    order precedence over it.
+>
+> ⛔ **These are named, not proposed.** Which of the four rungs Perilune should have, and whether the
+> `blocked` channel is the right surface for the refusal, are **owner decisions**. This document stops
+> here.
 
-### Three further asymmetries in the same area
+### Two further asymmetries — and one claimed asymmetry that was FALSE
 
-1. **"Unbreathable" in Perilune includes thermal** (`SafetySystem.cs:11-20`: temp > 45 °C or < −10 °C
-   refuses all work in an otherwise perfectly breathable room). RimWorld couples temperature to
-   *health and mood*, never to *job eligibility*. There is no RimWorld precedent for a warm-blooded
-   refusal to dispatch.
-2. **RimWorld's atmosphere is one scalar; Perilune's is a chemistry.** Every threshold in
-   `AtmosphereSafety.IsBreathable` — ppO₂ < 16 kPa, CO₂ > 40 000 ppm — is a distinction RimWorld does
-   not make. A lane told "model air like RimWorld" would be told to **delete two of the three gas
-   species.**
-3. **Perilune has decks and no vertical gas term at all** (verified exhaustively: every gas path binds
-   a single Z — `AtmosphereSystem.cs:211, 219-222, 337, 343`; `RoomState.cs:275-293`; a room can never
-   span decks). The wreck's eight deck-1 halls peak at **0.000 kPa forever**; owner decision: **ship it
-   filed**. RimWorld sidesteps this entirely by having **one Z**. It offers no guidance here because it
-   never had the problem.
+1. ⚠️ **RETRACTED: "there is no temperature precedent."** The first draft claimed RimWorld never
+   couples temperature to job eligibility. **False** — it is the *same line* as vacuum
+   [src, `Verse/Region.cs:433`]: inside the pawn's `SafeTemperatureRange` → `Danger.None`; within
+   `ExpandedBy(80f)` → `Danger.Some`; beyond → **`Danger.Deadly`**, feeding the same scan.
+   ⇒ **There IS a temperature precedent. The real difference is that RimWorld's is GRADED and
+   per-pawn** (`SafeTemperatureRange` varies with apparel, traits and genes) **where Perilune's is a
+   binary global literal** (`SafetySystem.cs:11-20`: temp > 45 °C or < −10 °C). That is a much more
+   interesting collision than the one first written, and it is a live design question, not a gap.
+2. **RimWorld's atmosphere is one scalar; Perilune's is a chemistry.** ppO₂ < 16 kPa and
+   CO₂ > 40 000 ppm are distinctions RimWorld does not make. A lane told "model air like RimWorld"
+   would be told to **delete two of the three gas species**.
+3. **Perilune has decks; RimWorld has one Z.** Perilune has no vertical gas term (every gas path binds
+   a single Z — `AtmosphereSystem.cs:211, 219-222, 337, 343`; `RoomState.cs:275-293`), so a room can
+   never span decks; the wreck's eight deck-1 halls peak at **0.000 kPa forever** and the owner's
+   decision is **ship it filed**. RimWorld offers no guidance here because it never had the problem.
+
+### Target-validity vs worker-safety — a distinction RimWorld draws and we should notice
+
+Two work givers refuse on vacuum **directly**, not through `Danger`:
+`WorkGiver_GrowerSow.cs:51` (`if (c.GetVacuum(pawn.Map) >= 0.5f) return null;`) and
+`WorkGiver_PlantSeed.cs:30, 52` — the latter with a **`plant.vacuumResistant` exemption**.
+
+⇒ These are **target validity** (*a plant would die there*), not **worker safety** (*the pawn would
+die getting there*). RimWorld keeps the two in separate mechanisms even though both say "not in
+vacuum": safety is generic and lives in the path search; validity is per-work-giver and lives in the
+giver. It strengthens §7-8 — the refusal is at the point the job is *considered*, either way, and
+never as a silent stall.
+
 
 ### And RimWorld's ship is a *region of the map*, not a vessel
 
@@ -1504,18 +1805,40 @@ measured safe) and that what is unbuilt is **holding** a pawn on an ordered job.
 > (`Pawn_JobTracker.cs:116`, `JobGiver_Work.cs:66`, `PriorityWork.cs:77-89`). Perilune's `Job` has no
 > such field, and adding one to `Citizen`/job state is a **hashed-field change and a pin move**.
 
-## 8.6 Mood: Perilune computes it and nothing consumes it
+## 8.6 Mood: computed instantaneously, with ONE consumer — and that consumer's gate is stuck open
 
 `Citizen.Mood` is recomputed from scratch every pass with **no history**
 (`NeedsSystem.cs:156-167`): `20 − 40·Hunger − 30·Thirst − 25·Fatigue − 60·Suffocation`, range
 −135..+20 — *not* a percentage. There is **no `Thought` type, no thought stack, no mood modifiers, and
-no mental-break state**. And because `Fatigue` has **no reducer anywhere** (`Bed` is inert furniture),
-mood is permanently ≤ −5 for every crew member from day 1 onward.
+no mental-break state**. And because `Fatigue` has **no reducer** (`Bed` is inert furniture), mood is
+permanently ≤ −5 for every crew member from day 1 onward.
 
-> **⚠️ COLLISION.** §4.3: RimWorld's mood is a *stack of expiring thoughts*, and every number in §4
-> presupposes that architecture. Perilune's is a closed-form instantaneous function. They are not the
-> same object wearing different numbers, and *"make mood work like RimWorld's"* is a request to build
-> a thought system, an expiry model, and a break ladder — not to retune four coefficients.
+> ⚠️ **CORRECTION: "nothing consumes it" was false, and the true finding is worse.** Mood has exactly
+> one consumer — the social argument gate (`sim/Sim.Core/Social/SocialSystem.cs:147-149`):
+>
+> ```csharp
+> float lowMood = a.Mood < b.Mood ? a.Mood : b.Mood;
+> if (lowMood < defs.ArgumentMoodThreshold && opinionAB <= defs.ArgumentOpinionCeiling
+>     && _roll.NextFloat() < defs.ArgumentChancePerPass)
+> ```
+>
+> And `content/core/SimDefs/social.def:36` sets **`argument_mood_threshold = 0`**.
+>
+> ⇒ **Combine the two facts this section already had.** Mood is permanently ≤ −5 for everyone, and the
+> gate fires below 0. **The argument gate is therefore permanently OPEN on every pair of crew, for the
+> whole game.** The only thing standing between the crew and a continuous argument stream is
+> `ArgumentOpinionCeiling` and a dice roll. **The mood term contributes nothing because it is always
+> true — the same shape as the `ShipMetrics.Food` clamp in `CLAUDE.md`'s E0-8 record, where a term
+> that is always saturated reads as if it were doing work.**
+>
+> This is a live, filed-nowhere property of the shipping game. **It is not a design proposal and it is
+> not for this document to resolve.**
+
+> **⚠️ COLLISION.** §4.3: RimWorld's mood is a *rate-limited stack of expiring thoughts* chased by a
+> bar and compared against three derived thresholds. Perilune's is a closed-form instantaneous
+> function with one boolean consumer. They are not the same object wearing different numbers, and
+> *"make mood work like RimWorld's"* is a request to build a thought system, an expiry model, a rate
+> limiter and a break ladder — not to retune four coefficients.
 
 ## 8.7 MOSS has no RimWorld analogue, and it commands devices only
 
@@ -1523,11 +1846,21 @@ MOSS (`sim/Sim.Dsl`) is a budgeted, deterministic, **saved** automation DSL whos
 the command inbox and land at the next tick boundary. It addresses **devices and room anchors only**;
 **rooms have no commands** (`DeviceAdapters.cs:130-134`), and it **can never command a pawn**.
 
-> **⚠️ COLLISION.** RimWorld's nearest equivalents are *policies* (Assign tab), *bills*, and
-> *auto-slaughter thresholds* — all declarative, none programmable, and none of them a language. There
-> is no RimWorld precedent for "the player wrote a program that runs inside the colony." If a
-> work-priority grid and MOSS ever need to interact — e.g. *"MOSS raises Repair to priority 1 when
-> pressure drops"* — **§1 offers no guidance, because RimWorld has never had to answer it.**
+> **⚠️ COLLISION.** RimWorld's nearest equivalents are all **declarative, bounded and player-facing**:
+> `DrugPolicy`, `FoodPolicy`, `ReadingPolicy` and `Policy` [src, `RimWorld/Policy.cs` and siblings],
+> bills (§2.6), auto-slaughter thresholds, and allowed areas. Each is a *table the player fills in*,
+> never a program the player writes.
+>
+> **The search behind that claim, stated so it can be checked** (per Appendix B): across all 9 257
+> decompiled files, `*Script*` matches only Unity's generated `MonoScriptTypes` and the **quest**
+> system (`QuestScriptDef`, `QuestNode_SubScript`) — content authoring, not player authoring;
+> `*Interpreter*` matches **nothing**; `*Automat*` matches an automatic styling-station job and a
+> pause mode. ⇒ **There is no player-authored execution surface in vanilla RimWorld** — a claim about
+> *this decompile*, made by *that* search.
+>
+> If a work-priority grid and MOSS ever need to interact — *"MOSS raises Repair to priority 1 when
+> pressure drops"* — **§1 offers no guidance, because this is a question RimWorld's design never
+> poses.**
 
 ## 8.8 LLM crew conversation has no RimWorld analogue either, and the boundary is already drawn
 
@@ -1536,10 +1869,17 @@ is six kinds (`sim/Sim.Core/Effects/CitizenEffects.cs:89-99`): `SetDisposition`,
 `AgreeTask`, `RevealInfo`, `FollowPlayer`, `EndConversation`. **Exactly one of them writes hashed sim
 state** — `AgreeTask`, and it is restricted to `JobKind.Dig` on an already-`Designated` debris tile.
 
-> **⚠️ COLLISION, and it is narrow but real.** `AgreeTask` is the **only** existing seam by which
-> anything other than the player creates work — and it is hard-wired to one `JobKind`. A RimWorld-shaped
-> work grid makes "which pawn does what" a *player* setting. A talking crew makes it, at least
-> rhetorically, a *negotiation*. **RimWorld has nothing to say about a colonist who can decline.**
+> **⚠️ COLLISION, and it is narrow but real.** `AgreeTask` is the only seam found by which anything
+> other than the player or a sim system creates work, and it is hard-wired to one `JobKind`. A
+> RimWorld-shaped work grid makes "which pawn does what" a *player* setting. A talking crew makes it,
+> at least rhetorically, a *negotiation*.
+>
+> ⚠️ **Qualify this rather than overstate it: RimWorld pawns DO decline, constantly — they just never
+> negotiate.** Incapability refuses (§1.6), capacity thresholds refuse (§6.1), danger refuses (§2.4),
+> mental breaks remove player control outright (§4.2), and a colonist below its break threshold for
+> long enough **leaves the colony** [wiki, Mood]. What RimWorld has no vocabulary for is a refusal the
+> player can **argue with** — every refusal there is a rule, evaluated silently, with no channel back.
+> **That, specifically, is the thing §1 cannot advise on.**
 
 ## 8.9 Determinism makes RimWorld's cheapest moves expensive here
 
@@ -1561,9 +1901,51 @@ ritual for one new hashed field is a single commit carrying default + parser key
 
 | what | how |
 |---|---|
-| **RimWorld source, v1.6.9438.38202** | `raw.githubusercontent.com/Chillu1/RimWorldDecompiled/master/…` — files read: `RimWorld/Pawn_WorkSettings.cs`, `RimWorld/JobGiver_Work.cs`, `Verse.AI/Pawn_JobTracker.cs`, `Verse/PriorityWork.cs`, `Verse/WorkTypeDef.cs`, `RimWorld/WorkGiverDef.cs`, `RimWorld/DesignationDefOf.cs`, `RimWorld/StoragePriority.cs`, `Verse.AI/JobCondition.cs`, `RimWorld/BillRepeatModeDefOf.cs`, `RimWorld/Pawn_DraftController.cs` |
-| **RimWorld Wiki** | [Work](https://rimworldwiki.com/wiki/Work) · [Drafting](https://rimworldwiki.com/wiki/Drafting) · [Stockpile](https://rimworldwiki.com/wiki/Stockpile) · [Bill](https://rimworldwiki.com/wiki/Bill) · [Menus](https://rimworldwiki.com/wiki/Menus) · [Mood](https://rimworldwiki.com/wiki/Mood) · [Mental break](https://rimworldwiki.com/wiki/Mental_break) · [Skills](https://rimworldwiki.com/wiki/Skills) · [Downed](https://rimworldwiki.com/wiki/Downed) · [Vacuum](https://rimworldwiki.com/wiki/Vacuum) · [Version history](https://rimworldwiki.com/wiki/Version_history) |
-| **Not read, and should be** | [Gravship](https://rimworldwiki.com/wiki/Gravship) · [Odyssey](https://rimworldwiki.com/wiki/Odyssey) — two fetch attempts failed on a network error. See §8.4. |
-| **⚠️ Wiki access note for the next lane — this cost real time, do not rediscover it** | The live wiki returns **HTTP 403** (Cloudflare) to `WebFetch` *and* to `curl`, including `?action=raw`. `WebFetch` is *separately* **blocked from `web.archive.org`** in this harness. **Two routes work:** (1) `curl "http://archive.org/wayback/available?url=rimworldwiki.com/wiki/PAGE"` for a snapshot URL, then `curl -sL` it and strip the HTML locally; (2) the reader proxy `https://r.jina.ai/https://rimworldwiki.com/wiki/PAGE`. **Route 2 silently drops some bullet lists and tables** (it is what lost the Chemical-need thresholds and the 0 %-capacity lists) — when a section renders empty, retry it on route 1 before concluding the data is absent. |
-| **Decompiled source is better than the wiki wherever both exist** | Three of the four corrections at the top of this file came from reading `Chillu1/RimWorldDecompiled` rather than the wiki. `raw.githubusercontent.com` is reachable; GitHub *code search* requires auth and `gh` is not installed on this machine. Get the file list with `curl "https://api.github.com/repos/Chillu1/RimWorldDecompiled/git/trees/master?recursive=1"`. **Defs are XML and are NOT in that repo** — which is why `naturalPriority` (§1.7) is unverified. |
-| **Perilune repo** | `CLAUDE.md`, `docs/HANDOVER.md`, `docs/MECHANICS.md`, and `sim/` at `f9e4dbc`, cited `file:line` inline in §8. |
+| **RimWorld source, v1.6.9438.38202** | `Chillu1/RimWorldDecompiled`. ⭐ **DOWNLOAD THE WHOLE REPO AND GREP IT LOCALLY** — `curl -sL -o m.zip https://github.com/Chillu1/RimWorldDecompiled/archive/refs/heads/master.zip && unzip -qq m.zip` gives **9 257 `.cs` files, 52 MB, in about ten seconds.** The first draft of this file fetched files one at a time by guessed path and **that is precisely why it missed `Danger`, `JobGiver_FindOxygen` and `minForCapable`** — you cannot grep for a mechanism whose name you do not already know. |
+| **Files read (2nd pass, all verified locally)** | `Pawn_WorkSettings.cs` · `JobGiver_Work.cs` · `Pawn_JobTracker.cs` · `PriorityWork.cs` · `WorkTypeDef.cs` · `WorkGiverDef.cs` · `WorkGiver.cs` · `WorkGiver_Scanner.cs` · **`Verse/Danger.cs`** · **`Verse/DangerUtility.cs`** · **`Verse/Region.cs`** · **`RimWorld/JobGiver_FindOxygen.cs`** · **`Verse/PawnCapacitiesHandler.cs`** · **`Verse/PawnCapacityDef.cs`** · `PawnUtility.cs` · `WorkGiver_GrowerSow.cs` · `WorkGiver_PlantSeed.cs` · `DesignationDefOf.cs` · `StoragePriority.cs` · `JobCondition.cs` · `BillRepeatModeDefOf.cs` · `Pawn_DraftController.cs` |
+| **RimWorld Wiki** | [Work](https://rimworldwiki.com/wiki/Work) · [Drafting](https://rimworldwiki.com/wiki/Drafting) · [Stockpile](https://rimworldwiki.com/wiki/Stockpile) · [Bill](https://rimworldwiki.com/wiki/Bill) · [Menus](https://rimworldwiki.com/wiki/Menus) · [Mood](https://rimworldwiki.com/wiki/Mood) · [Mental break](https://rimworldwiki.com/wiki/Mental_break) · [Mental Break Threshold](https://rimworldwiki.com/wiki/Mental_Break_Threshold) · [Skills](https://rimworldwiki.com/wiki/Skills) · [Trait](https://rimworldwiki.com/wiki/Trait) · [Saturation](https://rimworldwiki.com/wiki/Saturation) · [Rest](https://rimworldwiki.com/wiki/Rest) · [Recreation](https://rimworldwiki.com/wiki/Recreation) · [Thoughts](https://rimworldwiki.com/wiki/Thoughts) · [Downed](https://rimworldwiki.com/wiki/Downed) · [Blood loss](https://rimworldwiki.com/wiki/Blood_loss) · [Infection](https://rimworldwiki.com/wiki/Infection) · [Doctoring](https://rimworldwiki.com/wiki/Doctoring) · [Quality](https://rimworldwiki.com/wiki/Quality) · [Vacuum](https://rimworldwiki.com/wiki/Vacuum) · **[Gravship](https://rimworldwiki.com/wiki/Gravship)** · [Version history](https://rimworldwiki.com/wiki/Version_history) |
+| ⚠️ **Correction to the first draft's own appendix** | It listed Gravship/Odyssey as **"not read"** while §8.4 carried a paragraph of Gravship numbers cited `[wiki, Gravship]`. **The Gravship page WAS read** (on a third attempt, after two network failures) and every number in that paragraph was independently verified in review. The "not read" row was simply wrong and has been removed. **Odyssey** remains unread. |
+| **⚠️ Wiki access note — this cost real time twice, do not rediscover it** | The live wiki returns **HTTP 403** (Cloudflare) to `WebFetch` *and* to `curl`, including `?action=raw`. `WebFetch` is *separately* **blocked from `web.archive.org`** in this harness. **Two routes work:** (1) `curl "http://archive.org/wayback/available?url=rimworldwiki.com/wiki/PAGE"` for a snapshot URL, then `curl -sL` it and strip the HTML locally; (2) the reader proxy `https://r.jina.ai/https://rimworldwiki.com/wiki/PAGE`. ⚠️ **Route 1 fails intermittently on network errors — RETRY BEFORE CONCLUDING A PAGE IS UNAVAILABLE.** Review reported route 2 working for **every** page including the two this run first recorded as failed. |
+| **Vanilla defs (XML) are NOT in the decompile repo** | `naturalPriority` (§1.7), `alwaysStartActive` (§1.5), the `emergency` flags (§1.4) and `minForCapable` (§6.1) all live in `Data/Core/Defs/`. The values quoted in this file come from a **2018 mirror (`0.19.2009`)** and are marked with a version caveat every time. **Anyone with the game installed settles all four in about a minute.** |
+| **Perilune repo** | `CLAUDE.md`, `docs/HANDOVER.md`, `docs/MECHANICS.md`, and `sim/` / `hosts/` / `client/src` at `f9e4dbc`, cited `file:line` inline in §8. Every §8 grep was **re-measured** for this revision. |
+
+---
+
+## APPENDIX B — the review, and what it says about how to write a reference
+
+This document took a **send-back** on independent review. The shape of that review is worth recording,
+because it is more transferable than any single fact above.
+
+**§1–§3 held line for line** under an adversarial pass that had *more* search power than the first
+draft (the reviewer downloaded the full decompile and grepped locally, rather than fetching pages by
+guessed path). `EnableAndInitialize`, the `× 100000` dominance, the passion multipliers, the emergency
+split, the anti-thrash limits, the skill-decay table, the mental-break family, and the correction of
+the wiki on Construction speed were all confirmed — several verbatim. Both of the first draft's
+**labelled inferences** were settled **in its favour**.
+
+> ### ⛔ AND YET EVERY SINGLE ERROR WAS THE SAME ERROR: AN ABSOLUTE NEGATIVE.
+>
+> *"the only seam" · "nothing reads it" · "nothing consumes it" · "zero across three trees" ·
+> "no job is refused" · "no numeric gate anywhere" · "there is no precedent" · "does not gate work".*
+>
+> **In three cases the cited source contained the correctly-qualified sentence and the qualifier was
+> dropped in transcription.** `JobContext.cs:64` says *"asked here and nowhere else **in the job
+> board**"*; the draft wrote *"the only seam"*.
+
+**Why this is uniquely dangerous in a reference and not merely sloppy:** a positive claim that is too
+strong invites checking — someone will go and look. **A negative claim that is too strong forecloses
+checking.** A lane told *"RimWorld has no X"* will not go looking for X, and the error propagates
+silently into whatever gets built. Three of the four blockers in this revision were of exactly that
+form, and the largest — §8.4 — had the document recommending the **opposite** of what RimWorld does.
+
+**The mechanical countermeasure, applied to this file and recommended to the next:** before writing
+any sentence of the form *"there is no X"*, *"nothing does Y"*, or *"the only Z"*, **name the search
+that would have found a counter-example and run it.** If you cannot name the search, write the
+qualified form instead — *"no X in `<the specific place I looked>`"*. The qualified form is what the
+sources in this file consistently said; the absolute form is what got transcribed.
+
+**One further note, because it cuts the other way.** The reviewer's own report contained the same
+class of over-generalisation in miniature: it listed `WorkGiver_DoBill` among the work givers that
+*"override `MaxPathDanger` to `Deadly`"*. **It overrides to `Danger.Some`** — the opposite direction,
+and a genuinely interesting fact (§8.4) that the summary flattened. Verified against source this run.
+⇒ **Verify the review too. The discipline is the point, not the authority.**
