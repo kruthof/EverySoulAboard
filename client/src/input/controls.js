@@ -101,9 +101,9 @@ export function paletteOrders(tool, x, y, mask) {
  *   draw: () => void,
  *   toggleSprites: () => void,
  *   onEscape?: () => void,
- *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'move'),
+ *   getArmedTool?: () => (null|'wall'|'door'|'cancel'|'dig'|'stockpile'|'strip'|'erase'|'move'),
  *   getStockFilter?: () => number,
- *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile'|'strip') => void,
+ *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile'|'strip'|'erase') => void,
  *   onToolUsed?: (tool: string, x: number, y: number) => void,
  * }} opts
  */
@@ -265,6 +265,13 @@ export function installInput(opts) {
     // CANCEL toggle above, and no letter of "strip" is free (S/T/R panning+talk+deck, P sprites,
     // I is vim-adjacent), so V for salVage (the sim's own term: WallSalvage/DeviceSalvage).
     else if (k === 'v' || k === 'V') onBuildKey('strip');
+    // C (M1-C): the ERASE / un-designate toggle — C for Cancel. X, the obvious letter, has been the
+    // console's own cancel-a-build toggle since IX-11 and the Room Zoom's DEMOLISH since WP-2, so it
+    // is taken twice over; C is free on both keymaps. This key serves the LEVEL-1 OVERVIEW (the Room
+    // Zoom has its own capture-phase handler and binds C itself); on the deprecated console it arms
+    // a tool the console's palette does not draw and `paletteOrders` does not lower, so a click
+    // there is inert — which is the right way round for a surface closed to new work.
+    else if (k === 'c' || k === 'C') onBuildKey('erase');
     // Enter on a focused BUTTON (crew-watch row, chip, tab) belongs to the button's native
     // activation (IX-46) — the game key stands down so a row Enter doesn't also click the cursor.
     else if (k === 'Enter' && e.target && e.target.tagName === 'BUTTON') return;

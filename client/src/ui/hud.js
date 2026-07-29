@@ -514,9 +514,16 @@ export function getArmedTool() { return _armed; }
  *  controls.js through the getStockFilter option — never imported as module state. */
 export function getStockFilter() { return _stockFilter; }
 
-/** B/X/G/Z/V from controls.js (IX-10/23, E0-3/E0-5): toggle wall/cancel/dig/stockpile/strip;
- *  arming surfaces the BUILD tab so the palette showing the armed state is actually on screen. */
-const KEY_EVENT = { cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', strip: 'keyV', build: 'keyB' };
+/** B/X/G/Z/V/C from controls.js (IX-10/23, E0-3/E0-5, M1-C): toggle
+ *  wall/cancel/dig/stockpile/strip/erase; arming surfaces the BUILD tab so the palette (or, for
+ *  erase, the Overview's ORDERS bar) showing the armed state is actually on screen.
+ *
+ *  ⚠️ EVERY KIND MUST APPEAR HERE. The fallback below is `'keyB'`, so a kind this table does not know
+ *  does not fail — IT ARMS WALL. A missing row is therefore not an inert key, it is the wrong tool
+ *  silently armed, which is why `erase` landing here is part of the same commit as its key. */
+const KEY_EVENT = {
+  cancel: 'keyX', dig: 'keyG', stockpile: 'keyZ', strip: 'keyV', erase: 'keyC', build: 'keyB',
+};
 export function armFromKey(kind) {
   _armed = nextArmedTool(_armed, { t: KEY_EVENT[kind] || 'keyB' });
   if (isPaletteTool(_armed) && _tab !== 'build') setTab('build');

@@ -2,7 +2,7 @@
 // (client/src/ui/deck-minimap.js). Proves: the focused-room tile-rect lookup, the
 // fit transform + responsive click hit-testing (incl. letterbox-margin + out-of-room rejection),
 // the in-room channel clamps (cells → items, crew, designs, decor), the palette tool → command-class
-// map (exhaustive over all fifteen tools), the demolish classifier + its precedence over every layer,
+// map (exhaustive over all seventeen tools), the demolish classifier + its precedence over every layer,
 // the armed-tool reducer, the local decor transforms, and the ESC rung.
 //
 // ⚠️ THE LAST SECTION IS DIFFERENT, and the "no DOM" line that used to open this file is no longer
@@ -22,7 +22,8 @@ import { join, dirname } from 'node:path';
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { decksView } from '../src/ui/decks-model.js';
 import {
-  U, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isStructuralTool, isOrderTool, isSweepTool, roomDragMode,
+  U, ROOM_TOOLS, TOOL_LABEL, paletteCommand, isStructuralTool, isOrderTool, isEraseTool, isSweepTool,
+  roomDragMode, ERASE_PRECEDENCE, tileOrders, eraseTarget, roomMarkNameAt, roomTileZoned,
   roomMaterialTiles, nextRoomTool, roomTileRect, deckSlots, roomFit, tileFromCanvasXY,
   clampTileToRoom, roomCells, roomCrew, roomDesigns, roomDecor, itemForGlyph, demolishTarget,
   addDecor, removeDecor, escStackRung, roomMarkTiles, markLayerSvg, STRUCTURE_CODE_LIST,
@@ -114,11 +115,19 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the sixteen tools to a class + verb', () => {
+test('paletteCommand maps every one of the seventeen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
   // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
   // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
-  assert.equal(ROOM_TOOLS.length, 16);
+  // 16 → 17 with ERASE (M1-C, 2026-07-28): the UN-designate verb. `on:false` has ridden the wire and
+  // the TUI has sent it since E0-5; no surface in `client/` did, so one STRIP drag across the cryo
+  // bay condemned eight capsules with no gesture anywhere to take it back.
+  //
+  // ⚠️ THIS NUMBER IS PINNED BY EQUALITY AND MOVING IT IS A SURFACE DECISION, not a chore: the
+  // palette is the whole vocabulary of what a player may do inside a room, and a tool arriving
+  // without anyone deciding is exactly what the equality pin is here to stop. Move it in the same
+  // commit as the tool, with the reason in the commit message.
+  assert.equal(ROOM_TOOLS.length, 17);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -143,6 +152,10 @@ test('paletteCommand maps every one of the sixteen tools to a class + verb', () 
   // designation boards) AND make it swept — a drag across a compartment toggling every door in the
   // rectangle, some of them twice.
   assert.deepEqual(byTool.operate, { cls: 'operate', verb: 'operate' });
+  // ERASE is its OWN class too, and its `verb` is NULL — the one row in the table that names no wire
+  // verb, because which verb an erase click sends is a property of the TILE (`eraseTarget`) and not
+  // of the tool. A reviewer reading `verb: null` should read it as "ask the tile", not as "unwired".
+  assert.deepEqual(byTool.erase, { cls: 'erase', verb: null });
   assert.ok(ROOM_TOOLS.includes('stockpile'),
     'ROOM_TOOLS lost STOCKPILE. It is not on the Overview either (overview-model.js ORDER_TOOLS), ' +
     'so the verb would be unreachable on the whole standard surface — surface-boundary.test.js ' +
@@ -151,11 +164,16 @@ test('paletteCommand maps every one of the sixteen tools to a class + verb', () 
   // isStructuralTool: wall/floor/door drag-build; everything else false — INCLUDING the two order
   // tools, which sweep but carry no material and never reach the material strip.
   for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
-  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', null, 'nope']) assert.equal(isStructuralTool(t), false);
-  // isOrderTool / isSweepTool: the two sibling sets the three gesture sites gate on.
+  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'erase', 'operate', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  // isOrderTool / isEraseTool / isSweepTool: the sibling sets the three gesture sites gate on.
+  // ERASE IS NOT AN ORDER AND IS A SWEEP, and both halves are asserted: classing it `order` would
+  // route it through `orderPayloads` (whose contract is byte-identity with `paletteOrders`), and
+  // dropping it from `isSweepTool` would make it click-only — mutation 4's subject.
   for (const t of ['dig', 'stockpile', 'strip']) assert.equal(isOrderTool(t), true);
-  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'operate', null, 'nope']) assert.equal(isOrderTool(t), false);
-  for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip']) assert.equal(isSweepTool(t), true);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'erase', 'operate', null, 'nope']) assert.equal(isOrderTool(t), false);
+  assert.equal(isEraseTool('erase'), true);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', null, 'nope']) assert.equal(isEraseTool(t), false);
+  for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip', 'erase']) assert.equal(isSweepTool(t), true);
   for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', 'operate', null, 'nope']) {
     assert.equal(isSweepTool(t), false);
   }
@@ -171,14 +189,118 @@ test('WP-4: roomDragMode sweeps an ORDER tool as a FILLED region, and defers oth
   // For STOCKPILE `fill` is the MECHANIC, not a taste: `JobWork.IsFreeStockpileTile` is one stack per
   // zoned tile, so a 3×3 drag is 9 stacks and a `perimeter` sweep would silently deliver 8.
   assert.equal(roomDragMode('stockpile'), 'fill');
-  // Every non-order tool is passed through to build-drag-model UNCHANGED — asserted against the real
-  // function, not against re-typed literals, so a change to either side reddens.
-  for (const t of [...ROOM_TOOLS.filter((x) => !isOrderTool(x)), null, 'nope', 'move']) {
+  // ERASE sweeps FILLED for the same reason DIG does — a player taking back a region of intent drags
+  // over the region, not around it — and `dragModeForTool` knows nothing about it, so this is a real
+  // divergence and not a pass-through. (Mutation: drop the `isEraseTool` half of `roomDragMode` ⇒
+  // erase falls to `dragModeForTool('erase')` = 'single' and a drag clears ONE tile.)
+  assert.equal(roomDragMode('erase'), 'fill');
+  assert.notEqual(dragModeForTool('erase'), 'fill',
+    'dragModeForTool now returns fill for erase on its own, so the assertion above no longer ' +
+    'distinguishes roomDragMode from its delegate — re-point it');
+  // Every non-order, non-erase tool is passed through to build-drag-model UNCHANGED — asserted
+  // against the real function, not against re-typed literals, so a change to either side reddens.
+  for (const t of [...ROOM_TOOLS.filter((x) => !isOrderTool(x) && !isEraseTool(x)), null, 'nope', 'move']) {
     assert.equal(roomDragMode(t), dragModeForTool(t), `roomDragMode drifted from dragModeForTool for '${t}'`);
   }
   assert.equal(roomDragMode('wall'), 'perimeter');   // and the pass-through really is non-trivial
   assert.equal(roomDragMode('floor'), 'fill');
   assert.equal(roomDragMode('door'), 'single');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// M1-C — THE ERASE MODEL. The precedence, the tile-facts derivation, and the two lookups.
+//
+// ⚠️ TWO THIRDS OF THE PRECEDENCE IS UNFIXTURABLE ON A REAL SHIP, AND THAT IS NOT A GAP IN THESE
+// TESTS. The three orders have mutually exclusive preconditions in the sim: DIG needs
+// `TileDefs.Debris`, STRIP needs a wall or a device, STOCKPILE needs `TileFlags.Walkable` and an
+// empty tile. dig+strip and dig+stockpile therefore cannot coexist on one tile of any ship the game
+// can produce; STRIP(device) + STOCKPILE can, and it is exactly the pair the ranking has to settle
+// (the host ranks strip above stockpile for the SAME tile shape — `GameSession.cs` `BuildMarks`).
+// These pure tests still drive all three, because `eraseTarget` is a total function over its input
+// and a reviewer must be able to see the whole table; the DRIVEN precedence leg below uses the one
+// pair a ship can actually present.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// MUTATION: reorder ERASE_PRECEDENCE to ['stockpile','strip','dig'] ⇒ RED here AND on the driven
+//           precedence leg below.
+test('M1-C: the erase precedence is dig ▸ strip ▸ stockpile — an ORDER outranks a ZONE', () => {
+  assert.deepEqual([...ERASE_PRECEDENCE], ['dig', 'strip', 'stockpile'],
+    'the erase precedence moved. It is not a preference: it is `BuildMarks`\' own ranking in ' +
+    'hosts/web/GameSession.cs ("AN ORDER OUTRANKS A ZONE, AND THAT IS THE WHOLE RULE"), minus ' +
+    '`debris`, which is terrain. A client that peeled in a different order would take a mark off a ' +
+    'tile the player is not looking at.');
+  // DEBRIS IS ABSENT ON PURPOSE — asserted, because a reader could take its absence for an omission.
+  assert.ok(!ERASE_PRECEDENCE.includes('debris'),
+    'debris is terrain, not an order: nothing the player did put it there, so nothing they can do ' +
+    'takes it back. Erasing a debris tile must send NOTHING.');
+
+  // ── BOTH FAILURE SHAPES, and the second is the one that can bite. ──
+  // (1) ONE order on the tile: every kind resolves to itself, so a broken lookup shows up.
+  assert.equal(eraseTarget({ dig: true }), 'dig');
+  assert.equal(eraseTarget({ strip: true }), 'strip');
+  assert.equal(eraseTarget({ stockpile: true }), 'stockpile');
+  // (2) TWO orders on the tile: only here does the ORDER of the list matter at all. A fixture
+  //     carrying only shape (1) would leave a reordered precedence completely invisible.
+  assert.equal(eraseTarget({ strip: true, stockpile: true }), 'strip',
+    'a condemned device inside a stockpile zone must give up its STRIP order first — the zone is ' +
+    'the thing the player did not just ask to cancel');
+  assert.equal(eraseTarget({ dig: true, stockpile: true }), 'dig');
+  assert.equal(eraseTarget({ dig: true, strip: true }), 'dig');
+  assert.equal(eraseTarget({ dig: true, strip: true, stockpile: true }), 'dig');
+  // …and nothing at all is null, never a verb. An erase click on a bare tile must send NO command.
+  assert.equal(eraseTarget({ dig: false, strip: false, stockpile: false }), null);
+  assert.equal(eraseTarget({}), null);
+  assert.equal(eraseTarget(null), null);
+  assert.equal(eraseTarget(undefined), null);
+});
+
+// MUTATION: make `tileOrders` ignore its `zoned` argument ⇒ RED on the zoned-only legs (and on the
+//           driven Room-Zoom precedence leg, whose zone comes from the `zones` channel).
+// MUTATION: let `tileOrders` treat 'debris' as an order ⇒ RED on the debris leg.
+test('M1-C: tileOrders reads a tile from its mark kind and its zone, and debris is NOT an order', () => {
+  const none = { dig: false, strip: false, stockpile: false };
+  assert.deepEqual(tileOrders('dig', false), { ...none, dig: true });
+  assert.deepEqual(tileOrders('strip', false), { ...none, strip: true });
+  assert.deepEqual(tileOrders('stockpile', false), { ...none, stockpile: true });
+  // DEBRIS: terrain. It is a real mark kind on the wire (`MARK_KIND_NAMES[0]`), which is why it has
+  // to be named here rather than falling through with the junk below.
+  assert.deepEqual(tileOrders('debris', false), none);
+  assert.equal(eraseTarget(tileOrders('debris', false)), null,
+    'an erase click on plain rubble must send nothing — the player never ordered it there');
+  // …and the mark vocabulary this reads is the wire\'s own, not a private list.
+  assert.deepEqual([...MARK_KIND_NAMES].filter((n) => n !== 'debris').sort(),
+    [...ERASE_PRECEDENCE].sort(),
+    'the erasable kinds are no longer exactly the wire mark kinds minus debris — one side grew a ' +
+    'kind the other does not know about');
+  // ABSENT / MALFORMED: never an order.
+  for (const m of ['', null, undefined, 'nope']) assert.deepEqual(tileOrders(m, false), none);
+  // THE `zones` HALF. A zoned tile is a stockpile whatever its mark says, which is what lets the
+  // Room Zoom see BOTH layers it draws; and `zoned` is strictly additive — it can never remove one.
+  assert.deepEqual(tileOrders('', true), { ...none, stockpile: true });
+  assert.deepEqual(tileOrders('strip', true), { ...none, strip: true, stockpile: true });
+  assert.deepEqual(tileOrders('debris', true), { ...none, stockpile: true });
+  // Only a strict `true` counts — a truthy row object arriving where a boolean was meant must not
+  // silently zone the tile.
+  for (const z of [false, undefined, null, 0, 1, 'yes', {}]) {
+    assert.equal(tileOrders('', z).stockpile, z === true, `zoned=${JSON.stringify(z)} misread`);
+  }
+});
+
+// MUTATION: make either lookup ignore one coordinate (return the first row) ⇒ RED.
+test('M1-C: the two tile lookups are exact, per-coordinate, and empty-safe', () => {
+  const marks = [{ tx: 4, ty: 6, mark: 'dig' }, { tx: 5, ty: 6, mark: 'strip' }, { tx: 4, ty: 7, mark: 'stockpile' }];
+  assert.equal(roomMarkNameAt(marks, 4, 6), 'dig');
+  assert.equal(roomMarkNameAt(marks, 5, 6), 'strip');   // same y, different x
+  assert.equal(roomMarkNameAt(marks, 4, 7), 'stockpile'); // same x, different y
+  assert.equal(roomMarkNameAt(marks, 9, 9), '');
+  for (const junk of [null, undefined, 'nope', 42]) assert.equal(roomMarkNameAt(junk, 4, 6), '');
+
+  const zones = [{ tx: 4, ty: 6 }, { tx: 7, ty: 2 }];
+  assert.equal(roomTileZoned(zones, 4, 6), true);
+  assert.equal(roomTileZoned(zones, 7, 2), true);
+  assert.equal(roomTileZoned(zones, 4, 2), false);      // the x of one, the y of the other
+  assert.equal(roomTileZoned(zones, 7, 6), false);
+  for (const junk of [null, undefined, 'nope', 42]) assert.equal(roomTileZoned(junk, 4, 6), false);
 });
 
 test('the armed-tool reducer arms and disarms the three order tools like any other', () => {
@@ -966,7 +1088,7 @@ test('POSITIVE CONTROL: the wiring scan does fire on the real call, and codeOnly
 // FALSE AND IS QUOTED HERE RATHER THAN DELETED: it used to end *"and `querySelectorAll` returns
 // nothing — which means `_el.toolBtns` is empty and the visual `.on` toggle is NOT proven here."*
 // The palette-overflow package added a START-TAG SCANNER to `RzEl` (see its comment below), so
-// `_el.toolBtns` now holds the fifteen buttons `buildChrome` really wrote and `paintPalette`'s body
+// `_el.toolBtns` now holds the seventeen buttons `buildChrome` really wrote and `paintPalette`'s body
 // executes. What is STILL not proven here is anything about LAYOUT — whether those buttons are on
 // the screen is a question only a layout engine can answer, and `client/tools/palette-shot.mjs` is
 // where it is answered.
@@ -1437,6 +1559,188 @@ test('WP-4: a STRIP sweep does the same for the deconstruct verb', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
+// M1-C — ERASE, DRIVEN. The player can take an order back.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Every leg below drives the SHIPPED controller and asserts on what came out of the injected `send`
+// — the repo's fourth countermeasure (record the argument at the seam) rather than a source scan,
+// which is defeated by a comment, by whitespace and by an equivalent spelling.
+//
+// ⚠️ THE ONE THING THESE CANNOT DO is prove the SIM forgot the order: the client suite has no host.
+// What they pin is the message, at the wire's own contract (`{cmd,x,y,on:0}`), which is the whole of
+// this package's scope — the OFF paths existed and shipped with E0-5. The end-to-end proof is the
+// browser run recorded in the package report, not an assertion here.
+
+/** Re-dispatch the mark + zone channels and force the SYNCHRONOUS re-derive `_markTiles`/`_zoneTiles`
+ *  ride on. `enter()` repaints inline (`enterRoom` calls `repaint()`, not `scheduleRepaint()`), which
+ *  is what lets a test set a tile up and act on it in the same tick. */
+function rzSetLayers({ marks, zones }) {
+  Hud.renderMarks(marks === undefined ? WRECK_MARKS_MSG : marks);
+  Hud.renderZones(zones === undefined ? null : zones);
+  rzApi.exit();
+  rzApi.enter('hold');
+}
+/** A `marks` wire message from `[x,y,kindName]` triples on the hold's deck. */
+const rzMarksMsg = (rows) => ({
+  type: 'marks',
+  cells: rows.map(([x, y, kind]) => [x, y, DECK1, MARK_KIND_NAMES.indexOf(kind)]),
+});
+/** A `zones` wire message from `[x,y]` pairs on the hold's deck, all ACCEPT-ALL and not backed off. */
+const rzZonesMsg = (rows) => ({ type: 'zones', cells: rows.map(([x, y]) => [x, y, DECK1, ACCEPT_ALL, 0]) });
+const rzToast = () => rzDoc.getElementById('rz-toast').textContent;
+
+// The layers are shared module state on `hud.js`, so every erase leg restores them. Registered ONCE,
+// beside the helpers, rather than repeated in each test — a leg that throws mid-way must not leave
+// the next test looking at a hand-built zone.
+afterEach(() => { if (rzApi) rzSetLayers({}); });
+
+// MUTATION 1 (RESTATED — the charter phrased it as a round trip this suite cannot run): hard-code
+//   `true` in `erasePayloads`, i.e. `Cmd.dig(x, y, true)` ⇒ the recorded payload reads `on:1` ⇒ RED.
+//   The charter's "the tile must still carry the designation" needs a host; `on` is what rides the
+//   wire and is what the client is responsible for.
+// MUTATION: delete the `pc.cls === 'erase'` branch from `onCanvasUp` ⇒ an erase sweep falls through
+//   to the `else` and sends `Cmd.build('undefined', …)` ⇒ RED on the `cmd` assertion.
+test('M1-C: ERASE on a designated tile sends the OFF command for the verb that painted it', () => {
+  const dig = FIX_DIG[0];
+  rzArm('erase');
+  const sent = rzOrders(rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty }));
+  assert.equal(sent.length, 1, `an erase on a dig tile sent ${sent.length} commands, not one`);
+  assert.deepEqual(sent[0], { cmd: 'dig', x: dig.tx, y: dig.ty, on: 0 },
+    'the OFF payload is not the wire contract. `on:0` is the whole feature — `DesignateDigCommand` ' +
+    'clears TileFlags.Designated only on the OFF path, and its legality check is `if (_on && …)` so ' +
+    'the OFF path is deliberately precondition-free (sim/Sim.Core/Commands/Commands.cs:138-158).');
+  assert.match(rzToast(), /TAKEN BACK/, 'an erase that cleared something said nothing about it');
+  rzArm('erase');
+});
+
+// MUTATION: make `eraseTargetAt` return a verb for an unmarked tile (e.g. default to 'dig') ⇒ RED.
+// MUTATION: drop the `if (target)` guard around `erased++` ⇒ RED on the toast leg.
+test('M1-C: ERASE on a tile carrying NO order sends nothing — and SAYS so', () => {
+  // A tile inside the hold that the fixture's marks do not touch, chosen by asking the fixture.
+  const marked = new Set(roomMarkTiles(wreckMarks, { ...HOLD, deck: DECK1 }).map((m) => m.tx + ',' + m.ty));
+  let bare = null;
+  for (let y = HOLD.ry; y < HOLD.ry + HOLD.rh && !bare; y++) {
+    for (let x = HOLD.rx; x < HOLD.rx + HOLD.rw; x++) {
+      if (!marked.has(x + ',' + y)) { bare = { x, y }; break; }
+    }
+  }
+  assert.ok(bare, 'every tile in the hold carries a mark — this test would be vacuous');
+  rzArm('erase');
+  assert.deepEqual(rzOrders(rzSweep(bare, bare)), [],
+    'erasing an unordered tile sent a command. The sim would no-op it, which is exactly why the ' +
+    'client must not send it: a verb that fires blindly cannot be told from one that fires wrongly.');
+  assert.match(rzToast(), /NOTHING TO ERASE/,
+    'a sweep that cleared nothing sent nothing and said nothing — indistinguishable from a broken ' +
+    'tool (the invisible-feedback rule, HANDOVER §4g)');
+  rzArm('erase');
+});
+
+// MUTATION 4: drop the sweep path — give `erase` a non-swept class, or remove it from `isSweepTool`
+//   ⇒ `onCanvasDown` returns early, no drag is opened, `onCanvasUp` commits nothing ⇒ RED (0 sent).
+//   The 3×3 rectangle is load-bearing for the same reason DIG's is: a 3×2 sweep has no interior, so
+//   `fill` and `perimeter` coincide and a fill cannot be distinguished from an outline.
+test('M1-C: an ERASE DRAG clears every ordered tile under the FILLED rectangle, and only those', () => {
+  // A 3×3 block: the centre carries a strip order, the four corners carry dig, the rest is bare.
+  const bx = HOLD.rx + 2, by = HOLD.ry + 2;
+  rzSetLayers({
+    marks: rzMarksMsg([
+      [bx, by, 'dig'], [bx + 2, by, 'dig'], [bx, by + 2, 'dig'], [bx + 2, by + 2, 'dig'],
+      [bx + 1, by + 1, 'strip'],
+    ]),
+  });
+  rzArm('erase');
+  const sent = rzOrders(rzSweep({ x: bx, y: by }, { x: bx + 2, y: by + 2 }));
+  assert.equal(sent.length, 5,
+    `the drag emitted ${sent.length} commands, not 5 — a 3×3 sweep covers 9 tiles of which 5 carry ` +
+    'an order, so this pins BOTH halves: that the drag swept (not clicked) and that it skipped the ' +
+    'four bare tiles');
+  assert.deepEqual(sent.filter((o) => o.cmd === 'dig').map(xy),
+    [[bx, by], [bx + 2, by], [bx, by + 2], [bx + 2, by + 2]],
+    'the four dig corners were not all cleared, in row-major sweep order');
+  assert.deepEqual(sent.filter((o) => o.cmd === 'strip').map(xy), [[bx + 1, by + 1]],
+    'the INTERIOR tile is missing — the sweep traced an outline, not a region (roomDragMode → fill)');
+  for (const o of sent) assert.equal(o.on, 0, `${o.cmd} at ${o.x},${o.y} rode with on:${o.on}`);
+  assert.match(rzToast(), /5 ORDERS TAKEN BACK/, 'the toast must report the ORDERS cleared, not the 9 tiles dragged over');
+  rzArm('erase');
+});
+
+// MUTATION 3: reorder ERASE_PRECEDENCE so stockpile beats strip ⇒ RED — the tile emits `stockpile`.
+// MUTATION: make `eraseTargetAt` read only `_markTiles` (drop the `roomTileZoned` half) ⇒ RED on the
+//   ZONE-ONLY leg, which is the shape only the `zones` channel can see (`markLayerSvg` does not draw
+//   a stockpile mark on this surface at all).
+//
+// ⚠️ THE FIXTURE CARRIES BOTH FAILURE SHAPES, which is what makes the precedence visible: a tile with
+// ONE order (strip alone, and zone alone) and a tile with TWO (strip + zone). With only the one-order
+// shape a reordered precedence resolves each tile to itself and the leg is green either way.
+//
+// ⚠️ AND THIS IS THE ONLY PAIR A REAL SHIP CAN PRESENT. dig+strip and dig+stockpile are excluded by
+// the sim's own preconditions (debris vs. a wall/device vs. a walkable empty tile), so they are
+// covered in the PURE test above and cannot be driven here. Stated rather than left as a hole.
+test('M1-C: on a tile carrying BOTH a strip order and a zone, ERASE takes the ORDER first', () => {
+  const bx = HOLD.rx + 4, by = HOLD.ry + 4;
+  const both = [bx, by];        // strip order INSIDE a stockpile zone — the two-order shape
+  const stripOnly = [bx + 1, by];
+  const zoneOnly = [bx + 2, by];
+  rzSetLayers({
+    marks: rzMarksMsg([[both[0], both[1], 'strip'], [stripOnly[0], stripOnly[1], 'strip']]),
+    zones: rzZonesMsg([both, zoneOnly]),
+  });
+  rzArm('erase');
+  const at = (t) => rzOrders(rzSweep({ x: t[0], y: t[1] }, { x: t[0], y: t[1] }));
+
+  assert.deepEqual(at(both), [{ cmd: 'strip', x: both[0], y: both[1], on: 0 }],
+    'a condemned device inside a stockpile zone gave up its ZONE instead of its STRIP order. An ' +
+    'order outranks a zone (hosts/web/GameSession.cs BuildMarks) — cancelling a strip must not ' +
+    'silently delete the storage the player painted around it.');
+  assert.deepEqual(at(stripOnly), [{ cmd: 'strip', x: stripOnly[0], y: stripOnly[1], on: 0 }]);
+  assert.deepEqual(at(zoneOnly), [{ cmd: 'stockpile', x: zoneOnly[0], y: zoneOnly[1], on: 0 }],
+    'a ZONE-ONLY tile was not erased at all. This surface draws stockpile from the `zones` channel ' +
+    'and not from `marks`, so dropping the `roomTileZoned` half of the lookup makes the tint ' +
+    'un-erasable while every other leg here stays green.');
+
+  // ⚠️ STOCKPILE OFF IS **ONE** COMMAND. The paint path always sends `Cmd.stockpile` THEN
+  // `Cmd.filter`; the OFF path must not, because `DesignateStockpileCommand` clears the filter itself
+  // and a trailing mask would orphan one on a tile that is no longer a zone.
+  assert.equal(at(zoneOnly).length, 1,
+    'the erase sent a Cmd.filter after clearing the zone — an orphan mask in the ZONE hash');
+  rzArm('erase');
+});
+
+// MUTATION: drop the `c`/`C` branch from `onKey` ⇒ the sweep after it sends nothing ⇒ RED.
+test('M1-C: C arms ERASE on the Room Zoom, both cases, and swallows the key', () => {
+  const dig = FIX_DIG[0];
+  const c = rzKey('C');
+  assert.ok(c.defaultPrevented && c.propagationStopped, 'the Room Zoom must swallow its own hotkey');
+  assert.equal(rzOrders(rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty }))[0].on, 0);
+  rzKey('c');   // lowercase too — 'h' was silently dead once (controls.js:262)
+  assert.deepEqual(rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty }), [],
+    'the second C did not disarm');
+  // …and it is the ONE exclusive slot, shared with the other tool hotkeys.
+  rzKey('c');
+  rzKey('G');
+  assert.equal(rzOrders(rzSweep({ x: dig.tx, y: dig.ty }, { x: dig.tx, y: dig.ty }))[0].on, 1,
+    'G did not replace ERASE — the palette has one exclusive slot');
+  rzKey('g');
+});
+
+// MUTATION: remove 'erase' from ROOM_TOOLS ⇒ no button is painted ⇒ RED (and the census + the three
+//   derived button counts go red too — that is mutation 2, and it is deliberately spread).
+test('M1-C: the palette PAINTS an ERASE button, labelled, and the hint names its hotkey', () => {
+  const html = rzDoc.getElementById('rz-palette').innerHTML;
+  assert.ok(html.length > 0, 'the palette painted nothing — this assertion would be vacuous');
+  assert.ok(html.includes('data-rztool="erase"'), 'no palette button for erase');
+  assert.ok(html.includes('>' + TOOL_LABEL.erase + '<'),
+    `the erase button is missing its label '${TOOL_LABEL.erase}'`);
+  assert.match(rzRoot.innerHTML, /ERASE \[C\]/,
+    'the palette hint does not name the C hotkey — and nothing else on this surface can');
+  // ERASE AND DEMOLISH MUST NOT WEAR THE SAME ICON. They are the most confusable pair on the bar
+  // (one takes an ORDER off a tile, the other takes a THING off the floor) and colour alone does not
+  // separate them for a player scanning seventeen labels.
+  assert.notEqual(TOOL_LABEL.erase.charAt(0), TOOL_LABEL.demolish.charAt(0),
+    'ERASE and DEMOLISH now open with the same glyph');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
 // STOCKPILE ON THE ROOM ZOOM PALETTE — the verb that came down from the Overview
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 //
@@ -1627,7 +1931,8 @@ test('the palette PAINTS a STOCKPILE button, labelled, and the hint names its ho
 // with the scrollbar deliberately hidden), and no assertion in node can see layout — that is what
 // `client/tools/palette-shot.mjs` is for, and this file must not pretend otherwise. What IS testable
 // here, and belongs to the same complaint from a different cause, is that the palette used to
-// announce its armed tool with a COLOUR AND NOTHING ELSE: fifteen buttons, no `aria-pressed`, so a
+// announce its armed tool with a COLOUR AND NOTHING ELSE: fifteen buttons at the time (seventeen
+// today), no `aria-pressed`, so a
 // screen reader could read every label and not one word about which one is holding the cursor. The
 // ACCEPTS chips three pixels above them have carried `aria-pressed` since WP-6 (§4j).
 //
@@ -1647,7 +1952,7 @@ const rzPressed = () => Object.fromEntries(
 // ⚠️ THE MARKUP LEG WAS ADDED BECAUSE THE NODE-VALUE LEG COULD NOT SEE THAT MUTATION — found by
 // physically applying it and watching the suite stay green, not by reading the test. Dropping the
 // attribute from the builder is invisible to a reader of the live nodes, because `paintPalette` runs
-// on entry and writes `'false'` onto all fifteen before any assertion gets to look. The two legs are
+// on entry and writes `'false'` onto all seventeen before any assertion gets to look. The two legs are
 // therefore about two different things and BOTH are needed: `html` is the string `buildChrome`
 // wrote (this stub never re-serialises it from attributes, so it stays the BUILDER's output), and
 // `rzPressed()` is what the PAINTER left on the nodes.
@@ -1671,7 +1976,7 @@ test('every palette tool is a real <button type="button"> that starts UNPRESSED'
 
 // MUTATION: delete the `setAttr(b, 'aria-pressed', …)` line from `paintPalette` ⇒ RED (nothing moves
 //           off 'false' when a tool is armed).
-// MUTATION: write `'true'` unconditionally ⇒ RED (fifteen pressed buttons, not one).
+// MUTATION: write `'true'` unconditionally ⇒ RED (seventeen pressed buttons, not one).
 // MUTATION: write `on ? 'true' : null` — the realistic "just remove it when off" mistake ⇒ RED on
 //           the disarm leg, which is why the disarm leg asserts 'false' rather than "not true".
 test('arming a tool through its own button moves aria-pressed, and only ever onto ONE button', () => {

@@ -65,7 +65,7 @@ function cssRules(css) {
  * that configuration was measured at 900px losing PLANT, DIG, STOCKPILE, STRIP and DEMOLISH. The
  * same trick re-capped the wrapper's height. **A guard that cannot see the exact declarations it
  * names, written under a compound selector, is a defect in the matcher — not a limit of the
- * approach.** (The limits are real and are declared in the file header: a font swap, a sixteenth
+ * approach.** (The limits are real and are declared in the file header: a font swap, an eighteenth
  * tool, a `max-height` nobody imagined. Those are differently-SHAPED regressions. This was the named
  * subject walking back in through a door left open.)
  *

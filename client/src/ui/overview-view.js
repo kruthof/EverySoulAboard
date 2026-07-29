@@ -25,7 +25,11 @@
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
 import { selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices } from '../wire/messages.js';
-import { deckDeviceConditions } from './room-model.js';
+// `deckDeviceConditions` is the wear join; `eraseTarget`/`tileOrders` are the un-designate precedence
+// + the tile-facts derivation it runs on, SHARED VERBATIM with the Room Zoom (M1-C) rather than
+// re-stated, so the two surfaces cannot come to disagree about which of two orders on one tile an
+// erase click takes off.
+import { deckDeviceConditions, eraseTarget, tileOrders } from './room-model.js';
 import { decksView } from './decks-model.js';
 import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
 import { pawnChip } from '../render/pawn-svg.js';
@@ -39,6 +43,7 @@ import {
   tileAt, overviewClickAction, lensSlotTint, currentRoom, deckPips, deckDelta,
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
+  ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -344,10 +349,13 @@ function buildIslands() {
   // command bar — the BUILD tab + a FIXED tab set. ORDERS THAT POINT AT AN EXISTING THING ARE
   // DECK-SCOPED; BUILDING AND STOCKPILE ARE ZOOM-ONLY (overview-model.js's header holds the rule and
   // its justification). So the BUILD tab carries no tile-BUILD tools — just a hint pointing the
-  // player into a room — and beside it the ORDERS bar, whose TWO tools each aim at something the
-  // ship already contains: DIG at debris, STRIP at a wall or a device. You point, and the tile you
-  // pointed at is the whole decision, which is what makes a single click honest at this altitude.
+  // player into a room — and beside it the ORDERS bar, whose two ORDER tools each aim at something
+  // the ship already contains: DIG at debris, STRIP at a wall or a device. You point, and the tile
+  // you pointed at is the whole decision, which is what makes a single click honest at this altitude.
   // STOCKPILE is not here: its extent IS the decision, and this surface has no drag gesture at all.
+  // THIRD BUTTON, AND IT IS NOT AN ORDER: ERASE (M1-C) takes a painted order back off a tile. It
+  // aims at something the ship contains too — the player's own earlier click — so it passes the same
+  // altitude test, and having no extent it needs no drag.
   // (＋ADD ROOM to open a new hall still lives on the scene's hall slots.)
   //
   // The buttons carry `data-ov-tool`, so they route through the EXISTING `onHudClick` branch and the
@@ -360,6 +368,11 @@ function buildIslands() {
     '<div class="hud ov-orders" hidden><span class="ov-hdr ov-ordershdr">ORDERS ▸</span>' +
       ORDER_TOOLS.map((tool) =>
         '<button class="ov-tool" data-ov-tool="' + tool + '">' + esc(ORDER_LABEL[tool]) + '</button>').join('') +
+      // ERASE, beside the two verbs it undoes and rendered by the SAME markup — it carries
+      // `data-ov-tool` too, so it routes through the existing `onHudClick` arming branch and the
+      // existing `paintCommand` reflection, and adds no second arming path. It is appended rather
+      // than folded into `ORDER_TOOLS` because it is not an order (overview-model.js `ERASE_TOOL`).
+      '<button class="ov-tool" data-ov-tool="' + ERASE_TOOL + '">' + esc(ERASE_LABEL) + '</button>' +
       '<span class="ov-orderhint"></span></div>' +
     '<div class="hud ov-tabs">' + OV_TABS.map(([key, label]) =>
       '<button class="ov-tab" data-ov-tab="' + key + '">' + esc(label) + '</button>').join('') + '</div>';
@@ -896,6 +909,29 @@ function onSceneGesture(e) {
       }
       break;
     }
+    // UN-DESIGNATE (M1-C). Same tier as 'order' and the same shape, with one difference that is the
+    // whole feature: WHICH command goes out is read off the tile, not off the tool. The mark list is
+    // decoded HERE rather than cached, so the erase acts on the newest wire state rather than on
+    // whatever the last repaint happened to leave behind.
+    case 'erase': {
+      const t = pointToTile(svg, e);
+      if (t) {
+        const deck = _ctx.frame ? _ctx.frame.deck : 0;
+        const mark = markNameAt(decodeMarks(Hud.getMarks()), t.x, t.y, deck);
+        // `zoned` is false: this surface does not read the `zones` channel (it draws no zone layer),
+        // and `tileOrders`' header carries the argument for why that is honest — the host has already
+        // ranked strip above stockpile on the `marks` channel, so a second click clears the zone.
+        const target = eraseTarget(tileOrders(mark, false));
+        for (const o of erasePayloads(target, t.x, t.y)) _send(o);
+        Hud.toolUsed(ERASE_TOOL, t.x, t.y); // keeps the tool armed (only 'move' is one-shot)
+        if (target) nudgeOnIntent(); // the crew must still be running to notice the order is gone
+        // ALWAYS A TOAST, INCLUDING THE MISS. Erasing an unordered tile correctly sends nothing, and
+        // "sent nothing" is indistinguishable from "the tool is broken" unless the surface says so.
+        // The suppression line still wins where it applies, for the reason the 'order' branch gives.
+        if (!orderSuppressionToast(ERASE_TOOL, hit)) toast(erasePlacedLine(target, t.x, t.y, deck));
+      }
+      break;
+    }
     case 'select': Hud.selectCrewByCid(action.cid); break;
     case 'terminal': Hud.selectTab('moss'); break; // clicking a console on the map opens MOSS (IX-M1)
     case 'addroom': _onAddRoom(_ctx.frame ? _ctx.frame.deck : 0, action.slot); break;
@@ -964,13 +1000,43 @@ function orderSuppressionToast(tool, hit) {
  * longer classes it (`overview-model.js`), so `overviewClickAction` never returns an `'order'`
  * action for it. A stray call would fall to the empty list — silence, not a wrong message.
  *
- * `on` is always true: this surface paints intent and never erases it. UN-DESIGNATING IS A KNOWN
- * CLIENT GAP — `Cmd.dig(x, y, false)` rides the wire and the TUI sends it (`GameLoop.cs:322`), but
- * no surface in `client/` does, the console included (`docs/HANDOVER.md` §4d limit 1).
+ * `on` is always true HERE, and that is now a statement about THIS FUNCTION rather than about the
+ * client. It paints; `erasePayloads` below un-paints. The sentence this replaces was the gap M1-C
+ * closed: *"this surface paints intent and never erases it. UN-DESIGNATING IS A KNOWN CLIENT GAP —
+ * `Cmd.dig(x, y, false)` rides the wire and the TUI sends it (`GameLoop.cs:322`), but no surface in
+ * `client/` does, the console included."* The console still does not, and never will.
  */
 function orderPayloads(tool, x, y) {
   if (tool === 'dig') return [Cmd.dig(x, y, true)];
   if (tool === 'strip') return [Cmd.strip(x, y, true)];
+  return [];
+}
+
+/**
+ * Lower an ERASE target + tile to its wire payloads (M1-C) — the OFF half of `orderPayloads`, kept
+ * as its own function because its input is not a tool but a TARGET (`room-model.js` `eraseTarget`):
+ * which order this particular tile carries. A null target is an empty list, never a message.
+ *
+ * ⚠️ STOCKPILE OFF IS **ONE** COMMAND, NOT THE PAIR. Painting a zone always sends `Cmd.stockpile`
+ * THEN `Cmd.filter` because a repaint must re-assert the whole truth — but
+ * `DesignateStockpileCommand` with `on:false` clears the accept-filter itself
+ * (`sim/Sim.Core/Commands/Commands.cs:186`), so a trailing `Cmd.filter` here would set a mask on a
+ * tile that is no longer a zone: an orphan in the ZONE hash, which is exactly what the OFF path
+ * exists to avoid. This asymmetry is the single most likely "tidy-up" regression in this file.
+ *
+ * NONE OF THE THREE OFF PATHS HAS A PRECONDITION. `DesignateDigCommand`'s legality check is
+ * `if (_on && …)` (`:152`) and `DeconstructSystem.Cancel` is *"pure forgetting"* — no staged
+ * material, no reservation — so erasing a tile that is not what the client thought it was is a
+ * silent no-op sim-side, never a corruption.
+ *
+ * @param {'dig'|'strip'|'stockpile'|null} target  `eraseTarget` output
+ * @param {number} x @param {number} y
+ * @returns {object[]} 0..1 Cmd payloads
+ */
+function erasePayloads(target, x, y) {
+  if (target === 'dig') return [Cmd.dig(x, y, false)];
+  if (target === 'strip') return [Cmd.strip(x, y, false)];
+  if (target === 'stockpile') return [Cmd.stockpile(x, y, false)];
   return [];
 }
 

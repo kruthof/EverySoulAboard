@@ -296,6 +296,19 @@ test('tool families: build kinds, order kinds and the palette union are disjoint
     assert.equal(isOrderTool(t), true, t + ' is an order tool');
     assert.equal(isPaletteTool(t), true, t + ' lives in the BUILD tab');
   }
+  // M1-C ERASE: a PALETTE tool (so arming it opens the BUILD tab and leaving the tab disarms it) and
+  // NEITHER a build kind NOR an order kind. The `isOrderTool` leg is the boundary one:
+  // `surface-boundary.test.js` reads ORDER_KINDS as a census of what the DEPRECATED CONSOLE can do,
+  // and erase exists only on the standard surface. Classing it an order there would satisfy the
+  // parity guard with a fiction — and would also route it to `Cmd.build`'s sibling lowering.
+  assert.equal(isBuildTool('erase'), false, 'erase must not be a build kind');
+  assert.equal(isOrderTool('erase'), false,
+    'erase joined ORDER_KINDS. That table is the console-parity guard\'s census of the deprecated ' +
+    'shell; erase is not on the console at all.');
+  assert.equal(isPaletteTool('erase'), true,
+    'erase is not a palette tool, so `hud.js` armFromKey/armTool will NOT switch to the BUILD tab — ' +
+    'and the Overview\'s ORDERS bar is hidden off that tab, so [C] would arm a tool with nothing ' +
+    'anywhere on screen saying so.');
   // MOVE is a crew order, not a palette tool — it survives a tab switch (see the exits test).
   for (const t of ['move', null, undefined, 'nonsense']) {
     assert.equal(isBuildTool(t), false);
@@ -318,6 +331,17 @@ test('armedTool: G toggles dig, Z toggles stockpile, V toggles strip, all share 
   assert.equal(nextArmedTool('stockpile', { t: 'keyG' }), 'dig');
   assert.equal(nextArmedTool('move', { t: 'keyG' }), 'dig');
   assert.equal(nextArmedTool('dig', { t: 'keyV' }), 'strip');
+  // M1-C: C toggles erase, through the same one slot. Without this case the event falls to `default`
+  // and the key is INERT — and `hud.js`'s KEY_EVENT default is `'keyB'`, so the realistic half-done
+  // version of this change arms WALL instead (pinned separately, driven, in overview-model.test.js).
+  assert.equal(nextArmedTool(null, { t: 'keyC' }), 'erase');
+  assert.equal(nextArmedTool('erase', { t: 'keyC' }), null);
+  assert.equal(nextArmedTool('wall', { t: 'keyC' }), 'erase');
+  assert.equal(nextArmedTool('erase', { t: 'keyG' }), 'dig');
+  // …and erase leaves the BUILD tab like the rest of the palette (it is `isPaletteTool`).
+  assert.equal(nextArmedTool('erase', { t: 'tab', tab: 'crew' }), null);
+  assert.equal(nextArmedTool('erase', { t: 'tab', tab: 'build' }), 'erase');
+  assert.equal(nextArmedTool('erase', { t: 'escape' }), null);
   assert.equal(nextArmedTool('strip', { t: 'keyG' }), 'dig');
   // B/X are unchanged by the new family: an armed order tool is not a build tool, so B arms wall,
   // and V never collides with the CANCEL key (X) it deliberately avoids.
