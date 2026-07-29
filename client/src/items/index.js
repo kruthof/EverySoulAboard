@@ -215,9 +215,17 @@ export const ITEMS = Object.freeze({
   // about. A load-bearing-sounding constraint on a file other lanes edit is worse than none.
   //
   // ⇒ WHAT ACTUALLY PROTECTS THE JOIN is the ledger test in `client/test/wrecked.test.js`
-  // (`itemsWithoutWreckedTwin()` deep-equals `Object.keys(NO_WRECKED_TWIN)`). Measured the same way:
-  // an UNLEDGERED row inserted mid-list reddens **12** tests. So the rule to follow is *"a registry
-  // row either has a twin or is in the ledger"*, and the position is free.
+  // (`itemsWithoutWreckedTwin()` deep-equals `Object.keys(NO_WRECKED_TWIN)`). So the rule to follow
+  // is *"a registry row either has a twin or is in the ledger"*, and the position is free.
+  //
+  // ⚠️ AND THE NUMBER THAT USED TO BE HERE OVERSTATED IT. It read *"an UNLEDGERED row inserted
+  // mid-list reddens **12** tests"*, which is true and misleading: **only three or four of those
+  // twelve are about the LEDGER** (`the ledger is exactly the rows with no twin`, `every registry row
+  // has exactly one wrecked twin`, `hasWreckedTwin follows the registry`, and the positional label
+  // walk). The other eight fire on ANY registry growth — the size census, the class tally, the
+  // mapping doc's Tally, the painter-name floor — and the probe row also duplicated glyph `'w'`, so
+  // the glyph-collision guard fired for a third reason again. Re-counted by attribution rather than
+  // by total, which is this repo's *re-count, never compute* applied to a number I published myself.
   //
   // Last is still the right place for it, for the ordinary reason: every row above comes from
   // `docs/design/perilune-item-set.dc.html` in the mock's own order, and keeping that prefix

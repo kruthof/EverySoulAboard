@@ -148,6 +148,42 @@ namespace Perilune.Tests
             return null;
         }
 
+        /// <summary>
+        /// THE LAST device <c>BuildDevices</c> will emit — scanned BACKWARDS through store order for
+        /// the last non-overlay, because every entry after it is skipped by the overlay filter and so
+        /// contributes no row. On <c>--ship grid</c> that filter drops 1 104 of 1 250 devices, so
+        /// "the last item in the store" and "the last row on the wire" are very different things and
+        /// taking the first would silently probe the middle of the list.
+        ///
+        /// ⚠️ IT IS ALSO THE MOST RECENTLY PLACED MACHINE, which is what makes the bound this helper
+        /// exists to close matter in play rather than in principle: <c>Simulation.AddDevice</c>
+        /// APPENDS, so the last row is whatever the player just built — the one machine they are
+        /// actually watching.
+        /// </summary>
+        private static Device LastTileResidentDevice(Simulation sim)
+        {
+            var items = sim.Devices.Items;
+            for (int i = items.Count - 1; i >= 0; i--)
+                if (!Simulation.IsUtilityOverlay(items[i].Kind)) return items[i];
+            Assert.Fail("no tile-resident device on this ship — this test would be vacuous");
+            return null;
+        }
+
+        /// <summary>The FINAL tuple of a payload, positionally. Used only as a non-vacuity control:
+        /// a test that means to move "the last row" has to prove it moved the last row.</summary>
+        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper) LastTuple(string json)
+        {
+            int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
+            Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
+            var parts = json.Substring(open).Split('[').Skip(2).ToList();
+            Assert.That(parts.Count, Is.GreaterThan(0), "the payload carries no tuples at all");
+            var f = parts[parts.Count - 1].Split(']')[0].Split(',');
+            Assert.AreEqual(6, f.Length, "a devices tuple is six elements");
+            return (int.Parse(f[0], CultureInfo.InvariantCulture), int.Parse(f[1], CultureInfo.InvariantCulture),
+                    int.Parse(f[2], CultureInfo.InvariantCulture), int.Parse(f[3], CultureInfo.InvariantCulture),
+                    int.Parse(f[4], CultureInfo.InvariantCulture), int.Parse(f[5], CultureInfo.InvariantCulture));
+        }
+
         // ═══════════════════════════════════════════ 1. THE KEY, FIELD BY FIELD (inclusion, not count)
 
         /// <summary>
@@ -375,6 +411,77 @@ namespace Perilune.Tests
                 "…and it must actually reach the socket, not merely be rebuilt");
         }
 
+        /// <summary>
+        /// ⭐ THE SECOND SEND-BACK'S TEST — R1 ON THE OTHER AXIS. R1 closed WHICH FIELDS the cache key
+        /// reads; this closes WHICH ROWS it reads them from. The two are independent, and fixing the
+        /// first left the second wide open:
+        ///
+        /// <code>for (int i = 0; i &lt; cells.Count - 1; i++)</code>
+        ///
+        /// — the gate never inspects the LAST row. Filtered <c>~Devices</c> green, full
+        /// <c>dotnet test</c> exit 0, verified on this tree before this test existed.
+        ///
+        /// ⚠️ IT IS REACHABLE ON A WORSE TARGET THAN THE CASE R1 FIXED. <c>BuildDevices</c> walks
+        /// <c>sim.Devices.Items</c> in store order and <see cref="Simulation.AddDevice"/> APPENDS, so
+        /// the last emitted row is always the MOST RECENTLY PLACED machine. Build a Fabricator: the
+        /// count moves, the payload is re-serialized, the cache is updated. It then wears: the count
+        /// is unchanged and only the last row's <c>Cond</c> moves, so a <c>Count - 1</c> bound skips —
+        /// and that machine's wear NEVER reaches the client again, because nothing re-broadcasts a
+        /// state channel that never changes. The newest machine is the one the player is watching.
+        ///
+        /// ⚠️ WHY NOTHING SAW IT, which is the part worth keeping: every driven leg in this file moved
+        /// <see cref="FirstTileResidentDevice"/> — the flip test's legs 2 and 3, the equivalence
+        /// test's four wear steps and its fog step, and the swap test's <c>doomed</c>. The swap
+        /// removes at the FRONT and appends, so rows before the last shift and a <c>Count - 1</c> walk
+        /// still catches it; <see cref="A_Device_Added_Or_Removed_Is_Not_A_Skip"/> moves the count and
+        /// is caught by the <c>Count</c> guard. That guard is precisely what makes a <c>min(count)</c>
+        /// PREFIX walk visible and a <c>Count - 1</c> walk AT EQUAL LENGTH invisible — and
+        /// <c>A_Device_Added_Or_Removed</c>'s own failure message already reasons about "a comparison
+        /// that only walks the shared prefix", which is the near-miss.
+        ///
+        /// ⇒ With the first row covered by the flip test and the last row covered here, the bound is
+        /// closed at BOTH ends.
+        /// </summary>
+        [Test]
+        public void The_LAST_Row_Is_Inspected_Too_So_The_Index_Bound_Is_Closed_At_Both_Ends()
+        {
+            var (gs, host, _) = Boot(ShipChoice.Grid);
+            var sim = host.Sim;
+            gs.RenderForTest();
+            int before = gs.DevicesSerializedForTest;
+            string cached = CachedDevices(gs);
+            int rows = RowCount(cached);
+            Assert.That(rows, Is.GreaterThan(1), "a one-row payload cannot distinguish first from last");
+
+            var last = LastTileResidentDevice(sim);
+
+            // NON-VACUITY, AND IT IS THE WHOLE POINT OF THE TEST. "The last device in the store" is
+            // not "the last row on the wire" — the overlay filter drops 1 104 of grid's 1 250 — so if
+            // this assertion is ever removed the test silently degrades into another first/middle-row
+            // probe, which is the exact thing that let the bound survive.
+            var tail = LastTuple(cached);
+            Assert.AreEqual((last.Pos.X, last.Pos.Y, last.Pos.Z), (tail.X, tail.Y, tail.Deck),
+                "the device this test is about is not the FINAL tuple of the payload, so moving it " +
+                "would not exercise the index bound at all. Re-derive `LastTileResidentDevice` " +
+                "against whatever `BuildDevices` now skips.");
+
+            last.Condition = 0.10f;
+            gs.RenderUnforcedForTest();
+
+            // CONTROL FIRST: the census must not move, or the `Count` guard alone denies the skip and
+            // this test says nothing about the loop's upper bound.
+            Assert.AreEqual(rows, RowCount(CachedDevices(gs)),
+                "the row count moved, so the Count guard would have caught this regardless — the " +
+                "fixture is not exercising the bound");
+
+            Assert.That(gs.DevicesSerializedForTest, Is.EqualTo(before + 1),
+                "THE LAST ROW'S CONDITION MOVED AND THE GATE SKIPPED THE RENDER. The comparison loop " +
+                "is not walking the whole list. `AddDevice` appends, so the last row is the machine " +
+                "the player just built — its wear would never reach the client again, and nothing " +
+                "re-broadcasts a state channel that never changes.");
+            Assert.AreNotEqual(cached, CachedDevices(gs), "…and the payload really did differ");
+        }
+
         // ═══════════════════════════════ 2b. THE CROSS-LANGUAGE SEAM (the `cond` ENCODING)
 
         /// <summary>
@@ -398,8 +505,27 @@ namespace Perilune.Tests
         /// encoder is the host's own, and BOTH the client's threshold and its derivation are PARSED
         /// OUT OF <c>client/src/items/wear.js</c>. The literal <c>64</c> appears nowhere in this test.
         ///
-        /// MUTATIONS: rescale <c>ConditionByte</c> to 0..100, or round down instead of half-up, or
-        /// change <c>wear.js</c>'s <c>* 255</c> ⇒ this fails and names the disagreement.
+        /// ⚠️ THE MUTATION THAT PROVES THIS TEST EARNS ITS PLACE IS **NOT** THE OBVIOUS ONE, and the
+        /// first write-up of this test claimed the wrong evidence for it. Rescaling
+        /// <c>ConditionByte</c> to 0..100, or rounding down instead of half-up, DOES redden here —
+        /// but it also reddens <c>DevicesChannelTests</c>'s shadow-equivalence loop, which is a
+        /// verbatim copy of the shipped method and therefore fires on ANY arithmetic change. On that
+        /// evidence alone a future reader could delete this test as redundant, and they would be
+        /// deleting the only thing standing between the client and a silent detachment.
+        ///
+        /// ⇒ THE DECISIVE CASE, built by independent review and recorded here so it is not lost —
+        /// <b>C13, a PIECEWISE encoder</b>:
+        /// <code>if (condition &gt; 0.24f &amp;&amp; condition &lt; 0.26f) return 63;</code>
+        /// It preserves EVERY pre-existing pin — the five explicit values, all fifteen
+        /// shadow-equivalence probes, the 0..100 monotonicity sweep — while moving the byte at
+        /// exactly the wreck floor. <b>Measured: RED on this test and on nothing else in the suite.</b>
+        /// A general-purpose encoder test cannot see a hole cut at one specific value; only a test
+        /// that asks about THAT value can.
+        ///
+        /// OTHER MUTATIONS, all RED here: rescale <c>ConditionByte</c> to 0..100 · round down instead
+        /// of half-up · change <c>wear.js</c>'s <c>* 255</c> to <c>* 100</c> (that last one is RED on
+        /// this test alone <i>within the C# suite</i> — it also reddens node's own derivation scan in
+        /// <c>wear-join.test.js</c>, which is the other side of the same seam, not a second copy).
         /// </summary>
         [Test]
         public void The_Wreck_Floor_Quantises_To_The_Byte_The_Client_Compares()

@@ -57,9 +57,14 @@ import { codeOnly } from './code-only.js';
 // there too.
 //
 // ⇒ WHAT KEEPS THE TWO DEFINITIONS OF "MOCK ROW" FROM DRIFTING is `the ledger is exactly the rows
-// with no twin` below — an ORDERED `deepEqual` both ways, so an UNLEDGERED row cannot slip in
-// (measured: 12 tests red) and a stale ledger entry cannot linger. The position is free; the ledger
-// is not.
+// with no twin` below — a `deepEqual` both ways, so an UNLEDGERED row cannot slip in and a stale
+// ledger entry cannot linger. The position is free; the ledger is not.
+//
+// ⚠️ THE PARENTHESIS HERE READ "(measured: 12 tests red)" AND THAT OVERSTATED THE LEDGER'S SHARE.
+// Twelve go red, but **three or four are about the ledger** — this test, `every registry row has
+// exactly one wrecked twin`, `hasWreckedTwin follows the registry`, and the positional label walk.
+// The rest are size-census, class-tally, mapping-doc and painter-name guards that fire on ANY
+// registry growth, and the probe row duplicated a glyph as well. A red count is not an attribution.
 const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
