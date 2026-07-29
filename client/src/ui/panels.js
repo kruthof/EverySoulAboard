@@ -1,9 +1,19 @@
 // Panel framework — the floating UI shells that sit over the canvas: the dialogue window, the
 // citizen card, and the MOSS terminal drawer. DOM-ONLY: this owns element creation, open/close, and
 // z-order focus; all the CONTENT logic is pure and lives elsewhere (chat.js reassembles transcripts,
-// portraits.js resolves faces, terminal-model.js runs the IDE state machine). Browser-only — never
-// imported by the node tests. Nothing here touches the sim or the wire directly (callbacks only:
-// onSend→say, onBye→bye, onMoss→moss open/set/audit).
+// portraits.js resolves faces, terminal-model.js runs the IDE state machine). Nothing here touches
+// the sim or the wire directly (callbacks only: onSend→say, onBye→bye, onMoss→moss open/set/audit).
+//
+// ⚠️ THIS HEADER READ "Browser-only — never imported by the node tests" UNTIL M1-F (2026-07-29), AND
+// THAT SENTENCE IS NOW FALSE. `client/test/dossier-honesty.test.js` imports this module and renders
+// the crew DOSSIER against `client/test/dom-lite.js` — a source scan cannot tell a REMOVED meter
+// from a RENAMED one, so the guard has to drive the real card. So: DOM-heavy, not browser-only. The
+// APIs you may call here are the ones `dom-lite.js` models; reach past them (layout, computed
+// styles, real markup parsing, measurement) and you will redden `dossier-honesty.test.js` with a
+// failure that looks nothing like its cause. The fix in that case is to extend `dom-lite.js`, which
+// is what M1-F did for `firstChild` and `append`. Live-pixel obligations are still proven in Chrome
+// and never here. (Corrected in the same commit as the REAL/SAMPLE ledger 215 lines below, which
+// went stale the same way: a header that lies about its own module is how the next lane gets hurt.)
 
 import { portraitElement, resolvePortrait } from './portraits.js';
 import { Panel, el } from './panel-base.js';

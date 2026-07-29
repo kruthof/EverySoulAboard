@@ -35,12 +35,21 @@ import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js'
 import { pawnChip } from '../render/pawn-svg.js';
 import {
   // ⚠️ `moraleColor` IS DELIBERATELY NOT IMPORTED HERE (M1-F). This surface used to tint a CREW
-  // WATCH bar with it. NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale`: grep the whole tree and
-  // the field has exactly four references — its `= 1f` initialiser (`Entities/Citizen.cs:34`), the
-  // hash fold (`Simulation.cs:420`), the save write (`SaveWriter.cs:265`) and the save read
-  // (`SaveReader.cs:268`, which restores the 1f that was written). So the bar was a constant painted
-  // to look like a reading. `moraleColor` still exists in `console-model.js` for the deprecated
-  // console shell, which keeps drawing it until the shell dies at M4-8/WP-9.
+  // WATCH bar with it. NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale`, and that scope is the
+  // whole claim: **inside `sim/` the field has exactly four references** — its `= 1f` initialiser
+  // (`Entities/Citizen.cs:34`), the hash fold (`Simulation.cs:420`), the save write
+  // (`SaveWriter.cs:265`) and the save read (`SaveReader.cs:268`, restoring the 1f that was
+  // written). Not one of them is a simulation writing a value it computed. Outside `sim/` there are
+  // FOUR more, none of which move it either: **1 in `hosts/`** — `GameSession.cs:1705`, which copies
+  // it onto the roster wire and is how it reaches this file at all — and **3 in `tests/`** —
+  // `StateHashHonestyTests.cs:176,234,645`, which assign it to prove it is HASHED (`:234` is
+  // `Case("Citizen.Morale", …)`, the equivalence case that is this package's evidence for NOT
+  // deleting the field: moving it is a determinism pin move). **EIGHT in total: 4 + 1 + 3.**
+  // ⚠️ `hosts/web/WireFormat.cs:272` is deliberately NOT in that count — it serialises
+  // `RosterEntry.Morale`, the DTO copy, which is a DIFFERENT field. Named here so a reader can tell
+  // "excluded on purpose" from "missed", which is the whole reason this paragraph keeps being
+  // rewritten. So the bar was a constant painted to look like a reading. `moraleColor` still exists
+  // in `console-model.js` for the deprecated console shell, until it dies at M4-8/WP-9.
   clockHHMM, cautionState, surnameOf, speedLabel, logLineParts, logTail,
   selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';

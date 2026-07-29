@@ -1564,9 +1564,15 @@ test('the LEDGER island builds one row slot per MODEL row, not a hard-coded coun
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 // M1-F — THE CREW WATCH ROW DRAWS NO MORALE BAR, and the bar's absence is the feature.
 //
-// NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale` — grepped, not inherited: the field's only four
-// references are its `= 1f` initialiser (`Entities/Citizen.cs:34`), the hash fold, the save write
-// and the save read that restores that same 1f. The roster wire carries it, the CREW WATCH used to paint it as a
+// NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale` — grepped, not inherited. ⚠️ MIND THE SCOPE:
+// `sim/` holds exactly four references (the `= 1f` initialiser at `Entities/Citizen.cs:34`, the hash
+// fold, the save write, the save read that restores that same 1f) and there are FOUR MORE outside
+// it, none of which move it either — ONE in `hosts/` (`GameSession.cs:1705`, the copy onto the
+// roster wire) and THREE in `tests/` (`StateHashHonestyTests.cs:176,234,645`, proving it is hashed).
+// EIGHT in total: 4 + 1 + 3. `hosts/web/WireFormat.cs:272` is NOT among them — it serialises
+// `RosterEntry.Morale`, the DTO copy, a different field. `dossier-honesty.test.js`'s header carries
+// the full census, the three ways this sentence has already been wrong, and why the quantifier
+// matters. The roster wire carries it, the CREW WATCH used to paint it as a
 // width-and-colour bar, and the player read a CONSTANT as a reading — on the first screen of the
 // game. ⚠️ NOT `ShipMetricsSnapshot.Morale`, which is real, computed from mean crew Mood, and
 // load-bearing in `DirectorSystem`. Different field, same word; do not unify them.
@@ -1596,8 +1602,21 @@ function ovRoster(crew) { Hud.renderRoster({ type: 'roster', crew }); }
 const M1F_CREW = FIX.roster.crew.slice(0, 2).map((e) => ({ ...e }));
 
 // ⚠️ The roster is a MODULE-LEVEL cache shared with every other leg in this file, and `renderRoster`
-// also repaints the console dock and the work marks. Clear it after each M1-F leg so nothing below
-// (or in a later file sharing the import) inherits a hand-built roster.
+// also repaints the console dock and the work marks. Clear it so no other leg inherits a hand-built
+// roster.
+//
+// ⚠️ TWO CORRECTIONS TO THE FIRST DRAFT OF THIS COMMENT, both measured (M1-F review, 2026-07-29):
+//   1. This is NOT scoped to the M1-F legs. `afterEach` at module top level is FILE-WIDE in
+//      `node:test` and runs after every test in this file, including the ~150 declared ABOVE it —
+//      declaration order does not scope it. Measured inert (1004/1004 with it in place, and the
+//      legs above pass identically), because every one of them either dispatches its own roster or
+//      never reads one. Stated rather than narrowed: a reader must not believe it is local.
+//   2. "or in a later file sharing the import" WAS FALSE and is deleted. `node --test` runs each
+//      test FILE IN ITS OWN PROCESS — measured directly: two files print different `process.pid`
+//      and a global set in the first reads `undefined` in the second. No module state crosses a
+//      file boundary, so no cleanup here can protect one. ⚠️ The `Hud.renderMarks(null)` afterEach
+//      at :796 carries the SAME false clause, from an earlier package; it is left for its owner
+//      rather than silently rewritten here, but it is equally wrong and equally harmless.
 afterEach(() => { if (typeof Hud !== 'undefined') Hud.renderRoster({ type: 'roster', crew: [] }); });
 
 /**

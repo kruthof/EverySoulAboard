@@ -20,7 +20,11 @@
 //
 // WHY SOURCE SCANNING, and what it cannot see. There is no DOM here (`client/test/ui.test.js:2-3`:
 // "the panels.js / hud.js DOM shells are exercised in the browser, not here"), so the shell itself
-// cannot be driven. Text scanning is the mechanism available, and it is house style in this suite
+// cannot be driven. (⚠️ M1-F, 2026-07-29, qualified the HALF of that quote this file does not use:
+// `dossier-honesty.test.js` now drives `panels.js`'s crew DOSSIER in node against `dom-lite.js`.
+// The argument here is untouched — this file scans `hud.js` and `index.html`, and the `.app` shell
+// remains undrivable in node. Recorded so the citation above does not read as false later.)
+// Text scanning is the mechanism available, and it is house style in this suite
 // already: `input.test.js:205-219` counts occurrences in `controls.js`/`main.js`, `palette.test.js:21`
 // parses `sim/Sim.Glyph/GlyphColor.cs`, `stock-filter-model.test.js:23,130` parses two C# files.
 // The honest limits:

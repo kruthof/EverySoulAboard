@@ -1,10 +1,27 @@
 // M1-F — THE CREW DOSSIER DRAWS NO MORALE METER, and its own REAL/SAMPLE ledger says so.
 //
-// NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale`. Verified by grep across the whole tree rather
-// than inherited from the charter: the field has exactly four references — its `= 1f` initialiser
-// (`Entities/Citizen.cs:34`), the hash fold (`Simulation.cs:420`), the save write
-// (`SaveWriter.cs:265`) and the save read (`SaveReader.cs:268`, restoring the 1f that was
-// written). The precise claim is therefore "no system moves it", not "it is never assigned". The roster wire
+// NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale`. Verified by grep rather than inherited from
+// the charter — and the SCOPE of that sentence is load-bearing, because two earlier drafts of it
+// were refuted by references it did not count:
+//   · in `sim/`, EXACTLY FOUR: the `= 1f` initialiser (`Entities/Citizen.cs:34`), the hash fold
+//     (`Simulation.cs:420`), the save write (`SaveWriter.cs:265`), the save read
+//     (`SaveReader.cs:268`, restoring that same 1f). None is a system computing a value.
+//   · outside `sim/`, FOUR MORE, none of which move it either — ONE in `hosts/`:
+//     `hosts/web/GameSession.cs:1705`, which copies it onto the roster wire (this is why the client
+//     sees it at all); and THREE in `tests/`: `StateHashHonestyTests.cs:176,234,645`, which assign
+//     it to prove it is HASHED — `:234` being `Case("Citizen.Morale", …)`, the equivalence case that
+//     is the actual evidence for this package's decision NOT to delete the field (deleting it is a
+//     determinism pin move).
+// EIGHT in total: 4 + 1 + 3, zero of them a system.
+// ⚠️ `hosts/web/WireFormat.cs:272` is NOT one of the eight and its exclusion is deliberate: it
+//    serialises `RosterEntry.Morale`, the DTO copy — a different field with the same word, exactly
+//    like `ShipMetricsSnapshot.Morale` below. Named so a reader can tell "excluded" from "missed".
+// ⚠️ THIS PARAGRAPH HAS NOW BEEN WRONG THREE TIMES, each time in its QUANTIFIER and never in its
+//    substance: "never written outside its initialiser" (refuted by `SaveReader.cs:268`), "exactly
+//    four references" (refuted by the four outside `sim/`), and a draft of THIS list that folded
+//    `WireFormat.cs:272` in and made 8 read as 9. The load-bearing claim is the narrow one — **no
+//    system moves it** — and it has been true throughout. If you are tempted to restate the census,
+//    re-measure it; do not copy this list. The roster wire
 // carries the number, `hud.enrichCitizen` joins it onto the `citizen` payload, and the dossier used
 // to paint it as a `MORALE 100%` meter directly under the crew member's name. A constant wearing a
 // gauge's clothes, on the game's first-class character screen.
@@ -22,9 +39,12 @@
 // `append`); both are real DOM APIs the card genuinely calls, and the reason is `CLAUDE.md` trap 4's
 // corollary — if the harness cannot model what the guard needs to see, fix the harness.
 //
-// ⚠️ WHAT THIS RIG STILL CANNOT SEE, stated rather than implied: `dom-lite` computes no styles and
-// lays nothing out, so "the identity band does not leave a gap where the meter was" is a LIVE-PIXEL
-// question and is answered in Chrome, not here.
+// ⚠️ WHAT THIS RIG CANNOT SEE, stated rather than implied: `dom-lite` computes no styles and lays
+// nothing out, so "the identity band does not leave a gap where the meter was" is a LIVE-PIXEL
+// question that must be answered in Chrome. ✅ IT WAS, in M1-F's independent review: the band
+// measures 49 px = 20 (name) + 15 (role) + 0 (chips) + 14 px of ordinary flex gaps — the meter's row
+// is gone, not hidden, and nothing reserves its height. Recorded here because the next person to
+// read this paragraph should not re-open a question that has an answer.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

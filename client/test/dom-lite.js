@@ -36,7 +36,15 @@ class Node {
    *  all. `CitizenCard.render` does `head.appendChild(el('div','dsr-portrait')); head.firstChild
    *  .appendChild(portrait)`, and without this getter the whole card died on `Cannot read properties
    *  of undefined (reading 'appendChild')`. Same rule as `removeAttribute` below: if the harness
-   *  cannot model what the guard needs to see, fix the harness (CLAUDE.md trap 4's corollary). */
+   *  cannot model what the guard needs to see, fix the harness (CLAUDE.md trap 4's corollary).
+   *
+   *  ⚠️ IT IS ALSO A FIDELITY FIX WITH REACH BEYOND ITS PACKAGE, recorded because a silent one is
+   *  the thing this file's other comments were written about. `hud.js:731,733,770,772` each read
+   *  `if (layer.firstChild) layer.replaceChildren();`. With no getter, `firstChild` was `undefined`
+   *  on EVERY element, so all four clears were unreachable in node — always-falsy branches that a
+   *  mutation could not have reddened. They can now run. Measured inert on this tree (the full node
+   *  suite is green before and after), but "inert today" is a fact about a tree: a future guard that
+   *  drives those paths will now see the real behaviour instead of a stub's accident. */
   get firstChild() { return this.childNodes[0] || null; }
 }
 
