@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // ⚠️ EVERY SENTENCE ON THIS CARD IS A CLAIM ABOUT CODE SOMEBODY ELSE OWNS. CHECK IT, DON'T GUESS.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// The card shipped from 2026-07-something until 2026-07-28 saying `['B', 'open their dossier']`.
+// The card shipped from `d5d574b` (2026-07-23) saying `['B', 'open their dossier']`.
 // `B` has never done that: `client/src/input/controls.js:257` arms the BUILD tool, and
 // `Hud.openBioForSelected` has NO keyboard binding anywhere. The Overview's own READOUT button is
 // labelled `[T] OPEN CHANNEL`, `[M] MOVE`, `[B] BIO` — the `[B]` in THAT label is the same lie, and
