@@ -48,8 +48,13 @@ this heading in mind.
   rule: `oper` rides the wire precisely because the failure threshold is per-kind. "Which picture" is
   a uniform question about paintings, and if `wear.def` moves the floor the art follows one edit
   later — a machine simply keeps its clean picture a little past the cliff in the meantime.
-- ⛔ **The byte quantisation moves the visible cliff by ≈0.0025 of a machine's life** below the def
-  (half-up rounding of a 256-state byte). Under one byte, stated rather than hidden.
+- ⛔ **The byte quantisation moves the visible cliff by 0.00098 of a machine's life — 0.098 %** below
+  the def (half-up rounding of a 256-state byte). `cond < 64` is exactly `Condition < 63.5/255 =
+  0.2490196` against the sim's `< 0.25`, so the two disagree on `[0.249020, 0.25)` and the client is
+  LATE there — a machine in that sliver is below the floor and still wearing its clean picture.
+  ⚠️ **An earlier version of this bullet said ≈0.0025 and it was wrong by a whole byte**, because it
+  measured the gap between two byte *values* instead of byte 64's *pre-image* under half-up rounding.
+  Corrected, and now pinned exactly by `client/test/wear-join.test.js` rather than published loose.
 - ⛔ **`swarf` has NO wrecked twin** and never will draw one — it *is* the wrecked state. Ledgered by
   name as `NO_WRECKED_TWIN` in `client/src/items/wrecked.js`.
 - One run, one seed, one machine. They claim the ship RENDERS. **The owner judges the art.**

@@ -90,22 +90,47 @@ test('the wire byte is DERIVED from the threshold, and its rounding is stated ho
     .includes('WRECK_COND_BYTE'),
     'a quoted block-comment opener blinded codeOnly, or the REAL later comment survived it');
 
-  // `WireFormat.ConditionByte` is `(int)(c * 255 + 0.5)` for 0 < c < 1, half-up. Mirrored here to
-  // measure the quantisation gap rather than to assert an opinion about it.
-  const condByte = (c) => (c <= 0 ? 0 : c >= 1 ? 255 : Math.trunc(c * 255 + 0.5));
-  assert.equal(condByte(WRECK_THRESHOLD), WRECK_COND_BYTE,
-    'a device sitting exactly AT the threshold must not be drawn wrecked: the def says "below"');
-  // The real boundary in condition space, measured by bisection on the host's own rounding.
-  let lo = 0, hi = WRECK_THRESHOLD;
-  for (let i = 0; i < 60; i += 1) {
-    const mid = (lo + hi) / 2;
-    if (condByte(mid) < WRECK_COND_BYTE) lo = mid; else hi = mid;
+  // ⛔ WHAT STOOD HERE WAS JS-AGAINST-JS AND PROVED NOTHING ABOUT THE HOST. It defined
+  // `const condByte = (c) => Math.trunc(c*255 + 0.5)` marked "Mirrored here", then asserted
+  // `condByte(WRECK_THRESHOLD) === WRECK_COND_BYTE` — both sides a JS restatement of the same
+  // arithmetic, with `WireFormat.ConditionByte` nowhere in the loop. That is the SEVENTH trap's
+  // self-derivation shape, and it is the more embarrassing for sitting next to a threshold check
+  // that goes to real trouble to read `wear.def` off disk. **The cross-language half now lives in
+  // `tests/Perilune.Tests/DevicesDeltaTests.The_Wreck_Floor_Quantises_To_The_Byte_The_Client_Compares`,
+  // which runs the DEF value through the HOST'S OWN `ConditionByte` and through THIS FILE'S OWN
+  // derivation, parsed out of `wear.js`.** Change the encoding and that reddens; nothing here can.
+  //
+  // What is left here is the half a JS test CAN own honestly: the exact arithmetic consequences of
+  // the encoding as it stands, published as numbers instead of as adjectives — because the previous
+  // adjectives ("roughly", "about 0.2 %") were WRONG BY A WHOLE BYTE and nothing pinned them.
+  const LO = 63.5 / 255;                 // the exact pre-image floor of byte 64 under half-up
+  assert.equal(WRECK_COND_BYTE, 64, 'the wreck floor no longer quantises to byte 64');
+  assert.ok(Math.abs(LO - 0.2490196078) < 1e-9, 'arithmetic control: 63.5/255');
+  // `cond < 64` is exactly `Condition < 63.5/255`. Asserted as a MEMBERSHIP TABLE either side of the
+  // real boundary — a bisection would agree with any monotone predicate, including a wrong one.
+  for (const [c, wrecked, why] of [
+    [0.2400, true, 'well below'],
+    [0.2480, true, 'the value the OLD comment said was drawn intact — it is drawn WRECKED'],
+    [0.2490, true, 'one ulp-ish below the real cliff'],
+    [0.2491, false, 'just above the real cliff — 63.5/255, not 63/255'],
+    [0.2500, false, 'AT the def: the def says "below", so this is intact'],
+    [0.2529, false, 'still inside byte 64'],
+    [0.2530, false, 'byte 65'],
+  ]) {
+    // Reproduce the HOST's encoder shape locally ONLY to name the byte in the message; the assertion
+    // itself is about `isWreckedCond`, the shipped predicate.
+    const byte = c <= 0 ? 0 : c >= 1 ? 255 : Math.trunc(c * 255 + 0.5);
+    assert.equal(isWreckedCond(byte), wrecked,
+      `Condition ${c} (byte ${byte}) — ${why}. Expected wrecked=${wrecked}.`);
   }
-  const gap = WRECK_THRESHOLD - hi;
-  assert.ok(gap >= 0 && gap < 0.004,
-    `the byte quantisation moves the visual cliff by ${gap} of a machine's life. Under one byte\n`
-    + '(≈0.004) is the price of putting a byte on the wire instead of a float and is accepted; more\n'
-    + 'than that means the encoding changed and the art is now visibly out of step with the rule.');
+  // THE DISAGREEMENT BAND with the sim, as a number rather than as "under one byte": the client is
+  // LATE on exactly [63.5/255, 0.25), width 0.00098 = 0.098 % of a machine's life.
+  const band = WRECK_THRESHOLD - LO;
+  assert.ok(Math.abs(band - 0.0009803922) < 1e-9,
+    `the client/sim disagreement band is ${band}, not 0.00098. Either the threshold moved or the\n`
+    + 'encoding did. It is published in `wear.js` and in docs/design/shots/README.md; correct all\n'
+    + 'three together, and do NOT compute the band from the gap between two byte values — that is\n'
+    + 'the mistake this assertion exists to stop repeating.');
 });
 
 test('the threshold sits INSIDE the band the paintings actually depict', () => {

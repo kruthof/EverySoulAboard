@@ -48,9 +48,18 @@ import { codeOnly } from './code-only.js';
 //
 // ⚠️ DERIVED, NOT A SECOND LIST. Writing the 70 ids out here would be a transcription of `ITEMS`
 // that could fall out of step with it silently — the exact defect `glyph-map.js` exists to remove.
-// A ledgered row appended anywhere but the END would still break the positional join, and the
-// registry says so beside the row rather than here; `the ledger is exactly the rows with no twin`
-// below is what keeps the two definitions of "mock row" from drifting apart.
+//
+// ⛔ THE NEXT SENTENCE USED TO READ *"a ledgered row appended anywhere but the END would still break
+// the positional join"*. **THAT IS FALSE and mutation proves it**: `filter` removes a ledgered row
+// from wherever it sits, so this list is the mock's 70 in the mock's order no matter where `swarf`
+// lives — moving it mid-registry leaves the whole suite green (85 pass / 0 fail over the four files
+// that could see it). The registry carried the same wrong claim beside the row and it is corrected
+// there too.
+//
+// ⇒ WHAT KEEPS THE TWO DEFINITIONS OF "MOCK ROW" FROM DRIFTING is `the ledger is exactly the rows
+// with no twin` below — an ORDERED `deepEqual` both ways, so an UNLEDGERED row cannot slip in
+// (measured: 12 tests red) and a stale ledger entry cannot linger. The position is free; the ledger
+// is not.
 const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -176,7 +185,13 @@ test('every registry row has exactly one wrecked twin, and no twin is an orphan'
 // one). The size is pinned separately below because a swap of one omission for another leaves both
 // lists the same length.
 test('the ledger is exactly the rows with no twin, and its reasons are real prose', () => {
-  assert.deepEqual(itemsWithoutWreckedTwin(), Object.keys(NO_WRECKED_TWIN),
+  // ⚠️ SORTED, DELIBERATELY, AND THAT IS THE OPPOSITE CALL FROM `WRECKED_IDS` vs `MOCK_IDS` ABOVE.
+  // There the ORDER carries meaning — it is the mock's own order — so the comparison is unsorted on
+  // purpose. Here the two sides are ordered by unrelated accidents (`ITEM_IDS` order on the left,
+  // object INSERTION order on the right), so an unsorted `deepEqual` is inert at one entry and can
+  // go red spuriously at two, for a difference that means nothing. What is being asserted is SET
+  // equality both ways: no unledgered omission, no stale ledger entry.
+  assert.deepEqual([...itemsWithoutWreckedTwin()].sort(), Object.keys(NO_WRECKED_TWIN).sort(),
     'a registry row has no wrecked twin and no NO_WRECKED_TWIN entry (or the ledger names a row\n'
     + 'that has one). A missing twin is a decision — write it in the ledger with its reason.');
   // NON-VACUITY: the ledger must not be trivially satisfiable by an empty reason.

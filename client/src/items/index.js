@@ -204,11 +204,24 @@ export const ITEMS = Object.freeze({
   'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', 'k') },
 
   // ── SALVAGE (1) — REPO-AUTHORED, NOT FROM THE MOCK ──
-  // ⚠️ THIS ROW IS LAST FOR A REASON THAT IS NOT TIDINESS. Every row above it comes from
-  // `docs/design/perilune-item-set.dc.html` in the mock's own order, and `client/test/wrecked.test.js`
-  // walks that order POSITIONALLY — `mockPristineLabels()[i]` is asserted to be `ITEM_IDS[i]`'s label.
-  // Inserting a non-mock row anywhere but the end shifts every row after it onto the wrong label and
-  // the failure would read as a mislabelled twin rather than as a misplaced insertion.
+  // ⛔ THIS ROW IS LAST BY CONVENTION, NOT BY CONSTRAINT — and the sentence that used to stand here
+  // claimed the opposite, so it is quoted rather than deleted. It read: *"THIS ROW IS LAST FOR A
+  // REASON THAT IS NOT TIDINESS … `wrecked.test.js` walks that order POSITIONALLY … inserting a
+  // non-mock row anywhere but the end shifts every row after it onto the wrong label."* **FALSE, and
+  // proven false by mutation: moving this row into the middle of `ITEMS` leaves the node suite
+  // unchanged (85 pass / 0 fail across the four files that could see it).** The positional join runs
+  // over `MOCK_IDS = ITEM_IDS.filter(id => !(id in NO_WRECKED_TWIN))`, which strips a LEDGERED row
+  // wherever it sits, so it is position-independent for exactly the class of row this comment is
+  // about. A load-bearing-sounding constraint on a file other lanes edit is worse than none.
+  //
+  // ⇒ WHAT ACTUALLY PROTECTS THE JOIN is the ledger test in `client/test/wrecked.test.js`
+  // (`itemsWithoutWreckedTwin()` deep-equals `Object.keys(NO_WRECKED_TWIN)`). Measured the same way:
+  // an UNLEDGERED row inserted mid-list reddens **12** tests. So the rule to follow is *"a registry
+  // row either has a twin or is in the ledger"*, and the position is free.
+  //
+  // Last is still the right place for it, for the ordinary reason: every row above comes from
+  // `docs/design/perilune-item-set.dc.html` in the mock's own order, and keeping that prefix
+  // uninterrupted is what lets a reader diff this table against the spec by eye.
   //
   // `ItemKind.Swarf` came from the wreck start's salvage rule (`deconstruct.device_swarf = 1`), after
   // the mock was drawn, so there is no mock piece and no mock WRECKED twin for it. The missing twin is

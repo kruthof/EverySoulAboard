@@ -736,12 +736,16 @@ export function itemIdForStockKind(kind) {
  * The per-device WEAR STATE inside the room, keyed by tile. Every in-rect, on-deck row of the decoded
  * `devices` channel becomes `'tx,ty' → {tx, ty, kind, cond, oper}`; everything else is dropped. PURE.
  *
- * ⚠️ NOTHING DRAWS THIS YET, ON PURPOSE. The join it exists for — "pick the wrecked art piece when
- * `cond` is low" — is a SEPARATE PACKAGE against `client/src/items/`, a directory a parallel lane
- * owns, and doing it here would be a textual merge collision with that lane on exactly the shape that
- * has already broken this repo once (`CLAUDE.md`, "a clean auto-merge is NOT a clean merge"). What
- * this lane ships is the DATA reaching the surface: `Device.Condition` has never been on the wire at
- * all, so no art package was possible before it.
+ * ⛔ SUPERSEDED (W0b, 2026-07-28). The paragraph here read *"NOTHING DRAWS THIS YET, ON PURPOSE. The
+ * join it exists for … is a SEPARATE PACKAGE against `client/src/items/`, a directory a parallel lane
+ * owns."* **Both clauses are now false**, and this is the one function whose output the Room Zoom
+ * actually feeds into `furnitureSvg`: `roomzoom-view.js` derives `_deviceCond` from it once per
+ * repaint and hands it to the furniture layer, which asks `client/src/items/wear.js` for the piece or
+ * its post-raid twin. Its deck-wide sibling `deckDeviceConditions` does the same for the Overview.
+ *
+ * (The identical claim was retracted in three other places in the same package and missed here, which
+ * is exactly how a stale comment survives: the copies that are read get fixed and the copy that is
+ * TRUE of the live path does not.)
  *
  * A MAP AND NOT A LIST, unlike `roomMarkTiles`/`roomItemTiles`. Those two layers can legitimately hold
  * several rows per tile (an order and a zone; several stacks), so a list is their honest shape. A

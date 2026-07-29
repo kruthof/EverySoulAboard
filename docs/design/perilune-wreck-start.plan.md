@@ -1182,8 +1182,23 @@ recovery economy created and did not draw.
    is below the wreck floor at boot); the wreck shows nothing else.
    **⇒ Draw the piece and delete the entry.** The ledger is equality-pinned and only pays down.
 
-**Pins.** **NONE** — client-only, and that must be *measured*: `git diff -- sim/ hosts/ content/
-tests/ ci.sh` is 0 lines, the ground-item-art lane's own check.
+**Pins.** **NONE** — and *measured*, not argued.
+
+> ⛔ **CORRECTION (W0b, LANDED) — THIS CHARTER CONTRADICTED ITSELF AND THE NEXT WAVE MUST NOT INHERIT
+> THE CONTRADICTION.** The sentence here read: *"**NONE** — client-only, and that must be measured:
+> `git diff -- sim/ hosts/ content/ tests/ ci.sh` is 0 lines, the ground-item-art lane's own check."*
+> **That acceptance test is impossible for this wave as chartered**, because item 2 of this same
+> section makes the `devices` channel's delta scheme a non-negotiable deliverable and that scheme
+> lives in `hosts/web/GameSession.cs`. A lane that satisfied the pin check would have skipped a
+> required item; a lane that shipped item 2 would fail the pin check. Both cannot hold.
+>
+> ⇒ **HOW IT WAS RESOLVED, and the shape to copy:** the check is per-COMMIT, not per-lane. Items 1
+> and 3 (the `Swarf` piece, the art join) shipped as two commits that are **client-only, measured at
+> 0 lines each** (`bf37ef6`, `d8106b4`). Item 2 shipped as its **own** commit touching `hosts/web` +
+> its own C# tests (`896e037`), and its claim is the weaker but correct one: **pin-NEUTRAL, measured**
+> — `./ci.sh` exit 0, twin hashes MATCH, and `git diff main -- tests/Perilune.Tests/Golden/ ci.sh
+> content/` is 0 lines. "Client-only" and "pin-neutral" are different claims; a charter that wants a
+> host change must ask for the second.
 **Depends on:** nothing mechanically. **Blocked in PRACTICE on W3** for item 1 — there is no
 wrecked device on any ship to photograph until `--ship wreck` exists, and **the acceptance for
 this wave is photographs, not assertions** (`review seams, not art`: the owner judges art from

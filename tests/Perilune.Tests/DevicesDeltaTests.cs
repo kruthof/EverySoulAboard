@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Globalization;
 using System.Linq;
 using NUnit.Framework;
@@ -35,10 +38,32 @@ namespace Perilune.Tests
     /// <see cref="WireFormat.Devices"/> is a pure function of that list. So "the skip was taken" and
     /// "the payload would have been byte-identical" are the same statement rather than a heuristic
     /// that usually holds. "Sufficient BY INSPECTION and pinned by NOTHING" is the failure mode this
-    /// repo named after <c>HasIceChain</c>, so both halves are pinned: a per-FIELD inclusion table
-    /// over <see cref="WireFormat.DeviceCell.SameAs"/> (each of the six fields alone must be enough to
-    /// deny a skip — the cheap keys, "condition only" and "count only", are among the things it
-    /// catches), and THE FLIP, driven on a real ship.
+    /// repo named after <c>HasIceChain</c>.
+    ///
+    /// ⛔ AND THE FIRST VERSION OF THIS FILE PINNED IT AT THE WRONG LEVEL. The struck sentence is kept
+    /// because the mistake is the useful part: ~~"both halves are pinned: a per-FIELD inclusion table
+    /// over <c>DeviceCell.SameAs</c> (each of the six fields alone must be enough to deny a skip — the
+    /// cheap keys, 'condition only' and 'count only', are among the things it catches), and THE FLIP,
+    /// driven on a real ship."~~ **Count-only IS caught. CONDITION-ONLY WAS NOT.** Independent review
+    /// replaced the gate's comparison with <c>_devicesSent[i].Cond != cells[i].Cond</c> and the FULL
+    /// <c>dotnet test</c> was exit 0 — because the table asserts against
+    /// <see cref="WireFormat.DeviceCell.SameAs"/>, <b>a method the mutated gate no longer calls</b>,
+    /// and nothing else drove the gate through a change that moved a field OTHER than <c>Cond</c>
+    /// without also moving the count. That is <c>CLAUDE.md</c> trap 4 exactly — a guard whose scope
+    /// excludes the violation — sitting under a header that names the very lesson.
+    ///
+    /// ⚠️ IT IS REACHABLE, NOT THEORETICAL. On <c>--ship grid</c> every device boots at
+    /// <c>Condition == 1f</c>, so every row reads <c>Cond 255</c>; a strip-plus-place landing between
+    /// two 10 Hz renders reshuffles kinds and positions at equal count while a <c>Cond</c>-only key
+    /// sees nothing, and the client then draws the old machine's picture on the new machine's tile
+    /// until something else moves — because nothing re-broadcasts a state channel that never changes.
+    ///
+    /// ⇒ SO THE PIN IS NOW IN TWO LAYERS, and the second one is the load-bearing one:
+    /// <see cref="The_Cache_Key_Reads_All_Six_Fields"/> is a UNIT table over <c>SameAs</c> (useful,
+    /// but only binding while the gate calls it), and
+    /// <see cref="A_Swap_At_Equal_Count_And_Equal_Condition_Is_Not_A_Skip"/> drives
+    /// <c>SendDevices</c> ITSELF through a change whose only moving fields are <c>Kind</c>/<c>X</c>/
+    /// <c>Y</c>. Plus THE FLIP, driven on a real ship.
     ///
     /// GATES N/A: no def scalar, no hashed field, no save chapter, no <c>GlyphColor</c> id, and the
     /// wire FORMAT is untouched (this is the dirty-version half of the sketch, not the partial-row
@@ -69,6 +94,51 @@ namespace Perilune.Tests
         private static string CachedDevices(GameSession gs) =>
             gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"devices\""));
 
+        /// <summary>How many tuples the payload carries — the census the `Count` guard alone sees.</summary>
+        private static int RowCount(string json)
+        {
+            int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
+            Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
+            return json.Substring(open).Split('[').Length - 2;
+        }
+
+        /// <summary>Every row's <c>Cond</c> byte, SORTED — the projection a condition-only key would
+        /// see. Sorted rather than positional on purpose: a swap reorders the store, and this control
+        /// has to say "no condition CHANGED", not "no row moved".</summary>
+        private static List<int> SortedConds(string json)
+        {
+            var conds = new List<int>();
+            int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
+            foreach (var part in json.Substring(open).Split('[').Skip(2))
+            {
+                var f = part.Split(']')[0].Split(',');
+                Assert.AreEqual(6, f.Length, "a devices tuple is six elements");
+                conds.Add(int.Parse(f[4], CultureInfo.InvariantCulture));
+            }
+            conds.Sort();
+            return conds;
+        }
+
+        /// <summary>An in-bounds, explored tile with NO tile-resident device on it — somewhere the
+        /// swap's replacement can legally stand. Deliberately not <paramref name="avoid"/>, so the
+        /// replacement cannot land back on the tile that was just vacated and leave `X`/`Y` still.</summary>
+        private static Int3 FirstFreeExploredTile(Simulation sim, Int3 avoid)
+        {
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (p.X == avoid.X && p.Y == avoid.Y && p.Z == avoid.Z) continue;
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (sim.TryGetDeviceAt(p, out _)) continue;
+                        return p;
+                    }
+            Assert.Fail("no free explored tile on this ship — the swap fixture cannot be built");
+            return default;
+        }
+
         /// <summary>A tile-resident device on a shipped ship, so the tests move something real.</summary>
         private static Device FirstTileResidentDevice(Simulation sim)
         {
@@ -89,6 +159,16 @@ namespace Perilune.Tests
         /// The two rows that matter most are the CHEAP KEYS somebody will eventually propose:
         /// comparing only <c>Cond</c> misses a device that was stripped and replaced at equal wear;
         /// comparing only the COUNT misses every in-place change there is. Both are listed by name.
+        ///
+        /// ⚠️ AND THIS TEST CANNOT ACTUALLY CATCH EITHER OF THEM IN THE GATE — said here rather than
+        /// left for the next reader to discover, because the first version of this file claimed it
+        /// could. It asserts against <see cref="WireFormat.DeviceCell.SameAs"/>, so it is binding only
+        /// while <c>GameSession.SameAsLastDevices</c> CALLS that method; a gate rewritten to compare
+        /// <c>Cond</c> inline leaves every row here green. What catches that is
+        /// <see cref="A_Swap_At_Equal_Count_And_Equal_Condition_Is_Not_A_Skip"/>, which drives the
+        /// gate. This test's remaining job is real but narrower: it is the per-field statement of
+        /// WHICH fields a key must read, and it fails loudly if a field is dropped from the comparison
+        /// the gate does use.
         ///
         /// MUTATION: drop any field from <see cref="WireFormat.DeviceCell.SameAs"/> ⇒ its row fails.
         /// </summary>
@@ -143,6 +223,7 @@ namespace Perilune.Tests
             string cached = CachedDevices(gs);
 
             var doomed = FirstTileResidentDevice(host.Sim);
+            var free = FirstFreeExploredTile(host.Sim, doomed.Pos);
             host.Sim.RemoveDevice(doomed.Id);
 
             gs.RenderUnforcedForTest();
@@ -150,7 +231,82 @@ namespace Perilune.Tests
                 "a device was REMOVED and the gate skipped the render. A shorter list is a different " +
                 "payload; a comparison that only walks the shared prefix would pass every other test " +
                 "in this file.");
-            Assert.AreNotEqual(cached, CachedDevices(gs), "…and the cached payload really did change");
+            string afterRemove = CachedDevices(gs);
+            Assert.AreNotEqual(cached, afterRemove, "…and the cached payload really did change");
+
+            // ⚠️ THE ADDITION HALF, ADDED ON A SEND-BACK. The test's NAME claimed both directions and
+            // its body drove only the removal. That is a coverage-naming defect rather than a hole —
+            // addition is symmetric through the same `Count` guard — but a name that promises more
+            // than the body delivers is how the next reader stops checking.
+            host.Sim.AddDevice(DeviceKind.Fabricator, free, "delta-add-probe");
+            gs.RenderUnforcedForTest();
+            Assert.That(gs.DevicesSerializedForTest, Is.EqualTo(before + 2),
+                "a device was ADDED and the gate skipped the render. A longer list is a different " +
+                "payload, and a loop bounded by the PREVIOUS count would never look at the new row.");
+            Assert.AreNotEqual(afterRemove, CachedDevices(gs), "…and the payload really did change again");
+        }
+
+        /// <summary>
+        /// ⭐ THE SEND-BACK'S TEST, AND THE ONE THAT ACTUALLY BINDS THE GATE. It drives
+        /// <c>SendDevices</c> — not <see cref="WireFormat.DeviceCell.SameAs"/> — through a change
+        /// whose ONLY moving fields are <c>Kind</c>, <c>X</c> and <c>Y</c>: a device is REMOVED and a
+        /// device OF A DIFFERENT KIND is added on a different tile, so the row COUNT is unchanged and
+        /// every row's <c>Cond</c> byte is unchanged too. Both of those are ASSERTED here rather than
+        /// assumed, because if either moved the test would pass for the wrong reason and would be one
+        /// more guard that cannot see its own subject.
+        ///
+        /// MUTATION THAT MOTIVATED IT (independent review, C6): replace the gate's body with
+        /// <c>if (_devicesSent[i].Cond != cells[i].Cond) return false;</c>. Before this test the FULL
+        /// <c>dotnet test</c> was exit 0. It is now a semantic RED here.
+        ///
+        /// ⚠️ THE SCENARIO IS THE ONE THE PER-FIELD TABLE ALREADY DESCRIBES IN PROSE — "a device was
+        /// STRIPPED and another placed on its tile at equal wear" — which is exactly the shape of
+        /// defect this repo keeps finding: the right sentence written down, and nothing driving it.
+        /// On <c>--ship grid</c> every device boots at <c>Condition == 1f</c>, so equal-condition is
+        /// not a contrived fixture; it is the whole ship.
+        /// </summary>
+        [Test]
+        public void A_Swap_At_Equal_Count_And_Equal_Condition_Is_Not_A_Skip()
+        {
+            var (gs, host, _) = Boot(ShipChoice.Grid);
+            var sim = host.Sim;
+            gs.RenderForTest();
+            int before = gs.DevicesSerializedForTest;
+            string cachedBefore = CachedDevices(gs);
+            var condsBefore = SortedConds(cachedBefore);
+            int rowsBefore = RowCount(cachedBefore);
+            Assert.That(rowsBefore, Is.GreaterThan(1), "the ship emitted no devices — this is vacuous");
+
+            var doomed = FirstTileResidentDevice(sim);
+            var free = FirstFreeExploredTile(sim, doomed.Pos);
+            // A DIFFERENT KIND, chosen against the doomed one so the swap really moves `Kind`.
+            var newKind = doomed.Kind == DeviceKind.Fabricator ? DeviceKind.MachineShop : DeviceKind.Fabricator;
+            sim.RemoveDevice(doomed.Id);
+            var placed = sim.AddDevice(newKind, free, "delta-swap-probe");
+            Assert.AreNotEqual(doomed.Kind, placed.Kind, "the swap did not change the kind");
+            Assert.AreNotEqual(doomed.Pos, placed.Pos, "the swap did not change the position");
+
+            gs.RenderUnforcedForTest();
+            string cachedAfter = CachedDevices(gs);
+
+            // THE TWO CONTROLS FIRST. Without them a `Cond`-only key could be "caught" by a count
+            // change or by a condition change, and this test would prove nothing about Kind/X/Y.
+            Assert.AreEqual(rowsBefore, RowCount(cachedAfter),
+                "the row COUNT moved, so the `Count` guard alone would have denied this skip and this " +
+                "test says nothing about the fields it exists to pin. Pick a replacement that keeps " +
+                "the census identical.");
+            CollectionAssert.AreEqual(condsBefore, SortedConds(cachedAfter),
+                "some row's `Cond` byte moved, so a CONDITION-ONLY key would also have caught this. " +
+                "The whole point of this fixture is that condition is constant across the swap.");
+
+            Assert.That(gs.DevicesSerializedForTest, Is.EqualTo(before + 1),
+                "A DEVICE WAS REPLACED BY ONE OF ANOTHER KIND, ON ANOTHER TILE, AT EQUAL COUNT AND " +
+                "EQUAL CONDITION — AND THE GATE SKIPPED THE RENDER. The client keeps the old machine's " +
+                "row forever, so it draws the old machine's picture on the new machine's tile, and " +
+                "nothing re-broadcasts a state channel that never changes. The cache key is reading " +
+                "less than the serializer does.");
+            Assert.AreNotEqual(cachedBefore, cachedAfter,
+                "…and the payload really did differ, so the assertion above is about a real change");
         }
 
         // ═══════════════════════════════════════════ 2. THE FLIP, DRIVEN ON A REAL SHIP
@@ -217,6 +373,92 @@ namespace Perilune.Tests
                 "wear state of anything.");
             Assert.That(sink.Count(p => p.Contains("\"type\":\"devices\"")), Is.EqualTo(1),
                 "…and it must actually reach the socket, not merely be rebuilt");
+        }
+
+        // ═══════════════════════════════ 2b. THE CROSS-LANGUAGE SEAM (the `cond` ENCODING)
+
+        /// <summary>
+        /// ⭐ THE ONLY TEST IN THE REPO THAT SPANS BOTH LANGUAGES ON THE <c>cond</c> ENCODING, and it
+        /// exists because the client's mirror of it was JS-against-JS. <c>client/src/items/wear.js</c>
+        /// compares a wire byte to <c>WRECK_COND_BYTE</c>; that constant is derived in JS from
+        /// <c>WRECK_THRESHOLD * 255</c>, and <c>wear-join.test.js</c> used to "check" it with a local
+        /// JS restatement of the same arithmetic — <see cref="WireFormat.ConditionByte"/> was nowhere
+        /// in the loop. That is the SEVENTH trap's self-derivation shape
+        /// (<c>swarf_service_condition</c>: "its only assertion was <c>Is.EqualTo(the field under
+        /// test)</c>"), and it is the more pointed for sitting next to a threshold check that goes to
+        /// real trouble to read <c>wear.def</c> off disk.
+        ///
+        /// ⚠️ THE EXISTING <c>ConditionByte</c> TESTS DO NOT CLOSE THIS. <c>DevicesChannelTests</c>
+        /// pins that method at 0 / 26 / 128 / 153 / 255 and <b>nothing at the wreck floor</b>. A change
+        /// to the encoding that also updated those pins — a different scale, a reserved 0, banker's
+        /// rounding — would move the REAL cliff while the client's 64 sat still, both suites green and
+        /// the art silently detached from the def.
+        ///
+        /// ⇒ SO NOTHING HERE IS TRANSCRIBED. The threshold comes from <see cref="SimDefs"/>, the
+        /// encoder is the host's own, and BOTH the client's threshold and its derivation are PARSED
+        /// OUT OF <c>client/src/items/wear.js</c>. The literal <c>64</c> appears nowhere in this test.
+        ///
+        /// MUTATIONS: rescale <c>ConditionByte</c> to 0..100, or round down instead of half-up, or
+        /// change <c>wear.js</c>'s <c>* 255</c> ⇒ this fails and names the disagreement.
+        /// </summary>
+        [Test]
+        public void The_Wreck_Floor_Quantises_To_The_Byte_The_Client_Compares()
+        {
+            string wearJs = ReadClientFile("src/items/wear.js");
+            // The client's own two statements, read rather than remembered.
+            var mThr = Regex.Match(wearJs, @"export const WRECK_THRESHOLD\s*=\s*([0-9.]+)\s*;");
+            Assert.IsTrue(mThr.Success, "WRECK_THRESHOLD is gone from client/src/items/wear.js — this " +
+                                        "reader is broken, or the client stopped naming its threshold");
+            var mByte = Regex.Match(wearJs,
+                @"export const WRECK_COND_BYTE\s*=\s*Math\.round\(\s*WRECK_THRESHOLD\s*\*\s*([0-9]+)\s*\)\s*;");
+            Assert.IsTrue(mByte.Success, "WRECK_COND_BYTE is no longer `Math.round(WRECK_THRESHOLD * N)` " +
+                                         "in client/src/items/wear.js. If the client changed HOW it " +
+                                         "encodes, this test must follow it — do not delete it.");
+            float clientThreshold = float.Parse(mThr.Groups[1].Value, CultureInfo.InvariantCulture);
+            int clientScale = int.Parse(mByte.Groups[1].Value, CultureInfo.InvariantCulture);
+            int clientByte = (int)Math.Round(clientThreshold * clientScale, MidpointRounding.AwayFromZero);
+
+            float defThreshold = SimDefs.Default.Wear.WreckThreshold;
+            Assert.That(clientThreshold, Is.EqualTo(defThreshold).Within(1e-6f),
+                "the client's WRECK_THRESHOLD and wear.wreck_threshold disagree. (client/test/" +
+                "wear-join.test.js reads the .def and asserts the same thing from the other side; this " +
+                "leg is here so the C# half of the seam cannot pass while the JS half is stale.)");
+
+            int hostByte = WireFormat.ConditionByte(defThreshold);
+            Assert.AreEqual(hostByte, clientByte,
+                $"THE CLIENT COMPARES BYTE {clientByte} AND THE HOST ENCODES THE WRECK FLOOR AS " +
+                $"{hostByte}. The `cond` encoding is a two-language contract: WireFormat.ConditionByte " +
+                "writes the byte and client/src/items/wear.js compares it. Change one and the art " +
+                "detaches from the def silently — the machine that the sim refuses to jury-rig keeps " +
+                "its clean picture, or a healthy one starts wearing a wreck's. Fix whichever side " +
+                "moved; do not adjust this number.");
+
+            // …and the DIRECTION, which equality alone does not pin: the def value itself must be
+            // INTACT (the rule is "below"), and one byte under it must be wrecked.
+            Assert.That(hostByte, Is.GreaterThan(0).And.LessThan(255), "a degenerate byte");
+            Assert.IsFalse(WireFormat.ConditionByte(defThreshold) < clientByte,
+                "a device sitting exactly AT wear.wreck_threshold would be drawn wrecked. The def says " +
+                "BELOW, and MachineWearSystem agrees; the art must not be stricter than the rule.");
+            Assert.IsTrue(WireFormat.ConditionByte(defThreshold - 0.01f) < clientByte,
+                "a device a full percent below the floor is NOT drawn wrecked — the comparison is " +
+                "inverted, or the encoding is no longer monotone");
+        }
+
+        /// <summary>Read a file out of <c>client/</c> from the test binary's location. The test
+        /// assembly runs from <c>tests/Perilune.Tests/bin/Debug/net8.0</c>, so the repo root is five
+        /// levels up; asserted rather than assumed, because a silently-missing file would make the
+        /// regexes above fail with a confusing message instead of a clear one.</summary>
+        private static string ReadClientFile(string relative)
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+            {
+                string candidate = Path.Combine(dir.FullName, "client", relative.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(candidate)) return File.ReadAllText(candidate);
+            }
+            Assert.Fail("could not find client/" + relative + " above " + AppContext.BaseDirectory +
+                        " — this test spans two languages and needs the client source on disk");
+            return null;
         }
 
         // ═══════════════════════════════════════════ 3. THE EQUIVALENCE — the gate changes NO OUTPUT

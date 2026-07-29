@@ -80,12 +80,29 @@ export const WRECK_THRESHOLD = 0.25;
  * The same threshold on the `devices` channel's own scale — `0 = wrecked … 255 = pristine`.
  * DERIVED from `WRECK_THRESHOLD`, never written as `64`, so the two cannot drift.
  *
- * ⚠️ THE QUANTISATION IS NOT EXACT AND SAYING SO IS THE HONEST FORM. `WireFormat.ConditionByte`
- * rounds HALF-UP, so byte 64 covers roughly `[0.2471, 0.2510]` — a `cond < 64` test is really
- * `Condition < 0.2471` at the boundary, about 0.2 % of a machine's life below the def. There is no
- * spelling that removes this: a byte has 256 states and the def is a float. It is one rendering
- * frame's worth of "still looks intact" at the very bottom of the cliff, and the alternative
- * (putting the float on the wire) was rejected by the channel for reasons that still hold.
+ * ⚠️ THE QUANTISATION IS NOT EXACT AND SAYING SO IS THE HONEST FORM.
+ *
+ * ⛔ AND THE FIRST VERSION OF THIS PARAGRAPH GOT THE ARITHMETIC WRONG BY A WHOLE BYTE, IN THE
+ * FLATTERING DIRECTION. It is quoted rather than deleted because the mistake is instructive: it read
+ * *"byte 64 covers roughly `[0.2471, 0.2510]` — a `cond < 64` test is really `Condition < 0.2471` at
+ * the boundary, about 0.2 % of a machine's life below the def."* `[0.2471, 0.2510]` is
+ * `[63/255, 64/255]` — the gap between two byte VALUES — and that is not byte 64's PRE-IMAGE under
+ * half-up rounding. So the published boundary sat a full byte on the wrong side of the real cliff:
+ * the comment implied a machine at `Condition 0.248` is drawn intact, and it is drawn WRECKED.
+ *
+ * THE ACTUAL NUMBERS, from `WireFormat.ConditionByte` = `(int)(c * 255 + 0.5)`:
+ *   • byte 64's pre-image is `[63.5/255, 64.5/255)` = **[0.249020, 0.252941)**
+ *   • `cond < 64` is exactly **`Condition < 63.5/255 = 0.2490196`**
+ *   • the sim's own rule is `Condition < 0.25` (`wear.wreck_threshold`)
+ *   ⇒ the two disagree on exactly **[0.249020, 0.25)** — width **0.00098, i.e. 0.098 % of a
+ *     machine's life** — and the client is LATE there: a machine in that sliver is already below the
+ *     sim's floor and still wearing its clean picture.
+ *
+ * There is no spelling that removes this — a byte has 256 states and the def is a float — and the
+ * alternative (putting the float on the wire) was rejected by the channel for reasons that still
+ * hold. What stops the number rotting again is that it is now PINNED rather than published loose:
+ * `wear-join.test.js` asserts the boundary and the band exactly, and `DevicesDeltaTests` ties this
+ * constant to the def through the HOST'S OWN encoder instead of a JS restatement of it.
  */
 export const WRECK_COND_BYTE = Math.round(WRECK_THRESHOLD * 255);
 
