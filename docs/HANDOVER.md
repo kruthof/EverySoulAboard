@@ -1,6 +1,6 @@
 # HANDOVER — Every Soul Aboard *(codename PERILUNE)*
 
-**Last updated 2026-07-27.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
+**Last updated 2026-07-29.** Game title is **Every Soul Aboard**; "Perilune" stays the internal
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
@@ -114,6 +114,29 @@ is renamed). Tag `v2-talking-ship`.
 > the pressurised spine and handed the compartment 101 kPa free**. Fixed with an explicit
 > `SlotAssign.DoorOpen` override.
 >
+> ### ⇒ IF YOU ARE A FRESH INSTANCE, THIS IS WHAT TO DO NEXT
+>
+> 1. **`git log --oneline -1` and `./ci.sh` first.** Every count in this file is a measurement of a
+>    tree, and this repo has quoted a stale count forward for a whole run. **Re-measure before
+>    quoting.** Expect `1294 dotnet + 995 node`, exit 0, five pins held.
+> 2. **The queue is not in this file — it is `docs/design/perilune-roadmap-q3.packages.md`**, which
+>    carries 51 packages with seams (`file:line`), pin impact, mutation tables, lane names, a conflict
+>    matrix and a merge order. **Take the next unmerged lane in that order.** As of this edit
+>    **M1-A, M1-B and M1-C are merged**; the spike M2-0 is done and never merges. Next up:
+>    **`lane/blocked-reach` (M1-D)** — ⚠️ integrator lane, it touches `sim/` — then **`lane/morale-bar`
+>    (M1-F)**, **`lane/refusal-reasons` (M1-E)**, **`lane/premise-fix` (M1-G)**, and **`lane/craft-thrash`
+>    (M1-H)**, which is the head of the pin chain and must run alone.
+> 3. **Work in a worktree, always** (`CLAUDE.md`'s hard rule), and **one Opus implements, a separate
+>    Opus reviews** (the orchestration rule). Six reviews ran on 2026-07-29 and **every one returned a
+>    send-back**; not one was a style note. Every send-back fix was re-verified **by mutation in the
+>    tree** before merge, never accepted on report.
+> 4. **Do not re-charter the fog/exploration lane described further down this file.** OD-C did most
+>    of it; the surviving piece is the cross-channel fog audit, and the `designs`/`blocked` asymmetry
+>    is now **grid/slice/perilune only**.
+> 5. ⚠️ **Before designing any dispatch or priority work, read the M2-0 spike section above.** The
+>    obvious seam — a veto inside `JobSystem.TryAssign` — is a **measured no-op** for the owner's own
+>    case. Building it again would cost a week.
+>
 > ### ⇒ OPEN ON THE OWNER
 >
 > 1. **The new onboarding card copy** — written, tested, never seen by a human.
@@ -174,10 +197,18 @@ is renamed). Tag `v2-talking-ship`.
 >   own order sitting there doing nothing, unexplained. Dig/strip fail the opposite way — invisible
 >   *together with* their reason (`BuildMarks` is gated). The natural player order is *allocate →
 >   paint → wonder why nothing happens*, which is exactly the order in which the channel is silent.
-> - **The fog gate keeps the premise's own opening move unreachable.** `vent_ls` reads
+> - ~~**The fog gate keeps the premise's own opening move unreachable.**~~ ⛔ **CLOSED 2026-07-29 by
+>   OD-C (M1-1) — the struck text below is history.** The wreck now boots authored-explored
+>   (`fogTiles = 0`), deck-0 devices reaching the client went **38 -> 49**, deck-0 slot 3 is the named
+>   room `lifesupport`, and **the player opens `vent_ls` in a running game** (driven, photographed).
+>   Read the top block. ~~`vent_ls` reads
 >   `explored=False` at tick 0, tick 600 **and tick 36 000 — a full sim-hour** — so it never reaches
 >   the `devices` channel and gets no OPERATE chip. **The only operable vent a player can reach on
->   `--ship wreck` today is `vent_cryo`.**
+>   `--ship wreck` today is `vent_cryo`.**~~
+>
+> ### ⛔ SUPERSEDED 2026-07-29 — do NOT charter this lane. OD-C (M1-1) did most of it; only the
+> ### cross-channel fog audit survives, and the `designs`/`blocked` asymmetry is now grid/slice/
+> ### perilune only. The live queue is `docs/design/perilune-roadmap-q3.packages.md`. History below.
 >
 > ### ⇒ THE NEXT LANE, and review corrected its scope — do NOT charter it as "one lane owns `TileFlags.Explored`"
 >
@@ -543,7 +574,8 @@ is renamed). Tag `v2-talking-ship`.
 > 4. ⛔ **"W4b-DEAD-DECK" — the wreck's ENTIRE DECK 1 now has no route to air at all, and this is a
 >    W4b regression on the SHIPPED DEFAULT SHIP** (`lane/w4b-addroom-split`, found in independent
 >    review, re-measured by the lane). `--ship wreck` authors **exactly two `AirVent`s and both are on
->    deck 0** (`vent_cryo @10,1,0` open; `vent_ls @35,6,0` closed, inside `hall_d0_s3`) — ci's own boot
+>    deck 0** (`vent_cryo @10,1,0` open; `vent_ls @35,6,0` closed, inside `hall_d0_s3` — ⚠️ **that slot is the named room `lifesupport` since
+                                                     M1-1, 2026-07-29**) — ci's own boot
 >    census already reads *"deck 1: 9 anchored spaces, 0 breathable, 0 breathable tiles"*. And gas
 >    transport in this sim is **strictly in-plane**: `AtmosphereSystem.FlowAcrossDoor`'s neighbour probe
 >    is `(X±1,Y,Z)`/`(X,Y±1,Z)` and `DiffuseAcrossDoors` uses `Int3.Neighbor4`, so **there is no
