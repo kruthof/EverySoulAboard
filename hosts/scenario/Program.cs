@@ -269,7 +269,9 @@ namespace Perilune.Tools
             // OPT-IN M1-H measurement lever (--no-repair, default off). REPRODUCES THE M2-0 SPIKE'S
             // LEG B CONDITION — "Repair OFF" — on the shipped ship, without the spike's static
             // mutable sim config. MaintenanceSystem's recruit gate skips every device whose
-            // Condition >= its MaintainBelow (MachineWearSystem.cs:196), so zeroing that column for
+            // Condition >= its MaintainBelow (MachineWearSystem.cs:223 — the citation was :196 when this
+            // comment was written and this commit's own edits moved the gate, which is exactly the
+            // rot §12.13 files against M5-6), so zeroing that column for
             // every kind makes the gate skip all of them and the system never recruits: the
             // maintenance monopoly the roadmap says is MASKING the Craft thrash is lifted, and what
             // the pawn does instead becomes visible. It is a DEFS mutation in the host, exactly like

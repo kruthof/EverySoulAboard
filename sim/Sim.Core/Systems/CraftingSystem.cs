@@ -505,6 +505,15 @@ namespace Perilune.Sim
         /// <see cref="JobSystem"/> retries the next-nearest candidate when
         /// <see cref="DigJobSource.TryClaim"/> returns false.
         ///
+        /// <para>⭐ <b>THIS IS THE LOAD-BEARING HALF OF M1-H, AND THE CHARTER DID NOT ASK FOR IT.
+        /// DO NOT "SIMPLIFY" IT AWAY.</b> The chartered fix was the backoff alone. Each half was
+        /// built and measured separately on <c>--ship wreck --days 1 --no-repair</c>: <b>backoff
+        /// only 597 → 228 Craft starts and 3.575 % → 3.333 % of crew-ticks (−6.8 %); probe only
+        /// 0 and 0.000 %.</b> ⇒ The backoff does ~7 % of the work and this does 100 %, because the
+        /// WALK is what costs. Delete this and the nine site-coverage legs stay green while 100 %
+        /// of the defect returns — which is precisely why they are not the guard for it
+        /// (<c>RecruitProbe_*</c> and <c>DrivenThrash_*</c> are).</para>
+        ///
         /// <para><b>Why the probe is here and not left to <see cref="DriveWorker"/>.</b> A pull
         /// source PROVES a claim before it makes one: <c>DigJobSource.TryClaim</c> paths to the
         /// site and returns false without ever writing <see cref="Citizen.JobKind"/>. This
@@ -514,6 +523,9 @@ namespace Perilune.Sim
         /// <c>best.Pos == worker.Pos</c> branch of <see cref="StepFetch"/>) that it could not carry
         /// it back. Measured on <c>--ship wreck</c> with repair off: 1 468 such round trips in 1.2
         /// sim-hours, 597 of them long enough to be seen as a job start, 75.3 % of sim-hour 1.
+        /// (The TOTALS are independently confirmed; the ALL-AT-ONE-SITE attribution is a single
+        /// measurement from a throwaway instrumented build and was not re-derived by review.
+        /// Nothing here rests on it — the before/after totals prove the conclusion directly.)
         /// A backoff alone only halves that, because the WALK is what costs; refusing the claim
         /// removes it.</para>
         ///
@@ -526,7 +538,11 @@ namespace Perilune.Sim
         ///
         /// <para><b>Identical selection whenever the nearest candidate is reachable</b>, which is
         /// every recruit on <c>--ship grid</c> and <c>--ship slice</c> — measured, not assumed
-        /// (the two path-failure abandon sites fire zero times on either ship over a sim-day).
+        /// (all THREE path-failure abandon sites — the walk-to-bench at <c>:295</c>, the
+        /// pick-up-and-return at <c>:360</c> and the walk-to-input at <c>:366</c> — fire zero times
+        /// on either ship over a sim-day. <c>:360</c> is the one that accounts for the wreck's
+        /// 1 468. An earlier draft of this comment said "two", which was a miscount, not a
+        /// different measurement.)
         /// The extra A* is paid once per recruiting station per pass and the backoff amortises the
         /// failing case to once per 5 s.</para>
         ///

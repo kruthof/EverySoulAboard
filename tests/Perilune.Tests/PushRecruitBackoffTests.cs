@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text;
 using NUnit.Framework;
 using Perilune.Sim;
 
@@ -18,7 +20,9 @@ namespace Perilune.Tests
     /// --no-repair</c> (the M2-0 spike's Repair-OFF condition, reproduced through the occupancy
     /// harness): <b>597 Craft job starts and 1 468 abandons</b>, 75.3 % of sim-hour 1 and 3.575 %
     /// of the whole day's crew-ticks, ALL of them at ONE site — the
-    /// <c>best.Pos == worker.Pos</c> branch of <see cref="CraftingSystem.StepFetch"/>, where a
+    /// <c>best.Pos == worker.Pos</c> branch of <see cref="CraftingSystem.StepFetch"/> — ⚠️ the
+    /// per-site split is ONE measurement from a throwaway instrumented build and was not
+    /// independently re-derived; the TOTALS were, and nothing below rests on the split — where a
     /// crew member who has just walked the whole way to an input stack discovers it cannot carry
     /// it back to a bench it was never able to reach. After: <b>0 and 0</b>.</para>
     ///
@@ -632,6 +636,181 @@ namespace Perilune.Tests
             Assert.That(maint.Backoff.RetryAtFor(machine.Id),
                         Is.EqualTo(pass + JobWork.UnreachableRetryTicks),
                         "and the abandon funnel stamps the machine for exactly UnreachableRetryTicks");
+        }
+
+        // ============================================ the recruit path is a TICK PATH (zero-alloc)
+
+        /// <summary>
+        /// A 70x5 corridor. It exists for one reason: a path from one end to the other is 66 steps,
+        /// which is longer than <c>_probePath</c>'s initial capacity of 64, so a SUCCEEDING probe
+        /// must grow that list. A guard measured only on short paths cannot see a list that
+        /// reallocates.
+        /// </summary>
+        private static string[] LongMap()
+        {
+            var map = new string[5];
+            map[0] = new string('#', 70);
+            var row = new StringBuilder("#").Append('.', 68).Append('#').ToString();
+            map[1] = row; map[2] = row; map[3] = row;
+            map[4] = new string('#', 70);
+            return map;
+        }
+
+        /// <summary>
+        /// ⭐ THE GUARD HOLE THIS PACKAGE WOULD OTHERWISE HAVE LEFT. M1-H put an A* plus two
+        /// collections on a 1 Hz tick path, against a named <c>CLAUDE.md</c> invariant ("zero alloc
+        /// in tick paths"), and the suite's existing zero-alloc guard
+        /// (<c>DefsProductionTests.CraftingTick_AllocatesNothing_OnBothLookupLegs</c>)
+        /// <b>structurally cannot see it</b>: its idle leg ASSERTS that nobody was recruited, and
+        /// its working leg runs a station that already has a worker, so neither window ever executes
+        /// <c>FindNearestReachableIdle</c>.
+        ///
+        /// <para>This is CLAUDE.md's seventh-trap shape — a survival that was disclosed as a
+        /// preference ("cost is not measured") rather than filed as a hole in the guard. The
+        /// measurement is cheap and it belongs in the suite, not in a report.</para>
+        ///
+        /// <para><b>The inclusion control is the point</b> (trap 4: non-vacuity by INCLUSION, never
+        /// by population count). Each leg proves the probe ran INSIDE the measured window — by the
+        /// backoff deadline advancing repeatedly for the failing legs, and by counting claims for
+        /// the succeeding one — so a zero can never mean "the code never ran".</para>
+        /// </summary>
+        [Test]
+        public void RecruitPath_FailingProbe_Crafting_IsZeroAlloc()
+        {
+            var sim = NewBench(SplitMap, out var crafting, out var station);
+            sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            sim.AddItem(ItemKind.Regolith, Batch, new Int3(1, 1, 0));
+
+            for (int t = 0; t < 600; t++) sim.Tick();   // warm-up: grow every lazily-sized buffer
+            long stampBefore = crafting.Backoff.RetryAtFor(station.Id);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int t = 0; t < 6000; t++) sim.Tick();
+            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            long stampAfter = crafting.Backoff.RetryAtFor(station.Id);
+            Assert.That(stampAfter - stampBefore, Is.GreaterThan(4L * JobWork.UnreachableRetryTicks),
+                "INCLUSION CONTROL: the deadline must have been re-stamped MANY times inside the " +
+                "window, or the probe never ran and a zero measures nothing");
+            Assert.That(delta, Is.EqualTo(0L),
+                $"the failing recruit probe must allocate nothing on the tick path (saw {delta} bytes)");
+        }
+
+        [Test]
+        public void RecruitPath_FailingProbe_Maintenance_IsZeroAlloc()
+        {
+            var maint = new MaintenanceSystem();
+            var sim = new Simulation(AsciiWorld.Build(SplitMap), 11,
+                new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
+            var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 0.30f;
+            sim.AddCitizen("Rell", new Int3(2, 2, 0));
+
+            for (int t = 0; t < 600; t++) sim.Tick();
+            long stampBefore = maint.Backoff.RetryAtFor(machine.Id);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int t = 0; t < 6000; t++) sim.Tick();
+            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.That(maint.Backoff.RetryAtFor(machine.Id) - stampBefore,
+                        Is.GreaterThan(4L * JobWork.UnreachableRetryTicks),
+                "INCLUSION CONTROL: the machine must have been re-refused many times in the window");
+            Assert.That(delta, Is.EqualTo(0L),
+                $"the failing maintenance probe must allocate nothing on the tick path (saw {delta} bytes)");
+        }
+
+        /// <summary>
+        /// The SUCCEEDING probe, on a path longer than <c>_probePath</c>'s initial capacity, so the
+        /// reconstructed route really is written into that list and any per-call growth would show.
+        ///
+        /// <para>The crew member is forced back to his start tile and back to idle after every tick.
+        /// That is deliberate and it is the only way to get hundreds of successful probes into one
+        /// window: a probe that SUCCEEDS ends in a claim, and a claimed station never recruits
+        /// again. It is not a synthetic state — "the crew member was taken off this job by something
+        /// else" is the same external interference the work-phase abandon branch exists for.</para>
+        /// </summary>
+        [Test]
+        public void RecruitPath_SucceedingProbe_LongPath_IsZeroAlloc()
+        {
+            var crafting = new CraftingSystem();
+            var sim = new Simulation(AsciiWorld.Build(LongMap()), 11,
+                new ISimSystem[] { new CitizenSystem(), new JobSystem(), crafting });
+            var station = sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(66, 2, 0), "recycler");
+            var staging = new Int3(67, 2, 0);
+            var start = new Int3(1, 2, 0);
+            var pawn = sim.AddCitizen("Rell", start);
+            sim.AddItem(ItemKind.Regolith, Batch, new Int3(30, 1, 0)); // un-staged: the gate opens
+
+            var route = new List<Int3>();
+            Assert.That(sim.Paths.FindPath(sim, start, staging, route), Is.True);
+            Assert.That(route.Count, Is.GreaterThan(64),
+                $"PRECONDITION: the probe's path must exceed _probePath's initial capacity of 64 " +
+                $"(measured {route.Count}), or this leg cannot see a list that reallocates");
+
+            int claims = 0;
+            for (int t = 0; t < 600; t++) { sim.Tick(); Reset(pawn, start); }   // warm-up
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int t = 0; t < 6000; t++)
+            {
+                sim.Tick();
+                if (pawn.JobKind == JobKind.Craft) claims++;
+                Reset(pawn, start);
+            }
+            long delta = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.That(claims, Is.GreaterThan(100),
+                $"INCLUSION CONTROL: the window must contain hundreds of SUCCESSFUL probes " +
+                $"(saw {claims}) — a zero from a window with none measures nothing");
+            Assert.That(delta, Is.EqualTo(0L),
+                $"the succeeding recruit probe must allocate nothing on the tick path, even when it " +
+                $"writes a {route.Count}-step route into its scratch list (saw {delta} bytes)");
+        }
+
+        private static void Reset(Citizen c, Int3 home)
+        {
+            c.JobKind = JobKind.None;
+            c.JobWorkTicks = 0;
+            c.CarryingItemId = 0;
+            c.ClearPath();
+            c.Pos = home;
+        }
+
+        /// <summary>
+        /// A quiet behaviour improvement that would otherwise ship untested: an unreachable machine
+        /// now <c>continue</c>s the recruit loop instead of returning from it, so ANOTHER machine —
+        /// reachable, and in this fixture needier by nothing but store order — is still serviced on
+        /// the SAME pass. Before, one walled-off machine could end the pass for every machine
+        /// behind it.
+        /// </summary>
+        [Test]
+        public void Maintenance_AnUnreachableMachineDoesNotEndThePassForAReachableOne()
+        {
+            var maint = new MaintenanceSystem();
+            var sim = new Simulation(AsciiWorld.Build(SplitMap), 11,
+                new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
+            // The NEEDIEST machine is the unreachable one, so it is picked first every pass.
+            var walledOff = sim.AddDevice(DeviceKind.Scrubber, StationPos, "far");      // RIGHT room
+            walledOff.Condition = 0.26f;
+            var reachable = sim.AddDevice(DeviceKind.Scrubber, new Int3(2, 1, 0), "near"); // LEFT room
+            reachable.Condition = 0.30f;
+            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0));
+
+            Assert.That(walledOff.Condition, Is.LessThan(reachable.Condition),
+                "control: the UNREACHABLE machine is the neediest, so the loop reaches it first");
+            Assert.That(sim.Paths.FindPath(sim, pawn.Pos, StagingPos, new List<Int3>()), Is.False,
+                "control: and it really is unreachable");
+
+            long pass = AlignToPass(sim);
+            sim.Tick();
+            Assert.That(maint.Backoff.RetryAtFor(walledOff.Id),
+                        Is.EqualTo(pass + JobWork.UnreachableRetryTicks),
+                        "the unreachable machine is refused and stamped");
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.Maintain),
+                        "and the SAME pass still serviced the reachable one — a refusal must skip a " +
+                        "machine, not end the pass");
+            Assert.That(pawn.JobTarget, Is.EqualTo(reachable.Pos));
         }
 
         /// <summary>A REACHABLE needy machine is still serviced — the maintenance half of the
