@@ -710,16 +710,32 @@ negative control whose fixture contains a **later real comment**.
 > to look like a reading. **AFTER THIS** the bar is gone, and nothing on the first screen pretends to
 > a number the sim does not compute.
 
-**SEAM — AND THERE ARE FIVE DRAW SITES ACROSS THREE FILES, NOT ONE.** *(Revision 0 named only the
-CREW WATCH bar. All five verified this session.)*
+**SEAM — AND THERE ARE ~~FIVE~~ SIX DRAW SITES ACROSS THREE FILES, NOT ONE.** *(Revision 0 named only
+the CREW WATCH bar. Revision 2 named five. ⚠️ **CORRECTED BY THE IMPLEMENTER, 2026-07-29: there are
+SIX** — the console READOUT's `.ro-morale` line was missed by the "all five verified this session"
+claim, and the line numbers in rows 1–3 were already stale because M1-B had landed on `overview-view.js`
+in between. **Both are the house shape "a package's code can be right and its justification false"
+(§13.11), here in the charter itself.** Row 5 is split below into 5a/5b/5c; the SCOPE decision is
+unchanged — all three are `hud.js` and all three stay.)*
 
-| # | site | `file:line` | in scope? |
+| # | site | `file:line` **(re-derived on the merged tree, 2026-07-29)** | in scope? |
 |---|---|---|---|
-| 1 | CREW WATCH bar markup | `client/src/ui/overview-view.js:675` (`ov-morale` / `ov-morale-fill`) | ✅ **remove** |
-| 2 | its element cache | `client/src/ui/overview-view.js:682` | ✅ **remove** |
-| 3 | its per-frame fill + colour | `client/src/ui/overview-view.js:699-702` (`moraleColor(mv)`) | ✅ **remove** |
+| 1 | CREW WATCH bar markup | `client/src/ui/overview-view.js:688` (`ov-morale` / `ov-morale-fill`) — *charter said `:675`* | ✅ **remove** |
+| 2 | its element cache | `client/src/ui/overview-view.js:695` — *charter said `:682`* | ✅ **remove** |
+| 3 | its per-frame fill + colour | `client/src/ui/overview-view.js:712-715` (`moraleColor(mv)`) — *charter said `:699-702`* | ✅ **remove** |
 | 4 | the dossier MORALE meter | `client/src/ui/panels.js:313-315` | ✅ **remove** |
-| 5 | the console CREW table's morale track/fill and `TABLE_CELLS`' `'tc-morale'` | `client/src/ui/hud.js:951-953`, `:981-984`, `:1008` | ⛔ **OUT OF SCOPE — and stated, not missed** |
+| 5a | the console CREW WATCH row's morale track/fill | `client/src/ui/hud.js:958,960,988,991` | ⛔ **OUT OF SCOPE — stated, not missed** |
+| 5b | the console CREW table's `'tc-morale'` | `client/src/ui/hud.js:1015`, painted at `:1047-1049` | ⛔ **OUT OF SCOPE — stated, not missed** |
+| 5c | ⚠️ **the console READOUT's `.ro-morale` line — NOT IN THE CHARTER'S TABLE AT ALL** | `client/src/ui/hud.js:1188` | ⛔ **OUT OF SCOPE — same reason** |
+
+⚠️ **AND ONE THING THE TABLE IS RIGHT TO EXCLUDE BUT THE PROSE BELOW WAS NOT: `hud.js:175`'s doc
+ledger.** It called morale REAL *"so the DOSSIER card can show the REAL morale/current-task"* — and
+`enrichCitizen` is reached from the **standard** surface (`overview-view.js`'s `ovBio` →
+`hud.js:167-172` → `panels().citizen(...)`), so that sentence describes the same card `panels.js:219`
+describes. **The `hud.js` exclusion covers DRAW SITES and the equality-pinned census; it does not
+cover ledgers**, and the census reads `codeOnly(raw)` so a comment cannot move it. Corrected in the
+package. Also note `hud.js:34`'s `['morale','Morale']` is `ShipMetricsSnapshot.Morale` — the real,
+computed ship metric — and is **not** a citizen-field site.
 
 ⛔ **`hud.js` IS DELIBERATELY LEFT ALONE, and the reason is the invariant, not laziness.** It is the
 deprecated console `.app` shell, **closed to new work**, and `TABLE_CELLS` (`:1008`) is inside the
@@ -760,7 +776,19 @@ Check (A).
 | 1 | Re-add the morale bar element to the CREW WATCH row builder | the equality-pinned CREW WATCH element census |
 | 2 | Re-add the MORALE meter to the dossier | the `panels.js` section census — **blinded of leg 1**, or a shared count folds them |
 | 3 | Set `Citizen.Morale = 0.4f` in a test sim and render | ⚠️ **NOTHING may change on screen** — the negative half |
-| 4 | ⭐ **PAIRED POSITIVE CONTROL: set `Citizen.Hunger = 0.8f` on the same fixture and render** | ⭐ **SOMETHING MUST CHANGE.** Leg 3 alone is a **bare negative**, satisfied by a renderer that has stopped drawing *anything* — a broken fixture, a crashed builder, a stubbed `render()` all pass it. **Run 3 and 4 on the same fixture in the same test file and require 4 to fire.** Without 4, leg 3 is the "guard satisfied by its own subject commented out" shape wearing a rendering costume |
+| 4 | ⭐ **PAIRED POSITIVE CONTROL: set ~~`Citizen.Hunger = 0.8f`~~ a REAL roster field on the same fixture and render** | ⭐ **SOMETHING MUST CHANGE.** Leg 3 alone is a **bare negative**, satisfied by a renderer that has stopped drawing *anything* — a broken fixture, a crashed builder, a stubbed `render()` all pass it. **Run 3 and 4 on the same fixture in the same test file and require 4 to fire.** Without 4, leg 3 is the "guard satisfied by its own subject commented out" shape wearing a rendering costume |
+
+⚠️ **LEG 4's NAMED FIELD WAS UNUSABLE, MEASURED (implementer, 2026-07-29): `Citizen.Hunger` REACHES
+NO CLIENT SURFACE.** `BuildRoster` (`hosts/web/GameSession.cs`) emits cid/name/role/mood/task/
+portrait/morale/deck/x/y/traits and **no need at all**; the `citizen` message carries
+role/mood/traits/portrait/log; `grep -ri "hunger\|thirst\|fatigue" client/src/` returns **nothing**.
+Substituted with **`task`** (the host's `TaskLabel(c)`) and **`mood`** (`mind.ActiveEmotion(tick)`),
+which are the CREW WATCH's and the dossier's own real fields. **The leg's INTENT is unchanged and is
+what matters** — prove the instrument is live with a field that *is* still drawn.
+⚠️ Legs 3+4 were then run in **four** forms, and the extra two are the load-bearing ones: morale
+driven into an **existing** element's style (no new element ⇒ the census is structurally blind), and
+the painter **stubbed to draw nothing** (⇒ the morale half goes GREEN and only the positive control
+fires). That last pair is the evidence for this row existing at all.
 | 5 | Revert `panels.js:219`'s ledger correction | the ledger-vs-drawing consistency test |
 
 ⚠️ **Legs 3+4 together are the point.** A guard that only asserts *"no element with class
@@ -768,8 +796,20 @@ Check (A).
 prove the instrument is live with a field that *is* still drawn.
 
 **ACCEPTANCE (browser, < 5 min).** `./play.sh` → the CREW WATCH row for Rell shows her name, her task,
-and her real needs — **and no morale bar anywhere.** Open the dossier: **no MORALE meter**, and the
-needs that *are* drawn still move when the sim moves.
+~~and her real needs~~ — **and no morale bar anywhere.** Open the dossier: **no MORALE meter**, and
+~~the needs that *are* drawn still move when the sim moves~~ the surface keeps repainting from live
+sim state.
+
+⚠️ **THE STRUCK CLAUSES WERE NOT SATISFIABLE AS WRITTEN (implementer, 2026-07-29).** The CREW WATCH
+row draws name / role / task and **no need**; the dossier's Health/Food/Water/Rest meters are
+◇ SAMPLE — deterministically seeded per cid, so they never move — and they *say so*, wearing a
+`◇ SAMPLE` badge under a card-level legend. **That is a DISCLOSED placeholder, which is not the same
+defect as an undisclosed constant wearing a gauge**, so it is not a second instance of this bug; it is
+worth filing for the owner separately as *"the dossier's needs are fabricated"*. Verified instead:
+`.ov-morale` = 0, `.ov-morale-fill` = 0, CSS rules matching `.ov-morale` = 0, no `MORALE` anywhere in
+the dossier, meter labels exactly `[Health, Food, Water, Rest, Affinity, Trust]`, every remaining
+morale-classed node inside the `display:none` `.app` shell — and the clock advancing
+`DAY 0 · 00:10 → 00:12` over 75 s with the surface repainting.
 
 **CONFLICTS.** `overview-view.js` — **rebase onto `lane/first-screen` (M1-B)**; serialize against
 M1-C and M2-3. Also `panels.js` — **serialize against M4-3/M4-4**, which rewrite the same card.

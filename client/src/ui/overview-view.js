@@ -34,7 +34,23 @@ import { decksView } from './decks-model.js';
 import { overviewScene, makeTransform, starLayerSvg } from './overview-scene.js';
 import { pawnChip } from '../render/pawn-svg.js';
 import {
-  clockHHMM, cautionState, moraleColor, surnameOf, speedLabel, logLineParts, logTail,
+  // ⚠️ `moraleColor` IS DELIBERATELY NOT IMPORTED HERE (M1-F). This surface used to tint a CREW
+  // WATCH bar with it. NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale`, and that scope is the
+  // whole claim: **inside `sim/` the field has exactly four references** — its `= 1f` initialiser
+  // (`Entities/Citizen.cs:34`), the hash fold (`Simulation.cs:420`), the save write
+  // (`SaveWriter.cs:265`) and the save read (`SaveReader.cs:268`, restoring the 1f that was
+  // written). Not one of them is a simulation writing a value it computed. Outside `sim/` there are
+  // FOUR more, none of which move it either: **1 in `hosts/`** — `GameSession.cs:1705`, which copies
+  // it onto the roster wire and is how it reaches this file at all — and **3 in `tests/`** —
+  // `StateHashHonestyTests.cs:176,234,645`, which assign it to prove it is HASHED (`:234` is
+  // `Case("Citizen.Morale", …)`, the equivalence case that is this package's evidence for NOT
+  // deleting the field: moving it is a determinism pin move). **EIGHT in total: 4 + 1 + 3.**
+  // ⚠️ `hosts/web/WireFormat.cs:272` is deliberately NOT in that count — it serialises
+  // `RosterEntry.Morale`, the DTO copy, which is a DIFFERENT field. Named here so a reader can tell
+  // "excluded on purpose" from "missed", which is the whole reason this paragraph keeps being
+  // rewritten. So the bar was a constant painted to look like a reading. `moraleColor` still exists
+  // in `console-model.js` for the deprecated console shell, until it dies at M4-8/WP-9.
+  clockHHMM, cautionState, surnameOf, speedLabel, logLineParts, logTail,
   selectedRosterEntry, crewClickTarget, terminalList, watchTask,
 } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
@@ -685,14 +701,12 @@ function paintCrewWatch(crew, selCid) {
         '<span class="ov-crewcol">' +
           '<span class="ov-crewname"></span><span class="ov-crewrole"></span>' +
           '<span class="ov-crewtask"></span>' +
-          '<span class="ov-morale"><span class="ov-morale-fill"></span></span>' +
         '</span>';
       return {
         el: b,
         nameEl: b.querySelector('.ov-crewname'),
         roleEl: b.querySelector('.ov-crewrole'),
         taskEl: b.querySelector('.ov-crewtask'),
-        fill: b.querySelector('.ov-morale-fill'),
       };
     },
     (rec, e) => {
@@ -709,11 +723,17 @@ function paintCrewWatch(crew, selCid) {
       const t = watchTask(e);
       setText(rec.taskEl, t.text);
       setCls(rec.taskEl, 'working', t.working);
-      const mv = Math.max(0, Math.min(1, e.morale || 0));
-      const w = Math.round(mv * 100) + '%';
-      if (rec.fill.style.width !== w) rec.fill.style.width = w; // in-place → the width transition animates
-      const color = moraleColor(mv);
-      if (rec.fill.style.background !== color) rec.fill.style.background = color;
+      // ⚠️ THERE IS NO MORALE BAR HERE, AND ITS ABSENCE IS THE FEATURE (M1-F, 2026-07-29). A
+      // `.ov-morale` / `.ov-morale-fill` pair used to sit under the task line, its width and colour
+      // driven by `e.morale` off the roster wire. That number is `Citizen.Morale`, and NO SYSTEM IN
+      // `sim/` MOVES IT — its only assignments are the `= 1f` initialiser and the save-load restore
+      // of that same 1f. So the bar was a CONSTANT painted to look like a reading, on the first
+      // screen a new player sees. It is not "not wired yet"; there is nothing upstream to wire.
+      // The wire still carries the field (removing it is a hashed-state pin move for
+      // a cosmetic fix, and whether morale becomes real is an open M4-4 decision), so a future lane
+      // that wants a bar back must first make the number move. ⛔ Do NOT re-add a bar off `e.morale`.
+      // ⚠️ NOT to be confused with `ShipMetricsSnapshot.Morale`, which IS computed (mean crew Mood)
+      // and IS load-bearing — it weights DirectorSystem tension. Different field, same word.
       setCls(rec.el, 'sel', selCid != null && e.cid === selCid);
     });
 }

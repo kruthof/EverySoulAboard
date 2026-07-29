@@ -1,8 +1,14 @@
 // C5 dialogue-live tests — the PURE surface the live conversation flow is built on: the wire
 // command constructors (talk/say/bye/moss), the selected-crew cid resolver that the T key uses,
 // the chat reducer bound to a full live session (fixture replay), a mid-session reconnect that
-// must not wedge, and interleaved sessions. The DOM wiring (say/bye send, the llmstatus chip,
-// the citizen card) is browser-only glue in hud.js/panels.js — exercised in the browser, not node.
+// must not wedge, and interleaved sessions. The DOM wiring (say/bye send, the llmstatus chip) is
+// browser-only glue in hud.js/panels.js — exercised in the browser, not node.
+//
+// ⚠️ "the citizen card" USED TO BE IN THAT LIST AND NO LONGER BELONGS THERE (M1-F, 2026-07-29):
+// `client/test/dossier-honesty.test.js` imports `panels.js` and renders the DOSSIER against
+// `client/test/dom-lite.js`. The dialogue panel's DOM is still browser-only; the citizen card's is
+// not. Left stale, this line would tell the next lane that a card regression cannot be caught in
+// node — which is now exactly backwards.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
