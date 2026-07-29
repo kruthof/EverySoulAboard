@@ -231,15 +231,37 @@ them → the ghosts go away → open the CREW WATCH row and there is **no morale
 This is the milestone the whole quarter is built around. It is the owner's own worked example of the
 loop, and **today it is not expressible in either half.**
 
+> ### ⛔ SUPERSEDED IN PART BY OD-G / OD-H *(2026-07-29)* — read `perilune-roadmap-q3.packages.md` §5's REVISION 3 block before implementing anything in M2
+>
+> **OD-G — the pawn boots idle and waiting; the game opens with the player giving an order, after
+> which normal autonomy resumes under a visible work grid.**
+> **OD-H — the work grid DEFAULTS OFF; work is opt-in.** ⚠️ *The owner accepted a pin move and a
+> re-baseline explicitly.*
+>
+> **What that voids in this section:** the packages document's chartered *"default every work type to
+> 3"* (chosen to keep a pin from moving — **a cost argument deciding a design question**, the exact
+> shape §3.1 of this plan names) · the work-type filter's *"four sites"* — **re-derived as eleven claim
+> sites, FIVE gates and three named exclusions**, the fifth gate being `CapabilityComputer.cs:70-76`,
+> which no revision had counted · and the demo's opening, which now runs the **enabling** direction.
+> **Contents item 5 (*"repair becomes a work type"*) and item 8 (POWER) are unaffected.**
+> ⭐ **Two new packages follow from it** — **M2-20** (a pawn who is waiting, and a game that says so)
+> and **M2-21**, the silent BUILD haul measured on 2026-07-29. **Both are chartered in the packages
+> document, not here.**
+> ⛔ *(A third, `M1-J` — "the tick-0 claim on a bench she can never reach" — was chartered and **DROPPED
+> the same day**: M1-H's merged reachability probe removed the claim, and the wreck's own compartment
+> equalises to breathable by ~tick 1 450. **Its premise was contradicted twice in one day.** It survives
+> as `packages.md` §12.19 plus a source comment. **The struck sentence is left here rather than deleted
+> because it was published, and this plan retracts in place.)*
+
 **What is measured to be missing.**
 - **`Citizen` has no skill, no work-type mask, no priority and no work-rate multiplier.** Full field
   list verified at `sim/Sim.Core/Entities/Citizen.cs:7-81`; the only per-citizen work gate in the
   entire type is `IsRecruitableForWork` at `:103`, a boolean. `git log -- '*Skill*' '*Priority*'
   '*WorkType*' '*Assign*'` returns **zero commits in 555**.
 - **Dispatch is a distance-only tournament with no per-citizen filter.** `TryAssign`
-  (`sim/Sim.Core/Jobs/JobSystem.cs:220-273`); the decisive line is `:243`
+  (`sim/Sim.Core/Jobs/JobSystem.cs:261-273`); the decisive line is `:284`
   `if (cand < 0 || d >= bestDist) continue;`. Ties break by source registration order
-  (`:71-80`: Dig, Haul, Build, Deconstruct), then board order, then citizen store order.
+  (`DefaultSources()`: Dig, Haul, Build, Deconstruct), then board order, then citizen store order.
 - **Power is condition-blind on BOTH sides.** `sim/Sim.Core/Systems/PowerSystem.cs:185` is
   `_generation[d.NetworkId] += def.GenerationKW;` with no `Condition`, no `IsOperational`, no
   `EffectiveRate`; the file says so itself at `:175-179` — *"a wrecked SolarWing still supplies its
@@ -293,7 +315,7 @@ loop, and **today it is not expressible in either half.**
 > recruiter query) · **(c) PRE-EMPTION — its own package, its own risk row (R1b), and its own rule for
 > when a job may be dropped.** The hard cases are named now rather than discovered: mid-haul carrying
 > cargo · mid-craft against a bill · mid-build with material already delivered. **The abandon paths
-> already exist per source, and `JobContext.cs:95` already normalises the release** — so the mechanism
+> already exist per source, and `JobContext.cs:93` already normalises the release** — so the mechanism
 > is cheap and the *policy* is the work.
 >
 > **The fourth assignment site, which nobody had counted.** `EffectValidator.cs:141` writes
@@ -306,9 +328,16 @@ loop, and **today it is not expressible in either half.**
 1. **The state.** Per-citizen work-type priorities as hashed `Citizen` state, RimWorld-shaped:
    ~6–8 work types, each *disabled* or *1–4*. ⭐ **Land the skill field's STORAGE in the same
    commit, zeroed and with no consumer** (see §3.2 — this is the one place batching is correct).
-2. **The four-site work-type filter.** `TryAssign`, `SustenanceSystem`, `CraftingSystem`,
-   `MaintenanceSystem` — plus `EffectValidator.cs:141`, which today writes a `JobKind` with no gate
-   at all.
+2. ⛔ **THE WORK-TYPE VETO — "four sites" IS VOID; IT IS `11 / 5 / 3`.** Re-derived from the code:
+   **eleven claim sites behind FIVE gates** — `TryAssign` (covering the four `IJobSource`s) ·
+   `CraftingSystem` · `MaintenanceSystem` · `EffectValidator.cs:141` (which writes a `JobKind` with no
+   gate at all) · ⭐ **`CapabilityComputer.cs:70-76`, the offer mirror no revision had counted** — plus
+   **three exclusions and two named non-sites.** Full table in `perilune-roadmap-q3.packages.md` §5,
+   M2-2.
+   ⛔⛔ **AND `SustenanceSystem` MUST NEVER BE GATED — this line listed it and that is the error §12.3
+   exists to stop.** It recruits on `IsIdleForWork`, deliberately **not** `IsRecruitableForWork`;
+   gating it means **switching off enough work types starves a crew member.** *(Eat, Drink and Flee are
+   not work types.)*
 3. **Cross-family ranking.** `TryAssign` iterates priority bands high→low; before the argmin at band
    *b* it asks each push recruiter *"do you have a claimable band-b job for this citizen?"* and leaves
    the pawn idle for it if so. **One tiny new interface. No stack reorder, no `HandledKinds` change,
@@ -371,7 +400,8 @@ stack re-order (struck) and it is **not** large because of the UI. Three things 
 **(a) PRE-EMPTION.** A mechanism the sim has exactly one instance of (`SafetySystem.cs:232-238`),
 now needed generally, whose *policy* — when may a pawn be taken off a job it is halfway through —
 is a design question with no precedent here and three named hard cases.
-**(b) THE FOUR-SITE UNIFICATION.** One rule enforced at four assignment sites, two of which
+**(b) THE MULTI-SITE UNIFICATION** *(said "FOUR-SITE"; the census is **`11 / 5 / 3`** — see Contents
+item 2 and the packages document's M2-2)*. One rule enforced at five gates, two of which
 (`Maintain`, `Craft`) have no `IJobSource` to hang it on and one of which (`EffectValidator`) nobody
 had counted.
 **(c) THE PIN RITUAL.** New hashed `Citizen` state bumps the CITZ save chapter ⇒ P1/P2/P3, def'd
@@ -659,9 +689,20 @@ one lane the tax is paid once"* — is true of the **serialization**, not of the
   never runs two pin-movers concurrently. Published order *(revised in revision 1: the stack re-order
   is struck; the power term is added, because it is **not** pin-neutral — it moves the `perilune` and
   `slice` tick-3000 goldens)*:
-  **M2-a** citizen work state (priority bytes + the reserved skill byte) → **M2-b** pre-emption →
+  **M2-a** citizen work state (priority bytes + the reserved skill byte) → ~~**M2-b** pre-emption~~ →
   **M2-c** the off-network authoring fix (§0.2) → **M2-d** the `EffectiveRate` generation term →
   **M3-a** `CryoSystem` → **M3-b** skills' consumers → **M3-c** rest → **M3-d** the heater def row.
+  ⛔ ⭐ **THIS ORDER IS STALE AND THE PACKAGES DOCUMENT'S §2 IS THE AUTHORITY.** `M2-b` was **struck**
+  (the M2-0 spike measured pre-emption at 0 lines in `sim/`), and **four rows have been added since**:
+  **M1-a** the `Craft` thrash · **M1-b** the crafting staging rule · **M1-c** the silent BUILD haul ·
+  and ⭐ **M2-e, the work-type veto, which OD-H turned from provably pin-neutral into a behaviour
+  change on every ship.** ⚠️ ⭐ **A chain of EIGHT re-pins is now a chain of NINE TO ELEVEN, and the
+  spread is the honest part** — counted from the packages document's §2 table, not computed:
+  ~~`M1-a`~~ **RETRACTED (M1-H measured pin-neutral, all five held)** · `M1-b?` · `M1-c?` · `M2-a` ·
+  `M2-e` · **`M2-g`** *(new — OD-J's cost)* · `M2-c` · `M2-d` · `M3-a · M3-b · M3-c · M3-d`, where `?`
+  marks a row whose place is **not yet measured** and which leaves the chain if it proves neutral. **Three of the four new rows are live `main` defects found by driving the sim,
+  and one is OD-H's own cost.** *(Struck rather than rewritten, because §11's rule is that
+  published ids are stable — the letters record history, not sequence.)*
   Each gets its own re-pin commit (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory,
   in the same commit — the ritual).
 - ⭐ **ROLLBACK POINTS, named in advance** *(new in revision 1)*. A chain of eight re-pins has no
@@ -747,7 +788,43 @@ now. WP-C has needed the owner since 07-25.
 **The rule this plan adopts: every milestone opens with ONE decision batch, put to the owner in a
 single message, each item carrying a recommendation and a stated blast radius; anything unanswered
 after three days takes the recommendation, is marked REVERSIBLE, and is listed in the milestone's
-record as such.** The batches:
+record as such.**
+
+> ## ⭐ THE DECISION LEDGER — 2026-07-29, TEN DECISIONS IN ONE DAY *(added in revision 3)*
+>
+> **This table exists because §3.5's own diagnosis applies to §3.5.** Ten decisions were taken on one
+> day and were about to live as scattered clauses in two documents; that is exactly how the
+> `Morale`/`Health` item went stale for five days and the character-sim five for three.
+> **One table, chronological, with where each one BINDS.**
+>
+> | id | decision | binds |
+> |---|---|---|
+> | **OD-A** | Repair is a **work type** under the priority grid + a right-click prioritise override — never a paint designation. ⇒ *the grid is a PREREQUISITE, not the seventh lane.* | M2 entire |
+> | **OD-B** | Economy **PARKED at E0-complete**; E1 not opened; **A1 retired as a goal** (regression statistic only). | M2-17, M3 |
+> | **OD-C** | The ship's interior is **authored-explored at boot**. | M1-A |
+> | **OD-D** | ⭐ **THE VENT PREMISE IS REWORDED, NOT REBUILT.** `CLAUDE.md`, `VISION.md` and `MECHANICS.md` all describe the opening move as *"open the vent, push the air outward"*; verified at `AtmosphereSystem.cs:136-146`, an `AirVent` **injects** dry Earth mix *"from an unmodelled reserve"* into **its own room** and *"venting into room 0 is refused outright"*. **There is no neighbour term — the mechanic was never implemented.** ⇒ **Change the WORDING to match the injection model:** you restore a vent and it **fills a compartment**, and the pressure frontier the design wants falls out of that. ⛔ *Rejected: giving the vent a source room and a sign — **a new gas mechanic**, in a sim with no vertical gas term either, and not a two-week milestone's work.* | **M1-G** (`lane/premise-fix`), **docs-only, INFRASTRUCTURE**, and its acceptance is deliberately **none** — it carries no demo, by class. It is M1's **one** infrastructure package (§9). |
+> | **OD-E** | ⛔ **DECK 1 STAYS DEAD — a deck-1 vent was OFFERED and DECLINED.** The wreck's eight deck-1 halls can never hold air because **the sim has no vertical gas term at all** — `FlowAcrossDoor` probes `(X±1,Y,Z)`/`(X,Y±1,Z)`, `DiffuseAcrossDoors` uses `Int3.Neighbor4`, `RoomState.FloodRegion` binds `world.Levels[start.Z]`, `RemapGas` runs per-`z` *(verified exhaustively in review 2026-07-28, not by grepping two functions)* — and both `AirVent`s are on deck 0. Measured: eight halls, doors opened, 20 000 ticks ⇒ peak **0.000 kPa**. ⭐ **Because a vent injects into its OWN room, authoring a deck-1 vent WOULD have made the upper deck live. That was put to the owner explicitly and declined**, as was adding a vertical gas term. **The 2026-07-28 decision — ship it FILED and VISIBLE IN PLAY — stands unchanged.** | ⛔ **Binds nothing to build. It is a STANDING REFUSAL**, and its value is that it stops a future lane "fixing" the dead deck as an oversight. ⚠️ **Record alongside it the standing prohibition: do NOT re-pressurise in `AddRoomCommand`** — the air wand W4b deleted on a binding owner decision, **which has already tried to return once.** |
+> | **OD-F** | The wreck's finite repair economy: **author more consumables** so it stops being a silent soft-lock. | **M1-I** (`lane/repair-consumables`, in flight) · closes M2 batch item 6 |
+> | **OD-G** | **The opening is an ORDER, then autonomy resumes.** The pawn boots idle and waiting; the game opens with the player giving an order. | **M2-20** (new) · M2-2 · M2-3 |
+> | **OD-H** | **The work grid DEFAULTS OFF. Work is opt-in.** *(Owner accepted a pin move and a re-baseline.)* | **M2-1 · M2-2 (now a pin row) · M2-3/M2-4 (now blocking) · M2-17** |
+> | **OD-I** | **One rule, OFF everywhere** — the measurement fixtures too; **M2-17 teaches the harness to author a grid.** | **M2-1** (unblocked) · **M2-17** |
+> | **OD-J** | v1 work-list order = **`Repair · Construct · Craft · Deconstruct · Mine · Haul`**, and **it IS the equal-band tie-break.** | **M2-5** (now pin row `M2-g`) · M2-3's column layout |
+>
+> ⚠️ ⭐ **OD-D AND OD-E WERE CITED AS A RANGE BEFORE THEY WERE STATED, AND THIS TABLE CARRIED THEM AS
+> NAMED GAPS UNTIL THEY WERE.** That is the standard: ***an id in a ledger with no content is a
+> question; an invented row is a lie.*** **Two decisions in one day were nearly lost to a range
+> notation** — which is the same shape as every stale open-on-owner item §3.5 exists to prevent.
+>
+> **Plus three DECIDED-BY-DEFAULT (integrator, 2026-07-29), overturnable by the owner on sight:**
+> new thaws boot **all-off** (uniform) · **"the first order"** means any player command that makes her
+> take a job, including a WORK-tab toggle · a deliberately unassigned pawn gets **two words, not one**
+> (*unassigned* vs *idle*).
+>
+> ⛔ **NOTHING IN M1 OR M2 IS NOW BLOCKED ON AN UNANSWERED ITEM.** The M2 batch's remaining open items
+> (1–5) are all non-blocking; **item 5's blast radius has changed without its content changing** — see
+> the packages document.
+
+The batches:
 
 - **M1:** the fog rule's scope (wreck-only authoring vs. a general hull rule — the pin difference) ·
   ⭐ **the vent premise (§0.3)**: an `AirVent` **injects** into its own room and refuses room 0, so
@@ -756,14 +833,30 @@ record as such.** The batches:
   neighbour-draw term is a new gas mechanic in a milestone that should ship in two weeks.
 - **M2:** how many work types, and their names · does `HoldPosition` survive or become "everything
   disabled" · does a priority ever override `CanStageWorkerAt` (**recommend: never**) ·
-  ⭐ **the pre-emption policy** — which job families may be dropped mid-work, and in what state
-  (**recommend: droppable everywhere except mid-haul-carrying-cargo, where the cargo must be set down
-  first; the abandon paths already exist per source and `JobContext.cs:95` normalises the release**).
+  ⛔ ~~**the pre-emption policy**~~ — **WITHDRAWN 2026-07-29: the M2-0 spike measured all three hard
+  cases and the engine already answers them.** Replaced by **the sticky claim's release rule**
+  (recommend: completion, a new order, death or genuine inability — **never a timeout**).
+  ⭐ **AND FIVE MORE ITEMS ADDED BY OD-G / OD-H (2026-07-29), stated in full in
+  `perilune-roadmap-q3.packages.md` §5's batch as items 7–11 and NOT duplicated here:** the work-list
+  order *(re-opened — the pin saving that justified the v1 compromise no longer exists)* · **do the
+  measurement fixtures default OFF too** · **does a newly thawed crew member boot with every work type
+  off** *(must be answered before M3-2 freezes the `CryoSystem` chapter)* · **what counts as "the
+  first order"** · **the vocabulary for a pawn who is deliberately unassigned** *(it contradicts a
+  deliberate design position at **`client/src/ui/overview-view.js:721-722`** — ⚠️ **the CLAUSE, not the
+  block.** The comment runs `:715-722` and carries **two** claims: the `AWAITING ORDERS` position, which
+  is live and is what OD-G overturns, and an auto-wander premise at `:720-721` (*"crew there do not
+  auto-wander"*) which is **already false** — grid crew were made `AutoWander = true` on 2026-07-25.
+  **Quote around the stale half, not through it.**)*.
+  ⚠️ **Item 5 — does an explicit *Prioritise* order override the grid — is unchanged as a question and
+  NARROWED as a decision:** under OD-H every machine's work type is off at boot, so a *no* answer
+  refuses the player's very first right-click.
 - **M3:** OD-12 the pod census (**recommend two wrecked**) · OD-11 `thaw_cost` escalation
   (**recommend `base + LivingCrew × step`, in Parts**) · OD-8 the ice hold (**recommend yes, behind
   the frontier**) · how many skill axes (**recommend small: ~6 work types, one hashed byte each**) ·
-  the dead deck (**recommend: author a deck-1 vent; it is one line of content and it unblocks the
-  frontier**) · does the heater ship as a device or a def change to an existing one ·
+  ⛔ ~~the dead deck (**recommend: author a deck-1 vent**)~~ — **STRUCK 2026-07-29. `OD-E` IS BINDING
+  AND IT RECORDS THIS EXACT OPTION AS OFFERED AND DECLINED**, 46 lines above, in this same section.
+  ⚠️ *A recommendation left standing beneath the decision that refused it is how a "closed" item
+  re-opens itself, and it would have read as live to the M3 implementer.* · does the heater ship as a device or a def change to an existing one ·
   ⭐ **the `Device.Name` collision** — one field is both the MOSS registry key and *"who is inside"*
   (**recommend: keep `Name` as the registry key and carry the sleeper elsewhere; decide before
   `CryoSystem` freezes the save chapter**).
@@ -873,7 +966,7 @@ pre-emption). Require a **driven** one-pawn measurement, never a scan.
 
 **R1b — Pre-emption's POLICY is the hard part, not its mechanism. (MEDIUM / HIGH)** *(new in revision 1)*
 The mechanism exists once (`SafetySystem.cs:232-238`) and the release is already normalised
-(`JobContext.cs:95`). The question *when may a pawn be taken off a job it is halfway through* has no
+(`JobContext.cs:93`). The question *when may a pawn be taken off a job it is halfway through* has no
 precedent here and three named hard cases: mid-haul carrying cargo, mid-craft against a bill,
 mid-build with material delivered.
 *Early warning:* a pre-emption package that ships a mechanism and defers the rule to "the caller"; or
