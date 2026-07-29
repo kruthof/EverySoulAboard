@@ -295,8 +295,9 @@ quarter that has not started.)*
 >
 > **The shipped code says so itself** (`CraftingSystem.cs:508-516`, M1-H's own doc comment):
 > *"⭐ **THIS IS THE LOAD-BEARING HALF OF M1-H, AND THE CHARTER DID NOT ASK FOR IT. DO NOT 'SIMPLIFY'
-> IT AWAY.** … backoff only 597 → 228 Craft starts and 3.575 % → 3.333 % (−6.8 %); **probe only 0 and
-> 0.000 %.**"* ⇒ **The 0.000 % belongs to M1-H entirely. M1-J inherits none of it.**
+> IT AWAY.** … backoff only 597 → 228 Craft starts and 3.575 % → 3.333 % of crew-ticks (−6.8 %);
+> **probe only 0 and 0.000 %.**"* ⇒ **The 0.000 % belongs to M1-H entirely. M1-J inherits none of it.**
+> *(Quoted verbatim from the shipped source; M1-H's own charter tabulates the same four figures.)*
 >
 > ⇒ ⛔ **AND THAT DISCHARGES M1-J's PLAYER SENTENCE.** *"At tick 0 she is claimed for a bench in a
 > sealed hall **she can never reach**"* — **unreachable is exactly what the merged probe refuses**, and
