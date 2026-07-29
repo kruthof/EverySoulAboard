@@ -1184,9 +1184,11 @@ namespace Perilune.Web
         /// interior centre of the wall-inclusive slot window — a floor tile inside the compartment)
         /// and its existing ANCHOR name, and enqueues an <see cref="AddRoomCommand"/> carrying that
         /// geometry. The sim itself has no slot-grid knowledge, so all geometry rides the command.
-        /// Legality (the slot must be a SEALED, AIRLESS empty hall) is decided sim-side at the tick
-        /// boundary — an illegal request is a silent sim no-op, and the slot only flips occupied+typed
-        /// once the sim confirms it in the next <c>decks</c> frame. Unknown room type ⇒ ignored.
+        /// Legality (a real sealed compartment that no TYPED anchor already owns — W4b moved that test
+        /// off gas and onto the anchor) is decided sim-side at the tick boundary; an illegal request is
+        /// a silent sim no-op, and the slot only flips occupied+typed once the sim confirms it in the
+        /// next <c>decks</c> frame. ⚠️ It flips occupied while still AIRLESS — allocating a room no
+        /// longer opens its door or makes any air. Unknown room type ⇒ ignored.
         /// </summary>
         private void HandleAddRoom(WebCommand cmd)
         {
@@ -1744,8 +1746,8 @@ namespace Perilune.Web
                     byDeck.Add(slot.Deck);
                 }
                 // Room TYPE comes from LIVE state (the RoomAnchor's Type, set by AddRoomCommand when
-                // a hall is commissioned), not the authoring descriptor — so a commissioned hall shows
-                // its new type. Fall back to the descriptor when no live type is known (airless hall).
+                // a hall is allocated), not the authoring descriptor — so an allocated hall shows its
+                // new type. Fall back to the descriptor when no live type is known (un-allocated hall).
                 byte typeByte = (occupied && liveType != RoomType.None) ? (byte)liveType : (byte)slot.Type;
                 list.Add(new WireFormat.DeckSlot(slot.Index, slot.X, slot.Y, slot.W, slot.H,
                     anchorName, typeByte, occupied, active: false));
@@ -1769,11 +1771,22 @@ namespace Perilune.Web
             return entries;
         }
 
-        /// <summary>Resolve a slot's live occupancy + room name from <see cref="RoomState"/>. Scans the
-        /// slot's tile rect for the first tile in a real (non-vacuum-sink) room; a slot is OCCUPIED
-        /// only when that room actually holds atmosphere (moles &gt; 0), so a sealed-but-airless empty
-        /// hall reads unoccupied with a blank name. The name is the anchor on this deck whose probe
-        /// resolves to the same room id — derived from live state, never the descriptor's anchor.</summary>
+        /// <summary>Resolve a slot's live ALLOCATION + room name from <see cref="RoomState"/>. Scans the
+        /// slot's tile rect for the first tile in a real (non-vacuum-sink) room, then looks for an
+        /// anchor on this deck whose probe resolves to that same room id and which carries a
+        /// <see cref="RoomType"/> other than <see cref="RoomType.None"/>. That anchor IS the
+        /// occupancy: an un-allocated hall reads unoccupied with a blank name.
+        ///
+        /// <para><b>⚠️ W4b: this used to gate on GAS (<c>TotalMoles &gt; 0</c>), and it had to move for
+        /// the same reason <see cref="AddRoomCommand"/>'s rejection predicate did.</b> Since ＋ADD ROOM
+        /// stopped conjuring air, "named" and "has air" are different events, and a gas gate would
+        /// have made the whole gesture INVISIBLE: the player allocates a compartment, the Overview
+        /// keeps drawing an un-allocated hall with a ＋ADD ROOM chip on it, and every further click is
+        /// silently refused sim-side by the anchor guard. Allocation is a decision, so it is the
+        /// anchor that reports it. Behaviour is unchanged for every slot on every shipped ship at
+        /// boot — a furnished slot's anchor was always typed, a hall's never is — the only new
+        /// combination is <c>occupied</c> with a null atmos row, which <c>decks-model.js</c>
+        /// <c>deckSlotView</c> already handles (it null-guards the atmos join).</para></summary>
         private static (bool Occupied, string AnchorName, RoomType Type) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
         {
             int deck = slot.Deck;
@@ -1791,18 +1804,16 @@ namespace Perilune.Web
                 }
             }
             if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "", RoomType.None);
-            if (rs.Rooms[roomId].TotalMoles <= 0) return (false, "", RoomType.None); // sealed but airless = empty hall
 
-            string name = "";
-            RoomType type = RoomType.None;
             var anchors = rs.Anchors;
             for (int i = 0; i < anchors.Count; i++)
             {
                 var a = anchors[i];
+                if (a.Type == RoomType.None) continue;   // an un-allocated hall carries one of these
                 if (a.Probe.Z != deck) continue;
-                if (rs.RoomIdAt(world, a.Probe) == roomId) { name = a.Name; type = a.Type; break; }
+                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type);
             }
-            return (true, name, type);
+            return (false, "", RoomType.None);
         }
 
         /// <summary>Per-room atmosphere for the warm SVG LENS overlays / atmos box — a READ-ONLY walk

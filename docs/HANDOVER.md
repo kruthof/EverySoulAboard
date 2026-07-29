@@ -238,8 +238,24 @@ is renamed). Tag `v2-talking-ship`.
 > that reads as *a doorway with its door retracted*, not as a wall gap), then retire `'/'` from
 > `NO_DEVICE_GLYPH_ART` and from `NON_FURNITURE_CODES`. **It is an ART decision and therefore the
 > owner's** — the third of three door pieces, beside `sliding-door` (closed) and `blast-door` (locked).
-> Do **not** "fix" it by making commissioning leave doors shut: that would change hashed sim state
-> (`Device.IsOpen`), move pins, and break the air-joining the comment exists to guarantee.
+> ~~Do **not** "fix" it by making commissioning leave doors shut: that would change hashed sim state
+> (`Device.IsOpen`), move pins, and break the air-joining the comment exists to guarantee.~~
+>
+> ⛔ **THAT STRUCK SENTENCE IS SUPERSEDED BY THE OWNER'S W4b DECISION, AND TWO OF ITS THREE CLAUSES
+> WERE FALSE ANYWAY (lane `lane/w4b-addroom-split`, 2026-07-28).** ＋ADD ROOM now leaves doors shut,
+> deliberately, because *"naming is free, air is earned"* — deleting the force-open **is** the root
+> fix for the report above, and it is the half that does not need the owner to draw anything.
+> Measured on the lane: (a) it **does** change hashed sim state, but **it moved NO pin** — nothing in
+> the three pinned runs constructs an `AddRoomCommand`, verified by putting an unconditional `throw`
+> at the top of `Execute` and watching all three pinned runs still pass; and (b) **where a gas source
+> can reach the compartment at all, not "air-joining" costs minutes, not playability** — grid fills a
+> 60-tile hall through the opened door in **154 s**, the wreck's deck-0 halls in **~299 s**, and the
+> wreck's authored in-compartment vent `vent_ls` fills its own room in **207 s with the door still
+> shut**. ⛔ **Where no gas source can reach it, it costs EVERYTHING — see "W4b-DEAD-DECK" below,
+> which is the honest other half of clause (b) and is an OWNER decision.** The `'/'` art question is
+> untouched and remains the owner's — it is simply much less load-bearing now that an allocated
+> compartment keeps its doors shut. ⚠️ The lane also leaves the OPEN-doorway glyph reachable in play
+> (the live wreck's door, every furnished room), so **do not read this as closing item 3 below.**
 >
 > ⚠️ **Lesson worth keeping, and it is a NEW shape:** a census that measures *geometry* cannot see a
 > defect that lives in *state*. Both halves were measured, on the same night, by the same review — and
@@ -258,6 +274,44 @@ is renamed). Tag `v2-talking-ship`.
 > 3. **The OPEN-doorway piece (`'/'`) — the owner report above.** This is now the *first* door
 >    question, ahead of item 2: on a played ship almost every door is open, so **this is the piece the
 >    player actually sees**, and today it does not exist.
+> 4. ⛔ **"W4b-DEAD-DECK" — the wreck's ENTIRE DECK 1 now has no route to air at all, and this is a
+>    W4b regression on the SHIPPED DEFAULT SHIP** (`lane/w4b-addroom-split`, found in independent
+>    review, re-measured by the lane). `--ship wreck` authors **exactly two `AirVent`s and both are on
+>    deck 0** (`vent_cryo @10,1,0` open; `vent_ls @35,6,0` closed, inside `hall_d0_s3`) — ci's own boot
+>    census already reads *"deck 1: 9 anchored spaces, 0 breathable, 0 breathable tiles"*. And gas
+>    transport in this sim is **strictly in-plane**: `AtmosphereSystem.FlowAcrossDoor`'s neighbour probe
+>    is `(X±1,Y,Z)`/`(X,Y±1,Z)` and `DiffuseAcrossDoors` uses `Int3.Neighbor4`, so **there is no
+>    vertical gas term anywhere** and the ladder trunk carries people, never air. **Measured: all eight
+>    deck-1 halls, allocated with their doors opened, 20 000 ticks (~33 sim-min) — peak `0.000` kPa,
+>    never 90.** Not slow: structurally impossible. Before W4b, ＋ADD ROOM pressurised any of them
+>    instantly, so this is a route the owner's decision deliberately removed and nothing replaced.
+>    **⚠️ The door/vent verb lane does NOT fix it** — there is no vent up there to open.
+>    ⇒ **Whether the wreck is meant to have a permanently unreachable dead deck is an OWNER DECISION**
+>    (it may well be the point of a raided hull; deck 1 is where the growbeds are). The lane
+>    deliberately did **not** fix it by authoring a deck-1 vent: that is content, and content is the
+>    owner's. If the answer is "it should be reachable", the cheapest honest fixes are a deck-1 vent
+>    the player must repair, or a portable/buildable vent (`PlaceDeviceCommand.IsPlaceableFurniture`
+>    excludes `AirVent` today, `Commands.cs:342-357`).
+> 5. ⛔ **"W4b-BLOCKED-FOG" — the `blocked` channel is FOG-GATED, so it is silent in exactly the
+>    compartment W4b makes the player look at.** `GameSession.AddIfBlocked` (`GameSession.cs:2008`)
+>    returns early on `(GetFlags(p) & TileFlags.Explored) == 0`. A freshly allocated compartment has
+>    never been entered, so most of it is unexplored, and the natural player order — allocate → paint →
+>    wonder why nothing happens — is exactly the order in which the channel says nothing.
+>    **Measured on `--ship grid` hall d1 s3:** allocate (moles `0.0`), paint a wall build at `(36,2,1)`
+>    ⇒ `BuildSystem.Pending = 1`, `CanStageWorkerAt = False`, hall rect explored **17 of 96**, target
+>    explored `False`, and the `blocked` payload is **`{"cells":[]}`**. Control: set `Explored` over the
+>    rect, re-render, and the row `[36,2,1,2,0]` appears.
+>    **⚠️ Sharper than it was filed, and the two order kinds fail DIFFERENTLY — measured:**
+>    `BuildDesigns` is **not** fog-gated, so a **build** ghost DRAWS on that unexplored tile
+>    (`designs` = `[[36,2,1,0,0,2,0]]`) while its reason does not — *the player sees their own order
+>    sitting there doing nothing, with no explanation*, which is precisely the failure the `blocked`
+>    channel exists to remove. `BuildMarks` **is** fog-gated (`GameSession.cs:1756`), so a **dig/strip**
+>    order there is invisible *along with* its reason (measured: `markShown=False blockedShown=False`).
+>    **Filed, not fixed, deliberately:** the fog gate is the `blocked` channel's own stated design
+>    (`WireFormat.Blocked.cs` header — *"what stops this channel becoming the one that leaks the map"*),
+>    the real inconsistency is `designs`-vs-`blocked` rather than a bug inside `blocked`, and relaxing
+>    either belongs to the lane that owns that channel. ⚠️ **Nothing anywhere should now say "W4 already
+>    covers the silent-refusal case for a freshly allocated room" — it does not.**
 >
 > ### ⇒ THE FOLLOW-UP THIS RUN CREATED — the honest cost of closing the livelock
 >

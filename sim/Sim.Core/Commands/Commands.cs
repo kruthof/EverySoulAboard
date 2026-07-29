@@ -569,17 +569,25 @@ namespace Perilune.Sim
     }
 
     /// <summary>
-    /// Commission an EMPTY HALL into a live room — the Overview's ＋ADD ROOM affordance. An empty
-    /// hall (grid ship) is an ALREADY-CARVED compartment: floor interior, perimeter walls, and one
-    /// SEALED door, its interior vacuum. Commissioning it names + types the room, opens+unlocks its
-    /// door, and fills it with breathable air. Nothing is carved — the walls already exist.
+    /// ALLOCATE an empty hall — the Overview's ＋ADD ROOM affordance. <b>NAMING IS FREE; AIR IS
+    /// EARNED.</b> An empty hall (grid ship, wreck ship) is an ALREADY-CARVED compartment: floor
+    /// interior, perimeter walls, and one SEALED door, its interior vacuum. Allocating it gives that
+    /// compartment a TYPE and nothing else. Nothing is carved, no door moves, and no gas appears.
     ///
-    /// <para><b>Lowers ENTIRELY to existing hashed operations — adds NO new saved field / chapter /
-    /// World structure.</b> Its three effects are all state the sim already saves and folds into
-    /// <see cref="Simulation.StateHash"/>: the room <see cref="RoomAnchor"/>'s <c>Type</c> (saved
-    /// ROOM v3), the door's <see cref="Device.IsOpen"/>/<see cref="Device.IsLocked"/> (saved DEVC),
-    /// and the room's gas moles (saved ROOM). It is exactly a SetAnchor + a door open/unlock + a
-    /// Pressurize, in one atomic tick-boundary step.</para>
+    /// <para><b>W4b (2026-07-28) TOOK TWO THIRDS OF THIS COMMAND AWAY — owner decision, binding.</b>
+    /// It used to also (2) force every bordering <see cref="DeviceKind.Door"/> open AND unlocked, and
+    /// (3) call <see cref="RoomState.Pressurize"/> — 101.3 kPa of 21 % O₂ conjured from nothing,
+    /// instantly, for free. Both are DELETED. Air now comes from a working, powered, repaired vent
+    /// moving gas over time through a door the player opened, which is what turns the pressure
+    /// frontier from a formality into the core loop. Deleting step 2 is also the root fix for the
+    /// owner's live-play report *"doors are only drawn in front of empty rooms; as soon as I allocate
+    /// them, they become overwritten"* — an allocated compartment now keeps its doors SHUT, so they
+    /// keep drawing (<c>docs/HANDOVER.md</c>, "OWNER REPORT FROM LIVE PLAY").</para>
+    ///
+    /// <para><b>Lowers ENTIRELY to one existing hashed operation — adds NO new saved field / chapter /
+    /// World structure.</b> Its single effect is the room <see cref="RoomAnchor"/>'s <c>Type</c>
+    /// (saved ROOM v3, folded into <see cref="Simulation.StateHash"/>). It is exactly a SetAnchor, in
+    /// one atomic tick-boundary step.</para>
     ///
     /// <para><b>Slot geometry is PASSED IN, never stored in the sim.</b> The host resolves the
     /// target slot's centre PROBE tile and its existing ANCHOR name from its view-only, unhashed
@@ -588,14 +596,34 @@ namespace Perilune.Sim
     /// <para><b>The anchor is REUSED, not duplicated.</b> An empty hall already carries its own
     /// anchor (<c>hall_dZ_sN</c>, <see cref="RoomType.None"/>); there is no remove-anchor primitive,
     /// so re-typing that same anchor keeps exactly ONE anchor on the room — the room's identity was
-    /// always the slot's; only its TYPE (and its air) is new.</para>
+    /// always the slot's; only its TYPE is new.</para>
     ///
-    /// <para>Deterministic (no RNG, no Date): the fill is the same static <see cref="RoomState.Pressurize"/>
-    /// path authoring runs for every furnished room at boot. Validation is a silent no-op on reject,
-    /// like the other designate/place commands: the probe must land in a SEALED, AIRLESS compartment
-    /// — a non-vacuum-sink room with zero moles. A probe in open vacuum (room 0) or in a room that
-    /// already holds atmosphere (already a live room) is rejected, so double-commissioning or
-    /// targeting a furnished room does nothing.</para>
+    /// <para><b>⚠️ THE REJECTION PREDICATE IS THE LOAD-BEARING PART OF W4b, not the deletions.</b> The
+    /// old double-commission guard was <c>room.TotalMoles &gt; 0</c> — *"already a live (pressurised)
+    /// room"* — which worked only while "named" and "has air" were the same event. They are not any
+    /// more: a named-but-AIRLESS room is now the normal state of every freshly allocated compartment,
+    /// and a furnished room that has been vented (hull breach, an opened door onto vacuum) is airless
+    /// too. On the gas predicate a player could re-type an allocated room forever, and re-type a
+    /// FURNISHED one that happens to be in vacuum. ⇒ <b>the guard asks the ANCHOR, not the gas:</b>
+    /// allocation is refused when any anchor whose probe resolves to this same room already carries a
+    /// <see cref="RoomType"/> other than <see cref="RoomType.None"/>.</para>
+    ///
+    /// <para><b>⚠️ A SECOND GUARD WAS WRITTEN HERE AND THEN REMOVED, BY MEASUREMENT.</b> This lane first
+    /// added <c>if (_type == RoomType.None) return;</c> — "the un-allocate that would otherwise reopen
+    /// the hole" — with a test for it. The mutation harness deleted that line and <b>the whole suite
+    /// stayed GREEN (21/21)</b>: the anchor predicate above already refuses the only case the guard
+    /// claimed to cover, because an allocated room's anchor is typed and is therefore caught one
+    /// statement earlier. A guard whose named mutation cannot bite, plus a test that passes either way,
+    /// is the single most common review defect in this repo — so both were deleted rather than shipped.
+    /// The residual it leaves is unreachable and harmless: <c>type: None</c> on a compartment with NO
+    /// anchor at all would add an untyped one, and the host's picker cannot send <c>None</c>
+    /// (<c>GameSession.ParseRoomType</c> whitelists the player-facing kinds and returns false
+    /// otherwise).</para>
+    ///
+    /// <para>Deterministic (no RNG, no Date). Validation is a silent no-op on reject, like the other
+    /// designate/place commands: the probe must land in a real, sealed compartment (a non-vacuum-sink
+    /// room) that no typed anchor already owns. A probe in open vacuum (room 0) is rejected, so
+    /// double-allocating or targeting a furnished room does nothing.</para>
     /// </summary>
     public sealed class AddRoomCommand : ISimCommand
     {
@@ -622,46 +650,24 @@ namespace Perilune.Sim
 
             var room = rooms.RoomAt(sim.World, _probe);
             if (ReferenceEquals(room, rooms.Rooms[0])) return; // probe in open vacuum — not a sealed hall
-            if (room.TotalMoles > 0) return;                   // already a live (pressurised) room
 
-            // 1. Name + type the room (reuse the hall's own anchor — one anchor per room).
-            rooms.SetAnchor(_anchorName, _probe, _type);
-
-            // 2. Open + unlock the door(s) into the compartment (a hall has exactly one), so the
-            //    room is enterable and its air joins the ship. Same hashed door state a manual
-            //    SetDoorStateCommand moves.
+            // ALREADY ALLOCATED? Ask the ANCHOR, never the gas (see the class remarks). RoomAt has
+            // already ruled out room 0 and the DoorMarker, so roomId is a real room index here; an
+            // anchor sitting on a door tile reads DoorMarker and can never match it. Room ids are
+            // GLOBAL across decks (RoomState floods every level into one list), so no deck filter is
+            // needed — and a hall MERGED into a furnished room by a stripped bulkhead is correctly
+            // refused, because the merged room carries the furnished room's typed anchor.
             ushort roomId = rooms.RoomIdAt(sim.World, _probe);
-            var devices = sim.Devices.Items;
-            for (int i = 0; i < devices.Count; i++)
+            var anchors = rooms.Anchors;
+            for (int i = 0; i < anchors.Count; i++)
             {
-                var d = devices[i];
-                if (d.Kind != DeviceKind.Door || d.Pos.Z != _deck) continue;
-                if (!BordersRoom(sim, d.Pos, roomId)) continue;
-                d.IsLocked = false;
-                if (!d.IsOpen)
-                {
-                    d.IsOpen = true;
-                    sim.Events.Publish(new DoorStateChangedEvent { DeviceId = d.Id, IsOpen = true });
-                }
+                if (anchors[i].Type == RoomType.None) continue;   // an un-allocated hall's own anchor
+                if (rooms.RoomIdAt(sim.World, anchors[i].Probe) == roomId) return;
             }
 
-            // 3. Fill the compartment with a standard breathable mix at nominal pressure — the same
-            //    deterministic Pressurize authoring runs for every furnished room at boot.
-            RoomState.Pressurize(room);
-        }
-
-        /// <summary>True if any orthogonal neighbour of <paramref name="pos"/> belongs to
-        /// <paramref name="roomId"/> — how the command finds the door(s) that open into the room.</summary>
-        private static bool BordersRoom(Simulation sim, Int3 pos, ushort roomId)
-        {
-            for (int k = 0; k < 4; k++)
-            {
-                int dx = k == 0 ? 1 : k == 1 ? -1 : 0;
-                int dy = k == 2 ? 1 : k == 3 ? -1 : 0;
-                var np = new Int3(pos.X + dx, pos.Y + dy, pos.Z);
-                if (sim.World.InBounds(np) && sim.Rooms.RoomIdAt(sim.World, np) == roomId) return true;
-            }
-            return false;
+            // The ONE remaining effect: name + type the room (reuse the hall's own anchor — one
+            // anchor per room). Air is the vent's job now, and the door is the player's.
+            rooms.SetAnchor(_anchorName, _probe, _type);
         }
     }
 

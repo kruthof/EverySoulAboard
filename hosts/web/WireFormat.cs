@@ -491,7 +491,10 @@ namespace Perilune.Web
         /// frame/click space) and <see cref="RoomType"/> come from the plan's authoring slot grid;
         /// <see cref="AnchorName"/>/<see cref="Occupied"/>/<see cref="Active"/> are DERIVED from live
         /// <see cref="Perilune.Sim.RoomState"/> each render — <see cref="AnchorName"/> is BLANK for an
-        /// empty (airless) hall, never the plan's authored anchor. The tuple
+        /// UN-ALLOCATED hall, never the plan's authored anchor. (⚠️ W4b: "un-allocated" used to mean
+        /// "airless". Since ＋ADD ROOM stopped conjuring air, occupancy is decided by whether the
+        /// compartment's anchor carries a <c>RoomType</c> — an ALLOCATED but still airless compartment
+        /// reads occupied, with its name and type, and no <c>rooms</c> atmos row.) The tuple
         /// [slotIndex, x, y, w, h, anchorName, roomType, occupied, active] is append-only.</summary>
         public readonly struct DeckSlot
         {
