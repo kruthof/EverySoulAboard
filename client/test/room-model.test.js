@@ -114,9 +114,11 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the fifteen tools to a class + verb', () => {
+test('paletteCommand maps every one of the sixteen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
-  assert.equal(ROOM_TOOLS.length, 15);
+  // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
+  // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
+  assert.equal(ROOM_TOOLS.length, 16);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -135,6 +137,12 @@ test('paletteCommand maps every one of the fifteen tools to a class + verb', () 
   assert.deepEqual(byTool.dig, { cls: 'order', verb: 'dig' });
   assert.deepEqual(byTool.stockpile, { cls: 'order', verb: 'stockpile' });
   assert.deepEqual(byTool.strip, { cls: 'order', verb: 'strip' });
+  // OPERATE is its OWN class, emphatically not `order`: an order paints intent on a tile and waits
+  // for a crew member, whereas this throws a switch the sim applies at the next command drain with
+  // nobody walking anywhere. Classing it `order` would route it through `orderPayloads` (the
+  // designation boards) AND make it swept — a drag across a compartment toggling every door in the
+  // rectangle, some of them twice.
+  assert.deepEqual(byTool.operate, { cls: 'operate', verb: 'operate' });
   assert.ok(ROOM_TOOLS.includes('stockpile'),
     'ROOM_TOOLS lost STOCKPILE. It is not on the Overview either (overview-model.js ORDER_TOOLS), ' +
     'so the verb would be unreachable on the whole standard surface — surface-boundary.test.js ' +
@@ -143,12 +151,12 @@ test('paletteCommand maps every one of the fifteen tools to a class + verb', () 
   // isStructuralTool: wall/floor/door drag-build; everything else false — INCLUDING the two order
   // tools, which sweep but carry no material and never reach the material strip.
   for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
-  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', null, 'nope']) assert.equal(isStructuralTool(t), false);
   // isOrderTool / isSweepTool: the two sibling sets the three gesture sites gate on.
   for (const t of ['dig', 'stockpile', 'strip']) assert.equal(isOrderTool(t), true);
-  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', null, 'nope']) assert.equal(isOrderTool(t), false);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'operate', null, 'nope']) assert.equal(isOrderTool(t), false);
   for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip']) assert.equal(isSweepTool(t), true);
-  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', null, 'nope']) {
+  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', 'operate', null, 'nope']) {
     assert.equal(isSweepTool(t), false);
   }
   // Every tool the palette renders has a label — a missing one paints an empty button.

@@ -42,14 +42,16 @@ namespace Perilune.Tests
         {
             var cells = new[]
             {
-                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1),
-                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0),
+                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1, 0),
+                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0, 1),
             };
             string json = WireFormat.Devices(cells);
             StringAssert.Contains("\"type\":\"devices\"", json);
-            // tuple order: [x, y, deck, kind, cond, oper]
-            StringAssert.Contains("[3,4,0,13,255,1]", json);
-            StringAssert.Contains("[58,15,1,8,26,0]", json);
+            // tuple order: [x, y, deck, kind, cond, oper, open]. The two rows carry DIFFERENT `open`
+            // values on purpose — a serializer that hard-wired the element would satisfy either one
+            // alone.
+            StringAssert.Contains("[3,4,0,13,255,1,0]", json);
+            StringAssert.Contains("[58,15,1,8,26,0,1]", json);
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}",
                 WireFormat.Devices(Array.Empty<WireFormat.DeviceCell>()));
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}", WireFormat.Devices(null),
@@ -76,7 +78,7 @@ namespace Perilune.Tests
         [Test]
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
         {
-            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1) });
+            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0) });
             string items = WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) });
             string marks = WireFormat.Marks(new[] { new WireFormat.MarkCell(7, 3, 1, 2) });
             string zones = WireFormat.Zones(new[] { new WireFormat.ZoneTile(7, 3, 1, 0UL, 0) });
@@ -95,7 +97,7 @@ namespace Perilune.Tests
         /// group separator would emit <c>1.234</c> — which is a JSON parse error at the client, on
         /// every device on the ship. Every number here goes through InvariantCulture.
         ///
-        /// MUTATION: drop the <c>DeviceIc</c> argument from any of the six <c>ToString</c> calls and
+        /// MUTATION: drop the <c>DeviceIc</c> argument from any of the seven <c>ToString</c> calls and
         /// run under de-DE ⇒ the payloads diverge.
         /// </summary>
         [Test]
@@ -106,11 +108,11 @@ namespace Perilune.Tests
             {
                 var loud = new CultureInfo("de-DE");
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1) });
+                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1) });
                 Thread.CurrentThread.CurrentCulture = loud;
-                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1) }),
+                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1) }),
                     "a wire payload that changes with the operator's locale is not a wire payload");
-                StringAssert.Contains("[1234,7,2,3,255,1]", inv, "no group separators, no locale digits");
+                StringAssert.Contains("[1234,7,2,3,255,1,1]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -246,28 +248,29 @@ namespace Perilune.Tests
 
         /// <summary>Parse the emitted tuples back out, in wire order. Deliberately positional: the
         /// tuple IS the contract, and a parser that named its fields would not notice a reorder.</summary>
-        private static List<(int X, int Y, int Deck, int Kind, int Cond, int Oper)> Tuples(string json)
+        private static List<(int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open)> Tuples(string json)
         {
-            var list = new List<(int, int, int, int, int, int)>();
+            var list = new List<(int, int, int, int, int, int, int)>();
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 string body = part.Split(']')[0];
                 var f = body.Split(',');
-                Assert.AreEqual(6, f.Length, "a devices tuple is six elements, saw: [" + body + "]");
+                Assert.AreEqual(7, f.Length, "a devices tuple is seven elements, saw: [" + body + "]");
                 list.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),
                           int.Parse(f[3], CultureInfo.InvariantCulture),
                           int.Parse(f[4], CultureInfo.InvariantCulture),
-                          int.Parse(f[5], CultureInfo.InvariantCulture)));
+                          int.Parse(f[5], CultureInfo.InvariantCulture),
+                          int.Parse(f[6], CultureInfo.InvariantCulture)));
             }
             return list;
         }
 
         /// <summary>The channel's row for a tile, or null.</summary>
-        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper)? RowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open)? RowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Tuples(DevicesJson(gs)))
                 if (t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;

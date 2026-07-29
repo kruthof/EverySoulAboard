@@ -105,7 +105,14 @@ namespace Perilune.Web
     /// here mutates, allocates into the sim, mints a <see cref="Perilune.Glyph.GlyphColor"/> id
     /// (<c>GlyphColor</c> is a spine file and is untouched) or folds into any determinism hash.
     ///
-    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper],..]}
+    /// ⚠️ A SEVENTH ELEMENT LANDED WITH THE OPERATE VERB (2026-07-28), and the paragraph below that
+    /// listed <c>IsOpen</c> among the deliberate omissions is CORRECTED IN PLACE rather than deleted:
+    /// the omission was right on the day it was written ("adding it for no consumer is not" one
+    /// trailing element) and it stopped being right the moment a surface could open a door or a vent.
+    /// See <see cref="DeviceCell.Open"/> for why it is the one omitted field that qualified and
+    /// <c>Powered</c> still does not.
+    ///
+    ///   devices {"type":"devices","cells":[[x,y,deck,kind,cond,oper,open],..]}
     /// </summary>
     public static partial class WireFormat
     {
@@ -183,8 +190,30 @@ namespace Perilune.Web
         /// <c>DevicesChannelTests.The_Failure_Threshold_Really_Is_Per_Kind</c>, so this paragraph
         /// cannot quietly rot into a stale count.
         ///
+        /// <para><see cref="Open"/> is <see cref="Perilune.Sim.Device.IsOpen"/> as <c>1</c>/<c>0</c>.
+        /// IT IS THE ONE FIELD PROMOTED OUT OF THE OMISSION LIST BELOW, and the two tests it has to
+        /// pass are the ones that list states: it needs a CONSUMER and it must not be VOLATILE.
+        ///
+        /// <para>THE CONSUMER: the Room Zoom's OPERATE affordance. A door/vent toggle has to say which
+        /// way it will move BEFORE the player clicks — "OPEN" and "SHUT" are different orders, not two
+        /// spellings of one — and there was no other route. The door glyph carries the state
+        /// (<c>'+'</c>/<c>'/'</c>/<c>'X'</c>) but <c>GlyphMapper</c> pass 5 erases the whole cell under
+        /// a crew member, and reading it at all would be a predicate over a glyph, which
+        /// <c>GLYPH_SUBSTITUTE</c> defeats (the sixth trap shape). A VENT'S state is not in the
+        /// projection in ANY form: <c>Glyphs.ForDevice</c> returns <c>'^'</c> open or shut, so a client
+        /// reading the frame cannot tell a sealed compartment from a filling one.</para>
+        ///
+        /// <para>NOT VOLATILE: <c>IsOpen</c> is written by <c>SetDoorStateCommand</c> /
+        /// <c>SetDeviceStateCommand</c> and by <c>AddRoomCommand</c> — player and MOSS intent, never a
+        /// per-tick system. On <c>--ship wreck</c> at boot it is a constant. That is exactly the test
+        /// <c>Powered</c>, <c>Progress</c> and <c>StoredLiters</c> fail, and they are still omitted for
+        /// it: <c>PowerSystem.Balance</c> stamps <c>Powered</c> on EVERY drawing device once a second,
+        /// so carrying it would make this payload differ on most renders even on a ship where nothing
+        /// is happening. The OPERATE verb's power feedback therefore rides its own one-shot reply
+        /// (<c>WireFormat.Operate.cs</c>), computed at the moment of the click, and not this channel.</para>
+        ///
         /// <para>WHAT IS DELIBERATELY LEFT OUT, so a later lane knows it was a decision:
-        /// <c>Powered</c>, <c>IsOpen</c>, <c>IsLocked</c>, <c>Progress</c>, <c>StoredKWh</c>,
+        /// <c>Powered</c>, <c>IsLocked</c>, <c>Progress</c>, <c>StoredKWh</c>,
         /// <c>StoredLiters</c>, <c>Rate</c>, <c>NetworkId</c>, <c>Scriptable</c> and <c>Name</c>. Every
         /// one of them is a DIFFERENT FEATURE (a power overlay, a door animation, a fill gauge, the
         /// MOSS directory — which already has its own <c>terminals</c> channel), none is needed to pick
@@ -200,10 +229,10 @@ namespace Perilune.Web
         /// </summary>
         public readonly struct DeviceCell
         {
-            public readonly int X, Y, Deck, Kind, Cond, Oper;
+            public readonly int X, Y, Deck, Kind, Cond, Oper, Open;
 
-            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper)
-            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; }
+            public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open)
+            { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; }
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:
@@ -259,7 +288,8 @@ namespace Perilune.Web
                       .Append(',').Append(c.Deck.ToString(DeviceIc))
                       .Append(',').Append(c.Kind.ToString(DeviceIc))
                       .Append(',').Append(c.Cond.ToString(DeviceIc))
-                      .Append(',').Append(c.Oper.ToString(DeviceIc)).Append(']');
+                      .Append(',').Append(c.Oper.ToString(DeviceIc))
+                      .Append(',').Append(c.Open.ToString(DeviceIc)).Append(']');
                 }
             sb.Append("]}");
             return sb.ToString();

@@ -410,7 +410,14 @@ export function decodeItems(msg) {
  * UTILITY OVERLAYS (Conduit, Pipe) ARE ABSENT, host-side: they are not tile-resident, no surface
  * draws them, they are wear-free in the defs, and they are 88% of the device store. FOG-GATED
  * host-side, like `marks` and `items`. Snapshot-cached, so a reconnect replays the layer.
- * @typedef {[number,number,number,number,number,number]} DeviceTuple
+ * `open` is `Device.IsOpen` — 1/0 — and it is the SEVENTH element, appended with the OPERATE verb
+ * (2026-07-28). It is on the channel because a door/vent toggle has to say which way it will move
+ * BEFORE the click, and nothing else carries it: `Glyphs.ForDevice` returns `'^'` for a vent whether
+ * it is open or shut, and the DOOR glyph that does carry state is erased by `GlyphMapper` pass 5 the
+ * moment a crew member stands on the tile. `Powered` is still absent, deliberately — `PowerSystem`
+ * rewrites it once a second on every drawing device, so it would make this payload differ on nearly
+ * every render; the OPERATE reply carries the power warning instead, computed at click time.
+ * @typedef {[number,number,number,number,number,number,number]} DeviceTuple
  * @typedef {{type:'devices', cells:DeviceTuple[]}} DevicesMsg
  */
 
@@ -424,17 +431,54 @@ export function decodeItems(msg) {
  * `decodeMarks`, and for the same reason `decodeItems` gives: on this channel the kind is one of six
  * facts, and "something on this tile is at condition 26 and inoperative" is true and useful even
  * when the kind byte comes from a newer host. Dropping it would hide a wreck.
+ * ⚠️ THE ROW LENGTH GATE STAYS AT `< 6`, NOT `< 7`, and that is the append-only contract being
+ * honoured rather than an oversight. A six-element row is what an OLDER host emits; raising the gate
+ * would drop every device on the floor mid-upgrade and take the wear layer with it, to avoid a
+ * missing bit that `t[6] | 0` already reads as 0 (= SHUT). A shut-by-default door is the same thing
+ * the surface drew before this element existed.
  * @param {{type:string, cells?:Array}|null} msg
- * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null}
+ * @returns {{x:number,y:number,deck:number,kind:number,cond:number,oper:number,open:number}[]|null}
  */
 export function decodeDevices(msg) {
   if (!msg || msg.type !== 'devices' || !Array.isArray(msg.cells)) return null;
   const out = [];
   for (const t of msg.cells) {
     if (!Array.isArray(t) || t.length < 6) continue;
-    out.push({ x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, cond: t[4] | 0, oper: t[5] | 0 });
+    out.push({
+      x: t[0] | 0, y: t[1] | 0, deck: t[2] | 0, kind: t[3] | 0, cond: t[4] | 0, oper: t[5] | 0,
+      open: t[6] | 0,
+    });
   }
   return out;
+}
+
+/**
+ * The one-shot `operate` REPLY — what the ship did with a door/vent toggle the player just asked for.
+ * `{type:'operate', x, y, deck, ok, state, reason}`. NOT a channel: it is broadcast by
+ * `GameSession.Emit` in direct answer to one `Cmd.operate`, never cached, never deduped, and it does
+ * not exist until the player clicks.
+ *
+ * `ok` is whether an `ISimCommand` was ENQUEUED — never whether the compartment is about to fill.
+ * `state` is the state the device is moving TO (`'OPEN'`/`'SHUT'`), or `'-'` when nothing was
+ * ordered; the target rather than the current state because the reply lands before the command drain
+ * has run. `reason` is the host's own sentence, in words, and the client must not synthesise its own:
+ * the four things that make a toggle look broken — LOCKED, INOPERATIVE, UNFIXABLY WRECKED, UNPOWERED
+ * — are read from the device and from the sim's own predicates at the instant of the click, and the
+ * client has none of them (`Powered` is not on any channel and `IsUnfixableWreck` is a whole-item-
+ * store scan). Tolerant like every decoder here: a malformed message → null, never a throw.
+ * @param {{type:string}|null} msg
+ * @returns {{x:number,y:number,deck:number,ok:boolean,state:string,reason:string}|null}
+ */
+export function decodeOperate(msg) {
+  if (!msg || msg.type !== 'operate') return null;
+  return {
+    x: msg.x | 0,
+    y: msg.y | 0,
+    deck: msg.deck | 0,
+    ok: !!(msg.ok | 0),
+    state: typeof msg.state === 'string' ? msg.state : '-',
+    reason: typeof msg.reason === 'string' ? msg.reason : '',
+  };
 }
 
 /**
