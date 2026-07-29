@@ -238,8 +238,21 @@ is renamed). Tag `v2-talking-ship`.
 > that reads as *a doorway with its door retracted*, not as a wall gap), then retire `'/'` from
 > `NO_DEVICE_GLYPH_ART` and from `NON_FURNITURE_CODES`. **It is an ART decision and therefore the
 > owner's** — the third of three door pieces, beside `sliding-door` (closed) and `blast-door` (locked).
-> Do **not** "fix" it by making commissioning leave doors shut: that would change hashed sim state
-> (`Device.IsOpen`), move pins, and break the air-joining the comment exists to guarantee.
+> ~~Do **not** "fix" it by making commissioning leave doors shut: that would change hashed sim state
+> (`Device.IsOpen`), move pins, and break the air-joining the comment exists to guarantee.~~
+>
+> ⛔ **THAT STRUCK SENTENCE IS SUPERSEDED BY THE OWNER'S W4b DECISION, AND TWO OF ITS THREE CLAUSES
+> WERE FALSE ANYWAY (lane `lane/w4b-addroom-split`, 2026-07-28).** ＋ADD ROOM now leaves doors shut,
+> deliberately, because *"naming is free, air is earned"* — deleting the force-open **is** the root
+> fix for the report above, and it is the half that does not need the owner to draw anything.
+> Measured on the lane: (a) it **does** change hashed sim state, but **it moved NO pin** — nothing in
+> the three pinned runs constructs an `AddRoomCommand`, verified by putting an unconditional `throw`
+> at the top of `Execute` and watching all three pinned runs still pass; and (b) **nothing is broken
+> by not "air-joining"** — a compartment fills through the door the player opens in **154 s of sim
+> time** (measured, `AddRoomCommandTests`), which is the loop, not a cost. The `'/'` art question is
+> untouched and remains the owner's — it is simply much less load-bearing now that an allocated
+> compartment keeps its doors shut. ⚠️ The lane also leaves the OPEN-doorway glyph reachable in play
+> (the live wreck's door, every furnished room), so **do not read this as closing item 3 below.**
 >
 > ⚠️ **Lesson worth keeping, and it is a NEW shape:** a census that measures *geometry* cannot see a
 > defect that lives in *state*. Both halves were measured, on the same night, by the same review — and
