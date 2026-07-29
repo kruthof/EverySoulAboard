@@ -9,6 +9,34 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `m1i-locker-*` — THE DAMAGE-CONTROL LOCKER: the opening room changed (2026-07-29, M1-I)
+
+Tool: **`client/tools/wreck-shot.mjs`** (the wreck's existing rig — no new tool was written).
+
+```
+~/.dotnet/dotnet run --project hosts/web -- --port 8392 --ship wreck
+python3 client/serve.py 8393
+node client/tools/wreck-shot.mjs --out /tmp/shots --prefix m1i-wreck- --host-port 8392 --client-port 8393
+# then keep shots 3 and 1 as m1i-locker-cryobay.png and m1i-locker-overview-ledger.png
+```
+
+⚠️ **WHY THESE TWO EXIST.** M1-I authored **8 Seals** onto `(9,6,0)`, which is **inside the room the
+player wakes in**. The package was written, reviewed and gated entirely on driven sim measurements,
+and the first screen of the shipping game changed **unphotographed** — one week after M1-B shipped
+"a first screen that is true". Independent review caught it against §13 rule 12. These are that shot.
+
+* `m1i-locker-cryobay.png` — the Room Zoom on CRYO BAY. The locker draws as the **`seals` sprite with
+  an `8` count badge**, bottom-right at `(9,6)`, diagonally opposite the open capsule the crew member
+  stepped out of. It is a real piece, **not** the dashed no-art placeholder: `Seals` has ground art
+  (`client/src/items/index.js:181`).
+* `m1i-locker-overview-ledger.png` — the Level-1 Overview, i.e. the actual first screen. **The change
+  is in the LEDGER panel, bottom-left**, whose ground-stock line now reads
+  `Potato 60 · Regolith 12 · Seals 10 · Corpse 4 · Scrap 3 · Parts 1` — **`Seals 10` where the shipped
+  ship read `Seals 2`.** 10 Seals + 1 Parts = the 11 units the package derives. Ground items do not
+  draw on the Overview itself; the ledger line is the whole of the first-screen delta.
+
+---
+
 ## `m1-c-*` — UN-DESIGNATE: the player takes an order back, ON THE RUNNING GAME (2026-07-29, M1-C)
 
 Tool: **`client/tools/erase-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.

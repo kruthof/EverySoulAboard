@@ -185,7 +185,7 @@ namespace Perilune.Tests
         ///
         /// And what it was TRYING to say was not true anyway. Being below the wreck floor does not
         /// stop <c>MaintenanceSystem</c> touching a pod; it only stops it being bodged with EMPTY
-        /// HANDS. The wreck's opening stock is 1 Parts + 2 Seals, the four wrecked pods are the
+        /// HANDS. The wreck's opening stock was 1 Parts + 2 Seals (11 units since M1-I), the four wrecked pods are the
         /// four lowest-Condition devices on the ship, and the system recruits neediest-first — so
         /// unattended it spent every last consumable on the coffins. The real guard is the DEF:
         /// <c>CryoPod</c>'s <c>maint</c> is 0, the opt-out, so a pod is never on the board at all.
@@ -229,6 +229,15 @@ namespace Perilune.Tests
         /// was "the crew maintain CORPSES' CAPSULES first, because a wrecked pod is the neediest
         /// thing on the ship".
         ///
+        /// <para>⚠️ UPDATED BY M1-I (2026-07-29): THE SHIP NOW CARRIES ELEVEN UNITS, NOT THREE, and
+        /// the fixture literal below moved with it. The three named above are still the FIRST three
+        /// spent and in that order — the ladder is unchanged — but the run now completes eleven
+        /// consumable services between h0.26 and h2.79, clearing every wrecked machine on the
+        /// maintenance board in the survivable core. Both legs of this test are unaffected in
+        /// substance: the pods are still never recruited (<c>maint = 0</c>) and leg 2's control is
+        /// if anything stronger, because eight more units are demonstrably spent. See
+        /// <see cref="WreckRepairEconomyTests"/> for why the number is eleven.</para>
+        ///
         /// ⚠️ THE SECOND LEG IS THE NON-VACUITY CONTROL AND IT IS NOT OPTIONAL. The pod leg is a
         /// statement that nothing happened, and "nothing happened" passes just as well on a sim
         /// where <c>MaintenanceSystem</c> never ran at all — an unregistered system, a stack change,
@@ -253,7 +262,11 @@ namespace Perilune.Tests
             }
             Assert.That(wreckedAtBoot.Count, Is.EqualTo(PodsWreckedDead), "fixture: four wrecked capsules at boot");
             int partsAtBoot = Ground(sim, ItemKind.Parts), sealsAtBoot = Ground(sim, ItemKind.Seals);
-            Assert.That(partsAtBoot + sealsAtBoot, Is.EqualTo(3), "fixture: the opening carries 1 Parts + 2 Seals");
+            // 1 Parts + 2 Seals in the reactor bay + the 8-Seal cryo-bay damage-control locker
+            // M1-I added. Written out by hand, like every other literal in this file: it is the pin
+            // on the ship's opening stock, and changing the ship means changing it here on purpose.
+            Assert.That(partsAtBoot + sealsAtBoot, Is.EqualTo(11),
+                "fixture: the opening carries 1 Parts + 10 Seals (M1-I)");
 
             for (int t = 0; t < 86400; t++) sim.Tick();   // one sim-day, no player input at all
 
@@ -284,7 +297,8 @@ namespace Perilune.Tests
                 Is.LessThan(partsAtBoot + sealsAtBoot),
                 "CONTROL: no consumable was spent all day, so MaintenanceSystem was not running and " +
                 "leg 1 above proved nothing. Measured, the day-1 stock goes into wing_c, battery_2 " +
-                "and light_reactor — ship plant, which is the ladder working.");
+                "and light_reactor first and then the other eight machines on the wrecked backlog " +
+                "— ship plant, which is the ladder working.");
         }
 
         /// <summary>Total ground units of a kind — carried stacks included, since a stack in a

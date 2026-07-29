@@ -1117,6 +1117,73 @@ written down and countable rather than applied silently.*
 >    engineering one.** ⚠️ **M2-12 must also measure and report where the standing maintenance rule
 >    spends those three consumables in an unattended run**, because if the answer is "not the wings"
 >    the soft-lock is the default outcome rather than a mistake the player has to make.
+>
+>    ### ✅ DECIDED AND MEASURED 2026-07-29 — **the owner chose (a)**, and the measurement M2-12 was
+>    ### asked for was taken in **M1-I** (`lane/repair-consumables`), which shipped the fix.
+>    ⛔ **TWO CLAIMS IN THE PARAGRAPH ABOVE ARE FALSE AND ARE CORRECTED HERE, not elsewhere** (house
+>    rule: a false justification is corrected in the row that commissioned it) — items 1 and 2 below.
+>    Item 3 is not a correction but the census the row never had.
+>    1. ⛔ **"`wing_b` (0.18) and `wing_c` (0.06) are both below it" is TRUE as a census and FALSE as
+>       a consequence.** Driven on `--ship wreck`, `ShipPlanBuilder.Build` + the default stack, **no
+>       player input at all**, the three shipped units are spent at **h0.26 `wing_c` 0.060 → 1.000
+>       (the Parts overhaul) · h0.51 `battery_2` 0.089 → 0.900 · h0.76 `light_reactor` 0.089 →
+>       0.900**. ⇒ **`wing_c` is the one machine on the ship that ALWAYS gets repaired**, because it
+>       is the lowest-Condition device the pawn can stand beside and breathe, and
+>       `RecruitForNeediest` is strictly lowest-first. **The stranded wing is `wing_b` alone.**
+>    2. ⛔ **"If the player spends those three on scrubbers…" mis-states WHO spends them.** The player
+>       never gets the chance: the standing rule spends all three inside the first **46 sim-minutes**,
+>       on a wing, a battery and a **lamp**. ⇒ **the answer to the question this row asked is "NOT the
+>       wings, mostly" — so the soft-lock is the DEFAULT OUTCOME, not a mistake the player has to
+>       make.** That is the sentence this row said would change the urgency, and it is confirmed.
+>    3. **The corrected strandable set**, measured at h0.76 on the pre-fix ship (in-air, on the
+>       maintenance board, below the floor, no consumable left): **`wing_b` 0.18 · `scrubber_spine`
+>       0.09 · `scrubber_reactor` 0.09 · `battery_cryo` 0.11 · `battery_1` 0.24 · `term_moss` 0.14 ·
+>       `light_cryo` 0.18 · `light_spine_0` 0.16** — eight machines, plus `tank_reserve` (0.21) once
+>       it joins the board at ~h10. ⚠️ **`term_moss` is on that list**, and it is the terminal the
+>       whole thaw curve is built on.
+>    **What M1-I shipped:** the wreck's consumable stock goes **3 → 11 units** (a cryo-bay
+>    damage-control locker of 8 Seals), derived as **one unit per wrecked machine on the maintenance
+>    board at boot in the survivable core**. Measured after: all eleven are serviced h0.26 → h2.79,
+>    the pile ends exactly empty, and **all three wings end clear of the floor and permanently
+>    RECOVERABLE** — a `maint` 0.40 kind falls back only to 0.40, above the 0.25 floor, so the free
+>    jury-rig band can always catch it. Verified to **200 unattended sim-hours** (free rigs at
+>    h44.95 / h108.46 / h128.19). ⚠️ **"Recoverable" is not "free":** `MachineWearSystem.cs:399-431`
+>    fetches a consumable *before* it will consider a free jury-rig, so a needy machine spends Parts
+>    or Seals whenever the ship holds any — the 0.600 rigs above happen because the pile is empty
+>    from h2.79, not because the machine is above the floor.
+>    ⛔ **AND OPTION (a) DOES NOT CLOSE THE SOFT-LOCK IN GENERAL — MEASURED, NOT FEARED, AND IT
+>    TAKES ONLY ONE CLICK.** `RecruitForNeediest`'s queue is **global and unsteerable**. Driven with
+>    **the single door at `(16,7,0)`** — the compartment this ship's own `GoalSpec` names, i.e. the
+>    move the game itself directs the player toward — opened at tick 0, **three** frontier machines
+>    (`light_d0_s1` 0.040 · `recycler_1` 0.090 · `machineshop_1` 0.130) insert themselves ahead of
+>    `wing_b` (0.18), and `wing_b` ends at **0.148, below the floor and unfixable** — at eleven units
+>    and at twelve. Covering every single-compartment opening takes **~19–22 units** (an estimate:
+>    at 22 with two doors open, 3 are left over), which would auto-repair the whole deck-0 frontier
+>    and delete the salvage game. ⇒ **the general fix is the work-priority grid (M2-5/M2-9), not a
+>    bigger pile.** Pinned as a driven test:
+>    `WreckRepairEconomyTests.TheFixIsNotGeneral_APressurisedFrontierStarvesWingB`.
+>    ⚠️ **CORRECTED AFTER REVIEW: this paragraph previously said "four frontier machines
+>    (0.04 · 0.06 · 0.09 · 0.13)" while describing ONE door.** That list was measured with **two**
+>    doors open (the whole `x∈[12,21]` column, which also takes slot 5 across the spine); the fourth
+>    machine, `light_d0_s5` 0.060, is behind the other door. The conclusion is unchanged — one door
+>    alone still strands `wing_b` — but the number of clicks the owner is being told about is the
+>    whole point of this row, so it is stated exactly. The test leg was narrowed to the one door to
+>    match.
+>    ### ⭐ TWO THINGS FOR THE OWNER THAT THIS PACKAGE DID NOT DECIDE
+>    1. **Option (a)'s closure is narrower than "the soft-lock is fixed".** It is fixed for the
+>       UNATTENDED default. **One door click — the one the `GoalSpec` directs the player toward —
+>       strands `wing_b` again, at eleven units and at twelve.** If the owner wants the opening
+>       robust to the first thing the game tells the player to do, that is either a bigger pile
+>       (with the difficulty cost above) or M2's priority grid. **This lane recommends the grid and
+>       has not pre-empted the choice.**
+>    2. ⚠️ **A SIDE EFFECT NOBODY BUDGETED: the ship now stays habitable roughly a sim-fortnight
+>       longer.** The eight units bring dead machines back above their `fail`, and an operating
+>       machine emits `MachineDef.HeatKW`. The spine/reactor-bay crossing of `hypothermia_c` moves
+>       from **sim-day 7 / day 6** out to **~day 16 / past day 12** (this lane, one extrapolated) —
+>       independent review measures **~day 17 / day 23** on the merged tree. ⇒ **a number derived
+>       purely from a consumable count moved the thermal curve by about two sim-weeks.** It is
+>       favourable and it is disclosed; whether the wreck should be that much more survivable is a
+>       design call, and **`AuthoredShips`' own thermal table is annotated stale because of it.**
 > 7. ⭐ **NEW IN REVISION 2 — THE WORK-LIST ORDER, which the player SEES and which IS the equal-band
 >    tie-break.** M2-5 authors `Mine · Haul · Construct · Deconstruct · Craft · Repair` because that
 >    **exactly reproduces shipped precedence** and therefore keeps the package off the pin chain.
@@ -2111,6 +2178,18 @@ expressed**, so the principle routes its wear to a place that does not exist.
 >
 > **⛔ THIS IS AN OWNER DECISION. IT GOES IN M2'S DECISION BATCH AND IS NOT RESOLVED BY IMPLEMENTING.**
 >
+> ### ✅ SUPERSEDED 2026-07-29 — decided **(a)**, measured and shipped in **M1-I**. Read §3.5 item 6's
+> ### decided block first; the corrections there apply to every sentence below.
+> **Three claims below are refuted by the driven run and are corrected in §3.5 item 6, not here:**
+> (i) `wing_c` is **not** strandable — it is the first machine the standing rule repairs, at h0.26,
+> with the Parts overhaul; (ii) *"if the player spends those three"* mis-states the actor — the pawn
+> spends all three unasked inside 46 sim-minutes, on a wing, a battery and a **lamp**; (iii) the
+> *"0.10 kW margin"* arithmetic in point 1 below is a statement about a **generation model that does
+> not exist on `main`** — `PowerSystem.Balance` sums the flat `machines.def` `gen` with **no
+> `EffectiveRate` factor and no `IsOperational` gate** (its own comment says *"a wrecked SolarWing
+> still supplies its full kW"*), so **repairing a wing changes the power ledger by exactly zero today**
+> and the whole `17.40 kW` / `14.30 kW` comparison only becomes meaningful when **M2-12** lands.
+>
 > **The behaviour, stated as behaviour.** `MaintenanceSystem.IsUnfixableWreck`
 > (`sim/Sim.Core/Systems/MachineWearSystem.cs:463-472`) is:
 > ```csharp
@@ -2402,7 +2481,7 @@ only way past it is an explicit owner override recorded by name and date.
 
 | file / area | claimants | rule |
 |---|---|---|
-| `sim/Sim.Gen/AuthoredShips.cs` | **M1-A** (in flight), M2-11, M3-6, M3-11 | ⛔ **Strictly serialized.** M1-A owns it now. |
+| `sim/Sim.Gen/AuthoredShips.cs` | M1-A (landed), **M1-I** (landed), M2-11, M3-6, M3-11 | ⛔ **Strictly serialized.** ⚠️ **M1-I was NOT in this matrix and did not declare against it** — it landed only because M1-A had already merged and the lane happened to be clear. Added retrospectively. **A package that touches an authored ship must add its row before it starts, not after review catches it.** M1-I's own diff is five lines inside `PeriluneWreck()` plus comment; the next claimant should still rebase, not merge blind. |
 | `sim/Sim.Core/Jobs/JobSystem.cs` | M2-2, M2-5, M2-8 | ⛔ **Strictly serialized.** Integrator-reviewed by its own doc comment. |
 | `sim/Sim.Core/Entities/Citizen.cs` | M2-1, M2-2 | M2-1 first, alone. |
 | `Simulation.cs` / `SaveWriter.cs` / `SaveReader.cs` | M2-1, M2-8, M3-2 | ⛔ **SPINE — integrator lane only, one at a time.** |
@@ -2562,6 +2641,10 @@ reachability predicate** — it means *"a claim was attempted and failed within 
 unchanged.** Any consumer must decide, in writing, whether it latches.
 
 **12.12 ⭐ THE WRECK'S REPAIR ECONOMY IS FINITE, AND `IsUnfixableWreck` MAKES IT PERMANENT.**
+⚠️ **PARTLY SUPERSEDED 2026-07-29 by M1-I** — the stock is now **11 units**, `wing_b` is the only
+strandable wing (`wing_c` is repaired unattended at h0.26, measured), and the `17.40 kW` ceiling is a
+statement about the **post-M2-12** power model, not about `main`, where generation is condition-blind
+and repairing a wing moves the ledger by zero. The decided block at **§3.5 item 6** is the record.
 `AuthoredShips.cs:1888-1889` ships **1 Parts + 2 Seals**. `MachineWearSystem.cs:463-472` refuses every
 service to a device below `wreck_threshold = 0.25` once no consumable remains — and free jury-rig is
 refused there too. `wing_b` (0.18) and `wing_c` (0.06) are below it. ⇒ **The `18.00 kW` ceiling quoted

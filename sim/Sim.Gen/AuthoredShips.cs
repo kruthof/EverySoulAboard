@@ -1396,6 +1396,55 @@ namespace Perilune.Gen
         //    6    10.0 °C   0 ppm     -9.2 °C           -14.0 °C             1     0.000
         //   10    10.0 °C   0 ppm    -18.7 °C           -24.4 °C             1     0.329
         //
+        // ⛔ STALE FOR THE SHIPPED SHIP SINCE M1-I (2026-07-29) — READ THIS BEFORE QUOTING THE ROWS
+        // ABOVE. They were measured when the wreck carried THREE maintenance consumables. It now
+        // carries ELEVEN (the cryo-bay damage-control locker, in the opening-stock block below), and
+        // the extra eight lift `scrubber_spine`, `scrubber_reactor`, three batteries, three lamps
+        // and `term_moss` back above their `fail` inside the first three sim-hours — so those
+        // machines OPERATE, and an operating machine emits `MachineDef.HeatKW`.
+        //
+        // MEASURED A/B on THIS tree, driven, same method, TILE probes at (9,6,0) cryo / (16,9,0)
+        // spine / (7,14,0) reactor bay, sampled every 12 sim-hours. The control is the SAME BUILD
+        // with the locker stack deleted at boot, so the only difference is the eight units:
+        //   day    cryo bay        spine  before → after      reactor bay  before → after
+        //    1     10.0 / 10.0      11.2  →  14.2               9.5  →  10.0
+        //    3     10.0 / 10.0       2.7  →   8.2               2.6  →  10.0
+        //    6     10.0 / 10.0      -7.9  →   2.7             -10.4  →   9.7
+        //    8     10.0 / 10.0     -13.1  →  -0.3             -16.2  →   7.3
+        //   12     10.0 / (control not run to day 12) -5.2              (   "   )     2.3
+        //   first sample at which the tile stops being STAGEABLE (`hypothermia_c` = -10):
+        //     spine        BEFORE h168 (day 7)   AFTER still stageable at h288 (day 12)
+        //     reactor bay  BEFORE h144 (day 6)   AFTER still stageable at h288 (day 12)
+        // ⇒ the ship still freezes and R-4 (below) still stands — the crossing moves out by about a
+        // sim-week. The spine's post-fix slope is ~-0.55 °C per 12 h at h288, which puts its
+        // crossing near sim-day 16 — ⚠️ THAT ONE IS AN EXTRAPOLATION, not a measurement; every
+        // other figure in this block was sampled. The cryo bay is 10.0 °C at every sample in both
+        // legs and its explanation below survives intact.
+        //
+        // ⚠️ AND THE CONTROL DOES NOT REPRODUCE THE ROWS ABOVE EXACTLY. At day 6 the original table
+        // reads spine -9.2 / reactor -14.0; the same-tree pre-M1-I control reads -7.9 / -10.4. The
+        // SHAPE and the conclusion agree (both compartments freeze, crossing around day 6-7) and the
+        // cryo bay agrees to the digit, but the magnitudes do not.
+        //
+        // ⭐ THE CAUSE IS ONE COMMIT AWAY, AND AN EARLIER DRAFT OF THIS BLOCK CALLED IT
+        // "UNEXPLAINED" WITHOUT LOOKING. `git log -S "-14.0 °C" -- sim/Sim.Gen/AuthoredShips.cs`
+        // returns `10e8589`, the commit that WROTE this table. The very next commit on that lane,
+        // `042f1d7` ("the crew serviced the coffins"), changed `CryoPod maint 0.30 -> 0`. Before it
+        // the opening stock went to FOUR DEAD SLEEPERS' CAPSULES — the four lowest-Condition devices
+        // on the ship; after it, to `wing_c` / `battery_2` / `light_reactor`. A different set of
+        // machines is lifted above `fail`, so a different set emits `MachineDef.HeatKW` — the exact
+        // mechanism the A/B above rests on. ⇒ THE ROWS ABOVE ARE A PRE-`042f1d7` MEASUREMENT and
+        // describe a ship whose consumables went into coffins.
+        // ⚠️ THAT IS AN ATTRIBUTION BY INSPECTION, NOT A DRIVEN A/B — the pre-`042f1d7` tree was not
+        // rebuilt and re-run here. What WAS checked is that the sign works out: the three post-fix
+        // recipients sit in the REACTOR BAY and carry 0 + 0.10 + 0.15 kW of `HeatKW`, while the three
+        // repaired capsules sat in the CRYO BAY, which `radiator_cryo` clamps to the 283.15 K floor
+        // anyway — so their heat never reached the two compartments that moved, and the reactor bay
+        // reading warmer after `042f1d7` (-14.0 -> -10.4) is the direction the mechanism predicts.
+        // Treat the two tables as measurements of different ships, and do not average them.
+        // ⚠️ THE ROWS ABOVE ARE KEPT, NOT DELETED, because the paragraphs beneath reason about
+        // them; they are HISTORY OF THE PRE-M1-I SHIP, not a description of `--ship wreck` today.
+        //
         // ⭐ THE CRYO BAY IS FLAT AT EXACTLY 10.0 °C FOR TEN SIM-DAYS, and the reason is a surprise
         // worth writing down: `radiator_cryo` is not COOLING the bay, it is THERMOSTATTING it.
         // `ThermalSystem.cs:94` refuses to reject heat below `thermal.radiator_floor_k` = 283.15 K,
@@ -1955,6 +2004,216 @@ namespace Perilune.Gen
             plan.Items.Add(new ItemSpec { Kind = ItemKind.Scrap, Count = 3, Pos = new Int3(reactor.X0 + 5, stockY, 0), Label = "salvage" });
             plan.Items.Add(new ItemSpec { Kind = ItemKind.Parts, Count = 1, Pos = new Int3(reactor.X0 + 6, stockY, 0), Label = "spares" });
             plan.Items.Add(new ItemSpec { Kind = ItemKind.Seals, Count = 2, Pos = new Int3(reactor.X0 + 7, stockY, 0), Label = "gaskets" });
+
+            // ------------------------------------------------- the damage-control locker (M1-I)
+            // ⭐ EIGHT MORE UNITS OF SEALS, AND THEY EXIST TO REMOVE A SOFT-LOCK, NOT TO SOFTEN THE
+            // SHIP. Owner decision, 2026-07-29 (roadmap M2 batch item 6, option (a)): author more
+            // consumables. `wear.wreck_threshold` and `wear.swarf_service_condition` are NOT touched.
+            //
+            // WHAT THE SHIPPED THREE UNITS ACTUALLY DID, MEASURED — driven on this tree,
+            // ShipPlanBuilder.Build + the default stack, NO PLAYER INPUT AT ALL, three sim-days:
+            //   h0.26  Parts -> wing_c          0.060 -> 1.000
+            //   h0.51  Seals -> battery_2       0.089 -> 0.900
+            //   h0.76  Seals -> light_reactor   0.089 -> 0.900
+            // and that is the whole stock gone, spent by MaintenanceSystem.RecruitForNeediest's
+            // lowest-Condition-first rule, 46 SIM-MINUTES into a new game, on a battery and a LAMP.
+            // ⇒ THE SOFT-LOCK WAS THE DEFAULT OUTCOME, NOT A MISTAKE THE PLAYER HAD TO MAKE. From
+            // h0.76 onward `MaintenanceSystem.IsUnfixableWreck` is TRUE, permanently and silently,
+            // for `wing_b`, both remaining scrubbers in the core, `term_moss` (the terminal the
+            // whole thaw curve is built on), both remaining batteries and the water tank. The
+            // player is never told, and there is no verb anywhere that could undo it.
+            //
+            // ⚠️ AND `wing_b` IS NINTH IN THAT QUEUE, NOT SECOND. The rule picks the lowest
+            // Condition on the ship that a worker can stand beside and breathe, and eight core
+            // machines are worse off than wing_b (0.18) at boot. That is why the answer is a
+            // NUMBER OF UNITS and not a better placement: nothing on this ship can steer the spend
+            // until the work-priority grid lands (M2).
+            //
+            // ⭐ THE DERIVATION OF 8 — one unit per wrecked machine that is ON THE MAINTENANCE
+            // BOARD at boot in the survivable core. Counted off the driven boot census, NOT off
+            // this file, and narrowed twice:
+            //   16  devices boot below `wreck_threshold` in breathable air
+            //   −4  CryoPods, whose `MachineDefs.MaintainBelow` is 0.00 — MaintenanceSystem never
+            //       recruits them, so a consumable can never be spent on one
+            //   −1  `tank_reserve` 0.21, which is below the wreck floor but ABOVE its own `maint`
+            //       (WaterTank, 0.20), so it is not on the board at boot and joins it ~10 sim-hours
+            //       later, after the pile is gone. See KNOWN LIMIT 1 below — it is NOT covered, and
+            //       that is a decision.
+            //   =11 wrecked machines on the board at tick 0:
+            //       wing_c 0.06 · battery_2 0.09 · light_reactor 0.09 · scrubber_spine 0.09 ·
+            //       scrubber_reactor 0.09 · battery_cryo 0.11 · term_moss 0.14 · light_spine_0 0.16
+            //       · light_cryo 0.18 · wing_b 0.18 · battery_1 0.24
+            // One service consumes exactly ONE unit (`MachineWearSystem.cs`, `consumable.Count--`),
+            // and no device can take a second inside the window because a service lands it at
+            // 0.90/1.00, far above its own `maint`. 11 needed − 3 shipped = 8.
+            // ⚠️ THE 11 ARE SERVED FIRST BY CONSTRUCTION, not by luck: `RecruitForNeediest` picks
+            // the strictly LOWEST Condition it can stage a worker beside, and the only other needy
+            // machines in the core (`wing_a` 0.31, `radiator_cryo` 0.36, `radiator_reactor` 0.33)
+            // are all above every one of them. Measured: the eleven are serviced h0.26 → h2.79 and
+            // the pile is exactly empty afterwards, with `wing_a` and both radiators taking the
+            // FREE jury-rig at h3.05 / h3.30 / h3.55.
+            //
+            // ⭐ WHY ONE UNIT EACH IS ENOUGH AND NOT A DOWN PAYMENT: for every kind here whose
+            // `maint` is 0.30 or 0.40 (SolarWing, Scrubber, Battery) the lift is PERMANENT. Such a
+            // machine falls back only as far as its `maint`, which is ABOVE the 0.25 floor, so the
+            // FREE jury-rig band [0.25, maint) can always catch it. ⇒ once both wings are lifted
+            // they can never be stranded again, which is exactly the property the owner asked for.
+            // VERIFIED to 200 unattended sim-hours: all three wings end clear of the floor and
+            // fixable, with free jury-rigs observed at h44.95 / h108.46 / h128.19.
+            // ⛔ BUT NOT "FOR FREE FOR THE REST OF THE GAME", AND AN EARLIER DRAFT SAID EXACTLY
+            // THAT. `MachineWearSystem.cs:399-431` fetches a consumable BEFORE it will consider a
+            // free jury-rig — the machine's Condition only gates whether SWARF is offered, never
+            // whether the fetch happens at all. So a needy machine takes Parts or Seals whenever the
+            // ship holds ANY, and the free rig is what happens when the ship holds NONE. The
+            // 0.600 jury-rigs quoted throughout this block are a consequence of the pile being
+            // EMPTY from h2.79, not of the machine being above the floor: driven with 43 units
+            // aboard, `wing_a` goes 0.294 -> 0.900 and both radiators and `tank_reserve` likewise.
+            // ⚠️ In a package whose whole subject is consumable scarcity, "a repaired wing costs
+            // nothing forever" is the wrong shape to leave for a future lane. What is permanent is
+            // that such a machine can ALWAYS be recovered — not that recovering it is always free.
+            // ⚠️ DRIVEN FOR TWO OF THE THREE KINDS, INFERRED FOR THE THIRD — labelled rather than
+            // blurred. SolarWing is OBSERVED taking the free jury-rig twice — `wing_a` at h3.05
+            // (0.294 → 0.600) and again at h44.95 (0.399 → 0.600); an earlier draft wrote the two
+            // events as if both started from 0.399, which is only the second one — and Scrubber
+            // three times (`scrubber_spine` h34.41 / h49.67 / h64.62). Review drove the same ship to
+            // 200 sim-hours and adds h108.46 and h128.19. Battery is an INFERENCE from the def table
+            // alone (`maint` 0.30 > the 0.25
+            // floor ⇒ the band is non-empty): at 0.002/h a Seals service at 0.90 does not fall to
+            // 0.30 for ~300 sim-hours, well outside any window measured here.
+            // ⚠️ IT IS *NOT* PERMANENT FOR Light/Terminal/WaterTank, whose `maint` is 0.20 — BELOW
+            // the floor, so their free band is empty (wear.def says so) and they need a consumable
+            // EVERY cycle, forever. That recurrence is the ongoing economy the salvage rung exists
+            // to feed; it is deliberately NOT priced in here, because pricing it would mean
+            // authoring an infinite pile. ⚠️ FIRST RECURRENCE ~22 SIM-DAYS after a Seals service,
+            // NOT the ~29 an earlier draft computed from the def sheet: `machines.def` gives Light
+            // 0.001/h nominal, but the OBSERVED rate on the deck-0 lamps is ~0.0013/h (0.040 →
+            // 0.032 over 6 sim-hours). The gap is measured and NOT explained here — this package did
+            // not chase which term inflates it. Use the measured figure; a wear rate read off the
+            // def table is a nominal, not a prediction.
+            //
+            // ⭐ WHY THE CRYO BAY. ⚠️ THIS IS THE ONE PLACE THIS PACKAGE OVERRODE ITS OWN CHARTER,
+            // WHICH ASKED FOR A LOCKER SOMEWHERE IN THE SHIP RATHER THAN A PILE AT THE PLAYER'S
+            // FEET. The first draft put it in the spine — better fiction, a corridor damage-control
+            // bracket a hurried raider walks past — and a measurement retired it:
+            //   1. ⚠️ PRESSURE — THE DECIDING REASON, AND IT IS THE ONLY ONE THAT CAN ACTUALLY BITE
+            //      THIS SHIP'S STOCK. `FindNearest` (`MachineWearSystem.cs`) refuses any stack whose
+            //      own tile fails `WorksiteSafety.CanStageWorkerAt`, so a stack in a compartment
+            //      that loses its air simply STOPS EXISTING as far as maintenance is concerned.
+            //      MEASURED per tick over the first 4 sim-hours, three legs, probing all three
+            //      consumable tiles:
+            //          doors opened at tick 0    (7,14,0) spares   (8,14,0) gaskets   (9,6,0) locker
+            //          none                      always Y          always Y           always Y
+            //          the goal door alone       always Y          always Y           always Y
+            //          BOTH doors of the column  N from h0.028     N from h0.028      always Y
+            //                                      back at h0.066    back at h0.066
+            //      ⇒ opening TWO frontier compartments at once drains the core's air into 120 tiles
+            //      instead of 60 and the REACTOR BAY briefly stops being a place a crew member can
+            //      stand. The cryo bay never does, in any leg. That is a real discriminator between
+            //      the two candidate sites, and it is why the eight new units are not in the reactor
+            //      bay beside the old three.
+            //   2. ⛔ THERMAL — REAL, BUT IT CANNOT REACH ANY STACK ON THIS SHIP, AND AN EARLIER
+            //      DRAFT OF THIS BLOCK LED WITH IT AS THOUGH IT COULD. Independent review caught the
+            //      contradiction: the argument was used to reject the spine and the reactor bay, and
+            //      then WAIVED for the two stacks already sitting in the reactor bay on the grounds
+            //      that "they are gone by h0.76, so the case does not arise" — which is equally true
+            //      of the new locker, gone by h2.79. Both halves cannot be right. The measurement
+            //      decides it: EVERY unit on this ship is consumed inside the first three sim-hours,
+            //      and nothing freezes before sim-day 6, so the freezing hazard cannot bite EITHER
+            //      site. It is a property of a TILE, not of this stock. Kept because a future lane
+            //      that authors a cache meant to sit unspent must know about it —
+            //      "unbreathable" INCLUDES THERMAL (`needs.def hypothermia_c = -10`).
+            //      ⚠️ THE FIRST DRAFT OF THIS REASON QUOTED THIS FILE'S OWN HEADER TABLE (spine
+            //      -9.2 °C, reactor bay -14.0 °C at sim-day 6) AND WAS FALSE ON THE SHIPPED TREE.
+            //      A guard written to pin it went RED and was right to. RE-MEASURED HERE, driven on
+            //      THIS tree, `ShipPlanBuilder.Build` + the default stack, no player input, probes
+            //      at (9,6,0) / (16,9,0) / (7,14,0), sampled every 12 sim-hours to sim-day 12:
+            //          day    cryo bay      spine       reactor bay
+            //           1     10.0 °C      14.2 °C       10.0 °C
+            //           3     10.0 °C       8.2 °C       10.0 °C
+            //           6     10.0 °C       2.7 °C        9.7 °C
+            //          10     10.0 °C      -3.0 °C        4.6 °C
+            //          12     10.0 °C      -5.2 °C        2.3 °C
+            //      ⇒ the cryo bay is FLAT AT 10.0 °C throughout (`radiator_cryo` thermostats it —
+            //      the header's own finding, and it survives); the spine is still stageable at
+            //      day 12 and crosses `hypothermia_c` near sim-day 16 (EXTRAPOLATED from its
+            //      -0.55 °C/12 h slope — the only unsampled number in this block), not at day 6.
+            //      The same-tree PRE-FIX control has the spine unstageable at day 7 and the reactor
+            //      bay at day 6, so the hazard is real; this package pushed it out, it did not
+            //      remove it.
+            //      ⭐ AND THE REASON THE SHIP NOW COOLS FAR MORE SLOWLY IS THIS PACKAGE ITSELF: the
+            //      eight extra units bring `scrubber_spine`, `scrubber_reactor`, three batteries,
+            //      three lamps and `term_moss` back above their `fail`, and an operating machine
+            //      emits `MachineDef.HeatKW`. ⚠️ THE HEADER'S THERMAL TABLE IS THEREFORE STALE FOR
+            //      THE SHIPPED SHIP — it is annotated there; do not quote it for `--ship wreck` as
+            //      it now boots.
+            //   3. ⭐ WHY THE OLD 1 Parts + 2 Seals ARE NOT MOVED TOO — justified on the measurement
+            //      in reason 1, NOT on the false claim that the case does not arise. IT DOES ARISE:
+            //      those two tiles really do go un-stageable at h0.028 on a two-door opening. The
+            //      exposure is bounded and RECOVERABLE — 0.038 sim-hours (~2.3 sim-minutes), after
+            //      which the stacks reappear — where the failure this package exists to remove is
+            //      PERMANENT. It also closes before the first service at h0.26, so in every leg
+            //      measured here it costs nothing at all; the worst it can do is defer one
+            //      recruitment pass or convert one Seals service into a free jury-rig, which is
+            //      cheaper, not dearer. Against that: moving them changes which stack `FindNearest`
+            //      picks (tier first, then Manhattan distance) and therefore re-opens every service
+            //      timing quoted in this block, for no gain in durability. ⚠️ That is a STATED
+            //      TRADE, not an absence of risk. A lane that wants the ship's whole spares stock on
+            //      one thermally- and pressure-stable tile should move all three together and
+            //      re-measure the h0.26 → h2.79 sequence.
+            //   4. Fiction still holds, and it is not the weaker story: a cryo bay is precisely
+            //      where a ship keeps the locker that has to survive everything else — beside the
+            //      people it exists to keep alive — and gaskets are what a raider leaves behind.
+            // (9, 6, 0) is bare floor in the bay's bottom-right, diagonally opposite the capsule
+            // the crew member wakes in at (3, 1, 0): the bay's devices are `light_cryo` (1,1),
+            // `term_moss` (1,3), `battery_cryo` (1,6), `vent_cryo` (10,1), `scrubber_cryo` (10,3)
+            // and `radiator_cryo` (10,6), the twelve capsules sit on x∈{2,4,6,8} × y∈{1,3,5}, and
+            // the four corpses sit on their own capsules' tiles. Probed on the built ship:
+            // walkable, no device, stageable, breathable.
+            plan.Items.Add(new ItemSpec
+            {
+                Kind = ItemKind.Seals, Count = 8,
+                Pos = new Int3(cryo.X1 - 1, cryo.Y1, 0), Label = "damage-control locker",
+            });
+            // ⛔ KNOWN LIMITS OF THIS FIX, STATED HERE BECAUSE THE NUMBER ABOVE LOOKS LIKE A
+            // GUARANTEE AND IS NOT ONE. All three EXIST by measurement, not by fear — each is
+            // reproduced by a driven test in `WreckRepairEconomyTests`. ⚠️ But the "how much would
+            // it take to close them" figures inside 1 and 2 are an UPPER BOUND and an ESTIMATE
+            // respectively, and say so where they appear; do not quote either as a threshold.
+            //  1. `tank_reserve` (WaterTank 0.21) still ends an unattended 3-day run permanently
+            //     unfixable at 0.123. It is not on the board at boot, so the pile is gone before it
+            //     asks. Covering it needs ~4 more units — 15 in total. MEASURED ONE-SIDED ONLY:
+            //     Count 8 -> 12 reddens KnownLimit_TankReserve_IsStillStrandedAndThatIsDeliberate,
+            //     so 15 units is SUFFICIENT; whether 14 would also do it was NOT run, so read 15 as
+            //     an upper bound and not as a threshold. It buys nothing durable either way:
+            //     WaterTank `maint`
+            //     is 0.20, BELOW the 0.25 floor, so its free jury-rig band is empty (wear.def says
+            //     so) and it needs a consumable EVERY cycle for ever. The same is true of every
+            //     Light and Terminal on this ship. That recurrence is the ongoing salvage economy,
+            //     not a soft-lock, and no authored quantity closes it.
+            //  2. ⛔ OPTION (a) DOES NOT CLOSE THE SOFT-LOCK IN GENERAL, AND THAT IS MEASURED.
+            //     `RecruitForNeediest`'s queue is GLOBAL and unsteerable, and every compartment the
+            //     player pressurises inserts its wrecked machines into it. Driven with the SINGLE
+            //     door at (16,7,0) opened at tick 0 — the compartment this ship's own GoalSpec
+            //     names, i.e. ONE CLICK, the move the game itself directs the player toward —
+            //     THREE frontier machines (light_d0_s1 0.040, recycler_1 0.090, machineshop_1 0.130)
+            //     outrank `wing_b` (0.18) and it ends at 0.148, below the floor and unfixable, at
+            //     eleven units and at twelve. Covering every single-compartment opening takes
+            //     ~19-22 (an ESTIMATE: at 22 with two doors open, 3 are left over), which would
+            //     auto-repair the whole deck-0 frontier and delete the salvage game. ⇒ THE GENERAL
+            //     FIX IS THE WORK-PRIORITY GRID (M2), not a bigger pile; this number removes the
+            //     soft-lock as the DEFAULT OUTCOME, which is what it can honestly do.
+            //  3. The `Swarf` rung is real but ZERO-SUM inside the core: `deconstruct.device_swarf`
+            //     pays exactly 1 unit per stripped wrecked device and a service consumes exactly 1,
+            //     so a repair always costs the machine that funded it. Pinned at its root by
+            //     `WreckRepairEconomyTests.KnownLimit_TheSwarfRungIsZeroSum_OneUnitPerStrippedWreck`.
+            //     Measured: condemning all ten strippable in-air wrecked machines at boot (14 tried,
+            //     4 CryoPods refused; 626 devices → 616) DOES lift every wing clear of the floor —
+            //     at the price of `term_moss`, both core scrubbers and both remaining batteries.
+            //     ⚠️ THE END CONDITIONS ARE HORIZON- AND TREE-DEPENDENT AND DO NOT REPRODUCE: this
+            //     lane measured wing_b/wing_c 0.763 / 0.706 at 3 sim-days pre-rebase; review
+            //     measured 0.959 / 0.901 at h24 on the merged tree. The CONCLUSION is identical
+            //     either way and rests on "clear of the floor and fixable", never on the figures —
+            //     which is why no test pins them.
 
             // --------------------------------------------------------------- starting air
             // THE WHOLE PRESSURISED SET, and it is three names long. Everything omitted here boots
