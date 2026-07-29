@@ -51,6 +51,7 @@ commands per tile (`stockpile` + `filter`) and its erase is deliberately ONE.
 | `m1-c-14-stockpile-zone.png` | a 3×3 STOCKPILE drag — 6 tiles zoned (three carry capsules, which the sim refuses) |
 | `m1-c-15-erase-zone-toast.png` | `↺ ERASE ▸ 6 ORDERS TAKEN BACK` — the count is the ORDERS cleared, not the 9 tiles dragged over |
 | `m1-c-16-erase-zone-done.png` | the zone is gone in ONE drag |
+| `m1-c-17-palette-768-three-rows.png` | the narrowest width swept — **768px, THREE rows, 17/17 tools reachable**. `client/tools/palette-shot.mjs` (the instrument that exists because the palette once hid three verbs behind a hidden scrollbar) was re-run at 1600/1440/1280/1140/1024/900/768: every tool reachable at every width. Adding a tool costs HEIGHT, never a hidden verb — the numbers are re-recorded in `client/styles.css` beside the wrap rule they update |
 
 ---
 
