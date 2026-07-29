@@ -18,8 +18,11 @@ the approved plan · the invariants and the **Traps** section in `CLAUDE.md`.
 > giving an order, after which normal autonomy resumes under a visible work grid.**
 > **OD-H: the work grid DEFAULTS OFF. A pawn does a work type only once the player enables it.**
 >
-> ⛔ **This reverses M2-1's chartered *"default every work type to 3 for every pawn"* (`:1009-1010` as
-> published). The owner accepted the consequences explicitly: a pin move and a re-baseline.**
+> ⛔ **This reverses M2-1's chartered *"default every work type to 3 for every pawn"* — quoted rather
+> than cited by line, because §12.13's own lesson is that a line number is part of a justification and
+> this file's line numbers moved twice today. **Find it under M2-1's *"THE SHAPE"*, where the reversal
+> is applied in place.** The owner accepted the consequences explicitly: a pin move and a
+> re-baseline.**
 >
 > **⭐ THE REASON THE REVERSAL WAS NEEDED IS THE REASON THIS DOCUMENT EXISTS.** Default-3 was chosen
 > *"so shipped dispatch behaviour is the closest thing to today's"* — i.e. **to keep M2-1 off the pin
