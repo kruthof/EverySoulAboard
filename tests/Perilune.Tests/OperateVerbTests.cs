@@ -244,8 +244,11 @@ namespace Perilune.Tests
         /// must carry a live <c>anchorName</c> (or <c>roomTileRect</c> refuses and the room cannot be
         /// entered). Both are pinned in their own right in <c>InteriorKnownAtBootTests</c>.</para>
         ///
-        /// <para>MUTATION APPLIED: <c>InteriorKnownAtBoot = false</c> on the wreck ⇒ RED at the fog
-        /// precondition; <c>Hall(0, 3)</c> restored ⇒ RED at the anchor precondition.</para>
+        /// <para>MUTATIONS APPLIED: <c>InteriorKnownAtBoot = false</c> on the wreck ⇒ RED at the
+        /// fog precondition (3 red / 94 green); <c>Hall(0, 3)</c> restored <b>together with its two
+        /// <c>rects[0]</c> lookups</b> ⇒ RED at the anchor precondition (2 red / 95 green). Restoring
+        /// the hall WITHOUT its lookups throws at ship construction and reddens 60 tests — a false
+        /// RED, recorded in <c>InteriorKnownAtBootTests</c>.</para>
         /// </summary>
         [Test]
         public void The_Wrecks_Sealed_Vent_OPENS_And_That_Is_The_Premises_First_Move()

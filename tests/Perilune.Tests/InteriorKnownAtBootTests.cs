@@ -246,7 +246,18 @@ namespace Perilune.Tests
         /// client actually decodes — because a named anchor that the host blanks on its way out is
         /// exactly as unreachable as no anchor.</para>
         ///
-        /// <para>MUTATION APPLIED: put <c>Hall(0, 3)</c> back ⇒ RED on both ends.</para>
+        /// <para>MUTATION APPLIED: put <c>Hall(0, 3)</c> back <b>together with its two
+        /// <c>rects[0]["hall_d0_s3"]</c> lookups</b> ⇒ a clean semantic RED on this test and on
+        /// <c>The_Wrecks_Sealed_Vent_OPENS_...</c>, and on nothing else (2 red / 95 green).</para>
+        ///
+        /// <para>⚠️ <b>THE FIRST ATTEMPT AT THAT MUTATION WAS A FALSE RED (CLAUDE.md trap 3) AND IT
+        /// IS WORTH THE THREE LINES.</b> Swapping only the slot line leaves the two device-placement
+        /// lookups keyed on an anchor that no longer exists, so <see cref="AuthoredShips.PeriluneWreck"/>
+        /// throws <c>KeyNotFoundException</c> and <b>60 tests</b> go red — including
+        /// <c>PrintTheBootCensus</c>, which asserts only that the ship boots at all. Sixty reds read
+        /// as overwhelming confirmation and proved nothing whatever about <c>anchorName</c>. The
+        /// tell was the breadth, and the check is the one the trap prescribes: read the failure SET,
+        /// not the count.</para>
         /// </summary>
         [Test]
         public void WreckDeck0Slot3_IsANamedCompartment_OnThePlanAndOnTheWire()
