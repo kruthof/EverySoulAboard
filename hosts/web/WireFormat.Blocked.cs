@@ -395,6 +395,22 @@ namespace Perilune.Web
         /// closed door with a hand on the door — and telling them to go looking for a route when the
         /// compartment is simply not breathable would be a confident lie.</para>
         ///
+        /// <para><b>⭐ HOW A PLAYER PRODUCES IT, ON THE SHIPPING GAME, WITH NOTHING PLANTED —
+        /// AND A RETRACTION.</b> An earlier draft of this package's acceptance note said *"the reason
+        /// is not currently producible by a player on either shipped ship"*. <b>THAT IS FALSE AND IS
+        /// RETRACTED IN FULL.</b> It came from a rig that censused the wrong <c>DeviceKind</c> (it
+        /// filtered <c>2</c>, which is <c>Scrubber</c>; <c>Door</c> is <c>0</c>), so it never shut a
+        /// door and then reported that no door could be shut. On <c>--ship wreck</c>, deck 0:
+        /// <b>arm O and shut the two doors that boot OPEN — <c>(5,7)</c> and <c>(5,10)</c> — then arm
+        /// STRIP and condemn a wall on the stranded side.</b> Those two doors are the only way into
+        /// the spine corridor between the <c>y=7</c> and <c>y=10</c> wall lines, and shutting them
+        /// takes deck-0 explored+breathable+crew-reachable from <b>208 tiles to 60</b>. Driven end to
+        /// end through the real player commands (<c>client/tools/blocked-reach-shot.mjs</c>): six
+        /// stranded walls, <b>six rows carrying reason 3 within 5 s</b>, still there after 70 s
+        /// untouched, and the badge drawn on the Level-2 Room Zoom in LIFE SUPPORT.
+        /// ⚠️ <b>THE VERB IS STRIP, NOT BUILD</b> — see the build residual above; a build behind the
+        /// same shut door produces nothing at all.</para>
+        ///
         /// <para><b>⭐ IT IS LATCHED HOST-SIDE, AND WITHOUT THE LATCH THIS REASON WOULD BE CORRECT FOR
         /// FIVE SECONDS AND SILENT FOR FIFTEEN MINUTES.</b> The stamp lasts
         /// <c>JobWork.UnreachableRetryTicks = 50</c> ticks, and <c>HaulJobSource</c>'s
@@ -407,6 +423,21 @@ namespace Perilune.Web
         /// reporting it until the site leaves its registry or a crew member actually takes a job on
         /// it — see <c>GameSession.BlockedReason</c>'s latch. The latched claim is the honest one:
         /// <i>the last attempt failed and none has succeeded since.</i></para>
+        ///
+        /// <para>⚠️ <b>TWO PROPERTIES RECORDED RATHER THAN DISCOVERED LATER.</b>
+        /// (1) <b>A ZONED TILE CAN CARRY TWO MARKS AT ONCE.</b> <c>JobSystem.IsBackedOff</c> asks every
+        /// source including <c>HaulJobSource</c>, whose map is keyed on STOCKPILE tiles — so an order
+        /// painted on a zoned tile could draw this badge AND the <c>zones</c> channel's back-off chip
+        /// together. They would be saying the same true thing about the same tile through two layers,
+        /// which is why the fan-out does not filter by source type (that would be a second place that
+        /// knows which sources exist). BELIEVED LATENT: it could not be produced in play. If it ever
+        /// shows up as visual noise, arbitrate it in the CLIENT, not by narrowing the fan-out.
+        /// (2) <b>THE FOG GATE PRUNES THE LATCH.</b> <c>GameSession.AddIfBlocked</c> returns on an
+        /// unexplored tile BEFORE <c>BlockedReason</c> runs, so an unexplored site is not re-marked and
+        /// its latch entry is dropped on that render. Re-exploring the tile therefore shows nothing
+        /// until something re-stamps it. That is deliberate — the fog gate must not be defeated by a
+        /// host-side memory — and it is pinned by
+        /// <c>BlockedChannelTests.An_Unexplored_Unreachable_Site_Does_Not_Reach_The_Wire</c>.</para>
         /// </summary>
         public const int ReasonUnreachable = 3;
 

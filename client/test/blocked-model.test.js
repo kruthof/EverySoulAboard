@@ -465,8 +465,11 @@ test('DRIVEN: an `unreachable` row draws its own badge and its own words', () =>
   assert.ok(!/UNREACHABLE/.test(BLOCKED_REASON_TEXT.unreachable),
     'the player-facing sentence asserts UNREACHABLE, which is stronger than what the host can know');
   assert.ok(/MATERIAL/.test(BLOCKED_REASON_TEXT.unreachable),
-    'the sentence does not cover the build-material carrier, which is the one the measured '
-    + '480 000-tick stall actually trips');
+    'the sentence does not cover the build-material carrier (`BuildJobSource._matRetryAt`), which '
+    + 'fires when the crew cannot reach the MATERIAL rather than the site. ⚠️ It is NOT the carrier '
+    + 'the 480 000-tick stall trips — an earlier draft of this message said so and '
+    + 'hosts/web/WireFormat.Blocked.cs retracts it in the same commit: when material IS reachable '
+    + 'the claim succeeds and the abandon path records no back-off at all.');
 });
 
 // The key box is shared with the zone legend and used to be hidden whenever there were no ZONES.
