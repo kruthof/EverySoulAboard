@@ -245,7 +245,7 @@ loop, and **today it is not expressible in either half.**
 > which no revision had counted · and the demo's opening, which now runs the **enabling** direction.
 > **Contents item 5 (*"repair becomes a work type"*) and item 8 (POWER) are unaffected.**
 > ⭐ **Two new packages follow from it** — **M2-20** (a pawn who is waiting, and a game that says so)
-> and **M1-I** (the tick-0 claim on a bench she can never reach) — **plus M2-21**, the silent BUILD
+> and **M1-J** (the tick-0 claim on a bench she can never reach) — **plus M2-21**, the silent BUILD
 > haul measured on 2026-07-29. **All three are chartered in the packages document, not here.**
 
 **What is measured to be missing.**
@@ -683,9 +683,11 @@ one lane the tax is paid once"* — is true of the **serialization**, not of the
   (the M2-0 spike measured pre-emption at 0 lines in `sim/`), and **four rows have been added since**:
   **M1-a** the `Craft` thrash · **M1-b** the crafting staging rule · **M1-c** the silent BUILD haul ·
   and ⭐ **M2-e, the work-type veto, which OD-H turned from provably pin-neutral into a behaviour
-  change on every ship.** ⚠️ ⭐ **A chain of EIGHT re-pins is now a chain of ELEVEN** — counted from the
-  packages document's §2 table, not computed: `M1-a · M1-b · M1-c · M2-a · M2-e · M2-c · M2-d · M3-a ·
-  M3-b · M3-c · M3-d`. **Three of the four new rows are live `main` defects found by driving the sim,
+  change on every ship.** ⚠️ ⭐ **A chain of EIGHT re-pins is now a chain of NINE TO ELEVEN, and the
+  spread is the honest part** — counted from the packages document's §2 table, not computed:
+  ~~`M1-a`~~ **RETRACTED (M1-H measured pin-neutral, all five held)** · `M1-b?` · `M1-c?` · `M2-a` ·
+  `M2-e` · **`M2-g`** *(new — OD-J's cost)* · `M2-c` · `M2-d` · `M3-a · M3-b · M3-c · M3-d`, where `?`
+  marks a row whose place is **not yet measured** and which leaves the chain if it proves neutral. **Three of the four new rows are live `main` defects found by driving the sim,
   and one is OD-H's own cost.** *(Struck rather than rewritten, because §11's rule is that
   published ids are stable — the letters record history, not sequence.)*
   Each gets its own re-pin commit (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory,
@@ -773,7 +775,38 @@ now. WP-C has needed the owner since 07-25.
 **The rule this plan adopts: every milestone opens with ONE decision batch, put to the owner in a
 single message, each item carrying a recommendation and a stated blast radius; anything unanswered
 after three days takes the recommendation, is marked REVERSIBLE, and is listed in the milestone's
-record as such.** The batches:
+record as such.**
+
+> ## ⭐ THE DECISION LEDGER — 2026-07-29, TEN DECISIONS IN ONE DAY *(added in revision 3)*
+>
+> **This table exists because §3.5's own diagnosis applies to §3.5.** Ten decisions were taken on one
+> day and were about to live as scattered clauses in two documents; that is exactly how the
+> `Morale`/`Health` item went stale for five days and the character-sim five for three.
+> **One table, chronological, with where each one BINDS.**
+>
+> | id | decision | binds |
+> |---|---|---|
+> | **OD-A** | Repair is a **work type** under the priority grid + a right-click prioritise override — never a paint designation. ⇒ *the grid is a PREREQUISITE, not the seventh lane.* | M2 entire |
+> | **OD-B** | Economy **PARKED at E0-complete**; E1 not opened; **A1 retired as a goal** (regression statistic only). | M2-17, M3 |
+> | **OD-C** | The ship's interior is **authored-explored at boot**. | M1-A |
+> | **OD-D** | ⚠️ **REFERENCED BY THE INTEGRATOR, NOT STATED TO THIS DOCUMENT.** Recorded as a known gap rather than guessed — *"an id in a ledger with no content is a question; an invented row is a lie."* | — |
+> | **OD-E** | ⚠️ **Same — referenced, not stated here.** | — |
+> | **OD-F** | The wreck's finite repair economy: **author more consumables** so it stops being a silent soft-lock. | **M1-I** (`lane/repair-consumables`, in flight) · closes M2 batch item 6 |
+> | **OD-G** | **The opening is an ORDER, then autonomy resumes.** The pawn boots idle and waiting; the game opens with the player giving an order. | **M2-20** (new) · M2-2 · M2-3 |
+> | **OD-H** | **The work grid DEFAULTS OFF. Work is opt-in.** *(Owner accepted a pin move and a re-baseline.)* | **M2-1 · M2-2 (now a pin row) · M2-3/M2-4 (now blocking) · M2-17** |
+> | **OD-I** | **One rule, OFF everywhere** — the measurement fixtures too; **M2-17 teaches the harness to author a grid.** | **M2-1** (unblocked) · **M2-17** |
+> | **OD-J** | v1 work-list order = **`Repair · Construct · Craft · Deconstruct · Mine · Haul`**, and **it IS the equal-band tie-break.** | **M2-5** (now pin row `M2-g`) · M2-3's column layout |
+>
+> **Plus three DECIDED-BY-DEFAULT (integrator, 2026-07-29), overturnable by the owner on sight:**
+> new thaws boot **all-off** (uniform) · **"the first order"** means any player command that makes her
+> take a job, including a WORK-tab toggle · a deliberately unassigned pawn gets **two words, not one**
+> (*unassigned* vs *idle*).
+>
+> ⛔ **NOTHING IN M1 OR M2 IS NOW BLOCKED ON AN UNANSWERED ITEM.** The M2 batch's remaining open items
+> (1–5) are all non-blocking; **item 5's blast radius has changed without its content changing** — see
+> the packages document.
+
+The batches:
 
 - **M1:** the fog rule's scope (wreck-only authoring vs. a general hull rule — the pin difference) ·
   ⭐ **the vent premise (§0.3)**: an `AirVent` **injects** into its own room and refuses room 0, so

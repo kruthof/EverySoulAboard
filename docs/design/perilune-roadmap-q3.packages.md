@@ -196,32 +196,59 @@ is precisely what a work-priority grid stops doing.** ⇒ **The grid does not ca
 exists to prevent. *(This is the sixth defect found by driving the sim rather than reading it, in a
 quarter that has not started.)*
 
-> ### ⚠️⚠️ THE `33 %` FIGURE IS PROVISIONAL AND IS UNDER CHALLENGE — FLAGGED, NOT EDITED *(revision 3, 2026-07-29)*
+> ### ⛔ THE `33 %` FIGURE IS RETRACTED. THE MEASURED NUMBERS ARE BELOW, AND THEY CHANGE WHAT THE DEFECT *IS* *(revision 3, 2026-07-29)*
 >
-> **`lane/craft-thrash` (M1-H) reports it could not reproduce *"33 % of all crew-ticks in a loop that
-> never ends."*** Its best reproduction is **3.575 % of a sim-day, burning out after ~1.2 sim-hours**,
-> and **the M2-0 spike's committed harness contains no `Craft` instrumentation**, so the 33 % is **not
-> reproducible from committed code.** ⚠️ *That review was still running when this was written; treat
-> the challenge itself as provisional too.*
+> **`lane/craft-thrash` (M1-H) drove it and could not reproduce *"33 % of all crew-ticks in a loop
+> that never ends."*** The M2-0 spike's committed harness contains **no `Craft` instrumentation**, so
+> the 33 % is not reproducible from committed code. **Measured, and these supersede it:**
 >
-> ⛔ **DELIBERATELY NOT EDITED, per the house rule that a retraction is stated in place and loudly.**
-> Both numbers are quoted here so a reader sees the disagreement rather than the survivor.
-> **Every citation of `33 %` in this document, so no reader meets it unflagged:**
-> §0.1 (here, the canonical statement) · the **REVISION 2** block's item 5 · **M1-H**'s player sentence
-> and its second acceptance note · **M2-0**'s "return on one throwaway branch" table · **§11** row 1 ·
-> **§12.14**'s closing clause.
+> | configuration | Craft share | shape |
+> |---|---:|---|
+> | `--no-repair` *(repair disabled)* | **3.575 %** of a sim-day | **1 468 recruits / 1 468 abandons, then nothing. h3 onward 0.0 %** |
+> | **shipping config today** (`--ship wreck`, repair ON) | **0.023 %** | **1 Craft start** |
 >
-> ⭐ **WHAT DEPENDS ON IT, AND WHAT DOES NOT — this is the part that matters for scheduling.**
-> **Nothing structural depends on the magnitude.** M1-H's *seam* is a structural fact
-> (`grep -n "RetryTicks\|_retryAt\|backoff"` returns **nothing** in either push recruiter, while every
-> `IJobSource` has stamped one since W0-4 — §12.14), and it stands at 33 %, at 3.575 %, or at 0 %.
-> What the magnitude decides is **urgency and ordering**, and at 3.575 % *"it burns out after ~1.2
-> sim-hours"* is a materially different claim from *"forever"*.
-> ⇒ **If the challenge stands, M1-H is still correct and is no longer obviously the first thing to
-> start** — and it is a **pin-chain head** on which two more rows now sit (M1-b, and M2-a behind it).
-> ⚠️ **A pin-chain head justified by a number that did not reproduce is worth re-deciding before the
-> chain moves, not after.** *(This document does not re-decide it: the review is still running, and
-> M1-H is in flight.)*
+> ⇒ ⛔ **IT BURNS OUT. IT DOES NOT RUN FOREVER, AND "33 % of all crew-ticks" IS WRONG BY ~9×.**
+> ⛔ **NOT SILENTLY EDITED, per the house rule that a retraction is stated in place and loudly.** Every
+> citation of `33 %` in this document, so no reader meets it unflagged: §0.1 (here, the canonical
+> statement) · the **REVISION 2** block's item 5 · **M1-H**'s player sentence and its second acceptance
+> note · **M2-0**'s "return on one throwaway branch" table · **§11** row 1 · **§12.14**'s closing
+> clause. **All six are superseded by the table above.**
+>
+> ### ⭐⭐ AND YET THE DEFECT GOT *MORE* URGENT, NOT LESS — BECAUSE OD-H MAKES THE 3.575 % COLUMN THE SHIPPED ONE
+>
+> The two columns differ by one thing: **whether Repair is enabled.** Today the shipping config has it
+> on, so the defect is 1 job start and effectively invisible. ⛔ **Under OD-H every work type boots
+> OFF, so *"repair disabled"* is approximately the DEFAULT BOOT STATE of every new game.**
+> ⇒ **The `--no-repair` column stops being a diagnostic configuration and becomes the shipped one**,
+> and **3.575 % of a sim-day of a ONE-PAWN ship's time is spent on 1 468 recruit→abandon cycles in her
+> first three sim-hours** — which is precisely the window OD-G says the player is watching her, waiting
+> to be taught the first order.
+> ⇒ ⭐ **M1-H's urgency converts from a prediction into a certainty, and this is the strongest single
+> argument in the milestone.** *(Revision 3's first draft argued the opposite — that a smaller number
+> made M1-H "no longer obviously the first thing to start". **That was wrong in its conclusion while
+> being right about its evidence**, because it reasoned about the number without reasoning about which
+> configuration OD-H makes default. Retracted here.)*
+>
+> ### ⛔ AND THE MEASURED SPLIT SAYS THE CHARTERED FIX IS THE SMALL HALF
+>
+> | intervention | `--no-repair` Craft share |
+> |---|---:|
+> | baseline | 3.575 % |
+> | **M1-H's backoff alone** | **3.333 %** — a **−6.8 %** improvement |
+> | **the reachability probe alone** | ⭐ **0.000 %** |
+>
+> ⇒ ⛔ **THE BACKOFF DOES ~7 % OF THE WORK AND THE PROBE DOES THE REST.** M1-H is chartered as the
+> backoff. **M1-J is the probe half** — `CanStageWorkerAt` at `CraftingSystem.cs:492`, the one staging
+> site in the sim that does not ask (§12.16).
+> ⚠️ **A CAUTION THE NUMBERS DO NOT SETTLE, AND IT MUST NOT BE PAPERED OVER:** *"the reachability
+> probe"* is M1-H's review's name for its intervention, and **whether it is the same mechanism as
+> M1-J's `CanStageWorkerAt` addition is NOT established in this document.** They are probes of the same
+> kind at the same function and are the obvious candidate for being one thing — **but a path check and
+> a breathability check are different questions, and merging two things because they occupy one slot is
+> the exact error this document keeps recording.** ⇒ **Whoever holds M1-H reconciles them by name
+> before either merges.**
+> ⇒ **This inverts M1-H ↔ M1-J's relative weight**: M1-J is not a tidy-up behind M1-H, it is the
+> majority of the fix. **It strengthens the standing instruction to FOLD THEM** (§2 row M1-b).
 > ⚠️ **AND THE SHAPE IS THE REPO'S OWN:** *"a measurement carries its units and its baseline, or it is
 > not a measurement"* — written in **REVISION 2 §6**, about a different number, in this same file.
 
@@ -306,11 +333,12 @@ are for.
 | # | lane | package | expected to move | why | rollback point |
 |---|---|---|---|---|---|
 | **M1-a** | `lane/craft-thrash` | **M1-H** | **P1 P2 P3 — expected; measure.** | ⭐ **NEW IN REVISION 2.** The `Craft` recruit→abandon thrash is a real behaviour change on any ship with a bench and an unsatisfiable bill. **P4/P5 hold** — the backoff reuses `JobWork.UnreachableRetryTicks`, a literal already on the determinism path. ⛔ **Do not add a def field.** | — |
-| **M1-b** | `lane/craft-staging` | **M1-I** | **P1 P2 P3 — expected; measure.** | ⭐ **NEW IN REVISION 3.** `CraftingSystem.TryFindStagingTile` (`CraftingSystem.cs:487-498`) tests walkability only where every other worker-staging site in the sim also asks `WorksiteSafety.CanStageWorkerAt`. Adding it changes which pawns are claimed on any ship with a bench, which is every pinned ship. **P4/P5 hold — no def field; the predicate already exists.** ⚠️ **If `lane/craft-thrash` (M1-a) has not yet passed review when you read this, FOLD THIS IN and delete this row** — it is the same file, the same function family and the same measured trace, and folding saves an entire re-pin. | — |
-| **M1-c** | `lane/build-haul-backoff` | **M2-21** | **P1 P2 P3 — expected; measure.** | ⭐ **NEW IN REVISION 3.** A build order behind a shut door is held as `HaulToBuild` for **3 000 ticks with 2 999 abandons and ZERO backoff stamps** — *the original 480 000-tick livelock*, measured by M1-D's review. A stamp on a dispatch path changes claim timing on any ship with an unreachable build site. **P4/P5 hold** — reuses `JobWork.UnreachableRetryTicks`. ⚠️ **Executes at merge position 7b (after M1-D, whose `IsBackedOff` mirror it consumes) even though its id is in the M2 range** — it must be measured while the fixtures still do work, i.e. **before M2-e**. | — |
+| **M1-b** | `lane/craft-staging` | **M1-J** | ⭐ **UNKNOWN — MEASURE, AND EXPECT THEM TO HOLD.** *(Revision 3's first draft said "P1 P2 P3 expected". **Downgraded** — see the note below the table: its sibling fix in the same file measured ALL FIVE HELD, and this row's prediction rested on the same refuted assumption.)* **P4/P5 hold — no def field; the predicate already exists.** | ⭐ **IF IT PROVES PIN-NEUTRAL BY CHECK (A), IT LEAVES THE CHAIN ENTIRELY** and becomes an ordinary lane serialized on `CraftingSystem.cs`. **State which, measured, at review.** ⚠️ **If `lane/craft-thrash` has not yet passed review when you read this, FOLD THIS IN and delete this row** — same file, same function family, and §0.1 now measures this half as **the majority of the fix** (probe → 0.000 % vs backoff → −6.8 %). |
+| **M1-c** | `lane/build-haul-backoff` | **M2-21** | ⭐ **UNKNOWN — MEASURE, AND EXPECT THEM TO HOLD.** *(Also downgraded — see the note below the table. M1-H measured a backoff stamp on a push recruiter as pin-neutral, and this is a backoff stamp on a pull source.)* **P4/P5 hold** — reuses `JobWork.UnreachableRetryTicks`. | ⭐ **IF PIN-NEUTRAL BY CHECK (A), IT LEAVES THE CHAIN.** ⚠️ Executes at merge position 7b (after M1-D, whose `IsBackedOff` mirror it consumes) even though its id is in the M2 range — **it must be measured while the fixtures still do work, i.e. before M2-e.** ⚠️ *That ordering constraint is about MEASURABILITY and survives even if the row leaves the chain.* |
 | **M2-a** | `lane/work-state` | M2-1 | **P1 P2 P3** | New hashed `Citizen` state ⇒ CITZ chapter bump ⇒ `Simulation.StateHash` fold changes on every ship. ⭐ **REVISION 3: this is now true for TWO reasons, not one** — the chapter bump *and* the default value itself, which is hashed. Default-OFF and default-3 are different pins. **P4/P5 expected to HOLD** — see the note below. | ⭐ **tag `pin/m2-a`** on `main`, with all five values recorded in the tag's own commit |
 | **M2-e** | `lane/work-veto` | **M2-2** | ⭐ **P1 AND P3 EXPECTED TO MOVE. P2 MAY HOLD — measure, do not predict.** | ⭐ **NEW IN REVISION 3, and it is a DIRECT CONSEQUENCE OF OD-H.** Revision 2 chartered M2-2 pin-neutral because *"at the all-default grid the veto never fires"*. **Under OD-H the all-default grid is every work type OFF, so the veto fires on every pawn on every ship from tick 0.** P2 may hold because `AuthoredShips.Perilune()`'s two crew are `HoldPosition = true` and take no work today — ⚠️ **that is the deck-confined-wander shape exactly, where two pins held against expectation. MEASURE.** | ⭐ **tag `pin/m2-e`** — the first *behaviour* row of M2, and the one that can turn every measurement fixture inert. Record all five values in the tag's own commit |
 | ~~**M2-b**~~ | ~~`lane/preempt`~~ | ~~M2-8~~ | ⛔ **REMOVED FROM THE CHAIN IN REVISION 2.** | M2-0 measured pre-emption at **0 lines in `sim/`** and three host lines; at shipped defaults nothing pre-empts. It is **pin-neutral, proven by check (A)**, and holding a serialization slot for it was costing the chain a step for nothing. ⚠️ *It is still integrator work — it is off the CHAIN, not off the integrator's desk.* | — |
+| **M2-g** | `lane/band-loop` | **M2-5** | ⭐ **P1 P2 P3 EXPECTED TO MOVE — MEASURE. NEW IN REVISION 3, AND IT IS OD-J's DIRECT COST.** | ⛔ **Revision 2 kept M2-5 off the chain by authoring a v1 work-list order that reproduced shipped precedence exactly. OD-J replaces it with the PLAY order (`Repair · Construct · Craft · Deconstruct · Mine · Haul`), which DELIBERATELY does not reproduce shipped precedence** — that was the whole point of the order it replaces. The order **is the equal-band tie-break**, so it changes dispatch outcomes on any ship where two work types are claimable in the same band. **P4/P5 hold — no def field; the order is a literal.** | ⭐ **tag `pin/m2-g`.** It is the last behaviour row before the power package, and the only one whose cause is a single authored list a reader can diff. |
 | **M2-c** | `lane/power-network` | M2-11 | **UNKNOWN — and the answer depends on a decision inside the package.** Wreck-only authoring ⇒ pin-neutral (the wreck is not pinned). A change to `PowerSystem`'s claim rule ⇒ **P2 P3** (and P1 only if the scenario ship has a network — it is single-deck, so a 6-way vs 4-way claim is likely identical). | §0.2: `AuthoredShips.cs:1441-1443` believes deck 1 is off-network; measured, 0 of 626 devices are. | — |
 | **M2-d** | `lane/power-wear` | M2-12 | **P2 P3.** P1 unknown — measure. P4/P5 expected to hold (no def field; `EffectiveRate` already exists). | `EffectiveRate` on the generation term alters the power balance on `perilune` and `slice`. | ⭐ **tag `pin/m2-d`** — **the designated rollback point for the whole power package.** If the resulting curve is wrong, return to a measured tree; do not tune forward from an unmeasured one. |
 | **M3-a** | `lane/cryo-system` | M3-2 | **P1 P2 P3** | Registering a system folds its SYSS chapter and checksum seed unconditionally. W0-6 measured exactly this on four *empty* systems. | — |
@@ -332,19 +360,51 @@ are for.
 > one paragraph and only one of them was load-bearing; separating them is the *"code right,
 > justification false"* discipline (§13.11) applied to this document's own prose.
 
-> ⭐ **THE CHAIN'S LETTERS ARE HISTORICAL, NOT ORDINAL.** Execution order is
-> **M1-a → M1-b → M2-a → M2-e → M2-c → M2-d → M3-a…**. `M2-b` is struck (revision 2) and is **not
-> reused** — published ids are stable, which is the same rule that keeps the `M2-13…M2-16` gap open
-> (§11). Read the table top to bottom, not alphabetically.
+> ## ⛔⭐ `PIN M1-a` IS RETRACTED — M1-H IS PIN-NEUTRAL, MEASURED *(2026-07-29)*
+>
+> **`lane/craft-thrash`'s review completed after revision 3 was started and measured ALL FIVE PINS
+> HELD:** P1 twin MATCH via `ci.sh` · P2 `326c68e00f2df496` · P3 `3fb1798a3a50cba0` (golden files
+> byte-unchanged) · P4 `0c5ddbc07e41f07d` · P5 `09900b9a44119272`, with
+> `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` at **0 lines.**
+> ⇒ **M1-H is not a chain head and does not run alone.** Its own send-back carries required fix 3,
+> which is exactly this retraction.
+>
+> ⚠️ **THE ROW ITSELF IS DELIBERATELY LEFT FOR M1-H's COMMIT TO EDIT, AND THIS NOTE SITS OUTSIDE THE
+> TABLE ON PURPOSE.** `lane/craft-thrash` is making the same correction in its own worktree right now.
+> **Two lanes editing one table row is the silent-auto-merge shape this document has recorded four
+> times** (`DeviceCell`'s field list; two `cssCodeOnly` exports; two honest census re-counts). **A note
+> that points at a retraction cannot collide with the retraction.** ⇒ **When M1-H merges, its commit is
+> the authority and this note becomes redundant — delete it then, not before.**
+>
+> ### ⭐ AND THE MEASUREMENT REACHES TWO ROWS THAT ARE MINE, WHICH IS THE PART THAT MATTERS
+>
+> Rows **M1-b** and **M1-c** predicted `P1 P2 P3` on a shared, unstated assumption: *that a claim-path
+> write in the job system moves pins.* **M1-H is a claim-path write in the job system and it moved
+> nothing.** ⇒ **Both predictions are downgraded to `UNKNOWN — measure, and expect them to hold`**, each
+> with an explicit exit condition: prove pin-neutrality by check (A) and the row **leaves the chain.**
+> ⚠️ **This is not a small correction to make quietly.** The chain is the document's operational output;
+> a row on it costs a serialization slot, a re-pin commit and a rollback decision. **Two of the four
+> rows revision 3 added may not belong on it at all**, and the only reason anyone knows that is that a
+> sibling lane measured instead of predicting. ⭐ ***"Measure, never predict" is in `CLAUDE.md` because
+> of pins that held; this is the first time in this document it has cost a row its place.***
 
-> ⚠️ **THE ROLLBACK TAGS ARE NOT OPTIONAL.** ⭐ **A chain of eight re-pins is now a chain of ELEVEN**
-> — counted from the table above, not computed: `M1-a · M1-b · M1-c · M2-a · M2-e · M2-c · M2-d ·
-> M3-a · M3-b · M3-c · M3-d`. It has no natural place to stand
+> ⭐ **THE CHAIN'S LETTERS ARE HISTORICAL, NOT ORDINAL.** Execution order is
+> ~~**M1-a**~~ **→ M1-b? → M1-c? → M2-a → M2-e → M2-g → M2-c → M2-d → M3-a…**, where **`?` marks a row
+> whose place on the chain is not yet measured** (see the retraction above). `M2-b` is struck (revision
+> 2) and `M2-f` was never issued; **neither is reused** — published ids are stable, which is the same
+> rule that keeps the `M2-13…M2-16` gap open (§11). Read the table top to bottom, not alphabetically.
+
+> ⚠️ **THE ROLLBACK TAGS ARE NOT OPTIONAL.** ⭐ **A chain of eight re-pins is now a chain of NINE TO
+> ELEVEN, and the spread is the honest part** — counted from the table above, not computed:
+> ~~`M1-a`~~ **(retracted — measured pin-neutral)** · `M1-b?` · `M1-c?` · `M2-a` · `M2-e` · **`M2-g`**
+> · `M2-c` · `M2-d` · `M3-a · M3-b · M3-c · M3-d`, where **`?` is a row that leaves the chain if check
+> (A) proves it neutral.** It has no natural place to stand
 > back up, because every later pin is measured against the earlier ones. A tag costs one command;
 > discovering you needed one costs a re-derivation of every pin after it.
-> ⇒ ⭐ **REVISION 3 ADDS A THIRD TAG, `pin/m2-e`**, and the reason is specific rather than defensive:
-> **M2-e is the row that can turn every measurement fixture inert.** If the resulting game is wrong,
-> the honest move is to return to a measured tree, and there are now **three pin movers between
+> ⇒ ⭐ **REVISION 3 ADDS TWO TAGS, `pin/m2-e` AND `pin/m2-g`**, and both reasons are specific rather
+> than defensive: **`M2-e` is the row that turns every measurement fixture inert**, and **`M2-g` is the
+> row whose entire cause is a single authored list a reader can diff.** If the resulting game is wrong,
+> the honest move is to return to a measured tree — and there are now **two to four pin movers between
 > `pin/m2-a` and `pin/m2-d`** where revision 2 had one.
 
 ---
@@ -359,7 +419,8 @@ Numbered, and this is the order the integrator merges `--no-ff` into `main` and 
 | 1 | `lane/wreck-visible` | **M1-A** | ⏳ IN FLIGHT. Merge first — everything in M1/M2 that touches the wreck's visible machines assumes it. |
 | 2 | `lane/first-screen` | **M1-B** | ⏳ IN FLIGHT. Merge second so M1-C can rebase onto its `controls.js` / `overview-view.js` edits. |
 | 3 | `lane/craft-thrash` | **M1-H** | ⛔ **PIN M1-a. Runs alone.** ⭐ NEW IN REVISION 2 — a live `main` defect the grid exposes on day one. **Must precede 8.** |
-| **3b** | `lane/craft-staging` | **M1-I** | ⛔ **PIN M1-b. Runs alone.** ⭐ NEW IN REVISION 3 — the tick-0 claim on an unreachable bench. **Same file as 3; strictly serialized behind it, and FOLD INTO 3 if 3 has not yet passed review.** |
+| **3b** | `lane/craft-staging` | **M1-J** | ⭐ NEW IN REVISION 3 — the tick-0 claim on an unreachable bench, and **§0.1 measures it as the MAJORITY of the craft-thrash fix** (probe → 0.000 % vs backoff → −6.8 %). **PIN M1-b is PROVISIONAL — measure; if pin-neutral it leaves the chain and need not run alone.** ⛔ **Same file as 3; strictly serialized behind it, and FOLD INTO 3 if 3 has not yet passed review.** |
+| 3c | `lane/repair-consumables` | **M1-I** | ⭐ **ADDED TO THIS DOCUMENT IN REVISION 3 — it was chartered elsewhere and in flight, and nothing here knew it existed.** OD-F: author more consumables so the wreck's repair economy stops being a silent soft-lock. Expected **pin-neutral** (wreck-only authoring; the wreck is behind no pin) — **prove by check (A).** ⚠️ **Claims `AuthoredShips.cs` — serialize against 1 (M1-A).** ⭐ **It DISCHARGES owner batch item 6** and is measurement-coupled to the tick-0 investigation (below). |
 | 4 | `lane/blocked-reach` | **M1-D** | Can start tonight; merges here. ⚠️ **Integrator lane** (`WireFormat` + `IJobSource`). ⭐ **Semantically coupled to 1 — re-run its tests AND its browser acceptance after 1 merges.** |
 | 4 | `lane/undesignate` | **M1-C** | Rebase onto 2 before review. |
 | 5 | `lane/morale-bar` | **M1-F** | |
@@ -373,7 +434,7 @@ Numbered, and this is the order the integrator merges `--no-ff` into `main` and 
 | **11** | **`lane/work-veto`** | **M2-2** | ⛔ ⭐ **PIN M2-e. RUNS ALONE — NEW IN REVISION 3 (was position 9, pin-neutral).** → tag `pin/m2-e`. ⚠️ **Integrator lane** — it edits `TryAssign`. |
 | 12 | `lane/awaiting-orders` | **M2-20** | ⭐ **NEW IN REVISION 3 — OD-G's package.** Needs 10 and 11. ⚠️ **The day 11 merges, a pawn with nothing enabled stands still and no surface says why.** Merge this within the same integration window or the game reads as broken. |
 | 13 | `lane/work-blocked` | **M2-18** | ⭐ **PROMOTED IN REVISION 3 (was 13, after M2-5).** Needs 11 and M1-D's channel work; **no longer needs M2-5.** Under OD-H its refusal is the DEFAULT experience, not an edge case. |
-| 14 | `lane/band-loop` | **M2-5** | Needs 11. Same file as 11 (`JobSystem.cs`) — strictly serialized. |
+| **14** | **`lane/band-loop`** | **M2-5** | ⛔ ⭐ **PIN M2-g. RUNS ALONE — NEW IN REVISION 3 (OD-J's direct cost).** → tag `pin/m2-g`. Needs 11. Same file as 11 (`JobSystem.cs`) — strictly serialized. |
 | 15 | `lane/why-line` | **M2-6** | Needs 11/14 for the reason to be true, and **12 for its vocabulary**. |
 | ~~—~~ | ~~`lane/preempt-policy`~~ | ~~**M2-7**~~ | ⛔ **RETRACTED IN REVISION 2** — the engine already answers it. |
 | 16 | `lane/preempt` | **M2-8** | Integrator, **pin-neutral**. ⚠️ Not demonstrable until 17. |
@@ -417,7 +478,7 @@ the calendar because a plan with all its human gates in the last week has none.
 > paint an order that cannot happen the game tells me why — and lets me take it back."*
 
 **Running tally: PLAYER 8 / INFRASTRUCTURE 1 / cap 1.** *(⭐ **9 packages after revision 3 added
-M1-I**; was 8 after revision 2 added M1-H. cap = ⌊9/5⌋ = 1. **M1 is STILL AT CAP** — M1-I is `PLAYER`
+M1-J**; was 8 after revision 2 added M1-H. cap = ⌊9/5⌋ = 1. **M1 is STILL AT CAP** — M1-J is `PLAYER`
 and carries a real sentence, so it consumes no infrastructure budget.
 Chartering a second infrastructure package in M1 is a **refusal** requiring an owner override recorded
 by name and date.)
@@ -989,7 +1050,7 @@ edit the same recruiter. Also `MachineWearSystem.cs` if the fix generalises to b
 
 ---
 
-### M1-I — the tick-0 claim on a bench she can never reach *(NEW IN REVISION 3)*
+### M1-J — the tick-0 claim on a bench she can never reach *(NEW IN REVISION 3)*
 
 **CLASS: PLAYER** · **LANE: `lane/craft-staging`** · **SIZE: S** · ⚠️ **INTEGRATOR LANE**
 ⛔ **PIN CHAIN M1-b — RUNS ALONE, IMMEDIATELY BEHIND M1-H**
@@ -1137,13 +1198,30 @@ window between pin-chain rows.
 > > player enables it. ⚠️ **The owner accepted the consequences explicitly: a pin move and a
 > > re-baseline.**
 >
+> **⭐ AND TWO MORE OWNER DECISIONS LANDED WHILE THIS REVISION WAS BEING WRITTEN, both closing items
+> this revision had opened:**
+>
+> > **OD-I — ONE RULE, OFF EVERYWHERE.** The measurement fixtures default OFF like every other ship,
+> > and **M2-17 teaches the occupancy harness to author a work grid** as part of its setup.
+> > *(Closes item 8 — the only item that was blocking work.)*
+> >
+> > **OD-J — THE v1 WORK-LIST ORDER IS `Repair · Construct · Craft · Deconstruct · Mine · Haul`.**
+> > Repair first because it is the wreck's premise; hauling last, as in RimWorld. **The order IS the
+> > equal-band tie-break, not a column arrangement.** *(Closes item 7 — and puts M2-5 on the pin chain,
+> > because the new order deliberately does not reproduce shipped precedence.)*
+>
+> ⚠️ **THE TWO NEW DECISIONS ARRIVED AFTER THE VOID TABLE BELOW WAS WRITTEN AND THEY CHANGE TWO OF ITS
+> ROWS (V3 and V9's neighbours).** Rather than re-writing the table as if it had always said so, the
+> affected rows carry their own second correction — **including one this revision made against
+> itself.**
+>
 > ### ⛔ 1. CLAIMS PUBLISHED IN REVISIONS 0–2 THAT ARE NOW VOID
 >
 > | # | the published claim | status |
 > |---|---|---|
 > | V1 | M2-1: *"**Default every work type to 3 for every pawn**, so shipped dispatch behaviour is the closest thing to today's and the grid is opt-in"* | ⛔ **REVERSED BY OD-H.** The default is **OFF**. |
 > | V2 | M2-2 PIN IMPACT: *"**PIN-NEUTRAL, EXPECTED — and this one is genuinely provable.** At the all-default grid (every work type at 3, nothing off) the veto never fires, so every pinned ship is byte-identical."* | ⛔ **VOID — INVERTED.** Under OD-H the all-default grid is every work type **off**, so the veto fires on **every pawn on every ship from tick 0**. M2-2 **joins the pin chain** as row **M2-e**. |
-> | V3 | M2-5: *"At all-default priorities the arbitration reproduces `main` byte-identically, **which keeps this package OFF the pin chain**"* — the entire justification for the v1 work-list order `Mine · Haul · Construct · Deconstruct · Craft · Repair` | ⛔ **THE JUSTIFICATION IS VOID; THE CONCLUSION SURVIVES FOR A DIFFERENT REASON.** At the new defaults **nothing is enabled, so there is nothing to arbitrate** — *every* work-list order is pin-neutral at defaults. ⇒ **The pin-neutrality argument no longer selects an order, and the compromise it forced is no longer paid for.** Owner batch item 7 re-opened. |
+> | V3 | M2-5: *"At all-default priorities the arbitration reproduces `main` byte-identically, **which keeps this package OFF the pin chain**"* — the entire justification for the v1 work-list order `Mine · Haul · Construct · Deconstruct · Craft · Repair` | ⛔⛔ **JUSTIFICATION *AND* CONCLUSION BOTH VOID — this row was itself corrected within revision 3.** The pin saving OD-H had already spent no longer bought the compromise, so item 7 was re-opened; **OD-J then authored the PLAY order `Repair · Construct · Craft · Deconstruct · Mine · Haul`, which deliberately does NOT reproduce shipped precedence.** ⇒ **M2-5 MOVES P1/P2/P3 and JOINS THE PIN CHAIN as row `M2-g`, running alone.** ⚠️ *Revision 3's own first pass wrote "the conclusion survives for a different reason — every order is pin-neutral at defaults". **That is true at boot and false over a run**, and it is corrected in M2-5's PIN IMPACT.* |
 > | V4 | M2-8 PIN IMPACT: *"At shipped defaults **no band outranks another** (M2-5's authored work-list order reproduces `main`)… so nothing pre-empts on a pinned ship"* | ⚠️ **REASONING ROTTED, CONCLUSION STANDS.** The true reason is now simpler and stronger: **at defaults nothing is enabled, so nothing is claimed, so nothing can be pre-empted.** Corrected in place. |
 > | V5 | M2-6 mutation 1: *"Emit the reason clause unconditionally, **including at all-default priorities**"* | ⛔ **THE STATE IT NAMES NO LONGER EXISTS.** Re-chartered, not retired — see M2-6. |
 > | V6 | M2-3 ACCEPTANCE step 2: *"every cell reads **3**"*; step 5: *"Set **Craft** to *off*"* | ⛔ **VOID.** Every cell reads **off**; the demo now runs the *enabling* direction, which is also what makes it the milestone's first honest demo. |
@@ -1227,7 +1305,7 @@ window between pin-chain rows.
 
 **Running tally: PLAYER 15 / INFRASTRUCTURE 2 / cap 3.** *(⭐ **17 packages after revision 3 added
 M2-20 and M2-21**; 15 after revision 2 retracted M2-7 and added M2-19. Cap = ⌊17/5⌋ = 3, so M2 keeps
-**1 slot of headroom**. **M1-I** is chartered into **M1**, not M2, because it is a live `main` defect
+**1 slot of headroom**. **M1-J** is chartered into **M1**, not M2, because it is a live `main` defect
 on the same file and the same pin as M1-H; **M2-21** carries an M2 id on M2's budget but **executes in
 the M1 window** — see its charter for why those two facts diverge.)*
 ⚠️ *M2-1 is `PLAYER` under the **split-sentence rule** stated in its own charter — the one load-bearing
@@ -1239,19 +1317,24 @@ written down and countable rather than applied silently.*
 > *(Plan §3.5's rule: anything unanswered after three days takes the recommendation, is marked
 > REVERSIBLE, and is listed in the milestone's record as such.)*
 >
-> ### ⚠️ ⭐ ELEVEN ITEMS IS TOO MANY FOR ONE MESSAGE, SO THEY ARE RANKED *(new in revision 3)*
-> Revision 3 added five (7–11) to an existing six. **Plan §3.5's own documented failure mode is that
-> open-on-owner items go stale**, and a wall of eleven is how that happens. ⇒ **Read in this order:**
-> - **BLOCKS THE CHAIN HEAD — needed before `lane/work-state` starts:** **8** *(do the fixtures default
->   off too — it changes M2-1's file list and the shape of its pin move)*.
-> - **BLOCKS A PACKAGE ALREADY IN THE ORDER:** **10** *(what counts as "the first order" — M2-20's
->   onboarding card cannot be written without it)* · **11** *(the vocabulary — same package)* ·
->   **7** *(the work-list order — M2-5)*.
-> - **NEEDED BEFORE M3 FREEZES A SAVE CHAPTER:** **9** *(do new thaws boot off too)*.
-> - **ALREADY CARRIED SINCE REVISION 1/2, unchanged in substance:** **1 · 2 · 3 · 4 · 5 · 6.**
->   ⚠️ **5 and 6 have moved in BLAST RADIUS without moving in content** — see their notes.
-> ⛔ **Only 8 genuinely stops work.** Everything else defaults to its recommendation after three days
-> and is marked REVERSIBLE, per §3.5's rule.
+> ### ✅ ⭐ STATUS AFTER 2026-07-29 — **FIVE OF ELEVEN ARE NOW CLOSED, AND NOTHING BLOCKS WORK**
+>
+> Revision 3 added five items (7–11) to an existing six, and **plan §3.5's own documented failure mode
+> is that open-on-owner items go stale** — a wall of eleven is how that happens. Same day:
+>
+> | item | status | answer |
+> |---|---|---|
+> | **7** the work-list order | ✅ **DECIDED — OD-J (owner)** | **`Repair · Construct · Craft · Deconstruct · Mine · Haul`.** ⇒ **M2-5 joins the pin chain as `M2-g`.** |
+> | **8** do the fixtures default OFF too | ✅ **DECIDED — OD-I (owner)** | **ONE RULE, OFF EVERYWHERE**, and **M2-17 teaches the harness to author a grid.** ⇒ **M2-1 is unblocked.** |
+> | **6** the finite repair economy | ✅ **DECIDED — OD-F (owner)** | **Author more consumables.** Chartered and in flight as **M1-I** (`lane/repair-consumables`). |
+> | **9** do new thaws boot all-off | ⭐ **DECIDED-BY-DEFAULT — integrator, 2026-07-29** | **(a) uniform: yes.** *Owner may overturn.* Must hold before **M3-2** freezes the `CryoSystem` chapter. |
+> | **10** what counts as "the first order" | ⭐ **DECIDED-BY-DEFAULT — integrator, 2026-07-29** | **(a) any player command that makes her take a job**, including a WORK-tab toggle. *Owner may overturn.* ⇒ **M2-20's card is unblocked.** |
+> | **11** the unassigned-pawn vocabulary | ⭐ **DECIDED-BY-DEFAULT — integrator, 2026-07-29** | **Two words, not one** — one for *unassigned*, one for *idle*; the dim/amber rule is kept. *Owner may overturn; the exact strings are REVERSIBLE.* |
+>
+> ⛔ **NOTHING IN M2 IS NOW BLOCKED ON AN UNANSWERED ITEM.** Items **1 · 2 · 3 · 4 · 5** remain open and
+> none of them stops a lane starting; **5 has moved in BLAST RADIUS without moving in content** (see its
+> note). ⚠️ **A decided-by-default item is not a quiet default** — it is recorded here by name and date
+> so the owner can overturn it on sight, which is the whole point of §3.5's rule.
 >
 > 1. **How many work types, and their names.** *Recommend the six in M2-1.*
 > 2. **Does `HoldPosition` survive, or become "everything disabled"?** *Recommend: survives.*
@@ -1283,8 +1366,11 @@ written down and countable rather than applied silently.*
 >    engineering one.** ⚠️ **M2-12 must also measure and report where the standing maintenance rule
 >    spends those three consumables in an unattended run**, because if the answer is "not the wings"
 >    the soft-lock is the default outcome rather than a mistake the player has to make.
-> 7. ⭐ **THE WORK-LIST ORDER — RE-OPENED IN REVISION 3, BECAUSE THE CONSTRAINT THAT FORCED THE
->    COMPROMISE IS GONE.** *(Revision 2 recommended `Mine · Haul · Construct · Deconstruct · Craft ·
+> 7. ✅ ⭐ **CLOSED BY OD-J (owner, 2026-07-29): `Repair · Construct · Craft · Deconstruct · Mine · Haul`.**
+>    **The order IS the equal-band tie-break, not a column arrangement**, and it deliberately does NOT
+>    reproduce shipped precedence ⇒ **M2-5 joins the pin chain as `M2-g` and runs alone.** Full statement
+>    and its three consequences in M2-5. *The re-opening that produced it is kept below, because the
+>    reasoning is what the owner accepted:* *(Revision 2 recommended `Mine · Haul · Construct · Deconstruct · Craft ·
 >    Repair` **because it exactly reproduces shipped precedence and therefore kept M2-5 off the pin
 >    chain** — while saying in the same breath that `Haul` second is a poor default and that RimWorld
 >    puts hauling near the bottom.)*
@@ -1298,7 +1384,12 @@ written down and countable rather than applied silently.*
 >    is measured **against the new baseline, not against `main`**. ⚠️ **And `JobDispatchTests`' pinned
 >    assignment sequence is no longer a reliable tripwire for this** — under OD-H it is exercising a
 >    fixture whose crew must be explicitly granted work types before the sequence means anything.
-> 8. ⭐ **NEW IN REVISION 3 — DO THE MEASUREMENT FIXTURES DEFAULT OFF TOO?** OD-H is about the player's
+> 8. ✅ ⭐ **CLOSED BY OD-I (owner, 2026-07-29): ONE RULE, OFF EVERYWHERE — option (a), the
+>    recommendation and its reasoning both taken.** The fixtures default OFF like every other ship and
+>    **M2-17 teaches the occupancy harness to author a work grid as part of its setup.** ⚠️ **Consequence,
+>    stated rather than discovered: EVERY EXISTING ECONOMY MEASUREMENT RE-BASELINES — any number in the
+>    repo taken on `--ship slice` or `--ship grid` before this lands is measured on a tree nobody will
+>    play.** That is M2-17's job and its row says so. ⇒ **M2-1 is unblocked.** *The question as put:* OD-H is about the player's
 >    crew; `--ship slice`, `--ship grid` and `hosts/scenario`'s hand-built ship are **instruments**.
 >    With the rule applied uniformly, an unattended fixture run does **no work at all** and every
 >    occupancy leg in the repo measures a ship where nobody works.
@@ -1312,7 +1403,8 @@ written down and countable rather than applied silently.*
 >    (a) honestly: the P1 scenario run stops exercising the job system**, so a determinism pin keeps
 >    its determinism and loses coverage. **That cost is real and is not hidden by choosing (a) — it is
 >    paid by M2-17's harness change.**
-> 9. ⭐ **NEW IN REVISION 3 — DOES A NEWLY THAWED CREW MEMBER ALSO BOOT WITH EVERY WORK TYPE OFF?**
+> 9. ⭐ **DECIDED-BY-DEFAULT (integrator, 2026-07-29) — (a) UNIFORM: YES. Owner may overturn.**
+>    ⚠️ **It must still hold before M3-2 freezes the `CryoSystem` save chapter.** *The question as put:*
 >    OD-G is stated about *the* pawn and the *opening*; M3 wakes a second, third and fourth.
 >    **(a) UNIFORM** — every pawn is opt-in, so each thaw is followed by an assignment gesture.
 >    **(b) INHERIT** — a new thaw copies the grid of an existing crew member (RimWorld's "manage work"
@@ -1321,14 +1413,18 @@ written down and countable rather than applied silently.*
 >    with an immediate consequence (OD-5's own requirement), and **(c) is a second rule again**. ⚠️ **It
 >    must be answered before M3-2 freezes the `CryoSystem` save chapter**, alongside the `Device.Name`
 >    item already queued there.
-> 10. ⭐ **NEW IN REVISION 3 — WHAT COUNTS AS "THE FIRST ORDER"?** OD-G says the game opens with the
+> 10. ⭐ **DECIDED-BY-DEFAULT (integrator, 2026-07-29) — (a) ANY PLAYER COMMAND THAT MAKES HER TAKE A
+>    JOB, including a WORK-tab toggle. Owner may overturn.** ⇒ **M2-20's onboarding card is unblocked.**
+>    *The question as put:* OD-G says the game opens with the
 >    player giving one. **(a) ANY player command that results in the pawn taking a job** — including
 >    enabling a work type in the WORK tab, which OD-H makes the primary gesture. **(b) ONLY a targeted
 >    order** — a painted designation, or *Prioritise* on a machine.
 >    ***Recommend (a)***: under OD-H the grid *is* the order surface, and a definition that excludes it
 >    would make the game's own opening unteachable. ⚠️ **This is the definition M2-20's teaching surface
 >    and its acceptance both key off, so it cannot be left implicit.**
-> 11. ⭐ **NEW IN REVISION 3 — THE VOCABULARY FOR A PAWN WHO IS DELIBERATELY UNASSIGNED**, and it
+> 11. ⭐ **DECIDED-BY-DEFAULT (integrator, 2026-07-29) — TWO WORDS, NOT ONE, and the dim/amber
+>    legibility rule is kept exactly as it is. Owner may overturn; the exact strings are REVERSIBLE.**
+>    *The question as put — and note that it*
 >    **contradicts a deliberate, documented design position** (`overview-view.js:701-708`: *"writing
 >    something like `AWAITING ORDERS` would imply the ship is waiting on the player"*). Under OD-G the
 >    ship **is** waiting on the player. ⛔ **But the distinction that comment protects survives and gets
@@ -1420,11 +1516,14 @@ tree, not of `main`** — except Leg A's, which are `main`'s and are cited as su
   bytes are hashed state, so *"all off"* and *"all 3"* are **different hashes on every ship** even
   though neither is read by anything yet. **The behaviour consequence is M2-2's** (chain row M2-e).
   Two packages, two separately attributable moves — which is the whole point of §3.2.
-  ⚠️ **The fixture question — do `--ship slice` / `--ship grid` / the scenario ship get an authored
-  grid instead of the OFF default — is OWNER BATCH ITEM 8 and it lands HERE if the answer is (b).**
-  If it does, this package also claims `sim/Sim.Gen/AuthoredShips.cs` (see §10) and its pin move
-  changes shape. **Do not start this lane before item 8 is answered or has defaulted to its
-  recommendation.**
+  ✅ ⭐ **THE FIXTURE QUESTION IS CLOSED — OD-I (owner, 2026-07-29): ONE RULE, OFF EVERYWHERE.**
+  `--ship slice`, `--ship grid` and the scenario ship default OFF exactly like the wreck; **there is no
+  authored exception and no second rule.** ⇒ **This package does NOT claim `sim/Sim.Gen/AuthoredShips.cs`**
+  (its conditional claim in §10 is withdrawn), its pin move keeps the shape stated below, and
+  ⛔ **this lane is UNBLOCKED — it was the only item in the batch that stopped work.**
+  ⚠️ **The cost is real and is paid by M2-17, not hidden here: every existing economy measurement
+  re-baselines**, and any number in the repo taken on `--ship slice` or `--ship grid` before this lands
+  is measured on a tree nobody will play.
 - ⭐ **Land TWO more fields' STORAGE in this same commit, zeroed and with no consumer** — the **skill
   byte** (M3-7's) and, ⭐ **NEW IN REVISION 2, the STICKY-CLAIM bool** (`HeldByOrder`, M2-19's). The
   chapter is bumping anyway; W0-1b folded **thirteen** saved-but-unhashed fields in one pin move.
@@ -1576,11 +1675,13 @@ silently refuses. That is the exact defect the 2026-07-21 playtest round fixed u
 *"crew no longer promise physical work they cannot do"*, re-introduced by the package that gates the
 other half. ⚠️ **`CapabilityComputer` and `EffectValidator` are a hand-mirrored pair whose own comment
 says they mirror each other — that is the join this repo has been bitten by four times.**
-⭐ **RULING (integrator): the LLM effect pipeline is BOUNDED BY the grid and never overrides it.** The
-`CitizenEffect` whitelist exists so the model cannot exceed player-granted authority; a work type the
-player switched off is the clearest possible statement of that authority. *(This is a ruling, not an
-owner item: it follows from the standing `CLAUDE.md` invariant "LLM never touches sim state directly"
-and from the binding **LLM-ready, not LLM-powered** memory.)*
+⭐ **RULING (integrator, RECORDED AND RATIFIED 2026-07-29): the LLM effect pipeline is BOUNDED BY the
+grid and never overrides it.** The `CitizenEffect` whitelist exists so the model cannot exceed
+player-granted authority; a work type the player switched off is the clearest possible statement of
+that authority. *(A ruling, **not** an owner item — it follows from the standing `CLAUDE.md` invariant
+"LLM never touches sim state directly" and from the binding **LLM-ready, not LLM-powered** position.
+Proposed in this revision and **ratified by the integrator on the same day**, so a reviewer should
+treat it as settled and not re-open it as a design question.)*
 
 > ### ⛔ A5 IS A TRAP: THE VETO IS A CLAIM-TIME GATE, AND A RUNNING JOB COMPLETES
 >
@@ -1658,10 +1759,41 @@ NOT PREDICT. ⇒ PIN CHAIN ROW `M2-e`, RUNS ALONE, TAG `pin/m2-e`.**
 
 | pin | ship | expectation | why |
 |---|---|---|---|
-| **P1** | `hosts/scenario`'s hand-built `BuildScenario` | **moves** | its 2 crew come from `sim.AddCitizen`, which sets no flags — `HoldPosition = false`, so they take work today and will stop |
+| **P1** | `hosts/scenario`'s hand-built `BuildScenario` | **moves — and revision 3 replaces the hand-wave with a derivation** | ⭐ **See the box below: its only live work path is `Maintain`, and the arithmetic says it opens at ~sim-hour 50 of a 72-hour run** |
 | **P2** | `--ship perilune` | ⭐ **MAY HOLD** | `AuthoredShips.Perilune()`'s two crew are `HoldPosition = true` (`AuthoredShips.cs:170-171`), so they take no work today and the veto has nothing to refuse |
 | **P3** | `--ship slice` | **moves** | 8 working crew |
 | **P4 / P5** | — | **hold** | no def field |
+
+> ### ⭐ P1 DERIVED RATHER THAN ASSUMED — the scenario ship's work paths, read out of the source
+>
+> Revision 3's first draft listed *"P1 moves"* as an inference and flagged it as its own weakest cell.
+> **It is checkable by reading, and here it is checked.** `BuildScenario`
+> (`hosts/scenario/Program.cs:1021-1098`) is a 22×6 single-deck map with 20 devices and 2 crew from
+> `sim.AddCitizen` (no flags ⇒ `HoldPosition = false`, `AutoWander = false`).
+>
+> | work type | status on the scenario ship | evidence |
+> |---|---|---|
+> | Mine · Construct · Deconstruct | ⛔ **provably empty** | **ZERO `Designate` / build / stockpile calls in the whole function** — the pull boards are never fed |
+> | Haul | ⛔ **provably empty of both known feeders** | no stockpile zone is ever created, and no station has a bill to want material for |
+> | Craft | ⛔ **provably impossible** | `CraftingSystem` requires `ProductionDefs.TryGetBill(defs, station.Kind, …)` (`CraftingSystem.cs:84`, `:113`). `production.def`'s `[production]` table defines bills **only** for `SalvageRecycler`, `Fabricator`, `IceMelter` (plus `MachineShop` in `[recipes]`). **The scenario ship has none of the four** |
+> | **Maintain** | ✅ ⭐ **THE ONE LIVE PATH** | 20 devices, and `MaintenanceSystem.RecruitForNeediest` takes the lowest-Condition one |
+>
+> **⇒ P1 moves iff `MaintenanceSystem` recruits inside 3 sim-days, and the def table says it does.**
+> Devices start pristine; `machines.def` columns 7–8 are wear/h and the `maint` threshold, so the
+> crossing time from 1.00 is `(1.00 − maint) / wear`:
+> **Scrubber `0.012/h → maint 0.40` = 50 h · Reclaimer `0.012/h → 0.40` = 50 h · AirVent
+> `0.010/h → 0.40` = 60 h** — all inside the **72 sim-hours** of `--days 3`.
+> *(GrowBed 75 h and Radiator 100 h miss it; Light/WaterTank at `0.001/h → 0.20` need 800 h. This is the
+> same reading `wear.def:41-48` reports for `--ship grid`: **rot plus backlog, not damage.**)*
+>
+> ⚠️ **STILL ARITHMETIC, NOT A DRIVEN RUN, AND THE MARGIN IS ONLY ~22 HOURS.** Heat accelerates wear up
+> to **3×** (`wear.def:14-16`) and the Director's `_wearPressure` modulates it, so the true crossing is
+> **earlier, not later** — but recruitment also needs a stageable tile and an idle pawn.
+> ⇒ **The cell is now supported by the shipped def table with its mechanism named, and it is still a
+> prediction. Measure it.**
+> ⭐ **AND A CONSEQUENCE WORTH CARRYING INTO M2-17:** `Maintain` is the scenario ship's **only** work
+> path, so after this package the P1 run exercises **no job system at all** — the coverage loss OD-I
+> accepts is total there, not partial.
 
 ⚠️ **P2 holding is the deck-confined-wander shape exactly** — *"two pins held against expectation, and
 they held for two DIFFERENT reasons"*. **A held P2 is not evidence the veto is inert.** Prove
@@ -1719,7 +1851,7 @@ package has a real browser acceptance for the first time:
 ⚠️ **Step 3 is the ruling made visible**, and a reviewer should watch it rather than read it.
 
 **CONFLICTS.** `JobSystem.cs` (**strictly serialized against M2-5**), `MachineWearSystem.cs`,
-`CraftingSystem.cs` (**and against M1-H, M1-I** — four claimants on one recruiter, §10),
+`CraftingSystem.cs` (**and against M1-H, M1-J** — four claimants on one recruiter, §10),
 `EffectValidator.cs`, ⭐ **`CapabilityComputer.cs` (new)**, `Citizen.cs`.
 
 **SIZE: ⭐ M → L**, and revision 3 says what makes it L rather than leaving the letter to argue:
@@ -1987,23 +2119,59 @@ read the `work` channel back changed. The browser demo is M2-3's.
 > play. ⇒ **Added to M2's owner batch as item 7.** Re-ordering the list later is a deliberate,
 > visible pin move — which is the honest shape, because the player can see the order change.
 >
-> ### ⛔ ⭐ REVISION 3 — THE SAVING THAT BOUGHT THAT COMPROMISE NO LONGER EXISTS
+> ### ⛔⛔ REVISION 3 — **OD-J: THE ORDER IS DECIDED, AND EVERYTHING ABOVE IS VOID**
 >
 > **The paragraph above is left standing because its arithmetic is correct and its conclusion is
-> now void, and this document shows both rather than the survivor.** Under **OD-H** there is no
-> configuration in which *"all-default priorities"* means *"every source participating"*: **the
-> default is every work type OFF, so at defaults there is nothing to arbitrate and EVERY work-list
-> order is pin-neutral.**
-> ⇒ ⛔ **The v1 order was chosen for a pin saving that OD-H has already spent** — M2-2 moves P1/P3 two
-> packages earlier — **so `Haul` second is now a poor default bought with nothing.**
-> ⇒ **Owner batch item 7 is RE-OPENED with the opposite recommendation: author the PLAY order in v1.**
-> ⚠️ **AND THE NEUTRALITY PROOF ITSELF CHANGES BASELINE.** *"Reproduces `main` byte-identically"* is no
-> longer the right check, because `main` by then has M2-2's re-pin in it. **The check is: does the
-> all-default run stay byte-identical to the tree this package branched from** — which is a different
-> sentence, and the one an implementer must actually run.
-> ⭐ **What survives untouched: the RULING that within a band ties break by work-list position.** That
-> was decided on RimWorld's answer and on legibility (*"the column order IS the tie-break"*), not on
-> pins. **Only the choice of the v1 order was ever a pin argument, and only it is re-opened.**
+> dead, and this document shows both rather than the survivor.**
+>
+> > ## ⭐ OD-J *(owner, 2026-07-29, binding)* — THE v1 WORK-LIST ORDER IS
+> > # `Repair · Construct · Craft · Deconstruct · Mine · Haul`
+> > **Repair first because it is the wreck's entire premise; hauling last, as in RimWorld.**
+>
+> **Why the old order died.** It was `Mine · Haul · Construct · Deconstruct · Craft · Repair`, chosen
+> **because it reproduces shipped precedence exactly** and therefore kept this package off the pin
+> chain. **OD-H already spent that saving** — M2-2 moves P1/P3 three packages earlier — so the
+> compromise (`Haul` second, a poor default the charter itself flagged) was being bought with nothing.
+> The owner accepted that reasoning and took the play order.
+>
+> ### ⛔ 1. THIS IS NOT DISPLAY ORDER. IT IS THE EQUAL-BAND TIE-BREAK.
+> The RimWorld rule this document already adopted is *"within a priority band, ties break by the work
+> type's POSITION IN THE WORK LIST — a fixed, authored, top-to-bottom order the player CAN SEE IN THE
+> GRID."* ⇒ **The list is a dispatch input that happens to be visible, not a column arrangement that
+> happens to be ordered.** ⚠️ **Say this wherever the order appears** — in the grid's column layout, in
+> the arbitration code, and in any test that asserts it — **or a later lane "tidies" the columns
+> alphabetically and silently re-ranks the ship's labour.**
+>
+> ### ⛔ 2. THE PIN IMPACT IS A REAL MOVE. NO "BYTE-IDENTICAL" CLAIM SURVIVES.
+> **The new order deliberately does NOT reproduce shipped precedence — that was the entire purpose of
+> the order it replaces.** ⇒ **P1/P2/P3 are expected to MOVE, this package JOINS THE PIN CHAIN as row
+> `M2-g`, it RUNS ALONE, and it takes tag `pin/m2-g`.**
+> ⛔ **Every "byte-identical to baseline / to `main`" claim in this package is struck**, including
+> revision 2's mutation-4 control. **Do not carry one forward in any form**; the mutation table below
+> is re-derived against the new order.
+> ⚠️ *Revision 3's own first draft said "at the new defaults nothing is enabled, so every order is
+> pin-neutral". **That is true at BOOT and false over a run** — the moment the player enables two work
+> types the tie-break runs, and the pinned ships are driven for 3 000 to 2 592 000 ticks by fixtures
+> that M2-17 will be granting grids to. **A default is not a run.***
+>
+> ### ⚠️⭐ 3. THE INTERACTION NOBODY COMMISSIONED: REPAIR-FIRST × OD-H × A FINITE CONSUMABLE STOCK
+> Under OD-H the pawn boots with everything off, **so the order does nothing at boot.** But OD-G makes
+> the first order likely to be *"enable Repair"* on a wrecked ship — and the tick-0 investigation
+> measured that the standing maintenance rule **spends all three of the ship's consumables within
+> sim-day 1, unattended** (`RecruitForNeediest` picks the lowest-Condition device, and `wing_c` at 0.06
+> is among the lowest). **Repair being FIRST in the tie-break makes that faster, not slower.**
+> ⇒ ⛔ **Cross-reference `M1-I` (`lane/repair-consumables`, OD-F), which is measuring exactly this and
+> is authoring more consumables against it.** ⚠️ **DELIBERATELY NOT RESOLVED HERE** — it is a
+> difficulty-curve question and it belongs to M1-I's measurement and owner batch item 6.
+> ⛔ **But the two packages must not ship without noticing each other:** M1-I changes how many
+> consumables exist, M2-5 changes how fast they are reached, and **neither one's tests would see the
+> other's change.** *(That is the `0.2` vs `0.25` threshold collision exactly — two lanes, no shared
+> lines, git reports no conflict, and the tree is still wrong.)*
+>
+> ### ✅ WHAT SURVIVES
+> **The RULING that ties break by work-list position** — decided on RimWorld's answer and on
+> legibility (*"the column order IS the tie-break"*), never on pins. **Only the CHOICE of order was
+> ever a pin argument, and OD-J has now made it.**
 
 > ### ⚠️ A NEW HAZARD THE SPIKE FOUND: AN OVER-REPORTING DEFER QUERY SILENTLY STALLS THE BAND
 >
@@ -2042,17 +2210,28 @@ inferred.
 ⛔ **Promoting maintenance to a full `IJobSource` remains rejected** — it silently amends
 neediest-first to nearest-needy, which OD-A requires be preserved.
 
-**PIN IMPACT: PIN-NEUTRAL — ⭐ AND UNDER OD-H IT IS NEUTRAL FOR A STRONGER REASON THAN THE ONE
-REVISION 2 GAVE, WHICH MEANS THE OLD PROOF NO LONGER PROVES IT.**
-*(Revision 2: "PIN-NEUTRAL **if** the v1 work-list order above is authored — and it MUST be proven."
-**The conditional is void:** at the OD-H default nothing is enabled, so no order participates in any
-band and **no work-list order can move a pin at defaults.**)*
-⇒ **Prove it with check (A) against the tree this lane branched from — NOT against `main` as it stood
-before M2-2's re-pin.** ⚠️ **`JobDispatchTests`' pinned assignment sequence is no longer the tripwire
-it was**: under OD-H that fixture's crew must be granted work types explicitly before the sequence
-exercises anything, so **a held sequence may mean "the fixture does nothing" rather than "the
-arbitration is faithful"**. ⛔ **Confirm the fixture is non-vacuous before quoting it as evidence** —
-this is §13.4 applied to a guard the previous revision leaned on.
+**PIN IMPACT: ⛔ ⭐ P1, P2, P3 EXPECTED TO MOVE. P4/P5 HOLD (no def field — the order is a literal).
+⇒ PIN CHAIN ROW `M2-g`, RUNS ALONE, TAG `pin/m2-g`. MEASURE; DO NOT PREDICT.**
+
+> ⛔ **BOTH EARLIER PIN CLAIMS ARE VOID, AND THEY WERE VOID FOR DIFFERENT REASONS — WHICH IS WHY BOTH
+> ARE PRINTED.**
+> **Revision 2:** *"PIN-NEUTRAL **if** the v1 work-list order above is authored."* Void — **OD-J
+> authors a different order on purpose.**
+> **Revision 3, first draft:** *"neutral for a stronger reason — at the OD-H default nothing is
+> enabled, so no order participates in any band."* ⚠️ **Void, and it is the subtler error: true at
+> BOOT, false over a RUN.** A pinned run is 3 000 to 2 592 000 ticks long, the player (or M2-17's
+> harness) enables work types, and from that moment the tie-break is live. ⭐ ***A statement about the
+> default state is not a statement about the pinned run, and this document made that mistake in the
+> same revision that caught M2-2 making it.***
+
+⇒ **Do NOT prove neutrality; MEASURE the move**, re-pin in this row's own commit, and tag.
+⚠️ **`JobDispatchTests`' pinned assignment sequence WILL move here, and that is the expected result,
+not a regression** — it is a distance-only precedence fixture and the whole package re-ranks
+precedence. ⛔ **Read its diff against the authored order before touching it**: a sequence that moves
+in a way the order does not explain means the arbitration is wrong, not the fixture.
+⚠️ **And confirm the fixture is non-vacuous first** — under OD-H its crew must be granted work types
+explicitly or it exercises nothing, and *"a held sequence"* would then mean *"my instrument is
+broken"* (§13.4).
 
 **SPINE? YES — integrator lane.** `JobSystem.cs`'s own header: *"the only file in the job system the
 integrator reviews."*
@@ -2064,7 +2243,8 @@ integrator reviews."*
 | 1 | ⭐ **Ship the DEFER half only** (delete the push gate) | ⭐⭐ **THE HEADLINE LEG, and the one this package exists for.** The **running-chain** case: Decon@1 / Repair@4, order painted **mid-chain** at t=2000. Must serve at ~**7 232**, not 54 652. ⚠️ **The t=0 inversion leg PASSES with this mutation applied — that is exactly how the no-op shipped in the spike.** Run it blinded |
 | 2 | Ship the PUSH GATE half only (delete the defer) | the **t=0 inversion** leg — Repair@1 / Decon@4 painted at t=0 must NOT be stolen by the low-band order |
 | 3 | Collapse the band loop to a single pass | the ranking test: Repair@1/Haul@4 with a haul job **nearer** than the repair |
-| 4 | ⭐ Change the authored work-list order (swap `Craft` and `Repair`) | ⭐ **the equal-band leg AND the byte-identity control.** Repair@2 + Decon@2 must resolve by list position. ⚠️ ⭐ **REVISION 3: the control's BASELINE changes** — *"byte-identical to `main`"* is void, because `main` carries M2-2's re-pin by then and its default grid is all-off. **The control is: byte-identical to the tree this lane branched from, with an EXPLICITLY GRANTED grid on the fixture** — an all-default control under OD-H is vacuous, since no order participates at all |
+| 4 | ⭐ **RE-DERIVED AGAINST OD-J.** Change the authored order — **swap `Repair` and `Haul`, i.e. the two ENDS of the new list** | ⭐ **THE EQUAL-BAND LEG.** Repair@2 + Haul@2, both claimable, **Repair must win by list position**; with the mutation applied, Haul must. ⛔ **THE BYTE-IDENTITY CONTROL IS DELETED, NOT RE-BASED** — revision 2 paired this row with *"the all-default run must stay byte-identical to `main`"* and revision 3's first draft tried to re-base it onto the branch point. **Both are void: OD-J makes this package a pin mover on purpose, so there is no baseline it should match.** ⚠️ *Swapping the ends, not `Craft`/`Repair`: under OD-J those two are adjacent and a swap moves the outcome for fewer configurations — a weaker mutation reading as an equally green test* |
+| 4b | ⭐ **NEW IN REVISION 3.** Author the order alphabetically (or in `DefaultSources()` order) | ⛔ **the ORDER-IS-NOT-DISPLAY leg.** The authored list must be **the arbitration's own input**, asserted by driving a tie — **not** by reading the grid's column order. ⚠️ **A test that checks the columns render in OD-J's order passes while the dispatcher ties on something else entirely**, and that is precisely the "tidy the columns" regression this package must be unable to suffer silently |
 | 5 | Make the arbitration query always return `false` | the seam leg — **driven dispatch outcome, never a scan for the method's signature** (*"verb parity is not sufficient"*, for the fourth time) |
 | 6 | Make it always return `true` | the idle-starvation leg |
 | 7 | Reverse band iteration (4 → 1) | the ordering test |
@@ -2697,8 +2877,17 @@ only as a regression statistic. **A3 has never been measured in the repo's life;
 > must say which grid the crew had. **A1 is a regression statistic under OD-B and may never be
 > optimised toward — that rule is unchanged and this makes it easier to break by accident, not
 > harder.**
-> ⚠️ **This scope depends on OWNER BATCH ITEM 8.** Under answer (b) — fixtures authored all-on — most
-> of it evaporates and the package returns to SIZE S. **State which answer you are building against.**
+> ✅ ⭐ **THIS SCOPE IS NOW BINDING, NOT CONDITIONAL — OD-I (owner, 2026-07-29) TOOK "ONE RULE, OFF
+> EVERYWHERE" AND ASSIGNED THE HARNESS CHANGE TO THIS PACKAGE BY NAME.** *(Revision 3's first draft
+> hedged it against answer (b), under which most of it would have evaporated and the package would have
+> returned to SIZE S. **There is no (b).**)*
+> ⇒ **SIZE: S → M**, and the harness change is the package now; the re-baseline is its output.
+> ⛔ **AND THE HONEST HEADLINE THIS ROW MUST CARRY:** ***every existing economy measurement in this
+> repo re-baselines the day M2-2 lands.*** Any occupancy, A1, A2 or A3 number taken on `--ship slice`
+> or `--ship grid` before then is measured on **a tree nobody will play**. ⚠️ **That is not a
+> regression and must not be reported as one** — it is OD-B's re-baseline arriving, with OD-H's
+> default as its cause. **Say so in the output, beside the numbers, or someone will read the drop as
+> damage.**
 
 **⚠️ THE HARNESS NEEDS ITS OWN NON-VACUITY CHECK.** One lane's parser looked for `Fehlgeschlagen`;
 the real de-DE line is `Fehler <Name>`. It matched nothing and reported that as *"no failures"* — a
@@ -2921,7 +3110,7 @@ agreement, not the words.** *(Sizing a prose package S because "it is only a str
 > claim succeeds on a reachable *material* and fails on an unreachable *site*, forever, at the board's
 > full rate.
 > ⇒ **§12.14's structural asymmetry now has four consequences, not three:** M1-H (`CraftingSystem`
-> abandons without stamping), M1-I (`CraftingSystem` stages without asking), **M2-21 (`BuildJobSource`
+> abandons without stamping), M1-J (`CraftingSystem` stages without asking), **M2-21 (`BuildJobSource`
 > abandons a phase without stamping)**, and M2-5's five-site problem. ⚠️ **The first three are one
 > defect wearing three costumes: a claim path that refuses without recording the refusal.**
 > ⛔ **A reviewer should ask, of this package, whether the OTHER three sources have the same phase-A
@@ -3099,28 +3288,32 @@ What follows is the package list and the seams; the charters get written at the 
 
 | milestone | packages | PLAYER | INFRASTRUCTURE | cap (⌊n/5⌋) | headroom |
 |---|---:|---:|---:|---:|---|
-| **M1** | ⭐ **9** | ⭐ **8** | **1** (M1-G) | 1 | ⚠️ **AT CAP** |
+| **M1** | ⭐ **10** | ⭐ **9** | **1** (M1-G) | **2** | ⭐ **1 — NO LONGER AT CAP** |
 | **M2** | ⭐ **17** | ⭐ **15** | **2** (M2-0 ✅ landed · M2-17) | 3 | **1** |
 | **M3** *(outline)* | 13 | 12 | **1** (M3-1) | 2 | 1 |
 | **M4** *(sketch)* | 8 | 7 | **1** (M4-1) | 1 | ⚠️ **AT CAP** |
 | **M5** *(sketch)* | 7 | 7 | **0** | 1 | 1 |
-| **QUARTER** | ⭐ **54** | ⭐ **49** | **5** | **10** | **5** |
+| **QUARTER** | ⭐ **55** | ⭐ **50** | **5** | **11** | **6** |
 
-⭐ **RE-COUNTED IN REVISION 3, FROM THE MERGED TREE, ROW BY ROW — not adjusted.** M1 gains **M1-I**
-(9 = A,B,C,D,E,F,G,H,I). M2 gains **M2-20** and **M2-21** (17 = M2-0,1,2,3,4,5,6,8,9,10,11,12,17,18,
-19,20,21 — M2-7 retracted, M2-13…M2-16 never existed, §11). ⚠️ **All three new packages are `PLAYER`
-and carry real sentences, so the infrastructure column does not move and no cap is breached.**
+⭐ **RE-COUNTED IN REVISION 3, FROM THE MERGED TREE, ROW BY ROW — not adjusted.** M1 gains **M1-J** and **M1-I**
+(**10** = A,B,C,D,E,F,G,H,**I**,**J**). ⭐ **`M1-I` is `lane/repair-consumables` (OD-F), chartered
+elsewhere and already in flight — this document did not know it existed until revision 3, which is why
+its id collided with the staging package and the NEWER one moved to `M1-J`.** M2 gains **M2-20** and
+**M2-21** (17 = M2-0,1,2,3,4,5,6,8,9,10,11,12,17,18,
+19,20,21 — M2-7 retracted, M2-13…M2-16 never existed, §11). ⚠️ **All four new packages are `PLAYER`
+and carry real sentences, so the infrastructure column does not move and no cap is breached** — and
+M1, at 10 packages, **rises out of AT CAP for the first time in the quarter.**
 ⚠️ **`M2-21` is counted under M2 because that is whose budget it is chartered onto, even though it
 merges at position 7b** — see its charter.
 
 ⛔ **AND A STALE FIGURE IN THIS SECTION'S OWN PROSE IS CORRECTED RATHER THAN CARRIED.** The paragraph
 below read *"this document charters 50 and 6"* while the table beside it said **51 and 5** — it had
 not been recomputed since revision 1 added M1-H, retracted M2-7 and added M2-19.
-**Against the plan's projection (~76 packages, ≤15 infrastructure): this document charters 54 and 5.**
+**Against the plan's projection (~76 packages, ≤15 infrastructure): this document charters 55 and 5.**
 The difference is not optimism — it is that M3/M4/M5 are outline and sketch, and **their charters will
 add packages when they are written.** ⚠️ **The infrastructure ratio, however, is the number to watch:
-at 5 of 54 the quarter is at 9.3 %, comfortably inside 20 %, but M1, M2 and M4 are each individually
-AT CAP.** Chartering one more infrastructure package in any of those three is a **refusal**, and the
+at 5 of 55 the quarter is at 9.1 %, comfortably inside 20 %. ⭐ **M1 is no longer at cap** — adding
+M1-I and M1-J took it to 10 packages, so its cap rose to 2 against 1 used. **M2 and M4 remain AT CAP.** Chartering one more infrastructure package in any of those three is a **refusal**, and the
 only way past it is an explicit owner override recorded by name and date.
 ⚠️ ⭐ **THE STALE-PROSE-BESIDE-A-CORRECT-TABLE SHAPE IS THIS DOCUMENT'S OWN §13.11**, and it survived
 two revisions and one independent review. **A count in prose and a count in a table are two
@@ -3153,7 +3346,7 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 
 | file / area | claimants | rule |
 |---|---|---|
-| `sim/Sim.Gen/AuthoredShips.cs` | **M1-A** (in flight), M2-11, M3-6, M3-11, ⭐ **M2-1 (CONDITIONAL)** | ⛔ **Strictly serialized.** M1-A owns it now. ⭐ **REVISION 3 — ONE conditional claimant, and its condition is a decision not yet taken: M2-1 claims this file only if owner batch item 8 resolves to (b)**, fixtures authored all-on. ⚠️ **A conditional claim is still a claim** — recorded so the integrator is not surprised by a lane that was supposed to touch only `Citizen.cs`. ✅ *(M2-20 was listed here in this revision's first draft and is **withdrawn**: the wreck's boot pawn is already `AutoWander = true` at `:1936-1941`, verified, so the package needs no content change. A conditional claim that resolves to "no claim" is deleted, not left standing as insurance.)* |
+| `sim/Sim.Gen/AuthoredShips.cs` | **M1-A** (in flight), ⭐ **M1-I** (in flight), M2-11, M3-6, M3-11 | ⛔ **Strictly serialized.** M1-A owns it now; **M1-I (`lane/repair-consumables`, OD-F) authors more consumables into the wreck and is next.** ✅ ⭐ **REVISION 3 CLOSED BOTH CONDITIONAL CLAIMS RATHER THAN LEAVING THEM AS INSURANCE:** M2-1's is **withdrawn** (OD-I took "one rule, off everywhere", so there is no authored fixture grid); M2-20's is **withdrawn** (the wreck's boot pawn is already `AutoWander = true` at `:1936-1941`, verified). ⚠️ *A conditional claim that resolves to "no claim" is deleted, not carried.* |
 | `sim/Sim.Core/Jobs/JobSystem.cs` | M2-2, M2-5, M2-8, **M2-19** | ⛔ **Strictly serialized.** Integrator-reviewed by its own doc comment. *(M2-19 added in revision 3 — its own charter names `JobSystem.cs` under CONFLICTS and the matrix had not recorded it.)* |
 | `sim/Sim.Core/Entities/Citizen.cs` | M2-1, M2-2, **M2-19** | M2-1 first, alone. *(M2-19 added in revision 3 — it lands `HeldByOrder`'s reader on the type whose storage M2-1 ships.)* ⚠️ ⭐ **And a standing refusal, recorded where a lane will be tempted by it: `IsRecruitableForWork` (`:103`) MUST NOT absorb the work grid.** See M2-2's SEAM. |
 | `Simulation.cs` / `SaveWriter.cs` / `SaveReader.cs` | M2-1, M2-8, M3-2 | ⛔ **SPINE — integrator lane only, one at a time.** |
@@ -3168,8 +3361,8 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 | **`tests/Perilune.Tests/BlockedChannelTests.cs`** | **M1-A** (semantically), M1-D, M1-E, M2-18 | ⭐ **New row — FOUR claimants and revision 0 had none.** It carries a **named tripwire** at `:351` and `:412`: *"they are UNEXPLORED at tick 0 and so fog-gated off this channel. **If boot fog ever changes, this assertion is the tripwire and the fix is to exclude them by name, not to weaken it.**"* M1-A changes boot fog. It also carries `:794-811`, the pin that `ReasonNoConsumable` is **never emitted** — **M1-E must leave it passing; M2-9 flips it.** ⛔ **Serialize, and re-derive every row count from the MERGED tree.** |
 | `client/test/surface-boundary.test.js` | M1-C, M2-3, M2-4, M2-10, M4-2 | ⚠️ **Every claimant moves an equality-pinned census.** **Re-derive the number from the MERGED file with the shipped `codeOnly` stripper; never adjust either branch's figure.** |
 | `sim/Sim.Core/Jobs/*` (sources + `IJobSource`) | M1-D, **M2-21**, M2-2, M2-5 | ⭐ **New row (revision 2); FOURTH CLAIMANT ADDED IN REVISION 3.** M1-D mirrors `IsBackedOff` onto three sources; ⭐ **M2-21 stamps a backoff in `BuildJobSource`'s phase A and CONSUMES M1-D's mirrored query — it must not invent a second predicate (§12.11)**; M2-2/M2-5 edit `TryAssign` and `HandledKinds` consumers. **Serialize — all four are integrator lanes, M1-D first, M2-21 second.** |
-| `sim/Sim.Core/Systems/CraftingSystem.cs` | **M1-H**, ⭐ **M1-I**, M2-2, M2-5, M2-19 | ⭐ **New row (revision 2); FIFTH CLAIMANT ADDED IN REVISION 3.** M1-H adds the backoff at ten `Abandon` sites; ⭐ **M1-I adds `CanStageWorkerAt` at `:492`**; M2-2 vetoes at `:475`; M2-5 adds the arbitration query at `:164`; M2-19 checks the hold at `:475`. ⛔ **FIVE claimants on one recruiter — strictly serialize; M1-H first, M1-I immediately behind it or folded into it.** ⚠️ **Three of the five edit `FindNearestIdle`'s loop body within a few lines of `:475`**, which is precisely the silent-auto-merge shape that produced the `DeviceCell` field-list defect. |
-| `sim/Sim.Core/Systems/MachineWearSystem.cs` | **M1-H** (if generalised), M2-2, M2-5, M2-9, **M2-12** (reads `IsUnfixableWreck`), M2-19 | Serialize. ⚠️ ⭐ **REVISION 3: `MachineWearSystem.cs:567-579` is M1-I's REFERENCE IMPLEMENTATION — M1-I copies its shape into `CraftingSystem` and does NOT edit this file.** A non-claim, recorded so a future reader can tell *excluded* from *missed*. |
+| `sim/Sim.Core/Systems/CraftingSystem.cs` | **M1-H**, ⭐ **M1-J**, M2-2, M2-5, M2-19 | ⭐ **New row (revision 2); FIFTH CLAIMANT ADDED IN REVISION 3.** M1-H adds the backoff at ten `Abandon` sites; ⭐ **M1-J adds `CanStageWorkerAt` at `:492`**; M2-2 vetoes at `:475`; M2-5 adds the arbitration query at `:164`; M2-19 checks the hold at `:475`. ⛔ **FIVE claimants on one recruiter — strictly serialize; M1-H first, M1-J immediately behind it or folded into it.** ⚠️ **Three of the five edit `FindNearestIdle`'s loop body within a few lines of `:475`**, which is precisely the silent-auto-merge shape that produced the `DeviceCell` field-list defect. |
+| `sim/Sim.Core/Systems/MachineWearSystem.cs` | **M1-H** (if generalised), M2-2, M2-5, M2-9, **M2-12** (reads `IsUnfixableWreck`), M2-19 | Serialize. ⚠️ ⭐ **REVISION 3: `MachineWearSystem.cs:567-579` is M1-J's REFERENCE IMPLEMENTATION — M1-J copies its shape into `CraftingSystem` and does NOT edit this file.** A non-claim, recorded so a future reader can tell *excluded* from *missed*. |
 | `CLAUDE.md` / `MECHANICS.md` / `HANDOVER.md` | M1-G and **every re-pin commit** | ⛔ **Integrator only.** Land M1-G in a quiet window between pin-chain rows. |
 
 ### ⭐ THE COUPLINGS GIT CANNOT SEE — named, because a clean auto-merge is not a clean merge
@@ -3183,7 +3376,8 @@ transcriptions of one fact, which is the join this repo has been bitten by four 
 | **M2-2 ↔ M2-5** | `TryAssign`'s veto and its band loop are the same lines | Both are integrator lanes on the file whose own header says it is *"the only file in the job system the integrator reviews."* |
 | ⭐ **M2-20 ↔ M2-6 ↔ M2-18** *(NEW IN REVISION 3)* | **ONE VOCABULARY FOR "THIS PAWN IS DOING NOTHING", across three packages and two surfaces.** M2-20 owns the words; M2-6 adds the ranking clause to the same `TaskLabel` string; M2-18 says the tile-side half (*"nobody aboard is assigned that work"*). | **No conflicting lines — they conflict on MEANING, which git cannot see at all.** Three packages describing one player confusion is how a repo acquires two names for one predicate (`IsBackedOff`, `codeOnly`, the two `NON_FURNITURE` sets). ⛔ **M2-20 lands first; the other two consume it. A reviewer of M2-6 or M2-18 must check that no third word was invented.** |
 | ⭐ **M2-2 ↔ EVERY MEASUREMENT FIXTURE** *(NEW IN REVISION 3)* | **Not a file — a precondition.** From M2-2 onward `--ship slice`, `--ship grid` and the scenario ship boot with **no work enabled**, so anything driven unattended measures a ship where nobody works. | **`A1 = 0.000 %` becomes both the correct output AND the broken-harness output**, and `A1 = 0.000 %` on grid is already the measured post-E0 result — so the two causes are confusable by construction. ⛔ **Every occupancy number quoted after M2-2 must state the grid its crew had**, and M2-17 carries the non-vacuity check. ⚠️ **This is why M2-21 merges at 7b: it needs a fixture that still works.** |
-| ⭐ **M1-H ↔ M1-I ↔ M2-21** *(NEW IN REVISION 3)* | **One structural asymmetry in three costumes** (§12.14): two claim paths that refuse without recording the refusal, and one staging path that never asks. | Landing any one alone leaves a defect that *looks* fixed — **M1-H without M1-I gives a pawn who backs off politely from a bench she could never have used.** ⛔ **Measure the three against one another**, and if `lane/craft-thrash` has not passed review, **fold M1-I into it.** |
+| ⭐ **M1-H ↔ M1-J ↔ M2-21** *(NEW IN REVISION 3)* | **One structural asymmetry in three costumes** (§12.14): two claim paths that refuse without recording the refusal, and one staging path that never asks. | Landing any one alone leaves a defect that *looks* fixed — **M1-H without M1-J gives a pawn who backs off politely from a bench she could never have used.** ⭐ **AND THE SPLIT IS NOW MEASURED (§0.1): backoff alone −6.8 %, the probe alone → 0.000 %** — M1-J is the majority of the fix, not the tidy-up. ⛔ **Measure the three against one another**, and if `lane/craft-thrash` has not passed review, **fold M1-J into it.** |
+| ⭐ **M1-I ↔ M2-5** *(NEW IN REVISION 3 — OD-F meets OD-J)* | **The wreck's consumable stock, from two ends.** M1-I authors **more** consumables; OD-J puts **`Repair` FIRST** in the equal-band tie-break, so an enabled pawn reaches the neediest machine sooner — and the tick-0 investigation measured all three authored consumables spent within sim-day 1, unattended. | **No shared file, no shared test.** M1-I changes how many exist; M2-5 changes how fast they are reached; **neither lane's suite would see the other's change.** ⛔ **This is the `0.2` vs `0.25` threshold collision exactly** — two lanes, no overlapping lines, git reports no conflict, tree still wrong. **Whichever lands second re-runs the other's driven consumable measurement.** |
 
 > ⚠️ **A CLEAN AUTO-MERGE IS NOT A CLEAN MERGE, and this repo has proved it four times.** Two lanes
 > with no overlapping lines produced one red test (the 0.2 vs 0.25 threshold). Two lanes each added
@@ -3234,7 +3428,7 @@ as an order argument"* mistake in reverse.
 > `AuthoredShips.cs`) and the shape of its pin move.** Starting it before the item is answered *or has
 > defaulted to its recommendation after three days* means measuring a pin twice.
 > ⭐ **AND TWO LANES BECAME STARTABLE IN REVISION 3, both because they are live `main` defects
-> independent of every M2 decision:** `lane/craft-staging` (**M1-I**, behind or folded into M1-H) and
+> independent of every M2 decision:** `lane/craft-staging` (**M1-J**, behind or folded into M1-H) and
 > `lane/build-haul-backoff` (**M2-21**, behind M1-D). ⚠️ **Both are pin-chain rows, so neither runs
 > concurrently with another pin mover** — and **M2-21 must be measured before M2-2 turns the fixtures
 > inert.**
@@ -3380,7 +3574,7 @@ than claim it.)*
 `CraftingSystem.TryFindStagingTile` (`:487-498`) is not among them.** ⚠️ **Two shipped comments state
 the census correctly and neither is a bug report:** `JobContext.cs:64` says the rule *"is asked here
 and NOWHERE ELSE in the job board"* and `MachineWearSystem.cs:553-554` calls itself *"the second and
-last"*. **Both are true — `CraftingSystem` recruits outside the job board.** ⇒ **Chartered as M1-I.**
+last"*. **Both are true — `CraftingSystem` recruits outside the job board.** ⇒ **Chartered as M1-J.**
 *(This is §12.14's asymmetry producing a third consequence, and §0.1's tick-0 claim on `machineshop_1`
 is what it looks like in play.)*
 
