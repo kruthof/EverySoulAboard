@@ -87,6 +87,18 @@ namespace Perilune.Web
     /// The saving is stated as MEASURED in the package report; a count of skipped bytes is not a
     /// speed-up.
     ///
+    /// ⚠️ TWO CLAIMS IN THE BOX BELOW ARE NOW FALSE AND ARE RETRACTED HERE RATHER THAN EDITED OUT.
+    /// <b>(1) "for no consumer" / "just as consumerless".</b> Both surfaces draw this channel now
+    /// (<c>client/src/items/wear.js</c>), so the ~26 µs host cost and the ~2.62 µs client cost buy a
+    /// picture the player can see. <b>(2) "At boot all 146 grid rows read cond = 255".</b> True of
+    /// <c>--ship grid</c> and NOT of the ship the game opens on: <c>--ship wreck</c> boots with 41 of
+    /// its 72 tile-resident devices below the wreck floor, which is the whole point of it.
+    /// <b>WHAT IS NOT DONE, stated so it is not mistaken for done:</b> the CLIENT half is NOT
+    /// memoised. <c>decodeDevices</c> + <c>roomDeviceConditions</c> still run once per Room Zoom
+    /// repaint and once per Overview paint. That was worth doing while the cost bought nothing; now
+    /// that it buys the art it is an ordinary optimisation with no merge condition attached, and it
+    /// is deliberately left alone rather than bundled in.
+    ///
     /// ⛔ A CONDITION ON THE NEXT LANE, NOT AN OPTION — THE DELTA SCHEME LANDS *WITH* THE ART.
     /// This channel is rebuilt AND RE-SERIALIZED on every render, ten times a second, whether or not
     /// a single byte moved. <c>GameSession.Send</c> dedupes by whole-payload string equality, so it
