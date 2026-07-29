@@ -27,7 +27,52 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-28, latest) — **THE WRECK IS PLAYABLE: a vent opens, air is earned, a wreck looks wrecked**
+## Status snapshot (2026-07-29, latest) — **RE-PRIORITISED ON THE OWNER'S LOOP: three decisions, and a spike that refuted the plan**
+
+**Read `docs/HANDOVER.md`'s top block, then `docs/design/perilune-roadmap-q3.plan.md` (the shape) and
+`docs/design/perilune-roadmap-q3.packages.md` (51 packages, merge order, pin chain).** Both were
+independently reviewed and both took a send-back. **Nothing is merged; `main` is unchanged.**
+
+**The owner challenged how previous sessions prioritised.** The audit's verdict: agents did **not**
+invent an agenda — nearly every large programme was approved by name. **What agents chose was the
+METRIC, and the metric chose the work.** `A1` was agent-authored, never put to the owner as a choice,
+and has fooled this project five times — it **scored a livelock producing ZERO services at 91 % busy**.
+Measured: test/guard churn is **44 % of lifetime and 52 % of the last three days** against **6 %** for
+`sim/Sim.Core`, and `git log -- '*Skill*' '*Priority*' '*WorkType*' '*Assign*'` returns **zero commits
+in 555** — the owner's named first-class input, deferred **three times, never once by him**.
+
+**THREE BINDING OWNER DECISIONS (OD-A/B/C, 2026-07-29):** **repair is a WORK TYPE under the priority
+grid plus a right-click prioritise override, never a paint designation** ⇒ *the work-priority grid is
+now a PREREQUISITE, not the seventh lane* · **the economy is PARKED at E0-complete, E1 is not opened,
+and A1 is retired as a GOAL** (regression statistic only; the gate is re-chartered as *"one crew
+member alone can reach a second thaw"*) · **the ship's interior is authored-explored at boot**.
+
+### ⚠️ A SPIKE BUILT THE PLANNED SEAM AND MEASURED IT A NO-OP
+
+A priority grid implemented inside `JobSystem.TryAssign` — the shape two analyses and a reviewer
+agreed on — does **nothing** for the owner's own case (`Decon@1 / Repair@4` mid-chain is
+**byte-identical to baseline**). **`JobSystem` saw the pawn idle on ZERO of the 54 450
+maintenance-chain ticks**: `MaintenanceSystem.Tick` frees and re-claims the same pawn **inside one
+tick**. ⇒ **Priority cannot live in the dispatcher — it is ONE arbitration point with FIVE entry
+sites**, and defer-only / push-gate-only each fail one half; both ⇒ **52 652 → 7 232**.
+⚠️ **The published "54 650-tick wait" is an ABSOLUTE TICK, not a wait** — painted while the pawn is
+idle the order wins at **tick 1**, so the spike's original criterion was satisfiable **both ways** by
+the shipped sim. ✅ **Pre-emption is the cheapest and safest leg** (zero lines in `sim/`; all four hard
+interrupt cases measured safe); what is unbuilt is **HOLDING** a pawn on an ordered job.
+
+### ⛔ SIX DEFECTS FOUND, ALL LIVE ON `main`, NONE PREVIOUSLY FILED
+
+**Every light goes out permanently at sim-hour 7 on `--ship wreck`** (the authoring comment's
+*"~12.6 kW demand, every tier served"* is false in both halves; true demand **20.40 kW**, and 12.6 is
+what you get under a demand model **the sim never implemented**) · **0 of 626 devices are off-network**
+though the ship believes deck 1 is unpowered (6-way claim through −z) · **a `Craft` recruit→abandon
+thrash burning 33 % of all crew-ticks**, masked only by the maintenance monopoly **a priority grid
+removes** · **save/load does not exist outside the test suite** · **an `AirVent` INJECTS from an
+unmodelled reserve and refuses to vent into vacuum**, so *"open the vent, push the air outward"*
+**has never been implemented** · **the wreck's repair economy is FINITE** (three consumables; below
+`wreck_threshold` even free jury-rig is refused, so two of three wings become permanently unfixable).
+
+## Status snapshot (2026-07-28) — **THE WRECK IS PLAYABLE: a vent opens, air is earned, a wreck looks wrecked**
 
 **Gate on `main`: `./ci.sh` exit 0, 1286 dotnet + 953 node, twin hashes MATCH `02257f5bce961570`,
 ALL FIVE PINS HELD, and `git diff` to `Golden/`, `ci.sh` and `content/` is 0 LINES across the whole
