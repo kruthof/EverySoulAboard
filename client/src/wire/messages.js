@@ -111,6 +111,14 @@
  * arrives on connect. x/y are tile coords in the same space as frame/click coords; deck is the
  * crew's current deck. task is one of the host's fixed labels (digging/hauling/…/idle);
  * portrait is a "pk_xxxxxxxx" key or "".
+ *
+ * ⚠️ `morale` IS EMITTED AND DELIBERATELY UNDRAWN ON BOTH MODERN SURFACES (M1-F, 2026-07-29).
+ * No system in `sim/` ever changes `Citizen.Morale` — its only assignments are the `= 1f`
+ * initialiser and the save-load restore of that same 1f — so the number that arrives here is a
+ * constant, and the CREW WATCH bar + dossier meter that drew it were removed. The FIELD
+ * stays on the wire on purpose: it is saved and hashed sim state, so deleting it is a determinism
+ * pin move for a cosmetic fix, and whether morale becomes real is an open M4-4 decision. The
+ * deprecated console shell still draws it (`hud.js`) until that surface dies at M4-8/WP-9.
  * @typedef {Object} RosterEntry
  * @property {*} cid @property {string} name @property {string} role @property {string} mood
  * @property {number} morale 0..1 @property {string} task @property {string} portrait

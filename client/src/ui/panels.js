@@ -216,9 +216,17 @@ class DialoguePanel extends Panel {
 //
 // A first-class character screen — the game's promise is "every crew member is a person", so the
 // inspector is large and legible. Fields fall into two honestly-separated classes:
-//   · REAL   — carried by the wire today: portrait, name, role, current emotion, morale, traits,
+//   · REAL   — carried by the wire today: portrait, name, role, current emotion, traits,
 //              directed relationships (joined in by hud.enrichCitizen via regardRows), and the
 //              conversation log.
+//              ⚠️ `morale` USED TO BE LISTED HERE AND IT WAS WRONG (M1-F, 2026-07-29). The roster
+//              wire does carry a `morale` number, but NO SYSTEM IN `sim/` EVER CHANGES
+//              `Citizen.Morale` — its only assignments are the `= 1f` initialiser and the save-load
+//              restore of that same 1f — so it is CARRIED, not COMPUTED: a constant. The MORALE
+//              meter that stood in the identity band below is gone, and this line is corrected in
+//              the same commit because a ledger that miscategorises its own subject is exactly how
+//              the next lane re-adds the meter in good faith. Do not add a field to this REAL list
+//              on the strength of it being on the wire; ask whether the sim moves it.
 //   · SAMPLE — the sim MODELS these (needs, affinity/trust, values/fears, backstory, episodic
 //              memory — see sim/Sim.Core/Citizens/*) but they are not on the wire yet. We show the
 //              intended surface with placeholder values, deterministically seeded per-cid so a given
@@ -304,16 +312,13 @@ class CitizenCard extends Panel {
     const cid = cit.cid;
     this.setTitle('DOSSIER · ' + (cit.name || String(cid)));
 
-    // ── identity band: big portrait, name, role · activity, morale, current emotion ──
+    // ── identity band: big portrait, name, role · activity, current emotion ──
+    // (No MORALE meter — M1-F. See the REAL/SAMPLE ledger above: the number is a constant.)
     const portrait = portraitElement(resolvePortrait(cit, registry));
     const ident = el('div', 'dsr-ident');
     ident.appendChild(el('div', 'dsr-name', cit.name || String(cid)));
     const sub = [cit.role, cit.task ? ('› ' + cit.task) : ''].filter(Boolean).join('  ');
     ident.appendChild(el('div', 'dsr-role', sub || '—'));
-    if (typeof cit.morale === 'number') {
-      ident.appendChild(meter('MORALE', cit.morale,
-        Math.round(cit.morale * 100) + '%', needColor(cit.morale)));
-    }
     const emoWrap = el('div', 'dsr-chips');
     if (cit.mood) emoWrap.appendChild(el('span', 'dsr-emo', cit.mood)); // hide when the emotion is stale ('')
     ident.appendChild(emoWrap);

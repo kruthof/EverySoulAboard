@@ -216,8 +216,19 @@ test('B2: the task line is styled dim, and `.working` lifts it — the honesty r
     `.ov-crewtask.working resolves to "${work}", which is not the amber accent. Scanning the dock's `
     + 'colour is how "who is actually working?" gets answered at a glance.');
   // Negative control: with the `.working` rule commented out, the assertion above must fail.
+  // ⚠️ THE CLOSING ANCHOR MOVED AT M1-F (2026-07-29) and it had to. It used to be `}\n.ov-morale{`;
+  // M1-F deleted the `.ov-morale` rules, which would have made this `.replace` a SILENT NO-OP,
+  // leaving the `/*` opened above unclosed. The naive stripper on the next line would then have run
+  // to the file's NEXT `*/` — hundreds of rules away — and the assertion would still have passed,
+  // for entirely the wrong reason. That is `CLAUDE.md` trap 1's vacuous-control shape. The anchor now
+  // points at the rule that really does follow `.ov-crewtask.working`, and the sanity check below
+  // proves the substitution happened at all rather than trusting it.
   const blinded = src('styles.css').replace('.ov-crewtask.working{', '/*.ov-crewtask.working{')
-    .replace('}\n.ov-morale{', '}*/\n.ov-morale{');
+    .replace('}\n.ov-empty{', '}*/\n.ov-empty{');
+  assert.ok(blinded.includes('}*/\n.ov-empty{'),
+    'the blinding substitution did not apply — its closing anchor no longer exists in styles.css, so '
+    + 'the control below proves nothing. Re-point the anchor at whatever rule now follows '
+    + '`.ov-crewtask.working`.');
   assert.equal(lastDeclaration(blinded.replace(/\/\*[\s\S]*?\*\//g, ''), '.ov-crewtask.working', 'color'), null,
     'commenting the rule out did not blind the reader, so the reader is not reading the rule');
 });
