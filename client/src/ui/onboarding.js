@@ -31,6 +31,50 @@
 // `docs/design/perilune-wreck-start.plan.md`). So the card states the seven sleepers as a FACT and
 // never as a verb. When W5 lands, that is the sentence to add.
 //
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⚠️ THE SEND-BACK: THE PASS THAT DELETED FALSE SENTENCES SHIPPED TWO NEW ONES. Recorded in full,
+// because both were written the same way the `B` row was — from a PLAN, not from the shipped thing.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+//   • "Beyond the bay the ship is airless" was FALSE. It copied the CHARTER's one-compartment
+//     premise; the shipped ship authors **THREE** pressurised anchors —
+//     `AuthoredShips.cs:1893-1896` adds `WreckCryoAnchor`, `"wreck_spine_0"` and
+//     `WreckReactorAnchor`, `AuthoredShips.cs:1341` says so in capitals, and
+//     `WreckShipTests.ExactlyThreeSpacesBootBreathable_AndTheRestIsVacuum` asserts that exact set.
+//     ⇒ WHEN THE CARD AND THE CHARTER DISAGREE, THE SHIP WINS. The charter is a plan; the card is
+//     a claim about a running program.
+//   • the BUILD block was wrong three ways, and the third one MISDIRECTS INTO A SILENT FAILURE:
+//       – "Pick a material" — `toolHasMaterial` is wall/floor ONLY (`build-material-model.js:38`);
+//         DOOR carries none.
+//       – "drag to sweep a run" — `isSweepTool` is structural + order (`room-model.js:142`).
+//         FURNITURE IS A PLAIN CLICK; it never sweeps.
+//       – "Building spends REGOLITH" — true for structure (`BuildSystem.cs:57 Material =
+//         ItemKind.Regolith`) and FALSE for furniture, which is `PlaceDeviceCommand` and charges
+//         `Currency = ItemKind.Parts` (`Commands/Commands.cs:332`), `DevicePlaceCost = 3`
+//         (`SimDefs.cs:884`).
+//
+// ⛔ FOUND DEFECT, REPORTED NOT FIXED — "FURNITURE-SILENT-BROKE" (out of this package's scope).
+// The wreck boots with **1** Parts (`AuthoredShips.cs:1888`, `Count = 1`) against a cost of **3**.
+// `PlaceDeviceCommand.Execute` charges LAST and simply `return`s when it cannot pay, and its own
+// header calls a refusal "the same silent no-op every other rejection is". So every bunk, locker
+// and lamp a new player places on the shipping game **does nothing, silently, forever** — no toast,
+// no ghost, no reason. The card previously pointed them straight at it by naming the one resource
+// the top bar shows plenty of. It now names PARTS, which at least makes the scarcity legible, but
+// THE VERB IS STILL MUTE. This is `MECHANICS.md` §13.17's expensive-and-visible → CHEAP-AND-INVISIBLE
+// shape, live on the standard surface.
+//
+// ⚠️ DISCLOSED, NOT FIXED — ARMING AN ORDER ON THE SHIP MAP BLOCKS ROOM ENTRY. `G`/`Z`/`V` are
+// GLOBAL (`controls.js:262` → `Hud.armFromKey`), and `overviewClickAction` returns `{type:'order'}`
+// before it ever reaches `roomAnchor` (`overview-model.js:246` vs `:249`), so after pressing `G` on
+// the map a room click does not open the room. ONE ROW OF THIS CARD DISARMS ANOTHER
+// ("Click a room — step inside it").
+// ⚠️ AND THE SEND-BACK'S OWN DESCRIPTION OF THIS WAS HALF WRONG — it read "does nothing and says
+// nothing". DRIVEN in Chrome on `--ship wreck` (`sb-m1b-gprobe`, 2026-07-29): the room does not
+// open (CONFIRMED) but the surface is **NOT silent** — `#ov-toast` reads
+// `DIG ARMED — ESC TO DISARM` (`overview-view.js:889` → `orderSuppressionToast`, `:934`). So this
+// is a legible refusal with a stated remedy, NOT the invisible-feedback class, and it is deliberately
+// left alone rather than "fixed" on that mistaken description. THAT CORRECTION IS THE POINT: a
+// send-back is a claim about code too, and it gets driven like any other.
+//
 // EVERY CONTROL BELOW WAS DRIVEN IN REAL CHROME on `--ship wreck` before it was written down, and
 // two documented keys were DELETED because driving them showed they do nothing on this surface:
 //   • `WASD` — pans the console canvas, which on the standard surface measures 0×0 px. Dead.
@@ -52,6 +96,24 @@
 // This card is **653px, byte-for-byte the footprint of the one it replaces**, measured in Chrome at
 // 1600×1000 / 1440×900 / 1280×800 by `client/tools/onboarding-shot.mjs`, which fails when BEGIN is
 // out of view. Anything added here must be measured, not eyeballed.
+//
+// ⚠️ AND THE SEND-BACK'S CORRECTIONS COST 68px THE FIRST TIME THEY WERE WRITTEN — 721px, BEGIN
+// clipped at 1280×800, exactly the defect above, caused by the pass that was fixing the copy. It was
+// bought back to 653px by MEASUREMENT, not by taste, and the three cuts are worth knowing because
+// each is a wrap boundary rather than a word count:
+//   • the `T` row's text WRAPPED the two-column key grid, and a wrapped cell makes BOTH cells in
+//     that grid row taller — 12px for four extra words. Key-row text has to fit one line (~28 chars).
+//   • the BUILD body lost "wall and floor take a material". THE MATERIAL PICKER IS NOW UNMENTIONED,
+//     which is a deliberate trade: the old copy's "Pick a material" was FALSE (it is wall/floor
+//     only), and silence is not a lie — the picker appears on screen the moment you arm WALL.
+//   • the LEDE: 251+ chars wraps to five lines, 250 fits in four. See its own note below.
+//
+// ⚠️ `＋ADD ROOM` AND THE ROOM-TYPE PICKER ARE STILL NOT ON THE CARD, and that is now a MEASURED
+// decision rather than an oversight. The ship-map group holds four rows in two grid rows; a fifth
+// row costs a third grid row (~22px + gap) and the budget above has 2px in it. The verb is a
+// labelled button sitting on the map, so it is discoverable in a way a keystroke is not — whereas
+// every row that IS here documents something invisible. If the card ever gets more height, this is
+// the first thing to add back.
 
 const SEEN_KEY = 'perilune.introSeen.v1';
 let _seenThisSession = false; // fallback when localStorage is unavailable (private mode)
@@ -86,12 +148,12 @@ export const VERBS = Object.freeze([
   {
     head: '◈ ORDER',
     body: 'Step into a room, take <b>DIG</b>, <b>STOCKPILE</b> or <b>STRIP</b> and drag over the ' +
-      'tiles you mean. <b>OPERATE</b> opens a door or a vent.',
+      'tiles you mean. <b>OPERATE</b> toggles a door or vent.',
   },
   {
     head: '▣ BUILD',
-    body: 'Same palette, other end: <b>WALL</b>, <b>FLOOR</b>, <b>DOOR</b> and furniture. Pick a ' +
-      'material, drag to sweep a run. Building spends <b>REGOLITH</b>.',
+    body: 'Same palette, other end. <b>WALL</b>, <b>FLOOR</b>, <b>DOOR</b> sweep a run and spend ' +
+      '<b>REGOLITH</b>. Furniture is one click, spends <b>PARTS</b>.',
   },
 ]);
 
@@ -122,7 +184,12 @@ export const CONTROL_GROUPS = Object.freeze([
         { file: CTL, cond: "k === 'f'", call: 'Cmd.deck' }] },
       { key: 'Space', text: 'pause / resume', bind: [
         { file: CTL, cond: "k === ' '", call: 'Cmd.pause' }] },
-      { key: 'T', text: 'talk to the selected crew', bind: [
+      // ⚠️ THE TEXT NAMES **CREW WATCH** BECAUSE THIS ROW IS THE ONLY ONE WITH A PREREQUISITE THE
+      // CARD OTHERWISE NEVER TEACHES. `talkSelectedCrew` is a no-op with nobody selected, and the
+      // only way to select on this surface is clicking a CREW WATCH row (driven — the rig's own
+      // `[T]` leg has to click one first or the panel never opens). "the selected crew" quietly
+      // assumed a verb the player had not been given.
+      { key: 'T', text: 'talk to a name in CREW WATCH', bind: [
         { file: CTL, cond: "k === 't'", call: 'talkSelected' }] },
     ],
   },
@@ -146,10 +213,24 @@ export const CONTROL_GROUPS = Object.freeze([
 
 export const EYEBROW = 'MSV PERILUNE · BOARDED AND STRIPPED · ONE CREW AWAKE';
 export const TITLE = 'One capsule opened.';
+/**
+ * ⚠️ EVERY CLAUSE HERE IS CHECKED, AND THE AIR CLAUSE IS THE ONE THAT SHIPPED FALSE.
+ * "Beyond the bay the ship is airless" was the CHARTER's premise, not the ship's: `--ship wreck`
+ * authors THREE pressurised anchors (cryo bay, `wreck_spine_0`, reactor — `AuthoredShips.cs:1894`,
+ * asserted by `WreckShipTests.ExactlyThreeSpacesBootBreathable_AndTheRestIsVacuum`), and the boot
+ * census prints `deck 0: 9 anchored spaces, 3 breathable`. Joined to the C# in `onboarding.test.js`.
+ *
+ * ⚠️ IT IS ALSO 250 CHARACTERS BECAUSE OF THE HEIGHT BUDGET, NOT BECAUSE OF TASTE. Measured in
+ * Chrome at 1280×800: 251+ chars wraps to FIVE lines (108px) and 250 fits in FOUR (86px), and those
+ * 22px are the difference between BEGIN being reachable and the card silently scrolling. "cryo",
+ * "still" and "whole" were cut for exactly that reason — every FACT survives ("everyone awake is
+ * dead or gone" was kept over "cryo" deliberately: it is why the player is alone). If you add a
+ * word here, re-run `client/tools/onboarding-shot.mjs` at 1280×800 before you commit it.
+ */
 export const LEDE =
-  'Raiders took this ship. Everyone awake is dead or gone; of twelve cryo capsules four are ' +
-  'cracked, seven still under, and one opened — that person is your whole crew. Beyond the bay ' +
-  'the ship is airless, and nobody works where they cannot breathe.';
+  'Raiders took this ship; everyone awake is dead or gone. Of twelve capsules four are cracked, ' +
+  'seven under, one opened — that person is your crew. Only the bay, spine and reactor hold air; ' +
+  'the rest is vacuum, and nobody works where they cannot breathe.';
 
 /** The card's markup. Exported because the guards assert on the RENDERED STRING: a claim sitting in
  *  a comment cannot reach it, which is `CLAUDE.md` trap 1 removed rather than hardened against. */

@@ -191,8 +191,21 @@ if (anchors.length) {
   check(!/roomzoom-open/.test(await ev(`document.body.className`)), '[Esc] again leaves the room');
 }
 
-// ── 4. reopened through the `?` button, exactly as the foot promises ──
-log('\n[4] REOPEN VIA ?');
+// ── 4. reopened through the `?` KEY and the `?` BUTTON — the foot promises the KEY ──
+//
+// ⚠️ THE KEY LEG IS THE ONE THAT WAS MISSING. The card's last line reads "Press [?] any time to
+// reopen this", and every earlier run of this tool tested only the BUTTON (`.onb-help`). Those are
+// two different bindings — a click handler and a window keydown listener (`onboarding.js:207` vs
+// `:209`) — so the sentence the player actually reads was the one nothing drove. That is the exact
+// shape of the `B`-row defect this whole package exists for, sitting in the package's own tool.
+log('\n[4] REOPEN VIA THE ? KEY, THEN THE ? BUTTON');
+check(!await ev(`!!document.querySelector('.onb-card')`), 'the card is down before we reopen it');
+await key('?');
+check(await ev(`!!document.querySelector('.onb-card')`), 'the ? KEY brings the card back (the foot\'s promise)');
+// …and it toggles, which is what the shipped handler does — press it again and the card goes away.
+await key('?');
+check(!await ev(`!!document.querySelector('.onb-card')`), 'the ? KEY closes it again (it toggles)');
+
 const help = await centre('.onb-help');
 check(!!help, 'the persistent ? button is on screen');
 if (help) { await clickAt(help.x, help.y); await sleep(1800); }
