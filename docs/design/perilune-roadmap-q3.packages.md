@@ -3263,13 +3263,20 @@ a two-pawn fixture on a one-pawn ship.**
 
 > ### ⛔ IT CONTRADICTS A LIVE, DELIBERATE DESIGN POSITION, AND THAT POSITION IS HALF RIGHT
 >
-> `client/src/ui/overview-view.js:721-722`, verbatim *(the clause; the block is `:715-722`)*:
-> > *"A row that shows "Idle" in dim grey is the honest answer and it is also the legibility
-> > mechanism: the eye reads the amber rows as "work is happening", so a dock of grey rows is a TRUE
-> > signal that nothing is. On `--ship grid` that will be most of the day (crew there do not
-> > auto-wander), and the choice was deliberate — **writing something like "AWAITING ORDERS" would
-> > imply the ship is waiting on the player, when an idle crew member may simply have nothing
-> > reachable to do.**"*
+> **THE CLAUSE THE POSITION RESTS ON — `client/src/ui/overview-view.js:721-722`, verbatim:**
+> > *"…the choice was deliberate — **writing something like "AWAITING ORDERS" would imply the ship is
+> > waiting on the player, when an idle crew member may simply have nothing reachable to do.**"*
+>
+> **Its supporting argument, `:717-720`, is the legibility mechanism and it still stands:** *"A row
+> that shows "Idle" in dim grey is the honest answer… the eye reads the amber rows as 'work is
+> happening', so a dock of grey rows is a TRUE signal that nothing is."*
+>
+> ⛔ **AND THE ONE CLAUSE IN BETWEEN IS ALREADY FALSE — WHICH IS WHY THIS QUOTES AROUND IT RATHER THAN
+> THROUGH IT.** `:720-721` reads *"On `--ship grid` that will be most of the day (**crew there do not
+> auto-wander**)"*. **Grid crew were made `AutoWander = true` on 2026-07-25** (`AuthoredShips.cs:1123`,
+> *"the standard play ship should not be a still photograph"*). ⇒ **The comment block `:715-722` carries
+> three separable claims — one live, one stale, one still-true supporting argument — and a lane that
+> quotes the block as a unit will carry the stale one forward as if it were current.**
 >
 > ⭐ **Under OD-G the ship IS waiting on the player, so the objection's premise is gone — but the
 > DISTINCTION it protects survives and gets sharper.** Under OD-H **both** states are now common:
