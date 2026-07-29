@@ -75,7 +75,18 @@ namespace Perilune.Web
     /// "the air where a worker would have to stand is not survivable", which is TRUE of all four
     /// branches, rather than as a guess that is right three times in four.
     ///
-    /// <b>⛔ OMITTED (2) — "no crew can PATH here".</b> <c>TryPathToAdjacent</c>'s third test is
+    /// <b>✅ WAS OMITTED (2) — "no crew can PATH here" — AND IS NOW ANSWERED. See
+    /// <see cref="ReasonUnreachable"/>.</b> The paragraph below is kept verbatim because it is the
+    /// prescription that was followed, not a stale claim: <c>IJobSource.IsBackedOff</c> was lifted to
+    /// the contract, the other three sources now mirror <c>HaulJobSource</c>'s shape, and
+    /// <c>JobSystem.IsBackedOff</c> fans out so this host asks ONE question. ⚠️ TWO CLAUSES OF IT
+    /// HAVE MOVED AND ARE CORRECTED HERE RATHER THAN LEFT TO MISLEAD: the sim does NOT "already know
+    /// the answer" to reachability — it knows only that <b>a recent attempt failed</b>, which is
+    /// weaker (see <see cref="ReasonUnreachable"/>); and the residual sentence at the end
+    /// (<i>"a designated tile in breathable air that no crew can reach is still silent"</i>) is now
+    /// true only of a tile <b>nobody has attempted</b>, not of every such tile.</b>
+    ///
+    /// <c>TryPathToAdjacent</c>'s third test is
     /// <c>sim.Paths.FindPath</c>, and a designation in perfectly good air that no crew can reach is
     /// silently refused too (E0-4 WP-7's shape, <c>MECHANICS.md</c> §13.17). It is omitted for a
     /// measured reason and a structural one. MEASURED: <c>FindPath</c> is a whole-region sweep, which
@@ -98,6 +109,23 @@ namespace Perilune.Web
     /// on one job source takes the idle cost to approximately nothing, and it composes with the
     /// <c>IsBackedOff</c> mirror above — the same lane can do both. It is a <c>sim/</c> change and this
     /// lane's <c>sim/</c> diff is empty by construction.
+    ///
+    /// <b>⛔ THAT WIN WAS OFFERED TO THE <see cref="ReasonUnreachable"/> LANE AND DECLINED — with a
+    /// reason, so nobody re-opens it as an oversight.</b> <c>DigJobSource._sites</c> is a DERIVED
+    /// board, not a registry: <c>JobSystem.Rescan</c> refills it only when <c>JobBoardDirty.Tiles</c>
+    /// is set, and only from inside <c>JobSystem.Tick</c>. The <c>TileFlags.Designated</c> plane, by
+    /// contrast, is authoritative and synchronous — the flag IS the order. Reading the derived board
+    /// would make this channel's COVERAGE a function of dispatcher scheduling and of whether whichever
+    /// writer painted the flag remembered to dirty the board (a save/load, a MOSS tile write, an LLM
+    /// effect, a generator that paints orders directly — the same list the next paragraph but one
+    /// already flags). <b>That buys ~1.6 % of a render by making the anti-silence channel able to go
+    /// silent</b>, and it narrows the reported set as well: the divergence recorded immediately below
+    /// would stop being latent and start dropping rows. Confirmation that this is not theoretical:
+    /// <c>GameSession.RenderForTest</c> does not tick, and several tests in
+    /// <c>BlockedChannelTests</c> set <c>Designated</c> directly and then render — against
+    /// <c>_sites</c> every one of them would see an empty board. If a later lane wants the µs, the
+    /// safe shape is a registry written where the flag is written, not a read of a board that is
+    /// rebuilt when the dispatcher gets round to it.
     ///
     /// <b>⚠️ ONE PLACE WHERE "THE SAME PREDICATE" IS NOT LITERALLY TRUE, recorded rather than
     /// smoothed over.</b> The dig <b>site</b> test here is the <c>TileFlags.Designated</c> flag alone;
@@ -310,6 +338,108 @@ namespace Perilune.Web
         /// reserved constant that quietly starts being emitted is how a vocabulary rots.</para>
         /// </summary>
         public const int ReasonNoConsumable = 2;
+
+        /// <summary>
+        /// <b>NO CREW HAS MANAGED TO START WORK HERE.</b> The site's approach is walkable and the air
+        /// where a worker would stand is survivable — so neither <see cref="ReasonAir"/> nor
+        /// <see cref="ReasonNoApproach"/> applies — and the sim's own job board is nevertheless
+        /// holding an unreachable BACK-OFF against this exact tile: <c>JobSystem.IsBackedOff</c>, the
+        /// fan-out of <c>IJobSource.IsBackedOff</c> over dig, strip, build-ready, build-material and
+        /// haul. This is omission (2) in this file's header, closed.
+        ///
+        /// <para><b>⚠️ IT IS NOT THE SAME PREDICATE AS "UNREACHABLE", AND THE PLAYER-FACING WORDS SAY
+        /// THE WEAKER, TRUE THING.</b> A back-off stamp means *"a claim on this target was attempted
+        /// and it failed"* — nothing more. The constant is named for the case that produces it
+        /// overwhelmingly (a shut door, a collapsed corridor, a compartment nobody can walk to), but
+        /// the CLAIM this channel makes is only that no crew member has got started. Three things
+        /// follow, and all three are deliberate:</para>
+        ///
+        /// <para>• <b>IT UNDER-CLAIMS.</b> Only sites somebody actually TRIED carry a stamp. A tile
+        /// walled off since boot that no idle crew member has yet reached for is silent here, and a
+        /// ship whose whole crew is busy stamps nothing at all. That is the same direction this
+        /// header commits the channel to throughout — *"a SUBSET of the truly-refused sites, never a
+        /// superset"* — and it is the safe one for a surface whose purpose is to be believed.
+        /// ⛔ Do NOT patch it with a host-side <c>FindPath</c>: a second implementation of
+        /// reachability can disagree with the behaviour it is supposed to explain, which is the
+        /// second-authority defect omission (1) exists to refuse. It is also why the measured cost
+        /// stays a dictionary probe rather than a whole-region sweep per neighbour per crew per
+        /// render at 10 Hz.</para>
+        ///
+        /// <para>• <b>THE BUILD-MATERIAL CARRIER IS NOT ABOUT THE SITE'S OWN APPROACH AT ALL.</b>
+        /// <c>BuildJobSource._matRetryAt</c> is stamped when <c>TryReserveMaterialFor</c> finds no
+        /// free material stack the citizen can reach — a site whose own tile is perfectly reachable.
+        /// It is on this reason anyway, because splitting it would require a second constant whose
+        /// predicate this host cannot separate from the first. The wording therefore covers both:
+        /// <i>"no crew has reached it, or the material for it"</i>.</para>
+        ///
+        /// <para>⛔ <b>AND THE ONE CASE A READER WILL EXPECT MOST IS THE ONE THIS CANNOT REPORT —
+        /// MEASURED, AND FILED RATHER THAN FIXED. A <i>BUILD</i> BEHIND A SHUT DOOR IS STILL
+        /// SILENT.</b> The package charter names <c>_matRetryAt</c> as *"the one the 480 000-tick
+        /// scenario actually trips"*. It is not, whenever material is reachable:
+        /// <c>TryReserveMaterialFor</c> checks a path to the MATERIAL and never to the SITE, so the
+        /// claim SUCCEEDS, the citizen walks to the Regolith, and <c>ProgressHaulToBuild</c> phase A
+        /// then abandons on <c>JobWork.TryPathToAdjacent(site)</c> — <b>a path that records no
+        /// back-off at all</b>. That loop IS the 480 000-tick livelock, nothing stamps it, and so
+        /// nothing here can name it. <c>_matRetryAt</c> fires only when NO material is reachable
+        /// (driven in <c>JobSourceBackoffTests</c>). <b>THE FIX IS ONE LINE</b> — stamp
+        /// <c>_matRetryAt[site]</c> in that abandon branch — <b>but it is a WRITE on a dispatch path
+        /// and this lane is pin-neutral by charter, so it belongs to the pin chain.</b> Until then,
+        /// the reason covers dig, strip, ready-build and no-reachable-material; a materialed-by-haul
+        /// build behind a shut door remains the residual.</para>
+        ///
+        /// <para>• <b>AIR WINS.</b> <c>JobWork.TryPathToAdjacent</c> stamps a back-off for an AIR
+        /// refusal exactly as it does for a pathing one, so a site in bad air is usually ALSO backed
+        /// off. <c>GameSession.BlockedReason</c> therefore asks this question LAST, after the two
+        /// staging questions, and a tile that is both airless and un-reached reports
+        /// <see cref="ReasonAir"/>. The player's next action differs — air is answered with a vent, a
+        /// closed door with a hand on the door — and telling them to go looking for a route when the
+        /// compartment is simply not breathable would be a confident lie.</para>
+        ///
+        /// <para><b>⭐ HOW A PLAYER PRODUCES IT, ON THE SHIPPING GAME, WITH NOTHING PLANTED —
+        /// AND A RETRACTION.</b> An earlier draft of this package's acceptance note said *"the reason
+        /// is not currently producible by a player on either shipped ship"*. <b>THAT IS FALSE AND IS
+        /// RETRACTED IN FULL.</b> It came from a rig that censused the wrong <c>DeviceKind</c> (it
+        /// filtered <c>2</c>, which is <c>Scrubber</c>; <c>Door</c> is <c>0</c>), so it never shut a
+        /// door and then reported that no door could be shut. On <c>--ship wreck</c>, deck 0:
+        /// <b>arm O and shut the two doors that boot OPEN — <c>(5,7)</c> and <c>(5,10)</c> — then arm
+        /// STRIP and condemn a wall on the stranded side.</b> Those two doors are the only way into
+        /// the spine corridor between the <c>y=7</c> and <c>y=10</c> wall lines, and shutting them
+        /// takes deck-0 explored+breathable+crew-reachable from <b>208 tiles to 60</b>. Driven end to
+        /// end through the real player commands (<c>client/tools/blocked-reach-shot.mjs</c>): six
+        /// stranded walls, <b>six rows carrying reason 3 within 5 s</b>, still there after 70 s
+        /// untouched, and the badge drawn on the Level-2 Room Zoom in LIFE SUPPORT.
+        /// ⚠️ <b>THE VERB IS STRIP, NOT BUILD</b> — see the build residual above; a build behind the
+        /// same shut door produces nothing at all.</para>
+        ///
+        /// <para><b>⭐ IT IS LATCHED HOST-SIDE, AND WITHOUT THE LATCH THIS REASON WOULD BE CORRECT FOR
+        /// FIVE SECONDS AND SILENT FOR FIFTEEN MINUTES.</b> The stamp lasts
+        /// <c>JobWork.UnreachableRetryTicks = 50</c> ticks, and <c>HaulJobSource</c>'s
+        /// <c>ForgetBackoffsOnTileChange</c> clears its whole map on any <c>JobBoardDirty.Tiles</c>
+        /// event. Re-stamping needs a citizen to attempt the claim AGAIN, and a one-pawn crew on a
+        /// 900 s Maintain service will not for 9 000 ticks — so the raw predicate blinks out with the
+        /// door still shut. That is precisely the invisible-feedback failure the <c>marks</c> channel
+        /// exists to prevent, and shipping it would re-introduce it inside the package built to
+        /// remove it. <c>GameSession</c> therefore remembers a site it has seen backed off and keeps
+        /// reporting it until the site leaves its registry or a crew member actually takes a job on
+        /// it — see <c>GameSession.BlockedReason</c>'s latch. The latched claim is the honest one:
+        /// <i>the last attempt failed and none has succeeded since.</i></para>
+        ///
+        /// <para>⚠️ <b>TWO PROPERTIES RECORDED RATHER THAN DISCOVERED LATER.</b>
+        /// (1) <b>A ZONED TILE CAN CARRY TWO MARKS AT ONCE.</b> <c>JobSystem.IsBackedOff</c> asks every
+        /// source including <c>HaulJobSource</c>, whose map is keyed on STOCKPILE tiles — so an order
+        /// painted on a zoned tile could draw this badge AND the <c>zones</c> channel's back-off chip
+        /// together. They would be saying the same true thing about the same tile through two layers,
+        /// which is why the fan-out does not filter by source type (that would be a second place that
+        /// knows which sources exist). BELIEVED LATENT: it could not be produced in play. If it ever
+        /// shows up as visual noise, arbitrate it in the CLIENT, not by narrowing the fan-out.
+        /// (2) <b>THE FOG GATE PRUNES THE LATCH.</b> <c>GameSession.AddIfBlocked</c> returns on an
+        /// unexplored tile BEFORE <c>BlockedReason</c> runs, so an unexplored site is not re-marked and
+        /// its latch entry is dropped on that render. Re-exploring the tile therefore shows nothing
+        /// until something re-stamps it. That is deliberate — the fog gate must not be defeated by a
+        /// host-side memory — and it is pinned by
+        /// <c>BlockedChannelTests.An_Unexplored_Unreachable_Site_Does_Not_Reach_The_Wire</c>.</para>
+        /// </summary>
+        public const int ReasonUnreachable = 3;
 
         /// <summary>
         /// One refused order on the <c>blocked</c> channel. Tuple <c>[x, y, deck, order, reason]</c>,

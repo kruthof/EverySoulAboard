@@ -1204,9 +1204,14 @@ body.moss-open #roomzoom-view{display:none !important}
    to the bare `.rz-key-sw` box and its row still reads: the wording is the payload, the swatch is the
    colour cue. #c25a3f is STATUS.bad (theme/warm-tokens.js §2.5) — the FAULT colour, deliberately not
    the queue-amber the zone key's back-off swatch uses. */
-.rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable{
+.rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable,
+.rz-key-sw-blocked-unreachable{
   background:rgba(10,13,20,.82);border:1px solid #c25a3f}
 .rz-key-sw-blocked-no_approach{background:repeating-linear-gradient(45deg,#c25a3f 0 1.5px,transparent 1.5px 4px)}
+/* `unreachable` is a DOTTED edge, not a hatch: it is the reason that says the route is the problem,
+   and a broken line reads as a broken route. It must stay distinguishable from no_approach's hatch
+   at swatch size — the two are adjacent in meaning and would otherwise be one smear. */
+.rz-key-sw-blocked-unreachable{border-style:dotted;border-width:2px}
 .rz-pulse{position:absolute;inset:6px;pointer-events:none}
 .rz-pulse-tile{position:absolute;box-sizing:border-box;border:2px solid #f2b563;border-radius:3px;
   animation:rzPulse .16s ease-out forwards;pointer-events:none}

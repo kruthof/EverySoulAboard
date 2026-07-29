@@ -34,6 +34,7 @@ import {
   BLOCKED_ORDER_NAMES, BLOCKED_REASON_NAMES, BLOCKED_REASON_TEXT,
   BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
+  BLOCKED_REASON_UNREACHABLE,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
 import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
@@ -87,10 +88,11 @@ test('the order and reason vocabularies are pinned EQUAL to the host constants',
   assert.equal(constOf('ReasonAir'), BLOCKED_REASON_AIR);
   assert.equal(constOf('ReasonNoApproach'), BLOCKED_REASON_NO_APPROACH);
   assert.equal(constOf('ReasonNoConsumable'), BLOCKED_REASON_NO_CONSUMABLE);
+  assert.equal(constOf('ReasonUnreachable'), BLOCKED_REASON_UNREACHABLE);
 
   // The NAME tables are indexed BY the wire value, so a hole or a reorder mis-labels every badge.
   assert.deepEqual(BLOCKED_ORDER_NAMES, ['dig', 'strip', 'build']);
-  assert.deepEqual(BLOCKED_REASON_NAMES, ['air', 'no_approach', 'no_consumable']);
+  assert.deepEqual(BLOCKED_REASON_NAMES, ['air', 'no_approach', 'no_consumable', 'unreachable']);
   for (const name of BLOCKED_REASON_NAMES) {
     assert.ok(BLOCKED_REASON_TEXT[name], `reason '${name}' has no player-facing sentence — a badge `
       + 'with no words is the silence this channel exists to remove, wearing a new costume');
@@ -427,6 +429,47 @@ test('DRIVEN: the badge follows the REASON, not merely the presence of a row', (
   assert.ok(!after.includes('rz-blocked-air'), 'the first reason is still drawn — the fold latched');
   assert.ok(keyBox().includes(BLOCKED_REASON_TEXT.no_approach),
     'the visible key kept the OLD wording, so the words and the badge now disagree');
+});
+
+// ⭐ THE NEW REASON, DRIVEN END TO END on this side of the seam. `unreachable` is the third
+// question the host now asks ("has any crew member managed to start work here?"), and it reaches the
+// player only if all four of the decode, the name table, the sentence table and the stylesheet agree.
+// The two assertions about WORDING are not decoration: the host's answer is `IsBackedOff`, which means
+// "a claim was attempted and failed", so a sentence that promised "this tile is unreachable" would be
+// a stronger claim than the sim ever makes — and one of its five carriers is about the MATERIAL, not
+// the tile.
+// MUTATION: remove 'unreachable' from BLOCKED_REASON_NAMES ⇒ red here (the badge class degrades to
+// bare `rz-blocked` and the key falls back to "REASON UNKNOWN TO THIS CLIENT") and red in the
+// vocabulary pin above. MUTATION 2: delete BLOCKED_REASON_TEXT.unreachable ⇒ red on the key.
+test('DRIVEN: an `unreachable` row draws its own badge and its own words', () => {
+  prime();
+  const t = [RECT.rx + 3, RECT.ry + 2];
+  driveBlocked([[t[0], t[1], RECT.deck, BLOCKED_ORDER_BUILD, BLOCKED_REASON_UNREACHABLE]]);
+
+  const svg = layers();
+  assert.ok(svg.includes('rz-blocked-unreachable'),
+    'a reason-3 row did not reach the drawn layer with its own class — the client cannot name the '
+    + 'reason the host is now able to give it');
+  assert.ok(!svg.includes('rz-blocked-no_approach'),
+    'reason 3 drew as no_approach: the two are adjacent in meaning and must not collapse');
+
+  const key = keyBox();
+  assert.ok(key.includes(BLOCKED_REASON_TEXT.unreachable), 'the visible key did not name the reason');
+  assert.ok(!key.includes('REASON UNKNOWN TO THIS CLIENT'),
+    'the client fell back to its unknown-reason wording for a reason it now ships');
+  assert.ok(/BUILD ORDERS? STUCK/.test(key), 'the key title lost the order kind');
+
+  // THE WORDING IS PART OF THE CONTRACT. `IsBackedOff` is "a claim was attempted and failed", and one
+  // of its carriers is BuildJobSource._matRetryAt — the crew could not reach the MATERIAL, not the
+  // tile. A sentence claiming the tile is unreachable would be a stronger claim than the sim makes.
+  assert.ok(!/UNREACHABLE/.test(BLOCKED_REASON_TEXT.unreachable),
+    'the player-facing sentence asserts UNREACHABLE, which is stronger than what the host can know');
+  assert.ok(/MATERIAL/.test(BLOCKED_REASON_TEXT.unreachable),
+    'the sentence does not cover the build-material carrier (`BuildJobSource._matRetryAt`), which '
+    + 'fires when the crew cannot reach the MATERIAL rather than the site. ⚠️ It is NOT the carrier '
+    + 'the 480 000-tick stall trips — an earlier draft of this message said so and '
+    + 'hosts/web/WireFormat.Blocked.cs retracts it in the same commit: when material IS reachable '
+    + 'the claim succeeds and the abandon path records no back-off at all.');
 });
 
 // The key box is shared with the zone legend and used to be hidden whenever there were no ZONES.

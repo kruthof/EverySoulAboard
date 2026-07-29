@@ -2269,31 +2269,174 @@ namespace Perilune.Web
         /// sub-reasons are absent is that asking is impossible for them and re-deriving is a second
         /// authority; see <c>WireFormat.Blocked.cs</c>'s header, omission (1).
         ///
-        /// <b>THE ONE THING IT DOES NOT DO IS THE PATHFIND</b>, and that is omission (2) in the same
-        /// header: a site whose approach tile is walkable and breathable but unreachable from every
-        /// crew member is reported here as NOT blocked, because the sim's own answer to that question
-        /// is private to the three job sources and computing it fresh is a whole-region sweep per
-        /// neighbour per crew per render. The rows this channel does emit are therefore a SUBSET of the
-        /// truly-refused sites, never a superset — it under-claims, which is the safe direction for a
-        /// surface whose entire purpose is to be believed.
+        /// <b>IT NOW ASKS A THIRD QUESTION, AND IT ASKS IT LAST.</b> What used to be omission (2) —
+        /// *"no crew can PATH here"* — is answered by <c>JobSystem.IsBackedOff</c>, the fan-out of
+        /// <c>IJobSource.IsBackedOff</c> over dig, strip, build-ready, build-material and haul. It is
+        /// still not a pathfind: the host never calls <c>FindPath</c>: it asks the job board what its
+        /// own recent attempts did, which is a <c>Dictionary.TryGetValue</c> per source. See
+        /// <see cref="WireFormat.ReasonUnreachable"/> for exactly how much weaker that answer is than
+        /// "unreachable", and for why it still under-claims (only sites somebody TRIED carry a stamp).
         ///
-        /// Pure, allocation-free, and inert on a stack with no <see cref="SafetySystem"/> —
+        /// <b>⚠️ THE ORDER OF THE THREE QUESTIONS IS BEHAVIOUR, NOT STYLE.</b>
+        /// <c>JobWork.TryPathToAdjacent</c> stamps its back-off for an AIR refusal exactly as it does
+        /// for a pathing one, so a site in bad air is very often backed off TOO. Asking the reach
+        /// question first would repaint every airless order with a reason that sends the player
+        /// looking for a route. Approach ▸ air ▸ reach, and the first that fires wins.
+        ///
+        /// The rows this channel emits are still a SUBSET of the truly-refused sites, never a
+        /// superset — it under-claims, which is the safe direction for a surface whose entire purpose
+        /// is to be believed.
+        ///
+        /// Allocation-free, and inert on a stack with no <see cref="SafetySystem"/> —
         /// <c>CanStageWorkerAt</c> short-circuits there, so the air reason simply never fires and only
         /// genuinely walled-in sites are reported. An honest "the rule is not running", not a
-        /// fabricated all-clear.
+        /// fabricated all-clear. Inert likewise on a stack with no <see cref="JobSystem"/>: the reach
+        /// question is simply never asked.
+        ///
+        /// ⚠️ NOT PURE ANY MORE, and that is the latch. This method WRITES <see cref="_latchNext"/>
+        /// while it reads <see cref="_latched"/> — host-side render scratch, not sim state — so it
+        /// must be called exactly once per site per render, from <see cref="AddIfBlocked"/>, inside
+        /// one <see cref="BuildBlocked"/> pass. See <see cref="_latched"/> for the whole scheme.
         /// </summary>
         private int BlockedReason(Int3 target)
         {
-            bool anyWalkable = false;
+            bool anyWalkable = false, anyStageable = false;
             for (int i = 0; i < 4; i++)
             {
                 var n = Int3.Neighbor4(target, i);
                 if (!_sim.World.InBounds(n)) continue;
                 if (!_sim.IsWalkable(n)) continue;
                 anyWalkable = true;
-                if (WorksiteSafety.CanStageWorkerAt(_sim, n)) return NotBlocked;
+                if (WorksiteSafety.CanStageWorkerAt(_sim, n)) { anyStageable = true; break; }
             }
-            return anyWalkable ? WireFormat.ReasonAir : WireFormat.ReasonNoApproach;
+
+            // ── question 3: has the job board itself failed to get anyone started here? ──
+            // Asked for EVERY site, including the airless ones, because the LATCH has to keep
+            // tracking a site while it is blocked for another reason — otherwise venting a
+            // compartment would clear a reach latch that nothing had actually fixed. What the air
+            // and approach questions win is the REPORTED REASON, not the bookkeeping.
+            bool reached = _latchNext.Contains(target); // already folded this render (two orders, one tile)
+            if (!reached)
+            {
+                var jobs = JobSystemOfStack();
+                bool live = jobs != null && jobs.IsBackedOff(target, _sim.TickCount, out _);
+                // A live stamp only STARTS a latch when nothing else is wrong with the site. A stamp
+                // taken while the compartment was airless says "the air was bad", not "the route was
+                // bad", and promoting it would let a vented room inherit a reach badge it never
+                // earned. An EXISTING latch is carried regardless — see _latched.
+                bool carry = _latched.Contains(target) && !CrewHoldsJobAt(target);
+                if ((live && anyStageable) || carry) { _latchNext.Add(target); reached = true; }
+            }
+
+            if (!anyWalkable) return WireFormat.ReasonNoApproach;
+            if (!anyStageable) return WireFormat.ReasonAir;
+            return reached ? WireFormat.ReasonUnreachable : NotBlocked;
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE REACH LATCH — the decision this package had to take, stated here where it lives.</b>
+        ///
+        /// <b>THE PROBLEM.</b> <c>JobWork.UnreachableRetryTicks</c> is 50 ticks — FIVE SECONDS — and
+        /// <c>HaulJobSource.ForgetBackoffsOnTileChange</c> wipes its whole map on any
+        /// <c>JobBoardDirty.Tiles</c> event. Re-stamping requires a citizen to attempt the claim
+        /// again, and a one-pawn crew on a 900 s Maintain service will not for 9 000 ticks. So the raw
+        /// <c>IsBackedOff</c> predicate says "nobody can get here" for five seconds and then goes
+        /// silent for a quarter of an hour with the door still shut. Shipping that would re-introduce
+        /// the invisible-feedback failure the <c>marks</c> channel exists to prevent, inside the
+        /// package built to remove it — *a designation the player cannot see is indistinguishable from
+        /// a broken verb.*
+        ///
+        /// <b>THE DECISION: LATCH IN THE HOST.</b> The package charter recommended latching in the
+        /// CLIENT. It is done here instead, for four reasons, and the first two are the ones that
+        /// decided it:
+        ///
+        /// <para>(1) <b>A CLIENT LATCH IS LOST ON RELOAD.</b> This channel's own doc says the payload
+        /// "can sit unchanged for hours"; <c>BlockedChannelTests</c> asserts it survives a reconnect
+        /// through <c>Snapshot()</c> precisely because of that. A latch held in a browser tab is
+        /// discarded by F5 and by every reconnect, so the player who reloads gets the fifteen-minute
+        /// silence back — the exact defect, re-introduced for anyone who refreshes.</para>
+        ///
+        /// <para>(2) <b>THE CLEAR CONDITION IS A FACT ONLY THIS SIDE HAS.</b> The charter's own rule
+        /// is "until the tile leaves the order registry entirely" — and the client cannot see the
+        /// order registries. It would have to JOIN <c>marks</c> (dig + strip) and <c>designs</c>
+        /// (build) to approximate it, which is the cross-channel join <c>WireFormat.Blocked.cs</c>
+        /// argues against by name when it explains why <c>order</c> rides the tuple at all. Making the
+        /// anti-drift channel depend on two other channels to know when to stop talking is the wrong
+        /// trade. Worse, absence is AMBIGUOUS to a client: "the stamp expired" and "somebody fixed it"
+        /// look identical on the wire. This side can clear on the true event instead — see (3).</para>
+        ///
+        /// <para>(3) <b>IT CAN CLEAR ON SUCCESS, NOT MERELY ON ABSENCE.</b> <c>TryClaim</c> removes a
+        /// site's stamp when a claim SUCCEEDS, and the same instant is visible here as a live citizen
+        /// holding a job on that tile (<see cref="CrewHoldsJobAt"/>). So the latched claim is the
+        /// honest one — *the last attempt failed and none has succeeded since* — and re-opening the
+        /// door really does clear the badge on its own, which is step 7 of the package's acceptance
+        /// demo.</para>
+        ///
+        /// <para>(4) It costs the same as the client option in the things that matter: <b>no
+        /// <c>sim/</c> behaviour change, nothing hashed, nothing saved, no def field, no tuning of
+        /// <c>UnreachableRetryTicks</c></b> (which would be a determinism-path change affecting the
+        /// dispatcher's cost on every ship). This is render scratch beside
+        /// <c>_blockedScratch</c>/<c>_haulSourceResolved</c>.</para>
+        ///
+        /// <b>THE SCHEME, AND WHY IT IS TWO SETS AND NOT A DICTIONARY WITH A TIMESTAMP.</b>
+        /// <see cref="_latched"/> is what was latched as of the previous render;
+        /// <see cref="_latchNext"/> is filled during the current one and the two are swapped at the
+        /// end of <see cref="BuildBlocked"/>. A site is carried forward only if it is visited again —
+        /// so a site that leaves its registry (dug out, un-designated, built, stripped) is pruned
+        /// automatically, with no sweep, no expiry heuristic and no unbounded growth. Neither set is
+        /// ever ENUMERATED: they are <c>Contains</c>/<c>Add</c> only, so no hash container's layout can
+        /// reach the socket and the emission order stays the three registry walks. (That is the
+        /// <c>IJobSource</c> rule-4 discipline, applied on this side of the wire for the same reason.)
+        ///
+        /// <b>⚠️ WHAT IT COSTS, STATED NOT BURIED.</b> A latched site keeps its badge while the crew
+        /// are busy elsewhere even if the obstruction has been cleared — nobody has reached it, which
+        /// is what the row says, but a player who opens the door and then watches an idle-less ship
+        /// will see the badge persist until somebody actually takes the job. That is the deliberate
+        /// direction: this channel's failure mode must be "still complaining after the fix" rather
+        /// than "silent while broken". A second, smaller cost: two orders on one tile fold to one
+        /// latch entry (the <c>_latchNext.Contains</c> short-circuit above), which is consistent with
+        /// the client drawing one badge per tile.
+        /// </summary>
+        private System.Collections.Generic.HashSet<Int3> _latched = new System.Collections.Generic.HashSet<Int3>();
+        private System.Collections.Generic.HashSet<Int3> _latchNext = new System.Collections.Generic.HashSet<Int3>();
+
+        /// <summary>Is some live citizen currently holding a job whose target is <paramref name="p"/>?
+        /// The observable consequence of <c>IJobSource.TryClaim</c> having SUCCEEDED there, which is
+        /// the event that clears a reach latch. An indexed loop over the citizen entity store — the
+        /// declared scan order, no enumeration of a hash container — and <c>JobTarget</c> is the site
+        /// for every kind this channel reports (dig, strip, build, and <c>HaulToBuild</c>, which
+        /// stores the SITE as its target from the outset even while the citizen walks to the
+        /// material). Kind is deliberately NOT filtered: a citizen standing on this tile for any
+        /// reason at all still means somebody got here.</summary>
+        private bool CrewHoldsJobAt(Int3 p)
+        {
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead || c.JobKind == JobKind.None) continue;
+                var t = c.JobTarget;
+                if (t.X == p.X && t.Y == p.Y && t.Z == p.Z) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The live <see cref="JobSystem"/> out of the running stack, resolved ONCE — the
+        /// <see cref="HaulSource"/> / <see cref="BuildSystemOfStack"/> precedent, and for the same
+        /// reason: a reader owns its own dependency rather than growing <see cref="Simulation"/> a
+        /// convenience accessor. Null when the stack registers no dispatcher, in which case the reach
+        /// question is never asked and no latch is ever started — an honest "we cannot know", not a
+        /// fabricated all-clear.</summary>
+        private JobSystem _jobSystem;
+        private bool _jobSystemResolved;
+        private JobSystem JobSystemOfStack()
+        {
+            if (_jobSystemResolved) return _jobSystem;
+            _jobSystemResolved = true;
+            var systems = _sim.Systems;
+            for (int i = 0; i < systems.Length; i++)
+                if (systems[i] is JobSystem js) { _jobSystem = js; return _jobSystem; }
+            return null;
         }
 
         /// <summary>Add one refused site to the scratch list, fog-gated and bounds-gated. Returns
@@ -2387,12 +2530,33 @@ namespace Perilune.Web
         ///
         /// The scratch list is reused, so a steady state allocates only the payload string.
         ///
-        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
+        /// ⚠️ <b>WHAT THE THIRD QUESTION ADDS TO THAT COST — DECLARED, AND NOT SEPARATELY MEASURED.</b>
+        /// Per EXPLORED order site: one <c>JobSystem.IsBackedOff</c>, which is one
+        /// <c>Dictionary.TryGetValue</c> per registered source (five probes today — dig, haul,
+        /// deconstruct, and build×2 inside one call) plus one <c>HashSet</c> probe of
+        /// <see cref="_latched"/>. Per LATCHED site only, one further O(crew) walk
+        /// (<see cref="CrewHoldsJobAt"/>, 8 on the standard ship). Nothing here walks the world, and
+        /// <b>the empty-ship cost is UNCHANGED</b> — a ship with no orders visits no sites, so the flat
+        /// flag-plane scan above is still the whole idle bill.
+        /// <b>No microsecond figure is quoted because none was taken.</b> This file's own history is
+        /// the reason: it carries a retracted "bimodal 25–56 µs", and two careful runs of the SAME
+        /// code disagreed by 2.4× on the same machine — with several lanes building concurrently the
+        /// night this landed, a number taken here would be worth less than the sentence saying it was
+        /// not taken.
+        ///
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed. ⚠️ The ONE piece of
+        /// mutable state this builder owns is the reach latch (<see cref="_latched"/>), which lives
+        /// entirely on this side of the wire, is never saved, never hashed and never restored — and is
+        /// folded exactly once per render, because <see cref="Render"/> calls this method exactly once.
         /// </summary>
         private readonly List<WireFormat.BlockedCell> _blockedScratch = new List<WireFormat.BlockedCell>();
         private List<WireFormat.BlockedCell> BuildBlocked()
         {
             _blockedScratch.Clear();
+            // The reach latch's mark half. `_latchNext` accumulates every site still worth latching
+            // as the three walks below visit it, and the two sets are swapped at the bottom — so a
+            // site that has left its registry is pruned by simply not being visited. See _latched.
+            _latchNext.Clear();
             var world = _sim.World;
             int w = world.Width;   // only to recover x,y from a flat index — see the dig walk below
 
@@ -2448,6 +2612,10 @@ namespace Perilune.Web
                 var sites = build.Pending;
                 for (int i = 0; i < sites.Count; i++) AddIfBlocked(sites[i].Pos, WireFormat.OrderBuild);
             }
+
+            // SWEEP: this render's marks become the latch. A plain reference swap, so the sets are
+            // reused for the life of the session and a steady state allocates only the payload string.
+            var swap = _latched; _latched = _latchNext; _latchNext = swap;
 
             return _blockedScratch;
         }

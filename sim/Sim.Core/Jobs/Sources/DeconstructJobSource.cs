@@ -49,6 +49,20 @@ namespace Perilune.Sim
         public JobKind[] HandledKinds => Kinds;
         public int CandidateCount => _sites.Count;
 
+        /// <summary>
+        /// <see cref="IJobSource.IsBackedOff"/> for the STRIP board. Keyed on the SITE — the condemned
+        /// wall or device, which is what <see cref="TryClaim"/> stamps. A <c>TryGetValue</c>, so
+        /// nothing is enumerated (rule 4). Mirrors <c>HaulJobSource.IsBackedOff</c> line for line —
+        /// see <c>DigJobSource.IsBackedOff</c> for why all four are one predicate written four times
+        /// and not four predicates.
+        /// </summary>
+        public bool IsBackedOff(Int3 pos, long tick, out long untilTick)
+        {
+            if (_retryAt.TryGetValue(pos, out untilTick) && tick < untilTick) return true;
+            untilTick = 0;
+            return false;
+        }
+
         /// <summary>Resolve the optional DeconstructSystem once. Must happen before any progress
         /// pass, not merely before a rescan: a citizen can be mid-job on a tick where nothing is
         /// dirty (the <see cref="BuildJobSource"/> precedent).</summary>

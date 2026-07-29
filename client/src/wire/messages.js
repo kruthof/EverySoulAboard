@@ -533,12 +533,19 @@ export const BLOCKED_ORDER_BUILD = 2;
 export const BLOCKED_REASON_AIR = 0;
 export const BLOCKED_REASON_NO_APPROACH = 1;
 export const BLOCKED_REASON_NO_CONSUMABLE = 2;
+/** `unreachable` — the job board itself has failed to get anybody started on this site. ⚠️ IT IS
+ *  WEAKER THAN ITS NAME. The host reads `JobSystem.IsBackedOff`, which means "a claim was attempted
+ *  here and it failed", not "the world is impassable" — and one of its five carriers
+ *  (`BuildJobSource._matRetryAt`) fires when the crew cannot reach the MATERIAL rather than the site.
+ *  It also UNDER-claims: a site nobody has tried yet carries no stamp at all. The sentence below is
+ *  worded to be true of every one of those cases; see `hosts/web/WireFormat.Blocked.cs`. */
+export const BLOCKED_REASON_UNREACHABLE = 3;
 
 /** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is. */
 export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build']);
 
 /** Wire reason → vocabulary name. Index IS the wire value; APPEND-ONLY. */
-export const BLOCKED_REASON_NAMES = Object.freeze(['air', 'no_approach', 'no_consumable']);
+export const BLOCKED_REASON_NAMES = Object.freeze(['air', 'no_approach', 'no_consumable', 'unreachable']);
 
 /** Reason → the SHORT sentence a surface shows the player. Deliberately phrased as what is wrong
  *  with the WORLD, not as what the dispatcher did: "the crew cannot breathe where they would have to
@@ -549,6 +556,11 @@ export const BLOCKED_REASON_TEXT = Object.freeze({
   air: 'NO BREATHABLE AIR WHERE THE CREW MUST STAND',
   no_approach: 'NO WAY TO STAND NEXT TO IT',
   no_consumable: 'NO PARTS OR SEALS ABOARD',
+  // ⚠️ SAYS THE WEAKER, TRUE THING. The host's answer is "the last attempt failed", not "this tile
+  // is unreachable" — so the sentence is about the CREW's record, not about the world's geometry.
+  // "OR THE MATERIAL FOR IT" is not padding: `BuildJobSource._matRetryAt` is one of the five
+  // carriers and it fires on sites whose own approach is perfectly fine.
+  unreachable: 'NO CREW HAS REACHED IT, OR THE MATERIAL FOR IT',
 });
 
 /** The vocabulary name for a wire order, or '' when this client has never heard of it. PURE. */
