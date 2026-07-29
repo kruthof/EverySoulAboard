@@ -2772,17 +2772,49 @@ natural player order on the wreck — *allocate → paint → wonder why nothing
 the order in which the channel is silent. Not fixed; the fix is a decision about which side moves
 (gate `designs`, or ungate `blocked`), and both are fog-of-war changes.
 
-**c. THE PREMISE'S OPENING MOVE IS STILL UNREACHABLE — `vent_ls` is never explored.** The vent
-authored *inside* wreck `hall_d0_s3` — the one the wreck start's fiction points the player at —
-reads `Explored = false` at tick 0, tick 600 **and tick 36 000 (a full sim-hour)**. It therefore
-never reaches the `devices` channel, gets no OPERATE chip, and is **honestly** refused by the
-host's own fog gate rather than dishonestly accepted. Its slot is also authored **unnamed**, so
+**c. ~~THE PREMISE'S OPENING MOVE IS STILL UNREACHABLE — `vent_ls` is never explored.~~ CLOSED
+2026-07-29 by M1-1 (OD-C).** *The struck text is kept because the mechanism it names is still the
+mechanism, and because it records what the owner decided between three options.*
+
+~~The vent authored *inside* wreck `hall_d0_s3` — the one the wreck start's fiction points the
+player at — reads `Explored = false` at tick 0, tick 600 **and tick 36 000 (a full sim-hour)**. It
+therefore never reaches the `devices` channel, gets no OPERATE chip, and is **honestly** refused by
+the host's own fog gate rather than dishonestly accepted. Its slot is also authored **unnamed**, so
 `roomTileRect` cannot resolve it and the Overview opens the ＋ADD ROOM picker there instead of a
-Room Zoom. ⇒ **The only operable vent a player can reach on `--ship wreck` today is
-`vent_cryo`.** `ExplorationSystem` is crew-vision only, and the wreck's premise *requires* acting
-on a compartment precisely because nobody can go in; how a vacuum compartment becomes KNOWN
-(sensor/MOSS reveal · line-of-sight through a door · authored-explored hull) is an owner decision
-with sim consequences.
+Room Zoom. ⇒ **The only operable vent a player can reach on `--ship wreck` today is `vent_cryo`.**~~
+
+**OD-C, taken:** *"the wreck's own interior — layout and machines — is authored-explored at boot.
+You woke up on your own ship; its hold is on file."* Sensor/MOSS reveal was ⛔ **rejected** (it puts
+the premise's first action behind a repair the player may not be able to reach) and so was
+line-of-sight-through-doors (most work, still leaves sealed compartments unknowable).
+
+**As implemented, both halves, because the fog fix alone is not sufficient:**
+- `ShipPlan.InteriorKnownAtBoot` (`ShipPlan.cs`), applied in `ShipPlanBuilder.Build` — every
+  non-`Void` tile of every deck boots `Explored`. **`ExplorationSystem` and `FogReveal` are
+  UNTOUCHED**: the first is crew vision and could never have reached a compartment nobody can enter,
+  the second reveals what the crew can *reach*. All three only ever SET the bit, so they compose.
+  **The wreck is the only ship that opts in**, pinned by
+  `InteriorKnownAtBootTests.NoOtherAuthoredShip_OptsIn_AndTheirFogSurvivesTheBoot` with an inclusion
+  control that forces the flag on and requires the census to see it.
+- Wreck deck-0 slot **3 is now the named room `lifesupport`** (`RoomType.LifeSupport`), so
+  `roomTileRect` resolves it and the Overview opens a Room Zoom. **Its door is held SHUT** through the
+  new `SlotGridPlanner.SlotAssign.DoorOpen` override — `Carve` otherwise derives a typed slot's door
+  as OPEN, which would have joined the compartment to the pressurised spine and handed it 101 kPa
+  free, deleting the pressure loop `vent_ls` exists for. **The compartment is still airless and the
+  frontier has not moved.**
+
+**Measured in the running game** (`client/tools/operate-shot.mjs --tile 35,6`, real pointer clicks on
+the shipped DOM): deck-0 devices on the `devices` channel **38 → 49**; enterable deck-0 rooms
+**2 → 3**; `vent_ls @ 35,6` now reads `cond=38 oper=1 open=0` on the channel, its Room Zoom carries a
+`SHUT` chip, and a click toasts **`⇄ OPEN AIRVENT`** and flips the chip to `OPEN`.
+
+⚠️ **CONSEQUENCE, NOT A REGRESSION, AND WORTH STATING: deck 1's machines are now visible too**, on
+the deck that `W4b-DEAD-DECK` proves can never hold air. The owner's decision on that defect was
+*"ship it filed, visible in play"* — this makes it more visible, not less true.
+
+⚠️ **The remaining five deck-0 halls are visible but still not ENTERABLE**: their machines now draw,
+their slots still have no `anchorName`, and ＋ADD ROOM remains the path to naming them. Only slot 3
+was in M1-1's charter.
 
 **d. A BUILT DOOR STILL HAS NO REMOVAL VERB ON ANY SURFACE** (pre-existing, unchanged by these
 lanes, and now more visible because a door is finally a thing the player *touches*).
