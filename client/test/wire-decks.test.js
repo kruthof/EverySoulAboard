@@ -189,8 +189,11 @@ test('decksView is tolerant of null / garbage inputs', () => {
 // RoomType.None renders as a room labelled with its own internal anchor id. The grid ship's live
 // wreck is pressurised at boot (it is the compartment the crew are already digging), and in this
 // package's first draft it was RoomType.None — so the one standard play ship showed "hall_d1_s6" in
-// an UPPERCASE-label UI, and could never be commissioned out of it either (AddRoomCommand returns
-// early on TotalMoles > 0). Authoring it as a typed room is the fix; this is the tripwire.
+// an UPPERCASE-label UI. Authoring it as a typed room is the fix; this is the tripwire.
+// (⚠️ W4b retracted the parenthetical that used to end that sentence — "and could never be
+// commissioned out of it either, because AddRoomCommand returns early on TotalMoles > 0". Both
+// occupancy and the command's rejection predicate now read the ANCHOR's type rather than the room's
+// gas, so a slot is un-commissionable precisely because it is already typed.)
 
 const GRID_FIX = JSON.parse(
   readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),

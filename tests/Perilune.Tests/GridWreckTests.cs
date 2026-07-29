@@ -453,15 +453,24 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// THE PLAYABILITY PROOF for the two sealed wrecks: the player's own route works. ＋ADD ROOM
-        /// commissions a wrecked hall (opening its door and filling it with air), DIG designates the
-        /// rubble, and the crew clear it. Without this the sealed wrecks would be scenery and the
-        /// ClearAllDebris goal would be unreachable — the ship would LOOK playable and not be.
-        /// Mutation: leave a sealed wreck's door shut (skip the AddRoomCommand) and the same crew
-        /// clear nothing.
+        /// THE PLAYABILITY PROOF for the two sealed wrecks: the player's own route works. ⚠️ <b>W4b
+        /// REWROTE THAT ROUTE.</b> ＋ADD ROOM used to open the hall's door and fill it with air in the
+        /// same gesture; it now only NAMES the compartment (naming is free, air is earned). The route
+        /// is therefore: allocate, <b>OPEN THE DOOR</b>, wait while deck 1's spine vent pushes gas
+        /// through the doorway, then paint DIG and let the crew work. Without this the sealed wrecks
+        /// would be scenery and the ClearAllDebris goal would be unreachable — the ship would LOOK
+        /// playable and not be.
+        ///
+        /// The fill is not instantaneous and the worksite-safety rule refuses to stage a worker in
+        /// unbreathable air, so the wait is load-bearing, not padding: the compartment crosses 90 kPa
+        /// at ~1 543 ticks (≈2.6 sim-minutes, measured in <c>AddRoomCommandTests</c>; the 6 000 ticks
+        /// waited below is ~3.9× that, and it is the WRECKED slot 5 rather than the clear slot 3, so
+        /// the margin is deliberate). Mutation: drop the
+        /// <c>SetDoorStateCommand</c> and the same crew clear nothing — the ＋ADD ROOM call alone no
+        /// longer opens anything.
         /// </summary>
         [Test]
-        public void SealedWreck_IsPlayable_ViaAddRoomThenDig()
+        public void SealedWreck_IsPlayable_ViaAddRoomThenOpeningTheDoorThenDig()
         {
             const int sealedSlot = 5;
             var plan = AuthoredShips.PeriluneGrid();
@@ -473,12 +482,21 @@ namespace Perilune.Tests
                 if (s.Deck == WreckDeck && s.Index == sealedSlot) slot = s;
             var probe = new Int3(slot.X + slot.W / 2, slot.Y + slot.H / 2, slot.Deck);
 
-            // 1. ＋ADD ROOM — the Overview affordance. Opens the door and pressurises the compartment.
+            // 1a. ＋ADD ROOM — the Overview affordance. NAMES the compartment. Nothing else.
             sim.EnqueueCommand(new AddRoomCommand(slot.Deck, slot.Index, RoomType.Storage, probe, slot.Anchor));
             for (int i = 0; i < 20; i++) sim.Tick();
-            Assert.That(DoorOf(sim, WreckDeck, sealedSlot).IsOpen, Is.True, "＋ADD ROOM must open the hall's door");
+            Assert.That(DoorOf(sim, WreckDeck, sealedSlot).IsOpen, Is.False,
+                "W4b: ＋ADD ROOM must NOT open the hall's door any more");
+            Assert.That(sim.Rooms.RoomAt(sim.World, probe).TotalMoles, Is.EqualTo(0.0),
+                "W4b: ＋ADD ROOM must NOT conjure air any more");
+
+            // 1b. OPEN THE DOOR — the gesture W4b hands back to the player — and let the spine vent
+            //     fill the compartment through it. AIR IS EARNED.
+            sim.EnqueueCommand(new SetDoorStateCommand(DoorOf(sim, WreckDeck, sealedSlot).Id, open: true));
+            for (int i = 0; i < 6000; i++) sim.Tick();
+            Assert.That(DoorOf(sim, WreckDeck, sealedSlot).IsOpen, Is.True, "the door refused to open");
             Assert.That(sim.Rooms.RoomAt(sim.World, probe).PressureKPa, Is.GreaterThan(90.0),
-                "＋ADD ROOM must make the wrecked hall breathable");
+                "the opened compartment never filled — the crew cannot be staged in it at all");
 
             // 2. DIG — the player paints the rubble. The command refuses anything that is not debris,
             //    so this is also the proof the authored tiles are legal targets.
@@ -497,7 +515,7 @@ namespace Perilune.Tests
 
             // Counted INSIDE slot 5 only. A whole-ship count would be satisfied by the live wreck
             // (slot 6) the crew are already digging at boot, and this test would pass with the
-            // ＋ADD ROOM step deleted — measured, not hypothetical.
+            // door-opening step deleted — measured, not hypothetical.
             int before = DebrisIn(sim, sealedSlot).Count;
             Assert.That(before, Is.EqualTo(WreckTilesPerSlot), "the sealed slot's rubble is not where it was authored");
             // 40,000 ticks (~66 sim-minutes), not 15,000: the crew are ALSO clearing the live wreck
@@ -508,16 +526,18 @@ namespace Perilune.Tests
             for (int t = 0; t < 40000; t++) sim.Tick();
             int cleared = before - DebrisIn(sim, sealedSlot).Count;
             Assert.That(cleared, Is.GreaterThan(0),
-                "the crew never cleared a tile of the commissioned wreck — the player's route is scenery");
+                "the crew never cleared a tile of the opened wreck — the player's route is scenery");
         }
 
         /// <summary>
         /// THE WHOLE THING, END TO END: the authored goal is COMPLETABLE by the authored crew on the
-        /// authored ship, through the player's real route (＋ADD ROOM the two sealed wrecks, paint DIG
-        /// over all sixty tiles, let eight crew work). MEASURED at tick 55,191 — 1.53 sim-hours —
-        /// with the cap here set at ~2.7× that, wide enough not to be flaky and far short of "any
-        /// number passes". A goal the ship cannot reach would be worse than no goal at all, and
-        /// nothing short of running it proves the difference.
+        /// authored ship, through the player's real route (＋ADD ROOM the two sealed wrecks, OPEN
+        /// THEIR DOORS, wait for the spine vent to fill them, paint DIG over all sixty tiles, let
+        /// eight crew work). ⚠️ W4b inserted the door + fill steps: allocation no longer opens or
+        /// pressurises anything. Originally MEASURED at tick 55,191 — 1.53 sim-hours — and re-measured
+        /// on the W4b route (see the assertion's own note); the cap stays where it was, wide enough
+        /// not to be flaky and far short of "any number passes". A goal the ship cannot reach would be
+        /// worse than no goal at all, and nothing short of running it proves the difference.
         ///
         /// It also pins deck 1's atmosphere under the dig, which is the only place the deck-1 vent
         /// earns its place: every cleared tile is ~2.5 m³ of NEW volume in the same connected mass,
@@ -544,7 +564,10 @@ namespace Perilune.Tests
             double bootWorst = WorstCo2OnDeck(sim, WreckDeck);
             Assert.That(bootCo2, Is.EqualTo(500.0).Within(1.0), "a freshly pressurised room boots at 500 ppm CO2");
 
-            // 1. Commission the two sealed wrecks (＋ADD ROOM opens the door + fills the compartment).
+            // 1. Allocate the two sealed wrecks and OPEN THEIR DOORS. ⚠️ W4b: ＋ADD ROOM only names a
+            //    compartment now — the door and the air are two separate, earned things — so the
+            //    SetDoorStateCommand below is what actually makes these compartments enterable, and the
+            //    6 000-tick wait is what lets deck 1's spine vent fill them through the open doorways.
             foreach (var s in plan.SlotGrid)
             {
                 if (s.Deck != WreckDeck || s.Index == OpenSlot) continue;
@@ -553,8 +576,9 @@ namespace Perilune.Tests
                 if (!wrecked) continue;
                 var probe = new Int3(s.X + s.W / 2, s.Y + s.H / 2, s.Deck);
                 sim.EnqueueCommand(new AddRoomCommand(s.Deck, s.Index, RoomType.Storage, probe, s.Anchor));
+                sim.EnqueueCommand(new SetDoorStateCommand(DoorOf(sim, WreckDeck, s.Index).Id, open: true));
             }
-            for (int i = 0; i < 20; i++) sim.Tick();
+            for (int i = 0; i < 6000; i++) sim.Tick();
 
             // 2. Paint DIG over every remaining debris tile.
             foreach (var p in DebrisTiles(sim)) sim.EnqueueCommand(new DesignateDigCommand(p, true));

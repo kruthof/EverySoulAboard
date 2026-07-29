@@ -937,22 +937,26 @@ namespace Perilune.Gen
         /// on the standard play ship from tick 0 with no player input and no harness flag — the
         /// grid ship's analogue of the slice's opened door_aft + designated aft field.
         ///
-        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. An air-filled slot
-        /// reads OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws an occupied slot
+        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. A TYPED slot reads
+        /// OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws an occupied slot
         /// as a room — no ＋ADD ROOM chip, and a label of <c>roomLabel(roomType) || anchorName</c>
         /// (<c>client/src/ui/decks-model.js</c>, <c>deckSlotView</c>). Left as
         /// <c>RoomType.None</c> (this package's first draft) it therefore rendered as a room
-        /// LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an UPPERCASE-label UI, and
-        /// could never be commissioned out of that state either, because <c>AddRoomCommand</c>
-        /// returns early on <c>TotalMoles &gt; 0</c> (Commands.cs:483). A typed slot has a real
-        /// label, needs no commissioning, and boots its door OPEN by construction
+        /// LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an UPPERCASE-label UI. A typed
+        /// slot has a real label, needs no allocation, and boots its door OPEN by construction
         /// (<c>SlotGridPlanner.Carve</c>: <c>IsOpen = !empty</c>).
+        /// ⚠️ W4b RETRACTED THE SECOND HALF of that paragraph: it used to add *"and could never be
+        /// commissioned out of that state either, because AddRoomCommand returns early on
+        /// TotalMoles &gt; 0"*. Both clauses are now false — occupancy and the command's rejection
+        /// predicate BOTH read the anchor's type, not the room's gas, and the reason a typed slot
+        /// cannot be re-allocated is precisely that it is typed.
         ///
         /// The other two wrecks boot as every other empty hall does (RoomType.None, door closed,
-        /// airless, undesignated): they are the player's own work, reached either by ＋ADD ROOM
-        /// (which opens the door and fills the compartment) or by opening the door directly, and
-        /// then by painting DIG. The ClearAllDebris goal needs all three, so it cannot be completed
-        /// without the player using the verb.</summary>
+        /// airless, undesignated): they are the player's own work. ⚠️ W4b: ＋ADD ROOM only NAMES a
+        /// compartment now — it neither opens the door nor makes any air — so the route is allocate
+        /// (optional), OPEN THE DOOR, wait for deck 1's spine vent to fill the compartment through
+        /// it, then paint DIG. The ClearAllDebris goal needs all three wrecks, so it cannot be
+        /// completed without the player opening a door.</summary>
         public const int GridOpenWreckSlot = 6;
 
         /// <summary>The live wreck's anchor + type: the collapsed aft hold. <c>Storage</c> is
