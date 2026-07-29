@@ -32,6 +32,20 @@ class Node {
     this.parentNode = null;
   }
   get textContent() { return this.childNodes.map((c) => c.textContent).join(''); }
+  /** ⚠️ ADDED AT M1-F (2026-07-29) so `panels.js` — the crew DOSSIER — can be mounted in node at
+   *  all. `CitizenCard.render` does `head.appendChild(el('div','dsr-portrait')); head.firstChild
+   *  .appendChild(portrait)`, and without this getter the whole card died on `Cannot read properties
+   *  of undefined (reading 'appendChild')`. Same rule as `removeAttribute` below: if the harness
+   *  cannot model what the guard needs to see, fix the harness (CLAUDE.md trap 4's corollary).
+   *
+   *  ⚠️ IT IS ALSO A FIDELITY FIX WITH REACH BEYOND ITS PACKAGE, recorded because a silent one is
+   *  the thing this file's other comments were written about. `hud.js:731,733,770,772` each read
+   *  `if (layer.firstChild) layer.replaceChildren();`. With no getter, `firstChild` was `undefined`
+   *  on EVERY element, so all four clears were unreachable in node — always-falsy branches that a
+   *  mutation could not have reddened. They can now run. Measured inert on this tree (the full node
+   *  suite is green before and after), but "inert today" is a fact about a tree: a future guard that
+   *  drives those paths will now see the real behaviour instead of a stub's accident. */
+  get firstChild() { return this.childNodes[0] || null; }
 }
 
 class TextNode extends Node {
@@ -63,6 +77,17 @@ class Element extends Node {
   }
   get textContent() { return this.childNodes.map((c) => c.textContent).join(''); }
   appendChild(c) { c.parentNode = this; this.childNodes.push(c); return c; }
+  /** ParentNode.append — variadic, and it accepts BARE STRINGS as text, which `appendChild` does
+   *  not. Added at M1-F for the same reason as `firstChild`: `panels.js` builds the dossier's
+   *  section grid with `grid.append(needs, standing, …)`. Strings are wrapped rather than dropped,
+   *  because a stub that silently swallowed them would make every `assert` on the card's text
+   *  vacuous — the exact failure mode this file's other comments were written about. */
+  append(...cs) {
+    for (const c of cs) {
+      this.appendChild(typeof c === 'string' || typeof c === 'number'
+        ? new TextNode(this.ownerDocument, String(c)) : c);
+    }
+  }
   replaceChildren(...cs) {
     for (const c of this.childNodes) c.parentNode = null;
     this.childNodes = [];

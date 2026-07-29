@@ -1560,3 +1560,121 @@ test('the LEDGER island builds one row slot per MODEL row, not a hard-coded coun
     'EQUALITY, not a floor: a sixth row must be a deliberate edit here, because it is also a ' +
     'decision about how tall this island may grow over the LENS card beneath it');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// M1-F — THE CREW WATCH ROW DRAWS NO MORALE BAR, and the bar's absence is the feature.
+//
+// NO SYSTEM IN `sim/` EVER CHANGES `Citizen.Morale` — grepped, not inherited. ⚠️ MIND THE SCOPE:
+// `sim/` holds exactly four references (the `= 1f` initialiser at `Entities/Citizen.cs:34`, the hash
+// fold, the save write, the save read that restores that same 1f) and there are FOUR MORE outside
+// it, none of which move it either — ONE in `hosts/` (`GameSession.cs:1705`, the copy onto the
+// roster wire) and THREE in `tests/` (`StateHashHonestyTests.cs:176,234,645`, proving it is hashed).
+// EIGHT in total: 4 + 1 + 3. `hosts/web/WireFormat.cs:272` is NOT among them — it serialises
+// `RosterEntry.Morale`, the DTO copy, a different field. `dossier-honesty.test.js`'s header carries
+// the full census, the three ways this sentence has already been wrong, and why the quantifier
+// matters. The roster wire carries it, the CREW WATCH used to paint it as a
+// width-and-colour bar, and the player read a CONSTANT as a reading — on the first screen of the
+// game. ⚠️ NOT `ShipMetricsSnapshot.Morale`, which is real, computed from mean crew Mood, and
+// load-bearing in `DirectorSystem`. Different field, same word; do not unify them.
+//
+// TWO GUARDS, and neither is sufficient alone:
+//   • the ELEMENT CENSUS is EQUALITY-pinned, so re-adding a bar fails even if it is named something
+//     else — but a census over class names alone would be satisfied by a bar that draws no morale;
+//   • the RENDER PAIR drives the surface with morale CHANGED and requires the painted row to be
+//     byte-identical, then drives it with a REAL field changed and requires the row to move. The
+//     second half is what stops the first from being a bare negative that a dead renderer passes.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+// The dock's own name derivation, imported rather than re-spelled so the non-vacuity floor below
+// cannot quietly agree with a broken painter. (ESM imports are hoisted; this sits here because it
+// belongs to this section and nothing above needs it.)
+import { surnameOf } from '../src/ui/console-model.js';
+
+/** The crew rows the surface has actually built, in order. `_el.crewlist` is a memoised stand-in
+ *  and `reconcile` inserts into it, so its childNodes ARE the painted dock. */
+const ovCrewRows = () => ovRoot.querySelector('.ov-crewlist').childNodes.filter((n) => n.nodeType === 1);
+
+/** Dispatch a roster through the SHARED cache the Overview reads (`Hud.getRoster`) and repaint. */
+function ovRoster(crew) { Hud.renderRoster({ type: 'roster', crew }); }
+
+/** The two crew the guards below drive. Taken from the real grid capture so the fixture is the
+ *  ship, not a hand-built row; `morale` is overridden per-leg. */
+const M1F_CREW = FIX.roster.crew.slice(0, 2).map((e) => ({ ...e }));
+
+// ⚠️ The roster is a MODULE-LEVEL cache shared with every other leg in this file, and `renderRoster`
+// also repaints the console dock and the work marks. Clear it so no other leg inherits a hand-built
+// roster.
+//
+// ⚠️ TWO CORRECTIONS TO THE FIRST DRAFT OF THIS COMMENT, both measured (M1-F review, 2026-07-29):
+//   1. This is NOT scoped to the M1-F legs. `afterEach` at module top level is FILE-WIDE in
+//      `node:test` and runs after every test in this file, including the ~150 declared ABOVE it —
+//      declaration order does not scope it. Measured inert (1004/1004 with it in place, and the
+//      legs above pass identically), because every one of them either dispatches its own roster or
+//      never reads one. Stated rather than narrowed: a reader must not believe it is local.
+//   2. "or in a later file sharing the import" WAS FALSE and is deleted. `node --test` runs each
+//      test FILE IN ITS OWN PROCESS — measured directly: two files print different `process.pid`
+//      and a global set in the first reads `undefined` in the second. No module state crosses a
+//      file boundary, so no cleanup here can protect one. ⚠️ The `Hud.renderMarks(null)` afterEach
+//      at :796 carries the SAME false clause, from an earlier package; it is left for its owner
+//      rather than silently rewritten here, but it is equally wrong and equally harmless.
+afterEach(() => { if (typeof Hud !== 'undefined') Hud.renderRoster({ type: 'roster', crew: [] }); });
+
+/**
+ * Everything the row painter could have written, as one comparable value: the markup string the
+ * builder emitted, plus every memoised sub-node's class / text / style / hidden state, walked
+ * recursively. Deliberately NOT a list of the classes we expect — a renamed bar has to show up.
+ */
+function ovRowSnapshot(row) {
+  const walk = (n) => ({
+    tag: n.tagName, cls: n.className, text: n.textContent, hidden: !!n.hidden,
+    style: { ...n.style }, html: typeof n.innerHTML === 'string' ? n.innerHTML : '',
+    qs: Object.fromEntries(Array.from(n._qs || []).map(([k, v]) => [k, walk(v)])),
+  });
+  return JSON.stringify(walk(row));
+}
+
+test('M1-F: the CREW WATCH row markup census is EQUALITY-pinned and carries no morale bar', () => {
+  ovRoster(M1F_CREW);
+  const rows = ovCrewRows();
+  assert.equal(rows.length, 2, 'the dock did not build one row per roster entry — the census below ' +
+    'would then be measuring nothing');
+  const classes = [...new Set((rows[0].innerHTML.match(/class="([^"]+)"/g) || [])
+    .map((s) => s.slice(7, -1).trim()))].sort();
+  assert.deepEqual(classes, ['ov-bust', 'ov-crewcol', 'ov-crewname', 'ov-crewrole', 'ov-crewtask'],
+    'the CREW WATCH row\'s element census moved. It is pinned by EQUALITY, not by "no ov-morale", ' +
+    'because a bar re-added under any other name is the same lie: `Citizen.Morale` is a constant ' +
+    'the sim writes once and never again (M1-F). Adding a row element is a deliberate edit here.');
+  // …and the row is not empty chrome: the three text slots the dock exists for are populated.
+  assert.equal(rows[0].querySelector('.ov-crewname').textContent, surnameOf(M1F_CREW[0].name));
+  assert.ok(rows[0].querySelector('.ov-crewtask').textContent.length > 0);
+});
+
+test('M1-F: morale moves NOTHING on the CREW WATCH — and the same fixture proves the rig is live', () => {
+  // ── the negative half: two renders that differ ONLY in morale ──
+  ovRoster(M1F_CREW.map((e) => ({ ...e, morale: 0.05 })));
+  const low = ovCrewRows().map(ovRowSnapshot);
+  ovRoster(M1F_CREW.map((e) => ({ ...e, morale: 0.95 })));
+  const high = ovCrewRows().map(ovRowSnapshot);
+  assert.deepEqual(high, low,
+    'a morale change repainted the CREW WATCH. The field is a CONSTANT in the sim — anything on ' +
+    'screen that moves with it is painting a number the game does not compute (M1-F).');
+
+  // ── ⭐ THE PAIRED POSITIVE CONTROL, on the SAME fixture, in the SAME test ──
+  // Without this the assertion above is a BARE NEGATIVE: a crashed builder, an empty roster, a
+  // stubbed repaint and a genuinely morale-blind surface all satisfy it identically.
+  //
+  // ⚠️ THE CHARTER NAMED `Citizen.Hunger` FOR THIS LEG AND THAT FIELD CANNOT BE USED: hunger is not
+  // on the roster wire — `BuildRoster` (`hosts/web/GameSession.cs:1684`) emits cid/name/role/mood/
+  // task/portrait/morale/deck/x/y/traits and no need at all, and `grep -ri hunger client/src` is
+  // empty. `task` is the substitute because it is the CREW WATCH's own REAL field: the host's
+  // `TaskLabel(c)`, recomputed every tick from live sim state. Stated rather than routed around.
+  ovRoster(M1F_CREW.map((e) => ({ ...e, morale: 0.95, task: 'digging' })));
+  const moved = ovCrewRows().map(ovRowSnapshot);
+  assert.notDeepEqual(moved, high,
+    'THE INSTRUMENT IS DEAD. Changing a REAL roster field (`task`) repainted nothing, so the ' +
+    'morale assertion above proves nothing either — it is satisfied by a renderer that has ' +
+    'stopped drawing at all. Fix the harness before trusting the negative.');
+  assert.match(ovCrewRows()[0].querySelector('.ov-crewtask').textContent, /Dig/i,
+    'the positive control fired on SOMETHING, but not on the task line it names — read the ' +
+    'snapshot diff before believing this leg');
+});
