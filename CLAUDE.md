@@ -31,7 +31,18 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 
 **Read `docs/HANDOVER.md`'s top block, then `docs/design/perilune-roadmap-q3.plan.md` (the shape) and
 `docs/design/perilune-roadmap-q3.packages.md` (51 packages, merge order, pin chain).** Both were
-independently reviewed and both took a send-back. **Nothing is merged; `main` is unchanged.**
+independently reviewed and both took a send-back.
+
+**Gate on `main` after the M1-1 + M1-b merges: `./ci.sh` exit 0, 1294 dotnet + 973 node, twin hashes
+MATCH `02257f5bce961570`, ALL FIVE PINS HELD, and `git diff` to `Golden/`, `ci.sh` and `content/` is
+0 LINES across the whole run.** *(Measured by the integrator on the merged tree, not on a branch —
+**re-measure before quoting**.)*
+
+**What a player can do that they could not on 2026-07-28:** **see every wrecked machine on deck 0**,
+walk into LIFE SUPPORT, and **OPERATE `vent_ls` — the premise's opening move** (it was fogged
+forever; only `vent_cryo` was reachable) · and **read a first screen that is true** — the card led
+with TALK (stood down), named **zero** order verbs, and documented `B` as *"open their dossier"*
+when `B` arms BUILD.
 
 **The owner challenged how previous sessions prioritised.** The audit's verdict: agents did **not**
 invent an agenda — nearly every large programme was approved by name. **What agents chose was the
