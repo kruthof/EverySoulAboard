@@ -93,10 +93,15 @@ export const Cmd = {
   // ghosts an outcome; the item appears only when the sim confirms it in the next frame.
   place: (kind, x, y, deck) => ({ cmd: 'place', kind, x, y, deck }),
   remove: (x, y, deck) => ({ cmd: 'remove', x, y, deck }),
-  // Overview ＋ADD ROOM: commission an empty hall (deck + slot index) into a live typed room.
-  // roomType is the picker's lowercase type string (quarters/mess/medbay/…); the host validates
-  // it and the commission (must be a sealed, airless hall) at the tick boundary — the client never
-  // ghosts the outcome; the slot flips occupied+typed only when the next `decks` frame confirms it.
+  // Overview ＋ADD ROOM: ALLOCATE a compartment (deck + slot index) — give it a name and a room type.
+  // roomType is the picker's lowercase type string (quarters/mess/medbay/…); the host validates it and
+  // the allocation at the tick boundary — the client never ghosts the outcome; the slot flips
+  // occupied+typed only when the next `decks` frame confirms it.
+  // ⚠️ W4b: this comment used to say the target "must be a sealed, airless hall", and BOTH halves of
+  // that are now wrong. Airless is not required (a hall the player already filled through an open door
+  // is a perfectly legal target — that is the new loop), and the real gate is "no TYPED anchor already
+  // owns this room". NAMING IS FREE, AIR IS EARNED: allocating opens no door and makes no air.
+  // The authority is AddRoomCommand.Execute; this line is a hand-mirror of it and drifted once already.
   addRoom: (deck, slotIndex, roomType) => ({ cmd: 'addroom', deck, slot: slotIndex, type: roomType }),
   // P2.1 chronicle: request the chron message (also pushed on day rollover).
   chron: () => ({ type: 'chron' }),

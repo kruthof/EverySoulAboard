@@ -26,6 +26,25 @@ namespace Perilune.Tests
     /// of that: it is a state the OLD predicate accepted and the new one refuses, so it fails on the
     /// old code by construction rather than by inspection.</para>
     ///
+    /// <para><b>⛔ TWO OPEN DEFECTS THIS PACKAGE CREATED OR EXPOSED, filed and NOT fixed. Read them
+    /// before writing anything that depends on a freshly allocated compartment being usable.</b>
+    /// Full measurements in <c>docs/HANDOVER.md</c> ("NEW, OPEN ON THE OWNER" items 4 and 5) and in
+    /// <c>docs/design/perilune-wreck-start.plan.md</c> under W4b.
+    /// <list type="number">
+    /// <item><b>"W4b-DEAD-DECK"</b> — on the SHIPPED DEFAULT SHIP <c>--ship wreck</c>, all eight
+    /// deck-1 compartments now have NO route to air: both authored <c>AirVent</c>s are on deck 0 and
+    /// gas transport is strictly in-plane, so allocating + opening the door leaves them at peak
+    /// <c>0.000</c> kPa over 20 000 ticks. Before W4b, ＋ADD ROOM pressurised them instantly. The
+    /// door/vent verb lane does not help — there is no vent up there. <b>OWNER DECISION</b>; not fixed
+    /// here because the fix is content.</item>
+    /// <item><b>"W4b-BLOCKED-FOG"</b> — the <c>blocked</c> channel is fog-gated
+    /// (<c>GameSession.AddIfBlocked</c>), and a freshly allocated compartment has never been entered,
+    /// so <b>the channel is silent in exactly the situation this package makes normal</b>. A build
+    /// ghost still draws (<c>designs</c> is not fog-gated) with no reason beside it; a dig/strip mark
+    /// does not draw at all. ⚠️ <b>Do not write "W4's blocked channel already covers the silent
+    /// worksite refusal for an allocated room" — it does not.</b></item>
+    /// </list></para>
+    ///
     /// <para><b>GATES N/A, stated so a reviewer does not score against them.</b> No def scalar, no new
     /// hashed field, no save-chapter change, no new <c>GlyphColor</c> id. The command's ONE
     /// surviving effect (a <see cref="RoomAnchor"/>'s <c>Type</c>) was hashed before and is hashed now.
@@ -274,10 +293,14 @@ namespace Perilune.Tests
         /// assertion is about the PREDICATE, and routing through a 40-minute breach would only add ways
         /// for the test to be about something else. The control below proves the state is real.
         /// MUTATION: delete the anchor loop ⇒ RED. Also, MEASURED: replace the anchor loop with
-        /// <c>if (room.TotalMoles &gt; 0) return;</c> (the retired predicate) ⇒ RED here AND on the
-        /// airless leg above, GREEN on the furnished one. Those two reds are the ONLY reds that
-        /// mutation produces in the whole file, which is what makes them the specification of what the
-        /// predicate change actually bought.
+        /// <c>if (room.TotalMoles &gt; 0) return;</c> (the retired predicate) ⇒ <b>THREE</b> reds —
+        /// here, the airless leg above, and
+        /// <see cref="Allocate_ToRoomTypeNone_CannotUnAllocateAnAlreadyAllocatedRoom"/> — and GREEN on
+        /// the furnished leg. Those three ARE the specification of what the predicate change bought.
+        /// ⚠️ An earlier version of this sentence said "two" and called them "the ONLY reds that
+        /// mutation produces in the whole file". The count was wrong (found in independent review, and
+        /// re-measured here), and "only" was the defect in it — a claim about what a mutation does NOT
+        /// touch is a claim about every other test in the file, and it had not been counted.
         /// </summary>
         [Test]
         public void Allocate_IsRejected_OnAFurnishedRoomThatHasBeenVented()
@@ -305,6 +328,101 @@ namespace Perilune.Tests
             Assert.That(TypeOfAnchor(sim, furnished.Anchor), Is.EqualTo(typeBefore),
                 "a FURNISHED room that happens to be in vacuum was re-typed — this is the exact hole the " +
                 "anchor predicate was written to close, and the retired gas predicate leaves it open");
+        }
+
+        /// <summary>
+        /// LEG 4 — <b>ROOM IDENTITY, the guard's decisive property, which nothing else here pinned.</b>
+        /// The predicate is *"does an anchor resolving to THIS ROOM carry a type"*, and the load-bearing
+        /// half of that is <c>RoomIdAt(anchor.Probe) == roomId</c> — a question about GEOMETRY, not about
+        /// names. Every other test in this file targets a compartment whose own anchor is the one being
+        /// re-typed, so all of them stay green if the loop is weakened to <c>anchor.Name == _anchorName</c>
+        /// (measured: mutation H, whole suite GREEN). That weakening is not academic — it re-opens
+        /// exactly the hole the class comment claims to close.
+        ///
+        /// <para>So: MERGE two compartments and allocate the one whose anchor is still untyped. Stripping
+        /// the shared bulkhead between grid deck-1 slot 2 (<c>engineering</c>, furnished and TYPED) and
+        /// slot 3 (an empty hall) makes one room carrying two anchors with DIFFERENT NAMES. Allocating
+        /// slot 3 must be refused, because the room it names is engineering's. Under the name-matching
+        /// mutation it is accepted, and a furnished, dressed engineering bay acquires a second, player-set
+        /// room type.</para>
+        ///
+        /// <para>The merge is driven through the real <see cref="SetTileCommand"/> — the same primitive the
+        /// build/strip verbs lower to — and asserted (room count falls, both probes resolve to ONE id)
+        /// rather than assumed. NON-VACUITY: the control at the end allocates the SAME slot on an
+        /// UNMERGED ship and requires it to SUCCEED, so "refused" cannot be something the fixture does
+        /// to slot 3 generally.</para>
+        ///
+        /// MUTATION H: <c>rooms.RoomIdAt(sim.World, anchors[i].Probe) == roomId</c> →
+        /// <c>anchors[i].Name == _anchorName</c> ⇒ RED here and GREEN everywhere else in the suite.
+        /// </summary>
+        [Test]
+        public void Allocate_IsRejected_WhenADIFFERENTLY_NAMED_TypedAnchorOwnsTheMergedRoom()
+        {
+            var plan = AuthoredShips.PeriluneGrid();
+            const int deck = 1, typedSlot = 2, hallSlot = 3;
+
+            SlotDescriptor typed = default, hall = default;
+            foreach (var s in plan.SlotGrid)
+            {
+                if (s.Deck != deck) continue;
+                if (s.Index == typedSlot) typed = s;
+                if (s.Index == hallSlot) hall = s;
+            }
+            Assert.That(typed.Anchor, Is.EqualTo("engineering"), "the fixture's typed neighbour moved");
+            Assert.That(hall.Type, Is.EqualTo(RoomType.None), "the fixture's hall moved");
+            Assert.That(hall.Anchor, Is.Not.EqualTo(typed.Anchor),
+                "the two anchors must have DIFFERENT NAMES or this test cannot distinguish the two predicates");
+
+            var sim = ShipPlanBuilder.Build(plan, Stack());
+            for (int i = 0; i < 20; i++) sim.Tick();
+
+            var typedProbe = ProbeOf(typed);
+            var hallProbe = ProbeOf(hall);
+            int roomsBefore = sim.Rooms.Rooms.Count;
+            Assert.That(sim.Rooms.RoomIdAt(sim.World, typedProbe),
+                Is.Not.EqualTo(sim.Rooms.RoomIdAt(sim.World, hallProbe)),
+                "the two compartments must start SEPARATE");
+
+            // Cut out the shared bulkhead column between the two interiors, tile by tile, through the
+            // real terrain command (which recomputes tile flags and marks the room graph dirty).
+            var left = SlotGridPlanner.InteriorRect(typedSlot);
+            var right = SlotGridPlanner.InteriorRect(hallSlot);
+            int wallX = left.X1 + 1;
+            Assert.That(wallX, Is.EqualTo(right.X0 - 1), "the two slots are not wall-adjacent");
+            for (int y = right.Y0; y <= right.Y1; y++)
+                sim.EnqueueCommand(new SetTileCommand(new Int3(wallX, y, deck), wall: TileDefs.Void));
+            for (int i = 0; i < 5; i++) sim.Tick();
+
+            Assert.That(sim.Rooms.Rooms.Count, Is.LessThan(roomsBefore),
+                "the bulkhead came out but no rooms merged — the premise of this test did not happen");
+            ushort merged = sim.Rooms.RoomIdAt(sim.World, hallProbe);
+            Assert.That(sim.Rooms.RoomIdAt(sim.World, typedProbe), Is.EqualTo(merged),
+                "the two compartments did not become ONE room");
+            Assert.That(TypeOfAnchor(sim, typed.Anchor), Is.EqualTo(RoomType.Engineering),
+                "engineering lost its type in the merge — the assertion below would then prove nothing");
+            Assert.That(TypeOfAnchor(sim, hall.Anchor), Is.EqualTo(RoomType.None),
+                "the hall's own anchor must still be untyped — that is what makes the name test pass and " +
+                "the identity test fail");
+
+            // THE ALLOCATION. Its anchor name is untyped; the ROOM it names is engineering's.
+            sim.EnqueueCommand(CommandFor(hall, RoomType.Storage));
+            sim.Tick();
+
+            Assert.That(TypeOfAnchor(sim, hall.Anchor), Is.EqualTo(RoomType.None),
+                "a compartment merged into a FURNISHED, TYPED room was allocated anyway. The guard is " +
+                "matching anchor NAMES instead of asking which room the anchor resolves to, so the " +
+                "engineering bay now carries a second, player-set room type.");
+            Assert.That(TypeOfAnchor(sim, typed.Anchor), Is.EqualTo(RoomType.Engineering),
+                "engineering was re-typed");
+
+            // NON-VACUITY CONTROL: the identical allocation on an UNMERGED ship must SUCCEED, so the
+            // refusal above is caused by the merge and not by anything else about slot 3.
+            var control = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
+            for (int i = 0; i < 20; i++) control.Tick();
+            control.EnqueueCommand(CommandFor(hall, RoomType.Storage));
+            control.Tick();
+            Assert.That(TypeOfAnchor(control, hall.Anchor), Is.EqualTo(RoomType.Storage),
+                "the control allocation failed, so 'refused' above says nothing about the merge");
         }
 
         /// <summary>
@@ -355,26 +473,37 @@ namespace Perilune.Tests
         /// might take twenty sim-minutes; it takes two and a half.</para>
         ///
         /// <para><b>AND ON THE SHIP THAT MATTERS — <c>--ship wreck</c>, measured the same way with a
-        /// throwaway probe, one fresh sim per slot:</b> every 60-tile deck-0 hall reaches 90 kPa at
-        /// tick <b>2 986–2 992 (≈299 s ≈ 5.0 sim-minutes)</b>, and the 40-tile slot 7 at tick 1 870
+        /// throwaway probe, one fresh sim per slot:</b> every 60-tile <b>deck-0</b> hall reaches 90 kPa
+        /// at tick <b>2 986–2 992 (≈299 s ≈ 5.0 sim-minutes)</b>, and the 40-tile slot 7 at tick 1 870
         /// (187 s). Slower than grid for two authored reasons, both intended: <c>vent_cryo</c> boots at
         /// <c>Condition 0.62</c>, so <c>Device.EffectiveRate</c> tapers it, and the wreck's pressurised
-        /// reservoir is THREE anchors (cryo bay, spine, reactor) against grid's thirteen. Five minutes
-        /// per compartment is the pacing answer the plan asked for, and it is nowhere near the twenty
-        /// that would have made this wave a problem. Not asserted here — this file's fixture is the
+        /// reservoir is THREE anchors (cryo bay, spine, reactor) against grid's thirteen. Nowhere near
+        /// the twenty minutes that would have made this wave a pacing problem. ⛔ <b>Deck 1 is a
+        /// different story entirely and it is an OPEN DEFECT — see
+        /// <c>docs/HANDOVER.md</c> "W4b-DEAD-DECK".</b> Not asserted here — this file's fixture is the
         /// grid ship, and a wreck assertion belongs beside the wreck's own authoring tests.</para>
         ///
-        /// <para><b>⚠️ The plan's revision-1 ARITHMETIC (≈208 s at <c>vent_mol_per_second = 30</c>) is
-        /// the WRONG MODEL, and it happens to land near the right answer for the wrong reason.</b> It
-        /// assumes a vent INSIDE the compartment injecting at full rate the whole way. There is no such
-        /// vent on any shipped ship (grid's <c>vent_spine_1</c> is in the corridor) and no player verb
-        /// that builds one — <c>PlaceDeviceCommand.IsPlaceableFurniture</c> excludes
-        /// <see cref="DeviceKind.AirVent"/>. What actually moves the gas is
-        /// <c>AtmosphereSystem.FlowAcrossDoor</c>: <c>flow_coefficient</c> (0.5) mol/(kPa·s) × Δp, which
-        /// at a 101 kPa head is ~50 mol/s — nearly 1.7× the vent's own 30 mol/s — decaying
-        /// exponentially as the pressures converge. So the compartment fills FASTER than 208 s early
-        /// and asymptotically at the end, and the vent's job is to keep the corridor topped up rather
-        /// than to fill the room.</para>
+        /// <para><b>⚠️ THE PLAN'S ≈208 s ARITHMETIC IS RIGHT, AND AN EARLIER VERSION OF THIS COMMENT
+        /// CALLED IT "THE WRONG MODEL". THAT RETRACTION IS THE IMPORTANT PART OF THIS PARAGRAPH.</b>
+        /// The claim was that the plan assumes a vent INSIDE the compartment and that no shipped ship
+        /// has one. <b>The wreck has one:</b> <c>vent_ls</c> (<c>AuthoredShips.cs</c>, the
+        /// <c>hall_d0_s3</c> block) is a <see cref="DeviceKind.AirVent"/> authored INSIDE that
+        /// compartment, closed and at <c>Condition 0.15</c>, and its own authoring comment says the
+        /// player's first act there is to open it. Driven — repaired, powered, opened, <b>with the
+        /// compartment's door SHUT</b> — that 60-tile room reaches 90 kPa at tick 1 846 and 101 kPa at
+        /// tick <b>2 072 = 207.2 s</b>. The plan's figure is accurate to under half a percent, and the
+        /// vent verb is exactly the right affordance for it. I reached the opposite conclusion by
+        /// checking which ship I had a fixture for instead of grepping the authoring for
+        /// <c>AirVent</c>.</para>
+        ///
+        /// <para>What survives of that paragraph, because it is separately true: no player verb BUILDS
+        /// a vent — <c>PlaceDeviceCommand.IsPlaceableFurniture</c> excludes
+        /// <see cref="DeviceKind.AirVent"/> — so an in-compartment vent is something a ship is AUTHORED
+        /// with, never something the player adds. And the number measured by the test below is a
+        /// DIFFERENT mechanism with its own arithmetic: no vent in the room, so the gas arrives through
+        /// the doorway by <c>AtmosphereSystem.FlowAcrossDoor</c> at <c>flow_coefficient</c> (0.5)
+        /// mol/(kPa·s) × Δp — ~50 mol/s at a 101 kPa head, decaying as the pressures converge. Both
+        /// routes exist, the plan modelled the first, and this test measures the second.</para>
         ///
         /// The band below is deliberately wide (~0.5×–2.6× the measurement) — this is a PACING check,
         /// not a golden. NON-VACUITY / negative control: the paired test below leaves the door shut and
