@@ -6,7 +6,8 @@
 // `scrollbar-width:none` and a `::-webkit-scrollbar{display:none}` rule, so below roughly 1250px of
 // viewport the last tools — STOCKPILE, STRIP, DEMOLISH — were scrolled off the right edge with no
 // scrollbar, no fade and no arrow to say they were there. The DOM is byte-identical in the working
-// and the broken case: fifteen buttons, all present, all focusable, three of them not on the screen.
+// and the broken case: fifteen buttons — the palette wore fifteen tools on the day of the bug; it
+// wears SEVENTEEN today — all present, all focusable, three of them not on the screen.
 // **Node cannot see that.** There is no jsdom here and a stub DOM has no layout engine, so no
 // assertion in this file could distinguish a palette that works from one that hides a third of the
 // game's verbs. `client/tools/palette-shot.mjs` is the instrument that can — real Chrome, real
