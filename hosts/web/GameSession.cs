@@ -1270,7 +1270,7 @@ namespace Perilune.Web
             // `Device.Condition` has never reached the client in any form; the projection's only trace
             // of it is a `GlyphColor.Broken` fg byte neither standard surface reads, and that byte is
             // one bit rather than a gradient. See hosts/web/WireFormat.Devices.cs.
-            Send("devices", WireFormat.Devices(BuildDevices()), force);
+            SendDevices(force);
             // WHY AN ORDER IS DOING NOTHING (`blocked`). `WorksiteSafety.CanStageWorkerAt` refuses to
             // park a worker in air that would pull it off the job, and its own header records that this
             // took the failure from expensive-and-visible to CHEAP-AND-INVISIBLE: a designation painted
@@ -1306,6 +1306,83 @@ namespace Perilune.Web
             if (_simThreadCaptured) return;
             _simThreadCaptured = true;
             _conv.CaptureSimThread();
+        }
+
+        /// <summary>
+        /// THE <c>devices</c> CHANNEL'S DIRTY-VERSION GATE — the delta scheme
+        /// <c>hosts/web/WireFormat.Devices.cs</c> made a WRITTEN CONDITION of that channel's merge,
+        /// landing in the same package as the art that first draws it (W0b), exactly as its header
+        /// required.
+        ///
+        /// WHAT IT SAVES, AND WHAT IT DOES NOT. <see cref="Send"/> already dedupes by whole-payload
+        /// string equality, so an unchanged channel never reached the SOCKET — but the payload was
+        /// still BUILT AND SERIALIZED ten times a second to discover that, and independent review
+        /// measured two-thirds of the channel's cost in the serialization rather than the build
+        /// (~10.7 µs of a ~29.4 µs total on <c>--ship grid</c>). This gate skips the serialization
+        /// when the cells are byte-for-byte what they were last time. The BUILD still runs, and that
+        /// is the honest limit of the scheme: there is no sim-side version counter on
+        /// <see cref="Device.Condition"/> to consult, and adding one is a sim change that would move
+        /// hashed state for a rendering concern.
+        ///
+        /// ⇒ WHY THE CACHE KEY IS SUFFICIENT, WHICH IS THE QUESTION A CACHE HAS TO ANSWER.
+        /// The key is THE ENTIRE CELL LIST, compared element-wise across all six fields, and
+        /// <see cref="WireFormat.Devices"/> is a pure function of that list. So "the skip was taken"
+        /// and "the payload would have been byte-identical" are the SAME STATEMENT — not a heuristic
+        /// that happens to hold. A device that moves, is placed, or is stripped changes the list even
+        /// at equal condition, because position, kind and COUNT are all part of the comparison.
+        /// (The tempting cheap key — condition alone, or a count — is exactly what would not be
+        /// sufficient, and <c>DevicesDeltaTests</c> plants each of those and requires it to be caught.)
+        ///
+        /// ⚠️ A COUNT OF SKIPPED BYTES IS NOT A SPEED-UP (the <c>HasIceChain</c> lesson: 91.7 M slots
+        /// per sim-day became 1 250 and was worth ~1 %, not separated from noise). The measurement and
+        /// its honest verdict live in the package report and in <c>DevicesDeltaTests</c>'s header; what
+        /// is asserted in code is CORRECTNESS, and the saving is stated as measured rather than
+        /// implied by the mechanism.
+        ///
+        /// FORCE ALWAYS RE-EMITS. A forced render is the prime for a newly-connected client and the
+        /// resync path a delta scheme needs; it existed already and needed no invention. The gate is
+        /// never consulted when <paramref name="force"/> is set, so a reconnecting tab cannot be
+        /// caught out by a cache that agrees with itself.
+        /// </summary>
+        private readonly List<WireFormat.DeviceCell> _devicesSent = new List<WireFormat.DeviceCell>();
+        private bool _devicesSentPrimed;
+
+        /// <summary>
+        /// HOW MANY TIMES THE <c>devices</c> PAYLOAD HAS BEEN SERIALIZED — a TEST SEAM, and it exists
+        /// because without it the gate is UNOBSERVABLE FROM OUTSIDE. <see cref="Send"/> already
+        /// suppressed the broadcast of an unchanged payload, so deleting the whole gate changes not
+        /// one byte of behaviour on the socket, in <see cref="Snapshot"/>, or in any sink a test can
+        /// read: every behavioural assertion in <c>DevicesChannelTests</c> stays green with the
+        /// optimisation removed. A performance change that nothing can see is a performance change
+        /// nothing protects.
+        ///
+        /// <para>It is incremented on the line ADJACENT to the serialization it counts, which is as
+        /// close as a counter gets to being the thing itself. It is not read anywhere in the host.</para>
+        /// </summary>
+        internal int DevicesSerializedForTest { get; private set; }
+
+        private void SendDevices(bool force)
+        {
+            var cells = BuildDevices();
+            if (!force && _devicesSentPrimed && SameAsLastDevices(cells)) return;
+            DevicesSerializedForTest++;
+            Send("devices", WireFormat.Devices(cells), force);
+            _devicesSent.Clear();
+            _devicesSent.AddRange(cells);
+            _devicesSentPrimed = true;
+        }
+
+        /// <summary>Element-wise equality against the last EMITTED cell list. An explicit field
+        /// compare and not <c>ValueType.Equals</c>, which on a struct with no override falls back to
+        /// reflection and boxes — it would cost more per render than the serialization this gate
+        /// exists to avoid, which would be a fine way to make a channel slower while reporting a
+        /// saving.</summary>
+        private bool SameAsLastDevices(List<WireFormat.DeviceCell> cells)
+        {
+            if (_devicesSent.Count != cells.Count) return false;
+            for (int i = 0; i < cells.Count; i++)
+                if (!_devicesSent[i].SameAs(cells[i])) return false;
+            return true;
         }
 
         /// <summary>Cache the payload and broadcast it — but only when it changed (or on a
