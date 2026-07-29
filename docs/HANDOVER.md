@@ -8,15 +8,20 @@ is renamed). Tag `v2-talking-ship`.
 
 > **Design of record: `docs/design/perilune-wreck-start.plan.md`, ON `main`.** Read its **REVISION 4
 > correction box first** — the roster is EIGHT and several figures below it in that file are void.
-> **Gate on `main`: `./ci.sh` exit 0, 1197 dotnet + 905 node, twin hashes MATCH `43345ff0c9d62684`;
-> P1–P3 held, P4 → `df93cbd628644785`, P5 → `fc65c6682d5bee59`. RE-MEASURE BEFORE QUOTING.**
+> **Gate on `main`: `./ci.sh` exit 0, 1237 dotnet + 905 node, twin hashes MATCH `02257f5bce961570`;
+> ALL FIVE PINS MOVED with the wreck ship — see `CLAUDE.md`'s pin table. RE-MEASURE BEFORE QUOTING.**
 >
 > ### ⇒ IF YOU ARE A FRESH INSTANCE, THIS IS WHAT TO DO NEXT
 >
-> 1. **Check whether `lane/wreck-ship` has landed.** It was the only lane in flight at the end of
->    this run: `--ship wreck` + `DeviceKind.CryoPod`. If it is unmerged, **read its report, review it
->    independently, and merge it** — that is the next action, and it is the first thing the owner can
->    actually *see*. It will move **P4 and P5** (a new `Machines` row), so it needs a re-pin commit.
+> 1. ✅ **The wreck ship LANDED** (`df8aff4`) and **`./play.sh` opens it**. Nothing is in flight; the
+>    tree is clean. ⛔ **THE NEXT PACKAGE IS THE DOOR/VENT VERB, and it is the largest thing between
+>    this ship and a game.** The premise's opening move is *"open the vent, push the air outward"* —
+>    and **neither the Overview nor the Room Zoom can target a door or a vent.** The toggle exists
+>    only via `GameSession.ContextAction`, reached by `Cmd.click` from the **deprecated console's
+>    invisible inspection cursor** (a global `window` keydown that survives the Overview takeover).
+>    `KNOWN_GAPS_SEALED` is `['dig','stockpile','strip']` — door/vent toggling **was never in the
+>    census, so the console-retirement guard structurally cannot see it.** Pre-existing, but the
+>    wreck is the first ship that is *unplayable* without it.
 > 2. ~~**`./play.sh` still opens `--ship grid`, deliberately.**~~ ⛔ **SUPERSEDED BY AN OWNER
 >    DECISION, and the W8 gate is WITHDRAWN:** *"we decided to always ship the main version in
 >    play.sh"*. `hosts/web`'s player-facing default is **`ShipChoice.Wreck`** as of the wreck lane,

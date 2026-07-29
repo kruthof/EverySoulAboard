@@ -32,10 +32,26 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
 > **Read `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`) before touching
 > gameplay or economy work, and the `wreck-start-decided` memory before quoting any of it.**
 
-**Gate on `main`: `./ci.sh` exit 0, 1197 dotnet + 905 node, twin hashes MATCH `43345ff0c9d62684`,
-P1–P3 HELD, and P4/P5 MOVED** (see the pin table — two new def fields). *(1181 + 876 at the re-pin
-commit; the **`blocked` channel** merged after it, pin-neutral, taking the counts to 1197 + 905 —
-**re-measure before quoting either**.)* Five lanes, each
+> ## ⇒ `./play.sh` NOW OPENS `--ship wreck`. THE GAME IS THE WRECK.
+> Owner decision, binding: *"we decided to always ship the main version in play.sh."* `--ship grid`
+> (the economy baseline), `--ship slice` (the headless fixture) and `--ship perilune` (the goldens)
+> all still work **by flag and are unchanged**; `SimHost.Build`'s own default stays `Perilune`. The
+> web host's default is now **pinned by `WebHostDefaultShipTests`** — it is a player-facing decision
+> and must not move silently again. ⚠️ **THE STANDARD SURFACE invariant is INTACT**: the wreck wears
+> the same Overview + Room Zoom; only the ship changed.
+>
+> **Known and unfixed on first launch, in order of size:** ⛔ **there is no door/vent verb on either
+> standard surface**, so the premise's opening move — open the vent, push the air outward — is not
+> expressible (it lives only on the deprecated console's invisible cursor, and `KNOWN_GAPS_SEALED`
+> never censused it, so the retirement guard structurally cannot see it) · the **pods do not open**
+> (no thaw; W5) · everything outside the core **freezes from ~day 5** because **the game has no
+> heater device** — a radiator only removes heat · and **generation is condition-blind**
+> (`PowerSystem.cs:174-185`), so *"repair a wing to run the benches"* is not expressible either.
+
+**Gate on `main`: `./ci.sh` exit 0, 1237 dotnet + 905 node, twin hashes MATCH `02257f5bce961570`,
+ALL FIVE PINS MOVED** (see the pin table — one real aliasing bug, one def change). *(1181 + 876 at
+the first re-pin; 1197 + 905 after the pin-neutral `blocked` channel; 1237 + 905 after the wreck —
+**re-measure before quoting any of them**.)* Six lanes, each
 Opus-implemented and **independently** Opus-reviewed, **every one taking a send-back**, every
 send-back verified by the integrator in the tree before merge. Counts are a **UNION, not a sum**:
 the branches read 1142 / 1140 / 1122 apiece.
@@ -900,11 +916,20 @@ object** (three objects would leave only the middle phase able to `stopPropagati
 
   | pin | value | enforced by |
   |---|---|---|
-  | scenario `--days 3 --seed 42` | `43345ff0c9d62684` | `ci.sh:31` (also twin-run equality) |
-  | tick-3000 golden | `5a7224821810b478` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
-  | slice tick-3000 golden | `7d846c14c5901e4d` | `Golden/slice_tick3000_hash.txt` |
-  | defs **defaults** (`SimDefs.Default.Checksum`) | `df93cbd628644785` | `DefsChecksumTests.cs:75` |
-  | defs **rules-inclusive** (the host's `defs:` print) | `fc65c6682d5bee59` | `DefsChecksumTests.cs:156` |
+  | scenario `--days 3 --seed 42` | `02257f5bce961570` | `ci.sh:31` (also twin-run equality) |
+  | tick-3000 golden | `326c68e00f2df496` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
+  | slice tick-3000 golden | `3fb1798a3a50cba0` | `Golden/slice_tick3000_hash.txt` |
+  | defs **defaults** (`SimDefs.Default.Checksum`) | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs:79` |
+  | defs **rules-inclusive** (the host's `defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs:169` |
+
+  **⚠️ ALL FIVE MOVED with the WRECK SHIP (2026-07-28) — the first time all five have moved at once
+  since E0-6/E0-7.** P1–P3: **`RoomType.Cryo = 16` hashed IDENTICALLY to `None`**, because
+  `Simulation.cs` folded `((ulong)Type << 60)` and `16 << 60` is **zero**.
+  `StateHashHonestyTests.cs:134` **predicted this in writing** — *"RoomType's 16 members fill exactly
+  — a 17th would fold onto None"* — and `Cryo` arrived as the 17th. `Type` now folds as its own
+  word, which also retires the `Probe.Z` overlap. P4/P5: `CryoPod maint 0.30 → 0`, plus the new
+  `Machines` row. **Do not read "all five moved" as alarming — read it as one real aliasing bug and
+  one def change, each measured.**
 
   **Last mover: THE WRECK START's recovery economy (2026-07-28) — P4 and P5 only.** Two def fields
   in one wave (`wear.wreck_threshold` + `wear.swarf_service_condition`, and `deconstruct.device_swarf`)
@@ -987,7 +1012,10 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   `PeriluneWeb`/`serve.py`). A busy port is named, not swallowed. Override with
   `./play.sh --host-port N --client-port N` (or `PERILUNE_HOST_PORT`/`PERILUNE_CLIENT_PORT`);
   `--no-open` skips the browser. **There is no ship to choose** — `hosts/web` defaults to
-  `--ship grid`, the one standard surface (Level-1 Overview + Level-2 Room Zoom).
+  **`--ship wreck`** (2026-07-28; *"we decided to always ship the main version in play.sh"*), worn by
+  the one standard surface (Level-1 Overview + Level-2 Room Zoom). Pinned by
+  `WebHostDefaultShipTests`. *(Was `--ship grid` until the wreck landed; **grid is now a fixture** —
+  the economy programme's comparison baseline — and is still reachable by flag, unchanged.)*
   The host's own page (:8323 by default, :8330 under play.sh) is the LEGACY skin — no dialogue UI.
 - **Test fixtures, not games** (they still work; never offer them to a player):
   `--ship slice` — the 8-crew economy measurement fixture, driven headless by `hosts/scenario`
