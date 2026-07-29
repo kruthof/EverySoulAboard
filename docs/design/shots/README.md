@@ -202,3 +202,54 @@ live host, not computed.
 **enter** is **zero**. The Level-2 case is reached by a player gesture: shutting a door, or building
 one. "8 in-rect doors, 3 closed" is a statement about *rect geometry*, which is what it was measured
 to refute; it is not a statement about what a player sees at Level 2 on a fresh save.
+
+---
+
+## M1-1 — the ship's interior is known at boot (OD-C), and slot 3 has a name
+
+Captured 2026-07-29 with `client/tools/operate-shot.mjs --tile 35,6` against a live
+`./play.sh --ship wreck` (real Chrome over CDP, real pointer clicks on the shipped DOM).
+`--tile` is new in this lane and exists precisely so the rig cannot photograph the EASY vent
+(`vent_cryo`, in the boot core) while the caption claims the hard one.
+
+⚠️ **THIS SET SUPERSEDES THE `wreck-*` SET'S `wreck-1-overview-deck0.png` CAPTION.** That caption
+says *"CRYO BAY and REACTOR lit and labelled; **six** sealed halls dark, each offering ＋ADD ROOM"*.
+It was true on the day it was written and **both halves are now false on the shipping ship**: deck 0
+shows **THREE** lit, labelled rooms (`CRYO BAY`, `LIFE SUPPORT`, `REACTOR`) and **FIVE** ＋ADD ROOM
+halls, and **the halls are no longer dark — their wrecked machinery draws.** The old paragraph is
+kept where it is, unedited, because it records what was true then; read it with this heading in
+mind, and read `m1-1-1-BEFORE-overview.png` as the picture it describes.
+
+| shot | what it shows |
+|---|---|
+| `m1-1-1-BEFORE-overview.png` | the defect: **six of eight deck-0 slots are blank ＋ADD ROOM boxes** while holding `fabricator_1`, `machineshop_1`, `recycler_1`, `scrubber_ls`, `reclaimer_ls` and `vent_ls`. The SENSOR LOG in the corner announces `light_d1_s0: MACHINE FAILURE` **by name, for a machine the player cannot see**. |
+| `m1-1-2-AFTER-overview.png` | the wrecked machinery draws in every hall, and slot A3 is now the room **LIFE SUPPORT** with a material floor instead of an ＋ADD ROOM chip |
+| `m1-1-3-AFTER-lifesupport-roomzoom.png` | the Room Zoom the Overview could not open before — entered with a real click on `.pl-room[data-anchor="lifesupport"]` |
+| `m1-1-4-AFTER-operate-armed-vent-SHUT.png` | OPERATE armed: **two** chips, the vent at (35,6) reading `SHUT` and the compartment door |
+| `m1-1-5-AFTER-toast-OPEN-AIRVENT.png` | the toast at the instant of the click: **`⇄ OPEN AIRVENT`** |
+| `m1-1-6-AFTER-vent-OPEN.png` | the chip has flipped to `OPEN` — ***the player has opened `vent_ls` in a running game*** |
+
+### What these pictures do NOT show
+
+- **The other five deck-0 halls are visible but still NOT ENTERABLE.** Their machines draw; their
+  slots still carry no `anchorName`, so ＋ADD ROOM remains the path to naming them. Only slot 3 was
+  chartered. A reader looking at `m1-1-2` should not conclude the whole deck became clickable.
+- **Deck 1 is not photographed**, and its machines are now visible too — on the deck
+  `W4b-DEAD-DECK` proves can never hold air.
+- **No air moves in these shots.** The vent is opened; the compartment filling is a separate
+  measurement (`AddRoomCommandTests`: 90 kPa at tick 1 846 with the door shut) and is not shown.
+- **The visual result of drawing machines inside an un-named hall has had no owner review.** It is
+  what OD-C asks for — *"all of them become visible"* — and it is an agent's rendering consequence,
+  not an art decision anyone signed off.
+- ⚠️ **AND THE BIGGEST ONE, WHICH `m1-1-2` SHOWS PLAINLY WHILE THIS LIST ORIGINALLY OMITTED IT:
+  `LIFE SUPPORT` NOW READS AS BREATHABLE.** On the Level-1 Overview it draws as a lit, warm-floored,
+  labelled room — *pixel-for-pixel like `CRYO BAY` and `REACTOR`, the two compartments that really
+  do hold air.* **The Overview has no vacuum indication at all outside the `2 PRES` lens**, so
+  nothing on the default view distinguishes the ship's one named-but-airless room from its two named
+  pressurised ones. On a ship whose core loop **is** a pressure frontier, the compartment this lane
+  promoted to a room now misreads as safe — and unlike an allocated hall (which the player chose to
+  create, having just been shown it is empty) **this is the player's FIRST impression of the ship.**
+  Filed as a **consequence for the owner to rule on, deliberately NOT patched in this lane**: the
+  candidate fixes (a vacuum tint on the default Overview, a pressure badge, or an `unpressurised`
+  room-chrome state) are all new visual vocabulary on the standard surface, which is an art decision
+  and not a test-fix.

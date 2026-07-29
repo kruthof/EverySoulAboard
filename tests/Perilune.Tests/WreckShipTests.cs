@@ -421,9 +421,13 @@ namespace Perilune.Tests
             // ForDevice knows only the rest glyph and GlyphMapper.DeviceGlyph is what a tile sees.
             // GenSimHost, not Boot(): `GlyphMapper.Project` gates on TileFlags.Explored (the fog
             // gate is the projection's first rule), and `FogReveal.RevealReachable` is a HOST boot
-            // step that `ShipPlanBuilder.Build` alone never runs. A bare-builder sim projects a
-            // buffer of spaces and every glyph assertion over it passes or fails for the wrong
-            // reason.
+            // step that `ShipPlanBuilder.Build` alone never runs.
+            // ⚠️ THAT JUSTIFICATION IS NOW STALE FOR *THIS* SHIP, and it is corrected rather than
+            // deleted because the rule it states is still the rule. Since M1-1 (OD-C) the wreck's
+            // plan sets `ShipPlan.InteriorKnownAtBoot`, which `ShipPlanBuilder.Build` itself applies,
+            // so a bare-builder wreck sim would now project fine — the reason to keep GenSimHost here
+            // is that it is the boot the HOSTS use, not that the alternative is broken. On any ship
+            // that does not opt in, the original justification is exactly as true as it ever was.
             var sim = GenSimHost.Build(AuthoredShips.PeriluneWreck()).Sim;
             var buffer = new GlyphBuffer(sim.World.Width, sim.World.Height);
             GlyphMapper.Project(sim, 0, Lens.None, null, buffer);
@@ -558,10 +562,21 @@ namespace Perilune.Tests
         [Test]
         public void EveryAirlessCompartment_BootsBehindAClosedDoor()
         {
-            // A typed slot boots its door OPEN (SlotGridPlanner: `IsOpen = !empty`), so a typed
-            // AIRLESS slot would vent the core through its own door at tick 0. This is the assertion
-            // that makes "the typed set and the pressurised set are the same set" a fact rather than
-            // a claim in a header.
+            // A typed slot boots its door OPEN by default (SlotGridPlanner: `IsOpen = !empty`), so a
+            // typed AIRLESS slot would vent the core through its own door at tick 0. This is the
+            // assertion that keeps that from happening.
+            // ⚠️ THE SHORTHAND IN THE OLD VERSION OF THIS COMMENT — "the typed set and the
+            // pressurised set are the same set" — WAS RETIRED BY M1-1 AND IS NO LONGER TRUE: the
+            // wreck's typed set is THREE (cryo, life support, reactor) and its pressurised set is
+            // still TWO, because `SlotAssign.DoorOpen` now separates NAMING a compartment from
+            // OPENING it. **The assertion below is unchanged and is the real protection** — it asks
+            // the stronger and still-true question, NO OPEN DOOR FACES VACUUM AT BOOT, which does not
+            // care how the door's state was decided. Only this comment needed the correction, and
+            // that the assertion still bites is MEASURED, not assumed: dropping `doorOpen: false`
+            // from the slot-3 authoring reddens THIS test on its own —
+            // "door_d0_s3 is OPEN onto vacuum at (38,6,0)", 1 failed / 0 passed, unmutated control
+            // GREEN — independently of the leg in `InteriorKnownAtBootTests` that names the same
+            // mutation.
             var sim = Boot();
             var offenders = new List<string>();
             var devices = sim.Devices.Items;

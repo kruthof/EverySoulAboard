@@ -36,6 +36,37 @@ namespace Perilune.Gen
         public readonly List<ScriptSpec> Scripts = new List<ScriptSpec>();
 
         /// <summary>
+        /// M1-1 / <b>OD-C (binding owner decision, 2026-07-28): THE SHIP'S OWN INTERIOR IS KNOWN AT
+        /// BOOT.</b> <i>"You woke up on your own ship; its hold is on file."</i> A plan that sets
+        /// this boots every tile of every one of its decks already <see cref="TileFlags.Explored"/>,
+        /// so the ship's own layout and machinery are on file from tick 0 — including compartments
+        /// no crew member can walk into, which on the wreck is most of them.
+        ///
+        /// <para><b>WHY THIS IS A PLAN FLAG AND NOT A CHANGE TO <see cref="ExplorationSystem"/>.</b>
+        /// That system is CREW VISION, and the wreck's premise is a sealed vacuum compartment
+        /// NOBODY CAN ENTER — no vision rule can ever reveal it, and relaxing the system would
+        /// delete fog for every ship at once. It is deliberately untouched: fog still ratchets
+        /// exactly as before, and a ship that leaves this flag <c>false</c> (grid, slice, perilune,
+        /// every procedural candidate) is bit-for-bit unaffected. <see cref="FogReveal"/>'s boot
+        /// seed is untouched too; it reveals what the crew can REACH, this states what the crew
+        /// already KNEW, and because both only ever OR the bit in they compose in either order.</para>
+        ///
+        /// <para><b>DETERMINISM.</b> <see cref="TileFlags.Explored"/> IS hashed and IS saved (the
+        /// TILE chapter), so this moves the StateHash of a ship that sets it — and of no other ship.
+        /// None of the five pinned runs boots a plan that sets it, so the flag is pin-neutral; that
+        /// is measured, not argued (see the lane report and <c>InteriorKnownAtBootTests</c>).</para>
+        ///
+        /// <para><b>SCOPE — every non-VOID tile of every deck, hull plating and debris included, not
+        /// just room interiors.</b> An interior known "except the bits that belong to no room" would
+        /// leave the hull and the collapsed sections drawn as fog, which is a picture of a ship with
+        /// holes in it rather than a ship whose hold is on file. VOID is skipped because
+        /// <see cref="ExplorationSystem"/> skips it — open space is never "explored" — and the two
+        /// writers of one flag must not disagree about what it means. Fog is not deleted by this: it
+        /// survives untouched on every ship that does not opt in.</para>
+        /// </summary>
+        public bool InteriorKnownAtBoot;
+
+        /// <summary>
         /// Ship's-log lines the plan boots with — written into <see cref="HistorySystem"/> at tick
         /// 0, so they are the first entries in the Chronicle the player opens. Empty on every ship
         /// that does not use them (Perilune/slice/grid), so this list is a no-op by construction.

@@ -17,6 +17,8 @@
 // USAGE
 //   1. ./play.sh --host-port 8362 --client-port 8363 --no-open
 //   2. node client/tools/operate-shot.mjs --out docs/design/shots [--host-port 8362] [--client-port 8363]
+//      [--tile X,Y]  pin the PRIMARY target to one tile (e.g. --tile 35,6 = the wreck's `vent_ls`,
+//                    the premise's own opening move) instead of taking the first vent listed.
 //
 // Exits non-zero if the host will not answer, if no operable device can be found inside a room the
 // Overview can enter, or if Chrome never paints — a green run with no pictures is the failure this
@@ -80,7 +82,28 @@ for (const d of operable)
   log(`  ${NAME[d.kind]} @ ${d.x},${d.y} in ${inRoom(d).anchor} — cond=${d.cond} oper=${d.oper} open=${d.open}`);
 if (!operable.length) { console.error('FAIL: no door or vent inside an enterable room on deck ' + DECK); process.exit(3); }
 
-const vent = operable.find((d) => d.kind === OPERABLE_KINDS.AirVent);
+// `--tile X,Y` pins the PRIMARY target to one specific tile instead of taking the first vent the
+// channel happens to list. It exists because "a vent is reachable" and "THE vent is reachable" are
+// different claims: on `--ship wreck` the first AirVent in device order is `vent_cryo`, in the boot
+// core, and the premise's opening move is `vent_ls` — a different compartment behind a shut door.
+// Without this the rig photographed the easy one and the report would have read as though it had
+// photographed the hard one. It REFUSES rather than falling back, because a silent fallback here is
+// exactly how a picture comes to be captioned with the wrong claim.
+const WANT = arg('tile', null);
+const wanted = WANT ? WANT.split(',').map(Number) : null;
+if (wanted) {
+  const hit = operable.find((d) => d.x === wanted[0] && d.y === wanted[1]);
+  if (!hit) {
+    console.error(`FAIL: --tile ${WANT} is not an operable device inside an enterable room on deck ${DECK}.`
+      + ' That is the finding, not a rig problem — the device is either fogged (so it never reached the'
+      + ' devices channel) or its compartment has no anchorName (so the Room Zoom cannot be opened on it).');
+    process.exit(4);
+  }
+  log('PRIMARY pinned by --tile to', NAME[hit.kind], `${hit.x},${hit.y}`, 'in', inRoom(hit).anchor);
+}
+const vent = wanted
+  ? operable.find((d) => d.x === wanted[0] && d.y === wanted[1] && d.kind === OPERABLE_KINDS.AirVent)
+  : operable.find((d) => d.kind === OPERABLE_KINDS.AirVent);
 const door = operable.find((d) => d.kind === OPERABLE_KINDS.Door);
 // The REFUSAL fixture: a device on the same surface that OPERATE must turn down. Preferred is a
 // door/vent the sim has given up on (`oper === 0`, the host's WRECKED advisory); if the shipped ship

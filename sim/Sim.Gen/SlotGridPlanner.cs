@@ -16,8 +16,9 @@ namespace Perilune.Gen
     /// compartment the player builds out), never raw void. Each slot gets a
     /// <see cref="RoomSpec"/> anchor at its centre and a <see cref="SlotDescriptor"/>
     /// entry; furnished slots (Type != None) boot with an OPEN door, empty halls with
-    /// a CLOSED door (unbuilt/airless until the player opens them). The spine gets its
-    /// own corridor anchor.
+    /// a CLOSED door (unbuilt/airless until the player opens them) — unless the slot
+    /// overrides it with <see cref="SlotAssign.DoorOpen"/>, which is how a compartment
+    /// gets to be NAMED and AIRLESS at once. The spine gets its own corridor anchor.
     ///
     /// Pure function of its inputs (no RNG, no Date) — same deck spec, same carve every
     /// run. The <see cref="SlotDescriptor"/>s it appends are authoring/view-only and
@@ -58,6 +59,27 @@ namespace Perilune.Gen
         {
             public RoomType Type;
             public string Anchor;
+
+            /// <summary>
+            /// M1-1 — the boot state of this slot's spine door, or <c>null</c> = "say nothing;
+            /// derive it from <see cref="Type"/> the way every slot always has" (typed ⇒ open,
+            /// empty hall ⇒ shut).
+            ///
+            /// <para><b>IT EXISTS FOR EXACTLY ONE COMBINATION THE DERIVED RULE CANNOT EXPRESS: a
+            /// compartment that is NAMED but AIRLESS.</b> The wreck's life-support bay is a room
+            /// the crew has always known about and cannot yet breathe in — it needs a name so the
+            /// Overview opens a Room Zoom on it instead of the ＋ADD ROOM picker, and it needs its
+            /// door SHUT so the pressure frontier stays where the ship's design puts it. Under the
+            /// derived rule those two are the same switch.</para>
+            ///
+            /// <para><b>Nullable and not <c>bool</c>, for the same reason as
+            /// <see cref="DeviceSpec.Condition"/>:</b> <c>SlotAssign</c> is a struct, so every
+            /// existing slot arrives as zeroed memory and a plain <c>bool</c> would read
+            /// <c>false</c> — sealing every typed room on every ship at boot. Every call site that
+            /// does not pass it leaves this <c>null</c> and emits a byte-identical
+            /// <see cref="DeviceSpec"/>, so grid and the procedural ships are untouched.</para>
+            /// </summary>
+            public bool? DoorOpen;
         }
 
         /// <summary>The interior tile rect (inclusive) of slot <paramref name="index"/>.</summary>
@@ -107,7 +129,9 @@ namespace Perilune.Gen
                     Kind = DeviceKind.Door,
                     Pos = new Int3(doorX, doorY, z),
                     Name = $"door_d{z}_s{i}",
-                    IsOpen = !empty,   // furnished slots open; empty halls sealed until built out
+                    // Furnished slots open; empty halls sealed until built out — unless the author
+                    // says otherwise (SlotAssign.DoorOpen: a NAMED but AIRLESS compartment).
+                    IsOpen = slot.DoorOpen ?? !empty,
                 });
 
                 plan.Rooms.Add(new RoomSpec

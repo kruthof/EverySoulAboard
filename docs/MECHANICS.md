@@ -2772,17 +2772,88 @@ natural player order on the wreck — *allocate → paint → wonder why nothing
 the order in which the channel is silent. Not fixed; the fix is a decision about which side moves
 (gate `designs`, or ungate `blocked`), and both are fog-of-war changes.
 
-**c. THE PREMISE'S OPENING MOVE IS STILL UNREACHABLE — `vent_ls` is never explored.** The vent
-authored *inside* wreck `hall_d0_s3` — the one the wreck start's fiction points the player at —
-reads `Explored = false` at tick 0, tick 600 **and tick 36 000 (a full sim-hour)**. It therefore
-never reaches the `devices` channel, gets no OPERATE chip, and is **honestly** refused by the
-host's own fog gate rather than dishonestly accepted. Its slot is also authored **unnamed**, so
+⚠️ **AMENDED 2026-07-29 — THE ASYMMETRY IS STILL REAL BUT IT IS NO LONGER REACHABLE ON THE SHIPPING
+SHIP.** The paragraph above is kept unedited because its mechanism is unchanged and it is still live
+on `--ship grid` / `slice` / `perilune`. What changed underneath it is **M1-1 (OD-C, item c below):
+`--ship wreck` now boots with `fogTiles = 0` of 1 620** — measured after a full `GenSimHost` boot,
+both ways in the same tree: flipping `InteriorKnownAtBoot` back to `false` gives **1 104** — so
+`AddIfBlocked`'s early return on unexplored — and `BuildMarks`' gate at `GameSession.cs:2053` — can
+no longer fire anywhere on that ship. **DRIVEN, not read off the code** (the wreck, real
+`AddRoomCommand` + real `DesignateBuildCommand`, payloads read off `GameSession.Snapshot()`):
+allocate deck-0 slot 1 `hall_d0_s1` ⇒ the room is airless (`0.000` kPa, `IsBreathable` false, i.e.
+＋ADD ROOM still conjures nothing); paint a wall at `(12,1,0)` ⇒ the tile reads `Explored = true`,
+`designs` carries `[[12,1,0,0,0,2,0]]` **and `blocked` carries `[[12,1,0,2,0]]` — order 2
+(`OrderBuild`), reason 0 (`ReasonAir`).** ⇒ **The ghost and its reason now draw together on the
+wreck.** This is the **eighth trap shape** in the small: item b was true of the tree it was written
+against and went stale the moment a sibling lane landed — *a statement about a TREE, which a merge
+changes.* `docs/HANDOVER.md`'s **W4b-BLOCKED-FOG** needs the same amendment.
+
+**c. ~~THE PREMISE'S OPENING MOVE IS STILL UNREACHABLE — `vent_ls` is never explored.~~ CLOSED
+2026-07-29 by M1-1 (OD-C).** *The struck text is kept because the mechanism it names is still the
+mechanism, and because it records what the owner decided between three options.*
+
+~~The vent authored *inside* wreck `hall_d0_s3` — the one the wreck start's fiction points the
+player at — reads `Explored = false` at tick 0, tick 600 **and tick 36 000 (a full sim-hour)**. It
+therefore never reaches the `devices` channel, gets no OPERATE chip, and is **honestly** refused by
+the host's own fog gate rather than dishonestly accepted. Its slot is also authored **unnamed**, so
 `roomTileRect` cannot resolve it and the Overview opens the ＋ADD ROOM picker there instead of a
-Room Zoom. ⇒ **The only operable vent a player can reach on `--ship wreck` today is
-`vent_cryo`.** `ExplorationSystem` is crew-vision only, and the wreck's premise *requires* acting
-on a compartment precisely because nobody can go in; how a vacuum compartment becomes KNOWN
-(sensor/MOSS reveal · line-of-sight through a door · authored-explored hull) is an owner decision
-with sim consequences.
+Room Zoom. ⇒ **The only operable vent a player can reach on `--ship wreck` today is `vent_cryo`.**~~
+
+**OD-C, taken:** *"the wreck's own interior — layout and machines — is authored-explored at boot.
+You woke up on your own ship; its hold is on file."* Sensor/MOSS reveal was ⛔ **rejected** (it puts
+the premise's first action behind a repair the player may not be able to reach) and so was
+line-of-sight-through-doors (most work, still leaves sealed compartments unknowable).
+
+**As implemented, both halves, because the fog fix alone is not sufficient:**
+- `ShipPlan.InteriorKnownAtBoot` (`ShipPlan.cs`), applied in `ShipPlanBuilder.Build` — every
+  non-`Void` tile of every deck boots `Explored`. **`ExplorationSystem` and `FogReveal` are
+  UNTOUCHED**: the first is crew vision and could never have reached a compartment nobody can enter,
+  the second reveals what the crew can *reach*. All three only ever SET the bit, so they compose.
+  **The wreck is the only ship that opts in**, pinned by
+  `InteriorKnownAtBootTests.NoOtherAuthoredShip_OptsIn_AndTheirFogSurvivesTheBoot` with an inclusion
+  control that forces the flag on and requires the census to see it.
+- Wreck deck-0 slot **3 is now the named room `lifesupport`** (`RoomType.LifeSupport`), so
+  `roomTileRect` resolves it and the Overview opens a Room Zoom. **Its door is held SHUT** through the
+  new `SlotGridPlanner.SlotAssign.DoorOpen` override — `Carve` otherwise derives a typed slot's door
+  as OPEN, and **the compartment would then have filled ITSELF, deleting the pressure loop `vent_ls`
+  exists for.** ⚠️ **The mechanism is DIFFUSION, not a room merge, and an earlier draft of this
+  bullet said "joined the compartment to the pressurised spine and handed it 101 kPa free" — wrong
+  in both the mechanism and the timing.** Rooms never merge across a door (`RoomState` marks the
+  door tile `DoorMarker`), so with the door open the **boot census is byte-identical**: slot 3 is
+  still its own 60-tile room holding **0.0 mol**, and `RoomState.Pressurize("wreck_spine_0")` cannot
+  reach it. What fills it is **B-3's `AtmosphereSystem.DiffuseAcrossDoors`** (§3), out of the spine
+  and the reactor bay. **Measured with the override dropped, driven, no player input:** `0.000` kPa
+  at tick 0 · `14.459` at 100 · `52.998` at 600 · **breathable at tick 1 450** (~2.4 sim-minutes;
+  ppO2 crosses `hypoxia_ppo2_kpa` = 16) · `90.042` at 3 000 · `101.302` at 20 000. The conclusion is
+  unchanged and slightly worse — the bay breathes itself open in under three sim-minutes — but *at
+  tick 0 the two trees agree to the mole*, which is why the guard asserts the **door**, with the gas
+  as a separate leg carrying its own separate mutation. **As shipped the compartment is still
+  airless and the frontier has not moved.**
+
+**Measured in the running game** (`client/tools/operate-shot.mjs --tile 35,6`, real pointer clicks on
+the shipped DOM): deck-0 devices on the `devices` channel **38 → 49**; enterable deck-0 rooms
+**2 → 3**; `vent_ls @ 35,6` now reads `cond=38 oper=1 open=0` on the channel, its Room Zoom carries a
+`SHUT` chip, and a click toasts **`⇄ OPEN AIRVENT`** and flips the chip to `OPEN`.
+
+⚠️ **UNDISCLOSED PLAYER-VISIBLE CONSEQUENCE, FILED FOR THE OWNER AND DELIBERATELY NOT PATCHED HERE:
+`LIFE SUPPORT` NOW READS AS BREATHABLE ON THE OVERVIEW.** Naming slot 3 makes it draw as a lit,
+warm-floored, labelled room — **pixel-for-pixel like `CRYO BAY` and `REACTOR`, the two compartments
+that really do hold air** (see `docs/design/shots/m1-1-2-AFTER-overview.png`). The Level-1 Overview
+carries **no vacuum indication at all outside the `2 PRES` lens**, so on the default view nothing
+distinguishes the ship's one named-but-airless room from its two named pressurised ones. On the ship
+whose core loop *is* a pressure frontier this is the wrong first impression, and unlike an allocated
+hall — which the player chose to create having just been shown it is empty — **it is the player's
+FIRST impression, not something they made.** Every candidate fix (a vacuum tint on the default
+Overview, a pressure badge, an `unpressurised` room-chrome state) is new visual vocabulary on the
+standard surface, i.e. an art decision. **Owner call, not an agent's.**
+
+⚠️ **CONSEQUENCE, NOT A REGRESSION, AND WORTH STATING: deck 1's machines are now visible too**, on
+the deck that `W4b-DEAD-DECK` proves can never hold air. The owner's decision on that defect was
+*"ship it filed, visible in play"* — this makes it more visible, not less true.
+
+⚠️ **The remaining five deck-0 halls are visible but still not ENTERABLE**: their machines now draw,
+their slots still have no `anchorName`, and ＋ADD ROOM remains the path to naming them. Only slot 3
+was in M1-1's charter.
 
 **d. A BUILT DOOR STILL HAS NO REMOVAL VERB ON ANY SURFACE** (pre-existing, unchanged by these
 lanes, and now more visible because a door is finally a thing the player *touches*).

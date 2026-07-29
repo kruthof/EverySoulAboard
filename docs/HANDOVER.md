@@ -154,7 +154,9 @@ is renamed). Tag `v2-talking-ship`.
 >   ways out (author a deck-1 vent · add a vertical gas term · accept the dead deck) are all the
 >   owner's. ⚠️ **Do NOT "fix" it by re-pressurising in `AddRoomCommand`** — that is the wand W4b
 >   deleted on a binding owner decision.
-> - **`designs`-vs-`blocked`** — `BuildDesigns` is **not** fog-gated but `blocked` **is**
+> - **`designs`-vs-`blocked`** *(⚠️ **CLOSED on `--ship wreck` by OD-C, 2026-07-29** — the wreck boots
+>   `fogTiles = 0`, driven: `designs` and `blocked` now appear together. **Still live on grid/slice/
+>   perilune.** See item 5 below.)* — `BuildDesigns` is **not** fog-gated but `blocked` **is**
 >   (`GameSession.cs:2008`, on `TileFlags.Explored`). A freshly allocated compartment has never been
 >   entered, so a build ghost **DRAWS** on that tile while its reason does not: the player sees their
 >   own order sitting there doing nothing, unexplained. Dig/strip fail the opposite way — invisible
@@ -545,7 +547,22 @@ is renamed). Tag `v2-talking-ship`.
 >    the player must repair, or a portable/buildable vent (`PlaceDeviceCommand.IsPlaceableFurniture`
 >    excludes `AirVent` today, `Commands.cs:342-357`).
 > 5. ⛔ **"W4b-BLOCKED-FOG" — the `blocked` channel is FOG-GATED, so it is silent in exactly the
->    compartment W4b makes the player look at.** `GameSession.AddIfBlocked` (`GameSession.cs:2008`)
+>    compartment W4b makes the player look at.**
+>    > ### ✅ CLOSED ON `--ship wreck` BY OD-C (2026-07-29) — and still live on every other ship.
+>    > **The wreck now boots with `fogTiles = 0`** (measured; 1 104 with the flag off in the same
+>    > tree), so `AddIfBlocked`'s only fog condition can never be true there. **Driven, not inferred:**
+>    > a real `AddRoomCommand` on `hall_d0_s1` (room still `0.000 kPa` — *＋ADD ROOM conjures nothing*)
+>    > followed by a real `DesignateBuildCommand` at `(12,1,0)` yields `designs =
+>    > [[12,1,0,0,0,2,0]]` **and `blocked = [[12,1,0,2,0]]` together** — order 2 `OrderBuild`, reason 0
+>    > `ReasonAir`. **The build-ghost-without-a-reason failure is gone on the shipping ship.**
+>    > ⚠️ **It survives on `--ship grid`, `--ship slice` and `--ship perilune`**, which still fog, so
+>    > the `designs`-vs-`blocked` asymmetry below remains a real defect and the lane that owns the
+>    > channel still owns it. ⚠️ **The `BuildMarks` half is code-reasoned, NOT driven** — it follows
+>    > from `fogTiles == 0`, but nobody painted a dig and read the `marks` payload.
+>    > **This is the eighth trap shape: a statement true of a tree, stale the moment another change
+>    > lands.** Everything below this box is the measurement as taken on `--ship grid`, and stands.
+>
+>    `GameSession.AddIfBlocked` (`GameSession.cs:2008`)
 >    returns early on `(GetFlags(p) & TileFlags.Explored) == 0`. A freshly allocated compartment has
 >    never been entered, so most of it is unexplored, and the natural player order — allocate → paint →
 >    wonder why nothing happens — is exactly the order in which the channel says nothing.
