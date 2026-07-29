@@ -15,18 +15,23 @@ namespace Perilune.Web
     /// skin and Unity boot), start the fixed-tick GameSession, and serve the flat-2D web
     /// client + WebSocket on localhost.
     ///
-    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR] [--ship grid|slice|perilune]
+    ///   PeriluneWeb [--port N] [--seed N] [--layout PATH] [--data DIR] [--ship wreck|grid|slice|perilune]
     ///
-    /// THE GAME IS `--ship grid` — the default, and the only ship a player ever wants. Start it
-    /// with `./play.sh` from the repo root (that runs this host and the client static server
-    /// together and prints one URL); there is nothing to choose.
+    /// THE GAME IS `--ship wreck` — the default since the owner's decision that `./play.sh` must
+    /// always launch the current version of the game. Start it with `./play.sh` from the repo
+    /// root (that runs this host and the client static server together and prints one URL);
+    /// there is nothing to choose.
     ///
-    /// The other two `--ship` values are TEST FIXTURES, not games, kept so the gate keeps
-    /// working:
+    /// ⚠️ THE WRECK IS ROUGH ON PURPOSE AND THE OWNER WANTS TO SEE IT ROUGH. What it does not
+    /// have yet, so nobody mistakes inert for broken: the pods do nothing (no thaw — that is W5),
+    /// and there is no door/vent verb on either standard surface, which the premise depends on.
+    ///
+    /// The other three `--ship` values still work by flag and none of them changed:
+    ///   grid     — the economy programme's comparison baseline, and the previous default.
     ///   slice    — the 8-crew economy measurement fixture, driven headless by hosts/scenario.
     ///   perilune — the generated/layout ship that backs the tick-3000 determinism goldens.
     /// (`SimHost.Build`'s own default is still ShipChoice.Perilune — the goldens depend on it.
-    /// Only this host's player-facing default is Grid.)
+    /// Only this host's player-facing default moved.)
     ///
     /// Single global game: every browser tab that connects steers the same ship. Ctrl+C stops
     /// the server cleanly (the sim thread and all sockets are torn down).
@@ -38,10 +43,22 @@ namespace Perilune.Web
             int port = 8323;
             ulong? seed = null;
             string layout = null, data = null;
-            // The one game. `--ship slice|perilune` still selects the fixtures for a gate or a
-            // repro; a player never passes --ship at all. NOT the same knob as SimHost.Build's
-            // own default parameter (ShipChoice.Perilune) — leave that alone, the goldens read it.
-            var ship = ShipChoice.Grid;
+            // ⚠️ THE PLAYER-FACING DEFAULT, AND IT IS AN OWNER DECISION — "we decided to always
+            // ship the main version in play.sh". `./play.sh` must launch the CURRENT game, not the
+            // last one that happened to be finished. Every serious player-visible defect this
+            // project has found came from the owner starting the game and looking (the doors that
+            // vanished when a room was allocated, the device glyphs with no art, the palette that
+            // clipped its own buttons, "starting it with start.sh gives me the old ship"), and a
+            // default that needs a remembered flag deletes exactly that feedback loop.
+            //
+            // `--ship grid|slice|perilune` all still work by flag and none of their behaviour
+            // changes: grid is the economy programme's comparison baseline and slice is the
+            // headless measurement fixture. NOT the same knob as SimHost.Build's own default
+            // parameter (ShipChoice.Perilune) — leave that alone, the goldens read it.
+            //
+            // Pinned by WebHostDefaultShipTests: this line is a player-facing decision and must
+            // not be changeable without a test saying so.
+            var ship = ShipChoice.Wreck;
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -56,9 +73,13 @@ namespace Perilune.Web
                         {
                             string shipArg = args[++i];
                             if (shipArg == "slice") ship = ShipChoice.Slice;
+                            // Grid is no longer the default but is still the economy programme's
+                            // comparison baseline, so it must stay selectable by flag.
                             else if (shipArg == "grid") ship = ShipChoice.Grid;
-                            // Explicit now that Grid is the default: without this branch
-                            // `--ship perilune` would silently hand back the grid.
+                            else if (shipArg == "wreck") ship = ShipChoice.Wreck;
+                            // Every branch is explicit BECAUSE the default moved: with the default
+                            // written as one of these values, a missing branch silently hands back
+                            // whatever the default happens to be that week rather than erroring.
                             else if (shipArg == "perilune") ship = ShipChoice.Perilune;
                         }
                         break;

@@ -53,7 +53,7 @@ test('the module imports and every table is a frozen object', () => {
 
 test('ROOM_MATERIAL has a row for every RoomType enum member — no room left unfloored', () => {
   const members = roomTypeMembers();
-  assert.equal(members.length, 16, 'expected 16 RoomType members (sanity on the parse)');
+  assert.equal(members.length, 17, 'expected 17 RoomType members (sanity on the parse)');
   for (const name of members) {
     assert.ok(name in ROOM_MATERIAL, `ROOM_MATERIAL is missing RoomType.${name}`);
     assert.ok(name in ROOM_TYPE, `ROOM_TYPE is missing RoomType.${name}`);

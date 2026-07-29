@@ -1269,5 +1269,657 @@ namespace Perilune.Gen
                     if (deck.Get(x, y) == '.')
                         Dev(plan, DeviceKind.Conduit, x, y, z, $"conduit_d{z}_{x}_{y}");
         }
+
+        // =====================================================================
+        // Wreck ship — PeriluneWreck()  (--ship wreck)
+        // =====================================================================
+        // THE OPENING THE OWNER ASKED FOR: you wake up alone on a raided ship.
+        //
+        // Design of record: docs/design/perilune-wreck-start.plan.md (revision 2), wave W3.
+        // Read its §2 beat sheet before changing anything here — every choice below answers a
+        // numbered beat, and several of them are load-bearing in ways that are not obvious.
+        //
+        // ---------------------------------------------------------------------------------------
+        // ⚠️ WHAT IS *NOT* HERE, SO NOBODY MISTAKES INERT FOR BROKEN
+        // ---------------------------------------------------------------------------------------
+        // THE PODS DO NOTHING. There is no CryoSystem, no ThawCommand, no MOSS thaw op and no
+        // emergency thaw. `DeviceKind.CryoPod` is a PROP with a Condition: it draws power, sheds
+        // waste heat, wears at the table's slowest rate and draws a glyph, and that is the entire
+        // list. The thaw is W5 — it adds a registered system (which moves all three STATE pins by
+        // itself, exactly as W0-6's four EMPTY systems did), a command, a headroom gate and a MOSS
+        // screen verb, and it needs its own review. A pod that will not open is therefore CORRECT
+        // on this ship today. Do not "fix" it here.
+        //
+        // ⚠️ AND THE PLAYER CANNOT YET BE TOLD WHY AN ORDER IN VACUUM DOES NOTHING. That is W4's
+        // `blocked` channel, on a sibling lane. Until it lands, painting a DIG or a STRIP in an
+        // airless compartment on this ship is a SILENT no-op forever (MECHANICS.md §13.21). On
+        // `--ship grid` that is rare; here it is most of the map, and it is the single biggest
+        // reason this ship is not the default yet (W8).
+        //
+        // ---------------------------------------------------------------------------------------
+        // ⭐ TWELVE CAPSULES: EIGHT LIVING (the design target) AND FOUR DEAD (the tuning parameter)
+        // ---------------------------------------------------------------------------------------
+        // ⭐ EIGHT IS NOT A TUNING PARAMETER. It is the owner's stated design target — the roster
+        // they want to be playing with — so the end state of a won game is EIGHT crew living
+        // aboard. One capsule boots OPEN (the single pawn the player starts with) and the other
+        // seven are thawable one at a time through MOSS (W5). All eight are recoverable; nothing
+        // here may reduce that number.
+        //
+        // ⚠️ THE FOUR WRECKED CAPSULES ARE *IN ADDITION* TO THE EIGHT, AND FOUR IS THIS LANE'S
+        // NUMBER. The owner settled the RULE — a wrecked occupied pod holds a DEAD sleeper, so a
+        // raid that cracks a capsule kills the person in it — and left the count open (the plan's
+        // OD-9). Four reads unambiguously as a raid rather than an accident, and it makes the walk
+        // through the bay a reading of who did not make it. Changing it is an edit to `WreckPods`
+        // below plus the matching literals in `tests/Perilune.Tests/WreckShipTests.cs`, which are
+        // deliberately hand-written and NOT derived from this table, so a content change cannot
+        // pass silently.
+        //
+        // The fiction reconciles without strain: the ship carried a larger complement than
+        // survived. Everyone who was awake is gone, and four of the sleepers went with them.
+        //
+        // ⚠️ AN EARLIER DRAFT OF THIS SHIP AUTHORED EIGHT CAPSULES OF WHICH TWO WERE WRECKED — i.e.
+        // SIX recoverable crew. That was wrong and it is recorded rather than quietly corrected,
+        // because the mistake has a shape worth naming: it read an answer about what the wrecked-pod
+        // ART DEPICTS as an answer about how many crew are RECOVERABLE. The eight is the roster;
+        // the wrecked pods are set dressing with bodies in them.
+        //
+        // Each dead sleeper carries an `ItemKind.Corpse` stack on the pod's own tile, named for the
+        // person. That is the only way the sim has to say someone died here.
+        //
+        // ---------------------------------------------------------------------------------------
+        // THE SURVIVABLE CORE, AND WHY IT IS THREE SPACES AND NOT ONE
+        // ---------------------------------------------------------------------------------------
+        // Boot air: CRYO BAY (slot 0) + the deck-0 SPINE + REACTOR (slot 4). Everything else on
+        // both decks is vacuum behind a closed door. `WorksiteSafety.CanStageWorkerAt` therefore
+        // confines every job — dig, haul, build, strip, maintain — to those three spaces until the
+        // player pushes the frontier outward, which IS the game.
+        //
+        // ⚠️ THE CHARTER ASKED FOR *ONE* SURVIVABLE COMPARTMENT AND THIS AUTHORS THREE. That is a
+        // deliberate departure and here is the arithmetic behind it. With one pawn and no
+        // emergency thaw (W5), losing the crew member is losing the run — the plan's OD-10, still
+        // open on the owner. A cryo bay sealed alone is 60 tiles ≈ 6 240 mol; opening its door onto
+        // the 86-tile spine drops the connected mass to 101.3 × 60/146 ≈ 41.6 kPa and ppO2 to
+        // ~8.7 kPa, which is BELOW severe_hypoxia_ppo2_kpa (10) — i.e. the player's first door
+        // press would start killing the only pawn, and the vent needs ~5 sim-minutes to recover it.
+        // Booting the spine and the reactor bay pressurised makes the core 206 tiles, so opening
+        // ONE 60-tile hall lands at ~78 kPa / ~16.5 ppO2 — a survivable dip the open vent closes in
+        // ~3.5 sim-minutes, and a lesson ("shut the door") rather than a death.
+        // The frontier is still 13 sealed compartments and one whole vacuum deck.
+        //
+        // ⚠️ EVERY NON-CORE SLOT IS AN EMPTY HALL FOR A MECHANICAL REASON, NOT A FICTIONAL ONE.
+        // `SlotGridPlanner.Carve` boots a TYPED slot's door OPEN and an empty hall's door CLOSED
+        // (`IsOpen = !empty`). A typed airless slot would therefore vent the core through its own
+        // open door at tick 0. The two typed rooms are exactly the two that boot with air.
+        //
+        // ---------------------------------------------------------------------------------------
+        // ⚠️ THE SHIP GOES COLD, IT IS MEASURED, AND IT IS NOT A KNOB ANY VALUE HERE CAN TURN
+        // ---------------------------------------------------------------------------------------
+        // MEASURED, driven, `ShipPlanBuilder.Build` + the default stack, one seed, n = 1, Debug,
+        // NO PLAYER INPUT AT ALL. Wall-clock is soft (other suites were running); the sim numbers
+        // are not.
+        //
+        //   day   cryo bay            deck-0 spine        reactor bay        crew  suffocation
+        //    1    10.0 °C   0 ppm     11.2 °C             8.6 °C             1     0.000
+        //    3    10.0 °C   0 ppm      1.9 °C            -0.2 °C             1     0.000
+        //    6    10.0 °C   0 ppm     -9.2 °C           -14.0 °C             1     0.000
+        //   10    10.0 °C   0 ppm    -18.7 °C           -24.4 °C             1     0.329
+        //
+        // ⭐ THE CRYO BAY IS FLAT AT EXACTLY 10.0 °C FOR TEN SIM-DAYS, and the reason is a surprise
+        // worth writing down: `radiator_cryo` is not COOLING the bay, it is THERMOSTATTING it.
+        // `ThermalSystem.cs:94` refuses to reject heat below `thermal.radiator_floor_k` = 283.15 K,
+        // so a room whose sources outrun its hull loss lands on the floor and stays there. Without
+        // the radiator the same bay measured 41.9 °C at day 1 and 48.7 °C at day 3 — past
+        // `heat_stroke_c`. WITH it, twelve capsules keep twelve people at a steady 10 °C forever.
+        // That is the best-behaved compartment in the repo and it is where the pawn lives.
+        //
+        // ⚠️ THE SPINE AND THE REACTOR BAY FALL BELOW `hypothermia_c` (-10 °C) AROUND DAY 5–6, and
+        // NO AUTHORING CHANGE IN THIS FILE FIXES IT. Measured A/B: killing the reactor's radiator
+        // and adding two long-lived lamps moved day 10 from -18.7/-24.4 to -18.5/-24.2 — i.e.
+        // nothing. Those two rooms are HEAT-STARVED, not over-cooled: 60 and 86 tiles of hull loss
+        // against a few hundred watts of lamps and door motors, on a ship whose machinery is dead.
+        // ⇒ **THIS IS THE PLAN'S §6 R-4 ARRIVING ON SCHEDULE: THERE IS NO HEATER DEVICE IN THE
+        // GAME.** A radiator can only take heat OUT. Until something can put heat IN, a dead ship
+        // freezes, and that is a real gap rather than a tuning failure. Reported, not worked around.
+        //
+        // WHAT IT MEANS IN PLAY, stated so nobody has to rediscover it: unattended, the crew member
+        // is measured ALIVE at day 10 — it keeps eating (potatoes 60 → drawn down steadily) and
+        // drinking (`SustenanceSystem`'s water path is deliberately unguarded by
+        // `CanStageWorkerAt`), and the cryo bay it stands in never leaves the band. But suffocation
+        // is 0.329 and RISING at day 10, and from about day 5 the ship outside the bay is
+        // unworkable. The ship is authored to be FIXED, not to be left alone — which is the
+        // premise, and it is now a measurement rather than a hope.
+        //
+        // ---------------------------------------------------------------------------------------
+        // LIFE SUPPORT IS SIZED FOR EIGHT, NOT FOR ONE — AND THAT IS THE THAW CURVE'S SPINE
+        // ---------------------------------------------------------------------------------------
+        // One working scrubber removes `atmosphere.scrubber_mol_per_second` = 0.001 mol/s against
+        // `co2_per_person_per_second` = 2.73e-4, i.e. ~3.66 crew per scrubber. EIGHT crew therefore
+        // needs THREE working scrubbers, and CO2 is NOT clamped when breathing outruns scrubbing —
+        // crossing `co2_narcosis_ppm` (40 000) makes a compartment unbreathable, which makes it
+        // unworkable. That is the negative feedback that stops the thaw being a free win, and it is
+        // already implemented; this ship's job is to make sure the HARDWARE to beat it exists.
+        //
+        // FIVE scrubbers are authored, and their boot states are the pacing:
+        //   scrubber_cryo    0.55  WORKING  cryo bay        — the one that keeps the first pawn alive
+        //   scrubber_spine   0.09  wrecked  deck-0 spine    — reachable at boot; a Swarf-priced repair
+        //   scrubber_reactor 0.09  wrecked  reactor bay     — reachable at boot; a Swarf-priced repair
+        //   scrubber_ls      0.08  wrecked  hall_d0_s3      — behind the frontier (airless)
+        //   scrubber_d1      0.06  wrecked  deck 1          — behind the frontier AND off-network
+        // ⇒ THREE of them stand inside the survivable core, so a player who never opens a door can
+        // still bring the ship to its eight-crew ceiling. The other two are headroom for later.
+        //
+        // The same argument does not bind for O2: an `AirVent` injects from an unmodelled reserve at
+        // 30 mol/s, which is orders of magnitude above eight people's draw, so ONE working vent is
+        // enough and the others are redundancy.
+        //
+        // ---------------------------------------------------------------------------------------
+        // POWER — AND A SHIPPED RULE THAT DELETES THE OBVIOUS DESIGN
+        // ---------------------------------------------------------------------------------------
+        // ⚠️ GENERATION IS CONDITION-BLIND. `PowerSystem.cs:174-185` says so in its own comment:
+        // "a wrecked SolarWing still supplies its full kW", with no `IsOperational` gate and no
+        // `EffectiveRate` factor. So "repair a wing to get the benches running" IS NOT EXPRESSIBLE
+        // — a wing at 0.06 generates exactly what a wing at 1.00 does. This was found by reading
+        // the system, after the first draft of this ship had been authored around the opposite
+        // assumption. It is reported as a finding, not worked around.
+        //
+        // ⇒ Power on this wreck is a fixed authored budget, and it is authored GENEROUS: three
+        // SolarWings (18 kW) against ~12.6 kW of total demand, so every tier is served from tick 0
+        // and stays served. That is a decision with a cost — it means the wreck's scarcity is
+        // MATTER and AIR, never watts — and it is the honest one, because the alternative (a tight
+        // budget) browns out `PowerTier.Industry` permanently, the three benches never run, and the
+        // matter ladder that ends in a ControllerModule becomes unreachable. An unwinnable opening
+        // is worse than an easy one.
+        //
+        // The wings are still authored damaged (0.31 / 0.18 / 0.06). That is not decoration for its
+        // own sake: they are a maintenance sink and three more Swarf-priced repair jobs, and the
+        // owner's art badges every wrecked piece. It just is not a power lever.
+        //
+        // Deck 0 carries a full conduit tray; DECK 1 CARRIES NONE. Off-network devices "contribute
+        // nothing either way" (same PowerSystem block), so deck 1's ruined machinery neither draws
+        // nor runs — the raiders cut the risers, and the ship's whole power ledger is one deck.
+        //
+        // ---------------------------------------------------------------------------------------
+        // WINNABILITY — THE ARITHMETIC, THEN THE DRIVEN CHECK
+        // ---------------------------------------------------------------------------------------
+        // With W2 shipped, EVERY repair below wear.wreck_threshold (0.25) needs a consumable in
+        // hand: Parts → 1.00, Seals → 0.90, Swarf → 0.45. Nothing below the floor can be bodged for
+        // free. So the opening has a hard precondition — there must be reachable matter — and this
+        // is the arithmetic it was sized against:
+        //
+        //   * TO COMMISSION MOSS the player needs one ControllerModule = 2 Parts (MachineShop) =
+        //     4 Scrap (Fabricator, 2 Scrap → 1 Part + 1 Seals) = 6 Regolith (SalvageRecycler,
+        //     4 Regolith → 3 Scrap; 8 Regolith → 6 Scrap covers the rounding).
+        //   * THE THREE BENCHES all boot below the floor, so each needs one consumable service.
+        //     A Swarf service restores to 0.45, which clears every bench's `maint` (0.40) and every
+        //     `fail` (0.10), so ONE service per bench is enough. ⇒ 3 consumables.
+        //   * THE MOSS TERMINAL boots at 0.14 and needs one more. ⇒ 4 consumables total.
+        //   * BOOT STOCK: 12 Regolith, 3 Scrap, 1 Parts, 2 Seals, in the reactor bay, in air.
+        //     ⇒ 3 free services from Parts+Seals before any salvage is needed, and 12 Regolith is
+        //     already 1.5× the 8 the module wants.
+        //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
+        //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
+        //     recomputed from a previous draft's arithmetic — the first version of this paragraph
+        //     was wrong in every figure. This ship authors 44 such devices (the census's
+        //     "worth SWARF if stripped" line), of which NINETEEN stand in the boot core:
+        //       cryobay        8 — the four wrecked pods, light_cryo 0.18, radiator_cryo 0.36,
+        //                          battery_cryo 0.11, term_moss 0.14
+        //       wreck_spine_0  2 — scrubber_spine 0.09, light_spine_0 0.16
+        //       reactor        9 — wing_a/b/c, battery_1, battery_2, tank_reserve,
+        //                          radiator_reactor, light_reactor, scrubber_reactor
+        //     So the salvage rung can bootstrap without opening a single door, by a wide margin.
+        //     (Two of the nineteen must NOT be stripped in practice — radiator_cryo and
+        //     radiator_reactor are the survivable core's thermostats — and four of them are the
+        //     dead sleepers' capsules, which `DeconstructSystem` now REFUSES outright. Call the
+        //     freely-strippable core stock thirteen.)
+        //   * 80 debris tiles pay Regolith on top of that, once the player can breathe next to them.
+        //
+        // ⇒ The floor is 4 consumables and 8 Regolith; the ship authors 3 free services, 12
+        // Regolith and ≥10 reachable Swarf sources. THE ARITHMETIC IS NOT THE EVIDENCE — see
+        // `WreckShipTests` and this lane's report for the DRIVEN boot census and the day-1/3/10
+        // survival run.
+        //
+        // ---------------------------------------------------------------------------------------
+        // NO DESIGNATIONS, NO ZONES, AND THAT IS THE POINT
+        // ---------------------------------------------------------------------------------------
+        // `plan.DigDesignations` is EMPTY and no stockpile is zoned. The grid ship's opening —
+        // eight crew sprinting to a pre-painted dig — is exactly what this start replaces. It is
+        // also mechanically necessary: with one pawn the dispatcher outranks eating, crafting and
+        // maintenance in that order (`SystemStack.cs:33-37`), so a wreck that boots with work on
+        // the board boots with its only crew member locked out of the systems the premise is about.
+        // A quiet board falls through to eat ▸ craft ▸ maintain, which is the right ladder.
+        //
+        // The one goal is `PressurizeAnchor` on the workshop hall: false at boot (it is vacuum),
+        // true only after the player has opened it, repaired its vent and made air. `ClearAllDebris`
+        // was the alternative and is rejected — 80 tiles at 10 sim-minutes each is 13 crew-hours for
+        // one pair of hands, which is a chore, not an objective.
+        //
+        // ---------------------------------------------------------------------------------------
+        // OTHER STANDING NOTES
+        // ---------------------------------------------------------------------------------------
+        // * NO FURNITURE. `RoomDresser.Dress` is deliberately NOT called. Furniture is `maint = 0`
+        //   and `fail = 0`, so a SMASHED bed would be permanently unrepairable and fully functional
+        //   — an object that looks broken and behaves perfectly. The plan (§2 beat 5) says author it
+        //   pristine or not at all; a raided ship having no bunks left is the better fiction.
+        // * THE CREW MEMBER IS `AutoWander = true`. Safe because `TryRandomWalkableTileNear` pins
+        //   the idle draw to the crew member's own deck, and because deck 0's only walkable air-free
+        //   space is behind closed doors, which `Simulation.IsWalkable` refuses. So an idle pawn
+        //   paces the lit core and never wanders into vacuum.
+        // * THE LADDER IS A REAL HAZARD AND IT STAYS. Deck 1 is vacuum and one ladder away. Only an
+        //   explicit `MoveCitizenCommand` can send the pawn down it (the wander sampler cannot), and
+        //   `SafetySystem` paths a suffocating crew member back to breathable air — up the ladder,
+        //   which `FindPath` handles. Removing the ladder would author half a ship nobody can ever
+        //   reach. Driven in `WreckShipTests`.
+        // * `--ship grid`, `--ship slice` and `--ship perilune` are not touched by one byte, and
+        //   `SimHost.Build`'s own default parameter stays `ShipChoice.Perilune` — the goldens read
+        //   it. `hosts/web/Program.cs` still defaults to `--ship grid`; flipping the player-facing
+        //   default is W8 and is gated on W4 landing.
+
+        /// <summary>The wreck ship's own seed — a DISTINCT identity from Perilune (20260718),
+        /// the slice (20260721) and the grid ship (20260723), so its portrait keys
+        /// (pk_fnv1a32(seed, citizenId)) can never collide with theirs.</summary>
+        public const ulong WreckSeed = 20260728UL;
+
+        public const int WreckWidth = SlotGridPlanner.Width;   // 45
+        public const int WreckHeight = SlotGridPlanner.Height; // 18
+        /// <summary>TWO decks, not the grid ship's eight. One pawn cannot use eight, every extra
+        /// deck is eight more compartments in the boot census, and the Overview's deck strip reads
+        /// better with a lit deck and a dead one than with a lit deck and seven dead ones.</summary>
+        public const int WreckDepth = 2;
+
+        /// <summary>The cryo bay: deck 0, slot 0 (top-left). Typed, so its door boots OPEN onto the
+        /// spine and the Overview gives it a real label instead of its internal anchor id.</summary>
+        public const int WreckCryoSlot = 0;
+        public const string WreckCryoAnchor = "cryobay";
+
+        /// <summary>The reactor bay: deck 0, slot 4 — directly below the cryo bay, so the walk from
+        /// the pawn's pod to the ship's power, water and opening stock is the length of one
+        /// compartment.</summary>
+        public const int WreckReactorSlot = 4;
+        public const string WreckReactorAnchor = "reactor";
+
+        /// <summary>The goal's subject: deck 0's slot-1 hall, the compartment that holds the
+        /// SalvageRecycler and the MachineShop. Airless and sealed at boot.</summary>
+        public const string WreckGoalAnchor = "hall_d0_s1";
+
+        /// <summary>Interior rows that collapse into debris in a wrecked bottom-row slot, counted
+        /// from the hull side inward — the same depth the grid ship uses.</summary>
+        public const int WreckDebrisRows = 2;
+
+        /// <summary>Bottom-row slots that boot COLLAPSED, per deck. Bottom row only: their doors sit
+        /// on the slot's TOP wall against the spine, so filling inward from the hull can never wall
+        /// the compartment off from its own door (<see cref="WreckFillBottomSlot"/> asserts it).
+        /// 4 slots × 2 rows × 10 columns = 80 debris tiles, NONE of them designated.</summary>
+        private static readonly int[] WreckDebrisSlotsDeck0 = { 7 };
+        private static readonly int[] WreckDebrisSlotsDeck1 = { 5, 6, 7 };
+
+        /// <summary>
+        /// One authored capsule: where it sits, whose it is, whether it is already open, and how
+        /// badly the raid treated it.
+        ///
+        /// ⚠️ THE `Condition` COLUMN IS THE WHOLE FICTION. Below `machines.def`'s CryoPod `fail`
+        /// (0.10) a pod is INOPERATIVE and the glyph layer paints it `GlyphColor.Broken`, so the
+        /// FOUR wrecked capsules read as dead on the map without any new channel. (Driven, tick 0,
+        /// `--ship wreck`: the fg byte is `Broken` for exactly `pod_vance`, `pod_sokolov`,
+        /// `pod_iqbal` and `pod_osei` and `Device` for the other eight.)
+        ///
+        /// ⚠️ AND IT STAYS THAT WAY ONLY BECAUSE CryoPod's `maint` IS 0. At the first draft's
+        /// `maint = 0.30` the wrecked pods were the four neediest devices on the ship, so
+        /// `MaintenanceSystem` sent the only crew member to nurse them with the opening's entire
+        /// consumable stock — measured over one unattended sim-day: Parts 1 → 0, Seals 2 → 0, three
+        /// of the four back above `fail`. "The wrecked pods read as dead" is a tick-0 property and
+        /// the sim used to erase it inside a day; `WreckShipTests` now asserts it at day 1 too.
+        /// </summary>
+        private struct PodSpec
+        {
+            public int X, Y;
+            public string Who;
+            public bool Open;
+            public float Condition;
+            public bool Dead;   // a wrecked, occupied pod: the sleeper did not survive the raid
+        }
+
+        /// <summary>The bay's twelve capsules, in three rows of four across the cryo bay's interior.
+        ///
+        /// EIGHT LIVING — one already open (the pawn the player starts with) and seven intact and
+        /// occupied, thawable one at a time through MOSS (W5). Eight is the owner's design target
+        /// and is NOT tunable here.
+        ///
+        /// FOUR WRECKED — dead sleepers, in addition to the eight. Four is this lane's number and
+        /// IS tunable; see the header.
+        ///
+        /// Every living pod is authored comfortably above <c>wear.wreck_threshold</c>: they are the
+        /// seven people the whole game is about, and a capsule that decayed below the floor while
+        /// the player was busy elsewhere would quietly cost them a crew member with no message
+        /// anywhere. At the CryoPod wear rate (0.001/h) the lowest of them takes ~480 sim-hours to
+        /// reach its `maint` threshold at all.</summary>
+        private static readonly PodSpec[] WreckPods =
+        {
+            // row 1
+            new PodSpec { X = 2, Y = 1, Who = "Rell",      Open = true,  Condition = 1.00f },
+            new PodSpec { X = 4, Y = 1, Who = "Ozawa",     Open = false, Condition = 0.91f },
+            new PodSpec { X = 6, Y = 1, Who = "Vance",     Open = false, Condition = 0.04f, Dead = true },
+            new PodSpec { X = 8, Y = 1, Who = "Mbeki",     Open = false, Condition = 0.86f },
+            // row 2
+            new PodSpec { X = 2, Y = 3, Who = "Torres",    Open = false, Condition = 0.78f },
+            new PodSpec { X = 4, Y = 3, Who = "Sokolov",   Open = false, Condition = 0.07f, Dead = true },
+            new PodSpec { X = 6, Y = 3, Who = "Lindqvist", Open = false, Condition = 0.94f },
+            new PodSpec { X = 8, Y = 3, Who = "Bahri",     Open = false, Condition = 0.83f },
+            // row 3
+            new PodSpec { X = 2, Y = 5, Who = "Iqbal",     Open = false, Condition = 0.03f, Dead = true },
+            new PodSpec { X = 4, Y = 5, Who = "Ferreira",  Open = false, Condition = 0.88f },
+            new PodSpec { X = 6, Y = 5, Who = "Nakamura",  Open = false, Condition = 0.81f },
+            new PodSpec { X = 8, Y = 5, Who = "Osei",      Open = false, Condition = 0.06f, Dead = true },
+        };
+
+        /// <summary>The one crew member who woke up. Stands beside the open capsule, on the bay's
+        /// own floor, in the ship's only air.</summary>
+        public const string WreckCrewName = "Rell";
+
+        public static ShipPlan PeriluneWreck()
+        {
+            var plan = new ShipPlan { Name = "MSV Perilune (wreck)", Seed = WreckSeed };
+
+            // Deck 0 — the surviving deck. TWO typed rooms (which boot with an open door) and six
+            // empty halls (which boot sealed). See the header: a typed airless slot would vent the
+            // core through its own door at tick 0, so the typed set and the pressurised set are the
+            // same set, by construction rather than by coincidence.
+            var deck0 = new[]
+            {
+                Slot(RoomType.Cryo,    WreckCryoAnchor),      // slot 0 — the cryo bay
+                Hall(0, 1),                                   // slot 1 — workshop bones (the goal)
+                Hall(0, 2),                                   // slot 2 — fabrication bones
+                Hall(0, 3),                                   // slot 3 — life-support bones
+                Slot(RoomType.Reactor, WreckReactorAnchor),   // slot 4 — power, water, stores
+                Hall(0, 5),                                   // slot 5 — stripped
+                Hall(0, 6),                                   // slot 6 — stripped
+                Hall(0, 7),                                   // slot 7 — collapsed
+            };
+            // Deck 1 — dead. Eight sealed halls, no conduit tray, three of them collapsed.
+            var deck1 = EmptyDeck(1);
+
+            var canvases = new GridCanvas[WreckDepth];
+            var rects = new Dictionary<string, BandPlanner.Rect>[WreckDepth];
+            for (int z = 0; z < WreckDepth; z++)
+            {
+                var canvas = new GridCanvas(WreckWidth, WreckHeight, '#');
+                rects[z] = SlotGridPlanner.Carve(canvas, plan, z, z == 0 ? deck0 : deck1, $"wreck_spine_{z}");
+                canvases[z] = canvas;
+            }
+
+            // ------------------------------------------------------------- the collapse
+            // Must run HERE: after Carve (which lays the floor these rows are cut back out of) and
+            // before ToRows(), which is a one-shot snapshot of the canvas, and before AddConduits,
+            // which trays only '.' tiles — so the trays under the rubble go with it.
+            // The returned tile lists are DELIBERATELY DISCARDED: this ship designates nothing.
+            foreach (int slot in WreckDebrisSlotsDeck0) WreckFillBottomSlot(canvases[0], 0, slot, WreckDebrisRows);
+            foreach (int slot in WreckDebrisSlotsDeck1) WreckFillBottomSlot(canvases[1], 1, slot, WreckDebrisRows);
+
+            plan.DeckRows = new string[WreckDepth][];
+            for (int z = 0; z < WreckDepth; z++) plan.DeckRows[z] = canvases[z].ToRows();
+
+            // ------------------------------------------------------------------- power
+            // Deck 0 only. Deck 1's risers were cut, so its machinery is off-network and neither
+            // draws nor runs (PowerSystem: "off-grid: contributes nothing either way").
+            AddConduits(plan, canvases[0], 0);
+
+            // -------------------------------------------------------------- the cryo bay
+            var cryo = rects[0][WreckCryoAnchor];   // interior x1..10, y1..6
+            for (int i = 0; i < WreckPods.Length; i++)
+            {
+                var pod = WreckPods[i];
+                plan.Devices.Add(new DeviceSpec
+                {
+                    Kind = DeviceKind.CryoPod,
+                    Pos = new Int3(pod.X, pod.Y, 0),
+                    Name = "pod_" + pod.Who.ToLowerInvariant(),
+                    IsOpen = pod.Open,
+                    Condition = pod.Condition,
+                });
+                if (pod.Dead)
+                {
+                    // THE BODY IS AN ITEM AND THE DEATH IS A LOG LINE — and that is the WHOLE of it,
+                    // deliberately. `ItemKind.Corpse` has art, a label and ZERO consumers anywhere in
+                    // the sim; the eulogy/Chronicle path fires on `CitizenDiedEvent`, which a sleeper
+                    // who was never a `Citizen` cannot raise. Synthesising one would write a false
+                    // death into the hashed event stream and send `EulogySystem` looking for a mind
+                    // that does not exist. A log line is a fact; a eulogy is a relationship, and
+                    // these FOUR people have no relationships because they have never been entities.
+                    // (Four, not eight: this block runs inside `if (pod.Dead)`. The eight are the
+                    // LIVING sleepers, who get no log line at all.)
+                    plan.Items.Add(new ItemSpec
+                    {
+                        Kind = ItemKind.Corpse, Count = 1, Pos = new Int3(pod.X, pod.Y, 0), Label = pod.Who,
+                    });
+                    plan.LogLines.Add(pod.Who + " did not survive the raid — capsule breached.");
+                }
+            }
+
+            // The bay's own life support is the ONE thing on this ship the raid did not finish, and
+            // that is the authoring decision the pawn's life rests on. Both are above their `maint`
+            // (0.40), so neither is even on the maintenance board at boot — the bay does not need
+            // the player to do anything to stay breathable. The vent boots OPEN (grid's
+            // `vent_spine_0` precedent): it is what refills the core after the player opens a hall
+            // door, and a closed AirVent draws nothing at all (`PowerSystem.IsWanting`).
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.AirVent, Pos = new Int3(cryo.X1, cryo.Y0, 0), Name = "vent_cryo",
+                IsOpen = true, Condition = 0.62f,
+            });
+            Dev(plan, DeviceKind.Scrubber, cryo.X1, cryo.CenterY, 0, "scrubber_cryo", 0.55f);
+            // Two more scrubbers inside the survivable core, both wrecked. Eight crew needs three
+            // working scrubbers (~3.66 crew each) and these are the other two — reachable in air
+            // from tick 0, so the ship's eight-crew ceiling is a SALVAGE problem and not a
+            // frontier problem. See the header's life-support block for the whole census.
+            // ⚠️ 0.09 AND NOT 0.11, AND THE TABLE ABOVE WAS WRONG UNTIL IT WAS DRIVEN. Scrubber
+            // `fail` is 0.10, so at 0.11 this scrubber booted OPERATIONAL while every line of this
+            // file called it wrecked — the core booted with TWO working scrubbers, not the one the
+            // pacing rests on, and it then wore through `fail` unattended within about a sim-hour,
+            // so the player would have watched a machine they never touched die for no visible
+            // reason. 0.09 puts it in the same band as its three siblings and makes the boot state
+            // unambiguous: one working scrubber in the core, four wrecked ones on the ship.
+            Dev(plan, DeviceKind.Scrubber, 8, SlotGridPlanner.SpineY1, 0, "scrubber_spine", 0.09f);
+
+            // Everything else in the bay is wrecked, and three of the four are the bootstrap: they
+            // are the strippable devices standing in breathable air, so the salvage rung can start
+            // without opening a single door (the plan's W3 precondition 2).
+            Dev(plan, DeviceKind.Light, cryo.X0, cryo.Y0, 0, "light_cryo", 0.18f);
+            // ⚠️ 0.36 IS A MEASURED NUMBER AND IT TOOK TWO DRIVEN RUNS TO FIND. It is the single
+            // most load-bearing scalar on this ship, and both wrong values LOOKED fine at boot.
+            //
+            //   * 0.07 (first draft) is BELOW the radiator's own `fail` (0.10), so it was
+            //     inoperative from tick 0 and one sim-day took the cryo bay to 48.9 °C — past
+            //     needs.def's heat_stroke_c of 45, i.e. the compartment stopped being breathable
+            //     with the only crew member standing in it.
+            //   * 0.14 is above `fail` and looked correct: the bay read 19.8 °C at boot and the
+            //     one-day survival test went GREEN. IT WAS STILL WRONG, and only a ten-day trace
+            //     showed why: a Radiator wears at 0.006/h, so 0.14 reaches `fail` in SIX HOURS,
+            //     and 0.14 is below wear.wreck_threshold (0.25) so MaintenanceSystem may not bodge
+            //     it back without a consumable. Measured cascade — radiator dead at h6, bay at
+            //     41.9 °C by day 1 and 48.7 °C by day 3, at which point WorksiteSafety refuses
+            //     every job in the bay, so the vent and scrubber are never serviced either and
+            //     BOTH decay to their own `fail` by h72. Life support then dies of overheating.
+            //
+            // ⚠️ AND UNTIL THE SEND-BACK NOTHING ENFORCED ANY OF THAT — the rule above was OBSERVED,
+            // not guarded. Measured by mutation, full `WreckShipTests` (the only suite in the repo
+            // that boots this ship, so the scope is complete): with `radiator_cryo` at 0.14 the
+            // file was 34/34 GREEN, and with `radiator_reactor` at 0.13 it was 34/34 GREEN.
+            // ⇒ The paragraph above is right that 0.14 "went GREEN"; what it does not say is that
+            // EVERY value went green, including the one it calls the single most load-bearing
+            // scalar on the ship. Both radiators are now named in
+            // `MostOfTheShip_IsAuthoredDamaged_AndTheCoresLifeSupportIsNot`, and both mutations go
+            // RED there. A number that was found by driving and then left unpinned is a number the
+            // next lane re-derives from scratch.
+            //
+            // 0.36 sits in the free-jury-rig band [wreck_threshold 0.25, Radiator maint 0.40), so
+            // the ship's one crew member repairs it for FREE, forever, on the 0.6 → 0.4 → 0.6 cycle
+            // the shipped rules already run — which is what makes the boot core survivable with no
+            // player action at all (the plan's W3 precondition 4). It is still below 0.50, so it is
+            // still worth Swarf if stripped; the player just does not cook while deciding.
+            //
+            // ⇒ THE GENERAL RULE FOR THIS SHIP, AND FOR ANY LATER ONE: a device the CORE'S SURVIVAL
+            // depends on must be authored at or above wear.wreck_threshold. Below it, wear is a
+            // one-way trip to `fail` and the compartment has a fuse on it measured in hours.
+            Dev(plan, DeviceKind.Radiator, cryo.X1, cryo.Y1, 0, "radiator_cryo", 0.36f);
+            Dev(plan, DeviceKind.Battery, cryo.X0, cryo.Y1, 0, "battery_cryo", 0.11f);
+            // THE MOSS BOX. Dark twice over: `Scriptable = false` means no adapter is registered and
+            // no program can be installed until a CommissionDeviceCommand spends a ControllerModule
+            // on it, and Condition 0.14 is below wear.wreck_threshold so it cannot even be bodged
+            // back to working without a consumable. In W5 this is also the door to the other seven
+            // sleepers; today it is a terminal that will not take a program, which is the truthful
+            // half of that.
+            Dev(plan, DeviceKind.Terminal, cryo.X0, cryo.CenterY, 0, "term_moss", 0.14f, scriptable: false);
+
+            // ------------------------------------------------------------ the reactor bay
+            var reactor = rects[0][WreckReactorAnchor];   // interior x1..10, y11..16
+            int topRow = reactor.Y0 + 1;
+            Dev(plan, DeviceKind.SolarWing, reactor.X0 + 1, topRow, 0, "wing_a", 0.31f);
+            Dev(plan, DeviceKind.SolarWing, reactor.X0 + 3, topRow, 0, "wing_b", 0.18f);
+            Dev(plan, DeviceKind.SolarWing, reactor.X0 + 5, topRow, 0, "wing_c", 0.06f);
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.Battery, Pos = new Int3(reactor.X0 + 7, topRow, 0), Name = "battery_1",
+                StoredKWh = 12f, Condition = 0.24f,
+            });
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.Battery, Pos = new Int3(reactor.X1, topRow, 0), Name = "battery_2",
+                StoredKWh = 3f, Condition = 0.09f,
+            });
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.WaterTank, Pos = new Int3(reactor.X0, reactor.Y1, 0), Name = "tank_reserve",
+                StoredLiters = 300f, Condition = 0.21f,
+            });
+            // Above wear.wreck_threshold for the same measured reason as radiator_cryo: at 0.13 it
+            // reached `fail` in five hours and never came back, and the reactor bay is the other
+            // half of the survivable core.
+            Dev(plan, DeviceKind.Radiator, reactor.X1, reactor.Y1, 0, "radiator_reactor", 0.33f);
+            Dev(plan, DeviceKind.Light, reactor.CenterX, reactor.CenterY, 0, "light_reactor", 0.09f);
+            Dev(plan, DeviceKind.Scrubber, reactor.X0 + 2, reactor.Y1, 0, "scrubber_reactor", 0.09f);
+
+            // ------------------------------------------------------------------ the spine
+            Dev(plan, DeviceKind.Light, 20, SlotGridPlanner.SpineY1, 0, "light_spine_0", 0.16f);
+            // The ladder trunk. Deck 1 is vacuum; see the header for why the hazard is kept.
+            for (int z = 0; z < WreckDepth; z++)
+                Dev(plan, DeviceKind.Ladder, SlotGridPlanner.LadderX, SlotGridPlanner.SpineY0, z, $"ladder_d{z}");
+
+            // ------------------------------------------------- the frontier (deck 0, sealed)
+            // The three benches of the matter ladder, one hall apart, all below wreck_threshold and
+            // all in vacuum. They are the reason the player pushes the frontier at all: the whole
+            // Regolith → Scrap → Parts → ControllerModule chain lives behind these three doors.
+            AddWreckedHall(plan, rects[0]["hall_d0_s1"], 0,
+                (DeviceKind.SalvageRecycler, "recycler_1", 0.09f),
+                (DeviceKind.MachineShop, "machineshop_1", 0.13f),
+                (DeviceKind.Light, "light_d0_s1", 0.04f));
+            AddWreckedHall(plan, rects[0]["hall_d0_s2"], 0,
+                (DeviceKind.Fabricator, "fabricator_1", 0.11f),
+                (DeviceKind.Light, "light_d0_s2", 0.07f));
+            AddWreckedHall(plan, rects[0]["hall_d0_s3"], 0,
+                (DeviceKind.Scrubber, "scrubber_ls", 0.08f),
+                (DeviceKind.Reclaimer, "reclaimer_ls", 0.12f),
+                (DeviceKind.Light, "light_d0_s3", 0.05f));
+            // A CLOSED vent, so it draws nothing while it sits there broken — and so the player's
+            // first act in this compartment is to open it, which is the one physical gesture the
+            // pressure loop is built on.
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.AirVent, Pos = new Int3(rects[0]["hall_d0_s3"].X0 + 1, rects[0]["hall_d0_s3"].Y1, 0),
+                Name = "vent_ls", IsOpen = false, Condition = 0.15f,
+            });
+            AddWreckedHall(plan, rects[0]["hall_d0_s5"], 0, (DeviceKind.Light, "light_d0_s5", 0.06f));
+            AddWreckedHall(plan, rects[0]["hall_d0_s6"], 0, (DeviceKind.Light, "light_d0_s6", 0.03f));
+
+            // ------------------------------------------------------ the dead deck (deck 1)
+            AddWreckedHall(plan, rects[1]["hall_d1_s0"], 1,
+                (DeviceKind.GrowBed, "growbed_1", 0.03f),
+                (DeviceKind.GrowBed, "growbed_2", 0.06f),
+                (DeviceKind.Light, "light_d1_s0", 0.02f));
+            AddWreckedHall(plan, rects[1]["hall_d1_s1"], 1,
+                (DeviceKind.Telescope, "telescope_1", 0.05f),
+                (DeviceKind.Light, "light_d1_s1", 0.04f));
+            AddWreckedHall(plan, rects[1]["hall_d1_s2"], 1,
+                (DeviceKind.MachineShop, "machineshop_2", 0.02f),
+                (DeviceKind.Light, "light_d1_s2", 0.05f));
+            AddWreckedHall(plan, rects[1]["hall_d1_s3"], 1,
+                (DeviceKind.Scrubber, "scrubber_d1", 0.06f),
+                (DeviceKind.Light, "light_d1_s3", 0.03f));
+            // The nav terminal, placed by hand rather than through AddWreckedHall because it is the
+            // ship's SECOND dark console (`Scriptable = false`) and that is not a hall-scatter
+            // property. It is deliberately on the dead deck: MOSS is restored at `term_moss` in the
+            // cryo bay, and a second commissionable terminal exists so the flag is not a
+            // one-instance special case on this ship.
+            Dev(plan, DeviceKind.Terminal, rects[1]["hall_d1_s3"].X0 + 7, rects[1]["hall_d1_s3"].Y0 + 1, 1,
+                "term_nav", 0.03f, scriptable: false);
+            AddWreckedHall(plan, rects[1]["hall_d1_s4"], 1,
+                (DeviceKind.Light, "light_d1_s4", 0.06f));
+            // Slots 5..7 are the collapsed ones: their hull-side rows are debris ('R' is BOTH floor
+            // and wall to AsciiWorld), so a device may only stand on the clear rows. Everything
+            // placed by AddWreckedHall sits on Y0+1 and CenterY, both of which survive a 2-row
+            // collapse — asserted by WreckFillBottomSlot's own probe/apron checks.
+            AddWreckedHall(plan, rects[1]["hall_d1_s5"], 1, (DeviceKind.Light, "light_d1_s5", 0.02f));
+            AddWreckedHall(plan, rects[1]["hall_d1_s6"], 1, (DeviceKind.Light, "light_d1_s6", 0.04f));
+            AddWreckedHall(plan, rects[1]["hall_d1_s7"], 1, (DeviceKind.Light, "light_d1_s7", 0.03f));
+
+            // ----------------------------------------------------------------- one person
+            // AutoWander so the ship is not a still photograph while the pawn is idle; deck-confined
+            // by the sampler, and hemmed in by closed doors, so the wander cannot reach vacuum.
+            plan.Citizens.Add(new CitizenSpec
+            {
+                Name = WreckCrewName, Pos = new Int3(WreckPods[0].X + 1, WreckPods[0].Y, 0),
+                AutoWander = true, RevealsFog = true, HoldPosition = false,
+            });
+
+            // -------------------------------------------------------------- opening stock
+            // In the reactor bay, in air, on proven open floor (interior x1..10, y11..16; this row
+            // is CenterY+1 = 14, clear of the lamp on the probe tile and of the top service row).
+            int stockY = reactor.CenterY + 1;
+            // 60 rations. `potato_hunger_value` is 0.36 and Hunger fills in two sim-days, so a crew
+            // member eats ~1.39 potatoes/sim-day: 60 is ~43 sim-days for the lone pawn and ~5.4 for
+            // the full eight-crew roster. Sized against the ROSTER, deliberately — the thaw curve
+            // ends with eight mouths, and the hydroponics bay is behind the frontier for a reason.
+            plan.Items.Add(new ItemSpec { Kind = ItemKind.Potato, Count = 60, Pos = new Int3(reactor.X0 + 1, stockY, 0), Label = "survival rations" });
+            for (int i = 0; i < 3; i++)
+                plan.Items.Add(new ItemSpec { Kind = ItemKind.Regolith, Count = 4, Pos = new Int3(reactor.X0 + 2 + i, stockY, 0), Label = "hull spoil" });
+            plan.Items.Add(new ItemSpec { Kind = ItemKind.Scrap, Count = 3, Pos = new Int3(reactor.X0 + 5, stockY, 0), Label = "salvage" });
+            plan.Items.Add(new ItemSpec { Kind = ItemKind.Parts, Count = 1, Pos = new Int3(reactor.X0 + 6, stockY, 0), Label = "spares" });
+            plan.Items.Add(new ItemSpec { Kind = ItemKind.Seals, Count = 2, Pos = new Int3(reactor.X0 + 7, stockY, 0), Label = "gaskets" });
+
+            // --------------------------------------------------------------- starting air
+            // THE WHOLE PRESSURISED SET, and it is three names long. Everything omitted here boots
+            // vacuum, which on this ship is thirteen compartments and one entire deck.
+            plan.PressurizedAnchors.Add(WreckCryoAnchor);
+            plan.PressurizedAnchors.Add("wreck_spine_0");
+            plan.PressurizedAnchors.Add(WreckReactorAnchor);
+
+            // ---------------------------------------------------------------------- goal
+            plan.Goals.Add(new GoalSpec
+            {
+                Kind = GoalKind.PressurizeAnchor, Param = WreckGoalAnchor,
+                Text = "Get the workshop breathing again",
+            });
+
+            // RoomDresser.Dress is deliberately NOT called — see the header (a smashed bed would be
+            // permanently unrepairable and fully functional, and a raided ship has no bunks left).
+            return plan;
+        }
+
+        /// <summary>
+        /// Scatter wrecked machinery through one sealed hall. Devices land on the hall's top
+        /// service row and its centre row, spaced two apart from the left wall — positions chosen
+        /// so they survive a 2-row hull-side collapse and never land on the door apron.
+        /// Every device here is authored damaged; that is what "wrecked hall" means.
+        /// </summary>
+        private static void AddWreckedHall(ShipPlan plan, BandPlanner.Rect r, int z,
+                                           params (DeviceKind Kind, string Name, float Condition)[] devices)
+        {
+            for (int i = 0; i < devices.Length; i++)
+            {
+                bool second = i >= 3;
+                int x = r.X0 + 1 + (second ? i - 3 : i) * 3;
+                int y = second ? r.CenterY : r.Y0 + 1;
+                Dev(plan, devices[i].Kind, x, y, z, devices[i].Name, devices[i].Condition);
+            }
+        }
+
     }
 }

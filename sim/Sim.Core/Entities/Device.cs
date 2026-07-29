@@ -33,6 +33,19 @@ namespace Perilune.Sim
         // Water chain (E0-7). Appended at the END of the enum, never inserted.
         IceMelter = 26,  // crafting station: consumes ItemKind.Ice, buffers the meltwater in
                          // StoredLiters, and WaterSystem pushes that buffer onto its fluid network
+        // The wreck start (W3). Appended at the END of the enum, never inserted.
+        CryoPod = 27,    // a cryogenic sleeper capsule. INERT IN THIS LANE — no CryoSystem, no thaw
+                         // verb, nothing reads this kind except the glyph table, the machine table
+                         // and the wear/power systems every kind goes through. It is a PROP with a
+                         // Condition, deliberately: the thaw (docs/design/perilune-wreck-start.plan.md
+                         // W5) is a separate, larger package that adds a system, a command and a
+                         // gate, and it moves all five determinism pins. Authoring the pods first
+                         // means W5 lands a mechanic onto furniture that already exists rather than
+                         // inventing both at once.
+                         //
+                         // State lives on fields Device already hashes and saves — `IsOpen` (open
+                         // vs occupied), `Name` (who is inside), `Condition` (how badly the raid
+                         // treated it). W5 adds `Progress` (the cycle). NO new Device field.
     }
 
     /// <summary>Brownout shed order: lowest tier is shed first (TDD §3.7).</summary>

@@ -339,7 +339,9 @@ namespace Perilune.Sim
         /// then, per kind:
         /// <list type="bullet">
         /// <item><b>Device</b>: no device resolves at the tile → reject; the device is a
-        /// <see cref="DeviceKind.Door"/> → reject. <b>Everything else is legal, INCLUDING LIFE
+        /// <see cref="DeviceKind.Door"/> → reject; the device is a CLOSED
+        /// <see cref="DeviceKind.CryoPod"/> → reject (there is a person inside it).
+        /// <b>Everything else is legal, INCLUDING LIFE
         /// SUPPORT</b> (<c>ECONOMY.md</c> §7.2 — stripping the scrubber to make rent is the game,
         /// and E0-2's <c>SafetySystem</c> already handles the consequence).</item>
         /// <item><b>Wall</b>: not a wall tile (so <see cref="TileDefs.Debris"/> stays DIG's verb
@@ -347,7 +349,7 @@ namespace Perilune.Sim
         /// citizen standing on the tile.</item>
         /// </list>
         ///
-        /// WHY DOORS ARE THE ONE EXCLUSION: a door is <see cref="BuildSystem"/>'s OUTPUT
+        /// WHY DOORS ARE AN EXCLUSION: a door is <see cref="BuildSystem"/>'s OUTPUT
         /// (<c>BuildSystem.Complete</c> spawns it), so its inverse is build-cancel, not strip.
         /// Two owners for one object's lifetime is the bug. Deliberately NOT
         /// <see cref="PlaceDeviceCommand.IsPlaceableFurniture"/>: that is a different, much
@@ -373,7 +375,30 @@ namespace Perilune.Sim
                 // unambiguously. HONEST LIMIT: conduits and pipes are therefore un-strippable
                 // today. They are also the cheapest things on the ship, so nothing is lost yet.
                 if (!sim.TryGetDeviceAt(pos, out var device)) return false;
-                return device.Kind != DeviceKind.Door;
+                if (device.Kind == DeviceKind.Door) return false;
+                // ⚠️ AN OCCUPIED CRYO CAPSULE IS THE SECOND EXCLUSION, AND IT IS A DIFFERENT
+                // ARGUMENT FROM THE DOOR'S. The door is excluded because it has another owner
+                // (BuildSystem spawns it, so its inverse is build-cancel). A closed pod is excluded
+                // because THERE IS A PERSON IN IT. On `--ship wreck` seven of the eight souls a won
+                // game ends with are asleep in closed capsules; a single drag of the STRIP palette
+                // across the cryo bay used to condemn every one of them (driven: CanDesignate on
+                // pod_ozawa, Condition 0.91, closed, returned True and Designate accepted it) and
+                // pay 1 Part for the privilege. That is not "stripping the scrubber to make rent" —
+                // the crew are not a resource the ship can be traded for, and unlike life support
+                // there is no consequence system that makes the loss legible, no undo on any client
+                // surface, and no way to build a pod back.
+                //
+                // OCCUPANCY IS `!IsOpen`, which is the same state the glyph layer reads to pick
+                // between 'K' and 'k' — there is no separate "has a sleeper" field, and inventing
+                // one to distinguish a live sleeper from a dead one would make a wrecked capsule
+                // strippable, i.e. would put a "clear the body" verb on the map that nothing else
+                // in the game supports. An OPEN pod is empty furniture and stays strippable.
+                //
+                // ⚠️ THE PLAYER IS NOT TOLD WHY. This lands as a silent refusal, which is the
+                // cheap-and-invisible failure shape MECHANICS.md §13.17 names. It is filed there
+                // rather than hidden: the `blocked` channel is the surface that should carry it.
+                if (device.Kind == DeviceKind.CryoPod && !device.IsOpen) return false;
+                return true;
             }
 
             // Only a real WALL. Debris is DigJobSource's target (a different verb with a

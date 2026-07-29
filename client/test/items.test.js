@@ -46,10 +46,15 @@ test('the registry holds exactly 70 items', () => {
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 27 functional, 23 cosmetic, 12 material, 8 resource', () => {
+test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 8 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER THE WRECK START (W3): `DeviceKind.CryoPod` now exists, so the two
+  // cryo-capsule pieces moved COSMETIC → FUNCTIONAL [exists] and claimed the two state glyphs
+  // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
+  // at 70 because nothing was added or removed, only reclassified — which is exactly the shape a
+  // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 27, cosmetic: 23, material: 12, resource: 8 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 8 });
 });
 
 test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value, no unlisted one', () => {

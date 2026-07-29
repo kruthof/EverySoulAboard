@@ -9,7 +9,7 @@ namespace Perilune.Tui
     /// <summary>Which authored ship the hosts boot. Default is the shipping 2-crew Perilune
     /// (the pinned-golden / CI path); <see cref="Slice"/> is the P2 "Talking Ship" 8-crew
     /// vertical slice, selected with <c>--ship slice</c> and never seen by CI.</summary>
-    public enum ShipChoice { Perilune, Slice, Grid }
+    public enum ShipChoice { Perilune, Slice, Grid, Wreck }
 
     /// <summary>
     /// The headless boot of the shipping ship — the terminal/web skins' equivalent of
@@ -87,6 +87,7 @@ namespace Perilune.Tui
         public static ulong DefaultSeedFor(ShipChoice ship) =>
             ship == ShipChoice.Slice ? SliceSeed :
             ship == ShipChoice.Grid ? AuthoredShips.GridSeed :
+            ship == ShipChoice.Wreck ? AuthoredShips.WreckSeed :
             DefaultSeed;
 
         /// <summary>
@@ -108,6 +109,7 @@ namespace Perilune.Tui
             var plan =
                 ship == ShipChoice.Slice ? AuthoredShips.PeriluneSlice() :
                 ship == ShipChoice.Grid ? AuthoredShips.PeriluneGrid() :
+                ship == ShipChoice.Wreck ? AuthoredShips.PeriluneWreck() :
                 AuthoredShips.Perilune();
             plan.Seed = seed;
 

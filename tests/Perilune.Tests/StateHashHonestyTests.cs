@@ -127,12 +127,19 @@ namespace Perilune.Tests
     ///     coordinate ≥ 2^20 (ECONOMY-PLAN §4.4). The Pos/JobTarget rows below perturb X, Y
     ///     and Z separately so a dropped axis is caught, but they stay inside the legal
     ///     range and therefore do NOT probe the overlap.
-    ///   * The room-anchor word is <c>Pack(Probe) | (Type &lt;&lt; 60)</c>, and since Z reaches
-    ///     bit 63, <c>Type</c>'s bits 60–63 sit on Z's bits 20–23: <c>anchor(z = 2^20,
-    ///     Type = None)</c> and <c>anchor(z = 0, Type = Corridor)</c> are the same word. Safe
-    ///     today only because <c>Probe.Z</c> is a deck index. <c>Type</c> also has exactly 4
-    ///     usable bits, which <c>RoomType</c>'s 16 members fill exactly — a 17th would fold
-    ///     onto <c>None</c>.
+    ///   * ⚠️ THE ROOM-ANCHOR ALIAS THIS BULLET USED TO PREDICT HAS HAPPENED, AND IS NOW FIXED.
+    ///     The word was <c>Pack(Probe) | (Type &lt;&lt; 60)</c>, which gave <c>Type</c> exactly 4
+    ///     usable bits — filled exactly by <c>RoomType</c>'s then-16 members — and this bullet
+    ///     said in as many words that "a 17th would fold onto <c>None</c>". The wreck start
+    ///     appended the 17th (<c>RoomType.Cryo = 16</c>), <c>(ulong)16 &lt;&lt; 60 == 0</c>, and a
+    ///     CRYO BAY hashed identically to an untyped one on the shipping ship (measured on
+    ///     <c>--ship wreck</c>: Cryo and None both <c>fdcb64eb5b094f75</c>, Medbay
+    ///     <c>b5e6a0f45102c979</c>). ⇒ <b>A PREDICTED ALIAS IS NOT A GUARDED ONE.</b> Nothing in
+    ///     this file drove <c>RoomAnchor.Type</c> at all, so the prediction sat here being right
+    ///     while the fold went wrong underneath it. <c>Type</c> now folds as its own word — which
+    ///     also retires the Z-overlap half of the old bullet (<c>Probe.Z</c> reached bit 63, so
+    ///     <c>anchor(z = 2^20, None)</c> equalled <c>anchor(z = 0, Corridor)</c>) — and the
+    ///     <c>RoomAnchor.Type</c> row below is the guard the prose was standing in for.
     ///   * The device word is audited alias-free (<c>NetworkId</c> is a <c>ushort</c>), and
     ///     only <c>Device.Name</c> has a row below — the packed word itself is still undriven.
     ///   * <c>Path</c> entries and <c>PrevPos</c> go through the same lossy <c>Pack(Int3)</c>,
@@ -288,6 +295,23 @@ namespace Perilune.Tests
             yield return Case("RoomAnchor list length",
                 s => s.Rooms.SetAnchor("galley", new Int3(2, 1, 0), RoomType.Mess),
                 s => (ulong)s.Rooms.Anchors.Count);
+            // ⚠️ THE ROW THIS FILE PREDICTED IN PROSE AND NEVER DROVE. `RoomAnchor.Type` is saved
+            // (ROOM v3) and read back by the Overview's room labels, and it was folded by an
+            // expression too narrow to hold it with NO row here at all.
+            //
+            // ⚠️ WHAT THIS ROW GUARDS IS PRESENCE, NOT WIDTH, and that distinction is MEASURED
+            // rather than assumed — an earlier draft of this comment claimed the opposite.
+            // Mutation, both legs run: deleting the `Type` Combine outright reddens this row (and
+            // the collision pair below); restoring the old `| (Type << 60)` packing leaves this row
+            // GREEN and reddens only the collision pair. It stays green because the fixture's
+            // anchor is `Hydro` (7) and 7 << 60 is not 0, so the two states differed under the old
+            // fold too — mutating to the enum's LAST member does not rescue it. ⇒ A row of this
+            // shape can never see a WIDTH bug in the field it drives; only a collision pair can.
+            // The two together are the guard, and neither is redundant.
+            yield return Case("RoomAnchor.Type",
+                s => s.Rooms.Anchors[0] = new RoomAnchor(
+                    s.Rooms.Anchors[0].Name, s.Rooms.Anchors[0].Probe, LastRoomType()),
+                s => (ulong)s.Rooms.Anchors[0].Type);
             // MOSS program sources are canonical sim state (Simulation.cs:171, TDD §4.5) —
             // the source text IS the program, not a label for it. Same tautology trap: SetScript
             // keys on TerminalId, so renaming a terminal has to go through the list directly or
@@ -300,6 +324,16 @@ namespace Perilune.Tests
                 s => (ulong)s.Scripts[0].Source.Length);
             yield return Case("Script list length",
                 s => s.SetScript("term_aft", "every 5s:\n  open(door_aft)\n"), s => (ulong)s.Scripts.Count);
+        }
+
+        /// <summary>The highest-numbered <see cref="RoomType"/> member, read off the enum rather
+        /// than named, so appending an 18th member automatically re-points the row above at the
+        /// new frontier instead of leaving it testing a member that is no longer the edge.</summary>
+        private static RoomType LastRoomType()
+        {
+            RoomType last = RoomType.None;
+            foreach (RoomType t in Enum.GetValues(typeof(RoomType))) if ((byte)t > (byte)last) last = t;
+            return last;
         }
 
         private static TestCaseData Case(string name, Action<Simulation> mutate, Func<Simulation, ulong> read) =>
@@ -342,6 +376,46 @@ namespace Perilune.Tests
         // ------------------------------------------------------------------ the three aliases
         // Each builds an exact COLLISION PAIR under the pre-W0-1 packing: two distinct ship
         // states whose packed words were bit-for-bit equal.
+
+        /// <summary>
+        /// ⚠️ THE FOURTH ALIAS, AND THE ONLY ONE THAT WAS LIVE ON A SHIPPING SHIP RATHER THAN
+        /// HISTORICAL. The room-anchor word was <c>Pack(Probe) | ((ulong)Type &lt;&lt; 60)</c>, giving
+        /// <c>Type</c> four usable bits. <c>RoomType</c>'s original 16 members filled them exactly,
+        /// and the wreck start appended <c>Cryo = 16</c>: <c>(ulong)16 &lt;&lt; 60</c> shifts clean off
+        /// the top of a 64-bit word and is <b>0</b>, so a cryo bay hashed as an untyped room. This
+        /// is the collision pair, built from the enum's own edge rather than from the literal 16 —
+        /// an 18th member must inherit the guard without anyone remembering to widen it.
+        ///
+        /// The Medbay leg is the NON-VACUITY control: a member that fits in four bits must already
+        /// have moved the hash under the old fold, so a green result here that came from the fold
+        /// being deleted entirely would show up as this leg failing too.
+        /// </summary>
+        [Test]
+        public void Aliased_RoomTypeAboveFifteen_DoesNotFoldOntoNone()
+        {
+            var a = Fixture();
+            var b = Fixture();
+            Assert.That(b.StateHash(), Is.EqualTo(a.StateHash()), "precondition: twins hash equal");
+
+            var probe = a.Rooms.Anchors[0].Probe;
+            string name = a.Rooms.Anchors[0].Name;
+            var last = LastRoomType();
+            Assert.That((byte)last, Is.GreaterThan(15),
+                "precondition: this pair only probes the old 4-bit ceiling if some member exceeds 15");
+
+            a.Rooms.Anchors[0] = new RoomAnchor(name, probe, RoomType.None);
+            b.Rooms.Anchors[0] = new RoomAnchor(name, probe, last);
+            Assert.That(b.StateHash(), Is.Not.EqualTo(a.StateHash()),
+                $"RoomType.{last} ({(byte)last}) hashes identically to None — Type is packed into a " +
+                "field too narrow to hold it, exactly as this file's header predicted it would be");
+
+            // CONTROL: a member that FITS in the old four bits was never aliased, so it must differ
+            // whether or not the widening happened. If this leg fails, the anchor Type fold is gone
+            // altogether and the leg above is passing for the wrong reason.
+            b.Rooms.Anchors[0] = new RoomAnchor(name, probe, RoomType.Medbay);
+            Assert.That(b.StateHash(), Is.Not.EqualTo(a.StateHash()),
+                "CONTROL: RoomType.Medbay (4) fits the old packing and must always move the hash");
+        }
 
         /// <summary>
         /// Pre-W0-1 the item word was <c>Id | Kind&lt;&lt;32 | Reserved&lt;&lt;39 | Count&lt;&lt;40</c>, so a kind of

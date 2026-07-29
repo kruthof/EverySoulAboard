@@ -176,12 +176,26 @@ export const ITEMS = Object.freeze({
   'ice':              { build: R.ice,             size: { w: 68, h: 58 }, ...res('Ice', 'i') },
   'corpse':           { build: R.corpse,          size: { w: 52, h: 86 }, ...res('Corpse', '&') },
 
-  // ── CRYO (2) — COSMETIC, added by the 2026-07-28 mock re-import ──
-  // ⚠️ NEITHER CLAIMS A GLYPH. There is no cryo-capsule `DeviceKind` in the sim, so there is no
-  // `Glyphs.ForDevice` char to claim and no tile the sim would project one onto. They sit in the
-  // same COSMETIC class as `cryopod`, which they do NOT replace — the mock ships all three.
-  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...cos('cryo_capsule_occupied') },
-  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...cos('cryo_capsule_open') },
+  // ── CRYO (2) — FUNCTIONAL since the wreck start (W3) ──
+  // ⚠️ THE NOTE THAT STOOD HERE IS QUOTED RATHER THAN DELETED, BECAUSE IT WAS TRUE WHEN WRITTEN AND
+  // IS THE REASON THESE TWO ARRIVED UNSKINNED: *"NEITHER CLAIMS A GLYPH. There is no cryo-capsule
+  // `DeviceKind` in the sim, so there is no `Glyphs.ForDevice` char to claim and no tile the sim
+  // would project one onto."* `DeviceKind.CryoPod` now exists (`--ship wreck` authors twelve of
+  // them), so both halves are false and both pieces are `functional`.
+  //
+  // TWO ROWS, TWO GLYPHS, ONE DEVICE KIND — the shape doors already use (`sliding-door` claims
+  // `'+'`, `blast-door` claims `'X'` through GLYPH_SUBSTITUTE, `airlock` claims nothing). A pod's
+  // glyph comes from its STATE: `GlyphMapper.DeviceGlyph` returns `Glyphs.CryoPodOpen 'k'` for an
+  // open capsule and `Glyphs.CryoPodClosed 'K'` for an occupied one, and `'K'` is additionally the
+  // `Glyphs.ForDevice` arm (the kind's rest glyph). So the join is derived from THIS table by
+  // `glyph-map.js`, with nothing hand-mirrored anywhere.
+  //
+  // `cryopod` above stays COSMETIC and is NOT retired: it is a different, smaller piece the mock
+  // ships alongside these two, it claims no glyph, and giving it one would put two pieces on one
+  // char. The registry's first-wins rule would then pick by declaration order rather than by
+  // decision, which is exactly the kind of silent choice `deriveGlyphToItem`'s guard exists to stop.
+  'cryo-capsule-occupied': { build: C.cryoCapsuleOccupied, size: { w: 60, h: 104 }, ...dev('CryoPod', 'K') },
+  'cryo-capsule-open':     { build: C.cryoCapsuleOpen,     size: { w: 110, h: 104 }, ...dev('CryoPod', 'k') },
 });
 
 /** The full list of registered itemIds, in mock order. */

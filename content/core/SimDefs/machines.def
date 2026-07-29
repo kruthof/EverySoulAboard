@@ -15,8 +15,8 @@
 #     blocks  true if the machine occupies its tile (side-view: all false)
 #     heat    kW waste heat into the room while operating
 #     wear    Condition lost per operating hour at nominal temperature
-#     maint   wants a maintenance job below this Condition
-#     fail    inoperative below this Condition  (must be <= maint)
+#     maint   wants a maintenance job below this Condition; 0 = NEVER serviced (the opt-out)
+#     fail    inoperative below this Condition  (must be <= maint, UNLESS maint is 0)
 
 [machines]
 radiator_reject_kw = 5      # kW a powered, condition-scaled radiator rejects
@@ -54,3 +54,20 @@ Telescope       0.4    0    Industry      false   0.2    0.004   0.4    0.1
 # not physical — see MachineDefs.cs (at 1.0 kW the melter cost 28% of the slice's food and
 # inflated A1 by ~11 pp of pure brownout slowdown).
 IceMelter       0.4    0    LifeSupport   false   0.4    0.012   0.4    0.10
+# The wreck start (W3): a cryogenic sleeper capsule. INERT in the sim — no system reads the kind.
+# LifeSupport tier because a pod IS life support for whoever is inside it, and the tier is served
+# all-or-nothing, so twelve pods share a bucket with the vents: budget generation before adding pods
+# to a marginal ship. draw/heat are deliberately the smallest non-trivial pair in the table (a draw
+# is a brownout tax, not a load — ECONOMY.md §1.2), and the 0.15 kW of waste heat is what holds the
+# wreck's cryo bay above hypothermia_c on a ship with no heater device. wear is the lowest non-zero
+# rate here: a dormant vessel asks nothing of the crew for ~29 sim-days.
+#
+# maint 0 IS THE OPT-OUT, NOT A THRESHOLD — this is the only row in the table that is both never
+# serviced and able to fail. Repairing a pod is a PLAYER act (the thaw), not a standing rule. At
+# maint 0.30 the wreck's whole opening stock (1 Parts, 2 Seals) was spent unattended on the four
+# DEAD sleepers' capsules inside one sim-day — measured, first Maintain job at tick 201 — because
+# they are the lowest-Condition devices on the ship and MaintenanceSystem recruits neediest first.
+# fail 0.10 still stands: below it a pod is inoperative and paints Broken, which is how a wrecked
+# capsule reads as dead. NOTE the `fail <= maint` column rule above does NOT apply to a maint = 0
+# row, and DefsParser exempts it by name — see DefsParserTests.
+CryoPod         0.2    0    LifeSupport   false   0.15   0.001   0      0.10

@@ -826,7 +826,9 @@ namespace Perilune.Tests
                 .ToDictionary(g => g.Key, g => g.Count());
 
             CollectionAssert.AreEquivalent(
-                new Dictionary<float, int> { { 0f, 9 }, { 0.02f, 3 }, { 0.05f, 2 }, { 0.10f, 11 } },
+                // RE-COUNTED off the shipped table after the wreck start added DeviceKind.CryoPod
+                // (`fail` 0.10), never computed from the previous census: 0.10 goes 11 → 12.
+                new Dictionary<float, int> { { 0f, 9 }, { 0.02f, 3 }, { 0.05f, 2 }, { 0.10f, 12 } },
                 census,
                 "the machines.def failure-threshold census moved. WireFormat.Devices.cs's `Oper` " +
                 "paragraph quotes these four groups by name and count; re-COUNT them there rather " +
@@ -840,8 +842,8 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE GLYPH IS *ALMOST* AN IDENTIFIER, AND THE HEADER SAYS SO — this pins both halves of that
-        /// sentence off <c>Glyphs.ForDevice</c> itself. Injective over the 25 tile-resident kinds;
-        /// NOT injective over all 27, because Conduit and Pipe deliberately share <c>'~'</c>.
+        /// sentence off <c>Glyphs.ForDevice</c> itself. Injective over the 26 tile-resident kinds;
+        /// NOT injective over all 28, because Conduit and Pipe deliberately share <c>'~'</c>.
         ///
         /// It is here because the header uses the first half to explain why <c>Kind</c> is carried, and
         /// a claim about a switch statement that nothing measures is exactly what this repo keeps
@@ -853,8 +855,10 @@ namespace Perilune.Tests
             var all = Enum.GetValues(typeof(DeviceKind)).Cast<DeviceKind>().ToList();
             var resident = all.Where(k => !Simulation.IsUtilityOverlay(k)).ToList();
 
-            Assert.AreEqual(27, all.Count, "the DeviceKind enum grew — re-read the header's counts");
-            Assert.AreEqual(25, resident.Count);
+            // 27 → 28 / 25 → 26: the wreck start appended DeviceKind.CryoPod, which is tile-resident
+            // and carries its own glyph 'K', so the injectivity claim below is unweakened.
+            Assert.AreEqual(28, all.Count, "the DeviceKind enum grew — re-read the header's counts");
+            Assert.AreEqual(26, resident.Count);
             Assert.AreEqual(resident.Count, resident.Select(Glyphs.ForDevice).Distinct().Count(),
                 "two TILE-RESIDENT device kinds now share a glyph. The header of " +
                 "hosts/web/WireFormat.Devices.cs says the glyph nearly identifies the kind for the rows " +
