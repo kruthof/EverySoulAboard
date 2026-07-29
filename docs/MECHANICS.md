@@ -1,7 +1,7 @@
 # PERILUNE — Mechanics, as implemented
 
 *Originally written 2026-07-21 against commit `0f88231`, and **amended continuously since** — §13
-carries entries dated 2026-07-27. **Trust the PER-SECTION dates, not this line**; a blind-read audit
+carries entries dated 2026-07-28. **Trust the PER-SECTION dates, not this line**; a blind-read audit
 flagged that the 07-21 header invites a reader to discount the whole file as stale. **This document describes what the code
 does, not what the design wants.** Every number below was read out of a source file or a
 `.def` file in one sitting and is cited `file:line` or `def-file:key`. Where
@@ -313,14 +313,50 @@ On recompute, gas **and temperature** are remapped by tile overlap
 of every old room its tiles came from. A brand-new volume with no predecessor keeps the
 293 K default (`RoomState.cs:16,311-312`).
 
-`Rooms.MarkDirty()` has exactly five call sites repo-wide: `AddDevice` / `RemoveDevice`
-(`Simulation.cs:79,95`), `SetTileCommand` (`Commands/Commands.cs:184`), a completed dig
-(`Jobs/JobSystem.cs:517`) and a completed wall build (`Systems/BuildSystem.cs:194`).
-**Nothing else re-floods rooms** — in particular, no runtime breach mechanic exists.
+`Rooms.MarkDirty()` has exactly **six** call sites repo-wide (re-counted 2026-07-28; the
+count and four of the five citations below it had gone stale — E0-5 added the sixth and the
+dig moved out of `JobSystem`): `AddDevice` / `RemoveDevice` (`Simulation.cs:116,132`),
+`SetTileCommand` (`Commands/Commands.cs:691`), a completed dig
+(`Jobs/Sources/DigJobSource.cs:141`), a completed wall build (`Systems/BuildSystem.cs:213`)
+and a completed strip (`Systems/DeconstructSystem.cs:557`). **Nothing else re-floods
+rooms** — in particular, no runtime breach mechanic exists, and (since W4b) **no command
+re-floods rooms merely because a player named one**.
 
 **Room anchors** are saved sim state (`RoomState.cs:72-85`, `ROOM` chapter v2/v3) — a name
-plus a probe tile. They are the MOSS room namespace (`hab1.o2`) and the `GoalSystem`
-anchor lookup.
+plus a probe tile, plus a `RoomType`. They are the MOSS room namespace (`hab1.o2`) and the
+`GoalSystem` anchor lookup.
+
+### Allocating a room — naming is free, air is earned (W4b, 2026-07-28)
+
+`AddRoomCommand` (`Commands/Commands.cs:628-672`) is the sim side of the Overview's
+**＋ADD ROOM** picker. As of W4b it does **exactly one thing**: `rooms.SetAnchor(name, probe,
+type)` (`:670`). It names and types the compartment the probe lands in, and that is all.
+
+> **⛔ RETRACTED — allocation used to CONJURE AIR, and any doc or plan that still says so is
+> describing the pre-W4b sim.** The struck behaviour is quoted rather than deleted because it
+> was the game's largest matter faucet and it was invisible: the command used to *"force every
+> bordering door open AND unlocked, and `RoomState.Pressurize` it — 101.3 kPa of 21 % O₂
+> conjured from nothing"* (`Commands.cs:579`, the header that records the deletion). The
+> door-forcing loop, its `BordersRoom` helper and the `Pressurize` call are **gone**;
+> `RoomState.Pressurize` survives only as a **setup-time** utility (below). This also fixed
+> half of the owner's *"the doors vanish when I allocate a room"* report — allocation no longer
+> touches a door at all.
+
+**The rejection predicate moved from GAS to a TYPED ANCHOR, and the word *typed* is
+load-bearing.** The old double-commission guard was `room.TotalMoles > 0` — *"already a live
+room"* — which only worked while "named" and "has air" were the same event. They are not any
+more: a named-but-airless compartment is the normal state of every freshly allocated room, and
+a furnished room that has been vented is airless too. The guard now walks `rooms.Anchors` and
+refuses when any anchor whose probe resolves to **this same room id** already carries a
+`RoomType` other than `RoomType.None` (`:660-666`). Every grid and wreck hall already ships an
+*untyped* `hall_dZ_sN` anchor, so an un-allocated hall's own anchor is skipped by the
+`Type == RoomType.None` continue at `:664`; room ids are global across decks, so no deck
+filter is needed, and a hall merged into a furnished room by a stripped bulkhead is correctly
+refused because the merged room carries the furnished room's typed anchor.
+
+The other two refusals are unchanged in spirit: an empty name or an out-of-bounds/wrong-deck
+probe (`:643-644`), and a probe that lands in room 0 — open vacuum, not a sealed compartment
+(`:652`). **Every rejection is a silent no-op**, like the other designate/place commands.
 
 ---
 
@@ -339,9 +375,16 @@ O2Fraction   = O2Moles / TotalMoles
 CO2Ppm       = CO2Moles / TotalMoles × 1,000,000
 ```
 
-Initial fill (`RoomState.Pressurize`, `:104-110`) is 101.3 kPa of 21 % O2 / 79 % N2 /
+Initial fill (`RoomState.Pressurize`, `:135-141`) is 101.3 kPa of 21 % O2 / 79 % N2 /
 0.05 % CO2 — i.e. **500 ppm CO2 baseline**. The 0.21/0.79/0.0005 mix and the 0.2 s `Dt`
 are structural, not def-tunable (`atmosphere.def` header).
+
+**`Pressurize` is a SETUP-TIME utility and nothing in the running game calls it** (checked
+repo-wide, 2026-07-28). Its callers are ship generation (`ShipPlanBuilder.cs:126`, applying
+`ShipPlan.PressurizedAnchors`), the scenario host's dump path and tests. **No `ISimCommand`
+calls it** — W4b removed the last one (§2 "Allocating a room"). At runtime, air enters a
+compartment by exactly two routes: an `AirVent` injecting into it, or bulk/diffusive flow
+across an **open door** from a room that already has some.
 
 ### One pass, in order (`AtmosphereSystem.Tick`, `:23-78`)
 
@@ -353,7 +396,7 @@ are structural, not def-tunable (`atmosphere.def` header).
 | `AirVent` | `IsOpen && Powered && IsOperational` **and** room ≠ vacuum **and** `room.PressureKPa < nominal_pressure_kpa` | `+30 × EffectiveRate × 0.2` mol, split 21 % O2 / 79 % N2 (`:41-50`) |
 | `Scrubber` | `Powered && IsOperational` and room ≠ vacuum | `CO2Moles = max(0, CO2Moles − 0.001 × EffectiveRate × 0.2)` (`:53-59`) |
 
-`EffectiveRate = Rate × (0.5 + 0.5 × Condition)` (`Entities/Device.cs:79`) — a worn machine
+`EffectiveRate = Rate × (0.5 + 0.5 × Condition)` (`Entities/Device.cs:120`) — a worn machine
 works, but poorly: at `Condition = 0.10` (the fail floor for most life-support kinds) it
 delivers **55 %** of nominal, and it stops entirely below that because `IsOperational`
 goes false.
@@ -395,6 +438,50 @@ corridor r5 (11,961 ppm) and the scrubber room r6 (0 ppm) sit at 96.762738 vs 96
 — a Δp of `4.3e-4` kPa, ~430× the cutoff. Transport is therefore **throughput-limited, not
 zero**: it moves gas at the source room's mixture fraction, which is far too slow to level a
 concentration gradient. See §13.1 for the measured balance.
+
+### ⛔ Gas is SAME-DECK ONLY — there is no vertical transport term anywhere
+
+**Every gas path in the sim is planar.** This is not a tuning weakness, it is the absence of a
+term, and it was only noticed when a ship shipped with its vents on one deck and its
+compartments on another (W4b, 2026-07-28). All four legs verified in source:
+
+| path | what it probes | citation |
+|---|---|---|
+| bulk door flow | `(X±1,Y,Z)` / `(X,Y±1,Z)`, on `world.Levels[doorPos.Z]` | `AtmosphereSystem.cs:211,219-222` |
+| per-species diffusion (B-3) | `Int3.Neighbor4`, on `world.Levels[doorPos.Z]` | `AtmosphereSystem.cs:337,343`; `World/Int3.cs:23-29` |
+| the room flood itself | `world.Levels[start.Z]`, planar 4-neighbours only ⇒ **a room can never span decks** | `RoomState.cs:275-293` |
+| gas remap on recompute | called once per `z`, with `z` as a parameter | `RoomState.cs:198,322` |
+
+`Ladder` z-links exist for **pathing** (`Path/PathService.cs`, §5.5) and for nothing else — a
+ladder trunk is not a gas edge, and neither is an open hatch, because there is no such device.
+⇒ **A compartment with no vent on its own deck and no open-door chain to a pressurised room on
+its own deck cannot be pressurised at all.** Measured consequence on the shipped wreck: §13.23.
+
+### How fast a compartment fills
+
+Two rates, both derivable from `atmosphere.def` and neither of them fast:
+
+- **A vent is a constant source.** `vent_mol_per_second = 30`, injected as
+  `30 × EffectiveRate × Dt` per pass at 5 Hz (`AtmosphereSystem.cs:123,142`) — so **30 mol/s**
+  at `Condition = 1`, and `EffectiveRate = Rate × (0.5 + 0.5 × Condition)`
+  (`Entities/Device.cs:120`; `Rate` defaults to 1, `:79`) drops that to **16.5 mol/s** (55 %) at
+  the `AirVent` fail floor of `Condition = 0.10`, below which it stops entirely. A 60-tile hall — the standard `SlotGridPlanner` interior, 10 × 6 — is 150 m³
+  (`Room.VolumeM3 = TileCount × 2.5`), which at 293 K holds
+  `101 × 1000 × 150 / (8.314 × 293) ≈ 6 219` mol at 101 kPa ⇒ **~207 s (~2 070 ticks) from
+  vacuum**, after which the vent gates off at `nominal_pressure_kpa`. Confirmed by driving
+  `--ship wreck` (n = 1): `vent_ls` repaired, powered and opened with its compartment's door
+  **shut** reaches 101 kPa at tick **2 072** = 207.2 s.
+- **A door is an exponential.** `dn = flow_coefficient × |Δp| × Dt` with
+  `flow_coefficient = 0.5 mol/(kPa·s)`, i.e. **0.5·Δp mol/s** through one open door, so Δp
+  decays exponentially and the last few kPa take as long as the first fifty. For a 150 m³ room
+  filling from a large reservoir through one open door the time constant is
+  `V / (0.5 × R × 293 / 1000) ≈ 123 s`, so **half-full in ~85 s and 90 % full in ~4½ min** —
+  minutes, not seconds, and slower still when the source room is small enough to draw down.
+  Order-of-magnitude confirmed by driving `--ship wreck` (n = 1): a deck-0 hall opened onto the
+  pressurised spine is substantially full at **~2 990 ticks (~5 sim-minutes)**.
+
+⇒ **Opening a door onto vacuum is the same arithmetic in reverse** (`atmosphere.def:15` says
+"hab drains in ~40 s"), and room 0 is an infinite sink, so the outward case never slows down.
 
 ### Thresholds that hurt people (`Systems/NeedsSystem.cs:41-73`, `needs.def`)
 
@@ -1523,6 +1610,47 @@ using `IsIdleForWork`: an order suppresses **work**, never **survival** — a cr
 crossing a real thirst/hunger threshold mid-order still diverts, exactly as E0-2's
 `SafetySystem` still lets them flee lethal air. See §5.1.
 
+**A NEW player verb landed 2026-07-28: OPERATE.** It is the first player verb that is not a
+designation — it changes the world at the command drain with nobody walking anywhere.
+
+- **What it does.** Toggles `Device.IsOpen` on a `Door` or an `AirVent`, and on **nothing else**.
+  The operable set is host-side in one place, `GameSession.IsOperableKind` (`:1103-1104`),
+  derived from what the *sim* actually reads `IsOpen` for: `AtmosphereSystem` (door flow, vent
+  injection), `ThermalSystem`, `PowerSystem.IsWanting`, `Simulation.IsWalkable`,
+  `GlyphMapper.DeviceGlyph` and the room flood. `SetDeviceStateCommand` will happily set the bit
+  on a Fabricator and **nothing would ever read it**, which is the invisible no-op the narrow
+  set exists to refuse. **`CryoPod` is deliberately excluded** — opening a pod is a thaw, gated
+  and priced, and belongs to W5's `ThawCommand`.
+- **It goes through a command, never through the device.** `Door` →
+  `SetDoorStateCommand`; `AirVent` → `SetDeviceStateCommand` (`GameSession.cs:1073-1076`). The
+  host reads device fields to *answer*, and writes nothing.
+- **Surface.** Room Zoom only, as a 16th palette tool, key `[O]` (`client/src/ui/room-model.js:51-54`,
+  `roomzoom-view.js:1269`). Not on the Overview, and it is **not a sweep tool** — one click, one
+  device.
+- **It is fog-gated on the HOST as well as the client** (`GameSession.HandleOperate` →
+  `IsExplored`, `GameSession.cs:1045,1111-1112`) — the *same* `TileFlags.Explored` predicate the
+  `devices` channel is gated on, written once so the verb and the channel cannot come to
+  disagree about which devices exist as far as the player is concerned. **This is deliberate and
+  it is the rule, not an oversight: a verb has no more licence to widen what the player knows
+  than a renderer does.** An unexplored target is refused with `NOTHING KNOWN HERE TO OPERATE`;
+  the client's own chip layer is derived from the `devices` channel, which is gated on the same
+  flag, so the two populations are identical by construction (`roomzoom-view.js:1015-1020`).
+- **It resolves the device through `Simulation.TryGetDeviceAt`, not a store scan.** `Conduit`
+  and `Pipe` are utility overlays that share tiles with machines and are ~88 % of the device
+  store; a linear scan returns the *conduit* on any tile that also carries power, which is where
+  a vent usually is. ⚠️ **The deprecated console's `ContextAction` cursor toggle still has that
+  bug and it was not fixed** — that path is closed to new work.
+- **One refusal, three advisories, and the distinction matters.** The only state in which the
+  sim accepts the command and the world does not move is a **locked door being opened**, so that
+  is refused up front (`GameSession.cs:1066-1071`); a locked door can still be *shut*.
+  Everything else is **accepted** and carries an advisory tail explaining why it may change
+  nothing (`OperateAdvisory`, `:1158-1173`): `WRECKED (n %)` when `!IsOperational`, plus `NO
+  PARTS, SEALS OR SWARF ABOARD TO REPAIR IT` when `MaintenanceSystem.IsUnfixableWreck`, and —
+  `else if`, so a wrecked machine never also mentions power — `NO POWER REACHES IT` for a vent
+  being opened while `!Powered`. ⚠️ **The power clause cannot fire on any shipped ship**: every
+  `AirVent` on `--ship wreck` (2) and `--ship grid` (4) is on network 1, and no palette tool
+  places a vent. It is dead on shipped content, pinned by a constructed fixture.
+
 **Job occupancy has now been re-measured** (2026-07-23, post-E0-1/2/3) — see **§13.15**, which
 supersedes the `None 99.92 %` figure. Headline: `None` fell **99.92 % → 85.28 %** over 3 sim-days,
 so the labour fix worked; but the remaining work is finite and the ship goes **permanently idle
@@ -2492,12 +2620,25 @@ a pod has no free-jury-rig band at all now, so W5 must supply the repair path al
 `DefsParser` had to learn that `maint = 0` is an opt-out and not a threshold — its `fail <= maint`
 clamp was rewriting this row's `fail` to 0 on every host that reads `machines.def`.
 
-**d. CONDITION IS INVISIBLE ON THE OVERVIEW, AND ONLY THERE.** The `devices` channel carries `cond`
-and no surface draws it, so the capsule **art** is identical at 0.94 and at 0.04. But the projection
+**d. ~~CONDITION IS INVISIBLE ON THE OVERVIEW, AND ONLY THERE.~~ ✅ CLOSED 2026-07-28 — the
+wrecked-twin art join landed.** ⛔ The struck claim below — *"the `devices` channel carries `cond`
+and no surface draws it, so the capsule **art** is identical at 0.94 and at 0.04"* — was true when
+written and is **false now**. `client/src/items/wear.js` is the one seam between the channel's
+condition byte and the 70 post-raid twins + 2 cryo capsules in `client/src/items/wrecked.js`; both
+SVG surfaces route their tile art through its `buildTileItem(itemId, opts, cond)`
+(`overview-scene.js:355`, `roomzoom-view.js:653`), so **a machine below `wear.wreck_threshold`
+(0.25) wears its wrecked twin on both surfaces.** The threshold is mirrored from the def rather
+than chosen (`wear.js:77`) and quantised to the wire's byte scale by derivation, never as a
+literal (`wear.js:107`) — the art changes exactly where the *rules* change (jury-rig refused,
+`Swarf` instead of `Parts`). The join is keyed on the **projected glyph**, not on the wire's
+`kind` byte, because `DeviceKind → itemId` is **not a function** (`Door` is claimed by three
+pieces, `CryoPod` by two — occupied and open), and not on a registry `kind` either (the sixth
+trap shape, §13 and `CLAUDE.md`). The retained half of the original entry still stands: the
+projection
 already paints the four wrecked pods `GlyphColor.Broken`, and the Room Zoom draws the `Corpse` stack
 **over** the capsule (`roomzoom-view.js:476` after `:444`), so at Level 2 the four deaths are on
-screen. `overview-view.js` has no ground-item layer, so at Level 1 they are not. Wiring the wrecked
-twins to `cond` is a separate package.
+screen. `overview-view.js` has no ground-item layer, so at Level 1 they are not — **the corpses
+are still Level-2 only**; it is the capsule's own wear that now reads at both levels.
 
 **e. THE SHIP FREEZES OUTSIDE THE CRYO BAY AND NO AUTHORED VALUE FIXES IT** — there is **no heater
 device in the game**; a radiator can only take heat out. Measured in the ship's own header.
@@ -2598,3 +2739,67 @@ deck-confined-wander figures exactly.
    moved the legacy `Recipes[SalvageRecycler]` row to `Regolith:4 → Scrap:3` as well, so both
    spellings of the recycler agree; without that, the mass creation stayed reachable one branch
    away from the fix that removed it.
+
+---
+
+### 13.23 W4b (＋ADD ROOM splits) + the OPERATE verb — what is wired but not connected (2026-07-28)
+
+The lanes that made air a thing the player earns rather than names. Everything here was measured
+by driving a ship, and each item is a **live** hole in the shipping game, not a latent one.
+
+**a. ⛔ `W4b-DEAD-DECK` — THE SIM HAS NO VERTICAL GAS TERM, SO A DECK WITH NO VENT CAN NEVER BE
+PRESSURISED.** The mechanism is §3 "Gas is SAME-DECK ONLY" — four independent planar paths, all
+cited there, none of which is a tuning value. The consequence is not slowness, it is
+**impossibility**: `--ship wreck` authors exactly two `AirVent`s and **both are on deck 0**
+(`AuthoredShips.cs:1709` `vent_cryo`, `:1830-1831` `vent_ls`; the plan runs `1622`→EOF), so all
+eight deck-1 halls, **allocated and with their doors opened, peak at `0.000` kPa over 20 000
+ticks.** No amount of OPERATE fixes it, because the verb only opens edges and there is no edge to
+open. ⚠️ **W4b did not create this — `＋ADD ROOM`'s free pressurisation was HIDING it**, and that
+is why deleting a wand exposed a hole rather than digging one. **The owner's decision is to ship
+it filed.** The three ways out (author a deck-1 vent · add a vertical transport term · accept the
+dead deck) are all content/design calls. ⛔ **Do NOT close it by re-pressurising in
+`AddRoomCommand`** — that is precisely the wand W4b deleted on a binding owner decision.
+
+**b. A BUILD GHOST DRAWS WHERE ITS REASON CANNOT — the `designs`/`blocked` fog asymmetry.**
+`BuildDesigns` (`hosts/web/GameSession.cs:1715-1729`) walks `BuildSystem.Pending` and emits every
+site with **no fog gate at all**. `AddIfBlocked` — the single gate through which every `blocked`
+row passes — **is** gated on `TileFlags.Explored` (`GameSession.cs:2311`). A freshly allocated
+vacuum compartment is, in the normal case, one no crew member has ever entered — that is the
+premise — so on its tiles the player sees **their own build ghost sitting there doing nothing,
+with the channel that would say why deliberately silent.** Dig and strip fail the *opposite* way and are therefore self-consistent: `BuildMarks`
+is fog-gated too (`GameSession.cs:2053`), so the order and its reason vanish **together**. ⇒ The
+natural player order on the wreck — *allocate → paint → wonder why nothing happens* — is exactly
+the order in which the channel is silent. Not fixed; the fix is a decision about which side moves
+(gate `designs`, or ungate `blocked`), and both are fog-of-war changes.
+
+**c. THE PREMISE'S OPENING MOVE IS STILL UNREACHABLE — `vent_ls` is never explored.** The vent
+authored *inside* wreck `hall_d0_s3` — the one the wreck start's fiction points the player at —
+reads `Explored = false` at tick 0, tick 600 **and tick 36 000 (a full sim-hour)**. It therefore
+never reaches the `devices` channel, gets no OPERATE chip, and is **honestly** refused by the
+host's own fog gate rather than dishonestly accepted. Its slot is also authored **unnamed**, so
+`roomTileRect` cannot resolve it and the Overview opens the ＋ADD ROOM picker there instead of a
+Room Zoom. ⇒ **The only operable vent a player can reach on `--ship wreck` today is
+`vent_cryo`.** `ExplorationSystem` is crew-vision only, and the wreck's premise *requires* acting
+on a compartment precisely because nobody can go in; how a vacuum compartment becomes KNOWN
+(sensor/MOSS reveal · line-of-sight through a door · authored-explored hull) is an owner decision
+with sim consequences.
+
+**d. A BUILT DOOR STILL HAS NO REMOVAL VERB ON ANY SURFACE** (pre-existing, unchanged by these
+lanes, and now more visible because a door is finally a thing the player *touches*).
+`DeconstructSystem` refuses `DeviceKind.Door` outright (`DeconstructSystem.cs:378`, with the
+legality restated at `:212`), and no client surface offers any other way to take one down. You
+can build a door, you can open and shut it — you cannot remove it.
+
+**e. THE OPERATE VERB IS A ONE-SHOT REPLY, NOT A CHANNEL, AND THAT IS A DESIGN LIMIT.**
+`hosts/web/WireFormat.Operate.cs` answers a click and is never cached — it is a direct answer to
+an action, not a fact about the world. So the refusal and its advisories are readable **only at
+the instant of the click**; nothing on either surface says "this vent is wrecked" until you try
+it. The standing facts *do* reach the client on the `devices` channel, which gained a **7th tuple
+element `open`** (`Device.IsOpen` as 1/0) in the same run
+(`hosts/web/WireFormat.Devices.cs:218,257`) — but `oper` and `open` are drawn only inside the
+OPERATE overlay, and only while the tool is armed. ⚠️ **`open` had to be added to the channel's
+dirty-version gate by hand at the merge** (`DeviceCell.SameAs`, `WireFormat.Devices.cs:272-281`;
+the gate itself is `GameSession.SendDevices`, `:1586-1595`): the gate skips serialization when
+the cell list is unchanged, and a door toggle moves **only** `open`, so without that clause a
+player's own toggle would silently freeze the OPEN⇄SHUT chip. Two lanes added `Open` and `SameAs`
+independently and **git reported no conflict** — see `HANDOVER.md`'s eighth trap shape.
