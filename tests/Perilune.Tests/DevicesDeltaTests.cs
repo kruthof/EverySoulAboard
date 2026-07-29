@@ -112,7 +112,7 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.AreEqual(6, f.Length, "a devices tuple is six elements");
+                Assert.AreEqual(7, f.Length, TupleWidth);
                 conds.Add(int.Parse(f[4], CultureInfo.InvariantCulture));
             }
             conds.Sort();
@@ -171,17 +171,27 @@ namespace Perilune.Tests
 
         /// <summary>The FINAL tuple of a payload, positionally. Used only as a non-vacuity control:
         /// a test that means to move "the last row" has to prove it moved the last row.</summary>
-        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper) LastTuple(string json)
+        /// <summary>The message both tuple-width guards share. ⚠️ THIS GUARD FIRED AT THE MERGE OF THE
+        /// OPERATE VERB AND THE DELTA GATE, AND THAT IS WHY IT IS KEPT. Both parsers read fields
+        /// POSITIONALLY, so a tuple that silently grows or shrinks turns them into confident readers of
+        /// the wrong column — <c>SortedConds</c> would have gone on reporting field 4 as a condition
+        /// whatever it had become. Two lanes merged with no conflict on the field list itself and this
+        /// assertion is what refused the tree. Update the width and the parser TOGETHER, never the
+        /// width alone.</summary>
+        private const string TupleWidth = "a devices tuple is SEVEN elements (x,y,deck,kind,cond,oper,open)";
+
+        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open) LastTuple(string json)
         {
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             var parts = json.Substring(open).Split('[').Skip(2).ToList();
             Assert.That(parts.Count, Is.GreaterThan(0), "the payload carries no tuples at all");
             var f = parts[parts.Count - 1].Split(']')[0].Split(',');
-            Assert.AreEqual(6, f.Length, "a devices tuple is six elements");
+            Assert.AreEqual(7, f.Length, TupleWidth);
             return (int.Parse(f[0], CultureInfo.InvariantCulture), int.Parse(f[1], CultureInfo.InvariantCulture),
                     int.Parse(f[2], CultureInfo.InvariantCulture), int.Parse(f[3], CultureInfo.InvariantCulture),
-                    int.Parse(f[4], CultureInfo.InvariantCulture), int.Parse(f[5], CultureInfo.InvariantCulture));
+                    int.Parse(f[4], CultureInfo.InvariantCulture), int.Parse(f[5], CultureInfo.InvariantCulture),
+                    int.Parse(f[6], CultureInfo.InvariantCulture));
         }
 
         // ═══════════════════════════════════════════ 1. THE KEY, FIELD BY FIELD (inclusion, not count)
