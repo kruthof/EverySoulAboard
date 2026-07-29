@@ -89,13 +89,25 @@ is renamed). Tag `v2-talking-ship`.
 >    the free jury-rig is refused, so once spent, **`wing_b` (0.18) and `wing_c` (0.06) are permanently
 >    unfixable**. A soft-lock with no message. Owner batch item.
 >
-> ### ⇒ IN FLIGHT — nothing merged, `main` untouched
+> ### ⇒ LANDED — three player-facing packages, each independently reviewed, each taking a send-back
 >
 > | lane | package | state |
 > |---|---|---|
-> | `lane/wreck-visible` | **M1-1** OD-C + naming deck-0 slot 3 | gate green (1294+953), **all five pins HELD**, acceptance met — *the player opens `vent_ls` in a running game* — under review |
-> | `lane/first-screen` | **M1-b** the onboarding card | gate green (1286+967), pin-neutral, 12 mutations RED — under review |
-> | `lane/spike-dispatch` | **M2-0** | complete, **throwaway, never merges** |
+> | `lane/wreck-visible` | **M1-1** OD-C + naming deck-0 slot 3 | ✅ **MERGED.** Acceptance met — *the player opens `vent_ls` in a running game*. Deck-0 devices 38 → 49; all five pins HELD |
+> | `lane/first-screen` | **M1-b** the onboarding card | ✅ **MERGED.** Client-only, pin-neutral |
+> | `lane/undesignate` | **M1-C** ERASE — take an order back | ✅ **MERGED.** 17th palette tool + Overview button, key **[C]**; client-only, pin-neutral |
+> | `lane/spike-dispatch` | **M2-0** | complete, **throwaway, never merged** |
+>
+> **Gate on `main`: `./ci.sh` exit 0, 1294 dotnet + 995 node, twin hashes MATCH `02257f5bce961570`,
+> ALL FIVE PINS HELD.** Every send-back fix was **re-verified by the integrator by mutation in the
+> tree** before merge, not accepted on report.
+>
+> ⚠️ **Two known limits shipped deliberately, both recorded rather than papered over:** the two
+> surfaces **disagree about a FOGGED zoned tile** — the Room Zoom erases it, the Overview answers
+> `NOTHING TO ERASE` forever, because `BuildMarks` is fog-gated (`GameSession.cs:2053`) and
+> `BuildZones` is not (`:1974-1999`); latent on the wreck, live in mechanism on any crew-vision ship.
+> And the `· ESC TO DISARM` suffix now fires on **every** in-room erase, including successful ones —
+> one rule, easy to test, and a wording call the owner may want narrower.
 >
 > ⚠️ **`lane/wreck-visible` found the `＋ADD ROOM` air wand trying to return**: `Carve` derives a
 > door from the room type, so typing slot 3 the ordinary way would have **booted its door open onto
