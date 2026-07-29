@@ -1602,6 +1602,45 @@ UNMEASURED fill-time arithmetic (≈208 s for a 60-tile compartment at
 `vent_mol_per_second = 30`) — **if a compartment takes twenty sim-minutes to fill, this wave has
 a pacing problem and the number must be found before the art is drawn, not after.**
 
+> ### ⇒ HALF 1 HAS LANDED (`lane/w4b-addroom-split`) — THE MEASUREMENTS, AND TWO OPEN DEFECTS
+>
+> **The fill time is NOT a pacing problem, and revision 1's arithmetic was RIGHT.** Driven, one fresh
+> sim per case:
+>
+> | route | measured |
+> |---|---|
+> | `--ship wreck` `vent_ls` **inside** `hall_d0_s3`, repaired + powered + opened, **door SHUT** | 90 kPa @ tick 1 846 · **101 kPa @ tick 2 072 = 207.2 s** |
+> | `--ship wreck` deck-0 halls, door opened onto the pressurised core | 90 kPa @ tick ~2 990 (**≈299 s ≈ 5.0 min**); 40-tile slot 7 @ 1 870 (187 s) |
+> | `--ship grid` deck-1 hall, door opened onto the spine | 50 kPa @ tick 461 (46 s) · 90 kPa @ tick **1 543 (154 s ≈ 2.6 min)** |
+> | `--ship wreck` **deck 1**, allocated + door opened, 20 000 ticks | ⛔ **peak `0.000` kPa. Never.** |
+>
+> ⚠️ **§4 W4b's ≈208 s figure is accurate to under half a percent** for the case it actually models —
+> a vent INSIDE the compartment — and the wreck authors exactly that vent, closed and at
+> `Condition 0.15`, with a comment saying the player's first act there is to open it. **The vent verb
+> is the right affordance and the plan modelled it correctly.** (The implementing lane first wrote
+> that this was "the wrong model, no shipped ship has such a vent"; that is **retracted** — it
+> checked the ship it had a fixture for instead of grepping the authoring for `AirVent`.)
+>
+> ⛔ **OPEN DEFECT "W4b-DEAD-DECK" — the wreck's deck 1 has no route to air at all, and half 1 is what
+> removed it.** Two `AirVent`s exist on the whole ship and **both are on deck 0**; gas transport is
+> **strictly in-plane** (`FlowAcrossDoor`'s probe is `(X±1,Y,Z)`/`(X,Y±1,Z)`; `DiffuseAcrossDoors`
+> uses `Int3.Neighbor4`) so **no vertical gas term exists anywhere in the sim** and the ladder trunk
+> carries people, never air. Eight compartments — including the growbed bay — are now permanently
+> unpressurisable. **The door/vent verb lane does not fix it: there is no vent up there to open.**
+> ⇒ **OWNER DECISION**, and possibly the intended shape of a raided hull. Not fixed by the lane
+> because the fix is CONTENT (a deck-1 vent to repair, or making `AirVent` placeable —
+> `PlaceDeviceCommand.IsPlaceableFurniture` excludes it today).
+>
+> ⛔ **OPEN DEFECT "W4b-BLOCKED-FOG" — W4's `blocked` channel does NOT cover a freshly allocated
+> compartment, so §4 W4b's "W4 is a hard prerequisite" is necessary but NOT sufficient.**
+> `GameSession.AddIfBlocked` fog-gates on `TileFlags.Explored` and an allocated compartment has never
+> been entered. Measured on grid: allocate, paint a wall build ⇒ `Pending=1`,
+> `CanStageWorkerAt=False`, rect explored 17/96, **`blocked` payload `{"cells":[]}`**; set `Explored`
+> and the row appears. Worse, the two order kinds fail differently: `designs` is **not** fog-gated so a
+> **build ghost draws with no reason beside it**, while `marks` **is**, so a **dig/strip order is
+> invisible together with its reason**. Filed rather than fixed — the gate is the `blocked` channel's
+> own stated anti-map-leak design and the inconsistency is `designs`-vs-`blocked`.
+
 ---
 
 ### **W5 — ⭐ THE THAW: `DeviceKind.CryoPod` + `CryoSystem` + `ThawCommand` + `ThawGate`, THROUGH MOSS**
