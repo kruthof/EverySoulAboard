@@ -2904,9 +2904,22 @@ agreement, not the words.** *(Sizing a prose package S because "it is only a str
 > `:147`), **but stamping at CLAIM is not the same as stamping in PROGRESS**, and that is exactly the
 > distinction this defect turns on. **Census it; do not assume.**
 
-**SEAM.** `sim/Sim.Core/Jobs/Sources/BuildJobSource.cs` — `TryReserveMaterialFor` and
-`ProgressBuildHaul`'s phase A. The stamp value is `JobWork.UnreachableRetryTicks = 50`
-(`JobContext.cs:55`), already on the determinism path. ⛔ **Do not add a def field.**
+**SEAM — the MEASUREMENT is the review's; the SEAM is verified in this session against `main` @
+`ac6a17c`, and the two are cited separately on purpose.**
+- `sim/Sim.Core/Jobs/Sources/BuildJobSource.cs:294` — `ProgressBuildHaul`. **Phase A's exit is
+  `:322-329`:** `if (!JobWork.TryPathToAdjacent(sim, citizen, site))` → release the reservation,
+  `JobWork.AbandonJob(sim, citizen)`, **return — and no `_matRetryAt` stamp anywhere in the method.**
+- ⭐ **AND THE PROOF THAT IT IS AN OVERSIGHT RATHER THAN A DESIGN CHOICE IS IN THE SAME FILE.** The
+  *claim* path stamps correctly, twice: `:210` `_readyRetryAt[target] = sim.TickCount +
+  JobWork.UnreachableRetryTicks;` and `:223` `_matRetryAt[site] = …`, each paired with a `Remove` on
+  success (`:206`, `:219`). **The dictionaries, the key type and the stamp value already exist**
+  (`:42-43`, declared `private readonly` — which is also why M1-D must lift the query first).
+  ⇒ **The fix is to reuse `_matRetryAt` at the phase-A exit, not to invent a mechanism.**
+- `TryReserveMaterialFor` (`:239`) pathfinds citizen → **material** only, which is why the claim
+  succeeds at all: the material is reachable and the **site** is not, and nothing re-asks until the
+  pawn has already been committed.
+- The stamp value is `JobWork.UnreachableRetryTicks = 50` (`JobContext.cs:55`), already on the
+  determinism path. ⛔ **Do not add a def field.**
 ⚠️ **`IsBackedOff` ALREADY HAS A CANONICAL NAME AND M1-D IS MIRRORING IT** onto this very source
 (`HaulJobSource.cs:137`, *"THE ONE DEFINITION OF 'BACKED OFF'"*; §12.11). ⛔ **This package must use
 M1-D's mirrored query, not invent a second predicate** — which is why it merges **after** M1-D
