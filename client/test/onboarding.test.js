@@ -108,6 +108,9 @@ test('the card does not lead with TALK', () => {
   for (const h of heads) assert.ok(!/TALK/i.test(h), `TALK is a headline verb again: ${h}`);
   assert.ok(!/TALK/i.test(TITLE), 'the TITLE leads with TALK');
   assert.ok(!/\btalk\b/i.test(LEDE), 'the LEDE leads with talk');
+  // The heads above are read out of the RENDERED markup; this ties them back to the data, so a
+  // renderer that silently dropped or reordered a verb block cannot pass by rendering nothing.
+  assert.deepEqual(heads, VERBS.map((v) => v.head));
 });
 
 test('TALK survives as a control row — demoted, not deleted (it works: T opens a channel)', () => {
@@ -159,7 +162,14 @@ test('INCLUSION — the historical lie (B ⇒ openBioForSelected) is CAUGHT agai
 
 test('INCLUSION — a key with no branch at all is caught', () => {
   // `Q` is bound nowhere in controls.js. A card row claiming it would be the WASD/M failure mode.
-  assert.equal(bindHolds(src('input/controls.js'), { cond: "k === 'q'", call: 'anything' }), false);
+  const raw = src('input/controls.js');
+  assert.equal(bindHolds(raw, { cond: "k === 'q'", call: 'anything' }), false);
+  // ⚠️ ITS OWN POSITIVE LEG, in this test and not borrowed from the one above. `assert` throws, so
+  // a leg that lives in a neighbouring test proves nothing about THIS one (`CLAUDE.md`'s fifth trap
+  // shape). Without this line the assertion above is satisfied by a `bindHolds` that returns false
+  // for everything — including a broken one.
+  assert.equal(bindHolds(raw, { cond: "k === 't'", call: 'talkSelected' }), true,
+    'bindHolds says no to a TRUE claim — the negative above is vacuous');
 });
 
 // ── NEGATIVE CONTROLS for the comment stripper ──
