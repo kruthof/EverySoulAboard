@@ -231,6 +231,23 @@ them → the ghosts go away → open the CREW WATCH row and there is **no morale
 This is the milestone the whole quarter is built around. It is the owner's own worked example of the
 loop, and **today it is not expressible in either half.**
 
+> ### ⛔ SUPERSEDED IN PART BY OD-G / OD-H *(2026-07-29)* — read `perilune-roadmap-q3.packages.md` §5's REVISION 3 block before implementing anything in M2
+>
+> **OD-G — the pawn boots idle and waiting; the game opens with the player giving an order, after
+> which normal autonomy resumes under a visible work grid.**
+> **OD-H — the work grid DEFAULTS OFF; work is opt-in.** ⚠️ *The owner accepted a pin move and a
+> re-baseline explicitly.*
+>
+> **What that voids in this section:** the packages document's chartered *"default every work type to
+> 3"* (chosen to keep a pin from moving — **a cost argument deciding a design question**, the exact
+> shape §3.1 of this plan names) · the work-type filter's *"four sites"* — **re-derived as eleven claim
+> sites, FIVE gates and three named exclusions**, the fifth gate being `CapabilityComputer.cs:70-76`,
+> which no revision had counted · and the demo's opening, which now runs the **enabling** direction.
+> **Contents item 5 (*"repair becomes a work type"*) and item 8 (POWER) are unaffected.**
+> ⭐ **Two new packages follow from it** — **M2-20** (a pawn who is waiting, and a game that says so)
+> and **M1-I** (the tick-0 claim on a bench she can never reach) — **plus M2-21**, the silent BUILD
+> haul measured on 2026-07-29. **All three are chartered in the packages document, not here.**
+
 **What is measured to be missing.**
 - **`Citizen` has no skill, no work-type mask, no priority and no work-rate multiplier.** Full field
   list verified at `sim/Sim.Core/Entities/Citizen.cs:7-81`; the only per-citizen work gate in the
@@ -659,9 +676,18 @@ one lane the tax is paid once"* — is true of the **serialization**, not of the
   never runs two pin-movers concurrently. Published order *(revised in revision 1: the stack re-order
   is struck; the power term is added, because it is **not** pin-neutral — it moves the `perilune` and
   `slice` tick-3000 goldens)*:
-  **M2-a** citizen work state (priority bytes + the reserved skill byte) → **M2-b** pre-emption →
+  **M2-a** citizen work state (priority bytes + the reserved skill byte) → ~~**M2-b** pre-emption~~ →
   **M2-c** the off-network authoring fix (§0.2) → **M2-d** the `EffectiveRate` generation term →
   **M3-a** `CryoSystem` → **M3-b** skills' consumers → **M3-c** rest → **M3-d** the heater def row.
+  ⛔ ⭐ **THIS ORDER IS STALE AND THE PACKAGES DOCUMENT'S §2 IS THE AUTHORITY.** `M2-b` was **struck**
+  (the M2-0 spike measured pre-emption at 0 lines in `sim/`), and **four rows have been added since**:
+  **M1-a** the `Craft` thrash · **M1-b** the crafting staging rule · **M1-c** the silent BUILD haul ·
+  and ⭐ **M2-e, the work-type veto, which OD-H turned from provably pin-neutral into a behaviour
+  change on every ship.** ⚠️ ⭐ **A chain of EIGHT re-pins is now a chain of ELEVEN** — counted from the
+  packages document's §2 table, not computed: `M1-a · M1-b · M1-c · M2-a · M2-e · M2-c · M2-d · M3-a ·
+  M3-b · M3-c · M3-d`. **Three of the four new rows are live `main` defects found by driving the sim,
+  and one is OD-H's own cost.** *(Struck rather than rewritten, because §11's rule is that
+  published ids are stable — the letters record history, not sequence.)*
   Each gets its own re-pin commit (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory,
   in the same commit — the ritual).
 - ⭐ **ROLLBACK POINTS, named in advance** *(new in revision 1)*. A chain of eight re-pins has no
@@ -756,9 +782,19 @@ record as such.** The batches:
   neighbour-draw term is a new gas mechanic in a milestone that should ship in two weeks.
 - **M2:** how many work types, and their names · does `HoldPosition` survive or become "everything
   disabled" · does a priority ever override `CanStageWorkerAt` (**recommend: never**) ·
-  ⭐ **the pre-emption policy** — which job families may be dropped mid-work, and in what state
-  (**recommend: droppable everywhere except mid-haul-carrying-cargo, where the cargo must be set down
-  first; the abandon paths already exist per source and `JobContext.cs:95` normalises the release**).
+  ⛔ ~~**the pre-emption policy**~~ — **WITHDRAWN 2026-07-29: the M2-0 spike measured all three hard
+  cases and the engine already answers them.** Replaced by **the sticky claim's release rule**
+  (recommend: completion, a new order, death or genuine inability — **never a timeout**).
+  ⭐ **AND FIVE MORE ITEMS ADDED BY OD-G / OD-H (2026-07-29), stated in full in
+  `perilune-roadmap-q3.packages.md` §5's batch as items 7–11 and NOT duplicated here:** the work-list
+  order *(re-opened — the pin saving that justified the v1 compromise no longer exists)* · **do the
+  measurement fixtures default OFF too** · **does a newly thawed crew member boot with every work type
+  off** *(must be answered before M3-2 freezes the `CryoSystem` chapter)* · **what counts as "the
+  first order"** · **the vocabulary for a pawn who is deliberately unassigned** *(it contradicts a
+  deliberate design position at `client/src/ui/overview-view.js:701-708`)*.
+  ⚠️ **Item 5 — does an explicit *Prioritise* order override the grid — is unchanged as a question and
+  NARROWED as a decision:** under OD-H every machine's work type is off at boot, so a *no* answer
+  refuses the player's very first right-click.
 - **M3:** OD-12 the pod census (**recommend two wrecked**) · OD-11 `thaw_cost` escalation
   (**recommend `base + LivingCrew × step`, in Parts**) · OD-8 the ice hold (**recommend yes, behind
   the frontier**) · how many skill axes (**recommend small: ~6 work types, one hashed byte each**) ·
