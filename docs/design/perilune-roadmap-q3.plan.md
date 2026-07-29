@@ -14,6 +14,69 @@ in `CLAUDE.md`. Where this plan contradicts a document on `main`, the contradict
 
 ---
 
+> ## REVISION 1 — what changed and why *(2026-07-28, after independent review + integrator rulings)*
+>
+> Revision 0 took a send-back with seven required fixes. **The reviewer drove the sim; several of its
+> findings are measurements revision 0 did not have.** Nothing below is an argument I won; where I
+> disagreed I was overruled or re-measured.
+>
+> | # | what changed | why |
+> |---|---|---|
+> | **1** | **M2's sizing box rewritten.** My *"change the stack evaluation order"* conclusion is **REJECTED and removed** from M2's contents and from NEW. I was right that a flat veto is insufficient and **wrong about why**. | A reorder inverts a *fixed global* precedence: it makes Repair beat Haul for every pawn always, cannot express Haul@1/Repair@4, delivers none of OD-A, costs a pin move, and moves `MaintenanceSystem` above `MachineWearSystem`, changing the service interleave. The real cause is that `JobKind.Maintain`/`Craft` have **no `IJobSource` at all**. |
+> | **2** | ⭐ **M2 now charters THREE mechanisms, not one** — the work-type filter, cross-family ranking, and **pre-emption as its own package**. | Measured by review: a player's strip order waited **54 650 ticks (1 h 31 min sim)** behind six chained 900 s Maintain services. **Job-duration monopoly is the dominant term and neither the reviewer's nor my original seam addressed it.** |
+> | **3** | **"No asymmetry to exploit" is STRUCK** (§M2). | False at the level that matters: a worn scrubber pays full draw for reduced output — a deliberate penalty — but a worn SolarWing's only output *is* power, so its wear is expressed **nowhere**. |
+> | **4** | **Generator wear re-ordered and re-scoped**: fix the off-network authoring defect **first**, then gate generation by `EffectiveRate` only. `IsOperational` stays **out**. And it is **not pin-neutral**. | Measured curve, §M2. `IsOperational` produces the cliff both reviewer and I argued against; `EffectiveRate` alone gives the gradient. |
+> | **5** | **M1 re-founded on a hard dependency, and trimmed.** Items 5 and 7 floated to overflow. `Citizen.Morale` and the onboarding `B`-key error **pulled forward from M4**. | Under OD-C six of eight deck-0 slots do not reach the `devices` channel, so **M2's right-click has no clickable target**. Debuggability is now the secondary argument, not the primary one. |
+> | **6** | **M5 re-sized and its bet named.** Save/load is a project, not a line item — `SaveWriter`/`SaveReader` appear **only under `tests/`**; no host writes or reads one and `CmdKind` has no verb. A human gate moved to week 9. | RF-3. M5's old demo demonstrated save/load, not an ending. |
+> | **7** | **Five factual errors corrected** (send-backs are 9 of 40 not 6 · `vent_ls` is `MECHANICS.md` §13.23c not §13.22c · "hundreds" of needy machines is **39 of 626** · an `AirVent` **injects** and does not push air outward · M1's reachability reuse was the wrong source). | RF-6, RF-7. |
+> | **8** | **§6's infrastructure cap made enforceable** — classified at charter time, running count published, re-pin commits counted, a **refusal** rather than a retrospective ratio. | RF-5: as written the cap could only be discovered after it had been breached. |
+> | **9** | **R1's spike re-specified** — it returned a **FALSE PASS** as written. | Repair already beats a painted strip order today, with no veto at all. |
+>
+> **Unchanged, because review endorsed them:** §3.1's demolition of *"expensive therefore later"* ·
+> §3.2's *batch the lane, never the commit* (and the reserved-skill-byte batching, which survives
+> ruling 1 intact) · §3.3's thaw defence · §3.4's drop table · §6's player-sentence rule · the
+> measured gate.
+
+---
+
+## 0. Defects found while writing this plan — file these, do not rediscover them
+
+> **These are live on the shipping game today.** They are recorded here because a roadmap that does
+> not name what it walked past is how this project has repeatedly rediscovered things at full cost.
+
+**0.1 ⛔ EVERY LIGHT ON THE WRECK GOES OUT PERMANENTLY AT SIM-HOUR 7.** Measured by review on
+`--ship wreck`: **h0 = 16/16 lit, 15.00 kWh stored → h7 = 0/16 lit, 0.00 kWh.** The battery drains
+and never recovers. `AuthoredShips.cs:1429-1433` claims *"~12.6 kW of total demand, every tier served
+from tick 0 and stays served"* — **both halves are false**; true flat demand is **20.40 kW**.
+⇒ **The wreck was authored against a power model that was never built.** This is not a consequence of
+gating generation on condition (M2) — it is true *today*, with generation condition-blind. It is the
+strongest single piece of evidence for M2's power package and it must be fixed inside it, not
+afterwards.
+
+**0.2 `AuthoredShips.cs:1441-1443` believes deck 1 carries no conduit and therefore neither draws nor
+runs. Measured: 0 of 626 devices are off-network.** `PowerSystem`'s claim rule is 6-way, so a deck-1
+device claims the deck-0 conduit through **−z**. The authoring's intent and the sim's behaviour have
+never agreed. **Fix this before touching the generation term** (§M2).
+
+**0.3 ⛔ AN `AirVent` INJECTS FROM AN UNMODELLED RESERVE INTO ITS OWN ROOM, AND REFUSES TO VENT INTO
+ROOM 0** (`AtmosphereSystem.cs:136-146`). **Nothing "starts falling next door."** ⚠️ **This
+contradicts `CLAUDE.md`'s own framing of the premise** — *"open the vent, push the air outward"* — a
+mechanic **the sim has never implemented**. Revision 0 of this document repeated the false framing in
+two places; both are corrected. **Whether the premise or the sim is wrong is an OWNER decision**, and
+it is added to M1's decision batch. It is cheap either way (a vent that draws down a neighbour is a
+sign flip and a room-0 rule; a premise that says "flood the compartment" is a wording change) — but
+it must not be answered by whoever happens to type the demo script.
+
+**0.4 SAVE/LOAD DOES NOT EXIST OUTSIDE THE TEST SUITE.** `SaveWriter`/`SaveReader` appear only under
+`tests/`; no host writes or reads a save file, and `CmdKind` has no verb for it. Every reference in
+this repo's docs to saves surviving DLC describes a *capability of the format*, not a shipped
+feature. Sized in M5.
+
+**0.5 RUG and SHELF send nothing on the wire** (`roomzoom-view.js:988-991`, module-local `_decor`) —
+the player places furniture that does not exist and cannot persist. In M4.
+
+---
+
 ## 1. The thesis
 
 **Three months to make the wreck a game you play with people, not a diorama you poke.** Today a
@@ -51,15 +114,20 @@ what is **new**, why it **cannot move earlier**, and its **size with the reason 
 > starts the air, and when I paint an order that cannot happen the game tells me why — and lets me
 > take it back."*
 
-**Why this exists.** Six of the eight deck-0 slots on the shipping game render as blank `＋ADD ROOM`
-boxes while containing `fabricator_1` at 0.11, `machineshop_1` 0.13, `recycler_1` 0.09,
-`scrubber_ls` 0.08, `reclaimer_ls` 0.12 and **`vent_ls` 0.15 — the premise's own opening move**;
-`vent_ls` reads `Explored = false` at tick 0, tick 600 and tick 36 000 (`MECHANICS.md` §13.22c,
-§13.23c), so it never reaches the `devices` channel and gets no OPERATE chip. Meanwhile the sensor
-log announces `fabricator_1: MACHINE FAILURE` for a machine the player cannot see. **Everything in
-M2 is undemonstrable until this is fixed**, and — the harder point — a repair order that does nothing
-because the machine is unseen is indistinguishable from a repair verb that is broken. That confusion
-has cost this project three owner reports already (`invisible-feedback-is-functional`).
+> **Why this comes first — the HARD dependency, corrected in revision 1.** Revision 0 argued
+> debuggability. That is true but secondary. **The primary reason is mechanical: M2's right-click
+> direct order has no clickable target without M1.** Six of the eight deck-0 slots render as blank
+> `＋ADD ROOM` boxes while containing `fabricator_1` at 0.11, `machineshop_1` 0.13, `recycler_1` 0.09,
+> `scrubber_ls` 0.08, `reclaimer_ls` 0.12 and **`vent_ls` 0.15 — the premise's own opening move**.
+> `vent_ls` reads `Explored = false` at tick 0, tick 600 and tick 36 000 (`MECHANICS.md` **§13.23c** —
+> *not* §13.22c, which is the `CryoPod` `maint` opt-out; revision 0 mis-cited it), so it never reaches
+> the `devices` channel and gets no OPERATE chip. **A machine that is not on the `devices` channel
+> cannot be right-clicked, so OD-A's control half is unreachable by construction.** Meanwhile the
+> sensor log announces `fabricator_1: MACHINE FAILURE` for a machine the player cannot see.
+>
+> *Secondary, and still true:* a repair order that does nothing because the machine is unseen is
+> indistinguishable from a repair verb that is broken — a confusion that has already cost this
+> project three owner reports (`invisible-feedback-is-functional`).
 
 **Contents.**
 1. **OD-C — the ship's interior is authored-explored at boot.** The wreck's own hull and machines are
@@ -77,36 +145,58 @@ has cost this project three owner reports already (`invisible-feedback-is-functi
    you paint.
 4. **The `blocked` channel's third question: can any crew member PATH here?** `BlockedReason`
    (`hosts/web/GameSession.cs:2285-2297`) asks only *is a neighbour walkable* and *is it breathable*.
-   The reachability gate already exists host-side from E0-4 WP-7. Measured consequence today: two
-   legal verbs (arm OPERATE, shut two doors; arm WALL, drag two tiles) produce ghosts frozen at 0/2,
-   a pawn reading `"Idle"` and **`blocked` = zero rows, held for 480 000 ticks**.
-5. **Resolve the `designs`/`blocked` fog asymmetry.** `BuildDesigns` (`GameSession.cs:1715-1729`)
-   emits every pending site with **no fog gate**; `AddIfBlocked` **is** gated on `TileFlags.Explored`
-   (`GameSession.cs:2311`). So a build ghost draws where its reason cannot. OD-C removes most of the
-   occasions; the asymmetry itself should still be closed, because it will recur on genuinely
-   unsurveyed space.
+   Measured consequence today: two legal verbs (arm OPERATE, shut two doors; arm WALL, drag two
+   tiles) produce ghosts frozen at 0/2, a pawn reading `"Idle"` and **`blocked` = zero rows, held for
+   480 000 ticks**.
+   ⚠️ **REVISION 1 — the reuse named here was WRONG and would have shipped a performance defect.**
+   Revision 0 said *"the reachability gate already exists host-side from E0-4 WP-7."* It does, and it
+   is the wrong instrument: `StockpileHarness.IsReachableByAnyCrew` runs `FindPath` **from every crew
+   member**, once per headless measurement leg. `BuildBlocked` runs inside `Render`, at up to
+   **10 Hz, over every designated tile**. ⇒ **Use the sim's own answer instead — the per-tile
+   unreachable backoff the job sources already maintain (`IJobSource.BeginTick`), which is O(1) per
+   tile and is, additionally, the *same* answer the dispatcher acts on.** A reason derived from a
+   second implementation can disagree with the behaviour it explains; this one cannot.
+5. **The two live lies on the first screen** *(pulled forward from M4 in revision 1 — both are
+   first-contact defects and neither should wait ten weeks)*:
+   **(a)** `Citizen.Morale` is **never written outside its initialiser** (`Citizen.cs:34`, `= 1f`) and
+   it is the value the CREW WATCH morale bar draws. **The visible morale bar is a constant.** Pull the
+   bar (making it real is an M4 decision; drawing a constant is not defensible in the meantime).
+   **(b)** The intro card teaches *"B — open their dossier"* (`onboarding.js:21`). **`B` arms the
+   BUILD tool** (`controls.js:257`, `roomzoom-view.js:1259`), and `openBioForSelected` has **no
+   keyboard binding anywhere** — so `overview-view.js:319`'s `[B] BIO` label advertises a hotkey that
+   does not exist. Fix the key row now; the card's full rewrite stays in M4 with WP-C.
 6. **The silent-refusal sweep.** Enumerate every refusal the sim can make and require each to reach a
    surface: unbreathable worksite (`SafetySystem.cs:104-128`, `CanStageWorkerAt` — thermal counts),
    unreachable stockpile (`MECHANICS.md` §13.17), a machine below `wear.wreck_threshold` with no
    consumable, a locked door (`GameSession.cs:1066-1071`), and a closed occupied cryo pod
    (`DeconstructSystem.cs:400`). This is a **census with an inclusion test**, not a feature.
-7. **Cheap and owed: measure A2 and A3 once, on the wreck.** A3 has never been measured in the
-   repo's life; A2 not since E0-1. Under OD-B they are **baselines, never goals** — recorded and not
-   optimised toward. They are cheap now and they will never be cheaper.
+
+> **FLOATED OUT OF M1 IN REVISION 1 — neither gates M2, and M1 was padded.**
+> **(i) The `designs`/`blocked` fog asymmetry.** `BuildDesigns` (`GameSession.cs:1715-1729`) emits
+> every pending site with no fog gate while `AddIfBlocked` **is** gated (`:2311`), so a ghost draws
+> where its reason cannot. **OD-C removes most of its occasions by revision 0's own admission**, which
+> is precisely why it does not belong in a two-week milestone. → **overflow**, ahead of the queue,
+> because it will recur on genuinely unsurveyed space.
+> **(ii) Measure A2 and A3.** Owed, cheap, and **it breaks this document's own §6 rule — its subject
+> is a metric, not a player** (RF-4). It is therefore relabelled **INFRASTRUCTURE**, counted against
+> the §6 cap, and floated to overflow. Under OD-B both are **baselines, never goals**. A3 has never
+> been measured in the repo's life; A2 not since E0-1. *(Writing a fake player sentence for it would
+> have been the exact failure §6 exists to prevent, and revision 0 came within one line of doing it.)*
 
 **REUSES.** The `blocked` channel and its overlay (`hosts/web/WireFormat.Blocked.cs`,
-`client/src/ui/blocked-overlay.js`) · `WorksiteSafety.CanStageWorkerAt` · E0-4 WP-7's reachability
-gate · `TileFlags.Explored` and `ExplorationSystem` · the `marks` channel and `mark-overlay.js` ·
+`client/src/ui/blocked-overlay.js`) · `WorksiteSafety.CanStageWorkerAt` · **the job sources' own
+per-tile unreachable backoff (`IJobSource.BeginTick`)** — *not* `StockpileHarness`, see item 4 ·
+`TileFlags.Explored` and `ExplorationSystem` · the `marks` channel and `mark-overlay.js` ·
 the 16-tool Room Zoom palette (`client/src/ui/room-model.js:51-54`) · the wire's existing
 `Cmd.dig(x,y,false)` / `Cmd.strip(x,y,false)` off-path, already handled by the TUI
-(`hosts/tui/…/GameLoop.cs:322`) · `hosts/scenario`'s occupancy harness for the A2/A3 baselines.
+(`hosts/tui/…/GameLoop.cs:322`).
 
 **NEW.** An authored-explored flag on `ShipPlan`/`AuthoredShips`; a cancel/erase tool (or an
-erase modifier) on the Room Zoom and the Overview ORDERS bar; a third term in `BlockedReason`; one
-fog decision applied consistently across `designs`.
+erase modifier) on the Room Zoom and the Overview ORDERS bar; a third term in `BlockedReason` sourced
+from the dispatcher's own backoff.
 
-**Dependency.** None — it is the entry point. It cannot move later, because it is the only milestone
-every subsequent milestone's demo depends on.
+**Dependency.** None — it is the entry point. It cannot move later: M2's right-click has no target
+without it.
 
 **Size: SMALL–MEDIUM.** Almost all host-side and client-side; the sim change is authoring, not
 mechanism. **Pin risk is the thing to check, not the code:** if the explored flag is authored on the
@@ -115,10 +205,20 @@ tests/Perilune.Tests/Golden/ ci.sh content/` = 0 lines, the ground-item lane's o
 becomes a general rule about hull tiles, P1–P3 move and it joins the pin chain in §3.2.
 
 **FIVE-MINUTE BROWSER DEMO.** `./play.sh` → deck 0 shows eight slots, six now containing visible
-wrecked machines with their wrecked art → enter the life-support hall → press **O** → click
-`vent_ls` → it opens and the compartment starts venting → arm **B** (WALL) and drag two tiles in a
+wrecked machines wearing their wrecked art → enter the life-support hall → press **O** → click
+`vent_ls` → **the hall's own pressure begins to RISE** → arm **B** (WALL) and drag two tiles in a
 vacuum hall → the tiles carry a written reason instead of nothing → press the erase tool and click
-them → the ghosts go away.
+them → the ghosts go away → open the CREW WATCH row and there is **no morale bar drawing a constant**
+→ press `?` and the `B` row says what `B` actually does.
+
+> ⚠️ **REVISION 1 — THE DEMO'S PHYSICS WAS WRONG AND SO IS THE PREMISE IT CAME FROM.** Revision 0
+> wrote *"pressure starts falling next door and rising here"*. **An `AirVent` injects gas from an
+> unmodelled reserve into its OWN room and refuses to vent into room 0** (`AtmosphereSystem.cs:136-146`).
+> There is no neighbour term. Nothing falls next door. ⇒ `CLAUDE.md`'s framing of the premise —
+> *"open the vent, push the air outward"* — describes **a mechanic the sim has never implemented**,
+> and this document repeated it. **Added to M1's decision batch** (§3.5): fix the premise's wording, or
+> give the vent a source room and a sign. Both are cheap; neither should be settled by whoever types
+> the demo script.
 
 ---
 
@@ -143,51 +243,104 @@ loop, and **today it is not expressible in either half.**
 - **Power is condition-blind on BOTH sides.** `sim/Sim.Core/Systems/PowerSystem.cs:185` is
   `_generation[d.NetworkId] += def.GenerationKW;` with no `Condition`, no `IsOperational`, no
   `EffectiveRate`; the file says so itself at `:175-179` — *"a wrecked SolarWing still supplies its
-  full kW"*. ⚠️ **A CORRECTION TO THE INPUT REPORTS: demand is condition-blind too**
-  (`PowerSystem.cs:187-188`, `IsWanting` at `:262-266`). There is **no asymmetry to exploit** — both
-  sides must be decided together, and gating only generation makes every wreck strictly harder.
+  full kW"*. Demand is condition-blind too (`:187-188`, `IsWanting` at `:262-266`).
+  ⛔ **REVISION 1 — MY CONCLUSION FROM THAT, *"there is no asymmetry to exploit"*, IS STRUCK.** It is
+  false at the level that matters. A worn **scrubber** pays its full draw for reduced output: its wear
+  is already expressed, as a deliberate penalty. A worn **SolarWing's only output IS power**, so its
+  wear is expressed **nowhere at all**. The two cases are not symmetric, and the correct move follows
+  from that — §"Contents" item 6.
 
-> #### ⭐ THE SIZING FINDING, AND IT IS NOT IN ANY EXISTING CHARTER
+> #### ⭐ THE SIZING FINDING — REWRITTEN IN REVISION 1. I was right that a flat veto is insufficient and **wrong about why**, and the real answer is bigger than either version.
 >
-> The plan of record locates W7's seam as *"a per-(citizen, JobKind) multiplier or veto applied
-> inside that loop — nothing else in the dispatcher needs to change"*
-> (`wreck-start.plan.md:1984-1991`). **Under OD-A that is insufficient, and the reason is the system
-> stack, not the dispatcher.**
+> **What every charter says.** The plan of record locates W7's seam as *"a per-(citizen, JobKind)
+> multiplier or veto applied inside that loop — nothing else in the dispatcher needs to change"*
+> (`wreck-start.plan.md:1984-1991`).
 >
-> `SystemStack.cs:33-37` registers `JobSystem` **before** `SustenanceSystem`, `CraftingSystem` and
-> `MaintenanceSystem`. Each of those three recruits a worker *outside* `TryAssign`, by nearest-idle,
-> and only from citizens still `JobKind == None` after the dispatcher has had them
-> (`SustenanceSystem.cs:147,194` · `CraftingSystem.cs:167` with `FindNearestIdle` at `:467-484` ·
-> `MaintenanceSystem.RecruitForNeediest` at `MachineWearSystem.cs:189-258` with `FindNearestIdle` at
-> `:418-435`). **Repair is one of those three.** So a veto placed inside `TryAssign` can stop a pawn
-> hauling, but it can never make Repair *outrank* Haul — the dispatcher has already run.
-> ⇒ **OD-A's frame requires the maintenance and crafting claims to enter the same tournament (or the
-> dispatcher to defer to them), which is a change to the stack's evaluation order.** That order is
-> explicitly load-bearing for the determinism seed (`SystemStack.cs:40-42`, `:47-49`), so **the
-> re-ordering is itself a pin move even before the new `Citizen` state.**
+> **⛔ WHAT REVISION 0 SAID, AND IT IS REJECTED.** I concluded that OD-A requires changing the system
+> stack's evaluation order, because `SystemStack.cs:33-37` runs `JobSystem` before `SustenanceSystem`,
+> `CraftingSystem` and `MaintenanceSystem`. **The observation is true and the conclusion does not
+> follow.** A reorder inverts a **fixed global precedence**: it makes Repair beat Haul *for every pawn,
+> always*. It cannot express Haul@1 / Repair@4 — which is the entire content of *"we define which pawn
+> can do what"* — so **it delivers none of OD-A**, while costing a pin move and lifting
+> `MaintenanceSystem` above `MachineWearSystem`, changing the service interleave. **Removed from
+> Contents and from NEW.**
 >
-> **And there is a fourth out-of-loop assigner nobody has counted.** `EffectValidator.cs:141` writes
+> **⭐ THE ACTUAL CAUSE, measured: `JobKind.Maintain` and `JobKind.Craft` have NO `IJobSource` at
+> all.** `_byKind[6]` and `_byKind[7]` are **null**. `HandledKinds` supplies four of the six work
+> types and **misses exactly the two OD-A is about**. ⇒ A priority *band loop* fails in precisely the
+> same place a flat veto does: there is nothing in the dispatcher to rank. Neither the reviewer's
+> first shape nor mine addressed this.
+>
+> **⇒ THE ADOPTED SHAPE (integrator ruling, shape (c)).** Per-citizen priority bytes as hashed state,
+> in one commit, **with the reserved skill byte** (§3.2's batching argument survives intact); the veto
+> applied at **all four** assignment sites; and `TryAssign` iterates bands high→low and, *before*
+> running the argmin at band *b*, asks each push recruiter whether it has a claimable job at band *b*
+> for this citizen — **leaving the pawn idle for it if so.** One tiny new interface. **No `Select`
+> change, no `HandledKinds` change, no stack change**, and — decisively — **neediest-first is
+> preserved**, which OD-A requires. *(Shape (b), promoting maintenance to a full `IJobSource`, is
+> rejected for exactly that: it silently amends neediest-first to nearest-needy.)*
+>
+> **⭐⭐ AND THE DOMINANT TERM IS NEITHER OF OURS: JOB-DURATION MONOPOLY, PLUS THE TOTAL ABSENCE OF
+> PRE-EMPTION.** Measured by review on a driven sim: **a player's strip order waited 54 650 ticks —
+> 1 hour 31 minutes of sim time — behind six chained 900 s Maintain services.** `IsRecruitableForWork`
+> requires `JobKind == None`, and **nothing in the sim can take a busy pawn back.** The only
+> pre-emption that exists anywhere is `SafetySystem.cs:232-238`. ⇒ **A perfect priority grid, shipped
+> alone, would not have moved that number by one tick.** The player would set Repair@4, Haul@1, and
+> still wait an hour and a half — and would reasonably conclude the grid does not work.
+>
+> **⇒ M2 THEREFORE CHARTERS THREE MECHANISMS, NOT ONE:**
+> **(a)** the per-citizen work-type filter · **(b)** cross-family ranking (the band loop + the
+> recruiter query) · **(c) PRE-EMPTION — its own package, its own risk row (R1b), and its own rule for
+> when a job may be dropped.** The hard cases are named now rather than discovered: mid-haul carrying
+> cargo · mid-craft against a bill · mid-build with material already delivered. **The abandon paths
+> already exist per source, and `JobContext.cs:95` already normalises the release** — so the mechanism
+> is cheap and the *policy* is the work.
+>
+> **The fourth assignment site, which nobody had counted.** `EffectValidator.cs:141` writes
 > `citizen.JobKind = JobKind.Dig;` directly from the LLM effect pipeline, bypassing `TryAssign` and
 > **not consulting `IsRecruitableForWork`**. The plan-of-record's warning that *"forgetting the last
-> two is how this lane ships half-done"* is right about the shape and **wrong about the count: it is
-> four, plus `SafetySystem`'s pre-emption (`SafetySystem.cs:234`)**.
+> two is how this lane ships half-done"* is right about the shape and **wrong about the count: four
+> sites, plus `SafetySystem`'s pre-emption.**
 
 **Contents, in landing order.**
 1. **The state.** Per-citizen work-type priorities as hashed `Citizen` state, RimWorld-shaped:
    ~6–8 work types, each *disabled* or *1–4*. ⭐ **Land the skill field's STORAGE in the same
    commit, zeroed and with no consumer** (see §3.2 — this is the one place batching is correct).
-2. **The dispatch unification.** Priority band first, distance within the band; the three push
-   recruiters and `EffectValidator` brought under the same rule. Charter as **two commits** — the
-   veto without reordering, then the pre-emption — so a moved hash can be attributed.
-3. **Repair becomes a work type.** `MaintenanceSystem.RecruitForNeediest` is not thrown away; it is
-   brought under the grid, exactly as OD-A specifies. Its machine choice (lowest `Condition`, store
-   order) becomes the autonomy half.
-4. **The direct order.** Right-click a machine → *"Prioritise: repair wing_c"* → the pawn drops its
-   job and goes now.
-5. **The Work tab** on the standard surface (Overview), pawns × work types. ⚠️ **Never on the
+2. **The four-site work-type filter.** `TryAssign`, `SustenanceSystem`, `CraftingSystem`,
+   `MaintenanceSystem` — plus `EffectValidator.cs:141`, which today writes a `JobKind` with no gate
+   at all.
+3. **Cross-family ranking.** `TryAssign` iterates priority bands high→low; before the argmin at band
+   *b* it asks each push recruiter *"do you have a claimable band-b job for this citizen?"* and leaves
+   the pawn idle for it if so. **One tiny new interface. No stack reorder, no `HandledKinds` change,
+   and neediest-first preserved.**
+4. ⭐ **PRE-EMPTION — its own package.** A busy pawn can be taken back. Without it the grid is
+   cosmetic for up to **1 h 31 min of sim time** (measured, above). Policy first, mechanism second:
+   which job families may be dropped, and in what state.
+5. **Repair becomes a work type.** `MaintenanceSystem.RecruitForNeediest` is not thrown away; it is
+   brought under the grid, exactly as OD-A specifies. **Its neediest-first machine choice is
+   preserved** — that is a requirement, not an implementation detail.
+6. **The direct order.** Right-click a machine → *"Prioritise: repair wing_c"* → the pawn drops its
+   job and goes now. *(This is a consumer of item 4; it cannot ship before pre-emption exists.)*
+7. **The Work tab** on the standard surface (Overview), pawns × work types. ⚠️ **Never on the
    console `.app` shell** — that is the invariant E0-4's WP-5 broke.
-6. **Condition-gated power, both sides**, landing last so a verb exists to answer it.
-7. **The `why` line.** `GameSession.TaskLabel` (`:2556-2634`) already builds an honest prose sentence
+8. ⭐ **POWER — and the order within it is a ruling, not a preference.**
+   **8a. FIRST, fix the off-network authoring defect (§0.2).** `AuthoredShips.cs:1441-1443` believes
+   deck 1 carries no conduit and therefore neither draws nor runs; measured, **0 of 626 devices are
+   off-network**, because `PowerSystem`'s claim rule is 6-way and a deck-1 device claims the deck-0
+   conduit through **−z**. With deck 1 genuinely off-grid, flat demand is **14.30 kW**.
+   **8b. THEN gate generation by `EffectiveRate`.** ⛔ **Keep `IsOperational` OUT of the generation
+   term.** With it, boot generation is **7.47 kW** and `wing_c` at 0.06 contributes *literally
+   nothing* — the repair cliff both the reviewer and I argued against. `EffectiveRate` alone gives a
+   gradient, and the gradient is the owner's sentence in arithmetic:
+   > authored wings → **10.65 kW** (Industry and Comfort shed) → repair `wing_c` → **13.47 kW**
+   > (**the benches run**) → repair the rest → **18.00 kW** (**the lights come on**).
+   **8c. Demand stays FLAT.** Do not scale `draw` by `EffectiveRate` — that rewards a wrecked ship
+   with a smaller bill.
+   **8d. It also fixes §0.1**, the live h0 16/16 → h7 0/16 blackout, which is true *today* with
+   generation condition-blind.
+   ⚠️ **8e. This is NOT pin-neutral, and revision 0 assumed it was.** It alters the power balance on
+   `--ship perilune` and `--ship slice` — **both tick-3000 goldens**. It joins the pin chain (§3.2).
+9. **The `why` line.** `GameSession.TaskLabel` (`:2556-2634`) already builds an honest prose sentence
    per pawn and ships it on the roster wire to *both* standard surfaces (`overview-view.js:697`,
    `:747`; `roomzoom-view.js:700`). It says *what*, never *why that job and not another*. Give it the
    reason: *"Repairing wing_c — Repair is your priority 1"*. This is the owner's axis 5 — *autonomy
@@ -201,8 +354,10 @@ precedent for a per-pawn direct order · the def-field-in-one-commit ritual · t
 hash-fold / round-trip ritual · `ArchitectureBoundaryTests`' `("Skill", "does not exist anywhere in
 sim/ yet")` row, which becomes the first thing this milestone deletes.
 
-**NEW.** Per-citizen work state; a priority-aware, band-then-distance dispatcher; the stack-order
-change; a `PrioritiseJobCommand`; the Work tab; a `Condition` term on both sides of `PowerSystem`.
+**NEW.** Per-citizen work state (priority bytes + the reserved skill byte); a band-then-distance
+dispatcher with a recruiter-claim query; **a pre-emption rule and the policy behind it**; a
+`PrioritiseJobCommand`; the Work tab; an `EffectiveRate` term on the **generation** side of
+`PowerSystem` only. ⛔ **NOT the stack re-order** — struck in revision 1.
 
 **Dependency, and why it cannot move earlier.** It needs **M1**. A grid whose effects you cannot see
 is a table of numbers: if `fabricator_1` is invisible and a stalled order is silent, "Rell will not
@@ -211,18 +366,32 @@ milestone will be unfalsifiable. It also needs M1's un-designate, because the fi
 does with a new frame is change their mind. It does **not** need the thaw, and it must **not** wait
 for it (§3.1).
 
-**Size: LARGE — and the UI is not what makes it large.** Three things do: (a) the **pin ritual** —
-new hashed `Citizen` state bumps the CITZ save chapter ⇒ P1/P2/P3, def'd defaults ⇒ P4/P5, **all
-five**, plus a second, separately-attributable move for the stack re-order; (b) the **dispatch
-unification** above; (c) every occupancy and A1/A2/A3 number in the repo is invalidated the day it
-lands, and under OD-B that is a *re-baseline*, not a regression hunt.
+**Size: LARGE — and revision 1 re-founds the justification.** It is **not** large because of the
+stack re-order (struck) and it is **not** large because of the UI. Three things make it large:
+**(a) PRE-EMPTION.** A mechanism the sim has exactly one instance of (`SafetySystem.cs:232-238`),
+now needed generally, whose *policy* — when may a pawn be taken off a job it is halfway through —
+is a design question with no precedent here and three named hard cases.
+**(b) THE FOUR-SITE UNIFICATION.** One rule enforced at four assignment sites, two of which
+(`Maintain`, `Craft`) have no `IJobSource` to hang it on and one of which (`EffectValidator`) nobody
+had counted.
+**(c) THE PIN RITUAL.** New hashed `Citizen` state bumps the CITZ save chapter ⇒ P1/P2/P3, def'd
+defaults ⇒ P4/P5 — **all five** — plus a separate, separately-attributable move for the power term
+(§0.2 + 8b), which touches **two tick-3000 goldens**.
+And a consequence, not a cost: every occupancy and A1/A2/A3 number in the repo is invalidated the day
+it lands. Under OD-B that is a **re-baseline, not a regression hunt.**
 
-**FIVE-MINUTE BROWSER DEMO.** `./play.sh` → open the **WORK** tab → Rell's row: set *Repair* to 1 and
-*Haul* to 4 → close → paint six STRIP orders in the next hall → she ignores them and walks to
-`wing_c` → the task line reads *"Repairing wing_c — Repair is your priority 1"* → right-click
-`battery_2` → **Prioritise: repair** → she drops `wing_c` and walks to the battery → when the wing
-completes, the deck's power readout rises and a dark room's lights come on. *(At max speed; the
-repair is 900 s of sim time.)*
+**FIVE-MINUTE BROWSER DEMO — and it is written to be FALSIFYING, not confirming.** ⚠️ *Revision 0's
+demo, like its spike, would have passed on the shipped sim with nothing built: **Repair already beats
+a painted strip order today**, because Maintain monopolises the pawn.* So the demo runs the
+**inverting** direction:
+
+`./play.sh` → open the **WORK** tab → Rell: **Haul 1, Repair 4** → paint six STRIP orders in the next
+hall → **she strips, and she does NOT go to `wing_c`** *(this is the leg the shipped sim cannot
+produce)* → the task line says *"Stripping — Repair is priority 4"* → now flip to **Repair 1, Haul
+4** → **she abandons the strip mid-job** and walks to `wing_c` *(this is the pre-emption leg)* →
+right-click `battery_2` → **Prioritise: repair** → she drops `wing_c` and walks → when the wing
+completes, generation steps **10.65 → 13.47 kW**, the benches come back, and a dark room's lights come
+on. *(Max speed; a service is 900 s of sim time.)*
 
 ---
 
@@ -249,6 +418,13 @@ sim-hour."*
    census first, then tune the price. The census must be printed and asserted
    (`pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`) so a later edit cannot
    drift it silently.
+   ⭐ **AND A COLLISION NOBODY HAS FILED, added to M3's decision batch in revision 1: `Device.Name` is
+   doing two jobs.** W5's design puts the sleeper's identity in `Device.Name` (*"who is inside"*,
+   `Simulation.cs:469`) — but `Device.Name` is **already the MOSS registry key**, and the wreck's
+   pods already encode a person in it (`AuthoredShips.cs:1678`). One field cannot be both a stable
+   automation identifier and a mutable "who is in the box" without the two meanings diverging the
+   first time a pod is emptied and re-used. **Decide it before `CryoSystem` is written**, not after
+   the save chapter is frozen.
 5. **SKILLS — the mechanical half of OD-5.** *This is why the grid comes first:* the skill is a
    second column on a table M2 already built and already paid the chapter bump for. It changes work
    rates, which is sim-canonical by definition and cannot live in the host-side persona layer
@@ -326,19 +502,17 @@ real content.
    STANDING (`:338-346`), BACKSTORY (`:389-392`) and RECENT MEMORIES (`:394-401`) are seeded
    placeholders (`SAMPLE_*` at `:248-266`). Identity, traits, relationships and the conversation log
    are real.
-3. **Make the gauges honest or stop drawing them.** `Citizen.Morale` is **never written outside its
-   initialiser** (`Citizen.cs:34`, `= 1f`) — and it is the value the shipping CREW WATCH morale bar
-   displays. **The visible morale bar is a constant.** `Citizen.Health` is likewise never written
-   (`Citizen.cs:31`) despite a doc comment claiming *"damaged by hypoxia, cold and struggle"*.
-   `Persona.RoleNow` is a cosmetic string (`MECHANICS.md` §13.5). A constant presented as a gauge is
-   a lie to the player; make it real or delete the bar.
-4. **The onboarding card (WP-C).** It teaches exactly **TALK** and **BUILD** and the keys `T`/`B`/`M`
+3. **Make the remaining gauges honest — or stop drawing them.** `Citizen.Health` is **never written
+   by any system** (`Citizen.cs:31`) despite a doc comment claiming *"damaged by hypoxia, cold and
+   struggle"*; `Persona.RoleNow` is a cosmetic string (`MECHANICS.md` §13.5); `Citizen.Archetype` is
+   saved and hashed with no reader anywhere. *(`Citizen.Morale`'s constant bar was **pulled forward
+   into M1** in revision 1 — it is a first-screen lie and should not wait ten weeks. What remains here
+   is the **decision**: does morale become real, or stay gone?)*
+4. **The onboarding card's full rewrite (WP-C).** It teaches exactly **TALK** and **BUILD**
    (`client/src/ui/onboarding.js:18-27`, `:39-46`) — naming none of DIG, STOCKPILE, STRIP, OPERATE,
-   the Room Zoom, the deck rail, or the work grid. ⭐ **And it is factually wrong**: `:21` teaches
-   *"B — open their dossier"*, but `B` arms the BUILD/WALL tool (`controls.js:257`,
-   `roomzoom-view.js:1259`); `openBioForSelected` has **no keyboard binding anywhere**, so the
-   `[B] BIO` label at `overview-view.js:319` advertises a hotkey that does not exist. **The first
-   thing a new player reads is wrong about a key and teaches the one verb the owner stood down.**
+   the Room Zoom, the deck rail, or the work grid. **The first thing a new player reads teaches the
+   one verb the owner stood down.** *(The factually-wrong `B` key row was **pulled forward into M1**
+   in revision 1 — a card that lies about a keystroke is a bug, not a content task.)*
 5. **Two client-local illusions.** RUG and SHELF are palette tools that **send nothing on the wire**
    (`roomzoom-view.js:988-991` — module-local `_decor`). The player places furniture that does not
    exist, will not save and no crew member can ever see. Either wire them or remove them.
@@ -366,7 +540,8 @@ real; if the owner prefers that, it joins the pin chain — otherwise deleting t
 **FIVE-MINUTE BROWSER DEMO.** Click any pawn → one window opens → it names her, her traits, what she
 is doing **and why**, who she is close to, how tired and how hungry she is with numbers that move
 when the sim moves, and her recent history — with **no `◇ SAMPLE` badge anywhere in it**. Press `?`
-→ the intro card names the verbs the game actually has, and every key it lists does what it says.
+→ the intro card names the verbs the game actually has. Open CHRONICLE from the standard surface and
+read the ship's own log, including the entry for the person you just woke.
 
 ---
 
@@ -375,25 +550,62 @@ when the sim moves, and her recent history — with **no `◇ SAMPLE` badge anyw
 > **Player-facing statement.** *"I can sit down, play the wreck for an hour, and the session has a
 > beginning, a middle and an ending I can tell someone about."*
 
-**Contents.** A stated mid-game goal and an ending (the lose screen from M3 plus a *"the ship is
-yours"* state) · alerts, so a crisis reaches the player without them watching for it · save/load from
-the UI · `ItemKind.Regolith → Rubble` (OD-6, decided; **moves no pin** but touches sim, content,
-client art ids and tests at once, so it **runs alone** — a clean auto-merge would prove nothing) ·
-the device-removal hole (**a built door cannot be removed by any verb on any surface** —
-`DeconstructSystem.cs:378` refuses `Door`, DEMOLISH refuses it, `Cmd.remove` is gated out;
-`roomzoom-view.js:1084-1102`) · an art and legibility pass on the wreck · **a real 60-minute owner
-playtest** and the P2 blind-A/B screenshot verdict, both of which are exit bars this project has
-carried unmet since 2026-07-21.
+> ### ⚠️ REVISION 1 — M5 WAS A BUCKET, AND ITS DEMO PROVED THE WRONG THING
+> Revision 0's demo was *"quit, reload the save, and be in the same place"* — which demonstrates
+> **save/load**, not *"a beginning, a middle and an ending"*. Worse, **save/load does not exist**
+> (§0.4): `SaveWriter`/`SaveReader` appear only under `tests/`, no host writes or reads one, and
+> `CmdKind` has no verb for it. Revision 0 listed a multi-week project as a bullet in a slack
+> milestone. **It is now sized honestly and explicitly allowed not to fit.**
+
+**Contents, in priority order — the first three ARE the milestone.**
+1. **THE ENDING.** The lose screen (M3's `CryoSystem` branch fires it when no intact pod remains) and
+   a *"the ship is yours"* state with a stated condition. **This is what the player sentence promises
+   and it is the only item that must land.**
+2. **THE MIDDLE.** A stated mid-game goal, and **alerts** — so a crisis reaches the player instead of
+   waiting to be noticed. Without alerts an hour-long session is an hour of watching.
+3. **An art and legibility pass on the wreck**, judged from browser shots by the owner
+   (`review seams, not art`) — and **the second hard human gate: a real 60-minute owner playtest plus
+   the P2 blind-A/B screenshot verdict**, both exit bars this project has carried unmet since
+   2026-07-21. *(The first human gate is at the end of week 9 — §8 item 4. Revision 1 moved it there
+   deliberately: a plan with all its human gates in the last week has none.)*
+4. `ItemKind.Regolith → Rubble` (OD-6, decided; **moves no pin**, but touches sim, content, client art
+   ids and tests at once, so it **runs alone** — a clean auto-merge would prove nothing).
+5. **The device-removal hole** — a built door cannot be removed by any verb on any surface
+   (`DeconstructSystem.cs:378` refuses `Door`; DEMOLISH refuses it; `Cmd.remove` is gated out at
+   `roomzoom-view.js:1084-1102`).
+6. ⚠️ **SAVE/LOAD — sized, and NOT promised.** It is four things, not one: **host file IO** (a home
+   nobody has chosen) · **a restore path** (`Simulation` is built by `SimHost.Build`; nothing
+   re-enters it from a file) · **wire resync** (every client channel must re-baseline against a
+   world it did not watch load — `GameSession` keeps *one global* session and every delta gate
+   assumes continuity) · and **the unhashed layer**: personas, MEMS minds and the Chronicle are
+   deliberately outside determinism (`Simulation.cs:386-388`), so a save that restores the sim but
+   not the people restores a ship of strangers. ⇒ **Its own milestone-sized lane.** If the quarter is
+   on schedule it starts here; if not, it is the first thing that moves out, and this plan says so
+   now rather than discovering it in week 13.
+
+> **⭐ THE DESIGN BET M5 IS MAKING, NAMED — with its fallback.** This plan gives the wreck **no
+> antagonist and no event system.** All tension is endogenous: wear, air, heat, food, and the rising
+> draw of each person you wake. That is VISION pillar 1 (*"no random events — every crisis emerges
+> from operating conditions"*) taken literally, and it is a **bet**: it assumes the pressure frontier
+> plus the thaw curve are enough to carry an hour.
+> **The early warning that the bet is losing:** the middle of a session goes quiet — the player has
+> repaired what matters, the frontier is stable, and nothing is asking anything of them.
+> **The fallback, if it does:** the **Director already exists, is registered, and is gentled to a
+> 1.35 lever** with a hard rule that it never rolls dice — it modulates *when* sim-legal pressures
+> arrive. Widening that lever is a tuning change, not a new system. **Do not answer a quiet middle by
+> building an event system**; that would break pillar 1 to fix a pacing problem.
 
 **REUSES.** Everything. This milestone adds almost no mechanism; it makes what exists into a session.
 
 **Dependency.** Everything before it. An hour-long session needs a reward loop (M3), a reason to give
 orders (M2), and feedback when they fail (M1).
 
-**Size: MEDIUM**, and deliberately under-filled — it is where the quarter's slack lives.
+**Size: MEDIUM for items 1–5; item 6 is LARGE and is explicitly the quarter's release valve.**
 
-**FIVE-MINUTE BROWSER DEMO.** Start, play for five minutes, quit, reload the save, and be in the same
-place with the same people doing the same things.
+**FIVE-MINUTE BROWSER DEMO.** Load the wreck with one intact pod left, at max speed, and walk the last
+crew member into vacuum → **the run ends, on screen, with the ship's chronicle as its epitaph** — and
+the ending names the people who were aboard. *(An ending is the only thing you can demonstrate in five
+minutes; the middle is demonstrated by the week-9 and week-13 playtests, not by a click sequence.)*
 
 ---
 
@@ -444,11 +656,22 @@ one lane the tax is paid once"* — is true of the **serialization**, not of the
 
 **So:**
 - **One standing DEEP LANE owns the whole quarter's pin chain**, publishes its order in advance, and
-  never runs two pin-movers concurrently. Published order:
-  **M2-a** citizen work state (+ the reserved skill field) → **M2-b** dispatch/stack re-order →
-  **M2-c** the `PowerSystem` condition term → **M3-a** `CryoSystem` → **M3-b** skills' consumers →
-  **M3-c** rest → **M3-d** the heater def row. Each gets its own re-pin commit
-  (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory, in the same commit — the ritual).
+  never runs two pin-movers concurrently. Published order *(revised in revision 1: the stack re-order
+  is struck; the power term is added, because it is **not** pin-neutral — it moves the `perilune` and
+  `slice` tick-3000 goldens)*:
+  **M2-a** citizen work state (priority bytes + the reserved skill byte) → **M2-b** pre-emption →
+  **M2-c** the off-network authoring fix (§0.2) → **M2-d** the `EffectiveRate` generation term →
+  **M3-a** `CryoSystem` → **M3-b** skills' consumers → **M3-c** rest → **M3-d** the heater def row.
+  Each gets its own re-pin commit (`ci.sh` + `CLAUDE.md` + `MECHANICS.md` + `HANDOVER.md` + memory,
+  in the same commit — the ritual).
+- ⭐ **ROLLBACK POINTS, named in advance** *(new in revision 1)*. A chain of eight re-pins has no
+  natural place to stand back up if one is wrong, because every later pin is measured against the
+  earlier ones. ⇒ **Tag `main` after M2-a and again after M2-d**, and record both tags with their five
+  pin values in the same commit that creates them. **M2-d is the designated rollback point for the
+  whole power package**: §0.2 and 8b change ship balance on two goldens, and if the resulting curve is
+  wrong the honest move is to return to a measured tree, not to tune forward from an unmeasured one.
+  A rollback point costs one tag and one table; discovering you needed one costs a re-derivation of
+  every pin after it.
 - **Every other lane must be pin-neutral and must PROVE it mechanically**, with the check the
   ground-item lane established: `git diff -- tests/Perilune.Tests/Golden/ ci.sh content/` = 0 lines.
   "Client-only" and "pin-neutral" are different claims; a lane that touches `hosts/` can only make
@@ -526,14 +749,24 @@ single message, each item carrying a recommendation and a stated blast radius; a
 after three days takes the recommendation, is marked REVERSIBLE, and is listed in the milestone's
 record as such.** The batches:
 
-- **M1:** the fog rule's scope (wreck-only authoring vs. a general hull rule — the pin difference).
+- **M1:** the fog rule's scope (wreck-only authoring vs. a general hull rule — the pin difference) ·
+  ⭐ **the vent premise (§0.3)**: an `AirVent` **injects** into its own room and refuses room 0, so
+  *"open the vent, push the air outward"* has never been implemented. **Recommend: change the
+  premise's wording** — the injection model already produces the frontier the design wants, and a
+  neighbour-draw term is a new gas mechanic in a milestone that should ship in two weeks.
 - **M2:** how many work types, and their names · does `HoldPosition` survive or become "everything
-  disabled" · does a priority ever override `CanStageWorkerAt` (**recommend: never**).
+  disabled" · does a priority ever override `CanStageWorkerAt` (**recommend: never**) ·
+  ⭐ **the pre-emption policy** — which job families may be dropped mid-work, and in what state
+  (**recommend: droppable everywhere except mid-haul-carrying-cargo, where the cargo must be set down
+  first; the abandon paths already exist per source and `JobContext.cs:95` normalises the release**).
 - **M3:** OD-12 the pod census (**recommend two wrecked**) · OD-11 `thaw_cost` escalation
   (**recommend `base + LivingCrew × step`, in Parts**) · OD-8 the ice hold (**recommend yes, behind
   the frontier**) · how many skill axes (**recommend small: ~6 work types, one hashed byte each**) ·
   the dead deck (**recommend: author a deck-1 vent; it is one line of content and it unblocks the
-  frontier**) · does the heater ship as a device or a def change to an existing one.
+  frontier**) · does the heater ship as a device or a def change to an existing one ·
+  ⭐ **the `Device.Name` collision** — one field is both the MOSS registry key and *"who is inside"*
+  (**recommend: keep `Name` as the registry key and carry the sleeper elsewhere; decide before
+  `CryoSystem` freezes the save chapter**).
 - **M4:** the Persona window's shape (this one genuinely needs him — there is no design doc) ·
   `Morale`/`Health`: make real or delete · does the onboarding card mention TALK at all.
 - **M5:** what the ending is.
@@ -544,10 +777,22 @@ record as such.** The batches:
 2. **W7's fusion of skills and priorities** — plan of record: *"the two halves are one wave."* Here:
    split across M2 and M3, with the storage batched. Grounds: §3.1.
 3. **W7's seam description** — plan of record: *"nothing else in the dispatcher needs to change."*
-   Here: the stack order must change too, and the recruiter count is **four**, not three (§M2).
+   Here: it needs a band loop **and a recruiter-claim query for the two work types that have no
+   `IJobSource` at all** (`_byKind[6]`/`_byKind[7]` are null), the assignment-site count is **four**
+   not three, and **pre-emption is a separate mechanism the charter does not mention at all** (§M2).
+   *(Revision 0 said "the stack order must change." **That was wrong and is withdrawn** — see §M2.)*
 4. **W9's position** — plan of record: in the wave order. Here: dropped from the quarter (§3.4).
 5. **`ECONOMY-PLAN.md`'s E0→E4 approval** — narrowed to E0 by OD-B, by the same owner who gave it.
-6. **A stale test comment**, for the record: `client/test/surface-boundary.test.js:832` says the
+6. ⭐ **`CLAUDE.md`'s statement of the premise** — *"open the vent, push the air outward"* describes a
+   mechanic **the sim has never implemented**: an `AirVent` injects from an unmodelled reserve into
+   its own room and refuses to vent into room 0 (`AtmosphereSystem.cs:136-146`). This is not a
+   roadmap disagreement; it is the repo's own headline description of its opening move being wrong
+   about the code. **In M1's decision batch** (§0.3, §3.5).
+7. **`AuthoredShips.cs:1429-1433`'s power claim** — *"~12.6 kW of total demand, every tier served
+   from tick 0 and stays served"*. **Both halves false**: true flat demand is 20.40 kW and every light
+   is out by sim-hour 7 (§0.1). And `:1441-1443`'s belief that deck 1 is off-network is false for
+   **all 626 devices** (§0.2).
+8. **A stale test comment**, for the record: `client/test/surface-boundary.test.js:832` says the
    `devices` channel has no drawing consumer. **It has one** — `client/src/items/wear.js` joins it to
    the wrecked twins and both surfaces route through `buildTileItem`
    (`overview-scene.js:355`, `roomzoom-view.js:653`). The comment predates the art join's merge.
@@ -568,12 +813,13 @@ You click her. **One window** opens: Rell — wry, devout, meticulous; a mechani
 tired, hungry, unhurt. It says what she is doing and *why*. Nothing in it says `SAMPLE`.
 
 You open the **WORK** tab and give her a shape: Repair 1, Construct 2, Haul 4. You walk her into the
-life-support hall, arm **O**, and open `vent_ls`. Pressure starts falling next door and rising here;
-the frontier moves one compartment. You paint a strip order on a dead recycler and she ignores it,
-because you told her repair matters more, and the task line tells you that in words. You right-click
-`wing_c`: *Prioritise: repair.* She drops what she is doing and walks. Fifteen sim-minutes later the
-deck's power readout climbs and **a dark room's lights come on** — the thing the owner described in
-his first sentence about this game, happening on screen.
+life-support hall, arm **O**, and open `vent_ls`. **The hall's pressure climbs** and the frontier
+moves out by one compartment. You paint a strip order on a dead recycler and she ignores it, because
+you told her repair matters more, and the task line tells you that in words. You right-click `wing_c`:
+*Prioritise: repair.* **She sets down what she was carrying and goes** — the first time in this
+project's life that a busy pawn could be taken back. Fifteen sim-minutes later generation steps from
+10.65 to 13.47 kW, the benches come back, and **a dark room's lights come on** — the thing the owner
+described in his first sentence about this game, happening on screen.
 
 You paint an order in a hall she cannot breathe in. Nothing happens — and the tile says so, in
 writing, on the tile. You press erase and take it back.
@@ -599,16 +845,41 @@ screen still teaches a verb the game does not have.
 
 ## 5. Risks, ranked
 
-**R1 — The priority-grid dispatch rewrite is larger than it looks. (HIGH / HIGH)**
-The seam described in every existing charter is insufficient (see §M2's sizing box): repair, crafting
-and eating are *push* recruiters that run **after** `JobSystem` in a load-bearing stack order, so a
-veto inside `TryAssign` cannot make Repair outrank Haul.
-*Early warning:* a package proposes "a per-(citizen, JobKind) veto inside the loop" and its charter
-does not mention `SystemStack.cs`, or counts three recruiters instead of four.
-*Mitigation:* **spike it first** — one throwaway branch, the veto with no UI, driven at one pawn,
-measuring whether Repair@1 beats a painted strip order; the spike's answer sizes the milestone.
-Charter the rewrite as two separately-attributable commits (veto, then pre-emption). Require a driven
-one-pawn measurement, never a scan.
+**R1 — The priority-grid rewrite is larger than it looks. (HIGH / HIGH)**
+The seam described in every existing charter is insufficient (§M2's sizing box): `JobKind.Maintain`
+and `JobKind.Craft` have **no `IJobSource` at all** (`_byKind[6]`/`_byKind[7]` null), so a band loop
+fails in the same place a flat veto does; there are **four** assignment sites, not three.
+*Early warning:* a package proposes "a per-(citizen, JobKind) veto inside the loop"; or counts three
+recruiters; or proposes to fix it by **re-ordering `SystemStack`** — which delivers none of OD-A
+because it can only invert a fixed *global* precedence, never express Haul@1/Repair@4.
+*Mitigation:* the spike below, then charter as separately-attributable commits (filter → ranking →
+pre-emption). Require a **driven** one-pawn measurement, never a scan.
+
+> ⛔ **REVISION 1 — R1's SPIKE AS WRITTEN RETURNED A FALSE PASS, AND THAT IS THE WHOLE POINT OF THIS
+> ROW.** Revision 0 specified: *"the veto with no UI, driven at one pawn, measuring whether Repair@1
+> beats a painted strip order."* **Repair already beats a painted strip order today, with no veto at
+> all** — because a 900 s Maintain service monopolises the pawn (see the 54 650-tick measurement).
+> The spike would have passed on an empty branch and reported the milestone as small.
+>
+> **⇒ THE RE-SPECIFIED SPIKE, with a baseline control and an inverting criterion:**
+> **Leg A (BASELINE CONTROL, mandatory):** the shipped sim, no changes. Record the order of events.
+> *If this leg is not run, the spike is uninterpretable.*
+> **Leg B (INVERTING CRITERION):** with the grid, set **Haul@1 / Repair@4** and require the observed
+> order to **invert** — the pawn strips and does **not** service. **This is a result the shipped sim
+> cannot produce**, which is precisely why it is the criterion.
+> **Leg C (PRE-EMPTION):** flip to Repair@1 mid-service and require the pawn to be **taken back**.
+> **A spike whose passing leg the unmodified codebase also passes has measured nothing.** This is the
+> fourth trap shape (a guard whose scope excludes the violation) wearing a scheduling costume.
+
+**R1b — Pre-emption's POLICY is the hard part, not its mechanism. (MEDIUM / HIGH)** *(new in revision 1)*
+The mechanism exists once (`SafetySystem.cs:232-238`) and the release is already normalised
+(`JobContext.cs:95`). The question *when may a pawn be taken off a job it is halfway through* has no
+precedent here and three named hard cases: mid-haul carrying cargo, mid-craft against a bill,
+mid-build with material delivered.
+*Early warning:* a pre-emption package that ships a mechanism and defers the rule to "the caller"; or
+a demo that only ever pre-empts an idle-adjacent job.
+*Mitigation:* policy is an owner-batch item (§3.5, M2). Ship the mechanism **behind** the decided
+policy, and require the demo to pre-empt a *carrying* pawn — the case that loses cargo if it is wrong.
 
 **R2 — Scope creep back into economy and metric work. (MEDIUM / HIGH)**
 The gravitational pull is real: 120 of 555 commit subjects mention the economy, and the instruments
@@ -704,13 +975,41 @@ do something.** Two were later measured as *~1 %, not separated from noise* and 
 > **(3) THE INFRASTRUCTURE BUDGET — the part that makes (1) honest.** Some necessary work has no
 > player sentence: a re-pin, a save migration, a provider-API bump, a genuine guard repair. Pretending
 > otherwise produces *fabricated* player sentences, which is worse than none. So such work is
-> chartered **explicitly as INFRASTRUCTURE**, with no player sentence and no demo, and is **capped at
-> one in five chartered packages in any rolling two-week window.** The cap is the enforcement; the
-> label is what makes the cap countable.
+> chartered **explicitly as INFRASTRUCTURE**, with no player sentence and no demo.
 >
-> **(4) THE MILESTONE LEDGER.** Every milestone's record ends with a table of its packages, each
-> tagged `PLAYER` or `INFRASTRUCTURE`, with the ratio computed. A milestone that closes above the cap
-> says so in its own record. **A number you did not write down is a rule you did not have.**
+> ### ⚠️ REVISION 1 — THE CAP WAS UNENFORCEABLE AS WRITTEN, AND IT IS NOW A REFUSAL
+>
+> Revision 0 made it *"capped at one in five in any rolling two-week window"*, audited by a table at
+> milestone close. **A cap you can only discover you have breached is not a cap** — the breach is
+> already merged, and the only remaining move is to write it down apologetically. Four changes:
+>
+> **(3a) CLASSIFY AT CHARTER TIME, NOT AT CLOSE.** Every charter carries `PLAYER` or `INFRASTRUCTURE`
+> as a required field on the same line as its title. There is no third value and no blank.
+> **(3b) PUBLISH A RUNNING COUNT.** The milestone's record carries a live tally — `PLAYER n /
+> INFRASTRUCTURE m / cap m_max` — updated when a package is **chartered**, not when it lands.
+> **(3c) A RE-PIN COMMIT DOES NOT COUNT.** Stated explicitly, because it is the ambiguity that would
+> otherwise consume the whole budget: a re-pin is the *ritual tail* of a package already classified,
+> not a package. **A pin-moving package counts once, under whatever its own sentence made it.** By the
+> same rule, a guard fix riding inside a `PLAYER` package is not a separate infrastructure charter —
+> only a guard fix chartered *for its own sake* is.
+> **(3d) IT IS A REFUSAL, NOT A RATIO.** Chartering the (m_max + 1)-th infrastructure package in the
+> window **fails**, and the only way past it is an explicit owner override recorded by name and date.
+> *This is the mechanism the repo already trusts everywhere else — an equality-pinned ledger that only
+> pays down, not a number reported after the fact.*
+>
+> **(4) PROJECTABILITY — every milestone carries a package count** so the ratio can be projected
+> before the window opens, not reconstructed after it closes:
+>
+> | milestone | est. packages | of which INFRASTRUCTURE (cap 1 in 5) |
+> |---|---:|---:|
+> | M1 | ~10 | ≤ 2 |
+> | M2 | ~22 | ≤ 4 |
+> | M3 | ~20 | ≤ 4 |
+> | M4 | ~12 | ≤ 2 |
+> | M5 | ~12 *(+ save/load, own lane)* | ≤ 2 |
+> | **quarter** | **~76** | **≤ 15** |
+>
+> **A number you did not write down before you needed it is a rule you did not have.**
 
 **Why this shape and not "just require a player sentence":** a bare requirement gets satisfied by
 writing a fake sentence, and this repo has already produced a package whose *code was right and whose
@@ -727,14 +1026,22 @@ pipeline, an LLM runtime, an economy, a wreck ship and ~2 200 tests. Work is don
 agents in git worktrees, one implementing and a separate one reviewing (binding orchestration rule).
 
 **I assume:** ~**3–5 independently-reviewed packages land per working day** across parallel lanes ·
-**~25 % of gross effort** goes to send-backs, retractions and re-verification (measured: 6 of the 40
-most recent commits are `Send-back:`/`Merge fix:`, 4 contain explicit retractions, 3 are browser
-verifications) · **every package takes at least one send-back** (observed, without exception) · **at
-most one pin-moving lane in flight at any time** · concurrency has a measured wall-clock cost (four
-lanes took the dotnet stage from ~6.5 to ~10 minutes).
+**~30 % of gross effort** goes to send-backs, retractions and re-verification · **every package takes
+at least one send-back** (observed, without exception) · **at most one pin-moving lane in flight at
+any time** · concurrency has a measured wall-clock cost (four lanes took the dotnet stage from ~6.5
+to ~10 minutes).
 
-That is roughly **250 packages of nominal capacity** over 13 weeks. **This plan names on the order of
-80.** I am deliberately planning to about a third of nominal, and the reasons are the plan's, not
+> ⚠️ **REVISION 1 — I UNDER-STATED MY OWN CORRECTION RATE, AND IT MADE THE ASSUMPTION MORE OPTIMISTIC
+> THAN I CLAIMED IT WAS.** Revision 0 said *"6 of the 40 most recent commits are `Send-back:`/`Merge
+> fix:`"*. **It is 9 of 40**, plus 4 explicit retractions and 3 browser re-verifications. So the
+> correction share is nearer **30 %** than 25 %, and it is worth naming what that means rather than
+> just adjusting a number: **this document is itself an instance of the rate** — it took a send-back
+> with seven required fixes, three of which corrected measurements I had asserted. A planning document
+> that assumed a 25 % correction rate while being corrected at a higher one was not being conservative;
+> it was flattering the plan.
+
+That is roughly **230 packages of nominal capacity** over 13 weeks. **This plan names ~76** (§6's
+table). I am deliberately planning to about a third of nominal, and the reasons are the plan's, not
 timidity:
 
 1. **The rate is measured over nine days and has never been sustained over thirteen weeks.** Founding
@@ -759,13 +1066,23 @@ A free lane pulls from the top of this list, never from the parked programmes.
    ship's own history, which is the stated emotional payload.*
 4. **The character-simulation substrate**, once its five §12 decisions close and it is sequenced
    against the pin chain. *The player cannot tell why this person is different from that one.*
-5. **`Regolith → Rubble`** (W10). *The player is told they are carrying lunar soil on a starship.*
-6. **The device-removal hole.** *The player can build a door they can never take down.*
-7. **RUG and SHELF made real, or removed.** *The player places furniture that does not exist.*
-8. **Performance: memoise the "no consumable aboard" answer.** A machine below the wreck floor with
-   no consumable stays needy forever and is re-evaluated at 1 Hz through up to three full item-store
-   scans; the wreck authors hundreds by design. **INFRASTRUCTURE** — and it must be *measured* before
-   it is built, because the last two performance items in this repo measured at ~1 % and *inert*.
+5. **The `designs`/`blocked` fog asymmetry** *(floated out of M1 in revision 1 — top of the queue)*.
+   *The player sees their own build ghost sitting there doing nothing, with the channel that would say
+   why deliberately silent.*
+6. **`Regolith → Rubble`** (W10). *The player is told they are carrying lunar soil on a starship.*
+7. **The device-removal hole.** *The player can build a door they can never take down.*
+8. **RUG and SHELF made real, or removed** (§0.5). *The player places furniture that does not exist.*
+9. **Measure A2 and A3 once** *(floated out of M1; **INFRASTRUCTURE**, counted — RF-4)*. It has no
+   player sentence and this document will not invent one for it. A3 has never been measured in the
+   repo's life. Under OD-B: **baselines, never goals.**
+10. **Performance: memoise the "no consumable aboard" answer.** **INFRASTRUCTURE**, and **it must be
+    measured before it is built** — the last two performance items in this repo measured at ~1 % and
+    *inert*, and were correctly not built.
+    ⚠️ **Revision 1 corrects my own inflation of this item.** Revision 0 said *"the wreck authors
+    hundreds by design"*, quoting the plan of record. **Measured: 39 needy and 41 below the wreck
+    threshold, of 626 devices.** Two orders of magnitude below "hundreds", on a re-scan that is
+    O(needy × item-store). ⇒ **This is very likely a non-item**, and it is left here at the bottom
+    of the queue rather than deleted only so the next person does not re-derive the number.
 
 ---
 
@@ -787,7 +1104,13 @@ A free lane pulls from the top of this list, never from the parked programmes.
    one hashed byte each — on the grounds that five thaw decisions need to be distinguishable, not
    optimisable.
 4. **Whether the thaw curve is any fun.** No amount of measurement answers it. *Resolved by:* the
-   owner playing M3's demo. Budget a real playtest in week 9, not week 13.
+   owner playing M3's demo. ⭐ **A REAL 60-MINUTE PLAYTEST IS A HARD GATE AT THE END OF WEEK 9**
+   *(moved forward in revision 1 — revision 0 left every human gate in week 13, which is where a human
+   gate goes to die).* This project has carried the P2 60-minute playtest bar **unmet since
+   2026-07-21**, and WP-9 carries its own human gate that *"no agent can be that human."* ⇒ **Two
+   human gates, week 9 and week 13, both on the calendar now.** If the week-9 gate says the curve is
+   not fun, M4 and M5 are the budget that pays for fixing it — which is only true if the gate happens
+   while that budget still exists.
 5. ✅ **The gate — MEASURED IN THIS WORKTREE, not copied.** `./ci.sh` on `lane/roadmap` @ `72fbca4`:
    **exit 0 · 1 286 dotnet (0 failed, 0 skipped, 10 m 34 s) · 953 node (0 failed) · twin hashes MATCH
    `02257f5bce961570`.** This agrees with `CLAUDE.md`, which is worth stating because it usually does
