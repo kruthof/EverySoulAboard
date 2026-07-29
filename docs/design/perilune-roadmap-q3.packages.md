@@ -1470,7 +1470,9 @@ window between pin-chain rows.
 >
 > **What is NOT free is that a waiting pawn is indistinguishable from a broken one.** Nothing on any
 > surface says *"she is waiting for you"* — and the live design position at
-> `client/src/ui/overview-view.js:717-722` deliberately **refuses** to say it:
+> `client/src/ui/overview-view.js:721-722` deliberately **refuses** to say it — ⚠️ **that is the
+> CLAUSE, inside a comment block running `:715-722`; cite the clause, not the block, because the block
+> also contains a claim that is already false (see below):**
 > > *"writing something like `AWAITING ORDERS` would imply the ship is waiting on the player, when an
 > > idle crew member may simply have nothing reachable to do."*
 >
@@ -1635,7 +1637,7 @@ written down and countable rather than applied silently.*
 > 11. ⭐ **DECIDED-BY-DEFAULT (integrator, 2026-07-29) — TWO WORDS, NOT ONE, and the dim/amber
 >    legibility rule is kept exactly as it is. Owner may overturn; the exact strings are REVERSIBLE.**
 >    *The question as put — and note that it*
->    **contradicts a deliberate, documented design position** (`overview-view.js:717-722`: *"writing
+>    **contradicts a deliberate, documented design position** (`overview-view.js:721-722`: *"writing
 >    something like `AWAITING ORDERS` would imply the ship is waiting on the player"*). Under OD-G the
 >    ship **is** waiting on the player. ⛔ **But the distinction that comment protects survives and gets
 >    sharper:** *no work type enabled* and *nothing reachable to do* are different facts and must not
@@ -3261,7 +3263,7 @@ a two-pawn fixture on a one-pawn ship.**
 
 > ### ⛔ IT CONTRADICTS A LIVE, DELIBERATE DESIGN POSITION, AND THAT POSITION IS HALF RIGHT
 >
-> `client/src/ui/overview-view.js:717-722`, verbatim:
+> `client/src/ui/overview-view.js:721-722`, verbatim *(the clause; the block is `:715-722`)*:
 > > *"A row that shows "Idle" in dim grey is the honest answer and it is also the legibility
 > > mechanism: the eye reads the amber rows as "work is happening", so a dock of grey rows is a TRUE
 > > signal that nothing is. On `--ship grid` that will be most of the day (crew there do not
@@ -3283,7 +3285,7 @@ a two-pawn fixture on a one-pawn ship.**
 - `hosts/web/GameSession.cs`'s `TaskLabel` (`:2724`) — `TaskLabel`'s `default:` branch, which today emits
   `"Walking to …(no task)"` / `"Holding position"` / `"Idle"`. ⭐ **This is where the vocabulary lives,
   and it is the SINGLE authority** — both standard surfaces already read it (*"the host's own words,
-  so the two surfaces cannot disagree"*, `overview-view.js:701-702`). ⛔ **Do not add a client-side
+  so the two surfaces cannot disagree"*, `overview-view.js:716-717`). ⛔ **Do not add a client-side
   derivation; that is the two-sources-for-one-layer defect the `marks` channel exists to remove.**
 - `client/src/ui/overview-view.js:697-708` — the CREW WATCH task line and its dim/amber rule.
   **Correct the comment in place.**
@@ -3301,9 +3303,10 @@ a two-pawn fixture on a one-pawn ship.**
    `AutoWander = true`** (`sim/Sim.Gen/AuthoredShips.cs:1936-1941`, whose own comment reads
    *"AutoWander so the ship is not a still photograph while the pawn is idle; deck-confined"*, and
    `:1535` states it again). ⇒ **No content change, no `AuthoredShips.cs` claim, no escalation.**
-   ⚠️ ⭐ **BUT THE `overview-view.js:717-722` COMMENT IS STALE ABOUT THIS TOO, AND THAT MATTERS FOR THE
-   AMENDMENT:** it reasons from *"on `--ship grid` … crew there do not auto-wander"* — which was true
-   when it was written and **was reversed on 2026-07-25** by the deck-confined-wander lane
+   ⚠️ ⭐ **AND THE BLOCK CONTAINS A SECOND CLAIM THAT IS ALREADY FALSE — WHICH IS WHY THE CLAUSE IS
+   CITED AND NOT THE BLOCK.** `overview-view.js:720-721` reads *"On `--ship grid` that will be most of
+   the day (**crew there do not auto-wander**)"* — true when written and **reversed on 2026-07-25** by
+   the deck-confined-wander lane
    (`AuthoredShips.cs:1123`, grid crew are now `AutoWander = true`, *"the standard play ship should not
    be a still photograph"*). ⇒ **The comment is wrong in TWO clauses, not one**, and a lane amending it
    must fix both. **This package still owns the leg that PINS the behaviour** (a pawn with no work

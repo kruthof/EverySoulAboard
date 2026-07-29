@@ -842,7 +842,11 @@ The batches:
   measurement fixtures default OFF too** · **does a newly thawed crew member boot with every work type
   off** *(must be answered before M3-2 freezes the `CryoSystem` chapter)* · **what counts as "the
   first order"** · **the vocabulary for a pawn who is deliberately unassigned** *(it contradicts a
-  deliberate design position at `client/src/ui/overview-view.js:701-708`)*.
+  deliberate design position at **`client/src/ui/overview-view.js:721-722`** — ⚠️ **the CLAUSE, not the
+  block.** The comment runs `:715-722` and carries **two** claims: the `AWAITING ORDERS` position, which
+  is live and is what OD-G overturns, and an auto-wander premise at `:720-721` (*"crew there do not
+  auto-wander"*) which is **already false** — grid crew were made `AutoWander = true` on 2026-07-25.
+  **Quote around the stale half, not through it.**)*.
   ⚠️ **Item 5 — does an explicit *Prioritise* order override the grid — is unchanged as a question and
   NARROWED as a decision:** under OD-H every machine's work type is off at boot, so a *no* answer
   refuses the player's very first right-click.
