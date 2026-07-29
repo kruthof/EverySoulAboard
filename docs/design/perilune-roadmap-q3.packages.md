@@ -76,11 +76,18 @@ the approved plan · the invariants and the **Traps** section in `CLAUDE.md`.
 >
 > ### 5. ⛔ A NEW FOUND DEFECT, LIVE ON `main` TODAY — and the grid EXPOSES it on day one
 >
-> With Repair off, the pawn enters a **30-tick `Craft` recruit→abandon thrash forever — 33 % of all
-> crew-ticks.** Leg A's own baseline trace proves it exists on `main` unmodified. It is invisible
-> **only because the maintenance monopoly absorbs the pawn — which is exactly what shipping a
-> work-priority grid stops doing.** ⇒ **§0.1 below, and chartered as M1-H, to be fixed BEFORE or WITH
-> M2.**
+> With Repair off, the pawn enters a `Craft` recruit→abandon thrash. It is invisible **only because
+> the maintenance monopoly absorbs the pawn — which is exactly what shipping a work-priority grid
+> stops doing.** ⇒ **§0.1 below, and chartered as M1-H, to be fixed BEFORE or WITH M2.**
+>
+> ⚠️ **THE SIZE AND THE DURATION WRITTEN HERE WERE BOTH WRONG, and are corrected in place by M1-H's
+> own measurement** (`occupancy --ship wreck --days 1 --maint-audit --no-repair`, the harness M1-H
+> shipped for exactly this): it is **3.575 % of a sim-day, not 33 %**, and it **does not run
+> forever** — 1 468 abandons over ~1.2 sim-hours (75.3 % of sim-hour 1, 10.5 % of h2, **0.0 % from
+> h3 onward**), then it stops. **Why it stops was not investigated.** The 33 % figure is not
+> reproducible from committed code: the spike's own harness (`lane/spike-dispatch`,
+> `hosts/scenario/DispatchSpike.cs`) contains no `Craft` instrumentation at all. **The defect and
+> its single site are confirmed; its published magnitude and its "forever" are retracted.**
 >
 > ### 6. ⚠️ THE `54 650` FIGURE WAS DOING DOUBLE DUTY, AND *I* REPEATED THE ERROR
 >
@@ -158,14 +165,49 @@ the approved plan · the invariants and the **Traps** section in `CLAUDE.md`.
 
 ### 0.1 ⛔ A FOUND DEFECT, LIVE ON `main` TODAY, AND THE GRID EXPOSES IT ON DAY ONE
 
-> **With Repair disabled the pawn enters a 30-tick `Craft` recruit→abandon thrash, forever —
-> 33 % of all crew-ticks.** Measured by the M2-0 spike; **Leg A's own baseline trace proves it exists
-> on unmodified `main`**, where `MaintenanceSystem` can only take the pawn at t=201 *because
-> `CraftingSystem` had already abandoned it.*
+> **With Repair disabled the pawn enters a `Craft` recruit→abandon thrash.** Found by the M2-0
+> spike; **Leg A's own baseline trace proves it exists on unmodified `main`**, where
+> `MaintenanceSystem` can only take the pawn at t=201 *because `CraftingSystem` had already
+> abandoned it.*
+>
+> ✅ **RE-MEASURED AND CORRECTED BY M1-H (2026-07-29).** The spike's published figure — *"30-tick
+> loop, forever, 33 % of all crew-ticks"* — is **wrong in its size and wrong in its duration**, and
+> the corrected numbers are these (`occupancy --ship wreck --days 1 --maint-audit --no-repair`):
+>
+> | | Craft job starts | Craft share of crew-ticks | shape |
+> |---|---:|---:|---|
+> | **repair OFF** (the spike's condition) | **597** | **3.575 %** of a sim-day | 1 468 abandons, all in sim-hours 1–2; **h3+ is 0.0 %** |
+> | **repair ON** (the shipping wreck *today*) | **1** | **0.023 %** | — |
+> | after M1-H, either way | **0** | **0.000 %** | — |
+>
+> **Neither "33 %" nor "forever" survives.** The spike's harness carries no `Craft` instrumentation,
+> so 33 % is not reproducible from committed code; M1-H shipped the instrument (`--maint-audit`'s
+> Craft row) and the lever (`--no-repair`) so that every number above can be re-run in one command.
+> **Why the thrash stops after ~1.2 sim-hours was not investigated.** The defect, and its single
+> site, are confirmed.
 
 ⚠️ **It is invisible today for exactly one reason: the maintenance monopoly absorbs the pawn — which
 is precisely what a work-priority grid stops doing.** ⇒ **The grid does not cause it; the grid
-*reveals* it, on day one, as "my crew member vibrates in place and never works."**
+*reveals* it, as "my crew member vibrates in place and never works."**
+
+### ⛔ AND UNDER OD-H IT IS NO LONGER A PREDICTION
+
+**OD-G** (the pawn boots idle and waiting; the opening beat is the player giving an order) and
+**OD-H** (**the work-priority grid defaults OFF — work is opt-in**, reversing M2-1's chartered
+"default 3 for every pawn") were taken on 2026-07-29, after M1-H was chartered.
+
+⇒ **`--no-repair` stops being a laboratory lever the player cannot pull and becomes approximately
+the DEFAULT STATE of the shipping game.** The "repair OFF" row of the table above is therefore not a
+what-if: it is **the opening screen**, before the player has enabled anything — a pawn burning
+**3.575 % of a sim-day, 75.3 % of its first sim-hour**, in a futile recruit→abandon loop while
+appearing to do nothing. Everything below that reads *"the grid will expose this on day one"* was a
+**prediction** on the tree as it stood; under OD-H it is a **certainty**, and M1-H is what stands
+between the owner's chosen opening and a pawn vibrating in place.
+
+*(Provenance: OD-G and OD-H are cited here from the owner decisions relayed with M1-H's review. At
+the time this paragraph was written they were not yet recorded in any file in this repo — the M2
+re-charter lane owns that. If they are not in `§0` when you read this, that is the reason, and this
+citation should be checked against the owner record rather than trusted.)*
 
 ⇒ **Chartered as M1-H and scheduled BEFORE M2-1.** Filing it without a package is what this document
 exists to prevent. *(This is the sixth defect found by driving the sim rather than reading it, in a
@@ -251,7 +293,7 @@ are for.
 
 | # | lane | package | expected to move | why | rollback point |
 |---|---|---|---|---|---|
-| **M1-a** | `lane/craft-thrash` | **M1-H** | **P1 P2 P3 — expected; measure.** | ⭐ **NEW IN REVISION 2.** The `Craft` recruit→abandon thrash is a real behaviour change on any ship with a bench and an unsatisfiable bill. **P4/P5 hold** — the backoff reuses `JobWork.UnreachableRetryTicks`, a literal already on the determinism path. ⛔ **Do not add a def field.** | — |
+| ~~**M1-a**~~ | ~~`lane/craft-thrash`~~ | ~~M1-H~~ | ✅ **RETRACTED — MEASURED, NO PIN MOVE.** | **All five pins HELD on the implemented lane**, and `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` is **0 lines** — no golden was rewritten and `ci.sh` was not edited. The prediction was wrong for a measurable reason: **no pinned window contains a refusal.** `--ship grid` and `--ship slice` hit **zero** path-failure abandons across a whole sim-day (measured per-site), the scenario ship (`hosts/scenario`'s hand-built 22×6 single-deck map) has no crafting station, and the tick-3000 ship's two crew are `HoldPosition`. ⚠️ **This row is retracted, not merely re-valued: M1-H does NOT run alone and must not serialize the chain.** *(Measured on `lane/craft-thrash` merged with `main` @ `48b29e7`; re-measure at merge — a pin claim is only evidence for the tree it was measured on.)* | — |
 | **M2-a** | `lane/work-state` | M2-1 | **P1 P2 P3** | New hashed `Citizen` state ⇒ CITZ chapter bump ⇒ `Simulation.StateHash` fold changes on every ship. **P4/P5 expected to HOLD** — see the note below. | ⭐ **tag `pin/m2-a`** on `main`, with all five values recorded in the tag's own commit |
 | ~~**M2-b**~~ | ~~`lane/preempt`~~ | ~~M2-8~~ | ⛔ **REMOVED FROM THE CHAIN IN REVISION 2.** | M2-0 measured pre-emption at **0 lines in `sim/`** and three host lines; at shipped defaults nothing pre-empts. It is **pin-neutral, proven by check (A)**, and holding a serialization slot for it was costing the chain a step for nothing. ⚠️ *It is still integrator work — it is off the CHAIN, not off the integrator's desk.* | — |
 | **M2-c** | `lane/power-network` | M2-11 | **UNKNOWN — and the answer depends on a decision inside the package.** Wreck-only authoring ⇒ pin-neutral (the wreck is not pinned). A change to `PowerSystem`'s claim rule ⇒ **P2 P3** (and P1 only if the scenario ship has a network — it is single-deck, so a 6-way vs 4-way claim is likely identical). | §0.2: `AuthoredShips.cs:1441-1443` believes deck 1 is off-network; measured, 0 of 626 devices are. | — |
@@ -283,7 +325,7 @@ Numbered, and this is the order the integrator merges `--no-ff` into `main` and 
 |---|---|---|---|
 | 1 | `lane/wreck-visible` | **M1-A** | ⏳ IN FLIGHT. Merge first — everything in M1/M2 that touches the wreck's visible machines assumes it. |
 | 2 | `lane/first-screen` | **M1-B** | ⏳ IN FLIGHT. Merge second so M1-C can rebase onto its `controls.js` / `overview-view.js` edits. |
-| 3 | `lane/craft-thrash` | **M1-H** | ⛔ **PIN M1-a. Runs alone.** ⭐ NEW IN REVISION 2 — a live `main` defect the grid exposes on day one. **Must precede 8.** |
+| 3 | `lane/craft-thrash` | **M1-H** | ✅ **NOT a pin row — `PIN M1-a` is retracted (measured: all five pins HELD, 0 lines of diff to `Golden/`, `ci.sh`, `content/`). It does NOT need to run alone.** ⭐ NEW IN REVISION 2 — a live `main` defect the grid exposes on day one, and under **OD-H** on the default screen. **Must still precede 8** (M2-1), which is an ORDERING constraint about the same recruiters, not a pin constraint. ⚠️ It renames and re-signatures `FindNearestIdle` in **both** push recruiters → M2-2 / M2-5 work written against the old name conflicts TEXTUALLY, not just semantically. |
 | 4 | `lane/blocked-reach` | **M1-D** | Can start tonight; merges here. ⚠️ **Integrator lane** (`WireFormat` + `IJobSource`). ⭐ **Semantically coupled to 1 — re-run its tests AND its browser acceptance after 1 merges.** |
 | 4 | `lane/undesignate` | **M1-C** | Rebase onto 2 before review. |
 | 5 | `lane/morale-bar` | **M1-F** | |
@@ -710,16 +752,32 @@ negative control whose fixture contains a **later real comment**.
 > to look like a reading. **AFTER THIS** the bar is gone, and nothing on the first screen pretends to
 > a number the sim does not compute.
 
-**SEAM — AND THERE ARE FIVE DRAW SITES ACROSS THREE FILES, NOT ONE.** *(Revision 0 named only the
-CREW WATCH bar. All five verified this session.)*
+**SEAM — AND THERE ARE ~~FIVE~~ SIX DRAW SITES ACROSS THREE FILES, NOT ONE.** *(Revision 0 named only
+the CREW WATCH bar. Revision 2 named five. ⚠️ **CORRECTED BY THE IMPLEMENTER, 2026-07-29: there are
+SIX** — the console READOUT's `.ro-morale` line was missed by the "all five verified this session"
+claim, and the line numbers in rows 1–3 were already stale because M1-B had landed on `overview-view.js`
+in between. **Both are the house shape "a package's code can be right and its justification false"
+(§13.11), here in the charter itself.** Row 5 is split below into 5a/5b/5c; the SCOPE decision is
+unchanged — all three are `hud.js` and all three stay.)*
 
-| # | site | `file:line` | in scope? |
+| # | site | `file:line` **(re-derived on the merged tree, 2026-07-29)** | in scope? |
 |---|---|---|---|
-| 1 | CREW WATCH bar markup | `client/src/ui/overview-view.js:675` (`ov-morale` / `ov-morale-fill`) | ✅ **remove** |
-| 2 | its element cache | `client/src/ui/overview-view.js:682` | ✅ **remove** |
-| 3 | its per-frame fill + colour | `client/src/ui/overview-view.js:699-702` (`moraleColor(mv)`) | ✅ **remove** |
+| 1 | CREW WATCH bar markup | `client/src/ui/overview-view.js:688` (`ov-morale` / `ov-morale-fill`) — *charter said `:675`* | ✅ **remove** |
+| 2 | its element cache | `client/src/ui/overview-view.js:695` — *charter said `:682`* | ✅ **remove** |
+| 3 | its per-frame fill + colour | `client/src/ui/overview-view.js:712-715` (`moraleColor(mv)`) — *charter said `:699-702`* | ✅ **remove** |
 | 4 | the dossier MORALE meter | `client/src/ui/panels.js:313-315` | ✅ **remove** |
-| 5 | the console CREW table's morale track/fill and `TABLE_CELLS`' `'tc-morale'` | `client/src/ui/hud.js:951-953`, `:981-984`, `:1008` | ⛔ **OUT OF SCOPE — and stated, not missed** |
+| 5a | the console CREW WATCH row's morale track/fill | `client/src/ui/hud.js:958,960,988,991` | ⛔ **OUT OF SCOPE — stated, not missed** |
+| 5b | the console CREW table's `'tc-morale'` | `client/src/ui/hud.js:1015`, painted at `:1047-1049` | ⛔ **OUT OF SCOPE — stated, not missed** |
+| 5c | ⚠️ **the console READOUT's `.ro-morale` line — NOT IN THE CHARTER'S TABLE AT ALL** | `client/src/ui/hud.js:1188` | ⛔ **OUT OF SCOPE — same reason** |
+
+⚠️ **AND ONE THING THE TABLE IS RIGHT TO EXCLUDE BUT THE PROSE BELOW WAS NOT: `hud.js:175`'s doc
+ledger.** It called morale REAL *"so the DOSSIER card can show the REAL morale/current-task"* — and
+`enrichCitizen` is reached from the **standard** surface (`overview-view.js`'s `ovBio` →
+`hud.js:167-172` → `panels().citizen(...)`), so that sentence describes the same card `panels.js:219`
+describes. **The `hud.js` exclusion covers DRAW SITES and the equality-pinned census; it does not
+cover ledgers**, and the census reads `codeOnly(raw)` so a comment cannot move it. Corrected in the
+package. Also note `hud.js:34`'s `['morale','Morale']` is `ShipMetricsSnapshot.Morale` — the real,
+computed ship metric — and is **not** a citizen-field site.
 
 ⛔ **`hud.js` IS DELIBERATELY LEFT ALONE, and the reason is the invariant, not laziness.** It is the
 deprecated console `.app` shell, **closed to new work**, and `TABLE_CELLS` (`:1008`) is inside the
@@ -760,7 +818,19 @@ Check (A).
 | 1 | Re-add the morale bar element to the CREW WATCH row builder | the equality-pinned CREW WATCH element census |
 | 2 | Re-add the MORALE meter to the dossier | the `panels.js` section census — **blinded of leg 1**, or a shared count folds them |
 | 3 | Set `Citizen.Morale = 0.4f` in a test sim and render | ⚠️ **NOTHING may change on screen** — the negative half |
-| 4 | ⭐ **PAIRED POSITIVE CONTROL: set `Citizen.Hunger = 0.8f` on the same fixture and render** | ⭐ **SOMETHING MUST CHANGE.** Leg 3 alone is a **bare negative**, satisfied by a renderer that has stopped drawing *anything* — a broken fixture, a crashed builder, a stubbed `render()` all pass it. **Run 3 and 4 on the same fixture in the same test file and require 4 to fire.** Without 4, leg 3 is the "guard satisfied by its own subject commented out" shape wearing a rendering costume |
+| 4 | ⭐ **PAIRED POSITIVE CONTROL: set ~~`Citizen.Hunger = 0.8f`~~ a REAL roster field on the same fixture and render** | ⭐ **SOMETHING MUST CHANGE.** Leg 3 alone is a **bare negative**, satisfied by a renderer that has stopped drawing *anything* — a broken fixture, a crashed builder, a stubbed `render()` all pass it. **Run 3 and 4 on the same fixture in the same test file and require 4 to fire.** Without 4, leg 3 is the "guard satisfied by its own subject commented out" shape wearing a rendering costume |
+
+⚠️ **LEG 4's NAMED FIELD WAS UNUSABLE, MEASURED (implementer, 2026-07-29): `Citizen.Hunger` REACHES
+NO CLIENT SURFACE.** `BuildRoster` (`hosts/web/GameSession.cs`) emits cid/name/role/mood/task/
+portrait/morale/deck/x/y/traits and **no need at all**; the `citizen` message carries
+role/mood/traits/portrait/log; `grep -ri "hunger\|thirst\|fatigue" client/src/` returns **nothing**.
+Substituted with **`task`** (the host's `TaskLabel(c)`) and **`mood`** (`mind.ActiveEmotion(tick)`),
+which are the CREW WATCH's and the dossier's own real fields. **The leg's INTENT is unchanged and is
+what matters** — prove the instrument is live with a field that *is* still drawn.
+⚠️ Legs 3+4 were then run in **four** forms, and the extra two are the load-bearing ones: morale
+driven into an **existing** element's style (no new element ⇒ the census is structurally blind), and
+the painter **stubbed to draw nothing** (⇒ the morale half goes GREEN and only the positive control
+fires). That last pair is the evidence for this row existing at all.
 | 5 | Revert `panels.js:219`'s ledger correction | the ledger-vs-drawing consistency test |
 
 ⚠️ **Legs 3+4 together are the point.** A guard that only asserts *"no element with class
@@ -768,8 +838,20 @@ Check (A).
 prove the instrument is live with a field that *is* still drawn.
 
 **ACCEPTANCE (browser, < 5 min).** `./play.sh` → the CREW WATCH row for Rell shows her name, her task,
-and her real needs — **and no morale bar anywhere.** Open the dossier: **no MORALE meter**, and the
-needs that *are* drawn still move when the sim moves.
+~~and her real needs~~ — **and no morale bar anywhere.** Open the dossier: **no MORALE meter**, and
+~~the needs that *are* drawn still move when the sim moves~~ the surface keeps repainting from live
+sim state.
+
+⚠️ **THE STRUCK CLAUSES WERE NOT SATISFIABLE AS WRITTEN (implementer, 2026-07-29).** The CREW WATCH
+row draws name / role / task and **no need**; the dossier's Health/Food/Water/Rest meters are
+◇ SAMPLE — deterministically seeded per cid, so they never move — and they *say so*, wearing a
+`◇ SAMPLE` badge under a card-level legend. **That is a DISCLOSED placeholder, which is not the same
+defect as an undisclosed constant wearing a gauge**, so it is not a second instance of this bug; it is
+worth filing for the owner separately as *"the dossier's needs are fabricated"*. Verified instead:
+`.ov-morale` = 0, `.ov-morale-fill` = 0, CSS rules matching `.ov-morale` = 0, no `MORALE` anywhere in
+the dossier, meter labels exactly `[Health, Food, Water, Rest, Affinity, Trust]`, every remaining
+morale-classed node inside the `display:none` `.app` shell — and the clock advancing
+`DAY 0 · 00:10 → 00:12` over 75 s with the surface repainting.
 
 **CONFLICTS.** `overview-view.js` — **rebase onto `lane/first-screen` (M1-B)**; serialize against
 M1-C and M2-3. Also `panels.js` — **serialize against M4-3/M4-4**, which rewrite the same card.
@@ -783,19 +865,44 @@ M1-C and M2-3. Also `panels.js` — **serialize against M4-3/M4-4**, which rewri
 **CLASS: PLAYER** · **LANE: `lane/craft-thrash`** · **SIZE: M** · ⚠️ **INTEGRATOR LANE**
 ⛔ **MUST LAND BEFORE M2-1**
 
-> **TODAY THE PLAYER IS MISLED ABOUT** what their crew member is doing: measured by the M2-0 spike,
-> a pawn spends **33 % of all crew-ticks** in a **30-tick `Craft` recruit→abandon loop that never
-> ends** — claimed, released, re-claimed, forever, with the task line flickering and no work done.
-> **AFTER THIS** an impossible bill backs off instead of re-offering itself every second.
+> **TODAY THE PLAYER IS MISLED ABOUT** what their crew member is doing: she is claimed for a bench
+> she can never reach, walked all the way to an input stack, and released on arrival — over and over,
+> with the task line flickering and no work done. **AFTER THIS** an impossible bill refuses the claim
+> instead of re-offering it every second.
 
-> ### ⚠️ WHY IT IS URGENT RATHER THAN OLD
+> ### ✅ THE TWO NUMBERS, SEPARATED — the original sentence quoted only one and it was the wrong one
+> Measured by M1-H itself (`occupancy --ship wreck --days 1 --maint-audit [--no-repair]`), because the
+> M2-0 spike's harness carries no `Craft` instrumentation and its **33 % / 30-tick / forever** figure
+> is not reproducible from committed code:
+>
+> | configuration | Craft job starts / sim-day | share of crew-ticks | after M1-H |
+> |---|---:|---:|---:|
+> | **the shipping wreck AS IT SHIPS TODAY** (repair on) | **1** | **0.023 %** | 0 / 0.000 % |
+> | **repair off** | **597** (1 468 abandons) | **3.575 %** — 75.3 % of sim-hour 1, 10.5 % of h2, **0.0 % from h3** | 0 / 0.000 % |
+>
+> ⇒ **On the tree as it stands, the player-visible defect is 1 start a day.** The large number needs
+> repair disabled, and **it is not "forever": it burns out after ~1.2 sim-hours** (why was not
+> investigated). **Both halves of the retracted claim — the 33 % and the "never ends" — are
+> corrected here rather than quietly dropped.**
+
+> ### ⛔ WHY IT IS URGENT — AND UNDER **OD-H** THIS STOPPED BEING A PREDICTION
 > It is **live on `main` today** — Leg A's unmodified baseline trace proves it, because
 > `MaintenanceSystem` can only take the pawn at t=201 *once `CraftingSystem` has abandoned it*. It is
 > invisible **for exactly one reason: the maintenance monopoly absorbs the pawn**, and shipping a
-> work-priority grid is *precisely* the thing that stops that happening. ⇒ **M2 does not cause this
-> bug; M2 uncovers it, on day one, as "my one crew member vibrates in place and never works."**
-> Fixing it after M2 means the first bug report of the milestone is unfalsifiable — the same argument
-> that puts M1 before M2 at all.
+> work-priority grid is *precisely* the thing that stops that happening.
+>
+> The original charter said *"M2 uncovers it, on day one"*. **On the tree that sentence was written
+> against, that was a prediction.** Two owner decisions taken 2026-07-29 make it a certainty:
+> **OD-G** — the pawn boots **idle and waiting**, the opening beat being the player giving an order —
+> and **OD-H** — **the work-priority grid defaults OFF; work is opt-in**, reversing M2-1's chartered
+> "default 3 for every pawn".
+>
+> ⇒ **`--no-repair` is no longer a laboratory lever a player cannot pull. Under OD-H it is
+> approximately the DEFAULT STATE of the shipping game**, so the 3.575 % row above is not a what-if:
+> it is **the opening screen** — a pawn burning three quarters of its first sim-hour in a futile
+> recruit→abandon loop **before the player has enabled anything**. M1-H is what stands between the
+> owner's chosen opening and a pawn vibrating in place. *(OD-G/OD-H are cited from the owner
+> decisions relayed with M1-H's review; the M2 re-charter lane owns recording them — see §0.1.)*
 
 **SEAM — and the root cause is a one-line structural asymmetry, verified this session.**
 `CraftingSystem` recruits **outside the dispatcher** (`FindNearestIdle` at `:164`, `JobKind.Craft`
@@ -803,6 +910,20 @@ set at `:167`) and has **TEN `Abandon` call sites** (`:130`, `:185`, `:220`, `:2
 `:285`, `:307`, `:324`, `:330`), several of whose own comments say *"retries next second"* /
 *"the standing bill retries next second"*. `Abandon` (`:616-620`) clears `JobKind` and
 `JobWorkTicks` — **and nothing else.**
+
+> ✅ **AS SHIPPED, the ten sites are `CraftingSystem.cs` `:149 :221 :256 :269 :295 :315 :321 :343
+> :360 :366`, the funnel is `:695-707`, the recruit gate is `:187-201` and the probe is `:537-575`.**
+> The `:130`-era numbers above are the pre-package tree and are kept as the charter's own record.
+>
+> ⛔ **ONE OF THE TEN IS STRUCTURALLY UNREACHABLE — `:321` (`:285` pre-package), "every port
+> satisfied".** `StepFetch` is called from one place, the `!canStart` tail of `DriveWorker`;
+> `!canStart` ⇒ `!AllInputsStaged` ⇒ some port is short — the *identical* predicate
+> `TryFirstShortPort` tests, with nothing mutating an item, a position or a port in between. With
+> zero input ports `AllInputsStaged` is vacuously true and `StepFetch` is never reached at all.
+> Independently confirmed by arming `throw new InvalidOperationException("SITE 6 REACHED")` there
+> and running the **whole** suite: 1 315 tests, nothing threw. ⇒ **NINE blinded legs, not ten**, and
+> the tenth is declared with its argument. Its test pins the one thing the argument rests on (the
+> parser's refusal of two ports of one kind) so it cannot rot silently.
 
 > ⭐ **`grep -n "RetryTicks\|_retryAt\|backoff" sim/Sim.Core/Systems/CraftingSystem.cs` RETURNS
 > NOTHING. Same for `MachineWearSystem.cs`.**
@@ -815,40 +936,110 @@ set at `:167`) and has **TEN `Abandon` call sites** (`:130`, `:185`, `:220`, `:2
 > forever. **The fix is to give the push recruiters the backoff the pull sources have had since W0-4**,
 > not to special-case a symptom.
 
-**PIN IMPACT: ⛔ P1, P2, P3 EXPECTED TO MOVE — MEASURE.** This is a real behaviour change on any ship
-with a bench and a reachable-but-unsatisfiable bill. **P4/P5 hold** if the backoff reuses
-`JobWork.UnreachableRetryTicks` (a literal already on the determinism path) — ⛔ **do not add a def
-field for it.** ⚠️ **It therefore JOINS THE PIN CHAIN as a new head row `M1-a`, ahead of `M2-a`.**
-See §2.
+**PIN IMPACT: ✅ MEASURED — NO PIN MOVE. ALL FIVE HELD.** *(The charter predicted P1 P2 P3 would
+move. They did not, and `PIN M1-a` is retracted in §2 — this package does NOT run alone and must not
+serialize the chain.)* `git diff main...HEAD -- tests/Perilune.Tests/Golden/ ci.sh content/` is
+**0 lines**; no golden was rewritten, `UPDATE_GOLDEN` was never run, `ci.sh` was not edited. The
+reason is measurable rather than lucky: **no pinned window contains a refusal** — `--ship grid` and
+`--ship slice` hit **zero** path-failure abandons over a whole sim-day, the scenario ship has no
+crafting station, and the tick-3000 ship's two crew are `HoldPosition`. P4/P5 hold because the
+backoff reuses `JobWork.UnreachableRetryTicks`, a literal already on the determinism path — ⛔ **do
+not add a def field for it**, and mutation 5 below proves both defs pins would catch one.
+⚠️ **Re-measure at merge; a pin claim is only evidence for the tree it was measured on.**
 
 **SPINE? Borderline; treat as integrator** (a sim system's claim protocol).
 
 **MUTATIONS.**
 
-| # | mutation | must go red |
-|---|---|---|
-| 1 | Delete the backoff stamp | ⭐ **the driven thrash leg: one pawn, Repair disabled, an unsatisfiable bill, 30 000 ticks — assert `Craft` claim COUNT is bounded** (single digits), not that the pawn is idle. ⚠️ *A test asserting "the pawn is idle" passes on the thrash, because the pawn IS idle on 29 of every 30 ticks* |
-| 2 | Stamp on only ONE of the ten `Abandon` sites | ⭐ **the site-coverage legs.** ⚠️ **Each of the ten reachable sites needs its own blinded leg, or nine can be missing with the suite green** — this is M2-2's four-site shape with ten sites. *(Sites unreachable on any authored ship are declared as such **in the package's record**, with the reason, rather than silently skipped.)* |
-| 3 | Stamp but never expire | the recovery leg: make the bill satisfiable and require work to start within `UnreachableRetryTicks + 1` |
-| 4 | Apply the backoff to a **satisfiable** bill | the no-regression leg: normal crafting throughput must be unchanged |
-| 5 | Add a def field for the interval | the P4/P5 pin — this package must not move them |
+| # | mutation | must go red | ✅ measured |
+|---|---|---|---|
+| 1 | Delete the backoff stamp | ⭐ the driven thrash leg | ⛔ **THE CHARTER WAS WRONG HERE. The thrash leg stays GREEN; nine SITE legs redden instead.** See the box below — this is the row that hides the load-bearing half. |
+| 2 | Stamp on only ONE `Abandon` site | ⭐ **the site-coverage legs.** ⚠️ **Each reachable site needs its own blinded leg, or nine can be missing with the suite green.** *(Unreachable sites are declared in the package record, with the reason, never silently skipped.)* | ✅ **9 runs, 9 one-test reds** — site k's mutation reddens `SiteK_…` and nothing else. The tenth site is structurally unreachable (see SEAM). |
+| 3 | Stamp but never expire | the recovery leg | ✅ RED 1 — `Backoff_Expires_AndTheStationRecruitsAgain` |
+| 4 | Apply the backoff to a **satisfiable** bill | the no-regression leg: normal crafting throughput unchanged | ✅ RED 7, incl. both no-regression legs. Independently: **grid and slice are identical to the digit** before and after (43 / 15.348 % and 140 / 21.777 %). |
+| 5 | Add a def field for the interval | the P4/P5 pin | ✅ RED 2 — both defs checksum pins. |
+| **6** | **Remove the recruit-time reachability probe** *(added by the package)* | ⭐ **the driven thrash leg** — this is what mutation 1 was meant to be | ✅ RED 3 |
+| **7** | **Delete the recruit probe's stamp** *(added)* | the probe leg | ✅ RED 2 |
+| **8 / 9** | **`MaintenanceSystem`'s funnel stamp / its probe** *(added)* | its own two legs | ✅ RED 1 each — **both were SURVIVORS on the first harness run** and are the run's real finding; see below. |
 
-**ACCEPTANCE (browser, < 5 min).**
-1. `./play.sh` → select Rell → watch the **task line**.
-2. Today: it flickers between a craft task and `Idle` on a ~3-second cycle, indefinitely.
+> ### ⭐ THE PROBE IS THE LOAD-BEARING HALF, AND THE CHARTER DID NOT ASK FOR IT
+> The chartered fix is the backoff alone. **Built and measured each half separately**
+> (`--ship wreck --days 1 --no-repair`, Craft share of crew-ticks):
+>
+> | | `main` | backoff only | probe only | both (shipped) |
+> |---|---:|---:|---:|---:|
+> | Craft job starts | 597 | **228** | 0 | **0** |
+> | Craft crew-ticks | 3.575 % | **3.333 %** | 0.000 % | **0.000 %** |
+>
+> ⇒ **The chartered half does ~7 % of the work; the unchartered half does 100 %.** The backoff cuts
+> *claims* by 62 % and the *burn* by 6.8 %, because **the walk is what costs**: the fetch leg paths
+> to the input STACK, never to the bench, so the crew member walks the whole way and only discovers
+> the impossibility on arrival. The probe belongs in this package because
+> *"`DigJobSource.TryClaim` proves the path before it writes `JobKind`"* **is** part of the contract
+> the charter said to port — but **it must be written down as the load-bearing half, not left as an
+> implementation detail**, or the next lane will "simplify" it away and reintroduce 100 % of the bug
+> while the site legs stay green.
+>
+> ⚠️ **AND THE SAME BLINDNESS BIT THE TESTS.** The first harness run reported both
+> `MaintenanceSystem` mutations **GREEN**: an abandon in the SAME TICK as the claim is invisible to a
+> claim counter sampled at tick boundaries, so *"never claimed"* and *"claimed and dropped a
+> microsecond later"* read identically. Closed by giving the unreachable-machine leg a **reachable**
+> consumable (which makes the servicer walk, and only then is the probe's absence observable) and by
+> adding a funnel-only leg. ⇒ **A claim counter under-reports this entire bug class; assert crew-TICKS
+> beside it.**
+
+**ACCEPTANCE — ⛔ THE BROWSER SEQUENCE BELOW IS RETIRED. IT DOES NOT DESCRIBE WHAT HAPPENS.**
+
+~~1. `./play.sh` → select Rell → watch the **task line**. 2. Today: it flickers … *indefinitely*.
 3. After: it settles — either she crafts, or she does something else and **stays** doing it.
-4. Open MOSS → the FABRICATION row's fault log stops churning.
+4. Open MOSS → the FABRICATION row's fault log stops churning.~~
 
-⚠️ **A SECOND, HONEST ACCEPTANCE, because step 2 is subtle at 1× speed:** run
-`hosts/scenario -- --dump --days 1 --metrics` before and after and compare the **Craft job-start
-count**. The spike's own instrument is the right one; a 33 % crew-tick share is not something a human
-reliably sees, and saying so is better than pretending the browser check is sufficient.
+Three of the four steps are false against the measured sim, and step 3 is the one that matters:
+
+- **Step 2 is false in its duration.** It flickers through sim-hours 1–2 and then **stops on its
+  own** (h3 onward is 0.0 %). And on the shipping wreck *with repair on* it is **1 start a sim-day**
+  — a human watching a task line will see nothing at all.
+- **Step 3 is false in its outcome. She does not "do something else and stay doing it" — she does
+  NOTHING.** Craft goes to 0 %, and under `--no-repair` the pawn goes from 75.3 % busy in sim-hour 1
+  to **0 %**. Nothing is lost by it: the end-of-run ground stock is unchanged, because every one of
+  those crew-ticks was a walk to an input that could never be delivered. **But it changes the opening
+  minutes**, one week after M1-B shipped *"a first screen that is true"*, and that is worth saying
+  out loud rather than discovering in a playtest.
+- ⇒ **AND IT IS NOW THE INTENDED OUTCOME, NOT A REGRESSION.** Under **OD-G** the pawn boots **idle
+  and waiting** and the opening beat is the player giving an order. A pawn standing still with
+  nothing to do is the design; a pawn *pretending* to work is the bug. See §0.1 and M1-B.
+
+✅ **THE ACCEPTANCE THAT WAS ACTUALLY PERFORMED, and the one to re-run:**
+
+```
+hosts/scenario -- occupancy --ship wreck --days 1 --maint-audit [--no-repair]
+```
+
+compare the **Craft job starts** row before and after. ⚠️ **The charter named
+`--dump --days 1 --metrics`; that path has no per-kind job-start counter and cannot answer the
+question.** M1-H added the row to `--maint-audit` (opt-in, so no unflagged run changes) and added
+`--no-repair` (forces every `[machines]` maint threshold to 0, so `MaintenanceSystem` can never
+recruit — the M2-0 spike's Repair-OFF leg without the spike's static mutable sim config). Both are
+host-side and off the determinism path.
+
+*A browser pass was deliberately NOT performed and the reason is measurable: with repair on there is
+nothing for a human to see (1 start → 0 per sim-day), and the flicker is only reachable with repair
+off, which no player can do today. Under OD-H that stops being true — **a browser pass becomes
+worthwhile the moment M2-1 lands**, and should be taken then.*
 
 **CONFLICTS.** `sim/Sim.Core/Systems/CraftingSystem.cs` — **serialize against M2-2 and M2-5**, which
-edit the same recruiter. Also `MachineWearSystem.cs` if the fix generalises to both push recruiters
-(**recommended**).
+edit the same recruiter. `MachineWearSystem.cs` too: the fix **was** generalised to both push
+recruiters, as recommended.
 
-**SIZE: M** — ten call sites, ten blinded legs, and a pin move.
+> ⚠️ **A TEXTUAL CONFLICT THE "serialize against" line does not cover.** `FindNearestIdle` is
+> **renamed and re-signatured in BOTH push recruiters** → `FindNearestReachableIdle(sim, target, out
+> bool anyIdle)`. Any M2-2 / M2-5 work already written against the old name will fail to compile
+> after this merge — it is not merely a semantic overlap, and git will not always flag it as a
+> conflict if the edits sit at different offsets (trap 7). **Integrator: rebase those lanes, do not
+> auto-merge them.**
+
+**SIZE: M** — ten call sites (nine reachable), nine blinded legs, a declared-unreachable tenth, and
+**no pin move** (measured).
 
 ---
 
@@ -953,7 +1144,7 @@ The answer is **neither** — it is a **different mechanism** from the one three
 > | **Pre-emption is 0 lines in `sim/`, and all three "hard cases" are already safe** | **M2-7 deleted**, M2-8 **L → S** and **off the pin chain** |
 > | **A hold, not a cancel, is the unbuilt part** | **M2-19 created** — and its bool batched into M2-1's chapter bump **for free**, which is only possible because the spike ran *before* the chain started |
 > | **An over-reporting defer query stalls a band silently for 40 000 ticks** | M2-5 gained a required multi-pawn leg for a class a one-pawn fixture cannot see |
-> | **A 30-tick `Craft` thrash burning 33 % of crew-ticks, live on `main`** | **M1-H created**, ahead of the whole chain |
+> | ~~**A 30-tick `Craft` thrash burning 33 % of crew-ticks, live on `main`**~~ **A `Craft` recruit→abandon thrash, live on `main`** — ⚠️ **the SIZE and the DURATION the spike published were both wrong; re-measured by M1-H at 3.575 % of a sim-day, burning out after ~1.2 sim-hours (§0.1)** | **M1-H created**, ahead of the whole chain — **and it is now LANDED with no pin move, so `PIN M1-a` is retracted** |
 > | **`Select`'s signature genuinely need not change; cost is ~0** | a ruling promoted from argued to measured |
 > | **`54 650` was an absolute tick, not a wait** | a number three documents had reasoned from, corrected |
 >
@@ -2257,7 +2448,7 @@ only way past it is an explicit owner override recorded by name and date.
 
 | # | lane | package | why tonight |
 |---|---|---|---|
-| **1** | **`lane/craft-thrash`** | **M1-H — the `Craft` thrash** | ⭐ **NEW IN REVISION 2, and it takes the landed spike's slot.** A pawn burns **33 % of all crew-ticks** in a 30-tick recruit→abandon loop **on `main` today**, and it is invisible only because the maintenance monopoly absorbs the pawn — **which the grid stops doing on day one.** ⛔ **It is PIN M1-a and must precede M2-1**, so starting it tonight is what keeps the chain from stalling in week 3. Seam is exact: `CraftingSystem.cs`'s ten `Abandon` sites have **no backoff**, while every `IJobSource` has stamped one since W0-4. |
+| **1** | **`lane/craft-thrash`** | **M1-H — the `Craft` thrash** | ⭐ **NEW IN REVISION 2, and it takes the landed spike's slot.** A pawn is claimed for a bench it can never reach, walked to an input and released on arrival, over and over, invisible only because the maintenance monopoly absorbs it — **which the grid stops doing.** ⚠️ ~~33 % of all crew-ticks in a 30-tick loop~~ **retracted: measured 3.575 % of a sim-day with repair off (0.023 % as the wreck ships today), burning out after ~1.2 sim-hours — §0.1.** ⇒ **Under OD-H, repair-off is approximately the DEFAULT, so the large figure is the opening screen.** ✅ ~~It is PIN M1-a~~ **`PIN M1-a` RETRACTED — all five pins measured HELD; it does NOT run alone.** It **must still precede M2-1** (same recruiters; it also renames `FindNearestIdle` in both). Seam is exact: `CraftingSystem.cs`'s ten `Abandon` sites had **no backoff**, while every `IJobSource` has stamped one since W0-4. |
 | ~~1b~~ | ~~`lane/spike-dispatch`~~ | *(original charter, kept for the record)* **M2-0 — the R1 spike** | ⭐ **The highest-information hour available.** It answers the single largest uncertainty in the quarter (*is M2's dispatch rewrite three days or three weeks?*), it sizes M3/M4/M5, and it also settles M2-5's equal-band decision — the thing that determines whether M2-5 joins the pin chain. It is a **throwaway branch that never merges**, so it collides with nothing and can run beside everything. ⚠️ **Leg A is mandatory; without it the spike is uninterpretable, and the version without it returned a FALSE PASS.** |
 | **2** | **`lane/blocked-reach`** | **M1-D — the third question** | Closes the measured **480 000-tick silent stall** — the most legible defect on the shipping game. Its files (`GameSession.cs`, `WireFormat.Blocked.cs`, `blocked-overlay.js`, `sim/Sim.Core/Jobs/`) are **disjoint from both in-flight lanes' files**. ⚠️ **IT IS AN INTEGRATOR LANE** (it appends a `WireFormat` reason and lifts a method onto `IJobSource`) — see the reconciliation below. ⚠️ Start from `WireFormat.Blocked.cs:78-100` and `HaulJobSource.cs:137`, which **already contain the prescription and the API**; do not re-derive them. ⭐ **Semantically coupled to M1-A — re-run everything after M1-A merges.** |
 | **3** | **`lane/undesignate`** | **M1-C — un-designate** | The most-requested missing gesture, wire and sim already complete, and it unblocks M2 (*"the first thing a player does with a new frame is change their mind"*). ⚠️ **It shares `controls.js` and `overview-view.js` with `lane/first-screen`.** Start it now, but **rebase onto `lane/first-screen` before asking for review**, and expect the `ROOM_TOOLS.length === 16` census to move to 17 deliberately. |
@@ -2386,7 +2577,8 @@ owner decision** (M2's batch item 6, stated in M2-12).
 dispatcher **throws** at a source that does not, calling it *"a SILENT HANG — no exception, no log,
 the sim just stops advancing"* (`JobSystem.cs:259-272`). ⇒ **`CraftingSystem` and `MaintenanceSystem`
 recruit outside that contract and are bound by none of it**, which is the root cause of §0.1's
-33 %-of-crew-ticks thrash. ⚠️ **This is the same structural asymmetry that makes M2-5 a five-site
+thrash *(§0.1 — the published "33 % of crew-ticks" is retracted; measured 3.575 % of a sim-day)*.
+⚠️ **This is the same structural asymmetry that makes M2-5 a five-site
 problem rather than a dispatcher problem, and M1-H a prerequisite rather than a nice-to-have — one
 gap, three consequences.**
 

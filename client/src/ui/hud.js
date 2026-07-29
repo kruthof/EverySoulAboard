@@ -172,8 +172,24 @@ export function openBioForSelected() {
 }
 
 /** Join the roster + relations caches onto a raw `citizen` payload so the DOSSIER card can show the
- *  REAL morale/current-task and directed relationships (which ride other channels) — the wire's
- *  `citizen` message itself carries only role/mood/traits/log today. Presentation-only. */
+ *  REAL current-task and directed relationships (which ride other channels) — the wire's `citizen`
+ *  message itself carries only role/mood/traits/log today. Presentation-only.
+ *
+ *  ⚠️ THIS LINE USED TO SAY "REAL morale/current-task" AND THE `morale` HALF WAS FALSE (M1-F,
+ *  2026-07-29). `Citizen.Morale` is carried by the wire but no system in `sim/` ever changes it, so
+ *  it is a CONSTANT, not a reading — and the dossier's MORALE meter has been removed. This ledger is
+ *  corrected even though `hud.js` is the deprecated console shell and is closed to new work, because
+ *  it is not a console ledger: `openBioForSelected` above is the STANDARD surface's [B] BIOGRAPHY
+ *  button (`overview-view.js`'s `ovBio` → here → `panels().citizen(...)`), so this sentence
+ *  describes the SAME card `panels.js`'s REAL/SAMPLE ledger describes. M1-F's `hud.js` exclusion
+ *  covers DRAW SITES and the equality-pinned widget census — and that census reads `codeOnly(raw)`,
+ *  so it is comment-blind and this edit cannot move it (measured: 1004/1004, census unchanged).
+ *
+ *  The `morale:` join below is KEPT and is currently DEAD: the console dock, CREW table and readout
+ *  all read `entry.morale` straight off the roster, and `panels.js` was its only consumer. It stays
+ *  because the field is saved-and-hashed sim state whose future is an open M4-4 decision — if morale
+ *  is ever made real, this is where the dossier reads it — and because removing it is a change to a
+ *  surface scheduled for deletion at M4-8/WP-9. Dead-and-deliberate, not overlooked. */
 function enrichCitizen(cit) {
   if (!cit || cit.cid == null) return cit;
   const crew = _roster && Array.isArray(_roster.crew) ? _roster.crew : [];

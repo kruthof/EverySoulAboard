@@ -2,6 +2,13 @@
 // stream reassembler (chat.js) and the portrait resolver (portraits.js). No DOM, no jsdom; the
 // panels.js / hud.js DOM shells are exercised in the browser, not here. Also replays the
 // hand-written wire fixtures (test/fixtures/*.jsonl) to prove end-to-end transcript correctness.
+//
+// ⚠️ THAT SENTENCE IS THE HOUSE POSITION AND IT NOW HAS ONE EXCEPTION (M1-F, 2026-07-29). It is
+// quoted verbatim as a justification by `surface-boundary.test.js:22` and
+// `console-carryover.test.js:14`, so it is deliberately left standing rather than reworded — but
+// `client/test/dossier-honesty.test.js` DOES drive `panels.js`'s crew DOSSIER in node, against the
+// stub DOM in `dom-lite.js`. The position holds for `hud.js` (undrivable: it wants the whole `.app`
+// shell) and for the dialogue/terminal drawers. It no longer holds for the citizen card.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
