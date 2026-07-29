@@ -4,7 +4,152 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒⇒ START HERE — THE WRECK START (2026-07-28, later). Everything below this block is history.
+## ⇒⇒ START HERE — THE WRECK IS PLAYABLE (2026-07-28, latest). Everything below this block is history.
+
+> **Gate on `main`: `./ci.sh` exit 0, 1286 dotnet + 953 node, twin hashes MATCH `02257f5bce961570`,
+> ALL FIVE PINS HELD, and `git diff` to `tests/Perilune.Tests/Golden/`, `ci.sh` and `content/` is
+> 0 LINES ACROSS THE WHOLE RUN. RE-MEASURE BEFORE QUOTING** — a stale count survived in `CLAUDE.md`
+> for an entire run and was quoted as current; the figures above are from the final gate on the
+> merged tree, not from any branch.
+>
+> Three lanes, each Opus-implemented and **independently** Opus-reviewed. **Every one took a
+> send-back** (3 + 6 + 4-then-1 required fixes); every fix was re-verified **by mutation in the
+> reviewer's own tree**, not by reading. Counts are a **UNION, not a sum**: the branches read
+> 1266 / 1246 / 1247 dotnet apiece.
+>
+> ### ⇒ WHAT A PLAYER CAN NOW DO THAT THEY COULD NOT THIS MORNING
+>
+> 1. **OPERATE a door or a vent** — a 16th Room-Zoom palette tool, key **[O]**, routed through a new
+>    one-shot **`operate`** reply (`hosts/web/WireFormat.Operate.cs`; `WireFormat.cs` has a ZERO
+>    diff). It carries its **feedback**, not just the verb, each line read **at the instant of the
+>    click**. Before this, the toggle existed only on the deprecated console's invisible cursor and
+>    `KNOWN_GAPS_SEALED` structurally could not see it.
+>    ⚠️ **ONE REFUSAL, THREE ADVISORIES — do not repeat the error this run made twice.** Only a
+>    **locked door being opened** is refused (`GameSession.cs:1066-1071`). *Inoperative*, *unfixably
+>    wrecked* and *unpowered* are **advisories appended to an ACCEPTED toggle** (`OperateAdvisory`,
+>    `:1158-1173`) — the command is enqueued either way. Calling all four "refusal verdicts" tells a
+>    reader the verb declines to open a wrecked vent, **and it opens it.**
+> 2. **＋ADD ROOM no longer conjures air.** *Naming is free, AIR IS EARNED.* The door-forcing loop and
+>    `RoomState.Pressurize` are deleted. **This also fixes half the owner's *"the doors vanish when I
+>    allocate a room"* report** — allocation no longer force-opens every bordering door.
+> 3. **A wrecked machine LOOKS wrecked**, and `Swarf` — the first thing a player makes on the wreck —
+>    stops rendering as a dashed `w` chip.
+>
+> ### ⛔ THREE DEFECTS FILED, NOT FIXED. Do not let a later lane discover these as surprises.
+>
+> - **`W4b-DEAD-DECK` — OWNER DECISION TAKEN: ship it filed.** ⚠️ **The sim has NO VERTICAL GAS TERM
+>   AT ALL.** `FlowAcrossDoor` probes `(X±1,Y,Z)`/`(X,Y±1,Z)`, `DiffuseAcrossDoors` uses
+>   `Int3.Neighbor4`, `RoomState.FloodRegion` binds `world.Levels[start.Z]` so a room can never span
+>   decks, and `RemapGas` runs per-`z` — **verified exhaustively in review, not by grepping two
+>   functions.** The wreck has exactly two `AirVent`s, both on deck 0. Measured: **all eight deck-1
+>   halls, allocated with doors opened, 20 000 ticks ⇒ peak `0.000` kPa. Not slow — impossible**, and
+>   the vent verb cannot fix it. **W4b did not create this; `＋ADD ROOM` was hiding it.** The three
+>   ways out (author a deck-1 vent · add a vertical gas term · accept the dead deck) are all the
+>   owner's. ⚠️ **Do NOT "fix" it by re-pressurising in `AddRoomCommand`** — that is the wand W4b
+>   deleted on a binding owner decision.
+> - **`designs`-vs-`blocked`** — `BuildDesigns` is **not** fog-gated but `blocked` **is**
+>   (`GameSession.cs:2008`, on `TileFlags.Explored`). A freshly allocated compartment has never been
+>   entered, so a build ghost **DRAWS** on that tile while its reason does not: the player sees their
+>   own order sitting there doing nothing, unexplained. Dig/strip fail the opposite way — invisible
+>   *together with* their reason (`BuildMarks` is gated). The natural player order is *allocate →
+>   paint → wonder why nothing happens*, which is exactly the order in which the channel is silent.
+> - **The fog gate keeps the premise's own opening move unreachable.** `vent_ls` reads
+>   `explored=False` at tick 0, tick 600 **and tick 36 000 — a full sim-hour** — so it never reaches
+>   the `devices` channel and gets no OPERATE chip. **The only operable vent a player can reach on
+>   `--ship wreck` today is `vent_cryo`.**
+>
+> ### ⇒ THE NEXT LANE, and review corrected its scope — do NOT charter it as "one lane owns `TileFlags.Explored`"
+>
+> That name hides **three separable pieces**:
+> 1. **Naming wreck deck-0 slot 3** (`roomTileRect` needs an `anchorName`; today the Overview opens
+>    the ＋ADD ROOM picker there instead of a Room Zoom). **This is already W4b's debt — do not let a
+>    fog lane absorb it.**
+> 2. **How a vacuum compartment no crew can enter becomes KNOWN.** `ExplorationSystem` is crew-vision
+>    only, and the wreck's premise *requires* the player to act on a compartment precisely because
+>    nobody can go in. Sensor/MOSS reveal vs. line-of-sight through a door vs. authored-explored hull
+>    are **content decisions with sim consequences — the OWNER'S, not an agent's.**
+> 3. **A cross-channel fog audit** — whether `blocked`/`zones`/`marks`/`items` agree with their verbs
+>    about fog the way `devices` and `operate` now do. Cheap and mechanical: generalise
+>    `The_Verb_And_The_Devices_Channel_Have_The_Same_Population`.
+>
+> Route **(2)+(3)** as one lane, leave (1) with W4b, and **give it a browser acceptance criterion —
+> *"the player opens `vent_ls` in a running game"*** — or it can land three green channels with the
+> opening move still unreachable. After that the order is unchanged: **W5a → W5b → W6 → W9 → W10 →
+> W7 → W8**.
+>
+> ### ⚠️ THE EIGHTH TRAP SHAPE — a merged file's truth is a number NEITHER lane could compute
+>
+> Two lanes re-counted `WEAR_SEAM_CENSUS` (`client/test/devices-model.test.js`) **honestly**, against
+> the tree each could see. **Both wrote `_deviceCond: 4`** — the verb lane's fourth reference was
+> `roomOperableTiles(_deviceCond)`, the art lane's was the map handed to `furnitureSvg`. **In the
+> merged file it is 5.** Likewise `deviceConditionAt`: W0b measured **1** and wrote *"there is still
+> no in-file caller"*, true on its branch and false the moment `doOperate` arrived. **git reported no
+> conflict on the COUNTED file** — only on the test that counts it. ⇒ **At any merge touching a
+> censused seam, re-derive every number from the MERGED file with the shipped `codeOnly` stripper;
+> never adjust either branch's figure. The same applies to any comment asserting "nothing calls this
+> yet" — that is a statement about a tree, and a merge changes the tree.**
+>
+> ### ⚠️ AND GIT'S CONFLICTS WERE THE SAFE PART — three hazards it did not flag
+>
+> The merge produced four conflicts, none dangerous. What was dangerous **auto-merged silently**:
+> - **`DeviceCell`'s field list.** One lane appended a 7th element (`Open`), the other added
+>   `SameAs` — no conflict on the field line itself. Left alone, the delta gate ignores `Open`, so a
+>   **door toggle stops re-serializing the payload and the OPEN⇄SHUT chip silently freezes.** Fixed by
+>   hand; **verified by mutation before committing — removing the clause reddens FIVE independent
+>   guards.** `The_Cache_Key_Reads_All_Six_Fields` was renamed to `_SEVEN_` and given its row (a name
+>   that says "Six" is how a census goes stale), plus a new **last-row × `Open`** leg — the most
+>   reachable cell in the matrix, because a toggle is player-driven and `AddDevice` **appends**, so a
+>   door the player just built IS the last row.
+> - **Positional parsers one layer below.** `SortedConds`/`LastTuple` read fields by index and
+>   asserted a **six**-element tuple. They went red and were RIGHT to: a width guard on a positional
+>   parser is what refuses the tree. **Keep those asserts — fix the width and the parser together.**
+> - **The two wear models became two contracts.** `roomDeviceConditions` gained `open`;
+>   `deckDeviceConditions` did not. `client/src/items/wear.js` is the ONE join **both** surfaces call,
+>   so the day anything there keys on `open` the Overview reads `undefined` and draws a different
+>   picture from the Room Zoom for the same machine. Caught by W0b's own shape-parity assertion,
+>   written when both models had five fields — **a guard earning its keep against a future its author
+>   could not see.**
+>
+> ### ⛔ A PUBLISHED MEASUREMENT THAT DOES NOT RECONCILE — do not quote the grid fill times
+>
+> W4b reported *"grid 60-tile compartment through ONE opened door: 50 kPa at tick 461 (46 s), 90 kPa
+> at 1543 (154 s)"* and it was quoted upward, including by me. **It fails an independent check
+> against the shipped rate law and is NOT in `MECHANICS.md`.** A grid slot interior is 10×6 = 60
+> tiles = 150 m³ (`SlotGridPlanner.cs:24-53`); one open door moves `0.5·Δp mol/s`
+> (`flow_coefficient = 0.5`, `Dt = 0.2`, `IntervalTicks = 2` ⇒ 5 Hz) ⇒ **τ = 123 s, t₅₀ = 85 s,
+> t₉₀ = 270 s against an INFINITE 101.3 kPa reservoir** — and a finite source can only be slower. The
+> measurement is **~1.8× faster than the theoretical ceiling.** Its *shape* is right (measured
+> t₉₀/t₅₀ = 3.35 vs predicted 3.22), so the run happened — **the description of it is wrong**: either
+> it was not one door, or the volume was not 150 m³ (τ fits a ~33-tile room almost exactly).
+> ⇒ **The pacing CONCLUSION survives either way** (both 154 s and 270 s are fine), but the number is
+> void. `MECHANICS.md` carries the derived rate law instead of the measurement.
+> ✅ **The `vent_ls` figure, by contrast, verifies EXACTLY**: 150 m³ = 6 219 mol at 101 kPa, at
+> `vent_mol_per_second = 30` ⇒ **207.3 s predicted, 207.2 s measured** (tick 2 072). Independent
+> confirmation that the vent path, the volume rule and the def all agree — and that the plan's
+> original ≈208 s arithmetic was right all along.
+>
+> ### ⇒ KNOWN LIMIT, stated rather than buried
+>
+> The delta gate's loop bound is pinned at its **two ends, not across its range** — a `continue` on
+> one interior index survives the whole suite. Judged not worth closing: the defects a `for` loop
+> actually produces are a wrong start, wrong end, deleted body and wrong key, **all four pinned**, and
+> closing the range needs an O(n) per-row test for a defect nobody writes. ⚠️ Also measured: the
+> stride mutation `i += 2` is caught **by parity, not by design** — grid emits 146 rows so the last
+> index is odd; with an odd row count it would have survived too.
+>
+> ### ⇒ ON THE ECONOMY — the wreck does not answer E0's gate, it makes A1 THE WRONG QUESTION
+>
+> Unchanged by this run and worth re-stating because it is the most misquoted thing in the repo:
+> **E0 is package-complete and its exit gate is measured FAIL** (A1 **0.000 %** on `--ship grid`).
+> But grid at h24 is **DEMAND-starved, not matter-starved** — the ledger shows matter *rising* the
+> whole way (63 u → 236 u at h24 → 356 u at h48); the board is empty because **nothing is
+> designated**. That is a **content** failure wearing an economy failure's clothes. The wreck answers
+> it by putting up to **36.5 crew-hours of repair on the board at tick 0** for **one pair of hands**
+> — the demand problem and the pacing problem have the same answer, and it is the thaw.
+> **A3 has still NEVER been measured**: E0's gate is one criterion FAIL and one UNKNOWN — never
+> report it as "half met". And **grid's water is still conjured** by B-2's makeup floor.
+
+## ⇒⇒ SUPERSEDED — the earlier wreck-start orientation (2026-07-28). History from here down.
 
 > **Design of record: `docs/design/perilune-wreck-start.plan.md`, ON `main`.** Read its **REVISION 4
 > correction box first** — the roster is EIGHT and several figures below it in that file are void.

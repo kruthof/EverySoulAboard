@@ -27,7 +27,59 @@ AI sprite pipeline. Clean-room successor to `../moonbase` (Unity is gone entirel
   SIMULATION_ARCHITECTURE, TUI, HANDOVER). Mechanism detail there is still
   authoritative where the new docs don't supersede it.
 
-## Status snapshot (2026-07-28, later) — **THE WRECK START: the game is being re-premised**
+## Status snapshot (2026-07-28, latest) — **THE WRECK IS PLAYABLE: a vent opens, air is earned, a wreck looks wrecked**
+
+**Gate on `main`: `./ci.sh` exit 0, 1286 dotnet + 953 node, twin hashes MATCH `02257f5bce961570`,
+ALL FIVE PINS HELD, and `git diff` to `Golden/`, `ci.sh` and `content/` is 0 LINES across the whole
+run.** *(Re-measure before quoting.)* Three lanes, each Opus-implemented and **independently**
+Opus-reviewed, **every one taking a send-back**, every fix re-verified **by mutation in the
+reviewer's own tree**. Counts are a **UNION, not a sum** — the branches read 1266 / 1246 / 1247.
+
+**What a player can now do:** **OPERATE a door or a vent** (16th Room-Zoom tool, key **[O]**, a new
+one-shot `operate` reply; `WireFormat.cs` zero diff) **carrying its feedback**, read at the instant of
+the click — ⚠️ **ONE refusal (a locked door being opened, `GameSession.cs:1066-1071`) and THREE
+ADVISORIES on an ACCEPTED toggle** (inoperative / unfixably wrecked / unpowered, `OperateAdvisory`
+`:1158-1173`); this run twice mis-stated all four as refusals, which would tell a reader the verb
+declines to open a wrecked vent when it opens it · **`＋ADD ROOM` no longer conjures
+air** (*naming is free, AIR IS EARNED*; also fixes half the owner's *"doors vanish when I allocate"*
+report) · **a wrecked machine LOOKS wrecked**, and `Swarf` stops drawing as a dashed `w`.
+
+⛔ **THREE DEFECTS FILED, NOT FIXED — see `docs/HANDOVER.md`'s top block.** The largest:
+**`W4b-DEAD-DECK`, and the sim has NO VERTICAL GAS TERM AT ALL** (verified exhaustively — every gas
+path binds a single Z). The wreck's eight deck-1 halls peak at **0.000 kPa over 20 000 ticks. Not
+slow — impossible**, and the vent verb cannot fix it. **W4b did not create this; `＋ADD ROOM` was
+hiding it.** **Owner decision: SHIP IT FILED**, visible in play. ⚠️ Do NOT "fix" it by
+re-pressurising in `AddRoomCommand`. Plus: `designs` is not fog-gated while `blocked` IS, so a build
+ghost **draws** on an unexplored tile while its reason does not · and the fog gate keeps `vent_ls` —
+the premise's own opening move — off the `devices` channel forever, so **the only operable vent a
+player can reach is `vent_cryo`**.
+
+### ⚠️ THE EIGHTH TRAP SHAPE — a merged file's truth is a number NEITHER lane could compute
+
+Two lanes re-counted the same census **honestly** against the tree each could see, and **both wrote
+`_deviceCond: 4`**; in the merged file it is **5**. `deviceConditionAt` likewise: one lane measured 1
+and wrote *"there is still no in-file caller"* — true on its branch, false the moment the other
+lane's `doOperate` arrived. **git reported NO CONFLICT on the counted file**, only on the test that
+counts it. ⇒ **Re-derive every censused number from the MERGED file with the shipped `codeOnly`
+stripper; never adjust either branch's figure — and treat "nothing calls this yet" as a statement
+about a TREE, which a merge changes.**
+
+### ⚠️ AND GIT'S CONFLICTS WERE THE SAFE PART — three hazards it did not flag
+
+`DeviceCell`'s **field list auto-merged silently** (one lane appended a 7th element, the other added
+`SameAs`), leaving a delta gate that ignores `Open` — **a door toggle would stop re-serializing and
+the OPEN⇄SHUT chip would freeze, suite green.** Fixed by hand and **verified by mutation before
+committing: removing the clause reddens FIVE independent guards.** Below it, **positional parsers
+asserting a six-element tuple went red and were RIGHT to** — a width guard on a positional parser is
+what refuses the tree; fix the width and the parser together, never the width alone. And **the two
+wear models became two contracts** (`roomDeviceConditions` gained `open`, `deckDeviceConditions` did
+not) — caught by a shape-parity assertion written when both had five fields.
+
+**Known limit, stated not buried:** the delta gate's loop bound is pinned at its **two ends, not
+across its range** (an interior `continue` survives), and the `i += 2` stride is caught **by parity,
+not by design** — grid's 146 rows make the last index odd.
+
+## Status snapshot (2026-07-28, earlier) — **THE WRECK START: the game is being re-premised**
 
 > **Read `docs/design/perilune-wreck-start.plan.md` (branch `lane/wreck-design`) before touching
 > gameplay or economy work, and the `wreck-start-decided` memory before quoting any of it.**
@@ -890,7 +942,12 @@ object** (three objects would leave only the middle phase able to `stopPropagati
 - Tests: `~/.dotnet/dotnet test tests/Perilune.Tests --nologo` (`./ci.sh` runs the full
   gate — dotnet + node, ~8 min wall since V6 runs real sim-days; the dotnet stage alone
   is ~6.5 min). Counts move with every
-  lane and are re-measured per commit; **re-measure before quoting**. **Measured on `main` after the
+  lane and are re-measured per commit; **re-measure before quoting**.
+  **Measured on `main` after the OPERATE / ＋ADD ROOM / wear-join merge (2026-07-28): 1286 dotnet +
+  953 node, `./ci.sh` exit 0, all five pins HELD, and `git diff` to `Golden/`, `ci.sh` and `content/`
+  is 0 lines across the whole run.** ⚠️ **That run also produced the reason "re-measure" is in bold
+  twice: two lanes each re-counted a CENSUS honestly and both were stale (see the eighth trap
+  shape). A number is only evidence for the tree it was measured on.** **Measured on `main` after the
   ground-item art merge (2026-07-27): 1097 dotnet + 801 node, `./ci.sh` exit 0, all five pins held**
   (pin-neutrality measured: `git diff -- sim/ hosts/ content/ tests/ ci.sh` is 0 lines).
   *(Superseded:* after the `items` channel merge, **1097 dotnet + 783 node**.*)*
@@ -1016,6 +1073,10 @@ object** (three objects would leave only the middle phase able to `stopPropagati
   the one standard surface (Level-1 Overview + Level-2 Room Zoom). Pinned by
   `WebHostDefaultShipTests`. *(Was `--ship grid` until the wreck landed; **grid is now a fixture** —
   the economy programme's comparison baseline — and is still reachable by flag, unchanged.)*
+  ⚠️ **THE STANDARD SURFACE invariant below is phrased as "`--ship grid` wearing the Overview + Room
+  Zoom": that wording is STALE IN ITS SHIP, NOT IN ITS RULE.** The wreck wears the same two modules,
+  so the surface rule is intact and only the ship changed. Read it as *"the one standard UI is the
+  Level-1 Overview plus the Level-2 Room Zoom, whatever ship wears them."*
   The host's own page (:8323 by default, :8330 under play.sh) is the LEGACY skin — no dialogue UI.
 - **Test fixtures, not games** (they still work; never offer them to a player):
   `--ship slice` — the 8-crew economy measurement fixture, driven headless by `hosts/scenario`
