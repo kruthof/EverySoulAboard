@@ -1590,6 +1590,16 @@ and from the binding **LLM-ready, not LLM-powered** memory.)*
 > — **a veto placed at `:82` leaves this path completely ungated.** Both must stay open.
 > **Eat and Drink are not work types.** The plan of record's M2 Contents item 2 lists
 > `SustenanceSystem` among the sites; **that is an error and this package must not follow it.** §12.3.
+> ⭐ **AND THE THIRD DOOR, NAMED IN REVISION 3 FOR COMPLETENESS: `SafetySystem.cs:233-238`** —
+> `sim.CancelJob(c); c.JobKind = JobKind.Flee; … c.OrderedMove = false;`. **Self-preservation outranks
+> a player order by design and is not a work type either.** ⚠️ *It was never at risk of being gated,
+> which is exactly why it belongs in the census: an exclusion nobody wrote down is indistinguishable
+> from a site nobody found, and M2-19's mutation 4 already has to pin the same rule for the hold.*
+>
+> ⛔ **THE THREE EXCLUSIONS ARE NOW LOAD-BEARING IN A WAY THEY WERE NOT UNDER REVISION 2.** *"All six
+> work types off"* was a deliberately hostile fixture; **under OD-H it is the shipped default**, so
+> these three doors are the only things standing between a new game and a crew member who starves in
+> her first sim-hour without ever having been given a job. **N1–N3 below are boot-state tests now.**
 
 **SEAM.** One predicate — `bool CanTakeWorkType(Citizen, WorkType)` on `Citizen` — asked at **five**
 gates. **G1** asks it inside `TryAssign` via `IJobSource.HandledKinds`
