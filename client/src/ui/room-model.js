@@ -51,10 +51,20 @@ export const U = 32;
  *
  *  ERASE sits IMMEDIATELY AFTER the three verbs it undoes and deliberately NOT beside DEMOLISH: the
  *  two are the most confusable pair on this bar (DEMOLISH takes a THING off the floor, ERASE takes
- *  an ORDER off a tile), and putting them adjacent would make a mis-click cost a building. */
+ *  an ORDER off a tile), and putting them adjacent would make a mis-click cost a building.
+ *
+ *  MOVE sits IMMEDIATELY AFTER OPERATE and BEFORE DEMOLISH, which keeps the bar's existing grouping
+ *  intact: everything before DIG builds something, DIG…ERASE are orders on tiles, and OPERATE + MOVE
+ *  are the two tools that act on a thing ALREADY THERE (a device, a person) with one click and no
+ *  sweep. DEMOLISH stays last, at the destructive end, for the same mis-click reason ERASE is kept
+ *  away from it.
+ *
+ *  ⚠️ MOVE IS THE FIRST PAWN-DIRECTED TOOL ON THIS PALETTE and that is a real widening of the bar's
+ *  vocabulary — see the `move` row in PALETTE_CMD for the argument and for what RimWorld does
+ *  instead. */
 export const ROOM_TOOLS = Object.freeze([
   'wall', 'floor', 'door', 'bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant',
-  'dig', 'stockpile', 'strip', 'erase', 'operate', 'demolish',
+  'dig', 'stockpile', 'strip', 'erase', 'operate', 'move', 'demolish',
 ]);
 
 /** Tool → uppercase palette label (⌫ prefix on demolish, VS-Z-46). The ▦ is the same glyph the
@@ -64,7 +74,7 @@ export const TOOL_LABEL = Object.freeze({
   wall: 'WALL', floor: 'FLOOR', door: 'DOOR', bunk: 'BUNK', desk: 'DESK', chair: 'CHAIR',
   locker: 'LOCKER', shelf: 'SHELF', lamp: 'LAMP', rug: 'RUG', plant: 'PLANT',
   dig: '⛏ DIG', stockpile: '▦ STOCKPILE', strip: '⚒ STRIP', erase: '↺ ERASE',
-  operate: '⇄ OPERATE', demolish: '⌫ DEMOLISH',
+  operate: '⇄ OPERATE', move: '➤ MOVE', demolish: '⌫ DEMOLISH',
 });
 
 /** Ghost two-letter abbreviations (VS-Z-31). Cosmetic RUG/SHELF are NOT authoritative ghosts. */
@@ -121,13 +131,44 @@ const PALETTE_CMD = Object.freeze({
   // It IS swept and it IS tile-scoped, so `isSweepTool` and `roomDragMode` both name it explicitly
   // rather than inferring it from the class, and both are pinned.
   erase: { cls: 'erase',      verb: null },
+  // MOVE class — the "go here" order for the SELECTED crew member (M1-K). Its own class, and the
+  // FIRST tool on this palette whose SUBJECT is a person rather than a tile.
+  //
+  // ⚠️ THE DISTINCTION THAT DECIDES ITS CLASS: every other row here is a function of the TILE alone
+  // — click a tile, the tile changes (or an order lands on it). This one is a function of the tile
+  // AND of a selection that lives on the HOST (`GameSession._selected`, set only by `ContextAction`).
+  // With nothing selected the host answers `"no crew selected"` and does nothing, so the client must
+  // ask before it sends; no other class has a precondition outside the room at all. That is why it
+  // is not `order` (it paints no designation and reaches no job board), not `operate` (that verb
+  // targets a device standing on the tile and refuses an empty one — MOVE wants an EMPTY tile), and
+  // emphatically not swept: `isSweepTool` is `structural || order || erase`, and a drag would emit
+  // one move order per tile in the rectangle, of which only the last could possibly survive.
+  //
+  // ⚠️ RIMWORLD DOES THIS WITH A RIGHT-CLICK, NOT A TOOL, and this is a deliberate divergence rather
+  // than an oversight. In RimWorld you select a pawn and right-click a destination to get "Go here".
+  // Two reasons that gesture is not taken here, in order of weight:
+  //   1. RIGHT-CLICK ON THIS SURFACE IS SPOKEN FOR. M2-10 ("Prioritise: repair X" by right-click on
+  //      the standard surface) is a separate, later package and the right-button seam is the one it
+  //      needs. Squatting on it now would either force that package to unpick this one or produce
+  //      two right-click meanings on one canvas.
+  //   2. THE CLIENT ALREADY HAS AN IDIOM FOR THIS EXACT ORDER. The Level-1 Overview arms a MOVE tool
+  //      (`overview-view.js`'s `ovMove` → `Hud.armTool('move')`) and lowers the click to
+  //      `Cmd.cursor` + `Cmd.move` — the same two messages this tool sends. Mirroring the sibling
+  //      surface costs the player no new concept; inventing a second gesture for one order would.
+  // ⇒ FLAGGED FOR `docs/design/rimworld-reference.md`: if that reference lands and says the
+  //   right-click IS the thing to mirror, this row is where the disagreement is, and the fix is to
+  //   ADD the right-click alongside — not to move the tool — because M2-10 must arrive first.
+  //
+  // `verb` is the wire verb NAME, as every other row's is; the PAIR it lowers to (`Cmd.cursor` then
+  // `Cmd.move`) lives in `roomzoom-view.js`'s `doMove`, for the same separation `stockpile` uses.
+  move: { cls: 'move',        verb: 'move' },
   demolish: { cls: 'demolish', verb: null },
 });
 
 /**
  * Classify a palette tool into its command class + wire verb (IX-Z-15). Unknown → 'none'. PURE.
  * @param {string|null} tool
- * @returns {{cls:'structural'|'functional'|'cosmetic'|'order'|'demolish'|'none', verb:string|null, kind?:string, deviceKind?:string, itemId?:string}}
+ * @returns {{cls:'structural'|'functional'|'cosmetic'|'order'|'erase'|'operate'|'move'|'demolish'|'none', verb:string|null, kind?:string, deviceKind?:string, itemId?:string}}
  */
 export function paletteCommand(tool) {
   const c = tool && PALETTE_CMD[tool];
@@ -496,6 +537,98 @@ export function roomCrew(crew, focusRoom) {
   for (const c of crew) {
     if (!c || (c.deck | 0) !== (focusRoom.deck | 0)) continue;
     if (clampTileToRoom(c.x | 0, c.y | 0, focusRoom)) out.push(c);
+  }
+  return out;
+}
+
+/**
+ * WHICH BOUND ROOM a crew member is standing in, anywhere on the ship — `{anchor, slotIndex, deck,
+ * displayName}` — or `null` when they are in a hall, in an unbound slot, or on a deck the `decks`
+ * channel has not described. PURE.
+ *
+ * It is the inverse of `roomCrew`: that answers "who is in THIS room", this answers "which room is
+ * THIS person in", and the crew dock needs both — one to mark a row HERE, the other to know where
+ * clicking a row should take you.
+ *
+ * ⚠️ `occupied` IS PART OF THE TEST, not decoration. `deckSlotView` emits a slot for every hall
+ * position, bound or not; an unbound one has an empty `anchorName`, and `roomTileRect` — which is
+ * what the caller will hand the answer to — looks a room up BY anchor name. Returning a slot with no
+ * anchor would produce a navigation target that resolves to `null` on the very next call.
+ *
+ * @param {Array<{deck:number, slots:Array}>|null} dView  decksView output
+ * @param {{deck:number, x:number, y:number}|null} crewEntry  one roster row
+ * @returns {{anchor:string, slotIndex:number, deck:number, displayName:string}|null}
+ */
+export function crewRoomSlot(dView, crewEntry) {
+  if (!Array.isArray(dView) || !crewEntry) return null;
+  const deck = crewEntry.deck | 0, x = crewEntry.x | 0, y = crewEntry.y | 0;
+  for (const d of dView) {
+    if (!d || (d.deck | 0) !== deck || !Array.isArray(d.slots)) continue;
+    for (const s of d.slots) {
+      if (!s || !s.occupied || !s.anchorName) continue;
+      const r = s.rect || {};
+      const rx = r.x | 0, ry = r.y | 0;
+      if (x < rx || x >= rx + (r.w | 0) || y < ry || y >= ry + (r.h | 0)) continue;
+      return {
+        anchor: s.anchorName, slotIndex: s.slotIndex | 0, deck,
+        displayName: s.displayName || s.anchorName,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * THE ROOM ZOOM'S CREW DOCK — one row per soul ABOARD, in roster order, each carrying whether they
+ * are in the focused room, whether they are the selected crew member, and where to go to find them.
+ * PURE (no DOM, no wire, no formatting — the view applies `surnameOf`/`watchTask`, exactly as the
+ * Overview's CREW WATCH does, so the two docks cannot come to word one roster row two ways).
+ *
+ * ⭐ IT IS THE WHOLE SHIP, NOT THE ROOM, AND THAT IS THE DECISION THIS FUNCTION EXISTS TO RECORD.
+ * The alternative — list only `roomCrew(...)` — was rejected for two reasons and one of them is the
+ * owner's report itself:
+ *   1. The report is *"we also lost the pawn we selected at the ship level"*. A dock that lists only
+ *      the current room CANNOT show a crew member selected on the Overview who is standing anywhere
+ *      else, so on the exact complaint it would still read as "she is gone".
+ *   2. RimWorld's own answer is the COLONIST BAR: every colonist on the map, always, regardless of
+ *      where the camera is, and clicking one selects them and moves the camera to them. This is the
+ *      analogue the owner asked for by standing directive.
+ * THE COST, STATED RATHER THAN HIDDEN: the dock is as long as the crew, so on a full ship it is a
+ * taller island than a room-scoped list would be, and it raises the question a room-scoped list
+ * never has to answer — "what does clicking someone in another room do?". The answer is RimWorld's:
+ * `anchor`/`slotIndex` are what the click NAVIGATES to, and a crew member in a hall (no bound room)
+ * carries `anchor: null`, which the view must treat as "select, and say where they are" rather than
+ * as a dead row.
+ *
+ * @param {Array|null} crew  roster crew list
+ * @param {Array|null} dView  decksView output (for the room lookup)
+ * @param {{deck:number,rx:number,ry:number,rw:number,rh:number}|null} focusRoom
+ * @param {number|null} selCid  the selected crew id (`selectedCrewCid(frame)`), or null
+ * @returns {{cid:*, entry:object, here:boolean, selected:boolean, anchor:string|null,
+ *            slotIndex:number, deck:number, roomName:string|null}[]}
+ */
+export function shipCrewRows(crew, dView, focusRoom, selCid) {
+  const list = Array.isArray(crew) ? crew : [];
+  // `roomCrew` rather than a second rect test: HERE must mean exactly what the pawn layer draws,
+  // and that layer is `pawnSvg(roomCrew(...))`. A row marked HERE beside a room with no such pawn in
+  // it is the kind of two-source disagreement this file's other clamps exist to prevent.
+  const here = new Set(roomCrew(list, focusRoom).map((c) => String(c.cid)));
+  const sel = selCid == null ? null : String(selCid);
+  const out = [];
+  for (const c of list) {
+    if (!c || c.cid == null) continue;
+    const key = String(c.cid);
+    const room = crewRoomSlot(dView, c);
+    out.push({
+      cid: c.cid,
+      entry: c,
+      here: here.has(key),
+      selected: sel !== null && key === sel,
+      anchor: room ? room.anchor : null,
+      slotIndex: room ? room.slotIndex : -1,
+      deck: c.deck | 0,
+      roomName: room ? room.displayName : null,
+    });
   }
   return out;
 }

@@ -1230,6 +1230,38 @@ body.moss-open #roomzoom-view{display:none !important}
 .rz-crumb-sep{color:var(--ink-faint,#57503f)}
 .rz-crumb-leaf{color:#f2b563;font-weight:700}
 
+/* crew dock (M1-K, VS-Z-52..54) — the RimWorld colonist bar's analogue on the Level-2 surface, in
+   the same corner and the same blur-glass island the Overview's CREW WATCH uses, because it is the
+   same list the player was reading one gesture ago. It FLOATS over the canvas (which letterboxes its
+   room, so the left margin is usually empty) rather than shrinking `.rz-canvas`, which would rescale
+   every room in the game to make space for a dock. `max-height` + scroll so a full crew never pushes
+   rows behind the palette; `z-index` matches the breadcrumb/minimap islands beside it. */
+.rz-crewdock{position:absolute;left:32px;top:74px;width:190px;max-height:calc(100vh - 260px);
+  display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;z-index:21;
+  overflow-y:auto}
+.rz-crewhdr{flex:none;font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-faint,#57503f)}
+.rz-crewlist{display:contents} /* rows join the dock's flex column directly (the ov-crewlist idiom) */
+.rz-crew{display:flex;gap:8px;align-items:center;padding:5px 6px;border:1px solid rgba(46,40,32,.6);
+  border-radius:8px;background:rgba(18,15,11,.55);color:inherit;font:inherit;text-align:left;
+  cursor:pointer;flex:none}
+.rz-crew:hover{border-color:#cf7a33}
+.rz-crew.sel{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+.rz-bust{width:28px;height:28px;border-radius:5px;overflow:hidden;flex:none;
+  background:rgba(10,8,6,.6);display:block}
+.rz-bust svg{width:100%;height:100%;display:block}
+.rz-crewcol{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+.rz-crewname{font-size:10px;color:var(--ink-bright,#e8dcc9);letter-spacing:.06em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rz-crewtask{font-size:8px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rz-crewtask.working{color:var(--amber-light,#f2b563)}
+/* WHERE they are. Dim by default and amber for HERE: the eye should be able to find, without
+   reading, which rows belong to the room on screen. */
+.rz-crewwhere{font-size:7.5px;letter-spacing:.12em;color:var(--ink-faint,#57503f);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rz-crewwhere.here{color:var(--amber-light,#f2b563)}
+
 /* deck minimap (VS-Z-40..44) */
 .rz-minimap{position:absolute;right:32px;top:24px;display:flex;flex-direction:column;gap:6px;
   padding:11px;border-radius:12px;z-index:21}
