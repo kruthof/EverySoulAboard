@@ -146,11 +146,21 @@ namespace Perilune.Tests
         /// passes on the broken sim as loudly as on the fixed one.</para>
         ///
         /// <para><b>Non-vacuity is by INCLUSION, not by population count</b> (CLAUDE.md trap 4).
-        /// The three preconditions below establish that the station genuinely WANTS a worker on
-        /// every pass — live bench, a staging tile, an idle recruitable crew member, and an
-        /// un-staged fetch candidate — so a claim count of zero means "the recruiter refused",
-        /// never "there was nothing to do". Verified by mutation: with the stamp removed from
-        /// <c>CraftingSystem.Abandon</c> this leg reddens at 1 000 claims.</para>
+        /// The six preconditions below establish that the station genuinely WANTS a worker on
+        /// every pass — live bench, a staging tile, an idle recruitable crew member, an un-staged
+        /// fetch candidate he CAN reach, and a bench he CANNOT — so a count of zero means "the
+        /// recruiter refused", never "there was nothing to do".</para>
+        ///
+        /// <para><b>WHICH MUTATION THIS LEG ACTUALLY BITES, stated because the obvious answer is
+        /// wrong.</b> Deleting the stamp from <c>CraftingSystem.Abandon</c> leaves this leg GREEN
+        /// (measured — it reddens nine SITE legs instead). The refusal in this fixture happens at
+        /// the recruit PROBE, before any claim is made, so no change to the abandon path can put
+        /// the crew member back on a Craft job here. What reddens it is <b>removing the probe</b>:
+        /// the crew member is then claimed, walked to the input and abandoned on arrival, and the
+        /// <c>craftTicks</c> assertion below catches that even though the CLAIM count in this
+        /// particular fixture stays low (once he is parked ON the stack every later refusal is
+        /// intra-tick and invisible at a tick boundary — which is itself worth knowing: a claim
+        /// counter alone under-reports this bug).</para>
         /// </summary>
         [Test]
         public void DrivenThrash_UnreachableBench_ClaimCountIsBounded()
@@ -170,18 +180,29 @@ namespace Perilune.Tests
             Assert.That(sim.Paths.FindPath(sim, pawn.Pos, StagingPos, new List<Int3>()), Is.False,
                 "control: and CANNOT reach the bench — that is the impossibility under test");
 
-            int claims = 0;
+            int claims = 0, craftTicks = 0;
             var prev = pawn.JobKind;
             for (int t = 0; t < 30000; t++)
             {
                 sim.Tick();
-                if (pawn.JobKind == JobKind.Craft && prev != JobKind.Craft) claims++;
+                if (pawn.JobKind == JobKind.Craft)
+                {
+                    craftTicks++;
+                    if (prev != JobKind.Craft) claims++;
+                }
                 prev = pawn.JobKind;
             }
 
             Assert.That(claims, Is.LessThan(10),
                 $"an impossible bill must not re-claim the pawn every second: {claims} Craft claims " +
-                "in 30 000 ticks (on `main` this fixture produces ~1 000)");
+                "in 30 000 ticks");
+            // The stronger of the two, and the one that matches the number the roadmap quotes:
+            // the thrash's real cost is CREW-TICKS SPENT, not claims counted. Zero is the right
+            // floor here and not an over-tight one — a bench nobody can reach must never put a
+            // crew member on a Craft job for even one tick.
+            Assert.That(craftTicks, Is.Zero,
+                $"and it must not burn crew-ticks doing it: {craftTicks} ticks on a Craft job for a " +
+                "bench that is walled off from the only crew member aboard");
             Assert.That(crafting.Backoff.RetryAtFor(station.Id), Is.GreaterThan(0L),
                 "and the refusal must be RECORDED — a claim count of zero with no stamp anywhere " +
                 "would mean the station simply stopped wanting a worker, which is a different bug");
@@ -537,7 +558,15 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
             var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
             machine.Condition = 0.30f; // above wreck_threshold (0.25), below Scrubber's maint threshold (0.40)
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)); // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0)); // LEFT room
+            // A REACHABLE consumable, and it is load-bearing rather than decoration: without the
+            // recruit probe the servicer is claimed and sent WALKING to this stack (the fetch leg
+            // paths to the CONSUMABLE, never to the machine), which is the maintenance twin of the
+            // crafting walk-thrash and the only thing that makes the probe's absence observable at
+            // a tick boundary. With no consumable aboard the abandon is intra-tick and a claim
+            // counter sees nothing — measured: this leg passed with the probe deleted until the
+            // stack was added.
+            sim.AddItem(ItemKind.Parts, 4, new Int3(1, 1, 0));
 
             Assert.That(machine.Condition, Is.LessThan(sim.Defs.Machines[(int)DeviceKind.Scrubber].MaintainBelow),
                 "control: the machine really wants service");
@@ -553,15 +582,56 @@ namespace Perilune.Tests
                         Is.EqualTo(pass + JobWork.UnreachableRetryTicks),
                         "and the machine carries the stamp");
 
-            int claims = 0;
+            int claims = 0, maintainTicks = 0;
             var prev = pawn.JobKind;
             for (int t = 0; t < 30000; t++)
             {
                 sim.Tick();
-                if (pawn.JobKind == JobKind.Maintain && prev != JobKind.Maintain) claims++;
+                if (pawn.JobKind == JobKind.Maintain)
+                {
+                    maintainTicks++;
+                    if (prev != JobKind.Maintain) claims++;
+                }
                 prev = pawn.JobKind;
             }
             Assert.That(claims, Is.Zero, "and it is never re-offered while it stays unreachable");
+            Assert.That(maintainTicks, Is.Zero,
+                $"nor may it burn crew-ticks: {maintainTicks} ticks on a Maintain job for a machine " +
+                "walled off from the only crew member aboard");
+        }
+
+        /// <summary>
+        /// The maintenance FUNNEL's stamp, pinned separately from the recruit probe's. Found by
+        /// mutation: deleting <c>MaintenanceSystem.Abandon</c>'s stamp left every other leg green,
+        /// because in the unreachable fixture the stamp that gets asserted is the PROBE's. A
+        /// REACHABLE machine whose servicer is displaced mid-service is the case that reaches the
+        /// funnel and only the funnel.
+        /// </summary>
+        [Test]
+        public void Maintenance_WorkPhaseDisplaced_StampsThroughTheFunnel()
+        {
+            var maint = new MaintenanceSystem();
+            var sim = new Simulation(AsciiWorld.Build(OpenMap), 11,
+                new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
+            var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
+            machine.Condition = 0.30f;
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)); // NOT adjacent to the machine
+            pawn.JobKind = JobKind.Maintain;
+            pawn.JobTarget = machine.Pos;
+            pawn.JobWorkTicks = 100;                              // ...but mid-service
+            pawn.ClearPath();
+
+            Assert.That(sim.Paths.FindPath(sim, pawn.Pos, StagingPos, new List<Int3>()), Is.True,
+                "control: the machine IS reachable, so the recruit probe cannot be what stamps it");
+            Assert.That(Int3.IsAdjacent4(pawn.Pos, machine.Pos), Is.False,
+                "control: and he is not at the machine — the 'external interference' branch");
+
+            long pass = AlignToPass(sim);
+            sim.Tick();
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.None), "the displaced servicer drops the job");
+            Assert.That(maint.Backoff.RetryAtFor(machine.Id),
+                        Is.EqualTo(pass + JobWork.UnreachableRetryTicks),
+                        "and the abandon funnel stamps the machine for exactly UnreachableRetryTicks");
         }
 
         /// <summary>A REACHABLE needy machine is still serviced — the maintenance half of the
