@@ -202,3 +202,34 @@ live host, not computed.
 **enter** is **zero**. The Level-2 case is reached by a player gesture: shutting a door, or building
 one. "8 in-rect doors, 3 closed" is a statement about *rect geometry*, which is what it was measured
 to refute; it is not a statement about what a player sees at Level 2 on a fresh save.
+
+---
+
+## M1-1 — the ship's interior is known at boot (OD-C), and slot 3 has a name
+
+Captured 2026-07-29 with `client/tools/operate-shot.mjs --tile 35,6` against a live
+`./play.sh --ship wreck` (real Chrome over CDP, real pointer clicks on the shipped DOM).
+`--tile` is new in this lane and exists precisely so the rig cannot photograph the EASY vent
+(`vent_cryo`, in the boot core) while the caption claims the hard one.
+
+| shot | what it shows |
+|---|---|
+| `m1-1-1-BEFORE-overview.png` | the defect: **six of eight deck-0 slots are blank ＋ADD ROOM boxes** while holding `fabricator_1`, `machineshop_1`, `recycler_1`, `scrubber_ls`, `reclaimer_ls` and `vent_ls`. The SENSOR LOG in the corner announces `light_d1_s0: MACHINE FAILURE` **by name, for a machine the player cannot see**. |
+| `m1-1-2-AFTER-overview.png` | the wrecked machinery draws in every hall, and slot A3 is now the room **LIFE SUPPORT** with a material floor instead of an ＋ADD ROOM chip |
+| `m1-1-3-AFTER-lifesupport-roomzoom.png` | the Room Zoom the Overview could not open before — entered with a real click on `.pl-room[data-anchor="lifesupport"]` |
+| `m1-1-4-AFTER-operate-armed-vent-SHUT.png` | OPERATE armed: **two** chips, the vent at (35,6) reading `SHUT` and the compartment door |
+| `m1-1-5-AFTER-toast-OPEN-AIRVENT.png` | the toast at the instant of the click: **`⇄ OPEN AIRVENT`** |
+| `m1-1-6-AFTER-vent-OPEN.png` | the chip has flipped to `OPEN` — ***the player has opened `vent_ls` in a running game*** |
+
+### What these pictures do NOT show
+
+- **The other five deck-0 halls are visible but still NOT ENTERABLE.** Their machines draw; their
+  slots still carry no `anchorName`, so ＋ADD ROOM remains the path to naming them. Only slot 3 was
+  chartered. A reader looking at `m1-1-2` should not conclude the whole deck became clickable.
+- **Deck 1 is not photographed**, and its machines are now visible too — on the deck
+  `W4b-DEAD-DECK` proves can never hold air.
+- **No air moves in these shots.** The vent is opened; the compartment filling is a separate
+  measurement (`AddRoomCommandTests`: 90 kPa at tick 1 846 with the door shut) and is not shown.
+- **The visual result of drawing machines inside an un-named hall has had no owner review.** It is
+  what OD-C asks for — *"all of them become visible"* — and it is an agent's rendering consequence,
+  not an art decision anyone signed off.
