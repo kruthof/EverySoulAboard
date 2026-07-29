@@ -2884,8 +2884,9 @@ claim a single-leg test cannot make.
 
 **ACCEPTANCE (browser, < 5 min) — ⭐ THIS IS OD-G's DEMO, AND IT IS THE FIRST TEN SECONDS OF THE GAME.**
 1. `./play.sh` on a fresh game. **Do not touch anything.**
-2. Rell's row reads **unassigned** — not "Idle", not blank — and **she is visibly alive** (moving, or
-   deliberately not, per deliverable 2's measured answer).
+2. Rell's row reads **unassigned** — not "Idle", not blank — and **she is visibly alive**: she wanders
+   her deck (`AutoWander = true`, `AuthoredShips.cs:1936-1941`). ⚠️ **If she is standing still, stop —
+   something upstream broke the wander, and "waiting" and "hung" have just become the same picture.**
 3. The onboarding card names **the first order** and the key that gives it.
 4. Give that order. **She takes it.**
 5. When it completes, **she returns to autonomy under the grid** — she keeps doing what you enabled,
