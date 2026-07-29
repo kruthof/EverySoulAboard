@@ -239,7 +239,7 @@ if (ovDigBtn && ovEraseBtn && debris.length) {
       await sleep(1500);
       const four4 = count('dig', null);
       const painted4 = check(four4 === before + 4, `FOUR digs painted (${before} -> ${four4})`);
-      await png('12-overview-four-digs.png');
+      await png('15-overview-four-digs.png');
       if (painted4) {
         await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(700);
         const q0 = ovScreenOf(four[0].x, four[0].y);
@@ -252,17 +252,70 @@ if (ovDigBtn && ovEraseBtn && debris.length) {
         const survivors = marksNow().filter((m) => m.mark === 'dig').map((m) => `${m.x},${m.y}`);
         check(!survivors.includes(`${four[0].x},${four[0].y}`) && survivors.length === 3,
           `the surviving orders are the three NOT clicked (${survivors.join(' ')})`);
-        await png('13-overview-one-erased-three-left.png');
+        await png('16-overview-one-erased-three-left.png');
         // clear the rest so the tool leaves the ship as it found it
         for (const d of four.slice(1)) { const q = ovScreenOf(d.x, d.y); await clickAt(q.x, q.y); await sleep(350); }
         await sleep(1500);
         check(count('dig', null) === before, `the remaining three were taken back (${count('dig', null)} left)`);
-        await png('14-overview-all-erased.png');
+        await png('17-overview-all-erased.png');
       }
     } else log(`  (SKIPPED acceptance step 3: only ${debris.length} debris tiles on this deck)`);
     await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(600);   // disarm before entering the room
   }
 } else check(false, 'the Overview leg could not run (no dig/erase button, or no debris on this deck)');
+
+// ── ⚠️ THE IN-ROOM ERASE, ON THE OVERVIEW. THIS LEG EXISTS BECAUSE OF A BLIND SPOT THIS TOOL HAD.
+// Every one of the ship's deck-0 debris tiles is in a HALL, so every leg above clicks a hall tile
+// and NONE of them lands on a room rect — and a room rect is exactly where `orderSuppressionToast`
+// used to replace the erase line with "ERASE ARMED — ESC TO DISARM", putting the miss back into
+// silence on the tiles that matter most. The measured ship-fact that made this rig honest is what
+// hid the defect from it. The fix is to point the instrument at what it could no longer see: STRIP
+// is on this bar too and every device is inside a room, so a strip order is an in-room designation
+// the Overview can both paint and take back.
+{
+  const ovStripBtn = await centre('[data-ov-tool="strip"]');
+  const dev0 = strippable[0];
+  if (ovStripBtn && ovEraseBtn && dev0) {
+    log('\n=== OVERVIEW, INSIDE A ROOM: strip a device, erase it, and miss beside it ===');
+    const p = ovScreenOf(dev0.x, dev0.y);
+    const before = count('strip', room);
+    await clickAt(ovStripBtn.x, ovStripBtn.y); await sleep(700);
+    await clickAt(p.x, p.y);
+    await sleep(1700);
+    const landed = check(count('strip', room) === before + 1,
+      `a STRIP landed on the in-room device at ${dev0.x},${dev0.y} from the OVERVIEW (${before} -> ${count('strip', room)})`);
+    check(!(await evaluate(`document.body.classList.contains('roomzoom-open')`)),
+      'the armed order OWNED the click — the room did not open under it');
+    await clickAt(ovStripBtn.x, ovStripBtn.y); await sleep(600);
+    await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(700);
+    if (landed) {
+      await clickAt(p.x, p.y);
+      await sleep(1700);
+      const hitLine = await toast('ov-toast');
+      log('  IN-ROOM erase TOAST:', JSON.stringify(hitLine));
+      await toastCrop('08-overview-inroom-erase-toast.png', 'ov-toast');
+      check(count('strip', room) === before, `the in-room STRIP was taken back (-> ${count('strip', room)})`);
+      check(/ERASED STRIP/.test(hitLine) && !/HIDDEN/.test(hitLine),
+        'the IN-ROOM erase says what it took back, visibly (R1: this line used to be replaced by '
+        + '"ERASE ARMED — ESC TO DISARM")');
+      check(/ESC TO DISARM/.test(hitLine),
+        '…and the refusal is APPENDED, not dropped — one toast carries both facts');
+      // …and the MISS on the same room rect, which is the case that went silent.
+      await clickAt(p.x, p.y);
+      await sleep(1600);
+      const missLine = await toast('ov-toast');
+      log('  IN-ROOM miss TOAST:', JSON.stringify(missLine));
+      await toastCrop('09-overview-inroom-nothing-to-erase.png', 'ov-toast');
+      check(/NOTHING TO ERASE/.test(missLine) && !/HIDDEN/.test(missLine),
+        'THE R1 CASE: the erase MISS survives inside a room. A correct erase on a bare tile sends '
+        + 'nothing, and until this fix suppression replaced that line with the ARMED refusal — which '
+        + 'made a correct no-op indistinguishable from a broken tool on exactly the tiles that '
+        + 'matter, since every device a player wants to un-condemn is inside a room');
+      await png('10-overview-inroom-erase.png');
+    }
+    await clickAt(ovEraseBtn.x, ovEraseBtn.y); await sleep(600);
+  } else check(false, 'the in-room Overview leg could not run (no strip button or no device)');
+}
 
 // ───────────────────────────────────────────────────────────── 4. THE ROOM ZOOM
 log('\n=== ROOM ZOOM ===');
