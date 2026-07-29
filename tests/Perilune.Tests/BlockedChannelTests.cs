@@ -124,6 +124,7 @@ namespace Perilune.Tests
             Assert.AreEqual(0, WireFormat.ReasonAir);
             Assert.AreEqual(1, WireFormat.ReasonNoApproach);
             Assert.AreEqual(2, WireFormat.ReasonNoConsumable);
+            Assert.AreEqual(3, WireFormat.ReasonUnreachable);
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge
@@ -948,6 +949,593 @@ namespace Perilune.Tests
                 "rendering the blocked channel moved the determinism hash. This channel is view-only: " +
                 "it reads tile flags, two registries and a pure predicate, and every one of those is " +
                 "hashed state it must not write.");
+        }
+
+        // ══════════════════════════════ THE THIRD QUESTION: can any crew member PATH here? ═════════
+        //
+        // WHAT THESE LEGS ADD, AND WHY THEY ARE DRIVEN. `WireFormat.ReasonUnreachable` is fed by
+        // `JobSystem.IsBackedOff` — the fan-out of the sim's OWN job-board back-off, not a host-side
+        // reachability computation. So the only honest way to pin it is to make the real dispatcher
+        // fail a real claim: a scan for the call, or a hand-planted dictionary entry, would both
+        // survive the seam being completely inert. That is the "verb parity is not sufficient" lesson
+        // applied to a reason code.
+        //
+        // ⚠️ THE SIM-SIDE HALF IS IN `JobSourceBackoffTests`, WHERE EACH OF THE FOUR CARRIERS IS
+        // DRIVEN BLINDED OF THE OTHER THREE. This file drives ONE carrier (build-ready) on the real
+        // ship, because what these legs are about is the HOST's three-question precedence, the fog
+        // gate and the latch — not which dictionary the sim stamped.
+
+        /// <summary>A sealed two-tile pocket cut out of `--ship grid`, plus the walls that made it.
+        /// <c>Site</c> takes the order; <c>Staging</c> is the neighbour a worker would stand on and is
+        /// deliberately kept WALKABLE and BREATHABLE, so the air and approach questions both pass and
+        /// only the third one can fire.</summary>
+        private readonly struct Pocket
+        {
+            public readonly Int3 Site, Staging;
+            public readonly List<(Int3 Pos, ushort Wall)> Planted;
+            public Pocket(Int3 site, Int3 staging, List<(Int3, ushort)> planted)
+            { Site = site; Staging = staging; Planted = planted; }
+        }
+
+        /// <summary>
+        /// CUT A SEALED POCKET INTO THE SHIPPED SHIP and assert, with the sim's own pathfinder, that
+        /// no living crew member can walk into it. Every dig designation on the ship is cleared first:
+        /// the grid ship authors 20 of them and an idle citizen offered a nearer dig would never
+        /// attempt the build, so the fixture would go quiet and every assertion after it would be
+        /// vacuous. (That clearing is also what keeps the leg-isolation assertions in the airless
+        /// tests above untouched by this section — see their note about the 20 authored digs.)
+        ///
+        /// ⚠️ THE PREMISES ARE ASSERTED, LOUDLY, BECAUSE THE FIXTURE IS CONSTRUCTED. It is not found
+        /// on the shipped ship: `--ship grid` at boot has no breathable compartment that is also
+        /// unreachable, which is precisely why the defect this reason reports was invisible. A
+        /// constructed fixture that silently failed to construct is the shape that produces a
+        /// screenful of green vacuities.
+        /// </summary>
+        private static Pocket SealPocket(Simulation sim, BuildSystem build)
+        {
+            var w = sim.World;
+
+            int cleared = 0;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Designated) == 0) continue;
+                        w.SetFlag(p, TileFlags.Designated, false);
+                        cleared++;
+                    }
+            Assert.That(cleared, Is.GreaterThan(0),
+                "PREMISE: --ship grid is documented to author 20 dig designations. Finding none means " +
+                "the ship changed under this fixture, and the dig board may no longer be what starves " +
+                "the build board of attempts.");
+
+            var occupied = new HashSet<Int3>();
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++) occupied.Add(crew[i].Pos);
+
+            Int3? site = null, staging = null;
+            for (int z = 0; z < w.Depth && site == null; z++)
+                for (int y = 1; y < w.Height - 1 && site == null; y++)
+                    for (int x = 1; x < w.Width - 1 && site == null; x++)
+                    {
+                        var a = new Int3(x, y, z);
+                        if ((w.GetFlags(a) & TileFlags.Explored) == 0) continue;
+                        if (!sim.IsWalkable(a) || occupied.Contains(a)) continue;
+                        if (!build.CanDesignate(sim, a, BuildKind.Wall)) continue;
+                        if (!WorksiteSafety.CanStageWorkerAt(sim, a)) continue;
+                        for (int i = 0; i < 4 && site == null; i++)
+                        {
+                            var b = Int3.Neighbor4(a, i);
+                            if (!w.InBounds(b) || !sim.IsWalkable(b) || occupied.Contains(b)) continue;
+                            if (!WorksiteSafety.CanStageWorkerAt(sim, b)) continue;
+                            bool inBounds = true;
+                            foreach (var t in new[] { a, b })
+                                for (int j = 0; j < 4; j++)
+                                    if (!w.InBounds(Int3.Neighbor4(t, j))) inBounds = false;
+                            if (!inBounds) continue;
+                            site = a; staging = b;
+                        }
+                    }
+            Assert.IsNotNull(site, "PREMISE FAILED: --ship grid has no explored, buildable, breathable " +
+                                   "tile with a breathable walkable neighbour, so no pocket can be cut " +
+                                   "and every reachability leg would be vacuous.");
+
+            var planted = new List<(Int3, ushort)>();
+            foreach (var t in new[] { site.Value, staging.Value })
+                for (int j = 0; j < 4; j++)
+                {
+                    var n = Int3.Neighbor4(t, j);
+                    if (Same(n, site.Value) || Same(n, staging.Value)) continue;
+                    if (!w.InBounds(n) || w.GetWall(n) == TileDefs.Wall) continue;
+                    planted.Add((n, w.GetWall(n)));
+                    w.SetWall(n, TileDefs.Wall);
+                }
+            Assert.That(planted.Count, Is.GreaterThan(0),
+                "PREMISE: the pocket was already sealed before this fixture touched it, so restoring a " +
+                "wall could not re-open it and the CLEAR leg would be untestable.");
+
+            // What a SetTileCommand would publish for us. Done by hand because the fixture writes the
+            // world plane directly — and stated rather than assumed, because a stale room map would
+            // make the breathability premise below read the OLD compartment's air.
+            sim.Rooms.MarkDirty();
+            sim.JobsDirty = JobBoardDirty.All;
+            sim.Tick();
+            var room = sim.Rooms.RoomAt(w, staging.Value);
+            Assert.IsNotNull(room, "PREMISE FAILED: the sealed pocket resolved to no room at all, so " +
+                                   "its air cannot be set and the AIR question would fire instead of " +
+                                   "the reach question — the leg would pass for the wrong reason.");
+            RoomState.Pressurize(room);
+
+            Assert.That(sim.IsWalkable(site.Value), Is.True, "PREMISE: the site is still walkable");
+            Assert.That(sim.IsWalkable(staging.Value), Is.True, "PREMISE: the staging tile is still walkable");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, staging.Value), Is.True,
+                "PREMISE FAILED: the pocket is not breathable, so this fixture measures the AIR reason " +
+                "and not the reach reason. The two are what this section exists to tell apart.");
+
+            var path = new List<Int3>();
+            for (int i = 0; i < crew.Count; i++)
+                Assert.That(sim.Paths.FindPath(sim, crew[i].Pos, staging.Value, path), Is.False,
+                    "PREMISE FAILED: crew member " + i + " CAN path into the 'sealed' pocket, so no " +
+                    "claim will ever fail there and nothing will ever be backed off.");
+
+            return new Pocket(site.Value, staging.Value, planted);
+        }
+
+        private static JobSystem JobsOf(Simulation sim)
+        {
+            foreach (var s in sim.Systems) if (s is JobSystem js) return js;
+            Assert.Fail("premise: --ship grid runs a JobSystem");
+            return null;
+        }
+
+        private static BuildSystem BuildOf(Simulation sim)
+        {
+            foreach (var s in sim.Systems) if (s is BuildSystem bs) return bs;
+            Assert.Fail("premise: --ship grid runs a BuildSystem");
+            return null;
+        }
+
+        /// <summary>Designate a materialed wall build at the pocket's site and drive the real
+        /// dispatcher until it gives up on it. The material is DEPOSITED rather than hauled, so the
+        /// only thing left that can fail is the approach.</summary>
+        private static void PlantMateialedBuildAndDriveUntilBackedOff(Simulation sim, BuildSystem build,
+                                                                      JobSystem jobs, Int3 site)
+        {
+            sim.EnqueueCommand(new DesignateBuildCommand(site, BuildKind.Wall, on: true, material: 0));
+            sim.Tick();
+            Assert.That(build.TryGet(site, out var pending), Is.True, "premise: the build was accepted");
+            build.Deposit(sim, site, pending.Required);
+            Assert.That(build.TryGet(site, out var ready) && BuildSystem.IsReady(ready), Is.True,
+                "premise: the site is materialed, so it is offered through the READY board");
+            sim.JobsDirty = JobBoardDirty.All;
+
+            for (int t = 0; t < 400; t++)
+            {
+                sim.Tick();
+                if (jobs.IsBackedOff(site, sim.TickCount, out _)) return;
+            }
+            Assert.Fail("PREMISE FAILED: 400 ticks and the job board never backed off " + site + ". No " +
+                        "crew member attempted the build, so this fixture proves nothing about the " +
+                        "reason it exists to test.");
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE INCLUSION TEST FOR THE THIRD QUESTION — plant the violation and require it named.</b>
+        /// A build order sits in perfectly good air, with a walkable and breathable tile to stand on,
+        /// and NO crew member can walk to it. Before this reason the channel called that site
+        /// <c>NotBlocked</c>: the ghost froze at 0/2, the pawn read "Idle", and the game said the order
+        /// was fine.
+        ///
+        /// The control half is required and is here: a second, REACHABLE build in the same good air
+        /// must be ABSENT from the channel. Without it, a host that emitted every pending build would
+        /// pass.
+        ///
+        /// MUTATION 1: <c>return false;</c> in <c>JobSystem.IsBackedOff</c>'s loop ⇒ red on the first
+        /// assertion. MUTATION 2: delete the reach question from <c>GameSession.BlockedReason</c> ⇒
+        /// same. MUTATION 3: report <c>ReasonUnreachable</c> without asking <c>IsBackedOff</c> ⇒ red on
+        /// the control.
+        /// </summary>
+        [Test]
+        public void A_Build_No_Crew_Can_Walk_To_Is_Named_Unreachable_And_A_Reachable_One_Is_Not()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+
+            var pocket = SealPocket(sim, build);
+
+            // The CONTROL: a reachable, breathable, buildable tile outside the pocket.
+            Int3? control = null;
+            var w = sim.World;
+            for (int z = 0; z < w.Depth && control == null; z++)
+                for (int y = 0; y < w.Height && control == null; y++)
+                    for (int x = 0; x < w.Width && control == null; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (Same(p, pocket.Site) || Same(p, pocket.Staging)) continue;
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!build.CanDesignate(sim, p, BuildKind.Wall)) continue;
+                        bool stageable = false;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
+                        }
+                        if (stageable) control = p;
+                    }
+            Assert.IsNotNull(control, "PREMISE FAILED: no reachable buildable tile for the control half");
+            sim.EnqueueCommand(new DesignateBuildCommand(control.Value, BuildKind.Wall, on: true, material: 0));
+            sim.Tick();
+
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, pocket.Site);
+
+            var row = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(row, "THE PLANTED, KNOWN-UNREACHABLE BUILD AT " + pocket.Site + " IS NOT ON " +
+                "THE CHANNEL. This is the 480 000-tick silent stall: two legal verbs produce a ghost " +
+                "frozen at 0/2, a pawn reading Idle, and a channel saying nothing is wrong.");
+            Assert.AreEqual(WireFormat.OrderBuild, row.Value.Order, "the order kind must say BUILD");
+            Assert.AreEqual(WireFormat.ReasonUnreachable, row.Value.Reason,
+                "the reason must be UNREACHABLE. AIR would be a confident lie: the fixture asserted " +
+                "the staging tile is breathable, so venting would change nothing.");
+
+            Assert.IsNull(RowAt(gs, control.Value),
+                "a REACHABLE build in good air reached the channel. The reach question is not asking " +
+                "the job board — it is reporting every pending build, which would badge the whole ship.");
+        }
+
+        /// <summary>
+        /// ⭐ <b>PRECEDENCE: A SITE THAT IS BOTH AIRLESS AND UN-REACHED REPORTS <i>AIR</i>.</b> This is
+        /// not a tie-break preference. <c>JobWork.TryPathToAdjacent</c> stamps its back-off for an AIR
+        /// refusal exactly as it does for a pathing one, so almost every airless order on a wreck is
+        /// ALSO backed off — asking the reach question first would repaint the entire wreck with a
+        /// reason that sends the player looking for a route through a corridor that is merely
+        /// unbreathable. The player's next action differs, which is the same argument
+        /// <c>WireFormat.Blocked.cs</c> makes for keeping AIR and NO_APPROACH apart.
+        ///
+        /// MUTATION: move the reach question above the air question in <c>GameSession.BlockedReason</c>
+        /// ⇒ red here and GREEN in every other leg of this file, which is exactly why it is its own test.
+        /// </summary>
+        [Test]
+        public void A_Site_That_Is_Both_Airless_And_Unreached_Reports_Air_Not_Unreachable()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+            var w = sim.World;
+
+            // Clear the authored digs for the same reason SealPocket does: an idle citizen offered a
+            // nearer dig never attempts the build, and an unattempted site is never stamped.
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                        w.SetFlag(new Int3(x, y, z), TileFlags.Designated, false);
+
+            Int3? site = null;
+            for (int z = 0; z < w.Depth && site == null; z++)
+                for (int y = 0; y < w.Height && site == null; y++)
+                    for (int x = 0; x < w.Width && site == null; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!build.CanDesignate(sim, p, BuildKind.Wall)) continue;
+                        bool anyWalkable = false, allRefused = true;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            anyWalkable = true;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { allRefused = false; break; }
+                        }
+                        if (anyWalkable && allRefused) site = p;
+                    }
+            Assert.IsNotNull(site, "PREMISE FAILED: --ship grid has no buildable tile whose approach is " +
+                                   "airless, so the precedence leg would be vacuous.");
+
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, site.Value);
+
+            Assert.That(jobs.IsBackedOff(site.Value, sim.TickCount, out _), Is.True,
+                "PREMISE: the site really is BOTH airless and backed off — otherwise this test could " +
+                "pass with only one of the two conditions present and would pin nothing about order.");
+
+            var row = RowAt(gs, site.Value);
+            Assert.IsNotNull(row, "premise: the airless build is on the channel at all");
+            Assert.AreEqual(WireFormat.ReasonAir, row.Value.Reason,
+                "a site that is BOTH airless and backed off reported the reach reason. The air answer " +
+                "is the actionable one — vent the compartment — and the reach answer would send the " +
+                "player hunting a route into a room nobody could work in anyway.");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE LATCH: THE ROW SURVIVES THE BACK-OFF EXPIRING WITH NOTHING FIXED.</b> This is the
+        /// leg the package would be a five-second lie without, and it is why the decision recorded in
+        /// <c>GameSession._latched</c> had to be taken rather than deferred.
+        ///
+        /// <c>JobWork.UnreachableRetryTicks</c> is 50 ticks. Re-stamping needs a citizen to ATTEMPT the
+        /// claim again, so the fixture takes the crew off the board (<c>HoldPosition</c> — the sim's own
+        /// "never self-assign" flag) exactly as a 900 s Maintain service would, and drives 600 ticks:
+        /// twelve expiries and, with <c>JobBoardDirty.Tiles</c> raised, a wholesale
+        /// <c>ForgetBackoffsOnTileChange</c> as well.
+        ///
+        /// <b>THE NON-VACUITY IS ASSERTED IN THE MIDDLE OF THE TEST</b>: the RAW predicate is required
+        /// to have gone false before the row is required to still be there. Without that assertion this
+        /// test would pass on a build that never expires, and would tell nobody anything.
+        ///
+        /// MUTATION: delete the <c>carry</c> clause in <c>GameSession.BlockedReason</c> (or the
+        /// <c>_latched</c>/<c>_latchNext</c> swap in <c>BuildBlocked</c>) ⇒ red on the final assertion,
+        /// and GREEN on every other leg in this file.
+        /// </summary>
+        [Test]
+        public void The_Unreachable_Row_Survives_The_Backoff_Expiring_And_A_TileBoard_Event()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+
+            var pocket = SealPocket(sim, build);
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, pocket.Site);
+
+            var first = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(first, "premise: the row is there before the wait");
+            Assert.AreEqual(WireFormat.ReasonUnreachable, first.Value.Reason);
+
+            // Take the crew off the job board, the way a long service does. `HoldPosition` is the
+            // dispatcher's own gate (`Citizen.IsRecruitableForWork`), so this is the sim's mechanism
+            // and not a test-only back door.
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++)
+            {
+                crew[i].JobKind = JobKind.None;
+                crew[i].HoldPosition = true;
+            }
+
+            for (int t = 0; t < 600; t++)
+            {
+                sim.JobsDirty |= JobBoardDirty.Tiles;   // the wholesale ForgetBackoffsOnTileChange path
+                sim.Tick();
+            }
+
+            Assert.That(jobs.IsBackedOff(pocket.Site, sim.TickCount, out _), Is.False,
+                "NON-VACUITY FAILED: the raw back-off is STILL live after 600 ticks, so this test " +
+                "cannot distinguish a working latch from no latch at all. Something re-stamped the " +
+                "site — check that HoldPosition still gates IsRecruitableForWork.");
+
+            var after = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(after, "THE REASON BLINKED OUT WITH THE DOOR STILL SHUT. The back-off " +
+                "stamp lasts 5 seconds and nothing re-took it, so without the host latch this channel " +
+                "explains a stalled order for five seconds and then goes silent for as long as the " +
+                "crew stay busy — the invisible-feedback failure the marks channel exists to prevent, " +
+                "re-introduced by the package built to remove it.");
+            Assert.AreEqual(WireFormat.ReasonUnreachable, after.Value.Reason,
+                "the latched row must keep its own reason, not decay into another one");
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE NEGATIVE, AND IT IS REQUIRED: RE-OPEN THE ROUTE AND THE ROW GOES AWAY ON ITS OWN.</b>
+        /// A guard that only proves a row APPEARS is satisfied by a channel that reports every order
+        /// forever — and a LATCHED row is exactly the kind that could. The pocket is re-opened by
+        /// restoring one planted wall (what a strip or a dig would do for a player), the crew are put
+        /// back on the board, and the row must clear with no further player action.
+        ///
+        /// It also pins WHICH event clears the latch: a crew member actually taking the job, which is
+        /// the observable consequence of <c>TryClaim</c> succeeding — the honest reading of the row is
+        /// *"the last attempt failed and none has succeeded since"*.
+        ///
+        /// MUTATION: make <c>GameSession.CrewHoldsJobAt</c> return false ⇒ red here and GREEN
+        /// everywhere else. MUTATION 2: <c>return true</c> unconditionally from
+        /// <c>JobSystem.IsBackedOff</c> ⇒ red here.
+        /// </summary>
+        [Test]
+        public void Reopening_The_Route_Clears_The_Unreachable_Row_With_No_Further_Player_Action()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+            var w = sim.World;
+
+            var pocket = SealPocket(sim, build);
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, pocket.Site);
+            Assert.IsNotNull(RowAt(gs, pocket.Site), "premise: the row is there before the route re-opens");
+
+            // Re-open the pocket: put every planted wall back the way it was.
+            foreach (var (pos, wall) in pocket.Planted) w.SetWall(pos, wall);
+            sim.Rooms.MarkDirty();
+            sim.JobsDirty = JobBoardDirty.All;
+            sim.Tick();
+
+            var path = new List<Int3>();
+            bool reachable = false;
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++)
+                if (sim.Paths.FindPath(sim, crew[i].Pos, pocket.Staging, path)) reachable = true;
+            Assert.That(reachable, Is.True,
+                "PREMISE FAILED: restoring the planted walls did not re-open the pocket, so nothing " +
+                "was fixed and the clear leg would be asserting the latch never latched.");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, pocket.Staging), Is.True,
+                "PREMISE: the re-opened pocket is still breathable, so AIR cannot be what clears the row");
+
+            bool claimed = false;
+            for (int t = 0; t < 2000 && !claimed; t++)
+            {
+                sim.Tick();
+                crew = sim.Citizens.Items;
+                for (int i = 0; i < crew.Count; i++)
+                    if (!crew[i].Dead && crew[i].JobKind != JobKind.None && Same(crew[i].JobTarget, pocket.Site))
+                        claimed = true;
+            }
+            Assert.That(claimed, Is.True,
+                "PREMISE FAILED: 2000 ticks after the route re-opened and no crew member ever took the " +
+                "build. The latch's clear condition is 'somebody got here', so with nobody getting " +
+                "there this test could not tell a cleared latch from a stuck one.");
+
+            Assert.IsNull(RowAt(gs, pocket.Site),
+                "THE ROW DID NOT CLEAR. A crew member is standing on the job, so the claim 'no crew has " +
+                "reached it' is now false and the badge is a lie the player cannot dismiss.");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE LATCH IS NEVER STARTED BY AN <i>AIR</i> REFUSAL — and this test exists because
+        /// widening that guard was applied and the suite stayed GREEN (29/29).</b>
+        ///
+        /// <c>JobWork.TryPathToAdjacent</c> stamps its back-off for an AIR refusal exactly as it does
+        /// for a pathing one. So if <c>GameSession.BlockedReason</c> latched on any live stamp, an
+        /// airless order would acquire a REACH latch it never earned — and the moment the player
+        /// vented the compartment, the badge would stay, now saying something false about a problem
+        /// they have just fixed. The latch is therefore started only by a stamp taken while the site
+        /// is otherwise fine (<c>live &amp;&amp; anyStageable</c>), and carried thereafter.
+        ///
+        /// The crew are frozen before the render so that the CLEAR path under test is the guard and
+        /// not somebody claiming the job, and the wait past the expiry is what makes <c>carry</c> —
+        /// rather than <c>live</c> — the only thing that could still be holding the row.
+        ///
+        /// MUTATION: <c>(live &amp;&amp; anyStageable)</c> → <c>live</c> ⇒ red HERE and green in every
+        /// other leg of this file.
+        /// </summary>
+        [Test]
+        public void An_Air_Refusal_Never_Starts_A_Reach_Latch_So_Venting_Really_Clears_It()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+            var w = sim.World;
+
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                        w.SetFlag(new Int3(x, y, z), TileFlags.Designated, false);
+
+            Int3? site = null, staging = null;
+            for (int z = 0; z < w.Depth && site == null; z++)
+                for (int y = 0; y < w.Height && site == null; y++)
+                    for (int x = 0; x < w.Width && site == null; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!build.CanDesignate(sim, p, BuildKind.Wall)) continue;
+                        Int3? firstWalkable = null;
+                        bool allRefused = true;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { allRefused = false; break; }
+                            if (firstWalkable == null) firstWalkable = n;
+                        }
+                        if (allRefused && firstWalkable != null) { site = p; staging = firstWalkable; }
+                    }
+            Assert.IsNotNull(site, "PREMISE FAILED: no airless-approach buildable tile on --ship grid");
+
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, site.Value);
+            var row = RowAt(gs, site.Value);      // ⚠️ this render is where a widened guard would latch
+            Assert.IsNotNull(row, "premise: the airless site is on the channel");
+            Assert.AreEqual(WireFormat.ReasonAir, row.Value.Reason, "premise: it reports AIR");
+
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++) { crew[i].JobKind = JobKind.None; crew[i].HoldPosition = true; }
+            for (int t = 0; t < 200; t++) sim.Tick();
+            Assert.That(jobs.IsBackedOff(site.Value, sim.TickCount, out _), Is.False,
+                "NON-VACUITY: the raw stamp must have expired, or `live` and not `carry` would be " +
+                "what keeps any row alive below and this test would pin the wrong clause");
+
+            var room = sim.Rooms.RoomAt(w, staging.Value);
+            Assert.IsNotNull(room, "premise: the airless staging tile resolves to a room");
+            RoomState.Pressurize(room);
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, staging.Value), Is.True,
+                "PREMISE FAILED: pressurising did not make the staging tile usable, so nothing was " +
+                "fixed and the clear could not be observed");
+
+            Assert.IsNull(RowAt(gs, site.Value),
+                "THE PLAYER VENTED THE COMPARTMENT AND THE BADGE STAYED. The back-off that stamped " +
+                "this site was an AIR refusal, so it must never have started a reach latch — a latch " +
+                "that outlives the fix is a badge the player cannot dismiss and cannot act on.");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>PRECEDENCE, ON THE ONLY CASE THAT CAN ACTUALLY REACH IT — AND THIS TEST EXISTS
+        /// BECAUSE THE OBVIOUS ONE DOES NOT.</b>
+        ///
+        /// <b>MEASURED, NOT ASSUMED:</b> moving the reach question above the air question in
+        /// <c>GameSession.BlockedReason</c> was applied and the whole suite stayed <b>GREEN (28/28)</b>.
+        /// The reason is that a site whose air is bad never STARTS a latch — the start condition is
+        /// <c>live &amp;&amp; anyStageable</c> — so for an airless site <c>reached</c> is false and the
+        /// return order cannot matter. The sibling test above therefore pins the latch-START guard,
+        /// not the return ORDER, and a reviewer reading it would have believed otherwise.
+        ///
+        /// The case that DOES reach it is a site that was latched while its compartment was fine and
+        /// then LOST ITS AIR — a shut door plus a breach, which is an ordinary wreck evening. Here
+        /// <c>carry</c> is true and <c>anyStageable</c> is false at the same time, and the two answers
+        /// compete for real. AIR must win: it is the actionable one, and the player who is told "no
+        /// crew has reached it" will go hunting for a route into a compartment nobody could work in.
+        ///
+        /// MUTATION: move the reach question above the air question ⇒ red HERE and green everywhere
+        /// else in this file — which is the whole point of writing it separately.
+        /// </summary>
+        [Test]
+        public void A_Latched_Site_That_Loses_Its_Air_Reports_Air_Not_The_Latched_Reason()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+
+            var pocket = SealPocket(sim, build);
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, pocket.Site);
+
+            var latched = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(latched, "premise: the site is on the channel");
+            Assert.AreEqual(WireFormat.ReasonUnreachable, latched.Value.Reason,
+                "premise: it is LATCHED as unreachable before the air goes");
+
+            // Vent the pocket. Setting the gas directly is the room's own state — the same handle
+            // `RoomState.Pressurize` writes, used in the opposite direction — so this is the sim's
+            // mechanism and not a host-side fake.
+            var room = sim.Rooms.RoomAt(sim.World, pocket.Staging);
+            Assert.IsNotNull(room, "premise: the pocket still resolves to a room");
+            room.O2Moles = 0; room.N2Moles = 0; room.CO2Moles = 0;
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, pocket.Staging), Is.False,
+                "PREMISE FAILED: venting the pocket did not make it unstageable, so the two answers " +
+                "never compete and this test would pin nothing.");
+
+            var after = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(after, "the row vanished entirely when the air went — both questions " +
+                "answer 'blocked' here, so something is eating the row");
+            Assert.AreEqual(WireFormat.ReasonAir, after.Value.Reason,
+                "a LATCHED site that has since lost its air reported the reach reason. Air is the " +
+                "actionable answer and it must outrank the latch, or the player is sent looking for a " +
+                "route into a compartment where no work could happen anyway.");
+        }
+
+        /// <summary>
+        /// THE FOG GATE HOLDS FOR THE NEW REASON TOO. An unreachable order in unexplored space must
+        /// emit nothing: a rendering fix must not become a fog-of-war change, and this is the channel
+        /// whose whole job is to talk about tiles nobody can get to — exactly the tiles a leak would
+        /// reveal.
+        ///
+        /// MUTATION: delete the <c>Explored</c> gate in <c>GameSession.AddIfBlocked</c> ⇒ red.
+        /// </summary>
+        [Test]
+        public void An_Unexplored_Unreachable_Site_Does_Not_Reach_The_Wire()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+
+            var pocket = SealPocket(sim, build);
+            PlantMateialedBuildAndDriveUntilBackedOff(sim, build, jobs, pocket.Site);
+            Assert.IsNotNull(RowAt(gs, pocket.Site), "control: the explored site IS on the channel");
+
+            sim.World.SetFlag(pocket.Site, TileFlags.Explored, false);
+            Assert.IsNull(RowAt(gs, pocket.Site),
+                "an UNEXPLORED unreachable site reached the wire. The latch does not exempt a row from " +
+                "the fog gate — AddIfBlocked returns before BlockedReason is ever called, which is also " +
+                "what prunes the latch entry.");
         }
     }
 }

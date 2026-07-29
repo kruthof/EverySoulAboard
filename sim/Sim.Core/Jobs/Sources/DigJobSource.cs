@@ -31,6 +31,31 @@ namespace Perilune.Sim
         public JobKind[] HandledKinds => Kinds;
         public int CandidateCount => _sites.Count;
 
+        /// <summary>
+        /// <see cref="IJobSource.IsBackedOff"/> for the DIG board. Keyed on the SITE — the designated
+        /// tile itself, which is what <see cref="TryClaim"/> stamps — not on the neighbour a worker
+        /// would stand on. A <c>TryGetValue</c>, so nothing here is enumerated (rule 4).
+        ///
+        /// <para>MIRRORS <c>HaulJobSource.IsBackedOff</c> LINE FOR LINE, deliberately: that method's
+        /// doc calls itself "THE ONE DEFINITION OF 'BACKED OFF'", and a second, parallel copy of the
+        /// <c>tick &lt; until</c> comparison is exactly how a diagnostic surface starts lying about
+        /// the board it is describing. If this predicate ever needs to change, all four change
+        /// together or none does.</para>
+        ///
+        /// <para>⚠️ The board's <see cref="Select"/> pass asks the same question INLINE
+        /// (<c>_retryAt.TryGetValue(p, out long retry) &amp;&amp; sim.TickCount &lt; retry</c>) rather
+        /// than through this accessor, and that is left alone on purpose: this package is
+        /// pin-neutral, and re-pointing a selection-pass branch at a new method is a determinism-path
+        /// edit for a readability gain. The two are asserted equivalent by
+        /// <c>JobSourceBackoffTests</c> instead.</para>
+        /// </summary>
+        public bool IsBackedOff(Int3 pos, long tick, out long untilTick)
+        {
+            if (_retryAt.TryGetValue(pos, out untilTick) && tick < untilTick) return true;
+            untilTick = 0;
+            return false;
+        }
+
         public void BeginTick(Simulation sim) { }
 
         // ------------------------------------------------------------------ board

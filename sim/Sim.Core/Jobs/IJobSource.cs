@@ -71,6 +71,53 @@ namespace Perilune.Sim
         int CandidateCount { get; }
 
         /// <summary>
+        /// <b>IS A LIVE UNREACHABLE BACKOFF SITTING ON <paramref name="pos"/> AS OF
+        /// <paramref name="tick"/>?</b> <paramref name="untilTick"/> carries that stamp's expiry tick
+        /// when it is, and 0 otherwise (including for a stamp that has already expired).
+        ///
+        /// <para><b>WHAT IT MEANS, EXACTLY — AND IT IS WEAKER THAN "UNREACHABLE".</b> Every source
+        /// here records the same thing under <see cref="TryClaim"/>'s obligation (b): <i>a claim on
+        /// this target was attempted and it failed, recently.</i> It is a RATE LIMITER, not a
+        /// blacklist and not a verdict — <c>HaulJobSource._tileRetryAt</c>'s comment sets out the
+        /// three ways a stamp lifts, and between them there is no way to reach a permanently dead
+        /// target. Read it as <i>"nobody has managed to start work here recently"</i>. In particular
+        /// it does NOT mean the world is impassable: <c>JobWork.TryPathToAdjacent</c> stamps for an
+        /// air refusal exactly as it does for a pathing one, so a caller that needs the two
+        /// distinguished must ask the air question FIRST and only then ask this one.</para>
+        ///
+        /// <para><b>IT UNDER-CLAIMS, BY CONSTRUCTION.</b> Only targets some citizen actually tried
+        /// carry a stamp. A target nobody has attempted — because every crew member is busy, or
+        /// because the board went quiet — carries none, and this returns false for it. That is the
+        /// safe direction for a surface whose purpose is to be believed, and it is the direction
+        /// <c>hosts/web/WireFormat.Blocked.cs</c>'s header already commits this whole family to (*"a
+        /// SUBSET of the truly-refused sites, never a superset"*). ⛔ Do not "fix" it by running a
+        /// second reachability computation somewhere else: a reason derived from a second
+        /// implementation can disagree with the behaviour it exists to explain.</para>
+        ///
+        /// <para><b>WHY IT IS ON THE CONTRACT AND NOT JUST ON ONE CLASS.</b> It was public on
+        /// <see cref="HaulJobSource"/> alone (for the <c>zones</c> channel's back-off bit) and private
+        /// on the other three, so <c>WireFormat.Blocked.cs</c> had to file *"⛔ OMITTED (2) — 'no crew
+        /// can PATH here'"* as a permanent residual: the sim knew the answer and no host could ask
+        /// for it. Lifting it here means <c>JobSystem</c> can fan out and a caller asks ONE question
+        /// about a tile rather than four, and it means a FUTURE source cannot quietly opt out —
+        /// there is deliberately no default implementation, because a source that silently answered
+        /// "never backed off" would put a hole in a surface whose entire subject is silence.</para>
+        ///
+        /// <para><b>NO ENUMERATION, AND NO ORDER OF ITS OWN — this is rule 4, not a preference.</b>
+        /// The backoff lives in a <see cref="System.Collections.Generic.Dictionary{K,V}"/> in every
+        /// implementation, so it is queried BY KEY and never iterated. There is deliberately no
+        /// <c>IEnumerable&lt;Int3&gt;</c> on this contract to tempt anyone into shipping a hash
+        /// container's layout order over the wire. A caller wanting every backed-off site must walk a
+        /// container that HAS a canonical order (the world in z,y,x, or a registry's own list) and
+        /// probe this per site.</para>
+        ///
+        /// <para>Must be PURE: allocation-free, side-effect-free, safe to call many times per tile per
+        /// render off the tick path. It is a read of transient job-board scratch — never saved, never
+        /// hashed, never restored — so calling it cannot move a determinism pin.</para>
+        /// </summary>
+        bool IsBackedOff(Int3 pos, long tick, out long untilTick);
+
+        /// <summary>
         /// Once per tick, in registration order, before any rescan/selection/progress. The place
         /// for lazy one-time resolution of an optional stack system — a source must be inert,
         /// not throw, when the system it needs is absent from the stack.
