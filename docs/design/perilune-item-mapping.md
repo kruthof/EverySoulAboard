@@ -228,8 +228,8 @@ not. See `docs/design/shots/README.md` for the rendered evidence.
 | **FUNCTIONAL total** | **29** |
 | COSMETIC (view-only `decor`, non-hashed) | 21 |
 | MATERIAL (wall/floor tint) | 12 |
-| RESOURCE (ground stack, a sim `ItemKind`) | 8 |
-| **Total** | **70** |
+| RESOURCE (ground stack, a sim `ItemKind`) | 9 |
+| **Total** | **71** |
 
 ⚠️ **THIS TABLE IS PARSED BY A TEST — it is the one part of this document that cannot rot quietly.**
 `client/test/items.test.js` ("the mapping doc's Tally table agrees with the shipped registry, row for
@@ -242,6 +242,13 @@ shape** — the reader also asserts the seven labels, so a reformat is a deliber
 shipped `DeviceKind.CryoPod` and the two CRYO CAPSULE pieces were reclassified. **The TOTAL did not
 move**, because nothing was added or removed — only reclassified, which is precisely the change a
 single total would have hidden and the reason the guard asserts a per-class object.
+
+⚠️ **8 → 9 RESOURCE and 70 → 71 on 2026-07-28 (W0b)**, from `swarf` — the first row in this registry
+that is **not in the mock at all**. `ItemKind.Swarf` arrived with the wreck start's salvage rule
+after the mock was drawn, and on `--ship wreck` a Swarf pile is roughly the first thing the player
+makes, so the gap was drawing a raw-letter `w` chip on the deck plate in the shipping game. The
+total moved WITH the class here, which is the tell that this was an ADDITION and not the
+reclassification recorded below.
 
 ⚠️ **21 → 23 COSMETIC and 68 → 70 on 2026-07-28**, from the two CRYO CAPSULE pieces. Re-counted off
 the shipped registry, not derived from this table — `client/test/items.test.js` asserts the four

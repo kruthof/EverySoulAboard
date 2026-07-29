@@ -38,6 +38,10 @@ import { decode, decodeDecks, decodeDevices, decodeRooms } from '../src/wire/mes
 import { roomDeviceConditions, roomTileRect } from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { codeOnly } from './code-only.js';
+import { buildItem } from '../src/items/index.js';
+import { buildWrecked } from '../src/items/wrecked.js';
+import { itemIdForGlyphChar } from '../src/items/glyph-map.js';
+import { WRECK_COND_BYTE } from '../src/items/wear.js';
 import { DocumentLite as DomDocument, Element as DomEl } from './dom-lite.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -274,28 +278,34 @@ test('the Room Zoom derives the wear layer once per repaint, from the channel', 
 // the whole reason both guards exist rather than either alone. A count cannot be made
 // alias-proof; a count PLUS a behavioural test of the thing being counted can.
 //
-// ⚠️ RE-MEASURED 2026-07-28 BY THE OPERATE VERB — which is the census working exactly as designed,
-// not a failure of it. The door/vent OPEN⇄SHUT verb reached into this seam twice, and BOTH numbers
-// were taken off the shipped file rather than adjusted by arithmetic (CLAUDE.md: re-count, never
-// compute). What moved and why:
-//   • `_deviceCond` 3 → 4: `repaint()` now derives `_operableTiles = roomOperableTiles(_deviceCond)`
-//     from the SAME map, so the OPERATE chips and the wear rows cannot disagree about what stands on
-//     a tile.
-//   • `deviceConditionAt` 1 → 2: `doOperate` calls it to answer a click on a bare floor locally
-//     instead of paying a round trip. The sentence "there is no in-file caller, which IS the
-//     boundary" is therefore RETRACTED — and the boundary it described is intact, because the
-//     boundary was never "nobody may read this map". It is `cond`/`oper` — the WEAR bytes, which the
-//     art lane owns — and those are still read by nobody. The OPERATE verb reads `kind` and the
-//     seventh element `open`, both of which arrived with it.
+// ⚠️⚠️ RE-MEASURED AT THE MERGE, AND *NEITHER* LANE'S NUMBER WAS RIGHT. Two packages landed on this
+// seam on the same day — the OPERATE verb (door/vent OPEN\u21c4SHUT) and W0b (the wrecked-twin art
+// join) — and each re-counted this census honestly against the tree it could see. The verb lane
+// measured `_deviceCond: 4` (its fourth reference is `roomOperableTiles(_deviceCond)`); the art lane
+// measured `_deviceCond: 4` (its fourth is the map handed to `furnitureSvg`, which IS the draw).
+// **In the merged file it is 5**, and no arithmetic either lane could have done would have produced
+// that, because neither knew the other's reference existed.
+//
+// \u21d2 THIS IS THE "re-count, never compute" RULE PAYING FOR ITSELF (CLAUDE.md). The two lanes'
+// numbers were BOTH correct and BOTH stale, git reported no conflict on the counted file itself, and
+// a merge that took either side would have shipped a census that is off by one against the very file
+// it pins. Every number below was re-derived from the MERGED `roomzoom-view.js` with the shipped
+// `codeOnly` stripper, not adjusted from either branch.
+//
+// `deviceConditionAt: 2` likewise resolves in the verb lane's favour: W0b measured 1 and wrote "there
+// is still no in-file caller", which was true on its branch — `doOperate` calls it in the merged
+// tree. The seam's meaning is unchanged and now has two owners: exactly ONE thing draws the wear
+// (`buildTileItem`, through `furnitureSvg`) and exactly ONE thing draws `open` (`operateLayerSvg`).
 const WEAR_SEAM_CENSUS = Object.freeze({
-  // the `let` declaration, the repaint assignment, the accessor's own `.get`, and the OPERATE verb's
-  // `roomOperableTiles(_deviceCond)` derivation
-  _deviceCond: 4,
+  // the `let` declaration, the repaint assignment, the accessor's own `.get`, the OPERATE verb's
+  // `roomOperableTiles(_deviceCond)` derivation, and the map handed to `furnitureSvg` (the draw)
+  _deviceCond: 5,
   // the exported declaration + `doOperate`'s local "is there even a device here?" check
   deviceConditionAt: 2,
   roomDeviceConditions: 2,  // the import + the one repaint call
   decodeDevices: 2,         // the import + the one repaint call
   getDevices: 1,            // the single `Hud.getDevices()` inside that same repaint call
+  buildTileItem: 2,         // the import from items/wear.js + the ONE call in furnitureSvg
 });
 
 /** How many times each wear-seam identifier appears in `src` (which must already be comment-free). */
@@ -307,12 +317,14 @@ function wearSeamCensus(src) {
   return out;
 }
 
-test('nothing draws the wear layer yet — pinned by REFERENCE COUNT, not by a naming convention', () => {
+test('the wear layer draws through exactly ONE seam — pinned by REFERENCE COUNT, not by a naming convention', () => {
   assert.deepEqual(wearSeamCensus(ROOMZOOM), { ...WEAR_SEAM_CENSUS },
-    'the wear seam has grown (or lost) a reference in roomzoom-view.js. If a layer now DRAWS this\n'
-    + 'data, that is a scope change this package deliberately left to the art lane: re-measure the\n'
-    + 'census in the same commit, so the boundary moves as a line in a diff. If the counts FELL, the\n'
-    + 'seam is being dismantled and `deviceConditionAt` is on its way to being inert.');
+    'the wear seam has grown (or lost) a reference in roomzoom-view.js. If it GREW, ask which of the\n'
+    + 'five routes moved: a second `decodeDevices`/`roomDeviceConditions` is a re-derivation of a\n'
+    + 'channel this file already decodes once per repaint, and a second `buildTileItem` (or a bare\n'
+    + 'condition comparison anywhere in this file) is a SECOND ANSWER to "which picture" — the\n'
+    + 'hand-mirror defect that shipped the device-sprite bug. If the counts FELL, the seam is being\n'
+    + 'dismantled: `deviceConditionAt` is on its way to being inert, or the draw has been unwired.');
 });
 
 // ⚠️ INCLUSION CONTROL, not a population count. CLAUDE.md's fourth trap: "non-vacuity by population
@@ -329,9 +341,17 @@ const PLANTED_LAYERS = [
     (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += wreckSvg(_deviceCond, _focus);")],
   ['body += damagedDeviceSvg(...) — a different adjective',
     (s) => s.replace(DRAW_ANCHOR, DRAW_ANCHOR + "\n  body += damagedDeviceSvg(_deviceCond, _focus);")],
-  ['_deviceCond threaded into the EXISTING furnitureSvg() call — where device art already draws',
-    (s) => s.replace('body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles));',
-      'body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles), _deviceCond);')],
+  // ⚠️ THIS ROW USED TO PLANT `_deviceCond` INTO THE `furnitureSvg` CALL — *"the likeliest real
+  // shape, since that is where device art already draws"*. It was right: W0b did exactly that, so
+  // the plant is now the SHIPPED LINE and cannot be planted. It is replaced by its mirror image —
+  // a SECOND, independent wear read threaded into the same call — because the violation this file
+  // must now catch is not "the data got drawn" but "the data got drawn TWICE, two different ways".
+  ['a SECOND wear source threaded into furnitureSvg beside the real one',
+    (s) => s.replace('itemStackTileKeys(_itemTiles), _deviceCond);',
+      'itemStackTileKeys(_itemTiles), roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus));')],
+  ['a bare threshold comparison in this file — a SECOND answer to "which picture"',
+    (s) => s.replace(DRAW_ANCHOR,
+      DRAW_ANCHOR + "\n  body += wearSvg(deviceConditionAt(0, 0), buildTileItem);")],
   ['parts.push(...) then body += parts.join(\'\') — not a `body +=` call at all',
     (s) => s.replace(DRAW_ANCHOR,
       DRAW_ANCHOR + "\n  const wearParts = [];\n  wearParts.push(wearLayerSvg(_deviceCond));\n  body += wearParts.join('');")],
@@ -560,4 +580,88 @@ test('deviceConditionAt applies the room filter on the driven path too', () => {
     + 'the wrong-deck row sharing its tile. A 7 here means the deck filter is dead on the driven path.');
   assert.equal(RoomZoom.deviceConditionAt(RECT.rx + RECT.rw, RECT.ry), null,
     'a row one tile past the focus rect reached the seam — the rect filter is dead on the driven path');
+});
+
+// ═════════════════════════ THE JOIN, DRIVEN through the same shipping controller (W0b)
+//
+// The seam tests above prove the DATA reaches the Room Zoom. They say nothing about whether anything
+// draws it — which is precisely the hole `deviceConditionAt` fell into (`return null` with 843/843
+// green). So this drives the whole path: a real `frame` carrying a device glyph, a real `devices`
+// payload through `Hud.renderDevices`, a real repaint, and the ART READ BACK OUT of the layer HTML
+// and compared BYTE-FOR-BYTE against `buildWrecked` with the surface's own idPrefix.
+//
+// ⚠️ `notEqual` BETWEEN THE TWO RENDERS WOULD NOT BE ENOUGH, and that is the fourth trap (a correct
+// assertion satisfied by an unrelated path): the two payloads differ, so almost any incidental
+// dependence on the channel would move some byte. The assertion is that the exact twin fragment is
+// present in one and absent in the other.
+
+/** A frame for `deck` that is all floor except one tile carrying `glyph`. */
+function frameWithDevice(deck, tx, ty, glyph, w = 24, h = 20) {
+  const f = floorFrame(deck, w, h);
+  f.cells[ty * w + tx] = [glyph.charCodeAt(0), 0, 0, 0];
+  return f;
+}
+
+test('a machine below the wreck floor is PAINTED as its twin on the Room Zoom — driven', () => {
+  const tx = RECT.rx + 1, ty = RECT.ry + 1;
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  Hud.renderFrame(frameWithDevice(RECT.deck, tx, ty, 'S'));   // Glyphs.ForDevice(Scrubber)
+
+  const layers = () => devDoc.getElementById('rz-layers').innerHTML;
+
+  driveDevices([[tx, ty, RECT.deck, 3, 255, 1]]);
+  const intact = layers();
+  driveDevices([[tx, ty, RECT.deck, 3, 0, 0]]);
+  const wrecked = layers();
+
+  // NON-VACUITY: the repaint ran and the scrubber is really on the tile.
+  assert.ok(intact.includes('rz-furniture'), 'the Room Zoom drew no furniture layer — the rig is dead');
+  assert.equal(itemIdForGlyphChar('S'), 'o2-scrubber', 'the fixture glyph no longer resolves');
+
+  // The surface builds with `{ w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-<tx>-<ty>' }`. Only the
+  // idPrefix is needed to reproduce the DEF ids and the twin's distinguishing fills; the geometry is
+  // scaled by `render(w,h)` and is identical between the two states.
+  const opts = { idPrefix: `rz-f-${tx}-${ty}` };
+  const twinOnly = (buildWrecked('o2-scrubber', opts).match(/fill="[^"]+"/g) || [])
+    .filter((f) => !(buildItem('o2-scrubber', opts).match(/fill="[^"]+"/g) || []).includes(f));
+  assert.ok(twinOnly.length > 0, 'non-vacuity: the twin has fills the pristine piece does not');
+
+  for (const f of twinOnly.slice(0, 4)) {
+    assert.ok(wrecked.includes(f),
+      `a device at cond 0 did NOT wear its twin: the layer is missing ${f}. The join is unwired, or\n`
+      + '`_deviceCond` is not being handed to furnitureSvg.');
+    assert.ok(!intact.includes(f),
+      `a PRISTINE device already carries the twin's ${f} — the join is drawing the twin always, which\n`
+      + 'a two-render inequality test would never have caught.');
+  }
+
+  // …and the boundary, on the driven path rather than only in the pure one: one byte either side.
+  driveDevices([[tx, ty, RECT.deck, 3, WRECK_COND_BYTE, 1]]);
+  const atFloor = layers();
+  driveDevices([[tx, ty, RECT.deck, 3, WRECK_COND_BYTE - 1, 1]]);
+  const belowFloor = layers();
+  assert.ok(!atFloor.includes(twinOnly[0]), 'a device AT the floor is not below it — the def says "below"');
+  assert.ok(belowFloor.includes(twinOnly[0]), 'one byte below the floor must already wear the twin');
+});
+
+test('a tile with NO device on the channel keeps its ordinary art', () => {
+  const tx = RECT.rx + 2, ty = RECT.ry + 2;
+  RoomZoom.initRoomZoom({ send: () => {} });
+  Hud.renderDecks(decode(DECKS_JSON));
+  Hud.renderRooms(decode(ROOMS_JSON));
+  Hud.renderFrame(frameWithDevice(RECT.deck, tx, ty, 'S'));
+
+  driveDevices([]);   // the channel says nothing about this tile at all
+  const html = devDoc.getElementById('rz-layers').innerHTML;
+  const opts = { idPrefix: `rz-f-${tx}-${ty}` };
+  const twinOnly = (buildWrecked('o2-scrubber', opts).match(/fill="[^"]+"/g) || [])
+    .filter((f) => !(buildItem('o2-scrubber', opts).match(/fill="[^"]+"/g) || []).includes(f));
+  assert.ok(twinOnly.length > 0, 'non-vacuity');
+  assert.ok(!html.includes(twinOnly[0]),
+    'an unreported tile drew the WRECKED twin. "No row" must mean "not known to be wrecked": on a\n'
+    + 'reconnect, on the first frames, or against an older host, the whole ship would otherwise\n'
+    + 'appear raided — a lie the player cannot tell apart from the real thing.');
+  assert.ok(html.includes('rz-furniture'), 'and the piece must still be drawn');
 });

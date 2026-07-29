@@ -929,8 +929,9 @@ const cryoCapsuleOpen = (s) => {
  *             the 8 resources are renamed, non-mechanically. Cross-checked against the committed
  *             spec by client/test/wrecked.test.js — it is evidence, not decoration.
  *
- * Key order is `ITEM_IDS` order, and the test asserts that by strict deep-equality: a registry row
- * added without a twin, or a twin for a row that does not exist, fails.
+ * Key order is `ITEM_IDS` order MINUS `NO_WRECKED_TWIN` (below), and the test asserts that by strict
+ * deep-equality: a registry row added without a twin AND without a ledger entry, or a twin for a row
+ * that does not exist, fails.
  */
 export const WRECKED = Object.freeze({
   // ── OBJECTS (30) ──
@@ -1016,6 +1017,28 @@ export const WRECKED = Object.freeze({
   // ── CRYO (2) ──
   'cryo-capsule-occupied': { paint: cryoCapsuleOccupied, state: '13%', mockLabel: 'CRYO CAPSULE · OCCUPIED' },
   'cryo-capsule-open':     { paint: cryoCapsuleOpen,     state: '10%', mockLabel: 'CRYO CAPSULE · OPEN' },
+});
+
+/**
+ * REGISTRY ROWS THAT DELIBERATELY HAVE NO WRECKED TWIN — the same ledger idiom this repo keeps for
+ * `NO_GROUND_ITEM_SPRITE` and `NO_DEVICE_GLYPH_ART`: a named entry with a reason, pinned by equality
+ * in `client/test/wrecked.test.js`, so an omission has to be argued in a commit message rather than
+ * accumulate as a default.
+ *
+ * ⚠️ IT WAS EMPTY UNTIL THE `swarf` PIECE, AND "empty" WAS AN IMPORT ARTEFACT, NOT AN INVARIANT. The
+ * mock ships 70 pristine pieces and 70 twins, so every row had one for as long as the registry was
+ * exactly the mock. The moment a piece is drawn for a sim fact the mock predates, the twin set no
+ * longer covers it — and `wrecked.test.js` pins the twin↔mock join as a BIJECTION against the
+ * committed spec, so inventing a 71st twin would break the thing that proves the other 70 are right.
+ */
+export const NO_WRECKED_TWIN = Object.freeze({
+  swarf:
+    'SWARF IS ALREADY THE WRECKED STATE. It is what a machine BECOMES when it is stripped below the '
+    + 'Parts floor (`deconstruct.device_swarf`), so "wrecked swarf" names nothing the sim can reach: '
+    + 'there is no second condition for a pile of turnings to be in, and W9\'s `Degraded` bit — the '
+    + 'one mechanism that would ever give a RESOURCE two states — is unbuilt and, when it lands, '
+    + 'covers the 8 spoilable resources and not this one. The mock, which is the authority for the '
+    + 'twin set and the thing the bijection test measures against, has no SWARF piece at all.',
 });
 
 /** The pristine itemIds that have a wrecked twin, in registry order. */
@@ -1104,7 +1127,11 @@ export function wreckedInfo(pristineId) {
   };
 }
 
-/** Every registry row that is MISSING a wrecked twin. Empty is the invariant; the test pins it. */
+/**
+ * Every registry row that is MISSING a wrecked twin. `Object.keys(NO_WRECKED_TWIN)` is the invariant
+ * — NOT `[]`, since the `swarf` piece — and the test pins the two lists equal, so an UNLEDGERED
+ * omission still fails and a ledgered one names its reason.
+ */
 export function itemsWithoutWreckedTwin() {
   return ITEM_IDS.filter((id) => !WRECKED[id]);
 }

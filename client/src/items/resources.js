@@ -55,7 +55,17 @@
 //   SEALS     ANNULI — thick rings round a dark bore (the only ring-with-a-hole silhouette)
 //   ICE       hard-edged faceted BLOCKS, cold blue     (the only cold hue)
 //   CORPSE    one tall vertical CAPSULE                (the only single tall body)
+//   SWARF     open CURLED RIBBONS, drawn in STROKE     (the only piece with no filled body at all)
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ SWARF IS THE NINTH PIECE AND IT IS NOT IN THE MOCK. The other eight were imported from
+// `docs/design/perilune-item-set.dc.html`; `ItemKind.Swarf` arrived later, with the wreck start's
+// salvage rule (`deconstruct.device_swarf`), and the mock has no piece for it. It is therefore the
+// first REPO-AUTHORED member of the warm set, drawn to the set's own vocabulary rather than
+// transcribed from a source. Two consequences are recorded where they bite: it has **no wrecked
+// twin** (`client/src/items/wrecked.js`'s `NO_WRECKED_TWIN`), because the mock's twin set is 70
+// pieces and a bijection against it is what `wrecked.test.js` pins; and it sits LAST in `ITEMS` so
+// the mock's own order — which that same test walks POSITIONALLY — is undisturbed.
 
 import { item, roundedRectPath, r3 } from './helpers.js';
 
@@ -328,4 +338,72 @@ export const corpse = (opts = {}) =>
     // the blank ID tag
     s.rect({ x: -17, y: -5, w: 34, h: 14, rx: 2, fill: '#3a2a12' });
     s.border({ x: -17, y: -5, w: 34, h: 14, rx: 2, color: '#cf7a33', width: 1 });
+  });
+
+/**
+ * An OPEN spiral arc as a polyline — the swarf ribbon's centreline. PURE: every coordinate goes
+ * through `r3`, exactly as `gearPath` does, so the last-place differences an engine's `Math.cos` /
+ * `Math.sin` are permitted to have cannot reach the string.
+ *
+ * `M…L…` and NOT closed with `Z`: a closed path is a ring (that is SEALS), and the whole separation
+ * of this piece from every other one in the set is that the curl is OPEN — the floor shows through
+ * the gap. 20 segments per revolution is chosen against the downscale: at the ~32 px this is
+ * finally seen, a coarser polyline shows its corners on the outermost turn and the ribbon reads as
+ * a bent bar, i.e. as SCRAP.
+ */
+export function coilPath(cx, cy, r0, r1, a0, sweep) {
+  const steps = Math.max(6, Math.round((Math.abs(sweep) / (Math.PI * 2)) * 20));
+  const pts = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const a = a0 + sweep * t;
+    const r = r0 + (r1 - r0) * t;
+    pts.push(r3(cx + r * Math.cos(a)) + ',' + r3(cy + r * Math.sin(a)));
+  }
+  return 'M' + pts.join('L');
+}
+
+// 71 SWARF ('w') — machining swarf: the bright curled turnings a wrecked machine is stripped down
+// into. `DeconstructSystem` pays 1 Swarf for a device below the Parts floor, so on `--ship wreck`
+// this is the first thing the player's one thawed crew member MAKES, and it is what they will be
+// looking at for the opening ten minutes.
+//
+// THREE DECISIONS, each made against the eight pieces beside it rather than in the abstract:
+//
+// 1. DRAWN IN STROKE, NOT FILL — the only piece in the set that is. Four of the nine resources are
+//    the same grey industrial granulate and hue cannot separate them at tile size, so the set
+//    separates by SILHOUETTE (see the header). Every other silhouette here is a solid: lumps, bars,
+//    discs, blocks, a board, a body. An open curl whose middle is FLOOR is the one shape left that
+//    none of them can be mistaken for, and it survives the downscale because a stroke keeps its
+//    width when the fill it would have had collapses to nothing.
+// 2. EACH RIBBON IS DRAWN TWICE — a wide dark stroke, then a narrower bright one on top. That is
+//    the set's outline idiom (`s.border` on a filled piece) applied to a stroke: without the dark
+//    under-stroke a pale curl over the pale steel-tan floor tint loses its edge entirely, and the
+//    pile reads as a smudge. The two widths are 2 px apart, which is one pixel of dark rim a side
+//    at design scale.
+// 3. IT IS BRIGHTER THAN SCRAP, DELIBERATELY, and that is the one place hue does work here. Scrap
+//    is weathered plate off a hull; swarf is metal cut open THIS MORNING, and freshly cut steel is
+//    the brightest thing in the palette. One curl is brass (`#c9b083`, the set's own brass) because
+//    swarf comes off whatever the machine was made of — a mixed-alloy pile, not a graded one.
+export const swarf = (opts = {}) =>
+  item('swarf', opts, (s) => {
+    ground(s, 0, 24, 40, 11);
+    const curl = (cx, cy, r0, r1, a0, sweep, bright, w) => {
+      const d = coilPath(cx, cy, r0, r1, a0, sweep);
+      s.raw('<path d="' + d + '" fill="none" stroke="#39424b" stroke-width="' + r3(w + 2) +
+        '" stroke-linecap="round" stroke-linejoin="round"/>');
+      s.raw('<path d="' + d + '" fill="none" stroke="' + bright + '" stroke-width="' + r3(w) +
+        '" stroke-linecap="round" stroke-linejoin="round"/>');
+    };
+    // Back of the heap first, then the crown — resources.js's own paint order.
+    curl(-19, 8, 5, 13, -0.5, 4.4, '#8fa2ad', 3.5);
+    curl(19, 12, 4, 11, 2.2, -4.0, '#7d8b96', 3);
+    curl(13, -9, 3.5, 10, 0.6, 3.6, '#c9b083', 3);   // the brass one — a mixed-alloy pile
+    curl(-6, 20, 4, 12, 1.4, -3.2, '#a9b8c2', 3.5);
+    curl(-1, -2, 6, 17, -1.1, 5.0, '#d4e0e7', 4);    // the crown: the longest, brightest turning
+    // Two short straight slivers — the stub ends a cut leaves behind. They are the only straight
+    // edges in the piece and they are deliberately small: enough to say "cut", not enough to start
+    // reading as SCRAP's crossed bars.
+    s.raw('<g transform="translate(-24 -14) rotate(-24)"><rect x="-9" y="-1.5" width="18" height="3" rx="1.5" fill="#b8c6cf"/></g>');
+    s.raw('<g transform="translate(24 -2) rotate(38)"><rect x="-7" y="-1.25" width="14" height="2.5" rx="1.25" fill="#9fadb8"/></g>');
   });

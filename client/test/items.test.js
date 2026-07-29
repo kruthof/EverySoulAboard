@@ -29,6 +29,7 @@ import {
   isResourceItem,
   isDeviceItem,
 } from '../src/items/index.js';
+import { coilPath } from '../src/items/resources.js';
 
 /** All gradient/pattern/filter ids referenced anywhere in an SVG fragment (url(#id) + id="..."). */
 function idsIn(svg) {
@@ -37,16 +38,25 @@ function idsIn(svg) {
   return { defIds, refIds };
 }
 
-test('the registry holds exactly 70 items', () => {
-  assert.equal(ITEM_IDS.length, 70);
-  assert.equal(Object.keys(ITEMS).length, 70);
+// 70 → 71 on 2026-07-28 (W0b): `swarf`, the FIRST registry row that is not in the mock at all.
+// `ItemKind.Swarf` arrived with the wreck start's salvage rule, after the mock was drawn, and on
+// `--ship wreck` a Swarf pile is roughly the first thing the player makes — so it drew a raw-letter
+// `w` chip on the deck plate in the shipping game. The row sits LAST in `ITEMS` on purpose (the
+// mock's order is walked positionally by `wrecked.test.js`) and has no wrecked twin (ledgered by
+// name in `client/src/items/wrecked.js`).
+test('the registry holds exactly 71 items', () => {
+  assert.equal(ITEM_IDS.length, 71);
+  assert.equal(Object.keys(ITEMS).length, 71);
 });
 
 // ⚠️ RE-COUNT, NEVER COMPUTE. A prior review published a wrong sum for a sibling census and it
 // stayed green through BOTH wrong versions, because the assertion was written as one number. This
 // one is a per-class OBJECT, so a class that moves names itself in the failure message; the four
 // numbers below were re-counted off the shipped registry after the cryo rows landed.
-test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 8 resource', () => {
+test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 9 resource', () => {
+  // ⚠️ RE-COUNTED AGAIN AFTER W0b: `swarf` is a ninth RESOURCE row (8 → 9) and the only class that
+  // moved. The total moved WITH it (70 → 71) because this is an addition and not a reclassification
+  // — the opposite of the cryo move recorded below, and the reason both numbers are asserted.
   // ⚠️ RE-COUNTED AGAIN AFTER THE WRECK START (W3): `DeviceKind.CryoPod` now exists, so the two
   // cryo-capsule pieces moved COSMETIC → FUNCTIONAL [exists] and claimed the two state glyphs
   // 'K' (occupied) and 'k' (open). Functional 27 → 29, cosmetic 23 → 21; the total is unchanged
@@ -54,7 +64,7 @@ test('the class tally holds: 29 functional, 21 cosmetic, 12 material, 8 resource
   // single total would have hidden, and the reason this census is a per-class object.
   const by = { functional: 0, cosmetic: 0, material: 0, resource: 0 };
   for (const id of ITEM_IDS) by[ITEMS[id].kind]++;
-  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 8 });
+  assert.deepEqual(by, { functional: 29, cosmetic: 21, material: 12, resource: 9 });
 });
 
 test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value, no unlisted one', () => {
@@ -70,7 +80,7 @@ test('ITEM_KINDS is exactly the set of kinds the registry uses — no dead value
 test('every RESOURCE row names a sim ItemKind and a Glyphs.ForItem char', () => {
   const res = ITEM_IDS.filter((id) => ITEMS[id].kind === 'resource');
   assert.deepEqual(res.sort(), [
-    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals',
+    'controller-module', 'corpse', 'ice', 'parts', 'potato', 'regolith', 'scrap', 'seals', 'swarf',
   ]);
   const kinds = new Set();
   const glyphs = new Set();
@@ -99,7 +109,7 @@ test('RESOURCE_ITEM_BY_KIND_NAME is derived from the registry, not transcribed',
     if (e.kind !== 'resource') continue;
     assert.equal(RESOURCE_ITEM_BY_KIND_NAME[e.itemKind], id, `${e.itemKind} → ${id}`);
   }
-  assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 8);
+  assert.equal(Object.keys(RESOURCE_ITEM_BY_KIND_NAME).length, 9);
   // and the two predicates the view layer classifies with
   assert.equal(isResourceItem('regolith'), true);
   assert.equal(isResourceItem('locker'), false, 'a device is not a resource');
@@ -289,4 +299,89 @@ test('the mapping doc\'s Tally table agrees with the shipped registry, row for r
     [need[6]]: ITEM_IDS.length,
   }, 'docs/design/perilune-item-mapping.md\'s Tally no longer matches client/src/items/. The doc is\n'
     + 'the thing that is wrong here — re-count off the registry and correct the table.');
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// THE SWARF PIECE (W0b) — the one registry row that is not in the mock.
+//
+// Everything above this line treats all 71 rows alike, and that is right for purity, determinism and
+// classification. What no generic assertion can see is the ONE property this piece was drawn for:
+// four of the nine resources are the same grey industrial granulate, hue cannot separate them at the
+// ~32 px a tile is finally shown at, and the set therefore separates them by SILHOUETTE. Swarf's is
+// the OPEN CURL — the only shape in the set whose middle is floor. If the curls silently closed into
+// rings, or lost their dark rim and dissolved into the floor tint, every test above would still
+// pass and a player would see a smudge where the first thing they ever made should be.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+test('a swarf coil is an OPEN path — a closed one is a ring, which is SEALS', () => {
+  const d = coilPath(0, 0, 4, 14, 0, Math.PI * 3);
+  assert.ok(d.startsWith('M'), 'a path starts with a moveto');
+  assert.ok(d.includes('L'), 'the coil is a polyline');
+  assert.ok(!d.includes('Z') && !d.includes('z'),
+    'THE COIL CLOSED. `Z` makes the curl a ring, the floor stops showing through the middle, and\n'
+    + 'the piece becomes SEALS at tile size — the exact collision the silhouette rule exists to stop.');
+  // …and the ends really are apart: a spiral that returned to its start would be a ring drawn the
+  // long way round, which `Z`-freeness alone does not rule out.
+  const pts = d.slice(1).split('L');
+  assert.ok(pts.length >= 20, 'the polyline is fine enough not to show its corners when downscaled');
+  assert.notEqual(pts[0], pts[pts.length - 1], 'the coil returns to its own start — that is a ring');
+  // PURE: same arguments ⇒ byte-identical, and every coordinate is 3 dp (no engine last-place drift).
+  assert.equal(coilPath(0, 0, 4, 14, 0, Math.PI * 3), d);
+  for (const p of pts) {
+    for (const n of p.split(',')) {
+      assert.ok(/^-?\d+(\.\d{1,3})?$/.test(n), `coordinate ${n} is not rounded to 3 dp`);
+    }
+  }
+});
+
+test('the swarf pile is drawn in STROKE, and every ribbon carries its dark rim', () => {
+  const svg = buildItem('swarf', { idPrefix: 'sw' });
+  // Every ribbon is a stroked path with NO fill — the property that keeps a 3 px curl visible when
+  // the fill it would have had collapses to nothing at tile size.
+  const strokedPaths = [...svg.matchAll(/<path d="([^"]+)" fill="none" stroke="([^"]+)" stroke-width="([\d.]+)"/g)];
+  assert.ok(strokedPaths.length >= 10,
+    `the swarf pile has ${strokedPaths.length} stroked ribbons; it needs at least ten (five curls,`
+    + ' each drawn twice — a dark rim then a bright core).');
+  // THE RIM, PAIRWISE. Each curl's `d` must appear TWICE: once dark and wide, once bright and 2 px
+  // narrower. A single-stroke curl is a pale line over a pale floor tint and the pile reads as a
+  // smudge — invisible to every other assertion in this file, which only ever sees "a string".
+  const byPath = new Map();
+  for (const [, d, colour, width] of strokedPaths) {
+    if (!byPath.has(d)) byPath.set(d, []);
+    byPath.get(d).push({ colour, width: Number(width) });
+  }
+  assert.ok(byPath.size >= 5, `only ${byPath.size} distinct curls in the pile`);
+  for (const [d, strokes] of byPath) {
+    assert.equal(strokes.length, 2, `a curl is drawn ${strokes.length}× — it needs a rim and a core`);
+    const [under, over] = strokes;
+    assert.equal(under.colour, '#39424b', 'the UNDER-stroke is the set\'s dark rim colour');
+    assert.notEqual(over.colour, under.colour, 'the core is a different, brighter metal');
+    assert.equal(under.width - over.width, 2,
+      `the rim is ${under.width - over.width} px wider than the core, not 2 — one pixel of dark a`
+      + ' side at design scale is what separates the curl from the floor.'
+      + ` (curl ${d.slice(0, 24)}…)`);
+  }
+});
+
+test('swarf does not look like the three pieces it could be confused with', () => {
+  // NOT a byte comparison of whole fragments: every builder namespaces its own def ids, so any two
+  // rows differ trivially and such a check would pass for two identical drawings. Compare the
+  // GEOMETRY VOCABULARY instead, which is what a player actually reads at tile size.
+  const geo = (id) => {
+    const svg = buildItem(id, { idPrefix: 'x' });
+    return {
+      openStrokes: (svg.match(/fill="none" stroke="/g) || []).length,
+      rects: (svg.match(/<rect /g) || []).length,
+      circles: (svg.match(/<circle /g) || []).length,
+    };
+  };
+  const sw = geo('swarf');
+  assert.ok(sw.openStrokes >= 10, 'swarf is made of open strokes');
+  for (const other of ['regolith', 'scrap', 'parts', 'seals']) {
+    const g = geo(other);
+    assert.ok(g.openStrokes < sw.openStrokes,
+      `${other} now has as many open strokes as swarf (${g.openStrokes} vs ${sw.openStrokes}).\n`
+      + 'The four grey granulates separate by SILHOUETTE, not hue, and the open curl was the last\n'
+      + 'unused shape. If a redraw really needs open strokes there, swarf needs a new silhouette.');
+  }
 });

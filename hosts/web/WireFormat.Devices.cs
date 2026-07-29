@@ -74,6 +74,31 @@ namespace Perilune.Web
     /// on a tile with no <see cref="Perilune.Sim.TileFlags.Explored"/> emits nothing — the same line
     /// <c>marks</c> and <c>items</c> drew: a rendering fix must not become a fog-of-war change.
     ///
+    /// ✅ DISCHARGED (W0b, 2026-07-28) — the paragraph below is kept VERBATIM because it is the
+    /// contract that was honoured, not a stale note. The art that draws this channel
+    /// (<c>client/src/items/wear.js</c>) and the DIRTY-VERSION GATE
+    /// (<c>GameSession.SendDevices</c>) landed in the same package, as required. What the gate does:
+    /// the cell list is compared element-wise against the last EMITTED one and the SERIALIZATION is
+    /// skipped when nothing moved — so the ~2/3 of the cost measured in serialization goes away in
+    /// the steady state, while the BUILD stays (there is no sim-side version counter on
+    /// <c>Device.Condition</c>, and adding one is a sim change for a rendering concern). The wire
+    /// FORMAT is unchanged: this is the dirty-version half of the sketch below, not the
+    /// partial-row half, and it therefore needs no client merge state and no new resync contract.
+    /// The saving is stated as MEASURED in the package report; a count of skipped bytes is not a
+    /// speed-up.
+    ///
+    /// ⚠️ TWO CLAIMS IN THE BOX BELOW ARE NOW FALSE AND ARE RETRACTED HERE RATHER THAN EDITED OUT.
+    /// <b>(1) "for no consumer" / "just as consumerless".</b> Both surfaces draw this channel now
+    /// (<c>client/src/items/wear.js</c>), so the ~26 µs host cost and the ~2.62 µs client cost buy a
+    /// picture the player can see. <b>(2) "At boot all 146 grid rows read cond = 255".</b> True of
+    /// <c>--ship grid</c> and NOT of the ship the game opens on: <c>--ship wreck</c> boots with 41 of
+    /// its 72 tile-resident devices below the wreck floor, which is the whole point of it.
+    /// <b>WHAT IS NOT DONE, stated so it is not mistaken for done:</b> the CLIENT half is NOT
+    /// memoised. <c>decodeDevices</c> + <c>roomDeviceConditions</c> still run once per Room Zoom
+    /// repaint and once per Overview paint. That was worth doing while the cost bought nothing; now
+    /// that it buys the art it is an ordinary optimisation with no merge condition attached, and it
+    /// is deliberately left alone rather than bundled in.
+    ///
     /// ⛔ A CONDITION ON THE NEXT LANE, NOT AN OPTION — THE DELTA SCHEME LANDS *WITH* THE ART.
     /// This channel is rebuilt AND RE-SERIALIZED on every render, ten times a second, whether or not
     /// a single byte moved. <c>GameSession.Send</c> dedupes by whole-payload string equality, so it
@@ -233,6 +258,27 @@ namespace Perilune.Web
 
             public DeviceCell(int x, int y, int deck, int kind, int cond, int oper, int open)
             { X = x; Y = y; Deck = deck; Kind = kind; Cond = cond; Oper = oper; Open = open; }
+
+            /// <summary>ALL SEVEN FIELDS, explicitly. Used by <c>GameSession.SendDevices</c>'s
+            /// dirty-version gate, whose sufficiency argument is that the compared value IS the
+            /// serializer's whole input — so it must compare everything the serializer reads, and a
+            /// field added to this tuple must be added here IN THE SAME COMMIT or the gate silently
+            /// starts skipping renders in which that field moved.
+            ///
+            /// <para>NOT <c>Equals</c>/<c>IEquatable</c> and NOT <c>==</c>: a struct with no override
+            /// falls back to <c>ValueType.Equals</c>, which reflects and boxes, and the gate would
+            /// then cost more per render than the serialization it avoids. A named method also makes
+            /// the call site say what it is doing.</para></summary>
+            /// <para>⚠️ <c>Open</c> was added AT THE MERGE of the OPERATE verb (which added the
+            /// seventh element) with the delta gate (which added this method): the two lanes touched
+            /// this struct from opposite sides and git reported no conflict on the field list itself.
+            /// Without this clause a door/vent toggle moves ONLY <c>Open</c>, the gate skips, and the
+            /// OPEN⇄SHUT chip silently stops updating — which is the most reachable cell in the
+            /// matrix, because a toggle is player-driven and <c>AddDevice</c> appends, so a door the
+            /// player just built IS the last row.</para></summary>
+            public bool SameAs(in DeviceCell o) =>
+                X == o.X && Y == o.Y && Deck == o.Deck && Kind == o.Kind && Cond == o.Cond && Oper == o.Oper
+                && Open == o.Open;
         }
 
         /// <summary>The wire byte for a raw <see cref="Perilune.Sim.Device.Condition"/>:

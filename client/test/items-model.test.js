@@ -521,7 +521,12 @@ test('the Room Zoom draws the item layer, and main.js dispatches the channel', (
     + 'any device on the tile');
   assert.match(ROOMZOOM, /body \+= itemStackSvg\(_itemTiles, _focus\);/,
     'roomzoom-view.js must concatenate itemStackSvg(_itemTiles, …) into the layer stack');
-  assert.match(ROOMZOOM, /furnitureSvg\(roomCells\(frame, _focus\), itemStackTileKeys\(_itemTiles\)\)/,
+  // ⚠️ THE TRAILING `\)` WAS DROPPED FROM THIS PATTERN BY W0b, DELIBERATELY, and saying so is the
+  // point: `furnitureSvg` grew a THIRD argument (`_deviceCond`, the wear join) and the old anchored
+  // pattern would have gone red for a change that does not touch this guard's subject at all. What
+  // this guard is about is the SECOND argument — that the furniture layer is told which tiles the
+  // item layer draws on. It is now pinned as a prefix, so a fourth argument does not re-break it.
+  assert.match(ROOMZOOM, /furnitureSvg\(roomCells\(frame, _focus\), itemStackTileKeys\(_itemTiles\)/,
     'the furniture layer must be told which tiles the item layer draws on, or the frame-derived '
     + 'rendering of the same pile — the unknown chip, and now the RESOURCE PIECE itself — is stacked '
     + 'underneath the authoritative one');

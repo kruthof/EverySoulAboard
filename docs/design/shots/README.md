@@ -9,6 +9,58 @@ Regenerate with the tool named beside each set — never hand-edit, never crop b
 
 ---
 
+## `wear-*` — THE WEAR JOIN: a wrecked machine wearing its twin, ON THE RUNNING GAME (2026-07-28, W0b)
+
+Tool: **`client/tools/wear-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.
+
+```
+./play.sh --host-port 8360 --client-port 8361 --no-open      # play.sh opens --ship wreck
+node client/tools/wear-shot.mjs --out docs/design/shots --host-port 8360 --client-port 8361
+```
+
+⚠️ **THIS SET SUPERSEDES THE `wrecked-*` GALLERY'S CAVEAT AND THE `wreck-*` SET'S ⛔ BULLET.** Both
+say, correctly for the day they were written, that the twins are *"deliberately not wired to either
+surface"* and that *"the capsule ART is the same art at `Condition 0.94` and at `0.04`"*. **Neither is
+true any more.** `client/src/items/wear.js` joins the `devices` channel's `cond` byte to the twin set
+at `wear.wreck_threshold` (0.25 = wire byte 64), and both SVG surfaces draw through it. The old
+paragraphs are kept where they are, unedited, because they record what was true then — read them with
+this heading in mind.
+
+| file | what it shows |
+|---|---|
+| `wear-1-reactor.png` | the Room Zoom on REACTOR. **Three SOLAR WINGS in two states**: one intact (`cond 79/255` = 0.31, above the floor) drawn as the clean framed blue array, and two below the floor (`46` and `15`) drawn as the post-raid twin — punched through, its strut torn loose, an ember at the corner. Two batteries and a terminal beside them are wrecked too. The palette, the caption and the ground stacks are the ordinary surface; only the pictures changed. |
+| `wear-2-reactor-crop.png` | a 3× crop of that row, so the intact wing and the two wrecked ones are separable at a glance. **This is the shot the join exists for**: one machine, one kind, two paintings, chosen by a number the sim owns. |
+| `wear-3-cryobay.png` | the Room Zoom on CRYO BAY — **twelve capsules in four combinations**: OPEN and OCCUPIED × intact and wrecked. |
+| `wear-4-cryobay-crop.png` | a 3× crop of the capsule rows. The eight intact pods glow blue with a sleeper visible; the four below the floor (`cond 10, 18, 8, 15`) are dark, iced and unlit, with the body bag drawn over them by the `items` layer. The one OPEN capsule is the hinged-back piece at the top. |
+| `wear-5-swarf-cryobay.png` | the Room Zoom after a strip has run: a **SWARF pile on the deck plate**. |
+| `wear-6-swarf-crop.png` | a 3× crop centred on that tile — bright curled turnings with a contact shadow, beside a wrecked capsule for scale. |
+
+### What these pictures DO and DO NOT claim
+
+- ✅ **The join reaches BOTH standard surfaces through one seam.** `client/src/items/wear.js` is the
+  only module outside `items/` that may name the wrecked set, pinned by `client/test/wrecked.test.js`.
+- ✅ **THE SWARF PILE IS EARNED, NOT PLACED.** There is no verb that puts an item on a floor. The tool
+  designates a **STRIP** on real wrecked machines through the same `{cmd:'strip'}` a player's `V` drag
+  lowers to, runs the host at its top speed rung, and waits for a kind-9 row to appear on the `items`
+  channel. It **fails rather than photographing anything else** if none ever does — so this picture is
+  evidence that the wreck's opening loop produces the piece, not just that the piece renders.
+- ⛔ **The threshold is a RENDERING decision, not a second authority.** The client never re-derives a
+  rule: `oper` rides the wire precisely because the failure threshold is per-kind. "Which picture" is
+  a uniform question about paintings, and if `wear.def` moves the floor the art follows one edit
+  later — a machine simply keeps its clean picture a little past the cliff in the meantime.
+- ⛔ **The byte quantisation moves the visible cliff by 0.00098 of a machine's life — 0.098 %** below
+  the def (half-up rounding of a 256-state byte). `cond < 64` is exactly `Condition < 63.5/255 =
+  0.2490196` against the sim's `< 0.25`, so the two disagree on `[0.249020, 0.25)` and the client is
+  LATE there — a machine in that sliver is below the floor and still wearing its clean picture.
+  ⚠️ **An earlier version of this bullet said ≈0.0025 and it was wrong by a whole byte**, because it
+  measured the gap between two byte *values* instead of byte 64's *pre-image* under half-up rounding.
+  Corrected, and now pinned exactly by `client/test/wear-join.test.js` rather than published loose.
+- ⛔ **`swarf` has NO wrecked twin** and never will draw one — it *is* the wrecked state. Ledgered by
+  name as `NO_WRECKED_TWIN` in `client/src/items/wrecked.js`.
+- One run, one seed, one machine. They claim the ship RENDERS. **The owner judges the art.**
+
+---
+
 ## `wreck-*` — `--ship wreck`, the wreck start, ON THE RUNNING GAME (2026-07-28)
 
 Tool: **`client/tools/wreck-shot.mjs`** (`--out docs/design/shots`). Regenerate, never hand-edit.

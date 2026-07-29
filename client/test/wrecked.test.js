@@ -38,8 +38,34 @@ import {
   wreckedInfo,
   itemsWithoutWreckedTwin,
   orphanWreckedTwins,
+  NO_WRECKED_TWIN,
 } from '../src/items/wrecked.js';
 import { codeOnly } from './code-only.js';
+
+// The registry rows that come FROM THE MOCK, in the mock's own order — `ITEM_IDS` minus the ledger
+// of deliberate omissions. Every positional join in this file (label[i] ↔ id[i]) is against THIS
+// list and not against `ITEM_IDS`, because the mock is 70 pieces and the registry is no longer.
+//
+// ⚠️ DERIVED, NOT A SECOND LIST. Writing the 70 ids out here would be a transcription of `ITEMS`
+// that could fall out of step with it silently — the exact defect `glyph-map.js` exists to remove.
+//
+// ⛔ THE NEXT SENTENCE USED TO READ *"a ledgered row appended anywhere but the END would still break
+// the positional join"*. **THAT IS FALSE and mutation proves it**: `filter` removes a ledgered row
+// from wherever it sits, so this list is the mock's 70 in the mock's order no matter where `swarf`
+// lives — moving it mid-registry leaves the whole suite green (85 pass / 0 fail over the four files
+// that could see it). The registry carried the same wrong claim beside the row and it is corrected
+// there too.
+//
+// ⇒ WHAT KEEPS THE TWO DEFINITIONS OF "MOCK ROW" FROM DRIFTING is `the ledger is exactly the rows
+// with no twin` below — a `deepEqual` both ways, so an UNLEDGERED row cannot slip in and a stale
+// ledger entry cannot linger. The position is free; the ledger is not.
+//
+// ⚠️ THE PARENTHESIS HERE READ "(measured: 12 tests red)" AND THAT OVERSTATED THE LEDGER'S SHARE.
+// Twelve go red, but **three or four are about the ledger** — this test, `every registry row has
+// exactly one wrecked twin`, `hasWreckedTwin follows the registry`, and the positional label walk.
+// The rest are size-census, class-tally, mapping-doc and painter-name guards that fire on ANY
+// registry growth, and the probe row duplicated a glyph as well. A red count is not an attribution.
+const MOCK_IDS = ITEM_IDS.filter((id) => !(id in NO_WRECKED_TWIN));
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPEC_PATH = join(HERE, '..', '..', 'docs', 'design', 'perilune-item-set.dc.html');
@@ -154,9 +180,35 @@ test('the state census: 62 pieces carry a percentage, 8 carry the em-dash', () =
 // `WRECKED_IDS.length === ITEM_IDS.length` perfectly true. `deepEqual` on the ORDERED id lists is
 // the only form that regresses on a rename, a reorder, a swap, an omission AND an extra.
 test('every registry row has exactly one wrecked twin, and no twin is an orphan', () => {
-  assert.deepEqual(WRECKED_IDS, [...ITEM_IDS], 'the twin key set is exactly ITEM_IDS, in order');
-  assert.deepEqual(itemsWithoutWreckedTwin(), [], 'registry rows with no twin');
+  assert.deepEqual(WRECKED_IDS, MOCK_IDS, 'the twin key set is exactly the mock rows, in order');
   assert.deepEqual(orphanWreckedTwins(), [], 'twins with no registry row');
+});
+
+// ⚠️ THE LEDGER IS THE ONLY WAY A ROW MAY HAVE NO TWIN, AND IT IS PINNED BOTH WAYS. `deepEqual` of
+// the two ORDERED lists — not a count, and not a subset check — so an unledgered omission fails
+// (a row silently missing its twin) AND a stale ledger entry fails (a row that has since been given
+// one). The size is pinned separately below because a swap of one omission for another leaves both
+// lists the same length.
+test('the ledger is exactly the rows with no twin, and its reasons are real prose', () => {
+  // ⚠️ SORTED, DELIBERATELY, AND THAT IS THE OPPOSITE CALL FROM `WRECKED_IDS` vs `MOCK_IDS` ABOVE.
+  // There the ORDER carries meaning — it is the mock's own order — so the comparison is unsorted on
+  // purpose. Here the two sides are ordered by unrelated accidents (`ITEM_IDS` order on the left,
+  // object INSERTION order on the right), so an unsorted `deepEqual` is inert at one entry and can
+  // go red spuriously at two, for a difference that means nothing. What is being asserted is SET
+  // equality both ways: no unledgered omission, no stale ledger entry.
+  assert.deepEqual([...itemsWithoutWreckedTwin()].sort(), Object.keys(NO_WRECKED_TWIN).sort(),
+    'a registry row has no wrecked twin and no NO_WRECKED_TWIN entry (or the ledger names a row\n'
+    + 'that has one). A missing twin is a decision — write it in the ledger with its reason.');
+  // NON-VACUITY: the ledger must not be trivially satisfiable by an empty reason.
+  for (const [id, why] of Object.entries(NO_WRECKED_TWIN)) {
+    assert.ok(ITEMS[id], `${id} is ledgered but is not a registry row at all`);
+    assert.ok(typeof why === 'string' && why.length > 80, `${id}: the ledger entry has no reason`);
+  }
+  assert.equal(Object.keys(NO_WRECKED_TWIN).length, 1,
+    'THE NO-TWIN LEDGER CHANGED SIZE. It went 0 → 1 when `swarf` landed — a piece drawn for a sim\n'
+    + 'fact the mock predates, so the mock has no twin for it. Growing it means another piece was\n'
+    + 'drawn outside the mock; SHRINKING it means the mock was re-imported with a twin, in which\n'
+    + 'case add the twin rather than deleting the reason.');
 });
 
 test('every twin label and condition badge matches the mock, row for row', () => {
@@ -181,10 +233,10 @@ test('every twin label and condition badge matches the mock, row for row', () =>
 // a second time.
 test('62 twins reuse the pristine label verbatim; the 8 resources are renamed', () => {
   const labels = mockPristineLabels();
-  assert.equal(labels.length, ITEM_IDS.length, 'positional alignment requires equal lengths');
+  assert.equal(labels.length, MOCK_IDS.length, 'positional alignment requires equal lengths');
   const verbatim = [];
   const renamed = [];
-  ITEM_IDS.forEach((id, i) => {
+  MOCK_IDS.forEach((id, i) => {
     // ⚠️ GUARDED, not `WRECKED[id].mockLabel` bare. Deleting one twin row made that throw a
     // TypeError, and a guard that crashes reports nothing — the mutation harness scores it as a
     // CRASH rather than a semantic RED, which is the third trap in reverse.
@@ -210,7 +262,7 @@ test('the 8 renames: seven keep the stem, CONTROLLER MODULE does not', () => {
   const kept = [];
   const shortened = [];
   for (const id of ['regolith', 'potato', 'scrap', 'parts', 'controller-module', 'seals', 'ice', 'corpse']) {
-    const i = ITEM_IDS.indexOf(id);
+    const i = MOCK_IDS.indexOf(id);
     const label = WRECKED[id].mockLabel;
     assert.ok(label.includes(' · '), `${id}: a renamed piece carries a " · STATE" suffix`);
     (stemOf(label) === labels[i] ? kept : shortened).push(id);
@@ -226,7 +278,7 @@ test('the 8 renames: seven keep the stem, CONTROLLER MODULE does not', () => {
   // cost is that a reader believes two guarantees where there is one.
   assert.equal(kept.length, 7);
   assert.equal(WRECKED['controller-module'].mockLabel, 'CONTROLLER · FRIED');
-  assert.equal(labels[ITEM_IDS.indexOf('controller-module')], 'CONTROLLER MODULE');
+  assert.equal(labels[MOCK_IDS.indexOf('controller-module')], 'CONTROLLER MODULE');
 });
 
 // ⚠️ CLAUDE.md TRAP 6, AS AN INCLUSION TEST RATHER THAN AN ASSERTION ABOUT INTENT.
@@ -514,7 +566,26 @@ test('wreckedInfo derives size and kind from the pristine row, and carries no co
 // bare word `wrecked` over COMMENT-STRIPPED source. A module cannot reach this set without naming
 // it — the file, the exports and the id prefix all carry the word — so the weakest possible needle
 // is also the strongest available one, and stripping comments is what keeps it from firing on prose.
-test('no client surface reaches for the wrecked set, and index.js does not know it exists', () => {
+// ⚠️ THIS TEST'S SUBJECT CHANGED WITH W0b AND ITS MACHINERY DID NOT, which is the only honest way to
+// move a boundary. It used to assert that NO module outside `items/` names the wrecked set, on the
+// grounds that *"wiring a twin to a surface needs a device CONDITION on the wire and an owner
+// decision about the threshold — neither exists yet."* Both exist now: the `devices` channel carries
+// `Condition`, and `client/src/items/wear.js` makes the threshold decision once, against
+// `wear.wreck_threshold`.
+//
+// ⛔ AND LEAVING THE TEST AS IT WAS WOULD HAVE BEEN A FALSE GREEN, not a stale pin. The sweep
+// EXCLUDES `items/`, so `wear.js` could import the whole twin set and every surface could draw it
+// through a name that does not contain the string "wrecked", with this assertion perfectly happy.
+// A guard whose scope filter excludes the violation is CLAUDE.md's fourth trap, and it would have
+// fired here on the very next commit.
+//
+// ⇒ THE INVARIANT IS NOW "ONE DOOR", which is the thing actually worth protecting: `wear.js` is the
+// only module that may name the wrecked set, and every surface goes through it. That keeps the
+// property the original was really defending — the twins revert by deleting two files — while making
+// the sweep able to see the shape that replaced the one it was written for.
+const WRECKED_DOOR = 'wear.js';
+
+test('the wrecked set has exactly ONE door (items/wear.js), and index.js does not know it exists', () => {
   const index = readFileSync(join(HERE, '..', 'src', 'items', 'index.js'), 'utf8');
   assert.ok(!codeOnly(index).includes('wrecked'),
     'client/src/items/index.js references the wrecked set. The dependency must run ONE WAY\n'
@@ -564,7 +635,33 @@ test('no client surface reaches for the wrecked set, and index.js does not know 
 
   for (const [rel, path] of files) {
     assert.ok(!reaches(readFileSync(path, 'utf8')),
-      `client/src/${rel} reaches for the wrecked set. Wiring a twin to a surface needs a device\n`
-      + 'CONDITION on the wire and an owner decision about the threshold — neither exists yet.');
+      `client/src/${rel} reaches for the wrecked set DIRECTLY. There is exactly one door and it is\n`
+      + `client/src/items/${WRECKED_DOOR}: a surface asks it for a tile's art and it answers with the\n`
+      + 'piece or its twin. A second reader is a second copy of "below what condition does a tile\n'
+      + 'wear its twin?", which is the hand-mirror defect that shipped the device-sprite bug.');
+  }
+
+  // ⇒ AND INSIDE `items/`, WHICH THE SWEEP ABOVE EXCLUDES: exactly TWO modules may name the set —
+  // the set itself (which names itself on every line) and its one door. Without this leg the
+  // exclusion is a hole big enough to drive the whole join through.
+  const inItems = readdirSync(join(HERE, '..', 'src', 'items'), { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.js'))
+    .map((e) => e.name)
+    .filter((name) => name !== 'wrecked.js'
+      && reaches(readFileSync(join(HERE, '..', 'src', 'items', name), 'utf8')));
+  assert.deepEqual(inItems, [WRECKED_DOOR],
+    'the modules inside client/src/items/ that reach for the wrecked set are not exactly\n'
+    + `[${WRECKED_DOOR}]. If this list GREW, the join has a second home. If it EMPTIED, the`
+    + ' door was renamed or the join was dismantled — in which case nothing draws the twins\n'
+    + 'at all and the whole set is unreachable again, which is the state W0b existed to end.');
+
+  // NON-VACUITY for that leg specifically: the door must really be a file, and it must really be
+  // the thing the surfaces import. A `deepEqual` against a one-element list is satisfied by a
+  // directory read that happened to return one match for the wrong reason.
+  const door = readFileSync(join(HERE, '..', 'src', 'items', WRECKED_DOOR), 'utf8');
+  assert.ok(codeOnly(door).includes('buildWrecked'), `items/${WRECKED_DOOR} does not call buildWrecked`);
+  for (const surface of ['ui/roomzoom-view.js', 'ui/overview-scene.js']) {
+    assert.ok(codeOnly(readFileSync(join(HERE, '..', 'src', surface), 'utf8')).includes('buildTileItem'),
+      `client/src/${surface} does not go through the door — it draws no twins at all`);
   }
 });

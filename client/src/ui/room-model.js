@@ -750,16 +750,22 @@ export function itemIdForStockKind(kind) {
  * `devices` channel becomes `'tx,ty' → {tx, ty, kind, cond, oper, open}`; everything else is dropped.
  * PURE.
  *
- * ⚠️ THE SENTENCE BELOW IS NO LONGER TRUE OF THE WHOLE ROW and is kept because its subject —
- * `cond` — is still undrawn. `open` (appended with the OPERATE verb, 2026-07-28) IS drawn, by
- * `operateLayerSvg` and by nothing else. `cond`/`oper` remain the wrecked-art lane's, untouched here.
+ * ⛔ SUPERSEDED (W0b, 2026-07-28). The paragraph here read *"NOTHING DRAWS THIS YET, ON PURPOSE. The
+ * join it exists for … is a SEPARATE PACKAGE against `client/src/items/`, a directory a parallel lane
+ * owns."* **Both clauses are now false**, and this is the one function whose output the Room Zoom
+ * actually feeds into `furnitureSvg`: `roomzoom-view.js` derives `_deviceCond` from it once per
+ * repaint and hands it to the furniture layer, which asks `client/src/items/wear.js` for the piece or
+ * its post-raid twin. Its deck-wide sibling `deckDeviceConditions` does the same for the Overview.
  *
- * ⚠️ NOTHING DRAWS `cond` YET, ON PURPOSE. The join it exists for — "pick the wrecked art piece when
- * `cond` is low" — is a SEPARATE PACKAGE against `client/src/items/`, a directory a parallel lane
- * owns, and doing it here would be a textual merge collision with that lane on exactly the shape that
- * has already broken this repo once (`CLAUDE.md`, "a clean auto-merge is NOT a clean merge"). What
- * this lane ships is the DATA reaching the surface: `Device.Condition` has never been on the wire at
- * all, so no art package was possible before it.
+ * (The identical claim was retracted in three other places in the same package and missed here, which
+ * is exactly how a stale comment survives: the copies that are read get fixed and the copy that is
+ * TRUE of the live path does not.)
+ *
+ * ⇒ AND EVERY BYTE OF THE ROW IS NOW DRAWN, BY TWO DIFFERENT LANES THAT MERGED HERE. `cond` feeds the
+ * wrecked-twin join above; `open` — the seventh element, appended by the OPERATE verb the same day —
+ * is drawn by `operateLayerSvg` and by nothing else. The two arrived independently and neither knew
+ * the other was coming, which is why this comment is written from the merged file rather than from
+ * either lane's view of it.
  *
  * A MAP AND NOT A LIST, unlike `roomMarkTiles`/`roomItemTiles`. Those two layers can legitimately hold
  * several rows per tile (an order and a zone; several stacks), so a list is their honest shape. A
@@ -787,6 +793,36 @@ export function roomDeviceConditions(devices, focusRoom) {
     out.set(tx + ',' + ty, {
       tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0, open: d.open | 0,
     });
+  }
+  return out;
+}
+
+/**
+ * The same layer for a WHOLE DECK — what the Level-1 Overview needs, which has no focus rect.
+ *
+ * ⚠️ A SEPARATE FUNCTION AND NOT A NULLABLE `focusRoom`, which was the first shape tried. A rect
+ * argument that means "everything" when omitted reads at every call site as "I forgot the rect", and
+ * the two surfaces would then differ by an absence rather than by a name. It is also not the Room
+ * Zoom's function with a full-deck rect passed in: the Overview never has a rect to pass, and
+ * inventing `{rx:0, ry:0, rw:frame.w, rh:frame.h}` at the call site would put frame geometry into a
+ * device query that does not otherwise need it.
+ *
+ * Same key (`"x,y"`), same value shape and the same LAST-ROW-WINS rule as `roomDeviceConditions`, so
+ * `client/src/items/wear.js` sees one contract from both surfaces.
+ *
+ * @param {{x:number,y:number,deck:number,kind:number,cond:number,oper:number}[]|null} devices
+ *        decodeDevices() output
+ * @param {number} deck
+ * @returns {Map<string,{tx:number,ty:number,kind:number,cond:number,oper:number}>}
+ */
+export function deckDeviceConditions(devices, deck) {
+  const out = new Map();
+  if (!Array.isArray(devices)) return out;
+  const dz = deck | 0;
+  for (const d of devices) {
+    if (!d || (d.deck | 0) !== dz) continue;
+    const tx = d.x | 0, ty = d.y | 0;
+    out.set(tx + ',' + ty, { tx, ty, kind: d.kind | 0, cond: d.cond | 0, oper: d.oper | 0 });
   }
   return out;
 }

@@ -24,6 +24,10 @@ import { blockedLayerSvg, blockedKeyHtml } from './blocked-overlay.js';
 import { acceptsRowHtml } from './accepts-row.js';
 import { decksView } from './decks-model.js';
 import { buildItem, isResourceItem } from '../items/index.js';
+// THE WEAR JOIN, and the ONLY door from a surface to the wrecked twins (client/src/items/wear.js
+// carries the threshold and its justification; `client/test/wrecked.test.js` pins that this file
+// never imports `wrecked.js` itself).
+import { buildTileItem } from '../items/wear.js';
 import { pawnSprite } from '../render/pawn-svg.js';
 import { isTextEntryTarget } from '../input/controls.js';
 import { roomMaterial } from '../theme/warm-tokens.js';
@@ -301,7 +305,21 @@ export function exitRoom() {
  * a round trip — and `operateLayerSvg` reads `open`. Neither is the art join, and the art lane's
  * `client/src/items/` is untouched by this package.
  *
- * Read from `_deviceCond`, which `repaint()` refreshes once per frame from the live channel.
+ * ⚠️ THE PARAGRAPH THAT STOOD HERE IS QUOTED AND SUPERSEDED (W0b, 2026-07-28). It read: *"IT HAS NO
+ * CALLER IN THIS PACKAGE, AND THAT IS THE POINT. The wrecked-art join … belongs to the parallel lane
+ * that owns `client/src/items/`."* That lane is this one and the join has landed: `furnitureSvg`
+ * reads `_deviceCond` directly and hands each tile's `cond` to `buildTileItem`.
+ *
+ * THIS ACCESSOR IS KEPT ANYWAY. It is the tested seam other code (a tooltip, a future inspector)
+ * reads a tile's wear through without importing the channel decode, and
+ * `client/test/surface-boundary.test.js` names it. Read from `_deviceCond`, which `repaint()`
+ * refreshes once per frame from the live channel.
+ *
+ * ⚠️ CORRECTED AT THE MERGE: W0b's version of this paragraph continued *"and not because it is used
+ * internally — it is not."* That was true on its own branch and is FALSE in the merged file — the
+ * OPERATE verb's `doOperate` calls this accessor to answer a click on a bare floor without a round
+ * trip (see the paragraph above, which arrived from the other lane). Two lanes each described this
+ * seam accurately for the tree they could see; neither sentence was true of the tree that shipped.
  */
 export function deviceConditionAt(tx, ty) {
   return _deviceCond.get((tx | 0) + ',' + (ty | 0)) || null;
@@ -378,14 +396,12 @@ function repaint() {
   // The per-device WEAR STATE, from the `devices` channel — the only place `Device.Condition` reaches
   // this client at all. Derived here beside the other three for the same reason: one decode per
   // repaint, one truth for the room.
-  // ⚠️ DELIBERATELY NOT DRAWN BY THIS PACKAGE. The wrecked-art join lives in `client/src/items/`,
-  // which a parallel lane owns; the exported `deviceConditionAt` above is the seam it reads. Wiring
-  // the data to the surface and DRAWING it are two packages on purpose — the data never existed before.
-  // ⚠️ AND IT IS PAID FOR ON EVERY REPAINT, FOR ZERO CONSUMERS TODAY. Measured in independent
-  // review: `decodeDevices` + `roomDeviceConditions` cost ~2.62 µs per repaint at 146 rows
-  // (`--ship grid`, median n = 5). Small, real, and stated rather than omitted — the host half is
-  // ~29.4 µs of a ~425 µs render (~6 %), and the delta scheme that removes it is a CONDITION on the
-  // art package, not an option for it (see the header of `hosts/web/WireFormat.Devices.cs`).
+  // ⚠️ IT IS DRAWN NOW (W0b). The two ⚠️ notes that stood here — *"DELIBERATELY NOT DRAWN BY THIS
+  // PACKAGE"* and *"PAID FOR ON EVERY REPAINT, FOR ZERO CONSUMERS TODAY"* — are both discharged:
+  // `furnitureSvg` below takes `_deviceCond` and a machine at or below `wear.wreck_threshold` wears
+  // its post-raid twin. The ~2.62 µs per repaint (146 rows, `--ship grid`, median n = 5) is now
+  // spent on something the player sees, and the host's ~29.4 µs half is bounded by the dirty-version
+  // scheme that shipped with this join (see `GameSession.BuildDevices`).
   _deviceCond = roomDeviceConditions(decodeDevices(Hud.getDevices()), _focus);
   // The REFUSED orders, from the `blocked` channel — which dig/strip/build sites in this room the sim
   // will not staff, and why. Derived here with the other four for the same reason: one decode per
@@ -454,7 +470,10 @@ function paintLayers(frame, crew, designs, decor) {
   // same pile — the VS-Z-25 unknown chip, and, since the ground-item art landed, the RESOURCE PIECE
   // itself — is not stacked underneath the authoritative one. Real furniture art is never suppressed,
   // so a stack on a device tile keeps the device's sprite and gains its pile above it.
-  body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles));
+  // `_deviceCond` — the `devices` channel's per-tile wear, derived in `repaint()` — is handed in so
+  // a machine at or below the wreck floor wears its post-raid twin. It is a THIRD argument rather
+  // than a module-level read so `furnitureSvg` stays a pure function of what it is given.
+  body += furnitureSvg(roomCells(frame, _focus), itemStackTileKeys(_itemTiles), _deviceCond);
   // WP-2 — debris + dig/strip marks. ⚠️ The old lead *"read off the frame's `cell[1]`"* is FALSE: the
   // kinds come from the `marks` channel now, decoded in `repaint()` into `_markTiles`. ABOVE the
   // material layer, which paints an opaque U*1.2 swatch over any built wall (so a strip mark under it
@@ -617,15 +636,22 @@ function materialLayerSvg(tiles) {
  *  REAL FURNITURE ART IS NEVER SUPPRESSED: a device on a stocked tile still draws its sprite, because
  *  the pile is about what is LYING there and the sprite about what is INSTALLED there, and both are
  *  true. */
-function furnitureSvg(cells, stocked) {
+function furnitureSvg(cells, stocked, deviceCond) {
   const out = [];
   const skip = stocked instanceof Set ? stocked : new Set();
+  const cond = deviceCond instanceof Map ? deviceCond : new Map();
   for (const c of cells) {
     const [lx, ly] = localXY(c.tx, c.ty);
     const cx = lx + U / 2, cy = ly + U / 2;
     if ((!c.itemId || isResourceItem(c.itemId)) && skip.has(c.tx + ',' + c.ty)) continue;
     if (c.itemId) {
-      const g = buildItem(c.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-' + c.tx + '-' + c.ty });
+      // THE WEAR JOIN. `row` is the `devices` channel's entry for this exact tile — one device per
+      // tile by construction — or `undefined` where nothing tile-resident stands. `buildTileItem`
+      // treats "no row" as "not wrecked", so a ground stack, a decor piece and a frame that arrived
+      // before the channel did all render exactly as they did before this join existed.
+      const row = cond.get(c.tx + ',' + c.ty);
+      const g = buildTileItem(c.itemId, { w: ITEM_SIDE, h: ITEM_SIDE, idPrefix: 'rz-f-' + c.tx + '-' + c.ty },
+                             row ? row.cond : undefined);
       out.push('<g transform="translate(' + (cx - ITEM_SIDE / 2).toFixed(1) + ' ' + (cy - ITEM_SIDE / 2).toFixed(1) + ')">' + g + '</g>');
     } else {
       // VS-Z-25 unknown chip — legible "something here we don't skin yet", never faked.
