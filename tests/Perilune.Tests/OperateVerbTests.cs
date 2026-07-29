@@ -342,13 +342,21 @@ namespace Perilune.Tests
         /// device of EACH kind — on the channel and off it — or the loop below is a loop over an empty
         /// set that reports itself as agreement.
         ///
-        /// <para><b>⚠️ IT RUNS ON <c>--ship perilune</c> AND NOT ON THE WRECK, AND THAT MOVE IS THE POINT
-        /// OF THIS PARAGRAPH.</b> M1-1 made the wreck's whole interior authored-known (OD-C), so on
-        /// that ship the "off the channel" half of the population is now EMPTY — the sweep would have
-        /// gone on passing while proving only that the channel lists everything. A guard whose
-        /// inclusion floor its own fixture can no longer meet is a guard that has quietly stopped
-        /// biting; the fixture moves, the guard does not weaken. The wreck keeps the two single-device
-        /// legs above (accept + refuse), which is where its own fog behaviour is pinned.</para>
+        /// <para><b>⚠️ IT RUNS ON <c>--ship perilune</c> AND NOT ON THE WRECK, AND WHAT HAPPENED IS
+        /// THE OPPOSITE OF WHAT AN EARLIER DRAFT OF THIS PARAGRAPH CLAIMED.</b> That draft said the
+        /// sweep <i>"would have gone on passing … a guard that has quietly stopped biting"</i>. It is
+        /// false, and it is worth correcting rather than deleting because it teaches the wrong lesson
+        /// about inclusion floors. <b>MEASURED, by putting the sweep back on the wreck and running
+        /// it: it goes RED</b> (1 failed / 0 passed), on the pre-existing floor below, with its own
+        /// message — <i>"INCLUSION FLOOR: no device was FOGGED, so the disagreement this test exists
+        /// to catch could not have occurred on this ship"</i>. M1-1 made the wreck's whole interior
+        /// authored-known (OD-C), the "off the channel" half of the population went empty, and
+        /// <b>the floor that was written for exactly that case fired exactly as designed.</b> Moving
+        /// the fixture is the correct response to a guard that has gone red for a real reason — the
+        /// guard did not weaken and this lane did not rescue it. The wreck keeps the two
+        /// single-device legs above (accept + refuse), which is where its own fog behaviour is
+        /// pinned. Re-verify by reverting the two host lines below to <c>Boot()</c>; it must
+        /// red.</para>
         /// </summary>
         [Test]
         public void The_Verb_And_The_Devices_Channel_Have_The_Same_Population()

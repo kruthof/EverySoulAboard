@@ -1369,6 +1369,20 @@ namespace Perilune.Gen
         // (`EveryAirlessCompartment_BootsBehindAClosedDoor`). What is no longer true is the
         // shorthand — the typed set is now THREE and the pressurised set is still TWO.
         //
+        // ⚠️ AND THE HARM THAT OVERRIDE PREVENTS IS A DIFFUSION HARM, NOT A BOOT-TIME ONE — worth
+        // stating precisely, because the obvious wrong version ("the compartment would boot at
+        // 101.3 kPa") is both wrong and reassuring. Rooms NEVER merge across a door: `RoomState`
+        // marks the door tile `DoorMarker`, so with slot 3's door open the BOOT census is
+        // byte-identical — slot 3 is its own 60-tile room holding 0.0 mol, the spine is a separate
+        // 86-tile room of 8 945 mol, and `RoomState.Pressurize("wreck_spine_0")` never reaches it.
+        // What fills it is B-3's partial-pressure term (`AtmosphereSystem.DiffuseAcrossDoors`).
+        // MEASURED with the override dropped, driven, this tree, `ShipPlanBuilder.Build` + the
+        // default stack, NO PLAYER INPUT: 0.000 kPa at tick 0 · 14.459 at 100 · 52.998 at 600 ·
+        // BREATHABLE at tick 1 450 (~2.4 sim-minutes; ppO2 crosses hypoxia_ppo2_kpa = 16) · 90.042
+        // at 3 000 · 101.302 at 20 000. ⇒ the compartment breathes itself open in under three
+        // sim-minutes and `vent_ls` has nothing left to do. The door state is the only thing that
+        // differs at tick 0, which is exactly why the guard has to assert the DOOR and not the gas.
+        //
         // ---------------------------------------------------------------------------------------
         // ⚠️ THE SHIP GOES COLD, IT IS MEASURED, AND IT IS NOT A KNOB ANY VALUE HERE CAN TURN
         // ---------------------------------------------------------------------------------------

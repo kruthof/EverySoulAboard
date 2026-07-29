@@ -212,6 +212,14 @@ Captured 2026-07-29 with `client/tools/operate-shot.mjs --tile 35,6` against a l
 `--tile` is new in this lane and exists precisely so the rig cannot photograph the EASY vent
 (`vent_cryo`, in the boot core) while the caption claims the hard one.
 
+⚠️ **THIS SET SUPERSEDES THE `wreck-*` SET'S `wreck-1-overview-deck0.png` CAPTION.** That caption
+says *"CRYO BAY and REACTOR lit and labelled; **six** sealed halls dark, each offering ＋ADD ROOM"*.
+It was true on the day it was written and **both halves are now false on the shipping ship**: deck 0
+shows **THREE** lit, labelled rooms (`CRYO BAY`, `LIFE SUPPORT`, `REACTOR`) and **FIVE** ＋ADD ROOM
+halls, and **the halls are no longer dark — their wrecked machinery draws.** The old paragraph is
+kept where it is, unedited, because it records what was true then; read it with this heading in
+mind, and read `m1-1-1-BEFORE-overview.png` as the picture it describes.
+
 | shot | what it shows |
 |---|---|
 | `m1-1-1-BEFORE-overview.png` | the defect: **six of eight deck-0 slots are blank ＋ADD ROOM boxes** while holding `fabricator_1`, `machineshop_1`, `recycler_1`, `scrubber_ls`, `reclaimer_ls` and `vent_ls`. The SENSOR LOG in the corner announces `light_d1_s0: MACHINE FAILURE` **by name, for a machine the player cannot see**. |
@@ -233,3 +241,15 @@ Captured 2026-07-29 with `client/tools/operate-shot.mjs --tile 35,6` against a l
 - **The visual result of drawing machines inside an un-named hall has had no owner review.** It is
   what OD-C asks for — *"all of them become visible"* — and it is an agent's rendering consequence,
   not an art decision anyone signed off.
+- ⚠️ **AND THE BIGGEST ONE, WHICH `m1-1-2` SHOWS PLAINLY WHILE THIS LIST ORIGINALLY OMITTED IT:
+  `LIFE SUPPORT` NOW READS AS BREATHABLE.** On the Level-1 Overview it draws as a lit, warm-floored,
+  labelled room — *pixel-for-pixel like `CRYO BAY` and `REACTOR`, the two compartments that really
+  do hold air.* **The Overview has no vacuum indication at all outside the `2 PRES` lens**, so
+  nothing on the default view distinguishes the ship's one named-but-airless room from its two named
+  pressurised ones. On a ship whose core loop **is** a pressure frontier, the compartment this lane
+  promoted to a room now misreads as safe — and unlike an allocated hall (which the player chose to
+  create, having just been shown it is empty) **this is the player's FIRST impression of the ship.**
+  Filed as a **consequence for the owner to rule on, deliberately NOT patched in this lane**: the
+  candidate fixes (a vacuum tint on the default Overview, a pressure badge, or an `unpressurised`
+  room-chrome state) are all new visual vocabulary on the standard surface, which is an art decision
+  and not a test-fix.

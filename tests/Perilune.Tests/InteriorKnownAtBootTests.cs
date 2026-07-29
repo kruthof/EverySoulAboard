@@ -66,9 +66,15 @@ namespace Perilune.Tests
             var (gs, host) = BootWreck();
             var onChannel = ChannelTiles(gs);
 
-            // NON-VACUITY, as an INCLUSION check rather than a count: the channel must be carrying
-            // SOMETHING, or "the six are present" could be satisfied by a parser that returns the
-            // whole world.
+            // NON-VACUITY: the channel must be carrying SOMETHING, or `ChannelTiles` silently
+            // returning an EMPTY set would turn the six-name loop below into a loop over nothing.
+            // ⚠️ IT GUARDS THE EMPTY DIRECTION ONLY. An earlier draft of this comment claimed it also
+            // catches "a parser that returns the whole world" — `Is.GreaterThan(0)` cannot see that,
+            // and stating a guard's reach backwards is worse than not stating it. The over-reporting
+            // direction is guarded by a DIFFERENT test: `OperateVerbTests`'
+            // `The_Verb_And_The_Devices_Channel_Have_The_Same_Population`, which sweeps a whole ship
+            // and requires the channel and the verb to agree in BOTH directions, with its own
+            // inclusion floor demanding at least one device be off the channel.
             Assert.That(onChannel.Count, Is.GreaterThan(0), "the devices channel is empty — nothing below means anything");
 
             var missing = new List<string>();
@@ -133,17 +139,42 @@ namespace Perilune.Tests
         /// with <c>InteriorKnownAtBoot</c> FORCED ON, and it is required to report ZERO fogged
         /// devices and ZERO fogged tiles. Only then does "grid still has fog" mean anything.</para>
         ///
-        /// <para>MUTATION APPLIED: drop the <c>if (plan.InteriorKnownAtBoot)</c> condition in
-        /// <see cref="ShipPlanBuilder"/> so the reveal runs for every plan ⇒ RED on all three ships.</para>
+        /// <para><b>THE SHIP SET IS DERIVED, NOT HAND-LISTED</b> — every public parameterless
+        /// <see cref="ShipPlan"/> factory on <see cref="AuthoredShips"/> except the wreck, found by
+        /// reflection. A hand-written list of three of four is a join that goes silently stale the day
+        /// a fifth authored ship arrives, which is the shape that has already cost this repo a whole
+        /// review round (an id→implementation join is invisible when wrong). Its non-vacuity is
+        /// asserted BOTH ways: the wreck must have been found AND excluded, and at least three other
+        /// ships must remain — so neither an empty sweep nor a sweep that quietly includes the wreck
+        /// can report itself as agreement.</para>
+        ///
+        /// <para>MUTATIONS APPLIED, all three physically run and reverted: drop the
+        /// <c>if (plan.InteriorKnownAtBoot)</c> condition in <see cref="ShipPlanBuilder"/> so the
+        /// reveal runs for every plan ⇒ <b>RED</b>, naming all three ships (perilune tiles+devices,
+        /// slice tiles+devices, grid tiles); rename the wreck out of the reflection exclusion ⇒
+        /// <b>RED</b> on the first floor; empty the derived set ⇒ <b>RED</b> on the second. The
+        /// unmutated control is GREEN.</para>
         /// </summary>
         [Test]
         public void NoOtherAuthoredShip_OptsIn_AndTheirFogSurvivesTheBoot()
         {
+            var factories = typeof(AuthoredShips)
+                .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Where(mi => mi.ReturnType == typeof(ShipPlan) && mi.GetParameters().Length == 0)
+                .OrderBy(mi => mi.Name, StringComparer.Ordinal)
+                .ToList();
+            Assert.That(factories.Any(mi => mi.Name == nameof(AuthoredShips.PeriluneWreck)), Is.True,
+                "the reflection sweep cannot see PeriluneWreck itself, so 'every ship BUT the wreck' " +
+                "is not what it is measuring and the exclusion below proves nothing");
+            var others = factories.Where(mi => mi.Name != nameof(AuthoredShips.PeriluneWreck)).ToList();
+            Assert.That(others.Count, Is.GreaterThanOrEqualTo(3),
+                "fewer than three non-wreck authored ships were found by reflection — the sweep has " +
+                "gone vacuous and 'no other ship opted in' would be true of an empty set");
+
             var offenders = new List<string>();
-            foreach (var make in new Func<ShipPlan>[]
-                     { AuthoredShips.Perilune, AuthoredShips.PeriluneSlice, AuthoredShips.PeriluneGrid })
+            foreach (var factory in others)
             {
-                var plan = make();
+                var plan = (ShipPlan)factory.Invoke(null, null);
                 if (plan.InteriorKnownAtBoot)
                     offenders.Add($"{plan.Name} opted into InteriorKnownAtBoot");
 
@@ -292,12 +323,54 @@ namespace Perilune.Tests
         /// <b>NAMING IT DID NOT GIVE IT AIR — the pressure frontier is exactly where it was.</b> This
         /// is the half a reviewer should be most suspicious of: <c>SlotGridPlanner</c> derives a
         /// slot's door from its type (<c>IsOpen = !empty</c>), so typing slot 3 the ordinary way would
-        /// have booted its door OPEN onto the pressurised spine and handed the compartment 101 kPa for
-        /// free — deleting the very pressure loop <c>vent_ls</c> exists for. <c>SlotAssign.DoorOpen</c>
-        /// is what separates the two decisions, and this is the assertion that it did.
+        /// have booted its door OPEN onto the pressurised spine — and the compartment would then have
+        /// filled ITSELF, for free, with no player action at all, deleting the very pressure loop
+        /// <c>vent_ls</c> exists for. <c>SlotAssign.DoorOpen</c> is what separates the two decisions,
+        /// and this is the assertion that it did.
         ///
-        /// <para>MUTATION APPLIED: drop <c>doorOpen: false</c> from the slot-3 authoring ⇒ RED
-        /// (the door boots open and the compartment reads 101.3 kPa).</para>
+        /// <para><b>⚠️ THE MECHANISM IS DIFFUSION, NOT A ROOM MERGE, AND AN EARLIER DRAFT OF THIS
+        /// COMMENT WAS WRONG IN BOTH THE NUMBER AND THE TIMING.</b> It said the mutation "boots the
+        /// door open and the compartment reads 101.3 kPa". It does not. <see cref="RoomState"/> marks
+        /// a door tile <see cref="RoomState.DoorMarker"/> and rooms NEVER merge across one, so with
+        /// the door open the boot census is byte-identical to the shipped tree: slot 3 is still its
+        /// own 60-tile room holding <b>0.0 mol</b> (the spine is a separate 86-tile room of 8 945 mol,
+        /// cryo and reactor 6 240 mol each), and <c>RoomState.Pressurize("wreck_spine_0")</c> cannot
+        /// reach it. What fills it is B-3's partial-pressure term
+        /// (<c>AtmosphereSystem.DiffuseAcrossDoors</c>), out of the spine and the reactor bay, over
+        /// minutes. <b>MEASURED, driven in this tree</b> (<c>ShipPlanBuilder.Build</c> + the default
+        /// stack, the mutation applied, n = 1, Debug):
+        /// <list type="bullet">
+        /// <item>tick <b>0</b> — <b>0.000 kPa</b>, 0.0 mol: AIRLESS at boot <i>either way</i>;</item>
+        /// <item>tick 100 — 14.459 kPa (ppO2 3.035); tick 600 — 52.998 kPa (ppO2 11.124);</item>
+        /// <item>tick <b>1 450</b> — the first tick <c>AtmosphereSafety.IsBreathable</c> returns TRUE
+        ///   (ppO2 crosses <c>needs.def hypoxia_ppo2_kpa</c> = 16), i.e. ~2.4 sim-minutes;</item>
+        /// <item>tick 3 000 — 90.042 kPa (ppO2 18.900); tick 20 000 — 101.302 kPa.</item>
+        /// </list>
+        /// ⇒ <b>The conclusion is unchanged and if anything worse — the compartment breathes itself
+        /// open in under three sim-minutes with nobody touching anything.</b> But "101.3 kPa at boot"
+        /// would tell a reader the mutation is caught by a boot-time gas census, and it is NOT: at
+        /// tick 0 the two trees agree to the mole. Only <c>door.IsOpen</c> separates them there.</para>
+        ///
+        /// <para><b>⚠️ EACH LEG HAS ITS OWN NAMED MUTATION, AND EACH WAS RUN WITH THE OTHER LEG
+        /// BLINDED</b> (CLAUDE.md, the fifth trap: <c>assert</c> throws, so only the FIRST failing leg
+        /// ever reports, and a leg that cannot bite is indistinguishable from one that can). Blinding
+        /// = rewriting the other leg's constraint to <c>Is.Not.Null</c>, which a boxed value type
+        /// always satisfies, leaving the file compiling and the module loadable (trap 3).
+        /// <list type="table">
+        /// <item><term>LEG 1 — <c>door.IsOpen</c></term><description>mutation: drop
+        ///   <c>doorOpen: false</c> from the slot-3 authoring. With LEG 2 BLINDED ⇒ <b>RED</b>,
+        ///   1 failed / 0 passed, on this leg's own message.</description></item>
+        /// <item><term>LEG 2 — <c>room.TotalMoles</c></term><description>mutation:
+        ///   <c>plan.PressurizedAnchors.Add(WreckLifeSupportAnchor)</c>. With LEG 1 BLINDED ⇒
+        ///   <b>RED</b>, 1 failed / 0 passed, on this leg's own message.</description></item>
+        /// </list>
+        /// <b>The two CROSS runs are why both legs must stay.</b> The door mutation with LEG 1 blinded
+        /// is <b>GREEN</b> (0 failed / 1 passed) — at tick 0 there is no gas for leg 2 to see — and the
+        /// anchor mutation with LEG 2 blinded is <b>GREEN</b> too. Neither leg can stand in for the
+        /// other: leg 1 guards the DOOR, leg 2 guards the PRESSURISED SET, and only leg 2 would catch
+        /// a future lane that pressurises this anchor while leaving the door shut. Three no-mutation
+        /// controls (both legs live; each blinding alone) are GREEN, so the blinding is not itself
+        /// what reddens the runs.</para>
         /// </summary>
         [Test]
         public void TheNamedLifeSupportBay_IsStillAirless_BehindItsOwnShutDoor()
@@ -306,8 +379,10 @@ namespace Perilune.Tests
             var door = DeviceNamed(sim, "door_d0_s" + AuthoredShips.WreckLifeSupportSlot.ToString(CultureInfo.InvariantCulture));
             Assert.That(door.IsOpen, Is.False,
                 "the life-support bay's door boots OPEN. It faces the pressurised spine, so the " +
-                "compartment is now free air and the vent the wreck start is built around has nothing " +
-                "left to do.");
+                "compartment fills ITSELF by diffusion — measured breathable by tick ~1 450, under " +
+                "three sim-minutes, with no player action — and the vent the wreck start is built " +
+                "around has nothing left to do. (It is still 0.000 kPa at TICK 0, which is why the " +
+                "gas leg below cannot catch this one: see the mutation table in the summary.)");
 
             sim.Rooms.RecomputeIfDirty(sim);
             var probe = ProbeOfSlot(AuthoredShips.WreckLifeSupportSlot);
