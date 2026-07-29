@@ -1360,20 +1360,25 @@ matching `MachineWearSystem.cs:631` **verbatim in shape and order**. `WorksiteSa
 > its own pin move; a second, unrelated `sim/` behaviour change inside it would make M2-2's measured
 > pin move unattributable — which is the one thing §3.2's whole batching rule exists to prevent.
 
-**⭐ WHY IT IS NOT MADE MOOT BY OD-H, and this is the reason it stays in the quarter at all.**
-With every work type off at boot (OD-H), `CraftingSystem`'s recruiter is vetoed and the tick-0 claim
-**disappears from the wreck's opening** — ⚠️ **masked, not fixed.** It returns in full the moment the
-player switches `Craft` on, which is a gesture M2 exists to give them. **A defect that OD-H hides is
-a defect M2 hands back to the player**, and it would arrive attributed to the grid.
+> ⛔ **AND THE "OD-H ONLY MASKS IT" ARGUMENT IS ALSO SPENT.** It read: *"with every work type off at
+> boot the tick-0 claim disappears from the wreck's opening — masked, not fixed — and it returns in
+> full the moment the player switches `Craft` on."* **The claim it describes no longer exists at all**:
+> M1-H's probe removed it, on every grid setting, before OD-H's default can mask anything.
+> ⚠️ *The sentence was correct when written and was made false by a merge four hours later. It is
+> struck rather than deleted because **the shape it describes — "a defect OD-H hides is a defect M2
+> hands back to the player" — is still true of other defects**, and M2-21 is one of them.*
 
-**PIN IMPACT: ⛔ P1, P2, P3 EXPECTED TO MOVE — MEASURE, DO NOT PREDICT.** Any ship with a bench whose
-canonical-order first walkable neighbour is unbreathable changes which pawn is claimed and when.
-**P4/P5 HOLD** — no def field; the predicate and its thresholds already exist and are already hashed.
-⚠️ **A held P1/P2/P3 is a legitimate outcome and is NOT evidence the fix is inert** — it means no
-pinned ship happens to have an unbreathable staging tile in the first four-neighbour slot. **If they
-hold, say so and prove non-vacuity with a driven fixture instead** (see mutation 1).
+**PIN IMPACT: ⭐ LIKELY PIN-NEUTRAL — MEASURE. *(Was "P1 P2 P3 EXPECTED TO MOVE"; twice downgraded, and
+the second downgrade is the one that matters.)*** M1-H is a claim-path write in the same file that
+moved **no pin at all**, so the assumption this row rested on is refuted; and the residual case now
+requires a tile that is **walkable, pathable and unsurvivable**, which no pinned ship is known to
+carry. **P4/P5 HOLD** — no def field; the predicate and its thresholds already exist and are hashed.
+⚠️ **A held P1/P2/P3 is the EXPECTED outcome and is NOT evidence the fix is inert** — prove
+non-vacuity with a driven fixture instead (mutation 1). ⛔ **If it is neutral, the row leaves the
+chain** (§2, `M1-b`).
 
-**SPINE? Borderline; treat as integrator** (a sim system's claim protocol, and a pin-chain row).
+**SPINE? Borderline; treat as integrator** (a sim system's claim protocol). ⚠️ *No longer "and a
+pin-chain row" — that is now provisional.*
 
 **MUTATIONS.**
 
@@ -1389,17 +1394,27 @@ hold, say so and prove non-vacuity with a driven fixture instead** (see mutation
 `machineshop_1` bill needing 2 Parts against 1 aboard is authoring, and the sealed hall is the
 premise. **The defect is that the recruiter does not ask.**
 
-**ACCEPTANCE (browser, < 5 min).**
-1. `./play.sh` → select Rell at tick 0, **before touching anything.**
-2. Today: her task line names a craft task at `machineshop_1` — a bench in a hall she cannot enter.
-3. After: at tick 0 she is **not** claimed for it, and stays whatever the ladder below crafting makes
-   her *(eat ▸ maintain, per `AuthoredShips.cs:1514-1521`; ⇒ after M2-2, **nothing at all** — which is
-   OD-G, and M2-20 is what makes it read as deliberate)*.
+**ACCEPTANCE — ⛔ THERE IS NONE YET, AND THAT IS THE POINT OF BEING `UNCLASSED`.**
+*(The old one read: "`./play.sh` → select Rell at tick 0 … her task line names a craft task at
+`machineshop_1`". **It cannot be performed: M1-H's probe means she is not claimed for it.** Struck.)*
+⇒ **THE DELIVERABLE UNTIL THE MEASUREMENT REPORTS IS THE MEASUREMENT**, and its browser form is:
+1. `./play.sh` → walk to the door onto `hall_d0_s1` — **the `WreckGoalAnchor`** — and **OPERATE it
+   open**, which is the gesture the game's own goal asks for.
+2. Watch Rell with `Craft` enabled. **Does she walk to `recycler_1` or `machineshop_1` in vacuum?**
+3. If she does: **does the job progress, does something refuse her, or does she work in vacuum?**
+   ⇒ **That answer is the class**, per the ruling above.
+⚠️ **An acceptance cannot be written before the package has a subject.** Writing a plausible one now
+is how a retracted sentence survives a re-charter.
 
-**CONFLICTS.** `sim/Sim.Core/Systems/CraftingSystem.cs` — ⛔ **strictly serialized behind M1-H**, and
-against M2-2, M2-5, M2-19 (four other claimants on one recruiter; see §10).
+**CONFLICTS.** `sim/Sim.Core/Systems/CraftingSystem.cs` — against M2-2, M2-5, M2-19 (§10).
+*(⛔ "strictly serialized behind M1-H" is spent — M1-H has merged. ⚠️ **Re-derive every line number in
+this charter against the tree you are on**: M1-H renamed `FindNearestIdle` → `FindNearestReachableIdle`
+and moved every line in this file, which is why the citations above are `:582-593` and not `:487-498`.)*
 
-**SIZE: S — one line of implementation, and the package is its fixture and its pin.** Say both.
+**SIZE: S if it becomes a package at all** — one line of implementation. ⚠️ **The measurement that
+decides whether it is a package is itself most of the remaining work**, and that is the honest sizing:
+**a driven run to justify a one-line change is a poor ratio, and it is still cheaper than shipping a
+guard for a defect nobody has observed.**
 
 ---
 
