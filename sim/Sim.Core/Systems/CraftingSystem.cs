@@ -87,6 +87,25 @@ namespace Perilune.Sim
         // Scratch for input consumption (EntityStore.Remove during iteration is unsafe).
         private readonly List<uint> _consumeIds = new List<uint>(8);
 
+        // --- M1-H: the dispatcher's refusal contract, for a recruiter that never sees the
+        // dispatcher. See PushRecruitBackoff. Every Abandon below is a REFUSAL — this station
+        // could not use this crew member right now — and every refusal stamps the station for
+        // JobWork.UnreachableRetryTicks, so an impossible bill is re-probed every 5 s instead of
+        // re-offered every second. Not saved, not hashed (the pull sources' own precedent).
+        private readonly PushRecruitBackoff _backoff = new PushRecruitBackoff();
+
+        /// <summary>DIAGNOSTIC SEAM (tests only, never a tick path): this system's per-station
+        /// backoff. See <see cref="PushRecruitBackoff.RetryAtFor"/> for why the stamp is readable
+        /// at all rather than inferred from timing.</summary>
+        public PushRecruitBackoff Backoff => _backoff;
+
+        // Scratch for the recruit-time reachability probe. NEVER the citizen's own Path: a probe
+        // must not leave a half-written path on a crew member it then declines to claim.
+        // _probeSkip holds the candidates already probed and refused this pass — lookup only,
+        // never iterated, cleared (not reallocated) per scan.
+        private readonly List<Int3> _probePath = new List<Int3>(64);
+        private readonly HashSet<uint> _probeSkip = new HashSet<uint>();
+
         // --- Build-material priority (WS-MATTER). BuildSystem is an OPTIONAL stack member,
         // resolved lazily exactly as JobSystem resolves it: when absent (_build == null) the
         // flag below can never be set and this system behaves bit-for-bit as it did before.
@@ -127,7 +146,7 @@ namespace Perilune.Sim
                 if (!hasStaging) // bench walled in mid-job
                 {
                     DropCarried(sim, worker);
-                    Abandon(worker);
+                    Abandon(sim, station, worker);
                     return;
                 }
                 DriveWorker(sim, station, recipe, staging, worker);
@@ -161,8 +180,25 @@ namespace Perilune.Sim
                 }
             }
 
-            var recruit = FindNearestIdle(sim, staging);
-            if (recruit == null) return;
+            // M1-H: this station refused a crew member within the last 5 s and nothing about that
+            // refusal was about the crew member, so re-offering the same bill this second is the
+            // thrash itself. Gated HERE and not earlier so the B-1 staged-claim release above still
+            // runs every pass — a backed-off station must not also strand its inputs.
+            if (_backoff.IsBackedOff(sim, station.Id)) return;
+
+            var recruit = FindNearestReachableIdle(sim, staging, out bool anyIdle);
+            if (recruit == null)
+            {
+                // TWO DIFFERENT NULLS, AND THEY MUST NOT BE TREATED THE SAME. "Nobody is idle" is
+                // not a refusal by this station at all — it costs one field read per crew member to
+                // re-ask, and stamping it would delay by up to 5 s the moment a freed crew member
+                // is picked up, on every station, on every ship. "Somebody is idle but none of them
+                // can REACH the bench" IS the refusal: it cost a whole-region A* to discover, it is
+                // a property of the station, and re-paying it every second is precisely the thrash
+                // (the wreck, measured on `main`: 1 468 refusals in 1.2 sim-hours).
+                if (anyIdle) _backoff.Refuse(sim, station.Id);
+                return;
+            }
 
             recruit.JobKind = JobKind.Craft; // claimed now — Jobs/Sustenance already ran this tick
             recruit.JobTarget = station.Pos;
@@ -182,7 +218,7 @@ namespace Perilune.Sim
                 {
                     // External interference (a path we never set, or displaced). Progress
                     // holds on the device; a fresh recruit resumes the batch.
-                    Abandon(worker);
+                    Abandon(sim, station, worker);
                     return;
                 }
                 if (!station.Powered || !station.IsOperational(sim.Defs)) return; // unpowered/broken: hold at the bench
@@ -217,7 +253,7 @@ namespace Perilune.Sim
                 if (!sim.Items.TryGet(worker.CarryingItemId, out var carried) || carried.CarriedBy != worker.Id)
                 {
                     worker.CarryingItemId = 0; // stack vanished under us — restart from ground truth
-                    Abandon(worker);
+                    Abandon(sim, station, worker);
                     return;
                 }
                 carried.Pos = worker.Pos; // glue at our 1 Hz cadence; exact again on drop
@@ -230,7 +266,7 @@ namespace Perilune.Sim
                 sim.JobsDirty |= JobBoardDirty.Items; // input staged/dropped — haul board must re-derive
                 if (!Int3.IsAdjacent4(worker.Pos, station.Pos))
                 {
-                    Abandon(worker); // route was lost — the dropped input re-enters the pool
+                    Abandon(sim, station, worker); // route was lost — the dropped input re-enters the pool
                     return;
                 }
                 // Fall through: the drop may complete the staged set.
@@ -256,7 +292,7 @@ namespace Perilune.Sim
             {
                 // Resume/start from afar: walk to the staging tile.
                 if (sim.Paths.FindPath(sim, worker.Pos, staging, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-                else Abandon(worker); // unreachable right now — the standing bill retries next second
+                else Abandon(sim, station, worker); // unreachable right now — the standing bill retries next second
                 return;
             }
 
@@ -276,13 +312,13 @@ namespace Perilune.Sim
         {
             if (FetchBlockedForBuilds(recipe))
             {
-                Abandon(worker); // builders have first call on this material — free the citizen
+                Abandon(sim, station, worker); // builders have first call on this material — free the citizen
                 return;
             }
 
             if (!TryFirstShortPort(sim, station.Pos, recipe, out var want))
             {
-                Abandon(worker); // every port is satisfied — the bill will start next pass
+                Abandon(sim, station, worker); // every port is satisfied — the bill will start next pass
                 return;
             }
 
@@ -304,7 +340,7 @@ namespace Perilune.Sim
 
             if (best == null)
             {
-                Abandon(worker); // nothing to fetch — freed for other work; bill rescans next second
+                Abandon(sim, station, worker); // nothing to fetch — freed for other work; bill rescans next second
                 return;
             }
 
@@ -321,13 +357,13 @@ namespace Perilune.Sim
                 }
                 else
                 {
-                    Abandon(worker);
+                    Abandon(sim, station, worker);
                 }
                 return;
             }
 
             if (sim.Paths.FindPath(sim, worker.Pos, best.Pos, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-            else Abandon(worker); // unreachable from here — retried from ground truth next second
+            else Abandon(sim, station, worker); // unreachable from here — retried from ground truth next second
         }
 
         // ------------------------------------------------------------- build priority
@@ -463,24 +499,83 @@ namespace Perilune.Sim
             return null;
         }
 
-        /// <summary>Nearest recruitable citizen by Manhattan distance (ties: store order).</summary>
-        private static Citizen FindNearestIdle(Simulation sim, Int3 target)
+        /// <summary>
+        /// M1-H: nearest recruitable citizen by Manhattan distance (ties: store order) WHO CAN
+        /// ACTUALLY REACH THE BENCH — next-nearest on a refusal, exactly as
+        /// <see cref="JobSystem"/> retries the next-nearest candidate when
+        /// <see cref="DigJobSource.TryClaim"/> returns false.
+        ///
+        /// <para>⭐ <b>THIS IS THE LOAD-BEARING HALF OF M1-H, AND THE CHARTER DID NOT ASK FOR IT.
+        /// DO NOT "SIMPLIFY" IT AWAY.</b> The chartered fix was the backoff alone. Each half was
+        /// built and measured separately on <c>--ship wreck --days 1 --no-repair</c>: <b>backoff
+        /// only 597 → 228 Craft starts and 3.575 % → 3.333 % of crew-ticks (−6.8 %); probe only
+        /// 0 and 0.000 %.</b> ⇒ The backoff does ~7 % of the work and this does 100 %, because the
+        /// WALK is what costs. Delete this and the nine site-coverage legs stay green while 100 %
+        /// of the defect returns — which is precisely why they are not the guard for it
+        /// (<c>RecruitProbe_*</c> and <c>DrivenThrash_*</c> are).</para>
+        ///
+        /// <para><b>Why the probe is here and not left to <see cref="DriveWorker"/>.</b> A pull
+        /// source PROVES a claim before it makes one: <c>DigJobSource.TryClaim</c> paths to the
+        /// site and returns false without ever writing <see cref="Citizen.JobKind"/>. This
+        /// recruiter used to write <c>JobKind.Craft</c> first and discover the impossibility later
+        /// — sometimes MUCH later, because the fetch leg only ever paths to the STACK, so a crew
+        /// member would walk the whole way to an input and only then find (at the
+        /// <c>best.Pos == worker.Pos</c> branch of <see cref="StepFetch"/>) that it could not carry
+        /// it back. Measured on <c>--ship wreck</c> with repair off: 1 468 such round trips in 1.2
+        /// sim-hours, 597 of them long enough to be seen as a job start, 75.3 % of sim-hour 1.
+        /// (The TOTALS are independently confirmed; the ALL-AT-ONE-SITE attribution is a single
+        /// measurement from a throwaway instrumented build and was not re-derived by review.
+        /// Nothing here rests on it — the before/after totals prove the conclusion directly.)
+        /// A backoff alone only halves that, because the WALK is what costs; refusing the claim
+        /// removes it.</para>
+        ///
+        /// <para><b>It cannot mis-refuse a reachable bench.</b> Walkability is an undirected graph
+        /// (<see cref="PathService.FindPath"/> is plain A* with no node budget and no one-way
+        /// links), so "this crew member cannot reach the staging tile" is a statement about the
+        /// connected component it stands in — it cannot become false by walking somewhere else in
+        /// that same component. Doors are the one thing that can change it, and a door opening is
+        /// exactly what the 5 s backoff exists to re-probe for.</para>
+        ///
+        /// <para><b>Identical selection whenever the nearest candidate is reachable</b>, which is
+        /// every recruit on <c>--ship grid</c> and <c>--ship slice</c> — measured, not assumed
+        /// (all THREE path-failure abandon sites — the walk-to-bench at <c>:295</c>, the
+        /// pick-up-and-return at <c>:360</c> and the walk-to-input at <c>:366</c> — fire zero times
+        /// on either ship over a sim-day. <c>:360</c> is the one that accounts for the wreck's
+        /// 1 468. An earlier draft of this comment said "two", which was a miscount, not a
+        /// different measurement.)
+        /// The extra A* is paid once per recruiting station per pass and the backoff amortises the
+        /// failing case to once per 5 s.</para>
+        ///
+        /// <para><paramref name="anyIdle"/> reports whether ANY recruitable citizen existed, so the
+        /// caller can tell "nobody is free" (not a refusal — re-ask next second, it costs a field
+        /// read) from "nobody free can get here" (a refusal — stamp it).</para>
+        /// </summary>
+        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, out bool anyIdle)
         {
-            Citizen best = null;
-            int bestDist = int.MaxValue;
-            var citizens = sim.Citizens.Items;
-            for (int i = 0; i < citizens.Count; i++)
+            anyIdle = false;
+            _probeSkip.Clear();
+            while (true)
             {
-                var c = citizens[i];
-                if (!c.IsRecruitableForWork) continue;
-                int d = Int3.Manhattan(c.Pos, target);
-                if (d < bestDist)
+                Citizen best = null;
+                int bestDist = int.MaxValue;
+                var citizens = sim.Citizens.Items;
+                for (int i = 0; i < citizens.Count; i++)
                 {
-                    bestDist = d;
-                    best = c;
+                    var c = citizens[i];
+                    if (!c.IsRecruitableForWork) continue;
+                    anyIdle = true;
+                    if (_probeSkip.Contains(c.Id)) continue;
+                    int d = Int3.Manhattan(c.Pos, target);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = c;
+                    }
                 }
+                if (best == null) return null;
+                if (sim.Paths.FindPath(sim, best.Pos, target, _probePath)) return best;
+                _probeSkip.Add(best.Id); // unreachable from where he stands — try the next-nearest
             }
-            return best;
         }
 
         /// <summary>First walkable 4-neighbor in canonical Neighbor4 order (+x,-x,+y,-y).</summary>
@@ -613,10 +708,18 @@ namespace Perilune.Sim
         /// re-recruits from ground truth on a later tick — nothing is reserved,
         /// nothing leaks.
         /// </summary>
-        private static void Abandon(Citizen worker)
+        private void Abandon(Simulation sim, Device station, Citizen worker)
         {
             worker.JobKind = JobKind.None;
             worker.JobWorkTicks = 0;
+            // M1-H — THE ONE FUNNEL, AND THAT IS THE POINT. Every abandon in this file is the same
+            // statement — "this station could not use this crew member right now" — and the pull
+            // sources answer it the same way at every one of their own refusal sites. Stamping here
+            // rather than at the ten call sites is a structural guarantee: a future eleventh site
+            // inherits the backoff, and CraftingBackoffTests' site-coverage legs then measure ten
+            // real paths INTO the funnel rather than ten copies of one line. Removing this line is
+            // mutation 1 of the package's table; it reddens the driven thrash leg.
+            _backoff.Refuse(sim, station.Id);
         }
 
         /// <summary>

@@ -154,6 +154,24 @@ namespace Perilune.Sim
         // Lookup only, never iterated; empty in the steady state.
         private readonly HashSet<uint> _recruitSkip = new HashSet<uint>();
 
+        // --- M1-H: the dispatcher's refusal contract, for the SECOND recruiter that never sees
+        // the dispatcher. Identical in shape and in justification to CraftingSystem's — see
+        // PushRecruitBackoff. _recruitSkip is a PASS-scoped skip ("I already tried this machine
+        // this second"); this is the missing TIME-scoped one ("this machine refused, do not
+        // re-offer it for 5 s"). They are not substitutes: _recruitSkip is cleared at the top of
+        // every pass, which is exactly why an impossible service was re-offered at 1 Hz forever.
+        private readonly PushRecruitBackoff _backoff = new PushRecruitBackoff();
+
+        /// <summary>DIAGNOSTIC SEAM (tests only, never a tick path): this system's per-machine
+        /// backoff. Twin of <see cref="CraftingSystem.Backoff"/>.</summary>
+        public PushRecruitBackoff Backoff => _backoff;
+
+        // Scratch for the recruit-time reachability probe. NEVER the citizen's own Path: a probe
+        // must not leave a half-written path on a crew member it then declines to claim.
+        // _probeSkip holds candidates already probed and refused this pass — lookup only.
+        private readonly List<Int3> _probePath = new List<Int3>(64);
+        private readonly HashSet<uint> _probeSkip = new HashSet<uint>();
+
         public void Tick(Simulation sim)
         {
             DriveWorkers(sim);
@@ -165,7 +183,7 @@ namespace Perilune.Sim
         /// a Maintain citizen whose machine vanished is freed. Dead citizens are
         /// JobSystem.HandleDead's business — skipped here.
         /// </summary>
-        private static void DriveWorkers(Simulation sim)
+        private void DriveWorkers(Simulation sim)
         {
             var citizens = sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
@@ -175,7 +193,12 @@ namespace Perilune.Sim
                 if (!sim.TryGetDeviceAt(c.JobTarget, out var device))
                 {
                     DropCarried(sim, c); // machine deconstructed mid-service
-                    Abandon(c);
+                    // M1-H: THE ONE ABANDON SITE IN THIS FILE THAT CANNOT STAMP A BACKOFF, and it
+                    // is not an omission. The backoff is keyed by the TARGET, and this branch is
+                    // reached precisely because the target no longer exists — there is nothing
+                    // left to back off, nothing to re-offer, and no thrash available: a machine
+                    // that is gone is never recruited for again. It clears job state only.
+                    AbandonOrphan(c);
                     continue;
                 }
                 DriveWorker(sim, device, c);
@@ -199,6 +222,9 @@ namespace Perilune.Sim
                     var d = devices[i];
                     if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;
                     if (_recruitSkip.Contains(d.Id)) continue;
+                    // M1-H: this machine refused a crew member within the last 5 s. Skipped for
+                    // the WINDOW, not just the pass — that distinction is the whole fix.
+                    if (_backoff.IsBackedOff(sim, d.Id)) continue;
                     if (d.Condition < lowest && FindWorker(sim, d.Pos) == null)
                     {
                         lowest = d.Condition;
@@ -245,8 +271,20 @@ namespace Perilune.Sim
                     continue;
                 }
 
-                var recruit = FindNearestIdle(sim, staging);
-                if (recruit == null) return; // no idle hands — retried next second
+                var recruit = FindNearestReachableIdle(sim, staging, out bool anyIdle);
+                if (recruit == null)
+                {
+                    // No idle hands at all: NOT a refusal by this machine — return and re-ask next
+                    // second, as before (the scan is a field read per crew member). Somebody idle
+                    // but nobody who can REACH the machine IS a refusal: it cost a whole-region A*
+                    // to find out, it is a property of the machine, and paying it every second is
+                    // the same thrash CraftingSystem had. Stamp it and go on to the next machine —
+                    // an unreachable one must not stop the rest of the pass.
+                    if (!anyIdle) return;
+                    _backoff.Refuse(sim, needy.Id);
+                    _recruitSkip.Add(needy.Id);
+                    continue;
+                }
 
                 recruit.JobKind = JobKind.Maintain; // claimed now — earlier systems already ran
                 recruit.JobTarget = needy.Pos;
@@ -259,12 +297,12 @@ namespace Perilune.Sim
 
         // ------------------------------------------------------------- worker drive
 
-        private static void DriveWorker(Simulation sim, Device device, Citizen worker)
+        private void DriveWorker(Simulation sim, Device device, Citizen worker)
         {
             if (!TryFindStagingTile(sim, device.Pos, out var staging))
             {
                 DropCarried(sim, worker); // machine walled in mid-job
-                Abandon(worker);
+                Abandon(sim, device, worker);
                 return;
             }
 
@@ -276,7 +314,7 @@ namespace Perilune.Sim
                     // External interference (a path we never set, or displaced) —
                     // restart from ground truth on a later pass.
                     DropCarried(sim, worker);
-                    Abandon(worker);
+                    Abandon(sim, device, worker);
                     return;
                 }
 
@@ -286,7 +324,7 @@ namespace Perilune.Sim
                     if (!sim.Items.TryGet(worker.CarryingItemId, out consumable) || consumable.CarriedBy != worker.Id)
                     {
                         worker.CarryingItemId = 0; // stack vanished under us
-                        Abandon(worker);
+                        Abandon(sim, device, worker);
                         return;
                     }
                     consumable.Pos = worker.Pos; // glue at our 1 Hz cadence
@@ -337,7 +375,7 @@ namespace Perilune.Sim
                 if (!sim.Items.TryGet(worker.CarryingItemId, out var carried) || carried.CarriedBy != worker.Id)
                 {
                     worker.CarryingItemId = 0; // stack vanished under us — restart from ground truth
-                    Abandon(worker);
+                    Abandon(sim, device, worker);
                     return;
                 }
                 carried.Pos = worker.Pos; // glue at our 1 Hz cadence
@@ -346,7 +384,7 @@ namespace Perilune.Sim
                 if (!Int3.IsAdjacent4(worker.Pos, device.Pos))
                 {
                     DropCarried(sim, worker); // route was lost — the stack re-enters the pool
-                    Abandon(worker);
+                    Abandon(sim, device, worker);
                     return;
                 }
                 worker.JobWorkTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond; // service begins, parts in hand
@@ -375,12 +413,12 @@ namespace Perilune.Sim
                     }
                     else
                     {
-                        Abandon(worker);
+                        Abandon(sim, device, worker);
                     }
                     return;
                 }
                 if (sim.Paths.FindPath(sim, worker.Pos, best.Pos, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-                else Abandon(worker); // unreachable from here — retried from ground truth next second
+                else Abandon(sim, device, worker); // unreachable from here — retried from ground truth next second
                 return;
             }
 
@@ -388,7 +426,7 @@ namespace Perilune.Sim
             // UNLESS the machine is a wreck, which cannot be wished better (wreck start W2).
             if (device.Condition < sim.Defs.Wear.WreckThreshold)
             {
-                Abandon(worker); // no consumable, no free fix; the recruit gate will not re-offer it
+                Abandon(sim, device, worker); // no consumable, no free fix; the recruit gate will not re-offer it
                 return;
             }
             if (Int3.IsAdjacent4(worker.Pos, device.Pos))
@@ -397,7 +435,7 @@ namespace Perilune.Sim
                 return;
             }
             if (sim.Paths.FindPath(sim, worker.Pos, staging, worker.Path)) worker.StartPath(sim.Defs.Citizen.TicksPerTile);
-            else Abandon(worker); // unreachable right now — the standing rule retries
+            else Abandon(sim, device, worker); // unreachable right now — the standing rule retries
         }
 
         // ------------------------------------------------------------------ helpers
@@ -414,24 +452,44 @@ namespace Perilune.Sim
             return null;
         }
 
-        /// <summary>Nearest recruitable citizen by Manhattan distance (ties: store order).</summary>
-        private static Citizen FindNearestIdle(Simulation sim, Int3 target)
+        /// <summary>
+        /// M1-H: nearest recruitable citizen by Manhattan distance (ties: store order) WHO CAN
+        /// ACTUALLY REACH THE MACHINE — next-nearest on a refusal, exactly as
+        /// <see cref="JobSystem"/> retries the next-nearest candidate when a pull source's
+        /// <c>TryClaim</c> returns false. The twin of
+        /// <see cref="CraftingSystem.FindNearestReachableIdle"/>; read its doc comment for the
+        /// argument, which is the same one, including the connectivity argument for why this can
+        /// never refuse a machine the crew member could actually have got to.
+        ///
+        /// <para><paramref name="anyIdle"/> separates "nobody is free" (not a refusal) from
+        /// "nobody free can get here" (a refusal worth a stamp).</para>
+        /// </summary>
+        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, out bool anyIdle)
         {
-            Citizen best = null;
-            int bestDist = int.MaxValue;
-            var citizens = sim.Citizens.Items;
-            for (int i = 0; i < citizens.Count; i++)
+            anyIdle = false;
+            _probeSkip.Clear();
+            while (true)
             {
-                var c = citizens[i];
-                if (!c.IsRecruitableForWork) continue;
-                int d = Int3.Manhattan(c.Pos, target);
-                if (d < bestDist)
+                Citizen best = null;
+                int bestDist = int.MaxValue;
+                var citizens = sim.Citizens.Items;
+                for (int i = 0; i < citizens.Count; i++)
                 {
-                    bestDist = d;
-                    best = c;
+                    var c = citizens[i];
+                    if (!c.IsRecruitableForWork) continue;
+                    anyIdle = true;
+                    if (_probeSkip.Contains(c.Id)) continue;
+                    int d = Int3.Manhattan(c.Pos, target);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = c;
+                    }
                 }
+                if (best == null) return null;
+                if (sim.Paths.FindPath(sim, best.Pos, target, _probePath)) return best;
+                _probeSkip.Add(best.Id); // unreachable from where he stands — try the next-nearest
             }
-            return best;
         }
 
         /// <summary>
@@ -583,7 +641,19 @@ namespace Perilune.Sim
         /// rule re-recruits from ground truth on a later pass — nothing is reserved,
         /// nothing leaks. Callers drop carried cargo first where applicable.
         /// </summary>
-        private static void Abandon(Citizen worker)
+        private void Abandon(Simulation sim, Device device, Citizen worker)
+        {
+            AbandonOrphan(worker);
+            // M1-H — THE ONE FUNNEL (see CraftingSystem.Abandon for the argument; it is the same
+            // one). Every abandon here says "this machine could not use this crew member right
+            // now", and the pull sources stamp exactly that. Removing this line is mutation 1 of
+            // the package's table on this half of the fix.
+            _backoff.Refuse(sim, device.Id);
+        }
+
+        /// <summary>Clear job state WITHOUT a backoff stamp — the orphan path only (the machine is
+        /// gone, so there is no target to stamp and nothing that could re-offer it).</summary>
+        private static void AbandonOrphan(Citizen worker)
         {
             worker.JobKind = JobKind.None;
             worker.JobWorkTicks = 0;

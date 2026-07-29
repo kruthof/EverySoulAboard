@@ -266,6 +266,34 @@ namespace Perilune.Tools
                 Console.WriteLine();
             }
 
+            // OPT-IN M1-H measurement lever (--no-repair, default off). REPRODUCES THE M2-0 SPIKE'S
+            // LEG B CONDITION — "Repair OFF" — on the shipped ship, without the spike's static
+            // mutable sim config. MaintenanceSystem's recruit gate skips every device whose
+            // Condition >= its MaintainBelow (MachineWearSystem.cs:223 — the citation was :196 when this
+            // comment was written and this commit's own edits moved the gate, which is exactly the
+            // rot §12.13 files against M5-6), so zeroing that column for
+            // every kind makes the gate skip all of them and the system never recruits: the
+            // maintenance monopoly the roadmap says is MASKING the Craft thrash is lifted, and what
+            // the pawn does instead becomes visible. It is a DEFS mutation in the host, exactly like
+            // --makeup above (same caveat: the `defs:` line above no longer describes this run), so
+            // the CI-pinned verb-less path is untouched and nothing in sim/ knows this flag exists.
+            //
+            // ⚠ IT IS NOT A MODEL OF M2. M2's work-priority grid turns repair off PER PAWN; this
+            // turns it off for the whole ship. For the one question asked here — "what does the
+            // pawn do when maintenance is not holding it?" — the two coincide on a one-crew ship.
+            if (HasFlag(args, "--no-repair"))
+            {
+                for (int k = 0; k < defs.Machines.Length; k++)
+                {
+                    var m = defs.Machines[k]; // MachineDef is a readonly struct — rebuild the row
+                    defs.Machines[k] = new MachineDef(m.DrawKW, m.GenerationKW, m.Tier, m.Blocks,
+                                                      m.HeatKW, m.WearPerHour, 0f, m.FailBelow);
+                }
+                Console.WriteLine("--no-repair: every [machines] maint threshold forced to 0 — " +
+                                  "MaintenanceSystem can never recruit (the M2-0 spike's Repair-OFF leg)");
+                Console.WriteLine();
+            }
+
             int stripN = ArgInt(args, "--strip", 0);
             // OPT-IN deck restriction for --strip (default -1 = every deck, the shipped behaviour).
             // The grid ship's decks 2..7 boot AIRLESS, and a strip designated there is the second
@@ -369,6 +397,11 @@ namespace Perilune.Tools
             long maintStarts = 0, maintToFlee = 0, deconStarts = 0, deconToFlee = 0, fleeStarts = 0, services = 0;
             long lastHourMaintStarts = 0, lastHourMaintToFlee = 0, lastHourServices = 0;
             long lastHourDeconStarts = 0, lastHourDeconToFlee = 0;
+            // M1-H: the SECOND push recruiter's churn, counted the same way. A Craft job start is a
+            // JobKind transition into Craft, so a recruit→abandon→recruit loop shows up as N starts
+            // against zero batches — exactly the signature the maintenance rows above were built to
+            // show. Counted only under --maint-audit (opt-in), so no unflagged run changes.
+            long craftStarts = 0, lastHourCraftStarts = 0;
 
             const int TicksPerHour = Simulation.TicksPerSecond * 60 * 60;
             int kindCount = Enum.GetValues(typeof(JobKind)).Length;
@@ -439,6 +472,7 @@ namespace Perilune.Tools
                         {
                             if (now == JobKind.Maintain) maintStarts++;
                             if (now == JobKind.Deconstruct) deconStarts++;
+                            if (now == JobKind.Craft) craftStarts++;
                             if (now == JobKind.Flee)
                             {
                                 fleeStarts++;
@@ -470,6 +504,7 @@ namespace Perilune.Tools
                         lastHourServices = services;
                         lastHourDeconStarts = deconStarts;
                         lastHourDeconToFlee = deconToFlee;
+                        lastHourCraftStarts = craftStarts;
                     }
                 }
             }
@@ -532,6 +567,11 @@ namespace Perilune.Tools
                 Console.WriteLine($"  Maintain job starts    {maintStarts,8}   of which Maintain->Flee aborts {maintToFlee}");
                 Console.WriteLine($"  Deconstruct starts     {deconStarts,8}   of which Deconstruct->Flee aborts {deconToFlee}");
                 Console.WriteLine($"  Flee starts            {fleeStarts,8}");
+                // M1-H's acceptance instrument. Craft occupancy is read off the same kindTicks
+                // table every other row uses, so the two numbers cannot disagree about the same run.
+                double craftPct = 100.0 * kindTicks[(int)JobKind.Craft] / grandTotal;
+                Console.WriteLine($"  Craft job starts       {craftStarts,8}   Craft occupancy {craftPct:0.000} %" +
+                                  $"   final sim-hour starts {craftStarts - lastHourCraftStarts}");
                 Console.WriteLine($"  SERVICES COMPLETED     {services,8}   (a device Condition that ROSE — wear only " +
                                   "ever lowers it, so this is the one number a livelock cannot fake)");
                 Console.WriteLine($"  final sim-hour         starts {maintStarts - lastHourMaintStarts}   " +
