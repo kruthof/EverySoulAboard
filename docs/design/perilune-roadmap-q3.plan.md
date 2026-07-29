@@ -245,8 +245,13 @@ loop, and **today it is not expressible in either half.**
 > which no revision had counted · and the demo's opening, which now runs the **enabling** direction.
 > **Contents item 5 (*"repair becomes a work type"*) and item 8 (POWER) are unaffected.**
 > ⭐ **Two new packages follow from it** — **M2-20** (a pawn who is waiting, and a game that says so)
-> and **M1-J** (the tick-0 claim on a bench she can never reach) — **plus M2-21**, the silent BUILD
-> haul measured on 2026-07-29. **All three are chartered in the packages document, not here.**
+> and **M2-21**, the silent BUILD haul measured on 2026-07-29. **Both are chartered in the packages
+> document, not here.**
+> ⛔ *(A third, `M1-J` — "the tick-0 claim on a bench she can never reach" — was chartered and **DROPPED
+> the same day**: M1-H's merged reachability probe removed the claim, and the wreck's own compartment
+> equalises to breathable by ~tick 1 450. **Its premise was contradicted twice in one day.** It survives
+> as `packages.md` §12.19 plus a source comment. **The struck sentence is left here rather than deleted
+> because it was published, and this plan retracts in place.)*
 
 **What is measured to be missing.**
 - **`Citizen` has no skill, no work-type mask, no priority and no work-rate multiplier.** Full field
@@ -254,9 +259,9 @@ loop, and **today it is not expressible in either half.**
   entire type is `IsRecruitableForWork` at `:103`, a boolean. `git log -- '*Skill*' '*Priority*'
   '*WorkType*' '*Assign*'` returns **zero commits in 555**.
 - **Dispatch is a distance-only tournament with no per-citizen filter.** `TryAssign`
-  (`sim/Sim.Core/Jobs/JobSystem.cs:220-273`); the decisive line is `:243`
+  (`sim/Sim.Core/Jobs/JobSystem.cs:261-273`); the decisive line is `:284`
   `if (cand < 0 || d >= bestDist) continue;`. Ties break by source registration order
-  (`:71-80`: Dig, Haul, Build, Deconstruct), then board order, then citizen store order.
+  (`DefaultSources()`: Dig, Haul, Build, Deconstruct), then board order, then citizen store order.
 - **Power is condition-blind on BOTH sides.** `sim/Sim.Core/Systems/PowerSystem.cs:185` is
   `_generation[d.NetworkId] += def.GenerationKW;` with no `Condition`, no `IsOperational`, no
   `EffectiveRate`; the file says so itself at `:175-179` — *"a wrecked SolarWing still supplies its
@@ -310,7 +315,7 @@ loop, and **today it is not expressible in either half.**
 > recruiter query) · **(c) PRE-EMPTION — its own package, its own risk row (R1b), and its own rule for
 > when a job may be dropped.** The hard cases are named now rather than discovered: mid-haul carrying
 > cargo · mid-craft against a bill · mid-build with material already delivered. **The abandon paths
-> already exist per source, and `JobContext.cs:95` already normalises the release** — so the mechanism
+> already exist per source, and `JobContext.cs:93` already normalises the release** — so the mechanism
 > is cheap and the *policy* is the work.
 >
 > **The fourth assignment site, which nobody had counted.** `EffectValidator.cs:141` writes
@@ -323,9 +328,16 @@ loop, and **today it is not expressible in either half.**
 1. **The state.** Per-citizen work-type priorities as hashed `Citizen` state, RimWorld-shaped:
    ~6–8 work types, each *disabled* or *1–4*. ⭐ **Land the skill field's STORAGE in the same
    commit, zeroed and with no consumer** (see §3.2 — this is the one place batching is correct).
-2. **The four-site work-type filter.** `TryAssign`, `SustenanceSystem`, `CraftingSystem`,
-   `MaintenanceSystem` — plus `EffectValidator.cs:141`, which today writes a `JobKind` with no gate
-   at all.
+2. ⛔ **THE WORK-TYPE VETO — "four sites" IS VOID; IT IS `11 / 5 / 3`.** Re-derived from the code:
+   **eleven claim sites behind FIVE gates** — `TryAssign` (covering the four `IJobSource`s) ·
+   `CraftingSystem` · `MaintenanceSystem` · `EffectValidator.cs:141` (which writes a `JobKind` with no
+   gate at all) · ⭐ **`CapabilityComputer.cs:70-76`, the offer mirror no revision had counted** — plus
+   **three exclusions and two named non-sites.** Full table in `perilune-roadmap-q3.packages.md` §5,
+   M2-2.
+   ⛔⛔ **AND `SustenanceSystem` MUST NEVER BE GATED — this line listed it and that is the error §12.3
+   exists to stop.** It recruits on `IsIdleForWork`, deliberately **not** `IsRecruitableForWork`;
+   gating it means **switching off enough work types starves a crew member.** *(Eat, Drink and Flee are
+   not work types.)*
 3. **Cross-family ranking.** `TryAssign` iterates priority bands high→low; before the argmin at band
    *b* it asks each push recruiter *"do you have a claimable band-b job for this citizen?"* and leaves
    the pawn idle for it if so. **One tiny new interface. No stack reorder, no `HandledKinds` change,
@@ -388,7 +400,8 @@ stack re-order (struck) and it is **not** large because of the UI. Three things 
 **(a) PRE-EMPTION.** A mechanism the sim has exactly one instance of (`SafetySystem.cs:232-238`),
 now needed generally, whose *policy* — when may a pawn be taken off a job it is halfway through —
 is a design question with no precedent here and three named hard cases.
-**(b) THE FOUR-SITE UNIFICATION.** One rule enforced at four assignment sites, two of which
+**(b) THE MULTI-SITE UNIFICATION** *(said "FOUR-SITE"; the census is **`11 / 5 / 3`** — see Contents
+item 2 and the packages document's M2-2)*. One rule enforced at five gates, two of which
 (`Maintain`, `Craft`) have no `IJobSource` to hang it on and one of which (`EffectValidator`) nobody
 had counted.
 **(c) THE PIN RITUAL.** New hashed `Citizen` state bumps the CITZ save chapter ⇒ P1/P2/P3, def'd
@@ -836,8 +849,10 @@ The batches:
 - **M3:** OD-12 the pod census (**recommend two wrecked**) · OD-11 `thaw_cost` escalation
   (**recommend `base + LivingCrew × step`, in Parts**) · OD-8 the ice hold (**recommend yes, behind
   the frontier**) · how many skill axes (**recommend small: ~6 work types, one hashed byte each**) ·
-  the dead deck (**recommend: author a deck-1 vent; it is one line of content and it unblocks the
-  frontier**) · does the heater ship as a device or a def change to an existing one ·
+  ⛔ ~~the dead deck (**recommend: author a deck-1 vent**)~~ — **STRUCK 2026-07-29. `OD-E` IS BINDING
+  AND IT RECORDS THIS EXACT OPTION AS OFFERED AND DECLINED**, 46 lines above, in this same section.
+  ⚠️ *A recommendation left standing beneath the decision that refused it is how a "closed" item
+  re-opens itself, and it would have read as live to the M3 implementer.* · does the heater ship as a device or a def change to an existing one ·
   ⭐ **the `Device.Name` collision** — one field is both the MOSS registry key and *"who is inside"*
   (**recommend: keep `Name` as the registry key and carry the sleeper elsewhere; decide before
   `CryoSystem` freezes the save chapter**).
@@ -947,7 +962,7 @@ pre-emption). Require a **driven** one-pawn measurement, never a scan.
 
 **R1b — Pre-emption's POLICY is the hard part, not its mechanism. (MEDIUM / HIGH)** *(new in revision 1)*
 The mechanism exists once (`SafetySystem.cs:232-238`) and the release is already normalised
-(`JobContext.cs:95`). The question *when may a pawn be taken off a job it is halfway through* has no
+(`JobContext.cs:93`). The question *when may a pawn be taken off a job it is halfway through* has no
 precedent here and three named hard cases: mid-haul carrying cargo, mid-craft against a bill,
 mid-build with material delivered.
 *Early warning:* a pre-emption package that ships a mechanism and defers the rule to "the caller"; or
