@@ -362,8 +362,14 @@ untyped for the life of a run. `RoomType` ids therefore remain append-only for t
 > That was the game's largest matter faucet and it was invisible. Deleting it is what turned the
 > pressure frontier from a formality into the core loop — **naming is free, air is earned** — and
 > it also fixed half of the owner's *"the doors vanish when I allocate a room"* report.
-> `RoomState.Pressurize` (`Rooms/RoomState.cs:135`) survives with exactly ONE live caller —
-> `ShipPlanBuilder.cs:149`, i.e. **setup-time authoring only** (re-measured 2026-07-29).
+> `RoomState.Pressurize` (`Rooms/RoomState.cs:135`) survives with **two** non-test callers —
+> `sim/Sim.Gen/ShipPlanBuilder.cs:149` (ship generation, applying `ShipPlan.PressurizedAnchors`)
+> and `hosts/scenario/Program.cs:1125` (the scenario host's fixture builder, which seeds the world
+> the P1 pin runs on) — **both setup-time, neither reachable from a running game.** ⚠️ An earlier
+> version of this sentence said "exactly ONE live caller" and named only the first: the census
+> behind it was grepped over `sim/` alone, so `hosts/` was outside the instrument and the second
+> caller could not appear. That is the **ninth trap shape** — a narrowed instrument goes blind —
+> and it contradicted §3's own correct list further down this same file.
 >
 > **M1-L / M1-L-b (2026-07-29) took the VERB and then the COMMAND away.** M1-L deleted the ＋ADD
 > ROOM picker, the client sender, the `"addroom"` parse case, the dispatch route and

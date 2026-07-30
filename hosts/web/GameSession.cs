@@ -3122,7 +3122,7 @@ namespace Perilune.Web
     /// <c>WireFormat*.cs</c>. Its only two consumers read MEMBERS — <c>WebHost.cs:219</c>'s
     /// <c>!= CmdKind.Unknown</c> and this file's dispatch <c>switch</c>. The only <c>(int)CmdKind</c>
     /// casts in the tree were the three lines of
-    /// <c>EveryCompartmentIsARoomTests.CmdKindOrdinals_ArePinned</c>, which exists to be the
+    /// <c>EveryCompartmentIsARoomTests.CmdKindOrdinals_ArePinned_AndAddRoomIsGone</c>, which exists to be the
     /// checklist of exactly this move and was updated in the same commit.</para>
     ///
     /// <para>⭐ <b>A NEW KIND IS APPENDED, NEVER INSERTED</b> (M2-4, and the arithmetic above is

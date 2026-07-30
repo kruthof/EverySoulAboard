@@ -392,7 +392,10 @@ namespace Perilune.Tests
             Assert.That(live.Anchor, Does.Not.StartWith("hall_"),
                 "an anchor of the hall_dN_sM form is an internal identifier, not a player-facing name");
 
-            // The two sealed wrecks stay untyped — they are still the player's ＋ADD ROOM work.
+            // The two sealed wrecks stay UNTYPED and sealed — authored that way, and nothing the
+            // player can do re-types them: M1-L-b deleted the last writer of a RoomType (OD-K), so
+            // a room type is authoring-only. They are still the player's work, but the work is
+            // opening and clearing them, not naming them.
             foreach (var s in plan.SlotGrid)
             {
                 if (s.Deck != WreckDeck || s.Index == OpenSlot) continue;
