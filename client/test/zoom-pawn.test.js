@@ -60,9 +60,33 @@ const DECKS_JSON = JSON.stringify({
     deck: 0,
     slots: [
       // [slotIndex, x, y, w, h, anchorName, roomType, occupied, active] — the shipped tuple order,
-      // taken from the fixture in blocked-model.test.js rather than re-derived from the decoder.
+      // read off `decodeSlot` in `client/src/wire/messages.js`, not copied from another fixture.
       [0, 4, 6, 6, 5, 'quarters', 5, true, true],
       [1, 14, 6, 6, 5, 'hold', 3, true, true],
+      // ⭐ THREE UNBOUND SLOTS, ADDED WHEN REVIEW FOUND THE OCCUPANCY GUARD UNPINNED — and a THIRD
+      // survivor was found while fixing it that review had not named. `crewRoomSlot` refuses a slot
+      // that is `!occupied` OR has no `anchorName`, and with only BOUND slots in the fixture
+      // **NEITHER HALF COULD BITE**: dropping `!s.occupied` survived GREEN (review's finding) and so
+      // did dropping `!s.anchorName` (found here, by physically applying the twin).
+      //
+      // ⚠️ TWO OF THE THREE ARE SHAPES THE HOST DOES NOT CURRENTLY EMIT, AND THAT IS SAID OUT LOUD
+      // RATHER THAN LEFT FOR A READER TO DISCOVER. Measured on the live wire (review, 2026-07-29):
+      // `--ship wreck` 13 of 16 slots and `--ship grid` 51 of 64 are unoccupied, and in EVERY one
+      // `occupied:false` and an empty `anchorName` coincide exactly — 0 unoccupied-but-named,
+      // 0 occupied-but-unnamed. ⇒ **EACH HALF OF THE CONDITION ALONE SUFFICES TODAY.** Both halves
+      // are kept as future-proofing for the day they stop coinciding, and these fixtures pin them
+      // SEPARATELY so that day cannot arrive silently. What they are NOT is evidence that the
+      // shipped condition needs both halves right now.
+      //   · slot 2 — the REALISTIC unbound shape: unoccupied AND unnamed. Either half refuses it,
+      //     which is precisely why it cannot separate them on its own.
+      //   · slot 3 — unoccupied but NAMED (hypothetical). The only fixture that makes the
+      //     `!s.occupied` half bite.
+      //   · slot 4 — occupied but UNNAMED (hypothetical). The only fixture that makes the
+      //     `!s.anchorName` half bite; without it `crewRoomSlot` would return `{anchor: ''}`, a
+      //     navigation target that resolves to `null` on the very next `roomTileRect` call.
+      [2, 0, 12, 6, 5, '', 0, false, false],
+      [3, 8, 12, 6, 5, 'ghost', 5, false, true],
+      [4, 16, 12, 6, 5, '', 0, true, true],
     ],
   }],
 });
@@ -74,24 +98,33 @@ const DVIEW = decksView(decodeDecks(decode(DECKS_JSON)), decodeRooms(decode(ROOM
 const QUARTERS = roomTileRect(DVIEW, 'quarters');
 const HOLD = roomTileRect(DVIEW, 'hold');
 
-// Three souls: one in the focused room, one in the OTHER room, one in a hall (no bound room at all).
+// FOUR souls. ⭐ `RYN` IS THE SECOND CREW MEMBER IN THE FOCUSED ROOM, and she exists because review
+// found the BASELINE pawn-click test could not bite. With only `ADA` inside `quarters`, the roster's
+// first entry and the crew member under the pointer were THE SAME PERSON, so the mutation that test
+// names — select `crew[0].cid` instead of `hit.cid` — chose Ada either way and survived 18/18 GREEN.
+// The consequence was not theoretical: `--ship grid` puts EIGHT crew in one room, where that defect
+// is a live wrong-pawn selection. Every driven click below that means "the one under the pointer"
+// now clicks RYN, who is NEVER `crew[0]`.
 const ADA = { cid: 7, name: 'Ada Vale', role: 'engineer', deck: 0, x: 5, y: 7, task: 'Maintain scrubber' };
 const BO = { cid: 9, name: 'Bo Ashby', role: 'medic', deck: 0, x: 15, y: 7, task: 'Idle' };
 const CY = { cid: 11, name: 'Cy Marsh', role: 'pilot', deck: 0, x: 1, y: 1, task: 'Idle' };
-const CREW = [ADA, BO, CY];
+const RYN = { cid: 13, name: 'Ryn Coe', role: 'hauler', deck: 0, x: 8, y: 9, task: 'Idle' };
+const CREW = [ADA, BO, CY, RYN];
 
-test('the fixture itself resolves — two rooms, three souls, one of them in no room at all', () => {
+test('the fixture itself resolves — two rooms, four souls, TWO of them in the focused room', () => {
   assert.ok(QUARTERS && HOLD && QUARTERS.anchor !== HOLD.anchor,
     'the two-room fixture did not resolve; every driven test below would be measuring nothing');
   assert.equal(crewRoomSlot(DVIEW, ADA).anchor, 'quarters');
+  assert.equal(crewRoomSlot(DVIEW, RYN).anchor, 'quarters');
+  assert.notEqual(CREW[0].cid, RYN.cid,
+    'RYN must not be the roster\'s FIRST entry, or the pawn-click test goes back to being unable to '
+    + 'tell "the cid under the pointer" from "the first crew member" — the exact hole review found');
   assert.equal(crewRoomSlot(DVIEW, BO).anchor, 'hold');
   assert.equal(crewRoomSlot(DVIEW, CY), null, 'the hall soul must resolve to NO room — she is the '
     + 'case the dock has to answer without a navigation target, and a fixture where every crew '
     + 'member is in a room cannot exercise it');
 });
 
-// MUTATION: drop the `!s.occupied` half of `crewRoomSlot` ⇒ the hall soul resolves to an unbound
-// slot whose `anchorName` is '' ⇒ RED on the leg above and on the `anchor` leg below.
 test('crewRoomSlot refuses a wrong-deck match — the rect alone is not the answer', () => {
   const offDeck = { ...ADA, deck: 1 };
   assert.equal(crewRoomSlot(DVIEW, offDeck), null,
@@ -101,23 +134,69 @@ test('crewRoomSlot refuses a wrong-deck match — the rect alone is not the answ
   assert.equal(crewRoomSlot(DVIEW, null), null);
 });
 
+// ⭐ THE UNBOUND-SLOT GUARD, WITH ITS TWO HALVES SEPARATED. Review found that dropping `!s.occupied`
+// survived the whole file GREEN; applying its twin here found that dropping `!s.anchorName` survived
+// too. Neither half was pinned, and a fixture of only bound slots is why.
+//
+// ⚠️ EACH LEG IS RUN WITH THE OTHER'S FIXTURE PRESENT BUT NAMED SEPARATELY, because `assert` throws
+// and only the FIRST failing leg of a multi-leg test reports (the fifth trap shape). Slot 2 — the
+// realistic shape — is asserted too, and it deliberately CANNOT separate the halves: either one
+// refuses it. That is stated rather than left as an apparent third pin.
+//
+// MUTATION: `if (!s || !s.anchorName) continue;`  (the `!s.occupied` half dropped)  ⇒ RED on leg 2.
+// MUTATION: `if (!s || !s.occupied) continue;`    (the `!s.anchorName` half dropped) ⇒ RED on leg 3.
+test('crewRoomSlot refuses an UNBOUND slot — both halves, each pinned by its own shape', () => {
+  // LEG 1 — the realistic unbound slot (unoccupied AND unnamed). Refused by either half alone, so it
+  // proves the guard exists and proves NOTHING about which half is doing the work.
+  assert.equal(crewRoomSlot(DVIEW, { deck: 0, x: 2, y: 14 }), null,
+    'a crew member standing on an ordinary unbound hall slot resolved to a room');
+
+  // LEG 2 — unoccupied but NAMED. The ONLY shape that makes the `!s.occupied` half bite.
+  assert.equal(crewRoomSlot(DVIEW, { deck: 0, x: 10, y: 14 }), null,
+    'an UNOCCUPIED slot that still carries an anchor name was accepted as a room. `roomTileRect` '
+    + 'looks a room up by anchor and would resolve it, so the dock would offer a navigation target '
+    + 'into a slot the host says holds no room.');
+
+  // LEG 3 — occupied but UNNAMED. The ONLY shape that makes the `!s.anchorName` half bite. Asserted
+  // on the RETURNED ANCHOR, not merely on null, so the failure message says what came back.
+  const unnamed = crewRoomSlot(DVIEW, { deck: 0, x: 18, y: 14 });
+  assert.equal(unnamed, null,
+    `a slot with an EMPTY anchorName was accepted as a room (returned ${JSON.stringify(unnamed)}). `
+    + 'Its anchor is \'\', and `roomTileRect(dView, \'\')` returns null — so the crew dock would draw '
+    + 'a row whose click navigates nowhere and says nothing.');
+
+  // NON-VACUITY: the three probe points must actually be INSIDE their slots, or all three legs pass
+  // by missing every rect. Asserted against the shipped decoder's own view of the fixture.
+  const slots = DVIEW.find((d) => d.deck === 0).slots;
+  for (const [sx, sy, idx] of [[2, 14, 2], [10, 14, 3], [18, 14, 4]]) {
+    const s = slots.find((q) => q.slotIndex === idx);
+    assert.ok(s && sx >= s.rect.x && sx < s.rect.x + s.rect.w && sy >= s.rect.y && sy < s.rect.y + s.rect.h,
+      `probe ${sx},${sy} is not inside fixture slot ${idx} — that leg passes by missing the rect`);
+  }
+});
+
 // MUTATION: build `here` from a second rect test instead of from `roomCrew` ⇒ this still passes, and
 // that is why the DRIVEN leg further down compares the dock's HERE rows against the DRAWN pawns.
 test('shipCrewRows lists the WHOLE SHIP, marks who is here, and carries a navigation target', () => {
   const rows = shipCrewRows(CREW, DVIEW, QUARTERS, 9);
-  assert.deepEqual(rows.map((r) => r.cid), [7, 9, 11],
+  assert.deepEqual(rows.map((r) => r.cid), [7, 9, 11, 13],
     'the dock dropped someone. It is the whole ship by decision (the owner report is about a pawn '
     + 'selected ELSEWHERE), so a room filter here would reproduce the complaint.');
-  assert.deepEqual(rows.map((r) => r.here), [true, false, false]);
-  assert.deepEqual(rows.map((r) => r.selected), [false, true, false],
+  assert.deepEqual(rows.map((r) => r.here), [true, false, false, true]);
+  assert.deepEqual(rows.map((r) => r.selected), [false, true, false, false],
     'the selected flag did not follow the cid it was given');
-  assert.deepEqual(rows.map((r) => r.anchor), ['quarters', 'hold', null]);
+  assert.deepEqual(rows.map((r) => r.anchor), ['quarters', 'hold', null, 'quarters']);
   assert.equal(rows[2].deck, 0, 'the hall soul must still carry a DECK — it is the only "where" '
     + 'the dock can honestly print for her');
   // A null selection selects nobody — not row 0, which is what `Number(null) | 0 === 0` would do
   // if the cid comparison were numeric-coerced rather than string-keyed.
   assert.deepEqual(shipCrewRows(CREW, DVIEW, QUARTERS, null).map((r) => r.selected),
-    [false, false, false], 'a null selection lit a row');
+    [false, false, false, false], 'a null selection lit a row');
+  // …and the selected flag really is keyed to the cid it is GIVEN, not to a position: selecting the
+  // LAST crew member must light the last row and nothing else. Without this, `selected: i === 1`
+  // would satisfy the deepEqual above.
+  assert.deepEqual(shipCrewRows(CREW, DVIEW, QUARTERS, RYN.cid).map((r) => r.selected),
+    [false, false, false, true], 'the selected flag is positional, not keyed to the cid');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -293,8 +372,19 @@ function pressKey(key) {
 //    nothing — if this file only ever holds two tests, it is this one and the one after it.
 // ═════════════════════════════════════════════════════════════════════════════════════════════
 
-// MUTATION: change `hit.cid` to `crew[0].cid` in `onCanvasClick` ⇒ every click selects Ada ⇒ RED on
-// the second leg. MUTATION: drop the `_armed == null` guard ⇒ the armed leg selects ⇒ RED.
+// ⚠️ THIS TEST'S CENTRAL LEG COULD NOT BITE UNTIL REVIEW FOUND IT, and the reason is worth keeping
+// in front of the next reader: the file claimed "if this file only ever holds two tests, it is this
+// one", and its named mutation — `hit.cid` → `crew[0].cid` — SURVIVED 18/18 GREEN when physically
+// applied. The fixture held exactly ONE crew member in the focused room, so the roster's first entry
+// and the pawn under the pointer were the same person, and the only other leg was a bare-floor click
+// where `hit` is falsy either way. The test could not tell "the cid under the pointer" from "the
+// first crew member in the room" — and on `--ship grid`, which puts eight crew in one room, that
+// distinction is a live wrong-pawn selection. ⇒ **A SECOND OCCUPANT IS THE FIX; the discriminating
+// click is on RYN, who is the LAST roster entry and the second occupant of `quarters`.**
+//
+// MUTATION: `Hud.selectCrewByCid(crew[0].cid)`                       ⇒ RED (selects ADA, not RYN).
+// MUTATION: `const hit = roomCrew(crew, _focus)[0];`                 ⇒ RED (both legs).
+// MUTATION: drop the `_armed == null` guard                          ⇒ RED (the armed leg selects).
 test('BASELINE: a click on a pawn with NO tool armed selects THAT crew member, by cid', () => {
   prime(null);
   assert.ok(hudSent.length === 0, 'the rig started dirty');
@@ -305,9 +395,20 @@ test('BASELINE: a click on a pawn with NO tool armed selects THAT crew member, b
     + 'capture hud.js\'s `_send` and every selection assertion in this file is vacuous — check the '
     + '`initConsole` capture in `prime()` before touching the controller.');
 
-  // …and it is the CID under the pointer, not merely "a crew member". Bo is in the other room, so
-  // clicking Ada's tile must never resolve to him; the discriminating case is a click on an EMPTY
-  // tile of this room, which must select nobody at all.
+  // ⭐ THE DISCRIMINATING LEG. RYN stands in the SAME room as ADA and is the LAST roster entry, so a
+  // click on her tile can only produce her tile if the handler read the tile. `crewClickTarget`
+  // resolves the cid to a fresh x/y off `frame.crew`, so the command's coordinates ARE the identity
+  // assertion — a handler that selected `crew[0]` would send Ada's 5,7 instead of Ryn's 8,9.
+  hudSent.length = 0;
+  clickTile(RYN.x, RYN.y);
+  assert.deepEqual(hudSent, [{ cmd: 'click', x: RYN.x, y: RYN.y }],
+    'clicking the SECOND occupant of the room did not select HER. This is the leg review found '
+    + 'missing: with one occupant, "the cid under the pointer" and "the roster\'s first entry" are '
+    + 'the same person and the test cannot tell them apart.');
+  assert.notDeepEqual(hudSent, [{ cmd: 'click', x: ADA.x, y: ADA.y }],
+    'the click resolved to the FIRST crew member rather than the one under the pointer');
+
+  // …and a click on an EMPTY tile of this room must select nobody at all.
   hudSent.length = 0;
   clickTile(QUARTERS.rx + 4, QUARTERS.ry + 4);
   assert.deepEqual(hudSent, [], 'a click on bare floor selected someone');
@@ -398,11 +499,11 @@ test('EVERY pawn in the room carries its NAME, and only the selected one reads a
 test('the dock lists EVERY soul aboard, says where each one is, and lights the selected row', () => {
   prime(BO.cid);
   const rows = el('rz-crewdock').childNodes[1].childNodes;
-  assert.equal(rows.length, 3,
+  assert.equal(rows.length, CREW.length,
     'the dock is not the whole ship. That is the decision recorded in `shipCrewRows` — a room-scoped '
     + 'dock cannot show a crew member selected at ship level who is standing anywhere else, which is '
     + 'the owner\'s report verbatim.');
-  assert.match(el('rz-crewdock').childNodes[0].textContent, /3 ABOARD/);
+  assert.match(el('rz-crewdock').childNodes[0].textContent, new RegExp(CREW.length + ' ABOARD'));
 
   const texts = rows.map((r) => r.textContent);
   assert.ok(texts[0].includes('VALE') && texts[0].includes('HERE'),
@@ -414,14 +515,18 @@ test('the dock lists EVERY soul aboard, says where each one is, and lights the s
     'a soul in another room must name that room — it is the answer to "where do I go to find him"');
   assert.ok(texts[2].includes('MARSH') && texts[2].includes('DECK 0'),
     'a soul in a HALL has no room to name, and the honest fallback is the deck');
+  assert.ok(texts[3].includes('COE') && texts[3].includes('HERE'),
+    'the SECOND soul in this room is not marked HERE — with only one HERE row, "HERE" could be a '
+    + 'property of the first row rather than of standing in the room');
 
   assert.equal(rows[1].getAttribute('aria-pressed'), 'true',
     'the selected row does not say so in words — colour alone is not a state a screen reader can read');
-  assert.deepEqual(rows.map((r) => r.classList.contains('sel')), [false, true, false]);
+  assert.deepEqual(rows.map((r) => r.classList.contains('sel')), [false, true, false, false]);
 
   // The HERE marking must agree with the pawn layer, or the dock and the floor are two sources.
   const drawn = layers();
   assert.ok(drawn.includes('VALE'), 'the dock says Ada is HERE and no pawn named VALE was drawn');
+  assert.ok(drawn.includes('COE'), 'the dock says Ryn is HERE and no pawn named COE was drawn');
   assert.ok(!drawn.includes('ASHBY'), 'the dock says Bo is elsewhere and a pawn named ASHBY was drawn');
 });
 
@@ -441,7 +546,13 @@ test('a repaint MUTATES the dock rows in place — it never rebuilds the node un
   const before = crewRow(ADA.cid);
   assert.ok(before, 'no row for the crew member — the dock did not paint');
   // A roster rebroadcast with a moved pawn and a changed task: everything a repaint normally carries.
-  Hud.renderRoster({ type: 'roster', crew: [{ ...ADA, x: ADA.x + 1, task: 'Haul parts' }, BO, CY] });
+  // ⚠️ DERIVED FROM `CREW`, not re-typed. A hand-listed roster here silently DROPPED a crew member
+  // when the fixture grew a fourth soul, which changes the cid SET — so the dock legitimately
+  // rebuilt its rows and this test failed for a reason that had nothing to do with what it pins.
+  Hud.renderRoster({
+    type: 'roster',
+    crew: CREW.map((c) => (c.cid === ADA.cid ? { ...c, x: c.x + 1, task: 'Haul parts' } : c)),
+  });
   RoomZoom.exitRoom(); RoomZoom.enterRoom('quarters');
   assert.ok(crewRow(ADA.cid) === before, 'the row node was replaced by an ordinary repaint. The '
     + 'roster rebroadcasts on every crew tile-step; a node torn down between mousedown and mouseup '
@@ -457,7 +568,8 @@ test('a repaint MUTATES the dock rows in place — it never rebuilds the node un
   assert.equal(el('rz-crewdock').childNodes[1].childNodes.length, 2, 'the dock ignored a death');
   Hud.renderRoster({ type: 'roster', crew: CREW });
   RoomZoom.exitRoom(); RoomZoom.enterRoom('quarters');
-  assert.equal(el('rz-crewdock').childNodes[1].childNodes.length, 3, 'the dock ignored a thaw');
+  assert.equal(el('rz-crewdock').childNodes[1].childNodes.length, CREW.length,
+    'the dock ignored a thaw');
   assert.ok(crewRow(ADA.cid) !== before,
     'the row node survived a membership change — the rebuild branch is unreachable, so the guard '
     + 'above is pinning a dock that can never update its rows at all');

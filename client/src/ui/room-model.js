@@ -550,10 +550,22 @@ export function roomCrew(crew, focusRoom) {
  * THIS person in", and the crew dock needs both — one to mark a row HERE, the other to know where
  * clicking a row should take you.
  *
- * ⚠️ `occupied` IS PART OF THE TEST, not decoration. `deckSlotView` emits a slot for every hall
- * position, bound or not; an unbound one has an empty `anchorName`, and `roomTileRect` — which is
- * what the caller will hand the answer to — looks a room up BY anchor name. Returning a slot with no
- * anchor would produce a navigation target that resolves to `null` on the very next call.
+ * WHY THE SLOT TEST IS `!s.occupied || !s.anchorName`. `deckSlotView` emits a slot for EVERY hall
+ * position, bound or not, so an unbound slot is a rect a crew member can legitimately be standing
+ * inside. Accepting one would hand the caller a navigation target with an empty anchor, and
+ * `roomTileRect` — which is what the caller passes it to — looks a room up BY anchor name and would
+ * answer `null` on the very next call: a dock row whose click goes nowhere and says nothing.
+ *
+ * ⚠️ THE SENTENCE THAT STOOD HERE OVERSTATED THIS AND IS CORRECTED (review, 2026-07-29). It read
+ * *"`occupied` IS PART OF THE TEST, not decoration"*, which reads as "both halves are load-bearing
+ * today". **MEASURED ON THE LIVE WIRE, THEY ARE NOT: `--ship wreck` 13 of 16 slots and `--ship grid`
+ * 51 of 64 are unoccupied, and in EVERY ONE `occupied:false` and an empty `anchorName` coincide —
+ * 0 unoccupied-but-named, 0 occupied-but-unnamed. So EITHER HALF ALONE SUFFICES on today's host,
+ * and dropping either one is measurably inert.** Both are kept deliberately, as FUTURE-PROOFING
+ * against the two conditions coming apart — the host computes them separately — and
+ * `client/test/zoom-pawn.test.js` pins each half with its own fixture so that day cannot arrive
+ * silently. Those two fixtures are HYPOTHETICAL shapes and say so; they are not evidence about the
+ * wire as it stands.
  *
  * @param {Array<{deck:number, slots:Array}>|null} dView  decksView output
  * @param {{deck:number, x:number, y:number}|null} crewEntry  one roster row
