@@ -557,16 +557,21 @@ test('watchTask: the CREW WATCH cell shows the label and flags real work', () =>
   // ⭐ M2-20 added the third flag, `waiting`. The deepEquals are FULL-SHAPE on purpose: a new flag
   // has to be written into every row here, which is how the next one cannot be added silently for
   // one state and forgotten for the other five.
+  // ⭐ M2-6 fix-back added `what` — the narrow docks' half of the label — and this guard caught it
+  // in exactly the way the comment above predicted, on the first run. Every row below carries it,
+  // and the clause-bearing rows (where `what` and `text` actually DIFFER) are driven in
+  // `why-line.test.js` rather than here, so that this file stays the shape guard it has always been.
   assert.deepEqual(watchTask({ task: 'Servicing scrubber_ls' }),
-    { text: 'Servicing scrubber_ls', working: true, waiting: false });
-  assert.deepEqual(watchTask({ task: 'Idle' }), { text: 'Idle', working: false, waiting: false });
+    { text: 'Servicing scrubber_ls', what: 'Servicing scrubber_ls', working: true, waiting: false });
+  assert.deepEqual(watchTask({ task: 'Idle' }),
+    { text: 'Idle', what: 'Idle', working: false, waiting: false });
   // En route gets no MAP tag, but CREW WATCH still reads it as assigned work: they are walking
   // to a real job, which is not the same as standing around.
   assert.deepEqual(watchTask({ task: 'Heading to service scrubber_ls' }),
-    { text: 'Heading to service scrubber_ls', working: true, waiting: false });
-  assert.deepEqual(watchTask({ task: '   ' }), { text: '—', working: false, waiting: false });
-  assert.deepEqual(watchTask({}), { text: '—', working: false, waiting: false });
-  assert.deepEqual(watchTask(null), { text: '—', working: false, waiting: false });
+    { text: 'Heading to service scrubber_ls', what: 'Heading to service scrubber_ls', working: true, waiting: false });
+  assert.deepEqual(watchTask({ task: '   ' }), { text: '—', what: '—', working: false, waiting: false });
+  assert.deepEqual(watchTask({}), { text: '—', what: '—', working: false, waiting: false });
+  assert.deepEqual(watchTask(null), { text: '—', what: '—', working: false, waiting: false });
 });
 
 test('workMarkers: only working crew, only the shown deck, joined from the roster', () => {
