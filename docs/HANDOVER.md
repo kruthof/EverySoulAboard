@@ -49,6 +49,13 @@ comment/record defects), each fixed and re-verified before merge.
    **M2-17** teach the harness to author a grid (22, INFRA; note M2-5's coverage caveat:
    after the veto the P1 run exercises no job system at all until M2-17 lands).
 
+**OD-L landed (owner, 2026-07-30, after playing the new build):** the opening arc is
+pod-driven — MOSS freeze/unfreeze per pod, failure reasons as repair hints, and an
+escalating repair-item ladder (production-chain depth = difficulty). Ledger row L in
+ROADMAP §5; binds the M3 charters, which are still written at end of M2 per process.
+The M2 tail (M2-9/M2-10 right-click prioritise) already delivers the "detail below the
+WORK tab" half.
+
 ## Open on the owner
 
 Nothing blocking. New, from this session's merges (review as you play):
