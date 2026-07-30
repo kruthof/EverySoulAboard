@@ -288,8 +288,24 @@ namespace Perilune.Sim
         {
             // NOT WORK ⇒ untouchable. Flee/Eat/Drink (and None, which cannot reach here) — §12.3.
             if (!WorkTypeMap.TryOf(citizen.JobKind, out var mine)) return false;
-            // Dead / held / mid-ordered-walk: taking the job would strand her, because the same
-            // facts stop anything from giving her another one.
+            // Dead / HoldPosition / mid-ordered-walk: taking the job would strand her, because the
+            // same facts stop anything from giving her another one.
+            //
+            // ⭐⭐ M2-19 — AND *HeldByOrder*, WHICH IS THE ONE THIS LINE EXISTS FOR NOW. A pawn on a
+            // direct order ("that machine, NOW") carries a JobKind that maps to a WorkType, so
+            // TryPreempt's survival guard above does NOT protect her: without the hold, ordering a
+            // band-4 repair while Construct sits at band 1 takes her straight back off it — the
+            // player's own instrument loses to the player's own grid. The hold refuses band
+            // pre-emption outright. It is read through IsRecruitableIgnoringJob rather than checked
+            // here so that the claim gates and the asIfIdle offer queries cannot drift from it.
+            //
+            // ⚠️ MEASURED: this line is NOT independently pinned for the hold, and saying so is the
+            // point. HasOfferAboveBand below asks the SAME predicate again (asIfIdle: true, in all
+            // three providers), so a mutation that blinds only this line — or only that one — leaves
+            // StickyClaimTests entirely green; only blinding BOTH reddens it. The pinned fact is
+            // Citizen.IsRecruitableIgnoringJob itself. Do not delete this check on the strength of
+            // that: it is the cheap gate that stops the provider walk, and the two are one
+            // expression rather than two spellings.
             if (!citizen.IsRecruitableIgnoringJob) return false;
 
             int myBand = citizen.GetWorkPriority(mine);
