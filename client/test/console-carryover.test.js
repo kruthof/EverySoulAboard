@@ -182,9 +182,14 @@ function wired(source, tokens) {
 // the whole suite stayed green while every crew row rendered an empty task cell. `watchTask(e)` with
 // its argument, not the bare name, for the same reason the nudge tokens carry a semicolon — the bare
 // name also matches the `import { … watchTask … }` line at the top of the file.
+// ⭐ M2-6 fix-back: the payload token is now `t.what`, not `t.text`. The dock renders WHAT she is
+// doing and stops at the ranking separator, because it is ~26 characters wide and a clause-bearing
+// label is 43–54 — see `console-model.js`'s `watchTask`. The token had to move with the line it
+// pins; what it PROVES is unchanged (the row still writes the host's sentence through the shared
+// derivation), and the negative control below still bites.
 const CREW_TASK_TOKENS = [
   '<span class="ov-crewtask"></span>', "querySelector('.ov-crewtask')",
-  'watchTask(e)', 'setText(rec.taskEl, t.text)', "setCls(rec.taskEl, 'working'",
+  'watchTask(e)', 'setText(rec.taskEl, t.what)', "setCls(rec.taskEl, 'working'",
 ];
 
 test('B1: the Overview CREW WATCH row carries a task line fed by the shared watchTask derivation', () => {

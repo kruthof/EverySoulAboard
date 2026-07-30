@@ -963,8 +963,13 @@ function paintCrewDock(rows) {
     // "The two surfaces cannot disagree" was an unpinned claim in the Overview's own comment until
     // this package; a word that reached CREW WATCH and not this dock would make the room the place
     // where the game stops telling you it is waiting on you. `AwaitingOrdersTests` pins both.
+    // ⭐ M2-6 fix-back — `t.what`, NOT `t.text`, for the same reason as the Overview's dock and
+    // more so: this one is 120 px ≈ 23 characters. See `console-model.js`'s `watchTask`.
+    // ⚠️ THIS SURFACE HAS NO SELECTED READOUT, so the ranking clause is not reachable here at all.
+    // That is a KNOWN GAP filed as an M4 Persona question, not a silent one — and it is still
+    // strictly better than a row that shows the first two letters of the answer.
     const t = watchTask(r.entry);
-    setText(rec.taskEl, t.text);
+    setText(rec.taskEl, t.what);
     setCls(rec.taskEl, 'working', t.working);
     setCls(rec.taskEl, 'waiting', t.waiting);
     // WHERE: 'HERE' when they are standing in the room on screen, else the room they are in, else

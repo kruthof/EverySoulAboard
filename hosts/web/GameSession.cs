@@ -2972,6 +2972,14 @@ namespace Perilune.Web
         /// Transit-shaped jobs (Fetching/Hauling/Eating) already say they are in transit, so they
         /// keep their verb. A crew member with NO job reads Walking / Holding / Awaiting / Idle.
         ///
+        /// ⭐ M2-6 — AND THEN <b>WHY THAT JOB AND NOT ANOTHER</b>: <see cref="AppendRankingClause"/>
+        /// may append <i>" — Deconstruct is priority 4"</i>. It is a SUFFIX by design, after every
+        /// branch above including the job-less ones, for two reasons: the client's on-map work
+        /// marker classifies on the label's FIRST word (`taskTag`), which a suffix cannot disturb;
+        /// and M2-6 CONSUMES M2-20's vocabulary rather than competing with it — the words for
+        /// *unassigned* and *idle* are decided above and this package adds no third one. See that
+        /// method for the three states in which it deliberately says nothing at all.
+        ///
         /// PURE READ: device/item/build lookups only ever read; nothing here mutates the sim or
         /// touches the RNG. `task` is a pre-existing roster field, so no wire shape moves.
         /// </summary>
@@ -3062,8 +3070,119 @@ namespace Perilune.Web
                     else sb.Append("Idle");
                     break;
             }
+            AppendRankingClause(sb, c);   // ⭐ M2-6 — …and WHY this job and not another
             return sb.ToString();
         }
+
+        /// <summary>
+        /// ⭐ <b>M2-6 — THE <c>why</c> CLAUSE: <i>"Stripping the wall at 12,7 — Deconstruct is
+        /// priority 4"</i>.</b> The label above says WHAT she is doing; without this it never says
+        /// why THAT job and not the one the player just ordered, so <i>"she is ignoring me"</i> and
+        /// <i>"she ranked it lower"</i> are the same picture. The clause names the work type the
+        /// current job belongs to and the priority the player gave it — the number that chose it.
+        ///
+        /// <para>⛔ <b>IT SPEAKS ONLY WHEN IT HAS SOMETHING TO SAY. THREE REFUSALS, EACH A DECISION:</b>
+        /// <list type="number">
+        ///   <item><b>Nothing was ranked</b> — no job at all, or a NEED (<c>Eat</c>, <c>Drink</c>,
+        ///     <c>Flee</c>), which the work grid never gates. <see cref="WorkTypeMap.TryOf"/> is the
+        ///     ONE place that classifies a <see cref="JobKind"/> as work, and its <c>false</c> is
+        ///     read rather than discarded: an ignored return here would append <i>"Repair is
+        ///     priority 0"</i> (the enum's natural zero) to <b>"Awaiting orders"</b> — plausible
+        ///     prose over a state it does not describe, which is the charter's mutation 1b and the
+        ///     shape this repo calls cheap-and-invisible.</item>
+        ///   <item><b>She has no ranking for the work she is holding</b> —
+        ///     <see cref="Citizen.CanTakeWorkType"/>, the sim's own predicate, folding BOTH reasons
+        ///     (switched off, or incapable). This state is REACHABLE, not theoretical: the haul veto
+        ///     is asked at the CLAIM only, so a crew member finishes a delivery whose work type the
+        ///     player switched off mid-carry (<c>WorkTypeVetoTests.MidHaul_HaulSwitchedOff_DeliveryStillCompletes</c>).
+        ///     <i>"Haul is priority 0"</i> would be a lie about a grid cell that is blank.</item>
+        ///   <item><b>Exactly one work type is switched on</b> — <i>"Repairing — Repair is priority
+        ///     1"</i> when Repair is the only thing she is ALLOWED to do explains nothing, and under
+        ///     OD-H (every work type boots off) that is the state of nearly every crew member for
+        ///     the player's whole first hour. A ranking clause is an answer to <i>"why this and not
+        ///     that"</i>; with one candidate there is no <i>that</i>.</item>
+        /// </list></para>
+        ///
+        /// <para><b>THE PRIORITY IS READ FRESH FROM THE <see cref="Citizen"/> ON EVERY CALL</b> —
+        /// <see cref="Citizen.GetWorkPriority"/>, never a host-side copy cached beside the roster.
+        /// The clause is a claim about the grid as it is NOW, and the player's own gesture is to
+        /// flip a cell and watch the line: a stale number would make the WORK tab look inert at the
+        /// exact moment it is being used. Pinned by
+        /// <c>WhyLineTests.FlippingThePriority_TheNextFramesClauseFollows</c>.</para>
+        ///
+        /// <para><b>ZERO ALLOCATION, NO RNG, NO MUTATION</b> — it appends into <see cref="_task"/>,
+        /// the reused scratch builder, and the work-type word is a <see cref="WorkTypeWords"/> table
+        /// lookup because <c>Enum.ToString()</c> hands back a fresh string every call (MEASURED at
+        /// 24 B/call on this runtime — it is mutation 3 and the allocation guard's own yardstick).</para>
+        ///
+        /// <para>⚠️ <b>THE PRIORITY IS A SINGLE <c>char</c> FOR CULTURE, NOT FOR BYTES — and the
+        /// difference was measured rather than assumed.</b> <c>byte.ToString()</c> on a value under
+        /// 300 returns a CACHED string on .NET 8 and allocates <b>nothing</b>, so "it would allocate"
+        /// would have been a false justification for this line. What it would do is read the
+        /// AMBIENT CULTURE, on a dev machine that is de-DE, in a repo whose rule is InvariantCulture
+        /// everywhere; <c>'0' + band</c> cannot. The arithmetic is safe BY DOMAIN — a manual priority
+        /// is <c>1</c>..<see cref="WorkPriority.Lowest"/> and <see cref="Citizen.SetWorkPriority"/>
+        /// throws outside it — and <c>WhyLineTests.AManualPriorityIsAlwaysASingleDigit</c> reddens
+        /// if that domain ever grows past 9, which is the only way this could silently emit
+        /// punctuation instead of a number.</para>
+        /// </summary>
+        private static void AppendRankingClause(System.Text.StringBuilder sb, Citizen c)
+        {
+            if (!WorkTypeMap.TryOf(c.JobKind, out var type)) return;   // refusal 1 — nothing was ranked
+            if (!c.CanTakeWorkType(type)) return;                      // refusal 2 — no ranking to report
+            if (CountWorkEnabled(c) < 2) return;                       // refusal 3 — there was no choice
+
+            sb.Append(RankingSeparator).Append(WorkTypeWords[(int)type])
+              .Append(" is priority ").Append((char)('0' + c.GetWorkPriority(type)));
+        }
+
+        /// <summary>
+        /// ⭐ <b>M2-6 fix-back — THE ONE SEPARATOR BETWEEN <i>WHAT</i> SHE IS DOING AND <i>WHY</i>.</b>
+        /// Everything before it is the job; everything after it is the ranking clause.
+        ///
+        /// <para><b>IT IS A PARSING CONTRACT, NOT DECORATION, AND IT HAS A SECOND HALF IN THE
+        /// CLIENT.</b> The two crew docks are ~26 and ~23 characters wide and every clause-bearing
+        /// label is 43–54, so a dock that renders the whole string shows a junk fragment
+        /// (<i>"Servicing door_d0_s0 — Re…"</i>) — the payload always past the ellipsis. The docks
+        /// therefore render only the part BEFORE this separator, and the Overview's selected readout
+        /// (<c>.ov-task</c>, 266 px and wrapping) renders the whole sentence. The client's half of
+        /// this constant is <c>WHY_SEPARATOR</c> in
+        /// <c>client/src/ui/console-model.js</c> — ⛔ change one and you must change the other, and
+        /// <c>client/test/why-line.test.js</c> is where that pairing is pinned.</para>
+        ///
+        /// <para>⚠️ <b>WHY SPLITTING ON IT IS UNAMBIGUOUS.</b> No base label
+        /// <see cref="TaskLabel"/> can emit contains " — ": the labels are verbs, device names, item
+        /// names and tile coordinates, and the only em dash the method appends is this one. It is
+        /// also always a SUFFIX — <see cref="AppendRankingClause"/> runs after every branch of the
+        /// switch — so the clause can be taken off the end without looking at what precedes it.
+        /// <c>WhyLineTests.NoBaseLabel_ContainsTheSeparator</c> drives every
+        /// <see cref="JobKind"/> and reddens the day that stops being true.</para>
+        /// </summary>
+        internal const string RankingSeparator = " — ";
+
+        /// <summary>
+        /// The player-facing word for each <see cref="WorkType"/>, indexed by the enum's own value.
+        ///
+        /// <para><b>A TABLE RATHER THAN <c>Enum.ToString()</c> FOR ONE REASON: allocation.</b> This
+        /// is read once per crew member per render and <c>Enum.ToString()</c> hands back a fresh
+        /// string every call — the same trap <see cref="HasAnyWorkEnabled"/>'s counted loop exists
+        /// to avoid. ⛔ Which makes it a HAND-MIRRORED PAIR, the shape this repo has been bitten by
+        /// four times, so it is pinned to the enum it mirrors rather than merely believed:
+        /// <c>WhyLineTests.EveryWorkType_HasTheSimsOwnWordInTheHostsTable</c> requires
+        /// <c>WorkTypeWords[t] == ((WorkType)t).ToString()</c> for every t and reddens the day a
+        /// seventh work type is declared.</para>
+        ///
+        /// <para>⚠️ These are the WORK TAB'S TOOLTIP WORDS, not its column headers: the grid's
+        /// headers are abbreviations (<c>BUILD</c> for Construct, <c>STRIP</c> for Deconstruct —
+        /// <c>client/src/ui/overview-model.js</c> <c>WORK_COLUMNS</c>) while each column's title
+        /// spells the work type out in full. The clause uses the full word because it is a sentence,
+        /// not a 5-character column head.</para>
+        /// </summary>
+        /// <remarks>⚠️ <c>internal</c>, not <c>private</c>, for the same one reason M2-20 made
+        /// <see cref="TaskLabel"/> internal: the pair guard has to READ the table it is pinning
+        /// rather than infer it from prose. Same assembly, same protection in the shipping host.</remarks>
+        internal static readonly string[] WorkTypeWords =
+            { "Repair", "Construct", "Craft", "Deconstruct", "Mine", "Haul" };
 
         /// <summary>
         /// ⭐ <b>M2-20 — THE WORD FOR A CREW MEMBER THE PLAYER HAS NOT GIVEN ANY WORK TO.</b>
@@ -3116,11 +3235,32 @@ namespace Perilune.Web
         /// outside its reach and enrols nothing. Stated rather than discovered: the ledger's
         /// silence here is a scope, not a permission.</para>
         /// </summary>
-        internal static bool HasAnyWorkEnabled(Citizen c)
+        internal static bool HasAnyWorkEnabled(Citizen c) => CountWorkEnabled(c) > 0;
+
+        /// <summary>
+        /// ⭐ <b>M2-6 — HOW MANY work types the player has switched on, and it is
+        /// <see cref="HasAnyWorkEnabled"/>'s only implementation.</b>
+        ///
+        /// <para>The <c>why</c> clause needs a COUNT ("is there more than one candidate?") where
+        /// M2-20 needed only a bit ("is there any?"), and the two questions are the same walk over
+        /// the same grid asking <see cref="Citizen.CanTakeWorkType"/>. ⛔ Writing a second loop
+        /// beside the first is exactly how a repo acquires two answers to one question — the
+        /// <c>IsBackedOff</c> / <c>codeOnly</c> / <c>NON_FURNITURE</c> shape CLAUDE.md names — so
+        /// there is ONE loop and the predicate is derived from it. The cost is the early exit
+        /// (at most six comparisons per crew member per render, on a ≤10 Hz path) and the price of
+        /// keeping it would have been a mirrored pair.</para>
+        ///
+        /// <para><b>ZERO ALLOCATION, NO RNG, NO MUTATION</b> — the same counted <c>for</c> with the
+        /// same <c>int</c>→enum cast M2-20 shipped: no <c>Enum.GetValues</c>, no LINQ, no boxing.
+        /// Still pinned by <c>AwaitingOrdersTests.HasAnyWorkEnabled_IsZeroAlloc</c>, which now
+        /// measures this loop through its caller.</para>
+        /// </summary>
+        internal static int CountWorkEnabled(Citizen c)
         {
+            int n = 0;
             for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
-                if (c.CanTakeWorkType((WorkType)t)) return true;
-            return false;
+                if (c.CanTakeWorkType((WorkType)t)) n++;
+            return n;
         }
 
         /// <summary>"x,y" — plus " on deck N" when the tile is off the citizen's own deck.</summary>

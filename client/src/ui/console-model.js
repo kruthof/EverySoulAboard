@@ -422,6 +422,37 @@ export function taskTag(task) {
   return Object.prototype.hasOwnProperty.call(TASK_TAGS, first) ? TASK_TAGS[first] : null;
 }
 
+/**
+ * ⭐ M2-6 — THE SEPARATOR BETWEEN *WHAT* A CREW MEMBER IS DOING AND *WHY THAT JOB*.
+ *
+ * The host appends `" — Deconstruct is priority 4"` to the task label when the ranking is worth
+ * explaining, so one wire field carries two facts. This is the client's half of a two-sided
+ * contract: the host half is `GameSession.RankingSeparator` in `hosts/web/GameSession.cs`.
+ * ⛔ CHANGE ONE AND YOU MUST CHANGE THE OTHER — `client/test/why-line.test.js` pins the pairing by
+ * driving a host-shaped label through the split.
+ *
+ * ⚠️ SPLITTING ON IT IS UNAMBIGUOUS, and that is a property of the host, not a hope. No base label
+ * `GameSession.TaskLabel` can emit contains `" — "` — the labels are verbs, device names, item
+ * names and tile coordinates — and the clause is always a SUFFIX, because the host appends it after
+ * every branch of its switch. `WhyLineTests.NoBaseLabel_ContainsTheSeparator` drives every `JobKind`
+ * and reddens the day either of those stops being true.
+ *
+ * ⚠️ NOT to be confused with the bare em dash `'—'` that `watchTask` returns for a MISSING label.
+ * That one has no spaces, so it can never match this separator — the empty-cell placeholder and the
+ * clause marker are different strings and `why-line.test.js` drives that case too.
+ */
+export const WHY_SEPARATOR = ' — ';
+
+/** The *WHAT* half of a roster task label: everything before the ranking clause, or the whole label
+ *  when there is no clause. PURE. Uses `lastIndexOf` because the clause is a SUFFIX — that is the
+ *  structural fact, and reading from the end is what keeps a base label safe if one ever does
+ *  acquire the separator. */
+export function taskWhat(task) {
+  if (typeof task !== 'string') return '';
+  const i = task.lastIndexOf(WHY_SEPARATOR);
+  return i < 0 ? task : task.slice(0, i);
+}
+
 /** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
  *  real work (so the row can dim the doing-nothing case instead of implying activity). A crew
  *  member en route to a job counts — they are assigned, just not there yet. PURE.
@@ -430,12 +461,24 @@ export function taskTag(task) {
  *  `working` and `waiting` answer different questions: *is work happening* and *is the ship waiting
  *  on the player*. They are mutually exclusive in practice (the host never emits the awaiting label
  *  for a crew member on a job) and the styles are ordered so that `working` wins if that ever stops
- *  being true. `text` is ALWAYS the host's string, untouched. */
+ *  being true. `text` is ALWAYS the host's string, untouched.
+ *
+ *  ⭐ M2-6 fix-back — `what` IS THE FIELD THE TWO CREW DOCKS RENDER, and `text` the one the
+ *  Overview's selected readout renders. They differ only for a clause-bearing label, and the split
+ *  exists because the docks are TOO NARROW TO HOLD ONE: `.ov-crewtask` fits ~26 characters (147 px)
+ *  and `.rz-crewtask` ~23 (120 px) at the shipped Space Mono sizes, against clause-bearing labels of
+ *  43–54. Rendering the full string there does not truncate the explanation, it truncates the
+ *  PAYLOAD — the priority number is past the ellipsis 100% of the time and the row reads
+ *  `"Servicing door_d0_s0 — Re…"`, which is worse than not saying it. ⛔ The fix is the TEXT, never
+ *  the dock geometry: that is M2-20's precedent, which shortened its own sentence rather than widen
+ *  two shared docks for one label. The whole sentence is fully readable in `.ov-task`
+ *  (266 px, wraps), which renders the raw wire field and is deliberately NOT on this derivation. */
 export function watchTask(entry) {
   const task = entry && typeof entry.task === 'string' ? entry.task.trim() : '';
   const verb = taskVerb(task);
   return {
     text: task || '—',
+    what: taskWhat(task) || '—',
     working: taskTag(task) != null || verb === EN_ROUTE_VERB,
     waiting: verb === AWAITING_VERB,
   };

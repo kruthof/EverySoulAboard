@@ -920,8 +920,14 @@ function paintCrewWatch(crew, selCid) {
       // for either side. The host owns both (`GameSession.TaskLabel`) — ⛔ never re-derive them here
       // from the `work` channel. This row only classifies the sentence it was sent, for colour.
       // ─────────────────────────────────────────────────────────────────────────────────────────
+      // ⭐ M2-6 fix-back — `t.what`, NOT `t.text`: this dock renders WHAT she is doing and stops at
+      // the separator. It is 147 px ≈ 26 characters and a clause-bearing label is 43–54, so the
+      // full string does not truncate the explanation — it truncates the PAYLOAD, leaving
+      // "Servicing door_d0_s0 — Re…". The WHY is carried by `.ov-task` below, which is 266 px and
+      // wraps. ⛔ Do not "fix" this back to `t.text` without widening the dock, and see
+      // `console-model.js` for why widening is the wrong trade (M2-20's precedent).
       const t = watchTask(e);
-      setText(rec.taskEl, t.text);
+      setText(rec.taskEl, t.what);
       setCls(rec.taskEl, 'working', t.working);
       setCls(rec.taskEl, 'waiting', t.waiting);
       // ⚠️ THERE IS NO MORALE BAR HERE, AND ITS ABSENCE IS THE FEATURE (M1-F, 2026-07-29). A
@@ -978,6 +984,12 @@ function paintReadout(frame, rosterMsg, dView, activeDeck) {
     _roTraitsKey = tkey;
   }
   setHidden(_el.roTraits, traits.length === 0);
+  // ⭐ M2-6 fix-back — THIS IS WHERE THE `why` CLAUSE IS ACTUALLY READ, and it is the reason the
+  // two crew docks are allowed to stop at the separator. The RAW wire field, whole: `.ov-task` is
+  // 266 px and wraps (styles.css), so every clause-bearing label fits in two lines. ⛔ It must NOT
+  // be routed through `watchTask` — that derivation's `what` deliberately drops the clause for the
+  // narrow docks, and putting this readout on it would delete the explanation from the one place
+  // on either surface that can hold it.
   setText(_el.roTask, '> ' + (sel.task || ''));
   setHidden(_el.roTask, false);
   if (room && room.atmos) {

@@ -68,7 +68,7 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 | T5 | Right-click "Prioritise: repair X" forced order | §2.2 | queued (M2-9/M2-10) |
 | T6 | Pre-emption + sticky ordered claim (order wins NOW and HOLDS) | §2.2 | partial (M2-8 merged: a higher band takes a busy pawn back, one tick; HOLD is M2-19, and nothing is browser-visible until it lands) |
 | T7 | Direct orders: move, operate, erase; pawn selection in Room Zoom | §2.1 | DONE (M1-C/M1-K + operate verb) |
-| T8 | A stalled/refused order says WHY, on the tile | §2.4 (`JobCondition`) | partial (`blocked` channel; M2-6/M2-18/M2-20 queued) |
+| T8 | A stalled/refused order says WHY, on the tile | §2.4 (`JobCondition`) | partial (`blocked` channel + M2-18 tile reason + M2-20 pawn word + M2-6 ranking clause in the Overview readout; remaining: `ReasonNoConsumable` via M2-9) |
 | T9 | Designations survive & are erasable (dig/strip/stockpile/erase) | §2.1 | DONE (marks channel + M1-C) |
 | T10 | Repair is a work type with visible effect — repair a wing, lights come back | OD-A/OD-K | queued (M2-11/M2-12: power is condition-blind today) |
 | T11 | Skills gate output, never whether (passions later) | §5 | missing (M3-7/M3-12) |

@@ -26,7 +26,7 @@ section — read it before you conclude a mechanic works.**
 > | movement tuning | §5.4 | **LANDED** — `citizen.def` `ticks_per_tile = 10` (E0-2 L1 retune, was 5), `PathService.TryRandomWalkableTileNear` (E0-1) is the wander. §5.4's prose already describes the post-change code. |
 > | slice build/work economy | §6.5 | **LANDED** (`AuthoredShips`, `CraftingSystem`, `JobSystem`). ⚠️ §6.5's `file:line` citations were written against `0f88231` and this pass did NOT re-verify them line by line — re-derive before quoting one. |
 > | CO2→maintenance dispatch + `AgreeTask` whitelist | §13.1 | **NEVER SHIPPED ITS CHANGE.** Re-measured: nothing in `Systems/MachineWearSystem.cs` or `Jobs/` reads `CO2Ppm` at all, and `AgreeTask` is unchanged. §13.1's first half — *nothing converts an atmosphere reading into a job* — is therefore still a LIVE gap, exactly as its own body says. The CO2-**transport** half was fixed separately, by B-3. |
-> | task labels + build-ghost wire | §13.4, §15 | **LANDED** — `TaskLabel` names the object ("Servicing scrubber_ls", "Hauling … to …", `GameSession.cs:2900-2938`) and `WireFormat.Design` carries `Delivered`/`Required` as tuple elements 5–6 with `Material` appended as 7 (`WireFormat.cs:307-315`). |
+> | task labels + build-ghost wire | §13.4, §15 | **LANDED** — `TaskLabel` names the object AND, since M2-6, the priority that chose it ("Servicing scrubber_ls — Repair is priority 1", "Stripping the wall at 12,7 — Deconstruct is priority 4", `GameSession.cs:2991-3075`) and `WireFormat.Design` carries `Delivered`/`Required` as tuple elements 5–6 with `Material` appended as 7 (`WireFormat.cs:307-315`). |
 >
 > **Trust the PER-SECTION dates.** §13 carries entries dated 2026-07-29.
 
@@ -2629,7 +2629,9 @@ last.
 | the save format | `sim/Sim.Core/Save/SaveWriter.cs` + `SaveReader.cs` (spine files; bump the chapter version and add the reader branch in the same commit) |
 | the shipping slice's ship, crew, stock | `sim/Sim.Gen/AuthoredShips.cs:223-563` |
 | the client's command surface | `hosts/web/GameSession.cs:797-820` (`WebCommand.Parse`) |
-| what a crew member's task line says | `hosts/web/GameSession.cs:2900-2938` (`TaskLabel`; its remarks start at `:2878`) |
+| what a crew member's task line says | `hosts/web/GameSession.cs:2991-3075` (`TaskLabel`; its remarks start at `:2934`) |
+| …and **why that job and not another** (M2-6) | `hosts/web/GameSession.cs:3129` (`AppendRankingClause` — appends " — &lt;WorkType&gt; is priority &lt;n&gt;", and says nothing at all in three states: no job / no ranking for the job in hand / only one work type enabled) |
+| **where that clause is READ, and where it is not** | ⚠️ ONE wire field, TWO renderings. The separator is a parsing contract declared on both sides: `GameSession.cs:3161` (`RankingSeparator`) and `client/src/ui/console-model.js` (`WHY_SEPARATOR` + `taskWhat`). The two crew docks (`.ov-crewtask` ~26 chars, `.rz-crewtask` ~23) render only the WHAT half — they are too narrow to hold the clause and would ellipsis away the priority number itself. The whole sentence is read in the Overview's **selected readout** `.ov-task` (266 px, wraps), which renders the raw wire field. ⛔ The Room Zoom has no readout, so the clause is unreachable there — filed as an M4 Persona question. |
 | what the build ghosts carry | `hosts/web/WireFormat.cs:307-315` (`Design`), `:323` (`Designs`) |
 
 <!-- RECONCILED 2026-07-29 (M1-L-b): the lane that was moving these two rows LANDED; the line
