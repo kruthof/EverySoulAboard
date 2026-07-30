@@ -63,14 +63,20 @@ test('the move order classifies as a move target over any hit', () => {
   assert.deepEqual(overviewClickAction('move', { roomAnchor: 'mess' }), { type: 'move' });
 });
 
-test('with no tool: pawn > terminal > add-room > room > space (the single disambiguation rule)', () => {
+test('with no tool: pawn > terminal > compartment > space (the single disambiguation rule)', () => {
   assert.deepEqual(overviewClickAction(null, { pawnCid: 42, roomAnchor: 'mess' }),
     { type: 'select', cid: 42 });
-  assert.deepEqual(overviewClickAction(null, { addRoomSlot: 3 }), { type: 'addroom', slot: 3 });
+  assert.deepEqual(overviewClickAction(null, { terminalId: 'con-1' }), { type: 'terminal', tid: 'con-1' });
   assert.deepEqual(overviewClickAction(null, { roomAnchor: 'reactor' }),
     { type: 'enterRoom', anchor: 'reactor' });
-  assert.deepEqual(overviewClickAction(null, { hallSlot: 2 }), { type: 'none' });
   assert.deepEqual(overviewClickAction(null, {}), { type: 'none' });
+  // ⭐ M1-L: the `addRoomSlot` rung and the `hallSlot` miss rung are GONE, and their retired inputs
+  // are asserted INERT here rather than merely dropped — a stale caller passing either must not be
+  // silently honoured. An untyped compartment now arrives as a `roomAnchor` like any other.
+  assert.deepEqual(overviewClickAction(null, { addRoomSlot: 3 }), { type: 'none' });
+  assert.deepEqual(overviewClickAction(null, { hallSlot: 2 }), { type: 'none' });
+  assert.deepEqual(overviewClickAction(null, { roomAnchor: 'hall_d0_s1' }),
+    { type: 'enterRoom', anchor: 'hall_d0_s1' });
 });
 
 // ---- WP-5: the ORDERS bar, PURE half (the precedence decision + the readback) ----
@@ -119,11 +125,14 @@ test('WP-5: an armed ORDER tool takes the click from EVERY hit — pawn, termina
   // The three overtaken hits are measured holes, not hypotheticals — see overviewClickAction's doc:
   // crew stand ON the grid ship's dig designations; a device is exactly what STRIP targets; and
   // WP-1's wreck-fill put the debris in the halls, where the ＋ADD ROOM chip lives.
+  // ⚠️ M1-L: `addRoomSlot`/`hallSlot` are retired keys and are KEPT in these fixtures deliberately —
+  // an armed order must own the click over a hit object carrying anything, including keys the
+  // classifier no longer knows. `roomAnchor` is the live one that matters.
   const everyHit = { pawnCid: 7, terminalId: 'con-3', addRoomSlot: 2, roomAnchor: 'hold', hallSlot: 2 };
   for (const tool of ORDER_TOOLS) {
     assert.deepEqual(overviewClickAction(tool, everyHit), { type: 'order', tool });
     // and one hit at a time, so a single mis-ordered branch cannot hide behind the others
-    for (const hit of [{ pawnCid: 7 }, { terminalId: 'con-3' }, { addRoomSlot: 2 }, { roomAnchor: 'hold' }, {}]) {
+    for (const hit of [{ pawnCid: 7 }, { terminalId: 'con-3' }, { roomAnchor: 'hold' }, {}]) {
       assert.deepEqual(overviewClickAction(tool, hit), { type: 'order', tool },
         `${tool} lost the click to ${JSON.stringify(hit)}`);
     }
@@ -138,23 +147,23 @@ test('WP-5: the order branch changes NOTHING for move, build tools, or the un-ar
   for (const tool of ['wall', 'floor', 'door', 'cancel']) {
     assert.deepEqual(overviewClickAction(tool, { pawnCid: 5 }), { type: 'select', cid: 5 });
     assert.deepEqual(overviewClickAction(tool, { terminalId: 'con-1' }), { type: 'terminal', tid: 'con-1' });
-    assert.deepEqual(overviewClickAction(tool, { addRoomSlot: 1 }), { type: 'addroom', slot: 1 });
     assert.deepEqual(overviewClickAction(tool, { roomAnchor: 'reactor' }), { type: 'enterRoom', anchor: 'reactor' });
     assert.deepEqual(overviewClickAction(tool, {}), { type: 'none' });
   }
   // And the un-armed ladder is untouched, rung by rung.
-  assert.deepEqual(overviewClickAction(null, { pawnCid: 5, terminalId: 't', addRoomSlot: 1, roomAnchor: 'r' }),
+  assert.deepEqual(overviewClickAction(null, { pawnCid: 5, terminalId: 't', roomAnchor: 'r' }),
     { type: 'select', cid: 5 });
-  assert.deepEqual(overviewClickAction(null, { terminalId: 't', addRoomSlot: 1, roomAnchor: 'r' }),
+  assert.deepEqual(overviewClickAction(null, { terminalId: 't', roomAnchor: 'r' }),
     { type: 'terminal', tid: 't' });
-  assert.deepEqual(overviewClickAction(null, { addRoomSlot: 1, roomAnchor: 'r' }), { type: 'addroom', slot: 1 });
   assert.deepEqual(overviewClickAction(null, { roomAnchor: 'r' }), { type: 'enterRoom', anchor: 'r' });
+  // M1-L: the two retired keys are inert, not merely absent (see the un-armed-ladder test).
+  assert.deepEqual(overviewClickAction(null, { addRoomSlot: 1 }), { type: 'none' });
   assert.deepEqual(overviewClickAction(null, { hallSlot: 4 }), { type: 'none' });
   // There is NO build action on this surface, under any armed tool or hit. (Non-vacuity for the
   // whole sweep: at least one action really was produced.)
   const seen = new Set();
   for (const tool of [null, 'move', 'wall', 'floor', 'door', 'cancel', ...ORDER_TOOLS]) {
-    for (const hit of [{}, { pawnCid: 1 }, { terminalId: 't' }, { addRoomSlot: 0 }, { roomAnchor: 'r' }, { hallSlot: 0 }]) {
+    for (const hit of [{}, { pawnCid: 1 }, { terminalId: 't' }, { roomAnchor: 'r' }]) {
       seen.add(overviewClickAction(tool, hit).type);
     }
   }
@@ -424,7 +433,7 @@ class OvDoc extends DomDocument {
  *  (`setChip` / `reflectLens` — see `room-model.test.js`, which registers the same five). */
 const OV_IDS = [
   'overview-view', 'ov-stage', 'ov-toast', 'ov-nudge', 'ov-topbar', 'ov-deckrail', 'ov-crewwatch',
-  'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', 'ov-picker',
+  'ov-readout', 'ov-lens', 'ov-cmd', 'ov-sensor', 'ov-ledger', // M1-L dropped 'ov-picker' with the modal
   's-deck', 's-lens', 'legendcard', 'crew-count', 'crewlist',
   // ⚠️ ADDED FOR THE PAUSED-NUDGE LEG (M1-C review, 2026-07-29) — trap 4's corollary: if the harness
   // cannot model what the guard needs to see, fix the harness. `nudgeOnIntent` asks `isPaused()`,
@@ -587,16 +596,14 @@ function clickTile(target, tx, ty, deck = FIX.frame.deck) {
 // does not exist. The equivalent probe lives in `room-model.test.js`, against `initRoomZoom`.
 const ovSent = [];
 let ovEntered = [];          // onEnterRoom calls
-let ovAdded = [];            // onAddRoom calls
 const { root: ovRoot, stage: ovStage, cmd: ovCmd, toast: ovToast, nudge: ovNudgeEl } = mountOverview(makeOvDoc(), {
   send: (o) => ovSent.push(o),
   onEnterRoom: (anchor) => ovEntered.push(anchor),
-  onAddRoom: (deck, slot) => ovAdded.push([deck, slot]),
 });
 
 /** A scene click at the CENTRE of sim tile (tx,ty), targeted at `target`. Returns what `send` got. */
 function ovClick(target, tx, ty, deck = FIX.frame.deck) {
-  ovSent.length = 0; ovEntered = []; ovAdded = [];
+  ovSent.length = 0; ovEntered = [];
   clickTile(target, tx, ty, deck);
   return ovSent.slice();
 }
@@ -635,7 +642,7 @@ afterEach(() => {
   if (typeof Hud === 'undefined') return;
   for (let i = 0; i < 8 && Hud.getArmedTool() != null; i++) Hud.armTool(Hud.getArmedTool());
   Hud.renderFrame(FIX.frame);
-  ovSent.length = 0; ovEntered = []; ovAdded = [];
+  ovSent.length = 0; ovEntered = [];
 });
 
 // ── the bar itself ──
@@ -664,7 +671,7 @@ test('WP-5 driven: the command bar PAINTS an ORDERS island with all three verbs,
   assert.ok(!html.includes('STOCKPILE'),
     'the ORDERS bar still SAYS "STOCKPILE" somewhere in its markup — a label with no tool');
   // …and the BUILD hint that points into the Room Zoom is still there beside it.
-  assert.match(html, /CLICK A ROOM TO BUILD INSIDE IT/);
+  assert.match(html, /CLICK A COMPARTMENT TO BUILD INSIDE IT/); // M1-L reworded: there are no halls left
 });
 
 // MUTATIONS this one catches, BOTH of which survived a 639-green suite before it existed:
@@ -877,7 +884,9 @@ test('M1-C driven: an unordered tile sends NOTHING, and the surface SAYS so', ()
 // It matters in play rather than in theory: on the standard ships crew stand ON the debris they are
 // digging, so "arm ERASE, click the tile a pawn is standing on" is the ORDINARY gesture, and losing
 // it to `select` would look exactly like a dead tool.
-test('M1-C: an armed ERASE takes the click from EVERY hit — pawn, terminal, ＋ADD ROOM, room', () => {
+test('M1-C: an armed ERASE takes the click from EVERY hit — pawn, terminal, compartment', () => {
+  // M1-L: `addRoomSlot`/`hallSlot` are RETIRED keys, kept in this fixture on purpose — ERASE must own
+  // the click over a hit object carrying anything at all, including keys the classifier dropped.
   const everyHit = { pawnCid: 7, terminalId: 'con-3', addRoomSlot: 2, roomAnchor: 'hold', hallSlot: 2 };
   assert.deepEqual(overviewClickAction(ERASE_TOOL, everyHit), { type: 'erase' });
   for (const hit of [{ pawnCid: 7 }, { terminalId: 'con-3' }, { addRoomSlot: 2 }, { roomAnchor: 'hold' }, { hallSlot: 2 }, {}]) {
@@ -892,12 +901,14 @@ test('M1-C: an armed ERASE takes the click from EVERY hit — pawn, terminal, �
 // The same four shapes DRIVEN, because the pure test above cannot see whether the controller's
 // `case 'erase'` actually runs for them: `overviewClickAction` could classify perfectly while the
 // view resolved the click somewhere else.
-test('M1-C driven: ERASE owns the click over a pawn, a terminal, ＋ADD ROOM and a room', () => {
+test('M1-C driven: ERASE owns the click over a pawn, a terminal, bare stage and a compartment', () => {
   ovSetMarks([[12, 5, 'dig'], [28, 16, 'dig'], [22, 3, 'dig'], [30, 12, 'dig']]);
   const targets = [
     ['pawn', ovTarget('pl-pawn', { cid: '4' }), 28, 16],
     ['terminal', ovTarget('pl-terminal', { tid: 'term_hydro' }), 22, 3],
-    ['＋ADD ROOM', ovTarget('pl-addroom', {}), 30, 12],
+    // M1-L: was a `＋ADD ROOM` chip. The class is gone, so this node now hit-tests as BARE STAGE —
+    // still a distinct and worthwhile case (ERASE must fire on a miss, not only on a rich hit).
+    ['bare stage', ovTarget('pl-nothing', {}), 30, 12],
     ['room', ovTarget('pl-room', { anchor: 'hold' }), 12, 5],
   ];
   ovArm(ERASE_TOOL);
@@ -1130,20 +1141,25 @@ test('WP-5 driven: an armed order suppresses ROOM ENTRY (and un-armed still ente
   }
 });
 
-test('WP-5 driven: an armed order suppresses ＋ADD ROOM (and un-armed still commissions)', () => {
-  const hall = ovTarget('pl-hall', { slot: 6 });
-  const chip = new OvEl(ovDoc, 'div');
-  chip.className = 'pl-addroom';
-  hall.appendChild(chip);
-  assert.deepEqual(ovClick(chip, 12, 5), [], 'an un-armed ＋ADD ROOM click must send no order');
-  assert.deepEqual(ovAdded, [[0, 6]], 'the un-armed chip click did not open the room picker — the ' +
-    'hit-test is not seeing this node, so the suppression assertion below would be vacuous');
-  // WP-1's wreck-fill put the debris in the HALLS, and this chip is the only interactive thing in
-  // one. If it won the click, the halls would be un-diggable AND the click would commission a room.
+// ⭐ M1-L INHERITED THIS TEST'S HAZARD, so the test is retargeted rather than deleted. It used to
+// drive a `.pl-addroom` chip inside a `.pl-hall`; both classes are gone. But the DANGER it guarded is
+// bigger now, not smaller: WP-1's wreck-fill put the debris in the halls, and those halls are
+// ENTERABLE COMPARTMENTS today — so with DIG armed, a click on wreck debris must designate it and
+// must NOT open the room. Same rule, same fixture tile, a target that now really exists.
+test('M1-L driven: an armed order suppresses entry into an UNTYPED compartment (and un-armed enters)', () => {
+  // An untyped compartment is a `.pl-room` like any other — that IS the package. The anchor is the
+  // internal hall id the host now always sends, which is exactly the input that used to be blank.
+  const untyped = ovTarget('pl-room', { anchor: 'hall_d1_s3' });
+  // POSITIVE CONTROL FIRST: without it, "did not enter" proves only that the hit-test never saw the
+  // node, which is how a suppression test passes while suppressing nothing.
+  assert.deepEqual(ovClick(untyped, 12, 5), [], 'an un-armed untyped-compartment click must send no order');
+  assert.deepEqual(ovEntered, ['hall_d1_s3'],
+    'the un-armed click did not ENTER the untyped compartment — either the hit-test cannot see it '
+    + '(so the suppression leg below is vacuous) or M1-L\'s central claim is false');
   ovArm('dig');
-  const sent = ovClick(chip, 12, 5);
-  assert.deepEqual(ovAdded, [], 'DIG armed, and the click opened the room picker instead');
-  assert.deepEqual(sent, paletteOrders('dig', 12, 5));
+  const sent = ovClick(untyped, 12, 5);
+  assert.deepEqual(ovEntered, [], 'DIG armed, and the click entered the compartment as well');
+  assert.deepEqual(sent, paletteOrders('dig', 12, 5), 'DIG armed, and the debris was not designated');
 });
 
 test('WP-5 driven: an armed order designates over a PAWN and over a TERMINAL', () => {
@@ -1282,9 +1298,11 @@ test('BUG-B: a press that ENDS off the schematic cannot arm a later release', ()
 // enters that room"), and a claim in a comment that no test exercises is the shape this repo keeps
 // paying for. Both directions are driven, because only the pair distinguishes the two designs:
 // press-target hit-testing fails the first leg AND wrongly passes the second.
-test('BUG-B: the RELEASE target decides — a press dragged hall→room enters, room→hall does not', () => {
+test('BUG-B: the RELEASE target decides — a press dragged off-room→room enters, room→off does not', () => {
   const room = ovTarget('pl-room', { anchor: 'hold' });
-  const hall = ovTarget('pl-hall', { slot: 6 });
+  // M1-L: was a `.pl-hall`. There are no halls; this is now a node the hit-test does not recognise,
+  // i.e. BARE STAGE — which is the same thing the leg needs (a press target that is not a room).
+  const hall = ovTarget('pl-nothing', {});
   const at = tileAtEvent(12, 5);
 
   ovEntered = [];
@@ -1325,10 +1343,9 @@ test('BUG-B: a SECONDARY-button press/release on the schematic resolves nothing'
 
 test('an armed order that REFUSES a room says so at the point of the click', () => {
   const room = ovTarget('pl-room', { anchor: 'hold' });
-  const hall = ovTarget('pl-hall', { slot: 6 });
-  const chip = new OvEl(ovDoc, 'div');
-  chip.className = 'pl-addroom';
-  hall.appendChild(chip);
+  // M1-L: the second half used to drive a `＋ADD ROOM` chip. It drives an UNTYPED COMPARTMENT now —
+  // the same tile, the same suppression rule, and the target it became.
+  const untyped = ovTarget('pl-room', { anchor: 'hall_d1_s3' });
   ovArm('dig');
 
   // A SENTINEL rather than an empty toast: "the toast is empty" is also what deleting the feature
@@ -1342,11 +1359,14 @@ test('an armed order that REFUSES a room says so at the point of the click', () 
     'the refusal did not name the verb that caused it — "nothing happened" is the bug being fixed');
   assert.match(ovToast.textContent, /ESC/, 'the refusal did not say how to get out of the mode');
 
-  // ＋ADD ROOM is refused by the same rule and must explain itself the same way.
+  // An UNTYPED compartment is refused by the same rule and must explain itself the same way. This
+  // is the leg that would have gone silent if `orderClickSuppressed` had merely dropped its
+  // `addRoomSlot` disjunct without the surviving `roomAnchor` one absorbing these clicks.
   ovToast.textContent = 'SENTINEL'; ovToast.hidden = true;
-  assert.deepEqual(ovClick(chip, 12, 5), paletteOrders('dig', 12, 5));
-  assert.deepEqual(ovAdded, [], 'the picker opened, so the suppression under test did not happen');
-  assert.match(ovToast.textContent, /DIG ARMED/, 'a suppressed ＋ADD ROOM click stayed silent');
+  ovEntered = [];
+  assert.deepEqual(ovClick(untyped, 12, 5), paletteOrders('dig', 12, 5));
+  assert.deepEqual(ovEntered, [], 'the compartment opened, so the suppression under test did not happen');
+  assert.match(ovToast.textContent, /DIG ARMED/, 'a suppressed UNTYPED-compartment click stayed silent');
   ovArm('dig');
 });
 

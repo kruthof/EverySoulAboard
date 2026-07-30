@@ -347,7 +347,11 @@ namespace Perilune.Web
                 // paused". The reply is Emit-ted from inside the handler, exactly as Talk/Bio/Chron do
                 // on the three lines below, all of which return false for the same reason.
                 case CmdKind.Operate: HandleOperate(cmd); return false;
-                case CmdKind.AddRoom: HandleAddRoom(cmd); return true;
+                // ⭐ M1-L: `case CmdKind.AddRoom: HandleAddRoom(cmd); return true;` is DELETED, with
+                // the `"addroom"` parse case and the two private methods behind it. The verb is now
+                // UNREACHABLE end to end: no client sender, no parse, no route. The `CmdKind.AddRoom`
+                // MEMBER survives dormant — deleting an enum member renumbers its siblings and is a
+                // spine change (see the enum's own note).
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
@@ -1178,61 +1182,10 @@ namespace Perilune.Web
         private void EmitOperate(Int3 pos, int ok, string state, string reason)
             => Emit(WireFormat.Operate(pos.X, pos.Y, pos.Z, ok, state, reason));
 
-        /// <summary>
-        /// The room-commission bridge (Overview ＋ADD ROOM). Looks up the target slot in the plan's
-        /// view-only, unhashed <see cref="SimHost.SlotGrid"/>, derives its centre PROBE tile (the
-        /// interior centre of the wall-inclusive slot window — a floor tile inside the compartment)
-        /// and its existing ANCHOR name, and enqueues an <see cref="AddRoomCommand"/> carrying that
-        /// geometry. The sim itself has no slot-grid knowledge, so all geometry rides the command.
-        /// Legality (a real sealed compartment that no TYPED anchor already owns — W4b moved that test
-        /// off gas and onto the anchor) is decided sim-side at the tick boundary; an illegal request is
-        /// a silent sim no-op, and the slot only flips occupied+typed once the sim confirms it in the
-        /// next <c>decks</c> frame. ⚠️ It flips occupied while still AIRLESS — allocating a room no
-        /// longer opens its door or makes any air. Unknown room type ⇒ ignored.
-        /// </summary>
-        private void HandleAddRoom(WebCommand cmd)
-        {
-            int deck = cmd.X, slotIndex = cmd.Y;
-            if (!ParseRoomType(cmd.Name, out var type)) return; // unknown/blank type — ignored
-            var slots = _host.SlotGrid;
-            if (slots == null) return;
-            for (int i = 0; i < slots.Count; i++)
-            {
-                var s = slots[i];
-                if (s.Deck != deck || s.Index != slotIndex) continue;
-                var probe = new Int3(s.X + s.W / 2, s.Y + s.H / 2, deck);
-                _sim.EnqueueCommand(new AddRoomCommand(deck, slotIndex, type, probe, s.Anchor));
-                _status = "commission " + type.ToString().ToLowerInvariant();
-                return;
-            }
-        }
-
-        /// <summary>Overview picker room-type string → <see cref="RoomType"/> (the commissionable set:
-        /// the player-facing room kinds, deliberately excluding the structural None/Corridor/Bridge).
-        /// Unknown/blank ⇒ false and the command is ignored; the sim re-checks nothing about the type,
-        /// so this whitelist is the type gate.</summary>
-        private static bool ParseRoomType(string name, out RoomType type)
-        {
-            type = RoomType.None;
-            if (string.IsNullOrEmpty(name)) return false;
-            switch (name.ToLowerInvariant())
-            {
-                case "quarters": type = RoomType.Quarters; return true;
-                case "mess": type = RoomType.Mess; return true;
-                case "medbay": type = RoomType.Medbay; return true;
-                case "hydro": type = RoomType.Hydro; return true;
-                case "workshop": type = RoomType.Workshop; return true;
-                case "storage": type = RoomType.Storage; return true;
-                case "commons": type = RoomType.Commons; return true;
-                case "engineering": type = RoomType.Engineering; return true;
-                case "fabrication": type = RoomType.Fabrication; return true;
-                case "reactor": type = RoomType.Reactor; return true;
-                case "lifesupport": type = RoomType.LifeSupport; return true;
-                case "command": type = RoomType.Command; return true;
-                case "observatory": type = RoomType.Observatory; return true;
-                default: return false;
-            }
-        }
+        // ⭐ M1-L: `HandleAddRoom` and `ParseRoomType` (the 13-type whitelist that WAS the
+        // type gate) are DELETED. They were reachable only from the `CmdKind.AddRoom` route
+        // above, which is deleted too, so nothing could call them. See the enum member's note
+        // for what is left dormant and which package retires it.
 
         /// <summary>Room Zoom palette tool string → furniture <see cref="DeviceKind"/> (IX-Z-21).
         /// Unknown tools return false and are ignored — the whitelist is enforced again sim-side.</summary>
@@ -1848,22 +1801,40 @@ namespace Perilune.Web
             return entries;
         }
 
-        /// <summary>Resolve a slot's live ALLOCATION + room name from <see cref="RoomState"/>. Scans the
-        /// slot's tile rect for the first tile in a real (non-vacuum-sink) room, then looks for an
-        /// anchor on this deck whose probe resolves to that same room id and which carries a
-        /// <see cref="RoomType"/> other than <see cref="RoomType.None"/>. That anchor IS the
-        /// occupancy: an un-allocated hall reads unoccupied with a blank name.
+        /// <summary>Resolve a slot's live ROOM + name from <see cref="RoomState"/>. Scans the slot's
+        /// tile rect for the first tile in a real (non-vacuum-sink) room, then finds the anchor whose
+        /// probe resolves to that same room id. That anchor IS the occupancy: <c>occupied</c> means
+        /// <b>"this slot's walls enclose a real room"</b> — a fact about GEOMETRY.
         ///
-        /// <para><b>⚠️ W4b: this used to gate on GAS (<c>TotalMoles &gt; 0</c>), and it had to move for
-        /// the same reason <see cref="AddRoomCommand"/>'s rejection predicate did.</b> Since ＋ADD ROOM
-        /// stopped conjuring air, "named" and "has air" are different events, and a gas gate would
-        /// have made the whole gesture INVISIBLE: the player allocates a compartment, the Overview
-        /// keeps drawing an un-allocated hall with a ＋ADD ROOM chip on it, and every further click is
-        /// silently refused sim-side by the anchor guard. Allocation is a decision, so it is the
-        /// anchor that reports it. Behaviour is unchanged for every slot on every shipped ship at
-        /// boot — a furnished slot's anchor was always typed, a hall's never is — the only new
-        /// combination is <c>occupied</c> with a null atmos row, which <c>decks-model.js</c>
-        /// <c>deckSlotView</c> already handles (it null-guards the atmos join).</para></summary>
+        /// <para><b>⭐ M1-L — OCCUPANCY IS GEOMETRY, NOT TYPE. THIS IS THE WHOLE PACKAGE.</b> Until
+        /// now the walk carried <c>if (a.Type == RoomType.None) continue;</c>, so a compartment that
+        /// the ship had CARVED — interior floor, perimeter walls, a door onto the spine
+        /// (<c>SlotGridPlanner.Carve</c> builds all three for every slot, hall or not) — reported
+        /// <c>occupied:false</c> with a BLANK name purely because nobody had picked a
+        /// <see cref="RoomType"/> for it. Blank name ⇒ the Overview drew a ＋ADD ROOM chip ⇒ the Room
+        /// Zoom could not be entered at all (<c>roomTileRect</c> looks a room up BY anchor name and a
+        /// blank one never matches). On <c>--ship wreck</c> that hid FIVE of the eight deck-0
+        /// compartments, FOUR of which contain real, named, wrecked machinery the player is meant to
+        /// repair. The owner's ruling, 2026-07-29: <i>"we do not need 'add room' that makes no sense
+        /// on a ship where rooms are already existing."</i>
+        ///
+        /// <para><b>RimWorld analogue</b> (<c>docs/design/rimworld-reference.md</c> §10, "Rooms are
+        /// derived, not authored"): <i>"RimWorld computes rooms from walls … the player never names or
+        /// allocates one."</i> Removing the type gate is exactly that — walls decide, not a picker.</para>
+        ///
+        /// <para><b>⚠️ THE SLOT'S OWN ANCHOR IS PREFERRED, and that is not cosmetic.</b> The old walk
+        /// returned the FIRST anchor resolving to the room, which was unambiguous only because the
+        /// <c>None</c> skip left at most one typed candidate per room. With the skip gone, two anchors
+        /// can resolve to one room the moment an interior bulkhead is stripped (<c>Rooms.MarkDirty</c>
+        /// merges them, E0-5) — and then list order, not the slot, would choose the caption. Matching
+        /// <c>slot.Anchor</c> first makes a merged compartment keep its own name on both halves; the
+        /// scan survives only as the fallback for a slot whose own anchor has drifted off its room.</para>
+        ///
+        /// <para>⚠️ W4b history, still true: this used to gate on GAS (<c>TotalMoles &gt; 0</c>).
+        /// "Named" and "has air" are different events — a furnished room can be vented and a carved
+        /// one can be airless — so gas was never the right question. <c>occupied</c> with a null atmos
+        /// row is the NORMAL case now, not the new one, and <c>decks-model.js</c>'s
+        /// <c>deckSlotView</c> null-guards the atmos join.</para></summary>
         private static (bool Occupied, string AnchorName, RoomType Type) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
         {
             int deck = slot.Deck;
@@ -1883,10 +1854,22 @@ namespace Perilune.Web
             if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "", RoomType.None);
 
             var anchors = rs.Anchors;
+
+            // 1. THE SLOT'S OWN ANCHOR, when it still sits in this slot's room (see the header).
             for (int i = 0; i < anchors.Count; i++)
             {
                 var a = anchors[i];
-                if (a.Type == RoomType.None) continue;   // an un-allocated hall carries one of these
+                if (a.Probe.Z != deck) continue;
+                if (!string.Equals(a.Name, slot.Anchor, StringComparison.Ordinal)) continue;
+                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type);
+            }
+
+            // 2. Fallback: any anchor whose probe lands in the same room. Reached when the slot's own
+            //    anchor has drifted off its room (a probe now under debris, a wall change) but another
+            //    compartment's anchor still describes the merged volume.
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                var a = anchors[i];
                 if (a.Probe.Z != deck) continue;
                 if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type);
             }
@@ -2928,7 +2911,21 @@ namespace Perilune.Web
         private static int Clamp(int v, int lo, int hi) => v < lo ? lo : v > hi ? hi : v;
     }
 
-    /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).</summary>
+    /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).
+    ///
+    /// <para>⛔ <b><c>AddRoom</c> IS DORMANT, DELIBERATELY — M1-L, 2026-07-29.</b> Nothing produces it
+    /// and nothing consumes it: the client sender (<c>Cmd.addRoom</c>), the <c>"addroom"</c> parse
+    /// case, the dispatch route and <c>HandleAddRoom</c>/<c>ParseRoomType</c> are all deleted. The
+    /// MEMBER stays because these are implicitly numbered and removing one RENUMBERS every sibling
+    /// after it (<c>Dig</c>…<c>Operate</c> would each shift down by one) — a spine change, and the
+    /// members are matched by ORDINAL nowhere in-tree today but are a wire-adjacent contract. The
+    /// deletion, together with the sim's <c>AddRoomCommand</c>, is filed as its own spine package:
+    /// see <c>docs/design/perilune-roadmap-q3.packages.md</c>, <b>M1-L-b</b>.</para>
+    ///
+    /// <para>⚠️ <b>"Nothing calls this" is a statement about a TREE, and a merge changes a tree.</b>
+    /// Before acting on the dormancy, re-derive it on the MERGED tree — that is the eighth trap shape
+    /// (<c>CLAUDE.md</c>), which cost this project a wrong census in a file neither lane could
+    /// compute alone.</para></summary>
     public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission, Operate }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
@@ -3008,9 +3005,10 @@ namespace Perilune.Web
                     // E0-6 — fit a ControllerModule to the device on a tile, making it
                     // MOSS-scriptable. Same {x,y,deck} shape as place/remove.
                     case "commission": return new WebCommand(CmdKind.Commission, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
-                    // {"cmd":"addroom","deck":..,"slot":..,"type":"medbay|.."} — commission an empty hall
-                    // into a live typed room (Overview ＋ADD ROOM). X=deck, Y=slot, name=roomType string.
-                    case "addroom": return new WebCommand(CmdKind.AddRoom, Int(json, "deck"), Int(json, "slot"), name: Str(json, "type"));
+                    // ⭐ M1-L: `case "addroom":` is DELETED. An `{"cmd":"addroom"}` line from an OLD
+                    // client now falls to `default` and decodes as `CmdKind.Unknown`, which the
+                    // dispatcher ignores — the same treatment as any other unrecognised verb, and the
+                    // reason the deletion is safe against a stale browser tab.
                     // {"cmd":"operate","x":..,"y":..,"deck":..} — toggle the door/vent on a tile
                     // OPEN⇄SHUT. Same {x,y,deck} shape as place/remove/commission, and DELIBERATELY
                     // NOT an explicit `on` the way dig/stockpile/strip carry one: those are painted in

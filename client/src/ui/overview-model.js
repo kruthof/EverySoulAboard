@@ -239,13 +239,17 @@ export function orderPlacedLine(tool, x, y, deck) {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Click classification (IX-O-11/12/13/15/19). One rule for a floor click: an armed tool decides
-// everything; with no tool armed, the DOM hit (pawn > add-room chip > bound room > hall) decides.
+// everything; with no tool armed, the DOM hit (pawn > terminal > compartment) decides.
+//
+// ⭐ M1-L: the `addroom` chip tier and the `hallSlot` miss tier are BOTH GONE. There is no longer a
+// hall to be a bare click on — every compartment is a room and every room is enterable — so the
+// ladder lost its two hall-shaped rungs and `enterRoom` moved up to be the last hit tier.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
  * Classify an Overview click into an action. `armed` is the shared armed-tool slot
  * (null | 'move' | an ORDER tool | a build tool that leaked in); `hit` is the DOM hit-test result:
- *   { pawnCid?, terminalId?, addRoomSlot?, roomAnchor?, hallSlot? }  (all optional; absent = miss)
+ *   { pawnCid?, terminalId?, roomAnchor? }  (all optional; absent = miss)
  *
  * ORDERS THAT POINT AT AN EXISTING THING ARE DECK-SCOPED; BUILDING AND STOCKPILE ARE ZOOM-ONLY (the
  * module header, binding). So there is NO 'build' action here — an armed wall/door/cancel/stockpile
@@ -258,9 +262,8 @@ export function orderPlacedLine(tool, x, y, deck) {
  *   2b. ERASE armed → 'erase' (the un-designate target tile — M1-C; same tier, see the branch)
  *   3. a pawn hit → 'select' (IX-O-15; pawns sit above room hit-rects)
  *   4. a MOSS terminal hit → 'terminal' (opens the MOSS terminal; devices sit above the room)
- *   5. an ＋ADD ROOM chip hit → 'addroom' (IX-O-13; the only interactive thing in a hall)
- *   6. a bound room hit → 'enterRoom' (IX-O-11; Level-2 room zoom — where building happens)
- *   7. a bare hall / empty space → 'none' (IX-O-13/18)
+ *   5. a compartment hit → 'enterRoom' (IX-O-11; Level-2 room zoom — where building happens)
+ *   6. empty space outside every compartment → 'none' (IX-O-18)
  *
  * ═══ WHY 'order' SHORT-CIRCUITS EVERYTHING AND NOT MERELY 'enterRoom'. This is the decision WP-5
  * exists to take, and "ahead of enterRoom" — the charter's minimum — would have been WRONG.
@@ -282,10 +285,15 @@ export function orderPlacedLine(tool, x, y, deck) {
  *   · TERMINAL. A device is precisely what STRIP targets (`DeviceSalvage`, E0-5). If `terminal` won,
  *     no device could ever be stripped from the Overview at all — the verb would ship inert over its
  *     own subject matter.
- *   · ＋ADD ROOM. WP-1's wreck-fill put the debris in the HALLS, and the ＋ADD ROOM chip is "the only
- *     interactive thing in a hall". If `addroom` won, the halls — where the dig economy actually is —
- *     would be un-diggable, and the click would commission a room instead. That is the worst of the
- *     three: it does something loud and wrong rather than nothing.
+ *   · ＋ADD ROOM. ⚠️ HISTORICAL — the chip was DELETED by M1-L and this rung no longer exists. The
+ *     measurement stands as the record of why order-over-hit was right: WP-1's wreck-fill put the
+ *     debris in the HALLS, the ＋ADD ROOM chip was "the only interactive thing in a hall", and if
+ *     `addroom` had won the click, the halls — where the dig economy actually is — would have been
+ *     un-diggable and the click would have commissioned a room instead. It is kept because the
+ *     argument it supports (an armed tool is a MODE and owns the click) is unchanged, and because
+ *     those hall tiles are now inside ENTERABLE compartments, so the surviving `enterRoom` rung
+ *     inherits the whole hazard: with DIG armed, clicking wreck debris must designate it and NOT
+ *     open the room. That is now the decisive case rather than a third example of one.
  * The cost of the choice is real and is accepted: with an order armed you cannot select a pawn,
  * open MOSS or enter a room from the schematic. Escape disarms (`overviewEscape` rung 1), which is
  * the same exit the console and the Room Zoom offer, and the bar's own button un-arms on a second
@@ -297,9 +305,9 @@ export function orderPlacedLine(tool, x, y, deck) {
  * left first purely to keep the diff to one inserted line. Do not read a precedence into it.
  * PURE.
  * @param {null|'move'|string} armed
- * @param {{pawnCid?:*, terminalId?:*, addRoomSlot?:number, roomAnchor?:string, hallSlot?:number}} [hit]
- * @returns {{type:'move'|'order'|'erase'|'select'|'terminal'|'addroom'|'enterRoom'|'none',
- *            tool?:string, cid?:*, tid?:*, slot?:number, anchor?:string}}
+ * @param {{pawnCid?:*, terminalId?:*, roomAnchor?:string}} [hit]
+ * @returns {{type:'move'|'order'|'erase'|'select'|'terminal'|'enterRoom'|'none',
+ *            tool?:string, cid?:*, tid?:*, anchor?:string}}
  */
 export function overviewClickAction(armed, hit) {
   const h = hit || {};
@@ -312,7 +320,6 @@ export function overviewClickAction(armed, hit) {
   if (isEraseTool(armed)) return { type: 'erase' };
   if (h.pawnCid != null) return { type: 'select', cid: h.pawnCid };
   if (h.terminalId != null) return { type: 'terminal', tid: h.terminalId };
-  if (h.addRoomSlot != null) return { type: 'addroom', slot: h.addRoomSlot };
   if (h.roomAnchor) return { type: 'enterRoom', anchor: h.roomAnchor };
   return { type: 'none' };
 }

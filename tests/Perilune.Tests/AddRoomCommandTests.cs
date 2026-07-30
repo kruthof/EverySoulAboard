@@ -584,46 +584,62 @@ namespace Perilune.Tests
         // ═══════════════════════════════ 4. the OTHER half: allocation must be VISIBLE on the wire
 
         /// <summary>
-        /// <b>THE GESTURE MUST NOT BECOME INVISIBLE.</b> <c>GameSession.ResolveSlot</c> decided a slot's
-        /// <c>occupied</c> flag from GAS (<c>TotalMoles &gt; 0</c>), which was a fine proxy only while
-        /// ＋ADD ROOM pressurised. Left alone, W4b would have shipped this: the player allocates a
-        /// compartment, the Overview goes on drawing an un-allocated hall with a ＋ADD ROOM chip on it
-        /// and no label, and every further click is refused SILENTLY by the new anchor guard — a verb
-        /// that appears to do nothing, forever. So occupancy moved onto the anchor too.
+        /// <b>⭐ M1-L INVERTED THE FIRST HALF OF THIS TEST, AND THAT INVERSION IS THE PACKAGE.</b>
         ///
-        /// <para>Driven end to end through the REAL session on <c>--ship grid</c>: the payload read here
-        /// is the one a reconnecting client is caught up from. NON-VACUITY is built in as a before/after
-        /// pair on the SAME slot, plus a control that the compartment is still AIRLESS at the moment it
-        /// reads occupied — which is precisely the combination the retired gas gate could not produce.
-        /// MUTATION: restore <c>if (rs.Rooms[roomId].TotalMoles &lt;= 0) return (false, "", RoomType.None);</c>
-        /// ⇒ RED on the "after" half only.</para>
+        /// <para>It used to open by asserting that an UN-ALLOCATED hall reads
+        /// <c>occupied:false</c> with a blank name and no type — the "before" of an allocation
+        /// gesture. That is now the DEFECT: a compartment the ship carved (floor, perimeter walls, a
+        /// door onto the spine) reported itself as nothing at all, so the Overview drew a blank
+        /// ＋ADD ROOM box on it and the Room Zoom could not open it. The owner's ruling
+        /// (2026-07-29): <i>"we do not need 'add room' that makes no sense on a ship where rooms are
+        /// already existing."</i> So the first half now asserts the OPPOSITE, on the same slot, on
+        /// the same ship, through the same live session.</para>
+        ///
+        /// <para><b>What the second half still pins, unchanged:</b> a re-type is VISIBLE on the
+        /// <c>decks</c> channel. <see cref="AddRoomCommand"/> is dormant (nothing in the client or
+        /// the host constructs one any more — see its header), but it is not DELETED, so it is not
+        /// left unguarded either: driving it directly must still move the slot's live type. That is
+        /// also the control which proves this test can see a change at all — without it, "occupied
+        /// before AND after" could be a channel that is stuck rather than one that is correct.</para>
+        ///
+        /// <para>MUTATION: restore <c>if (a.Type == RoomType.None) continue;</c> in
+        /// <c>GameSession.ResolveSlot</c> ⇒ RED on the first half.</para>
         /// </summary>
         [Test]
-        public void AnAllocatedAirlessHall_ReadsOCCUPIED_OnTheDecksChannel()
+        public void AnUnallocatedHall_ReadsOCCUPIED_AndCarriesItsOwnAnchor()
         {
             var host = SimHost.Build(SimHost.DefaultSeedFor(ShipChoice.Grid), ship: ShipChoice.Grid);
             var gs = new GameSession(host, _ => { });   // NOT started ⇒ no sim thread
             var hall = FirstEmptyHall(AuthoredShips.PeriluneGrid());
             for (int i = 0; i < 20; i++) host.Sim.Tick();
 
-            var before = SlotTuple(gs, hall.Deck, hall.Index);
-            Assert.That(before.Occupied, Is.False, "an un-allocated hall must read unoccupied");
-            Assert.That(before.Anchor, Is.EqualTo(""), "an un-allocated hall must carry no live name");
-            Assert.That(before.RoomType, Is.EqualTo(0), "an un-allocated hall must have no live type");
+            // CONTROL: the compartment really is airless. Occupancy is GEOMETRY now — not gas, and
+            // not type — so this is the state the retired gas gate could never report as occupied.
+            Assert.That(host.Sim.Rooms.RoomAt(host.Sim.World, ProbeOf(hall)).TotalMoles, Is.EqualTo(0.0),
+                "this hall has air, so the leg below would pass under the retired gas gate too");
 
+            var before = SlotTuple(gs, hall.Deck, hall.Index);
+            Assert.That(before.Occupied, Is.True,
+                "an UN-ALLOCATED but CARVED compartment must read OCCUPIED — otherwise the Overview " +
+                "draws a blank box on it and the Room Zoom cannot open it (M1-L)");
+            Assert.That(before.Anchor, Is.EqualTo(hall.Anchor),
+                "the compartment carries no live anchor name — a blank one never resolves through " +
+                "roomTileRect, so the player cannot enter it whatever else is true");
+            Assert.That(before.RoomType, Is.EqualTo(0),
+                "an un-allocated compartment must still have NO TYPE — M1-L makes it visible and " +
+                "enterable, it does not invent a purpose for it");
+
+            // The dormant command still moves the live type, which is also this test's non-vacuity:
+            // it proves the decks channel is being re-read rather than cached from the first call.
             host.Sim.EnqueueCommand(CommandFor(hall, RoomType.Medbay));
             for (int i = 0; i < 5; i++) host.Sim.Tick();
 
-            // CONTROL: still vacuum. The old gas gate could NEVER return occupied here.
-            Assert.That(host.Sim.Rooms.RoomAt(host.Sim.World, ProbeOf(hall)).TotalMoles, Is.EqualTo(0.0),
-                "the allocated hall gained air — this test would then pass under the retired gas gate too");
-
             var after = SlotTuple(gs, hall.Deck, hall.Index);
-            Assert.That(after.Occupied, Is.True,
-                "an ALLOCATED but airless compartment must read OCCUPIED — otherwise the Overview keeps " +
-                "offering ＋ADD ROOM on a slot the sim now silently refuses");
-            Assert.That(after.Anchor, Is.EqualTo(hall.Anchor), "the allocated slot must carry its live anchor name");
-            Assert.That(after.RoomType, Is.EqualTo((int)RoomType.Medbay), "the allocated slot must carry its live type");
+            Assert.That(after.Occupied, Is.True);
+            Assert.That(after.Anchor, Is.EqualTo(hall.Anchor));
+            Assert.That(after.RoomType, Is.EqualTo((int)RoomType.Medbay),
+                "the slot's live type did not change — this test cannot see a change at all, so its " +
+                "'occupied before and after' assertions are measuring a stuck channel");
         }
 
         /// <summary>Render the session and pull ONE slot's tuple out of the cached <c>decks</c> payload —

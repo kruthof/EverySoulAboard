@@ -1384,6 +1384,66 @@ window between pin-chain rows.
 
 ---
 
+### ✅ M1-L — every compartment IS a room; `＋ADD ROOM` is deleted *(OD-K)* — **LANDED**
+
+**CLASS: PLAYER-FACING** · **LANE: `lane/no-add-room`** · **SIZE: M** · **PIN IMPACT: PIN-NEUTRAL
+(measured, 0 lines to `sim/` code, `content/`, `ci.sh`, `Golden/`).**
+
+**The owner's ruling, verbatim (2026-07-29):** *"we do not need 'add room' that makes no sense on a
+ship where rooms are already existing."*
+
+**What a player gets.** All **five** of the wreck's deck-0 blank `＋ADD ROOM` boxes — **four of which
+hold real, named, wrecked machinery** (`recycler_1`, `machineshop_1`, `fabricator_1`, lights) — are
+now **named, glowing compartments you can walk into.** Occupancy moved from the anchor's `RoomType`
+to GEOMETRY (`GameSession.ResolveSlot`), which is the RimWorld analogue: `rimworld-reference.md` §10,
+*"Rooms are derived, not authored … the player never names or allocates one."*
+
+**What was deleted.** The chip, its hit test, the `addroom` click action, the picker modal,
+`ROOM_TYPE_CHOICES`, `Cmd.addRoom`, the `"addroom"` parse case, the dispatch route and
+`HandleAddRoom`/`ParseRoomType`.
+
+---
+
+### ⛔ M1-L-b — retire the dormant `AddRoomCommand` and `CmdKind.AddRoom` *(SPINE — NOT YET DONE)*
+
+**CLASS: INFRASTRUCTURE** *(no player sentence — the verb is already unreachable, so this changes
+nothing a player can observe)* · **LANE: integrator (SPINE)** · **SIZE: S** · **FILED BY M1-L.**
+
+**Why it was NOT done in M1-L.** M1-L made the verb unreachable end to end but left two things
+standing, deliberately:
+
+| left dormant | where | why not deleted in M1-L |
+|---|---|---|
+| `AddRoomCommand` | `sim/Sim.Core/Commands/Commands.cs:~628` | deleting it means deleting the enum member beside it |
+| `CmdKind.AddRoom` | `hosts/web/GameSession.cs`, the `CmdKind` enum | ⚠️ **THE RENUMBERING HAZARD — see below** |
+
+⚠️ **THE HAZARD, NAMED SO IT IS NOT REDISCOVERED.** `CmdKind`'s members are **implicitly numbered**
+(only `Unknown = 0` is written). `AddRoom` is **ordinal 17**, so removing it shifts **every sibling
+after it down by one** — `Dig` 18→17, `Stockpile` 19→18, `Strip` 20→19, `Filter` 21→20,
+`Commission` 22→21, `Operate` 23→22. Nothing in-tree matches these by ordinal *today* (the wire
+carries verb STRINGS, and `WebCommand.Parse` maps string→member), **but "nothing reads this" is a
+statement about a TREE, and a merge changes a tree** — the eighth trap shape. The ordinals are pinned
+by `EveryCompartmentIsARoomTests.CmdKindAddRoom_IsDormantButItsOrdinalIsPinned`, which is the
+checklist of exactly what moves; **that test must be updated in the same commit, not deleted.**
+
+**SEAM.** `sim/Sim.Core/Commands/Commands.cs` (a SPINE file — integrator lane per `PLAN.md`) ·
+`hosts/web/GameSession.cs`'s `CmdKind` · `tests/Perilune.Tests/AddRoomCommandTests.cs` (~750 lines,
+which test the dormant command directly and go with it) · `ArchitectureBoundaryTests`' `Commands.cs`
+reach census, whose prose names `AddRoomCommand` twice and whose COUNTS must be re-derived from the
+MERGED file, never adjusted.
+
+**PIN IMPACT: expected PIN-NEUTRAL but MEASURE IT.** The command has no reachable caller and
+`AddRoomCommandTests.NoPinnedRunDrivesThisCommand_Probe` already establishes that no pinned run
+constructs one. Deleting dead code should move nothing — *should* is not a measurement.
+
+**MUTATIONS.** Delete the member without updating the ordinal pin ⇒ that test must go RED.
+
+**⚠️ DO NOT DO THIS INSIDE ANOTHER LANE.** It is a spine change whose whole risk is a silent
+renumber, and it must not ride along with a package whose diff a reviewer is reading for something
+else.
+
+---
+
 ## 5. M2 — THE ORDER *(weeks 3–6)*
 
 > *"I can tell Rell that repairing machines matters more than carrying rubble, or right-click one

@@ -155,40 +155,47 @@ test('the starfield is the seeded 220 stars, deterministic across calls', () => 
   }
 });
 
-test('every OCCUPIED slot gets a glow pool and empty halls do NOT (driven by `occupied`)', () => {
-  // Deck 0: all 8 occupied → 8 glow gradients, 0 halls.
+test('every OCCUPIED slot gets a glow pool, and EVERY slot draws as a compartment (M1-L)', () => {
+  // Deck 0: all 8 occupied → 8 glow gradients, 8 compartments.
   const svg0 = overviewScene(baseState({ deck: 0 }));
   assert.equal((svg0.match(/id="ov-glow-\d+"/g) || []).length, 8);
-  assert.equal((svg0.match(/class="pl-hall"/g) || []).length, 0);
+  assert.equal((svg0.match(/class="pl-room"/g) || []).length, 8);
 
-  // Deck 1: 4 occupied rooms + 3 halls (and 1 spine-less grid: 8 slots, 5 occupied? verify live).
+  // Deck 1 MIXES occupied and unoccupied slots, and that is what makes it the decisive deck: the two
+  // properties come apart here. Glow still tracks `occupied` (it means "encloses a live room");
+  // DRAWING no longer does — M1-L deleted `hallCompartment`, so all 8 draw as compartments.
   const d1 = view.find((d) => d.deck === 1);
   const occ1 = d1.slots.filter((s) => s.occupied).length;
-  const halls1 = d1.slots.filter((s) => !s.occupied).length;
-  assert.ok(occ1 >= 1 && halls1 >= 1, 'deck 1 must mix rooms and halls to exercise both paths');
+  const unocc1 = d1.slots.filter((s) => !s.occupied).length;
+  assert.ok(occ1 >= 1 && unocc1 >= 1, 'deck 1 must mix occupied and unoccupied to separate the two');
   const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
   assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, occ1); // one glow per OCCUPIED slot
-  assert.equal((svg1.match(/class="pl-hall"/g) || []).length, halls1); // halls render as halls
-  assert.match(svg1, /＋ ADD ROOM/);                                    // hall build affordance
+  assert.equal((svg1.match(/class="pl-room"/g) || []).length, d1.slots.length); // ALL draw as rooms
   // The glow layer carries mix-blend screen so it reads as light, not paint (VS-O-31).
   assert.match(svg1, /mix-blend-mode:screen/);
 });
 
-test('active-but-unoccupied halls draw NO glow — glow is `occupied`, never `active` (Phase-2b note)', () => {
-  // Deck 1 is the decisive case: halls whose deck-level `active` flag is TRUE. If the glow read
-  // `active` (the shipped-review bug) they would each light; because it reads `occupied`, none do.
-  // THREE since WP-1, not four: deck 1 slot 6 is now the grid ship's live wreck, an authored
-  // Storage room ('hold') rather than an empty hall, so it is occupied and correctly DOES glow.
+test('active-but-unoccupied slots draw NO glow — glow is `occupied`, never `active` (Phase-2b note)', () => {
+  // Deck 1 is the decisive case: compartments whose deck-level `active` flag is TRUE but which
+  // enclose no live room. If the glow read `active` (the shipped-review bug) they would each light;
+  // because it reads `occupied`, none do. THREE since WP-1, not four: deck 1 slot 6 is the grid
+  // ship's live wreck, an authored Storage room ('hold'), so it is occupied and correctly DOES glow.
+  //
+  // ⚠️ M1-L: this leg is now the ONLY thing pinning `occupied` as a live input to the scene. It used
+  // to be backed up by the compartment-vs-hall branch; that branch is gone, so if this assertion is
+  // ever weakened, `occupied` becomes unobserved on this surface.
   const d1 = view.find((d) => d.deck === 1);
-  const activeHalls = d1.slots.filter((s) => !s.occupied && s.active);
-  assert.equal(activeHalls.length, 3);
+  const activeUnoccupied = d1.slots.filter((s) => !s.occupied && s.active);
+  assert.equal(activeUnoccupied.length, 3);
   const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
   assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, d1.slots.filter((s) => s.occupied).length);
 
-  // And a fully-empty, inactive deck draws no glow and 8 halls.
+  // And a fully-empty, inactive deck draws no glow — but still draws 8 NAMED compartments, which is
+  // the whole point of the package: a deck with no live rooms is still a deck you can look into.
   const svg7 = overviewScene(baseState({ deck: 7, frame: null, crew: [] }));
   assert.equal((svg7.match(/id="ov-glow-\d+"/g) || []).length, 0);
-  assert.equal((svg7.match(/class="pl-hall"/g) || []).length, 8);
+  assert.equal((svg7.match(/class="pl-room"/g) || []).length, 8);
+  assert.equal((svg7.match(/ROOM [A-Z]\d/g) || []).length, 8);
 });
 
 test('on-deck crew are placed as pawns; off-deck crew are not', () => {

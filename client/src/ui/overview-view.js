@@ -66,14 +66,11 @@ import {
 
 const LENSES = ['none', 'pressure', 'oxygen', 'co2', 'temperature', 'power', 'water'];
 const LENS_SHORT = ['∅', 'PRES', 'O₂', 'CO₂', 'TEMP', 'PWR', 'H₂O'];
-// ＋ADD ROOM picker: the commissionable room types (lowercase wire string → UPPERCASE label). Mirrors
-// GameSession.ParseRoomType's whitelist; sending an unlisted type is a host no-op, so keep in step.
-const ROOM_TYPE_CHOICES = [
-  ['quarters', 'QUARTERS'], ['mess', 'MESS'], ['medbay', 'MEDBAY'], ['hydro', 'HYDROPONICS'],
-  ['workshop', 'WORKSHOP'], ['storage', 'STORAGE'], ['commons', 'COMMONS'], ['engineering', 'ENGINEERING'],
-  ['fabrication', 'FABRICATION'], ['reactor', 'REACTOR'], ['lifesupport', 'LIFE SUPPORT'],
-  ['command', 'COMMAND'], ['observatory', 'OBSERVATORY'],
-];
+// ⭐ M1-L: `ROOM_TYPE_CHOICES` — the ＋ADD ROOM picker's 13 commissionable room types — is DELETED,
+// with the picker, the chip, the hit test and `Cmd.addRoom`. Owner ruling 2026-07-29: *"we do not
+// need 'add room' that makes no sense on a ship where rooms are already existing."* RimWorld
+// analogue: `docs/design/rimworld-reference.md` §10, *"Rooms are derived, not authored … the player
+// never names or allocates one."*
 // Ship tabs the Overview owns; the rest lower to the console (v1 delegation).
 const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['relations', 'RELATIONS'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
 const SHIP_TABS = new Set(['build', 'crew']);
@@ -92,11 +89,6 @@ let _raf = 0;                // coalesce many wire messages into one repaint
 let _ctx = { transform: null, frame: null }; // last projection, for click→tile
 // Level-2 room-zoom hooks (owned by a later lane). For now: select/centre + an honest toast.
 let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + ')'); };
-// ＋ADD ROOM: open the room-type picker for the clicked hall; a choice lowers to Cmd.addRoom and the
-// slot commissions (glow-pool + label) once the next `decks` frame confirms it. Overridable for tests.
-let _onAddRoom = (deck, slot) => showRoomPicker(deck, slot);
-let _pickDeck = 0;
-let _pickSlot = 0;
 // ⚠️ THERE IS NO STOCKPILE ACCEPT-MASK SEAM ON THIS SURFACE ANY MORE, and its absence is deliberate
 // rather than an omission. WP-5 held `_getStockFilter`, an injected getter read at click time, and
 // `initOverview` took it as an option. It moved to `roomzoom-view.js` with the verb: the mask is
@@ -189,7 +181,7 @@ export function initOverview(opts) {
   Hud.onShipUpdate(scheduleRepaint);
   // Optional injection point for the room-zoom lane.
   if (opts && typeof opts.onEnterRoom === 'function') _onEnterRoom = opts.onEnterRoom;
-  if (opts && typeof opts.onAddRoom === 'function') _onAddRoom = opts.onAddRoom;
+  // M1-L: the `onAddRoom` injection point is DELETED with the picker it opened.
   repaint();
 }
 
@@ -233,11 +225,10 @@ function buildSkeleton() {
     // than no affordance, so the chip now carries the resume itself (`releaseSpace` below hands the
     // key back too, but the click is the guarantee).
     '<button type="button" class="ov-nudge" id="ov-nudge" data-ov-nudge hidden ' +
-      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>' +
-    // ＋ADD ROOM room-type picker (a centred modal over the scene; styles inlined so it works
-    // without a stylesheet). Populated on demand by showRoomPicker; clicks route via onHudClick.
-    '<div class="ov-picker" id="ov-picker" hidden style="position:fixed;inset:0;z-index:60;' +
-      'display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,.55)"></div>';
+      'title="The ship is on HOLD — click to resume">‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP</button>';
+    // M1-L: the `#ov-picker` modal (the ＋ADD ROOM room-type chooser) is DELETED, along with its
+    // backdrop-dismiss, its 13 choice buttons and its CANCEL. `overview-model.test.js`'s id census
+    // is equality-pinned and drops `ov-picker` in the same commit.
   _stage = document.getElementById('ov-stage');
   _toast = document.getElementById('ov-toast');
   _nudge = makeNudge({ el: () => $('ov-nudge') });
@@ -372,7 +363,7 @@ function buildIslands() {
   // THIRD BUTTON, AND IT IS NOT AN ORDER: ERASE (M1-C) takes a painted order back off a tile. It
   // aims at something the ship contains too — the player's own earlier click — so it passes the same
   // altitude test, and having no extent it needs no drag.
-  // (＋ADD ROOM to open a new hall still lives on the scene's hall slots.)
+  // (M1-L deleted ＋ADD ROOM: there are no hall slots left to open — every compartment is a room.)
   //
   // The buttons carry `data-ov-tool`, so they route through the EXISTING `onHudClick` branch and the
   // EXISTING `paintCommand` reflection — the ORDERS bar adds no second arming path, it fills the one
@@ -380,7 +371,7 @@ function buildIslands() {
   // the bar, the console palette and the G/V keys cannot disagree about what is armed.
   $('ov-cmd').innerHTML =
     '<div class="hud ov-place" hidden><span class="ov-hdr">BUILD ▸</span>' +
-      '<span class="ov-buildhint">CLICK A ROOM TO BUILD INSIDE IT · ＋ADD ROOM OPENS A NEW HALL</span></div>' +
+      '<span class="ov-buildhint">CLICK A COMPARTMENT TO BUILD INSIDE IT</span></div>' +
     '<div class="hud ov-orders" hidden><span class="ov-hdr ov-ordershdr">ORDERS ▸</span>' +
       ORDER_TOOLS.map((tool) =>
         '<button class="ov-tool" data-ov-tool="' + tool + '">' + esc(ORDER_LABEL[tool]) + '</button>').join('') +
@@ -966,9 +957,10 @@ function onSceneGesture(e) {
     }
     case 'select': Hud.selectCrewByCid(action.cid); break;
     case 'terminal': Hud.selectTab('moss'); break; // clicking a console on the map opens MOSS (IX-M1)
-    case 'addroom': _onAddRoom(_ctx.frame ? _ctx.frame.deck : 0, action.slot); break;
+    // M1-L: the `addroom` case is DELETED with the chip that produced it (`overviewClickAction` can
+    // no longer return that type). Every compartment now falls to `enterRoom`.
     case 'enterRoom': _onEnterRoom(action.anchor); break;
-    default: break; // bare space / hall → no-op (IX-O-18)
+    default: break; // space outside every compartment → no-op (IX-O-18)
   }
 }
 
@@ -980,8 +972,9 @@ function onSceneGesture(e) {
  * so nothing anywhere said why the room refused. Measured 2026-07-26 alongside BUG-B, and reported
  * as the same symptom by the owner — this is the SECOND silent way a room "will not open".
  *
- * DELIBERATELY NARROW: only the two hits where the surface would otherwise have NAVIGATED — entering
- * a bound room, opening the ＋ADD ROOM picker. It does NOT fire on a pawn or a terminal hit, and that
+ * DELIBERATELY NARROW: only the hit where the surface would otherwise have NAVIGATED — entering a
+ * compartment. (It was TWO hits until M1-L deleted the ＋ADD ROOM picker; the rule is unchanged, the
+ * set it ranges over got smaller.) It does NOT fire on a pawn or a terminal hit, and that
  * is measured rather than tidy: on `--ship grid` the crew stand exactly on the dig debris (HANDOVER
  * §4b limit 2), so a pawn-hit toast would fire on nearly every click of DIG's hot path and train the
  * player to ignore the toast. Designating OVER a pawn or a device is the intended use of the verb
@@ -1007,13 +1000,19 @@ function orderSuppressionToast(tool, hit) {
 
 /**
  * THE PREDICATE ALONE: did this click land on something the surface would otherwise have NAVIGATED
- * to — a bound room, or the ＋ADD ROOM picker? Extracted from `orderSuppressionToast` (M1-C review)
- * because ERASE needs the ANSWER without the toast: it appends the refusal to its own line instead
- * of being replaced by it. One predicate, two callers, so "which hits navigate" cannot come to mean
- * two different things on one surface. PURE (no DOM, no module state).
+ * to — a compartment? Extracted from `orderSuppressionToast` (M1-C review) because ERASE needs the
+ * ANSWER without the toast: it appends the refusal to its own line instead of being replaced by it.
+ * One predicate, two callers, so "which hits navigate" cannot come to mean two different things on
+ * one surface. PURE (no DOM, no module state).
+ *
+ * ⚠️ M1-L WIDENED WHAT THIS COVERS WITHOUT CHANGING WHAT IT SAYS, and that is worth stating. The
+ * `hit.addRoomSlot != null` disjunct is gone because the chip is gone — but a click that used to
+ * produce `addRoomSlot` now produces `roomAnchor`, since the hall it sat in is a compartment. So
+ * suppression still fires on every one of those clicks, through the surviving disjunct. Coverage
+ * did not shrink; one term absorbed the other.
  */
 function orderClickSuppressed(hit) {
-  return !!hit && (hit.roomAnchor != null || hit.addRoomSlot != null);
+  return !!hit && hit.roomAnchor != null;
 }
 
 /**
@@ -1083,7 +1082,7 @@ function erasePayloads(target, x, y) {
   return [];
 }
 
-/** DOM hit → {pawnCid|addRoomSlot|roomAnchor|hallSlot}, richest-first (IX-O-11/13/15). */
+/** DOM hit → {pawnCid|terminalId|roomAnchor}, richest-first (IX-O-11/13/15). */
 function hitTest(target) {
   if (!target || !target.closest) return {};
   const pawn = target.closest('.pl-pawn');
@@ -1098,12 +1097,10 @@ function hitTest(target) {
   // it is a design decision about what a console chip is FOR, not a bug fix.
   const term = target.closest('.pl-terminal');
   if (term && term.dataset.tid != null) return { terminalId: term.dataset.tid };
-  const add = target.closest('.pl-addroom');
-  if (add) { const hall = add.closest('.pl-hall'); return { addRoomSlot: hall ? Number(hall.dataset.slot) : 0 }; }
+  // M1-L: the `.pl-addroom` chip tier and the `.pl-hall` miss tier are DELETED — `overview-scene.js`
+  // emits neither class any more, so both `closest` calls could only ever return null.
   const room = target.closest('.pl-room');
   if (room && room.dataset.anchor) return { roomAnchor: room.dataset.anchor };
-  const hall = target.closest('.pl-hall');
-  if (hall) return { hallSlot: Number(hall.dataset.slot) };
   return {};
 }
 
@@ -1122,12 +1119,11 @@ function onHudClick(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   if (t.closest('.ov-stage')) return; // scene has its own handler
-  if (t.id === 'ov-picker') { closeRoomPicker(); return; } // click the picker backdrop → dismiss
+  // M1-L: the `#ov-picker` backdrop-dismiss and the `ovPick` / `ovPickCancel` button branches are
+  // DELETED with the picker itself.
   const btn = t.closest('button');
   if (!btn || btn.disabled) return;
   const d = btn.dataset;
-  if (d.ovPick != null) { submitRoomPick(d.ovPick); return; }
-  if ('ovPickCancel' in d) { closeRoomPicker(); return; }
   if (d.ovDeck != null) { _send(Cmd.deck(deckDelta(Number(d.ovDeck), _ctx.frame ? _ctx.frame.deck : 0))); }
   else if (d.ovLens != null) { _send(Cmd.lens(d.ovLens)); }
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
@@ -1142,44 +1138,6 @@ function onHudClick(e) {
   else if ('ovTalk' in d) { Hud.talkSelectedCrew(); }
   else if ('ovMove' in d) { Hud.armTool('move'); afterToolToggle(btn, e); }
   else if ('ovBio' in d) { Hud.openBioForSelected(); }
-}
-
-// ── ＋ADD ROOM room-type picker ──
-
-/** Open the room-type picker for a hall (deck + slot index). A choice sends Cmd.addRoom. */
-function showRoomPicker(deck, slot) {
-  _pickDeck = deck | 0;
-  _pickSlot = slot | 0;
-  const el = $('ov-picker');
-  if (!el) return;
-  const btns = ROOM_TYPE_CHOICES.map(([type, label]) =>
-    '<button class="ov-pickbtn" data-ov-pick="' + type + '" ' +
-      'style="padding:8px 10px;border:1px solid rgba(255,196,128,.35);border-radius:6px;' +
-      'background:rgba(24,18,12,.9);color:#ffdcb0;font:inherit;cursor:pointer;letter-spacing:.04em">' +
-      esc(label) + '</button>').join('');
-  el.innerHTML =
-    '<div class="ov-pickcard" style="max-width:420px;padding:18px;border-radius:12px;' +
-      'background:rgba(14,12,10,.96);border:1px solid rgba(255,196,128,.4);box-shadow:0 12px 48px rgba(0,0,0,.6)">' +
-      '<div class="ov-hdr" style="margin-bottom:12px;color:#ffb570">COMMISSION ROOM · DECK ' +
-        esc(_pickDeck) + ' · SLOT ' + esc(_pickSlot) + '</div>' +
-      '<div class="ov-pickgrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + btns + '</div>' +
-      '<button class="ov-pickcancel" data-ov-pick-cancel ' +
-        'style="margin-top:14px;width:100%;padding:8px;border:1px solid rgba(255,255,255,.2);border-radius:6px;' +
-        'background:transparent;color:#cbb;font:inherit;cursor:pointer">CANCEL</button>' +
-    '</div>';
-  el.hidden = false;
-}
-
-function submitRoomPick(type) {
-  _send(Cmd.addRoom(_pickDeck, _pickSlot, type));
-  toast('COMMISSIONING ' + String(type).toUpperCase() + ' — DECK ' + _pickDeck + ' SLOT ' + _pickSlot);
-  closeRoomPicker();
-  nudgeOnIntent(); // a commission the paused sim will not act on
-}
-
-function closeRoomPicker() {
-  const el = $('ov-picker');
-  if (el) { el.hidden = true; el.innerHTML = ''; }
 }
 
 // ── transient toast (room-zoom stub) ──

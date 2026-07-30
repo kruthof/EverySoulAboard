@@ -101,16 +101,11 @@ export const Cmd = {
   // outcome and never guesses the reason: an unpowered, inoperative, unfixably-wrecked or locked
   // device is exactly the case a silent toggle makes indistinguishable from a broken verb.
   operate: (x, y, deck) => ({ cmd: 'operate', x, y, deck }),
-  // Overview ＋ADD ROOM: ALLOCATE a compartment (deck + slot index) — give it a name and a room type.
-  // roomType is the picker's lowercase type string (quarters/mess/medbay/…); the host validates it and
-  // the allocation at the tick boundary — the client never ghosts the outcome; the slot flips
-  // occupied+typed only when the next `decks` frame confirms it.
-  // ⚠️ W4b: this comment used to say the target "must be a sealed, airless hall", and BOTH halves of
-  // that are now wrong. Airless is not required (a hall the player already filled through an open door
-  // is a perfectly legal target — that is the new loop), and the real gate is "no TYPED anchor already
-  // owns this room". NAMING IS FREE, AIR IS EARNED: allocating opens no door and makes no air.
-  // The authority is AddRoomCommand.Execute; this line is a hand-mirror of it and drifted once already.
-  addRoom: (deck, slotIndex, roomType) => ({ cmd: 'addroom', deck, slot: slotIndex, type: roomType }),
+  // ⭐ M1-L: `addRoom` — the `{cmd:'addroom'}` sender — is DELETED. It was the client's ONLY route to
+  // `CmdKind.AddRoom`, and `GameSession` no longer parses the verb or routes it, so the sim's
+  // `AddRoomCommand` is now unreachable from any surface (it survives dormant; see its header for the
+  // package that retires it). Owner ruling 2026-07-29: *"we do not need 'add room' that makes no sense
+  // on a ship where rooms are already existing."*
   // P2.1 chronicle: request the chron message (also pushed on day rollover).
   chron: () => ({ type: 'chron' }),
   // P2 conversation: open a talk with a crew member (by cid), stream a player line, or close.

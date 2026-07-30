@@ -108,12 +108,14 @@
 //     only), and silence is not a lie — the picker appears on screen the moment you arm WALL.
 //   • the LEDE: 251+ chars wraps to five lines, 250 fits in four. See its own note below.
 //
-// ⚠️ `＋ADD ROOM` AND THE ROOM-TYPE PICKER ARE STILL NOT ON THE CARD, and that is now a MEASURED
-// decision rather than an oversight. The ship-map group holds four rows in two grid rows; a fifth
-// row costs a third grid row (~22px + gap) and the budget above has 2px in it. The verb is a
-// labelled button sitting on the map, so it is discoverable in a way a keystroke is not — whereas
-// every row that IS here documents something invisible. If the card ever gets more height, this is
-// the first thing to add back.
+// ✅ RESOLVED BY DELETION — M1-L, 2026-07-29. This note used to read "`＋ADD ROOM` AND THE ROOM-TYPE
+// PICKER ARE STILL NOT ON THE CARD, and that is now a MEASURED decision rather than an oversight …
+// If the card ever gets more height, this is the first thing to add back." There is nothing to add
+// back: the owner deleted the verb (*"we do not need 'add room' that makes no sense on a ship where
+// rooms are already existing"*), and the card is CORRECT about the map as a result — every
+// compartment is a room you click to enter, which the card already says. The height measurement it
+// records (a fifth ship-map row costs a third grid row, ~22px + gap, against a 2px budget) still
+// stands and still governs the next row anyone wants to add.
 
 const SEEN_KEY = 'perilune.introSeen.v1';
 let _seenThisSession = false; // fallback when localStorage is unavailable (private mode)
