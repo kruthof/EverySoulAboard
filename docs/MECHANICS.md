@@ -218,9 +218,9 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `85ac8c44233284e9`
-(pinned in `ci.sh`); tick-3000 golden `9b834cffc232ce7f`; slice tick-3000 golden
-`8c6b2544fac36d63`; defs checksum `e56d33a2e46b5644` (this is `SimDefs.Default.Checksum`, the
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `c1bac287230e184e`
+(pinned in `ci.sh`); tick-3000 golden `482fd40c070b54e0`; slice tick-3000 golden
+`0dcbff3e167750d8`; defs checksum `0c5ddbc07e41f07d` (this is `SimDefs.Default.Checksum`, the
 compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
 print, which is a different value). The scenario + slice pins + defs checksum most recently moved
 with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety
@@ -1373,7 +1373,7 @@ Chapters, in write order (`:108-134`):
 |--------|---------|----------|
 | `TILE` | 1 | per deck: `Floor[]`, `Wall[]`, `Flags[]`, `RoomId[]`. **Flags saved verbatim** (incl. `HasDevice`/`Designated`) — the reader never re-derives them |
 | `ROOM` | 3 | per room: `TileCount`, O2/CO2/N2 moles, `TemperatureK`; then anchors (name, probe, `RoomType` at v3) |
-| `CITZ` | 6 | v2 +Thirst, v3 +ReservedItemId, v4 +RevealsFog, v5 +Faction/Health/Morale/Archetype, v6 +HoldPosition |
+| `CITZ` | 8 | v2 +Thirst, v3 +ReservedItemId, v4 +RevealsFog, v5 +Faction/Health/Morale/Archetype, v6 +HoldPosition, v7 +OrderedMove, **v8 +work-priority grid / WorkIncapable / Skill / HeldByOrder (M2-1)** |
 | `DEVC` | 4 | v2 +StoredLiters/Progress/FluidNetworkId, v3 +Condition, v4 +LockOwner |
 | `ITEM` | 2 | v2 +Label |
 | `DSLS` | 1 | MOSS sources per terminal |
