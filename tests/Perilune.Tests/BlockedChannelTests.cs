@@ -133,6 +133,10 @@ namespace Perilune.Tests
         {
             var sink = new List<string>();
             var host = SimHost.Build(SimHost.DefaultSeed, ship: ShipChoice.Grid);
+            // M2-2: OD-H boots every work type OFF, so the grid's crew take no job until they are
+            // given one. This channel's subject is WHY an order is not being served, which needs
+            // crew who are trying to serve it — so the fixture gives them the work the player would.
+            host.Sim.GiveAllCrewAllWork();
             return (new GameSession(host, sink.Add), host); // NOT started ⇒ no sim thread
         }
 

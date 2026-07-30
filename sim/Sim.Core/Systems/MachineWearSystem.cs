@@ -271,7 +271,7 @@ namespace Perilune.Sim
                     continue;
                 }
 
-                var recruit = FindNearestReachableIdle(sim, staging, out bool anyIdle);
+                var recruit = FindNearestReachableIdle(sim, staging, WorkType.Repair, out bool anyIdle);
                 if (recruit == null)
                 {
                     // No idle hands at all: NOT a refusal by this machine — return and re-ask next
@@ -464,7 +464,7 @@ namespace Perilune.Sim
         /// <para><paramref name="anyIdle"/> separates "nobody is free" (not a refusal) from
         /// "nobody free can get here" (a refusal worth a stamp).</para>
         /// </summary>
-        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, out bool anyIdle)
+        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, WorkType work, out bool anyIdle)
         {
             anyIdle = false;
             _probeSkip.Clear();
@@ -477,6 +477,12 @@ namespace Perilune.Sim
                 {
                     var c = citizens[i];
                     if (!c.IsRecruitableForWork) continue;
+                    // ⭐ M2-2 (G3) — THE WORK-TYPE VETO, and this is the gate OD-G's opening beat
+                    // rests on: without it MaintenanceSystem recruits the wreck's boot pawn for a
+                    // Maintain service at ~tick 201 and the game plays itself. Placed BEFORE
+                    // `anyIdle = true` for the same reason as CraftingSystem's copy — see its
+                    // comment; a player setting must not be recorded as a refusal by the MACHINE.
+                    if (!c.CanTakeWorkType(work)) continue;
                     anyIdle = true;
                     if (_probeSkip.Contains(c.Id)) continue;
                     int d = Int3.Manhattan(c.Pos, target);

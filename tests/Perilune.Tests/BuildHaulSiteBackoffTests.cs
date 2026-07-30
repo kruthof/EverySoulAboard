@@ -104,7 +104,7 @@ namespace Perilune.Tests
             door = sim.AddDevice(DeviceKind.Door, DoorTile, "door_bulkhead");
             door.IsOpen = false;
 
-            var citizen = sim.AddCitizen("Solo", CrewTile);
+            var citizen = sim.AddCitizen("Solo", CrewTile).GiveAllWork();
             Assert.That(citizen.AutoWander, Is.False,
                 "PREMISE: the pawn must not wander, or a re-probe can find him away from the material " +
                 "and the recovery bound would be measuring travel instead of the back-off");

@@ -60,6 +60,14 @@ namespace Perilune.Tests.Llm
                 sim.World.SetWall(target, TileDefs.Debris);
                 sim.World.SetFlag(target, TileFlags.Designated, true);
                 fx.DigTarget = target;
+                // ⭐ M2-2 (OD-H): the LLM effect pipeline is BOUNDED BY the work grid at both ends —
+                // CapabilityComputer will not OFFER a dig, and EffectValidator will not GRANT one,
+                // to a crew member whose Mine is off, which is every crew member at boot. A fixture
+                // built `withDig` is asking for a dig to be offerable, so it gives Okafor the work
+                // the player gives on the WORK tab. ⚠️ Deliberately scoped to this branch: a fixture
+                // built WITHOUT a dig must keep the shipped grid, or the two LLM gates would be
+                // silently untested everywhere except WorkTypeVetoTests.
+                okafor.GiveAllWork();
             }
 
             return fx;

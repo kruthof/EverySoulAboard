@@ -52,7 +52,7 @@ namespace Perilune.Tests
         public void AnOrderedWalkIsNotHijackedByAutoWork()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.EnqueueCommand(new DesignateDigCommand(new Int3(10, 1, 0), on: true));
             sim.Tick();
 
@@ -75,7 +75,7 @@ namespace Perilune.Tests
         public void ArrivalReleasesTheOrderAndTheCrewBecomeRecruitableAgain()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.EnqueueCommand(new DesignateDigCommand(new Int3(10, 1, 0), on: true));
             sim.Tick();
 
@@ -93,7 +93,7 @@ namespace Perilune.Tests
         public void AnUnreachableOrderLeavesTheCrewPlainlyRecruitable()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.Tick();
 
             sim.EnqueueCommand(new MoveCitizenCommand(crew.Id, new Int3(0, 0, 0))); // solid wall
@@ -113,7 +113,7 @@ namespace Perilune.Tests
         public void AnOrderSuppressesWorkButNeverSurvival()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.AddDevice(DeviceKind.WaterTank, new Int3(8, 1, 0), "tank").StoredLiters = 250f;
             sim.EnqueueCommand(new DesignateDigCommand(new Int3(10, 1, 0), on: true));
             sim.Tick();
@@ -140,7 +140,7 @@ namespace Perilune.Tests
         public void AStaleOrderFlagWithNoPathCannotStrandACrewMember()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.Tick();
 
             crew.OrderedMove = true;   // as if an interrupt had overwritten the path and missed the clear
@@ -156,7 +156,7 @@ namespace Perilune.Tests
         public void OrderedMoveSurvivesSaveLoadAndIsHashed()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.Tick();
             sim.EnqueueCommand(new MoveCitizenCommand(crew.Id, new Int3(8, 1, 0)));
             sim.Tick();

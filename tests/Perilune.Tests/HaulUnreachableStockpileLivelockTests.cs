@@ -106,7 +106,16 @@ namespace Perilune.Tests
         /// distance or deck, is the differentiator.</summary>
         private static readonly Int3 ReachableFarTile = new Int3(60, 1, 1);
 
-        private static SimHost BootSlice() => SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+        // M2-2 (OD-H): every work type boots OFF, so the slice's eight crew take no haul until they
+        // are given one. Every leg here counts HAUL activity — deliveries, backoff stamps, bench
+        // buffer fills — so an unenrolled fixture would report a quiet board for a reason that has
+        // nothing to do with the livelock it exists to pin.
+        private static SimHost BootSlice()
+        {
+            var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+            host.Sim.GiveAllCrewAllWork();
+            return host;
+        }
 
         /// <summary>The live <see cref="HaulJobSource"/> out of the running stack — the WP-7
         /// diagnostic surface (<see cref="HaulJobSource.BackedOffStockpileTiles"/>) hangs off it, and
@@ -423,7 +432,7 @@ namespace Perilune.Tests
             // sustenance, no crafting, no build, no atmosphere, so no other writer of JobsDirty.
             var sim = new Simulation(AsciiWorld.Build(SealedRoomMap), 23,
                 new ISimSystem[] { new CitizenSystem(), new JobSystem() });
-            sim.AddCitizen("Hauler", new Int3(2, 2, 0));
+            sim.AddCitizen("Hauler", new Int3(2, 2, 0)).GiveAllWork();
             var cargo = sim.AddItem(ItemKind.Scrap, 1, new Int3(3, 1, 0));
             var zone = new Int3(9, 2, 0);
             var seal = new Int3(6, 2, 0);
@@ -486,7 +495,7 @@ namespace Perilune.Tests
         {
             var sim = new Simulation(AsciiWorld.Build(SealedRoomMap), 23,
                 new ISimSystem[] { new CitizenSystem(), new JobSystem() });
-            sim.AddCitizen("Hauler", new Int3(2, 2, 0));
+            sim.AddCitizen("Hauler", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Scrap, 1, new Int3(3, 1, 0));
             sim.World.SetFlag(new Int3(9, 2, 0), TileFlags.Stockpile, true);
             sim.JobsDirty = JobBoardDirty.All;
@@ -543,7 +552,7 @@ namespace Perilune.Tests
         {
             var sim = new Simulation(AsciiWorld.Build(SealedRoomMap), 23,
                 new ISimSystem[] { new CitizenSystem(), new JobSystem() });
-            sim.AddCitizen("Hauler", new Int3(2, 2, 0));
+            sim.AddCitizen("Hauler", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Scrap, 1, new Int3(3, 1, 0));
             sim.World.SetFlag(new Int3(9, 2, 0), TileFlags.Stockpile, true);
 

@@ -102,7 +102,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(bench, new Int3(3, 2, 0), "bench");
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false → recruitable
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork(); // AutoWander false → recruitable
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);

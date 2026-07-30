@@ -408,9 +408,15 @@ namespace Perilune.Tests
         /// out that was the thinnest bound in the file; the extra ticks are free next to the digs.
         /// </summary>
         [Test]
-        public void Crew_ClearTheLiveWreck_UnpromptedAndInBreathableAir()
+        public void Crew_ClearTheLiveWreck_OnceGivenMine_AndInBreathableAir()
         {
-            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
+            // ⚠️ M2-2 RENAMED THIS TEST, because OD-H inverted the word in its old name. It was
+            // "…_UnpromptedAndInBreathableAir" and unprompted digging is now precisely what must NOT
+            // happen: every work type boots off, so the grid's crew clear the wreck only after the
+            // player switches Mine on. Everything else about the leg — the tick budget, the
+            // breathable-air control, the ten-tile bar — is unchanged, and the SILENCE before the
+            // order is pinned by WorkTypeVetoTests on --ship wreck.
+            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack()).GiveAllCrewAllWork();
             int debrisAtBoot = DebrisIn(sim, OpenSlot).Count;  // the live wreck only, not the ship
             Assert.That(debrisAtBoot, Is.EqualTo(WreckTilesPerSlot));
 
@@ -474,7 +480,9 @@ namespace Perilune.Tests
         {
             const int sealedSlot = 5;
             var plan = AuthoredShips.PeriluneGrid();
-            var sim = ShipPlanBuilder.Build(plan, Stack());
+            // M2-2 (OD-H): the crew take no job until they are given one; this leg is about whether the
+            // SEALED wreck is reachable at all, so it gives them the work the player would.
+            var sim = ShipPlanBuilder.Build(plan, Stack()).GiveAllCrewAllWork();
             for (int i = 0; i < 20; i++) sim.Tick();
 
             SlotDescriptor slot = default;
@@ -551,7 +559,8 @@ namespace Perilune.Tests
             const int TickCap = 150000; // ~4.2 sim-hours; MARGIN: the goal latches at 55,191 (2.72×)
             var systems = Stack();
             var plan = AuthoredShips.PeriluneGrid();
-            var sim = ShipPlanBuilder.Build(plan, systems);
+            // M2-2 (OD-H): the goal is completable BY A CREW THAT HAS BEEN GIVEN WORK.
+            var sim = ShipPlanBuilder.Build(plan, systems).GiveAllCrewAllWork();
 
             GoalSystem goals = null;
             foreach (var s in systems) if (s is GoalSystem g) goals = g;

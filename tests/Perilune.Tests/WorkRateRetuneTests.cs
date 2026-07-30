@@ -42,7 +42,7 @@ namespace Perilune.Tests
             };
             var sim = new Simulation(AsciiWorld.Build(map), 1,
                 new ISimSystem[] { new CitizenSystem() });
-            var mover = sim.AddCitizen("Mover", new Int3(1, 1, 0)); // AutoWander false → no wander cadence
+            var mover = sim.AddCitizen("Mover", new Int3(1, 1, 0)).GiveAllWork(); // AutoWander false → no wander cadence
             sim.EnqueueCommand(new MoveCitizenCommand(mover.Id, new Int3(6, 1, 0))); // five tiles east
 
             // Record the tick each new column is reached; the gaps between them are the cadence.
@@ -86,7 +86,7 @@ namespace Perilune.Tests
             };
             var sim = new Simulation(AsciiWorld.Build(map), 1,
                 new ISimSystem[] { new CitizenSystem(), new JobSystem() });
-            var digger = sim.AddCitizen("Digger", new Int3(1, 1, 0));
+            var digger = sim.AddCitizen("Digger", new Int3(1, 1, 0)).GiveAllWork();
 
             var debris = new Int3(2, 1, 0); // orthogonally adjacent to the crew — no travel needed
             sim.World.SetWall(debris, TileDefs.Debris);
@@ -146,7 +146,7 @@ namespace Perilune.Tests
             // Minimal stack: movement + jobs + build only, so no need ever interrupts the builder.
             var sim = new Simulation(AsciiWorld.Build(map), 1,
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), build });
-            var builder = sim.AddCitizen("Builder", new Int3(2, 1, 0));
+            var builder = sim.AddCitizen("Builder", new Int3(2, 1, 0)).GiveAllWork();
 
             var site = new Int3(3, 1, 0); // orthogonally adjacent to the crew
             Assert.That(build.Designate(sim, site, BuildKind.Wall), Is.True);

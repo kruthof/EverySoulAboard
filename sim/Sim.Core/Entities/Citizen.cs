@@ -51,8 +51,14 @@ namespace Perilune.Sim
         public float Mood;          // derived scalar, -100..100, for HUD/M3 systems
         public bool Dead;
 
-        // --- The work-priority grid (M2-1, saved CITZ v8). STORAGE ONLY: nothing in the sim
-        // reads any of the four fields below, and that inertness is the package's whole claim.
+        // --- The work-priority grid (M2-1, saved CITZ v8; READ SINCE M2-2). ⚠️ THIS HEADER SAID
+        // "STORAGE ONLY: nothing in the sim reads any of the four fields below, and that inertness
+        // is the package's whole claim" — TRUE OF M2-1's TREE, FALSE OF THIS ONE. M2-2 landed the
+        // work-type VETO: WorkPrioritiesRaw and WorkIncapable are now read at five gates through
+        // CanTakeWorkType below, so this grid is BEHAVIOUR and its default (OD-H: off) is what a
+        // new game boots into. Skill and HeldByOrder are still reserved and still have no reader.
+        // The enrolment ledger in WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid names
+        // every file that may look at them.
         // See the WorkType / WorkPriority declarations at the bottom of this file. ---
 
         /// <summary>
@@ -172,6 +178,46 @@ namespace Perilune.Sim
         /// <summary>This PERSON cannot do this work at all — distinct from the player having
         /// switched it off. See <see cref="WorkIncapable"/>.</summary>
         public bool IsIncapableOf(WorkType type) => (WorkIncapable & (1 << (int)type)) != 0;
+
+        /// <summary>
+        /// ⭐ <b>M2-2 — THE WORK-TYPE VETO. THE ONE PREDICATE, ASKED AT FIVE GATES.</b> May this
+        /// crew member be put on <paramref name="type"/> work right now?
+        ///
+        /// <para>The five askers, and why there are five rather than one: <c>JobSystem.TryAssign</c>
+        /// (the dispatcher, covering all four <see cref="IJobSource"/>s at once),
+        /// <c>CraftingSystem.FindNearestReachableIdle</c> and
+        /// <c>MaintenanceSystem.FindNearestReachableIdle</c> (two PUSH recruiters that bypass the
+        /// dispatcher entirely — a veto in the dispatcher alone leaves both wide open),
+        /// <c>EffectValidator.ApplyAgreeTask</c> (the LLM grant), and
+        /// <c>CapabilityComputer.Compute</c> (the LLM OFFER — omit it and the crew member agrees in
+        /// dialogue to work the player forbade and then does nothing, which is a shipped defect
+        /// this repo has already fixed once).</para>
+        ///
+        /// <para><b>IT IS DELIBERATELY NOT FOLDED INTO <see cref="IsRecruitableForWork"/>.</b> Under
+        /// OD-H every work type boots off, so <c>IsRecruitableForWork &amp;&amp; HasAnyWorkEnabled</c>
+        /// would close three of the five gates in one line — and it is wrong, not merely coarse.
+        /// <see cref="IsRecruitableForWork"/> is a per-CITIZEN fact ("held and player-ordered crew
+        /// never self-assign"); this is a per-(citizen, work type) fact. Collapsing them makes
+        /// <c>Repair@1 / Haul@off</c> indistinguishable from all-off, silently re-subjects
+        /// <c>PlayerOrderPrecedenceTests</c>, and pre-empts M2-19's own use of the property.
+        /// The four <c>WorkTypeVetoTests.MixedGrid_*</c> legs are what bite the shortcut (measured:
+        /// the fold reddens all four and nothing else).</para>
+        ///
+        /// <para><b>TWO REASONS TO REFUSE, ONE ANSWER.</b> The player switched it off
+        /// (<see cref="GetWorkPriority"/> = <see cref="WorkPriority.Off"/>) or the PERSON cannot do
+        /// it (<see cref="WorkIncapable"/>). RimWorld keeps them distinct in the TAB — blank versus
+        /// struck through, an order versus a fact — and identical in the DISPATCHER
+        /// (<c>docs/design/rimworld-reference.md</c> §1.2, §1.6: "incapable ≠ disabled" is a claim
+        /// about provenance and UI, not about whether the pawn takes the job). The incapability
+        /// half has no writer as of this commit and is asked anyway, so the capability SOURCE
+        /// package (M3-7) does not have to find five gates again.</para>
+        ///
+        /// <para>Pure state read: no allocation, no RNG, safe on every tick path, and it cannot by
+        /// itself move a determinism pin — what moves the pins is the DEFAULT it reads
+        /// (<see cref="WorkPriority.Default"/>), which landed in M2-1.</para>
+        /// </summary>
+        public bool CanTakeWorkType(WorkType type) =>
+            WorkPrioritiesRaw[(int)type] != WorkPriority.Off && !IsIncapableOf(type);
 
         /// <summary>Mark (or clear) a permanent incapability. No consumer yet — the capability
         /// SOURCE is a later package; this exists so the state is reachable and testable.</summary>

@@ -28,12 +28,18 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
+# M2-2 (PIN M2-e, 2026-07-30): c1bac287230e184e -> 81733e27709f36e4. The work-type VETO landed, so
+# the work grid M2-1 stored is now READ at five gates — and under OD-H every work type boots off.
+# NOT fold-only this time and deliberately so: this is a BEHAVIOUR change on every ship, on the same
+# state, because the default two packages upstream is now consulted. On the scenario ship the one
+# live work path is Maintain (20 devices; Scrubber/Reclaimer cross their maint threshold at ~50 h of
+# the 72 h run), and it no longer runs unbidden — measured, not predicted.
 # M2-1 (PIN M2-a, 2026-07-29): 02257f5bce961570 -> c1bac287230e184e. The CITZ chapter gained the
 # per-citizen work-priority grid, the WorkIncapable mask and two reserved fields (Skill, HeldByOrder),
 # so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
 # present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
 # was 1330/1330 green — measured, not asserted. Nothing reads the new state.
-printf '%s\n' "$OUT" | grep -q "c1bac287230e184e" || { echo "FAIL: reference hash changed (expected c1bac287230e184e) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+printf '%s\n' "$OUT" | grep -q "81733e27709f36e4" || { echo "FAIL: reference hash changed (expected 81733e27709f36e4) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

@@ -96,7 +96,7 @@ namespace Perilune.Tests
             sim.Tick(); // drain the commands
 
             var item = sim.AddItem(ItemKind.Potato, 1, new Int3(4, 1, 0));
-            sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.AddCitizen("Ada", new Int3(3, 1, 0)).GiveAllWork();
 
             for (int t = 0; t < 800 && !(item.CarriedBy == 0 && IsStockTile(sim, item.Pos)); t++)
                 sim.Tick();
@@ -134,7 +134,7 @@ namespace Perilune.Tests
             sim.Tick();
 
             sim.AddItem(ItemKind.Potato, 1, new Int3(4, 1, 0));
-            sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.AddCitizen("Ada", new Int3(3, 1, 0)).GiveAllWork();
             sim.Tick(); // rebuild the board with the item and the filter both live
 
             Assert.That(HaulCandidates(jobs), Is.EqualTo(0),
@@ -178,7 +178,7 @@ namespace Perilune.Tests
             sim.Tick();
 
             sim.AddItem(ItemKind.Potato, 1, new Int3(4, 1, 0));
-            sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.AddCitizen("Ada", new Int3(3, 1, 0)).GiveAllWork();
             sim.Tick();
             Assert.That(HaulCandidates(jobs), Is.EqualTo(0), "precondition: the restriction really bites");
             Assert.That(sim.StockZones.Zones, Has.Count.EqualTo(1),

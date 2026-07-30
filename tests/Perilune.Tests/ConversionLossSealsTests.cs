@@ -62,7 +62,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(bench, new Int3(3, 2, 0), "bench");
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false → recruitable, never strays
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork(); // AutoWander false → recruitable, never strays
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);
@@ -281,7 +281,11 @@ namespace Perilune.Tests
 
             var host = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default);
             AuthoredShips.PopulateSlice(host.Sim, host.Minds, host.Facts, null);
-            var sim = host.Sim;
+            // M2-2 (OD-H): the metal LEDGER only moves when crew dig, haul and craft. With the
+            // shipped boot grid nothing moves and the ceiling is met vacuously — this leg's own
+            // non-vacuity control (debris actually cleared) is what catches that, and enrolling the
+            // fixture is the fix rather than relaxing the control.
+            var sim = host.Sim.GiveAllCrewAllWork();
 
             int opening = MetalUnits(sim);
             int debrisAtStart = DebrisTiles(sim);

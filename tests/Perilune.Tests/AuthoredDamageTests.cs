@@ -325,6 +325,11 @@ namespace Perilune.Tests
         private static int MaintainTicks(float? condition, ISimSystem[] systems, bool seedParts = false)
         {
             var sim = ShipPlanBuilder.Build(BayPlan(condition), systems);
+            // M2-2 (OD-H): work boots off, so the fixture's crew member is never recruited for a
+            // service until she is given Repair. This helper's whole output is MAINTAIN TICKS —
+            // the observable both callers key on — so an unenrolled fixture would return 0 for a
+            // reason that has nothing to do with the authored Condition it is measuring.
+            sim.GiveAllCrewAllWork();
             if (seedParts) sim.AddItem(ItemKind.Parts, 1, CrewTile);
             sim.JobsDirty = JobBoardDirty.All;
             var crew = sim.Citizens.Items;

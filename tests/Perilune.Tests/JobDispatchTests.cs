@@ -339,7 +339,10 @@ namespace Perilune.Tests
         [Test]
         public void SliceAssignmentSequence_AllFiftySevenJobsToSaturation_IsStableAfterTheE0_6xE0_7Wave()
         {
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
+            // M2-2 (OD-H): the recorded assignment sequence is a sequence of jobs a WORKING crew
+            // takes; with the shipped boot grid it is empty. Enrolled so the pin keeps measuring
+            // arbitration rather than the default.
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim.GiveAllCrewAllWork();
             BuildSystem build = null;
             foreach (var s in sim.Systems) if (s is BuildSystem b) { build = b; break; }
             Assert.That(build, Is.Not.Null, "precondition: the slice stack registers a BuildSystem");
@@ -397,7 +400,7 @@ namespace Perilune.Tests
         public void EqualDistance_DigBeatsHaul()
         {
             var sim = NewTieShip(out _);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             Debris(sim, new Int3(3, 2, 0));                          // 2 tiles west
             sim.AddItem(ItemKind.Scrap, 1, new Int3(7, 2, 0));       // 2 tiles east
             sim.World.SetFlag(new Int3(5, 1, 0), TileFlags.Stockpile, true); // haul has a destination
@@ -418,7 +421,7 @@ namespace Perilune.Tests
         public void EqualDistance_HaulBeatsBuild()
         {
             var sim = NewTieShip(out var build);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Scrap, 1, new Int3(3, 2, 0));       // 2 west
             sim.World.SetFlag(new Int3(5, 1, 0), TileFlags.Stockpile, true);
             Assert.That(build.Designate(sim, new Int3(7, 2, 0), BuildKind.Wall), Is.True); // 2 east
@@ -445,7 +448,7 @@ namespace Perilune.Tests
         public void EqualDistance_ReadyBuildBeatsNeedyBuild()
         {
             var sim = NewTieShip(out var build);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             var ready = new Int3(7, 2, 0);
             var needy = new Int3(3, 2, 0);
             Assert.That(build.Designate(sim, ready, BuildKind.Wall), Is.True);
@@ -472,7 +475,7 @@ namespace Perilune.Tests
         public void EqualDistance_TwoDigSites_ResolveToTileScanOrder()
         {
             var sim = NewTieShip(out _);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             Debris(sim, new Int3(5, 3, 0)); // designated FIRST, but scanned second (higher y)
             Debris(sim, new Int3(5, 1, 0));
 
@@ -493,7 +496,7 @@ namespace Perilune.Tests
         public void EqualDistance_TwoHaulItems_ResolveToEntityStoreOrder()
         {
             var sim = NewTieShip(out _);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             sim.World.SetFlag(new Int3(5, 3, 0), TileFlags.Stockpile, true);
             var first = sim.AddItem(ItemKind.Scrap, 1, new Int3(7, 2, 0));
             var second = sim.AddItem(ItemKind.Scrap, 1, new Int3(3, 2, 0));
@@ -613,7 +616,7 @@ namespace Perilune.Tests
         public void AnItemOnlyAddItem_BoardsTheStackAndYieldsARealHaulAssignment()
         {
             var sim = NewTieShip(out _);
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             sim.World.SetFlag(new Int3(5, 1, 0), TileFlags.Stockpile, true); // a haul destination exists
 
             // Settle to steady state: no items, no dig/build, so the idle citizen takes nothing and
@@ -667,7 +670,7 @@ namespace Perilune.Tests
         public void FullRescanEveryTick_WithEveryBoardPopulated_IsZeroAlloc()
         {
             var sim = NewTieShipWithDeconstruct(out var build, out var strip);
-            var idle = sim.AddCitizen("Held", new Int3(5, 2, 0));
+            var idle = sim.AddCitizen("Held", new Int3(5, 2, 0)).GiveAllWork();
             idle.HoldPosition = true; // never self-assigns: the rescan is the only path measured
 
             Debris(sim, new Int3(3, 2, 0));                                    // dig board
@@ -737,10 +740,10 @@ namespace Perilune.Tests
 
             // A digger who never finishes: he is assigned, then never walks (no CitizenSystem in
             // this stack), so he holds the reachable site in the assigned set forever.
-            var pinned = sim.AddCitizen("Pinned", new Int3(5, 2, 0));
+            var pinned = sim.AddCitizen("Pinned", new Int3(5, 2, 0)).GiveAllWork();
             Debris(sim, new Int3(6, 2, 0));
             // …and an idle second citizen who is offered the unreachable one every tick.
-            var seeker = sim.AddCitizen("Seeker", new Int3(4, 2, 0));
+            var seeker = sim.AddCitizen("Seeker", new Int3(4, 2, 0)).GiveAllWork();
             Debris(sim, new Int3(5, 5, 0));
             // A needy site with no free material keeps the build board populated but gated shut.
             Assert.That(build.Designate(sim, new Int3(8, 1, 0), BuildKind.Wall), Is.True);
@@ -848,8 +851,8 @@ namespace Perilune.Tests
                 new ISimSystem[] { new JobSystem(), build });
             // Store order is insertion order, and the dispatcher offers work in store order, so
             // the near hauler MUST be added first — he is the one who takes a unit mid-pass.
-            if (withNearHauler) sim.AddCitizen("Near", new Int3(2, 2, 0));
-            sim.AddCitizen("Far", new Int3(10, 2, 0));
+            if (withNearHauler) sim.AddCitizen("Near", new Int3(2, 2, 0)).GiveAllWork();
+            sim.AddCitizen("Far", new Int3(10, 2, 0)).GiveAllWork();
             sim.World.SetFlag(new Int3(1, 3, 0), TileFlags.Stockpile, true);
             Assert.That(build.Designate(sim, FarSite, BuildKind.Wall), Is.True);
             sim.AddItem(ItemKind.Regolith, 1, new Int3(2, 1, 0));
@@ -972,7 +975,7 @@ namespace Perilune.Tests
                 {
                     new JobSystem(new IJobSource[] { new DigJobSource(), new LiesAboutDistanceJobSource() }),
                 });
-            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            var worker = sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             Debris(sim, new Int3(3, 2, 0));
 
             for (int t = 0; t < 5 && worker.JobKind == JobKind.None; t++) sim.Tick();
@@ -1032,7 +1035,7 @@ namespace Perilune.Tests
         {
             var sim = new Simulation(AsciiWorld.Build(TieMap), 31,
                 new ISimSystem[] { new JobSystem(new IJobSource[] { new NeverStampsJobSource() }) });
-            sim.AddCitizen("Worker", new Int3(5, 2, 0));
+            sim.AddCitizen("Worker", new Int3(5, 2, 0)).GiveAllWork();
             sim.JobsDirty = JobBoardDirty.All;
 
             var ex = Assert.Throws<InvalidOperationException>(() => sim.Tick());

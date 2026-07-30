@@ -41,7 +41,7 @@ namespace Perilune.Tests
             var sim = new Simulation(AsciiWorld.Build(map), 42, SystemStack.CreateDefault(moss), defs);
             for (int x = 1; x <= 6; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 1, 0), $"c{x}");
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
-            sim.AddCitizen("Smith", new Int3(1, 2, 0));
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork();
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(2, 2, 0)));

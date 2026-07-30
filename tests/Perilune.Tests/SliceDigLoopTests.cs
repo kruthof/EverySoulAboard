@@ -27,7 +27,14 @@ namespace Perilune.Tests
     /// </summary>
     public class SliceDigLoopTests
     {
-        private static SimHost BootSlice() => SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+        // M2-2: OD-H boots every work type OFF. This file's subject is the slice's DIG LOOP —
+        // whether crew work the authored dig seed — which needs crew who have been given Mine.
+        private static SimHost BootSlice()
+        {
+            var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+            host.Sim.GiveAllCrewAllWork();
+            return host;
+        }
 
         private static (int debris, int designated, int stockpile) Survey(Simulation sim)
         {

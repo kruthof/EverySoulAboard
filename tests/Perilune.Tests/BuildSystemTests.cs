@@ -84,7 +84,7 @@ namespace Perilune.Tests
         public void Designate_RejectsInvalidTilesDeterministically()
         {
             var sim = NewSim(BreachMap, 1, out var build);
-            sim.AddCitizen("Occupant", new Int3(2, 2, 0));
+            sim.AddCitizen("Occupant", new Int3(2, 2, 0)).GiveAllWork();
 
             // Already-walled tile ((0,0) is a wall).
             Assert.That(build.Designate(sim, new Int3(0, 0, 0), BuildKind.Wall), Is.False, "walled tile");
@@ -108,7 +108,7 @@ namespace Perilune.Tests
         {
             var sim = NewSim(BreachMap, 42, out var build);
             AddVentedPower(sim);
-            var builder = sim.AddCitizen("Ito", new Int3(3, 2, 0));
+            var builder = sim.AddCitizen("Ito", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0)); // exactly a wall's worth
 
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True);
@@ -152,7 +152,7 @@ namespace Perilune.Tests
             // exists there (proves the runtime device-spawn path).
             var sim = NewSim(BreachMap, 7, out var build);
             AddVentedPower(sim);
-            var builder = sim.AddCitizen("Vega", new Int3(3, 2, 0));
+            var builder = sim.AddCitizen("Vega", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0));
 
             var doorPos = new Int3(4, 1, 0);
@@ -184,7 +184,7 @@ namespace Perilune.Tests
             // second stack is untouched, and total Regolith is conserved.
             var sim = NewSim(BreachMap, 3, out var build);
             AddVentedPower(sim);
-            sim.AddCitizen("Halden", new Int3(3, 2, 0));
+            sim.AddCitizen("Halden", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0));
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 1, 0));
 
@@ -225,8 +225,8 @@ namespace Perilune.Tests
                 "#######",
             };
             var sim = NewSim(map, 9, out var build);
-            var a = sim.AddCitizen("A", new Int3(2, 1, 0));
-            var b = sim.AddCitizen("B", new Int3(4, 1, 0));
+            var a = sim.AddCitizen("A", new Int3(2, 1, 0)).GiveAllWork();
+            var b = sim.AddCitizen("B", new Int3(4, 1, 0)).GiveAllWork();
 
             Assert.That(build.Designate(sim, new Int3(3, 1, 0), BuildKind.Wall), Is.True);
             Assert.That(build.Deposit(sim, new Int3(3, 1, 0), sim.Defs.Build.WallMaterial),
@@ -245,7 +245,7 @@ namespace Perilune.Tests
         {
             var sim = NewSim(BreachMap, 11, out var build);
             AddVentedPower(sim);
-            sim.AddCitizen("Okafor", new Int3(3, 2, 0));
+            sim.AddCitizen("Okafor", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0));
             build.Designate(sim, StubSite, BuildKind.Wall);
 
@@ -314,7 +314,7 @@ namespace Perilune.Tests
             {
                 var sim = NewSim(BreachMap, seed, out var build);
                 AddVentedPower(sim);
-                sim.AddCitizen("Twin", new Int3(3, 2, 0));
+                sim.AddCitizen("Twin", new Int3(3, 2, 0)).GiveAllWork();
                 sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0));
                 build.Designate(sim, StubSite, BuildKind.Wall);
                 return sim;
@@ -339,7 +339,7 @@ namespace Perilune.Tests
             var build = new BuildSystem();
             var sim = new Simulation(AsciiWorld.Build(BreachMap), 1,
                 new ISimSystem[] { new JobSystem(), build });
-            sim.AddCitizen("Idle", new Int3(3, 2, 0)); // AutoWander false → never self-moves
+            sim.AddCitizen("Idle", new Int3(3, 2, 0)).GiveAllWork(); // AutoWander false → never self-moves
 
             for (int i = 0; i < 200; i++) sim.Tick(); // warm-up (resolve build, first rescan)
 
@@ -370,7 +370,7 @@ namespace Perilune.Tests
             {
                 var sim = NewSim(BreachMap, 21, out var build, defs);
                 AddVentedPower(sim);
-                sim.AddCitizen("Test", new Int3(3, 2, 0));
+                sim.AddCitizen("Test", new Int3(3, 2, 0)).GiveAllWork();
                 sim.AddItem(ItemKind.Regolith, 2, new Int3(4, 2, 0)); // only two units available
                 build.Designate(sim, StubSite, BuildKind.Wall);
                 // E0-2: WallConstructTicks 60→2400 (plus haul/travel), so the budget is widened.

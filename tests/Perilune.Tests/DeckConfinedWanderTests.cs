@@ -203,7 +203,11 @@ namespace Perilune.Tests
         [Test]
         public void GridCrew_Wander_AndNeverStandOnAnAirlessDeck()
         {
-            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
+            // M2-2 (OD-H): this leg's own precondition is that crew still cross decks for WORK —
+            // deck confinement bounds the IDLE draw, not the crew member — so the fixture must give
+            // them work to cross for. The other legs in this file are about the wander TARGET and
+            // are unaffected, which is why only this one enrols.
+            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack()).GiveAllCrewAllWork();
 
             var decksVisited = new HashSet<int>();
             int idleWanderTicks = 0;

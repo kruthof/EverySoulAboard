@@ -21,10 +21,18 @@ namespace Perilune.Tests
     {
         private const long TicksPerDay = 864000L;
 
+        // ⚠️ M2-2 — WHY EVERY FIXTURE HERE NOW SAYS GiveAllCrewAllWork(). OD-H boots every work type
+        // OFF, so an untouched slice runs its three days with eight idle crew: the ice chain never
+        // gets hauled, the melter never gets worked, and the hydro loop dies of a PLAYER SETTING
+        // rather than of the matter defect this file exists to pin (measured: tank_hydro 0.011 L
+        // instead of ~500 L). These legs are about the slice's MATTER LOOP under a working crew, so
+        // the fixture gives them the work the player gives on the WORK tab. The boot silence itself
+        // is WorkTypeVetoTests' subject, driven on --ship wreck.
+
         [Test]
         public void Slice_SurvivesThreeUnattendedDays_WithLifeSupportInBand()
         {
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim.GiveAllCrewAllWork();
             for (long t = 0; t < 3 * TicksPerDay; t++) sim.Tick();
 
             int alive = 0;
@@ -68,7 +76,7 @@ namespace Perilune.Tests
             // signals (reviewer-traced): growbed_2 AND growbed_3 (LATER in store order — the first
             // bed drinks the trickle first) freeze PERMANENTLY after ~day 0.6 without the fix, and
             // tank_hydro collapses to the DrawEpsilon residue instead of holding its authored ~500 L.
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim.GiveAllCrewAllWork();
 
             const long day1_2 = (long)(1.2 * TicksPerDay); // 1_036_800
             for (long t = 0; t < day1_2; t++) sim.Tick();
@@ -134,7 +142,7 @@ namespace Perilune.Tests
                 new List<(string, string)> { ("machines.def", machines) },
                 new List<(string, string)>(), new List<string>());
 
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs).Sim;
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), defs).Sim.GiveAllCrewAllWork();
 
             long brownoutTick = -1;
             long horizon = 2 * TicksPerDay;

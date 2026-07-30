@@ -75,7 +75,7 @@ namespace Perilune.Tests
             // sources compete for one tank's headroom, which is what the pass ordering decides.
             if (reclaimer) sim.AddDevice(DeviceKind.Reclaimer, new Int3(4, 2, 0), "reclaimer");
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false ⇒ recruitable
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork(); // AutoWander false ⇒ recruitable
             if (iceUnits > 0) sim.AddItem(ItemKind.Ice, iceUnits, new Int3(1, 2, 0));
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
@@ -400,7 +400,7 @@ namespace Perilune.Tests
             for (int x = 1; x <= 5; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 1, 0), $"c{x}");
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             var fab = sim.AddDevice(DeviceKind.Fabricator, new Int3(3, 2, 0), "fab");
-            sim.AddCitizen("Smith", new Int3(1, 2, 0));
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Scrap, 6, new Int3(1, 2, 0));
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);
@@ -755,7 +755,9 @@ namespace Perilune.Tests
         [Test]
         public void TheAuthoredSlice_MeltsHoldIceIntoTheHydroLoop()
         {
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice()).Sim;
+            // M2-2 (OD-H): the ice chain is CREW WORK — fetch the ice, feed the melter — so this
+            // leg needs a crew that has been given it. Boot silence is WorkTypeVetoTests' subject.
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice()).Sim.GiveAllCrewAllWork();
 
             Device melter = null, hydroTank = null;
             foreach (var d in sim.Devices.Items)

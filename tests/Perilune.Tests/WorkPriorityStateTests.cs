@@ -726,6 +726,18 @@ namespace Perilune.Tests
             // is M2-3). What it does end is "no code outside the save path names the grid at all".
             // The dispatcher still does not consult it: the veto is M2-2's, at five gates.
             "sim/Sim.Core/Commands/Commands.cs",
+
+            // ⭐ M2-2 — THE VETO. Six files, and the count is the point: a work type set to off is
+            // refused at FIVE gates plus the one table they all read. Enrolling them is what ends
+            // M2-1's "nothing reads the grid" claim on purpose and in the open — from this commit
+            // the grid is BEHAVIOUR, and the P1/P3 pin move in the same commit is a behaviour
+            // change, not a fold.
+            "sim/Sim.Core/Entities/WorkTypeMap.cs",       // the ONE JobKind → WorkType table
+            "sim/Sim.Core/Jobs/JobSystem.cs",             // G1 — the dispatcher, covering all four IJobSources
+            "sim/Sim.Core/Systems/CraftingSystem.cs",     // G2 — the push recruiter that bypasses the dispatcher
+            "sim/Sim.Core/Systems/MachineWearSystem.cs",  // G3 — the other one (MaintenanceSystem lives here)
+            "sim/Sim.Core/Effects/EffectValidator.cs",    // G4 — the LLM GRANT, bounded by the grid
+            "sim/Sim.Core/Effects/CapabilityComputer.cs", // G5 — the LLM OFFER; without it crew agree to forbidden work
         };
 
         private static readonly string[] WorkGridIdentifiers =
@@ -735,10 +747,19 @@ namespace Perilune.Tests
         };
 
         /// <summary>
-        /// ⭐ THE PACKAGE'S HEADLINE CLAIM, MECHANISED: <b>nothing in <c>sim/</c> reads the work
-        /// grid.</b> M2-1 is storage; the veto is M2-2's, at five gates. If this state could change
-        /// a dispatch decision, every "pin move is fold-only" claim in the commit message would be
-        /// false — and the shipped ships would behave differently with no test saying so.
+        /// ⭐ THE ENROLMENT LEDGER, MECHANISED: <b>only a named file in <c>sim/</c> may read the
+        /// work grid.</b>
+        ///
+        /// ⚠️ <b>M2-2 CHANGED WHAT THIS TEST MEANS, AND THE OLD SENTENCE IS KEPT HERE RATHER THAN
+        /// SILENTLY REPLACED.</b> It read: <i>"THE PACKAGE'S HEADLINE CLAIM: nothing in sim/ reads
+        /// the work grid. M2-1 is storage; the veto is M2-2's, at five gates. If this state could
+        /// change a dispatch decision, every 'pin move is fold-only' claim in the commit message
+        /// would be false."</i> That was true of M2-1's tree and is <b>false of this one</b>: the
+        /// veto landed, six files are enrolled below, the grid IS a dispatch decision, and M2-2's
+        /// own pin move (P1, P3) is a BEHAVIOUR change stated as one. What survives unchanged is the
+        /// mechanism — an enrolment ledger that only grows, so every later crossing (M2-5's band
+        /// loop, M2-8's pre-emption, M2-19's sticky claim) stays a decision instead of a diff nobody
+        /// read.
         ///
         /// It scans CODE ONLY, through the shipped <c>SurfaceBoundaryTests.CodeOnly</c> stripper,
         /// because a doc comment naming a downstream consumer is documentation, not a dependency —
@@ -782,9 +803,10 @@ namespace Perilune.Tests
                 "procedure. ⛔ DO NOT DELETE THIS TEST — it is a ledger that only enrols, like " +
                 "KNOWN_GAPS. Deleting it costs the same one line today and costs every later " +
                 "package its only record of who may read a crew member's work assignment.\n" +
-                "⇒ IF IT IS NOT DELIBERATE: M2-1 is STORAGE ONLY, and its pin move is attributable " +
-                "as fold-only precisely BECAUSE nothing reads this state. You have just turned a " +
-                "fold-only pin move into a behaviour change with no other test saying so.");
+                "⇒ IF IT IS NOT DELIBERATE: this grid decides whether a crew member takes a job at " +
+                "all (M2-2's veto, five gates), and under OD-H it boots OFF for every work type on " +
+                "every ship. A new reader is therefore a BEHAVIOUR change on every pinned ship — " +
+                "measure P1/P2/P3 and say so in the commit, or take the read back out.");
 
             // --- NON-VACUITY, BY INCLUSION. A real sim file plus a planted call must be caught.
             string donor = File.ReadAllText(Path.Combine(RepoRoot(),

@@ -188,7 +188,7 @@ namespace Perilune.Tests
         public void ADigOrderPutsAnIdleCrewMemberToWork()
         {
             var sim = Build();
-            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0));
+            var crew = sim.AddCitizen("Okafor", new Int3(1, 1, 0)).GiveAllWork();
             sim.Tick();
             Assert.That(crew.JobKind, Is.EqualTo(JobKind.None), "precondition: nothing to do yet");
 
