@@ -1187,6 +1187,109 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// ⭐⭐ <b>M2-21's VISIBILITY LEG — THE SILENT BUILD HAUL REACHES THIS CHANNEL.</b> The leg above
+        /// drives the READY carrier: the material is DEPOSITED, so the only thing that can fail is the
+        /// approach, and <c>TryClaim</c> itself refuses and stamps. <b>This leg drives the case that
+        /// was still silent after M1-D shipped</b>, and it is a different code path end to end: the
+        /// site is left HUNGRY and the material is planted OUTSIDE the pocket, beside the crew.
+        ///
+        /// <b>WHY THAT ARRANGEMENT WAS INVISIBLE.</b> <c>BuildJobSource.TryReserveMaterialFor</c>
+        /// pathfinds citizen → MATERIAL and never citizen → SITE, so the claim SUCCEEDS on the
+        /// reachable stack, and the refusal lands one hop later in <c>ProgressBuildHaul</c>'s phase A —
+        /// which released the reservation, abandoned the job and stamped nothing. Measured: 3 000
+        /// ticks, 2 999 abandons, ZERO stamps, and therefore <b>zero rows on this channel</b> while a
+        /// pawn thrashed at the board's full rate. M1-D filed it and M2-21 fixed it with one stamp;
+        /// this is the leg that proves the fix is VISIBLE rather than merely quiet, which is the whole
+        /// reason it was worth a pin move.
+        ///
+        /// The control half is required, and it is the same shape as the leg above: a reachable hungry
+        /// build in the same air, with the same material pool, must be ABSENT.
+        ///
+        /// MUTATION (M2-21's charter row 4): delete the phase-A <c>_matRetryAt</c> stamp in
+        /// <c>BuildJobSource.ProgressBuildHaul</c> ⇒ red on the first assertion, and GREEN on the
+        /// READY-carrier leg above — which is exactly how this hole survived M1-D. The host-side
+        /// mutations (drop the reach question, report it without asking) are covered by that leg.
+        /// </summary>
+        [Test]
+        public void A_Build_Whose_Material_Is_Reachable_And_Whose_Site_Is_Not_Reaches_The_Channel()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var build = BuildOf(sim);
+            var jobs = JobsOf(sim);
+
+            var pocket = SealPocket(sim, build);
+
+            // The order is left HUNGRY — no Deposit — which is what routes it through _needMat and
+            // makes TryReserveMaterialFor, not TryPathToAdjacent, the question the claim asks.
+            sim.EnqueueCommand(new DesignateBuildCommand(pocket.Site, BuildKind.Wall, on: true, material: 0));
+            sim.Tick();
+            Assert.That(build.TryGet(pocket.Site, out var hungry), Is.True, "premise: the build was accepted");
+            Assert.That(BuildSystem.NeedsMaterial(hungry), Is.True,
+                "PREMISE: the site must still WANT material. A materialed site is the leg above, whose " +
+                "stamp M1-D already shipped — this one exists for the carrier that had none.");
+
+            // The CONTROL: a reachable hungry build outside the pocket, competing for the same pool.
+            var w = sim.World;
+            Int3? control = null;
+            for (int z = 0; z < w.Depth && control == null; z++)
+                for (int y = 0; y < w.Height && control == null; y++)
+                    for (int x = 0; x < w.Width && control == null; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (Same(p, pocket.Site) || Same(p, pocket.Staging)) continue;
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!build.CanDesignate(sim, p, BuildKind.Wall)) continue;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { control = p; break; }
+                        }
+                    }
+            Assert.IsNotNull(control, "PREMISE FAILED: no reachable buildable tile for the control half");
+            sim.EnqueueCommand(new DesignateBuildCommand(control.Value, BuildKind.Wall, on: true, material: 0));
+            sim.Tick();
+
+            // The MATERIAL, planted where the crew stand: outside the pocket and trivially reachable.
+            // That is the defect's precondition stated as geometry — a reachable material and an
+            // unreachable site — and it is asserted rather than assumed, because if the stack were
+            // unreachable TryClaim's own (shipped) _matRetryAt stamp would satisfy everything below.
+            var crewTile = sim.Citizens.Items[0].Pos;
+            var stack = sim.AddItem(BuildSystem.Material, hungry.Required * 8, crewTile);
+            sim.JobsDirty = JobBoardDirty.All;
+            var path = new List<Int3>();
+            Assert.That(sim.Paths.FindPath(sim, crewTile, stack.Pos, path), Is.True,
+                "PREMISE: the material must be reachable — that is what makes the claim succeed and " +
+                "pushes the refusal into a progress pass where nothing used to record it");
+
+            bool stamped = false;
+            for (int t = 0; t < 3000 && !stamped; t++)
+            {
+                sim.Tick();
+                stamped = jobs.IsBackedOff(pocket.Site, sim.TickCount, out _);
+            }
+            Assert.That(stamped, Is.True,
+                "PREMISE/HEADLINE: 3 000 ticks and the job board never backed off the hungry build at " +
+                pocket.Site + ". This IS the M2-21 defect: the claim succeeded on a reachable material, " +
+                "phase A refused the site and recorded nothing, and the pawn re-took the same doomed " +
+                "job every other tick with this channel saying the order was fine.");
+
+            var row = RowAt(gs, pocket.Site);
+            Assert.IsNotNull(row, "THE BACKED-OFF HUNGRY BUILD AT " + pocket.Site + " IS NOT ON THE " +
+                "CHANNEL. The sim now records the refusal and the surface still does not show it, " +
+                "which is the same silence measured from one layer further out.");
+            Assert.AreEqual(WireFormat.OrderBuild, row.Value.Order, "the order kind must say BUILD");
+            Assert.AreEqual(WireFormat.ReasonUnreachable, row.Value.Reason,
+                "the reason must be UNREACHABLE — the fixture asserted the staging tile is breathable, " +
+                "so AIR would be a confident lie and venting would change nothing");
+
+            Assert.IsNull(RowAt(gs, control.Value),
+                "a REACHABLE hungry build competing for the same material pool reached the channel. " +
+                "The reach question is not asking the job board — it is badging every pending build.");
+        }
+
+        /// <summary>
         /// ⭐ <b>PRECEDENCE: A SITE THAT IS BOTH AIRLESS AND UN-REACHED REPORTS <i>AIR</i>.</b> This is
         /// not a tie-break preference. <c>JobWork.TryPathToAdjacent</c> stamps its back-off for an AIR
         /// refusal exactly as it does for a pathing one, so almost every airless order on a wreck is

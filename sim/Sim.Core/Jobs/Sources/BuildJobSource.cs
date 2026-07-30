@@ -40,6 +40,9 @@ namespace Perilune.Sim
         private long[] _readyTried = new long[16];
         private long[] _matTried = new long[16];
         private readonly Dictionary<Int3, long> _readyRetryAt = new Dictionary<Int3, long>(); // lookup only
+        // Two writers, one map: TryClaim (no reachable material) and ProgressBuildHaul phase A (no
+        // reachable SITE for a committed hauler — M2-21). Read only through Select's _needMat gate
+        // and IsBackedOff; keyed Remove and TryGetValue only, never iterated (IJobSource rule 4).
         private readonly Dictionary<Int3, long> _matRetryAt = new Dictionary<Int3, long>();   // lookup only
         private readonly HashSet<uint> _matScanTried = new HashSet<uint>(); // lookup only
 
@@ -55,12 +58,17 @@ namespace Perilune.Sim
         ///
         /// <para><b>THEY ARE DIFFERENT FAILURES AND THE DIFFERENCE IS RECORDED HERE RATHER THAN
         /// SMOOTHED OVER.</b> <c>_readyRetryAt</c> is the site's own approach failing — a fully
-        /// supplied build whose tile no worker could path to or stand at. <c>_matRetryAt</c> is
-        /// <see cref="TryReserveMaterialFor"/> finding no free material stack this citizen can reach,
-        /// which can fire on a site whose own approach is perfectly fine. So a true answer here means
-        /// "the crew could not get to it, OR to what it needs" — never "the tile is unreachable". Any
-        /// surface built on this must say the weaker thing; <c>WireFormat.Blocked.cs</c>'s
-        /// <c>ReasonUnreachable</c> is worded for exactly this.</para>
+        /// supplied build whose tile no worker could path to or stand at. <c>_matRetryAt</c> has
+        /// <b>TWO writers and therefore two meanings</b>, amended here by M2-21 rather than left to
+        /// mislead: (a) <see cref="TryClaim"/> stamps it when <see cref="TryReserveMaterialFor"/>
+        /// finds no free material stack this citizen can reach, which can fire on a site whose own
+        /// approach is perfectly fine; and (b) <see cref="ProgressBuildHaul"/>'s phase A stamps it
+        /// when the approach to the SITE fails for a hauler already committed to it — the case the
+        /// claim path structurally cannot see, because it only ever pathfinds to the material. So a
+        /// true answer here means "the crew could not get to it, OR to what it needs" — never "the
+        /// tile is unreachable". Any surface built on this must say the weaker thing;
+        /// <c>WireFormat.Blocked.cs</c>'s <c>ReasonUnreachable</c> is worded for exactly this, and
+        /// the widening does not change what a caller is entitled to believe.</para>
         ///
         /// <para>THE LATER EXPIRY WINS when both are live, so <paramref name="untilTick"/> is the tick
         /// at which the site could next be attempted at all rather than the tick the first of two
@@ -325,6 +333,18 @@ namespace Perilune.Sim
         /// carries that stack to the site and deposits it. Any lost site / material releases
         /// cleanly (reservation dropped, cargo set down where it stands) and the rescan retries —
         /// mirroring the pickup/deliver reservation discipline exactly.
+        ///
+        /// <para>⭐ <b>PHASE A IS A SECOND WRITER OF <c>_matRetryAt</c> (M2-21)</b>, because it asks a
+        /// question <see cref="TryClaim"/> never asked: can a worker reach the SITE. Read the comment
+        /// at that exit — it is the seam of the original 480 000-tick livelock.</para>
+        ///
+        /// <para><b>PHASE B'S "path lost before reaching the site" EXIT STAMPS NOTHING, AND THAT IS
+        /// SAFE ONLY BECAUSE PHASE A NOW DOES.</b> Stated rather than left as a hole a census would
+        /// have to re-find: a door shutting mid-carry drops the stack where the hauler stands, and
+        /// the re-claim then reserves that same stack (it is underfoot, so trivially reachable) and
+        /// falls into phase A on the following tick, which refuses the approach and stamps. So the
+        /// unstamped phase-B exit costs one extra tick and cannot loop. Before M2-21 it fed straight
+        /// into the same unbounded churn.</para>
         /// </summary>
         private void ProgressBuildHaul(Simulation sim, Citizen citizen)
         {
@@ -358,6 +378,51 @@ namespace Perilune.Sim
                 // world as it was (minus the released reservation).
                 if (!JobWork.TryPathToAdjacent(sim, citizen, site))
                 {
+                    // ⭐ M2-21 — THE STAMP THAT WAS MISSING, AND WHY IT HAS TO BE HERE AND NOT AT
+                    // THE CLAIM. This is the ORIGINAL 480 000-tick livelock, measured on a build
+                    // order behind a shut door at 3 000 ticks / 2 999 abandons / ZERO stamps.
+                    //
+                    // THE ASYMMETRY. TryClaim reaches this site through TryReserveMaterialFor,
+                    // which pathfinds citizen → MATERIAL and never citizen → SITE. So on a ship
+                    // where the material is reachable and the site is not, the claim SUCCEEDS
+                    // (and, worse, its success path REMOVES any stamp this site was carrying) and
+                    // the refusal happens here, one hop later, in a progress pass. Stamping at the
+                    // claim is therefore not stamping in progress: the claim never asks this
+                    // question. Without a stamp here the site is re-offered on the very next tick,
+                    // at the board's full rate, forever, and no surface says anything at all.
+                    //
+                    // WHY _matRetryAt AND NOT _readyRetryAt. Select gates the two boards on two
+                    // different maps, and a site whose Delivered < Required is on _needMat, which
+                    // reads _matRetryAt (:205). A stamp in _readyRetryAt would be a write nothing
+                    // reads while this site is still hungry — a fix that measures as a no-op.
+                    // ⛔ AND IT MUST NOT BE A THIRD MAP OR A NEW PREDICATE: IsBackedOff above is
+                    // "THE ONE DEFINITION OF 'BACKED OFF'" mirrored from HaulJobSource by M1-D,
+                    // and the blocked channel's ReasonUnreachable is that one query fanned out.
+                    // A private third carrier would be invisible to the surface built to explain
+                    // exactly this silence.
+                    //
+                    // ⚠️ IT WIDENS WHAT _matRetryAt MEANS, and the doc on IsBackedOff is amended
+                    // to say so rather than left to mislead: this carrier now also holds "the
+                    // approach to the site failed while a hauler was already committed to it".
+                    // Both meanings collapse to the one thing a caller may believe — nobody
+                    // managed to start work on this site recently — which is why widening it is
+                    // honest and a second map would not have been.
+                    //
+                    // ⭐ THE LATCH — WHICH SIDE THIS PACKAGE TAKES, IN WRITING (charter mutation 4).
+                    // The stamp lives 50 ticks and IsBackedOff is cleared wholesale on a tile-board
+                    // rebuild, so on a one-pawn ship the raw predicate can blink out. THIS PACKAGE
+                    // ADDS NO LATCH AND CHANGES NONE: it takes the SIM side only. M1-D already
+                    // decided this question and latched in the HOST (GameSession._latched, "THE
+                    // REACH LATCH"), holding the badge across the expiry and clearing it on the
+                    // TRUE event — a crew member holding a job on the tile. That latch covers this
+                    // stamp the moment it exists, because it is keyed on the site and asks the
+                    // fanned-out query, not on which carrier stamped. The residual flicker (the
+                    // badge drops for the one or two ticks of each 50-tick re-probe, while the
+                    // pawn genuinely does hold the job again) is M1-D's deliberate clear-on-success
+                    // and is left exactly as it is. Adding a sim-side latch here would be a SECOND
+                    // definition of "still blocked" in a different layer, which is the drift
+                    // WireFormat.Blocked.cs argues against by name.
+                    _matRetryAt[site] = sim.TickCount + JobWork.UnreachableRetryTicks;
                     if (mat.ReservedBy == citizen.Id) mat.ReservedBy = 0;
                     citizen.ReservedItemId = 0;
                     JobWork.AbandonJob(sim, citizen);
