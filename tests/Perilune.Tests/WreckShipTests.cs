@@ -979,7 +979,7 @@ namespace Perilune.Tests
             // authored charge covers a 13 kW demand with ZERO generation for over an hour. A
             // two-second test therefore measured the batteries, not the wings.
             // 60 000 ticks is ~1.7 sim-hours — past the flat point of this ship's authored charge —
-            // and costs ~2 s of wall clock because one pawn on a 626-device ship is cheap.
+            // and costs ~2 s of wall clock because one pawn on a 611-device ship is cheap.
             var sim = Boot();
             for (int i = 0; i < 60_000; i++) sim.Tick();
 

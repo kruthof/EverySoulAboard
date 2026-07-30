@@ -57,15 +57,16 @@ drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2
 | ✅ | M2-19 | the sticky claim — merged 2026-07-30, pin-neutral (storage rode M2-1 as chartered). One line: `IsRecruitableIgnoringJob` gained `!HeldByOrder`; release = the `JobKind` setter clears the hold on `None` (RW§2.2's job-scoped forced flag; NO timeout, NO re-issue record — an interruption ends the order, filed §13.25d). MEASURED: claim gates are SUBSUMED (held ⇒ has a job), the hold's whole bite is the pre-emption path, and neither read point is individually pinned — the property is. Writer contract for M2-9: job first, hold second | neutral DONE |
 | ✅ | M2-9 | `PrioritiseJobCommand` — merged 2026-07-30, pin-neutral. §2.2 ruling PINNED: an order beats a priority-0 grid, never `WorkIncapable`, never staging. `ReasonNoConsumable` emitted for exactly the ordered-unfixable case (fixture strips all 11 authored consumable units). One send-back (4 defects: unpinned wire parse — the reviewer's four-way break survived 0/53; same-machine re-order wiped the service; stale-order leak; citations) — fixed, re-verified. Same-machine order ADDS the hold (integrator-approved: "stay on that") | neutral DONE |
 | ✅ | M2-10 | right-click *Prioritise: repair X* — merged 2026-07-30, pin-neutral, client-only. One send-back (a z-index "fix" measured INERT — a descendant of the surface's z-index:20 stacking context can never beat body-level chrome at 120; replaced by the `.ov-nudge` geometric-clamp precedent · menu names derived from SUBSTITUTED art — five of six wrong; now `DEVICE_KIND_NAMES` pinned member-for-member against `Device.cs`). Pawn rule: selection, else sole living soul, else toast. Milestone demo = integrator's post-merge acceptance | neutral DONE |
-| 20 | M2-11 | off-network authoring defect (D-1 half 1: 0 of 626 devices off-network) | M2-c |
+| ✅ | M2-11 | off-network authoring defect — merged 2026-07-30, decision (a) content-only: deck 1 genuinely off-network (23 of 611 devices; demand 20.40 → 14.30 kW flat), PowerSystem untouched. PIN ROW M2-c DISCHARGED WITH NO MOVE (check A = 0, twin P1 match; no tag). Side effect: D-1's blackout half CLOSED (8/16 deck-0 lamps stay lit through h24, batteries charge). One send-back (the pin comment stated the net −15 as the deletion count — the package's own defect class in its own test file; + a helper assert that swallowed legs, A/B-proven load-bearing) | M2-c DONE |
 | 21 | M2-12 | `EffectiveRate` on generation — condition-blind power fixed; **the lights-come-back package** (promoted, OD-K) | M2-d = rollback point |
 | 22 | M2-17 | re-baseline: teach the occupancy harness to author a grid (OD-I) — INFRA | neutral |
 
 Retracted / never existed: M2-7, M2-13…M2-16. M1-J dropped same day (survives as a source
-comment). Pin rows remaining, in order: `M2-c` → `M2-d` → `M3-a…d`. Done: `M2-a` (M2-1) ·
+comment). Pin rows remaining, in order: `M2-d` → `M3-a…d`. Done: `M2-a` (M2-1) ·
 `M1-c` (M2-21, measured pin-neutral, left the chain) · `M2-e` (M2-2, tag `pin/m2-e`) ·
-`M2-g` (M2-5, discharged with no move — mechanism instrumented, no tag). Letters are
-historical ids, not ordinals.
+`M2-g` (M2-5, discharged with no move — mechanism instrumented, no tag) · `M2-c` (M2-11,
+discharged with no move — wreck-only content, no tag). Letters are historical ids, not
+ordinals.
 
 ## 4. M3–M5 (outlines; charters get written at end of M2, not before)
 
@@ -106,9 +107,11 @@ package id in M2 or M3; today `WorksiteSafety`'s refusal is bare and silent.
 
 ## 6. Live defects on `main` (filed, scheduled or owned — not a self-executing queue)
 
-- **D-1** `PowerSystem` condition-blind both halves; 18.000 kW supply vs 20.900 kW demand;
-  every light out at sim-hour 7 on the wreck → M2-11/M2-12. (Earlier roadmap power figures
-  described a model that doesn't exist; trust the driven measurement, re-measure at M2-12.)
+- **D-1** `PowerSystem` condition-blind (generation ignores `Condition`) → M2-12. **Half 1
+  CLOSED by M2-11** (2026-07-30): deck 1 genuinely off-network, demand 14.30 kW vs 18.00 kW
+  flat supply, and the sim-hour-7 blackout is GONE (this row's old "20.900 kW" was itself
+  stale — measured 20.400 pre-fix). ⚠️ M2-12's charter motivation ("h7 = 0/16 lit") no
+  longer reproduces; its curve must be re-derived against 14.30 kW, not 20.40.
 - **D-2** BUILD order behind a shut door is completely silent → CLOSED by M2-21 (2026-07-29):
   backs off on `_matRetryAt`, visible on the `blocked` channel. Residuals filed in HANDOVER
   (per-site suppression on multi-pawn ships untested; retry maps never pruned; phase B safe

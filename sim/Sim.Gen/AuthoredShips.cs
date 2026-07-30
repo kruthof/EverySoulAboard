@@ -1489,6 +1489,8 @@ namespace Perilune.Gen
         //   scrubber_reactor 0.09  wrecked  reactor bay     — reachable at boot; a Swarf-priced repair
         //   scrubber_ls      0.08  wrecked  lifesupport     — behind the frontier (airless)
         //   scrubber_d1      0.06  wrecked  deck 1          — behind the frontier AND off-network
+        //                                                     (genuinely so since M2-11; before it,
+        //                                                      this line was wrong — see POWER)
         // ⇒ THREE of them stand inside the survivable core, so a player who never opens a door can
         // still bring the ship to its eight-crew ceiling. The other two are headroom for later.
         //
@@ -1506,21 +1508,44 @@ namespace Perilune.Gen
         // the system, after the first draft of this ship had been authored around the opposite
         // assumption. It is reported as a finding, not worked around.
         //
-        // ⇒ Power on this wreck is a fixed authored budget, and it is authored GENEROUS: three
-        // SolarWings (18 kW) against ~12.6 kW of total demand, so every tier is served from tick 0
-        // and stays served. That is a decision with a cost — it means the wreck's scarcity is
-        // MATTER and AIR, never watts — and it is the honest one, because the alternative (a tight
-        // budget) browns out `PowerTier.Industry` permanently, the three benches never run, and the
-        // matter ladder that ends in a ControllerModule becomes unreachable. An unwinnable opening
-        // is worse than an easy one.
+        // ⇒ Power on this wreck is a fixed authored budget: three SolarWings, 18.00 kW flat,
+        // against 14.30 kW of demand. Every tier is served from tick 0 and STAYS served — that is
+        // a driven measurement (below), not the arithmetic. It means the wreck's scarcity is MATTER
+        // and AIR, never watts, and that is the honest choice: a tight budget browns out
+        // `PowerTier.Industry` permanently, the three benches never run, and the matter ladder that
+        // ends in a ControllerModule becomes unreachable. An unwinnable opening is worse than an
+        // easy one. (M2-12 will gate generation on condition and turn the budget into a curve; the
+        // 14.30 below is the number it is sized against.)
         //
         // The wings are still authored damaged (0.31 / 0.18 / 0.06). That is not decoration for its
         // own sake: they are a maintenance sink and three more Swarf-priced repair jobs, and the
-        // owner's art badges every wrecked piece. It just is not a power lever.
+        // owner's art badges every wrecked piece. It just is not a power lever — yet.
         //
-        // Deck 0 carries a full conduit tray; DECK 1 CARRIES NONE. Off-network devices "contribute
-        // nothing either way" (same PowerSystem block), so deck 1's ruined machinery neither draws
-        // nor runs — the raiders cut the risers, and the ship's whole power ledger is one deck.
+        // ⛔ THE TWO SENTENCES THAT USED TO STAND HERE WERE BOTH FALSE, AND THE SHIP HAS BEEN
+        // SHIPPING THAT WAY. They read "~12.6 kW of total demand, every tier served from tick 0 and
+        // stays served" and "Deck 0 carries a full conduit tray; DECK 1 CARRIES NONE … so deck 1's
+        // ruined machinery neither draws nor runs". MEASURED on the pre-M2-11 tree, driven,
+        // `ShipPlanBuilder.Build` + the default stack, no player input:
+        //   * demand was 20.40 kW, not ~12.6 — because ALL 23 deck-1 devices were on the network.
+        //     0 of 626 devices were off-network. Laying no tray on deck 1 never did anything:
+        //     `PowerSystem.RebuildNetworks` claims through -z, so every deck-1 machine reached down
+        //     through the deck plate onto the deck-0 trunk.
+        //   * and the tiers did NOT stay served. 18.00 kW of generation against 20.40 kW of demand
+        //     is a 2.40 kW deficit the batteries paid for and then could not: h0 = 16/16 lamps lit
+        //     and 15.00 kWh stored, h7 = 0/16 lit and 0.00 kWh, and it never came back. The player's
+        //     ship went permanently dark seven sim-hours into a new game.
+        // ⇒ M2-11 cut the risers for real (`WreckCutDeck1Risers`, called at the end of this method)
+        // and BOTH halves are now true. MEASURED on this tree, same method: 23 of 611 devices
+        // off-network and they are exactly deck 1's; one network on deck 0; 8/16 lamps lit at h0,
+        // h7 and h24 (the eight lit ones are deck 0's — deck 1's eight are dark BY DESIGN); the
+        // battery bank charges 15.00 -> 40.90 -> 103.72 kWh instead of draining. Per tier the
+        // 14.30 kW is Comfort 1.20 · Industry 6.50 · Defense 0.90 · LifeSupport 5.70.
+        //
+        // ⭐ AND THE NUMBER IN THIS COMMENT IS PINNED AGAINST THE RUNNING SHIP. The line below is
+        // parsed by `WreckPowerNetworkTests` and compared with figures it measures by driving the
+        // sim — so changing the ship's power without correcting this paragraph fails the build,
+        // which is the defect this package existed to close.
+        //   WRECK POWER PIN (measured, driven): flat demand 14.30 kW; off-network 23 of 611
         //
         // ---------------------------------------------------------------------------------------
         // WINNABILITY — THE ARITHMETIC, THEN THE DRIVEN CHECK
@@ -1777,8 +1802,10 @@ namespace Perilune.Gen
             for (int z = 0; z < WreckDepth; z++) plan.DeckRows[z] = canvases[z].ToRows();
 
             // ------------------------------------------------------------------- power
-            // Deck 0 only. Deck 1's risers were cut, so its machinery is off-network and neither
-            // draws nor runs (PowerSystem: "off-grid: contributes nothing either way").
+            // Deck 0 only — but a bare tray on one deck does NOT make the other deck off-network,
+            // which is what this ship believed from W3 until M2-11. The cut that actually does it runs
+            // at the END of this method (WreckCutDeck1Risers), because it reads the deck-1 device
+            // list; this call just lays the trunk it later re-routes around the doorways.
             AddConduits(plan, canvases[0], 0);
 
             // -------------------------------------------------------------- the cryo bay
@@ -1983,6 +2010,12 @@ namespace Perilune.Gen
             AddWreckedHall(plan, rects[1]["hall_d1_s5"], 1, (DeviceKind.Light, "light_d1_s5", 0.02f));
             AddWreckedHall(plan, rects[1]["hall_d1_s6"], 1, (DeviceKind.Light, "light_d1_s6", 0.04f));
             AddWreckedHall(plan, rects[1]["hall_d1_s7"], 1, (DeviceKind.Light, "light_d1_s7", 0.03f));
+
+            // ⭐ THE RISERS ARE CUT HERE, AND IT MUST BE HERE — the helper reads the deck-1 device
+            // list, so it runs after the last one is authored and before anything reads the plan.
+            // Not laying a tray on deck 1 was never enough; see WreckCutDeck1Risers for the
+            // measurement and for why deck 0's trunk now crosses the bulkheads.
+            WreckCutDeck1Risers(plan);
 
             // ----------------------------------------------------------------- one person
             // AutoWander so the ship is not a still photograph while the pawn is idle; deck-confined
@@ -2210,7 +2243,10 @@ namespace Perilune.Gen
             //     so a repair always costs the machine that funded it. Pinned at its root by
             //     `WreckRepairEconomyTests.KnownLimit_TheSwarfRungIsZeroSum_OneUnitPerStrippedWreck`.
             //     Measured: condemning all ten strippable in-air wrecked machines at boot (14 tried,
-            //     4 CryoPods refused; 626 devices → 616) DOES lift every wing clear of the floor —
+            //     4 CryoPods refused; 626 devices → 616 ON THE PRE-M2-11 TREE, whose deck-0 tray
+            //     held 554 tiles against today's 539 — 23 taps gone, 8 bulkhead runs added, net
+            //     −15 — so the ten strips are unchanged but do NOT re-quote 626/616 against
+            //     today's 611) DOES lift every wing clear of the floor —
             //     at the price of `term_moss`, both core scrubbers and both remaining batteries.
             //     ⚠️ THE END CONDITIONS ARE HORIZON- AND TREE-DEPENDENT AND DO NOT REPRODUCE: this
             //     lane measured wing_b/wing_c 0.763 / 0.706 at 3 sim-days pre-rebase; review
@@ -2253,6 +2289,57 @@ namespace Perilune.Gen
                 int y = second ? r.CenterY : r.Y0 + 1;
                 Dev(plan, devices[i].Kind, x, y, z, devices[i].Name, devices[i].Condition);
             }
+        }
+
+        /// <summary>
+        /// M2-11 — MAKE DECK 1 GENUINELY OFF-NETWORK. The wreck was authored believing that laying
+        /// no conduit tray on deck 1 was enough; it never was. <c>PowerSystem.RebuildNetworks</c>
+        /// attaches a device to a conduit on its own tile or, failing that, to the first conduit in
+        /// <c>+x,-x,+y,-y,+z,-z</c> order — so every deck-1 device reached straight DOWN through the
+        /// deck plate and claimed the deck-0 trunk. Measured on the pre-fix tree: 0 of 626 devices
+        /// off-network, all 23 deck-1 devices on network 1, flat demand 20.40 kW.
+        ///
+        /// The content answer (M2-11 decision (a); the rule stays 6-way, so no other ship moves):
+        /// delete the deck-0 tray tile UNDER each deck-1 device — that tile is the tap its riser
+        /// came up through, and the raiders pulled the lot.
+        ///
+        /// ⚠️ AND THAT ALONE SHATTERS DECK 0, WHICH IS WHY THE BULKHEAD RUN BELOW EXISTS. Eight of
+        /// the 23 deck-1 devices are the halls' own doors, and they sit directly above deck 0's
+        /// doorways — the ONE trayed tile joining each deck-0 compartment to the spine. MEASURED
+        /// with the naive cut: deck 0 breaks into NINE networks, and the cryo bay (light, scrubber,
+        /// radiator, term_moss) and all three benches read UNPOWERED at tick 0. So the deck-0 trunk
+        /// is re-routed to cross each bulkhead BESIDE its doorway instead of through it: a conduit
+        /// at <c>(doorX - 1, doorY, 0)</c>, which is hull, not floor. Legal and inert — utility
+        /// overlays are not in the tile grid (<c>Simulation.IsUtilityOverlay</c>), take no
+        /// maintenance and are drawn only under the Power lens. Measured after: one network, 23 of
+        /// 611 devices off-network (exactly deck 1), flat demand 14.30 kW.
+        ///
+        /// THE TRAY, COUNTED — <b>554 tiles before, 531 with the 23 taps removed and nothing added,
+        /// 539 shipped</b> (the 8 bulkhead runs). Net −15, which is why the device store reads 611
+        /// and not 619. ⚠️ Quote the DELETION count (23) and the ADDITION count (8) separately; a
+        /// draft of the pinning test stated the net as the deletion and review caught it.
+        ///
+        /// ORDER: must run after the last deck-1 device is authored — it reads the deck-1 device
+        /// list. ASSUMPTION, held by a test rather than by an argument: <c>(doorX - 1, doorY)</c> is
+        /// hull on deck 0 and laterally touches trayed floor on both sides of the bulkhead. True of
+        /// every SlotGridPlanner doorway (x = 5/16/27/38); if a future deck-1 door breaks it, deck 0
+        /// splits and <c>WreckPowerNetworkTests</c> says so by name.
+        /// </summary>
+        private static void WreckCutDeck1Risers(ShipPlan plan)
+        {
+            var taps = new HashSet<Int3>();
+            var bulkheads = new List<Int3>();
+            for (int i = 0; i < plan.Devices.Count; i++)
+            {
+                var d = plan.Devices[i];
+                if (d.Pos.Z != 1 || d.Kind == DeviceKind.Conduit) continue;
+                taps.Add(new Int3(d.Pos.X, d.Pos.Y, 0));
+                if (d.Kind == DeviceKind.Door) bulkheads.Add(new Int3(d.Pos.X - 1, d.Pos.Y, 0));
+            }
+            plan.Devices.RemoveAll(d => d.Kind == DeviceKind.Conduit && taps.Contains(d.Pos));
+            for (int i = 0; i < bulkheads.Count; i++)
+                Dev(plan, DeviceKind.Conduit, bulkheads[i].X, bulkheads[i].Y, 0,
+                    $"conduit_d0_bulkhead_{bulkheads[i].X}_{bulkheads[i].Y}");
         }
 
     }
