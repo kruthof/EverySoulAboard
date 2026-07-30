@@ -471,7 +471,8 @@ namespace Perilune.Web
         /// shipmate has it on is not a blocked order, it is a queue; badging it would teach the player
         /// to ignore the badge. ⚠️ On the shipped wreck the crew is ONE, so all and any coincide and
         /// the fixture that separates them has to carry two
-        /// (<c>Two_Pawns_One_Enabled_Is_Not_This_Reason</c>). A <b>dead</b> crew member is skipped:
+        /// (<c>BlockedChannelTests.Two_Pawns_One_Of_Them_Assigned_Is_Not_This_Reason</c>). A
+        /// <b>dead</b> crew member is skipped:
         /// what she was assigned is not a fact about the ship any more.</para>
         ///
         /// <para><b>PRECEDENCE: it ranks BELOW <see cref="ReasonNoApproach"/> and

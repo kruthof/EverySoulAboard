@@ -1800,10 +1800,21 @@ namespace Perilune.Tests
         /// invalidated by a change to the grid's roster size — and the split is asserted through the
         /// SIM's predicate (exactly one crew member can take it) before anything is read off the wire.</para>
         ///
-        /// <para>⛔ MUTATION 2: report the reason when ANY crew member has the work type off (invert
-        /// the loop in <c>GameSession.NobodyAboardTakesTheWorkFor</c> to
-        /// <c>if (!c.CanTakeWorkType(work)) return true;</c>) ⇒ RED here, and GREEN on every other leg
-        /// in this section — which is the point of the two-pawn fixture.</para>
+        /// <para>⛔ MUTATION 2: report the reason when ANY crew member has the work type off. It is
+        /// <b>TWO edits in <c>GameSession.NobodyAboardTakesTheWorkFor</c>, and BOTH are required</b> —
+        /// invert the loop body to <c>if (!c.CanTakeWorkType(work)) return true;</c> <b>AND flip the
+        /// method's tail <c>return true;</c> to <c>return false;</c></b> ⇒ RED here, and GREEN on
+        /// every other leg in this file.</para>
+        ///
+        /// <para>⚠️ <b>THE HALF-APPLIED RECIPE IS A FALSE RED (trap 3), AND IT WAS MEASURED.</b> An
+        /// earlier revision of this comment named only the loop-body edit. Applied literally that
+        /// leaves the tail <c>return true;</c> standing, so the predicate is <i>unconditionally
+        /// true</i> — not ANY-semantics at all. Measured on this file's 28 tests
+        /// (<c>--filter FullyQualifiedName~BlockedChannelTests</c>): the half recipe reads
+        /// <b>14 red / 14 green</b>, the two-edit recipe reads <b>1 red — this test — / 27 green</b>.
+        /// A mutation that reddens half the file has stopped discriminating: it no longer shows that
+        /// the TWO-PAWN fixture is what sees ALL-versus-ANY, which is the entire claim this leg
+        /// makes. Both numbers were re-measured here rather than quoted.</para>
         /// </summary>
         [Test]
         public void Two_Pawns_One_Of_Them_Assigned_Is_Not_This_Reason()
