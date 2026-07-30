@@ -4,7 +4,155 @@
 codename (repo, `Perilune.*` namespaces, and the ship MSV *Perilune* all keep it — nothing in code
 is renamed). Tag `v2-talking-ship`.
 
-## ⇒⇒ START HERE — THE ROADMAP IS RE-PRIORITISED ON THE OWNER'S OWN LOOP (2026-07-29, latest)
+## ⇒⇒ START HERE — THE OWNER PLAYED THE GAME AND RE-AIMED THE PROJECT (2026-07-29 evening, latest)
+
+> **Gate on `main` @ `b11f22c`: `./ci.sh` exit 0, 1340 dotnet + 1023 node, twin hashes MATCH
+> `02257f5bce961570`, ALL FIVE PINS HELD, and `git diff` to `Golden/`, `ci.sh` and `content/` is
+> 0 LINES across all seven merges.** *(Measured by the integrator on the merged tree after every
+> merge — **re-measure before quoting**.)*
+>
+> ### ⇒ THE OWNER PLAYED `./play.sh` AND REPORTED THREE THINGS. READ THESE FIRST.
+>
+> 1. **`＋ADD ROOM` is the wrong model.** *"these are existing rooms and we need to be able to fix
+>    them and use them for other purposes."* Measured: **5 of 8 deck-0 slots draw a blank ＋ADD ROOM
+>    box and FOUR OF THOSE FIVE CONTAIN REAL, NAMED, WRECKED MACHINERY.** There is **no retype /
+>    rename / repurpose path on any surface** (`AddRoomCommand` refuses any room with a typed anchor,
+>    `Commands.cs:660-666` — one-way, once, per room). ⛔ **AND `RoomType` HAS NO MECHANICAL
+>    CONSEQUENCE AT RUNTIME FOR ANY OF ITS 17 MEMBERS** — no system in `sim/Sim.Core/Systems/`
+>    branches on it. Commissioning a room changes a caption and a floor colour. **OPEN ON THE OWNER**
+>    (see below).
+> 2. ⭐ **THE LARGEST: the pawn works with no instruction.** *"that makes the game look more like a
+>    movie then a game."* ⇒ **OD-G and OD-H below.**
+> 3. **The Room Zoom had no pawn control at all.** ✅ **CLOSED — `M1-K` merged.**
+>
+> ### ⇒ FIVE MORE BINDING OWNER DECISIONS (OD-D … OD-J), on top of OD-A/B/C
+>
+> - **OD-D** — the **vent premise is REWORDED, not rebuilt** (an `AirVent` injects into its own room;
+>   *"push the air outward"* was never implemented). Binds `M1-G`, docs-only. **NOT YET DONE.**
+> - **OD-E** — **deck 1 stays dead.** A deck-1 vent *would* have worked, was offered, and was
+>   **declined**. A standing refusal, recorded so no lane "fixes" it as an oversight.
+> - **OD-F** — the repair soft-lock is fixed by **authoring more consumables**. ✅ `M1-I` merged.
+> - ⭐ **OD-G — THE OPENING IS AN ORDER.** The pawn boots **idle and waiting**; the first thing that
+>   happens in the game is the player giving an order; autonomy resumes after.
+> - ⭐ **OD-H — THE WORK GRID DEFAULTS OFF. WORK IS OPT-IN.** M2-1's chartered *"default 3 for every
+>   pawn"* is **REVERSED**. That default existed to keep M2-1 pin-neutral — **a cost argument
+>   deciding a design question.** Pin move and re-baseline **explicitly accepted**.
+> - **OD-I** — **one rule, off everywhere, fixtures included**; teaching the harness to author a grid
+>   is M2-17's job. ⇒ **every existing economy measurement re-baselines.**
+> - **OD-J** — the work list is **`Repair · Construct · Craft · Deconstruct · Mine · Haul`**, authored
+>   for play now that OD-H has spent the pin the old order was protecting. ⚠️ **The order IS the
+>   equal-band tie-break, not display.**
+> - Plus three **decided-by-default (integrator)**: newly thawed crew boot all-off uniformly · "the
+>   first order" means any player command that makes her take a job · a deliberately-unassigned pawn
+>   gets its own vocabulary, distinct from "idle".
+>
+> ### ⇒ AND THE PRODUCT THESIS, which is a SEQUENCING ruling as much as a product one
+>
+> *"orient everything around the mechanics you identify in rimworld. Once everything works, we will
+> build the differentiator, ie a strong MOOS and automatisation of systems, which will create a
+> hybrid of factoria and rimwold with strong personal character development."*
+> ⇒ **Phase 1 is the RimWorld analogue until the loop works. Automation is NOT the current work.**
+> A lane reaching for MOSS or logistics before the work grid is playable is working ahead.
+> **`docs/design/rimworld-reference.md` is the authority — cite it, do not re-derive from memory.**
+>
+> ### ⛔ THE NIGHT'S BIGGEST CORRECTION — RimWorld DOES gate work on vacuum, and we had it backwards
+>
+> The first draft of the reference said RimWorld accepts a vacuum order, sends the pawn and harms it,
+> and that Perilune's hard refusal *"has no RimWorld analogue"*. **False, found by an adversarial
+> reviewer that downloaded the whole 1.6 decompile instead of re-fetching cited pages.**
+> `Verse/Region.cs:434-436` makes a vacuum room `Danger.Deadly`; `DangerUtility.cs:7-25` gives an
+> ordinary pawn a tolerance of `Danger.Some`; `JobGiver_Work.cs` threads it through every reachability
+> check. ⇒ **RimWorld refuses autonomous work in vacuum EXACTLY AS WE DO.** What sits on top is a
+> **four-rung ladder we do not have**: 24 work givers opt in to `Deadly` · `playerForced` bypasses ·
+> `JobGiver_FindOxygen` self-rescues, **suppressed by `PlayerForcedJobNowOrSoon`**. RimWorld also
+> gates on **temperature**, on the same graded scale — so our thermal clause is not unprecedented.
+> ⇒ **The directive points TOWARD keeping `WorksiteSafety` and building the ladder above it.** We
+> already have `JobKind.Flee`; what has never existed is the flag that lets a player order beat it.
+> ⚠️ **And the shape of that failure is the lesson: EVERY error in that document was a STRENGTHENING**
+> — *"only seam"*, *"nothing reads"*, *"no job is refused"*, *"no precedent"* — and in three cases the
+> file's **own cited source** carried the correctly-qualified sentence. **A lane told "RimWorld has no
+> X" will not go looking for X.** A sweep for absolute negatives is now part of that file's contract.
+>
+> ### ⇒ LANDED TONIGHT — seven merges, each independently reviewed, EVERY ONE taking a send-back
+>
+> | lane | package | what a player gets |
+> |---|---|---|
+> | `lane/morale-bar` | **M1-F** | the CREW WATCH morale bar is **gone** — it was never anything but a constant |
+> | `lane/craft-thrash` | **M1-H** | the pawn stops claiming a bench she can never reach — **597 futile claims/sim-day → 0** |
+> | `lane/blocked-reach` | **M1-D** | an order nobody can reach **says so, and keeps saying so** (`ReasonUnreachable = 3`) |
+> | `lane/m2-recharter` | — | the plan rebuilt on OD-G…OD-J; **384 citations bounds-checked, 69 corrected** |
+> | `lane/rimworld-ref` | — | `docs/design/rimworld-reference.md`, the authority |
+> | `lane/repair-consumables` | **M1-I** | a Seals locker in the opening room; the soft-lock is no longer the **default** outcome |
+> | `lane/zoom-pawn` | **M1-K** | **crew dock · visible selection · name pills · an 18th tool, MOVE [M]** |
+>
+> ### ⛔ WHAT IS IN FLIGHT AND WHAT IT COSTS
+>
+> **`lane/work-state` (M2-1) is IN REVIEW and it is the head of the pin chain.** It bumps CITZ v7→v8
+> and **moves three pins**: P1 → `c1bac287230e184e` · P2 → `482fd40c070b54e0` · P3 →
+> `0dcbff3e167750d8`; **P4/P5 HELD**. ⚠️ **The prose re-pin is NOT in that commit** — `CLAUDE.md`,
+> `MECHANICS.md`, this file and memory still quote the old values, and the integrator owes a re-pin
+> commit plus a `pin/m2-a` tag. ⛔ **Do not quote any pin until that lands.**
+>
+> ### ⇒ OPEN ON THE OWNER
+>
+> 1. ⭐ **`＋ADD ROOM` (playtest item 1).** Two separable things: the verb is lying (cheap — rename to
+>    *assign purpose*, allow re-purposing; `RoomState.SetAnchor` already replaces in place, so no new
+>    saved field), **and purpose does not DO anything** (a design question). ⚠️ **Under the RimWorld
+>    directive the answer may be to DELETE the picker** — RimWorld infers a room's type from what is
+>    built in it, and room *stats* then have mechanical effects. Verify against the reference first.
+> 2. **The phase-1 exit gate.** Proposed, unanswered: *"you order a pawn to repair a wing, and the
+>    lights come back."* It is currently **impossible in both directions** — see below.
+> 3. **The vacuum-work ladder** (the correction above): build the three rungs on top of
+>    `WorksiteSafety`, or leave the refusal bare?
+> 4. **The thermal side effect of M1-I** — eight Seals pushed the ship's freeze from ~sim-day 6/7 out
+>    past day 12 (crossing ~day 17/23). Favourable, disclosed, derived from an argument with no
+>    thermal budget in it. Wanted, or not?
+>
+> ### ⛔ DEFECTS FOUND TONIGHT, LIVE ON `main`, NOT FIXED
+>
+> - ⭐ **`PowerSystem` IS CONDITION-BLIND IN BOTH HALVES.** Generation sums the flat `machines.def`
+>   `gen` with no `EffectiveRate` and no `IsOperational` gate; demand's `IsWanting` is condition-blind
+>   too. Driven on `--ship wreck`: **18.000 kW supply against 20.900 kW demand, byte-identical at boot
+>   and after every wreck in the core is repaired.** A wing at Condition 0.060 supplies its full 6 kW.
+>   ⇒ **The owner's own sentence for this game — *"repair certain machineries to start the power
+>   again"* — is not expressible in either direction**, and the 2.90 kW deficit that kills every light
+>   at sim-hour 7 **cannot be repaired away by any amount of consumables.** M2-12 builds it; the
+>   roadmap's `10.65 kW` / `17.40 kW` / `0.10 kW` figures describe a model that does not exist.
+> - **A BUILD order behind a shut door is still completely silent.** `TryReserveMaterialFor` paths to
+>   the **material**, never the site, so the claim succeeds and `ProgressHaulToBuild` phase A abandons
+>   recording no back-off. Driven: **3000 ticks held, 2999 abandons, first back-off NEVER, blocked rows
+>   0.** That loop **is** the 480 000-tick livelock. One line, on a dispatch path ⇒ scheduled onto the
+>   M2 pin wave as `M2-21`.
+> - **The social argument gate is permanently open on every pair, all game.** `social.def:36`
+>   `argument_mood_threshold = 0` against permanently-negative crew mood ⇒ `SocialSystem.cs:149`'s
+>   `lowMood < threshold` is always true. Verified in-repo. Same shape as the `ShipMetrics.Food`
+>   clamp: **a term that is always saturated reads as if it were doing work.**
+> - **`M1-K` merged against a SEND-BACK**, deliberately: two of its tests carry named mutations that
+>   **cannot bite** (its centrepiece fixture has one crew member in the room, so "the cid under the
+>   pointer" and "the first crew member" are indistinguishable). **The shipped behaviour is verified
+>   in a browser on two ships; the guard is the hole.** Fix-forward dispatched with the merge.
+>
+> ### ⚠️ PROCESS LESSONS FROM THIS RUN — all three cost real time
+>
+> 1. ⛔ **NEVER READ AN EXIT CODE THROUGH A PIPE.** The integrator ran `git merge … | tail -3 && ./ci.sh`.
+>    **The merge CONFLICTED, `tail` returned 0, the `&&` fired, and the gate reported `== OK ==` at
+>    1340 tests on a tree with conflict markers in it.** The count was right; the tree was wrong.
+>    **Check `git log`, not the test total.** A lane had warned about this exact trap two hours earlier.
+> 2. ⭐ **THREE SEPARATE AGENTS CAUGHT THEMSELVES REPRODUCING THE DEFECT THEY WERE FIXING** — a
+>    reference miscount inside the fix for a miscount, an unmeasured number inside the fix for an
+>    unmeasured number, stale prose beside a correct table inside the fix for stale-prose-beside-a-
+>    correct-table. **It is not carelessness: a confident summarising sentence is what prose wants to
+>    be, and the defect rides in on it.** All three recorded it in place. Do the same.
+> 3. **A CITATION SWEEP KEYED ON THE CHANGE YOU EXPECT WILL MISS THE MERGES THAT LANDED.** The
+>    re-charter keyed on a rename and missed seven files a later merge had moved — ~25 stale
+>    `file:line`, including the two inside the paragraph saying *"the line a ruling is quoted from must
+>    be the line the ruling is about."* Fixed with a harness over **all 384** citations. ⚠️ **But a
+>    bounds check cannot catch a citation that drifted WITHIN a file** — two survived exactly that way.
+>    **Content verification stays manual and is spent on the citations that carry an argument.**
+
+## ⇒⇒ SUPERSEDED — the roadmap re-prioritisation (2026-07-29, morning). History from here down.
+
+## ⇒⇒ THE ROADMAP IS RE-PRIORITISED ON THE OWNER'S OWN LOOP (2026-07-29, earlier)
 
 > **Read `docs/design/perilune-roadmap-q3.plan.md` (the shape) and
 > `docs/design/perilune-roadmap-q3.packages.md` (51 buildable packages, merge order, pin chain)
