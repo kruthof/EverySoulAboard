@@ -35,9 +35,10 @@ Room Zoom (post-hoc charter) · M1-L every compartment IS a room, ＋ADD ROOM de
 priority cannot live in `TryAssign`; five entry sites; pre-emption is safe and cheap).
 
 Remaining, none blocking M2: **M1-E** silent-refusal census/surfacing (`ReasonNoConsumable`
-re-homed to M2-9) · **M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE,
-ordinal-renumber hazard). M1-G vent-premise reword DONE 2026-07-29 (the doc restructure had
-already cleaned the docs; three surviving source comments reworded in `lane/premise-fix`).
+re-homed to M2-9). M1-G vent-premise reword DONE 2026-07-29 (three surviving source comments
+reworded in `lane/premise-fix`). M1-L-b DONE 2026-07-30: `AddRoomCommand`/`CmdKind.AddRoom`
+deleted, ordinal renumber measured safe (no numeric path to the enum exists), MECHANICS.md
+drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2Ppm` (§13.1).
 
 ## 3. M2 — the queue (merge order; charters in packages.md)
 
@@ -46,7 +47,7 @@ already cleaned the docs; three surviving source comments reworded in `lane/prem
 | ✅ | M2-1 | per-citizen work priorities as hashed state (CITZ v7→v8) — merged + re-pinned, tag `pin/m2-a`; boots OFF everywhere (OD-H/OD-I) | M2-a DONE |
 | ✅ | M2-21 | silent BUILD haul back-off (defect D-2) — merged 2026-07-29; pins MEASURED HELD (geometry, non-vacuity proven driven), so pin row M1-c left the chain with no re-pin | M1-c DONE |
 | ✅ | M2-4 | `work` wire channel + `SetWorkPriorityCommand` — merged 2026-07-29, pin-neutral proven (check A empty, all pins held) | neutral DONE |
-| 10 | M2-3 | the WORK tab on the standard surface — BLOCKING; owns M2-1's demo | neutral |
+| ✅ | M2-3 | the WORK tab — merged 2026-07-30, pin-neutral; acceptance steps 4/6 DEFERRED BY NAME to M2-2 (need the veto; M2-2's acceptance runs the full five-step sequence) | neutral DONE |
 | 11 | M2-2 | the work-type veto in the dispatcher: 11 claim sites, 5 gates, 3 exclusions — runs alone | M2-e |
 | 12 | M2-20 | "the ship is waiting on you" boot state (OD-G) — same window as M2-2 or the game reads broken | neutral |
 | 13 | M2-18 | the refusal M2 itself creates (everything-OFF is now the default experience) | neutral |

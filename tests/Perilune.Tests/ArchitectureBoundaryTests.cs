@@ -379,16 +379,15 @@ namespace Perilune.Tests
         /// entire player-intent surface of the economy (`DesignateDig`, `DesignateStockpile`,
         /// `DesignateBuild`, `DesignateDeconstruct`, `PlaceDeviceCommand` with E0-5's Parts charge
         /// that closed the matter faucet, `RemoveDeviceCommand`) — and also commands that are not
-        /// economy at all (`AddRoomCommand`, `SetTileCommand`, `SetDoorStateCommand`,
+        /// economy at all (`SetTileCommand`, `SetDoorStateCommand`,
         /// `MoveCitizenCommand`, `SetScriptCommand`). Leaving it out left a hole a review probe
         /// walked straight through: a verbatim copy of `IsPressureHull` in
         /// `DesignateDeconstructCommand` — the single most likely place for that predicate to be
         /// duplicated — was not scanned at all, so
         /// <see cref="PressureHullGuard_LivesInDeconstructSystemAlone"/> could not catch the exact
         /// drift it is named after. So it is scanned, and the ship-reach allowlist annotates which
-        /// COMMAND owns each of its reaches, so a reader can see that they belong to `AddRoomCommand`
-        /// and `SetTileCommand` (room commands, definitionally ship) rather than mistaking them for
-        /// economy coupling.
+        /// COMMAND owns each of its reaches, so a reader can see that it belongs to `SetTileCommand`
+        /// (a room command, definitionally ship) rather than mistaking it for economy coupling.
         /// </summary>
         private static List<string> EconomyFiles()
         {
@@ -1043,19 +1042,22 @@ namespace Perilune.Tests
                     ["sim/Sim.Core/Systems/DeconstructSystem.cs"] = 1,
                     // THE ONLY TWO READS in the whole economy: vacuum sentinel + room temperature.
                     ["sim/Sim.Core/Systems/MachineWearSystem.cs"] = 2,
-                    // MIXED FILE, and both reaches are ROOM commands — definitionally ship rather than
-                    // economy. Scanned because Commands.cs also holds the economy's designate/place/
-                    // remove verbs (see EconomyFiles), NOT because the economy reaches rooms two more
-                    // times. Do not fold these into the seven above.
-                    //   1. AddRoomCommand.Execute  `var rooms = sim.Rooms;`
-                    //   2. SetTileCommand.Execute  `sim.Rooms.MarkDirty();`
-                    // ⚠️ W4b LOWERED THIS 3 → 2, which the guard's own message calls "good news,
-                    // probably — someone removed a coupling": deleting AddRoomCommand's door-forcing
-                    // loop deleted its `BordersRoom` helper and that helper's `sim.Rooms.RoomIdAt`.
-                    // ⚠️ AND THE ANNOTATION IT REPLACES WAS FALSE. It read "all three belong to
+                    // MIXED FILE, and the one remaining reach is a ROOM command — definitionally ship
+                    // rather than economy. Scanned because Commands.cs also holds the economy's
+                    // designate/place/remove verbs (see EconomyFiles), NOT because the economy
+                    // reaches rooms one more time. Do not fold it into the seven above.
+                    //   1. SetTileCommand.Execute  `sim.Rooms.MarkDirty();`
+                    // ⚠️ THE HISTORY, because this number has moved twice and each move was a real
+                    // deletion rather than a bookkeeping adjustment. W4b lowered it 3 → 2 (deleting
+                    // AddRoomCommand's door-forcing loop deleted its `BordersRoom` helper and that
+                    // helper's `sim.Rooms.RoomIdAt`); ⭐ M1-L-b lowered it 2 → 1 by deleting
+                    // `AddRoomCommand` outright (OD-K), which took its `var rooms = sim.Rooms;` with
+                    // it. Both are the guard's own "FIX (a count that DROPPED): good news, probably —
+                    // someone removed a coupling", and both were RE-DERIVED from the merged file.
+                    // ⚠️ AND AN EARLIER ANNOTATION HERE WAS FALSE: it read "all three belong to
                     // AddRoomCommand"; the MarkDirty has always belonged to SetTileCommand. The count
-                    // was right and its justification was not — so it is written out per site now.
-                    ["sim/Sim.Core/Commands/Commands.cs"] = 2,
+                    // was right and its justification was not — so it stays written out per site.
+                    ["sim/Sim.Core/Commands/Commands.cs"] = 1,
                 },
                 ["sim.PowerDirty"] = new Dictionary<string, int>(StringComparer.Ordinal)
                 {
@@ -1118,8 +1120,8 @@ namespace Perilune.Tests
                 "  starts reading rooms, atmosphere or power is an economy that cannot be reused.\n" +
                 "  Measured over 299 commits this total changed substantively twice, so a failure\n" +
                 "  here is rare and worth reading properly.\n" +
-                "ON Commands.cs: it is a MIXED file. Its two sim.Rooms reaches belong to AddRoomCommand\n" +
-                "  and SetTileCommand — room commands, not economy — and are listed per site above.\n" +
+                "ON Commands.cs: it is a MIXED file. Its ONE sim.Rooms reach belongs to SetTileCommand\n" +
+                "  — a room command, not economy — and is listed per site above.\n" +
                 "  It is scanned because it also holds every economy designate/place/remove verb.\n" +
                 "ON sim.Systems: an untyped ISimSystem[] escape hatch. It can smuggle a dependency on\n" +
                 "  ANY system past every other assertion in this file, because nothing in the text\n" +

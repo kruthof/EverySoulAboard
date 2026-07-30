@@ -926,10 +926,13 @@ namespace Perilune.Gen
         /// <summary>The deck-1 hall slots that boot WRECKED.
         ///
         /// ⚠️ Slot 3 is deliberately absent and must stay absent. Deck 0 is fully furnished, so
-        /// deck 1 slot 3 is the FIRST RoomType.None entry in plan.SlotGrid — i.e. it is
-        /// AddRoomCommandTests' FirstEmptyHall, which probes the slot's centre tile and asserts a
-        /// sealed, AIRLESS, non-vacuum room. Debris on that probe, air in that compartment, or an
-        /// opened door would each break the ＋ADD ROOM contract and that test.</summary>
+        /// deck 1 slot 3 is the FIRST RoomType.None entry in plan.SlotGrid — the ship's one carved,
+        /// sealed, AIRLESS, debris-free compartment, and the fixture the PRESSURE-FRONTIER tests run
+        /// on (GridWreckTests: TheEmptyHallSlot_StaysSealedAirlessAndDebrisFree, and the pair that
+        /// measure it filling through an opened door / never filling through a shut one). Debris on
+        /// its probe tile, air in the compartment, or an opened door would each break "air is
+        /// earned" and those tests. (Pre-M1-L-b this slot was described as ＋ADD ROOM's
+        /// demonstration slot; that verb is deleted — every compartment IS a room, OD-K.)</summary>
         private static readonly int[] GridWreckSlots = { 5, 6, 7 };
 
         /// <summary>The one wreck the crew are ALREADY cutting into: its door boots open, its
@@ -937,26 +940,26 @@ namespace Perilune.Gen
         /// on the standard play ship from tick 0 with no player input and no harness flag — the
         /// grid ship's analogue of the slice's opened door_aft + designated aft field.
         ///
-        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. A TYPED slot reads
-        /// OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws an occupied slot
-        /// as a room — no ＋ADD ROOM chip, and a label of <c>roomLabel(roomType) || anchorName</c>
-        /// (<c>client/src/ui/decks-model.js</c>, <c>deckSlotView</c>). Left as
-        /// <c>RoomType.None</c> (this package's first draft) it therefore rendered as a room
-        /// LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an UPPERCASE-label UI. A typed
-        /// slot has a real label, needs no allocation, and boots its door OPEN by construction
+        /// ⚠️ IT IS A TYPED ROOM, NOT A HALL, AND THAT IS A CLIENT CONTRACT. The Overview labels a
+        /// slot <c>roomLabel(roomType) || anchorName</c> (<c>client/src/ui/decks-model.js</c>,
+        /// <c>deckSlotView</c>), so left as <c>RoomType.None</c> (this package's first draft) it
+        /// rendered as a room LABELLED WITH ITS INTERNAL ANCHOR ID — "hall_d1_s6" — in an
+        /// UPPERCASE-label UI. A typed slot has a real label and boots its door OPEN by construction
         /// (<c>SlotGridPlanner.Carve</c>: <c>IsOpen = !empty</c>).
-        /// ⚠️ W4b RETRACTED THE SECOND HALF of that paragraph: it used to add *"and could never be
-        /// commissioned out of that state either, because AddRoomCommand returns early on
-        /// TotalMoles &gt; 0"*. Both clauses are now false — occupancy and the command's rejection
-        /// predicate BOTH read the anchor's type, not the room's gas, and the reason a typed slot
-        /// cannot be re-allocated is precisely that it is typed.
+        /// ⚠️ TWO CLAUSES OF THIS PARAGRAPH HAVE BEEN RETRACTED, in two different packages, and the
+        /// retractions are kept because each was load-bearing when written. W4b struck *"and could
+        /// never be commissioned out of that state either, because AddRoomCommand returns early on
+        /// TotalMoles &gt; 0"* — the rejection predicate had moved from gas to the anchor's type.
+        /// M1-L then struck *"a TYPED slot reads OCCUPIED … no ＋ADD ROOM chip"*: occupancy is
+        /// GEOMETRY now and EVERY carved compartment reads occupied, typed or not, so the label is
+        /// the only thing a type still buys. M1-L-b deleted the verb, the command and the enum
+        /// member outright (OD-K), so there is no chip and no allocation anywhere to reason about.
         ///
         /// The other two wrecks boot as every other empty hall does (RoomType.None, door closed,
-        /// airless, undesignated): they are the player's own work. ⚠️ W4b: ＋ADD ROOM only NAMES a
-        /// compartment now — it neither opens the door nor makes any air — so the route is allocate
-        /// (optional), OPEN THE DOOR, wait for deck 1's spine vent to fill the compartment through
-        /// it, then paint DIG. The ClearAllDebris goal needs all three wrecks, so it cannot be
-        /// completed without the player opening a door.</summary>
+        /// airless, undesignated): they are the player's own work. The route is OPEN THE DOOR, wait
+        /// for deck 1's spine vent to fill the compartment through it, then paint DIG. The
+        /// ClearAllDebris goal needs all three wrecks, so it cannot be completed without the player
+        /// opening a door.</summary>
         public const int GridOpenWreckSlot = 6;
 
         /// <summary>The live wreck's anchor + type: the collapsed aft hold. <c>Storage</c> is
@@ -1076,7 +1079,7 @@ namespace Perilune.Gen
             //     test already runs: at its tick 55,191 the worst deck-1 room reads 384 ppm and
             //     FALLING below its 500 ppm boot fill with these three, and 792 ppm and RISING
             //     without them (at one sim-day, 9 ppm vs 3,405 ppm). That is the assertion in
-            //     Goal_IsCompletable_ByTheAuthoredCrew_ViaAddRoomAndDig, so deleting them fails.
+            //     Goal_IsCompletable_ByTheAuthoredCrew_ViaOpeningDoorsAndDig, so deleting them fails.
             Dev(plan, DeviceKind.Scrubber, 3, SlotGridPlanner.SpineY0, GridWreckDeck, "scrubber_spine_1");
             plan.Devices.Add(new DeviceSpec { Kind = DeviceKind.AirVent, Pos = new Int3(4, SlotGridPlanner.SpineY0, GridWreckDeck), Name = "vent_spine_1", IsOpen = true });
             Dev(plan, DeviceKind.Scrubber, SlotGridPlanner.InteriorRect(5).CenterX, SlotGridPlanner.SpineY1, GridWreckDeck, "scrubber_spine_1b");

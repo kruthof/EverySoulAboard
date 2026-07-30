@@ -1698,3 +1698,272 @@ test('M1-F: morale moves NOTHING on the CREW WATCH — and the same fixture prov
     'the positive control fired on SOMETHING, but not on the task line it names — read the ' +
     'snapshot diff before believing this leg');
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// M2-3 — THE WORK TAB. The game's primary control surface under OD-H: the grid boots ENTIRELY off,
+// so until a player sets a cell here no crew member can do anything at all.
+//
+// DRIVEN, through the real controller over `dom-lite`, for the reason the WP-5 block above gives and
+// one more that is specific to this package: THE WHOLE RISK IS PLACEMENT AND ADDRESSING, and neither
+// is visible to a source scan. A grid that mounts on the deprecated console `.app` shell looks
+// identical in the source to one that mounts here (that is E0-4's WP-5, which passed independent
+// review and merged), and a cell that sends the wrong column or the wrong pawn looks identical to
+// one that sends the right one. So every assertion below reads either a node whose PARENT CHAIN this
+// file walked, or the ARGUMENT that arrived at the injected `send`.
+//
+// ⚠️ ACCEPTANCE STEPS 4 AND 6 ARE DEFERRED BY NAME TO M2-2 (the priority veto), and this comment is
+// the record the charter asks for. Step 4 ("click Repair to 3 → she goes and repairs something") and
+// step 6 ("set Repair back to off → she takes nothing new") both need a dispatcher that READS the
+// grid, and M2-3 merges FIRST — deliberately, because a grid nothing reads is inert and harmless
+// while a veto with no grid is an unplayable game. Steps 1, 2, 3 and 5 — the grid renders, addresses
+// the right pawn and column, round-trips through the sim and survives a reload — are this package's
+// own subject and are what these tests and its browser acceptance cover. ⛔ The full six-step
+// sequence is M2-2's acceptance; do not weaken it to what this package can demonstrate alone.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+import {
+  WORK_COLUMNS, INERT_TABS, nextWorkPriority, workCellLabel,
+} from '../src/ui/overview-model.js';
+
+/** The two souls the grid legs drive. TWO, AND IT IS LOAD-BEARING: `--ship wreck` ships with ONE
+ *  pawn, and a one-pawn fixture cannot tell "sends the clicked pawn's cid" from "sends whichever cid
+ *  it happens to have" — the wrong-citizen mutation would survive it silently. */
+const WORK_CREW = FIX.roster.crew.slice(0, 2).map((e) => ({ ...e }));
+
+/** The island the WORK grid mounts into, taken from the controller's own seam. */
+const workMount = () => Overview.workTabMount();
+/** The painted rows — walked out of the LIVE mount, never out of a `querySelector` stand-in, so the
+ *  parent chain these assertions rely on is the one the controller actually built. */
+const ovWorkRows = () =>
+  workMount().oneClass('ov-worklist').childNodes.filter((n) => n.nodeType === 1);
+const ovWorkCells = (row) => row.byClass('ov-workcell');
+const ovWorkHeaders = () => workMount().oneClass('ov-workhead').byClass('ov-workcolhdr');
+
+/** Select a tab the way a player does — a click on a bar button carrying `data-ov-tab`, through the
+ *  surface root's REAL delegated handler (`onHudClick`), which is where the inert-tab gate lives.
+ *  Same idiom as `ovArm` above and for the same reason: `_el.tabBtns` are `querySelectorAll`
+ *  stand-ins in this harness and carry no dataset. */
+const ovTabBtns = new Map();
+function ovSelectTab(key) {
+  let b = ovTabBtns.get(key);
+  if (!b) {
+    b = new OvEl(ovDoc, 'button');
+    b.dataset.ovTab = key;
+    ovRoot.appendChild(b);
+    ovTabBtns.set(key, b);
+  }
+  fire(b, 'click', { detail: 1 });
+}
+
+/** Put the surface on the WORK tab with a known `work` payload and a two-soul roster. */
+function ovWorkTab(cells, crew = WORK_CREW) {
+  ovSelectTab('work');
+  Hud.renderWork(cells === null ? null : { type: 'work', cells });
+  ovRoster(crew);
+}
+
+// ── the pure half ──
+
+test('M2-3: one click walks the cycle off → 1 → 2 → 3 → 4 → off, and `off` is never "0"', () => {
+  assert.deepEqual([0, 1, 2, 3, 4].map(nextWorkPriority), [1, 2, 3, 4, 0]);
+  // `null` is "no payload yet" and an out-of-domain number is reachable in principle (RimWorld's own
+  // SetPriority logs and STORES one — reference §1.2), so both re-enter the domain at the top rather
+  // than stepping to another illegal value.
+  assert.equal(nextWorkPriority(null), 1);
+  assert.equal(nextWorkPriority(9), 1);
+  assert.deepEqual(workCellLabel(0), { text: 'off', state: 'off' });
+  assert.deepEqual(workCellLabel(3), { text: '3', state: 'set' });
+  assert.deepEqual(workCellLabel(null), { text: '·', state: 'wait' });
+  assert.notEqual(workCellLabel(0).text, '0',
+    'OFF renders as "0". In a grid of numbers a zero reads as a PRIORITY — the worst one, next to '
+    + '4 — when it means the opposite, not at all; and under OD-H that is every cell on screen at '
+    + 'boot, so the whole grid would read as "everyone does everything, badly".');
+});
+
+// ── reachability (MUTATION 5) ──
+
+// MUTATION: add `'work'` to `INERT_TABS` in overview-model.js ⇒ the click becomes a silent no-op and
+// this fails on `Hud.getTab()`. That is the `chron` failure shape — emitted, cached and unreachable —
+// and here it would ship a game in which no crew member can ever be given any work.
+test('M2-3: the WORK tab is REACHABLE — the button exists and selecting it lands', () => {
+  ovSelectTab('build');
+  assert.equal(Hud.getTab(), 'build', 'the tab seam is dead — the assertion below would be vacuous');
+  ovSelectTab('work');
+  assert.equal(Hud.getTab(), 'work',
+    'clicking the WORK tab did not select it. Under OD-H every work type boots OFF for every crew '
+    + 'member and this tab is the ONLY surface that can switch one on, so an inert WORK tab is not a '
+    + 'missing convenience — it is a game in which nobody can ever do anything.');
+  assert.ok(!INERT_TABS.includes('work'), '`work` is in INERT_TABS');
+  // …and the bar the controller PAINTED really carries the button, so the leg above is not driving a
+  // tab a player cannot see.
+  assert.ok(ovCmd.innerHTML.includes('data-ov-tab="work"'),
+    'the command bar paints no WORK tab button — the tab is selectable only by a test');
+});
+
+// ── ⭐ THE POSITIVE SURFACE PIN (MUTATION 6) ──
+
+// MUTATION: re-parent the island — `document.body.appendChild(_el.work)` (or into a console-shell
+// container) instead of `_root.appendChild(_el.work)` in `buildWorkIsland` ⇒ this fails.
+//
+// ⚠️ IT IS ASSERTED POSITIVELY, AND THE NEGATIVE VERSION CANNOT BITE. Revision 0 of the charter said
+// "mount it into `#panels` / the `.app` shell ⇒ the console censuses fail". THEY DO NOT: a tab
+// mounted into an EXISTING body-level container adds no new console-shell id, so
+// `surface-boundary.test.js`'s `CONSOLE_SHELL_IDS.length === CONSOLE_SHELL_ID_CEILING` still holds,
+// and it creates no `hud.js` widget, so all four widget counts still hold. That is E0-4's WP-5 first
+// draft verbatim — the package that shipped a whole feature onto the wrong surface, was
+// independently reviewed, merged, and was caught only when the running game was opened. An id census
+// is a guard against GROWTH; this is a guard against PLACEMENT.
+//
+// ⚠️ EVERY IDENTITY CHECK HERE IS `assert.ok(a === b, …)` OVER A NAMED STRING, NEVER
+// `assert.equal(node, node)`, AND THAT IS NOT STYLE. Measured while verifying this very mutation:
+// `assert.equal` on two dom-lite elements builds a diff of both object GRAPHS — each carries
+// `parentNode`, `childNodes`, `ownerDocument` and that document's whole id registry — and node spent
+// **307 seconds** on the inspect before the process was **SIGKILLed for memory (exit 137)**. Run as
+// part of the file, the runner then reported `tests 1 / fail 1` with NO test name at all, so the red
+// was indistinguishable from a crash: `CLAUDE.md` trap 3, a FALSE RED, produced by the guard rather
+// than by the mutation. `whereIs` reduces both sides to a short string, so the mutation now reddens
+// in milliseconds and SAYS where the island went.
+/** A short, inspectable name for the element a node hangs off — never the node itself. */
+function whereIs(n) {
+  if (!n) return 'nothing (detached)';
+  if (n === ovRoot) return 'the Overview root';
+  if (n === ovDoc.body) return 'document.body';
+  return '<' + n.tagName + ' class="' + n.className + '">';
+}
+
+test('M2-3: the WORK grid mounts INSIDE the Overview root — the placement pin', () => {
+  const mount = workMount();
+  assert.ok(mount, 'workTabMount() is null after initOverview — every assertion here would be vacuous');
+  assert.ok(mount.parentNode === ovRoot,
+    'the WORK grid mounts into ' + whereIs(mount.parentNode) + ', not the Overview root. THE '
+    + 'STANDARD SURFACE IS THE LEVEL-1 OVERVIEW PLUS THE LEVEL-2 ROOM ZOOM (CLAUDE.md, binding) — the '
+    + 'console `.app` shell and `client/index.html` are closed to new work. This is the one invariant '
+    + 'this package can break silently: no id census can see a re-parenting, because moving a tab '
+    + 'into an existing container adds no new id at all.');
+  // …and the chain the player actually clicks through is real all the way down: cell → row → list →
+  // island → root. Without this the pin above would be satisfied by an empty island beside a grid
+  // drawn somewhere else entirely.
+  ovWorkTab([]);
+  const cell = ovWorkCells(ovWorkRows()[0])[0];
+  let n = cell, depth = 0;
+  while (n && n !== ovRoot && depth < 12) { n = n.parentNode; depth += 1; }
+  assert.ok(n === ovRoot,
+    'a WORK cell does not sit under the Overview root — the walk stopped at ' + whereIs(n));
+});
+
+// ── what a player sees at boot (acceptance steps 2 and 3's node half) ──
+
+test('M2-3: a row per soul, six columns in OD-J order, and under OD-H every cell reads `off`', () => {
+  ovWorkTab([]);
+  const rows = ovWorkRows();
+  assert.equal(rows.length, 2, 'the grid did not build one row per rostered soul');
+  assert.deepEqual(rows.map((r) => r.oneClass('ov-workname').textContent),
+    WORK_CREW.map((e) => surnameOf(e.name)));
+  // OD-J: Repair · Construct · Craft · Deconstruct · Mine · Haul, pinned by LITERAL on both the
+  // header the player reads and the wire index each cell carries — a header table that agreed with a
+  // shuffled cell table would be exactly the invisible failure.
+  assert.deepEqual(ovWorkHeaders().map((h) => h.textContent),
+    ['REPAIR', 'BUILD', 'CRAFT', 'STRIP', 'MINE', 'HAUL']);
+  assert.deepEqual(WORK_COLUMNS.map((c) => c.type), [0, 1, 2, 3, 4, 5]);
+  for (const row of rows) {
+    const cells = ovWorkCells(row);
+    assert.equal(cells.length, 6, 'a row does not carry six work-type cells');
+    assert.deepEqual(cells.map((c) => c.dataset.ovWorkType), ['0', '1', '2', '3', '4', '5']);
+    for (const c of cells) {
+      assert.equal(c.textContent, 'off',
+        'a cell does not read `off` on an EMPTY work payload. That payload is the NORMAL boot state '
+        + '(OD-H makes work opt-in), and "absent = off" is the sim\'s own semantics.');
+      assert.ok(c.classList.contains('off'), 'the off cell carries no `off` class, so it cannot be '
+        + 'styled as switched-off and reads as an ordinary control');
+      assert.equal(c.disabled, false,
+        'an `off` cell is DISABLED. Off is the state the player has to click OUT of — it is the '
+        + 'state of the entire grid at boot — so a disabled off cell makes the tab useless.');
+    }
+  }
+});
+
+test('M2-3: before the channel arrives the grid says so — it does not invent `off`', () => {
+  // ⚠️ `0` and `null` ARE NOT THE SAME ANSWER. `0` is "the player switched this off"; `null` is "we
+  // have no payload". Under OD-H every work type really IS off at boot, so conflating them would be
+  // invisibly wrong exactly when it is least noticeable — a correct-looking reading nobody measured.
+  ovWorkTab(null);
+  const cell = ovWorkCells(ovWorkRows()[0])[0];
+  assert.notEqual(cell.textContent, 'off', 'a cell claimed `off` with no payload to read it from');
+  assert.ok(cell.classList.contains('wait'));
+  assert.equal(cell.disabled, true, 'the cell accepts a click it cannot compute the next step of');
+  ovSent.length = 0;
+  fire(cell, 'click', { detail: 1 });
+  assert.deepEqual(ovSent, [], 'a click with no payload sent an order computed from a guess');
+});
+
+// ── the click → the order (MUTATIONS 1, 2 and 3) ──
+
+// THE ARGUMENT IS RECORDED AT THE SEAM — `ovSent` holds the very object handed to the injected
+// `send` — rather than the source being scanned for `Cmd.workPriority` (CLAUDE.md trap 4).
+//
+// MUTATION 1: make the cell click send nothing (delete the `_send(...)` line in `onWorkCellClick`,
+//   or drop the `d.ovWorkCid` branch from `onHudClick`) ⇒ `ovSent` is empty and this fails.
+// MUTATION 2: send the wrong work-type index (`type + 1`, or address the column by array position
+//   instead of `col.type`) ⇒ the `work` field of the DECODED payload is wrong and this fails. The
+//   assertion is on the payload, never on "a command was sent".
+// MUTATION 3: send the wrong citizen id (`WORK_CREW[0].cid`, or `e.cid` closed over from the first
+//   row) ⇒ the `cid` field is wrong and this fails — which is the whole reason the fixture carries
+//   TWO souls and the leg drives the SECOND one.
+test('M2-3: a cell click sends the work-priority order for THAT pawn and THAT column', () => {
+  assert.notEqual(WORK_CREW[0].cid, WORK_CREW[1].cid,
+    'the two fixture souls share a cid — the wrong-citizen mutation could not be seen');
+  ovWorkTab([]);
+  const rows = ovWorkRows();
+  const cell = ovWorkCells(rows[1])[2];          // the SECOND soul, the THIRD column (Craft)
+  ovSent.length = 0;
+  fire(cell, 'click', { detail: 1 });
+  assert.deepEqual(ovSent, [{
+    cmd: 'workPriority', cid: WORK_CREW[1].cid, work: 2, priority: 1,
+  }], 'the order that reached the wire is not the one the clicked cell addresses');
+});
+
+test('M2-3: each click computes its next value from the LIVE cache, and the cycle closes', () => {
+  const cid = WORK_CREW[1].cid;
+  ovWorkTab([]);
+  const cell = ovWorkCells(ovWorkRows()[1])[0];  // the second soul's REPAIR column
+  // Walk the whole cycle by feeding the sim's echo back in between clicks, which is what the running
+  // game does at ~10 Hz. The click never reads the cell's own text and never counts locally.
+  for (const [held, want] of [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]]) {
+    Hud.renderWork({ type: 'work', cells: held === 0 ? [] : [[cid, 0, held]] });
+    ovSent.length = 0;
+    fire(cell, 'click', { detail: 1 });
+    assert.deepEqual(ovSent, [{ cmd: 'workPriority', cid, work: 0, priority: want }],
+      `holding ${held}, the click should have ordered ${want}`);
+  }
+});
+
+// ── the cell follows the wire, not this surface (MUTATION 4) ──
+
+// MUTATION: render from a stale cache instead of the live `work` channel — e.g. memoise the decoded
+// rows in `paintWork` (`_rows = _rows || decodeWork(...)`), or paint the cell from a value the click
+// handler stored locally instead of re-reading `workPriorityFor` ⇒ the second and third legs fail.
+// This is the mutation that separates "the UI owns the state" from "the wire owns the state", and
+// the latter is the contract: `HandleWorkPriority` is SILENT on refusal, so a local mirror that
+// drifted would have nothing to correct it.
+test('M2-3: a cell FOLLOWS the `work` channel, with no click of the player\'s', () => {
+  const cid = WORK_CREW[0].cid;
+  ovWorkTab([[cid, 0, 1]]);
+  const cell = ovWorkCells(ovWorkRows()[0])[0];
+  assert.equal(cell.textContent, '1');
+  assert.ok(cell.classList.contains('set'));
+  // The sim moves it host-side — a save reload, another surface, a future dispatcher. Nothing here
+  // clicked anything.
+  Hud.renderWork({ type: 'work', cells: [[cid, 0, 4]] });
+  assert.equal(cell.textContent, '4',
+    'the cell did not follow the channel. It is showing something this surface remembers rather than '
+    + 'what the sim holds — and the sim is the only authority for a work priority.');
+  // …and back to off, which is a row DISAPPEARING from a sparse payload, not a zero arriving.
+  Hud.renderWork({ type: 'work', cells: [] });
+  assert.equal(cell.textContent, 'off');
+  assert.ok(!cell.classList.contains('set'));
+  // The row is mutated IN PLACE across all three renders — the same node the player's pointer is
+  // over, which is why this leg holds one `cell` reference throughout rather than re-querying.
+  assert.ok(ovWorkCells(ovWorkRows()[0])[0] === cell,
+    'the row was rebuilt rather than mutated in place — the node under the pointer does not survive '
+    + 'a repaint, which is BUG-A on this island');
+});
