@@ -2243,10 +2243,10 @@ namespace Perilune.Gen
             //     so a repair always costs the machine that funded it. Pinned at its root by
             //     `WreckRepairEconomyTests.KnownLimit_TheSwarfRungIsZeroSum_OneUnitPerStrippedWreck`.
             //     Measured: condemning all ten strippable in-air wrecked machines at boot (14 tried,
-            //     4 CryoPods refused; 626 devices → 616 ON THE PRE-M2-11 TREE, whose store held 15
-            //     conduits this one does not and lacked the 8 bulkhead runs it does — the ten
-            //     strips are unchanged, but do not re-quote 626/616 against today's 611) DOES lift
-            //     every wing clear of the floor —
+            //     4 CryoPods refused; 626 devices → 616 ON THE PRE-M2-11 TREE, whose deck-0 tray
+            //     held 554 tiles against today's 539 — 23 taps gone, 8 bulkhead runs added, net
+            //     −15 — so the ten strips are unchanged but do NOT re-quote 626/616 against
+            //     today's 611) DOES lift every wing clear of the floor —
             //     at the price of `term_moss`, both core scrubbers and both remaining batteries.
             //     ⚠️ THE END CONDITIONS ARE HORIZON- AND TREE-DEPENDENT AND DO NOT REPRODUCE: this
             //     lane measured wing_b/wing_c 0.763 / 0.706 at 3 sim-days pre-rebase; review
@@ -2313,6 +2313,11 @@ namespace Perilune.Gen
         /// overlays are not in the tile grid (<c>Simulation.IsUtilityOverlay</c>), take no
         /// maintenance and are drawn only under the Power lens. Measured after: one network, 23 of
         /// 611 devices off-network (exactly deck 1), flat demand 14.30 kW.
+        ///
+        /// THE TRAY, COUNTED — <b>554 tiles before, 531 with the 23 taps removed and nothing added,
+        /// 539 shipped</b> (the 8 bulkhead runs). Net −15, which is why the device store reads 611
+        /// and not 619. ⚠️ Quote the DELETION count (23) and the ADDITION count (8) separately; a
+        /// draft of the pinning test stated the net as the deletion and review caught it.
         ///
         /// ORDER: must run after the last deck-1 device is authored — it reads the deck-1 device
         /// list. ASSUMPTION, held by a test rather than by an argument: <c>(doorX - 1, doorY)</c> is

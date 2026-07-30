@@ -46,8 +46,15 @@ namespace Perilune.Tests
         // ------------------------------------------------------------- the hand-written pins
 
         /// <summary>Devices in the store at boot. It MOVED with this package (626 -> 611): the cut
-        /// deletes the 15 deck-0 tray tiles that were deck 1's riser taps and adds 8 bulkhead runs
-        /// beside the doorways. Re-measured on this tree, not carried over from the charter.</summary>
+        /// deletes the 23 deck-0 tray tiles under deck 1's devices — 8 of them the doorway tiles,
+        /// replaced by 8 bulkhead runs beside the doorways — net −15.
+        /// ⚠️ AN EARLIER DRAFT OF THIS LINE SAID "deletes the 15 … tiles and adds 8", WHICH IS THE
+        /// NET PRESENTED AS THE DELETION COUNT — 626 − 15 + 8 is 619, not 611. Independent review
+        /// caught it: the exact defect class this package deletes from AuthoredShips.cs, relocated
+        /// into the test that pins it. Re-measured on THIS tree, driven off the plan: deck-0 tray
+        /// 554 tiles before, 531 with the taps removed and nothing added, 539 shipped; all 23
+        /// deck-1 devices stood over a trayed tile (0 did not); the 8 bulkhead runs stand on hull,
+        /// none on a floor tile.</summary>
         private const int TotalDevices = 611;
         /// <summary>Every device standing on deck 1 — 8 hall doors, 1 ladder and 14 pieces of
         /// ruined machinery. All of them, and nothing else, must be off the grid.</summary>
@@ -135,14 +142,23 @@ namespace Perilune.Tests
             if (Math.Abs(generation - FlatGenerationKW) > 0.001f)
                 offenders.Add($"the ship generates {generation.ToString("F2", inv)} kW; this file pins {FlatGenerationKW.ToString("F2", inv)}");
 
-            var (statedDemand, statedOff, statedTotal) = TheAuthoringsOwnClaim();
-            if (Math.Abs(statedDemand - demand) > 0.001f)
-                offenders.Add($"AuthoredShips' WRECK POWER PIN says {statedDemand.ToString("F2", CultureInfo.InvariantCulture)} kW " +
-                              $"of demand; the running ship books {demand.ToString("F2", CultureInfo.InvariantCulture)} kW");
-            if (statedOff != off)
-                offenders.Add($"it says {statedOff} devices off-network; the running ship has {off}");
-            if (statedTotal != devices.Count)
-                offenders.Add($"it says {statedTotal} devices aboard; the running ship has {devices.Count}");
+            // ⚠️ AND THE HELPER MUST NOT ASSERT EITHER — review found that it did, and an Assert
+            // inside it unwound straight out of this method and DISCARDED the two offenders
+            // accumulated above. A test whose header claims "one assert, every leg" while a callee
+            // throws mid-collection has the fifth trap shape with extra steps. The helper now
+            // RETURNS null and files its own offender instead.
+            var claim = TheAuthoringsOwnClaim(offenders);
+            if (claim.HasValue)
+            {
+                var (statedDemand, statedOff, statedTotal) = claim.Value;
+                if (Math.Abs(statedDemand - demand) > 0.001f)
+                    offenders.Add($"AuthoredShips' WRECK POWER PIN says {statedDemand.ToString("F2", inv)} kW " +
+                                  $"of demand; the running ship books {demand.ToString("F2", inv)} kW");
+                if (statedOff != off)
+                    offenders.Add($"it says {statedOff} devices off-network; the running ship has {off}");
+                if (statedTotal != devices.Count)
+                    offenders.Add($"it says {statedTotal} devices aboard; the running ship has {devices.Count}");
+            }
             Assert.That(offenders, Is.Empty,
                 "the ship's power comment states a measurement the ship does not make:\n  " +
                 string.Join("\n  ", offenders));
@@ -151,21 +167,39 @@ namespace Perilune.Tests
         /// <summary>
         /// Pull the three figures out of the one machine-readable line in the wreck's POWER block.
         /// ⚠️ AN INCLUSION TEST, NOT A SCAN FOR ABSENCE (the fourth trap shape): the marker must
-        /// match EXACTLY ONCE, so deleting or rewording it fails here rather than silently
+        /// match EXACTLY ONCE, so deleting or rewording it fails rather than silently
         /// vacuum-passing. Parsed with InvariantCulture — the dev machine is de-DE and
         /// <c>float.Parse("14.30")</c> under de-DE is 1430.
+        /// ⚠️ IT DOES NOT ASSERT. It files onto the CALLER'S offender list and returns null, so a
+        /// missing marker is one line in the caller's single end-of-test assert alongside every
+        /// other offender — never a throw that unwinds past legs already collected.
         /// </summary>
-        private static (float DemandKW, int OffNetwork, int Total) TheAuthoringsOwnClaim()
+        private static (float DemandKW, int OffNetwork, int Total)? TheAuthoringsOwnClaim(List<string> offenders)
         {
-            string path = Path.Combine(RepoRoot(), "sim", "Sim.Gen", "AuthoredShips.cs");
-            Assert.That(File.Exists(path), Is.True, path + " must exist");
+            string root = RepoRoot();
+            if (root == null)
+            {
+                offenders.Add("the repo root was not discoverable by walking up from " + AppContext.BaseDirectory +
+                              ", so the ship's power comment could not be read at all");
+                return null;
+            }
+            string path = Path.Combine(root, "sim", "Sim.Gen", "AuthoredShips.cs");
+            if (!File.Exists(path))
+            {
+                offenders.Add(path + " does not exist, so the ship's power comment could not be read at all");
+                return null;
+            }
             var matches = Regex.Matches(
                 File.ReadAllText(path),
                 @"WRECK POWER PIN \(measured, driven\): flat demand ([0-9]+\.[0-9]+) kW; off-network ([0-9]+) of ([0-9]+)");
-            Assert.That(matches.Count, Is.EqualTo(1),
-                "AuthoredShips.cs must carry EXACTLY ONE 'WRECK POWER PIN (measured, driven): flat " +
-                "demand <x.xx> kW; off-network <n> of <total>' line — it is what ties the ship's " +
-                "power comment to the ship. Found " + matches.Count + ".");
+            if (matches.Count != 1)
+            {
+                offenders.Add(
+                    "AuthoredShips.cs must carry EXACTLY ONE 'WRECK POWER PIN (measured, driven): flat " +
+                    "demand <x.xx> kW; off-network <n> of <total>' line — it is what ties the ship's " +
+                    "power comment to the ship. Found " + matches.Count + ".");
+                return null;
+            }
             var m = matches[0];
             return (float.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture),
                     int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture),
@@ -264,7 +298,10 @@ namespace Perilune.Tests
         }
 
         /// <summary>The house repo-root probe (two landmarks, so a stray ci.sh cannot
-        /// false-positive) — the same shape as ArchitectureBoundaryTests / SurfaceBoundaryTests.</summary>
+        /// false-positive) — the same shape as ArchitectureBoundaryTests / SurfaceBoundaryTests,
+        /// with ONE deliberate difference: it returns null rather than calling
+        /// <c>Assert.Fail</c>. Nothing on this test's collection path may throw, or an
+        /// environment failure would discard the offenders already gathered.</summary>
         private static string RepoRoot()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -275,7 +312,6 @@ namespace Perilune.Tests
                     return dir.FullName;
                 dir = dir.Parent;
             }
-            Assert.Fail("the repo root must be discoverable by walking up from " + AppContext.BaseDirectory);
             return null;
         }
     }
