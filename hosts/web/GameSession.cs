@@ -239,7 +239,16 @@ namespace Perilune.Web
                 // explanation for exactly as long as nobody paints anything, and "the game does not say
                 // why" is the one failure this channel exists to remove. The measured `materials`
                 // consequence (0 messages in 4 s on a live reconnect) is the shape it would take.
-                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "blocked" })
+                //
+                // ⚠️ `work` (M2-4) IS ON THE LIST, and it is the `materials`/`blocked` case rather than
+                // the `ledger` one. Its payload is a function of what the PLAYER set and of who is
+                // alive, both of which can sit unchanged for hours — under OD-H it is empty until the
+                // first order and then changes only when the player touches the grid again. A
+                // reconnecting tab left to self-heal would therefore show an EMPTY work grid for
+                // exactly as long as nobody clicks: the player's own orders, invisible, which is the
+                // measured `materials` consequence (0 messages in 4 s) applied to state the player
+                // typed in themselves.
+                foreach (var key in new[] { "frame", "light", "status", "metrics", "legend", "log", "inspect", "roster", "designs", "terminals", "relations", "systems", "decks", "rooms", "decor", "zones", "marks", "items", "devices", "work", "blocked" })
                     if (_cache.TryGetValue(key, out var v)) list.Add(v);
             }
             return list;
@@ -347,6 +356,11 @@ namespace Perilune.Web
                 // paused". The reply is Emit-ted from inside the handler, exactly as Talk/Bio/Chron do
                 // on the three lines below, all of which return false for the same reason.
                 case CmdKind.Operate: HandleOperate(cmd); return false;
+                // M2-4 — the work-priority order. Returns FALSE for the same reason OPERATE does: it
+                // moves no VIEW state (no cursor, no deck, no lens), and this switch's return value only
+                // means "re-render even though the sim is paused". The `work` channel picks the new byte
+                // up off `sim.Citizens` on the next render, which the sim loop takes anyway.
+                case CmdKind.WorkPriority: HandleWorkPriority(cmd); return false;
                 // ⭐ M1-L: `case CmdKind.AddRoom: HandleAddRoom(cmd); return true;` is DELETED, with
                 // the `"addroom"` parse case and the two private methods behind it. The verb is now
                 // UNREACHABLE end to end: no client sender, no parse, no route. The `CmdKind.AddRoom`
@@ -899,6 +913,37 @@ namespace Perilune.Web
         }
 
         /// <summary>
+        /// M2-4 — THE WORK-PRIORITY BRIDGE. One crew member, one <see cref="WorkType"/>, one priority:
+        /// enqueue a <see cref="SetWorkPriorityCommand"/> and let the sim decide at the tick boundary.
+        ///
+        /// <para>⚠️ <b>THIS BRIDGE VALIDATES NOTHING, ON PURPOSE.</b> It does not resolve the citizen,
+        /// does not range-check the work type, does not clamp the priority — the command does all three
+        /// and is the ONE validator. A second check here would be a second authority that can drift from
+        /// the first, and the drift is not hypothetical: a host-side <c>(byte)</c> cast is the exact
+        /// mechanism by which a garbled <c>-256</c> becomes <c>0</c> — <c>WorkPriority.Off</c>, a real
+        /// order — before any guard could see it, which is why the command takes raw <c>int</c>s.
+        /// <c>HandleFilter</c> above drops its own sentinel here because a negative mask widens to
+        /// "accept everything" INSIDE the host's cast, i.e. before the sim can refuse it; nothing
+        /// analogous happens on this path.</para>
+        ///
+        /// <para>SILENT ON REFUSAL, like every designate verb, and there is no reply channel: the
+        /// <c>work</c> channel simply does not change, which is what the surface reads. ⚠️ That means an
+        /// order the sim refuses is INVISIBLE — the failure shape this repo has already paid for three
+        /// owner reports over. It is acceptable HERE and only here because the sole producer of this
+        /// message is a grid built from the same six work types and the same 0..4 domain (M2-3), so a
+        /// refusal implies a client bug rather than a player mistake; a player cannot express an illegal
+        /// work priority by clicking. If a future surface can, it needs feedback, not this comment.</para>
+        ///
+        /// <para>NO STATUS LINE, unlike <c>HandleFilter</c>: the status text is console chrome on a
+        /// deprecated shell, and the work grid's own cell is the feedback — it repaints from the
+        /// <c>work</c> channel on the next render.</para>
+        /// </summary>
+        private void HandleWorkPriority(WebCommand cmd)
+        {
+            _sim.EnqueueCommand(new SetWorkPriorityCommand(cmd.Cid, cmd.Work, cmd.Priority));
+        }
+
+        /// <summary>
         /// The decorate bridge (Room Zoom place palette). Maps the palette tool string to a
         /// furniture <see cref="DeviceKind"/> and enqueues a <see cref="PlaceDeviceCommand"/> at the
         /// clicked tile on the message's deck. Legality (floor tile, unoccupied, placeable kind) is
@@ -1446,6 +1491,12 @@ namespace Perilune.Web
             // of it is a `GlyphColor.Broken` fg byte neither standard surface reads, and that byte is
             // one bit rather than a gradient. See hosts/web/WireFormat.Devices.cs.
             SendDevices(force);
+            // WHO WILL DO WHAT (`work`, M2-4). Each crew member's manual work priorities, read off
+            // `sim.Citizens` — the only route there is, since a priority is a fact about a PERSON and
+            // reaches no projection byte at all. Sparse (absent = off), so under OD-H it is EMPTY until
+            // the player gives an order. Same dirty-version gate shape as `devices`; see
+            // hosts/web/WireFormat.Work.cs.
+            SendWork(force);
             // WHY AN ORDER IS DOING NOTHING (`blocked`). `WorksiteSafety.CanStageWorkerAt` refuses to
             // park a worker in air that would pull it off the job, and its own header records that this
             // took the failure from expensive-and-visible to CHEAP-AND-INVISIBLE: a designation painted
@@ -1557,6 +1608,65 @@ namespace Perilune.Web
             if (_devicesSent.Count != cells.Count) return false;
             for (int i = 0; i < cells.Count; i++)
                 if (!_devicesSent[i].SameAs(cells[i])) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// M2-4 — THE <c>work</c> CHANNEL'S DIRTY-VERSION GATE, the <see cref="SendDevices"/> scheme
+        /// applied to a channel keyed by citizen. <see cref="Send"/> already dedupes by whole-payload
+        /// string equality, so an unchanged channel never reached the SOCKET; this skips BUILDING and
+        /// SERIALIZING it to discover that.
+        ///
+        /// <para>⚠️ <b>THE SAVING HERE IS SMALL AND IS NOT THE REASON.</b> This channel is
+        /// O(crew × 6) over single-digit crew — the <c>HasIceChain</c> scar in this repo is that a
+        /// count of skipped work is not a speed-up (91.7 M slots/sim-day became 1 250 and was worth
+        /// ~1 %, not separated from noise), and nobody has measured a saving for this one. What the
+        /// gate buys is a CORRECTNESS PROPERTY the charter asks for by name: the comparison is
+        /// element-wise over all three fields, so "the skip was taken" and "the payload would have been
+        /// byte-identical" are the same statement rather than a heuristic. A cheap key — the row COUNT
+        /// alone — would be the reachable failure: a player moving Repair from 4 to 1 changes no row's
+        /// existence and no count, only the third element, and a count-keyed gate would freeze that
+        /// player's own grid on the surface with every test green.</para>
+        ///
+        /// <para>FORCE ALWAYS RE-EMITS, and it must be checked BEFORE the gate: a forced render is the
+        /// prime for a newly-connected tab and the resync path. This channel is also in
+        /// <see cref="Snapshot"/>'s key list, which is the <c>materials</c>/<c>blocked</c> reasoning
+        /// and not the <c>ledger</c> one — the payload is a function of what the PLAYER set and can sit
+        /// unchanged for hours, so a reconnecting tab left to "self-heal" would show an empty work grid
+        /// for exactly as long as nobody touches it.</para>
+        /// </summary>
+        private readonly List<WireFormat.WorkCell> _workSent = new List<WireFormat.WorkCell>();
+        private bool _workSentPrimed;
+
+        /// <summary>HOW MANY TIMES THE <c>work</c> PAYLOAD HAS BEEN SERIALIZED — a TEST SEAM, for the
+        /// reason <see cref="DevicesSerializedForTest"/> spells out: <see cref="Send"/> already
+        /// suppresses the broadcast of an unchanged payload, so the gate is otherwise UNOBSERVABLE from
+        /// outside and a performance change nothing can see is one nothing protects. Incremented on the
+        /// line adjacent to the serialization it counts; not read anywhere in the host.</summary>
+        internal int WorkSerializedForTest { get; private set; }
+
+        private void SendWork(bool force)
+        {
+            var cells = BuildWork();
+            if (!force && _workSentPrimed && SameAsLastWork(cells)) return;
+            WorkSerializedForTest++;
+            Send("work", WireFormat.Work(cells), force);
+            _workSent.Clear();
+            _workSent.AddRange(cells);
+            _workSentPrimed = true;
+        }
+
+        /// <summary>Element-wise equality against the last EMITTED cell list — an explicit field
+        /// compare through <see cref="WireFormat.WorkCell.SameAs"/> and not <c>ValueType.Equals</c>,
+        /// which on a struct with no override falls back to reflection and boxes. The COUNT is part of
+        /// the key: a crew member dying (or a work type being switched off, which REMOVES its row on a
+        /// sparse channel) shortens the list while every surviving row is untouched, and a loop that
+        /// only walked the shared prefix would pass every field-wise test there is.</summary>
+        private bool SameAsLastWork(List<WireFormat.WorkCell> cells)
+        {
+            if (_workSent.Count != cells.Count) return false;
+            for (int i = 0; i < cells.Count; i++)
+                if (!_workSent[i].SameAs(cells[i])) return false;
             return true;
         }
 
@@ -2148,6 +2258,62 @@ namespace Perilune.Web
                 _itemsScratch.Add(new WireFormat.ItemCell(p.X, p.Y, p.Z, (int)item.Kind, item.Count));
             }
             return _itemsScratch;
+        }
+
+        /// <summary>
+        /// M2-4 — the sparse WORK-PRIORITY layer: one <see cref="WireFormat.WorkCell"/> per switched-ON
+        /// (crew member, <see cref="WorkType"/>) pair, read from <c>sim.Citizens</c> DIRECTLY. See
+        /// <c>hosts/web/WireFormat.Work.cs</c> for the tuple's keying (by CITIZEN, not by tile), for why
+        /// "absent = off" is the sim's own semantics rather than a wire convention, and for why this
+        /// channel is empty at boot under OD-H.
+        ///
+        /// ⚠️ <b>THERE IS NO PROJECTION TO READ THIS FROM, AND THAT IS STRONGER THAN THE
+        /// <c>marks</c>/<c>items</c> CASE RATHER THAN THE SAME.</b> Those two channels exist because a
+        /// later <c>GlyphMapper</c> pass overwrites a byte an earlier pass wrote — a fact that reaches
+        /// the projection and is then lost. A work priority never reaches it at all: it is a fact about
+        /// a PERSON with no tile to be drawn on, so <see cref="GlyphMapper"/> has nowhere to put it and
+        /// no pass ordering could produce it. Reading the grid off <c>sim.Citizens</c> is not the better
+        /// of two routes here; it is the only one there is.
+        ///
+        /// ORDER — CITIZEN STORE ORDER, and within a citizen, <see cref="WorkType"/> VALUE order (the
+        /// storage index order, which is what <c>Simulation.StateHash</c>'s CITZ fold walks). A plain
+        /// <c>List</c> index walk and a <c>for</c> over a compile-time count: no hash container's
+        /// enumeration order can reach the socket, so two runs of one seed emit the same bytes. It is
+        /// NOT a display order — see the channel header.
+        ///
+        /// COST — O(live crew × 6), a fixed 6-iteration inner loop over a store that holds single
+        /// digits of crew on every shipped ship, on the sim thread inside <see cref="Render"/> at
+        /// ≤10 Hz and never on a tick path. It is the cheapest of the sparse channels by a wide margin:
+        /// the three world walks are O(width × height × depth) and <see cref="BuildItems"/> is
+        /// O(items) with 212 rows on the slice. The scratch list is reused, so a steady state allocates
+        /// only the payload string — and under OD-H the payload is <c>{"type":"work","cells":[]}</c>,
+        /// which <see cref="Send"/> then dedupes forever.
+        ///
+        /// VIEW-ONLY: a read of authoritative state, never a write, never hashed.
+        /// </summary>
+        private readonly List<WireFormat.WorkCell> _workScratch = new List<WireFormat.WorkCell>();
+        private List<WireFormat.WorkCell> BuildWork()
+        {
+            _workScratch.Clear();
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                // DEAD CREW ARE ABSENT — the same line SetWorkPriorityCommand draws. A corpse cannot be
+                // ordered to do anything, so a row for one would be a claim about a person who is not
+                // there; their stored bytes are still saved and hashed by the CITZ chapter.
+                if (c.Dead) continue;
+                for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+                {
+                    // SPARSE: only a switched-ON work type gets a row. `WorkPriority.Off` is documented
+                    // as the ABSENCE of a priority rather than a fifth value, so an omitted row is not a
+                    // compression of "0" — it IS the sim's representation of "will not do it".
+                    byte p = c.GetWorkPriority((WorkType)t);
+                    if (p == WorkPriority.Off) continue;
+                    _workScratch.Add(new WireFormat.WorkCell((int)c.Id, t, p));
+                }
+            }
+            return _workScratch;
         }
 
         /// <summary>
@@ -2949,8 +3115,13 @@ namespace Perilune.Web
     /// <para>⚠️ <b>"Nothing calls this" is a statement about a TREE, and a merge changes a tree.</b>
     /// Before acting on the dormancy, re-derive it on the MERGED tree — that is the eighth trap shape
     /// (<c>CLAUDE.md</c>), which cost this project a wrong census in a file neither lane could
-    /// compute alone.</para></summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission, Operate }
+    /// compute alone.</para>
+    ///
+    /// <para>⭐ <b><c>WorkPriority</c> IS APPENDED, NEVER INSERTED</b> (M2-4). These members are
+    /// implicitly numbered and the note above records that removing one renumbers every sibling after
+    /// it; the same arithmetic applies to inserting one, so a new kind goes at the END even when a
+    /// neighbouring position would read better.</para></summary>
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission, Operate, WorkPriority }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -2965,12 +3136,23 @@ namespace Perilune.Web
         public readonly int Sid;
         public readonly uint Cid;
         public readonly string Text, Op, Tid;
+        // M2-4 work-priority payload: Work = a WorkType index, Priority = 0 (off) or 1..4 with 1 the
+        // HIGHEST. NAMED FIELDS RATHER THAN A RIDE ON `X`/`Y`/`I`, and deliberately: `filter`'s mask
+        // and `place`'s deck ride on `i` because each verb needs ONE scalar beside a tile, whereas this
+        // verb has no tile at all and needs TWO — and X/Y mean "a tile on the current deck" in every
+        // other message this struct carries. A priority silently read as a coordinate is a bug no
+        // compiler could catch. Both DEFAULT TO THE -1 SENTINEL, not to 0: on this verb 0 is a real
+        // value in BOTH fields (Repair, and OFF), so a default of 0 would make an absent key
+        // indistinguishable from the order "stop repairing".
+        public readonly int Work, Priority;
 
         public WebCommand(CmdKind kind, int x = 0, int y = 0, int i = 0, string name = null,
-                          int sid = 0, uint cid = 0, string text = null, string op = null, string tid = null)
+                          int sid = 0, uint cid = 0, string text = null, string op = null, string tid = null,
+                          int work = -1, int priority = -1)
         {
             Kind = kind; X = x; Y = y; I = i; Name = name;
             Sid = sid; Cid = cid; Text = text; Op = op; Tid = tid;
+            Work = work; Priority = priority;
         }
 
         /// <summary>Parse one message. Two families share this reader:
@@ -3040,6 +3222,30 @@ namespace Perilune.Web
                     // current state the player is looking at. An explicit target would also let a
                     // stale client re-assert a state the crew or MOSS has since changed.
                     case "operate": return new WebCommand(CmdKind.Operate, Int(json, "x"), Int(json, "y"), i: Int(json, "deck"));
+                    // M2-4 — THE WORK-PRIORITY ORDER: {"cmd":"workPriority","cid":N,"work":T,"priority":P}
+                    // — set ONE crew member's manual priority for ONE work type. `work` is a WorkType
+                    // index (0..5, the OD-J order Repair·Construct·Craft·Deconstruct·Mine·Haul) and
+                    // `priority` is 0 = off or 1..4 with 1 the HIGHEST (RimWorld's convention, which
+                    // reads backwards against intuition and is why the sim names the constants).
+                    //
+                    // KEYED BY `cmd` LIKE EVERY OTHER ORDER VERB (dig/stockpile/strip/filter/place/
+                    // operate) rather than by `type`, which is the dialogue/MOSS family. It carries a
+                    // `cid` the way `talk`/`bio` do, but what it IS is an order about work, not a
+                    // conversation.
+                    //
+                    // ⚠️ BOTH PAYLOAD FIELDS DECODE TO THE -1 SENTINEL WHEN ABSENT OR NON-NUMERIC, NOT
+                    // TO 0 — the `filter` mask's lesson, and it bites twice as hard here. `priority` 0
+                    // is a REAL, reachable order (switch this work type OFF) and `work` 0 is a REAL work
+                    // type (Repair, the wreck's premise), so letting a missing key fall to 0 would turn
+                    // a malformed line into "stop repairing" — the most destructive reading available
+                    // and, under OD-H, an invisible one. Both sentinels land on
+                    // SetWorkPriorityCommand's own range guard and are dropped there, which is the same
+                    // single silent drop every other unexpressible message gets. (The sentinel is the
+                    // CONSTRUCTOR's default, so `return default` — the garbage path — leaves both at 0
+                    // instead; that is unreachable rather than a hole, because `default` carries
+                    // `CmdKind.Unknown` and `Apply` never routes it.)
+                    case "workPriority": return new WebCommand(CmdKind.WorkPriority, cid: (uint)Int(json, "cid"),
+                                                              work: Int(json, "work", -1), priority: Int(json, "priority", -1));
                     default: return default;
                 }
             }

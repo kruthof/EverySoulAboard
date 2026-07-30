@@ -76,6 +76,7 @@ let _items = null;        // latest items message (sparse ground item stacks: ki
 let _ledger = null;       // latest ledger message (E0-8: matter census + the runway/rate members)
 let _devices = null;      // latest devices message (sparse per-device wear: kind + CONDITION + oper)
 let _blocked = null;      // latest blocked message (sparse refused orders: which order, and WHY)
+let _work = null;         // latest work message (M2-4: per-citizen manual work priorities; absent = off)
 let _moss = null;         // the MOSS terminal (created on the first MOSS-tab activation)
 let _paused = false;      // last status.paused (for the paused nudge)
 let _nudge = { shownAt: null }; // paused-nudge state (nextNudge/nudgeVisible)
@@ -131,6 +132,14 @@ export function getDevices() { return _devices; }
  *  refusal is otherwise completely silent, which is what makes a stuck order indistinguishable from a
  *  broken verb (`hosts/web/WireFormat.Blocked.cs`). */
 export function getBlocked() { return _blocked; }
+/** The cached `work` message (M2-4): one row per switched-ON (crew member, work type) pair,
+ *  `[cid, workType, priority]` with **1 the HIGHEST** priority. There is no other route to this fact —
+ *  a work priority is per-PERSON state with no tile to be projected onto, so unlike `marks` or `items`
+ *  this is not a better source for something the frame carried badly; the frame never carried it at all
+ *  (`hosts/web/WireFormat.Work.cs`).
+ *  ⚠️ ABSENT = OFF, and an EMPTY payload is the normal boot state: OD-H makes work opt-in, so nothing
+ *  is enabled until the player says so. A reader must not treat `[]` as "no data yet". */
+export function getWork() { return _work; }
 /** The cached `ledger` message (E0-8): the matter census plus PARTS/DAY, DAYS OF WATER and DAYS OF
  *  AIR, each with the host's own derivation note. Read by the Overview's LEDGER island.
  *  ⚠️ HONOUR THE SENTINELS — `window === 0` means every rate on the payload is meaningless, and a
@@ -505,6 +514,15 @@ export function renderDevices(m) { _devices = m; notifyShip(); }
  *  sim. STATE-LAYER ONLY: draws nothing, reaches no DOM, so it survives the console deletion with the
  *  rest of the cache (see SHIP_STATE_REACH in client/test/surface-boundary.test.js). */
 export function renderBlocked(m) { _blocked = m; notifyShip(); }
+
+/** Work dispatch (the `work` channel, M2-4): cache each crew member's manual work priorities — read
+ *  host-side off `sim.Citizens`, the only place they exist — and notify the SVG surfaces. NOTHING DRAWS
+ *  IT YET, deliberately: the WORK tab is its own package (M2-3) and the data had to exist before the
+ *  grid could read it back. View-only; never touches the sim, and setting a priority goes the other way
+ *  round through `Cmd`, not through here. STATE-LAYER ONLY: draws nothing, reaches no DOM, so it
+ *  survives the console deletion with the rest of the cache (see SHIP_STATE_REACH in
+ *  client/test/surface-boundary.test.js). */
+export function renderWork(m) { _work = m; notifyShip(); }
 
 /** Ledger dispatch (E0-8, the `ledger` channel): cache the ship's matter census and its rate members
  *  and notify the SVG surfaces so the LEDGER island repaints. View-only; never touches the sim.

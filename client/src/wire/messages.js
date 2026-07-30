@@ -604,7 +604,64 @@ export function decodeBlocked(msg) {
   return out;
 }
 
-/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg} WireMsg */
+/**
+ * The sparse `work` channel (M2-4) — each crew member's MANUAL WORK PRIORITIES, read host-side off
+ * `sim.Citizens` and never off a projection, because a work priority is a fact about a PERSON and
+ * reaches no tile at all. `hosts/web/WireFormat.Work.cs` carries the full argument.
+ *
+ * ⚠️ **THIS TUPLE DOES NOT LEAD WITH `x, y, deck`** and it is the only sparse channel that does not.
+ * `WorkTuple = [cid, workType, priority]`, append-only. The other six sparse channels are keyed by
+ * TILE; this one is keyed by CITIZEN, and `cid` is the same entity id the frame's crew tuple carries
+ * as its 4th element. One decoder shape per KEYING — do not "fix" it into the tile shape.
+ *
+ * `priority` IS 1..4 WITH **1 THE HIGHEST** (RimWorld's convention, which reads backwards against the
+ * intuition that a bigger number matters more), and `0` NEVER APPEARS: an OFF work type has no row at
+ * all. That is the sim's own semantics rather than a compression — `WorkPriority.Off` is documented as
+ * *"the ABSENCE of a priority, not a fifth priority value"* — so **absent = off** and a reader must
+ * treat a missing (cid, workType) pair as switched off rather than as unknown.
+ *
+ * ⚠️ **AN EMPTY PAYLOAD IS THE NORMAL BOOT STATE, NOT A BROKEN CHANNEL.** Owner decision OD-H makes
+ * work opt-in: every work type boots OFF for every crew member on every ship, so `cells` is `[]` until
+ * the player gives an order. A surface that treats `[]` as "no data yet" and falls back to something
+ * else would be inventing priorities nobody set.
+ *
+ * DEAD CREW ARE ABSENT host-side. NOT fog-gated, unlike every tile-keyed channel: this is the player's
+ * own order about their own crew, and gating it on the tile a pawn stands on would make the grid blink
+ * out when someone walked into an unexplored hall. Snapshot-cached, so a reconnect replays the layer.
+ * @typedef {[number,number,number]} WorkTuple
+ * @typedef {{type:'work', cells:WorkTuple[]}} WorkMsg
+ */
+
+/**
+ * Decode the sparse `work` channel. Mirrors WireFormat.Work:
+ * {type:'work',cells:[[cid,workType,priority],..]}. Tolerant: a malformed message → null, a malformed
+ * row is dropped, never throws (the receive-path contract at the top of this file). ORDER IS
+ * PRESERVED — the host emits citizen-store order and that order is the wire contract.
+ *
+ * ⚠️ THE ROW ORDER IS **NOT** A COLUMN ORDER. The host emits work types in enum-VALUE order, while a
+ * work tab's columns are ranked by the sim's `NaturalPriority` table; those two agree today only
+ * because OD-J's ranking happens to match the declaration order, and the sim is explicit that
+ * reordering the enum must not silently re-rank arbitration. A surface that wants columns must carry
+ * the ranking, not infer it from the sequence rows arrive in.
+ *
+ * A ROW WHOSE `workType` THIS CLIENT DOES NOT KNOW IS **KEPT**, following `decodeItems` and not
+ * `decodeMarks`: the pair (cid, priority) is still true and locating, and a client that dropped it
+ * would silently show a crew member as idler than they are — under OD-H, where an enabled work type is
+ * the exception, hiding one is the more misleading error. Naming belongs to the layer that draws.
+ * @param {{type:string, cells?:Array}|null} msg
+ * @returns {{cid:number,workType:number,priority:number}[]|null}
+ */
+export function decodeWork(msg) {
+  if (!msg || msg.type !== 'work' || !Array.isArray(msg.cells)) return null;
+  const out = [];
+  for (const t of msg.cells) {
+    if (!Array.isArray(t) || t.length < 3) continue;
+    out.push({ cid: t[0] | 0, workType: t[1] | 0, priority: t[2] | 0 });
+  }
+  return out;
+}
+
+/** @typedef {FrameMsg|MetricsMsg|LinesMsg|StatusMsg|ChatMsg|CitizenMsg|MossMsg|LightMsg|DeviceMsg|LlmStatusMsg|RosterMsg|ChronMsg|RelationsMsg|DesignsMsg|TerminalsMsg|SystemsMsg|DecksMsg|RoomsMsg|DecorMsg|ZonesMsg|MarksMsg|ItemsMsg|DevicesMsg|BlockedMsg|WorkMsg} WireMsg */
 
 // NOTE — there is deliberately NO `systems` row decoder in this file. `moss-model.js:rowObj` is
 // the ONE authority for turning a `systems` tuple into a row, and it is where the DA-M1 sentinel

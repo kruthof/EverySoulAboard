@@ -82,6 +82,76 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// M2-4 — THE PLAYER'S WORK-PRIORITY ORDER: set ONE crew member's manual priority for ONE
+    /// <see cref="WorkType"/>. The only writer of <c>Citizen.WorkPrioritiesRaw</c> outside the save
+    /// reader, and the whole reason M2-1's storage stops being storage-only.
+    ///
+    /// <para>PER-PAWN, BY ID — the <see cref="MoveCitizenCommand"/> precedent. <c>sim.Citizens.TryGet</c>
+    /// resolves an ENTITY ID, never a store index: ids are not indices the moment anyone dies, and on
+    /// a wreck they do. A dead crew member is refused for the same reason a move order is: writing a
+    /// priority onto a corpse would move HASHED state (the CITZ v8 fold) for a row no surface will
+    /// ever draw.</para>
+    ///
+    /// <para>PRECONDITION-LIGHT AND SILENT — the <see cref="SetStockpileFilterCommand"/> precedent. An
+    /// unknown citizen id, a work-type index outside <c>0..WorkPriority.WorkTypeCount-1</c>, or a
+    /// priority outside <c>0..WorkPriority.Lowest</c> is a NO-OP, not a throw. Two reasons, and the
+    /// second is the load-bearing one: a client may enqueue a click blind (every designate verb
+    /// already may), and <see cref="Citizen.SetWorkPriority"/> THROWS on an out-of-range priority
+    /// because the byte is hashed — a throw that would escape on the sim thread's command drain and
+    /// take the whole session down over a malformed line. This class is the guard that keeps that
+    /// throw unreachable from the wire.</para>
+    ///
+    /// <para>⚠️ <b>BOTH PAYLOAD FIELDS ARE <c>int</c>, DELIBERATELY, AND THIS IS NOT A STYLE
+    /// CHOICE.</b> The producer is a tolerant JSON reader (<c>WebCommand.Parse</c>) that yields
+    /// <c>int</c>. If this constructor took <c>WorkType</c> and <c>byte</c>, the HOST would have to
+    /// narrow first — and a narrowing cast is not a guard: <c>(byte)(-256)</c> is <c>0</c>, which is
+    /// <see cref="WorkPriority.Off"/>, a perfectly REAL value. A garbled line would then switch a
+    /// work type off instead of being dropped. Taking the raw ints puts the range check and the cast
+    /// in ONE place, on the far side of the wire, where nothing can have narrowed the value before
+    /// the check sees it.</para>
+    ///
+    /// <para>NO CAPABILITY CHECK, matching <see cref="Citizen.WorkIncapable"/>'s own stated
+    /// invariant: nothing stops a priority being set on a work type this person cannot do. RimWorld's
+    /// <c>Pawn_WorkSettings.SetPriority</c> refuses that (<c>docs/design/rimworld-reference.md</c>
+    /// §1.6), and the refusal belongs with the capability SOURCE — the only package that can know the
+    /// incapable state is reachable at all. Nothing writes <c>WorkIncapable</c> in this tree.</para>
+    ///
+    /// <para>NO EVENT, NO DIRTY FLAG. Unlike the designate commands this publishes no
+    /// <c>TileChangedEvent</c> and sets no <c>JobsDirty</c> bit: nothing in the dispatcher reads the
+    /// grid yet (M2-2 is the reader), so a dirty flag here would be a claim about a board that does
+    /// not consult this state. It is one byte of citizen state and the next render picks it up off
+    /// the citizen store.</para>
+    /// </summary>
+    public sealed class SetWorkPriorityCommand : ISimCommand
+    {
+        private readonly uint _citizenId;
+        private readonly int _workType;
+        private readonly int _priority;
+
+        /// <param name="citizenId">The crew member's ENTITY id (never a store index).</param>
+        /// <param name="workType">A <see cref="WorkType"/> value as a raw index; anything outside
+        /// <c>0..WorkPriority.WorkTypeCount-1</c> is dropped.</param>
+        /// <param name="priority">0 = <see cref="WorkPriority.Off"/>, 1..4 with 1 the HIGHEST;
+        /// anything else is dropped.</param>
+        public SetWorkPriorityCommand(uint citizenId, int workType, int priority)
+        {
+            _citizenId = citizenId; _workType = workType; _priority = priority;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            if (_workType < 0 || _workType >= WorkPriority.WorkTypeCount) return;
+            // ⚠️ THE LOWER BOUND IS PART OF THE GUARD. `0` is OFF and is a real, reachable order —
+            // switching a work type back off is the second half of the player's verb — so this must
+            // refuse only what is BELOW zero, never clamp it up to Highest. A clamp would make "off"
+            // unsendable and the grid a one-way door.
+            if (_priority < WorkPriority.Off || _priority > WorkPriority.Lowest) return;
+            if (!sim.Citizens.TryGet(_citizenId, out var citizen) || citizen.Dead) return;
+            citizen.SetWorkPriority((WorkType)_workType, (byte)_priority);
+        }
+    }
+
+    /// <summary>
     /// Store a terminal's MOSS source as sim state via the command log (the DSL
     /// runtime compiles it separately; sources are canonical, programs are derived).
     /// </summary>

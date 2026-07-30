@@ -24,7 +24,9 @@
 
 import * as Hud from './hud.js';
 import { Cmd } from '../wire/session.js';
-import { selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices } from '../wire/messages.js';
+import {
+  selectedCrewCid, decodeDecks, decodeRooms, decodeMarks, decodeDevices, decodeWork,
+} from '../wire/messages.js';
 // `deckDeviceConditions` is the wear join; `eraseTarget`/`tileOrders` are the un-designate precedence
 // + the tile-facts derivation it runs on, SHARED VERBATIM with the Room Zoom (M1-C) rather than
 // re-stated, so the two surfaces cannot come to disagree about which of two orders on one tile an
@@ -170,6 +172,38 @@ function reconcile(container, map, items, keyOf, make, update) {
     if (el === cursor) { cursor = cursor.nextElementSibling; continue; }
     container.insertBefore(el, cursor);
   }
+}
+
+/**
+ * M2-4 — THIS SURFACE'S READER OF THE `work` CHANNEL: one crew member's manual priority for one
+ * <code>WorkType</code> index, or <code>null</code> when the channel has not arrived at all.
+ *
+ * ⚠️ IT HAS NO CALLER IN THIS PACKAGE, AND THAT IS THE POINT — the `deviceConditionAt` shape
+ * (`roomzoom-view.js`), which shipped the same way and for the same reason: the WORK TAB THAT DRAWS
+ * AND WRITES THIS GRID IS M2-3, and the data has to exist and be reachable before that package can
+ * read it back. What lands here is the seam, not the surface: no DOM, no element, no repaint work
+ * (the decode happens per CALL, so a channel nobody asks about costs nothing per frame — the
+ * `devices` lane was fairly criticised for paying a per-repaint decode for zero consumers).
+ *
+ * ⚠️ THE TWO ANSWERS THAT ARE NOT THE SAME. `0` means the player has switched this work type OFF —
+ * the channel is sparse and *absent = off* is the sim's own semantics (`WorkPriority.Off` is "the
+ * ABSENCE of a priority, not a fifth value"). `null` means WE HAVE NO PAYLOAD YET, which is a
+ * different claim and must not be rendered as "off": under OD-H every work type really is off at
+ * boot, so conflating them would be invisibly wrong exactly when it is least noticeable. (`work` is
+ * in the host's `Snapshot` key list, so a connected tab has the layer from its first frame.)
+ *
+ * ⚠️ AND 1 IS THE HIGHEST PRIORITY, 4 THE LOWEST — RimWorld's convention, which reads backwards
+ * against the intuition that a bigger number matters more.
+ * @param {number} cid crew member's entity id (the frame crew tuple's 4th element)
+ * @param {number} workType a WorkType index, 0..5 in the OD-J order
+ * @returns {number|null}
+ */
+export function workPriorityFor(cid, workType) {
+  const rows = decodeWork(Hud.getWork());
+  if (!rows) return null;
+  const c = cid | 0, t = workType | 0;
+  for (const r of rows) if (r.cid === c && r.workType === t) return r.priority;
+  return 0;
 }
 
 /** Mount the Overview surface + subscribe to the shared HUD state. Call once from main.js. */

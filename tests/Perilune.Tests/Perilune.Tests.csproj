@@ -75,6 +75,12 @@
          `WireFormat enthält keine Definition für "OperateRefused"` on GameSession.cs, which does not
          name this file at all. -->
     <Compile Include="../../hosts/web/WireFormat.Operate.cs" />
+    <!-- M2-4: the `work` channel (each crew member's manual work priorities — keyed by CITIZEN, so it
+         is the one sparse channel whose tuple does not lead with x,y,deck): an EIGHTH sibling partial,
+         WireFormat.cs again taking NO diff. Same hand-added rule, and it bit a FIFTH time exactly as
+         the four comments above promise — leaving this line out failed with `Der Typname "WorkCell"
+         ist im Typ "WireFormat" nicht vorhanden` on GameSession.cs, which does not name this file. -->
+    <Compile Include="../../hosts/web/WireFormat.Work.cs" />
     <!-- E0-8: the pure ShipMetrics honesty audit behind the `ledger` verb (Program.cs owns the IO).
          Tested directly so "an independent derivation, not the metric's own expression" is pinned. -->
     <Compile Include="../../hosts/scenario/LedgerHarness.cs" />

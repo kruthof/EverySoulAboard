@@ -719,6 +719,13 @@ namespace Perilune.Tests
             "sim/Sim.Core/Save/SaveWriter.cs",    // M2-1 — CITZ v8 write
             "sim/Sim.Core/Save/SaveReader.cs",    // M2-1 — CITZ v8 read
             "sim/Sim.Core/Simulation.cs",         // M2-1 — the StateHash fold
+            // ⭐ M2-4 — THE FIRST ENROLMENT, and it is a WRITER rather than a reader: the player's
+            // work-priority order (`SetWorkPriorityCommand`). M2-1's headline claim was that nothing
+            // reads the grid so its pin move was fold-only; this file does not change that — the
+            // command is inert until something SENDS it, and nothing in this tree does (the WORK tab
+            // is M2-3). What it does end is "no code outside the save path names the grid at all".
+            // The dispatcher still does not consult it: the veto is M2-2's, at five gates.
+            "sim/Sim.Core/Commands/Commands.cs",
         };
 
         private static readonly string[] WorkGridIdentifiers =
