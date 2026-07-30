@@ -19,6 +19,23 @@ boots idle). We do not optimize metrics — we move rows in `docs/TARGET.md` §3
    (OD-A…OD-K, binding). Detailed M2 charters: `docs/design/perilune-roadmap-q3.packages.md`.
 3. **`docs/TARGET.md`** — what we're building; the mechanism checklist that is the metric.
 
+## How a session runs (full detail: `docs/PROCESS.md` — binding)
+
+- **Pick work**: the topmost unmerged row in `docs/ROADMAP.md` §3, unless `HANDOVER.md`'s
+  "Next" section says otherwise or the owner directed something else. Never invent a task
+  from a metric or a finding; sub-questions and discovered defects get FILED in HANDOVER's
+  open list, not chased.
+- **Orchestrate, don't implement**: the main session instance is the ORCHESTRATOR and
+  integrator. Implementation runs in an **Opus 5 subagent** in the lane's worktree; every
+  produced artifact (code package, design doc, measurement) is then reviewed by a
+  **separate, independent subagent** that saw none of the implementer's reasoning.
+  Send-backs are fixed by the implementer and re-verified before merge.
+- **Document as you finish**: rewrite `HANDOVER.md`'s current-state block (hard cap ~120
+  lines — it must never overflow a fresh session's context), append one session-log row,
+  update the `TARGET.md` checklist / `ROADMAP.md` statuses your merge changed, and state
+  in "Next" what the following session should pick up. History goes to `docs/history/`,
+  never accumulates in the live files.
+
 On demand: `docs/MECHANICS.md` (how the sim behaves as implemented, `file:line` cited —
 **its §13 lists what is wired but NOT connected; read it before trusting a mechanic**) ·
 `docs/design/rimworld-reference.md` (the mechanism authority) · `docs/PROCESS.md` (session

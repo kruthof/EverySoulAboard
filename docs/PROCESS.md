@@ -28,9 +28,12 @@ because it moves a checklist row in `docs/TARGET.md` §3 or a milestone gate in
 3. Re-measure anything you're about to quote (test counts, pins, censuses). A number in a
    doc is only true of the tree it was measured on.
 
-**Work:** one package per lane. Implementer subagent + independent reviewer subagent
-(binding owner authorization; the session instance orchestrates only). Review is scoped to
-**code seams, not art** — the owner judges art from browser screenshots.
+**Work:** one package per lane. The session instance ORCHESTRATES ONLY (binding owner
+authorization, 2026-07-25): implementation runs in an **Opus 5 subagent**; every artifact
+it produces is reviewed by a **separate, independent subagent** (fresh context, none of the
+implementer's reasoning) before merge. Send-backs go back to the implementer; the
+integrator re-verifies the fix in the tree. Review is scoped to **code seams, not art** —
+the owner judges art from browser screenshots.
 
 **End (the handover ritual — this is how the next session starts fast):**
 1. Update `docs/HANDOVER.md`'s **Current state** block — REWRITE it, don't append. Hard cap
