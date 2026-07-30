@@ -22,7 +22,9 @@ namespace Perilune.Web
     /// console-retirement guard never censused this verb and structurally cannot see its absence.
     ///
     /// On <c>--ship wreck</c> that is not a gap, it is the missing first move: the premise opens on a
-    /// sealed compartment and the player's opening gesture is *"open the vent, push the air outward"*.
+    /// sealed compartment and the player's opening gesture is *"restore the vent and it fills the
+    /// compartment"* — a vent injects into its OWN room (OD-D, 2026-07-29; there is no neighbour
+    /// term), and the breathable frontier grows one restored compartment at a time.
     /// ─────────────────────────────────────────────────────────────────────────────────────────
     ///
     /// ⚠️ WHY A ONE-SHOT REPLY AND NOT A STATE CHANNEL. Every sparse channel in this directory

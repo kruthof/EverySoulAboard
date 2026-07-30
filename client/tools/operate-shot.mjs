@@ -9,7 +9,7 @@
 // same rig, pointed at the OPERATE verb, and it is committed rather than left in a scratchpad.
 //
 // IT ALSO ANSWERS THE ONE QUESTION ASSERTIONS CANNOT: is the verb REACHABLE? The premise's opening
-// move is "open the vent, push the air outward", and reachable means a player can get from the boot
+// move is "restore the vent and it fills the compartment" (OD-D), and reachable means a player can get from the boot
 // Overview to a vent's OPEN/SHUT control without knowing a keystroke. So the room is entered with a
 // REAL pointer click on `.pl-room[data-anchor]`, the tool is armed with a REAL click on the palette
 // button, and the tile is clicked at its real screen coordinates.
