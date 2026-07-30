@@ -1,5 +1,9 @@
 # PERILUNE — Economy Implementation Plan
 
+> ⚠️ **PARKED (OD-B, 2026-07-29).** E0 completed (all nine packages landed; the exit gate
+> measured FAIL and was re-chartered as a player gate). E1–E4 are NOT scheduled and this
+> plan is archived history, not a queue. Current work: `docs/ROADMAP.md`.
+
 *The execution companion to `ECONOMY.md`. Written 2026-07-22 against `main` @ `3efd181`.
 Nothing here is built. This document is written to be run by parallel worktree lanes plus one
 integrator, under the existing rituals in `HANDOVER.md` ("The rituals") and the conflict rules

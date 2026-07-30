@@ -1,5 +1,12 @@
 # The next three months — the BUILDABLE PACKAGES
 
+> ⚠️ **STATUS AUTHORITY MOVED (2026-07-29).** Package status, merge order and the OD ledger
+> are maintained in **`docs/ROADMAP.md`**; this file is the CHARTER DETAIL (seams, conflict
+> matrices, per-package mutations) and is not edited for status. When a charter here
+> disagrees with `ROADMAP.md` or an OD row, the roadmap wins. (`OWNER-VISION.md`, cited
+> below, never existed as a file — the owner's words are recorded in the memory index and
+> `docs/history/HANDOVER-2026-07.md`.)
+
 *Derived 2026-07-28 on `lane/roadmap` from `docs/design/perilune-roadmap-q3.plan.md` (revision 1,
 `d2113b1`), base `main` @ `72fbca4`. **This is the implementation document.** The plan says what and
 why and in what order; this says who does what, against which line, with which mutation, and how a

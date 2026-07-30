@@ -11,6 +11,11 @@ This document is the product north star. `ARCHITECTURE.md` says how, `PLAN.md` s
 and by whom. Legacy design history lives in `docs/legacy/` — still valid where not
 superseded here.*
 
+> **Sequencing note (2026-07-29, binding):** the pillars below are built in a decided
+> order — the RimWorld colony loop first (`docs/TARGET.md` §1, `docs/ROADMAP.md`), the
+> MOSS automation pillar second, owner-gated. Nothing below is retracted; Phase 2+ items
+> (the voyage, automation depth, DLC) simply wait for the loop to pass its human gate.
+
 ## One sentence
 
 **A RimWorld-depth colony simulation aboard a drifting ship where every crew member is a

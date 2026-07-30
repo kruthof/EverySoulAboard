@@ -1,5 +1,10 @@
 # PERILUNE — The Economic System
 
+> ⚠️ **PARKED (OD-B, 2026-07-29).** The economy programme stopped at E0-complete: E1–E4 are
+> not scheduled, A1 is retired as a goal, and this file is **archived design history, not a
+> queue**. Read it for the measured diagnosis and the axiom; for what is actually wired,
+> cite `MECHANICS.md` §13. Re-opening requires an owner faucet decision (`docs/ROADMAP.md` §7).
+
 *Design authority for matter, labour and value. Written 2026-07-22 against `main` @ `3efd181`,
 synthesised by the integrator from five independent read-only review lanes (audit of the
 current economy, logistics & labour, comparative genre design, external supply, architecture

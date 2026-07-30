@@ -1,5 +1,12 @@
 # The next three months — the high-level plan
 
+> ⚠️ **SUPERSEDED AS THE QUEUE (2026-07-29).** The current milestone/package status, pin
+> chain and decision ledger live in **`docs/ROADMAP.md`** — corrections there REPLACE text,
+> so read it first. This file remains the full shape-and-order rationale (with its revision
+> history), and `…packages.md` remains the charter detail for M2 seams. Known stale here:
+> the ＋ADD ROOM dependency argument (discharged by M1-L/OD-K), the pre-OD-G/H demo
+> direction, and every power figure (see HANDOVER defect D-1 — measure, don't quote).
+
 *Written 2026-07-28 on `lane/roadmap`, base `main` @ `72fbca4`. **This is a SHAPE-AND-ORDER
 document.** It is deliberately not an implementation plan; a separate lane derives that from it.
 Every claim about what the code does carries a `file:line` verified against `main` in this session,
