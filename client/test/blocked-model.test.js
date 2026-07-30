@@ -34,7 +34,7 @@ import {
   BLOCKED_ORDER_NAMES, BLOCKED_REASON_NAMES, BLOCKED_REASON_TEXT,
   BLOCKED_ORDER_DIG, BLOCKED_ORDER_STRIP, BLOCKED_ORDER_BUILD,
   BLOCKED_REASON_AIR, BLOCKED_REASON_NO_APPROACH, BLOCKED_REASON_NO_CONSUMABLE,
-  BLOCKED_REASON_UNREACHABLE,
+  BLOCKED_REASON_UNREACHABLE, BLOCKED_REASON_WORK_TYPE_OFF,
 } from '../src/wire/messages.js';
 import { roomBlockedTiles, roomTileRect } from '../src/ui/room-model.js';
 import { blockedCellSvg, blockedLayerSvg, blockedKeyHtml } from '../src/ui/blocked-overlay.js';
@@ -89,10 +89,12 @@ test('the order and reason vocabularies are pinned EQUAL to the host constants',
   assert.equal(constOf('ReasonNoApproach'), BLOCKED_REASON_NO_APPROACH);
   assert.equal(constOf('ReasonNoConsumable'), BLOCKED_REASON_NO_CONSUMABLE);
   assert.equal(constOf('ReasonUnreachable'), BLOCKED_REASON_UNREACHABLE);
+  assert.equal(constOf('ReasonWorkTypeOff'), BLOCKED_REASON_WORK_TYPE_OFF);
 
   // The NAME tables are indexed BY the wire value, so a hole or a reorder mis-labels every badge.
   assert.deepEqual(BLOCKED_ORDER_NAMES, ['dig', 'strip', 'build']);
-  assert.deepEqual(BLOCKED_REASON_NAMES, ['air', 'no_approach', 'no_consumable', 'unreachable']);
+  assert.deepEqual(BLOCKED_REASON_NAMES,
+    ['air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off']);
   for (const name of BLOCKED_REASON_NAMES) {
     assert.ok(BLOCKED_REASON_TEXT[name], `reason '${name}' has no player-facing sentence — a badge `
       + 'with no words is the silence this channel exists to remove, wearing a new costume');
@@ -278,6 +280,42 @@ test('blockedKeyHtml counts the stuck orders and gives ONE row per distinct reas
   assert.match(html, /rz-key-sw-blocked-no_approach/);
   assert.ok(html.includes(BLOCKED_REASON_TEXT.air));
   assert.equal(blockedKeyHtml([]), '', 'nothing stuck ⇒ no key, so the box can hide');
+});
+
+// ⭐ M2-18 — THE CONSUMER CHAIN FOR `work_type_off`, END TO END THROUGH THE SHIPPED MODULES: a wire
+// row carrying reason 4 must arrive in the VISIBLE key as WORDS. Under OD-H this is the badge a new
+// player meets first — every work type boots off, so the very first order they paint carries it —
+// and a badge whose legend row reads "REASON UNKNOWN TO THIS CLIENT" is the silence this channel
+// exists to remove, arriving one layer further down.
+//
+// It is driven through decodeBlocked → roomBlockedTiles → blockedKeyHtml, not asserted against the
+// table directly, because the table being right is not the claim: the claim is that the sentence
+// reaches the key.
+// MUTATION: drop 'work_type_off' from BLOCKED_REASON_NAMES ⇒ red (the name resolves '' and the text
+// falls back to UNKNOWN). MUTATION 2: delete the `work_type_off` entry from BLOCKED_REASON_TEXT ⇒
+// red the same way, on a different half of the seam. Both were run.
+test('a work-type-off row reaches the key as WORDS, and they are M2-20\'s vocabulary', () => {
+  const tiles = fold([row(ROOM.rx, ROOM.ry, ROOM.deck, BLOCKED_ORDER_STRIP, BLOCKED_REASON_WORK_TYPE_OFF)]);
+  assert.equal(tiles.length, 1, 'premise: the row is in the focused room');
+  assert.equal(tiles[0].reasonName, 'work_type_off');
+  assert.ok(!/UNKNOWN/.test(tiles[0].reasonText),
+    'the client could not name reason 4 — the badge would draw with no explanation, which is the '
+    + 'exact failure the channel exists to remove');
+
+  const html = blockedKeyHtml(tiles);
+  assert.match(html, /rz-key-sw-blocked-work_type_off/, 'the key row needs its swatch hook');
+  assert.ok(html.includes(BLOCKED_REASON_TEXT.work_type_off),
+    'the sentence must reach the visible key, not only the <title>');
+  // THE VOCABULARY CHECK (M2-20 owns the words). The tile names the SHIP's state — "nobody aboard is
+  // assigned that work" — and must not invent a second word for a PAWN's state; `Awaiting orders` is
+  // the crew dock's sentence and belongs to M2-20 alone.
+  assert.match(BLOCKED_REASON_TEXT.work_type_off, /^NOBODY ABOARD IS ASSIGNED THAT WORK$/,
+    'the tile\'s words are fixed by the M2-20 vocabulary agreement: it says what the SHIP has not '
+    + 'been told to do, in the same family of words, and invents no third name for it');
+  assert.ok(!/AWAITING|IDLE|UNASSIGNED/i.test(BLOCKED_REASON_TEXT.work_type_off),
+    'a second vocabulary for one player confusion. M2-20 says "Awaiting orders" on the PERSON; this '
+    + 'surface says its half on the TILE, and three packages describing one confusion is how a repo '
+    + 'acquires two names for one predicate.');
 });
 
 test('blockedKeyHtml singularises one order and stays escaped', () => {

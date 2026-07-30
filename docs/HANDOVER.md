@@ -53,6 +53,10 @@ Nothing blocking. New, from this session's merges (review as you play):
   `GameSession.AwaitingOrdersLabel`; any reversal must re-measure in the browser.
 - The onboarding card dropped its `Space` row to fit the new WORK row (Space is written on
   screen by the ship itself at `#ov-nudge`); if you want it back, another row must go.
+- M2-18 ranks `ReasonWorkTypeOff` ABOVE `ReasonUnreachable`; the review showed the
+  both-carrying state is reachable in play (latch survives the switch-off) and by the
+  package's own "world facts outrank switch facts" principle the ranking is arguably
+  inverted. Shipped order is honest (a two-step reveal, never lies); glance and rule.
 - The WORK tab's column labels abbreviate OD-J (`BUILD` for Construct, `STRIP` for
   Deconstruct) and `BUILD` collides with the BUILD tab label in the same command bar.
 - The ascending-only click cycle (off→1→2→3→4→off) deviates from RimWorld's two-gesture
