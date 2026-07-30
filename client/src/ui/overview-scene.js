@@ -307,9 +307,27 @@ function glowPools(slots, t, id) {
   const body = [];
   let i = 0;
   for (const slot of slots) {
-    // CRITICAL (VS-O-31 / Phase-2b note): drive the glow from `occupied`, NOT `active` — `active`
-    // is a deck-level flag and would light every empty hall.
-    if (!slot.occupied) continue;
+    // ⚠️ ⭐ M1-L CHANGED WHAT THIS LINE HAD TO ASK, and the original wording is kept below because the
+    // hazard it names is still live in the other direction.
+    //
+    // WAS: `if (!slot.occupied) continue;` — "CRITICAL (VS-O-31 / Phase-2b note): drive the glow from
+    // `occupied`, NOT `active` — `active` is a deck-level flag and would light every empty hall."
+    // That is still true of `active`. But `occupied` now means "this slot's walls enclose a real
+    // room", which is TRUE FOR EVERY SLOT ON EVERY SHIPPED SHIP — so it would light every hall too,
+    // by the other road. MEASURED on `--ship wreck`: glow pools would go 3 → 8 on deck 0 and
+    // **0 → 8 on the DEAD DECK**, putting an amber light pool in eight unpowered, airless, sealed
+    // compartments on the ship `./play.sh` opens.
+    //
+    // So the glow keeps the exact SET it always had, by asking the thing that set always was: does
+    // this compartment have an authored PURPOSE? Zero visual change to this layer — which is the
+    // point. Widening `occupied` must not silently repurpose a player-facing signal, and a pool of
+    // warm light is a claim about the ship's state, not about its floor plan.
+    //
+    // ⚠️ THIS IS DELIBERATELY NOT `slot.atmos`, though that reads like the better question. It would
+    // drop LIFE SUPPORT's pool on the wreck (typed, but airless behind its own shut door), i.e. it
+    // would be a THIRD behaviour rather than a preserved one. Whether a glow should track air, power
+    // or purpose is a design question for the lens work, and it is filed, not answered here.
+    if (!slot.roomType) continue;
     const r = t.rect(slot.rect);
     const c = glowColor(slot);
     const gid = `${id}-glow-${slot.slotIndex}`;

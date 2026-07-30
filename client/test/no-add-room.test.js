@@ -43,7 +43,7 @@ import {
   SLOT_COLS,
 } from '../src/ui/decks-model.js';
 import { roomTileRect } from '../src/ui/room-model.js';
-import { overviewClickAction } from '../src/ui/overview-model.js';
+import { overviewClickAction, lensSlotTint, GRADE_TINT } from '../src/ui/overview-model.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 
 const src = (p) => readFileSync(fileURLToPath(new URL('../src/' + p, import.meta.url)), 'utf8');
@@ -372,4 +372,72 @@ test('M1-L: the neutral compartment name FITS its label slot — the clip budget
   assert.deepEqual(overBudget, ['LIFE SUPPORT'],
     'the set of authored room names that would clip on a bottom-row slot has CHANGED. That is not '
     + 'necessarily wrong, but it is the known limit this package filed, so update it deliberately.');
+});
+
+// ═════════════════ 5. WIDENING `occupied` MUST NOT SILENTLY REPURPOSE A PLAYER-FACING SIGNAL
+
+// ⚠️ BOTH TESTS BELOW EXIST BECAUSE THE FIRST DRAFT OF THIS PACKAGE SHIPPED BOTH REGRESSIONS, and
+// the whole suite was green. `occupied` used to mean "an anchor with a RoomType resolves here" and
+// now means "this slot's walls enclose a real room" — which is TRUE FOR EVERY SLOT ON EVERY SHIPPED
+// SHIP. Every reader of the flag therefore became a constant. That is the M1-F failure (a gauge that
+// is never anything but a constant) arriving as a SIDE EFFECT rather than as a feature, and nothing
+// in the suite could see it because nothing pinned what the flag was worth.
+
+test('M1-L: the glow pools keep the EXACT set they had — a widened flag must not light the dead deck', () => {
+  // MEASURED on `--ship wreck` with the glow still reading `occupied`: pools go 3 → 8 on deck 0 and
+  // 0 → 8 on DECK 1, which is unpowered, airless, sealed, and dead by owner decision (OD-E).
+  for (const d of WVIEW) {
+    const svg = overviewScene({ deck: d.deck, decksView: WVIEW, frame: null, crew: [], marks: [] });
+    const glows = (svg.match(/id="ov-glow-\d+"/g) || []).length;
+    const purposed = d.slots.filter((s) => s.roomType !== 0).length;
+    assert.equal(glows, purposed,
+      `deck ${d.deck} draws ${glows} glow pools for ${purposed} purposed compartments. The glow is a `
+      + 'claim about the ship\'s state, not about its floor plan.');
+  }
+  // The two decisive numbers, written out so a future edit cannot drift them quietly.
+  const deck1 = WVIEW.find((d) => (d.deck | 0) === 1);
+  assert.equal(deck1.slots.filter((s) => s.roomType !== 0).length, 0, 'the wreck\'s dead deck gained a purposed room');
+  const svg1 = overviewScene({ deck: 1, decksView: WVIEW, frame: null, crew: [], marks: [] });
+  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, 0,
+    'the DEAD DECK is lit by eight amber pools — `occupied` is back in the glow predicate');
+  // NON-VACUITY: deck 0 really does glow, so "0 on deck 1" is not "the layer is switched off".
+  const svg0 = overviewScene({ deck: 0, decksView: WVIEW, frame: null, crew: [], marks: [] });
+  assert.equal((svg0.match(/id="ov-glow-\d+"/g) || []).length, 3,
+    'deck 0 lost its glow pools too — this test is measuring a dead layer, not a correct predicate');
+});
+
+test('M1-L: `active` still means "this deck is alive" — the POWER lens must not green the dead deck', () => {
+  // `lensSlotTint(\'power\', slot)` returns the GOOD tint whenever `slot.active` is set
+  // (`overview-model.js`), and `active` is host-derived. With it still keyed to `occupied` the POWER
+  // lens painted all eight DECK-1 compartments green on `--ship wreck` — a deck with no conduit tray,
+  // whose machinery is off-network and neither draws nor runs.
+  const byDeck = new Map(WVIEW.map((d) => [d.deck | 0, d]));
+  const live = byDeck.get(0).slots.filter((s) => s.active).length;
+  const dead = byDeck.get(1).slots.filter((s) => s.active).length;
+  assert.equal(dead, 0,
+    'every compartment on the wreck\'s DEAD deck reports `active`, so the POWER lens tints it GOOD. '
+    + 'The host is deriving `active` from the widened `occupied` again (GameSession.BuildDecks).');
+  assert.equal(live, 8, 'deck 0 is not active at all — the flag is now a different constant, not a fact');
+  // ⚠️ THE ASSERTION THAT MATTERS IS *GOOD vs BAD*, NOT *TINT vs NO TINT* — and the first draft of
+  // this test got that wrong and failed for the wrong reason. `lensSlotTint('power', …)` returns
+  // `GRADE_TINT.bad` (red) for an inactive slot, never null, so "no tint on the dead deck" was never
+  // the property. RED on the dead deck is CORRECT INFORMATION: the deck is unpowered and now says so.
+  for (const s of byDeck.get(1).slots) {
+    assert.equal(lensSlotTint('power', s), GRADE_TINT.bad,
+      `${s.anchorName} on the dead deck is not tinted BAD under the POWER lens`);
+    assert.notEqual(lensSlotTint('power', s), GRADE_TINT.good,
+      `${s.anchorName} on the DEAD deck is tinted GOOD — the lens is claiming an off-network, `
+      + 'unpowered compartment is powered');
+  }
+  // NON-VACUITY: the same call on a LIVE deck must produce the OTHER tint, or "bad everywhere" would
+  // only prove the lens returns one constant.
+  assert.equal(lensSlotTint('power', byDeck.get(0).slots[0]), GRADE_TINT.good,
+    'the POWER lens reads BAD on the live deck too — it is a constant, so this test sees nothing');
+
+  // ⭐ A DELIBERATE, DISCLOSED WIDENING, recorded so a reviewer does not read it as an oversight:
+  // the dead deck now takes EIGHT red washes under the POWER lens where before M1-L it took NONE
+  // (its slots were unoccupied, and `lensOverlaySvg` skips those). That is the package working —
+  // every compartment is a room, so every compartment is lensed — and the reading it gives is true.
+  assert.equal(byDeck.get(1).slots.filter((s) => s.occupied).length, 8,
+    'the dead deck is not fully occupied, so it would not be lensed at all');
 });

@@ -1765,10 +1765,12 @@ namespace Perilune.Web
             // Group slots by deck in first-seen order (the plan appends them deck-major, slot 0..7).
             var byDeck = new List<int>();
             var buckets = new Dictionary<int, List<WireFormat.DeckSlot>>();
+            var liveDecks = new HashSet<int>();   // decks holding ≥1 room with gas — see the second pass
             for (int i = 0; i < slots.Count; i++)
             {
                 var slot = slots[i];
-                var (occupied, anchorName, liveType) = ResolveSlot(world, rs, slot);
+                var (occupied, anchorName, liveType, hasGas) = ResolveSlot(world, rs, slot);
+                if (hasGas) liveDecks.Add(slot.Deck);
                 if (!buckets.TryGetValue(slot.Deck, out var list))
                 {
                     list = new List<WireFormat.DeckSlot>(8);
@@ -1783,12 +1785,25 @@ namespace Perilune.Web
                     anchorName, typeByte, occupied, active: false));
             }
 
-            // Second pass: active = the deck holds ≥1 occupied (non-vacuum) room; stamp every slot.
+            // Second pass: active = the deck holds ≥1 room WITH GAS; stamp every slot.
+            //
+            // ⚠️ ⭐ M1-L: THIS USED TO READ `list[s].Occupied`, AND LEAVING IT THERE WAS A LIVE LIE.
+            // Occupancy is now geometry, so it is TRUE FOR EVERY SLOT ON EVERY SHIPPED SHIP — which
+            // would have made `active` a constant, and `active` is not decoration: `lensSlotTint`
+            // reads it for the POWER lens (`overview-model.js:400`), tinting `good` when set.
+            // MEASURED on `--ship wreck` before the fix: the POWER lens painted all EIGHT
+            // compartments of DECK 1 green — the deck that is off-network by authoring and dead by
+            // owner decision (OD-E). A widened flag quietly repurposed a player-facing readout, which
+            // is the M1-F failure (a gauge that is never anything but a constant) arriving by
+            // side effect.
+            //
+            // Gas restores what the flag always MEANT — "is anything on this deck alive?" — and is
+            // measured to reproduce its pre-M1-L value on every shipped ship: wreck deck 0 true /
+            // deck 1 false; grid decks 0-1 true, decks 2-7 false.
             for (int d = 0; d < byDeck.Count; d++)
             {
                 var list = buckets[byDeck[d]];
-                bool deckActive = false;
-                for (int s = 0; s < list.Count; s++) if (list[s].Occupied) { deckActive = true; break; }
+                bool deckActive = liveDecks.Contains(byDeck[d]);
                 if (deckActive)
                     for (int s = 0; s < list.Count; s++)
                     {
@@ -1830,15 +1845,23 @@ namespace Perilune.Web
         /// <c>slot.Anchor</c> first makes a merged compartment keep its own name on both halves; the
         /// scan survives only as the fallback for a slot whose own anchor has drifted off its room.</para>
         ///
-        /// <para>⚠️ W4b history, still true: this used to gate on GAS (<c>TotalMoles &gt; 0</c>).
+        /// <para>⚠️ W4b history, still true: OCCUPANCY used to gate on GAS (<c>TotalMoles &gt; 0</c>).
         /// "Named" and "has air" are different events — a furnished room can be vented and a carved
-        /// one can be airless — so gas was never the right question. <c>occupied</c> with a null atmos
-        /// row is the NORMAL case now, not the new one, and <c>decks-model.js</c>'s
-        /// <c>deckSlotView</c> null-guards the atmos join.</para></summary>
-        private static (bool Occupied, string AnchorName, RoomType Type) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
+        /// one can be airless — so gas was never the right question FOR OCCUPANCY. <c>occupied</c> with
+        /// a null atmos row is the NORMAL case now, not the new one, and <c>decks-model.js</c>'s
+        /// <c>deckSlotView</c> null-guards the atmos join.</para>
+        ///
+        /// <para><b>⭐ <c>HasGas</c> IS RETURNED SEPARATELY, AND IT IS NOT A RELAPSE.</b> It feeds the
+        /// DECK-LEVEL <c>active</c> flag, which asks a different question — "is anything on this deck
+        /// alive?" — and for that, gas is exactly right and always was. Nobody "allocates" a deck, so
+        /// the W4b argument (that naming and pressurising are separate events) does not apply to it.
+        /// It exists because widening <c>occupied</c> would otherwise have silently widened
+        /// <c>active</c> with it: see <c>BuildDecks</c>, where that was measured as a live lie.</para>
+        /// </summary>
+        private static (bool Occupied, string AnchorName, RoomType Type, bool HasGas) ResolveSlot(World world, RoomState rs, SlotDescriptor slot)
         {
             int deck = slot.Deck;
-            if (deck < 0 || deck >= world.Depth) return (false, "", RoomType.None);
+            if (deck < 0 || deck >= world.Depth) return (false, "", RoomType.None, false);
 
             ushort roomId = 0;
             for (int y = slot.Y; y < slot.Y + slot.H && roomId == 0; y++)
@@ -1851,8 +1874,9 @@ namespace Perilune.Web
                     if (id != 0 && id != RoomState.DoorMarker) { roomId = id; break; }
                 }
             }
-            if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "", RoomType.None);
+            if (roomId == 0 || roomId >= rs.Rooms.Count) return (false, "", RoomType.None, false);
 
+            bool hasGas = rs.Rooms[roomId].TotalMoles > 0;
             var anchors = rs.Anchors;
 
             // 1. THE SLOT'S OWN ANCHOR, when it still sits in this slot's room (see the header).
@@ -1861,7 +1885,7 @@ namespace Perilune.Web
                 var a = anchors[i];
                 if (a.Probe.Z != deck) continue;
                 if (!string.Equals(a.Name, slot.Anchor, StringComparison.Ordinal)) continue;
-                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type);
+                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type, hasGas);
             }
 
             // 2. Fallback: any anchor whose probe lands in the same room. Reached when the slot's own
@@ -1871,9 +1895,9 @@ namespace Perilune.Web
             {
                 var a = anchors[i];
                 if (a.Probe.Z != deck) continue;
-                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type);
+                if (rs.RoomIdAt(world, a.Probe) == roomId) return (true, a.Name, a.Type, hasGas);
             }
-            return (false, "", RoomType.None);
+            return (false, "", RoomType.None, false);
         }
 
         /// <summary>Per-room atmosphere for the warm SVG LENS overlays / atmos box — a READ-ONLY walk
