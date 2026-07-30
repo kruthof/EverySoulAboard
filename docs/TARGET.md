@@ -65,10 +65,10 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 | T2 | WORK tab on the standard surface + wire channel | §1.7 | queued (M2-3/M2-4, BLOCKING) |
 | T3 | Dispatcher honours the grid at every claim site (11 sites, 5 gates, 3 exclusions) | §1.8 | queued (M2-2) |
 | T4 | Cross-family ranking + tie-break by work-list order (OD-J) | §1.3 | queued (M2-5) |
-| T5 | Right-click "Prioritise: repair X" forced order | §2.2 | queued (M2-9/M2-10) |
+| T5 | Right-click "Prioritise: repair X" forced order | §2.2 | partial (M2-9 merged: the sim verb, order-beats-grid-never-incapability pinned; the right-click UI is M2-10, in review) |
 | T6 | Pre-emption + sticky ordered claim (order wins NOW and HOLDS) | §2.2 | mechanism DONE (M2-8 + M2-19 merged); nothing WRITES the hold until M2-9's command, so not yet visible in play — browser demo is M2-10's |
 | T7 | Direct orders: move, operate, erase; pawn selection in Room Zoom | §2.1 | DONE (M1-C/M1-K + operate verb) |
-| T8 | A stalled/refused order says WHY, on the tile | §2.4 (`JobCondition`) | partial (`blocked` channel + M2-18 tile reason + M2-20 pawn word + M2-6 ranking clause in the Overview readout; remaining: `ReasonNoConsumable` via M2-9) |
+| T8 | A stalled/refused order says WHY, on the tile | §2.4 (`JobCondition`) | partial (`blocked` channel + M2-18 tile reason + M2-20 pawn word + M2-6 ranking clause in the Overview readout; `ReasonNoConsumable` now emitted for an ordered unfixable machine, M2-9; other order refusals still silent, filed §13.25 b2) |
 | T9 | Designations survive & are erasable (dig/strip/stockpile/erase) | §2.1 | DONE (marks channel + M1-C) |
 | T10 | Repair is a work type with visible effect — repair a wing, lights come back | OD-A/OD-K | queued (M2-11/M2-12: power is condition-blind today) |
 | T11 | Skills gate output, never whether (passions later) | §5 | missing (M3-7/M3-12) |

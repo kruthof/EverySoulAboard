@@ -483,8 +483,14 @@ namespace Perilune.Sim
             return false;
         }
 
-        /// <summary>The machine's single servicer: first live Maintain citizen bound to its tile.</summary>
-        private static Citizen FindWorker(Simulation sim, Int3 devicePos)
+        /// <summary>The machine's single servicer: first live Maintain citizen bound to its tile.
+        ///
+        /// <para><b>PUBLIC since M2-9</b>, for the same reason <see cref="IsUnfixableWreck"/> is:
+        /// <c>PrioritiseJobCommand</c> must refuse to bind a SECOND servicer to a machine, and
+        /// "who is servicing this machine" has to be one question. <c>DriveWorkers</c> drives every
+        /// Maintain citizen bound to the tile, so two of them would repair it twice while this
+        /// method could only ever see the first.</para></summary>
+        public static Citizen FindWorker(Simulation sim, Int3 devicePos)
         {
             var citizens = sim.Citizens.Items;
             for (int i = 0; i < citizens.Count; i++)
@@ -683,8 +689,15 @@ namespace Perilune.Sim
         ///
         /// Returning false here needs no new branch upstream: both callers already handle "nowhere
         /// to stand" — <see cref="RecruitForNeediest"/> skips the machine for the pass, and
-        /// <see cref="DriveWorker"/> drops any carried stack and releases the worker.</summary>
-        private static bool TryFindStagingTile(Simulation sim, Int3 devicePos, out Int3 staging)
+        /// <see cref="DriveWorker"/> drops any carried stack and releases the worker.
+        ///
+        /// <para><b>PUBLIC since M2-9.</b> <c>PrioritiseJobCommand</c> asks it before accepting a
+        /// direct order, because a player's order overrides the work GRID and never
+        /// <c>WorksiteSafety.CanStageWorkerAt</c> — and asking THIS method rather than re-walking
+        /// the four neighbours is what keeps that promise the same promise the dispatcher makes.
+        /// It stays "the second and last place in the sim that picks a tile to park a worker on":
+        /// the new caller reads the answer, it does not compute one.</para></summary>
+        public static bool TryFindStagingTile(Simulation sim, Int3 devicePos, out Int3 staging)
         {
             for (int i = 0; i < 4; i++)
             {

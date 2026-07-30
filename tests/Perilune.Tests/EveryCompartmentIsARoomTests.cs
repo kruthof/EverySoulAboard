@@ -542,9 +542,10 @@ namespace Perilune.Tests
 
             Assert.That((int)CmdKind.Dig, Is.EqualTo(17), "Dig shifted — a CmdKind member moved");
             Assert.That((int)CmdKind.Operate, Is.EqualTo(22), "Operate shifted — a CmdKind member moved");
-            Assert.That((int)CmdKind.WorkPriority, Is.EqualTo(23),
-                "WorkPriority shifted — it is the LAST member and new kinds are appended, so this is " +
-                "the one that moves whenever anything is inserted rather than appended");
+            Assert.That((int)CmdKind.WorkPriority, Is.EqualTo(23), "WorkPriority shifted — a CmdKind member moved");
+            Assert.That((int)CmdKind.Prioritise, Is.EqualTo(24),
+                "Prioritise shifted — it is the LAST member (M2-9) and new kinds are appended, so " +
+                "this is the one that moves whenever anything is inserted rather than appended");
 
             // NON-VACUITY / inclusion: the members BEFORE the deleted one must NOT have moved, or
             // "the ordinals are pinned" would be satisfied by an enum that had shifted wholesale.
