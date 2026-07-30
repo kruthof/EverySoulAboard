@@ -121,6 +121,7 @@ namespace Perilune.Tests
             Assert.AreEqual(0, WireFormat.OrderDig);
             Assert.AreEqual(1, WireFormat.OrderStrip);
             Assert.AreEqual(2, WireFormat.OrderBuild);
+            Assert.AreEqual(3, WireFormat.OrderRepair);   // M2-9, appended
             Assert.AreEqual(0, WireFormat.ReasonAir);
             Assert.AreEqual(1, WireFormat.ReasonNoApproach);
             Assert.AreEqual(2, WireFormat.ReasonNoConsumable);
@@ -797,15 +798,27 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// THE RESERVED REASON IS DECLARED AND NEVER EMITTED. <see cref="WireFormat.ReasonNoConsumable"/>
-        /// exists so <c>lane/recovery-economy</c>'s <c>IsUnfixableWreck</c> cannot collide with a value
-        /// this lane picks later — but this host cannot call that predicate and a host-side
-        /// re-derivation of "is there any Parts aboard" would be the second-authority defect the
-        /// channel's header refuses. Pinned rather than trusted: a reserved constant that quietly
-        /// starts being emitted is how a vocabulary rots.
+        /// ⭐ <b>FLIPPED BY M2-9: <see cref="WireFormat.ReasonNoConsumable"/> IS EMITTED NOW — FOR
+        /// EXACTLY ONE CASE, AND THIS LEG PINS THE OTHER SIDE OF IT.</b> Until M2-9 the constant was
+        /// declared and never produced, and this test said so. The predicate behind it
+        /// (<c>MaintenanceSystem.IsUnfixableWreck</c>) now has a caller — but ONLY on a machine the
+        /// player has DIRECTLY ORDERED repaired (<c>GameSession.AddIfUnfixable</c>, reached from the
+        /// pending-order walk).
+        ///
+        /// <para><b>So what is pinned here is the SCOPE.</b> Paint every designation kind this
+        /// channel knows, issue NO repair order, and the reason must still never appear. That is what
+        /// stops the discharge quietly widening into "badge every damaged device aboard" — omission
+        /// (4) in the channel's header, which M2-9 narrowed and did not reverse. A reserved constant
+        /// that starts being emitted where nobody asked for it is how a vocabulary rots, and on a
+        /// wreck that particular rot is a permanent nag about work nobody ordered.</para>
+        ///
+        /// <para>The INCLUSION half — an ordered unfixable machine really does emit it — is
+        /// <c>PrioritiseOrderTests.AnOrderedUnfixableMachine_ReachesTheBlockedChannelAsNoConsumable</c>,
+        /// deliberately in the package's own file: this one would otherwise pass on a host that
+        /// emits the reason NEVER, which is the state it used to describe.</para>
         /// </summary>
         [Test]
-        public void The_Reserved_NoConsumable_Reason_Is_Never_Emitted_By_This_Host()
+        public void The_NoConsumable_Reason_Is_Never_Emitted_Without_A_Direct_Repair_Order()
         {
             var (gs, host) = BootGrid();
             var sim = host.Sim;
@@ -814,8 +827,11 @@ namespace Perilune.Tests
             sim.World.SetFlag(airless, TileFlags.Designated, true);
             Assert.That(Rows(gs).Any(), Is.True, "premise: something is on the channel to be checked");
             Assert.That(Rows(gs).All(r => r.Reason != WireFormat.ReasonNoConsumable), Is.True,
-                "this host emitted the RESERVED no_consumable reason. It is declared for the lane that " +
-                "owns IsUnfixableWreck; emitting it from here means someone re-derived that predicate.");
+                "this host emitted no_consumable with no direct repair order anywhere. The reason is " +
+                "scoped to a machine the PLAYER pointed at; emitting it for automatic maintenance " +
+                "badges every damaged device on the ship.");
+            Assert.That(Rows(gs).All(r => r.Order != WireFormat.OrderRepair), Is.True,
+                "and no REPAIR-order row exists either — nobody ordered a repair on this fixture");
         }
 
         /// <summary>

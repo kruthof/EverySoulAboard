@@ -361,6 +361,12 @@ namespace Perilune.Web
                 // means "re-render even though the sim is paused". The `work` channel picks the new byte
                 // up off `sim.Citizens` on the next render, which the sim loop takes anyway.
                 case CmdKind.WorkPriority: HandleWorkPriority(cmd); return false;
+                // ⭐ M2-9 — the direct order ("that machine, now"). Returns TRUE, unlike the two
+                // above, and the difference is not a slip: this handler writes HOST VIEW STATE
+                // (`_prioritised`, the pending-order record the `blocked` channel reads), so a
+                // right-click taken while the sim is PAUSED must still repaint — otherwise the
+                // "NO PARTS OR SEALS ABOARD" answer to that click waits for the player to unpause.
+                case CmdKind.Prioritise: HandlePrioritise(cmd); return true;
                 // ⭐ M1-L: `case CmdKind.AddRoom: HandleAddRoom(cmd); return true;` is DELETED, with
                 // the `"addroom"` parse case and the two private methods behind it. The verb is
                 // UNREACHABLE end to end: no client sender, no parse, no route. ⭐ M1-L-b then
@@ -942,6 +948,104 @@ namespace Perilune.Web
         {
             _sim.EnqueueCommand(new SetWorkPriorityCommand(cmd.Cid, cmd.Work, cmd.Priority));
         }
+
+        /// <summary>
+        /// ⭐⭐ <b>M2-9 — THE DIRECT-ORDER BRIDGE: one named crew member, one machine, "now".</b>
+        /// Enqueues a <see cref="PrioritiseJobCommand"/> and lets the sim decide at the tick
+        /// boundary — <c>HandleWorkPriority</c>'s contract, and for its reasons: the command is the
+        /// ONE validator, and a second host-side check is a second authority that can drift.
+        ///
+        /// <para>⭐ <b>AND IT REMEMBERS WHAT WAS ASKED, WHICH IS THE HALF THAT DISCHARGES
+        /// <see cref="WireFormat.ReasonNoConsumable"/>.</b> A repair order the sim refuses under the
+        /// wreck rule leaves NOTHING behind in the sim to report — no job, no hold, and this package
+        /// may add no order registry to sim state — so the <c>blocked</c> channel would have nothing
+        /// to hang the refusal on and the player's click would vanish silently: the
+        /// invisible-feedback failure this repo has paid three owner reports for.
+        /// <see cref="_prioritised"/> is that memory, and it is HOST-SIDE RENDER SCRATCH exactly as
+        /// the reach latch (<see cref="_latched"/>) is — never saved, never hashed, never sim state.
+        /// It records only WHAT WAS ASKED; the reason is re-derived live at render time from
+        /// <c>MaintenanceSystem.IsUnfixableWreck</c>, so nothing here decides a refusal.</para>
+        ///
+        /// <para><b>THE TILE→DEVICE RESOLUTION IS THIS SIDE'S JOB</b> (the M2-9/M2-10 wire contract):
+        /// the client can only name a machine by the tile it clicked, because the <c>devices</c>
+        /// channel carries no device id, and what crosses into the sim is an ENTITY ID. Resolved
+        /// through <c>_sim.TryGetDeviceAt</c> and ⚠️ <b>emphatically not this file's own
+        /// <c>TryDeviceAt</c></b> — see <see cref="HandleOperate"/>, where the linear scan's habit of
+        /// returning the CONDUIT on any powered device's tile was a measured live defect. A tile with
+        /// no machine on it is refused WITHOUT ENQUEUING, exactly as OPERATE refuses one, so a
+        /// mis-click never becomes a pending order; the same goes for a tile the player has not
+        /// explored, which they cannot have meant to click.</para>
+        ///
+        /// <para>THE COORDINATES ARE CLAMPED FIRST, <c>HandleOperate</c>'s shape, because an
+        /// out-of-range tile would index the flag plane on the render thread. Clamping (rather than
+        /// dropping) matches every other {x,y,deck} verb here; a clamped tile has no machine on it
+        /// and lands on the refusal above.</para>
+        ///
+        /// <para>NO STATUS LINE and no reply message: the answer is the <c>blocked</c> badge on the
+        /// machine, and the crew dock's own row once she is on it. ⚠️ Only the WRECK RULE reaches
+        /// the player. The command's other refusals — incapable, nothing to service, nowhere
+        /// survivable to stand, somebody else already on it — are still SILENT, which is a real gap
+        /// and is recorded in <c>docs/MECHANICS.md</c> §13 rather than papered over here.</para>
+        /// </summary>
+        private void HandlePrioritise(WebCommand cmd)
+        {
+            var pos = new Int3(Clamp(cmd.X, 0, _sim.World.Width - 1),
+                               Clamp(cmd.Y, 0, _sim.World.Height - 1),
+                               Clamp(cmd.I, 0, _sim.World.Levels.Length - 1));
+            if (!_sim.TryGetDeviceAt(pos, out var device) || !IsExplored(pos)) return;
+            _prioritised[cmd.Cid] = device.Id;
+            _sim.EnqueueCommand(new PrioritiseJobCommand((int)cmd.Cid, (int)device.Id));
+        }
+
+        /// <summary>
+        /// ⭐ <b>THE PENDING DIRECT ORDERS — crew id → the ID of the machine the player last pointed
+        /// that crew member at.</b> By ID and not by tile, matching what crosses the wire into the
+        /// sim: a tile's occupant can change under a pending order, an entity id cannot.
+        /// Written by <see cref="HandlePrioritise"/>, read by
+        /// <see cref="BuildBlocked"/>'s fourth walk, and that is its entire life. Host-side, transient,
+        /// never saved, never hashed, never restored on a reconnect — the <see cref="_latched"/>
+        /// precedent.
+        ///
+        /// <para><b>BOUNDED BY THE CREW, not by the number of clicks</b>: one entry per crew member,
+        /// overwritten by their next order. A player who right-clicks a hundred machines leaves one
+        /// row behind.</para>
+        ///
+        /// <para><b>RETIRED THE MOMENT THE SIM TURNS THE ORDER INTO A HELD JOB.</b> The held job IS
+        /// the order from then on (RimWorld §2.2 keeps the forced flag on <c>curJob</c>), so keeping
+        /// the record would let a machine she successfully repaired, and which wore out again months
+        /// later with the parts bins empty, wear a badge belonging to an order that finished. What
+        /// survives here is therefore exactly the set of orders that produced NO job — which is what
+        /// the channel is about.</para>
+        ///
+        /// <para>⚠️ <b>IT IS A LOOKUP, NEVER AN ENUMERATION</b> on the emit path. That walk iterates
+        /// the CITIZEN STORE and probes this dictionary, because a hash container's layout must not
+        /// decide the order of rows on the socket — the rule <see cref="BuildBlocked"/> states for
+        /// all three of its other walks. The prune pass DOES enumerate the keys, and may, because it
+        /// only removes.</para>
+        ///
+        /// <para>NO LOCK, and none is needed: <c>Start</c>'s loop calls <see cref="DrainCommands"/>
+        /// (which writes this) and <see cref="Render"/> (which reads it) on the SAME thread, one
+        /// after the other — the affinity <see cref="CaptureSimThread"/> arms and <c>_latched</c> and
+        /// <c>_status</c> already rely on.</para>
+        /// </summary>
+        private readonly Dictionary<uint, uint> _prioritised = new Dictionary<uint, uint>();
+
+        /// <summary>Scratch for the prune pass above — the crew ids whose order is to be dropped,
+        /// collected because a <see cref="Dictionary{TKey,TValue}"/> may not be mutated mid-enumeration.
+        /// Reused for the life of the session; bounded by the crew.</summary>
+        private readonly List<uint> _prioritiseDrop = new List<uint>();
+
+        /// <summary>
+        /// How many direct repair orders are still PENDING — issued, and not yet turned into a held
+        /// job by the sim. Test seam (<see cref="ApplyForTest"/>'s precedent) and nothing else reads
+        /// it.
+        ///
+        /// <para>⚠️ <b>IT EXISTS BECAUSE THE ALTERNATIVE IS UNTESTABLE.</b> An order whose crew member
+        /// has died is never visited by the emit walk — she is gone from the citizen store — so a
+        /// leaked entry emits no row, changes no payload and is invisible on the wire by construction.
+        /// Without this seam the cleanup could only be pinned by a test that cannot fail.</para>
+        /// </summary>
+        internal int PendingOrderCount => _prioritised.Count;
 
         /// <summary>
         /// The decorate bridge (Room Zoom place palette). Maps the palette tool string to a
@@ -2694,16 +2798,63 @@ namespace Perilune.Web
         }
 
         /// <summary>
+        /// ⭐⭐ <b>M2-9 — THE REPAIR ORDER'S ONE REFUSAL: the machine the player pointed at is below
+        /// <c>wear.wreck_threshold</c> and there is no Parts, Seals or Swarf aboard to fix it with.</b>
+        /// Emits <see cref="WireFormat.ReasonNoConsumable"/>, which until this package was DECLARED
+        /// AND NEVER EMITTED.
+        ///
+        /// <para><b>THE PREDICATE IS ASKED, IN ONE LINE, AND IT IS THE SIM'S OWN.</b>
+        /// <c>MaintenanceSystem.IsUnfixableWreck</c> is public for exactly this call — its own doc
+        /// comment says a view-only <c>blocked</c> channel *"needs to be able to ask the same
+        /// question the dispatcher asks rather than re-deriving it — re-deriving is how the two
+        /// answers drift apart"*. A host-side scan for a Parts stack would be that second authority,
+        /// and it would be wrong in three ways this file could not see: the tier ladder (Parts ▸
+        /// Seals ▸ Swarf), the reservation and carry filters, and the breathability of the stack's
+        /// own tile.</para>
+        ///
+        /// <para>⛔ <b>IT ASKS ONLY THAT ONE QUESTION — <see cref="BlockedReason"/>'s four-reason
+        /// ladder is deliberately NOT applied to a repair order</b>, and the reason is
+        /// <see cref="WireFormat.ReasonWorkTypeOff"/>: a direct order OVERRIDES the work grid
+        /// (<c>PrioritiseJobCommand</c>, §2.2), so "nobody aboard is assigned that work" is FALSE of
+        /// this order by construction, and under OD-H it would be the answer the player got on every
+        /// right-click of a fresh game. The air and approach questions would be honest, and their
+        /// absence is a stated gap rather than a claim: the command's staging refusal stays silent
+        /// (<c>docs/MECHANICS.md</c> §13). Under-claiming is this channel's standing direction.</para>
+        ///
+        /// <para>Bounds- and fog-gated exactly as <see cref="AddIfBlocked"/> is, and de-duplicated
+        /// against rows already emitted for the same tile by this walk — two crew members ordered at
+        /// one machine are one blocked machine, not two. (The scan is over the repair rows only and
+        /// they are bounded by the crew; a tile may still legitimately carry BOTH a dig row and a
+        /// repair row, exactly as it may carry a dig and a build row today.)</para>
+        /// </summary>
+        private void AddIfUnfixable(Device device)
+        {
+            var p = device.Pos;
+            if (!_sim.World.InBounds(p)) return;
+            if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
+            if (!MaintenanceSystem.IsUnfixableWreck(_sim, device)) return;
+            for (int i = 0; i < _blockedScratch.Count; i++)
+            {
+                var row = _blockedScratch[i];
+                if (row.Order == WireFormat.OrderRepair && row.X == p.X && row.Y == p.Y && row.Deck == p.Z) return;
+            }
+            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
+                                                           WireFormat.OrderRepair, WireFormat.ReasonNoConsumable));
+        }
+
+        /// <summary>
         /// The sparse BLOCKED-ORDER layer — one <see cref="WireFormat.BlockedCell"/> per site the
-        /// player queued that <c>WorksiteSafety.CanStageWorkerAt</c> refuses, read from the two order
-        /// registries and the tile flag plane. See <c>hosts/web/WireFormat.Blocked.cs</c> for what this
+        /// player queued that the sim's own rules refuse, read from the two order
+        /// registries, the tile flag plane and (M2-9) this host's pending direct orders. See
+        /// <c>hosts/web/WireFormat.Blocked.cs</c> for what this
         /// channel is, which predicates it ASKS versus INFERS, and the four things it deliberately
         /// leaves out.
         ///
         /// ORDER — digs on the z,y,x world walk (the <c>IJobSource</c> rule-3 scan order, identical in
         /// shape to <see cref="BuildMaterials"/> / <see cref="BuildZones"/> / <see cref="BuildMarks"/>),
         /// then strips in <c>DeconstructSystem.Pending</c> index order, then builds in
-        /// <c>BuildSystem.Pending</c> index order. Three deterministic walks over plain
+        /// <c>BuildSystem.Pending</c> index order, then direct repair orders in CITIZEN STORE order.
+        /// Four deterministic walks over plain
         /// <c>IReadOnlyList</c>s; nothing is enumerated out of a hash container, so no container layout
         /// can reach the socket. Pinned by <c>BlockedChannelTests</c>.
         ///
@@ -2774,6 +2925,18 @@ namespace Perilune.Web
         /// (<see cref="CrewHoldsJobAt"/>, 8 on the standard ship). Nothing here walks the world, and
         /// <b>the empty-ship cost is UNCHANGED</b> — a ship with no orders visits no sites, so the flat
         /// flag-plane scan above is still the whole idle bill.
+        ///
+        /// ⚠️ <b>WHAT THE FOURTH WALK (M2-9's REPAIR ORDERS) ADDS — DECLARED, AND NOT MEASURED,
+        /// FOR THE SAME REASON.</b> It is gated on <c>_prioritised.Count > 0</c>, so a session in
+        /// which nobody has ever right-clicked a machine pays <b>one integer compare</b> and the idle
+        /// bill is untouched. With orders pending it is O(crew): one dictionary probe per living crew
+        /// member, plus — per PENDING order only — one <c>Devices.TryGet</c> and one
+        /// <c>MaintenanceSystem.IsUnfixableWreck</c>. ⛔ That last call is the expensive one and its
+        /// own doc comment says so: below <c>wear.wreck_threshold</c> it is up to THREE full
+        /// item-store scans, and the worst case is exactly the state that produces a row. It is
+        /// bounded by the number of PENDING orders (an order the sim has accepted is retired from the
+        /// map on the next render), which is at most the crew — and on a wreck a machine ABOVE the
+        /// floor short-circuits on the first line without scanning at all.
         /// <b>No microsecond figure is quoted because none was taken.</b> This file's own history is
         /// the reason: it carries a retracted "bimodal 25–56 µs", and two careful runs of the SAME
         /// code disagreed by 2.4× on the same machine — with several lanes building concurrently the
@@ -2847,6 +3010,49 @@ namespace Perilune.Web
             {
                 var sites = build.Pending;
                 for (int i = 0; i < sites.Count; i++) AddIfBlocked(sites[i].Pos, WireFormat.OrderBuild);
+            }
+
+            // ⭐ 4) REPAIR — the player's DIRECT orders (M2-9), and the walk that discharges
+            // ReasonNoConsumable. Appended LAST, so the emission order the other three walks pin is
+            // unchanged; the wire's order contract is append-only exactly as its vocabularies are.
+            //
+            // ⚠️ WALKED OVER THE CITIZEN STORE, NOT OVER `_prioritised`. The dictionary is a lookup;
+            // enumerating it would put a hash container's layout on the socket, which every other
+            // walk here is written to avoid. The citizen store is the same declared scan order
+            // `NobodyAboardTakesTheWorkFor` and `CrewHoldsJobAt` take.
+            if (_prioritised.Count > 0)
+            {
+                // (a) ⭐ THE ORDER DOES NOT SURVIVE THE PAWN. `NeedsSystem.Kill` REMOVES the citizen
+                // from the store (NeedsSystem.cs, its last line), so a dead crew member's order is
+                // never visited by the emit walk below and would sit in this map for the rest of the
+                // session — invisible, and one entry per crew member who ever dies. §2.1 draws the
+                // line this closes: a designation survives the pawn, a DIRECT ORDER does not.
+                // The keys ARE enumerated here, unlike anywhere else in this builder, and that is
+                // safe for one reason only: this pass exclusively REMOVES. Nothing a hash container's
+                // layout decides can reach the socket. The doomed keys are collected first because a
+                // Dictionary may not be mutated while it is being enumerated.
+                _prioritiseDrop.Clear();
+                foreach (var order in _prioritised)
+                    if (!_sim.Citizens.TryGet(order.Key, out var owner) || owner.Dead)
+                        _prioritiseDrop.Add(order.Key);
+                for (int i = 0; i < _prioritiseDrop.Count; i++) _prioritised.Remove(_prioritiseDrop[i]);
+
+                // (b) EMIT, over the CITIZEN STORE.
+                var citizens = _sim.Citizens.Items;
+                for (int i = 0; i < citizens.Count; i++)
+                {
+                    var c = citizens[i];
+                    if (!_prioritised.TryGetValue(c.Id, out uint deviceId)) continue;
+                    if (!_sim.Devices.TryGet(deviceId, out var device)) { _prioritised.Remove(c.Id); continue; }
+                    // THE ORDER TOOK: the sim turned it into a held job, which is now the record of
+                    // it. See _prioritised for why this retires rather than merely skips.
+                    if (c.HeldByOrder && c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos)
+                    {
+                        _prioritised.Remove(c.Id);
+                        continue;
+                    }
+                    AddIfUnfixable(device);
+                }
             }
 
             // SWEEP: this render's marks become the latch. A plain reference swap, so the sets are
@@ -3415,7 +3621,7 @@ namespace Perilune.Web
     /// it exactly as removing one does. A new kind goes at the END even when a neighbouring position
     /// would read better — and if a future lane ever gives the ordinals a consumer (a persisted
     /// value, a binary frame), write the numbers out explicitly first.</para></summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, Dig, Stockpile, Strip, Filter, Commission, Operate, WorkPriority }
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, Dig, Stockpile, Strip, Filter, Commission, Operate, WorkPriority, Prioritise }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
@@ -3540,6 +3746,20 @@ namespace Perilune.Web
                     // `CmdKind.Unknown` and `Apply` never routes it.)
                     case "workPriority": return new WebCommand(CmdKind.WorkPriority, cid: (uint)Int(json, "cid"),
                                                               work: Int(json, "work", -1), priority: Int(json, "priority", -1));
+                    // ⭐ M2-9 — THE DIRECT ORDER: {"cmd":"prioritise","cid":N,"x":..,"y":..,"deck":..}
+                    // — send ONE named crew member to repair the machine on ONE tile. The {x,y,deck}
+                    // shape is operate/place/remove's, and it is the only shape available: the
+                    // `devices` channel carries no device id, so a tile is how a client names a
+                    // machine. `cid` is the same entity id `talk`/`bio`/`workPriority` carry.
+                    //
+                    // NO SENTINELS HERE, and the difference from `workPriority` directly above is
+                    // worth stating rather than looking like an oversight: a missing key falling to
+                    // 0 lands on tile (0,0,0) with citizen 0 — a hull corner and an id no citizen
+                    // has — so the worst a malformed line can express is an order the sim silently
+                    // refuses, not a DESTRUCTIVE one. `workPriority` needed sentinels precisely
+                    // because 0 is a real order there ("stop repairing").
+                    case "prioritise": return new WebCommand(CmdKind.Prioritise, Int(json, "x"), Int(json, "y"),
+                                                             i: Int(json, "deck"), cid: (uint)Int(json, "cid"));
                     default: return default;
                 }
             }

@@ -25,12 +25,14 @@ namespace Perilune.Tests
     /// may not add, and the integrator ruling rejects the timeout outright. <b>That divergence from
     /// §2.2 is recorded, not hidden.</b></para>
     ///
-    /// <para>⛔ <b>NOTHING WRITES <c>HeldByOrder</c> IN PLAY YET — the writer is M2-9's
-    /// <c>PrioritiseJobCommand</c>, and the browser acceptance is M2-10's milestone demo, by
-    /// charter.</b> Every leg here therefore stages the hold the way that command will: give her the
-    /// job, THEN set the bool (the writer contract on the field). A leg that set the bool first
-    /// would watch it be cleared again on the way past <c>None</c>, which is the whole point of the
-    /// invariant and is pinned below.</para>
+    /// <para>⭐ <b>THE WRITER LANDED IN M2-9</b> — <c>PrioritiseJobCommand</c>; the browser
+    /// acceptance is still M2-10's milestone demo, by charter. Every leg here stages the hold the
+    /// way that command does: give her the job, THEN set the bool (the writer contract on the
+    /// field). A leg that set the bool first would watch it be cleared again on the way past
+    /// <c>None</c>, which is the whole point of the invariant and is pinned below. ⚠️ These legs
+    /// deliberately keep staging it BY HAND rather than routing through the command: this suite's
+    /// subject is the HOLD, and driving it through M2-9's refusals would make every leg depend on a
+    /// machine being serviceable.</para>
     ///
     /// <para>⚠️ <b>EVERY LEG IS DRIVEN.</b> The sim is ticked until the pawn genuinely holds the job
     /// under test and the hold is placed at that moment; the lethal-air and death legs run real

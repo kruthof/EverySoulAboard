@@ -282,8 +282,8 @@ namespace Perilune.Sim
                 for (int t = 0; t < c.WorkPrioritiesRaw.Length; t++) w.Write(c.WorkPrioritiesRaw[t]);
                 w.Write(c.WorkIncapable);
                 w.Write(c.Skill);       // reserved (M3-7), zeroed, read by nothing
-                w.Write(c.HeldByOrder); // M2-19's sticky claim — READ since M2-19, still written by
-                                        // nobody in play (M2-9's PrioritiseJobCommand is the writer)
+                w.Write(c.HeldByOrder); // M2-19's sticky claim — READ since M2-19 and WRITTEN since
+                                        // M2-9 (PrioritiseJobCommand): live state, not reserved
             }
         }
 
