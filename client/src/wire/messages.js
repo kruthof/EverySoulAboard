@@ -540,12 +540,23 @@ export const BLOCKED_REASON_NO_CONSUMABLE = 2;
  *  It also UNDER-claims: a site nobody has tried yet carries no stamp at all. The sentence below is
  *  worded to be true of every one of those cases; see `hosts/web/WireFormat.Blocked.cs`. */
 export const BLOCKED_REASON_UNREACHABLE = 3;
+/** ⭐ `work_type_off` — NOBODY ABOARD IS ASSIGNED THAT WORK (M2-18). Not one living crew member can
+ *  take the work type this order belongs to: every one of them has it switched off in the WORK tab,
+ *  or is incapable of it. ⚠️ UNDER OD-H THIS IS THE MOST-EMITTED REASON IN THE GAME ON DAY ONE —
+ *  every work type boots OFF, so the first order a new player paints carries exactly this code, and
+ *  without it the opening reads "paint an order, nothing happens, forever, silently".
+ *  It is ALL crew, not any: one pawn who has it off while a shipmate has it on is a queue, not a
+ *  block. The player's next action is the WORK tab, which is why it is a different sentence from
+ *  `air` (vent it) and `unreachable` (open the door). */
+export const BLOCKED_REASON_WORK_TYPE_OFF = 4;
 
 /** Wire order → vocabulary name. Index IS the wire value, so APPEND-ONLY exactly as the C# is. */
 export const BLOCKED_ORDER_NAMES = Object.freeze(['dig', 'strip', 'build']);
 
 /** Wire reason → vocabulary name. Index IS the wire value; APPEND-ONLY. */
-export const BLOCKED_REASON_NAMES = Object.freeze(['air', 'no_approach', 'no_consumable', 'unreachable']);
+export const BLOCKED_REASON_NAMES = Object.freeze([
+  'air', 'no_approach', 'no_consumable', 'unreachable', 'work_type_off',
+]);
 
 /** Reason → the SHORT sentence a surface shows the player. Deliberately phrased as what is wrong
  *  with the WORLD, not as what the dispatcher did: "the crew cannot breathe where they would have to
@@ -561,6 +572,13 @@ export const BLOCKED_REASON_TEXT = Object.freeze({
   // "OR THE MATERIAL FOR IT" is not padding: `BuildJobSource._matRetryAt` is one of the five
   // carriers and it fires on sites whose own approach is perfectly fine.
   unreachable: 'NO CREW HAS REACHED IT, OR THE MATERIAL FOR IT',
+  // ⭐ THE WORDS ARE M2-20's, AND THIS IS THE TILE HALF OF THEM. That package owns the vocabulary
+  // for "this pawn is doing nothing" and says `Awaiting orders` on the PERSON; this says the same
+  // confusion's other half on the TILE. No third word is invented here, and the sentence names the
+  // SHIP's state ("nobody aboard"), never a named pawn's — the crew dock already does that.
+  // It points at the fix, like every other row: air → vent it, no_approach → dig to it,
+  // work_type_off → open the WORK tab.
+  work_type_off: 'NOBODY ABOARD IS ASSIGNED THAT WORK',
 });
 
 /** The vocabulary name for a wire order, or '' when this client has never heard of it. PURE. */

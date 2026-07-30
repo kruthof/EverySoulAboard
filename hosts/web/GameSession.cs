@@ -2430,7 +2430,8 @@ namespace Perilune.Web
         /// <summary>
         /// <b>WOULD THE JOB BOARD REFUSE TO STAGE A WORKER FOR THE SITE AT <paramref name="target"/>,
         /// AND WHY?</b> Returns <see cref="WireFormat.ReasonAir"/>,
-        /// <see cref="WireFormat.ReasonNoApproach"/>, or <see cref="NotBlocked"/>.
+        /// <see cref="WireFormat.ReasonNoApproach"/>, <see cref="WireFormat.ReasonWorkTypeOff"/>,
+        /// <see cref="WireFormat.ReasonUnreachable"/>, or <see cref="NotBlocked"/>.
         ///
         /// THIS IS <c>JobWork.TryPathToAdjacent</c>'S LOOP WITH THE <c>FindPath</c> REMOVED AND NOTHING
         /// ELSE CHANGED (<c>sim/Sim.Core/Jobs/JobContext.cs:73-88</c>) — the same
@@ -2453,11 +2454,19 @@ namespace Perilune.Web
         /// <see cref="WireFormat.ReasonUnreachable"/> for exactly how much weaker that answer is than
         /// "unreachable", and for why it still under-claims (only sites somebody TRIED carry a stamp).
         ///
-        /// <b>⚠️ THE ORDER OF THE THREE QUESTIONS IS BEHAVIOUR, NOT STYLE.</b>
+        /// <b>⚠️ THE ORDER OF THE FOUR QUESTIONS IS BEHAVIOUR, NOT STYLE.</b>
         /// <c>JobWork.TryPathToAdjacent</c> stamps its back-off for an AIR refusal exactly as it does
         /// for a pathing one, so a site in bad air is very often backed off TOO. Asking the reach
         /// question first would repaint every airless order with a reason that sends the player
-        /// looking for a route. Approach ▸ air ▸ reach, and the first that fires wins.
+        /// looking for a route. <b>Approach ▸ air ▸ work-type ▸ reach</b>, and the first that fires
+        /// wins.
+        ///
+        /// <b>⭐ AND IT NOW ASKS A FOURTH: IS ANYONE ABOARD EVEN ALLOWED TO DO THIS? (M2-18)</b>
+        /// See <see cref="WireFormat.ReasonWorkTypeOff"/> for why it sits third — below the two
+        /// questions about the WORLD (which stay true after the player flips the switch) and above
+        /// the reach question (a latched record of a PAST attempt, where this is a live fact about
+        /// the present). Under OD-H every work type boots off, so this is the reason the very first
+        /// order a new player paints carries.
         ///
         /// The rows this channel emits are still a SUBSET of the truly-refused sites, never a
         /// superset — it under-claims, which is the safe direction for a surface whose entire purpose
@@ -2474,7 +2483,7 @@ namespace Perilune.Web
         /// must be called exactly once per site per render, from <see cref="AddIfBlocked"/>, inside
         /// one <see cref="BuildBlocked"/> pass. See <see cref="_latched"/> for the whole scheme.
         /// </summary>
-        private int BlockedReason(Int3 target)
+        private int BlockedReason(Int3 target, int order)
         {
             bool anyWalkable = false, anyStageable = false;
             for (int i = 0; i < 4; i++)
@@ -2506,7 +2515,58 @@ namespace Perilune.Web
 
             if (!anyWalkable) return WireFormat.ReasonNoApproach;
             if (!anyStageable) return WireFormat.ReasonAir;
+            if (NobodyAboardTakesTheWorkFor(order)) return WireFormat.ReasonWorkTypeOff;
             return reached ? WireFormat.ReasonUnreachable : NotBlocked;
+        }
+
+        /// <summary>
+        /// ⭐ <b>M2-18 — CAN NOT ONE LIVING CREW MEMBER TAKE THE WORK THIS ORDER BELONGS TO?</b>
+        /// The predicate behind <see cref="WireFormat.ReasonWorkTypeOff"/>, which carries the whole
+        /// argument; only what is decided HERE is written here.
+        ///
+        /// <para><b>ASKED, NEVER RE-DERIVED — the single-authority rule this channel exists to
+        /// keep.</b> Two questions, and the sim answers both: <c>WorkTypeMap.TryOf</c> classifies the
+        /// job kind (M2-2's one table, the same one the dispatcher's five gates read), and
+        /// <see cref="Citizen.CanTakeWorkType"/> answers per crew member. Reading
+        /// <c>WorkPrioritiesRaw</c> here instead would be a host-side second implementation that
+        /// disagrees with the dispatcher for an INCAPABLE pawn — the badge would vanish for a pawn
+        /// the sim will never employ. Pinned by
+        /// <c>BlockedChannelTests.A_Pawn_Whose_Work_Is_ON_But_Who_Is_INCAPABLE_Still_Blocks_The_Order</c>.</para>
+        ///
+        /// <para><b>THE ONE MAPPING THIS SIDE OWNS is order → job kind</b>, and it owns it because
+        /// the ORDER enum is this channel's own vocabulary (<c>WireFormat.OrderDig</c> …), invented
+        /// on the wire and unknown to the sim. It stops there: the kind goes straight into the sim's
+        /// table rather than into a second opinion about what work a dig is. <c>OrderBuild</c> maps to
+        /// <c>JobKind.Build</c>, and <c>HaulToBuild</c> — the material leg of the same site — is
+        /// <c>Construct</c> in that same table (M2-2 charter row A7), so one lookup covers both legs
+        /// of a build.</para>
+        ///
+        /// <para><b>ALL, not ANY</b>, and dead crew are skipped. An unrecognised order kind, or a job
+        /// kind the sim classifies as not-work, returns <c>false</c>: this question cannot be answered
+        /// for it, and the channel's standing direction is to under-claim rather than badge a tile on
+        /// a guess. Allocation-free, no RNG, no mutation — an indexed walk of the citizen store, the
+        /// declared scan order, exactly as <see cref="CrewHoldsJobAt"/> takes it.</para>
+        /// </summary>
+        private bool NobodyAboardTakesTheWorkFor(int order)
+        {
+            JobKind kind;
+            switch (order)
+            {
+                case WireFormat.OrderDig: kind = JobKind.Dig; break;
+                case WireFormat.OrderStrip: kind = JobKind.Deconstruct; break;
+                case WireFormat.OrderBuild: kind = JobKind.Build; break;
+                default: return false;
+            }
+            if (!WorkTypeMap.TryOf(kind, out var work)) return false;
+
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead) continue;
+                if (c.CanTakeWorkType(work)) return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -2628,7 +2688,7 @@ namespace Perilune.Web
             // consistency rather than a live filter — and it is what stops this channel becoming the
             // one that leaks the map the day a designation arrives from somewhere that is not a click.
             if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
-            int reason = BlockedReason(p);
+            int reason = BlockedReason(p, order);
             if (reason == NotBlocked) return;
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z, order, reason));
         }

@@ -1250,9 +1250,14 @@ body.moss-open #roomzoom-view{display:none !important}
    colour cue. #c25a3f is STATUS.bad (theme/warm-tokens.js §2.5) — the FAULT colour, deliberately not
    the queue-amber the zone key's back-off swatch uses. */
 .rz-key-sw-blocked-air,.rz-key-sw-blocked-no_approach,.rz-key-sw-blocked-no_consumable,
-.rz-key-sw-blocked-unreachable{
+.rz-key-sw-blocked-unreachable,.rz-key-sw-blocked-work_type_off{
   background:rgba(10,13,20,.82);border:1px solid #c25a3f}
 .rz-key-sw-blocked-no_approach{background:repeating-linear-gradient(45deg,#c25a3f 0 1.5px,transparent 1.5px 4px)}
+/* `work_type_off` is a HOLLOW box with a dashed edge: the only reason in the set whose fix is a
+   switch the player has not thrown rather than something wrong with the ship, and an unfilled
+   outline reads as "not taken up" beside air's solid plate. Under OD-H it is the badge a new player
+   meets first, so it must not look like a fault with the world. */
+.rz-key-sw-blocked-work_type_off{background:transparent;border-style:dashed}
 /* `unreachable` is a DOTTED edge, not a hatch: it is the reason that says the route is the problem,
    and a broken line reads as a broken route. It must stay distinguishable from no_approach's hatch
    at swatch size — the two are adjacent in meaning and would otherwise be one smear. */
