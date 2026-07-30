@@ -389,8 +389,14 @@ namespace Perilune.Sim
         /// <para>⚠️ <b>It is factored OUT of <see cref="IsRecruitableForWork"/> rather than written
         /// beside it</b> — two independent spellings of "dead, held or under orders" are two things
         /// that drift, and the pre-emption gate must never be able to become laxer than the claim
-        /// gate it is the hypothetical form of. <see cref="IsRecruitableForWork"/> is byte-for-byte
-        /// the expression it was (<c>IsIdleForWork &amp;&amp; !(OrderedMove &amp;&amp; HasPath)</c>).</para>
+        /// gate it is the hypothetical form of. ⚠️ <b>M2-8 left
+        /// <see cref="IsRecruitableForWork"/> byte-for-byte the expression it was
+        /// (<c>IsIdleForWork &amp;&amp; !(OrderedMove &amp;&amp; HasPath)</c>); M2-19 ENDED THAT</b> —
+        /// adding <see cref="HeldByOrder"/> to this property widened both, so
+        /// <see cref="IsRecruitableForWork"/> now also excludes a directly-ordered crew member. The
+        /// factoring is what makes that one edit rather than two, and it is the reason the pair
+        /// still cannot drift. (The widening is INERT on the claim side — see the placement
+        /// paragraph below for why, and for the measurement.)</para>
         ///
         /// <para>⭐⭐ <b>M2-19 — <see cref="HeldByOrder"/> IS PLACED HERE, AND THIS IS THE
         /// PLACEMENT ARGUMENT.</b> The sticky claim has to be un-stealable by EVERY path, and this
@@ -399,6 +405,12 @@ namespace Perilune.Sim
         ///   <item><c>JobSystem.Tick</c>'s dispatcher gate (<c>:220</c>) and both push recruiters'
         ///     idle searches (<c>MachineWearSystem.cs:522</c>, <c>CraftingSystem.cs:654</c>) reach
         ///     it through <see cref="IsRecruitableForWork"/>;</item>
+        ///   <item>the two LLM gates the enrolment ledger names <b>G4</b> and <b>G5</b> —
+        ///     <c>EffectValidator.cs:119</c> (the GRANT) and <c>CapabilityComputer.cs:78</c> (the
+        ///     OFFER) — do NOT read this property, and are listed anyway because an auditor of
+        ///     "every path" must not have to rediscover them: both gate on
+        ///     <c>JobKind == None</c> directly, so a held pawn is refused there for exactly the
+        ///     reason the claim gates refuse her, and neither needs the hold spelled out;</item>
         ///   <item>all three <c>IWorkOfferSource.HasClaimableWork</c> implementations reach it
         ///     directly on the <c>asIfIdle</c> branch (<c>JobSystem.cs:622</c>,
         ///     <c>MachineWearSystem.cs:469</c>, <c>CraftingSystem.cs:527</c>);</item>
@@ -409,8 +421,9 @@ namespace Perilune.Sim
         ///     NOW"</i> outranks the grid by definition.</item>
         /// </list>
         /// ⚠️ <b>AND HERE IS WHICH OF THOSE SITES CAN ACTUALLY BITE — MEASURED, NOT REASONED.</b>
-        /// Because <see cref="HeldByOrder"/> implies she carries a job, and every CLAIM gate already
-        /// requires <c>JobKind == None</c>, <b>the claim-side clause is SUBSUMED and stops nothing</b>;
+        /// Because <see cref="HeldByOrder"/> implies she carries a job, and every CLAIM gate (the
+        /// three above plus G4/G5) already requires <c>JobKind == None</c>, <b>the claim-side clause
+        /// is SUBSUMED and stops nothing</b>;
         /// the whole hold lives on the PRE-EMPTION path. And that path reads this predicate
         /// <b>twice</b> — at <c>TryPreempt</c>'s own gate and again inside the <c>asIfIdle</c> offer
         /// query — so <b>removing the hold from either one alone leaves the suite entirely GREEN

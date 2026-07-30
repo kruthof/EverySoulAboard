@@ -987,7 +987,7 @@ The predicate, in order (`JobSystem.cs:290-317`):
    `Flee`, `Eat` and `Drink` carry no `WorkType` and are refused here. There is deliberately no
    second check listing them (two guards for one rule and neither can be shown to bite);
    `PreemptionTests.SurvivalKinds_CarryNoWorkType_WhichIsTheWholeSurvivalGuard` pins the premise.
-2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:423`, NEW in M2-8) — `IsRecruitableForWork`
+2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:438`, NEW in M2-8) — `IsRecruitableForWork`
    with the "carries no job" clause factored out. Dead, `HoldPosition`, or mid-ordered-walk still
    refuse: taking the job would strand her, because the same facts stop anything from giving her
    another. `IsRecruitableForWork` is expressed as `IsRecruitableIgnoringJob && JobKind == None`.
@@ -1034,14 +1034,20 @@ ranks higher, and the M2-0 spike measured `MaintenanceSystem` re-claiming a dire
 writes it in play yet** — the writer is M2-9's `PrioritiseJobCommand`, so this section describes a
 mechanism that is LIVE and UNREACHED (see §13.25).
 
-**The rule, in ONE predicate.** `Citizen.IsRecruitableIgnoringJob` (`:425`) gained `&& !HeldByOrder`
+**The rule, in ONE predicate.** `Citizen.IsRecruitableIgnoringJob` (`:438`) gained `&& !HeldByOrder`
 and nothing else changed, because that property is what every gate already shares: the dispatcher
 (`JobSystem.cs:220`) and both push recruiters (`MachineWearSystem.cs:522`, `CraftingSystem.cs:654`)
 reach it through `IsRecruitableForWork`, all three `HasClaimableWork` implementations read it
 directly on the `asIfIdle` branch, and so does `JobSystem.TryPreempt` (`:309`).
 
+**The two LLM gates are named here too, so an audit of "every path" is complete.** `EffectValidator`
+(`:119`, the GRANT — M2-2's G4) and `CapabilityComputer` (`:78`, the OFFER — G5) do **not** read the
+property: each tests `JobKind == None` itself. A held pawn is therefore refused at both, for exactly
+the reason the claim gates refuse her, and neither needs the hold spelled out.
+
 > ⚠️ **WHICH OF THOSE SITES ACTUALLY BITES — MEASURED, and it is not what the charter predicted.**
-> A held pawn always carries a job, and every CLAIM gate already requires `JobKind == None`, so the
+> A held pawn always carries a job, and every CLAIM gate — the three above plus G4/G5 — already
+> requires `JobKind == None`, so the
 > claim-side clause is **subsumed and stops nothing**; the entire hold lives on the pre-emption path.
 > That path reads the predicate **twice** (`TryPreempt`'s gate and the `asIfIdle` offer query), and
 > blinding either one alone leaves `StickyClaimTests` **fully green** — only blinding both reddens
@@ -1050,7 +1056,7 @@ directly on the `asIfIdle` branch, and so does `JobSystem.TryPreempt` (`:309`).
 **The invariant is `HeldByOrder ⇒ JobKind != None`**, and it is RimWorld's placement rather than a
 convenience: `docs/design/rimworld-reference.md` §2.2 reads the forced flag off `curJob.playerForced`
 — it lives on the job and dies with it. Enforced in the **`Citizen.JobKind` property setter**
-(`:313-325`), which is why that field stopped being a plain field: **twenty sites in `sim/` end a
+(`:313-324`), which is why that field stopped being a plain field: **twenty sites in `sim/` end a
 job and every one of them assigns `JobKind.None`**, so releasing there covers completion, a new
 direct order (which cancels first), death (`NeedsSystem.Kill` → `Simulation.CancelJob`), and every
 genuine inability — safety (`SafetySystem.cs:233`), the target vanishing, a lost path
@@ -1072,7 +1078,7 @@ line E0-3 drew for `OrderedMove`. Folding the hold into `IsIdleForWork` reddens 
 Allocation-free, no RNG. Pinned by `tests/Perilune.Tests/StickyClaimTests.cs` (11 legs, measured
 mutation table in the fixture header).
 
-### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:313-326` the property, `:450-465` the enum)
+### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:313-324` the property, `:461-476` the enum)
 
 | kind | owner | lifecycle |
 |------|-------|-----------|
