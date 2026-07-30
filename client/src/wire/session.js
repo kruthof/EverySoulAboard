@@ -106,14 +106,21 @@ export const Cmd = {
   // `operate`/`place`/`remove` use, plus the `cid` `workPriority` speaks — this is the first verb that
   // is BOTH about a tile and about a person, so it carries both and invents no third convention.
   //
-  // ⚠️ THE TILE IS THE TARGET AND THERE IS NO DEVICE ID, because there is nothing to send one FROM.
-  // A `Device.Name` (`wing_c`, `battery_2`) is authored in `sim/Sim.Gen/AuthoredShips.cs` and reaches
-  // no wire channel — the `devices` channel's tuple is `[x,y,deck,kind,cond,oper,open]` — so a
-  // name-addressed order could not be composed by any client that exists. The host resolves the tile
-  // to a device (`_deviceGrid`, the one-device-per-tile index `devices` itself is built from) and
-  // refuses a tile with none. The client's job is therefore NOT to duplicate that verdict but to
-  // never OFFER the order where it must fail: `ui/prioritise-model.js` gates the menu on the tile
-  // having a `devices` row at all, which is the same fog-gated population the host resolves through.
+  // ⚠️ THE TILE IS THE TARGET, AND THE REASON GIVEN HERE FIRST WAS TOO BROAD — quoted and narrowed to
+  // its true half, because a comment that overstates what the wire lacks is how a client stops asking.
+  // It read: *"THERE IS NO DEVICE ID, because there is nothing to send one FROM … the `devices`
+  // channel's tuple is `[x,y,deck,kind,cond,oper,open]` … so a name-addressed order could not be
+  // composed by any client that exists."* **`kind` is in that tuple**, it survives `decodeDevices`,
+  // and it is the sim's own `DeviceKind` — a TYPE identity the client has had all along, and now uses
+  // to NAME the menu row (`ui/prioritise-model.js`). What is genuinely absent is the AUTHORED INSTANCE
+  // name — `wing_c`, `battery_2`, written in `sim/Sim.Gen/AuthoredShips.cs` as `Device.Name` and
+  // carried by no channel. THAT is the half that needs a host change, and it is the only half.
+  //
+  // The tile stays the address regardless, because a type byte does not identify WHICH scrubber. The
+  // host resolves the tile through `_deviceGrid` — the one-device-per-tile index `devices` itself is
+  // built from — and refuses a tile with none. The client's job is therefore NOT to duplicate that
+  // verdict but to never OFFER the order where it must fail: `ui/prioritise-model.js` gates the menu
+  // on the tile having a `devices` row at all, the same fog-gated population the host resolves through.
   //
   // ⚠️ `cid` IS REQUIRED AND IT IS NOT OPTIONAL PADDING. `MoveCitizenCommand`'s cousin problem —
   // `GameSession._selected` — is the reason: a direct order taken from the HOST's selection would be

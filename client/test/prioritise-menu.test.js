@@ -27,43 +27,148 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
 import { decode, decodeDecks, decodeRooms } from '../src/wire/messages.js';
 import { Cmd } from '../src/wire/session.js';
-import { roomTileRect, U } from '../src/ui/room-model.js';
+import {
+  roomTileRect, U, DEVICE_KIND_NAMES, deviceKindName, OPERABLE_KINDS, itemForGlyph,
+} from '../src/ui/room-model.js';
 import { decksView } from '../src/ui/decks-model.js';
 import { deviceDisplayName, prioritiseCrew, prioritiseOffer } from '../src/ui/prioritise-model.js';
+import { ITEMS } from '../src/items/index.js';
+import { GLYPH_SUBSTITUTE } from '../src/items/glyph-map.js';
+import { codeOnly } from './code-only.js';
 import { DocumentLite, Element } from './dom-lite.js';
 
-// ═════════════════════════════════════════════════════════════════ 0. THE PURE OFFER MODEL
+const here = dirname(fileURLToPath(import.meta.url));
+const CLIENT = join(here, '..');
+const REPO = join(CLIENT, '..');
+const DEVICE_CS = readFileSync(join(REPO, 'sim/Sim.Core/Entities/Device.cs'), 'utf8');
 
-test('deviceDisplayName names the PIECE THE SURFACE DRAWS, upper-cased', () => {
-  assert.equal(deviceDisplayName('solar-panel'), 'SOLAR PANEL');
-  assert.equal(deviceDisplayName('battery-bank'), 'BATTERY BANK');
-  assert.equal(deviceDisplayName('o2-scrubber'), 'O2 SCRUBBER');
+// ═══════════════════════════════════════════════ 0. THE NAME COMES FROM THE SIM'S ENUM, NOT THE ART
+
+/** Every `Name = N,` member of the `DeviceKind` enum in the sim's own source, in declared order. */
+function parseDeviceKinds(src) {
+  const body = /enum DeviceKind : byte\s*\{([\s\S]*?)\n\s*\}/.exec(codeOnly(src));
+  assert.ok(body, 'the DeviceKind enum could not be parsed out of sim/Sim.Core/Entities/Device.cs — '
+    + 'this guard has rotted and every assertion below it is vacuous. FIX THE PARSE, do not delete '
+    + 'the test: it is the only thing standing between the client\'s kind table and a silent renumber.');
+  return [...body[1].matchAll(/^\s*([A-Za-z_]\w*)\s*=\s*(\d+)\s*,/gm)].map((m) => [m[1], Number(m[2])]);
+}
+
+test('the DeviceKind parse is NON-VACUOUS — it finds the whole enum, not a fragment', () => {
+  const members = parseDeviceKinds(DEVICE_CS);
+  assert.ok(members.length >= 20,
+    `parsed only ${members.length} DeviceKind members — the regex is matching a fragment`);
+  assert.deepEqual(members[0], ['Door', 0]);
+  assert.ok(members.some(([n]) => n === 'CryoPod'), 'the parse must reach the appended tail');
 });
 
-// ⚠️ THE SIXTH TRAP, ASKED AS "WHAT IS THIS PIECE **NOT**". `GLYPH_SUBSTITUTE` lets a device wear
-// another piece's art and `itemForGlyph` resolves resource glyphs too, so an unguarded join would
-// label a machine `REGOLITH` — a confident wrong reason, which is worse than the generic word.
-// MUTATION: drop the `row.kind !== 'functional'` clause ⇒ the two resource legs fail by name.
-test('a NON-functional registry piece never names a machine — it falls back to MACHINE', () => {
-  assert.equal(deviceDisplayName('regolith'), 'MACHINE',
-    'a RESOURCE piece was used to name an installed machine. `itemForGlyph` resolves ground-stack '
-    + 'glyphs, and `GLYPH_SUBSTITUTE` lets a device wear a borrowed row, so the registry `kind` is '
-    + 'the only thing that makes an id evidence about what is INSTALLED on a tile.');
-  assert.equal(deviceDisplayName('rug'), 'MACHINE', 'a COSMETIC piece is not a machine either');
-  assert.equal(deviceDisplayName(''), 'MACHINE');
+// ⭐ THE ONE TABLE, PINNED BY DERIVATION. `DEVICE_KIND_NAMES` is a hand mirror of a C# enum, which is
+// the defect that shipped `ROLE_TO_ITEM`; this reads the enum and requires agreement member for
+// member, BY NAME AND BY INDEX.
+// MUTATION: swap two entries, drop one, or append a member to Device.cs ⇒ this fails and names it.
+test('DEVICE_KIND_NAMES equals the sim DeviceKind enum, in order, by name AND index', () => {
+  const members = parseDeviceKinds(DEVICE_CS);
+  assert.equal(DEVICE_KIND_NAMES.length, members.length,
+    `the client's kind table has ${DEVICE_KIND_NAMES.length} members and Device.cs has `
+    + `${members.length}. A device the sim knows about would be named MACHINE, or worse, named as `
+    + 'its neighbour.');
+  for (const [name, byte] of members) {
+    assert.equal(DEVICE_KIND_NAMES[byte], name,
+      `DeviceKind ${byte} is \`${name}\` in the sim and \`${DEVICE_KIND_NAMES[byte]}\` in the client`);
+    assert.equal(deviceKindName(byte), name);
+  }
+});
+
+// MUTATION: remove 'Door' from DEVICE_KIND_NAMES ⇒ `indexOf` answers -1 and this fails (as does
+// operate-model.test.js's own pin, independently).
+test('OPERABLE_KINDS is still {Door:0, AirVent:1} after being DERIVED from the one table', () => {
+  assert.deepEqual({ ...OPERABLE_KINDS }, { Door: 0, AirVent: 1 },
+    'deriving the operable pair from DEVICE_KIND_NAMES changed its value. Every consumer of '
+    + '`isOperableKind` and the OPERATE chip layer reads this.');
+});
+
+test('deviceDisplayName speaks the enum member as words, upper-cased', () => {
+  assert.equal(deviceDisplayName(5), 'SOLAR WING');
+  assert.equal(deviceDisplayName(6), 'BATTERY');
+  assert.equal(deviceDisplayName(2), 'SCRUBBER');
+  assert.equal(deviceDisplayName(15), 'SALVAGE RECYCLER');
+  assert.equal(deviceDisplayName(26), 'ICE MELTER');
+});
+
+test('an absent or unknown kind byte answers MACHINE, never a confident guess', () => {
   assert.equal(deviceDisplayName(undefined), 'MACHINE');
-  assert.equal(deviceDisplayName('no-such-piece-at-all'), 'MACHINE');
+  assert.equal(deviceDisplayName(null), 'MACHINE');
+  assert.equal(deviceDisplayName(NaN), 'MACHINE');
+  assert.equal(deviceDisplayName(250), 'MACHINE');
+  // ⚠️ AND `0` MUST NOT BE SWALLOWED. `DeviceKind.Door` IS 0, so a truthiness guard anywhere on this
+  // path would answer MACHINE for a real door — `isOperableKind`'s own recorded near-miss.
+  assert.equal(deviceDisplayName(0), 'DOOR');
 });
 
-test('the fixture ids used above really are in the registry with the kinds this test claims', () => {
-  // NON-VACUITY. Every assertion in the two tests above would also pass if `regolith` and `rug`
-  // simply did not exist — the fallback answers MACHINE for an unknown id too. This leg is the
-  // INCLUSION test that separates "correctly refused" from "never found" (trap 4's shape).
-  assert.notEqual(deviceDisplayName('solar-panel'), 'MACHINE',
-    'the registry no longer carries `solar-panel` as a functional piece, so the refusal legs above '
-    + 'are vacuous — they are refusing ids that are absent rather than ids that are the wrong kind');
+// ⭐ THE SIXTH TRAP, ASKED AS "WHAT IS THIS THING **NOT**" — REBUILT AFTER REVIEW, because the version
+// that stood here was the FOURTH trap shape: it drove RESOURCE and COSMETIC pieces, while FIVE of the
+// six live substitutions are FUNCTIONAL→FUNCTIONAL — so the population it was written for was excluded
+// by its own fixture and it passed while `WaterTank` read "OXYGEN TANK" in the shipping game. (The
+// sixth borrow, `Light` → `wall-lamp`, IS cosmetic and was the one case the old filter could see. That
+// is measured below, not assumed: the first draft of THIS guard asserted all six were functional and
+// went red on `wall-lamp` — the ledger's shape is not the guard's population.)
+//
+// This version is derived from `GLYPH_SUBSTITUTE` itself, so it cannot go stale: for every borrowed
+// row, the name the kind gives must differ from the name the ART would give.
+// MUTATION: name from the picture (`ITEMS[itemForGlyph(code)].deviceKind`) ⇒ every row below fails.
+const SUBSTITUTED = Object.freeze([
+  // [glyph, DeviceKind byte the sim projects it from, the piece it BORROWS]
+  ['O', 10, 'oxygen-tank'],      // WaterTank
+  ['=', 16, 'space-heater'],     // Radiator
+  ['Y', 15, 'water-recycler'],   // SalvageRecycler
+  ['C', 21, 'locker'],           // MedCabinet
+  ['*', 8, 'wall-lamp'],         // Light
+  ['I', 26, 'cooker'],           // IceMelter
+]);
+
+test('the substitution fixture is REAL — every row is a live borrow in the shipped tables', () => {
+  // NON-VACUITY, and it is an INCLUSION test: without it the rows below could be naming glyphs that
+  // no longer substitute anything, and the guard would agree with everything.
+  assert.ok(SUBSTITUTED.length >= 6, 'the borrowed-art ledger shrank below the measured six');
+  for (const [glyph, byte, borrowed] of SUBSTITUTED) {
+    assert.equal(GLYPH_SUBSTITUTE[glyph], borrowed,
+      `glyph '${glyph}' no longer borrows '${borrowed}' — items/glyph-map.js's ledger moved`);
+    assert.equal(itemForGlyph(glyph.charCodeAt(0)), borrowed,
+      `the glyph→item join no longer resolves '${glyph}' to '${borrowed}'`);
+    assert.ok(DEVICE_KIND_NAMES[byte], `DeviceKind ${byte} is not in the client's table`);
+  }
+  // ⭐ THE INCLUSION FLOOR THAT MATTERS, and it is narrower than the first draft's — CORRECTED by
+  // running it. That draft asserted every borrowed piece is FUNCTIONAL and went red on `wall-lamp`,
+  // which is COSMETIC. The correction is worth stating because it re-scopes the whole finding: `Light`
+  // is the ONE kind the old `functional`-only guard could catch, so the old code named it the honest
+  // "MACHINE". The other FIVE are functional-wearing-functional, sailed straight through, and are the
+  // confidently-wrong names review measured. This floor pins that five-strong population by size, so
+  // a fixture that quietly shrank back to the cosmetic case cannot pass.
+  const fnFn = SUBSTITUTED.filter(([, , id]) => ITEMS[id].kind === 'functional');
+  assert.ok(fnFn.length >= 5,
+    `only ${fnFn.length} of the borrows are FUNCTIONAL→FUNCTIONAL. That is the population the first `
+    + 'draft\'s resource/cosmetic fixture structurally excluded, and the one this guard exists for.');
+  assert.equal(ITEMS['wall-lamp'].kind, 'cosmetic',
+    'the one COSMETIC borrow moved. It is named here because it is the exception that makes the '
+    + 'count above meaningful, not because anything depends on it.');
+});
+
+test('a device WEARING ANOTHER PIECE\'S ART is named for what it IS, not what it looks like', () => {
+  for (const [glyph, byte, borrowed] of SUBSTITUTED) {
+    const fromKind = deviceDisplayName(byte);
+    const fromArt = String(ITEMS[borrowed].deviceKind || borrowed)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/-/g, ' ').toUpperCase();
+    assert.equal(fromKind, DEVICE_KIND_NAMES[byte].replace(/([a-z0-9])([A-Z])/g, '$1 $2').toUpperCase());
+    assert.notEqual(fromKind, fromArt,
+      `a ${DEVICE_KIND_NAMES[byte]} would be named "${fromArt}" if the row were derived from the `
+      + `picture on its tile (glyph '${glyph}' borrows '${borrowed}'). The name must come from the `
+      + '`devices` channel\'s own `kind` byte — the sim\'s identity for the machine.');
+  }
 });
 
 test('prioritiseCrew: the SELECTION wins whenever there is one', () => {
@@ -96,14 +201,14 @@ test('prioritiseCrew: a row with no usable cid is not counted toward "exactly on
 });
 
 test('prioritiseOffer: a tile with NO devices row is refused, and refused SILENTLY', () => {
-  const r = prioritiseOffer({ dev: null, itemId: 'solar-panel', selCid: 7, crew: [{ cid: 7 }] });
+  const r = prioritiseOffer({ dev: null, selCid: 7, crew: [{ cid: 7 }] });
   assert.equal(r.ok, false);
   assert.equal(r.silent, true, 'a stray right-click on bare floor is not an intent aimed at '
     + 'anything; a toast on every one of them trains the player to ignore the toast that matters');
 });
 
 test('prioritiseOffer: a REAL target with nobody to order is refused OUT LOUD', () => {
-  const r = prioritiseOffer({ dev: { cond: 40 }, itemId: 'solar-panel', selCid: null,
+  const r = prioritiseOffer({ dev: { kind: 5, cond: 40 }, selCid: null,
     crew: [{ cid: 7 }, { cid: 13 }] });
   assert.equal(r.ok, false);
   assert.equal(r.silent, false, 'this is the `doMove` shape: the host\'s own refusal for a missing '
@@ -113,10 +218,10 @@ test('prioritiseOffer: a REAL target with nobody to order is refused OUT LOUD', 
 });
 
 test('prioritiseOffer: an accepted offer carries the cid and the labelled row', () => {
-  const r = prioritiseOffer({ dev: { cond: 40 }, itemId: 'battery-bank', selCid: null, crew: [{ cid: 9 }] });
+  const r = prioritiseOffer({ dev: { kind: 6, cond: 40 }, selCid: null, crew: [{ cid: 9 }] });
   assert.equal(r.ok, true);
   assert.equal(r.cid, 9);
-  assert.equal(r.label, 'PRIORITISE: REPAIR BATTERY BANK');
+  assert.equal(r.label, 'PRIORITISE: REPAIR BATTERY');
 });
 
 // ═════════════════════════════════════════════════════════════════ 1. THE WIRE CONTRACT
@@ -221,7 +326,14 @@ const RZ_IDS = [
 const doc = new RzDoc();
 for (const id of RZ_IDS) { const e = new RzEl(doc, 'div'); e.id = id; doc.register(id, e); }
 globalThis.document = doc;
-globalThis.window = { addEventListener() {}, removeEventListener() {} };
+// The Room Zoom binds `keydown` on window in CAPTURE (its own stack pre-empts the console's while a
+// room is open). Recorded WITH phase — the same normaliser the element stub uses — so the ESC leg can
+// dispatch through the real listener instead of calling a private function.
+const winKeys = { capture: [], bubble: [] };
+globalThis.window = {
+  addEventListener(t, fn, opts) { if (t === 'keydown') (isCapture(opts) ? winKeys.capture : winKeys.bubble).push(fn); },
+  removeEventListener() {},
+};
 
 // Resolved AFTER the globals — both modules touch `document` at import time.
 const Hud = await import('../src/ui/hud.js');
@@ -245,6 +357,11 @@ const BARE = [RECT.rx + 3, RECT.ry + 1];   // bare floor: no glyph, no row  (cha
 // resolves a prioritise order through the same population, so a menu here is a button that looks
 // live and cannot work.
 const FOG = [RECT.rx + 7, RECT.ry + 1];
+// ⭐ THE SUBSTITUTION TILE (send-back). A `WaterTank` (DeviceKind 10) standing on a tile whose glyph
+// the projection draws as `oxygen-tank` — a LIVE `GLYPH_SUBSTITUTE` borrow, and FUNCTIONAL→FUNCTIONAL,
+// which is the population the first draft's resource/cosmetic fixture structurally excluded. Named
+// from the picture it reads "OXYGEN TANK"; named from the channel it reads "WATER TANK".
+const TANK = [RECT.rx + 9, RECT.ry + 5];
 
 const ADA = { cid: 7, name: 'Ada Vale', role: 'engineer', deck: 0, x: RECT.rx + 2, y: RECT.ry + 4 };
 const RYN = { cid: 13, name: 'Ryn Coe', role: 'hauler', deck: 0, x: RECT.rx + 6, y: RECT.ry + 5 };
@@ -258,6 +375,7 @@ function frameMsg(crew, selCid) {
   put(WING, 'G'.charCodeAt(0));   // → 'solar-panel'
   put(CELL, 'B'.charCodeAt(0));   // → 'battery-bank'
   put(FOG, 'S'.charCodeAt(0));    // → 'o2-scrubber', drawn but NOT on the devices channel
+  put(TANK, 'O'.charCodeAt(0));   // → 'oxygen-tank' ART over a WaterTank ROW (the borrow)
   const who = crew.find((c) => c.cid === selCid) || null;
   return {
     type: 'frame', deck: RECT.deck, w, h, lens: 'none', cells,
@@ -288,6 +406,7 @@ function prime(crew, selCid) {
       cells: [
         [WING[0], WING[1], RECT.deck, 5, 40, 0, 0],   // SolarWing (DeviceKind 5), worn, inoperative
         [CELL[0], CELL[1], RECT.deck, 6, 90, 1, 0],   // Battery   (DeviceKind 6), worn, operational
+        [TANK[0], TANK[1], RECT.deck, 10, 60, 1, 0],  // WaterTank (DeviceKind 10) wearing OXYGEN TANK art
       ],
     })));
   }
@@ -330,6 +449,37 @@ const menuRow = () => menu().childNodes.find((c) => c.getAttribute
 const clickRow = () => fire(menuRow(), 'click', {});
 /** Everything that reached the wire except the hover cursor chatter. */
 const orders = () => sent.filter((o) => o.cmd !== 'cursor');
+/** Dispatch a keydown through the surface's real window listener, capture then bubble. */
+function key(k) {
+  const e = { key: k, target: null, defaultPrevented: false, propagationStopped: false,
+    preventDefault() { e.defaultPrevented = true; }, stopPropagation() { e.propagationStopped = true; } };
+  for (const fn of winKeys.capture.slice()) { fn(e); if (e.propagationStopped) return e; }
+  for (const fn of winKeys.bubble.slice()) fn(e);
+  return e;
+}
+/** Arm a palette tool the way a player does — a click on a `data-rztool` node through the root's own
+ *  delegated handler (the rig models `innerHTML` as a string, so the REAL palette buttons are not
+ *  reachable as nodes; this is `operate-model.test.js`'s idiom). */
+const toolBtns = new Map();
+function arm(tool) {
+  let b = toolBtns.get(tool);
+  if (!b) {
+    b = new RzEl(doc, 'button');
+    b.setAttribute('data-rztool', tool);
+    doc.getElementById('roomzoom-view').appendChild(b);
+    toolBtns.set(tool, b);
+  }
+  fire(b, 'click', {});
+}
+/** Is a tool still armed? Observed through BEHAVIOUR, not through module state: with OPERATE armed a
+ *  left click on a device sends `Cmd.operate`, and with nothing armed it sends nothing. */
+function armedNow() {
+  sent.length = 0;
+  fire(canvas(), 'click', atTile(WING));
+  const yes = orders().some((o) => o.cmd === 'operate');
+  sent.length = 0;
+  return yes;
+}
 
 test('the rig really drives the surface (non-vacuity floor for every leg below)', () => {
   prime([ADA], null);
@@ -374,11 +524,38 @@ test('right-clicking the SECOND machine orders THAT tile — not the first one o
 test('and the row NAMES the machine it is about — the two fixtures read differently', () => {
   prime([ADA], null);
   rightClick(WING);
-  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR SOLAR PANEL');
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR SOLAR WING');
   prime([ADA], null);
   rightClick(CELL);
-  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR BATTERY BANK',
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR BATTERY',
     'the row shows the same label for two different machines — the name is not derived per tile');
+});
+
+// ⭐ THE SUBSTITUTION, DRIVEN END TO END THROUGH THE SHIPPING SURFACE — the send-back's own case, and
+// the one the pure legs above cannot make: this one goes through the real frame, the real `devices`
+// channel and the real repaint, so it fails if ANY step on the path reaches for the picture.
+// MUTATION: re-introduce the deleted `tileItemId` helper and name the row from
+// `ITEMS[itemForGlyph(cell[0])].deviceKind` ⇒ the row reads "OXYGEN TANK" and this reddens.
+test('a WaterTank wearing OXYGEN TANK art is offered as WATER TANK', () => {
+  prime([ADA], null);
+  assert.equal(itemForGlyph('O'.charCodeAt(0)), 'oxygen-tank',
+    'fixture check: the tile\'s glyph must really resolve to the BORROWED piece, or this leg is '
+    + 'asserting nothing about substitution at all');
+  rightClick(TANK);
+  assert.equal(menu().hidden, false, 'the menu did not open over the tank');
+  assert.equal(menuRow().textContent, 'PRIORITISE: REPAIR WATER TANK',
+    'the row is named from the ART on the tile instead of from the `devices` channel\'s `kind` byte. '
+    + '`GLYPH_SUBSTITUTE` makes six kinds wear another piece\'s picture, so the picture is not '
+    + 'evidence about what is installed — this one would offer to repair an "OXYGEN TANK", a device '
+    + 'kind that does not exist in the sim at all.');
+});
+
+test('and the order it sends still names the TANK\'s own tile', () => {
+  prime([ADA], null);
+  rightClick(TANK);
+  clickRow();
+  assert.deepEqual(orders(),
+    [{ cmd: 'prioritise', cid: ADA.cid, x: TANK[0], y: TANK[1], deck: RECT.deck }]);
 });
 
 // ⭐ MUTATION 3 — "register the context handler with {capture:true}". BUG-B's exact shape.
@@ -409,10 +586,14 @@ test('right-clicking BARE FLOOR opens nothing and sends nothing', () => {
 });
 
 // ⭐ MUTATION 5 — "offer it on a device whose deviceConditionAt is null". APPLY: in
-// `onCanvasContext`, fall back to the frame — e.g. `dev: deviceConditionAt(...) || (tileItemId(...)
-// ? {} : null)` ⇒ the menu opens over a machine the host will refuse and this reddens. It is the
-// leg that separates "no device" from "device not on the channel": BARE has no glyph either, so
-// mutation 4's fixture alone cannot catch a frame fallback.
+// `onCanvasContext`, fall back to the frame — read `Hud.getFrame().cells[...]` and hand
+// `prioritiseOffer` a stand-in row when the glyph is not bare floor ⇒ the menu opens over a machine
+// the host will refuse and this reddens (measured: 36 of 37 still pass, so it isolates cleanly). It
+// is the leg that separates "no device" from "device not on the channel": BARE has no glyph either,
+// so mutation 4's fixture alone cannot catch a frame fallback.
+// ⚠️ THE HELPER THAT MADE THAT MUTATION A ONE-WORD EDIT IS GONE — `tileItemId` was deleted at the
+// fix-back, because naming from the art was itself the second defect. The mutation is still the right
+// one to name: it is the shape someone re-introduces the day they want a name for a fogged tile.
 test('a machine the FRAME draws but the devices channel does not carry is NOT offered', () => {
   prime([ADA], null);
   assert.equal(RoomZoom.deviceConditionAt(FOG[0], FOG[1]), null, 'fixture check: no row for FOG');
@@ -486,6 +667,92 @@ test('a menu that would overflow the viewport is pulled back on screen', () => {
     delete globalThis.window.innerHeight;
     box._rect = { left: 0, top: 0, width: 0, height: 0 };
   }
+});
+
+// ⭐ THE GLOBAL-CHROME CLAMP — the send-back's other defect, and the fix that REPLACES a z-index that
+// could not work. `.onb-help` (the `?` circle) is appended to `document.body`, while `#roomzoom-view`
+// is `position:fixed; z-index:20`, i.e. its own STACKING CONTEXT — so no z-index on this box can
+// outrank the circle, and independent review measured that the shipped 130 still lost the hit-test in
+// a ~240×24 px strip at the top-right. The remedy is the one `.ov-nudge` already chose for the same
+// collision: MOVE, don't out-stack.
+//
+// The rig's `querySelector` returns null by default, so this leg SUPPLIES the circle — which is also
+// its non-vacuity floor: with no `.onb-help` in the document there is nothing to dodge.
+// MUTATION: delete the `if (avoid && …)` block in `openCtx` ⇒ this reddens with the raw pointer x.
+/** Install a fake `.onb-help` at a rect of our choosing and return a restore function. The rig's
+ *  `querySelector` returns null by default, so supplying the circle IS the non-vacuity floor: with no
+ *  `.onb-help` in the document there is nothing to dodge and the clamp is inert. */
+function withHelpCircle(rect, boxW, boxH) {
+  const box = menu();
+  const help = new RzEl(doc, 'button');
+  help.className = 'onb-help';
+  help._rect = rect;
+  box._rect = { left: 0, top: 0, width: boxW, height: boxH };
+  doc.querySelector = (sel) => (sel === '.onb-help' ? help : null);
+  globalThis.window.innerWidth = 2000;
+  globalThis.window.innerHeight = 2000;
+  return () => {
+    doc.querySelector = () => null;
+    delete globalThis.window.innerWidth;
+    delete globalThis.window.innerHeight;
+    box._rect = { left: 0, top: 0, width: 0, height: 0 };
+  };
+}
+
+test('the menu never opens under the `?` help circle — it STEPS ASIDE, as .ov-nudge does', () => {
+  prime([ADA], null);
+  const at = atTile(WING);
+  const W = 100, H = 34;
+  // The circle straddles the box's right half, with room to the left of it.
+  const rect = { left: at.clientX + 70, top: at.clientY - 8, right: at.clientX + 102,
+                 bottom: at.clientY + 24, width: 32, height: 32 };
+  const restore = withHelpCircle(rect, W, H);
+  try {
+    assert.ok(at.clientX < rect.right + 6 && at.clientX + W > rect.left - 6
+              && at.clientY < rect.bottom + 6 && at.clientY + H > rect.top - 6,
+      'the fixture does not overlap the circle, so this leg would pass with no clamp at all');
+    assert.ok(rect.left - 6 - W >= 0, 'the fixture must leave room to the LEFT, or it is testing the '
+      + 'fallback branch instead of the sideways one');
+    rightClick(WING);
+    assert.equal(menu().style.left, String(rect.left - 6 - W) + 'px',
+      'the menu still opens across the help circle. A click in the overlap opens the onboarding card '
+      + 'instead of ordering the repair, and NO z-index on this box can change that: `.onb-help` is '
+      + 'appended to document.body while `#roomzoom-view` is `position:fixed; z-index:20`, its own '
+      + 'stacking context. Geometry crosses stacking contexts; z-index does not.');
+  } finally { restore(); }
+});
+
+// ⭐ THE OTHER BRANCH, pinned separately because a two-branch clamp with one leg is a half-tested
+// clamp: when the circle leaves no room to its left, the box drops BELOW it.
+// MUTATION: delete the `else top = avoid.bottom + CTX_GAP;` line ⇒ this reddens.
+test('…and when there is no room to the left, it drops BELOW the circle instead', () => {
+  prime([ADA], null);
+  const at = atTile(WING);
+  const W = 220, H = 34;
+  const rect = { left: at.clientX + 10, top: at.clientY - 4, right: at.clientX + 42,
+                 bottom: at.clientY + 28, width: 32, height: 32 };
+  const restore = withHelpCircle(rect, W, H);
+  try {
+    assert.ok(rect.left - 6 - W < 0,
+      'the fixture leaves room to the left, so it exercises the sideways branch, not this one');
+    rightClick(WING);
+    assert.equal(menu().style.top, String(rect.bottom + 6) + 'px',
+      'with no room to its left the menu must drop below the circle; it is still overlapping');
+  } finally { restore(); }
+});
+
+// ⭐ ESC — the one close path that had no test (review, non-blocking). It is a rung ABOVE the armed
+// tool: the box goes and the palette selection survives.
+test('ESC closes the menu FIRST and leaves the armed tool alone', () => {
+  prime([ADA], null);
+  arm('operate');
+  rightClick(WING);
+  assert.equal(menu().hidden, false);
+  key('Escape');
+  assert.equal(menu().hidden, true, 'ESC did not take the menu down');
+  assert.ok(armedNow(), 'ESC disarmed the tool as well — the menu must be its own rung');
+  key('Escape');
+  assert.ok(!armedNow(), 'a SECOND ESC must fall through to the ordinary disarm rung');
 });
 
 test('a LEFT click on the floor dismisses an open menu', () => {

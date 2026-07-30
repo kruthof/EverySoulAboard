@@ -45,7 +45,7 @@ import { deckMinimap } from './deck-minimap.js';
 import {
   U, ROOM_TOOLS, TOOL_LABEL, GHOST_ABBR, paletteCommand, isSweepTool, roomDragMode,
   nextRoomTool, roomTileRect,
-  deckSlots, roomFit, tileFromCanvasXY, roomCells, itemForGlyph, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
+  deckSlots, roomFit, tileFromCanvasXY, roomCells, roomCrew, roomDesigns, roomDecor, roomMaterialTiles,
   roomMarkTiles, markLayerSvg, roomItemTiles, itemStackSvg, itemStackTileKeys, roomDeviceConditions,
   roomBlockedTiles, roomOperableTiles, operateLayerSvg,
   demolishTarget, addDecor, removeDecor, escStackRung,
@@ -67,6 +67,7 @@ import {
 
 /* eslint-disable no-multi-spaces */
 
+const CTX_GAP = 6;              // clearance the right-click menu keeps from body-level chrome (openCtx)
 const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
 const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
@@ -1382,20 +1383,12 @@ function onOperateReply(msg) {
 // ⭐ M2-10 — PRIORITISE: REPAIR X. The right-click menu on a machine.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The registry piece standing on an absolute tile, from the frame the surface is already drawing —
- *  '' where the glyph maps to nothing. It is the SAME join `furnitureSvg` runs (`itemForGlyph` over
- *  `cell[0]`), so the menu's name and the sprite under the cursor come from one source and cannot
- *  disagree. It is NOT a device test: `prioritise-model.js` decides that from the `devices` channel
- *  alone, and this is only how the offer gets a word for what the player is looking at. */
-function tileItemId(tx, ty) {
-  const f = Hud.getFrame();
-  if (!f || !_focus || !Array.isArray(f.cells)) return '';
-  if ((f.deck | 0) !== (_focus.deck | 0)) return '';
-  const w = f.w | 0, h = f.h | 0;
-  if (tx < 0 || ty < 0 || tx >= w || ty >= h) return '';
-  const cell = f.cells[ty * w + tx];
-  return Array.isArray(cell) ? itemForGlyph(cell[0] | 0) : '';
-}
+/** ⚠️ THE FRAME IS NOT READ HERE AT ALL, and the helper that read it is DELETED. The first draft
+ *  resolved the tile's glyph to a registry piece and named the menu row from that; the `devices`
+ *  channel's own `kind` byte is the sim's identity for the machine and `GLYPH_SUBSTITUTE` makes the
+ *  art disagree with it on six live kinds (see `prioritise-model.js`'s retracted paragraph). One row
+ *  from one channel answers both "is anything here?" and "what is it?", so there is no second source
+ *  to drift. */
 
 /** Take the menu down and forget its target. Idempotent — every close path calls it unconditionally. */
 function closeCtx() {
@@ -1431,7 +1424,6 @@ function onCanvasContext(e) {
   const roster = Hud.getRoster();
   const offer = prioritiseOffer({
     dev: deviceConditionAt(tile.x, tile.y),
-    itemId: tileItemId(tile.x, tile.y),
     selCid: selectedCrewCid(Hud.getFrame()),
     crew: roster && Array.isArray(roster.crew) ? roster.crew : [],
   });
@@ -1443,18 +1435,54 @@ function onCanvasContext(e) {
 }
 
 /**
+ * ⭐ THE GLOBAL-CHROME RECT THE MENU MUST NOT OPEN UNDER — `.onb-help`, the `?` circle — or null.
+ *
+ * ⚠️ IT IS READ OFF THE ELEMENT, NEVER RESTATED FROM ITS CSS. `.onb-help` is
+ * `position:fixed; right:30px; top:66px; width:32px` today; copying those four numbers here would be
+ * a second encoding of a fact that lives in one stylesheet, and the day the circle moves the menu
+ * would dodge empty air. `document.querySelector` is null in the node harnesses, so the clamp is
+ * inert there rather than throwing — the driven leg supplies a stub rect to make it bite.
+ */
+function chromeAvoidRect() {
+  const el = (typeof document !== 'undefined' && typeof document.querySelector === 'function')
+    ? document.querySelector('.onb-help') : null;
+  if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+  const r = el.getBoundingClientRect();
+  return (r && r.width > 0 && r.height > 0) ? r : null;
+}
+
+/**
  * Show the one-row menu at the pointer, and remember what it is about.
  *
- * ⚠️ IT IS UNHIDDEN BEFORE IT IS PLACED, AND THAT ORDER IS THE WHOLE POINT of the clamp: a `hidden`
+ * ⚠️ IT IS UNHIDDEN BEFORE IT IS PLACED, AND THAT ORDER IS THE WHOLE POINT of the clamps: a `hidden`
  * element measures 0×0, so reading its box first would clamp against nothing. `clientX/Y` and a
  * `position:fixed` island share one coordinate space, so the box lands under the pointer without any
- * further transform — but a row naming a machine is ~220 px wide, and a right-click on a machine near
- * the right or bottom edge of the viewport would put the ONLY control in this menu partly off-screen.
- * An order the player cannot click is `invisible-feedback-is-FUNCTIONAL` in its most literal form.
- * The flip is the `panel-base.js` `clampPos` idiom, reduced to what one row needs.
+ * further transform.
  *
- * Node-safe by construction: the harnesses' `getBoundingClientRect` returns zeros and their window
- * stub has no `innerWidth`, so both clamps are inert there rather than throwing.
+ * TWO CLAMPS, IN THIS ORDER, AND BOTH ARE GEOMETRY:
+ *   1. THE VIEWPORT. The row measures 254×40 in Chrome, so a right-click near the right or bottom
+ *      edge would put the ONLY control in this menu partly off-screen — an order the player can see
+ *      and cannot click, which is `invisible-feedback-is-FUNCTIONAL` in its most literal form.
+ *   2. ⭐ THE `?` CIRCLE, AND THIS ONE IS A SEND-BACK FIX THAT REPLACES A z-index THAT COULD NOT WORK.
+ *      The first draft raised `.rz-ctx` to `z-index:130` to sit above `.onb-help` (120) and it was
+ *      INERT: `#roomzoom-view` is `position:fixed; z-index:20` (`styles.css:1199`), i.e. a STACKING
+ *      CONTEXT, and `.onb-help` is appended to `document.body` (`onboarding.js:325`). A descendant's
+ *      z-index orders it only INSIDE its own context, so no value on this box — 26, 130, 9999 — can
+ *      ever beat a body-level sibling context. Measured in headless Chrome by independent review:
+ *      with 130 shipped, `elementFromPoint` over a ~240×24 px strip at the top-right still answered
+ *      `onb-help`, so a click there opened the onboarding card instead of ordering the repair.
+ *      ⇒ THE REMEDY IS THE ONE THIS REPO ALREADY CHOSE FOR THE IDENTICAL COLLISION: `.ov-nudge` moved
+ *      ITSELF (`right:74px`, NOT `26px`, `styles.css:1146-1148`) rather than trying to out-stack the
+ *      circle. Geometry crosses stacking contexts; z-index does not. Raising `#roomzoom-view`'s own
+ *      z-index would work and is refused: it would lift the whole surface over body-level chrome and
+ *      trade this occlusion for another.
+ *      Sideways FIRST (the nudge's own direction, and it keeps the row on the pointer's line), under
+ *      the circle only when there is no room to the left. The viewport clamp then runs AGAIN, because
+ *      the downward branch can push the box past the bottom edge.
+ *
+ * Node-safe by construction: the harnesses' `getBoundingClientRect` returns zeros, their window stub
+ * has no `innerWidth` and their `querySelector` returns null, so every clamp is inert unless a leg
+ * deliberately supplies the geometry.
  */
 function openCtx(e, tile, offer) {
   _ctx = { tile, deck: _focus.deck, cid: offer.cid, name: offer.name };
@@ -1464,10 +1492,23 @@ function openCtx(e, tile, offer) {
   let left = (e && e.clientX) | 0, top = (e && e.clientY) | 0;
   const box = typeof _el.ctx.getBoundingClientRect === 'function'
     ? _el.ctx.getBoundingClientRect() : null;
+  const w = (box && box.width) || 0, h = (box && box.height) || 0;
   const vw = (typeof window !== 'undefined' && window.innerWidth) | 0;
   const vh = (typeof window !== 'undefined' && window.innerHeight) | 0;
-  if (box && vw && box.width && left + box.width > vw) left = Math.max(0, vw - box.width);
-  if (box && vh && box.height && top + box.height > vh) top = Math.max(0, vh - box.height);
+  const toViewport = () => {
+    if (vw && w && left + w > vw) left = Math.max(0, vw - w);
+    if (vh && h && top + h > vh) top = Math.max(0, vh - h);
+  };
+  toViewport();
+  const avoid = chromeAvoidRect();
+  if (avoid && w && h
+      && left < avoid.right + CTX_GAP && left + w > avoid.left - CTX_GAP
+      && top < avoid.bottom + CTX_GAP && top + h > avoid.top - CTX_GAP) {
+    const leftOfIt = avoid.left - CTX_GAP - w;
+    if (leftOfIt >= 0) left = leftOfIt;
+    else top = avoid.bottom + CTX_GAP;
+    toViewport();
+  }
   _el.ctx.style.left = left.toFixed(0) + 'px';
   _el.ctx.style.top = top.toFixed(0) + 'px';
 }

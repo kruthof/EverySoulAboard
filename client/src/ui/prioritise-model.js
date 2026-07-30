@@ -8,7 +8,10 @@
 // TWO QUESTIONS, AND THEY ARE DIFFERENT KINDS OF QUESTION:
 //   1. IS THERE ANYTHING HERE TO ORDER WORK ON — answered from the `devices` channel row ALONE.
 //   2. WHO WOULD DO IT — answered from the selection, with a one-crew fallback (see below).
-// Both are pure; the caller supplies the row, the frame's item id, the selection and the roster.
+// Both are pure, and the caller supplies exactly THREE things: the `devices` row, the selection and
+// the roster. The row answers both halves of question 1 — whether anything is known to stand there
+// AND what it is — so there is no fourth argument carrying the tile's ART. There was one, and it was
+// the bug: see `deviceDisplayName`.
 //
 // ⚠️ THE MENU MUST NOT PROMISE AN ORDER THE SIM CANNOT TAKE. The host resolves the clicked tile to a
 // device and refuses a tile with none, so a menu offered on a bare or FOGGED tile is a button that
@@ -18,35 +21,46 @@
 // reading the frame glyph as a second opinion would offer the menu on exactly the tiles the host
 // refuses. That is `doOperate`'s measured lesson (`vent_ls` at 35,6,0) inverted.
 
-import { ITEMS } from '../items/index.js';
+import { deviceKindName } from './room-model.js';
 
 /**
- * The player-facing name for the machine standing on a tile, derived from the REGISTRY PIECE the
- * surface is already drawing there — 'solar-panel' → `SOLAR PANEL`.
+ * The player-facing name for the machine standing on a tile, from the `devices` channel's own `kind`
+ * byte — the SIM'S IDENTITY for the thing, not the picture drawn over it. `WaterTank` → `WATER TANK`.
  *
- * ⚠️ IT NAMES THE PICTURE, NOT THE SIM'S DEVICE, AND THAT IS A STATED LIMIT — the charter's example
- * label is *"Prioritise: repair `wing_c`"* and **`wing_c` cannot be produced by any client**. A
- * `Device.Name` is authored in `sim/Sim.Gen/AuthoredShips.cs` and reaches NO wire channel: the
- * `devices` channel's tuple is `[x, y, deck, kind, cond, oper, open]` (`WireFormat.Devices.cs`), and
+ * ⚠️ THE PARAGRAPH THAT STOOD HERE IS QUOTED AND RETRACTED, because it asserted a measurement that
+ * was FALSE and then built a design on it. It read: *"IT NAMES THE PICTURE, NOT THE SIM'S DEVICE …
  * nothing else on the wire carries a device identity at all. So v1 names the machine the player is
- * looking at, which has one property a kind-table would not: **it can never disagree with the sprite
- * under the cursor**, because it is derived from the same id `furnitureSvg` passed to `buildTileItem`.
- * (Filed for the owner: naming the authored device needs a host change, not a client one.)
+ * looking at, which has one property a kind-table would not: it can never disagree with the sprite
+ * under the cursor."* **The wire carries `kind` on every `devices` row** — it survives `decodeDevices`
+ * (`wire/messages.js`) and `roomDeviceConditions` keeps it on the very object this module is handed —
+ * and `room-model.js`'s `OPERABLE_NAME_BY_KIND` was already the surface's idiom for turning it into a
+ * name. The claimed property was not a virtue either: agreeing with the sprite is EXACTLY the bug,
+ * because `items/glyph-map.js`'s `GLYPH_SUBSTITUTE` deliberately makes six kinds wear another piece's
+ * art. Measured on the shipped tables, the retracted version named these FIVE CONFIDENTLY WRONG:
+ *   WaterTank → "OXYGEN TANK" · Radiator → "SPACE HEATER" · SalvageRecycler → "WATER RECYCLER" ·
+ *   MedCabinet → "LOCKER" · IceMelter → "COOKER".
+ * ⚠️ FIVE, NOT SIX — corrected by RUNNING the guard rather than by counting the substitution ledger,
+ * which is the same class of error this whole paragraph exists to retract. `GLYPH_SUBSTITUTE` has six
+ * rows and the sixth is `Light` → `wall-lamp`, which is COSMETIC: the old `functional`-only check DID
+ * refuse that one and answered the honest "MACHINE". That single kind was the entire reach of the
+ * check, and it is exactly why it LOOKED like a sixth-trap defence while being none — the other five
+ * are FUNCTIONAL wearing FUNCTIONAL and it admitted them without a murmur. The test meant to catch
+ * this drove RESOURCE and COSMETIC pieces only (`CLAUDE.md` trap, 4th shape — a scope filter that
+ * excludes the violation), so it was green on all five.
  *
- * ⚠️ THE `functional` CHECK IS THE SIXTH-TRAP DEFENCE and it is not decoration. `GLYPH_SUBSTITUTE`
- * lets a device wear another piece's art, and `itemForGlyph` will happily resolve a RESOURCE piece on
- * a tile that also holds a device — so an unguarded join could label a scrubber `REGOLITH`. A piece
- * the registry does not class as `functional` is not evidence about what is installed, so the answer
- * falls back to the honest generic word rather than to a confident wrong one.
+ * ⚠️ WHAT REMAINS TRUE, NARROWED TO ITS TRUE HALF: the AUTHORED INSTANCE name — `wing_c`,
+ * `battery_2`, the charter's own example — is a `Device.Name` written in `sim/Sim.Gen/AuthoredShips.cs`
+ * that reaches no channel, so THAT still needs a host change. The TYPE name needs none and is here.
  *
- * PURE and TOTAL: any unknown/absent/garbage id answers `MACHINE`.
- * @param {string} [itemId] a `client/src/items/index.js` registry key
+ * PURE and TOTAL: an absent/unknown/garbage byte answers `MACHINE` rather than a confident guess.
+ * @param {number} [kind] a `devices`-channel `DeviceKind` byte
  * @returns {string} an upper-case display name, never empty
  */
-export function deviceDisplayName(itemId) {
-  const row = typeof itemId === 'string' && itemId ? ITEMS[itemId] : null;
-  if (!row || row.kind !== 'functional') return 'MACHINE';
-  return itemId.replace(/-/g, ' ').toUpperCase();
+export function deviceDisplayName(kind) {
+  const name = deviceKindName(kind);
+  if (!name) return 'MACHINE';
+  // camelCase → SPACED CAPS, so `SalvageRecycler` reads as three words a player can say out loud.
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toUpperCase();
 }
 
 /**
@@ -96,12 +110,18 @@ export function prioritiseCrew(selCid, crew) {
  *     it worked or not is indistinguishable from a broken verb, and the host's own refusal for a
  *     missing selection lands in `_status`, which this surface renders nowhere.
  *
- * @param {{dev?:object|null, itemId?:string, selCid?:number|null, crew?:Array|null}} [opts]
+ * `dev` is the `devices`-channel row (`roomDeviceConditions`'s `{tx,ty,kind,cond,oper,open}`) — it
+ * answers BOTH questions this function asks of the tile: whether anything is known to stand there,
+ * and what it is. There is deliberately no second source: a caller that had to supply the tile's ART
+ * as well could supply one that disagrees with the row, and then the menu would name one machine and
+ * order another.
+ *
+ * @param {{dev?:{kind?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
  * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, reason:string}}
  */
 export function prioritiseOffer(opts) {
   const o = opts || {};
-  const name = deviceDisplayName(o.itemId);
+  const name = deviceDisplayName(o.dev ? o.dev.kind : undefined);
   if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', reason: '' };
   const who = prioritiseCrew(
     typeof o.selCid === 'number' ? o.selCid : null,
