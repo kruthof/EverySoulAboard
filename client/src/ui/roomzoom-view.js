@@ -16,6 +16,14 @@ import { Cmd } from '../wire/session.js';
 import {
   decodeDecks, decodeRooms, decodeDecor, decodeMaterials, decodeZones, decodeMarks, decodeItems,
   decodeDevices, decodeBlocked, decodeOperate,
+  // M1-K — THE SELECTION. It is not a piece of client state anywhere: the host owns it
+  // (`GameSession._selected`), re-derives `frame.sel` every render, and this pure reader intersects
+  // that tile with `frame.crew` to name the cid. The Room Zoom read NEITHER before this package, so
+  // a crew member selected on the Overview simply vanished on room entry — indistinguishable, to a
+  // player, from being deselected. Imported from `wire/messages.js` and NOT reached through
+  // `hud.js`: the frame already arrives via `Hud.getFrame()`, which is on `SHIP_STATE_REACH`, so
+  // this adds no symbol to that pinned list.
+  selectedCrewCid,
 } from '../wire/messages.js';
 import { roomZoneTiles, zoneLegendRows, acceptsLabel, zoneMaskMismatch } from './zone-model.js';
 import { ACCEPT_ALL, defaultStockFilter, toggleStockKind } from './stock-filter-model.js';
@@ -28,7 +36,9 @@ import { buildItem, isResourceItem } from '../items/index.js';
 // carries the threshold and its justification; `client/test/wrecked.test.js` pins that this file
 // never imports `wrecked.js` itself).
 import { buildTileItem } from '../items/wear.js';
-import { pawnSprite } from '../render/pawn-svg.js';
+// `pawnSprite` draws the occupant on the floor; `pawnChip` is the crew-dock bust — the SAME piece
+// the Overview's CREW WATCH rows use, so one person wears one face on both docks.
+import { pawnSprite, pawnChip } from '../render/pawn-svg.js';
 import { isTextEntryTarget } from '../input/controls.js';
 import { roomMaterial } from '../theme/warm-tokens.js';
 import { deckMinimap } from './deck-minimap.js';
@@ -40,9 +50,12 @@ import {
   roomBlockedTiles, roomOperableTiles, operateLayerSvg,
   demolishTarget, addDecor, removeDecor, escStackRung,
   eraseTarget, tileOrders, roomMarkNameAt, roomTileZoned,
+  shipCrewRows,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
-import { taskTag } from './console-model.js';
+// `surnameOf` + `watchTask` are the Overview CREW WATCH's own two derivations, imported rather than
+// re-stated so the dock in a room and the dock on the ship cannot word one roster row two ways.
+import { taskTag, surnameOf, watchTask } from './console-model.js';
 import { makeNudge } from './paused-nudge.js';
 import {
   materialsForTool, materialItemId, activeMaterial, setMaterial, toolHasMaterial, defaultMaterials,
@@ -56,7 +69,8 @@ const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
 const HINT = 'PICK A TOOL · WALL/FLOOR: CHOOSE A MATERIAL, DRAG TO SWEEP A RUN · CLICK TO PLACE · ' +
   'DIG [G] / STOCKPILE [Z] / STRIP [V]: DRAG A REGION TO ORDER THE CREW · ' +
   'ERASE [C]: DRAG OVER PAINTED ORDERS TO TAKE THEM BACK · ' +
-  'OPERATE [O]: CLICK A DOOR OR VENT TO OPEN/SHUT IT · DEMOLISH REMOVES A GHOST';
+  'OPERATE [O]: CLICK A DOOR OR VENT TO OPEN/SHUT IT · ' +
+  'MOVE [M]: PICK A CREW MEMBER, THEN CLICK WHERE THEY SHOULD GO · DEMOLISH REMOVES A GHOST';
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -127,6 +141,12 @@ let _accSig = '';         // last-rendered ACCEPTS row signature (mask + mismatc
 // (its clicks resolve synchronously against geometry, not against a DOM node).
 const _el = {};           // cached chrome node references (built once)
 let _miniSig = '';        // last-rendered minimap innerHTML — re-set only on change
+// M1-K — the crew dock's rows, keyed by cid and MUTATED IN PLACE. The row nodes are rebuilt only
+// when the cid SET changes (a thaw, a death), never on the ~2/s roster rebroadcast: a row rebuilt
+// between mousedown and mouseup produces no `click` at all in Chrome, which is §4h exactly, and this
+// dock's whole job is to be clicked.
+const _crewRows = new Map(); // cid key → {el, nameEl, taskEl, whereEl}
+let _crewSig = '';           // the cid-set signature the current row nodes were built for
 
 /** Guarded text write — no DOM mutation when the value is unchanged (idle repaints stay inert). */
 function setText(node, v) { if (node && node.textContent !== v) node.textContent = v; }
@@ -164,6 +184,15 @@ function buildSkeleton() {
     '</div>' +
     '<div class="hud rz-breadcrumb" id="rz-breadcrumb"></div>' +
     '<div class="hud rz-minimap" id="rz-minimap"></div>' +
+    // M1-K — THE CREW DOCK. Left edge, under the breadcrumb, in the same blur-glass `.hud` island
+    // the Overview's CREW WATCH uses and in the same corner of the screen, because it is THE SAME
+    // LIST the player was reading one gesture ago: continuity is the point. It floats OVER the
+    // canvas rather than shrinking it — the canvas letterboxes its room (`preserveAspectRatio`
+    // meet), so the left margin is usually empty, and shrinking `.rz-canvas` would silently rescale
+    // every room in the game to make room for a dock. THE COST IS STATED: on a room wide enough to
+    // fill the canvas the dock covers the leftmost ~2 tiles. That is the same trade the Overview
+    // already makes with the identical island on the identical edge.
+    '<div class="hud rz-crewdock" id="rz-crewdock"></div>' +
     '<div class="rz-palette-wrap">' +
       '<div class="hud rz-matstrip" id="rz-matstrip" hidden></div>' +
       // WP-6 — THE ACCEPTS ROW, shown only while STOCKPILE is armed.
@@ -258,8 +287,25 @@ function buildChrome() {
   _el.toolBtns = Array.from(pal.querySelectorAll('.rz-tool'));
   _el.matStrip = $('rz-matstrip'); // material swatch row — populated on arm(wall|floor)
   _el.accepts = $('rz-accepts');   // ACCEPTS chip row — populated on arm(stockpile)
+
+  // crew dock — a FIXED header plus a list container whose rows are keyed by cid (see `_crewRows`).
+  // Built with real nodes rather than one `innerHTML` string so the row under the pointer survives
+  // every repaint; the header is a guarded text write like the caption's.
+  const dock = $('rz-crewdock');
+  if (dock) {
+    // BUILT WITH `createElement`, NOT `innerHTML`, and that is not a style preference: every other
+    // chrome node in this file is looked up with `querySelector` after an `innerHTML` write, which is
+    // exactly why `_el.toolBtns` is an empty array in three of this repo's node harnesses (they model
+    // `innerHTML` as a string and implement no selector matching). A dock whose rows cannot be
+    // reached in node is a dock whose click cannot be DRIVEN in a test, and the click is the feature.
+    dock.innerHTML = '';
+    _el.crewHdr = dock.appendChild(mkEl('div', 'rz-crewhdr'));
+    _el.crewList = dock.appendChild(mkEl('div', 'rz-crewlist'));
+  }
   _matSig = '';
   _accSig = '';
+  _crewSig = '';
+  _crewRows.clear();
   _miniSig = ''; // force the first minimap paint to render
 }
 
@@ -418,8 +464,14 @@ function repaint() {
   // the tool must not be able to produce a DIFFERENT answer from the one the repaint already had.
   _operableTiles = roomOperableTiles(_deviceCond);
 
+  // THE SELECTION, derived ONCE per repaint from the live frame and shared by the pawn layer and the
+  // crew dock — for the same reason the four channel decodes above are: the glow on the floor and
+  // the lit row in the dock must never be able to disagree about who is selected.
+  const selCid = selectedCrewCid(frame);
+
   paintCanvas(frame);
-  paintLayers(frame, crew, designs, decor);
+  paintLayers(frame, crew, designs, decor, selCid);
+  paintCrewDock(shipCrewRows(crew, currentDeckView(), _focus, selCid));
   paintZoneKey();
   paintCaption(frame, designs);
   paintBreadcrumb();
@@ -451,7 +503,7 @@ function floorBackground(roomType) {
 
 // ── the SVG layer stack (VS-Z-13): grid → glow → decor → furniture → pawns → ghosts ──
 
-function paintLayers(frame, crew, designs, decor) {
+function paintLayers(frame, crew, designs, decor, selCid) {
   const rw = _focus.rw, rh = _focus.rh;
   const logicalW = rw * U, logicalH = rh * U;
   _layers.setAttribute('viewBox', '0 0 ' + logicalW + ' ' + logicalH);
@@ -533,7 +585,7 @@ function paintLayers(frame, crew, designs, decor) {
   // NOW" and dimming it under a scrim explaining a different tile's order would defeat the point.
   // STILL BELOW `pawnSvg`, for the same reason every layer here is: a crew member is never hidden.
   if (_armed === 'operate') body += operateLayerSvg(_operableTiles, _focus, U);
-  body += pawnSvg(roomCrew(crew, _focus));
+  body += pawnSvg(roomCrew(crew, _focus), _focus, selCid);
   body += ghostSvg(roomDesigns(designs, _focus));
   body += previewSvg();
   _layers.innerHTML = body;
@@ -678,15 +730,56 @@ function furnitureSvg(cells, stocked, deviceCond) {
 
 /**
  * Occupant pawns (VS-Z-27..29): front-facing, feet on the tile, above furniture — each carrying the
- * WORK marker (IX-103, ported off the console at WP-8) when it holds a real job.
+ * WORK marker (IX-103, ported off the console at WP-8) when it holds a real job, its SURNAME on a
+ * pill at its feet, and — for the selected crew member — the Overview's own selection glow.
  *
  * This is the surface where a player watches individual people work, so the console's honesty rule
  * belongs here too: a tag ONLY for a crew member doing a job at a place, nothing for idle, walking or
- * en-route crew (`taskTag` returns null for all three). Unlike the Overview's pawns these carry NO
- * name — the room view is already scoped to a handful of people and clicking one names it in the
- * readout, so adding a second line of text to a 32-unit tile would cost more than it tells. A room
- * tile is wide enough for a 3–5 character tag, so no de-clutter sweep is needed here; two crew
- * standing on the SAME tile do overlap, exactly as their sprites already do.
+ * en-route crew (`taskTag` returns null for all three).
+ *
+ * ⚠️ THE "NO NAME TAG" RULE (VS-Z-29) IS RETRACTED HERE, AND ITS JUSTIFICATION WAS FALSE THE DAY IT
+ * WAS WRITTEN. The sentence that stood in this header was: *"Unlike the Overview's pawns these carry
+ * NO name — the room view is already scoped to a handful of people and clicking one names it in the
+ * readout, so adding a second line of text to a 32-unit tile would cost more than it tells."* THERE
+ * IS NO READOUT ON THIS SURFACE. The readout the spec means (`perilune-roomzoom.interaction-spec.md`
+ * IX-Z-30) lives in `.app`/`#panels`, and `client/styles.css` sets `#panels{display:none}` for
+ * `body.roomzoom-open` — so the clause that paid for the missing name has never once executed. The
+ * owner's report (*"in zoom mode we have no control over the pawn"*) is what that costs in play.
+ * `docs/design/perilune-roomzoom.visual-spec.md` VS-Z-29 is amended in the same commit; a code
+ * comment quietly disagreeing with a spec is how a surface ends up with two contracts.
+ *
+ * ⇒ THE RIMWORLD RULE BEING MIRRORED: RimWorld draws a colonist's name on a small label at the
+ * pawn's FEET, for every colonist on the map, all the time (it is a settings toggle whose default
+ * is on). So the pill is at the feet, on every pawn in the room, not on hover and not on selection
+ * only — a name that appears only when you click is no help at all in answering "which of these is
+ * she?", which is the question. ⚠️ FLAGGED AS AN INFERENCE: I am confident RimWorld labels colonists
+ * by name at their feet and that it is defaulted on; I am NOT confident of the exact default of the
+ * three-way "show pawn names" setting across versions, and `docs/design/rimworld-reference.md`
+ * should be checked against this paragraph rather than the other way round.
+ *
+ * SELECTION IS THE OVERVIEW'S VOCABULARY, COPIED NOT INVENTED: the same amber radial-gradient pool
+ * under the feet that `overview-scene.js`'s `pawnLayer` draws, at the same `S * 9` radius, plus the
+ * same rule that the selected pawn's label reads amber and everyone else's reads dim. RimWorld's own
+ * indicator is a set of white corner brackets; that was NOT copied, because the player has just come
+ * from the Overview where the glow means "this one", and teaching two indicators for one state on
+ * two halves of one surface is worse than diverging from RimWorld's shape.
+ *
+ * ⛔ KNOWN LIMIT, MEASURED IN A BROWSER AND STATED RATHER THAN BURIED — and the first version of this
+ * paragraph got it wrong, which is why it is quoted: *"A room tile is wide enough for a 3–5 character
+ * tag, so no de-clutter sweep is needed here … a room holds a handful."* **A pill is WIDER THAN ITS
+ * TILE for any surname past ~4 characters** (`len * 5.2 + 8` against `U = 32`), so ADJACENT pawns —
+ * not merely pawns sharing a tile — overlap. Photographed on `--ship grid` deck 1: eight crew line up
+ * shoulder to shoulder on one dig row and the pills read `VEGA HALLOR( OKONJO NOVAK KAUR`
+ * (`docs/design/shots/m1-k-grid-11-grid-second-pawn.png`). "A room holds a handful" is false on the
+ * economy baseline.
+ *
+ * IT IS ACCEPTED, NOT PATCHED, and the argument is about what the label is FOR. On the shipping game
+ * (`--ship wreck`) there is exactly ONE crew member, so the crowd case is not the case the owner
+ * reported; where a crowd does occur, the CREW DOCK disambiguates by name, task and selection, which
+ * a truncated pill would not do better. The two available fixes both cost more than they buy right
+ * now: truncating the surname trades a crowd problem for a permanent one, and porting the Overview's
+ * `layoutPawnLabels` de-clutter sweep is a real feature (leader lines, row assignment, a crowded
+ * state) that belongs in its own package rather than bolted onto a selection fix.
  *
  * EXPORTED, and `focus` is injectable, purely so the honesty rule is testable. While this was a
  * private function the mutation that matters most — `taskTag(c.task) || 'IDLE'`, which tags idle crew
@@ -694,19 +787,50 @@ function furnitureSvg(cells, stocked, deviceCond) {
  * pointed at it was a source scan for the token `taskTag`. `focus` defaults to the live `_focus`, so
  * every in-app call site is unchanged; a test passes `{rx,ry}` and gets the same string.
  *
- * @param {Array<{cid:*, role:*, x:number, y:number, task:string}>} list
+ * @param {Array<{cid:*, role:*, name:*, x:number, y:number, task:string}>} list
  * @param {{rx:number, ry:number}} [focus] the room's tile origin (defaults to the open room)
+ * @param {number|null} [selCid] the selected crew id — glow + amber label for exactly this one
  */
-export function pawnSvg(list, focus) {
+export function pawnSvg(list, focus, selCid) {
   const out = [];
   const S = PAWN_H / 24;
   const org = focus || _focus;
+  const sel = selCid == null ? null : String(selCid);
   for (const c of list) {
     const [lx, ly] = [(c.x - org.rx) * U, (c.y - org.ry) * U];
     const fx = lx + U / 2, fy = ly + U; // feet on the tile bottom-centre
+    const selected = sel !== null && String(c.cid) === sel;
+    if (selected) {
+      // The Overview's selection pool, formula for formula (`overview-scene.js` pawnLayer): a radial
+      // gradient from 65% amber at the centre to nothing at 70% of the radius, centred two units
+      // above the feet, radius `S * 9`. UNDER the pawn — it is a pool the person stands in, and
+      // drawing it over them would put a wash across the face that identifies them.
+      const sgid = 'rz-sel-' + esc(c.cid);
+      out.push('<defs><radialGradient id="' + sgid + '" cx="50%" cy="50%" r="50%">' +
+        '<stop offset="0" stop-color="rgba(242,181,99,.65)"/>' +
+        '<stop offset="0.7" stop-color="rgba(242,181,99,0)"/></radialGradient></defs>' +
+        '<ellipse class="rz-sel-pool" cx="' + fx.toFixed(1) + '" cy="' + (fy - 2).toFixed(1) +
+        '" rx="' + (S * 9).toFixed(1) + '" ry="' + (S * 9).toFixed(1) + '" fill="url(#' + sgid + ')"/>');
+    }
     const body = pawnSprite({ cid: c.cid, role: c.role }, { idPrefix: 'rz-pw-' + esc(c.cid), className: 'pawn' });
     out.push('<g class="rz-pawn" transform="translate(' + (fx - 8 * S).toFixed(1) + ' ' +
       (fy - 23 * S).toFixed(1) + ') scale(' + S.toFixed(3) + ')">' + body + '</g>');
+    // THE NAME PILL, at the feet and INSIDE the tile. `fy` is the tile's bottom edge, so the pill
+    // spans `fy-8 … fy+1` — over the pawn's shins, one unit past the tile line, never into the row
+    // below. Hanging it BELOW the feet (the first draft) reads better on a sparse room and is wrong
+    // on a full one: the layer's viewBox ends at the room's last row, so the bottom row's names
+    // would be pushed outside it and clipped away exactly where the player needs them most.
+    const sur = surnameOf(c.name);
+    if (sur) {
+      const nw = Math.max(16, sur.length * 5.2 + 8);
+      out.push('<g class="rz-nametag' + (selected ? ' sel' : '') + '">' +
+        '<rect x="' + (fx - nw / 2).toFixed(1) + '" y="' + (fy - 8).toFixed(1) + '" width="' + nw.toFixed(1) +
+          '" height="9" rx="2" fill="rgba(12,10,8,.78)"/>' +
+        '<text x="' + fx.toFixed(1) + '" y="' + (fy - 3.5).toFixed(1) + '" font-size="7.5" letter-spacing=".5" ' +
+          'fill="' + (selected ? '#f2b563' : 'rgba(220,210,195,.72)') + '" text-anchor="middle" ' +
+          'dominant-baseline="central" ' +
+          'font-family="\'Space Mono\', ui-monospace, monospace">' + esc(sur) + '</text></g>');
+    }
     const tag = taskTag(c.task);
     if (tag) {
       const w = Math.max(16, tag.length * 5.6 + 8);
@@ -773,6 +897,80 @@ function paintZoneKey() {
   const html = zoneKeyHtml(zoneLegendRows(_zoneTiles)) + blockedKeyHtml(_blockedTiles);
   if (html !== _zoneKeySig) { _zoneKeySig = html; _zoneKey.innerHTML = html; }
   _zoneKey.hidden = !html;
+}
+
+/** A detached element with a class — the crew dock builds real nodes rather than an HTML string. */
+function mkEl(tag, cls) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  return e;
+}
+
+/**
+ * THE CREW DOCK (M1-K) — one row per soul aboard: bust, surname, live task, and where they are.
+ * `rows` is `shipCrewRows(...)`, which decides membership and carries the HERE / SELECTED facts.
+ *
+ * ⚠️ THE ROW NODES ARE REBUILT ONLY WHEN THE CID SET CHANGES. Everything else — the task line, the
+ * WHERE line, the `.sel` class — is a guarded in-place write. That is §4h's lesson, not tidiness: the
+ * roster rebroadcasts on every crew tile-step (~2/s at 1×, faster at speed), and a node torn down
+ * between mousedown and mouseup fires no `click` in Chrome at all. A dock you have to click twice is
+ * indistinguishable from a dock that does not work, and this dock exists because the owner reported
+ * having no way to reach a pawn.
+ *
+ * ⚠️ EVERY ROW IS A `<button type="button">`, including the one for the crew member already selected.
+ * `type` because inside a form the default is `submit`; a button rather than a div because the dock
+ * must be reachable by Tab and activated by Enter/Space, which is the same argument the palette's
+ * tools carry three functions up — and because `aria-pressed` then says WHICH one is selected in
+ * words rather than only in the border colour.
+ */
+function paintCrewDock(rows) {
+  if (!_el.crewList || !_el.crewHdr) return;
+  const sig = rows.map((r) => String(r.cid)).join(',');
+  if (sig !== _crewSig) {
+    _crewSig = sig;
+    for (const rec of _crewRows.values()) rec.el.remove();
+    _crewRows.clear();
+    for (const r of rows) {
+      const el = mkEl('button', 'rz-crew');
+      el.setAttribute('type', 'button');
+      // `setAttribute`, not `el.dataset.rzcrew =`. In Chrome the two are equivalent (dataset writes
+      // reflect onto the attribute), and the handler below reads the ATTRIBUTE — so writing it
+      // directly is the spelling that is true in the node harnesses too, where `dataset` is a plain
+      // object with no reflection. A row whose id is invisible to `getAttribute` is a row whose click
+      // cannot be driven in a test.
+      el.setAttribute('data-rzcrew', String(r.cid));
+      // The bust is written as markup because it IS markup (an inline SVG from the shared registry),
+      // and it never changes for a given cid — so it is set once here and never touched again.
+      const bust = mkEl('span', 'rz-bust');
+      bust.innerHTML = '<svg viewBox="0 0 16 20">' + pawnChip({ cid: r.cid, role: r.entry.role }) + '</svg>';
+      el.appendChild(bust);
+      const col = mkEl('span', 'rz-crewcol');
+      const nameEl = col.appendChild(mkEl('span', 'rz-crewname'));
+      const taskEl = col.appendChild(mkEl('span', 'rz-crewtask'));
+      const whereEl = col.appendChild(mkEl('span', 'rz-crewwhere'));
+      el.appendChild(col);
+      _crewRows.set(String(r.cid), { el, nameEl, taskEl, whereEl });
+      _el.crewList.appendChild(el);
+    }
+  }
+  for (const r of rows) {
+    const rec = _crewRows.get(String(r.cid));
+    if (!rec) continue;
+    setText(rec.nameEl, surnameOf(r.entry.name) || String(r.cid));
+    // The SAME derivation the Overview's CREW WATCH runs, imported rather than restated: only real
+    // work reads bright, so a dock of dim rows is a TRUE signal that nothing is happening.
+    const t = watchTask(r.entry);
+    setText(rec.taskEl, t.text);
+    setCls(rec.taskEl, 'working', t.working);
+    // WHERE: 'HERE' when they are standing in the room on screen, else the room they are in, else
+    // the deck. The deck fallback is not a shrug — a crew member in a hall is genuinely not in any
+    // room, and saying 'DECK 1' is the honest answer to "where do I go to find her".
+    setText(rec.whereEl, r.here ? 'HERE' : (r.roomName || ('DECK ' + r.deck)).toUpperCase());
+    setCls(rec.whereEl, 'here', r.here);
+    setCls(rec.el, 'sel', r.selected);
+    setAttr(rec.el, 'aria-pressed', r.selected ? 'true' : 'false');
+  }
+  setText(_el.crewHdr, 'CREW — ' + rows.length + ' ABOARD');
 }
 
 function paintBreadcrumb() {
@@ -904,6 +1102,8 @@ function onHudClick(e) {
   if (mat) { onMatChip(mat); return; }
   const acc = t.closest('[data-rzaccept]');
   if (acc) { onAcceptChip(acc); releaseSpace(acc, e); return; }
+  const row = t.closest('[data-rzcrew]');
+  if (row) { onCrewRow(row.getAttribute('data-rzcrew')); releaseSpace(row, e); return; }
   const crumb = t.closest('[data-rz]');
   if (crumb) { exitRoom(); return; } // ‹ PERILUNE / DECK n both pop to the Overview (IX-Z-32/33)
   const slot = t.closest('.rz-mini-slot');
@@ -945,6 +1145,50 @@ function onAcceptChip(el) {
   if (next === _stockFilter) return;
   _stockFilter = next;
   paintAccepts();
+}
+
+/**
+ * A CREW DOCK ROW CLICK (M1-K) — select that crew member, and go to where they are.
+ *
+ * ⭐ THE RIMWORLD RULE BEING MIRRORED is the colonist bar: clicking a colonist selects them AND
+ * moves the camera to them, wherever on the map they are. Both halves, in that order:
+ *
+ *   1. SELECT — `Hud.selectCrewByCid`, the one shared selection flow both modern surfaces already
+ *      use (it is on `SHIP_STATE_REACH`; this adds no symbol to that pinned list, and it is NOT a
+ *      crew-interaction seam — selecting a pawn is not reaching a person, so §1.5.4's Persona census
+ *      is untouched). It already handles the cross-deck case by sending `Cmd.deck` and deferring the
+ *      click until that deck's frame arrives, which is why this function never sends a deck command
+ *      of its own: two `Cmd.deck` for one click would move the player two decks.
+ *   2. GO THERE — if they are standing in a bound room that is not the one on screen, re-focus the
+ *      Room Zoom on it, exactly as a minimap slot click does (`onMinimapSlot`), and disarm, because
+ *      a tool armed for one room should not stay armed over another.
+ *
+ * A crew member in a HALL has no room to enter. That is not a dead row: the selection still lands
+ * (which is the thing the player wants — they can now give the order), and the toast says where they
+ * are rather than leaving the click looking swallowed. Silence there would be `invisible-feedback-
+ * is-FUNCTIONAL` in miniature.
+ */
+function onCrewRow(rawCid) {
+  const cid = /^\d+$/.test(String(rawCid)) ? Number(rawCid) : null;
+  if (cid == null) return; // a blanked/corrupt attribute must never select crew member 0
+  const roster = Hud.getRoster();
+  const crew = roster && Array.isArray(roster.crew) ? roster.crew : [];
+  const row = shipCrewRows(crew, currentDeckView(), _focus, null).find((r) => Number(r.cid) === cid);
+  Hud.selectCrewByCid(cid);
+  if (!row) return; // selected anyway — an unknown cid is the roster's problem, not a reason to stop
+  const who = surnameOf(row.entry.name) || String(cid);
+  if (row.here) return;                       // already on screen: the glow is the whole feedback
+  if (!row.anchor) { toast(who + ' IS NOT IN A ROOM — DECK ' + row.deck); return; }
+  const target = roomTileRect(currentDeckView(), row.anchor, row.slotIndex);
+  // NO `esc()` HERE, and it was in the first draft. `toast` writes `textContent`, which is
+  // intrinsically escaped — running the name through `esc` first would show a player the literal
+  // string `&amp;` where the room is called `R&D`. Escaping is for the `innerHTML` paths above.
+  if (!target) { toast(who + ' IS IN ' + (row.roomName || row.anchor) + ' — CANNOT OPEN IT'); return; }
+  _focus = target;
+  _armed = null;
+  _drag = null;
+  repaint();
+  toast('▸ ' + who + ' · ' + target.displayName);
 }
 
 /** Lateral / cross-deck room swap from the minimap (IX-Z-34/35). */
@@ -998,6 +1242,8 @@ function onCanvasClick(e) {
     repaint();
   } else if (pc.cls === 'operate') {
     doOperate(tile, deck);
+  } else if (pc.cls === 'move') {
+    doMove(tile, deck);
   } else if (pc.cls === 'demolish') {
     doDemolish(tile, deck);
   }
@@ -1073,6 +1319,57 @@ function onOperateReply(msg) {
   // of them. `ok` is prefixed as a symbol rather than as a word so a refusal is legible at a glance
   // without lengthening a line that already holds the reason.
   toast((r.ok ? '⇄ ' : '⛔ ') + (r.reason || (r.ok ? r.state : 'REFUSED')));
+}
+
+/**
+ * THE MOVE VERB (M1-K) — send the SELECTED crew member to the clicked tile. The Room Zoom's answer
+ * to *"in zoom mode we have no control over the pawn"*.
+ *
+ * ⚠️ IT LOWERS TO THE SAME TWO MESSAGES THE OVERVIEW SENDS, IN THE SAME ORDER, and it must:
+ * `MoveCitizenCommand` is constructed from `GameSession._cursor` (`GameSession.cs:1418`), not from a
+ * payload, so `Cmd.cursor` is not a hint — it IS the destination, and reversing the pair would move
+ * the crew member to wherever the mouse last hovered.
+ *
+ * ⚠️ THE DECK COMMAND IS CONDITIONAL AND IT IS NOT DEFENSIVE PADDING. `SetCursor` stamps the HOST's
+ * `_deck` onto the cursor's Z (`GameSession.cs:1341`) and ignores the client's idea of a deck
+ * entirely. `_focus.deck` normally equals `frame.deck` — entry comes from the Overview showing that
+ * deck, and `onMinimapSlot` sends `Cmd.deck` on a cross-deck swap — but "normally" is the word that
+ * makes this worth three lines: after a cross-deck crew-row click the focus moves the instant the
+ * click is sent, while the deck frame is still in flight, so a MOVE issued in that window would send
+ * the crew member to the same X/Y on the deck the player just left. Ordering is safe because
+ * `DrainCommands` processes the queue sequentially: deck, then cursor, then move.
+ *
+ * ⚠️ THE SELECTION CHECK IS LOCAL, AND IT IS THE ONE THING THIS FUNCTION DECIDES. The host already
+ * refuses (`if (_selected == 0) { _status = "no crew selected"; return; }`) — but that refusal lands
+ * in `_status`, which this surface does not render anywhere, so without the local check a click with
+ * nothing selected is completely silent. That is the `invisible-feedback-is-FUNCTIONAL` shape: an
+ * order that looks identical whether it worked or not. The client is NOT duplicating a verdict it
+ * could get better from the host (the OPERATE lesson) — it is answering a question the host's answer
+ * never reaches the player for.
+ *
+ * NO OPTIMISTIC ECHO: the toast names what was SENT, never that the crew member has arrived. They
+ * walk; `MoveCitizenCommand` sets a path and the sim spends real seconds on it.
+ */
+function doMove(tile, deck) {
+  const frame = Hud.getFrame();
+  const cid = selectedCrewCid(frame);
+  if (cid == null) {
+    toast('NO CREW SELECTED — CLICK A PAWN OR A CREW ROW, THEN CLICK WHERE THEY SHOULD GO');
+    pulse(tile, false);
+    return;
+  }
+  const roster = Hud.getRoster();
+  const list = roster && Array.isArray(roster.crew) ? roster.crew : [];
+  const who = surnameOf((list.find((c) => c && c.cid === cid) || {}).name) || ('CREW ' + cid);
+  const shown = frame && Number.isFinite(frame.deck) ? frame.deck | 0 : deck;
+  if (shown !== deck) _send(Cmd.deck(deck - shown));
+  _send(Cmd.cursor(tile.x, tile.y));
+  _send(Cmd.move());
+  pulse(tile, false);
+  toast('➤ ' + who + ' → ' + tile.x + ',' + tile.y);
+  // A move order on a stopped ship is the purest form of "I did something and nothing happened":
+  // the command sits in `Simulation._inbox` until a tick drains it, and at `tps == 0` there is none.
+  nudgeOnIntent();
 }
 
 function doDemolish(tile, deck) {
@@ -1361,6 +1658,26 @@ function onKey(e) {
     // Room Zoom's own capture-phase listener, so it cannot reach the console at all while this
     // surface is open.
     arm('operate'); e.stopPropagation(); e.preventDefault();
+  } else if (k === 'm' || k === 'M') {         // M1-K: M toggles MOVE — the console's own letter
+    // ⚠️ THIS KEY WAS NOT FREE — IT WAS WORSE THAN TAKEN, AND CLAIMING IT IS HALF OF A BUG FIX.
+    // `input/controls.js:225` installs a BUBBLE-phase window keydown for the deprecated console at
+    // boot, and this surface's capture handler `stopPropagation`s only the keys it names. So while a
+    // room was open, `M` reached the console and sent a real `Cmd.move()` — moving the selected crew
+    // member to the console's INVISIBLE inspection cursor, hardcoded at `controls.js:145` to
+    // `{x:32,y:10}`, with no cursor drawn, no toast and no way to predict where they would go. The
+    // same leak sent `T` into a dialogue inside `#panels` (`display:none`) and `Enter` into one or
+    // the other. That is the `HANDOVER.md:314-319` shape — a verb wired to an invisible cursor —
+    // and it is closed in this package by `installInput`'s `isSuspended` seam, which stands the
+    // console's whole keymap down (except the time keys) while a Level-2 takeover is open.
+    // ⇒ WHY THE FIX IS NOT SIMPLY THIS LINE. Adding `M` here with `stopPropagation()` really would
+    //   suppress the console's `M` on its own — window is both the first capture object and the last
+    //   bubble object in the path, so stopping in capture means the bubble listener is never reached.
+    //   That fixes ONE key. `T` (a talk into a hidden dialogue), `Enter` (either of the two), and the
+    //   arrow/hjkl keys that MOVE the invisible cursor are all still live, and none of them wants a
+    //   Room-Zoom binding — the only honest answer for a key this surface has no use for is that the
+    //   deprecated surface underneath does not get to act on it. Hence the stand-down, and hence `M`
+    //   is unambiguously free here rather than merely being shouted over.
+    arm('move'); e.stopPropagation(); e.preventDefault();
   }
 }
 

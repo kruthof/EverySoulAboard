@@ -74,6 +74,12 @@ function fallbackToCanvas2D() {
     onEscape: () => Hud.handleEscape(),
     getArmedTool: () => Hud.getArmedTool(),
     getStockFilter: () => Hud.getStockFilter(),
+    // M1-K — the deprecated console keymap stands down while the Room Zoom owns the screen. BOTH
+    // installInput blocks must pass it, for the same reason `getStockFilter` must: this one is the
+    // WebGL2→Canvas2D fallback re-install, and wiring only the other block would bring the invisible
+    // -cursor `M`/`T`/`Enter` leak back after a context loss, silently. See `isSuspended` in
+    // controls.js for what the leak did.
+    isSuspended: () => roomZoom.isOpen(),
     onBuildKey: (kind) => Hud.armFromKey(kind),
     onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
     onCanvasClick: () => Hud.canvasClicked(),
@@ -344,6 +350,9 @@ inputDispose = installInput({
   // it — the WebGL2→Canvas2D fallback above re-installs, and wiring only one would silently paint
   // every zone unfiltered after a context loss. input.test.js counts the two.
   getStockFilter: () => Hud.getStockFilter(),
+  // M1-K — see the twin in `fallbackToCanvas2D` above. `roomZoom` is the module-level const created
+  // by `initRoomZoom` further up this file, so the closure is resolved by the time any key arrives.
+  isSuspended: () => roomZoom.isOpen(),
   onBuildKey: (kind) => Hud.armFromKey(kind),
   onToolUsed: (tool, x, y) => Hud.toolUsed(tool, x, y),
   // Plain canvas clicks supersede any pending cross-deck row click (IX-42).

@@ -249,10 +249,80 @@ legs `#2b2018`, warm rim-light stripe `rgba(242,181,99,.4)` down the left edge.
 edge = tile bottom), and painted above furniture so an occupant standing on a bunk/chair reads. When
 a device it uses shares the tile, the pawn wins z.
 
-**VS-Z-29** — **No name tag, no idle animation in Level 2.** The pawn is static (front-facing); who
-they are and what they are doing is answered by clicking them (interaction spec), not by a floating
-label — the Room Zoom is the room's portrait, not the crew HUD. (The mock labels the occupant
-"Ashby" in prose only; no on-canvas name element.)
+**VS-Z-29** — ⚠️ **RETRACTED AND REPLACED at M1-K (2026-07-29).** It read, and the struck text is
+kept because a grep for it must land on what replaced it: *"**No name tag, no idle animation in
+Level 2.** The pawn is static (front-facing); who they are and what they are doing is answered by
+clicking them (interaction spec), not by a floating label — the Room Zoom is the room's portrait, not
+the crew HUD. (The mock labels the occupant "Ashby" in prose only; no on-canvas name element.)"*
+
+**ITS JUSTIFICATION WAS FALSE ON THE DAY IT WAS WRITTEN, and only from live play did that surface.**
+The clause that paid for the missing name — *"answered by clicking them (interaction spec)"* — points
+at **IX-Z-30**, whose readout lives in the console's `.app` / `#panels`, and `client/styles.css`
+sets `#panels{display:none}` for `body.roomzoom-open`. So the compensating affordance has **never
+once executed on this surface**. The owner's report is what that cost in play: *"in zoom mode we have
+no control over the pawn… we also lost the pawn we selected at the ship level."* The clause was also
+already half-spent by WP-8, which ported the IX-103 **WORK tag** onto these same pawns — so "no
+floating label" had not been true for a while either.
+
+**VS-Z-29 (replacement) — identity + selection on the occupant.** Three elements, all inside the
+room's tile rect and all below `pawnSvg`'s existing z-order rules:
+
+- **Name pill** — the crew member's **surname** (`console-model.js`'s `surnameOf`, the Overview's own
+  derivation), on **every** pawn in the room, always: `font-size:7.5`, `letter-spacing:.5`, Space
+  Mono, on a `rgba(12,10,8,.78)` plate `rx:2`, height `9`, width `max(16, len*5.2 + 8)`. It is
+  anchored at the **feet, inside the tile** — the plate spans `fy-8 … fy+1`, over the pawn's shins.
+  Hanging it *below* the feet reads better on a sparse room and is wrong on a full one: the layer's
+  viewBox ends at the room's last row, so the bottom row's names would be clipped away.
+  *RimWorld analogue:* RimWorld labels colonists by name at their feet, on the map, by default.
+  ⚠️ Flagged as an inference: the placement and the default-on behaviour are asserted from memory of
+  the game, not from `docs/design/rimworld-reference.md` (which did not exist when this was written).
+  Check this paragraph against that reference rather than the reverse.
+- **Selection glow** — for the crew member the host reports as selected (`frame.sel` ∩ `frame.crew`,
+  via `selectedCrewCid`), the **Overview's own pool**, copied formula for formula from
+  `overview-scene.js`'s `pawnLayer`: a radial gradient `rgba(242,181,99,.65)` → transparent at 70 %,
+  centred `(fx, fy-2)`, radius `S*9`, drawn **under** the pawn. Deliberately **not** RimWorld's white
+  corner brackets: the player has just come from the Overview, where the glow already means "this
+  one", and two indicators for one state on two halves of one surface is worse than the divergence.
+- **Selected label reads amber** (`#f2b563`) where every other reads `rgba(220,210,195,.72)` — the
+  same rule the Overview's `tagC` applies, so exactly one label is lit at a time.
+
+**Still true from the retracted rule:** *no idle animation* — the pawn is static, front-facing.
+
+⛔ **KNOWN LIMIT, measured in a browser and ACCEPTED, not patched.** A pill is **wider than its tile**
+for any surname past ~4 characters (`len * 5.2 + 8` against `U = 32`), so **adjacent** pawns — not
+merely pawns sharing a tile — have overlapping labels. Photographed on `--ship grid` deck 1, where
+eight crew line up on one dig row and the pills read `VEGA HALLOR( OKONJO NOVAK KAUR`
+(`docs/design/shots/m1-k-grid-11-grid-second-pawn.png`). The shipping game (`--ship wreck`) has
+exactly **one** crew member, so this is not the case the owner reported, and where a crowd does occur
+the **crew dock** disambiguates by name, task and selection. The two fixes both cost more than they
+buy here: truncating the surname trades a crowd problem for a permanent one, and porting the
+Overview's `layoutPawnLabels` de-clutter sweep (leader lines, row assignment, a crowded state) is its
+own package.
+
+---
+
+## 5b. Crew dock (VS-Z-52 … VS-Z-54) — M1-K
+
+**VS-Z-52** — **`.rz-crewdock`** is a blur-glass `.hud` island at `left:32px; top:74px; width:190px;
+max-height:calc(100vh - 260px); overflow-y:auto; z-index:21`, i.e. the **same corner, the same island
+and the same idiom** as the Overview's `.ov-crewwatch`, because it is **the same list the player was
+reading one gesture ago**. It **floats over** `.rz-canvas` rather than shrinking it: the canvas
+letterboxes its room, so the left margin is usually empty, and insetting the canvas would silently
+rescale every room in the game to make space for a dock. **Cost, stated:** on a room wide enough to
+fill the canvas the dock covers the leftmost ~2 tiles — the identical trade the Overview already
+makes on the identical edge.
+
+**VS-Z-53** — One row **per soul aboard**, in roster order, never room-filtered: `.rz-crew` is a
+`<button type="button">` carrying `data-rzcrew` and `aria-pressed`, holding a `.rz-bust` (the shared
+`pawnChip`, 28 px), a `.rz-crewname` (surname), a `.rz-crewtask` (the shared `watchTask`; `.working`
+reads amber and nothing else does), and a `.rz-crewwhere` — **`HERE`** in amber when they are standing
+in the room on screen, else the room they are in, else `DECK {n}` for a crew member in a hall.
+*RimWorld analogue:* the **colonist bar** — every colonist, always, wherever the camera is.
+
+**VS-Z-54** — The selected row carries `.sel` (`border-color:#cf7a33`, `background:rgba(34,27,18,.8)`
+— the Overview's `.ov-crew.sel` values) **and** `aria-pressed="true"`, so which row is selected is
+stated in words as well as in colour. Row nodes are created once per cid and mutated in place; they
+are rebuilt **only** when the cid set changes.
 
 ---
 

@@ -284,10 +284,26 @@ test('B5: the Room Zoom pawns carry the work tag, from the SAME classifier as th
     + 'surface where a player watches individuals, so the marker belongs there too.');
   assert.equal(wired(commentOutLines(raw, 'rz-worktag'), tokens), false,
     'the scan passes with the Room Zoom work tag commented out (CLAUDE.md trap #1)');
-  // and it must come from console-model's taskTag, not a private second table that can drift
-  assert.match(stripJsComments(raw), /import\s*\{\s*taskTag\s*\}\s*from\s*'\.\/console-model\.js'/,
+  // and it must come from console-model's taskTag, not a private second table that can drift.
+  //
+  // ⚠️ WIDENED AT M1-K, AND THE WIDENING IS THE MINIMUM ONE. The pattern used to be
+  // `\{\s*taskTag\s*\}` — a SOLE-SPECIFIER match, which asserted two things at once and only meant
+  // to assert one: that `taskTag` comes from `console-model.js`, and (accidentally) that the Room
+  // Zoom imports NOTHING ELSE from that module. The second half went red the moment the crew dock
+  // took `surnameOf` and `watchTask` from the same file — which is the OPPOSITE of a drift, since
+  // sharing more of the Overview's derivations is exactly what this assertion wants. The specifier
+  // list is now matched as a list, and `\b` on both sides so `myTaskTag` cannot satisfy it.
+  assert.match(stripJsComments(raw), /import\s*\{[^}]*\btaskTag\b[^}]*\}\s*from\s*'\.\/console-model\.js'/,
     'the Room Zoom classifies work with something other than the shared `taskTag`, so the two '
     + 'surfaces can now disagree about who is working');
+  // NON-VACUITY for the widening: a pattern loose enough to accept a sibling specifier must still
+  // refuse the defect it was written for — a LOCAL `taskTag` and no import of it at all.
+  assert.doesNotMatch(
+    stripJsComments(raw).replace(/import\s*\{([^}]*)\}\s*from\s*'\.\/console-model\.js'/,
+      (m, list) => 'import {' + list.replace(/\btaskTag\b\s*,?/, '') + "} from './console-model.js'"),
+    /import\s*\{[^}]*\btaskTag\b[^}]*\}\s*from\s*'\.\/console-model\.js'/,
+    'dropping `taskTag` from the console-model import still satisfies the widened pattern — it is '
+    + 'now matching something other than the specifier list');
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════

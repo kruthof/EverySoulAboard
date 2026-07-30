@@ -105,6 +105,7 @@ export function paletteOrders(tool, x, y, mask) {
  *   getStockFilter?: () => number,
  *   onBuildKey?: (kind: 'build'|'cancel'|'dig'|'stockpile'|'strip'|'erase') => void,
  *   onToolUsed?: (tool: string, x: number, y: number) => void,
+ *   isSuspended?: () => boolean,
  * }} opts
  */
 export function installInput(opts) {
@@ -126,6 +127,46 @@ export function installInput(opts) {
   // UI can drop a pending cross-deck row click (IX-42 supersession). Armed-tool clicks report
   // through onToolUsed instead.
   const onCanvasClick = opts.onCanvasClick || (() => {});
+  /**
+   * ⛔ THE CONSOLE KEYMAP STANDS DOWN WHILE A LEVEL-2 TAKEOVER OWNS THE SCREEN (M1-K).
+   *
+   * This handler is installed on `window` at boot, in the BUBBLE phase, and it was never taken down
+   * — so it stayed live underneath the Room Zoom, which is `display:none` over the whole console.
+   * Three keys did real, invisible damage while a room was open. ⚠️ PRECISELY WHAT WAS MEASURED, so
+   * a reader can tell evidence from reading: **`T` was measured in a real browser** — with a room
+   * open it produced ZERO `chat` messages on the wire after this change and ONE on the Overview in
+   * the same run (`client/tools/zoom-pawn-shot.mjs`, the KEY LEAK section). `M` and `Enter` are read
+   * off the shipped code path below and were NOT separately driven against `main`; they are the same
+   * handler, the same phase and the same cursor, so the reading is strong but it is a reading:
+   *   · `M` sent a real `Cmd.move()` — the SELECTED crew member walked to the console's INVISIBLE
+   *     inspection cursor, `cur` below, which starts at a hardcoded `{x:32,y:10}` and is drawn
+   *     nowhere on this surface. No toast, no cursor, no way to predict the destination.
+   *   · `T` sent `Cmd.talk(cid)` into a dialogue window inside `#panels`, which
+   *     `client/styles.css` sets to `display:none` for `body.roomzoom-open` — a conversation opened
+   *     into a hidden box.
+   *   · `Enter` did one or the other (see its branch below).
+   * The arrow / hjkl keys moved that same invisible cursor, which is what made `M`'s destination
+   * feel arbitrary rather than merely wrong. This is `docs/HANDOVER.md:314-319`'s shape exactly — a
+   * verb wired to a cursor the player cannot see — and a keystroke that silently moves a pawn to a
+   * hardcoded coordinate is worse than a keystroke that does nothing.
+   *
+   * ⚠️ IT IS A STAND-DOWN, NOT A TEARDOWN. `dispose()` would work and is wrong: the takeover is
+   * transient, the canvas keeps rendering behind it, and re-installing listeners on every room entry
+   * would rebuild the mouse handlers too. A predicate asked at the top of the handler is the whole
+   * mechanism, and it is INJECTED rather than read from a module: `controls.js` must not learn what
+   * a Room Zoom is (it imports from `ui/` only for `LENSES` and two pure models).
+   *
+   * ⚠️ THE THREE TIME KEYS ARE DELIBERATELY EXEMPT, and the exemption is load-bearing rather than
+   * generous: the Room Zoom's own paused-ship nudge reads `‖ HOLD — CLICK OR PRESS SPACE TO RUN THE
+   * SHIP`. A blanket stand-down would make that chip's own instruction a lie on the surface that
+   * prints it. Speed (`+`/`-`) rides with it for the same reason — they are the ship's clock, not
+   * the console's cursor, and no takeover has ever wanted to suppress them.
+   *
+   * Default `false` — an absent option leaves every existing caller byte-identical.
+   */
+  const isSuspended = opts.isSuspended || (() => false);
+  /** Keys the deprecated keymap still answers while suspended: the ship's clock, nothing else. */
+  const TIME_KEYS = new Set([' ', '+', '=', '-', '_']);
 
   // Open a conversation with the currently selected crew (T, or Enter when a crew is selected).
   // Resolves the cid from the selected tile; a non-crew selection (or a cid-less older frame) is
@@ -232,6 +273,12 @@ export function installInput(opts) {
       if (k === 'Escape') onEscape();
       return;
     }
+    // The stand-down (see `isSuspended` above). Placed AFTER the typing isolation so a suspended
+    // console cannot change what a text field does, and BEFORE every game key including `Escape` —
+    // the Room Zoom binds Escape itself in the capture phase and `stopPropagation`s it, so this
+    // handler has never been the one that closes a room, and answering it here while a takeover is
+    // open could only ever pop a panel the player cannot see.
+    if (isSuspended() && !TIME_KEYS.has(k)) return;
     if (k === 'P' || k === 'p') { toggleSprites(); return; }
     if (k === 'Escape') { onEscape(); }
     else if (k === 't' || k === 'T') { talkSelected(); }

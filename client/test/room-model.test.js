@@ -115,19 +115,23 @@ test('clampTileToRoom is the half-open rect test', () => {
 
 // ---- palette command map (exhaustive) ----
 
-test('paletteCommand maps every one of the seventeen tools to a class + verb', () => {
+test('paletteCommand maps every one of the eighteen tools to a class + verb', () => {
   const byTool = Object.fromEntries(ROOM_TOOLS.map((t) => [t, paletteCommand(t)]));
   // 15 → 16 with the OPERATE verb (2026-07-28): the door/vent OPEN⇄SHUT toggle, which existed in the
   // sim since M1 and was reachable ONLY through the deprecated console's invisible inspection cursor.
   // 16 → 17 with ERASE (M1-C, 2026-07-28): the UN-designate verb. `on:false` has ridden the wire and
   // the TUI has sent it since E0-5; no surface in `client/` did, so one STRIP drag across the cryo
   // bay condemned eight capsules with no gesture anywhere to take it back.
+  // 17 → 18 with MOVE (M1-K, 2026-07-29): the "go here" order for the SELECTED crew member, and the
+  // FIRST tool on this palette whose subject is a person rather than a tile. The owner's report was
+  // *"in zoom mode we have no control over the pawn"* — `MoveCitizenCommand` was issuable from the
+  // Overview and from the deprecated console, and from nowhere inside a room.
   //
   // ⚠️ THIS NUMBER IS PINNED BY EQUALITY AND MOVING IT IS A SURFACE DECISION, not a chore: the
   // palette is the whole vocabulary of what a player may do inside a room, and a tool arriving
   // without anyone deciding is exactly what the equality pin is here to stop. Move it in the same
   // commit as the tool, with the reason in the commit message.
-  assert.equal(ROOM_TOOLS.length, 17);
+  assert.equal(ROOM_TOOLS.length, 18);
   assert.deepEqual(byTool.wall, { cls: 'structural', verb: 'build', kind: 'wall' });
   assert.deepEqual(byTool.floor, { cls: 'structural', verb: 'build', kind: 'floor' });
   assert.deepEqual(byTool.door, { cls: 'structural', verb: 'build', kind: 'door' });
@@ -156,6 +160,12 @@ test('paletteCommand maps every one of the seventeen tools to a class + verb', (
   // verb, because which verb an erase click sends is a property of the TILE (`eraseTarget`) and not
   // of the tool. A reviewer reading `verb: null` should read it as "ask the tile", not as "unwired".
   assert.deepEqual(byTool.erase, { cls: 'erase', verb: null });
+  // MOVE is its OWN class too (M1-K). Not `order` — it paints no designation and reaches no job
+  // board; not `operate` — that verb targets a device standing on the tile and refuses an empty one,
+  // where MOVE wants an empty one; and NOT SWEPT, which the `isSweepTool` false-list below pins,
+  // because a drag would emit one move order per tile of which only the last could survive. It is
+  // the only row whose precondition lives outside the room: the SELECTION, which is host state.
+  assert.deepEqual(byTool.move, { cls: 'move', verb: 'move' });
   assert.ok(ROOM_TOOLS.includes('stockpile'),
     'ROOM_TOOLS lost STOCKPILE. It is not on the Overview either (overview-model.js ORDER_TOOLS), ' +
     'so the verb would be unreachable on the whole standard surface — surface-boundary.test.js ' +
@@ -164,17 +174,17 @@ test('paletteCommand maps every one of the seventeen tools to a class + verb', (
   // isStructuralTool: wall/floor/door drag-build; everything else false — INCLUDING the two order
   // tools, which sweep but carry no material and never reach the material strip.
   for (const t of ['wall', 'floor', 'door']) assert.equal(isStructuralTool(t), true);
-  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'erase', 'operate', null, 'nope']) assert.equal(isStructuralTool(t), false);
+  for (const t of ['bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'erase', 'operate', 'move', null, 'nope']) assert.equal(isStructuralTool(t), false);
   // isOrderTool / isEraseTool / isSweepTool: the sibling sets the three gesture sites gate on.
   // ERASE IS NOT AN ORDER AND IS A SWEEP, and both halves are asserted: classing it `order` would
   // route it through `orderPayloads` (whose contract is byte-identity with `paletteOrders`), and
   // dropping it from `isSweepTool` would make it click-only — mutation 4's subject.
   for (const t of ['dig', 'stockpile', 'strip']) assert.equal(isOrderTool(t), true);
-  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'erase', 'operate', null, 'nope']) assert.equal(isOrderTool(t), false);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'erase', 'operate', 'move', null, 'nope']) assert.equal(isOrderTool(t), false);
   assert.equal(isEraseTool('erase'), true);
-  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', null, 'nope']) assert.equal(isEraseTool(t), false);
+  for (const t of ['wall', 'floor', 'door', 'bunk', 'rug', 'demolish', 'dig', 'stockpile', 'strip', 'operate', 'move', null, 'nope']) assert.equal(isEraseTool(t), false);
   for (const t of ['wall', 'floor', 'door', 'dig', 'stockpile', 'strip', 'erase']) assert.equal(isSweepTool(t), true);
-  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', 'operate', null, 'nope']) {
+  for (const t of ['bunk', 'desk', 'chair', 'locker', 'shelf', 'lamp', 'rug', 'plant', 'demolish', 'operate', 'move', null, 'nope']) {
     assert.equal(isSweepTool(t), false);
   }
   // Every tool the palette renders has a label — a missing one paints an empty button.

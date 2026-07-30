@@ -198,9 +198,38 @@ Each requirement is exactly one command class → one wire behavior.
 
 - **IX-Z-30** **Pawn click = select** (only when NO tool is armed). With `armedTool === null`, a
   canvas click on a tile holding a `frame.crew` member sends the game-ui `Cmd.click(tx, ty)`; the
-  host answers with `citizen` + `frame.sel`, and the game-ui readout / biography flow takes over
-  unchanged (this is the game-ui selection path, IX-45, reached from inside the Room Zoom). Talking
-  (`T`) works on the selected crew exactly as game-ui IX-51.
+  host answers with `citizen` + `frame.sel`. ⚠️ **AMENDED at M1-K (2026-07-29): the two clauses that
+  followed were false and are struck.** They read: *"and the game-ui readout / biography flow takes
+  over unchanged (this is the game-ui selection path, IX-45, reached from inside the Room Zoom).
+  Talking (`T`) works on the selected crew exactly as game-ui IX-51."*
+  **The readout does not exist on this surface** — it lives in `.app` / `#panels`, which
+  `client/styles.css` hides for `body.roomzoom-open` — so this click resolved the right cid and
+  produced **no visible pixel** from the surface's birth commit until M1-K. **And `T` was worse than
+  absent:** `input/controls.js`'s boot-time bubble keydown stayed live underneath, so `T` opened a
+  dialogue *into the hidden panel*, `M` sent a real `Cmd.move()` to the console's **invisible**
+  inspection cursor (hardcoded `{x:32,y:10}`), and `Enter` did one or the other. That keymap now
+  **stands down** while a Level-2 takeover is open (everything except the ship's clock: SPACE, `+`,
+  `-`), because the Room Zoom's own nudge chip instructs the player to press SPACE.
+  ⇒ **What answers "who is this" now is VS-Z-29's name pill and selection glow plus the crew dock
+  (IX-Z-36), not a readout.**
+- **IX-Z-36** **Crew dock row click = select, and go there** (M1-K, VS-Z-52…54). Clicking a
+  `.rz-crew` row calls the shared `Hud.selectCrewByCid` — which handles the cross-deck case itself by
+  sending `Cmd.deck` and deferring the selection click until that deck's frame arrives, so this
+  gesture never sends a deck command of its own. If that crew member is standing in a **bound room
+  other than the one on screen**, the Room Zoom re-focuses on it and disarms, exactly as a minimap
+  slot click does (IX-Z-34). A crew member **already in the room** navigates nowhere — the glow is
+  the whole feedback. A crew member in a **hall** has no room to enter: the selection still lands and
+  a toast names their deck, because a click that selects but cannot navigate must not look swallowed.
+  *RimWorld analogue: the colonist bar — click a colonist, select them, move the camera to them.*
+- **IX-Z-37** **MOVE `[M]`** (M1-K) — the 18th palette tool and the first whose subject is a **person**.
+  With MOVE armed, a canvas click lowers to `Cmd.cursor(tx, ty)` then `Cmd.move()`, **in that order**
+  (`MoveCitizenCommand` is constructed from `GameSession._cursor`, so the cursor *is* the
+  destination), preceded by a `Cmd.deck` only when the focused room's deck differs from the frame's.
+  With **nothing selected** it sends nothing and toasts `NO CREW SELECTED …`: the host does refuse
+  the order, but its refusal lands in `_status`, which no modern surface renders. It is **not swept**
+  — one destination, one click. ⚠️ **RimWorld does this with a right-click, and that divergence is
+  deliberate**: right-click on this surface is the seam M2-10 ("Prioritise: repair X") needs, and the
+  Level-1 Overview already established the armed-MOVE-tool idiom for the identical two messages.
 - **IX-Z-31** **While a tool IS armed, a canvas click never selects crew** — it places / demolishes
   (IX-Z-20…24), even on a tile a crew member stands on (the sim decides legality — e.g. placing on
   an occupied tile may be refused). This mirrors game-ui IX-32: an armed tool owns the canvas click.
