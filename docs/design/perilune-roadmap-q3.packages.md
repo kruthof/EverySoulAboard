@@ -1384,6 +1384,100 @@ window between pin-chain rows.
 
 ---
 
+### ✅ M1-L — every compartment IS a room; `＋ADD ROOM` is deleted *(OD-K)* — **LANDED**
+
+**CLASS: PLAYER-FACING** · **LANE: `lane/no-add-room`** · **SIZE: M** · **PIN IMPACT: PIN-NEUTRAL
+(measured, 0 lines to `sim/` code, `content/`, `ci.sh`, `Golden/`).**
+
+**The owner's ruling, verbatim (2026-07-29):** *"we do not need 'add room' that makes no sense on a
+ship where rooms are already existing."*
+
+**What a player gets.** All **five** of the wreck's deck-0 blank `＋ADD ROOM` boxes — **four of which
+hold real, named, wrecked machinery** (`recycler_1`, `machineshop_1`, `fabricator_1`, lights) — are
+now **named, glowing compartments you can walk into.** Occupancy moved from the anchor's `RoomType`
+to GEOMETRY (`GameSession.ResolveSlot`), which is the RimWorld analogue: `rimworld-reference.md` §10,
+*"Rooms are derived, not authored … the player never names or allocates one."*
+
+**What was deleted.** The chip, its hit test, the `addroom` click action, the picker modal,
+`ROOM_TYPE_CHOICES`, `Cmd.addRoom`, the `"addroom"` parse case, the dispatch route and
+`HandleAddRoom`/`ParseRoomType`.
+
+#### ⛔ KNOWN LIMITS — stated, not buried *(four; two added by independent review, 2026-07-29)*
+
+| # | limit | measured | owner call? |
+|---|---|---|---|
+| 1 | **a room label longer than ~11 characters still clips** on a bottom-row slot — the spine door paints over the label's tail. `LIFE SUPPORT` is 12 and would clip; no shipped ship puts it on a bottom row. | CDP, live wreck: top-row 107 px of 107, bottom-row 88 of 107 | no — latent |
+| 2 | **the POWER lens is now EIGHT IDENTICAL BOXES PER DECK.** `lensOverlaySvg` skips `!occupied`, so pre-M1-L only the 3 typed deck-0 rooms were lensed. Now deck 0 goes **3 washes → 8 GREEN** (incl. `ROOM B3` — collapsed, empty, 20 debris tiles — claiming "powered") and deck 1 goes **0 → 8 RED**. `active` is stamped deck-uniformly, so the lens can only ever paint a deck all-green or all-red. | driven, `--ship wreck` | **yes** — per-compartment power is a fact the host does not compute |
+| 3 | ⭐ **the DEAD DECK now looks habitable at the default lens.** `hallCompartment`'s near-void fill (`rgba(12,10,8,.35)`) was the ONLY default-lens signal that a volume was not a live room; deck 1's eight compartments now wear deck 0's warm lit floor, amber trim-light and inner shadow. Every truthful signal survives (no glow, `active:false`, red POWER wash, null atmos) but each needs a lens turned on or is an ABSENCE — and an absence is not a signal on a first-look screen. **Photographed, already committed: `docs/design/shots/nar-4-overview-deck1.png`.** | by construction (one painter) + the shot | **yes** — what "not alive" looks like is an art decision |
+| 4 | ⭐ **DIG's placement confirmation is unreachable on every debris tile of the shipping deck.** `hitTest`'s `.pl-hall` tier used to return `hallSlot`, which was NOT order-suppressed; it is now `roomAnchor`, which is. **All 20 of the wreck's deck-0 debris tiles sit inside `hall_d0_s7` = `ROOM B3`** (driven; 0 elsewhere), so `⛏ DIG ORDERED ▸ x,y ON DECK 0` became `DIG ARMED — ESC TO DISARM` there. **The order still lands and the mark still appears** — only the worded confirmation is lost. Candidate fix already in the file: ERASE **appends** `' · ESC TO DISARM'` instead of being replaced (M1-C). | driven, `--ship wreck` | **yes** — "one toast per click, suppression wins" was a measured M1-C decision |
+
+⭐ **AND ONE PROPERTY THAT IS NOT A LIMIT BUT MUST NOT BE REDISCOVERED AS A BUG: `active` CHANGED
+KIND.** It was authoring-derived (static for a run); it is now gas-derived (dynamic). *"Reproduces
+its pre-M1-L value on every shipped ship"* is a **BOOT** measurement. **Driven, not inferred:** only
+**3 of deck 0's 9 rooms hold gas at boot**, and zeroing their moles flips all eight slots to
+`active:false` while `ShipMetrics.Power` stays **byte-identical at 1.000** — i.e. the POWER lens
+paints the whole live deck RED with the reactor still running. Pinned by
+`EveryCompartmentIsARoomTests.ActiveIsAGasTerm_NotAPowerTerm_AndTheLensInheritsThat`.
+
+#### Send-back applied (independent review, 2026-07-29) — eight required fixes
+
+`R1` the second commit's whole fix was a **survivor** (no C# test read the tuple's `active` field;
+both positional parsers stopped at `f[7]`) ⇒ asserted from the LIVE session, mutation now RED ·
+`R2` a census this package falsified (13/16 + 51/64 unoccupied → **0/16 and 0/64**; the guard it
+justifies is now **inert**, not merely redundant) · `R3` `overview-scene.js` reads `.occupied`
+**zero** times (measured with the shipped `codeOnly`) while three places said it drove the glow;
+the test named *"glow is `occupied`"* passed only because the pre-M1-L fixture conflates `occupied`
+with `roomType != 0`, and is retargeted onto a fixture that drives the three flags apart ·
+`R4` a **false absolute negative** — three `|| anchorName` fallbacks survived the sentence *"there
+is no longer any path from an anchor id to a label"*; all three deleted and pinned behaviourally ·
+`R5` limit 4 above · `R6` mutating `compartmentDesignation` to return `''` **survived 1036/1036**
+because the hostile sweep tested `compartmentName`, whose `'ROOM '` prefix hides the hole (and four
+bottom-row slots would then read `ROOM ` identically) ⇒ asserted directly + pairwise-distinctness ·
+`R7` limit 2 above · `R8` the reference sweep is `bedroom` 0 ✅ / `room role` 0 ✅ / **`infer` 4**
+(none about room roles) — the judgement stands, the evidence sentence was overstated.
+
+---
+
+### ⛔ M1-L-b — retire the dormant `AddRoomCommand` and `CmdKind.AddRoom` *(SPINE — NOT YET DONE)*
+
+**CLASS: INFRASTRUCTURE** *(no player sentence — the verb is already unreachable, so this changes
+nothing a player can observe)* · **LANE: integrator (SPINE)** · **SIZE: S** · **FILED BY M1-L.**
+
+**Why it was NOT done in M1-L.** M1-L made the verb unreachable end to end but left two things
+standing, deliberately:
+
+| left dormant | where | why not deleted in M1-L |
+|---|---|---|
+| `AddRoomCommand` | `sim/Sim.Core/Commands/Commands.cs:~628` | deleting it means deleting the enum member beside it |
+| `CmdKind.AddRoom` | `hosts/web/GameSession.cs`, the `CmdKind` enum | ⚠️ **THE RENUMBERING HAZARD — see below** |
+
+⚠️ **THE HAZARD, NAMED SO IT IS NOT REDISCOVERED.** `CmdKind`'s members are **implicitly numbered**
+(only `Unknown = 0` is written). `AddRoom` is **ordinal 17**, so removing it shifts **every sibling
+after it down by one** — `Dig` 18→17, `Stockpile` 19→18, `Strip` 20→19, `Filter` 21→20,
+`Commission` 22→21, `Operate` 23→22. Nothing in-tree matches these by ordinal *today* (the wire
+carries verb STRINGS, and `WebCommand.Parse` maps string→member), **but "nothing reads this" is a
+statement about a TREE, and a merge changes a tree** — the eighth trap shape. The ordinals are pinned
+by `EveryCompartmentIsARoomTests.CmdKindAddRoom_IsDormantButItsOrdinalIsPinned`, which is the
+checklist of exactly what moves; **that test must be updated in the same commit, not deleted.**
+
+**SEAM.** `sim/Sim.Core/Commands/Commands.cs` (a SPINE file — integrator lane per `PLAN.md`) ·
+`hosts/web/GameSession.cs`'s `CmdKind` · `tests/Perilune.Tests/AddRoomCommandTests.cs` (~750 lines,
+which test the dormant command directly and go with it) · `ArchitectureBoundaryTests`' `Commands.cs`
+reach census, whose prose names `AddRoomCommand` twice and whose COUNTS must be re-derived from the
+MERGED file, never adjusted.
+
+**PIN IMPACT: expected PIN-NEUTRAL but MEASURE IT.** The command has no reachable caller and
+`AddRoomCommandTests.NoPinnedRunDrivesThisCommand_Probe` already establishes that no pinned run
+constructs one. Deleting dead code should move nothing — *should* is not a measurement.
+
+**MUTATIONS.** Delete the member without updating the ordinal pin ⇒ that test must go RED.
+
+**⚠️ DO NOT DO THIS INSIDE ANOTHER LANE.** It is a spine change whose whole risk is a silent
+renumber, and it must not ride along with a package whose diff a reviewer is reading for something
+else.
+
+---
+
 ## 5. M2 — THE ORDER *(weeks 3–6)*
 
 > *"I can tell Rell that repairing machines matters more than carrying rubble, or right-click one

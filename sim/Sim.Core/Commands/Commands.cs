@@ -624,6 +624,33 @@ namespace Perilune.Sim
     /// designate/place commands: the probe must land in a real, sealed compartment (a non-vacuum-sink
     /// room) that no typed anchor already owns. A probe in open vacuum (room 0) is rejected, so
     /// double-allocating or targeting a furnished room does nothing.</para>
+    ///
+    /// <para>⛔ <b>THIS COMMAND IS DORMANT — DELIBERATELY, AND NOT BECAUSE ANYONE FORGOT IT. M1-L,
+    /// 2026-07-29.</b> The owner deleted the verb that drove it: <i>"we do not need 'add room' that
+    /// makes no sense on a ship where rooms are already existing."</i> Every route to it is gone —
+    /// the client's <c>Cmd.addRoom</c> sender, <c>GameSession</c>'s <c>"addroom"</c> parse case, its
+    /// <c>CmdKind.AddRoom</c> dispatch route and its <c>HandleAddRoom</c>/<c>ParseRoomType</c> pair.
+    /// A compartment is now a room because its WALLS make it one (RimWorld analogue:
+    /// <c>docs/design/rimworld-reference.md</c> §10, <i>"Rooms are derived, not authored … the player
+    /// never names or allocates one"</i>), so nothing needs to allocate one.
+    ///
+    /// <para><b>It survives here on purpose.</b> Deleting it means deleting the <c>CmdKind.AddRoom</c>
+    /// enum member beside it, which RENUMBERS its siblings — a spine change, out of scope for a
+    /// package whose whole claim is pin-neutrality. Filed as its own package: see
+    /// <c>docs/design/perilune-roadmap-q3.packages.md</c>, <b>M1-L-b</b>, which names the renumbering
+    /// hazard. Its tests in <c>tests/Perilune.Tests/AddRoomCommandTests.cs</c> are kept and still
+    /// drive it directly, so the dormant code is not also UNGUARDED code.</para>
+    ///
+    /// <para>⚠️ <b>"Nothing calls this" is a statement about a TREE, and a merge changes a tree.</b>
+    /// That is the eighth trap shape (<c>CLAUDE.md</c>): two lanes each censused a file honestly and
+    /// both were stale, because each could only see its own half. Re-derive the dormancy on the
+    /// MERGED tree before acting on it.</para>
+    ///
+    /// <para>⚠️ One sentence above is now stale in its REASON and kept for the argument it records:
+    /// the residual-<c>None</c> note says the host's picker cannot send <c>None</c> because
+    /// <c>ParseRoomType</c> whitelists the player-facing kinds. <c>ParseRoomType</c> no longer exists;
+    /// the residual is unreachable for the stronger reason that NO host path constructs this command
+    /// at all.</para></para>
     /// </summary>
     public sealed class AddRoomCommand : ISimCommand
     {

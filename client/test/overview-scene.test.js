@@ -155,40 +155,68 @@ test('the starfield is the seeded 220 stars, deterministic across calls', () => 
   }
 });
 
-test('every OCCUPIED slot gets a glow pool and empty halls do NOT (driven by `occupied`)', () => {
-  // Deck 0: all 8 occupied → 8 glow gradients, 0 halls.
+test('every PURPOSED slot gets a glow pool, and EVERY slot draws as a compartment (M1-L)', () => {
+  // Deck 0: all 8 typed → 8 glow gradients, 8 compartments.
   const svg0 = overviewScene(baseState({ deck: 0 }));
   assert.equal((svg0.match(/id="ov-glow-\d+"/g) || []).length, 8);
-  assert.equal((svg0.match(/class="pl-hall"/g) || []).length, 0);
+  assert.equal((svg0.match(/class="pl-room"/g) || []).length, 8);
 
-  // Deck 1: 4 occupied rooms + 3 halls (and 1 spine-less grid: 8 slots, 5 occupied? verify live).
+  // Deck 1 MIXES typed and untyped slots, and that is what makes it the decisive deck: GLOW and
+  // DRAWING come apart here. Glow tracks the authored PURPOSE (`roomType`); DRAWING no longer
+  // tracks anything — M1-L deleted `hallCompartment`, so all 8 draw as compartments.
   const d1 = view.find((d) => d.deck === 1);
-  const occ1 = d1.slots.filter((s) => s.occupied).length;
-  const halls1 = d1.slots.filter((s) => !s.occupied).length;
-  assert.ok(occ1 >= 1 && halls1 >= 1, 'deck 1 must mix rooms and halls to exercise both paths');
+  const typed1 = d1.slots.filter((s) => s.roomType).length;
+  const untyped1 = d1.slots.filter((s) => !s.roomType).length;
+  assert.ok(typed1 >= 1 && untyped1 >= 1, 'deck 1 must mix typed and untyped to separate the two');
   const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
-  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, occ1); // one glow per OCCUPIED slot
-  assert.equal((svg1.match(/class="pl-hall"/g) || []).length, halls1); // halls render as halls
-  assert.match(svg1, /＋ ADD ROOM/);                                    // hall build affordance
+  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, typed1); // one glow per PURPOSED slot
+  assert.equal((svg1.match(/class="pl-room"/g) || []).length, d1.slots.length); // ALL draw as rooms
   // The glow layer carries mix-blend screen so it reads as light, not paint (VS-O-31).
   assert.match(svg1, /mix-blend-mode:screen/);
 });
 
-test('active-but-unoccupied halls draw NO glow — glow is `occupied`, never `active` (Phase-2b note)', () => {
-  // Deck 1 is the decisive case: halls whose deck-level `active` flag is TRUE. If the glow read
-  // `active` (the shipped-review bug) they would each light; because it reads `occupied`, none do.
-  // THREE since WP-1, not four: deck 1 slot 6 is now the grid ship's live wreck, an authored
-  // Storage room ('hold') rather than an empty hall, so it is occupied and correctly DOES glow.
+test('glow is `roomType`, never `active` and — since M1-L — never `occupied` either', () => {
+  // ⚠️ THIS TEST WAS RETARGETED IN REVIEW (2026-07-29) AND ITS OLD NAME WAS A FALSE CLAIM ABOUT THE
+  // MODULE. It read "glow is `occupied`, never `active`" and its comment called itself "the ONLY
+  // thing pinning `occupied` as a live input to the scene". MEASURED with the shipped `codeOnly`
+  // stripper: **`.occupied` occurs ZERO times in `overview-scene.js`.** The second commit moved
+  // `glowPools` onto `roomType`; the test kept passing only because on `overview-grid.json` — a
+  // PRE-M1-L capture — `occupied` and `roomType != 0` happen to coincide on every slot. A test that
+  // passes because two inputs agree on one fixture pins NEITHER of them.
+  //
+  // So the property is asserted where the fixture CANNOT decide it: a synthetic deck that drives all
+  // three flags apart. This is the inclusion form — plant the shape the guard must catch.
   const d1 = view.find((d) => d.deck === 1);
-  const activeHalls = d1.slots.filter((s) => !s.occupied && s.active);
-  assert.equal(activeHalls.length, 3);
-  const svg1 = overviewScene(baseState({ deck: 1, frame: null }));
-  assert.equal((svg1.match(/id="ov-glow-\d+"/g) || []).length, d1.slots.filter((s) => s.occupied).length);
+  assert.ok(d1.slots.every((s) => (!!s.occupied) === (!!s.roomType)),
+    'the fixture no longer conflates occupied and roomType — this test\'s premise has changed');
 
-  // And a fully-empty, inactive deck draws no glow and 8 halls.
+  const mk = (slotIndex, roomType, occupied, active) => ({
+    ...d1.slots[0], slotIndex, roomType, occupied, active,
+    rect: { x: slotIndex * 8, y: 0, w: 6, h: 5 },
+  });
+  const split = [{
+    deck: 3,
+    slots: [
+      mk(0, 5, true, true),    // typed   + occupied + active  → GLOWS
+      mk(1, 5, false, false),  // typed   + UNoccupied         → still glows (roomType decides)
+      mk(2, 0, true, true),    // UNtyped + occupied + active  → NO glow (the M1-L regression)
+      mk(3, 0, false, true),   // UNtyped + active             → NO glow (the Phase-2b bug)
+    ],
+  }];
+  const svg = overviewScene(baseState({ deck: 3, decksView: split, frame: null, crew: [] }));
+  const glows = (svg.match(/id="ov-glow-(\d+)"/g) || []).map((s) => s.match(/(\d+)"/)[1]);
+  assert.deepEqual(glows, ['0', '1'],
+    'the glow pool is not following `roomType`: slot 2 (occupied, untyped) or slot 3 (active, '
+    + 'untyped) lit, or slot 1 (typed but unoccupied) went dark');
+  // …and all four still DRAW, which is the package: purpose decides light, geometry decides sight.
+  assert.equal((svg.match(/class="pl-room"/g) || []).length, 4);
+
+  // And a fully-empty, inactive deck draws no glow — but still draws 8 NAMED compartments, which is
+  // the whole point of the package: a deck with no live rooms is still a deck you can look into.
   const svg7 = overviewScene(baseState({ deck: 7, frame: null, crew: [] }));
   assert.equal((svg7.match(/id="ov-glow-\d+"/g) || []).length, 0);
-  assert.equal((svg7.match(/class="pl-hall"/g) || []).length, 8);
+  assert.equal((svg7.match(/class="pl-room"/g) || []).length, 8);
+  assert.equal((svg7.match(/ROOM [A-Z]\d/g) || []).length, 8);
 });
 
 test('on-deck crew are placed as pawns; off-deck crew are not', () => {

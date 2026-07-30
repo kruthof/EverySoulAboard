@@ -367,7 +367,9 @@ export function roomTileRect(dView, anchorName, slotIndex) {
       const r = s.rect || {};
       return {
         anchor: anchorName, deck: d.deck | 0, slotIndex: s.slotIndex | 0,
-        roomType: s.roomType | 0, displayName: s.displayName || anchorName || '',
+        // M1-L review: the `|| anchorName` fallback is DELETED here (and at `crewRoomSlot` and
+        // `overview-model.js currentRoom`). It was the last path from an internal id to a caption.
+        roomType: s.roomType | 0, displayName: s.displayName || '',
         rx: r.x | 0, ry: r.y | 0, rw: r.w | 0, rh: r.h | 0,
       };
     }
@@ -556,16 +558,26 @@ export function roomCrew(crew, focusRoom) {
  * `roomTileRect` — which is what the caller passes it to — looks a room up BY anchor name and would
  * answer `null` on the very next call: a dock row whose click goes nowhere and says nothing.
  *
- * ⚠️ THE SENTENCE THAT STOOD HERE OVERSTATED THIS AND IS CORRECTED (review, 2026-07-29). It read
- * *"`occupied` IS PART OF THE TEST, not decoration"*, which reads as "both halves are load-bearing
- * today". **MEASURED ON THE LIVE WIRE, THEY ARE NOT: `--ship wreck` 13 of 16 slots and `--ship grid`
- * 51 of 64 are unoccupied, and in EVERY ONE `occupied:false` and an empty `anchorName` coincide —
- * 0 unoccupied-but-named, 0 occupied-but-unnamed. So EITHER HALF ALONE SUFFICES on today's host,
- * and dropping either one is measurably inert.** Both are kept deliberately, as FUTURE-PROOFING
- * against the two conditions coming apart — the host computes them separately — and
+ * ⚠️ THE SENTENCE THAT STOOD HERE HAS NOW BEEN WRONG TWICE, AND THE SECOND TIME WAS THIS PACKAGE'S
+ * OWN DOING. It first read *"`occupied` IS PART OF THE TEST, not decoration"*, which overstated it;
+ * the correction that replaced it cited *"`--ship wreck` 13 of 16 slots and `--ship grid` 51 of 64
+ * are unoccupied"* — **a PRE-M1-L census, quoted inside the package that falsifies it.**
+ *
+ * **RE-DERIVED ON THE MERGED TREE (2026-07-29). THE TRUE FIGURE IS `0` OF 16 AND `0` OF 64.**
+ * Occupancy is geometry now, so every slot on every shipped ship reports `occupied:true` with a
+ * non-blank anchor — measured off the committed live capture `client/test/fixtures/decks-wreck.json`
+ * (16 slots, 0 unoccupied, 0 blank anchor) and, for grid, driven through a live host by
+ * `tests/Perilune.Tests/EveryCompartmentIsARoomTests.Grid_EverySlotOnEveryDeckLeavesTheHostOccupiedAndNamed`
+ * (64/64 occupied, 64/64 named).
+ *
+ * ⇒ **NEITHER HALF OF THIS CONDITION CAN BITE ON THE LIVE WIRE ANY MORE — the whole test is inert
+ * on today's host, not merely redundant.** That is a stronger statement than the one it replaces and
+ * it is said out loud rather than left as a comfortable "either half suffices". The test is kept
+ * deliberately, as FUTURE-PROOFING for a host that emits an unbound slot again (the two flags are
+ * computed separately, and `ResolveSlot`'s early return still returns `false`), and
  * `client/test/zoom-pawn.test.js` pins each half with its own fixture so that day cannot arrive
- * silently. Those two fixtures are HYPOTHETICAL shapes and say so; they are not evidence about the
- * wire as it stands.
+ * silently. **All three of those fixtures are now HYPOTHETICAL shapes — none of them is evidence
+ * about the wire as it stands.**
  *
  * @param {Array<{deck:number, slots:Array}>|null} dView  decksView output
  * @param {{deck:number, x:number, y:number}|null} crewEntry  one roster row
@@ -583,7 +595,9 @@ export function crewRoomSlot(dView, crewEntry) {
       if (x < rx || x >= rx + (r.w | 0) || y < ry || y >= ry + (r.h | 0)) continue;
       return {
         anchor: s.anchorName, slotIndex: s.slotIndex | 0, deck,
-        displayName: s.displayName || s.anchorName,
+        // M1-L review: `|| s.anchorName` DELETED — see `roomTileRect`. `anchor` still carries the id
+        // (it is the wire key the Room Zoom looks up); `displayName` must never become one.
+        displayName: s.displayName || '',
       };
     }
   }

@@ -1,0 +1,247 @@
+{
+ "note": [
+  "Captured by client/tools/capture-wreck-decks.mjs from a live `--ship wreck` host, AFTER M1-L",
+  "removed the RoomType gate from GameSession.ResolveSlot. ONE session; `decks` and `rooms` are",
+  "the latest message of each channel at the moment the capture predicate held, re-read together",
+  "and re-checked before writing.",
+  "",
+  "THE PREDICATE: (1) every deck-0 slot reports occupied:true with a non-blank anchorName;",
+  "(2) at least four deck-0 slots are UNTYPED (roomType 0) — the compartments that drew a blank",
+  "＋ADD ROOM box before this package; and (3) hall_d0_s1 and hall_d0_s2 are among them, because",
+  "those are the two holding recycler_1 / machineshop_1 / fabricator_1 (AuthoredShips, the",
+  "\"frontier\" block). Predicate 3 is the INSTRUMENT CHECK: it fails loudly if the capture read",
+  "the wrong ship, the wrong deck or a stale channel.",
+  "",
+  "DO NOT hand-edit. Re-capture with the tool above."
+ ],
+ "untypedDeck0": [
+  "hall_d0_s1",
+  "hall_d0_s2",
+  "hall_d0_s5",
+  "hall_d0_s6",
+  "hall_d0_s7"
+ ],
+ "decks": {
+  "type": "decks",
+  "decks": [
+   {
+    "deck": 0,
+    "slots": [
+     [
+      0,
+      0,
+      0,
+      12,
+      8,
+      "cryobay",
+      16,
+      true,
+      true
+     ],
+     [
+      1,
+      11,
+      0,
+      12,
+      8,
+      "hall_d0_s1",
+      0,
+      true,
+      true
+     ],
+     [
+      2,
+      22,
+      0,
+      12,
+      8,
+      "hall_d0_s2",
+      0,
+      true,
+      true
+     ],
+     [
+      3,
+      33,
+      0,
+      12,
+      8,
+      "lifesupport",
+      15,
+      true,
+      true
+     ],
+     [
+      4,
+      0,
+      10,
+      12,
+      8,
+      "reactor",
+      11,
+      true,
+      true
+     ],
+     [
+      5,
+      11,
+      10,
+      12,
+      8,
+      "hall_d0_s5",
+      0,
+      true,
+      true
+     ],
+     [
+      6,
+      22,
+      10,
+      12,
+      8,
+      "hall_d0_s6",
+      0,
+      true,
+      true
+     ],
+     [
+      7,
+      33,
+      10,
+      12,
+      8,
+      "hall_d0_s7",
+      0,
+      true,
+      true
+     ]
+    ]
+   },
+   {
+    "deck": 1,
+    "slots": [
+     [
+      0,
+      0,
+      0,
+      12,
+      8,
+      "hall_d1_s0",
+      0,
+      true,
+      false
+     ],
+     [
+      1,
+      11,
+      0,
+      12,
+      8,
+      "hall_d1_s1",
+      0,
+      true,
+      false
+     ],
+     [
+      2,
+      22,
+      0,
+      12,
+      8,
+      "hall_d1_s2",
+      0,
+      true,
+      false
+     ],
+     [
+      3,
+      33,
+      0,
+      12,
+      8,
+      "hall_d1_s3",
+      0,
+      true,
+      false
+     ],
+     [
+      4,
+      0,
+      10,
+      12,
+      8,
+      "hall_d1_s4",
+      0,
+      true,
+      false
+     ],
+     [
+      5,
+      11,
+      10,
+      12,
+      8,
+      "hall_d1_s5",
+      0,
+      true,
+      false
+     ],
+     [
+      6,
+      22,
+      10,
+      12,
+      8,
+      "hall_d1_s6",
+      0,
+      true,
+      false
+     ],
+     [
+      7,
+      33,
+      10,
+      12,
+      8,
+      "hall_d1_s7",
+      0,
+      true,
+      false
+     ]
+    ]
+   }
+  ]
+ },
+ "rooms": {
+  "type": "rooms",
+  "rooms": [
+   [
+    "cryobay",
+    0,
+    0.2099,
+    498.5466,
+    101.3483,
+    292.9931,
+    60
+   ],
+   [
+    "reactor",
+    0,
+    0.2099,
+    499.7493,
+    101.346,
+    292.9852,
+    60
+   ],
+   [
+    "wreck_spine_0",
+    0,
+    0.2099,
+    499.7677,
+    101.3501,
+    292.9997,
+    86
+   ]
+  ]
+ }
+}

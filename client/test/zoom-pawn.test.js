@@ -69,16 +69,21 @@ const DECKS_JSON = JSON.stringify({
       // **NEITHER HALF COULD BITE**: dropping `!s.occupied` survived GREEN (review's finding) and so
       // did dropping `!s.anchorName` (found here, by physically applying the twin).
       //
-      // ⚠️ TWO OF THE THREE ARE SHAPES THE HOST DOES NOT CURRENTLY EMIT, AND THAT IS SAID OUT LOUD
-      // RATHER THAN LEFT FOR A READER TO DISCOVER. Measured on the live wire (review, 2026-07-29):
-      // `--ship wreck` 13 of 16 slots and `--ship grid` 51 of 64 are unoccupied, and in EVERY one
-      // `occupied:false` and an empty `anchorName` coincide exactly — 0 unoccupied-but-named,
-      // 0 occupied-but-unnamed. ⇒ **EACH HALF OF THE CONDITION ALONE SUFFICES TODAY.** Both halves
-      // are kept as future-proofing for the day they stop coinciding, and these fixtures pin them
-      // SEPARATELY so that day cannot arrive silently. What they are NOT is evidence that the
-      // shipped condition needs both halves right now.
-      //   · slot 2 — the REALISTIC unbound shape: unoccupied AND unnamed. Either half refuses it,
-      //     which is precisely why it cannot separate them on its own.
+      // ⚠️ ALL THREE ARE SHAPES THE HOST NO LONGER EMITS, AND THE COUNT THAT USED TO STAND HERE WAS
+      // A PRE-M1-L CENSUS QUOTED INSIDE THE PACKAGE THAT FALSIFIES IT. It read "`--ship wreck` 13 of
+      // 16 slots and `--ship grid` 51 of 64 are unoccupied". RE-DERIVED ON THE MERGED TREE
+      // (2026-07-29): **0 of 16 and 0 of 64.** Occupancy is geometry now, so every slot on every
+      // shipped ship reports `occupied:true` with a non-blank anchor — measured off the committed
+      // live capture `fixtures/decks-wreck.json` (16 slots, 0 unoccupied, 0 blank anchor) and, for
+      // grid, driven through a live host by
+      // `EveryCompartmentIsARoomTests.Grid_EverySlotOnEveryDeckLeavesTheHostOccupiedAndNamed`.
+      // ⇒ **NEITHER HALF OF THE CONDITION CAN BITE ON THE LIVE WIRE — the guard is INERT on today's
+      // host, not merely redundant.** It is kept as future-proofing (the host still computes the two
+      // flags separately and `ResolveSlot`'s early return still returns `false`), and these three
+      // fixtures pin each half separately so the day it comes back cannot arrive silently. What they
+      // are NOT, any of them, is evidence about the wire as it stands.
+      //   · slot 2 — the once-REALISTIC unbound shape: unoccupied AND unnamed. Either half refuses
+      //     it, which is precisely why it cannot separate them on its own.
       //   · slot 3 — unoccupied but NAMED (hypothetical). The only fixture that makes the
       //     `!s.occupied` half bite.
       //   · slot 4 — occupied but UNNAMED (hypothetical). The only fixture that makes the

@@ -471,10 +471,11 @@ test('Cmd.build / Cmd.chron marshal the exact host shapes (GameSession.Parse)', 
   assert.deepEqual(Cmd.bio(7), { type: 'bio', cid: 7 }); // B3: re-request the citizen card
 });
 
-test('Cmd.addRoom marshals the exact host shape (GameSession addroom: deck/slot/type)', () => {
-  assert.deepEqual(Cmd.addRoom(1, 3, 'medbay'), { cmd: 'addroom', deck: 1, slot: 3, type: 'medbay' });
-  assert.deepEqual(Cmd.addRoom(0, 7, 'quarters'), { cmd: 'addroom', deck: 0, slot: 7, type: 'quarters' });
-});
+// ⭐ M1-L: the test that stood here — "Cmd.addRoom marshals the exact host shape" — is DELETED with
+// the sender. `Cmd` no longer has an `addRoom`, and the guard that it STAYS gone is the
+// no-add-room census in `client/test/no-add-room.test.js`, which is an equality pin over the whole
+// affordance (chip, hit test, action, picker, choices, wire sender) rather than a shape check on
+// one function. A `deepEqual` against `undefined(…)` here would only throw a TypeError.
 
 // ---------------- build ghosts: designsOnDeck / designGlyph ----------------
 

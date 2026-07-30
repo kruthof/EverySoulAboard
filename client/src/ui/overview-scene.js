@@ -248,12 +248,54 @@ function floorTexture(material, line, r) {
   return parts.join('');
 }
 
-/** A commissioned room compartment: floor + texture + trim-light + inner shadow + label. */
+/**
+ * A compartment: floor + texture + trim-light + inner shadow + label.
+ *
+ * ⭐ M1-L — THIS IS THE ONLY COMPARTMENT PAINTER. Its sibling `hallCompartment` — a near-void volume
+ * carrying a dim `HALL · A1` designation and the dashed amber `＋ ADD ROOM` chip (VS-O-35…37) — is
+ * DELETED, together with the private `slotDesignation` helper it was the only caller of (that helper
+ * lives on as `decks-model.js`'s exported `compartmentDesignation`, which the naming rule uses).
+ *
+ * Owner ruling, 2026-07-29: *"we do not need 'add room' that makes no sense on a ship where rooms are
+ * already existing."* Every slot the host emits is a compartment the ship CARVED — floor, perimeter
+ * walls, a door onto the spine — so there was never a second kind of thing to draw. MEASURED on the
+ * merged tree, not assumed: with `GameSession.ResolveSlot`'s type gate removed, **all 16 wreck slots
+ * and all 64 grid slots report `occupied:true` with a non-blank anchor**, so `hallCompartment` had no
+ * remaining input on any shipped ship.
+ *
+ * The label is unconditional because `deckSlotView`'s naming rule is TOTAL (`compartmentName` never
+ * returns ''). The old `slot.displayName ? … : ''` guard is gone with it — keeping it would have left
+ * a branch no input can reach, which reads as "a compartment can be nameless", exactly the defect
+ * this package removes.
+ *
+ * ⛔ ⭐ **KNOWN LIMIT 3 — THE DEAD DECK NOW LOOKS HABITABLE AT THE DEFAULT LENS. A DESIGN
+ * CONSEQUENCE, STATED PLAINLY, NOT A BUG.** `hallCompartment` filled an unbound slot with
+ * `rgba(12,10,8,.35)` — a near-void wash — and that fill was **the only signal on the default lens
+ * (`none`) that a volume was not a live room.** With one painter, the wreck's eight DECK-1
+ * compartments now render with the same warm lit floor, the same amber trim-light and the same
+ * inner shadow as deck 0's, and deck 1 is airless, off-network and dead by owner decision (OD-E).
+ *
+ * The truthful signals all still exist and all still read correctly — no glow pool (that layer is
+ * `roomType`-gated), `active:false`, a red POWER wash, a null atmosphere row — **but every one of
+ * them either needs a lens turned on or is an absence, and an absence is not a signal on a screen
+ * the player is seeing for the first time.** That is the same class as `invisible-feedback-is-
+ * FUNCTIONAL`, pointed the other way: not a missing confirmation, an unearned reassurance.
+ *
+ * It is NOT fixed here, and the reason is that fixing it means choosing what "not alive" should
+ * LOOK like on the default lens — a colder floor material, a dimmed group, a hatch pattern — which
+ * is an art decision and an owner call, and re-introducing `hallCompartment`'s wash keyed to `atmos`
+ * would resurrect the exact two-kinds-of-thing distinction OD-K deleted. **The owner is being told.**
+ *
+ * ⚠️ THE LABEL STAYS IN THIS GROUP, DRAWN BELOW THE FURNITURE — a decision, taken after building the
+ * alternative and photographing it. See the note above `compartmentName` in `decks-model.js`: the
+ * neutral name is short BECAUSE this layer is under the furniture, and hoisting the labels into
+ * their own layer above it was tried, measured and REVERTED (it fixed the clip and then painted
+ * 8.5 px text over the cryo capsules — an unapproved visual change to every room, to solve a problem
+ * a shorter name solves at its source). The residual hazard is filed, not fixed.
+ */
 function roomCompartment(slot, r) {
-  const label = slot.displayName
-    ? `<text x="${n(r.x + 6)}" y="${n(r.y + 12)}" text-anchor="start" font-size="8.5" letter-spacing="1"`
-      + ` font-family="'Space Mono', ui-monospace, monospace" fill="${slot.labelColor}">${esc(slot.displayName)}</text>`
-    : '';
+  const label = `<text x="${n(r.x + 6)}" y="${n(r.y + 12)}" text-anchor="start" font-size="8.5" letter-spacing="1"`
+    + ` font-family="'Space Mono', ui-monospace, monospace" fill="${slot.labelColor}">${esc(slot.displayName)}</text>`;
   return `<g class="pl-room" data-slot="${slot.slotIndex}" data-anchor="${esc(slot.anchorName)}">`
     // material floor
     + `<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="2" fill="${slot.floor}"/>`
@@ -266,30 +308,10 @@ function roomCompartment(slot, r) {
     + `</g>`;
 }
 
-/** An unbound slot: a HALL — near-void volume with a dim designation + ＋ ADD ROOM chip (VS-O-35…37). */
-function hallCompartment(slot, r) {
-  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-  const desig = `HALL · ${slotDesignation(slot.slotIndex)}`;
-  return `<g class="pl-hall" data-slot="${slot.slotIndex}">`
-    + `<rect x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" rx="2" fill="rgba(12,10,8,.35)" stroke="rgba(0,0,0,.35)" stroke-width="1"/>`
-    + `<text x="${n(r.x + 6)}" y="${n(r.y + 12)}" text-anchor="start" font-size="8.5" letter-spacing="1"`
-    +   ` font-family="'Space Mono', ui-monospace, monospace" fill="rgba(140,131,119,.6)">${esc(desig)}</text>`
-    // ＋ ADD ROOM affordance (dashed amber chip, centred)
-    + `<g class="pl-addroom">`
-    +   `<rect x="${n(cx - 34)}" y="${n(cy - 8)}" width="68" height="16" rx="2" fill="rgba(232,147,74,.22)" stroke="#f2b563" stroke-width="1.5" stroke-dasharray="3 2"/>`
-    +   `<text x="${n(cx)}" y="${n(cy + 1)}" font-size="8.5" letter-spacing="1"`
-    +     ` font-family="'Space Mono', ui-monospace, monospace" fill="#f2b563" text-anchor="middle" dominant-baseline="central">＋ ADD ROOM</text>`
-    + `</g></g>`;
-}
-
-/** Grid-cell designation A0..A3 (top row) / B0..B3 (bottom) from the slot index (0..7). */
-function slotDesignation(idx) {
-  const row = idx < 4 ? 'A' : 'B';
-  return row + (idx % 4);
-}
-
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 4 — glow-pools: one amber radial per OCCUPIED slot (VS-O-31). NOT `active` (deck-level).
+// Layer 4 — glow-pools: one amber radial per slot with an authored PURPOSE, i.e. `roomType != 0`
+// (VS-O-31). NOT `active` (deck-level), and — since M1-L — NOT `occupied` either, which is now true
+// of every slot on every shipped ship. See the argument at the `if (!slot.roomType) continue;` line.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Pool colour PURE from the room (VS-O-31). */
@@ -305,9 +327,27 @@ function glowPools(slots, t, id) {
   const body = [];
   let i = 0;
   for (const slot of slots) {
-    // CRITICAL (VS-O-31 / Phase-2b note): drive the glow from `occupied`, NOT `active` — `active`
-    // is a deck-level flag and would light every empty hall.
-    if (!slot.occupied) continue;
+    // ⚠️ ⭐ M1-L CHANGED WHAT THIS LINE HAD TO ASK, and the original wording is kept below because the
+    // hazard it names is still live in the other direction.
+    //
+    // WAS: `if (!slot.occupied) continue;` — "CRITICAL (VS-O-31 / Phase-2b note): drive the glow from
+    // `occupied`, NOT `active` — `active` is a deck-level flag and would light every empty hall."
+    // That is still true of `active`. But `occupied` now means "this slot's walls enclose a real
+    // room", which is TRUE FOR EVERY SLOT ON EVERY SHIPPED SHIP — so it would light every hall too,
+    // by the other road. MEASURED on `--ship wreck`: glow pools would go 3 → 8 on deck 0 and
+    // **0 → 8 on the DEAD DECK**, putting an amber light pool in eight unpowered, airless, sealed
+    // compartments on the ship `./play.sh` opens.
+    //
+    // So the glow keeps the exact SET it always had, by asking the thing that set always was: does
+    // this compartment have an authored PURPOSE? Zero visual change to this layer — which is the
+    // point. Widening `occupied` must not silently repurpose a player-facing signal, and a pool of
+    // warm light is a claim about the ship's state, not about its floor plan.
+    //
+    // ⚠️ THIS IS DELIBERATELY NOT `slot.atmos`, though that reads like the better question. It would
+    // drop LIFE SUPPORT's pool on the wreck (typed, but airless behind its own shut door), i.e. it
+    // would be a THIRD behaviour rather than a preserved one. Whether a glow should track air, power
+    // or purpose is a design question for the lens work, and it is filed, not answered here.
+    if (!slot.roomType) continue;
     const r = t.rect(slot.rect);
     const c = glowColor(slot);
     const gid = `${id}-glow-${slot.slotIndex}`;
@@ -653,11 +693,23 @@ export function overviewScene(state) {
   const slots = deckView.slots || [];
   const t = makeTransform(slots, st.frame);
 
+  // M1-L: ONE painter. The `occupied || displayName` branch is gone with `hallCompartment` — see its
+  // header.
+  //
+  // ⚠️ THE SENTENCE THAT STOOD HERE WAS FALSE AND IS CORRECTED (review, 2026-07-29). It claimed
+  // `occupied` was "still read, one layer down … it drives the glow pool and the lens wash".
+  // MEASURED with the shipped `codeOnly` stripper (`client/test/code-only.js`) on the merged tree:
+  // **`.occupied` occurs ZERO times in this module's code.** The glow reads `roomType`
+  // (`glowPools`, changed in this same package), and the lens wash is not drawn here at all — it is
+  // `overview-model.js`'s `lensSlotTint`, which reads `active`. `occupied` reaches this file only as
+  // a field on the slot objects it is handed, and NOTHING here asks for it.
+  // ⇒ In THIS MODULE `occupied` is now UNOBSERVED. That is stated rather than tidied away: a future
+  // lane widening or narrowing the flag will get no signal from `overview-scene.test.js`. Its one
+  // surviving reader on the Overview is `overview-view.js`'s `lensOverlaySvg` (`if (!s.occupied)
+  // continue;`), which is why M1-L widened the lens wash from 3 compartments to 8 per deck — see
+  // KNOWN LIMIT 2 in `client/test/no-add-room.test.js`.
   const rooms = [];
-  for (const slot of slots) {
-    const r = t.rect(slot.rect);
-    rooms.push(slot.occupied || slot.displayName ? roomCompartment(slot, r) : hallCompartment(slot, r));
-  }
+  for (const slot of slots) rooms.push(roomCompartment(slot, t.rect(slot.rect)));
 
   // The space backdrop (void + nebula + drifting stars) is NOT drawn here: it lives in the
   // persistent `.ov-space` skeleton layer (starLayerSvg + CSS) so its drift survives repaints.

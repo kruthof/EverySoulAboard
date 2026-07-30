@@ -147,22 +147,31 @@ test('decksView derives material, label, occupancy and atmos by anchor', () => {
   assert.deepEqual(furnished.rect, { x: 4, y: 6, w: 12, h: 8 });
   assert.deepEqual(furnished.atmos, { o2: 0.209, co2ppm: 512, pressureKPa: 101.3, tempK: 293 });
 
-  // Empty hall: blank name, unoccupied, no atmos row → null. Still on an active deck.
-  assert.equal(hall.displayName, '');
+  // An UNTYPED compartment (this fixture is a pre-M1-L capture, so it still carries the old
+  // occupied:false / blank-anchor wire shape). M1-L: it is NAMED anyway — `ROOM A3` from
+  // `compartmentName`'s neutral branch, slot index 3 ⇒ row A, col 3. A blank name here is the exact
+  // defect the package removes, so this assertion inverted deliberately.
+  assert.equal(hall.slotIndex, 3);
+  assert.equal(hall.displayName, 'ROOM A3');
   assert.equal(hall.anchorName, '');
   assert.equal(hall.occupied, false);
   assert.equal(hall.active, true);
   assert.equal(hall.atmos, null);
 });
 
-test('unknown roomType falls back to the neutral material and a blank label', () => {
+test('unknown roomType falls back to the neutral material and the NEUTRAL NAME, never the anchor id', () => {
   const v = deckSlotView(
     { slotIndex: 2, x: 0, y: 0, w: 5, h: 5, anchorName: 'weird', roomType: 42, occupied: true, active: true },
     new Map(),
   );
   assert.equal(v.material, ROOM_MATERIAL_FALLBACK.material);
   assert.equal(v.floor, ROOM_MATERIAL_FALLBACK.floor);
-  assert.equal(v.displayName, 'weird'); // no label for 42 → anchor-name fallback
+  // ⭐ M1-L: this asserted `'weird'` — the ANCHOR-NAME FALLBACK — until the naming rule dropped it.
+  // The anchor is an internal wire key (`hall_d1_s6`, `hold`), and leaking one into an UPPERCASE UI
+  // is precisely what the WP-1 tripwire below exists to catch. That leak used to be held shut by the
+  // ship-authoring convention "every occupied slot is typed", which M1-L retires — occupancy is now
+  // geometry — so the rule closes it by construction instead.
+  assert.equal(v.displayName, 'ROOM A2');
   assert.equal(v.atmos, null);          // empty atmos map
 });
 
