@@ -116,6 +116,14 @@
 // compartment is a room you click to enter, which the card already says. The height measurement it
 // records (a fifth ship-map row costs a third grid row, ~22px + gap, against a 2px budget) still
 // stands and still governs the next row anyone wants to add.
+//
+// ⭐ AND M2-20 IS THE FIRST PACKAGE TO PAY THAT PRICE RATHER THAN DISCOVER IT. It added the WORK
+// row — the FIRST ORDER, which under OD-G/OD-H is the gesture the whole opening waits on — and the
+// card immediately went to 682px of content in a 656px box at 1280×800: 26px below the fold,
+// exactly as the paragraph above predicts. ⇒ ONE ROW WAS REMOVED TO PAY FOR IT (`Space`, whose
+// key the ship teaches in situ — see the note at its former place), and the card measures 653px
+// again at all three viewports. **The rule is a ledger, not a warning: adding a ninth row means
+// removing one, and the row you remove has to be the one the game already teaches elsewhere.**
 
 const SEEN_KEY = 'perilune.introSeen.v1';
 let _seenThisSession = false; // fallback when localStorage is unavailable (private mode)
@@ -174,18 +182,55 @@ export const VERBS = Object.freeze([
  */
 const CTL = 'input/controls.js';
 const RZ = 'ui/roomzoom-view.js';
+const OV = 'ui/overview-view.js';
 
 export const CONTROL_GROUPS = Object.freeze([
   {
     title: 'CONTROLS · THE SHIP MAP',
     rows: [
+      // ⭐ THE FIRST ORDER, AND IT IS THE FIRST ROW BECAUSE IT IS THE FIRST MOVE (M2-20 / OD-G).
+      // Under OD-H every work type boots OFF for every crew member, so at boot your crew member is
+      // doing nothing and will keep doing nothing until you say she may work — her CREW WATCH row
+      // reads "Awaiting orders" the whole time (`GameSession.AwaitingOrdersLabel`).
+      // A first screen that does not name this gesture leaves a new player watching a pawn wander
+      // and concluding the game is broken; that is the report OD-G came from.
+      // ⚠️ WHAT COUNTS AS "THE FIRST ORDER" IS OWNER BATCH ITEM 10, decided by default on
+      // 2026-07-29: ANY player command that results in her taking a job, INCLUDING a WORK-tab
+      // toggle. If the owner overturns it to "a targeted order only", this row teaches STRIP or
+      // Prioritise instead — the row moves, the card's shape does not.
+      // ⚠️ TWO BINDS, NOT ONE: opening the tab and setting a cell are different branches of
+      // `onHudClick`, and a row that joined only the first would document a tab with no gesture
+      // inside it — the `B`-row shape at one remove.
+      // ⚠️ 21 CHARACTERS. Key-row text has to fit ONE line (~28 at this grid width): a wrapped cell
+      // makes BOTH cells in its grid row taller, which is 12px for four extra words and the card's
+      // height is a correctness property (see the module header). "then click a cell" is left off
+      // deliberately — the tab prints that instruction itself (`ov-workhint`, overview-view.js).
+      { key: 'WORK', text: 'tab — put her to work', bind: [
+        { file: OV, cond: 'd.ovTab != null', call: 'Hud.selectTab' },
+        { file: OV, cond: 'd.ovWorkCid != null', call: 'onWorkCellClick' }] },
       { key: 'Click', text: 'a room — step inside it',
         bind: null, why: 'a pointer gesture on .pl-room, not a key (ui/overview-view.js onScenePointerUp)' },
       { key: 'R / F', text: 'up / down a deck', bind: [
         { file: CTL, cond: "k === 'r'", call: 'Cmd.deck' },
         { file: CTL, cond: "k === 'f'", call: 'Cmd.deck' }] },
-      { key: 'Space', text: 'pause / resume', bind: [
-        { file: CTL, cond: "k === ' '", call: 'Cmd.pause' }] },
+      // ⛔ THE `Space` ROW WAS REMOVED HERE TO PAY FOR THE `WORK` ROW ABOVE, AND THE ARITHMETIC IS
+      // WHY IT HAD TO BE PAID RATHER THAN ABSORBED. The two key grids are 2-column, so the card's
+      // cost is ceil(n1/2) + ceil(n2/2) grid rows: EIGHT rows cost four, NINE cost five — in any
+      // 5/4 or 4/5 split. There is no arrangement of nine rows that is free.
+      // MEASURED IN CHROME AT 1280×800 (`client/tools/onboarding-shot.mjs`, 2026-07-30):
+      //     eight rows (before)          content 653px in a 655px card   — the 2px budget, exactly
+      //     nine rows (WORK added)       content 682px in a 656px card   — 26px BELOW THE FOLD
+      //     eight rows (Space removed)   content 653px in a 655px card   — the budget, restored
+      // …and 653px at 1600×1000 and 1440×900 too, i.e. byte-for-byte the footprint M1-B measured.
+      // ⇒ `Space` is the row the SHIP ITSELF teaches, on screen, at the moment it matters — and that
+      // was CHECKED rather than assumed, which this file demands of every sentence on it. Arming a
+      // tool while the ship is held raises `#ov-nudge`, whose own label is
+      //     "‖ HOLD — CLICK OR PRESS SPACE TO RUN THE SHIP"   (ui/overview-view.js:272)
+      // …so the key is written out in the game, next to a click that does the same thing. (The
+      // controller is `makeNudge` in `ui/paused-nudge.js`, pinned by console-carryover.test.js
+      // group A.) That is the same argument that took the `1–7` lens row off this card — a row
+      // documenting something already on screen — and it is the cheapest 26px available.
+      // ⚠️ THE KEY STILL WORKS and is still driven by the shot tool; only the ROW is gone.
       // ⚠️ THE TEXT NAMES **CREW WATCH** BECAUSE THIS ROW IS THE ONLY ONE WITH A PREREQUISITE THE
       // CARD OTHERWISE NEVER TEACHES. `talkSelectedCrew` is a no-op with nobody selected, and the
       // only way to select on this surface is clicking a CREW WATCH row (driven — the rig's own
