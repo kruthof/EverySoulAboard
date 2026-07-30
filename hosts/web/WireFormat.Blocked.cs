@@ -146,27 +146,34 @@ namespace Perilune.Web
     /// zone is also a standing POLICY rather than a queued order, which is why it lives on a channel
     /// about zones.
     ///
-    /// <b>⛔ NOT COVERED (4) — MAINTENANCE.</b> <c>MachineWearSystem.TryFindStagingTile</c>
-    /// (<c>MachineWearSystem.cs:464</c>) asks the same rule about a needy machine, and a machine in bad
+    /// <b>⛔ NOT COVERED (4) — AUTOMATIC MAINTENANCE.</b> <c>MachineWearSystem.TryFindStagingTile</c>
+    /// asks the same rule about a needy machine, and a machine in bad
     /// air is silently never serviced. It is off this channel because this channel is scoped to WHAT
     /// THE PLAYER ASKED FOR: maintenance is automatic, the player never painted it, and on a wreck the
     /// row count would be "every damaged device aboard" — a permanent nag about work nobody ordered.
     /// The <c>devices</c> channel already carries per-machine condition for that story.
+    /// ⭐ <b>M2-9 NARROWS THIS OMISSION WITHOUT REVERSING IT</b>: a machine a player has DIRECTLY
+    /// ordered repaired is no longer automatic work, so it is on the channel — as
+    /// <see cref="OrderRepair"/> — and it is on it for ONE reason only (below). The staging refusal
+    /// above is still silent for a repair, ordered or not.
     ///
-    /// <b>FUTURE (5) — the third silent refusal.</b> <c>lane/recovery-economy</c> adds
-    /// <c>IsUnfixableWreck</c>: a machine below <c>wear.wreck_threshold</c> with no Parts/Seals aboard
-    /// is refused at recruitment, forever, silently. That is a <see cref="ReasonNoConsumable"/>-shaped
-    /// fact and the enum below leaves it a reserved trailing value — DECLARED, NEVER EMITTED here,
-    /// because this lane cannot see that predicate and inventing a second copy of it is the mistake
-    /// this whole header is about. See <see cref="ReasonNoConsumable"/>.
+    /// <b>⭐ CLOSED (5) — the third silent refusal, discharged by M2-9.</b>
+    /// <c>MaintenanceSystem.IsUnfixableWreck</c>: a machine below <c>wear.wreck_threshold</c> with no
+    /// Parts, Seals or Swarf aboard is refused at recruitment, forever, with nothing said. It is now
+    /// emitted as <see cref="ReasonNoConsumable"/> for a machine the player ordered repaired — ASKED
+    /// of the sim's own public predicate, in one line, never re-derived here. That was the whole
+    /// condition this paragraph attached to it, and it is met by the lane that owns the order rather
+    /// than by this one inventing a second copy of the predicate.
     ///
     /// ─────────────────────────────────────────────────────────────────────────────────────────
-    /// SCOPE — THREE REGISTRIES, NOT "EVERY TILE". A world scan over 45×18×8 emitting a row per
+    /// SCOPE — WHAT THE PLAYER ORDERED, NOT "EVERY TILE". A world scan over 45×18×8 emitting a row per
     /// unstageable tile is not a channel, it is a fog-of-war rewrite: most of a wreck is airless and
     /// nobody ordered anything there. The rows are exactly the sites the player queued —
     /// <see cref="OrderDig"/> (<c>TileFlags.Designated</c>), <see cref="OrderStrip"/>
-    /// (<c>DeconstructSystem.Pending</c>) and <see cref="OrderBuild"/> (<c>BuildSystem.Pending</c>) —
-    /// and only those of them the staging rule actually refuses.
+    /// (<c>DeconstructSystem.Pending</c>), <see cref="OrderBuild"/> (<c>BuildSystem.Pending</c>) and,
+    /// since M2-9, <see cref="OrderRepair"/> (<c>GameSession._prioritised</c>, the host's transient
+    /// record of the direct orders — the sim keeps no order registry) — and only those of them the
+    /// relevant rule actually refuses.
     ///
     /// ⛔ <b>"EMPTY ON A HEALTHY SHIP" IS WHAT THIS PARAGRAPH USED TO CLAIM, AND IT IS RETRACTED —
     /// A DEVELOPMENT-TIME RETRACTION, NOT A SHIPPED ONE.</b> Both versions live inside commit
@@ -285,6 +292,26 @@ namespace Perilune.Web
         /// <summary>A queued wall/floor/door: the <see cref="Perilune.Sim.BuildSystem"/> registry.</summary>
         public const int OrderBuild = 2;
 
+        /// <summary>
+        /// ⭐ <b>A DIRECT REPAIR ORDER (M2-9) — <i>"that machine, now"</i>, aimed at ONE machine by
+        /// ONE named crew member</b> (<c>Perilune.Sim.PrioritiseJobCommand</c>). The only order kind
+        /// here that is NOT a registry the sim owns: the sim keeps no order registry at all (the
+        /// held job IS the order), so the source is <c>GameSession._prioritised</c> — the host's
+        /// transient record of what was asked. See <see cref="ReasonNoConsumable"/>.
+        ///
+        /// <para>⚠️ <b>THE CLIENT DOES NOT NAME THIS VALUE YET, AND THAT IS DELIBERATE RATHER THAN
+        /// AN OMISSION.</b> <c>BLOCKED_ORDER_NAMES</c> in <c>client/src/wire/messages.js</c> still
+        /// stops at <c>build</c>, so <c>blockedOrderName(3)</c> returns <c>''</c> and
+        /// <c>room-model.js</c> falls back to the generic word: the badge reads <b>"ORDER BLOCKED —
+        /// NO PARTS OR SEALS ABOARD"</b> rather than "REPAIR BLOCKED — …". That is the forward-compat
+        /// path <c>decodeBlocked</c> was BUILT for and documents by name (*"a row with an unknown
+        /// ORDER is KEPT too … the payload of a blocked row is THIS TILE IS STUCK, and that fact
+        /// survives intact even when the why or the what comes from a newer host"*). The surface
+        /// that draws a repair order — and the word for it — is M2-10's package; this one adds the
+        /// verb and its refusal, and touches no client file.</para>
+        /// </summary>
+        public const int OrderRepair = 3;
+
         // ── the REASON enum, APPEND-ONLY ──
 
         /// <summary>
@@ -323,19 +350,34 @@ namespace Perilune.Web
         public const int ReasonNoApproach = 1;
 
         /// <summary>
-        /// ⛔ RESERVED — DECLARED, NEVER EMITTED BY THIS HOST. "The ship has none of the consumable
-        /// this work needs", the third silent refusal: <c>lane/recovery-economy</c>'s
-        /// <c>IsUnfixableWreck</c> refuses a machine below <c>wear.wreck_threshold</c> with no
-        /// Parts/Seals aboard, forever, with nothing said.
+        /// ⭐⭐ <b>THE SHIP HAS NOTHING TO FIX IT WITH — LIVE SINCE M2-9, AND RESERVED-BUT-UNEMITTED
+        /// FOR THE THREE PACKAGES BEFORE IT.</b> The player has pointed a named crew member at a
+        /// machine below <c>wear.wreck_threshold</c>, and there is no Parts, no Seals and no Swarf
+        /// stack anywhere aboard that a servicer could reach: the empty-handed jury-rig is refused by
+        /// wreck rule W2, so there is no service to perform. Emitted for
+        /// <see cref="OrderRepair"/> rows only.
         ///
-        /// <para>The value is nailed down here so the two lanes cannot both pick 2 for different
-        /// meanings, and the client already names it — but NOTHING IN THIS PACKAGE PRODUCES IT, because
-        /// this lane cannot call that predicate and a host-side re-derivation of "is there any Parts
-        /// aboard" is the exact second-authority mistake omission (1) refuses. The lane that owns the
-        /// predicate emits it, in one line, against a name that is already on the wire.</para>
+        /// <para><b>THE PREDICATE IS <c>MaintenanceSystem.IsUnfixableWreck</c>, ASKED IN ONE
+        /// LINE</b> (<c>GameSession.BuildBlocked</c>'s repair walk, which hands the answer to
+        /// <c>AddUnfixableRow</c>). It is public for precisely this call, and
+        /// its own doc comment says why: a view-only channel must ask *"the same question the
+        /// dispatcher asks rather than re-deriving it — re-deriving is how the two answers drift
+        /// apart"*. The tier ladder (Parts ▸ Seals ▸ Swarf), the carry/reservation filters and the
+        /// breathability of the stack's own tile all live behind that one call.</para>
         ///
-        /// <para>Pinned as un-emitted by <c>BlockedChannelTests</c> rather than left to trust — a
-        /// reserved constant that quietly starts being emitted is how a vocabulary rots.</para>
+        /// <para><b>IT IS A LIVE PREDICATE, NOT A STAMP</b>, like <see cref="ReasonAir"/>: the row
+        /// disappears on the very next render once a single Swarf stack is set down within reach.
+        /// The player's next action is *find parts*, which is why it is a different sentence from
+        /// every other reason here.</para>
+        ///
+        /// <para>⚠️ <b>ONLY AN ORDERED MACHINE IS ELIGIBLE.</b> Automatic maintenance stays off this
+        /// channel — see omission (4) in this file's header, which is unchanged: on a wreck the row
+        /// count would otherwise be "every damaged device aboard", a permanent nag about work nobody
+        /// asked for. What M2-9 adds is a machine the player DID ask about.</para>
+        ///
+        /// <para>The value was nailed down early so two lanes could not both pick 2 for different
+        /// meanings; the client has named it (<c>no_consumable</c> → *"NO PARTS OR SEALS ABOARD"*)
+        /// since before anything produced it.</para>
         /// </summary>
         public const int ReasonNoConsumable = 2;
 
@@ -535,8 +577,10 @@ namespace Perilune.Web
         /// nothing. <c>GameSession.BuildBlocked</c> emits digs on the z,y,x world walk (the
         /// <c>IJobSource</c> rule-3 scan order the three per-tile channels already use), then strips in
         /// <c>DeconstructSystem.Pending</c> list order, then builds in <c>BuildSystem.Pending</c> list
-        /// order — three deterministic index walks over plain <c>List</c>s that are themselves saved,
-        /// hashed state. No hash container's internal layout can reach the socket.
+        /// order, then (M2-9) direct repair orders in CITIZEN STORE order — four deterministic index
+        /// walks over plain <c>List</c>s that are themselves saved, hashed state. No hash container's
+        /// internal layout can reach the socket: the repair walk probes a dictionary by crew id but
+        /// never enumerates one, for exactly that reason.
         ///
         /// InvariantCulture on every number (its own <see cref="BlockedIc"/>, so this file is readable
         /// in isolation), one line, no whitespace — the house wire style.

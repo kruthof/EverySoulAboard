@@ -152,6 +152,177 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// ⭐⭐ <b>M2-9 — THE DIRECT ORDER: "THAT MACHINE, NOW."</b> One named crew member, one machine,
+    /// picked by the player. She drops what she is doing, takes the repair, and
+    /// <see cref="Citizen.HeldByOrder"/> keeps her on it until it ends (M2-19, <c>MECHANICS</c>
+    /// §6.2c). The analogue is RimWorld's right-click ▸ <i>Prioritise doing X</i>
+    /// (<c>docs/design/rimworld-reference.md</c> §2.2).
+    ///
+    /// <para><b>ADDRESSED BY DEVICE ID — TILE RESOLUTION IS HOST WORK</b> (integrator ruling,
+    /// M2-9/M2-10 wire contract). The client can only name a machine by the tile it clicked (the
+    /// <c>devices</c> channel carries no id), so <c>GameSession.HandlePrioritise</c> resolves
+    /// <c>{x, y, deck}</c> through <see cref="Simulation.TryGetDeviceAt"/> — the sim's own
+    /// one-device-per-tile index, and emphatically not that file's linear <c>TryDeviceAt</c> scan,
+    /// which returns the CONDUIT on any tile that carries one (a live defect the OPERATE verb
+    /// documents) — and refuses without enqueuing when the tile holds no machine. What crosses into
+    /// the sim is therefore an ENTITY ID, which is stable while a tile's occupant is not.</para>
+    ///
+    /// <para>⭐ <b>THE DECISION THIS PACKAGE HAD TO TAKE: AN EXPLICIT ORDER OVERRIDES THE WORK GRID,
+    /// AND NOTHING ELSE.</b> <see cref="Citizen.CanTakeWorkType"/> — the five-gate veto every
+    /// recruiter reads — is deliberately NOT consulted here; <see cref="Citizen.IsIncapableOf"/>,
+    /// its incapability half, is. §2.2 is the authority and it splits the two in one sentence, read
+    /// off <c>Pawn_JobTracker.cs:112-120</c>: <i>"incapability wins even over a player order; a
+    /// player's own priority-0 setting does not."</i> RimWorld keeps the forced job running when the
+    /// player blanks its work type and ends it when the pawn is INCAPABLE, which is the same line
+    /// drawn here at issue time. §2.2's other paragraph — <i>"it does NOT override disabled or
+    /// incapable"</i> — is about <c>PawnCanUseWorkGiver</c>, which tests
+    /// <c>WorkTypeIsDisabled</c> (incapability) and NOT <c>GetPriority(w) == 0</c>; that file marks
+    /// the wiki's looser wording <b>UNVERIFIED</b> and says not to encode it, so the source-grade
+    /// half decides.
+    /// <br/>⚠️ <b>And under OD-H this is the DEFAULT case, not an edge case.</b> Every work type
+    /// boots OFF on every ship, so a no-override reading would refuse the player's very first
+    /// right-click and dead-end OD-G's opening beat anywhere outside the WORK tab.</para>
+    ///
+    /// <para><b>WHAT IS NEVER OVERRIDDEN.</b> (1) <b>Incapability</b>, above. (2) <b>Safety</b> —
+    /// <see cref="MaintenanceSystem.TryFindStagingTile"/> (i.e.
+    /// <c>WorksiteSafety.CanStageWorkerAt</c>) must find somewhere the servicer can survive the
+    /// 900 s service; an order may not park a crew member in vacuum. (3) <b>The wreck rule W2</b> —
+    /// <see cref="MaintenanceSystem.IsUnfixableWreck"/>; a machine below <c>wear.wreck_threshold</c>
+    /// with no Parts, Seals or Swarf aboard has no service to perform, and this is the ONE refusal
+    /// that reaches the player, on the <c>blocked</c> wire channel as
+    /// <c>WireFormat.ReasonNoConsumable</c>. (4) <see cref="Citizen.HoldPosition"/>, which is a fact
+    /// about where a crew member may be rather than a preference about work.</para>
+    ///
+    /// <para><b>THE GATES ARE ASKED, NEVER RE-DERIVED.</b> Every one of them is
+    /// <see cref="MaintenanceSystem"/>'s own — the same predicates <c>RecruitForNeediest</c> applies
+    /// one tick later — because two copies of "can this machine be serviced" is exactly how the
+    /// order and the dispatcher come to disagree about a machine the player is looking at.</para>
+    ///
+    /// <para>⚠️ <b>COMPOSITION ORDER IS THE M2-19 WRITER CONTRACT: JOB FIRST, HOLD SECOND</b>
+    /// (<see cref="Citizen.HeldByOrder"/>). The <see cref="Citizen.JobKind"/> setter releases the
+    /// hold on the way past <c>None</c>, so a hold written before the cancel — or before the new
+    /// kind — is cleared again. And <b>the hold is never placed on a crew member who did not get the
+    /// job</b>: every refusal above returns BEFORE the cancel, so no path can leave a held pawn with
+    /// no job, which is the one state nothing may recruit and nothing can re-order.</para>
+    ///
+    /// <para><b>NO SAVED STATE, NO ORDER REGISTRY.</b> The held job IS the order — target, worker
+    /// and lifetime — exactly as §2.2 keeps the forced flag on <c>curJob</c>. Nothing here is
+    /// hashed, no chapter moves, and a command nobody sends changes nothing (the pins are
+    /// untouched). ⛔ RimWorld's <c>Pawn_MindState.priorityWork</c> — the saved (cell, workGiver,
+    /// tick) record that RE-ISSUES the job after an interruption — is still not built, and neither
+    /// is its 30 000-tick timeout (integrator ruling); see <c>MECHANICS</c> §6.2c and §13.25.</para>
+    ///
+    /// <para>SILENT ON REFUSAL apart from the wreck rule, like every other command here. Autonomy is
+    /// what she returns to when the job ends (OD-G), so <see cref="Citizen.AutoWander"/> is
+    /// deliberately left alone — this is an order about WORK, not <see cref="MoveCitizenCommand"/>'s
+    /// standing "only move when told".</para>
+    /// </summary>
+    public sealed class PrioritiseJobCommand : ISimCommand
+    {
+        private readonly int _citizenId;
+        private readonly int _deviceId;
+
+        /// <param name="citizenId">The crew member's ENTITY id (never a store index — ids stop being
+        /// indices the moment anyone dies, and on a wreck they do).</param>
+        /// <param name="deviceId">The machine's ENTITY id, resolved from the clicked tile host-side.</param>
+        /// <remarks>⚠️ BOTH PAYLOAD FIELDS ARE <c>int</c>, DELIBERATELY — the
+        /// <see cref="SetWorkPriorityCommand"/> argument. The producer is a tolerant JSON reader that
+        /// yields <c>int</c>, and a cast is not a guard: <c>(uint)(-1)</c> is a perfectly real id
+        /// shape, so a host that narrowed first would hand this class a value no check here could
+        /// tell from a genuine one. Taking the raw ints keeps the sign check next to the cast.
+        /// <br/>⚠️ It is NOT true that nothing can have reinterpreted the value before the check —
+        /// an earlier draft of this remark claimed that and it was wrong. <c>WebCommand.Cid</c> is
+        /// <c>uint</c>, so a negative <c>cid</c> is already reinterpreted inside <c>Parse</c> and
+        /// cast back on the way in. That is harmless (it lands on an id no citizen has, and
+        /// <c>TryGet</c> refuses it) but it means the guarantee is "one sign check in one place",
+        /// not "the wire cannot have touched it".</remarks>
+        public PrioritiseJobCommand(int citizenId, int deviceId)
+        {
+            _citizenId = citizenId; _deviceId = deviceId;
+        }
+
+        public void Execute(Simulation sim)
+        {
+            // 0 is the "no entity" id and a negative one cannot be an id at all; both are dropped
+            // rather than reinterpreted, so a garbled line can never name a real entity by accident.
+            if (_citizenId <= 0 || _deviceId <= 0) return;
+            if (!sim.Citizens.TryGet((uint)_citizenId, out var citizen) || citizen.Dead) return;
+            if (citizen.HoldPosition) return;
+            if (!sim.Devices.TryGet((uint)_deviceId, out var device)) return;
+
+            // The work type this order belongs to, out of M2-2's ONE table — the same lookup the
+            // dispatcher's five gates and the `blocked` channel take. Hard-coding WorkType.Repair
+            // here would be a second opinion about what a Maintain job is.
+            if (!WorkTypeMap.TryOf(JobKind.Maintain, out var work)) return;
+            // INCAPABLE ≠ DISABLED (§2.2, and the owner's own distinction): the GRID is overridden,
+            // the PERSON's incapability is not. Note what is NOT called: CanTakeWorkType, which
+            // folds both together.
+            if (citizen.IsIncapableOf(work)) return;
+
+            // Nothing to service — a machine at or above its maintain threshold has no job to give.
+            // RimWorld's answer to an impossible order is a refusal at the point of the click
+            // (§2.2); the click-time half is M2-10's, this is the sim half.
+            if (device.Condition >= sim.Defs.Machines[(int)device.Kind].MaintainBelow) return;
+            // SAFETY IS NEVER OVERRIDDEN, and this is MaintenanceSystem's own staging rule, not a
+            // second copy of it.
+            if (!MaintenanceSystem.TryFindStagingTile(sim, device.Pos, out _)) return;
+            // ⭐ THE WRECK RULE W2 — the refusal the `blocked` channel surfaces as
+            // ReasonNoConsumable. Asked here for the reason RecruitForNeediest asks it at
+            // recruitment rather than in the work phase: discovering it later throws away 900 s of
+            // a crew member's life.
+            if (MaintenanceSystem.IsUnfixableWreck(sim, device)) return;
+            // One servicer per machine is an invariant of MaintenanceSystem.DriveWorkers, which
+            // drives EVERY Maintain citizen bound to the tile: a second one would repair the same
+            // machine twice over and FindWorker would only ever see the first. An order aimed at a
+            // machine somebody else is already fixing is refused rather than allowed to double it.
+            var servicer = MaintenanceSystem.FindWorker(sim, device.Pos);
+            if (servicer != null && servicer != citizen) return;
+
+            // ⛔⛔ SHE IS ALREADY SERVICING THE MACHINE THE ORDER NAMES — SO THE JOB MUST NOT BE
+            // RE-ASSIGNED. Falling through to `CancelJob` below DESTROYS the service in flight:
+            // measured on a repeat order at the machine she was already on, <c>JobWorkTicks</c>
+            // 8 770 → 0 and the Parts stack in her hands dropped on the floor. M2-10 puts the second
+            // right-click one click away from the first, so "the player clicked twice" must cost
+            // nothing at all.
+            //
+            // ⭐ THE HOLD IS STILL ASSERTED, and that is the one thing this branch DOES do. It is
+            // idempotent on a repeat click (she already carries it) and it is the whole point when
+            // she reached this machine on her own: <c>MaintenanceSystem</c> recruited her, the player
+            // sees her working and says "stay on THAT" — an order that returned without writing the
+            // bool would leave the grid free to take her off it, which is the promise the verb makes.
+            // The invariant holds by construction: she carries a Maintain job, so the hold can never
+            // land on a jobless pawn here.
+            //
+            // ⚠️ SAME MACHINE ONLY. An order naming a DIFFERENT machine still replaces this one
+            // through the cancel below — that is the player changing their mind, and it is how the
+            // old job ends and the old hold is released.
+            if (servicer == citizen)
+            {
+                citizen.HeldByOrder = true;
+                return;
+            }
+
+            // ── the order takes. JOB FIRST … ──
+            // CancelJob drops cargo where she stands, releases her reservations AND — because it
+            // assigns JobKind.None — releases any OLDER order's hold on the way past. That is the
+            // "a new direct order replaces the old" release condition, taken for free.
+            sim.CancelJob(citizen);
+            citizen.ClearPath();           // …and the walk she was on, the SafetySystem.cs:233 shape
+            citizen.OrderedMove = false;
+            citizen.JobKind = JobKind.Maintain;
+            citizen.JobTarget = device.Pos;
+            citizen.JobWorkTicks = 0;
+            citizen.CarryingItemId = 0;
+            // … ⭐ HOLD SECOND.
+            citizen.HeldByOrder = true;
+            // She left whatever site she was on and any stack she carried is back on the ground:
+            // the same two bits CancelJob raises, re-raised because the assignment above changed
+            // the citizen set every source re-derives.
+            sim.JobsDirty |= JobBoardDirty.Citizens;
+        }
+    }
+
+    /// <summary>
     /// Store a terminal's MOSS source as sim state via the command log (the DSL
     /// runtime compiles it separately; sources are canonical, programs are derived).
     /// </summary>

@@ -57,8 +57,8 @@ namespace Perilune.Sim
         // work-type VETO: WorkPrioritiesRaw and WorkIncapable are now read at five gates through
         // CanTakeWorkType below, so this grid is BEHAVIOUR and its default (OD-H: off) is what a
         // new game boots into. ⚠️ AND M2-19 GAVE HeldByOrder A READER TOO (IsRecruitableIgnoringJob
-        // — the sticky claim), so of the three "reserved" fields only Skill is still inert. Nothing
-        // WRITES HeldByOrder in play yet; that is M2-9's PrioritiseJobCommand.
+        // — the sticky claim), so of the three "reserved" fields only Skill is still inert. And
+        // M2-9's PrioritiseJobCommand WRITES it, so HeldByOrder is now live end to end in the sim.
         // The enrolment ledger in WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid names
         // every file that may look at them.
         // See the WorkType / WorkPriority declarations at the bottom of this file. ---
@@ -149,7 +149,8 @@ namespace Perilune.Sim
         /// her.</b> ⚠️ The header above (M2-1's) called this field RESERVED with no reader; that was
         /// true of M2-1's and M2-8's trees and is FALSE OF THIS ONE — it is read by
         /// <see cref="IsRecruitableIgnoringJob"/>, which every claim gate and the pre-emption gate
-        /// share. It still has NO WRITER IN PLAY: <c>PrioritiseJobCommand</c> is M2-9's.
+        /// share. ⭐ <b>AND M2-9 LANDED ITS WRITER</b> — <c>PrioritiseJobCommand</c>, which composes
+        /// the job and then this bool in the order the writer contract below requires.
         ///
         /// <para><b>WHY A HOLD AND NOT A DISPATCHER PREFERENCE.</b> The M2-0 spike measured
         /// <c>MaintenanceSystem.Tick</c> freeing and re-claiming the same pawn inside ONE tick —
