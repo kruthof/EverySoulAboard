@@ -802,7 +802,7 @@ namespace Perilune.Tests
         /// EXACTLY ONE CASE, AND THIS LEG PINS THE OTHER SIDE OF IT.</b> Until M2-9 the constant was
         /// declared and never produced, and this test said so. The predicate behind it
         /// (<c>MaintenanceSystem.IsUnfixableWreck</c>) now has a caller — but ONLY on a machine the
-        /// player has DIRECTLY ORDERED repaired (<c>GameSession.AddIfUnfixable</c>, reached from the
+        /// player has DIRECTLY ORDERED repaired (<c>GameSession.AddUnfixableRow</c>, reached from the
         /// pending-order walk).
         ///
         /// <para><b>So what is pinned here is the SCOPE.</b> Paint every designation kind this

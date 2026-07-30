@@ -987,7 +987,7 @@ The predicate, in order (`JobSystem.cs:290-317`):
    `Flee`, `Eat` and `Drink` carry no `WorkType` and are refused here. There is deliberately no
    second check listing them (two guards for one rule and neither can be shown to bite);
    `PreemptionTests.SurvivalKinds_CarryNoWorkType_WhichIsTheWholeSurvivalGuard` pins the premise.
-2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:438`, NEW in M2-8) — `IsRecruitableForWork`
+2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:439`, NEW in M2-8) — `IsRecruitableForWork`
    with the "carries no job" clause factored out. Dead, `HoldPosition`, or mid-ordered-walk still
    refuse: taking the job would strand her, because the same facts stop anything from giving her
    another. `IsRecruitableForWork` is expressed as `IsRecruitableIgnoringJob && JobKind == None`.
@@ -1030,7 +1030,7 @@ direct order**: a crew member ordered onto a band-4 job is pre-empted off it by 
 ranks higher, and the M2-0 spike measured `MaintenanceSystem` re-claiming a directly-ordered pawn
 **within the same tick** (idle 11 ticks of 30 000). `Citizen.HeldByOrder` is what outranks the grid.
 
-**The state** is the M2-1 bool (`Entities/Citizen.cs:200`, CITZ v8, hashed at bit 5). ⭐ **Its
+**The state** is the M2-1 bool (`Entities/Citizen.cs:201`, CITZ v8, hashed at bit 5). ⭐ **Its
 writer landed in M2-9** — `PrioritiseJobCommand` (§6.2d) — so this mechanism is no longer
 unreached; what is still missing is the right-click that sends it (M2-10, §13.25).
 
@@ -1086,7 +1086,7 @@ resolution is the host's — `GameSession.HandlePrioritise`, `hosts/web/GameSess
 `Simulation.TryGetDeviceAt` and never that file's linear `TryDeviceAt`, which returns the conduit).
 The wire is `{"cmd":"prioritise","cid":N,"x":..,"y":..,"deck":..}` → `CmdKind.Prioritise` (24).
 
-**The composition, in the order the M2-19 writer contract requires** (`Commands.cs:276-289`):
+**The composition, in the order the M2-19 writer contract requires** (`Commands.cs:305-321`):
 `Simulation.CancelJob` → `ClearPath` → `OrderedMove = false` → `JobKind = Maintain` + `JobTarget` +
 `JobWorkTicks = 0` → **then** `HeldByOrder = true` → `JobsDirty |= Citizens`. Job first, hold
 second: the `JobKind` setter clears the hold on the way past `None`, so the reverse order writes a
@@ -1107,28 +1107,46 @@ right-click. The order does not WRITE the grid — it overrides the setting for 
 `IsIncapableOf(Repair)` (via `WorkTypeMap.TryOf(Maintain)`, M2-2's one table) · nothing to service
 (`Condition >= MaintainBelow`) · `MaintenanceSystem.TryFindStagingTile` (**now public**, safety and
 approach are never overridden) · `MaintenanceSystem.IsUnfixableWreck` (wreck rule W2) · the machine
-already has a servicer (`MaintenanceSystem.FindWorker`, **now public** — `DriveWorkers` drives every
-Maintain citizen bound to a tile, so a second one would repair it twice). **Every refusal returns
-BEFORE the cancel**, so no path can leave a held pawn with no job.
+already has a servicer who is **somebody else** (`MaintenanceSystem.FindWorker`, **now public** —
+`DriveWorkers` drives every Maintain citizen bound to a tile, so a second one would repair it twice).
+**Every refusal returns BEFORE the cancel**, so no path can leave a held pawn with no job.
+
+**⛔ AND THE SERVICER IS *HERSELF* IS NOT A REFUSAL — IT IS A NO-COST ORDER, which is a defect
+independent review found live.** Falling through on a machine she is already servicing reaches
+`CancelJob` and destroys the service: measured, `JobWorkTicks` **8 770 → 0** and the carried Parts
+stack dropped on the floor, on a second click at the machine she was already on. M2-10 puts that
+second click one click away from the first. So the branch leaves the JOB completely untouched and
+writes **only** the hold — idempotent on a repeat click, and the whole point when she reached the
+machine on her own: the grid recruited her, the player says *"stay on THAT"*, and an order that
+returned without writing the bool would leave the grid free to take her off it. Same machine only;
+an order naming a DIFFERENT machine still replaces this one through the cancel.
 
 **⭐ AND IT DISCHARGES `ReasonNoConsumable`.** The `blocked` channel gains a fourth order kind,
 `WireFormat.OrderRepair = 3`, and its rows come from `GameSession._prioritised` — a **host-side,
 transient, never-saved** map of crew id → ordered device id, walked in CITIZEN STORE order (never
 enumerated: a hash layout must not reach the socket). A row is emitted only while
-`IsUnfixableWreck` is true, asked in one line (`AddIfUnfixable`, `hosts/web/GameSession.cs:2824`).
-The record is **retired** the
-moment the sim turns the order into a held job (the job is the record from then on) and **pruned**
-when its crew member leaves the store (§2.1: a designation survives its pawn, a direct order does
-not). ⚠️ The four-reason ladder (`BlockedReason`) is deliberately NOT applied to a repair row —
-`ReasonWorkTypeOff` would be a lie about an order that overrides the grid.
+`IsUnfixableWreck` is true — asked **once per pending order**, in the walk
+(`hosts/web/GameSession.cs:3082`), and the answer handed to `AddUnfixableRow`
+(`hosts/web/GameSession.cs:2837`) rather than re-asked inside it: below the wreck floor that call is
+up to three full item-store scans.
+
+**THE RETIRE RULE IS A WHITELIST**, and it is a whitelist because the blacklist it replaced LEAKED
+(independent review, measured): an entry survives a render only while **(1)** she is held on a job
+at that machine — from then on the held job is the record, §2.2's `curJob` again — or **(2)** the
+machine is an unfixable wreck, the one refusal the badge exists to name. Everything else retires on
+the very next render, so an order refused on Condition, staging, incapability or "somebody else got
+there first" costs nothing and can never later raise a NO PARTS badge for an order nobody holds.
+Entries are also **pruned** when their crew member leaves the store (§2.1: a designation survives
+its pawn, a direct order does not). ⚠️ The four-reason ladder (`BlockedReason`) is deliberately NOT
+applied to a repair row — `ReasonWorkTypeOff` would be a lie about an order that overrides the grid.
 
 **No saved field, no chapter bump, no sim-side order registry**: the held job carries the target,
 as §2.2 keeps the forced flag on `curJob`. RimWorld's re-issuing `priorityWork` record and its
 30 000-tick timeout are still not built (§6.2c). **Pin-neutral** (P1–P5 unmoved): a command nobody
-sends changes nothing. Pinned by `tests/Perilune.Tests/PrioritiseOrderTests.cs` (14 legs, measured
-mutation table in the fixture header).
+sends changes nothing. Pinned by `tests/Perilune.Tests/PrioritiseOrderTests.cs` (18 legs, measured
+mutation table in the fixture header — eight rows, three of them independent review's).
 
-### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:313-324` the property, `:461-476` the enum)
+### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:314-325` the property, `:462-477` the enum)
 
 | kind | owner | lifecycle |
 |------|-------|-----------|

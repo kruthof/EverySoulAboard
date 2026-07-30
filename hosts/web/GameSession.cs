@@ -2803,14 +2803,21 @@ namespace Perilune.Web
         /// Emits <see cref="WireFormat.ReasonNoConsumable"/>, which until this package was DECLARED
         /// AND NEVER EMITTED.
         ///
-        /// <para><b>THE PREDICATE IS ASKED, IN ONE LINE, AND IT IS THE SIM'S OWN.</b>
-        /// <c>MaintenanceSystem.IsUnfixableWreck</c> is public for exactly this call — its own doc
-        /// comment says a view-only <c>blocked</c> channel *"needs to be able to ask the same
+        /// <para><b>THE PREDICATE IS ASKED, IN ONE LINE, AND IT IS THE SIM'S OWN</b> —
+        /// <c>MaintenanceSystem.IsUnfixableWreck</c>, in <see cref="BuildBlocked"/>'s repair walk
+        /// immediately above the call to this method, which is where the SAME answer also decides
+        /// whether the order is still worth remembering. It is public for exactly that call: its own
+        /// doc comment says a view-only <c>blocked</c> channel *"needs to be able to ask the same
         /// question the dispatcher asks rather than re-deriving it — re-deriving is how the two
         /// answers drift apart"*. A host-side scan for a Parts stack would be that second authority,
         /// and it would be wrong in three ways this file could not see: the tier ladder (Parts ▸
         /// Seals ▸ Swarf), the reservation and carry filters, and the breathability of the stack's
         /// own tile.</para>
+        ///
+        /// <para>⚠️ <b>THIS METHOD THEREFORE DOES NOT RE-ASK IT.</b> The caller has established that
+        /// the machine is an unfixable wreck; what is left here is the CHANNEL's own discipline —
+        /// bounds, fog, de-duplication — and nothing about repair. Asking again would double the
+        /// expensive call for every badged machine on every render.</para>
         ///
         /// <para>⛔ <b>IT ASKS ONLY THAT ONE QUESTION — <see cref="BlockedReason"/>'s four-reason
         /// ladder is deliberately NOT applied to a repair order</b>, and the reason is
@@ -2827,12 +2834,11 @@ namespace Perilune.Web
         /// they are bounded by the crew; a tile may still legitimately carry BOTH a dig row and a
         /// repair row, exactly as it may carry a dig and a build row today.)</para>
         /// </summary>
-        private void AddIfUnfixable(Device device)
+        private void AddUnfixableRow(Device device)
         {
             var p = device.Pos;
             if (!_sim.World.InBounds(p)) return;
             if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
-            if (!MaintenanceSystem.IsUnfixableWreck(_sim, device)) return;
             for (int i = 0; i < _blockedScratch.Count; i++)
             {
                 var row = _blockedScratch[i];
@@ -3044,14 +3050,41 @@ namespace Perilune.Web
                     var c = citizens[i];
                     if (!_prioritised.TryGetValue(c.Id, out uint deviceId)) continue;
                     if (!_sim.Devices.TryGet(deviceId, out var device)) { _prioritised.Remove(c.Id); continue; }
-                    // THE ORDER TOOK: the sim turned it into a held job, which is now the record of
-                    // it. See _prioritised for why this retires rather than merely skips.
-                    if (c.HeldByOrder && c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos)
+
+                    // ⭐ THE RETIRE RULE, AND IT IS A WHITELIST — an entry survives this render for
+                    // exactly TWO reasons, and everything else is dropped.
+                    //
+                    // ⛔ IT WAS A BLACKLIST AND THAT LEAKED. The first version retired only the
+                    // order the sim had TAKEN, which quietly kept every order the sim REFUSED for a
+                    // reason other than the wreck rule: order a repair on a healthy machine and the
+                    // entry outlived the command's own tick, cost up to three item-store scans per
+                    // render for the rest of the session (`IsUnfixableWreck`'s own declared worst
+                    // case), and could later raise a NO PARTS badge for an order the sim never took
+                    // — a sentence about a machine the player was never actually waiting on.
+                    //
+                    // (1) SHE IS HELD ON A JOB AT THAT MACHINE — the order was taken, and from here
+                    //     the HELD JOB is the record of it (§2.2 keeps the forced flag on `curJob`),
+                    //     so this side needs to remember nothing.
+                    // (2) THE MACHINE IS AN UNFIXABLE WRECK — the one refusal this channel exists to
+                    //     NAME. The entry is what keeps the badge up, and the badge comes down by
+                    //     itself the moment a stack the crew can reach appears.
+                    //
+                    // Both are LIVE predicates re-asked every render, so nothing here latches: an
+                    // order refused on Condition, on staging, on incapability or because somebody
+                    // else got the machine first is gone by the next frame.
+                    //
+                    // ⚠️ `IsUnfixableWreck` IS ASKED EXACTLY ONCE PER PENDING ORDER, HERE, and the
+                    // answer is handed to the emitter rather than asked again inside it. The retire
+                    // rule and the badge are the SAME question, and this call is the expensive one:
+                    // below the wreck floor it is up to three full item-store scans (its own doc
+                    // comment says so), and the worst case is precisely the state that keeps a row.
+                    bool taken = c.HeldByOrder && c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos;
+                    if (taken || !MaintenanceSystem.IsUnfixableWreck(_sim, device))
                     {
                         _prioritised.Remove(c.Id);
                         continue;
                     }
-                    AddIfUnfixable(device);
+                    AddUnfixableRow(device);
                 }
             }
 

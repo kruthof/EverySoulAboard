@@ -37,48 +37,70 @@ namespace Perilune.Tests
     /// on <c>curJob</c>); the host's pending-order record is transient render scratch. The pins are
     /// therefore untouched — a command nobody sends changes nothing.</para>
     ///
-    /// <para>⭐ <b>THE MUTATION TABLE, PHYSICALLY APPLIED AND MEASURED (2026-07-30).</b> Each row was
-    /// edited into the tree, the run below taken, and the tree restored from an in-memory copy —
-    /// never <c>git checkout</c> (TRAPS 2), and verified byte-identical afterwards. <b>"RED n/63" is
-    /// what the run reported</b>, over
+    /// <para>⭐ <b>THE MUTATION TABLE, PHYSICALLY APPLIED AND MEASURED — RE-MEASURED IN FULL AFTER
+    /// THE FIX-BACK (2026-07-30).</b> Each row was edited into the tree, the run below taken, and the
+    /// tree restored from an in-memory copy — never <c>git checkout</c> (TRAPS 2), and verified
+    /// byte-identical afterwards. <b>"RED n/67" is what the run reported</b>, over
     /// <c>PrioritiseOrderTests|BlockedChannelTests|StickyClaimTests|WreckRepairEconomyTests</c> —
     /// the neighbours are in the filter so a mutation that reddened THIS file by breaking one of
-    /// them would show.</para>
+    /// them would show. Rows 1–5 are the charter's; <b>rows 6–8 are independent review's, and rows
+    /// 6, 7 and 8 each found a LIVE defect rather than confirming a guard</b>.
+    /// ⚠️ The counts for rows 1–5 are NOT the pre-fix-back ones (6/7/5/2/1 of 63): the fix-back added
+    /// four legs and moved <c>IsUnfixableWreck</c>'s call site, so the whole table was re-run rather
+    /// than partially re-scored.</para>
     /// <list type="table">
-    ///   <item><b>1 — <c>PrioritiseJobCommand.Execute</c> becomes a no-op</b> ⇒ <b>RED 6/63</b>:
+    ///   <item><b>1 — <c>PrioritiseJobCommand.Execute</c> becomes a no-op</b> ⇒ <b>RED 10/67</b> —
+    ///     every sim leg that expects an accepted order, headed by
     ///     <see cref="TheOrder_SendsTheNamedPawnToTheNamedMachine_AndHoldsHerThere"/> ("the sim has
-    ///     no 'that one, now'"), <see cref="TheOrder_OverridesAGridWithRepairOff"/>,
-    ///     <see cref="WithRepairEnabled_TheOrderStillOutranksTheNeedierMachine"/>,
-    ///     <see cref="ASecondOrderAtOneMachineIsRefused_OneServicerPerMachine"/>,
-    ///     <see cref="OnDeath_TheOrderLeavesNoResidueInTheSim"/> and
-    ///     <see cref="ThePendingOrderIsRetired_OnceTheSimTurnsItIntoAHeldJob"/>.</item>
+    ///     no 'that one, now'").</item>
     ///   <item><b>2 — consult <c>CanTakeWorkType</c> (i.e. let the GRID refuse the order)</b> ⇒
-    ///     <b>RED 7/63</b>, headed by <see cref="TheOrder_OverridesAGridWithRepairOff"/> — the
-    ///     decided behaviour's own leg. ⭐ <b>AND
-    ///     <see cref="WithRepairEnabled_TheOrderStillOutranksTheNeedierMachine"/> STAYED GREEN,
-    ///     which is the precise truth rather than the dramatic one:</b> with the grid ON there is
-    ///     nothing for the override to override, so the ENABLED control cannot see this mutation at
-    ///     all. That is exactly why the OD-H boot state is the fixture that pins the decision.</item>
-    ///   <item><b>3 — drop the emission from <c>GameSession.AddIfUnfixable</c> (refuse and say
-    ///     NOTHING)</b> ⇒ <b>RED 5/63</b>, headed by
+    ///     <b>RED 8/67</b>, headed by <see cref="TheOrder_OverridesAGridWithRepairOff"/> — the
+    ///     decided behaviour's own leg. ⭐ <b>AND THE TWO GRID-ON LEGS STAYED GREEN —
+    ///     <see cref="WithRepairEnabled_TheOrderStillOutranksTheNeedierMachine"/> and
+    ///     <see cref="AnOrderAtAMachineSheAlreadyChose_AddsTheHoldWithoutTouchingTheJob"/> — which
+    ///     is the precise truth rather than the dramatic one:</b> with the grid ON there is nothing
+    ///     for the override to override, so neither can see this mutation at all. That is exactly
+    ///     why the OD-H boot state is the fixture that pins the decision.</item>
+    ///   <item><b>3 — drop the emission from <c>GameSession.AddUnfixableRow</c> (refuse and say
+    ///     NOTHING)</b> ⇒ <b>RED 5/67</b>, headed by
     ///     <see cref="AnOrderedUnfixableMachine_ReachesTheBlockedChannelAsNoConsumable"/>.
     ///     ⚠️ Its fixture STRIPS EVERY Parts/Seals/<b>Swarf</b> stack first and asserts the predicate
     ///     is true before driving anything — the wreck ships 11 consumable units and
     ///     <c>IsUnfixableWreck</c> asks with <c>allowSwarf: true</c>, so without the strip the leg
     ///     would pass with the emission deleted.</item>
     ///   <item><b>4 — re-derive "is there Parts aboard" host-side instead of asking the sim</b> ⇒
-    ///     <b>RED 2/63</b>, and it is pinned BEHAVIOURALLY rather than by a text scan: the two legs
+    ///     <b>RED 2/67</b>, and it is pinned BEHAVIOURALLY rather than by a text scan: the two legs
     ///     construct the states where the naive answer differs from the dispatcher's, in OPPOSITE
     ///     directions. <see cref="OneSwarfStackClearsTheBadge_BecauseSwarfIsARepairTier"/> (no Parts
     ///     aboard, still FIXABLE) and
     ///     <see cref="AReservedPartsStackDoesNotCount_TheChannelFollowsTheDispatcher"/> (Parts
     ///     aboard, still UNFIXABLE). A name scan could not see either.</item>
     ///   <item><b>5 — let the order survive the pawn's death</b> (drop the prune pass) ⇒
-    ///     <b>RED 1/63</b>: <see cref="OnDeath_ThePendingOrderIsDroppedByTheHost"/>.
+    ///     <b>RED 1/67</b>: <see cref="OnDeath_ThePendingOrderIsDroppedByTheHost"/>.
     ///     ⚠️ <b><see cref="OnDeath_TheOrderLeavesNoResidueInTheSim"/> STAYED GREEN, and that is a
     ///     fact about where the risk lives</b>: the SIM half of the cleanup is M2-19's
     ///     <c>JobKind</c> setter, which this package did not touch. The residue M2-9 could leave is
     ///     entirely host-side, and it is invisible on the wire — hence the count seam.</item>
+    ///   <item>⭐ <b>6 (INDEPENDENT REVIEW) — break the <c>"prioritise"</c> JSON reader four ways</b>
+    ///     (x/y swapped, <c>deck</c> read as <c>"z"</c>, <c>cid</c> read as <c>"citizen"</c>) ⇒ on
+    ///     the tree as first submitted this was <b>a CLEAN SURVIVOR, 0 red</b>: no leg reached
+    ///     <c>WebCommand.Parse</c> and the string <c>"prioritise"</c> appeared in no test. Now
+    ///     <b>RED 1/67</b> — <see cref="Parse_Reads_The_Prioritise_Message_Cid_X_Y_And_Deck"/>.
+    ///     ⚠️ <c>assert</c> throws, so the four-way break reports only its FIRST leg; each break was
+    ///     therefore also applied ALONE and each reddens with its own message (x/y ⇒ "x must come
+    ///     from \"x\"", deck ⇒ "the deck must ride in I", cid ⇒ "the crew id must come from
+    ///     \"cid\"").</item>
+    ///   <item>⭐ <b>7 (INDEPENDENT REVIEW) — drop the <c>servicer == citizen</c> branch</b>, so a
+    ///     repeat order at the machine she is already servicing falls through to
+    ///     <c>Simulation.CancelJob</c> ⇒ <b>RED 2/67</b>:
+    ///     <see cref="ARepeatOrderAtTheSameMachine_DoesNotDestroyTheServiceInFlight"/> and
+    ///     <see cref="AnOrderAtAMachineSheAlreadyChose_AddsTheHoldWithoutTouchingTheJob"/>. This was
+    ///     a LIVE defect, measured: <c>JobWorkTicks</c> 8 770 → 0 and the carried Parts dropped.</item>
+    ///   <item>⭐ <b>8 (INDEPENDENT REVIEW) — put the retire rule back to a BLACKLIST</b> (retire
+    ///     only the order the sim took) ⇒ <b>RED 1/67</b>:
+    ///     <see cref="AnOrderRefusedForANonWreckReason_IsNotRemembered"/>. Also a LIVE defect: an
+    ///     order refused on Condition/staging/incapability leaked its host-side entry for the rest
+    ///     of the session.</item>
     /// </list>
     ///
     /// <para>Charter: <c>docs/design/perilune-roadmap-q3.packages.md</c> § "M2-9". Mechanism
@@ -442,6 +464,96 @@ namespace Perilune.Tests
             Assert.That(first.HeldByOrder, Is.True, "control: her hold survives the refused order");
         }
 
+        /// <summary>
+        /// ⭐⭐ <b>CLICKING THE SAME MACHINE TWICE COSTS NOTHING.</b> A repeat order at the machine
+        /// she is ALREADY servicing must leave the service untouched — M2-10 puts the second
+        /// right-click one click away from the first.
+        ///
+        /// <para>⛔ <b>MEASURED DEFECT, FOUND BY INDEPENDENT REVIEW.</b> The first version fell
+        /// through to <c>Simulation.CancelJob</c> on this path: <c>JobWorkTicks</c> 8 770 → 0 and the
+        /// Parts stack in her hands dropped on the floor, i.e. the player's second click threw away
+        /// a quarter of an hour of the crew member's life and un-fetched the part. The guard is
+        /// <c>servicer == citizen</c>.</para>
+        ///
+        /// <para>⛔ THE CONTROL IS THE POINT: the work counter must be genuinely NON-ZERO and the
+        /// carry genuinely non-empty when the second order lands, or "it survived" is a claim about
+        /// a pawn who had nothing to lose. Both are asserted before the re-order.</para>
+        /// </summary>
+        [Test]
+        public void ARepeatOrderAtTheSameMachine_DoesNotDestroyTheServiceInFlight()
+        {
+            var sim = NewSim();
+            var pawn = sim.AddCitizen("Rell", PawnStart);
+            var machine = NeedyMachine(sim, FarMachine, "scrubber");
+            sim.AddItem(ItemKind.Parts, 4, PartsTile);
+            sim.JobsDirty = JobBoardDirty.All;
+
+            Order(sim, pawn, machine);
+            Assert.That(DriveUntilServicing(sim, pawn, machine, 200), Is.GreaterThan(0),
+                "fixture: the first order must land");
+            // Drive her all the way into the WORK phase, parts in hand and the clock running.
+            for (int t = 0; t < 4000 && pawn.JobWorkTicks == 0; t++) sim.Tick();
+
+            int ticksBefore = pawn.JobWorkTicks;
+            uint carriedBefore = pawn.CarryingItemId;
+            Assert.That(ticksBefore, Is.GreaterThan(0),
+                "⛔ CONTROL: she must be COUNTING DOWN a real service when the second click lands — " +
+                "a pawn with nothing in progress cannot demonstrate that nothing was lost");
+            Assert.That(carriedBefore, Is.Not.EqualTo(0u),
+                "⛔ CONTROL: and she must be holding the consumable, which is the other half of what " +
+                "the fall-through used to drop on the floor");
+
+            Order(sim, pawn, machine);   // …the player clicks the same machine again
+            sim.Tick();
+
+            Assert.That(pawn.JobWorkTicks, Is.GreaterThan(0),
+                "⛔ the repeat order RESET the service. Falling through to CancelJob on a machine " +
+                "she is already servicing throws away every tick of work already done.");
+            Assert.That(pawn.JobWorkTicks, Is.LessThanOrEqualTo(ticksBefore),
+                "sanity: the countdown may advance, but it must not have been re-armed from scratch");
+            Assert.That(pawn.CarryingItemId, Is.EqualTo(carriedBefore),
+                "⛔ the repeat order made her DROP the consumable she had already fetched");
+            Assert.That(pawn.JobKind, Is.EqualTo(JobKind.Maintain), "and she is still on the job");
+            Assert.That(pawn.JobTarget, Is.EqualTo(machine.Pos), "…at the same machine");
+            Assert.That(pawn.HeldByOrder, Is.True, "…and still held by the order");
+        }
+
+        /// <summary>
+        /// The other half of the same branch: an order at a machine she reached ON HER OWN still
+        /// takes — it just takes as a HOLD rather than as a new job. <c>MaintenanceSystem</c>
+        /// recruited her, the player sees her working and says "stay on THAT"; an order that
+        /// returned without writing the bool would leave the grid free to take her off it, which is
+        /// the promise the verb makes.
+        /// </summary>
+        [Test]
+        public void AnOrderAtAMachineSheAlreadyChose_AddsTheHoldWithoutTouchingTheJob()
+        {
+            var sim = NewSim();
+            var pawn = sim.AddCitizen("Rell", PawnStart).GiveAllWork();   // grid ON: she takes it herself
+            var machine = NeedyMachine(sim, FarMachine, "scrubber");
+            sim.AddItem(ItemKind.Parts, 4, PartsTile);
+            sim.JobsDirty = JobBoardDirty.All;
+
+            long took = DriveUntilServicing(sim, pawn, machine, 400);
+            Assert.That(took, Is.GreaterThan(0), "fixture: the GRID must have got her there, unprompted");
+            Assert.That(pawn.HeldByOrder, Is.False,
+                "⛔ CONTROL: and she is NOT held — nobody has ordered anything yet, so the hold " +
+                "below has to be this order's doing");
+            for (int t = 0; t < 4000 && pawn.JobWorkTicks == 0; t++) sim.Tick();
+            int ticksBefore = pawn.JobWorkTicks;
+            Assert.That(ticksBefore, Is.GreaterThan(0), "fixture: a real service is in flight");
+
+            Order(sim, pawn, machine);
+            sim.Tick();
+
+            Assert.That(pawn.HeldByOrder, Is.True,
+                "⛔ the order did not stick to a crew member who was already on the right machine. " +
+                "\"Stay on THAT\" is exactly what the player asked for.");
+            Assert.That(pawn.JobWorkTicks, Is.GreaterThan(0),
+                "⛔ and it must not have cost her the service to say so");
+            Assert.That(pawn.JobTarget, Is.EqualTo(machine.Pos), "still the same machine");
+        }
+
         // ══════════════════════════════════════════════════════ 5. death leaves no residue
 
         /// <summary>
@@ -577,7 +689,7 @@ namespace Perilune.Tests
         /// wreck the row count would otherwise be every damaged device aboard.</para>
         ///
         /// <para>⛔ MUTATION 3: delete the <c>IsUnfixableWreck</c> line in
-        /// <c>GameSession.AddIfUnfixable</c> ⇒ RED here.</para>
+        /// <c>GameSession.AddUnfixableRow</c> ⇒ RED here.</para>
         /// </summary>
         [Test]
         public void AnOrderedUnfixableMachine_ReachesTheBlockedChannelAsNoConsumable()
@@ -655,6 +767,12 @@ namespace Perilune.Tests
         /// aboard"* says "fine"; <c>FindNearest</c> skips a reserved or carried stack, so the
         /// dispatcher says "unfixable" and no service will ever be offered. The badge must follow the
         /// dispatcher.
+        ///
+        /// <para>⚠️ <b>EACH ASSERTION FOLLOWS ITS OWN CLICK</b>, which is both what a player does and
+        /// what the retire rule requires: an order at a machine the sim can currently service is
+        /// retired on the very next render (it is not held, and it is not an unfixable wreck), so the
+        /// control's own render deliberately consumes the first order. Re-issuing is the honest
+        /// fixture, not a workaround — nothing carries a stale order across a world change.</para>
         /// </summary>
         [Test]
         public void AReservedPartsStackDoesNotCount_TheChannelFollowsTheDispatcher()
@@ -673,6 +791,7 @@ namespace Perilune.Tests
                 "control: a free Parts stack aboard makes the machine fixable and clears the badge");
 
             parts.ReservedBy = crew.Id;
+            OrderOverTheWire(gs, crew, wingB);   // the player clicks again, the ship now spoken for
             Assert.That(RepairRowAt(gs, wingB.Pos), Is.Not.Null,
                 "⛔ THE SHIP HOLDS PARTS AND THE MACHINE IS STILL UNFIXABLE — the stack is spoken " +
                 "for. A host-side 'is there any Parts aboard' would report the ship healthy and the " +
@@ -704,6 +823,40 @@ namespace Perilune.Tests
             Assert.That(RepairRowAt(gs, wingB.Pos), Is.Not.Null,
                 "⛔ CONTROL: the identical order on the EXPLORED tile must reach the channel, or the " +
                 "leg above is satisfied by a host that emits nothing");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>THE JSON READER ITSELF — every field, off the raw line.</b> Nothing else in this
+        /// file reaches <c>WebCommand.Parse</c>: the driven legs build the struct directly, so the
+        /// <c>"prioritise"</c> case was a COMPLETE SURVIVOR until this leg existed — independent
+        /// review applied a four-way break (x/y swapped, <c>deck</c> read as <c>"z"</c>, <c>cid</c>
+        /// read as <c>"citizen"</c>) and the whole suite stayed green.
+        ///
+        /// <para>⛔ <b>THIS IS THE SHAPE THAT HAS ALREADY SHIPPED HERE ONCE</b> —
+        /// <c>StockpileFilterVerbTests</c>' own header records the <c>filter</c> case being
+        /// copy-pasted from the dig/stockpile/strip cases directly above it and reading the wrong
+        /// key. Every {x,y,deck} verb in this reader is a copy of its neighbour; the compiler cannot
+        /// see across this seam and neither can the client.</para>
+        ///
+        /// <para>MUTATIONS, each applied and measured: swap <c>"x"</c>/<c>"y"</c> ⇒ RED · read the
+        /// deck from <c>"z"</c> ⇒ RED (deck 0 for every order, so every click lands on the wrong
+        /// deck's tile) · read the crew id from <c>"citizen"</c> ⇒ RED (id 0, an id no citizen has,
+        /// so every order is silently refused) · drop the <c>Kind</c> ⇒ RED.</para>
+        /// </summary>
+        [Test]
+        public void Parse_Reads_The_Prioritise_Message_Cid_X_Y_And_Deck()
+        {
+            var cmd = WebCommand.Parse("{\"cmd\":\"prioritise\",\"cid\":7,\"x\":9,\"y\":4,\"deck\":1}");
+            Assert.AreEqual(CmdKind.Prioritise, cmd.Kind, "the verb string no longer routes to Prioritise");
+            Assert.AreEqual(9, cmd.X, "x must come from \"x\" — a swap sends the order to the wrong tile");
+            Assert.AreEqual(4, cmd.Y, "y must come from \"y\"");
+            Assert.AreEqual(1, cmd.I, "the deck must ride in I, as operate/place/remove/commission do");
+            Assert.AreEqual(7u, cmd.Cid, "the crew id must come from \"cid\", the key talk/bio/workPriority use");
+
+            // A missing deck is deck 0, not a rejection — the same total-parse contract every other
+            // {x,y,deck} verb here has (OperateVerbTests draws the identical line).
+            Assert.AreEqual(0, WebCommand.Parse("{\"cmd\":\"prioritise\",\"cid\":7,\"x\":1,\"y\":1}").I,
+                "a missing deck must read as deck 0, not turn the message into a rejection");
         }
 
         /// <summary>
@@ -748,6 +901,55 @@ namespace Perilune.Tests
                 "⛔ an order the sim has already turned into a held job is still pending host-side. " +
                 "The job is the record now; keeping this one badges the machine again the day it " +
                 "wears out with the bins empty, for an order that finished long ago.");
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>AN ORDER THE SIM REFUSED FOR ANY NON-WRECK REASON IS NOT REMEMBERED.</b> The retire
+        /// rule is a WHITELIST: an entry survives a render only while she is HELD on a job at that
+        /// machine, or while the machine is an unfixable wreck (the one refusal the badge names).
+        ///
+        /// <para>⛔ <b>MEASURED LEAK, FOUND BY INDEPENDENT REVIEW.</b> With the old blacklist rule an
+        /// order at a HEALTHY machine — refused sim-side on <c>Condition &gt;= MaintainBelow</c> —
+        /// left its entry in place for the rest of the session: up to three item-store scans per
+        /// render forever, and a machine that later wore below the wreck floor with the bins empty
+        /// would raise a NO PARTS badge for an order the sim had never taken.</para>
+        ///
+        /// <para>The machine here is deliberately HEALTHY, so the sim refuses on the condition gate
+        /// and nothing else; the control asserts the order really was refused (she takes no job)
+        /// before the count is read.</para>
+        /// </summary>
+        [Test]
+        public void AnOrderRefusedForANonWreckReason_IsNotRemembered()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var crew = sim.Citizens.Items[0];
+
+            // A machine in fine condition: nothing to service, so the command refuses on Condition.
+            var healthy = ByName(sim, "wing_b");
+            healthy.Condition = 1f;
+            Assert.That(healthy.Condition,
+                Is.GreaterThanOrEqualTo(sim.Defs.Machines[(int)healthy.Kind].MaintainBelow),
+                "fixture: the machine must be ABOVE its maintain threshold, so the refusal is the " +
+                "condition gate and not the wreck rule");
+            Assert.That(MaintenanceSystem.IsUnfixableWreck(sim, healthy), Is.False,
+                "fixture: and it is emphatically not an unfixable wreck — that is the ONE refusal " +
+                "the entry is allowed to outlive");
+
+            OrderOverTheWire(gs, crew, healthy);
+            Assert.That(gs.PendingOrderCount, Is.EqualTo(1), "fixture: the order was accepted host-side");
+            for (int t = 0; t < 50; t++) sim.Tick();
+
+            Assert.That(crew.HeldByOrder, Is.False,
+                "⛔ CONTROL: the sim must really have REFUSED this order — otherwise the count below " +
+                "is about an order that was taken, and the leg tests nothing");
+
+            gs.RenderForTest();
+            Assert.That(gs.PendingOrderCount, Is.EqualTo(0),
+                "⛔ a refused order is still remembered. It costs up to three item-store scans on " +
+                "every render for the rest of the session, and the day this machine wears below the " +
+                "wreck floor with the bins empty it raises a NO PARTS badge for an order nobody holds.");
+            Assert.That(RepairRowAt(gs, healthy.Pos), Is.Null, "and it puts nothing on the wire");
         }
 
         /// <summary>

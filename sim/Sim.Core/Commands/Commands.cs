@@ -226,11 +226,16 @@ namespace Perilune.Sim
         /// indices the moment anyone dies, and on a wreck they do).</param>
         /// <param name="deviceId">The machine's ENTITY id, resolved from the clicked tile host-side.</param>
         /// <remarks>⚠️ BOTH PAYLOAD FIELDS ARE <c>int</c>, DELIBERATELY — the
-        /// <see cref="SetWorkPriorityCommand"/> argument, and it is not a style choice. The producer is
-        /// a tolerant JSON reader that yields <c>int</c>; taking <c>uint</c> here would put a widening
-        /// cast in the HOST, and a cast is not a guard — <c>(uint)(-1)</c> is a perfectly real id
-        /// shape. Taking the raw ints puts the sign check and the cast in ONE place, on the far side
-        /// of the wire, where nothing can have reinterpreted the value before the check sees it.</remarks>
+        /// <see cref="SetWorkPriorityCommand"/> argument. The producer is a tolerant JSON reader that
+        /// yields <c>int</c>, and a cast is not a guard: <c>(uint)(-1)</c> is a perfectly real id
+        /// shape, so a host that narrowed first would hand this class a value no check here could
+        /// tell from a genuine one. Taking the raw ints keeps the sign check next to the cast.
+        /// <br/>⚠️ It is NOT true that nothing can have reinterpreted the value before the check —
+        /// an earlier draft of this remark claimed that and it was wrong. <c>WebCommand.Cid</c> is
+        /// <c>uint</c>, so a negative <c>cid</c> is already reinterpreted inside <c>Parse</c> and
+        /// cast back on the way in. That is harmless (it lands on an id no citizen has, and
+        /// <c>TryGet</c> refuses it) but it means the guarantee is "one sign check in one place",
+        /// not "the wire cannot have touched it".</remarks>
         public PrioritiseJobCommand(int citizenId, int deviceId)
         {
             _citizenId = citizenId; _deviceId = deviceId;
@@ -272,6 +277,30 @@ namespace Perilune.Sim
             // machine somebody else is already fixing is refused rather than allowed to double it.
             var servicer = MaintenanceSystem.FindWorker(sim, device.Pos);
             if (servicer != null && servicer != citizen) return;
+
+            // ⛔⛔ SHE IS ALREADY SERVICING THE MACHINE THE ORDER NAMES — SO THE JOB MUST NOT BE
+            // RE-ASSIGNED. Falling through to `CancelJob` below DESTROYS the service in flight:
+            // measured on a repeat order at the machine she was already on, <c>JobWorkTicks</c>
+            // 8 770 → 0 and the Parts stack in her hands dropped on the floor. M2-10 puts the second
+            // right-click one click away from the first, so "the player clicked twice" must cost
+            // nothing at all.
+            //
+            // ⭐ THE HOLD IS STILL ASSERTED, and that is the one thing this branch DOES do. It is
+            // idempotent on a repeat click (she already carries it) and it is the whole point when
+            // she reached this machine on her own: <c>MaintenanceSystem</c> recruited her, the player
+            // sees her working and says "stay on THAT" — an order that returned without writing the
+            // bool would leave the grid free to take her off it, which is the promise the verb makes.
+            // The invariant holds by construction: she carries a Maintain job, so the hold can never
+            // land on a jobless pawn here.
+            //
+            // ⚠️ SAME MACHINE ONLY. An order naming a DIFFERENT machine still replaces this one
+            // through the cancel below — that is the player changing their mind, and it is how the
+            // old job ends and the old hold is released.
+            if (servicer == citizen)
+            {
+                citizen.HeldByOrder = true;
+                return;
+            }
 
             // ── the order takes. JOB FIRST … ──
             // CancelJob drops cargo where she stands, releases her reservations AND — because it

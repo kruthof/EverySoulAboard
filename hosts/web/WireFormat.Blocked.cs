@@ -358,7 +358,8 @@ namespace Perilune.Web
         /// <see cref="OrderRepair"/> rows only.
         ///
         /// <para><b>THE PREDICATE IS <c>MaintenanceSystem.IsUnfixableWreck</c>, ASKED IN ONE
-        /// LINE</b> (<c>GameSession.AddIfUnfixable</c>). It is public for precisely this call, and
+        /// LINE</b> (<c>GameSession.BuildBlocked</c>'s repair walk, which hands the answer to
+        /// <c>AddUnfixableRow</c>). It is public for precisely this call, and
         /// its own doc comment says why: a view-only channel must ask *"the same question the
         /// dispatcher asks rather than re-deriving it — re-deriving is how the two answers drift
         /// apart"*. The tier ladder (Parts ▸ Seals ▸ Swarf), the carry/reservation filters and the
