@@ -62,6 +62,26 @@ namespace Perilune.Sim
         private readonly JobContext _ctx;
 
         /// <summary>
+        /// M2-2 (G1) — the set of <see cref="WorkType"/>s each source can hand out, one bit per
+        /// type, built ONCE at registration from <see cref="IJobSource.HandledKinds"/> exactly as
+        /// <see cref="_byKind"/> is. A zero mask means "this source hands out no work the player can
+        /// switch off" and is never vetoed (<see cref="WorkTypeMap.MaskOfKinds"/>).
+        ///
+        /// <para><b>Why the gate is per SOURCE and not per KIND.</b> The dispatcher never sees a
+        /// kind before the claim — <see cref="IJobSource.Select"/> returns an opaque index the
+        /// source alone decodes, and the kind is only written inside
+        /// <see cref="IJobSource.TryClaim"/>. The last point at which the dispatcher can refuse
+        /// WITHOUT reaching into a source is therefore the source itself, and that is exactly as
+        /// precise as a per-kind gate for as long as every source spans ONE work type — which every
+        /// shipped source does, and which <c>WorkTypeVetoTests.EverySource_SpansExactlyOneWorkType</c>
+        /// pins. ⚠️ A future source spanning two (say a hauler that also builds) would be offered
+        /// whenever EITHER type is on and could then claim the other; that lane must split the
+        /// source or push the gate into <c>TryClaim</c>, and the pinning test says so in its
+        /// failure message rather than leaving it to be discovered.</para>
+        /// </summary>
+        private readonly byte[] _sourceWorkMask;
+
+        /// <summary>
         /// THE REGISTRATION. Adding a job kind is one new file plus one line here — and the line's
         /// POSITION is behaviour, because it is the tie-break at equal distance. A new source
         /// appended at the end loses every tie to the shipped three, which is the safe default;
@@ -89,6 +109,7 @@ namespace Perilune.Sim
             _sources = sources;
             _ctx = new JobContext(_sources);
             _byKind = new IJobSource[KindCount];
+            _sourceWorkMask = new byte[_sources.Length];
 
             int scanners = 0;
             for (int i = 0; i < _sources.Length; i++) if (_sources[i] is IJobTileScanner) scanners++;
@@ -99,6 +120,7 @@ namespace Perilune.Sim
                 var src = _sources[i];
                 if (src is IJobTileScanner ts) _tileScanners[next++] = ts;
                 var kinds = src.HandledKinds;
+                _sourceWorkMask[i] = WorkTypeMap.MaskOfKinds(kinds); // M2-2 (G1), read once, like _byKind
                 for (int k = 0; k < kinds.Length; k++)
                 {
                     int slot = (int)kinds[k];
@@ -112,6 +134,16 @@ namespace Perilune.Sim
 
         /// <summary>The registered sources, in registration order. Read-only; not a tick path.</summary>
         public System.Collections.Generic.IReadOnlyList<IJobSource> Sources => _sources;
+
+        /// <summary>
+        /// M2-2 test seam: the work-type mask THIS dispatcher cached for
+        /// <see cref="Sources"/><c>[index]</c> at registration — the value
+        /// <see cref="TryAssign"/> actually gates on, not a recomputation of it. Exposed so
+        /// <c>WorkTypeVetoTests</c> can pin the mask at the seam rather than re-deriving it from
+        /// <see cref="IJobSource.HandledKinds"/> with the production expression, which would pass
+        /// however wrong both were (CLAUDE.md trap 4). Not a tick path.
+        /// </summary>
+        public byte WorkMaskOfSource(int index) => _sourceWorkMask[index];
 
         /// <summary>
         /// <b>HAS ANY SOURCE BACKED OFF <paramref name="pos"/> AS OF <paramref name="tick"/>?</b> The
@@ -263,8 +295,23 @@ namespace Perilune.Sim
             // Also the loop bound: every failed claim consumes at least one candidate (the source
             // must stamp what it refused), so the pass can iterate at most once per candidate plus
             // one final look that finds nothing.
+            //
+            // ⭐ M2-2 (G1) — THE VETO, AND IT IS COUNTED HERE FOR A REASON, not only skipped below.
+            // A vetoed source can never refuse a candidate, so leaving it out keeps the bound a
+            // valid upper bound on refusals (tighter, never looser). What it ALSO buys is the
+            // behaviour every other line of this method is written around: `candidates == 0` is the
+            // early-out that leaves an idle citizen's PATH untouched. Under OD-H a fresh pawn has
+            // every work type off, so without this exclusion she would enter the loop, find no
+            // source willing, fall to `bestSource < 0` and have ClearPath() called on her EVERY
+            // TICK — killing idle wander (CitizenSystem's A11 path) for the whole boot state the
+            // milestone is built around. The veto must therefore look like "no work exists for
+            // her", which is exactly what it means.
             int candidates = 0;
-            for (int s = 0; s < _sources.Length; s++) candidates += _sources[s].CandidateCount;
+            for (int s = 0; s < _sources.Length; s++)
+            {
+                if (!CanTakeFrom(citizen, s)) continue;
+                candidates += _sources[s].CandidateCount;
+            }
             if (candidates == 0) return; // nothing on any board: leave the citizen (and his path) untouched
 
             long gen = _ctx.NextGen();
@@ -275,6 +322,9 @@ namespace Perilune.Sim
                 int bestSource = -1, bestCandidate = -1, bestDist = int.MaxValue;
                 for (int s = 0; s < _sources.Length; s++)
                 {
+                    // M2-2 (G1): a work type the player switched off is never even OFFERED, so the
+                    // source's Select is not called and no generation stamp is spent on it.
+                    if (!CanTakeFrom(citizen, s)) continue;
                     int cand = _sources[s].Select(sim, citizen, bestDist, gen, out int d);
                     // `d >= bestDist` is not paranoia about our own three sources: the argmin is a
                     // running minimum threaded THROUGH the providers, so one source reporting a
@@ -311,6 +361,22 @@ namespace Perilune.Sim
                 $"a candidate {candidates + 1} times in one selection pass, which is bounded by the " +
                 $"total declared count across all sources ({candidates}) — it is either not stamping " +
                 "refused candidates (see IJobSource.TryClaim) or under-reporting CandidateCount");
+        }
+
+        /// <summary>
+        /// M2-2 (G1) — may <paramref name="citizen"/> take ANY of the work source
+        /// <paramref name="s"/> hands out? An indexed test over a cached six-bit mask: no
+        /// allocation, no enumeration, no RNG, so it is safe in the two places
+        /// <see cref="TryAssign"/> calls it (the candidate sum and the selection loop) even though
+        /// both run per citizen per tick.
+        /// </summary>
+        private bool CanTakeFrom(Citizen citizen, int s)
+        {
+            byte mask = _sourceWorkMask[s];
+            if (mask == 0) return true; // hands out no player-assignable work — not the veto's business
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+                if ((mask & (1 << t)) != 0 && citizen.CanTakeWorkType((WorkType)t)) return true;
+            return false;
         }
     }
 }

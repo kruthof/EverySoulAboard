@@ -60,7 +60,7 @@ namespace Perilune.Tests
             strip = new DeconstructSystem();
             var sim = new Simulation(AsciiWorld.Build(SplitMap), Seed,
                 new ISimSystem[] { jobs, build, strip });
-            sim.AddCitizen("Solo", CrewTile);
+            sim.AddCitizen("Solo", CrewTile).GiveAllWork();
             sim.JobsDirty = JobBoardDirty.All;
             return sim;
         }

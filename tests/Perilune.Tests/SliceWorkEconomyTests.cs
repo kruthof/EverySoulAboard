@@ -34,7 +34,10 @@ namespace Perilune.Tests
 
         private static Simulation NewSlice(out BuildSystem build)
         {
-            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim;
+            // M2-2 (OD-H): this whole file measures what a WORKING crew gets done on the slice —
+            // build throughput, bench arbitration, the boot window's busy fraction. With the
+            // shipped grid every number is zero for one reason, and it is not the one under test.
+            var sim = GenSimHost.Build(AuthoredShips.PeriluneSlice(), SimDefs.Default).Sim.GiveAllCrewAllWork();
             build = null;
             foreach (var s in sim.Systems)
                 if (s is BuildSystem b) { build = b; break; }
@@ -222,7 +225,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit_a");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 2, 0), "conduit_b");
             sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(2, 2, 0), "recycler");
-            sim.AddCitizen("Worker", new Int3(3, 2, 0));
+            sim.AddCitizen("Worker", new Int3(3, 2, 0)).GiveAllWork();
             return sim;
         }
 
@@ -296,7 +299,7 @@ namespace Perilune.Tests
             // forever, because nothing ever un-deposits. With builders outranking the bill the
             // hauler simply makes a second trip.
             var sim = NewShop(withBuildSystem: true, out var build);
-            sim.AddCitizen("Second", new Int3(4, 2, 0)); // the bill's would-be fetcher
+            sim.AddCitizen("Second", new Int3(4, 2, 0)).GiveAllWork(); // the bill's would-be fetcher
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 2, 0));
             sim.AddItem(ItemKind.Regolith, 1, new Int3(6, 1, 0));
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True);
@@ -416,8 +419,8 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit_a");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 2, 0), "conduit_b");
             sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(2, 2, 0), "recycler");
-            sim.AddCitizen("Hauler", new Int3(3, 2, 0));
-            sim.AddCitizen("Bench", new Int3(3, 1, 0));
+            sim.AddCitizen("Hauler", new Int3(3, 2, 0)).GiveAllWork();
+            sim.AddCitizen("Bench", new Int3(3, 1, 0)).GiveAllWork();
             return sim;
         }
 
@@ -558,7 +561,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), build, new CraftingSystem() },
                 gateDefs);
             var bench = sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(2, 2, 0), "recycler");
-            sim.AddCitizen("Idle", new Int3(3, 2, 0)); // AutoWander false → never self-moves
+            sim.AddCitizen("Idle", new Int3(3, 2, 0)).GiveAllWork(); // AutoWander false → never self-moves
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall), Is.True); // standing demand
             // Same E0-6 adjustment as UnderFundedSite above: enough for one batch, never enough for
             // the wall, so the warm-up really completes a batch and the measured window really sits

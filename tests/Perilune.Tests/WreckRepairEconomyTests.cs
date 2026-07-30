@@ -54,7 +54,12 @@ namespace Perilune.Tests
         private static ISimSystem[] Stack() =>
             SystemStack.CreateDefault(new ScriptRuntime(new DeviceRegistry()));
 
-        private static Simulation Boot() => ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack());
+        // M2-2: OD-H boots every work type OFF, so the wreck's crew member takes no job until she
+        // is given one. Every leg here is about the repair ECONOMY — what a servicing crew member
+        // consumes and whether the stock lasts — so the fixture gives her the work the player would
+        // on the WORK tab. The boot state itself is WorkTypeVetoTests' subject, not this file's.
+        private static Simulation Boot() =>
+            ShipPlanBuilder.Build(AuthoredShips.PeriluneWreck(), Stack()).GiveAllCrewAllWork();
 
         // -------------------------------------------------------------- the hand-written pins
 

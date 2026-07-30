@@ -17,11 +17,17 @@
 // It also re-checks the placement pin against a REAL document: the island must be a descendant of
 // `#overview-view`, not of the deprecated console `.app` shell.
 //
-// ⚠️ ACCEPTANCE STEPS 4 AND 6 ARE DEFERRED BY NAME TO M2-2 (the priority veto) and are NOT driven
-// here. Step 4 ("click Repair to 3 → she goes and repairs something") and step 6 ("set Repair back
-// to off → she takes nothing new") need a dispatcher that READS the grid; M2-3 merges FIRST, on
-// purpose, because a grid nothing reads is inert and harmless while a veto with no grid is an
-// unplayable game. ⛔ Do not weaken M2-2's acceptance to what this tool checks.
+// ⭐ ACCEPTANCE STEPS 4 AND 6 WERE DEFERRED BY NAME TO M2-2 (the work-type veto) AND ARE NOW
+// DRIVEN HERE — M2-2 landed and claimed them, as this header said it would. Step 4 ("set Repair to
+// 3 → she goes and repairs something") and step 6 ("set it back to off mid-service → she FINISHES
+// that service, then takes nothing new") need a dispatcher that READS the grid; M2-3 merged FIRST,
+// on purpose, because a grid nothing reads is inert and harmless while a veto with no grid is an
+// unplayable game.
+// ⛔ STEP 6 IS THE ONE TO WATCH RATHER THAN READ. It is the CLAIM-TIME ruling made visible: the
+// veto is asked when a job is CLAIMED and never mid-job, so switching a work type off while a pawn
+// is working does not drop her cargo or her service on the floor. It asserts THREE things, because
+// "she stopped being busy" is satisfied by a job that was cancelled — she is still servicing right
+// after the switch, a machine's condition measurably ROSE, and she then takes nothing new.
 //
 // USAGE
 //   1. ./play.sh --host-port 8348 --client-port 8349 --no-open
@@ -182,7 +188,9 @@ log(`  CREW WATCH task line: '${task}'    (the host's own TaskLabel: '${rell.tas
 log('  ⚠️ REPORTED, NOT ASSERTED: OD-G\'s "the pawn boots idle and waiting" is M2-19/M2-20\'s subject,');
 log('     not this package\'s. This line records what the shipped ship actually shows today.');
 
-// ── STEP 4 is DEFERRED BY NAME to M2-2 — not driven here. See the header. ──
+// ── STEP 4 and STEP 6 ARE NOW DRIVEN, AT THE END OF THIS FILE — M2-2 (the work-type veto)
+//    landed and claimed them. They run last because they need the grid already SET, which is
+//    what STEP 5's reload leaves behind. See 'STEP 4' below. ──
 
 // ── STEP 5: set a cell, reload, and the value survives ──
 log('\nSTEP 5 — set REPAIR, reload the page, the value survives');
@@ -215,11 +223,90 @@ check(reloaded?.slice(1).every((c) => c.text === 'off'),
   'and only the column that was set survived — the other five are still off');
 await png('03-after-reload.png');
 
+// ══════════════════════════════════════════════════════════ M2-2: STEP 4 and STEP 6, DRIVEN
+// The two steps M2-3 deferred BY NAME to the work-type veto, because they need a dispatcher that
+// READS the grid. STEP 5 above left REPAIR at 3 and the other five columns off, which is exactly
+// the state step 4 starts from.
+//
+// ⚠️ TIME. At 1x a service is minutes of wall clock, so this runs the game at 100x
+// ({"cmd":"speed","delta":+3} walks the index 1 -> 4; SpeedTps = 0/10/50/200/1000/10000). The
+// SIM is untouched by that — it is the same fixed 10 Hz tick, just more of them per wall-second.
+// Driven measurements on --ship wreck for the numbers to expect: she claims Maintain at tick 1,
+// arrives at wing_c at tick 211, and the service completes 9 000 ticks later.
+const rosterTask = () => (latest.get('roster')?.crew || []).find((c) => c.cid === rell.cid)?.task || '';
+const condByTile = () => {
+  const m = new Map();
+  for (const [x, y, deck, , cond] of latest.get('devices')?.cells || []) m.set(`${x},${y},${deck}`, cond);
+  return m;
+};
+const waitFor = async (pred, ms, what) => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { if (pred()) return true; await sleep(250); }
+  log(`  (timed out after ${ms} ms waiting for ${what})`);
+  return false;
+};
+
+log('\nSTEP 4 — REPAIR is at 3: she must go and repair something');
+ws.send(JSON.stringify({ cmd: 'speed', delta: 3 }));
+await sleep(600);
+log('  speed is now', latest.get('status')?.speed);
+const condBefore = condByTile();
+
+const gotJob = await waitFor(() => /service|Servicing/i.test(rosterTask()), 30000, 'a Maintain task');
+log(`  CREW WATCH task line: '${rosterTask()}'`);
+check(gotJob, 'STEP 4: with REPAIR at 3 she takes a MAINTAIN job herself — the opening beat');
+check(/servic/i.test(rosterTask()), 'and the task line names servicing a machine, not some other work');
+await png('04-repair-job-taken.png');
+
+// Wait until she has ARRIVED (the label drops "Heading to"), which is what "mid-service" means.
+const atMachine = await waitFor(() => /^Servicing/.test(rosterTask()), 30000, 'her to arrive at the machine');
+log(`  at the machine: '${rosterTask()}'`);
+check(atMachine, 'STEP 4: and she reaches the machine and starts working on it');
+
+log('\nSTEP 6 — set REPAIR back to OFF *mid-service*: the CLAIM-TIME ruling, made visible');
+const taskAtFlip = rosterTask();
+ws.send(JSON.stringify({ cmd: 'workPriority', cid: rell.cid, work: 0, priority: 0 }));
+await sleep(1200);
+log(`  REPAIR is now off; work channel = ${JSON.stringify(latest.get('work'))}`);
+check(JSON.stringify(latest.get('work')?.cells) === '[]', 'the sim really has REPAIR off again');
+// ⭐ THE RULING: a RUNNING job completes. She must NOT drop it the instant the checkbox changed.
+log(`  task 1.2 s after the switch: '${rosterTask()}'`);
+check(/^Servicing/.test(rosterTask()),
+  'STEP 6a: she is STILL SERVICING after the switch — a veto at the in-job site would have dropped ' +
+  'the job on the checkbox, which is CancelJob\'s contract and a DELIBERATE verb, not a setting');
+await png('05-still-servicing-after-off.png');
+
+const finished = await waitFor(() => !/servic/i.test(rosterTask()), 60000, 'the service to finish');
+check(finished, 'STEP 6b: and the service then FINISHES rather than hanging');
+const condAfter = condByTile();
+let repaired = 0, biggest = null;
+for (const [k, v] of condAfter) {
+  const was = condBefore.get(k);
+  if (was !== undefined && v > was) { repaired += 1; if (!biggest || v - was > biggest.d) biggest = { k, d: v - was, was, now: v }; }
+}
+log(`  devices whose condition ROSE across steps 4-6: ${repaired}` + (biggest ? `  (largest: ${biggest.k}, cond ${biggest.was} -> ${biggest.now})` : ''));
+check(repaired > 0,
+  'STEP 6c: a machine is measurably BETTER than it was — the service she was told to stop really ' +
+  'completed. "She stopped being busy" alone is satisfied by a job that was cancelled.');
+
+log('  watching for 15 s: she must take NOTHING new');
+let tookNew = '';
+for (let i = 0; i < 60; i++) { await sleep(250); const t = rosterTask(); if (/servic|dig|haul|craft|build/i.test(t)) { tookNew = t; break; } }
+log(`  task after the watch: '${rosterTask()}'`);
+check(tookNew === '',
+  `STEP 6d: with REPAIR off she takes no NEW work — saw '${tookNew}'. A running job completes; a ` +
+  'new one is refused. That is what "gate at CLAIM" means.');
+await png('06-idle-again.png');
+
+ws.send(JSON.stringify({ cmd: 'speed', delta: -3 }));
+await sleep(400);
+
+
 // Leave the ship as we found it, so a re-run starts from the same OD-H boot state.
 ws.send(JSON.stringify({ cmd: 'workPriority', cid: rell.cid, work: 0, priority: 0 }));
 await sleep(800);
 log('\nrestored: `work` is now', JSON.stringify(latest.get('work')));
 
 chrome.kill('SIGKILL');
-log(failures ? `\n${failures} CHECK(S) FAILED` : '\nALL CHECKS PASSED (steps 1, 2, 3, 5 — 4 and 6 are M2-2\'s)');
+log(failures ? `\n${failures} CHECK(S) FAILED` : '\nALL CHECKS PASSED — the whole charter sequence: 1, 2, 3, 5 (M2-3) and 4, 6 (M2-2)');
 process.exit(failures ? 1 : 0);

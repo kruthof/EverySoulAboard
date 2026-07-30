@@ -170,7 +170,7 @@ namespace Perilune.Tests
         public void DrivenThrash_UnreachableBench_ClaimCountIsBounded()
         {
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));   // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();   // LEFT room
             var stock = sim.AddItem(ItemKind.Regolith, Batch, new Int3(1, 1, 0)); // LEFT room, with him
 
             // --- inclusion controls: the station really is asking for a worker, every pass ---
@@ -222,7 +222,7 @@ namespace Perilune.Tests
         public void SatisfiableBill_StillRunsToCompletion()
         {
             var sim = NewBench(OpenMap, out _, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, Batch, new Int3(2, 1, 0));
 
             Assert.That(sim.Paths.FindPath(sim, pawn.Pos, StagingPos, new List<Int3>()), Is.True,
@@ -250,7 +250,7 @@ namespace Perilune.Tests
         public void Backoff_Expires_AndTheStationRecruitsAgain()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
 
             // Refuse it once, by hand, through the real API — no input aboard yet, so the bill
             // cannot recruit; stamp it and then make the bill satisfiable on the same tick.
@@ -281,7 +281,7 @@ namespace Perilune.Tests
         public void RecruitProbe_NeverClaimsACrewMemberWhoCannotReachTheBench()
         {
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, Batch, new Int3(1, 1, 0));
 
             long pass = AlignToPass(sim);
@@ -309,8 +309,8 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), crafting });
             var station = sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(6, 2, 0), "recycler");
             var staging = new Int3(7, 2, 0); // Neighbor4(+x)
-            var near = sim.AddCitizen("Near", new Int3(3, 2, 0));   // LEFT room,  Manhattan 4
-            var far = sim.AddCitizen("Far", new Int3(13, 1, 0));    // RIGHT room, Manhattan 7
+            var near = sim.AddCitizen("Near", new Int3(3, 2, 0)).GiveAllWork();   // LEFT room,  Manhattan 4
+            var far = sim.AddCitizen("Far", new Int3(13, 1, 0)).GiveAllWork();    // RIGHT room, Manhattan 7
             sim.AddItem(ItemKind.Regolith, Batch, new Int3(10, 3, 0)); // RIGHT room, un-staged
             Assert.That(station.Powered && station.IsOperational(sim.Defs), Is.True);
             Assert.That(sim.IsWalkable(staging), Is.True, "control: that IS the staging tile");
@@ -334,7 +334,7 @@ namespace Perilune.Tests
         public void Site0_BenchWalledInMidJob_Stamps()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0)).GiveAllWork();
             BindWorker(pawn, station);
 
             // Wall in every 4-neighbour of the bench: TryFindStagingTile now fails.
@@ -352,7 +352,7 @@ namespace Perilune.Tests
         public void Site1_WorkPhaseDisplaced_Stamps()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)); // NOT adjacent to the bench
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork(); // NOT adjacent to the bench
             BindWorker(pawn, station, workTicks: 100);            // ...but in the work phase
 
             Assert.That(Int3.IsAdjacent4(pawn.Pos, StationPos), Is.False,
@@ -369,7 +369,7 @@ namespace Perilune.Tests
         public void Site2_CarriedStackVanished_Stamps()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0)).GiveAllWork();
             var doomed = sim.AddItem(ItemKind.Regolith, 1, pawn.Pos);
             doomed.CarriedBy = pawn.Id;
             BindWorker(pawn, station, carrying: doomed.Id);
@@ -388,7 +388,7 @@ namespace Perilune.Tests
         public void Site3_DroppedAwayFromTheBench_Stamps()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)); // far from the bench, settled
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork(); // far from the bench, settled
             var carried = sim.AddItem(ItemKind.Regolith, 1, pawn.Pos);
             carried.CarriedBy = pawn.Id;
             BindWorker(pawn, station, carrying: carried.Id);
@@ -408,7 +408,7 @@ namespace Perilune.Tests
         public void Site4_CanStartButStagingUnreachable_Stamps()
         {
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));  // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();  // LEFT room
             var staged = sim.AddItem(ItemKind.Regolith, Batch, StagingPos); // the whole set, AT the bench
             staged.ReservedBy = station.Id;
             BindWorker(pawn, station);
@@ -429,7 +429,7 @@ namespace Perilune.Tests
         {
             var build = new BuildSystem();
             var sim = NewBench(OpenMap, out var crafting, out var station, build);
-            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0)).GiveAllWork();
             // Free material a builder could actually put in a site, and a site that wants it.
             sim.AddItem(ItemKind.Regolith, sim.Defs.Build.WallMaterial * 2, new Int3(2, 1, 0));
             Assert.That(build.Designate(sim, new Int3(4, 1, 0), BuildKind.Wall), Is.True,
@@ -491,7 +491,7 @@ namespace Perilune.Tests
         public void Site7_NothingLeftToFetch_Stamps()
         {
             var sim = NewBench(OpenMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(6, 2, 0)).GiveAllWork();
             BindWorker(pawn, station);
 
             int regolith = 0;
@@ -509,7 +509,7 @@ namespace Perilune.Tests
         {
             // ⭐ THE SITE THAT ACCOUNTS FOR ALL 1 468 MEASURED ABANDONS ON --ship wreck.
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(1, 1, 0)); // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(1, 1, 0)).GiveAllWork(); // LEFT room
             var stock = sim.AddItem(ItemKind.Regolith, Batch, pawn.Pos); // standing ON it
             BindWorker(pawn, station);
 
@@ -531,7 +531,7 @@ namespace Perilune.Tests
         public void Site9_InputUnreachable_Stamps()
         {
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0));          // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();          // LEFT room
             var stock = sim.AddItem(ItemKind.Regolith, Batch, new Int3(6, 3, 0)); // RIGHT room
             BindWorker(pawn, station);
 
@@ -562,7 +562,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
             var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
             machine.Condition = 0.30f; // above wreck_threshold (0.25), below Scrubber's maint threshold (0.40)
-            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0)); // LEFT room
+            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0)).GiveAllWork(); // LEFT room
             // A REACHABLE consumable, and it is load-bearing rather than decoration: without the
             // recruit probe the servicer is claimed and sent WALKING to this stack (the fetch leg
             // paths to the CONSUMABLE, never to the machine), which is the maintenance twin of the
@@ -619,7 +619,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
             var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
             machine.Condition = 0.30f;
-            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)); // NOT adjacent to the machine
+            var pawn = sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork(); // NOT adjacent to the machine
             pawn.JobKind = JobKind.Maintain;
             pawn.JobTarget = machine.Pos;
             pawn.JobWorkTicks = 100;                              // ...but mid-service
@@ -678,7 +678,7 @@ namespace Perilune.Tests
         public void RecruitPath_FailingProbe_Crafting_IsZeroAlloc()
         {
             var sim = NewBench(SplitMap, out var crafting, out var station);
-            sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, Batch, new Int3(1, 1, 0));
 
             for (int t = 0; t < 600; t++) sim.Tick();   // warm-up: grow every lazily-sized buffer
@@ -704,7 +704,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
             var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
             machine.Condition = 0.30f;
-            sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
 
             for (int t = 0; t < 600; t++) sim.Tick();
             long stampBefore = maint.Backoff.RetryAtFor(machine.Id);
@@ -739,7 +739,7 @@ namespace Perilune.Tests
             var station = sim.AddDevice(DeviceKind.SalvageRecycler, new Int3(66, 2, 0), "recycler");
             var staging = new Int3(67, 2, 0);
             var start = new Int3(1, 2, 0);
-            var pawn = sim.AddCitizen("Rell", start);
+            var pawn = sim.AddCitizen("Rell", start).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, Batch, new Int3(30, 1, 0)); // un-staged: the gate opens
 
             var route = new List<Int3>();
@@ -795,7 +795,7 @@ namespace Perilune.Tests
             walledOff.Condition = 0.26f;
             var reachable = sim.AddDevice(DeviceKind.Scrubber, new Int3(2, 1, 0), "near"); // LEFT room
             reachable.Condition = 0.30f;
-            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0));
+            var pawn = sim.AddCitizen("Rell", new Int3(3, 3, 0)).GiveAllWork();
 
             Assert.That(walledOff.Condition, Is.LessThan(reachable.Condition),
                 "control: the UNREACHABLE machine is the neediest, so the loop reaches it first");
@@ -824,7 +824,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), maint });
             var machine = sim.AddDevice(DeviceKind.Scrubber, StationPos, "scrubber");
             machine.Condition = 0.30f;
-            sim.AddCitizen("Rell", new Int3(2, 2, 0));
+            sim.AddCitizen("Rell", new Int3(2, 2, 0)).GiveAllWork();
 
             float before = machine.Condition;
             int serviceTicks = sim.Defs.Wear.MaintenanceWorkSeconds * Simulation.TicksPerSecond;

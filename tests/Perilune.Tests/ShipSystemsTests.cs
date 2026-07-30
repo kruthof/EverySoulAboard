@@ -244,7 +244,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit");
             var scrub = sim.AddDevice(DeviceKind.Scrubber, new Int3(3, 1, 0), "scrubber_a");
-            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            sim.AddCitizen("Probe", new Int3(5, 1, 0)).GiveAllWork();
             for (int i = 0; i < 20; i++) sim.Tick();
 
             Assert.IsTrue(scrub.Powered && scrub.IsOperational(sim.Defs), "the scrubber is healthy and powered");
@@ -350,7 +350,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");
             sim.AddDevice(DeviceKind.Conduit, new Int3(2, 1, 0), "conduit");
             var scrub = sim.AddDevice(DeviceKind.Scrubber, new Int3(3, 1, 0), "scrubber_a");
-            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            sim.AddCitizen("Probe", new Int3(5, 1, 0)).GiveAllWork();
             for (int i = 0; i < 20; i++) sim.Tick();
             var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
             RoomState.Pressurize(room);
@@ -381,7 +381,7 @@ namespace Perilune.Tests
             // Pin the hull guard on the pressure half ALONE — a NaN that never touches condition or
             // O2, only pressure — so the guard cannot silently regress behind the ConditionSum one.
             var sim2 = NewSim();
-            sim2.AddCitizen("P", new Int3(5, 1, 0));
+            sim2.AddCitizen("P", new Int3(5, 1, 0)).GiveAllWork();
             for (int j = 0; j < 5; j++) sim2.Tick();
             var room2 = sim2.Rooms.RoomAt(sim2.World, new Int3(5, 1, 0));
             RoomState.Pressurize(room2);
@@ -406,7 +406,7 @@ namespace Perilune.Tests
         public void LifeSupport_Also_Bands_On_ppO2_Because_A_Mean_Hides_One_Bad_Room()
         {
             var sim = NewSim();
-            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            sim.AddCitizen("Probe", new Int3(5, 1, 0)).GiveAllWork();
             for (int i = 0; i < 20; i++) sim.Tick();
             var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
             RoomState.Pressurize(room);
@@ -678,7 +678,7 @@ namespace Perilune.Tests
             // MECHANICS.md §13.2: the shipped overheat_guard rule screams "THERMAL LOAD HIGH"
             // while the ship FREEZES. This row must report what it measured.
             var sim = NewSim();
-            sim.AddCitizen("Probe", new Int3(5, 1, 0));
+            sim.AddCitizen("Probe", new Int3(5, 1, 0)).GiveAllWork();
             sim.Tick();
             var room = sim.Rooms.RoomAt(sim.World, new Int3(5, 1, 0));
             RoomState.Pressurize(room);   // a compartment the crew could actually stand in
@@ -751,7 +751,12 @@ namespace Perilune.Tests
             //    bug: gas could not cross the open doors to reach a scrubber. The diffusion term fixes
             //    it, so the scrubbers hold the air and LIFE SUPPORT reads Nominal (the §13.1 symptom is
             //    gone; that doc note described the pre-B-3 sim).
+            // M2-2 (OD-H): with the shipped boot grid the eight crew never leave the room they woke
+            // in, and life_support reads Attend from POOLED CO2 rather than from the scrubber
+            // capacity this leg is about (measured). The ledger's subject is a ship being WORKED,
+            // so the fixture gives the crew the work the player gives.
             var host = SimHost.Build(SimHost.SliceSeed, ship: ShipChoice.Slice);
+            host.Sim.GiveAllCrewAllWork();
             while (host.Sim.TickCount < 3 * SimClockUtil.TicksPerDay) host.Sim.Tick();
             var report = ShipSystems.Compute(host.Sim, host.History);
 

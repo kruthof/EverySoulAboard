@@ -401,7 +401,7 @@ namespace Perilune.Tests
         public void FullLoop_OneWallTornDownByTheDispatcher_YieldsFlooredRecoveryOnTheFreedTile()
         {
             var sim = NewSim(TwoRooms, 42, out var strip);
-            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
             Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: idle, nothing to do");
             int regolithBefore = CountGround(sim, ItemKind.Regolith);
@@ -516,7 +516,7 @@ namespace Perilune.Tests
         public void FleePreemptionMidStrip_LeavesTheSiteStillPendingAndReclaimable_AndLeaksNothing()
         {
             var sim = NewSim(TwoRooms, 23, out var strip);
-            var worker = sim.AddCitizen("Reyes", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Reyes", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 3, new Int3(3, 3, 0)); // a bystander stack that must stay free
             sim.Tick();
             Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
@@ -621,7 +621,7 @@ namespace Perilune.Tests
         public void SaveMidStrip_ThenLoad_ThenRun1000Ticks_StaysBitIdentical()
         {
             var sim = NewSim(TwoRooms, 31, out var strip);
-            sim.AddCitizen("Okafor", new Int3(2, 2, 0));
+            sim.AddCitizen("Okafor", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
             strip.Designate(sim, Partition, DeconstructKind.Wall);
 
@@ -673,7 +673,7 @@ namespace Perilune.Tests
                 var stack = StackNoNeeds(out _);
                 if (!withDeconstruct) stack = stack.Where(s => !(s is DeconstructSystem)).ToArray();
                 var sim = new Simulation(AsciiWorld.Build(TwoRooms), 13, stack);
-                sim.AddCitizen("Ada", new Int3(2, 2, 0));
+                sim.AddCitizen("Ada", new Int3(2, 2, 0)).GiveAllWork();
                 sim.AddItem(ItemKind.Regolith, 5, new Int3(3, 2, 0));
                 for (int i = 0; i < 200; i++) sim.Tick();
                 var ms = new MemoryStream();
@@ -780,7 +780,7 @@ namespace Perilune.Tests
             ulong HashOf(ISimSystem[] systems)
             {
                 var sim = new Simulation(AsciiWorld.Build(TwoRooms), 7, systems);
-                sim.AddCitizen("Ada", new Int3(2, 2, 0));
+                sim.AddCitizen("Ada", new Int3(2, 2, 0)).GiveAllWork();
                 sim.AddItem(ItemKind.Regolith, 5, new Int3(3, 2, 0));
                 for (int i = 0; i < 50; i++) sim.Tick();
                 return sim.StateHash();
@@ -837,7 +837,7 @@ namespace Perilune.Tests
             Simulation Make(ulong seed)
             {
                 var sim = NewSim(TwoRooms, seed, out var strip);
-                sim.AddCitizen("Twin", new Int3(2, 2, 0));
+                sim.AddCitizen("Twin", new Int3(2, 2, 0)).GiveAllWork();
                 sim.Tick();
                 strip.Designate(sim, Partition, DeconstructKind.Wall);
                 return sim;
@@ -874,7 +874,7 @@ namespace Perilune.Tests
                 new ISimSystem[] { new CitizenSystem(), new JobSystem(), new DeconstructSystem() });
             DeconstructSystem strip = null;
             foreach (var s in sim.Systems) if (s is DeconstructSystem d) strip = d;
-            var worker = sim.AddCitizen("Idle", new Int3(2, 2, 0)); // AutoWander false → never self-moves
+            var worker = sim.AddCitizen("Idle", new Int3(2, 2, 0)).GiveAllWork(); // AutoWander false → never self-moves
             sim.Tick();
             Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
 
@@ -1046,7 +1046,7 @@ namespace Perilune.Tests
             var map = new[] { "#######", "#.....#", "#..R..#", "#.....#", "#######" };
             var debris = new Int3(3, 2, 0);
             var sim = NewSim(map, 4, out _);
-            var crew = sim.AddCitizen("Vale", new Int3(2, 2, 0));
+            var crew = sim.AddCitizen("Vale", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
             new DesignateDigCommand(debris, on: true).Execute(sim);
             Assert.That((sim.World.GetFlags(debris) & TileFlags.Designated), Is.Not.EqualTo((TileFlags)0),
@@ -1214,7 +1214,7 @@ namespace Perilune.Tests
         public void FullLoop_OneScrubberStrippedByTheDispatcher_LeavesNoDeviceStateAndDropsParts()
         {
             var sim = NewSim(TwoRooms, 43, out var strip);
-            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0)).GiveAllWork();
             var scrubber = sim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_b");
             sim.Tick();
             Assert.That(worker.JobKind, Is.EqualTo(JobKind.None), "precondition: idle, nothing to do");
@@ -1360,7 +1360,7 @@ namespace Perilune.Tests
             {
                 if (kind == DeviceKind.Door) continue;
                 var sim = new Simulation(AsciiWorld.Build(TwoRooms), 46, StackNoNeeds(out var strip));
-                sim.AddCitizen("Probe", new Int3(2, 2, 0));
+                sim.AddCitizen("Probe", new Int3(2, 2, 0)).GiveAllWork();
                 sim.Tick();
                 var device = sim.AddDevice(kind, MachineTile, "unit_" + kind.ToString().ToLowerInvariant());
                 // An OCCUPIED capsule is refused by CanDesignate (a person is inside it), so open
@@ -1476,7 +1476,7 @@ namespace Perilune.Tests
             var oneSlot = DefsParser.Parse(
                 new[] { ("d.def", "[deconstruct]\nmax_staged = 1\n") }, new List<string>());
             var sim = NewSim(TwoRooms, 48, out var strip, oneSlot);
-            var worker = sim.AddCitizen("Reyes", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Reyes", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
             Assert.That(strip.Designate(sim, Partition, DeconstructKind.Wall), Is.True);
 
@@ -1579,7 +1579,7 @@ namespace Perilune.Tests
         public void EveryCompletedStrip_LeavesAChronicleLine_NamingTheWorkerAndWhatWasTornDown()
         {
             var sim = NewSim(TwoRooms, 51, out var strip);
-            var worker = sim.AddCitizen("Okafor", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Okafor", new Int3(2, 2, 0)).GiveAllWork();
             sim.AddDevice(DeviceKind.Reclaimer, MachineTile, "recl_b");
             sim.Tick();
             var history = (HistorySystem)FindSystem<HistorySystem>(sim);
@@ -1621,7 +1621,7 @@ namespace Perilune.Tests
         public void AStripConsumedByValidateOnArrival_LeavesNoChronicleLine()
         {
             var sim = NewSim(TwoRooms, 52, out var strip);
-            var worker = sim.AddCitizen("Vale", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Vale", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
             var history = (HistorySystem)FindSystem<HistorySystem>(sim);
             int before = history.Entries.Count;
@@ -1667,7 +1667,7 @@ namespace Perilune.Tests
         public void PlaceThenStripAtFullCondition_ThroughTheCommandAndTheDispatcher_LeavesTheShipOnePartPoorer()
         {
             var sim = NewSim(TwoRooms, 61, out var strip);
-            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0));
+            var worker = sim.AddCitizen("Ito", new Int3(2, 2, 0)).GiveAllWork();
             int price = SimDefs.Default.Build.DevicePlaceCost;
             sim.AddItem(ItemKind.Parts, price, new Int3(1, 1, 0)); // the ship's entire treasury
             sim.Tick();
@@ -1819,7 +1819,7 @@ namespace Perilune.Tests
         public void Placement_NeverSpendsCarriedOrReservedParts_EvenWhenTheyWouldCoverThePrice()
         {
             var sim = NewSim(TwoRooms, 64, out _);
-            var hauler = sim.AddCitizen("Vale", new Int3(2, 2, 0));
+            var hauler = sim.AddCitizen("Vale", new Int3(2, 2, 0)).GiveAllWork();
             sim.Tick();
 
             var free = sim.AddItem(ItemKind.Parts, 1, new Int3(1, 1, 0));
@@ -1891,7 +1891,7 @@ namespace Perilune.Tests
             Assert.That(DeconstructSystem.WallYield(SimDefs.Default), Is.EqualTo(1),
                 "precondition: the SHIPPED yield is 1, so 2 can only come from the tuned defs");
             var wallSim = NewSim(TwoRooms, 65, out var wallStrip, fullRecovery);
-            var digger = wallSim.AddCitizen("Ito", new Int3(2, 2, 0));
+            var digger = wallSim.AddCitizen("Ito", new Int3(2, 2, 0)).GiveAllWork();
             wallSim.Tick();
             Assert.That(wallStrip.Designate(wallSim, Partition, DeconstructKind.Wall), Is.True);
             for (int t = 0; t < 20 && digger.JobKind == JobKind.None; t++) wallSim.Tick();
@@ -1907,7 +1907,7 @@ namespace Perilune.Tests
             Assert.That(SimDefs.Default.Deconstruct.DeviceParts, Is.EqualTo(2),
                 "precondition: the SHIPPED base is 2, so 7 can only come from the tuned defs");
             var devSim = NewSim(TwoRooms, 66, out var devStrip, richParts);
-            var puller = devSim.AddCitizen("Okafor", new Int3(2, 2, 0));
+            var puller = devSim.AddCitizen("Okafor", new Int3(2, 2, 0)).GiveAllWork();
             var machine = devSim.AddDevice(DeviceKind.Scrubber, MachineTile, "scrub_tuned");
             devSim.Tick();
             Assert.That(machine.Condition, Is.EqualTo(1f), "precondition: pristine, so the base is undiluted");

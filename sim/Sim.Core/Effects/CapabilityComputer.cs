@@ -67,7 +67,15 @@ namespace Perilune.Sim
             if (into.KnownFactIds.Count > 0)
                 into.LegalEffects |= EffectKind.RevealInfo;
 
-            if (citizen.JobKind == JobKind.None) // mirrors the EffectValidator gate (wander path doesn't veto)
+            // ⭐ M2-2 (G5) — THE OFFER GATE. Mirrors the EffectValidator gate (a wander path doesn't
+            // veto) AND its work-type veto, which is the half that matters here: gating the GRANT
+            // alone leaves the dig in the model's tool schema, so the crew member AGREES IN
+            // DIALOGUE to work the player forbade and the sim then silently refuses it. That exact
+            // defect was fixed on 2026-07-21 under "crew no longer promise physical work they
+            // cannot do", and gating one of this hand-mirrored pair re-introduces it.
+            // ⚠️ The two halves must stay in step; WorkTypeVetoTests pins each ALONE, blinded of the
+            // other, because a test that passes with either present cannot see a half-gated pair.
+            if (citizen.JobKind == JobKind.None && citizen.CanTakeWorkType(WorkType.Mine))
             {
                 FillDigTargets(sim, citizen, into.AssignableDigTargets);
                 if (into.AssignableDigTargets.Count > 0)

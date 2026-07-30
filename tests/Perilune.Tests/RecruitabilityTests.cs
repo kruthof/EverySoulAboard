@@ -94,7 +94,7 @@ namespace Perilune.Tests
                          new Int3(30, 10, 0), new Int3(38, 10, 0), new Int3(46, 10, 0),
                      })
             {
-                var c = sim.AddCitizen("Crew" + p.X, p);
+                var c = sim.AddCitizen("Crew" + p.X, p).GiveAllWork();
                 c.AutoWander = true; // AddCitizen defaults false; wandering is the whole point
                 crew.Add(c);
             }
@@ -205,7 +205,7 @@ namespace Perilune.Tests
         {
             var sim = new Simulation(AsciiWorld.Build(OpenRoom), 4242,
                 new ISimSystem[] { new CitizenSystem() });
-            var wanderer = sim.AddCitizen("Rover", new Int3(10, 4, 0));
+            var wanderer = sim.AddCitizen("Rover", new Int3(10, 4, 0)).GiveAllWork();
             wanderer.AutoWander = true;
 
             for (int t = 0; t < 200; t++) sim.Tick(); // warm up past any first-touch JIT/alloc

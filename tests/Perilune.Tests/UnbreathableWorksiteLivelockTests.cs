@@ -151,7 +151,7 @@ namespace Perilune.Tests
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, CrewHome));
 
-            sim.AddCitizen("Adeyemi", CrewHome);
+            sim.AddCitizen("Adeyemi", CrewHome).GiveAllWork();
             sim.JobsDirty = JobBoardDirty.All;
             return sim;
         }
@@ -505,7 +505,7 @@ namespace Perilune.Tests
 
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, BoundaryCrewHome)); // left only
-            sim.AddCitizen("Vasquez", BoundaryCrewHome);
+            sim.AddCitizen("Vasquez", BoundaryCrewHome).GiveAllWork();
             sim.JobsDirty = JobBoardDirty.All;
 
             Assert.That(Int3.Neighbor4(DoorTile, 0), Is.EqualTo(LethalSide),
@@ -767,7 +767,7 @@ namespace Perilune.Tests
             sim.World.SetWall(new Int3(5, 2, 0), TileDefs.Wall); // seal the far side
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(1, 2, 0)));
-            var crew = sim.AddCitizen("Iqbal", new Int3(1, 2, 0));
+            var crew = sim.AddCitizen("Iqbal", new Int3(1, 2, 0)).GiveAllWork();
             sim.EnqueueCommand(new DesignateDigCommand(BehindTheDoorway, on: true));
             sim.Tick();
 

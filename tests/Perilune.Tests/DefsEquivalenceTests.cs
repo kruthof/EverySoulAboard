@@ -76,8 +76,8 @@ namespace Perilune.Tests
 
             sim.AddItem(ItemKind.Scrap, 6, new Int3(17, 3, 0)); // feed the fabricator
 
-            sim.AddCitizen("Okafor", new Int3(3, 2, 0));
-            sim.AddCitizen("Reyes", new Int3(5, 2, 0));
+            sim.AddCitizen("Okafor", new Int3(3, 2, 0)).GiveAllWork();
+            sim.AddCitizen("Reyes", new Int3(5, 2, 0)).GiveAllWork();
 
             sim.Rooms.SetAnchor("quarters", new Int3(2, 2, 0));
             sim.Rooms.SetAnchor("hydro", new Int3(14, 2, 0));
@@ -390,7 +390,7 @@ namespace Perilune.Tests
             var moss = new ScriptRuntime(new DeviceRegistry());
             var sim = new Simulation(AsciiWorld.Build(map), seed, SystemStack.CreateDefault(moss), defs);
 
-            var mover = sim.AddCitizen("Mover", new Int3(1, 1, 0)); // AutoWander false → no wander cadence
+            var mover = sim.AddCitizen("Mover", new Int3(1, 1, 0)).GiveAllWork(); // AutoWander false → no wander cadence
             sim.Rooms.SetAnchor("cell", new Int3(1, 1, 0));
             sim.Rooms.RecomputeIfDirty(sim);
             RoomState.Pressurize(sim.Rooms.RoomAt(sim.World, new Int3(1, 1, 0)));
@@ -415,7 +415,7 @@ namespace Perilune.Tests
 
             sim.AddDevice(DeviceKind.Light, new Int3(4, 1, 0), "gate"); // the sole chokepoint tile
 
-            var walker = sim.AddCitizen("Walker", new Int3(1, 1, 0));
+            var walker = sim.AddCitizen("Walker", new Int3(1, 1, 0)).GiveAllWork();
             walker.AutoWander = true; // defaults to false; wandering is what exercises IsWalkable
 
             sim.Rooms.SetAnchor("hall", new Int3(1, 1, 0));
@@ -445,7 +445,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Fabricator, new Int3(3, 2, 0), "fab"); // adjacent to conduit (3,1)
             sim.AddItem(ItemKind.Scrap, 6, new Int3(4, 2, 0));             // staged on the bench's +x neighbor
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0)); // idle (AutoWander false) → recruitable to craft
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork(); // idle (AutoWander false) → recruitable to craft
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);
@@ -472,7 +472,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.MachineShop, new Int3(3, 2, 0), "shop");
             sim.AddItem(ItemKind.Parts, 6, new Int3(4, 2, 0));
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0));
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork();
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);

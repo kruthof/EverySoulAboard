@@ -186,7 +186,7 @@ namespace Perilune.Sim
             // runs every pass — a backed-off station must not also strand its inputs.
             if (_backoff.IsBackedOff(sim, station.Id)) return;
 
-            var recruit = FindNearestReachableIdle(sim, staging, out bool anyIdle);
+            var recruit = FindNearestReachableIdle(sim, staging, WorkType.Craft, out bool anyIdle);
             if (recruit == null)
             {
                 // TWO DIFFERENT NULLS, AND THEY MUST NOT BE TREATED THE SAME. "Nobody is idle" is
@@ -550,7 +550,7 @@ namespace Perilune.Sim
         /// caller can tell "nobody is free" (not a refusal — re-ask next second, it costs a field
         /// read) from "nobody free can get here" (a refusal — stamp it).</para>
         /// </summary>
-        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, out bool anyIdle)
+        private Citizen FindNearestReachableIdle(Simulation sim, Int3 target, WorkType work, out bool anyIdle)
         {
             anyIdle = false;
             _probeSkip.Clear();
@@ -563,6 +563,14 @@ namespace Perilune.Sim
                 {
                     var c = citizens[i];
                     if (!c.IsRecruitableForWork) continue;
+                    // ⭐ M2-2 (G2) — THE WORK-TYPE VETO, and its POSITION is behaviour, not style.
+                    // It sits BEFORE `anyIdle = true` so a crew member with Craft switched off reads
+                    // as "nobody is free", not as "somebody is free but cannot reach the bench". The
+                    // caller turns the second into a 5 s station backoff stamp (M1-H), and stamping
+                    // a station because of a PLAYER SETTING would be a refusal recorded against the
+                    // wrong subject: the bench is fine, and the moment the player ticks Craft on she
+                    // must be picked up on the next pass, not up to five seconds later.
+                    if (!c.CanTakeWorkType(work)) continue;
                     anyIdle = true;
                     if (_probeSkip.Contains(c.Id)) continue;
                     int d = Int3.Manhattan(c.Pos, target);

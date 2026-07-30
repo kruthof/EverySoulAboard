@@ -68,7 +68,7 @@ namespace Perilune.Tests
             var subject = sim.AddDevice(DeviceKind.Scrubber, new Int3(5, 2, 0), "subject");
             subject.Condition = condition;
 
-            sim.AddCitizen("Smith", new Int3(1, 2, 0)); // AutoWander false ⇒ recruitable, never strays
+            sim.AddCitizen("Smith", new Int3(1, 2, 0)).GiveAllWork(); // AutoWander false ⇒ recruitable, never strays
 
             sim.Rooms.SetAnchor("bay", new Int3(2, 2, 0));
             sim.Rooms.RecomputeIfDirty(sim);

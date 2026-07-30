@@ -68,7 +68,7 @@ namespace Perilune.Tests
             sim.World.SetFlag(DebrisTile, TileFlags.Designated, true);
             sim.JobsDirty = JobBoardDirty.All;
 
-            sim.AddCitizen("Ito", WorkTile);
+            sim.AddCitizen("Ito", WorkTile).GiveAllWork();
             return sim;
         }
 
@@ -209,7 +209,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Door, new Int3(2, 3, 0), "door").IsOpen = true;
             // The crew stands in the vacuum pocket (2,4) — void at (3,4) keeps it lethal — with a
             // breathable refuge one door away. It suffocates in place and the guard flees it.
-            sim.AddCitizen("Rao", new Int3(2, 4, 0)); // AutoWander false → it does not wander off
+            sim.AddCitizen("Rao", new Int3(2, 4, 0)).GiveAllWork(); // AutoWander false → it does not wander off
             return sim;
         }
 

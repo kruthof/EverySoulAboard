@@ -253,6 +253,17 @@ namespace Perilune.Tests
         public void WreckedPods_StillReadAsDead_AfterASimDayUnattended()
         {
             var sim = Boot();
+            // ⚠️ M2-2 CHANGED WHAT "UNATTENDED" MEANS, and the change is worth stating rather than
+            // absorbing. Under OD-H every work type boots OFF, so a genuinely untouched wreck now
+            // runs a whole sim-day with the crew member idle — leg 2's control ("consumables were
+            // spent") would fail for the RIGHT reason and leg 1 would prove nothing. This test's
+            // subject is the CryoPod `maint = 0` opt-out, i.e. what the maintenance board does when
+            // it IS running, so the fixture grants the work the player grants on the WORK tab and
+            // "unattended" now means "no further player input after that one order".
+            // ⭐ The silence itself is not lost: it is pinned by
+            // WorkTypeVetoTests.OdG_Wreck_EveryWorkTypeOff_NoCrewMemberEverTakesWork, driven on
+            // this same ship from tick 0.
+            sim.GiveAllCrewAllWork();
             var conditionAtBoot = new Dictionary<uint, float>();
             var wreckedAtBoot = new List<uint>();
             foreach (var p in Pods(sim))

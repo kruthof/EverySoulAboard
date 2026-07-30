@@ -179,6 +179,9 @@ namespace Perilune.Tests
             var host = ship == ShipChoice.Perilune
                 ? SimHost.Build(SimHost.DefaultSeed)
                 : SimHost.Build(ship == ShipChoice.Slice ? SimHost.SliceSeed : SimHost.DefaultSeed, ship: ship);
+            // M2-2: OD-H boots every work type OFF. This channel's subject is a zone the haulers
+            // cannot fill, which needs haulers who are trying — so the fixture gives them the work.
+            host.Sim.GiveAllCrewAllWork();
             var gs = new GameSession(host, sink.Add); // NOT started ⇒ no sim thread
             return (gs, host);
         }

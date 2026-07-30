@@ -108,6 +108,14 @@ namespace Perilune.Sim
         private static bool ApplyAgreeTask(Simulation sim, Citizen citizen, CitizenMind mind, AgreeTask e)
         {
             if (e.Job != JobKind.Dig) return false;
+            // ⭐ M2-2 (G4) — THE WORK-TYPE VETO. The LLM effect pipeline is BOUNDED BY the work grid
+            // and never overrides it: the CitizenEffect whitelist exists so the model cannot exceed
+            // player-granted authority, and a work type the player switched off is the clearest
+            // statement of that authority there is (integrator ruling, 2026-07-29; it follows from
+            // the standing "LLM never touches sim state directly" invariant). Asked through
+            // WorkTypeMap rather than as a literal WorkType.Mine so that widening the whitelist past
+            // Dig cannot silently ship an ungated kind.
+            if (!WorkTypeMap.TryOf(e.Job, out var work) || !citizen.CanTakeWorkType(work)) return false;
             if (citizen.JobKind != JobKind.None) return false;
 
             var target = e.Target;

@@ -64,7 +64,7 @@ namespace Perilune.Tests
         {
             var sim = NewSim(BreachMap, 42, out var build);
             AddVentedPower(sim);
-            sim.AddCitizen("Ito", new Int3(3, 2, 0));
+            sim.AddCitizen("Ito", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, sim.Defs.Build.WallMaterial, new Int3(4, 2, 0));
 
             Assert.That(build.Designate(sim, StubSite, BuildKind.Wall, material: 3), Is.True);
@@ -82,7 +82,7 @@ namespace Perilune.Tests
         {
             var sim = NewSim(BreachMap, 7, out var build);
             AddVentedPower(sim);
-            sim.AddCitizen("Vega", new Int3(3, 2, 0));
+            sim.AddCitizen("Vega", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0)); // FloorMaterialCost == 1
 
             var floorPos = new Int3(4, 1, 0);
@@ -137,7 +137,7 @@ namespace Perilune.Tests
             // designated under a standing citizen or a device.
             var sim = NewSim(BreachMap, 2, out var build);
             var occupied = new Int3(2, 2, 0);
-            sim.AddCitizen("Occupant", occupied);
+            sim.AddCitizen("Occupant", occupied).GiveAllWork();
             Assert.That(build.CanDesignate(sim, occupied, BuildKind.Floor, material: 1), Is.True,
                 "floor may go under a standing citizen");
             // A wall is still blocked there.
@@ -231,7 +231,7 @@ namespace Perilune.Tests
         {
             var sim = NewSim(BreachMap, 21, out var build);
             AddVentedPower(sim);
-            sim.AddCitizen("Halden", new Int3(3, 2, 0));
+            sim.AddCitizen("Halden", new Int3(3, 2, 0)).GiveAllWork();
             sim.AddItem(ItemKind.Regolith, 1, new Int3(4, 2, 0)); // exactly a floor's worth
 
             var floorPos = new Int3(4, 1, 0);

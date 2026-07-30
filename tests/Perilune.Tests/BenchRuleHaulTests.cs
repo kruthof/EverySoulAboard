@@ -164,7 +164,7 @@ namespace Perilune.Tests
             sim.EnqueueCommand(new DesignateStockpileCommand(new Int3(9, 1, 0), on: true));
             var scrap = sim.AddItem(ItemKind.Scrap, 1, new Int3(4, 1, 0));   // ceded — stays loose
             var potato = sim.AddItem(ItemKind.Potato, 1, new Int3(5, 1, 0)); // terminal — hauled
-            sim.AddCitizen("Ada", new Int3(3, 1, 0));
+            sim.AddCitizen("Ada", new Int3(3, 1, 0)).GiveAllWork();
 
             long UnitsOf(ItemKind k)
             {
@@ -215,7 +215,7 @@ namespace Perilune.Tests
             sim.AddDevice(DeviceKind.Fabricator, new Int3(1, 1, 0), "Fab"); // makes BenchWantedMask != 0
             sim.EnqueueCommand(new DesignateStockpileCommand(new Int3(9, 1, 0), on: true)); // anyFreeStockpile
             sim.AddItem(ItemKind.ControllerModule, 1, new Int3(5, 1, 0));   // a terminal haul candidate
-            var held = sim.AddCitizen("Held", new Int3(3, 1, 0));
+            var held = sim.AddCitizen("Held", new Int3(3, 1, 0)).GiveAllWork();
             held.HoldPosition = true; // never self-assigns: the rescan is the only path measured
 
             for (int i = 0; i < 50; i++) { sim.JobsDirty = JobBoardDirty.All; sim.Tick(); } // warm every collection
