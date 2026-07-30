@@ -442,6 +442,68 @@ namespace Perilune.Web
         public const int ReasonUnreachable = 3;
 
         /// <summary>
+        /// ⭐ <b>NOBODY ABOARD IS ASSIGNED THAT WORK — M2-18, and under OD-H it is the MOST-EMITTED
+        /// REASON IN THE GAME ON DAY ONE.</b> The site's approach is walkable and survivable, and
+        /// <b>not one living crew member can take the work type this order belongs to</b>: every one
+        /// of them has it switched off in the WORK tab, or is incapable of it.
+        ///
+        /// <para><b>WHY IT EXISTS AT ALL.</b> M2-2 gave the dispatcher a veto
+        /// (<c>JobSystem.CanTakeFrom</c>) and OD-H booted every work type <b>off</b>. The first order
+        /// a new player paints is therefore refused for exactly this reason, on a ship with exactly
+        /// one crew member, and before this constant the game answered with <i>nothing</i>: paint a
+        /// strip order, watch it sit there, forever, silently. That is the 480 000-tick livelock
+        /// wearing new clothes, and the binding rule <i>a designation the player cannot see is
+        /// indistinguishable from a broken verb</i> has already cost this project three owner
+        /// reports. This is the refusal M2 itself creates, said out loud.</para>
+        ///
+        /// <para>⛔ <b>THE ANSWER COMES FROM THE SIM'S OWN PREDICATE AND IS NEVER RE-DERIVED HERE.</b>
+        /// <c>GameSession.NobodyAboardTakesTheWorkFor</c> asks <see cref="Perilune.Sim.Citizen"/>'s
+        /// <c>CanTakeWorkType</c>, the same question the dispatcher's five gates ask, over the live
+        /// crew — and it gets the work type out of <c>WorkTypeMap.TryOf</c>, the sim's ONE
+        /// <c>JobKind</c>→<c>WorkType</c> table. A host-side read of <c>WorkPrioritiesRaw</c> would
+        /// look identical and would be WRONG for an INCAPABLE pawn (<c>CanTakeWorkType</c> folds both
+        /// reasons to refuse; the raw grid folds one), which is the second-authority defect omission
+        /// (1) of this file's header refuses by name. Pinned by
+        /// <c>BlockedChannelTests.A_Pawn_Whose_Work_Is_ON_But_Who_Is_INCAPABLE_Still_Blocks_The_Order</c>.</para>
+        ///
+        /// <para><b>ALL, NOT ANY — and one crew member cannot tell the difference.</b> The row is
+        /// emitted only when NO living crew member can take the work. One pawn who has it off while a
+        /// shipmate has it on is not a blocked order, it is a queue; badging it would teach the player
+        /// to ignore the badge. ⚠️ On the shipped wreck the crew is ONE, so all and any coincide and
+        /// the fixture that separates them has to carry two
+        /// (<c>BlockedChannelTests.Two_Pawns_One_Of_Them_Assigned_Is_Not_This_Reason</c>). A
+        /// <b>dead</b> crew member is skipped:
+        /// what she was assigned is not a fact about the ship any more.</para>
+        ///
+        /// <para><b>PRECEDENCE: it ranks BELOW <see cref="ReasonNoApproach"/> and
+        /// <see cref="ReasonAir"/>, and ABOVE <see cref="ReasonUnreachable"/>.</b> Below the two
+        /// staging questions because they are about the WORLD and this is about a switch: an order in
+        /// a vacuum stays refused after the player enables the work type, so telling them to open the
+        /// WORK tab would send them to the wrong screen (pinned by
+        /// <c>Airless_And_WorkTypeOff_Reports_Air</c>). Above the reach question because
+        /// <see cref="ReasonUnreachable"/> is a LATCHED RECORD OF A PAST ATTEMPT while this is a live
+        /// fact about the present — when nobody may even try, "no crew has reached it" points at a
+        /// route that is not the problem.</para>
+        ///
+        /// <para><b>LIVE, NOT LATCHED.</b> Like <see cref="ReasonAir"/> and unlike
+        /// <see cref="ReasonUnreachable"/>, this re-reads the crew every render: switch the work type
+        /// on and the badge is gone on the next frame, with no timer to wait out. That is what makes
+        /// the acceptance demo a three-second loop rather than a stopwatch.</para>
+        ///
+        /// <para>⚠️ <b>ON A SHIP WITH NO LIVING CREW AT ALL the sentence is still true and is still
+        /// emitted</b> — the quantifier is over an empty set and nobody aboard is indeed assigned
+        /// anything. Stated rather than special-cased: a branch for "there is no one left" would be a
+        /// second rule guarding a state in which the game is already over.</para>
+        ///
+        /// <para><b>THE WORDS ARE M2-20's.</b> That package owns the vocabulary for "this pawn is
+        /// doing nothing" and says <i>"Awaiting orders"</i> on the PERSON
+        /// (<c>GameSession.AwaitingOrdersLabel</c>); this says <i>"nobody aboard is assigned that
+        /// work"</i> on the TILE. One player confusion, two surfaces, and no third word is invented
+        /// for either — the client's sentence is <c>BLOCKED_REASON_TEXT.work_type_off</c>.</para>
+        /// </summary>
+        public const int ReasonWorkTypeOff = 4;
+
+        /// <summary>
         /// One refused order on the <c>blocked</c> channel. Tuple <c>[x, y, deck, order, reason]</c>,
         /// append-only (a future field is a trailing element, exactly as <see cref="ZoneTile"/>,
         /// <see cref="MarkCell"/>, <see cref="ItemCell"/> and <see cref="DeviceCell"/> document).

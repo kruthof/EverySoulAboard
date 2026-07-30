@@ -125,6 +125,7 @@ namespace Perilune.Tests
             Assert.AreEqual(1, WireFormat.ReasonNoApproach);
             Assert.AreEqual(2, WireFormat.ReasonNoConsumable);
             Assert.AreEqual(3, WireFormat.ReasonUnreachable);
+            Assert.AreEqual(4, WireFormat.ReasonWorkTypeOff);
         }
 
         // ═══════════════════════════════════════════════════════════════════ the session bridge
@@ -1643,6 +1644,301 @@ namespace Perilune.Tests
                 "an UNEXPLORED unreachable site reached the wire. The latch does not exempt a row from " +
                 "the fog gate — AddIfBlocked returns before BlockedReason is ever called, which is also " +
                 "what prunes the latch entry.");
+        }
+
+        // ═════════════════════ M2-18 — NOBODY ABOARD IS ASSIGNED THAT WORK (ReasonWorkTypeOff) ═════
+        //
+        // WHAT THESE LEGS ADD. M2-2 gave the dispatcher a work-type veto and OD-H boots every work
+        // type OFF, so the FIRST order a new player paints is refused because not one crew member is
+        // assigned that work. Before this reason the game said nothing at all about it — paint a
+        // strip order, watch it sit there, forever. Under OD-H this is not a marginal refusal; it is
+        // the reason the opening ten seconds of every new game emits.
+        //
+        // ⚠️ THE FIXTURES HERE DELIBERATELY DO **NOT** CALL `GiveAllCrewAllWork`. Every other fixture
+        // in this file does, because their subject is a refusal about the WORLD and they need crew
+        // who are trying. This section's subject IS the boot grid, and a fixture that started from an
+        // all-on grid would be measuring a state no new game is ever in (`WorkGridTestSupport`'s own
+        // warning). `BootGridAtOdhDefaults` is that fixture, and it ASSERTS the premise rather than
+        // trusting it — if the shipped default ever flips back to on, these legs fail loudly at the
+        // premise instead of passing vacuously.
+
+        /// <summary>The session bridge, with the work grid left exactly as a new game boots it
+        /// (OD-H: every type off for everybody). The premise is asserted, not assumed.</summary>
+        private static (GameSession gs, SimHost host) BootGridAtOdhDefaults()
+        {
+            var sink = new List<string>();
+            var host = SimHost.Build(SimHost.DefaultSeed, ship: ShipChoice.Grid);
+            var crew = host.Sim.Citizens.Items;
+            Assert.That(crew.Count, Is.GreaterThan(0),
+                "PREMISE FAILED: --ship grid boots with no crew at all, so 'nobody is assigned this " +
+                "work' would be true for a reason that has nothing to do with the work grid.");
+            for (int i = 0; i < crew.Count; i++)
+                for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+                    Assert.That(crew[i].CanTakeWorkType((WorkType)t), Is.False,
+                        "PREMISE FAILED: crew " + i + " boots able to take " + (WorkType)t + ". OD-H " +
+                        "boots every work type OFF and this whole section is about that state — if the " +
+                        "default has moved, these legs are vacuous and must be re-premised, not weakened.");
+            return (new GameSession(host, sink.Add), host);
+        }
+
+        /// <summary>
+        /// A wall on <c>--ship grid</c> that the sim's own <c>DeconstructSystem</c> agrees is
+        /// condemnable AND whose approach is walkable and BREATHABLE — i.e. a site where neither
+        /// <see cref="WireFormat.ReasonNoApproach"/> nor <see cref="WireFormat.ReasonAir"/> can fire,
+        /// so the only thing left to explain a refusal is the work grid. Returns (site, staging).
+        ///
+        /// The mirror image of <see cref="FindAirlessSite"/>, and a PREMISE in the same way: if the
+        /// ship ever has no such wall, every leg below fails loudly here rather than passing on an
+        /// empty search.
+        /// </summary>
+        private static (Int3 Site, Int3 Staging) FindBreathableCondemnableWall(Simulation sim)
+        {
+            var strip = sim.Deconstruct;
+            Assert.IsNotNull(strip, "premise: --ship grid runs a DeconstructSystem");
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!strip.CanDesignate(sim, p, DeconstructKind.Wall)) continue;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) return (p, n);
+                        }
+                    }
+            Assert.Fail("PREMISE FAILED: --ship grid has no condemnable wall with a walkable, " +
+                        "breathable approach. Every M2-18 leg needs a site whose ONLY possible " +
+                        "refusal is the work grid; without one they would be vacuous.");
+            return default;
+        }
+
+        /// <summary>Paint a strip order through the SIM'S OWN COMMAND, so the row under test is one a
+        /// player could actually create, and assert the sim took it.</summary>
+        private static void PaintStrip(Simulation sim, Int3 site)
+        {
+            sim.EnqueueCommand(new DesignateDeconstructCommand(site, DeconstructKind.Wall, true));
+            sim.Tick();
+            Assert.That(sim.Deconstruct.TryGet(site, out _), Is.True,
+                "premise: the sim accepted the strip order (otherwise there is nothing to be blocked)");
+        }
+
+
+        /// <summary>
+        /// ⭐ <b>THE HEADLINE, AND IT IS THE FIRST THING A NEW PLAYER DOES.</b> On a boot grid — every
+        /// work type off, exactly as OD-H ships it — a strip order painted on a wall with good air and
+        /// a clear approach is named on the channel as <see cref="WireFormat.ReasonWorkTypeOff"/>.
+        /// Then the player does the one thing the badge is pointing at (switches the work on) and the
+        /// row is gone ON THE NEXT RENDER, with no timer to wait out.
+        ///
+        /// <para>Both halves are load-bearing. Without the first, the opening of the game is silent;
+        /// without the second, the channel would be "every order is blocked", which says nothing and
+        /// makes every badge on the surface a lie.</para>
+        ///
+        /// <para>⛔ MUTATION 1: return <c>NotBlocked</c> instead of <c>ReasonWorkTypeOff</c> in
+        /// <c>GameSession.BlockedReason</c> ⇒ RED on the first assertion, by coordinate.</para>
+        /// </summary>
+        [Test]
+        public void A_Strip_Order_No_Crew_Member_Is_Assigned_Is_Named_By_The_Channel()
+        {
+            var (gs, host) = BootGridAtOdhDefaults();
+            var sim = host.Sim;
+            var (site, _) = FindBreathableCondemnableWall(sim);
+            PaintStrip(sim, site);
+
+            var row = RowAt(gs, site);
+            Assert.IsNotNull(row, "THE PLANTED STRIP AT " + site + " IS NOT ON THE CHANNEL. Its air is " +
+                "good and its approach is clear, and not one crew member is assigned Deconstruct — " +
+                "which under OD-H is the state of every new game. A player who paints their first " +
+                "order and is told nothing cannot tell this apart from a broken verb.");
+            Assert.AreEqual(WireFormat.OrderStrip, row.Value.Order, "the order kind must say STRIP");
+            Assert.AreEqual(WireFormat.ReasonWorkTypeOff, row.Value.Reason,
+                "the reason must be WORK-TYPE-OFF. The tile is breathable and reachable, so any other " +
+                "reason sends the player to the wrong screen — the fix here is the WORK tab.");
+
+            // LEG ISOLATION, RE-PREMISED BY WHAT WAS MEASURED RATHER THAN COPIED FROM THE AIR LEGS.
+            // Those legs assert "every row is a strip" because on an all-work-ON grid the ship's own
+            // authored designations are not blocked. This fixture is the OPPOSITE ship: --ship grid
+            // authors 20 dig designations in the hold and the ten EXPLORED ones are now badged too —
+            // by this very rule, because nobody is assigned Mine either. That is the package working,
+            // not leakage, and it is the shape a player meets at boot: the whole screen lights up.
+            // So the claim is made exactly: exactly ONE strip row, it is the planted one, and every
+            // other row is a dig carrying this same reason.
+            var rows = Rows(gs);
+            Assert.AreEqual(1, rows.Count(r => r.Order == WireFormat.OrderStrip),
+                "this fixture paints exactly one strip, so exactly one strip row may be emitted");
+            Assert.That(rows.All(r => r.Reason == WireFormat.ReasonWorkTypeOff), Is.True,
+                "every row on a boot grid must carry the work-type reason — the authored digs are " +
+                "refused for the same reason the planted strip is, and any other code here means the " +
+                "reason is being handed out on some other question's answer");
+            Assert.That(rows.All(r => r.Order == WireFormat.OrderStrip || r.Order == WireFormat.OrderDig),
+                Is.True, "this fixture designates no build, so no build row may appear");
+
+            // ── THE OTHER HALF: the player opens the WORK tab, and the badge clears immediately.
+            // ALL of them: the planted strip AND the ship's ten authored digs.
+            sim.GiveAllCrewAllWork();
+            Assert.IsNull(RowAt(gs, site),
+                "the row survived the player switching the work ON. This reason is a LIVE predicate " +
+                "over the crew, not a stamp: it must vanish on the very next render, or the badge that " +
+                "told the player what to do goes on accusing them after they have done it.");
+            Assert.That(Rows(gs).Any(r => r.Reason == WireFormat.ReasonWorkTypeOff), Is.False,
+                "a work-type badge survived somewhere on the ship after every work type was switched " +
+                "on. The reason must be a live read of the crew, everywhere, not only on the tile " +
+                "this test planted.");
+        }
+
+        /// <summary>
+        /// ⭐ <b>ALL, NOT ANY — and a one-pawn ship cannot tell the two apart, so this fixture carries
+        /// TWO.</b> One crew member has Deconstruct off, another has it on. That is a QUEUE, not a
+        /// blocked order: somebody aboard will take it. Badging it would teach the player to ignore
+        /// the badge, and on a real crew most orders would wear one.
+        ///
+        /// <para>⚠️ The second pawn is ADDED rather than found, so the leg cannot be quietly
+        /// invalidated by a change to the grid's roster size — and the split is asserted through the
+        /// SIM's predicate (exactly one crew member can take it) before anything is read off the wire.</para>
+        ///
+        /// <para>⛔ MUTATION 2: report the reason when ANY crew member has the work type off. It is
+        /// <b>TWO edits in <c>GameSession.NobodyAboardTakesTheWorkFor</c>, and BOTH are required</b> —
+        /// invert the loop body to <c>if (!c.CanTakeWorkType(work)) return true;</c> <b>AND flip the
+        /// method's tail <c>return true;</c> to <c>return false;</c></b> ⇒ RED here, and GREEN on
+        /// every other leg in this file.</para>
+        ///
+        /// <para>⚠️ <b>THE HALF-APPLIED RECIPE IS A FALSE RED (trap 3), AND IT WAS MEASURED.</b> An
+        /// earlier revision of this comment named only the loop-body edit. Applied literally that
+        /// leaves the tail <c>return true;</c> standing, so the predicate is <i>unconditionally
+        /// true</i> — not ANY-semantics at all. Measured on this file's 28 tests
+        /// (<c>--filter FullyQualifiedName~BlockedChannelTests</c>): the half recipe reads
+        /// <b>14 red / 14 green</b>, the two-edit recipe reads <b>1 red — this test — / 27 green</b>.
+        /// A mutation that reddens half the file has stopped discriminating: it no longer shows that
+        /// the TWO-PAWN fixture is what sees ALL-versus-ANY, which is the entire claim this leg
+        /// makes. Both numbers were re-measured here rather than quoted.</para>
+        /// </summary>
+        [Test]
+        public void Two_Pawns_One_Of_Them_Assigned_Is_Not_This_Reason()
+        {
+            var (gs, host) = BootGridAtOdhDefaults();
+            var sim = host.Sim;
+            var (site, staging) = FindBreathableCondemnableWall(sim);
+            PaintStrip(sim, site);
+            Assert.AreEqual(WireFormat.ReasonWorkTypeOff, RowAt(gs, site)?.Reason,
+                "premise: with nobody assigned, this site IS the new reason — the control the rest of " +
+                "this leg is measured against");
+
+            // A SECOND pawn, who IS assigned the work. The first crew member stays at OD-H defaults.
+            var willing = sim.AddCitizen("Rell", staging);
+            willing.SetWorkPriority(WorkType.Deconstruct, WorkPriority.Highest);
+
+            int assigned = 0, aboard = 0;
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++)
+            {
+                if (crew[i].Dead) continue;
+                aboard++;
+                if (crew[i].CanTakeWorkType(WorkType.Deconstruct)) assigned++;
+            }
+            Assert.That(aboard, Is.GreaterThanOrEqualTo(2),
+                "premise: the fixture must carry TWO living crew — with one, 'all have it off' and " +
+                "'any has it off' are the same sentence and this leg would pin nothing");
+            Assert.AreEqual(1, assigned,
+                "premise: exactly ONE crew member is assigned Deconstruct, asked of the sim's own " +
+                "predicate — the split that separates ALL from ANY");
+
+            Assert.IsNull(RowAt(gs, site),
+                "a site somebody aboard IS assigned to was badged as 'nobody aboard is assigned that " +
+                "work'. The quantifier is ALL, not ANY: with a mixed crew this order is queued, not " +
+                "blocked, and a badge on it is a false alarm the player learns to ignore.");
+        }
+
+        /// <summary>
+        /// ⭐ <b>PRECEDENCE: AIR OUTRANKS IT.</b> A site that is BOTH airless and unassigned reports
+        /// <see cref="WireFormat.ReasonAir"/>. The player's next action decides this and nothing else:
+        /// switching the work type on does not make the compartment breathable, so the order stays
+        /// refused and the badge would have sent them to the WORK tab for nothing. Air is answered
+        /// with a vent; this is answered with a switch; and when both are true only one of them is
+        /// still true after the switch is thrown.
+        ///
+        /// <para>⛔ MUTATION 3: move the work-type question above the air question in
+        /// <c>GameSession.BlockedReason</c> ⇒ RED here, and GREEN on every other leg in this section
+        /// (they all sit in good air) — the same shape as
+        /// <see cref="A_Site_That_Is_Both_Airless_And_Unreached_Reports_Air_Not_Unreachable"/>.</para>
+        /// </summary>
+        [Test]
+        public void A_Site_That_Is_Both_Airless_And_Unassigned_Reports_Air_Not_WorkTypeOff()
+        {
+            var (gs, host) = BootGridAtOdhDefaults();
+            var sim = host.Sim;
+            var (airless, _) = FindAirlessSite(sim);
+            sim.World.SetFlag(airless, TileFlags.Designated, true);
+
+            // BOTH questions must genuinely answer "blocked" here, or the precedence never competes.
+            var crew = sim.Citizens.Items;
+            for (int i = 0; i < crew.Count; i++)
+                Assert.That(crew[i].Dead || !crew[i].CanTakeWorkType(WorkType.Mine), Is.True,
+                    "premise: nobody aboard is assigned Mine, so the work-type answer is 'blocked' too");
+
+            var row = RowAt(gs, airless);
+            Assert.IsNotNull(row, "the row vanished entirely — both questions answer 'blocked' here, " +
+                                  "so something is eating the row");
+            Assert.AreEqual(WireFormat.ReasonAir, row.Value.Reason,
+                "an airless site that ALSO has nobody assigned reported the work-type reason. Air must " +
+                "outrank it: enabling Mine does not make the compartment breathable, so the badge " +
+                "would have pointed at a screen that cannot fix anything.");
+        }
+
+        /// <summary>
+        /// ⛔ <b>THE SINGLE-AUTHORITY LEG — recorded at the seam, and it is the one that would catch a
+        /// host-side re-derivation.</b> A pawn is given Deconstruct at the highest priority AND marked
+        /// INCAPABLE of it. The two readings now disagree, on purpose:
+        ///
+        /// <list type="bullet">
+        ///   <item><c>Citizen.GetWorkPriority(Deconstruct) != Off</c> — the RAW GRID says she can.</item>
+        ///   <item><c>Citizen.CanTakeWorkType(Deconstruct)</c> — the SIM'S PREDICATE says she cannot,
+        ///     because it folds BOTH reasons to refuse (M2-2), and the dispatcher's five gates ask
+        ///     exactly this one.</item>
+        /// </list>
+        ///
+        /// <para>The dispatcher will therefore never employ her, so the order really is stuck and the
+        /// badge must be there. A host that read the grid itself would look identical on every other
+        /// leg in this file and would go silent HERE — the badge disappearing for a pawn the sim will
+        /// never employ, which is the exact two-answers-to-one-question drift
+        /// <c>WireFormat.Blocked.cs</c>'s omission (1) refuses by name.</para>
+        ///
+        /// <para>⛔ MUTATION 4: re-derive host-side — replace <c>c.CanTakeWorkType(work)</c> in
+        /// <c>GameSession.NobodyAboardTakesTheWorkFor</c> with
+        /// <c>c.GetWorkPriority(work) != WorkPriority.Off</c> ⇒ RED here (the row goes missing), and
+        /// GREEN on every other leg in this file, because no other fixture has an incapable pawn.
+        /// This is an INCLUSION test on the answer, not a scan for the call.</para>
+        /// </summary>
+        [Test]
+        public void A_Pawn_Whose_Work_Is_ON_But_Who_Is_INCAPABLE_Still_Blocks_The_Order()
+        {
+            var (gs, host) = BootGridAtOdhDefaults();
+            var sim = host.Sim;
+            var (site, staging) = FindBreathableCondemnableWall(sim);
+            PaintStrip(sim, site);
+
+            var pawn = sim.AddCitizen("Rell", staging);
+            pawn.SetWorkPriority(WorkType.Deconstruct, WorkPriority.Highest);
+            pawn.SetIncapableOf(WorkType.Deconstruct, true);
+
+            Assert.AreNotEqual(WorkPriority.Off, pawn.GetWorkPriority(WorkType.Deconstruct),
+                "premise: the RAW GRID says this pawn is assigned Deconstruct — the reading a " +
+                "host-side re-derivation would take");
+            Assert.That(pawn.CanTakeWorkType(WorkType.Deconstruct), Is.False,
+                "premise: the SIM'S PREDICATE says she cannot take it anyway. The two readings must " +
+                "DISAGREE here, or this leg cannot tell which one the host asked.");
+
+            var row = RowAt(gs, site);
+            Assert.IsNotNull(row, "THE ORDER AT " + site + " WENT SILENT because a crew member has the " +
+                "work switched on while being INCAPABLE of it. The host answered from the raw work " +
+                "grid instead of from Citizen.CanTakeWorkType: the dispatcher will never employ her, " +
+                "the order is stuck forever, and the one surface that exists to say so said nothing.");
+            Assert.AreEqual(WireFormat.ReasonWorkTypeOff, row.Value.Reason,
+                "…and it must still be the work-type reason: incapable and switched-off are one " +
+                "answer to the dispatcher, and this channel speaks the dispatcher's answer");
         }
     }
 }
