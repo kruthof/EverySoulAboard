@@ -99,15 +99,13 @@ namespace Perilune.Tests
         private static readonly Int3 StationPos = new Int3(7, 2, 0);
         private static readonly Int3 StagingPos = new Int3(8, 2, 0); // Neighbor4(+x) of the station
 
-        /// <summary>Switch every work type ON at the highest manual priority — the state the
-        /// player reaches by filling in the WORK tab, and the control condition for every veto
-        /// leg. Written as a loop over <see cref="WorkPriority.WorkTypeCount"/> so a seventh work
-        /// type is enabled here the day it exists.</summary>
-        private static void EnableAllWork(Citizen c)
-        {
-            for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
-                c.SetWorkPriority((WorkType)t, WorkPriority.Highest);
-        }
+        // ⚠️ THERE IS DELIBERATELY NO all-work HELPER IN THIS FILE, and one was deleted from it.
+        // An unused `EnableAllWork(Citizen)` sat here claiming in its own doc comment to be "the
+        // control condition for every veto leg" — with ZERO callers. Every control half below sets
+        // the ONE bit under test (`SetWorkPriority(type, Highest)`) and leaves the other five at
+        // their shipped value, because a leg that starts from an all-on grid is measuring a state
+        // no new game is ever in. The blanket helper for fixtures whose subject is something else
+        // is `WorkGridTestSupport.GiveAllWork()`, and it is deliberately not used here.
 
         private static void Debris(Simulation sim, Int3 p)
         {
@@ -206,6 +204,14 @@ namespace Perilune.Tests
         public void EverySource_SpansExactlyOneWorkType()
         {
             var jobs = new JobSystem();
+
+            // NON-VACUITY FLOOR. Everything below is a loop over Sources, and a loop over nothing
+            // reports no offenders — so a dispatcher registered with an empty source array would
+            // pass this pin silently, which is the one state in which the per-source gate is
+            // trivially "exact". Assert the population before assuming the loop ran.
+            Assert.That(jobs.Sources, Is.Not.Empty,
+                "the shipped dispatcher must register sources, or this pin is vacuous by construction");
+
             var offenders = new List<string>();
             for (int i = 0; i < jobs.Sources.Count; i++)
             {
