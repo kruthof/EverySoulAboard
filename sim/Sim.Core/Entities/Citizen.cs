@@ -287,7 +287,27 @@ namespace Perilune.Sim
         /// explicit clears on arrival / blocked / flee keep the flag honest, and this keeps a missed
         /// one from being a silent, unrecoverable idle bug.
         /// </summary>
-        public bool IsRecruitableForWork => IsIdleForWork && !(OrderedMove && HasPath);
+        public bool IsRecruitableForWork => IsRecruitableIgnoringJob && JobKind == JobKind.None;
+
+        /// <summary>
+        /// ⭐ <b>M2-8 — <see cref="IsRecruitableForWork"/> WITH THE "carries no job" CLAUSE REMOVED:
+        /// everything about this crew member EXCEPT her current job that decides whether work may be
+        /// put on her.</b> Dead, held, or mid-ordered-walk still refuse.
+        ///
+        /// <para>It exists because pre-emption asks a HYPOTHETICAL question about a BUSY pawn —
+        /// <i>"if she were free, would anybody have better-banded work for her?"</i> — and
+        /// <see cref="IsRecruitableForWork"/> answers <c>false</c> for every busy pawn by
+        /// construction, so a pre-emption query routed through it can never fire. See
+        /// <c>IWorkOfferSource.HasClaimableWork</c>'s <c>asIfIdle</c> argument, which is the ONLY
+        /// caller that may use this in place of <see cref="IsRecruitableForWork"/>.</para>
+        ///
+        /// <para>⚠️ <b>It is factored OUT of <see cref="IsRecruitableForWork"/> rather than written
+        /// beside it</b> — two independent spellings of "dead, held or under orders" are two things
+        /// that drift, and the pre-emption gate must never be able to become laxer than the claim
+        /// gate it is the hypothetical form of. <see cref="IsRecruitableForWork"/> is byte-for-byte
+        /// the expression it was (<c>IsIdleForWork &amp;&amp; !(OrderedMove &amp;&amp; HasPath)</c>).</para>
+        /// </summary>
+        public bool IsRecruitableIgnoringJob => !Dead && !HoldPosition && !(OrderedMove && HasPath);
 
         public void ClearPath()
         {

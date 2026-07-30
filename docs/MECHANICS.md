@@ -878,6 +878,10 @@ needs-material (`:193-216`).
 > still exact. One behavioural note: an empty pass that defers to a push offer returns
 > WITHOUT `ClearPath()`, where the old code always cleared — safe because a failed
 > `FindPath` leaves no residue. The "no skills" clause survives until M3-7.
+>
+> ⚠️ **AND SINCE M2-8 (2026-07-30) THE DISPATCHER IS NO LONGER ONLY A GIVER OF WORK.** `Tick`'s
+> BUSY branch can now TAKE a job back when a strictly better BAND is on offer — see **§6.2b**,
+> which is a different question from anything below and is asked outside `TryAssign` entirely.
 
 This is the whole labour-allocation policy as ORIGINALLY SHIPPED. For an idle citizen:
 
@@ -961,6 +965,62 @@ that a deconstruct re-opens the zone after ≤5 s instead of on the next tick.
 Like the step-4 backoff this is **transient board state — not saved, not hashed**; all four
 determinism pins are unmoved. No collection is iterated (`IJobSource` arbitration contract rule 4):
 lookup, keyed remove and wholesale clear only.
+
+### 6.2b PRE-EMPTION — a better BAND takes a busy pawn back (M2-8, 2026-07-30)
+
+Until M2-8 nothing in the sim could take a job away except the flee path. `IsRecruitableForWork`
+requires `JobKind == None`, so every recruiter and the dispatcher alike could only hand work to
+somebody who had none.
+
+**The seam is `JobSystem.Tick`'s BUSY branch** (`Jobs/JobSystem.cs:232` → `TryPreempt`,
+`:287-307`), and it is there rather than in `TryAssign` because **that loop is the only place that
+sees every busy pawn**: `JobKind.Craft` and `JobKind.Maintain` have no `IJobSource` at all, so
+their pawns reach the loop and fall out at `owner == null`. One check therefore reaches a pawn
+inside a maintenance chain exactly as it reaches a hauler; `TryAssign` is only ever entered by
+pawns with no job to lose. Order per tick: pre-empt → `continue` (she is NOT advanced this tick) →
+she is offered work again on the NEXT tick's pass. **One tick**, which is what the M2-0 spike
+measured (order at t=231 → `Deconstruct` at t=232).
+
+The predicate, in order (`JobSystem.cs:290-301`):
+
+1. `WorkTypeMap.TryOf(citizen.JobKind, …)` must succeed. **This is the whole survival guard** —
+   `Flee`, `Eat` and `Drink` carry no `WorkType` and are refused here. There is deliberately no
+   second check listing them (two guards for one rule and neither can be shown to bite);
+   `PreemptionTests.SurvivalKinds_CarryNoWorkType_WhichIsTheWholeSurvivalGuard` pins the premise.
+2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:292-310`, NEW) — `IsRecruitableForWork`
+   with the "carries no job" clause factored out. Dead, `HoldPosition`, or mid-ordered-walk still
+   refuse: taking the job would strand her, because the same facts stop anything from giving her
+   another. `IsRecruitableForWork` is now expressed as `IsRecruitableIgnoringJob && JobKind == None`
+   and is byte-for-byte the predicate it was.
+3. Her band must be neither `Off` (she is finishing work the player has since switched off — M2-2's
+   decided behaviour) nor `Highest` (nothing can outrank band 1).
+4. `WorkArbiter.HasOfferAboveBand` (`Jobs/WorkArbiter.cs:229-258`, NEW) — **BAND ONLY.** It queries
+   the bands strictly ABOVE hers, so **at equal band nothing pre-empts, whatever the
+   `NaturalPriority` constants say.** That is a deliberate divergence from `HasBetterOfferThan`
+   (the claim-time gate, which does let the constant win inside a band): declining to hand out a
+   job is free, taking one away drops cargo and abandons a walk.
+
+**The cancel is `Simulation.CancelJob`, not `JobWork.AbandonJob`** — modelled on the flee path
+(`SafetySystem.cs:233-238`): `sim.CancelJob(c); c.ClearPath(); c.OrderedMove = false;`. `AbandonJob`
+leaves reservations *"the CALLER's to release"*, so a pawn pre-empted through it walks off still
+carrying the stack. What survives a pre-emption, all of it measured by M2-0 and now pinned by
+`PreemptionTests`: the cargo (set down at her feet, `CarriedBy`/`ReservedBy` cleared, re-enters the
+haul board), a station's `Progress` and a build site's `Delivered` — because those live on the
+`Device` / the site. Only her own `JobWorkTicks` countdown is lost.
+
+**The offer query asks a hypothetical.** `IWorkOfferSource.HasClaimableWork` gained a required
+`asIfIdle` argument (`WorkArbiter.cs:50-61`); `true` swaps ONLY the `IsRecruitableForWork` gate for
+`IsRecruitableIgnoringJob` in all three providers (`JobSystem.cs:606`, `MachineWearSystem.cs:469`,
+`CraftingSystem.cs:527`). Every other early return still applies, because an over-report is still a
+silent stall — and a pre-emption built on one takes a pawn off real work for work that does not
+exist. Both push providers skip a device that already has a worker, which is what stops a Craft or
+Maintain pawn being offered her own bench back under the hypothetical.
+
+**Cost:** `HasOfferAboveBand` runs for every busy pawn every tick, but `BestOfferAtBand`
+short-circuits on `GetWorkPriority(type) != band` — a field read per work type — so a pawn with
+nothing enabled above her own band never reaches a provider. At the OD-H defaults no band is ever
+matched. Allocation-free, no RNG. **Pin-neutral** (P1–P5 unmoved), for the reason above: nothing is
+enabled ⇒ nothing is claimed ⇒ nothing to pre-empt.
 
 ### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:85-97`)
 
@@ -2942,3 +3002,32 @@ the gate itself is `GameSession.SendDevices`, `:1586-1595`): the gate skips seri
 the cell list is unchanged, and a door toggle moves **only** `open`, so without that clause a
 player's own toggle would silently freeze the OPEN⇄SHUT chip. Two lanes added `Open` and `SameAs`
 independently and **git reported no conflict** — see `HANDOVER.md`'s eighth trap shape.
+
+### 13.24 M2-8 pre-emption is LIVE in the sim and INVISIBLE in play until M2-19 (2026-07-30)
+
+The mechanism is §6.2b and it works: a strictly better-banded job takes a busy pawn back in one
+tick, and eight named mutations were physically applied to prove each half of it
+(`tests/Perilune.Tests/PreemptionTests.cs`, table in the fixture header). What is NOT there:
+
+**a. ⛔ THERE IS NO BROWSER DEMO, BY CHARTER, AND A REVIEWER MUST NOT ACCEPT ONE.** M2-0 measured
+the pre-empted pawn being **re-claimed by `MaintenanceSystem` within the same tick** — idle 11
+ticks of 30 000. On screen, a pre-emption that lands and one that does nothing look identical.
+⚠️ Note what that measurement is and is not: it is about *"that machine, now"* — a **HOLD**, which
+nothing in the sim expresses. It does NOT apply to the band case this package ships, because M2-5's
+push gate refuses the re-claim whenever the better-banded work is real. The acceptance for M2-8 is
+therefore the driven suite, and the demo waits for the STICKY CLAIM (**M2-19**).
+
+**b. `Citizen.HeldByOrder` is written by nobody and read by nobody** (`Entities/Citizen.cs:152`).
+It is M2-19's field, pre-declared; M2-8 deliberately does not touch it. Until it has a reader,
+"keep this crew member on this job" is not a sentence the sim can say.
+
+**c. THE OFFER QUERY IS OPTIMISTIC AND A PRE-EMPTION CAN THEREFORE BE WASTED.** `HasClaimableWork`
+stops short of the A* (`IWorkOfferSource`'s declared one-sided contract), so a pre-emption whose
+better-banded claim then fails leaves her idle for a tick and she re-takes the lower-banded job.
+Bounded by M1-H's per-tile / per-device 5 s backoff rather than eliminated; not observed in any
+fixture, filed because it is a real shape and not a hypothetical one.
+
+**d. A PAWN WORKING A TYPE THE PLAYER HAS SINCE SWITCHED OFF IS NEVER PRE-EMPTED.** Her band reads
+`Off`, and the predicate refuses (§6.2b step 3). She finishes and then waits, which is M2-2's
+decided behaviour — recorded here because "switch it off and she stops" is a reasonable thing for a
+player to expect and it is not what happens.

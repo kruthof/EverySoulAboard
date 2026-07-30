@@ -460,10 +460,14 @@ namespace Perilune.Sim
         /// <para>⚠️ It does NOT re-ask the arbitration (that would recurse). The caller has already
         /// decided that repair is the better work; this only says whether there is any.</para>
         /// </summary>
-        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type, bool asIfIdle)
         {
             if (type != WorkType.Repair) return false;
-            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(WorkType.Repair)) return false;
+            // M2-8: `asIfIdle` relaxes THIS gate and nothing else — see IWorkOfferSource. The
+            // "already has a servicer" skip below is what keeps a Maintain pawn from being offered
+            // her own machine back under the hypothetical.
+            if (!(asIfIdle ? citizen.IsRecruitableIgnoringJob : citizen.IsRecruitableForWork) ||
+                !citizen.CanTakeWorkType(WorkType.Repair)) return false;
 
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
