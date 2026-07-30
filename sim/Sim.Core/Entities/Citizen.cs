@@ -56,7 +56,9 @@ namespace Perilune.Sim
         // is the package's whole claim" — TRUE OF M2-1's TREE, FALSE OF THIS ONE. M2-2 landed the
         // work-type VETO: WorkPrioritiesRaw and WorkIncapable are now read at five gates through
         // CanTakeWorkType below, so this grid is BEHAVIOUR and its default (OD-H: off) is what a
-        // new game boots into. Skill and HeldByOrder are still reserved and still have no reader.
+        // new game boots into. ⚠️ AND M2-19 GAVE HeldByOrder A READER TOO (IsRecruitableIgnoringJob
+        // — the sticky claim), so of the three "reserved" fields only Skill is still inert. Nothing
+        // WRITES HeldByOrder in play yet; that is M2-9's PrioritiseJobCommand.
         // The enrolment ledger in WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid names
         // every file that may look at them.
         // See the WorkType / WorkPriority declarations at the bottom of this file. ---
@@ -142,12 +144,58 @@ namespace Perilune.Sim
         public byte Skill;
 
         /// <summary>
-        /// RESERVED, false, with NO READER AND NO WRITER AS OF THIS COMMIT — M2-19's sticky-claim
-        /// bool, batched for the same
-        /// reason as <see cref="Skill"/>. The M2-0 spike measured that
-        /// <c>MaintenanceSystem.Tick</c> frees and re-claims the same pawn inside ONE tick, so
-        /// "work on that, now" has to be expressed as HOLDING a pawn on an ordered job rather than
-        /// as a dispatcher preference; this is where that hold will live.
+        /// ⭐⭐ <b>M2-19 — THE STICKY CLAIM. This crew member is executing a DIRECT PLAYER ORDER
+        /// ("that machine, NOW"), and until that job ends nothing in the sim may put other work on
+        /// her.</b> ⚠️ The header above (M2-1's) called this field RESERVED with no reader; that was
+        /// true of M2-1's and M2-8's trees and is FALSE OF THIS ONE — it is read by
+        /// <see cref="IsRecruitableIgnoringJob"/>, which every claim gate and the pre-emption gate
+        /// share. It still has NO WRITER IN PLAY: <c>PrioritiseJobCommand</c> is M2-9's.
+        ///
+        /// <para><b>WHY A HOLD AND NOT A DISPATCHER PREFERENCE.</b> The M2-0 spike measured
+        /// <c>MaintenanceSystem.Tick</c> freeing and re-claiming the same pawn inside ONE tick —
+        /// the dispatcher saw her idle on 11 ticks of 30 000 — so "work on that, now" cannot be
+        /// expressed as a preference something else gets to overrule a tick later. Even with M2-8's
+        /// pre-emption in the tree, a directly-ordered pawn at a low band is taken straight back off
+        /// her order by the grid. The hold is what outranks the grid.</para>
+        ///
+        /// <para>⭐ <b>THE MECHANISM IS RIMWORLD'S <c>Job.playerForced</c>, AND ITS PLACEMENT IS THE
+        /// DESIGN.</b> <c>docs/design/rimworld-reference.md</c> §2.2 reads the forced flag off
+        /// <c>curJob.playerForced</c> — it lives on the JOB and dies with it. So does this:
+        /// <b>the INVARIANT is <c>HeldByOrder ⇒ JobKind != JobKind.None</c></b>, enforced at the one
+        /// place a job can end (the <see cref="JobKind"/> setter). ⚠️ A hold that could outlive its
+        /// job would be a silent, unrecoverable idle bug — a pawn nothing may recruit and nothing
+        /// can re-order, which is the exact failure <see cref="OrderedMove"/>'s comment warns about
+        /// two fields below. RimWorld's OTHER half — <c>Pawn_MindState.priorityWork</c>, a saved
+        /// (cell, workGiver, tick) record that RE-ISSUES the prioritised job and expires after
+        /// 30 000 ticks — is deliberately NOT built: it needs a saved target this package may not
+        /// add (it is chartered PIN-NEUTRAL on M2-1's storage), and the integrator ruling rejects
+        /// the timeout outright ("a timeout makes the hold a race the player cannot see").
+        /// <b>That timeout is a MEASURED DIVERGENCE from §2.2, taken on purpose.</b></para>
+        ///
+        /// <para><b>THE RELEASE PATHS, and there is one mechanism for all of them</b> — every one
+        /// ends by writing <c>JobKind = JobKind.None</c>:
+        /// <list type="bullet">
+        ///   <item><b>COMPLETION</b> — the ordered job finished (e.g.
+        ///     <c>MachineWearSystem.cs:366</c>, <c>DigJobSource.cs:169</c>). She returns to normal
+        ///     autonomy under the grid.</item>
+        ///   <item><b>A NEW DIRECT ORDER</b> — the writer cancels the old job first, so the old hold
+        ///     falls with it and the new one is placed on the new job.</item>
+        ///   <item><b>DEATH</b> — <c>NeedsSystem.Kill</c> → <see cref="Simulation.CancelJob"/>.</item>
+        ///   <item><b>GENUINE INABILITY TO CONTINUE</b> — safety (<c>SafetySystem.cs:233</c> cancels
+        ///     then flees), the target vanishing or being walled in
+        ///     (<c>MachineWearSystem.AbandonOrphan</c>), a lost path (<c>JobWork.AbandonJob</c>).
+        ///     §2.2's analogue: RimWorld drops forced work on drafting and clears the prioritised
+        ///     record when the work giver can produce no job. <b>She does not resume it</b> — a
+        ///     needs break or a flee that ends the job ends the order too.</item>
+        /// </list>
+        /// ⛔ <b>NEVER a timeout</b> (integrator ruling), and ⛔ <b>never at the expense of
+        /// survival</b>: <c>SafetySystem</c> consults no recruitability predicate at all and
+        /// <c>SustenanceSystem</c> gates on <see cref="IsIdleForWork"/>, which does NOT carry the
+        /// hold — a held pawn who somehow holds no job still eats and drinks.</para>
+        ///
+        /// <para>⚠️ <b>WRITER CONTRACT (for M2-9): SET THE JOB FIRST, THEN THE HOLD.</b> Writing the
+        /// hold before a <see cref="Simulation.CancelJob"/> or before the new <see cref="JobKind"/>
+        /// would clear it again on the way past <c>None</c>.</para>
         /// </summary>
         public bool HeldByOrder;
 
@@ -239,7 +287,44 @@ namespace Perilune.Sim
 
         // --- Jobs (M2). Job state lives on the citizen (not in the board) so the
         // JobBoard stays purely derived and saves never serialize it. ---
-        public JobKind JobKind;     // None = available for work
+        /// <summary>
+        /// The job this crew member is on; <see cref="JobKind.None"/> = available for work.
+        ///
+        /// <para>⭐⭐ <b>M2-19 — IT IS A PROPERTY, AND THE ONLY REASON IS THE ONE LINE IN THE
+        /// SETTER: writing <see cref="JobKind.None"/> IS "the job ended", so it is also where
+        /// <see cref="HeldByOrder"/> is released.</b> Twenty sites in <c>sim/</c> end a job and they
+        /// do it in every conceivable way — a source's completion, <c>JobWork.AbandonJob</c>,
+        /// <see cref="Simulation.CancelJob"/>, <c>MachineWearSystem.AbandonOrphan</c>,
+        /// <c>SafetySystem</c>'s flee, <c>NeedsSystem.Kill</c> — and EVERY ONE of them assigns
+        /// <see cref="JobKind.None"/> here. Releasing at those twenty sites instead is the same
+        /// five-site discipline that has cost this repo four packages: one missed site is a pawn
+        /// held forever on a job that no longer exists, which nothing can recruit and nothing can
+        /// re-order. Releasing here cannot miss one.</para>
+        ///
+        /// <para>The invariant it buys, and the one <see cref="HeldByOrder"/>'s whole design rests
+        /// on: <b><c>HeldByOrder ⇒ JobKind != None</c></b>. It is RimWorld's placement, not a
+        /// convenience — §2.2 keeps the forced flag on <c>curJob</c>, so it dies with the job.</para>
+        ///
+        /// <para>Setting any NON-<c>None</c> kind leaves the hold alone, which is what lets a writer
+        /// stage a job and then hold it (see <see cref="HeldByOrder"/>'s writer contract). No
+        /// allocation, no branch on a hot read — the getter is a field read, and the setter is on
+        /// the job-transition path, not the per-tick advance.</para>
+        /// </summary>
+        public JobKind JobKind
+        {
+            get => _jobKind;
+            set
+            {
+                // THE RELEASE. Not `if (value != _jobKind)`: SafetySystem writes None (via
+                // CancelJob) to a pawn who may already read None, and a held pawn with no job is
+                // exactly the state this must never leave standing.
+                if (value == JobKind.None) HeldByOrder = false;
+                _jobKind = value;
+            }
+        }
+
+        private JobKind _jobKind;
+
         public Int3 JobTarget;      // dig tile / item tile / stockpile tile (phase-dependent)
         public uint CarryingItemId; // 0 = empty-handed
         public uint ReservedItemId; // the stack this citizen has claimed (haul/eat); 0 = none
@@ -304,10 +389,54 @@ namespace Perilune.Sim
         /// <para>⚠️ <b>It is factored OUT of <see cref="IsRecruitableForWork"/> rather than written
         /// beside it</b> — two independent spellings of "dead, held or under orders" are two things
         /// that drift, and the pre-emption gate must never be able to become laxer than the claim
-        /// gate it is the hypothetical form of. <see cref="IsRecruitableForWork"/> is byte-for-byte
-        /// the expression it was (<c>IsIdleForWork &amp;&amp; !(OrderedMove &amp;&amp; HasPath)</c>).</para>
+        /// gate it is the hypothetical form of. ⚠️ <b>M2-8 left
+        /// <see cref="IsRecruitableForWork"/> byte-for-byte the expression it was
+        /// (<c>IsIdleForWork &amp;&amp; !(OrderedMove &amp;&amp; HasPath)</c>); M2-19 ENDED THAT</b> —
+        /// adding <see cref="HeldByOrder"/> to this property widened both, so
+        /// <see cref="IsRecruitableForWork"/> now also excludes a directly-ordered crew member. The
+        /// factoring is what makes that one edit rather than two, and it is the reason the pair
+        /// still cannot drift. (The widening is INERT on the claim side — see the placement
+        /// paragraph below for why, and for the measurement.)</para>
+        ///
+        /// <para>⭐⭐ <b>M2-19 — <see cref="HeldByOrder"/> IS PLACED HERE, AND THIS IS THE
+        /// PLACEMENT ARGUMENT.</b> The sticky claim has to be un-stealable by EVERY path, and this
+        /// is the ONE predicate every path already shares:
+        /// <list type="bullet">
+        ///   <item><c>JobSystem.Tick</c>'s dispatcher gate (<c>:220</c>) and both push recruiters'
+        ///     idle searches (<c>MachineWearSystem.cs:522</c>, <c>CraftingSystem.cs:654</c>) reach
+        ///     it through <see cref="IsRecruitableForWork"/>;</item>
+        ///   <item>the two LLM gates the enrolment ledger names <b>G4</b> and <b>G5</b> —
+        ///     <c>EffectValidator.cs:119</c> (the GRANT) and <c>CapabilityComputer.cs:78</c> (the
+        ///     OFFER) — do NOT read this property, and are listed anyway because an auditor of
+        ///     "every path" must not have to rediscover them: both gate on
+        ///     <c>JobKind == None</c> directly, so a held pawn is refused there for exactly the
+        ///     reason the claim gates refuse her, and neither needs the hold spelled out;</item>
+        ///   <item>all three <c>IWorkOfferSource.HasClaimableWork</c> implementations reach it
+        ///     directly on the <c>asIfIdle</c> branch (<c>JobSystem.cs:622</c>,
+        ///     <c>MachineWearSystem.cs:469</c>, <c>CraftingSystem.cs:527</c>);</item>
+        ///   <item><b>and so does <c>JobSystem.TryPreempt</c> (<c>:309</c>).</b> M2-8 landed after
+        ///     this package was chartered and it can steal a held pawn: her <c>JobKind</c> maps to a
+        ///     <see cref="WorkType"/>, so the survival guard does not protect her, and a strictly
+        ///     better band takes her off the machine the player pointed at. <i>"That machine,
+        ///     NOW"</i> outranks the grid by definition.</item>
+        /// </list>
+        /// ⚠️ <b>AND HERE IS WHICH OF THOSE SITES CAN ACTUALLY BITE — MEASURED, NOT REASONED.</b>
+        /// Because <see cref="HeldByOrder"/> implies she carries a job, and every CLAIM gate (the
+        /// three above plus G4/G5) already requires <c>JobKind == None</c>, <b>the claim-side clause
+        /// is SUBSUMED and stops nothing</b>;
+        /// the whole hold lives on the PRE-EMPTION path. And that path reads this predicate
+        /// <b>twice</b> — at <c>TryPreempt</c>'s own gate and again inside the <c>asIfIdle</c> offer
+        /// query — so <b>removing the hold from either one alone leaves the suite entirely GREEN
+        /// (0/11 twice); only removing both reddens.</b> ⇒ <b>What is pinned is THIS PROPERTY, not
+        /// either call site</b>, which is precisely why the hold belongs here and not spelled out at
+        /// the sites. ⚠️ The charter's mutation rows 1 and 2 predicted a dispatcher-only hold would
+        /// be re-claimed by a push recruiter in the same tick; that was written before M2-2 moved
+        /// BOTH push recruiters onto <see cref="IsRecruitableForWork"/>, so the rows do redden
+        /// (3/11 each) but by a different mechanism than the one they name. The full measured table
+        /// is in <c>tests/Perilune.Tests/StickyClaimTests.cs</c>'s header.</para>
         /// </summary>
-        public bool IsRecruitableIgnoringJob => !Dead && !HoldPosition && !(OrderedMove && HasPath);
+        public bool IsRecruitableIgnoringJob =>
+            !Dead && !HoldPosition && !HeldByOrder && !(OrderedMove && HasPath);
 
         public void ClearPath()
         {

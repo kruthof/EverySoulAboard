@@ -973,7 +973,7 @@ requires `JobKind == None`, so every recruiter and the dispatcher alike could on
 somebody who had none.
 
 **The seam is `JobSystem.Tick`'s BUSY branch** (`Jobs/JobSystem.cs:232` → `TryPreempt`,
-`:287-307`), and it is there rather than in `TryAssign` because **that loop is the only place that
+`:287-323`), and it is there rather than in `TryAssign` because **that loop is the only place that
 sees every busy pawn**: `JobKind.Craft` and `JobKind.Maintain` have no `IJobSource` at all, so
 their pawns reach the loop and fall out at `owner == null`. One check therefore reaches a pawn
 inside a maintenance chain exactly as it reaches a hauler; `TryAssign` is only ever entered by
@@ -981,17 +981,18 @@ pawns with no job to lose. Order per tick: pre-empt → `continue` (she is NOT a
 she is offered work again on the NEXT tick's pass. **One tick**, which is what the M2-0 spike
 measured (order at t=231 → `Deconstruct` at t=232).
 
-The predicate, in order (`JobSystem.cs:290-301`):
+The predicate, in order (`JobSystem.cs:290-317`):
 
 1. `WorkTypeMap.TryOf(citizen.JobKind, …)` must succeed. **This is the whole survival guard** —
    `Flee`, `Eat` and `Drink` carry no `WorkType` and are refused here. There is deliberately no
    second check listing them (two guards for one rule and neither can be shown to bite);
    `PreemptionTests.SurvivalKinds_CarryNoWorkType_WhichIsTheWholeSurvivalGuard` pins the premise.
-2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:292-310`, NEW) — `IsRecruitableForWork`
+2. `Citizen.IsRecruitableIgnoringJob` (`Entities/Citizen.cs:438`, NEW in M2-8) — `IsRecruitableForWork`
    with the "carries no job" clause factored out. Dead, `HoldPosition`, or mid-ordered-walk still
    refuse: taking the job would strand her, because the same facts stop anything from giving her
-   another. `IsRecruitableForWork` is now expressed as `IsRecruitableIgnoringJob && JobKind == None`
-   and is byte-for-byte the predicate it was.
+   another. `IsRecruitableForWork` is expressed as `IsRecruitableIgnoringJob && JobKind == None`.
+   ⚠️ **M2-19 added `&& !HeldByOrder` to this property** — a direct order refuses pre-emption
+   outright, and this is the step that does it. See §6.2c.
 3. Her band must be neither `Off` (she is finishing work the player has since switched off — M2-2's
    decided behaviour) nor `Highest` (nothing can outrank band 1).
 4. `WorkArbiter.HasOfferAboveBand` (`Jobs/WorkArbiter.cs:229-258`, NEW) — **BAND ONLY.** It queries
@@ -1010,7 +1011,7 @@ haul board), a station's `Progress` and a build site's `Delivered` — because t
 
 **The offer query asks a hypothetical.** `IWorkOfferSource.HasClaimableWork` gained a required
 `asIfIdle` argument (`WorkArbiter.cs:50-61`); `true` swaps ONLY the `IsRecruitableForWork` gate for
-`IsRecruitableIgnoringJob` in all three providers (`JobSystem.cs:606`, `MachineWearSystem.cs:469`,
+`IsRecruitableIgnoringJob` in all three providers (`JobSystem.cs:622`, `MachineWearSystem.cs:469`,
 `CraftingSystem.cs:527`). Every other early return still applies, because an over-report is still a
 silent stall — and a pre-emption built on one takes a pawn off real work for work that does not
 exist. Both push providers skip a device that already has a worker, which is what stops a Craft or
@@ -1022,7 +1023,62 @@ nothing enabled above her own band never reaches a provider. At the OD-H default
 matched. Allocation-free, no RNG. **Pin-neutral** (P1–P5 unmoved), for the reason above: nothing is
 enabled ⇒ nothing is claimed ⇒ nothing to pre-empt.
 
-### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:85-97`)
+### 6.2c THE STICKY CLAIM — a direct order outranks the grid (M2-19, 2026-07-30)
+
+§6.2b gave the grid the power to take a busy pawn back. **The same power eats the player's own
+direct order**: a crew member ordered onto a band-4 job is pre-empted off it by anything the grid
+ranks higher, and the M2-0 spike measured `MaintenanceSystem` re-claiming a directly-ordered pawn
+**within the same tick** (idle 11 ticks of 30 000). `Citizen.HeldByOrder` is what outranks the grid.
+
+**The state** is the M2-1 bool (`Entities/Citizen.cs:200`, CITZ v8, hashed at bit 5). ⚠️ **Nothing
+writes it in play yet** — the writer is M2-9's `PrioritiseJobCommand`, so this section describes a
+mechanism that is LIVE and UNREACHED (see §13.25).
+
+**The rule, in ONE predicate.** `Citizen.IsRecruitableIgnoringJob` (`:438`) gained `&& !HeldByOrder`
+and nothing else changed, because that property is what every gate already shares: the dispatcher
+(`JobSystem.cs:220`) and both push recruiters (`MachineWearSystem.cs:522`, `CraftingSystem.cs:654`)
+reach it through `IsRecruitableForWork`, all three `HasClaimableWork` implementations read it
+directly on the `asIfIdle` branch, and so does `JobSystem.TryPreempt` (`:309`).
+
+**The two LLM gates are named here too, so an audit of "every path" is complete.** `EffectValidator`
+(`:119`, the GRANT — M2-2's G4) and `CapabilityComputer` (`:78`, the OFFER — G5) do **not** read the
+property: each tests `JobKind == None` itself. A held pawn is therefore refused at both, for exactly
+the reason the claim gates refuse her, and neither needs the hold spelled out.
+
+> ⚠️ **WHICH OF THOSE SITES ACTUALLY BITES — MEASURED, and it is not what the charter predicted.**
+> A held pawn always carries a job, and every CLAIM gate — the three above plus G4/G5 — already
+> requires `JobKind == None`, so the
+> claim-side clause is **subsumed and stops nothing**; the entire hold lives on the pre-emption path.
+> That path reads the predicate **twice** (`TryPreempt`'s gate and the `asIfIdle` offer query), and
+> blinding either one alone leaves `StickyClaimTests` **fully green** — only blinding both reddens
+> it. **The pinned fact is the property, not either call site.**
+
+**The invariant is `HeldByOrder ⇒ JobKind != None`**, and it is RimWorld's placement rather than a
+convenience: `docs/design/rimworld-reference.md` §2.2 reads the forced flag off `curJob.playerForced`
+— it lives on the job and dies with it. Enforced in the **`Citizen.JobKind` property setter**
+(`:313-324`), which is why that field stopped being a plain field: **twenty sites in `sim/` end a
+job and every one of them assigns `JobKind.None`**, so releasing there covers completion, a new
+direct order (which cancels first), death (`NeedsSystem.Kill` → `Simulation.CancelJob`), and every
+genuine inability — safety (`SafetySystem.cs:233`), the target vanishing, a lost path
+(`JobWork.AbandonJob`). Releasing at the twenty sites instead is the five-site discipline again, and
+one missed site is a crew member nothing may recruit and nothing can re-order.
+
+**What is deliberately NOT built:** RimWorld's other half, `Pawn_MindState.priorityWork` — a saved
+(cell, workGiver, tick) record that RE-ISSUES the prioritised job and **expires after 30 000 ticks**.
+It needs a saved target this pin-neutral package may not add, and the integrator ruling rejects the
+timeout outright (*"a timeout makes the hold a race the player cannot see"*). ⇒ **the 30 000-tick
+timeout is a knowing divergence from §2.2**, and a job that ends is the end of the order: she does
+not resume it after a flee or a needs break.
+
+⛔ **Survival is untouched.** `SafetySystem` consults no recruitability predicate at all, and
+`SustenanceSystem` gates on `IsIdleForWork` (`:345`), which does **not** carry the hold — the same
+line E0-3 drew for `OrderedMove`. Folding the hold into `IsIdleForWork` reddens a driven leg.
+
+**Pin-neutral** (P1–P5 unmoved): nothing writes the bool, so no shipped run's behaviour moves.
+Allocation-free, no RNG. Pinned by `tests/Perilune.Tests/StickyClaimTests.cs` (11 legs, measured
+mutation table in the fixture header).
+
+### 6.3 `JobKind` lifecycles (`Entities/Citizen.cs:313-324` the property, `:461-476` the enum)
 
 | kind | owner | lifecycle |
 |------|-------|-----------|
@@ -3017,9 +3073,9 @@ nothing in the sim expresses. It does NOT apply to the band case this package sh
 push gate refuses the re-claim whenever the better-banded work is real. The acceptance for M2-8 is
 therefore the driven suite, and the demo waits for the STICKY CLAIM (**M2-19**).
 
-**b. `Citizen.HeldByOrder` is written by nobody and read by nobody** (`Entities/Citizen.cs:152`).
-It is M2-19's field, pre-declared; M2-8 deliberately does not touch it. Until it has a reader,
-"keep this crew member on this job" is not a sentence the sim can say.
+**b. ~~`Citizen.HeldByOrder` is written by nobody and read by nobody~~ — HALF CLOSED BY M2-19
+(2026-07-30).** It now HAS a reader (`Citizen.IsRecruitableIgnoringJob`, §6.2c) and the sim can say
+"keep this crew member on this job". ⚠️ **It still has no WRITER in play** — see §13.25.
 
 **c. THE OFFER QUERY IS OPTIMISTIC AND A PRE-EMPTION CAN THEREFORE BE WASTED.** `HasClaimableWork`
 stops short of the A* (`IWorkOfferSource`'s declared one-sided contract), so a pre-emption whose
@@ -3031,3 +3087,25 @@ fixture, filed because it is a real shape and not a hypothetical one.
 `Off`, and the predicate refuses (§6.2b step 3). She finishes and then waits, which is M2-2's
 decided behaviour — recorded here because "switch it off and she stops" is a reasonable thing for a
 player to expect and it is not what happens.
+
+### 13.25 M2-19's sticky claim is LIVE in the sim and has NO WRITER (2026-07-30)
+
+The mechanism is §6.2c and it is driven and pinned (`StickyClaimTests`, 11 legs). What is NOT there:
+
+**a. ⛔ NOTHING WRITES `Citizen.HeldByOrder` ANYWHERE IN `sim/`, `hosts/` OR `client/`.** The writer
+is M2-9's `PrioritiseJobCommand`, by charter. Every leg of the suite stages the hold the way that
+command must — **the job first, the bool second** — because the release fires on the way past
+`JobKind.None` and a writer that set the bool first would watch it be cleared again.
+
+**b. ⛔ THERE IS NO BROWSER DEMO, BY CHARTER.** M2-19's own acceptance steps are written against a
+right-click *"Prioritise: repair"* that does not exist yet; the demo is M2-10's milestone.
+
+**c. NEITHER PRE-EMPTION CALL SITE IS INDIVIDUALLY PINNED** for the hold — the predicate is read
+twice on that path and blinding either alone is green (§6.2c). Named so that a later lane does not
+read the `TryPreempt` line as guarded.
+
+**d. THE HOLD CANNOT SURVIVE AN INTERRUPTION, AND NOTHING RE-ISSUES THE ORDER.** A flee, a needs
+break or any abandon ends the job and therefore the order; she does not go back to the machine the
+player pointed at. That is §2.2's forced-work behaviour minus RimWorld's re-issuing `priorityWork`
+record, which this package may not build (it would need a saved target). **Expect a player to notice
+this**: "I told her to fix THAT and she wandered off after the vacuum scare" is the shape of it.

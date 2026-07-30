@@ -26,6 +26,12 @@ namespace Perilune.Tests
     ///      per slot, because a fold that drops five of six slots passes any test written against
     ///      the array as a whole.
     ///   3. NOTHING READS IT — the package's own headline claim, mechanised rather than asserted.
+    ///      ⚠️ TRUE OF M2-1's TREE ONLY: M2-2 landed the veto (see the enrolment ledger below, which
+    ///      records that correction), and M2-19 gave <c>HeldByOrder</c> a reader too
+    ///      (<c>Citizen.IsRecruitableIgnoringJob</c> — the sticky claim). What survives is the
+    ///      MECHANISM: a ledger that only grows. <c>Skill</c> is the last field here with no reader.
+    ///      The three <c>HeldByOrder</c> legs in this file are still M2-19's save/hash pins — it
+    ///      deliberately adds no fourth spelling of them.
     ///
     /// ⚠️ THE DEFAULT IS OFF, A DELIBERATE DIVERGENCE FROM RIMWORLD — and a smaller one than it is
     /// usually stated. RimWorld's <c>EnableAndInitialize</c> also starts from a ZEROED grid and then
