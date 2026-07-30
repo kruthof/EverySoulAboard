@@ -227,9 +227,12 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `c1bac287230e184e`
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `81733e27709f36e4`
 (pinned in `ci.sh`); tick-3000 golden `482fd40c070b54e0`; slice tick-3000 golden
-`0dcbff3e167750d8`; defs checksum `0c5ddbc07e41f07d` (this is `SimDefs.Default.Checksum`, the
+`94c29d5f6408d91c`. Most recent mover: **M2-2** (PIN M2-e, 2026-07-30) — the work-type
+veto reads the grid M2-1 stored, a behaviour change on every ship with working crew
+(scenario `c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held —
+its two crew are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d` (this is `SimDefs.Default.Checksum`, the
 compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
 print, which is a different value). The scenario + slice pins + defs checksum most recently moved
 with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety

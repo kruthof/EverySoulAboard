@@ -48,7 +48,7 @@ drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2
 | ✅ | M2-21 | silent BUILD haul back-off (defect D-2) — merged 2026-07-29; pins MEASURED HELD (geometry, non-vacuity proven driven), so pin row M1-c left the chain with no re-pin | M1-c DONE |
 | ✅ | M2-4 | `work` wire channel + `SetWorkPriorityCommand` — merged 2026-07-29, pin-neutral proven (check A empty, all pins held) | neutral DONE |
 | ✅ | M2-3 | the WORK tab — merged 2026-07-30, pin-neutral; acceptance steps 4/6 DEFERRED BY NAME to M2-2 (need the veto; M2-2's acceptance runs the full five-step sequence) | neutral DONE |
-| 11 | M2-2 | the work-type veto in the dispatcher: 11 claim sites, 5 gates, 3 exclusions — runs alone | M2-e |
+| ✅ | M2-2 | the work-type veto — merged 2026-07-30, PIN M2-e re-pinned (P1/P3 moved, P2 held); full five-step acceptance driven incl. M2-3's deferred steps 4/6 | M2-e DONE |
 | 12 | M2-20 | "the ship is waiting on you" boot state (OD-G) — same window as M2-2 or the game reads broken | neutral |
 | 13 | M2-18 | the refusal M2 itself creates (everything-OFF is now the default experience) | neutral |
 | 14 | M2-5 | cross-family ranking: band loop + push gate, both halves, five entry sites; tie-break = OD-J's work-list order | M2-g |
@@ -62,9 +62,9 @@ drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2
 | 22 | M2-17 | re-baseline: teach the occupancy harness to author a grid (OD-I) — INFRA | neutral |
 
 Retracted / never existed: M2-7, M2-13…M2-16. M1-J dropped same day (survives as a source
-comment). Pin rows remaining, in order: `M2-e` → `M2-g` → `M2-c` → `M2-d` → `M3-a…d`;
-`M1-c` (M2-21, if it moves a pin) slots before `M2-e`; `M2-a` is done. Letters are
-historical ids, not ordinals.
+comment). Pin rows remaining, in order: `M2-g` → `M2-c` → `M2-d` → `M3-a…d`. Done: `M2-a`
+(M2-1) · `M1-c` (M2-21, measured pin-neutral, left the chain) · `M2-e` (M2-2, tag
+`pin/m2-e`). Letters are historical ids, not ordinals.
 
 ## 4. M3–M5 (outlines; charters get written at end of M2, not before)
 

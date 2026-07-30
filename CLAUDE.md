@@ -128,13 +128,15 @@ evidence, even from this file** — re-measure before quoting.
 
   | pin | value | enforced by |
   |---|---|---|
-  | P1 scenario `--days 3 --seed 42` | `c1bac287230e184e` | `ci.sh:36` (+ twin-run equality) |
+  | P1 scenario `--days 3 --seed 42` | `81733e27709f36e4` | `ci.sh:36` (+ twin-run equality) |
   | P2 tick-3000 golden | `482fd40c070b54e0` | `Golden/perilune_tick3000_hash.txt` |
-  | P3 slice tick-3000 golden | `0dcbff3e167750d8` | `Golden/slice_tick3000_hash.txt` |
+  | P3 slice tick-3000 golden | `94c29d5f6408d91c` | `Golden/slice_tick3000_hash.txt` |
   | P4 defs defaults checksum | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs` |
   | P5 defs rules-inclusive (`defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs` |
 
-  Last mover: M2-1 (PIN M2-a, 2026-07-29) — P1/P2/P3 for the CITZ v8 fold; P4/P5 held.
+  Last mover: M2-2 (PIN M2-e, 2026-07-30) — P1/P3 for the work-type veto (a behaviour
+  change: the state M2-1 stored is now read; P2 held because perilune's crew are
+  HoldPosition). Before that: M2-1 (PIN M2-a, 2026-07-29), P1/P2/P3 for the CITZ v8 fold.
   P4 and P5 are different values for different things; never paste the occupancy header's
   hash into the defaults pin. Golden rewrite only when intended: `UPDATE_GOLDEN=1 …
   --filter …`, say why.
