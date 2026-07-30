@@ -15,8 +15,10 @@
 //      non-console surface actually reaches that getter (which is what puts `getWork` on
 //      `SHIP_STATE_REACH`).
 //
-// NOTHING HERE DRAWS ANYTHING, because nothing yet does: the WORK tab is M2-3. This file pins the
-// data path, which is exactly what this package ships.
+// NOTHING HERE DRAWS ANYTHING — this file pins the DATA PATH, which is what M2-4 shipped. ⭐ M2-3 has
+// since built the surface that draws it (`client/test/overview-model.test.js`, the WORK TAB
+// section), and added the one cross-language leg below that only this file could carry: the column
+// order against the sim's own ranking.
 //
 // EVERY SOURCE SCAN READS CODE, NOT PROSE — `codeOnly` is IMPORTED from the shared
 // `client/test/code-only.js` (CLAUDE.md trap 1: a guard matching raw source text is satisfied by the
@@ -30,6 +32,7 @@ import { dirname, join } from 'node:path';
 
 import { decode, decodeWork } from '../src/wire/messages.js';
 import { codeOnly } from './code-only.js';
+import { WORK_COLUMNS } from '../src/ui/overview-model.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(here, '..');
@@ -94,6 +97,43 @@ test('the priority domain is the SIM\'s: 0 = off, 1..4 with 1 the HIGHEST', () =
     'there are no longer six work types. The channel emits one row per switched-ON type and the host '
     + 'loop is bounded by this constant; a seventh type needs no client change, but a client that '
     + 'hard-codes six columns would silently hide it.');
+});
+
+// ⭐ M2-3 — THE COLUMN ORDER IS OD-J's, AND IT IS A CROSS-LANGUAGE FACT WITH NO COMPILER. The client
+// carries the column table as a literal (`WORK_COLUMNS`, `overview-model.js`) because a column order
+// is a display decision, and the sim carries the ranking it must agree with as
+// `WorkPriority.NaturalPriority`. Those two are the SAME owner decision — OD-J, *Repair · Construct ·
+// Craft · Deconstruct · Mine · Haul* — expressed twice, and nothing but this test relates them.
+//
+// The tab's own tests pin the client half by literal (`overview-model.test.js`); what only this seam
+// can see is a DRIFT, i.e. the sim re-ranking arbitration while the tab keeps displaying the old
+// order. The player would then read a grid whose left-to-right reading — the one RimWorld teaches,
+// reference §1.3 — is simply false about what their crew will do first.
+//
+// MUTATION: swap two rows of `BuildNaturalPriorities` in Citizen.cs (e.g. give Haul 900 and Repair
+// 100) ⇒ this fails and names both files. MUTATION 2: reorder `WORK_COLUMNS` ⇒ same.
+test('the WORK tab\'s column order is the SIM\'s ranking — OD-J, on both sides of the seam', () => {
+  const rows = [...CITIZEN_CS.matchAll(/table\[\(int\)WorkType\.(\w+)\]\s*=\s*(\d+);/g)]
+    .map((m) => ({ name: m[1], natural: Number.parseInt(m[2], 10) }));
+  assert.equal(rows.length, 6,
+    'the natural-priority table in sim/Sim.Core/Entities/Citizen.cs no longer parses as six rows — '
+    + 'this comparison has rotted and would pass vacuously');
+  // NaturalPriority DESCENDING is what `WorkPriority.RankedOrder` derives and what a work tab's
+  // columns are supposed to be derived from (the sim says so in RankedOrder's own summary).
+  const simOrder = rows.slice().sort((a, b) => b.natural - a.natural).map((r) => r.name);
+  assert.deepEqual(simOrder, ['Repair', 'Construct', 'Craft', 'Deconstruct', 'Mine', 'Haul'],
+    'the sim\'s natural-priority ranking is no longer OD-J\'s order');
+  // The client addresses each column by its WorkType INDEX, so the two orders are compared through
+  // the enum values rather than through the display labels (which are the tab's own wording).
+  const enumIndex = Object.fromEntries(
+    [...CITIZEN_CS.matchAll(/^\s*(Repair|Construct|Craft|Deconstruct|Mine|Haul)\s*=\s*(\d+),/gm)]
+      .map((m) => [m[1], Number.parseInt(m[2], 10)]));
+  assert.deepEqual(WORK_COLUMNS.map((c) => c.type), simOrder.map((n) => enumIndex[n]),
+    'the WORK tab\'s columns (client/src/ui/overview-model.js WORK_COLUMNS) are no longer in the '
+    + 'sim\'s natural-priority order. RimWorld\'s players read a work grid left-to-right as "what '
+    + 'gets done first" (reference §1.3: "left is first" is a correct PREDICTION only because the '
+    + 'tab is displayed in naturalPriority order), so a drift here makes the grid lie about '
+    + 'arbitration without changing a single number on screen.');
 });
 
 // ════════════════════════════════════════════════════════════════════════ the decoder
@@ -171,9 +211,10 @@ test('a non-console surface actually READS the cache — the getter is not orpha
     + 'will ever benefit from — and `getWork` is on SHIP_STATE_REACH, which is computed from actual '
     + 'reaches, so this would also make that census wrong.');
   assert.match(OVERVIEW, /export function workPriorityFor\(cid, workType\)/,
-    'the `work` reader seam is gone from overview-view.js. It is deliberately caller-less in this '
-    + 'package (the WORK tab is M2-3) — the `deviceConditionAt` shape — but it must exist and be '
-    + 'reachable, or M2-3 has nothing to read the grid through.');
+    'the `work` reader seam is gone from overview-view.js. It shipped caller-less at M2-4 — the '
+    + '`deviceConditionAt` shape — and ⭐ M2-3 gave it its first real callers: the WORK grid reads '
+    + 'every cell through it and the click handler reads the cell\'s current value through it to '
+    + 'compute the next step of the cycle.');
 });
 
 // ═════════════════════════════════════════════════════════════════ the scans' own controls

@@ -101,6 +101,28 @@ export const Cmd = {
   // outcome and never guesses the reason: an unpowered, inoperative, unfixably-wrecked or locked
   // device is exactly the case a silent toggle makes indistinguishable from a broken verb.
   operate: (x, y, deck) => ({ cmd: 'operate', x, y, deck }),
+  // ⭐ M2-3 — THE WORK-PRIORITY ORDER, the write half of the WORK tab: set ONE crew member's manual
+  // priority for ONE work type. `work` is a `WorkType` index (0..5 in OD-J's order
+  // Repair·Construct·Craft·Deconstruct·Mine·Haul) and `priority` is 0 = off or 1..4 with **1 the
+  // HIGHEST** (the sim's convention, which reads backwards against intuition).
+  //
+  // WHOLE-VALUE, NEVER A DELTA — the same contract dig/stockpile/strip/filter chose, and for the
+  // sharper version of their reason: the cell's cycle is computed from the LIVE `work` cache at
+  // click time, so a "+1" message would be re-interpreted against whatever the sim held when it
+  // arrived, and two clicks landing in one tick would compound instead of overwriting. The client
+  // never ghosts the outcome either: the cell repaints from the `work` channel when the sim echoes
+  // it back, so what is on screen is always what the sim holds.
+  //
+  // `| 0` on all three keeps the payload integral (the host reads JSON ints; fractions would be
+  // digit-scanned to something else). It is NOT a guard against `undefined` — `undefined | 0` IS 0,
+  // which is a real order in both fields (`work` 0 = Repair, `priority` 0 = off). The callers are
+  // the guard: every call site passes dataset ints. The host's own absent-key sentinel is -1
+  // (`GameSession.WebCommand.Parse`), which this function can never produce — deliberately, since
+  // it only ever speaks whole orders. (Reviewer-corrected 2026-07-30: the earlier text claimed
+  // `| 0` stopped `undefined` from reading as an order, which is exactly backwards.)
+  workPriority: (cid, work, priority) => ({
+    cmd: 'workPriority', cid: cid | 0, work: work | 0, priority: priority | 0,
+  }),
   // ⭐ M1-L: `addRoom` — the `{cmd:'addroom'}` sender — is DELETED. It was the client's ONLY route to
   // `CmdKind.AddRoom`, and `GameSession` no longer parses the verb or routes it. ⭐ M1-L-b then
   // deleted the enum member and the sim's `AddRoomCommand` as well, so nothing named "add room"

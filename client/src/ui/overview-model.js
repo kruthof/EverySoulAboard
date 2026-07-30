@@ -340,6 +340,99 @@ export function tabIsInert(key) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// M2-3 — THE WORK GRID's pure half: the column table and the cell's click cycle.
+//
+// ⛔ `'work'` MUST NEVER JOIN `INERT_TABS` ABOVE. Under OD-H every work type boots OFF for every
+// crew member, and this tab is the ONLY surface anywhere that can switch one on — an inert WORK tab
+// is not a missing convenience, it is a game in which no crew member can ever do anything. That is
+// the `chron` failure shape (emitted, cached, unreachable) applied to the milestone's premise, and
+// `overview-model.test.js` reddens if `'work'` appears in that array.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The WORK tab's columns, in OD-J's order: **Repair · Construct · Craft · Deconstruct · Mine ·
+ * Haul** — repair first because it is the wreck's premise, haul last as in RimWorld.
+ *
+ * ⚠️ THE INDEX IS THE WIRE VALUE, not the position: `type` is the `WorkType` enum value the
+ * `workPriority` command carries and the `work` channel is keyed by, and it is written out per
+ * column rather than inferred from the array position so that re-ordering the DISPLAY here can
+ * never silently re-address the sim. (The sim splits the same two things for the same reason:
+ * `WorkPriority.NaturalPriority` is the ranking, `WorkType` is the address, and
+ * `WorkPriority.RankedOrder` derives one from the other — `sim/Sim.Core/Entities/Citizen.cs`.)
+ *
+ * The order here agrees with that ranking (natural priority descending) and `work-model.test.js`
+ * pins the two against each other across the language seam, where no compiler can.
+ * @typedef {{type:number,label:string,title:string}} WorkColumn
+ */
+export const WORK_COLUMNS = Object.freeze([
+  Object.freeze({ type: 0, label: 'REPAIR', title: 'Repair — patch damaged hull, conduits and devices' }),
+  Object.freeze({ type: 1, label: 'BUILD', title: 'Construct — raise walls, doors and floors from queued ghosts' }),
+  Object.freeze({ type: 2, label: 'CRAFT', title: 'Craft — work benches and fabricators' }),
+  Object.freeze({ type: 3, label: 'STRIP', title: 'Deconstruct — take apart what is marked for salvage' }),
+  Object.freeze({ type: 4, label: 'MINE', title: 'Mine — dig out debris and rubble' }),
+  Object.freeze({ type: 5, label: 'HAUL', title: 'Haul — carry loose stock to stockpiles' }),
+]);
+
+/** The priority domain, mirroring `WorkPriority` in `sim/Sim.Core/Entities/Citizen.cs`.
+ *  ⚠️ **1 IS THE HIGHEST AND 4 THE LOWEST** — RimWorld's convention (reference §1.2), which reads
+ *  backwards against the intuition that a bigger number matters more, which is why these are named
+ *  here rather than written as literals at the call sites below. */
+export const WORK_OFF = 0;
+export const WORK_HIGHEST = 1;
+export const WORK_LOWEST = 4;
+
+/**
+ * ONE CLICK, ONE STEP OF THE CYCLE: `off → 1 → 2 → 3 → 4 → off`. PURE.
+ *
+ * ⚠️ RIMWORLD PAIRS TWO GESTURES AND WE SHIP ONE, DELIBERATELY. In RimWorld's manual-priorities
+ * grid a LEFT click walks the cycle *downwards* (`off → 4 → 3 → 2 → 1 → off`) and a RIGHT click
+ * walks it *upwards*; the two are inverses of one another and every value is reachable from either.
+ * This surface ships only the upward walk, on the plain left click, for two reasons:
+ *   · **Reachability is unaffected** — every value is at most four clicks away with one gesture, so
+ *     the second gesture buys speed, not capability, and a right-click menu on a grid cell is a new
+ *     input path with its own suppression rules on a surface that already has an armed-tool mode.
+ *   · **The first click is the one that matters here.** Under OD-H the grid boots ENTIRELY off, so
+ *     the overwhelmingly common gesture is the first click on an `off` cell, and this direction
+ *     makes that click mean *"do this, ahead of everything else"* (priority 1) rather than
+ *     *"do this, last"* (priority 4). RimWorld's grid boots with work already enabled at 3, so its
+ *     common gesture is an ADJUSTMENT and the opposite default is right for it.
+ *
+ * `current` is `workPriorityFor`'s answer, so it may be `null` (the channel has not arrived), `0`
+ * (off), `1..4` — or, per reference §1.2, an out-of-domain number: RimWorld's own `SetPriority`
+ * logs and STORES a value outside `0..4`, so "the domain is a convention the UI honours, not an
+ * invariant the setter enforces". Anything outside the live `1..4` domain — `null`, `0`, a negative,
+ * a `9` — therefore re-enters it at `WORK_HIGHEST` rather than stepping to another illegal value.
+ * @param {number|null} current @returns {number} the priority the click should send
+ */
+export function nextWorkPriority(current) {
+  const p = Number.isFinite(current) ? (current | 0) : WORK_OFF;
+  if (p >= WORK_HIGHEST && p < WORK_LOWEST) return p + 1;
+  if (p === WORK_LOWEST) return WORK_OFF;
+  return WORK_HIGHEST;
+}
+
+/**
+ * What a cell reads. PURE.
+ *
+ * ⚠️ THREE STATES, AND TWO OF THEM ARE NOT THE SAME ANSWER. `0` is *the player has this switched
+ * off*; `null` is *no `work` payload has arrived yet*, which is a different claim and must not be
+ * rendered as "off" (the seam's own warning in `overview-view.js`). Under OD-H every work type
+ * really IS off at boot, so conflating them would be invisibly wrong exactly when it is least
+ * noticeable — a grid that reads a correct "off" it cannot actually know.
+ *
+ * ⛔ AND OFF IS NEVER `"0"`. A zero in a grid of numbers reads as a priority — the *worst* priority,
+ * next to 4 — when it means the opposite: not at all. OD-H makes that the state of every cell on
+ * screen at boot, so the whole grid would read as "everyone does everything, badly".
+ * @param {number|null} priority @returns {{text:string, state:'off'|'set'|'wait'}}
+ */
+export function workCellLabel(priority) {
+  if (!Number.isFinite(priority)) return { text: '·', state: 'wait' };
+  const p = priority | 0;
+  if (p === WORK_OFF) return { text: 'off', state: 'off' };
+  return { text: String(p), state: 'set' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // LENS recolor (IX-O-29/30). A non-`none` lens grades each room by one metric; the grade picks a
 // translucent wash painted over the floor. Grades reuse the console's danger language (one meaning,
 // one colour). Water has no per-room wire value (rooms carries no H₂O) and power is a per-slot
