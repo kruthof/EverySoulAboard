@@ -301,7 +301,15 @@ const WEAR_SEAM_CENSUS = Object.freeze({
   // `roomOperableTiles(_deviceCond)` derivation, and the map handed to `furnitureSvg` (the draw)
   _deviceCond: 5,
   // the exported declaration + `doOperate`'s local "is there even a device here?" check
-  deviceConditionAt: 2,
+  // ⭐ + M2-10's THIRD: `onCanvasContext` asks the same question for the right-click PRIORITISE menu.
+  // RE-MEASURED off the merged tree with the shipped `codeOnly` stripper (2026-07-30), not adjusted
+  // from 2 — the header two paragraphs up is about exactly the arithmetic that produces a stale
+  // number. The seam's MEANING is unchanged: the new caller is another "is there anything here?"
+  // read, not a second answer to "which picture", and it deliberately reads NOTHING but presence —
+  // `cond` and `oper` still have exactly one consumer each. The reason it is here at all is the same
+  // one `doOperate` gives: the `devices` channel is the fog-gated population the host resolves an
+  // order through, so a menu offered anywhere else promises an order the sim cannot take.
+  deviceConditionAt: 3,
   roomDeviceConditions: 2,  // the import + the one repaint call
   decodeDevices: 2,         // the import + the one repaint call
   getDevices: 1,            // the single `Hud.getDevices()` inside that same repaint call

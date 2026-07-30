@@ -1462,6 +1462,37 @@ body.moss-open #roomzoom-view{display:none !important}
    it is the one line in this row that is about the map rather than about the brush. */
 .rz-acc-diff{color:#f2b563}
 
+/* ⭐ M2-10 — the right-click PRIORITISE menu. `position:fixed`, NOT absolute like its neighbours: the
+   box is placed from the pointer event's own `clientX/clientY`, and those are viewport coordinates —
+   an absolutely-positioned box would be offset by whatever `#roomzoom-view`'s box happens to be, i.e.
+   correct today and wrong the day the surface grows a margin. `white-space:nowrap` because the row
+   names a machine and a wrapped verb reads as two rows in a menu that only has one.
+
+   ⚠️ THE z-index IS 26 AND IT ONLY CLAIMS WHAT IT CAN DELIVER: topmost WITHIN THIS SURFACE, over the
+   nudge (24), the toast (22) and the crew dock (21). It cannot claim more, and the comment that stood
+   here claimed more — QUOTED AND RETRACTED, because it stated a measurement that is false:
+   *"z-index 130 IS MEASURED, NOT PICKED … `.onb-help` … is `z-index:120` GLOBAL chrome … It is 130
+   now — above persistent chrome."* **130 was INERT.** `#roomzoom-view` is `position:fixed;
+   z-index:20` (above), which makes it a STACKING CONTEXT, and `.onb-help` is appended to
+   `document.body` (`client/src/ui/onboarding.js:325`). A descendant is ordered only inside its own
+   context, so NO value here — 26, 130, 9999 — can outrank a body-level sibling context. Independent
+   review measured it in headless Chrome: with 130 shipped, `elementFromPoint` over a ~240×24 px strip
+   at the top-right still answered `onb-help`. The bug the number was supposed to fix was still live
+   and the comment said it was fixed, which is worse than the occlusion.
+   ⇒ THE COLLISION IS SOLVED GEOMETRICALLY, in `roomzoom-view.js`'s `openCtx`: the box is clamped so
+   it never opens over the circle's measured rect. That is the remedy this stylesheet ALREADY chose
+   for the identical collision — `.ov-nudge` is `right:74px`, NOT `26px`, for exactly this reason
+   (see its own comment above). Geometry crosses stacking contexts; z-index does not. Raising
+   `#roomzoom-view`'s own z-index would also work and is refused: it lifts the whole surface over
+   body-level chrome and trades one occlusion for another. */
+.rz-ctx{position:fixed;z-index:26;padding:4px;border-radius:8px;display:flex;flex-direction:column;
+  gap:2px}
+.rz-ctx[hidden]{display:none}
+.rz-ctx-item{padding:6px 12px;border-radius:6px;border:1px solid rgba(46,40,32,.6);
+  background:rgba(18,15,11,.55);color:var(--amber-light,#f2b563);font:inherit;font-size:10.5px;
+  letter-spacing:.08em;text-align:left;white-space:nowrap;cursor:pointer}
+.rz-ctx-item:hover{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+
 /* transient toast (deferrals / honest limits) */
 .rz-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:22;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);

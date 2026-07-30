@@ -1154,7 +1154,61 @@ export function deckDeviceConditions(devices, deck) {
  * (`docs/design/perilune-wreck-start.plan.md` W5) — and chipping a pod here would advertise a
  * one-click bypass of that gate. `GameSession.IsOperableKind` refuses it on the same grounds.
  */
-export const OPERABLE_KINDS = Object.freeze({ Door: 0, AirVent: 1 });
+/**
+ * ⭐ M2-10 — THE `DeviceKind` ENUM, BY INDEX: `DEVICE_KIND_NAMES[byte]` is the sim's own member name.
+ * The `devices` channel carries `kind` on every row (`decodeDevices`, `wire/messages.js`), and
+ * `roomDeviceConditions` keeps it — so a surface can name the machine standing on a tile from the
+ * SIM'S OWN IDENTITY rather than from the picture drawn there.
+ *
+ * ⚠️ IT IS THE **ONE** TABLE, AND `OPERABLE_KINDS` IS NOW DERIVED FROM IT. The two used to be one
+ * table each, which is how the same enum gets mirrored twice and drifts once. A second naming
+ * predicate beside this one is the defect, not the fix.
+ *
+ * ⚠️ IT IS A HAND MIRROR OF A C# ENUM AND IT IS PINNED BY DERIVATION, not by this comment:
+ * `client/test/prioritise-menu.test.js` PARSES `sim/Sim.Core/Entities/Device.cs` and requires this
+ * array to equal every member IN ORDER, by name and by index. A renumber, an insertion, or an
+ * appended member reddens there — the technique `operate-model.test.js` already uses on the operable
+ * pair, `stock-filter-model.test.js` on `ItemStack.cs` and `palette.test.js` on `GlyphColor.cs`.
+ *
+ * ⚠️ WHY NAMING FROM THE ART WOULD BE WRONG, MEASURED. `itemForGlyph` resolves a tile's glyph to a
+ * registry piece, and `items/glyph-map.js`'s `GLYPH_SUBSTITUTE` deliberately lets a device WEAR
+ * ANOTHER PIECE'S ART where the set has no piece of its own: `WaterTank` wears `oxygen-tank`,
+ * `Radiator` wears `space-heater`, `SalvageRecycler` wears `water-recycler`, `MedCabinet` wears
+ * `locker`, `Light` wears `wall-lamp`, `IceMelter` wears `cooker`. A name taken from the picture is
+ * therefore WRONG on all six — the sixth trap shape, stated with its receipts. (M2-10's first draft
+ * did exactly that and was CONFIDENTLY wrong on FIVE of them; the sixth, `wall-lamp`, is the one
+ * COSMETIC borrow, and its own `functional`-only filter happened to catch that one and say "MACHINE".
+ * Measured by running the guard, not by counting this list.)
+ */
+export const DEVICE_KIND_NAMES = Object.freeze([
+  'Door', 'AirVent', 'Scrubber', 'Ladder', 'Terminal', 'SolarWing', 'Battery', 'Conduit', 'Light',
+  'GrowBed', 'WaterTank', 'Pipe', 'Reclaimer', 'Fabricator', 'MachineShop', 'SalvageRecycler',
+  'Radiator', 'Bed', 'Table', 'Chair', 'MedBed', 'MedCabinet', 'Locker', 'Desk', 'PlantPot',
+  'Telescope', 'IceMelter', 'CryoPod',
+]);
+
+/**
+ * The sim `DeviceKind` member name for a wire `kind` byte, or `''` when the byte names nothing. PURE
+ * and TOTAL — the `typeof` guard is `isOperableKind`'s, for its reason: `null | 0`, `undefined | 0`
+ * and `NaN | 0` are all **0**, and `DeviceKind.Door` **IS 0**, so the obvious one-liner answers
+ * "Door" for every absent value.
+ */
+export function deviceKindName(kind) {
+  if (typeof kind !== 'number' || !Number.isFinite(kind)) return '';
+  return DEVICE_KIND_NAMES[kind | 0] || '';
+}
+
+/**
+ * ⚠️ DERIVED FROM `DEVICE_KIND_NAMES` SINCE M2-10, not restated. It still evaluates to
+ * `{Door: 0, AirVent: 1}` and every consumer is unchanged; what is gone is the second copy of two
+ * enum members. A name that fell out of the array would make `indexOf` answer **-1** here — and that
+ * cannot ship silently, because `operate-model.test.js` pins this object against `Device.cs` BY NAME
+ * and a `-1` fails it immediately. The safety net is a test, which is the only kind this repo counts.
+ */
+const OPERABLE_MEMBERS = ['Door', 'AirVent'];
+export const OPERABLE_KINDS = Object.freeze(Object.fromEntries(
+  OPERABLE_MEMBERS.map((n) => [n, DEVICE_KIND_NAMES.indexOf(n)]),
+));
 
 /** The `DeviceKind` byte → its name, for the two operable kinds only. PURE. */
 const OPERABLE_NAME_BY_KIND = Object.freeze(Object.fromEntries(

@@ -53,6 +53,10 @@ import {
   shipCrewRows,
 } from './room-model.js';
 import { buildDragTiles, dragCaption } from './build-drag-model.js';
+// ⭐ M2-10 — the PURE half of the right-click PRIORITISE menu: may it open on this tile, who would the
+// order be given to, and what does the one row say. See its header for the fog rule and the one-crew
+// interim; this file only opens and closes a box.
+import { prioritiseOffer } from './prioritise-model.js';
 // `surnameOf` + `watchTask` are the Overview CREW WATCH's own two derivations, imported rather than
 // re-stated so the dock in a room and the dock on the ship cannot word one roster row two ways.
 import { taskTag, surnameOf, watchTask } from './console-model.js';
@@ -63,6 +67,7 @@ import {
 
 /* eslint-disable no-multi-spaces */
 
+const CTX_GAP = 6;              // clearance the right-click menu keeps from body-level chrome (openCtx)
 const ITEM_SIDE = U * 1.6;      // furniture box (logical) — reads a touch larger than its tile
 const MAT_SIDE = U * 1.2;       // material swatch box (logical) — fills the tile edge-to-edge
 const PAWN_H = U * 2.0;         // pawn height (logical); viewBox is 16×24
@@ -103,6 +108,11 @@ let _itemTiles = [];      // this room's ground stacks, from the `items` channel
 let _deviceCond = new Map(); // this room's per-device wear, from the `devices` channel — SEE deviceConditionAt
 let _blockedTiles = [];   // this room's REFUSED orders + why, from the `blocked` channel
 let _operableTiles = [];  // this room's doors + vents and their OPEN/SHUT state (the OPERATE verb)
+// ⭐ M2-10 — the open right-click menu's target, or null when no menu is up: `{tile, deck, cid, name}`.
+// It is captured AT OPEN TIME and never re-derived on the item click, deliberately: the frame keeps
+// arriving while the box is on screen, and an order must go to the machine the player right-clicked,
+// not to whatever the channel says about that tile a second later.
+let _ctx = null;
 // THE STOCKPILE ACCEPT-MASK — this surface's own state now (WP-6), read at COMMIT time.
 //
 // ⚠️ QUOTED AND NEGATED, because the sentence that stood here was true when it was written and is
@@ -217,6 +227,12 @@ function buildSkeleton() {
       '<div class="hud rz-palette" id="rz-palette"></div>' +
       '<div class="rz-hint">' + HINT + '</div>' +
     '</div>' +
+    // ⭐ M2-10 — THE RIGHT-CLICK MENU. A sibling of the toast and the nudge: a small `.hud` island
+    // positioned at the pointer, `hidden` until a right-click lands on a machine. It is OUTSIDE
+    // `.rz-canvas` on purpose — `onHudClick` returns early for anything inside `#rz-canvas` (the
+    // canvas owns its own click handler), so a menu parented there could never have its row clicked
+    // through the surface's delegated chain.
+    '<div class="hud rz-ctx" id="rz-ctx" hidden></div>' +
     '<div class="rz-toast" id="rz-toast" hidden></div>' +
     // The paused-ship nudge (B6, ported off the console's `#s-nudge` at WP-8). This surface needs its
     // own: building is ZOOM-ONLY, so "I placed a wall and nothing happened" happens HERE. A BUTTON
@@ -239,6 +255,14 @@ function buildSkeleton() {
   _canvas.addEventListener('mousemove', onCanvasMove);
   window.addEventListener('mouseup', onCanvasUp); // window: catch a release that ends off-canvas
   _canvas.addEventListener('click', onCanvasClick);
+  // ⭐ M2-10 — RIGHT-CLICK, AND THE PHASE IS LOAD-BEARING (BUG-B's exact shape). Registered on the
+  // element in the BUBBLE phase — no third argument — like the four canvas gestures above it, and
+  // NOT `{capture: true}`. `overview-model.test.js` measured what a capture registration does to a
+  // gesture on this codebase: it runs ahead of the handlers below it, kills the interaction, and
+  // leaves the whole suite green. `client/test/prioritise-menu.test.js` records the phase argument at
+  // registration and asserts it BY NAME, because a text scan for the third argument is defeated by a
+  // comment, by whitespace, and decisively by the `{capture:true}` options spelling.
+  _canvas.addEventListener('contextmenu', onCanvasContext);
   _root.addEventListener('click', onHudClick);
 }
 
@@ -302,6 +326,22 @@ function buildChrome() {
     _el.crewHdr = dock.appendChild(mkEl('div', 'rz-crewhdr'));
     _el.crewList = dock.appendChild(mkEl('div', 'rz-crewlist'));
   }
+  // ⭐ M2-10 — the right-click menu's ONE row, built once with real nodes (the crew dock's rule: a row
+  // that only exists as an `innerHTML` string cannot be clicked in a node harness, and the click IS
+  // the feature). `setAttribute`, not `dataset.rzctx =`, for the same reason `data-rzcrew` uses it:
+  // `onHudClick` reads the attribute, and in the node harnesses `dataset` is a plain object with no
+  // reflection. The LABEL is written per-open — it names the machine under the cursor.
+  const ctx = $('rz-ctx');
+  if (ctx) {
+    ctx.innerHTML = '';
+    const item = mkEl('button', 'rz-ctx-item');
+    item.setAttribute('type', 'button');
+    item.setAttribute('data-rzctx', 'prioritise');
+    ctx.appendChild(item);
+    _el.ctx = ctx;
+    _el.ctxItem = item;
+  }
+
   _matSig = '';
   _accSig = '';
   _crewSig = '';
@@ -333,6 +373,7 @@ export function exitRoom() {
   _open = false;
   _armed = null;
   _drag = null;   // a sweep in progress is abandoned on exit (guards onCanvasUp against a null _focus)
+  closeCtx();     // …and so is an open right-click menu: its target tile belongs to a room we are leaving
   _focus = null;
   document.body.classList.remove('roomzoom-open');
   _onExit();
@@ -1104,6 +1145,12 @@ function onHudClick(e) {
   const t = e.target;
   if (!t || !t.closest) return;
   if (t.closest('#rz-canvas')) return; // the canvas has its own handler
+  // ⭐ M2-10 — the right-click menu's own row first; then ANY other chrome click DISMISSES the menu.
+  // A box that outlives the next click is a box the player has to learn to close, and every other
+  // transient on this surface (toast, pulse, nudge) already gets out of the way by itself.
+  const ctxItem = t.closest('[data-rzctx]');
+  if (ctxItem) { doPrioritise(); releaseSpace(ctxItem, e); return; }
+  closeCtx();
   // The nudge IS its own fix: it complains the ship is stopped, so clicking it starts it.
   if (t.closest('[data-rz-nudge]')) { _send(Cmd.pause()); return; }
   const tool = t.closest('[data-rztool]');
@@ -1216,6 +1263,7 @@ function onMinimapSlot(slotEl) {
 }
 
 function onCanvasClick(e) {
+  closeCtx(); // ⭐ M2-10: a left click anywhere on the floor dismisses an open right-click menu
   const rect = _layers.getBoundingClientRect();
   const tile = tileFromCanvasXY(e.clientX, e.clientY, rect, _focus);
   if (!tile) return; // letterbox margin / outside the room (IX-Z-11)
@@ -1329,6 +1377,166 @@ function onOperateReply(msg) {
   // of them. `ok` is prefixed as a symbol rather than as a word so a refusal is legible at a glance
   // without lengthening a line that already holds the reason.
   toast((r.ok ? '⇄ ' : '⛔ ') + (r.reason || (r.ok ? r.state : 'REFUSED')));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// ⭐ M2-10 — PRIORITISE: REPAIR X. The right-click menu on a machine.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** ⚠️ THE FRAME IS NOT READ HERE AT ALL, and the helper that read it is DELETED. The first draft
+ *  resolved the tile's glyph to a registry piece and named the menu row from that; the `devices`
+ *  channel's own `kind` byte is the sim's identity for the machine and `GLYPH_SUBSTITUTE` makes the
+ *  art disagree with it on six live kinds (see `prioritise-model.js`'s retracted paragraph). One row
+ *  from one channel answers both "is anything here?" and "what is it?", so there is no second source
+ *  to drift. */
+
+/** Take the menu down and forget its target. Idempotent — every close path calls it unconditionally. */
+function closeCtx() {
+  _ctx = null;
+  if (_el.ctx) _el.ctx.hidden = true;
+}
+
+/**
+ * THE RIGHT-CLICK. Open *Prioritise: repair X* over the machine under the pointer.
+ *
+ * ⚠️ `preventDefault()` IS UNCONDITIONAL AND IT IS FIRST. The browser's own context menu over the
+ * game floor is never wanted — not on a machine, not on bare floor, not on the letterbox margin — and
+ * suppressing it only where the game answers would make the gesture's behaviour depend on what is
+ * under the cursor, which is exactly the inconsistency that teaches a player the right button is
+ * unreliable. Every early return below has therefore already suppressed it.
+ *
+ * ⚠️ THE THREE OUTCOMES ARE `prioritiseOffer`'s, NOT THIS FUNCTION'S, and two of them are silences.
+ * A tile with no `devices` row is not a target and says nothing (a stray right-click is not an intent
+ * aimed at anything); a tile that IS a target with nobody to order says so in words, because that is
+ * the `doMove` shape — an order that looks identical whether it worked or not. See the model's header.
+ *
+ * ⚠️ NO ARMED TOOL IS REQUIRED AND NONE IS CONSUMED. Right-click is ambient on this surface, the way
+ * RimWorld's is: the player does not arm PRIORITISE, they point at a machine. It deliberately does
+ * not disarm whatever tool is held either — the box appears over the room and the palette is where it
+ * was when it closes.
+ */
+function onCanvasContext(e) {
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  closeCtx();
+  if (!_open || !_focus) return;
+  const tile = tileFromCanvasXY(e.clientX, e.clientY, _layers.getBoundingClientRect(), _focus);
+  if (!tile) return; // letterbox margin / outside the room (IX-Z-11), same rule as the left click
+  const roster = Hud.getRoster();
+  const offer = prioritiseOffer({
+    dev: deviceConditionAt(tile.x, tile.y),
+    selCid: selectedCrewCid(Hud.getFrame()),
+    crew: roster && Array.isArray(roster.crew) ? roster.crew : [],
+  });
+  if (!offer.ok) {
+    if (!offer.silent) toast(offer.reason);
+    return;
+  }
+  openCtx(e, tile, offer);
+}
+
+/**
+ * ⭐ THE GLOBAL-CHROME RECT THE MENU MUST NOT OPEN UNDER — `.onb-help`, the `?` circle — or null.
+ *
+ * ⚠️ IT IS READ OFF THE ELEMENT, NEVER RESTATED FROM ITS CSS. `.onb-help` is
+ * `position:fixed; right:30px; top:66px; width:32px` today; copying those four numbers here would be
+ * a second encoding of a fact that lives in one stylesheet, and the day the circle moves the menu
+ * would dodge empty air. `document.querySelector` is null in the node harnesses, so the clamp is
+ * inert there rather than throwing — the driven leg supplies a stub rect to make it bite.
+ */
+function chromeAvoidRect() {
+  const el = (typeof document !== 'undefined' && typeof document.querySelector === 'function')
+    ? document.querySelector('.onb-help') : null;
+  if (!el || typeof el.getBoundingClientRect !== 'function') return null;
+  const r = el.getBoundingClientRect();
+  return (r && r.width > 0 && r.height > 0) ? r : null;
+}
+
+/**
+ * Show the one-row menu at the pointer, and remember what it is about.
+ *
+ * ⚠️ IT IS UNHIDDEN BEFORE IT IS PLACED, AND THAT ORDER IS THE WHOLE POINT of the clamps: a `hidden`
+ * element measures 0×0, so reading its box first would clamp against nothing. `clientX/Y` and a
+ * `position:fixed` island share one coordinate space, so the box lands under the pointer without any
+ * further transform.
+ *
+ * TWO CLAMPS, IN THIS ORDER, AND BOTH ARE GEOMETRY:
+ *   1. THE VIEWPORT. The row measures 254×40 in Chrome, so a right-click near the right or bottom
+ *      edge would put the ONLY control in this menu partly off-screen — an order the player can see
+ *      and cannot click, which is `invisible-feedback-is-FUNCTIONAL` in its most literal form.
+ *   2. ⭐ THE `?` CIRCLE, AND THIS ONE IS A SEND-BACK FIX THAT REPLACES A z-index THAT COULD NOT WORK.
+ *      The first draft raised `.rz-ctx` to `z-index:130` to sit above `.onb-help` (120) and it was
+ *      INERT: `#roomzoom-view` is `position:fixed; z-index:20` (`styles.css:1199`), i.e. a STACKING
+ *      CONTEXT, and `.onb-help` is appended to `document.body` (`onboarding.js:325`). A descendant's
+ *      z-index orders it only INSIDE its own context, so no value on this box — 26, 130, 9999 — can
+ *      ever beat a body-level sibling context. Measured in headless Chrome by independent review:
+ *      with 130 shipped, `elementFromPoint` over a ~240×24 px strip at the top-right still answered
+ *      `onb-help`, so a click there opened the onboarding card instead of ordering the repair.
+ *      ⇒ THE REMEDY IS THE ONE THIS REPO ALREADY CHOSE FOR THE IDENTICAL COLLISION: `.ov-nudge` moved
+ *      ITSELF (`right:74px`, NOT `26px`, `styles.css:1146-1148`) rather than trying to out-stack the
+ *      circle. Geometry crosses stacking contexts; z-index does not. Raising `#roomzoom-view`'s own
+ *      z-index would work and is refused: it would lift the whole surface over body-level chrome and
+ *      trade this occlusion for another.
+ *      Sideways FIRST (the nudge's own direction, and it keeps the row on the pointer's line), under
+ *      the circle only when there is no room to the left. The viewport clamp then runs AGAIN, because
+ *      the downward branch can push the box past the bottom edge.
+ *
+ * Node-safe by construction: the harnesses' `getBoundingClientRect` returns zeros, their window stub
+ * has no `innerWidth` and their `querySelector` returns null, so every clamp is inert unless a leg
+ * deliberately supplies the geometry.
+ */
+function openCtx(e, tile, offer) {
+  _ctx = { tile, deck: _focus.deck, cid: offer.cid, name: offer.name };
+  if (!_el.ctx || !_el.ctxItem) return;
+  setText(_el.ctxItem, offer.label);
+  _el.ctx.hidden = false;
+  let left = (e && e.clientX) | 0, top = (e && e.clientY) | 0;
+  const box = typeof _el.ctx.getBoundingClientRect === 'function'
+    ? _el.ctx.getBoundingClientRect() : null;
+  const w = (box && box.width) || 0, h = (box && box.height) || 0;
+  const vw = (typeof window !== 'undefined' && window.innerWidth) | 0;
+  const vh = (typeof window !== 'undefined' && window.innerHeight) | 0;
+  const toViewport = () => {
+    if (vw && w && left + w > vw) left = Math.max(0, vw - w);
+    if (vh && h && top + h > vh) top = Math.max(0, vh - h);
+  };
+  toViewport();
+  const avoid = chromeAvoidRect();
+  if (avoid && w && h
+      && left < avoid.right + CTX_GAP && left + w > avoid.left - CTX_GAP
+      && top < avoid.bottom + CTX_GAP && top + h > avoid.top - CTX_GAP) {
+    const leftOfIt = avoid.left - CTX_GAP - w;
+    if (leftOfIt >= 0) left = leftOfIt;
+    else top = avoid.bottom + CTX_GAP;
+    toViewport();
+  }
+  _el.ctx.style.left = left.toFixed(0) + 'px';
+  _el.ctx.style.top = top.toFixed(0) + 'px';
+}
+
+/**
+ * THE ORDER. One `Cmd.prioritise` naming the person AND the tile, and nothing else.
+ *
+ * ⚠️ NO OPTIMISTIC ECHO, the rule every verb on this surface states: the toast names what was SENT.
+ * She walks to the machine and repairs it over real sim seconds, and whether the sim accepts the
+ * order at all is the host's call at the command drain (`M2-9`) — a tile that lost its device between
+ * the render and the click is refused there, and the client must not have claimed otherwise.
+ *
+ * ⚠️ IT READS `_ctx`, NOT THE LIVE CHANNEL, for the reason `_ctx`'s declaration gives: the frame keeps
+ * arriving while the box is on screen.
+ */
+function doPrioritise() {
+  if (!_ctx) return;
+  const { tile, deck, cid, name } = _ctx;
+  closeCtx();
+  _send(Cmd.prioritise(cid, tile.x, tile.y, deck));
+  pulse(tile, false);
+  const roster = Hud.getRoster();
+  const list = roster && Array.isArray(roster.crew) ? roster.crew : [];
+  const who = surnameOf((list.find((c) => c && c.cid === cid) || {}).name) || ('CREW ' + cid);
+  toast('★ ' + who + ' ▸ REPAIR ' + name);
+  // A direct order on a stopped ship is the purest "I did something and nothing happened": the
+  // command sits in `Simulation._inbox` until a tick drains it, and at `tps == 0` there is none.
+  nudgeOnIntent();
 }
 
 /**
@@ -1641,6 +1849,16 @@ function onKey(e) {
   if (!_open) return;
   const k = e.key;
   if (isTextEntryTarget(e.target) && k !== 'Escape') return; // never arm while typing (IX-Z-17)
+  if (k === 'Escape' && _ctx) {
+    // ⭐ M2-10 — AN ESC RUNG ABOVE THE TOOL, and handled HERE rather than inside `escStackRung`. The
+    // shared model decides the disarm/exit ladder for BOTH standard surfaces and neither of them has
+    // a right-click menu; adding a rung there would widen a shared derivation for one surface's
+    // transient. The rule is the one every stacked UI uses: ESC takes down the topmost thing first,
+    // so the box closes and the armed tool survives.
+    closeCtx();
+    e.stopPropagation(); e.preventDefault();
+    return;
+  }
   if (k === 'Escape') {
     const rung = escStackRung({ armed: _armed != null, dialogueOpen: false, roomOpen: true });
     if (rung === 'disarm') arm(_armed);       // toggle the armed tool off
