@@ -101,6 +101,32 @@ export const Cmd = {
   // outcome and never guesses the reason: an unpowered, inoperative, unfixably-wrecked or locked
   // device is exactly the case a silent toggle makes indistinguishable from a broken verb.
   operate: (x, y, deck) => ({ cmd: 'operate', x, y, deck }),
+  // ⭐ M2-10 — THE DIRECT REPAIR ORDER: send ONE named crew member to repair the machine on ONE tile.
+  // RimWorld's right-click *"Prioritize repairing X"*, and the same {x,y,deck} tile addressing
+  // `operate`/`place`/`remove` use, plus the `cid` `workPriority` speaks — this is the first verb that
+  // is BOTH about a tile and about a person, so it carries both and invents no third convention.
+  //
+  // ⚠️ THE TILE IS THE TARGET AND THERE IS NO DEVICE ID, because there is nothing to send one FROM.
+  // A `Device.Name` (`wing_c`, `battery_2`) is authored in `sim/Sim.Gen/AuthoredShips.cs` and reaches
+  // no wire channel — the `devices` channel's tuple is `[x,y,deck,kind,cond,oper,open]` — so a
+  // name-addressed order could not be composed by any client that exists. The host resolves the tile
+  // to a device (`_deviceGrid`, the one-device-per-tile index `devices` itself is built from) and
+  // refuses a tile with none. The client's job is therefore NOT to duplicate that verdict but to
+  // never OFFER the order where it must fail: `ui/prioritise-model.js` gates the menu on the tile
+  // having a `devices` row at all, which is the same fog-gated population the host resolves through.
+  //
+  // ⚠️ `cid` IS REQUIRED AND IT IS NOT OPTIONAL PADDING. `MoveCitizenCommand`'s cousin problem —
+  // `GameSession._selected` — is the reason: a direct order taken from the HOST's selection would be
+  // given to whoever the player last clicked ANYWHERE, including on another surface, and the Room
+  // Zoom has its own answer to "who" (the selection, or the one soul aboard). Naming the person in
+  // the payload makes the order say who it is for, so the two can never drift.
+  //
+  // `| 0` on all four keeps the payload integral (the host reads JSON ints) and is NOT a guard
+  // against `undefined` — `undefined | 0` IS 0, and cid 0 is the host's own NOBODY sentinel. The
+  // caller is the guard: `prioritiseCrew` refuses to answer with a non-finite cid at all.
+  prioritise: (cid, x, y, deck) => ({
+    cmd: 'prioritise', cid: cid | 0, x: x | 0, y: y | 0, deck: deck | 0,
+  }),
   // ⭐ M2-3 — THE WORK-PRIORITY ORDER, the write half of the WORK tab: set ONE crew member's manual
   // priority for ONE work type. `work` is a `WorkType` index (0..5 in OD-J's order
   // Repair·Construct·Craft·Deconstruct·Mine·Haul) and `priority` is 0 = off or 1..4 with **1 the

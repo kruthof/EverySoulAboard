@@ -1462,6 +1462,33 @@ body.moss-open #roomzoom-view{display:none !important}
    it is the one line in this row that is about the map rather than about the brush. */
 .rz-acc-diff{color:#f2b563}
 
+/* ⭐ M2-10 — the right-click PRIORITISE menu. `position:fixed`, NOT absolute like its neighbours: the
+   box is placed from the pointer event's own `clientX/clientY`, and those are viewport coordinates —
+   an absolutely-positioned box would be offset by whatever `#roomzoom-view`'s box happens to be, i.e.
+   correct today and wrong the day the surface grows a margin. `white-space:nowrap` because the row
+   names a machine and a wrapped verb reads as two rows in a menu that only has one.
+
+   ⚠️ z-index 130 IS MEASURED, NOT PICKED, and the first draft's 26 was WRONG. 26 clears this
+   surface's own chrome — toast 22, crew dock 21, nudge 24 — and that is the whole set the box was
+   compared against. It is not the set it competes with. `.onb-help` (the `?` circle) is
+   `position:fixed; right:30px; top:66px; z-index:120` GLOBAL chrome, and the box is placed at the
+   pointer and then clamped INTO the viewport, so a machine near the top-right corner puts part of the
+   only row under that circle — where a click opens the onboarding card instead of ordering a repair.
+   Found by driving real Chrome (`elementFromPoint` over the row's own centre), which is the only
+   thing that can see it; the nudge's own `right:74px, NOT 26px` comment three hundred lines up is the
+   same collision, already paid for once.
+   ⇒ AND IT STAYS BELOW `.onb-layer` (200) DELIBERATELY. That layer is a MODAL (`inset:0`) and while
+   it is up nothing on the surface is meant to be clickable. A transient contextual menu belongs above
+   persistent chrome and under a modal; jumping it over 200 would let a right-click answer through the
+   onboarding card. */
+.rz-ctx{position:fixed;z-index:130;padding:4px;border-radius:8px;display:flex;flex-direction:column;
+  gap:2px}
+.rz-ctx[hidden]{display:none}
+.rz-ctx-item{padding:6px 12px;border-radius:6px;border:1px solid rgba(46,40,32,.6);
+  background:rgba(18,15,11,.55);color:var(--amber-light,#f2b563);font:inherit;font-size:10.5px;
+  letter-spacing:.08em;text-align:left;white-space:nowrap;cursor:pointer}
+.rz-ctx-item:hover{border-color:#cf7a33;background:rgba(34,27,18,.8)}
+
 /* transient toast (deferrals / honest limits) */
 .rz-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:22;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);
