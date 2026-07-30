@@ -35,9 +35,9 @@ Room Zoom (post-hoc charter) · M1-L every compartment IS a room, ＋ADD ROOM de
 priority cannot live in `TryAssign`; five entry sites; pre-emption is safe and cheap).
 
 Remaining, none blocking M2: **M1-E** silent-refusal census/surfacing (`ReasonNoConsumable`
-re-homed to M2-9) · **M1-G** vent-premise reword, docs-only (OD-D — **owed, not done**) ·
-**M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE, ordinal-renumber
-hazard).
+re-homed to M2-9) · **M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE,
+ordinal-renumber hazard). M1-G vent-premise reword DONE 2026-07-29 (the doc restructure had
+already cleaned the docs; three surviving source comments reworded in `lane/premise-fix`).
 
 ## 3. M2 — the queue (merge order; charters in packages.md)
 
@@ -85,7 +85,7 @@ historical ids, not ordinals.
 | A | Repair is a WORK TYPE under the grid + right-click prioritise; never a paint designation | all of M2 |
 | B | Economy PARKED at E0-complete; E1 unopened; A1 retired as goal (regression stat only); gate re-chartered "one crew member alone reaches a second thaw" | parks E1–E4 |
 | C | Ship interior authored-explored at boot | M1-A ✅ |
-| D | Vent premise reworded (docs-only) | M1-G (owed) |
+| D | Vent premise reworded (docs-only) | M1-G ✅ |
 | E | Deck 1 stays dead (no vertical gas term is SHIPPED FILED) | standing refusal |
 | F | Repair soft-lock fixed by authoring consumables, not by softening the floor | M1-I ✅ |
 | G | The pawn boots idle and waiting; the opening IS an order; autonomy resumes after | M2-20 |
