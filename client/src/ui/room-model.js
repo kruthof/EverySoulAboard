@@ -1128,7 +1128,8 @@ export function deckDeviceConditions(devices, deck) {
 // guard never censused this verb and structurally cannot see that it is missing.
 //
 // On `--ship wreck` that is the missing FIRST MOVE: the premise opens on a sealed compartment and the
-// player's opening gesture is "open the vent, push the air outward".
+// player's opening gesture is "restore the vent and it fills the compartment" (OD-D: a vent injects
+// into its own room; there is no neighbour term).
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**

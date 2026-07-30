@@ -35,16 +35,16 @@ Room Zoom (post-hoc charter) · M1-L every compartment IS a room, ＋ADD ROOM de
 priority cannot live in `TryAssign`; five entry sites; pre-emption is safe and cheap).
 
 Remaining, none blocking M2: **M1-E** silent-refusal census/surfacing (`ReasonNoConsumable`
-re-homed to M2-9) · **M1-G** vent-premise reword, docs-only (OD-D — **owed, not done**) ·
-**M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE, ordinal-renumber
-hazard).
+re-homed to M2-9) · **M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE,
+ordinal-renumber hazard). M1-G vent-premise reword DONE 2026-07-29 (the doc restructure had
+already cleaned the docs; three surviving source comments reworded in `lane/premise-fix`).
 
 ## 3. M2 — the queue (merge order; charters in packages.md)
 
 | pos | id | one line | pins |
 |---|---|---|---|
 | ✅ | M2-1 | per-citizen work priorities as hashed state (CITZ v7→v8) — merged + re-pinned, tag `pin/m2-a`; boots OFF everywhere (OD-H/OD-I) | M2-a DONE |
-| 7b | M2-21 | silent BUILD haul back-off (defect D-2) — **must be measured before M2-2 makes its fixtures inert**; consumes M1-D's `IsBackedOff` | M1-c |
+| ✅ | M2-21 | silent BUILD haul back-off (defect D-2) — merged 2026-07-29; pins MEASURED HELD (geometry, non-vacuity proven driven), so pin row M1-c left the chain with no re-pin | M1-c DONE |
 | 9 | M2-4 | `work` wire channel + `SetWorkPriorityCommand` — BLOCKING under OD-H | neutral |
 | 10 | M2-3 | the WORK tab on the standard surface — BLOCKING; owns M2-1's demo | neutral |
 | 11 | M2-2 | the work-type veto in the dispatcher: 11 claim sites, 5 gates, 3 exclusions — runs alone | M2-e |
@@ -85,7 +85,7 @@ historical ids, not ordinals.
 | A | Repair is a WORK TYPE under the grid + right-click prioritise; never a paint designation | all of M2 |
 | B | Economy PARKED at E0-complete; E1 unopened; A1 retired as goal (regression stat only); gate re-chartered "one crew member alone reaches a second thaw" | parks E1–E4 |
 | C | Ship interior authored-explored at boot | M1-A ✅ |
-| D | Vent premise reworded (docs-only) | M1-G (owed) |
+| D | Vent premise reworded (docs-only) | M1-G ✅ |
 | E | Deck 1 stays dead (no vertical gas term is SHIPPED FILED) | standing refusal |
 | F | Repair soft-lock fixed by authoring consumables, not by softening the floor | M1-I ✅ |
 | G | The pawn boots idle and waiting; the opening IS an order; autonomy resumes after | M2-20 |
@@ -103,7 +103,10 @@ package id in M2 or M3; today `WorksiteSafety`'s refusal is bare and silent.
 - **D-1** `PowerSystem` condition-blind both halves; 18.000 kW supply vs 20.900 kW demand;
   every light out at sim-hour 7 on the wreck → M2-11/M2-12. (Earlier roadmap power figures
   described a model that doesn't exist; trust the driven measurement, re-measure at M2-12.)
-- **D-2** BUILD order behind a shut door is completely silent → M2-21.
+- **D-2** BUILD order behind a shut door is completely silent → CLOSED by M2-21 (2026-07-29):
+  backs off on `_matRetryAt`, visible on the `blocked` channel. Residuals filed in HANDOVER
+  (per-site suppression on multi-pawn ships untested; retry maps never pruned; phase B safe
+  only via phase A).
 - **D-3** social argument gate permanently open on every pair → unscheduled; file with M4.
 - **D-4** M1-K merged against a send-back; fix-forward landed (`da376b8`) — verify closed.
 - Standing, owner-accepted: no vertical gas (OD-E) · no heater until M3-10 · no save/load
