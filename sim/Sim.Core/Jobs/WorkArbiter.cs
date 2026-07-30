@@ -46,8 +46,19 @@ namespace Perilune.Sim
         /// Could this provider plausibly put <paramref name="type"/> work on
         /// <paramref name="citizen"/> right now? See the interface comment for the one-sided
         /// contract and for what an over-report costs.
+        ///
+        /// <para>⭐ <b>M2-8 — <paramref name="asIfIdle"/> IS THE PRE-EMPTION QUESTION, AND IT IS A
+        /// REQUIRED ARGUMENT ON PURPOSE.</b> Every claim-time caller passes <c>false</c> and gets
+        /// exactly the M2-5 behaviour. <c>true</c> means <i>"answer about a crew member who is
+        /// CURRENTLY BUSY, as though her present job did not exist"</i> — the only thing it may
+        /// relax is the <see cref="Citizen.IsRecruitableForWork"/> gate, which it replaces with
+        /// <see cref="Citizen.IsRecruitableIgnoringJob"/>. <b>Every other early return of the claim
+        /// path still applies</b>, because an over-report is still a silent stall and a pre-emption
+        /// built on one is worse: it takes a pawn off real work for work that does not exist.
+        /// A defaulted argument would let a new provider silently answer the wrong question, so
+        /// there is no default.</para>
         /// </summary>
-        bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type);
+        bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type, bool asIfIdle);
     }
 
     /// <summary>
@@ -108,6 +119,12 @@ namespace Perilune.Sim
     /// one argmin per work type instead of one per band, which the shape rules out. Do not "fix" it
     /// silently — it is a charter question.</para>
     ///
+    /// <para>⭐ <b>M2-8 ADDS A SIXTH ASKER AND IT IS ASKING A DIFFERENT QUESTION.</b> The five sites
+    /// above all ask *"may I GIVE her work"*. <see cref="HasOfferAboveBand"/> asks *"should
+    /// somebody TAKE her work back"*, from <see cref="JobSystem.Tick"/>'s busy branch — one site,
+    /// because that loop is the only place that sees every busy pawn. It is not a sixth gate on the
+    /// claim path and adding it to the list above would be wrong: no claim consults it.</para>
+    ///
     /// <para><b>Determinism.</b> Work types are walked in <see cref="WorkPriority.RankedOrder"/>
     /// (naturalPriority descending — so the FIRST provider that answers yes is already the best
     /// answer and the scan can stop), providers in system registration order
@@ -151,7 +168,11 @@ namespace Perilune.Sim
         /// implementation of <see cref="IWorkOfferSource.HasClaimableWork"/> calls back into this
         /// class.</para>
         /// </summary>
-        public static int BestOfferAtBand(Simulation sim, Citizen citizen, int band, IWorkOfferSource asking)
+        public static int BestOfferAtBand(Simulation sim, Citizen citizen, int band, IWorkOfferSource asking) =>
+            BestOfferAtBand(sim, citizen, band, asking, asIfIdle: false);
+
+        private static int BestOfferAtBand(
+            Simulation sim, Citizen citizen, int band, IWorkOfferSource asking, bool asIfIdle)
         {
             var order = WorkPriority.RankedOrder; // naturalPriority DESCENDING — first hit wins
             var providers = sim.WorkOfferSources;
@@ -167,7 +188,7 @@ namespace Perilune.Sim
                     var provider = providers[s];
                     if (ReferenceEquals(provider, asking)) continue;
                     if ((provider.OfferedWorkTypes & bit) == 0) continue;
-                    if (provider.HasClaimableWork(sim, citizen, type))
+                    if (provider.HasClaimableWork(sim, citizen, type, asIfIdle))
                         return WorkPriority.NaturalPriority(type);
                 }
             }
@@ -201,6 +222,38 @@ namespace Perilune.Sim
                 int floor = band == myBand ? myNatural : -1;
                 if (BestOfferAtBand(sim, citizen, band, asking) > floor) return true;
             }
+            return false;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>M2-8 — THE PRE-EMPTION QUESTION: is somebody holding work for this BUSY crew
+        /// member at a STRICTLY BETTER BAND than the one she is working at?</b>
+        ///
+        /// <para><b>BAND ONLY, AND THAT IS THE OWNER-FACING RULE RATHER THAN A SIMPLIFICATION.</b>
+        /// <see cref="HasBetterOfferThan"/> — the claim-time gate — also lets a higher
+        /// <see cref="WorkPriority.NaturalPriority"/> win INSIDE a band, because refusing to hand
+        /// out a job costs nothing. Taking a job AWAY is not free: it drops cargo, abandons a walk
+        /// and re-runs a claim. So pre-emption fires only on the number the PLAYER typed. <b>At
+        /// equal band nothing pre-empts</b>, whatever the constants say — a ship where changing no
+        /// setting still churns the crew is a ship the player is not driving.</para>
+        ///
+        /// <para><paramref name="myBand"/> is her CURRENT job's band, so band <paramref name="myBand"/>
+        /// itself is never queried and her own work type can never pre-empt her. <c>asking: null</c>:
+        /// this is asked from <see cref="JobSystem.Tick"/>'s citizen loop and not from inside any
+        /// provider's selection pass, so nobody is excluded — including the dispatcher, whose four
+        /// pull sources are exactly where a raised <c>Mine@1</c> lives.</para>
+        ///
+        /// <para><b>Cost, because this runs for every busy pawn on every tick.</b> The band loop
+        /// short-circuits inside <see cref="BestOfferAtBand"/> on
+        /// <c>citizen.GetWorkPriority(type) != band</c> — a field read per work type — so a pawn with
+        /// nothing enabled above her own band never reaches a provider at all. At the OD-H defaults
+        /// (every work type off) no band is ever matched and the whole question costs three passes
+        /// over a six-entry constant array. No allocation, no RNG.</para>
+        /// </summary>
+        public static bool HasOfferAboveBand(Simulation sim, Citizen citizen, int myBand)
+        {
+            for (int band = WorkPriority.Highest; band < myBand; band++)
+                if (BestOfferAtBand(sim, citizen, band, asking: null, asIfIdle: true) >= 0) return true;
             return false;
         }
     }

@@ -518,10 +518,14 @@ namespace Perilune.Sim
         /// <c>FindNearestReachableIdle</c>'s A* probe — the expensive half of the claim, and the
         /// optimism <see cref="IWorkOfferSource"/> declares.</para>
         /// </summary>
-        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type, bool asIfIdle)
         {
             if (type != WorkType.Craft) return false;
-            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(WorkType.Craft)) return false;
+            // M2-8: `asIfIdle` relaxes THIS gate and nothing else — see IWorkOfferSource. The
+            // "already crewed" skip below is what keeps a Craft pawn from being offered her own
+            // bench back under the hypothetical.
+            if (!(asIfIdle ? citizen.IsRecruitableIgnoringJob : citizen.IsRecruitableForWork) ||
+                !citizen.CanTakeWorkType(WorkType.Craft)) return false;
 
             var devices = sim.Devices.Items;
             for (int i = 0; i < devices.Count; i++)
