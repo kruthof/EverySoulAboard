@@ -28,7 +28,12 @@ echo "== determinism proof (seed 42, 3 days) =="
 OUT="$("$DOTNET" run --project hosts/scenario -- --days 3 --seed 42)"
 printf '%s\n' "$OUT" | tail -3
 printf '%s\n' "$OUT" | grep -q "twin hashes MATCH" || { echo "FAIL: twin hashes diverged"; exit 1; }
-printf '%s\n' "$OUT" | grep -q "02257f5bce961570" || { echo "FAIL: reference hash changed (expected 02257f5bce961570) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
+# M2-1 (PIN M2-a, 2026-07-29): 02257f5bce961570 -> c1bac287230e184e. The CITZ chapter gained the
+# per-citizen work-priority grid, the WorkIncapable mask and two reserved fields (Skill, HeldByOrder),
+# so Simulation.StateHash's citizen fold changed on every ship. FOLD-ONLY: with the identical state
+# present but excluded from the fold, this hash was still 02257f5bce961570 and the full dotnet suite
+# was 1330/1330 green — measured, not asserted. Nothing reads the new state.
+printf '%s\n' "$OUT" | grep -q "c1bac287230e184e" || { echo "FAIL: reference hash changed (expected c1bac287230e184e) — if intended, update ci.sh + CLAUDE.md + memory in the same commit"; exit 1; }
 
 echo "== screenshot-test metrics (advisory) =="
 if command -v python3 >/dev/null 2>&1 && [ -f art/screenshot-test/accepted.png ]; then

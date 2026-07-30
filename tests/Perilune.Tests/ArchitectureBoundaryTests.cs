@@ -863,7 +863,16 @@ namespace Perilune.Tests
                 // ---- souls / inner life. E2 crosses Mood and Skill DELIBERATELY — see the doc.
                 ("Mood",           "crew inner life — E2's operator model crosses this via ONE seam"),
                 ("Morale",         "crew inner life (note: ShipMetrics.Morale IS mean crew Mood)"),
-                ("Skill",          "does not exist anywhere in sim/ yet; E2 introduces it"),
+                // ⚠️ THE JUSTIFICATION MOVED IN M2-1, THE ROW DID NOT. Skill now DOES exist in sim/
+                // — Citizen.Skill, a reserved byte with no reader and no writer as of that commit
+                // (batched into the CITZ v8 bump so M3-7 need not pay a second one). M2-1's charter
+                // said to DELETE this row; it is kept, with a corrected reason, because the row is a
+                // per-file occurrence count over ECONOMY files only and Entities/Citizen.cs is not
+                // one of them — so it never asserted "nowhere in sim/" in the first place, and it
+                // still guards the thing that matters: no economy system may read a crew member's
+                // skill except through E2's one seam. Deleting it would silently permit exactly the
+                // coupling M3-7 has to make deliberate.
+                ("Skill",          "Citizen.Skill exists (M2-1, reserved) — no ECONOMY file may read it; E2/M3-7 crosses this via ONE seam"),
                 ("Persona",        "LLM persona sheets"),
                 ("CitizenMind",    "LLM-facing mind state"),
                 ("CitizenMemory",  "MEMS persistence"),

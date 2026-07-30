@@ -233,7 +233,11 @@ namespace Perilune.Sim
 
         // --- CITZ v1 (mirrors SaveWriter.WriteCitizens) ---
 
-        private static void ReadCitizens(Simulation sim, BinaryReader reader, ushort version)
+        // internal (not private) so the pre-v8 legacy path — which nothing in the repo writes any
+        // more, since SaveWriter always stamps the current version — can be driven directly by a
+        // unit test. Exactly the precedent ReadDevices and ReadItems set, and for the same reason:
+        // an old-save-compat branch nothing can reach is a branch nothing can test.
+        internal static void ReadCitizens(Simulation sim, BinaryReader reader, ushort version)
         {
             int count = reader.ReadInt32();
             for (int i = 0; i < count; i++)
@@ -272,6 +276,52 @@ namespace Perilune.Sim
                 // v7: pre-v7 saves predate player-order precedence — no order was in flight when
                 // they were written, so false (the default) is the correct read, not a guess.
                 if (version >= 7) c.OrderedMove = reader.ReadBoolean();
+                // v8 (M2-1, the work-priority grid + three reserved fields).
+                //
+                // ⭐ A PRE-v8 SAVE LOADS WITH EVERY WORK TYPE OFF — the constructor default, left
+                // untouched — and that is a DECISION, not an omission. It departs from the
+                // behaviour-preserving read this file uses twice next door (OrderedMove reads false
+                // because no order was in flight; Device.Scriptable reads TRUE because every device
+                // in a pre-v5 save really was MOSS-addressable). The behaviour-preserving read here
+                // would be "every type enabled", because a pre-v8 pawn did every kind of work.
+                //
+                // It is not taken, for two reasons stated together because neither is sufficient
+                // alone. (1) OD-H/OD-I are binding and are phrased as ONE RULE — work is opt-in,
+                // off everywhere, no authored exception and no second rule; a load-time default of
+                // "all on" would be exactly that second rule. (2) There is nothing to preserve:
+                // save/load has NO caller outside the test suite — verified by grep across sim/,
+                // hosts/ and client/, the only SaveWriter/SaveReader call sites are tests — so no
+                // pre-v8 save exists anywhere to be read. If that ever stops being true, this is
+                // the branch to revisit, and the argument above is the one to re-weigh.
+                // TWO ACCEPTED LIMITS OF THIS BRANCH, named rather than left to be discovered:
+                //
+                // (1) NO RANGE CHECK on a stored priority, while Citizen.SetWorkPriority throws
+                //     outside 0..4. That asymmetry is deliberate: a reader must not throw on a byte
+                //     some other build wrote, and refusing the whole save over one nonsense priority
+                //     would lose a colony to a typo. ⭐ It also happens to match RimWorld, though in
+                //     the OPPOSITE direction — reference §1.2 records `SetPriority` LOGGING and then
+                //     STORING an out-of-range value, i.e. RimWorld is permissive at the setter and
+                //     this game is permissive at the reader. Neither is permissive at both.
+                // (2) THE STORED COUNT IS TRUSTED, bounded only by its own type (255). A hostile or
+                //     corrupt payload can therefore make the reader consume up to 255 bytes here.
+                //     It cannot over-read the stream — the chapter is length-prefixed and BinaryReader
+                //     throws at the end — and this format has no adversarial threat model (there is
+                //     no save loading outside the test suite at all). Named as a limit, not fixed.
+                if (version >= 8)
+                {
+                    int stored = reader.ReadByte();
+                    for (int t = 0; t < stored; t++)
+                    {
+                        byte priority = reader.ReadByte();
+                        // Forward compatibility: a save written by a build with MORE work types
+                        // than this one has is drained to the byte, and the extras are discarded
+                        // rather than mis-assigned. The count is what makes that possible.
+                        if (t < c.WorkPrioritiesRaw.Length) c.WorkPrioritiesRaw[t] = priority;
+                    }
+                    c.WorkIncapable = reader.ReadByte();
+                    c.Skill = reader.ReadByte();
+                    c.HeldByOrder = reader.ReadBoolean();
+                }
                 sim.Citizens.Add(c, id);
             }
         }
