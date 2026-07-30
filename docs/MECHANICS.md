@@ -2571,6 +2571,7 @@ last.
 | the client's command surface | `hosts/web/GameSession.cs:797-820` (`WebCommand.Parse`) |
 | what a crew member's task line says | `hosts/web/GameSession.cs:2991-3075` (`TaskLabel`; its remarks start at `:2934`) |
 | …and **why that job and not another** (M2-6) | `hosts/web/GameSession.cs:3129` (`AppendRankingClause` — appends " — &lt;WorkType&gt; is priority &lt;n&gt;", and says nothing at all in three states: no job / no ranking for the job in hand / only one work type enabled) |
+| **where that clause is READ, and where it is not** | ⚠️ ONE wire field, TWO renderings. The separator is a parsing contract declared on both sides: `GameSession.cs:3161` (`RankingSeparator`) and `client/src/ui/console-model.js` (`WHY_SEPARATOR` + `taskWhat`). The two crew docks (`.ov-crewtask` ~26 chars, `.rz-crewtask` ~23) render only the WHAT half — they are too narrow to hold the clause and would ellipsis away the priority number itself. The whole sentence is read in the Overview's **selected readout** `.ov-task` (266 px, wraps), which renders the raw wire field. ⛔ The Room Zoom has no readout, so the clause is unreachable there — filed as an M4 Persona question. |
 | what the build ghosts carry | `hosts/web/WireFormat.cs:307-315` (`Design`), `:323` (`Designs`) |
 
 <!-- RECONCILED 2026-07-29 (M1-L-b): the lane that was moving these two rows LANDED; the line

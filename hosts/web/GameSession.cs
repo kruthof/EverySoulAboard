@@ -3132,9 +3132,33 @@ namespace Perilune.Web
             if (!c.CanTakeWorkType(type)) return;                      // refusal 2 — no ranking to report
             if (CountWorkEnabled(c) < 2) return;                       // refusal 3 — there was no choice
 
-            sb.Append(" — ").Append(WorkTypeWords[(int)type])
+            sb.Append(RankingSeparator).Append(WorkTypeWords[(int)type])
               .Append(" is priority ").Append((char)('0' + c.GetWorkPriority(type)));
         }
+
+        /// <summary>
+        /// ⭐ <b>M2-6 fix-back — THE ONE SEPARATOR BETWEEN <i>WHAT</i> SHE IS DOING AND <i>WHY</i>.</b>
+        /// Everything before it is the job; everything after it is the ranking clause.
+        ///
+        /// <para><b>IT IS A PARSING CONTRACT, NOT DECORATION, AND IT HAS A SECOND HALF IN THE
+        /// CLIENT.</b> The two crew docks are ~26 and ~23 characters wide and every clause-bearing
+        /// label is 43–54, so a dock that renders the whole string shows a junk fragment
+        /// (<i>"Servicing door_d0_s0 — Re…"</i>) — the payload always past the ellipsis. The docks
+        /// therefore render only the part BEFORE this separator, and the Overview's selected readout
+        /// (<c>.ov-task</c>, 266 px and wrapping) renders the whole sentence. The client's half of
+        /// this constant is <c>WHY_SEPARATOR</c> in
+        /// <c>client/src/ui/console-model.js</c> — ⛔ change one and you must change the other, and
+        /// <c>client/test/why-line.test.js</c> is where that pairing is pinned.</para>
+        ///
+        /// <para>⚠️ <b>WHY SPLITTING ON IT IS UNAMBIGUOUS.</b> No base label
+        /// <see cref="TaskLabel"/> can emit contains " — ": the labels are verbs, device names, item
+        /// names and tile coordinates, and the only em dash the method appends is this one. It is
+        /// also always a SUFFIX — <see cref="AppendRankingClause"/> runs after every branch of the
+        /// switch — so the clause can be taken off the end without looking at what precedes it.
+        /// <c>WhyLineTests.NoBaseLabel_ContainsTheSeparator</c> drives every
+        /// <see cref="JobKind"/> and reddens the day that stops being true.</para>
+        /// </summary>
+        internal const string RankingSeparator = " — ";
 
         /// <summary>
         /// The player-facing word for each <see cref="WorkType"/>, indexed by the enum's own value.

@@ -194,10 +194,14 @@ test('MUTATION 4 — the ROOM ZOOM\'s crew dock writes the same class, and it is
     'the scan passes on a source where the line is COMMENTED OUT, so it proves nothing');
 });
 
+// ⭐ M2-6 fix-back: the payload is `t.what` — the docks render WHAT she is doing and stop at the
+// ranking separator, because neither is wide enough to hold the clause (`console-model.js`). The
+// claim this leg makes is unchanged: BOTH docks still write the host's sentence through the shared
+// derivation, and neither may go silent.
 test('MUTATION 4 — and BOTH docks still render the host\'s text through the shared derivation', () => {
   for (const f of ['src/ui/overview-view.js', 'src/ui/roomzoom-view.js']) {
     const code = codeOnly(src(f));
-    assert.ok(code.includes('setText(rec.taskEl, t.text)'),
+    assert.ok(code.includes('setText(rec.taskEl, t.what)'),
       `${f} stopped writing the task TEXT — the class without the sentence is a colour with no word`);
     assert.ok(code.includes('watchTask('),
       `${f} no longer uses the shared derivation, so the two surfaces can now disagree`);

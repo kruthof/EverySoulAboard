@@ -484,6 +484,56 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// ⭐ <b>M2-6 fix-back — THE SEPARATOR IS UNAMBIGUOUS, AND THAT IS A PROPERTY OF THE HOST
+        /// RATHER THAN A HOPE.</b> The client splits the roster's <c>task</c> field on
+        /// <c>" — "</c> to render the narrow crew docks (<c>console-model.js</c>'s
+        /// <c>WHY_SEPARATOR</c> / <c>taskWhat</c>), and that split is only safe while NO BASE LABEL
+        /// contains the separator. So every <see cref="JobKind"/> is driven through
+        /// <see cref="GameSession.TaskLabel"/> with the clause refused, and none may carry it.
+        ///
+        /// <para><b>DRIVEN OVER <c>Enum.GetValues</c>, not a hand-list</b> — the same shape as
+        /// <c>WorkTypeVetoTests.EveryJobKind_IsClassified</c>, so a thirteenth job kind with a
+        /// prettier label is covered the day it exists rather than silently left out. ⚠️ A cross-
+        /// language contract that no compiler can check is exactly the hand-mirrored-pair shape this
+        /// repo has been bitten by four times; this leg is the half that CAN be mechanised.</para>
+        ///
+        /// <para><b>ONE work type enabled, so the clause is refused</b> — this leg is about the base
+        /// labels only. The non-vacuity assertion at the end proves the fixture really can produce a
+        /// clause, so "no separator found" is a fact about the labels and not about a pawn who was
+        /// never going to be given one.</para>
+        /// </summary>
+        [Test]
+        public void NoBaseLabel_ContainsTheSeparator()
+        {
+            var (gs, host) = Wreck();
+            var device = SelfResolvingNamed(host);
+            Assert.That(device, Is.Not.Null, "the wreck has a named device the sim resolves by tile");
+            var c = Parked(host);
+            c.SetWorkPriority(WorkType.Repair, WorkPriority.Highest);   // ONE ⇒ the clause is refused
+            Assert.That(GameSession.CountWorkEnabled(c), Is.EqualTo(1),
+                "precondition: exactly one work type, so every label below is a BASE label");
+
+            foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))
+            {
+                c.JobKind = kind;
+                c.JobTarget = device.Pos;
+                string label = gs.TaskLabel(c);
+                Assert.That(label, Does.Not.Contain(GameSession.RankingSeparator),
+                    "the base label for JobKind." + kind + " is \"" + label + "\", which contains the " +
+                    "ranking separator. The client splits the roster's task field on that string to " +
+                    "fit the crew docks, so this label would be silently cut in half on both surfaces.");
+            }
+
+            // NON-VACUITY: the same crew member, given a second work type, DOES produce a separator.
+            // Without this the loop above passes on a build that has stopped emitting clauses at all.
+            c.JobKind = JobKind.Maintain;
+            c.SetWorkPriority(WorkType.Deconstruct, WorkPriority.Lowest);
+            Assert.That(gs.TaskLabel(c), Does.Contain(GameSession.RankingSeparator),
+                "the fixture cannot produce a clause at all, so the loop above proves nothing about " +
+                "the separator");
+        }
+
+        /// <summary>
         /// The clause writes the priority as <c>(char)('0' + band)</c>, which is culture-free and
         /// allocation-free BY DOMAIN: a manual priority is 1..<see cref="WorkPriority.Lowest"/> and
         /// <see cref="Citizen.SetWorkPriority"/> throws outside it. ⚠️ Widen that domain past 9 and
