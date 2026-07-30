@@ -45,7 +45,7 @@ already cleaned the docs; three surviving source comments reworded in `lane/prem
 |---|---|---|---|
 | ✅ | M2-1 | per-citizen work priorities as hashed state (CITZ v7→v8) — merged + re-pinned, tag `pin/m2-a`; boots OFF everywhere (OD-H/OD-I) | M2-a DONE |
 | ✅ | M2-21 | silent BUILD haul back-off (defect D-2) — merged 2026-07-29; pins MEASURED HELD (geometry, non-vacuity proven driven), so pin row M1-c left the chain with no re-pin | M1-c DONE |
-| 9 | M2-4 | `work` wire channel + `SetWorkPriorityCommand` — BLOCKING under OD-H | neutral |
+| ✅ | M2-4 | `work` wire channel + `SetWorkPriorityCommand` — merged 2026-07-29, pin-neutral proven (check A empty, all pins held) | neutral DONE |
 | 10 | M2-3 | the WORK tab on the standard surface — BLOCKING; owns M2-1's demo | neutral |
 | 11 | M2-2 | the work-type veto in the dispatcher: 11 claim sites, 5 gates, 3 exclusions — runs alone | M2-e |
 | 12 | M2-20 | "the ship is waiting on you" boot state (OD-G) — same window as M2-2 or the game reads broken | neutral |

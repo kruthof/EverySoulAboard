@@ -819,7 +819,17 @@ test('the console module is CLOSED — its DOM surface may only shrink', () => {
  *  predicate the sim asks and discards, so a refused order leaves no trace on any tile, in any
  *  registry or in the projection. Unlike `getDevices` it IS drawn, by the Room Zoom's blocked layer
  *  (`client/src/ui/blocked-overlay.js`) — a channel whose whole purpose is player feedback would be
- *  pointless shipped data-only. */
+ *  pointless shipped data-only.
+ *  The `work` channel added `getWork` — 31 (RE-COUNTED off the frozen array below by counting the
+ *  quoted literals, never as "30 + 1": the `getItems — 27` annotation was already stale when the
+ *  `devices` lane wrote its own, and that arithmetic is what produced the one wrong number in this
+ *  block's history). Same shape a SEVENTH time — a sparse view-only wire cache with no DOM — and like
+ *  `getDevices`/`getBlocked` it is the fact's ONLY route to the client: a manual work priority is
+ *  per-PERSON state (`Citizen.WorkPrioritiesRaw`, hashed since M2-1) with no tile to be projected onto,
+ *  so no `GlyphMapper` pass could carry it however it were ordered. Like `getDevices` it is data-only
+ *  for now — the WORK tab that draws it and writes back through `SetWorkPriorityCommand` is M2-3 — and
+ *  under OD-H the payload is EMPTY until the player enables a work type, which is the milestone's
+ *  safety property rather than a missing consumer (`hosts/web/WireFormat.Work.cs`). */
 const SHIP_STATE_REACH = Object.freeze([
   'LENSES', 'armTool', 'getArmedTool',
   // The `blocked` channel's cache — which of the player's dig/strip/build orders the sim refuses to
@@ -847,7 +857,17 @@ const SHIP_STATE_REACH = Object.freeze([
   'getLedger',
   'getLlm',
   'getLog', 'getMarks', 'getMaterials', 'getMetrics', 'getRelations', 'getRooms', 'getRoster',
-  'getStatus', 'getTab', 'getTerminals', 'getZones', 'isMossActive', 'onShipUpdate',
+  'getStatus', 'getTab', 'getTerminals',
+  // ⭐ M2-4 — the `work` channel's cache: each crew member's manual work priorities. It is SHIP STATE
+  // in the same sense as `getDevices` and `getBlocked` (a sparse view-only wire cache with no DOM of
+  // its own, moving to ship-state.js at WP-9), and like those two it is the fact's ONLY route to the
+  // client rather than a better source for one the frame already carried — a work priority is
+  // per-PERSON state with no tile to be projected onto, so `GlyphMapper` has nowhere to put it and no
+  // pass ordering could produce it. NOTHING DRAWS IT YET: the WORK tab is M2-3, and under OD-H the
+  // payload is empty until the player enables something. ⚠️ THIS ENTRY IS A CENSUS MOVE AND WAS
+  // RATIFIED IN REVIEW, not slipped in — the charter for M2-4 requires exactly that.
+  'getWork',
+  'getZones', 'isMossActive', 'onShipUpdate',
   'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
 ]);
 

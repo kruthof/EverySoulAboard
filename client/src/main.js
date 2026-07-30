@@ -272,6 +272,12 @@ function onMessage(m) {
     // and `WorksiteSafety.CanStageWorkerAt` itself, never from a projection that carries no trace of
     // a refusal. Cached in the shared state layer; drawn by the Room Zoom's blocked layer.
     case 'blocked': Hud.renderBlocked(m); break;
+    // WHO WILL DO WHAT (`work`, M2-4). Each crew member's manual work priorities — one row per
+    // switched-ON (cid, workType) pair, 1 the HIGHEST — read host-side off `sim.Citizens`, which is the
+    // only place they exist: a priority is a fact about a PERSON, so no projection byte ever carried it.
+    // ABSENT = OFF, and an empty payload is the normal boot state under OD-H (work is opt-in). Cached in
+    // the shared state layer; the WORK tab that draws and writes it is M2-3.
+    case 'work': Hud.renderWork(m); break;
     // The ship's ledger (E0-8): matter census + PARTS/DAY + DAYS OF WATER + DAYS OF AIR, each with
     // the host's derivation note. Cached in the shared state layer; drawn by the Overview's LEDGER
     // island. Read-only — it commands nothing.
