@@ -18,7 +18,9 @@ determinism re-pin to correct.
   belong to the owner.
 - It is **not a spec.** No section here is implementable as written. It describes another game.
 - It is **not exhaustive.** §1–§3 are deep because that is what is being built now. §4–§6 are
-  deliberately shallow. §7 is short and is the most load-bearing section per word.
+  deliberately shallow. §7 is short and is the most load-bearing section per word. **Part II
+  (§9–§23) fills the mechanisms §1–§8 are silent on, at the weaker [model] tier — read its preamble
+  before citing anything from it.**
 
 **How to cite it.** Cite the section, and **re-verify anything you are about to encode into a hashed
 or saved field.** A number in this file is evidence about *RimWorld 1.6 as of July 2026*, measured by
@@ -33,6 +35,7 @@ this file exactly as it applies to `CLAUDE.md`.
 | **[src]** | read out of the decompiled game source (see below). Highest confidence. |
 | **[wiki]** | rimworldwiki.com. The live site is behind Cloudflare and returns **403** to tooling; two routes work — the **Wayback Machine** (`archive.org/wayback/available?url=…` then `curl` the snapshot) and the reader proxy **`https://r.jina.ai/https://rimworldwiki.com/wiki/PAGE`**. Both were used; see the appendix. |
 | ⚠️ **UNVERIFIED** | I could not confirm it. What I believe and why I could not confirm it is stated inline. Treat as a lead, not a fact. |
+| **[model]** | **Claude training knowledge of RimWorld (~1.4/1.5 era), UNVERIFIED against the 1.6 decompile.** Used by Part II (§9–§23) and nowhere in §1–§8. Mechanism *shapes* at this tier are reliable; exact numbers are indicative only. **Before a [model] value enters a hashed field, a def, or a package charter: verify it against the wiki/decompile (routes in the appendix) or measure it in-game, then upgrade the marker.** An un-upgraded [model] number has the same standing as ⚠️ UNVERIFIED — a lead, not a fact. |
 
 **Two independent research passes were run** — one reading the decompiled source and the wiki's Work /
 Drafting / Bill / Stockpile / Menus pages, one reading the wiki's Need / Mood / Mental break / Skills /
@@ -1894,6 +1897,499 @@ ritual for one new hashed field is a single commit carrying default + parser key
 > and a round-trip test. **The design question "how many priority levels" is, here, also a question
 > about how many bits get folded into `02257f5bce961570`.** §1.2's answer — 0..4, three bits — is
 > worth knowing *before* the field is designed, not after.
+
+---
+
+# PART II — MODEL-KNOWLEDGE SURVEY OF THE MECHANISMS PART I DOES NOT COVER
+
+> **Everything in Part II is [model] — written from training knowledge of RimWorld (~1.4/1.5 era),
+> verified against nothing.** §1–§8 above are "Part I": every load-bearing number there was read off
+> a named source on a named day. Nothing below was. The tier's contract (front matter) applies to
+> every line: **shapes are reliable, numbers are indicative, and no value crosses into a hashed
+> field, a def, or a package charter without verification and a marker upgrade.** Individual ⚠️
+> marks below flag the *least* certain items, not the only uncertain ones.
+>
+> Two further rules, both inherited from Appendix B:
+> - **No absolute negatives.** Where Part I's failure mode would produce *"RimWorld has no X"*,
+>   Part II writes *"I am not aware of X"* — which is the literal truth of the [model] tier anyway.
+> - **Depth follows Perilune's roadmap, not RimWorld's own weighting.** §9–§14 are deep because
+>   near-term milestones need them (a heater in M3-10, alerts in M5-2, the Director analogue).
+>   §15–§23 are deliberately shallow shape-notes for later phases.
+>
+> Where a mechanism collides with something Perilune has already decided, the collision is **named,
+> not proposed**, in §8's style. The verification queue at the end lists the [model] values most
+> likely to become load-bearing soon — verify those *first*, before any of them is quoted in a
+> charter.
+>
+> ⚠️ **Citation collision (inherited):** before Part II existed, some test comments cited §7's
+> NUMBERED REFUSALS as bare "§N" — notably "§10" for §7 item 10, *"Rooms are derived, not
+> authored"*. Part II's §10 is the food chain. A pre-2026-07-30 citation of "§9"–"§16" whose
+> description doesn't match a Part II heading means §7's item of that number. New citations write
+> "§7 item N".
+
+---
+
+# §9 [model] — TEMPERATURE AS A SYSTEM
+
+## 9.1 The state and where it lives
+
+Temperature is **one scalar per room** — §7.13's finding about vacuum generalises: RimWorld's whole
+environmental model is room-scalar. Enclosed, roofed spaces carry a room temperature; unenclosed or
+unroofed cells read the **outdoor temperature**, a single map-wide value driven by biome + season +
+a daily cycle + weather + events (a *cold snap* or *heat wave* forces it for several days). A
+partially roofed room equalises toward outdoors faster the larger its unroofed fraction.
+
+## 9.2 Exchange
+
+Rooms exchange heat with neighbours through, fastest first: **open doors** (roughly one merged
+space), **vents** (a wall-slot building that equalises two rooms like an open door without letting
+pawns or sight through), **closed doors** (slow leak), **walls** (very slow, per shared interface),
+and the roof/outdoors path. The consequences the player learns as vocabulary:
+
+- **Double-walling insulates.** ⚠️ I am confident of the effect, less of the mechanism (per-wall
+  interface vs per-cell exchange) — verify before copying the simplification.
+- **Airlocking** (two doors in series) cuts the open-door spikes on a freezer.
+- Wall **material**, to my knowledge, does not change insulation — a wooden wall insulates like
+  granite. ⚠️ Worth a verify; it is the kind of simplification a lane would otherwise re-derive
+  wrongly in either direction.
+
+## 9.3 Devices
+
+| device | power | behaviour |
+|---|---|---|
+| **Heater** | ~175 W ⚠️ | pushes a fixed heat rate into its room while below a **player-settable target**; output is per-device, so a big room heats slowly and heaters stack |
+| **Cooler** | ~200 W ⚠️ | wall-embedded, two-sided: removes heat from the cold-side room, dumps it **plus waste heat** into the hot-side room; efficiency degrades as the differential it fights grows ⚠️ curve shape unverified |
+| **Vent** | passive | equalises two adjacent rooms |
+| **Campfire** | fuel | heat + light + fire risk; the tribal-era heater |
+| **Passive cooler** | consumable | cools toward ~15 °C ⚠️; tribal-era |
+
+The freezer is the canonical composite: two coolers (redundancy), double wall, airlock, hot sides
+venting somewhere that can absorb the heat. **The cooler is also the only heat *pump* — everything
+else only adds heat** (to my knowledge), so "where does the hot side vent" is a real layout
+question, and the failure mode (cooler venting into a sealed room) is a classic self-inflicted kill.
+
+## 9.4 Pawn temperature bands
+
+Every pawn has a **comfortable range** (`ComfyTemperatureMin/Max` stats) — naked human roughly
+**16–26 °C** ⚠️ — widened by **apparel** (a parka buys tens of degrees downward, a duster upward;
+this is the entire point of the *needs warm clothes* alert, §11). Outside comfy, escalating **mood
+thoughts** fire first (chilly → cold → freezing; hot → sweltering). Roughly **10 °C beyond the
+comfy edge** ⚠️ a **hediff** begins accruing severity: **hypothermia** (shivering → slowed →
+downed → death, with **frostbite** destroying fingers/toes/ears at deep severity) or **heatstroke**
+(the same ladder minus frostbite). Severity climbs while exposed and drains once back in range — a
+cold snap is survivable in bursts, and the player learns to rotate exposure.
+
+## 9.5 Temperature vs crops and food
+
+Plants grow at full rate in roughly **10–42 °C**, ramping linearly to zero near **0 °C** and
+**58 °C** ⚠️; hard frost kills most standing crops outright. Food carries a rot clock
+(`CompRottable`): above ~10 °C it runs at full rate, **0–10 °C is "refrigerated"** (much slower),
+**≤ 0 °C is "frozen"** (stopped) ⚠️. These two facts alone generate the base-layout vocabulary —
+the freezer, the sun-lamp greenhouse with its own heater, the winter larder.
+
+> **⚠️ COLLISION, named not proposed.** Perilune's temperature lives *inside* real gas math —
+> `WorksiteSafety`'s "breathable" already counts thermal, and rooms freeze from ~day 5 on the wreck
+> because **no heater device exists** (a filed defect; M3-10 is the heater). RimWorld's
+> one-scalar-per-room model (§7.13) is the *simple* end of this design space; Perilune's sim is
+> already past it, and only the *device vocabulary* (push heat / pump heat / equalise) ports.
+
+---
+
+# §10 [model] — THE FOOD PRODUCTION CHAIN
+
+## 10.1 Growing zones and fertility
+
+A **growing zone** is painted over fertile terrain and set to **one plant kind**; sowing and
+harvesting are Plants (Growing) work. Some plants carry a **minimum Plants skill to sow** at all
+(devilstrand famously ~10 ⚠️). Terrain has **fertility** — indicative table, all values ⚠️:
+
+| terrain | fertility |
+|---|---|
+| soil | 100 % |
+| rich soil | 140 % |
+| gravel | 70 % |
+| hydroponics basin | 280 % |
+
+Each plant also has a **fertility sensitivity** scaling how much fertility matters: rice cares a
+lot, potatoes barely — which is why potatoes are the poor-soil crop and rice the hydroponics crop.
+
+## 10.2 Growth rate
+
+Growth rate ≈ **fertility × light × temperature**, integrated only while the plant is "awake":
+
+- **Light**: zero growth below ~30 % light, scaling to full at 100 % ⚠️. Sunlight is 100 %; a **sun
+  lamp** provides ~100 % in its radius at brutal wattage (~2 900 W ⚠️) — the classic power-grid
+  stressor, and the reason indoor farming is a mid-game project rather than a default.
+- **Temperature**: §9.5's band.
+- **Rest**: plants rest during night hours (roughly 19h–6h ⚠️), and **to my knowledge the rest
+  window is time-of-day-based — a sun lamp does not bypass it**. ⚠️ **SHAPE UNCERTAIN — flagged in
+  the verification queue.** Listed per-plant "grow days" assume ideal conditions and understate real
+  calendar time (~1.8× ⚠️).
+- Outdoors adds a **growing season**: out-of-season sowing is refused, winter kills standing crop.
+
+## 10.3 Harvest and the Plants skill
+
+Plants skill feeds **work speed** and a **harvest success chance** — a failed harvest destroys that
+plant's yield with a *harvest failed* message ⚠️ (I am fairly confident failure wastes the plant;
+less confident of the exact chance curve). Indicative yields, all ⚠️: rice ~6/plant on a fast
+cycle, potatoes ~11 hardy and slower, corn ~22 on a very long cycle — a deliberate
+speed/robustness/bulk triangle.
+
+## 10.4 Nutrition math — meals vs raw
+
+Nutrition is a scalar. Raw items are ~**0.05 nutrition** apiece; a human burns roughly **1.6/day**
+⚠️. Cooking **amplifies**: a simple meal consumes 10 raw (0.5 nutrition) and yields **0.9** ⚠️ —
+cooking is not flavour, it is a ~1.8× multiplier on the farm's output. The ladder (numbers ⚠️):
+
+| food | nutrition in | nutrition out | mood |
+|---|---|---|---|
+| raw | — | 0.05/item | small penalty for most raw kinds |
+| nutrient paste | 0.3 | 0.9 | ~−4 ("ate nutrient paste") |
+| simple meal | 0.5 | 0.9 | none |
+| fine meal | 0.5, split veg+meat | 0.9 | ~+5 |
+| lavish meal | 1.0 | 1.0 | ~+12 |
+
+Nutrient paste is the efficiency extreme and the mood floor — a machine that turns the least food
+into the most days, paid for in §4's currency. Survival meals and pemmican trade efficiency for
+shelf-stability. The whole table is a worked example of RimWorld pricing *mood against matter*.
+
+## 10.5 Food poisoning
+
+Every cooked meal carries a poison chance from **the cook's food-poison stat** (falls steeply with
+Cooking skill — order of ~5 % at skill 0 down to ~0.1 % ⚠️), **kitchen cleanliness** (§16), and
+**rotten ingredients**. A poisoned pawn vomits, hurts, and is effectively lost for ~a day. This is a
+deliberate teaching loop: low-skill cook + dirty kitchen = a colony that keeps mysteriously falling
+over, and the fix is legible (clean floor, better cook).
+
+## 10.6 Spoilage and refrigeration
+
+Raw meat rots in ~2 days warm, cooked meals in ~4 ⚠️; refrigeration slows the clock hard, freezing
+stops it (§9.5). The freezer is the food chain's buffer stage, and its power draw is the chain's
+standing cost — a brownout that thaws the larder is a real cascade.
+
+> **⚠️ COLLISION, named not proposed.** Perilune's food chain is hydroponics + a greywater loop with
+> a measured 19.0-day runway (E0-9) and, on grid, a conjured-water floor (B-2). There is no soil,
+> season, light or meal model — §10 describes a *chain* where Perilune currently has a *faucet*.
+> Which links of the chain are wanted aboard a ship is an owner decision, not this file's.
+
+---
+
+# §11 [model] — ALERTS AND LETTERS
+
+## 11.1 Two channels with different contracts
+
+RimWorld separates **conditions** from **events**:
+
+| channel | where | lifetime | examples |
+|---|---|---|---|
+| **Alert stack** | right screen edge | exists exactly while its condition holds; vanishes when fixed | *Idle colonist*, *Low food*, *Need warm clothes*, *Major break risk* |
+| **Letters** | bottom-right envelope stack | fired once by an event; persists until opened or dismissed | raid, trader arrival, wanderer joins, disease outbreak |
+
+## 11.2 The alert stack
+
+Each alert is a small class with an **active-condition check evaluated continuously against live
+game state** — the stack is *derived*, so it can neither be missed nor go stale, and it needs no
+event to fire. Anatomy of one alert: a short label; a **hover explanation naming the cause and
+usually the fix**; and a **click that jumps the camera to the culprit** (cycling culprits on repeat
+clicks). Two severity tiers ⚠️: critical (red, some pulse) vs a calmer yellow/grey tier.
+
+## 11.3 Letters
+
+Colour codes severity ⚠️: blue (neutral/informational), gold (good news), amber (small threat),
+red pulsing (big threat — raids; these can pause the game and offer the camera jump). Letters are
+the event log the player actually reads; the alert stack is the state they are responsible for.
+
+## 11.4 How they teach
+
+The alert stack is RimWorld's real tutorial. *Idle colonist* teaches the Work tab; *Need warm
+clothes* teaches apparel before the winter it predicts; *Low food* (below ~a few days of nutrition
+⚠️) teaches the larder. Each alert names a problem the simulation already knows about, states why,
+and points at where — the triple (problem, reason, place). A separate adaptive "learning helper"
+in the top corner drips concept cards; the derived-condition stack is the half worth studying.
+
+> **⚠️ COLLISION, named not proposed.** Perilune's standing failure shape is the **silent refusal** —
+> `WorksiteSafety` refuses staging with no toast, and an order painted in airless air never
+> progresses, silently (§13.17's expensive-and-visible → cheap-and-invisible trade, accepted not
+> patched). §11's derived-condition stack is the structural antidote and M5-2's brief. The `blocked`
+> wire channel already ships the *reason*; what has no analogue yet is the *stack*.
+
+---
+
+# §12 [model] — CONSTRUCTION IN DETAIL
+
+## 12.1 The pipeline
+
+**Blueprint → material delivery → frame → work → built.** Placing a blueprint is free and instant (a
+ghost; queue as many as you like). Haulers **or the builder** deliver each required stack *to the
+blueprint*, which displays delivered/required. On full delivery it becomes a **frame** — the
+materials are now physically inside it. Construction work fills the frame's progress bar; done.
+Cancelling a blueprint costs nothing; cancelling a frame drops its materials on the floor. The
+pipeline means **logistics is most of construction** — a wall across the map is slow because of
+hauling, not building, and stockpile placement (§2.5) is what the player tunes to fix it.
+
+## 12.2 Skill — speed and the failure roll
+
+Construction skill feeds **speed** and a **success chance**. On completion, a low-skill builder can
+**fail the build**: progress resets, a *botched* message fires, and a fraction of the materials is
+destroyed — I believe ~50 % ⚠️. **Shape half-uncertain — whether a botch destroys half or all of the
+frame's materials is in the verification queue.** The chance is meaningful at low skill and
+effectively vanishes by mid skill ⚠️. Some buildings additionally carry a **minimum Construction
+skill** to attempt at all ⚠️.
+
+## 12.3 Quality — furniture yes; structure, I believe, no
+
+Furniture, beds and art receive a **quality** (awful → legendary) rolled from a skill-centred
+distribution that shifts right with skill; legendary is effectively gated behind **inspired
+creativity** and/or skill 20 ⚠️. Quality scales comfort, beauty and market value — a level-15
+constructor's bed is a mood machine (§16 feeds off it). **I am not aware of quality applying to
+plain walls, floors or most workbenches** — structure is quality-less to my knowledge ⚠️.
+
+## 12.4 Deconstruction
+
+Deconstructing refunds a **fraction of the build cost** — I recall **50 %**, and I am *not*
+confident that is still the current value (75 % has existed at some point in some version) ⚠️
+**verification queue**. I am also unsure whether the refund scales with remaining hit points.
+Rounding is down, so cheap things can refund zero.
+
+## 12.5 Roofs and collapse
+
+Rooms auto-roof when enclosed (a no-roof zone can forbid it). A roof cell must be within **~6
+tiles** of a support (wall or rock) ⚠️; removing the last support **collapses** the roof — damage to
+everything under it, rubble left behind. **Overhead mountain** is pre-existing rock roof: unbuildable,
+unremovable, lethal when collapsed, and the infestation trigger. Collapse is the one place
+construction kills, and the game warns at the moment of the risky deconstruct order.
+
+> **⚠️ COLLISION, named not proposed.** Perilune charges matter **at placement** and the material
+> *teleports* (E0-5's deferred item; `MECHANICS.md`'s known-gaps list). There is no blueprint stage,
+> no delivery leg, no frame. §12.1's pipeline is exactly the missing middle — and it is also what
+> would make stockpile placement matter (§2.5; `ECONOMY.md` §8's round-trip mechanism).
+
+---
+
+# §13 [model] — MEDICAL
+
+## 13.1 Bills on patients
+
+The medical UI is §2.6's bill system pointed at a person: a pawn's **Operations tab** queues
+surgery bills (install prosthetic, remove part, administer drug). Everyday care needs no bills —
+downed or sick pawns are **rescued to a bed** (any bed flagged *medical*), and doctors **tend**
+them as Doctor work, medicine fetched automatically subject to a per-patient allowed-medicine
+setting.
+
+## 13.2 Tend quality
+
+Each tend produces a quality: a base from the doctor's tend stat (Medicine skill + manipulation +
+sight) **multiplied by the medicine tier** — indicative ⚠️: no medicine is heavily penalised/capped
+(~0.3–0.7 territory), **herbal ~×0.6, industrial ~×1.0, glitterworld ~×1.6** — then randomised
+around the result. Tend quality drives how strongly a wound or infection is held back; it is the
+number the whole medical economy exists to raise.
+
+## 13.3 The infection/immunity race — recap
+
+An untended wound, worse in a dirty room, risks **infection**. Once infected, **severity** climbs
+against **immunity**, which climbs with blood filtration, bed quality, rest and food; first to 1.0
+wins ⚠️ numbers. Tend quality slows severity — that is what doctors are *for* mid-race. Biome
+diseases (flu, plague, malaria) enter the same race by event rather than by wound.
+
+## 13.4 Surgery
+
+Surgery success ≈ f(surgeon's stat, medicine potency, **room cleanliness**, bed quality) ⚠️;
+failure comes in tiers — minor (extra damage), major (destroys a nearby part), catastrophic (death
+on the table). This is why the sterile-tile hospital exists and why glitterworld medicine is
+hoarded for surgery rather than spent on flu.
+
+## 13.5 The prosthetics ladder — one paragraph
+
+Peg leg / denture (crude, well below natural efficiency) → simple prosthetic (near natural ⚠️) →
+**bionic (~125 %)** → **archotech (~150 %)** ⚠️. Part efficiency feeds §6's capacities, so a bionic
+arm is a work-speed upgrade, not just a repair — the ladder converts medicine into economy, and
+late-game colonists are deliberately part-machine.
+
+> **⚠️ COLLISION, named not proposed.** Perilune's health surface today is `Suffocation` plus `Flee`
+> (§8.6) — no wounds, no parts, no tending, and `Bed` is inert furniture. §13 is reference for *if
+> and when* a health model is chartered; nothing here proposes one.
+
+---
+
+# §14 [model] — THREATS AND THE STORYTELLER
+
+**Read this section as reference for the DIRECTOR analogue only.** The collision is stated at the
+end, §8-style, and it is structural, not numeric.
+
+## 14.1 The storyteller is a budgeted incident scheduler
+
+A storyteller decides **when** an incident fires, **which one**, and **how big** (a points budget).
+The player-facing difficulty setting is a *multiplier on the budget*, not the scheduler itself.
+
+## 14.2 Raid points — the wealth feedback
+
+Threat points are computed from **colony wealth** — items + buildings (weighted down, ~half ⚠️) +
+a flat contribution per colonist and combat animal ⚠️ — pushed through a curve with a cap (~10 000
+⚠️), then scaled by **difficulty**, **adaptation** (recent colonist deaths and damage shrink the
+next threats — a comeback mechanic ⚠️ shape), and **time since landing** (an early-game grace
+ramp). The budget then **buys raiders** from a per-kind combat-power table until spent — which is
+why late raids are armies and early ones are one man with a knife.
+
+## 14.3 Cadence — the three shapes
+
+| storyteller | shape |
+|---|---|
+| **Cassandra Classic** | regular escalating waves with deliberate breathers — a paced difficulty curve |
+| **Phoebe Chillax** | long calm gaps; threats undiminished when they come — for builders |
+| **Randy Random** | stochastic; can stack two raids or grant a drought; no cadence promise at all |
+
+All three draw from one incident deck: **big threats** (raid, infestation, mech cluster), **small
+threats**, **good/neutral events** (cargo pods, wanderer joins, trader), plus per-biome disease
+MTBs. Storytellers also carry a **population intent**: below the target band, join/recruit events
+flow; above it, they dry up ⚠️ shape.
+
+## 14.4 Why wealth management is a strategy
+
+Because the budget is a function of wealth, **hoarding raises raids**: unsold art, over-built bases
+and item mountains are liabilities, and experienced players deliberately run lean, sell down, or
+convert wealth into *defence* (which at least shoots back). The design intent is that growth
+carries its own antagonist — and that the player can feel the dial they are turning, which is what
+makes it a strategy rather than a tax.
+
+> **⚠️ COLLISION, named not proposed — the deep one in Part II.** Perilune's Director
+> (`DirectorSystem`) is **deterministic**: it reads `ShipMetrics` into a tension value and
+> modulates **device wear**. It rolls no dice and spawns no events, and determinism makes
+> RimWorld's cheapest storyteller move — spawn a raid at the map edge — pin-moving state surgery
+> here (§8.9). §14 is the analogue for the Director's *budget-and-cadence shape* only, not a
+> licence for events. Note also that §14.2's input is missing: I am not aware of a wealth statistic
+> in Perilune's sim — the nearest object is the ledger (E0-8), whose metrics were measured lying
+> (`ShipMetrics.Power` reads 0.833 where the truth is 1.000). Named, not resolved.
+
+---
+
+# §15 [model] — COMBAT RESOLUTION (shape only)
+
+Ranged: each shot has a **warmup** then **cooldown**. Hit chance is a multiplicative chain —
+shooter accuracy compounding **per tile of distance**, × the weapon's accuracy at its
+touch/short/medium/long bracket, × target **size**, × **cover** (low cover blocks a large fraction
+for a pawn crouched behind it; pawns lean around corners), × light and weather ⚠️ all numbers.
+Missed shots land near the line of fire — friendly fire is real. Melee trades attack rolls against
+**dodge/parry**. **Armor**, per damage packet: a roll against (armor rating − armor penetration); a
+strong margin **deflects** outright, a partial margin **mitigates** (≈ half damage, sharp→blunt),
+else full damage ⚠️ exact rule flagged in the verification list. **Downing**: a pawn drops when
+consciousness falls below ~0.3, pain crosses its shock threshold (~0.8 ⚠️), or blood loss runs —
+and **non-player pawns roll a death-on-down chance** ⚠️ (a settable mechanic in later versions) so
+the map is not carpeted with prisoners. Death otherwise comes from destroyed vital parts.
+
+# §16 [model] — FILTH, CLEANLINESS, BEAUTY AND ROOM STATS (shape only)
+
+**Filth** is per-cell stuff — tracked-in dirt, blood, vomit — created by traffic and events,
+removed by Cleaning work (scoped to the Home area, §17). Room **cleanliness** averages it.
+**Beauty** is per-cell from floors, art and furniture (filth strongly negative), and a room folds
+cleanliness + beauty + **space** + wealth into **impressiveness** ⚠️ formula weights, which drives
+role-specific mood thoughts (bedroom / dining room / rec room tiers from *awful* to *unbelievably
+impressive*). Cleanliness is also *functional*: it feeds surgery success and infection chance
+(§13) and kitchen food-poisoning chance (§10.5). ⚠️ **I am genuinely unsure whether research speed
+takes a cleanliness input** — flagged rather than asserted in either direction.
+
+# §17 [model] — FORBIDDING AND ALLOWED AREAS (shape only)
+
+Every ground item carries a **forbid flag** (red X overlay, hotkey toggle): forbidden items are
+**invisible to autonomous jobs** — nobody hauls, eats or equips them — while a direct player order
+can, I believe, still target them ⚠️. Items dropped by enemies and corpses' gear spawn forbidden —
+the flag is the "don't sprint into the killzone for loot" instrument, and unforbidding after a
+battle is a ritual. **Doors** can be forbidden (pawns will not path through) or **held open**.
+**Allowed areas** are painted per-pawn movement restrictions assigned in a manage-areas dialog
+(animals too). The **Home area** is different — it scopes *work* (cleaning, firefighting, repair),
+not movement.
+
+# §18 [model] — RESEARCH (one paragraph)
+
+One active project at a time. Points accrue from **research bench work**, scaled by the pawn's
+research speed (Intellectual skill), bench tier (simple vs hi-tech), a **multi-analyzer** adjacency
+bonus, and a **tech-level cost multiplier** — a tribal colony pays a stiff factor on industrial
+projects (~×2 ⚠️). To my knowledge there is no failure roll and no branching choice inside a
+project — research is a pure time/labour sink whose only strategy is *ordering*, plus item gates
+(Royalty's techprints) on a few projects.
+
+# §19 [model] — PRISONERS AND RECRUITMENT (one paragraph)
+
+Downed enemies can be **captured** into a prisoner bed in a prison room. Per-prisoner interaction
+modes exist (ignore / reduce resistance / recruit / convert and enslave with Ideology). A prisoner
+carries a **resistance** number, worn down by warden social interactions (Social-skill flavoured);
+recruitment succeeds against low resistance — **I believe in modern versions resistance must reach
+0, after which recruitment succeeds outright rather than rolling** ⚠️ **SHAPE UNCERTAIN — flagged
+in the verification queue** (older versions rolled a percentage per attempt). Recruits join as full
+colonists; prisoners are also organ/labour/ransom sources at a colony-wide mood cost.
+
+# §20 [model] — TRADE AND CARAVANS (one paragraph)
+
+Three channels: **orbital trade ships** (called via comms console; only goods within range of an
+**orbital trade beacon** are tradeable), **visiting trade caravans**, and **player caravans**
+formed to walk the world map to other settlements. **Silver** is the universal currency. Prices
+carry a spread — sell low, buy high, order of ×0.6 / ×1.4 ⚠️ — improved by the negotiator's Social
+skill (trade price improvement stat). Caravan formation physically packs goods onto pawns and pack
+animals and consumes food en route; it is the game's only long-range logistics and is deliberately
+heavy, slow and risky (ambush events).
+
+# §21 [model] — FIRE (one paragraph)
+
+Fire attaches to flammable cells and things (per-material **flammability**: wood high, stone ~0),
+grows in place, throws sparks at neighbours, and **pushes serious heat** — a burning enclosed room
+climbs toward auto-igniting temperatures, so fire in a wooden base cascades room by room. Rain
+extinguishes outdoor fire; indoors it burns until fuel runs out, firefighters beat it out, or
+firefoam (poppers, shells) smothers it. Firefighting is the **Firefighter** work type —
+priority-1-by-default and `alwaysStartActive` (§1.5) — but pawns only auto-fight fire inside the
+**Home area** (§17), a scoping that surprises every new player once. Fire is RimWorld's cheapest
+disaster, and stone outer walls are the first "real base" lesson it teaches.
+
+# §22 [model] — PATHFINDING AND REGIONS (internals; one paragraph)
+
+**Internals, not gameplay — read for the `PathService` analogue only.** The map is carved into
+**regions**: small rectangular chunks of mutually-reachable cells (bounded by impassables and
+doors; order of ≤ ~12×12 cells ⚠️) linked into a graph, updated incrementally as walls and doors
+change. **Reachability** questions — "can this pawn get there at all", asked constantly by the work
+scan (§1.8) — run as cheap region-graph traversals *before* any cell-level A\*. Actual paths are
+A\* over cells with per-cell path costs (terrain, snow, things in the way, door open time), so
+pawns prefer clean floor to rubble without being ordered to. Raiders additionally consult an
+**avoid grid** biased away from player defences ⚠️ shape. The two-tier shape — cheap coarse
+reachability veto, expensive fine path — is the part worth carrying; Perilune's E0-4 reachability
+gate (host-side `FindPath` from every live crew member) currently uses the expensive tier *as* the
+veto.
+
+# §23 [model] — ANIMALS (one short paragraph)
+
+Wild animals roam per biome. **Taming** is Animal-skill work rolled against the species'
+**wildness** (food offered as a gift); tamed animals eat, breed, bond (mood both ways, including a
+death thought), and can be **trained** stepwise (guard / attack / rescue / **haul**) with decay
+over time. Haul-trained animals are a genuine logistics multiplier, and pen animals (1.3+) are a
+farming layer (eggs, milk, wool, meat). **I am not aware of any core RimWorld system that
+*requires* animals to function** — colonies run fine without ever taming one.
+
+> **⚠️ COLLISION, named not proposed.** Perilune's sim has no animal concept anywhere I have seen,
+> and a sealed-ship premise offers no obvious door for one; nothing here proposes adding it. If a
+> future design wants the *niche*, note that animals are RimWorld's cheap unskilled-labour tier —
+> a role MOSS-commanded devices already occupy in Perilune (§8.7).
+
+---
+
+## PART II VERIFICATION QUEUE — upgrade these [model] values first
+
+Ordered by how soon a lane is likely to need the value in a def or charter. Routes: the appendix's
+two wiki routes, or grep the local decompile — **the class names below are themselves [model]
+leads, not certainties; grep broadly.**
+
+| # | value | why soon | where to look |
+|---|---|---|---|
+| 1 | room heat model + heater/cooler outputs and wattages (§9.2–9.3) | **M3-10 builds a heater** — these become def fields | `CompHeatPusher`, `CompTempControl`, `Building_Cooler`, `RoomTempTracker`; wiki *Temperature* |
+| 2 | growth-rate curve: light threshold, the rest window (does a sun lamp bypass it?), fertility table (§10.1–10.2) | food-chain work touches hydroponics defs | `Plant.cs` (`GrowthRateFactor_*`); wiki *Plants* |
+| 3 | tend-quality formula + medicine potency multipliers (§13.2) | first health-model charter | `TendUtility`, `Medicine`; wiki *Doctoring* |
+| 4 | raid-points formula: wealth weights, adaptation, cap (§14.2) | Director-analogue discussions will quote it | `StorytellerUtility.DefaultThreatPointsNow`; wiki *Raid points* |
+| 5 | construction failure: chance curve, how much material a botch destroys, deconstruct refund fraction (§12.2, §12.4) | any blueprint/frame pipeline charter | `Frame`, `ConstructionSuccessChance` stat; wiki *Construction* |
+| 6 | comfy/hediff temperature bands (§9.4) | M3-10 acceptance criteria ("crew survive the night") | `ComfyTemperatureMin/Max` stats, hypothermia/heatstroke hediff givers; wiki *Temperature* |
+| 7 | nutrition constants: per-item, per-meal, daily burn (§10.4) | this repo's food math already bit once at exactly 2× (E0-9) | `Need_Food`, meal ThingDefs; wiki *Nutrition* |
+| 8 | recruitment shape: is resistance-0 recruit guaranteed? (§19) | a *shape*, not a number — genuinely uncertain | `Pawn_GuestTracker`, `RecruitUtility`; wiki *Prisoner* |
+
+**Genuine shape uncertainties (not just numbers), collected in one place:** the plant rest window
+vs sun lamps (§10.2) · whether a botched build destroys half or all delivered materials (§12.2) ·
+the deconstruct refund fraction and whether it scales with damage (§12.4) · resistance-0
+recruitment (§19) · whether research speed takes a cleanliness input (§16) · the cooler's
+efficiency-vs-differential curve (§9.3) · the exact armor deflect/mitigate rule (§15).
 
 ---
 

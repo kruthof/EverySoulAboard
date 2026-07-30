@@ -14,9 +14,10 @@ namespace Perilune.Tests
     ///
     /// <para>Owner ruling, 2026-07-29, binding and verbatim: <i>"we do not need 'add room' that makes
     /// no sense on a ship where rooms are already existing."</i> RimWorld analogue, cited not
-    /// remembered — <c>docs/design/rimworld-reference.md</c> §10 ("Rooms are derived, not authored"):
+    /// remembered — <c>docs/design/rimworld-reference.md</c> §7 item 10 ("Rooms are derived, not
+    /// authored"; cited as bare "§10" before Part II claimed that number for the food chain):
     /// <i>"RimWorld computes rooms from walls for stats … the player never names or allocates one."</i>
-    /// (§10 carries no <c>⚠️ UNVERIFIED</c> marker.)</para>
+    /// (§7 item 10 carries no <c>⚠️ UNVERIFIED</c> marker.)</para>
     ///
     /// <para><b>THE ONE CHANGE UNDER TEST</b> is the removal of <c>if (a.Type == RoomType.None)
     /// continue;</c> from <c>GameSession.ResolveSlot</c>. Occupancy stops being a fact about a

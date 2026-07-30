@@ -3,23 +3,25 @@
 // Owner ruling, 2026-07-29, binding and verbatim: *"we do not need 'add room' that makes no sense on
 // a ship where rooms are already existing."*
 //
-// RimWorld analogue, cited rather than remembered — `docs/design/rimworld-reference.md` §10 ("Rooms
-// are derived, not authored"): *"RimWorld computes rooms from walls for stats (beauty, cleanliness,
+// RimWorld analogue, cited rather than remembered — `docs/design/rimworld-reference.md` §7 item 10
+// ("Rooms are derived, not authored"; cited as bare "§10" before Part II claimed that number for the
+// food chain): *"RimWorld computes rooms from walls for stats (beauty, cleanliness,
 // impressiveness, temperature) — the player never names or allocates one."* That sentence supports
 // BOTH halves of this package: occupancy moves onto geometry (walls decide), and the player is never
-// asked to pick a purpose. §10 carries no `⚠️ UNVERIFIED` marker.
+// asked to pick a purpose. §7 item 10 carries no `⚠️ UNVERIFIED` marker.
 //
-// ⚠️ AND ONE THING THE REFERENCE DOES **NOT** SAY, flagged rather than built on. RimWorld also infers
-// a room's ROLE from its contents (a room with a bed is a bedroom), and it is tempting to mirror that
-// by naming a compartment after the machinery inside it. **The reference does not document that
-// mechanism anywhere.** ⚠️ THE SWEEP SENTENCE THAT STOOD HERE WAS WRONG IN ONE TERM AND IS CORRECTED
+// ⚠️ AND ONE THING THE VERIFIED TIER DOES **NOT** SAY, flagged rather than built on. RimWorld also
+// infers a room's ROLE from its contents (a room with a bed is a bedroom), and it is tempting to
+// mirror that by naming a compartment after the machinery inside it. **Part I documents no such
+// mechanism.** ⚠️ THE SWEEP SENTENCE THAT STOOD HERE WAS WRONG IN ONE TERM AND IS CORRECTED
 // (review, 2026-07-29): it said a sweep for `bedroom` / `room role` / `infer` "returns nothing".
-// RE-MEASURED on `docs/design/rimworld-reference.md`: `bedroom` **0** ✅, `room role` **0** ✅,
-// **`infer` 4** — lines 378, 380, 946 and 1924, and NOT ONE of them is about room roles (they are a
-// provenance caveat on a needs table, a warning not to infer needs numbers from it, and a note about
-// labelled inferences being settled). **The judgement is unchanged and stands: the reference does not
-// document role inference.** Only the evidence sentence was overstated, which is the same shape as
-// the false absolute negative review found in `decks-model.js` — a reader told a term returns nothing
+// RE-MEASURED then on the Part-I-only doc: `bedroom` **0** ✅, `room role` **0** ✅, **`infer` 4** —
+// and NOT ONE of them was about room roles. (2026-07-29 late: Part II [model] §16 now DOES describe
+// role-tiered mood thoughts — bedroom/dining/rec — at the UNVERIFIED tier; the sweep counts above
+// are true of Part I, and the standing directive still bars building on an unverified tier.)
+// **The judgement is unchanged and stands: the verified tier does not document role inference.**
+// Only the evidence sentence was overstated, which is the same shape as the false absolute negative
+// review found in `decks-model.js` — a reader told a term returns nothing
 // does not go and look. So under the standing directive (*"cite it, do not re-derive from memory"*)
 // this package does not build on it. The naming rule is deliberately the smaller one: derived,
 // total, neutral.

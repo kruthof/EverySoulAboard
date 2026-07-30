@@ -1,5 +1,12 @@
 # PERILUNE — Implementation Plan
 
+> **Role note (2026-07-29):** the current work queue is **`docs/ROADMAP.md`**. This file
+> remains authoritative for the parallel-lane contracts (spine files, conflict rules, lane
+> ownership) and THE STANDARD SURFACE section, which is test-pinned. Its P0–P5 phasing is
+> historical context; P3+ ("The Voyage") is parked behind the RimWorld-loop milestones.
+> The surface table below is stale in its SHIP, not its rule: the two modules are worn by
+> `--ship wreck` today (`./play.sh`); grid is the economy fixture.
+
 *2026-07-20. The execution companion to `VISION.md` (what) and `ARCHITECTURE.md` (how).
 This plan is written to be run by **up to 10 parallel implementation agents plus one
 integrator**. Everything here assumes the migrated baseline: 182 headless tests green,
