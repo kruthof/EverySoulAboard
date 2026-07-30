@@ -101,7 +101,20 @@ export function compartmentDesignation(slotIndex) {
  * `wire-decks.test.js`'s WP-1 tripwire exists because that leaks an internal id (`hall_d1_s6`,
  * `hold`) into an UPPERCASE UI. That leak was held shut only by the ship-authoring convention "every
  * occupied slot is typed" — and M1-L retires that convention, because occupancy is now geometry.
- * Closing it by construction is the point: there is no longer any path from an anchor id to a label.
+ *
+ * ⚠️ **THE SENTENCE THAT ENDED THIS PARAGRAPH WAS A FALSE ABSOLUTE NEGATIVE AND IS RETRACTED.** It
+ * read *"there is no longer any path from an anchor id to a label"* — and when review went looking,
+ * **THREE `|| anchorName` fallbacks were still standing in shipped client code**: `room-model.js`'s
+ * `roomTileRect` (the Room-Zoom caption), its `crewRoomSlot` (the crew dock), and
+ * `overview-model.js`'s `currentRoom` (the readout's CURRENT ROOM line). They were unreachable, but
+ * only because `compartmentName` is total — **closed by a RETURN VALUE, not by construction** — and
+ * `wire-decks.test.js`'s tripwire ranges over `deckSlotView` only, so it could not see any of them.
+ * A reader told a path does not exist does not go looking for it; that is the whole cost of the
+ * shape. **All three are now DELETED** (review, 2026-07-29) and pinned behaviourally by
+ * `client/test/no-add-room.test.js`'s *"an anchor id can no longer become a caption"* leg, which
+ * hands each of the three a slot the host cannot currently produce — blank `displayName`, live
+ * `anchorName` — and requires the id not to come back out. **With the deletions in, the sentence is
+ * now true of the code and not merely of its inputs.**
  *
  * ⚠️ **WHAT THIS RULE IS NOT: it does not infer a purpose from CONTENTS.** RimWorld does derive a
  * room's *role* from what is built in it, but `docs/design/rimworld-reference.md` — the authority

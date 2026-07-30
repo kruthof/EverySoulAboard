@@ -1005,11 +1005,43 @@ function orderSuppressionToast(tool, hit) {
  * One predicate, two callers, so "which hits navigate" cannot come to mean two different things on
  * one surface. PURE (no DOM, no module state).
  *
- * ⚠️ M1-L WIDENED WHAT THIS COVERS WITHOUT CHANGING WHAT IT SAYS, and that is worth stating. The
- * `hit.addRoomSlot != null` disjunct is gone because the chip is gone — but a click that used to
- * produce `addRoomSlot` now produces `roomAnchor`, since the hall it sat in is a compartment. So
- * suppression still fires on every one of those clicks, through the surviving disjunct. Coverage
- * did not shrink; one term absorbed the other.
+ * ⛔ **M1-L GREW WHAT THIS COVERS, AND THE COMMENT THAT STOOD HERE SAID THE OPPOSITE.** It claimed
+ * *"coverage did not shrink; one term absorbed the other"* — true of the `addRoomSlot` term and
+ * false of the whole. `hitTest` had THREE tiers over a hall, not two:
+ *
+ *   | pre-M1-L click inside an untyped hall | old hit | suppressed? |
+ *   |---|---|---|
+ *   | on the 68×16 centred `＋ ADD ROOM` chip | `addRoomSlot` | YES |
+ *   | **anywhere else in the hall rect** (`.pl-hall`) | **`hallSlot`** | **NO** |
+ *
+ * The chip's tier was absorbed. **The hall BODY's tier was not — it became `roomAnchor`, so it is
+ * now suppressed where it never was.** Coverage grew, over the whole interior of five deck-0
+ * compartments on the shipping ship.
+ *
+ * ⚠️ **AND IT GREW OVER EXACTLY THE TILES THE DIG VERB TARGETS. MEASURED, DRIVEN, NOT INFERRED**
+ * (`--ship wreck`, live host, 20 ticks): **all 20 of deck 0's debris tiles sit inside
+ * `hall_d0_s7`'s interior rect (34,11)-(43,16) — `ROOM B3` — and 0 sit anywhere else.** None of
+ * them boots designated, so painting them is the player's opening job. *(That census is MEASURED,
+ * dated, and deliberately NOT pinned by a test — it is a fact about `AuthoredShips.PeriluneWreck`'s
+ * debris layout, which a content lane may legitimately move. Re-measure it; do not quote it.)*
+ * ⇒ **DIG on the spine still
+ * reads `⛏ DIG ORDERED ▸ 28,9 ON DECK 0`; DIG on any of the 20 debris tiles now reads
+ * `DIG ARMED — ESC TO DISARM` instead. The placement confirmation is unreachable for every debris
+ * tile on the deck the game opens on.**
+ *
+ * ⭐ **WHAT IS AND IS NOT LOST, because the difference matters and the review's phrasing ("replaced
+ * by a refusal") overstates it in one direction.** The ORDER IS STILL SENT — `_send(orderPayloads…)`
+ * runs unconditionally, above this call — and the amber mark still appears on the tile. What the
+ * player loses is the *worded* confirmation, replaced by a line about a room that did not open.
+ * `orderSuppressionToast`'s own doc argues a refusal on DIG's hot path would train the player to
+ * ignore the toast; that argument now applies to the suppression line itself.
+ *
+ * ⛔ **FILED AS A KNOWN LIMIT, NOT FIXED HERE, AND THE FIX IS NAMED.** The candidate is the one this
+ * file already uses ten lines down: ERASE **appends** `' · ESC TO DISARM'` to its own line instead
+ * of being replaced by it (M1-C, for exactly this reason — an invisible refusal). Applying the same
+ * shape to the ORDER branch would restore the confirmation and keep the navigation note. It is NOT
+ * taken in this send-back because "exactly one toast per click, and suppression WINS" is a measured
+ * player-facing decision from M1-C, and reversing it is the owner's call, not a review fix.
  */
 function orderClickSuppressed(hit) {
   return !!hit && hit.roomAnchor != null;

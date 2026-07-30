@@ -268,6 +268,24 @@ function floorTexture(material, line, r) {
  * a branch no input can reach, which reads as "a compartment can be nameless", exactly the defect
  * this package removes.
  *
+ * ⛔ ⭐ **KNOWN LIMIT 3 — THE DEAD DECK NOW LOOKS HABITABLE AT THE DEFAULT LENS. A DESIGN
+ * CONSEQUENCE, STATED PLAINLY, NOT A BUG.** `hallCompartment` filled an unbound slot with
+ * `rgba(12,10,8,.35)` — a near-void wash — and that fill was **the only signal on the default lens
+ * (`none`) that a volume was not a live room.** With one painter, the wreck's eight DECK-1
+ * compartments now render with the same warm lit floor, the same amber trim-light and the same
+ * inner shadow as deck 0's, and deck 1 is airless, off-network and dead by owner decision (OD-E).
+ *
+ * The truthful signals all still exist and all still read correctly — no glow pool (that layer is
+ * `roomType`-gated), `active:false`, a red POWER wash, a null atmosphere row — **but every one of
+ * them either needs a lens turned on or is an absence, and an absence is not a signal on a screen
+ * the player is seeing for the first time.** That is the same class as `invisible-feedback-is-
+ * FUNCTIONAL`, pointed the other way: not a missing confirmation, an unearned reassurance.
+ *
+ * It is NOT fixed here, and the reason is that fixing it means choosing what "not alive" should
+ * LOOK like on the default lens — a colder floor material, a dimmed group, a hatch pattern — which
+ * is an art decision and an owner call, and re-introducing `hallCompartment`'s wash keyed to `atmos`
+ * would resurrect the exact two-kinds-of-thing distinction OD-K deleted. **The owner is being told.**
+ *
  * ⚠️ THE LABEL STAYS IN THIS GROUP, DRAWN BELOW THE FURNITURE — a decision, taken after building the
  * alternative and photographing it. See the note above `compartmentName` in `decks-model.js`: the
  * neutral name is short BECAUSE this layer is under the furniture, and hoisting the labels into
@@ -291,7 +309,9 @@ function roomCompartment(slot, r) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Layer 4 — glow-pools: one amber radial per OCCUPIED slot (VS-O-31). NOT `active` (deck-level).
+// Layer 4 — glow-pools: one amber radial per slot with an authored PURPOSE, i.e. `roomType != 0`
+// (VS-O-31). NOT `active` (deck-level), and — since M1-L — NOT `occupied` either, which is now true
+// of every slot on every shipped ship. See the argument at the `if (!slot.roomType) continue;` line.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Pool colour PURE from the room (VS-O-31). */
@@ -674,9 +694,20 @@ export function overviewScene(state) {
   const t = makeTransform(slots, st.frame);
 
   // M1-L: ONE painter. The `occupied || displayName` branch is gone with `hallCompartment` — see its
-  // header. `occupied` is still meaningful and still read, one layer down: it drives the glow pool
-  // (`glowPools`) and the lens wash, where it answers "does this compartment enclose a live room?".
-  // What it no longer decides is whether the player can SEE and ENTER the compartment at all.
+  // header.
+  //
+  // ⚠️ THE SENTENCE THAT STOOD HERE WAS FALSE AND IS CORRECTED (review, 2026-07-29). It claimed
+  // `occupied` was "still read, one layer down … it drives the glow pool and the lens wash".
+  // MEASURED with the shipped `codeOnly` stripper (`client/test/code-only.js`) on the merged tree:
+  // **`.occupied` occurs ZERO times in this module's code.** The glow reads `roomType`
+  // (`glowPools`, changed in this same package), and the lens wash is not drawn here at all — it is
+  // `overview-model.js`'s `lensSlotTint`, which reads `active`. `occupied` reaches this file only as
+  // a field on the slot objects it is handed, and NOTHING here asks for it.
+  // ⇒ In THIS MODULE `occupied` is now UNOBSERVED. That is stated rather than tidied away: a future
+  // lane widening or narrowing the flag will get no signal from `overview-scene.test.js`. Its one
+  // surviving reader on the Overview is `overview-view.js`'s `lensOverlaySvg` (`if (!s.occupied)
+  // continue;`), which is why M1-L widened the lens wash from 3 compartments to 8 per deck — see
+  // KNOWN LIMIT 2 in `client/test/no-add-room.test.js`.
   const rooms = [];
   for (const slot of slots) rooms.push(roomCompartment(slot, t.rect(slot.rect)));
 

@@ -1402,6 +1402,40 @@ to GEOMETRY (`GameSession.ResolveSlot`), which is the RimWorld analogue: `rimwor
 `ROOM_TYPE_CHOICES`, `Cmd.addRoom`, the `"addroom"` parse case, the dispatch route and
 `HandleAddRoom`/`ParseRoomType`.
 
+#### ⛔ KNOWN LIMITS — stated, not buried *(four; two added by independent review, 2026-07-29)*
+
+| # | limit | measured | owner call? |
+|---|---|---|---|
+| 1 | **a room label longer than ~11 characters still clips** on a bottom-row slot — the spine door paints over the label's tail. `LIFE SUPPORT` is 12 and would clip; no shipped ship puts it on a bottom row. | CDP, live wreck: top-row 107 px of 107, bottom-row 88 of 107 | no — latent |
+| 2 | **the POWER lens is now EIGHT IDENTICAL BOXES PER DECK.** `lensOverlaySvg` skips `!occupied`, so pre-M1-L only the 3 typed deck-0 rooms were lensed. Now deck 0 goes **3 washes → 8 GREEN** (incl. `ROOM B3` — collapsed, empty, 20 debris tiles — claiming "powered") and deck 1 goes **0 → 8 RED**. `active` is stamped deck-uniformly, so the lens can only ever paint a deck all-green or all-red. | driven, `--ship wreck` | **yes** — per-compartment power is a fact the host does not compute |
+| 3 | ⭐ **the DEAD DECK now looks habitable at the default lens.** `hallCompartment`'s near-void fill (`rgba(12,10,8,.35)`) was the ONLY default-lens signal that a volume was not a live room; deck 1's eight compartments now wear deck 0's warm lit floor, amber trim-light and inner shadow. Every truthful signal survives (no glow, `active:false`, red POWER wash, null atmos) but each needs a lens turned on or is an ABSENCE — and an absence is not a signal on a first-look screen. **Photographed, already committed: `docs/design/shots/nar-4-overview-deck1.png`.** | by construction (one painter) + the shot | **yes** — what "not alive" looks like is an art decision |
+| 4 | ⭐ **DIG's placement confirmation is unreachable on every debris tile of the shipping deck.** `hitTest`'s `.pl-hall` tier used to return `hallSlot`, which was NOT order-suppressed; it is now `roomAnchor`, which is. **All 20 of the wreck's deck-0 debris tiles sit inside `hall_d0_s7` = `ROOM B3`** (driven; 0 elsewhere), so `⛏ DIG ORDERED ▸ x,y ON DECK 0` became `DIG ARMED — ESC TO DISARM` there. **The order still lands and the mark still appears** — only the worded confirmation is lost. Candidate fix already in the file: ERASE **appends** `' · ESC TO DISARM'` instead of being replaced (M1-C). | driven, `--ship wreck` | **yes** — "one toast per click, suppression wins" was a measured M1-C decision |
+
+⭐ **AND ONE PROPERTY THAT IS NOT A LIMIT BUT MUST NOT BE REDISCOVERED AS A BUG: `active` CHANGED
+KIND.** It was authoring-derived (static for a run); it is now gas-derived (dynamic). *"Reproduces
+its pre-M1-L value on every shipped ship"* is a **BOOT** measurement. **Driven, not inferred:** only
+**3 of deck 0's 9 rooms hold gas at boot**, and zeroing their moles flips all eight slots to
+`active:false` while `ShipMetrics.Power` stays **byte-identical at 1.000** — i.e. the POWER lens
+paints the whole live deck RED with the reactor still running. Pinned by
+`EveryCompartmentIsARoomTests.ActiveIsAGasTerm_NotAPowerTerm_AndTheLensInheritsThat`.
+
+#### Send-back applied (independent review, 2026-07-29) — eight required fixes
+
+`R1` the second commit's whole fix was a **survivor** (no C# test read the tuple's `active` field;
+both positional parsers stopped at `f[7]`) ⇒ asserted from the LIVE session, mutation now RED ·
+`R2` a census this package falsified (13/16 + 51/64 unoccupied → **0/16 and 0/64**; the guard it
+justifies is now **inert**, not merely redundant) · `R3` `overview-scene.js` reads `.occupied`
+**zero** times (measured with the shipped `codeOnly`) while three places said it drove the glow;
+the test named *"glow is `occupied`"* passed only because the pre-M1-L fixture conflates `occupied`
+with `roomType != 0`, and is retargeted onto a fixture that drives the three flags apart ·
+`R4` a **false absolute negative** — three `|| anchorName` fallbacks survived the sentence *"there
+is no longer any path from an anchor id to a label"*; all three deleted and pinned behaviourally ·
+`R5` limit 4 above · `R6` mutating `compartmentDesignation` to return `''` **survived 1036/1036**
+because the hostile sweep tested `compartmentName`, whose `'ROOM '` prefix hides the hole (and four
+bottom-row slots would then read `ROOM ` identically) ⇒ asserted directly + pairwise-distinctness ·
+`R7` limit 2 above · `R8` the reference sweep is `bedroom` 0 ✅ / `room role` 0 ✅ / **`infer` 4**
+(none about room roles) — the judgement stands, the evidence sentence was overstated.
+
 ---
 
 ### ⛔ M1-L-b — retire the dormant `AddRoomCommand` and `CmdKind.AddRoom` *(SPINE — NOT YET DONE)*

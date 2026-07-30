@@ -424,7 +424,9 @@ export function currentRoom(crewTile, slots) {
   for (const s of slots) {
     if (s && s.occupied && inRect(s.rect, crewTile.x, crewTile.y)) {
       return {
-        anchorName: s.anchorName, displayName: s.displayName || s.anchorName || '',
+        // M1-L review: `|| s.anchorName` DELETED — see `room-model.js roomTileRect`. This is the
+        // readout's CURRENT ROOM line, so the fallback would have printed `hall_d1_s6` at the player.
+        anchorName: s.anchorName, displayName: s.displayName || '',
         atmos: s.atmos || null, active: !!s.active,
       };
     }

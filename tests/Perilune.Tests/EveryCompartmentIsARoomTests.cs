@@ -230,6 +230,148 @@ namespace Perilune.Tests
                 "sweep is no longer seeing the slots that used to be blank ＋ADD ROOM boxes");
         }
 
+        // ═════════════════════════════════════════════════════════ `active` — the second commit's fix
+
+        /// <summary>
+        /// <b>⭐ THE SECOND COMMIT'S ENTIRE FIX, GUARDED FROM THE LIVE HOST FOR THE FIRST TIME.</b>
+        ///
+        /// <para><c>lensSlotTint('power', s)</c> (<c>overview-model.js</c>) paints the GOOD tint
+        /// whenever a slot's <c>active</c> is set. <c>BuildDecks</c> used to derive <c>active</c> from
+        /// <c>Occupied</c> — and M1-L makes <c>Occupied</c> true for every slot on every shipped ship,
+        /// so the flag would have become a CONSTANT and the POWER lens would have painted the wreck's
+        /// dead deck 1 green. The fix stamps <c>active</c> from GAS instead: "is anything on this deck
+        /// alive?", which is what the flag always meant.</para>
+        ///
+        /// <para><b>WHY THIS TEST EXISTS: THE FIX WAS A SURVIVOR.</b> Independent review reverted
+        /// <c>bool deckActive = liveDecks.Contains(byDeck[d]);</c> to the pre-fix
+        /// <c>for (…) if (list[s].Occupied) { deckActive = true; break; }</c> and the C# suite stayed
+        /// <b>19/19 green</b>. No test anywhere in this project read the tuple's ninth field — the
+        /// three "active" hits in the test project were COMMENTS naming the tuple shape, and both
+        /// positional parsers stopped at <c>f[7]</c>. The one guard that existed
+        /// (<c>client/test/no-add-room.test.js</c>) reads the committed capture
+        /// <c>client/test/fixtures/decks-wreck.json</c> — a snapshot of the OUTPUT, which cannot see a
+        /// change to the code that produces it until someone re-captures.</para>
+        ///
+        /// <para>MUTATION: restore the <c>Occupied</c> scan in <c>GameSession.BuildDecks</c> ⇒ RED
+        /// here (the wreck's deck 1 and grid's decks 2–7 all flip to <c>active:true</c>).</para>
+        ///
+        /// <para><b>NON-VACUITY IS BUILT IN, as an inclusion test rather than a population count:</b>
+        /// every leg requires BOTH a true deck and a false deck on the same ship. A host that
+        /// hard-coded either value fails one half.</para>
+        /// </summary>
+        [Test]
+        public void ActiveIsDerivedFromGas_NotFromTheWidenedOccupiedFlag()
+        {
+            // ── the wreck: deck 0 lives, deck 1 is dead by authoring and by owner decision (OD-E).
+            var (wreck, wreckHost) = Session(ShipChoice.Wreck, ticks: 20);
+            Assert.That(wreckHost.Sim.World.Depth, Is.EqualTo(2), "the wreck stopped being a two-deck ship");
+            AssertDeckActive(wreck, deck: 0, expected: true,
+                "the wreck's LIVE deck reads inactive — the POWER lens would paint the reactor deck bad");
+            AssertDeckActive(wreck, deck: 1, expected: false,
+                "the wreck's DEAD deck reads ACTIVE. `active` has been re-derived from the widened " +
+                "`occupied` flag, so the POWER lens paints eight unpowered, airless, sealed " +
+                "compartments GREEN on the ship ./play.sh opens (OD-E says that deck stays dead).");
+
+            // ── grid: decks 0-1 live, decks 2-7 are eight empty decks of sealed halls.
+            var (grid, gridHost) = Session(ShipChoice.Grid, ticks: 20);
+            Assert.That(gridHost.Sim.World.Depth, Is.EqualTo(8), "grid stopped being an eight-deck ship");
+            for (int deck = 0; deck < 8; deck++)
+                AssertDeckActive(grid, deck, expected: deck <= 1,
+                    $"grid deck {deck} reports the wrong `active` — pre-M1-L it was decks 0-1 true, 2-7 false");
+
+            // ── AND THE FLAG IS STAMPED DECK-UNIFORMLY, which is worth pinning because it is the
+            //    property KNOWN LIMIT 2 is about: POWER is eight identical boxes per deck, so the
+            //    lens says nothing about an individual compartment. If a later lane makes `active`
+            //    per-slot, this assertion is the place that says so out loud.
+            foreach (var (gs, depth, what) in new[] { (wreck, 2, "wreck"), (grid, 8, "grid") })
+                for (int deck = 0; deck < depth; deck++)
+                {
+                    var vals = new HashSet<bool>();
+                    foreach (var kv in DeckSlots(gs, deck)) vals.Add(kv.Value.Active);
+                    Assert.That(vals.Count, Is.EqualTo(1),
+                        $"{what} deck {deck} mixes active flags — `active` is documented as DECK-level");
+                }
+        }
+
+        /// <summary>
+        /// <b>⛔ ⭐ <c>active</c> CHANGED KIND, AND THE POWER LENS INHERITED IT. DRIVEN, not inferred.</b>
+        ///
+        /// <para>Before M1-L, <c>active</c> was derived from <c>occupied</c>, which was
+        /// AUTHORING-DERIVED (does an anchor with a <see cref="RoomType"/> resolve here?) and
+        /// therefore effectively STATIC for the life of a run. The fix re-derives it from GAS, which
+        /// is DYNAMIC. The commit's claim — <i>"measured to reproduce its pre-M1-L value on every
+        /// shipped ship"</i> — is a BOOT measurement, and generalising it to "the flag is unchanged"
+        /// is the thing this test refuses to let anyone do.</para>
+        ///
+        /// <para><b>WHAT IT MEASURES.</b> On <c>--ship wreck</c> only <b>3 of deck 0's 9 rooms hold
+        /// gas at boot</b>, so the whole deck's <c>active:true</c> rests on those three. Vent them and
+        /// every slot on deck 0 flips to <c>active:false</c> — while <c>ShipMetrics.Power</c> is
+        /// <b>byte-identical at 1.000</b>, i.e. the reactor is still running and nothing about the
+        /// ship's power supply changed. <c>lensSlotTint('power', …)</c> reads <c>active</c>, so the
+        /// player's POWER lens paints the entire live deck RED on an unchanged power supply.</para>
+        ///
+        /// <para>⇒ <b><c>active</c> is a GAS term wearing a POWER label.</b> That is disclosed rather
+        /// than fixed: gas is still the right question for <i>"is anything on this deck alive?"</i>
+        /// (which is what the flag always meant and what the second commit restored), and giving the
+        /// POWER lens a real per-deck power fact is lens-design work the host does not currently
+        /// compute. What must not happen is the property being rediscovered as a bug report.</para>
+        ///
+        /// <para>⚠️ The vent is a STATE INJECTION (the moles are zeroed directly), not a gameplay
+        /// path — it isolates the derivation from every other thing an in-game vent would also do.
+        /// The reachability of that state in play is a separate question and is not claimed here;
+        /// what is claimed is only that the host's <c>active</c> follows gas and not power.</para>
+        /// </summary>
+        [Test]
+        public void ActiveIsAGasTerm_NotAPowerTerm_AndTheLensInheritsThat()
+        {
+            var host = SimHost.Build(SimHost.DefaultSeedFor(ShipChoice.Wreck), ship: ShipChoice.Wreck);
+            var gs = new GameSession(host, _ => { });
+            for (int i = 0; i < 20; i++) host.Sim.Tick();
+            var rs = host.Sim.Rooms;
+            var world = host.Sim.World;
+
+            AssertDeckActive(gs, 0, expected: true, "the premise: deck 0 boots alive");
+            double powerBefore = ShipMetrics.Compute(host.Sim).Power;
+
+            var deck0Rooms = new HashSet<ushort>();
+            for (int y = 0; y < world.Height; y++)
+                for (int x = 0; x < world.Width; x++)
+                {
+                    ushort id = rs.RoomIdAt(world, new Int3(x, y, 0));
+                    if (id != 0 && id != RoomState.DoorMarker && id < rs.Rooms.Count) deck0Rooms.Add(id);
+                }
+            int withGas = 0;
+            foreach (var id in deck0Rooms) if (rs.Rooms[id].TotalMoles > 0) withGas++;
+            Assert.That(deck0Rooms.Count, Is.GreaterThan(withGas),
+                "every deck-0 room holds gas — the 'a few rooms carry the whole deck' point is not " +
+                "true of this ship any more and the note above must be re-derived");
+            Assert.That(withGas, Is.GreaterThan(0), "no deck-0 room holds gas — the premise is broken");
+
+            foreach (var id in deck0Rooms)
+            {
+                var r = rs.Rooms[id];
+                r.O2Moles = 0; r.CO2Moles = 0; r.N2Moles = 0;
+            }
+
+            AssertDeckActive(gs, 0, expected: false,
+                "venting deck 0 did NOT flip `active` — the flag has stopped following gas, so the " +
+                "second commit's fix is no longer doing what its comment says");
+            Assert.That(ShipMetrics.Compute(host.Sim).Power, Is.EqualTo(powerBefore).Within(1e-9),
+                "the ship's POWER changed when the air did, so this test cannot separate the two — " +
+                "the claim 'the lens went red on an unchanged power supply' would be unsupported");
+        }
+
+        /// <summary>Assert every slot on one deck carries the expected <c>active</c>, and that the
+        /// deck was actually seen (an empty deck would make the sweep vacuous).</summary>
+        private static void AssertDeckActive(GameSession gs, int deck, bool expected, string why)
+        {
+            var slots = DeckSlots(gs, deck);
+            Assert.That(slots.Count, Is.EqualTo(8), $"deck {deck} did not yield its 8 slots");
+            foreach (var kv in slots)
+                Assert.That(kv.Value.Active, Is.EqualTo(expected),
+                    $"deck {deck} slot {kv.Key} reads active:{kv.Value.Active} — {why}");
+        }
+
         /// <summary>
         /// <b>THE ANCHOR A SLOT REPORTS IS ITS OWN.</b> The old walk returned the FIRST anchor
         /// resolving to the slot's room, which was unambiguous only because the <c>None</c> skip left
@@ -396,8 +538,17 @@ namespace Perilune.Tests
         /// payload — the Snapshot a reconnecting client is caught up from. Parsed POSITIONALLY: the
         /// tuple <c>[slotIndex, x, y, w, h, anchorName, roomType, occupied, active]</c> IS the
         /// contract, and a parser that named its fields would not notice a reorder. (Same shape as
-        /// <c>AddRoomCommandTests.SlotTuple</c>, widened from one slot to a deck.)</summary>
-        private static Dictionary<int, (int RoomType, bool Occupied, string Anchor)> DeckSlots(GameSession gs, int deck)
+        /// <c>AddRoomCommandTests.SlotTuple</c>, widened from one slot to a deck.)
+        ///
+        /// <para>⚠️ <b>THE PARSER READS <c>f[8]</c> — <c>active</c> — AND IT DID NOT UNTIL REVIEW.</b>
+        /// The second commit's whole fix (deriving <c>active</c> from GAS rather than from the
+        /// widened <c>occupied</c>) was a SURVIVOR: reverting <c>BuildDecks</c>' <c>deckActive</c>
+        /// line to the pre-fix <c>Occupied</c> scan left the whole C# suite green, because no test in
+        /// this project read the field. Both positional parsers stopped at <c>f[7]</c>, and the only
+        /// guard anywhere was `client/test/no-add-room.test.js`, which reads a COMMITTED CAPTURE —
+        /// a snapshot of the output, not the code that produces it. Hence
+        /// <see cref="ActiveIsDerivedFromGas_NotFromTheWidenedOccupiedFlag"/>.</para></summary>
+        private static Dictionary<int, (int RoomType, bool Occupied, string Anchor, bool Active)> DeckSlots(GameSession gs, int deck)
         {
             gs.RenderForTest();
             string json = null;
@@ -410,14 +561,14 @@ namespace Perilune.Tests
             string body = json.Substring(at);
             body = body.Substring(0, body.IndexOf("]}", StringComparison.Ordinal));
 
-            var outp = new Dictionary<int, (int, bool, string)>();
+            var outp = new Dictionary<int, (int, bool, string, bool)>();
             foreach (var part in body.Split('['))
             {
                 if (part.Length == 0 || !char.IsDigit(part[0])) continue;
                 var f = part.Split(']')[0].Split(',');
                 if (f.Length != 9) continue;
                 outp[int.Parse(f[0], CultureInfo.InvariantCulture)] =
-                    (int.Parse(f[6], CultureInfo.InvariantCulture), f[7] == "true", f[5].Trim('"'));
+                    (int.Parse(f[6], CultureInfo.InvariantCulture), f[7] == "true", f[5].Trim('"'), f[8] == "true");
             }
             Assert.That(outp.Count, Is.GreaterThan(0), $"no slots parsed for deck {deck} in: {json}");
             return outp;

@@ -12,9 +12,17 @@
 // ⚠️ AND ONE THING THE REFERENCE DOES **NOT** SAY, flagged rather than built on. RimWorld also infers
 // a room's ROLE from its contents (a room with a bed is a bedroom), and it is tempting to mirror that
 // by naming a compartment after the machinery inside it. **The reference does not document that
-// mechanism anywhere** — a full-file sweep for `bedroom` / `room role` / `infer` returns nothing —
-// so under the standing directive (*"cite it, do not re-derive from memory"*) this package does not
-// build on it. The naming rule is therefore deliberately the smaller one: derived, total, neutral.
+// mechanism anywhere.** ⚠️ THE SWEEP SENTENCE THAT STOOD HERE WAS WRONG IN ONE TERM AND IS CORRECTED
+// (review, 2026-07-29): it said a sweep for `bedroom` / `room role` / `infer` "returns nothing".
+// RE-MEASURED on `docs/design/rimworld-reference.md`: `bedroom` **0** ✅, `room role` **0** ✅,
+// **`infer` 4** — lines 378, 380, 946 and 1924, and NOT ONE of them is about room roles (they are a
+// provenance caveat on a needs table, a warning not to infer needs numbers from it, and a note about
+// labelled inferences being settled). **The judgement is unchanged and stands: the reference does not
+// document role inference.** Only the evidence sentence was overstated, which is the same shape as
+// the false absolute negative review found in `decks-model.js` — a reader told a term returns nothing
+// does not go and look. So under the standing directive (*"cite it, do not re-derive from memory"*)
+// this package does not build on it. The naming rule is deliberately the smaller one: derived,
+// total, neutral.
 // See `decks-model.js`'s `compartmentName` header.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -42,8 +50,8 @@ import {
   decksView, deckSlotView, compartmentName, compartmentDesignation, roomLabel, ROOM_LABEL_BY_ID,
   SLOT_COLS,
 } from '../src/ui/decks-model.js';
-import { roomTileRect } from '../src/ui/room-model.js';
-import { overviewClickAction, lensSlotTint, GRADE_TINT } from '../src/ui/overview-model.js';
+import { roomTileRect, crewRoomSlot } from '../src/ui/room-model.js';
+import { overviewClickAction, lensSlotTint, GRADE_TINT, currentRoom } from '../src/ui/overview-model.js';
 import { overviewScene } from '../src/ui/overview-scene.js';
 
 const src = (p) => readFileSync(fileURLToPath(new URL('../src/' + p, import.meta.url)), 'utf8');
@@ -166,6 +174,72 @@ test('M1-L TOTALITY: every compartment on every captured ship gets a non-empty U
   assert.ok(counted >= 16 + 64, `the totality sweep only saw ${counted} slots — it is not covering both ships`);
 });
 
+test('M1-L: the DESIGNATION itself is total — asserted directly, not through the ROOM prefix', () => {
+  // ⚠️ WHY THIS EXISTS AS ITS OWN TEST (review, 2026-07-29). The hostile sweep below asserts
+  // `compartmentName(...).length > 0`, and `compartmentName` prefixes `'ROOM '`. So mutating
+  // `compartmentDesignation` to return `''` on non-finite input SURVIVED the whole 1036-test suite:
+  // the hole yields the string `"ROOM "`, which is non-empty, UPPERCASE, and passes every assertion
+  // — **while all four bottom-row slots of a deck would read identically as `ROOM `**, which is the
+  // EXACT failure the `ROOM`-vs-`COMPARTMENT` measurement in `decks-model.js` exists to prevent. A
+  // guard whose subject is wrapped in a non-empty prefix cannot see emptiness in the subject.
+  //
+  // Two independent legs, because either alone is defeatable: totality of the designation, and
+  // pairwise-distinctness of the eight names a real deck actually shows.
+  for (const idx of [undefined, null, NaN, Infinity, -Infinity, -1, -0, 0, 3, 7, 8, 103, 104, 1e6, 2.7, '5', '', {}, []]) {
+    const d = compartmentDesignation(idx);
+    assert.equal(typeof d, 'string', `compartmentDesignation(${String(idx)}) is not a string`);
+    assert.ok(d.length > 0, `compartmentDesignation(${String(idx)}) returned '' — see this test's header`);
+    assert.equal(d, d.toUpperCase(), `compartmentDesignation(${String(idx)}) is not UPPERCASE`);
+  }
+  // THE DECISIVE LEG, and the one that would have caught the hole through `compartmentName` too:
+  // the eight names ONE DECK shows must be pairwise distinct. `"ROOM "` eight times is not.
+  const deckNames = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => compartmentName(0, i));
+  assert.equal(new Set(deckNames).size, 8,
+    `a deck shows duplicate compartment names: ${JSON.stringify(deckNames)} — two boxes the player `
+    + 'cannot tell apart is the defect the neutral designation exists to remove');
+});
+
+test('M1-L: an anchor id can no longer become a caption — the three fallbacks are gone', () => {
+  // ⚠️ REVIEW FINDING, 2026-07-29. `decks-model.js` asserted *"there is no longer any path from an
+  // anchor id to a label"* — an ABSOLUTE NEGATIVE, and false: THREE `|| anchorName` fallbacks were
+  // still standing in shipped client code. They were unreachable only because `compartmentName` is
+  // total, i.e. closed by a RETURN VALUE rather than by construction, and `wire-decks.test.js`'s
+  // WP-1 tripwire ranges over `deckSlotView` only, so it could see none of them.
+  //
+  // The three are deleted. This pins the deletion where it can actually bite: hand each consumer a
+  // slot the host cannot currently produce — blank `displayName`, live `anchorName` — and require
+  // the internal id NOT to come back out. Each leg carries its own fixture and its own assertion, so
+  // no leg can be silently dead behind an earlier one (`assert` throws; the fifth trap shape).
+  const ID = 'hall_d1_s6';
+  const slot = {
+    slotIndex: 6, rect: { x: 0, y: 0, w: 6, h: 5 }, roomType: 0, occupied: true, active: true,
+    anchorName: ID, displayName: '', atmos: null,
+  };
+  const dView = [{ deck: 1, slots: [slot] }];
+
+  // 1. THE ROOM-ZOOM CAPTION / BREADCRUMB.
+  const rr = roomTileRect(dView, ID, 6);
+  assert.ok(rr, 'the fixture does not resolve at all — this leg would pass vacuously');
+  assert.equal(rr.displayName, '',
+    `roomTileRect fell back to the anchor id ("${rr.displayName}") — the Room Zoom captions itself `
+    + 'with an internal id');
+  assert.equal(rr.anchor, ID, 'the anchor itself must SURVIVE — it is the wire key, not the caption');
+
+  // 2. THE CREW DOCK.
+  const cs = crewRoomSlot(dView, { deck: 1, x: 2, y: 2 });
+  assert.ok(cs, 'the fixture does not resolve at all — this leg would pass vacuously');
+  assert.equal(cs.displayName, '',
+    `crewRoomSlot fell back to the anchor id ("${cs.displayName}") — a dock row labelled with one`);
+  assert.equal(cs.anchor, ID, 'the anchor itself must SURVIVE — it is the navigation target');
+
+  // 3. THE OVERVIEW READOUT'S `CURRENT ROOM` LINE — the one a player reads without clicking.
+  const cr = currentRoom({ x: 2, y: 2 }, dView[0].slots);
+  assert.ok(cr, 'the fixture does not resolve at all — this leg would pass vacuously');
+  assert.equal(cr.displayName, '',
+    `currentRoom fell back to the anchor id ("${cr.displayName}") — the readout prints it at the player`);
+  assert.equal(cr.anchorName, ID, 'the anchor itself must SURVIVE');
+});
+
 test('M1-L TOTALITY: the naming rule is total over hostile input, and the designation never collides', () => {
   // `compartmentName` must never return '' for ANY argument pair. These are the shapes a decoder can
   // actually produce from a short/garbage tuple (`slotIndex` is `t[0] | 0`, so NaN is reachable via a
@@ -279,6 +353,28 @@ test('M1-L CENSUS: the census files are pinned by EQUALITY and all exist', () =>
   ]);
   assert.equal(RETIRED_TOKENS.length, 12);
   for (const f of CENSUS_FILES) assert.ok(src(f).length > 100, `${f} did not read as real source`);
+});
+
+test('M1-L CENSUS: `overview-scene.js` does not read `occupied`, and the comments say so', () => {
+  // ⚠️ THIS PINS ONE OF MY OWN ABSOLUTE NEGATIVES (review, 2026-07-29). Three places in and around
+  // `overview-scene.js` claimed `occupied` "drives the glow pool" / was "still read, one layer
+  // down". Measured with the shipped `codeOnly`: it occurs ZERO times in that module's code. The
+  // corrections say so — and a sentence saying a thing does not exist is exactly the shape that
+  // rots silently, so it is asserted rather than trusted. If a future lane gives the scene a
+  // legitimate reason to read `occupied` again, this reddens and the comments get corrected WITH
+  // the code instead of after it.
+  const scene = codeOnly(src('ui/overview-scene.js'));
+  assert.equal(scene.split('.occupied').length - 1, 0,
+    '`overview-scene.js` reads `.occupied` again — three comments in that file and one in '
+    + '`overview-scene.test.js` assert it does not. Correct them in the same commit.');
+  assert.ok(scene.includes('slot.roomType'), 'the glow gate is gone — this assertion is vacuous');
+
+  // ⭐ AND THE CONVERSE, so this is not read as "`occupied` is dead everywhere": it has exactly ONE
+  // live reader left on the Overview, and that reader is the reason KNOWN LIMIT 2 exists.
+  const viewCode = codeOnly(src('ui/overview-view.js'));
+  assert.ok(viewCode.includes('if (!s.occupied) continue;'),
+    '`lensOverlaySvg` stopped gating on `occupied` — the lens wash coverage changed again, so '
+    + 'KNOWN LIMIT 2 (3 washes → 8 per deck) must be re-derived, not carried forward');
 });
 
 test('M1-L CENSUS: the comment stripper does NOT trip the census on its own documentation', () => {
@@ -434,10 +530,35 @@ test('M1-L: `active` still means "this deck is alive" — the POWER lens must no
   assert.equal(lensSlotTint('power', byDeck.get(0).slots[0]), GRADE_TINT.good,
     'the POWER lens reads BAD on the live deck too — it is a constant, so this test sees nothing');
 
-  // ⭐ A DELIBERATE, DISCLOSED WIDENING, recorded so a reviewer does not read it as an oversight:
-  // the dead deck now takes EIGHT red washes under the POWER lens where before M1-L it took NONE
-  // (its slots were unoccupied, and `lensOverlaySvg` skips those). That is the package working —
-  // every compartment is a room, so every compartment is lensed — and the reading it gives is true.
+  // ⛔ ⭐ KNOWN LIMIT 2 — THE POWER LENS IS NOW EIGHT IDENTICAL BOXES PER DECK. The first version of
+  // this note disclosed HALF the change and review measured the other half live. Both halves:
+  //
+  //   deck 1 (dead) : 0 washes → 8 RED    ← was disclosed
+  //   deck 0 (live) : 3 washes → 8 GREEN  ← was NOT disclosed, and it is the worse half
+  //
+  // `lensOverlaySvg` (`overview-view.js:599`) skips `!s.occupied`, so before M1-L only the THREE
+  // authored deck-0 rooms — cryobay, lifesupport, reactor — were lensed at all. Now every
+  // compartment is occupied, so **five new GREEN washes land on the live deck, including `ROOM B3`
+  // (`hall_d0_s7`) — collapsed, empty, and holding all 20 of the deck's debris tiles — claiming
+  // "powered"**.
+  //
+  // ⇒ The deeper property, and the reason this is a LIMIT and not just a widening: `active` is
+  // stamped DECK-UNIFORMLY by the host (`GameSession.BuildDecks`' second pass sets it for every slot
+  // on a deck at once, pinned by `EveryCompartmentIsARoomTests.ActiveIsDerivedFromGas…`). So the
+  // POWER lens can now only ever paint a deck ALL GREEN or ALL RED. Before M1-L that constancy was
+  // partly hidden by the untyped slots being skipped; it is fully visible now. **That is the M1-F
+  // failure — "a gauge that is never anything but a constant" — seen from the other side, and this
+  // package's own commit invokes M1-F as the reason for the `active` fix.** The reading is TRUE (a
+  // deck really is powered or not); it is simply not per-compartment, and the lens's box-per-room
+  // presentation implies it is. Filed, not fixed: making POWER per-compartment needs a per-slot
+  // power fact the host does not compute, which is lens-design work under OD-A/B.
   assert.equal(byDeck.get(1).slots.filter((s) => s.occupied).length, 8,
     'the dead deck is not fully occupied, so it would not be lensed at all');
+  // Both halves of the limit, asserted so neither can be quietly lost.
+  const lensed = (d) => byDeck.get(d).slots.filter((s) => s.occupied && lensSlotTint('power', s));
+  assert.equal(lensed(1).length, 8, 'the dead deck no longer takes 8 washes — KNOWN LIMIT 2 moved');
+  assert.equal(lensed(0).length, 8, 'the LIVE deck no longer takes 8 washes — KNOWN LIMIT 2 moved');
+  assert.equal(new Set(byDeck.get(0).slots.map((s) => lensSlotTint('power', s))).size, 1,
+    'the POWER lens is no longer deck-uniform on deck 0 — KNOWN LIMIT 2 has been fixed or broken; '
+    + 'either way this note and the host-side `active` guard must be re-derived');
 });
