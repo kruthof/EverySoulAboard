@@ -1088,6 +1088,41 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
   #overview-view .ov-ledger{display:none} /* same narrow-viewport drop as the sensor log */
 }
 
+/* ── the WORK grid (M2-3) ────────────────────────────────────────────────────────────────────
+   The WORK tab's island: one row per crew member, six work-type columns in OD-J's order. Centred
+   over the schematic rather than docked to an edge, because unlike every other island it is not a
+   readout beside the ship — while it is open it IS what the player is doing. Above the HUD islands
+   (z 11) but below the toast (z 12's own users are transient). */
+.ov-work{position:absolute;left:50%;top:96px;transform:translateX(-50%);z-index:12;
+  max-width:min(760px,calc(100vw - 80px));max-height:calc(100vh - 230px);overflow:auto;
+  padding:14px 18px;border-radius:14px;display:flex;flex-direction:column;gap:8px}
+.ov-workhint{font-size:9px;letter-spacing:.06em;color:var(--ink-faint,#57503f);white-space:nowrap}
+.ov-workrow{display:grid;grid-template-columns:132px repeat(6,58px);gap:6px;align-items:center}
+.ov-workname{font-size:11px;color:var(--ink-bright,#e8dcc9);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov-workhead{border-bottom:1px solid rgba(58,51,42,.8);padding-bottom:6px}
+.ov-workhead .ov-workname{color:var(--ink-faint,#57503f);font-size:9px;letter-spacing:.14em}
+.ov-workcolhdr{font-size:8.5px;letter-spacing:.06em;text-align:center;
+  color:var(--ink-mute,#8c8377);text-transform:uppercase}
+/* A CELL. Three states and they must be distinguishable at a glance, because the grid's whole job
+   is to answer "who does what" by scanning it:
+     `.set`  — an amber number, the same accent every armed/active control on this surface uses;
+     `.off`  — the word `off`, dim and hollow. ⛔ NEVER a "0": a zero in a grid of numbers reads as
+               a priority (the worst one, next to 4) when it means the opposite — not at all — and
+               under OD-H that is EVERY cell on screen at boot;
+     `.wait` — no payload yet, so we do not know. Refuses the click rather than guessing.
+   It stays a real button in all three: `off` is the state the player clicks OUT of, so styling it
+   with `pointer-events:none` would make the one gesture the tab exists for impossible. */
+.ov-workcell{padding:6px 0;border-radius:6px;font-size:11px;text-align:center;cursor:pointer;
+  background:rgba(26,22,17,.6);color:var(--ink-mute,#8c8377);border:1px solid #3a332a}
+.ov-workcell:hover{border-color:#57503f;color:var(--ink-body,#b3aa9c)}
+.ov-workcell.off{color:var(--ink-faint,#57503f);background:transparent;border-style:dashed;
+  font-size:9px;letter-spacing:.06em}
+.ov-workcell.off:hover{color:var(--ink-mute,#8c8377);border-color:#57503f}
+.ov-workcell.set{background:#3a2a12;color:var(--amber-light,#f2b563);border-color:#cf7a33;font-weight:700}
+.ov-workcell.wait{color:var(--ink-faint,#57503f);background:transparent;border-color:#2b241c;
+  cursor:default;opacity:.5}
+
 /* transient toast (add-room / room-zoom stubs) */
 .ov-toast{position:absolute;left:50%;bottom:120px;transform:translateX(-50%);z-index:12;
   padding:8px 16px;border-radius:8px;background:var(--hud-bg);border:var(--hud-border);

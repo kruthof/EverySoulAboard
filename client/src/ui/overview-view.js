@@ -62,6 +62,7 @@ import {
   fmtO2, fmtCo2, fmtTemp, powerLabel, tabIsInert,
   ORDER_TOOLS, ORDER_LABEL, orderHintLine, orderPlacedLine,
   ERASE_TOOL, ERASE_LABEL, markNameAt, erasePlacedLine,
+  WORK_COLUMNS, nextWorkPriority, workCellLabel,
 } from './overview-model.js';
 
 /* eslint-disable no-multi-spaces */
@@ -74,8 +75,15 @@ const LENS_SHORT = ['∅', 'PRES', 'O₂', 'CO₂', 'TEMP', 'PWR', 'H₂O'];
 // analogue: `docs/design/rimworld-reference.md` §10, *"Rooms are derived, not authored … the player
 // never names or allocates one."*
 // Ship tabs the Overview owns; the rest lower to the console (v1 delegation).
-const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['relations', 'RELATIONS'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
-const SHIP_TABS = new Set(['build', 'crew']);
+// ⭐ M2-3 added WORK. It is a SHIP TAB — the grid is an island on THIS surface, not a body-level
+// takeover like MOSS/RELATIONS — so it must be in BOTH lists: `OV_TABS` puts the button in the
+// command bar, `SHIP_TABS` keeps `shouldShow()` true while it is selected. A tab in the first list
+// only would drop `overview-open` on selection and bring the deprecated console `.app` back on
+// screen over the modern game, which is the exact regression the module header records RELATIONS
+// causing. And it is NOT in `overview-model.js`'s `INERT_TABS`: under OD-H this tab is the only
+// route to enabling any work at all.
+const OV_TABS = [['build', 'BUILD'], ['crew', 'CREW'], ['work', 'WORK'], ['relations', 'RELATIONS'], ['moss', 'MOSS'], ['chron', 'CHRONICLE']];
+const SHIP_TABS = new Set(['build', 'crew', 'work']);
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
@@ -135,6 +143,7 @@ let _onEnterRoom = (anchor) => { toast('ROOM ZOOM — coming soon (' + anchor + 
 const _el = {};                 // cached skeleton element references
 const _pips = new Map();        // deck key → {el}
 const _crew = new Map();        // cid key → {el, nameEl, roleEl, fill}
+const _workRows = new Map();    // cid key → {el, nameEl, cells:[{el, type}]} — the WORK grid's rows
 let _roBustCid = null;          // readout bust: whose portrait the <svg> currently holds
 let _roTraitsKey = '';          // readout traits: the last-rendered trait set (rebuild only on change)
 let _lastSpeed = '1×';          // last running speed label — shown (dimmed) while paused so the stepper never blanks
@@ -178,12 +187,13 @@ function reconcile(container, map, items, keyOf, make, update) {
  * M2-4 — THIS SURFACE'S READER OF THE `work` CHANNEL: one crew member's manual priority for one
  * <code>WorkType</code> index, or <code>null</code> when the channel has not arrived at all.
  *
- * ⚠️ IT HAS NO CALLER IN THIS PACKAGE, AND THAT IS THE POINT — the `deviceConditionAt` shape
- * (`roomzoom-view.js`), which shipped the same way and for the same reason: the WORK TAB THAT DRAWS
- * AND WRITES THIS GRID IS M2-3, and the data has to exist and be reachable before that package can
- * read it back. What lands here is the seam, not the surface: no DOM, no element, no repaint work
- * (the decode happens per CALL, so a channel nobody asks about costs nothing per frame — the
- * `devices` lane was fairly criticised for paying a per-repaint decode for zero consumers).
+ * ⭐ M2-3 GAVE IT ITS FIRST CALLER: `paintWork` below reads every cell of the WORK grid through it,
+ * and `onWorkCellClick` reads the cell's CURRENT value through it to compute the next step of the
+ * cycle. It shipped caller-less at M2-4 on purpose — the `deviceConditionAt` shape
+ * (`roomzoom-view.js`), same reason: the data had to exist and be reachable before the tab that
+ * draws it could be built. The decode still happens per CALL rather than per frame, so a repaint on
+ * a tab that is not the WORK tab costs nothing (`paintWork` returns before the first call) — the
+ * `devices` lane was fairly criticised for paying a per-repaint decode for zero consumers.
  *
  * ⚠️ THE TWO ANSWERS THAT ARE NOT THE SAME. `0` means the player has switched this work type OFF —
  * the channel is sparse and *absent = off* is the sim's own semantics (`WorkPriority.Off` is "the
@@ -267,6 +277,7 @@ function buildSkeleton() {
   _toast = document.getElementById('ov-toast');
   _nudge = makeNudge({ el: () => $('ov-nudge') });
 
+  buildWorkIsland();
   buildIslands();
 
   // Map gestures: project + classify (IX-O-11..19). Only the scene surface routes here.
@@ -464,6 +475,144 @@ function buildIslands() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// M2-3 — THE WORK GRID (the WORK tab's island).
+//
+// ⭐ IT IS BUILT AS NODES AND `appendChild`-ED INTO `_root`, NOT WRITTEN INTO THE SKELETON STRING,
+// AND THAT IS THE SURFACE PIN RATHER THAN A STYLE PREFERENCE. The one invariant this package can
+// break catastrophically and silently is WHERE it mounts: E0-4's WP-5 built a whole feature onto the
+// deprecated console `.app` shell, passed independent review and merged, and nobody noticed until
+// the running game was opened. The negative form of the guard cannot bite — a tab mounted into an
+// EXISTING body-level container (`#panels`) adds no new console-shell id, so
+// `surface-boundary.test.js`'s id ceiling holds, and it creates no `hud.js` widget, so all four
+// widget counts hold. That is WP-5's first draft verbatim.
+//
+// So the guard is POSITIVE and it is about PLACEMENT: `workTabMount()` below hands a test the very
+// element the grid mounts into, and because every node from the cell up to the island is created and
+// appended here rather than parsed out of an HTML string, `mount.parentNode === the Overview root`
+// is a REAL fact in the node harness too (dom-lite parses no markup — an island written into
+// `_root.innerHTML` would have no parent there and the assertion would be vacuous). Re-parent this
+// island anywhere else and that chain breaks in one step.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Create an element with a class (and optional text), the way this island builds every node. */
+function mkEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function buildWorkIsland() {
+  _el.work = mkEl('div', 'hud ov-work');
+  _el.work.hidden = true;                    // the WORK tab is not the boot tab
+  _root.appendChild(_el.work);               // ⛔ the Overview root. Never document.body, never #panels.
+
+  _el.workHdr = mkEl('div', 'ov-hdr', 'WORK');
+  _el.work.appendChild(_el.workHdr);
+
+  // The one line of instruction the grid needs, and it states the cycle rather than the meaning of
+  // the numbers: under OD-H a player's first honest question is "how do I switch anything ON".
+  _el.work.appendChild(mkEl('div', 'ov-workhint',
+    'CLICK A CELL TO CYCLE  off → 1 → 2 → 3 → 4 → off.  1 IS THE HIGHEST PRIORITY.'));
+
+  _el.workEmpty = mkEl('div', 'ov-empty', 'No souls aboard.');
+  _el.workEmpty.hidden = true;
+  _el.work.appendChild(_el.workEmpty);
+
+  // Column header — built ONCE from WORK_COLUMNS, so the header and the cells cannot disagree about
+  // which column is which work type (they are the same table, walked twice).
+  const head = mkEl('div', 'ov-workrow ov-workhead');
+  head.appendChild(mkEl('span', 'ov-workname', 'CREW'));
+  for (const col of WORK_COLUMNS) {
+    const h = mkEl('span', 'ov-workcolhdr', col.label);
+    h.setAttribute('title', col.title);
+    head.appendChild(h);
+  }
+  _el.work.appendChild(head);
+
+  _el.workList = mkEl('div', 'ov-worklist');
+  _el.work.appendChild(_el.workList);
+}
+
+/**
+ * ⭐ THE POSITIVE SURFACE PIN's SEAM: the live element the WORK grid mounts into. Exported for the
+ * placement guard in `overview-model.test.js`, which requires it to be a DESCENDANT OF THE OVERVIEW
+ * ROOT — an id census is a guard against GROWTH, and re-parenting adds no id.
+ * @returns {*} the island element, or null before `initOverview`
+ */
+export function workTabMount() { return _el.work || null; }
+
+/**
+ * Paint the grid: one row per rostered crew member, six cells per row, each read from the LIVE
+ * `work` channel through `workPriorityFor`.
+ *
+ * ⚠️ THE CELL HOLDS NO STATE OF ITS OWN — not an optimistic value, not a "pending" mirror. Every
+ * repaint re-reads the wire cache, so what is on screen is what the SIM holds; a click sends an
+ * order and the cell changes when (and only when) the sim echoes it back on the next ~100 ms
+ * snapshot. A local mirror would go quietly wrong the moment the sim refused an order — and
+ * `HandleWorkPriority` is silent on refusal by design, so there would be nothing to correct it.
+ */
+function paintWork(crew) {
+  const show = Hud.getTab() === 'work';
+  setHidden(_el.work, !show);
+  if (!show) return;   // hidden → skip the per-cell decode entirely
+  setHidden(_el.workEmpty, crew.length !== 0);
+  reconcile(_el.workList, _workRows, crew, (e) => String(e.cid),
+    (e) => {
+      const row = mkEl('div', 'ov-workrow');
+      const nameEl = mkEl('span', 'ov-workname');
+      row.appendChild(nameEl);
+      const cells = WORK_COLUMNS.map((col) => {
+        const b = document.createElement('button');
+        b.className = 'ov-workcell';
+        // BOTH halves of the address ride the element the player clicks. The handler reads them
+        // back rather than closing over `e` — a closure would capture the crew entry object from
+        // the repaint that CREATED the row, and rows outlive repaints by construction.
+        b.dataset.ovWorkCid = String(e.cid);
+        b.dataset.ovWorkType = String(col.type);
+        b.setAttribute('title', col.title);
+        row.appendChild(b);
+        return { el: b, type: col.type };
+      });
+      return { el: row, nameEl, cells };
+    },
+    (rec, e) => {
+      setText(rec.nameEl, surnameOf(e.name));
+      for (const cell of rec.cells) {
+        const p = workPriorityFor(e.cid, cell.type);
+        const { text, state } = workCellLabel(p);
+        setText(cell.el, text);
+        setCls(cell.el, 'off', state === 'off');
+        setCls(cell.el, 'set', state === 'set');
+        setCls(cell.el, 'wait', state === 'wait');
+        // `wait` is the ONE state that refuses the click, and it is the honest one: with no payload
+        // we do not know what this cell currently is, so we cannot compute the next step of the
+        // cycle without guessing. `work` is in the host's snapshot key list, so this lasts one
+        // frame on a real connection.
+        setDisabled(cell.el, state === 'wait');
+      }
+    });
+}
+
+/**
+ * A WORK cell was clicked. The next value comes from the LIVE cache, never from what the cell is
+ * currently showing and never from a counter this module keeps: two clicks inside one 100 ms
+ * snapshot then both compute from the same known-true value and the second simply overwrites the
+ * first, which is what a whole-value order means.
+ */
+function onWorkCellClick(btn, d, e) {
+  const cid = Number(d.ovWorkCid) | 0;
+  const type = Number(d.ovWorkType) | 0;
+  const current = workPriorityFor(cid, type);
+  _send(Cmd.workPriority(cid, type, nextWorkPriority(current)));
+  // A work priority is applied by `SetWorkPriorityCommand` at a TICK BOUNDARY, so on a held ship the
+  // order sits in the queue and the cell does not move — the silent "dead button" this repo has paid
+  // three owner reports for. The nudge is the same one an armed order raises, for the same reason.
+  nudgeOnIntent();
+  releaseSpace(btn, e);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // Repaint (coalesced to one animation frame). Reads authoritative state from the HUD caches.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -541,6 +690,7 @@ function repaint() {
   paintTopbar(activeDeck, dView);
   paintDeckRail(dView, activeDeck);
   paintCrewWatch(crew, selCid);
+  paintWork(crew);
   paintReadout(frame, rosterMsg, dView, activeDeck);
   paintLens(lens);
   paintCommand(activeDeck);
@@ -1195,6 +1345,8 @@ function onHudClick(e) {
   else if (d.ovTab != null) { if (!tabIsInert(d.ovTab)) Hud.selectTab(d.ovTab); } // CHRONICLE kept but inert
   else if (d.ovTool != null) { Hud.armTool(d.ovTool); afterToolToggle(btn, e); }
   else if (d.ovCrew != null) { Hud.selectCrewByCid(d.ovCrew); }
+  // M2-3 — a WORK grid cell. Keyed on the CID half; both halves are read inside.
+  else if (d.ovWorkCid != null) { onWorkCellClick(btn, d, e); }
   else if ('ovSpeedDn' in d) { _send(Cmd.speed(-1)); }
   else if ('ovSpeedUp' in d) { _send(Cmd.speed(1)); }
   else if ('ovCaution' in d) { Hud.selectTab('moss'); } // ship-status chip → MOSS diagnostics

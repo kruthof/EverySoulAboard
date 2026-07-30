@@ -863,9 +863,12 @@ const SHIP_STATE_REACH = Object.freeze([
   // its own, moving to ship-state.js at WP-9), and like those two it is the fact's ONLY route to the
   // client rather than a better source for one the frame already carried — a work priority is
   // per-PERSON state with no tile to be projected onto, so `GlyphMapper` has nowhere to put it and no
-  // pass ordering could produce it. NOTHING DRAWS IT YET: the WORK tab is M2-3, and under OD-H the
-  // payload is empty until the player enables something. ⚠️ THIS ENTRY IS A CENSUS MOVE AND WAS
-  // RATIFIED IN REVIEW, not slipped in — the charter for M2-4 requires exactly that.
+  // pass ordering could produce it. ⭐ M2-3's WORK TAB NOW DRAWS AND WRITES IT (`overview-view.js`
+  // `paintWork` / `onWorkCellClick`, through the `workPriorityFor` seam), so this entry is no longer a
+  // data-only cache — it needs NO edit here, because the reach is computed from actual reaches and
+  // `getWork` was already reached by that seam. Under OD-H the payload is still empty until the
+  // player enables something. ⚠️ THIS ENTRY IS A CENSUS MOVE AND WAS RATIFIED IN REVIEW, not slipped
+  // in — the charter for M2-4 requires exactly that.
   'getWork',
   'getZones', 'isMossActive', 'onShipUpdate',
   'openBioForSelected', 'selectCrewByCid', 'selectTab', 'talkSelectedCrew', 'toolUsed',
