@@ -111,6 +111,34 @@ test('the order verbs are taught in the HEADLINE block, not buried in a controls
     assert.ok(verbs.includes(v), `${v} is not in the headline verbs block`);
 });
 
+test('the card teaches THE FIRST ORDER — the gesture that starts the game (M2-20 / OD-G)', () => {
+  // ⚠️ WHY THIS ROW IS NOT OPTIONAL. Under OD-H every work type boots OFF, so a new game opens with
+  // a crew member who will do nothing until the player says she may — her CREW WATCH row reads
+  // "Awaiting orders" the entire time. A first screen that names every verb EXCEPT the
+  // one that starts the game leaves the player watching a pawn wander and concluding it is broken.
+  // That is the report OD-G came from, and it is the same class of defect as the `B` row: a card
+  // that is true about what it says and silent about what matters.
+  //
+  // OWNER BATCH ITEM 10 (decided by default, 2026-07-29) defines "the first order" as ANY player
+  // command that results in her taking a job, INCLUDING a WORK-tab toggle — so the card teaches the
+  // WORK tab. If that is overturned to "a targeted order only", this row becomes STRIP/Prioritise
+  // and this test follows it; what may NOT happen is the row quietly disappearing.
+  const row = ROWS.find((r) => /WORK/i.test(r.key));
+  assert.ok(row, 'the card no longer names the WORK tab — the game\'s first move is untaught');
+  assert.ok(HTML.includes(row.text),
+    `the WORK row's text never reaches the rendered card: ${JSON.stringify(row.text)}`);
+  assert.ok(/\bWORK\b/.test(HTML), 'the rendered card never says WORK');
+  // It must carry a real join, like every row that names a gesture: this is the file's whole point.
+  assert.ok(row.bind && row.bind.length >= 2,
+    'the WORK row must join BOTH halves of the gesture — opening the tab and setting a cell. A row '
+    + 'that joined only the tab would document a panel with no way to use it.');
+  // …and the row's text must fit one line (~28 chars at this grid width): a wrapped cell makes BOTH
+  // cells in its grid row taller, and the card's height is a correctness property (BEGIN below the
+  // fold). Measured in Chrome by `client/tools/onboarding-shot.mjs`; this is the cheap early catch.
+  assert.ok(row.text.length <= 28,
+    `the WORK row's text is ${row.text.length} chars and will wrap the key grid — see the module header`);
+});
+
 test('the BUILD block names BOTH currencies — furniture is PARTS, not REGOLITH (the R2 defect)', () => {
   // ⚠️ THE SENTENCE THIS REPLACES MISDIRECTED INTO A SILENT FAILURE, which is why it gets a guard
   // and not just a correction. The card said "Building spends REGOLITH" over a block that also

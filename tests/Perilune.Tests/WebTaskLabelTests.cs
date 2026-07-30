@@ -70,6 +70,12 @@ namespace Perilune.Tests
         {
             var (gs, host) = Boot();
             var c = Parked(host);
+            // ⭐ M2-20 / OD-H: this leg is about the THREE job-less states of an ENABLED crew
+            // member, and `Parked` no longer produces one. Every work type boots OFF, so a pawn
+            // straight out of the fixture is UNASSIGNED — a fourth state with its own word, pinned
+            // in `AwaitingOrdersTests` and deliberately not restated here. Give her work and the
+            // three states below are exactly what they always were.
+            c.GiveAllWork();
 
             Assert.AreEqual("Idle", TaskOf(gs, c.Id), "parked with no job reads Idle, not 'walking'");
 
@@ -330,10 +336,15 @@ namespace Perilune.Tests
         public void Every_JobKind_Label_Opens_With_A_Known_Verb()
         {
             var (gs, host) = Boot();
+            // ⭐ "Awaiting" is M2-20's verb for a crew member with no work type switched on, and it
+            // reaches this sweep BECAUSE the fixture's pawn is in that state (OD-H boots the grid
+            // off) — `JobKind.None` in both loops below lands on it. `console-model.js` must
+            // classify it as NOT work, exactly as it classifies Walking/Holding/Idle.
             var known = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Digging", "Fetching", "Hauling", "Eating", "Drinking", "Crafting",
                 "Servicing", "Building", "Stripping", "Heading", "Walking", "Holding", "Idle",
+                "Awaiting",
             };
             var c = Parked(host);
             foreach (JobKind kind in Enum.GetValues(typeof(JobKind)))

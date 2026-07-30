@@ -2876,13 +2876,31 @@ namespace Perilune.Web
         /// the machine being serviced, the item being carried and where to, the build site and its
         /// material ledger, the tile being dug. The label always opens with a stable verb
         /// (Digging / Fetching / Hauling / Eating / Drinking / Crafting / Servicing / Building /
-        /// Heading / Walking / Holding / Idle); the client's on-map work marker classifies on that first word
+        /// Heading / Walking / Holding / Awaiting / Idle); the client's on-map work marker classifies on that first word
         /// (`taskTag` in console-model.js) and treats the en-route verb Heading as "has a job but
         /// is not working yet" (`watchTask`), so KEEP THE VERB SET AND THE CLIENT MAP IN STEP.
         ///
         /// The old catch-all reported "walking" for every job-less crew member — 99.9% of all
         /// labels in the playtest — which read as "busy" when the truth was "nothing assigned".
         /// A job-less walker now says so out loud, and a parked crew member reads Idle/Holding.
+        ///
+        /// ⭐ M2-20 — TWO WORDS FOR THE TWO JOB-LESS STATES OD-H CREATED, and the distinction is
+        /// the package: <b>"Awaiting orders"</b> (the player has switched NO work type on, so the
+        /// ship is waiting on them) and <b>"Idle"</b> (she is enabled and has nothing reachable to
+        /// do — the state that already existed and keeps its word unchanged). Under
+        /// OD-H every work type boots off, so *unassigned* is the state of every crew member on
+        /// every new game and *idle* is the rarer one. Collapsing them into one word is a lie in
+        /// whichever direction it is done — see `client/src/ui/overview-view.js`, where the
+        /// opposite collapse was the shipped position until this package.
+        ///
+        /// ⚠️ AN UNASSIGNED PAWN WHO IS WANDERING STILL READS UNASSIGNED. Idle wander
+        /// (`CitizenSystem.cs:70-79`) sets a path and never a JobKind, and it is what an unassigned
+        /// pawn DOES while she waits — so the *unassigned* branch deliberately wins over the
+        /// "Walking to …(no task)" prefix rather than composing with it. The alternative was a row
+        /// whose destination coordinates change on every tile step during the first ten seconds of
+        /// a new game, which is exactly when the sentence has to be readable. HOLDING still wins
+        /// over both: it is a per-citizen park (authored today, `AuthoredShips.cs:170-171`) that
+        /// blocks work by itself, so it is the more specific answer to "why is she not working".
         ///
         /// The label always names the JOB and its object. It does NOT claim the work has started:
         /// a crew member still crossing the deck reads "Heading to service scrubber_ls", and only
@@ -2892,12 +2910,17 @@ namespace Perilune.Web
         /// truth — the very predicate the job-less branch below already reads.
         ///
         /// Transit-shaped jobs (Fetching/Hauling/Eating) already say they are in transit, so they
-        /// keep their verb. A crew member with NO job reads Walking / Holding / Idle.
+        /// keep their verb. A crew member with NO job reads Walking / Holding / Awaiting / Idle.
         ///
         /// PURE READ: device/item/build lookups only ever read; nothing here mutates the sim or
         /// touches the RNG. `task` is a pre-existing roster field, so no wire shape moves.
         /// </summary>
-        private string TaskLabel(Citizen c)
+        /// <remarks>⚠️ <c>internal</c>, not <c>private</c>, and only for one reason (M2-20): the
+        /// zero-alloc guard has to MEASURE this method rather than infer it from a whole render,
+        /// where a 48-byte-per-call regression sits well inside the JSON builder's noise. Same
+        /// assembly, same protection in the shipping host; the tests compile
+        /// <c>GameSession.cs</c> directly (see <c>Perilune.Tests.csproj</c>).</remarks>
+        internal string TaskLabel(Citizen c)
         {
             var sb = _task;
             sb.Clear();
@@ -2964,18 +2987,80 @@ namespace Perilune.Web
                     sb.Append("Heading to safe air"); // E0-2 crew-safety: fleeing unbreathable air
                     break;
                 default:
-                    // No job. Say which of the three job-less states this actually is.
-                    if (c.HasPath)
+                    // No job. Say which of the FOUR job-less states this actually is (M2-20).
+                    // ⛔ TWO WORDS, NOT ONE — see the header above. `awaiting` is the sim's own
+                    // answer, never a host-side re-derivation.
+                    bool awaiting = !HasAnyWorkEnabled(c);
+                    if (c.HasPath && !awaiting)
                     {
                         sb.Append("Walking to ");
                         AppendTile(sb, c.Path[c.Path.Count - 1], c.Pos.Z);
                         sb.Append(" (no task)");
                     }
                     else if (c.HoldPosition) sb.Append("Holding position");
+                    else if (awaiting) sb.Append(AwaitingOrdersLabel);
                     else sb.Append("Idle");
                     break;
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// ⭐ <b>M2-20 — THE WORD FOR A CREW MEMBER THE PLAYER HAS NOT GIVEN ANY WORK TO.</b>
+        ///
+        /// <para>⚠️ <b>THE EXACT STRING IS REVERSIBLE AND IS OWNER BATCH ITEM 11.</b> It ships as
+        /// the INTEGRATOR'S RECOMMENDATION (2026-07-29, unanswered), not as a settled decision:
+        /// change it here and both surfaces follow, because both render the host's own words.</para>
+        ///
+        /// <para>⛔ <b>AND IT IS THE SHORT FORM BECAUSE THE LONG ONE WAS MEASURED CLIPPED IN THE
+        /// SHIPPING GAME.</b> The recommendation was <c>"Unassigned — awaiting orders"</c>, and it
+        /// was built, shipped to a browser and driven before it was believed. Real Chrome,
+        /// <c>--ship wreck</c>, 1600×1000 (<c>client/tools/awaiting-shot.mjs</c>'s rig, 2026-07-30):
+        /// <list type="bullet">
+        ///   <item>CREW WATCH <c>.ov-crewtask</c>: content <b>155 px</b> in a <b>145 px</b> box ⇒
+        ///     <c>text-overflow:ellipsis</c> ate the last word — the row read "…awaiting order…".</item>
+        ///   <item>Room Zoom <c>.rz-crewtask</c>: content <b>146 px</b> in a <b>118 px</b> box ⇒
+        ///     worse, and this is the narrower dock by design.</item>
+        /// </list>
+        /// ⇒ The two docks are ~28 and ~24 characters wide at their shipped font sizes. A sentence
+        /// that has to be scrolled to be read is the invisible-feedback defect wearing a longer
+        /// word, and widening two shared docks to fit one label is the wrong trade. So the fact
+        /// about the PLAYER is kept ("the ship is waiting on you") and the fact about her grid is
+        /// dropped: the WORK tab already answers <i>which</i> types are off, cell by cell.
+        /// ⚠️ If the owner reverses this to a longer string, MEASURE IT — the guard that failed
+        /// here is a browser, not a test.</para>
+        /// </summary>
+        internal const string AwaitingOrdersLabel = "Awaiting orders";
+
+        /// <summary>
+        /// Has the player switched ON any work type at all for this crew member?
+        ///
+        /// <para><b>THE SIM'S OWN PREDICATE, ASKED SIX TIMES — never a host-side re-derivation of
+        /// the grid.</b> <see cref="Citizen.CanTakeWorkType"/> folds BOTH reasons to refuse (the
+        /// player switched it off, or the person is incapable of it), and the dispatcher, the
+        /// crafting recruiter, the maintenance recruiter and both LLM gates ask exactly this
+        /// question at exactly this granularity (M2-2's five gates). A label derived from
+        /// <c>WorkPrioritiesRaw</c> directly would read "unassigned" over a pawn the sim will
+        /// happily employ the moment her incapability clears — two answers to one question, which
+        /// is the defect the <c>marks</c> channel exists to remove.</para>
+        ///
+        /// <para><b>ZERO ALLOCATION, NO RNG, NO MUTATION.</b> A counted <c>for</c> over
+        /// <see cref="WorkPriority.WorkTypeCount"/> with an <c>int</c>→enum cast: no
+        /// <c>Enum.GetValues</c> (allocates an array per call), no LINQ, no boxing. Pinned by
+        /// <c>AwaitingOrdersTests.TaskLabel_AddsNoPerCallAllocation_ForTheUnassignedBranch</c>,
+        /// because <see cref="TaskLabel"/> runs once per crew member per render at ≤10 Hz.
+        /// The same shape as <c>JobSystem.cs:378</c>, which sums candidate work the same way.</para>
+        ///
+        /// <para>⚠️ <c>WorkPriorityStateTests.OnlyEnrolledFilesReadTheWorkGrid</c> is the ledger of
+        /// who may read this grid, and it scans <c>sim/</c> ONLY — so this host-side read is
+        /// outside its reach and enrols nothing. Stated rather than discovered: the ledger's
+        /// silence here is a scope, not a permission.</para>
+        /// </summary>
+        internal static bool HasAnyWorkEnabled(Citizen c)
+        {
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+                if (c.CanTakeWorkType((WorkType)t)) return true;
+            return false;
         }
 
         /// <summary>"x,y" — plus " on deck N" when the tile is off the citizen's own deck.</summary>

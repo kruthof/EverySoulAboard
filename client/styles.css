@@ -1000,6 +1000,16 @@ button.ov-chip:hover{border-color:var(--amber-deep,#cf7a33)}
    NEXT rule — a comment sitting in that gap would close the blinding early and quietly. */
 .ov-crewtask{font-size:8.5px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* M2-20 — the THIRD state. Under OD-H every work type boots off, so "the player has enabled
+   nothing" and "she is enabled and has nothing reachable to do" are BOTH common, and a row that
+   drew them identically would tell the player the ship is stuck when it is waiting on them.
+   ⚠️ IT IS NOT AMBER, DELIBERATELY. Amber means WORK IS HAPPENING and that signal is the dock's
+   whole legibility mechanism (see the note above, and `overview-view.js`'s corrected comment):
+   spending it on a pawn doing nothing would make every new game open with a dock full of "work".
+   So *waiting* lifts one step out of the dim ink and takes an italic — two cues, neither of them
+   the work signal. ⛔ NOT `--cold` either: that hue is reserved for cryo/coolant (H-2).
+   Declared BEFORE `.working` so that if a crew member ever carried both, work wins. */
+.ov-crewtask.waiting{color:var(--ink-body,#b3aa9c);font-style:italic}
 .ov-crewtask.working{color:var(--amber-light,#f2b563)}
 .ov-empty{color:var(--ink-mute,#8c8377);font-size:10px}
 .ov-guide{color:var(--ink-mute,#8c8377);font-size:10px;margin-top:4px}
@@ -1290,6 +1300,10 @@ body.moss-open #roomzoom-view{display:none !important}
   overflow:hidden;text-overflow:ellipsis}
 .rz-crewtask{font-size:8px;color:var(--ink-mute,#8c8377);letter-spacing:.04em;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
+/* M2-20 — the same third state as `.ov-crewtask.waiting`, with the same reasoning and the same two
+   cues. The two docks must not disagree: a player who steps into a room to look for their crew
+   member has not stopped needing to be told the ship is waiting on them. */
+.rz-crewtask.waiting{color:var(--ink-body,#b3aa9c);font-style:italic}
 .rz-crewtask.working{color:var(--amber-light,#f2b563)}
 /* WHERE they are. Dim by default and amber for HERE: the eye should be able to find, without
    reading, which rows belong to the room on screen. */

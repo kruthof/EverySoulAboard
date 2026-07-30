@@ -394,6 +394,22 @@ const TASK_TAGS = {
  *  answer — while CREW WATCH still reads it as assigned work, because they are not idle. */
 const EN_ROUTE_VERB = 'heading';
 
+/**
+ * ⭐ M2-20 — the host's verb for a crew member the player has given NO work type at all
+ * ("Awaiting orders", `GameSession.AwaitingOrdersLabel`). Deliberately absent from
+ * TASK_TAGS for the same reason Walking/Holding/Idle are: waiting is not working, and no map
+ * marker may float over it.
+ *
+ * ⚠️ WHY THE CLIENT LOOKS AT THE VERB AT ALL, given that the WORD is the host's and must stay the
+ * host's. It does NOT re-derive the state — it CLASSIFIES the host's own sentence, exactly as
+ * `taskTag` has always classified the first verb of every other label, so that the row can be
+ * styled. The `work` channel carries this crew member's grid and deriving *unassigned* from THAT
+ * would be a second source of truth for one layer; reading the first word of the label the host
+ * already sent is one source, read twice. Keep this token and `GameSession.AwaitingOrdersLabel`
+ * in step — `WebTaskLabelTests.Every_JobKind_Label_Opens_With_A_Known_Verb` pins the host side.
+ */
+const AWAITING_VERB = 'awaiting';
+
 /** The first word of a roster task label, lowercased ('' for a missing/garbage label). PURE. */
 function taskVerb(task) {
   return typeof task === 'string' ? task.trim().split(/\s+/)[0].toLowerCase() : '';
@@ -408,10 +424,21 @@ export function taskTag(task) {
 
 /** The CREW WATCH task cell for a roster entry: the label the host sent plus whether it counts as
  *  real work (so the row can dim the doing-nothing case instead of implying activity). A crew
- *  member en route to a job counts — they are assigned, just not there yet. PURE. */
+ *  member en route to a job counts — they are assigned, just not there yet. PURE.
+ *
+ *  ⭐ `waiting` (M2-20) is the THIRD state, and it is a third state rather than a second because
+ *  `working` and `waiting` answer different questions: *is work happening* and *is the ship waiting
+ *  on the player*. They are mutually exclusive in practice (the host never emits the awaiting label
+ *  for a crew member on a job) and the styles are ordered so that `working` wins if that ever stops
+ *  being true. `text` is ALWAYS the host's string, untouched. */
 export function watchTask(entry) {
   const task = entry && typeof entry.task === 'string' ? entry.task.trim() : '';
-  return { text: task || '—', working: taskTag(task) != null || taskVerb(task) === EN_ROUTE_VERB };
+  const verb = taskVerb(task);
+  return {
+    text: task || '—',
+    working: taskTag(task) != null || verb === EN_ROUTE_VERB,
+    waiting: verb === AWAITING_VERB,
+  };
 }
 
 /** Crew on `deck` who are actually working, as map markers joined from the roster's own

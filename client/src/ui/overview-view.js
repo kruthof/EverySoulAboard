@@ -895,9 +895,35 @@ function paintCrewWatch(crew, selCid) {
       // `--ship grid` that will be most of the day (crew there do not auto-wander), and the choice
       // was deliberate — writing something like "AWAITING ORDERS" would imply the ship is waiting on
       // the player, when an idle crew member may simply have nothing reachable to do.
+      //
+      // ─────────────────────────────────────────────────────────────────────────────────────────
+      // ⭐ THE PARAGRAPH ABOVE IS THE RECORD OF A DECISION AND IT IS KEPT WHERE IT WAS MADE. It
+      // carries THREE separable claims and they have three different fates (M2-20, 2026-07-30):
+      //
+      //  1. ⛔ OVERTURNED — "AWAITING ORDERS would imply the ship is waiting on the player". Under
+      //     OD-G (owner, 2026-07-29) THE SHIP IS WAITING ON THE PLAYER: the pawn boots idle, every
+      //     work type boots off (OD-H), and the opening IS an order. The objection's premise is
+      //     gone, so the conclusion goes with it — this row now says so out loud.
+      //  2. ⛔ ALREADY FALSE WHEN IT WAS QUOTED — "crew there do not auto-wander". True when
+      //     written; reversed on 2026-07-25 by the deck-confined-wander lane, which made grid crew
+      //     `AutoWander = true` (`sim/Sim.Gen/AuthoredShips.cs:1126`, "the standard play ship should
+      //     not be a still photograph"). The wreck's boot pawn is authored the same way
+      //     (`AuthoredShips.cs:1993`). Nothing in this file ever depended on it; it is corrected
+      //     because a stale clause travels forward inside a block that is quoted as a unit.
+      //  3. ✅ STILL TRUE AND STILL THE MECHANISM — dim grey is honest, and the eye reading amber
+      //     as "work is happening" is what makes a dock of dim rows a TRUE signal. It survives
+      //     UNCHANGED and it is why *unassigned* did NOT become a bright row.
+      //
+      // ⇒ WHAT THE OLD POSITION GOT RIGHT IS THE HAZARD, NOT THE ANSWER: conflating "waiting for an
+      // order" with "nothing reachable to do" is a lie. It was written for a world where only the
+      // second state existed; OD-H made BOTH common, so the fix is TWO WORDS, not one word chosen
+      // for either side. The host owns both (`GameSession.TaskLabel`) — ⛔ never re-derive them here
+      // from the `work` channel. This row only classifies the sentence it was sent, for colour.
+      // ─────────────────────────────────────────────────────────────────────────────────────────
       const t = watchTask(e);
       setText(rec.taskEl, t.text);
       setCls(rec.taskEl, 'working', t.working);
+      setCls(rec.taskEl, 'waiting', t.waiting);
       // ⚠️ THERE IS NO MORALE BAR HERE, AND ITS ABSENCE IS THE FEATURE (M1-F, 2026-07-29). A
       // `.ov-morale` / `.ov-morale-fill` pair used to sit under the task line, its width and colour
       // driven by `e.morale` off the roster wire. That number is `Citizen.Morale`, and NO SYSTEM IN

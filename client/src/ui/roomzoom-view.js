@@ -959,9 +959,14 @@ function paintCrewDock(rows) {
     setText(rec.nameEl, surnameOf(r.entry.name) || String(r.cid));
     // The SAME derivation the Overview's CREW WATCH runs, imported rather than restated: only real
     // work reads bright, so a dock of dim rows is a TRUE signal that nothing is happening.
+    // ⭐ M2-20: and the THIRD state rides the same derivation onto this surface in the same commit.
+    // "The two surfaces cannot disagree" was an unpinned claim in the Overview's own comment until
+    // this package; a word that reached CREW WATCH and not this dock would make the room the place
+    // where the game stops telling you it is waiting on you. `AwaitingOrdersTests` pins both.
     const t = watchTask(r.entry);
     setText(rec.taskEl, t.text);
     setCls(rec.taskEl, 'working', t.working);
+    setCls(rec.taskEl, 'waiting', t.waiting);
     // WHERE: 'HERE' when they are standing in the room on screen, else the room they are in, else
     // the deck. The deck fallback is not a shrug — a crew member in a hall is genuinely not in any
     // room, and saying 'DECK 1' is the honest answer to "where do I go to find her".

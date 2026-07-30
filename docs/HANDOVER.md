@@ -48,6 +48,11 @@ docs/comments; M2-3 one comment), both fixed and re-verified before merge.
 ## Open on the owner
 
 Nothing blocking. New, from this session's merges (review as you play):
+- M2-20 shipped "Awaiting orders" (batch item 11): the recommended "Unassigned — awaiting
+  orders" measured CLIPPED in both docks (155/146 px in 145/118 px cells). Reversible at
+  `GameSession.AwaitingOrdersLabel`; any reversal must re-measure in the browser.
+- The onboarding card dropped its `Space` row to fit the new WORK row (Space is written on
+  screen by the ship itself at `#ov-nudge`); if you want it back, another row must go.
 - The WORK tab's column labels abbreviate OD-J (`BUILD` for Construct, `STRIP` for
   Deconstruct) and `BUILD` collides with the BUILD tab label in the same command bar.
 - The ascending-only click cycle (off→1→2→3→4→off) deviates from RimWorld's two-gesture

@@ -554,15 +554,19 @@ test('taskTag: every host verb maps to a tag; the job-less states map to none', 
 });
 
 test('watchTask: the CREW WATCH cell shows the label and flags real work', () => {
-  assert.deepEqual(watchTask({ task: 'Servicing scrubber_ls' }), { text: 'Servicing scrubber_ls', working: true });
-  assert.deepEqual(watchTask({ task: 'Idle' }), { text: 'Idle', working: false });
+  // ⭐ M2-20 added the third flag, `waiting`. The deepEquals are FULL-SHAPE on purpose: a new flag
+  // has to be written into every row here, which is how the next one cannot be added silently for
+  // one state and forgotten for the other five.
+  assert.deepEqual(watchTask({ task: 'Servicing scrubber_ls' }),
+    { text: 'Servicing scrubber_ls', working: true, waiting: false });
+  assert.deepEqual(watchTask({ task: 'Idle' }), { text: 'Idle', working: false, waiting: false });
   // En route gets no MAP tag, but CREW WATCH still reads it as assigned work: they are walking
   // to a real job, which is not the same as standing around.
   assert.deepEqual(watchTask({ task: 'Heading to service scrubber_ls' }),
-    { text: 'Heading to service scrubber_ls', working: true });
-  assert.deepEqual(watchTask({ task: '   ' }), { text: '—', working: false });
-  assert.deepEqual(watchTask({}), { text: '—', working: false });
-  assert.deepEqual(watchTask(null), { text: '—', working: false });
+    { text: 'Heading to service scrubber_ls', working: true, waiting: false });
+  assert.deepEqual(watchTask({ task: '   ' }), { text: '—', working: false, waiting: false });
+  assert.deepEqual(watchTask({}), { text: '—', working: false, waiting: false });
+  assert.deepEqual(watchTask(null), { text: '—', working: false, waiting: false });
 });
 
 test('workMarkers: only working crew, only the shown deck, joined from the roster', () => {
