@@ -280,10 +280,13 @@ namespace Perilune.Sim
         ///
         /// Per citizen, in this order: Id · Pack(Pos) · Suffocation · Hunger · Thirst ·
         /// Fatigue · Mood · JobKind (own word) · flag word (Dead b0, RevealsFog b1,
-        /// HoldPosition b2, AutoWander b3, OrderedMove b4 — 1-bit fields, cannot alias) · JobWorkTicks
+        /// HoldPosition b2, AutoWander b3, OrderedMove b4, HeldByOrder b5 — 1-bit fields, cannot
+        /// alias) · JobWorkTicks
         /// (own word, full 32 bits) · CarryingItemId (own word, full 32 bits) ·
         /// Pack(JobTarget) · ReservedItemId · Faction|Archetype&lt;&lt;8 (both `byte`, exact
-        /// fit) · Health · Morale · Name (length then code units) · Pack(PrevPos) ·
+        /// fit) · Health · Morale · the six work priorities (M2-1, ONE OWN WORD EACH, in
+        /// <c>WorkType</c> declaration order, NO count prefix — see the note at the fold) ·
+        /// WorkIncapable · Skill · Name (length then code units) · Pack(PrevPos) ·
         /// Path.Count · Pack(Path[0…n−1]) · PathIndex · MoveCooldown · IdleCooldown.
         ///
         /// Per item, in this order: Id (own word, full 32 bits) · Kind (own word) ·
@@ -410,7 +413,8 @@ namespace Perilune.Sim
                                        | (c.RevealsFog ? 1UL << 1 : 0)
                                        | (c.HoldPosition ? 1UL << 2 : 0)   // v6
                                        | (c.AutoWander ? 1UL << 3 : 0)     // W0-1b
-                                       | (c.OrderedMove ? 1UL << 4 : 0));  // E0-3
+                                       | (c.OrderedMove ? 1UL << 4 : 0)    // E0-3
+                                       | (c.HeldByOrder ? 1UL << 5 : 0));  // M2-1 (reserved, M2-19's)
                 h = XxHash64.Combine(h, (ulong)(uint)c.JobWorkTicks);
                 h = XxHash64.Combine(h, (ulong)c.CarryingItemId);
                 h = XxHash64.Combine(h, Pack(c.JobTarget));
@@ -418,6 +422,54 @@ namespace Perilune.Sim
                 h = XxHash64.Combine(h, (ulong)c.Faction | ((ulong)c.Archetype << 8)); // v5
                 h = XxHash64.Combine(h, c.Health);
                 h = XxHash64.Combine(h, c.Morale);
+                // M2-1 — the work-priority grid (CITZ v8), plus the reserved skill byte. Nothing
+                // reads either yet; they are hashed from the day they land so a later consumer
+                // costs no pin move.
+                //
+                // ONE COMBINE PER SLOT, in WorkType VALUE order (which is the storage index — the
+                // arbitration order is WorkPriority.NaturalPriority and is not this). Six slots each hold 0..4, so
+                // three bits apiece would fit in a single 18-bit word — and that is precisely the
+                // packing this fold refuses. `RoomType.Cryo = 16` hashed identically to `None`
+                // because a shift ran off the top of a word, and a comment in
+                // StateHashHonestyTests had predicted it in writing four days earlier. Here a
+                // mis-shifted slot cannot exist: separate chained Combine calls are
+                // position-sensitive, so no two work types can share bits at any future member
+                // count. Cost is six extra Combines per citizen on a fold that never runs in a tick.
+                //
+                // ⚠️ NO COUNT PREFIX, and that is deliberate against this fold's own doctrine
+                // ("every variable-length member folds its COUNT before its entries"). The grid is
+                // NOT variable-length: WorkPriority.WorkTypeCount is a compile-time constant, the
+                // run is bounded on both sides by fields of fixed width, and no shuffle across the
+                // boundary is constructible. Folding the constant would be worse than useless — it
+                // adds a fixed value to every citizen's trailing run, which is exactly the
+                // alignment Aliased_PathTilesCannotShuffleAcrossTwoCitizens is built on, and
+                // MEASURED BOTH WAYS, twice, by two agents: control — delete `Combine(h,
+                // path.Count)` on the shipped fold and that guard is RED (1 of 73). Add a constant
+                // grid count here AND delete the same line: 73/73 GREEN. The count would not have
+                // weakened a guard, it would have silently KILLED one.
+                //
+                // ⚠️ STANDING HAZARD FOR WHOEVER ADDS THE NEXT HASHED CITIZEN FIELD — this is the
+                // mechanism, and it is more fragile than the finding above makes it sound. That
+                // collision pair exists only while EVERY value of crew 1's fixed-width prefix folds
+                // to the same number as crew 0's three trailing scalars — i.e. to ZERO. M2-1 already
+                // pushed that requirement from three fields to eleven, and it is held by nothing but
+                // explicit zeroing in ONE fixture (StateHashHonestyTests.TwoCrewPathFixture). ⇒ THE
+                // NEXT HASHED PREFIX FIELD WITH A NON-ZERO DEFAULT KILLS THAT GUARD SILENTLY — it
+                // will not go red, it will go green for the wrong reason. If you add one: zero it in
+                // that fixture, then verify by deleting the path.Count fold and watching the pair go
+                // RED. Do not trust it because the suite is green.
+                //
+                // The fixed-length premise is itself pinned (WorkPriorityStateTests), and the SAVE
+                // stream does carry a count — different medium, different rule; see WriteCitizens.
+                //
+                // POSITION: folded here, in the citizen's fixed-width prefix, rather than appended
+                // after IdleCooldown, so it stays out of the trailing run that the path-boundary
+                // pair aligns. Appending would have required editing that fixture, and a collision
+                // pair is not a thing to edit casually.
+                var work = c.WorkPrioritiesRaw;
+                for (int t = 0; t < work.Length; t++) h = XxHash64.Combine(h, (ulong)work[t]);
+                h = XxHash64.Combine(h, (ulong)c.WorkIncapable);
+                h = XxHash64.Combine(h, (ulong)c.Skill);
                 // W0-1b — saved since CITZ v1, folded only now. Name is the identity every
                 // other layer keys on; PrevPos is derived-but-hashed (same contract as
                 // Device.NetworkId/Powered: a load hashes equal immediately, and dropping it
