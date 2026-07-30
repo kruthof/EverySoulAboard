@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Perilune.Sim
@@ -49,6 +50,146 @@ namespace Perilune.Sim
         public float Fatigue;       // 1 = exhausted (slows work)
         public float Mood;          // derived scalar, -100..100, for HUD/M3 systems
         public bool Dead;
+
+        // --- The work-priority grid (M2-1, saved CITZ v8). STORAGE ONLY: nothing in the sim
+        // reads any of the four fields below, and that inertness is the package's whole claim.
+        // See the WorkType / WorkPriority declarations at the bottom of this file. ---
+
+        /// <summary>
+        /// This crew member's manual work priority per <see cref="WorkType"/>, indexed by the
+        /// enum's own value. <c>0</c> = the pawn will not do it; <c>1</c>..<c>4</c> = a manual
+        /// priority with <b>1 the highest</b> (<see cref="WorkPriority"/>).
+        ///
+        /// SHAPE, and why it is this one. A fixed-length inline array, sized by
+        /// <see cref="WorkPriority.WorkTypeCount"/>: no <c>Dictionary</c> (its enumeration order can
+        /// reach the hash — the constraint <c>Jobs/Sources/HaulJobSource.cs:137</c> states in the other
+        /// direction), no bit-packing (six slots × a 5-value domain would be 18 bits in one word,
+        /// and a mis-shifted slot is <c>RoomType.Cryo = 16</c> wearing a new coat — one whole byte
+        /// per slot makes that class of alias impossible <i>by construction</i> rather than by
+        /// arithmetic anyone has to get right), and no allocation on any tick path: the array is
+        /// built once per citizen, at construction.
+        ///
+        /// <c>internal</c> so <c>SaveWriter</c>/<c>SaveReader</c>/<c>Simulation.StateHash</c> (same
+        /// assembly) can walk it positionally while every other caller goes through
+        /// <see cref="GetWorkPriority"/>/<see cref="SetWorkPriority"/> and cannot store a value
+        /// outside the domain into a HASHED field.
+        /// </summary>
+        internal readonly byte[] WorkPrioritiesRaw = DefaultWorkPriorities();
+
+        /// <summary>
+        /// The work types this PERSON cannot do at all — one bit per <see cref="WorkType"/>, set =
+        /// permanently impossible. <c>0</c> = capable of everything, which is why the mask stores
+        /// INCAPABILITY rather than capability: a pawn with no backstory and no traits is capable,
+        /// and that must be the uninitialised state.
+        ///
+        /// ⭐ WHY THIS EXISTS IN A STORAGE-ONLY PACKAGE. In RimWorld a backstory or trait can render
+        /// a work type struck through and <b>the player cannot enable it</b>
+        /// (<c>docs/design/rimworld-reference.md</c> §1.6; §1.2 is explicit that blank and disabled
+        /// are one stored value while INCAPABLE is a different thing entirely). It is a fact about
+        /// the PERSON, where a blank priority is an order from the PLAYER: different UI, different
+        /// provenance, different lifetime. Shipping only the priority byte would make a later
+        /// capability package migrate a hashed, saved field — a SECOND CITZ chapter bump and a
+        /// SECOND pin move — where carrying it inside this package's already-paid bump costs
+        /// nothing. The SOURCE of incapability (backstories, traits, a skill model) is deliberately
+        /// NOT built here; M3-7 is the expected first writer.
+        ///
+        /// ⚠️ <b>NO WRITER EXISTS AS OF THIS COMMIT.</b> Phrased that way on purpose: "nothing calls
+        /// this yet" is a statement about a TREE, and a merge changes the tree.
+        ///
+        /// ⭐ AND THERE ARE TWO SOURCES, NOT ONE — the representation must not foreclose either.
+        /// RimWorld's incapability is not only a categorical backstory/trait flag: the gate is a
+        /// THRESHOLD on a continuous capacity, <c>CapableOf(c) =&gt; GetLevel(c) &gt; c.minForCapable</c>
+        /// (<c>PawnCapacitiesHandler.cs:78-81</c>, vanilla <c>Moving = 0.15</c>), so an INJURY that
+        /// drags a capacity under its floor makes a work type impossible exactly as a backstory
+        /// does. A bare bitmask holds both, because it records the CONCLUSION rather than its cause;
+        /// a representation that stored "which backstory disabled this" would have foreclosed the
+        /// injury-driven half. Neither mechanism is built here.
+        ///
+        /// ⚠️ WIDTH. Six work types × 1 bit = 6 bits of an 8-bit mask; a NINTH work type would fold
+        /// onto bit 0 and hash identically to the first. Pinned by
+        /// <c>WorkPriorityStateTests.WorkIncapableMask_IsWideEnoughForEveryWorkType</c>, which
+        /// writes that arithmetic out — <c>StateHashHonestyTests.cs</c> predicted the RoomType alias
+        /// in prose and the prose did not stop it.
+        ///
+        /// ⚠️ INVARIANT NOT ENFORCED, deliberately: nothing stops a caller setting a priority on an
+        /// incapable type. RimWorld's own <c>Pawn_WorkSettings.SetPriority</c> refuses that, but
+        /// refusing is a RULE and a rule is behaviour; this package must stay byte-for-byte inert.
+        /// The refusal belongs with the capability SOURCE, which is the only package that can know
+        /// the state is reachable.
+        /// </summary>
+        public byte WorkIncapable;
+
+        /// <summary>
+        /// RESERVED, zeroed, and with NO READER AND NO WRITER AS OF THIS COMMIT (a statement about
+        /// this tree, which a merge can change) — M3-7's per-citizen skill byte, landed here only
+        /// because the CITZ chapter is bumping anyway (W0-1b folded thirteen saved-but-unhashed
+        /// fields in one pin move).
+        ///
+        /// ⚠️ WHAT THIS SAVES M3-7 IS A <b>CHAPTER BUMP AND A SAVE-FORMAT MIGRATION, NOT A RE-PIN</b>
+        /// — an earlier draft claimed the re-pin, and that is false:
+        /// <c>docs/design/perilune-roadmap-q3.packages.md:403</c> charters M3-7 as a P1/P2/P3 pin row
+        /// in its own right ("work rates change on every ship"), so it pays a re-pin whatever this
+        /// field does. The saving is real but smaller than advertised, and it IS a saved re-pin for
+        /// <see cref="HeldByOrder"/>, whose package (M2-19) is chartered pin-neutral *if* its storage
+        /// landed here.
+        /// </summary>
+        public byte Skill;
+
+        /// <summary>
+        /// RESERVED, false, with NO READER AND NO WRITER AS OF THIS COMMIT — M2-19's sticky-claim
+        /// bool, batched for the same
+        /// reason as <see cref="Skill"/>. The M2-0 spike measured that
+        /// <c>MaintenanceSystem.Tick</c> frees and re-claims the same pawn inside ONE tick, so
+        /// "work on that, now" has to be expressed as HOLDING a pawn on an ordered job rather than
+        /// as a dispatcher preference; this is where that hold will live.
+        /// </summary>
+        public bool HeldByOrder;
+
+        /// <summary>This crew member's manual priority for <paramref name="type"/>;
+        /// <see cref="WorkPriority.Off"/> (0) means they will not do it.</summary>
+        public byte GetWorkPriority(WorkType type) => WorkPrioritiesRaw[(int)type];
+
+        /// <summary>
+        /// Set this crew member's manual priority for <paramref name="type"/>.
+        /// RANGE is validated (and only range) because the byte is HASHED state: a value outside
+        /// 0..4 has no meaning, would survive a save round-trip, and would silently break any later
+        /// packing. Capability is NOT validated here — see <see cref="WorkIncapable"/>.
+        /// </summary>
+        public void SetWorkPriority(WorkType type, byte priority)
+        {
+            if (priority > WorkPriority.Lowest)
+                throw new ArgumentOutOfRangeException(nameof(priority), priority,
+                    "a work priority is " + WorkPriority.Off + " (off) or " + WorkPriority.Highest +
+                    ".." + WorkPriority.Lowest + ", 1 highest");
+            WorkPrioritiesRaw[(int)type] = priority;
+        }
+
+        /// <summary>The player has switched this work type ON for this crew member (any manual
+        /// priority at all). The ABSENCE of a priority is what "will not do it" means — there is
+        /// no fifth "disabled" value, exactly as in RimWorld's work tab.</summary>
+        public bool IsWorkEnabled(WorkType type) => WorkPrioritiesRaw[(int)type] != WorkPriority.Off;
+
+        /// <summary>This PERSON cannot do this work at all — distinct from the player having
+        /// switched it off. See <see cref="WorkIncapable"/>.</summary>
+        public bool IsIncapableOf(WorkType type) => (WorkIncapable & (1 << (int)type)) != 0;
+
+        /// <summary>Mark (or clear) a permanent incapability. No consumer yet — the capability
+        /// SOURCE is a later package; this exists so the state is reachable and testable.</summary>
+        public void SetIncapableOf(WorkType type, bool incapable)
+        {
+            if (incapable) WorkIncapable |= (byte)(1 << (int)type);
+            else WorkIncapable &= (byte)~(1 << (int)type);
+        }
+
+        private static byte[] DefaultWorkPriorities()
+        {
+            var grid = new byte[WorkPriority.WorkTypeCount];
+            // Written from the named constant rather than left at the array's implicit zeroes, so
+            // that flipping WorkPriority.Default is genuinely a ONE-LINE change: a constant no code
+            // reads is not a default, it is a comment that lies.
+            for (int i = 0; i < grid.Length; i++) grid[i] = WorkPriority.Default;
+            return grid;
+        }
 
         // --- Jobs (M2). Job state lives on the citizen (not in the board) so the
         // JobBoard stays purely derived and saves never serialize it. ---
@@ -137,5 +278,223 @@ namespace Perilune.Sim
         Flee = 10,       // walking out of unbreathable air to survive (SafetySystem) — not None, so no
                          //   dispatcher recruits a fleeing crew until it has recovered in safe air
         Deconstruct = 11, // tearing down a designated wall (DeconstructSystem, E0-5) — build's inverse
+    }
+
+    /// <summary>
+    /// The six player-assignable WORK TYPES (M2-1; owner decision OD-J, 2026-07-29). They are
+    /// mapped onto work the sim already does rather than invented: <c>Repair</c> ⇒ the
+    /// <c>Maintain</c> job, <c>Construct</c> ⇒ <c>Build</c> + <c>HaulToBuild</c>,
+    /// <c>Craft</c> ⇒ <c>Craft</c>, <c>Deconstruct</c> ⇒ <c>Deconstruct</c>, <c>Mine</c> ⇒
+    /// <c>Dig</c>, <c>Haul</c> ⇒ <c>HaulPickup</c> + <c>HaulDeliver</c>. Wiring those job kinds to
+    /// these types is M2-2's; this file only stores the grid.
+    ///
+    /// ⛔ <c>Eat</c>, <c>Drink</c> and <c>Flee</c> are NOT work types and never will be. Needs and
+    /// self-preservation are not work — RimWorld agrees; you cannot switch off eating.
+    ///
+    /// ⚠️ <b>THE DECLARATION ORDER IS THE DISPLAY ORDER, NOT THE ARBITRATION RULE.</b> The
+    /// equal-priority tie-break is <see cref="WorkPriority.NaturalPriority"/>, an explicit per-type
+    /// ranking constant; the column order is DERIVED from it
+    /// (<see cref="WorkPriority.RankedOrder"/>) and the two are pinned to agree. ⭐ An earlier draft
+    /// of this file encoded "first declared wins" as the rule, and that is wrong in the way that
+    /// matters: <c>docs/design/rimworld-reference.md</c> §1.3 measures RimWorld's actual sort key as
+    /// <c>naturalPriority + (4 − playerPriority) × 100000</c>, sorted descending, so "left is first"
+    /// is a correct PREDICTION only because the tab happens to be displayed in <c>naturalPriority</c>
+    /// order — two orderings sharing one key. Implementing left-to-right implements the display.
+    /// OD-J is unaffected: <c>Repair · Construct · Craft · Deconstruct · Mine · Haul</c> is still the
+    /// owner's chosen ranking (repair first because it is the wreck's premise, haul last as in
+    /// RimWorld); it is now encoded as the ranking constant it actually is.
+    ///
+    /// The values are contiguous from 0 because they index <see cref="Citizen.WorkPrioritiesRaw"/>
+    /// and bit-index <see cref="Citizen.WorkIncapable"/>; a gap or a re-based value would leave a
+    /// slot no work type addresses and a bit no work type owns. Pinned. The natural-priority table
+    /// is keyed by MEMBER NAME rather than by position, so reordering these members re-orders the
+    /// display without silently re-ordering the arbitration — which is the whole point of splitting
+    /// them, and is itself pinned.
+    /// </summary>
+    public enum WorkType : byte
+    {
+        Repair = 0,
+        Construct = 1,
+        Craft = 2,
+        Deconstruct = 3,
+        Mine = 4,
+        Haul = 5,
+    }
+
+    /// <summary>
+    /// The domain of a work priority, and the per-type ranking constant that breaks ties.
+    /// Analogised from RimWorld's work tab; see <c>docs/design/rimworld-reference.md</c> §1 for the
+    /// measured original rather than a restatement of it here. The load-bearing claims:
+    ///
+    ///   * <b>Manual priorities are 1..4 and <see cref="Highest"/> is 1</b>, not 4 (§1.2). A pawn
+    ///     finishes ALL available priority-1 work before starting ANY priority-2 work — a strict
+    ///     partition, not a weighting. This reads backwards against the intuition that a bigger
+    ///     number is more important, which is exactly why <see cref="Highest"/> and
+    ///     <see cref="Lowest"/> are named rather than written as literals at call sites.
+    ///   * <b><see cref="Off"/> is the ABSENCE of a priority, not a fifth priority value</b> (§1.2:
+    ///     "blank and disabled are the same stored value 0, but INCAPABLE is a different thing
+    ///     entirely" — see <see cref="Citizen.WorkIncapable"/>). This is what lets the default be
+    ///     the array's natural zero: an uninitialised crew member is a disabled one, and no code has
+    ///     to remember to write a default in.
+    ///   * <b>Simple (checkbox) mode needs no second field.</b> RimWorld stores one number per work
+    ///     type either way; with manual priorities switched off, any non-zero stored priority READS
+    ///     as <see cref="SimpleModeEnabled"/> (3), so a checkbox is just "priority != 0". The
+    ///     manual/simple toggle itself is GAME-WIDE in RimWorld, not per-pawn — so it is not
+    ///     <see cref="Citizen"/> state and is deliberately absent from this chapter. It has no
+    ///     storage anywhere yet; see this package's KNOWN LIMITS.
+    /// </summary>
+    public static class WorkPriority
+    {
+        /// <summary>Blank: the pawn will not do this work. Not a priority — the absence of one.</summary>
+        public const byte Off = 0;
+
+        /// <summary>⚠️ 1 IS THE HIGHEST manual priority (RimWorld's convention).</summary>
+        public const byte Highest = 1;
+
+        /// <summary>⚠️ 4 is the LOWEST manual priority — a bigger number means LESS urgent.</summary>
+        public const byte Lowest = 4;
+
+        /// <summary>What a ticked checkbox is worth when manual priorities are switched off.
+        /// Storage-only today: nothing reads it, and the manual/simple toggle has no home yet.</summary>
+        public const byte SimpleModeEnabled = 3;
+
+        /// <summary>
+        /// ⭐ THE ONE PLACE THE SHIPPED DEFAULT IS DECIDED — every new crew member's every work type
+        /// (<see cref="Citizen.WorkPrioritiesRaw"/>'s initialiser is its only reader, so changing
+        /// this line changes the game and moves determinism pins P1/P2/P3).
+        ///
+        /// ⚠️ <b>A DELIBERATE DIVERGENCE FROM RIMWORLD, NOT AN OVERSIGHT — DO NOT "FIX" IT.</b>
+        /// And the divergence is SMALLER than it is usually stated: RimWorld's
+        /// <c>EnableAndInitialize</c> also starts from a ZEROED grid — it then enables up to six
+        /// work types ranked by the pawn's average relevant skill, PLUS the six flagged
+        /// <c>alwaysStartActive</c> (Firefighter, Patient, PatientBedRest, BasicWorker, Hauling,
+        /// Cleaning), each at priority 3 (<c>docs/design/rimworld-reference.md</c> §1.4). So the
+        /// shared part is the zeroed grid; what this game does not do is either auto-enable.
+        /// ⛔ ALWAYS-ACTIVE IS NOT IMPLEMENTED AND IS NOT PENDING — OD-H is default-OFF and that is
+        /// decided. Owner decision <b>OD-H</b> (2026-07-29,
+        /// re-confirmed): work is opt-in, because that is what delivers <b>OD-G</b> — the pawn boots
+        /// idle and waiting and the player's first act is giving an order. <b>OD-I</b> extends the
+        /// same one rule to <c>--ship slice</c>, <c>--ship grid</c> and the scenario ship: there is
+        /// no authored exception anywhere.
+        ///
+        /// ⭐ AND NOTE WHAT RIMWORLD'S DEFAULT ACTUALLY IS: <b>skill-shaped, and different per
+        /// pawn.</b> That is close to the owner's standing "authored people with real mechanical
+        /// differences". Nothing here forecloses it — a later lane can compute the boot grid per
+        /// pawn at spawn instead of applying this constant uniformly, and the STORAGE does not care
+        /// (it is a per-citizen array either way). <b>Do not read "one constant" as a contract that
+        /// the default is uniform.</b> Not built here: there is no skill model to rank by yet.
+        ///
+        /// <see cref="Citizen.WorkPrioritiesRaw"/>'s initialiser is this constant's only reader, so
+        /// changing this line changes the game and moves determinism pins P1/P2/P3. Pinned by
+        /// exactly one test (<c>WorkPriorityStateTests.Default_IsOff_ForEveryWorkType_AndOnIsReachable</c>)
+        /// so that flipping it moves one test deliberately instead of reddening five by surprise.
+        /// </summary>
+        public const byte Default = Off;
+
+        /// <summary>Number of <see cref="WorkType"/> members. A compile-time constant: the grid is a
+        /// FIXED-length array, which is why <c>Simulation.StateHash</c> deliberately does NOT fold a
+        /// length before it (see the fold's note). Pinned against the enum in
+        /// <c>WorkPriorityStateTests</c>, so adding a seventh type without widening anything is a
+        /// red test rather than a silent save-format change.</summary>
+        public const int WorkTypeCount = 6;
+
+        /// <summary>
+        /// ⭐ THE EQUAL-PRIORITY TIE-BREAK — a per-work-type ranking constant, HIGHER RANKS FIRST.
+        ///
+        /// RimWorld's sort key is <c>naturalPriority + (4 − playerPriority) × 100000</c>, sorted
+        /// descending, with <c>naturalPriority</c> constrained to 0..10000 so the player's number
+        /// can never be overcome (<c>docs/design/rimworld-reference.md</c> §1.3, read out of the
+        /// decompiled source). ⚠️ THE ×100000 ARITHMETIC IS NOT IMPLEMENTED HERE — arbitration is
+        /// M2-5's, and this package is storage. What is decided here is the only part that has to be
+        /// decided before the state exists: that the tie-break is an EXPLICIT PER-TYPE CONSTANT and
+        /// not screen position. §1.3 measures exactly that trap — the tab is displayed in
+        /// <c>naturalPriority</c> order, so "left is first" predicts the behaviour correctly while
+        /// naming the wrong mechanism, and a lane that encodes left-to-right has implemented the
+        /// display.
+        ///
+        /// ⚠️ THESE INTEGERS ARE PERILUNE'S, NOT RIMWORLD'S. Vanilla's table is at
+        /// <c>docs/design/rimworld-reference.md:388-407</c> — cited by line rather than restated,
+        /// because an earlier draft of THIS comment restated it and got six of nine rows wrong
+        /// (Construction 950 not 900, Growing 900 not 700, Mining 850 not 600, Crafting 600 not 400,
+        /// Hauling 500 not 300, Cleaning 400 not 200; only Firefighter 1400, Doctor 1300 and
+        /// Research 100 were right). A restated table drifts; a line citation does not.
+        ///
+        /// ⚠️ AND THE SOURCE ITSELF IS NOT SETTLED — recorded, not silently resolved. TWO relayed
+        /// copies of the vanilla table, both carrying the same <b>2018 defs mirror (0.19.2009), not
+        /// 1.6</b> caveat, DISAGREE in 6 of 20 rows. The merged reference is the authority this file
+        /// cites, but no winner is declared, because <b>nothing in the code depends on either</b> —
+        /// only the ORDER is used as corroboration, and both copies agree on the order. Anyone with
+        /// the game installed settles it in thirty seconds at
+        /// <c>Data/Core/Defs/WorkTypeDefs/WorkTypes.xml</c>.
+        ///
+        /// TWO properties of vanilla's shape are copied deliberately, and one is NOT:
+        ///   * COPIED — <b>all values distinct</b>: no two vanilla work types share one
+        ///     (reference <c>:394</c>), so RimWorld's stable-sort tie case never arises in the base
+        ///     game, and it will not arise here either (pinned).
+        ///   * COPIED — <b>bounded 0..10000</b>, so the ×100000 player term can never be overcome.
+        ///   * ⭐ NOT COPIED — <b>the gap pattern. Vanilla's gaps are a REGULAR 50 with deliberate
+        ///     jumps at the bottom</b> (reference <c>:411</c>); Perilune's below are uneven, 100 to
+        ///     200. That is a PERILUNE CHOICE and it does not need vanilla's authority: these are a
+        ///     compile-time table today, but they become an input to M2-5's sort key, and a wide gap
+        ///     lets a seventh work type be ranked BETWEEN two existing ones without renumbering the
+        ///     rest. A future work type is certain. (An earlier draft claimed vanilla clustered
+        ///     470/450/430 in a "craft tier" as precedent for this — those numbers appear nowhere in
+        ///     the reference and the claim was fabricated. The reasoning above stands alone.)
+        /// Vanilla's Hauling and Cleaning being its bottom two — an ORDINAL claim, unaffected by the
+        /// numeric disagreement above — independently corroborates OD-J putting Haul last.
+        ///
+        /// Keyed by MEMBER NAME, never by position, so that reordering the <see cref="WorkType"/>
+        /// enum re-orders the DISPLAY without silently re-ordering the ARBITRATION. That separation
+        /// is the entire reason this table exists instead of a comment on the enum.
+        /// </summary>
+        public static int NaturalPriority(WorkType type) => Natural[(int)type];
+
+        private static readonly int[] Natural = BuildNaturalPriorities();
+
+        private static int[] BuildNaturalPriorities()
+        {
+            var table = new int[WorkTypeCount];
+            table[(int)WorkType.Repair] = 900;      // OD-J: first, because it is the wreck's premise
+            table[(int)WorkType.Construct] = 700;
+            table[(int)WorkType.Craft] = 500;
+            table[(int)WorkType.Deconstruct] = 400;
+            table[(int)WorkType.Mine] = 300;
+            table[(int)WorkType.Haul] = 100;        // OD-J: last, as Hauling is near-last in vanilla
+            return table;
+        }
+
+        /// <summary>
+        /// The work types in ARBITRATION order — <see cref="NaturalPriority"/> descending, ties
+        /// broken by declaration order (a stable sort, matching RimWorld's own <c>InsertionSort</c>,
+        /// reference §1.3). This is what a work-tab column order should be DERIVED from; column
+        /// order is not a fact about the enum. Computed once at type initialisation, never on a tick
+        /// path, and it adds no saved or hashed state. <b>No consumer exists as of this commit</b> —
+        /// M2-3's column order is its intended first reader.
+        /// </summary>
+        /// <remarks>Wrapped in <see cref="Array.AsReadOnly{T}"/> rather than returned as the array
+        /// itself: an <c>IReadOnlyList&lt;T&gt;</c> backed directly by a <c>T[]</c> can be cast back
+        /// to the array and mutated, and this one is a process-global static. The wrapper makes the
+        /// cast fail instead of silently re-ranking arbitration for every ship in the process.</remarks>
+        public static IReadOnlyList<WorkType> RankedOrder { get; } = Array.AsReadOnly(BuildRankedOrder());
+
+        private static WorkType[] BuildRankedOrder()
+        {
+            var order = new WorkType[WorkTypeCount];
+            for (int i = 0; i < WorkTypeCount; i++) order[i] = (WorkType)i;
+            // Insertion sort, descending by natural priority, STABLE: equal ranks keep declaration
+            // order. Six elements — chosen for being obviously stable, not for speed.
+            for (int i = 1; i < order.Length; i++)
+            {
+                var held = order[i];
+                int j = i - 1;
+                while (j >= 0 && NaturalPriority(order[j]) < NaturalPriority(held))
+                {
+                    order[j + 1] = order[j];
+                    j--;
+                }
+                order[j + 1] = held;
+            }
+            return order;
+        }
     }
 }

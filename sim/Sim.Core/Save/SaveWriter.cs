@@ -49,7 +49,7 @@ namespace Perilune.Sim
 
         public const ushort TileVersion = 2;    // v2: + per-tile Material array (byte[n]) per level
         public const ushort RoomVersion = 3;    // v2: + named room anchors; v3: + anchor RoomType
-        public const ushort CitizenVersion = 7; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove
+        public const ushort CitizenVersion = 8; // v2 +Thirst; v3 +ReservedItemId; v4 +RevealsFog; v5 +Faction/Health/Morale/Archetype; v6 +HoldPosition; v7 +OrderedMove; v8 +the work-priority grid, WorkIncapable, Skill, HeldByOrder (M2-1)
         public const ushort DeviceVersion = 5;  // v2: + StoredLiters/Progress/FluidNetworkId; v3: + Condition; v4: + LockOwner; v5: + Scriptable (E0-6)
         public const ushort ItemVersion = 3;    // v2: + Label; v3: bool ReservedForJob → uint ReservedBy (owner id)
         public const ushort ScriptVersion = 1;
@@ -230,6 +230,8 @@ namespace Perilune.Sim
         // int PathCount + Int3[PathCount] Path, int PathIndex, int MoveCooldown,
         // int IdleCooldown, float Suffocation, float Hunger, float Fatigue, float Mood,
         // bool Dead, byte JobKind, Int3 JobTarget, uint CarryingItemId, int JobWorkTicks.
+        // v8: + byte WorkTypeCount, byte[WorkTypeCount] work priorities (WorkType order),
+        //       byte WorkIncapable, byte Skill, bool HeldByOrder.
 
         private static void WriteCitizens(Simulation sim, BinaryWriter w)
         {
@@ -266,6 +268,21 @@ namespace Perilune.Sim
                 w.Write(c.Archetype);      // v5
                 w.Write(c.HoldPosition);   // v6
                 w.Write(c.OrderedMove);    // v7 (E0-3 player-order precedence)
+                // v8 (M2-1, the work-priority grid). The COUNT goes in first and the reader trusts
+                // it, so the stream is SELF-DESCRIBING: a seventh work type then changes what a v8
+                // payload contains without changing how a v8 payload is parsed, and an old save
+                // stays readable without another version bump. (Note the deliberate asymmetry with
+                // Simulation.StateHash, which folds NO count here: that fold walks a fixed-length
+                // in-memory array whose length is a compile-time constant, and folding a constant
+                // would add a constant to every citizen's fold while proving nothing — and it would
+                // break the alignment the path-boundary collision pair is built on. A count belongs
+                // in a variable-length STREAM read by a version-tolerant reader, not in a fold over
+                // a fixed-length array.)
+                w.Write((byte)c.WorkPrioritiesRaw.Length);
+                for (int t = 0; t < c.WorkPrioritiesRaw.Length; t++) w.Write(c.WorkPrioritiesRaw[t]);
+                w.Write(c.WorkIncapable);
+                w.Write(c.Skill);       // reserved (M3-7), zeroed, read by nothing
+                w.Write(c.HeldByOrder); // reserved (M2-19), false, read by nothing
             }
         }
 

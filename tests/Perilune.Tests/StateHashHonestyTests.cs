@@ -183,6 +183,18 @@ namespace Perilune.Tests
             c.PathIndex = 1;
             c.MoveCooldown = 3;
             c.IdleCooldown = 7;
+            // M2-1 (CITZ v8) — the work-priority grid, the incapability mask and the two reserved
+            // fields. Seeded NON-DEFAULT for W0-1b's reason: a dropped Combine has to change the
+            // TWIN, not merely the mutation. Haul is deliberately the type that is both OFF and
+            // INCAPABLE, so the fixture stays a coherent ship state as well as a fold probe.
+            c.SetWorkPriority(WorkType.Repair, 1);
+            c.SetWorkPriority(WorkType.Construct, 2);
+            c.SetWorkPriority(WorkType.Craft, 3);
+            c.SetWorkPriority(WorkType.Deconstruct, 4);
+            c.SetWorkPriority(WorkType.Mine, 1);
+            c.SetIncapableOf(WorkType.Haul, true);
+            c.Skill = 5;
+            c.HeldByOrder = true;
             var it = sim.AddItem(ItemKind.Scrap, 5, new Int3(2, 1, 0));
             it.ReservedBy = 0;
             it.CarriedBy = 0;
@@ -252,6 +264,39 @@ namespace Perilune.Tests
             yield return Case("Citizen.PathIndex", s => Cit(s).PathIndex = 2, s => (ulong)(uint)Cit(s).PathIndex);
             yield return Case("Citizen.MoveCooldown", s => Cit(s).MoveCooldown = 4, s => (ulong)(uint)Cit(s).MoveCooldown);
             yield return Case("Citizen.IdleCooldown", s => Cit(s).IdleCooldown = 8, s => (ulong)(uint)Cit(s).IdleCooldown);
+
+            // --- M2-1 (CITZ v8): the work-priority grid and its neighbours. ONE ROW PER SLOT,
+            // deliberately — a single row for "the grid" cannot see a fold that drops five of the
+            // six slots, which is precisely the failure the per-field table exists to catch.
+            //
+            // ⚠️ WHAT THESE ROWS CANNOT SEE, stated because the RoomAnchor.Type row above learned it
+            // the expensive way: a single-field row proves PRESENCE, never absence of ALIASING. Two
+            // slots sharing bits would leave every row here green. The collision pairs that do see
+            // it are exhaustive over all 15 pairs and live in WorkPriorityStateTests
+            // (StateHash_DistinguishesEveryPairOfWorkTypeSlots / ...IncapabilityBits). Neither is
+            // redundant.
+            foreach (WorkType workType in Enum.GetValues(typeof(WorkType)))
+            {
+                var wt = workType; // capture per iteration, not per loop
+                yield return Case("Citizen.WorkPriority." + wt,
+                    s =>
+                    {
+                        byte now = Cit(s).GetWorkPriority(wt);
+                        Cit(s).SetWorkPriority(wt, now >= WorkPriority.Lowest
+                            ? WorkPriority.Highest : (byte)(now + 1));
+                    },
+                    s => Cit(s).GetWorkPriority(wt));
+            }
+            // The mask, mutated on a type the fixture leaves CAPABLE, so the stimulus is a real
+            // change rather than a re-set of the bit the fixture already holds.
+            yield return Case("Citizen.WorkIncapable",
+                s => Cit(s).SetIncapableOf(WorkType.Mine, true), s => Cit(s).WorkIncapable);
+            // The two RESERVED fields. They are hashed from the day they land so their eventual
+            // consumers (M3-7, M2-19) cost no pin move — and they are seeded non-default in the
+            // fixture so that "written as zero" and "never folded" are distinguishable here.
+            yield return Case("Citizen.Skill", s => Cit(s).Skill = 6, s => Cit(s).Skill);
+            yield return Case("Citizen.HeldByOrder",
+                s => Cit(s).HeldByOrder = false, s => Cit(s).HeldByOrder ? 1UL : 0UL);
 
             // --- Item fold ---
             yield return Case("ItemStack.Id", s => Item(s).Id = 4242, s => Item(s).Id);
@@ -653,6 +698,16 @@ namespace Perilune.Tests
             second.JobWorkTicks = 0;
             second.CarryingItemId = 0;
             second.ReservedItemId = 0;
+            // M2-1 (CITZ v8). Written explicitly rather than relied on as constructor defaults: the
+            // pair only collides if EVERY value of crew 1's prefix folds to 0, so flipping
+            // WorkPriority.Default would otherwise break this fixture at a distance and redden a
+            // test that has nothing to do with defaults. (The grid is folded in the citizen PREFIX,
+            // before Name/PrevPos/Path, precisely so that crew 0's TRAILING run — the part this
+            // collision depends on — is untouched by M2-1.)
+            foreach (WorkType wt in Enum.GetValues(typeof(WorkType))) second.SetWorkPriority(wt, WorkPriority.Off);
+            second.WorkIncapable = 0;
+            second.Skill = 0;
+            second.HeldByOrder = false;
             if (!firstCrewCarriesBothTiles) second.Path.Add(new Int3(0, 0, 0)); // Q lands here instead
             second.PathIndex = 0;
             second.MoveCooldown = 0;
@@ -743,6 +798,10 @@ namespace Perilune.Tests
             Assert.That(Dev(sim).Name.Length, Is.GreaterThan(0), "precondition: a non-empty device name");
             Assert.That(sim.Rooms.Anchors.Count, Is.GreaterThan(0), "precondition: an anchor name to fold");
             Assert.That(sim.Scripts.Count, Is.GreaterThan(0), "precondition: a MOSS source to fold");
+            // M2-1: the grid loop is indexed, never enumerated — an enumerated byte[] would not box,
+            // but the habit is what W0-1b's path loop pins, and a non-default grid proves the loop ran.
+            Assert.That(Cit(sim).IsWorkEnabled(WorkType.Repair), Is.True,
+                "precondition: a non-default work grid to fold");
             foreach (var s in sim.Systems)
                 Assert.That(s, Is.Not.InstanceOf<IStatefulSystem>(),
                     "precondition: no stateful system — this test measures the FOLD, not MEMS");
