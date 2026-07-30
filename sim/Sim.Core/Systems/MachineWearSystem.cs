@@ -137,7 +137,7 @@ namespace Perilune.Sim
     /// staging via canonical Neighbor4 order, no RNG, no LINQ. Steady state (nothing
     /// below MaintainBelow) allocates nothing.
     /// </summary>
-    public sealed class MaintenanceSystem : ISimSystem
+    public sealed class MaintenanceSystem : ISimSystem, IWorkOfferSource
     {
         public string Name => "Maintenance";
         public int IntervalTicks => Interval;
@@ -440,6 +440,45 @@ namespace Perilune.Sim
 
         // ------------------------------------------------------------------ helpers
 
+        // ------------------------------------------------------------- arbitration (answering)
+
+        /// <summary>M2-5: this system hands out exactly <see cref="WorkType.Repair"/>.</summary>
+        public byte OfferedWorkTypes => 1 << (int)WorkType.Repair;
+
+        /// <summary>
+        /// M2-5 — <b>WOULD THIS SYSTEM SERVICE SOMETHING WITH THIS CREW MEMBER RIGHT NOW?</b> The
+        /// answer <see cref="WorkArbiter"/> gives to everybody else when they ask whether repair
+        /// outranks what they were about to do.
+        ///
+        /// <para><b>EVERY EARLY RETURN OF <see cref="RecruitForNeediest"/> IS MIRRORED HERE, IN ITS
+        /// ORDER, AND THAT IS THE CORRECTNESS REQUIREMENT — NOT A TIDINESS ONE.</b> A condition
+        /// missing from this list is an OVER-REPORT, and an over-report is a silent multi-sim-hour
+        /// stall for every pawn at or below the Repair band (see <see cref="IWorkOfferSource"/>).
+        /// The one thing deliberately NOT mirrored is <c>FindNearestReachableIdle</c>'s A* probe:
+        /// that is the expensive half of the claim and this query is optimistic by construction.</para>
+        ///
+        /// <para>⚠️ It does NOT re-ask the arbitration (that would recurse). The caller has already
+        /// decided that repair is the better work; this only says whether there is any.</para>
+        /// </summary>
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        {
+            if (type != WorkType.Repair) return false;
+            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(WorkType.Repair)) return false;
+
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Condition >= sim.Defs.Machines[(int)d.Kind].MaintainBelow) continue;
+                if (_backoff.IsBackedOff(sim, d.Id)) continue;   // M1-H: refused within the last 5 s
+                if (FindWorker(sim, d.Pos) != null) continue;    // already has a servicer
+                if (!TryFindStagingTile(sim, d.Pos, out _)) continue; // walled in / nowhere survivable
+                if (IsUnfixableWreck(sim, d)) continue;          // wreck rule W2: no service to offer
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>The machine's single servicer: first live Maintain citizen bound to its tile.</summary>
         private static Citizen FindWorker(Simulation sim, Int3 devicePos)
         {
@@ -483,6 +522,19 @@ namespace Perilune.Sim
                     // `anyIdle = true` for the same reason as CraftingSystem's copy — see its
                     // comment; a player setting must not be recorded as a refusal by the MACHINE.
                     if (!c.CanTakeWorkType(work)) continue;
+                    // ⭐⭐ M2-5 (SITE 3) — THE PUSH GATE, AND IT IS THE HALF THAT REACHES A PAWN
+                    // INSIDE A CHAIN. Tick() runs DriveWorkers and then RecruitForNeediest: a
+                    // servicer who finishes here is freed and re-claimed INSIDE ONE TICK, so the
+                    // dispatcher never sees her idle and a defer query in TryAssign is a measured
+                    // NO-OP for the owner's own case (the M2-0 spike: zero idle sightings across
+                    // 54 450 chain ticks). The order she was given can only reach her HERE.
+                    //
+                    // Placed BEFORE `anyIdle = true` for the same reason as M2-2's veto directly
+                    // above: "she has better work to do" is not a refusal by the MACHINE, and the
+                    // caller turns a refusal into a 5 s backoff stamp on the machine (M1-H). Stamp
+                    // it here and the machine goes quiet for five seconds because of a decision
+                    // about a person.
+                    if (WorkArbiter.HasBetterOfferThan(sim, c, work, this)) continue;
                     anyIdle = true;
                     if (_probeSkip.Contains(c.Id)) continue;
                     int d = Int3.Manhattan(c.Pos, target);
