@@ -638,135 +638,18 @@ namespace Perilune.Sim
         }
     }
 
-    /// <summary>
-    /// ALLOCATE an empty hall — the Overview's ＋ADD ROOM affordance. <b>NAMING IS FREE; AIR IS
-    /// EARNED.</b> An empty hall (grid ship, wreck ship) is an ALREADY-CARVED compartment: floor
-    /// interior, perimeter walls, and one SEALED door, its interior vacuum. Allocating it gives that
-    /// compartment a TYPE and nothing else. Nothing is carved, no door moves, and no gas appears.
-    ///
-    /// <para><b>W4b (2026-07-28) TOOK TWO THIRDS OF THIS COMMAND AWAY — owner decision, binding.</b>
-    /// It used to also (2) force every bordering <see cref="DeviceKind.Door"/> open AND unlocked, and
-    /// (3) call <see cref="RoomState.Pressurize"/> — 101.3 kPa of 21 % O₂ conjured from nothing,
-    /// instantly, for free. Both are DELETED. Air now comes from a working, powered, repaired vent
-    /// moving gas over time through a door the player opened, which is what turns the pressure
-    /// frontier from a formality into the core loop. Deleting step 2 is also the root fix for the
-    /// owner's live-play report *"doors are only drawn in front of empty rooms; as soon as I allocate
-    /// them, they become overwritten"* — an allocated compartment now keeps its doors SHUT, so they
-    /// keep drawing (<c>docs/HANDOVER.md</c>, "OWNER REPORT FROM LIVE PLAY").</para>
-    ///
-    /// <para><b>Lowers ENTIRELY to one existing hashed operation — adds NO new saved field / chapter /
-    /// World structure.</b> Its single effect is the room <see cref="RoomAnchor"/>'s <c>Type</c>
-    /// (saved ROOM v3, folded into <see cref="Simulation.StateHash"/>). It is exactly a SetAnchor, in
-    /// one atomic tick-boundary step.</para>
-    ///
-    /// <para><b>Slot geometry is PASSED IN, never stored in the sim.</b> The host resolves the
-    /// target slot's centre PROBE tile and its existing ANCHOR name from its view-only, unhashed
-    /// <c>SlotGrid</c> and hands them here, so the deterministic sim needs no slot-grid knowledge.</para>
-    ///
-    /// <para><b>The anchor is REUSED, not duplicated.</b> An empty hall already carries its own
-    /// anchor (<c>hall_dZ_sN</c>, <see cref="RoomType.None"/>); there is no remove-anchor primitive,
-    /// so re-typing that same anchor keeps exactly ONE anchor on the room — the room's identity was
-    /// always the slot's; only its TYPE is new.</para>
-    ///
-    /// <para><b>⚠️ THE REJECTION PREDICATE IS THE LOAD-BEARING PART OF W4b, not the deletions.</b> The
-    /// old double-commission guard was <c>room.TotalMoles &gt; 0</c> — *"already a live (pressurised)
-    /// room"* — which worked only while "named" and "has air" were the same event. They are not any
-    /// more: a named-but-AIRLESS room is now the normal state of every freshly allocated compartment,
-    /// and a furnished room that has been vented (hull breach, an opened door onto vacuum) is airless
-    /// too. On the gas predicate a player could re-type an allocated room forever, and re-type a
-    /// FURNISHED one that happens to be in vacuum. ⇒ <b>the guard asks the ANCHOR, not the gas:</b>
-    /// allocation is refused when any anchor whose probe resolves to this same room already carries a
-    /// <see cref="RoomType"/> other than <see cref="RoomType.None"/>.</para>
-    ///
-    /// <para><b>⚠️ A SECOND GUARD WAS WRITTEN HERE AND THEN REMOVED, BY MEASUREMENT.</b> This lane first
-    /// added <c>if (_type == RoomType.None) return;</c> — "the un-allocate that would otherwise reopen
-    /// the hole" — with a test for it. The mutation harness deleted that line and <b>the whole suite
-    /// stayed GREEN (21/21)</b>: the anchor predicate above already refuses the only case the guard
-    /// claimed to cover, because an allocated room's anchor is typed and is therefore caught one
-    /// statement earlier. A guard whose named mutation cannot bite, plus a test that passes either way,
-    /// is the single most common review defect in this repo — so both were deleted rather than shipped.
-    /// The residual it leaves is unreachable and harmless: <c>type: None</c> on a compartment with NO
-    /// anchor at all would add an untyped one, and the host's picker cannot send <c>None</c>
-    /// (<c>GameSession.ParseRoomType</c> whitelists the player-facing kinds and returns false
-    /// otherwise).</para>
-    ///
-    /// <para>Deterministic (no RNG, no Date). Validation is a silent no-op on reject, like the other
-    /// designate/place commands: the probe must land in a real, sealed compartment (a non-vacuum-sink
-    /// room) that no typed anchor already owns. A probe in open vacuum (room 0) is rejected, so
-    /// double-allocating or targeting a furnished room does nothing.</para>
-    ///
-    /// <para>⛔ <b>THIS COMMAND IS DORMANT — DELIBERATELY, AND NOT BECAUSE ANYONE FORGOT IT. M1-L,
-    /// 2026-07-29.</b> The owner deleted the verb that drove it: <i>"we do not need 'add room' that
-    /// makes no sense on a ship where rooms are already existing."</i> Every route to it is gone —
-    /// the client's <c>Cmd.addRoom</c> sender, <c>GameSession</c>'s <c>"addroom"</c> parse case, its
-    /// <c>CmdKind.AddRoom</c> dispatch route and its <c>HandleAddRoom</c>/<c>ParseRoomType</c> pair.
-    /// A compartment is now a room because its WALLS make it one (RimWorld analogue:
-    /// <c>docs/design/rimworld-reference.md</c> §10, <i>"Rooms are derived, not authored … the player
-    /// never names or allocates one"</i>), so nothing needs to allocate one.
-    ///
-    /// <para><b>It survives here on purpose.</b> Deleting it means deleting the <c>CmdKind.AddRoom</c>
-    /// enum member beside it, which RENUMBERS its siblings — a spine change, out of scope for a
-    /// package whose whole claim is pin-neutrality. Filed as its own package: see
-    /// <c>docs/design/perilune-roadmap-q3.packages.md</c>, <b>M1-L-b</b>, which names the renumbering
-    /// hazard. Its tests in <c>tests/Perilune.Tests/AddRoomCommandTests.cs</c> are kept and still
-    /// drive it directly, so the dormant code is not also UNGUARDED code.</para>
-    ///
-    /// <para>⚠️ <b>"Nothing calls this" is a statement about a TREE, and a merge changes a tree.</b>
-    /// That is the eighth trap shape (<c>CLAUDE.md</c>): two lanes each censused a file honestly and
-    /// both were stale, because each could only see its own half. Re-derive the dormancy on the
-    /// MERGED tree before acting on it.</para>
-    ///
-    /// <para>⚠️ One sentence above is now stale in its REASON and kept for the argument it records:
-    /// the residual-<c>None</c> note says the host's picker cannot send <c>None</c> because
-    /// <c>ParseRoomType</c> whitelists the player-facing kinds. <c>ParseRoomType</c> no longer exists;
-    /// the residual is unreachable for the stronger reason that NO host path constructs this command
-    /// at all.</para></para>
-    /// </summary>
-    public sealed class AddRoomCommand : ISimCommand
-    {
-        private readonly int _deck;
-        private readonly int _slotIndex;
-        private readonly RoomType _type;
-        private readonly Int3 _probe;
-        private readonly string _anchorName;
-
-        public AddRoomCommand(int deck, int slotIndex, RoomType type, Int3 probe, string anchorName)
-        {
-            _deck = deck; _slotIndex = slotIndex; _type = type; _probe = probe; _anchorName = anchorName;
-        }
-
-        public void Execute(Simulation sim)
-        {
-            if (string.IsNullOrEmpty(_anchorName)) return;
-            if (!sim.World.InBounds(_probe) || _probe.Z != _deck) return;
-
-            // Resolve the compartment on a CURRENT RoomId plane — a build finishing earlier in this
-            // same command drain could have left it dirty (RecomputeIfDirty is a no-op when clean).
-            var rooms = sim.Rooms;
-            rooms.RecomputeIfDirty(sim);
-
-            var room = rooms.RoomAt(sim.World, _probe);
-            if (ReferenceEquals(room, rooms.Rooms[0])) return; // probe in open vacuum — not a sealed hall
-
-            // ALREADY ALLOCATED? Ask the ANCHOR, never the gas (see the class remarks). RoomAt has
-            // already ruled out room 0 and the DoorMarker, so roomId is a real room index here; an
-            // anchor sitting on a door tile reads DoorMarker and can never match it. Room ids are
-            // GLOBAL across decks (RoomState floods every level into one list), so no deck filter is
-            // needed — and a hall MERGED into a furnished room by a stripped bulkhead is correctly
-            // refused, because the merged room carries the furnished room's typed anchor.
-            ushort roomId = rooms.RoomIdAt(sim.World, _probe);
-            var anchors = rooms.Anchors;
-            for (int i = 0; i < anchors.Count; i++)
-            {
-                if (anchors[i].Type == RoomType.None) continue;   // an un-allocated hall's own anchor
-                if (rooms.RoomIdAt(sim.World, anchors[i].Probe) == roomId) return;
-            }
-
-            // The ONE remaining effect: name + type the room (reuse the hall's own anchor — one
-            // anchor per room). Air is the vent's job now, and the door is the player's.
-            rooms.SetAnchor(_anchorName, _probe, _type);
-        }
-    }
+    // ⭐ M1-L-b, 2026-07-29: `AddRoomCommand` STOOD HERE AND IS DELETED, together with
+    // `GameSession.CmdKind.AddRoom` (which renumbered — see that enum's own note). M1-L had already
+    // deleted every route to it on the owner's ruling *"we do not need 'add room' that makes no
+    // sense on a ship where rooms are already existing"* (OD-K); every compartment IS a room because
+    // its WALLS make it one (RimWorld analogue: `docs/design/rimworld-reference.md` §7 item 10,
+    // "Rooms are derived, not authored"), so nothing allocates one and no sim primitive needs to.
+    // What the command's ~750-line test file guarded that is STILL LIVE — the pressure frontier
+    // ("naming is free, air is earned": an airless carved compartment fills through an OPENED door
+    // in a measured band, and never fills with the door shut) — moved to `GridWreckTests`
+    // (`OpeningACompartmentsDoor_FillsIt_AndTheFillTimeIsMeasured` + `…_NeverFills`), where it is a
+    // statement about the ATMOSPHERE rather than about a command. `RoomType`, `RoomAnchor.Type` and
+    // `RoomState.SetAnchor` all stay: the sim still types rooms, the PLAYER just never allocates one.
 
     /// <summary>Edit terrain (M1: used by tests and the debug UI; designations arrive in M2).</summary>
     public sealed class SetTileCommand : ISimCommand

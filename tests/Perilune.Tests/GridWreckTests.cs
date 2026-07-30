@@ -15,7 +15,7 @@ namespace Perilune.Tests
     /// plays.
     ///
     /// Two kinds of test here, and the second kind is the point. The pins (debris count, goal,
-    /// roster, and the ＋ADD ROOM slot's untouched sealed/airless state) stop the content drifting
+    /// roster, and the empty hall's untouched sealed/airless state) stop the content drifting
     /// silently. The PLAYABILITY tests drive the real system stack and prove the crew actually
     /// reach the wreck and clear it in breathable air — because "a ship that HAS debris no crew can
     /// reach is not playable" is a mistake this repo has already shipped (E0-4 zoned a sealed room
@@ -157,15 +157,22 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// ＋ADD ROOM's slot is untouched. Deck 0 is fully furnished, so deck 1 slot 3 is the first
-        /// RoomType.None entry in plan.SlotGrid — AddRoomCommandTests' FirstEmptyHall, which probes
-        /// its centre tile and asserts a sealed, AIRLESS, non-vacuum room. This states that contract
-        /// from the AUTHORING side, so wrecking slot 3 fails here (naming the reason) as well as
-        /// over in AddRoomCommandTests. Mutation: add 3 to GridWreckSlots, or add its anchor to
+        /// THE EMPTY HALL IS UNTOUCHED — deck 1 slot 3, the ship's one carved, sealed, AIRLESS,
+        /// debris-free compartment. Deck 0 is fully furnished, so slot 3 is the first
+        /// <c>RoomType.None</c> entry in <c>plan.SlotGrid</c>, and it is the FIXTURE the two
+        /// pressure-frontier tests below run on. This states the contract from the AUTHORING side,
+        /// so wrecking slot 3 fails here — naming the reason — instead of only making those two go
+        /// mysteriously red. Mutation: add 3 to GridWreckSlots, or add its anchor to
         /// PressurizedAnchors, or open its door.
+        ///
+        /// <para>⭐ M1-L-b: this was <c>AddRoomSlot_StaysSealedAirlessAndDebrisFree</c>, and its slot
+        /// was "the ＋ADD ROOM demonstration slot". The verb, its command and its enum member are all
+        /// deleted (OD-K); the compartment is not a demonstration of anything any more, it is simply
+        /// the ship's one empty room — which under M1-L is a ROOM like every other, drawn, named and
+        /// enterable.</para>
         /// </summary>
         [Test]
-        public void AddRoomSlot_StaysSealedAirlessAndDebrisFree()
+        public void TheEmptyHallSlot_StaysSealedAirlessAndDebrisFree()
         {
             var plan = AuthoredShips.PeriluneGrid();
 
@@ -174,9 +181,10 @@ namespace Perilune.Tests
                 if (plan.SlotGrid[i].Type == RoomType.None) { firstEmpty = i; break; }
             Assert.That(firstEmpty, Is.GreaterThanOrEqualTo(0), "the grid ship must keep an empty hall to commission");
             var hall = plan.SlotGrid[firstEmpty];
-            Assert.That(hall.Deck, Is.EqualTo(WreckDeck), "FirstEmptyHall is expected on deck 1");
+            Assert.That(hall.Deck, Is.EqualTo(WreckDeck), "the first empty hall is expected on deck 1");
             Assert.That(hall.Index, Is.EqualTo(3),
-                "FirstEmptyHall must stay slot 3 — the wreck must not consume the ＋ADD ROOM demonstration slot");
+                "the first empty hall must stay slot 3 — the wreck must not consume the compartment " +
+                "the pressure-frontier tests below are written against");
 
             var sim = ShipPlanBuilder.Build(plan, Stack());
             for (int i = 0; i < 20; i++) sim.Tick();
@@ -186,14 +194,132 @@ namespace Perilune.Tests
             Assert.That(ReferenceEquals(room, sim.Rooms.Rooms[0]), Is.False,
                 "slot 3 must stay its own sealed room, not the vacuum sink");
             Assert.That(room.TotalMoles, Is.EqualTo(0.0),
-                "slot 3 must stay AIRLESS — AddRoomCommand refuses a compartment that already holds air");
+                "slot 3 must stay AIRLESS — it is the fixture for the two fill tests below, and a " +
+                "compartment that boots with air can prove nothing about earning it");
             Assert.That(DoorOf(sim, WreckDeck, 3).IsOpen, Is.False, "slot 3's door must stay closed");
 
             foreach (var p in DebrisTiles(sim))
             {
                 var r = SlotGridPlanner.InteriorRect(3);
                 bool inSlot3 = p.Z == WreckDeck && p.X >= r.X0 && p.X <= r.X1 && p.Y >= r.Y0 && p.Y <= r.Y1;
-                Assert.That(inSlot3, Is.False, $"debris at {p} is inside the ＋ADD ROOM slot");
+                Assert.That(inSlot3, Is.False, $"debris at {p} is inside the empty hall");
+            }
+        }
+
+        // ------------------------------------------------- the pressure frontier (moved by M1-L-b)
+
+        /// <summary>
+        /// <b>⭐ NAMING IS FREE, AIR IS EARNED — the pressure frontier, driven end to end and the fill
+        /// TIME measured. MOVED HERE BY M1-L-b from <c>AddRoomCommandTests</c>.</b>
+        ///
+        /// <para><b>Why it moved rather than died with that file.</b> W4b took the air out of ＋ADD
+        /// ROOM, and this test was written to say what replaced it; M1-L-b then deleted the command
+        /// itself. But the mechanic under test was never about the command — an allocation only ever
+        /// set an anchor's <see cref="RoomType"/>, which no gas term reads. What it measures is the
+        /// ATMOSPHERE: a carved, sealed, airless compartment fills through an OPENED DOOR from deck
+        /// 1's spine vent (<c>vent_spine_1</c>), over time. So the allocation step is simply dropped
+        /// and everything the test asserted still holds. Under M1-L the compartment did not need
+        /// naming to be a room in the first place.</para>
+        ///
+        /// <para><b>MEASURED, not predicted, and the answer is good news for pacing.</b> The 60-tile
+        /// compartment crosses 50 kPa at tick <b>460 (46.0 s)</b> and 90 kPa — the threshold a
+        /// <c>PressurizeAnchor</c> goal calls restored — at tick <b>1 542 (154.2 s ≈ 2.6
+        /// sim-minutes)</b>. ⚠️ In <c>AddRoomCommandTests</c> these read 461 / 1 543, and the
+        /// one-tick difference is not noise: that version spent one <c>Tick()</c> draining the
+        /// allocation command before opening the door, so the fill started a tick later. Re-measured
+        /// here rather than carried over — a number you did not measure yourself is not evidence.
+        /// The wreck-start plan's revision-1 worry was that a compartment might take
+        /// twenty sim-minutes; it takes two and a half. (On <c>--ship wreck</c>, measured the same way:
+        /// every 60-tile deck-0 hall reaches 90 kPa at tick 2 986–2 992 ≈ 5.0 sim-minutes, slower
+        /// because <c>vent_cryo</c> boots at <c>Condition 0.62</c> and the wreck's pressurised
+        /// reservoir is three anchors against grid's thirteen. ⛔ Deck 1 of the wreck is a different
+        /// story and an OPEN, OWNER-ACCEPTED defect — <c>W4b-DEAD-DECK</c>, no vertical gas term.)</para>
+        ///
+        /// <para>The band is deliberately wide (~0.5×–2.6× the measurement) — this is a PACING check,
+        /// not a golden. NON-VACUITY / negative control: the paired test below leaves the door SHUT
+        /// and requires the compartment to stay at exactly zero for the same tick budget.</para>
+        /// </summary>
+        [Test]
+        public void OpeningACompartmentsDoor_FillsIt_AndTheFillTimeIsMeasured()
+        {
+            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
+            for (int i = 0; i < 20; i++) sim.Tick();
+
+            var probe = HallProbe(3, WreckDeck);
+            Assert.That(sim.Rooms.RoomAt(sim.World, probe).TotalMoles, Is.EqualTo(0.0),
+                "the compartment must start in vacuum — nothing below is measurable otherwise");
+
+            sim.EnqueueCommand(new SetDoorStateCommand(DoorOf(sim, WreckDeck, 3).Id, open: true));
+            sim.Tick();
+            Assert.That(DoorOf(sim, WreckDeck, 3).IsOpen, Is.True,
+                "the door refused to open — nothing below is measurable");
+
+            const int Cap = 20000;   // ~33 sim-minutes; the measured 90 kPa crossing is 1 543
+            long half = -1, full = -1;
+            for (int t = 1; t <= Cap && full < 0; t++)
+            {
+                sim.Tick();
+                double kpa = sim.Rooms.RoomAt(sim.World, probe).PressureKPa;
+                if (half < 0 && kpa >= 50.0) half = t;
+                if (kpa >= 90.0) full = t;
+            }
+
+            TestContext.WriteLine(System.FormattableString.Invariant(
+                $"FILL TIME, grid deck {WreckDeck} slot 3 (60 tiles) via the spine vent through one open door: 50 kPa at tick {half} ({half / 10.0:F1} s), 90 kPa at tick {full} ({full / 10.0:F1} s)"));
+
+            Assert.That(full, Is.GreaterThan(0),
+                $"the compartment never reached 90 kPa in {Cap} ticks — the pressure frontier is unplayable");
+            Assert.That(full, Is.InRange(800, 4000),
+                "the door-flow fill time moved out of its measured band (1 543 ticks ≈ 2.6 sim-minutes). " +
+                "This is a PACING assertion, not a golden: if it moved, say by how much and why.");
+            Assert.That(half, Is.InRange(230, 1200),
+                "the 50 kPa crossing moved out of its measured band (461 ticks ≈ 46 s)");
+            Assert.That(half, Is.LessThan(full), "the half-way crossing must precede the full one");
+
+            // And the compartment is genuinely workable, not merely pressurised on paper.
+            Assert.That(sim.Rooms.RoomAt(sim.World, probe).O2Fraction, Is.GreaterThan(0.15),
+                "the filled compartment is at pressure but not breathable");
+        }
+
+        /// <summary>
+        /// <b>THE NEGATIVE CONTROL for the fill test above, and the honest statement of what W4b
+        /// cost: with its door left SHUT, a sealed compartment NEVER fills</b> — not once in the whole
+        /// 20 000-tick budget the fill test is allowed. Without this, "it filled" could be something
+        /// the ship does anyway.
+        ///
+        /// <para>⭐ M1-L-b merged <c>AddRoomCommandTests.AnAllocatedHallWithItsDoorShut_NeverFills</c>
+        /// with that file's <c>AllocatedButAirless_IsAStableState_ForTenSimMinutes</c>, whose one
+        /// surviving contribution was its NON-VACUITY leg: it sampled deck 1's SPINE throughout and
+        /// required it to stay breathable, so "everything on this ship is airless" cannot be what
+        /// makes the test pass. That leg is carried below at the same 500-tick sampling interval. The
+        /// rest of that test asserted that an ALLOCATION was not lost over time, which is a statement
+        /// about a command that no longer exists.</para>
+        ///
+        /// <para>MUTATION: give the compartment a free 101.3 kPa (the pre-W4b <c>RoomState.Pressurize</c>
+        /// wand, in any form) ⇒ RED on the first sample.</para>
+        /// </summary>
+        [Test]
+        public void ASealedCompartmentWithItsDoorShut_NeverFills()
+        {
+            var sim = ShipPlanBuilder.Build(AuthoredShips.PeriluneGrid(), Stack());
+            for (int i = 0; i < 20; i++) sim.Tick();
+
+            var probe = HallProbe(3, WreckDeck);
+            var spineProbe = new Int3(2, SlotGridPlanner.SpineY0, WreckDeck);
+
+            for (int t = 0; t < 20000; t++)
+            {
+                sim.Tick();
+                if (t % 500 != 0) continue;
+                Assert.That(sim.Rooms.RoomAt(sim.World, probe).TotalMoles, Is.EqualTo(0.0),
+                    $"air appeared in a sealed compartment at tick {t} with its door still shut");
+                Assert.That(DoorOf(sim, WreckDeck, 3).IsOpen, Is.False,
+                    $"the sealed compartment's door opened by itself at tick {t}");
+                // NON-VACUITY: the ship's atmosphere really is running in this sim, so "stayed at
+                // zero" is a fact about THIS compartment and not about a dead simulation.
+                Assert.That(sim.Rooms.RoomAt(sim.World, spineProbe).PressureKPa, Is.GreaterThan(90.0),
+                    $"deck {WreckDeck}'s spine lost pressure at tick {t} — this run proves nothing " +
+                    "about the sealed hall if the whole ship is airless");
             }
         }
 
@@ -235,13 +361,16 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE LIVE WRECK IS A TYPED ROOM, AND THAT IS A CLIENT CONTRACT, not decoration. An
-        /// air-filled slot reads OCCUPIED to <c>GameSession.ResolveSlot</c>, and the Overview draws
-        /// an occupied slot as a room: no ＋ADD ROOM chip, and a label of
+        /// EVERY carved slot reads OCCUPIED to <c>GameSession.ResolveSlot</c> since M1-L, and the
+        /// Overview draws an occupied slot as a room with a label of
         /// <c>roomLabel(roomType) || anchorName</c> (<c>decks-model.js deckSlotView</c>). So a
-        /// pressurised <c>RoomType.None</c> slot renders LABELLED WITH ITS INTERNAL ANCHOR ID in an
-        /// UPPERCASE-label UI — and can never be commissioned either, because
-        /// <c>AddRoomCommand</c> returns early on <c>TotalMoles &gt; 0</c>. That combination shipped
-        /// in this package's first draft and is what this test exists to stop coming back.
+        /// <c>RoomType.None</c> slot renders LABELLED WITH ITS INTERNAL ANCHOR ID in an
+        /// UPPERCASE-label UI. That shipped in this package's first draft and is what this test
+        /// exists to stop coming back — and it matters MORE now, not less: the sentence used to end
+        /// *"and can never be commissioned either, because AddRoomCommand returns early on
+        /// TotalMoles &gt; 0"*, i.e. the player had a gesture that could at least in principle put a
+        /// label on it. M1-L-b deleted that gesture (OD-K), so <b>authoring is the only thing that
+        /// can give a compartment a label at all</b>.
         /// Mutation: put the live wreck back to <c>Hall(1, 6)</c> and the type/anchor assertions
         /// fail (and `hall_d1_s6` is exactly the string that would have reached the player).
         /// </summary>
@@ -263,7 +392,10 @@ namespace Perilune.Tests
             Assert.That(live.Anchor, Does.Not.StartWith("hall_"),
                 "an anchor of the hall_dN_sM form is an internal identifier, not a player-facing name");
 
-            // The two sealed wrecks stay untyped — they are still the player's ＋ADD ROOM work.
+            // The two sealed wrecks stay UNTYPED and sealed — authored that way, and nothing the
+            // player can do re-types them: M1-L-b deleted the last writer of a RoomType (OD-K), so
+            // a room type is authoring-only. They are still the player's work, but the work is
+            // opening and clearing them, not naming them.
             foreach (var s in plan.SlotGrid)
             {
                 if (s.Deck != WreckDeck || s.Index == OpenSlot) continue;
@@ -454,23 +586,25 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE PLAYABILITY PROOF for the two sealed wrecks: the player's own route works. ⚠️ <b>W4b
-        /// REWROTE THAT ROUTE.</b> ＋ADD ROOM used to open the hall's door and fill it with air in the
-        /// same gesture; it now only NAMES the compartment (naming is free, air is earned). The route
-        /// is therefore: allocate, <b>OPEN THE DOOR</b>, wait while deck 1's spine vent pushes gas
-        /// through the doorway, then paint DIG and let the crew work. Without this the sealed wrecks
-        /// would be scenery and the ClearAllDebris goal would be unreachable — the ship would LOOK
-        /// playable and not be.
+        /// REWROTE THAT ROUTE AND M1-L-b SHORTENED IT AGAIN.</b> ＋ADD ROOM used to open the hall's
+        /// door and fill it with air in the same gesture; W4b cut it back to NAMING the compartment
+        /// (naming is free, air is earned), and M1-L-b deleted the verb altogether on OD-K — every
+        /// carved compartment already IS a room, so there is nothing to allocate. The route is
+        /// therefore just: <b>OPEN THE DOOR</b>, wait while deck 1's spine vent pushes gas through
+        /// the doorway, then paint DIG and let the crew work. Without this the sealed wrecks would be
+        /// scenery and the ClearAllDebris goal would be unreachable — the ship would LOOK playable
+        /// and not be.
         ///
         /// The fill is not instantaneous and the worksite-safety rule refuses to stage a worker in
         /// unbreathable air, so the wait is load-bearing, not padding: the compartment crosses 90 kPa
-        /// at ~1 543 ticks (≈2.6 sim-minutes, measured in <c>AddRoomCommandTests</c>; the 6 000 ticks
-        /// waited below is ~3.9× that, and it is the WRECKED slot 5 rather than the clear slot 3, so
-        /// the margin is deliberate). Mutation: drop the
-        /// <c>SetDoorStateCommand</c> and the same crew clear nothing — the ＋ADD ROOM call alone no
-        /// longer opens anything.
+        /// at ~1 543 ticks (≈2.6 sim-minutes, measured by
+        /// <see cref="OpeningACompartmentsDoor_FillsIt_AndTheFillTimeIsMeasured"/> above; the 6 000
+        /// ticks waited below is ~3.9× that, and it is the WRECKED slot 5 rather than the clear slot
+        /// 3, so the margin is deliberate). Mutation: drop the <c>SetDoorStateCommand</c> and the same
+        /// crew clear nothing.
         /// </summary>
         [Test]
-        public void SealedWreck_IsPlayable_ViaAddRoomThenOpeningTheDoorThenDig()
+        public void SealedWreck_IsPlayable_ViaOpeningTheDoorThenDig()
         {
             const int sealedSlot = 5;
             var plan = AuthoredShips.PeriluneGrid();
@@ -482,16 +616,17 @@ namespace Perilune.Tests
                 if (s.Deck == WreckDeck && s.Index == sealedSlot) slot = s;
             var probe = new Int3(slot.X + slot.W / 2, slot.Y + slot.H / 2, slot.Deck);
 
-            // 1a. ＋ADD ROOM — the Overview affordance. NAMES the compartment. Nothing else.
-            sim.EnqueueCommand(new AddRoomCommand(slot.Deck, slot.Index, RoomType.Storage, probe, slot.Anchor));
-            for (int i = 0; i < 20; i++) sim.Tick();
+            // 1a. THE PREMISE, asserted rather than assumed: the sealed wreck boots SHUT and AIRLESS.
+            //     This used to be the "＋ADD ROOM changed neither of these" assertion; with the verb
+            //     gone it is the plainer and stronger statement that nothing gives the player air for
+            //     free before they open anything.
             Assert.That(DoorOf(sim, WreckDeck, sealedSlot).IsOpen, Is.False,
-                "W4b: ＋ADD ROOM must NOT open the hall's door any more");
+                "the sealed wreck's door boots OPEN — the route below proves nothing");
             Assert.That(sim.Rooms.RoomAt(sim.World, probe).TotalMoles, Is.EqualTo(0.0),
-                "W4b: ＋ADD ROOM must NOT conjure air any more");
+                "the sealed wreck boots with AIR — air is supposed to be earned");
 
-            // 1b. OPEN THE DOOR — the gesture W4b hands back to the player — and let the spine vent
-            //     fill the compartment through it. AIR IS EARNED.
+            // 1b. OPEN THE DOOR — the gesture W4b hands the player — and let the spine vent fill the
+            //     compartment through it. AIR IS EARNED.
             sim.EnqueueCommand(new SetDoorStateCommand(DoorOf(sim, WreckDeck, sealedSlot).Id, open: true));
             for (int i = 0; i < 6000; i++) sim.Tick();
             Assert.That(DoorOf(sim, WreckDeck, sealedSlot).IsOpen, Is.True, "the door refused to open");
@@ -531,10 +666,11 @@ namespace Perilune.Tests
 
         /// <summary>
         /// THE WHOLE THING, END TO END: the authored goal is COMPLETABLE by the authored crew on the
-        /// authored ship, through the player's real route (＋ADD ROOM the two sealed wrecks, OPEN
-        /// THEIR DOORS, wait for the spine vent to fill them, paint DIG over all sixty tiles, let
-        /// eight crew work). ⚠️ W4b inserted the door + fill steps: allocation no longer opens or
-        /// pressurises anything. Originally MEASURED at tick 55,191 — 1.53 sim-hours — and re-measured
+        /// authored ship, through the player's real route (OPEN THE TWO SEALED WRECKS' DOORS, wait
+        /// for the spine vent to fill them, paint DIG over all sixty tiles, let eight crew work).
+        /// ⚠️ W4b inserted the door + fill steps, because allocation stopped opening or pressurising
+        /// anything; M1-L-b then removed the allocation step itself (OD-K — every carved compartment
+        /// already IS a room). Originally MEASURED at tick 55,191 — 1.53 sim-hours — and re-measured
         /// on the W4b route (see the assertion's own note); the cap stays where it was, wide enough
         /// not to be flaky and far short of "any number passes". A goal the ship cannot reach would be
         /// worse than no goal at all, and nothing short of running it proves the difference.
@@ -546,7 +682,7 @@ namespace Perilune.Tests
         /// pressure assertions fail while the rest of the test still passes.
         /// </summary>
         [Test]
-        public void Goal_IsCompletable_ByTheAuthoredCrew_ViaAddRoomAndDig()
+        public void Goal_IsCompletable_ByTheAuthoredCrew_ViaOpeningDoorsAndDig()
         {
             const int TickCap = 150000; // ~4.2 sim-hours; MARGIN: the goal latches at 55,191 (2.72×)
             var systems = Stack();
@@ -564,18 +700,18 @@ namespace Perilune.Tests
             double bootWorst = WorstCo2OnDeck(sim, WreckDeck);
             Assert.That(bootCo2, Is.EqualTo(500.0).Within(1.0), "a freshly pressurised room boots at 500 ppm CO2");
 
-            // 1. Allocate the two sealed wrecks and OPEN THEIR DOORS. ⚠️ W4b: ＋ADD ROOM only names a
-            //    compartment now — the door and the air are two separate, earned things — so the
-            //    SetDoorStateCommand below is what actually makes these compartments enterable, and the
-            //    6 000-tick wait is what lets deck 1's spine vent fill them through the open doorways.
+            // 1. OPEN THE TWO SEALED WRECKS' DOORS. ⚠️ The SetDoorStateCommand is the WHOLE of the
+            //    player's opening move now — the door and the air are two separate, earned things —
+            //    and the 6 000-tick wait is what lets deck 1's spine vent fill the compartments
+            //    through the open doorways. (M1-L-b removed a preceding AddRoomCommand here; it only
+            //    ever set an anchor's RoomType, which no gas or job term reads, so the route is
+            //    unchanged in everything it measures.)
             foreach (var s in plan.SlotGrid)
             {
                 if (s.Deck != WreckDeck || s.Index == OpenSlot) continue;
                 bool wrecked = false;
                 foreach (int slot in ExpectedWreckSlots) if (s.Index == slot) wrecked = true;
                 if (!wrecked) continue;
-                var probe = new Int3(s.X + s.W / 2, s.Y + s.H / 2, s.Deck);
-                sim.EnqueueCommand(new AddRoomCommand(s.Deck, s.Index, RoomType.Storage, probe, s.Anchor));
                 sim.EnqueueCommand(new SetDoorStateCommand(DoorOf(sim, WreckDeck, s.Index).Id, open: true));
             }
             for (int i = 0; i < 6000; i++) sim.Tick();

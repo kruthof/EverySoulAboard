@@ -362,10 +362,10 @@ namespace Perilune.Web
                 // up off `sim.Citizens` on the next render, which the sim loop takes anyway.
                 case CmdKind.WorkPriority: HandleWorkPriority(cmd); return false;
                 // ⭐ M1-L: `case CmdKind.AddRoom: HandleAddRoom(cmd); return true;` is DELETED, with
-                // the `"addroom"` parse case and the two private methods behind it. The verb is now
-                // UNREACHABLE end to end: no client sender, no parse, no route. The `CmdKind.AddRoom`
-                // MEMBER survives dormant — deleting an enum member renumbers its siblings and is a
-                // spine change (see the enum's own note).
+                // the `"addroom"` parse case and the two private methods behind it. The verb is
+                // UNREACHABLE end to end: no client sender, no parse, no route. ⭐ M1-L-b then
+                // deleted the `CmdKind.AddRoom` MEMBER and the sim's `AddRoomCommand` as well (see
+                // the enum's own note for the renumber that took).
                 case CmdKind.Talk: _conv.Talk(cmd.Cid); return false;
                 case CmdKind.Say: _conv.Say(cmd.Sid, cmd.Text); return false;
                 case CmdKind.Bye: _conv.Bye(cmd.Sid); return false;
@@ -1229,8 +1229,8 @@ namespace Perilune.Web
 
         // ⭐ M1-L: `HandleAddRoom` and `ParseRoomType` (the 13-type whitelist that WAS the
         // type gate) are DELETED. They were reachable only from the `CmdKind.AddRoom` route
-        // above, which is deleted too, so nothing could call them. See the enum member's note
-        // for what is left dormant and which package retires it.
+        // above, which is deleted too, so nothing could call them. ⭐ M1-L-b then retired the
+        // enum member and the sim command; nothing named "add room" survives anywhere.
 
         /// <summary>Room Zoom palette tool string → furniture <see cref="DeviceKind"/> (IX-Z-21).
         /// Unknown tools return false and are ignored — the whitelist is enforced again sim-side.</summary>
@@ -1887,9 +1887,12 @@ namespace Perilune.Web
                     buckets[slot.Deck] = list;
                     byDeck.Add(slot.Deck);
                 }
-                // Room TYPE comes from LIVE state (the RoomAnchor's Type, set by AddRoomCommand when
-                // a hall is allocated), not the authoring descriptor — so an allocated hall shows its
-                // new type. Fall back to the descriptor when no live type is known (un-allocated hall).
+                // Room TYPE comes from LIVE state (the RoomAnchor's Type), not the authoring
+                // descriptor, so a room re-typed at runtime shows its new type. No PLAYER route sets
+                // one any more — M1-L-b deleted the last writer, AddRoomCommand (OD-K) — but the sim
+                // still owns the field (saves, MOSS, RoomDresser), so reading live state stays right
+                // and is strictly more correct than trusting the plan. Fall back to the descriptor
+                // when no live type is known (an untyped compartment).
                 byte typeByte = (occupied && liveType != RoomType.None) ? (byte)liveType : (byte)slot.Type;
                 list.Add(new WireFormat.DeckSlot(slot.Index, slot.X, slot.Y, slot.W, slot.H,
                     anchorName, typeByte, occupied, active: false));
@@ -3103,25 +3106,31 @@ namespace Perilune.Web
 
     /// <summary>Input command kinds the browser can send (mirrors GameLoop's key actions).
     ///
-    /// <para>⛔ <b><c>AddRoom</c> IS DORMANT, DELIBERATELY — M1-L, 2026-07-29.</b> Nothing produces it
-    /// and nothing consumes it: the client sender (<c>Cmd.addRoom</c>), the <c>"addroom"</c> parse
-    /// case, the dispatch route and <c>HandleAddRoom</c>/<c>ParseRoomType</c> are all deleted. The
-    /// MEMBER stays because these are implicitly numbered and removing one RENUMBERS every sibling
-    /// after it (<c>Dig</c>…<c>Operate</c> would each shift down by one) — a spine change, and the
-    /// members are matched by ORDINAL nowhere in-tree today but are a wire-adjacent contract. The
-    /// deletion, together with the sim's <c>AddRoomCommand</c>, is filed as its own spine package:
-    /// see <c>docs/design/perilune-roadmap-q3.packages.md</c>, <b>M1-L-b</b>.</para>
+    /// <para>⭐ <b><c>AddRoom</c> IS GONE, AND THE RENUMBER IT WAS FEARED FOR HAPPENED — M1-L-b,
+    /// 2026-07-29.</b> M1-L (OD-K) had already deleted every route to it — the client sender
+    /// (<c>Cmd.addRoom</c>), the <c>"addroom"</c> parse case, the dispatch route and
+    /// <c>HandleAddRoom</c>/<c>ParseRoomType</c> — and left the MEMBER standing at ordinal 17 only
+    /// because removing it shifts every sibling after it down by one. M1-L-b removed it and let that
+    /// shift happen: <c>Dig</c> 18→17, <c>Stockpile</c> 19→18, <c>Strip</c> 20→19, <c>Filter</c>
+    /// 21→20, <c>Commission</c> 22→21, <c>Operate</c> 23→22, <c>WorkPriority</c> 24→23.</para>
     ///
-    /// <para>⚠️ <b>"Nothing calls this" is a statement about a TREE, and a merge changes a tree.</b>
-    /// Before acting on the dormancy, re-derive it on the MERGED tree — that is the eighth trap shape
-    /// (<c>CLAUDE.md</c>), which cost this project a wrong census in a file neither lane could
-    /// compute alone.</para>
+    /// <para><b>WHY THE SHIFT IS SAFE, censused on the MERGED tree rather than assumed</b> (the
+    /// eighth trap shape — <i>"nothing calls this" is a statement about a TREE, and a merge changes a
+    /// tree</i>): <b>nothing anywhere converts between a <c>CmdKind</c> and a number.</b> The wire
+    /// carries verb STRINGS and <see cref="WebCommand.Parse"/> maps string→member; there is no
+    /// number→member path at all. <c>CmdKind</c> appears in no save chapter and in no
+    /// <c>WireFormat*.cs</c>. Its only two consumers read MEMBERS — <c>WebHost.cs:219</c>'s
+    /// <c>!= CmdKind.Unknown</c> and this file's dispatch <c>switch</c>. The only <c>(int)CmdKind</c>
+    /// casts in the tree were the three lines of
+    /// <c>EveryCompartmentIsARoomTests.CmdKindOrdinals_ArePinned_AndAddRoomIsGone</c>, which exists to be the
+    /// checklist of exactly this move and was updated in the same commit.</para>
     ///
-    /// <para>⭐ <b><c>WorkPriority</c> IS APPENDED, NEVER INSERTED</b> (M2-4). These members are
-    /// implicitly numbered and the note above records that removing one renumbers every sibling after
-    /// it; the same arithmetic applies to inserting one, so a new kind goes at the END even when a
-    /// neighbouring position would read better.</para></summary>
-    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, AddRoom, Dig, Stockpile, Strip, Filter, Commission, Operate, WorkPriority }
+    /// <para>⭐ <b>A NEW KIND IS APPENDED, NEVER INSERTED</b> (M2-4, and the arithmetic above is
+    /// why). These members are implicitly numbered, so inserting one renumbers every sibling after
+    /// it exactly as removing one does. A new kind goes at the END even when a neighbouring position
+    /// would read better — and if a future lane ever gives the ordinals a consumer (a persisted
+    /// value, a binary frame), write the numbers out explicitly first.</para></summary>
+    public enum CmdKind { Unknown = 0, Cursor, Click, Move, Deck, Lens, Speed, Pause, Talk, Say, Bye, Chron, Moss, Build, Bio, Place, Remove, Dig, Stockpile, Strip, Filter, Commission, Operate, WorkPriority }
 
     /// <summary>A decoded client→server message. Pure value; parsed from JSON by
     /// <see cref="Parse"/> (a tiny tolerant reader — the browser client is the only
