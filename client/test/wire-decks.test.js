@@ -200,9 +200,11 @@ test('decksView is tolerant of null / garbage inputs', () => {
 // package's first draft it was RoomType.None — so the one standard play ship showed "hall_d1_s6" in
 // an UPPERCASE-label UI. Authoring it as a typed room is the fix; this is the tripwire.
 // (⚠️ W4b retracted the parenthetical that used to end that sentence — "and could never be
-// commissioned out of it either, because AddRoomCommand returns early on TotalMoles > 0". Both
-// occupancy and the command's rejection predicate now read the ANCHOR's type rather than the room's
-// gas, so a slot is un-commissionable precisely because it is already typed.)
+// commissioned out of it either, because AddRoomCommand returns early on TotalMoles > 0" — because
+// the rejection predicate had moved from the room's gas to the ANCHOR's type. M1-L-b then deleted
+// the command, the verb and the enum member outright (OD-K), so there is no commissioning gesture
+// left to be un-commissionable from: a slot's type is authoring, and the label defect this test
+// pins is now purely an authoring question.)
 
 const GRID_FIX = JSON.parse(
   readFileSync(fileURLToPath(new URL('./fixtures/overview-grid.json', import.meta.url)), 'utf8'),

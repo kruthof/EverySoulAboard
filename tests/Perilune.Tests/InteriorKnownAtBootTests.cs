@@ -511,9 +511,10 @@ namespace Perilune.Tests
 
         /// <summary>One slot's tuple out of the cached <c>decks</c> payload. Parsed POSITIONALLY —
         /// [slotIndex, x, y, w, h, anchorName, roomType, occupied, active] IS the contract. Same shape
-        /// as <c>AddRoomCommandTests.SlotTuple</c>, deliberately duplicated rather than shared: these
-        /// two files pin different ships and a shared parser makes one file's re-authoring silently
-        /// change the other's subject.</summary>
+        /// as <c>EveryCompartmentIsARoomTests</c>' deck-wide parser, deliberately duplicated rather
+        /// than shared: these two files pin different ships and a shared parser makes one file's
+        /// re-authoring silently change the other's subject. (The third copy of this shape lived in
+        /// <c>AddRoomCommandTests</c> and went with it in M1-L-b.)</summary>
         private static (int RoomType, bool Occupied, string Anchor) SlotTuple(GameSession gs, int deck, int slotIndex)
         {
             gs.RenderForTest();

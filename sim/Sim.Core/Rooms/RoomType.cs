@@ -29,9 +29,13 @@ namespace Perilune.Sim
         /// in every existing save.
         ///
         /// It is a LABEL and nothing more: no system branches on it, <see cref="RoomDresser"/> does
-        /// not furnish it (a wreck's furniture went with the raiders), and it is deliberately NOT
-        /// added to <c>GameSession.ParseRoomType</c>'s ＋ADD ROOM whitelist — a player commissions a
-        /// mess or a workshop, not a cryo bay. The alternative was to type the bay <c>Medbay</c> or
+        /// not furnish it (a wreck's furniture went with the raiders). ⚠️ It used to say "and it is
+        /// deliberately NOT added to <c>GameSession.ParseRoomType</c>'s ＋ADD ROOM whitelist — a
+        /// player commissions a mess or a workshop, not a cryo bay". That whitelist, the verb and its
+        /// command are all DELETED (M1-L / M1-L-b, OD-K): <b>no player-facing route sets a
+        /// <see cref="RoomType"/> at all any more</b>, so every id here is authoring-only, and the
+        /// distinction the sentence drew no longer exists. The alternative was to type the bay
+        /// <c>Medbay</c> or
         /// leave it <c>None</c>; the first is a lie the owner would read off the screenshot, and the
         /// second makes the Overview print the room's internal anchor id at the player (the exact
         /// defect <c>AuthoredShips.GridOpenWreckAnchor</c>'s header records).

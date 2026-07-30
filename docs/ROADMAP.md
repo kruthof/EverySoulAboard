@@ -35,9 +35,10 @@ Room Zoom (post-hoc charter) · M1-L every compartment IS a room, ＋ADD ROOM de
 priority cannot live in `TryAssign`; five entry sites; pre-emption is safe and cheap).
 
 Remaining, none blocking M2: **M1-E** silent-refusal census/surfacing (`ReasonNoConsumable`
-re-homed to M2-9) · **M1-L-b** retire dormant `AddRoomCommand`/`CmdKind.AddRoom` (SPINE,
-ordinal-renumber hazard). M1-G vent-premise reword DONE 2026-07-29 (the doc restructure had
-already cleaned the docs; three surviving source comments reworded in `lane/premise-fix`).
+re-homed to M2-9). M1-G vent-premise reword DONE 2026-07-29 (three surviving source comments
+reworded in `lane/premise-fix`). M1-L-b DONE 2026-07-30: `AddRoomCommand`/`CmdKind.AddRoom`
+deleted, ordinal renumber measured safe (no numeric path to the enum exists), MECHANICS.md
+drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2Ppm` (§13.1).
 
 ## 3. M2 — the queue (merge order; charters in packages.md)
 

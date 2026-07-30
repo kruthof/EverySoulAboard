@@ -14,12 +14,21 @@ those disagreements are listed in §14. If something could not be verified it sa
 actually happens, and where do I change it*. **§13 "Known gaps" is the most valuable
 section — read it before you conclude a mechanic works.**
 
-> **⚠ In-flight work.** Four packages were being implemented in parallel while this was
-> written and will change behaviour. Every section describing one carries a visible
-> **IN FLIGHT** note plus an HTML comment so a reconciliation pass can `grep "IN FLIGHT"`
-> and find them all: movement tuning (§5.4) · the slice build/work economy (§6.5) ·
-> CO2→maintenance dispatch and the `AgreeTask` whitelist (§13.1) · task labels and the
-> build-ghost wire fields (§13.4, §15).
+> **✅ NOTHING IN THIS FILE IS IN FLIGHT — reconciled 2026-07-29 (M1-L-b).** This banner used to
+> warn that four packages were being implemented in parallel with the writing and would change
+> behaviour under it. That warning outlived them: **three landed and one never shipped its
+> change**, and the four `IN FLIGHT` notes had sat for eight days telling readers to discount
+> sections that were current. Each note is now replaced by a dated verdict, and the marker to
+> `grep` is `RECONCILED 2026-07-29`:
+>
+> | lane | §§ | verdict, re-measured in this tree |
+> |---|---|---|
+> | movement tuning | §5.4 | **LANDED** — `citizen.def` `ticks_per_tile = 10` (E0-2 L1 retune, was 5), `PathService.TryRandomWalkableTileNear` (E0-1) is the wander. §5.4's prose already describes the post-change code. |
+> | slice build/work economy | §6.5 | **LANDED** (`AuthoredShips`, `CraftingSystem`, `JobSystem`). ⚠️ §6.5's `file:line` citations were written against `0f88231` and this pass did NOT re-verify them line by line — re-derive before quoting one. |
+> | CO2→maintenance dispatch + `AgreeTask` whitelist | §13.1 | **NEVER SHIPPED ITS CHANGE.** Re-measured: nothing in `Systems/MachineWearSystem.cs` or `Jobs/` reads `CO2Ppm` at all, and `AgreeTask` is unchanged. §13.1's first half — *nothing converts an atmosphere reading into a job* — is therefore still a LIVE gap, exactly as its own body says. The CO2-**transport** half was fixed separately, by B-3. |
+> | task labels + build-ghost wire | §13.4, §15 | **LANDED** — `TaskLabel` names the object ("Servicing scrubber_ls", "Hauling … to …", `GameSession.cs:2900-2938`) and `WireFormat.Design` carries `Delivered`/`Required` as tuple elements 5–6 with `Material` appended as 7 (`WireFormat.cs:307-315`). |
+>
+> **Trust the PER-SECTION dates.** §13 carries entries dated 2026-07-29.
 
 ---
 
@@ -313,50 +322,68 @@ On recompute, gas **and temperature** are remapped by tile overlap
 of every old room its tiles came from. A brand-new volume with no predecessor keeps the
 293 K default (`RoomState.cs:16,311-312`).
 
-`Rooms.MarkDirty()` has exactly **six** call sites repo-wide (re-counted 2026-07-28; the
-count and four of the five citations below it had gone stale — E0-5 added the sixth and the
-dig moved out of `JobSystem`): `AddDevice` / `RemoveDevice` (`Simulation.cs:116,132`),
-`SetTileCommand` (`Commands/Commands.cs:691`), a completed dig
-(`Jobs/Sources/DigJobSource.cs:141`), a completed wall build (`Systems/BuildSystem.cs:213`)
+`Rooms.MarkDirty()` has exactly **six** call sites repo-wide (**re-counted 2026-07-29** by
+M1-L-b, which deleted a command out of this file and so had to re-derive every line number
+here; the count is unchanged and two citations had drifted): `AddDevice` / `RemoveDevice`
+(`Simulation.cs:116,132`), `SetTileCommand` (`Commands/Commands.cs:671`), a completed dig
+(`Jobs/Sources/DigJobSource.cs:166`), a completed wall build (`Systems/BuildSystem.cs:213`)
 and a completed strip (`Systems/DeconstructSystem.cs:557`). **Nothing else re-floods
 rooms** — in particular, no runtime breach mechanic exists, and (since W4b) **no command
-re-floods rooms merely because a player named one**.
+re-floods rooms merely because a player named one**; since M1-L-b there is no such command
+at all.
 
 **Room anchors** are saved sim state (`RoomState.cs:72-85`, `ROOM` chapter v2/v3) — a name
 plus a probe tile, plus a `RoomType`. They are the MOSS room namespace (`hab1.o2`) and the
 `GoalSystem` anchor lookup.
 
-### Allocating a room — naming is free, air is earned (W4b, 2026-07-28)
+### A room is not allocated — it is DERIVED (M1-L / M1-L-b, OD-K, 2026-07-29)
 
-`AddRoomCommand` (`Commands/Commands.cs:628-672`) is the sim side of the Overview's
-**＋ADD ROOM** picker. As of W4b it does **exactly one thing**: `rooms.SetAnchor(name, probe,
-type)` (`:670`). It names and types the compartment the probe lands in, and that is all.
+**There is no allocate-a-room verb and no allocate-a-room command. A compartment IS a room
+because its WALLS make it one** — `RoomState.Recompute`'s flood fill above is the whole
+mechanism, and `SlotGridPlanner.Carve` gives every slot on every shipped ship interior floor, a
+perimeter and a door, so the honest answer was always "yes, this is a room". Owner ruling,
+verbatim and binding: *"we do not need 'add room' that makes no sense on a ship where rooms are
+already existing."* RimWorld analogue, cited not remembered —
+`docs/design/rimworld-reference.md` §7 item 10: *"RimWorld computes rooms from walls for stats …
+the player never names or allocates one."*
 
-> **⛔ RETRACTED — allocation used to CONJURE AIR, and any doc or plan that still says so is
-> describing the pre-W4b sim.** The struck behaviour is quoted rather than deleted because it
-> was the game's largest matter faucet and it was invisible: the command used to *"force every
-> bordering door open AND unlocked, and `RoomState.Pressurize` it — 101.3 kPa of 21 % O₂
-> conjured from nothing"* (`Commands.cs:579`, the header that records the deletion). The
-> door-forcing loop, its `BordersRoom` helper and the `Pressurize` call are **gone**;
-> `RoomState.Pressurize` survives only as a **setup-time** utility (below). This also fixed
-> half of the owner's *"the doors vanish when I allocate a room"* report — allocation no longer
-> touches a door at all.
+**What is left of the type.** `RoomAnchor.Type` is still saved, hashed and read (`RoomDresser`
+furnishes by type; `GoalSystem` and MOSS resolve rooms by anchor NAME; the `decks` channel sends
+the type so the Overview can print a label instead of an internal `hall_dZ_sN` id). **It is
+authoring-only**: as of M1-L-b no player-facing route writes it, so an untyped compartment stays
+untyped for the life of a run. `RoomType` ids therefore remain append-only for the save's sake
+(`Rooms/RoomType.cs`), not for a picker's.
 
-**The rejection predicate moved from GAS to a TYPED ANCHOR, and the word *typed* is
-load-bearing.** The old double-commission guard was `room.TotalMoles > 0` — *"already a live
-room"* — which only worked while "named" and "has air" were the same event. They are not any
-more: a named-but-airless compartment is the normal state of every freshly allocated room, and
-a furnished room that has been vented is airless too. The guard now walks `rooms.Anchors` and
-refuses when any anchor whose probe resolves to **this same room id** already carries a
-`RoomType` other than `RoomType.None` (`:660-666`). Every grid and wreck hall already ships an
-*untyped* `hall_dZ_sN` anchor, so an un-allocated hall's own anchor is skipped by the
-`Type == RoomType.None` continue at `:664`; room ids are global across decks, so no deck
-filter is needed, and a hall merged into a furnished room by a stripped bulkhead is correctly
-refused because the merged room carries the furnished room's typed anchor.
+> **⛔ RETRACTED IN TWO STAGES, and both are worth knowing because each was a live mechanic in a
+> shipped build.**
+>
+> **W4b (2026-07-28) took the AIR away.** `AddRoomCommand` used to *"force every bordering door
+> open AND unlocked, and `RoomState.Pressurize` it — 101.3 kPa of 21 % O₂ conjured from nothing"*.
+> That was the game's largest matter faucet and it was invisible. Deleting it is what turned the
+> pressure frontier from a formality into the core loop — **naming is free, air is earned** — and
+> it also fixed half of the owner's *"the doors vanish when I allocate a room"* report.
+> `RoomState.Pressurize` (`Rooms/RoomState.cs:135`) survives with **two** non-test callers —
+> `sim/Sim.Gen/ShipPlanBuilder.cs:149` (ship generation, applying `ShipPlan.PressurizedAnchors`)
+> and `hosts/scenario/Program.cs:1125` (the scenario host's fixture builder, which seeds the world
+> the P1 pin runs on) — **both setup-time, neither reachable from a running game.** ⚠️ An earlier
+> version of this sentence said "exactly ONE live caller" and named only the first: the census
+> behind it was grepped over `sim/` alone, so `hosts/` was outside the instrument and the second
+> caller could not appear. That is the **ninth trap shape** — a narrowed instrument goes blind —
+> and it contradicted §3's own correct list further down this same file.
+>
+> **M1-L / M1-L-b (2026-07-29) took the VERB and then the COMMAND away.** M1-L deleted the ＋ADD
+> ROOM picker, the client sender, the `"addroom"` parse case, the dispatch route and
+> `GameSession.HandleAddRoom`/`ParseRoomType`; M1-L-b deleted the sim's `AddRoomCommand` and the
+> `CmdKind.AddRoom` enum member (which renumbered `Dig`…`WorkPriority` down by one — safe, because
+> nothing anywhere converts a `CmdKind` to a number; the wire carries verb strings). **Any doc,
+> plan or comment that describes allocating, commissioning or re-typing a room is describing a sim
+> that no longer exists.** Its rejection predicate — *refuse when any anchor resolving to this same
+> room already carries a non-`None` type* — is gone with it. It is recorded in W4b's own plan
+> (`docs/design/perilune-wreck-start.plan.md`) and in this paragraph, and **it is NOT a rule the
+> current sim enforces**, because there is nothing left to refuse.
 
-The other two refusals are unchanged in spirit: an empty name or an out-of-bounds/wrong-deck
-probe (`:643-644`), and a probe that lands in room 0 — open vacuum, not a sealed compartment
-(`:652`). **Every rejection is a silent no-op**, like the other designate/place commands.
+⛔ **Do NOT close `W4b-DEAD-DECK` (§13.23a) by re-pressurising on room creation.** That is the wand
+W4b deleted on a binding owner decision, and it has already tried to come back once.
 
 ---
 
@@ -380,7 +407,7 @@ Initial fill (`RoomState.Pressurize`, `:135-141`) is 101.3 kPa of 21 % O2 / 79 %
 are structural, not def-tunable (`atmosphere.def` header).
 
 **`Pressurize` is a SETUP-TIME utility and nothing in the running game calls it** (checked
-repo-wide, 2026-07-28). Its callers are ship generation (`ShipPlanBuilder.cs:126`, applying
+repo-wide, 2026-07-28). Its callers are ship generation (`ShipPlanBuilder.cs:149`, applying
 `ShipPlan.PressurizedAnchors`), the scenario host's dump path and tests. **No `ISimCommand`
 calls it** — W4b removed the last one (§2 "Allocating a room"). At runtime, air enters a
 compartment by exactly two routes: an `AirVent` injecting into it, or bulk/diffusive flow
@@ -758,11 +785,11 @@ and the state hash. **Mood does not gate work speed and there are no mental brea
 
 ### 5.4 Movement (`Systems/CitizenSystem.cs`, 10 Hz)
 
-<!-- IN FLIGHT: movement tuning — citizen.def ticks_per_tile / idle_ticks_between_wanders,
-     CitizenSystem.cs, PathService wander. Numbers below are pre-change. -->
-> **⚠ IN FLIGHT** — the movement-tuning lane is changing `citizen.def`'s
-> `ticks_per_tile` / `idle_ticks_between_wanders`, `CitizenSystem` and the `PathService`
-> wander. Everything in §5.4 describes the code at `0f88231`.
+<!-- RECONCILED 2026-07-29 (M1-L-b): the movement-tuning lane LANDED; this section is current. -->
+> **✅ RECONCILED 2026-07-29 — the movement-tuning lane LANDED and §5.4 describes the tuned
+> code.** Re-measured in this tree: `citizen.def` `ticks_per_tile = 10` (E0-2 L1 retune, was 5),
+> `idle_ticks_between_wanders = 30`, and the wander is `PathService.TryRandomWalkableTileNear`
+> (E0-1, `:172`) rather than the old world-wide draw.
 
 Following a path (`:38-53`): decrement `MoveCooldown`; when it hits 0, re-validate the next
 tile with `sim.IsWalkable` (a closed door mid-route clears the path and re-decides next
@@ -990,10 +1017,14 @@ first walkable 4-neighbour in `+x,−x,+y,−y` order (`TryFindStagingTile`, `:3
 
 ### 6.5 Build & refit (`Systems/BuildSystem.cs`)
 
-<!-- IN FLIGHT: the slice build/work economy — AuthoredShips.cs, CraftingSystem.cs,
-     JobSystem.cs material gating. Numbers below are pre-change. -->
-> **⚠ IN FLIGHT** — the slice build/work-economy lane is changing `AuthoredShips.cs`,
-> `CraftingSystem.cs` and `JobSystem`'s material gating. §6.5 describes `0f88231`.
+<!-- RECONCILED 2026-07-29 (M1-L-b): the slice build/work-economy lane LANDED. Its file:line
+     citations were NOT re-verified line by line in that pass — see the note. -->
+> **✅ RECONCILED 2026-07-29 — the slice build/work-economy lane LANDED** (`AuthoredShips.cs`,
+> `CraftingSystem.cs`, `JobSystem`'s material gating), so this section is no longer describing a
+> tree about to change under it. ⚠️ **Its `file:line` citations were written against `0f88231`
+> and the reconciliation pass did NOT re-derive them one by one** — treat a line number here as a
+> hint, not a fact, and re-measure before quoting one. (A count you did not measure yourself is
+> not evidence, even from this file.)
 
 `BuildSystem` holds only canonical state (the pending list) — its `Tick` is a no-op
 (`:65`). The pending list is kept in **packed-position sorted order** by binary insert
@@ -1433,10 +1464,15 @@ institutional memory that prevents the next playtest surprise.***
 
 ### 13.1 Nothing converts an atmosphere reading into a job — and scrubbers cannot help the room the crew is in [CO2-transport half FIXED by B-3]
 
-<!-- IN FLIGHT: CO2 → maintenance dispatch and the AgreeTask whitelist —
-     MachineWearSystem.cs, EffectValidator.cs, CapabilityComputer.cs. -->
-> **⚠ IN FLIGHT** — a lane is adding CO2→maintenance dispatch and revisiting the
-> `AgreeTask` whitelist. This describes `0f88231`.
+<!-- RECONCILED 2026-07-29 (M1-L-b): the CO2→maintenance dispatch lane NEVER SHIPPED its
+     change. This gap is LIVE, not pre-change. -->
+> **⛔ RECONCILED 2026-07-29 — THAT LANE NEVER SHIPPED ITS CHANGE, SO THIS GAP IS LIVE.** The
+> note here promised CO2→maintenance dispatch and a revisited `AgreeTask` whitelist "soon", which
+> for eight days invited a reader to discount a real hole as merely stale. Re-measured in this
+> tree: **nothing in `Systems/MachineWearSystem.cs` or anywhere under `Jobs/` reads `CO2Ppm` at
+> all**, and `AgreeTask` is unchanged (`Effects/EffectValidator.cs:35,108`,
+> `Effects/CapabilityComputer.cs:74`). The FIRST half of this entry — *nothing converts an
+> atmosphere reading into a job, an alarm or a vent* — therefore stands exactly as written.
 
 > **✅ FIXED by B-3 (`AtmosphereSystem.DiffuseAcrossDoors`)** — the "scrubbers cannot help the
 > room the crew is in" half of this entry is resolved: partial-pressure diffusion across open
@@ -1509,16 +1545,13 @@ set), so a crew member will cheerfully agree to walk with you and then not.
 
 ### 13.4 Four citizen fields the sim writes but never uses — and one it never writes
 
-<!-- IN FLIGHT: task labels / build-ghost wire fields — hosts/web/GameSession.cs (TaskLabel,
-     BuildRoster/BuildDesigns), hosts/web/WireFormat.cs (Design), client work-marker layer
-     + CREW WATCH task line. The roster-wire discussion below describes 0f88231. -->
-> **⚠ IN FLIGHT** — the task-label / build-ghost-wire lane is changing what the roster and
-> `designs` channels carry. `GameSession.TaskLabel` stops emitting five generic words and
-> **names the object** ("Servicing scrubber_ls", "Hauling regolith to wall 3,4 (0/2)"),
-> `WireFormat.Design` gains `delivered`/`required` as **append-only** tuple elements 5 and 6,
-> and the client grows on-map WORK markers plus a CREW WATCH task line. `task` is a
-> pre-existing roster field, so no wire shape moves and a four-element `designs` reader is
-> unaffected. §13.4's roster-wire bullet and §15's `WebCommand.Parse` row describe `0f88231`.
+<!-- RECONCILED 2026-07-29 (M1-L-b): the task-label / build-ghost-wire lane LANDED. -->
+> **✅ RECONCILED 2026-07-29 — the task-label / build-ghost-wire lane LANDED.** Re-measured in
+> this tree: `GameSession.TaskLabel` **names the object** rather than emitting five generic words
+> ("Servicing scrubber_ls", "Hauling … to …" — `GameSession.cs:2900-2938`), and
+> `WireFormat.Design` carries `Delivered`/`Required` as **append-only** tuple elements 5 and 6
+> with `Material` appended after them as 7 (`WireFormat.cs:307-315`). `task` was a pre-existing
+> roster field, so no wire shape moved and a four-element `designs` reader is still unaffected.
 
 - **`Fatigue`** rises at 1/57,600 per second to a hard clamp of 1.0 after 16 h and
   **nothing anywhere reduces it**. There is no sleep mechanic; `Bed` is inert furniture
@@ -2522,11 +2555,11 @@ last.
 | the save format | `sim/Sim.Core/Save/SaveWriter.cs` + `SaveReader.cs` (spine files; bump the chapter version and add the reader branch in the same commit) |
 | the shipping slice's ship, crew, stock | `sim/Sim.Gen/AuthoredShips.cs:223-563` |
 | the client's command surface | `hosts/web/GameSession.cs:797-820` (`WebCommand.Parse`) |
-| what a crew member's task line says | `hosts/web/GameSession.cs:684` (`TaskLabel`) — **IN FLIGHT**, see §13.4 |
-| what the build ghosts carry | `hosts/web/WireFormat.cs:293-330` (`Design` / `Designs`) — **IN FLIGHT**, see §13.4 |
+| what a crew member's task line says | `hosts/web/GameSession.cs:2900-2938` (`TaskLabel`; its remarks start at `:2878`) |
+| what the build ghosts carry | `hosts/web/WireFormat.cs:307-315` (`Design`), `:323` (`Designs`) |
 
-<!-- IN FLIGHT: task labels / build-ghost wire fields — the two rows above are the edit
-     points the lane is moving; line numbers are pre-change (0f88231). -->
+<!-- RECONCILED 2026-07-29 (M1-L-b): the lane that was moving these two rows LANDED; the line
+     numbers above were re-derived from this tree, not carried over from 0f88231. -->
 
 ### Adding a def field (the ritual, one commit)
 
@@ -2742,10 +2775,17 @@ deck-confined-wander figures exactly.
 
 ---
 
-### 13.23 W4b (＋ADD ROOM splits) + the OPERATE verb — what is wired but not connected (2026-07-28)
+### 13.23 W4b (the air split off ＋ADD ROOM) + the OPERATE verb — what is wired but not connected (2026-07-28, reconciled 2026-07-29)
 
 The lanes that made air a thing the player earns rather than names. Everything here was measured
 by driving a ship, and each item is a **live** hole in the shipping game, not a latent one.
+
+> ⚠️ **READ WITH §2 "A room is not allocated — it is DERIVED".** W4b split the AIR off the ＋ADD
+> ROOM verb; **M1-L then deleted the verb and M1-L-b the command behind it** (OD-K, 2026-07-29).
+> The mechanisms measured below are unchanged — they are facts about gas, fog and devices, not
+> about the verb — but every sentence that says "allocate" or "＋ADD ROOM" describes a gesture the
+> player no longer has. Item **c** already carries its own CLOSED marker, and item **f** is
+> corrected in place below.
 
 **a. ⛔ `W4b-DEAD-DECK` — THE SIM HAS NO VERTICAL GAS TERM, SO A DECK WITH NO VENT CAN NEVER BE
 PRESSURISED.** The mechanism is §3 "Gas is SAME-DECK ONLY" — four independent planar paths, all
@@ -2754,11 +2794,14 @@ cited there, none of which is a tuning value. The consequence is not slowness, i
 (`AuthoredShips.cs:1709` `vent_cryo`, `:1830-1831` `vent_ls`; the plan runs `1622`→EOF), so all
 eight deck-1 halls, **allocated and with their doors opened, peak at `0.000` kPa over 20 000
 ticks.** No amount of OPERATE fixes it, because the verb only opens edges and there is no edge to
-open. ⚠️ **W4b did not create this — `＋ADD ROOM`'s free pressurisation was HIDING it**, and that
+open (the "allocated" in that measurement is now moot — M1-L-b deleted the verb; the eight halls
+are rooms whatever anyone does, and they still peak at `0.000` kPa).
+⚠️ **W4b did not create this — `＋ADD ROOM`'s free pressurisation was HIDING it**, and that
 is why deleting a wand exposed a hole rather than digging one. **The owner's decision is to ship
 it filed.** The three ways out (author a deck-1 vent · add a vertical transport term · accept the
 dead deck) are all content/design calls. ⛔ **Do NOT close it by re-pressurising in
-`AddRoomCommand`** — that is precisely the wand W4b deleted on a binding owner decision.
+`AddRoomCommand`** — that is precisely the wand W4b deleted on a binding owner decision, and
+M1-L-b has since deleted the command it would have been re-added to.
 
 **b. A BUILD GHOST DRAWS WHERE ITS REASON CANNOT — the `designs`/`blocked` fog asymmetry.**
 `BuildDesigns` (`hosts/web/GameSession.cs:1715-1729`) walks `BuildSystem.Pending` and emits every
@@ -2778,10 +2821,12 @@ on `--ship grid` / `slice` / `perilune`. What changed underneath it is **M1-1 (O
 `--ship wreck` now boots with `fogTiles = 0` of 1 620** — measured after a full `GenSimHost` boot,
 both ways in the same tree: flipping `InteriorKnownAtBoot` back to `false` gives **1 104** — so
 `AddIfBlocked`'s early return on unexplored — and `BuildMarks`' gate at `GameSession.cs:2053` — can
-no longer fire anywhere on that ship. **DRIVEN, not read off the code** (the wreck, real
-`AddRoomCommand` + real `DesignateBuildCommand`, payloads read off `GameSession.Snapshot()`):
+no longer fire anywhere on that ship. **DRIVEN, not read off the code** (the wreck, the then-live
+`AddRoomCommand` + real `DesignateBuildCommand`, payloads read off `GameSession.Snapshot()`;
+M1-L-b has since deleted that command, which changes the recipe and not the result — the
+allocation only set an anchor's `RoomType`, which no fog, gas or build term reads):
 allocate deck-0 slot 1 `hall_d0_s1` ⇒ the room is airless (`0.000` kPa, `IsBreathable` false, i.e.
-＋ADD ROOM still conjures nothing); paint a wall at `(12,1,0)` ⇒ the tile reads `Explored = true`,
+＋ADD ROOM conjured nothing even then); paint a wall at `(12,1,0)` ⇒ the tile reads `Explored = true`,
 `designs` carries `[[12,1,0,0,0,2,0]]` **and `blocked` carries `[[12,1,0,2,0]]` — order 2
 (`OrderBuild`), reason 0 (`ReasonAir`).** ⇒ **The ghost and its reason now draw together on the
 wreck.** This is the **eighth trap shape** in the small: item b was true of the tree it was written
@@ -2851,9 +2896,16 @@ standard surface, i.e. an art decision. **Owner call, not an agent's.**
 the deck that `W4b-DEAD-DECK` proves can never hold air. The owner's decision on that defect was
 *"ship it filed, visible in play"* — this makes it more visible, not less true.
 
-⚠️ **The remaining five deck-0 halls are visible but still not ENTERABLE**: their machines now draw,
+⚠️ ~~**The remaining five deck-0 halls are visible but still not ENTERABLE**: their machines now draw,
 their slots still have no `anchorName`, and ＋ADD ROOM remains the path to naming them. Only slot 3
-was in M1-1's charter.
+was in M1-1's charter.~~ **CLOSED 2026-07-29 by M1-L (OD-K).** `GameSession.ResolveSlot` lost its
+`if (a.Type == RoomType.None) continue;` gate, so occupancy is GEOMETRY: all five halls now leave
+the host `occupied` and carrying their own `hall_d0_sN` anchor, which is what `roomTileRect`
+resolves, so they are enterable. **They are still UNTYPED and that is deliberate** — M1-L makes a
+compartment visible and enterable, it does not invent a purpose for it — so the Overview captions
+them from the anchor. There is no "path to naming them" any more: M1-L-b deleted the verb, the
+command and the enum member, and a room type is authoring-only (§2). Driven by
+`EveryCompartmentIsARoomTests.Wreck_EveryDeck0CompartmentLeavesTheHostOccupiedAndNamed`.
 
 **d. A BUILT DOOR STILL HAS NO REMOVAL VERB ON ANY SURFACE** (pre-existing, unchanged by these
 lanes, and now more visible because a door is finally a thing the player *touches*).

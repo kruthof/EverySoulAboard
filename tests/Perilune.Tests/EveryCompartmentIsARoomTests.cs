@@ -34,8 +34,9 @@ namespace Perilune.Tests
     ///
     /// <para><b>GATES N/A, stated so a reviewer does not score against them.</b> No def scalar, no new
     /// hashed field, no save-chapter change, no new <c>GlyphColor</c> id, and no <c>sim/</c>
-    /// behaviour change at all — the package's whole sim-side diff is one comment block on the now
-    /// dormant <c>AddRoomCommand</c>. All five determinism pins must be byte-identical.</para>
+    /// behaviour change at all — the package's whole sim-side diff was one comment block on the then
+    /// dormant <c>AddRoomCommand</c> (which <b>M1-L-b</b> has since deleted outright, along with
+    /// <c>CmdKind.AddRoom</c>). All five determinism pins must be byte-identical.</para>
     /// </summary>
     public class EveryCompartmentIsARoomTests
     {
@@ -511,18 +512,46 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// <b>THE DORMANT MEMBER IS STILL WHERE IT WAS.</b> <c>CmdKind.AddRoom</c> survives
-        /// deliberately: deleting an implicitly-numbered enum member renumbers every sibling after
-        /// it, which is a spine change and is filed as its own package (M1-L-b). Pin the ORDINALS, so
-        /// that deletion cannot happen by accident inside some other lane — and so that when M1-L-b
-        /// does it on purpose, this test is the checklist of what moves.
+        /// <b>⭐ THE DORMANT MEMBER IS GONE, AND THIS TEST IS THE RECEIPT FOR THE RENUMBER — M1-L-b.</b>
+        ///
+        /// <para>It was written under M1-L as the checklist of exactly what would move when
+        /// <c>CmdKind.AddRoom</c> (then ordinal 17, dormant) was finally deleted. M1-L-b deleted it
+        /// and the shift happened as predicted: <c>Dig</c> 18→17, <c>Operate</c> 23→22,
+        /// <c>WorkPriority</c> 24→23. The numbers below are the POST-deletion truth, so the test now
+        /// does the job it always did in the other direction — an accidental insertion, removal or
+        /// reorder inside some unrelated lane fails here and names itself.</para>
+        ///
+        /// <para><b>The ordinals have no consumer today, and that is the finding this pin protects</b>
+        /// rather than contradicts. Censused on the merged tree: the wire carries verb STRINGS
+        /// (<c>WebCommand.Parse</c> maps string→member; there is no number→member path), <c>CmdKind</c>
+        /// is in no save chapter and no <c>WireFormat*.cs</c>, and its only consumers compare MEMBERS.
+        /// That is precisely why the renumber was safe to take — and why a lane that gives the
+        /// ordinals a consumer must write the values out explicitly before doing so.</para>
+        ///
+        /// <para><b>AddRoom is asserted ABSENT by NAME, not by ordinal</b> — an ordinal assertion
+        /// cannot express "this member does not exist", and after a deletion that is the only thing
+        /// worth saying about it. A member added back would not compile against the old spelling, so
+        /// the reflection check is what makes the absence a test rather than a comment.</para>
         /// </summary>
         [Test]
-        public void CmdKindAddRoom_IsDormantButItsOrdinalIsPinned()
+        public void CmdKindOrdinals_ArePinned_AndAddRoomIsGone()
         {
-            Assert.That((int)CmdKind.AddRoom, Is.EqualTo(17));
-            Assert.That((int)CmdKind.Dig, Is.EqualTo(18), "Dig shifted — a CmdKind member was removed");
-            Assert.That((int)CmdKind.Operate, Is.EqualTo(23), "Operate shifted — a CmdKind member was removed");
+            Assert.That(Enum.GetNames(typeof(CmdKind)), Does.Not.Contain("AddRoom"),
+                "CmdKind.AddRoom came back — M1-L-b retired the verb, the sim command and the member " +
+                "on OD-K (\"we do not need 'add room' … on a ship where rooms are already existing\")");
+
+            Assert.That((int)CmdKind.Dig, Is.EqualTo(17), "Dig shifted — a CmdKind member moved");
+            Assert.That((int)CmdKind.Operate, Is.EqualTo(22), "Operate shifted — a CmdKind member moved");
+            Assert.That((int)CmdKind.WorkPriority, Is.EqualTo(23),
+                "WorkPriority shifted — it is the LAST member and new kinds are appended, so this is " +
+                "the one that moves whenever anything is inserted rather than appended");
+
+            // NON-VACUITY / inclusion: the members BEFORE the deleted one must NOT have moved, or
+            // "the ordinals are pinned" would be satisfied by an enum that had shifted wholesale.
+            Assert.That((int)CmdKind.Unknown, Is.EqualTo(0));
+            Assert.That((int)CmdKind.Remove, Is.EqualTo(16),
+                "Remove sat immediately BEFORE AddRoom and must be exactly where it was — the " +
+                "deletion may only shift members that came after it");
         }
 
         // ═══════════════════════════════════════════════════════════════════════════════ harness
@@ -538,8 +567,8 @@ namespace Perilune.Tests
         /// <summary>Render the session and pull one DECK's slot tuples out of the cached <c>decks</c>
         /// payload — the Snapshot a reconnecting client is caught up from. Parsed POSITIONALLY: the
         /// tuple <c>[slotIndex, x, y, w, h, anchorName, roomType, occupied, active]</c> IS the
-        /// contract, and a parser that named its fields would not notice a reorder. (Same shape as
-        /// <c>AddRoomCommandTests.SlotTuple</c>, widened from one slot to a deck.)
+        /// contract, and a parser that named its fields would not notice a reorder. (M1-L-b retired
+        /// the twin of this parser in <c>AddRoomCommandTests</c>; this is now the only one.)
         ///
         /// <para>⚠️ <b>THE PARSER READS <c>f[8]</c> — <c>active</c> — AND IT DID NOT UNTIL REVIEW.</b>
         /// The second commit's whole fix (deriving <c>active</c> from GAS rather than from the

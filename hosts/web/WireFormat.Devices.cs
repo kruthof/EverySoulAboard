@@ -229,8 +229,10 @@ namespace Perilune.Web
         /// reading the frame cannot tell a sealed compartment from a filling one.</para>
         ///
         /// <para>NOT VOLATILE: <c>IsOpen</c> is written by <c>SetDoorStateCommand</c> /
-        /// <c>SetDeviceStateCommand</c> and by <c>AddRoomCommand</c> — player and MOSS intent, never a
-        /// per-tick system. On <c>--ship wreck</c> at boot it is a constant. That is exactly the test
+        /// <c>SetDeviceStateCommand</c> — player and MOSS intent, never a per-tick system. (It also
+        /// named <c>AddRoomCommand</c>, which force-opened every bordering door; W4b deleted that
+        /// loop and M1-L-b deleted the command, so this list is now exhaustive rather than merely
+        /// current.) On <c>--ship wreck</c> at boot it is a constant. That is exactly the test
         /// <c>Powered</c>, <c>Progress</c> and <c>StoredLiters</c> fail, and they are still omitted for
         /// it: <c>PowerSystem.Balance</c> stamps <c>Powered</c> on EVERY drawing device once a second,
         /// so carrying it would make this payload differ on most renders even on a ship where nothing
