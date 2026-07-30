@@ -102,10 +102,12 @@ export const Cmd = {
   // device is exactly the case a silent toggle makes indistinguishable from a broken verb.
   operate: (x, y, deck) => ({ cmd: 'operate', x, y, deck }),
   // ⭐ M1-L: `addRoom` — the `{cmd:'addroom'}` sender — is DELETED. It was the client's ONLY route to
-  // `CmdKind.AddRoom`, and `GameSession` no longer parses the verb or routes it, so the sim's
-  // `AddRoomCommand` is now unreachable from any surface (it survives dormant; see its header for the
-  // package that retires it). Owner ruling 2026-07-29: *"we do not need 'add room' that makes no sense
-  // on a ship where rooms are already existing."*
+  // `CmdKind.AddRoom`, and `GameSession` no longer parses the verb or routes it. ⭐ M1-L-b then
+  // deleted the enum member and the sim's `AddRoomCommand` as well, so nothing named "add room"
+  // exists anywhere in the stack. Owner ruling 2026-07-29 (OD-K): *"we do not need 'add room' that
+  // makes no sense on a ship where rooms are already existing."* A stale browser tab can still send
+  // `{cmd:'addroom'}`; it decodes as `Unknown` and is dropped (pinned by
+  // `EveryCompartmentIsARoomTests.TheAddRoomVerb_NoLongerParses_AndAStaleClientIsIgnored`).
   // P2.1 chronicle: request the chron message (also pushed on day rollover).
   chron: () => ({ type: 'chron' }),
   // P2 conversation: open a talk with a crew member (by cid), stream a player line, or close.
