@@ -363,6 +363,10 @@ namespace Perilune.Tests
         /// ⇒ ⚠️ <b>IF THE OWNER REVERSES THE STRING (batch item 11), THIS BUDGET MOVES WITH IT.</b>
         /// It is <c>measured cost + 8</c> and nothing else; the leg below will say so if it is
         /// not.</para>
+        /// <para>⚠️ The byte figures above are THIS machine's calibration-time measurements and do
+        /// not transfer: the independent review measured <c>Enum.GetValues</c> at ~208 B/call on
+        /// the same tree. That is why the non-vacuity leg SELF-SIZES at runtime instead of
+        /// trusting any number written here — the prose is history, the leg is the guard.</para>
         /// </summary>
         [Test]
         public void TaskLabel_AddsNoPerCallAllocation_ForTheUnassignedBranch()

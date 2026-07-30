@@ -34,8 +34,9 @@
 //   6   give `.ov-crewtask.waiting` the idle colour   ⇒ RED 1: the Overview MUTATION 6 leg.
 //   6b  give `.rz-crewtask.waiting` the WORK colour   ⇒ RED 1: the Room Zoom leg — the cheap wrong
 //       fix (borrow amber) is caught by the three-way check, not by "waiting differs from idle".
-//   7   delete the WORK row from the card             ⇒ RED 1: `onboarding.test.js`'s first-order
-//       census (M1-B's own guard shape — no second guard was invented for it).
+//   7   delete the WORK row from the card             ⇒ RED 2: `onboarding.test.js`'s first-order
+//       census (M1-B's own guard shape — no second guard was invented for it) AND its pre-existing
+//       `claims.length >= 10` floor, which the WORK row takes to 11 (review-measured 2026-07-30).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
