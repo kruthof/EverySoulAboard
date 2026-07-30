@@ -220,6 +220,17 @@ namespace Perilune.Sim
                     if (citizen.IsRecruitableForWork) TryAssign(sim, citizen); // held + player-ordered crew never self-assign
                     continue;
                 }
+                // ⭐⭐ M2-8 — PRE-EMPTION, AND IT IS ASKED HERE BECAUSE THIS LOOP IS THE ONLY PLACE
+                // THAT SEES EVERY BUSY PAWN. The five M2-5 arbitration sites all answer "may I GIVE
+                // her work"; none of them can TAKE work back, because JobKind.Craft and
+                // JobKind.Maintain have no IJobSource at all and their systems only ever look at
+                // pawns who are already idle. This loop walks the citizen store unconditionally —
+                // a Craft/Maintain pawn reaches it and falls out at `owner == null` — so one check
+                // here reaches a pawn inside a maintenance chain exactly as it reaches a hauler.
+                // Putting it in TryAssign instead would reach nobody: TryAssign is only entered by
+                // pawns who have no job to lose.
+                if (TryPreempt(sim, citizen)) continue;
+
                 // THREE different things land on a null owner, and only one of them is fine:
                 //   (a) a kind this dispatcher legitimately does not drive — Eat/Drink
                 //       (SustenanceSystem), Craft (CraftingSystem), Maintain (MaintenanceSystem).
@@ -236,6 +247,63 @@ namespace Perilune.Sim
                 var owner = kind < _byKind.Length ? _byKind[kind] : null;
                 owner?.Progress(sim, citizen, _ctx);
             }
+        }
+
+        // -------------------------------------------------------------- pre-emption
+
+        /// <summary>
+        /// ⭐⭐ <b>M2-8 — TAKE A BUSY CREW MEMBER OFF HER JOB WHEN A STRICTLY BETTER-BANDED ONE IS
+        /// WAITING.</b> Returns true when she was pre-empted, in which case she holds no job, the
+        /// caller must not advance her this tick, and she is offered work again on the NEXT tick's
+        /// pass (the M2-0 spike measured that gap at exactly one tick: order at t=231 →
+        /// <c>Deconstruct</c> at t=232).
+        ///
+        /// <para><b>THE CANCEL IS <see cref="Simulation.CancelJob"/> AND THE CHOICE IS
+        /// LOAD-BEARING</b>, modelled line-for-line on the flee path (<c>SafetySystem.cs:233-238</c>),
+        /// which is the sim's one other pre-emption. <c>JobWork.AbandonJob</c> is the WEAKER path:
+        /// it clears job/work/path state and explicitly leaves reservations *"the CALLER's to
+        /// release first"*, so a pawn pre-empted through it walks away still holding her cargo —
+        /// <c>CarriedBy</c> pointing at a citizen with no job. <see cref="Simulation.CancelJob"/>
+        /// sets the stack down at her feet, clears <c>CarriedBy</c> AND <c>ReservedBy</c>, and
+        /// dirties the board so the stack re-enters the haul board. Everything else the M2-0 spike
+        /// measured survives untouched because it never lived on the pawn: a station's
+        /// <c>Progress</c> and a build site's delivered material are on the <c>Device</c> / the site.
+        /// Only her own <c>JobWorkTicks</c> countdown is lost.</para>
+        ///
+        /// <para>⛔ <b>THE SURVIVAL GUARD IS <see cref="WorkTypeMap.TryOf"/>, AND IT IS THE ONLY
+        /// ONE.</b> <c>Flee</c>, <c>Eat</c> and <c>Drink</c> are not WORK — they carry no
+        /// <see cref="WorkType"/>, the player's grid does not rank them, and pre-emption refuses
+        /// them here. There is deliberately no second, belt-and-braces check listing the three
+        /// kinds: two guards for one rule means neither can be shown to bite, and the failure mode
+        /// this protects against is a crew member who starves while being reassigned.
+        /// <c>PreemptionTests.SurvivalKinds_CarryNoWorkType_WhichIsTheWholeSurvivalGuard</c>
+        /// pins the premise.</para>
+        ///
+        /// <para><b>Known and accepted:</b> the offer query is optimistic (see
+        /// <see cref="IWorkOfferSource"/>), so a pre-emption whose better-banded claim then fails
+        /// leaves her idle for a tick and she re-takes the lower-banded job. The M1-H per-tile /
+        /// per-device backoff bounds that to one attempt per 5 s rather than a per-tick churn.</para>
+        /// </summary>
+        private static bool TryPreempt(Simulation sim, Citizen citizen)
+        {
+            // NOT WORK ⇒ untouchable. Flee/Eat/Drink (and None, which cannot reach here) — §12.3.
+            if (!WorkTypeMap.TryOf(citizen.JobKind, out var mine)) return false;
+            // Dead / held / mid-ordered-walk: taking the job would strand her, because the same
+            // facts stop anything from giving her another one.
+            if (!citizen.IsRecruitableIgnoringJob) return false;
+
+            int myBand = citizen.GetWorkPriority(mine);
+            // Off: she is working a type the player has since switched off. Finishing it is M2-2's
+            // decided behaviour (finish, then wait) and pre-emption does not second-guess it.
+            if (myBand == WorkPriority.Off) return false;
+            if (myBand == WorkPriority.Highest) return false; // nothing can outrank band 1
+
+            if (!WorkArbiter.HasOfferAboveBand(sim, citizen, myBand)) return false;
+
+            sim.CancelJob(citizen);   // drops cargo at her feet, unreserves, sets JobsDirty
+            citizen.ClearPath();      // CancelJob deliberately leaves the path (the flee path needs it)
+            citizen.OrderedMove = false;
+            return true;
         }
 
         // ------------------------------------------------------------------ board
@@ -530,11 +598,13 @@ namespace Perilune.Sim
         /// <see cref="TryAssign"/> excludes this dispatcher from its own arbitration. The generation
         /// is taken lazily, so a query that matches no source costs nothing.</para>
         /// </summary>
-        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type, bool asIfIdle)
         {
             int bit = 1 << (int)type;
             if ((_allSourceWorkMask & bit) == 0) return false;
-            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(type)) return false;
+            // M2-8: `asIfIdle` relaxes THIS gate and nothing else — see IWorkOfferSource.
+            if (!(asIfIdle ? citizen.IsRecruitableIgnoringJob : citizen.IsRecruitableForWork) ||
+                !citizen.CanTakeWorkType(type)) return false;
 
             long gen = 0;
             bool haveGen = false;

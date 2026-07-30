@@ -53,7 +53,7 @@ drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2
 | ✅ | M2-18 | `ReasonWorkTypeOff` — merged 2026-07-30, pin-neutral; the boot tile + M2-20's pawn word tell one story. FILED for owner: the work-type ▸ reach ranking is arguably invertible (see HANDOVER) | neutral DONE |
 | ✅ | M2-5 | cross-family ranking — merged 2026-07-30, both halves, blindings verified. PIN ROW M2-g DISCHARGED WITH NO MOVE (mechanism instrumented: no pinned fixture enables work). FILED: pull-vs-pull equal band still ties by distance (charter tension) | M2-g DONE |
 | 15 | M2-6 | the `why` line on `TaskLabel` | neutral |
-| 16 | M2-8 | pre-emption (0 lines in `sim/`, 3 host lines) | neutral |
+| ✅ | M2-8 | pre-emption — merged 2026-07-30 AHEAD of M2-6 (still in fix-back; disjoint files, no semantic coupling — the swap is deliberate and recorded). Check A = 0 proven for the revision-3 reason; the seam is `JobSystem.Tick`'s busy branch (`TryPreempt`), survival guard rides `WorkTypeMap.TryOf`. NOT browser-demonstrable until M2-19 (by charter) | neutral DONE |
 | 17 | M2-19 | the sticky claim (`HeldByOrder`) — "that machine, NOW" means holding, not cancelling | neutral |
 | 18 | M2-9 | `PrioritiseJobCommand` (+ emits `ReasonNoConsumable`) | neutral |
 | 19 | M2-10 | right-click *Prioritise: repair X* | neutral |
