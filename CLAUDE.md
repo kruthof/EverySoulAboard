@@ -1043,9 +1043,9 @@ object** (three objects would leave only the middle phase able to `stopPropagati
 
   | pin | value | enforced by |
   |---|---|---|
-  | scenario `--days 3 --seed 42` | `02257f5bce961570` | `ci.sh:31` (also twin-run equality) |
-  | tick-3000 golden | `326c68e00f2df496` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
-  | slice tick-3000 golden | `3fb1798a3a50cba0` | `Golden/slice_tick3000_hash.txt` |
+  | scenario `--days 3 --seed 42` | `c1bac287230e184e` | `ci.sh:31` (also twin-run equality) |
+  | tick-3000 golden | `482fd40c070b54e0` | `tests/Perilune.Tests/Golden/perilune_tick3000_hash.txt` |
+  | slice tick-3000 golden | `0dcbff3e167750d8` | `Golden/slice_tick3000_hash.txt` |
   | defs **defaults** (`SimDefs.Default.Checksum`) | `0c5ddbc07e41f07d` | `DefsChecksumTests.cs:79` |
   | defs **rules-inclusive** (the host's `defs:` print) | `09900b9a44119272` | `DefsChecksumTests.cs:169` |
 
