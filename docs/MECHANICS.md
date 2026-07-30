@@ -867,8 +867,19 @@ needs-material (`:193-216`).
 
 ### 6.2 `TryAssign` — the full selection order (`:242-422`)
 
-This is the whole labour-allocation policy. **There is no priority table and there are no
-skills.** For an idle citizen:
+> ⚠️ **PARTIALLY SUPERSEDED 2026-07-30 (M2-2 + M2-5, verified in `JobSystem.cs` /
+> `WorkArbiter.cs`).** There IS a priority table now: the per-citizen work grid (M2-1,
+> boots OFF everywhere) is enforced at five claim gates (M2-2), and `TryAssign` iterates
+> priority bands 1→4 OUTSIDE the distance argmin below, deferring to a push recruiter
+> (Crafting/Maintenance) holding a better band; the push recruiters ask
+> `WorkArbiter.HasBetterOfferThan` before claiming (M2-5). Equal band ties on
+> `WorkPriority.NaturalPriority` (OD-J) — except pull-vs-pull at the same band, which
+> still separates by distance (KNOWN LIMIT, filed). Within a band the text below is
+> still exact. One behavioural note: an empty pass that defers to a push offer returns
+> WITHOUT `ClearPath()`, where the old code always cleared — safe because a failed
+> `FindPath` leaves no residue. The "no skills" clause survives until M3-7.
+
+This is the whole labour-allocation policy as ORIGINALLY SHIPPED. For an idle citizen:
 
 1. Bail immediately if all four boards are empty.
 2. Bump the generation counter `_gen`, then loop:

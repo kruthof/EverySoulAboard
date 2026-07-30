@@ -117,6 +117,16 @@ namespace Perilune.Sim
             // Dig cannot silently ship an ungated kind.
             if (!WorkTypeMap.TryOf(e.Job, out var work) || !citizen.CanTakeWorkType(work)) return false;
             if (citizen.JobKind != JobKind.None) return false;
+            // ⭐ M2-5 (SITE 5) — THE ARBITRATION, for the same reason M2-2 put the veto here: the
+            // effect pipeline is BOUNDED BY the work grid and never overrides it. A grant is not
+            // exempt from the ranking the player set — if she has repair at a better band than
+            // mining and a machine is waiting, agreeing to dig would let the LLM path do what the
+            // dispatcher and both push recruiters have just been taught to refuse. Asked AFTER the
+            // idleness check, so this is only ever about work she is free to take.
+            //
+            // `asking: null` — this site is not a provider, so it excludes nobody; the ranking
+            // itself keeps `work` from being compared against its own family.
+            if (WorkArbiter.HasBetterOfferThan(sim, citizen, work, null)) return false;
 
             var target = e.Target;
             if (!sim.World.InBounds(target)) return false;

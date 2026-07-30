@@ -5,12 +5,12 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — test comments
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there).*
 
-## Current state (2026-07-30, autonomous overnight session — six merges)
+## Current state (2026-07-30, autonomous overnight session — NINE merges)
 
-**Gate on `main`: `./ci.sh` exit 0, 1439 dotnet + 1060 node, twin hashes MATCH at the NEW
-P1 `81733e27709f36e4`** (pin table in `CLAUDE.md`; re-measure before quoting). **P1/P3
-moved with M2-2, tag `pin/m2-e`** — a behaviour change, not a fold: the grid M2-1 stored is
-now read. P2 held (perilune's two crew are `HoldPosition`); P4/P5 held.
+**Gate on `main`: `./ci.sh` exit 0, 1460 dotnet + 1073 node, twin hashes MATCH at P1
+`81733e27709f36e4`** (pin table in `CLAUDE.md`; re-measure before quoting). **P1/P3 moved
+with M2-2, tag `pin/m2-e`**; pin rows `M1-c` and `M2-g` both discharged with NO move
+(measured + mechanism-verified, the pattern for "expected to move, held").
 
 **THE PHASE-1 OPENING BEAT WORKS END TO END** (driven in a real browser on the merged
 tree): boot → WORK tab all-off, the pawn wanders unassigned → set Repair 3 → she walks to
@@ -29,21 +29,25 @@ claim-time ruling), then takes nothing new. Merged this session, in order:
   survival doors ruled ungated and PINNED; 138 test call sites moved to explicit
   `GiveAllWork` (OD-I). **This delivers OD-G: the pawn boots idle and waiting.**
 
-Every package: Opus implementer + separate independent reviewer; two send-backs (M1-L-b
-docs/comments; M2-3 one comment), both fixed and re-verified before merge.
+Then, same session: **M2-20** "Awaiting orders"/"Idle" from one host authority, both docks,
+the card teaches WORK as the first order · **M2-18** `ReasonWorkTypeOff = 4` on the tile,
+ALL-not-ANY, air outranks it — the boot tile and the pawn word now tell one story ·
+**M2-5** the band loop + push gate (both halves; the spike's half-done signature is pinned
+by blinded legs both ways; equal band ties on `NaturalPriority`). Every package: Opus
+implementer + separate independent reviewer; three send-backs (M1-L-b, M2-3, M2-18 — all
+comment/record defects), each fixed and re-verified before merge.
 
-## Next (from `docs/ROADMAP.md` §3)
+## Next (from `docs/ROADMAP.md` §3 — the remaining M2 queue, in merge order)
 
-1. **M2-20** "the ship is waiting on you" (OD-G's words) — was chartered for the SAME
-   window as M2-2, so it is now the top item: without it a boot pawn reading
-   `Walking to 7,9 (no task)` and a hung game look identical. Integrator defaults already
-   recorded (plan §3.5): two words *unassigned* vs *idle*; "first order" = any
-   job-taking command incl. a WORK-tab toggle. Owner may overturn on sight.
-2. **M2-18** `ReasonWorkTypeOff` on the blocked channel (position 13) — under OD-H the
-   FIRST order a new player paints is refused for exactly this reason; M2-20 owns the
-   vocabulary, M2-18 consumes it (serialize: M2-20 first, both touch `GameSession.cs`).
-3. Then M2-5 (cross-family ranking, PIN `M2-g`, integrator lane, strictly serialized
-   against M2-2's files) · M2-6 (`why` line) · M2-8 (pre-emption) · M2-19 (sticky claim).
+1. **M2-6** the `why` line on `TaskLabel` (pos 15, neutral) — consumes M2-20's vocabulary;
+   its charter is already OD-H-corrected (packages.md ~2712).
+2. **M2-8** pre-emption (pos 16, neutral, "0 lines in sim/, 3 host lines") · **M2-19**
+   sticky claim (17) · **M2-9** `PrioritiseJobCommand` (18) · **M2-10** right-click
+   prioritise (19).
+3. **M2-11** off-network authoring (20, PIN `M2-c`) → **M2-12** `EffectiveRate` — THE
+   LIGHTS-COME-BACK package, the phase-1 exit gate (21, PIN `M2-d` = rollback point) →
+   **M2-17** teach the harness to author a grid (22, INFRA; note M2-5's coverage caveat:
+   after the veto the P1 run exercises no job system at all until M2-17 lands).
 
 ## Open on the owner
 
@@ -74,6 +78,12 @@ Nothing blocking. New, from this session's merges (review as you play):
   safe only because phase A now stamps — documented at the seam.
 - `Citizen.WorkIncapable` exists sim-side but is not on the `work` wire — the WORK tab
   cannot render an incapable cell (RimWorld's greyed row). File into M3-7/M3-12.
+- M2-5: pull-vs-pull equal-band ties still separate by DISTANCE, not `NaturalPriority`
+  (Construct@2 + Haul@2, nearer haul wins — contradicts OD-J's 700>100). A charter
+  tension resolved toward the binding argmin-per-band shape; KNOWN LIMIT in
+  `WorkArbiter.cs`'s header; fix is one argmin per (band, work type), no `Select` change.
+- M2-2's G5 still OFFERS the LLM a dig that M2-5's arbitration then refuses at grant —
+  charter-correct, possible M4 dialogue wrinkle (she agrees, then ranks it lower).
 - `designs` not fog-gated while `blocked` is — closed on wreck, live on grid/slice/perilune.
 - A machine below the wreck floor with no consumable stays needy forever (3 item-store
   scans at 1 Hz, per device).
@@ -94,4 +104,4 @@ Nothing blocking. New, from this session's merges (review as you play):
 | 07-29 pm | m1-f/h/d/i/k | morale bar gone, craft thrash gone, unreachable reason on tile, 11 repair consumables, pawn select+MOVE in Room Zoom | green |
 | 07-29 pm | m2-1 + m1-l | work-priority state (hashed, OFF), every compartment IS a room | green, P1–P3 re-pinned `pin/m2-a` |
 | 07-29 late | doc-restructure | docs only: TARGET/ROADMAP/PROCESS/TRAPS created; CLAUDE.md + HANDOVER cut ~10×; history archived | green, pins held |
-| 07-30 | m1-g·m2-21·m2-4·m1-l-b·m2-3·m2-2 | **the RimWorld loop's first beat is playable**: WORK tab on the Overview, boots all-off, set Repair → she repairs, off mid-job → she finishes then waits; BUILD-behind-door backs off visibly; ADD ROOM fully gone | green, P1/P3 re-pinned `pin/m2-e` |
+| 07-30 | nine lanes (m1-g·m2-21·m2-4·m1-l-b·m2-3·m2-2·m2-20·m2-18·m2-5) | **the RimWorld loop's first act is playable**: boot reads "Awaiting orders" + the tile says nobody is assigned; WORK tab (all-off) → set Repair → she repairs → off mid-job → finishes then waits; priorities RANK across families (Repair@1/Haul@4 means it); BUILD-behind-door backs off visibly; ADD ROOM fully gone | green, P1/P3 re-pinned `pin/m2-e`; M1-c+M2-g discharged no-move |

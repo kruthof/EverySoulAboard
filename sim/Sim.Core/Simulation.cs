@@ -224,6 +224,38 @@ namespace Perilune.Sim
             Scripts.Add(new ScriptEntry(terminalId, source));
         }
 
+        // --- M2-5: the arbitration's provider list. DERIVED, NEVER SAVED, NEVER HASHED — it is a
+        // filtered VIEW of _systems, which is fixed at construction, so it can be built once and
+        // never invalidated. It lives here rather than in WorkArbiter for two reasons, and both are
+        // load-bearing: the arbitration must have NO state of its own (nothing to save, nothing to
+        // cross-talk between parallel sims), and `sim.Systems` is an untyped escape hatch whose
+        // every caller is pinned by ArchitectureBoundaryTests — resolving once, here, keeps the
+        // arbitration out of that census and off the per-tick array walk it would otherwise pay.
+        private IWorkOfferSource[] _workOfferSources;
+
+        /// <summary>
+        /// M2-5 — the registered <see cref="IWorkOfferSource"/>s in system registration order (the
+        /// order <see cref="WorkArbiter"/> resolves ties of last resort in). Built lazily on first
+        /// use and cached: the system array is fixed at construction, so this can never go stale.
+        /// Empty on a stack that registers none, which is exactly what makes the arbitration inert
+        /// for the many fixtures that build a reduced stack.
+        /// </summary>
+        internal IWorkOfferSource[] WorkOfferSources
+        {
+            get
+            {
+                if (_workOfferSources != null) return _workOfferSources;
+                int count = 0;
+                for (int i = 0; i < _systems.Length; i++) if (_systems[i] is IWorkOfferSource) count++;
+                var found = new IWorkOfferSource[count];
+                int next = 0;
+                for (int i = 0; i < _systems.Length; i++)
+                    if (_systems[i] is IWorkOfferSource provider) found[next++] = provider;
+                _workOfferSources = found;
+                return _workOfferSources;
+            }
+        }
+
         // --- Load-time restore hooks (used by SaveReader/Writer; same assembly) ---
         internal ISimSystem[] Systems => _systems;
         internal uint NextEntityId => _nextEntityId;

@@ -45,7 +45,7 @@ namespace Perilune.Sim
     /// HashSets/Dictionaries used for O(1) lookups only (never iterated), no RNG, no LINQ, no
     /// lambdas. Steady state (no designations, no haulable items) does not allocate.
     /// </summary>
-    public sealed class JobSystem : ISimSystem
+    public sealed class JobSystem : ISimSystem, IWorkOfferSource
     {
         public string Name => "Jobs";
         public int IntervalTicks => 1;
@@ -80,6 +80,12 @@ namespace Perilune.Sim
         /// failure message rather than leaving it to be discovered.</para>
         /// </summary>
         private readonly byte[] _sourceWorkMask;
+
+        /// <summary>M2-5: the OR of <see cref="_sourceWorkMask"/> — every work type this dispatcher
+        /// can hand out, built once at registration. It is <see cref="OfferedWorkTypes"/>, i.e. what
+        /// <see cref="WorkArbiter"/> uses to decide whether to ask this dispatcher about a type at
+        /// all.</summary>
+        private byte _allSourceWorkMask;
 
         /// <summary>
         /// THE REGISTRATION. Adding a job kind is one new file plus one line here — and the line's
@@ -121,6 +127,7 @@ namespace Perilune.Sim
                 if (src is IJobTileScanner ts) _tileScanners[next++] = ts;
                 var kinds = src.HandledKinds;
                 _sourceWorkMask[i] = WorkTypeMap.MaskOfKinds(kinds); // M2-2 (G1), read once, like _byKind
+                _allSourceWorkMask |= _sourceWorkMask[i];             // M2-5, same registration read
                 for (int k = 0; k < kinds.Length; k++)
                 {
                     int slot = (int)kinds[k];
@@ -292,6 +299,28 @@ namespace Perilune.Sim
         /// </summary>
         private void TryAssign(Simulation sim, Citizen citizen)
         {
+            // ⭐⭐ M2-5 — THE BAND LOOP, AND ITS SHAPE IS AN INTEGRATOR RULING.
+            //
+            // The argmin below is DISTRIBUTED: `Select` threads the running minimum THROUGH the
+            // providers and `:334`'s guard enforces it. A (priority, distance) comparison key would
+            // therefore change IJobSource.Select's signature and the contract of every source, and
+            // that is rejected. What is built instead is banding by SOURCE PARTICIPATION: iterate
+            // the player's four priority bands on the OUTSIDE and run the EXISTING, UNMODIFIED
+            // argmin once per band over only the sources that sit at that band for THIS citizen.
+            // Inside a band the bestDist threading is byte-for-byte shipped behaviour. Up to four
+            // passes instead of one; zero signature change; zero change across the four sources.
+            //
+            // ⛔ AND NOT A SystemStack REORDER EITHER: a reorder inverts a fixed GLOBAL precedence
+            // (repair beats haul for every pawn always), so it cannot express Haul@1/Repair@4 and
+            // delivers none of OD-A.
+            //
+            // ⭐ THIS IS ONLY HALF OF THE FIX, and the half the owner does not care about. See
+            // WorkArbiter for the measurement: JobKind.Maintain and JobKind.Craft have no
+            // IJobSource at all, MaintenanceSystem frees and re-claims the same pawn inside one
+            // tick, and a dispatcher-only version of this loop was byte-identical to no change at
+            // all on the running-chain case. The other half is the PUSH GATE in
+            // MaintenanceSystem/CraftingSystem.
+            //
             // Also the loop bound: every failed claim consumes at least one candidate (the source
             // must stamp what it refused), so the pass can iterate at most once per candidate plus
             // one final look that finds nothing.
@@ -314,61 +343,104 @@ namespace Perilune.Sim
             }
             if (candidates == 0) return; // nothing on any board: leave the citizen (and his path) untouched
 
-            long gen = _ctx.NextGen();
-            IJobSource lastRefusal = null;
-
-            for (int attempt = 0; attempt <= candidates; attempt++)
+            for (int band = WorkPriority.Highest; band <= WorkPriority.Lowest; band++)
             {
-                int bestSource = -1, bestCandidate = -1, bestDist = int.MaxValue;
+                int bandCandidates = 0;
                 for (int s = 0; s < _sources.Length; s++)
                 {
-                    // M2-2 (G1): a work type the player switched off is never even OFFERED, so the
-                    // source's Select is not called and no generation stamp is spent on it.
-                    if (!CanTakeFrom(citizen, s)) continue;
-                    int cand = _sources[s].Select(sim, citizen, bestDist, gen, out int d);
-                    // `d >= bestDist` is not paranoia about our own three sources: the argmin is a
-                    // running minimum threaded THROUGH the providers, so one source reporting a
-                    // worse distance would RAISE the bar and silently corrupt the filtering of every
-                    // source after it. Enforced here rather than trusted, because the dispatcher is
-                    // the only file the integrator reviews.
-                    if (cand < 0 || d >= bestDist) continue;
-                    bestDist = d;
-                    bestSource = s;
-                    bestCandidate = cand;
+                    if (!CanTakeFrom(citizen, s, band)) continue;
+                    bandCandidates += _sources[s].CandidateCount;
                 }
 
-                if (bestSource < 0)
+                // ⭐ THE DEFER HALF. Asked ONCE per band, before the band's argmin, so the answer
+                // cannot change under the retry loop. -1 means "no push recruiter has anything for
+                // her at this band"; otherwise it is the natural priority of the best thing one of
+                // them is holding. `asking: this` is load-bearing — see WorkArbiter.BestOfferAtBand,
+                // the dispatcher must not probe its own sources from inside a selection pass.
+                int pushNatural = WorkArbiter.BestOfferAtBand(sim, citizen, band, this);
+
+                if (bandCandidates > 0)
                 {
-                    citizen.ClearPath(); // normalize after any failed FindPath attempts
-                    return;
+                    long gen = _ctx.NextGen();
+                    IJobSource lastRefusal = null;
+                    bool exhausted = false;
+
+                    for (int attempt = 0; attempt <= bandCandidates; attempt++)
+                    {
+                        int bestSource = -1, bestCandidate = -1, bestDist = int.MaxValue;
+                        for (int s = 0; s < _sources.Length; s++)
+                        {
+                            // M2-2 (G1): a work type the player switched off is never even OFFERED,
+                            // so the source's Select is not called and no generation stamp is spent
+                            // on it. M2-5 narrows the same test to THIS band.
+                            if (!CanTakeFrom(citizen, s, band)) continue;
+                            int cand = _sources[s].Select(sim, citizen, bestDist, gen, out int d);
+                            // `d >= bestDist` is not paranoia about our own three sources: the
+                            // argmin is a running minimum threaded THROUGH the providers, so one
+                            // source reporting a worse distance would RAISE the bar and silently
+                            // corrupt the filtering of every source after it. Enforced here rather
+                            // than trusted, because the dispatcher is the only file the integrator
+                            // reviews. ⚠️ M2-5 does not weaken this: the band restricts WHICH
+                            // sources are asked and changes nothing about the minimum they thread.
+                            if (cand < 0 || d >= bestDist) continue;
+                            bestDist = d;
+                            bestSource = s;
+                            bestCandidate = cand;
+                        }
+
+                        if (bestSource < 0) { exhausted = true; break; } // this band is spent
+
+                        // ⭐ EQUAL BAND: ties break by the work type's NaturalPriority constant
+                        // (OD-J, RimWorld §1.3), never by column order, enum order or registration
+                        // order. A push recruiter holding higher-ranked work at the SAME band wins,
+                        // and the pawn is left idle for it — it claims her later in this same tick
+                        // (CraftingSystem and MaintenanceSystem are registered after this system).
+                        if (pushNatural > NaturalOfSourceAtBand(citizen, bestSource, band)) return;
+
+                        lastRefusal = _sources[bestSource];
+                        if (lastRefusal.TryClaim(sim, citizen, bestCandidate, gen, _ctx)) return;
+                    }
+
+                    if (!exhausted)
+                        // Unreachable with a conforming source. A source that refuses a candidate
+                        // without stamping it (and without a backoff) re-offers it forever:
+                        // measured, that is a SILENT HANG — no exception, no log, the sim just stops
+                        // advancing. Fail loudly and name the culprit instead; this is the one place
+                        // that can defend against a provider.
+                        //
+                        // TWO faults land here and the message must not presume one: a source that
+                        // does not stamp what it refused, or a source that UNDER-REPORTS
+                        // CandidateCount (measured: a source stamping correctly but declaring 3 of
+                        // its 4 candidates throws exactly this way). Naming only the first sends a
+                        // lane hunting a stamping bug that isn't there.
+                        throw new InvalidOperationException(
+                            $"job source '{lastRefusal.Name}' (CandidateCount {lastRefusal.CandidateCount}) " +
+                            $"refused a candidate {bandCandidates + 1} times in one selection pass at " +
+                            $"priority band {band}, which is bounded by the total declared count across " +
+                            $"that band's sources ({bandCandidates}) — it is either not stamping refused " +
+                            "candidates (see IJobSource.TryClaim) or under-reporting CandidateCount");
                 }
 
-                lastRefusal = _sources[bestSource];
-                if (lastRefusal.TryClaim(sim, citizen, bestCandidate, gen, _ctx)) return;
+                // Nothing claimable in this band's own sources. If a push recruiter holds ANYTHING
+                // at this band, she waits for it rather than dropping to the next band — that is
+                // what makes Repair@1 beat Haul@4 when only the haul has an IJobSource.
+                if (pushNatural >= 0) return;
             }
 
-            // Unreachable with a conforming source. A source that refuses a candidate without
-            // stamping it (and without a backoff) re-offers it forever: measured, that is a
-            // SILENT HANG — no exception, no log, the sim just stops advancing. Fail loudly and
-            // name the culprit instead; this is the one place that can defend against a provider.
-            //
-            // TWO faults land here and the message must not presume one: a source that does not
-            // stamp what it refused, or a source that UNDER-REPORTS CandidateCount (measured: a
-            // source stamping correctly but declaring 3 of its 4 candidates throws exactly this
-            // way). Naming only the first sends a lane hunting a stamping bug that isn't there.
-            throw new InvalidOperationException(
-                $"job source '{lastRefusal.Name}' (CandidateCount {lastRefusal.CandidateCount}) refused " +
-                $"a candidate {candidates + 1} times in one selection pass, which is bounded by the " +
-                $"total declared count across all sources ({candidates}) — it is either not stamping " +
-                "refused candidates (see IJobSource.TryClaim) or under-reporting CandidateCount");
+            citizen.ClearPath(); // normalize after any failed FindPath attempts
         }
 
         /// <summary>
         /// M2-2 (G1) — may <paramref name="citizen"/> take ANY of the work source
         /// <paramref name="s"/> hands out? An indexed test over a cached six-bit mask: no
-        /// allocation, no enumeration, no RNG, so it is safe in the two places
-        /// <see cref="TryAssign"/> calls it (the candidate sum and the selection loop) even though
-        /// both run per citizen per tick.
+        /// allocation, no enumeration, no RNG, so it is safe in the places
+        /// <see cref="TryAssign"/> calls it even though they run per citizen per tick.
+        ///
+        /// <para>This band-less form survives M2-5 for ONE caller: the whole-pass candidate sum,
+        /// whose job is the OD-H early-out — <c>candidates == 0</c> must mean "there is no work for
+        /// her anywhere", so an idle pawn keeps her wander path instead of having
+        /// <see cref="Citizen.ClearPath"/> called on her every tick. Banding that sum would make it
+        /// mean "no work at band 1", which is a different sentence.</para>
         /// </summary>
         private bool CanTakeFrom(Citizen citizen, int s)
         {
@@ -376,6 +448,104 @@ namespace Perilune.Sim
             if (mask == 0) return true; // hands out no player-assignable work — not the veto's business
             for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
                 if ((mask & (1 << t)) != 0 && citizen.CanTakeWorkType((WorkType)t)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// M2-5 — does source <paramref name="s"/> participate at priority band
+        /// <paramref name="band"/> for <paramref name="citizen"/>? The band loop's restriction, and
+        /// the ONLY thing that differs between the four passes.
+        ///
+        /// <para>A source that hands out no player-assignable work (mask 0) has no band of its own,
+        /// so it is placed at <see cref="WorkPriority.Highest"/> — offered once, in the first pass,
+        /// never starved by a grid it has nothing to do with. There is no such source today;
+        /// <c>WorkTypeVetoTests.EverySource_SpansExactlyOneWorkType</c> pins that, and this line is
+        /// what a future one would fall into rather than out of.</para>
+        /// </summary>
+        private bool CanTakeFrom(Citizen citizen, int s, int band)
+        {
+            byte mask = _sourceWorkMask[s];
+            if (mask == 0) return band == WorkPriority.Highest;
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+            {
+                if ((mask & (1 << t)) == 0) continue;
+                var type = (WorkType)t;
+                if (citizen.GetWorkPriority(type) != band) continue;
+                if (citizen.CanTakeWorkType(type)) return true; // INCAPABLE ≠ disabled
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// M2-5 — the <see cref="WorkPriority.NaturalPriority"/> the equal-band tie-break compares
+        /// source <paramref name="s"/> at: the highest-ranked of the work types it hands out that
+        /// sit at <paramref name="band"/> for this citizen. Every shipped source spans exactly one
+        /// work type (pinned), so today this is simply "that type's constant"; the max is what a
+        /// two-type source would get, and it is the generous direction (such a source is not
+        /// out-ranked on account of its weaker half).
+        ///
+        /// <para>A mask-0 source returns <see cref="int.MaxValue"/> — nothing can out-rank work the
+        /// player was never offered a switch for.</para>
+        /// </summary>
+        private int NaturalOfSourceAtBand(Citizen citizen, int s, int band)
+        {
+            byte mask = _sourceWorkMask[s];
+            if (mask == 0) return int.MaxValue;
+            int best = -1;
+            for (int t = 0; t < WorkPriority.WorkTypeCount; t++)
+            {
+                if ((mask & (1 << t)) == 0) continue;
+                var type = (WorkType)t;
+                if (citizen.GetWorkPriority(type) != band || !citizen.CanTakeWorkType(type)) continue;
+                int natural = WorkPriority.NaturalPriority(type);
+                if (natural > best) best = natural;
+            }
+            return best;
+        }
+
+        // ------------------------------------------------------------- arbitration (site 2)
+
+        /// <summary>M2-5: every work type this dispatcher's registered sources hand out, OR-ed once
+        /// at registration. <see cref="IWorkOfferSource.OfferedWorkTypes"/>.</summary>
+        public byte OfferedWorkTypes => _allSourceWorkMask;
+
+        /// <summary>
+        /// ⭐ <b>M2-5 ARBITRATION SITE 2 — THE DISPATCHER'S FAN-OUT, AND THE ONE OF THE FIVE THAT
+        /// ANSWERS RATHER THAN ASKS.</b> Modelled on <see cref="IsBackedOff"/> and on
+        /// <see cref="Tick"/>'s <c>BeginTick</c> fan-out: a caller asks ONE question about a crew
+        /// member instead of walking <see cref="Sources"/> and knowing which concrete classes exist.
+        /// Delete it (or make it always answer <c>false</c>) and the two push recruiters can never
+        /// see the dispatcher's work — <c>Mine@1</c> would lose to <c>Repair@4</c> with no gate
+        /// anywhere reporting it, which is why it carries its own blinded leg.
+        ///
+        /// <para><b>AS STRONG AS THE PULL CLAIM MINUS THE PATH.</b> It runs the real
+        /// <see cref="IJobSource.Select"/> — so staleness, another pawn's claim, the per-tile
+        /// unreachable backoff and the board's own validity are all honoured — and stops short of
+        /// <see cref="IJobSource.TryClaim"/>, which is the whole-region A*. That is the optimism
+        /// <see cref="IWorkOfferSource"/> describes, at the strongest point that is affordable.</para>
+        ///
+        /// <para>⚠️ <b>IT SPENDS A GENERATION AND WRITES GENERATION STAMPS</b>, exactly as a real
+        /// selection pass does — which is safe because stamps are per-pass scratch that carry no
+        /// meaning past the pass that wrote them, and unsafe from INSIDE a live pass, which is why
+        /// <see cref="TryAssign"/> excludes this dispatcher from its own arbitration. The generation
+        /// is taken lazily, so a query that matches no source costs nothing.</para>
+        /// </summary>
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        {
+            int bit = 1 << (int)type;
+            if ((_allSourceWorkMask & bit) == 0) return false;
+            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(type)) return false;
+
+            long gen = 0;
+            bool haveGen = false;
+            for (int s = 0; s < _sources.Length; s++)
+            {
+                if ((_sourceWorkMask[s] & bit) == 0) continue;
+                if (_sources[s].CandidateCount == 0) continue;
+                if (!haveGen) { gen = _ctx.NextGen(); haveGen = true; }
+                // int.MaxValue: every source filters on strict `<`, so this admits its whole board.
+                if (_sources[s].Select(sim, citizen, int.MaxValue, gen, out _) >= 0) return true;
+            }
             return false;
         }
     }

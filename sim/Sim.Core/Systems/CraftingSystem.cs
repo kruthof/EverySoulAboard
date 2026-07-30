@@ -63,7 +63,7 @@ namespace Perilune.Sim
     /// RNG, no LINQ. Steady state (stations but no inputs) allocates nothing —
     /// <see cref="ProductionBill"/> is a struct over arrays that already exist.
     /// </summary>
-    public sealed class CraftingSystem : ISimSystem
+    public sealed class CraftingSystem : ISimSystem, IWorkOfferSource
     {
         public string Name => "Crafting";
         public int IntervalTicks => 10; // 1 Hz
@@ -117,11 +117,11 @@ namespace Perilune.Sim
         private BuildSystem _build;
         private bool _buildResolved;
         private bool _buildWantsMaterial;
+        private long _buildDemandTick = -1;
 
         public void Tick(Simulation sim)
         {
-            if (!_buildResolved) { _build = FindBuildSystem(sim); _buildResolved = true; }
-            _buildWantsMaterial = ComputeBuildDemand(sim);
+            BuildWantsMaterial(sim);
 
             ReleaseOrphanedWorkers(sim);
 
@@ -168,7 +168,7 @@ namespace Perilune.Sim
             {
                 // Builders have first call on this material: hold the staged set and wait — a
                 // batch a builder is starving is NOT dead, and its inputs stay claimed.
-                if (FetchBlockedForBuilds(recipe)) return; // nothing to do — zero-alloc idle
+                if (FetchBlockedForBuilds(sim, recipe)) return; // nothing to do — zero-alloc idle
                 // Otherwise, if there is no un-staged input left to fetch, the batch is DEAD:
                 // no worker, and the set can never be completed. Free this station's staged
                 // claim so the stranded inputs re-enter the pool (B-1 — an ownerless staged
@@ -310,7 +310,7 @@ namespace Perilune.Sim
         /// </summary>
         private void StepFetch(Simulation sim, Device station, in ProductionBill recipe, Citizen worker, Int3 staging)
         {
-            if (FetchBlockedForBuilds(recipe))
+            if (FetchBlockedForBuilds(sim, recipe))
             {
                 Abandon(sim, station, worker); // builders have first call on this material — free the citizen
                 return;
@@ -456,11 +456,96 @@ namespace Perilune.Sim
         /// bench that can never finish) is now handled by the demand predicate itself: the gate
         /// releases as soon as no pending site can be funded, so the bench always gets its turn.
         /// </summary>
-        private bool FetchBlockedForBuilds(in ProductionBill recipe)
+        private bool FetchBlockedForBuilds(Simulation sim, in ProductionBill recipe)
         {
-            if (!_buildWantsMaterial) return false;
+            if (!BuildWantsMaterial(sim)) return false;
             for (int i = 0; i < recipe.InputPortCount; i++)
                 if (recipe.Input(i).Kind == BuildSystem.Material) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// ⭐ <b>M2-5 — MEMOISED PER TICK, AND THE MEMO IS FOR CORRECTNESS OF THE DEFER, NOT FOR
+        /// SPEED. DO NOT DELETE IT AS A PERF ITEM.</b> (That is not hypothetical: this repo has
+        /// already measured a caching change worth ~1 % and not separable from noise, and the lesson
+        /// taken from it was that a cache with no correctness argument is dead weight. This one has
+        /// the argument.)
+        ///
+        /// <para><see cref="ComputeBuildDemand"/> used to be evaluated at exactly one moment — the
+        /// top of this system's own 1 Hz <see cref="Tick"/> — and stored in a field that only
+        /// <see cref="FetchBlockedForBuilds"/> read. M2-5 gives it a SECOND reader on a DIFFERENT
+        /// cadence: <see cref="HasClaimableWork"/> is asked by <see cref="WorkArbiter"/> from inside
+        /// <see cref="JobSystem"/>'s 10 Hz pass, earlier in the same tick and on the nine ticks in
+        /// ten when this system does not run at all. Reading the stale field there would let the
+        /// query answer "yes, this bench can be worked" about a bench whose very next claim path
+        /// refuses for want of material — <b>the defer query and the claim disagreeing is exactly
+        /// the shape that stalls a band silently</b> (the M2-0 spike's own bug: a query that could
+        /// not see <see cref="AllInputsStaged"/> / build demand cost a four-pawn fixture 40 782
+        /// ticks with no error and no log).</para>
+        ///
+        /// <para>⇒ The memo is keyed on <see cref="Simulation.TickCount"/> so that <b>every reader
+        /// within one tick sees ONE value</b>, whichever of them asked first. It is not saved and
+        /// not hashed: it is a per-tick derivation of state that is already saved.</para>
+        /// </summary>
+        private bool BuildWantsMaterial(Simulation sim)
+        {
+            if (_buildDemandTick == sim.TickCount) return _buildWantsMaterial;
+            if (!_buildResolved) { _build = FindBuildSystem(sim); _buildResolved = true; }
+            _buildWantsMaterial = ComputeBuildDemand(sim);
+            _buildDemandTick = sim.TickCount;
+            return _buildWantsMaterial;
+        }
+
+        // ------------------------------------------------------------- arbitration (answering)
+
+        /// <summary>M2-5: this system hands out exactly <see cref="WorkType.Craft"/>.</summary>
+        public byte OfferedWorkTypes => 1 << (int)WorkType.Craft;
+
+        /// <summary>
+        /// M2-5 — <b>WOULD A BENCH TAKE THIS CREW MEMBER RIGHT NOW?</b>
+        ///
+        /// <para>⭐ <b>THIS IS THE QUERY THE M2-0 SPIKE GOT WRONG, AND ITS BUG IS THE REASON THE
+        /// PACKAGE IS SIZE L.</b> The spike's version could not see <see cref="AllInputsStaged"/> or
+        /// the build-material gate — both computed later in this system's own <c>Tick</c> — so it
+        /// answered "yes" for benches that would never offer anything, and with four pawns the
+        /// low-band order was <b>never served in 40 000 ticks</b> (it took 40 782). There is no
+        /// error and no log: an over-reporting defer looks exactly like "the pawn is busy".</para>
+        ///
+        /// <para>⇒ <b>EVERY EARLY RETURN OF <see cref="TickStation"/>'s recruiting half is mirrored
+        /// below, in its order.</b> The stall is unbounded precisely because a station that returns
+        /// early never ATTEMPTS a claim and therefore never stamps the M1-H backoff that would
+        /// otherwise break it. The one thing deliberately not mirrored is
+        /// <c>FindNearestReachableIdle</c>'s A* probe — the expensive half of the claim, and the
+        /// optimism <see cref="IWorkOfferSource"/> declares.</para>
+        /// </summary>
+        public bool HasClaimableWork(Simulation sim, Citizen citizen, WorkType type)
+        {
+            if (type != WorkType.Craft) return false;
+            if (!citizen.IsRecruitableForWork || !citizen.CanTakeWorkType(WorkType.Craft)) return false;
+
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var station = devices[i];
+                if (!TryGetBill(sim.Defs, station.Kind, out var recipe)) continue;
+                if (FindWorker(sim, station.Pos) != null) continue;             // already crewed
+                if (!TryFindStagingTile(sim, station.Pos, out _)) continue;     // walled in
+                if (!station.Powered || !station.IsOperational(sim.Defs)) continue;
+                if (!WaterSystem.HasMeltHeadroom(sim, station, recipe)) continue; // E0-7 backpressure
+
+                bool canStart = station.Progress > 0f || AllInputsStaged(sim, station.Pos, recipe);
+                if (!canStart)
+                {
+                    // ⛔ THE TWO LINES THE SPIKE DID NOT HAVE. Without them a bench with un-staged
+                    // inputs, or one whose material a builder has first call on, reports itself
+                    // claimable forever and every pawn at or below the Craft band waits for it.
+                    if (FetchBlockedForBuilds(sim, recipe)) continue;
+                    if (!AnyFetchCandidate(sim, station.Pos, recipe)) continue;
+                }
+
+                if (_backoff.IsBackedOff(sim, station.Id)) continue; // M1-H: refused within the last 5 s
+                return true;
+            }
             return false;
         }
 
@@ -571,6 +656,16 @@ namespace Perilune.Sim
                     // wrong subject: the bench is fine, and the moment the player ticks Craft on she
                     // must be picked up on the next pass, not up to five seconds later.
                     if (!c.CanTakeWorkType(work)) continue;
+                    // ⭐⭐ M2-5 (SITE 4) — THE PUSH GATE. A bench must not take a crew member whose
+                    // best available work sits at a better band: this recruiter never passes through
+                    // the dispatcher, so the band loop in TryAssign cannot rank it and a defer query
+                    // alone is a no-op wherever a recruiter re-claims its own worker.
+                    //
+                    // Placed BEFORE `anyIdle = true` for exactly the reason M2-2's veto above is:
+                    // "she has better work" is a fact about the PERSON, and the caller turns a
+                    // refusal into a 5 s backoff stamp on the STATION (M1-H). Stamping the bench
+                    // here would silence it for five seconds because of somebody else's priorities.
+                    if (WorkArbiter.HasBetterOfferThan(sim, c, work, this)) continue;
                     anyIdle = true;
                     if (_probeSkip.Contains(c.Id)) continue;
                     int d = Int3.Manhattan(c.Pos, target);

@@ -274,66 +274,95 @@ namespace Perilune.Tests
         /// NOT a determinism pin, and it is not one of the five: no authored ship zones a stockpile,
         /// so this fixture zones three corridor tiles by hand. The five pins moved for their own
         /// reasons and the integrator re-pins them.
+        ///
+        /// ⭐ <b>RE-RECORDED 2026-07-30 BY M2-5 (CROSS-FAMILY RANKING), AND THE MOVE IS EXPLAINED
+        /// BY OD-J RATHER THAN ACCEPTED.</b> The charter said this sequence WOULD move here and that
+        /// a move the authored order does not explain means the arbitration is wrong, not the
+        /// fixture — so the diff was read before the array was touched.
+        /// <list type="bullet">
+        ///   <item><b>57 rows → 57 rows. Same kind mix (48 Dig · 6 HaulPickup · 2 HaulToBuild ·
+        ///     1 Build), same 48 dig targets, same set.</b> Nothing stops being worked and the aft
+        ///     field still saturates inside the window; the last assignment moves
+        ///     <b>t61073 → t60912</b>, i.e. 161 ticks FASTER.</item>
+        ///   <item><b>The first move is rows 2-4: t1 → t2.</b> <c>c934</c>/<c>c935</c> (Haul,
+        ///     naturalPriority 100) and <c>c936</c> (Dig ⇒ Mine, 300) are held back one tick;
+        ///     <c>c933</c>'s <c>HaulToBuild</c> (⇒ Construct, 700) is NOT. That is exactly OD-J's
+        ///     order: at the all-band-1 grid this fixture grants, a claimable <b>Craft</b> offer
+        ///     (500) outranks Mine and Haul and is outranked by Construct, so the dispatcher defers
+        ///     the two lower families for the bench and leaves the builder alone. The next tick the
+        ///     bench has refused, stamped its M1-H backoff, and the query stops over-reporting — so
+        ///     the cost of an optimistic defer is ONE TICK, which is the trade the design states.</item>
+        ///   <item><b>Everything after it is that one tick compounding through the dig column</b>
+        ///     (re-timings of +11 to +200 and two re-handings, c938 → c934 at 57,10,0).</item>
+        ///   <item>⭐ <b>ATTRIBUTED, NOT INFERRED.</b> With <c>CraftingSystem.HasClaimableWork</c>
+        ///     forced to <c>false</c> — one line, applied and reverted — this fixture goes GREEN
+        ///     against the PREVIOUS recording, byte for byte. The whole move is the Craft family's
+        ///     answer to the arbitration and nothing else in the package.</item>
+        /// </list>
+        /// ⚠️ The five determinism pins did NOT move here (P1/P2/P3 all held, measured): the pinned
+        /// ships never enable a work type, and this fixture only moves because it calls
+        /// <c>GiveAllCrewAllWork()</c>. A behaviour pin and a determinism pin can therefore disagree,
+        /// and this pair now does.
         /// </summary>
         private static readonly string[] SliceAssignments =
         {
             "t1 c933 HaulToBuild 30,10,0",
-            "t1 c934 HaulPickup 29,6,0",
-            "t1 c935 HaulPickup 29,6,0",
-            "t1 c936 Dig 57,9,0",
+            "t2 c934 HaulPickup 29,6,0",
+            "t2 c935 HaulPickup 29,6,0",
+            "t2 c936 Dig 57,9,0",
             "t252 c933 HaulToBuild 30,10,0",
             "t373 c933 Build 30,10,0",
             "t6002 c933 HaulPickup 24,14,1",
             "t6002 c934 HaulPickup 22,14,1",
             "t6002 c935 HaulPickup 20,14,1",
-            "t6301 c936 Dig 57,8,0",
-            "t6301 c937 Dig 58,9,0",
-            "t6462 c938 Dig 57,10,0",
-            "t9202 c933 HaulPickup 23,6,0",
-            "t12363 c933 Dig 57,7,0",
-            "t12363 c935 Dig 58,8,0",
-            "t12563 c936 Dig 59,9,0",
-            "t12563 c937 Dig 58,10,0",
-            "t12913 c938 Dig 57,11,0",
-            "t18663 c933 Dig 57,6,0",
-            "t18663 c935 Dig 58,7,0",
-            "t18663 c936 Dig 59,8,0",
-            "t18663 c937 Dig 60,9,0",
-            "t18663 c939 Dig 59,10,0",
-            "t18923 c938 Dig 58,11,0",
-            "t19222 c934 Dig 57,12,0",
-            "t24723 c935 Dig 58,6,0",
-            "t24723 c936 Dig 59,7,0",
-            "t24723 c937 Dig 60,8,0",
-            "t24933 c938 Dig 59,11,0",
-            "t25163 c939 Dig 60,10,0",
-            "t28142 c933 Dig 57,13,0",
-            "t30733 c935 Dig 59,6,0",
-            "t30733 c936 Dig 60,7,0",
-            "t30733 c937 Dig 61,8,0",
-            "t30943 c938 Dig 58,12,0",
-            "t31173 c939 Dig 61,10,0",
-            "t34762 c940 Dig 61,9,0",
-            "t36743 c935 Dig 60,6,0",
-            "t36743 c936 Dig 61,7,0",
-            "t36743 c937 Dig 62,8,0",
-            "t36963 c938 Dig 59,12,0",
-            "t37183 c939 Dig 60,11,0",
-            "t38082 c933 Dig 58,13,0",
-            "t42753 c935 Dig 61,6,0",
-            "t42753 c936 Dig 62,7,0",
-            "t42753 c937 Dig 62,9,0",
-            "t42973 c938 Dig 60,12,0",
-            "t43203 c939 Dig 61,11,0",
-            "t48242 c933 Dig 59,13,0",
-            "t48763 c935 Dig 62,6,0",
-            "t48763 c936 Dig 62,10,0",
-            "t48983 c938 Dig 61,12,0",
-            "t49213 c939 Dig 62,11,0",
-            "t52252 c937 Dig 60,13,0",
-            "t55023 c936 Dig 62,12,0",
-            "t55023 c938 Dig 61,13,0",
-            "t61073 c936 Dig 62,13,0",
+            "t6312 c936 Dig 57,8,0",
+            "t6312 c937 Dig 58,9,0",
+            "t6513 c934 Dig 57,10,0",
+            "t9412 c933 HaulPickup 23,6,0",
+            "t12383 c933 Dig 57,7,0",
+            "t12383 c935 Dig 58,8,0",
+            "t12583 c936 Dig 59,9,0",
+            "t12583 c937 Dig 58,10,0",
+            "t12792 c934 Dig 57,11,0",
+            "t18692 c933 Dig 57,6,0",
+            "t18692 c935 Dig 58,7,0",
+            "t18692 c936 Dig 59,8,0",
+            "t18692 c937 Dig 60,9,0",
+            "t18692 c939 Dig 59,10,0",
+            "t18802 c934 Dig 58,11,0",
+            "t19322 c938 Dig 57,12,0",
+            "t24752 c935 Dig 58,6,0",
+            "t24752 c936 Dig 59,7,0",
+            "t24752 c937 Dig 60,8,0",
+            "t24812 c934 Dig 59,11,0",
+            "t25192 c939 Dig 60,10,0",
+            "t28162 c933 Dig 57,13,0",
+            "t30762 c936 Dig 59,6,0",
+            "t30762 c937 Dig 60,7,0",
+            "t30822 c934 Dig 58,12,0",
+            "t31202 c939 Dig 61,10,0",
+            "t34232 c935 Dig 59,12,0",
+            "t34632 c933 Dig 58,13,0",
+            "t36772 c936 Dig 60,6,0",
+            "t36772 c937 Dig 61,7,0",
+            "t36842 c934 Dig 60,11,0",
+            "t37212 c939 Dig 61,9,0",
+            "t40712 c935 Dig 61,11,0",
+            "t42782 c936 Dig 61,6,0",
+            "t42782 c937 Dig 62,7,0",
+            "t42872 c934 Dig 60,12,0",
+            "t43222 c939 Dig 61,8,0",
+            "t44322 c933 Dig 59,13,0",
+            "t48792 c936 Dig 62,6,0",
+            "t48792 c937 Dig 62,8,0",
+            "t48882 c934 Dig 61,12,0",
+            "t49232 c939 Dig 62,9,0",
+            "t50232 c935 Dig 60,13,0",
+            "t50812 c933 Dig 62,11,0",
+            "t54802 c937 Dig 62,10,0",
+            "t54892 c934 Dig 62,12,0",
+            "t55252 c939 Dig 61,13,0",
+            "t60912 c934 Dig 62,13,0",
         };
 
         [Test]

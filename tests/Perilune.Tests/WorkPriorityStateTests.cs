@@ -738,6 +738,13 @@ namespace Perilune.Tests
             "sim/Sim.Core/Systems/MachineWearSystem.cs",  // G3 — the other one (MaintenanceSystem lives here)
             "sim/Sim.Core/Effects/EffectValidator.cs",    // G4 — the LLM GRANT, bounded by the grid
             "sim/Sim.Core/Effects/CapabilityComputer.cs", // G5 — the LLM OFFER; without it crew agree to forbidden work
+
+            // ⭐ M2-5 — CROSS-FAMILY RANKING. ONE new file, and it is the arbitration itself: the
+            // grid stops being a yes/no veto and becomes an ORDER (band 1..4, ties by
+            // WorkPriority.NaturalPriority). It reads the grid at the five arbitration sites the
+            // other enrolled files already own, so this is the only addition. P1/P2/P3 move in the
+            // same commit and that is the point — see PIN M2-g.
+            "sim/Sim.Core/Jobs/WorkArbiter.cs",           // the arbitration: band, then natural priority
         };
 
         private static readonly string[] WorkGridIdentifiers =
@@ -809,8 +816,26 @@ namespace Perilune.Tests
                 "measure P1/P2/P3 and say so in the commit, or take the read back out.");
 
             // --- NON-VACUITY, BY INCLUSION. A real sim file plus a planted call must be caught.
+            //
+            // ⚠️ ⭐ THE DONOR MUST BE A REAL SIM FILE WHOSE OWN CODE NAMES NO GRID IDENTIFIER, AND
+            // THAT IS ASSERTED RATHER THAN ASSUMED. It was JobSystem.cs, which was clean — until
+            // M2-5's band loop read `GetWorkPriority` in it. Both controls below rot silently at
+            // that moment and in OPPOSITE directions: `Does.Contain` starts passing on the donor's
+            // own text (so a scanner that saw nothing planted would still be called non-vacuous),
+            // and `Does.Not.Contain` can never pass at all (a FALSE RED, and the one that was
+            // actually observed). A fixture whose subject is "the scanner can see a plant" must
+            // start from a page with nothing on it.
             string donor = File.ReadAllText(Path.Combine(RepoRoot(),
-                "sim", "Sim.Core", "Jobs", "JobSystem.cs"));
+                "sim", "Sim.Core", "Jobs", "PushRecruitBackoff.cs"));
+            string donorCode = SurfaceBoundaryTests.CodeOnly(donor);
+            var dirty = new List<string>();
+            foreach (var id in WorkGridIdentifiers)
+                if (donorCode.Contains(id, StringComparison.Ordinal)) dirty.Add(id);
+            Assert.That(dirty, Is.Empty,
+                "the negative-control DONOR now names a work-grid identifier in its own code (" +
+                string.Join(", ", dirty) + "), which makes both controls below meaningless. Pick " +
+                "another real sim/ file that names none — do not delete the controls.");
+
             string planted = donor + "\n// tail\nclass M21Plant { void F(Citizen c) " +
                              "{ c.GetWorkPriority(WorkType.Haul); } }\n";
             Assert.That(SurfaceBoundaryTests.CodeOnly(planted),
