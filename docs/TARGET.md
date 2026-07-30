@@ -61,12 +61,12 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 
 | # | mechanism | RW§ | status |
 |---|---|---|---|
-| T1 | Work-type priority grid per pawn (1–4, 1 highest, blank=won't; OFF by default per OD-H) | §1.2, §1.5 | state merged (M2-1); no veto, no UI yet |
-| T2 | WORK tab on the standard surface + wire channel | §1.7 | queued (M2-3/M2-4, BLOCKING) |
-| T3 | Dispatcher honours the grid at every claim site (11 sites, 5 gates, 3 exclusions) | §1.8 | queued (M2-2) |
-| T4 | Cross-family ranking + tie-break by work-list order (OD-J) | §1.3 | queued (M2-5) |
-| T5 | Right-click "Prioritise: repair X" forced order | §2.2 | merged (M2-9 sim verb + M2-10 Room Zoom right-click); DONE pending the milestone-demo drive in ./play.sh |
-| T6 | Pre-emption + sticky ordered claim (order wins NOW and HOLDS) | §2.2 | mechanism DONE (M2-8 + M2-19 merged); nothing WRITES the hold until M2-9's command, so not yet visible in play — browser demo is M2-10's |
+| T1 | Work-type priority grid per pawn (1–4, 1 highest, blank=won't; OFF by default per OD-H) | §1.2, §1.5 | DONE (M2-1 state + M2-2 veto + M2-3 UI; grid drives behaviour in ./play.sh, demo 07-30) |
+| T2 | WORK tab on the standard surface + wire channel | §1.7 | DONE (M2-3 + M2-4, merged 07-30; the game's primary control surface) |
+| T3 | Dispatcher honours the grid at every claim site (11 sites, 5 gates, 3 exclusions) | §1.8 | DONE (M2-2, merged 07-30; boot is all-off and she waits — demo-verified) |
+| T4 | Cross-family ranking + tie-break by work-list order (OD-J) | §1.3 | DONE (M2-5 both halves; demo: Deconstruct@1 beat Repair@4 over 1011 sim-s, 0 servicing samples). KNOWN LIMIT: pull-vs-pull equal band still ties by distance (filed) |
+| T5 | Right-click "Prioritise: repair X" forced order | §2.2 | DONE (M2-9 + M2-10; demo step 6: order crossed the ship and landed). Names the device TYPE, not the authored instance — owner item |
+| T6 | Pre-emption + sticky ordered claim (order wins NOW and HOLDS) | §2.2 | DONE (M2-8 + M2-19 + M2-9's writer; demo: mid-service abandon 60 s into 900 s, hold survived 121 sim-s against a needier machine) |
 | T7 | Direct orders: move, operate, erase; pawn selection in Room Zoom | §2.1 | DONE (M1-C/M1-K + operate verb) |
 | T8 | A stalled/refused order says WHY, on the tile | §2.4 (`JobCondition`) | partial (`blocked` channel + M2-18 tile reason + M2-20 pawn word + M2-6 ranking clause in the Overview readout; `ReasonNoConsumable` now emitted for an ordered unfixable machine, M2-9; other order refusals still silent, filed §13.25 b2) |
 | T9 | Designations survive & are erasable (dig/strip/stockpile/erase) | §2.1 | DONE (marks channel + M1-C) |
