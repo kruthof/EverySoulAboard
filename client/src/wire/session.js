@@ -113,10 +113,13 @@ export const Cmd = {
   // never ghosts the outcome either: the cell repaints from the `work` channel when the sim echoes
   // it back, so what is on screen is always what the sim holds.
   //
-  // `| 0` on all three because the host reads them as JSON ints and its ABSENT/non-numeric sentinel
-  // is -1, not 0 (`GameSession.WebCommand.Parse`) — `priority` 0 is a REAL order (switch this off)
-  // and `work` 0 is a REAL work type (Repair, the wreck's premise), so a `undefined` leaking into
-  // either field must not be allowed to read as one of them.
+  // `| 0` on all three keeps the payload integral (the host reads JSON ints; fractions would be
+  // digit-scanned to something else). It is NOT a guard against `undefined` — `undefined | 0` IS 0,
+  // which is a real order in both fields (`work` 0 = Repair, `priority` 0 = off). The callers are
+  // the guard: every call site passes dataset ints. The host's own absent-key sentinel is -1
+  // (`GameSession.WebCommand.Parse`), which this function can never produce — deliberately, since
+  // it only ever speaks whole orders. (Reviewer-corrected 2026-07-30: the earlier text claimed
+  // `| 0` stopped `undefined` from reading as an order, which is exactly backwards.)
   workPriority: (cid, work, priority) => ({
     cmd: 'workPriority', cid: cid | 0, work: work | 0, priority: priority | 0,
   }),
