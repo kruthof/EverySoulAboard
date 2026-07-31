@@ -72,7 +72,7 @@ ordinals.
 ## 4. M3–M5 (outlines; charters get written at end of M2, not before)
 
 - **M3:** ✅ **CHARTERED IN FULL, 2026-07-30 — `docs/design/perilune-m3.packages.md`** (queue, seams,
-  pin rows `M3-a…d`, conflict matrix, and a **six-item owner batch that is a GATE before M3-1**;
+  pin rows `M3-a…d`, conflict matrix, and an **eight-item owner batch — ANSWERED 2026-07-31, gate CLEARED (OD-M)**;
   it also corrects the pod census below from 8/1/5/2 to the shipped **12/1/7/4**, and gives OD-K's
   vacuum-work ladder the id **M3-14**). The outline that follows is kept as the index.
   M3-1 `Device.Name` double duty (INFRA — decide before the save chapter freezes) ·
@@ -97,18 +97,19 @@ ordinals.
 | B | Economy PARKED at E0-complete; E1 unopened; A1 retired as goal (regression stat only); gate re-chartered "one crew member alone reaches a second thaw" | parks E1–E4 |
 | C | Ship interior authored-explored at boot | M1-A ✅ |
 | D | Vent premise reworded (docs-only) | M1-G ✅ |
-| E | Deck 1 stays dead (no vertical gas term is SHIPPED FILED) | standing refusal |
+| E | Deck 1 stays dead (no vertical gas term is SHIPPED FILED). **HEADLINE AMENDED 2026-07-31 by OD-M item 2, for M3-11: deck 1 boots dead and the player MAY bring it back (authored vent + riser tap, vent wrecked); the MECHANICAL half — no vertical gas term — STANDS** | standing refusal (mechanical half); M3-11 |
 | F | Repair soft-lock fixed by authoring consumables, not by softening the floor | M1-I ✅ |
 | G | The pawn boots idle and waiting; the opening IS an order; autonomy resumes after | M2-20 |
 | H | The work grid defaults OFF — work is opt-in; WORK tab becomes BLOCKING | M2-1 ✅, M2-3/M2-4 |
 | I | One rule, OFF everywhere — fixtures too; M2-17 teaches the harness to author a grid | M2-1 ✅, M2-17 ✅ |
 | J | v1 work-list order = Repair · Construct · Craft · Deconstruct · Mine · Haul — and it IS the equal-band tie-break | M2-5, M2-3 layout |
-| K | ＋ADD ROOM deleted; every compartment IS a room; + four delegated calls: phase-1 exit gate = "order a repair, the lights come back" · M2-12 promoted · build the vacuum-work ladder · keep M1-I's thermal reprieve | M1-L ✅, M2-12, ladder unchartered |
+| K | ＋ADD ROOM deleted; every compartment IS a room; + four delegated calls: phase-1 exit gate = "order a repair, the lights come back" · M2-12 promoted · build the vacuum-work ladder · keep M1-I's thermal reprieve | M1-L ✅, M2-12 ✅, ladder = M3-14 (rungs set by OD-M item 7) |
 | L | **The opening arc is POD-DRIVEN** (2026-07-30): the pawn wakes to a ship of frozen/dead crew and the goal is unfreezing. MOSS controls freeze/unfreeze **per pod** and states each pod's **failure reason — the reason IS the hint what to repair next**. Pods form an **escalating repair ladder**: each successive pod's repair item needs a deeper production chain (pod 2 a simple item; pod 3 one with more pre-processing; …) — chain DEPTH is the difficulty curve, refining OD-11's Parts-count escalation. WORK tab stays the high-level prioritisation; per-target detail via right-click prioritise (re-ratifies OD-A) and the POD BAY | M3-2/3/4/6/13 charters (written at end of M2), OD-11/OD-12, M2-9/M2-10 unchanged |
+| M | **M3 owner batch ANSWERED 2026-07-31 — all recommendations adopted (1A 2A 3A 4A 5A 6A 7B 8A)**; the position-0 gate is CLEARED. **Item 2 AMENDS OD-E's headline** (deck 1 boots dead and may be brought back; no vertical gas term); **item 7 DEVIATES from OD-K's rung list** (ladder ships rungs 2+3+4; rung 1 — OD-K's named middle rung — deferred BY NAME to M3-7's pin lane). Also: 1 re-key the rungs monotonic in depth (`3 → 0 0 2 2 3 3 3`, last rung 3× the gate; commissioning is the PROLOGUE *"restore MOSS"*, not a rung) · 3 no schedule grid in M3, RW§3.5's mechanism adopted inside M3-9 (T15 decided-deferred) · 4 M3-5 ships sim state + Chronicle + a one-line banner, M5-1 builds the screen · 5 thawed souls arrive with the grid OFF, the gate sentence is satisfied by the skill columns (OD-H/OD-I untouched) · 6 unfreeze only, a pod is single-use, `Device.Name` never mutates, M3-1 is a recorded non-change (FREEZE-as-verb FILED as a named follow-on) · 8 `Citizen.Skill` widens to a per-work-type 6-byte array inside M3-7's existing M3-b chapter bump, not a second re-pin | M3-1/2/3/5/6/7/9/11/12/14; amends E, deviates from K |
 
-Unchartered from OD-K: the **vacuum-work ladder** (playerForced bypass → opt-in deadly
-work givers → self-rescue suppression, RW§2.4's `Danger` ladder as the analogue) — needs a
-package id in M2 or M3; today `WorksiteSafety`'s refusal is bare and silent.
+From OD-K, now chartered as **M3-14**: the **vacuum-work ladder** (playerForced bypass →
+opt-in deadly work givers → self-rescue suppression, RW§2.4's `Danger` ladder as the
+analogue). **OD-M item 7 ships rungs 2+3+4**; `WorksiteSafety`'s refusal is still silent.
 
 ## 6. Live defects on `main` (filed, scheduled or owned — not a self-executing queue)
 
