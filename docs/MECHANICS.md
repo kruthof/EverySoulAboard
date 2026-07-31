@@ -3233,7 +3233,7 @@ result (§13.15's successor, `HANDOVER-2026-07` 2026-07-28). The table below the
   command per (living citizen, work type), **all six cells written including the Off ones**, so a
   leg's grid is never a function of `WorkPriority.Default`. Grammar: `all` / `all@N` /
   `Repair@1,Haul@4`; a bare type name grants at **3** (RimWorld's `alwaysStartActive` value,
-  reference §1.4). No flag ⇒ **no grant**, which is the shipped boot state and still a legitimate
+  reference **§1.5** — the newly-arrived-colonist algorithm, whose steps 3 and 4 both set 3). No flag ⇒ **no grant**, which is the shipped boot state and still a legitimate
   thing to measure — it is just no longer measurable *silently*.
   `hosts/scenario/WorkGrantHarness.cs`.
 - **The grid is READ BACK off the sim** (`Citizen.GetWorkPriority`) after the commands execute and
@@ -3278,7 +3278,7 @@ lanes were running); every figure below is sim-time.
 |---|---|---|
 | wreck | `Maintain` 16.91 % | 100 % h1–h3, 55 % h4, then flat with spikes at h10 (23.3 %) and h20 (25.3 %) |
 | grid | `Craft` 14.33 % · `Dig` 1.77 % | 58.5 % h1, ~25–34 % h2–h13, decaying h14–h15, **0.0 % from h16** |
-| slice | `Craft` 24.60 % · `Dig` 4.25 % | 83 % h1, ~28–35 % h3–h20, **collapse at h21** to ~2.4 % |
+| slice | `Craft` 24.60 % · `Dig` 4.25 % | 83 % h1, ~28–35 % h3–**h20** (h20 is still 28.1 %), then a TWO-STEP fall — h21 **10.4 %**, h22 **2.4 %** — settling at 2.2–2.4 % through h24 |
 
 ⚠️ **`Haul*` is 0.00 % on all three ships** and always was: `stockpile tiles zoned = 0`, so
 `HaulPickup`/`HaulDeliver` can never be assigned (A4's standing zero — see §13.17). The `Craft`
@@ -3342,9 +3342,18 @@ other side — and it is precisely the content decision the owner already holds 
 `ROADMAP` §7 / OD-B). ⛔ **Do not open a package to "fix A3 on grid":** it is a re-statement of the
 parked economy question, not a new defect.
 
-⚠️ **A3 needs `Construct` AND `Haul`** — the Regolith is hauled to the site before a single
-`Construct` tick is spent — so a grid granting only one of them reports `NOT COMPLETED` for a reason
-that has nothing to do with the economy. The harness prints that caveat beside the verdict.
+⛔ **A3 NEEDS `Construct` ALONE — `Haul` IS NOT INVOLVED, AND THIS IS THE ROW EVERYONE GETS WRONG**
+(this section shipped it backwards once). Fetching the Regolith is `JobKind.HaulToBuild`, which
+`WorkTypeMap` maps to **`Construct`, not `Haul`** (`sim/Sim.Core/Entities/WorkTypeMap.cs:17-24`,
+switch at `:62`) — a deliberate decision, on the stated grounds that *"a player who switched
+`Construct` on and `Haul` off expects their builder to fetch her own beams"*, and because mapping it
+to `Haul` would split one job source across two work types.
+
+**Measured, not reasoned:** `--grant Construct@3 --wall-day 3 --days 4` on the wreck, with `Haul`
+**off** in the read-back grid, completes the wall at site `(3,1,0)` in **0.073 sim-hours** — a hair
+*faster* than `all@3`'s 0.074 (2 620 productive crew-ticks, non-vacuity PASS). ⇒ A `NOT COMPLETED`
+under a Haul-less grid is **never** explained by the missing `Haul`; look at `Construct` and at the
+material aboard.
 
 ⚠️ **The A3 legs are `--days 4`, so their A1/A2 differ from the `--days 1` table above** (a longer
 run dilutes both): wreck `A2 90.103 %`, grid `A2 94.937 %`, slice `A2 90.416 %`; A1 @h24 is

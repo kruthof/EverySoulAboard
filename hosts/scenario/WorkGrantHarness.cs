@@ -43,7 +43,8 @@ namespace Perilune.Tools
         /// <summary>Priority a bare type name (no <c>@N</c>) is granted at. Deliberately
         /// <see cref="WorkPriority.SimpleModeEnabled"/> (3) — RimWorld's own
         /// <c>alwaysStartActive</c> value and what a ticked checkbox is worth
-        /// (<c>docs/design/rimworld-reference.md</c> §1.4), so "just switch it on" means the same
+        /// (<c>docs/design/rimworld-reference.md</c> <b>§1.5</b> — the boot algorithm, whose steps 3
+        /// and 4 both set 3; §1.4 is a different subject), so "just switch it on" means the same
         /// number here as there. ⚠️ 1 is the HIGHEST priority and 4 the lowest.</summary>
         public const byte DefaultGrantPriority = WorkPriority.SimpleModeEnabled;
 
@@ -73,7 +74,6 @@ namespace Perilune.Tools
 
             var built = new byte[WorkPriority.WorkTypeCount];
             string[] terms = s.Split(',');
-            bool sawAll = false;
             for (int i = 0; i < terms.Length; i++)
             {
                 string term = terms[i].Trim();
@@ -101,7 +101,6 @@ namespace Perilune.Tools
                         return false;
                     }
                     for (int k = 0; k < built.Length; k++) built[k] = priority;
-                    sawAll = true;
                     continue;
                 }
                 if (!TryParseWorkType(name, out var type))
@@ -114,10 +113,24 @@ namespace Perilune.Tools
             // An all-Off explicit spec is legal but is NOT a grant: it produces exactly the shipped
             // boot state, so treating it as one would let a leg claim a granted grid while measuring
             // the default. Say so rather than silently accepting it.
-            if (!sawAll && IsAllOff(built))
+            //
+            // ⚠️ THE `all` FORM IS NOT EXEMPT, AND EXEMPTING IT WAS A BUG THIS FILE SHIPPED ONCE.
+            // The first draft guarded this with `!sawAll &&`, which let `--grant all@0` through — the
+            // spelling an operator is MOST likely to type for "switch everything off". The result was
+            // a report whose header announced a grant, whose grid block three lines later read
+            // "ALL OFF … NO grant", and whose non-vacuity verdict blamed the SHIP for an operator
+            // condition. TRAPS' 4th shape exactly: a guard whose scope filter excludes the
+            // violation. The rule has no `all` exception, so neither does the code, and
+            // `all@0` is now a named refusal case beside `Repair@0,Haul@0`.
+            if (IsAllOff(built))
             {
-                error = "--grant: every named type is @0, which is the shipped default — use 'none' " +
-                        "if that is what you meant, so the report does not claim a grant it did not make";
+                // ONE message for both spellings (`all@0` and `Repair@0,Haul@0`), and worded for the
+                // RESULT rather than the syntax — "every NAMED type is @0" would have read as a
+                // statement about per-type terms and quietly implied `all@0` was a different case,
+                // which is the exemption this block just stopped making.
+                error = "--grant: this spec leaves every work type at @0, which is the shipped " +
+                        "default — use 'none' if that is what you meant, so the report does not " +
+                        "claim a grant it did not make";
                 return false;
             }
             grid = built;

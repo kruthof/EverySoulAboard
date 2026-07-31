@@ -734,8 +734,18 @@ namespace Perilune.Tools
                     else
                         Console.WriteLine($"  outcome          NOT COMPLETED — site {(stillPending ? "still pending" : "GONE (cancelled)")}, " +
                                           $"Regolith staged {delivered} / {wallRequired}");
-                    Console.WriteLine("  needs            Construct AND Haul in the grid (the material is hauled to the site " +
-                                      "before any Construct tick is spent) — read the grid line below before the verdict");
+                    // ⛔ CONSTRUCT ALONE — and this is the row this file got WRONG once, in the
+                    // direction everyone gets it wrong. Fetching the material is JobKind.HaulToBuild,
+                    // which WorkTypeMap maps to **Construct, NOT Haul** (WorkTypeMap.cs:17-24, the
+                    // switch at :62) — deliberately, because "a player who switched Construct on and
+                    // Haul off expects their builder to fetch her own beams". MEASURED, not reasoned:
+                    // `--grant Construct@3 --wall-day 3` on the wreck, with Haul explicitly off in the
+                    // read-back, completes the wall in 0.073 sim-hours — marginally FASTER than
+                    // `--grant all@3`'s 0.074.
+                    Console.WriteLine("  needs            CONSTRUCT ALONE. Fetching the material is JobKind.HaulToBuild, which");
+                    Console.WriteLine("                   WorkTypeMap maps to Construct and NOT to Haul (WorkTypeMap.cs:17-24) —");
+                    Console.WriteLine("                   a builder fetches her own beams, so a Haul-less grid is not a reason");
+                    Console.WriteLine("                   for a NOT-COMPLETED. Read the grid line below before the verdict.");
                 }
                 Console.WriteLine($"A3 grid: {gridCompact}");
             }

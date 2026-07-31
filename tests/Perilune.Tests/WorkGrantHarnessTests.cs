@@ -200,13 +200,25 @@ namespace Perilune.Tests
         /// it produces EXACTLY the shipped boot state — so accepting it would let a leg print
         /// "grid granted" above a report measuring the default, which is the confusion this whole
         /// package exists to remove. The error tells the operator to say <c>none</c> instead.
+        ///
+        /// <para>⛔ <b><c>all@0</c> IS THE CASE THAT MATTERS AND THE FIRST VERSION OF THIS TEST MISSED
+        /// IT.</b> The refusal was written with an <c>!sawAll</c> carve-out and covered only by the
+        /// <c>Repair@0,Haul@0</c> leg — so the spelling an operator is MOST likely to type for
+        /// "switch everything off" walked straight through, and produced a report that announced a
+        /// grant in its header, printed <i>"ALL OFF … NO grant"</i> three lines down, and then blamed
+        /// the SHIP for an operator condition via the non-vacuity verdict. TRAPS' 4th shape: a guard
+        /// whose scope filter excludes the violation. <b>Both spellings are legs now, and they assert
+        /// the SAME message</b> — two messages would be two rules.</para>
         /// </summary>
-        [Test]
-        public void ParseSpec_RefusesASpecThatGrantsNothing()
+        [TestCase("Repair@0,Haul@0")]
+        [TestCase("all@0")]
+        public void ParseSpec_RefusesASpecThatGrantsNothing(string spec)
         {
-            Assert.That(WorkGrantHarness.TryParseSpec("Repair@0,Haul@0", out var grid, out var err), Is.False);
+            Assert.That(WorkGrantHarness.TryParseSpec(spec, out var grid, out var err), Is.False, spec);
             Assert.That(grid, Is.Null);
             Assert.That(err, Does.Contain("none"));
+            Assert.That(err, Does.Contain("every work type at @0"),
+                "both spellings must produce the SAME refusal — a second message would be a second rule");
         }
 
         [TestCase("Repair@5")]
