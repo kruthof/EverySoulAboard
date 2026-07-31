@@ -43,7 +43,8 @@ status of anything.*
    right-click prioritise (re-ratifying **OD-A**) and the **POD BAY**.
 2. **OD-A · OD-B · OD-E · OD-G · OD-H · OD-I · OD-J · OD-K** — the standing ledger. OD-K's fourth
    delegated call, **the vacuum-work ladder, is still unchartered**; this file gives it an id (§4,
-   **M3-14**).
+   **M3-14**). **[since answered — OD-M item 7, 2026-07-31: chartered as M3-14, shipping rungs 2+3+4;
+   `ROADMAP.md`'s OD-K row and rung note no longer say "unchartered".]**
 3. **`docs/design/rimworld-reference.md`** — the mechanism authority. Cited by section throughout;
    **§1.5, §2.2, §2.4, §2.6, §3.5, §5.1–§5.2, §6.1 and §8.4 are the sections M3 actually rests on.**
 4. **`docs/design/perilune-wreck-start.plan.md` §3.3, §3.4, §3.4.1, §4 W5** — the thaw's original
@@ -1565,7 +1566,7 @@ Recorded so a future reader can tell *excluded* from *missed*.
 | **T12** needs/mood | partial | **partial → rest DONE** (M3-9); mood still gates nothing |
 | **T13** thaw loop: earn & choose a second soul through MOSS | missing | **DONE** (M3-2…M3-6, M3-13) |
 | **T8** a refused order says WHY | partial | **partial →** every *thaw* refusal named (M3-13); other order refusals still filed |
-| **T15** schedules | missing, unscheduled | ⭐ **DECIDED** — owner batch item 3, not built (recommendation: defer) |
+| **T15** schedules | missing, unscheduled | ⭐ **DECIDED, not built** — owner batch item 3 ANSWERED **A** (OD-M, 2026-07-31): deferred, and RW§3.5's mechanism rides M3-9. `TARGET.md`'s row now reads "decided: deferred" |
 | **T7 / T5 / T6** direct orders | DONE | **reach further** (M3-14) |
 
 ---

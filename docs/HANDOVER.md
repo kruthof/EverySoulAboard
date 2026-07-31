@@ -45,9 +45,9 @@ Merged, in order:
   incl. new **M3-14** vacuum-work ladder, pin rows M3-a…d, conflict matrix). Three review
   rounds. Headline catches: the outline's pod census was wrong by two thaws (shipped:
   **12/1/7/4**); the MOSS commissioning gate (1 ControllerModule) inverts OD-L's depth
-  curve unless the rungs are re-keyed (batch item 1); the sparse `work` wire cannot carry
-  incapable-ness (new `workcaps` channel chartered); six false VERIFIED citations across
-  two revisions, owned in the doc's §13 box.
+  curve unless the rungs are re-keyed (batch item 1 — **answered A: they are**); the
+  sparse `work` wire cannot carry incapable-ness (new `workcaps` channel chartered); six
+  false VERIFIED citations across two revisions, owned in the doc's §13 box.
 
 Every package: Opus implementer + separate independent reviewer; five send-back rounds
 total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre-approved
@@ -61,6 +61,8 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
 3. Everything product-shaping went into the M3 **owner batch, not decided** — including
    two items that AMEND standing rulings if accepted (item 2 would reverse OD-E's "deck 1
    stays dead" headline; item 7 chooses the ladder's rungs, which RW-ref says is yours).
+   *(Frozen 07-30 record — **since answered 07-31, OD-M: item 2 taken, OD-E's headline
+   amended; item 7 took rungs 2+3+4.**)*
 
 ## Next (the M3 queue, `perilune-m3.packages.md` §3)
 
