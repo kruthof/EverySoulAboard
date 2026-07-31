@@ -3429,3 +3429,72 @@ crew member back in a box, the occupant must leave `Name`, and the only shapes t
 `Device` field are a parallel sim-side occupancy map (new hashed state, new save chapter, a pin move)
 or a slot/occupant naming split (`pod_a1` as the key) — **which renames every authored pod and breaks
 every existing player program that named one.** Do not take that step inside another package.
+
+### 13.28 The thaw ladder's rung table exists, is asserted, and NOTHING reads it (M3-6, 2026-07-31)
+
+**`sim/Sim.Core/ThawGate.cs` (new, 106 lines) holds the whole per-pod repair requirement OD-L asks
+for** — `ThawGate.RungOf(float condition)` (`:95`) resolves a `Condition` to a `ThawRung` readonly
+struct (`:9`) carrying rung number, `ItemKind` and count, through a seven-row literal band table
+(`:97-103`), with `ThawGate.RungCount = 7` (`:86`). It is pure, total, zero-alloc and engine-free.
+**No sim system, no command and no host calls it.** M3-6 authors the numbers and asserts them;
+**M3-3 adds the thaw contract's remaining terms to this same file and makes the refusal read the
+rung.** Until that lands, the ladder is *content that exists and nothing consumes*.
+
+⭐ **The rung is DERIVED, so it costs no state.** The carrier is the pod's already-authored
+`Condition` (`sim/Sim.Gen/AuthoredShips.cs:1760-1772`, `WreckPods`), whose documented meaning is
+already *"how badly the raid treated it"* (`Entities/Device.cs:47`). ⇒ **no new `Device` field**
+(refused by `Device.cs:46-49` and by wreck-plan W5.1), **no new def field** (which would move P4/P5
+for a table nobody tunes at runtime — and a def field pinned only by the checksum is NOT pinned),
+**no pin move**. M2-1's precedent in its own words: *"it is a rule, not a tunable."*
+
+**The table, OD-M item 1 (answered 2026-07-31, option A, BINDING).** Chain depth is non-decreasing
+and the count escalates inside a depth — OD-L's *"chain DEPTH is the difficulty curve"* read
+literally:
+
+| rung | band | pod | item | count | chain depth |
+|---:|---|---|---|---:|---:|
+| — | *(the prologue)* | `term_moss` commissioning | `ControllerModule` | 1 | 3 |
+| 1 | `c >= 0.92` | Lindqvist 0.94 | `Seals` | 1 | 0 |
+| 2 | `c >= 0.90` | Ozawa 0.91 | `Seals` | 2 | 0 |
+| 3 | `c >= 0.87` | Ferreira 0.88 | `Parts` | 1 | 2 |
+| 4 | `c >= 0.85` | Mbeki 0.86 | `Parts` | 2 | 2 |
+| 5 | `c >= 0.82` | Bahri 0.83 | `ControllerModule` | 1 | 3 |
+| 6 | `c >= 0.80` | Nakamura 0.81 | `ControllerModule` | 2 | 3 |
+| 7 | otherwise | Torres 0.78 | `ControllerModule` | 3 | 3 |
+
+⚠️ **The commissioning gate is the PROLOGUE, not a rung** (*"restore MOSS"*) and is deliberately
+NOT in `ThawGate` — its cost lives where it already lives (`Commands/Commands.cs:753,778`;
+`build.def commission_cost = 1`). The last rung is **3× the prologue**. ⚠️ **Chain depth 1
+(`Scrap`) is deliberately unused**: `Scrap` is a crafting intermediate, not a repair consumable.
+
+⭐ **THE BAND EDGES ARE INCLUSIVE ON THEIR LOWER SIDE, AND THAT WAS A DECISION, NOT A DEFAULT.** A
+capsule at exactly 0.92 is rung 1; at exactly 0.90 rung 2; at exactly 0.80 rung 6. RimWorld's
+analogue chooses the OPPOSITE — `CapableOf` is `GetLevel(c) > c.minForCapable`, a strict `>`, so
+*"a capacity sitting exactly at `minForCapable` is NOT capable"* (`docs/design/rimworld-reference.md`
+§6.1) — and the lesson §6.1 draws is the one obeyed here: **an edge nobody chose is an edge somebody
+will hit.** No authored `Condition` sits on an edge today (the bands were picked to fall between
+them), so only the pin below would notice the convention flipping. Verified by physically flipping
+every `>=` to `>` with a pod re-authored at exactly 0.90: RED, *"a capsule at EXACTLY 0.9 resolves
+rung 3, expected rung 2"* and *"pod_ozawa (Condition 0.9) resolves rung 3, expected rung 2"*.
+
+**The pins, all in `tests/Perilune.Tests/WreckShipTests.cs`:**
+`ThawLadder_TheSevenIntactCapsules_SitOnTheSevenAuthoredRungs` (`:383`) walks the booted ship's
+intact occupied capsules against a **hand-written** pod→rung→item→count table (`:355`) — never
+derived from `WreckPods` nor from the band table, which is the charter's refused mutation 4 (*a
+test derived from the table under test can never fail*) — and compares the two SETS both ways so an
+added, renamed, opened or wrecked pod is a named failure.
+`ThawLadder_BandLowerEdgesAreInclusive_AndTheEdgeBelowIsTheNextRung` (`:469`) pins both sides of all
+six edges plus the two open ends.
+`AuthoredShipsProseHeader_StatesTheSameCensusAsTheseLiterals` (`:544`) is a **source scan that
+deliberately INVERTS the house `codeOnly` convention**: the census prose IS the artefact under test,
+so the banner-delimited header block (`AuthoredShips.cs:1310-1338`) is extracted as comment text on
+purpose, and `SurfaceBoundaryTests.CodeOnly` is used as the *proof* of that by asserting it deletes
+the block entirely. It is a POSITIVE scan (`:598`), never a "must not contain 8" one — the header
+deliberately records the dead draft it replaced, and a negative scan would fire on the very
+paragraph that exists to stop the mistake recurring.
+
+⚠️ **The band-edge BEHAVIOURAL sweep is OWED TO M3-3, mutation 6, by name** — *move a Condition
+across an edge and assert the rung the thaw REFUSAL resolves changes*. It must be driven through
+`ThawGate`'s six-term thaw contract, and that contract does not exist yet; a leg that cannot run in
+its own lane is not a mutation, it is a wish. The M3-1 precedent (§13.27's owed thaw leg) is the
+same shape, and both tests say so in their own headers.

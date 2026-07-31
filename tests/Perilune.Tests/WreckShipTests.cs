@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Perilune.Dsl;
 using Perilune.Gen;
@@ -320,6 +321,414 @@ namespace Perilune.Tests
             var items = sim.Items.Items;
             for (int i = 0; i < items.Count; i++) if (items[i].Kind == kind) n += items[i].Count;
             return n;
+        }
+
+        // ------------------------------------------------------------ 1b. the thaw ladder's rungs
+        //
+        // ⭐ M3-6. OD-L needs a per-pod repair requirement; OD-M item 1 (answered 2026-07-31,
+        // option A, BINDING) fixed the table and the carrier: the rung is DERIVED from the pod's
+        // already-authored `Condition` through a literal band table in `ThawGate` — no new
+        // `Device` field, no new def field, no pin move. `sim/Sim.Core/ThawGate.cs` holds the
+        // table and the reasoning; these two tests hold the numbers.
+        //
+        // ⛔ THE BAND-EDGE BEHAVIOURAL SWEEP IS DEFERRED BY NAME TO M3-3, MUTATION 6 — "move a
+        // pod's Condition across an edge and assert the rung the thaw REFUSAL resolves changes".
+        // It must be driven through `ThawGate`'s six-term thaw contract, and that contract does
+        // not exist until position 6; a leg that cannot run in its own lane is not a mutation, it
+        // is a wish. What M3-6 can and must assert is the ARITHMETIC half — the edges partition
+        // the seven authored Conditions into the intended rungs — and the exact-edge convention.
+        // (The M3-1 precedent: `PodIdentityTests` defers its thaw leg to M3-3 in its own header.)
+        //
+        // ⚠️ AND NOTHING IN THE SIM CALLS `ThawGate` YET. That is deliberate and recorded in
+        // `docs/MECHANICS.md` §13.28 (wired but NOT connected).
+
+        /// <summary>
+        /// The rung each intact occupied capsule sits on, WRITTEN OUT BY HAND — pod name, rung
+        /// number, item and count — and never read from <see cref="AuthoredShips"/>'s pod table
+        /// nor from <see cref="ThawGate"/>'s band table.
+        ///
+        /// ⚠️ THAT IS THE WHOLE POINT AND IT IS THE CHARTER'S REFUSED MUTATION (M3-6 mutation 4):
+        /// a test that derives its expectation from the table under test can never fail. If this
+        /// array were built by walking <c>WreckPods</c> and calling <c>RungOf</c>, re-keying the
+        /// ladder or re-authoring a Condition would leave it green.
+        /// </summary>
+        private static readonly (string Pod, int Rung, ItemKind Item, int Count)[] LadderRungs =
+        {
+            ("pod_lindqvist", 1, ItemKind.Seals,            1),   // 0.94  chain depth 0
+            ("pod_ozawa",     2, ItemKind.Seals,            2),   // 0.91  chain depth 0
+            ("pod_ferreira",  3, ItemKind.Parts,            1),   // 0.88  chain depth 2
+            ("pod_mbeki",     4, ItemKind.Parts,            2),   // 0.86  chain depth 2
+            ("pod_bahri",     5, ItemKind.ControllerModule, 1),   // 0.83  chain depth 3
+            ("pod_nakamura",  6, ItemKind.ControllerModule, 2),   // 0.81  chain depth 3
+            ("pod_torres",    7, ItemKind.ControllerModule, 3),   // 0.78  chain depth 3
+        };
+
+        /// <summary>
+        /// ⭐ THE LADDER, ASSERTED ON THE SHIPPED SHIP: every intact occupied capsule resolves to
+        /// the rung OD-M item 1 gave it, and the seven of them use all seven rungs exactly once.
+        ///
+        /// <para>Three separate things can break and all three are reported by name: a pod's
+        /// authored <c>Condition</c> moving across a band edge, a band edge moving under a fixed
+        /// Condition, and the SET of intact occupied pods changing (a pod added, renamed, opened
+        /// or wrecked) — the last checked as a two-way set comparison, so a swap cannot hide.</para>
+        ///
+        /// <para>⚠️ The last rung costs three ControllerModules, three times the commissioning
+        /// gate, and the gate is the PROLOGUE ("restore MOSS") and deliberately not in this table.
+        /// Chain depth runs 0,0,2,2,3,3,3 — non-decreasing, with count escalating inside a depth,
+        /// which is OD-L's "chain DEPTH is the difficulty curve" read literally. Depth 1
+        /// (<c>Scrap</c>) is deliberately skipped: it is a crafting intermediate, not a repair
+        /// consumable.</para>
+        /// </summary>
+        [Test]
+        public void ThawLadder_TheSevenIntactCapsules_SitOnTheSevenAuthoredRungs()
+        {
+            var sim = Boot();
+            var intact = new Dictionary<string, float>();
+            foreach (var p in Pods(sim))
+            {
+                if (p.IsOpen || p.Condition < CryoPodFailBelow) continue;
+                intact[p.Name] = p.Condition;
+            }
+
+            var offenders = new List<string>();
+
+            // The SET first, both directions, so a renamed/added/removed capsule is a named
+            // failure rather than a silently unchecked row.
+            foreach (var row in LadderRungs)
+                if (!intact.ContainsKey(row.Pod))
+                    offenders.Add($"{row.Pod} is not an intact occupied capsule on this ship any more " +
+                                  $"(rung {row.Rung.ToString(CultureInfo.InvariantCulture)} has no pod)");
+            foreach (var pod in intact.Keys)
+            {
+                bool named = false;
+                foreach (var row in LadderRungs) if (row.Pod == pod) named = true;
+                if (!named)
+                    offenders.Add($"{pod} is an intact occupied capsule with NO rung — the ladder " +
+                                  "and the bay have drifted apart");
+            }
+
+            // Then the arithmetic, per pod, through the shipped helper.
+            foreach (var row in LadderRungs)
+            {
+                if (!intact.TryGetValue(row.Pod, out float condition)) continue;
+                var got = ThawGate.RungOf(condition);
+                string c = condition.ToString("R", CultureInfo.InvariantCulture);
+                if (got.Rung != row.Rung)
+                    offenders.Add($"{row.Pod} (Condition {c}) resolves rung " +
+                                  got.Rung.ToString(CultureInfo.InvariantCulture) + ", expected rung " +
+                                  row.Rung.ToString(CultureInfo.InvariantCulture));
+                if (got.Item != row.Item)
+                    offenders.Add($"{row.Pod} (rung {row.Rung.ToString(CultureInfo.InvariantCulture)}) " +
+                                  $"asks for {got.Item}, expected {row.Item}");
+                if (got.Count != row.Count)
+                    offenders.Add($"{row.Pod} (rung {row.Rung.ToString(CultureInfo.InvariantCulture)}) " +
+                                  "asks for " + got.Count.ToString(CultureInfo.InvariantCulture) +
+                                  " × " + got.Item + ", expected " +
+                                  row.Count.ToString(CultureInfo.InvariantCulture));
+            }
+
+            // Asserted ONCE over the whole ladder (the fifth trap shape: `Assert` throws, so a
+            // per-row assertion would report only the first broken rung).
+            Assert.That(offenders, Is.Empty,
+                "⭐ THE THAW LADDER NO LONGER MATCHES OD-M ITEM 1 (answered 2026-07-31, option A, " +
+                "BINDING — the rung table in sim/Sim.Core/ThawGate.cs):\n  " +
+                string.Join("\n  ", offenders) + "\n" +
+                "⇒ Either a pod's authored Condition moved across a band edge (sim/Sim.Gen/" +
+                "AuthoredShips.cs, WreckPods), or a band edge moved under it (ThawGate.RungOf), " +
+                "or the bay's roster changed. All three are OWNER-VISIBLE pacing changes: the " +
+                "ladder's chain depth runs 0,0,2,2,3,3,3 and its last rung is three times the " +
+                "commissioning prologue. Fix the content, or take the change to the owner — do " +
+                "NOT re-derive this table from WreckPods to make it pass.");
+
+            Assert.That(LadderRungs.Length, Is.EqualTo(PodsIntactOccupied),
+                "the ladder must have exactly one rung per intact occupied capsule");
+            Assert.That(LadderRungs.Length, Is.EqualTo(ThawGate.RungCount),
+                "ThawGate.RungCount and the hand-written ladder disagree about how many rungs " +
+                "the thaw curve has");
+        }
+
+        /// <summary>
+        /// ⭐ THE BAND EDGES ARE INCLUSIVE ON THEIR LOWER SIDE, AND THAT WAS A DECISION.
+        ///
+        /// <para>A capsule at exactly 0.92 is rung 1; at exactly 0.90 it is rung 2; at exactly
+        /// 0.80 it is rung 6. One spelling (<c>&gt;=</c>) reads the whole table, matching the
+        /// owner's own notation for the top band ("≥ 0.92").</para>
+        ///
+        /// <para>⚠️ RimWorld's analogue chooses the OPPOSITE convention and that is exactly why
+        /// this leg exists: <c>CapableOf</c> is <c>GetLevel(c) &gt; c.minForCapable</c>, a strict
+        /// <c>&gt;</c>, so "a capacity sitting exactly at <c>minForCapable</c> is NOT capable"
+        /// (<c>docs/design/rimworld-reference.md</c> §6.1). The lesson that reference draws is the
+        /// one being obeyed here: <b>an edge nobody chose is an edge somebody will hit.</b> No
+        /// authored Condition sits on an edge today — the bands were picked to fall between them —
+        /// so nothing but this test would notice the convention flipping.</para>
+        ///
+        /// <para>Both sides of every edge are checked. A one-sided pin is satisfied by a table that
+        /// has collapsed two bands into one.</para>
+        /// </summary>
+        [Test]
+        public void ThawLadder_BandLowerEdgesAreInclusive_AndTheEdgeBelowIsTheNextRung()
+        {
+            // edge value, the rung the edge ITSELF resolves to, and the rung just below it.
+            var edges = new (float Edge, int OnTheEdge, int JustBelow)[]
+            {
+                (0.92f, 1, 2),
+                (0.90f, 2, 3),
+                (0.87f, 3, 4),
+                (0.85f, 4, 5),
+                (0.82f, 5, 6),
+                (0.80f, 6, 7),
+            };
+
+            var offenders = new List<string>();
+            foreach (var e in edges)
+            {
+                string edge = e.Edge.ToString("R", CultureInfo.InvariantCulture);
+                int on = ThawGate.RungOf(e.Edge).Rung;
+                if (on != e.OnTheEdge)
+                    offenders.Add($"a capsule at EXACTLY {edge} resolves rung " +
+                                  on.ToString(CultureInfo.InvariantCulture) + ", expected rung " +
+                                  e.OnTheEdge.ToString(CultureInfo.InvariantCulture) +
+                                  " — the lower edge of every band is INCLUSIVE (>=), not exclusive (>)");
+                float below = e.Edge - 0.005f;
+                int under = ThawGate.RungOf(below).Rung;
+                if (under != e.JustBelow)
+                    offenders.Add($"a capsule just BELOW {edge} resolves rung " +
+                                  under.ToString(CultureInfo.InvariantCulture) + ", expected rung " +
+                                  e.JustBelow.ToString(CultureInfo.InvariantCulture) +
+                                  " — two bands have collapsed into one");
+            }
+
+            // The two open ends: nothing above rung 1, nothing below rung 7.
+            if (ThawGate.RungOf(1.00f).Rung != 1)
+                offenders.Add("a pristine capsule (1.00) must be rung 1");
+            if (ThawGate.RungOf(0.0f).Rung != 7)
+                offenders.Add("rung 7 must be the catch-all: RungOf is total, every float resolves");
+
+            Assert.That(offenders, Is.Empty,
+                "THE BAND-EDGE CONVENTION MOVED (sim/Sim.Core/ThawGate.cs):\n  " +
+                string.Join("\n  ", offenders) + "\n" +
+                "⇒ The lower edge of every band is INCLUSIVE, uniformly, and that is written down " +
+                "in ThawGate's own remarks. It is the opposite of RimWorld's `CapableOf` strict " +
+                "`>` (rimworld-reference.md §6.1) ON PURPOSE — the point of §6.1's lesson is that " +
+                "the edge must be CHOSEN, not inherited. Changing it changes which repair a " +
+                "capsule authored on an edge demands.");
+        }
+
+        // ------------------------------------------------- 1c. the prose header and the literals
+
+        /// <summary>
+        /// ⭐ THE SHIP'S OWN PROSE MUST STATE THE CENSUS THE LITERALS ABOVE PIN. The header block
+        /// in <c>AuthoredShips.cs</c> explains the bay in words — twelve capsules, eight living,
+        /// four dead, seven still to thaw, one already open — and a file whose prose says one
+        /// thing while its table says another is the exact failure this package was chartered to
+        /// correct: the roadmap outline quoted "pods 8 · intact 5 · wrecked 2" for weeks because a
+        /// correction landed in one file and never reached the document that consumed it.
+        ///
+        /// <para>⚠️ <b>THIS SCAN DELIBERATELY INVERTS THE HOUSE <c>codeOnly</c> CONVENTION, AND
+        /// THAT IS THE INTERESTING PART.</b> Every other source scan in this repo runs
+        /// <see cref="SurfaceBoundaryTests.CodeOnly"/> first, because a claim sitting in a comment
+        /// must not satisfy a guard about code (TRAPS 1). Here the SUBJECT IS THE COMMENT: the
+        /// census prose is the artefact under test, so the block is extracted as comment text on
+        /// purpose — and the shared stripper is used as the PROOF of that, below, by asserting it
+        /// deletes the whole block.</para>
+        ///
+        /// <para>⚠️ <b>IT IS A POSITIVE SCAN, NEVER A "must not contain 8" ONE.</b> The header
+        /// deliberately records the dead draft it replaced ("AN EARLIER DRAFT … AUTHORED EIGHT
+        /// CAPSULES OF WHICH TWO WERE WRECKED"), so a negative scan for the stale numbers would
+        /// fire on the very paragraph that exists to stop the mistake recurring — a guard that
+        /// taxes the explanation of the bug it guards.</para>
+        ///
+        /// <para>Non-vacuity is by INCLUSION (§13.4): a planted stale header must be CAUGHT.</para>
+        /// </summary>
+        [Test]
+        public void AuthoredShipsProseHeader_StatesTheSameCensusAsTheseLiterals()
+        {
+            string block = RawCapsuleHeaderBlock();
+
+            Assert.That(block.Length, Is.GreaterThan(400),
+                "the capsule header block extracted to " + block.Length + " characters, which is " +
+                "too short to be the census paragraph — the anchor has drifted and every " +
+                "assertion below would pass vacuously");
+
+            var missing = MissingCensusPhrases(block);
+            Assert.That(missing, Is.Empty,
+                "THE SHIP'S PROSE HEADER NO LONGER STATES THE CENSUS ITS TABLE AUTHORS.\n" +
+                "  missing from sim/Sim.Gen/AuthoredShips.cs's capsule header block:\n    " +
+                string.Join("\n    ", missing) + "\n" +
+                "⇒ The literals in this file say " + PodCount + " capsules / " + PodsOpen +
+                " open / " + PodsIntactOccupied + " intact occupied / " + PodsWreckedDead +
+                " wrecked, i.e. " + LivingSouls + " living souls. The header must say the same " +
+                "thing in words. ⛔ DO NOT satisfy this by editing the header's record of the " +
+                "EARLIER DRAFT (eight capsules, two wrecked) — that paragraph is the anti-" +
+                "recurrence note and it stays.");
+
+            // --- NON-VACUITY, BY INCLUSION: the dead draft's own prose must be CAUGHT.
+            // Written out by hand rather than mutated out of the real block, so that a scanner
+            // that matched nothing at all would still be shown to be able to match something.
+            const string staleDraft =
+                "        // ⭐ EIGHT CAPSULES: SIX LIVING (the design target) AND TWO DEAD (the tuning parameter)\n" +
+                "        // One capsule boots OPEN (the single pawn the player starts with) and the other\n" +
+                "        // five are thawable one at a time through MOSS (W5).\n" +
+                "        // ⚠️ THE TWO WRECKED CAPSULES ARE *IN ADDITION* TO THE SIX.\n";
+            var caught = MissingCensusPhrases(staleDraft);
+            Assert.That(caught, Is.Not.Empty,
+                "NON-VACUITY: the scanner cannot see a header planted with the stale 8/1/5/2 " +
+                "census, so its empty result above means nothing");
+            Assert.That(string.Join(" | ", caught), Does.Contain("twelve capsules"),
+                "NON-VACUITY: the scanner noticed SOMETHING about the stale draft but not that it " +
+                "claims eight capsules where the ship authors twelve — which is the specific " +
+                "revert this guard exists to catch");
+
+            // --- AND THE PROOF THAT THE BLOCK REALLY IS COMMENT TEXT, i.e. that inverting the
+            // house convention was necessary rather than sloppy: the shared code-only stripper
+            // deletes this block entirely. If it ever does not, the census prose has leaked into
+            // real code and this guard is scanning the wrong kind of thing.
+            string asCode = SurfaceBoundaryTests.CodeOnly(RawCapsuleHeaderBlock());
+            Assert.That(asCode.Trim(), Is.Empty,
+                "the capsule header block survived SurfaceBoundaryTests.CodeOnly, so it is not " +
+                "pure comment text any more: '" + asCode.Trim() + "'. This test scans COMMENTS on " +
+                "purpose (the prose is the artefact); if the census now lives in code as well, " +
+                "scan that instead — do not silently keep scanning half of it.");
+        }
+
+        /// <summary>The census phrases the header must contain, each BUILT FROM the hand-written
+        /// literal it restates, so changing a literal changes the sentence the prose owes. Matched
+        /// case-insensitively against the block with its comment markers stripped and its
+        /// whitespace collapsed, so a phrase broken across two wrapped lines still counts.</summary>
+        private static List<string> MissingCensusPhrases(string blockText)
+        {
+            string prose = ProseOf(blockText);
+            var required = new List<string>
+            {
+                NumberWord(PodCount) + " capsules",
+                NumberWord(LivingSouls) + " living",
+                NumberWord(PodsWreckedDead) + " dead",
+                NumberWord(PodsWreckedDead) + " wrecked capsules",
+                NumberWord(PodsIntactOccupied) + " are thawable",
+                NumberWord(PodsOpen) + " capsule boots open",
+            };
+            var missing = new List<string>();
+            foreach (var phrase in required)
+                if (prose.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) < 0)
+                    missing.Add("\"" + phrase + "\"");
+            return missing;
+        }
+
+        /// <summary>Comment markers off, whitespace collapsed. InvariantCulture-safe by
+        /// construction: no parsing, no formatting, an ordinal comparison at the call site.</summary>
+        private static string ProseOf(string blockText)
+        {
+            var sb = new StringBuilder(blockText.Length);
+            foreach (var raw in blockText.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("//", StringComparison.Ordinal)) line = line.Substring(2);
+                sb.Append(' ').Append(line.Trim());
+            }
+            var collapsed = new StringBuilder(sb.Length);
+            bool space = false;
+            foreach (char c in sb.ToString())
+            {
+                bool ws = c == ' ' || c == '\t' || c == '\r';
+                if (ws) { space = true; continue; }
+                if (space && collapsed.Length > 0) collapsed.Append(' ');
+                space = false;
+                collapsed.Append(c);
+            }
+            return collapsed.ToString();
+        }
+
+        private static string NumberWord(int n)
+        {
+            switch (n)
+            {
+                case 1: return "one";
+                case 2: return "two";
+                case 4: return "four";
+                case 5: return "five";
+                case 6: return "six";
+                case 7: return "seven";
+                case 8: return "eight";
+                case 12: return "twelve";
+                default:
+                    Assert.Fail("the census literal " + n.ToString(CultureInfo.InvariantCulture) +
+                                " has no English word in this table — add it, and check the ship's " +
+                                "prose header says the new number in words");
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// The banner-delimited comment block in <c>AuthoredShips.cs</c> that states the capsule
+        /// census: the title line whose PREVIOUS line is a <c>// ----</c> rule and which names
+        /// CAPSULES, through to the next rule line after it.
+        ///
+        /// <para>⚠️ The anchor is the word CAPSULES and NOT a number, deliberately: a header
+        /// reverted to "EIGHT CAPSULES: SIX LIVING" must still be FOUND, so that the phrase checks
+        /// can fail on it. An anchor built from the value under test would simply lose the block
+        /// and the guard would go vacuous instead of red.</para>
+        ///
+        /// <para>Every line of the block is required to be a comment line, which is what makes
+        /// "this is comment text" a fact rather than an assumption.</para>
+        /// </summary>
+        private static string RawCapsuleHeaderBlock()
+        {
+            string[] lines = File.ReadAllLines(Path.Combine(
+                WreckRepoRoot(), "sim", "Sim.Gen", "AuthoredShips.cs"));
+
+            var anchors = new List<int>();
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (!IsRuleLine(lines[i - 1])) continue;
+                string t = lines[i].Trim();
+                if (t.StartsWith("//", StringComparison.Ordinal) &&
+                    t.IndexOf("CAPSULES", StringComparison.Ordinal) >= 0)
+                    anchors.Add(i);
+            }
+            Assert.That(anchors.Count, Is.EqualTo(1),
+                "expected EXACTLY ONE banner-titled comment block about CAPSULES in " +
+                "AuthoredShips.cs, found " + anchors.Count + ". Ambiguity here would let the " +
+                "guard scan the wrong paragraph, so it is a failure and not a fallback.");
+
+            int start = anchors[0];
+            int j = start + 1;
+            if (j < lines.Length && IsRuleLine(lines[j])) j++;   // the title's closing rule
+            var sb = new StringBuilder();
+            var nonComment = new List<string>();
+            for (; j < lines.Length && !IsRuleLine(lines[j]); j++)
+            {
+                if (lines[j].Trim().Length > 0 &&
+                    !lines[j].Trim().StartsWith("//", StringComparison.Ordinal))
+                    nonComment.Add(lines[j].Trim());
+                sb.Append(lines[j]).Append('\n');
+            }
+            Assert.That(nonComment, Is.Empty,
+                "the capsule header block contains lines that are not comments (" +
+                string.Join(" ⏎ ", nonComment) + "), so the block boundary is wrong");
+
+            return lines[start] + "\n" + sb.ToString();
+        }
+
+        private static bool IsRuleLine(string line)
+        {
+            string t = line.Trim();
+            return t.StartsWith("// ---", StringComparison.Ordinal);
+        }
+
+        /// <summary>The house repo-root probe (two landmarks, so a stray ci.sh cannot
+        /// false-positive) — the same shape as ArchitectureBoundaryTests / SurfaceBoundaryTests.</summary>
+        private static string WreckRepoRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "ci.sh")) &&
+                    Directory.Exists(Path.Combine(dir.FullName, "sim", "Sim.Core")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+            Assert.Fail("the repo root must be discoverable by walking up from " + AppContext.BaseDirectory);
+            return null;
         }
 
         /// <summary>
