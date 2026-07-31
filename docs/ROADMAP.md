@@ -101,7 +101,7 @@ ordinals.
 | F | Repair soft-lock fixed by authoring consumables, not by softening the floor | M1-I ✅ |
 | G | The pawn boots idle and waiting; the opening IS an order; autonomy resumes after | M2-20 |
 | H | The work grid defaults OFF — work is opt-in; WORK tab becomes BLOCKING | M2-1 ✅, M2-3/M2-4 |
-| I | One rule, OFF everywhere — fixtures too; M2-17 teaches the harness to author a grid | M2-1 ✅, M2-17 |
+| I | One rule, OFF everywhere — fixtures too; M2-17 teaches the harness to author a grid | M2-1 ✅, M2-17 ✅ |
 | J | v1 work-list order = Repair · Construct · Craft · Deconstruct · Mine · Haul — and it IS the equal-band tie-break | M2-5, M2-3 layout |
 | K | ＋ADD ROOM deleted; every compartment IS a room; + four delegated calls: phase-1 exit gate = "order a repair, the lights come back" · M2-12 promoted · build the vacuum-work ladder · keep M1-I's thermal reprieve | M1-L ✅, M2-12, ladder unchartered |
 | L | **The opening arc is POD-DRIVEN** (2026-07-30): the pawn wakes to a ship of frozen/dead crew and the goal is unfreezing. MOSS controls freeze/unfreeze **per pod** and states each pod's **failure reason — the reason IS the hint what to repair next**. Pods form an **escalating repair ladder**: each successive pod's repair item needs a deeper production chain (pod 2 a simple item; pod 3 one with more pre-processing; …) — chain DEPTH is the difficulty curve, refining OD-11's Parts-count escalation. WORK tab stays the high-level prioritisation; per-target detail via right-click prioritise (re-ratifies OD-A) and the POD BAY | M3-2/3/4/6/13 charters (written at end of M2), OD-11/OD-12, M2-9/M2-10 unchanged |
