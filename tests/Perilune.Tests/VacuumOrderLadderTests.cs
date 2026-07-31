@@ -722,9 +722,18 @@ namespace Perilune.Tests
         /// <para>The dispatcher's answer is UNFIXABLE and it is correct: nobody may fetch that
         /// stack on their own. The ORDER's answer is FIXABLE, because it may. A
         /// <c>GameSession</c> that kept asking the dispatcher's question about the player's order
-        /// would stamp <c>ReasonNoConsumable</c> — *"NO PARTS OR SEALS ABOARD"* — over a repair
-        /// that is already under way three tiles from the stack. <b>That is the menu/job
-        /// disagreement §8.4 rung 3 exists to prevent, arriving through the consumable gate.</b></para>
+        /// would stamp <c>ReasonNoConsumable</c> — *"NO PARTS OR SEALS ABOARD"* — <b>over a ship
+        /// that is holding four Parts.</b></para>
+        ///
+        /// <para>⚠️ <b>AND THAT SENTENCE USED TO READ "over a repair that is already under way three
+        /// tiles from the stack", WHICH IS MORE THAN THIS FIXTURE SHOWS — corrected by independent
+        /// review rather than by growing the fixture.</b> What is asserted here is the BADGE and
+        /// only the badge: the row is gone because the host now asks the player's question. Whether
+        /// the sim also TOOK the order on this ship at this tick is a separate fact this leg does
+        /// not establish (it is <see cref="Rung2_TheOrderReachesAPartsStackStrandedInVacuum"/>'s,
+        /// on a fixture built for it), and claiming it here would be a test's prose asserting what
+        /// its own asserts do not — the exact defect this repo has retracted three headline claims
+        /// for. <b>The badge is the deliverable; the fetch is pinned next door.</b></para>
         ///
         /// <para>⚠️ THE CONTROL COMES FIRST AND IT IS NOT DECORATION: with the stack REMOVED
         /// entirely the badge must be up, or the absence asserted afterwards would be satisfied by

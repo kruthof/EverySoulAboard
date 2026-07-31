@@ -1316,7 +1316,20 @@ namespace Perilune.Web
                 sb.Append(" · WRECKED (")
                   .Append(((int)(device.Condition * 100f + 0.5f)).ToString(CultureInfo.InvariantCulture))
                   .Append("%) — IT WILL DO NOTHING UNTIL IT IS REPAIRED");
-                if (MaintenanceSystem.IsUnfixableWreck(_sim, device))
+                // ⭐⭐ M3-14 RUNG 3, THE FIFTH CALL SITE — `forced: true`, AND THE WORD THAT DECIDES
+                // IT IS "ABOARD". This sentence is a claim about the SHIP'S STOCK, not about what an
+                // idle crew member happens to be able to reach: `FindNearest` refuses a stack resting
+                // in unbreathable air, so the un-forced question answers "nothing aboard" on a wreck
+                // holding four Parts three tiles behind the pressure frontier — Parts the player can
+                // now order fetched (rung 2) and the repair completed. Asking it un-forced put a
+                // sentence that is FALSE ABOUT THE SHIP into the reply to every door/vent toggle,
+                // `vent_ls` — the phase-1 gate device — included.
+                //
+                // ⛔ IT IS THE SAME DECISION AS `BuildBlocked`'s retire rule and
+                // `PrioritiseJobCommand`'s W2 gate, taken in a third place because the advisory is a
+                // third surface: one rule, one flag, every gate (§8.4 rung 3). Pinned by
+                // `OperateVerbTests.A_Parts_Stack_Behind_The_FRONTIER_Still_Counts_As_ABOARD`.
+                if (MaintenanceSystem.IsUnfixableWreck(_sim, device, forced: true))
                     sb.Append(" · NO PARTS, SEALS OR SWARF ABOARD TO REPAIR IT");
             }
             else if (opening && device.Kind == DeviceKind.AirVent && !device.Powered)
@@ -2890,7 +2903,19 @@ namespace Perilune.Web
         /// walkable neighbour at all is still refused (an order crosses air, never geometry) and the
         /// player is still told nothing. That is the residual, named here rather than left implicit,
         /// and it is FILED, not fixed: it is a new emission on a shipped channel and M3-14's outcome
-        /// did not need it.</para>
+        /// did not need it.
+        /// <br/>⚠️ <b>AND M3-14 WIDENED THAT SILENCE'S REACH RATHER THAN MERELY INHERITING IT — say
+        /// so, because it is a cost this package took, not one it found.</b> The air gate used to
+        /// refuse these orders AT ISSUE TIME: an order into a sealed compartment was dropped by
+        /// <c>PrioritiseJobCommand</c> and nothing further happened. Now the order is ACCEPTED, the
+        /// hold is placed, and the refusal moves downstream to the GEOMETRY — with the ship's doors
+        /// still shut at boot, <c>TryFindStagingTile</c> finds no walkable neighbour, so she is held
+        /// on a job she never starts. Driven by independent review: <c>held = true</c>,
+        /// <c>took = true</c>, <c>startedWork = false</c>, stationary for 300 sim-s and resolving
+        /// only around tick 12 000. <b>It self-clears</b> (the hold dies with the job) and it is
+        /// strictly better than the old silent drop — the player can at least see who is holding
+        /// what — but the class of "an order that visibly goes nowhere" is now REACHABLE FROM THE
+        /// BOOT STATE, which it was not before. Open the door and it proceeds.</para>
         ///
         /// <para>Bounds- and fog-gated exactly as <see cref="AddIfBlocked"/> is, and de-duplicated
         /// against rows already emitted for the same tile by this walk — two crew members ordered at
