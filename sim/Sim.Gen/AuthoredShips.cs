@@ -1516,9 +1516,16 @@ namespace Perilune.Gen
         //     boot, wings 0.31 / 0.18 / 0.06         10.65 kW   Industry + Comfort shed
         //     the ship's one Parts overhauls wing_c  13.47 kW   the benches run
         //     both Seals into the other two wings    17.40 kW   the lights come back on
-        //   ⛔ 18.00 kW IS UNREACHABLE and no paragraph anywhere may quote it as the ceiling: the
-        //   repair ladder is Parts → 1.00, Seals → 0.90, Swarf → 0.45, and this ship carries
-        //   exactly ONE Parts, so exactly one wing can ever reach 1.00.
+        //   ⛔ 18.00 kW IS OUT OF REACH **ON BOOT STOCK, WITHOUT CRAFTING** — and that qualifier is
+        //   load-bearing, an earlier draft of this block said "exactly one wing can EVER reach
+        //   1.00" and that is FALSE. The repair ladder is Parts → 1.00, Seals → 0.90,
+        //   Swarf → 0.45, and this ship carries exactly ONE Parts, so on the stock in the hold
+        //   exactly one wing reaches 1.00 and 17.40 kW is the ceiling. But PARTS ARE PRODUCIBLE:
+        //   `recipes.def:21` is Fabricator, 2 Scrap → 1 Parts, and `deconstruct.def:19-21` pays
+        //   floor(2 × Condition) Parts for a strip, i.e. 2 Parts from anything at 0.50 or better.
+        //   The Regolith → Scrap → Parts ladder is spelled out in this file's own WINNABILITY
+        //   block below. ⇒ 18.00 kW is a LATE-GAME state behind the matter economy, not an
+        //   impossible one; 17.40 is what the opening can reach with what it was given.
         //
         // ⇒ AND THE OPENING IS A DEFICIT. 10.65 against 14.30 is −3.65 kW, so the 15.00 kWh bank
         // is spent by sim-hour 5 and after that Industry and Comfort shed. WINNABILITY IS DRIVEN,
@@ -1585,9 +1592,15 @@ namespace Perilune.Gen
         //     A Swarf service restores to 0.45, which clears every bench's `maint` (0.40) and every
         //     `fail` (0.10), so ONE service per bench is enough. ⇒ 3 consumables.
         //   * THE MOSS TERMINAL boots at 0.14 and needs one more. ⇒ 4 consumables total.
-        //   * BOOT STOCK: 12 Regolith, 3 Scrap, 1 Parts, 2 Seals, in the reactor bay, in air.
-        //     ⇒ 3 free services from Parts+Seals before any salvage is needed, and 12 Regolith is
-        //     already 1.5× the 8 the module wants.
+        //   * BOOT STOCK, DRIVEN OFF THE BUILT SHIP (M2-12 re-measured it): 12 Regolith, 3 Scrap,
+        //     1 Parts and 10 SEALS — 2 in the reactor bay with the rest of the stock, plus the 8
+        //     of M1-I's damage-control locker in the cryo bay (`:2210`). All of it in air.
+        //     ⇒ ELEVEN consumable services from Parts+Seals before any salvage is needed, and 12
+        //     Regolith is already 1.5× the 8 the module wants.
+        //     ⚠️ THIS LINE READ "1 Parts, 2 Seals … ⇒ 3 free services" UNTIL 2026-07-30 AND HAD
+        //     BEEN FALSE SINCE M1-I ADDED THE LOCKER. The arithmetic under it was sized against
+        //     the smaller pile, so it UNDERSTATED the ship's slack — read every "⇒ N consumables"
+        //     figure above as a floor the ship clears by more than it says.
         //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
         //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
         //     recomputed from a previous draft's arithmetic — the first version of this paragraph

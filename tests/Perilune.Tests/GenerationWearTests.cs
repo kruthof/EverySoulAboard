@@ -73,6 +73,21 @@ namespace Perilune.Tests
     /// the same floor DOES catch ×0.8 (8.52 &lt; 10.0) — a one-sided guard is blind in exactly one
     /// direction and cannot tell you which one. Hence ±0.05, both sides, on every figure.</para>
     ///
+    /// <para>⭐ <b>WHY P2 AND P3 DID NOT MOVE, MEASURED — the charter predicted both would.</b>
+    /// <c>--ship perilune</c> and <c>--ship slice</c> are <b>bit-identical</b> to the pre-change
+    /// tree at tick 3000, where both goldens are taken. Their SolarWings sit at Condition 0.999660
+    /// after 300 sim-seconds, so the per-balance-pass energy difference is about 5.7e-7 kWh —
+    /// roughly 0.15 ulp of a 34.5 kWh float32 battery accumulator — and every single addition
+    /// rounds to the same float. Hash compared at EVERY tick from 3000 to 8000 on both trees:
+    /// <b>perilune first diverges at tick 3261</b> (261 ticks = 26.1 sim-s past its golden) and
+    /// <b>slice at tick 7011</b> (4011 ticks = 401.1 sim-s past its golden).</para>
+    /// <para>⛔ <b>SO P2's MARGIN IS 26 SIM-SECONDS OF FLOAT ROUNDING, NOT A DESIGN.</b> Any lane
+    /// that moves the tick-3000 horizon, the battery capacity, or the wings' authored Condition on
+    /// those two ships should expect the goldens to move, and should re-measure rather than assume
+    /// this package's result carries over. ⚠️ The M2-12 commit message (cf0b990) reported "tick
+    /// 3275 / 275 ticks / 27.5 sim-seconds" — a 25-tick-granularity UPPER BOUND quoted as an exact
+    /// figure, and it also gave perilune's number as though it covered both ships. Corrected here
+    /// from a per-tick sweep; independent review measured 3261 too.</para>
     /// <para>Charter: <c>docs/design/perilune-roadmap-q3.packages.md</c> § "M2-12".</para>
     /// </summary>
     public class GenerationWearTests
@@ -91,14 +106,22 @@ namespace Perilune.Tests
         /// <summary>After the wreck's single Parts overhauls <c>wing_c</c> to 1.00: 3.93 + 3.54 + 6.00.
         /// This is the step the benches are bought with.</summary>
         private const float AfterWingCKW = 13.47f;
-        /// <summary>THE REACHABLE CEILING, and it is 17.40 — NOT 18.00. The wreck carries exactly one
-        /// Parts, so exactly ONE wing can reach Condition 1.00; the repair ladder's next rung is
-        /// Seals → 0.90. 6.00 + 5.70 + 5.70.</summary>
+        /// <summary>THE CEILING REACHABLE ON BOOT STOCK, WITHOUT CRAFTING, and it is 17.40 —
+        /// NOT 18.00. The wreck carries exactly one Parts, so out of the hold exactly ONE wing
+        /// reaches Condition 1.00 and the ladder's next rung (Seals → 0.90) takes the other two.
+        /// 6.00 + 5.70 + 5.70.
+        /// <para>⚠️ "ON BOOT STOCK" IS THE WHOLE QUALIFIER AND AN EARLIER DRAFT OMITTED IT, saying
+        /// one wing could EVER reach 1.00. That is false: Parts are producible (`recipes.def:21`,
+        /// Fabricator 2 Scrap → 1 Parts; `deconstruct.def:19-21`, floor(2 × Condition) Parts per
+        /// strip). 18.00 kW sits behind the matter economy, not behind a wall. This constant pins
+        /// the 1.00 / 0.90 / 0.90 STATE, which is what the opening can reach — and that is
+        /// unaffected either way.</para></summary>
         private const float CeilingKW = 17.40f;
         /// <summary>Three wings at Condition 0.00 — the floor of the affine map, 3 × 6 × 0.5.</summary>
         private const float FloorKW = 9.00f;
-        /// <summary>Three wings at Condition 1.00. Unreachable in play (one Parts aboard); it is here
-        /// as the map's OTHER endpoint, because two points pin a slope and one point cannot.</summary>
+        /// <summary>Three wings at Condition 1.00. Out of reach on boot stock (one Parts aboard) but
+        /// craftable later; it is here as the map's OTHER endpoint, because two points pin a slope
+        /// and one point cannot.</summary>
         private const float PristineKW = 18.00f;
         /// <summary>Three wings at 0.06 — every one of them below machines.def `fail` (0.10).
         /// 3 × 6 × 0.53. Under an <c>IsOperational</c> gate this figure is 0.00.</summary>
@@ -226,8 +249,10 @@ namespace Perilune.Tests
         /// arithmetic: <b>10.65 kW at boot → 13.47 after the Parts overhauls <c>wing_c</c> → 17.40
         /// once both Seals have gone into the other two wings.</b>
         /// <para>⚠️ 17.40 AND NOT 18.00 IS THE POINT OF THE THIRD LEG: the wreck carries one Parts,
-        /// so only one wing can reach 1.00 and the other two stop at the Seals rung (0.90). A
-        /// package that pinned 18.00 would pin a state no player can reach.</para>
+        /// so on boot stock only one wing reaches 1.00 and the other two stop at the Seals rung
+        /// (0.90). A package that pinned 18.00 would pin a state the OPENING cannot reach — later,
+        /// once the player is crafting Parts, it is reachable, which is why the qualifier is
+        /// "on boot stock" and not "ever".</para>
         /// <para>⚠️ ONE ASSERT, EVERY LEG IN IT — <c>Assert</c> throws, and a per-leg assertion
         /// would let the boot figure hide both later ones (the fifth trap shape).</para>
         /// </summary>
