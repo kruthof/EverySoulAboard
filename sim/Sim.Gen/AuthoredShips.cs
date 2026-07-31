@@ -1499,27 +1499,45 @@ namespace Perilune.Gen
         // enough and the others are redundancy.
         //
         // ---------------------------------------------------------------------------------------
-        // POWER — AND A SHIPPED RULE THAT DELETES THE OBVIOUS DESIGN
+        // POWER — THE CURVE THE PLAYER CLIMBS (WAS: "A SHIPPED RULE THAT DELETES THE DESIGN")
         // ---------------------------------------------------------------------------------------
-        // ⚠️ GENERATION IS CONDITION-BLIND. `PowerSystem.cs:174-185` says so in its own comment:
-        // "a wrecked SolarWing still supplies its full kW", with no `IsOperational` gate and no
-        // `EffectiveRate` factor. So "repair a wing to get the benches running" IS NOT EXPRESSIBLE
-        // — a wing at 0.06 generates exactly what a wing at 1.00 does. This was found by reading
-        // the system, after the first draft of this ship had been authored around the opposite
-        // assumption. It is reported as a finding, not worked around.
+        // ⭐ GENERATION IS CONDITION-SCALED SINCE M2-12, AND THIS PARAGRAPH USED TO SAY THE
+        // OPPOSITE. `PowerSystem.cs:235` now reads `def.GenerationKW * d.EffectiveRate` — the same
+        // factor a scrubber, a vent, a radiator and a reclaimer have always paid, applied in the
+        // power ledger because a generator's output IS power and it has no downstream system in
+        // which its wear could otherwise be expressed. There is deliberately NO `IsOperational`
+        // gate (that would be a cliff, not a gradient — see PowerSystem's own comment).
+        // ⇒ THE WINGS ARE THE POWER LEVER NOW, which is what this ship was authored believing and
+        // what it spent two packages not being.
         //
-        // ⇒ Power on this wreck is a fixed authored budget: three SolarWings, 18.00 kW flat,
-        // against 14.30 kW of demand. Every tier is served from tick 0 and STAYS served — that is
-        // a driven measurement (below), not the arithmetic. It means the wreck's scarcity is MATTER
-        // and AIR, never watts, and that is the honest choice: a tight budget browns out
-        // `PowerTier.Industry` permanently, the three benches never run, and the matter ladder that
-        // ends in a ControllerModule becomes unreachable. An unwinnable opening is worse than an
-        // easy one. (M2-12 will gate generation on condition and turn the budget into a curve; the
-        // 14.30 below is the number it is sized against.)
+        // ⇒ Power on this wreck is a CURVE the player climbs, not a fixed budget. MEASURED on this
+        // tree, driven, `ShipPlanBuilder.Build` + the default stack, read at the seam
+        // (`PowerSystem.LastGenerationKW`), against a FLAT 14.30 kW of demand:
+        //     boot, wings 0.31 / 0.18 / 0.06         10.65 kW   Industry + Comfort shed
+        //     the ship's one Parts overhauls wing_c  13.47 kW   the benches run
+        //     both Seals into the other two wings    17.40 kW   the lights come back on
+        //   ⛔ 18.00 kW IS UNREACHABLE and no paragraph anywhere may quote it as the ceiling: the
+        //   repair ladder is Parts → 1.00, Seals → 0.90, Swarf → 0.45, and this ship carries
+        //   exactly ONE Parts, so exactly one wing can ever reach 1.00.
         //
-        // The wings are still authored damaged (0.31 / 0.18 / 0.06). That is not decoration for its
-        // own sake: they are a maintenance sink and three more Swarf-priced repair jobs, and the
-        // owner's art badges every wrecked piece. It just is not a power lever — yet.
+        // ⇒ AND THE OPENING IS A DEFICIT. 10.65 against 14.30 is −3.65 kW, so the 15.00 kWh bank
+        // is spent by sim-hour 5 and after that Industry and Comfort shed. WINNABILITY IS DRIVEN,
+        // NOT ARGUED — 24 sim-hours unattended, hour by hour (OD-H: nothing is enabled, so this is
+        // a ship nobody has touched): LifeSupport SERVED at every hour and Defense SERVED at every
+        // hour. The crew keep breathing and the doors keep working; what goes out is the lamps and
+        // the benches. Pinned in `GenerationWearTests`.
+        //   ⚠️ ONCE THE BANK IS FLAT THE LAMPS FLICKER RATHER THAN SETTLING DARK, at 0.5 Hz, for
+        //   ever: a battery bursts its whole charge inside one balance second, so the surplus a
+        //   shed tier leaves behind buys back one lit second, and the next second sheds again.
+        //   Measured from h6: lit, dark, lit, dark. It is a property of the balance model, not of
+        //   this ship — but this ship is where a player meets it. FILED, not fixed.
+        //
+        // The wings are authored damaged (0.31 / 0.18 / 0.06) and that is now load-bearing in two
+        // ways at once: they are three Swarf-priced repair jobs and the owner's art badges every
+        // wrecked piece, AND they are the ship's power curve. They also ROT — unattended, wing_a
+        // reaches 0.21 by h24 and generation drifts 10.65 → 10.10 — so the deficit widens if the
+        // player does nothing. wing_b and wing_c stop rotting at machines.def `fail` (0.10), which
+        // is why the drift is small.
         //
         // ⛔ THE TWO SENTENCES THAT USED TO STAND HERE WERE BOTH FALSE, AND THE SHIP HAS BEEN
         // SHIPPING THAT WAY. They read "~12.6 kW of total demand, every tier served from tick 0 and
@@ -1536,10 +1554,15 @@ namespace Perilune.Gen
         //     ship went permanently dark seven sim-hours into a new game.
         // ⇒ M2-11 cut the risers for real (`WreckCutDeck1Risers`, called at the end of this method)
         // and BOTH halves are now true. MEASURED on this tree, same method: 23 of 611 devices
-        // off-network and they are exactly deck 1's; one network on deck 0; 8/16 lamps lit at h0,
-        // h7 and h24 (the eight lit ones are deck 0's — deck 1's eight are dark BY DESIGN); the
-        // battery bank charges 15.00 -> 40.90 -> 103.72 kWh instead of draining. Per tier the
-        // 14.30 kW is Comfort 1.20 · Industry 6.50 · Defense 0.90 · LifeSupport 5.70.
+        // off-network and they are exactly deck 1's; one network on deck 0; deck 1's eight lamps
+        // never light at any hour of the first day, BY DESIGN. Per tier the 14.30 kW is
+        // Comfort 1.20 · Industry 6.50 · Defense 0.90 · LifeSupport 5.70.
+        //   ⚠️ THE DECK-0 HALF OF M2-11'S MEASUREMENT IS SUPERSEDED BY M2-12 AND MUST NOT BE
+        //   RE-QUOTED. It read "8/16 lamps lit at h0, h7 and h24; the bank charges 15.00 -> 40.90
+        //   -> 103.72 kWh", which was true of a ship generating a flat 18.00 kW. On condition-
+        //   scaled generation the bank DRAINS to 0.00 by h5 and deck 0's lamps shed — the deficit
+        //   above. Both figures were honest when measured; only one of them is about the ship that
+        //   ships.
         //
         // ⭐ AND THE NUMBER IN THIS COMMENT IS PINNED AGAINST THE RUNNING SHIP. The line below is
         // parsed by `WreckPowerNetworkTests` and compared with figures it measures by driving the

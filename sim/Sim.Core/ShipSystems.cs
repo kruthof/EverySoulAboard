@@ -273,8 +273,10 @@ namespace Perilune.Sim
                          + "divided by total generation. STATE: any wanting device left unpowered is a "
                          + "brownout (DEGRADED); battery reserve under 25% is ATTEND. "
                          + "LIMIT: there is no reactor aboard. The row is named for the compartment; the "
-                         + "hardware is solar wings and batteries. Generation is condition-blind by design "
-                         + "(PowerSystem.cs:174-189), so a wrecked wing still supplies its full kW here.";
+                         + "hardware is solar wings and batteries. Generation is CONDITION-SCALED "
+                         + "(PowerSystem.cs:235): a damaged wing supplies less, down to half its rating, "
+                         + "so repairing one raises this figure. Draw is not scaled — a worn machine "
+                         + "pays full price for reduced output.";
                 case IdLifeSupport:
                     return "LOAD is crew CO2 production divided by the CO2 removal capacity of powered, "
                          + "operational scrubbers (condition-scaled). STATE is banded off WORST-ROOM CO2 ppm, "
@@ -351,8 +353,11 @@ namespace Perilune.Sim
         // ---------------------------------------------------------------- rows
 
         /// <summary>
-        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW OF WIRED SOURCES,
-        /// clamped 0..100. BOTH sides carry `PowerSystem.Balance`'s off-grid gate
+        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW × EffectiveRate OF
+        /// WIRED SOURCES, clamped 0..100. The numerator is flat and the denominator is
+        /// condition-scaled because `PowerSystem.Balance` is (M2-12: demand stays flat, generation
+        /// rides wear), so a ship whose wings rot reads as MORE loaded — which is what is
+        /// happening. BOTH sides carry `PowerSystem.Balance`'s off-grid gate
         /// (`PowerSystem.cs:184`) — see the Census power ledger for why an ungated denominator makes
         /// a darkening ship read as less loaded. "Wanting" mirrors `PowerSystem.IsWanting`
         /// (`PowerSystem.cs:262-266`): a vent only wants power while open; everything else always does.
@@ -801,9 +806,18 @@ namespace Perilune.Sim
                     // wing would inflate the denominator and make a darkening ship read as LESS
                     // loaded. PowerSystem.cs:243-248 warns about exactly this — `Powered` on a
                     // SolarWing says nothing about whether it is contributing, only NetworkId does.
+                    //
+                    // ⚠️ AND SINCE M2-12 IT MIRRORS THE `EffectiveRate` FACTOR TOO
+                    // (PowerSystem.cs:235). Generation is condition-scaled in the balance, so a
+                    // census that summed the flat `gen` would report a wreck's three ruined wings
+                    // as 18.0 kW while the ship they are bolted to runs on 10.7 — the row would
+                    // state a measurement the ship does not make, which is the exact defect M2-11
+                    // closed on the demand side. Both figures below are therefore kW-reaching-the-
+                    // grid, never nameplate, INCLUDING the unwired one: the two are compared in
+                    // the same sentence and must be the same currency.
                     if (d.NetworkId != 0)
                     {
-                        c.GenerationKW += def.GenerationKW;
+                        c.GenerationKW += def.GenerationKW * d.EffectiveRate;
                         if (d.Kind == DeviceKind.Battery) { c.WiredBatteries++; c.BatteryKWh += d.StoredKWh; }
                         if (def.DrawKW > 0f && Wanting(d))
                         {
@@ -811,7 +825,7 @@ namespace Perilune.Sim
                             if (!d.Powered) c.BrownedOutDevices++;   // shed by the tier walk = a brownout
                         }
                     }
-                    else if (def.GenerationKW > 0f) c.UnwiredGenerationKW += def.GenerationKW;
+                    else if (def.GenerationKW > 0f) c.UnwiredGenerationKW += def.GenerationKW * d.EffectiveRate;
 
                     // Census of generating HARDWARE (ungated): "none aboard" and "none of it is
                     // plugged in" are different failures and the row must not conflate them.

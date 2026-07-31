@@ -61,8 +61,15 @@ namespace Perilune.Tests
         private const int Deck1Devices = 23;
         /// <summary>kW the ship actually books at boot, driven. 20.40 before this package.</summary>
         private const float FlatDemandKW = 14.30f;
-        /// <summary>Three SolarWings at machines.def `gen` = 6 kW. Condition-blind until M2-12.</summary>
-        private const float FlatGenerationKW = 18.00f;
+        /// <summary>Three SolarWings at machines.def `gen` = 6 kW — the ship's NAMEPLATE generation,
+        /// i.e. the wired generating hardware aboard.
+        /// ⚠️ SINCE M2-12 THIS IS NO LONGER WHAT THE SHIP RUNS ON. `PowerSystem.Balance` scales
+        /// generation by <c>Device.EffectiveRate</c>, so the wreck's three damaged wings feed it
+        /// 10.65 kW, not 18.00. That figure is pinned AT THE SEAM (`PowerSystem.LastGenerationKW`)
+        /// by <c>GenerationWearTests</c>, which is its only home — this constant stays because it
+        /// pins something that file does not: that the hardware is still three wired 6 kW wings.
+        /// Do NOT compare it with a demand figure; they are different currencies now.</summary>
+        private const float NameplateGenerationKW = 18.00f;
         private const int Lamps = 16;
         private const int LampsOnDeck0 = 8;
 
@@ -139,8 +146,11 @@ namespace Perilune.Tests
             var inv = CultureInfo.InvariantCulture;
             if (Math.Abs(demand - FlatDemandKW) > 0.001f)
                 offenders.Add($"the ship books {demand.ToString("F2", inv)} kW of demand; this file pins {FlatDemandKW.ToString("F2", inv)}");
-            if (Math.Abs(generation - FlatGenerationKW) > 0.001f)
-                offenders.Add($"the ship generates {generation.ToString("F2", inv)} kW; this file pins {FlatGenerationKW.ToString("F2", inv)}");
+            if (Math.Abs(generation - NameplateGenerationKW) > 0.001f)
+                offenders.Add($"the ship carries {generation.ToString("F2", inv)} kW of wired generating " +
+                              $"NAMEPLATE; this file pins {NameplateGenerationKW.ToString("F2", inv)}. " +
+                              "(What it actually RUNS on is condition-scaled since M2-12 and is pinned " +
+                              "in GenerationWearTests, at the seam.)");
 
             // ⚠️ AND THE HELPER MUST NOT ASSERT EITHER — review found that it did, and an Assert
             // inside it unwound straight out of this method and DISCARDED the two offenders
@@ -255,14 +265,30 @@ namespace Perilune.Tests
         // ------------------------------------------------------------ 4. what a player sees
 
         /// <summary>
-        /// ⭐ THE PLAYER-VISIBLE OUTCOME, DRIVEN FOR SEVEN SIM-HOURS. Before this package the wreck
-        /// booted 16/16 lamps lit with 15.00 kWh in the bank, ran a 2.40 kW deficit against its own
+        /// ⭐ THE PLAYER-VISIBLE OUTCOME, DRIVEN FOR SEVEN SIM-HOURS. Before M2-11 the wreck booted
+        /// 16/16 lamps lit with 15.00 kWh in the bank, ran a 2.40 kW deficit against its own
         /// mis-authored demand, and went to 0/16 lit and 0.00 kWh at h7 — permanently, with no
-        /// message anywhere. After it, deck 0's eight lamps stay lit and deck 1's eight stay dark
-        /// BECAUSE THEY ARE OFF THE GRID, which is the fiction the comment always claimed.
-        /// ⚠️ SEVEN HOURS, NOT SEVEN SECONDS: a battery can burst its whole charge inside one
-        /// balance second (PowerSystem.cs, `batteryKW = charge * 3600`), so a short run measures
-        /// the bank, not the budget. This is the same horizon lesson WreckShipTests paid for.
+        /// message anywhere. Deck 1's eight lamps must stay dark BECAUSE THEY ARE OFF THE GRID,
+        /// which is the fiction the authoring comment always claimed, and deck 0 must not be dead.
+        ///
+        /// <para>⚠️ <b>M2-12 REWROTE THE DECK-0 HALF OF THIS TEST AND THE OLD FORM WAS RIGHT TO GO
+        /// RED.</b> It asserted "8/8 lit at h7 and the bank above 15.00 kWh", which was true only
+        /// while generation was condition-BLIND (a flat 18.00 kW against 14.30 of demand).
+        /// Generation now rides <c>Device.EffectiveRate</c>, so the wreck's three damaged wings feed
+        /// it 10.65 kW, the 15.00 kWh bank is spent by sim-hour 5 and Industry and Comfort shed
+        /// from there — <b>by design: that is the deficit the player repairs their way out of</b>,
+        /// and life support and the doors stay served throughout (measured hour by hour in
+        /// <c>GenerationWearTests.Winnability_LifeSupportIsServedEveryHourOfTheFirstDay</c>). What
+        /// this file still owns is M2-11's claim: deck 1 is off the grid, and deck 0 is not.</para>
+        ///
+        /// <para>⚠️ <b>AND IT IS ASSERTED OVER A WINDOW OF 120 BALANCE PASSES, NOT AT AN INSTANT.</b>
+        /// A ship in persistent deficit with a flat bank does not settle dark, it FLICKERS at
+        /// 0.5 Hz: a battery bursts its whole charge inside one balance second
+        /// (<c>batteryKW = charge * 3600</c>), so the surplus a shed tier leaves behind re-charges
+        /// it and buys back one lit second. Measured, from h6: lit, dark, lit, dark, indefinitely.
+        /// A single-instant lamp count is therefore a coin toss on the sampling phase — this test
+        /// asks the two questions that are phase-independent: deck 1 NEVER lights, and deck 0 is
+        /// not permanently dark.</para>
         /// </summary>
         [Test]
         public void TheShipNoLongerGoesDarkAtHourSeven_AndDeck1StaysDark()
@@ -271,30 +297,52 @@ namespace Perilune.Tests
             const int SevenHours = 7 * 36_000;   // 10 Hz
             for (int t = 0; t < SevenHours; t++) sim.Tick();
 
-            var devices = sim.Devices.Items;
-            int lamps = 0, lit = 0;
-            float stored = 0f;
+            const int Window = 120;              // balance passes; PowerSystem runs at 1 Hz
+            int lamps = 0, deck0Lamps = 0;
+            int passesWithDeck0Lit = 0, passesWithDeck0Dark = 0, deck1LitEver = 0;
             var offenders = new List<string>();
-            for (int i = 0; i < devices.Count; i++)
+            var deck1Offenders = new HashSet<string>();
+
+            for (int s = 0; s < Window; s++)
             {
-                var d = devices[i];
-                if (d.Kind == DeviceKind.Battery) stored += d.StoredKWh;
-                if (d.Kind != DeviceKind.Light) continue;
-                lamps++;
-                if (d.Powered) lit++;
-                bool onDeck0 = d.Pos.Z == 0;
-                if (onDeck0 && !d.Powered) offenders.Add($"{d.Name} is a deck-0 lamp and it is DARK at h7 — the ship browned out again");
-                if (!onDeck0 && d.Powered) offenders.Add($"{d.Name} is a deck-1 lamp and it is LIT at h7 — the risers are not cut");
+                for (int t = 0; t < 10; t++) sim.Tick();
+                var devices = sim.Devices.Items;
+                int lit0 = 0;
+                lamps = 0; deck0Lamps = 0;
+                for (int i = 0; i < devices.Count; i++)
+                {
+                    var d = devices[i];
+                    if (d.Kind != DeviceKind.Light) continue;
+                    lamps++;
+                    if (d.Pos.Z == 0) { deck0Lamps++; if (d.Powered) lit0++; }
+                    else if (d.Powered) { deck1LitEver++; deck1Offenders.Add(d.Name); }
+                }
+                if (lit0 == deck0Lamps) passesWithDeck0Lit++;
+                if (lit0 == 0) passesWithDeck0Dark++;
             }
 
             // One assert, every leg (fifth trap shape).
+            foreach (var name in deck1Offenders)
+                offenders.Add($"{name} is a deck-1 lamp and it was LIT at h7 — the risers are not cut");
             if (lamps != Lamps) offenders.Add($"the ship carries {lamps} lamps, not {Lamps}");
-            if (lit != LampsOnDeck0) offenders.Add($"{lit} lamps are lit at h7, not {LampsOnDeck0}");
-            if (stored <= 15f)
-                offenders.Add("the battery bank must be CHARGING on the corrected budget, not draining: " +
-                              "18.00 kW of generation against 14.30 kW of demand. It held " +
-                              stored.ToString("F2", CultureInfo.InvariantCulture) + " kWh at h7, and it boots at 15.00.");
-            Assert.That(offenders, Is.Empty, "seven sim-hours in:\n  " + string.Join("\n  ", offenders));
+            if (deck0Lamps != LampsOnDeck0)
+                offenders.Add($"deck 0 carries {deck0Lamps} lamps, not {LampsOnDeck0}");
+            if (passesWithDeck0Lit == 0)
+                offenders.Add($"deck 0's {LampsOnDeck0} lamps were dark in ALL {Window} balance seconds at h7 — " +
+                              "the ship is permanently dark again, which is the blackout M2-11 closed");
+            // ⚠️ THE NON-VACUITY HALF, and it is an INCLUSION test (trap 4, fourth shape): "the
+            // lamps came on at least once" is also satisfied by a ship with no deficit at all, in
+            // which case this test would silently stop being about a brownout. On the authored
+            // wings the ship MUST also be dark sometimes.
+            if (passesWithDeck0Dark == 0)
+                offenders.Add($"deck 0's lamps were lit in all {Window} balance seconds at h7 on the AUTHORED " +
+                              "wings — the wreck's power deficit has been removed, and with it the whole " +
+                              "point of repairing a wing (M2-12)");
+
+            Assert.That(offenders, Is.Empty,
+                $"seven sim-hours in ({passesWithDeck0Lit} of {Window} passes fully lit, " +
+                $"{passesWithDeck0Dark} fully dark, deck 1 lit in {deck1LitEver}):\n  " +
+                string.Join("\n  ", offenders));
         }
 
         /// <summary>The house repo-root probe (two landmarks, so a stray ci.sh cannot

@@ -967,11 +967,22 @@ namespace Perilune.Tests
         [Test]
         public void TheBenchesAreOnAPowerNetwork_AndTheirTierIsServed()
         {
-            // ⚠️ THIS IS THE ASSERTION THAT CATCHES THE UNWINNABLE SHIP. Generation is
-            // CONDITION-BLIND (PowerSystem.cs:174-185 — "a wrecked SolarWing still supplies its full
-            // kW"), so authored damage cannot brown a tier back IN; a tier that is shed at boot is
-            // shed forever. If PowerTier.Industry is not served here, the player can pressurise the
-            // workshop, repair every bench, and still watch nothing happen, with no message anywhere.
+            // ⚠️ THIS IS THE ASSERTION THAT CATCHES THE UNWINNABLE SHIP, AND M2-12 CHANGED WHAT
+            // "UNWINNABLE" MEANS HERE. It used to rest on generation being CONDITION-BLIND — "a
+            // wrecked SolarWing still supplies its full kW", so authored damage could not brown a
+            // tier back in and a tier shed at boot was shed for ever. That premise is GONE:
+            // generation now rides Device.EffectiveRate (PowerSystem.cs:235), the wreck's three
+            // damaged wings feed 10.65 kW against 14.30 of demand, and PowerTier.Industry is shed
+            // once the 15 kWh bank runs out at about sim-hour 4. THE BENCHES BEING DARK IS NOW A
+            // STATE THE PLAYER REPAIRS THEIR WAY OUT OF, not a dead end.
+            // ⇒ So the unwinnable ship is no longer "Industry shed at boot"; it is "Industry shed
+            // even at the reachable power ceiling". Both halves are asserted below, and the second
+            // is the one that catches it.
+            // ⚠️ AND THE FIRST HALF IS DELIBERATELY READ INSIDE THE BANK'S LIFETIME (60 000 ticks
+            // = 1.7 sim-hours, before the h4 drain). That is not the hole the old comment warns
+            // about, it is the opposite: at this horizon the benches ARE fed, which is what makes
+            // the ship's opening playable, and the ceiling leg is what proves the wings — not the
+            // batteries — are what keeps them fed afterwards.
             // ⚠️ THE HORIZON IS THE WHOLE GUARD, AND 20 TICKS WAS A HOLE — FOUND BY MUTATION, NOT BY
             // READING. This test ran two sim-seconds and SURVIVED deleting every SolarWing on the
             // ship. `PowerSystem.cs:196` reads `supply = generation + batteryCharge * 3600`, i.e. a
@@ -1003,6 +1014,36 @@ namespace Perilune.Tests
                      devices[i].Kind == DeviceKind.MachineShop) && devices[i].NetworkId != 0) onNetwork++;
             Assert.That(onNetwork, Is.GreaterThanOrEqualTo(3),
                 "fixture: all three deck-0 benches must be trayed, or the check above is vacuous");
+
+            // ⭐ THE LEG THAT NOW CATCHES THE UNWINNABLE SHIP (M2-12). Run PAST the bank — twelve
+            // sim-hours, long after the h4 drain — with the wings at the ceiling a player can
+            // actually reach: the ship's one Parts overhauls one wing to 1.00 and its Seals take
+            // the other two to 0.90, which is 17.40 kW against 14.30 of demand. If the benches are
+            // dark HERE, no amount of repairing gets the matter ladder running and the opening is
+            // unwinnable for real.
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.SolarWing) continue;
+                d.Condition = d.Name == "wing_c" ? 1.00f : 0.90f;   // Parts on one, Seals on two
+            }
+            for (int t = 0; t < 12 * 36_000; t++) sim.Tick();
+
+            var afterRepair = new List<string>();
+            devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.SalvageRecycler && d.Kind != DeviceKind.Fabricator &&
+                    d.Kind != DeviceKind.MachineShop) continue;
+                if (d.NetworkId == 0) continue;   // deck 1's ruined bench: risers cut, by design
+                if (!d.Powered)
+                    afterRepair.Add($"{d.Name} ({d.Kind}) is UNPOWERED twelve sim-hours after the wings " +
+                                    "were brought to the reachable ceiling");
+            }
+            Assert.That(afterRepair, Is.Empty,
+                "the matter ladder cannot be reached even at full repairable power — THAT is an " +
+                "unwinnable ship:\n  " + string.Join("\n  ", afterRepair));
         }
 
         // ------------------------------------------------------------------- 8. it is survivable
