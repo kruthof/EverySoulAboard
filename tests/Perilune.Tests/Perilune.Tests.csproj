@@ -96,6 +96,11 @@
     <!-- E0-4 WP-3: the pure occupancy stockpile-selection helper (Program.cs owns the IO/flag).
          Tested directly so "designates the same N walkable tiles on two runs" is pinned. -->
     <Compile Include="../../hosts/scenario/StockpileHarness.cs" />
+    <!-- M2-17: the occupancy harness's WORK GRANT + its non-vacuity rule (Program.cs owns the IO/flag).
+         Tested directly because this is the piece that decides whether an A1/A2/A3 number may be
+         quoted at all — under OD-H a 0 % reading is both the correct output and the broken-instrument
+         output, so the grant read-back and WorkGrantHarness.Judge are the only things separating them. -->
+    <Compile Include="../../hosts/scenario/WorkGrantHarness.cs" />
   </ItemGroup>
 
   <ItemGroup>

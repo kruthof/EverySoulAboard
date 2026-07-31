@@ -201,6 +201,31 @@ namespace Perilune.Tools
         /// and Flee; **work** = the productive kinds only (Dig/Haul*/Craft/Maintain/Build). A crew
         /// that clears 25 % by eating and fleeing has not met the intent of A1, and a single number
         /// would hide that. Read-only: no sim mutation beyond ticking, no files written.
+        ///
+        /// ⭐⭐ **M2-17 — THE LEG NOW AUTHORS ITS OWN WORK GRID, AND PRINTS IT BESIDE THE RESULT.**
+        /// Under **OD-H/OD-I** every work type boots `Off` on every ship, fixtures included, so from
+        /// M2-2 onward an unattended run of this verb measures a ship where **nobody works** and
+        /// reports it as a number. `--grant <spec>` (see <see cref="WorkGrantHarness"/>) hands the
+        /// crew a grid through the sim's own `SetWorkPriorityCommand`; the grid is then READ BACK off
+        /// the sim and printed above the occupancy table and beside the A1/A2/A3 headlines. ⛔ **No
+        /// flag ⇒ no grant**, which is the shipped boot state and a legitimate thing to measure —
+        /// it is just no longer a thing you can measure *silently*.
+        ///
+        /// ⛔ **AND THE NON-VACUITY CHECK, BY INCLUSION.** `0 %` busy is now BOTH the correct output
+        /// of a correctly-working game AND the signature of a broken harness, and `A1 = 0.000 %` on
+        /// `--ship grid` was already the measured post-E0 result — the two causes are confusable by
+        /// construction. So this verb refuses to report a believable zero:
+        ///   * **exit 3** — a grid was granted and the read-back disagrees with it (the grant never
+        ///     landed; every number below it describes a configuration nobody asked for);
+        ///   * **exit 2** — a grid was granted, it survived the read-back, and the whole run still
+        ///     produced ZERO productive crew-ticks. That is the vacuous case: believe it only after
+        ///     some leg with a granted grid has reported non-zero work.
+        /// Exit 0 is "the number may be quoted, with its grid".
+        ///
+        /// A2 (`IsRecruitableForWork` share) is counted unconditionally — it is one predicate read per
+        /// crew per tick and it is the number that says WHY A1 is what it is. A3 (`--wall-day N`)
+        /// designates one wall build at the start of sim-day N through the same
+        /// `DesignateBuildCommand` a client click issues and reports whether it completed.
         /// </summary>
         private static int RunOccupancy(string[] args)
         {
@@ -378,6 +403,32 @@ namespace Perilune.Tools
                 Console.WriteLine();
             }
 
+            // ⭐⭐ M2-17 — THE WORK GRANT. `--grant <spec>` (default: none). Parsed here so a bad spec
+            // fails before a single tick is spent, and ENQUEUED here so the commands sit in the sim's
+            // inbox for the first Tick to drain — no flag ⇒ nothing is enqueued and every pre-M2-17
+            // leg is byte-identical. See WorkGrantHarness for the grammar and for why the grant goes
+            // through SetWorkPriorityCommand instead of touching Citizen.SetWorkPriority directly.
+            string grantSpec = ArgString(args, "--grant", null);
+            if (!WorkGrantHarness.TryParseSpec(grantSpec, out byte[] grantGrid, out string grantError))
+            {
+                Console.WriteLine(grantError);
+                return 1;
+            }
+            int grantCommands = WorkGrantHarness.Grant(sim, grantGrid);
+
+            // ⭐ M2-17 — A3, "player can build a wall at day N" (ECONOMY.md §12.1). NEVER measured in
+            // this repo's life until this package. The order is issued at the START of sim-day N — tick
+            // (N-1)*TicksPerDay — through DesignateBuildCommand, the same command a client click
+            // issues, so the whole chain (site legality, Regolith haul, Construct work, completion) is
+            // the shipped one. `--days` must exceed N-1 by enough to observe the outcome; the report
+            // says how much observation window it actually had rather than implying a verdict.
+            int wallDay = ArgInt(args, "--wall-day", 0);
+            long wallOrderTick = wallDay > 0 ? (long)(wallDay - 1) * TicksPerDay : -1;
+            Int3 wallSite = default;
+            bool wallDesignated = false, wallCompleted = false;
+            long wallCompletedTick = -1;
+            int wallRequired = 0;
+
             // OPT-IN LIVELOCK AUDIT (--maint-audit). Host-side, printing only; no flag ⇒ the
             // CI-comparable verb-less report is byte-identical.
             //
@@ -426,17 +477,78 @@ namespace Perilune.Tools
             var wasDelivering = new bool[sim.Citizens.Items.Count];
             long totalTicks = (long)days * TicksPerDay;
 
+            // ⭐ M2-17 — A2, "recruitable crew-ticks" (ECONOMY.md §12.1; last measured pre-E0-1 at
+            // 17.9 %). ⚠️ THE PREDICATE MOVED AND THE TWO NUMBERS ARE NOT COMPARABLE: the 17.9 % was
+            // `IsIdleForWork`, whose `!HasPath` clause made a wandering pawn unrecruitable
+            // (ECONOMY.md §1.3a) — E0-1 removed exactly that clause, which was the entire point of
+            // E0-1. Today's predicate is `Citizen.IsRecruitableForWork`, the one every claim gate
+            // actually reads, so this is the honest current definition and NOT a re-run of the old
+            // one. `zeroRecruitableTicks` is its companion from the same table: ticks in which the
+            // dispatcher had NOBODY to give work to, whatever work existed.
+            long recruitableTicks = 0, zeroRecruitableTicks = 0;
+            // The grid, read BACK off the sim after the grant's commands executed (never the parsed
+            // spec — see WorkGrantHarness). Captured inside the loop because commands drain at the
+            // TOP of Simulation.Tick, so tick 0 is the first tick at which the sim holds the grant.
+            string gridBlock = null, gridCompact = null;
+
             Console.WriteLine($"occupancy — {shipName} ship, {crewCount} crew, {days} day(s), seed {seed}");
             Console.WriteLine($"defs: {defs.Checksum:x16}");
+            if (grantGrid != null)
+                Console.WriteLine($"--grant {grantSpec}: {grantCommands} SetWorkPriorityCommand(s) enqueued " +
+                                  $"({crewCount} crew x {Perilune.Sim.WorkPriority.WorkTypeCount} work types, " +
+                                  "the Off cells written too — a measurement must not inherit WorkPriority.Default)");
+            if (wallDay > 0)
+                Console.WriteLine($"--wall-day {wallDay}: one Wall build will be designated at tick " +
+                                  $"{N(wallOrderTick)} (start of sim-day {wallDay}) — the A3 gate");
             Console.WriteLine();
 
             var clock = Stopwatch.StartNew();
             for (long t = 0; t < totalTicks; t++)
             {
+                // A3: the order goes in BEFORE the tick that is meant to carry it, so it executes in
+                // the command phase of tick `wallOrderTick` and the site is live for that tick's
+                // dispatcher rather than one tick late.
+                bool wallOrderedThisTick = false;
+                if (t == wallOrderTick && TrySelectWallSite(sim, out wallSite))
+                {
+                    sim.EnqueueCommand(new DesignateBuildCommand(wallSite, BuildKind.Wall));
+                    wallOrderedThisTick = true;
+                }
                 sim.Tick();
+                // Confirm the order REGISTERED, and take `Required` from the sim's own pending site
+                // rather than re-deriving the material cost host-side (two spellings of one number is
+                // how a harness comes to disagree with the game it is measuring).
+                if (wallOrderedThisTick)
+                {
+                    foreach (var sysw in sim.Systems)
+                        if (sysw is BuildSystem bw && bw.TryGet(wallSite, out var pbw))
+                        { wallDesignated = true; wallRequired = pbw.Required; break; }
+                }
+                // ⛔ M2-17 GRANT INTEGRITY. Read the grid back off the sim the instant it can hold it.
+                // Printing the parsed spec would read identically whether the grant landed or was
+                // dropped on the floor; this cannot.
+                if (t == 0)
+                {
+                    if (!WorkGrantHarness.Verify(sim, grantGrid, out string mismatch))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("⛔ GRANT MISMATCH — the work grid did not reach the sim: " + mismatch);
+                        Console.WriteLine("   Every number this run would print describes a configuration nobody " +
+                                          "asked for. Refusing to measure.");
+                        return 3;
+                    }
+                    gridBlock = WorkGrantHarness.FormatGrid(sim);
+                    gridCompact = WorkGrantHarness.FormatCompact(sim);
+                }
+                if (wallDesignated && !wallCompleted && sim.World.GetWall(wallSite) != 0)
+                {
+                    wallCompleted = true;
+                    wallCompletedTick = t;
+                }
                 int hour = (int)(t / TicksPerHour);
                 if (hour >= hours) hour = hours - 1;
                 var crew = sim.Citizens.Items;
+                int recruitableNow = 0;
                 for (int i = 0; i < crew.Count; i++)
                 {
                     var c = crew[i];
@@ -449,6 +561,9 @@ namespace Perilune.Tools
                         wasDelivering[i] = delivering;
                     }
                     if (c.Dead) continue;
+                    // A2, counted on the SAME live-crew denominator the occupancy table uses, so the
+                    // two rows cannot disagree about the same run.
+                    if (c.IsRecruitableForWork) { recruitableTicks++; recruitableNow++; }
                     kindTicks[(int)c.JobKind]++;
                     if (c.JobKind == JobKind.None) continue;
                     hourAny[hour]++;
@@ -460,6 +575,7 @@ namespace Perilune.Tools
                         if (c.HasPath) onJobTravel++; else onJobWork++;
                     }
                 }
+                if (recruitableNow == 0) zeroRecruitableTicks++;
 
                 if (maintAudit)
                 {
@@ -514,6 +630,22 @@ namespace Perilune.Tools
             for (int k = 0; k < kindCount; k++) grandTotal += kindTicks[k];
             if (grandTotal == 0) { Console.WriteLine("occupancy: every crew member died — nothing to measure."); return 1; }
 
+            // ⭐⭐ M2-17 — THE GRID, BESIDE THE RESULT. It is printed BEFORE the numbers on purpose:
+            // a reader who stops at the first table has still seen the preconditions.
+            Console.WriteLine("work grid (READ BACK off the sim, not the requested spec — 1 is the HIGHEST priority):");
+            Console.Write(gridBlock);
+            if (grantGrid == null)
+            {
+                Console.WriteLine("  ⚠️ NO GRANT — this is the shipped boot state (OD-H/OD-I: work is opt-in, one rule");
+                Console.WriteLine("     off everywhere, fixtures included). A crew with every work type off does no work,");
+                Console.WriteLine("     so 0 % is the CORRECT output of this configuration and is NOT a regression.");
+                Console.WriteLine("     Pass --grant all (or --grant Repair@1,Haul@4) to measure a ship whose crew work.");
+            }
+            Console.WriteLine("  ⛔ EVERY OCCUPANCY / A1 / A2 / A3 NUMBER IN THIS REPO TAKEN BEFORE M2-2 LANDED WAS");
+            Console.WriteLine("     MEASURED ON A TREE NOBODY WILL PLAY. The drop is OD-B's re-baseline arriving with");
+            Console.WriteLine("     OD-H's default as its cause — it is NOT a regression and must not be reported as one.");
+            Console.WriteLine();
+
             Console.WriteLine("job occupancy (share of live crew-ticks):");
             foreach (JobKind k in Enum.GetValues(typeof(JobKind)))
             {
@@ -540,11 +672,72 @@ namespace Perilune.Tools
                 Console.WriteLine();
                 Console.WriteLine($"A1 (busy at sim-hour 24, target >= 25 %):  any {anyAt24:0.000} %   work {workAt24:0.000} %");
                 Console.WriteLine($"A1 verdict (work): {(workAt24 >= 25.0 ? "PASS" : "FAIL")}");
+                // ⛔ THE GRID TRAVELS WITH THE NUMBER. A1 is a REGRESSION STATISTIC under OD-B and may
+                // never be optimised toward; it is also now producible at 0.000 % by two entirely
+                // different causes, so the grid is part of the reading, not context for it.
+                Console.WriteLine($"A1 grid: {gridCompact}");
             }
             else
             {
                 Console.WriteLine();
                 Console.WriteLine("A1 needs --days 1 or more to reach sim-hour 24.");
+            }
+
+            // ⭐ A2 — recruitable crew-ticks (ECONOMY.md §12.1, target > 60 %). Not measured since
+            // E0-1, and E0-1 is exactly what changed the predicate: see the counter's declaration.
+            {
+                double a2 = 100.0 * recruitableTicks / grandTotal;
+                double zero = 100.0 * zeroRecruitableTicks / totalTicks;
+                Console.WriteLine();
+                Console.WriteLine($"A2 (recruitable crew-ticks, target > 60 %):  {F(a2, "0.000")} %" +
+                                  $"   ticks with ZERO recruitable crew {F(zero, "0.000")} %");
+                Console.WriteLine($"A2 verdict: {(a2 > 60.0 ? "PASS" : "FAIL")}   predicate Citizen.IsRecruitableForWork " +
+                                  "(NOT the pre-E0-1 IsIdleForWork that produced 17.9 % — E0-1 removed its !HasPath " +
+                                  "clause, so the two numbers measure different things and must not be diffed)");
+                Console.WriteLine($"A2 grid: {gridCompact}");
+            }
+
+            // ⭐ A3 — "player can build a wall at day N" (ECONOMY.md §12.1). NEVER measured in this
+            // repo's life before M2-17. Only printed under --wall-day: without the flag no order was
+            // issued, and printing a verdict for an order nobody gave is exactly the class of claim
+            // this package exists to stop.
+            if (wallDay > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"A3 (player can build a wall at sim-day {wallDay}; target 'routine', " +
+                                  "ECONOMY.md §12.1 records 'impossible'):");
+                if (!wallDesignated)
+                {
+                    Console.WriteLine("  order            NOT ISSUED — either no tile passed BuildSystem.CanDesignate with a");
+                    Console.WriteLine("                   worksite-safe neighbour to stand on, or the designation was refused at");
+                    Console.WriteLine("                   the tick boundary (the staging cap). Either way A3 is UNMEASURABLE on");
+                    Console.WriteLine("                   this ship — a finding about the ship, NOT a verdict about the economy.");
+                }
+                else
+                {
+                    long observed = totalTicks - wallOrderTick;
+                    // Read the END state off the sim's own registry rather than remembering it: a site
+                    // that is gone is either built (caught by the wall write above) or cancelled, and
+                    // "still pending" has to be the registry's answer, not the harness's memory.
+                    bool stillPending = false; int delivered = 0;
+                    foreach (var sysm in sim.Systems)
+                        if (sysm is BuildSystem b2 && b2.TryGet(wallSite, out var pb))
+                        { stillPending = true; delivered = pb.Delivered; break; }
+                    Console.WriteLine($"  site             {wallSite}   Regolith required {wallRequired}");
+                    Console.WriteLine($"  observation      {N(observed)} tick(s) = " +
+                                      $"{F(observed / (double)TicksPerHour, "0.00")} sim-hour(s) " +
+                                      "after the order (a NOT-COMPLETED verdict is only as strong as this window)");
+                    if (wallCompleted)
+                        Console.WriteLine($"  outcome          COMPLETED at tick {N(wallCompletedTick)}, " +
+                                          $"{F((wallCompletedTick - wallOrderTick) / (double)TicksPerHour, "0.000")} " +
+                                          "sim-hour(s) after the order");
+                    else
+                        Console.WriteLine($"  outcome          NOT COMPLETED — site {(stillPending ? "still pending" : "GONE (cancelled)")}, " +
+                                          $"Regolith staged {delivered} / {wallRequired}");
+                    Console.WriteLine("  needs            Construct AND Haul in the grid (the material is hauled to the site " +
+                                      "before any Construct tick is spent) — read the grid line below before the verdict");
+                }
+                Console.WriteLine($"A3 grid: {gridCompact}");
             }
 
             if (maintAudit)
@@ -828,7 +1021,84 @@ namespace Perilune.Tools
             Console.WriteLine($"  crew alive             {alive,6} / {crewCount}");
 
             Console.WriteLine($"\n{totalTicks:N0} ticks in {clock.Elapsed.TotalSeconds:0.0}s wall");
+
+            // ⛔⛔ M2-17 — THE NON-VACUITY CHECK, BY INCLUSION.
+            //
+            // `0 %` busy is now BOTH the expected output of a correctly-working game (OD-H: nobody is
+            // assigned any work) AND the signature of an instrument that measured nothing. The two are
+            // confusable BY CONSTRUCTION, and `A1 = 0.000 %` on --ship grid was already the measured
+            // post-E0 result — so a reader has no way to tell them apart from the number alone.
+            //
+            // WHY THE CHECK LIVES HERE AND NOT IN ci.sh: ci.sh is PIN-NEUTRAL territory for this
+            // package (it must take a zero-line diff), and a gate-side check would only ever guard the
+            // one run ci.sh makes. This one travels with every invocation, including the ad-hoc ones a
+            // future session types by hand — which is where the misquote actually happens.
+            //
+            // It is an INCLUSION test, not a filter: it fires precisely when a grid WAS granted (so
+            // work was possible) and the run still produced no productive crew-tick at all.
+            long productiveTicks = 0;
+            foreach (JobKind k in Enum.GetValues(typeof(JobKind)))
+                if (IsProductive(k)) productiveTicks += kindTicks[(int)k];
+            Console.WriteLine();
+            var vacuity = WorkGrantHarness.Judge(grantGrid != null, productiveTicks);
+            if (vacuity == WorkGrantHarness.Vacuity.NotApplicable)
+            {
+                Console.WriteLine($"non-vacuity: N/A — no grid was granted, so {N(productiveTicks)} productive " +
+                                  "crew-tick(s) is whatever the shipped default produces. A zero here is EXPECTED " +
+                                  "and proves nothing about the instrument. Re-run with --grant to get a believable number.");
+                return 0;
+            }
+            if (vacuity == WorkGrantHarness.Vacuity.Fail)
+            {
+                Console.WriteLine("⛔ NON-VACUITY FAIL — a work grid WAS granted, it survived the read-back, and the run");
+                Console.WriteLine("   still produced ZERO productive crew-ticks. Either this ship has no work for this");
+                Console.WriteLine("   grid or the harness is measuring nothing; the two look identical from here.");
+                Console.WriteLine("   ⇒ DO NOT quote this run's A1/A2/A3. Believe a zero only after some leg with a");
+                Console.WriteLine("     granted grid has reported non-zero work.");
+                return 2;
+            }
+            Console.WriteLine($"non-vacuity: PASS — {N(productiveTicks)} productive crew-tick(s) under the " +
+                              "granted grid, so this leg's zeroes (if any) are the ship's, not the instrument's.");
             return 0;
+        }
+
+        /// <summary>
+        /// ⭐ M2-17/A3 — pick the wall site the "can the player build a wall at day N" gate uses:
+        /// the first tile in canonical z,y,x order that <see cref="BuildSystem.CanDesignate"/> accepts
+        /// AND that has at least one neighbour a worker can legally stand on
+        /// (<see cref="WorksiteSafety.CanStageWorkerAt"/>).
+        ///
+        /// ⚠️ THE SAFETY LEG IS NOT OPTIONAL AND IT IS WHAT MAKES THE ANSWER MEAN ANYTHING. The
+        /// worksite staging rule refuses a designation whose only approach is vacuum, SILENTLY
+        /// (MECHANICS §13.21) — so picking the first legal tile without asking would reliably land the
+        /// A3 order on an airless deck and measure the staging rule instead of the economy. Canonical
+        /// order ⇒ same ship, same site, every run.
+        /// </summary>
+        private static bool TrySelectWallSite(Simulation sim, out Int3 site)
+        {
+            site = default;
+            BuildSystem build = null;
+            foreach (var s in sim.Systems) if (s is BuildSystem b) { build = b; break; }
+            if (build == null) return false;
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if (!build.CanDesignate(sim, p, BuildKind.Wall)) continue;
+                        bool stageable = false;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            var n = Int3.Neighbor4(p, i);
+                            if (!w.InBounds(n) || !sim.IsWalkable(n)) continue;
+                            if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
+                        }
+                        if (!stageable) continue;
+                        site = p;
+                        return true;
+                    }
+            return false;
         }
 
         /// <summary>WP-4b — how many item stacks are resting ON a stockpile tile at end of run, the
@@ -859,6 +1129,19 @@ namespace Perilune.Tools
             k == JobKind.Craft || k == JobKind.Maintain || k == JobKind.HaulToBuild ||
             k == JobKind.Build || k == JobKind.Deconstruct; // E0-5: a closed whitelist, so a new
             // productive kind that is not listed here is silently measured as idle.
+
+        /// <summary>⭐ M2-17 — InvariantCulture number formatting for the harness's OWN report lines.
+        /// The dev machine is <c>de_CH.UTF-8</c>, whose group separator is an APOSTROPHE
+        /// (<c>864'000</c>), so a bare <c>{x:N0}</c> emits a number that <c>double.Parse</c> under
+        /// InvariantCulture cannot read back — the exact shape of the de-DE parser trap
+        /// (<c>docs/TRAPS.md</c>). Every figure this package adds goes through these two so the
+        /// durable record is culture-free. ⚠️ Pre-existing <c>:N0</c> call sites in this file are
+        /// deliberately NOT converted: their text is quoted in existing docs and re-formatting them
+        /// is not this package's job — it is FILED, not fixed.</summary>
+        private static string N(long v) => v.ToString("N0", CultureInfo.InvariantCulture);
+
+        /// <summary>InvariantCulture fixed-point formatting; see <see cref="N"/>.</summary>
+        private static string F(double v, string fmt) => v.ToString(fmt, CultureInfo.InvariantCulture);
 
         private static string Bar(double pct)
         {
