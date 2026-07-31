@@ -177,9 +177,10 @@ point.
 Numbered; this is the order the integrator merges `--no-ff` into `main` and re-gates. **Bold rows are
 pin-chain rows and RUN ALONE.**
 
-⛔ **A GATE, NOT A LANE, SITS AT POSITION 0: the M3 owner-decision batch (§10).** ⭐ **SEVEN items**
-(revision 2), one message, three-day default-to-recommendation. **Items 1, 2, 6 and 7 change what
-packages 2, 3, 4 and 5 contain**; item 6 (*is FREEZE a player verb?*) decides M3-1's answer outright,
+⛔ **A GATE, NOT A LANE, SITS AT POSITION 0: the M3 owner-decision batch (§10).** ⭐ **EIGHT items**
+(revision 2 added one, round 3 added one), one message, three-day default-to-recommendation.
+**Items 1, 2, 6, 7 and 8 change what packages 2, 3, 4, 5 and 11 contain**;
+item 6 (*is FREEZE a player verb?*) decides M3-1's answer outright,
 and ⭐ **item 7 (which vacuum-ladder rungs ship) can put M3-14 ON THE PIN CHAIN** — so it is answered
 before position 2, not after. `Device.Name`'s double duty must be answered **before `CryoSystem`
 freezes a save chapter**, not after.
@@ -191,7 +192,7 @@ is meaningless until M2-17 lands.** It does not block the thaw chain; it blocks 
 
 | # | lane | package | notes |
 |---|---|---|---|
-| **0** | — | **THE OWNER BATCH (§10)** | ⛔ A gate. ⭐ **Items 1, 2, 6, 7 and 8 are inputs to packages 2, 3, 4, 5 and 11** (round 3 — this cell still read "1/2/6 … 3/4/5" while the prose above it had moved on). |
+| **0** | — | **THE OWNER BATCH (§10)** | ⛔ A gate. ⭐ **Items 1, 2, 6, 7 and 8 are inputs to packages 2, 3, 4, 5 and 11** (round 3 corrected this cell; the final pass re-synced the §3 prose above, which had itself gone stale against item 8 — the desync class cuts both ways). |
 | 1 | `lane/pod-identity` | **M3-1** | INFRASTRUCTURE (design). Answers `Device.Name`'s double duty. ⛔ **Before 5.** |
 | 2 | `lane/vacuum-ladder` | **M3-14** | ⭐ **OD-K's unchartered fourth call, given an id here.** Independent of the whole thaw chain; pin-neutral; it is what lets a direct order cross the frontier at all. Merge it early — it is the only M3 package that makes an *existing* M2 verb reach further. |
 | 3 | `lane/pod-census` | **M3-6** | ⚠️ Claims `AuthoredShips.cs` — **strictly serialized, and M2-11 is a PAST claimant whose census this may move** (§9). **Before 6**: M3-3's gate reads the rungs this authors. ⭐ **REVISION 2: its band-edge mutation is DEFERRED BY NAME to 6 (M3-3)** — it needs a `ThawGate` that does not exist yet. ⛔ **The position is deliberately NOT moved behind M3-3**, because the alternative reorder would put an `AuthoredShips.cs` claimant (M3-6) *after* the spine pin lane and *between* M3-3 and M3-11, breaking the file's strict serialization for no gain. **Checked: the `AuthoredShips.cs` chain M3-6 → M3-11 → M3-8 holds unchanged under the deferral.** |
