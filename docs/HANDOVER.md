@@ -5,115 +5,106 @@ ritual in `docs/PROCESS.md` §1 replaces this block and appends one log row. Eve
 older lives in `docs/history/HANDOVER-2026-07.md` (all § anchors preserved — test comments
 citing "HANDOVER §4b/§4g/§4k/§4l/§5 item 2, W4b-DEAD-DECK, ULP drift" resolve there).*
 
-## Current state (2026-07-30 night session — M2 IS CLOSED, the M3 charters are adopted)
+## Current state (2026-07-31 session — the M3 gate cleared, positions 0–2 merged)
 
-**Gate on `main` (`5831758` + session docs): `./ci.sh` exit 0, 1546 dotnet + 1119 node,
-twin hashes MATCH at P1 `81733e27709f36e4`** (pin table in `CLAUDE.md`; re-measure before
-quoting). **All five pins unmoved all session.** Pin rows `M2-c` (discharged, no move) and
-`M2-d` (discharged, no move, **tag `pin/m2-d`** = the power-package rollback point) leave
-the chain; next pin rows are `M3-a…d` (assigned in the M3 charters).
+**Gate on `main` (`351acf0` + session docs): `./ci.sh` exit 0, 1559 dotnet + 1120 node,
+twin hashes MATCH at P1 `81733e27709f36e4`** (re-measure before quoting; the dotnet count
+is the post-merge union 1546+1+11+1). **All five pins unmoved all session.** No pin row
+touched; next pin row is **M3-a (M3-2 CryoSystem, runs alone)**.
 
-**THE PHASE-1 EXIT GATE IS MET** (OD-K: *"order a repair, the lights come back"*) — driven
-live on the shipping game over the wire this session: generation stepped **10.6 → 13.5
-(worst wing repaired with the Parts) → 15.6 → 17.4 kW** against 14.3 kW demand; twelve
-sim-hours later the bank sat at 67.7 kWh and climbing. The blackout is impossible now.
+**THE M3 OWNER BATCH IS ANSWERED — OD-M** (owner, 07-31: *"follows all recommendations"*,
+commit `7e3abb6`): **1A 2A 3A 4A 5A 6A 7B 8A**. Item 2 AMENDS OD-E's headline (deck 1
+boots dead and MAY be brought back; no-vertical-gas-term stands); item 7 DEVIATES from
+OD-K's rung list (rungs 2+3+4 ship; rung 1 deferred by name to M3-7); item 6 = unfreeze
+only; item 8 = six-byte `Citizen.Skill` inside M3-7's M3-b bump. Ledger: `ROADMAP.md` §5.
 
 Merged, in order:
-- **M2-11** deck 1 genuinely off-network — decision (a), content-only. 23 of 611 devices
-  off-network (`WreckCutDeck1Risers`: 23 tray taps deleted, 8 bulkhead runs added, net
-  −15); demand 20.40 → **14.30 kW**; the sim-hour-7 blackout closed as a side effect.
-  D-1 half 1 closed. One send-back (a net-stated-as-deletion pin comment; a helper assert
-  that swallowed legs — A/B-proven load-bearing).
-- **M2-12** generation rides `EffectiveRate` — one term (`PowerSystem.cs:235`). Curve
-  10.65 → 13.47 (benches) → **17.40 ceiling on boot stock, without crafting** (Parts are
-  producible; 18.00 is late-game, not impossible); floor 9.00, never a cliff (8b honoured).
-  Winnability PASSES unattended (LS+Defense served h0–h24). ⚠️ **NO PIN MOVED where the
-  charter predicted P2/P3** — both goldens sit inside a bit-identical float window
-  (perilune diverges t=3261, slice t=7011, measured twice independently); P1 structurally
-  blind. **No pin sees the generation term — `GenerationWearTests`' two-sided ±0.05 bands
-  are the sole instrument.** Two send-backs (5 statements-vs-reality incl. a bank-bridged
-  can't-fail winnability leg; then 4 missed citation mirrors — sweep the class, not the
-  list).
-- **M2-17** the re-baseline — the occupancy harness authors its grid per leg via
-  `SetWorkPriorityCommand` (OD-I's cost paid), prints it beside every number, refuses a
-  vacuous zero by exit code. MECHANICS **§13.26**: grid's A1 was ALREADY 0.000 % pre-M2
-  (economy ends at h16 on matter); **A3 measured for the first time ever** (granted wall
-  completes in ~4–5 sim-min; Construct ALONE suffices — HaulToBuild maps to Construct).
-  One send-back (a backwards work-type caveat in shipped output; `all@0` slipping the
-  refusal, proven by mutation).
-- **M3 charters adopted** — `docs/design/perilune-m3.packages.md` (2047 lines, 14 packages
-  incl. new **M3-14** vacuum-work ladder, pin rows M3-a…d, conflict matrix). Three review
-  rounds. Headline catches: the outline's pod census was wrong by two thaws (shipped:
-  **12/1/7/4**); the MOSS commissioning gate (1 ControllerModule) inverts OD-L's depth
-  curve unless the rungs are re-keyed (batch item 1 — **answered A: they are**); the
-  sparse `work` wire cannot carry incapable-ness (new `workcaps` channel chartered); six
-  false VERIFIED citations across two revisions, owned in the doc's §13 box.
+- **M3-batch (docs)** — OD-M recorded, OD-E amended in place, OD-L gains the unfreeze-only
+  clause, T15 → decided-deferred, §10 stamped answered. One send-back (OD-M binds cell
+  short one package — M3-8; ROADMAP §4 still commissioning T15) + a class sweep of
+  "batch still reads open" texts. ROADMAP line cites re-measured, nothing shifted.
+- **M3-1 pod-identity** — the recorded non-change: `Device.Name` keeps BOTH duties (MOSS
+  registry key + sleeper identity), pods are single-use, MECHANICS **§13.27** +
+  `PodIdentityTests` (driven: boot wreck, 3000 commanded ticks, name map + multiset
+  unchanged; mutation proven red for the semantic reason, reproduced independently by the
+  reviewer). **The thaw leg is OWED to M3-3 by name** — the test header says so.
+  APPROVE first pass.
+- **M3-14 vacuum ladder** — a direct order crosses the pressure frontier: rungs 2+3+4
+  (`CanStageWorkerAt(forced)` read off `Citizen.HeldByOrder`; no new state). **NINE
+  decision sites, not the charter's seven**: the implementer found the eighth
+  (`PrioritiseJobCommand` — spine touch, integrator-accepted: two argument values, no
+  payload/ctor/wire change), the reviewer's census found a fifth `IsUnfixableWreck` site
+  (`OperateAdvisory` said "NO PARTS ABOARD" about a ship holding four Parts — send-back,
+  fixed, mutation-pinned). Rung 0 KEPT (autonomous work never enters vacuum); rung 4
+  unsoftened — **she does not flee and may die**, pinned by `Rung4_SheMayDie…` with an
+  un-ordered bystander control. Pin-neutral proven three ways (check A = 0; non-vacuity
+  control drives a held order into vacuum; P1 twin re-measured). 25 needy machines on the
+  wreck are order-only today, incl. `vent_ls` and every deck-1 light.
 
-Every package: Opus implementer + separate independent reviewer; five send-back rounds
-total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre-approved
-(M2-12's four citation one-liners; the M3 gate paragraph's item count).
+Every package: Opus implementer + separate independent reviewer; two send-back rounds,
+both fixed and re-verified. Reviewer drove acceptance on the shipping ship (doors open:
+she takes the order, works in vacuum, suffocates, dies — the chartered behaviour).
+**Browser eyeball still owed** (extension down again): the five M3-14 acceptance steps
+watched by a human in `./play.sh`.
 
-## Delegated decisions this session (owner said "decide on my behalf" — review these)
+## Integrator decisions this session (review these)
 
-1. **M3 charters drafted in parallel with M2-17** (docs vs harness, no file overlap) — a
-   mild deviation from "charters at end of M2"; both landed clean.
-2. **M3-14 numbering**: the OD-K vacuum-ladder call got an M3 id (M2 was closing).
-3. Everything product-shaping went into the M3 **owner batch, not decided** — including
-   two items that AMEND standing rulings if accepted (item 2 would reverse OD-E's "deck 1
-   stays dead" headline; item 7 chooses the ladder's rungs, which RW-ref says is yours).
-   *(Frozen 07-30 record — **since answered 07-31, OD-M: item 2 taken, OD-E's headline
-   amended; item 7 took rungs 2+3+4.**)*
+1. **The week-9 60-min owner playtest is NAMED: 2026-08-07** (duty fired on M3-1's merge,
+   §3 of the charter doc). Adjust it, owner, not silently.
+2. **M3-14's spine touch accepted** (Commands.cs, two argument values) — stopping would
+   have left the package undeliverable; reviewer verified minimality byte-level.
+3. Two honest mutation survivors ACCEPTED as argued+verified, not papered: scenario-host
+   parity unpinned (`--maint-audit` unreachable from tests); `JobContext` bypass
+   unreachable until a held order can be a dig (M3-7's shape).
 
 ## Next (the M3 queue, `perilune-m3.packages.md` §3)
 
-1. **THE OWNER BATCH — gate CLEARED 2026-07-31** (all recommendations adopted:
-   **1A 2A 3A 4A 5A 6A 7B 8A**, recorded as **OD-M**; item 2 amends OD-E's headline, item 7
-   deviates from OD-K's rung list). Answers inline in `perilune-m3.packages.md` §10.
-2. **M3-1 MERGED 2026-07-31** (`a797e2e` — MECHANICS §13.27 + the driven immutability
-   pin; thaw leg owed to M3-3 by name). **NEXT: M3-14 vacuum ladder** (rungs 2+3+4,
-   pin-neutral) → M3-6 pod census (rungs re-keyed `3 → 0 0 2 2 3 3 3`) → M3-11 deck-1
-   vent (authored WRECKED) → **M3-2 CryoSystem (PIN M3-a, runs alone)** → M3-3 ThawGate
-   → M3-4 POD BAY → … (full order in §3).
-   **THE WEEK-9 OWNER PLAYTEST DATE IS NAMED (integrator duty on M3-1's merge, §3): the
-   60-minute hard gate is 2026-08-07** — adjust it, owner, not silently.
+1. **M3-6 pod census** (`lane/pod-census`) — claims `AuthoredShips.cs` (strictly
+   serialized; M2-11 a past claimant); authors the re-keyed rung ladder
+   `3 → 0 0 2 2 3 3 3` (OD-M item 1); band-edge mutation deferred by name to M3-3.
+2. Then M3-11 deck-1 vent (same file, after M3-6; shape = OD-M item 2) →
+   **M3-2 CryoSystem (PIN M3-a, RUNS ALONE, needs M3-1 ✅)** → M3-3 ThawGate (owes
+   `PodIdentityTests` its thaw leg) → M3-4 POD BAY → M3-13 (same window as M3-4) → …
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees kept from the audit
-   (commits not in main — verify wanted, then prune).
+   (commits not in main — verify wanted, then prune). This session's three lane worktrees
+   pruned after merge.
 
 ## Open on the owner
 
-- Browser-extension eyeball items (extension was down all session; game verified over the
-  wire instead): Power-lens bulkhead conduit glyphs on 8 hull tiles (M2-11 F-5) · deck-1
-  "risers cut" fiction legibility · the M2-12 repair arc watched by a human.
-- Carried: crew docks clip 27-char labels (demo FAIL, fix the TEXT) · Prioritise menu
-  names the device TYPE not the instance · M2-8/M2-2 off-switch never pre-empts ·
-  "Awaiting orders" short form · onboarding card Space row · work-type ▸ reach ranking
-  arguably invertible · BUILD label collision · ascending-only click cycle · door art
-  unphotographed · `'/'` glyph · blind A/B + 60-min playtest at week 9.
+- **Playtest date 2026-08-07** — confirm or move.
+- Browser eyeball items (extension down two sessions running): M3-14's five acceptance
+  steps · Power-lens bulkhead conduit glyphs (M2-11 F-5) · deck-1 "risers cut" legibility
+  · the M2-12 repair arc watched by a human.
+- Carried: crew docks clip 27-char labels · Prioritise menu names the device TYPE not the
+  instance · M2-8/M2-2 off-switch never pre-empts · "Awaiting orders" short form ·
+  onboarding card Space row · work-type ▸ reach ranking arguably invertible · BUILD label
+  collision · ascending-only click cycle · door art unphotographed · `'/'` glyph.
 
 ## Open — unscheduled (filed, unowned)
 
-- **FREEZE as a player verb** — the named follow-on owner batch item 6 files (2026-07-31):
-  it makes a pod's occupant MUTABLE, so it costs either a new hashed occupancy map inside
-  `pin/m3-a` or renaming every authored pod. M3 ships unfreeze only.
-- **No wire carries per-device powered-ness** — `oper` is wear-only; 18 of 23 unpowered
-  deck-1 devices read operational in the Room Zoom (measured live). Family: §13.25 b2.
-- **Shed lamps flicker at 0.5 Hz forever on a flat bank** (M2-12; §13.11 family — a
-  battery bursts any charge inside one balance second).
-- `Device.Rate` now scales generators (a MOSS throttle lever; nothing writes it today).
-- `IceChainMemoTests` zero-alloc pin flaked once (1720 bytes, shared process, `==0` no
-  tolerance) — the test's design call, not a power-package defect.
-- M2-17 residuals: grant read-back captured only at t=0 · raw-int interpolations behind
-  an "every figure" comment · pre-existing `:N0` tick line (de-CH apostrophes) ·
-  `TryParseSpec` last-duplicate-wins, untested · A2 no longer answers its own question
-  (per-citizen vs per-work-type; owner call) · A3's "routine" is qualitative.
-- Stale-citation sweep candidates (pre-existing): MECHANICS `:62`/`:2008`/`:2741` + two
-  filename-less Balance cites; ECONOMY.md:72,74 and moss-terminal.spec.md:417 are stale
-  AND their prose asserts the pre-M2-12 model — needs a prose decision, not a line edit.
-- **The dev machine's locale is de-CH, not de-DE** (apostrophe group separator `864'000`)
-  — the trap ledger's wording should be corrected; the invariant-culture rule is unchanged.
-- Carried: §13.1 CO2 gap · M2-21 residuals · `WorkIncapable` not on the `work` wire
-  (M3-7's `workcaps` charter now owns it) · M2-5 distance tie · `designs` not fog-gated ·
-  needy-machine scans · unskinned glyphs · D-3 social gate · ULP drift (archived).
+- **A repair order's APPROACH refusal is still silent, and M3-14 WIDENED its reach** —
+  the air gate used to refuse at issue time; now a boot-state (doors shut) vacuum order is
+  accepted, held, and refused downstream by geometry, silently (held=true took=true
+  startedWork=false, stationary 300 sim-s, self-clears ~tick 12000). `ReasonNoApproach`
+  exists in the vocabulary; do NOT add `ReasonAir` for repair orders (documented at
+  `AddUnfixableRow`).
+- **MECHANICS is stale in four places about the ladder** (M3-14 filed; integrator file):
+  `:1118-1119` "safety and approach are never overridden" · `:1850` flee claim ·
+  §13.25 b2 "nowhere survivable" no longer a refusal · §13.21 needs a ladder line.
+- **FREEZE as a player verb** — named follow-on (OD-M item 6): occupant mutability costs
+  an occupancy map inside `pin/m3-a` or renaming every authored pod.
+- **Wrapper-predicate census lesson** (cost one send-back): a call-site census over one
+  predicate's NAME cannot see a wrapper carrying it (`IsUnfixableWreck` wraps
+  `CanStageWorkerAt`); sweep the wrapper too. M2-0's shape, third occurrence.
+- Carried: no wire carries per-device powered-ness (`oper` wear-only, §13.25 b2) · shed
+  lamps 0.5 Hz flicker on flat bank (§13.11) · `Device.Rate` scales generators, unwritten
+  · `IceChainMemoTests` zero-alloc flake · M2-17 residuals (A2's question, A3 qualitative,
+  `TryParseSpec` last-dup-wins) · stale-citation sweep candidates (MECHANICS
+  `:62`/`:2008`/`:2741`, ECONOMY.md:72,74, moss-terminal.spec.md:417 — prose decision) ·
+  de-CH not de-DE in the trap ledger's wording · §13.1 CO2 gap · M2-21 residuals ·
+  `WorkIncapable` not on the `work` wire (M3-7 owns) · M2-5 distance tie · `designs` not
+  fog-gated · needy-machine scans · unskinned glyphs · D-3 social gate · `Commands.cs`
+  retracted sentence still greps verbatim below its retraction block.
 
 ## Session log (append one row per session; prune when > ~40 rows)
 
@@ -128,3 +119,4 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
 | 07-30 | nine lanes | **the RimWorld loop's first act is playable**: boot "Awaiting orders" → WORK tab → she works → off → finishes-then-waits; priorities RANK | green, P1/P3 re-pinned `pin/m2-e` |
 | 07-30 pm | five lanes | **the DIRECT ORDER works**: why-line · pre-emption mid-service · right-click order holds 121 sim-s · demo 5/6 | green, pins UNMOVED |
 | 07-30 night | power-network · power-wear · rebaseline · m3-charters | **M2 CLOSED, phase-1 exit gate MET**: deck 1 honestly off-network · repairing wings steps 10.6→17.4 kW live and the lights stay on · the harness states its grid, A3 measured first time ever · M3 charters adopted (14 pkgs, 8-item owner batch gates the queue) | green, pins UNMOVED, tag `pin/m2-d`, worktrees pruned 18 |
+| 07-31 | m3-batch · pod-identity · vacuum-ladder | **the M3 gate cleared (OD-M, all recommendations) and a DIRECT ORDER CROSSES THE FRONTIER**: right-click a machine in vacuum → offered → she walks in, works, may die (rungs 2+3+4, nine sites agree); pods decided single-use, `Device.Name` immutability pinned; playtest date named 2026-08-07 | green, pins UNMOVED, worktrees pruned 3 |
