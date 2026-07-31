@@ -69,11 +69,13 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
 1. **THE OWNER BATCH — gate CLEARED 2026-07-31** (all recommendations adopted:
    **1A 2A 3A 4A 5A 6A 7B 8A**, recorded as **OD-M**; item 2 amends OD-E's headline, item 7
    deviates from OD-K's rung list). Answers inline in `perilune-m3.packages.md` §10.
-2. **PICK M3-1 pod-identity (INFRA design) NEXT** — item 6 decides it outright: unfreeze
-   only, a pod is single-use, `Device.Name` never mutates ⇒ a recorded non-change. Then
-   M3-14 vacuum ladder (rungs 2+3+4, pin-neutral) → M3-6 pod census (rungs re-keyed
-   `3 → 0 0 2 2 3 3 3`) → M3-11 deck-1 vent (authored WRECKED) → **M3-2 CryoSystem
-   (PIN M3-a, runs alone)** → M3-3 ThawGate → M3-4 POD BAY → … (full order in §3).
+2. **M3-1 MERGED 2026-07-31** (`a797e2e` — MECHANICS §13.27 + the driven immutability
+   pin; thaw leg owed to M3-3 by name). **NEXT: M3-14 vacuum ladder** (rungs 2+3+4,
+   pin-neutral) → M3-6 pod census (rungs re-keyed `3 → 0 0 2 2 3 3 3`) → M3-11 deck-1
+   vent (authored WRECKED) → **M3-2 CryoSystem (PIN M3-a, runs alone)** → M3-3 ThawGate
+   → M3-4 POD BAY → … (full order in §3).
+   **THE WEEK-9 OWNER PLAYTEST DATE IS NAMED (integrator duty on M3-1's merge, §3): the
+   60-minute hard gate is 2026-08-07** — adjust it, owner, not silently.
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees kept from the audit
    (commits not in main — verify wanted, then prune).
 
