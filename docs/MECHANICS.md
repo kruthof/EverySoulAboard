@@ -2132,6 +2132,11 @@ real state without another pin site to find, `SystemStack` reorder, or save chap
 
 ### 13.15 The economy is finite and TERMINATES — measured A1 (2026-07-23)
 
+> **⛔ AND RE-BASELINED AGAIN 2026-07-30 by M2-17 — see §13.26 for the current A1/A2/A3, each with
+> the work grid that produced it.** Every figure in this section predates OD-H, so its crew were
+> working *by default*; after M2-2 an unattended run of the same command does no work at all. The
+> `24.979 %` below is therefore doubly stale (pre-E0-6 *and* pre-M2) and must not be quoted.
+
 > **⚠️ SUPERSEDED 2026-07-27 by E0-6. Every number in this section is a PRE-E0-6 measurement and
 > roughly half of the matter behind it did not exist.** The shipped `SalvageRecycler` row turned
 > **1 Regolith into 2 Scrap** — mass creation against `ECONOMY.md` §2.1 — so the 62 Regolith aboard
@@ -3200,3 +3205,177 @@ break or any abandon ends the job and therefore the order; she does not go back 
 player pointed at. That is §2.2's forced-work behaviour minus RimWorld's re-issuing `priorityWork`
 record, which this package may not build (it would need a saved target). **Expect a player to notice
 this**: "I told her to fix THAT and she wandered off after the vacuum scare" is the shape of it.
+
+---
+
+### 13.26 ⭐⭐ THE M2-17 RE-BASELINE — A1/A2/A3, each with the work grid that produced it (2026-07-30)
+
+> ### ⛔ THE HONEST HEADLINE, AND IT GOES FIRST
+>
+> **Every occupancy / A1 / A2 / A3 number in this repo taken before M2-2 landed was measured on a
+> tree nobody will play.** OD-H made work opt-in and OD-I extended that to the fixtures, so from
+> M2-2 the crew of `--ship slice`, `--ship grid`, `--ship wreck` and the scenario ship boot with
+> **every work type off** and an unattended run does **no work at all**.
+> ⚠️ **The drop between the old numbers and the ones below is OD-B's re-baseline arriving, with
+> OD-H's default as its cause. IT IS NOT A REGRESSION AND MUST NOT BE REPORTED AS ONE.**
+> ⛔ **And A1 is a regression statistic only** (OD-B): it may be reported and **never optimised
+> toward**. A package justified by an A1 number is refused at charter time.
+
+**⚠️ `0.000 %` NOW HAS TWO CAUSES AND THEY ARE CONFUSABLE BY CONSTRUCTION.** It is the correct
+output of a correctly-working game whose crew were given no orders, *and* the signature of a harness
+that measured nothing — and `A1 = 0.000 %` on `--ship grid` was **already** the measured post-E0
+result (§13.15's successor, `HANDOVER-2026-07` 2026-07-28). The table below therefore carries the
+**grid** and the **productive crew-tick count** in every row; a row without both is not a reading.
+
+#### The instrument (`hosts/scenario`, `occupancy`)
+
+- **`--grant <spec>`** authors a work grid *through the sim's own `SetWorkPriorityCommand`* — one
+  command per (living citizen, work type), **all six cells written including the Off ones**, so a
+  leg's grid is never a function of `WorkPriority.Default`. Grammar: `all` / `all@N` /
+  `Repair@1,Haul@4`; a bare type name grants at **3** (RimWorld's `alwaysStartActive` value,
+  reference **§1.5** — the newly-arrived-colonist algorithm, whose steps 3 and 4 both set 3). No flag ⇒ **no grant**, which is the shipped boot state and still a legitimate
+  thing to measure — it is just no longer measurable *silently*.
+  `hosts/scenario/WorkGrantHarness.cs`.
+- **The grid is READ BACK off the sim** (`Citizen.GetWorkPriority`) after the commands execute and
+  printed above the occupancy table plus beside every headline (`A1 grid:` / `A2 grid:` /
+  `A3 grid:`). Printing the parsed spec would read identically whether the grant landed or was
+  dropped on the floor.
+- **Exit codes are the non-vacuity check, by INCLUSION:**
+  **3** = a grid was granted and the read-back disagrees (the grant never landed — refuses to
+  measure at all); **2** = a grid was granted, survived the read-back, and the run still produced
+  **zero** productive crew-ticks (*do not quote this run*); **0** = quotable, with its grid.
+  `WorkGrantHarness.Judge`, pinned in `tests/Perilune.Tests/WorkGrantHarnessTests.cs`.
+  ⚠️ It lives in the harness rather than in `ci.sh` deliberately: this package is pin-neutral
+  (`ci.sh` takes a zero-line diff), and a gate-side check would guard only the one run `ci.sh` makes
+  — the misquote happens in the ad-hoc runs a session types by hand.
+- **`--wall-day N`** issues one `DesignateBuildCommand(BuildKind.Wall)` at the start of sim-day N —
+  A3. The site is the first tile in canonical `z,y,x` order that `BuildSystem.CanDesignate` accepts
+  **and** that has a neighbour passing `WorksiteSafety.CanStageWorkerAt`; without that second leg the
+  order lands on an airless deck and measures §13.21's staging rule instead of the economy.
+
+#### The measurements
+
+All taken on `lane/rebaseline` at this commit, **Debug** build, `n = 1`, each ship at its authored
+seed (wreck `20260728`, grid `20260723`, slice `20260721`), `--days 1`. Wall-clock is soft (other
+lanes were running); every figure below is sim-time.
+
+| ship | grant | A1 work @h24 | A1 any @h24 | A2 | zero-recruitable ticks | productive crew-ticks | non-vacuity |
+|---|---|---|---|---|---|---|---|
+| wreck | *none* | 0.000 % | 0.000 % | 99.997 % | 0.003 % | **0** | N/A |
+| wreck | `all@3` | 0.000 % | 0.000 % | 83.074 % | 16.926 % | 146 130 | PASS |
+| grid | *none* | 0.000 % | 0.000 % | 99.985 % | 0.000 % | **0** | N/A |
+| grid | `all@3` | 0.000 % | 0.000 % | 83.862 % | 1.425 % | 1 112 841 | PASS |
+| slice | *none* | 0.000 % | 0.000 % | 99.971 % | 0.000 % | **0** | N/A |
+| slice | `all@3` | **2.184 %** | 2.184 % | 71.125 % | 4.202 % | 1 994 104 | PASS |
+
+⭐ **READ THE TWO `grid` ROWS TOGETHER — THEY ARE THE WHOLE POINT OF THIS PACKAGE.** Both report
+`A1 = 0.000 %`. One did 1 112 841 crew-ticks of work and then ran out of matter; the other did
+**nothing at all**. From the number alone they are indistinguishable.
+
+**Where the work went** (share of live crew-ticks, granted legs; every other `JobKind` is 0.00 %):
+
+| ship | the productive kinds | the busy curve |
+|---|---|---|
+| wreck | `Maintain` 16.91 % | 100 % h1–h3, 55 % h4, then flat with spikes at h10 (23.3 %) and h20 (25.3 %) |
+| grid | `Craft` 14.33 % · `Dig` 1.77 % | 58.5 % h1, ~25–34 % h2–h13, decaying h14–h15, **0.0 % from h16** |
+| slice | `Craft` 24.60 % · `Dig` 4.25 % | 83 % h1, ~28–35 % h3–**h20** (h20 is still 28.1 %), then a TWO-STEP fall — h21 **10.4 %**, h22 **2.4 %** — settling at 2.2–2.4 % through h24 |
+
+⚠️ **`Haul*` is 0.00 % on all three ships** and always was: `stockpile tiles zoned = 0`, so
+`HaulPickup`/`HaulDeliver` can never be assigned (A4's standing zero — see §13.17). The `Craft`
+column is E0-6's lossy ladder converting the ship's finite matter budget, and the cliff is §13.15's,
+arriving at **h16 on grid** and **h21 on slice**.
+
+#### A1 — `crew busy-fraction at sim-hour 24` (`ECONOMY.md` §12.1, target > 25 %)
+
+Definition unchanged and read off the harness: the hour-23→24 window (not an instant, not a run
+average), `work` counting only the productive `JobKind`s — a crew 25 % busy *eating* has not met it.
+
+| | pre-M2 | now, with a granted grid | now, no grant |
+|---|---|---|---|
+| slice | **24.979 %** (2026-07-23; §13.15 marks it SUPERSEDED — E0-6 moved the cliff earlier) | 2.184 % | 0.000 % |
+| grid | **0.000 %** (2026-07-28, post-E0 gate, `--days 2`, work stopping after h16–h20) | 0.000 % | 0.000 % |
+| wreck | never measured | 0.000 % | 0.000 % |
+
+⇒ **grid's A1 did not move.** Its pre-M2 value was already 0.000 % for the same reason it is 0.000 %
+today: the economy terminates around h16 and h24 is on the far side of that. **M2 changed the
+*ungranted* number, not the granted one** — which is exactly what "the drop is the default, not a
+regression" means, stated as a measurement instead of an assurance.
+
+#### A2 — `recruitable crew-ticks` (`ECONOMY.md` §12.1, target > 60 %)
+
+⛔ **THE PREDICATE MOVED AND THE TWO NUMBERS ARE NOT COMPARABLE — DO NOT DIFF THEM.** The recorded
+**17.9 %** was `IsIdleForWork`, whose `!HasPath` clause made a wandering pawn unrecruitable
+(`ECONOMY.md` §1.3a). **E0-1 removed exactly that clause**; that removal *was* E0-1. Today's
+predicate is `Citizen.IsRecruitableForWork` (`Citizen.cs:376`) — `IsRecruitableIgnoringJob &&
+JobKind == None`, i.e. not dead, not `HoldPosition`, not `HeldByOrder`, not mid-ordered-walk, and
+carrying no job — which is the one every claim gate actually reads (§6.2c).
+
+So A2 "passes" on every row above, and the pass is nearly meaningless on the ungranted rows: a crew
+that can take no work at all is **99.97–99.99 % recruitable**, because recruitability is a fact about
+the *person* and the work-type veto is a fact about the *(person, work type)* pair (`Citizen.cs:245`
+says so explicitly). ⚠️ **A2 is therefore not a proxy for "the dispatcher has people" after M2-2**,
+and a package quoting it without `CanTakeWorkType` beside it is measuring the wrong thing. Filed as
+an observation, not fixed here — redefining A2 is an owner call, not a harness change.
+
+#### A3 — `player can build a wall at day 3` — MEASURED FOR THE FIRST TIME IN THIS REPO'S LIFE
+
+`ECONOMY.md` §12.1 records A3 as *"impossible"* against a target of *"routine"*, and every
+`HANDOVER`/roadmap note since has recorded that it **has never been measured**. It is measured now.
+`--ship wreck --days 4 --grant all --wall-day 3` (order at tick 1 728 000, 48 sim-hours of
+observation):
+
+| leg | site | required | outcome |
+|---|---|---|---|
+| wreck, `all@3` | `(3,1,0)` | 2 Regolith | ⭐ **COMPLETED 0.074 sim-hours (4.4 sim-minutes) after the order** |
+| wreck, *no grant* | `(3,1,0)` | 2 Regolith | **NOT COMPLETED** after 48 sim-hours — 0 / 2 Regolith staged, site still pending |
+| grid, `all@3` | `(2,1,0)` | 2 Regolith | **NOT COMPLETED** after 48 sim-hours — 0 / 2 staged, and the cause is **matter, not labour**: grid ends the run holding `Potato=451 Scrap=1 ControllerModule=8` and **no Regolith at all** (1 385 891 productive crew-ticks, non-vacuity PASS) |
+| slice, `all@3` | `(2,4,0)` | 2 Regolith | ⭐ **COMPLETED 0.089 sim-hours (5.3 sim-minutes) after the order** |
+
+⇒ **A3 is `routine` on the wreck when the crew have a grid, and `impossible` when they do not** —
+the same ship, the same site, the same tick, one flag apart. That pair is the clearest statement of
+what OD-H changed, and it is why an A3 verdict without its grid means nothing.
+
+⇒ **And grid's A3 FAILS for a reason no work grid can fix.** The Craft ladder converts the ship's
+whole Regolith budget (§13.15/§13.19), so by day 3 there is no build material aboard and a wall
+order can never be staged. That is the same finite-matter fact A1 reports at h24, seen from the
+other side — and it is precisely the content decision the owner already holds open (grid's faucet,
+`ROADMAP` §7 / OD-B). ⛔ **Do not open a package to "fix A3 on grid":** it is a re-statement of the
+parked economy question, not a new defect.
+
+⛔ **A3 NEEDS `Construct` ALONE — `Haul` IS NOT INVOLVED, AND THIS IS THE ROW EVERYONE GETS WRONG**
+(this section shipped it backwards once). Fetching the Regolith is `JobKind.HaulToBuild`, which
+`WorkTypeMap` maps to **`Construct`, not `Haul`** (`sim/Sim.Core/Entities/WorkTypeMap.cs:17-24`,
+switch at `:62`) — a deliberate decision, on the stated grounds that *"a player who switched
+`Construct` on and `Haul` off expects their builder to fetch her own beams"*, and because mapping it
+to `Haul` would split one job source across two work types.
+
+**Measured, not reasoned:** `--grant Construct@3 --wall-day 3 --days 4` on the wreck, with `Haul`
+**off** in the read-back grid, completes the wall at site `(3,1,0)` in **0.073 sim-hours** — a hair
+*faster* than `all@3`'s 0.074 (2 620 productive crew-ticks, non-vacuity PASS). ⇒ A `NOT COMPLETED`
+under a Haul-less grid is **never** explained by the missing `Haul`; look at `Construct` and at the
+material aboard.
+
+⚠️ **The A3 legs are `--days 4`, so their A1/A2 differ from the `--days 1` table above** (a longer
+run dilutes both): wreck `A2 90.103 %`, grid `A2 94.937 %`, slice `A2 90.416 %`; A1 @h24 is
+unchanged at `0.000 / 0.000 / 2.184 %`. Quote a row with its `--days`.
+
+#### Unmeasurable as written — FILED, not silently redefined
+
+- **A3's published form is a *qualitative* gate** (`impossible` → `routine`), and "routine" has no
+  operational definition anywhere in the repo. What is measured above is the falsifiable half —
+  *does one ordered wall complete, and how long does it take* — on **one** site chosen canonically.
+  It does not establish that *any* wall a player picks completes, which is what "routine" would
+  have to mean. **The definition is not rewritten here**; the gap is filed.
+- **A2 no longer answers the question it was written for** (see above): after M2-2, "recruitable"
+  and "can take this work" are different facts and A2 only measures the first.
+- **`--ship perilune` is not in the table.** Its occupancy legs sit behind the tick-3000 goldens and
+  measuring it is not this package's scope.
+
+**Reproduce:**
+
+```sh
+~/.dotnet/dotnet run --project hosts/scenario -- occupancy --ship grid  --days 1 --grant all
+~/.dotnet/dotnet run --project hosts/scenario -- occupancy --ship wreck --days 4 --grant all --wall-day 3
+~/.dotnet/dotnet run --project hosts/scenario -- occupancy --ship wreck --days 1               # the boot state
+echo $?   # 0 quotable · 2 vacuous, do not quote · 3 the grant never landed
+```
