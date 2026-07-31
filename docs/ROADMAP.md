@@ -71,7 +71,11 @@ ordinals.
 
 ## 4. M3–M5 (outlines; charters get written at end of M2, not before)
 
-- **M3:** M3-1 `Device.Name` double duty (INFRA — decide before the save chapter freezes) ·
+- **M3:** ✅ **CHARTERED IN FULL, 2026-07-30 — `docs/design/perilune-m3.packages.md`** (queue, seams,
+  pin rows `M3-a…d`, conflict matrix, and a **six-item owner batch that is a GATE before M3-1**;
+  it also corrects the pod census below from 8/1/5/2 to the shipped **12/1/7/4**, and gives OD-K's
+  vacuum-work ladder the id **M3-14**). The outline that follows is kept as the index.
+  M3-1 `Device.Name` double duty (INFRA — decide before the save chapter freezes) ·
   M3-2 `CryoSystem` · M3-3 `ThawGate`/`ThawCommand` · M3-4 MOSS POD BAY · M3-5 emergency
   thaw + lose screen · M3-6 pod census · M3-7 skill consumers · M3-8 sleeper personas ·
   M3-9 REST · M3-10 a heater · M3-11 deck-1 vent · M3-12 skills in WORK tab · M3-13 thaw
