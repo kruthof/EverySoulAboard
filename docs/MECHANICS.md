@@ -3441,7 +3441,7 @@ struct (`:9`) carrying rung number, `ItemKind` and count, through a seven-row li
 rung.** Until that lands, the ladder is *content that exists and nothing consumes*.
 
 ⭐ **The rung is DERIVED, so it costs no state.** The carrier is the pod's already-authored
-`Condition` (`sim/Sim.Gen/AuthoredShips.cs:1760-1772`, `WreckPods`), whose documented meaning is
+`Condition` (`sim/Sim.Gen/AuthoredShips.cs:1760-1777`, `WreckPods`), whose documented meaning is
 already *"how badly the raid treated it"* (`Entities/Device.cs:47`). ⇒ **no new `Device` field**
 (refused by `Device.cs:46-49` and by wreck-plan W5.1), **no new def field** (which would move P4/P5
 for a table nobody tunes at runtime — and a def field pinned only by the checksum is NOT pinned),

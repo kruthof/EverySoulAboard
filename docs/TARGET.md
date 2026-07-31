@@ -73,7 +73,7 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 | T10 | Repair is a work type with visible effect — repair a wing, lights come back | OD-A/OD-K | DONE (M2-11 + M2-12, merged 07-30; driven live: 10.6 → 17.4 kW across three ordered repairs, lights stay on past h12 — the phase-1 exit gate). KNOWN LIMIT: no pin sees the generation term; GenerationWearTests' bands are the sole instrument |
 | T11 | Skills gate output, never whether (passions later) | §5 | missing (M3-7/M3-12) |
 | T12 | Needs/mood: rest, food; mood as consequence not meter | §4 | partial (needs exist; mood gates nothing; morale bar deleted M1-F) |
-| T13 | Thaw loop: earn & choose a second soul through MOSS | premise | missing (M3-2…M3-6) |
+| T13 | Thaw loop: earn & choose a second soul through MOSS | premise | missing (M3-2…M3-6); rungs AUTHORED (M3-6, 07-31): each intact pod's price derives from its `Condition` via `ThawGate.RungOf` — content that exists and nothing consumes until M3-3 (§13.28) |
 | T14 | Health: capacity-gated work (downed ≠ disabled) | §6.1 | missing (M4-4 decides real-or-delete) |
 | T15 | Schedules (sleep/work/rec blocks) | §3.5 | decided: deferred — RW§3.5 mechanism adopted in M3-9 (needs are a job-SELECTION filter between jobs, never an interrupt); the 24-slot grid is revisited after the week-9 gate (owner batch item 3, 2026-07-31) |
 | T16 | Persona window (ONE door to a person) | — | queued (M4-1/M4-2) |

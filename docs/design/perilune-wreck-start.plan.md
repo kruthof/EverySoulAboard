@@ -1482,7 +1482,8 @@ default. Zone a stockpile. Paint a designation.
 member survives day 1**; the four preconditions above are each asserted; all five pins held;
 `git diff` to the three existing authored ships is 0 lines. Plus, new in rev 3:
 
-- ⭐ **PRINT THE POD CENSUS** — `pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`,
+- ⭐ **PRINT THE POD CENSUS** — `pods 12 · open at boot 1 · intact 7 · wrecked 4 · thaws available 7`
+  (corrected 2026-07-31 by M3-6 — the 8/1/5/2 here was the dead draft the shipped ship replaced),
   or whatever the chosen numbers are. **A content dial that is not printed is a dial nobody knows
   was set.** Assert the identity `pods = open + intact + wrecked` so a later edit cannot drift it.
 - ⭐ **PUBLISH THE WEAR-BEARING DEVICE COUNT** — every later wave's pacing arithmetic depends on it
@@ -2614,7 +2615,8 @@ the arithmetic and the five reasons are in §4 W3** and are not repeated here.
 
 ⚠️ **It is a pure content dial with no code behind it**, which is exactly the kind of decision that
 gets made by whoever types the array. **W3's acceptance requires the census to be PRINTED**
-(`pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`) with the identity asserted,
+(`pods 12 · open at boot 1 · intact 7 · wrecked 4 · thaws available 7` — corrected 2026-07-31 by
+M3-6; the 8/1/5/2 that stood here was the dead draft) with the identity asserted,
 so a later edit cannot drift it silently. **The owner can move it on one line of authoring.**
 
 ⚠️ **The "reads as" half of the recommendation is TASTE, not measurement**, and is labelled so.

@@ -453,7 +453,8 @@ sim-hour."*
    lose screen when no intact pod remains (OD-10, decided).
 4. **OD-11 and OD-12 resolved and printed.** They are the same pacing dial seen twice; set the pod
    census first, then tune the price. The census must be printed and asserted
-   (`pods 8 · open at boot 1 · intact 5 · wrecked 2 · thaws available 5`) so a later edit cannot
+   (`pods 12 · open at boot 1 · intact 7 · wrecked 4 · thaws available 7` — corrected 2026-07-31 by
+   M3-6; the 8/1/5/2 that stood here was the dead draft) so a later edit cannot
    drift it silently.
    ⭐ **AND A COLLISION NOBODY HAS FILED, added to M3's decision batch in revision 1: `Device.Name` is
    doing two jobs.** W5's design puts the sleeper's identity in `Device.Name` (*"who is inside"*,
