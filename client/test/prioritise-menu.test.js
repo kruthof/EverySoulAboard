@@ -605,6 +605,62 @@ test('a machine the FRAME draws but the devices channel does not carry is NOT of
   assert.deepEqual(orders(), []);
 });
 
+// ══════════════════════════════════════════ 3b. M3-14 RUNG 3 — THE MENU AND THE JOB AGREE ABOUT AIR
+//
+// ⭐⭐ RimWorld §8.4 rung 3: `FloatMenuMakerMap.makingFor == p` ALSO returns `Danger.Deadly`, so
+// *"the right-click menu is built with the ceiling already raised, and the menu offers exactly what
+// the forced job will accept. One rule, not two."*
+//
+// ⚠️ THE CLIENT NEEDED NO CHANGE TO GET THERE, AND THAT IS THE FINDING RATHER THAN AN OMISSION.
+// This menu never asked the air question: `prioritise-model.js` gates on ONE thing — whether the
+// tile carries a `devices` row — precisely because `wire/session.js` forbids the client to
+// duplicate the host's verdict (*"the client's job is NOT to duplicate that verdict but to never
+// OFFER the order where it must fail"*). The disagreement rung 3 names lived entirely on the sim
+// and host side, and M3-14 closed it THERE (`PrioritiseJobCommand`, `MachineWearSystem`,
+// `GameSession.BlockedReason`). What is left for this file is the leg that keeps it closed.
+//
+// ⛔ THE MUTATION THIS LEG EXISTS FOR — and it is the natural, well-meant edit, not a contrivance:
+// gate the offer on the tile's `blocked` state (`roomBlockedTiles` is already imported by
+// `roomzoom-view.js` and `_blockedTiles` is already in scope beside the handler), e.g. refuse to
+// open the menu over a tile carrying `ReasonAir` ⇒ RED here. That edit would put the menu back to
+// refusing exactly the orders the sim now accepts — the SAME disagreement, with the sign flipped,
+// and the player would be unable to order the one repair the ladder was built to allow.
+test('M3-14 rung 3: the menu still opens on a machine the `blocked` layer marks AIRLESS', () => {
+  prime([ADA], null);
+  // The host's own vocabulary: [x, y, deck, order, reason]; order 0 = dig, reason 0 = air. A dig
+  // order is used deliberately — a repair row would beg the question, and what is asserted is that
+  // NO blocked row of any kind withholds the order.
+  Hud.renderBlocked(decode(JSON.stringify({
+    type: 'blocked', cells: [[WING[0], WING[1], RECT.deck, 0, 0]],
+  })));
+  RoomZoom.exitRoom();
+  RoomZoom.enterRoom('quarters');
+  sent.length = 0;
+
+  // ⚠️ try/FINALLY, and it is not tidiness. `assert` throws, and the `blocked` cache is MODULE
+  // state that `prime()` does not reset — so a failure here would leave every later leg in this
+  // file running against a populated channel. Measured: without the finally, the rung-3 mutation
+  // reddened this leg AND SEVEN SIBLINGS, which is exactly the false-red that makes a mutation
+  // table unreadable (TRAPS 3).
+  try {
+    rightClick(WING);
+    assert.equal(menu().hidden, false,
+      'THE MENU WAS WITHHELD OVER AN AIRLESS TILE. The sim now ACCEPTS a direct order there '
+      + '(rung 2 — she walks into vacuum because the player said so), so a client that refuses to '
+      + 'offer it has re-created the menu/job disagreement §8.4 rung 3 exists to prevent, with the '
+      + 'sign flipped: the one order the ladder was built to allow is the one the player cannot give.');
+    clickRow();
+    assert.deepEqual(orders(),
+      [{ cmd: 'prioritise', cid: ADA.cid, x: WING[0], y: WING[1], deck: RECT.deck }],
+      'the order over an airless tile must reach the wire unchanged — the client sends it and the '
+      + 'sim decides, which is the single-authority rule this surface has kept since M2-10.');
+  } finally {
+    Hud.renderBlocked(decode(JSON.stringify({ type: 'blocked', cells: [] })));
+    RoomZoom.exitRoom();
+    RoomZoom.enterRoom('quarters');
+  }
+});
+
 // ═════════════════════════════════════════════════════════════════ 4. WHICH PAWN, DRIVEN
 
 test('with a pawn SELECTED the order goes to her, not to the roster\'s first row', () => {

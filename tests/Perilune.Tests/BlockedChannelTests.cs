@@ -693,6 +693,72 @@ namespace Perilune.Tests
                 "the badge would outlive the problem and start lying in the other direction.");
         }
 
+        /// <summary>
+        /// ⭐⭐ <b>M3-14 RUNG 3 — A SITE THE PLAYER HAS ORDERED SOMEBODY ONTO IS NOT BADGED
+        /// <c>ReasonAir</c>.</b> The sim now stages a <c>Citizen.HeldByOrder</c> worker in
+        /// unbreathable air on purpose (<c>rimworld-reference.md</c> §8.4 rung 2 — the
+        /// <c>playerForced</c> bypass); a channel still asking the UN-bypassed question would paint
+        /// *"the air where a worker would have to stand is not survivable"* over a job the sim is
+        /// happily executing. <b>That is exactly the disagreement §8.4 rung 3 exists to prevent</b>,
+        /// and it is the same argument
+        /// <see cref="A_Site_Approached_Only_Through_A_DOORWAY_Is_Not_Blocked"/> makes for the
+        /// door-marker clause: a false badge is worse than the silence this channel removes.
+        ///
+        /// <para>⚠️ <b>THE HOLD IS STAGED BY HAND, AND THAT IS SAID OUT LOUD RATHER THAN HIDDEN.</b>
+        /// The only writer of <c>HeldByOrder</c> today is <c>PrioritiseJobCommand</c>, which issues
+        /// <c>JobKind.Maintain</c> against a DEVICE tile, while this builder's walks visit dig,
+        /// strip and build sites — the two sets do not currently intersect, so the state cannot be
+        /// produced by a command. It is written directly here (<c>StickyClaimTests</c>' precedent),
+        /// job first and hold second so the invariant <c>HeldByOrder ⇒ JobKind != None</c> holds,
+        /// because the RULE is what is under test and the rule must be right before the day a held
+        /// order can be a dig, not after it.</para>
+        ///
+        /// <para>⚠️ THE CONTROL IS FIRST AND IT IS THE WHOLE TEST'S NON-VACUITY: the identical site,
+        /// the identical render, WITHOUT the hold, must carry the row.</para>
+        ///
+        /// <para>⛔ MUTATION 1 (M3-14 charter): apply the bypass at the three <c>sim/</c> sites and
+        /// NOT at <c>GameSession.BlockedReason</c> ⇒ RED here.</para>
+        /// </summary>
+        [Test]
+        public void A_Site_A_Held_Order_Is_Working_Is_Not_Badged_As_Airless()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var (airless, staging) = FindAirlessSite(sim);
+            sim.World.SetFlag(airless, TileFlags.Designated, true);
+
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, staging), Is.False,
+                "premise: the sim's own rule refuses the staging tile UNFORCED");
+            Assert.That(WorksiteSafety.CanStageWorkerAt(sim, staging, forced: true), Is.True,
+                "premise: …and accepts it for a player-forced job — the rung under test");
+
+            var row = RowAt(gs, airless);
+            Assert.IsNotNull(row, "CONTROL FAILED: the site is not badged before the hold is placed, " +
+                "so the absence asserted below would prove nothing.");
+            Assert.AreEqual(WireFormat.ReasonAir, row.Value.Reason,
+                "control: and it is badged for AIR — the only reason this hold can change");
+
+            // The order, staged directly. JOB FIRST, HOLD SECOND (the JobKind setter clears a hold
+            // on the way past None, so the other order leaves nothing behind).
+            var crew = sim.Citizens.Items[0];
+            crew.JobKind = JobKind.Dig;
+            crew.JobTarget = airless;
+            crew.HeldByOrder = true;
+
+            Assert.IsNull(RowAt(gs, airless),
+                "⛔ A SITE THE PLAYER ORDERED SOMEBODY ONTO IS BADGED 'THE AIR IS NOT SURVIVABLE' " +
+                "while the sim stages her there and she works. The bypass reached the sim and not " +
+                "this surface — the pawn walks in and the tile she is standing on says the work " +
+                "cannot happen.");
+
+            // …and it comes back the moment the order ends, because nothing here is latched.
+            crew.JobKind = JobKind.None; // releases the hold by the setter's own contract
+            Assert.That(crew.HeldByOrder, Is.False, "premise: ending the job released the hold");
+            Assert.IsNotNull(RowAt(gs, airless),
+                "⛔ the row did not come back when the order ended, so this channel is reading a " +
+                "stamped answer rather than asking the live question every render.");
+        }
+
         // ═══════════════════════════════════════════════════════════════════ scope and gates
 
         /// <summary>

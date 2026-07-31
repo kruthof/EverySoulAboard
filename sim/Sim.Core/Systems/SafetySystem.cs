@@ -105,8 +105,32 @@ namespace Perilune.Sim
     {
         /// <summary>
         /// May a worker be parked on <paramref name="tile"/> for the length of a job? True when
-        /// this stack cannot produce the cycle at all (see <see cref="CanCycle"/>), when the tile
-        /// is a DOORWAY, or when its air is survivable.
+        /// the PLAYER ORDERED IT (see <paramref name="forced"/>), when this stack cannot produce
+        /// the cycle at all (see <see cref="CanCycle"/>), when the tile is a DOORWAY, or when its
+        /// air is survivable.
+        ///
+        /// <para>⭐⭐ <b>M3-14 RUNG 2 — <paramref name="forced"/> IS THE PLAYER'S ORDER, AND IT
+        /// WAIVES THE AIR QUESTION ENTIRELY.</b> The analogue is cited, not derived:
+        /// <c>docs/design/rimworld-reference.md</c> §8.4's four-rung ladder, rung 2 —
+        /// <i>"`NormalMaxDanger` returns `Deadly` when `pawn.CurJob.playerForced`"</i>, i.e.
+        /// RimWorld raises the pawn's danger ceiling to the top for a forced job rather than
+        /// softening the rule. Rung 0 (autonomous work never enters vacuum) is what the unforced
+        /// path keeps, and §8.4's retraction box is binding on that: <i>"the directive points
+        /// toward keeping it."</i>
+        /// <br/>⛔ <b>IT IS NOT "the air is fine now".</b> Nothing else changes: she suffocates at
+        /// the ordinary rate, and <see cref="SafetySystem"/>'s self-rescue is suppressed for the
+        /// length of the hold (rung 4, below) — <b>she may die, and that is the feature</b>
+        /// (§8.4: <i>"the player can order a colonist to stay and suffocate, and RimWorld
+        /// implements that deliberately as one clause"</i>).
+        /// <br/>⚠️ <b>WHAT IS *NOT* WAIVED: THE APPROACH.</b> This rule never answered "is there
+        /// anywhere to stand" — every caller asks <see cref="Simulation.IsWalkable"/> separately,
+        /// and a walled-in worksite is still refused with the flag set. An order overrides the
+        /// air, never the geometry.
+        /// <br/>⚠️ <b>WHO MAY PASS TRUE.</b> Only a caller that can see the ORDER: a
+        /// <see cref="Citizen.HeldByOrder"/> worker (M2-19's hold IS the order — §2.2 keeps the
+        /// forced flag on <c>curJob</c>), or <c>PrioritiseJobCommand</c> deciding whether to
+        /// accept the order in the first place. Every dispatcher-side query passes false and gets
+        /// the old answer, which is what keeps rung 0 and what keeps every pin still.</para>
         ///
         /// ⚠️ A DOOR TILE IS NOT VACUUM, and reading it as vacuum is the single most expensive
         /// mistake this rule can make. A door tile is a room EDGE, not a room member, so it carries
@@ -122,7 +146,8 @@ namespace Perilune.Sim
         /// slice** — its only approach tile is <c>door_aft</c> at (56,9,0) — taking slice Dig
         /// occupancy to 0.00 %, moving the slice tick-3000 golden and reddening five tests.
         /// </summary>
-        public static bool CanStageWorkerAt(Simulation sim, Int3 tile) =>
+        public static bool CanStageWorkerAt(Simulation sim, Int3 tile, bool forced = false) =>
+            forced ||
             !CanCycle(sim) ||
             sim.Rooms.RoomIdAt(sim.World, tile) == RoomState.DoorMarker ||
             AtmosphereSafety.IsBreathable(sim, tile);
@@ -175,6 +200,11 @@ namespace Perilune.Sim
     ///  • Once it stands in breathable air AND has recovered below half the flee threshold it returns
     ///    to <c>None</c> and normal work resumes — so it rests in safe air before being sent back,
     ///    which is what stops the flee/return/flee cycle from creeping to death.
+    ///  • ⭐ <b>M3-14 RUNG 4 — a crew member <see cref="Citizen.HeldByOrder"/> never trips it at
+    ///    all.</b> The player ordered her in; she stays, and she may die. See the clause in
+    ///    <see cref="Tick"/> for the analogue (<c>rimworld-reference.md</c> §8.4,
+    ///    <c>JobGiver_FindOxygen</c>'s <c>PlayerForcedJobNowOrSoon</c> guard) and for why it must
+    ///    not be softened.
     ///
     /// The threshold is well below the lethal 1.0 with ample travel margin at both decline rates, so
     /// a crew member with reachable air always lives; a genuinely sealed-in pocket (no breathable
@@ -225,6 +255,33 @@ namespace Perilune.Sim
 
                 // Not fleeing yet: trip only once the danger is real and the air here is bad.
                 if (c.Suffocation < fleeAt || breathingSafely) continue;
+
+                // ⭐⭐ M3-14 RUNG 4 — THE PLAYER'S ORDER SUPPRESSES SELF-RESCUE. SHE MAY DIE.
+                //
+                // The analogue is cited, not derived: rimworld-reference.md §8.4,
+                // `RimWorld/JobGiver_FindOxygen.cs`, whose SECOND guard is
+                // `if (PawnUtility.PlayerForcedJobNowOrSoon(pawn)) return null;` —
+                //   *"The player can order a colonist to stay and suffocate, and RimWorld
+                //    implements that deliberately as one clause."*
+                // This is that one clause. `HeldByOrder` is M2-19's hold, which IS the order
+                // (§2.2 keeps the forced flag on `curJob`) and whose invariant
+                // `HeldByOrder ⇒ JobKind != None` means this can only ever be a working pawn.
+                //
+                // ⛔ DO NOT SOFTEN IT — a bypass that quietly rescues the pawn is a bypass the
+                // player cannot reason about, and it re-creates the silent refusal in a nicer
+                // costume. The order is the whole contract: rung 2 walked her in because the
+                // player said so, and rung 4 is why "because the player said so" means something.
+                //
+                // ⚠️ IT IS SCOPED TO THE HELD PAWN AND TO NOTHING ELSE. Every other crew member on
+                // the ship — including one standing in the same compartment — flees exactly as
+                // before; the `continue` is inside the per-citizen loop for that reason.
+                //
+                // ⚠️ THE RELEASE IS ALREADY BUILT AND IS NOT REPEATED HERE. The moment the order
+                // ends (the service completes, the player orders her elsewhere, `CancelJob` runs)
+                // `Citizen.JobKind`'s setter clears the hold on the way past `None`, so the next
+                // 1 Hz pass of this system sees an ordinary pawn and rescues her. There is no
+                // timeout and no second record — MECHANICS §6.2c.
+                if (c.HeldByOrder) continue;
 
                 if (sim.Paths.FindNearestBreathable(sim, c.Pos, needs, c.Path))
                 {

@@ -69,15 +69,30 @@ namespace Perilune.Sim
         /// every 5 s until the compartment breathes again.
         ///
         /// The rule is inert on a stack without <see cref="SafetySystem"/>, which is what keeps
-        /// every atmosphere-free test sim and every pinned ship byte-identical.</summary>
+        /// every atmosphere-free test sim and every pinned ship byte-identical.
+        ///
+        /// <para>⭐ <b>M3-14 RUNG 2 — AND THE FLAG IS THIS CITIZEN'S OWN HOLD.</b> A worker
+        /// <see cref="Citizen.HeldByOrder"/> is on a job the player named, so the staging rule is
+        /// asked with the air waived (<c>rimworld-reference.md</c> §8.4 rung 2). The flag is READ
+        /// off the pawn rather than passed down from a source, because the hold IS the order and
+        /// there is no second record of one (§2.2, MECHANICS §6.2c).
+        /// <br/>⚠️ <b>UNREACHABLE FROM THIS SEAM TODAY, DELIBERATELY WIRED ANYWAY, AND SAID OUT
+        /// LOUD SO NOBODY TESTS IT INTO EXISTENCE.</b> The only writer of the hold is
+        /// <c>PrioritiseJobCommand</c>, which issues <see cref="JobKind.Maintain"/>; and
+        /// <see cref="Citizen.IsRecruitableForWork"/> excludes a held pawn, so no dig, build or
+        /// deconstruct source can claim one. The line exists because the alternative is the
+        /// disagreement M3-14 was chartered to close arriving silently the day a held order can be
+        /// a dig — <b>one rule, asked the same way at every site that asks it</b>.
+        /// See <c>docs/HANDOVER.md</c> OPEN for the filed note.</para></summary>
         public static bool TryPathToAdjacent(Simulation sim, Citizen citizen, Int3 target)
         {
+            bool forced = citizen.HeldByOrder;
             for (int i = 0; i < 4; i++)
             {
                 var n = Int3.Neighbor4(target, i);
                 if (!sim.World.InBounds(n)) continue;
                 if (!sim.IsWalkable(n)) continue;
-                if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, n, forced)) continue;
                 if (sim.Paths.FindPath(sim, citizen.Pos, n, citizen.Path))
                 {
                     citizen.StartPath(sim.Defs.Citizen.TicksPerTile);

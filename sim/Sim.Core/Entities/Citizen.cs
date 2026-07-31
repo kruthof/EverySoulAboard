@@ -182,17 +182,30 @@ namespace Perilune.Sim
         ///   <item><b>A NEW DIRECT ORDER</b> — the writer cancels the old job first, so the old hold
         ///     falls with it and the new one is placed on the new job.</item>
         ///   <item><b>DEATH</b> — <c>NeedsSystem.Kill</c> → <see cref="Simulation.CancelJob"/>.</item>
-        ///   <item><b>GENUINE INABILITY TO CONTINUE</b> — safety (<c>SafetySystem.cs:233</c> cancels
-        ///     then flees), the target vanishing or being walled in
+        ///   <item><b>GENUINE INABILITY TO CONTINUE</b> — safety (<c>SafetySystem</c> cancels then
+        ///     flees — ⚠️ <b>but NOT for a held pawn since M3-14's rung 4; see below</b>), the
+        ///     target vanishing or being walled in
         ///     (<c>MachineWearSystem.AbandonOrphan</c>), a lost path (<c>JobWork.AbandonJob</c>).
         ///     §2.2's analogue: RimWorld drops forced work on drafting and clears the prioritised
         ///     record when the work giver can produce no job. <b>She does not resume it</b> — a
         ///     needs break or a flee that ends the job ends the order too.</item>
         /// </list>
-        /// ⛔ <b>NEVER a timeout</b> (integrator ruling), and ⛔ <b>never at the expense of
-        /// survival</b>: <c>SafetySystem</c> consults no recruitability predicate at all and
-        /// <c>SustenanceSystem</c> gates on <see cref="IsIdleForWork"/>, which does NOT carry the
-        /// hold — a held pawn who somehow holds no job still eats and drinks.</para>
+        /// ⛔ <b>NEVER a timeout</b> (integrator ruling).
+        ///
+        /// <para>⭐⭐ <b>M3-14 (2026-07-31) — AND THE SENTENCE THAT STOOD HERE IS QUOTED AND HALF
+        /// RETRACTED, BY OWNER DECISION</b> (batch item 7, answer B). It read: <i>"⛔ never at the
+        /// expense of survival: <c>SafetySystem</c> consults no recruitability predicate at all and
+        /// <c>SustenanceSystem</c> gates on <see cref="IsIdleForWork"/> …"</i>. <b><c>SafetySystem</c>
+        /// now consults exactly one predicate and it is THIS ONE</b> — a held crew member does not
+        /// flee lethal air, and <b>she may die</b>. That is RimWorld's rung 4
+        /// (<c>rimworld-reference.md</c> §8.4, <c>JobGiver_FindOxygen</c>'s
+        /// <c>PlayerForcedJobNowOrSoon</c> guard: <i>"the player can order a colonist to stay and
+        /// suffocate"</i>), and it is deliberate.
+        /// <br/><b>WHAT SURVIVES OF THE SENTENCE, and it is the half that was about a different
+        /// system:</b> <c>SustenanceSystem</c> gates on <see cref="IsIdleForWork"/>, which does NOT
+        /// carry the hold — a held pawn who somehow holds no job still eats and drinks. And
+        /// <see cref="OrderedMove"/>, the MOVE order, is untouched: a pawn walking somewhere because
+        /// the player said so still flees. <b>Only the WORK hold suppresses the rescue.</b></para>
         ///
         /// <para>⚠️ <b>WRITER CONTRACT (for M2-9): SET THE JOB FIRST, THEN THE HOLD.</b> Writing the
         /// hold before a <see cref="Simulation.CancelJob"/> or before the new <see cref="JobKind"/>

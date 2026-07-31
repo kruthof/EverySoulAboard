@@ -328,6 +328,17 @@ namespace Perilune.Web
         /// time, so this row disappears on the very next render once the compartment breathes — there
         /// is no timer to wait out and nothing to clear. That is a property of the rule, inherited, not
         /// a decision made here.</para>
+        ///
+        /// <para>⭐⭐ <b>M3-14 (2026-07-31) — AND IT NOW ALSO DISAPPEARS WHEN THE PLAYER ORDERS
+        /// SOMEBODY ONTO THE SITE, WHICH IS RUNG 3 AND NOT AN EXCEPTION TO THIS CHANNEL'S RULE.</b>
+        /// <c>WorksiteSafety.CanStageWorkerAt</c> gained a <c>forced</c> argument: a job held under a
+        /// direct order crosses the pressure frontier on purpose
+        /// (<c>rimworld-reference.md</c> §8.4 rung 2). <c>GameSession.BlockedReason</c> therefore asks
+        /// the SAME predicate with the SAME flag — *"one rule, not two"* — because a channel still
+        /// asking the un-bypassed question would badge a site the sim is happily working. <b>The
+        /// header's central claim is unchanged and this is what keeps it true:</b> the call here is
+        /// still the identical call <c>JobWork.TryPathToAdjacent</c> makes, on the identical tile,
+        /// now with the identical flag.</para>
         /// </summary>
         public const int ReasonAir = 0;
 

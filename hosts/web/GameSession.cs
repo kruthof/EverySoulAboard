@@ -2599,6 +2599,28 @@ namespace Perilune.Web
                 if (WorksiteSafety.CanStageWorkerAt(_sim, n)) { anyStageable = true; break; }
             }
 
+            // ⭐⭐ M3-14 RUNG 3 — THE THIRD SURFACE ASKS THE SAME QUESTION WITH THE SAME FLAG.
+            // `WorksiteSafety.CanStageWorkerAt(sim, tile, forced: true)` is TRUE unconditionally,
+            // so "some walkable neighbour, and a HELD order on this site" is that call, spelled to
+            // cost nothing on the healthy path — see CrewHeldByOrderAt for the cost argument.
+            //
+            // ⛔ WITHOUT THIS LINE THE SIM AND THE SURFACE DISAGREE ABOUT THE SAME TILE. Rung 2
+            // walks a pawn into vacuum because the player said so; a `blocked` channel still asking
+            // the UN-bypassed question then paints `ReasonAir` — "the air where a worker would have
+            // to stand is not survivable" — over a site the sim is happily working. A false badge is
+            // worse than the silence this channel exists to remove (the same argument
+            // A_Site_Approached_Only_Through_A_DOORWAY_Is_Not_Blocked makes for the door clause),
+            // and it is precisely the menu/job disagreement §8.4 rung 3 exists to prevent.
+            //
+            // ⚠️ NOT REACHABLE FROM THE SHIPPED COMMAND SET TODAY, WIRED ANYWAY, AND SAID SO. The
+            // only writer of the hold is `PrioritiseJobCommand`, which issues `JobKind.Maintain`
+            // against a DEVICE tile, and this builder's three `AddIfBlocked` walks visit dig, strip
+            // and build sites. The two sets do not currently intersect. It is here for the reason
+            // `JobContext.TryPathToAdjacent`'s twin is: one rule asked the same way at every site
+            // that asks it, so the disagreement cannot arrive silently the day a held order can be
+            // a dig. `BlockedChannelTests` drives it by staging the hold by hand.
+            if (anyWalkable && !anyStageable && CrewHeldByOrderAt(target)) anyStageable = true;
+
             // ── question 3: has the job board itself failed to get anyone started here? ──
             // Asked for EVERY site, including the airless ones, because the LATCH has to keep
             // tracking a site while it is blocked for another reason — otherwise venting a
@@ -2748,6 +2770,34 @@ namespace Perilune.Web
         /// stores the SITE as its target from the outset even while the citizen walks to the
         /// material). Kind is deliberately NOT filtered: a citizen standing on this tile for any
         /// reason at all still means somebody got here.</summary>
+        /// <summary>⭐ <b>M3-14 — is some live citizen HELD BY A PLAYER ORDER on a job whose target
+        /// is <paramref name="p"/>?</b> The host-side spelling of the `forced` flag
+        /// <c>WorksiteSafety.CanStageWorkerAt</c> takes, and the sim's own record of an order:
+        /// <see cref="Citizen.HeldByOrder"/>, whose invariant <c>HeldByOrder ⇒ JobKind != None</c>
+        /// means a true answer is always a working pawn. Nothing is re-derived and no second
+        /// registry is consulted — <c>_prioritised</c> is host render scratch and would answer for
+        /// orders the sim REFUSED, which is the opposite of the question.
+        ///
+        /// <para>⚠️ <b>ASKED ONLY ON THE REFUSED PATH, and that is a cost decision.</b>
+        /// <see cref="BlockedReason"/> runs per designated site per render; an O(crew) walk per
+        /// site would be a real bill on a ship painted with orders. It is asked only after the
+        /// four-neighbour loop has already concluded the site is AIR-refused, which is rare and is
+        /// the only branch whose answer it can change. The twin
+        /// <see cref="CrewHoldsJobAt"/> is a different question (ANY job, for the reach latch) and
+        /// deliberately stays a different method.</para></summary>
+        private bool CrewHeldByOrderAt(Int3 p)
+        {
+            var citizens = _sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead || !c.HeldByOrder) continue;
+                var t = c.JobTarget;
+                if (t.X == p.X && t.Y == p.Y && t.Z == p.Z) return true;
+            }
+            return false;
+        }
+
         private bool CrewHoldsJobAt(Int3 p)
         {
             var citizens = _sim.Citizens.Items;
@@ -2827,6 +2877,20 @@ namespace Perilune.Web
         /// right-click of a fresh game. The air and approach questions would be honest, and their
         /// absence is a stated gap rather than a claim: the command's staging refusal stays silent
         /// (<c>docs/MECHANICS.md</c> §13). Under-claiming is this channel's standing direction.</para>
+        ///
+        /// <para>⭐⭐ <b>M3-14 (2026-07-31) — HALF OF THAT GAP IS NOW CLOSED AND THE OTHER HALF IS
+        /// NARROWED, AND THE DIFFERENCE MATTERS TO WHOEVER READS THIS NEXT.</b> ⛔ <b>THE AIR
+        /// QUESTION IS NO LONGER "HONEST BUT ABSENT" — APPLYING IT TO A REPAIR ORDER WOULD NOW BE
+        /// WRONG.</b> A direct order overrides the air (rung 2, <c>rimworld-reference.md</c> §8.4;
+        /// <c>PrioritiseJobCommand</c> asks <c>TryFindStagingTile</c> with <c>forced: true</c>), so
+        /// a <see cref="WireFormat.ReasonAir"/> row over an ordered machine would badge work the sim
+        /// is about to do — the exact menu/job disagreement rung 3 exists to prevent, and the
+        /// thing a well-meant "finish the ladder" edit would re-create. <b>Do not add it.</b>
+        /// <br/><b>WHAT REMAINS A GENUINE GAP is the APPROACH question alone</b> — a machine with no
+        /// walkable neighbour at all is still refused (an order crosses air, never geometry) and the
+        /// player is still told nothing. That is the residual, named here rather than left implicit,
+        /// and it is FILED, not fixed: it is a new emission on a shipped channel and M3-14's outcome
+        /// did not need it.</para>
         ///
         /// <para>Bounds- and fog-gated exactly as <see cref="AddIfBlocked"/> is, and de-duplicated
         /// against rows already emitted for the same tile by this walk — two crew members ordered at
@@ -3078,8 +3142,18 @@ namespace Perilune.Web
                     // rule and the badge are the SAME question, and this call is the expensive one:
                     // below the wreck floor it is up to three full item-store scans (its own doc
                     // comment says so), and the worst case is precisely the state that keeps a row.
+                    //
+                    // ⭐⭐ M3-14 RUNG 3 — `forced: true`, AND THIS IS THE REACHABLE HALF OF THE
+                    // MENU/JOB AGREEMENT. Every entry in `_prioritised` IS a player order, so the
+                    // question this row answers is "would the ORDER be refused for want of a
+                    // consumable", and that is `PrioritiseJobCommand`'s question — asked there with
+                    // the same flag, one line apart. Without it the badge lies in the one state the
+                    // wreck premise makes ordinary: a machine behind the pressure frontier whose
+                    // Parts are behind it too. The dispatcher cannot fetch them (correct, rung 0),
+                    // the ORDER can, and an un-bypassed `IsUnfixableWreck` would stamp NO PARTS over
+                    // a repair that is already under way three tiles from the stack.
                     bool taken = c.HeldByOrder && c.JobKind == JobKind.Maintain && c.JobTarget == device.Pos;
-                    if (taken || !MaintenanceSystem.IsUnfixableWreck(_sim, device))
+                    if (taken || !MaintenanceSystem.IsUnfixableWreck(_sim, device, forced: true))
                     {
                         _prioritised.Remove(c.Id);
                         continue;
