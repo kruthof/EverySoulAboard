@@ -43,7 +43,8 @@ status of anything.*
    right-click prioritise (re-ratifying **OD-A**) and the **POD BAY**.
 2. **OD-A · OD-B · OD-E · OD-G · OD-H · OD-I · OD-J · OD-K** — the standing ledger. OD-K's fourth
    delegated call, **the vacuum-work ladder, is still unchartered**; this file gives it an id (§4,
-   **M3-14**).
+   **M3-14**). **[since answered — OD-M item 7, 2026-07-31: chartered as M3-14, shipping rungs 2+3+4;
+   `ROADMAP.md`'s OD-K row and rung note no longer say "unchartered".]**
 3. **`docs/design/rimworld-reference.md`** — the mechanism authority. Cited by section throughout;
    **§1.5, §2.2, §2.4, §2.6, §3.5, §5.1–§5.2, §6.1 and §8.4 are the sections M3 actually rests on.**
 4. **`docs/design/perilune-wreck-start.plan.md` §3.3, §3.4, §3.4.1, §4 W5** — the thaw's original
@@ -177,13 +178,14 @@ point.
 Numbered; this is the order the integrator merges `--no-ff` into `main` and re-gates. **Bold rows are
 pin-chain rows and RUN ALONE.**
 
-⛔ **A GATE, NOT A LANE, SITS AT POSITION 0: the M3 owner-decision batch (§10).** ⭐ **EIGHT items**
-(revision 2 added one, round 3 added one), one message, three-day default-to-recommendation.
-**Items 1, 2, 6, 7 and 8 change what packages 2, 3, 4, 5 and 11 contain**;
-item 6 (*is FREEZE a player verb?*) decides M3-1's answer outright,
-and ⭐ **item 7 (which vacuum-ladder rungs ship) can put M3-14 ON THE PIN CHAIN** — so it is answered
-before position 2, not after. `Device.Name`'s double duty must be answered **before `CryoSystem`
-freezes a save chapter**, not after.
+✅ **THE GATE AT POSITION 0 IS CLEARED — the M3 owner-decision batch (§10) was ANSWERED 2026-07-31**,
+all eight recommendations adopted (**1A 2A 3A 4A 5A 6A 7B 8A**; recorded as **OD-M**, `ROADMAP.md`
+§5). **Nothing in this queue is gated any more; merging starts at position 1.** What the answers
+changed, for the lanes that read them: item 6 decided M3-1 outright (**unfreeze only ⇒ M3-1 is a
+recorded non-change**), item 7 took **rungs 2+3+4** so **M3-14 stays pin-neutral and OFF the chain**,
+item 2 puts a **wrecked deck-1 vent** into M3-11, item 1 re-keys M3-6's rung table, and item 8 puts a
+**6-byte `Citizen.Skill`** inside M3-7's existing `M3-b` bump. `Device.Name`'s double duty is
+answered, so `CryoSystem` may freeze its save chapter once M3-1 is written.
 
 ⚠️ **PRECONDITION CARRIED FROM M2, NOT RE-CHARTERED HERE: `M2-17`** (teach the occupancy harness to
 author a grid, INFRA) is **still unmerged** — `ROADMAP.md` §3 row 22. Under OD-H/OD-I an unattended
@@ -192,8 +194,8 @@ is meaningless until M2-17 lands.** It does not block the thaw chain; it blocks 
 
 | # | lane | package | notes |
 |---|---|---|---|
-| **0** | — | **THE OWNER BATCH (§10)** | ⛔ A gate. ⭐ **Items 1, 2, 6, 7 and 8 are inputs to packages 2, 3, 4, 5 and 11** (round 3 corrected this cell; the final pass re-synced the §3 prose above, which had itself gone stale against item 8 — the desync class cuts both ways). |
-| 1 | `lane/pod-identity` | **M3-1** | INFRASTRUCTURE (design). Answers `Device.Name`'s double duty. ⛔ **Before 5.** |
+| **0** | — | **THE OWNER BATCH (§10)** | ✅ **CLEARED 2026-07-31 — answered, all recommendations adopted (1A 2A 3A 4A 5A 6A 7B 8A), recorded as OD-M.** Items 1, 2, 6, 7 and 8 were the inputs to packages 2, 3, 4, 5 and 11; every one of them now has its answer inline in §10. (Round 3 corrected this cell; the final pass re-synced the §3 prose above, which had itself gone stale against item 8 — the desync class cuts both ways.) |
+| 1 | `lane/pod-identity` | **M3-1** | ✅ **MERGED 2026-07-31** (`a797e2e`). INFRASTRUCTURE (design). Item 6=A answered it outright: unfreeze only, a pod is single-use, `Device.Name` immutable after boot — MECHANICS §13.27 + `PodIdentityTests` (driven, mutation-proven; **thaw leg owed to M3-3 by name**). Review: APPROVE first pass. The week-9 playtest date is NAMED per §3: **2026-08-07**. |
 | 2 | `lane/vacuum-ladder` | **M3-14** | ⭐ **OD-K's unchartered fourth call, given an id here.** Independent of the whole thaw chain; pin-neutral; it is what lets a direct order cross the frontier at all. Merge it early — it is the only M3 package that makes an *existing* M2 verb reach further. |
 | 3 | `lane/pod-census` | **M3-6** | ⚠️ Claims `AuthoredShips.cs` — **strictly serialized, and M2-11 is a PAST claimant whose census this may move** (§9). **Before 6**: M3-3's gate reads the rungs this authors. ⭐ **REVISION 2: its band-edge mutation is DEFERRED BY NAME to 6 (M3-3)** — it needs a `ThawGate` that does not exist yet. ⛔ **The position is deliberately NOT moved behind M3-3**, because the alternative reorder would put an `AuthoredShips.cs` claimant (M3-6) *after* the spine pin lane and *between* M3-3 and M3-11, breaking the file's strict serialization for no gain. **Checked: the `AuthoredShips.cs` chain M3-6 → M3-11 → M3-8 holds unchanged under the deferral.** |
 | 4 | `lane/deck1-vent` | **M3-11** | ⚠️ Same file as 3. **After 3.** Its shape is owner batch item 2. |
@@ -371,7 +373,7 @@ Perilune lacks is the ladder on top.** The three rungs this package builds, in R
 >    *"⛔ **These are named, not proposed.** Which of the four rungs Perilune should have, and whether
 >    the `blocked` channel is the right surface for the refusal, are **owner decisions.** This
 >    document stops here."*
-> 2. ⛔ **OD-K NAMES A DIFFERENT MIDDLE RUNG FROM THE ONE I SUBSTITUTED.** ⭐ **`ROADMAP.md:109-111`**
+> 2. ⛔ **OD-K NAMES A DIFFERENT MIDDLE RUNG FROM THE ONE I SUBSTITUTED.** ⭐ **`ROADMAP.md:110-112`**
 >    — round 3; the rung list is the **prose note after the OD table**, not a table row, and
 >    revision 2's `:105-107` pointed into the table:
 >    *"the vacuum-work ladder (**playerForced bypass → opt-in deadly work givers → self-rescue
@@ -1564,7 +1566,7 @@ Recorded so a future reader can tell *excluded* from *missed*.
 | **T12** needs/mood | partial | **partial → rest DONE** (M3-9); mood still gates nothing |
 | **T13** thaw loop: earn & choose a second soul through MOSS | missing | **DONE** (M3-2…M3-6, M3-13) |
 | **T8** a refused order says WHY | partial | **partial →** every *thaw* refusal named (M3-13); other order refusals still filed |
-| **T15** schedules | missing, unscheduled | ⭐ **DECIDED** — owner batch item 3, not built (recommendation: defer) |
+| **T15** schedules | missing, unscheduled | ⭐ **DECIDED, not built** — owner batch item 3 ANSWERED **A** (OD-M, 2026-07-31): deferred, and RW§3.5's mechanism rides M3-9. `TARGET.md`'s row now reads "decided: deferred" |
 | **T7 / T5 / T6** direct orders | DONE | **reach further** (M3-14) |
 
 ---
@@ -1623,6 +1625,30 @@ bay that refuses silently fails OD-L's own premise.
 
 ## 10. THE M3 OWNER-DECISION BATCH
 
+### ✅ ANSWERED 2026-07-31 — THE OWNER ADOPTED EVERY RECOMMENDATION
+
+> **`1A · 2A · 3A · 4A · 5A · 6A · 7B · 8A`** — recorded as **OD-M** in `ROADMAP.md` §5.
+> The owner's words: *"Owners follows all recommendations."* ⛔ **This is an AFFIRMATIVE
+> adoption, not the three-day silence default** — it matters for **item 2**, whose silence
+> default was **B** (*do not open deck 1*); the affirmative adoption takes the
+> recommendation, **A**.
+>
+> | item | answer | what it binds |
+> |---|---|---|
+> | 1 | **A** — re-key the rungs monotonic in depth (`3 → 0 0 2 2 3 3 3`, last rung 3× the gate); the ControllerModule commissioning gate is the **PROLOGUE** (*"restore MOSS"*), not a rung | M3-6, M3-3 |
+> | 2 | **A, as an explicit AMENDMENT of OD-E's headline** — author a deck-1 vent + one riser tap, vent authored WRECKED. The honest wording: *"deck 1 boots dead and the player may bring it back; the sim still has no vertical gas term."* OD-E's parenthetical stands | M3-11 |
+> | 3 | **A** — no schedule grid in M3; RW§3.5's mechanism adopted inside M3-9; **T15 moves to "decided: deferred"** | M3-9, `TARGET.md` T15 |
+> | 4 | **A** — sim state + Chronicle lines + a one-line banner; M5-1 builds the screen | M3-5 |
+> | 5 | **A** — thawed souls arrive with the work grid OFF; the exit-gate sentence is satisfied by the skill columns. OD-H/OD-I untouched | M3-2/M3-8/M3-12 |
+> | 6 | **A** — unfreeze only; a pod is single-use; `Device.Name` never mutates; **M3-1 lands as a recorded non-change**. FREEZE-as-verb (B) is FILED as a named follow-on | M3-1, M3-2 |
+> | 7 | **B** — the ladder ships rungs **2 + 3 + 4**; rung 1 (opt-in deadly work givers, OD-K's named middle rung) is **DEFERRED BY NAME** to land with M3-7's `Citizen` work on the pin chain. ⛔ **An owner-approved deviation from OD-K's literal rung list** | M3-14, M3-7 |
+> | 8 | **A** — `Citizen.Skill` widens to a per-work-type **6-byte array** in M3-7's own commit, inside the existing **M3-b** chapter bump — **not a second re-pin** | M3-7, M3-8, M3-12 |
+>
+> **The analysis below is kept verbatim** (the options, the costs, the residuals) — it is the
+> record of what was chosen *against*. Each item carries its answer inline.
+
+---
+
 **One batch per milestone. ⭐ EIGHT items — revision 2 added one and rewrote two; round 3 added one
 more (item 8). One message. Three-day default-to-recommendation.** Everything settleable from an existing OD or from
 `rimworld-reference.md` **has been settled and cited** — §11 lists those, so the batch is not padded
@@ -1676,6 +1702,11 @@ authored around; take it only if the owner wants the opening softened.
 ⚠️ **A's residual, stated: thaw 2 is still much easier than the gate.** That is a *deliberate*
 release of pressure after the prologue, and if the owner dislikes it, B is the fix.
 
+✅ **ANSWERED 2026-07-31 — A.** Re-key the rungs monotonic in depth (`3 → 0 0 2 2 3 3 3`, last rung
+**3× the gate**); the commissioning gate is named the **PROLOGUE** (*"restore MOSS"*), not a rung.
+A's stated residual (thaw 2 easier than the gate) is **accepted as the deliberate release of
+pressure**. M3-6 authors the revised rung table; M3-3's gate reads it.
+
 ---
 
 **ITEM 2 — DOES OD-E'S "DECK 1 STAYS DEAD" STAND, OR IS M3 THE MILESTONE THAT AMENDS IT?**
@@ -1707,6 +1738,14 @@ it re-derives two figures M2-11 measured** (§9).
 gate is the priority, take B and file A — **and note that B is what OD-E already says**, so silence
 defaults to B rather than to the recommendation.
 
+✅ **ANSWERED 2026-07-31 — A, AS AN EXPLICIT AMENDMENT.** ⛔ **The owner answered affirmatively
+("follows all recommendations"), so the silence-default B does NOT apply.** M3-11 authors a deck-1
+vent + one riser tap, **vent authored WRECKED** ⇒ the deck is dead at boot and a repair order opens
+it. **OD-E's headline is amended** (`ROADMAP.md` §5, OD-E row + OD-M): *"deck 1 boots dead and the
+player may bring it back; the sim still has no vertical gas term."* ⚠️ **The parenthetical — no
+vertical gas term — STANDS**, and the accepted cost is re-deriving the two figures M2-11 measured
+(§9).
+
 ---
 
 **ITEM 3 — T15, SCHEDULES.** *(`TARGET.md` §3 says "decide at M3"; binds nothing until answered)*
@@ -1722,6 +1761,11 @@ it is a think-node priority that changes where work sits relative to needs.** Wi
 to "decided: deferred, mechanism adopted in M3-9"**, which is a decision, not a slip.
 ⚠️ **If the owner takes B it is M3-15, it is a pin row, and M3 goes to 15 packages / cap 3.**
 
+✅ **ANSWERED 2026-07-31 — A.** No schedule grid in M3. RW§3.5's mechanism (**needs are a
+job-SELECTION filter evaluated between jobs, never an interrupt**) is adopted inside **M3-9**, and
+the 24-slot grid is revisited after the week-9 gate. **`TARGET.md` T15 now reads "decided:
+deferred"**; M3 stays at **14** packages.
+
 ---
 
 **ITEM 4 — HOW MUCH LOSE SCREEN DOES M3-5 SHIP?** *(binds M3-5)*
@@ -1735,6 +1779,9 @@ OD-10 decided that when no intact pod remains, **the run is over**. M5-1 owns *T
 | **C** | Sim state only, no surface — ⛔ **the loss is silent**, which is the failure this package exists to close |
 
 ⭐ **RECOMMEND A.**
+
+✅ **ANSWERED 2026-07-31 — A.** M3-5 ships **sim state + Chronicle lines + a one-line banner**;
+**M5-1 builds the screen.**
 
 ---
 
@@ -1755,6 +1802,10 @@ the *boot* pawn. RW§1.5 gives a **new arrival a skill-ranked default grid**. An
 soul, not just the first. **The gate's sentence is satisfied by the skill columns.** ⚠️ **Flagged
 rather than assumed because it is the exit gate's own wording.**
 
+✅ **ANSWERED 2026-07-31 — A.** Thawed souls arrive with their **work grid OFF**; the row differs by
+**skills and incapables**, which is what M3-12 draws, and **the exit-gate sentence is satisfied by
+the skill columns**. **OD-H/OD-I untouched.**
+
 ---
 
 **ITEM 6 — IS *FREEZE* A PLAYER VERB?** *(binds M3-1; blocks position 1, and therefore position 5)*
@@ -1770,6 +1821,12 @@ OD-L says *"MOSS controls freeze/unfreeze per pod"*. Two readings.
 lands inside the milestone's largest pin lane. ⚠️ **This is the batch's blocking item: M3-1 cannot be
 written until it is answered, and M3-2 cannot freeze a save chapter until M3-1 is.**
 
+✅ **ANSWERED 2026-07-31 — A.** **Unfreeze only.** MOSS reports each pod's frozen state and thaws;
+**a pod is single-use**, so **`Device.Name` never mutates** and **M3-1 lands as a recorded
+non-change** — no new state anywhere. **B (FREEZE as a player verb) is FILED as a named follow-on**,
+not built in M3. ⇒ **The blocking item is discharged: M3-1 may be written, and M3-2 may freeze its
+save chapter.**
+
 ---
 
 **ITEM 7 — WHICH RUNGS OF THE VACUUM LADDER SHIP?** *(binds M3-14; blocks position 2)*
@@ -1777,7 +1834,7 @@ written until it is answered, and M3-2 cannot freeze a save chapter until M3-1 i
 
 `rimworld-reference.md:1737-1740` closes §8.4 with: *"⛔ **These are named, not proposed.** Which of
 the four rungs Perilune should have … are **owner decisions.** This document stops here."*
-And **OD-K names three specific rungs** (⭐ **`ROADMAP.md:109-111`**, the prose note after the OD
+And **OD-K names three specific rungs** (⭐ **`ROADMAP.md:110-112`**, the prose note after the OD
 table — round 3): *"playerForced bypass → **opt-in
 deadly work givers** → self-rescue suppression"* = RW rungs **2, 1, 4**.
 
@@ -1793,6 +1850,12 @@ new silent disagreement, and D8 found that disagreement already has a third surf
 (`GameSession.cs:2599`, the `blocked` channel). **Shipping rung 2 without rung 3 would tell the player
 their working pawn is air-blocked.** Rung 1 is a real feature and belongs where its cost lives: with
 M3-7's `Citizen` work on the pin chain.
+
+✅ **ANSWERED 2026-07-31 — B.** The vacuum ladder ships rungs **2 + 3 + 4**; **rung 1 (opt-in deadly
+work givers) is DEFERRED BY NAME** to land with M3-7's `Citizen` work on the pin chain. ⛔ **This is
+an owner-approved deviation from OD-K's literal rung list** — OD-K's named middle rung is dropped
+from M3-14 and one OD-K never mentioned (rung 3) is added; recorded in `ROADMAP.md` §5 as **OD-M**.
+⇒ **M3-14 stays PIN-NEUTRAL and off the chain** (position 2 in §3 holds).
 
 ---
 
@@ -1816,6 +1879,11 @@ level — **skills level independently**."*
 the milestone's exit-gate sentence thinner than it sounds. ⚠️ **It is in the batch anyway because
 "one aptitude number" and "six independent skills" are different games**, and M3-8's seven persona
 sheets are written against whichever answer the owner gives.
+
+✅ **ANSWERED 2026-07-31 — A.** `Citizen.Skill` **widens to a per-work-type 6-byte array in M3-7's
+own commit**, mirroring `WorkPrioritiesRaw`. The CITZ chapter bump + save migration ride **inside
+M3-7's existing pin row `M3-b`** — ⛔ **NOT a second re-pin.** M3-8's persona sheets are written
+against six independent skills.
 
 ---
 
@@ -1915,7 +1983,7 @@ plan that is **false on this tree**.*
     (`Commands.cs:753,778`; `AuthoredShips.cs:1952`; `WreckShipTests.cs:749`). **Batch item 1
     rewritten; M3-6's rung table re-keyed to be monotonic and to end above the gate.**
 17. **`rimworld-reference.md:1737-1740` reserves the vacuum-ladder rung choice for the OWNER**, and
-    OD-K (⭐ **`ROADMAP.md:109-111` — the prose note after the table; revision 2 wrote `:105-107`,
+    OD-K (⭐ **`ROADMAP.md:110-112` — the prose note after the table; revision 2 wrote `:105-107`,
     corrected in round 3**) names *opt-in deadly work givers* as the middle rung where revision 1
     substituted RW rung 3. **Now batch item 7.**
 18. **4 Scrap costs 8 Regolith, not 6** — `recipes.def:19-22` batches are integer and all-or-nothing.
@@ -1949,7 +2017,7 @@ inside `docs/` files this document quotes constantly.
 24. **`BlockedReason` is `GameSession.cs:2590`**, not `:2285`. ⚠️ **This one survived from revision 1
     through a whole review round** because both revisions treated the SEAM line as settled and only
     re-opened the lines the review named.
-25. **OD-E is `ROADMAP.md:100`; `:97` is OD-B.** **OD-K's rung list is `ROADMAP.md:109-111`**, the
+25. **OD-E is `ROADMAP.md:100`; `:97` is OD-B.** **OD-K's rung list is `ROADMAP.md:110-112`**, the
     prose note *after* the OD table, not `:105-107` inside it.
 26. **RW§1.6's `renders as` row is `rimworld-reference.md:335`** — revision 2's `:331-334` stops one
     line short of the row it quotes, ⭐ **while correcting a misquote of that exact row.**
@@ -2014,8 +2082,10 @@ and `:1779-1787` (`Send`'s whole-string dedupe)**, `hosts/scenario/Program.cs:59
 `recipes.def:19-22` · `build.def` · `WreckShipTests.cs` (42-210, 741-752) ·
 `perilune-wreck-start.plan.md` §7 `:2445` / §7.1 `:2592` · `MECHANICS.md` §3 (the same-deck-only
 table), ⭐ **`:258` (W0-6's four named)**, §13.22, §13.23a ·
-⭐ **`ROADMAP.md:100` (OD-E) and `:109-111` (OD-K's rung note) — round 3; revision 2 cited `:97`
-(OD-B) and `:105-107` (inside the table)** ·
+⭐ **`ROADMAP.md:100` (OD-E) and `:110-112` (OD-K's rung note) — round 3; revision 2 cited `:97`
+(OD-B) and `:105-107` (inside the table). ⚠️ **Re-pointed 2026-07-31**: the rung note moved `:109-111`
+→ `:110-112` when OD-M was appended to the ledger; OD-E is still `:100` (its row now carries item 2's
+amendment)** ·
 `rimworld-reference.md` §2.2, §2.4, ⭐ **§1.6 `:335` (the `renders as` row — round 3; revision 2's
 `:331-334` excluded it)**, §3.5, §4.4, §5.1-5.2, §6.1, §8.4 **incl. `:1737-1740`** ·
 ⭐ **`Citizen.cs:136-144` re-read in round 3 — `Skill` is ONE byte, and its own doc comment supplies

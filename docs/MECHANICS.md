@@ -3379,3 +3379,53 @@ unchanged at `0.000 / 0.000 / 2.184 %`. Quote a row with its `--days`.
 ~/.dotnet/dotnet run --project hosts/scenario -- occupancy --ship wreck --days 1               # the boot state
 echo $?   # 0 quotable · 2 vacuous, do not quote · 3 the grant never landed
 ```
+
+---
+
+### 13.27 `Device.Name` does double duty, and the owner's answer makes that safe (M3-1, 2026-07-31)
+
+**`Device.Name` (`sim/Sim.Core/Entities/Device.cs:70`) is two things at once.** It is **the MOSS
+registry key**: `MossBindings.RegisterAdapters` (`sim/Sim.Dsl/MossBindings.cs:14`) registers every
+addressable device **by name** — `registry.Register(device.Name, …)` at `:32` (doors) and `:40`
+(vents, scrubbers, wings, grow beds, tanks, reclaimers) — so the string a player types in a MOSS
+program *is* this field, and `Simulation.StateHash` folds it **for that reason, in a comment that
+says so** (`sim/Sim.Core/Simulation.cs:553-555`: *"registers every MOSS adapter BY NAME, so a
+restore that changed one silently unbinds every player program, no error"*). It is **also the cryo
+sleeper's identity**: the wreck's twelve capsules are named `"pod_" + pod.Who.ToLowerInvariant()`
+(`sim/Sim.Gen/AuthoredShips.cs:1856`) from the `PodSpec.Who` column (`:1737`, table at `:1760`), and
+`Device.cs:37-49`'s `CryoPod` comment already pins that mapping — *`IsOpen` (open vs occupied),
+`Name` (who is inside), `Condition`* — closing with **"NO new `Device` field."**
+
+⭐ **The collision only exists if a pod is ever RE-OCCUPIED.** A capsule that is thawed once and
+never refilled has a name that is true forever, so one field can be a stable automation identifier
+*and* the person in the box without contradiction. **Owner batch item 6, answered 2026-07-31: (A) —
+unfreeze only.** ⇒ **A pod is single-use, `Device.Name` stays both the registry key and the
+sleeper's identity, and no new field, no occupancy map and no save chapter is added anywhere.**
+M3-1 therefore lands as **a recorded non-change**: this paragraph plus the pin below. Pin-neutral —
+it writes no sim code, and `pin/m3-a` is unconstrained by it.
+
+**The pin: `tests/Perilune.Tests/PodIdentityTests.cs`** —
+`DeviceNames_NeverChangeAfterBoot_AcrossThreeThousandTicksOfCommandedPlay` boots `--ship wreck`,
+snapshots every device's name at tick 0, drives 3 000 ticks of **commanded** play (a full work grant
+through `SetWorkPriorityCommand`, a door through `SetDoorStateCommand`, a vent through
+`SetDeviceStateCommand`) and asserts the per-id name map *and* the name multiset are unchanged.
+⛔ **It is DRIVEN, never a text scan for `\.Name =`** — the charter refuses the scan by name
+(trap 1: a scan is satisfied by the violation sitting in a comment; trap 4: it is defeated by
+`device.Name=x` or any spelling the regex's author did not imagine). **Record the state, not the
+spelling.** Verified by physically renaming a live pod inside `MachineWearSystem.Tick`'s device loop
+at tick 1 500: RED, *"renamed: device 548 'pod_rell' -> 'pod_okonkwo'"* — the semantic failure, not a
+crash.
+
+⚠️ **Two things this does NOT say.** (1) `SaveReader.cs:344` writes `d.Name` on load — that is
+*reconstructing* the boot state, not mutating it, and the pin is a claim about a running sim.
+(2) **The pin is owed a thaw leg**: `ThawCommand` is M3-3's and does not exist yet, so the run above
+drives the richest command traffic that ships today. A thaw is the code path most likely to want to
+write a pod's name; **M3-3 must extend this test with a real thaw executed**, and the test says so in
+its own header.
+
+⇒ **FREEZE AS A PLAYER VERB IS THE NAMED FOLLOW-ON THAT REOPENS ALL OF THIS.** OD-L's *"MOSS
+controls freeze/unfreeze per pod"* was read as *thaw only*. If a later package lets the player put a
+crew member back in a box, the occupant must leave `Name`, and the only shapes that still add no
+`Device` field are a parallel sim-side occupancy map (new hashed state, new save chapter, a pin move)
+or a slot/occupant naming split (`pod_a1` as the key) — **which renames every authored pod and breaks
+every existing player program that named one.** Do not take that step inside another package.
