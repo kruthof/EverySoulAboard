@@ -85,6 +85,8 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
   arguably invertible · BUILD label collision · ascending-only click cycle · door art
   unphotographed · `'/'` glyph · blind A/B + 60-min playtest at week 9.
 
+  Owners follows all recommendations.
+
 ## Open — unscheduled (filed, unowned)
 
 - **No wire carries per-device powered-ness** — `oper` is wear-only; 18 of 23 unpowered
