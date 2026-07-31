@@ -45,9 +45,9 @@ Merged, in order:
   incl. new **M3-14** vacuum-work ladder, pin rows M3-a…d, conflict matrix). Three review
   rounds. Headline catches: the outline's pod census was wrong by two thaws (shipped:
   **12/1/7/4**); the MOSS commissioning gate (1 ControllerModule) inverts OD-L's depth
-  curve unless the rungs are re-keyed (batch item 1); the sparse `work` wire cannot carry
-  incapable-ness (new `workcaps` channel chartered); six false VERIFIED citations across
-  two revisions, owned in the doc's §13 box.
+  curve unless the rungs are re-keyed (batch item 1 — **answered A: they are**); the
+  sparse `work` wire cannot carry incapable-ness (new `workcaps` channel chartered); six
+  false VERIFIED citations across two revisions, owned in the doc's §13 box.
 
 Every package: Opus implementer + separate independent reviewer; five send-back rounds
 total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre-approved
@@ -61,21 +61,24 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
 3. Everything product-shaping went into the M3 **owner batch, not decided** — including
    two items that AMEND standing rulings if accepted (item 2 would reverse OD-E's "deck 1
    stays dead" headline; item 7 chooses the ladder's rungs, which RW-ref says is yours).
+   *(Frozen 07-30 record — **since answered 07-31, OD-M: item 2 taken, OD-E's headline
+   amended; item 7 took rungs 2+3+4.**)*
 
 ## Next (the M3 queue, `perilune-m3.packages.md` §3)
 
-1. **THE OWNER BATCH — a gate, not a lane.** EIGHT items, one message, three-day
-   default-to-recommendation; items 1/2/6/7/8 change what packages 2/3/4/5/11 contain.
-   **Nothing merges past position 1 until it is answered.**
-2. Then: M3-1 pod-identity (INFRA design) → M3-14 vacuum ladder → M3-6 pod census →
-   M3-11 deck-1 vent → **M3-2 CryoSystem (PIN M3-a, runs alone)** → M3-3 ThawGate →
-   M3-4 POD BAY → … (full order in the charter doc).
+1. **THE OWNER BATCH — gate CLEARED 2026-07-31** (all recommendations adopted:
+   **1A 2A 3A 4A 5A 6A 7B 8A**, recorded as **OD-M**; item 2 amends OD-E's headline, item 7
+   deviates from OD-K's rung list). Answers inline in `perilune-m3.packages.md` §10.
+2. **PICK M3-1 pod-identity (INFRA design) NEXT** — item 6 decides it outright: unfreeze
+   only, a pod is single-use, `Device.Name` never mutates ⇒ a recorded non-change. Then
+   M3-14 vacuum ladder (rungs 2+3+4, pin-neutral) → M3-6 pod census (rungs re-keyed
+   `3 → 0 0 2 2 3 3 3`) → M3-11 deck-1 vent (authored WRECKED) → **M3-2 CryoSystem
+   (PIN M3-a, runs alone)** → M3-3 ThawGate → M3-4 POD BAY → … (full order in §3).
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees kept from the audit
    (commits not in main — verify wanted, then prune).
 
 ## Open on the owner
 
-- **The M3 owner batch (8 items)** — the gate above; recommendations inline.
 - Browser-extension eyeball items (extension was down all session; game verified over the
   wire instead): Power-lens bulkhead conduit glyphs on 8 hull tiles (M2-11 F-5) · deck-1
   "risers cut" fiction legibility · the M2-12 repair arc watched by a human.
@@ -85,10 +88,11 @@ total, all fixed and re-verified. Two integrator fix-forwards, both reviewer-pre
   arguably invertible · BUILD label collision · ascending-only click cycle · door art
   unphotographed · `'/'` glyph · blind A/B + 60-min playtest at week 9.
 
-  Owners follows all recommendations.
-
 ## Open — unscheduled (filed, unowned)
 
+- **FREEZE as a player verb** — the named follow-on owner batch item 6 files (2026-07-31):
+  it makes a pod's occupant MUTABLE, so it costs either a new hashed occupancy map inside
+  `pin/m3-a` or renaming every authored pod. M3 ships unfreeze only.
 - **No wire carries per-device powered-ness** — `oper` is wear-only; 18 of 23 unpowered
   deck-1 devices read operational in the Room Zoom (measured live). Family: §13.25 b2.
 - **Shed lamps flicker at 0.5 Hz forever on a flat bank** (M2-12; §13.11 family — a

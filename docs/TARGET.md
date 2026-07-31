@@ -75,7 +75,7 @@ before building on it. RW§ = `docs/design/rimworld-reference.md` section.
 | T12 | Needs/mood: rest, food; mood as consequence not meter | §4 | partial (needs exist; mood gates nothing; morale bar deleted M1-F) |
 | T13 | Thaw loop: earn & choose a second soul through MOSS | premise | missing (M3-2…M3-6) |
 | T14 | Health: capacity-gated work (downed ≠ disabled) | §6.1 | missing (M4-4 decides real-or-delete) |
-| T15 | Schedules (sleep/work/rec blocks) | §3.5 | missing, unscheduled — decide at M3 |
+| T15 | Schedules (sleep/work/rec blocks) | §3.5 | decided: deferred — RW§3.5 mechanism adopted in M3-9 (needs are a job-SELECTION filter between jobs, never an interrupt); the 24-slot grid is revisited after the week-9 gate (owner batch item 3, 2026-07-31) |
 | T16 | Persona window (ONE door to a person) | — | queued (M4-1/M4-2) |
 | T17 | Alerts ("a separate system informs the player") | §2.6 note | queued (M5-2) |
 | T18 | Save/load in the shipping game | — | missing (M5-7, explicitly not promised) |
