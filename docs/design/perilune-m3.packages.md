@@ -147,7 +147,7 @@ point.
 
 | # | lane | package | expected to move | why | rollback point |
 |---|---|---|---|---|---|
-| **M3-a** | `lane/cryo-system` | **M3-2** | **P1 P2 P3** | ⛔ ⭐ **REVISION 2 CORRECTS THE CAUSE, AND THE CORRECTION MATTERS BECAUSE THE OLD ONE WAS AUTOMATIC AND THE NEW ONE IS A DESIGN OBLIGATION.** Revision 1 said *"registering a system folds its `SYSS` seed unconditionally"*. **FALSE.** `Simulation.cs:605-608` folds `stateful.StateChecksum()` **only for systems that implement `IStatefulSystem`**, and `SaveWriter.cs:120-128` writes a SYSS chapter under the same test. **W0-6's four systems moved the pins because all four implement it** — verified: `ProductionSystem.cs:19`, `TradeSystem.cs:23`, `OreRegistrySystem.cs:22`, `NavSystem.cs:22`, each `: ISimSystem, IStatefulSystem`. ⇒ **A `CryoSystem` whose state lives entirely on `Device` would fold NOTHING and move NO pin.** The pin cause is therefore whichever of these M3-2 chooses, and it must choose explicitly: **(i) `CryoSystem : IStatefulSystem`** — and then it must name what its internal state IS, ⭐ **and the emergency-thaw "has fired" bit is exactly that state and belongs there**; or **(ii) no interface, and the ONLY pin cause is the hashed bit wherever it lands.** **RECOMMEND (i).** **P4/P5 expected to HOLD** — `CryoPod`'s `machines.def` row **already landed in W3**; this package adds no def field. | ⭐ **tag `pin/m3-a`**, all five values recorded in the tag's own commit |
+| **M3-a** | `lane/cryo-system` | **M3-2** | **P1 P2 P3** | ⛔ ⭐ **REVISION 2 CORRECTS THE CAUSE, AND THE CORRECTION MATTERS BECAUSE THE OLD ONE WAS AUTOMATIC AND THE NEW ONE IS A DESIGN OBLIGATION.** Revision 1 said *"registering a system folds its `SYSS` seed unconditionally"*. **FALSE.** `Simulation.cs:605-608` folds `stateful.StateChecksum()` **only for systems that implement `IStatefulSystem`**, and `SaveWriter.cs:120-128` writes a SYSS chapter under the same test. **W0-6's four systems moved the pins because all four implement it** — ⭐ **and round 3 corrects WHICH FOUR: `ZONE`/`PROD`/`ORES`/`TRAD` (`SystemStack.cs:43-53`, `MECHANICS.md:258`), i.e. `StockZoneSystem.cs:65`, `ProductionSystem.cs:19`, `OreRegistrySystem.cs:22`, `TradeSystem.cs:23`, each `: ISimSystem, IStatefulSystem`. `NavSystem` is a LIVE system and was never one of W0-6's empties** — the conclusion is unchanged, the exemplar was wrong. ⇒ **A `CryoSystem` whose state lives entirely on `Device` would fold NOTHING and move NO pin.** The pin cause is therefore whichever of these M3-2 chooses, and it must choose explicitly: **(i) `CryoSystem : IStatefulSystem`** — and then it must name what its internal state IS, ⭐ **and the emergency-thaw "has fired" bit is exactly that state and belongs there**; or **(ii) no interface, and the ONLY pin cause is the hashed bit wherever it lands.** **RECOMMEND (i).** **P4/P5 expected to HOLD** — `CryoPod`'s `machines.def` row **already landed in W3**; this package adds no def field. | ⭐ **tag `pin/m3-a`**, all five values recorded in the tag's own commit |
 | **M3-d** | `lane/heater` | **M3-10** | **P4 P5** | A new `machines.def` row + a new `DeviceKind` grows **both** `Machines` and `Recipes` (`new RecipeDef[d.Machines.Length]` — two arrays for one enum member). **P1 P2 P3 hold IFF no pinned ship gets one** — and the charter's ruling is that none does. | ⭐ **tag `pin/m3-d`** |
 | **M3-b** | `lane/skill-consumers` | **M3-7** | **P1 P2 P3** | Work rates change on every ship that does work. ⚠️ **+P4 P5 IF the multiplier lands as a def field — and the charter rules it a LITERAL, so they should hold. MEASURE.** | — |
 | **M3-c** | `lane/rest` | **M3-9** | ⛔ **ALL FIVE** | Fatigue recovery is a behaviour change **and** needs def scalars. It also removes a flat mood deficit, which feeds `ShipMetrics.Morale` → `DirectorSystem.cs:82` → `_wearPressure` → `MachineWearSystem` ⇒ **machine wear rates change on every ship.** | ⭐ **tag `pin/m3-c`** |
@@ -191,7 +191,7 @@ is meaningless until M2-17 lands.** It does not block the thaw chain; it blocks 
 
 | # | lane | package | notes |
 |---|---|---|---|
-| **0** | — | **THE OWNER BATCH (§10)** | ⛔ A gate. Items 1/2/6 are inputs to 3/4/5. |
+| **0** | — | **THE OWNER BATCH (§10)** | ⛔ A gate. ⭐ **Items 1, 2, 6, 7 and 8 are inputs to packages 2, 3, 4, 5 and 11** (round 3 — this cell still read "1/2/6 … 3/4/5" while the prose above it had moved on). |
 | 1 | `lane/pod-identity` | **M3-1** | INFRASTRUCTURE (design). Answers `Device.Name`'s double duty. ⛔ **Before 5.** |
 | 2 | `lane/vacuum-ladder` | **M3-14** | ⭐ **OD-K's unchartered fourth call, given an id here.** Independent of the whole thaw chain; pin-neutral; it is what lets a direct order cross the frontier at all. Merge it early — it is the only M3 package that makes an *existing* M2 verb reach further. |
 | 3 | `lane/pod-census` | **M3-6** | ⚠️ Claims `AuthoredShips.cs` — **strictly serialized, and M2-11 is a PAST claimant whose census this may move** (§9). **Before 6**: M3-3's gate reads the rungs this authors. ⭐ **REVISION 2: its band-edge mutation is DEFERRED BY NAME to 6 (M3-3)** — it needs a `ThawGate` that does not exist yet. ⛔ **The position is deliberately NOT moved behind M3-3**, because the alternative reorder would put an `AuthoredShips.cs` claimant (M3-6) *after* the spine pin lane and *between* M3-3 and M3-11, breaking the file's strict serialization for no gain. **Checked: the `AuthoredShips.cs` chain M3-6 → M3-11 → M3-8 holds unchanged under the deferral.** |
@@ -370,7 +370,9 @@ Perilune lacks is the ladder on top.** The three rungs this package builds, in R
 >    *"⛔ **These are named, not proposed.** Which of the four rungs Perilune should have, and whether
 >    the `blocked` channel is the right surface for the refusal, are **owner decisions.** This
 >    document stops here."*
-> 2. ⛔ **OD-K NAMES A DIFFERENT MIDDLE RUNG FROM THE ONE I SUBSTITUTED.** `ROADMAP.md:105-107`:
+> 2. ⛔ **OD-K NAMES A DIFFERENT MIDDLE RUNG FROM THE ONE I SUBSTITUTED.** ⭐ **`ROADMAP.md:109-111`**
+>    — round 3; the rung list is the **prose note after the OD table**, not a table row, and
+>    revision 2's `:105-107` pointed into the table:
 >    *"the vacuum-work ladder (**playerForced bypass → opt-in deadly work givers → self-rescue
 >    suppression**, RW§2.4's `Danger` ladder as the analogue)"* — that is rungs **2, 1 (opt-in) and
 >    4**. Revision 1 shipped **2, 3 and 4**: it dropped OD-K's named middle rung and put in one OD-K
@@ -607,7 +609,8 @@ hand-written literals, and a document that has been quoting the wrong number.
 > revision 1 stated; only the ship names were wrong.
 >
 > ⛔ ⭐ **AND OD-E'S HEADLINE IS "DECK 1 STAYS DEAD", NOT THE PARENTHETICAL I QUOTED.**
-> `ROADMAP.md:97` reads **"Deck 1 stays dead (no vertical gas term is SHIPPED FILED)"**. Revision 1
+> ⭐ **`ROADMAP.md:100`** (round 3 — revision 2 said `:97`, which is **OD-B**) reads
+> **"Deck 1 stays dead (no vertical gas term is SHIPPED FILED)"**. Revision 1
 > quoted only the bracket and concluded *"OD-E is NOT violated"*. **That is a half-quote of a binding
 > decision.** Authoring a vent adds no gas term — the parenthetical survives — **but option (a)
 > below makes deck 1 stop being dead, which is the clause the owner actually wrote.**
@@ -719,8 +722,12 @@ bit… discovering it in W5b would be a second re-pin."*)
 >
 > — **conditional on the interface**, and `SaveWriter.cs:120-128` writes the SYSS chapter under the
 > same test. **W0-6's four "empty" systems moved three pins because all four implement
-> `IStatefulSystem`** (`ProductionSystem.cs:19`, `TradeSystem.cs:23`, `OreRegistrySystem.cs:22`,
-> `NavSystem.cs:22` — read, not inferred). **Registration alone folds nothing.**
+> `IStatefulSystem`** — ⭐ **`ZONE`/`PROD`/`ORES`/`TRAD`, named as such in `SystemStack.cs:43-53`
+> and in `MECHANICS.md:258`: `StockZoneSystem.cs:65`, `ProductionSystem.cs:19`,
+> `OreRegistrySystem.cs:22`, `TradeSystem.cs:23`. ⚠️ **Revision 2 listed `NavSystem.cs:22` as the
+> fourth. It is not — `NavSystem` is a live system that happens to implement the same interface**,
+> so the exemplar was wrong while the mechanism it illustrates is right. **Registration alone folds
+> nothing.**
 >
 > ⇒ ⭐ **`CryoSystem` MUST IMPLEMENT `IStatefulSystem`, AND ITS `StateChecksum` MUST FOLD THE
 > EMERGENCY BIT.** That is the recommendation, and it makes one decision serve three purposes: the
@@ -751,7 +758,7 @@ alone.** → tag `pin/m3-a`.
 | 5 | Round-trip a **mid-cycle** ship through save/load | ⭐ the byte-identity leg. **This is the one state the feature invents and the one a save test otherwise misses** |
 | 6 | Place the new citizen on a wall / inside furniture | the tile leg — nearest walkable 4-neighbour, **deterministic tie-break required** |
 | 7 | ⛔ ⭐ **Drop `IStatefulSystem` from `CryoSystem`'s declaration** (leaving it registered and ticking) | ⭐ **REWRITTEN IN REVISION 2 — the previous form of this leg could not bite.** It said *"register the system but leave `Tick` empty and claim pin-neutrality"*, which asserts a fold that `Simulation.cs:605-608` does not perform for a stateless system: **that mutation is GREEN on a correct implementation and green on a broken one.** The mutation that bites is the interface itself. **Two things must go red: `StateHash` must change on a ship that has a pod, AND the SYSS chapter must vanish from the save** (`SaveWriter.cs:120-128`). ⚠️ **Blind the two legs** — `assert` throws, so a dead second leg reads identical to a live one (fifth trap) |
-| 8 | Make `StateChecksum()` return a constant | the fold-contents leg: the emergency bit must reach the hash **through** the checksum, not merely exist |
+| 8 | Make `StateChecksum()` return a constant | the fold-contents leg: the emergency bit must reach the hash **through** the checksum, not merely exist. ⚠️ ⭐ **PRECONDITION, ROUND 3 — the fixture must SET the bit before hashing**, or a constant `0` is byte-identical to folding a permanently-zero bit and the leg is vacuous. *(Same shape as mutation 4's "assert the pod is below `fail` BEFORE driving" — stated in the same form so a reader sees them as one discipline.)* |
 | 9 | Set the emergency bit anywhere in this package | the storage-only leg — M3-2 stores it and never writes it |
 
 **ACCEPTANCE.** Driven. ⭐ **The browser beat is DEFERRED BY NAME TO M3-4** (there is no surface that
@@ -849,7 +856,7 @@ P1/P2/P3 for nothing.
 | 3 | Skip term 2 (the console) | the WHERE leg — thaw from an uncommissioned terminal must refuse. ⚠️ Fixture must assert `Scriptable == false` first |
 | 4 | Evaluate term 2 host-side in `GameSession` | ⭐ the single-authority leg: **record the call at the seam** (trap 4). *"A host-side check is not replayed on load, not folded into the hash, and not present in the TUI"* |
 | 5 | Accept a thaw while another pod cycles | term 3 |
-| 6 | Ignore the rung (term 4) | ⭐ **the OD-L leg, and it is DOUBLE — revision 2.** (a) Strip the required item from the ship and assert the refusal **names the item and the count**. (b) ⭐ **M3-6'S DEFERRED BAND-EDGE LEG, ACCEPTED HERE BY NAME** (the M2-3 → M2-2 precedent, where M2-2's acceptance ran M2-3's deferred steps 4 and 6): move a pod's `Condition` across a band edge and assert **the rung `ThawGate` resolves changes**. M3-6 could not run this — `ThawGate` does not exist at position 3 — so **this package owns it, and M3-6's charter says so.** ⚠️ **Run it as a sweep over all four edges, not one sample**: the edge that is never crossed is the edge nobody chose |
+| 6 | Ignore the rung (term 4) | ⭐ **the OD-L leg, and it is DOUBLE — revision 2.** (a) Strip the required item from the ship and assert the refusal **names the item and the count**. (b) ⭐ **M3-6'S DEFERRED BAND-EDGE LEG, ACCEPTED HERE BY NAME** (the M2-3 → M2-2 precedent, where M2-2's acceptance ran M2-3's deferred steps 4 and 6): move a pod's `Condition` across a band edge and assert **the rung `ThawGate` resolves changes**. M3-6 could not run this — `ThawGate` does not exist at position 3 — so **this package owns it, and M3-6's charter says so.** ⚠️ ⭐ **Run it as a sweep over all SIX interior edges — 0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80 (round 3; revision 2 said "four", counting rungs rather than edges, and the count is load-bearing by this row's own sentence)**: the edge that is never crossed is the edge nobody chose |
 | 7 | Return a bare `return;` on refusal, house-style | ⛔ **the silence leg.** Every refusal must produce a reason the host can render — *"if it follows the `ISimCommand` house style of a bare `return;` … would be nothing"* |
 | 8 | Call `ShipLedger` from `ThawGate` | the architecture leg — **already red by an existing guard**; assert it stays that way |
 | 9 | Write `ThawGate`'s suite as four ratio assertions | ⚠️ **SEVENTH TRAP SHAPE, named in the plan's own R-6.** A suite of ratios **cannot see a 2× scale error** — E0-9's whole gate went green with `DaysOfFood` 2× wrong. **At least one proportional FLOOR, in absolute units.** |
@@ -981,12 +988,27 @@ two surfaces, and they must agree — neither package invents a second vocabular
 > serializer, plus the client decoder, plus `BLOCKED_REASON_TEXT` learning to interpolate. There is
 > no version of it that is only a label.
 >
-> ⚠️ ⭐ **AND THE STRUCT CARRIES ITS OWN MERGE HAZARD, WRITTEN ON IT.** `WireFormat.Work.cs:97-105`
-> records the scar for the whole family: *"A FIELD ADDED TO THE TUPLE MUST BE ADDED HERE IN THE SAME
-> COMMIT … the OPERATE verb appended `Open` to `DeviceCell` and the delta gate's field list
-> AUTO-MERGED WITH NO CONFLICT, leaving a gate that ignored the one byte a player toggles — with the
-> whole suite green."* ⇒ **M3-13 adds the field to the struct, the serializer, the delta-gate
-> comparison and the client decoder IN ONE COMMIT**, and its own mutation table must break each.
+> ⚠️ ⭐ **AND ROUND 3 CORRECTS WHERE THIS CHANNEL'S HAZARD ACTUALLY IS — REVISION 2 IMPORTED THE
+> WRONG ONE BY ANALOGY.** Revision 2 warned about the `DeviceCell` delta-gate scar
+> (`WireFormat.Work.cs:97-105`, *"A FIELD ADDED TO THE TUPLE MUST BE ADDED HERE IN THE SAME
+> COMMIT"*). ⛔ **That scar does not apply to `blocked`: `BlockedCell` has NO `SameAs` and the
+> channel has no field-list delta gate at all.** `blocked` ships through
+> `GameSession.Send(channel, json, force)`, which dedupes on **the whole serialized string** —
+> `if (!force && _cache.TryGetValue(channel, out var prev) && prev == json) return;`
+> (`GameSession.cs:1783`). ⇒ **A serialized `Detail` is inside the dedupe key by construction**, and
+> the field-list defect is unreachable here.
+>
+> ⇒ ⭐ **THE REAL HAZARD IS THE POSITIONAL ARRAY.** The serializer
+> (`WireFormat.Blocked.cs:588-604`) emits a **five-element** array per cell and the struct's own doc
+> comment (`:555-558`) states the contract: *"one decoder shape across six channels … the wreck
+> charter wrote this tuple as `[x, y, deck, reason]` and the extra element is **appended, not
+> inserted**."* **A sixth element is only safe if every decoder that destructures five is updated in
+> the same commit** — and a decoder that reads by index will silently keep working while ignoring
+> the field, which is the same *symptom* as the `DeviceCell` scar reached by a different route.
+> ⚠️ ⭐ **This is my own header box happening inside the fix for my own header box: I reasoned from
+> a sibling struct instead of opening this one.** *(The `DeviceCell` warning stays live and correct
+> for the §9 claimants that DO carry a `SameAs` — `WorkCell` and `DeviceCell`. It is scoped, not
+> retracted.)*
 
 ⇒ **THE RECHARTERED ANSWER.** `BlockedCell` gains **one int: `Detail`** — reused per reason, and for
 `ReasonNoConsumable` it is the `ItemKind` byte the order needs. **Keep reason code 2**; do not add
@@ -1004,11 +1026,14 @@ cryo bay the main screen**, so this stops being a filed nuisance and becomes a f
 nursing corpses, and *"three of the four dead sleepers stopped reading as dead inside a day, with no
 player input"*). The menu must **not offer** a repair the sim will never take.
 
-**SEAM.** `hosts/web/GameSession.cs:2285` (`BlockedReason`) · `hosts/web/WireFormat.Blocked.cs:332-546`
-(the five reason codes) · ⭐ **`WireFormat.Blocked.cs:564-569` (the `BlockedCell` struct — the field
-addition) and `:379-400` (the serializer)** · `client/src/wire/messages.js:529-570` (the mirror and
-`BLOCKED_REASON_TEXT`) · `client/src/ui/blocked-overlay.js` (the legend) ·
-`client/src/ui/prioritise-model.js` (the menu gate) · `moss-screen.js` (the pod bay's reason column).
+**SEAM.** ⭐ **`hosts/web/GameSession.cs:2590` (`BlockedReason`) — round 3; `:2285` survived from
+revision 1 and was never opened** · `hosts/web/WireFormat.Blocked.cs:332-546` (the five reason codes)
+· ⭐ **`:564-569` (the `BlockedCell` struct — the field addition) and `:588-604` (the serializer —
+round 3; `:379-400` is the reason-code doc-comment region, not code)** ·
+`hosts/web/GameSession.cs:1779-1787` (`Send` — the channel's whole-string dedupe) ·
+`client/src/wire/messages.js:529-570` (the decoder and `BLOCKED_REASON_TEXT`) ·
+`client/src/ui/blocked-overlay.js` (the legend) · `client/src/ui/prioritise-model.js` (the menu gate)
+· `moss-screen.js` (the pod bay's reason column).
 
 **PIN IMPACT: PIN-NEUTRAL.** **SPINE? YES** — `WireFormat`. Integrator.
 
@@ -1016,8 +1041,8 @@ addition) and `:379-400` (the serializer)** · `client/src/wire/messages.js:529-
 
 | # | mutation | must go red |
 |---|---|---|
-| 1 | ⭐ **Emit the new `Detail` int but leave it out of `BlockedCell.SameAs`'s field list** | ⭐ **REWRITTEN IN REVISION 2 — the old leg ("return the refusal with no number") tested a label that does not exist on this channel.** This is the `DeviceCell` scar exactly: **the delta gate stops re-sending a field that changed, and the only symptom is a stale readout nothing refreshes.** Drive it: change the required item mid-session and assert the client's rendered row changes |
-| 1b | Add `Detail` to the struct but not to the serializer / not to the client decoder | the three-mirror leg — **one red test per mirror**, not one for the set |
+| 1 | ⭐ **Append `Detail` to the struct and the serializer, and leave the client decoder destructuring FIVE elements** | ⭐ **REWRITTEN IN ROUND 3 — revision 2's form named `BlockedCell.SameAs`, WHICH DOES NOT EXIST** (box above). The live hazard is the six-element positional array: a decoder that reads `[x,y,deck,order,reason]` by index **keeps working and silently drops the field.** Drive it: emit a refusal whose `Detail` names an item and assert the **rendered badge text** changes — never that the array has six elements |
+| 1b | Change `Detail` mid-session and assert the client re-renders | ⭐ **the dedupe leg, and it is the one that proves the channel's actual gate.** `Send` compares whole serialized strings (`GameSession.cs:1783`), so this passes **by construction** — ⚠️ **which makes it a NON-VACUITY CONTROL, not a guard.** Run it once to establish the channel really does re-send, and say in the test that it can never fail for a field-list reason |
 | 2 | Return the refusal with a `Detail` the client cannot name | the vocabulary leg: `BLOCKED_REASON_TEXT` must interpolate a real `ItemKind`, and an unknown kind must degrade to the generic string rather than render `undefined` |
 | 3 | Re-derive any refusal host-side | the single-authority leg, **recorded at the seam** |
 | 4 | Rank the rung refusal above the console refusal | the precedence leg — **pick an order and pin it.** A player told *"needs 1 CM"* on a ship with no working MOSS has been told the wrong thing |
@@ -1033,9 +1058,9 @@ addition) and `:379-400` (the serializer)** · `client/src/wire/messages.js:529-
    the field addition**, and it is the step that proves the protocol change landed rather than the
    label being reworded.
 
-**CONFLICTS.** ⛔ **`WireFormat.Blocked.cs` — and this package changes the `BlockedCell` TUPLE**, so
-it serializes against every `blocked` claimant past and future and **must not run concurrently with
-anything touching `GameSession.BuildBlocked`.** Also `GameSession.cs`, `messages.js`, `moss-screen.js`
+**CONFLICTS.** ⛔ **`WireFormat.Blocked.cs` — and this package changes the `BlockedCell` TUPLE's
+ARITY**, so it serializes against every `blocked` claimant past and future and **must not run
+concurrently with anything touching `GameSession.BuildBlocked`.** Also `GameSession.cs`, `messages.js`, `moss-screen.js`
 — serialize against M3-3, M3-4 (§9).
 
 **SIZE: M → L** — ⭐ **re-sized in revision 2.** Revision 1 called it M on the belief that the item
@@ -1231,7 +1256,7 @@ CANNOT BE PUT THERE AS A COLUMN.**
 > | option | shape | cost |
 > |---|---|---|
 > | **A — densify `work`** | emit a row for every (citizen, work type) pair including off ones | breaks `Priority`'s *"0 never appears"* contract, which other readers may rely on; row count goes from *(on pairs)* to *crew × 6* |
-> | ⭐ **B — a SECOND message, `workcaps`** | one row per citizen: `[cid, skill…, incapableMask]` | ⭐ **additive**; leaves `work`'s contract, its delta gate and its sparse shape untouched; the mask is `Citizen.WorkIncapable`'s own byte (`:128`), sent verbatim rather than re-derived |
+> | ⭐ **B — a SECOND message, `workcaps`** | one row per citizen: ⭐ **`[cid, skill, incapableMask]`** — round 3; revision 2 wrote `[cid, skill…, incapableMask]`, and **the ellipsis promised a per-type spread that does not exist** (see the box below) | ⭐ **additive**; leaves `work`'s contract, its delta gate and its sparse shape untouched; the mask is `Citizen.WorkIncapable`'s own byte (`:128`), sent verbatim rather than re-derived |
 > | **C — per-citizen mask appended to an existing per-citizen channel** | ride `crew` | couples two unrelated cadences; `work` is dirty-versioned separately for a reason |
 >
 > ⭐ **RECOMMEND B.** It is the only option that adds nothing to a struct whose delta gate has already
@@ -1239,12 +1264,36 @@ CANNOT BE PUT THERE AS A COLUMN.**
 > per-citizen-per-work-type while `incapable` is a per-citizen mask — neither is naturally a column on
 > a per-priority row.**
 
-**⚠️ AND RW§1.6 SAYS SOMETHING DIFFERENT FROM WHAT REVISION 1 QUOTED.** `rimworld-reference.md:331-334`
-is a table, and its `renders as` row is: disabled (priority 0) → **blank cell**; incapable →
-**"no cell at all — the box is absent"**. Revision 1 wrote *"struck/greyed"*, **re-derived from memory
+**⚠️ AND RW§1.6 SAYS SOMETHING DIFFERENT FROM WHAT REVISION 1 QUOTED.** ⭐ **`rimworld-reference.md:335`
+is the `renders as` row** (round 3 — revision 2 cited `:331-334`, a range that stops one line SHORT
+of the row it was quoting): disabled (priority 0) → **blank cell (manual) / unchecked box
+(standard)**; incapable → **"no cell at all — the box is absent"**. Revision 1 wrote *"struck/greyed"*, **re-derived from memory
 against the authority it was citing** — the exact failure `CLAUDE.md` names in bold. ⇒ **The
 rendering is ABSENCE, not decoration.** ⭐ **And that reconciles with option B rather nicely: a sparse
 wire that omits the row and a tab that omits the cell are the same fact, expressed once.**
+
+> ### ⛔ ⭐ ROUND 3 — `Citizen.Skill` IS **ONE BYTE**, SO "DIFFERENT SKILLS" IS ONE NUMBER, NOT A SPREAD
+>
+> `Citizen.cs:144` is `public byte Skill;` — **one scalar per citizen**, not per work type. Revision 2's
+> `[cid, skill…, incapableMask]` quietly assumed an array. **There isn't one.**
+>
+> ⚠️ **AND THE CONSEQUENCE IS A DESIGN FACT, NOT A WIRE DETAIL.** With one byte scaled through six
+> per-type curves, **two pawns differ in MAGNITUDE but never in SHAPE** — their relative ordering
+> across work types is identical, forever. **The only genuine per-citizen *spread* M3 would ship is
+> the `WorkIncapable` mask.** ⛔ **That is not RimWorld's model**: RW§5.1 is explicit — *"Twelve
+> skills, levels 0–20 … There is no character level — **skills level independently**."* And it
+> collides with this milestone's own exit gate, whose sentence is *"the new soul's WORK row differs
+> from Rell's."*
+>
+> ⇒ ⭐ **CHARTERED RECOMMENDATION, WITH ITS PIN STORY: WIDEN `Citizen.Skill` TO A PER-WORK-TYPE ARRAY
+> IN M3-7's OWN COMMIT** — six bytes, exactly mirroring `WorkPrioritiesRaw`'s shape (`:205`). **Cost:
+> a CITZ chapter version bump plus a save migration. NOT a second re-pin** — M3-7 is already pin row
+> `M3-b` (P1/P2/P3) *"in its own right"*, and `Citizen.cs:136-143` says so in the field's own doc
+> comment: *"what this saves M3-7 is a CHAPTER BUMP AND A SAVE-FORMAT MIGRATION, NOT A RE-PIN."*
+> ⇒ **The widening is nearly free precisely here and expensive anywhere else.**
+> ⚠️ **But it changes what the exit gate's sentence MEANS, so it is OWNER BATCH ITEM 8** — not because
+> the engineering is doubtful, but because "one aptitude number" and "six independent skills" are
+> different games.
 
 `Citizen.WorkIncapable` (`Citizen.cs:128`) and `CanTakeWorkType` (`:268`) exist and are read by the
 dispatcher; M2-9's §2.2 ruling already pins that an order beats a priority-0 grid but **never**
@@ -1314,7 +1363,8 @@ is sparse and off-only and therefore has no row for an incapable type (M3-7's bo
 **THE ANALOGUE.** RW§1.7 (column order, and whether the player may reorder it — **they may not; OD-J
 fixes ours**) and **RW§1.6 (incapable vs disabled)**.
 ⛔ ⭐ **REVISION 2 CORRECTS THIS, AND IT WAS A MISQUOTE OF THE AUTHORITY IT CITED.** Revision 1 said
-RimWorld renders incapable as a *"struck/greyed"* cell. `rimworld-reference.md:331-334`'s own table
+RimWorld renders incapable as a *"struck/greyed"* cell. ⭐ **`rimworld-reference.md:335`** — the
+`renders as` row of §1.6's table (round 3 corrects revision 2's `:331-334`, which excluded it) —
 says otherwise: disabled (priority 0) renders as a **blank cell**; incapable renders as
 **"no cell at all — the box is absent"**. ⇒ **The two renderings are BLANK versus ABSENT**, and the
 difference is structural, not decorative — RimWorld is saying *there is no such setting for this
@@ -1350,8 +1400,12 @@ throughout.
 2. Repair + commission `term_moss` → **POD BAY**: twelve rows, four *NO SIGNAL*, one OPEN, seven
    sealed with **seven reasons**.
 3. Thaw the `1 SEALS` pod. **She steps out, is named in the Chronicle, appears in CREW WATCH.**
-4. ⭐ **THE DECISIVE STEP: open the WORK tab. Her row is NOT Rell's** — different skills, and **at
-   least one work type where Rell has a cell and she has NONE.** ⚠️ **Revision 2 reworded this from
+4. ⭐ **THE DECISIVE STEP: open the WORK tab. Her row is NOT Rell's** — a different skill number, and
+   **at least one work type where Rell has a cell and she has NONE.** ⚠️ ⭐ **ROUND 3: under the
+   shipped one-byte `Citizen.Skill`, THE ABSENT CELL IS THE ONLY PART THAT MAKES THE ROWS DIFFERENT
+   IN SHAPE** — one scalar through six fixed curves orders the work types identically for every pawn.
+   **If owner batch item 8 widens the field, this step also reads "and she is better at Repair than
+   Rell while worse at Haul"; if it does not, that sentence is untrue and must not be demoed.** ⚠️ **Revision 2 reworded this from
    *"at least one cell struck"*, which was both a misquote of RW§1.6 and unreachable on the wire as
    revision 1 chartered it** (D3/D5). ⭐ *The falsifying form of this step is the comparison: the two
    rows must differ in the SET of cells, not only in their numbers.*
@@ -1391,8 +1445,13 @@ invariant — so this is a **host-side enrichment, never a sim dependency.**
 `hosts/web/GameSession.cs` (the observer) · the LLM/persona layer, which is **outside determinism by
 gate** (⭐ `Simulation.cs:425-426` — corrected in revision 2).
 
-**Writing, not engineering** — seven sheets, each with a backstory that explains a skill spread and at
-least one `WorkIncapable` bit, so M3-12 step 4 has something to draw.
+**Writing, not engineering** — seven sheets, each with a backstory that explains the crew member's
+aptitude and at least one `WorkIncapable` bit, so M3-12 step 4 has something to draw.
+⚠️ ⭐ **ROUND 3 — "a skill spread" is only writable if owner batch item 8 widens `Citizen.Skill`.**
+Under the current one-byte field (`Citizen.cs:144`) a sheet can justify *how good she is* and *what
+she cannot do*, **but not what she is comparatively better at** — every pawn has the same shape.
+⇒ **Write the sheets against the mask and the scalar; if item 8 widens the field, the sheets gain a
+spread and this package is where it lands.**
 
 **PIN IMPACT: PIN-NEUTRAL** — host state, gate-proven out of determinism. Check (A).
 
@@ -1563,13 +1622,16 @@ bay that refuses silently fails OD-L's own premise.
 
 ## 10. THE M3 OWNER-DECISION BATCH
 
-**One batch per milestone. ⭐ SEVEN items (revision 2 added one and rewrote two). One message.
-Three-day default-to-recommendation.** Everything settleable from an existing OD or from
+**One batch per milestone. ⭐ EIGHT items — revision 2 added one and rewrote two; round 3 added one
+more (item 8). One message. Three-day default-to-recommendation.** Everything settleable from an existing OD or from
 `rimworld-reference.md` **has been settled and cited** — §11 lists those, so the batch is not padded
 with questions that already have answers.
 
-⚠️ ⭐ **AND ONE ITEM IS HERE BECAUSE REVISION 1 SETTLED SOMETHING IT HAD NO STANDING TO SETTLE**
-(item 7): `rimworld-reference.md:1737-1740` explicitly reserves the rung choice for the owner, and
+⚠️ ⭐ **TWO ITEMS ARE HERE BECAUSE AN EARLIER REVISION ASSUMED SOMETHING IT NEVER CHECKED.** Item 8
+exists because revision 2 wrote a wire payload with an ellipsis in it (`[cid, skill…, incapableMask]`)
+and the ellipsis was standing in for an array the sim does not have. **A payload sketch is a claim
+about a field's arity.** And item 7 is here because revision 1 settled something it had no standing
+to settle: `rimworld-reference.md:1737-1740` explicitly reserves the rung choice for the owner, and
 revision 1 both took it and substituted a rung OD-K did not name. **A cited authority that says "this
 is an owner decision" is not a source you can settle from.**
 
@@ -1619,7 +1681,8 @@ release of pressure after the prologue, and if the owner dislikes it, B is the f
 *(binds M3-11; blocks position 4)*
 
 ⛔ ⭐ **THIS IS AN AMENDMENT REQUEST, NOT A SCOPE QUESTION, AND REVISION 1 ASKED IT WRONGLY.**
-OD-E (`ROADMAP.md:97`) reads **"Deck 1 stays dead (no vertical gas term is SHIPPED FILED)"** — a
+OD-E (⭐ **`ROADMAP.md:100`** — round 3; revision 2 cited `:97`, which is OD-B) reads
+**"Deck 1 stays dead (no vertical gas term is SHIPPED FILED)"** — a
 headline clause and a parenthetical. **Option A below leaves the parenthetical intact (it adds no gas
 term) and REVERSES THE HEADLINE (deck 1 stops being dead).** Revision 1 quoted only the bracket and
 told the owner "OD-E is not violated", which would have obtained agreement to something the owner was
@@ -1713,7 +1776,8 @@ written until it is answered, and M3-2 cannot freeze a save chapter until M3-1 i
 
 `rimworld-reference.md:1737-1740` closes §8.4 with: *"⛔ **These are named, not proposed.** Which of
 the four rungs Perilune should have … are **owner decisions.** This document stops here."*
-And **OD-K names three specific rungs** (`ROADMAP.md:105-107`): *"playerForced bypass → **opt-in
+And **OD-K names three specific rungs** (⭐ **`ROADMAP.md:109-111`**, the prose note after the OD
+table — round 3): *"playerForced bypass → **opt-in
 deadly work givers** → self-rescue suppression"* = RW rungs **2, 1, 4**.
 
 | option | rungs | cost |
@@ -1733,6 +1797,27 @@ M3-7's `Citizen` work on the pin chain.
 
 ---
 
+**ITEM 8 — ONE APTITUDE NUMBER, OR SIX INDEPENDENT SKILLS?** *(binds M3-7, M3-8, M3-12 and the exit
+gate's own sentence; blocks position 11)* ⭐ **NEW IN ROUND 3.**
+
+`Citizen.Skill` is **one byte** (`Citizen.cs:144`). Scaled through six per-work-type curves it makes
+two pawns differ in **magnitude but never in shape** — the work types rank identically for everyone,
+forever. **RW§5.1 is the opposite model**: *"Twelve skills, levels 0–20 … there is no character
+level — **skills level independently**."*
+
+| option | shape | cost |
+|---|---|---|
+| **A** | ⭐ **Widen to a per-work-type array (6 bytes) in M3-7's own commit**, mirroring `WorkPrioritiesRaw` (`Citizen.cs:205`) | a **CITZ chapter bump + save migration** — ⛔ **NOT a second re-pin**: M3-7 is already pin row `M3-b` *"in its own right"*, and the field's own doc comment (`Citizen.cs:136-143`) says exactly this |
+| **B** | **Keep the one byte.** A pawn has an aptitude; the per-type difference is carried entirely by the `WorkIncapable` mask | free — but *"her row differs from Rell's"* means **one number and some absent cells**, and no pawn is ever *comparatively* better at anything |
+| **C** | Keep the byte in M3, widen in M4 with the Persona work | ⛔ **the widening is nearly free ONLY inside M3-7's existing chapter bump.** Deferring it makes it a re-pin of its own later |
+
+⭐ **RECOMMEND A.** The engineering is cheap exactly here and expensive everywhere else, and B makes
+the milestone's exit-gate sentence thinner than it sounds. ⚠️ **It is in the batch anyway because
+"one aptitude number" and "six independent skills" are different games**, and M3-8's seven persona
+sheets are written against whichever answer the owner gives.
+
+---
+
 ## 11. WHAT WAS SETTLED FROM AN EXISTING OD OR FROM THE ANALOGUE *(so the batch stays honest)*
 
 | question | settled by | answer |
@@ -1747,7 +1832,7 @@ M3-7's `Citizen` work on the pin chain.
 | ⛔ Which rungs of that ladder ship? | **NOT SETTLEABLE — `rimworld-reference.md:1737-1740` reserves it for the owner, and OD-K names a different middle rung from the one revision 1 substituted** | ⭐ **MOVED TO THE BATCH (item 7) IN REVISION 2.** *Recorded here, in the settled table, precisely because revision 1 wrongly treated it as settled* |
 | Does skill gate *whether* a pawn can work? | **RW§5.2** | **Never.** Only how well |
 | One global skill multiplier? | **RW§5.1** | **No** — per-work-type curves. v1 ships rate only, and the quality deviation is stated |
-| Blank vs incapable in the WORK tab? | **RW§1.6** (`rimworld-reference.md:331-334`) | ⭐ **CORRECTED IN REVISION 2: disabled renders as a BLANK cell, incapable as NO CELL AT ALL.** Revision 1 said *"struck/greyed"*, re-derived from memory against the authority it cited |
+| Blank vs incapable in the WORK tab? | **RW§1.6** (⭐ `rimworld-reference.md:335`, the `renders as` row) | ⭐ **CORRECTED IN REVISION 2: disabled renders as a BLANK cell, incapable as NO CELL AT ALL.** Revision 1 said *"struck/greyed"*, re-derived from memory against the authority it cited |
 | Do needs interrupt a job in progress? | **RW§3.5's boxed rule, confirmed twice** | **No.** Selection filter between jobs |
 | Where does the rung requirement live? | **M2-1's literal-vs-def precedent** | A **literal band table** keyed off the pod's already-authored `Condition`. *A rule, not a tunable* |
 | Does a deck-1 vent need the vertical gas term? | `MECHANICS.md` §13.23a + `AuthoredShips.cs:150` (⭐ **`Perilune()`, a PINNED ship**) and `:1084` (`PeriluneGrid()`) | **No.** A vent injects into **its own room**, and two shipped ships already do it on deck 1. ⛔ ⭐ **BUT THIS SETTLES ONLY THE MECHANISM.** OD-E's headline is *"Deck 1 stays dead"*, and opening it is an AMENDMENT — **batch item 2**, not a settled row. *Revision 1 listed the whole question here.* |
@@ -1797,8 +1882,10 @@ plan that is **false on this tree**.*
 
 9. ⛔ **"Registering a system folds its SYSS seed unconditionally" is FALSE.** `Simulation.cs:605-608`
    folds only `IStatefulSystem` implementors; `SaveWriter.cs:120-128` writes the chapter under the
-   same test. **W0-6's four systems all implement it** (verified at `ProductionSystem.cs:19`,
-   `TradeSystem.cs:23`, `OreRegistrySystem.cs:22`, `NavSystem.cs:22`). ⭐ **A stateless `CryoSystem`
+   same test. **W0-6's four systems all implement it** — ⭐ **ROUND 3: they are `ZONE`/`PROD`/`ORES`/
+   `TRAD` (`SystemStack.cs:43-53`, `MECHANICS.md:258`) = `StockZoneSystem.cs:65`,
+   `ProductionSystem.cs:19`, `OreRegistrySystem.cs:22`, `TradeSystem.cs:23`. Revision 2 named
+   `NavSystem.cs:22` as the fourth; `NavSystem` is a LIVE system, not a W0-6 empty.** ⭐ **A stateless `CryoSystem`
    would have moved NO pin, and M3-2's mutation 7 was written to catch exactly this and would have
    been GREEN either way** — a can't-bite mutation inside the charter that names can't-bite mutations
    as the repo's dominant defect. **Fixed in §2 and §5 M3-2; mutation 7 rewritten to bite.**
@@ -1818,7 +1905,8 @@ plan that is **false on this tree**.*
 14. ⛔ **`vent_corr_up` (`AuthoredShips.cs:150`) is on `--ship perilune`, not `--ship grid`** —
     `Perilune()` spans `:32`–`:224`, `PeriluneGrid()` starts `:975`. **The mechanism claim survives
     and is stronger** (perilune is a PINNED ship), but the attribution was wrong.
-15. ⛔ **OD-E's headline is "Deck 1 stays dead"** (`ROADMAP.md:97`); revision 1 quoted only the
+15. ⛔ **OD-E's headline is "Deck 1 stays dead"** (⭐ **`ROADMAP.md:100`; revision 2 wrote `:97`,
+    which is OD-B — corrected in round 3**); revision 1 quoted only the
     parenthetical and told the owner OD-E was not violated. **Batch item 2 now asks for an
     amendment.**
 16. ⛔ **The realised thaw curve is not escalating**, because commissioning `term_moss` costs a
@@ -1826,7 +1914,8 @@ plan that is **false on this tree**.*
     (`Commands.cs:753,778`; `AuthoredShips.cs:1952`; `WreckShipTests.cs:749`). **Batch item 1
     rewritten; M3-6's rung table re-keyed to be monotonic and to end above the gate.**
 17. **`rimworld-reference.md:1737-1740` reserves the vacuum-ladder rung choice for the OWNER**, and
-    OD-K (`ROADMAP.md:105-107`) names *opt-in deadly work givers* as the middle rung where revision 1
+    OD-K (⭐ **`ROADMAP.md:109-111` — the prose note after the table; revision 2 wrote `:105-107`,
+    corrected in round 3**) names *opt-in deadly work givers* as the middle rung where revision 1
     substituted RW rung 3. **Now batch item 7.**
 18. **4 Scrap costs 8 Regolith, not 6** — `recipes.def:19-22` batches are integer and all-or-nothing.
 19. **`OD-9`…`OD-12` are the wreck plan's own ledger** (`perilune-wreck-start.plan.md` §7 `:2445`,
@@ -1837,20 +1926,69 @@ plan that is **false on this tree**.*
     by-name-and-by-index pin (`client/test/prioritise-menu.test.js:74`). §9 said so; M3-10's own
     charter block did not.
 
+### ⭐ ADDED IN ROUND 3 — and every one is a citation revision 2 badged as READ
+
+⚠️ **Round 3's shape is narrower and worse: revision 2's defects were seams reasoned about; round 3's
+are seams OPENED AND THEN CITED BY A LINE NUMBER THAT WAS NEVER RE-READ.** Four of the six below sit
+inside `docs/` files this document quotes constantly.
+
+21. ⛔ **`BlockedCell` has NO `SameAs` and `blocked` has NO field-list delta gate.** The channel ships
+    through `GameSession.Send`, which dedupes on **the whole serialized string**
+    (`GameSession.cs:1779-1787`, `prev == json`), so a serialized `Detail` is in the dedupe key by
+    construction. **Revision 2 imported the `DeviceCell` scar by analogy from a sibling struct** and
+    wrote M3-13's mutation 1 against a seam that does not exist. **The real hazard is the six-element
+    positional array and any decoder that destructures five.** *(The scar stays valid for the §9
+    claimants that DO carry a `SameAs`.)*
+22. **W0-6's four empties are `ZONE`/`PROD`/`ORES`/`TRAD`** (`SystemStack.cs:43-53`,
+    `MECHANICS.md:258`) ⇒ `StockZoneSystem.cs:65`, not `NavSystem.cs:22`. **`NavSystem` is a live
+    system that happens to implement the same interface** — the conclusion in §12.9 survives intact,
+    the exemplar did not.
+23. **The `blocked` serializer is `WireFormat.Blocked.cs:588-604`**, not `:379-400` — that range is
+    the reason-code doc-comment region.
+24. **`BlockedReason` is `GameSession.cs:2590`**, not `:2285`. ⚠️ **This one survived from revision 1
+    through a whole review round** because both revisions treated the SEAM line as settled and only
+    re-opened the lines the review named.
+25. **OD-E is `ROADMAP.md:100`; `:97` is OD-B.** **OD-K's rung list is `ROADMAP.md:109-111`**, the
+    prose note *after* the OD table, not `:105-107` inside it.
+26. **RW§1.6's `renders as` row is `rimworld-reference.md:335`** — revision 2's `:331-334` stops one
+    line short of the row it quotes, ⭐ **while correcting a misquote of that exact row.**
+27. **The revised rung table has SIX interior edges** (0.92/0.90/0.87/0.85/0.82/0.80), not four —
+    and M3-3's own mutation says the count is load-bearing.
+28. **`Citizen.Skill` is ONE byte** (`Citizen.cs:144`), so revision 2's `[cid, skill…, incapableMask]`
+    promised a per-type spread the sim does not have. ⇒ **payload resolved to
+    `[cid, skill, incapableMask]`, and the design consequence — every pawn ranks the work types
+    identically — became OWNER BATCH ITEM 8.**
+
 ---
 
 ## 13. WHAT I VERIFIED VS WHAT I TOOK ON FAITH
 
-> ### ⛔ ⭐ THIS SECTION WAS ITSELF WRONG IN REVISION 1, AND THAT IS THE WHOLE LESSON IN ONE PLACE
+> ### ⛔ ⭐ THIS SECTION HAS NOW BEEN WRONG IN BOTH REVISIONS, AND THE SECOND TIME IS THE INSTRUCTIVE ONE
 >
-> Revision 1 listed `AuthoredShips.cs:150` and `Simulation.cs:390-391` under **VERIFIED**. **Neither
-> was.** `:150` was read *and mis-attributed to the wrong ship function* (I read the line, not the
-> function it sits in); `:390-391` was **inherited from `…q3.packages.md` and never opened at all** —
-> it reached the verified list because it *felt* checked.
-> ⇒ ⛔ **A "verified" list is a claim like any other, and this one had two false entries out of
-> ~35.** Both are corrected below and both appear in §12 (items 10 and 14).
-> ⭐ **The general form: "I read something near it" is not "I read it", and a citation copied from a
-> sibling document never becomes verified by being re-typed.**
+> **Revision 1** listed `AuthoredShips.cs:150` and `Simulation.cs:390-391` under **VERIFIED**.
+> **Neither was.** `:150` was read *and mis-attributed to the wrong ship function* (I read the line,
+> not the function it sits in); `:390-391` was **inherited from `…q3.packages.md` and never opened at
+> all** — it reached the verified list because it *felt* checked. Both are in §12 (items 10, 14).
+>
+> ⛔ ⭐ **AND THEN REVISION 2 — THE REVISION WHOSE HEADLINE WAS "OPEN EVERY SEAM YOU CHARTER
+> AGAINST", AND WHOSE §13 BOX WAS *THIS PARAGRAPH* — ADDED FOUR MORE FALSE ENTRIES OF ITS OWN.**
+> The reviewer named the irony and it is worth keeping rather than quietly patching:
+> `NavSystem.cs:22` (wrong exemplar for W0-6), `WireFormat.Blocked.cs:379-400` (a doc-comment region
+> cited as the serializer), `ROADMAP.md:97` and `:105-107` (OD-B and a table row, cited as OD-E and
+> OD-K's rung note), and `rimworld-reference.md:331-334` — ⭐ **a range that stops one line short of
+> the very row it was quoting, inside the correction of a misquote of that row.** Plus
+> `GameSession.cs:2285`, which **survived revision 1 AND a full review round** because both passes
+> re-opened only the lines the reviewer named.
+>
+> ⇒ ⛔ **THE SHARPENED RULE, AND IT IS THE ONE THIS DOCUMENT KEPT FAILING IN A NEW COSTUME:
+> OPENING A FILE IS NOT THE SAME AS VERIFYING THE CITATION THAT POINTS INTO IT.** Revision 2 read
+> every one of these files — it read `SystemStack`'s neighbourhood, the whole of
+> `WireFormat.Blocked.cs`, the OD ledger, RW §1.6's table — **and then wrote down a line number from
+> memory of where it had been looking.** *"I read something near it" is not "I read it"; a citation
+> copied from a sibling document never becomes verified by being re-typed; and **a range is a claim
+> about both of its ends.***
+> ⚠️ ⭐ **Six false entries across two revisions, out of ~40. A "verified" list is a measurement, and
+> this one has now been re-measured twice.**
 
 **READ THIS SESSION, IN THE FILE, ON THIS TREE** — every `file:line` in §5 and §9, and specifically:
 `AuthoredShips.cs` (`WreckPods` 1760-1782 · the header 1310-1340 · `pod_` 1856 · `term_moss` 1952 ·
@@ -1859,21 +1997,28 @@ vents at `:150` (`Perilune()`, `:32`–`:224` — a PINNED ship) and `:1084` (`P
 `:975`) — function spans re-read in revision 2**) · `Device.cs` (kinds 5-49 incl. **`Bed` at `:23`**,
 fields 66-120) · `Simulation.cs:553-555` **and ⭐ `:425-426` and `:605-608`** ·
 `SaveWriter.cs:120-128` **and `:284`** · `SaveReader.cs:322` ·
-`ProductionSystem.cs:19` / `TradeSystem.cs:23` / `OreRegistrySystem.cs:22` / `NavSystem.cs:22`
-(the `IStatefulSystem` declarations) · `MossBindings.cs:14-41` · `SafetySystem.cs:95-158` ·
-`JobContext.cs:62-65,80` · `MachineWearSystem.cs:667,706` · ⭐ **`GameSession.cs:2599` and
-`hosts/scenario/Program.cs:599,627,647`** · `AtmosphereSystem.cs:110-150` ·
+⭐ **`SystemStack.cs:43-53` + `StockZoneSystem.cs:65` / `ProductionSystem.cs:19` /
+`OreRegistrySystem.cs:22` / `TradeSystem.cs:23` — W0-6's actual four, re-read in round 3
+(`NavSystem.cs:22` was revision 2's wrong exemplar and is struck from this list)** · `MossBindings.cs:14-41` · `SafetySystem.cs:95-158` ·
+`JobContext.cs:62-65,80` · `MachineWearSystem.cs:667,706` · ⭐ **`GameSession.cs:2599`, `:2590` (`BlockedReason` — round 3; `:2285` was wrong from revision 1)
+and `:1779-1787` (`Send`'s whole-string dedupe)**, `hosts/scenario/Program.cs:599,627,647` ·
+`AtmosphereSystem.cs:110-150` ·
 `Commands.cs:565-624` **and ⭐ `:753,778` (`CommissionDeviceCommand`)** ·
 `Citizen.cs` (50, 128, 144, 205-276) · `NeedsSystem.cs` header ·
-`WireFormat.Blocked.cs` (332/350/382/484/546, ⭐ **`:379-400` and `:564-569`**) ·
+`WireFormat.Blocked.cs` (332/350/382/484/546, `:555-558`, `:564-569`, ⭐ **and the serializer at
+`:588-604` — round 3; revision 2's `:379-400` is the reason-code doc-comment region**) ·
 `WireFormat.Work.cs:86-134` · `messages.js:529-570` · `GameSession.cs:399-446` · `moss-model.js:27` ·
 `hud.js:30` · `overview-view.js:1181` · `overview-model.js:322,335-345` ·
 ⭐ **`room-model.js:1183` · `prioritise-menu.test.js:68-80`** · `machines.def:43,62,66` ·
 `recipes.def:19-22` · `build.def` · `WreckShipTests.cs` (42-210, 741-752) ·
 `perilune-wreck-start.plan.md` §7 `:2445` / §7.1 `:2592` · `MECHANICS.md` §3 (the same-deck-only
-table), §13.22, §13.23a · `ROADMAP.md:97,105-107` ·
-`rimworld-reference.md` §2.2, §2.4, ⭐ **§1.6 `:331-334`**, §3.5, §4.4, §5.1-5.2, §6.1, §8.4
-**incl. `:1737-1740`**.
+table), ⭐ **`:258` (W0-6's four named)**, §13.22, §13.23a ·
+⭐ **`ROADMAP.md:100` (OD-E) and `:109-111` (OD-K's rung note) — round 3; revision 2 cited `:97`
+(OD-B) and `:105-107` (inside the table)** ·
+`rimworld-reference.md` §2.2, §2.4, ⭐ **§1.6 `:335` (the `renders as` row — round 3; revision 2's
+`:331-334` excluded it)**, §3.5, §4.4, §5.1-5.2, §6.1, §8.4 **incl. `:1737-1740`** ·
+⭐ **`Citizen.cs:136-144` re-read in round 3 — `Skill` is ONE byte, and its own doc comment supplies
+batch item 8's pin story.**
 
 **TAKEN ON FAITH — inherited from a doc or a source comment, NOT re-driven here.** ⚠️ **Anyone whose
 package depends on one of these must re-measure it:**
