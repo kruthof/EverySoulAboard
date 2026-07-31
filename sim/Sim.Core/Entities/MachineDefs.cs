@@ -83,7 +83,7 @@ namespace Perilune.Sim
             //
             // LifeSupport tier: a pod is life support for the person inside it, so it must be the
             // LAST thing a brownout sheds, not the first. ⚠ THE COST OF THAT CHOICE IS REAL AND IS
-            // STATED RATHER THAN HIDDEN: the tier is served ALL-OR-NOTHING (PowerSystem.cs:203-215),
+            // STATED RATHER THAN HIDDEN: the tier is served ALL-OR-NOTHING (PowerSystem.cs:253-265),
             // so --ship wreck's TWELVE pods put 2.4 kW into the same bucket as the vents and
             // scrubbers (COUNTED off AuthoredShips.WreckPods, not off the roster size — the eight
             // living souls sleep in eight of the twelve, and a wrecked pod draws exactly as much as
