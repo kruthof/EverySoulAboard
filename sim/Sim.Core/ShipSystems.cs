@@ -273,8 +273,10 @@ namespace Perilune.Sim
                          + "divided by total generation. STATE: any wanting device left unpowered is a "
                          + "brownout (DEGRADED); battery reserve under 25% is ATTEND. "
                          + "LIMIT: there is no reactor aboard. The row is named for the compartment; the "
-                         + "hardware is solar wings and batteries. Generation is condition-blind by design "
-                         + "(PowerSystem.cs:174-189), so a wrecked wing still supplies its full kW here.";
+                         + "hardware is solar wings and batteries. Generation is CONDITION-SCALED "
+                         + "(PowerSystem.cs:235): a damaged wing supplies less, down to half its rating, "
+                         + "so repairing one raises this figure. Draw is not scaled — a worn machine "
+                         + "pays full price for reduced output.";
                 case IdLifeSupport:
                     return "LOAD is crew CO2 production divided by the CO2 removal capacity of powered, "
                          + "operational scrubbers (condition-scaled). STATE is banded off WORST-ROOM CO2 ppm, "
@@ -351,14 +353,17 @@ namespace Perilune.Sim
         // ---------------------------------------------------------------- rows
 
         /// <summary>
-        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW OF WIRED SOURCES,
-        /// clamped 0..100. BOTH sides carry `PowerSystem.Balance`'s off-grid gate
-        /// (`PowerSystem.cs:184`) — see the Census power ledger for why an ungated denominator makes
+        /// REACTOR. LOAD = Σ DrawKW of wired, WANTING devices ÷ Σ GenerationKW × EffectiveRate OF
+        /// WIRED SOURCES, clamped 0..100. The numerator is flat and the denominator is
+        /// condition-scaled because `PowerSystem.Balance` is (M2-12: demand stays flat, generation
+        /// rides wear), so a ship whose wings rot reads as MORE loaded — which is what is
+        /// happening. BOTH sides carry `PowerSystem.Balance`'s off-grid gate
+        /// (`PowerSystem.cs:233`) — see the Census power ledger for why an ungated denominator makes
         /// a darkening ship read as less loaded. "Wanting" mirrors `PowerSystem.IsWanting`
-        /// (`PowerSystem.cs:262-266`): a vent only wants power while open; everything else always does.
+        /// (`PowerSystem.cs:312-316`): a vent only wants power while open; everything else always does.
         /// STATE: brownout ⇒ DEGRADED, derived from the OBSERVABLE consequence — a wanting, wired,
         /// drawing device that <see cref="Device.Powered"/> is false on has been shed
-        /// (`PowerSystem.cs:203-234` stamps exactly that). Generating hardware aboard but NONE of it
+        /// (`PowerSystem.cs:253-283` stamps exactly that). Generating hardware aboard but NONE of it
         /// wired is also DEGRADED: the ship is running on reserve with nothing replenishing it, and
         /// that must never render as a quiet `--`. Else battery reserve &lt; 25% ⇒ ATTEND.
         /// Deliberately NOT <see cref="ShipMetricsSnapshot.Power"/>: that is served ÷ demand, a
@@ -794,16 +799,25 @@ namespace Perilune.Sim
                     bool worn = d.Condition < def.MaintainBelow;
 
                     // Power ledger — mirrors PowerSystem.Balance's own tallies, INCLUDING its
-                    // very first line: `if (d.NetworkId == 0) continue;` (PowerSystem.cs:184)
+                    // very first line: `if (d.NetworkId == 0) continue;` (PowerSystem.cs:233)
                     // skips off-grid devices ENTIRELY, so an unwired SolarWing's kW reaches no
                     // network and an unwired battery bridges nothing. Both sides of the ratio
                     // must carry the same gate or the row rewards unplugging things: an off-grid
                     // wing would inflate the denominator and make a darkening ship read as LESS
-                    // loaded. PowerSystem.cs:243-248 warns about exactly this — `Powered` on a
+                    // loaded. PowerSystem.cs:294-298 warns about exactly this — `Powered` on a
                     // SolarWing says nothing about whether it is contributing, only NetworkId does.
+                    //
+                    // ⚠️ AND SINCE M2-12 IT MIRRORS THE `EffectiveRate` FACTOR TOO
+                    // (PowerSystem.cs:235). Generation is condition-scaled in the balance, so a
+                    // census that summed the flat `gen` would report a wreck's three ruined wings
+                    // as 18.0 kW while the ship they are bolted to runs on 10.7 — the row would
+                    // state a measurement the ship does not make, which is the exact defect M2-11
+                    // closed on the demand side. Both figures below are therefore kW-reaching-the-
+                    // grid, never nameplate, INCLUDING the unwired one: the two are compared in
+                    // the same sentence and must be the same currency.
                     if (d.NetworkId != 0)
                     {
-                        c.GenerationKW += def.GenerationKW;
+                        c.GenerationKW += def.GenerationKW * d.EffectiveRate;
                         if (d.Kind == DeviceKind.Battery) { c.WiredBatteries++; c.BatteryKWh += d.StoredKWh; }
                         if (def.DrawKW > 0f && Wanting(d))
                         {
@@ -811,7 +825,7 @@ namespace Perilune.Sim
                             if (!d.Powered) c.BrownedOutDevices++;   // shed by the tier walk = a brownout
                         }
                     }
-                    else if (def.GenerationKW > 0f) c.UnwiredGenerationKW += def.GenerationKW;
+                    else if (def.GenerationKW > 0f) c.UnwiredGenerationKW += def.GenerationKW * d.EffectiveRate;
 
                     // Census of generating HARDWARE (ungated): "none aboard" and "none of it is
                     // plugged in" are different failures and the row must not conflate them.
@@ -898,7 +912,7 @@ namespace Perilune.Sim
                     }
                 }
                 // Reserve is over WIRED batteries only — an off-grid battery bridges no deficit
-                // (PowerSystem.cs:184-186), so counting it would report a reserve that cannot be spent.
+                // (PowerSystem.cs:233-236), so counting it would report a reserve that cannot be spent.
                 c.BatteryChargeFraction = c.WiredBatteries == 0
                     ? 0f : c.BatteryKWh / (c.WiredBatteries * Device.BatteryCapacityKWh);
 
@@ -986,7 +1000,7 @@ namespace Perilune.Sim
                 return available;
             }
 
-            /// <summary>Mirror of the private `PowerSystem.IsWanting` (`PowerSystem.cs:262-266`): a
+            /// <summary>Mirror of the private `PowerSystem.IsWanting` (`PowerSystem.cs:312-316`): a
             /// CLOSED vent is the only device that idles — everything else pays its full
             /// `machines.def` draw continuously, in use or not.</summary>
             private static bool Wanting(Device d) => d.Kind != DeviceKind.AirVent || d.IsOpen;

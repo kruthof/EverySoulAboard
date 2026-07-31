@@ -70,6 +70,29 @@ namespace Perilune.Sim
         private readonly List<float> _demandByTier = new List<float>(); // kW; networkId * 4 + tier
         private readonly List<bool> _wasBrownout = new List<bool>();    // edge detection for the event
 
+        /// <summary>
+        /// The kW this system tallied for <paramref name="networkId"/> on its last balance pass —
+        /// the figure the tier walk was actually decided against, condition-scaling included.
+        /// <para>⚠️ IT EXISTS SO A TEST CAN PIN THE LEDGER AT THE SEAM. A test that re-sums
+        /// <c>machines.def</c> itself is a SECOND implementation of this loop: it agrees with
+        /// whatever it was written against and cannot see a change made here — a constant factor
+        /// slipped into the line below would leave every such assertion green (CLAUDE.md trap 4,
+        /// and the seventh shape: a ratio suite cannot see a scale error). Pinned by
+        /// <c>GenerationWearTests</c>.</para>
+        /// Read-only view of grow-once scratch: no allocation, nothing saved, nothing hashed.
+        /// Reads 0 for a network id that has never existed.
+        /// </summary>
+        public float LastGenerationKW(ushort networkId) =>
+            networkId < _generation.Count ? _generation[networkId] : 0f;
+
+        /// <summary>The kW of demand this system booked for one network and tier on its last
+        /// balance pass — the other half of the same ledger, published for the same reason
+        /// (see <see cref="LastGenerationKW"/>). It is the FLAT machines.def <c>draw</c> by
+        /// design: a worn machine pays full price for reduced output (M2-12, constraint 8c),
+        /// and that asymmetry is only pinnable if both sides can be read.</summary>
+        public float LastDemandKW(ushort networkId, PowerTier tier) =>
+            (networkId * 4 + (int)tier) < _demandByTier.Count ? _demandByTier[networkId * 4 + (int)tier] : 0f;
+
         /// <summary>Topology on demand, balance always — a ship whose devices never move
         /// pays only the balance pass.</summary>
         public void Tick(Simulation sim)
@@ -171,18 +194,45 @@ namespace Perilune.Sim
             var devices = sim.Devices.Items;
             var machines = sim.Defs.Machines;
 
-            // Sum generation, battery reserve, and demand per tier.
-            // Both sides are condition-blind: generation is the flat machines.def `gen`
-            // with no EffectiveRate factor and no IsOperational gate (a wrecked
-            // SolarWing still supplies its full kW), and demand is the flat `draw` (a
-            // worn scrubber pays full price for reduced output). Wear is expressed in
-            // the consuming systems via EffectiveRate, never in the power ledger.
+            // Sum generation, battery reserve, and demand per tier. THE TWO SIDES ARE
+            // DELIBERATELY ASYMMETRIC (M2-12):
+            //
+            // GENERATION IS CONDITION-SCALED. A generator's output IS power, so the
+            // power ledger is the only place its wear can be expressed — every other
+            // EffectiveRate consumer (scrubber, vent, radiator, reclaimer) is a device
+            // that spends power in order to do something else, and a SolarWing has no
+            // such downstream system. So `gen` rides <see cref="Device.EffectiveRate"/>
+            // exactly as those do: a wing at Condition 0.06 supplies 0.53 of its
+            // machines.def kW, one at 1.00 supplies all of it, and repairing a wing
+            // steps the ship's generation. (Before M2-12 this line was the flat `gen`
+            // and this comment said "a wrecked SolarWing still supplies its full kW" —
+            // it did, which is why repairing one changed nothing a player could see.)
+            //
+            // NO IsOperational GATE, AND THAT IS A RULING, NOT AN OVERSIGHT (M2-12,
+            // constraint 8b). EffectiveRate's floor is 0.5 at Condition 0, so a wrecked
+            // wing keeps contributing a HALF share and repair is a gradient the player
+            // can climb one job at a time. Gating on IsOperational instead would drop a
+            // wing below its machines.def `fail` to exactly zero — a cliff, and on the
+            // wreck it takes boot generation from 10.65 kW to 7.47 kW with `wing_c`
+            // (0.06) worth literally nothing.
+            //
+            // DEMAND STAYS FLAT (constraint 8c): a worn scrubber pays full price for
+            // reduced output. Scaling `draw` too would reward a wrecked ship with a
+            // smaller bill.
+            //
+            // ⚠️ ONE CONSEQUENCE WORTH KNOWING: EffectiveRate carries Device.Rate, and
+            // Rate is a PLAYER/MOSS lever (SetDeviceCommand clamps it to 0..1,
+            // Commands.cs:47). So throttling a SolarWing to Rate = 0 now zeroes its
+            // output, where before it was inert on a generator. That is the same
+            // semantics every other EffectiveRate consumer already has, and it is a
+            // capability, not a leak — but it is new, and nothing else in the sim
+            // writes Rate.
             for (int i = 0; i < devices.Count; i++)
             {
                 var d = devices[i];
                 if (d.NetworkId == 0) continue; // off-grid: contributes nothing either way
                 var def = machines[(int)d.Kind];
-                _generation[d.NetworkId] += def.GenerationKW;
+                _generation[d.NetworkId] += def.GenerationKW * d.EffectiveRate;
                 if (d.Kind == DeviceKind.Battery) _batteryCharge[d.NetworkId] += d.StoredKWh;
                 float draw = def.DrawKW;
                 if (draw > 0f && IsWanting(d)) _demandByTier[d.NetworkId * 4 + (int)def.Tier] += draw;

@@ -967,14 +967,25 @@ namespace Perilune.Tests
         [Test]
         public void TheBenchesAreOnAPowerNetwork_AndTheirTierIsServed()
         {
-            // ⚠️ THIS IS THE ASSERTION THAT CATCHES THE UNWINNABLE SHIP. Generation is
-            // CONDITION-BLIND (PowerSystem.cs:174-185 — "a wrecked SolarWing still supplies its full
-            // kW"), so authored damage cannot brown a tier back IN; a tier that is shed at boot is
-            // shed forever. If PowerTier.Industry is not served here, the player can pressurise the
-            // workshop, repair every bench, and still watch nothing happen, with no message anywhere.
+            // ⚠️ THIS IS THE ASSERTION THAT CATCHES THE UNWINNABLE SHIP, AND M2-12 CHANGED WHAT
+            // "UNWINNABLE" MEANS HERE. It used to rest on generation being CONDITION-BLIND — "a
+            // wrecked SolarWing still supplies its full kW", so authored damage could not brown a
+            // tier back in and a tier shed at boot was shed for ever. That premise is GONE:
+            // generation now rides Device.EffectiveRate (PowerSystem.cs:235), the wreck's three
+            // damaged wings feed 10.65 kW against 14.30 of demand, and PowerTier.Industry is shed
+            // once the 15 kWh bank runs out at about sim-hour 4. THE BENCHES BEING DARK IS NOW A
+            // STATE THE PLAYER REPAIRS THEIR WAY OUT OF, not a dead end.
+            // ⇒ So the unwinnable ship is no longer "Industry shed at boot"; it is "Industry shed
+            // even at the reachable power ceiling". Both halves are asserted below, and the second
+            // is the one that catches it.
+            // ⚠️ AND THE FIRST HALF IS DELIBERATELY READ INSIDE THE BANK'S LIFETIME (60 000 ticks
+            // = 1.7 sim-hours, before the h4 drain). That is not the hole the old comment warns
+            // about, it is the opposite: at this horizon the benches ARE fed, which is what makes
+            // the ship's opening playable, and the ceiling leg is what proves the wings — not the
+            // batteries — are what keeps them fed afterwards.
             // ⚠️ THE HORIZON IS THE WHOLE GUARD, AND 20 TICKS WAS A HOLE — FOUND BY MUTATION, NOT BY
             // READING. This test ran two sim-seconds and SURVIVED deleting every SolarWing on the
-            // ship. `PowerSystem.cs:196` reads `supply = generation + batteryCharge * 3600`, i.e. a
+            // ship. `PowerSystem.cs:247` reads `supply = generation + batteryCharge * 3600`, i.e. a
             // battery can burst its whole stored energy inside one balance second, so 15 kWh of
             // authored charge covers a 13 kW demand with ZERO generation for over an hour. A
             // two-second test therefore measured the batteries, not the wings.
@@ -1003,6 +1014,105 @@ namespace Perilune.Tests
                      devices[i].Kind == DeviceKind.MachineShop) && devices[i].NetworkId != 0) onNetwork++;
             Assert.That(onNetwork, Is.GreaterThanOrEqualTo(3),
                 "fixture: all three deck-0 benches must be trayed, or the check above is vacuous");
+
+            // ⭐ THE LEG THAT NOW CATCHES THE UNWINNABLE SHIP (M2-12). Bring the wings to the
+            // ceiling the opening can reach — the ship's one Parts overhauls one wing to 1.00 and
+            // its Seals take the other two to 0.90, which is 17.40 kW against 14.30 of demand —
+            // and hold the ship there for twelve sim-hours. If the benches are dark HERE, no
+            // amount of repairing gets the matter ladder running and the opening is unwinnable.
+            //
+            // ⛔ THE BANK IS FLATTENED FIRST, AND THAT IS THE WHOLE LEG. Review send-back D2:
+            // without it this check re-opened the exact hole the comment at the top of this method
+            // describes. MEASURED on this tree: the ship enters this leg holding 8.874 kWh, and a
+            // battery bursts its entire charge inside one balance second — so the reserve bridges
+            // a deficit for the full twelve hours and the benches read lit on generation that
+            // cannot pay for them. Driven proof: with generation scaled ×0.6 and the bank LEFT
+            // ALONE, the end-of-run sample is 3/3 benches lit and this leg PASSES, while the ship
+            // actually spent 20 767 of its 43 200 balance passes with a dark bench. Flattened, the
+            // same mutation reads 0/3 immediately and the leg fails, which is correct.
+            //
+            // ⚠️ AND IT ASSERTS OVER THE WINDOW, NOT AT AN INSTANT — same reason: an end-of-run
+            // sample of a flickering ship is a coin toss on the phase (20 767 dark passes still
+            // ended on a lit one).
+            //
+            // ⚠️ THE SECOND ASSERTION IS THE BANK REFILLING, AND IT CATCHES WHAT THE FIRST CANNOT.
+            // At the true ceiling generation exceeds total demand outright, so the reserve does not
+            // merely survive — it rebuilds: MEASURED, from flat, 0.000 -> 33.907 kWh across these
+            // twelve hours (×0.9 gives 13.356). That is what makes the repair a WIN rather than a
+            // stalemate, and the bench count cannot see it: at ×0.8, generation 13.92 kW still
+            // covers LifeSupport 5.70 + Defense 0.90 + Industry 6.50 = 13.10, so every bench is
+            // legitimately lit and only Comfort sheds — 3/3, honest, GREEN — while the bank ends at
+            // 0.000038 kWh, hovering at empty for ever. The ship can never light a lamp again and
+            // has no reserve for the next thing that breaks.
+            // ⚠️ A FLOOR, NOT A BAND, AND DELIBERATELY SO. This leg's subject is winnability, not
+            // scale; a two-sided band on 33.907 would redden on any unrelated demand change. The
+            // floor sits 34× below the measured value and 26 000× above the ×0.8 mutant, so it
+            // separates "rebuilds its reserve" from "hovers at empty" without pinning either. THE
+            // SCALE GUARD IS ELSEWHERE, two-sided, in GenerationWearTests.
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind == DeviceKind.SolarWing)
+                    d.Condition = d.Name == "wing_c" ? 1.00f : 0.90f;   // Parts on one, Seals on two
+                else if (d.Kind == DeviceKind.Battery)
+                    d.StoredKWh = 0f;                                   // no bridging: see above
+            }
+
+            // The wired benches are resolved ONCE and held by reference: devices are not recreated,
+            // and re-scanning all 611 of them on each of 43 200 samples is 26 M iterations of pure
+            // waste inside a shared test process. (Not a style note — this method is one of the
+            // longest in the suite and it runs beside an exact-zero allocation pin.)
+            var benches = new List<Device>();
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var d = devices[i];
+                if (d.Kind != DeviceKind.SalvageRecycler && d.Kind != DeviceKind.Fabricator &&
+                    d.Kind != DeviceKind.MachineShop) continue;
+                if (d.NetworkId == 0) continue;             // deck 1's ruined bench: risers cut, by design
+                benches.Add(d);
+            }
+
+            float bankAtRepair = 0f;
+            int darkPasses = 0;
+            const int Window = 12 * 36_000;                 // twelve sim-hours at 10 Hz
+            for (int t = 0; t < Window; t++)
+            {
+                sim.Tick();
+                if (t % 10 != 9) continue;                  // one sample per 1 Hz balance pass
+                for (int i = 0; i < benches.Count; i++)
+                    if (!benches[i].Powered) { darkPasses++; break; }
+                if (t == 9) bankAtRepair = StoredKWh(sim);  // read after the first pass settles
+            }
+
+            var afterRepair = new List<string>();
+            if (darkPasses != 0)
+                afterRepair.Add($"a wired bench was UNPOWERED in {darkPasses.ToString(CultureInfo.InvariantCulture)} " +
+                                $"of {(Window / 10).ToString(CultureInfo.InvariantCulture)} balance passes at the " +
+                                "reachable power ceiling — the matter ladder cannot be reached by repairing");
+            float bankAtEnd = StoredKWh(sim);
+            const float BankRebuildFloorKWh = 1.0f;   // measured 33.907 here; 0.000038 at ×0.8
+            if (bankAtEnd < BankRebuildFloorKWh)
+                afterRepair.Add($"the battery bank went {bankAtRepair.ToString("F6", CultureInfo.InvariantCulture)} -> " +
+                                $"{bankAtEnd.ToString("F6", CultureInfo.InvariantCulture)} kWh across twelve sim-hours " +
+                                "at the ceiling, under a floor of " +
+                                BankRebuildFloorKWh.ToString("F2", CultureInfo.InvariantCulture) + " kWh. It must " +
+                                "REBUILD (measured: 33.907): generation there is 17.40 kW against 14.30 kW of TOTAL " +
+                                "demand. A ship whose benches run while its reserve sits at empty is break-even at " +
+                                "the Industry line — it can never light a lamp again and has nothing left for the " +
+                                "next failure, and the bench count alone cannot tell you that");
+            Assert.That(afterRepair, Is.Empty,
+                "the matter ladder cannot be reached even at full repairable power — THAT is an " +
+                "unwinnable ship:\n  " + string.Join("\n  ", afterRepair));
+        }
+
+        /// <summary>Total charge in the ship's battery bank, kWh.</summary>
+        private static float StoredKWh(Simulation sim)
+        {
+            float s = 0f;
+            var devices = sim.Devices.Items;
+            for (int i = 0; i < devices.Count; i++)
+                if (devices[i].Kind == DeviceKind.Battery) s += devices[i].StoredKWh;
+            return s;
         }
 
         // ------------------------------------------------------------------- 8. it is survivable

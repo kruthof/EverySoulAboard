@@ -588,8 +588,18 @@ three writers: `AddDevice` / `RemoveDevice` (`Simulation.cs:80,96`), a completed
 Balance (`:103-180`), per network:
 
 ```
-supply   = Σ GenerationKW  +  Σ Battery.StoredKWh × 3600     // :133-134
+supply   = Σ GenerationKW × EffectiveRate  +  Σ Battery.StoredKWh × 3600   // :235, :246-247
 ```
+**Generation is condition-scaled (M2-12, `PowerSystem.cs:235`)** by the same
+`Device.EffectiveRate = Rate × (0.5 + 0.5 × Condition)` (`Entities/Device.cs:120`) every
+consumer uses — a generator's output *is* power, so the ledger is the only place its wear
+can be expressed. There is deliberately **no `IsOperational` gate**: the floor is a half
+share, not zero, so repair is a gradient rather than a cliff. **Demand stays flat** — a
+worn scrubber pays its full `draw` for reduced output. Measured on `--ship wreck`: three
+wings at Condition 0.31/0.18/0.06 supply **10.65 kW**, one Parts overhaul takes it to
+**13.47**, and the reachable ceiling (one Parts + two Seals) is **17.40**, against a flat
+14.30 kW of demand. Read at the seam via `PowerSystem.LastGenerationKW` /
+`LastDemandKW`, which exist only so tests can pin the ledger without re-deriving it.
 A battery can burst its entire stored energy inside one 1-second balance pass, so
 **batteries bridge any load until empty** (`:131-133`, comment). Battery capacity is
 `Device.BatteryCapacityKWh = 40` (`Entities/Device.cs:71`).
@@ -1987,11 +1997,13 @@ share) changes sim behaviour and moves every pin, so it is its own package.
   consumed** anywhere. `MemorySystem` writes promise *formation* only
   (`Citizens/CitizenMemory.cs:300-308`), and its class comment says breaking is
   "deferred… filed as contract requests" (`:210-213`).
-- **Generation ignores `Condition` and `IsOperational`.** `PowerSystem.Balance` sums
-  `def.GenerationKW` for every device on a network with no wear or operational check
-  (`Systems/PowerSystem.cs:121-122`). A `SolarWing` at `Condition = 0.05` (well below its
-  `fail = 0.10`) still delivers a full 6 kW. Every *consumer* gates on `IsOperational`;
-  producers do not.
+- ~~**Generation ignores `Condition` and `IsOperational`.**~~ **CONNECTED by M2-12
+  (2026-07-30).** `PowerSystem.Balance` now multiplies by `Device.EffectiveRate`
+  (`Systems/PowerSystem.cs:235`), so a worn `SolarWing` supplies less and repairing one
+  steps the ship's generation — see §6's supply formula. The `IsOperational` half is
+  *still* absent and that is a decided rule, not a gap: it would make a wing below `fail`
+  worth exactly nothing, and the gradient is what makes a wrecked ship recoverable
+  (pinned as a negative leg in `GenerationWearTests`).
 - **Crafting stations draw full power while idle.** `IsWanting` returns true for every
   device except a closed `AirVent` (`PowerSystem.cs:183-187`), so the slice's Fabricator
   (3 kW), MachineShop (2 kW) and SalvageRecycler (1.5 kW) load the bus 100 % of the time

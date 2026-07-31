@@ -591,7 +591,7 @@ namespace Perilune.Tests
         [Test]
         public void Reactor_Generation_Carries_The_OffGrid_Gate_In_Both_Directions()
         {
-            // The trap: PowerSystem.Balance skips off-grid devices ENTIRELY (PowerSystem.cs:184), so
+            // The trap: PowerSystem.Balance skips off-grid devices ENTIRELY (PowerSystem.cs:233), so
             // an unwired SolarWing supplies nothing. An ungated denominator made a DARKENING ship
             // read as LESS loaded — deconstruct a conduit run and the reactor row relaxes.
             var sim = NewHall();
@@ -605,7 +605,7 @@ namespace Perilune.Tests
             var stray = sim.AddDevice(DeviceKind.SolarWing, new Int3(10, 3, 0), "stray");
             for (int i = 0; i < 20; i++) sim.Tick();
             Assert.AreEqual(0, stray.NetworkId, "the stray wing really is off-grid");
-            Assert.IsTrue(stray.Powered, "…and still reads Powered — PowerSystem.cs:243-248's trap");
+            Assert.IsTrue(stray.Powered, "…and still reads Powered — PowerSystem.cs:294-298's trap");
             var withStray = Row(ShipSystems.Compute(sim), "reactor");
             Assert.AreEqual(50, withStray.Load, "off-grid generation contributes NOTHING to the ratio");
             StringAssert.Contains("6.0 kW reaching the grid", withStray.Advisory);
@@ -627,7 +627,7 @@ namespace Perilune.Tests
         public void Reactor_Load_Honours_The_Wanting_Mirror_A_Closed_Vent_Draws_Nothing()
         {
             // Pins the PowerSystem.IsWanting mirror: replacing it with `=> true` must fail here.
-            // A closed vent is the ONE device that idles (PowerSystem.cs:262-266).
+            // A closed vent is the ONE device that idles (PowerSystem.cs:312-316).
             var sim = NewHall();
             for (int x = 1; x <= 8; x++) sim.AddDevice(DeviceKind.Conduit, new Int3(x, 2, 0), "bus" + x);
             sim.AddDevice(DeviceKind.SolarWing, new Int3(1, 1, 0), "solar");     // 6 kW
