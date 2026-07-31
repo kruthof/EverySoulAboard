@@ -751,6 +751,18 @@ namespace Perilune.Tests
             // other enrolled files already own, so this is the only addition. P1/P2/P3 move in the
             // same commit and that is the point — see PIN M2-g.
             "sim/Sim.Core/Jobs/WorkArbiter.cs",           // the arbitration: band, then natural priority
+
+            // ⭐ M3-14 — THE VACUUM-WORK LADDER. TWO new files, and BOTH read exactly ONE identifier
+            // off this list — `HeldByOrder`, M2-19's hold, which IS the player's order (§2.2 keeps
+            // the forced flag on `curJob`). Neither touches the work GRID proper: the grid decides
+            // whether a crew member takes a job, and these two decide whether the job she was
+            // ORDERED onto may cross the pressure frontier (rimworld-reference.md §8.4 rungs 2
+            // and 4). ⚠️ PIN-NEUTRAL, and by construction rather than by luck: every pinned run is
+            // unattended, no command is ever enqueued, so no job is ever held and both branches are
+            // untaken — verified by a P1 twin run, and by a driven non-vacuity control that DOES
+            // issue a held order into vacuum (VacuumOrderLadderTests).
+            "sim/Sim.Core/Jobs/JobContext.cs",            // rung 2 — the job board's staging seam asks with the hold
+            "sim/Sim.Core/Systems/SafetySystem.cs",       // rung 4 — a held pawn does not flee; she may die
         };
 
         private static readonly string[] WorkGridIdentifiers =

@@ -233,6 +233,11 @@ namespace Perilune.Sim
                 }
                 if (needy == null) return; // nothing (left) to service — zero-alloc idle
 
+                // ⭐ M3-14 RUNG 0, KEPT — no `forced` here, deliberately. This is the AUTONOMOUS
+                // path: nobody has ordered anything, so an unordered crew member with Repair on
+                // her grid still never walks into vacuum for a needy machine. §8.4's retraction
+                // box is binding — *"the directive points toward keeping it"* — and the mutation
+                // that passes true here is M3-14's autonomy leg.
                 if (!TryFindStagingTile(sim, needy.Pos, out var staging))
                 {
                     // Walled in, or — since the livelock package — nowhere beside it a crew member
@@ -299,7 +304,12 @@ namespace Perilune.Sim
 
         private void DriveWorker(Simulation sim, Device device, Citizen worker)
         {
-            if (!TryFindStagingTile(sim, device.Pos, out var staging))
+            // ⭐ M3-14 RUNG 2, THE EXECUTION HALF. The hold IS the order (M2-19 / §2.2), so the
+            // rule is asked the same way every tick she carries it — issue-time and drive-time
+            // cannot come to different answers about the same job. Released with the job by
+            // `Citizen.JobKind`'s setter, so the very tick the service ends this reads false again.
+            bool forced = worker.HeldByOrder;
+            if (!TryFindStagingTile(sim, device.Pos, out var staging, forced))
             {
                 DropCarried(sim, worker); // machine walled in mid-job
                 Abandon(sim, device, worker);
@@ -397,7 +407,8 @@ namespace Perilune.Sim
             // The Swarf rung is offered only to a machine the wreck rule has already refused a free
             // repair to — read off the device's CURRENT condition, at the moment of the fetch.
             var best = FindNearestConsumable(sim, worker.Pos,
-                                             allowSwarf: device.Condition < sim.Defs.Wear.WreckThreshold);
+                                             allowSwarf: device.Condition < sim.Defs.Wear.WreckThreshold,
+                                             forced);
             if (best != null)
             {
                 if (best.Pos == worker.Pos)
@@ -585,8 +596,19 @@ namespace Perilune.Sim
         /// <paramref name="device"/>'s position only to break distance ties — so passing the
         /// machine's tile rather than the eventual worker's tile cannot change the ANSWER, only
         /// which stack would be chosen.</para>
+        ///
+        /// <para>⭐⭐ <b>M3-14 RUNG 2 — <paramref name="forced"/> IS NOT OPTIONAL BOOKKEEPING HERE,
+        /// IT IS A DIFFERENT ANSWER.</b> <see cref="FindNearest"/> refuses a stack resting in
+        /// unbreathable air, so on a wreck whose Parts are stranded behind the pressure frontier
+        /// this method says UNFIXABLE to the dispatcher (correct — nobody may fetch them on their
+        /// own) and <b>must say FIXABLE to a direct order</b>, which may. Leaving the flag out
+        /// would refuse the player's order for "no consumable aboard" while the consumable sits
+        /// three tiles from the machine, and would raise <c>WireFormat.ReasonNoConsumable</c> over
+        /// it — a sentence that is false about the ship. That is the exact menu/job disagreement
+        /// §8.4 rung 3 exists to prevent, arriving through the consumable gate instead of the
+        /// staging gate.</para>
         /// </summary>
-        public static bool IsUnfixableWreck(Simulation sim, Device device)
+        public static bool IsUnfixableWreck(Simulation sim, Device device, bool forced = false)
         {
             if (device == null) return false;
             if (device.Condition >= sim.Defs.Wear.WreckThreshold) return false;
@@ -594,7 +616,7 @@ namespace Perilune.Sim
             // already established that this machine is below the wreck floor, which IS the Swarf
             // rung's precondition. Salvage from the dead half of the ship is what makes a wreck
             // fixable at all, so a ship holding Swarf and nothing else has a service to offer.
-            return FindNearestConsumable(sim, device.Pos, allowSwarf: true) == null;
+            return FindNearestConsumable(sim, device.Pos, allowSwarf: true, forced) == null;
         }
 
         /// <summary>
@@ -630,11 +652,11 @@ namespace Perilune.Sim
         /// and the Seals loop is never entered. The second loop is only reachable in the state
         /// that used to produce a jury-rig at Condition 0.6.
         /// </summary>
-        private static ItemStack FindNearestConsumable(Simulation sim, Int3 from, bool allowSwarf)
+        private static ItemStack FindNearestConsumable(Simulation sim, Int3 from, bool allowSwarf, bool forced = false)
         {
-            var best = FindNearest(sim, from, ItemKind.Parts);
+            var best = FindNearest(sim, from, ItemKind.Parts, forced);
             if (best != null) return best;
-            best = FindNearest(sim, from, ItemKind.Seals);
+            best = FindNearest(sim, from, ItemKind.Seals, forced);
             if (best != null) return best;
             // THE BOTTOM RUNG (wreck start, owner decision 3), and the ONLY tier with a
             // precondition. `allowSwarf` is true exactly when the machine is below
@@ -646,11 +668,17 @@ namespace Perilune.Sim
             // WearDefs.SealServiceCondition's comment records from the other direction. Above the
             // wreck floor this loop is never entered and the function is character-for-character the
             // pre-wreck-start FindNearestConsumable.
-            return allowSwarf ? FindNearest(sim, from, ItemKind.Swarf) : null;
+            return allowSwarf ? FindNearest(sim, from, ItemKind.Swarf, forced) : null;
         }
 
-        /// <summary>Nearest unreserved ground stack of one kind (ties: item store order).</summary>
-        private static ItemStack FindNearest(Simulation sim, Int3 from, ItemKind kind)
+        /// <summary>Nearest unreserved ground stack of one kind (ties: item store order).
+        ///
+        /// <para>⭐ <b>M3-14 RUNG 2 — <paramref name="forced"/> waives the breathability of the
+        /// STACK'S OWN TILE</b>, which is the second place this system parks a worker. See
+        /// <see cref="IsUnfixableWreck"/> for why the flag changes the ANSWER and not merely the
+        /// journey: a Parts stack stranded in vacuum is invisible to the dispatcher and reachable
+        /// by an order.</para></summary>
+        private static ItemStack FindNearest(Simulation sim, Int3 from, ItemKind kind, bool forced = false)
         {
             ItemStack best = null;
             int bestDist = int.MaxValue;
@@ -664,7 +692,7 @@ namespace Perilune.Sim
                 // machine walks to a stack stranded in vacuum, flees, recovers, and is sent for the
                 // same stack again — and a stack CAN end up there, because a flee mid-carry sets
                 // its cargo down wherever the crew member happened to be standing.
-                if (!WorksiteSafety.CanStageWorkerAt(sim, item.Pos)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, item.Pos, forced)) continue;
                 int d = Int3.Manhattan(from, item.Pos);
                 if (d < bestDist)
                 {
@@ -692,18 +720,35 @@ namespace Perilune.Sim
         /// <see cref="DriveWorker"/> drops any carried stack and releases the worker.
         ///
         /// <para><b>PUBLIC since M2-9.</b> <c>PrioritiseJobCommand</c> asks it before accepting a
-        /// direct order, because a player's order overrides the work GRID and never
-        /// <c>WorksiteSafety.CanStageWorkerAt</c> — and asking THIS method rather than re-walking
-        /// the four neighbours is what keeps that promise the same promise the dispatcher makes.
-        /// It stays "the second and last place in the sim that picks a tile to park a worker on":
-        /// the new caller reads the answer, it does not compute one.</para></summary>
-        public static bool TryFindStagingTile(Simulation sim, Int3 devicePos, out Int3 staging)
+        /// direct order — and asking THIS method rather than re-walking the four neighbours is what
+        /// keeps that promise the same promise the dispatcher makes. It stays "the second and last
+        /// place in the sim that picks a tile to park a worker on": the new caller reads the answer,
+        /// it does not compute one.</para>
+        ///
+        /// <para>⭐⭐ <b>M3-14 RUNG 2 — AND THE SENTENCE ABOVE USED TO END "…and never
+        /// <c>WorksiteSafety.CanStageWorkerAt</c>". THAT HALF IS RETRACTED, BY OWNER DECISION</b>
+        /// (batch item 7, answer B, 2026-07-31; OD-K's fourth delegated call). A direct order now
+        /// overrides the AIR half of the staging rule too: <paramref name="forced"/> is threaded
+        /// straight into <c>CanStageWorkerAt</c>, whose doc comment carries the analogue
+        /// (<c>rimworld-reference.md</c> §8.4 rung 2). <b>The APPROACH half is untouched</b> — the
+        /// <see cref="Simulation.IsWalkable"/> test above the call is outside the flag, so a
+        /// walled-in machine is refused with <paramref name="forced"/> set, exactly as before
+        /// (<c>PrioritiseOrderTests.TheOrderNeverOverridesTheStagingRule_AWalledInMachineIsRefused</c>
+        /// is that leg and it did not move).
+        /// <br/>⚠️ <b>WHO PASSES TRUE, AND WHY IT IS NOT A DEFAULT.</b> <c>PrioritiseJobCommand</c>
+        /// (the order being issued) and <see cref="DriveWorker"/> for a
+        /// <see cref="Citizen.HeldByOrder"/> servicer (the order being executed). <b>Every
+        /// dispatcher-side caller passes false</b> — <see cref="RecruitForNeediest"/> and
+        /// <see cref="HasClaimableWork"/> — because rung 0 is the behaviour we are KEEPING: an
+        /// unordered crew member with Repair on her grid still never walks into vacuum on her
+        /// own.</para></summary>
+        public static bool TryFindStagingTile(Simulation sim, Int3 devicePos, out Int3 staging, bool forced = false)
         {
             for (int i = 0; i < 4; i++)
             {
                 var n = Int3.Neighbor4(devicePos, i);
                 if (!sim.World.InBounds(n) || !sim.IsWalkable(n)) continue;
-                if (!WorksiteSafety.CanStageWorkerAt(sim, n)) continue;
+                if (!WorksiteSafety.CanStageWorkerAt(sim, n, forced)) continue;
                 staging = n;
                 return true;
             }

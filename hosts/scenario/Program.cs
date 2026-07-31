@@ -801,6 +801,13 @@ namespace Perilune.Tools
                                 anyWalkable = true;
                                 if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
                             }
+                            // ⭐ M3-14 — FIXTURE PARITY WITH THE WEB HOST'S `blocked` CHANNEL. A site
+                            // a crew member is HELD on by a player order is not AIR-refused: the sim
+                            // stages her there with `forced: true`, and `GameSession.BlockedReason`
+                            // asks the identical question one line after its own neighbour loop. A
+                            // bypass that reached the sim and not this fixture would silently change
+                            // what every `--ship slice` occupancy number means.
+                            if (!stageable && anyWalkable && HeldByOrderAt(sim, p)) stageable = true;
                             if (stageable || !anyWalkable) continue; // walled in is not an AIR refusal
                             refusedTiles++;
                             if (firstShown++ >= 4) continue;
@@ -829,6 +836,7 @@ namespace Perilune.Tools
                             anyWalkable = true;
                             if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
                         }
+                        if (!stageable && anyWalkable && HeldByOrderAt(sim, site.Pos)) stageable = true; // M3-14
                         if (!stageable && anyWalkable) refusedStrips++;
                     }
                 // BUILD sites live in their own registry too, and this is the class where the rule
@@ -849,6 +857,7 @@ namespace Perilune.Tools
                             anyWalkable = true;
                             if (WorksiteSafety.CanStageWorkerAt(sim, n)) { stageable = true; break; }
                         }
+                        if (!stageable && anyWalkable && HeldByOrderAt(sim, site.Pos)) stageable = true; // M3-14
                         if (!stageable && anyWalkable) refusedBuilds++;
                     }
                 Console.WriteLine($"  unstageable dig/strip/build  {refusedTiles} / {refusedStrips} / {refusedBuilds}   " +
@@ -1073,6 +1082,30 @@ namespace Perilune.Tools
         }
 
         /// <summary>
+        /// ⭐ M3-14 — is some live citizen HELD BY A PLAYER ORDER on a job whose target is
+        /// <paramref name="p"/>? The scenario host's copy of <c>GameSession.CrewHeldByOrderAt</c>,
+        /// and it is a COPY rather than a shared helper for the reason every other cross-host
+        /// duplicate here is: <c>hosts/scenario</c> does not reference <c>hosts/web</c>. What must
+        /// not diverge is the QUESTION, and the question is one field read on
+        /// <see cref="Citizen.HeldByOrder"/> plus a tile compare — the sim's own record of an
+        /// order, not a re-derivation of one.
+        ///
+        /// <para>⚠️ ASKED ONLY ON THE AIR-REFUSED PATH, exactly as the web host asks it, so an
+        /// untouched ship pays nothing: the audit's world walk reaches it only for a designation
+        /// the staging rule has already refused.</para></summary>
+        private static bool HeldByOrderAt(Simulation sim, Int3 p)
+        {
+            var citizens = sim.Citizens.Items;
+            for (int i = 0; i < citizens.Count; i++)
+            {
+                var c = citizens[i];
+                if (c.Dead || !c.HeldByOrder) continue;
+                if (c.JobTarget.X == p.X && c.JobTarget.Y == p.Y && c.JobTarget.Z == p.Z) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// ⭐ M2-17/A3 — pick the wall site the "can the player build a wall at day N" gate uses:
         /// the first tile in canonical z,y,x order that <see cref="BuildSystem.CanDesignate"/> accepts
         /// AND that has at least one neighbour a worker can legally stand on
@@ -1083,6 +1116,13 @@ namespace Perilune.Tools
         /// (MECHANICS §13.21) — so picking the first legal tile without asking would reliably land the
         /// A3 order on an airless deck and measure the staging rule instead of the economy. Canonical
         /// order ⇒ same ship, same site, every run.
+        ///
+        /// <para>⭐ <b>M3-14 — THE FOURTH <c>CanStageWorkerAt</c> CALL IN THIS FILE, AND THE ONE
+        /// THAT DELIBERATELY TAKES NO <c>forced</c> FLAG.</b> The other three answer "is this
+        /// painted order refused?", where a held order changes the answer. This one CHOOSES a site
+        /// for a gate about AUTONOMOUS work — nobody has ordered anything and nobody will, so a
+        /// bypass here would pick an airless site and re-introduce the very confound the paragraph
+        /// above exists to remove. Stated rather than left to look like an omission.</para>
         /// </summary>
         private static bool TrySelectWallSite(Simulation sim, out Int3 site)
         {

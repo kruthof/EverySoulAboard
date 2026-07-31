@@ -471,6 +471,89 @@ namespace Perilune.Tests
         }
 
         /// <summary>
+        /// ⭐⭐ <b>M3-14 — A PARTS STACK BEHIND THE PRESSURE FRONTIER IS STILL "ABOARD".</b> The
+        /// third leg of the pair above, and it is the same fixture with ONE tile changed: the
+        /// stack goes on an AIRLESS floor instead of on the vent's own.
+        ///
+        /// <para><b>WHY THE SENTENCE MUST GO ANYWAY.</b> <c>MachineWearSystem.FindNearest</c>
+        /// refuses a stack resting in unbreathable air, so the UN-forced question answers *"nothing
+        /// aboard"* about a ship holding four Parts. That answer is right for the DISPATCHER (rung 0
+        /// — no idle crew member may fetch them on her own) and wrong for the PLAYER, who can now
+        /// order the repair and have it fetched (rung 2, <c>rimworld-reference.md</c> §8.4). The
+        /// advisory's own word is <b>ABOARD</b>: it is a claim about the ship's stock, so post-M3-14
+        /// it is the FORCED reading, and <c>OperateAdvisory</c> asks with <c>forced: true</c>.</para>
+        ///
+        /// <para>⚠️ <b>THIS SITE WAS MISSED BY M3-14's FIRST PASS AND FOUND BY INDEPENDENT REVIEW</b>
+        /// — the charter's seam table named seven <c>CanStageWorkerAt</c> call sites and this is a
+        /// FIFTH <c>IsUnfixableWreck</c> one, in a different file section, reached by a different
+        /// verb. It is the eighth-trap shape seen from the side: a census taken over one predicate's
+        /// name cannot see the sibling predicate that wraps it.</para>
+        ///
+        /// <para>⚠️ THE AIRLESS TILE IS FOUND ON THE SHIPPED WRECK, NOT PLANTED, and it is a PREMISE:
+        /// if the wreck ever boots pressurised this fails loudly at the helper rather than turning
+        /// into a green vacuity. Both halves of <c>WorksiteSafety.CanCycle</c> are in the shipped
+        /// stack, so the rule is live here.</para>
+        ///
+        /// <para>⛔ MUTATION: <c>forced: true</c> → <c>forced: false</c> in <c>OperateAdvisory</c> ⇒
+        /// RED here, and GREEN on both siblings above — which is exactly why they could not catch
+        /// it.</para>
+        /// </summary>
+        [Test]
+        public void A_Parts_Stack_Behind_The_FRONTIER_Still_Counts_As_ABOARD()
+        {
+            var (gs, host, sink) = Boot();
+            var sim = host.Sim;
+            var vent = DeviceNamed(sim, "vent_cryo");
+            vent.Condition = 0.03f;
+            StripConsumables(sim);
+
+            var airless = FirstAirlessFloor(sim);
+            sim.AddItem(ItemKind.Parts, 4, airless);
+
+            Assert.IsFalse(WorksiteSafety.CanStageWorkerAt(sim, airless),
+                "premise: the stack really is somewhere no idle crew member may fetch it from");
+            Assert.IsTrue(MaintenanceSystem.IsUnfixableWreck(sim, vent),
+                "⛔ PREMISE: the DISPATCHER must still call this unfixable — correctly, because rung " +
+                "0 forbids it to go. If this is false the fixture has not built the disagreement and " +
+                "the assertion below would pass with the fix reverted.");
+            Assert.IsFalse(MaintenanceSystem.IsUnfixableWreck(sim, vent, forced: true),
+                "premise: …while an ORDER can reach it. These two answers to one question are the rung.");
+
+            string reply = Operate(gs, sink, vent.Pos);
+            StringAssert.Contains("WRECKED", reply,
+                "control: the machine is still wrecked — only the repair clause is in question");
+            StringAssert.DoesNotContain("NO PARTS, SEALS OR SWARF ABOARD", reply,
+                "⛔ THE REPLY SAYS THE SHIP HOLDS NOTHING TO REPAIR IT WITH, ABOUT A SHIP HOLDING " +
+                "FOUR PARTS. The advisory is asking the dispatcher's question about a repair the " +
+                "PLAYER can now order and complete — and it says it on every door and vent toggle, " +
+                "vent_ls included. 'ABOARD' is a claim about the stock, not about who may walk to it.");
+        }
+
+        /// <summary>A walkable, EXPLORED tile on the shipped wreck whose air the staging rule
+        /// refuses — where a stack can be stranded behind the pressure frontier. Deterministic
+        /// (z,y,x, first match). A PREMISE, not an assertion: it fails loudly rather than letting
+        /// the leg above go vacuous.</summary>
+        private static Int3 FirstAirlessFloor(Simulation sim)
+        {
+            var w = sim.World;
+            for (int z = 0; z < w.Depth; z++)
+                for (int y = 0; y < w.Height; y++)
+                    for (int x = 0; x < w.Width; x++)
+                    {
+                        var p = new Int3(x, y, z);
+                        if ((w.GetFlags(p) & TileFlags.Explored) == 0) continue;
+                        if (!sim.IsWalkable(p)) continue;
+                        if (WorksiteSafety.CanStageWorkerAt(sim, p)) continue;
+                        return p;
+                    }
+            Assert.Fail("PREMISE FAILED: --ship wreck has no explored, walkable tile the worksite " +
+                        "staging rule refuses, so a stack cannot be stranded behind the frontier and " +
+                        "the leg above is vacuous. Either the wreck now boots pressurised or " +
+                        "WorksiteSafety has changed.");
+            return default;
+        }
+
+        /// <summary>
         /// AN UNPOWERED VENT BEING OPENED SAYS SO — the one advisory that no shipped ship can produce.
         ///
         /// ⚠️ THIS TEST EXISTS BECAUSE THE CLAUSE WAS PINNED BY NOTHING. Deleting

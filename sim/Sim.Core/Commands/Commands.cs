@@ -183,6 +183,20 @@ namespace Perilune.Sim
     /// boots OFF on every ship, so a no-override reading would refuse the player's very first
     /// right-click and dead-end OD-G's opening beat anywhere outside the WORK tab.</para>
     ///
+    /// <para>⭐⭐ <b>M3-14 (2026-07-31) — AND THE PARAGRAPH BELOW IS QUOTED AND HALF-RETRACTED BY
+    /// OWNER DECISION</b> (batch item 7, answer B; OD-K's fourth delegated call). Clause (2) read:
+    /// <i>"Safety — <c>TryFindStagingTile</c> (i.e. <c>WorksiteSafety.CanStageWorkerAt</c>) must
+    /// find somewhere the servicer can survive the 900 s service; <b>an order may not park a crew
+    /// member in vacuum</b>."</i> <b>An order now may.</b> That was rung 0 standing in for a ladder
+    /// that had not been built; <c>rimworld-reference.md</c> §8.4 rung 2 is the analogue and the
+    /// two gates below are asked with <c>forced: true</c>. What survives of the clause is its
+    /// geometric half — <b>an order overrides the air, never the approach</b> — and the wreck rule
+    /// (3), which is a fact about the SHIP's stock rather than about where a body may stand, is
+    /// asked with the same flag for exactly that reason (a Parts stack behind the frontier is
+    /// stock the order can reach). Rungs 3 and 4 land in <c>GameSession.BlockedReason</c> and
+    /// <c>SafetySystem.Tick</c>; rung 1 (opt-in deadly work givers) is DEFERRED BY NAME to
+    /// M3-7.</para>
+    ///
     /// <para><b>WHAT IS NEVER OVERRIDDEN.</b> (1) <b>Incapability</b>, above. (2) <b>Safety</b> —
     /// <see cref="MaintenanceSystem.TryFindStagingTile"/> (i.e.
     /// <c>WorksiteSafety.CanStageWorkerAt</c>) must find somewhere the servicer can survive the
@@ -263,14 +277,24 @@ namespace Perilune.Sim
             // RimWorld's answer to an impossible order is a refusal at the point of the click
             // (§2.2); the click-time half is M2-10's, this is the sim half.
             if (device.Condition >= sim.Defs.Machines[(int)device.Kind].MaintainBelow) return;
-            // SAFETY IS NEVER OVERRIDDEN, and this is MaintenanceSystem's own staging rule, not a
-            // second copy of it.
-            if (!MaintenanceSystem.TryFindStagingTile(sim, device.Pos, out _)) return;
+            // ⭐⭐ M3-14 RUNG 2 — THE ORDER CROSSES THE PRESSURE FRONTIER. `forced: true`, and this
+            // is MaintenanceSystem's own staging rule, not a second copy of it.
+            //
+            // ⚠️ WHAT IS STILL REFUSED IS THE GEOMETRY, NOT THE AIR: `TryFindStagingTile` tests
+            // `Simulation.IsWalkable` OUTSIDE the flag, so a walled-in machine is refused exactly
+            // as it always was. "An order overrides the air, never the geometry."
+            if (!MaintenanceSystem.TryFindStagingTile(sim, device.Pos, out _, forced: true)) return;
             // ⭐ THE WRECK RULE W2 — the refusal the `blocked` channel surfaces as
             // ReasonNoConsumable. Asked here for the reason RecruitForNeediest asks it at
             // recruitment rather than in the work phase: discovering it later throws away 900 s of
             // a crew member's life.
-            if (MaintenanceSystem.IsUnfixableWreck(sim, device)) return;
+            //
+            // ⚠️ `forced: true` HERE TOO, AND IT IS THE SAME DECISION, NOT A SECOND ONE. The
+            // consumable gate refuses a stack resting in unbreathable air, so without the flag the
+            // order would be refused for "nothing aboard to fix it with" on a ship whose Parts are
+            // simply behind the frontier the order was given to cross — and the badge raised over
+            // the machine would say so on the wire. One rule, one flag, both gates.
+            if (MaintenanceSystem.IsUnfixableWreck(sim, device, forced: true)) return;
             // One servicer per machine is an invariant of MaintenanceSystem.DriveWorkers, which
             // drives EVERY Maintain citizen bound to the tile: a second one would repair the same
             // machine twice over and FindWorker would only ever see the first. An order aimed at a

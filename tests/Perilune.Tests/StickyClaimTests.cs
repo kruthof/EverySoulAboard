@@ -84,13 +84,17 @@ namespace Perilune.Tests
     ///     <see cref="Release_OnCompletion_SheReturnsToAutonomyUnderTheGrid"/>,
     ///     <see cref="Release_ANewDirectOrderReplacesTheOldHold"/>,
     ///     <see cref="Release_OnDeath_TheHoldDoesNotOutliveTheCitizen"/>,
-    ///     <see cref="Release_OnSafetyCancel_SheFleesLethalAirAndTheOrderIsOver"/>,
+    ///     <see cref="Release_OnSafetyCancel_TheHeldPawnStaysInLethalAirUntilTheOrderEnds"/>,
     ///     <see cref="TheHoldCannotOutliveTheJobItWasPlacedOn"/>, plus
     ///     <see cref="HeldWhileFleeing_StillReachesAirAndLives"/> and both headline legs, which see
     ///     the invariant break at the delivery tick.</item>
     ///   <item><b>4 (charter) — let the hold survive <c>JobKind.Flee</c></b> (re-arm it across
     ///     <c>SafetySystem</c>'s cancel) ⇒ <b>RED 1/11</b>:
-    ///     <see cref="Release_OnSafetyCancel_SheFleesLethalAirAndTheOrderIsOver"/>.
+    ///     <see cref="Release_OnSafetyCancel_TheHeldPawnStaysInLethalAirUntilTheOrderEnds"/>.
+    ///     ⚠️ <b>THAT LEG WAS REVERSED BY M3-14 (2026-07-31, owner batch item 7 answer B) and its
+    ///     count above is M2-19's, not re-measured on this tree</b> — a held pawn no longer flees
+    ///     at all, so the mutation now bites through the CANCEL half of the same test rather than
+    ///     through the flee. The leg's own doc comment quotes what it used to assert.
     ///     ⭐ <b>AND <see cref="HeldWhileFleeing_StillReachesAirAndLives"/> STAYED GREEN, which is
     ///     the precise truth rather than the dramatic one:</b> a hold that survives into a flee does
     ///     NOT kill her, because <c>SafetySystem</c> and the path follower consult no recruitability
@@ -533,41 +537,78 @@ namespace Perilune.Tests
         }
 
         /// <summary>
-        /// <b>RELEASE 4 — GENUINE INABILITY: <c>SafetySystem</c> CANCELS THE ORDERED JOB AND SHE
-        /// FLEES.</b> ⛔ <b>The hold must NEVER outrank survival</b> — the same rule under which a
-        /// move order does not starve anyone. Same fixture as the death leg with the guard back IN.
-        /// Blinded.
+        /// ⭐⭐ <b>RELEASE 4 — REVERSED BY OWNER DECISION, 2026-07-31 (M3-14 RUNG 4). THE HELD PAWN
+        /// DOES NOT FLEE.</b>
         ///
-        /// <para>Per §2.2 she does NOT resume the ordered job afterwards: RimWorld drops forced work
-        /// on the interruption (drafting cancels it outright) and this game has no re-issuing record
-        /// to restore it with. Stated here so the behaviour is a decision on the page rather than a
-        /// surprise in play.</para>
+        /// <para>⛔ <b>WHAT THIS TEST USED TO ASSERT, QUOTED SO THE CHANGE IS A DECISION ON THE PAGE
+        /// AND NOT A GREEN SUITE THAT DRIFTED:</b> it was headed *"GENUINE INABILITY:
+        /// <c>SafetySystem</c> CANCELS THE ORDERED JOB AND SHE FLEES"*, and it failed with *"⛔
+        /// SURVIVAL OUTRANKS THE ORDER: a held crew member in lethal air still flees.
+        /// <c>SafetySystem</c> consults no recruitability predicate, and this is the leg that would
+        /// catch anyone teaching it one."* <b>M2-19 was right about the tree it shipped on and the
+        /// rule it described is now retired.</b> Owner batch item 7, answer B (M3-14, the
+        /// vacuum-work ladder) takes RimWorld's rung 4:
+        /// <c>docs/design/rimworld-reference.md</c> §8.4, <c>JobGiver_FindOxygen</c>'s second
+        /// guard — *"the player can order a colonist to stay and suffocate, and RimWorld implements
+        /// that deliberately as one clause."* <c>SafetySystem</c> now consults exactly one predicate
+        /// and it is <see cref="Citizen.HeldByOrder"/>.</para>
+        ///
+        /// <para>⚠️ <b>SHE MAY DIE, AND THAT IS THE FEATURE, NOT A REGRESSION THIS LEG SHOULD
+        /// SOFTEN.</b> A bypass that quietly rescues the pawn is a bypass the player cannot reason
+        /// about. What is asserted instead is that the order is still the whole contract: she stays
+        /// while it lasts, and the moment it ends the rescue is hers again — which is the
+        /// <see cref="CancelJob"/> leg at the bottom.</para>
+        ///
+        /// <para>Same fixture as the death leg with the guard back IN, so the ONLY difference from
+        /// <see cref="Release_OnDeath_TheHoldDoesNotOutliveTheCitizen"/> is the presence of the
+        /// system that would have saved her. Blinded.</para>
         /// </summary>
         [Test]
-        public void Release_OnSafetyCancel_SheFleesLethalAirAndTheOrderIsOver()
+        public void Release_OnSafetyCancel_TheHeldPawnStaysInLethalAirUntilTheOrderEnds()
         {
             var sim = NewVentedDigSim(withSafetyGuard: true, out var crew);
             Assert.That(DigStartedThenVentTheWorkRoom(sim, crew), Is.True,
                 "fixture: she must be settled on the dig before the air goes");
             Hold(crew);
 
+            // ⚠️ STOPPED AT THE THRESHOLD, NOT RUN TO DEATH — and that is a fixture decision worth
+            // the line. Rung 4 means she now DIES if left there (VacuumOrderLadderTests pins that
+            // deliberately), and a release leg measured on a corpse would pass for the wrong reason:
+            // a dead pawn does not flee either.
+            float fleeAt = sim.Defs.Needs.FleeSuffocation;
             bool fled = false;
-            for (int t = 0; t < 6000 && !fled; t++)
+            for (int t = 0; t < 8000 && !crew.Dead && crew.Suffocation <= fleeAt; t++)
+            {
+                sim.Tick();
+                if (crew.JobKind == JobKind.Flee) fled = true;
+            }
+            // …and a few seconds PAST it, so the 1 Hz guard has had passes in which to trip.
+            for (int t = 0; t < 60 && !crew.Dead; t++)
             {
                 sim.Tick();
                 if (crew.JobKind == JobKind.Flee) fled = true;
             }
 
-            Assert.That(fled, Is.True,
-                "⛔ SURVIVAL OUTRANKS THE ORDER: a held crew member in lethal air still flees. " +
-                "SafetySystem consults no recruitability predicate, and this is the leg that would " +
-                "catch anyone teaching it one.");
-            Assert.That(crew.HeldByOrder, Is.False,
-                "and the order is over — the flee path cancelled the job it was placed on (§2.2: " +
-                "forced work does not survive the interruption, and nothing re-issues it here)");
+            Assert.That(crew.Dead, Is.False,
+                "fixture: she must still be alive here — the release below is a claim about a living " +
+                "crew member, and a corpse would satisfy 'did not flee' for the wrong reason");
+            Assert.That(crew.Suffocation, Is.GreaterThan(fleeAt),
+                "fixture: her suffocation must actually cross the flee threshold, or 'she did not " +
+                "flee' is a vacuity about a pawn who was never in danger");
+            Assert.That(fled, Is.False,
+                "⛔ M3-14 RUNG 4: a HELD crew member fled an order the player gave. §8.4's clause is " +
+                "one line in SafetySystem.Tick and something has softened it — which re-creates the " +
+                "silent refusal in a nicer costume.");
 
-            for (int t = 0; t < 6000 && crew.JobKind == JobKind.Flee; t++) sim.Tick();
-            Assert.That(crew.Dead, Is.False, "⛔ AND SHE MUST LIVE — the whole point of the flee");
+            // …and the order is still the whole contract: END it, and the rescue is hers again.
+            sim.CancelJob(crew);
+            Assert.That(crew.HeldByOrder, Is.False,
+                "premise: ending the job released the hold (the JobKind setter's contract)");
+
+            for (int t = 0; t < 1200 && !crew.Dead && crew.JobKind != JobKind.Flee; t++) sim.Tick();
+            Assert.That(crew.JobKind, Is.EqualTo(JobKind.Flee),
+                "⛔ THE SUPPRESSION OUTLIVED THE ORDER IT BELONGS TO. Rung 4 is scoped to the hold " +
+                "and to nothing else — an un-held crew member in lethal air must still be pulled out.");
         }
 
         /// <summary>
