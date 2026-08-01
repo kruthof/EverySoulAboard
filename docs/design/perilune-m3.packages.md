@@ -71,9 +71,29 @@ later real comment** — apply to every package here and are not restated per ch
 claims were read and which were inherited. **Re-verify before building on one** — the M3 outline in
 `…q3.packages.md` §6 carried **three** stale citations and **one wrong census**, all found by
 opening the files (§12).
-⭐ **EXCEPT §5's M3-15 (OD-N, added 2026-07-31 on `lane/od-n-charter` @ `22b6d38`), whose citations
-were read AND whose load-bearing numbers were DRIVEN on that tree** — §13's own OD-N block lists
-which, and which one was not.
+⭐ **EXCEPT §5's M3-15 and M3-16 (OD-N and OD-O, added 2026-07-31 on `lane/od-n-charter`), whose
+citations were read AND whose load-bearing numbers were DRIVEN.** §13's own OD-N / OD-O blocks list
+which, and which were not.
+⛔ ⚠️ ⭐ **AND THE LANE PROVED ITS OWN §12 RULE THE HARD WAY: M3-15 WAS FIRST WRITTEN AGAINST
+`22b6d38`, AND M3-11 THEN MERGED +155 LINES ABOVE EVERY `AuthoredShips.cs` ANCHOR IT CITED.** The
+claims all survived; **five line numbers did not** (`:1952`→`:2057` · `:1946-1952`→`:2051-2056` ·
+`:1588-1591`→`:1602-1604` · `:1595-1599`→`:1609-1613` · `:1988-1991`→`:2093-2096`), and a census
+read as 18 became 19. ⇒ **TRAP 8 IN THIS FILE'S OWN WORDS — *a merged file's truth is a number
+neither lane could compute*. Re-derived on the merged tree (`8d206ca`) and re-quoted; a commit hash
+beside a citation is a statement about WHEN it was true, never a reason to trust it now.**
+⛔ ⚠️ ⭐ **AND THE SAME MERGE STALED THE REST OF THIS FILE, WHICH IS FILED AND NOT SWEPT HERE.**
+Spot-checked on the merged tree, **every pre-existing `AuthoredShips.cs` anchor in §5/§11/§12 now
+points at unrelated text** — `:1856` (M3-1's `pod_` naming) lands in a test-file comment, `:1295`
+(M3-2's *"the pods do nothing"*) has drifted, `:1740-1782` / `:1760-1782` (M3-6's `WreckPods`) land
+in M3-11's new prose, `:2019-2050` and `:2331-2400` (M3-11's own SEAM) have moved. **~15 citations
+across five charters.** ⇒ **NOT swept by this lane, deliberately: they are other packages' claims,
+and a HALF sweep is worse than none** (*"sweep the class, not the list"* — and the class here is a
+file, not a lane). **FILED for the integrator as one job.** ⚠️ **Separately, and NOT a drift fix:
+§5 M3-3 and §12 cite `WreckShipTests.cs:741-752` / `:749` as pinning `term_moss`'s
+`scriptable: false`. Measured, that region is a `NumberWord` helper — and it was NOT the right
+region before the merge either** (it was a strip test at `22b6d38`). **The real guard is
+`TheMossTerminal_BootsUnCommissioned` (`:1251-1262`). That is a CLAIM defect, not a pointer one, so
+it is filed rather than silently re-pointed.**
 
 ---
 
@@ -906,7 +926,7 @@ Scoped by three follow-up answers, all binding:
 1. **MOSS-only for doors AND vents.** The Room Zoom's direct OPERATE click verb — the ring + the
    OPEN/SHUT plate — is **removed for both kinds**. Remote actuation happens only through MOSS.
 2. **The MOSS server IS `term_moss`** — the Terminal already authored in the cryo bay
-   (`AuthoredShips.cs:1952`, `Condition 0.14`, `scriptable: false`). **No new device kind.** It sits
+   (`AuthoredShips.cs:2057`, `Condition 0.14`, `scriptable: false`). **No new device kind.** It sits
    in the ship's boot-air room, which is what *"has to be in an open room"* asks for; ⭐ **and
    MEASURED this session, that is not merely true, it is the load-bearing fact of the whole
    package** (the deadlock box below).
@@ -939,13 +959,15 @@ Scoped by three follow-up answers, all binding:
 >
 > ⇒ **MOSS-only doors + a single commissioning gate = doors need MOSS needs a `ControllerModule`
 > needs the benches needs the doors.** The chain's own authoring says so in its own words:
-> `AuthoredShips.cs:1588-1591` prices the module (2 Parts = 4 Scrap = 8 Regolith, *"8 Regolith → 6
-> Scrap covers the rounding"*), and `:1988-1991` says the whole chain *"lives behind these three
-> doors."* M3-14 (merged) lets a **direct order cross vacuum** — it does not let a pawn cross a shut
+> `AuthoredShips.cs:1602-1604` prices the module — quoted as the source states it, **2 Parts = 4 Scrap
+> = 6 Regolith, *"8 Regolith → 6 Scrap covers the rounding"*** (⚠️ **§1 of this file carries the 8 as
+> the real cost, and §12.18 records the 6-vs-8 confusion as a past defect of this document — so
+> quote the source's 6 AND its rounding clause, never the bare 8**) — and `:2093-2096` says the whole
+> chain *"lives behind these three doors."* M3-14 (merged) lets a **direct order cross vacuum** — it does not let a pawn cross a shut
 > door, and it never claimed to.
 >
 > ⭐ **THE SPLIT BREAKS IT, AND THE BREAK IS CHEAP.** Repairing `term_moss` costs **one consumable
-> service** off boot stock that is all in air (`AuthoredShips.cs:1595-1599`, re-driven above:
+> service** off boot stock that is all in air (`AuthoredShips.cs:1609-1613`, re-driven above:
 > 12 Regolith, 3 Scrap, 1 Parts, 10 Seals), the terminal is reachable without opening anything, and
 > the console then opens the frontier. ⚠️ **`vent_ls` is on the unreachable list, and that is the M1
 > exit-gate device** (*"open `vent_ls` and the hall pressurises"*). Under OD-N its opening move runs
@@ -968,7 +990,7 @@ Scoped by three follow-up answers, all binding:
 > ⇒ **The gate would ship OPEN and OD-N would deliver nothing**: there would be no repair to do.
 > ⚠️ *This is the charter's own header rule biting the charter: the term was read off a doc, not
 > driven. The wreck's `Condition 0.14` was chosen to sit below `wear.wreck_threshold` (0.25), not
-> below a `fail` floor — `AuthoredShips.cs:1946-1952` says exactly that in its own comment
+> below a `fail` floor — `AuthoredShips.cs:2051-2056` says exactly that in its own comment
 > (`"Condition 0.14 is below wear.wreck_threshold so it cannot even be bodged back to working
 > without a consumable"`), and it is the `wreck_threshold`/`maint` band that means "wrecked" here,
 > never `fail`.*
@@ -989,8 +1011,14 @@ Scoped by three follow-up answers, all binding:
 >
 > **Two alternatives, refused with reasons rather than by omission.** (i) **Re-author `term_moss`
 > below `fail`** (0.14 → 0.014): makes the brief's term literally true, but it is a content change
-> that breaks the hand-written literal at `WreckShipTests.cs:741-752`, contradicts M3-3's charter
-> quote, and picks a number with no meaning in any other file. (ii) **Lower `Terminal`'s `fail_below`**:
+> that contradicts M3-3's charter quote and picks a number with no meaning in any other file.
+> ⚠️ ⭐ **A THIRD REASON WAS WITHDRAWN IN REVIEW AND THE WITHDRAWAL IS WORTH KEEPING**: the first
+> draft priced this against *"the hand-written literal at `WreckShipTests.cs:741-752`"*. **There is
+> no such literal.** That region is a `NumberWord` helper; the real test is
+> `TheMossTerminal_BootsUnCommissioned` (`:1251-1262`), which asserts `Scriptable == false` and
+> `Condition < WreckThreshold` (0.25) and **carries no `0.14` at all — so 0.014 would still PASS it.**
+> *A refused alternative priced against a guard that cannot bite is the same defect as a mutation
+> that cannot bite, pointing the other way.* **The two remaining reasons stand on their own.** (ii) **Lower `Terminal`'s `fail_below`**:
 > a def change — it moves **P4 and P5** and changes every Terminal on every ship for one ship's beat.
 
 **THE CONTRACT — where the gate lives, and it MUST be sim-side.**
@@ -1003,12 +1031,12 @@ the standard surface:**
 | # | route | file:line |
 |---|---|---|
 | 1 | the Room Zoom OPERATE verb (**the standard surface**) | `hosts/web/GameSession.cs:1226-1229`, inside `HandleOperate` (`:1174`) |
-| 2 | the deprecated console's cursor toggle | `hosts/web/GameSession.cs:1513`, `:1519` (inside `ContextAction`) |
-| 3 | ⭐ **the TUI** | `hosts/tui/GameLoop.cs:275` (open/close), `:283` (vent), `:295` (lock) |
+| 2 | the deprecated console's cursor toggle | `hosts/web/GameSession.cs:1513`, `:1519` (inside `ContextAction`, which opens at `:1496`) |
+| 3 | ⭐ **the TUI** | `hosts/tui/GameLoop.cs:275` (door open/close), `:281` (vent), `:295` (lock) |
 | 4 | ⭐ **MOSS itself** — the DSL adapter every program and every console line goes through | `sim/Sim.Dsl/DeviceAdapters.cs:38` |
 | 5 | ⭐ **the headless scenario host** | `hosts/scenario/Program.cs:1537-1538` |
 
-⇒ **THE GATE GOES IN THE COMMANDS**: `SetDoorStateCommand.Execute` (`sim/Sim.Core/Commands/Commands.cs:16-28`)
+⇒ **THE GATE GOES IN THE COMMANDS**: `SetDoorStateCommand.Execute` (`sim/Sim.Core/Commands/Commands.cs:15-28`)
 and `SetDeviceStateCommand.Execute` (`:43-48`). One rule, five routes, replayed on load, present in
 every host. ⚠️ **A host-side gate would leave four back doors, one of which is MOSS.**
 
@@ -1040,6 +1068,16 @@ every surface that wants to say why calls **the same static** and never re-deriv
 successful write, and a refusal event would be a new event type consumed by one host, while the
 static is consumed by three. **Refuse by predicate, report by predicate.**
 
+⛔ ⭐ **AND THE EVALUATION ORDER IS PART OF THE CONTRACT, NOT AN IMPLEMENTATION DETAIL: THE SHIP GATE
+IS ASKED FIRST, THE TARGET'S OWN FAULT SECOND.** The two predicates are **disjoint** — *is a MOSS
+server live aboard?* is a property of the SHIP; *is this device's board dead?* (M3-16) is a property
+of the TARGET — so both can be true at once, and **nothing states which sentence the player gets.**
+⇒ **Ship first.** A player on a dead-computer ship who types `open vent_d1` must be told **MOSS is
+offline**, not `CONTROLLER FAULT`: the second sentence would send them across the pressure frontier
+to fix a board when the actual next move is one repair in the room they are standing in.
+**One refusal per command, worst-first, ship before target** — the `OperateAdvisory` precedent, whose
+own `else if` ordering is pinned for exactly this reason (`GameSession.cs:1305-1309`).
+
 **WHAT THE CLIENT LOSES.** The OPERATE affordance and its sender, all of it:
 
 | what | file:line |
@@ -1065,9 +1103,12 @@ beside `hud.js` and `ContextAction`.** M4-8 already owns exactly this class.
 **WHAT THE CLIENT GAINS — and one filed defect closes on the way.** `GameSession.cs:1163-1169` records
 that *"the premise's opening move is still not expressible"*: `vent_ls` reads `Explored = false` at
 tick 0, 600 and 36 000, so the fog-gated OPERATE verb honestly refuses it. ⭐ **MOSS addresses devices
-by NAME, not by tile, so the fog gate does not apply** — and MEASURED on `--ship wreck`, **all 18
-doors and vents are NAMED and all 18 already resolve in the MOSS device registry at boot**
-(`MossBindings.RegisterAdapters`, `MossBindings.cs:18-42`; resolved through `host.Registry.TryResolve`).
+by NAME, not by tile, so the fog gate does not apply** — and MEASURED on `--ship wreck`, **all 19
+doors and vents are NAMED and all 19 already resolve in the MOSS device registry at boot**
+(16 Doors + 3 AirVents — ⚠️ **re-measured on the MERGED tree: it was 18 before M3-11 authored
+`vent_d1`, and this charter said 18 until the review caught it**)
+(`MossBindings.RegisterAdapters`, `MossBindings.cs:18-42`, the commissioning skip at `:28`; resolved
+through `host.Registry.TryResolve`).
 ⇒ **OD-N needs no content change to reach `vent_ls`, and it makes the M1 gate sentence expressible for
 the first time.** ⚠️ *File it as a consequence; do not let the lane grow a fog-of-war argument out of
 it — the sim gate is what this package ships.*
@@ -1081,13 +1122,13 @@ it — the sim gate is what this package ships.*
 > execution addresses the pseudo-terminal `@console`"*).
 >
 > The only two commissioning gates that exist today are **on the addressed device, not on the
-> console**: `MossBindings.cs:29` (`if (!device.Scriptable) continue;`) keeps an uncommissioned
+> console**: `MossBindings.cs:28` (`if (!device.Scriptable) continue;`) keeps an uncommissioned
 > device out of the registry, and `SetScriptCommand` (`Commands.cs:373-376`) refuses to install a
 > program on a non-`Scriptable` terminal — **silently**.
 >
 > ⇒ ⛔ **MEASURED CONSEQUENCE: today, on `--ship wreck` at tick 0, a player can open the MOSS tab and
 > type `open door_d0_s1`, and the door opens** — the doors are `Scriptable` by default
-> (`Device.cs:110`) and all 18 resolve. **The delta OD-N closes is therefore bigger than the OPERATE
+> (`Device.cs:110`) and all 19 resolve. **The delta OD-N closes is therefore bigger than the OPERATE
 > click; the console was the wider hole and nobody had asked it a question.**
 
 **THE CONSOLE SPLIT, op by op — the honest delta, not a sketch:**
@@ -1097,10 +1138,28 @@ it — the sim gate is what this package ships.*
 | `sys` (ledger detail) | ungated | **console-gated** (server live) — reading the ship needs a computer |
 | `audit` | ungated | **console-gated** |
 | `exec` → `open`/`close`/`lock`/`unlock` *(the DEVICE verbs, `ConsoleHelp` line 1, `GameSession.cs:457`)* | ungated | ⭐ **console-gated — THIS IS THE SPLIT'S OWN LEG.** Repaired is enough; **commissioning is NOT required** |
-| `exec` → `set <dev>.rate` (`GameSession.cs:539-558`) | ungated | ⭐ **console-gated, with the DEVICE verbs.** It is one typed command at a time, which is the owner's own words for the console tier — **not a program** |
+| `exec` → `set <dev>.rate` (`GameSession.cs:539-558`) | ungated | ⭐ **console-gated, with the DEVICE verbs — ⚠️ AND THAT IS THIS CHARTER'S RULING, NOT THE OWNER'S.** OD-N's line is *manual vs scripted*; it says nothing about **which field** a manual command writes. **The charter's reason:** `set rate` is one typed line producing one immediate write through the same `SetDeviceStateCommand` as `open` (`DeviceAdapters.cs:80-97`), so scoping it with the DEVICE verbs is the only cut that does not split one command across two tiers. **Reversible without touching OD-N** — see the box below for what it costs |
 | `exec` → a bare `<dev>.<prop>` READ (`:562-563`) | ungated | **console-gated** (IX-M41 keeps reads free *of audit*, not free of a computer) |
-| `open` (fetch program source) · `set` (install a program) | ungated at the console; the *write* already dies silently in `SetScriptCommand` | ⛔ **COMMISSION-gated, and the refusal becomes VISIBLE** — today it is the silent `return;` at `Commands.cs:375` |
+| `open` (fetch program source) · `set` (install a program) | ungated at the console; the *write* already dies silently in `SetScriptCommand` | ⛔ **COMMISSION-gated, and the refusal becomes VISIBLE** — today it is the silent `return;` at `Commands.cs:376` |
 | the thaw op (M3-3) · the POD BAY (M3-4) | — | ⛔ **UNCHANGED — commission-gated** (M3-3 term 2: `Powered && IsOperational && Scriptable`) |
+
+> ### ⛔ ⭐ THE CONSEQUENCE OF THAT CUT, STATED ONCE AND PLAINLY: **M3-16's PUZZLE IS SPLIT ACROSS THE GATE**
+>
+> With `set rate` at the **repaired** tier and program installation at the **commissioned** tier, OD-O's
+> puzzle straddles them:
+>
+> | move | tier | when the player meets it |
+> |---|---|---|
+> | **diagnose** — `open vent_d1` → `CONTROLLER FAULT — BOARD UNRESPONSIVE` | **repaired** | the first hour |
+> | **probe** — `set vent_d1.rate max` → a puff of air, then a stall | **repaired** | the first hour |
+> | **fix** — the `every 1s:` loop, installed as a program | ⛔ **commissioned** | after the frontier, the benches and a `ControllerModule` |
+>
+> ⇒ ⭐ **THE PLAYER MEETS THE PUZZLE HOURS BEFORE THEY CAN SOLVE IT, AND THAT GAP IS DELIBERATE.** The
+> unreachable answer is the reason to go and restore MOSS properly — *"the deck I cannot open yet"* is
+> a better motive than a locked door with no explanation. ⚠️ **It is also the clause a later lane will
+> be tempted to "fix" by moving `set rate` behind commissioning** (which makes the probe unreachable
+> and the fault mute) **or by moving programs in front of it** (which deletes the commissioning beat).
+> **Neither is a tidy-up; both change the shape of the first hour.**
 
 ⚠️ **`default: break;` is a silent swallow and a gated op must not join it.** Every refused op replies
 — `MossExec`'s stream-2 line already exists for exactly this.
@@ -1203,7 +1262,7 @@ not brick a fixture; on every fixture it is open before the first tick.**
 `sim/Sim.Core/Entities/MachineDefs.cs:17,42` (`MaintainBelow`; the `Terminal` row) ·
 `hosts/web/GameSession.cs:399-447` (`HandleMoss`), `:457` (`ConsoleHelp`'s DEVICE line), `:501-567`
 (`ExecConsole`), `:572-595` (`Invoke`), `:1174-1234` (`HandleOperate`), `:1311-1345`
-(`OperateAdvisory`/`EmitOperate`), `:1497-1520` (`ContextAction`) ·
+(`OperateAdvisory`/`EmitOperate`), `:1496-1520` (`ContextAction`) ·
 `hosts/tui/GameLoop.cs:263-298` · `hosts/scenario/Program.cs:1537-1538` ·
 `sim/Sim.Dsl/DeviceAdapters.cs:38` · `sim/Sim.Dsl/MossBindings.cs:18-42` ·
 client: `roomzoom-view.js` / `room-model.js` / `session.js` / `messages.js` (the table above) ·
@@ -1607,7 +1666,7 @@ field ships save + hash + round-trip in the SAME commit.** The options, priced:
 - **The bleed** — one clause in **`AtmosphereSystem`'s existing device walk, immediately after the
   `AirVent` injection branch** (`AtmosphereSystem.cs:123-146`). ⭐ **That home is chosen for ordering,
   not convenience**: commands drain at the top of the tick and `AtmosphereSystem` is the **first**
-  system in the stack (`SystemStack.cs:26`), so *drain → inject at this pass's rate → bleed* needs no
+  system in the stack (`SystemStack.cs:27`), so *drain → inject at this pass's rate → bleed* needs no
   argument about system order, and `IntervalTicks => 2` (`:69`) means injection and bleed are
   **phase-locked by construction.** ⚠️ **`MachineWearSystem` refused**: its `IntervalTicks` is a
   different cadence, and two cadences for one mechanic is how a tuning constant becomes untunable.
@@ -1709,7 +1768,7 @@ before writing the re-pin commit, not after.**
 | 2 | The fault **blocks programs too** — `set(rate, …)` refuses as well | ⛔ ⭐ **THE SPLIT'S OWN LEG, and it is the package's whole claim.** Install the two-line program on a commissioned terminal, tick, and assert **the hall's pressure rises past an ABSOLUTE kPa floor** (M3-11's 80 kPa; never a ratio — seventh trap) |
 | 3 | Refuse with a bare `return;` / an adapter that answers `true` and does nothing | **the silence leg** (M3-3 mutation 7; *invisible feedback is functional*). ⚠️ **TWO surfaces, BLINDED** (fifth trap): the console's stream-2 line **and** a program's `AlarmRaisedEvent` — assert each in its own `[Test]` |
 | 4 | A **second** device grows a fault *"while we're here"* | ⭐ **the ONE-INSTANCE census leg — OD-O item (iii) is the whole point.** Exactly **one** faulted device on `--ship wreck`, **zero** on perilune/slice/grid. ⚠️ **Non-vacuity as an INCLUSION test** (the fourth trap shape, and `AuthoredDamageTests`' own precedent): plant a second faulted device and require the census to name it |
-| 5 | The puzzle is **solvable pre-commission** | ⛔ **the OD-N sequencing leg.** On a repaired-but-uncommissioned `term_moss`, `SetScriptCommand` refuses (`Commands.cs:373-376`) ⇒ assert **no program is installed AND the hall is still 0.000 kPa** after the window. ⚠️ *Assert the terminal's `Scriptable == false` first, or the leg is vacuous* |
+| 5 | The puzzle is **solvable pre-commission** | ⛔ **the OD-N sequencing leg.** On a repaired-but-uncommissioned `term_moss`, `SetScriptCommand` refuses (`Commands.cs:374-377`, the gate at `:376`) ⇒ assert **no program is installed AND the hall is still 0.000 kPa** after the window. ⚠️ *Assert the terminal's `Scriptable == false` first, or the leg is vacuous* |
 | 6 | Drop the authored `Rate = 0` (raise Condition only) | ⭐ **the boot leg, and it must go red FOR THE RIGHT REASON.** M3-11's *"0.000 kPa at boot and after 3 000 unattended ticks"* must still hold — **and the fixture must assert the vent IS operational at boot**, or the old test is passing for the old reason and the new premise is untested |
 | 7 | Bleed to zero in one pass / bleed so gently the one-shot suffices | **the tuning leg** — the `every 1s` program fills past 80 kPa inside the stated window, **and the single prompt line does NOT.** Both halves, separately |
 
@@ -1732,10 +1791,18 @@ program an inference instead of a walkthrough.**
 M3-8.** ⚠️ **M3-11 is a landed claimant whose numbers this changes** (the deck-1 device census, the
 LifeSupport draw of an open vent — `:1524`, `:1578`); **re-derive from the merged tree** (trap 8). ·
 ⛔ ⭐ **`tests/Perilune.Tests/Deck1VentTests.cs` — M3-16 RE-CUTS A SHIPPED SUITE, and this is the
-package's largest hidden cost.** M3-11's *"repair the vent, run 3 000 ticks, the hall passes 80 kPa"*
-leg **goes RED by construction**: after OD-O the vent is already above `fail`, so *"repairing"* it is a
-no-op and rate 0 keeps the hall empty. ⇒ **the leg is re-cut to drive the PROGRAM instead of the
-repair, in this package's own commit.** *A red suite handed to the next lane is this package failing*
+package's largest hidden cost.** ⭐ **TWO legs go RED by construction, not one.**
+**(1)** *"repair the vent, run 3 000 ticks, the hall passes 80 kPa"* — after OD-O the vent is already
+above `fail`, so *"repairing"* it is a no-op and rate 0 keeps the hall empty. **(2)** ⭐
+**`TheVentIsWreckedAtBoot_AndPOWERED_ThroughItsOneSurvivingRiser` (`Deck1VentTests.cs:236-266`)**,
+which asserts **`Condition < 0.10` AND `!IsOperational` AND `Condition < 0.25`** — **all three invert
+at the charter's 0.62.** ⚠️ **Its POWERED half (`NetworkId != 0`, `Powered`) is untouched and must
+SURVIVE the re-cut** — that half is M3-11's real subject, and deleting it with the rest would be this
+package quietly removing somebody else's coverage (ninth trap: an instrument narrowed goes blind).
+And **(3)** the *"0.000 kPa at boot and after 3 000 unattended ticks"* leg keeps PASSING, **for a
+different reason** (rate 0, not condition-below-fail) — **re-justify it in the test header or it is
+coverage that looks like proof.** ⇒ **the re-cut list is: TWO legs red, one leg re-justified, all in
+this package's own commit.** *A red suite handed to the next lane is this package failing*
 (the M3-10 precedent, stated in its own charter). ·
 `sim/Sim.Gen/ShipPlan.cs` · `ShipPlanBuilder.cs` — ⭐ **new row in §9**, no other M3 claimant ·
 ⛔ **SPINE: `Device.cs`, `Simulation.cs`, `SaveWriter.cs`, `SaveReader.cs`** — serialize against
@@ -2259,6 +2326,18 @@ Recorded so a future reader can tell *excluded* from *missed*.
 | **T15** schedules | missing, unscheduled | ⭐ **DECIDED, not built** — owner batch item 3 ANSWERED **A** (OD-M, 2026-07-31): deferred, and RW§3.5's mechanism rides M3-9. `TARGET.md`'s row now reads "decided: deferred" |
 | **T7 / T5 / T6** direct orders | DONE | **reach further** (M3-14) |
 
+⛔ ⭐ **M3-15 AND M3-16 MOVE NO `TARGET.md` ROW, AND SAYING SO IS THE POINT.** Both are PLAYER
+packages and both were chartered from owner decisions taken *after* `TARGET.md`'s checklist was
+written, so **there is no row they map onto**: the checklist has rows for orders, skills, needs,
+refusal-reasons and the thaw loop, and **none for *how the ship is commanded* or for *the MOSS
+language as a thing the player uses*.** ⚠️ **That is a GAP IN THE CHECKLIST, not a defect in the
+packages** — and the checklist is *"the metric"* by `CLAUDE.md`'s own words, so a milestone that
+ships two player packages invisible to it has a measurement problem. ⇒ ⛔ **FILED FOR THE INTEGRATOR,
+NOT FIXED HERE: `TARGET.md` is not this lane's file and inventing a row to score ourselves against
+is the failure `docs/PROCESS.md` §0 exists to prevent** (*"a package is chosen because it moves a
+checklist row … never because it improves a number"* — the inverse, writing the row to fit the
+package, is the same error backwards).
+
 ---
 
 ## 8. M3's FIVE-MINUTE DEMO
@@ -2284,7 +2363,7 @@ bay that refuses silently fails OD-L's own premise.
 | ⭐ `sim/Sim.Gen/ShipPlan.cs` · `ShipPlanBuilder.cs` | ⭐ **M3-16** (`DeviceSpec.Rate` + `.Faulted`) | ⭐ **New row.** No other M3 claimant. ⛔ **Both new fields are `Nullable` on the `Condition`/`Scriptable` precedent** — the struct's own doc comment (`ShipPlan.cs:141-174`) records that a plain `float` here *"would boot the whole repo WRECKED"*. ⚠️ **`AuthoredDamageTests`' census may need widening** — it is an INCLUSION test and this package widens what "authored damage" means. |
 | ⭐ `sim/Sim.Core/Systems/AtmosphereSystem.cs` | ⭐ **M3-16** (the rate bleed, inside the existing device walk) | ⭐ **New row.** No other M3 claimant — **and it is the FIRST system in the stack** (`SystemStack.cs:26`), so a clause here runs before everything on every ship. ⛔ **Gated on a bit no pinned ship carries; MEASURE P1/P2/P3 anyway.** |
 | ⭐ `sim/Sim.Dsl/DeviceAdapters.cs` · `ScriptRuntime.cs` | ⭐ **M3-16** (the `open`/`close` refusal sentence) | ⭐ **New row — nothing else in M3 goes near the DSL.** ⚠️ **The adapter must ASK the sim-side static, never re-derive the fault** (M3-15's one-rule-two-places pattern). Both reporting surfaces already exist: the console's stream-2 line (`GameSession.cs:587`) and a program's runtime error + `AlarmRaisedEvent` (`ScriptRuntime.cs:13-20`). |
-| ⭐ `tests/Perilune.Tests/Deck1VentTests.cs` | M3-11 ✅, ⭐ **M3-16** | ⛔ ⭐ **New row, and the sharpest one in this table: M3-16 turns a SHIPPED leg red BY CONSTRUCTION.** M3-11's *"repair the vent, 3 000 ticks, past 80 kPa"* stops meaning anything once the vent boots above `fail` — the repair is a no-op and rate 0 keeps the hall empty. **The leg is re-cut to drive the PROGRAM, in M3-16's own commit.** *A red suite handed to the next lane is the package failing* (M3-10's own rule, applied to somebody else's test). |
+| ⭐ `tests/Perilune.Tests/Deck1VentTests.cs` | M3-11 ✅, ⭐ **M3-16** | ⛔ ⭐ **New row, and the sharpest one in this table: M3-16 turns TWO SHIPPED LEGS red BY CONSTRUCTION and leaves a third passing for a new reason.** **(1)** M3-11's *"repair the vent, 3 000 ticks, past 80 kPa"* stops meaning anything once the vent boots above `fail` — the repair is a no-op and rate 0 keeps the hall empty. **(2)** ⭐ **`TheVentIsWreckedAtBoot_AndPOWERED_ThroughItsOneSurvivingRiser` (`:236-266`) asserts `Condition < 0.10`, `!IsOperational` AND `Condition < 0.25` — the charter's 0.62 inverts all three**, while the same test's POWERED half must survive the re-cut. **(3)** the *"0.000 kPa unattended"* leg PASSES for a **different** reason (rate 0). **All three are re-cut or re-justified in M3-16's own commit.** *A red suite handed to the next lane is the package failing* (M3-10's own rule, applied to somebody else's test). |
 | `sim/Sim.Core/Commands/Commands.cs` | **M3-3** (`ThawCommand`), ⭐ **M3-15** (the OD-N gate inside `SetDoorStateCommand` `:4-29` and `SetDeviceStateCommand` `:32-49`), **M3-14** (the forced-order bypass, **if** it needs a flag), **M3-10** (`IsPlaceableFurniture`) | ⛔ **SPINE. Serialize: M3-3 → M3-15.** ⚠️ **M3-14 should read `Citizen.HeldByOrder` and touch this file NOT AT ALL** — prefer that; it did. ⭐ **M3-15 edits two command bodies that have not changed since M1 and that FIVE routes reach** (the web host ×2, the TUI, the scenario host, and the MOSS adapters) — **the only claimant here whose one-line change is observable from four hosts.** |
 | `sim/Sim.Core/Systems/SafetySystem.cs` · `Jobs/JobContext.cs` · `Systems/MachineWearSystem.cs` | **M3-14** (three of its seven sites), M3-9 (a new claimant), M2-2/M2-5/M2-9/M2-19 ✅ | ⛔ **Serialize.** ⚠️ ⭐ **`JobContext.cs:62-65` claims `CanStageWorkerAt` is asked "NOWHERE ELSE in the **job board**" — that is TRUE and precisely scoped, and there are FOUR more sites outside the job board** (`MachineWearSystem` ×2 is inside `sim/`; `GameSession.cs:2599` and `hosts/scenario/Program.cs:599,627,647` are not). **A lane that reads the comment as the whole answer patches three sites of seven** — revision 1 did exactly that. |
 | ⭐ **`hosts/scenario/Program.cs`** | **M3-14** (`:599,627,647`) | ⭐ **New row (revision 2), and it exists because nothing else in M3 goes near this file.** It is the headless measurement fixture P1 runs through: **a staging rule that differs here from the web host makes every `--ship slice` occupancy number mean something else, silently.** |
@@ -2317,7 +2396,7 @@ bay that refuses silently fails OD-L's own premise.
 | ⭐ **8** | **M3-15 ↔ M3-3** | the **console predicate** — *"is this terminal usable?"*, written twice for two different tiers | **Two files, one question, no compiler between them.** M3-3 term 2 is `Powered && IsOperational && Scriptable` (COMMISSIONED); M3-15's is `Powered && Condition >= maint` (REPAIRED). ⛔ **They must be two clauses of one static, not two hand-written predicates** — the M2-18 discipline (*"the sim owns the predicate, the host asks it, neither side re-derives"*). If they drift, a player is told MOSS is offline by one surface and online by another **with both suites green.** ⇒ **M3-15 lands `MossGate` behind M3-3 and M3-3's term 2 is re-expressed through it in the same integration window.** |
 | ⭐ **9** | **M3-15 ↔ M3-11** | **reachability** | M3-11's acceptance opens a deck-1 door. **Before 6b that is a click; after 6b it is a MOSS command** — and M3-11 merges at position 4, *before* 6b. ⇒ **M3-11's step is correct when it runs and stale the week after.** Named in its queue row; the integrator re-runs it after 6b rather than trusting the merged text. |
 | ⭐ **10** | **M3-15 ↔ M3-14 (landed)** | the **frontier** | M3-14 lets a direct order cross **vacuum**. It does **not** let a pawn cross a **shut door** (`Simulation.cs:155`), and nothing in `sim/` opens one autonomously. ⇒ **The two are complementary, not overlapping**, and the opening beat needs both: MOSS opens the door, M3-14 carries the order through the airless hall behind it. **M3-14 is unchanged by OD-N.** |
-| ⭐ **11** | **M3-16 ↔ M3-11 (landed)** | ⭐ **`vent_d1` itself — one authored device, two packages, three days apart** | ⛔ **No merge conflict will fire and a whole shipped suite still breaks.** `Deck1VentTests`' repair leg asserts a mechanism M3-16 deletes (repair → air becomes program → air), and its *"0.000 kPa unattended"* leg keeps passing **for a different reason** — which is worse, because it looks like coverage. ⇒ **M3-16 re-cuts both legs in its own commit and says in the test header which reason each one now pins.** |
+| ⭐ **11** | **M3-16 ↔ M3-11 (landed)** | ⭐ **`vent_d1` itself — one authored device, two packages, three days apart** | ⛔ **No merge conflict will fire and TWO shipped legs still go red.** **(a)** `Deck1VentTests`' repair leg asserts a mechanism M3-16 deletes (repair → air becomes program → air). **(b)** ⭐ **`TheVentIsWreckedAtBoot_AndPOWERED_…` (`:236-266`) asserts `Condition < 0.10`, `!IsOperational` and `Condition < 0.25` — 0.62 inverts all three**, while its POWERED half must survive. **(c)** the *"0.000 kPa unattended"* leg keeps passing **for a different reason** — worse, because it looks like coverage. ⇒ **M3-16 re-cuts (a) and (b) and re-justifies (c) in its own commit, saying in the test header which reason each one now pins.** |
 | ⭐ **12** | **M3-16 ↔ M3-2** | the **`Faulted` bit's home** | **Two options, and only measurement chooses.** M3-16 recommends bit 12 of the existing device state word — **fold-neutral while false, so no pin row.** ⛔ **If it measures non-neutral, the bit moves into M3-2's `pin/m3-a` (position 5, still unstarted) and M3-16 becomes its reader** — coupling 1's shape a second time. **Decide before writing a re-pin commit, not after.** |
 | ⭐ **13** | **M3-16 ↔ M3-15** | the **console's refusal vocabulary** | Two refusals arrive on one console line — *"MOSS is offline"* (no live server) and *"CONTROLLER FAULT"* (live server, dead board). **Different predicates, different sentences, one vocabulary** (M2-18). **A player who cannot tell them apart repairs the wrong machine.** |
 
@@ -2841,8 +2920,17 @@ claim in §5 M3-15 stays visible:
 | **16 wreck doors: 2 open, 14 shut, 0 locked**; Rell reaches **294 tiles**; **`term_moss` reachable**, the three benches + `machineshop_2` + `term_nav` + `vent_ls` **not** | flood-fill over `Simulation.IsWalkable` from the citizen's start tile (ladders bridged by tile) |
 | wreck loose stock **Regolith 12 · Scrap 3 · Parts 1 · Seals 10 · Potato 60 · Corpse 4**, and **0 `ControllerModule`** | item-store walk, `CarriedBy == 0` |
 | every ship's Terminal census (`perilune`/`slice`/`grid` = one `term_hydro` at `Condition 1.000`, powered) | device walk on all four ships |
-| **all 18 wreck doors+vents are NAMED and all 18 resolve** in the MOSS registry at boot | `host.Registry.TryResolve(d.Name, …)` |
-| **the only non-test writers of `Device.IsOpen`** are `Commands.cs:24,46` · `SaveReader.cs:345` · `AuthoredShips.cs:508` · `ShipPlanBuilder.cs:31` (+ `hosts/scenario/Program.cs:1423`) | repo-wide grep, `sim/` + `hosts/` |
+| ⚠️ **all 19 wreck doors+vents are NAMED and all 19 resolve** in the MOSS registry at boot — **16 Doors + 3 AirVents; RE-MEASURED on the merged tree (it was 18 pre-M3-11, and the first draft of this charter shipped the stale 18)** | `host.Registry.TryResolve(d.Name, …)` |
+| **the only non-test writers of `Device.IsOpen`** are `Commands.cs:24,46` · `SaveReader.cs:345` · `AuthoredShips.cs:508` · `ShipPlanBuilder.cs:31` (+ `hosts/scenario/Program.cs:1423`) | repo-wide grep, `sim/` + `hosts/` — ⭐ **re-run on the merged tree: all six unmoved** |
+
+⛔ ⚠️ ⭐ **AND ONE HONEST FAILURE, RECORDED RATHER THAN PATCHED: EVERY MEASUREMENT ABOVE WAS TAKEN ON
+`22b6d38`, AND M3-11 MERGED BEFORE THIS CHARTER DID.** The *findings* all reproduced on the merged
+tree — the reviewer re-drove them — but **five `AuthoredShips.cs` line numbers had moved by +155
+lines and the door/vent census had grown from 18 to 19** (M3-11's `vent_d1` is the nineteenth). ⇒
+**This charter warned about trap 8 in its own M3-11 row and then walked into it.** The rule it now
+asserts about itself: **a measurement is a statement about a TREE, and a lane that outlives a merge
+must re-derive before it commits — the numbers survived, the pointers did not, and only the pointers
+look like facts.**
 
 **TAKEN ON FAITH IN M3-15, and named as such:** the *"900 s service vs ~90 s suffocation"* pairing in
 M3-11's survivability filing — `wear.def:17` gives `maintenance_work_seconds = 900`, **the suffocation
