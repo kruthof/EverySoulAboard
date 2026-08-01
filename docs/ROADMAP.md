@@ -62,7 +62,8 @@ drift reconciled — which surfaced a live gap: nothing under `Jobs/` reads `CO2
 | ✅ | M2-17 | re-baseline — merged 2026-07-30, pin-neutral (check A = 0, P1 twin match), **M2 IS CLOSED**. The occupancy harness authors its grid per leg via `SetWorkPriorityCommand` (OD-I's assigned cost paid), prints it beside every number, and refuses a vacuous zero by exit code (granted+mismatch=3, granted+zero-work=2). Re-baseline recorded in MECHANICS §13.26: grid's A1 was ALREADY 0.000 % pre-M2 (economy ends at h16 — matter, not labour); the two 0.000 % causes are now distinguishable only by the printed grid. **A3 measured for the first time ever**: a granted wall completes in ~4–5 sim-min (Construct ALONE suffices — HaulToBuild maps to Construct), never without a grant. One send-back (a backwards work-type caveat in shipped output + an `all@0` guard hole proven by mutation) | neutral DONE |
 
 Retracted / never existed: M2-7, M2-13…M2-16. M1-J dropped same day (survives as a source
-comment). Pin rows remaining, in order: `M3-a…d`. Done: `M2-a` (M2-1) ·
+comment). Pin rows remaining, in order: `M3-b…d`. Done: **`M3-a` (M3-2, tag `pin/m3-a`,
+2026-07-31 — P1/P2/P3 fold-only for CryoSystem's SYSS seed, cause measured)** · `M2-a` (M2-1) ·
 `M2-d` (M2-12, tag `pin/m2-d`, NO move — the designated power-package rollback point) ·
 `M1-c` (M2-21, measured pin-neutral, left the chain) · `M2-e` (M2-2, tag `pin/m2-e`) ·
 `M2-g` (M2-5, discharged with no move — mechanism instrumented, no tag) · `M2-c` (M2-11,
