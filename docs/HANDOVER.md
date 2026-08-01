@@ -72,17 +72,15 @@ Merged this session, in order (each: Opus implementer + separate independent rev
 
 ## Next (the M3 queue, `perilune-m3.packages.md` §3)
 
-1. **Owner-reported MOSS input fix (`lane/moss-input`) — in review, merge FIRST**: the
-   PROGRAM editor blurred on every wire-driven render (the persistent mount was MOVED per
-   render — and `replaceChildren(sameNode)` blurs too, measured in real Chrome); the dead
-   CLI is the same blur (declined keys insert into the focused element = nobody). Fix:
-   PROGRAM subtree built once + rule 5 (declined unmodified single-char refocuses the
-   prompt). 1125 node (+5). **The owner runs the 60-s manual script after merge.**
-2. **M3-3 ThawGate** (owes `PodIdentityTests` its thaw leg + M3-6's band-edge sweep;
+1. **M3-3 ThawGate** (owes `PodIdentityTests` its thaw leg + M3-6's band-edge sweep;
    needs M3-2 ✅ + M3-6 ✅) → **M3-15 (6b, integrator/spine: OD-N gate + OPERATE
    removal)** → M3-4 POD BAY → M3-13 (same window) → **M3-16 (8b, the vent puzzle)** → …
+2. **The owner runs the MOSS 60-s manual script** (fix MERGED `f74844a`, node 1132; the
+   script is in the 07-31 conversation + impl evidence): dismiss onboarding → MOSS →
+   type `status` without clicking → P → term_moss → type 15 s without clicking → ESC →
+   type immediately → `L` hotkey-vs-typing check → Tab traverses.
 3. Housekeeping candidate: 8 unmerged review-*/spike worktrees from the audit (verify
-   wanted, then prune). All this session's lane worktrees pruned except `moss-input`.
+   wanted, then prune). ALL of this session's lane worktrees pruned (5 lanes).
 
 ## Open on the owner
 
@@ -157,3 +155,4 @@ Merged this session, in order (each: Opus implementer + separate independent rev
 | 07-31 B | pod-census | **the thaw ladder is AUTHORED**: each intact pod's price now derives from its `Condition` (rungs 1–7, depth 0,0,2,2,3,3,3, `ThawGate.RungOf`) — content that exists and nothing consumes until M3-3; census 12/1/7/4 self-consistent, stale 8/1/5/2 swept from four docs | green, pins UNMOVED, APPROVE first pass |
 | 07-31 B | deck1-vent · od-n-charter | **deck 1 is ONE repair from air, and the ship learns who it answers to**: `vent_d1` authored (repair fills the hall past 80 kPa, both delivery blockers filed in order); OD-N (doors+vents MOSS-only, split gate repair→console / commission→programs) + OD-O (the vent becomes the first PROGRAMMING PUZZLE, one instance, not a pattern) recorded; M3-15 (6b) + M3-16 (8b) chartered against driven measurements (tick-0 ungated console; 0 CM aboard; 14/16 doors shut) | green, pins UNMOVED, 1 send-back each, worktrees pruned 2 |
 | 07-31 B | cryo-system | **A POD CYCLES**: set a capsule counting and a named person steps out beside it — 4 sim-min, one at a time, wrecked pods never, single-use honoured; emergency-thaw bit stored for M3-5 | green, **PIN M3-a: P1/P2/P3 MOVED fold-only (cause measured), P4/P5 held**, tag `pin/m3-a`, 1 doc-only send-back |
+| 07-31 B | moss-input | **the MOSS terminal takes typing again** (owner-reported live): the PROGRAM editor no longer blurs on wire renders (subtree built once — `replaceChildren(sameNode)` blurs too, measured in Chrome); a declined key lands in the prompt incl. AltGr on de-DE; dom-lite's four blur rules self-pinned (each was silently inert alone) | node 1132 (+12), APPROVE + 3 review additions, owner manual script OWED |
