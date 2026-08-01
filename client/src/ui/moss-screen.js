@@ -361,9 +361,9 @@ export class MossScreen {
    *      clicked row, a focused directory entry).
    *   3. Routing is the MODEL's decision, not the DOM's: every key is offered to `keyPress`, and
    *      the key is swallowed (`preventDefault`) only when the model reports `handled` — which is
-   *      precisely IX-M8's buffer-state table without duplicating it here. So `L` on an empty
-   *      buffer opens the FAULT LOG and is not typed; `L` mid-command routes `'pass'` and reaches
-   *      the input as an ordinary letter.
+   *      precisely IX-M8's buffer-state table without duplicating it here. Since OD-P that table
+   *      holds NO printable character, so every letter routes `'pass'`, is not swallowed, and
+   *      reaches the prompt (rule 5 makes sure of it even when focus had wandered).
    *   4. The ONLY exception to rule 3 is `SCROLL_KEYS`, and only when the event did NOT come out of
    *      the prompt. See the constant: it is an allowlist, never a "multi-character key" heuristic.
    *   5. **A DECLINED PRINTABLE KEY IS PUT IN THE PROMPT** (`_typeIntoPrompt`). Rules 2+3 together
@@ -375,7 +375,8 @@ export class MossScreen {
    *      after anything that blurs the prompt (the PROGRAM screen's editor, a focused button, a
    *      click on the page margin outside `.moss-page`). So the screen MAKES the invariant true
    *      instead of assuming it — see `_typeIntoPrompt` for why this is safe and where it stands
-   *      down (IX-M8's table stays the sole authority on WHICH keys are hotkeys).
+   *      down (IX-M8's table stays the sole authority on WHICH keys are hotkeys — and since OD-P
+   *      it lists no printable character at all).
    */
   handleKey(e) {
     if (!this.opened || !e) return;
@@ -457,8 +458,9 @@ export class MossScreen {
    *
    * WHERE IT STANDS DOWN, and each one is load-bearing:
    *   · `res.handled` — the caller only reaches this on a DECLINED key, so IX-M8's buffer-state
-   *     table still decides what is a hotkey: `L`/`P` on an empty buffer open their screens and
-   *     never type, exactly as before.
+   *     table still decides what is a hotkey. Since OD-P no LETTER is in that table, so this path
+   *     is the normal one for typing: `l` and `p` are declined and land in the prompt like any
+   *     other character. The stand-down still matters for `PageUp`, `Home`, `Enter` and friends.
    *   · a key out of a text-entry surface never gets here at all (rule 1 returns first), so the
    *     PROGRAM IDE's textarea cannot have a keystroke stolen out of it.
    *   · `SCROLL_KEYS` (the caller's `scrollGuard`) — a key this layer is suppressing to stop the

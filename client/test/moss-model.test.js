@@ -223,15 +223,17 @@ const ROUTE_TABLE = [
   ['ArrowDown',  'nav',    'prompt'],
   ['Enter',      'nav',    'prompt'],
   ['Escape',     'nav',    'prompt'],
-  ['l',          'nav',    'pass'],
-  ['L',          'nav',    'pass'],
-  ['p',          'nav',    'pass'],
-  ['P',          'nav',    'pass'],
   ['PageUp',     'nav',    'nav'],
   ['PageDown',   'nav',    'nav'],
   ['Home',       'nav',    'pass'],
   ['End',        'nav',    'pass'],
   ['Tab',        'pass',   'pass'],
+  // OD-P (2026-07-31): NO printable character is routed, in EITHER buffer state. `l` and `p` used
+  // to read ['nav','pass'] — they are ordinary letters now, exactly like `a`, `1` and space.
+  ['l',          'pass',   'pass'],
+  ['L',          'pass',   'pass'],
+  ['p',          'pass',   'pass'],
+  ['P',          'pass',   'pass'],
   ['a',          'pass',   'pass'],
   ['1',          'pass',   'pass'],
   [' ',          'pass',   'pass'],
@@ -257,13 +259,37 @@ test('IX-M8: the KEY_ROUTE export is the table the router actually uses', () => 
   }
 });
 
-test('IX-M8: a modifier hands the key back to the browser (Ctrl-L is not ours)', () => {
+test('OD-P: KEY_ROUTE contains NO printable character — the whole class, not just L and P', () => {
+  // ⚠️ WRITTEN OVER THE CLASS ON PURPOSE. A test naming only `l` and `p` would pass the day someone
+  // adds `s` for STATUS or `h` for HELP, which is the same defect the owner ruled on: *"we need to
+  // expand the MOSS OS and part might be 'ls' command later, to read directories.. but as soon as
+  // we press l, the log opens."* Every key in this table must be a key a TERMINAL also owns, i.e.
+  // one that types nothing. `Array.from` counts CODE POINTS, so an emoji or an accented letter is
+  // caught as the single character it is.
+  const printable = Object.keys(KEY_ROUTE).filter((k) => Array.from(k).length === 1);
+  assert.deepEqual(printable, [],
+    'a single-character key is routed by IX-M8, so pressing it does not type it: ' + printable.join(' '));
+
+  // NON-VACUITY (trap 4's shape): the filter must actually be able to SEE such a key, or the
+  // assertion above is satisfied by a predicate that matches nothing at all.
+  const withLetter = { ...KEY_ROUTE, l: ['nav', 'pass'] };
+  assert.deepEqual(Object.keys(withLetter).filter((k) => Array.from(k).length === 1), ['l'],
+    'the filter cannot see a single-letter row, so the emptiness above proves nothing');
+  // ...and the rows that DO remain are the non-printable ones, so the table is not simply empty.
+  assert.ok(Object.keys(KEY_ROUTE).length >= 8, 'the navigation rows are still there');
+});
+
+test('IX-M8: a modifier hands the key back to the browser (Ctrl-Home is not ours)', () => {
+  // The keys probed here must be ones the table DOES route, or "a modifier makes it pass" is
+  // satisfied by a key that passes anyway — since OD-P `l` is exactly such a key, so it is no
+  // longer usable as this test's subject.
   const m = linked();
   for (const mods of [{ ctrl: true }, { ctrlKey: true }, { alt: true }, { meta: true }]) {
-    assert.equal(routeKey(m, 'l', mods), 'pass');
+    assert.equal(routeKey(m, 'Home', mods), 'pass');
     assert.equal(routeKey(m, 'Enter', mods), 'pass');
   }
-  assert.equal(routeKey(m, 'l', { shift: true }), 'nav', 'Shift alone does not change routing');
+  assert.equal(routeKey(m, 'Home', {}), 'nav', 'control: unmodified, that key IS routed');
+  assert.equal(routeKey(m, 'Home', { shift: true }), 'nav', 'Shift alone does not change routing');
 });
 
 test('IX-M8 empty buffer: the nav keys actually navigate', () => {
@@ -283,13 +309,71 @@ test('IX-M8 empty buffer: the nav keys actually navigate', () => {
   assert.deepEqual(ent.effects, [{ k: 'moss', op: 'sys', tid: 'reactor' }]);
   assert.equal(detailView(ent.model).loading, true, 'LOADING…, never a fabricated table');
   assert.deepEqual(detailView(ent.model).devices, []);
-  // L opens the fault log and asks for the chronicle (IX-M5)
-  const log = keyPress(m, 'L');
+});
+
+test('OD-P: `l` and `p` on an EMPTY buffer are TYPED — they open nothing', () => {
+  // The owner's own words: *"as soon as we press l, the log opens"* — the defect. MOSS is the ship's
+  // OS, so a printable character always belongs to the command line. Both halves are asserted: the
+  // model declines the key (so the DOM lets the browser type it) AND no screen moved.
+  const m = linked();
+  for (const key of ['l', 'L', 'p', 'P']) {
+    const r = keyPress(m, key);
+    assert.equal(r.route, 'pass', key + ' must route to nobody, so the character reaches the prompt');
+    assert.equal(r.handled, false, key + ' must be DECLINED — `handled` is what stops the browser');
+    assert.equal(r.model, m, key + ' must leave the model untouched (same object, not just equal)');
+    assert.deepEqual(r.effects, [], key + ' must not fetch anything');
+    assert.equal(r.model.screen, SCREEN.LEDGER, key + ' opened a screen');
+  }
+  // …and the character genuinely lands in the buffer (the DOM's `input` event → editPrompt).
+  const typed = editPrompt(editPrompt(m, 'l'), 'lo');
+  assert.equal(typed.prompt, 'lo', 'the letters accumulate in the command line');
+  assert.equal(typed.screen, SCREEN.LEDGER);
+});
+
+test('OD-P: `log` and `prog` are the typed replacements, end to end from the prompt', () => {
+  // The acceptance is deliberately driven through the PROMPT — editPrompt then Enter — and not by
+  // calling submitCommand directly: the routing table is what OD-P changed, so a test that skipped
+  // it would still pass with Enter mis-routed.
+  const m = linked();
+  const run = (model, line) => keyPress(editPrompt(model, line), 'Enter');
+
+  const log = run(m, 'log');
+  assert.equal(log.route, 'prompt', 'ENTER on a typed buffer submits');
+  assert.equal(log.model.screen, SCREEN.FAULTLOG, '`log` opens the FAULT LOG');
+  assert.equal(log.model.filterId, null, 'from the LEDGER it opens unfiltered (null, not "")');
+  assert.deepEqual(log.effects, [{ k: 'chron' }], 'and asks the host for the chronicle (IX-M5)');
+  assert.equal(log.model.prompt, '', 'the buffer is spent');
+  assert.ok(consoleLines(log.model).some((l) => l.text === '> log'), 'the line is echoed');
+
+  const prog = run(m, 'prog');
+  assert.equal(prog.model.screen, SCREEN.PROGRAM, '`prog` opens PROGRAM (IX-M6)');
+  // `prog <terminal>` goes straight into one terminal's source and asks the host for it
+  const one = run(m, 'prog term_moss');
+  assert.equal(one.model.program.tid, 'term_moss');
+  assert.deepEqual(one.effects, [{ k: 'moss', op: 'open', tid: 'term_moss' }]);
+
+  // `log <system>` filters, and an unknown system is refused rather than opening an empty log
+  const filtered = run(m, 'log thermal');
+  assert.equal(filtered.model.filterId, 'thermal');
+  const bad = run(m, 'log nowhere');
+  assert.equal(bad.model.screen, SCREEN.LEDGER, 'an unknown system must not open the log');
+  assert.ok(consoleLines(bad.model).some((l) => l.stream === 2 && l.text.indexOf('UNKNOWN SYSTEM') === 0));
+});
+
+test('OD-P: a bare `log` typed on DETAIL inherits that system — the whole of what `L` did', () => {
+  // `L` from DETAIL opened the log FILTERED to that system (IX-M5). If the typed command dropped
+  // the filter, the replacement would be strictly weaker than the key it replaced and the FILTERED
+  // log would be reachable only by naming the system a second time.
+  const detail = keyPress(linked(), 'Enter').model;              // DETAIL(reactor)
+  assert.equal(detail.screen, SCREEN.DETAIL);
+  const log = keyPress(editPrompt(detail, 'log'), 'Enter');
+  assert.equal(log.route, 'prompt',
+    'ENTER on DETAIL with a typed buffer must SUBMIT. The prompt renders on this screen and OD-P '
+    + 'makes letters land in it, so routing ENTER to `nav` here drops the line silently.');
   assert.equal(log.model.screen, SCREEN.FAULTLOG);
-  assert.equal(log.model.filterId, null, 'from the LEDGER it opens unfiltered');
-  assert.deepEqual(log.effects, [{ k: 'chron' }]);
-  // P opens the program screen (IX-M6)
-  assert.equal(keyPress(m, 'p').model.screen, SCREEN.PROGRAM);
+  assert.equal(log.model.filterId, 'reactor', 'the bare command inherited DETAIL\'s subject');
+  // an explicit argument still overrides the inheritance
+  assert.equal(keyPress(editPrompt(detail, 'log thermal'), 'Enter').model.filterId, 'thermal');
 });
 
 test('IX-M8 typed buffer: ENTER submits, ↑↓ are history, L/P are just letters', () => {
@@ -314,17 +398,24 @@ test('IX-M8 typed buffer: ENTER submits, ↑↓ are history, L/P are just letter
   assert.equal(up.model.selectedId, withHistory.selectedId, 'the ledger cursor did not move');
 });
 
-test('IX-M8: off the LEDGER there is no prompt, so a stale buffer cannot capture keys', () => {
+test('IX-M8: off the LEDGER the screen keeps its keys — ENTER is the ONE the buffer can claim', () => {
   const m = editPrompt(linked(), 'op');
   const detail = keyPress(editPrompt(m, ''), 'Enter').model;   // descend with an empty buffer
   const stale = { ...detail, prompt: 'op' };
   assert.equal(routeKey(stale, 'Escape'), 'nav', 'ESC still pops the stack on DETAIL');
-  assert.equal(routeKey(stale, 'l'), 'nav', 'L still opens the fault log on DETAIL');
-  // on PROGRAM the IDE owns its own text area: only ESC is taken
-  const prog = keyPress(linked(), 'p').model;
+  assert.equal(routeKey(stale, 'ArrowUp'), 'nav', 'and a stale buffer does not turn ↑ into history');
+  assert.equal(routeKey(stale, 'l'), 'pass', 'OD-P: L is a letter on every screen');
+  // …but ENTER goes to the prompt once there is a line to submit, and ONLY then (OD-P): without it
+  // a command typed on DETAIL — the only way left to reach the filtered fault log — is unsendable.
+  assert.equal(routeKey(stale, 'Enter'), 'prompt');
+  assert.equal(routeKey(detail, 'Enter'), 'nav', 'with an EMPTY buffer ENTER is still the screen\'s');
+  // on PROGRAM the IDE owns its own text area: only ESC is taken, buffer or no buffer
+  const prog = submitCommand(linked(), 'prog').model;
   assert.equal(routeKey(prog, 'Escape'), 'nav');
   assert.equal(routeKey(prog, 'l'), 'pass');
   assert.equal(routeKey(prog, 'ArrowUp'), 'pass');
+  assert.equal(routeKey({ ...prog, prompt: 'op' }, 'Enter'), 'pass',
+    'the IDE owns ENTER — a newline in the source is not a submitted command');
 });
 
 // ---------------- IX-M2: the ESC stack ----------------
@@ -344,10 +435,10 @@ test('IX-M2: PROGRAM → DETAIL/FAULTLOG → LEDGER → exit, innermost first', 
   let m = linked();
   m = keyPress(m, 'Enter').model;                       // → DETAIL
   assert.equal(m.screen, SCREEN.DETAIL);
-  m = keyPress(m, 'L').model;                           // → FAULTLOG (filtered from DETAIL)
+  m = submitCommand(m, 'log').model;                    // → FAULTLOG (filtered from DETAIL)
   assert.equal(m.screen, SCREEN.FAULTLOG);
   assert.equal(m.filterId, 'reactor', 'IX-M5: from DETAIL the log opens filtered');
-  m = keyPress(m, 'p').model;                           // → PROGRAM
+  m = submitCommand(m, 'prog').model;                   // → PROGRAM
   assert.equal(m.screen, SCREEN.PROGRAM);
   let step = keyPress(m, 'Escape');
   assert.equal(step.model.screen, SCREEN.FAULTLOG);
@@ -362,18 +453,26 @@ test('IX-M2: PROGRAM → DETAIL/FAULTLOG → LEDGER → exit, innermost first', 
   assert.equal(step.model.screen, SCREEN.LEDGER, 'the exit is the caller\'s to perform');
 });
 
-test('IX-M5: L closes the fault log again, returning where it came from', () => {
-  const fromLedger = keyPress(linked(), 'l').model;
-  assert.equal(keyPress(fromLedger, 'l').model.screen, SCREEN.LEDGER);
+test('IX-M5: ESC closes the fault log, returning where it came from — a command is not a toggle', () => {
+  // `L` used to toggle. OD-P deleted it, and `log` deliberately does NOT inherit the toggle: typing
+  // a command twice re-runs it. ESC is the close verb, and it was always the one that worked from
+  // both entry points.
+  const fromLedger = submitCommand(linked(), 'log').model;
+  assert.equal(keyPress(fromLedger, 'Escape').model.screen, SCREEN.LEDGER);
   const detail = keyPress(linked(), 'Enter').model;
-  const fromDetail = keyPress(detail, 'l').model;
-  assert.equal(keyPress(fromDetail, 'l').model.screen, SCREEN.DETAIL);
+  const fromDetail = submitCommand(detail, 'log').model;
+  assert.equal(keyPress(fromDetail, 'Escape').model.screen, SCREEN.DETAIL);
+  // …and `log` typed AGAIN on the open log re-opens it in place, keeping the ladder one rung deep
+  const twice = submitCommand(fromDetail, 'log').model;
+  assert.equal(twice.screen, SCREEN.FAULTLOG, 'still open — the command is not a toggle');
+  assert.equal(twice.filterId, 'reactor', 'and it still inherits the DETAIL below it');
+  assert.equal(twice.stack.length, fromDetail.stack.length, 'without deepening the ESC ladder');
 });
 
 test('the ESC stack cannot grow without bound when a screen is re-entered', () => {
-  // by key: P on PROGRAM belongs to the IDE, so it never re-enters at all
-  let m = keyPress(linked(), 'p').model;
-  for (let i = 0; i < 5; i++) m = keyPress(m, 'p').model;
+  // typing `prog` again while PROGRAM is up re-enters in place rather than stacking a rung
+  let m = submitCommand(linked(), 'prog').model;
+  for (let i = 0; i < 5; i++) m = submitCommand(m, 'prog').model;
   assert.equal(m.stack.length, 1);
   // by command: picking a second terminal out of the PROGRAM directory re-enters PROGRAM, and
   // that must swap the terminal, not deepen the ladder.
@@ -806,7 +905,7 @@ const LOG = { type: 'log', lines: ['D213.10 BROWNOUT ON THE REACTOR BUS', 'D213.
 
 test('the fault log joins chron + the live log tail, newest first', () => {
   let m = reduceChron(reduceLog(linked(), LOG), CHRON);
-  m = keyPress(m, 'l').model;
+  m = submitCommand(m, 'log').model;
   const view = faultLogView(m);
   assert.equal(view.title, 'FAULT LOG');
   assert.equal(view.filterId, null);
@@ -821,14 +920,14 @@ test('the fault log joins chron + the live log tail, newest first', () => {
 
 test('the fault log filter is the documented weak NAME join (§5.1)', () => {
   let m = reduceChron(reduceLog(linked(), LOG), CHRON);
-  m = keyPress(keyPress(m, 'Enter').model, 'l').model;      // DETAIL(reactor) → filtered log
+  m = submitCommand(keyPress(m, 'Enter').model, 'log').model;   // DETAIL(reactor) → filtered log
   const view = faultLogView(m);
   assert.equal(view.filterId, 'reactor');
   assert.equal(view.title, 'FAULT LOG — REACTOR');
   assert.deepEqual(view.entries.map((e) => e.text),
     ['BROWNOUT ON THE REACTOR BUS', 'REACTOR SCRAM DRILL COMPLETED']);
   // once DETAIL is fetched, member device NAMES widen the join
-  const water = keyPress(submitCommand(reduceChron(reduceLog(linked(), LOG), CHRON), 'open water reclaim').model, 'l').model;
+  const water = submitCommand(submitCommand(reduceChron(reduceLog(linked(), LOG), CHRON), 'open water reclaim').model, 'log').model;
   assert.deepEqual(faultLogView(water).entries.map((e) => e.text), [],
     'nothing mentions "water" or "reclaim" — the honest answer is nothing');
   const named = reduceMossEvent(
@@ -885,8 +984,14 @@ test('headerLines / footerHints: VS-M6 and per-screen VS-M7 hints', () => {
   assert.equal(h[1], 'PERILUNE HULL 7741 · DAY 213 · UPTIME 5112:07:44');
   assert.ok(footerHints(m).join(' · ').indexOf('[ESC] BACK TO SHIP') > 0);
   assert.ok(footerHints(keyPress(m, 'Enter').model).join(' · ').indexOf('[ESC] BACK TO LEDGER') > 0);
-  assert.deepEqual(footerHints(keyPress(m, 'l').model), ['[L] CLOSE LOG', '[ESC] BACK']);
-  assert.deepEqual(footerHints(keyPress(m, 'p').model), ['[ESC] BACK']);
+  // OD-P: no fragment may name a letter key; the two screens are signposted by the words to TYPE.
+  assert.deepEqual(footerHints(submitCommand(m, 'log').model), ['TYPE: LOG <SYSTEM>, HELP', '[ESC] BACK']);
+  assert.deepEqual(footerHints(submitCommand(m, 'prog').model), ['[ESC] BACK']);
+  for (const screen of [m, keyPress(m, 'Enter').model, submitCommand(m, 'log').model, submitCommand(m, 'prog').model]) {
+    for (const hint of footerHints(screen)) {
+      assert.ok(!/^\[[A-Za-z]\]/.test(hint), 'a single-LETTER key hint survived OD-P: ' + hint);
+    }
+  }
 });
 
 test('the view-models never hand out the model\'s own arrays to mutate', () => {
@@ -912,7 +1017,7 @@ test('reducers never mutate their argument (every input deep-frozen)', () => {
   const d = deepFreeze(editPrompt(c, 'open life support'));
   const e = deepFreeze(keyPress(d, 'Enter').model);
   const f = deepFreeze(reduceMossEvent(e, MOSS[0]));
-  const g = deepFreeze(keyPress(f, 'l').model);
+  const g = deepFreeze(submitCommand(f, 'log').model);
   const h = deepFreeze(keyPress(g, 'Escape').model);
   const i = deepFreeze(submitCommand(h, 'status').model);
   const j = deepFreeze(keyPress(deepFreeze(editPrompt(i, 'q')), 'ArrowUp').model);

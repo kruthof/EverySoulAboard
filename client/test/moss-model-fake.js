@@ -117,11 +117,12 @@ export function reduceLog(model, msg) {
 
 // ---- input: the IX-M8 routing table ------------------------------------------------------------
 
-/** Key → [routeWhenPromptEmpty, routeWhenPromptHasText] on the LEDGER screen. */
+/** Key → [routeWhenPromptEmpty, routeWhenPromptHasText] on the LEDGER screen. NO PRINTABLE KEY IS
+ *  IN THIS TABLE (OD-P, 2026-07-31) — the real model's rows for `l`/`p` are deleted, so a letter
+ *  routes `'pass'` and the screens are reached by typing `log` / `prog` (see submitCommand). */
 export const KEY_ROUTE = {
   arrowup: ['nav', 'prompt'], arrowdown: ['nav', 'prompt'],
   enter: ['nav', 'prompt'], escape: ['nav', 'prompt'],
-  l: ['nav', 'pass'], p: ['nav', 'pass'],
   pageup: ['nav', 'nav'], pagedown: ['nav', 'nav'],
   home: ['nav', 'pass'], end: ['nav', 'pass'],
   tab: ['pass', 'pass'],
@@ -135,9 +136,14 @@ export function routeKey(model, key, mods) {
   const row = Object.prototype.hasOwnProperty.call(KEY_ROUTE, k) ? KEY_ROUTE[k] : null;
   if (!row) return 'pass';
   const screen = model ? model.screen : SCREEN.LEDGER;
+  const typed = String(model && model.prompt ? model.prompt : '').length > 0;
   if (screen === SCREEN.PROGRAM) return k === 'escape' ? 'nav' : 'pass';
-  if (screen !== SCREEN.LEDGER) return row[0] === 'prompt' ? 'nav' : row[0];
-  return row[model.prompt.length === 0 ? 0 : 1];
+  if (screen !== SCREEN.LEDGER) {
+    // OD-P: the prompt row renders on DETAIL/FAULTLOG too, so ENTER must submit what is in it.
+    if (k === 'enter' && typed) return 'prompt';
+    return row[0] === 'prompt' ? 'nav' : row[0];
+  }
+  return row[typed ? 1 : 0];
 }
 
 export function keyPress(model, key, mods) {
@@ -180,17 +186,7 @@ function navKey(m, k) {
         detail: { tid: m.selectedId, devices: [], loading: true } },
       effects: [{ k: 'moss', op: 'sys', tid: m.selectedId }], handled: true };
     }
-    case 'l': {
-      if (m.screen === SCREEN.FAULTLOG) return { ...pop(m), handled: true };
-      const filterId = m.screen === SCREEN.DETAIL && m.detail ? m.detail.tid : null;
-      return { model: { ...m, screen: SCREEN.FAULTLOG, stack: m.stack.concat([m.screen]), filterId },
-        effects: [{ k: 'chron' }], handled: true };
-    }
-    case 'p': {
-      const next = { ...m, screen: SCREEN.PROGRAM };
-      if (m.screen !== SCREEN.PROGRAM) next.stack = m.stack.concat([m.screen]);
-      return { model: next, handled: true };
-    }
+    // NO LETTER CASE HERE (OD-P) — `log` / `prog` do this work, out of submitCommand below.
     case 'escape':
       if (m.stack.length) return { ...pop(m), handled: true };
       return { model: m, effects: [{ k: 'exit' }], handled: true };
@@ -219,6 +215,22 @@ export function submitCommand(model, text) {
   const p = parseCommand(raw);
   if (p.verb === 'clear') return { model: { ...m, console: [] }, effects: [] };
   if (p.verb === 'exit') return { model: m, effects: [{ k: 'exit' }] };
+  // OD-P: `log` and `prog` are the ONLY way to these two screens now, so the double has to model
+  // them locally — as the real `navCommand` does — or the screen's own tests could never get there.
+  // Simplified in the same spirit as the rest of this file: no system-id resolution, no filter
+  // argument. A bare `log` INHERITS the current screen's subject, which is what `L` used to do.
+  if (p.verb === 'log') {
+    const base = m.screen === SCREEN.FAULTLOG ? pop(m).model : m;
+    const filterId = base.screen === SCREEN.DETAIL && base.detail ? base.detail.tid
+      : (p.args.length ? normalizeSystemId(p.args.join(' ')) : null);
+    return { model: { ...base, screen: SCREEN.FAULTLOG, stack: base.stack.concat([base.screen]), filterId },
+      effects: [{ k: 'chron' }] };
+  }
+  if (p.verb === 'prog') {
+    const next = { ...m, screen: SCREEN.PROGRAM };
+    if (m.screen !== SCREEN.PROGRAM) next.stack = m.stack.concat([m.screen]);
+    return { model: next, effects: [] };
+  }
   if (!m.linked && (p.kind === 'device' || p.kind === 'read')) {
     return { model: { ...m, console: m.console.concat([{ stream: 2, text: NO_TELEMETRY + ' — COMMAND REFUSED' }]) },
       effects: [] };
@@ -282,10 +294,10 @@ export function headerLines(model) {
 
 export function footerHints(model) {
   switch (model.screen) {
-    case SCREEN.DETAIL: return ['[L] FAULT LOG', '[P] PROGRAMS', '[ESC] BACK TO LEDGER'];
-    case SCREEN.FAULTLOG: return ['[L] CLOSE LOG', '[ESC] BACK'];
+    case SCREEN.DETAIL: return ['TYPE: LOG, PROG, HELP', '[ESC] BACK TO LEDGER'];
+    case SCREEN.FAULTLOG: return ['TYPE: LOG <SYSTEM>, HELP', '[ESC] BACK'];
     case SCREEN.PROGRAM: return ['[ESC] BACK'];
-    default: return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', '[L] FAULT LOG', '[P] PROGRAMS',
+    default: return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, HELP',
       '[ESC] BACK TO SHIP'];
   }
 }
