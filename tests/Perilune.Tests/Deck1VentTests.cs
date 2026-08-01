@@ -51,15 +51,38 @@ namespace Perilune.Tests
     ///     wand is UNREACHABLE, not merely discouraged.</item>
     /// </list>
     ///
-    /// <para>⛔⭐ <b>KNOWN LIMIT, MEASURED IN THIS LANE AND FILED RATHER THAN FIXED: THE REPAIR IS
-    /// NOT SURVIVABLE TODAY.</b> <c>wear.maintenance_work_seconds</c> is 900 s and
-    /// <c>needs.suffocation_per_second_vacuum</c> is 1/90, so a crew member HELD on this service in
-    /// hard vacuum (M3-14 rung 2/4) dies about a tenth of the way through it — and every tile on
-    /// deck 1 is vacuum, so no authoring choice in <see cref="AuthoredShips"/> can put a breathable
-    /// staging tile beside this machine. ⇒ The mechanism, the power and the boot state are real and
-    /// asserted below; the ORDER that drives them is blocked by a general gap (a suit, a shorter
-    /// service, or relayed servicers) that belongs to the owner, not to this file. <b>These tests
-    /// therefore apply the repair as the STATE the sim's own Seals rung leaves</b>
+    /// <para>⛔⭐ <b>KNOWN LIMIT, DRIVEN IN THIS LANE AND FILED RATHER THAN FIXED: THE PLAYER
+    /// CANNOT PERFORM THIS REPAIR YET. TWO BLOCKERS, IN THIS ORDER.</b></para>
+    ///
+    /// <para><b>1. REACHABILITY — and it is SILENT.</b> Every deck-1 hall door boots SHUT and
+    /// OFF-NETWORK, and <see cref="Simulation.IsWalkable"/> refuses a shut door tile, so at boot
+    /// there is NO PATH into <c>hall_d1_s0</c> at all. Measured: <c>door_d1_s0</c> (5,7,1)
+    /// <c>IsOpen=false</c> / <c>IsWalkable=false</c>; <c>FindPath</c> to the tile beside the vent
+    /// FALSE, control path to the deck-1 ladder head TRUE. ⛔ <c>PrioritiseJobCommand</c> ACCEPTS
+    /// the order anyway (<c>TryFindStagingTile</c> tests the staging tile's walkability and air,
+    /// never its REACHABILITY) — <c>JobKind=Maintain</c>, <c>HeldByOrder=true</c> — and the job
+    /// then evaporates in <c>MaintenanceSystem.DriveWorker</c>'s abandon path: 20 000 ticks later
+    /// she is alive on deck 0, <c>JobKind=None</c>, zero work ticks served, vent still 0.06. No
+    /// badge, no dock row, no movement. The player must open <c>door_d1_s0</c> by hand first
+    /// (<c>SetDoorStateCommand</c> has no power gate, so an off-network door still opens).</para>
+    ///
+    /// <para><b>2. SURVIVABILITY — only after the door is open.</b> 900 s of service (9 000 work
+    /// ticks) against <c>needs.suffocation_per_second_vacuum</c> = 1/90. Driven, door first then
+    /// order: she crosses, takes the service and is DEAD at tick 1 341 (~134 sim-seconds), vent
+    /// still 0.06. <c>VacuumOrderLadderTests.Rung4_SheMayDie_AndThatIsTheFeature</c> pins the same
+    /// arithmetic on its own fixture.</para>
+    ///
+    /// <para>⚠️ <b>THE CHARTER'S ACCEPTANCE SCRIPT ORDERS ITS STEPS WRONGLY</b> — the hall door
+    /// must be opened BEFORE the repair order, or step 2 lands in blocker 1's total silence.</para>
+    ///
+    /// <para>⚠️ <b>ONLY ONE HALF IS BEYOND AUTHORING.</b> Survivability is: every deck-1 tile is
+    /// vacuum, so no geometry can put a breathable staging tile beside this machine. Reachability
+    /// is NOT — authoring <c>door_d1_s0</c> open, or exempting its tap, are both choices inside
+    /// <see cref="AuthoredShips"/>, and both are OWNER calls left open (the first moves this ship's
+    /// "no open door faces vacuum at boot" invariant; the second moves the tap census).</para>
+    ///
+    /// <para>⇒ The mechanism, the power and the boot state are real and asserted below. <b>These
+    /// tests therefore apply the repair as the STATE the sim's own Seals rung leaves</b>
     /// (<c>sim.Defs.Wear.SealServiceCondition</c>, read from the defs so a retune moves with it) —
     /// stated plainly rather than dressed up as a drive that cannot happen.</para>
     /// </summary>

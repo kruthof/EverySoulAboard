@@ -45,7 +45,8 @@ namespace Perilune.Tests
 
         // ------------------------------------------------------------- the hand-written pins
 
-        /// <summary>Devices in the store at boot. It MOVED with this package (626 -> 611): the cut
+        /// <summary>Devices in the store at boot. M2-11 moved it 626 -> 611 (this file's original
+        /// subject) and M3-11 moved it 611 -> 612; the CURRENT value is the constant below. M2-11: the cut
         /// deletes the 23 deck-0 tray tiles under deck 1's devices — 8 of them the doorway tiles,
         /// replaced by 8 bulkhead runs beside the doorways — net −15.
         /// ⚠️ AN EARLIER DRAFT OF THIS LINE SAID "deletes the 15 … tiles and adds 8", WHICH IS THE
@@ -164,7 +165,7 @@ namespace Perilune.Tests
 
             // ⚠️ ONE ASSERT, EVERY LEG IN IT (the fifth trap shape). If the hand-written literals
             // threw first, MUTATION 3 — move the demand, leave the comment stale — would report as
-            // "14.30 expected, 15.10 measured" and the comment-vs-code leg, the one this test
+            // "14.80 expected, 15.60 measured" and the comment-vs-code leg, the one this test
             // exists for, would never run at all.
             var offenders = new List<string>();
             var inv = CultureInfo.InvariantCulture;
@@ -203,7 +204,7 @@ namespace Perilune.Tests
         /// ⚠️ AN INCLUSION TEST, NOT A SCAN FOR ABSENCE (the fourth trap shape): the marker must
         /// match EXACTLY ONCE, so deleting or rewording it fails rather than silently
         /// vacuum-passing. Parsed with InvariantCulture — the dev machine is de-DE and
-        /// <c>float.Parse("14.30")</c> under de-DE is 1430.
+        /// <c>float.Parse("14.80")</c> under de-DE is 1480.
         /// ⚠️ IT DOES NOT ASSERT. It files onto the CALLER'S offender list and returns null, so a
         /// missing marker is one line in the caller's single end-of-test assert alongside every
         /// other offender — never a throw that unwinds past legs already collected.

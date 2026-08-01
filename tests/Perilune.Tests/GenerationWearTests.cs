@@ -55,8 +55,11 @@ namespace Perilune.Tests
     ///     reports <b>0.00 kW</b> from three inoperative wings and LIFE SUPPORT SHED at sim-hours
     ///     20, 22 and 24; boot falls to 7.47 kW. This is the negative leg, and it fired</item>
     ///   <item><b>3</b> apply <c>EffectiveRate</c> to <c>draw</c> as well ⇒ RED, 3 of 11 —
-    ///     LifeSupport demand 4.00 kW (pinned 5.70), Industry 3.61 (6.50), and the benches RUN on a
-    ///     wreck with a flat bank</item>
+    ///     LifeSupport demand read 4.00 kW against the then-pinned 5.70, Industry 3.61 (6.50), and
+    ///     the benches RAN on a wreck with a flat bank. ⚠️ <b>A RECORD OF M2-12'S RUN, IN THE PAST
+    ///     TENSE ON PURPOSE:</b> LifeSupport has been 6.20 since M3-11 authored <c>vent_d1</c> onto
+    ///     the trunk, so the figures in this list describe the tree M2-12 was measured on and must
+    ///     not be re-quoted as current</item>
     ///   <item><b>4</b> floor set to <c>Condition</c> instead of <c>0.5 + 0.5·Condition</c> ⇒ RED,
     ///     7 of 11 — three wings at Condition 0.00 feed 0.00 kW where the map says 9.00</item>
     ///   <item><b>5</b> scale generation by 0.8 ⇒ RED, 5 of 11 — 8.52 / 10.78 / 13.92 against
@@ -316,8 +319,8 @@ namespace Perilune.Tests
         /// the wreck is 7.47 kW and <c>wing_c</c> contributes literally nothing, so the first repair
         /// a player makes buys them a cliff instead of a step. Without it, wear is a gradient. The
         /// second leg is the consequence that matters: even three failed wings keep LIFE SUPPORT
-        /// (5.70 kW) and the doors (0.90) served, so a wrecked ship is recoverable rather than
-        /// asphyxiating. Under the gate this fixture reads 0.00 kW and life support is SHED.</para>
+        /// (6.20 kW since M3-11 put `vent_d1` on the trunk; 5.70 before it) and the doors (0.90)
+        /// served, so a wrecked ship is recoverable rather than asphyxiating. Under the gate this fixture reads 0.00 kW and life support is SHED.</para>
         /// <para>The bank is flattened first, deliberately: a battery bursts its whole charge inside
         /// one balance second, so with any charge at all the tier walk says nothing about
         /// generation. The wreck reaches this state unaided by sim-hour 4.</para>
@@ -349,7 +352,7 @@ namespace Perilune.Tests
                 offenders.Add("LIFE SUPPORT IS SHED on a ship whose only fault is three worn wings and a flat " +
                               "bank — the gradient is what keeps a wreck recoverable");
             if (!TierServed(rig.Sim, PowerTier.Defense))
-                offenders.Add("the doors are shed at 9.54 kW against 5.70 + 0.90 kW of demand above them");
+                offenders.Add("the doors are shed at 9.54 kW against 6.20 + 0.90 kW of demand above them");
 
             Assert.That(offenders, Is.Empty,
                 "the repair cliff (8b) is back:\n  " + string.Join("\n  ", offenders));

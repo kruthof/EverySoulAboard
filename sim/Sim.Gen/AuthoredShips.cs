@@ -1744,15 +1744,53 @@ namespace Perilune.Gen
         /// ratified ("order a repair, the lights come back"), here "order a repair, the deck
         /// breathes".</para>
         ///
-        /// <para>⛔ <b>AND THE ORDER IS NOT SURVIVABLE TODAY — MEASURED, FILED, NOT FIXED.</b>
-        /// <c>wear.maintenance_work_seconds</c> is 900 s and
-        /// <c>needs.suffocation_per_second_vacuum</c> is 1/90, so a crew member held on this
-        /// service in hard vacuum dies at about a tenth of the way through it
-        /// (<c>VacuumOrderLadderTests.Rung4_SheMayDie_AndThatIsTheFeature</c> pins that arithmetic
-        /// on its own fixture). Deck 1 is reachable IN PRINCIPLE and not yet IN PRACTICE; closing
-        /// that needs a suit, a shorter service or relayed servicers, and all three are owner
-        /// calls. <b>Nothing in this file can fix it</b> — every tile on deck 1 is vacuum, so
-        /// there is no geometry that puts a breathable staging tile beside this machine.</para>
+        /// <para>⛔ <b>AND THE PLAYER CANNOT ACTUALLY DO IT YET. TWO BLOCKERS, IN THIS ORDER —
+        /// DRIVEN ON THIS TREE, FILED, NOT FIXED.</b></para>
+        ///
+        /// <para><b>BLOCKER 1 — REACHABILITY, AND IT IS COMPLETELY SILENT.</b> Every deck-1 hall
+        /// door boots SHUT (<c>SlotGridPlanner.Carve</c>'s derived rule: an empty hall's door is
+        /// closed) and OFF-NETWORK, and <see cref="Simulation.IsWalkable"/> refuses a shut door
+        /// tile — so at boot <b>there is no path into <c>hall_d1_s0</c> at all</b>. Measured:
+        /// <c>door_d1_s0</c> at (5,7,1) reads <c>IsOpen=false</c>, <c>NetworkId=0</c>,
+        /// <c>IsWalkable=false</c>; <c>FindPath</c> from the pawn to the tile beside the vent is
+        /// FALSE while the control path to the deck-1 spine ladder head is TRUE — so it is the
+        /// DOOR, not the ladder and not the deck. ⛔ <c>PrioritiseJobCommand</c> nevertheless
+        /// <b>ACCEPTS the order</b> — <c>TryFindStagingTile</c> asks whether the staging tile is
+        /// walkable and survivable, never whether it is REACHABLE — giving <c>JobKind=Maintain</c>,
+        /// <c>HeldByOrder=true</c>, target (10,1,1); the job then evaporates in
+        /// <c>MaintenanceSystem.DriveWorker</c>'s abandon path. 20 000 ticks later she is alive on
+        /// deck 0 with <c>JobKind=None</c>, <c>HeldByOrder=false</c>, ZERO work ticks served and
+        /// the vent still at 0.06. <b>No badge, no dock row, she never moves.</b> ⇒ The player must
+        /// first open <c>door_d1_s0</c> by hand: <c>SetDoorStateCommand</c> carries no power gate,
+        /// so it works on an off-network door (measured — the door opens and the path appears).
+        /// </para>
+        ///
+        /// <para><b>BLOCKER 2 — SURVIVABILITY, and only once the door is open.</b>
+        /// <c>wear.maintenance_work_seconds</c> is 900 s (9 000 work ticks) against
+        /// <c>needs.suffocation_per_second_vacuum</c> of 1/90. Driven, door opened FIRST and then
+        /// ordered: she crosses, reaches deck 1, takes the service — and is <b>DEAD at tick
+        /// 1 341</b>, about 134 sim-seconds after the order, against a service that needs 900
+        /// sim-seconds at the machine. The vent is still at 0.06.
+        /// (<c>VacuumOrderLadderTests.Rung4_SheMayDie_AndThatIsTheFeature</c> pins the same
+        /// arithmetic on its own fixture.)</para>
+        ///
+        /// <para>⚠️ <b>THE CHARTER'S ACCEPTANCE SCRIPT HAS ITS STEPS IN THE WRONG ORDER.</b> It
+        /// reads "right-click the vent → Prioritise: repair", then "she crosses". <b>Opening the
+        /// hall door must come FIRST</b>, or the order lands in blocker 1 and nothing observable
+        /// happens at all.</para>
+        ///
+        /// <para>⚠️ <b>WHICH HALF AUTHORING COULD CLOSE, STATED PRECISELY — because the first
+        /// draft of this note wrongly foreclosed both.</b> SURVIVABILITY is NOT an authoring
+        /// problem: every tile on deck 1 is vacuum, so no geometry in this file can put a
+        /// breathable staging tile beside this machine; it needs a suit, a shorter or segmented
+        /// service, or relayed servicers. <b>REACHABILITY, however, IS an authoring choice inside
+        /// this very file</b> — author <c>door_d1_s0</c> OPEN through
+        /// <see cref="SlotGridPlanner.SlotAssign.DoorOpen"/> (the mechanism
+        /// <see cref="WreckLifeSupportAnchor"/> already uses), or exempt its riser tap as well. It
+        /// is deliberately NOT taken here, and it is not free either: this ship's
+        /// <c>EveryAirlessCompartment_BootsBehindAClosedDoor</c> invariant says NO open door faces
+        /// vacuum at boot, and a second exemption moves the tap census the owner has just been
+        /// shown. <b>An OWNER call, left open — not foreclosed.</b></para>
         ///
         /// <para><b>WHY THIS TILE.</b> It stands at <c>(hall.X1, hall.Y0, 1)</c> — <b>directly
         /// above <c>vent_cryo</c></b> at <c>(cryo.X1, cryo.Y0, 0)</c>, the cryo bay's own working
@@ -2364,7 +2402,7 @@ namespace Perilune.Gen
             //     4 CryoPods refused; 626 devices → 616 ON THE PRE-M2-11 TREE, whose deck-0 tray
             //     held 554 tiles against today's 539 — 23 taps gone, 8 bulkhead runs added, net
             //     −15 — so the ten strips are unchanged but do NOT re-quote 626/616 against
-            //     today's 611) DOES lift every wing clear of the floor —
+            //     today's 612) DOES lift every wing clear of the floor —
             //     at the price of `term_moss`, both core scrubbers and both remaining batteries.
             //     ⚠️ THE END CONDITIONS ARE HORIZON- AND TREE-DEPENDENT AND DO NOT REPRODUCE: this
             //     lane measured wing_b/wing_c 0.763 / 0.706 at 3 sim-days pre-rebase; review

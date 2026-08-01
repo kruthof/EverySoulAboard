@@ -1500,7 +1500,7 @@ namespace Perilune.Tests
             // authored charge covers a 13 kW demand with ZERO generation for over an hour. A
             // two-second test therefore measured the batteries, not the wings.
             // 60 000 ticks is ~1.7 sim-hours — past the flat point of this ship's authored charge —
-            // and costs ~2 s of wall clock because one pawn on a 611-device ship is cheap.
+            // and costs ~2 s of wall clock because one pawn on a 612-device ship is cheap.
             var sim = Boot();
             for (int i = 0; i < 60_000; i++) sim.Tick();
 
@@ -1545,20 +1545,36 @@ namespace Perilune.Tests
             // sample of a flickering ship is a coin toss on the phase (20 767 dark passes still
             // ended on a lit one).
             //
-            // ⚠️ THE SECOND ASSERTION IS THE BANK REFILLING, AND IT CATCHES WHAT THE FIRST CANNOT.
+            // ⚠️ THE SECOND ASSERTION IS THE BANK REFILLING, AND IT IS THE SHARPER OF THE TWO.
             // At the true ceiling generation exceeds total demand outright, so the reserve does not
-            // merely survive — it rebuilds: MEASURED, from flat, 0.000 -> 33.907 kWh across these
-            // twelve hours (×0.9 gives 13.356). That is what makes the repair a WIN rather than a
-            // stalemate, and the bench count cannot see it: at ×0.8, generation 13.92 kW still
-            // covers LifeSupport 5.70 + Defense 0.90 + Industry 6.50 = 13.10, so every bench is
-            // legitimately lit and only Comfort sheds — 3/3, honest, GREEN — while the bank ends at
-            // 0.000038 kWh, hovering at empty for ever. The ship can never light a lamp again and
-            // has no reserve for the next thing that breaks.
+            // merely survive — it rebuilds: MEASURED ON THIS TREE, from flat, 0.000722 -> 27.898 kWh
+            // across these twelve hours. That is what makes the repair a WIN rather than a
+            // stalemate: the ship has something left for the next thing that breaks.
+            //
+            // ⭐ ⚠️ RE-MEASURED AT M3-11, AND WHAT MOVED IS THE PARAGRAPH'S CLAIM, NOT ONLY ITS
+            // NUMBERS. It used to read "0.000 -> 33.907 kWh (×0.9 gives 13.356) … at ×0.8,
+            // generation 13.92 kW still covers LifeSupport 5.70 + Defense 0.90 + Industry 6.50 =
+            // 13.10, so every bench is legitimately lit — 3/3, honest, GREEN — while the bank ends
+            // at 0.000038 kWh". M3-11 put `vent_d1` on the deck-0 trunk, so LifeSupport is 6.20 and
+            // the three tiers above Comfort sum to 6.20 + 0.90 + 6.50 = 13.60 — a 0.32 kW margin
+            // under ×0.8's 13.92 where it used to be 0.82. DRIVEN AGAIN, same method as the
+            // original (the generation term in PowerSystem scaled, this floor raised so the value
+            // prints in the failure message, tree restored from an in-memory copy):
+            //     ×1.0   benches 3/3 lit               bank 0.000722 -> 27.898     kWh   PASSES
+            //     ×0.9   benches 3/3 lit               bank 0.000239 ->  7.348     kWh   PASSES
+            //     ×0.8   a bench DARK in 865 of        bank 0.000089 ->  0.000724  kWh   BOTH FIRE
+            //            43 200 balance passes
+            // ⇒ "THE BENCH COUNT CANNOT SEE IT" IS NO LONGER TRUE AT ×0.8 AND IS NOT CLAIMED HERE.
+            // The wings WEAR across the twelve hours, so on a 0.32 kW margin the drifting generation
+            // crosses the Industry line part-way through the run — which is why the bench leg now
+            // fires late and partially (2 % of passes) instead of not at all. The bank leg remains
+            // the sharper instrument, and it is the one that separates "rebuilds its reserve" from
+            // "hovers at empty" cleanly.
             // ⚠️ A FLOOR, NOT A BAND, AND DELIBERATELY SO. This leg's subject is winnability, not
-            // scale; a two-sided band on 33.907 would redden on any unrelated demand change. The
-            // floor sits 34× below the measured value and 26 000× above the ×0.8 mutant, so it
-            // separates "rebuilds its reserve" from "hovers at empty" without pinning either. THE
-            // SCALE GUARD IS ELSEWHERE, two-sided, in GenerationWearTests.
+            // scale; a two-sided band on the rebuilt value would redden on any unrelated demand
+            // change — M3-11 IS exactly such a change and it moved the value 33.907 -> 27.898. The
+            // floor sits 28× below the measured value and 1 381× above the ×0.8 mutant. THE SCALE
+            // GUARD IS ELSEWHERE, two-sided, in GenerationWearTests.
             for (int i = 0; i < devices.Count; i++)
             {
                 var d = devices[i];
@@ -1569,7 +1585,7 @@ namespace Perilune.Tests
             }
 
             // The wired benches are resolved ONCE and held by reference: devices are not recreated,
-            // and re-scanning all 611 of them on each of 43 200 samples is 26 M iterations of pure
+            // and re-scanning all 612 of them on each of 43 200 samples is 26 M iterations of pure
             // waste inside a shared test process. (Not a style note — this method is one of the
             // longest in the suite and it runs beside an exact-zero allocation pin.)
             var benches = new List<Device>();
@@ -1600,14 +1616,14 @@ namespace Perilune.Tests
                                 $"of {(Window / 10).ToString(CultureInfo.InvariantCulture)} balance passes at the " +
                                 "reachable power ceiling — the matter ladder cannot be reached by repairing");
             float bankAtEnd = StoredKWh(sim);
-            const float BankRebuildFloorKWh = 1.0f;   // measured 33.907 here; 0.000038 at ×0.8
+            const float BankRebuildFloorKWh = 1.0f;   // M3-11 tree: 27.898 here, 0.000724 at ×0.8
             if (bankAtEnd < BankRebuildFloorKWh)
                 afterRepair.Add($"the battery bank went {bankAtRepair.ToString("F6", CultureInfo.InvariantCulture)} -> " +
                                 $"{bankAtEnd.ToString("F6", CultureInfo.InvariantCulture)} kWh across twelve sim-hours " +
                                 "at the ceiling, under a floor of " +
                                 BankRebuildFloorKWh.ToString("F2", CultureInfo.InvariantCulture) + " kWh. It must " +
-                                "REBUILD (measured: 27.898 on the M3-11 tree; 33.907 before it): generation there is " +
-                                "17.40 kW against 14.80 kW of TOTAL " +
+                                "REBUILD (measured: 27.898 on this tree; 33.907 before M3-11): generation there " +
+                                "is 17.40 kW against 14.80 kW of TOTAL " +
                                 "demand. A ship whose benches run while its reserve sits at empty is break-even at " +
                                 "the Industry line — it can never light a lamp again and has nothing left for the " +
                                 "next failure, and the bench count alone cannot tell you that");
