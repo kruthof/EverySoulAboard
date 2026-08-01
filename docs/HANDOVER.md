@@ -23,40 +23,27 @@ device-free 4-neighbour (+X,−X,+Y,−Y) + `CitizenThawedEvent`. Emergency-thaw
 (SYSS, folded, round-tripped, zero non-test writers) — M3-5 writes it. `SaveWriter`/
 `SaveReader` needed NO change (SYSS is generic over `IStatefulSystem`). MECHANICS §13.29.
 
-Merged this session, in order (each: Opus implementer + separate independent reviewer):
+Merged this session, in order (each: Opus implementer + separate independent reviewer;
+FULL RECORDS in the §3 queue rows of `perilune-m3.packages.md` — this is the index):
 - **M3-6 pod census + rungs** (`a6ce8d3`, APPROVE first pass) — the thaw ladder is
-  AUTHORED: `ThawGate.RungOf(Condition)`, rungs 1–7 (1×Seals → 3×CM, depth 0,0,2,2,3,3,3),
-  lower edges INCLUSIVE (`>=`, pinned 0.90 → rung 2); hand-written literals; NOTHING
-  consumes it until M3-3 (MECHANICS §13.28); **band-edge behavioural sweep OWED to M3-3
-  mutation 6(b) by name**. Stale 8/1/5/2 census swept from four docs.
-- **M3-11 deck-1 vent** (`8d206ca`, one send-back — record defects, fixed+re-verified) —
-  `vent_d1` at (10,1,1) above the cryo vent's riser (the ONE exemption; CUT 23 · EXEMPT 1
-  · ADDED 8, stated separately); deck 1 boots 0.000 kPa everywhere; a repair fills the
-  hall past 80 kPa and staging flips true. Re-derived: devices 611→**612**, flat demand
-  14.30→**14.80 kW** (LS tier 5.70→6.20), off-network still 23 but no longer = deck 1.
-  **BOTH delivery blockers filed, in order**: (1) REACHABILITY — the order is accepted
-  then silently dropped (every deck-1 door boots shut; `TryFindStagingTile` checks the
-  staging tile's walkability, never its reachability); (2) SURVIVABILITY — after opening
-  the door by hand she dies ~1/10 into the 900 s service (~90 s of vacuum air, no
-  cross-attempt accumulation). M3-6's handoff landed (the `WreckPods` `<summary>` census
-  scan gap is closed, asymmetry reproduced).
-- **OD-N + OD-O charter lane** (`505cf3e`, docs-only, one send-back — trap 8 in its own
-  words: five anchors moved under a mid-lane merge of main). **OD-N** (owner-direct):
-  doors AND vents answer only to MOSS; the OPERATE click verb dies; the server IS
-  `term_moss`; **SPLIT GATE — repaired (≥ MaintainBelow 0.20, NOT fail 0.02 which is
-  already true at boot) ⇒ console (manual actuation); commissioned (1×CM, OD-M 1A
-  unchanged) ⇒ programs/pod bay**. The split was chosen after the measured deadlock (0 CM
-  aboard; chain behind shut doors; 14/16 doors boot shut; benches + `vent_ls` unreachable).
-  Measured en route: **the MOSS console is gated by NOTHING today** — `open door_d0_s1`
-  works at tick 0. **OD-O** (owner-direct): the deck-1 vent becomes the game's first
-  PROGRAMMING PUZZLE — `vent_d1` re-authored mechanically fine but CONTROL BOARD DEAD
-  (`CONTROLLER FAULT`), workaround = `every 1s: set(vent_d1.rate, max)` (all verbs exist;
-  `when` is edge-latched and IS the natural wrong answer); program-only; **explicitly NOT
-  a pattern — an authorable story tool, exactly ONE instance in M3**. M3-11's
-  survivability blocker DISSOLVES for this vent. Chartered: **M3-15 pos 6b (integrator
-  lane, spine), M3-16 pos 8b** (fault = bit 12 of the device state word, fold-neutral
-  while false, own DEVC bump; `pin/m3-a` only as measured fallback). The puzzle is SPLIT
-  ACROSS THE GATE deliberately: diagnose+probe at console tier, the fix needs commission.
+  AUTHORED (`ThawGate.RungOf`, rungs 1–7, MECHANICS §13.28); NOTHING consumes it until
+  M3-3; **band-edge behavioural sweep OWED to M3-3 mutation 6(b) by name**.
+- **M3-11 deck-1 vent** (`8d206ca`, 1 send-back) — `vent_d1` above the cryo riser (ONE
+  exemption; CUT 23 · EXEMPT 1 · ADDED 8); deck 1 boots 0.000 kPa; a repair fills the
+  hall past 80 kPa. Devices 611→612, demand 14.30→**14.80 kW** (LS tier 6.20). **BOTH
+  delivery blockers filed in order**: (1) REACHABILITY — order accepted then silently
+  dropped (`TryFindStagingTile` never asks reachability); (2) SURVIVABILITY — 900 s
+  service vs ~90 s vacuum air, no accumulation.
+- **OD-N + OD-O recorded, M3-15 (6b) + M3-16 (8b) chartered** (`505cf3e`, docs-only,
+  1 send-back). OD-N: doors AND vents MOSS-only; server = `term_moss`; **SPLIT GATE —
+  repaired (≥ MaintainBelow 0.20) ⇒ console/manual actuation; commissioned (1×CM) ⇒
+  programs/pod bay** — chosen after the measured deadlock (0 CM aboard, chain behind
+  14/16 shut doors); measured: **the console is gated by NOTHING today**. OD-O: `vent_d1`
+  = the first PROGRAMMING PUZZLE (mechanically fine, CONTROL BOARD DEAD, workaround
+  `every 1s: set(vent_d1.rate, max)`; **NOT a pattern — ONE authored instance**); its
+  survivability blocker dissolves. Owner vision line: **"MOSS should be the OS of the
+  ship."** The puzzle is deliberately SPLIT ACROSS THE GATE (diagnose at console tier,
+  the fix needs commission).
 
 ## Integrator decisions this session (review these)
 
