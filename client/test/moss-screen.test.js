@@ -65,6 +65,20 @@ function openWithSystems() {
   return s;
 }
 
+/**
+ * Reach a screen the way a player now has to (OD-P, 2026-07-31): TYPE the command and press Enter.
+ * `L` and `P` are deleted, so every navigation below that used to be one keystroke is a typed line
+ * — which is the point of the ruling, and driving it through `inputEl` + a real Enter keydown keeps
+ * these tests exercising the DOM path (input event → editPrompt → routing → submit) end to end.
+ * @param {object} s @param {string} text
+ */
+function typeCmd(s, text) {
+  const input = s.screen.inputEl;
+  input.value = text;
+  fire(input, 'input');
+  s.screen.handleKey(keyEvent('Enter', { target: input }));
+}
+
 const rowsOf = (root) => root.byClass('moss-row');
 const lineOf = (rowEl) => rowEl.textContent;
 
@@ -270,20 +284,50 @@ test('IX-M2: Escape is the ONE key MOSS lets through — the shared stack decide
   assert.equal(s.screen.isOpen(), false);
 });
 
-test('IX-M8: `L` opens the FAULT LOG on an empty buffer and is a plain letter once typing has begun', () => {
+test('OD-P: `l` and `p` are TYPED on an empty buffer — the screens are reached by a typed command', () => {
+  // The owner's report: *"I do not like these shortcuts like 'L' or 'P' … as soon as we press l,
+  // the log opens."* MOSS is the ship's OS, so the console is a real terminal. This is the DOM half
+  // of the contract: the key is not swallowed, `editable` applies the browser default the handler
+  // left alone, and the character is in the input AND in the model buffer.
   const s = openWithSystems();
-  const e1 = keyEvent('l');
-  s.screen.handleKey(e1);
-  assert.equal(s.screen.model.screen, 'faultlog');
-  assert.equal(e1.defaultPrevented, true, 'the navigation key is swallowed, not typed');
+  const input = s.screen.inputEl;
+  for (const ch of ['l', 'p']) {
+    // ⚠️ EACH LETTER IS TRIED ON AN EMPTY BUFFER, and the first version of this test was not.
+    // Typing `l` then `p` proves nothing about `p`: the typed-buffer column was ALWAYS `pass`, so
+    // the second letter passes even with its hotkey fully restored. MEASURED — the named mutation
+    // "restore P only" left this test GREEN until the buffer was cleared between the two.
+    input.value = '';
+    fire(input, 'input');
+    assert.equal(s.screen.model.prompt, '', 'precondition: the buffer is empty for ' + ch);
 
+    const e = keyEvent(ch, { target: input });
+    s.screen.handleKey(e);
+    assert.equal(e.defaultPrevented, false, ch + ' must reach the input, not be swallowed');
+    editable(input, e);
+    fire(input, 'input');
+    assert.equal(input.value, ch, ch + ' was typed into the command line');
+    assert.equal(s.screen.model.prompt, ch, 'and the model buffer followed');
+    assert.equal(s.screen.model.screen, 'ledger', ch + ' opened a screen');
+    assert.equal(s.root.oneClass('moss-echo').textContent, ch, 'and the echo shows it');
+  }
+
+  // …and the typed command is what navigates. `log` + Enter opens the FAULT LOG.
   s.screen.escape();
+  typeCmd(s, 'log');
+  assert.equal(s.screen.model.screen, 'faultlog', '`log` + ENTER opens the FAULT LOG');
+  s.screen.escape();
+  typeCmd(s, 'prog');
+  assert.equal(s.screen.model.screen, 'program', '`prog` + ENTER opens PROGRAM');
+});
+
+test('OD-P: `l` mid-command is still just a character (the old typed-buffer leg, unchanged)', () => {
+  const s = openWithSystems();
   s.screen.inputEl.value = 'open ';
   fire(s.screen.inputEl, 'input');
-  const e2 = keyEvent('l');
-  s.screen.handleKey(e2);
+  const e = keyEvent('l');
+  s.screen.handleKey(e);
   assert.equal(s.screen.model.screen, 'ledger', 'mid-command, L is a character not a hotkey');
-  assert.equal(e2.defaultPrevented, false, 'so the input must be allowed to receive it');
+  assert.equal(e.defaultPrevented, false, 'so the input must be allowed to receive it');
 });
 
 test('IX-M8: `handled` — not "did anything change" — decides whether the key is swallowed', () => {
@@ -631,9 +675,12 @@ test('VS-M7: footer hints are per-screen bracket keys, joined with ` · `', () =
   assert.ok(s.screen.footEl.textContent.includes('[ESC] BACK TO SHIP'));
   assert.ok(s.screen.footEl.textContent.includes(' · '), 'the DOM joins the model\'s fragments');
   const ledgerHints = s.screen.footEl.textContent;
-  s.screen.handleKey(keyEvent('l'));
+  typeCmd(s, 'log');
   assert.notEqual(s.screen.footEl.textContent, ledgerHints, 'the FAULT LOG has its own hints');
   assert.ok(s.screen.footEl.textContent.includes('[ESC]'));
+  // OD-P: no hint may advertise a single LETTER key again — the screens are typed commands now.
+  assert.ok(!/\[[A-Za-z]\]/.test(ledgerHints), 'a single-letter key hint survives on the LEDGER');
+  assert.ok(!/\[[A-Za-z]\]/.test(s.screen.footEl.textContent), 'and one on the FAULT LOG');
 });
 
 // ---------------- IX-M13: the honest empty state ----------------
@@ -740,10 +787,10 @@ test('IX-M22: the DERIVATION is the host\'s, carried by the model — and NOTHIN
 
 // ---------------- IX-M5 / §5.1: FAULT LOG ----------------
 
-test('IX-M5: L opens the FAULT LOG; from DETAIL it is filtered to that system', () => {
+test('IX-M5: `log` opens the FAULT LOG; from DETAIL it is filtered to that system', () => {
   const s = openWithSystems();
   s.screen.onChron(msgOf('chron'));
-  s.screen.handleKey(keyEvent('l'));
+  typeCmd(s, 'log');
   assert.equal(s.screen.model.screen, 'faultlog');
   assert.equal(s.screen.model.filterId, null, 'from the LEDGER it opens unfiltered (null, not "")');
   // the fixture's chronicle carries 2 headlines + 3 lines, all day-stamped, newest first
@@ -754,9 +801,9 @@ test('IX-M5: L opens the FAULT LOG; from DETAIL it is filtered to that system', 
   assert.ok(s.root.oneClass('moss-note').textContent.includes('NOT THE CURRENT PROBLEM'),
     '§5.1: the column must not imply a live diagnosis');
 
-  s.screen.handleKey(keyEvent('l')); // back
+  s.screen.escape(); // back — ESC is the close verb now that `L` no longer toggles
   s.screen.handleKey(keyEvent('Enter')); // DETAIL for reactor
-  s.screen.handleKey(keyEvent('l'));
+  typeCmd(s, 'log');                     // typed ON DETAIL: the line must submit from there too
   assert.equal(s.screen.model.filterId, 'reactor', 'from DETAIL it is filtered to that system');
   // the model's own title already names the system — the DOM must not print it a second time
   const head = s.root.oneClass('moss-subhead').textContent;
@@ -766,16 +813,16 @@ test('IX-M5: L opens the FAULT LOG; from DETAIL it is filtered to that system', 
 
 test('an empty fault log says so rather than rendering a blank pane', () => {
   const s = openWithSystems();
-  s.screen.handleKey(keyEvent('l'));
+  typeCmd(s, 'log');
   assert.ok(s.root.oneClass('moss-empty').textContent.includes('NO ATTRIBUTABLE FAULTS'));
 });
 
 // ---------------- IX-M6: PROGRAM (the shell + directory; the IDE is the follow-up lane) ----------
 
-test('IX-M6: P opens the PROGRAM directory; selecting a terminal requests its source', () => {
+test('IX-M6: `prog` opens the PROGRAM directory; selecting a terminal requests its source', () => {
   const s = openWithSystems();
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }, { tid: 'aft', deck: 1 }]);
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   assert.equal(s.screen.model.screen, 'program');
   const rows = s.root.byClass('moss-prog-row');
   assert.equal(rows.length, 2);
@@ -794,7 +841,7 @@ test('IX-M6: attachProgramEditor swaps in a supplied editor, mounted with the se
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }]);
   const mounted = [];
   s.screen.attachProgramEditor({ mount: (el, tid) => { mounted.push(tid); el.textContent = 'IDE ' + tid; } });
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   s.screen.selectProgram('bridge');
   assert.deepEqual(mounted.slice(-1), ['bridge']);
   assert.ok(s.root.oneClass('moss-prog-editor').textContent.includes('IDE bridge'));
@@ -841,7 +888,7 @@ function focusProbe(s, named) {
 test('M3-17/A: a render on the PROGRAM screen does not blur the editor (wire message or key)', () => {
   const s = openWithSystems();
   s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }, { tid: 'term_nav', deck: 1 }]);
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   s.screen.selectProgram('term_moss');
   const code = s.root.oneClass('moss-prog-code');
   assert.ok(code, 'precondition: the IDE textarea is mounted');
@@ -878,7 +925,7 @@ test('M3-17/A: the STRUCTURAL pin — render never moves programMount and never 
   // event that matters, and covers both spellings.
   const s = openWithSystems();
   s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }]);
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   s.screen.selectProgram('term_moss');
   const mount = s.screen.programMount;
   const mountParent = mount.parentNode;
@@ -911,7 +958,7 @@ test('M3-17/A: PROGRAM → ESC → LEDGER → P returns to the SAME editor, and 
   // the blur is back — with every other test still green, because they never leave the screen.
   const s = openWithSystems();
   s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }, { tid: 'term_nav', deck: 1 }]);
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   s.screen.selectProgram('term_nav');
   const wrap = s.screen.programWrap;
   const mount = s.screen.programMount;
@@ -923,7 +970,7 @@ test('M3-17/A: PROGRAM → ESC → LEDGER → P returns to the SAME editor, and 
   assert.equal(s.screen.model.screen, 'ledger');
   assert.equal(s.root.oneClass('moss-prog-code'), null, 'the editor really did leave the document');
 
-  s.screen.handleKey(keyEvent('p'));                     // …and back
+  typeCmd(s, 'prog');                                    // …and back
   const at = focusProbe(s, [[code, 'editor']]);
   assert.ok(s.screen.programWrap === wrap, 'the PROGRAM wrap is the same object, not a rebuild');
   assert.ok(s.screen.programMount === mount, 'and so is the mount');
@@ -963,15 +1010,26 @@ test('M3-17/B: a printable key with focus anywhere else lands in the prompt; hot
   elsewhere.focus();
   assert.equal(at(), 'button', 'precondition: the prompt does NOT have focus');
 
-  // 1. a hotkey on an empty buffer is still a hotkey (IX-M8's table is untouched)
-  const hot = keyEvent('l', { target: elsewhere });
+  // 1. a key the TABLE still routes is still a hotkey (IX-M8's table remains the authority).
+  //    ⚠️ The subject used to be `l`, and OD-P made it a plain character — so this leg had to move
+  //    to a key that is genuinely still routed, or it would assert "a declined key does not pull
+  //    focus" while claiming to assert the opposite (leg 2's job, done twice, and leg 1 dead).
+  const hot = keyEvent('ArrowDown', { target: elsewhere });
   s.screen.handleKey(hot);
-  assert.equal(s.screen.model.screen, 'faultlog', 'L still opens the FAULT LOG');
+  assert.equal(s.screen.model.selectedId, 'life_support', '↓ still moves the ledger cursor');
   assert.equal(hot.defaultPrevented, true, 'and is swallowed, not typed');
   assert.equal(at(), 'button',
     'a key the MODEL took must not also pull focus into the prompt — rule 5 fires only on a '
     + 'DECLINED key, or it would be a second authority over IX-M8\'s table');
-  s.screen.escape();
+
+  // 1b. …and the letter that used to sit here is now the OTHER case: declined, focus pulled in.
+  const letter = keyEvent('l', { target: elsewhere });
+  s.screen.handleKey(letter);
+  assert.equal(letter.defaultPrevented, false, 'OD-P: `l` is a character, so it must not be eaten');
+  assert.equal(s.screen.model.screen, 'ledger', 'and it must not have opened the FAULT LOG');
+  assert.equal(at(), 'prompt', 'rule 5 delivered it to the command line');
+  // (no ESC back here: neither leg left the LEDGER, and ESC on the LEDGER with an empty stack EXITS
+  // MOSS — after which `handleKey` returns early and every leg below passes vacuously.)
 
   // 2. a DECLINED printable key moves focus to the prompt and is NOT swallowed, which is the pair
   //    that makes the browser insert it there. `editable` applies that default action explicitly.
@@ -1052,7 +1110,7 @@ test('M3-17/B: an ordinary LEDGER render leaves the prompt focused', () => {
 
 test('PROGRAM with no terminals aboard says so', () => {
   const s = openWithSystems();
-  s.screen.handleKey(keyEvent('p'));
+  typeCmd(s, 'prog');
   assert.ok(s.root.oneClass('moss-empty').textContent.includes('NO MOSS TERMINALS ABOARD'));
 });
 

@@ -225,7 +225,7 @@ export function reduceChron(model, msg);             // `chron` channel → the 
 export function reduceLog(model, msg);               // `log` channel tail → FAULT LOG live section
 
 // ---- input (pure state machines; return {model, effects}) ----
-export function keyPress(model, key, mods);          // ArrowUp/Down, Enter, l/L, Escape, Tab, PageUp/Down
+export function keyPress(model, key, mods);          // ArrowUp/Down, Enter, Escape, Tab, PageUp/Down, Home/End
 export function editPrompt(model, text);             // → model (prompt buffer only)
 export function submitCommand(model, text);          // → {model, effects}
 export function parseCommand(text);                  // → {verb, args, raw, kind}  ('nav' | 'device' | 'read' | 'bad')
@@ -261,6 +261,14 @@ copy of every derivation's prose, and it lives next to the code that computes th
 **M-PURITY** — `moss-model.js` must contain no `document`, no `window`, no `fetch`, no
 `Date.now()`/`new Date()`, no `Math.random()`. A node test asserts this by source scan, and the
 lane may not weaken it.
+
+> **Amended 2026-07-31 by `moss-hotkeys` (OD-P).** The `keyPress` comment above enumerated `l/L`
+> among the keys the model sees. That is no longer true and the SIGNATURE is unchanged — this is a
+> comment fix, recorded because §2 is the block a future lane copies its stub from, and a stale
+> enumeration there is how a deleted binding gets quietly re-added. **No printable character is
+> passed to the model as a navigation key**; `keyPress` sees them, routes them `'pass'`, and reports
+> `handled:false` so the DOM lets them type. See the OD-P note under §3's table for the ruling and
+> the ENTER rule it adds off the LEDGER.
 
 ### 2.1 What the DOM lane consumes (reconciled 2026-07-22 against `lane/moss-model` `b17d451`)
 
@@ -309,16 +317,34 @@ another lane's file mid-flight.
 | **IX-M2** | **ESC is the way out** and it is a stack, innermost first: PROGRAM → DETAIL/FAULTLOG → LEDGER → ship view (`setTab('build')`). ESC while the prompt has text clears the prompt first. This extends the existing pure `escapeTarget` rung in `console-model.js` (interaction-spec IX-13, relations-spec IX-R10); the ordering armed tool → dialogue → MOSS-stack → relations-exit → nothing is invariant. |
 | **IX-M3** | `↑`/`↓` move the ledger selection, clamped at both ends (no wrap — a wrapping list in a diagnostic table is a misread waiting to happen). `PageUp`/`PageDown`/`Home`/`End` jump. The selected row is the one whose `advisory` renders below the rule. |
 | **IX-M4** | `ENTER` on a ledger row opens SYSTEM DETAIL for that row and emits `{k:'moss',op:'sys',tid:id}`. DETAIL shows a spinner-free honest `LOADING…` line until the reply arrives (never a fabricated table). |
-| **IX-M5** | `L` opens the FAULT LOG. From LEDGER it opens unfiltered; from DETAIL it opens filtered to that system (`filterId`). `L` again, or ESC, returns. |
-| **IX-M6** | `P` opens the PROGRAM screen: the terminal directory from the existing `terminals` channel, and on selection the MOSS IDE for that terminal. (The `moss-programs` lane implements the IDE half; the shell, the key and the directory ship with `moss-screen`.) |
+| **IX-M5** | `LOG` opens the FAULT LOG. From LEDGER it opens unfiltered; from DETAIL it opens filtered to that system (`filterId`); `LOG <system>` names the filter explicitly. ESC returns. **Amended 2026-07-31 (OD-P) — see the note below this table:** the verb was the `L` key, which is deleted; a bare `LOG` inherits the current screen's subject, which is the whole of what `L` did, and ESC is now the only close (a command is not a toggle). |
+| **IX-M6** | `PROG` opens the PROGRAM screen: the terminal directory from the existing `terminals` channel, and on selection the MOSS IDE for that terminal. `PROG <terminal>` opens straight into one terminal's source. (The `moss-programs` lane implements the IDE half; the shell, the command and the directory ship with `moss-screen`.) **Amended 2026-07-31 (OD-P):** the verb was the `P` key, which is deleted. |
 | **IX-M7** | Rows are also **clickable**, and a click selects without activating; a double-click activates (= `ENTER`). Keyboard-first does not mean mouse-hostile. Hit targets span the full row width, as the mock's selection band does. |
-| **IX-M8** | The `>` prompt is **always focused by default** on the LEDGER screen: typing anywhere goes to it without clicking. Navigation keys (`↑`/`↓`/`ENTER`/`L`/`P`/`ESC`) are intercepted **before** the prompt only while the prompt buffer is **empty** — once the player has typed a character, `↑`/`↓` are command history and `ENTER` submits. This is the one genuinely fiddly rule in the spec; it must be a table in `moss-model.js` and node-tested in both buffer states. **Clarified 2026-07-22** (the enumerated set above is `↑ ↓ ENTER L P ESC`, but IX-M3 gives `PageUp`/`PageDown`/`Home`/`End` a ledger meaning too, so the two rules were ambiguous together): `PageUp`/`PageDown` stay **navigation in both buffer states**, because they cannot type a character and mean nothing in a one-line input; `Home`/`End` are navigation only while the buffer is empty and otherwise belong to the text cursor. A held `Ctrl`/`Alt`/`Meta` always passes the key to the browser (`Ctrl-L` is not ours); `Shift` alone does not change routing. |
+| **IX-M8** | The `>` prompt is **always focused by default** on the LEDGER screen: typing anywhere goes to it without clicking. Navigation keys (`↑`/`↓`/`ENTER`/`L`/`P`/`ESC`) are intercepted **before** the prompt only while the prompt buffer is **empty** — once the player has typed a character, `↑`/`↓` are command history and `ENTER` submits. This is the one genuinely fiddly rule in the spec; it must be a table in `moss-model.js` and node-tested in both buffer states. **Clarified 2026-07-22** (the enumerated set above is `↑ ↓ ENTER L P ESC`, but IX-M3 gives `PageUp`/`PageDown`/`Home`/`End` a ledger meaning too, so the two rules were ambiguous together): `PageUp`/`PageDown` stay **navigation in both buffer states**, because they cannot type a character and mean nothing in a one-line input; `Home`/`End` are navigation only while the buffer is empty and otherwise belong to the text cursor. A held `Ctrl`/`Alt`/`Meta` always passes the key to the browser (`Ctrl-L` is not ours); `Shift` alone does not change routing. **Amended 2026-07-31 (OD-P) — see the note below this table:** `L` and `P` are **struck from the intercepted set**, which is now `↑ ↓ ENTER ESC PageUp PageDown Home End` — no printable character is routed in either buffer state. One rule is added: `ENTER` on a **non-empty** buffer submits on **every screen that shows the prompt** (LEDGER, DETAIL, FAULTLOG), because a letter typed there now lands in that buffer and the line must be sendable; PROGRAM is unchanged (its IDE owns the keys). |
 | **IX-M9** | Prompt history: `↑`/`↓` on a non-empty buffer walk previously submitted lines (bounded, newest first). Submitting appends. Duplicate consecutive lines collapse. |
 | **IX-M10** | Commands: `HELP` · `STATUS` · `OPEN <system>` · `LOG [system]` · `PROG [terminal]` · `CLEAR` · `EXIT`, plus device verbs per IX-M40 and bare property reads (`ship.power`). Verbs and system names are **case-insensitive and space-tolerant** (`open life support` == `OPEN life_support`). An unknown verb answers with the one-line `HELP` pointer, never a stack trace. |
 | **IX-M11** | Typing in the MOSS prompt must not fire game shortcuts. The existing guard-first `isTextEntryTarget` rule (interaction-spec) covers this; MOSS's own keys are handled inside the MOSS view only. |
 | **IX-M12** | The screen re-renders on every `systems` message, but **selection is preserved by row `id`**, never by index — a row set that changes length must not move the cursor under the player's hand. |
 | **IX-M13** | Disconnected/stale: if no `systems` message has arrived, the ledger shows `NO TELEMETRY — LINK DOWN` and the prompt refuses device writes with a typed error. It never shows an empty table that reads as "all systems nominal". |
 | **IX-M22** | DETAIL renders, under the device table, a plain-prose **DERIVATION** note stating exactly how this row's LOAD and STATE are computed and what the proxy's limits are (DA-M3). This text is part of the feature, not a comment. |
+
+> **Amended 2026-07-31 by `moss-hotkeys`, on an owner decision (OD-P).** The single-letter screen
+> keys `L` (FAULT LOG) and `P` (PROGRAM) are **deleted**, and no printable character may be bound
+> again. Verbatim: *"I do not like these shortcuts like 'L' or 'P' — we need to expand the MOSS OS
+> and part might be 'ls' command later, to read directories.. but as soon as we press l, the log
+> opens."* With MOSS as the ship's OS (OD-N), **the console is a real terminal: a printable
+> character always types into the prompt, and every screen is reached by a typed command** — the
+> `LOG` / `PROG` / `OPEN` / `STATUS` / `CLEAR` / `EXIT` vocabulary IX-M10 already defines and
+> `GameSession.ConsoleHelp` already advertises. Only keys a terminal also owns (`ENTER`, `ESC`,
+> arrows, `PageUp`/`PageDown`, `Home`/`End`, `TAB`) navigate. This touches IX-M5, IX-M6, IX-M8 and
+> VS-M7 above; §2's frozen model signatures are unchanged — `KEY_ROUTE` lost two rows of DATA.
+>
+> Two consequences worth stating, because a weaker replacement would have been the easy mistake:
+> a bare `LOG` **inherits the current screen's subject**, so the DETAIL-filtered log `L` used to
+> open is still one word; and `ENTER` now submits on DETAIL/FAULTLOG when the buffer is non-empty,
+> without which the prompt on those screens would visibly accept a command and silently drop it.
+> Pinned by `client/test/moss-model.test.js` (the four `OD-P:` tests, incl. a class-wide guard that
+> no single-character key is in `KEY_ROUTE`) and `client/test/moss-screen.test.js`.
 
 ---
 
@@ -335,7 +361,7 @@ VS-R5 is the precedent).
 | **VS-M4** | **The load bar** is text, not a DOM widget: `[` + filled cells + stipple cells + `]`, monospace, so it aligns with everything else. The filled run uses solid blocks; the remainder uses a stipple/checker glyph at reduced opacity (the mock's dotted tail). Bar width is fixed at 8 cells. A `-1` load renders `[` + 8 spaces + `]` and `--`. |
 | **VS-M5** | **CRT treatment, restrained**: a fine horizontal scanline overlay, a soft vignette, and a subtle text glow. It must remain legible — the treatment is a *skin over correct text*, and if any of it costs readability it goes. It is a single overlay element with `pointer-events:none`, never a per-character effect. |
 | **VS-M6** | **Header**: two lines — `MOSS ▮ MODULAR OPERATIONS & SYSTEMS SUPERVISOR — REV 4.2.1` and `PERILUNE HULL {hull} · DAY {day} · UPTIME {uptime}` — then a full-width horizontal rule. A matching rule closes the table above the advisory block. |
-| **VS-M7** | **Footer hints** sit at the bottom in dim amber, bracket-key style, per-screen: `[↑↓] SELECT ROW · [ENTER] SYSTEM DETAIL · [L] FAULT LOG · [ESC] BACK TO SHIP`. |
+| **VS-M7** | **Footer hints** sit at the bottom in dim amber, per-screen: `[↑↓] SELECT ROW · [ENTER] SYSTEM DETAIL · TYPE: LOG, PROG, HELP · [ESC] BACK TO SHIP`. A bracket is a **key**; a `TYPE:` fragment is a **command line**. **Amended 2026-07-31 (OD-P):** the `[L] FAULT LOG` / `[P] PROGRAMS` hints named keys that no longer exist; the two screens keep their signpost as the words to type. No hint may name a single-letter key again. |
 | **VS-M8** | **`⚠`** trails `ATTEND` and `DEGRADED` only. `NOMINAL` and `OFFLINE` carry no glyph. `OFFLINE` renders in dim amber, not warning colour — it is an absence, not an alarm. |
 | **VS-M9** | **Responsive floor**: the layout holds down to 1024px wide by reducing padding, and the `LAST FAULT` column truncates with an ellipsis before any other column gives ground. Below that the fault column drops entirely. The table never horizontally scrolls the page. |
 | **VS-M10** | **Reduced motion**: the cursor blink and any scanline drift respect `prefers-reduced-motion`. The block cursor becomes a steady block. |

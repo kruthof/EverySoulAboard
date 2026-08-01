@@ -326,10 +326,20 @@ export function reduceLog(model, msg) {
  * | ArrowUp/Down | nav — move selection  | prompt — walk command history (IX-M9)    |
  * | Enter        | nav — open DETAIL     | prompt — submit the line                 |
  * | Escape       | nav — pop the stack   | prompt — clear the buffer FIRST (IX-M2)  |
- * | L / P        | nav — FAULTLOG / PROG | pass — they are ordinary letters now     |
  * | PageUp/Down  | nav — jump            | nav — meaningless in a one-line input    |
  * | Home/End     | nav — jump            | pass — real text-cursor keys             |
  * | Tab          | pass                  | pass — deliberately unbound (see below)  |
+ *
+ * ⚠️ **NO PRINTABLE CHARACTER IS IN THIS TABLE, AND NONE MAY BE ADDED (OD-P, 2026-07-31).** `L`
+ * (FAULT LOG) and `P` (PROGRAM) used to hold the two rows above `PageUp`; the owner deleted them:
+ * *"I do not like these shortcuts like 'L' or 'P' — we need to expand the MOSS OS and part might be
+ * 'ls' command later, to read directories.. but as soon as we press l, the log opens."* MOSS is the
+ * ship's OS (OD-N), so the console is a REAL TERMINAL: **a printable character always types into
+ * the prompt, and every screen is reached by a typed command** — `log`, `prog`, `open`, `status`,
+ * `clear`, `exit` (`submitCommand`/`navCommand` below; the host advertises the same set in
+ * `GameSession.ConsoleHelp`). Only non-printable keys — the ones a terminal also owns — navigate.
+ * An unlisted key routes `'pass'`, so a letter needs no row here to reach the prompt; adding one
+ * would silently steal a character back off the command line.
  *
  * `pass` means "the model did not take this key; let the character reach the prompt". Tab is
  * unbound in v1: spec §2 lists it among the keys `keyPress` sees but never says what it does, and
@@ -340,8 +350,6 @@ export const KEY_ROUTE = {
   arrowdown: ['nav', 'prompt'],
   enter: ['nav', 'prompt'],
   escape: ['nav', 'prompt'],
-  l: ['nav', 'pass'],
-  p: ['nav', 'pass'],
   pageup: ['nav', 'nav'],
   pagedown: ['nav', 'nav'],
   home: ['nav', 'pass'],
@@ -350,7 +358,9 @@ export const KEY_ROUTE = {
 };
 
 /** True when a modifier that belongs to the browser or the OS is held (accepts both the DOM
- *  event's `ctrlKey…` spelling and a plain `ctrl…`). Ctrl-L stays the browser's, not ours. */
+ *  event's `ctrlKey…` spelling and a plain `ctrl…`). Ctrl-Home scrolls the page, Ctrl-Enter is
+ *  the browser's — a chord over a LISTED key is still handed back, which is what this decides.
+ *  (Since OD-P the classic example, Ctrl-L, is moot: `l` is not in the table at all.) */
 function hasMod(mods) {
   if (!mods) return false;
   return !!(mods.ctrl || mods.ctrlKey || mods.alt || mods.altKey || mods.meta || mods.metaKey);
@@ -360,8 +370,18 @@ function hasMod(mods) {
  * Who gets this key: `'nav'` (the MOSS screen), `'prompt'` (the command line) or `'pass'` (nobody
  * here — the DOM layer lets it type). See KEY_ROUTE for the LEDGER table.
  *
- * Off the LEDGER there is no prompt, so the empty-buffer column applies — except on PROGRAM, where
+ * Off the LEDGER the screen's own keys apply (the empty-buffer column) — except on PROGRAM, where
  * the IDE owns a text area and only Escape is taken (IX-M11's guard-first rule).
+ *
+ * ONE exception, and OD-P is what makes it load-bearing: **ENTER on a NON-EMPTY buffer submits the
+ * line on EVERY screen that shows the prompt**. The prompt row is rendered on DETAIL and FAULTLOG
+ * too (`moss-screen.js:_build` appends it to the page, not to the body), and since OD-P a letter
+ * typed there lands in that buffer. Routing Enter to `nav` regardless — as this function did while
+ * `L`/`P` were hotkeys — meant the player could see their command in the prompt and have Enter drop
+ * it silently: exactly the shape of "the MOSS CLI does not work". `log` from DETAIL was the ONLY
+ * way left to reach the filtered fault log that `L` used to open, so without this the ruling's
+ * replacement path is unreachable from the screen that needed it most. PROGRAM is untouched — its
+ * textarea is guarded before any of this.
  * @param {object} model @param {string} key @param {object} [mods]
  * @returns {'nav'|'prompt'|'pass'}
  */
@@ -371,9 +391,13 @@ export function routeKey(model, key, mods) {
   const row = Object.prototype.hasOwnProperty.call(KEY_ROUTE, k) ? KEY_ROUTE[k] : null;
   if (!row) return 'pass';
   const screen = model ? model.screen : SCREEN.LEDGER;
+  const typed = str(model && model.prompt).length > 0;
   if (screen === SCREEN.PROGRAM) return k === 'escape' ? 'nav' : 'pass';
-  if (screen !== SCREEN.LEDGER) return row[0] === 'prompt' ? 'nav' : row[0];
-  return row[str(model && model.prompt).length === 0 ? 0 : 1];
+  if (screen !== SCREEN.LEDGER) {
+    if (k === 'enter' && typed) return 'prompt';
+    return row[0] === 'prompt' ? 'nav' : row[0];
+  }
+  return row[typed ? 1 : 0];
 }
 
 /**
@@ -421,7 +445,8 @@ function historyStep(m, dir) {
   return { model: { ...m, histIdx: next, prompt: h[next] }, handled: true };
 }
 
-/** The screen's own keys: selection, activation, the L/P screens, and the ESC stack. */
+/** The screen's own keys: selection, activation and the ESC stack. NO LETTER APPEARS HERE (OD-P):
+ *  the FAULT LOG and PROGRAM screens are reached by typing `log` / `prog`, through `navCommand`. */
 function navKey(m, k) {
   switch (k) {
     case 'arrowup': return moveSelection(m, -1);
@@ -434,8 +459,6 @@ function navKey(m, k) {
       const can = m.screen === SCREEN.LEDGER && !!m.selectedId;
       return { ...openDetail(m, m.selectedId), handled: can };
     }
-    case 'l': return toggleFaultLog(m);
-    case 'p': return openProgram(m, null);
     case 'escape': return escapeStep(m);
     default: return { model: m, handled: false };
   }
@@ -471,9 +494,14 @@ function openDetail(m, id) {
   };
 }
 
-/** IX-M5: L opens the FAULT LOG (filtered when opened from DETAIL); L again closes it. */
-function toggleFaultLog(m, explicitId) {
-  if (m.screen === SCREEN.FAULTLOG) return { ...popScreen(m), handled: true };
+/**
+ * IX-M5: open the FAULT LOG, filtered when opened from DETAIL. Reached by typing `log` (OD-P
+ * deleted the `L` hotkey); `log <system>` passes an `explicitId`, a bare `log` passes `undefined`
+ * and so INHERITS the current screen's subject — which is what `L` did from DETAIL and the reason
+ * the argument is `undefined`-sentinelled rather than nullable. Closing is ESC (a command is not a
+ * toggle: `log` while the log is open re-opens it, re-filtered, see `navCommand`).
+ */
+function openFaultLog(m, explicitId) {
   const filterId = explicitId !== undefined ? explicitId
     : m.screen === SCREEN.DETAIL && m.detail ? m.detail.tid : null;
   return {
@@ -483,7 +511,8 @@ function toggleFaultLog(m, explicitId) {
   };
 }
 
-/** IX-M6: P opens the PROGRAM screen — the directory, or straight into one terminal's source. */
+/** IX-M6: `prog` opens the PROGRAM screen — the directory, or straight into one terminal's source
+ *  (`prog <terminal>`). The `P` hotkey that used to call this is deleted (OD-P). */
 function openProgram(m, tid) {
   const next = { ...m, screen: SCREEN.PROGRAM, program: tid ? openTerminal(tid) : m.program };
   if (m.screen !== SCREEN.PROGRAM) next.stack = m.stack.concat([m.screen]);
@@ -496,8 +525,8 @@ function openProgram(m, tid) {
  * `program.tid` is still the terminal-less `null` from `initTerminal`, terminal-model's `matches()`
  * tid-check fails, and `reduceMoss` silently DROPS the source (a no-op). The screen sends the
  * `moss open` wire op separately; this reducer only moves the model. A null/empty tid clears the
- * selection back to a terminal-less editor. Mirrors the P-key path (`openProgram(m, tid)`), which
- * already `openTerminal`s for the `prog <terminal>` command.
+ * selection back to a terminal-less editor. Mirrors `openProgram(m, tid)`, which already
+ * `openTerminal`s for the `prog <terminal>` command.
  * @param {object} model @param {string|null} tid @returns {object}
  */
 export function selectProgram(model, tid) {
@@ -671,13 +700,19 @@ function navCommand(m, cmd, argText) {
       return { model: out.model, effects: out.effects };
     }
     case 'log': {
-      let filterId = null;
+      // `undefined` — NOT null — when no system was named: that is the sentinel `openFaultLog` reads
+      // as "inherit this screen's subject", so a bare `log` typed on DETAIL opens the log filtered to
+      // that system, which is what the deleted `L` key did (OD-P: the typed command must be the
+      // whole replacement, not a weaker one). `log <system>` names its filter and overrides it.
+      let filterId;
       if (argText) {
         filterId = resolveSystem(m, argText);
         if (!filterId) return { model: pushConsole(m, 2, 'UNKNOWN SYSTEM \'' + upper(argText) + '\' — TYPE HELP'), effects: [] };
       }
+      // Re-open in place rather than stacking a second FAULTLOG rung; the screen it came from is
+      // still the one below, so the inherit-the-subject rule reads the popped screen.
       const base = m.screen === SCREEN.FAULTLOG ? popScreen(m).model : m;
-      const out = toggleFaultLog(base, filterId);
+      const out = openFaultLog(base, filterId);
       return { model: out.model, effects: out.effects };
     }
     case 'prog': {
@@ -772,18 +807,25 @@ export function headerLines(model) {
   ];
 }
 
-/** VS-M7's bracket-key hints, per screen. The caller joins them with ` · `. */
+/**
+ * VS-M7's bracket-key hints, per screen. The caller joins them with ` · `.
+ *
+ * A bracket is a KEY; a bare `TYPE:` fragment is a COMMAND LINE. Since OD-P deleted `[L]`/`[P]`
+ * the two screens they reached are only signposted here, so the hint names the words to type
+ * instead of dropping the signpost — the vocabulary itself stays in one place (`HELP_LINES`, and
+ * `TYPE: … HELP` points at it). No fragment may name a letter key again.
+ */
 export function footerHints(model) {
   const m = model || openMoss();
   switch (m.screen) {
     case SCREEN.DETAIL:
-      return ['[L] FAULT LOG', '[P] PROGRAMS', '[ESC] BACK TO LEDGER'];
+      return ['TYPE: LOG, PROG, HELP', '[ESC] BACK TO LEDGER'];
     case SCREEN.FAULTLOG:
-      return ['[L] CLOSE LOG', '[ESC] BACK'];
+      return ['TYPE: LOG <SYSTEM>, HELP', '[ESC] BACK'];
     case SCREEN.PROGRAM:
       return ['[ESC] BACK'];
     default:
-      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', '[L] FAULT LOG', '[P] PROGRAMS', '[ESC] BACK TO SHIP'];
+      return ['[↑↓] SELECT ROW', '[ENTER] SYSTEM DETAIL', 'TYPE: LOG, PROG, HELP', '[ESC] BACK TO SHIP'];
   }
 }
 

@@ -202,11 +202,20 @@ function setupScreen() {
   return { doc, root, sent, screen };
 }
 
+/** OD-P (2026-07-31): the `P` hotkey is deleted — PROGRAM is reached by TYPING `prog`. Driven
+ *  through the prompt input and a real Enter keydown so the routing change is exercised, not
+ *  bypassed. */
+function typeProg(s) {
+  s.screen.inputEl.value = 'prog';
+  fire(s.screen.inputEl, 'input');
+  s.screen.handleKey(keyEvent('Enter', { target: s.screen.inputEl }));
+}
+
 test('end-to-end: select → source loads → edit → install sends `moss set` → diag installs', () => {
   const s = setupScreen();
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }]);
   s.screen.open();
-  s.screen.handleKey(keyEvent('p'));
+  typeProg(s);
   s.screen.selectProgram('bridge');
   // the gap fix: model.program.tid is set before the reply, and the wire op went out
   assert.equal(s.screen.model.program.tid, 'bridge');
@@ -245,7 +254,7 @@ test('a stray full render never clobbers a live edit (the refill rule holds thro
   const s = setupScreen();
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }]);
   s.screen.open();
-  s.screen.handleKey(keyEvent('p'));
+  typeProg(s);
   s.screen.selectProgram('bridge');
   s.screen.onMossEvent({ type: 'moss', ev: 'source', tid: 'bridge', text: 'base', hash: 1 });
   const code = s.root.oneClass('moss-prog-code');
@@ -260,11 +269,11 @@ test('re-entering PROGRAM after close resets the selection (fresh model, fresh s
   const s = setupScreen();
   s.screen.setTerminals([{ tid: 'bridge', deck: 0 }]);
   s.screen.open();
-  s.screen.handleKey(keyEvent('p'));
+  typeProg(s);
   s.screen.selectProgram('bridge');
   s.screen.close();
   s.screen.open();
-  s.screen.handleKey(keyEvent('p'));
+  typeProg(s);
   assert.ok(s.root.oneClass('moss-empty').textContent.includes('SELECT A TERMINAL'),
     'a re-entered PROGRAM screen starts unselected');
 });

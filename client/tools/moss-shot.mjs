@@ -109,6 +109,18 @@ async function main() {
     const r = scrape(log);
     if (!r) { console.log(`${s.name.padEnd(22)} — NO [moss-check] scraped (check the PNG)`); fail++; continue; }
     const problems = [];
+    // ⚠️ THE FRAMING MUST BE THE ONE THAT WAS ASKED FOR, and until 2026-07-31 nothing checked it.
+    // This line printed `screen=${r.screen}` — the REQUESTED screen, straight back from the query
+    // string — so a navigation change that stopped the preview reaching a screen produced LEDGER
+    // pixels saved as `faultlog.png` / `program.png` with an `ok` verdict beside them. (It happened:
+    // OD-P deleted the `L`/`P` keys the preview navigated by.) A screenshot harness whose label is
+    // its own input cannot report a mis-capture, so the page now also reports what it DREW.
+    const rendered = r.rendered === undefined ? '(not reported)' : r.rendered;
+    if (r.rendered === undefined) {
+      problems.push('the preview reported no `rendered` screen — this check is BLIND (stale page?)');
+    } else if (r.rendered !== r.screen) {
+      problems.push(`WRONG SCREEN CAPTURED: asked for ${r.screen}, drew ${r.rendered}`);
+    }
     if (r.leaks.length) problems.push('GAME CHROME VISIBLE: ' + r.leaks.join(','));
     if (!r.mossVisible) problems.push('MOSS NOT VISIBLE');
     if (!r.noHorizontalScroll) problems.push(`H-SCROLL ${r.docScrollW}>${r.docClientW}`);
@@ -119,7 +131,7 @@ async function main() {
     const verdict = problems.length ? 'FAIL — ' + problems.join(' · ') : 'ok';
     if (problems.length) fail++;
     console.log(
-      `${s.name.padEnd(22)} ${String(r.width).padStart(5)}px  screen=${String(r.screen).padEnd(9)}` +
+      `${s.name.padEnd(22)} ${String(r.width).padStart(5)}px  drew=${String(rendered).padEnd(9)}` +
       ` rows=${String(r.rows).padStart(2)} font=${r.fontPx}px fault=${r.faultShown ? 'shown' : 'dropped'}` +
       `  ${verdict}`);
   }
