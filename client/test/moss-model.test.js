@@ -279,6 +279,38 @@ test('OD-P: KEY_ROUTE contains NO printable character — the whole class, not j
   assert.ok(Object.keys(KEY_ROUTE).length >= 8, 'the navigation rows are still there');
 });
 
+test('OD-P: every printable ASCII routes `pass` THROUGH routeKey, in both buffer states', () => {
+  // The guard above reads the TABLE. This one reads the FUNCTION, and they are not the same claim:
+  // `routeKey` has branches of its own (the modifier check, the PROGRAM branch, the off-LEDGER
+  // branch, the buffer-state pick), so a character special-cased inside it — `if (k === 's') return
+  // 'nav'` — would satisfy an empty KEY_ROUTE and still steal the keystroke. A table-only guard
+  // cannot see that; this sweeps the whole printable range against the real router.
+  const empty = linked();
+  const typed = editPrompt(empty, 'op');
+  const detail = keyPress(empty, 'Enter').model;
+  const faultlog = submitCommand(empty, 'log').model;
+  const program = submitCommand(empty, 'prog').model;
+  const screens = [['LEDGER empty', empty], ['LEDGER typed', typed], ['DETAIL', detail],
+    ['FAULTLOG', faultlog], ['PROGRAM', program]];
+
+  const offenders = [];
+  for (let code = 0x20; code <= 0x7e; code++) {
+    const ch = String.fromCharCode(code);
+    for (const [label, model] of screens) {
+      if (routeKey(model, ch) !== 'pass') offenders.push(label + ' ' + JSON.stringify(ch));
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'a printable character is intercepted instead of typed — OD-P: ' + offenders.join(', '));
+
+  // NON-VACUITY: the sweep must be able to REPORT an interception, or the emptiness is a tautology
+  // over a loop that never evaluates its predicate. `Enter` is routed on every screen but PROGRAM,
+  // and it is the same call shape — so if this finds nothing, the loop above proves nothing.
+  const control = screens.filter(([, m]) => routeKey(m, 'Enter') !== 'pass').map(([l]) => l);
+  assert.deepEqual(control, ['LEDGER empty', 'LEDGER typed', 'DETAIL', 'FAULTLOG'],
+    'the sweep cannot see a routed key at all');
+});
+
 test('IX-M8: a modifier hands the key back to the browser (Ctrl-Home is not ours)', () => {
   // The keys probed here must be ones the table DOES route, or "a modifier makes it pass" is
   // satisfied by a key that passes anyway — since OD-P `l` is exactly such a key, so it is no

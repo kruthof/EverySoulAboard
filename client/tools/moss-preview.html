@@ -66,12 +66,32 @@ screen.onChron(pick('chron'));
 screen.open();
 
 const key = (k) => screen.handleKey({ key: k, preventDefault() {}, stopPropagation() {} });
+
+/**
+ * Reach a screen the way a player must since OD-P (2026-07-31): the `L`/`P` hotkeys are DELETED,
+ * so `log` and `prog` are TYPED and submitted. This harness drives the SHIPPING moss-model, so it
+ * followed the model straight into rendering the LEDGER for `?screen=faultlog|program` the moment
+ * the rows left `KEY_ROUTE` — with `moss-shot.mjs` still labelling the frames by the REQUESTED
+ * screen. Hence the `rendered` field in the report below: the label is now the drawn screen, and
+ * moss-shot fails hard when the two disagree.
+ *
+ * The real `input` event is what the screen listens for (`_onInput` → `editPrompt`), so setting
+ * `.value` alone would leave the MODEL buffer empty and ENTER would route to the screen instead of
+ * the prompt. This is a real browser, so a real Event does the job. Same shape as the node suite's
+ * `typeCmd`/`typeProg` helpers.
+ */
+const cmd = (text) => {
+  screen.inputEl.value = text;
+  screen.inputEl.dispatchEvent(new Event('input'));
+  key('Enter');
+};
+
 for (let i = 0; i < (+q.get('sel') || 0); i++) key('ArrowDown');
 const want = q.get('screen') || 'ledger';
 if (want === 'detail') { key('Enter'); screen.onMossEvent(pick('moss', 'sys')); }
-else if (want === 'faultlog') key('l');
+else if (want === 'faultlog') cmd('log');
 else if (want === 'program') {
-  key('p');
+  cmd('prog');
   // Select the first terminal and populate the embedded IDE so the frame shows a working editor:
   // an installed source, a warning diagnostic (gutter marker + list row), and a couple audit lines.
   const term = (pick('terminals').list || [])[0];
@@ -106,6 +126,12 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
   const report = {
     width: window.innerWidth,
     screen: want,
+    // ⚠️ `screen` is what was ASKED FOR; `rendered` is what was DRAWN, read off the attribute
+    // `moss-screen.render()` stamps on the root. Reporting only the request is how a navigation
+    // change (OD-P deleting the `L`/`P` keys) silently produced LEDGER pixels in files named
+    // `faultlog.png` and `program.png` while every verdict still said `ok`. moss-shot.mjs compares
+    // the two and fails on a mismatch, so the next such change cannot mis-capture quietly.
+    rendered: (document.getElementById('moss-view').dataset.screen || 'none'),
     leaks,
     mossVisible: visible(document.getElementById('moss-view')),
     rows: document.querySelectorAll('.moss-row').length,

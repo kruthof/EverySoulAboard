@@ -225,7 +225,7 @@ export function reduceChron(model, msg);             // `chron` channel → the 
 export function reduceLog(model, msg);               // `log` channel tail → FAULT LOG live section
 
 // ---- input (pure state machines; return {model, effects}) ----
-export function keyPress(model, key, mods);          // ArrowUp/Down, Enter, l/L, Escape, Tab, PageUp/Down
+export function keyPress(model, key, mods);          // ArrowUp/Down, Enter, Escape, Tab, PageUp/Down, Home/End
 export function editPrompt(model, text);             // → model (prompt buffer only)
 export function submitCommand(model, text);          // → {model, effects}
 export function parseCommand(text);                  // → {verb, args, raw, kind}  ('nav' | 'device' | 'read' | 'bad')
@@ -261,6 +261,14 @@ copy of every derivation's prose, and it lives next to the code that computes th
 **M-PURITY** — `moss-model.js` must contain no `document`, no `window`, no `fetch`, no
 `Date.now()`/`new Date()`, no `Math.random()`. A node test asserts this by source scan, and the
 lane may not weaken it.
+
+> **Amended 2026-07-31 by `moss-hotkeys` (OD-P).** The `keyPress` comment above enumerated `l/L`
+> among the keys the model sees. That is no longer true and the SIGNATURE is unchanged — this is a
+> comment fix, recorded because §2 is the block a future lane copies its stub from, and a stale
+> enumeration there is how a deleted binding gets quietly re-added. **No printable character is
+> passed to the model as a navigation key**; `keyPress` sees them, routes them `'pass'`, and reports
+> `handled:false` so the DOM lets them type. See the OD-P note under §3's table for the ruling and
+> the ENTER rule it adds off the LEDGER.
 
 ### 2.1 What the DOM lane consumes (reconciled 2026-07-22 against `lane/moss-model` `b17d451`)
 
