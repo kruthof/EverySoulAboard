@@ -637,29 +637,36 @@ namespace Perilune.Tests
         /// <summary>The cached <c>blocked</c> payload's tuples, taken from the SNAPSHOT a
         /// reconnecting client is caught up from — BlockedChannelTests' reader, restated so this
         /// file parses the wire rather than a builder's return value.</summary>
-        private static List<(int X, int Y, int Deck, int Order, int Reason)> Rows(GameSession gs)
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Rows(GameSession gs)
         {
             gs.RenderForTest();
             string json = gs.Snapshot().FirstOrDefault(s => s.Contains("\"type\":\"blocked\""));
             Assert.IsNotNull(json, "the blocked channel must be cached for Snapshot catch-up");
-            var rows = new List<(int, int, int, int, int)>();
+            var rows = new List<(int, int, int, int, int, int)>();
             int at = json.IndexOf("[[", System.StringComparison.Ordinal);
             if (at < 0) return rows;
             foreach (var part in json.Substring(at + 1).Split('['))
             {
                 if (part.Length == 0 || !char.IsDigit(part[0])) continue;
                 var f = part.Substring(0, part.IndexOf(']')).Split(',');
-                if (f.Length < 5) continue;
+                // ⭐ M3-13 — SIX, and the parse ASSERTS it rather than tolerating five. A reader that
+                // silently accepted a short row would keep working while the sixth element vanished
+                // from the wire, which is the positional array's whole hazard measured from the
+                // reading end. (`< 5` here until M3-13; the tolerance was for a tuple that could not
+                // yet grow.)
+                Assert.That(f.Length, Is.EqualTo(6),
+                    "a blocked tuple is six elements since M3-13, saw: [" + string.Join(",", f) + "]");
                 rows.Add((int.Parse(f[0], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture),
                           int.Parse(f[3], System.Globalization.CultureInfo.InvariantCulture),
-                          int.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture)));
+                          int.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture),
+                          int.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture)));
             }
             return rows;
         }
 
-        private static (int X, int Y, int Deck, int Order, int Reason)? RepairRowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Order, int Reason, int Detail)? RepairRowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Rows(gs))
                 if (t.Order == WireFormat.OrderRepair && t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -759,6 +766,102 @@ namespace Perilune.Tests
                 "aboard' host-side instead of asking MaintenanceSystem.IsUnfixableWreck — the three " +
                 "tier ladder (Parts ▸ Seals ▸ Swarf) lives behind that one call, and re-deriving is " +
                 "how the two answers drift apart.");
+        }
+
+        // ════════════════════════════════════ M3-13 — THE ROW NAMES THE ITEM THE ORDER IS WAITING FOR
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 — THE SIXTH TUPLE ELEMENT, DRIVEN ON THE SHIPPING SHIP.</b> The badge over a
+        /// stalled repair order used to read the generic <i>NO PARTS OR SEALS ABOARD</i>; it now
+        /// carries the <c>ItemKind</c> the order is waiting for, so the client can say
+        /// <c>NEEDS PARTS — NOTHING ABOARD TO REPAIR IT WITH</c>.
+        ///
+        /// <para>⛔ <b>THE ASSERTION IS THE LITERAL ITEM, AND THAT IS THE MUTATION-KILLING SHAPE
+        /// RATHER THAN THE LAZY ONE.</b> Asserting <c>Detail == (int)MaintenanceSystem
+        /// .WantedRepairConsumable</c> would FOLLOW a mutation to the sim's ladder and stay green on
+        /// both sides of it — vacuous by construction. Asserting <c>ItemKind.Parts</c> reddens under
+        /// the charter's mutation 3 exactly when the host ASKS the sim, and stays green exactly when
+        /// the host has re-derived the answer with a literal of its own.
+        /// <br/>MUTATION 3 (the charter's, physically applied): swap cases 0 and 1 in
+        /// <c>MachineWearSystem.RepairConsumableTier</c> so tier 0 is <c>Seals</c> ⇒ RED here, with
+        /// the wire reading 7. Restore ⇒ green. If a later edit hard-codes
+        /// <c>(int)ItemKind.Parts</c> in <c>GameSession.AddUnfixableRow</c>, that same mutation stops
+        /// reddening — which is the signal, and it is why the mutation is named here rather than
+        /// merely performed once.</para>
+        ///
+        /// <para>⚠️ AND THE CONTROL BELOW IT IS THE SENTINEL: a reason with nothing to add must send
+        /// <c>DetailNone</c>, not <c>0</c>. <c>0</c> is <c>ItemKind.Regolith</c>, so a zero default
+        /// would make every airless dig order claim to be waiting for rubble.</para>
+        /// </summary>
+        [Test]
+        public void TheNoConsumableRow_NamesTheItemTheOrderIsWaitingFor()
+        {
+            var (gs, host) = BootWreck();
+            var sim = host.Sim;
+            var wingB = ByName(sim, "wing_b");
+            var crew = sim.Citizens.Items[0];
+
+            RemoveAllConsumables(sim);
+            Assert.That(MaintenanceSystem.IsUnfixableWreck(sim, wingB), Is.True,
+                "⛔ PREMISE: with every Parts/Seals/Swarf stack gone the machine must be unfixable, " +
+                "or there is no row and this whole test is vacuous.");
+
+            OrderOverTheWire(gs, crew, wingB);
+            var row = RepairRowAt(gs, wingB.Pos);
+            Assert.That(row, Is.Not.Null, "premise: the refusal reached the channel at all");
+            Assert.That(row.Value.Reason, Is.EqualTo(WireFormat.ReasonNoConsumable),
+                "premise: it is the consumable refusal and not some other one");
+
+            Assert.That(row.Value.Detail, Is.EqualTo((int)ItemKind.Parts),
+                "⛔ THE ROW DOES NOT NAME THE ITEM. Without it the badge falls back to the generic " +
+                "'NO PARTS OR SEALS ABOARD' — which OMITS SWARF (a third tier that clears this row " +
+                "on its own) and names no item to go and get. (⚠️ NOT a ControllerModule problem: a " +
+                "repair order never wants one. See WireFormat.ReasonNoConsumable's remarks.) See " +
+                "this test's own remarks for why the literal, and not the accessor, is asserted.");
+            Assert.That(row.Value.Detail, Is.Not.EqualTo(WireFormat.DetailNone),
+                "the reason that HAS something to say must not send the sentinel");
+        }
+
+        /// <summary>
+        /// ⭐ <b>M3-13 MUTATION 1b — THE NON-VACUITY CONTROL, AND IT IS LABELLED ONE BECAUSE IT
+        /// CANNOT FAIL FOR THE REASON PEOPLE EXPECT.</b> The charter asks: change <c>Detail</c>
+        /// mid-session and assert the client re-renders.
+        ///
+        /// <para>⛔ <b>IT PASSES BY CONSTRUCTION.</b> <c>blocked</c> ships through
+        /// <c>GameSession.Send</c>, which dedupes on the WHOLE SERIALIZED STRING
+        /// (<c>if (!force &amp;&amp; _cache.TryGetValue(channel, out var prev) &amp;&amp; prev == json) return;</c>)
+        /// — <see cref="WireFormat.BlockedCell"/> has no <c>SameAs</c> and this channel has no
+        /// field-list delta gate at all. A serialized <c>Detail</c> is therefore inside the dedupe
+        /// key the moment the serializer emits it, and the <see cref="WireFormat.DeviceCell"/> scar
+        /// (a field the key does not read is a field whose change is never re-sent) is UNREACHABLE
+        /// here. Revision 2 of the charter imported that scar by analogy from a sibling struct; round
+        /// 3 corrected it, and this test is the correction stated as code.</para>
+        ///
+        /// <para>⇒ <b>WHAT IT IS FOR:</b> establishing, once, that the channel really does re-send on
+        /// a detail-only change — i.e. that the element is inside the key rather than merely on the
+        /// wire. What it is NOT is a guard: it can never go red for a field-list reason, and saying
+        /// so here is the whole point of running it. The <b>real</b> guard for the sixth element is
+        /// the decoder, and it lives in <c>client/test/blocked-model.test.js</c> ("a `detail` on the
+        /// wire CHANGES THE RENDERED BADGE").</para>
+        /// </summary>
+        [Test]
+        public void MUTATION_1b_NON_VACUITY_CONTROL_ADetailOnlyChangeReallyDoesReSerialize()
+        {
+            var a = new[] { new WireFormat.BlockedCell(4, 7, 1, WireFormat.OrderRepair,
+                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Parts) };
+            // ⚠️ `Seals`, NOT `ControllerModule`: both are legal bytes for a serializer test, but only
+            // one of them is a REPAIR-ladder item, and a fixture that pairs OrderRepair with a
+            // ControllerModule quietly restates the charter's false premise (a repair order never
+            // wants one — see WireFormat.ReasonNoConsumable's remarks).
+            var b = new[] { new WireFormat.BlockedCell(4, 7, 1, WireFormat.OrderRepair,
+                                                      WireFormat.ReasonNoConsumable, (int)ItemKind.Seals) };
+            Assert.That(WireFormat.Blocked(a), Is.Not.EqualTo(WireFormat.Blocked(b)),
+                "two rows differing ONLY in Detail serialize identically, so `Send`'s whole-string " +
+                "dedupe would swallow the change and the badge would keep naming the old item " +
+                "forever. This is the one way the field-list defect COULD reach this channel.");
+            Assert.That(WireFormat.Blocked(a), Is.EqualTo(WireFormat.Blocked(a)),
+                "control: the same cells serialize identically, so the inequality above is about " +
+                "Detail and not about the serializer being non-deterministic");
         }
 
         /// <summary>

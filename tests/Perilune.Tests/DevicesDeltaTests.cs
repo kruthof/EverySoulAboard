@@ -112,7 +112,7 @@ namespace Perilune.Tests
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 var f = part.Split(']')[0].Split(',');
-                Assert.AreEqual(7, f.Length, TupleWidth);
+                Assert.AreEqual(8, f.Length, TupleWidth);
                 conds.Add(int.Parse(f[4], CultureInfo.InvariantCulture));
             }
             conds.Sort();
@@ -178,26 +178,26 @@ namespace Perilune.Tests
         /// whatever it had become. Two lanes merged with no conflict on the field list itself and this
         /// assertion is what refused the tree. Update the width and the parser TOGETHER, never the
         /// width alone.</summary>
-        private const string TupleWidth = "a devices tuple is SEVEN elements (x,y,deck,kind,cond,oper,open)";
+        private const string TupleWidth = "a devices tuple is EIGHT elements (x,y,deck,kind,cond,oper,open,serv)";
 
-        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open) LastTuple(string json)
+        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open, int Serv) LastTuple(string json)
         {
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             var parts = json.Substring(open).Split('[').Skip(2).ToList();
             Assert.That(parts.Count, Is.GreaterThan(0), "the payload carries no tuples at all");
             var f = parts[parts.Count - 1].Split(']')[0].Split(',');
-            Assert.AreEqual(7, f.Length, TupleWidth);
+            Assert.AreEqual(8, f.Length, TupleWidth);
             return (int.Parse(f[0], CultureInfo.InvariantCulture), int.Parse(f[1], CultureInfo.InvariantCulture),
                     int.Parse(f[2], CultureInfo.InvariantCulture), int.Parse(f[3], CultureInfo.InvariantCulture),
                     int.Parse(f[4], CultureInfo.InvariantCulture), int.Parse(f[5], CultureInfo.InvariantCulture),
-                    int.Parse(f[6], CultureInfo.InvariantCulture));
+                    int.Parse(f[6], CultureInfo.InvariantCulture), int.Parse(f[7], CultureInfo.InvariantCulture));
         }
 
         // ═══════════════════════════════════════════ 1. THE KEY, FIELD BY FIELD (inclusion, not count)
 
         /// <summary>
-        /// EVERY ONE OF THE SEVEN FIELDS ALONE MUST DENY A SKIP. This is an INCLUSION TABLE and not a
+        /// EVERY ONE OF THE EIGHT FIELDS ALONE MUST DENY A SKIP. This is an INCLUSION TABLE and not a
         /// population count: CLAUDE.md's fourth trap is a guard whose scope filter excludes the
         /// violation, and "the comparison returned false for something" never proves it would return
         /// false for the thing.
@@ -219,29 +219,29 @@ namespace Perilune.Tests
         /// MUTATION: drop any field from <see cref="WireFormat.DeviceCell.SameAs"/> ⇒ its row fails.
         /// </summary>
         [Test]
-        public void The_Cache_Key_Reads_All_SEVEN_Fields()
+        public void The_Cache_Key_Reads_All_EIGHT_Fields()
         {
-            var baseline = new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0);
+            var baseline = new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0, 1);
             Assert.IsTrue(baseline.SameAs(baseline), "a cell must equal itself, or every skip is denied");
-            Assert.IsTrue(baseline.SameAs(new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0)),
+            Assert.IsTrue(baseline.SameAs(new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0, 1)),
                 "two identical cells compared unequal — the gate would never skip anything and the " +
                 "scheme is inert rather than wrong, which is the harder failure to notice");
 
             foreach (var (field, other) in new (string, WireFormat.DeviceCell)[]
             {
                 ("X — a device MOVED (or two devices swapped tiles at equal wear)",
-                    new WireFormat.DeviceCell(5, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0)),
-                ("Y", new WireFormat.DeviceCell(4, 8, 1, (int)DeviceKind.Scrubber, 200, 1, 0)),
+                    new WireFormat.DeviceCell(5, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0, 1)),
+                ("Y", new WireFormat.DeviceCell(4, 8, 1, (int)DeviceKind.Scrubber, 200, 1, 0, 1)),
                 ("Deck — the same tile on another deck",
-                    new WireFormat.DeviceCell(4, 7, 2, (int)DeviceKind.Scrubber, 200, 1, 0)),
+                    new WireFormat.DeviceCell(4, 7, 2, (int)DeviceKind.Scrubber, 200, 1, 0, 1)),
                 ("Kind — a device was STRIPPED and another placed on its tile at equal wear. This is " +
                  "the row the cheap key 'compare Cond only' fails, and the art would keep drawing the " +
                  "old machine's picture on the new machine's tile",
-                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Fabricator, 200, 1, 0)),
+                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Fabricator, 200, 1, 0, 1)),
                 ("Cond — the wear byte itself, i.e. the whole point of the channel",
-                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 199, 1, 0)),
+                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 199, 1, 0, 1)),
                 ("Oper — the sim's own IsOperational, which the client cannot derive",
-                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 0, 0)),
+                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 0, 0, 1)),
                 // ⭐ ADDED AT THE MERGE with the OPERATE verb, which appended this seventh element.
                 // `SameAs`'s own doc mandates that a field added to the tuple is added here IN THE
                 // SAME COMMIT — and the two lanes touched this struct from opposite sides, so the
@@ -252,7 +252,19 @@ namespace Perilune.Tests
                 ("Open — the door/vent OPEN⇄SHUT byte. THE MOST REACHABLE ROW IN THIS TABLE: a toggle " +
                  "is player-driven (unlike wear, which creeps), and AddDevice APPENDS, so a door the " +
                  "player just built is the LAST row — the one index the bound tests reach",
-                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 1)),
+                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 1, 1)),
+                // ⭐ ADDED BY M3-13, WHICH APPENDED THIS EIGHTH ELEMENT — under the same rule the
+                // row above records, and this time on purpose rather than at a merge. ⚠️ IT IS THE
+                // LEAST REACHABLE ROW IN THIS TABLE AND THAT IS WHY IT IS THE MOST DANGEROUS ONE TO
+                // OMIT: `Serv` is a per-KIND fact read out of the defs, so within one session it
+                // never moves, and dropping it from `SameAs` could not be caught by ANY live
+                // behaviour — the gate's sufficiency argument ("the compared value IS the
+                // serializer's whole input") would be true only by accident, and it stops being
+                // true the day a def is reloaded or a kind's `maint` is edited.
+                ("Serv — CAN THIS KIND EVER BE SERVICED (M3-13). Read by the Room Zoom's right-click " +
+                 "menu; a stale value either offers a repair the sim will never take or withdraws " +
+                 "the verb from a machine that can be repaired",
+                    new WireFormat.DeviceCell(4, 7, 1, (int)DeviceKind.Scrubber, 200, 1, 0, 0)),
             })
             {
                 Assert.IsFalse(baseline.SameAs(other),

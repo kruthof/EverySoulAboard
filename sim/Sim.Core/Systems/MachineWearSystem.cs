@@ -654,21 +654,108 @@ namespace Perilune.Sim
         /// </summary>
         private static ItemStack FindNearestConsumable(Simulation sim, Int3 from, bool allowSwarf, bool forced = false)
         {
-            var best = FindNearest(sim, from, ItemKind.Parts, forced);
-            if (best != null) return best;
-            best = FindNearest(sim, from, ItemKind.Seals, forced);
-            if (best != null) return best;
-            // THE BOTTOM RUNG (wreck start, owner decision 3), and the ONLY tier with a
-            // precondition. `allowSwarf` is true exactly when the machine is below
-            // wear.wreck_threshold — i.e. when the free jury-rig has already been refused.
-            //
-            // ⚠️ IT MUST BE GATED OR IT IS A REGRESSION, not a feature. swarf_service_condition
-            // (0.45) is BELOW jury_rig_condition (0.6), so offering Swarf to a merely-ROTTED machine
-            // would send a crew member on a fetch to end up WORSE than empty hands — the exact trap
-            // WearDefs.SealServiceCondition's comment records from the other direction. Above the
-            // wreck floor this loop is never entered and the function is character-for-character the
-            // pre-wreck-start FindNearestConsumable.
-            return allowSwarf ? FindNearest(sim, from, ItemKind.Swarf, forced) : null;
+            // ⭐ M3-13 — THE TIERS COME FROM `RepairConsumableTier`, WHICH IS NOW THE LADDER'S ONE
+            // DECLARATION. Behaviour is unchanged (Parts ▸ Seals ▸ Swarf, Swarf gated); what moved
+            // is that a reader — including `WireFormat.ReasonNoConsumable`'s badge, which has to
+            // NAME what a stalled repair wants — asks this file instead of restating the order.
+            for (int tier = 0; tier < RepairConsumableTierCount; tier++)
+            {
+                // THE BOTTOM RUNG (wreck start, owner decision 3), and the ONLY tier with a
+                // precondition. `allowSwarf` is true exactly when the machine is below
+                // wear.wreck_threshold — i.e. when the free jury-rig has already been refused.
+                //
+                // ⚠️ IT MUST BE GATED OR IT IS A REGRESSION, not a feature. swarf_service_condition
+                // (0.45) is BELOW jury_rig_condition (0.6), so offering Swarf to a merely-ROTTED
+                // machine would send a crew member on a fetch to end up WORSE than empty hands — the
+                // exact trap WearDefs.SealServiceCondition's comment records from the other
+                // direction. Above the wreck floor this rung is never entered and the function is
+                // behaviourally the pre-wreck-start FindNearestConsumable.
+                //
+                // GATED BY POSITION, NOT BY KIND: "the last tier is the wreck tier" is the rule, and
+                // spelling it `kind == ItemKind.Swarf` would put a second copy of the ladder here.
+                if (tier == RepairConsumableTierCount - 1 && !allowSwarf) break;
+                var found = FindNearest(sim, from, RepairConsumableTier(tier), forced);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 — THE REPAIR LADDER, DECLARED ONCE.</b> Tier 0 <c>Parts</c> (a full
+        /// overhaul), tier 1 <c>Seals</c> (a routine service), tier 2 <c>Swarf</c> (the salvage
+        /// patch-up, and the only gated rung — see <see cref="FindNearestConsumable"/>).
+        ///
+        /// <para><b>WHY IT IS PUBLIC.</b> The <c>blocked</c> wire channel has to tell the player
+        /// WHICH consumable a stalled repair order is waiting for, and the one thing it may not do
+        /// is restate the ladder host-side: two copies of "what a service spends" is how the badge
+        /// and the dispatcher come to name different items. Same rule, and the same words, as
+        /// <see cref="IsUnfixableWreck"/>'s own doc comment — <i>"a view-only channel must ask the
+        /// same question the dispatcher asks rather than re-deriving it"</i>.</para>
+        ///
+        /// <para>A <c>switch</c> over consts rather than a <c>static readonly ItemKind[]</c>: an
+        /// exposed array is writable by every caller, and this runs on a tick path where the
+        /// zero-alloc rule is test-enforced.</para>
+        ///
+        /// <para>Out-of-range tiers fall to the bottom rung rather than throwing — the ladder is
+        /// total by construction, exactly as <c>ThawGate.RungOf</c> is.</para>
+        /// </summary>
+        public static ItemKind RepairConsumableTier(int tier)
+        {
+            switch (tier)
+            {
+                case 0: return ItemKind.Parts;
+                case 1: return ItemKind.Seals;
+                default: return ItemKind.Swarf;
+            }
+        }
+
+        /// <summary>How many rungs <see cref="RepairConsumableTier"/> has.</summary>
+        public const int RepairConsumableTierCount = 3;
+
+        /// <summary>
+        /// ⭐ <b>WHAT A STALLED REPAIR ORDER IS WAITING FOR</b> — the consumable a service reaches
+        /// for FIRST, i.e. <see cref="RepairConsumableTier"/>(0).
+        ///
+        /// <para>It is the item the <c>blocked</c> channel names on a
+        /// <c>WireFormat.ReasonNoConsumable</c> row. That row is emitted only when the ship holds
+        /// NONE of the three tiers (<see cref="IsUnfixableWreck"/>), so any of them would clear it;
+        /// the badge names the TOP one because that is the one the servicer would actually pick up
+        /// and the one that buys a full overhaul rather than a patch. The sentence the client
+        /// composes keeps the rest of the truth — see <c>BLOCKED_REASON_DETAIL_TEXT</c>.</para>
+        /// </summary>
+        public static ItemKind WantedRepairConsumable => RepairConsumableTier(0);
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 — IS THIS KIND OF MACHINE EVER SERVICEABLE AT ALL?</b> False when its
+        /// <c>MachineDefs.MaintainBelow</c> is zero, which is the def's own opt-out.
+        ///
+        /// <para><b>IT IS THE PERMANENT HALF OF A COMPARISON THAT ALREADY EXISTS</b>, not a new
+        /// rule. <c>PrioritiseJobCommand</c> refuses an order with
+        /// <c>device.Condition &gt;= Machines[kind].MaintainBelow</c> and
+        /// <see cref="RecruitForNeediest"/> skips a machine on the same test.
+        /// <c>Device.Condition</c> is clamped at or above zero, so a kind whose
+        /// <c>MaintainBelow</c> is <c>0</c> can NEVER satisfy it: there is no condition at which
+        /// such a machine has a service to give, on any ship, forever.</para>
+        ///
+        /// <para><b>WHY ANYTHING NEEDS TO ASK.</b> The Room Zoom's right-click menu offered
+        /// <i>PRIORITISE: REPAIR</i> on every device row, including <c>CryoPod</c>, whose
+        /// <c>maint</c> is <c>0.00</c> deliberately (<c>MECHANICS.md</c> §13.22c — at 0.30 the lone
+        /// pawn spent the ship's whole consumable stock nursing corpses). The click fired a toast,
+        /// the command returned at the line above, and NOTHING reached any surface — the
+        /// invisible-feedback failure with the menu's own promise in front of it. M3 makes the cryo
+        /// bay the main screen, so the menu now asks this before it offers
+        /// (<c>rimworld-reference.md</c> §2.2: <i>"if no menu appears, that colonist can do nothing
+        /// with that target"</i>). The answer travels on the <c>devices</c> channel because
+        /// <c>MaintainBelow</c> is a DEF value and a client-side list of never-serviceable kinds
+        /// would be a second authority that drifts the day content moves.</para>
+        /// </summary>
+        public static bool IsEverServiceable(SimDefs defs, DeviceKind kind)
+        {
+            if (defs == null) return false;
+            int k = (int)kind;
+            var machines = defs.Machines;
+            if (machines == null || k < 0 || k >= machines.Length) return false;
+            return machines[k].MaintainBelow > 0f;
         }
 
         /// <summary>Nearest unreserved ground stack of one kind (ties: item store order).

@@ -2720,7 +2720,14 @@ namespace Perilune.Web
                     // one surface's question, and a kind filter here would be a second place that
                     // knows which kinds have an open/shut control (GameSession.IsOperableKind is the
                     // one place, and it gates the VERB, not the data).
-                    device.IsOpen ? 1 : 0));
+                    device.IsOpen ? 1 : 0,
+                    // ⭐ M3-13 — CAN THIS KIND OF MACHINE EVER BE SERVICED? Asked of
+                    // MaintenanceSystem, which owns the `maint` opt-out, and never computed here
+                    // from `defs.Machines[...].MaintainBelow`: the comparison that makes the answer
+                    // true (`Condition >= MaintainBelow`, and Condition is clamped at or above 0)
+                    // lives in the sim beside the command it refuses, and a host-side copy of it is
+                    // how the menu and the command come to disagree about the same machine.
+                    MaintenanceSystem.IsEverServiceable(defs, device.Kind) ? 1 : 0));
             }
             return _devicesScratch;
         }
@@ -3046,7 +3053,13 @@ namespace Perilune.Web
             if ((_sim.World.GetFlags(p) & TileFlags.Explored) == 0) return;
             int reason = BlockedReason(p, order);
             if (reason == NotBlocked) return;
-            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z, order, reason));
+            // ⭐ M3-13 — `DetailNone`. None of the four reasons this walk can produce (air, approach,
+            // work-type-off, unreachable) has a per-reason payload: each is a complete sentence about
+            // the WORLD, and the one reason that names a thing — ReasonNoConsumable — is emitted by
+            // `AddUnfixableRow` and never from here. Written as the constant rather than as a literal
+            // −1 so a reader of this line finds the table in `WireFormat.BlockedCell`.
+            _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z, order, reason,
+                                                           WireFormat.DetailNone));
         }
 
         /// <summary>
@@ -3122,8 +3135,19 @@ namespace Perilune.Web
                 var row = _blockedScratch[i];
                 if (row.Order == WireFormat.OrderRepair && row.X == p.X && row.Y == p.Y && row.Deck == p.Z) return;
             }
+            // ⭐⭐ M3-13 — THE DETAIL: WHICH CONSUMABLE THIS STALLED ORDER IS WAITING FOR, so the
+            // badge can say `NEEDS PARTS` instead of the generic `NO PARTS OR SEALS ABOARD` — a
+            // sentence that OMITS SWARF (a third tier that clears this row on its own) and names no
+            // item to go and get. ⚠️ It is NOT wrong because of ControllerModule: a repair order
+            // never wants one (censused — CommissionDeviceCommand and ThawGate's rungs are its only
+            // consumers), and the charter's premise on that point is corrected in
+            // WireFormat.ReasonNoConsumable's remarks. ⛔ ASKED, NOT RESTATED: `MaintenanceSystem`'s own ladder
+            // (`RepairConsumableTier`, the declaration `FindNearestConsumable` walks). An
+            // `ItemKind.Parts` literal here would read identically today and would drift silently
+            // the day the top tier moves — omission (1) of this channel's header, by name.
             _blockedScratch.Add(new WireFormat.BlockedCell(p.X, p.Y, p.Z,
-                                                           WireFormat.OrderRepair, WireFormat.ReasonNoConsumable));
+                                                           WireFormat.OrderRepair, WireFormat.ReasonNoConsumable,
+                                                           (int)MaintenanceSystem.WantedRepairConsumable));
         }
 
         /// <summary>

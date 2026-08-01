@@ -36,7 +36,7 @@ namespace Perilune.Tests
     /// def-field and defs-checksum gates do not apply and all five determinism pins must be
     /// byte-identical; <see cref="Rendering_The_Blocked_Channel_Never_Touches_The_Sim"/> is the
     /// in-suite half of that claim and <c>ci.sh</c> measures the pins. The de-DE culture gate DOES
-    /// apply and is exercised — this machine is de-DE and the channel ships five integers per row.
+    /// apply and is exercised — this machine is de-DE and the channel ships six integers per row.
     /// </summary>
     public class BlockedChannelTests
     {
@@ -47,14 +47,24 @@ namespace Perilune.Tests
         {
             var cells = new[]
             {
-                new WireFormat.BlockedCell(3, 4, 0, WireFormat.OrderDig, WireFormat.ReasonAir),
-                new WireFormat.BlockedCell(58, 15, 1, WireFormat.OrderBuild, WireFormat.ReasonNoApproach),
+                new WireFormat.BlockedCell(3, 4, 0, WireFormat.OrderDig, WireFormat.ReasonAir,
+                                           WireFormat.DetailNone),
+                new WireFormat.BlockedCell(58, 15, 1, WireFormat.OrderBuild, WireFormat.ReasonNoApproach,
+                                           WireFormat.DetailNone),
+                // ⭐ M3-13 — a row that DOES carry a detail, so the sixth element is pinned by a real
+                // value and not only by the sentinel. A sentinel-only fixture would pass against a
+                // serializer that hard-coded `-1`. (`Seals`, a real repair-ladder item: pairing
+                // OrderRepair with a ControllerModule would restate the charter's false premise —
+                // a repair order never wants one.)
+                new WireFormat.BlockedCell(9, 1, 2, WireFormat.OrderRepair, WireFormat.ReasonNoConsumable,
+                                           (int)ItemKind.Seals),
             };
             string json = WireFormat.Blocked(cells);
             StringAssert.Contains("\"type\":\"blocked\"", json);
-            // tuple order: [x, y, deck, order, reason]
-            StringAssert.Contains("[3,4,0,0,0]", json);
-            StringAssert.Contains("[58,15,1,2,1]", json);
+            // tuple order: [x, y, deck, order, reason, detail]
+            StringAssert.Contains("[3,4,0,0,0,-1]", json);
+            StringAssert.Contains("[58,15,1,2,1,-1]", json);
+            StringAssert.Contains("[9,1,2,3,2,7]", json);
             Assert.AreEqual("{\"type\":\"blocked\",\"cells\":[]}",
                 WireFormat.Blocked(Array.Empty<WireFormat.BlockedCell>()));
             Assert.AreEqual("{\"type\":\"blocked\",\"cells\":[]}", WireFormat.Blocked(null),
@@ -69,10 +79,11 @@ namespace Perilune.Tests
         [Test]
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
         {
-            string blocked = WireFormat.Blocked(new[] { new WireFormat.BlockedCell(7, 3, 1, 1, 1) });
+            string blocked = WireFormat.Blocked(new[]
+                { new WireFormat.BlockedCell(7, 3, 1, 1, 1, WireFormat.DetailNone) });
             StringAssert.Contains("[7,3,1,", blocked,
                 "the blocked tuple no longer leads with x,y,deck — the shape six sparse channels share");
-            StringAssert.Contains("[7,3,1,", WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0) }),
+            StringAssert.Contains("[7,3,1,", WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1) }),
                 "control: the devices channel leads with x,y,deck");
             StringAssert.Contains("[7,3,1,", WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) }),
                 "control: the items channel leads with x,y,deck");
@@ -87,7 +98,7 @@ namespace Perilune.Tests
         /// <summary>
         /// THE de-DE GATE. This machine's culture is de-DE, where a grouped <c>ToString()</c> emits
         /// <c>1.234</c> — a JSON parse error at the client on every blocked tile.
-        /// MUTATION: drop the <c>BlockedIc</c> argument from any of the five <c>ToString</c> calls and
+        /// MUTATION: drop the <c>BlockedIc</c> argument from any of the six <c>ToString</c> calls and
         /// run under de-DE ⇒ the payloads diverge.
         /// </summary>
         [Test]
@@ -97,13 +108,13 @@ namespace Perilune.Tests
             try
             {
                 var loud = new CultureInfo("de-DE");
-                var cell = new[] { new WireFormat.BlockedCell(1234, 7, 2, 1, 1) };
+                var cell = new[] { new WireFormat.BlockedCell(1234, 7, 2, 1, 1, WireFormat.DetailNone) };
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
                 string inv = WireFormat.Blocked(cell);
                 Thread.CurrentThread.CurrentCulture = loud;
                 Assert.AreEqual(inv, WireFormat.Blocked(cell),
                     "a wire payload that changes with the operator's locale is not a wire payload");
-                StringAssert.Contains("[1234,7,2,1,1]", inv, "no group separators, no locale digits");
+                StringAssert.Contains("[1234,7,2,1,1,-1]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -161,29 +172,30 @@ namespace Perilune.Tests
 
         /// <summary>Parse the emitted tuples back out, in wire order. Deliberately POSITIONAL: the
         /// tuple IS the contract, and a parser that named its fields would not notice a reorder.</summary>
-        private static List<(int X, int Y, int Deck, int Order, int Reason)> Tuples(string json)
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Tuples(string json)
         {
-            var list = new List<(int, int, int, int, int)>();
+            var list = new List<(int, int, int, int, int, int)>();
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 string body = part.Split(']')[0];
                 var f = body.Split(',');
-                Assert.AreEqual(5, f.Length, "a blocked tuple is five elements, saw: [" + body + "]");
+                Assert.AreEqual(6, f.Length, "a blocked tuple is SIX elements since M3-13, saw: [" + body + "]");
                 list.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),
                           int.Parse(f[3], CultureInfo.InvariantCulture),
-                          int.Parse(f[4], CultureInfo.InvariantCulture)));
+                          int.Parse(f[4], CultureInfo.InvariantCulture),
+                          int.Parse(f[5], CultureInfo.InvariantCulture)));
             }
             return list;
         }
 
-        private static List<(int X, int Y, int Deck, int Order, int Reason)> Rows(GameSession gs) =>
+        private static List<(int X, int Y, int Deck, int Order, int Reason, int Detail)> Rows(GameSession gs) =>
             Tuples(BlockedJson(gs));
 
-        private static (int X, int Y, int Deck, int Order, int Reason)? RowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Order, int Reason, int Detail)? RowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Rows(gs))
                 if (t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -254,6 +266,46 @@ namespace Perilune.Tests
             Assert.Fail("PREMISE FAILED: --ship grid has no stageable tile at all — the control site " +
                         "cannot be built and the negative half of this suite would be vacuous.");
             return default;
+        }
+
+        // ══════════════════════════ M3-13: THE SIXTH ELEMENT — `Detail`, AND ITS SENTINEL
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 — THE SIXTH ELEMENT'S SENTINEL, DRIVEN ON A REAL REFUSAL.</b> Every reason
+        /// but <see cref="WireFormat.ReasonNoConsumable"/> has nothing to add, and must say so with
+        /// <see cref="WireFormat.DetailNone"/>.
+        ///
+        /// <para>⛔ <b>WHY −1 AND NOT 0, stated as a test rather than as a comment:</b> <c>0</c> is
+        /// <c>ItemKind.Regolith</c>. A zero default would make "this reason has nothing to add"
+        /// indistinguishable from "this order is waiting for rubble", and the badge over an airless
+        /// dig would read <i>NEEDS REGOLITH</i> — a confident lie, on the surface built to stop
+        /// the game lying by silence.</para>
+        ///
+        /// <para>⚠️ <b>NON-VACUITY FIRST:</b> the planted dig really must have produced a row, or
+        /// the sentinel assertion is quantified over an empty set and cannot fail (the fourth trap
+        /// shape — a guard whose scope filter excludes the violation).</para>
+        ///
+        /// <para>MUTATION: pass <c>0</c> instead of <c>WireFormat.DetailNone</c> in
+        /// <c>GameSession.AddIfBlocked</c> ⇒ RED.</para>
+        /// </summary>
+        [Test]
+        public void Every_Reason_But_NoConsumable_Sends_The_Detail_Sentinel_Not_Zero()
+        {
+            var (gs, host) = BootGrid();
+            var sim = host.Sim;
+            var (airless, _) = FindAirlessSite(sim);
+            sim.World.SetFlag(airless, TileFlags.Designated, true);
+
+            var rows = Rows(gs);
+            var others = rows.Where(r => r.Reason != WireFormat.ReasonNoConsumable).ToList();
+            Assert.That(others.Count, Is.GreaterThan(0),
+                "⛔ NON-VACUITY: this run produced no row of any reason other than NoConsumable, so " +
+                "the loop below is quantified over an empty set and could not fail.");
+            foreach (var r in others)
+                Assert.AreEqual(WireFormat.DetailNone, r.Detail,
+                    "reason " + r.Reason + " at (" + r.X + "," + r.Y + "," + r.Deck + ") sent detail " +
+                    r.Detail + " instead of the sentinel. 0 is ItemKind.Regolith — a zero default " +
+                    "makes 'nothing to add' indistinguishable from 'this order wants rubble'.");
         }
 
         // ═══════════════════════════════════════════════ INCLUSION: each order kind, on its own

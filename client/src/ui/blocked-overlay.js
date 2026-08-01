@@ -149,6 +149,14 @@ export function blockedLayerSvg(tiles, focus, unit = U) {
  * the zone key off the bottom of the canvas. The first row carries the count, because "3 ORDERS
  * STUCK" is the fact that makes a player look, and it is a fact no tooltip aggregates.
  *
+ * ⭐ M3-13 — "DISTINCT" IS NOW DISTINCT *SENTENCE*, NOT DISTINCT REASON CODE, and the change is not
+ * cosmetic. A row's `detail` can change its words (`no_consumable` names the item it wants), so two
+ * tiles waiting on two different items share a reason code and say two different true things. Keyed
+ * on the code alone, the key box would print the FIRST one and silently swallow the second — the
+ * badge on the floor and the words beside it disagreeing about the same room, which is precisely
+ * what deriving both from one `roomBlockedTiles` call is supposed to make impossible. The SWATCH
+ * class still comes from the reason code (there is one colour per reason, not per sentence).
+ *
  * ⚠️ THE TITLE NAMES THE ORDER KINDS, and that is a send-back fix rather than decoration. The wire
  * tuple carries `order` for a reason argued at length in `WireFormat.Blocked.cs` — and until this
  * line existed, `order` reached the player ONLY through the `<title>` label, i.e. through the exact
@@ -169,17 +177,21 @@ export function blockedKeyHtml(tiles) {
   const orders = [];
   for (const t of tiles) {
     if (!t) continue;
-    const key = t.reasonName || '?';
-    if (!seen.has(key)) seen.set(key, t.reasonText || 'STUCK — REASON UNKNOWN TO THIS CLIENT');
+    const reason = t.reasonName || '?';
+    const text = t.reasonText || 'STUCK — REASON UNKNOWN TO THIS CLIENT';
+    // The key is (reason, sentence) — see the header. The value keeps the reason on its own so the
+    // swatch class stays per-COLOUR while the row stays per-SENTENCE.
+    const key = reason + ' ' + text;
+    if (!seen.has(key)) seen.set(key, { reason, text });
     const o = t.orderName ? String(t.orderName).toUpperCase() : '';
     if (o && o !== 'ORDER' && !orders.includes(o)) orders.push(o);
   }
   const kinds = orders.length ? esc(orders.join('/')) + ' ' : '';
   const out = ['<span class="rz-key-title">' + tiles.length + ' ' + kinds + 'ORDER'
     + (tiles.length === 1 ? '' : 'S') + ' STUCK</span>'];
-  for (const [kind, text] of seen) {
-    out.push('<span class="rz-key-row"><i class="rz-key-sw rz-key-sw-blocked-' + esc(kind) +
-      '"></i><span class="rz-key-text">' + esc(text) + '</span></span>');
+  for (const row of seen.values()) {
+    out.push('<span class="rz-key-row"><i class="rz-key-sw rz-key-sw-blocked-' + esc(row.reason) +
+      '"></i><span class="rz-key-text">' + esc(row.text) + '</span></span>');
   }
   return out.join('');
 }

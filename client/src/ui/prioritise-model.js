@@ -110,19 +110,50 @@ export function prioritiseCrew(selCid, crew) {
  *     it worked or not is indistinguishable from a broken verb, and the host's own refusal for a
  *     missing selection lands in `_status`, which this surface renders nowhere.
  *
- * `dev` is the `devices`-channel row (`roomDeviceConditions`'s `{tx,ty,kind,cond,oper,open}`) — it
- * answers BOTH questions this function asks of the tile: whether anything is known to stand there,
- * and what it is. There is deliberately no second source: a caller that had to supply the tile's ART
- * as well could supply one that disagrees with the row, and then the menu would name one machine and
- * order another.
+ * `dev` is the `devices`-channel row (`roomDeviceConditions`'s `{tx,ty,kind,cond,oper,open,serv}`)
+ * — it answers ALL the questions this function asks of the tile: whether anything is known to stand
+ * there, what it is, and (M3-13) whether that kind of machine is EVER serviceable. There is
+ * deliberately no second source: a caller that had to supply the tile's ART as well could supply one
+ * that disagrees with the row, and then the menu would name one machine and order another.
  *
- * @param {{dev?:{kind?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
+ * ⭐ M3-13 ADDS A FOURTH OUTCOME'S WORTH OF MEANING TO THE THIRD ONE. `{ok:false, silent:false}` now
+ * covers two different truths — "nobody to order" and "nothing to order" — and they are DIFFERENT
+ * SENTENCES for the reason RimWorld's menu states a reason at all (§2.2): the first is answered by
+ * selecting a pawn, the second can never be answered. What they share is that the menu does not
+ * open and the player is told why, which is the shape, not the words.
+ *
+ * @param {{dev?:{kind?:number, serv?:number}|null, selCid?:number|null, crew?:Array|null}} [opts]
  * @returns {{ok:boolean, silent:boolean, cid:number|null, name:string, label:string, reason:string}}
  */
 export function prioritiseOffer(opts) {
   const o = opts || {};
   const name = deviceDisplayName(o.dev ? o.dev.kind : undefined);
   if (!o.dev) return { ok: false, silent: true, cid: null, name, label: '', reason: '' };
+  // ⭐⭐ M3-13 — THE MACHINE IS NEVER SERVICED, SO THERE IS NO ORDER TO OFFER. `serv` is the
+  // `devices` channel's own bit (`MaintenanceSystem.IsEverServiceable`, the def's `maint` opt-out);
+  // this asks it and derives nothing. It ranks ABOVE the crew question deliberately: "there is
+  // nobody to give this order to" is the wrong sentence about a machine that has no order to give.
+  //
+  // ⚠️ IT SPEAKS RATHER THAN GOING SILENT, and that is `rimworld-reference.md` §2.2 read exactly.
+  // RimWorld's menu "greys the entry and states the reason"; this surface's menu is a SINGLE ROW,
+  // so a greyed row is an empty box, and the reachable equivalent is the model's existing
+  // says-so-in-words outcome. The silent outcome is reserved for a tile that is NOT A TARGET —
+  // a right-click on bare floor — and a capsule very much is a target: the player aimed at it.
+  //
+  // ⛔ THE CONDITION IS `=== 0`, NOT FALSY. `undefined` is what an older host's row yields, and it
+  // must mean "offer as before" — see `decodeDevices`. A falsy test would withdraw the verb from
+  // every machine aboard the moment a field went missing, which is a silent total loss of the
+  // package M2-10 shipped.
+  if (o.dev.serv === 0) {
+    return {
+      ok: false,
+      silent: false,
+      cid: null,
+      name,
+      label: '',
+      reason: name + ' IS NEVER SERVICED — NO REPAIR TO ORDER HERE',
+    };
+  }
   const who = prioritiseCrew(
     typeof o.selCid === 'number' ? o.selCid : null,
     o.crew,

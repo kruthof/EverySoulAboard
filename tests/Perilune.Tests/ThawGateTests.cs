@@ -397,6 +397,86 @@ namespace Perilune.Tests
                 + string.Join(" | ", problems));
         }
 
+        // ══════════════════════════════ M3-13 — THE PRECEDENCE, PINNED (the charter's mutation 4)
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 MUTATION 4 — THE CONSOLE REFUSAL RANKS ABOVE THE RUNG REFUSAL, AND THAT IS
+        /// A DECISION RATHER THAN AN ARTEFACT OF THE TERM ORDER.</b>
+        ///
+        /// <para><b>WHAT IT PROTECTS.</b> A player standing at an uncommissioned console, told
+        /// <i>NEEDS 3 CONTROLLER MODULE — SHIP HAS 0</i>, has been told the wrong thing: even with
+        /// three modules aboard the capsule would not cycle, because the console cannot ask. He goes
+        /// and mines eight Regolith per module for a bay that was never going to open. The console
+        /// refusal is <b>cheaper to act on, more permanent, and strictly upstream</b> — it is the
+        /// wreck premise's own opening objective — so it must win.</para>
+        ///
+        /// <para>⛔ <b>DRIVEN ON A SHIP WHERE BOTH TERMS ARE GENUINELY UNSATISFIED, WITH THE
+        /// TWO-SIDED PREMISE ASSERTED FIRST.</b> A test that arranged only the console failure would
+        /// pass against ANY term order — the rung would be satisfied and there would be no
+        /// competition to arbitrate. So the fixture leaves <c>term_moss</c> repaired-but-uncommissioned
+        /// AND picks rung 7, whose 3 <c>ControllerModule</c>s the wreck does not carry, and the
+        /// premise leg proves the rung really would refuse if it were reached.</para>
+        ///
+        /// <para><b>MUTATION (physically applied):</b> move term 2's <c>IsCommissionedConsole</c>
+        /// block BELOW term 4's rung block in <see cref="ThawGate.Evaluate"/> ⇒ RED here, with the
+        /// verdict reading <see cref="ThawRefusal.Rung"/>. Restore ⇒ green.</para>
+        ///
+        /// <para>⚠️ <b>AND THE SENTENCE IS ASSERTED, NOT ONLY THE ENUM</b>, because the enum is what
+        /// the wire carries and the SENTENCE is what the player reads — on the POD BAY row (M3-4,
+        /// <see cref="ThawGate.DescribeRow"/>) and, through the same <see cref="ThawGate.Describe"/>,
+        /// on every other surface that renders a verdict. Both surfaces inherit this order because
+        /// both render THIS function's answer; neither ranks anything of its own.</para>
+        /// </summary>
+        [Test]
+        public void TheConsoleRefusalOutranksTheRungRefusal_ANoConsoleShipIsNeverToldToFetchModules()
+        {
+            var sim = BootWreck();
+            RepairConsole(sim);   // the console RUNS (OD-N's middle state) and is NOT commissioned
+
+            // ⛔ THE TWO-SIDED PREMISE. Leg (a): the rung really is unaffordable, so there IS a
+            // competition to arbitrate. Proven by asking the gate with the console term SATISFIED —
+            // if this did not refuse on the rung, the leg below would pass under any term order.
+            var pod = Dev(sim, Rung7Pod);
+            Assert.That(pod, Is.Not.Null, "the wreck must carry " + Rung7Pod);
+            var rung = ThawGate.RungOf(pod.Condition);
+            Assert.That(rung.Item, Is.EqualTo(ItemKind.ControllerModule),
+                "premise: rung 7's item is what makes this the interesting pair — the console gate " +
+                "and the rung ask for the SAME item, which is exactly when a player misled by the " +
+                "wrong sentence spends the most work on the wrong thing");
+            Assert.That(Units(sim, ItemKind.ControllerModule), Is.LessThan(rung.Count),
+                "⛔ PREMISE (a): the wreck must NOT be able to afford rung 7, or term 4 would pass " +
+                "and this test would be green under any ordering whatsoever");
+
+            // Leg (b): with the console commissioned, the gate really does stop at the rung.
+            var twin = BootWreck();
+            CommissionConsole(twin);
+            Assert.That(ThawGate.Evaluate(twin, Console, Rung7Pod).Reason, Is.EqualTo(ThawRefusal.Rung),
+                "⛔ PREMISE (b): on a ship whose only remaining problem is the rung, the gate must " +
+                "say Rung. If it says something else the fixture is not arranging the competition " +
+                "this test claims to arbitrate.");
+
+            // THE RULING.
+            var verdict = ThawGate.Evaluate(sim, Console, Rung7Pod);
+            Assert.That(verdict.Reason, Is.EqualTo(ThawRefusal.NoConsole),
+                "⛔ THE PLAYER HAS BEEN TOLD THE WRONG THING. On a ship with no COMMISSIONED console " +
+                "the gate answered with the RUNG — 'NEEDS 3 CONTROLLER MODULE' — so the player goes " +
+                "and mines 24 Regolith for a bay that will not open when he gets back. The console " +
+                "refusal is cheaper, more permanent and strictly upstream: it wins.");
+
+            string said = ThawGate.Describe(verdict);
+            Assert.That(said, Does.Contain("NO COMMISSIONED CONSOLE"),
+                "the sentence a player reads must name the console, not the modules");
+            Assert.That(said, Does.Not.Contain("SHIP HAS"),
+                "the rung's own number must not leak into the console's sentence — a refusal that " +
+                "names two problems ranks neither");
+
+            // …and the POD BAY row inherits it, because it DELEGATES rather than ranking again.
+            Assert.That(ThawGate.DescribeRow(verdict), Is.EqualTo(said),
+                "the bay's row must be the SAME sentence for a refusal — M3-4's DescribeRow delegates " +
+                "every refusal arm to Describe precisely so a precedence decision taken here reaches " +
+                "both surfaces without either of them re-ranking anything");
+        }
+
         /// <summary>
         /// Every refusal the shipping ship can reach, as (label, how to arrange it, which capsule).
         /// Shared by the billing leg and the host's render leg so the two can never drift apart.

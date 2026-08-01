@@ -42,16 +42,16 @@ namespace Perilune.Tests
         {
             var cells = new[]
             {
-                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1, 0),
-                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0, 1),
+                new WireFormat.DeviceCell(3, 4, 0, (int)DeviceKind.Fabricator, 255, 1, 0, 1),
+                new WireFormat.DeviceCell(58, 15, 1, (int)DeviceKind.Light, 26, 0, 1, 0),
             };
             string json = WireFormat.Devices(cells);
             StringAssert.Contains("\"type\":\"devices\"", json);
-            // tuple order: [x, y, deck, kind, cond, oper, open]. The two rows carry DIFFERENT `open`
-            // values on purpose — a serializer that hard-wired the element would satisfy either one
-            // alone.
-            StringAssert.Contains("[3,4,0,13,255,1,0]", json);
-            StringAssert.Contains("[58,15,1,8,26,0,1]", json);
+            // tuple order: [x, y, deck, kind, cond, oper, open, serv]. The two rows carry DIFFERENT
+            // `open` AND `serv` values on purpose — a serializer that hard-wired either element would
+            // satisfy one row alone. (⭐ M3-13 added `serv` and its distinct pair for that reason.)
+            StringAssert.Contains("[3,4,0,13,255,1,0,1]", json);
+            StringAssert.Contains("[58,15,1,8,26,0,1,0]", json);
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}",
                 WireFormat.Devices(Array.Empty<WireFormat.DeviceCell>()));
             Assert.AreEqual("{\"type\":\"devices\",\"cells\":[]}", WireFormat.Devices(null),
@@ -78,7 +78,7 @@ namespace Perilune.Tests
         [Test]
         public void The_Tuple_Leads_With_X_Y_Deck_Like_Every_Other_Sparse_Channel()
         {
-            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0) });
+            string dev = WireFormat.Devices(new[] { new WireFormat.DeviceCell(7, 3, 1, 4, 200, 1, 0, 1) });
             string items = WireFormat.Items(new[] { new WireFormat.ItemCell(7, 3, 1, 4, 200) });
             string marks = WireFormat.Marks(new[] { new WireFormat.MarkCell(7, 3, 1, 2) });
             string zones = WireFormat.Zones(new[] { new WireFormat.ZoneTile(7, 3, 1, 0UL, 0) });
@@ -97,7 +97,7 @@ namespace Perilune.Tests
         /// group separator would emit <c>1.234</c> — which is a JSON parse error at the client, on
         /// every device on the ship. Every number here goes through InvariantCulture.
         ///
-        /// MUTATION: drop the <c>DeviceIc</c> argument from any of the seven <c>ToString</c> calls and
+        /// MUTATION: drop the <c>DeviceIc</c> argument from any of the eight <c>ToString</c> calls and
         /// run under de-DE ⇒ the payloads diverge.
         /// </summary>
         [Test]
@@ -108,11 +108,11 @@ namespace Perilune.Tests
             {
                 var loud = new CultureInfo("de-DE");
                 Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
-                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1) });
+                string inv = WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1) });
                 Thread.CurrentThread.CurrentCulture = loud;
-                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1) }),
+                Assert.AreEqual(inv, WireFormat.Devices(new[] { new WireFormat.DeviceCell(1234, 7, 2, 3, 255, 1, 1, 1) }),
                     "a wire payload that changes with the operator's locale is not a wire payload");
-                StringAssert.Contains("[1234,7,2,3,255,1,1]", inv, "no group separators, no locale digits");
+                StringAssert.Contains("[1234,7,2,3,255,1,1,1]", inv, "no group separators, no locale digits");
             }
             finally { Thread.CurrentThread.CurrentCulture = prev; }
         }
@@ -248,29 +248,30 @@ namespace Perilune.Tests
 
         /// <summary>Parse the emitted tuples back out, in wire order. Deliberately positional: the
         /// tuple IS the contract, and a parser that named its fields would not notice a reorder.</summary>
-        private static List<(int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open)> Tuples(string json)
+        private static List<(int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open, int Serv)> Tuples(string json)
         {
-            var list = new List<(int, int, int, int, int, int, int)>();
+            var list = new List<(int, int, int, int, int, int, int, int)>();
             int open = json.IndexOf("\"cells\":[", StringComparison.Ordinal);
             Assert.That(open, Is.GreaterThanOrEqualTo(0), "the payload has no cells array: " + json);
             foreach (var part in json.Substring(open).Split('[').Skip(2))
             {
                 string body = part.Split(']')[0];
                 var f = body.Split(',');
-                Assert.AreEqual(7, f.Length, "a devices tuple is seven elements, saw: [" + body + "]");
+                Assert.AreEqual(8, f.Length, "a devices tuple is eight elements, saw: [" + body + "]");
                 list.Add((int.Parse(f[0], CultureInfo.InvariantCulture),
                           int.Parse(f[1], CultureInfo.InvariantCulture),
                           int.Parse(f[2], CultureInfo.InvariantCulture),
                           int.Parse(f[3], CultureInfo.InvariantCulture),
                           int.Parse(f[4], CultureInfo.InvariantCulture),
                           int.Parse(f[5], CultureInfo.InvariantCulture),
-                          int.Parse(f[6], CultureInfo.InvariantCulture)));
+                          int.Parse(f[6], CultureInfo.InvariantCulture),
+                          int.Parse(f[7], CultureInfo.InvariantCulture)));
             }
             return list;
         }
 
         /// <summary>The channel's row for a tile, or null.</summary>
-        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open)? RowAt(GameSession gs, Int3 p)
+        private static (int X, int Y, int Deck, int Kind, int Cond, int Oper, int Open, int Serv)? RowAt(GameSession gs, Int3 p)
         {
             foreach (var t in Tuples(DevicesJson(gs)))
                 if (t.X == p.X && t.Y == p.Y && t.Deck == p.Z) return t;
@@ -841,6 +842,109 @@ namespace Perilune.Tests
             Assert.That(resident.Count - best, Is.GreaterThan(resident.Count / 2),
                 "a single threshold would now get MOST kinds right, which would weaken the argument " +
                 "for carrying `oper` at all — re-read the header before assuming it still holds");
+        }
+
+        // ═══════════════════════ M3-13 — `serv`: CAN THIS KIND OF MACHINE EVER BE SERVICED AT ALL?
+
+        /// <summary>
+        /// ⭐⭐ <b>M3-13 — THE EIGHTH ELEMENT, DRIVEN ON THE SHIPPING SHIP, WITH BOTH VALUES PRESENT
+        /// IN ONE RUN.</b> A <c>CryoPod</c>'s <c>maint</c> is <c>0.00</c> (deliberately —
+        /// <c>MECHANICS.md</c> §13.22c) and <c>Device.Condition</c> is clamped at or above zero, so
+        /// <c>PrioritiseJobCommand</c>'s <c>Condition &gt;= MaintainBelow</c> can NEVER be false for
+        /// one: there is no state of any ship in which a capsule has a repair to give. The Room
+        /// Zoom's right-click menu reads this bit and stops promising the order.
+        ///
+        /// <para>⛔ <b>BOTH VALUES, ONE RUN, AND THAT IS THE NON-VACUITY.</b> A serializer that wrote
+        /// a constant <c>1</c> passes any test that only looks at serviceable machines, and a
+        /// constant <c>0</c> passes any test that only looks at the capsules. The wreck carries
+        /// twelve capsules AND a hull full of ordinary machines, so one render answers both.</para>
+        ///
+        /// <para>MUTATION: hard-wire <c>1</c> (or <c>0</c>) in <c>GameSession.BuildDevices</c> ⇒ one
+        /// of the two legs reddens. MUTATION 2: give <c>CryoPod</c> a non-zero <c>maint</c> in
+        /// <c>machines.def</c> ⇒ the capsule leg reddens, which is the def and the wire being pinned
+        /// to each other rather than to a literal in this file.</para>
+        /// </summary>
+        [Test]
+        public void The_Serv_Bit_Is_Zero_For_Capsules_And_One_For_Ordinary_Machines_On_The_Wreck()
+        {
+            var (gs, host) = Boot(ShipChoice.Wreck);
+            var sim = host.Sim;
+
+            int pods = 0, podsServiceable = 0, others = 0, othersServiceable = 0;
+            foreach (var t in Tuples(DevicesJson(gs)))
+            {
+                if (t.Kind == (int)DeviceKind.CryoPod) { pods++; podsServiceable += t.Serv; }
+                else if (sim.Defs.Machines[t.Kind].MaintainBelow > 0f) { others++; othersServiceable += t.Serv; }
+            }
+
+            Assert.That(pods, Is.GreaterThan(0),
+                "⛔ NON-VACUITY: no CryoPod row reached the channel, so the capsule leg is empty. " +
+                "The wreck authors twelve; if none are on the wire the cryo bay is fogged and this " +
+                "test is measuring nothing.");
+            Assert.That(others, Is.GreaterThan(0),
+                "⛔ NON-VACUITY: no serviceable-kind row reached the channel, so a hard-wired 0 " +
+                "would pass this test.");
+
+            Assert.AreEqual(0, podsServiceable,
+                "A CAPSULE REPORTED ITSELF SERVICEABLE. `CryoPod`'s maint is 0.00, so " +
+                "PrioritiseJobCommand refuses every order at one — and the Room Zoom would go on " +
+                "offering PRIORITISE: REPAIR on a bay of twelve, each click firing a toast and " +
+                "changing nothing. That is the defect this element exists to close.");
+            Assert.AreEqual(others, othersServiceable,
+                "a machine whose def gives it a maintain threshold reported itself NEVER serviceable " +
+                "— the menu would withdraw the repair order from machines that can be repaired, " +
+                "which is M2-10's whole verb lost silently");
+        }
+
+        /// <summary>
+        /// ⛔ <b>THE BIT IS THE SIM'S ANSWER, AND THE SIM'S ANSWER IS THE COMMAND'S OWN COMPARISON.</b>
+        /// <c>MaintenanceSystem.IsEverServiceable</c> is asserted here against the DEFS it reads and
+        /// against the BEHAVIOUR it predicts — an order at a capsule is refused, an order at a worn
+        /// serviceable machine is taken — so the menu's bit and the command's refusal cannot come
+        /// apart.
+        ///
+        /// <para>MUTATION: change <c>IsEverServiceable</c>'s test to <c>&gt;= 0f</c> ⇒ the capsule
+        /// leg reddens. MUTATION 2: delete the <c>Condition &gt;= MaintainBelow</c> line from
+        /// <c>PrioritiseJobCommand</c> ⇒ the BEHAVIOUR leg reddens, which is what makes this an
+        /// agreement test rather than two restatements of one def read.</para>
+        /// </summary>
+        [Test]
+        public void IsEverServiceable_Agrees_With_The_Order_The_Sim_Would_Actually_Refuse()
+        {
+            var (gs, host) = Boot(ShipChoice.Wreck);
+            var sim = host.Sim;
+
+            Assert.IsFalse(MaintenanceSystem.IsEverServiceable(sim.Defs, DeviceKind.CryoPod),
+                "premise: the capsule's `maint` opt-out is still 0.00 in the shipped defs");
+            Assert.IsTrue(MaintenanceSystem.IsEverServiceable(sim.Defs, DeviceKind.SolarWing),
+                "⛔ CONTROL: an ordinary machine must be serviceable, or the predicate is `false` " +
+                "for everything and the leg above proves nothing");
+
+            Device pod = null, wing = null;
+            foreach (var d in sim.Devices.Items)
+            {
+                if (pod == null && d.Kind == DeviceKind.CryoPod) pod = d;
+                if (wing == null && d.Kind == DeviceKind.SolarWing
+                    && d.Condition < sim.Defs.Machines[(int)DeviceKind.SolarWing].MaintainBelow) wing = d;
+            }
+            Assert.IsNotNull(pod, "premise: the wreck authors capsules");
+            Assert.IsNotNull(wing, "premise: the wreck authors a WORN solar wing — the order leg needs " +
+                                   "a machine the sim would otherwise accept");
+
+            var crew = sim.Citizens.Items[0];
+            gs.ApplyForTest(new WebCommand(CmdKind.Prioritise, pod.Pos.X, pod.Pos.Y, i: pod.Pos.Z, cid: crew.Id));
+            host.Sim.Tick();
+            Assert.IsFalse(crew.HeldByOrder,
+                "⛔ THE SIM TOOK AN ORDER AT A CAPSULE. If it did, `IsEverServiceable` is answering a " +
+                "different question from the one the command asks, and the menu's bit is a second " +
+                "authority rather than a mirror of the refusal.");
+
+            gs.ApplyForTest(new WebCommand(CmdKind.Prioritise, wing.Pos.X, wing.Pos.Y, i: wing.Pos.Z, cid: crew.Id));
+            host.Sim.Tick();
+            Assert.IsTrue(crew.HeldByOrder,
+                "⛔ CONTROL: the sim refused an order at a machine it CAN service, so the refusal " +
+                "above is not evidence about capsules at all — it is evidence that nothing is " +
+                "orderable in this fixture.");
         }
 
         /// <summary>
