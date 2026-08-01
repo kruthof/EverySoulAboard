@@ -1124,8 +1124,13 @@ right-click. The order does not WRITE the grid — it overrides the setting for 
 
 **The refusals, all of them the dispatcher's own predicates, none re-derived** — `HoldPosition` ·
 `IsIncapableOf(Repair)` (via `WorkTypeMap.TryOf(Maintain)`, M2-2's one table) · nothing to service
-(`Condition >= MaintainBelow`) · `MaintenanceSystem.TryFindStagingTile` (**now public**, safety and
-approach are never overridden) · `MaintenanceSystem.IsUnfixableWreck` (wreck rule W2) · the machine
+(`Condition >= MaintainBelow`) · `MaintenanceSystem.TryFindStagingTile` (**now public**; ⭐ **M3-14
+AMENDS THIS — the command passes `forced: true` (`Commands.cs:286`), so the AIR question is waived
+for an ordered pawn and only the GEOMETRY still refuses**: `TryFindStagingTile` tests
+`Simulation.IsWalkable` outside the flag, so a walled-in machine is refused exactly as before) ·
+`MaintenanceSystem.IsUnfixableWreck` (wreck rule W2 — ⭐ **M3-14 asks this one `forced: true` too**,
+`Commands.cs:297`, the same decision one line on: the order counts a consumable stack the dispatcher
+could not reach) · the machine
 already has a servicer who is **somebody else** (`MaintenanceSystem.FindWorker`, **now public** —
 `DriveWorkers` drives every Maintain citizen bound to a tile, so a second one would repair it twice).
 **Every refusal returns BEFORE the cancel**, so no path can leave a held pawn with no job.
@@ -1145,9 +1150,11 @@ an order naming a DIFFERENT machine still replaces this one through the cancel.
 transient, never-saved** map of crew id → ordered device id, walked in CITIZEN STORE order (never
 enumerated: a hash layout must not reach the socket). A row is emitted only while
 `IsUnfixableWreck` is true — asked **once per pending order**, in the walk
-(`hosts/web/GameSession.cs:3082`), and the answer handed to `AddUnfixableRow`
-(`hosts/web/GameSession.cs:2837`) rather than re-asked inside it: below the wreck floor that call is
-up to three full item-store scans.
+(`hosts/web/GameSession.cs:3136-3181`), and the answer handed to `AddUnfixableRow`
+(`hosts/web/GameSession.cs:2926`) rather than re-asked inside it: below the wreck floor that call is
+up to three full item-store scans. ⭐ **Since M3-14 it is asked `forced: true`**
+(`GameSession.cs:3181`), so the badge answers *"is there a consumable ABOARD"*, not *"is there one an
+idle crew member could reach in air"*.
 
 **THE RETIRE RULE IS A WHITELIST**, and it is a whitelist because the blacklist it replaced LEAKED
 (independent review, measured): an entry survives a render only while **(1)** she is held on a job
@@ -1857,8 +1864,12 @@ no web verb could create work. New hashed `Citizen.OrderedMove` + `IsRecruitable
 (`IsIdleForWork && !(OrderedMove && HasPath)`) now guard the three **work** recruiters
 (`JobSystem`, `CraftingSystem`, `MachineWearSystem`). `SustenanceSystem` deliberately keeps
 using `IsIdleForWork`: an order suppresses **work**, never **survival** — a crew member
-crossing a real thirst/hunger threshold mid-order still diverts, exactly as E0-2's
-`SafetySystem` still lets them flee lethal air. See §5.1.
+crossing a real thirst/hunger threshold mid-order still diverts. ⭐ **THE FLEE HALF OF THAT
+SENTENCE IS NO LONGER TRUE — M3-14 (rung 4, 2026-07-31) MADE THE ORDER SUPPRESS SELF-RESCUE
+TOO.** `SafetySystem.Tick` skips a `Citizen.HeldByOrder` crew member outright
+(`sim/Sim.Core/Systems/SafetySystem.cs:284`), so an ordered pawn does **not** flee lethal air:
+she may die, deliberately. It is scoped to the held pawn — every other crew member, including one
+standing in the same compartment, flees exactly as before. See §5.1 and §13.21.
 
 **A NEW player verb landed 2026-07-28: OPERATE.** It is the first player verb that is not a
 designation — it changes the world at the command drain with nobody walking anywhere.
@@ -1894,8 +1905,10 @@ designation — it changes the world at the command drain with nobody walking an
   sim accepts the command and the world does not move is a **locked door being opened**, so that
   is refused up front (`GameSession.cs:1066-1071`); a locked door can still be *shut*.
   Everything else is **accepted** and carries an advisory tail explaining why it may change
-  nothing (`OperateAdvisory`, `:1158-1173`): `WRECKED (n %)` when `!IsOperational`, plus `NO
-  PARTS, SEALS OR SWARF ABOARD TO REPAIR IT` when `MaintenanceSystem.IsUnfixableWreck`, and —
+  nothing (`OperateAdvisory`, `:1311-1340`): `WRECKED (n %)` when `!IsOperational`, plus `NO
+  PARTS, SEALS OR SWARF ABOARD TO REPAIR IT` when `MaintenanceSystem.IsUnfixableWreck` — ⭐ **asked
+  `forced: true` since M3-14 (`:1332`), with NO order in view, so the sentence is a claim about the
+  ship's stock rather than about reachable-in-air stock** — and —
   `else if`, so a wrecked machine never also mentions power — `NO POWER REACHES IT` for a vent
   being opened while `!Powered`. ⚠️ **The power clause cannot fire on any shipped ship**: every
   `AirVent` on `--ship wreck` (2) and `--ship grid` (4) is on network 1, and no palette tool
@@ -2644,6 +2657,21 @@ asked by the only two places in the sim that choose the tile a worker will stand
 (which also gates the consumable fetch, or the cycle simply moves upstream to a Parts stack a
 mid-carry flee left in vacuum). **No field, no save, no hash fold, no def, and all five pins held.**
 
+⭐ **AMENDED 2026-07-31 BY M3-14 — THE RULE NOW HAS A PLAYER OVERRIDE, AND EVERYTHING BELOW IS
+ABOUT AUTONOMOUS WORK.** `CanStageWorkerAt` gained a `forced` parameter
+(`sim/Sim.Core/Systems/SafetySystem.cs:149`) that short-circuits the air test. ⛔ **`SafetySystem`'s
+own doc comment says *"only a caller that can see the ORDER"* may pass it true, and that is NOT what
+shipped.** Measured, the true-passers are: `PrioritiseJobCommand` at **both** its gates
+(`Commands.cs:286` staging, `:297` the wreck rule), a `Citizen.HeldByOrder` worker on the drive path
+(`MachineWearSystem.cs:311-312`), the ordered-device badge walk (`GameSession.cs:3181`) — **and
+`OperateAdvisory` (`GameSession.cs:1332`), which passes it UNCONDITIONALLY with no order in view at
+all**, because there the question is *"a claim about the SHIP'S STOCK, not about what an idle crew
+member happens to be able to reach"* (its own comment, `GameSession.cs:1320-1321`). Every
+dispatcher-side RECRUITMENT query still passes `false`, which is what keeps every measurement in this
+section and every pin standing. What changed is that the player can now order a crew member into
+vacuum, and `SafetySystem` no longer rescues her while the order holds (`SafetySystem.cs:284`) — see
+§13.25 b2.
+
 **⛔ RETRACTED — "the rule denies only work that could never have landed."** That was this package's
 load-bearing claim, from the arithmetic that the flee threshold arrives in 45 s (vacuum) / 120 s
 (thin air, CO2 or thermal) while the shortest fixed-tile job is a 90 s device strip. **It is false,
@@ -3017,7 +3045,7 @@ by driving a ship, and each item is a **live** hole in the shipping game, not a 
 PRESSURISED.** The mechanism is §3 "Gas is SAME-DECK ONLY" — four independent planar paths, all
 cited there, none of which is a tuning value. The consequence is not slowness, it is
 **impossibility**: `--ship wreck` authors exactly two `AirVent`s and **both are on deck 0**
-(`AuthoredShips.cs:1709` `vent_cryo`, `:1830-1831` `vent_ls`; the plan runs `1622`→EOF), so all
+(`AuthoredShips.cs:1994-1995` `vent_cryo`, `:2118-2122` `vent_ls`; the plan runs `1888`→EOF), so all
 eight deck-1 halls, **allocated and with their doors opened, peak at `0.000` kPa over 20 000
 ticks.** No amount of OPERATE fixes it, because the verb only opens edges and there is no edge to
 open (the "allocated" in that measurement is now moot — M1-L-b deleted the verb; the eight halls
@@ -3034,8 +3062,8 @@ M1-L-b has since deleted the command it would have been re-added to.
 the sim still has no vertical gas term"* — so the paragraph above is now a statement about the
 MECHANISM (still true and still binding: gas is same-deck only, and nothing here adds a term) and
 no longer about the ship. **M3-11 authors `vent_d1`** in `hall_d1_s0` at `(10,1,1)`, directly above
-`vent_cryo` — `AuthoredShips.cs:2100-2114` for the device, `:1716-1760` for the rationale, and its
-single surviving riser tap is the one exemption inside `WreckCutDeck1Risers` (`:2396-2455`). The
+`vent_cryo` — `AuthoredShips.cs:2165-2170` for the device, `:1726-1805` for the rationale, and its
+single surviving riser tap is the one exemption inside `WreckCutDeck1Risers` (`:2452-2515`). The
 wreck now authors **three** `AirVent`s, one of them on deck 1. It is authored **WRECKED (0.06,
 below `AirVent`'s `fail` of 0.10)**, so the halls still read `0.000` kPa at boot and the act that
 opens the deck is a REPAIR — driven both ways in `tests/Perilune.Tests/Deck1VentTests.cs` (dead
@@ -3071,6 +3099,34 @@ segmented service, or relayed servicers). **Reachability is not** — authoring 
 `SlotAssign.DoorOpen`, or exempting its riser tap too, are choices inside `AuthoredShips.cs`, and
 both are **owner calls left open**: the first moves the wreck's "no open door faces vacuum at boot"
 invariant, the second moves the tap census.
+
+⭐ **OUTCOME 2026-07-31 — BOTH BLOCKERS ARE ANSWERED, BUT NOT IN THE SAME WAY, AND THE DIFFERENCE
+IS THE POINT.** Two owner decisions taken the same day supersede the "owner calls left open" above;
+the authoring options named in that paragraph were **not** the route taken.
+
+- **BLOCKER 1 (reachability) is ANSWERED AS A MECHANISM by OD-N** (`ROADMAP.md` §5 row N) — **and it
+  is not `vent_d1`-specific.** Doors and vents are actuated through **MOSS only** (the Room Zoom's
+  direct OPERATE click is removed for both), and the ⭐ **SPLIT GATE** opens the **MOSS console**
+  (manual actuation, one command at a time) as soon as `term_moss` is **REPAIRED**; commissioning
+  gates *programs and the pod bay*, not the console. ⇒ **A repaired console opens ANY named door on
+  the ship remotely**, so *every* machine behind a shut door — not just this one — stops being
+  unreachable by geometry. Package **M3-15**, queue position **6b**.
+- **BLOCKER 2 (survivability) is DISSOLVED FOR `vent_d1` ALONE by OD-O** (§5 row O), and this half
+  is authored content, not a mechanism. The vent is re-authored **mechanically fine** — `Condition`
+  above `AirVent`'s `fail` of 0.10 — with a **dead control board**: the direct actuation refuses
+  with an authored story reason (`CONTROLLER FAULT — BOARD UNRESPONSIVE`) and the workaround is a
+  MOSS **program**. **No crewed repair is needed, so nobody has to cross deck 1 at all** and the
+  900 s-against-suffocation arithmetic above simply does not arise here. Package **M3-16**, queue
+  position **8b**.
+
+⛔ **SO THE CLASS IS HALF OPEN, AND THAT IS THE PRECISE STATEMENT.** Reachability is closed
+generally: a repaired console reaches every door. **Survivability is not** — OD-O ships **exactly
+one** authored instance and the owner said so explicitly (*"not a pattern for all devices — it's an
+idea we can apply sometimes as a game element"*). The next machine that needs a **crewed** service
+in vacuum has blocker 2 again, undiminished, and **that stays an owner call**. ⚠️ **AND THE BEAT
+MOVES**: under OD-N installing a program needs the **COMMISSIONED** terminal, so deck-1 air becomes
+a **POST-COMMISSION** beat — after the frontier, the benches and the `ControllerModule` — not part
+of the opening.
 
 **b. A BUILD GHOST DRAWS WHERE ITS REASON CANNOT — the `designs`/`blocked` fog asymmetry.**
 `BuildDesigns` (`hosts/web/GameSession.cs:1715-1729`) walks `BuildSystem.Pending` and emits every
@@ -3245,10 +3301,18 @@ also names `OrderRepair` on the client (until it lands, the badge reads *"ORDER 
 OR SEALS ABOARD"* rather than *"REPAIR BLOCKED — …"*, via `decodeBlocked`'s unknown-order path).
 
 **b2. ⚠️ ONLY THE WRECK RULE REACHES THE PLAYER.** The order's other refusals — incapable, nothing
-to service, nowhere survivable to stand, a machine somebody else is already fixing — are **silent**,
+to service, nowhere to stand, a machine somebody else is already fixing — are **silent**,
 the same shape §13.21 records for `CanStageWorkerAt`. A player who orders a repair that is refused
 for any of those four reasons sees exactly nothing. Named here rather than fixed: the surface that
 would say it is M2-10's, and the ladder that would rank the reasons is a package of its own.
+⭐ **M3-14 AMENDS THE THIRD REASON, AND WHAT THE WRECK RULE ANSWERS — not the silence.** The third
+used to read *"nowhere survivable to stand"*; since `PrioritiseJobCommand` passes `forced: true`
+(`Commands.cs:286`) an order waives the AIR question entirely, so what is left to refuse is the
+**geometry** — no walkable tile beside the machine — and that refusal is still silent. ⚠️ **And the
+one refusal that DOES reach the player changed its MEANING**: `IsUnfixableWreck` is asked
+`forced: true` as well (`Commands.cs:297`, and the badge walk at `GameSession.cs:3181`), so the
+headline above now means *"only the ship's-stock rule reaches the player"* — a Parts stack behind the
+pressure frontier no longer reads as NO PARTS.
 
 **c. NEITHER PRE-EMPTION CALL SITE IS INDIVIDUALLY PINNED** for the hold — the predicate is read
 twice on that path and blinding either alone is green (§6.2c). Named so that a later lane does not
@@ -3446,7 +3510,7 @@ program *is* this field, and `Simulation.StateHash` folds it **for that reason, 
 says so** (`sim/Sim.Core/Simulation.cs:553-555`: *"registers every MOSS adapter BY NAME, so a
 restore that changed one silently unbinds every player program, no error"*). It is **also the cryo
 sleeper's identity**: the wreck's twelve capsules are named `"pod_" + pod.Who.ToLowerInvariant()`
-(`sim/Sim.Gen/AuthoredShips.cs:1856`) from the `PodSpec.Who` column (`:1737`, table at `:1760`), and
+(`sim/Sim.Gen/AuthoredShips.cs:1963`) from the `PodSpec.Who` column (`:1839`, table at `:1865`), and
 `Device.cs:37-49`'s `CryoPod` comment already pins that mapping — *`IsOpen` (open vs occupied),
 `Name` (who is inside), `Condition`* — closing with **"NO new `Device` field."**
 
@@ -3495,7 +3559,7 @@ struct (`:9`) carrying rung number, `ItemKind` and count, through a seven-row li
 rung.** Until that lands, the ladder is *content that exists and nothing consumes*.
 
 ⭐ **The rung is DERIVED, so it costs no state.** The carrier is the pod's already-authored
-`Condition` (`sim/Sim.Gen/AuthoredShips.cs:1760-1777`, `WreckPods`), whose documented meaning is
+`Condition` (`sim/Sim.Gen/AuthoredShips.cs:1865-1882`, `WreckPods`), whose documented meaning is
 already *"how badly the raid treated it"* (`Entities/Device.cs:47`). ⇒ **no new `Device` field**
 (refused by `Device.cs:46-49` and by wreck-plan W5.1), **no new def field** (which would move P4/P5
 for a table nobody tunes at runtime — and a def field pinned only by the checksum is NOT pinned),
@@ -3541,7 +3605,7 @@ added, renamed, opened or wrecked pod is a named failure.
 six edges plus the two open ends.
 `AuthoredShipsProseHeader_StatesTheSameCensusAsTheseLiterals` (`:544`) is a **source scan that
 deliberately INVERTS the house `codeOnly` convention**: the census prose IS the artefact under test,
-so the banner-delimited header block (`AuthoredShips.cs:1310-1338`) is extracted as comment text on
+so the banner-delimited header block (`AuthoredShips.cs:1312-1340`) is extracted as comment text on
 purpose, and `SurfaceBoundaryTests.CodeOnly` is used as the *proof* of that by asserting it deletes
 the block entirely. It is a POSITIVE scan (`:598`), never a "must not contain 8" one — the header
 deliberately records the dead draft it replaced, and a negative scan would fire on the very
