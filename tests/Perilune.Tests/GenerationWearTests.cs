@@ -55,8 +55,11 @@ namespace Perilune.Tests
     ///     reports <b>0.00 kW</b> from three inoperative wings and LIFE SUPPORT SHED at sim-hours
     ///     20, 22 and 24; boot falls to 7.47 kW. This is the negative leg, and it fired</item>
     ///   <item><b>3</b> apply <c>EffectiveRate</c> to <c>draw</c> as well ⇒ RED, 3 of 11 —
-    ///     LifeSupport demand 4.00 kW (pinned 5.70), Industry 3.61 (6.50), and the benches RUN on a
-    ///     wreck with a flat bank</item>
+    ///     LifeSupport demand read 4.00 kW against the then-pinned 5.70, Industry 3.61 (6.50), and
+    ///     the benches RAN on a wreck with a flat bank. ⚠️ <b>A RECORD OF M2-12'S RUN, IN THE PAST
+    ///     TENSE ON PURPOSE:</b> LifeSupport has been 6.20 since M3-11 authored <c>vent_d1</c> onto
+    ///     the trunk, so the figures in this list describe the tree M2-12 was measured on and must
+    ///     not be re-quoted as current</item>
     ///   <item><b>4</b> floor set to <c>Condition</c> instead of <c>0.5 + 0.5·Condition</c> ⇒ RED,
     ///     7 of 11 — three wings at Condition 0.00 feed 0.00 kW where the map says 9.00</item>
     ///   <item><b>5</b> scale generation by 0.8 ⇒ RED, 5 of 11 — 8.52 / 10.78 / 13.92 against
@@ -128,8 +131,13 @@ namespace Perilune.Tests
         private const float AllBelowFailKW = 9.54f;
 
         /// <summary>Flat demand, unchanged by this package: Comfort 1.20 · Industry 6.50 ·
-        /// Defense 0.90 · LifeSupport 5.70.</summary>
-        private const float DemandLifeSupportKW = 5.70f;
+        /// Defense 0.90 · LifeSupport 6.20 — 14.80 kW in total.
+        /// ⚠️ LifeSupport WAS 5.70 (total 14.30) until M3-11 authored <c>vent_d1</c> onto the deck-0
+        /// trunk through its one exempted riser tap. An OPEN AirVent is 0.5 kW of LifeSupport
+        /// (<c>PowerSystem.IsWanting</c>), and it pays it while BROKEN, which is this file's own
+        /// ruling 8c: only generation rides <c>EffectiveRate</c>. Re-measured, driven, on the merged
+        /// tree — 5.70 -> 6.20; the other three tiers did not move.</summary>
+        private const float DemandLifeSupportKW = 6.20f;
         private const float DemandIndustryKW = 6.50f;
         private const float DemandDefenseKW = 0.90f;
         private const float DemandComfortKW = 1.20f;
@@ -311,8 +319,8 @@ namespace Perilune.Tests
         /// the wreck is 7.47 kW and <c>wing_c</c> contributes literally nothing, so the first repair
         /// a player makes buys them a cliff instead of a step. Without it, wear is a gradient. The
         /// second leg is the consequence that matters: even three failed wings keep LIFE SUPPORT
-        /// (5.70 kW) and the doors (0.90) served, so a wrecked ship is recoverable rather than
-        /// asphyxiating. Under the gate this fixture reads 0.00 kW and life support is SHED.</para>
+        /// (6.20 kW since M3-11 put `vent_d1` on the trunk; 5.70 before it) and the doors (0.90)
+        /// served, so a wrecked ship is recoverable rather than asphyxiating. Under the gate this fixture reads 0.00 kW and life support is SHED.</para>
         /// <para>The bank is flattened first, deliberately: a battery bursts its whole charge inside
         /// one balance second, so with any charge at all the tier walk says nothing about
         /// generation. The wreck reaches this state unaided by sim-hour 4.</para>
@@ -344,7 +352,7 @@ namespace Perilune.Tests
                 offenders.Add("LIFE SUPPORT IS SHED on a ship whose only fault is three worn wings and a flat " +
                               "bank — the gradient is what keeps a wreck recoverable");
             if (!TierServed(rig.Sim, PowerTier.Defense))
-                offenders.Add("the doors are shed at 9.54 kW against 5.70 + 0.90 kW of demand above them");
+                offenders.Add("the doors are shed at 9.54 kW against 6.20 + 0.90 kW of demand above them");
 
             Assert.That(offenders, Is.Empty,
                 "the repair cliff (8b) is back:\n  " + string.Join("\n  ", offenders));
@@ -355,7 +363,7 @@ namespace Perilune.Tests
         /// <summary>
         /// ⛔ <b>THE OTHER RULING: A WORN SCRUBBER PAYS FULL PRICE FOR REDUCED OUTPUT.</b> Only the
         /// generation side rides <c>EffectiveRate</c>. Scaling <c>draw</c> too would hand a wrecked
-        /// ship a smaller bill — the wreck's own devices are worn enough that its 14.30 kW would
+        /// ship a smaller bill — the wreck's own devices are worn enough that its 14.80 kW would
         /// fall to roughly 8.6 and NOTHING would ever be shed.
         /// <para>⚠️ THE INCLUSION HALF IS IN THE SAME METHOD (trap 4, fourth shape): the tier
         /// figures are only evidence if the ship booking them is actually worn, so the first leg
@@ -388,7 +396,7 @@ namespace Perilune.Tests
             Band2(offenders, "Defense demand", rig.Demand(PowerTier.Defense), DemandDefenseKW);
             Band2(offenders, "Comfort demand", rig.Demand(PowerTier.Comfort), DemandComfortKW);
 
-            // The behavioural half: 10.65 kW of supply against a FLAT 14.30 kW bill sheds Industry
+            // The behavioural half: 10.65 kW of supply against a FLAT 14.80 kW bill sheds Industry
             // and Comfort. On a scaled bill (~8.6 kW) every tier is served and the wreck is free.
             EmptyTheBank(rig.Sim);
             Pass(rig.Sim);
@@ -396,7 +404,7 @@ namespace Perilune.Tests
                 offenders.Add("the benches RUN on a wreck with a flat bank and 10.65 kW of generation — " +
                               "the demand side has been given an EffectiveRate factor (8c)");
             if (!TierServed(rig.Sim, PowerTier.LifeSupport))
-                offenders.Add("life support is shed at 10.65 kW against 5.70 kW — the shed order has inverted");
+                offenders.Add("life support is shed at 10.65 kW against 6.20 kW — the shed order has inverted");
 
             Assert.That(offenders, Is.Empty,
                 "the power bill is no longer flat:\n  " + string.Join("\n  ", offenders));
@@ -493,7 +501,7 @@ namespace Perilune.Tests
 
             if (litEvery != Window)
                 offenders.Add($"deck 0's eight lamps were lit in {litEvery} of {Window} balance seconds after the " +
-                              "wings were repaired to the reachable ceiling — at 17.40 kW against 14.30 kW of " +
+                              "wings were repaired to the reachable ceiling — at 17.40 kW against 14.80 kW of " +
                               "demand they must be lit in every one of them");
             if (industryEvery != Window)
                 offenders.Add($"the benches ran in {industryEvery} of {Window} passes after the repair, not all of them");
@@ -509,7 +517,7 @@ namespace Perilune.Tests
 
         /// <summary>
         /// ⛔ <b>THE DRIVEN WINNABILITY CHECK.</b> M2-12 drops boot generation from a flat 18.00 kW
-        /// to 10.65 against 14.30 kW of flat demand, so the ship now runs a permanent 3.65 kW
+        /// to 10.65 against 14.80 kW of flat demand, so the ship now runs a permanent 4.15 kW
         /// deficit on its authored wings. The charter requires this to be measured, in the running
         /// game, over time, per tier — not argued from a total.
         /// <para><b>MEASURED, hour by hour for 24 sim-hours, unattended (OD-H: nothing enabled):</b>

@@ -598,8 +598,10 @@ share, not zero, so repair is a gradient rather than a cliff. **Demand stays fla
 worn scrubber pays its full `draw` for reduced output. Measured on `--ship wreck`: three
 wings at Condition 0.31/0.18/0.06 supply **10.65 kW**, one Parts overhaul takes it to
 **13.47**, and the reachable ceiling (one Parts + two Seals) is **17.40**, against a flat
-14.30 kW of demand. Read at the seam via `PowerSystem.LastGenerationKW` /
-`LastDemandKW`, which exist only so tests can pin the ledger without re-deriving it.
+14.80 kW of demand (14.30 until M3-11 put `vent_d1` on the trunk — an open `AirVent` is 0.5 kW
+of LifeSupport, and it pays it while broken because only generation rides `EffectiveRate`).
+Read at the seam via `PowerSystem.LastGenerationKW` / `LastDemandKW`, which exist only so
+tests can pin the ledger without re-deriving it.
 A battery can burst its entire stored energy inside one 1-second balance pass, so
 **batteries bridge any load until empty** (`:131-133`, comment). Battery capacity is
 `Device.BatteryCapacityKWh = 40` (`Entities/Device.cs:71`).
@@ -3020,6 +3022,49 @@ dead deck) are all content/design calls. ⛔ **Do NOT close it by re-pressurisin
 `AddRoomCommand`** — that is precisely the wand W4b deleted on a binding owner decision, and
 M1-L-b has since deleted the command it would have been re-added to.
 
+⭐ **THE OUTCOME, 2026-07-31 — WAY ONE IS AUTHORED; WAYS TWO AND THREE ARE STILL REFUSED.**
+**OD-M item 2 amends OD-E's headline** to *"deck 1 boots dead and the player may bring it back;
+the sim still has no vertical gas term"* — so the paragraph above is now a statement about the
+MECHANISM (still true and still binding: gas is same-deck only, and nothing here adds a term) and
+no longer about the ship. **M3-11 authors `vent_d1`** in `hall_d1_s0` at `(10,1,1)`, directly above
+`vent_cryo` — `AuthoredShips.cs:2100-2114` for the device, `:1716-1760` for the rationale, and its
+single surviving riser tap is the one exemption inside `WreckCutDeck1Risers` (`:2396-2455`). The
+wreck now authors **three** `AirVent`s, one of them on deck 1. It is authored **WRECKED (0.06,
+below `AirVent`'s `fail` of 0.10)**, so the halls still read `0.000` kPa at boot and the act that
+opens the deck is a REPAIR — driven both ways in `tests/Perilune.Tests/Deck1VentTests.cs` (dead
+after 3 000 unattended ticks; ≥ 80 kPa and `CanStageWorkerAt` TRUE 3 000 ticks after the repair,
+with a second deck-1 hall still at `0.000` as the mechanism control).
+⛔ **AND THE PLAYER CANNOT PERFORM THAT REPAIR YET. TWO BLOCKERS, IN THIS ORDER — driven on the
+M3-11 tree, FILED, not fixed.**
+
+**1. REACHABILITY, and it is completely silent.** Every deck-1 hall door boots SHUT
+(`SlotGridPlanner.Carve`'s derived rule) and OFF-NETWORK, and `Simulation.IsWalkable:155` refuses a
+shut door tile — so at boot **there is no path into `hall_d1_s0` at all**. Measured: `door_d1_s0`
+(5,7,1) `IsOpen=false` / `NetworkId=0` / `IsWalkable=false`; `FindPath` to the tile beside the vent
+FALSE while the control path to the deck-1 ladder head is TRUE (so it is the door, not the ladder).
+⛔ `PrioritiseJobCommand` **accepts the order anyway** — `TryFindStagingTile` asks whether the
+staging tile is walkable and survivable, never whether it is *reachable* — setting
+`JobKind=Maintain` and `HeldByOrder=true`; the job then evaporates in
+`MaintenanceSystem.DriveWorker`'s abandon path. 20 000 ticks later she is alive on deck 0,
+`JobKind=None`, zero work ticks served, the vent still 0.06. **No badge, no dock row, no movement.**
+The player must first open `door_d1_s0` by hand — `SetDoorStateCommand` has no power gate, so an
+off-network door still opens (measured).
+
+**2. SURVIVABILITY, once the door is open.** `wear.maintenance_work_seconds` is 900 s (9 000 work
+ticks) against `needs.suffocation_per_second_vacuum` of 1/90. Driven, door opened first and then
+ordered: she crosses, reaches deck 1, takes the service and is **dead at tick 1 341** (~134
+sim-seconds), the vent still at 0.06.
+
+⚠️ **The M3-11 charter's acceptance script has its steps in the wrong order** — the hall door must
+be opened BEFORE the repair order, or the order lands in blocker 1's silence.
+
+⚠️ **Only one half is beyond authoring.** Survivability is: every deck-1 tile is vacuum, so no
+geometry puts a breathable staging tile beside this machine (it needs a suit, a shorter or
+segmented service, or relayed servicers). **Reachability is not** — authoring `door_d1_s0` open via
+`SlotAssign.DoorOpen`, or exempting its riser tap too, are choices inside `AuthoredShips.cs`, and
+both are **owner calls left open**: the first moves the wreck's "no open door faces vacuum at boot"
+invariant, the second moves the tap census.
+
 **b. A BUILD GHOST DRAWS WHERE ITS REASON CANNOT — the `designs`/`blocked` fog asymmetry.**
 `BuildDesigns` (`hosts/web/GameSession.cs:1715-1729`) walks `BuildSystem.Pending` and emits every
 site with **no fog gate at all**. `AddIfBlocked` — the single gate through which every `blocked`
@@ -3110,8 +3155,10 @@ Overview, a pressure badge, an `unpressurised` room-chrome state) is new visual 
 standard surface, i.e. an art decision. **Owner call, not an agent's.**
 
 ⚠️ **CONSEQUENCE, NOT A REGRESSION, AND WORTH STATING: deck 1's machines are now visible too**, on
-the deck that `W4b-DEAD-DECK` proves can never hold air. The owner's decision on that defect was
-*"ship it filed, visible in play"* — this makes it more visible, not less true.
+the deck that `W4b-DEAD-DECK` proved can never hold air. The owner's decision on that defect was
+*"ship it filed, visible in play"* — this makes it more visible, not less true. ⭐ **Amended
+2026-07-31 (OD-M item 2 / M3-11):** the deck can now hold air after one repair, and one of the
+machines the player sees up there is the vent that does it — see §13.23a's outcome block.
 
 ⚠️ ~~**The remaining five deck-0 halls are visible but still not ENTERABLE**: their machines now draw,
 their slots still have no `anchorName`, and ＋ADD ROOM remains the path to naming them. Only slot 3
