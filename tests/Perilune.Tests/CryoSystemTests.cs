@@ -482,7 +482,7 @@ namespace Perilune.Tests
 
         /// <summary>
         /// The display name is the inverse of the authoring convention
-        /// (<c>sim/Sim.Gen/AuthoredShips.cs:1856</c>: <c>"pod_" + Who.ToLowerInvariant()</c>), and a
+        /// (<c>sim/Sim.Gen/AuthoredShips.cs:1963</c>: <c>"pod_" + Who.ToLowerInvariant()</c>), and a
         /// capsule that does not follow the convention keeps its name verbatim rather than being
         /// mangled into an invented person.
         /// </summary>

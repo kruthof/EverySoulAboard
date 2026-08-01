@@ -227,12 +227,19 @@ deliberately, so a load hashes equal immediately while `PowerDirty = true` rebui
 (`Save/SaveWriter.cs:273-275`).
 
 **Determinism pins** (move them only with the hash-move ritual, and update `ci.sh` +
-`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `81733e27709f36e4`
-(pinned in `ci.sh`); tick-3000 golden `482fd40c070b54e0`; slice tick-3000 golden
-`94c29d5f6408d91c`. Most recent mover: **M2-2** (PIN M2-e, 2026-07-30) — the work-type
-veto reads the grid M2-1 stored, a behaviour change on every ship with working crew
-(scenario `c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held —
-its two crew are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d` (this is `SimDefs.Default.Checksum`, the
+`CLAUDE.md` in the same commit): 3-day seed-42 scenario hash `25f604dd61b221fb`
+(pinned in `ci.sh`); tick-3000 golden `1c036ffd53b8f106`; slice tick-3000 golden
+`37c85c1ed445895e`. Most recent mover: **M3-2** (PIN M3-a, 2026-07-31) — `CryoSystem`
+joined the stack as an `IStatefulSystem`, so its `'CRYO'` `StateChecksum` seed folds into
+`Simulation.StateHash` on every ship (`Simulation.cs:605-608` folds a system seed ONLY
+through that interface). All three moved together and the move is **FOLD-ONLY, measured**:
+with the same system registered and ticking but the interface dropped, all three read their
+old values (`81733e27709f36e4` / `482fd40c070b54e0` / `94c29d5f6408d91c`). The full record
+is §13.29. Before that: **M2-2** (PIN M2-e, 2026-07-30) — the work-type veto reads the grid
+M2-1 stored, a behaviour change on every ship with working crew (scenario
+`c1bac287`→`81733e27`, slice `0dcbff3e`→`94c29d5f`; the perilune golden held — its two crew
+are `HoldPosition` and take no work). Defs checksum `0c5ddbc07e41f07d`, **held across M3-2**
+(no def field: the cryo cycle rate is a named constant) — (this is `SimDefs.Default.Checksum`, the
 compiled-default fingerprint the docs track — NOT the scenario host's rules-inclusive `defs:`
 print, which is a different value). The scenario + slice pins + defs checksum most recently moved
 with **E0-2** (work-rate rebase 10× + movement retune `ticks_per_tile` 5→10 + the crew-safety
@@ -3595,12 +3602,12 @@ is a player-visible change; promoting it to `cryo.def` belongs to the next packa
 anyway, with a behavioural consumer test in the same commit.
 
 **The person's display name is derived, not stored**: `SleeperName` (`:234`) inverts the authoring
-convention at `sim/Sim.Gen/AuthoredShips.cs:1856` (`"pod_" + Who.ToLowerInvariant()`), so `pod_ozawa`
+convention at `sim/Sim.Gen/AuthoredShips.cs:1963` (`"pod_" + Who.ToLowerInvariant()`), so `pod_ozawa`
 wakes up as **Ozawa**. A capsule not carrying the prefix keeps its name verbatim rather than being
 mangled into an invented person. She boots `AutoWander = true` to match the ship's own pawn
-(`AuthoredShips.cs:2179-2182` — a thawed sibling standing dead still beside a wandering one reads as
-a bug), `HoldPosition = false`, and an **all-off work grid** (OD-H) — i.e. exactly OD-G's shape:
-awake, idle, awaiting orders.
+(`AuthoredShips.cs:2181-2185`, the fields at `:2184` — a thawed sibling standing dead still beside
+a wandering one reads as a bug), `HoldPosition = false`, and an **all-off work grid** (OD-H) —
+i.e. exactly OD-G's shape: awake, idle, awaiting orders.
 
 ⭐ **AND IT SHIPS ONE PIECE OF STATE IT NEVER WRITES: the emergency-thaw "has fired" bit**
 (`EmergencyThawFired`, `:127`; the M3-5 seam `MarkEmergencyThawFired`, `:136`). It is saved in the

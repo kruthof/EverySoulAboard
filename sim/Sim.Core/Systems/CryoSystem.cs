@@ -30,7 +30,7 @@ namespace Perilune.Sim
     /// <item><b>A WRECKED POD NEVER CYCLES</b> (owner decision 9) — below the <c>CryoPod</c> row's
     /// <c>fail</c> threshold the sleeper did not survive the raid, so the capsule is not merely
     /// slow, it is INELIGIBLE: it neither advances nor blocks anyone else. The wreck authors four
-    /// such capsules (<c>sim/Sim.Gen/AuthoredShips.cs:1861-1880</c>) and each already carries a
+    /// such capsules (<c>sim/Sim.Gen/AuthoredShips.cs:1865-1882</c>, <c>WreckPods</c>) and each carries a
     /// <see cref="ItemKind.Corpse"/> and a log line.</item>
     /// <item><b>SINGLE-USE</b> (§13.27, owner batch item 6 = A, unfreeze only) — an OPEN pod is
     /// done forever. That is what lets <see cref="Device.Name"/> be simultaneously the MOSS registry
@@ -110,7 +110,7 @@ namespace Perilune.Sim
         public const float ThawSecondsPerCycle = 240f;
 
         /// <summary>The authored prefix on every capsule's name
-        /// (<c>sim/Sim.Gen/AuthoredShips.cs:1856</c>: <c>"pod_" + pod.Who.ToLowerInvariant()</c>).
+        /// (<c>sim/Sim.Gen/AuthoredShips.cs:1963</c>: <c>"pod_" + pod.Who.ToLowerInvariant()</c>).
         /// <see cref="SleeperName"/> is its inverse.</summary>
         private const string PodNamePrefix = "pod_";
 
@@ -179,8 +179,8 @@ namespace Perilune.Sim
 
             var person = sim.AddCitizen(SleeperName(pod.Name), exit);
 
-            // Matching the ship's own pawn (`sim/Sim.Gen/AuthoredShips.cs:2179-2182`: AutoWander
-            // true, RevealsFog true, HoldPosition false), because the alternative is a thawed
+            // Matching the ship's own pawn (`AuthoredShips.cs:2181-2185`, the fields at `:2184`:
+            // AutoWander/RevealsFog true, HoldPosition false) — the alternative is a thawed
             // sibling standing dead still beside a wandering one. What she does NOT get is work:
             // the priority grid boots all-off (OD-H) and HoldPosition stays false, so she is
             // exactly OD-G's shape — awake, idle, awaiting orders.
@@ -223,7 +223,7 @@ namespace Perilune.Sim
 
         /// <summary>
         /// The person's display name from the capsule's device name — the inverse of the authoring
-        /// convention at <c>sim/Sim.Gen/AuthoredShips.cs:1856</c> (<c>"pod_" +
+        /// convention at <c>sim/Sim.Gen/AuthoredShips.cs:1963</c> (<c>"pod_" +
         /// pod.Who.ToLowerInvariant()</c>). <c>pod_ozawa</c> ⇒ <c>Ozawa</c>.
         ///
         /// <para>⚠️ A pod whose name does NOT carry the prefix keeps its name verbatim rather than
