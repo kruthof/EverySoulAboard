@@ -393,6 +393,8 @@ namespace Perilune.Web
         ///   audit → reply the terminal's audit ring (tid "@console" ⇒ the player's own prompt ring)
         ///   sys   → reply one MOSS-ledger row's per-device breakdown + its derivation note
         ///   exec  → run ONE prompt line through the DSL's own device adapters (see ExecConsole)
+        ///   thaw  → ⭐ M3-3: ask the ship to wake the capsule named in `text`, through the console
+        ///           named in `tid`. Renders ThawGate's verdict and enqueues ThawCommand.
         ///   dryrun→ RESERVED (compile-only preview); not implemented.
         /// Unknown op ⇒ ignored.
         /// </summary>
@@ -440,6 +442,34 @@ namespace Perilune.Web
                         _host.Moss.GetAuditLog(tid, _mossAuditBuf);
                         Emit(WireFormat.MossAudit(tid, _mossAuditBuf));
                     }
+                    break;
+                }
+                // ⭐⭐ M3-3 — THE THAW. A MOSS *SCREEN* verb: a distinct op, sent by the POD BAY
+                // (M3-4), never a line the player types at the prompt and never a MOSS *language*
+                // verb. `ExecConsole` inherits its authority from the DSL adapters (IX-M40) and no
+                // adapter exists for a CryoPod, deliberately — a ten-line installed program must
+                // never be able to empty the cryo bay unattended.
+                case "thaw":
+                {
+                    string pod = cmd.Text ?? "";
+
+                    // ⛔ THE HOST DECIDES NOTHING. It calls the sim's own gate to RENDER the
+                    // answer and enqueues the command REGARDLESS of what that answer was. Both
+                    // halves matter: reading the gate here is what lets a refusal reach the player
+                    // in the same frame as the click (the RimWorld analogue,
+                    // `rimworld-reference.md` §2.2), and enqueueing unconditionally is what stops
+                    // this line becoming a second, host-side gate that a load, a replay and the
+                    // TUI would all disagree with. `ThawCommand.Execute` re-evaluates the SAME
+                    // function on the SAME state and IT is authoritative.
+                    //
+                    // The two calls cannot disagree today — the command drain runs BETWEEN ticks,
+                    // so no system moves the ship between this read and that execute — but the
+                    // command is written as if they could, because a future drain that reorders
+                    // itself must not be able to make an accepted thaw silently free.
+                    var verdict = ThawGate.Evaluate(_sim, tid, pod);
+                    _sim.EnqueueCommand(new ThawCommand(tid, pod));
+                    Emit(WireFormat.MossThaw(tid, verdict.Allowed, pod,
+                                             (int)verdict.Reason, ThawGate.Describe(verdict)));
                     break;
                 }
                 default: break; // unknown op (incl. reserved "dryrun") — ignored
@@ -3792,7 +3822,8 @@ namespace Perilune.Web
         /// {"cmd":"deck","dz":1} / {"cmd":"lens","name":"power"} / {"cmd":"speed","delta":-1} /
         /// {"cmd":"pause"}), and the dialogue/MOSS commands keyed by "type"
         /// ({"type":"talk","cid":N} / {"type":"say","sid":N,"text":".."} / {"type":"bye","sid":N} /
-        /// {"type":"moss","op":"open|set|audit|sys|exec","tid":"..","text"?}). Unknown/garbage ⇒
+        /// {"type":"moss","op":"open|set|audit|sys|exec|thaw","tid":"..","text"?}). For `thaw`,
+        /// `text` is the capsule's Device.Name (M3-3). Unknown/garbage ⇒
         /// Kind.Unknown (ignored by the session).</summary>
         public static WebCommand Parse(string json)
         {

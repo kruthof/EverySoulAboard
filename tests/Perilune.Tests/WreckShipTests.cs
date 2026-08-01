@@ -333,16 +333,20 @@ namespace Perilune.Tests
         // `Device` field, no new def field, no pin move. `sim/Sim.Core/ThawGate.cs` holds the
         // table and the reasoning; these two tests hold the numbers.
         //
-        // ⛔ THE BAND-EDGE BEHAVIOURAL SWEEP IS DEFERRED BY NAME TO M3-3, MUTATION 6 — "move a
-        // pod's Condition across an edge and assert the rung the thaw REFUSAL resolves changes".
-        // It must be driven through `ThawGate`'s six-term thaw contract, and that contract does
-        // not exist until position 6; a leg that cannot run in its own lane is not a mutation, it
-        // is a wish. What M3-6 can and must assert is the ARITHMETIC half — the edges partition
-        // the seven authored Conditions into the intended rungs — and the exact-edge convention.
-        // (The M3-1 precedent: `PodIdentityTests` defers its thaw leg to M3-3 in its own header.)
+        // ✅ THE BAND-EDGE BEHAVIOURAL SWEEP WAS DEFERRED BY NAME TO M3-3, MUTATION 6, AND M3-3
+        // RAN IT: `ThawGateTests.TheRungTheGateResolves_ChangesAtEverySixInteriorBandEdge` crosses
+        // all SIX interior edges (0.92 · 0.90 · 0.87 · 0.85 · 0.82 · 0.80) through the six-term
+        // contract and asserts the SENTENCE the ship says changes at each one. It could not run
+        // here — that contract did not exist at position 6 — and a leg that cannot run in its own
+        // lane is not a mutation, it is a wish. What M3-6 asserts is the ARITHMETIC half (the
+        // edges partition the seven authored Conditions into the intended rungs) plus the
+        // exact-edge convention, and both are still load-bearing: they pin the TABLE, while M3-3
+        // pins the LADDER. (The M3-1 precedent, discharged the same way: `PodIdentityTests`
+        // deferred its thaw leg to M3-3 in its own header and M3-3 drove it.)
         //
-        // ⚠️ AND NOTHING IN THE SIM CALLS `ThawGate` YET. That is deliberate and recorded in
-        // `docs/MECHANICS.md` §13.28 (wired but NOT connected).
+        // ✅ AND THE SIM CALLS `ThawGate` NOW — `ThawCommand` + the MOSS `thaw` op, M3-3.
+        // `docs/MECHANICS.md` §13.28 recorded it wired-but-not-connected; §13.30 records the
+        // connection.
 
         /// <summary>
         /// The rung each intact occupied capsule sits on, WRITTEN OUT BY HAND — pod name, rung

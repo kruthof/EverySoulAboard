@@ -810,6 +810,88 @@ namespace Perilune.Sim
     }
 
     /// <summary>
+    /// ⭐⭐ M3-3 — <b>WAKE SOMEBODY UP.</b> The player's one way to ask, and the ship answers YES —
+    /// the capsule begins its cycle and <see cref="CryoSystem"/> takes it from there — or NO, with
+    /// a named reason and a number.
+    ///
+    /// <para>⛔ <b>THIS IS A MOSS <i>SCREEN</i> VERB, NOT A MOSS <i>LANGUAGE</i> VERB, AND THAT IS
+    /// NOT REVERSIBLE LATER WITHOUT BREAKING SAVES.</b> <c>ScriptRuntime.Tick</c> consults no
+    /// device at all — not <c>Powered</c>, not <c>Condition</c>, not <c>Scriptable</c> — so a
+    /// ten-line installed program carrying a thaw verb could <b>empty the cryo bay unattended</b>,
+    /// which is the precise opposite of the owner's <i>"only one after the other"</i> and of
+    /// control-not-conveyance. ⇒ <b>No adapter is registered for a <see cref="DeviceKind.CryoPod"/>
+    /// and <c>MossBindings.RegisterAdapters</c>'s switch is not touched.</b> The only route in is
+    /// the host's <c>moss</c> op <c>thaw</c> (<c>GameSession.HandleMoss</c>), which lowers to this
+    /// command. It is deliberately NOT a console-prompt verb either: <c>ExecConsole</c> inherits its
+    /// authority from the DSL adapters (IX-M40) and a thaw would be the one verb there that grants
+    /// authority the DSL withholds.</para>
+    ///
+    /// <para><b>EVERY TERM IS RESOLVED HERE, FROM SIM STATE.</b> <see cref="ThawGate.Evaluate"/>
+    /// is the single authority; the host calls the same function to render the answer and enqueues
+    /// this command <b>unconditionally</b>, so the host cannot accept a thaw the sim would refuse
+    /// and cannot refuse one the sim would accept. A term evaluated host-side instead would be
+    /// "not replayed on load, not folded into the hash, and not present in the TUI".</para>
+    ///
+    /// <para><b>ALL OR NOTHING, AND CHARGED LAST</b> — <see cref="CommissionDeviceCommand"/>'s
+    /// contract, through the same <see cref="LooseMatter"/> spend. Every refusal above returns
+    /// before the spend, so <b>a refused thaw leaves the ship's matter byte-identical</b>. That is
+    /// structural rather than careful: <see cref="ThawGate.Evaluate"/> is pure and cannot spend.</para>
+    ///
+    /// <para><b>NO NEW HASHED STATE.</b> The cycle rides <see cref="Device.Progress"/>, which is
+    /// already saved (DEVC) and already hashed (<c>Simulation.cs:545-555</c>); the price rides the
+    /// item store. Nothing here adds a field, a def or a system, so P1–P5 do not move —
+    /// <b>a command nobody sends changes nothing</b> (the E0-5 shape).</para>
+    /// </summary>
+    public sealed class ThawCommand : ISimCommand
+    {
+        private readonly string _terminalName;
+        private readonly string _podName;
+
+        /// <param name="terminalName">The console the request came through — term 2 resolves it by
+        /// <c>Device.Name</c>. It is the WHERE gate and it is why a thaw needs MOSS restored.</param>
+        /// <param name="podName">The capsule's <c>Device.Name</c> (<c>pod_ozawa</c>). Names are the
+        /// pod's identity and are immutable after boot (M3-1, <c>docs/MECHANICS.md</c> §13.27),
+        /// which is what makes a name safe to carry in a command.</param>
+        public ThawCommand(string terminalName, string podName)
+        {
+            _terminalName = terminalName ?? "";
+            _podName = podName ?? "";
+        }
+
+        /// <summary>
+        /// The gate, then the price, then the cycle. Nothing else.
+        ///
+        /// <para>⚠️ <b>THE REFUSAL PATHS RETURN WITHOUT PUBLISHING, AND THAT IS NOT THE HOUSE
+        /// STYLE'S SILENCE.</b> Every other designate/place command refuses silently because there
+        /// is nothing to say; here the reason is a first-class product and it is produced by
+        /// <see cref="ThawGate.Evaluate"/> — the same call the host makes, on the same state, at the
+        /// same tick boundary — so it reaches the player as
+        /// <c>{"type":"moss","ev":"thaw",…,"reason":"…"}</c> whether or not this method says
+        /// anything. What must never happen is a thaw ACCEPTED here and silently dropped;
+        /// <see cref="ThawGate.Evaluate"/> having exactly one caller-visible outcome per refusal is
+        /// what prevents it.</para>
+        /// </summary>
+        public void Execute(Simulation sim)
+        {
+            var verdict = ThawGate.Evaluate(sim, _terminalName, _podName);
+            if (!verdict.Allowed) return;
+            if (!sim.Devices.TryGet(verdict.PodId, out var pod)) return; // unreachable: the gate resolved it
+
+            // TERM 6 — the price, all or nothing, and the LAST thing that happens before the
+            // capsule moves. Term 4 read the same stock through the same lens one moment ago, so
+            // this cannot fail; it is checked anyway because "cannot fail" is a claim about today's
+            // callers and the alternative is spending nothing and cycling anyway.
+            var rung = verdict.Rung;
+            if (!LooseMatter.TryPay(sim, rung.Item, rung.Count)) return;
+
+            // THE CYCLE BEGINS. One pass's worth of progress, so `CryoSystem`'s countdown owns
+            // every subsequent step and the capsule is already "busy" for term 3 on the very next
+            // evaluation — a thaw accepted at tick N must block a thaw asked for at tick N+1.
+            pod.Progress = 1f / CryoSystem.ThawSecondsPerCycle;
+        }
+    }
+
+    /// <summary>
     /// Remove a placed furniture device from a tile (Room Zoom demolish). Only the furniture
     /// whitelist (<see cref="PlaceDeviceCommand.IsPlaceableFurniture"/>) is removable — doors,
     /// life-support, power, crafting and sensors are never deleted this way. Deterministic no-op

@@ -779,6 +779,7 @@ namespace Perilune.Web
         //   rterror {"type":"moss","ev":"rterror","tid":"..","text":".."}
         //   sys     {"type":"moss","ev":"sys","tid":"..","derivation":"..","devices":[[..],..]}
         //   exec    {"type":"moss","ev":"exec","tid":"..","ok":bool,"lines":[[stream,"text"],..]}
+        //   thaw    {"type":"moss","ev":"thaw","tid":"..","ok":bool,"pod":"..","why":N,"reason":".."}
         // line/col are 1-based; sev is "error"|"warning"; hash is the FNV-1a32 of the source
         // (== the runtime's saved SourceHash), emitted unsigned so client and sim agree.
 
@@ -897,6 +898,35 @@ namespace Perilune.Web
                     sb.Append(']');
                 }
             sb.Append(']');
+            return sb.Append('}').ToString();
+        }
+
+        /// <summary>
+        /// ⭐ M3-3 — THE THAW REPLY:
+        ///   {"type":"moss","ev":"thaw","tid":"term_moss","ok":bool,"pod":"pod_ozawa",
+        ///    "why":N,"reason":"NEEDS 1 CONTROLLER MODULE — SHIP HAS 0"}
+        ///
+        /// <para><c>ok</c> is whether the capsule began cycling. <c>reason</c> is the sentence the
+        /// ship says, composed by <see cref="Perilune.Sim.ThawGate.Describe"/> — the HOST never
+        /// writes one, because a second copy of the vocabulary is a second thing to drift.
+        /// <c>why</c> is the <see cref="Perilune.Sim.ThawRefusal"/> ordinal beside it, so a client
+        /// can style a permanent refusal (a dead sleeper) differently from a temporary one (the bay
+        /// is busy) without parsing prose. ⛔ Both ship: a code with no sentence is unrenderable and
+        /// a sentence with no code is unstylable.</para>
+        ///
+        /// <para><b>A REPLY IS ALWAYS SENT, INCLUDING FOR A REFUSAL.</b> A designation the player
+        /// cannot see is indistinguishable from a broken verb (CLAUDE.md, invisible feedback is
+        /// FUNCTIONAL), and the RimWorld analogue this whole gate is built on
+        /// (<c>rimworld-reference.md</c> §2.2) is a refusal that STATES THE REASON at the point of
+        /// the click.</para>
+        /// </summary>
+        public static string MossThaw(string tid, bool ok, string pod, int why, string reason)
+        {
+            var sb = MossHeader(tid, "thaw");
+            sb.Append(",\"ok\":").Append(ok ? "true" : "false");
+            sb.Append(",\"pod\":"); AppendString(sb, pod ?? "");
+            sb.Append(",\"why\":").Append(why.ToString(Ic));
+            sb.Append(",\"reason\":"); AppendString(sb, reason ?? "");
             return sb.Append('}').ToString();
         }
 
