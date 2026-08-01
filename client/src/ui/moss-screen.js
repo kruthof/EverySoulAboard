@@ -271,6 +271,11 @@ export class MossScreen {
       this.win.addEventListener('keydown', this._onKey, true);
     }
     this.render();
+    // FOCUS LAST, AND AFTER `applyTakeover` — ORDER IS LOAD-BEARING. A hidden element cannot take
+    // focus: called while `#moss-view` is still `hidden` (the state MOSS sits in until the line
+    // above), `input.focus()` is a silent no-op, `document.activeElement` stays on `<body>` and the
+    // player's first keystroke goes nowhere. Verified in Chrome, and pinned by a node test that
+    // reorders these two lines.
     this._focusPrompt();
   }
 
@@ -361,6 +366,16 @@ export class MossScreen {
    *      the input as an ordinary letter.
    *   4. The ONLY exception to rule 3 is `SCROLL_KEYS`, and only when the event did NOT come out of
    *      the prompt. See the constant: it is an allowlist, never a "multi-character key" heuristic.
+   *   5. **A DECLINED PRINTABLE KEY IS PUT IN THE PROMPT** (`_typeIntoPrompt`). Rules 2+3 together
+   *      had a hole the owner fell straight into: rule 2 stops the key reaching controls.js, and
+   *      rule 3 declines to swallow it so "the browser types it" — but the browser types it into
+   *      the FOCUSED element, and if focus is not our input the character is inserted NOWHERE. The
+   *      keystroke is eaten by MOSS and delivered to no one. That is *"the MOSS CLI does not work,
+   *      i.e. I cannot type anything"*, and it needs no bug to reach: focus sits somewhere else
+   *      after anything that blurs the prompt (the PROGRAM screen's editor, a focused button, a
+   *      click on the page margin outside `.moss-page`). So the screen MAKES the invariant true
+   *      instead of assuming it — see `_typeIntoPrompt` for why this is safe and where it stands
+   *      down (IX-M8's table stays the sole authority on WHICH keys are hotkeys).
    */
   handleKey(e) {
     if (!this.opened || !e) return;
@@ -378,7 +393,10 @@ export class MossScreen {
     const scrollGuard = e.target !== this.inputEl && SCROLL_KEYS.indexOf(key) >= 0 &&
       !(e.ctrlKey || e.metaKey || e.altKey);
     if (res.handled || scrollGuard) { if (e.preventDefault) e.preventDefault(); }
-    if (!res.handled) return;
+    if (!res.handled) {
+      if (!scrollGuard) this._typeIntoPrompt(e);   // rule 5
+      return;
+    }
     this.model = res.model;
     this._runEffects(res.effects);
     if (this.opened) this.render();
@@ -426,6 +444,37 @@ export class MossScreen {
 
   _focusPrompt() {
     if (this.inputEl && typeof this.inputEl.focus === 'function') this.inputEl.focus();
+  }
+
+  /**
+   * Rule 5: a printable character the MODEL declined, arriving while focus is not on the prompt,
+   * is delivered to the prompt by moving focus there DURING the keydown — the browser's default
+   * action then inserts the character into the newly focused input. (MEASURED over CDP with
+   * trusted keys: with the input blurred a typed character lands nowhere; with a capture-phase
+   * `focus()` on the same keydown it lands in `input.value` and in `model.prompt`. This is the same
+   * mechanism a "type anywhere to search" box uses.) NO `preventDefault` here, ever — suppressing
+   * the default action is precisely what would stop the character being typed.
+   *
+   * WHERE IT STANDS DOWN, and each one is load-bearing:
+   *   · `res.handled` — the caller only reaches this on a DECLINED key, so IX-M8's buffer-state
+   *     table still decides what is a hotkey: `L`/`P` on an empty buffer open their screens and
+   *     never type, exactly as before.
+   *   · a key out of a text-entry surface never gets here at all (rule 1 returns first), so the
+   *     PROGRAM IDE's textarea cannot have a keystroke stolen out of it.
+   *   · `SCROLL_KEYS` (the caller's `scrollGuard`) — a key this layer is suppressing to stop the
+   *     page scrolling must not also move focus.
+   *   · any Ctrl/Alt/Meta chord — those belong to the browser and the OS, not the command line.
+   *   · multi-character keys (`Tab`, `ArrowLeft`, `F5`…) — `Tab` is left unbound ON PURPOSE so
+   *     focus traversal works, and stealing focus back would kill it.
+   * @param {any} e the keydown
+   */
+  _typeIntoPrompt(e) {
+    if (!e || e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = e.key;
+    if (typeof key !== 'string' || Array.from(key).length !== 1) return;
+    if (!this.inputEl || e.target === this.inputEl) return;
+    if (this.doc && this.doc.activeElement === this.inputEl) return;
+    this._focusPrompt();
   }
 
   /**
@@ -674,9 +723,27 @@ export class MossScreen {
    * IDE is `moss-program-editor.js`, a VIEW of `model.program` (which `reduceMossEvent` keeps live).
    *
    * ── THE MOUNT/DETACH/SYNC CONTRACT (extended by the moss-programs lane) ───────────────────────
-   * `this.programMount` is a `<div class="moss-prog-editor">` created ONCE and re-parented on each
-   * render — deliberately NOT rebuilt, so the editor mounted into it keeps its DOM, its scroll and
-   * its focus while the directory beside it re-renders. `this._programTid` is the tid the player
+   * `this.programMount` is a `<div class="moss-prog-editor">` created ONCE and NEVER MOVED, so the
+   * editor mounted into it keeps its DOM, its scroll and its focus while the directory beside it
+   * re-renders.
+   *
+   * ⚠️ IT USED TO BE RE-PARENTED ON EVERY RENDER, AND THAT WAS THE OWNER'S BUG (2026-07-31, live
+   * play): *"writing code in this frame is nearly impossible — only when I left click while writing
+   * and only for a few seconds."* Every render built a fresh `wrap`/`split` and did
+   * `split.appendChild(this.programMount)`, and in a browser MOVING A NODE BLURS THE FOCUSED
+   * ELEMENT INSIDE IT — re-inserting it does not give the focus back. Renders arrive on every wire
+   * message (`systems`/`log`/`chron` land every few seconds in live play) and on every handled key,
+   * so the editor lost focus a second or two after each click. MEASURED in real Chrome over CDP
+   * against this very file: focus the textarea, call `render()`, `document.activeElement` is
+   * `<body>`. Two further legs pin WHICH operation does it — a move into a detached node blurs, and
+   * `replaceChildren(sameNode)` (remove + re-insert of the SAME child) blurs as well. THAT SECOND
+   * ONE IS WHY THIS SCREEN IS BUILT ONCE AND LEFT ALONE rather than re-attached each render: the
+   * "obvious" cheap fix of handing `bodyEl.replaceChildren` the same persistent wrap blurs exactly
+   * as hard as the move did.
+   *
+   * So: the PROGRAM subtree (`programWrap` → `moss-prog-split` → [`programDir`, `programMount`]) is
+   * built on first use and thereafter only its DIRECTORY ROWS are rebuilt — they hold no text-entry
+   * surface, so replacing them cannot blur anything. `this._programTid` is the tid the player
    * selected (null = none). The editor object implements:
    *     { mount(el, tid), detach(), sync(programState) }
    * `mount` is called ONLY when the selected tid (or the editor instance) changes — building the
@@ -693,13 +760,23 @@ export class MossScreen {
    */
   _renderProgram() {
     const doc = this.doc;
-    const wrap = mk(doc, 'div', 'moss-program');
-    wrap.appendChild(mk(doc, 'div', 'moss-subhead', 'PROGRAM — TERMINAL DIRECTORY'));
-    const split = mk(doc, 'div', 'moss-prog-split');
+    if (!this.programWrap) {
+      // Built ONCE. Nothing below this line ever moves `programMount` or re-inserts `programWrap`.
+      this.programWrap = mk(doc, 'div', 'moss-program');
+      this.programWrap.appendChild(mk(doc, 'div', 'moss-subhead', 'PROGRAM — TERMINAL DIRECTORY'));
+      const split = mk(doc, 'div', 'moss-prog-split');
+      this.programDir = mk(doc, 'div', 'moss-prog-dir');
+      if (!this.programMount) this.programMount = mk(doc, 'div', 'moss-prog-editor');
+      split.appendChild(this.programDir);
+      split.appendChild(this.programMount);
+      this.programWrap.appendChild(split);
+    }
 
-    const dir = mk(doc, 'div', 'moss-prog-dir');
+    // Only the DIRECTORY is rebuilt per render. It contains no text-entry surface, so replacing it
+    // cannot blur the IDE; the editor's own mount/sync contract lives in `_syncProgramEditor`.
+    const rows = [];
     if (!this._terminals.length) {
-      dir.appendChild(mk(doc, 'div', 'moss-empty', 'NO MOSS TERMINALS ABOARD.'));
+      rows.push(mk(doc, 'div', 'moss-empty', 'NO MOSS TERMINALS ABOARD.'));
     } else {
       for (const t of this._terminals) {
         const tid = S(t && t.tid);
@@ -711,17 +788,18 @@ export class MossScreen {
           tid.slice(0, COLS.label - 1).padEnd(COLS.label)));
         el.appendChild(mk(doc, 'span', 'c-deck', 'DECK ' + S(t && t.deck)));
         el.addEventListener('click', () => this.selectProgram(tid));
-        dir.appendChild(el);
+        rows.push(el);
       }
     }
-    split.appendChild(dir);
-    if (!this.programMount) this.programMount = mk(doc, 'div', 'moss-prog-editor');
-    split.appendChild(this.programMount);
+    this.programDir.replaceChildren(...rows);
     this._syncProgramEditor();
 
-    wrap.appendChild(split);
-    this.bodyEl.replaceChildren(wrap);
-    this.advisoryEl.replaceChildren();
+    // Attach only when the body is not already showing this exact subtree — `replaceChildren` with
+    // the same node still removes and re-inserts it, which blurs the editor (measured in Chrome).
+    if (this.bodyEl.childNodes.length !== 1 || this.bodyEl.childNodes[0] !== this.programWrap) {
+      this.bodyEl.replaceChildren(this.programWrap);
+    }
+    this.advisoryEl.replaceChildren();   // never holds a focusable node
   }
 
   /**

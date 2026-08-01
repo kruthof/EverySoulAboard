@@ -46,6 +46,54 @@ class Node {
    *  suite is green before and after), but "inert today" is a fact about a tree: a future guard that
    *  drives those paths will now see the real behaviour instead of a stub's accident. */
   get firstChild() { return this.childNodes[0] || null; }
+
+  /**
+   * ⚠️ ADDED AT M3-17 (2026-07-31) — WITHOUT IT THE HARNESS COULD NOT SEE THE OWNER'S DEFECT AT ALL.
+   *
+   * `moss-screen.js:_renderProgram` moved the persistent `programMount` into a freshly built parent
+   * on every render, and in a real browser MOVING A NODE BLURS THE FOCUSED ELEMENT INSIDE IT. This
+   * stub had no notion of connectedness, no blur, and an `appendChild` that did not even unlink the
+   * node from its previous parent — so the node was simply in two `childNodes` arrays at once and
+   * every focus assertion here would have passed on the BROKEN code. MEASURED in real Chrome over
+   * CDP against the shipping screen (`client/tools/moss-preview.html?screen=program`):
+   *
+   *     textarea.focus(); textarea.setSelectionRange(2,5);  →  document.activeElement === textarea
+   *     window.__moss.render()                              →  document.activeElement === BODY
+   *     (and identically for a wire message: onSystems(...) → render → BLUR)
+   *
+   * and the two isolated legs that say WHICH operation does it — both blur, and neither un-blurs:
+   *     detachedDiv.appendChild(mount)      (a MOVE out of the document) → blurred
+   *     body.replaceChildren(sameOnlyChild) (remove + re-insert the SAME node) → blurred
+   *
+   * So the rule modelled below is Chrome's, not a convenience: ANY removal of a node from its
+   * parent blurs a focused element inside it, whether or not it is re-inserted in the same task.
+   * `CLAUDE.md` trap 4's corollary, which this file already records twice: if the harness cannot
+   * model what the guard needs to see, fix the harness.
+   */
+  get isConnected() {
+    let n = this;
+    while (n.parentNode) n = n.parentNode;
+    return !!(this.ownerDocument && n === this.ownerDocument.body);
+  }
+}
+
+/**
+ * Record the removal on the node itself. A test can then pin "this node was never detached" —
+ * the STRUCTURAL half of the defect above, and strictly stronger than comparing `parentNode`
+ * before and after: `parent.replaceChildren(sameNode)` puts the node back where it was, so the
+ * parent is unchanged while the browser has still removed, re-inserted and BLURRED it.
+ */
+function countDetach(node) { node._detachCount = (node._detachCount | 0) + 1; }
+
+/** Blur `node` and everything under it, the way removing a subtree does in a browser. */
+function blurWithin(node) {
+  const doc = node && node.ownerDocument;
+  if (!doc || !doc.activeElement) return;
+  let n = doc.activeElement;
+  while (n) {
+    if (n === node) { doc.activeElement.focused = false; doc.activeElement = null; return; }
+    n = n.parentNode;
+  }
 }
 
 class TextNode extends Node {
@@ -72,11 +120,29 @@ class Element extends Node {
   get className() { return this._className; }
   set className(v) { this._className = String(v); this.classList._reset(v); }
   set textContent(v) {
+    const old = this.childNodes;
     this.childNodes = [];
+    for (const c of old) { c.parentNode = null; countDetach(c); blurWithin(c); }
     if (v != null && v !== '') this.appendChild(new TextNode(this.ownerDocument, v));
   }
   get textContent() { return this.childNodes.map((c) => c.textContent).join(''); }
-  appendChild(c) { c.parentNode = this; this.childNodes.push(c); return c; }
+  /** Insert `c`, MOVING it out of any previous parent (and blurring what was focused inside it —
+   *  see the `isConnected` note above; a browser's `appendChild` of a connected node is a move). */
+  appendChild(c) {
+    if (c && c.parentNode) c.parentNode.removeChild(c);
+    c.parentNode = this;
+    this.childNodes.push(c);
+    return c;
+  }
+  removeChild(c) {
+    const i = this.childNodes.indexOf(c);
+    if (i < 0) return c;
+    this.childNodes.splice(i, 1);
+    c.parentNode = null;
+    countDetach(c);
+    blurWithin(c);
+    return c;
+  }
   /** ParentNode.append — variadic, and it accepts BARE STRINGS as text, which `appendChild` does
    *  not. Added at M1-F for the same reason as `firstChild`: `panels.js` builds the dossier's
    *  section grid with `grid.append(needs, standing, …)`. Strings are wrapped rather than dropped,
@@ -89,15 +155,27 @@ class Element extends Node {
     }
   }
   replaceChildren(...cs) {
-    for (const c of this.childNodes) c.parentNode = null;
+    const old = this.childNodes;
     this.childNodes = [];
+    // Every old child is REMOVED first — including one that is about to be re-inserted, which is
+    // what `replaceChildren(sameNode)` does in Chrome (measured; it blurs).
+    for (const c of old) { c.parentNode = null; countDetach(c); blurWithin(c); }
     for (const c of cs) this.appendChild(c);
   }
+  /**
+   * ⚠️ TOLERANT ON PURPOSE, AND THE SUITE CAUGHT ME. `remove()` must clear `parentNode` even when
+   * the parent's `childNodes` no longer lists this node: `overview-model.test.js`'s `OvEl` models
+   * `innerHTML = …` as `this.childNodes = []`, which leaves every former child pointing at a parent
+   * that has forgotten it — and its BUG-B regression test then calls `pressed.remove()` and asserts
+   * `parentNode === null` (with a non-vacuity message saying the mid-press rebuild is otherwise not
+   * reproduced). Delegating to `removeChild` alone made that an early return and reddened two
+   * overview tests. The delegation is kept for the blur/detach bookkeeping; the fallback is what
+   * keeps the old total behaviour.
+   */
   remove() {
-    if (!this.parentNode) return;
-    const i = this.parentNode.childNodes.indexOf(this);
-    if (i >= 0) this.parentNode.childNodes.splice(i, 1);
-    this.parentNode = null;
+    const p = this.parentNode;
+    if (p && p.removeChild) p.removeChild(this);
+    if (this.parentNode) { this.parentNode = null; countDetach(this); blurWithin(this); }
   }
   setAttribute(k, v) { this.attributes[k] = String(v); }
   getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; }
@@ -117,7 +195,30 @@ class Element extends Node {
     const a = this.listeners[t];
     if (a) this.listeners[t] = a.filter((f) => f !== fn);
   }
-  focus() { this.focused = true; if (this.ownerDocument) this.ownerDocument.activeElement = this; }
+  /**
+   * ⚠️ A HIDDEN ELEMENT CANNOT TAKE FOCUS, and modelling that is the point. `focus()` used to
+   * succeed unconditionally here, so `open()` calling `_focusPrompt()` BEFORE `applyTakeover` —
+   * i.e. into a still-`hidden` `#moss-view` — would have looked identical to the working order.
+   * MEASURED in Chrome: with MOSS closed (`#moss-view[hidden]`, `.moss` display:none),
+   * `input.focus()` leaves `document.activeElement` on `<body>` and typing goes nowhere. That is
+   * exactly the shape of the owner's "I cannot type anything", so the harness must be able to see
+   * it. `hidden` is what `applyTakeover` flips; dom-lite has no computed style, so `hidden` on the
+   * element or any ancestor is the whole test.
+   */
+  focus() {
+    for (let n = this; n; n = n.parentNode) if (n.hidden) return;
+    this.focused = true;
+    if (this.ownerDocument) {
+      if (this.ownerDocument.activeElement) this.ownerDocument.activeElement.focused = false;
+      this.ownerDocument.activeElement = this;
+    }
+  }
+  blur() {
+    this.focused = false;
+    if (this.ownerDocument && this.ownerDocument.activeElement === this) this.ownerDocument.activeElement = null;
+  }
+  /** Text-field selection, enough to assert a caret/selection survives a render. */
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   /** Depth-first descendants carrying `cls`. */
   byClass(cls) {
     const out = [];

@@ -800,6 +800,192 @@ test('IX-M6: attachProgramEditor swaps in a supplied editor, mounted with the se
   assert.ok(s.root.oneClass('moss-prog-editor').textContent.includes('IDE bridge'));
 });
 
+// ---------------- M3-17: the owner's keyboard defects (2026-07-31 live play) ----------------
+//
+// TWO reports, one lane:
+//   A. "writing code in this frame is nearly impossible — only when I left click while writing and
+//      only for a few seconds."   → every render MOVED `programMount`, and moving a node blurs the
+//      focused element inside it. A wire message arrives every few seconds, hence "a few seconds".
+//   B. "The MOSS CLI does not work, i.e. I cannot type anything."  → a declined printable key is
+//      left to "the browser's text editing", which inserts it into the FOCUSED element — nowhere
+//      at all when focus is not the prompt, while rule 2 has already starved controls.js of it.
+//
+// WHAT THE HARNESS CAN AND CANNOT SEE. There is no jsdom here (see dom-lite.js's header). Focus is
+// modelled by this package to the depth the browser was MEASURED at over CDP — a removal blurs what
+// is focused inside it, a hidden element cannot take focus — and every claim below was checked
+// against real Chrome first (`client/tools/moss-preview.html`, trusted keys via CDP). What node
+// still cannot show is the browser DEFAULT ACTION delivering the character into the newly focused
+// input: `dom-lite`'s `editable()` applies that default explicitly, so leg 3 of the typing test
+// says "the key was not swallowed AND focus is on the input", which is the pair that makes the
+// insertion happen — not a claim that node performed it.
+//
+// ⚠️ FOCUS IS ASSERTED BY NAME, NEVER BY ELEMENT IDENTITY — not a style preference, MEASURED.
+// `assert.equal(doc.activeElement, someElement)` builds its failure message by inspecting BOTH
+// values, and a dom-lite element is a cyclic graph (`parentNode` ↔ `childNodes`) hundreds of nodes
+// wide. The first version of these tests did exactly that, and the mutation that was supposed to
+// redden them instead pinned a core at ~110% CPU and 30% of RAM and printed NOTHING — the guard
+// could not report its own failure, which is the fifth trap's family (a test that cannot say it
+// failed). `focusProbe` maps the few elements that matter to short labels, so a failure is one line.
+
+/** @param {object} s @param {Array<[object,string]>} [named] element → label */
+function focusProbe(s, named) {
+  const names = new Map(named || []);
+  names.set(s.screen.inputEl, 'prompt');
+  return () => {
+    const a = s.doc.activeElement;
+    if (!a) return 'none';
+    return names.get(a) || (String(a.tagName).toLowerCase() + '.' + (a.className || ''));
+  };
+}
+
+test('M3-17/A: a render on the PROGRAM screen does not blur the editor (wire message or key)', () => {
+  const s = openWithSystems();
+  s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }, { tid: 'term_nav', deck: 1 }]);
+  s.screen.handleKey(keyEvent('p'));
+  s.screen.selectProgram('term_moss');
+  const code = s.root.oneClass('moss-prog-code');
+  assert.ok(code, 'precondition: the IDE textarea is mounted');
+  const at = focusProbe(s, [[code, 'editor']]);
+
+  code.focus();
+  code.setSelectionRange(2, 5);
+  assert.equal(at(), 'editor', 'precondition: the editor has focus');
+
+  // 1. a WIRE message — the live-play trigger (systems/log/chron land every few seconds)
+  s.screen.onSystems(msgOf('systems'));
+  assert.equal(at(), 'editor',
+    'a systems message blurred the PROGRAM editor. This is the owner\'s "only for a few seconds": '
+    + 'the render re-parented programMount, and moving a node blurs what is focused inside it.');
+  assert.deepEqual([code.selectionStart, code.selectionEnd], [2, 5], 'and the selection survived');
+
+  // 2. a same-tid program event — `source|diag|audit|rterror` all repaint the editor in place
+  s.screen.onMossEvent({ type: 'moss', ev: 'audit', tid: 'term_moss', lines: [[10, 'vent opened']] });
+  assert.equal(at(), 'editor', 'a same-tid program event must repaint in place, not blur');
+
+  // 3. and a bare render, which is what every other path funnels into
+  s.screen.render();
+  assert.equal(at(), 'editor', 'a plain render blurred the editor');
+});
+
+test('M3-17/A: the STRUCTURAL pin — render never moves programMount and never re-inserts the wrap', () => {
+  // Survives even if the focus model above is ever judged too shallow: it asserts the DOM identity
+  // that makes the blur impossible in the first place.
+  //
+  // ⚠️ `parentNode` BEFORE/AFTER IS NOT ENOUGH, and the ninth trap says to name what an instrument
+  // cannot see. Measured in Chrome: `parent.replaceChildren(sameNode)` removes and re-inserts the
+  // node — it BLURS — and leaves `parentNode` identical, so a same-parent assertion passes on a
+  // screen that is still broken. `_detachCount` (dom-lite) counts the REMOVAL itself, which is the
+  // event that matters, and covers both spellings.
+  const s = openWithSystems();
+  s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }]);
+  s.screen.handleKey(keyEvent('p'));
+  s.screen.selectProgram('term_moss');
+  const mount = s.screen.programMount;
+  const mountParent = mount.parentNode;
+  const wrap = s.screen.bodyEl.childNodes[0];
+  const code = s.root.oneClass('moss-prog-code');
+  const detaches = () => [mount._detachCount | 0, wrap._detachCount | 0, code._detachCount | 0];
+  const base = detaches();
+
+  s.screen.onSystems(msgOf('systems'));
+  s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }, { tid: 'term_nav', deck: 1 }]);
+  s.screen.render();
+
+  // `assert.ok(a === b)` rather than `assert.equal(a, b)`: see focusProbe's note — comparing two
+  // dom-lite elements with `assert.equal` makes a FAILURE inspect a cyclic tree and hang.
+  assert.ok(s.screen.programMount === mount, 'the mount div is created once');
+  assert.ok(mount.parentNode === mountParent, 'and is never re-parented by a render');
+  assert.ok(s.screen.bodyEl.childNodes[0] === wrap, 'the PROGRAM wrap stays the body\'s one child');
+  assert.deepEqual(detaches(), base,
+    'a render REMOVED the editor subtree from the document (mount/wrap/textarea detach counts '
+    + 'moved). Re-inserting it does not give focus back — this is the owner\'s defect, and it is '
+    + 'true of `replaceChildren(sameNode)` as much as of a move to a new parent.');
+  assert.ok(s.root.oneClass('moss-prog-code') === code, 'and the textarea node itself is the same one');
+  assert.equal(s.root.byClass('moss-prog-row').length, 2, 'while the DIRECTORY did re-render');
+});
+
+test('M3-17/B: opening MOSS puts focus on the prompt — the takeover first, then the focus', () => {
+  // Mirrors hud.js:reflectMossView, which caches channels into the screen and THEN opens it.
+  const s = setup();
+  const at = focusProbe(s);
+  s.screen.setTerminals([{ tid: 'term_moss', deck: 0 }]);
+  s.screen.onSystems(msgOf('systems'));
+  s.screen.onChron(msgOf('chron'));
+  assert.equal(at(), 'none', 'precondition: nothing is focused before MOSS opens');
+
+  s.screen.open();
+  assert.equal(at(), 'prompt',
+    'the command prompt must hold focus the instant MOSS is up, or the first keystroke is lost. '
+    + 'If open() focuses BEFORE applyTakeover, #moss-view is still hidden and focus() is a no-op.');
+});
+
+test('M3-17/B: a printable key with focus anywhere else lands in the prompt; hotkeys still fire', () => {
+  const s = openWithSystems();
+  const input = s.screen.inputEl;
+  // Focus somewhere that is not a text surface — the state the player is in after clicking the tab
+  // button that opened MOSS, or after any render that blurred the prompt.
+  const elsewhere = s.doc.createElement('button');
+  s.doc.body.appendChild(elsewhere);
+  const at = focusProbe(s, [[elsewhere, 'button']]);
+  elsewhere.focus();
+  assert.equal(at(), 'button', 'precondition: the prompt does NOT have focus');
+
+  // 1. a hotkey on an empty buffer is still a hotkey (IX-M8's table is untouched)
+  const hot = keyEvent('l', { target: elsewhere });
+  s.screen.handleKey(hot);
+  assert.equal(s.screen.model.screen, 'faultlog', 'L still opens the FAULT LOG');
+  assert.equal(hot.defaultPrevented, true, 'and is swallowed, not typed');
+  assert.equal(at(), 'button',
+    'a key the MODEL took must not also pull focus into the prompt — rule 5 fires only on a '
+    + 'DECLINED key, or it would be a second authority over IX-M8\'s table');
+  s.screen.escape();
+
+  // 2. a DECLINED printable key moves focus to the prompt and is NOT swallowed, which is the pair
+  //    that makes the browser insert it there. `editable` applies that default action explicitly.
+  elsewhere.focus();
+  const e = keyEvent('o', { target: elsewhere });
+  s.screen.handleKey(e);
+  assert.equal(e.defaultPrevented, false, 'the character must NOT be swallowed');
+  assert.equal(at(), 'prompt',
+    'a typed character reached MOSS, was declined by the model, and was inserted NOWHERE: MOSS '
+    + 'stopped it reaching controls.js and left it to a browser default that had no text field to '
+    + 'act on. That is "I cannot type anything".');
+  editable(input, e);
+  fire(input, 'input');
+  assert.equal(s.screen.model.prompt, 'o', 'and the buffer took it');
+
+  // 3. it stands down where it must: no chords, no Tab, no scroll keys
+  for (const [key, extra] of [['o', { ctrlKey: true }], ['o', { metaKey: true }], ['Tab', {}], [' ', {}]]) {
+    elsewhere.focus();
+    s.screen.handleKey(keyEvent(key, { target: elsewhere, ...extra }));
+    assert.equal(at(), 'button',
+      `${extra.ctrlKey ? 'Ctrl+' : ''}${extra.metaKey ? 'Meta+' : ''}${key} must not pull focus into the prompt`);
+  }
+
+  // 4. and a key out of the IDE textarea is never touched (rule 1 still returns first)
+  const fake = { tagName: 'TEXTAREA' };
+  const fromEditor = keyEvent('o', { target: fake });
+  s.screen.handleKey(fromEditor);
+  assert.equal(fromEditor.defaultPrevented, false);
+  assert.equal(at(), 'button', 'focus was not stolen out of a text-entry surface');
+});
+
+test('M3-17/B: an ordinary LEDGER render leaves the prompt focused', () => {
+  // The prompt row lives OUTSIDE `.moss-body`, so today no ledger render can blur it. Pinned rather
+  // than assumed: a future render that rebuilds the page (or moves the prompt into the body) would
+  // re-ship the same defect on the screen the player spends all their time on.
+  const s = openWithSystems();
+  const at = focusProbe(s);
+  assert.equal(at(), 'prompt');
+  s.screen.inputEl.value = 'sta';
+  fire(s.screen.inputEl, 'input');
+  s.screen.onSystems(msgOf('systems'));
+  s.screen.onChron(msgOf('chron'));
+  s.screen.handleKey(keyEvent('ArrowDown'));      // a HANDLED key → render
+  assert.equal(at(), 'prompt', 'the prompt kept focus across renders');
+  assert.equal(s.screen.model.prompt, 'sta', 'and the half-typed command survived');
+});
+
 test('PROGRAM with no terminals aboard says so', () => {
   const s = openWithSystems();
   s.screen.handleKey(keyEvent('p'));
