@@ -1498,6 +1498,14 @@ namespace Perilune.Gen
         // 30 mol/s, which is orders of magnitude above eight people's draw, so ONE working vent is
         // enough and the others are redundancy.
         //
+        // THREE vents are authored, and since M3-11 one of them is on the dead deck:
+        //   vent_cryo  0.62  WORKING  cryo bay      OPEN — refills the core after a door is opened
+        //   vent_ls    0.15  wrecked  lifesupport   SHUT — the premise's first physical gesture
+        //   vent_d1    0.06  wrecked  hall_d1_s0    OPEN — THE UPPER DECK'S ONLY SOURCE OF AIR
+        // ⇒ `vent_d1` is the whole of OD-M item 2: repair it and eight sealed halls stop being a
+        // dead end. See WreckDeck1VentName for the amendment, the geometry and the ⛔ FILED gap
+        // (a 900 s service inside a 90 s vacuum survival budget).
+        //
         // ---------------------------------------------------------------------------------------
         // POWER — THE CURVE THE PLAYER CLIMBS (WAS: "A SHIPPED RULE THAT DELETES THE DESIGN")
         // ---------------------------------------------------------------------------------------
@@ -1512,7 +1520,8 @@ namespace Perilune.Gen
         //
         // ⇒ Power on this wreck is a CURVE the player climbs, not a fixed budget. MEASURED on this
         // tree, driven, `ShipPlanBuilder.Build` + the default stack, read at the seam
-        // (`PowerSystem.LastGenerationKW`), against a FLAT 14.30 kW of demand:
+        // (`PowerSystem.LastGenerationKW`), against a FLAT 14.80 kW of demand (14.30 until M3-11
+        // authored `vent_d1` onto the trunk — an open AirVent is 0.5 kW of LifeSupport):
         //     boot, wings 0.31 / 0.18 / 0.06         10.65 kW   Industry + Comfort shed
         //     the ship's one Parts overhauls wing_c  13.47 kW   the benches run
         //     both Seals into the other two wings    17.40 kW   the lights come back on
@@ -1527,7 +1536,7 @@ namespace Perilune.Gen
         //   block below. ⇒ 18.00 kW is a LATE-GAME state behind the matter economy, not an
         //   impossible one; 17.40 is what the opening can reach with what it was given.
         //
-        // ⇒ AND THE OPENING IS A DEFICIT. 10.65 against 14.30 is −3.65 kW, so the 15.00 kWh bank
+        // ⇒ AND THE OPENING IS A DEFICIT. 10.65 against 14.80 is −4.15 kW, so the 15.00 kWh bank
         // is spent by sim-hour 5 and after that Industry and Comfort shed. WINNABILITY IS DRIVEN,
         // NOT ARGUED — 24 sim-hours unattended, hour by hour (OD-H: nothing is enabled, so this is
         // a ship nobody has touched): LifeSupport SERVED at every hour and Defense SERVED at every
@@ -1560,10 +1569,15 @@ namespace Perilune.Gen
         //     and 15.00 kWh stored, h7 = 0/16 lit and 0.00 kWh, and it never came back. The player's
         //     ship went permanently dark seven sim-hours into a new game.
         // ⇒ M2-11 cut the risers for real (`WreckCutDeck1Risers`, called at the end of this method)
-        // and BOTH halves are now true. MEASURED on this tree, same method: 23 of 611 devices
-        // off-network and they are exactly deck 1's; one network on deck 0; deck 1's eight lamps
-        // never light at any hour of the first day, BY DESIGN. Per tier the 14.30 kW is
-        // Comfort 1.20 · Industry 6.50 · Defense 0.90 · LifeSupport 5.70.
+        // and BOTH halves are now true. MEASURED on this tree, same method: 23 of 612 devices
+        // off-network; one network on deck 0; deck 1's eight lamps never light at any hour of the
+        // first day, BY DESIGN. Per tier the 14.80 kW is
+        // Comfort 1.20 · Industry 6.50 · Defense 0.90 · LifeSupport 6.20.
+        //   ⚠️ SINCE M3-11 "off-network" AND "deck 1" ARE NO LONGER THE SAME SET, and that is the
+        //   one sentence above that had to change rather than get a new number. Deck 1 holds 24
+        //   devices; 23 of them are off the grid and the twenty-fourth, `vent_d1`, is ON it through
+        //   the single exempted riser tap (`WreckCutDeck1Risers`). Everything else up there is as
+        //   dead as it was. CUT 23 · EXEMPT 1 · ADDED 8 bulkhead runs — three counts, never a net.
         //   ⚠️ THE DECK-0 HALF OF M2-11'S MEASUREMENT IS SUPERSEDED BY M2-12 AND MUST NOT BE
         //   RE-QUOTED. It read "8/16 lamps lit at h0, h7 and h24; the bank charges 15.00 -> 40.90
         //   -> 103.72 kWh", which was true of a ship generating a flat 18.00 kW. On condition-
@@ -1575,7 +1589,7 @@ namespace Perilune.Gen
         // parsed by `WreckPowerNetworkTests` and compared with figures it measures by driving the
         // sim — so changing the ship's power without correcting this paragraph fails the build,
         // which is the defect this package existed to close.
-        //   WRECK POWER PIN (measured, driven): flat demand 14.30 kW; off-network 23 of 611
+        //   WRECK POWER PIN (measured, driven): flat demand 14.80 kW; off-network 23 of 612
         //
         // ---------------------------------------------------------------------------------------
         // WINNABILITY — THE ARITHMETIC, THEN THE DRIVEN CHECK
@@ -1604,8 +1618,9 @@ namespace Perilune.Gen
         //   * SWARF: every strip of a device below Condition 0.5 pays 1 Swarf. ⚠️ THESE NUMBERS ARE
         //     RE-COUNTED OFF `WreckShipTests.PrintTheBootCensus` DRIVING THE REAL SHIP, NEVER
         //     recomputed from a previous draft's arithmetic — the first version of this paragraph
-        //     was wrong in every figure. This ship authors 44 such devices (the census's
-        //     "worth SWARF if stripped" line), of which NINETEEN stand in the boot core:
+        //     was wrong in every figure. This ship authors 45 such devices (the census's
+        //     "worth SWARF if stripped" line; 44 before M3-11's `vent_d1`, which is on deck 1 and
+        //     therefore NOT reachable stock), of which NINETEEN stand in the boot core:
         //       cryobay        8 — the four wrecked pods, light_cryo 0.18, radiator_cryo 0.36,
         //                          battery_cryo 0.11, term_moss 0.14
         //       wreck_spine_0  2 — scrubber_spine 0.09, light_spine_0 0.16
@@ -1706,6 +1721,88 @@ namespace Perilune.Gen
         public const string WreckLifeSupportAnchor = "lifesupport";
         public const RoomType WreckLifeSupportType = RoomType.LifeSupport;
 
+        /// <summary>
+        /// M3-11 — <b>THE ONE MACHINE THAT CAN GIVE THE UPPER DECK AIR.</b> Deck 1's only
+        /// <see cref="DeviceKind.AirVent"/>, standing in <c>hall_d1_s0</c>, and the only deck-1
+        /// device whose riser tap survives <see cref="WreckCutDeck1Risers"/>.
+        ///
+        /// <para><b>OD-M item 2 (2026-07-31) AMENDS OD-E's HEADLINE.</b> OD-E read "deck 1 stays
+        /// dead (no vertical gas term is SHIPPED FILED)". The owner adopted option A: <i>"deck 1
+        /// boots dead and the player may bring it back; the sim still has no vertical gas term."</i>
+        /// The parenthetical STANDS — nothing here adds a vertical gas term, and none is needed,
+        /// because an <c>AirVent</c> injects into <b>its own room</b> from an unmodelled reserve
+        /// (<c>AtmosphereSystem.cs:123-145</c>). The precedents are <c>vent_corr_up</c> on
+        /// <c>--ship perilune</c> (behind P2's tick-3000 golden) and <c>vent_spine_1</c> on
+        /// <c>--ship grid</c>.</para>
+        ///
+        /// <para><b>IT IS AUTHORED WRECKED (0.06), AND THAT IS THE WHOLE DESIGN.</b> 0.06 is below
+        /// <c>AirVent</c>'s <c>fail</c> (0.10), so at boot it is INOPERATIVE and all eight deck-1
+        /// halls still read 0.000 kPa on the player's first screen — OD-E's boot state is intact.
+        /// It is also below <c>wear.wreck_threshold</c> (0.25), so it cannot be bodged back for
+        /// free: like its five deck-1 siblings it needs Parts, Seals or Swarf. <b>The act that
+        /// opens the upper deck is therefore a REPAIR ORDER</b> — the phase-1 exit-gate shape OD-K
+        /// ratified ("order a repair, the lights come back"), here "order a repair, the deck
+        /// breathes".</para>
+        ///
+        /// <para>⛔ <b>AND THE PLAYER CANNOT ACTUALLY DO IT YET. TWO BLOCKERS, IN THIS ORDER —
+        /// DRIVEN ON THIS TREE, FILED, NOT FIXED.</b></para>
+        ///
+        /// <para><b>BLOCKER 1 — REACHABILITY, AND IT IS COMPLETELY SILENT.</b> Every deck-1 hall
+        /// door boots SHUT (<c>SlotGridPlanner.Carve</c>'s derived rule: an empty hall's door is
+        /// closed) and OFF-NETWORK, and <see cref="Simulation.IsWalkable"/> refuses a shut door
+        /// tile — so at boot <b>there is no path into <c>hall_d1_s0</c> at all</b>. Measured:
+        /// <c>door_d1_s0</c> at (5,7,1) reads <c>IsOpen=false</c>, <c>NetworkId=0</c>,
+        /// <c>IsWalkable=false</c>; <c>FindPath</c> from the pawn to the tile beside the vent is
+        /// FALSE while the control path to the deck-1 spine ladder head is TRUE — so it is the
+        /// DOOR, not the ladder and not the deck. ⛔ <c>PrioritiseJobCommand</c> nevertheless
+        /// <b>ACCEPTS the order</b> — <c>TryFindStagingTile</c> asks whether the staging tile is
+        /// walkable and survivable, never whether it is REACHABLE — giving <c>JobKind=Maintain</c>,
+        /// <c>HeldByOrder=true</c>, target (10,1,1); the job then evaporates in
+        /// <c>MaintenanceSystem.DriveWorker</c>'s abandon path. 20 000 ticks later she is alive on
+        /// deck 0 with <c>JobKind=None</c>, <c>HeldByOrder=false</c>, ZERO work ticks served and
+        /// the vent still at 0.06. <b>No badge, no dock row, she never moves.</b> ⇒ The player must
+        /// first open <c>door_d1_s0</c> by hand: <c>SetDoorStateCommand</c> carries no power gate,
+        /// so it works on an off-network door (measured — the door opens and the path appears).
+        /// </para>
+        ///
+        /// <para><b>BLOCKER 2 — SURVIVABILITY, and only once the door is open.</b>
+        /// <c>wear.maintenance_work_seconds</c> is 900 s (9 000 work ticks) against
+        /// <c>needs.suffocation_per_second_vacuum</c> of 1/90. Driven, door opened FIRST and then
+        /// ordered: she crosses, reaches deck 1, takes the service — and is <b>DEAD at tick
+        /// 1 341</b>, about 134 sim-seconds after the order, against a service that needs 900
+        /// sim-seconds at the machine. The vent is still at 0.06.
+        /// (<c>VacuumOrderLadderTests.Rung4_SheMayDie_AndThatIsTheFeature</c> pins the same
+        /// arithmetic on its own fixture.)</para>
+        ///
+        /// <para>⚠️ <b>THE CHARTER'S ACCEPTANCE SCRIPT HAS ITS STEPS IN THE WRONG ORDER.</b> It
+        /// reads "right-click the vent → Prioritise: repair", then "she crosses". <b>Opening the
+        /// hall door must come FIRST</b>, or the order lands in blocker 1 and nothing observable
+        /// happens at all.</para>
+        ///
+        /// <para>⚠️ <b>WHICH HALF AUTHORING COULD CLOSE, STATED PRECISELY — because the first
+        /// draft of this note wrongly foreclosed both.</b> SURVIVABILITY is NOT an authoring
+        /// problem: every tile on deck 1 is vacuum, so no geometry in this file can put a
+        /// breathable staging tile beside this machine; it needs a suit, a shorter or segmented
+        /// service, or relayed servicers. <b>REACHABILITY, however, IS an authoring choice inside
+        /// this very file</b> — author <c>door_d1_s0</c> OPEN through
+        /// <see cref="SlotGridPlanner.SlotAssign.DoorOpen"/> (the mechanism
+        /// <see cref="WreckLifeSupportAnchor"/> already uses), or exempt its riser tap as well. It
+        /// is deliberately NOT taken here, and it is not free either: this ship's
+        /// <c>EveryAirlessCompartment_BootsBehindAClosedDoor</c> invariant says NO open door faces
+        /// vacuum at boot, and a second exemption moves the tap census the owner has just been
+        /// shown. <b>An OWNER call, left open — not foreclosed.</b></para>
+        ///
+        /// <para><b>WHY THIS TILE.</b> It stands at <c>(hall.X1, hall.Y0, 1)</c> — <b>directly
+        /// above <c>vent_cryo</c></b> at <c>(cryo.X1, cryo.Y0, 0)</c>, the cryo bay's own working
+        /// vent, in the same corner of the same footprint. So the ONE tap the raiders left is the
+        /// one inside the ONE compartment whose life support they never finished, which is the
+        /// fiction and the wiring saying the same thing. Mechanically it also picks a hall that
+        /// is <i>not</i> collapsed (deck 1's slots 5/6/7 boot as debris) and a tile clear of
+        /// <c>AddWreckedHall</c>'s device row (<c>Y0+1</c>).</para>
+        /// </summary>
+        public const string WreckDeck1VentName = "vent_d1";
+        public const string WreckDeck1VentHall = "hall_d1_s0";
+
         /// <summary>Interior rows that collapse into debris in a wrecked bottom-row slot, counted
         /// from the hull side inward — the same depth the grid ship uses.</summary>
         public const int WreckDebrisRows = 2;
@@ -1745,12 +1842,18 @@ namespace Perilune.Gen
 
         /// <summary>The bay's twelve capsules, in three rows of four across the cryo bay's interior.
         ///
-        /// EIGHT LIVING — one already open (the pawn the player starts with) and seven intact and
-        /// occupied, thawable one at a time through MOSS (W5). Eight is the owner's design target
-        /// and is NOT tunable here.
+        /// EIGHT LIVING souls: one capsule boots open (the pawn the player starts with) and the
+        /// other seven are thawable one at a time through MOSS (W5). Eight is the owner's design
+        /// target and is NOT tunable here.
         ///
-        /// FOUR WRECKED — dead sleepers, in addition to the eight. Four is this lane's number and
-        /// IS tunable; see the header.
+        /// FOUR WRECKED CAPSULES — four dead sleepers, in addition to the eight. Four is this
+        /// lane's number and IS tunable; see the header.
+        ///
+        /// ⚠️ THIS PARAGRAPH IS THE SHIP'S SECOND CENSUS PROSE AND IT IS SCANNED, since M3-11.
+        /// The banner header above states the same census in the same words, and for a while only
+        /// THAT one was checked — so a stale edit here survived, which review proved. Both blocks
+        /// are now compared against the hand-written literals in
+        /// <c>tests/Perilune.Tests/WreckShipTests.cs</c>; if you re-word one, re-word both.
         ///
         /// Every living pod is authored comfortably above <c>wear.wreck_threshold</c>: they are the
         /// seven people the whole game is about, and a capsule that decayed below the floor while
@@ -1814,7 +1917,9 @@ namespace Perilune.Gen
                 Hall(0, 6),                                   // slot 6 — stripped
                 Hall(0, 7),                                   // slot 7 — collapsed
             };
-            // Deck 1 — dead. Eight sealed halls, no conduit tray, three of them collapsed.
+            // Deck 1 — dead AT BOOT, and since M3-11 (OD-M item 2) no longer dead FOREVER. Eight
+            // sealed halls, no conduit tray, three of them collapsed; one wrecked vent on one
+            // surviving riser tap is the way back. See WreckDeck1VentName.
             var deck1 = EmptyDeck(1);
 
             var canvases = new GridCanvas[WreckDepth];
@@ -2046,6 +2151,21 @@ namespace Perilune.Gen
             AddWreckedHall(plan, rects[1]["hall_d1_s5"], 1, (DeviceKind.Light, "light_d1_s5", 0.02f));
             AddWreckedHall(plan, rects[1]["hall_d1_s6"], 1, (DeviceKind.Light, "light_d1_s6", 0.04f));
             AddWreckedHall(plan, rects[1]["hall_d1_s7"], 1, (DeviceKind.Light, "light_d1_s7", 0.03f));
+
+            // ⭐ M3-11 — THE DECK-1 VENT. The one machine on this ship that can give the upper deck
+            // air, authored BROKEN so the deck boots dead and a repair order is what opens it. Its
+            // tile stands directly above `vent_cryo`, and the single surviving riser tap is
+            // exempted inside WreckCutDeck1Risers below. Full rationale: WreckDeck1VentName.
+            // ⚠️ IT BOOTS OPEN, unlike `vent_ls`. A closed AirVent draws nothing (PowerSystem
+            // .IsWanting) and would need a SECOND player gesture after the repair; the package's
+            // whole sentence is "order ONE repair and the deck breathes", so the shutter is
+            // already up and the only thing wrong with this machine is that it is broken.
+            var deck1Vent = rects[1][WreckDeck1VentHall];
+            plan.Devices.Add(new DeviceSpec
+            {
+                Kind = DeviceKind.AirVent, Pos = new Int3(deck1Vent.X1, deck1Vent.Y0, 1),
+                Name = WreckDeck1VentName, IsOpen = true, Condition = 0.06f,
+            });
 
             // ⭐ THE RISERS ARE CUT HERE, AND IT MUST BE HERE — the helper reads the deck-1 device
             // list, so it runs after the last one is authored and before anything reads the plan.
@@ -2282,7 +2402,7 @@ namespace Perilune.Gen
             //     4 CryoPods refused; 626 devices → 616 ON THE PRE-M2-11 TREE, whose deck-0 tray
             //     held 554 tiles against today's 539 — 23 taps gone, 8 bulkhead runs added, net
             //     −15 — so the ten strips are unchanged but do NOT re-quote 626/616 against
-            //     today's 611) DOES lift every wing clear of the floor —
+            //     today's 612) DOES lift every wing clear of the floor —
             //     at the price of `term_moss`, both core scrubbers and both remaining batteries.
             //     ⚠️ THE END CONDITIONS ARE HORIZON- AND TREE-DEPENDENT AND DO NOT REPRODUCE: this
             //     lane measured wing_b/wing_c 0.763 / 0.706 at 3 sim-days pre-rebase; review
@@ -2347,13 +2467,23 @@ namespace Perilune.Gen
         /// is re-routed to cross each bulkhead BESIDE its doorway instead of through it: a conduit
         /// at <c>(doorX - 1, doorY, 0)</c>, which is hull, not floor. Legal and inert — utility
         /// overlays are not in the tile grid (<c>Simulation.IsUtilityOverlay</c>), take no
-        /// maintenance and are drawn only under the Power lens. Measured after: one network, 23 of
-        /// 611 devices off-network (exactly deck 1), flat demand 14.30 kW.
+        /// maintenance and are drawn only under the Power lens.
+        ///
+        /// ⭐ <b>M3-11 — ONE TAP IS NOW EXEMPT, AND EXACTLY ONE.</b> <c>vent_d1</c>
+        /// (<see cref="WreckDeck1VentName"/>) keeps the deck-0 tray tile under it, so it — alone on
+        /// deck 1 — is on the trunk and can be POWERED. Everything else on deck 1 is still dead.
+        /// Its tap is the tile <c>vent_cryo</c> itself stands on, which is why the exemption costs
+        /// the deck-0 tray nothing: that tile was never going to be cut before this vent existed.
+        ///
+        /// <para>THE THREE COUNTS, RE-DERIVED ON THIS TREE AND STATED SEPARATELY (never as a net —
+        /// M2-11's own send-back was a comment that restated the net as the deletion count):
+        /// <b>CUT 23 · EXEMPT 1 · ADDED 8</b> (the bulkhead runs). Measured after: one network on
+        /// deck 0, <b>23 of 612 devices off-network</b> — that is deck 1's 24 devices minus the one
+        /// exempt vent — and a <b>flat demand of 14.80 kW</b>.</para>
         ///
         /// THE TRAY, COUNTED — <b>554 tiles before, 531 with the 23 taps removed and nothing added,
-        /// 539 shipped</b> (the 8 bulkhead runs). Net −15, which is why the device store reads 611
-        /// and not 619. ⚠️ Quote the DELETION count (23) and the ADDITION count (8) separately; a
-        /// draft of the pinning test stated the net as the deletion and review caught it.
+        /// 539 shipped</b> (the 8 bulkhead runs). Net −15. ⚠️ The device store now reads <b>612</b>,
+        /// not 611: M3-11 added one device (the vent) and moved no tray tile at all.
         ///
         /// ORDER: must run after the last deck-1 device is authored — it reads the deck-1 device
         /// list. ASSUMPTION, held by a test rather than by an argument: <c>(doorX - 1, doorY)</c> is
@@ -2369,6 +2499,10 @@ namespace Perilune.Gen
             {
                 var d = plan.Devices[i];
                 if (d.Pos.Z != 1 || d.Kind == DeviceKind.Conduit) continue;
+                // ⭐ M3-11 — THE ONE SURVIVING RISER. Matched by NAME, not by kind: "the deck-1
+                // AirVent" would silently exempt a second vent somebody adds later, and "exactly
+                // one tap" is the property WreckPowerNetworkTests pins.
+                if (d.Name == WreckDeck1VentName) continue;
                 taps.Add(new Int3(d.Pos.X, d.Pos.Y, 0));
                 if (d.Kind == DeviceKind.Door) bulkheads.Add(new Int3(d.Pos.X - 1, d.Pos.Y, 0));
             }
